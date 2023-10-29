@@ -104,7 +104,31 @@ impl CoreManager {
         if should_kill {
             sleep(Duration::from_millis(500)).await;
         }
+        #[cfg(target_os = "macos")]
+        {
+            let enable_tun = Config::verge().latest().enable_tun_mode.clone();
+            let enable_tun = enable_tun.unwrap_or(false);
 
+            if enable_tun {
+                log::debug!(target: "app", "try to set system dns");
+
+                match (|| async {
+                    let tun_device_ip = Config::clash().clone().latest().get_tun_device_ip();
+                    // 执行 networksetup -setdnsservers Wi-Fi $tun_device_ip
+                    Command::new("networksetup")
+                        .args(["-setdnsservers", "Wi-Fi", tun_device_ip.as_str()])
+                        .output()
+                })()
+                .await
+                {
+                    Ok(_) => return Ok(()),
+                    Err(err) => {
+                        // 修改这个值，免得stop出错
+                        log::error!(target: "app", "{err}");
+                    }
+                }
+            }
+        }
         #[cfg(target_os = "windows")]
         {
             use super::win_service;
@@ -253,6 +277,29 @@ impl CoreManager {
             return Ok(());
         }
 
+        #[cfg(target_os = "macos")]
+        {
+            let enable_tun = Config::verge().latest().enable_tun_mode.clone();
+            let enable_tun = enable_tun.unwrap_or(false);
+
+            if enable_tun {
+                log::debug!(target: "app", "try to set system dns");
+
+                match (|| {
+                    // 执行 networksetup -setdnsservers Wi-Fi "Empty"
+                    Command::new("networksetup")
+                        .args(["-setdnsservers", "Wi-Fi", "Empty"])
+                        .output()
+                })() {
+                    Ok(_) => return Ok(()),
+                    Err(err) => {
+                        // 修改这个值，免得stop出错
+                        *self.use_service_mode.lock() = false;
+                        log::error!(target: "app", "{err}");
+                    }
+                }
+            }
+        }
         let mut sidecar = self.sidecar.lock();
         if let Some(child) = sidecar.take() {
             log::debug!(target: "app", "stop the core by sidecar");

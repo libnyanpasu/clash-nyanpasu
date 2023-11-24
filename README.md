@@ -6,7 +6,7 @@
 </h1>
 
 <h3 align="center">
-A <a href="https://github.com/clashdev/clash-core">Clash</a> GUI based on <a href="https://github.com/tauri-apps/tauri">tauri</a>.
+A <a href="https://web.archive.org/web/20231102134434/https://github.com/Dreamacro/clash">Clash</a> GUI based on <a href="https://github.com/tauri-apps/tauri">tauri</a>.
 </h3>
 
 ## Features

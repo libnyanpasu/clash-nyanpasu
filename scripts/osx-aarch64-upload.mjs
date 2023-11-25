@@ -4,8 +4,6 @@
  */
 import fs from "fs-extra";
 import path from "path";
-import { exit } from "process";
-import { execSync } from "child_process";
 import { createRequire } from "module";
 import { getOctokit, context } from "@actions/github";
 
@@ -14,9 +12,6 @@ const require = createRequire(import.meta.url);
 async function resolve() {
   if (!process.env.GITHUB_TOKEN) {
     throw new Error("GITHUB_TOKEN is required");
-  }
-  if (!process.env.GITHUB_REPOSITORY) {
-    throw new Error("GITHUB_REPOSITORY is required");
   }
   if (!process.env.TAURI_PRIVATE_KEY) {
     throw new Error("TAURI_PRIVATE_KEY is required");
@@ -27,15 +22,15 @@ async function resolve() {
 
   const { version } = require("../package.json");
 
-  const buildCmd = `pnpm build -f default-meta`;
+  const tag = process.env.TAG_NAME || `v${version}`;
 
-  console.log(`[INFO]: Upload to tag "${tag}"`);
-  console.log(`[INFO]: Building app. "${buildCmd}"`);
-
-  execSync(buildCmd);
+  console.log(`[INFO]: Upload to tag ${tag}`);
 
   const cwd = process.cwd();
-  const bundlePath = path.join(cwd, "src-tauri/target/release/bundle");
+  const bundlePath = path.join(
+    cwd,
+    "src-tauri/target/aarch64-apple-darwin/release/bundle"
+  );
   const join = (p) => path.join(bundlePath, p);
 
   const appPathList = [
@@ -105,9 +100,4 @@ async function uploadAssets(releaseId, assets) {
   }
 }
 
-if (process.platform === "darwin" && process.arch === "arm64") {
-  resolve();
-} else {
-  console.error("invalid");
-  exit(1);
-}
+resolve();

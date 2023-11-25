@@ -42,8 +42,12 @@ jobs:
           pnpm i
           pnpm check --arch arm64 --sidecar-host aarch64-apple-darwin
 
-      - name: Tauri build (cmd)
+      - name: Tauri build with Upload (cmd)
+        env:
+          TAG_NAME: dev
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         run: |
           pnpm build --target aarch64-apple-darwin
-          mv ./src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Clash Nyanpasu.app ./src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Clash Nyanpasu.aarch64.app
-          mv ./src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Clash Nyanpasu.app.tar.gz ./src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Clash Nyanpasu.aarch64.app.tar.gz
+          node scripts/osx-aarch64-upload.mjs

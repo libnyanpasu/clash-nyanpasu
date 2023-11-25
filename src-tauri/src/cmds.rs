@@ -230,6 +230,17 @@ pub fn open_web_url(url: String) -> CmdResult<()> {
 }
 
 #[cfg(windows)]
+pub mod uwp {
+    use super::*;
+    use crate::core::win_uwp;
+
+    #[tauri::command]
+    pub async fn invoke_uwp_tool() -> CmdResult {
+        wrap_err!(win_uwp::invoke_uwptools().await)
+    }
+}
+
+#[cfg(windows)]
 pub mod service {
     use super::*;
     use crate::core::win_service;
@@ -264,6 +275,16 @@ pub mod service {
     }
     #[tauri::command]
     pub async fn uninstall_service() -> CmdResult {
+        Ok(())
+    }
+}
+
+#[cfg(not(windows))]
+pub mod uwp {
+    use super::*;
+
+    #[tauri::command]
+    pub async fn invoke_uwp_tool() -> CmdResult {
         Ok(())
     }
 }

@@ -9,11 +9,6 @@ import { execSync } from "child_process";
 import { createRequire } from "module";
 import { getOctokit, context } from "@actions/github";
 
-// to `meta` tag
-const META = process.argv.includes("--meta");
-// to `alpha` tag
-const ALPHA = process.argv.includes("--alpha");
-
 const require = createRequire(import.meta.url);
 
 async function resolve() {
@@ -32,8 +27,7 @@ async function resolve() {
 
   const { version } = require("../package.json");
 
-  const tag = META ? "meta" : ALPHA ? "alpha" : `v${version}`;
-  const buildCmd = META ? `pnpm build -f default-meta` : `pnpm build`;
+  const buildCmd = `pnpm build -f default-meta`;
 
   console.log(`[INFO]: Upload to tag "${tag}"`);
   console.log(`[INFO]: Building app. "${buildCmd}"`);

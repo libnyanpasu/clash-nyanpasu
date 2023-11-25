@@ -1,0 +1,49 @@
+name: macOS aarch64 Build
+
+on:
+  workflow_dispatch:
+env:
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: short
+
+jobs:
+  macos-aarch64:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: macos-latest
+
+      - name: install the missing rust target
+        run: |
+          rustup target add aarch64-apple-darwin
+
+      - name: Install Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: "20"
+
+      - uses: pnpm/action-setup@v2
+        name: Install pnpm
+        with:
+          version: 8
+          run_install: false
+
+      - name: Pnpm install and check
+        run: |
+          pnpm i
+          pnpm check --arch arm64 --sidecar-host aarch64-apple-darwin
+
+      - name: Tauri build (cmd)
+        run: |
+          pnpm build --target aarch64-apple-darwin
+          mv ./src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Clash Nyanpasu.app ./src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Clash Nyanpasu.aarch64.app
+          mv ./src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Clash Nyanpasu.app.tar.gz ./src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Clash Nyanpasu.aarch64.app.tar.gz

@@ -35,10 +35,10 @@ export const useRenderList = (mode: string) => {
 
   // 自适应
   if (col >= 6 || col <= 0) {
-    if (width > 1450) col = 5;
-    else if (width > 1024) col = 4;
-    else if (width > 900) col = 3;
-    else if (width >= 600) col = 2;
+    if (width > 1450) col = 4;
+    else if (width > 1024) col = 3;
+    else if (width > 900) col = 2;
+    else if (width >= 600) col = 1;
     else col = 1;
   }
 

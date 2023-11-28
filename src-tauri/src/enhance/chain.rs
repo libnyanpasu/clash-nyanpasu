@@ -21,6 +21,7 @@ pub enum ChainType {
 pub enum ChainSupport {
     Clash,
     ClashMeta,
+    ClashRs,
     All,
 }
 
@@ -80,6 +81,7 @@ impl ChainSupport {
             Some(core) => match (self, core.as_str()) {
                 (ChainSupport::All, _) => true,
                 (ChainSupport::Clash, "clash") => true,
+                (ChainSupport::ClashRs, "clash-rs") => true,
                 (ChainSupport::ClashMeta, "clash-meta") => true,
                 _ => false,
             },

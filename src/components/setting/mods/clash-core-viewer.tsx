@@ -1,9 +1,12 @@
-import { mutate } from "swr";
-import { forwardRef, useImperativeHandle, useState } from "react";
 import { BaseDialog, DialogRef, Notice } from "@/components/base";
-import { useTranslation } from "react-i18next";
 import { useVerge } from "@/hooks/use-verge";
-import { useLockFn } from "ahooks";
+import { closeAllConnections } from "@/services/api";
+import {
+  changeClashCore,
+  grantPermission,
+  restartSidecar,
+} from "@/services/cmds";
+import getSystem from "@/utils/get-system";
 import { Lock } from "@mui/icons-material";
 import {
   Box,
@@ -13,14 +16,15 @@ import {
   ListItemButton,
   ListItemText,
 } from "@mui/material";
-import { changeClashCore, restartSidecar } from "@/services/cmds";
-import { closeAllConnections } from "@/services/api";
-import { grantPermission } from "@/services/cmds";
-import getSystem from "@/utils/get-system";
+import { useLockFn } from "ahooks";
+import { forwardRef, useImperativeHandle, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { mutate } from "swr";
 
 const VALID_CORE = [
   { name: "Clash", core: "clash" },
   { name: "Clash Meta", core: "clash-meta" },
+  { name: "Clash Rust", core: "clash-rs" },
 ];
 
 const OS = getSystem();

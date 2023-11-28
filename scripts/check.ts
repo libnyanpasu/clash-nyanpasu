@@ -62,8 +62,8 @@ const RS_MAP = {
   "win32-x64": "clash-x86_64-pc-windows-msvc",
   "darwin-x64": "clash-x86_64-apple-darwin",
   "darwin-arm64": "clash-aarch64-apple-darwin",
-  "linux-x64": "clash-x86_64-unknown-linux-gnu",
-  // 'linux-arm64': 'clash.meta-linux-arm64',
+  "linux-x64": "clash-x86_64-unknown-linux-gnu-static-crt",
+  "linux-arm64": "clash-aarch64-unknown-linux-gnu-static-crt",
 };
 
 /* ======= clash meta ======= */

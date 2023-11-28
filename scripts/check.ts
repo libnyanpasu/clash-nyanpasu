@@ -1,10 +1,20 @@
-import fs from "fs-extra";
-import zlib from "zlib";
-import path from "path";
 import AdmZip from "adm-zip";
-import fetch from "node-fetch";
-import proxyAgent from "https-proxy-agent";
-import { execSync } from "child_process";
+import { createColorize } from "colorize-template";
+import fs from "fs-extra";
+import { HttpsProxyAgent } from "https-proxy-agent";
+import fetch, { type RequestInit } from "node-fetch";
+import { execSync } from "node:child_process";
+import os from "node:os";
+import path from "node:path";
+import pc from "picocolors";
+import zlib from "zlib";
+import { consola } from "./utils/logger";
+
+const colorize = createColorize({
+  ...pc,
+  success: pc.green,
+  error: pc.red,
+});
 
 const cwd = process.cwd();
 const TEMP_DIR = path.join(cwd, "node_modules/.verge");
@@ -14,11 +24,15 @@ const ARCH = process.argv.includes("--arch")
   ? process.argv[process.argv.indexOf("--arch") + 1]
   : undefined;
 
-const SIDECAR_HOST = process.argv.includes("--sidecar-host")
+const SIDECAR_HOST: string | undefined = process.argv.includes("--sidecar-host")
   ? process.argv[process.argv.indexOf("--sidecar-host") + 1]
   : execSync("rustc -vV")
       .toString()
-      .match(/(?<=host: ).+(?=\s*)/g)[0];
+      ?.match(/(?<=host: ).+(?=\s*)/g)?.[0];
+
+if (!SIDECAR_HOST) {
+  consola.fatal(colorize`{red.bold SIDECAR_HOST} not found`);
+}
 
 /* ======= clash ======= */
 const CLASH_STORAGE_PREFIX = "https://release.dreamacro.workers.dev/";
@@ -41,6 +55,17 @@ const CLASH_MAP = {
   "linux-arm64": "clash-linux-arm64",
 };
 
+/* ======= clash-rs ======= */
+const RS_URL_PREFIX = `https://github.com/Watfaq/clash-rs/releases/download/`;
+const RS_VERSION = "v0.1.9";
+const RS_MAP = {
+  "win32-x64": "clash-x86_64-pc-windows-msvc",
+  "darwin-x64": "clash-x86_64-apple-darwin",
+  "darwin-arm64": "clash-aarch64-apple-darwin",
+  "linux-x64": "clash-x86_64-unknown-linux-gnu-static-crt",
+  "linux-arm64": "clash-aarch64-unknown-linux-gnu-static-crt",
+};
+
 /* ======= clash meta ======= */
 const META_URL_PREFIX = `https://github.com/MetaCubeX/Clash.Meta/releases/download/`;
 const META_VERSION = "v1.16.0";
@@ -60,11 +85,9 @@ const META_MAP = {
 const platform = process.platform;
 const arch = ARCH ? ARCH : process.arch;
 
-console.log(
-  "platform: " + platform,
-  "arch: " + arch,
-  "sidecar-host: " + SIDECAR_HOST
-);
+consola.debug(colorize`platform {yellow ${platform}}`);
+consola.debug(colorize`arch {yellow ${arch}}`);
+consola.debug(colorize`sidecar-host {yellow ${SIDECAR_HOST}}`);
 
 if (!CLASH_MAP[`${platform}-${arch}`]) {
   throw new Error(`clash unsupported platform "${platform}-${arch}"`);
@@ -73,20 +96,28 @@ if (!META_MAP[`${platform}-${arch}`]) {
   throw new Error(`clash meta unsupported platform "${platform}-${arch}"`);
 }
 
-function clash() {
+interface BinInfo {
+  name: string;
+  targetFile: string;
+  exeFile: string;
+  tmpFile: string;
+  downloadURL: string;
+}
+
+function clash(): BinInfo {
   const name = CLASH_MAP[`${platform}-${arch}`];
 
   const isWin = platform === "win32";
   const urlExt = isWin ? "zip" : "gz";
   const downloadURL = `${CLASH_URL_PREFIX}${name}-${CLASH_LATEST_DATE}.${urlExt}`;
   const exeFile = `${name}${isWin ? ".exe" : ""}`;
-  const zipFile = `${name}.${urlExt}`;
+  const tmpFile = `${name}.${urlExt}`;
 
   return {
     name: "clash",
     targetFile: `clash-${SIDECAR_HOST}${isWin ? ".exe" : ""}`,
     exeFile,
-    zipFile,
+    tmpFile,
     downloadURL,
   };
 }
@@ -98,48 +129,66 @@ function clashBackup() {
   const urlExt = isWin ? "zip" : "gz";
   const downloadURL = `${CLASH_BACKUP_URL_PREFIX}${CLASH_BACKUP_LATEST_DATE}/${name}-n${CLASH_BACKUP_LATEST_DATE}.${urlExt}`;
   const exeFile = `${name}${isWin ? ".exe" : ""}`;
-  const zipFile = `${name}.${urlExt}`;
+  const tmpFile = `${name}.${urlExt}`;
 
   return {
     name: "clash",
     targetFile: `clash-${SIDECAR_HOST}${isWin ? ".exe" : ""}`,
     exeFile,
-    zipFile,
+    tmpFile,
     downloadURL,
   };
 }
 
-function clashS3() {
+function clashS3(): BinInfo {
   const name = CLASH_MAP[`${platform}-${arch}`];
 
   const isWin = platform === "win32";
   const urlExt = isWin ? "zip" : "gz";
   const downloadURL = `${CLASH_STORAGE_PREFIX}${CLASH_LATEST_DATE}/${name}-${CLASH_LATEST_DATE}.${urlExt}`;
   const exeFile = `${name}${isWin ? ".exe" : ""}`;
-  const zipFile = `${name}.${urlExt}`;
+  const tmpFile = `${name}.${urlExt}`;
 
   return {
     name: "clash",
     targetFile: `clash-${SIDECAR_HOST}${isWin ? ".exe" : ""}`,
     exeFile,
-    zipFile,
+    tmpFile,
     downloadURL,
   };
 }
 
-function clashMeta() {
+function clashRs(): BinInfo {
+  const name = RS_MAP[`${platform}-${arch}`];
+  const isWin = platform === "win32";
+  // const urlExt = isWin ? 'zip' : 'gz';
+  const exeFile = `${name}${isWin ? ".exe" : ""}`;
+  const downloadURL = `${RS_URL_PREFIX}${RS_VERSION}/${name}${
+    isWin ? ".exe" : ""
+  }`;
+  const tmpFile = `${name}${isWin ? ".exe" : ""}`;
+  return {
+    name: "clash-rs",
+    targetFile: `clash-rs-${SIDECAR_HOST}${isWin ? ".exe" : ""}`,
+    exeFile,
+    tmpFile,
+    downloadURL,
+  };
+}
+
+function clashMeta(): BinInfo {
   const name = META_MAP[`${platform}-${arch}`];
   const isWin = platform === "win32";
   const urlExt = isWin ? "zip" : "gz";
   const downloadURL = `${META_URL_PREFIX}${META_VERSION}/${name}-${META_VERSION}.${urlExt}`;
   const exeFile = `${name}${isWin ? ".exe" : ""}`;
-  const zipFile = `${name}-${META_VERSION}.${urlExt}`;
+  const tmpFile = `${name}-${META_VERSION}.${urlExt}`;
 
   return {
     name: "clash-meta",
     targetFile: `clash-meta-${SIDECAR_HOST}${isWin ? ".exe" : ""}`,
     exeFile,
-    zipFile,
+    tmpFile,
     downloadURL,
   };
 }
@@ -147,8 +196,9 @@ function clashMeta() {
 /**
  * download sidecar and rename
  */
-async function resolveSidecar(binInfo) {
-  const { name, targetFile, zipFile, exeFile, downloadURL } = binInfo;
+async function resolveSidecar(binInfo: BinInfo) {
+  const { name, targetFile, tmpFile, exeFile, downloadURL } = binInfo;
+  consola.debug(colorize`resolve {cyan ${name}}...`);
 
   const sidecarDir = path.join(cwd, "src-tauri", "sidecar");
   const sidecarPath = path.join(sidecarDir, targetFile);
@@ -157,44 +207,54 @@ async function resolveSidecar(binInfo) {
   if (!FORCE && (await fs.pathExists(sidecarPath))) return;
 
   const tempDir = path.join(TEMP_DIR, name);
-  const tempZip = path.join(tempDir, zipFile);
+  const tempFile = path.join(tempDir, tmpFile);
   const tempExe = path.join(tempDir, exeFile);
 
   await fs.mkdirp(tempDir);
   try {
-    if (!(await fs.pathExists(tempZip))) {
-      await downloadFile(downloadURL, tempZip);
+    if (!(await fs.pathExists(tempFile))) {
+      await downloadFile(downloadURL, tempFile);
     }
-
-    if (zipFile.endsWith(".zip")) {
-      const zip = new AdmZip(tempZip);
+    if (tmpFile.endsWith(".zip")) {
+      const zip = new AdmZip(tempFile);
       zip.getEntries().forEach((entry) => {
-        console.log(`[DEBUG]: "${name}" entry name`, entry.entryName);
+        consola.debug(
+          colorize`"${pc.green(name)}" entry name ${entry.entryName}`
+        );
       });
       zip.extractAllTo(tempDir, true);
       await fs.rename(tempExe, sidecarPath);
-      console.log(`[INFO]: "${name}" unzip finished`);
-    } else {
+      consola.debug(colorize`{green "${name}"} unzip finished`);
+    } else if (tmpFile.endsWith(".gz")) {
       // gz
-      const readStream = fs.createReadStream(tempZip);
+      const readStream = fs.createReadStream(tempFile);
       const writeStream = fs.createWriteStream(sidecarPath);
-      await new Promise((resolve, reject) => {
+      await new Promise<void>((resolve, reject) => {
         const onError = (error) => {
-          console.error(`[ERROR]: "${name}" gz failed:`, error.message);
+          consola.error(colorize`"${name}" gz failed:`, error.message);
           reject(error);
         };
         readStream
           .pipe(zlib.createGunzip().on("error", onError))
           .pipe(writeStream)
           .on("finish", () => {
-            console.log(`[INFO]: "${name}" gunzip finished`);
+            consola.debug(colorize`{green "${name}"} gunzip finished`);
             execSync(`chmod 755 ${sidecarPath}`);
-            console.log(`[INFO]: "${name}" chmod binary finished`);
+            consola.debug(colorize`{green "${name}"}chmod binary finished`);
             resolve();
           })
           .on("error", onError);
       });
+    } else {
+      // Common Files
+      await fs.rename(tempFile, sidecarPath);
+      consola.info(colorize`{green "${name}"} rename finished`);
+      if (platform !== "win32") {
+        execSync(`chmod 755 ${sidecarPath}`);
+        consola.info(colorize`{green "${name}"} chmod binary finished`);
+      }
     }
+    consola.success(colorize`resolve {green ${name}} finished`);
   } catch (err) {
     // 需要删除文件
     await fs.remove(sidecarPath);
@@ -210,12 +270,13 @@ async function resolveSidecar(binInfo) {
  * if the core version is not updated in time, use S3 storage as a backup.
  */
 async function resolveClash() {
-  try {
-    return await resolveSidecar(clash());
-  } catch {
-    console.log(`[WARN]: clash core needs to be updated`);
-    return await resolveSidecar(clashS3());
-  }
+  return await resolveSidecar(clashBackup());
+  // try {
+  //   return await resolveSidecar(clash());
+  // } catch {
+  //   console.log(`[WARN]: clash core needs to be updated`);
+  //   return await resolveSidecar(clashS3());
+  // }
 }
 
 /**
@@ -254,7 +315,7 @@ async function resolveWintun() {
   await fs.rename(wintunPath, targetPath);
   await fs.remove(tempDir);
 
-  console.log(`[INFO]: resolve wintun.dll finished`);
+  consola.success(colorize`resolve {green wintun.dll} finished`);
 }
 
 /**
@@ -271,14 +332,14 @@ async function resolveResource(binInfo) {
   await fs.mkdirp(resDir);
   await downloadFile(downloadURL, targetPath);
 
-  console.log(`[INFO]: ${file} finished`);
+  consola.success(colorize`resolve {green ${file}} finished`);
 }
 
 /**
  * download file and save to `path`
  */
-async function downloadFile(url, path) {
-  const options = {};
+async function downloadFile(url: string, path: string) {
+  const options: Partial<RequestInit> = {};
 
   const httpProxy =
     process.env.HTTP_PROXY ||
@@ -287,7 +348,7 @@ async function downloadFile(url, path) {
     process.env.https_proxy;
 
   if (httpProxy) {
-    options.agent = proxyAgent(httpProxy);
+    options.agent = new HttpsProxyAgent(httpProxy);
   }
 
   const response = await fetch(url, {
@@ -298,7 +359,7 @@ async function downloadFile(url, path) {
   const buffer = await response.arrayBuffer();
   await fs.writeFile(path, new Uint8Array(buffer));
 
-  console.log(`[INFO]: download finished "${url}"`);
+  consola.debug(colorize`download finished {gray "${url}"}`);
 }
 
 /**
@@ -344,8 +405,9 @@ const resolveEnableLoopback = () =>
   });
 
 const tasks = [
-  { name: "clash", func: () => resolveSidecar(clashBackup()), retry: 5 },
+  { name: "clash", func: () => resolveClash(), retry: 5 },
   { name: "clash-meta", func: () => resolveSidecar(clashMeta()), retry: 5 },
+  { name: "clash-rs", func: () => resolveSidecar(clashRs()), retry: 5 },
   { name: "wintun", func: resolveWintun, retry: 5, winOnly: true },
   { name: "service", func: resolveService, retry: 5, winOnly: true },
   { name: "install", func: resolveInstall, retry: 5, winOnly: true },
@@ -371,12 +433,19 @@ async function runTask() {
       await task.func();
       break;
     } catch (err) {
-      console.error(`[ERROR]: task::${task.name} try ${i} ==`, err.message);
-      if (i === task.retry - 1) throw err;
+      consola.warn(`task::${task.name} try ${i} ==`, err.message);
+      if (i === task.retry - 1) {
+        consola.fatal(`task::${task.name} failed`, err.message);
+      }
     }
   }
   return runTask();
 }
 
-runTask();
-runTask();
+consola.start("start check and download resources...");
+const jobs = new Array(Math.ceil(os.cpus.length / 2) || 2)
+  .fill(0)
+  .map(() => runTask());
+Promise.all(jobs).then(() => {
+  consola.success("all resources download finished");
+});

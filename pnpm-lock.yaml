@@ -115,6 +115,12 @@ devDependencies:
   adm-zip:
     specifier: ^0.5.9
     version: 0.5.9
+  colorize-template:
+    specifier: 1.0.0
+    version: 1.0.0
+  consola:
+    specifier: 3.2.3
+    version: 3.2.3
   cross-env:
     specifier: ^7.0.3
     version: 7.0.3
@@ -130,6 +136,9 @@ devDependencies:
   node-fetch:
     specifier: ^3.2.6
     version: 3.2.6
+  picocolors:
+    specifier: 1.0.0
+    version: 1.0.0
   prettier:
     specifier: ^2.7.1
     version: 2.7.1
@@ -139,6 +148,9 @@ devDependencies:
   sass:
     specifier: ^1.54.0
     version: 1.54.8
+  tsx:
+    specifier: 4.5.0
+    version: 4.5.0
   typescript:
     specifier: ^4.7.4
     version: 4.7.4
@@ -2219,6 +2231,13 @@ packages:
       }
     dev: true
 
+  /colorize-template@1.0.0:
+    resolution:
+      {
+        integrity: sha512-beJ9v9RjpbYZ8OdwJgIRZD3YUkZPXmi1MK+yX0J24UupKVHa9yk0jiARgt2i6MBX6AKjYA0SNsBn65bUPuVQiw==,
+      }
+    dev: true
+
   /combined-stream@1.0.8:
     resolution:
       {
@@ -2234,6 +2253,14 @@ packages:
       {
         integrity: sha512-/Srv4dswyQNBfohGpz9o6Yb3Gz3SrUDqBH5rTuhGR7ahtlbYKnVxw2bCFMRljaA7EXHaXZ8wsHdodFvbkhKmqg==,
       }
+    dev: true
+
+  /consola@3.2.3:
+    resolution:
+      {
+        integrity: sha512-I5qxpzLv+sJhTVEoLYNcTW+bThDCPsit0vLNKShZx6rLtpilNpmmeTPaeqJb9ZE9dV3DGaeby6Vuhrw38WjeyQ==,
+      }
+    engines: { node: ^14.18.0 || >=16.10.0 }
     dev: true
 
   /convert-source-map@1.8.0:
@@ -2589,6 +2616,17 @@ packages:
     dev: true
     optional: true
 
+  /fsevents@2.3.3:
+    resolution:
+      {
+        integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==,
+      }
+    engines: { node: ^8.16.0 || ^10.6.0 || >=11.0.0 }
+    os: [darwin]
+    requiresBuild: true
+    dev: true
+    optional: true
+
   /function-bind@1.1.1:
     resolution:
       {
@@ -2612,6 +2650,15 @@ packages:
     engines: { node: ">=8" }
     dependencies:
       pump: 3.0.0
+    dev: true
+
+  /get-tsconfig@4.7.2:
+    resolution:
+      {
+        integrity: sha512-wuMsz4leaj5hbGgg4IvDU0bqJagpftG5l5cXIAvo8uZrqn0NJqwtfupTN00VnkQJPcIRrxYrm1Ue24btpCha2A==,
+      }
+    dependencies:
+      resolve-pkg-maps: 1.0.0
     dev: true
 
   /glob-parent@5.1.2:
@@ -3508,6 +3555,13 @@ packages:
       }
     engines: { node: ">=4" }
 
+  /resolve-pkg-maps@1.0.0:
+    resolution:
+      {
+        integrity: sha512-seS2Tj26TBVOC2NIc2rOe2y2ZO7efxITtLZcGSOnHHNOQ7CkiUBfw0Iw2ck6xkIhPwLhKNLS8BO+hEpngQlqzw==,
+      }
+    dev: true
+
   /resolve@1.22.1:
     resolution:
       {
@@ -3723,6 +3777,20 @@ packages:
       {
         integrity: sha512-AEYxH93jGFPn/a2iVAwW87VuUIkR1FVUKB77NwMF7nBTDkDrrT/Hpt/IrCJ0QXhW27jTBDcf5ZY7w6RiqTMw2Q==,
       }
+    dev: true
+
+  /tsx@4.5.0:
+    resolution:
+      {
+        integrity: sha512-hgxdziy9KLaHh9KE+a6tIZFP6kb0MLq/1D0sJVifbGP4QVEYhy6+2FNn7MyCm1pMc63p9CW/L1OzdqTNPxs6rg==,
+      }
+    engines: { node: ">=18.0.0" }
+    hasBin: true
+    dependencies:
+      esbuild: 0.18.20
+      get-tsconfig: 4.7.2
+    optionalDependencies:
+      fsevents: 2.3.3
     dev: true
 
   /tunnel@0.0.6:

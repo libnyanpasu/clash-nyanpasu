@@ -1,18 +1,18 @@
-import useSWR from "swr";
-import { useEffect, useMemo } from "react";
-import { useLockFn } from "ahooks";
-import { useTranslation } from "react-i18next";
-import { Box, Button, ButtonGroup, Paper } from "@mui/material";
+import { BasePage } from "@/components/base";
+import { ProviderButton } from "@/components/proxy/provider-button";
+import { ProxyGroups } from "@/components/proxy/proxy-groups";
+import { useVerge } from "@/hooks/use-verge";
 import {
   closeAllConnections,
   getClashConfig,
   updateConfigs,
 } from "@/services/api";
 import { patchClashConfig } from "@/services/cmds";
-import { useVerge } from "@/hooks/use-verge";
-import { BasePage } from "@/components/base";
-import { ProxyGroups } from "@/components/proxy/proxy-groups";
-import { ProviderButton } from "@/components/proxy/provider-button";
+import { Box, Button, ButtonGroup, Paper } from "@mui/material";
+import { useLockFn } from "ahooks";
+import { useEffect, useMemo } from "react";
+import { useTranslation } from "react-i18next";
+import useSWR from "swr";
 
 const ProxyPage = () => {
   const { t } = useTranslation();
@@ -25,7 +25,10 @@ const ProxyPage = () => {
   const { verge } = useVerge();
 
   const modeList = useMemo(() => {
-    if (verge?.clash_core === "clash-meta") {
+    if (
+      verge?.clash_core === "clash-meta" ||
+      verge?.clash_core === "clash-rs"
+    ) {
       return ["rule", "global", "direct"];
     }
     return ["rule", "global", "direct", "script"];

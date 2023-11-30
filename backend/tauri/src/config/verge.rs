@@ -86,6 +86,12 @@ pub struct IVerge {
     /// window size and position
     #[serde(skip_serializing_if = "Option::is_none")]
     pub window_size_position: Option<Vec<f64>>,
+
+     /// 是否启用随机端口
+     pub enable_random_port: Option<bool>,
+
+     /// verge mixed port 用于覆盖 clash 的 mixed port
+     pub verge_mixed_port: Option<u16>,
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
@@ -132,6 +138,8 @@ impl IVerge {
             enable_auto_launch: Some(false),
             enable_silent_start: Some(false),
             enable_system_proxy: Some(false),
+            enable_random_port: Some(false),
+            verge_mixed_port: Some(7890),
             enable_proxy_guard: Some(false),
             proxy_guard_duration: Some(30),
             auto_close_connection: Some(true),
@@ -169,6 +177,8 @@ impl IVerge {
         patch!(enable_auto_launch);
         patch!(enable_silent_start);
         patch!(enable_system_proxy);
+        patch!(enable_random_port);
+        patch!(verge_mixed_port);
         patch!(enable_proxy_guard);
         patch!(system_proxy_bypass);
         patch!(proxy_guard_duration);

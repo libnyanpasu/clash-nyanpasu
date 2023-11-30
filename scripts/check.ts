@@ -60,15 +60,17 @@ const RS_MAP = {
 };
 
 /* ======= clash meta ======= */
-const META_URL_PREFIX = `https://github.com/MetaCubeX/Clash.Meta/releases/download/`;
-const META_VERSION = "v1.16.0";
+const VERSION_URL =
+  "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt";
+const META_URL_PREFIX = `https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha`;
+let META_VERSION;
 
 const META_MAP = {
-  "win32-x64": "clash.meta-windows-amd64-compatible",
-  "darwin-x64": "clash.meta-darwin-amd64",
-  "darwin-arm64": "clash.meta-darwin-arm64",
-  "linux-x64": "clash.meta-linux-amd64-compatible",
-  "linux-arm64": "clash.meta-linux-arm64",
+  "win32-x64": "mihomo-windows-amd64-compatible",
+  "darwin-x64": "mihomo-darwin-amd64",
+  "darwin-arm64": "mihomo-darwin-arm64",
+  "linux-x64": "mihomo-linux-amd64-compatible",
+  "linux-arm64": "mihomo-linux-arm64",
 };
 
 /**
@@ -169,11 +171,23 @@ function clashRs(): BinInfo {
   };
 }
 
+async function getLatestVersion() {
+  try {
+    const response = await fetch(VERSION_URL, { method: "GET" });
+    let v = await response.text();
+    META_VERSION = v.trim();
+    console.log(`Latest release version: ${META_VERSION}`);
+  } catch (error) {
+    console.error("Error fetching latest release version:", error.message);
+    process.exit(1);
+  }
+}
+
 function clashMeta(): BinInfo {
   const name = META_MAP[`${platform}-${arch}`];
   const isWin = platform === "win32";
   const urlExt = isWin ? "zip" : "gz";
-  const downloadURL = `${META_URL_PREFIX}${META_VERSION}/${name}-${META_VERSION}.${urlExt}`;
+  const downloadURL = `${META_URL_PREFIX}/${name}-${META_VERSION}.${urlExt}`;
   const exeFile = `${name}${isWin ? ".exe" : ""}`;
   const tmpFile = `${name}-${META_VERSION}.${urlExt}`;
 
@@ -399,7 +413,11 @@ const resolveEnableLoopback = () =>
 
 const tasks = [
   { name: "clash", func: () => resolveClash(), retry: 5 },
-  { name: "clash-meta", func: () => resolveSidecar(clashMeta()), retry: 5 },
+  {
+    name: "clash-meta",
+    func: () => getLatestVersion().then(() => resolveSidecar(clashMeta())),
+    retry: 5,
+  },
   { name: "clash-rs", func: () => resolveSidecar(clashRs()), retry: 5 },
   { name: "wintun", func: resolveWintun, retry: 5, winOnly: true },
   { name: "service", func: resolveService, retry: 5, winOnly: true },

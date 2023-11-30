@@ -3,9 +3,9 @@
   "version": "1.4.0",
   "license": "GPL-3.0",
   "scripts": {
-    "dev": "tauri dev -f default-meta",
-    "dev:diff": "tauri dev -f verge-dev",
-    "build": "tauri build -f default-meta",
+    "dev": "tauri dev -f default-meta -c ./backend/tauri/tauri.conf.json",
+    "dev:diff": "tauri dev -f verge-dev -c ./backend/tauri/tauri.conf.json",
+    "build": "tauri build -f default-meta -c ./backend/tauri/tauri.conf.json",
     "tauri": "tauri",
     "web:dev": "vite",
     "web:build": "tsc --noEmit && vite build",

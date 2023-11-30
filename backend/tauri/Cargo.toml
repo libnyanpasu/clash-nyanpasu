@@ -2,11 +2,11 @@
 name = "clash-verge"
 version = "0.1.0"
 description = "clash verge"
-authors = ["zzzgydi"]
-license = "GPL-3.0"
-repository = "https://github.com/keiko233/clash-nyanpasu.git"
+authors = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
 default-run = "clash-verge"
-edition = "2021"
+edition = { workspace = true }
 build = "build.rs"
 
 [build-dependencies]
@@ -25,7 +25,7 @@ log4rs = "1.0.0"
 nanoid = "0.4.0"
 chrono = "0.4.19"
 sysinfo = "0.29"
-sysproxy = "0.3"
+sysproxy = { path = "../sysproxy-rs", version = "0.3" }
 rquickjs = "0.1.7"
 serde_json = "1.0"
 serde_yaml = "0.9"
@@ -47,13 +47,35 @@ wry = { version = "0.24.3" }
 runas = "=1.0.0"
 deelevate = "0.2.0"
 winreg = { version = "0.50", features = ["transactions"] }
-windows-sys = { version = "0.48", features = ["Win32_System_LibraryLoader", "Win32_System_SystemInformation"] }
+windows-sys = { version = "0.48", features = [
+  "Win32_System_LibraryLoader",
+  "Win32_System_SystemInformation",
+] }
 
 [target.'cfg(windows)'.dependencies.tauri]
-features = ["global-shortcut-all", "icon-png", "process-all", "shell-all", "system-tray", "updater", "window-all"]
+version = "1.2.4"
+features = [
+  "global-shortcut-all",
+  "icon-png",
+  "process-all",
+  "shell-all",
+  "system-tray",
+  "updater",
+  "window-all",
+]
 
 [target.'cfg(linux)'.dependencies.tauri]
-features = ["global-shortcut-all", "process-all", "shell-all", "system-tray", "updater", "window-all", "native-tls-vendored", "reqwest-native-tls-vendored"]
+version = "1.2.4"
+features = [
+  "global-shortcut-all",
+  "process-all",
+  "shell-all",
+  "system-tray",
+  "updater",
+  "window-all",
+  "native-tls-vendored",
+  "reqwest-native-tls-vendored",
+]
 
 
 [features]
@@ -61,9 +83,3 @@ default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 verge-dev = []
 default-meta = []
-
-[profile.release]
-panic = "abort"
-codegen-units = 1
-lto = true
-opt-level = "s"

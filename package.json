@@ -17,6 +17,7 @@
     "updater": "tsx scripts/updater.ts",
     "publish": "tsx scripts/publish.ts",
     "portable": "tsx scripts/portable.ts",
+    "upload:osx-aarch64": "tsx scripts/osx-aarch64-upload.ts",
     "prepare": "husky install"
   },
   "dependencies": {

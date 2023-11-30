@@ -1,15 +1,18 @@
-import fs from "fs-extra";
-import { createRequire } from "module";
 import { execSync } from "child_process";
-import { resolveUpdateLog } from "./updatelog.mjs";
+import fs from "fs-extra";
+import path from "node:path";
+import packageJson from "../package.json";
+import { resolveUpdateLog } from "./updatelog";
+import { TAURI_APP_DIR, cwd } from "./utils/env";
+import { consola } from "./utils/logger";
 
-const require = createRequire(import.meta.url);
+const TAURI_APP_CONF_PATH = path.join(TAURI_APP_DIR, "tauri.conf.json");
+const PACKAGE_JSON_PATH = path.join(cwd, "package.json");
 
 // publish
 async function resolvePublish() {
   const flag = process.argv[2] ?? "patch";
-  const packageJson = require("../package.json");
-  const tauriJson = require("../src-tauri/tauri.conf.json");
+  const tauriJson = await fs.readJSON(TAURI_APP_CONF_PATH);
 
   let [a, b, c] = packageJson.version.split(".").map(Number);
 
@@ -32,22 +35,20 @@ async function resolvePublish() {
   const nextTag = `v${nextVersion}`;
   await resolveUpdateLog(nextTag);
 
-  await fs.writeFile(
-    "./package.json",
-    JSON.stringify(packageJson, undefined, 2)
-  );
-  await fs.writeFile(
-    "./src-tauri/tauri.conf.json",
-    JSON.stringify(tauriJson, undefined, 2)
-  );
+  await fs.writeJSON(PACKAGE_JSON_PATH, packageJson, {
+    spaces: 2,
+  });
+  await fs.writeJSON(TAURI_APP_CONF_PATH, tauriJson, {
+    spaces: 2,
+  });
 
   execSync("git add ./package.json");
-  execSync("git add ./src-tauri/tauri.conf.json");
+  execSync(`git add ${TAURI_APP_CONF_PATH}`);
   execSync(`git commit -m "v${nextVersion}"`);
   execSync(`git tag -a v${nextVersion} -m "v${nextVersion}"`);
   execSync(`git push`);
   execSync(`git push origin v${nextVersion}`);
-  console.log(`Publish Successfully...`);
+  consola.success(`Publish Successfully...`);
 }
 
 resolvePublish();

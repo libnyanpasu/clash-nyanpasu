@@ -1,6 +1,8 @@
+import { context, getOctokit } from "@actions/github";
 import fetch from "node-fetch";
-import { getOctokit, context } from "@actions/github";
-import { resolveUpdateLog } from "./updatelog.mjs";
+import { resolveUpdateLog } from "./updatelog";
+import { getGithubUrl } from "./utils";
+import { colorize, consola } from "./utils/logger";
 
 const UPDATE_TAG_NAME = "updater";
 const UPDATE_JSON_FILE = "update.json";
@@ -24,9 +26,8 @@ async function resolveUpdater() {
 
   // get the latest publish tag
   const tag = tags.find((t) => t.name.startsWith("v"));
-
-  console.log(tag);
-  console.log();
+  if (!tag) throw new Error("could not found the latest tag");
+  consola.debug(colorize`latest tag: {gray.bold ${tag.name}}`);
 
   const { data: latestRelease } = await github.rest.repos.getReleaseByTag({
     ...options,
@@ -102,26 +103,28 @@ async function resolveUpdater() {
   });
 
   await Promise.allSettled(promises);
-  console.log(updateData);
+  consola.info(updateData);
 
   // maybe should test the signature as well
   // delete the null field
   Object.entries(updateData.platforms).forEach(([key, value]) => {
     if (!value.url) {
-      console.log(`[Error]: failed to parse release for "${key}"`);
+      consola.error(`failed to parse release for "${key}"`);
       delete updateData.platforms[key];
     }
   });
 
   // 生成一个代理github的更新文件
   // 使用 https://hub.fastgit.xyz/ 做github资源的加速
-  const updateDataNew = JSON.parse(JSON.stringify(updateData));
+  const updateDataNew = JSON.parse(
+    JSON.stringify(updateData)
+  ) as typeof updateData;
 
   Object.entries(updateDataNew.platforms).forEach(([key, value]) => {
     if (value.url) {
-      updateDataNew.platforms[key].url = "https://ghproxy.com/" + value.url;
+      updateDataNew.platforms[key].url = getGithubUrl(value.url);
     } else {
-      console.log(`[Error]: updateDataNew.platforms.${key} is null`);
+      consola.error(`updateDataNew.platforms.${key} is null`);
     }
   });
 
@@ -143,7 +146,9 @@ async function resolveUpdater() {
     if (asset.name === UPDATE_JSON_PROXY) {
       await github.rest.repos
         .deleteReleaseAsset({ ...options, asset_id: asset.id })
-        .catch(console.error); // do not break the pipeline
+        .catch((err) => {
+          consola.error(err);
+        }); // do not break the pipeline
     }
   }
 
@@ -173,4 +178,6 @@ async function getSignature(url) {
   return response.text();
 }
 
-resolveUpdater().catch(console.error);
+resolveUpdater().catch((err) => {
+  consola.error(err);
+});

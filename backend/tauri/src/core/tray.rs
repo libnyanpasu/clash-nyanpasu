@@ -153,7 +153,7 @@ impl Tray {
         let _ = tray.get_item("system_proxy").set_selected(*system_proxy);
         let _ = tray.get_item("tun_mode").set_selected(*tun_mode);
 
-         let switch_map = {
+        let switch_map = {
             let mut map = std::collections::HashMap::new();
             map.insert(true, t!("On", "开"));
             map.insert(false, t!("Off", "关"));

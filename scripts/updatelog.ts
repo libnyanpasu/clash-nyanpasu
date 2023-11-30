@@ -1,12 +1,10 @@
 import fs from "fs-extra";
-import path from "path";
-
+import path from "node:path";
+import { cwd } from "./utils/env";
 const UPDATE_LOG = "UPDATELOG.md";
 
 // parse the UPDATELOG.md
-export async function resolveUpdateLog(tag) {
-  const cwd = process.cwd();
-
+export async function resolveUpdateLog(tag: string) {
   const reTitle = /^## v[\d\.]+/;
   const reEnd = /^---/;
 

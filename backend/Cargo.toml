@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = ["tauri", "sysproxy-rs"]
+
+[workspace.package]
+repository = "https://github.com/keiko233/clash-nyanpasu.git"
+edition = "2021"
+license = "GPL-3.0"
+authors = ["zzzgydi", "keiko233"]
+
+[workspace.dependencies]
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"

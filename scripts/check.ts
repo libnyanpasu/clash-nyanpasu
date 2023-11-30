@@ -1,22 +1,15 @@
 import AdmZip from "adm-zip";
-import { createColorize } from "colorize-template";
 import fs from "fs-extra";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import fetch, { type RequestInit } from "node-fetch";
 import { execSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
-import pc from "picocolors";
+
 import zlib from "zlib";
-import { consola } from "./utils/logger";
+import { TAURI_APP_DIR, cwd } from "./utils/env";
+import { colorize, consola } from "./utils/logger";
 
-const colorize = createColorize({
-  ...pc,
-  success: pc.green,
-  error: pc.red,
-});
-
-const cwd = process.cwd();
 const TEMP_DIR = path.join(cwd, "node_modules/.verge");
 const FORCE = process.argv.includes("--force");
 
@@ -200,7 +193,7 @@ async function resolveSidecar(binInfo: BinInfo) {
   const { name, targetFile, tmpFile, exeFile, downloadURL } = binInfo;
   consola.debug(colorize`resolve {cyan ${name}}...`);
 
-  const sidecarDir = path.join(cwd, "src-tauri", "sidecar");
+  const sidecarDir = path.join(TAURI_APP_DIR, "sidecar");
   const sidecarPath = path.join(sidecarDir, targetFile);
 
   await fs.mkdirp(sidecarDir);
@@ -219,7 +212,7 @@ async function resolveSidecar(binInfo: BinInfo) {
       const zip = new AdmZip(tempFile);
       zip.getEntries().forEach((entry) => {
         consola.debug(
-          colorize`"${pc.green(name)}" entry name ${entry.entryName}`
+          colorize`"{green ${name}}" entry name ${entry.entryName}`
         );
       });
       zip.extractAllTo(tempDir, true);
@@ -294,7 +287,7 @@ async function resolveWintun() {
   const tempZip = path.join(tempDir, "wintun.zip");
 
   const wintunPath = path.join(tempDir, "wintun/bin/amd64/wintun.dll");
-  const targetPath = path.join(cwd, "src-tauri/resources", "wintun.dll");
+  const targetPath = path.join(TAURI_APP_DIR, "resources", "wintun.dll");
 
   if (!FORCE && (await fs.pathExists(targetPath))) return;
 
@@ -324,7 +317,7 @@ async function resolveWintun() {
 async function resolveResource(binInfo) {
   const { file, downloadURL } = binInfo;
 
-  const resDir = path.join(cwd, "src-tauri/resources");
+  const resDir = path.join(TAURI_APP_DIR, "resources");
   const targetPath = path.join(resDir, file);
 
   if (!FORCE && (await fs.pathExists(targetPath))) return;

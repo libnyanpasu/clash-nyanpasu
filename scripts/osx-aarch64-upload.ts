@@ -6,7 +6,6 @@ import { context, getOctokit } from "@actions/github";
 import fs from "fs-extra";
 import path from "node:path";
 import pkgJson from "../package.json";
-import { TAURI_APP_DIR } from "./utils/env";
 import { consola } from "./utils/logger";
 
 async function resolve() {
@@ -28,8 +27,7 @@ async function resolve() {
 
   const cwd = process.cwd();
   const bundlePath = path.join(
-    TAURI_APP_DIR,
-    "target/aarch64-apple-darwin/release/bundle"
+    "backend/target/aarch64-apple-darwin/release/bundle"
   );
   const join = (p) => path.join(bundlePath, p);
 

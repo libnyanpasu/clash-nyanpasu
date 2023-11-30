@@ -8,12 +8,12 @@
     "build": "tauri build -f default-meta",
     "tauri": "tauri",
     "web:dev": "vite",
-    "web:build": "tsc && vite build",
+    "web:build": "tsc --noEmit && vite build",
     "web:serve": "vite preview",
     "check": "tsx scripts/check.ts",
-    "updater": "node scripts/updater.mjs",
-    "publish": "node scripts/publish.mjs",
-    "portable": "node scripts/portable.mjs",
+    "updater": "tsx scripts/updater.ts",
+    "publish": "tsx scripts/publish.ts",
+    "portable": "tsx scripts/portable.ts",
     "prepare": "husky install"
   },
   "dependencies": {

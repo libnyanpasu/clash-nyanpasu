@@ -2,12 +2,12 @@
  * Build and upload assets
  * for macOS(aarch)
  */
+import { context, getOctokit } from "@actions/github";
 import fs from "fs-extra";
-import path from "path";
-import { createRequire } from "module";
-import { getOctokit, context } from "@actions/github";
-
-const require = createRequire(import.meta.url);
+import path from "node:path";
+import pkgJson from "../package.json";
+import { TAURI_APP_DIR } from "./utils/env";
+import { consola } from "./utils/logger";
 
 async function resolve() {
   if (!process.env.GITHUB_TOKEN) {
@@ -20,16 +20,16 @@ async function resolve() {
     throw new Error("TAURI_KEY_PASSWORD is required");
   }
 
-  const { version } = require("../package.json");
+  const { version } = pkgJson;
 
   const tag = process.env.TAG_NAME || `v${version}`;
 
-  console.log(`[INFO]: Upload to tag ${tag}`);
+  consola.info(`Upload to tag ${tag}`);
 
   const cwd = process.cwd();
   const bundlePath = path.join(
-    cwd,
-    "src-tauri/target/aarch64-apple-darwin/release/bundle"
+    TAURI_APP_DIR,
+    "target/aarch64-apple-darwin/release/bundle"
   );
   const join = (p) => path.join(bundlePath, p);
 
@@ -65,8 +65,12 @@ async function resolve() {
 
 // From tauri-apps/tauri-action
 // https://github.com/tauri-apps/tauri-action/blob/dev/packages/action/src/upload-release-assets.ts
-async function uploadAssets(releaseId, assets) {
-  const github = getOctokit(process.env.GITHUB_TOKEN);
+async function uploadAssets(releaseId: number, assets: string[]) {
+  const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+  if (!GITHUB_TOKEN) {
+    throw new Error("GITHUB_TOKEN is required");
+  }
+  const github = getOctokit(GITHUB_TOKEN);
 
   // Determine content-length for header to upload asset
   const contentLength = (filePath) => fs.statSync(filePath).size;
@@ -83,19 +87,22 @@ async function uploadAssets(releaseId, assets) {
       ? `${filename}-debug${ext}`
       : `${filename}${ext}`;
 
-    console.log(`[INFO]: Uploading ${assetName}...`);
+    consola.start(`Uploading ${assetName}...`);
 
     try {
       await github.rest.repos.uploadReleaseAsset({
         headers,
         name: assetName,
+        // https://github.com/tauri-apps/tauri-action/pull/45
+        // @ts-expect-error error TS2322: Type 'Buffer' is not assignable to type 'string'.
         data: fs.readFileSync(assetPath),
         owner: context.repo.owner,
         repo: context.repo.repo,
         release_id: releaseId,
       });
+      consola.success(`Uploaded ${assetName}`);
     } catch (error) {
-      console.log(error.message);
+      consola.error("Failed to upload release asset", error.message);
     }
   }
 }

@@ -272,7 +272,7 @@ fn translate_passby(input: String) -> Result<String> {
     Ok(buff.join(";"))
 }
 
-/// get_system_proxy_with_registry is intended to get system proxy from registry. 
+/// get_system_proxy_with_registry is intended to get system proxy from registry.
 fn get_system_proxy_with_registry() -> Result<Sysproxy> {
     let hkcu = RegKey::predef(enums::HKEY_CURRENT_USER);
     let cur_var = hkcu.open_subkey_with_flags(SUB_KEY, enums::KEY_READ)?;

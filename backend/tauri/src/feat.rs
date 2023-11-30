@@ -336,8 +336,9 @@ pub fn copy_clash_env(option: &str) {
     let port = { Config::clash().data().get_client_info().port };
     let http_proxy = format!("http://127.0.0.1:{}", port);
     let socks5_proxy = format!("socks5://127.0.0.1:{}", port);
-    
-    let sh = format!("export https_proxy={http_proxy} http_proxy={http_proxy} all_proxy={socks5_proxy}");
+
+    let sh =
+        format!("export https_proxy={http_proxy} http_proxy={http_proxy} all_proxy={socks5_proxy}");
     let cmd: String = format!("set http_proxy={http_proxy} \n set https_proxy={http_proxy}");
     let ps: String = format!("$env:HTTP_PROXY=\"{http_proxy}\"; $env:HTTPS_PROXY=\"{http_proxy}\"");
 

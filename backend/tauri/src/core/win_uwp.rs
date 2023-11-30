@@ -17,10 +17,9 @@ pub async fn invoke_uwptools() -> Result<()> {
     let token = Token::with_current_process()?;
     let level = token.privilege_level()?;
 
-   match level {
+    match level {
         PrivilegeLevel::NotPrivileged => RunasCommand::new(tool_path).status()?,
-        _ => StdCommand::new(tool_path)
-            .status()?,
+        _ => StdCommand::new(tool_path).status()?,
     };
 
     Ok(())

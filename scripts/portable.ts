@@ -3,7 +3,6 @@ import AdmZip from "adm-zip";
 import fs from "fs-extra";
 import path from "node:path";
 import packageJson from "../package.json";
-import { TAURI_APP_DIR } from "./utils/env";
 import { colorize, consola } from "./utils/logger";
 
 /// Script for ci
@@ -11,7 +10,7 @@ import { colorize, consola } from "./utils/logger";
 async function resolvePortable() {
   if (process.platform !== "win32") return;
 
-  const releaseDir = path.join(TAURI_APP_DIR, "./target/release");
+  const releaseDir = path.join("backend/target/release");
 
   if (!(await fs.pathExists(releaseDir))) {
     throw new Error("could not found the release dir");

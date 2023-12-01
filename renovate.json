@@ -1,0 +1,38 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:base",
+    "default:automergeMinor",
+    "default:prConcurrentLimit10",
+    "default:prHourlyLimitNone",
+    "default:preserveSemverRanges",
+    "default:rebaseStalePrs",
+    "group:monorepos"
+  ],
+  "baseBranches": ["dev"],
+  "packageRules": [
+    {
+      "groupName": "Bundler packages",
+      "matchPackagePatterns": ["vite", "unplugin"]
+    },
+    {
+      "groupName": "Typescript packages",
+      "matchPackagePatterns": ["@types", "ts-", "tsx", "typescript"]
+    },
+    {
+      "groupName": "Lint packages",
+      "matchPackagePatterns": [
+        "eslint",
+        "prettier",
+        "commitlint",
+        "stylelint",
+        "husky",
+        "lint-staged"
+      ]
+    },
+    {
+      "groupName": "Testing packages",
+      "matchPackagePatterns": ["vitest", "cypress", "wdio"]
+    }
+  ]
+}

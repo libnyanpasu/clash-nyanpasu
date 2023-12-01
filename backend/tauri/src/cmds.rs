@@ -37,6 +37,11 @@ pub async fn create_profile(item: PrfItem, file_data: Option<String>) -> CmdResu
 }
 
 #[tauri::command]
+pub async fn reorder_profile(active_id: String, over_id: String) -> CmdResult {
+    wrap_err!(Config::profiles().data().reorder(active_id, over_id))
+}
+
+#[tauri::command]
 pub async fn update_profile(index: String, option: Option<PrfOption>) -> CmdResult {
     wrap_err!(feat::update_profile(index, option).await)
 }

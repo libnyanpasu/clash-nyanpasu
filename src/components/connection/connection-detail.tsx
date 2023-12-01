@@ -37,7 +37,7 @@ export const ConnectionDetail = forwardRef<ConnectionDetailRef>(
         }
       />
     );
-  }
+  },
 );
 
 interface InnerProps {

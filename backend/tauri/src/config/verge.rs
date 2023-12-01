@@ -87,11 +87,11 @@ pub struct IVerge {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub window_size_position: Option<Vec<f64>>,
 
-     /// 是否启用随机端口
-     pub enable_random_port: Option<bool>,
+    /// 是否启用随机端口
+    pub enable_random_port: Option<bool>,
 
-     /// verge mixed port 用于覆盖 clash 的 mixed port
-     pub verge_mixed_port: Option<u16>,
+    /// verge mixed port 用于覆盖 clash 的 mixed port
+    pub verge_mixed_port: Option<u16>,
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]

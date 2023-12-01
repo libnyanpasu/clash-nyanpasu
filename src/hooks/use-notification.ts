@@ -21,7 +21,7 @@ const checkPermission = async () => {
 
 export const useNotification = async (
   title: string | undefined,
-  body?: string
+  body?: string,
 ) => {
   if (!title) {
     throw new Error("missing message argument!");

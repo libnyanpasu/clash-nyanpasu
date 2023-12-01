@@ -226,7 +226,7 @@ async function resolveSidecar(binInfo: BinInfo) {
       const zip = new AdmZip(tempFile);
       zip.getEntries().forEach((entry) => {
         consola.debug(
-          colorize`"{green ${name}}" entry name ${entry.entryName}`
+          colorize`"{green ${name}}" entry name ${entry.entryName}`,
         );
       });
       zip.extractAllTo(tempDir, true);

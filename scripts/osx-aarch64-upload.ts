@@ -27,7 +27,7 @@ async function resolve() {
 
   const cwd = process.cwd();
   const bundlePath = path.join(
-    "backend/target/aarch64-apple-darwin/release/bundle"
+    "backend/target/aarch64-apple-darwin/release/bundle",
   );
   const join = (p) => path.join(bundlePath, p);
 

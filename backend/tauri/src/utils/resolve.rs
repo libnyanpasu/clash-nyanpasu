@@ -2,9 +2,9 @@ use crate::config::IVerge;
 use crate::{config::Config, core::*, utils::init, utils::server};
 use crate::{log_err, trace_err};
 use anyhow::Result;
-use tauri::{App, AppHandle, Manager};
 use serde_yaml::Mapping;
 use std::net::TcpListener;
+use tauri::{App, AppHandle, Manager};
 
 pub fn find_unused_port() -> Result<u16> {
     match TcpListener::bind("127.0.0.1:0") {
@@ -13,7 +13,10 @@ pub fn find_unused_port() -> Result<u16> {
             Ok(port)
         }
         Err(_) => {
-            let port = Config::verge().latest().verge_mixed_port.unwrap_or(Config::clash().data().get_mixed_port());
+            let port = Config::verge()
+                .latest()
+                .verge_mixed_port
+                .unwrap_or(Config::clash().data().get_mixed_port());
             log::warn!(target: "app", "use default port: {}", port);
             Ok(port)
         }
@@ -32,10 +35,18 @@ pub fn resolve_setup(app: &mut App) {
     // 处理随机端口
     let enable_random_port = Config::verge().latest().enable_random_port.unwrap_or(false);
 
-    let mut port = Config::verge().latest().verge_mixed_port.unwrap_or(Config::clash().data().get_mixed_port());
+    let mut port = Config::verge()
+        .latest()
+        .verge_mixed_port
+        .unwrap_or(Config::clash().data().get_mixed_port());
 
     if enable_random_port {
-        port = find_unused_port().unwrap_or(Config::verge().latest().verge_mixed_port.unwrap_or(Config::clash().data().get_mixed_port()));
+        port = find_unused_port().unwrap_or(
+            Config::verge()
+                .latest()
+                .verge_mixed_port
+                .unwrap_or(Config::clash().data().get_mixed_port()),
+        );
     }
 
     Config::verge().data().patch_config(IVerge {

@@ -29,7 +29,7 @@ export const ServiceViewer = forwardRef<DialogRef, Props>((props, ref) => {
       revalidateIfStale: false,
       shouldRetryOnError: false,
       focusThrottleInterval: 36e5, // 1 hour
-    }
+    },
   );
 
   useImperativeHandle(ref, () => ({

@@ -122,7 +122,7 @@ export const ProfileViewer = forwardRef<ProfileViewerRef, Props>(
           useNotification(t("Error"), err.message || err.toString());
           setLoading(false);
         }
-      })
+      }),
     );
 
     const handleClose = () => {
@@ -274,7 +274,7 @@ export const ProfileViewer = forwardRef<ProfileViewerRef, Props>(
         )}
       </BaseDialog>
     );
-  }
+  },
 );
 
 const StyledBox = styled(Box)(() => ({

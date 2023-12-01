@@ -51,7 +51,7 @@ const ProfilePage = () => {
 
   const { data: chainLogs = {}, mutate: mutateLogs } = useSWR(
     "getRuntimeLogs",
-    getRuntimeLogs
+    getRuntimeLogs,
   );
 
   const chain = profiles.chain || [];
@@ -193,7 +193,7 @@ const ProfilePage = () => {
       setLoadingCache((cache) => {
         // 获取没有正在更新的配置
         const items = regularItems.filter(
-          (e) => e.type === "remote" && !cache[e.uid]
+          (e) => e.type === "remote" && !cache[e.uid],
         );
         const change = Object.fromEntries(items.map((e) => [e.uid, true]));
 

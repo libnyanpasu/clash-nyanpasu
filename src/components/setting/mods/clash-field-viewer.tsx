@@ -22,7 +22,7 @@ export const ClashFieldViewer = forwardRef<DialogRef>((props, ref) => {
   const { profiles = {}, patchProfiles } = useProfiles();
   const { data: existsKeys = [], mutate: mutateExists } = useSWR(
     "getRuntimeExists",
-    getRuntimeExists
+    getRuntimeExists,
   );
 
   const [open, setOpen] = useState(false);
@@ -41,7 +41,7 @@ export const ClashFieldViewer = forwardRef<DialogRef>((props, ref) => {
     if (!item) return;
 
     setSelected((old) =>
-      old.includes(item) ? old.filter((e) => e !== item) : [...old, item]
+      old.includes(item) ? old.filter((e) => e !== item) : [...old, item],
     );
   };
 

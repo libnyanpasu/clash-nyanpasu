@@ -11,12 +11,12 @@ import { getClashInfo, patchClashConfig } from "@/services/cmds";
 export const useClash = () => {
   const { data: clash, mutate: mutateClash } = useSWR(
     "getClashConfig",
-    getClashConfig
+    getClashConfig,
   );
 
   const { data: versionData, mutate: mutateVersion } = useSWR(
     "getVersion",
-    getVersion
+    getVersion,
   );
 
   const patchClash = useLockFn(async (patch: Partial<IConfigData>) => {
@@ -28,8 +28,8 @@ export const useClash = () => {
   const version = versionData?.premium
     ? `${versionData.version} Premium`
     : versionData?.meta
-    ? `${versionData.version} Meta`
-    : versionData?.version || "-";
+      ? `${versionData.version} Meta`
+      : versionData?.version || "-";
 
   return {
     clash,
@@ -43,13 +43,13 @@ export const useClash = () => {
 export const useClashInfo = () => {
   const { data: clashInfo, mutate: mutateInfo } = useSWR(
     "getClashInfo",
-    getClashInfo
+    getClashInfo,
   );
 
   const patchInfo = async (
     patch: Partial<
       Pick<IConfigData, "mixed-port" | "external-controller" | "secret">
-    >
+    >,
   ) => {
     const hasInfo =
       patch["mixed-port"] != null ||

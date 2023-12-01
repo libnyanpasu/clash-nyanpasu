@@ -71,7 +71,7 @@ export const getProxyDelay = async (name: string, url?: string) => {
   const instance = await getAxios();
   const result = await instance.get(
     `/proxies/${encodeURIComponent(name)}/delay`,
-    { params }
+    { params },
   );
   return result as any as { delay: number };
 };
@@ -99,8 +99,8 @@ export const getProxies = async () => {
   // provider name map
   const providerMap = Object.fromEntries(
     Object.entries(providerRecord).flatMap(([provider, item]) =>
-      item.proxies.map((p) => [p.name, { ...p, provider }])
-    )
+      item.proxies.map((p) => [p.name, { ...p, provider }]),
+    ),
   );
 
   // compatible with proxy-providers
@@ -134,8 +134,8 @@ export const getProxies = async () => {
 
   const proxies = [direct, reject].concat(
     Object.values(proxyRecord).filter(
-      (p) => !p.all?.length && p.name !== "DIRECT" && p.name !== "REJECT"
-    )
+      (p) => !p.all?.length && p.name !== "DIRECT" && p.name !== "REJECT",
+    ),
   );
 
   const _global: IProxyGroupItem = {
@@ -157,7 +157,7 @@ export const getProviders = async () => {
     Object.entries(providers).filter(([key, item]) => {
       const type = item.vehicleType.toLowerCase();
       return type === "http" || type === "file";
-    })
+    }),
   );
 };
 
@@ -165,7 +165,7 @@ export const getProviders = async () => {
 export const providerHealthCheck = async (name: string) => {
   const instance = await getAxios();
   return instance.get(
-    `/providers/proxies/${encodeURIComponent(name)}/healthcheck`
+    `/providers/proxies/${encodeURIComponent(name)}/healthcheck`,
   );
 };
 

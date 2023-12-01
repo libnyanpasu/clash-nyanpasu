@@ -31,7 +31,7 @@ const SettingSystem = ({ onError }: Props) => {
       revalidateIfStale: false,
       shouldRetryOnError: false,
       focusThrottleInterval: 36e5, // 1 hour
-    }
+    },
   );
 
   const serviceRef = useRef<DialogRef>(null);

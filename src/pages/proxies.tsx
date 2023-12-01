@@ -19,7 +19,7 @@ const ProxyPage = () => {
 
   const { data: clashConfig, mutate: mutateClash } = useSWR(
     "getClashConfig",
-    getClashConfig
+    getClashConfig,
   );
 
   const { verge } = useVerge();

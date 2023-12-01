@@ -164,7 +164,11 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
         let mixed_port = patch.get("mixed-port");
         let enable_random_port = Config::verge().latest().enable_random_port.unwrap_or(false);
         if mixed_port.is_some() && !enable_random_port {
-            let changed = mixed_port.clone().unwrap() != Config::verge().latest().verge_mixed_port.unwrap_or(Config::clash().data().get_mixed_port());
+            let changed = mixed_port.clone().unwrap()
+                != Config::verge()
+                    .latest()
+                    .verge_mixed_port
+                    .unwrap_or(Config::clash().data().get_mixed_port());
             // 检查端口占用
             if changed {
                 if let Some(port) = mixed_port.clone().unwrap().as_u64() {

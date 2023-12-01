@@ -1,18 +1,18 @@
-import { forwardRef, useImperativeHandle, useState } from "react";
-import { useLockFn } from "ahooks";
-import { useTranslation } from "react-i18next";
+import { BaseDialog, DialogRef } from "@/components/base";
+import { useNotification } from "@/hooks/use-notification";
+import { useVerge } from "@/hooks/use-verge";
+import { defaultDarkTheme, defaultTheme } from "@/pages/_theme";
 import {
   List,
   ListItem,
   ListItemText,
-  styled,
   TextField,
+  styled,
   useTheme,
 } from "@mui/material";
-import { useVerge } from "@/hooks/use-verge";
-import { defaultTheme, defaultDarkTheme } from "@/pages/_theme";
-import { BaseDialog, DialogRef } from "@/components/base";
-import { useNotification } from "@/hooks/use-notification";
+import { useLockFn } from "ahooks";
+import { forwardRef, useImperativeHandle, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 export const ThemeViewer = forwardRef<DialogRef>((props, ref) => {
   const { t } = useTranslation();
@@ -123,6 +123,8 @@ export const ThemeViewer = forwardRef<DialogRef>((props, ref) => {
     </BaseDialog>
   );
 });
+
+ThemeViewer.displayName = "ThemeViewer";
 
 const Item = styled(ListItem)(() => ({
   padding: "5px 2px",

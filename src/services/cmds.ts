@@ -40,7 +40,7 @@ export async function patchProfilesConfig(profiles: IProfilesConfig) {
 
 export async function createProfile(
   item: Partial<IProfileItem>,
-  fileData?: string | null
+  fileData?: string | null,
 ) {
   return invoke<void>("create_profile", { item, fileData });
 }
@@ -74,7 +74,7 @@ export async function deleteProfile(index: string) {
 
 export async function patchProfile(
   index: string,
-  profile: Partial<IProfileItem>
+  profile: Partial<IProfileItem>,
 ) {
   return invoke<void>("patch_profile", { index, profile });
 }
@@ -133,19 +133,19 @@ export async function grantPermission(core: string) {
 
 export async function openAppDir() {
   return invoke<void>("open_app_dir").catch((err) =>
-    useNotification("Error", err?.message || err.toString())
+    useNotification("Error", err?.message || err.toString()),
   );
 }
 
 export async function openCoreDir() {
   return invoke<void>("open_core_dir").catch((err) =>
-    useNotification("Error", err?.message || err.toString())
+    useNotification("Error", err?.message || err.toString()),
   );
 }
 
 export async function openLogsDir() {
   return invoke<void>("open_logs_dir").catch((err) =>
-    useNotification("Error", err?.message || err.toString())
+    useNotification("Error", err?.message || err.toString()),
   );
 }
 
@@ -176,6 +176,6 @@ export async function uninstallService() {
 
 export async function invoke_uwp_tool() {
   return invoke<void>("invoke_uwp_tool").catch((err) =>
-    useNotification("Error", err?.message || err.toString())
+    useNotification("Error", err?.message || err.toString()),
   );
 }

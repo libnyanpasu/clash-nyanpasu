@@ -5,8 +5,10 @@
 
 .page-enter-active {
   opacity: 1;
+  transition:
+    opacity 300ms,
+    transform 300ms;
   transform: scale(1);
-  transition: opacity 300ms, transform 300ms;
 }
 
 .page-exit {
@@ -16,6 +18,8 @@
 
 .page-exit-active {
   opacity: 0;
+  transition:
+    opacity 300ms,
+    transform 300ms;
   transform: scale(0.9);
-  transition: opacity 300ms, transform 300ms;
 }

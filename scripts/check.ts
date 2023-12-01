@@ -174,7 +174,7 @@ function clashRs(): BinInfo {
 async function getLatestVersion() {
   try {
     const response = await fetch(VERSION_URL, { method: "GET" });
-    let v = await response.text();
+    const v = await response.text();
     META_VERSION = v.trim();
     console.log(`Latest release version: ${META_VERSION}`);
   } catch (error) {
@@ -226,7 +226,7 @@ async function resolveSidecar(binInfo: BinInfo) {
       const zip = new AdmZip(tempFile);
       zip.getEntries().forEach((entry) => {
         consola.debug(
-          colorize`"{green ${name}}" entry name ${entry.entryName}`
+          colorize`"{green ${name}}" entry name ${entry.entryName}`,
         );
       });
       zip.extractAllTo(tempDir, true);

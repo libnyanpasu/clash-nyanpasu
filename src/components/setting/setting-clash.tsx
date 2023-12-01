@@ -119,7 +119,7 @@ const SettingClash = ({ onError }: Props) => {
                   `${t("Random Port")}: ${
                     enable_random_port ? t("Disable") : t("Enable")
                   }`,
-                  t("After restart to take effect")
+                  t("After restart to take effect"),
                 );
                 onChangeVerge({ enable_random_port: !enable_random_port });
                 patchVerge({ enable_random_port: !enable_random_port });

@@ -53,7 +53,7 @@ export const ProxyGroups = (props: Props) => {
       if (!current.selected) current.selected = [];
 
       const index = current.selected.findIndex(
-        (item) => item.name === group.name
+        (item) => item.name === group.name,
       );
 
       if (index < 0) {
@@ -62,14 +62,14 @@ export const ProxyGroups = (props: Props) => {
         current.selected[index] = { name, now: proxy.name };
       }
       await patchCurrent({ selected: current.selected });
-    }
+    },
   );
 
   // 测全部延迟
   const handleCheckAll = useLockFn(async (groupName: string) => {
     const proxies = renderList
       .filter(
-        (e) => e.group?.name === groupName && (e.type === 2 || e.type === 4)
+        (e) => e.group?.name === groupName && (e.type === 2 || e.type === 4),
       )
       .flatMap((e) => e.proxyCol || e.proxy!)
       .filter(Boolean);
@@ -78,7 +78,7 @@ export const ProxyGroups = (props: Props) => {
 
     if (providers.size) {
       Promise.allSettled(
-        [...providers].map((p) => providerHealthCheck(p))
+        [...providers].map((p) => providerHealthCheck(p)),
       ).then(() => onProxies());
     }
 
@@ -97,7 +97,7 @@ export const ProxyGroups = (props: Props) => {
       (e) =>
         e.group?.name === name &&
         ((e.type === 2 && e.proxy?.name === now) ||
-          (e.type === 4 && e.proxyCol?.some((p) => p.name === now)))
+          (e.type === 4 && e.proxyCol?.some((p) => p.name === now))),
     );
 
     if (index >= 0) {

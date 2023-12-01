@@ -44,7 +44,10 @@ impl Sysopt {
 
     /// init the sysproxy
     pub fn init_sysproxy(&self) -> Result<()> {
-        let port = Config::verge().latest().verge_mixed_port.unwrap_or(Config::clash().data().get_mixed_port());
+        let port = Config::verge()
+            .latest()
+            .verge_mixed_port
+            .unwrap_or(Config::clash().data().get_mixed_port());
 
         let (enable, bypass) = {
             let verge = Config::verge();
@@ -285,7 +288,12 @@ impl Sysopt {
 
                 log::debug!(target: "app", "try to guard the system proxy");
 
-                let port = { Config::verge().latest().verge_mixed_port.unwrap_or(Config::clash().data().get_mixed_port()) };
+                let port = {
+                    Config::verge()
+                        .latest()
+                        .verge_mixed_port
+                        .unwrap_or(Config::clash().data().get_mixed_port())
+                };
 
                 let sysproxy = Sysproxy {
                     enable: true,

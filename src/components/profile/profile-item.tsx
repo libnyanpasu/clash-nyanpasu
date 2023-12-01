@@ -143,7 +143,7 @@ export const ProfileItem = (props: Props) => {
       useNotification(
         t("Error"),
         err.message ||
-          errmsg.replace(/error sending request for url (\S+?): /, "")
+          errmsg.replace(/error sending request for url (\S+?): /, ""),
       );
     } finally {
       setLoadingCache((cache) => ({ ...cache, [itemData.uid]: false }));

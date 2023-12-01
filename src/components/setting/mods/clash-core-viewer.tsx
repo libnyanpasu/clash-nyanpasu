@@ -135,3 +135,5 @@ export const ClashCoreViewer = forwardRef<DialogRef>((props, ref) => {
     </BaseDialog>
   );
 });
+
+ClashCoreViewer.displayName = "ClashCoreViewer";

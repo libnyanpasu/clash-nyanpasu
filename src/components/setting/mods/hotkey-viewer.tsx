@@ -1,11 +1,11 @@
+import { BaseDialog, DialogRef } from "@/components/base";
+import { useNotification } from "@/hooks/use-notification";
+import { useVerge } from "@/hooks/use-verge";
+import { Typography, styled } from "@mui/material";
+import { useLockFn } from "ahooks";
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useLockFn } from "ahooks";
-import { styled, Typography } from "@mui/material";
-import { useVerge } from "@/hooks/use-verge";
-import { BaseDialog, DialogRef } from "@/components/base";
 import { HotkeyInput } from "./hotkey-input";
-import { useNotification } from "@/hooks/use-notification";
 
 const ItemWrapper = styled("div")`
   display: flex;
@@ -105,3 +105,5 @@ export const HotkeyViewer = forwardRef<DialogRef>((props, ref) => {
     </BaseDialog>
   );
 });
+
+HotkeyViewer.displayName = "HotkeyViewer";

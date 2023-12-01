@@ -141,8 +141,8 @@ export const ProxyItemMini = (props: Props) => {
               delay > 500
                 ? "error.main"
                 : delay < 100
-                ? "success.main"
-                : "text.secondary"
+                  ? "success.main"
+                  : "text.secondary"
             }
             sx={({ palette }) =>
               !proxy.provider

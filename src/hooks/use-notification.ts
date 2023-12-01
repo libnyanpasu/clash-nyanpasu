@@ -21,14 +21,14 @@ const checkPermission = async () => {
 
 export const useNotification = async (
   title: string | undefined,
-  body?: string
+  body?: string,
 ) => {
   if (!title) {
     throw new Error("missing message argument!");
   } else if (!checkPermission()) {
     throw new Error("notification permission not granted!");
   } else {
-    let options: Options = {
+    const options: Options = {
       title: title,
     };
     if (body) options.body = body;

@@ -117,7 +117,7 @@ async function resolveUpdater() {
   // 生成一个代理github的更新文件
   // 使用 https://hub.fastgit.xyz/ 做github资源的加速
   const updateDataNew = JSON.parse(
-    JSON.stringify(updateData)
+    JSON.stringify(updateData),
   ) as typeof updateData;
 
   Object.entries(updateDataNew.platforms).forEach(([key, value]) => {
@@ -135,7 +135,7 @@ async function resolveUpdater() {
   });
 
   // delete the old assets
-  for (let asset of updateRelease.assets) {
+  for (const asset of updateRelease.assets) {
     if (asset.name === UPDATE_JSON_FILE) {
       await github.rest.repos.deleteReleaseAsset({
         ...options,

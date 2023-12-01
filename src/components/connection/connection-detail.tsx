@@ -1,10 +1,10 @@
+import { deleteConnection } from "@/services/api";
+import parseTraffic from "@/utils/parse-traffic";
+import { truncateStr } from "@/utils/truncate-str";
+import { Box, Button, Snackbar } from "@mui/material";
+import { useLockFn } from "ahooks";
 import dayjs from "dayjs";
 import { forwardRef, useImperativeHandle, useState } from "react";
-import { useLockFn } from "ahooks";
-import { Box, Button, Snackbar } from "@mui/material";
-import { deleteConnection } from "@/services/api";
-import { truncateStr } from "@/utils/truncate-str";
-import parseTraffic from "@/utils/parse-traffic";
 
 export interface ConnectionDetailRef {
   open: (detail: IConnectionsItem) => void;
@@ -37,8 +37,10 @@ export const ConnectionDetail = forwardRef<ConnectionDetailRef>(
         }
       />
     );
-  }
+  },
 );
+
+ConnectionDetail.displayName = "ConnectionDetail";
 
 interface InnerProps {
   data: IConnectionsItem;

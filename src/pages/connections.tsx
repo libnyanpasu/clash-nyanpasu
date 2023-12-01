@@ -63,8 +63,11 @@ const ConnectionsPage = () => {
 
   const filterConn = useMemo(() => {
     const orderFunc = orderOpts[curOrderOpt];
-    const connections = connData.connections.filter((conn) =>
-      (conn.metadata.host || conn.metadata.destinationIP)?.includes(filterText)
+    const connections = connData.connections.filter(
+      (conn) =>
+        (conn.metadata.host || conn.metadata.destinationIP)?.includes(
+          filterText,
+        ),
     );
 
     if (orderFunc) return orderFunc(connections);
@@ -107,7 +110,7 @@ const ConnectionsPage = () => {
         return { ...data, connections };
       });
     },
-    { errorCount: 3, retryInterval: 1000 }
+    { errorCount: 3, retryInterval: 1000 },
   );
 
   useEffect(() => {
@@ -156,7 +159,7 @@ const ConnectionsPage = () => {
               setSetting((o) =>
                 o.layout === "list"
                   ? { ...o, layout: "table" }
-                  : { ...o, layout: "list" }
+                  : { ...o, layout: "list" },
               )
             }
           >

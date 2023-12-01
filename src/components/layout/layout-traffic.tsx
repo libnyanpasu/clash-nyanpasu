@@ -54,14 +54,14 @@ export const LayoutTraffic = () => {
     (event) => {
       setMemory(JSON.parse(event.data));
     },
-    { onError: () => setMemory({ inuse: 0 }) }
+    { onError: () => setMemory({ inuse: 0 }) },
   );
 
   useEffect(() => {
     if (!clashInfo || !pageVisible || !displayMemory) return;
     const { server = "", secret = "" } = clashInfo;
     memoryWs.connect(
-      `ws://${server}/memory?token=${encodeURIComponent(secret)}`
+      `ws://${server}/memory?token=${encodeURIComponent(secret)}`,
     );
     return () => memoryWs.disconnect();
   }, [clashInfo, pageVisible, displayMemory]);

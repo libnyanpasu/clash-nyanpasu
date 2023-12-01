@@ -8,6 +8,7 @@ module.exports = {
   "backend/**/*.{rs,toml}": [
     () =>
       "cargo clippy --manifest-path=./backend/Cargo.toml --all-targets --all-features",
+    () => "cargo fmt --manifest-path ./backend/Cargo.toml --all",
     // () => 'cargo test --manifest-path=./backend/Cargo.toml',
     () => "cargo fmt --manifest-path=./backend/Cargo.toml --all",
   ],

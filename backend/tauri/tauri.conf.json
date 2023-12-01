@@ -33,8 +33,8 @@
       ],
       "copyright": "© 2022 zzzgydi All Rights Reserved",
       "category": "DeveloperTool",
-      "shortDescription": "A Clash GUI based on tauri.",
-      "longDescription": "A Clash GUI based on tauri.",
+      "shortDescription": "Clash Nyanpasu! (∠・ω< )⌒☆",
+      "longDescription": "Clash Nyanpasu! (∠・ω< )⌒☆",
       "deb": {
         "depends": ["openssl"]
       },

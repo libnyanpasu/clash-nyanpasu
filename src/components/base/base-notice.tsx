@@ -1,7 +1,7 @@
-import { createRoot } from "react-dom/client";
-import { ReactNode, useState } from "react";
+import { CheckCircleRounded, Close, ErrorRounded } from "@mui/icons-material";
 import { Box, IconButton, Slide, Snackbar, Typography } from "@mui/material";
-import { Close, CheckCircleRounded, ErrorRounded } from "@mui/icons-material";
+import { ReactNode, useState } from "react";
+import { createRoot } from "react-dom/client";
 
 interface InnerProps {
   type: string;
@@ -68,7 +68,7 @@ interface NoticeInstance {
 
 let parent: HTMLDivElement = null!;
 
-// @ts-ignore
+// @ts-expect-error 90 行动态添加了 info、error、success 属性
 export const Notice: NoticeInstance = (props) => {
   if (!parent) {
     parent = document.createElement("div");

@@ -135,7 +135,7 @@ async function resolveUpdater() {
   });
 
   // delete the old assets
-  for (let asset of updateRelease.assets) {
+  for (const asset of updateRelease.assets) {
     if (asset.name === UPDATE_JSON_FILE) {
       await github.rest.repos.deleteReleaseAsset({
         ...options,

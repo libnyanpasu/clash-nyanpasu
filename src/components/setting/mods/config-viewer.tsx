@@ -1,3 +1,8 @@
+import { BaseDialog, DialogRef } from "@/components/base";
+import { getRuntimeYaml } from "@/services/cmds";
+import { atomThemeMode } from "@/services/states";
+import { Chip } from "@mui/material";
+import { editor } from "monaco-editor/esm/vs/editor/editor.api";
 import {
   forwardRef,
   useEffect,
@@ -7,11 +12,6 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useRecoilValue } from "recoil";
-import { Chip } from "@mui/material";
-import { atomThemeMode } from "@/services/states";
-import { getRuntimeYaml } from "@/services/cmds";
-import { BaseDialog, DialogRef } from "@/components/base";
-import { editor } from "monaco-editor/esm/vs/editor/editor.api";
 
 import "monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution.js";
 import "monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution.js";
@@ -74,3 +74,5 @@ export const ConfigViewer = forwardRef<DialogRef>((props, ref) => {
     </BaseDialog>
   );
 });
+
+ConfigViewer.displayName = "ConfigViewer";

@@ -28,7 +28,7 @@ export const useNotification = async (
   } else if (!checkPermission()) {
     throw new Error("notification permission not granted!");
   } else {
-    let options: Options = {
+    const options: Options = {
       title: title,
     };
     if (body) options.body = body;

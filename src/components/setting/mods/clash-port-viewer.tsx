@@ -1,11 +1,11 @@
+import { BaseDialog, DialogRef } from "@/components/base";
+import { useClashInfo } from "@/hooks/use-clash";
+import { useNotification } from "@/hooks/use-notification";
+import { useVerge } from "@/hooks/use-verge";
+import { List, ListItem, ListItemText, TextField } from "@mui/material";
+import { useLockFn } from "ahooks";
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useLockFn } from "ahooks";
-import { List, ListItem, ListItemText, TextField } from "@mui/material";
-import { useClashInfo } from "@/hooks/use-clash";
-import { BaseDialog, DialogRef } from "@/components/base";
-import { useVerge } from "@/hooks/use-verge";
-import { useNotification } from "@/hooks/use-notification";
 
 export const ClashPortViewer = forwardRef<DialogRef>((props, ref) => {
   const { t } = useTranslation();
@@ -69,3 +69,5 @@ export const ClashPortViewer = forwardRef<DialogRef>((props, ref) => {
     </BaseDialog>
   );
 });
+
+ClashPortViewer.displayName = "ClashPortViewer";

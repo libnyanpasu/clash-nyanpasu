@@ -1,11 +1,11 @@
+import { BaseDialog, DialogRef } from "@/components/base";
+import { useNotification } from "@/hooks/use-notification";
+import { useVerge } from "@/hooks/use-verge";
+import { List, Switch } from "@mui/material";
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { List, Switch } from "@mui/material";
-import { useVerge } from "@/hooks/use-verge";
-import { BaseDialog, DialogRef } from "@/components/base";
-import { SettingItem } from "./setting-comp";
 import { GuardState } from "./guard-state";
-import { useNotification } from "@/hooks/use-notification";
+import { SettingItem } from "./setting-comp";
 
 export const LayoutViewer = forwardRef<DialogRef>((props, ref) => {
   const { t } = useTranslation();
@@ -79,3 +79,5 @@ export const LayoutViewer = forwardRef<DialogRef>((props, ref) => {
     </BaseDialog>
   );
 });
+
+LayoutViewer.displayName = "LayoutViewer";

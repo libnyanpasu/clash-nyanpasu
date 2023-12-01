@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { LoadingButton } from "@mui/lab";
 import {
   Button,
   Dialog,
@@ -8,7 +8,7 @@ import {
   type SxProps,
   type Theme,
 } from "@mui/material";
-import { LoadingButton } from "@mui/lab";
+import { ReactNode } from "react";
 
 interface Props {
   title: ReactNode;
@@ -31,7 +31,7 @@ export interface DialogRef {
   close: () => void;
 }
 
-export const BaseDialog: React.FC<Props> = (props) => {
+export function BaseDialog(props: Props) {
   const {
     open,
     title,
@@ -71,4 +71,4 @@ export const BaseDialog: React.FC<Props> = (props) => {
       )}
     </Dialog>
   );
-};
+}

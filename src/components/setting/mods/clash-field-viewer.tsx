@@ -1,17 +1,17 @@
-import useSWR from "swr";
-import { forwardRef, useImperativeHandle, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { Checkbox, Divider, Stack, Tooltip, Typography } from "@mui/material";
-import { InfoRounded } from "@mui/icons-material";
+import { BaseDialog, DialogRef } from "@/components/base";
+import { useNotification } from "@/hooks/use-notification";
+import { useProfiles } from "@/hooks/use-profiles";
 import { getRuntimeExists } from "@/services/cmds";
 import {
-  HANDLE_FIELDS,
   DEFAULT_FIELDS,
+  HANDLE_FIELDS,
   OTHERS_FIELDS,
 } from "@/utils/clash-fields";
-import { BaseDialog, DialogRef } from "@/components/base";
-import { useProfiles } from "@/hooks/use-profiles";
-import { useNotification } from "@/hooks/use-notification";
+import { InfoRounded } from "@mui/icons-material";
+import { Checkbox, Divider, Stack, Tooltip, Typography } from "@mui/material";
+import { forwardRef, useImperativeHandle, useState } from "react";
+import { useTranslation } from "react-i18next";
+import useSWR from "swr";
 
 const otherFields = [...OTHERS_FIELDS];
 const handleFields = [...HANDLE_FIELDS, ...DEFAULT_FIELDS];
@@ -113,6 +113,8 @@ export const ClashFieldViewer = forwardRef<DialogRef>((props, ref) => {
     </BaseDialog>
   );
 });
+
+ClashFieldViewer.displayName = "ClashFieldViewer";
 
 function WarnIcon() {
   return (

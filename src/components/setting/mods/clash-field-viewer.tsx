@@ -11,7 +11,7 @@ import {
 } from "@/utils/clash-fields";
 import { BaseDialog, DialogRef } from "@/components/base";
 import { useProfiles } from "@/hooks/use-profiles";
-import { Notice } from "@/components/base";
+import { useNotification } from "@/hooks/use-notification";
 
 const otherFields = [...OTHERS_FIELDS];
 const handleFields = [...HANDLE_FIELDS, ...DEFAULT_FIELDS];
@@ -58,7 +58,7 @@ export const ClashFieldViewer = forwardRef<DialogRef>((props, ref) => {
       await patchProfiles({ valid: [...curSet] });
       // Notice.success("Refresh clash config", 1000);
     } catch (err: any) {
-      Notice.error(err?.message || err.toString());
+      useNotification(t("Error"), err?.message || err.toString());
     }
   };
 

@@ -9,7 +9,8 @@ import {
   uninstallService,
   patchVergeConfig,
 } from "@/services/cmds";
-import { BaseDialog, DialogRef, Notice } from "@/components/base";
+import { BaseDialog, DialogRef } from "@/components/base";
+import { useNotification } from "@/hooks/use-notification";
 
 interface Props {
   enable: boolean;
@@ -43,10 +44,10 @@ export const ServiceViewer = forwardRef<DialogRef, Props>((props, ref) => {
       await installService();
       mutateCheck();
       setOpen(false);
-      Notice.success("Service installed successfully");
+      useNotification(t("Success"), "Service installed successfully");
     } catch (err: any) {
       mutateCheck();
-      Notice.error(err.message || err.toString());
+      useNotification(t("Error"), err.message || err.toString());
     }
   });
 
@@ -59,10 +60,10 @@ export const ServiceViewer = forwardRef<DialogRef, Props>((props, ref) => {
       await uninstallService();
       mutateCheck();
       setOpen(false);
-      Notice.success("Service uninstalled successfully");
+      useNotification(t("Success"), "Service uninstalled successfully");
     } catch (err: any) {
       mutateCheck();
-      Notice.error(err.message || err.toString());
+      useNotification(t("Error"), err.message || err.toString());
     }
   });
 
@@ -74,7 +75,7 @@ export const ServiceViewer = forwardRef<DialogRef, Props>((props, ref) => {
       setOpen(false);
     } catch (err: any) {
       mutateCheck();
-      Notice.error(err.message || err.toString());
+      useNotification(t("Error"), err.message || err.toString());
     }
   });
 

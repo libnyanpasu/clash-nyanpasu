@@ -11,7 +11,8 @@ import {
 } from "@mui/material";
 import { useVerge } from "@/hooks/use-verge";
 import { defaultTheme, defaultDarkTheme } from "@/pages/_theme";
-import { BaseDialog, DialogRef, Notice } from "@/components/base";
+import { BaseDialog, DialogRef } from "@/components/base";
+import { useNotification } from "@/hooks/use-notification";
 
 export const ThemeViewer = forwardRef<DialogRef>((props, ref) => {
   const { t } = useTranslation();
@@ -44,7 +45,7 @@ export const ThemeViewer = forwardRef<DialogRef>((props, ref) => {
       await patchVerge({ theme_setting: theme });
       setOpen(false);
     } catch (err: any) {
-      Notice.error(err.message || err.toString());
+      useNotification(t("Error"), err.message || err.toString());
     }
   });
 

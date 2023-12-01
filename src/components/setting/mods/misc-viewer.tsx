@@ -11,7 +11,8 @@ import {
   TextField,
 } from "@mui/material";
 import { useVerge } from "@/hooks/use-verge";
-import { BaseDialog, DialogRef, Notice } from "@/components/base";
+import { BaseDialog, DialogRef } from "@/components/base";
+import { useNotification } from "@/hooks/use-notification";
 
 export const MiscViewer = forwardRef<DialogRef>((props, ref) => {
   const { t } = useTranslation();
@@ -54,7 +55,7 @@ export const MiscViewer = forwardRef<DialogRef>((props, ref) => {
       });
       setOpen(false);
     } catch (err: any) {
-      Notice.error(err.message || err.toString());
+      useNotification(t("Error"), err.message || err.toString());
     }
   });
 

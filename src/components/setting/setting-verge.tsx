@@ -7,7 +7,7 @@ import { ArrowForward } from "@mui/icons-material";
 import { checkUpdate } from "@tauri-apps/api/updater";
 import { useVerge } from "@/hooks/use-verge";
 import { version } from "@root/package.json";
-import { DialogRef, Notice } from "@/components/base";
+import { DialogRef } from "@/components/base";
 import { SettingList, SettingItem } from "./mods/setting-comp";
 import { ThemeModeSwitch } from "./mods/theme-mode-switch";
 import { ConfigViewer } from "./mods/config-viewer";
@@ -18,6 +18,7 @@ import { GuardState } from "./mods/guard-state";
 import { LayoutViewer } from "./mods/layout-viewer";
 import { UpdateViewer } from "./mods/update-viewer";
 import getSystem from "@/utils/get-system";
+import { useNotification } from "@/hooks/use-notification";
 
 interface Props {
   onError?: (err: Error) => void;
@@ -46,12 +47,12 @@ const SettingVerge = ({ onError }: Props) => {
     try {
       const info = await checkUpdate();
       if (!info?.shouldUpdate) {
-        Notice.success("No Updates Available");
+        useNotification(t("Success"), "No Updates Available");
       } else {
         updateRef.current?.open();
       }
     } catch (err: any) {
-      Notice.error(err.message || err.toString());
+      useNotification(t("Error"), err.message || err.toString());
     }
   });
 

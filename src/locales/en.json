@@ -131,5 +131,8 @@
   "Enable Clash Fields Filter": "Enable Clash Fields Filter",
   "Enable Builtin Enhanced": "Enable Builtin Enhanced",
   "Proxy Layout Column": "Proxy Layout Column",
-  "Default Latency Test": "Default Latency Test"
+  "Default Latency Test": "Default Latency Test",
+
+  "Error": "Error",
+  "Success": "Success"
 }

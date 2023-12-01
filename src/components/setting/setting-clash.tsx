@@ -10,7 +10,7 @@ import {
   Tooltip,
 } from "@mui/material";
 import { ArrowForward, Settings, Shuffle } from "@mui/icons-material";
-import { DialogRef, Notice } from "@/components/base";
+import { DialogRef } from "@/components/base";
 import { useClash } from "@/hooks/use-clash";
 import { GuardState } from "./mods/guard-state";
 import { WebUIViewer } from "./mods/web-ui-viewer";
@@ -22,6 +22,7 @@ import { ClashCoreViewer } from "./mods/clash-core-viewer";
 import { invoke_uwp_tool } from "@/services/cmds";
 import getSystem from "@/utils/get-system";
 import { useVerge } from "@/hooks/use-verge";
+import { useNotification } from "@/hooks/use-notification";
 
 const isWIN = getSystem() === "windows";
 
@@ -114,7 +115,12 @@ const SettingClash = ({ onError }: Props) => {
               color={enable_random_port ? "success" : "inherit"}
               size="medium"
               onClick={() => {
-                Notice.success(t("After restart to take effect"), 1000);
+                useNotification(
+                  `${t("Random Port")}: ${
+                    enable_random_port ? t("Disable") : t("Enable")
+                  }`,
+                  t("After restart to take effect")
+                );
                 onChangeVerge({ enable_random_port: !enable_random_port });
                 patchVerge({ enable_random_port: !enable_random_port });
               }}

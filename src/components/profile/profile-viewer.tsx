@@ -20,9 +20,10 @@ import {
   TextField,
 } from "@mui/material";
 import { createProfile, patchProfile } from "@/services/cmds";
-import { BaseDialog, Notice } from "@/components/base";
+import { BaseDialog } from "@/components/base";
 import { version } from "@root/package.json";
 import { FileInput } from "./file-input";
+import { useNotification } from "@/hooks/use-notification";
 
 interface Props {
   onChange: () => void;
@@ -118,7 +119,7 @@ export const ProfileViewer = forwardRef<ProfileViewerRef, Props>(
           fileDataRef.current = null;
           props.onChange();
         } catch (err: any) {
-          Notice.error(err.message || err.toString());
+          useNotification(t("Error"), err.message || err.toString());
           setLoading(false);
         }
       })

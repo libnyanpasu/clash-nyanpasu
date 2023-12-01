@@ -110,5 +110,8 @@
   "disable_system_proxy": "Отключить системный прокси",
   "toggle_tun_mode": "Переключить режим туннеля",
   "enable_tun_mode": "Включить режим туннеля",
-  "disable_tun_mode": "Отключить режим туннеля"
+  "disable_tun_mode": "Отключить режим туннеля",
+
+  "Error": "Ошибка",
+  "Success": "Успех"
 }

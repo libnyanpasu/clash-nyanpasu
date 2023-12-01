@@ -22,7 +22,7 @@ import {
 } from "@/services/cmds";
 import { atomLoadingCache } from "@/services/states";
 import { closeAllConnections } from "@/services/api";
-import { BasePage, DialogRef, Notice } from "@/components/base";
+import { BasePage, DialogRef } from "@/components/base";
 import {
   ProfileViewer,
   ProfileViewerRef,
@@ -32,6 +32,7 @@ import { ProfileMore } from "@/components/profile/profile-more";
 import { useProfiles } from "@/hooks/use-profiles";
 import { ConfigViewer } from "@/components/setting/mods/config-viewer";
 import { throttle } from "lodash-es";
+import { useNotification } from "@/hooks/use-notification";
 
 const ProfilePage = () => {
   const { t } = useTranslation();
@@ -82,7 +83,7 @@ const ProfilePage = () => {
 
     try {
       await importProfile(url);
-      Notice.success("Successfully import profile.");
+      useNotification(t("Success"), "Successfully import profile.");
       setUrl("");
       setLoading(false);
 
@@ -98,7 +99,7 @@ const ProfilePage = () => {
         }
       });
     } catch (err: any) {
-      Notice.error(err.message || err.toString());
+      useNotification(t("Error"), err.message || err.toString());
       setLoading(false);
     } finally {
       setDisabled(false);
@@ -115,9 +116,9 @@ const ProfilePage = () => {
       mutateLogs();
       closeAllConnections();
       setTimeout(() => activateSelected(), 2000);
-      Notice.success("Refresh clash config", 1000);
+      useNotification(t("Success"), "Refresh Clash Config");
     } catch (err: any) {
-      Notice.error(err?.message || err.toString(), 4000);
+      useNotification(t("Error"), err?.message || err.toString());
     } finally {
       clearTimeout(reset);
       setActivating("");
@@ -128,9 +129,9 @@ const ProfilePage = () => {
     try {
       await enhanceProfiles();
       mutateLogs();
-      Notice.success("Refresh clash config", 1000);
+      useNotification(t("Success"), "Refresh Clash Config");
     } catch (err: any) {
-      Notice.error(err.message || err.toString(), 3000);
+      useNotification(t("Error"), err.message || err.toString());
     }
   });
 
@@ -155,7 +156,7 @@ const ProfilePage = () => {
       mutateProfiles();
       mutateLogs();
     } catch (err: any) {
-      Notice.error(err?.message || err.toString());
+      useNotification(t("Error"), err?.message || err.toString());
     }
   });
 

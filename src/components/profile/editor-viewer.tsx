@@ -11,12 +11,12 @@ import {
 } from "@mui/material";
 import { atomThemeMode } from "@/services/states";
 import { readProfileFile, saveProfileFile } from "@/services/cmds";
-import { Notice } from "@/components/base";
 
 import "monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution.js";
 import "monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution.js";
 import "monaco-editor/esm/vs/editor/contrib/folding/browser/folding.js";
 import { editor } from "monaco-editor/esm/vs/editor/editor.api";
+import { useNotification } from "@/hooks/use-notification";
 
 interface Props {
   uid: string;
@@ -69,7 +69,7 @@ export const EditorViewer = (props: Props) => {
       onChange?.();
       onClose();
     } catch (err: any) {
-      Notice.error(err.message || err.toString());
+      useNotification(t("Error"), err.message || err.toString());
     }
   });
 

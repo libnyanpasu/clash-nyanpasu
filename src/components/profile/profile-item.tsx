@@ -17,10 +17,10 @@ import {
 import { RefreshRounded } from "@mui/icons-material";
 import { atomLoadingCache } from "@/services/states";
 import { updateProfile, deleteProfile, viewProfile } from "@/services/cmds";
-import { Notice } from "@/components/base";
 import { EditorViewer } from "./editor-viewer";
 import { ProfileBox } from "./profile-box";
 import parseTraffic from "@/utils/parse-traffic";
+import { useNotification } from "@/hooks/use-notification";
 
 const round = keyframes`
   from { transform: rotate(0deg); }
@@ -107,7 +107,7 @@ export const ProfileItem = (props: Props) => {
     try {
       await viewProfile(itemData.uid);
     } catch (err: any) {
-      Notice.error(err?.message || err.toString());
+      useNotification(t("Error"), err?.message || err.toString());
     }
   });
 
@@ -140,8 +140,10 @@ export const ProfileItem = (props: Props) => {
       mutate("getProfiles");
     } catch (err: any) {
       const errmsg = err?.message || err.toString();
-      Notice.error(
-        errmsg.replace(/error sending request for url (\S+?): /, "")
+      useNotification(
+        t("Error"),
+        err.message ||
+          errmsg.replace(/error sending request for url (\S+?): /, "")
       );
     } finally {
       setLoadingCache((cache) => ({ ...cache, [itemData.uid]: false }));
@@ -154,7 +156,7 @@ export const ProfileItem = (props: Props) => {
       await deleteProfile(itemData.uid);
       mutate("getProfiles");
     } catch (err: any) {
-      Notice.error(err?.message || err.toString());
+      useNotification(t("Error"), err?.message || err.toString());
     }
   });
 

@@ -13,7 +13,7 @@ import { routers } from "./_routers";
 import { getAxios } from "@/services/api";
 import { useVerge } from "@/hooks/use-verge";
 import LogoSvg from "@/assets/image/logo.svg?react";
-import { BaseErrorBoundary, Notice } from "@/components/base";
+import { BaseErrorBoundary } from "@/components/base";
 import { LayoutItem } from "@/components/layout/layout-item";
 import { LayoutControl } from "@/components/layout/layout-control";
 import { LayoutTraffic } from "@/components/layout/layout-traffic";
@@ -22,6 +22,7 @@ import { useCustomTheme } from "@/components/layout/use-custom-theme";
 import getSystem from "@/utils/get-system";
 import "dayjs/locale/ru";
 import "dayjs/locale/zh-cn";
+import { useNotification } from "@/hooks/use-notification";
 
 dayjs.extend(relativeTime);
 
@@ -62,10 +63,10 @@ const Layout = () => {
       const [status, msg] = payload as [string, string];
       switch (status) {
         case "set_config::ok":
-          Notice.success("Refresh clash config");
+          useNotification(t("Success"), "Refresh Clash Config");
           break;
         case "set_config::error":
-          Notice.error(msg);
+          useNotification(t("Error"), msg);
           break;
         default:
           break;

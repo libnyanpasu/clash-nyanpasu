@@ -7,8 +7,9 @@ import { useRecoilState } from "recoil";
 import { useTranslation } from "react-i18next";
 import { relaunch } from "@tauri-apps/api/process";
 import { checkUpdate, installUpdate } from "@tauri-apps/api/updater";
-import { BaseDialog, DialogRef, Notice } from "@/components/base";
+import { BaseDialog, DialogRef } from "@/components/base";
 import { atomUpdateState } from "@/services/states";
+import { useNotification } from "@/hooks/use-notification";
 
 const UpdateLog = styled(Box)(() => ({
   "h1,h2,h3,ul,ol,p": { margin: "0.5em 0", color: "inherit" },
@@ -47,7 +48,7 @@ export const UpdateViewer = forwardRef<DialogRef>((props, ref) => {
       await installUpdate();
       await relaunch();
     } catch (err: any) {
-      Notice.error(err?.message || err.toString());
+      useNotification(t("Error"), err?.message || err.toString());
     } finally {
       setUpdateState(false);
     }

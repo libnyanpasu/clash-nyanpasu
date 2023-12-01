@@ -1,4 +1,5 @@
-import { BaseDialog, DialogRef, Notice } from "@/components/base";
+import { BaseDialog, DialogRef } from "@/components/base";
+import { useNotification } from "@/hooks/use-notification";
 import { useVerge } from "@/hooks/use-verge";
 import { closeAllConnections } from "@/services/api";
 import {
@@ -54,9 +55,9 @@ export const ClashCoreViewer = forwardRef<DialogRef>((props, ref) => {
         mutate("getClashConfig");
         mutate("getVersion");
       }, 100);
-      Notice.success(`Successfully switch to ${core}`, 1000);
+      useNotification(t("Success"), `Successfully switch to ${core}`);
     } catch (err: any) {
-      Notice.error(err?.message || err.toString());
+      useNotification(t("Error"), err?.message || err.toString());
     }
   });
 
@@ -65,18 +66,18 @@ export const ClashCoreViewer = forwardRef<DialogRef>((props, ref) => {
       await grantPermission(core);
       // 自动重启
       if (core === clash_core) await restartSidecar();
-      Notice.success(`Successfully grant permission to ${core}`, 1000);
+      useNotification(t("Success"), `Successfully grant permission to ${core}`);
     } catch (err: any) {
-      Notice.error(err?.message || err.toString());
+      useNotification(t("Error"), err?.message || err.toString());
     }
   });
 
   const onRestart = useLockFn(async () => {
     try {
       await restartSidecar();
-      Notice.success(`Successfully restart core`, 1000);
+      useNotification(t("Success"), `Successfully restart core`);
     } catch (err: any) {
-      Notice.error(err?.message || err.toString());
+      useNotification(t("Error"), err?.message || err.toString());
     }
   });
 

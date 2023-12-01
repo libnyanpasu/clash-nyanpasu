@@ -13,10 +13,10 @@ import {
 } from "@mui/material";
 import { FeaturedPlayListRounded } from "@mui/icons-material";
 import { viewProfile } from "@/services/cmds";
-import { Notice } from "@/components/base";
 import { EditorViewer } from "./editor-viewer";
 import { ProfileBox } from "./profile-box";
 import { LogViewer } from "./log-viewer";
+import { useNotification } from "@/hooks/use-notification";
 
 interface Props {
   selected: boolean;
@@ -68,7 +68,7 @@ export const ProfileMore = (props: Props) => {
     try {
       await viewProfile(itemData.uid);
     } catch (err: any) {
-      Notice.error(err?.message || err.toString());
+      useNotification(t("Error"), err?.message || err.toString());
     }
   });
 

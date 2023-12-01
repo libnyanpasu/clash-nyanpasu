@@ -76,6 +76,9 @@
       },
       "globalShortcut": {
         "all": true
+      },
+      "notification": {
+        "all": true
       }
     },
     "windows": [],

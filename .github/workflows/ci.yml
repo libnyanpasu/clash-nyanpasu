@@ -1,0 +1,208 @@
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+
+# the name of our workflow
+name: CI
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust
+        run: rustup toolchain install stable --profile minimal && rustup default stable && rustup component add clippy rustfmt && rustc --version && cargo --version && rustup show
+      - name: Tauri dependencies
+        run: >-
+          sudo apt-get update &&
+          sudo apt-get install -y
+          libgtk-3-dev
+          libayatana-appindicator3-dev
+          libwebkit2gtk-4.0-dev
+          webkit2gtk-driver
+          xvfb
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./backend/"
+          prefix-key: "rust-stable"
+          shared-key: "ci"
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: pnpm/action-setup@v2
+        name: Install pnpm
+        with:
+          version: 8
+          run_install: false
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - uses: actions/cache@v3
+        name: Setup pnpm cache
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Prepare fronend
+        run: pnpm web:build # Build frontend
+      - name: Prepare sidecar and resources
+        run: pnpm check
+      - name: Lint
+        run: pnpm lint # Lint
+
+  test_unit:
+    name: Unit Test
+    needs: lint
+    # we want to run on the latest linux environment
+    runs-on: ubuntu-latest
+
+    # the steps our job runs **in order**
+    steps:
+      # checkout the code on the workflow runner
+      - uses: actions/checkout@v4
+
+      # install system dependencies that Tauri needs to compile on Linux.
+      # note the extra dependencies for `tauri-driver` to run which are: `webkit2gtk-driver` and `xvfb`
+      - name: Tauri dependencies
+        run: >-
+          sudo apt-get update &&
+          sudo apt-get install -y
+          libgtk-3-dev
+          libayatana-appindicator3-dev
+          libwebkit2gtk-4.0-dev
+          webkit2gtk-driver
+          xvfb
+
+      # install the latest Rust stable
+      - name: Rust stable
+        run: rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./backend/"
+          prefix-key: "rust-stable"
+          shared-key: "ci"
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: pnpm/action-setup@v2
+        name: Install pnpm
+        with:
+          version: 8
+          run_install: false
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - uses: actions/cache@v3
+        name: Setup pnpm cache
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install
+      - name: Prepare fronend
+        run: pnpm web:build # Build frontend
+      - name: Prepare sidecar and resources
+        run: pnpm check
+      - name: Test
+        # run: pnpm test:unit && pnpm test:backend
+        run: pnpm test:backend
+
+  # test_e2e:
+  #   # the display name of the test job
+  #   name: E2E Test
+  #   needs: lint
+  #   # we want to run on the latest linux environment
+  #   runs-on: ubuntu-latest
+
+  #   # the steps our job runs **in order**
+  #   steps:
+  #     # checkout the code on the workflow runner
+  #     - uses: actions/checkout@v4
+
+  #     # install system dependencies that Tauri needs to compile on Linux.
+  #     # note the extra dependencies for `tauri-driver` to run which are: `webkit2gtk-driver` and `xvfb`
+  #     - name: Tauri dependencies
+  #       run: >-
+  #         sudo apt-get update &&
+  #         sudo apt-get install -y
+  #         libgtk-3-dev
+  #         libayatana-appindicator3-dev
+  #         libwebkit2gtk-4.0-dev
+  #         webkit2gtk-driver
+  #         xvfb
+
+  #     # install the latest Rust stable
+  #     - name: Rust stable
+  #       run: rustup toolchain install stable --profile minimal
+  #     - uses: Swatinem/rust-cache@v2
+  #       with:
+  #         workspaces: "./backend/"
+  #         prefix-key: "rust-stable"
+  #         shared-key: "ci"
+  #         save-if: ${{ github.ref == 'refs/heads/main' }}
+  #     - name: Install Node.js
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: 20
+
+  #     - uses: pnpm/action-setup@v2
+  #       name: Install pnpm
+  #       with:
+  #         version: 8
+  #         run_install: false
+
+  #     - name: Get pnpm store directory
+  #       shell: bash
+  #       run: |
+  #         echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+  #     - uses: actions/cache@v3
+  #       name: Setup pnpm cache
+  #       with:
+  #         path: ${{ env.STORE_PATH }}
+  #         key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+  #         restore-keys: |
+  #             ${{ runner.os }}-pnpm-store-
+
+  #     - name: Install dependencies
+  #       run: pnpm install
+
+  #     # install the latest version of `tauri-driver`.
+  #     # note: the tauri-driver version is independent of any other Tauri versions
+  #     - name: Install tauri-driver
+  #       uses: actions-rs/cargo@v1
+  #       with:
+  #         command: install
+  #         args: tauri-driver
+  #     - name: Prepare fronend
+  #       run: pnpm build # Build frontend
+  #     # run the WebdriverIO test suite.
+  #     # we run it through `xvfb-run` (the dependency we installed earlier) to have a fake
+  #     # display server which allows our application to run headless without any changes to the code
+  #     - name: Test
+  #       run: xvfb-run pnpm test:e2e

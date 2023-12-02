@@ -1,5 +1,22 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useLockFn } from "ahooks";
+import { BaseEmpty, BasePage } from "@/components/base";
+import {
+  ConnectionDetail,
+  ConnectionDetailRef,
+} from "@/components/connection/connection-detail";
+import { ConnectionItem } from "@/components/connection/connection-item";
+import { ConnectionTable } from "@/components/connection/connection-table";
+import { useClashInfo } from "@/hooks/use-clash";
+import { useWebsocket } from "@/hooks/use-websocket";
+import { closeAllConnections } from "@/services/api";
+import { atomConnectionSetting } from "@/services/states";
+import parseTraffic from "@/utils/parse-traffic";
+import {
+  ArrowDownward,
+  ArrowUpward,
+  Link,
+  TableChartRounded,
+  TableRowsRounded,
+} from "@mui/icons-material";
 import {
   Box,
   Button,
@@ -11,34 +28,17 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { useRecoilState } from "recoil";
-import { Virtuoso } from "react-virtuoso";
+import { useLockFn } from "ahooks";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  ArrowDownward,
-  ArrowUpward,
-  Link,
-  TableChartRounded,
-  TableRowsRounded,
-} from "@mui/icons-material";
-import { closeAllConnections } from "@/services/api";
-import { atomConnectionSetting } from "@/services/states";
-import { useClashInfo } from "@/hooks/use-clash";
-import { BaseEmpty, BasePage } from "@/components/base";
-import { useWebsocket } from "@/hooks/use-websocket";
-import { ConnectionItem } from "@/components/connection/connection-item";
-import { ConnectionTable } from "@/components/connection/connection-table";
-import {
-  ConnectionDetail,
-  ConnectionDetailRef,
-} from "@/components/connection/connection-detail";
-import parseTraffic from "@/utils/parse-traffic";
+import { Virtuoso } from "react-virtuoso";
+import { useRecoilState } from "recoil";
 
 const initConn = { uploadTotal: 0, downloadTotal: 0, connections: [] };
 
 type OrderFunc = (list: IConnectionsItem[]) => IConnectionsItem[];
 
-const ConnectionsPage = () => {
+export default function ConnectionsPage() {
   const { t, i18n } = useTranslation();
   const { clashInfo } = useClashInfo();
 
@@ -261,6 +261,4 @@ const ConnectionsPage = () => {
       </Paper>
     </BasePage>
   );
-};
-
-export default ConnectionsPage;
+}

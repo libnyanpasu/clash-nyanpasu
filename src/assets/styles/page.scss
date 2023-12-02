@@ -36,7 +36,7 @@
         width: 90%;
         // max-width: 850px;
         margin: 0 auto;
-        animation: base-content-in 0.3s normal 1 forwards;
+        // animation: var(--base-content-animation, opacity-content-in) var(base-content-in, 300ms) normal 1 forwards;
 
         @keyframes base-content-in {
           0% {

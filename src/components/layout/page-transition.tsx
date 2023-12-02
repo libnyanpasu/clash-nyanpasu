@@ -1,3 +1,4 @@
+import { useVerge } from "@/hooks/use-verge";
 import { classNames } from "@/utils";
 import { motion, type HTMLMotionProps } from "framer-motion";
 
@@ -12,7 +13,7 @@ interface PageTransitionVariant {
   transition?: HTMLMotionProps<"div">["transition"];
 }
 
-const variants = {
+export const pageTransitionVariants = {
   blur: {
     initial: { opacity: 0, filter: "blur(10px)" },
     animate: { opacity: 1, filter: "blur(0px)" },
@@ -26,11 +27,14 @@ const variants = {
 } satisfies Record<string, PageTransitionVariant>;
 
 export default function PageTransition({ children }: Props) {
+  const { verge } = useVerge();
   return (
     <motion.div
       className={classNames("page-transition", "the-content")}
       key={location.pathname}
-      variants={variants.slide}
+      variants={
+        pageTransitionVariants[verge?.page_transition_animation ?? "slide"]
+      }
       initial="initial"
       animate="animate"
       exit="exit"

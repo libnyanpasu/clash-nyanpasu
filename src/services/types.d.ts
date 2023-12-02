@@ -160,6 +160,7 @@ interface IVergeConfig {
   theme_blur?: boolean;
   traffic_graph?: boolean;
   enable_memory_usage?: boolean;
+  page_transition_animation?: keyof typeof import("@/components/layout/page-transition").pageTransitionVariants;
   enable_tun_mode?: boolean;
   enable_auto_launch?: boolean;
   enable_service_mode?: boolean;
@@ -183,6 +184,7 @@ interface IVergeConfig {
     success_color?: string;
     font_family?: string;
     css_injection?: string;
+    page_transition_duration?: number;
   };
   auto_close_connection?: boolean;
   default_latency_test?: string;

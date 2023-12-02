@@ -98,6 +98,12 @@ export const LayoutViewer = forwardRef<DialogRef>((props, ref) => {
             <MenuItem value="blur">
               {t("Page Transition Animation Blur")}
             </MenuItem>
+            <MenuItem value="transparent">
+              {t("Page Transition Animation Transparent")}
+            </MenuItem>
+            <MenuItem value="none">
+              {t("Page Transition Animation None")}
+            </MenuItem>
           </Select>
         </SettingItem>
       </List>

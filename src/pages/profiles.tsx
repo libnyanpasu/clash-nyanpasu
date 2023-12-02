@@ -3,6 +3,19 @@ import { useMemo, useRef, useState } from "react";
 import { useLockFn } from "ahooks";
 import { useSetRecoilState } from "recoil";
 import { Box, Button, Grid, IconButton, Stack, TextField } from "@mui/material";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+} from "@dnd-kit/sortable";
 import { LoadingButton } from "@mui/lab";
 import {
   ClearRounded,
@@ -19,6 +32,7 @@ import {
   getRuntimeLogs,
   deleteProfile,
   updateProfile,
+  reorderProfile,
 } from "@/services/cmds";
 import { atomLoadingCache } from "@/services/states";
 import { closeAllConnections } from "@/services/api";
@@ -41,6 +55,12 @@ const ProfilePage = () => {
   const [disabled, setDisabled] = useState(false);
   const [activating, setActivating] = useState("");
   const [loading, setLoading] = useState(false);
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
 
   const {
     profiles = {},
@@ -104,6 +124,16 @@ const ProfilePage = () => {
     } finally {
       setDisabled(false);
       setLoading(false);
+    }
+  };
+
+  const onDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over) {
+      if (active.id !== over.id) {
+        await reorderProfile(active.id.toString(), over.id.toString());
+        mutateProfiles();
+      }
     }
   };
 
@@ -295,21 +325,34 @@ const ProfilePage = () => {
         </Button>
       </Stack>
 
-      <Box sx={{ mb: 4.5 }}>
-        <Grid container spacing={{ xs: 2, lg: 3 }}>
-          {regularItems.map((item) => (
-            <Grid item xs={12} sm={6} md={4} lg={3} key={item.file}>
-              <ProfileItem
-                selected={profiles.current === item.uid}
-                activating={activating === item.uid}
-                itemData={item}
-                onSelect={(f) => onSelect(item.uid, f)}
-                onEdit={() => viewerRef.current?.edit(item)}
-              />
-            </Grid>
-          ))}
-        </Grid>
-      </Box>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={onDragEnd}
+      >
+        <Box sx={{ mb: 4.5 }}>
+          <Grid container spacing={{ xs: 1, lg: 1 }}>
+            <SortableContext
+              items={regularItems.map((x) => {
+                return x.uid;
+              })}
+            >
+              {regularItems.map((item) => (
+                <Grid item xs={12} sm={6} md={4} lg={3} key={item.file}>
+                  <ProfileItem
+                    id={item.uid}
+                    selected={profiles.current === item.uid}
+                    activating={activating === item.uid}
+                    itemData={item}
+                    onSelect={(f) => onSelect(item.uid, f)}
+                    onEdit={() => viewerRef.current?.edit(item)}
+                  />
+                </Grid>
+              ))}
+            </SortableContext>
+          </Grid>
+        </Box>
+      </DndContext>
 
       {enhanceItems.length > 0 && (
         <Grid container spacing={{ xs: 2, lg: 3 }}>

@@ -10,7 +10,7 @@ module.exports = {
       "cargo clippy --manifest-path=./backend/Cargo.toml --all-targets --all-features",
     () => "cargo fmt --manifest-path ./backend/Cargo.toml --all",
     // () => 'cargo test --manifest-path=./backend/Cargo.toml',
-    () => "cargo fmt --manifest-path=./backend/Cargo.toml --all",
+    // () => "cargo fmt --manifest-path=./backend/Cargo.toml --all",
   ],
   "*.{html,sass,scss,less}": ["prettier --write", "stylelint --fix"],
   "package.json": ["prettier --write"],

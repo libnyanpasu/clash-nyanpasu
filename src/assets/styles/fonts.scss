@@ -12,7 +12,7 @@
     local("Apple Color Emoji"),
     local("Segoe UI Emoji"),
     local("Segoe UI Symbol"),
-    local("Noto Color Emoji")
-      /* use local emoji font for better backward compatibility*/
-      url("../fonts/Twemoji.Mozilla.ttf");
+    local("Noto Color Emoji"),
+    /* use local emoji font for better backward compatibility*/
+    url("../fonts/Twemoji.Mozilla.ttf");
 }

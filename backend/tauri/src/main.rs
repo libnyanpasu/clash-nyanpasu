@@ -8,6 +8,7 @@ mod config;
 mod core;
 mod enhance;
 mod feat;
+mod tasks;
 mod utils;
 
 use crate::utils::{init, resolve, server};

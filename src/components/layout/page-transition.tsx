@@ -21,8 +21,18 @@ export const pageTransitionVariants = {
   },
   slide: {
     initial: { translateY: "50%", opacity: 0, scale: 0.9 },
-    visible: { translateY: "0%", opacity: 1, scale: 1 },
-    hidden: { translateY: "-50%", opacity: 0, scale: 0.9 },
+    visible: {
+      translateY: "0%",
+      opacity: 1,
+      scale: 1,
+      transition: { duration: 0.15 },
+    },
+    hidden: {
+      translateY: "-50%",
+      opacity: 0,
+      scale: 0.9,
+      transition: { duration: 0.15 },
+    },
   },
   transparent: {
     initial: { opacity: 0 },

@@ -46,14 +46,46 @@ export const pageTransitionVariants = {
   },
 } satisfies Record<string, PageTransitionVariant>;
 
+function overrideVariantsTransition(
+  variants: Record<string, PageTransitionVariant>,
+  transition?: HTMLMotionProps<"div">["transition"],
+) {
+  if (!transition) return variants;
+  return Object.keys(variants).reduce(
+    (acc, cur) => {
+      acc[cur] = Object.entries(variants[cur]).reduce((acc, [key, value]) => {
+        if (key === "initial") {
+          acc[key] = value;
+          return acc;
+        }
+        // @ts-expect-error ts(7053) - 懒得针对工具方法做类型体操了
+        acc[key] = {
+          ...value,
+          transition,
+        };
+        return acc;
+      }, {} as PageTransitionVariant);
+      return acc;
+    },
+    {} as Record<string, PageTransitionVariant>,
+  );
+}
+
 export default function PageTransition({ children }: Props) {
   const { verge } = useVerge();
+  const { theme_setting } = verge ?? {};
+  const variants = overrideVariantsTransition(
+    pageTransitionVariants,
+    theme_setting?.page_transition_duration
+      ? {
+          duration: theme_setting.page_transition_duration,
+        }
+      : undefined,
+  ) as typeof pageTransitionVariants;
   return (
     <motion.div
       className={classNames("page-transition", "the-content")}
-      variants={
-        pageTransitionVariants[verge?.page_transition_animation ?? "slide"]
-      }
+      variants={variants[verge?.page_transition_animation ?? "slide"]}
       initial="initial"
       animate="visible"
       exit="hidden"

@@ -42,7 +42,24 @@ export const ThemeViewer = forwardRef<DialogRef>((props, ref) => {
 
   const onSave = useLockFn(async () => {
     try {
-      await patchVerge({ theme_setting: theme });
+      const msgs = (Object.keys(theme) as Array<keyof typeof theme>).reduce(
+        (acc, cur) => {
+          if (theme[cur] === "") {
+            return acc;
+          }
+          // theme.page_transition_duration should be string here
+          if (cur === "page_transition_duration") {
+            acc[cur] = parseFloat(
+              theme.page_transition_duration as unknown as string,
+            );
+          } else {
+            acc[cur] = theme[cur];
+          }
+          return acc;
+        },
+        {} as Exclude<IVergeConfig["theme_setting"], undefined>,
+      );
+      await patchVerge({ theme_setting: msgs });
       setOpen(false);
     } catch (err: any) {
       useNotification(t("Error"), err.message || err.toString());
@@ -116,6 +133,17 @@ export const ThemeViewer = forwardRef<DialogRef>((props, ref) => {
             {...textProps}
             value={theme.css_injection ?? ""}
             onChange={handleChange("css_injection")}
+            onKeyDown={(e) => e.key === "Enter" && onSave()}
+          />
+        </Item>
+        <Item>
+          {/* 单位为秒，内容为浮点数 */}
+          <ListItemText primary="Page Transition Duration" />
+          <TextField
+            {...textProps}
+            type="number"
+            value={theme.page_transition_duration ?? ""}
+            onChange={handleChange("page_transition_duration")}
             onKeyDown={(e) => e.key === "Enter" && onSave()}
           />
         </Item>

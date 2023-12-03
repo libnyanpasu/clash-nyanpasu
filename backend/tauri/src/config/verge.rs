@@ -112,7 +112,7 @@ pub struct IVergeTheme {
     pub font_family: Option<String>,
     pub css_injection: Option<String>,
 
-    pub page_transition_duration: Option<String>,
+    pub page_transition_duration: Option<f64>,
 }
 
 impl IVerge {

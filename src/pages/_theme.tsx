@@ -9,7 +9,6 @@ export const defaultTheme = {
   warning_color: "#ed6c02",
   success_color: "#2e7d32",
   font_family: `"Roboto", "Helvetica", "Arial", sans-serif`,
-  page_transition_duration: "0.3s",
 };
 
 // dark mode

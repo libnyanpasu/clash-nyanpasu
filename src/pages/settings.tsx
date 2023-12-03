@@ -1,15 +1,15 @@
+import { BasePage } from "@/components/base";
+import SettingClash from "@/components/setting/setting-clash";
+import SettingSystem from "@/components/setting/setting-system";
+import SettingVerge from "@/components/setting/setting-verge";
+import { useNotification } from "@/hooks/use-notification";
+import { openWebUrl } from "@/services/cmds";
+import { GitHub } from "@mui/icons-material";
 import { Grid, IconButton, Paper } from "@mui/material";
 import { useLockFn } from "ahooks";
 import { useTranslation } from "react-i18next";
-import { BasePage } from "@/components/base";
-import { GitHub } from "@mui/icons-material";
-import { openWebUrl } from "@/services/cmds";
-import SettingVerge from "@/components/setting/setting-verge";
-import SettingClash from "@/components/setting/setting-clash";
-import SettingSystem from "@/components/setting/setting-system";
-import { useNotification } from "@/hooks/use-notification";
 
-const SettingPage = () => {
+export default function SettingPage() {
   const { t } = useTranslation();
 
   const onError = (err: any) => {
@@ -55,6 +55,4 @@ const SettingPage = () => {
       </Grid>
     </BasePage>
   );
-};
-
-export default SettingPage;
+}

@@ -29,6 +29,9 @@ pub struct IVerge {
     /// show memory info (only for Clash Meta)
     pub enable_memory_usage: Option<bool>,
 
+    /// page transition animation, default is `slide`
+    pub page_transition_animation: Option<String>,
+
     /// clash tun mode
     pub enable_tun_mode: Option<bool>,
 
@@ -108,6 +111,8 @@ pub struct IVergeTheme {
 
     pub font_family: Option<String>,
     pub css_injection: Option<String>,
+
+    pub page_transition_duration: Option<f64>,
 }
 
 impl IVerge {
@@ -145,6 +150,7 @@ impl IVerge {
             auto_close_connection: Some(true),
             enable_builtin_enhanced: Some(true),
             enable_clash_fields: Some(true),
+            page_transition_animation: Some("slide".into()),
             ..Self::default()
         }
     }
@@ -171,6 +177,7 @@ impl IVerge {
         patch!(theme_blur);
         patch!(traffic_graph);
         patch!(enable_memory_usage);
+        patch!(page_transition_animation);
 
         patch!(enable_tun_mode);
         patch!(enable_service_mode);

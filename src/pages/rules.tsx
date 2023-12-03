@@ -1,13 +1,13 @@
-import useSWR from "swr";
-import { useState, useMemo } from "react";
-import { useTranslation } from "react-i18next";
-import { Virtuoso } from "react-virtuoso";
-import { Box, Paper, TextField } from "@mui/material";
-import { getRules } from "@/services/api";
 import { BaseEmpty, BasePage } from "@/components/base";
 import RuleItem from "@/components/rule/rule-item";
+import { getRules } from "@/services/api";
+import { Box, Paper, TextField } from "@mui/material";
+import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { Virtuoso } from "react-virtuoso";
+import useSWR from "swr";
 
-const RulesPage = () => {
+export default function RulesPage() {
   const { t } = useTranslation();
   const { data = [] } = useSWR("getRules", getRules);
 
@@ -60,6 +60,4 @@ const RulesPage = () => {
       </Paper>
     </BasePage>
   );
-};
-
-export default RulesPage;
+}

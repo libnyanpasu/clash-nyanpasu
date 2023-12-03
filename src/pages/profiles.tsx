@@ -1,22 +1,37 @@
-import useSWR, { mutate } from "swr";
-import { useMemo, useRef, useState } from "react";
-import { useLockFn } from "ahooks";
-import { useSetRecoilState } from "recoil";
-import { Box, Button, Grid, IconButton, Stack, TextField } from "@mui/material";
+import { BasePage, DialogRef } from "@/components/base";
+import { ProfileItem } from "@/components/profile/profile-item";
+import { ProfileMore } from "@/components/profile/profile-more";
+import {
+  ProfileViewer,
+  ProfileViewerRef,
+} from "@/components/profile/profile-viewer";
+import { ConfigViewer } from "@/components/setting/mods/config-viewer";
+import { useNotification } from "@/hooks/use-notification";
+import { useProfiles } from "@/hooks/use-profiles";
+import { closeAllConnections } from "@/services/api";
+import {
+  deleteProfile,
+  enhanceProfiles,
+  getProfiles,
+  getRuntimeLogs,
+  importProfile,
+  reorderProfile,
+  updateProfile,
+} from "@/services/cmds";
+import { atomLoadingCache } from "@/services/states";
 import {
   DndContext,
-  closestCenter,
+  DragEndEvent,
   KeyboardSensor,
   PointerSensor,
+  closestCenter,
   useSensor,
   useSensors,
-  DragEndEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
-import { LoadingButton } from "@mui/lab";
 import {
   ClearRounded,
   ContentCopyRounded,
@@ -24,31 +39,16 @@ import {
   RefreshRounded,
   TextSnippetOutlined,
 } from "@mui/icons-material";
-import { useTranslation } from "react-i18next";
-import {
-  getProfiles,
-  importProfile,
-  enhanceProfiles,
-  getRuntimeLogs,
-  deleteProfile,
-  updateProfile,
-  reorderProfile,
-} from "@/services/cmds";
-import { atomLoadingCache } from "@/services/states";
-import { closeAllConnections } from "@/services/api";
-import { BasePage, DialogRef } from "@/components/base";
-import {
-  ProfileViewer,
-  ProfileViewerRef,
-} from "@/components/profile/profile-viewer";
-import { ProfileItem } from "@/components/profile/profile-item";
-import { ProfileMore } from "@/components/profile/profile-more";
-import { useProfiles } from "@/hooks/use-profiles";
-import { ConfigViewer } from "@/components/setting/mods/config-viewer";
+import { LoadingButton } from "@mui/lab";
+import { Box, Button, Grid, IconButton, Stack, TextField } from "@mui/material";
+import { useLockFn } from "ahooks";
 import { throttle } from "lodash-es";
-import { useNotification } from "@/hooks/use-notification";
+import { useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { useSetRecoilState } from "recoil";
+import useSWR, { mutate } from "swr";
 
-const ProfilePage = () => {
+export default function ProfilePage() {
   const { t } = useTranslation();
 
   const [url, setUrl] = useState("");
@@ -379,6 +379,4 @@ const ProfilePage = () => {
       <ConfigViewer ref={configRef} />
     </BasePage>
   );
-};
-
-export default ProfilePage;
+}

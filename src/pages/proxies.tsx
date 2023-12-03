@@ -14,7 +14,7 @@ import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import useSWR from "swr";
 
-const ProxyPage = () => {
+export default function ProxyPage() {
   const { t } = useTranslation();
 
   const { data: clashConfig, mutate: mutateClash } = useSWR(
@@ -88,6 +88,4 @@ const ProxyPage = () => {
       </Paper>
     </BasePage>
   );
-};
-
-export default ProxyPage;
+}

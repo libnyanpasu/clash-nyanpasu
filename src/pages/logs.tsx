@@ -1,5 +1,10 @@
-import { useMemo, useState } from "react";
-import { useRecoilState } from "recoil";
+import { BaseEmpty, BasePage } from "@/components/base";
+import LogItem from "@/components/log/log-item";
+import { atomEnableLog, atomLogData } from "@/services/states";
+import {
+  PauseCircleOutlineRounded,
+  PlayCircleOutlineRounded,
+} from "@mui/icons-material";
 import {
   Box,
   Button,
@@ -9,17 +14,12 @@ import {
   Select,
   TextField,
 } from "@mui/material";
-import { Virtuoso } from "react-virtuoso";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  PlayCircleOutlineRounded,
-  PauseCircleOutlineRounded,
-} from "@mui/icons-material";
-import { atomEnableLog, atomLogData } from "@/services/states";
-import { BaseEmpty, BasePage } from "@/components/base";
-import LogItem from "@/components/log/log-item";
+import { Virtuoso } from "react-virtuoso";
+import { useRecoilState } from "recoil";
 
-const LogPage = () => {
+export default function LogPage() {
   const { t } = useTranslation();
   const [logData, setLogData] = useRecoilState(atomLogData);
   const [enableLog, setEnableLog] = useRecoilState(atomEnableLog);
@@ -124,6 +124,4 @@ const LogPage = () => {
       </Paper>
     </BasePage>
   );
-};
-
-export default LogPage;
+}

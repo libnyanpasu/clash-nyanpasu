@@ -1,7 +1,8 @@
 import { BaseDialog, DialogRef } from "@/components/base";
+import { pageTransitionVariants } from "@/components/layout/page-transition";
 import { useNotification } from "@/hooks/use-notification";
 import { useVerge } from "@/hooks/use-verge";
-import { List, Switch } from "@mui/material";
+import { List, MenuItem, Select, Switch } from "@mui/material";
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { GuardState } from "./guard-state";
@@ -74,6 +75,36 @@ export const LayoutViewer = forwardRef<DialogRef>((props, ref) => {
           >
             <Switch edge="end" />
           </GuardState>
+        </SettingItem>
+        {/* TODO: 将 select 单独开一个 Modal 以符合 Material Design 的设计 */}
+        <SettingItem label={t("Page Transition Animation")}>
+          <Select
+            value={verge?.page_transition_animation ?? "slide"}
+            style={{ width: 100 }}
+            onChange={(e) => {
+              onChangeData({
+                page_transition_animation: e.target
+                  .value as keyof typeof pageTransitionVariants,
+              });
+              patchVerge({
+                page_transition_animation: e.target
+                  .value as keyof typeof pageTransitionVariants,
+              });
+            }}
+          >
+            <MenuItem value="slide">
+              {t("Page Transition Animation Slide")}
+            </MenuItem>
+            <MenuItem value="blur">
+              {t("Page Transition Animation Blur")}
+            </MenuItem>
+            <MenuItem value="transparent">
+              {t("Page Transition Animation Transparent")}
+            </MenuItem>
+            <MenuItem value="none">
+              {t("Page Transition Animation None")}
+            </MenuItem>
+          </Select>
         </SettingItem>
       </List>
     </BaseDialog>

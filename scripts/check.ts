@@ -60,10 +60,12 @@ const RS_MAP = {
 };
 
 /* ======= clash meta ======= */
+let META_VERSION = "v1.17.0";
 const VERSION_URL =
   "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt";
-const META_URL_PREFIX = `https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha`;
-let META_VERSION;
+const META_URL_PREFIX = META_VERSION
+  ? `https://github.com/MetaCubeX/mihomo/releases/download/${META_VERSION}`
+  : `https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha`;
 
 const META_MAP = {
   "win32-x64": "mihomo-windows-amd64-compatible",
@@ -173,9 +175,11 @@ function clashRs(): BinInfo {
 
 async function getLatestVersion() {
   try {
-    const response = await fetch(VERSION_URL, { method: "GET" });
-    const v = await response.text();
-    META_VERSION = v.trim();
+    if (!META_VERSION) {
+      const response = await fetch(VERSION_URL, { method: "GET" });
+      const v = await response.text();
+      META_VERSION = v.trim();
+    }
     console.log(`Latest release version: ${META_VERSION}`);
   } catch (error) {
     console.error("Error fetching latest release version:", error.message);

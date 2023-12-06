@@ -216,7 +216,7 @@ impl IVerge {
         patch!(enable_clash_fields);
 
         patch!(window_size_position);
-        patch!(window_size_state)
+        patch!(window_size_state);
     }
 
     /// 在初始化前尝试拿到单例端口的值

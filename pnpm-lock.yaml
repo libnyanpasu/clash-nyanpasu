@@ -217,6 +217,9 @@ devDependencies:
   prettier:
     specifier: ^3.1.0
     version: 3.1.0
+  prettier-plugin-toml:
+    specifier: 2.0.1
+    version: 2.0.1(prettier@3.1.0)
   pretty-quick:
     specifier: ^3.1.3
     version: 3.1.3(prettier@3.1.0)
@@ -1727,6 +1730,16 @@ packages:
       svg-parser: 2.0.4
     transitivePeerDependencies:
       - supports-color
+    dev: true
+
+  /@taplo/core@0.1.1:
+    resolution: {integrity: sha512-BG/zLGf5wiNXGEVPvUAAX/4ilB3PwDUY2o0MV0y47mZbDZ9ad9UK/cIQsILat3bqbPJsALVbU6k3cskNZ3vAQg==}
+    dev: true
+
+  /@taplo/lib@0.4.0-alpha.2:
+    resolution: {integrity: sha512-DV/Re3DPVY+BhBtLZ3dmP4mP6YMLSsgq9qGLXwOV38lvNF/fBlgvQswzlXmzCEefL/3q2eMoefZpOI/+GLuCNA==}
+    dependencies:
+      '@taplo/core': 0.1.1
     dev: true
 
   /@tauri-apps/api@1.3.0:
@@ -5130,6 +5143,16 @@ packages:
     engines: {node: '>=6.0.0'}
     dependencies:
       fast-diff: 1.3.0
+    dev: true
+
+  /prettier-plugin-toml@2.0.1(prettier@3.1.0):
+    resolution: {integrity: sha512-99z1YOkViECHtXQjGIigd3talI/ybUI1zB3yniAwUrlWBXupNXThB1hM6bwSMUEj2/+tomTlMtT98F5t4s8IWA==}
+    engines: {node: '>=16.0.0'}
+    peerDependencies:
+      prettier: ^3.0.3
+    dependencies:
+      '@taplo/lib': 0.4.0-alpha.2
+      prettier: 3.1.0
     dev: true
 
   /prettier@3.1.0:

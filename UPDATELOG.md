@@ -1,3 +1,33 @@
+## v1.4.1
+
+### Features
+
+- Support macOS aarch64 build. [@keiko233](https://github.com/keiko233)
+- Built-in Windows UWP Loopback Tool. [@Kuingsmile](https://github.com/Kuingsmile)
+- Built-in Clash-rs support. [@greenhat616](https://github.com/greenhat616)
+- Add tooltip for tray. [@Kuingsmile](https://github.com/Kuingsmile)
+- Update HD tray icons. [@keiko233](https://github.com/keiko233)
+- Support random mixed port. [@Kuingsmile](https://github.com/Kuingsmile)
+- Update Clash.Meta to v1.17.0. [@Kuingsmile](https://github.com/Kuingsmile) [@keiko233](https://github.com/keiko233)
+- Use system notification. [@keiko233](https://github.com/keiko233)
+- Support drag profile item to sort. [@Kuingsmile](https://github.com/Kuingsmile)
+- Add skip-auth-prefixes fields for Clash.Meta v1.17.0. [@greenhat616](https://github.com/greenhat616)
+- Support more animations. [@greenhat616](https://github.com/greenhat616)
+- Use twemoji on Windows. [@greenhat616](https://github.com/greenhat616)
+
+### Bug Fixes
+
+- Fix install Service bug. [@Kuingsmile](https://github.com/Kuingsmile)
+- Fix Windows proxy bug when VPN enabled. [@greenhat616](https://github.com/greenhat616)
+
+### Others
+
+- Fixed several build issues. [@keiko233](https://github.com/keiko233)
+- Switch rust code to workspace. [@greenhat616](https://github.com/greenhat616)
+- Add renovate bot support. [@greenhat616](https://github.com/greenhat616)
+
+---
+
 ## v1.4.0
 
 ### Features

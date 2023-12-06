@@ -248,14 +248,16 @@ pub fn save_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<(
                 fullscreen: win.is_fullscreen()?,
                 ..previous_state
             };
+            let is_minimized = win.is_minimized()?;
+
             let scale_factor = monitor.scale_factor();
             let size = win.inner_size()?.to_logical(scale_factor);
-            if size.width > 0. && size.height > 0. && !state.maximized {
+            if size.width > 0. && size.height > 0. && !state.maximized && !is_minimized {
                 state.width = size.width;
                 state.height = size.height;
             }
             let position = win.outer_position()?.to_logical(scale_factor);
-            if !state.maximized {
+            if !state.maximized && !is_minimized {
                 state.x = position.x;
                 state.y = position.y;
             }

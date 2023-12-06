@@ -583,6 +583,7 @@ name = "clash-verge"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "auto-launch",
  "chrono",
  "ctrlc",
@@ -590,6 +591,7 @@ dependencies = [
  "delay_timer",
  "dirs 5.0.1",
  "dunce",
+ "dyn-clone",
  "log 0.4.20",
  "log4rs",
  "nanoid",
@@ -1123,6 +1125,12 @@ name = "dunce"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56ce8c6da7551ec6c462cbaf3bfbc75131ebbfa1c944aeaa9dab51ca1c5f0c3b"
+
+[[package]]
+name = "dyn-clone"
+version = "1.0.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "545b22097d44f8a9581187cdf93de7a71e4722bf51200cfaba810865b49a495d"
 
 [[package]]
 name = "either"

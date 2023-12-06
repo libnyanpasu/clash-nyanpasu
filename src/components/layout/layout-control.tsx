@@ -1,3 +1,4 @@
+import { save_window_size_state } from "@/services/cmds";
 import {
   CloseRounded,
   CropSquareRounded,
@@ -5,15 +6,22 @@ import {
   HorizontalRuleRounded,
 } from "@mui/icons-material";
 import { Button } from "@mui/material";
+import { platform, type Platform } from "@tauri-apps/api/os";
 import { appWindow } from "@tauri-apps/api/window";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export const LayoutControl = () => {
   const minWidth = 40;
   const [isMaximized, setIsMaximized] = useState(false);
-  appWindow.isMaximized().then((isMaximized) => {
-    setIsMaximized(() => isMaximized);
-  });
+  const [platfrom, setPlatform] = useState<Platform>("win32");
+  useEffect(() => {
+    appWindow.isMaximized().then((isMaximized) => {
+      setIsMaximized(() => isMaximized);
+    });
+    platform().then((platform) => {
+      setPlatform(() => platform);
+    });
+  }, []);
   return (
     <>
       <Button
@@ -47,7 +55,15 @@ export const LayoutControl = () => {
       <Button
         size="small"
         sx={{ minWidth, svg: { transform: "scale(1.05)" } }}
-        onClick={() => appWindow.close()}
+        onClick={() => {
+          if (platfrom === "win32") {
+            save_window_size_state().finally(() => {
+              appWindow.close();
+            });
+          } else {
+            appWindow.close();
+          }
+        }}
       >
         <CloseRounded fontSize="small" />
       </Button>

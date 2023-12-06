@@ -1,6 +1,6 @@
-import dayjs from "dayjs";
-import { invoke } from "@tauri-apps/api/tauri";
 import { useNotification } from "@/hooks/use-notification";
+import { invoke } from "@tauri-apps/api/tauri";
+import dayjs from "dayjs";
 
 export async function getClashLogs() {
   const regex = /time="(.+?)"\s+level=(.+?)\s+msg="(.+?)"/;
@@ -183,6 +183,12 @@ export async function uninstallService() {
 
 export async function invoke_uwp_tool() {
   return invoke<void>("invoke_uwp_tool").catch((err) =>
+    useNotification("Error", err?.message || err.toString()),
+  );
+}
+
+export async function save_window_size_state() {
+  return invoke<void>("save_window_size_state").catch((err) =>
     useNotification("Error", err?.message || err.toString()),
   );
 }

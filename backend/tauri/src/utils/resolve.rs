@@ -187,7 +187,7 @@ pub fn create_window(app_handle: &AppHandle) {
                     if let Some(window) = app_handle.get_window("main") {
                         trace_err!(set_shadow(&window, true), "set win shadow");
                         trace_err!(window.show(), "set win visible");
-                        //  trace_err!(window.unminimize(), "set win unminimize");
+                        trace_err!(window.unminimize(), "set win unminimize");
                         trace_err!(window.set_focus(), "set win focus");
                     } else {
                         log::error!(target: "app", "failed to create window, get_window is None")

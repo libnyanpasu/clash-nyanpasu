@@ -132,6 +132,7 @@ fn main() -> std::io::Result<()> {
                     }
                     tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
                         // log::info!(target: "app", "window moved or resized");
+                        std::thread::sleep(std::time::Duration::from_nanos(1));
                         let _ = resolve::save_window_state(app_handle, false);
                     }
                     _ => {}

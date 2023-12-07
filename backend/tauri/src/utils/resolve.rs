@@ -1,7 +1,8 @@
-use crate::config::IVerge;
+use crate::config::{IVerge, WindowState};
 use crate::{config::Config, core::*, utils::init, utils::server};
 use crate::{log_err, trace_err};
 use anyhow::Result;
+use serde::de;
 use serde_yaml::Mapping;
 use std::net::TcpListener;
 use tauri::{App, AppHandle, Manager};
@@ -109,14 +110,12 @@ pub fn create_window(app_handle: &AppHandle) {
     .title("Clash Nyanpasu")
     .fullscreen(false)
     .min_inner_size(600.0, 520.0);
-
-    match Config::verge().latest().window_size_position.clone() {
-        Some(size_pos) if size_pos.len() == 4 => {
-            let size = (size_pos[0], size_pos[1]);
-            let pos = (size_pos[2], size_pos[3]);
-            let w = size.0.clamp(600.0, f64::INFINITY);
-            let h = size.1.clamp(520.0, f64::INFINITY);
-            builder = builder.inner_size(w, h).position(pos.0, pos.1);
+    let win_state = &Config::verge().latest().window_size_state.clone();
+    match win_state {
+        Some(state) => {
+            builder = builder
+                .inner_size(state.width, state.height)
+                .position(state.x, state.y)
         }
         _ => {
             #[cfg(target_os = "windows")]
@@ -149,6 +148,14 @@ pub fn create_window(app_handle: &AppHandle) {
             .build()
         {
             Ok(win) => {
+                if let Some(state) = win_state {
+                    if state.maximized {
+                        trace_err!(win.maximize(), "set win maximize");
+                    }
+                    if state.fullscreen {
+                        trace_err!(win.set_fullscreen(true), "set win fullscreen");
+                    }
+                }
                 log::trace!("try to calculate the monitor size");
                 let center = (|| -> Result<bool> {
                     let mut center = false;
@@ -175,7 +182,7 @@ pub fn create_window(app_handle: &AppHandle) {
 
                 // 加点延迟避免界面闪一下
                 tauri::async_runtime::spawn(async move {
-                    sleep(Duration::from_millis(888)).await;
+                    // sleep(Duration::from_millis(888)).await;
 
                     if let Some(window) = app_handle.get_window("main") {
                         trace_err!(set_shadow(&window, true), "set win shadow");
@@ -203,6 +210,7 @@ pub fn create_window(app_handle: &AppHandle) {
 }
 
 /// save window size and position
+#[deprecated]
 pub fn save_window_size_position(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
     let win = app_handle
         .get_window("main")
@@ -217,6 +225,48 @@ pub fn save_window_size_position(app_handle: &AppHandle, save_to_file: bool) -> 
     let verge = Config::verge();
     let mut verge = verge.latest();
     verge.window_size_position = Some(vec![size.width, size.height, pos.x, pos.y]);
+
+    if save_to_file {
+        verge.save_file()?;
+    }
+
+    Ok(())
+}
+
+pub fn save_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
+    let win = app_handle
+        .get_window("main")
+        .ok_or(anyhow::anyhow!("failed to get window"))?;
+    let current_monitor = win.current_monitor()?;
+    let verge = Config::verge();
+    let mut verge = verge.latest();
+    match current_monitor {
+        Some(monitor) => {
+            let previous_state = verge.window_size_state.clone().unwrap_or_default();
+            let mut state = WindowState {
+                maximized: win.is_maximized()?,
+                fullscreen: win.is_fullscreen()?,
+                ..previous_state
+            };
+            let is_minimized = win.is_minimized()?;
+
+            let scale_factor = monitor.scale_factor();
+            let size = win.inner_size()?.to_logical(scale_factor);
+            if size.width > 0. && size.height > 0. && !state.maximized && !is_minimized {
+                state.width = size.width;
+                state.height = size.height;
+            }
+            let position = win.outer_position()?.to_logical(scale_factor);
+            if !state.maximized && !is_minimized {
+                state.x = position.x;
+                state.y = position.y;
+            }
+            verge.window_size_state = Some(state);
+        }
+        None => {
+            verge.window_size_state = None;
+        }
+    }
 
     if save_to_file {
         verge.save_file()?;

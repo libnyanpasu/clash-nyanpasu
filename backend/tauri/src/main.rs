@@ -64,6 +64,7 @@ fn main() -> std::io::Result<()> {
             cmds::delete_profile,
             cmds::read_profile_file,
             cmds::save_profile_file,
+            cmds::save_window_size_state,
             // service mode
             cmds::service::check_service,
             cmds::service::install_service,
@@ -111,7 +112,7 @@ fn main() -> std::io::Result<()> {
                 match event {
                     tauri::WindowEvent::CloseRequested { api, .. } => {
                         api.prevent_close();
-                        let _ = resolve::save_window_size_position(&app_handle, true);
+                        let _ = resolve::save_window_state(app_handle, true);
 
                         app_handle.get_window("main").map(|win| {
                             let _ = win.hide();
@@ -126,10 +127,12 @@ fn main() -> std::io::Result<()> {
             if label == "main" {
                 match event {
                     tauri::WindowEvent::CloseRequested { .. } => {
-                        let _ = resolve::save_window_size_position(&app_handle, true);
+                        // log::info!(target: "app", "window close requested");
+                        let _ = resolve::save_window_state(app_handle, true);
                     }
                     tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
-                        let _ = resolve::save_window_size_position(&app_handle, false);
+                        // log::info!(target: "app", "window moved or resized");
+                        let _ = resolve::save_window_state(app_handle, false);
                     }
                     _ => {}
                 }

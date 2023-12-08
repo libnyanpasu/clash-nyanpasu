@@ -23,7 +23,7 @@ ctrlc = "3.2.3"
 dunce = "1.0.2"
 log4rs = "1.0.0"
 nanoid = "0.4.0"
-chrono = "0.4.19"
+chrono = "0.4.31"
 sysinfo = "0.29"
 sysproxy = { path = "../sysproxy-rs", version = "0.3" }
 rquickjs = "0.1.7"

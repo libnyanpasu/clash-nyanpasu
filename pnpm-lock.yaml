@@ -239,8 +239,8 @@ devDependencies:
     specifier: 2.7.0
     version: 2.7.0(stylelint@15.11.0)
   stylelint-order:
-    specifier: 6.0.3
-    version: 6.0.3(stylelint@15.11.0)
+    specifier: 6.0.4
+    version: 6.0.4(stylelint@15.11.0)
   stylelint-scss:
     specifier: 5.3.1
     version: 5.3.1(stylelint@15.11.0)
@@ -6027,7 +6027,7 @@ packages:
       stylelint: '>=15'
     dependencies:
       stylelint: 15.11.0(typescript@5.3.2)
-      stylelint-order: 6.0.3(stylelint@15.11.0)
+      stylelint-order: 6.0.4(stylelint@15.11.0)
     dev: true
 
   /stylelint-config-recommended@13.0.0(stylelint@15.11.0):
@@ -6058,10 +6058,10 @@ packages:
       stylelint: 15.11.0(typescript@5.3.2)
     dev: true
 
-  /stylelint-order@6.0.3(stylelint@15.11.0):
-    resolution: {integrity: sha512-1j1lOb4EU/6w49qZeT2SQVJXm0Ht+Qnq9GMfUa3pMwoyojIWfuA+JUDmoR97Bht1RLn4ei0xtLGy87M7d29B1w==}
+  /stylelint-order@6.0.4(stylelint@15.11.0):
+    resolution: {integrity: sha512-0UuKo4+s1hgQ/uAxlYU4h0o0HS4NiQDud0NAUNI0aa8FJdmYHA5ZZTFHiV5FpmE3071e9pZx5j0QpVJW5zOCUA==}
     peerDependencies:
-      stylelint: ^14.0.0 || ^15.0.0
+      stylelint: ^14.0.0 || ^15.0.0 || ^16.0.1
     dependencies:
       postcss: 8.4.32
       postcss-sorting: 8.0.2(postcss@8.4.32)

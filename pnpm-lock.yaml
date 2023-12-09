@@ -57,8 +57,8 @@ dependencies:
     specifier: ^4.17.21
     version: 4.17.21
   monaco-editor:
-    specifier: ^0.34.1
-    version: 0.34.1
+    specifier: ^0.45.0
+    version: 0.45.0
   react:
     specifier: ^18.2.0
     version: 18.2.0
@@ -255,7 +255,7 @@ devDependencies:
     version: 4.5.0(@types/node@18.19.0)(sass@1.54.8)
   vite-plugin-monaco-editor:
     specifier: ^1.1.0
-    version: 1.1.0(monaco-editor@0.34.1)
+    version: 1.1.0(monaco-editor@0.45.0)
   vite-plugin-svgr:
     specifier: ^4.1.0
     version: 4.1.0(typescript@5.3.2)(vite@4.5.0)
@@ -4808,8 +4808,8 @@ packages:
     resolution: {integrity: sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==}
     dev: true
 
-  /monaco-editor@0.34.1:
-    resolution: {integrity: sha512-FKc80TyiMaruhJKKPz5SpJPIjL+dflGvz4CpuThaPMc94AyN7SeC9HQ8hrvaxX7EyHdJcUY5i4D0gNyJj1vSZQ==}
+  /monaco-editor@0.45.0:
+    resolution: {integrity: sha512-mjv1G1ZzfEE3k9HZN0dQ2olMdwIfaeAAjFiwNprLfYNRSz7ctv9XuCT7gPtBGrMUeV1/iZzYKj17Khu1hxoHOA==}
 
   /mri@1.2.0:
     resolution: {integrity: sha512-tzzskb3bG8LvYGFF/mDTpq3jpI6Q9wc3LEmBaghu+DdCssd1FakN7Bc0hVNmEyGq1bq3RgfkCb3cmQLpNPOroA==}
@@ -6417,12 +6417,12 @@ packages:
       spdx-expression-parse: 3.0.1
     dev: true
 
-  /vite-plugin-monaco-editor@1.1.0(monaco-editor@0.34.1):
+  /vite-plugin-monaco-editor@1.1.0(monaco-editor@0.45.0):
     resolution: {integrity: sha512-IvtUqZotrRoVqwT0PBBDIZPNraya3BxN/bfcNfnxZ5rkJiGcNtO5eAOWWSgT7zullIAEqQwxMU83yL9J5k7gww==}
     peerDependencies:
       monaco-editor: '>=0.33.0'
     dependencies:
-      monaco-editor: 0.34.1
+      monaco-editor: 0.45.0
     dev: true
 
   /vite-plugin-svgr@4.1.0(typescript@5.3.2)(vite@4.5.0):

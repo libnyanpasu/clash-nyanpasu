@@ -1,4 +1,7 @@
-use super::{executor::{AsyncJob, Job, TaskExecutor}, records::{TaskEvent, TaskEvents}};
+use super::{
+    executor::{AsyncJob, Job, TaskExecutor},
+    records::{TaskEvent, TaskEvents},
+};
 use crate::error;
 use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
@@ -11,8 +14,9 @@ use once_cell::sync::OnceCell;
 use serde::de;
 use snowflake::SnowflakeIdGenerator;
 use std::{
+    collections::HashMap,
     sync::{Arc, Mutex, RwLock as RW},
-    time::Duration, collections::HashMap,
+    time::Duration,
 };
 
 pub type TaskID = u64;
@@ -236,7 +240,7 @@ pub struct TaskManager {
     list: TaskList,
 
     id_generator: SnowflakeIdGenerator,
-    events: TasksEvents // 任务事件
+    events: TasksEvents, // 任务事件
 }
 
 impl TaskManager {
@@ -247,7 +251,7 @@ impl TaskManager {
             timer: Arc::new(Mutex::new(DelayTimerBuilder::default().build())),
             list: Arc::new(RW::new(Vec::new())),
             id_generator: SnowflakeIdGenerator::new(1, 1),
-            events: Arc::new(RW::new(HashMap::new()))
+            events: Arc::new(RW::new(HashMap::new())),
         })
     }
 

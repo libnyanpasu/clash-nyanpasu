@@ -2,10 +2,11 @@ name: Dev Build
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - dev
-
+  # push:
+  #   branches:
+  #     - dev
+  schedule:
+    - cron: "15 0 * * *" # 每天 08:15 UTC+8 自动构建
 env:
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: short
@@ -21,6 +22,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          ref: dev # Dev branch
 
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -52,7 +55,7 @@ jobs:
         uses: mknejp/delete-release-assets@v1
         with:
           token: ${{ secrets.GH_TOKEN }}
-          tag: dev
+          tag: pre-release
           fail-if-no-assets: false
           fail-if-no-release: false
           assets: |
@@ -84,7 +87,7 @@ jobs:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
-          tagName: dev
+          tagName: pre-release
           releaseName: "Clash Nyanpasu Dev"
           releaseBody: "More new features are now supported."
           releaseDraft: false
@@ -97,7 +100,7 @@ jobs:
         run: |
           pnpm portable
         env:
-          TAG_NAME: dev
+          TAG_NAME: pre-release
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
@@ -111,7 +114,7 @@ jobs:
       - name: Tauri build with Upload (macOS aarch64)
         if: startsWith(matrix.os, 'macos-')
         env:
-          TAG_NAME: dev
+          TAG_NAME: pre-release
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}

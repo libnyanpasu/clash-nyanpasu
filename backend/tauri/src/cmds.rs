@@ -2,7 +2,7 @@ use crate::{
     config::*,
     core::*,
     feat,
-    utils::{dirs, help},
+    utils::{dirs, help, resolve::save_window_state},
 };
 use crate::{ret_err, wrap_err};
 use anyhow::{Context, Result};
@@ -232,6 +232,12 @@ pub fn open_logs_dir() -> CmdResult<()> {
 #[tauri::command]
 pub fn open_web_url(url: String) -> CmdResult<()> {
     wrap_err!(open::that(url))
+}
+
+#[tauri::command]
+pub fn save_window_size_state() -> CmdResult<()> {
+    let handle = handle::Handle::global().app_handle.lock().clone().unwrap();
+    wrap_err!(save_window_state(&handle, true))
 }
 
 #[cfg(windows)]

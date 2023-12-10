@@ -50,7 +50,7 @@ const CLASH_MAP = {
 
 /* ======= clash-rs ======= */
 const RS_URL_PREFIX = `https://github.com/Watfaq/clash-rs/releases/download/`;
-const RS_VERSION = "v0.1.9";
+const RS_VERSION = "v0.1.10";
 const RS_MAP = {
   "win32-x64": "clash-x86_64-pc-windows-msvc",
   "darwin-x64": "clash-x86_64-apple-darwin",

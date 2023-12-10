@@ -29,6 +29,12 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          key: ${{ matrix.os }}
+
+      - name: Install the missing rust target (macOS Only)
+        if: startsWith(matrix.os, 'macos-')
+        run: |
+          rustup target add aarch64-apple-darwin
 
       - name: Install Node
         uses: actions/setup-node@v3
@@ -67,7 +73,7 @@ jobs:
           tauriScript: pnpm
           args: -f default-meta
 
-      - name: Portable Bundle
+      - name: Portable Bundle (Windows Only)
         if: matrix.os == 'windows-latest'
         run: |
           pnpm portable
@@ -76,6 +82,21 @@ jobs:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           VITE_WIN_PORTABLE: 1
+
+      - name: Pnpm check (macOS aarch64)
+        if: startsWith(matrix.os, 'macos-')
+        run: |
+          pnpm check --arch arm64 --sidecar-host aarch64-apple-darwin
+
+      - name: Tauri build with Upload (macOS aarch64)
+        if: startsWith(matrix.os, 'macos-')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        run: |
+          pnpm build --target aarch64-apple-darwin
+          pnpm upload:osx-aarch64
 
   release-update:
     needs: release

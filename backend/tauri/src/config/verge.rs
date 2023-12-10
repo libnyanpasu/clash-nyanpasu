@@ -91,14 +91,28 @@ pub struct IVerge {
     pub auto_log_clean: Option<i64>,
 
     /// window size and position
+    #[deprecated(note = "use `window_size_state` instead")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub window_size_position: Option<Vec<f64>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window_size_state: Option<WindowState>,
 
     /// 是否启用随机端口
     pub enable_random_port: Option<bool>,
 
     /// verge mixed port 用于覆盖 clash 的 mixed port
     pub verge_mixed_port: Option<u16>,
+}
+
+#[derive(Default, Debug, Clone, Deserialize, Serialize)]
+pub struct WindowState {
+    pub width: f64,
+    pub height: f64,
+    pub x: f64,
+    pub y: f64,
+    pub maximized: bool,
+    pub fullscreen: bool,
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
@@ -208,6 +222,7 @@ impl IVerge {
 
         patch!(auto_log_clean);
         patch!(window_size_position);
+        patch!(window_size_state);
     }
 
     /// 在初始化前尝试拿到单例端口的值

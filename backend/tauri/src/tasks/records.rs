@@ -1,13 +1,12 @@
-use delay_timer::timer::task::Task;
+use chrono::Utc;
 
-use super::task::{TaskEventID, TaskRunResult, TaskState, Timestamp};
+use super::task::{TaskEventID, TaskID, TaskRunResult, Timestamp};
 use std::collections::HashMap;
-
 pub type TaskEvents = HashMap<TaskEventID, TaskEvent>;
 
 pub trait TaskEventsDispatcher {
     fn new() -> Self;
-    fn new_event(&mut self, task_id: TaskID) -> TaskEventID;
+    fn new_event(&mut self, task_id: TaskID, event_id: TaskEventID) -> TaskEventID;
     fn dispatch(&mut self, event_id: TaskEventID, state: TaskEventState);
 }
 
@@ -16,9 +15,10 @@ impl TaskEventsDispatcher for TaskEvents {
         HashMap::new()
     }
 
-    fn new_event(&mut self, task_id: TaskID) -> TaskEventID {
-        let event = TaskEvent {
-            id: task_id,
+    fn new_event(&mut self, task_id: TaskID, event_id: TaskEventID) -> TaskEventID {
+        let mut event = TaskEvent {
+            id: event_id,
+            task_id,
             ..TaskEvent::default()
         };
         event.dispatch(TaskEventState::Pending);
@@ -36,7 +36,7 @@ pub struct TaskEvent {
     id: TaskEventID,
     task_id: TaskID,
     state: TaskEventState,
-    timeline: HashMap<TaskEventState, Timestamp>,
+    timeline: HashMap<&'static str, Timestamp>,
 }
 
 pub enum TaskEventState {
@@ -46,12 +46,23 @@ pub enum TaskEventState {
     Cancelled,
 }
 
+impl TaskEventState {
+    pub fn fmt(&self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Running => "running",
+            Self::Finished(_) => "finished",
+            Self::Cancelled => "cancelled",
+        }
+    }
+}
+
 impl Default for TaskEvent {
     fn default() -> Self {
         TaskEvent {
             id: 0,
             task_id: 0,
-            state: TaskState::Pending,
+            state: TaskEventState::Pending,
             timeline: HashMap::with_capacity(4), // 4 states
         }
     }
@@ -60,6 +71,7 @@ impl Default for TaskEvent {
 impl TaskEvent {
     fn dispatch(&mut self, state: TaskEventState) {
         self.state = state;
-        self.timeline.insert(state, Timestamp::now());
+        self.timeline
+            .insert(self.state.fmt(), Utc::now().timestamp_millis());
     }
 }

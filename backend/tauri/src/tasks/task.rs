@@ -1,25 +1,22 @@
-use super::executor::{AsyncJob, Job, TaskExecutor};
+use super::{executor::{AsyncJob, Job, TaskExecutor}, records::{TaskEvent, TaskEvents}};
 use crate::error;
 use anyhow::{anyhow, Context, Result};
-use async_trait::async_trait;
 use chrono::Utc;
 use delay_timer::{
     entity::{DelayTimer, DelayTimerBuilder},
-    timer::task::{Task as TimerTask, TaskBuilder as TimerTaskBuilder},
+    timer::task::TaskBuilder as TimerTaskBuilder,
     utils::convenience::cron_expression_grammatical_candy::{CandyCronStr, CandyFrequency},
 };
 use once_cell::sync::OnceCell;
+use serde::de;
+use snowflake::SnowflakeIdGenerator;
 use std::{
-    borrow::BorrowMut,
-    collections::HashMap,
-    future::Future,
-    pin::Pin,
     sync::{Arc, Mutex, RwLock as RW},
-    time::Duration,
+    time::Duration, collections::HashMap,
 };
 
 pub type TaskID = u64;
-
+pub type TaskEventID = i64; // 任务事件 ID，适用于任务并发执行，区分不同的执行事件
 #[derive(Debug, Clone)]
 pub enum TaskState {
     Cancelled, // 任务已取消，不再执行
@@ -42,11 +39,25 @@ pub enum TaskSchedule {
 
 // TODO: 如果需要的话，未来可以添加执行日记（历史记录）
 #[derive(Debug, Clone)]
+pub struct TaskOptions {
+    pub maximum_parallel_runnable_num: u64, // 最大同时并发数
+}
+
+impl Default for TaskOptions {
+    fn default() -> Self {
+        TaskOptions {
+            maximum_parallel_runnable_num: 5,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Task {
     id: TaskID,
     name: String,
     schedule: TaskSchedule,
     state: TaskState,
+    opts: TaskOptions,
     last_run: Option<(Timestamp, TaskRunResult)>,
     next_run: Option<Timestamp>, // timestamp
     executor: TaskExecutor,
@@ -60,6 +71,7 @@ impl Default for Task {
             name: String::new(),
             schedule: TaskSchedule::Once(Duration::from_secs(0)),
             state: TaskState::Idle,
+            opts: TaskOptions::default(),
             executor: TaskExecutor::Sync(Job::default()), // a unimplemented job
             last_run: None,
             next_run: None,
@@ -122,24 +134,24 @@ fn build_task<'a>(task: Task, len: usize) -> (Task, TimerTaskBuilder<'a>) {
             builder.set_frequency_by_candy(CandyFrequency::Repeated(CandyCronStr(cron)));
         }
         TaskSchedule::Interval(duration) => {
-            builder.set_frequency_repeated_by_seconds(duration.as_secs() as u64);
+            builder.set_frequency_repeated_by_seconds(duration.as_secs());
         }
         // 一次性延迟任务，目前设计只支持 Interval
         // TODO: 支持即时任务？
         TaskSchedule::Once(duration) => {
-            builder.set_frequency_once_by_seconds(duration.as_secs() as u64);
+            builder.set_frequency_once_by_seconds(duration.as_secs());
         }
     }
 
-    builder.set_maximum_parallel_runnable_num(5); // 最大同时并发数
+    builder.set_maximum_parallel_runnable_num(task.opts.maximum_parallel_runnable_num); // 最大同时并发数
 
     (task, builder)
 }
 
 fn wrap_job(list: TaskList, task_id: TaskID, job: Job) {
-    list.set_task_state(task_id, TaskState::Running, None);
+    let _ = list.set_task_state(task_id, TaskState::Running, None);
     let res = job.execute();
-    list.set_task_state(
+    let _ = list.set_task_state(
         task_id,
         TaskState::Idle,
         Some(match res {
@@ -153,9 +165,9 @@ fn wrap_job(list: TaskList, task_id: TaskID, job: Job) {
 }
 
 async fn wrap_async_job(list: TaskList, task_id: TaskID, async_job: AsyncJob) {
-    list.set_task_state(task_id, TaskState::Running, None);
+    let _ = list.set_task_state(task_id, TaskState::Running, None);
     let res = async_job.execute().await;
-    list.set_task_state(
+    let _ = list.set_task_state(
         task_id,
         TaskState::Idle,
         Some(match res {
@@ -173,7 +185,7 @@ type TaskList = Arc<RW<Vec<Task>>>;
 trait TaskListOps {
     fn set_task_state(
         &self,
-        task_id: u64,
+        task_id: TaskID,
         state: TaskState,
         result: Option<TaskRunResult>,
     ) -> Result<()>;
@@ -181,7 +193,7 @@ trait TaskListOps {
 impl TaskListOps for TaskList {
     fn set_task_state(
         &self,
-        task_id: u64,
+        task_id: TaskID,
         state: TaskState,
         result: Option<TaskRunResult>,
     ) -> Result<()> {
@@ -195,17 +207,14 @@ impl TaskListOps for TaskList {
                 item.state = TaskState::Running;
             }
             TaskState::Idle => {
-                match item.state {
-                    TaskState::Running => {
-                        item.last_run = Some((
-                            Utc::now().timestamp(),
-                            result.ok_or(anyhow!(
-                                "change task {} state from running to idle, but result is none",
-                                task_id
-                            ))?,
-                        ));
-                    }
-                    _ => {}
+                if let TaskState::Running = item.state {
+                    item.last_run = Some((
+                        Utc::now().timestamp(),
+                        result.ok_or(anyhow!(
+                            "change task {} state from running to idle, but result is none",
+                            task_id
+                        ))?,
+                    ));
                 }
                 item.state = TaskState::Idle;
             }
@@ -217,26 +226,43 @@ impl TaskListOps for TaskList {
     }
 }
 
+type TasksEvents = Arc<RW<HashMap<TaskID, TaskEvents>>>;
+
 pub struct TaskManager {
     /// cron manager
     timer: Arc<Mutex<DelayTimer>>,
 
     /// task list
     list: TaskList,
+
+    id_generator: SnowflakeIdGenerator,
+    events: TasksEvents // 任务事件
 }
 
 impl TaskManager {
-    pub fn global() -> &'static Self {
+    pub fn globals() -> &'static Self {
         static TASK_MANAGER: OnceCell<TaskManager> = OnceCell::new();
 
         TASK_MANAGER.get_or_init(|| TaskManager {
             timer: Arc::new(Mutex::new(DelayTimerBuilder::default().build())),
             list: Arc::new(RW::new(Vec::new())),
+            id_generator: SnowflakeIdGenerator::new(1, 1),
+            events: Arc::new(RW::new(HashMap::new()))
         })
     }
 
-    /// add task with executor enum
-    fn add_task(&mut self, task: Task, executor: TaskExecutor) -> Result<()> {
+    /// add task
+    ///
+    /// # Example
+    /// ```rust
+    /// let task = Task {
+    ///    name: "test".to_string(),
+    ///    schedule: TaskSchedule::Once(Duration::from_secs(1)),
+    ///   ..Task::default()
+    /// };
+    /// let job = Job::default();
+    /// task_manager.add_task(task, job.into());
+    pub fn add_task(&mut self, task: Task, executor: TaskExecutor) -> Result<()> {
         check_task_input!(task);
         let (mut task, mut builder) = {
             let list = self.list.read().unwrap();
@@ -276,6 +302,37 @@ impl TaskManager {
             .add_task(timer_task.context("failed to build a task")?)
             .context("failed to add a task to scheduler")?;
         list.push(task);
+        Ok(())
+    }
+
+    pub fn pick_task(&self, task_id: TaskID) -> Result<Task> {
+        let list = self.list.read().unwrap();
+        list.iter()
+            .find(|t| t.id == task_id)
+            .cloned()
+            .ok_or(anyhow!("task {} not found", task_id))
+    }
+
+    pub fn total(&self) -> usize {
+        let list = self.list.read().unwrap();
+        list.len()
+    }
+
+    // get current task list
+    // note: this method will clone the task list
+    pub fn list(&self) -> Vec<Task> {
+        let list = self.list.read().unwrap();
+        list.clone()
+    }
+
+    pub fn remove_task(&mut self, task_id: TaskID) -> Result<()> {
+        let mut list = self.list.write().unwrap();
+        let index = list
+            .iter()
+            .position(|t| t.id == task_id)
+            .ok_or(anyhow!("task {} not found", task_id))?;
+        self.timer.lock().unwrap().remove_task(task_id)?;
+        list.remove(index);
         Ok(())
     }
 }

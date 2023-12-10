@@ -51,6 +51,7 @@ window-shadows = { version = "0.2.0" }
 wry = { version = "0.24.3" }
 async-trait = "0.1.74"
 dyn-clone = "1.0.16"
+rs-snowflake = "0.6"
 
 [target.'cfg(windows)'.dependencies]
 runas = "=1.0.0"

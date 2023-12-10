@@ -1,4 +1,4 @@
-use super::executor::{AsyncJob, Job};
+use super::executor::{AsyncJob, Job, TaskExecutor};
 use crate::error;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
@@ -15,6 +15,7 @@ use std::{
     future::Future,
     pin::Pin,
     sync::{Arc, Mutex, RwLock as RW},
+    time::Duration,
 };
 
 pub type TaskID = u64;
@@ -33,23 +34,22 @@ pub enum TaskRunResult {
 }
 
 #[derive(Debug, Clone)]
-pub enum TaskType {
-    Once,     // 一次性执行
-    Interval, // 按间隔执行
-    Cron,     // 按 cron 表达式执行
+pub enum TaskSchedule {
+    Once(Duration),     // 一次性执行
+    Interval(Duration), // 按间隔执行
+    Cron(String),       // 按 cron 表达式执行
 }
 
 // TODO: 如果需要的话，未来可以添加执行日记（历史记录）
 #[derive(Debug, Clone)]
 pub struct Task {
-    id: u64,
+    id: TaskID,
     name: String,
-    r#type: TaskType,
-    cron: Option<String>, // cron expression
+    schedule: TaskSchedule,
     state: TaskState,
-    interval: Option<i64>, // seconds
     last_run: Option<(Timestamp, TaskRunResult)>,
     next_run: Option<Timestamp>, // timestamp
+    executor: TaskExecutor,
     created_at: Timestamp,
 }
 
@@ -58,10 +58,9 @@ impl Default for Task {
         Task {
             id: 0,
             name: String::new(),
-            r#type: TaskType::Once,
-            cron: None,
+            schedule: TaskSchedule::Once(Duration::from_secs(0)),
             state: TaskState::Idle,
-            interval: None,
+            executor: TaskExecutor::Sync(Job::default()), // a unimplemented job
             last_run: None,
             next_run: None,
             created_at: 0,
@@ -78,15 +77,20 @@ macro_rules! check_task_input {
             return Err(anyhow!("task name is empty"));
         }
 
-        match $task.r#type {
-            TaskType::Cron => {
-                if $task.cron.is_none() {
-                    return Err(anyhow!("cron expression is empty"));
+        match &$task.schedule {
+            TaskSchedule::Once(duration) => {
+                if duration.as_secs() <= 0 {
+                    return Err(anyhow!("task interval must be greater than 0"));
                 }
             }
-            TaskType::Interval | TaskType::Once => {
-                if $task.interval.is_none() {
-                    return Err(anyhow!("interval is empty"));
+            TaskSchedule::Interval(duration) => {
+                if duration.as_secs() <= 0 {
+                    return Err(anyhow!("task interval must be greater than 0"));
+                }
+            }
+            TaskSchedule::Cron(cron) => {
+                if cron.is_empty() {
+                    return Err(anyhow!("task cron is empty"));
                 }
             }
         }
@@ -110,19 +114,20 @@ fn build_task<'a>(task: Task, len: usize) -> (Task, TimerTaskBuilder<'a>) {
     let mut builder = TimerTaskBuilder::default();
     builder.set_task_id(task.id);
 
-    match task.r#type {
-        TaskType::Cron => {
+    match &task.schedule {
+        TaskSchedule::Cron(cron) => {
             // NOTE: 由于 DelayTimer 的垃圾设计，因此继续使用弃用的 candy 方法
             // NOTE: 请注意一定需要回收内存，否则会造成内存泄漏
-            let cron = task.cron.clone().unwrap().clone();
+            let cron = cron.clone();
             builder.set_frequency_by_candy(CandyFrequency::Repeated(CandyCronStr(cron)));
         }
-        TaskType::Interval => {
-            builder.set_frequency_repeated_by_seconds(task.interval.unwrap() as u64);
+        TaskSchedule::Interval(duration) => {
+            builder.set_frequency_repeated_by_seconds(duration.as_secs() as u64);
         }
-        // 一次性任务，目前设计只支持 Interval
-        TaskType::Once => {
-            builder.set_frequency_once_by_seconds(task.interval.unwrap() as u64);
+        // 一次性延迟任务，目前设计只支持 Interval
+        // TODO: 支持即时任务？
+        TaskSchedule::Once(duration) => {
+            builder.set_frequency_once_by_seconds(duration.as_secs() as u64);
         }
     }
 
@@ -230,25 +235,41 @@ impl TaskManager {
         })
     }
 
-    /// add sync task
-    fn add_task(&mut self, task: Task, job: Job) -> Result<()> {
+    /// add task with executor enum
+    fn add_task(&mut self, task: Task, executor: TaskExecutor) -> Result<()> {
         check_task_input!(task);
-        let (task, mut builder) = {
+        let (mut task, mut builder) = {
             let list = self.list.read().unwrap();
             build_task(task, list.len())
         };
 
+        task.executor = executor.clone(); // 保存执行器
+
         let task_id = task.id;
         let list_ref = self.list.clone();
-        let body = move || {
-            let list = list_ref.clone();
-            wrap_job(list, task_id, job.clone())
+        let timer_task = match executor {
+            TaskExecutor::Sync(job) => {
+                let body = move || {
+                    let list = list_ref.clone();
+                    wrap_job(list, task_id, job.clone())
+                };
+                builder.spawn_routine(body)
+            }
+            TaskExecutor::Async(async_job) => {
+                let body = move || {
+                    let list = list_ref.clone();
+                    let async_job = async_job.clone();
+                    async move { wrap_async_job(list, task_id, async_job).await }
+                };
+
+                builder.spawn_async_routine(body)
+            }
         };
 
-        let timer_task = builder.spawn_routine(body);
         {
             builder.free(); // 在错误处理之前，先释放内存
         }
+
         let timer = self.timer.lock().unwrap();
         let mut list = self.list.write().unwrap();
         timer
@@ -256,49 +277,5 @@ impl TaskManager {
             .context("failed to add a task to scheduler")?;
         list.push(task);
         Ok(())
-    }
-
-    fn add_async_task(&mut self, task: Task, async_job: AsyncJob) -> Result<()> {
-        check_task_input!(task);
-        let (task, mut builder) = {
-            let list = self.list.read().unwrap();
-            build_task(task, list.len())
-        };
-
-        let task_id = task.id;
-        let list_ref = self.list.clone();
-        let body = move || {
-            let list = list_ref.clone();
-            let async_job = async_job.clone();
-            async move { wrap_async_job(list, task_id, async_job).await }
-        };
-
-        let timer_task = builder.spawn_async_routine(body);
-        {
-            builder.free(); // 在错误处理之前，先释放内存
-        }
-        let timer = self.timer.lock().unwrap();
-        let mut list = self.list.write().unwrap();
-        timer
-            .add_task(timer_task.context("failed to build a task")?)
-            .context("failed to add a task to scheduler")?;
-        list.push(task);
-        Ok(())
-    }
-
-    pub fn add_cron_task(&mut self, task_name: String, job: Job) -> Result<()> {
-        let task = Task {
-            id: 0,
-            name: task_name,
-            r#type: TaskType::Cron,
-            cron: None,
-            state: TaskState::Idle,
-            interval: None,
-            last_run: None,
-            next_run: None,
-            created_at: 0,
-        };
-
-        self.add_task(task, job)
     }
 }

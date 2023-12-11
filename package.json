@@ -27,6 +27,7 @@
     "publish": "tsx scripts/publish.ts",
     "portable": "tsx scripts/portable.ts",
     "upload:osx-aarch64": "tsx scripts/osx-aarch64-upload.ts",
+    "generate:latest-version": "tsx scripts/generate-latest-version.ts",
     "prepare": "husky install"
   },
   "prettier": {

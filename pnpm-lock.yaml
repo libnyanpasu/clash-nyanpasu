@@ -34,7 +34,7 @@ dependencies:
     version: 5.14.14(@emotion/react@11.11.1)(@emotion/styled@11.11.0)(@types/react@18.2.37)(react-dom@18.2.0)(react@18.2.0)
   '@mui/x-data-grid':
     specifier: ^6.16.3
-    version: 6.16.3(@mui/material@5.14.14)(@mui/system@5.14.14)(@types/react@18.2.37)(react-dom@18.2.0)(react@18.2.0)
+    version: 6.16.3(@mui/material@5.14.14)(@mui/system@5.14.20)(@types/react@18.2.37)(react-dom@18.2.0)(react@18.2.0)
   '@tauri-apps/api':
     specifier: ^1.5.1
     version: 1.5.1
@@ -48,8 +48,8 @@ dependencies:
     specifier: 1.11.5
     version: 1.11.5
   framer-motion:
-    specifier: 10.16.12
-    version: 10.16.12(react-dom@18.2.0)(react@18.2.0)
+    specifier: 10.16.16
+    version: 10.16.16(react-dom@18.2.0)(react@18.2.0)
   i18next:
     specifier: ^22.0.4
     version: 22.0.4
@@ -1547,7 +1547,7 @@ packages:
       react-is: 18.2.0
     dev: false
 
-  /@mui/x-data-grid@6.16.3(@mui/material@5.14.14)(@mui/system@5.14.14)(@types/react@18.2.37)(react-dom@18.2.0)(react@18.2.0):
+  /@mui/x-data-grid@6.16.3(@mui/material@5.14.14)(@mui/system@5.14.20)(@types/react@18.2.37)(react-dom@18.2.0)(react@18.2.0):
     resolution: {integrity: sha512-msohYxn11JHzeQOywaH5wGSCb/fESootqHLKG6LuET7xOxjHS8GlN/GuW/4kKcbQRunSVh/ADwqpqq+SmWrSeQ==}
     engines: {node: '>=14.0.0'}
     peerDependencies:
@@ -1558,7 +1558,7 @@ packages:
     dependencies:
       '@babel/runtime': 7.23.2
       '@mui/material': 5.14.14(@emotion/react@11.11.1)(@emotion/styled@11.11.0)(@types/react@18.2.37)(react-dom@18.2.0)(react@18.2.0)
-      '@mui/system': 5.14.14(@emotion/react@11.11.1)(@emotion/styled@11.11.0)(@types/react@18.2.37)(react@18.2.0)
+      '@mui/system': 5.14.20(@emotion/react@11.11.1)(@emotion/styled@11.11.0)(@types/react@18.2.37)(react@18.2.0)
       '@mui/utils': 5.14.14(@types/react@18.2.37)(react@18.2.0)
       clsx: 2.0.0
       prop-types: 15.8.1
@@ -3733,8 +3733,8 @@ packages:
     resolution: {integrity: sha512-ZsDfxO51wGAXREY55a7la9LScWpwv9RxIrYABrlvOFBlH/ShPnrtsXeuUIfXKKOVicNxQ+o8JTbJvjS4M89yew==}
     dev: true
 
-  /framer-motion@10.16.12(react-dom@18.2.0)(react@18.2.0):
-    resolution: {integrity: sha512-w7Yzx0OzQ5Uh6uNkxaX+4TuAPuOKz3haSbjmHpdrqDpGuCJCpq6YP9Dy7JJWdZ6mJjndrg3Ao3vUwDajKNikCA==}
+  /framer-motion@10.16.16(react-dom@18.2.0)(react@18.2.0):
+    resolution: {integrity: sha512-je6j91rd7NmUX7L1XHouwJ4v3R+SO4umso2LUcgOct3rHZ0PajZ80ETYZTajzEXEl9DlKyzjyt4AvGQ+lrebOw==}
     peerDependencies:
       react: ^18.0.0
       react-dom: ^18.0.0

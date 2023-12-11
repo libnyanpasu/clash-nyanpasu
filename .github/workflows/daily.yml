@@ -27,6 +27,8 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate Manifest
         run: pnpm generate:manifest

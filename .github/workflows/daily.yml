@@ -33,6 +33,8 @@ jobs:
       - uses: oleksiyrudenko/gha-git-credentials@v2-latest
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
+          name: "github-actions[bot]"
+          email: "41898282+github-actions[bot]@users.noreply.github.com"
       - name: Commit Manifest
         run: |
           git add .

@@ -9,5 +9,6 @@ pub mod timer;
 pub mod tray;
 pub mod win_service;
 pub mod win_uwp;
-
+pub mod tasks;
+pub mod storage;
 pub use self::core::*;

@@ -52,6 +52,7 @@ wry = { version = "0.24.6" }
 async-trait = "0.1.74"
 dyn-clone = "1.0.16"
 rs-snowflake = "0.6"
+sled = "0.34.7"
 
 [target.'cfg(windows)'.dependencies]
 runas = "=1.0.0"

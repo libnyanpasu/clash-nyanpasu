@@ -266,17 +266,17 @@ impl TaskManager {
     /// };
     /// let job = Job::default();
     /// task_manager.add_task(task, job.into());
-    pub fn add_task(&mut self, task: Task, executor: TaskExecutor) -> Result<()> {
+    pub fn add_task(&mut self, task: Task) -> Result<()> {
         check_task_input!(task);
-        let (mut task, mut builder) = {
+        let (task, mut builder) = {
             let list = self.list.read().unwrap();
             build_task(task, list.len())
         };
 
-        task.executor = executor.clone(); // 保存执行器
 
         let task_id = task.id;
         let list_ref = self.list.clone();
+        let executor = task.executor.clone();
         let timer_task = match executor {
             TaskExecutor::Sync(job) => {
                 let body = move || {

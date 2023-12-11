@@ -7,6 +7,7 @@ name: Daily
 
 jobs:
   generate_manifest:
+    name: Generate Manifest
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -28,7 +29,7 @@ jobs:
         run: pnpm install
 
       - name: Generate Manifest
-        run: pnpm run generate:manifest
+        run: pnpm generate:manifest
       - uses: oleksiyrudenko/gha-git-credentials@v2-latest
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"

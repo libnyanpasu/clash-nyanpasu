@@ -14,7 +14,7 @@ tauri-build = { version = "1", features = [] }
 
 [dependencies]
 warp = "0.3"
-which = "4.2.2"
+which = "4.4.2"
 anyhow = "1.0"
 dirs = "5.0.0"
 open = "4.0.1"

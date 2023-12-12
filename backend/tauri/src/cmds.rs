@@ -1,6 +1,9 @@
 use crate::{
     config::*,
-    core::*,
+    core::{
+        updater::{ManifestVersion, ManifestVersionLatest},
+        *,
+    },
     feat,
     utils::{dirs, help, resolve::save_window_state},
 };
@@ -170,7 +173,7 @@ pub async fn patch_verge_config(payload: IVerge) -> CmdResult {
 }
 
 #[tauri::command]
-pub async fn change_clash_core(clash_core: Option<String>) -> CmdResult {
+pub async fn change_clash_core(clash_core: Option<ClashCore>) -> CmdResult {
     wrap_err!(CoreManager::global().change_core(clash_core).await)
 }
 
@@ -238,6 +241,25 @@ pub fn open_web_url(url: String) -> CmdResult<()> {
 pub fn save_window_size_state() -> CmdResult<()> {
     let handle = handle::Handle::global().app_handle.lock().clone().unwrap();
     wrap_err!(save_window_state(&handle, true))
+}
+
+#[tauri::command]
+#[allow(clippy::await_holding_lock)]
+pub async fn fetch_latest_core_versions() -> CmdResult<ManifestVersionLatest> {
+    let mut updater = updater::Updater::global().write().await; // It is intended to block here
+    wrap_err!(updater.fetch_latest().await);
+    Ok(updater.get_latest_versions())
+}
+
+#[tauri::command]
+#[allow(clippy::await_holding_lock)]
+pub async fn update_core(core_type: ClashCore) -> CmdResult {
+    wrap_err!(updater::Updater::global()
+        .read()
+        .await
+        .update_core(&core_type)
+        .await
+        .context("failed to update core"))
 }
 
 #[cfg(windows)]

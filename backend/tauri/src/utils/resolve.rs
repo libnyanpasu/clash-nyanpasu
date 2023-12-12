@@ -1,10 +1,12 @@
-use crate::config::{IVerge, WindowState};
+use crate::config::{ClashCore, IVerge, WindowState};
 use crate::{config::Config, core::*, utils::init, utils::server};
 use crate::{log_err, trace_err};
 use anyhow::Result;
+use semver::Version;
 use serde::de;
 use serde_yaml::Mapping;
 use std::net::TcpListener;
+use tauri::api::process::Command;
 use tauri::{App, AppHandle, Manager};
 
 pub fn find_unused_port() -> Result<u16> {
@@ -273,4 +275,27 @@ pub fn save_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<(
     }
 
     Ok(())
+}
+
+/// resolve core version
+// TODO: use enum instead
+pub fn resolve_core_version(core_type: &ClashCore) -> Result<String> {
+    let core = core_type.clone().to_string();
+    let cmd = match core_type {
+        ClashCore::ClashPremium | ClashCore::Mihomo | ClashCore::MihomoAlpha => {
+            Command::new_sidecar(core)?.args(["-v"])
+        }
+        ClashCore::ClashRs => Command::new_sidecar(core)?.args(["-V"]),
+    };
+    let out = cmd.output()?;
+    if !out.status.success() {
+        return Err(anyhow::anyhow!("failed to get core version"));
+    }
+    let out = out.stdout.trim().split(' ').collect::<Vec<&str>>();
+    for item in out {
+        if item.starts_with('v') || item.starts_with("alpha") || Version::parse(item).is_ok() {
+            return Ok(item.to_string());
+        }
+    }
+    Err(anyhow::anyhow!("failed to get core version"))
 }

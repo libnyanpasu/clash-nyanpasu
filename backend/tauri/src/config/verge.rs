@@ -3,6 +3,49 @@ use anyhow::Result;
 use log::LevelFilter;
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub enum ClashCore {
+    #[serde(rename = "clash-premium", alias = "clash")]
+    ClashPremium,
+    #[serde(rename = "clash-rs")]
+    ClashRs,
+    #[serde(rename = "mihomo", alias = "clash-meta")]
+    Mihomo,
+    #[serde(rename = "mihomo-alpha")]
+    MihomoAlpha,
+}
+
+impl Default for ClashCore {
+    fn default() -> Self {
+        match cfg!(feature = "default-meta") {
+            false => Self::ClashPremium,
+            true => Self::Mihomo,
+        }
+    }
+}
+
+impl From<ClashCore> for String {
+    fn from(core: ClashCore) -> Self {
+        match core {
+            ClashCore::ClashPremium => "clash-premium".into(),
+            ClashCore::ClashRs => "clash-rs".into(),
+            ClashCore::Mihomo => "mihomo".into(),
+            ClashCore::MihomoAlpha => "mihomo-alpha".into(),
+        }
+    }
+}
+
+impl std::fmt::Display for ClashCore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ClashCore::ClashPremium => write!(f, "clash-premium"),
+            ClashCore::ClashRs => write!(f, "clash-rs"),
+            ClashCore::Mihomo => write!(f, "mihomo"),
+            ClashCore::MihomoAlpha => write!(f, "mihomo-alpha"),
+        }
+    }
+}
+
 /// ### `verge.yaml` schema
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
 pub struct IVerge {
@@ -65,7 +108,7 @@ pub struct IVerge {
 
     /// clash core path
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub clash_core: Option<String>,
+    pub clash_core: Option<ClashCore>,
 
     /// hotkey map
     /// format: {func},{key}
@@ -142,10 +185,7 @@ impl IVerge {
 
     pub fn template() -> Self {
         Self {
-            clash_core: match cfg!(feature = "default-meta") {
-                false => Some("clash".into()),
-                true => Some("clash-meta".into()),
-            },
+            clash_core: Some(ClashCore::default()),
             language: match cfg!(feature = "default-meta") {
                 false => Some("en".into()),
                 true => Some("zh".into()),

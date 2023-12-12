@@ -1,6 +1,6 @@
 #![cfg(target_os = "windows")]
 
-use crate::config::Config;
+use crate::config::{ClashCore, Config};
 use crate::utils::dirs;
 use anyhow::{bail, Context, Result};
 use deelevate::{PrivilegeLevel, Token};
@@ -117,7 +117,7 @@ pub(super) async fn run_core_by_service(config_file: &PathBuf) -> Result<()> {
     }
 
     let clash_core = { Config::verge().latest().clash_core.clone() };
-    let clash_core = clash_core.unwrap_or("clash".into());
+    let clash_core = clash_core.unwrap_or(ClashCore::ClashPremium);
 
     let clash_bin = format!("{clash_core}.exe");
     let bin_path = current_exe()?.with_file_name(clash_bin);
@@ -132,7 +132,9 @@ pub(super) async fn run_core_by_service(config_file: &PathBuf) -> Result<()> {
     let config_file = dirs::path_to_str(config_file)?;
 
     let mut map = HashMap::new();
-    map.insert("core_type", clash_core.as_str());
+    // TODO: confirm the backend service logic
+    let core_type = clash_core.to_string();
+    map.insert("core_type", core_type.as_str());
     map.insert("bin_path", bin_path);
     map.insert("config_dir", config_dir);
     map.insert("config_file", config_file);

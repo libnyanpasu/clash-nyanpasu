@@ -37,11 +37,22 @@ parking_lot = "0.12.0"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
-tauri = { version = "1.5.3", features = ["global-shortcut-all", "notification-all", "process-all", "shell-all", "system-tray", "updater", "window-all"] }
+tauri = { version = "1.5.3", features = [
+  "global-shortcut-all",
+  "notification-all",
+  "process-all",
+  "shell-all",
+  "system-tray",
+  "updater",
+  "window-all",
+] }
 window-vibrancy = { version = "0.3.0" }
 window-shadows = { version = "0.2.2" }
 wry = { version = "0.24.6" }
-
+semver = "1.0"
+zip = "0.6.6"
+gunzip = { version = "0.1.0", git = "https://github.com/TechHara/gunzip.git" }
+tempfile = "3.8.1"
 
 [target.'cfg(windows)'.dependencies]
 runas = "=1.0.0"

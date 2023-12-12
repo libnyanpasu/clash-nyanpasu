@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 
 import zlib from "zlib";
+import versionManifest from "../manifest/version.json";
 import { TAURI_APP_DIR, cwd } from "./utils/env";
 import { colorize, consola } from "./utils/logger";
 
@@ -35,7 +36,8 @@ const CLASH_LATEST_DATE = "2023.08.17";
 
 const CLASH_BACKUP_URL_PREFIX =
   "https://github.com/zhongfly/Clash-premium-backup/releases/download/";
-const CLASH_BACKUP_LATEST_DATE = "2023-09-05-gdcc8d87";
+// const CLASH_BACKUP_LATEST_DATE = "2023-09-05-gdcc8d87";
+const CLASH_BACKUP_LATEST_DATE = versionManifest.latest.clash_premium;
 
 //https://github.com/zhongfly/Clash-premium-backup/releases/download/2023-09-05-gdcc8d87/clash-windows-amd64-2023-09-05-gdcc8d87.zip
 //https://github.com/zhongfly/Clash-premium-backup/releases/download/2023-09-05-gdcc8d87/clash-windows-amd64-n2023-09-05-gdcc8d87.zip
@@ -50,7 +52,8 @@ const CLASH_MAP = {
 
 /* ======= clash-rs ======= */
 const RS_URL_PREFIX = `https://github.com/Watfaq/clash-rs/releases/download/`;
-const RS_VERSION = "v0.1.10";
+// const RS_VERSION = "v0.1.10";
+const RS_VERSION = versionManifest.latest.clash_rs;
 const RS_MAP = {
   "win32-x64": "clash-x86_64-pc-windows-msvc",
   "darwin-x64": "clash-x86_64-apple-darwin",
@@ -59,15 +62,28 @@ const RS_MAP = {
   "linux-arm64": "clash-aarch64-unknown-linux-gnu-static-crt",
 };
 
-/* ======= clash meta ======= */
-let META_VERSION = "v1.17.0";
-const VERSION_URL =
-  "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt";
-const META_URL_PREFIX = META_VERSION
-  ? `https://github.com/MetaCubeX/mihomo/releases/download/${META_VERSION}`
-  : `https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha`;
+/* ======= mihomo ======= */
+// let META_VERSION = "v1.17.0";
+const MIHOMO_VERSION = versionManifest.latest.mihomo;
 
-const META_MAP = {
+// const META_URL_PREFIX = META_VERSION
+//   ? `https://github.com/MetaCubeX/mihomo/releases/download/${META_VERSION}`
+//   : `https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha`;
+const MIHOMO_URL_PREFIX = `https://github.com/MetaCubeX/mihomo/releases/download/${MIHOMO_VERSION}`;
+const MIHOMO_MAP = {
+  "win32-x64": "mihomo-windows-amd64-compatible",
+  "darwin-x64": "mihomo-darwin-amd64",
+  "darwin-arm64": "mihomo-darwin-arm64",
+  "linux-x64": "mihomo-linux-amd64-compatible",
+  "linux-arm64": "mihomo-linux-arm64",
+};
+
+/* ======= mihomo alpha ======= */
+const MIHOMO_ALPHA_VERSION_URL =
+  "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt";
+let MIHOMO_ALPHA_VERSION = versionManifest.latest.mihomo_alpha;
+const MIHOMO_ALPHA_URL_PREFIX = `https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha`;
+const MIHOMO_ALPHA_MAP = {
   "win32-x64": "mihomo-windows-amd64-compatible",
   "darwin-x64": "mihomo-darwin-amd64",
   "darwin-arm64": "mihomo-darwin-arm64",
@@ -89,7 +105,7 @@ consola.debug(colorize`sidecar-host {yellow ${SIDECAR_HOST}}`);
 if (!CLASH_MAP[`${platform}-${arch}`]) {
   throw new Error(`clash unsupported platform "${platform}-${arch}"`);
 }
-if (!META_MAP[`${platform}-${arch}`]) {
+if (!MIHOMO_MAP[`${platform}-${arch}`]) {
   throw new Error(`clash meta unsupported platform "${platform}-${arch}"`);
 }
 
@@ -175,29 +191,49 @@ function clashRs(): BinInfo {
 
 async function getLatestVersion() {
   try {
-    if (!META_VERSION) {
-      const response = await fetch(VERSION_URL, { method: "GET" });
-      const v = await response.text();
-      META_VERSION = v.trim();
-    }
-    console.log(`Latest release version: ${META_VERSION}`);
+    // if (!MIHOMO_VERSION) {
+    //   const response = await fetch(VERSION_URL, { method: "GET" });
+    //   const v = await response.text();
+    //   MIHOMO_VERSION = v.trim();
+    // }
+    const response = await fetch(MIHOMO_ALPHA_VERSION_URL, { method: "GET" });
+    const v = await response.text();
+    MIHOMO_ALPHA_VERSION = v.trim();
+    console.log(`Latest release version: ${MIHOMO_ALPHA_VERSION_URL}`);
   } catch (error) {
     console.error("Error fetching latest release version:", error.message);
     process.exit(1);
   }
 }
 
-function clashMeta(): BinInfo {
-  const name = META_MAP[`${platform}-${arch}`];
+function mihomo(): BinInfo {
+  const name = MIHOMO_MAP[`${platform}-${arch}`];
   const isWin = platform === "win32";
   const urlExt = isWin ? "zip" : "gz";
-  const downloadURL = `${META_URL_PREFIX}/${name}-${META_VERSION}.${urlExt}`;
+  const downloadURL = `${MIHOMO_URL_PREFIX}/${name}-${MIHOMO_VERSION}.${urlExt}`;
   const exeFile = `${name}${isWin ? ".exe" : ""}`;
-  const tmpFile = `${name}-${META_VERSION}.${urlExt}`;
+  const tmpFile = `${name}-${MIHOMO_VERSION}.${urlExt}`;
 
   return {
     name: "mihomo",
     targetFile: `mihomo-${SIDECAR_HOST}${isWin ? ".exe" : ""}`,
+    exeFile,
+    tmpFile,
+    downloadURL,
+  };
+}
+
+function mihomoAlpha(): BinInfo {
+  const name = MIHOMO_ALPHA_MAP[`${platform}-${arch}`];
+  const isWin = platform === "win32";
+  const urlExt = isWin ? "zip" : "gz";
+  const downloadURL = `${MIHOMO_ALPHA_URL_PREFIX}/${name}-${MIHOMO_ALPHA_VERSION}.${urlExt}`;
+  const exeFile = `${name}${isWin ? ".exe" : ""}`;
+  const tmpFile = `${name}-${MIHOMO_VERSION}.${urlExt}`;
+
+  return {
+    name: "mihomo-alpha",
+    targetFile: `mihomo-alpha-${SIDECAR_HOST}${isWin ? ".exe" : ""}`,
     exeFile,
     tmpFile,
     downloadURL,
@@ -419,7 +455,12 @@ const tasks = [
   { name: "clash", func: () => resolveClash(), retry: 5 },
   {
     name: "mihomo",
-    func: () => getLatestVersion().then(() => resolveSidecar(clashMeta())),
+    func: () => resolveSidecar(mihomo()),
+    retry: 5,
+  },
+  {
+    name: "mihomo-alpha",
+    func: () => getLatestVersion().then(() => resolveSidecar(mihomoAlpha())),
     retry: 5,
   },
   { name: "clash-rs", func: () => resolveSidecar(clashRs()), retry: 5 },

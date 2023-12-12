@@ -25,12 +25,11 @@
         "icons/icon-new.icns",
         "icons/icon.ico"
       ],
-      "resources": [
-        "resources"
-      ],
+      "resources": ["resources"],
       "externalBin": [
         "sidecar/clash",
         "sidecar/mihomo",
+        "sidecar/mihomo-alpha",
         "sidecar/clash-rs"
       ],
       "copyright": "© 2022 zzzgydi All Rights Reserved",
@@ -38,9 +37,7 @@
       "shortDescription": "Clash Nyanpasu! (∠・ω< )⌒☆",
       "longDescription": "Clash Nyanpasu! (∠・ω< )⌒☆",
       "deb": {
-        "depends": [
-          "openssl"
-        ]
+        "depends": ["openssl"]
       },
       "macOS": {
         "frameworks": [],
@@ -54,11 +51,7 @@
         "digestAlgorithm": "sha256",
         "timestampUrl": "",
         "wix": {
-          "language": [
-            "zh-CN",
-            "en-US",
-            "ru-RU"
-          ]
+          "language": ["zh-CN", "en-US", "ru-RU"]
         }
       }
     },

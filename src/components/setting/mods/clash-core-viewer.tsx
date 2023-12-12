@@ -25,6 +25,7 @@ import { mutate } from "swr";
 const VALID_CORE = [
   { name: "Clash", core: "clash" },
   { name: "Mihomo", core: "mihomo" },
+  { name: "Mihomo Alpha", core: "mihomo-alpha" },
   { name: "Clash Rust", core: "clash-rs" },
 ];
 

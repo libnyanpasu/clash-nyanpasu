@@ -196,8 +196,8 @@ function clashMeta(): BinInfo {
   const tmpFile = `${name}-${META_VERSION}.${urlExt}`;
 
   return {
-    name: "clash-meta",
-    targetFile: `clash-meta-${SIDECAR_HOST}${isWin ? ".exe" : ""}`,
+    name: "mihomo",
+    targetFile: `mihomo-${SIDECAR_HOST}${isWin ? ".exe" : ""}`,
     exeFile,
     tmpFile,
     downloadURL,
@@ -418,7 +418,7 @@ const resolveEnableLoopback = () =>
 const tasks = [
   { name: "clash", func: () => resolveClash(), retry: 5 },
   {
-    name: "clash-meta",
+    name: "mihomo",
     func: () => getLatestVersion().then(() => resolveSidecar(clashMeta())),
     retry: 5,
   },

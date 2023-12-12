@@ -57,18 +57,18 @@ impl CoreManager {
         let config_path = dirs::path_to_str(&config_path)?;
 
         let clash_core = { Config::verge().latest().clash_core.clone() };
-        let clash_core = clash_core.unwrap_or(ClashCore::ClashPremium);
+        let clash_core = clash_core.unwrap_or(ClashCore::ClashPremium).to_string();
 
         let app_dir = dirs::app_home_dir()?;
         let app_dir = dirs::path_to_str(&app_dir)?;
-
+        log::debug!(target: "app", "check config in `{clash_core}`");
         let output = Command::new_sidecar(clash_core)?
             .args(["-t", "-d", app_dir, "-f", config_path])
             .output()?;
 
         if !output.status.success() {
             let error = clash_api::parse_check_output(output.stdout.clone());
-            let error = match error.len() > 0 {
+            let error = match !error.is_empty() {
                 true => error,
                 false => output.stdout.clone(),
             };

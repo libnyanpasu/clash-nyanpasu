@@ -281,6 +281,7 @@ pub fn save_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<(
 // TODO: use enum instead
 pub fn resolve_core_version(core_type: &ClashCore) -> Result<String> {
     let core = core_type.clone().to_string();
+    log::debug!(target: "app", "check config in `{core}`");
     let cmd = match core_type {
         ClashCore::ClashPremium | ClashCore::Mihomo | ClashCore::MihomoAlpha => {
             Command::new_sidecar(core)?.args(["-v"])

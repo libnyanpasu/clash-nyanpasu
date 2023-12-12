@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub enum ClashCore {
-    #[serde(rename = "clash-premium", alias = "clash")]
+    #[serde(rename = "clash", alias = "clash-premium")]
     ClashPremium,
     #[serde(rename = "clash-rs")]
     ClashRs,
@@ -27,7 +27,7 @@ impl Default for ClashCore {
 impl From<ClashCore> for String {
     fn from(core: ClashCore) -> Self {
         match core {
-            ClashCore::ClashPremium => "clash-premium".into(),
+            ClashCore::ClashPremium => "clash".into(),
             ClashCore::ClashRs => "clash-rs".into(),
             ClashCore::Mihomo => "mihomo".into(),
             ClashCore::MihomoAlpha => "mihomo-alpha".into(),
@@ -38,7 +38,7 @@ impl From<ClashCore> for String {
 impl std::fmt::Display for ClashCore {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ClashCore::ClashPremium => write!(f, "clash-premium"),
+            ClashCore::ClashPremium => write!(f, "clash"),
             ClashCore::ClashRs => write!(f, "clash-rs"),
             ClashCore::Mihomo => write!(f, "mihomo"),
             ClashCore::MihomoAlpha => write!(f, "mihomo-alpha"),

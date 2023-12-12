@@ -141,8 +141,10 @@ impl Tray {
 
         #[cfg(target_os = "windows")]
         {
-            let indication_icon = if *system_proxy {
-                include_bytes!("../../icons/win-tray-icon-activated.png").to_vec()
+            let indication_icon = if *tun_mode {
+                include_bytes!("../../icons/win-tray-icon-blue.png").to_vec()
+            } else if *system_proxy {
+                include_bytes!("../../icons/win-tray-icon-pink.png").to_vec()
             } else {
                 include_bytes!("../../icons/win-tray-icon.png").to_vec()
             };

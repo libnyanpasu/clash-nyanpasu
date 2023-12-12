@@ -182,8 +182,8 @@ devDependencies:
     specifier: 7.33.2
     version: 7.33.2(eslint@8.55.0)
   fs-extra:
-    specifier: ^10.0.0
-    version: 10.0.1
+    specifier: ^11.0.0
+    version: 11.2.0
   https-proxy-agent:
     specifier: ^5.0.1
     version: 5.0.1
@@ -3746,15 +3746,6 @@ packages:
     optionalDependencies:
       '@emotion/is-prop-valid': 0.8.8
     dev: false
-
-  /fs-extra@10.0.1:
-    resolution: {integrity: sha512-NbdoVMZso2Lsrn/QwLXOy6rm0ufY2zEOKCDzJR/0kBsb0E6qed0P3iYK+Ath3BfvXEeu4JhEtXLgILx5psUfag==}
-    engines: {node: '>=12'}
-    dependencies:
-      graceful-fs: 4.2.9
-      jsonfile: 6.1.0
-      universalify: 2.0.0
-    dev: true
 
   /fs-extra@11.2.0:
     resolution: {integrity: sha512-PmDi3uwK5nFuXh7XDTlVnS17xJS7vW36is2+w3xcv8SVxiB4NyATf4ctkVY5bkSjX0Y4nbvZCq1/EjtEyr9ktw==}

@@ -82,32 +82,21 @@ const resolveMihomo: LatestVersionResolver = async () => {
 };
 
 const resolveMihomoAlpha: LatestVersionResolver = async () => {
-  const octokit = getOctokit(GITHUB_TOKEN);
-  const alphaRelease = await octokit.rest.repos.getReleaseByTag({
-    owner: "MetaCubeX",
-    repo: "mihomo",
-    tag: "Prerelease-Alpha",
-  });
-
-  let alphaReleaseHash = "";
-  for (const asset of alphaRelease.data.assets) {
-    if (asset.name.endsWith(".gz")) {
-      const name = asset.name.split("-");
-      alphaReleaseHash = name[name.length - 1].split(".")[0];
-      break;
-    }
-  }
+  const resp = await fetch(
+    "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt",
+  );
+  const alphaReleaseHash = (await resp.text()).trim();
   consola.debug(`mihomo alpha release: ${alphaReleaseHash}`);
 
   const archMapping: ArchMapping = {
-    // [SupportedArch.WindowsX86]: "mihomo-windows-386-alpha-{}.zip",
+    // [SupportedArch.WindowsX86]: "mihomo-windows-386-{}.zip",
     [SupportedArch.WindowsX86_64]:
       "mihomo-windows-amd64-compatible-alpha-{}.zip",
-    // [SupportedArch.WindowsAarch64]: "mihomo-windows-arm64-alpha-{}.zip",
-    [SupportedArch.LinuxAarch64]: "mihomo-linux-arm64-alpha-{}.gz",
-    [SupportedArch.LinuxAmd64]: "mihomo-linux-amd64-compatible-alpha-{}.gz",
-    [SupportedArch.DarwinArm64]: "mihomo-darwin-arm64-alpha-{}.gz",
-    [SupportedArch.DarwinX64]: "mihomo-darwin-amd64-alpha-{}.gz",
+    // [SupportedArch.WindowsAarch64]: "mihomo-windows-arm64-{}.zip",
+    [SupportedArch.LinuxAarch64]: "mihomo-linux-arm64-{}.gz",
+    [SupportedArch.LinuxAmd64]: "mihomo-linux-amd64-compatible-{}.gz",
+    [SupportedArch.DarwinArm64]: "mihomo-darwin-arm64-{}.gz",
+    [SupportedArch.DarwinX64]: "mihomo-darwin-amd64-{}.gz",
   } satisfies ArchMapping;
   return {
     name: "mihomo_alpha",

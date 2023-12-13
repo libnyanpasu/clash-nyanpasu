@@ -5,7 +5,10 @@ use crate::{
         *,
     },
     feat,
-    utils::{dirs, help, resolve::save_window_state},
+    utils::{
+        dirs, help,
+        resolve::{self, save_window_state},
+    },
 };
 use crate::{ret_err, wrap_err};
 use anyhow::{Context, Result};
@@ -244,15 +247,22 @@ pub fn save_window_size_state() -> CmdResult<()> {
 }
 
 #[tauri::command]
-#[allow(clippy::await_holding_lock)]
 pub async fn fetch_latest_core_versions() -> CmdResult<ManifestVersionLatest> {
     let mut updater = updater::Updater::global().write().await; // It is intended to block here
-    wrap_err!(updater.fetch_latest().await);
+    wrap_err!(updater.fetch_latest().await)?;
     Ok(updater.get_latest_versions())
 }
 
 #[tauri::command]
-#[allow(clippy::await_holding_lock)]
+pub async fn get_core_version(core_type: ClashCore) -> CmdResult<String> {
+    match tokio::task::spawn_blocking(move || resolve::resolve_core_version(&core_type)).await {
+        Ok(Ok(version)) => Ok(version),
+        Ok(Err(err)) => Err(format!("{err}")),
+        Err(err) => Err(format!("{err}")),
+    }
+}
+
+#[tauri::command]
 pub async fn update_core(core_type: ClashCore) -> CmdResult {
     wrap_err!(updater::Updater::global()
         .read()

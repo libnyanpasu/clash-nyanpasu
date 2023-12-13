@@ -289,12 +289,18 @@ pub fn resolve_core_version(core_type: &ClashCore) -> Result<String> {
         ClashCore::ClashRs => Command::new_sidecar(core)?.args(["-V"]),
     };
     let out = cmd.output()?;
+    log::debug!(target: "app", "get core version: {:?}", out);
     if !out.status.success() {
         return Err(anyhow::anyhow!("failed to get core version"));
     }
     let out = out.stdout.trim().split(' ').collect::<Vec<&str>>();
     for item in out {
-        if item.starts_with('v') || item.starts_with("alpha") || Version::parse(item).is_ok() {
+        log::debug!(target: "app", "check item: {}", item);
+        if item.starts_with('v')
+            || item.starts_with("n")
+            || item.starts_with("alpha")
+            || Version::parse(item).is_ok()
+        {
             return Ok(item.to_string());
         }
     }

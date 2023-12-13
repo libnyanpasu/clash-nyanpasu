@@ -50,6 +50,7 @@ fn main() -> std::io::Result<()> {
             // updater
             cmds::fetch_latest_core_versions,
             cmds::update_core,
+            cmds::get_core_version,
             // verge
             cmds::get_verge_config,
             cmds::patch_verge_config,

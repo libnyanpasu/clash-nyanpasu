@@ -1,7 +1,7 @@
 import { useNotification } from "@/hooks/use-notification";
+import type { ManifestVersion } from "@root/scripts/generate-latest-version";
 import { invoke } from "@tauri-apps/api/tauri";
 import dayjs from "dayjs";
-
 export async function getClashLogs() {
   const regex = /time="(.+?)"\s+level=(.+?)\s+msg="(.+?)"/;
   const newRegex = /(.+?)\s+(.+?)\s+(.+)/;
@@ -191,4 +191,20 @@ export async function save_window_size_state() {
   return invoke<void>("save_window_size_state").catch((err) =>
     useNotification("Error", err?.message || err.toString()),
   );
+}
+
+export async function getCoreVersion(
+  coreType: Required<IVergeConfig>["clash_core"],
+) {
+  return invoke<string>("get_core_version", { coreType });
+}
+
+export async function fetchLatestCoreVersions() {
+  return invoke<ManifestVersion["latest"]>("fetch_latest_core_versions");
+}
+
+export async function updateCore(
+  coreType: Required<IVergeConfig>["clash_core"],
+) {
+  return invoke<void>("update_core", { coreType });
 }

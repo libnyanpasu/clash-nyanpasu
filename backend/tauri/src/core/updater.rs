@@ -7,7 +7,7 @@ use log::debug;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use tempfile::{tempdir, TempDir};
-use tokio::{sync::RwLock, task::spawn_blocking};
+use tokio::{join, sync::RwLock, task::spawn_blocking};
 
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
@@ -23,12 +23,12 @@ impl Default for Updater {
     fn default() -> Self {
         Self {
             manifest_version: ManifestVersion::default(),
-            mirror: "https://mirror.ghproxy.com".to_string(),
+            mirror: "https://mirror.ghproxy.com/github.com".to_string(),
         }
     }
 }
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ManifestVersion {
     manifest_version: u64,
     latest: ManifestVersionLatest,
@@ -36,7 +36,7 @@ pub struct ManifestVersion {
     updated_at: String,
 }
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ManifestVersionLatest {
     mihomo: String,
     mihomo_alpha: String,
@@ -44,7 +44,7 @@ pub struct ManifestVersionLatest {
     clash_premium: String,
 }
 
-#[derive(Deserialize, Serialize, Default, Clone)]
+#[derive(Deserialize, Serialize, Default, Clone, Debug)]
 pub struct ArchTemplate {
     mihomo: HashMap<String, String>,
     mihomo_alpha: HashMap<String, String>,
@@ -107,9 +107,31 @@ impl Updater {
     }
 
     pub async fn fetch_latest(&mut self) -> Result<()> {
-        let latest = get_latest_version_manifest(self.mirror.as_str()).await?;
-        self.manifest_version = latest;
+        let latest = get_latest_version_manifest(self.mirror.as_str());
+        let mihomo_alpha_version = self.get_mihomo_alpha_version();
+        let (latest, mihomo_alpha_version) = join!(latest, mihomo_alpha_version);
+        log::info!("latest version: {:?}", latest);
+        self.manifest_version = latest?;
+        log::info!("mihomo alpha version: {:?}", mihomo_alpha_version);
+        self.manifest_version.latest.mihomo_alpha = mihomo_alpha_version?;
         Ok(())
+    }
+
+    async fn get_mihomo_alpha_version(&self) -> Result<String> {
+        let client = reqwest::Client::new();
+        let url = format!(
+            "{}/{}",
+            self.mirror.as_str(),
+            "MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt"
+        );
+        Ok(client
+            .get(url)
+            .send()
+            .await?
+            .text()
+            .await?
+            .trim()
+            .to_string())
     }
 
     pub async fn update_core(&self, core_type: &ClashCore) -> Result<()> {
@@ -262,6 +284,7 @@ pub async fn get_latest_version_manifest(mirror: &str) -> Result<ManifestVersion
         "{}/greenhat616/clash-nyanpasu/raw/dev/manifest/version.json",
         mirror
     );
+    log::debug!("{}", url);
     let client = reqwest::Client::new();
     Ok(client
         .get(url)
@@ -278,7 +301,7 @@ enum CoreTypeMeta {
     ClashRs(String),
 }
 
-pub fn get_download_path(core_type: CoreTypeMeta, artifact: String) -> String {
+fn get_download_path(core_type: CoreTypeMeta, artifact: String) -> String {
     match core_type {
         CoreTypeMeta::Mihomo(tag) => {
             format!("MetaCubeX/mihomo/releases/download/{}/{}", tag, artifact)

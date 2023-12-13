@@ -14,6 +14,7 @@ interface Props {
   title: ReactNode;
   open: boolean;
   okBtn?: ReactNode;
+  okBtnDisabled?: boolean;
   cancelBtn?: ReactNode;
   disableOk?: boolean;
   disableCancel?: boolean;
@@ -37,6 +38,7 @@ export function BaseDialog(props: Props) {
     title,
     children,
     okBtn,
+    okBtnDisabled,
     cancelBtn,
     contentSx,
     disableCancel,
@@ -60,6 +62,7 @@ export function BaseDialog(props: Props) {
           )}
           {!disableOk && (
             <LoadingButton
+              disabled={loading || okBtnDisabled}
               loading={loading}
               variant="contained"
               onClick={props.onOk}

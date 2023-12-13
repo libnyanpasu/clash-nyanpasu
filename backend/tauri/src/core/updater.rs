@@ -284,7 +284,7 @@ fn decompress_and_set_permission(
     };
     let tmp_core = tmp_path.join(core_type.clone().to_string());
     debug!("writing core to {:?} ({} bytes)", tmp_core, buff.len());
-    let mut core_file = std::fs::File::create(tmp_core)?;
+    let mut core_file = std::fs::File::create(tmp_core.to_owned())?;
     std::io::copy(&mut buff.as_slice(), &mut core_file)?;
     #[cfg(target_family = "unix")]
     {

@@ -76,17 +76,17 @@ impl Hotkey {
         }
 
         let f = match func.trim() {
-            "open_dashboard" => || feat::open_dashboard(),
+            "open_or_close_dashboard" => feat::toggle_dashboard,
             "clash_mode_rule" => || feat::change_clash_mode("rule".into()),
             "clash_mode_global" => || feat::change_clash_mode("global".into()),
             "clash_mode_direct" => || feat::change_clash_mode("direct".into()),
             "clash_mode_script" => || feat::change_clash_mode("script".into()),
-            "toggle_system_proxy" => || feat::toggle_system_proxy(),
-            "enable_system_proxy" => || feat::enable_system_proxy(),
-            "disable_system_proxy" => || feat::disable_system_proxy(),
-            "toggle_tun_mode" => || feat::toggle_tun_mode(),
-            "enable_tun_mode" => || feat::enable_tun_mode(),
-            "disable_tun_mode" => || feat::disable_tun_mode(),
+            "toggle_system_proxy" => feat::toggle_system_proxy,
+            "enable_system_proxy" => feat::enable_system_proxy,
+            "disable_system_proxy" => feat::disable_system_proxy,
+            "toggle_tun_mode" => feat::toggle_tun_mode,
+            "enable_tun_mode" => feat::enable_tun_mode,
+            "disable_tun_mode" => feat::disable_tun_mode,
 
             _ => bail!("invalid function \"{func}\""),
         };

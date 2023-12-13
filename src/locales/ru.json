@@ -108,7 +108,7 @@
   "Save": "Сохранить",
   "Cancel": "Отмена",
 
-  "open_dashboard": "Open Dashboard",
+  "open_or_close_dashboard": "Открыть/закрыть панель управления",
   "clash_mode_rule": "Режим правил",
   "clash_mode_global": "Глобальный режим",
   "clash_mode_direct": "Прямой режим",

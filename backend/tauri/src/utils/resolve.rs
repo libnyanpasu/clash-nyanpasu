@@ -211,6 +211,18 @@ pub fn create_window(app_handle: &AppHandle) {
     crate::log_err!(builder.decorations(true).transparent(false).build());
 }
 
+/// close main window
+pub fn close_window(app_handle: &AppHandle) {
+    if let Some(window) = app_handle.get_window("main") {
+        trace_err!(window.close(), "close window");
+    }
+}
+
+/// is window open
+pub fn is_window_open(app_handle: &AppHandle) -> bool {
+    app_handle.get_window("main").is_some()
+}
+
 /// save window size and position
 #[deprecated]
 pub fn save_window_size_position(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {

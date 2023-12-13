@@ -21,6 +21,27 @@ pub fn open_dashboard() {
     }
 }
 
+// 关闭面板
+pub fn close_dashboard() {
+    let handle = handle::Handle::global();
+    let app_handle = handle.app_handle.lock();
+    if let Some(app_handle) = app_handle.as_ref() {
+        resolve::close_window(app_handle);
+    }
+}
+
+// 开关面板
+pub fn toggle_dashboard() {
+    let handle = handle::Handle::global();
+    let app_handle = handle.app_handle.lock();
+    if let Some(app_handle) = app_handle.as_ref() {
+        match resolve::is_window_open(app_handle) {
+            true => resolve::close_window(app_handle),
+            false => resolve::create_window(app_handle),
+        }
+    }
+}
+
 // 重启clash
 pub fn restart_clash_core() {
     tauri::async_runtime::spawn(async {

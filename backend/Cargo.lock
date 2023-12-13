@@ -668,6 +668,7 @@ dependencies = [
  "winreg 0.50.0",
  "wry",
  "zip",
+ "zip-extensions",
 ]
 
 [[package]]
@@ -6544,6 +6545,15 @@ dependencies = [
  "sha1",
  "time",
  "zstd",
+]
+
+[[package]]
+name = "zip-extensions"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cecf62554c4ff96bce01a7ef123d160c3ffe9180638820f8b4d545c65b221b8c"
+dependencies = [
+ "zip",
 ]
 
 [[package]]

@@ -1,16 +1,15 @@
-use std::{collections::HashMap, path::Path, sync::OnceLock};
+use std::{collections::HashMap, io::Cursor, path::Path, sync::OnceLock};
 
 use crate::config::ClashCore;
 use anyhow::{anyhow, Result};
 use gunzip::Decompressor;
 use log::debug;
-use once_cell::sync::OnceCell;
-use serde::{Deserialize, Serialize};
-use tempfile::{tempdir, TempDir};
-use tokio::{join, sync::RwLock, task::spawn_blocking};
-
+use serde::{de, Deserialize, Serialize};
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
+use tempfile::{tempdir, TempDir};
+use tokio::{join, sync::RwLock, task::spawn_blocking};
+use zip::ZipArchive;
 
 use super::CoreManager;
 
@@ -110,9 +109,9 @@ impl Updater {
         let latest = get_latest_version_manifest(self.mirror.as_str());
         let mihomo_alpha_version = self.get_mihomo_alpha_version();
         let (latest, mihomo_alpha_version) = join!(latest, mihomo_alpha_version);
-        log::info!("latest version: {:?}", latest);
+        log::debug!("latest version: {:?}", latest);
         self.manifest_version = latest?;
-        log::info!("mihomo alpha version: {:?}", mihomo_alpha_version);
+        log::debug!("mihomo alpha version: {:?}", mihomo_alpha_version);
         self.manifest_version.latest.mihomo_alpha = mihomo_alpha_version?;
         Ok(())
     }
@@ -142,8 +141,10 @@ impl Updater {
             .unwrap_or_default();
         let tmp_dir = tempdir()?;
         // 1. download core
+        debug!("downloading core");
         let artifact = self.download_core(core_type, &tmp_dir).await?;
         // 2. decompress core
+        debug!("decompressing core");
         let core_type_ref = core_type.clone();
         let tmp_dir_path = tmp_dir.path().to_owned();
         let artifact_ref = artifact.clone();
@@ -163,7 +164,11 @@ impl Updater {
         let core_dir = tauri::utils::platform::current_exe()?;
         let core_dir = core_dir.parent().ok_or(anyhow!("failed to get core dir"))?;
         let target_core = core_dir.join(target_core);
-        std::fs::copy(tmp_dir.path().join(&artifact), target_core)?;
+        debug!("copying core to {:?}", target_core);
+        std::fs::copy(
+            tmp_dir.path().join(core_type.clone().to_string()),
+            target_core,
+        )?;
 
         // 5. if core is used before, restart it
         if current_core == *core_type {
@@ -174,6 +179,7 @@ impl Updater {
 
     async fn download_core(&self, core_type: &ClashCore, tmp_dir: &TempDir) -> Result<String> {
         let arch = get_arch()?;
+        debug!("download core: {} in arch {}", core_type, arch);
         let version_manifest = &self.manifest_version;
         let (artifact, core_type_meta) = match core_type {
             ClashCore::ClashPremium => (
@@ -217,22 +223,20 @@ impl Updater {
                 CoreTypeMeta::ClashRs(version_manifest.latest.clash_rs.clone()),
             ),
         };
+        debug!("artifact: {}", artifact);
         let url = format!(
             "{}/{}",
             &self.mirror,
             get_download_path(core_type_meta, artifact.clone())
         );
+        debug!("url: {}", url);
         let file_path = tmp_dir.path().join(&artifact);
+        debug!("file path: {:?}", file_path);
         let mut dst = std::fs::File::create(&file_path)?;
 
         let client = reqwest::Client::new();
-        let buff = client
-            .get(format!("{}/{}", url, core_type))
-            .send()
-            .await?
-            .text()
-            .await?;
-        std::io::copy(&mut buff.as_bytes(), &mut dst)?;
+        let mut buff = Cursor::new(client.get(url).send().await?.bytes().await?);
+        std::io::copy(&mut buff, &mut dst)?;
         Ok(artifact)
     }
 }
@@ -244,34 +248,44 @@ fn decompress_and_set_permission(
 ) -> Result<()> {
     let mut buff = Vec::<u8>::new();
     let path = tmp_path.join(fname);
-    let mut file = std::fs::File::open(path)?;
+    debug!("decompressing file: {:?}", path);
+    let mut tmp_file = std::fs::File::open(path)?;
+    debug!("file size: {}", tmp_file.metadata()?.len());
     match fname {
         fname if fname.ends_with(".gz") => {
-            let mut decompressor = Decompressor::new(file, true);
+            debug!("decompressing gz file");
+            let mut decompressor = Decompressor::new(tmp_file, true);
             std::io::copy(&mut decompressor, &mut buff)?;
         }
         fname if fname.ends_with(".zip") => {
-            let mut archive = zip::ZipArchive::new(file)?;
-            for i in 0..archive.len() {
+            debug!("decompressing zip file");
+            let mut archive = ZipArchive::new(tmp_file)?;
+            let len = archive.len();
+            for i in 0..len {
                 let mut file = archive.by_index(i)?;
                 let file_name = file.name();
                 debug!("Filename: {}", file.name());
                 // TODO: 在 enum 做点魔法
                 if file_name.contains("mihomo") || file_name.contains("clash") {
+                    debug!("extract file: {}", file_name);
+                    debug!("extract file size: {}", file.size());
                     std::io::copy(&mut file, &mut buff)?;
                     break;
                 }
+                if i == len - 1 {
+                    anyhow::bail!("failed to find core file in a zip archive");
+                }
             }
-            anyhow::bail!("failed to find core file in a zip archive");
         }
         _ => {
-            std::io::copy(&mut file, &mut buff)?;
+            debug!("directly copying file");
+            std::io::copy(&mut tmp_file, &mut buff)?;
         }
     };
     let tmp_core = tmp_path.join(core_type.clone().to_string());
+    debug!("writing core to {:?} ({} bytes)", tmp_core, buff.len());
     let mut core_file = std::fs::File::create(tmp_core)?;
     std::io::copy(&mut buff.as_slice(), &mut core_file)?;
-    drop(core_file); // release the file handle
     #[cfg(target_family = "unix")]
     {
         std::fs::set_permissions(&tmp_core, std::fs::Permissions::from_mode(0o755))?;

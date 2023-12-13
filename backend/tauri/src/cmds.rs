@@ -264,12 +264,13 @@ pub async fn get_core_version(core_type: ClashCore) -> CmdResult<String> {
 
 #[tauri::command]
 pub async fn update_core(core_type: ClashCore) -> CmdResult {
-    wrap_err!(updater::Updater::global()
-        .read()
-        .await
-        .update_core(&core_type)
-        .await
-        .context("failed to update core"))
+    wrap_err!(
+        updater::Updater::global()
+            .read()
+            .await
+            .update_core(&core_type)
+            .await
+    )
 }
 
 #[cfg(windows)]

@@ -1,24 +1,35 @@
-import { useRef } from "react";
-import { useLockFn } from "ahooks";
-import { useTranslation } from "react-i18next";
-import { IconButton, MenuItem, Select, Typography } from "@mui/material";
-import { openAppDir, openCoreDir, openLogsDir } from "@/services/cmds";
-import { ArrowForward } from "@mui/icons-material";
-import { checkUpdate } from "@tauri-apps/api/updater";
-import { useVerge } from "@/hooks/use-verge";
-import { version } from "@root/package.json";
 import { DialogRef } from "@/components/base";
-import { SettingList, SettingItem } from "./mods/setting-comp";
-import { ThemeModeSwitch } from "./mods/theme-mode-switch";
-import { ConfigViewer } from "./mods/config-viewer";
-import { HotkeyViewer } from "./mods/hotkey-viewer";
-import { MiscViewer } from "./mods/misc-viewer";
-import { ThemeViewer } from "./mods/theme-viewer";
-import { GuardState } from "./mods/guard-state";
-import { LayoutViewer } from "./mods/layout-viewer";
-import { UpdateViewer } from "./mods/update-viewer";
-import getSystem from "@/utils/get-system";
 import { useNotification } from "@/hooks/use-notification";
+import { useVerge } from "@/hooks/use-verge";
+import {
+  collectLogs,
+  openAppDir,
+  openCoreDir,
+  openLogsDir,
+} from "@/services/cmds";
+import getSystem from "@/utils/get-system";
+import { ArrowForward, IosShare } from "@mui/icons-material";
+import {
+  IconButton,
+  MenuItem,
+  Select,
+  Tooltip,
+  Typography,
+} from "@mui/material";
+import { version } from "@root/package.json";
+import { checkUpdate } from "@tauri-apps/api/updater";
+import { useLockFn } from "ahooks";
+import { useRef } from "react";
+import { useTranslation } from "react-i18next";
+import { ConfigViewer } from "./mods/config-viewer";
+import { GuardState } from "./mods/guard-state";
+import { HotkeyViewer } from "./mods/hotkey-viewer";
+import { LayoutViewer } from "./mods/layout-viewer";
+import { MiscViewer } from "./mods/misc-viewer";
+import { SettingItem, SettingList } from "./mods/setting-comp";
+import { ThemeModeSwitch } from "./mods/theme-mode-switch";
+import { ThemeViewer } from "./mods/theme-viewer";
+import { UpdateViewer } from "./mods/update-viewer";
 
 interface Props {
   onError?: (err: Error) => void;
@@ -169,7 +180,25 @@ const SettingVerge = ({ onError }: Props) => {
         </IconButton>
       </SettingItem>
 
-      <SettingItem label={t("Open Logs Dir")}>
+      <SettingItem
+        label={t("Open Logs Dir")}
+        extra={
+          <Tooltip title={t("Collect Logs")}>
+            <IconButton
+              color="inherit"
+              size="small"
+              onClick={() => {
+                collectLogs();
+              }}
+            >
+              <IosShare
+                fontSize="inherit"
+                style={{ cursor: "pointer", opacity: 0.75 }}
+              />
+            </IconButton>
+          </Tooltip>
+        }
+      >
         <IconButton
           color="inherit"
           size="small"

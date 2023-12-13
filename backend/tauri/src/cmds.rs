@@ -6,15 +6,19 @@ use crate::{
     },
     feat,
     utils::{
-        dirs, help,
+        candy, dirs, help,
         resolve::{self, save_window_state},
     },
 };
 use crate::{ret_err, wrap_err};
 use anyhow::{Context, Result};
+use chrono::Local;
+use log::debug;
 use serde_yaml::Mapping;
 use std::collections::{HashMap, VecDeque};
 use sysproxy::Sysproxy;
+
+use tauri::api::dialog::FileDialogBuilder;
 
 type CmdResult<T = ()> = Result<T, String>;
 
@@ -260,6 +264,30 @@ pub async fn get_core_version(core_type: ClashCore) -> CmdResult<String> {
         Ok(Err(err)) => Err(format!("{err}")),
         Err(err) => Err(format!("{err}")),
     }
+}
+
+#[tauri::command]
+pub async fn collect_logs() -> CmdResult {
+    let now = Local::now().format("%Y-%m-%d");
+    let fname = format!("{}-log", now);
+    let builder = FileDialogBuilder::new();
+    builder
+        .add_filter("archive files", &["zip"])
+        .set_file_name(&fname)
+        .set_title("Save log archive")
+        .save_file(|file_path| match file_path {
+            None => (),
+            Some(path) => {
+                debug!("{:#?}", path.as_os_str());
+                match candy::collect_logs(&path) {
+                    Ok(_) => (),
+                    Err(err) => {
+                        log::error!(target: "app", "{err}");
+                    }
+                }
+            }
+        });
+    Ok(())
 }
 
 #[tauri::command]

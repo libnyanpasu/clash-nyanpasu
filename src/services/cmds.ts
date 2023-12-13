@@ -208,3 +208,7 @@ export async function updateCore(
 ) {
   return invoke<void>("update_core", { coreType });
 }
+
+export async function collectLogs() {
+  return invoke<void>("collect_logs");
+}

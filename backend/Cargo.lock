@@ -639,6 +639,7 @@ dependencies = [
  "delay_timer",
  "dirs 5.0.1",
  "dunce",
+ "glob",
  "gunzip",
  "log 0.4.20",
  "log4rs",

@@ -51,6 +51,8 @@ fn main() -> std::io::Result<()> {
             cmds::fetch_latest_core_versions,
             cmds::update_core,
             cmds::get_core_version,
+            // utils
+            cmds::collect_logs,
             // verge
             cmds::get_verge_config,
             cmds::patch_verge_config,

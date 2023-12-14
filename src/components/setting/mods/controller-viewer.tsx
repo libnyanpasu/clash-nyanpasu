@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next";
 export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const { clashInfo, patchInfo } = useClashInfo();
 
@@ -26,11 +27,14 @@ export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
 
   const onSave = useLockFn(async () => {
     try {
+      setLoading(true);
       await patchInfo({ "external-controller": controller, secret });
       useNotification(t("Success"), "Change Clash Config successfully!");
       setOpen(false);
     } catch (err: any) {
       useNotification(t("Error"), err.message || err.toString());
+    } finally {
+      setLoading(false);
     }
   });
 
@@ -43,6 +47,7 @@ export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
       cancelBtn={t("Cancel")}
       onClose={() => setOpen(false)}
       onCancel={() => setOpen(false)}
+      loading={loading}
       onOk={onSave}
     >
       <List>

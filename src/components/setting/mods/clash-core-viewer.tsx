@@ -20,6 +20,8 @@ import {
   List,
   ListItemButton,
   ListItemText,
+  alpha,
+  useTheme,
 } from "@mui/material";
 import { useAsyncEffect, useLockFn } from "ahooks";
 import { forwardRef, useImperativeHandle, useState } from "react";
@@ -50,6 +52,7 @@ export const ClashCoreViewer = forwardRef<DialogRef>((props, ref) => {
   const { verge } = useVerge();
 
   const [open, setOpen] = useState(false);
+  const [lock, setLock] = useState(false);
   const [validCores, setValidCores] = useState<Core[]>(VALID_CORE);
   useImperativeHandle(ref, () => ({
     open: () => setOpen(true),
@@ -169,9 +172,14 @@ export const ClashCoreViewer = forwardRef<DialogRef>((props, ref) => {
       <List component="nav">
         {validCores.map((each) => (
           <CoreElement
+            lock={lock}
             key={each.core}
             selected={each.core === clash_core}
             core={each}
+            onCoreChanged={(_, state) => {
+              if (state === "start") setLock(true);
+              else setLock(false);
+            }}
           />
         ))}
       </List>
@@ -181,13 +189,28 @@ export const ClashCoreViewer = forwardRef<DialogRef>((props, ref) => {
 
 ClashCoreViewer.displayName = "ClashCoreViewer";
 
-function CoreElement({ selected, core }: { selected: boolean; core: Core }) {
+function CoreElement({
+  selected,
+  core,
+  lock,
+  onCoreChanged,
+}: {
+  selected: boolean;
+  core: Core;
+  lock: boolean;
+  onCoreChanged: (core: string, state: "start" | "finish") => void;
+}) {
   const { t } = useTranslation();
   const { mutateVerge } = useVerge();
+  const theme = useTheme();
+  const [loading, setLoading] = useState(false);
   const needUpdate = core.latest && core.version !== core.latest;
+
   const onCoreChange = useLockFn(async (core: ClashCore) => {
-    if (selected) return;
+    if (selected || lock) return;
     try {
+      setLoading(true);
+      onCoreChanged(core, "start");
       closeAllConnections();
       await changeClashCore(core);
       mutateVerge();
@@ -198,6 +221,9 @@ function CoreElement({ selected, core }: { selected: boolean; core: Core }) {
       useNotification(t("Success"), `Successfully switch to ${core}`);
     } catch (err: any) {
       useNotification(t("Error"), err?.message || err.toString());
+    } finally {
+      setLoading(false);
+      onCoreChanged(core, "finish");
     }
   });
 
@@ -233,7 +259,32 @@ function CoreElement({ selected, core }: { selected: boolean; core: Core }) {
   );
 
   return (
-    <ListItemButton selected={selected} onClick={() => onCoreChange(core.core)}>
+    <ListItemButton
+      selected={selected}
+      onClick={() => onCoreChange(core.core)}
+      style={{
+        position: "relative",
+      }}
+      sx={{
+        backgroundColor: loading
+          ? alpha(theme.palette.action.focus, 0.03)
+          : undefined,
+      }}
+    >
+      <CircularProgress
+        style={{
+          position: "absolute",
+          left: "50%",
+        }}
+        size="1.5em"
+        color="primary"
+        thickness={4}
+        disableShrink={true}
+        sx={{
+          visibility: loading ? "visible" : "hidden",
+        }}
+      />
+
       <ListItemText
         primary={
           <div

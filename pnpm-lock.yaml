@@ -72,8 +72,8 @@ dependencies:
     specifier: ^7.39.5
     version: 7.39.5(react@18.2.0)
   react-i18next:
-    specifier: ^12.0.0
-    version: 12.0.0(i18next@23.7.9)(react-dom@18.2.0)(react@18.2.0)
+    specifier: ^13.0.0
+    version: 13.5.0(i18next@23.7.9)(react-dom@18.2.0)(react@18.2.0)
   react-router-dom:
     specifier: ^6.4.3
     version: 6.4.3(react-dom@18.2.0)(react@18.2.0)
@@ -5670,10 +5670,10 @@ packages:
       react: 18.2.0
     dev: false
 
-  /react-i18next@12.0.0(i18next@23.7.9)(react-dom@18.2.0)(react@18.2.0):
-    resolution: {integrity: sha512-/O7N6aIEAl1FaWZBNvhdIo9itvF/MO/nRKr9pYqRc9LhuC1u21SlfwpiYQqvaeNSEW3g3qUXLREOWMt+gxrWbg==}
+  /react-i18next@13.5.0(i18next@23.7.9)(react-dom@18.2.0)(react@18.2.0):
+    resolution: {integrity: sha512-CFJ5NDGJ2MUyBohEHxljOq/39NQ972rh1ajnadG9BjTk+UXbHLq4z5DKEbEQBDoIhUmmbuS/fIMJKo6VOax1HA==}
     peerDependencies:
-      i18next: '>= 19.0.0'
+      i18next: '>= 23.2.3'
       react: '>= 16.8.0'
       react-dom: '*'
       react-native: '*'
@@ -5683,7 +5683,7 @@ packages:
       react-native:
         optional: true
     dependencies:
-      '@babel/runtime': 7.23.2
+      '@babel/runtime': 7.23.5
       html-parse-stringify: 3.0.1
       i18next: 23.7.9
       react: 18.2.0

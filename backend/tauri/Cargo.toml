@@ -58,7 +58,7 @@ tempfile = "3.8.1"
 glob = "0.3.1"
 
 [target.'cfg(windows)'.dependencies]
-runas = "=1.0.0"
+runas = "=1.1.0"
 deelevate = "0.2.0"
 winreg = { version = "0.50", features = ["transactions"] }
 windows-sys = { version = "0.48", features = [

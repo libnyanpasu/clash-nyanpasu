@@ -16,7 +16,7 @@ tauri-build = { version = "1", features = [] }
 warp = "0.3"
 which = "4.4.2"
 anyhow = "1.0"
-dirs = "5.0.0"
+dirs = "5.0.1"
 open = "4.0.1"
 log = "0.4.20"
 ctrlc = "3.4.1"

@@ -4,6 +4,7 @@ import type { RouteObject } from "react-router-dom";
 import ConnectionsPage from "./connections";
 import LogsPage from "./logs";
 import ProfilesPage from "./profiles";
+import ProvidersPage from "./providers";
 import ProxiesPage from "./proxies";
 import RulesPage from "./rules";
 import SettingsPage from "./settings";
@@ -39,6 +40,11 @@ export const routers = (
       label: "Label-Settings",
       path: "/settings",
       element: <SettingsPage />,
+    },
+    {
+      label: "Label-Providers",
+      path: "/providers",
+      element: <ProvidersPage />,
     },
   ] satisfies Array<RouteObject & { label: string }>
 ).map((router) => ({

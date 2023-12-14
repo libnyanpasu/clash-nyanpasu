@@ -1,0 +1,131 @@
+# thanks https://github.com/Ehviewer-Overhauled/Ehviewer templates.
+
+name: Bug 反馈 / Bug report
+description: 提交一个问题报告 / Create a bug report
+labels:
+  - "T: Bug"
+  - "S: Untriaged"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交问题报告前，还请首先完成文末的自查步骤
+
+        Please finish verify steps which list in the end first before create bug report
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤 / Step to reproduce
+      description: |
+        请在此处写下复现的方式，并携带错误日志，必要情况请带上截图/录屏
+
+        Please write down the reproduction steps here and include the error log. If necessary, please provide screenshots or recordings.
+      placeholder: |
+        1. 
+        2.
+        3.
+        [录屏] / [Screen recording]
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期行为 / Expected behaviour
+      description: |
+        在此处说明正常情况下应用的预期行为
+        Describe what should happened here
+      placeholder: |
+        它应该XXX...
+        It should be ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为 / Actual Behaviour
+      description: |
+        在此处描绘应用的实际行为，最好附上截图
+        Describe what actually happened here, screenshots is better
+      placeholder: |
+        实际上它XXX...
+        Actually it ...
+        [截图] / [Screenshots]
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: 应用日志 / App logs
+      description: |
+        在软件的设置内可以找到日志目录，请上传最小复现日志。
+        You can find the log directory in the software settings. Please upload the minimal reproduction log.
+      placeholder: 2023-12-12 09:58:17 INFO - [clash]:...
+    validations:
+      required: false
+
+  - type: textarea
+    id: more
+    attributes:
+      label: 备注 / Addition details
+      description: |
+        在此处写下其他您想说的内容
+        Describe addition details here
+      placeholder: |
+        其他有用的信息与附件
+        Additional details and attachments
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Clash Nyapasu 版本号 / Clash Nyapasu
+      description: 您可以在设置 - 关于处找到版本号 / You can get version code in Settings - About
+      placeholder: 1.4.1
+    validations:
+      required: true
+
+  - type: input
+    id: pre-release
+    attributes:
+      label: 是否为 Pre-release / Is pre-release version
+      description: 是否为 Pre-release 下载的应用，若是则填写对应的commit hash / Is this an app downloaded from Pre-release? If so, please fill in the corresponding commit hash.
+      placeholder: 26f05a0
+    validations:
+      required: true
+
+  - type: input
+    id: system
+    attributes:
+      label: 操作系统及版本 / OS version
+      description: 操作系统 + 版本号 / OS + version code
+      placeholder: Windows 11, macOS 14
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: check
+    attributes:
+      label: 自查步骤 / Verify steps
+      description: |
+        请确认您已经遵守所有必选项
+        Please ensure you have obtained all needed options
+      options:
+        - label: 如果您有足够的时间和能力，并愿意为此提交 PR ，请勾上此复选框 / Pull request is welcome. Check this if you want to start a pull request
+          required: false
+
+        - label: 您已仔细查看并知情 [Q&A](https://github.com/keiko233/clash-nyanpasu/blob/main/ISSUE.md) 中的内容 / You have checked [Q&A](https://github.com/keiko233/clash-nyanpasu/blob/main/ISSUE.md) carefully
+          required: true
+
+        - label: 您已搜索过 [Issue Tracker](https://github.com/keiko233/clash-nyanpasu/issues)，没有找到类似内容 / I have searched on [Issue Tracker](https://github.com/keiko233/clash-nyanpasu/issues), No duplicate or related open issue has been found
+          required: true
+
+        - label: 您确保这个 Issue 只提及一个问题。如果您有多个问题报告，烦请发起多个 Issue / Ensure there is only one bug report in this issue. Please make mutiply issue for mutiply bugs
+          required: true
+
+        - label: 您确保已使用最新 Pre-release 版本测试，并且该问题在最新 Pre-release 版本中并未解决 / This bug have not solved in latest Pre-release version
+          required: true

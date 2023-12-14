@@ -1,0 +1,42 @@
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 22 * * *" # 每天 06:15 UTC+8 自动构建
+
+name: Daily
+
+jobs:
+  generate_manifest:
+    name: Generate Manifest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: dev # Dev branch
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: pnpm/action-setup@v2
+        name: Install pnpm
+        with:
+          version: 8
+          run_install: false
+      - name: Install dependencies
+        run: pnpm install
+      - name: Generate Manifest
+        run: pnpm generate:manifest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: oleksiyrudenko/gha-git-credentials@v2-latest
+        with:
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          name: "github-actions[bot]"
+          email: "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Commit Manifest
+        run: |
+          git add .
+          git commit -m "chore(manifest): update manifest [skip ci]"
+          git push

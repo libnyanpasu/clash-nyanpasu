@@ -1,28 +1,28 @@
-import { useRef } from "react";
-import { useTranslation } from "react-i18next";
-import {
-  TextField,
-  Switch,
-  Select,
-  MenuItem,
-  Typography,
-  IconButton,
-  Tooltip,
-} from "@mui/material";
-import { ArrowForward, Settings, Shuffle } from "@mui/icons-material";
 import { DialogRef } from "@/components/base";
 import { useClash } from "@/hooks/use-clash";
-import { GuardState } from "./mods/guard-state";
-import { WebUIViewer } from "./mods/web-ui-viewer";
+import { useNotification } from "@/hooks/use-notification";
+import { useVerge } from "@/hooks/use-verge";
+import { invoke_uwp_tool } from "@/services/cmds";
+import getSystem from "@/utils/get-system";
+import { ArrowForward, Settings, Shuffle } from "@mui/icons-material";
+import {
+  IconButton,
+  MenuItem,
+  Select,
+  Switch,
+  TextField,
+  Tooltip,
+  Typography,
+} from "@mui/material";
+import { useRef } from "react";
+import { useTranslation } from "react-i18next";
+import { ClashCoreViewer } from "./mods/clash-core-viewer";
 import { ClashFieldViewer } from "./mods/clash-field-viewer";
 import { ClashPortViewer } from "./mods/clash-port-viewer";
 import { ControllerViewer } from "./mods/controller-viewer";
-import { SettingList, SettingItem } from "./mods/setting-comp";
-import { ClashCoreViewer } from "./mods/clash-core-viewer";
-import { invoke_uwp_tool } from "@/services/cmds";
-import getSystem from "@/utils/get-system";
-import { useVerge } from "@/hooks/use-verge";
-import { useNotification } from "@/hooks/use-notification";
+import { GuardState } from "./mods/guard-state";
+import { SettingItem, SettingList } from "./mods/setting-comp";
+import { WebUIViewer } from "./mods/web-ui-viewer";
 
 const isWIN = getSystem() === "windows";
 

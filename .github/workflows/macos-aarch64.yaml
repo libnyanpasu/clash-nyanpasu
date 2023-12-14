@@ -11,7 +11,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -27,7 +27,7 @@ jobs:
           rustup target add aarch64-apple-darwin
 
       - name: Install Node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
 

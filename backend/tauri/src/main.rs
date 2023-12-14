@@ -47,6 +47,12 @@ fn main() -> std::io::Result<()> {
             cmds::get_runtime_exists,
             cmds::get_runtime_logs,
             cmds::uwp::invoke_uwp_tool,
+            // updater
+            cmds::fetch_latest_core_versions,
+            cmds::update_core,
+            cmds::get_core_version,
+            // utils
+            cmds::collect_logs,
             // verge
             cmds::get_verge_config,
             cmds::patch_verge_config,

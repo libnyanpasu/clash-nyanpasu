@@ -1,14 +1,24 @@
 use crate::{
     config::*,
-    core::*,
+    core::{
+        updater::{ManifestVersion, ManifestVersionLatest},
+        *,
+    },
     feat,
-    utils::{dirs, help, resolve::save_window_state},
+    utils::{
+        candy, dirs, help,
+        resolve::{self, save_window_state},
+    },
 };
 use crate::{ret_err, wrap_err};
 use anyhow::{Context, Result};
+use chrono::Local;
+use log::debug;
 use serde_yaml::Mapping;
 use std::collections::{HashMap, VecDeque};
 use sysproxy::Sysproxy;
+
+use tauri::api::dialog::FileDialogBuilder;
 
 type CmdResult<T = ()> = Result<T, String>;
 
@@ -170,7 +180,7 @@ pub async fn patch_verge_config(payload: IVerge) -> CmdResult {
 }
 
 #[tauri::command]
-pub async fn change_clash_core(clash_core: Option<String>) -> CmdResult {
+pub async fn change_clash_core(clash_core: Option<ClashCore>) -> CmdResult {
     wrap_err!(CoreManager::global().change_core(clash_core).await)
 }
 
@@ -238,6 +248,57 @@ pub fn open_web_url(url: String) -> CmdResult<()> {
 pub fn save_window_size_state() -> CmdResult<()> {
     let handle = handle::Handle::global().app_handle.lock().clone().unwrap();
     wrap_err!(save_window_state(&handle, true))
+}
+
+#[tauri::command]
+pub async fn fetch_latest_core_versions() -> CmdResult<ManifestVersionLatest> {
+    let mut updater = updater::Updater::global().write().await; // It is intended to block here
+    wrap_err!(updater.fetch_latest().await)?;
+    Ok(updater.get_latest_versions())
+}
+
+#[tauri::command]
+pub async fn get_core_version(core_type: ClashCore) -> CmdResult<String> {
+    match tokio::task::spawn_blocking(move || resolve::resolve_core_version(&core_type)).await {
+        Ok(Ok(version)) => Ok(version),
+        Ok(Err(err)) => Err(format!("{err}")),
+        Err(err) => Err(format!("{err}")),
+    }
+}
+
+#[tauri::command]
+pub async fn collect_logs() -> CmdResult {
+    let now = Local::now().format("%Y-%m-%d");
+    let fname = format!("{}-log", now);
+    let builder = FileDialogBuilder::new();
+    builder
+        .add_filter("archive files", &["zip"])
+        .set_file_name(&fname)
+        .set_title("Save log archive")
+        .save_file(|file_path| match file_path {
+            None => (),
+            Some(path) => {
+                debug!("{:#?}", path.as_os_str());
+                match candy::collect_logs(&path) {
+                    Ok(_) => (),
+                    Err(err) => {
+                        log::error!(target: "app", "{err}");
+                    }
+                }
+            }
+        });
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn update_core(core_type: ClashCore) -> CmdResult {
+    wrap_err!(
+        updater::Updater::global()
+            .read()
+            .await
+            .update_core(&core_type)
+            .await
+    )
 }
 
 #[cfg(windows)]

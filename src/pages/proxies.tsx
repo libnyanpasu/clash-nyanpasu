@@ -26,7 +26,8 @@ export default function ProxyPage() {
 
   const modeList = useMemo(() => {
     if (
-      verge?.clash_core === "clash-meta" ||
+      verge?.clash_core === "mihomo" ||
+      verge?.clash_core === "mihomo-alpha" ||
       verge?.clash_core === "clash-rs"
     ) {
       return ["rule", "global", "direct"];

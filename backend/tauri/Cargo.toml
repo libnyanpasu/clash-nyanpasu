@@ -14,14 +14,14 @@ tauri-build = { version = "1", features = [] }
 
 [dependencies]
 warp = "0.3"
-which = "4.2.2"
+which = "4.4.2"
 anyhow = "1.0"
 dirs = "5.0.1"
-open = "4.0.1"
-log = "0.4.14"
+open = "5.0.0"
+log = "0.4.20"
 ctrlc = "3.4.1"
-dunce = "1.0.2"
-log4rs = "1.0.0"
+dunce = "1.0.4"
+log4rs = "1.2.0"
 nanoid = "0.4.0"
 chrono = "0.4.31"
 sysinfo = "0.29"
@@ -30,14 +30,15 @@ rquickjs = "0.1.7"
 serde_json = "1.0"
 serde_yaml = "0.9"
 auto-launch = "0.5"
-once_cell = "1.14.0"
+once_cell = "1.19.0"
 port_scanner = "0.1.5"
 delay_timer = "0.11.4"
-parking_lot = "0.12.0"
+parking_lot = "0.12.1"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
 tauri = { version = "1.5.3", features = [
+  "os-all",
   "global-shortcut-all",
   "notification-all",
   "process-all",
@@ -46,16 +47,22 @@ tauri = { version = "1.5.3", features = [
   "updater",
   "window-all",
 ] }
-window-vibrancy = { version = "0.3.0" }
+window-vibrancy = { version = "0.4.3" }
 window-shadows = { version = "0.2.2" }
 wry = { version = "0.24.6" }
+semver = "1.0"
+zip = "0.6.6"
+zip-extensions = "0.6.2"
+gunzip = { version = "0.1.0", git = "https://github.com/TechHara/gunzip.git" }
+tempfile = "3.8.1"
+glob = "0.3.1"
 async-trait = "0.1.74"
 dyn-clone = "1.0.16"
 rs-snowflake = "0.6"
 sled = "0.34.7"
 
 [target.'cfg(windows)'.dependencies]
-runas = "=1.0.0"
+runas = "=1.1.0"
 deelevate = "0.2.0"
 winreg = { version = "0.50", features = ["transactions"] }
 windows-sys = { version = "0.48", features = [
@@ -69,6 +76,7 @@ features = [
   "global-shortcut-all",
   "icon-png",
   "process-all",
+  "dialog-all",
   "shell-all",
   "system-tray",
   "updater",
@@ -80,6 +88,7 @@ version = "1.5.3"
 features = [
   "global-shortcut-all",
   "process-all",
+  "dialog-all",
   "shell-all",
   "system-tray",
   "updater",

@@ -1,9 +1,12 @@
-import { useRef, useState } from "react";
-import { alpha, Box, IconButton, styled } from "@mui/material";
-import { DeleteRounded } from "@mui/icons-material";
+import Kbd from "@/components/common/kbd";
 import { parseHotkey } from "@/utils/parse-hotkey";
+import { DeleteRounded } from "@mui/icons-material";
+import { Box, IconButton, alpha, styled } from "@mui/material";
+import { FocusEvent, useRef, useState } from "react";
 
-const KeyWrapper = styled("div")(({ theme }) => ({
+const KeyWrapper = styled("div")<{
+  isDuplicate?: boolean;
+}>(({ theme, isDuplicate }) => ({
   position: "relative",
   width: 165,
   minHeight: 36,
@@ -28,39 +31,36 @@ const KeyWrapper = styled("div")(({ theme }) => ({
     height: "100%",
     minHeight: 36,
     boxSizing: "border-box",
-    padding: "3px 4px",
+    padding: "2px 5px",
     border: "1px solid",
     borderRadius: 4,
-    borderColor: alpha(theme.palette.text.secondary, 0.15),
+    gap: 4,
+    borderColor: isDuplicate
+      ? theme.palette.error.main
+      : alpha(theme.palette.text.secondary, 0.15),
     "&:last-child": {
       marginRight: 0,
     },
   },
-  ".item": {
-    color: theme.palette.text.primary,
-    border: "1px solid",
-    borderColor: alpha(theme.palette.text.secondary, 0.2),
-    borderRadius: "2px",
-    padding: "1px 1px",
-    margin: "2px 0",
-    marginRight: 8,
-  },
 }));
 
 interface Props {
+  func: string;
+  isDuplicate: boolean;
   value: string[];
   onChange: (value: string[]) => void;
+  onBlur?: (e: FocusEvent, func: string) => void;
 }
 
 export const HotkeyInput = (props: Props) => {
-  const { value, onChange } = props;
+  const { value, onChange, func, isDuplicate } = props;
 
   const changeRef = useRef<string[]>([]);
   const [keys, setKeys] = useState(value);
 
   return (
     <Box sx={{ display: "flex", alignItems: "center" }}>
-      <KeyWrapper>
+      <KeyWrapper isDuplicate={isDuplicate}>
         <input
           onKeyUp={() => {
             const ret = changeRef.current.slice();
@@ -80,13 +80,12 @@ export const HotkeyInput = (props: Props) => {
             changeRef.current = [...new Set([...changeRef.current, key])];
             setKeys(changeRef.current);
           }}
+          onBlur={(e) => props.onBlur && props.onBlur(e, func)}
         />
 
         <div className="list">
           {keys.map((key) => (
-            <div key={key} className="item">
-              {key}
-            </div>
+            <Kbd key={key}>{key}</Kbd>
           ))}
         </div>
       </KeyWrapper>
@@ -98,6 +97,7 @@ export const HotkeyInput = (props: Props) => {
         onClick={() => {
           onChange([]);
           setKeys([]);
+          props.onBlur && props.onBlur({} as never, func);
         }}
       >
         <DeleteRounded fontSize="inherit" />

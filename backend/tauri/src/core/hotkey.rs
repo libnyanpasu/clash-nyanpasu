@@ -11,6 +11,14 @@ pub struct Hotkey {
 
     app_handle: Arc<Mutex<Option<AppHandle>>>,
 }
+// (hotkey, func)
+type HotKeyOp<'a> = (&'a str, HotKeyOpType<'a>);
+
+enum HotKeyOpType<'a> {
+    Unbind(&'a str),
+    Change(&'a str, &'a str),
+    Bind(&'a str),
+}
 
 impl Hotkey {
     pub fn global() -> &'static Hotkey {
@@ -76,17 +84,17 @@ impl Hotkey {
         }
 
         let f = match func.trim() {
-            "open_dashboard" => || feat::open_dashboard(),
+            "open_or_close_dashboard" => feat::toggle_dashboard,
             "clash_mode_rule" => || feat::change_clash_mode("rule".into()),
             "clash_mode_global" => || feat::change_clash_mode("global".into()),
             "clash_mode_direct" => || feat::change_clash_mode("direct".into()),
             "clash_mode_script" => || feat::change_clash_mode("script".into()),
-            "toggle_system_proxy" => || feat::toggle_system_proxy(),
-            "enable_system_proxy" => || feat::enable_system_proxy(),
-            "disable_system_proxy" => || feat::disable_system_proxy(),
-            "toggle_tun_mode" => || feat::toggle_tun_mode(),
-            "enable_tun_mode" => || feat::enable_tun_mode(),
-            "disable_tun_mode" => || feat::disable_tun_mode(),
+            "toggle_system_proxy" => feat::toggle_system_proxy,
+            "enable_system_proxy" => feat::enable_system_proxy,
+            "disable_system_proxy" => feat::disable_system_proxy,
+            "toggle_tun_mode" => feat::toggle_tun_mode,
+            "enable_tun_mode" => feat::enable_tun_mode,
+            "disable_tun_mode" => feat::disable_tun_mode,
 
             _ => bail!("invalid function \"{func}\""),
         };
@@ -97,7 +105,7 @@ impl Hotkey {
     }
 
     fn unregister(&self, hotkey: &str) -> Result<()> {
-        self.get_manager()?.unregister(&hotkey)?;
+        self.get_manager()?.unregister(hotkey)?;
         log::info!(target: "app", "unregister hotkey {hotkey}");
         Ok(())
     }
@@ -107,26 +115,31 @@ impl Hotkey {
         let old_map = Self::get_map_from_vec(&current);
         let new_map = Self::get_map_from_vec(&new_hotkeys);
 
-        let (del, add) = Self::get_diff(old_map, new_map);
+        let ops = Self::get_ops(old_map, new_map);
 
         // 先检查一遍所有新的热键是不是可以用的
-        for (hotkey, _) in add.iter() {
-            Self::check_key(hotkey)?;
+        for (hotkey, op) in ops.iter() {
+            if let HotKeyOpType::Bind(_) = op {
+                Self::check_key(hotkey)?
+            }
         }
 
-        del.iter().for_each(|key| {
-            let _ = self.unregister(key);
-        });
-
-        add.iter().for_each(|(key, func)| {
-            log_err!(self.register(key, func));
-        });
+        for (hotkey, op) in ops.iter() {
+            match op {
+                HotKeyOpType::Unbind(_) => self.unregister(hotkey)?,
+                HotKeyOpType::Change(_, new_func) => {
+                    self.unregister(hotkey)?;
+                    self.register(hotkey, new_func)?;
+                }
+                HotKeyOpType::Bind(func) => self.register(hotkey, func)?,
+            }
+        }
 
         *current = new_hotkeys;
         Ok(())
     }
 
-    fn get_map_from_vec<'a>(hotkeys: &'a Vec<String>) -> HashMap<&'a str, &'a str> {
+    fn get_map_from_vec(hotkeys: &[String]) -> HashMap<&str, &str> {
         let mut map = HashMap::new();
 
         hotkeys.iter().for_each(|hotkey| {
@@ -143,32 +156,32 @@ impl Hotkey {
         map
     }
 
-    fn get_diff<'a>(
+    fn get_ops<'a>(
         old_map: HashMap<&'a str, &'a str>,
         new_map: HashMap<&'a str, &'a str>,
-    ) -> (Vec<&'a str>, Vec<(&'a str, &'a str)>) {
-        let mut del_list = vec![];
-        let mut add_list = vec![];
-
-        old_map.iter().for_each(|(&key, func)| {
+    ) -> Vec<HotKeyOp<'a>> {
+        let mut list = Vec::<HotKeyOp<'a>>::new();
+        old_map.iter().for_each(|(key, func)| {
             match new_map.get(key) {
                 Some(new_func) => {
                     if new_func != func {
-                        del_list.push(key);
-                        add_list.push((key, *new_func));
+                        list.push((*key, HotKeyOpType::Change(func, new_func)))
                     }
-                }
-                None => del_list.push(key),
-            };
-        });
 
-        new_map.iter().for_each(|(&key, &func)| {
-            if old_map.get(key).is_none() {
-                add_list.push((key, func));
+                    // 无变化，无需操作
+                }
+                None => {
+                    list.push((*key, HotKeyOpType::Unbind(func)));
+                }
             }
         });
 
-        (del_list, add_list)
+        new_map.iter().for_each(|(key, func)| {
+            if !old_map.contains_key(key) {
+                list.push((*key, HotKeyOpType::Bind(func)));
+            }
+        });
+        list
     }
 }
 

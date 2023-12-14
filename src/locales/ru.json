@@ -99,13 +99,16 @@
   "Clash Field": "Используемые настройки Clash",
   "Runtime Config": "Используемый конфиг",
   "ReadOnly": "Только для чтения",
+  "Check Updates": "Проверить обновления",
   "Restart": "Перезапуск",
+
+  "Collect Logs": "Собрать логи",
 
   "Back": "Назад",
   "Save": "Сохранить",
   "Cancel": "Отмена",
 
-  "open_dashboard": "Open Dashboard",
+  "open_or_close_dashboard": "Открыть/закрыть панель управления",
   "clash_mode_rule": "Режим правил",
   "clash_mode_global": "Глобальный режим",
   "clash_mode_direct": "Прямой режим",

@@ -196,7 +196,20 @@ async function getLatestVersion() {
     //   const v = await response.text();
     //   MIHOMO_VERSION = v.trim();
     // }
-    const response = await fetch(MIHOMO_ALPHA_VERSION_URL, { method: "GET" });
+    const opts = {} as Partial<RequestInit>;
+    const httpProxy =
+      process.env.HTTP_PROXY ||
+      process.env.http_proxy ||
+      process.env.HTTPS_PROXY ||
+      process.env.https_proxy;
+
+    if (httpProxy) {
+      opts.agent = new HttpsProxyAgent(httpProxy);
+    }
+    const response = await fetch(MIHOMO_ALPHA_VERSION_URL, {
+      method: "GET",
+      ...opts,
+    });
     const v = await response.text();
     MIHOMO_ALPHA_VERSION = v.trim();
     console.log(`Latest release version: ${MIHOMO_ALPHA_VERSION_URL}`);
@@ -412,9 +425,10 @@ async function downloadFile(url: string, path: string) {
 /**
  * main
  */
+// const SERVICE_URL =
+//   "https://github.com/zzzgydi/clash-verge-service/releases/download/latest";
 const SERVICE_URL =
-  "https://github.com/zzzgydi/clash-verge-service/releases/download/latest";
-
+  "https://github.com/greenhat616/clash-verge-service/releases/download/latest";
 const resolveService = () =>
   resolveResource({
     file: "clash-verge-service.exe",

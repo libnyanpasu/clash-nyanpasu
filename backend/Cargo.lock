@@ -5858,14 +5858,15 @@ dependencies = [
 
 [[package]]
 name = "window-vibrancy"
-version = "0.3.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f762d9cc392fb85e6b1b5eed1ef13d73fed5149a5cbb017a7137497d14ef612"
+checksum = "af6abc2b9c56bd95887825a1ce56cde49a2a97c07e28db465d541f5098a2656c"
 dependencies = [
- "cocoa 0.24.1",
+ "cocoa 0.25.0",
  "objc",
  "raw-window-handle",
- "windows-sys 0.42.0",
+ "windows-sys 0.52.0",
+ "windows-version",
 ]
 
 [[package]]

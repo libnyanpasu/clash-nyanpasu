@@ -13,7 +13,7 @@ description = "A library for set/get system proxy. Supports Windows, macOS and l
 thiserror = "1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-interfaces = "0.0.8"
+interfaces = "0.0.9"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 iptools = "0.2.4"

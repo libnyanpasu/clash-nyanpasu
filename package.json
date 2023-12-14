@@ -76,7 +76,7 @@
     "@commitlint/cli": "18.4.3",
     "@commitlint/config-conventional": "18.4.3",
     "@tauri-apps/cli": "^1.5.7",
-    "@types/fs-extra": "^9.0.13",
+    "@types/fs-extra": "^11.0.0",
     "@types/js-cookie": "^3.0.2",
     "@types/lodash": "^4.14.180",
     "@types/lodash-es": "^4.17.7",

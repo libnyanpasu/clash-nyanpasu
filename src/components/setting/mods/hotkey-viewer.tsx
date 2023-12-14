@@ -2,8 +2,14 @@ import { BaseDialog, DialogRef } from "@/components/base";
 import { useNotification } from "@/hooks/use-notification";
 import { useVerge } from "@/hooks/use-verge";
 import { Typography, styled } from "@mui/material";
-import { useLockFn } from "ahooks";
-import { forwardRef, useImperativeHandle, useState } from "react";
+import { useLatest, useLockFn } from "ahooks";
+import {
+  FocusEvent,
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { HotkeyInput } from "./hotkey-input";
 
@@ -15,7 +21,7 @@ const ItemWrapper = styled("div")`
 `;
 
 const HOTKEY_FUNC = [
-  "open_dashboard",
+  "open_or_close_dashboard",
   "clash_mode_rule",
   "clash_mode_global",
   "clash_mode_direct",
@@ -35,6 +41,7 @@ export const HotkeyViewer = forwardRef<DialogRef>((props, ref) => {
   const { verge, patchVerge } = useVerge();
 
   const [hotkeyMap, setHotkeyMap] = useState<Record<string, string[]>>({});
+  const hotkeyMapRef = useLatest(hotkeyMap);
 
   useImperativeHandle(ref, () => ({
     open: () => {
@@ -54,11 +61,26 @@ export const HotkeyViewer = forwardRef<DialogRef>((props, ref) => {
       });
 
       setHotkeyMap(map);
+      setDuplicateItems([]);
     },
     close: () => setOpen(false),
   }));
 
-  const onSave = useLockFn(async () => {
+  // 检查是否有快捷键重复
+  const [duplicateItems, setDuplicateItems] = useState<string[]>([]);
+  const isDuplicate = !!duplicateItems.length;
+  const onBlur = (e: FocusEvent, func: string) => {
+    console.log(func);
+    const keys = Object.values(hotkeyMapRef.current).flat().filter(Boolean);
+    const set = new Set(keys);
+    if (keys.length !== set.size) {
+      setDuplicateItems([...duplicateItems, func]);
+    } else {
+      setDuplicateItems(duplicateItems.filter((e) => e !== func));
+    }
+  };
+
+  const saveState = useLockFn(async () => {
     const hotkeys = Object.entries(hotkeyMap)
       .map(([func, keys]) => {
         if (!func || !keys?.length) return "";
@@ -76,11 +98,22 @@ export const HotkeyViewer = forwardRef<DialogRef>((props, ref) => {
 
     try {
       await patchVerge({ hotkeys });
-      setOpen(false);
     } catch (err: any) {
       useNotification(t("Error"), err.message || err.toString());
     }
   });
+
+  useEffect(() => {
+    if (!duplicateItems.length && open) {
+      saveState();
+    }
+  }, [hotkeyMap, duplicateItems, open]);
+
+  const onSave = () => {
+    saveState().then(() => {
+      setOpen(false);
+    });
+  };
 
   return (
     <BaseDialog
@@ -88,6 +121,7 @@ export const HotkeyViewer = forwardRef<DialogRef>((props, ref) => {
       title={t("Hotkey Viewer")}
       contentSx={{ width: 450, maxHeight: 330 }}
       okBtn={t("Save")}
+      okBtnDisabled={isDuplicate}
       cancelBtn={t("Cancel")}
       onClose={() => setOpen(false)}
       onCancel={() => setOpen(false)}
@@ -97,8 +131,15 @@ export const HotkeyViewer = forwardRef<DialogRef>((props, ref) => {
         <ItemWrapper key={func}>
           <Typography>{t(func)}</Typography>
           <HotkeyInput
+            func={func}
+            isDuplicate={duplicateItems.includes(func)}
+            onBlur={onBlur}
             value={hotkeyMap[func] ?? []}
-            onChange={(v) => setHotkeyMap((m) => ({ ...m, [func]: v }))}
+            onChange={(v) => {
+              const map = { ...hotkeyMapRef.current, [func]: v };
+              hotkeyMapRef.current = map;
+              setHotkeyMap(map);
+            }}
           />
         </ItemWrapper>
       ))}

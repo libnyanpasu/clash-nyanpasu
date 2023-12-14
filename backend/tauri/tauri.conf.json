@@ -28,7 +28,8 @@
       "resources": ["resources"],
       "externalBin": [
         "sidecar/clash",
-        "sidecar/clash-meta",
+        "sidecar/mihomo",
+        "sidecar/mihomo-alpha",
         "sidecar/clash-rs"
       ],
       "copyright": "© 2022 zzzgydi All Rights Reserved",
@@ -78,6 +79,9 @@
         "all": true
       },
       "notification": {
+        "all": true
+      },
+      "os": {
         "all": true
       }
     },

@@ -37,11 +37,25 @@ parking_lot = "0.12.1"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
-tauri = { version = "1.5.3", features = ["global-shortcut-all", "notification-all", "process-all", "shell-all", "system-tray", "updater", "window-all"] }
+tauri = { version = "1.5.3", features = [
+  "os-all",
+  "global-shortcut-all",
+  "notification-all",
+  "process-all",
+  "shell-all",
+  "system-tray",
+  "updater",
+  "window-all",
+] }
 window-vibrancy = { version = "0.3.0" }
 window-shadows = { version = "0.2.2" }
 wry = { version = "0.24.6" }
-
+semver = "1.0"
+zip = "0.6.6"
+zip-extensions = "0.6.2"
+gunzip = { version = "0.1.0", git = "https://github.com/TechHara/gunzip.git" }
+tempfile = "3.8.1"
+glob = "0.3.1"
 
 [target.'cfg(windows)'.dependencies]
 runas = "=1.0.0"
@@ -58,6 +72,7 @@ features = [
   "global-shortcut-all",
   "icon-png",
   "process-all",
+  "dialog-all",
   "shell-all",
   "system-tray",
   "updater",
@@ -69,6 +84,7 @@ version = "1.5.3"
 features = [
   "global-shortcut-all",
   "process-all",
+  "dialog-all",
   "shell-all",
   "system-tray",
   "updater",
@@ -76,7 +92,6 @@ features = [
   "native-tls-vendored",
   "reqwest-native-tls-vendored",
 ]
-
 
 [features]
 default = ["custom-protocol"]

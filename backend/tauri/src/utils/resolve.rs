@@ -1,10 +1,12 @@
-use crate::config::{IVerge, WindowState};
+use crate::config::{ClashCore, IVerge, WindowState};
 use crate::{config::Config, core::*, utils::init, utils::server};
 use crate::{log_err, trace_err};
 use anyhow::Result;
+use semver::Version;
 use serde::de;
 use serde_yaml::Mapping;
 use std::net::TcpListener;
+use tauri::api::process::Command;
 use tauri::{App, AppHandle, Manager};
 
 pub fn find_unused_port() -> Result<u16> {
@@ -209,6 +211,18 @@ pub fn create_window(app_handle: &AppHandle) {
     crate::log_err!(builder.decorations(true).transparent(false).build());
 }
 
+/// close main window
+pub fn close_window(app_handle: &AppHandle) {
+    if let Some(window) = app_handle.get_window("main") {
+        trace_err!(window.close(), "close window");
+    }
+}
+
+/// is window open
+pub fn is_window_open(app_handle: &AppHandle) -> bool {
+    app_handle.get_window("main").is_some()
+}
+
 /// save window size and position
 #[deprecated]
 pub fn save_window_size_position(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
@@ -273,4 +287,34 @@ pub fn save_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<(
     }
 
     Ok(())
+}
+
+/// resolve core version
+// TODO: use enum instead
+pub fn resolve_core_version(core_type: &ClashCore) -> Result<String> {
+    let core = core_type.clone().to_string();
+    log::debug!(target: "app", "check config in `{core}`");
+    let cmd = match core_type {
+        ClashCore::ClashPremium | ClashCore::Mihomo | ClashCore::MihomoAlpha => {
+            Command::new_sidecar(core)?.args(["-v"])
+        }
+        ClashCore::ClashRs => Command::new_sidecar(core)?.args(["-V"]),
+    };
+    let out = cmd.output()?;
+    log::debug!(target: "app", "get core version: {:?}", out);
+    if !out.status.success() {
+        return Err(anyhow::anyhow!("failed to get core version"));
+    }
+    let out = out.stdout.trim().split(' ').collect::<Vec<&str>>();
+    for item in out {
+        log::debug!(target: "app", "check item: {}", item);
+        if item.starts_with('v')
+            || item.starts_with("n")
+            || item.starts_with("alpha")
+            || Version::parse(item).is_ok()
+        {
+            return Ok(item.to_string());
+        }
+    }
+    Err(anyhow::anyhow!("failed to get core version"))
 }

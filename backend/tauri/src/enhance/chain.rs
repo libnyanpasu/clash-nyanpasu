@@ -1,5 +1,5 @@
 use crate::{
-    config::PrfItem,
+    config::{ClashCore, PrfItem},
     utils::{dirs, help},
 };
 use serde_yaml::Mapping;
@@ -20,7 +20,7 @@ pub enum ChainType {
 #[derive(Debug, Clone)]
 pub enum ChainSupport {
     Clash,
-    ClashMeta,
+    Mihomo,
     ClashRs,
     All,
 }
@@ -62,8 +62,8 @@ impl ChainItem {
             ChainItem::to_script("verge_hy_alpn", include_str!("./builtin/meta_hy_alpn.js"));
 
         vec![
-            (ChainSupport::ClashMeta, hy_alpn),
-            (ChainSupport::ClashMeta, meta_guard),
+            (ChainSupport::Mihomo, hy_alpn),
+            (ChainSupport::Mihomo, meta_guard),
         ]
     }
 
@@ -76,13 +76,13 @@ impl ChainItem {
 }
 
 impl ChainSupport {
-    pub fn is_support(&self, core: Option<&String>) -> bool {
+    pub fn is_support(&self, core: Option<&ClashCore>) -> bool {
         match core {
-            Some(core) => match (self, core.as_str()) {
+            Some(core) => match (self, core) {
                 (ChainSupport::All, _) => true,
-                (ChainSupport::Clash, "clash") => true,
-                (ChainSupport::ClashRs, "clash-rs") => true,
-                (ChainSupport::ClashMeta, "clash-meta") => true,
+                (ChainSupport::Clash, ClashCore::ClashPremium) => true,
+                (ChainSupport::ClashRs, ClashCore::ClashRs) => true,
+                (ChainSupport::Mihomo, ClashCore::Mihomo | ClashCore::MihomoAlpha) => true,
                 _ => false,
             },
             None => true,

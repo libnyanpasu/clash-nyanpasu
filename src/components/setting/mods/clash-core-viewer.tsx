@@ -4,27 +4,41 @@ import { useVerge } from "@/hooks/use-verge";
 import { closeAllConnections } from "@/services/api";
 import {
   changeClashCore,
+  fetchLatestCoreVersions,
+  getCoreVersion,
   grantPermission,
   restartSidecar,
+  updateCore,
 } from "@/services/cmds";
 import getSystem from "@/utils/get-system";
-import { Lock } from "@mui/icons-material";
+import { FiberManualRecord, Lock, Update } from "@mui/icons-material";
+import { LoadingButton } from "@mui/lab";
 import {
   Box,
-  Button,
+  CircularProgress,
   IconButton,
   List,
   ListItemButton,
   ListItemText,
 } from "@mui/material";
-import { useLockFn } from "ahooks";
+import { useAsyncEffect, useLockFn } from "ahooks";
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { mutate } from "swr";
 
-const VALID_CORE = [
-  { name: "Clash", core: "clash" },
-  { name: "Clash Meta", core: "clash-meta" },
+type ClashCore = Required<IVergeConfig>["clash_core"];
+
+interface Core {
+  name: string;
+  core: ClashCore;
+  version?: string;
+  latest?: string;
+}
+
+const VALID_CORE: Core[] = [
+  { name: "Clash Premium", core: "clash" },
+  { name: "Mihomo", core: "mihomo" },
+  { name: "Mihomo Alpha", core: "mihomo-alpha" },
   { name: "Clash Rust", core: "clash-rs" },
 ];
 
@@ -33,10 +47,10 @@ const OS = getSystem();
 export const ClashCoreViewer = forwardRef<DialogRef>((props, ref) => {
   const { t } = useTranslation();
 
-  const { verge, mutateVerge } = useVerge();
+  const { verge } = useVerge();
 
   const [open, setOpen] = useState(false);
-
+  const [validCores, setValidCores] = useState<Core[]>(VALID_CORE);
   useImperativeHandle(ref, () => ({
     open: () => setOpen(true),
     close: () => setOpen(false),
@@ -44,9 +58,135 @@ export const ClashCoreViewer = forwardRef<DialogRef>((props, ref) => {
 
   const { clash_core = "clash" } = verge ?? {};
 
-  const onCoreChange = useLockFn(async (core: string) => {
-    if (core === clash_core) return;
+  const [checkUpdatesLoading, setCheckUpdatesLoading] = useState(false);
+  const onCheckUpdates = useLockFn(async () => {
+    try {
+      setCheckUpdatesLoading(true);
+      const results = await fetchLatestCoreVersions();
+      const buf = validCores.map((each) => ({
+        ...each,
+        latest:
+          each.core === "clash"
+            ? results["clash_premium"]
+            : results[each.core.replace(/-/g, "_") as keyof typeof results],
+      }));
+      setValidCores(buf);
+      useNotification(t("Success"), `Successfully check updates`);
+    } catch (e) {
+      if (e instanceof Error) {
+        useNotification(t("Error"), e.message);
+      } else if (typeof e === "string") {
+        useNotification(t("Error"), e);
+      } else {
+        console.error(e);
+      }
+    } finally {
+      setCheckUpdatesLoading(false);
+    }
+  });
 
+  const [restartLoading, setRestartLoading] = useState(false);
+  const onRestart = useLockFn(async () => {
+    try {
+      setRestartLoading(true);
+      await restartSidecar();
+      useNotification(t("Success"), `Successfully restart core`);
+    } catch (err: any) {
+      useNotification(t("Error"), err?.message || err.toString());
+    } finally {
+      setRestartLoading(false);
+    }
+  });
+
+  useAsyncEffect(async () => {
+    try {
+      const versions = await Promise.all(
+        VALID_CORE.reduce(
+          (acc, each) => acc.concat(getCoreVersion(each.core)),
+          [] as Promise<string>[],
+        ),
+      );
+      setValidCores(
+        VALID_CORE.map((each, idx) => ({
+          ...each,
+          version: !isNaN(Number(versions[idx][0]))
+            ? `v${versions[idx]}`
+            : versions[idx],
+        })),
+      );
+    } catch (e) {
+      if (e instanceof Error) {
+        useNotification(t("Error"), `Failed to get core version: ${e.message}`);
+      } else if (typeof e === "string") {
+        useNotification(t("Error"), `Failed to get core version: ${e}`);
+      } else {
+        console.error(e);
+      }
+    }
+  }, []);
+
+  return (
+    <BaseDialog
+      open={open}
+      title={
+        <Box display="flex" gap={2}>
+          {t("Clash Core")}
+          <div style={{ flex: 1 }} />
+          <LoadingButton
+            variant="outlined"
+            size="small"
+            onClick={onCheckUpdates}
+            loading={checkUpdatesLoading}
+            disabled={checkUpdatesLoading}
+          >
+            {t("Check Updates")}
+          </LoadingButton>
+
+          <LoadingButton
+            variant="contained"
+            size="small"
+            loading={restartLoading}
+            onClick={onRestart}
+            disabled={restartLoading}
+          >
+            {t("Restart")}
+          </LoadingButton>
+        </Box>
+      }
+      contentSx={{
+        pb: 0,
+        width: 380,
+        height: 310,
+        overflowY: "auto",
+        userSelect: "text",
+        marginTop: "-8px",
+      }}
+      disableOk
+      cancelBtn={t("Back")}
+      onClose={() => setOpen(false)}
+      onCancel={() => setOpen(false)}
+    >
+      <List component="nav">
+        {validCores.map((each) => (
+          <CoreElement
+            key={each.core}
+            selected={each.core === clash_core}
+            core={each}
+          />
+        ))}
+      </List>
+    </BaseDialog>
+  );
+});
+
+ClashCoreViewer.displayName = "ClashCoreViewer";
+
+function CoreElement({ selected, core }: { selected: boolean; core: Core }) {
+  const { t } = useTranslation();
+  const { mutateVerge } = useVerge();
+  const needUpdate = core.latest && core.version !== core.latest;
+  const onCoreChange = useLockFn(async (core: ClashCore) => {
+    if (selected) return;
     try {
       closeAllConnections();
       await changeClashCore(core);
@@ -65,75 +205,93 @@ export const ClashCoreViewer = forwardRef<DialogRef>((props, ref) => {
     try {
       await grantPermission(core);
       // 自动重启
-      if (core === clash_core) await restartSidecar();
+      if (selected) await restartSidecar();
       useNotification(t("Success"), `Successfully grant permission to ${core}`);
     } catch (err: any) {
       useNotification(t("Error"), err?.message || err.toString());
     }
   });
 
-  const onRestart = useLockFn(async () => {
-    try {
-      await restartSidecar();
-      useNotification(t("Success"), `Successfully restart core`);
-    } catch (err: any) {
-      useNotification(t("Error"), err?.message || err.toString());
-    }
-  });
+  const [updateCoreLoading, setUpdateCoreLoading] = useState(false);
+  const onUpdateCore = useLockFn(
+    async (core: Required<IVergeConfig>["clash_core"]) => {
+      try {
+        setUpdateCoreLoading(true);
+        await updateCore(core);
+        mutateVerge();
+        setTimeout(() => {
+          mutate("getClashConfig");
+          mutate("getVersion");
+        }, 100);
+        useNotification(t("Success"), `Successfully updated to ${core}`);
+      } catch (err: any) {
+        useNotification(t("Error"), err?.message || err.toString());
+      } finally {
+        setUpdateCoreLoading(false);
+      }
+    },
+  );
 
   return (
-    <BaseDialog
-      open={open}
-      title={
-        <Box display="flex" justifyContent="space-between">
-          {t("Clash Core")}
-
-          <Button variant="contained" size="small" onClick={onRestart}>
-            {t("Restart")}
-          </Button>
-        </Box>
-      }
-      contentSx={{
-        pb: 0,
-        width: 320,
-        height: 200,
-        overflowY: "auto",
-        userSelect: "text",
-        marginTop: "-8px",
-      }}
-      disableOk
-      cancelBtn={t("Back")}
-      onClose={() => setOpen(false)}
-      onCancel={() => setOpen(false)}
-    >
-      <List component="nav">
-        {VALID_CORE.map((each) => (
-          <ListItemButton
-            key={each.core}
-            selected={each.core === clash_core}
-            onClick={() => onCoreChange(each.core)}
+    <ListItemButton selected={selected} onClick={() => onCoreChange(core.core)}>
+      <ListItemText
+        primary={
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+            }}
           >
-            <ListItemText primary={each.name} secondary={`/${each.core}`} />
+            <span>{core.name}</span>
 
-            {(OS === "macos" || OS === "linux") && (
-              <IconButton
-                color="inherit"
-                size="small"
-                edge="end"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onGrant(each.core);
+            {needUpdate && (
+              <FiberManualRecord
+                fontSize="small"
+                color="secondary"
+                style={{
+                  transform: "scale(0.5)",
                 }}
-              >
-                <Lock fontSize="inherit" />
-              </IconButton>
+              />
             )}
-          </ListItemButton>
-        ))}
-      </List>
-    </BaseDialog>
+          </div>
+        }
+        secondary={
+          needUpdate
+            ? `${core.version} (${core.latest})`
+            : core.version ?? `/${core.core}`
+        }
+      />
+      {needUpdate && (
+        <IconButton
+          color="inherit"
+          size="small"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onUpdateCore(core.core);
+          }}
+        >
+          {updateCoreLoading ? (
+            <CircularProgress size="1em" />
+          ) : (
+            <Update fontSize="inherit" />
+          )}
+        </IconButton>
+      )}
+      {(OS === "macos" || OS === "linux") && (
+        <IconButton
+          color="inherit"
+          size="small"
+          edge="end"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onGrant(core.core);
+          }}
+        >
+          <Lock fontSize="inherit" />
+        </IconButton>
+      )}
+    </ListItemButton>
   );
-});
-
-ClashCoreViewer.displayName = "ClashCoreViewer";
+}

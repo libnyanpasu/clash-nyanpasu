@@ -110,7 +110,10 @@
   "Clash Field": "Clash Field",
   "Runtime Config": "Runtime Config",
   "ReadOnly": "ReadOnly",
+  "Check Updates": "Check Updates",
   "Restart": "Restart",
+
+  "Collect Logs": "Collect Logs",
 
   "Back": "Back",
   "Save": "Save",
@@ -120,7 +123,7 @@
   "Download Speed": "Download Speed",
   "Upload Speed": "Upload Speed",
 
-  "open_dashboard": "Open Dashboard",
+  "open_or_close_dashboard": "Open or Close Dashboard",
   "clash_mode_rule": "Rule Mode",
   "clash_mode_global": "Global Mode",
   "clash_mode_direct": "Direct Mode",

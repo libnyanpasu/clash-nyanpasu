@@ -51,8 +51,8 @@ dependencies:
     specifier: 10.16.16
     version: 10.16.16(react-dom@18.2.0)(react@18.2.0)
   i18next:
-    specifier: ^22.0.4
-    version: 22.0.4
+    specifier: ^23.0.0
+    version: 23.7.9
   lodash-es:
     specifier: ^4.17.21
     version: 4.17.21
@@ -73,7 +73,7 @@ dependencies:
     version: 7.39.5(react@18.2.0)
   react-i18next:
     specifier: ^12.0.0
-    version: 12.0.0(i18next@22.0.4)(react-dom@18.2.0)(react@18.2.0)
+    version: 12.0.0(i18next@23.7.9)(react-dom@18.2.0)(react@18.2.0)
   react-router-dom:
     specifier: ^6.4.3
     version: 6.4.3(react-dom@18.2.0)(react@18.2.0)
@@ -763,7 +763,7 @@ packages:
     resolution: {integrity: sha512-m4HEDZleaaCH+XgDDsPF15Ht6wTLsgDTeR3WYj9Q/k76JtWhrJjcP4+/XlG8LGT/Rol9qUfOIztXeA84ATpqPQ==}
     dependencies:
       '@babel/helper-module-imports': 7.22.15
-      '@babel/runtime': 7.23.2
+      '@babel/runtime': 7.23.5
       '@emotion/hash': 0.9.1
       '@emotion/memoize': 0.8.1
       '@emotion/serialize': 1.1.2
@@ -1233,7 +1233,7 @@ packages:
       '@types/react':
         optional: true
     dependencies:
-      '@babel/runtime': 7.23.2
+      '@babel/runtime': 7.23.5
       '@floating-ui/react-dom': 2.0.2(react-dom@18.2.0)(react@18.2.0)
       '@mui/types': 7.2.6(@types/react@18.2.37)
       '@mui/utils': 5.14.14(@types/react@18.2.37)(react@18.2.0)
@@ -1368,7 +1368,7 @@ packages:
       '@types/react':
         optional: true
     dependencies:
-      '@babel/runtime': 7.23.2
+      '@babel/runtime': 7.23.5
       '@mui/utils': 5.14.14(@types/react@18.2.37)(react@18.2.0)
       '@types/react': 18.2.37
       prop-types: 15.8.1
@@ -1405,7 +1405,7 @@ packages:
       '@emotion/styled':
         optional: true
     dependencies:
-      '@babel/runtime': 7.23.2
+      '@babel/runtime': 7.23.5
       '@emotion/cache': 11.11.0
       '@emotion/react': 11.11.1(@types/react@18.2.37)(react@18.2.0)
       '@emotion/styled': 11.11.0(@emotion/react@11.11.1)(@types/react@18.2.37)(react@18.2.0)
@@ -1452,7 +1452,7 @@ packages:
       '@types/react':
         optional: true
     dependencies:
-      '@babel/runtime': 7.23.2
+      '@babel/runtime': 7.23.5
       '@emotion/react': 11.11.1(@types/react@18.2.37)(react@18.2.0)
       '@emotion/styled': 11.11.0(@emotion/react@11.11.1)(@types/react@18.2.37)(react@18.2.0)
       '@mui/private-theming': 5.14.14(@types/react@18.2.37)(react@18.2.0)
@@ -1528,7 +1528,7 @@ packages:
       '@types/react':
         optional: true
     dependencies:
-      '@babel/runtime': 7.23.2
+      '@babel/runtime': 7.23.5
       '@types/prop-types': 15.7.9
       '@types/react': 18.2.37
       prop-types: 15.8.1
@@ -2523,7 +2523,7 @@ packages:
     resolution: {integrity: sha512-Cg7TFGpIr01vOQNODXOOaGz2NpCU5gl8x1qJFbb6hbZxR7XrcE2vtbAsTAbJ7/xwJtUuJEw8K8Zr/AE0LHlesg==}
     engines: {node: '>=10', npm: '>=6'}
     dependencies:
-      '@babel/runtime': 7.23.2
+      '@babel/runtime': 7.23.5
       cosmiconfig: 7.0.1
       resolve: 1.22.8
     dev: false
@@ -3037,7 +3037,7 @@ packages:
   /dom-helpers@5.2.1:
     resolution: {integrity: sha512-nRCa7CK3VTrM2NmGkIy4cbK7IZlgBE/PYMn55rrXefr5xXDP0LdtfPnblFDoVdcAfslJ7or6iqAUnx0CCGIWQA==}
     dependencies:
-      '@babel/runtime': 7.23.2
+      '@babel/runtime': 7.23.5
       csstype: 3.1.2
     dev: false
 
@@ -4095,10 +4095,10 @@ packages:
     hasBin: true
     dev: true
 
-  /i18next@22.0.4:
-    resolution: {integrity: sha512-TOp7BTMKDbUkOHMzDlVsCYWpyaFkKakrrO3HNXfSz4EeJaWwnBScRmgQSTaWHScXVHBUFXTvShrCW8uryBYFcg==}
+  /i18next@23.7.9:
+    resolution: {integrity: sha512-wturtxTfJLJdLzHhyfxXo2l9Cbu2Iz4wF4065oWThPvdFJMUUG3fhXD3BLCHgrv4VxfScORq0i9sfCdjVPbgiw==}
     dependencies:
-      '@babel/runtime': 7.23.2
+      '@babel/runtime': 7.23.5
     dev: false
 
   /ignore@5.2.0:
@@ -5339,7 +5339,7 @@ packages:
       react: 18.2.0
     dev: false
 
-  /react-i18next@12.0.0(i18next@22.0.4)(react-dom@18.2.0)(react@18.2.0):
+  /react-i18next@12.0.0(i18next@23.7.9)(react-dom@18.2.0)(react@18.2.0):
     resolution: {integrity: sha512-/O7N6aIEAl1FaWZBNvhdIo9itvF/MO/nRKr9pYqRc9LhuC1u21SlfwpiYQqvaeNSEW3g3qUXLREOWMt+gxrWbg==}
     peerDependencies:
       i18next: '>= 19.0.0'
@@ -5354,7 +5354,7 @@ packages:
     dependencies:
       '@babel/runtime': 7.23.2
       html-parse-stringify: 3.0.1
-      i18next: 22.0.4
+      i18next: 23.7.9
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
     dev: false

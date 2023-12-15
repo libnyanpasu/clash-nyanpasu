@@ -6,6 +6,7 @@
     "dev": "tauri dev -f default-meta -c ./backend/tauri/tauri.conf.json",
     "dev:diff": "tauri dev -f verge-dev -c ./backend/tauri/tauri.conf.json",
     "build": "tauri build -f default-meta -c ./backend/tauri/tauri.conf.json",
+    "build:nightly": "tauri build -f default-meta nightly -c ./backend/tauri/tauri.nightly.conf.json",
     "tauri": "tauri",
     "web:dev": "vite",
     "web:build": "tsc --noEmit && vite build",
@@ -24,12 +25,14 @@
     "fmt:prettier": "prettier --write .",
     "check": "tsx scripts/check.ts",
     "updater": "tsx scripts/updater.ts",
+    "updater:nightly": "tsx scripts/updater-nightly.ts",
     "publish": "tsx scripts/publish.ts",
     "portable": "tsx scripts/portable.ts",
     "upload:osx-aarch64": "tsx scripts/osx-aarch64-upload.ts",
     "generate:manifest": "run-p generate:manifest:*",
     "generate:manifest:latest-version": "tsx scripts/generate-latest-version.ts",
-    "prepare": "husky install"
+    "prepare": "husky install",
+    "prepare:nightly": "tsx scripts/prepare-nightly.ts"
   },
   "prettier": {
     "plugins": [

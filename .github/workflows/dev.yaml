@@ -78,7 +78,7 @@ jobs:
       - name: Pnpm install and check
         run: |
           pnpm i
-          pnpm check
+          pnpm check && pnpm prepare:nightly
 
       - name: Tauri build
         uses: tauri-apps/tauri-action@v0
@@ -93,7 +93,7 @@ jobs:
           releaseDraft: false
           prerelease: true
           tauriScript: pnpm
-          args: -f default-meta
+          args: -f default-meta nightly -c ./backend/tauri/tauri.nightly.conf.json
 
       - name: Portable Bundle (Windows Only)
         if: matrix.os == 'windows-latest'
@@ -119,5 +119,64 @@ jobs:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         run: |
-          pnpm build --target aarch64-apple-darwin
+          pnpm build:nightly --target aarch64-apple-darwin
           pnpm upload:osx-aarch64
+
+  update_tag:
+    name: Update tag
+    runs-on: ubuntu-latest
+    needs: [release]
+    if: startsWith(github.repository, 'keiko233')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: dev # Dev branch
+      - name: Set Env
+        run: |
+          echo "BUILDTIME=$(TZ=Asia/Shanghai date)" >> $GITHUB_ENV
+        shell: bash
+      - name: Update Tag
+        uses: richardsimko/update-tag@v1.0.11
+        with:
+          tag_name: pre-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: |
+          cat > release.txt << 'EOF'
+          ## Clash Nyanpasu Nightly Build
+          Release created at  ${{ env.BUILDTIME }}.
+          Daily build of Clash Nyanpasu Dev branch.
+          [See the development log here](https://t.me/keikolog/462)
+          EOF
+      - name: Update Release
+        uses: ncipollo/release-action@v1
+        with:
+          name: Clash Nyanpasu Dev
+          tag: pre-release
+          bodyFile: release.txt
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+  updater:
+    name: Update Nigthly Updater
+    runs-on: ubuntu-latest
+    needs: [release, update_tag]
+    if: startsWith(github.repository, 'keiko233')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: dev # Dev branch
+      - uses: pnpm/action-setup@v2
+        name: Install pnpm
+        with:
+          version: 8
+          run_install: false
+
+      - name: Pnpm install
+        run: pnpm i
+      - name: Update Updater
+        run: pnpm updater:nightly
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}

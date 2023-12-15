@@ -7,12 +7,17 @@ import { TAURI_APP_DIR, cwd } from "./utils/env";
 import { consola } from "./utils/logger";
 
 const TAURI_APP_CONF_PATH = path.join(TAURI_APP_DIR, "tauri.conf.json");
+const TAURI_NIGHTLY_APP_CONF_PATH = path.join(
+  TAURI_APP_DIR,
+  "tauri.nightly.conf.json",
+);
 const PACKAGE_JSON_PATH = path.join(cwd, "package.json");
 
 // publish
 async function resolvePublish() {
   const flag = process.argv[2] ?? "patch";
   const tauriJson = await fs.readJSON(TAURI_APP_CONF_PATH);
+  const tauriNightlyJson = await fs.readJSON(TAURI_NIGHTLY_APP_CONF_PATH);
 
   let [a, b, c] = packageJson.version.split(".").map(Number);
 
@@ -28,8 +33,10 @@ async function resolvePublish() {
   } else throw new Error(`invalid flag "${flag}"`);
 
   const nextVersion = `${a}.${b}.${c}`;
+  const nextNightlyVersion = `${a}.${b}.${c + 1}`;
   packageJson.version = nextVersion;
   tauriJson.package.version = nextVersion;
+  tauriNightlyJson.package.version = nextNightlyVersion;
 
   // 发布更新前先写更新日志
   const nextTag = `v${nextVersion}`;
@@ -39,6 +46,9 @@ async function resolvePublish() {
     spaces: 2,
   });
   await fs.writeJSON(TAURI_APP_CONF_PATH, tauriJson, {
+    spaces: 2,
+  });
+  await fs.writeJSON(TAURI_NIGHTLY_APP_CONF_PATH, tauriNightlyJson, {
     spaces: 2,
   });
 

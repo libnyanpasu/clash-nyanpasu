@@ -1,0 +1,93 @@
+{
+  "package": {
+    "productName": "Clash Nyanpasu",
+    "version": "1.4.2"
+  },
+  "build": {
+    "distDir": "../../dist",
+    "devPath": "http://localhost:3000/",
+    "beforeDevCommand": "pnpm run web:dev",
+    "beforeBuildCommand": "pnpm run web:build"
+  },
+  "tauri": {
+    "systemTray": {
+      "iconPath": "icons/win-tray-icon.png",
+      "iconAsTemplate": true
+    },
+    "bundle": {
+      "active": true,
+      "targets": "all",
+      "identifier": "moe.elaina.clash.nyanpasu",
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/icon-new.icns",
+        "icons/icon.ico"
+      ],
+      "resources": ["resources"],
+      "externalBin": [
+        "sidecar/clash",
+        "sidecar/mihomo",
+        "sidecar/mihomo-alpha",
+        "sidecar/clash-rs"
+      ],
+      "copyright": "© 2022 zzzgydi All Rights Reserved",
+      "category": "DeveloperTool",
+      "shortDescription": "Clash Nyanpasu! (∠・ω< )⌒☆",
+      "longDescription": "Clash Nyanpasu! (∠・ω< )⌒☆",
+      "deb": {
+        "depends": ["openssl"]
+      },
+      "macOS": {
+        "frameworks": [],
+        "minimumSystemVersion": "",
+        "exceptionDomain": "",
+        "signingIdentity": null,
+        "entitlements": null
+      },
+      "windows": {
+        "certificateThumbprint": null,
+        "digestAlgorithm": "sha256",
+        "timestampUrl": "",
+        "wix": {
+          "language": ["zh-CN", "en-US", "ru-RU"]
+        }
+      }
+    },
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://mirror.ghproxy.com/https://github.com/keiko233/clash-nyanpasu/releases/download/updater/update-nightly-proxy.json",
+        "https://ghproxy.com/https://github.com/keiko233/clash-nyanpasu/releases/download/updater/update-nightly-proxy.json",
+        "https://github.com/keiko233/clash-nyanpasu/releases/download/updater/update-nightly.json"
+      ],
+      "dialog": false,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlBMUM0NjMxREZCNDRGMjYKUldRbVQ3VGZNVVljbW43N0FlWjA4UkNrbTgxSWxSSXJQcExXNkZjUTlTQkIyYkJzL0tsSWF2d0cK"
+    },
+    "allowlist": {
+      "shell": {
+        "all": true
+      },
+      "window": {
+        "all": true
+      },
+      "process": {
+        "all": true
+      },
+      "globalShortcut": {
+        "all": true
+      },
+      "notification": {
+        "all": true
+      },
+      "os": {
+        "all": true
+      }
+    },
+    "windows": [],
+    "security": {
+      "csp": "script-src 'unsafe-eval' 'self'; default-src blob: data: filesystem: ws: wss: http: https: tauri: 'unsafe-eval' 'unsafe-inline' 'self'; img-src data: 'self';"
+    }
+  }
+}

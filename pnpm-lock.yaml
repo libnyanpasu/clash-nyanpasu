@@ -227,8 +227,8 @@ devDependencies:
     specifier: ^1.54.0
     version: 1.54.8
   shikiji:
-    specifier: 0.8.7
-    version: 0.8.7
+    specifier: 0.9.2
+    version: 0.9.2
   stylelint:
     specifier: 16.0.2
     version: 16.0.2(typescript@5.3.2)
@@ -6316,8 +6316,8 @@ packages:
     resolution: {integrity: sha512-6j1W9l1iAs/4xYBI1SYOVZyFcCis9b4KCLQ8fgAGG07QvzaRLVVRQvAy85yNmmZSjYjg4MWh4gNvlPujU/5LpA==}
     dev: true
 
-  /shikiji@0.8.7:
-    resolution: {integrity: sha512-j5usxwI0yHkDTHOuhuSJl9+wT5CNYeYO82dJMSJBlJ/NYT5SIebGcPoL6y9QOyH15wGrJC4LOP2nz5k8mUDGRQ==}
+  /shikiji@0.9.2:
+    resolution: {integrity: sha512-bxXd5iOVvuPj0NVFWQG3YMNLAGkWHyjTGixM7wLzqJNz3WMaeiOZbOP12gjQWKMJg+Ca4jmgATrUWu/rFb3B8A==}
     dependencies:
       hast-util-to-html: 9.0.0
     dev: true

@@ -5,6 +5,7 @@
   "Label-Logs": "日 志",
   "Label-Rules": "规 则",
   "Label-Settings": "设 置",
+  "Label-Providers": "资 源",
 
   "Connections": "连接",
   "Upload Total": "上传总量",
@@ -142,5 +143,12 @@
   "Default Latency Test": "默认测试链接",
 
   "Error": "错误",
-  "Success": "成功"
+  "Success": "成功",
+
+  "Providers": "资源",
+  "Rules Providers": "规则集",
+  "Update Rules Providers All": "全部更新",
+  "Rule Set rules": "{{rule}} 条规则",
+  "Last Update": "{{fromNow}}更新",
+  "Update Rules Providers Success": "更新规则集成功"
 }

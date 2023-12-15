@@ -121,5 +121,12 @@
   "disable_tun_mode": "Отключить режим туннеля",
 
   "Error": "Ошибка",
-  "Success": "Успех"
+  "Success": "Успех",
+
+  "Providers": "Провайдеры",
+  "Rules Providers": "Провайдеры правил",
+  "Update Rules Providers All": "Обновить все провайдеры правил",
+  "Rule Set rules": "{{rule}} правила",
+  "Last Update": "Последнее обновление {{fromNow}}",
+  "Update Rules Providers Success": "Провайдеры правил успешно обновлены"
 }

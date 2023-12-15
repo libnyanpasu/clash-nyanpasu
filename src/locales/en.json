@@ -143,5 +143,12 @@
   "Default Latency Test": "Default Latency Test",
 
   "Error": "Error",
-  "Success": "Success"
+  "Success": "Success",
+
+  "Providers": "Providers",
+  "Rules Providers": "Rules Providers",
+  "Update Rules Providers All": "Update Rules Providers All",
+  "Rule Set rules": "{{rule}} rules",
+  "Last Update": "Last Updated: {{fromNow}}",
+  "Update Rules Providers Success": "Update Rules Providers Success"
 }

@@ -1,4 +1,8 @@
-import { styled, Box } from "@mui/material";
+import { classNames } from "@/utils";
+import { formatAnsi } from "@/utils/shiki";
+import { Box, styled, useTheme } from "@mui/material";
+import React, { useEffect, useState } from "react";
+import styles from "./log-item.module.scss";
 
 const Item = styled(Box)(({ theme: { palette, typography } }) => ({
   padding: "8px 0",
@@ -10,6 +14,7 @@ const Item = styled(Box)(({ theme: { palette, typography } }) => ({
   userSelect: "text",
   "& .time": {
     color: palette.text.secondary,
+    fontWeight: "thin",
   },
   "& .type": {
     display: "inline-block",
@@ -38,7 +43,14 @@ interface Props {
 }
 
 const LogItem = (props: Props) => {
+  const theme = useTheme();
   const { value } = props;
+  const [payload, setPayload] = useState(value.payload);
+  useEffect(() => {
+    formatAnsi(value.payload).then((res) => {
+      setPayload(res);
+    });
+  }, [value.payload]);
 
   return (
     <Item>
@@ -48,8 +60,19 @@ const LogItem = (props: Props) => {
           {value.type}
         </span>
       </div>
-      <div>
-        <span className="data">{value.payload}</span>
+      <div
+        style={
+          {
+            "--item-font": theme.typography.fontFamily as string,
+          } as React.CSSProperties
+        }
+      >
+        <span
+          className={classNames(styles.item, "data")}
+          dangerouslySetInnerHTML={{
+            __html: payload,
+          }}
+        />
       </div>
     </Item>
   );

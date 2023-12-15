@@ -8,8 +8,9 @@ import {
   type SxProps,
   type Theme,
 } from "@mui/material";
-import { ReactNode } from "react";
-
+import { TransitionProps } from "@mui/material/transitions";
+import { AnimatePresence, motion } from "framer-motion";
+import React, { ReactNode } from "react";
 interface Props {
   title: ReactNode;
   open: boolean;
@@ -48,7 +49,13 @@ export function BaseDialog(props: Props) {
   } = props;
 
   return (
-    <Dialog open={open} onClose={props.onClose}>
+    <Dialog
+      className="123"
+      open={open}
+      onClose={props.onClose}
+      keepMounted
+      TransitionComponent={BaseDialogTransition}
+    >
       <DialogTitle>{title}</DialogTitle>
 
       <DialogContent sx={contentSx}>{children}</DialogContent>
@@ -75,3 +82,48 @@ export function BaseDialog(props: Props) {
     </Dialog>
   );
 }
+
+const BaseDialogTransition = React.forwardRef(function BaseDialogTransition(
+  props: TransitionProps,
+  ref,
+) {
+  const { in: inProp, children } = props;
+
+  return (
+    <AnimatePresence>
+      {inProp && (
+        <motion.div
+          style={{
+            width: "fit-content",
+            height: "fit-content",
+            margin: "auto",
+          }}
+          initial={{ opacity: 0, scale: 0 }}
+          animate={{
+            opacity: 1,
+            scale: 1,
+          }}
+          exit={{
+            opacity: 0,
+            scale: 0,
+          }}
+        >
+          {children &&
+            React.cloneElement(
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              React.Children.only(children as unknown as any),
+              {
+                style: {
+                  opacity: 1,
+                  visibility: "visible",
+                },
+                // TODO: 也许 framer motion 就不会产生这个，手动设定一下。等弄清楚了再说。
+                tabIndex: -1,
+                ref: ref,
+              },
+            )}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+});

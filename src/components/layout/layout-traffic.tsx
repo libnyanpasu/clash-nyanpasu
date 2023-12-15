@@ -1,17 +1,17 @@
-import { useEffect, useRef, useState } from "react";
-import { Box, Typography } from "@mui/material";
+import { useClashInfo } from "@/hooks/use-clash";
+import { useVerge } from "@/hooks/use-verge";
+import { useVisibility } from "@/hooks/use-visibility";
+import { useWebsocket } from "@/hooks/use-websocket";
+import parseTraffic from "@/utils/parse-traffic";
 import {
   ArrowDownward,
   ArrowUpward,
   MemoryOutlined,
 } from "@mui/icons-material";
-import { useClashInfo } from "@/hooks/use-clash";
-import { useVerge } from "@/hooks/use-verge";
+import { Box, Typography } from "@mui/material";
+import { useEffect, useRef, useState } from "react";
 import { TrafficGraph, type TrafficRef } from "./traffic-graph";
 import { useLogSetup } from "./use-log-setup";
-import { useVisibility } from "@/hooks/use-visibility";
-import { useWebsocket } from "@/hooks/use-websocket";
-import parseTraffic from "@/utils/parse-traffic";
 
 // setup the traffic
 export const LayoutTraffic = () => {
@@ -47,7 +47,8 @@ export const LayoutTraffic = () => {
   }, [clashInfo, pageVisible]);
 
   /* --------- meta memory information --------- */
-  const isMetaCore = verge?.clash_core === "mihomo";
+  const isMetaCore =
+    verge?.clash_core === "mihomo" || verge?.clash_core === "mihomo-alpha";
   const displayMemory = isMetaCore && (verge?.enable_memory_usage ?? true);
 
   const memoryWs = useWebsocket(

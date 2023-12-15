@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
-import { useLockFn } from "ahooks";
-import { CheckCircleOutlineRounded } from "@mui/icons-material";
-import { alpha, Box, ListItemButton, styled, Typography } from "@mui/material";
 import { BaseLoading } from "@/components/base";
 import delayManager from "@/services/delay";
+import { CheckCircleOutlineRounded } from "@mui/icons-material";
+import { Box, ListItemButton, Typography, alpha, styled } from "@mui/material";
+import { useLockFn } from "ahooks";
+import { useEffect, useState } from "react";
 
 interface Props {
   groupName: string;
@@ -137,20 +137,14 @@ export const ProxyItemMini = (props: Props) => {
               e.stopPropagation();
               onDelay();
             }}
-            color={
-              delay > 500
-                ? "error.main"
-                : delay < 100
-                  ? "success.main"
-                  : "text.secondary"
-            }
+            color={delayManager.formatDelayColor(delay)}
             sx={({ palette }) =>
               !proxy.provider
                 ? { ":hover": { bgcolor: alpha(palette.primary.main, 0.15) } }
                 : {}
             }
           >
-            {delay > 1e5 ? "Error" : delay > 3000 ? "Timeout" : `${delay}`}
+            {delayManager.formatDelay(delay)}
           </Widget>
         )}
 

@@ -1,0 +1,11 @@
+.item {
+  /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
+  :global(.shiki) {
+    margin-top: 0.25em;
+    margin-bottom: 0;
+
+    * {
+      font-family: var(--item-font);
+    }
+  }
+}

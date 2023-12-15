@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "latest": {
     "mihomo": "v1.17.0",
-    "mihomo_alpha": "3cf865e",
+    "mihomo_alpha": "alpha-0ab73a9",
     "clash_rs": "v0.1.10",
     "clash_premium": "2023-09-05-gdcc8d87"
   },
@@ -16,10 +16,10 @@
     },
     "mihomo_alpha": {
       "windows-x86_64": "mihomo-windows-amd64-compatible-alpha-{}.zip",
-      "linux-aarch64": "mihomo-linux-arm64-alpha-{}.gz",
-      "linux-amd64": "mihomo-linux-amd64-compatible-alpha-{}.gz",
-      "darwin-arm64": "mihomo-darwin-arm64-alpha-{}.gz",
-      "darwin-x64": "mihomo-darwin-amd64-alpha-{}.gz"
+      "linux-aarch64": "mihomo-linux-arm64-{}.gz",
+      "linux-amd64": "mihomo-linux-amd64-compatible-{}.gz",
+      "darwin-arm64": "mihomo-darwin-arm64-{}.gz",
+      "darwin-x64": "mihomo-darwin-amd64-{}.gz"
     },
     "clash_rs": {
       "windows-x86_64": "clash-x86_64-pc-windows-msvc.exe",
@@ -36,5 +36,5 @@
       "darwin-x64": "clash-darwin-amd64-n{}.gz"
     }
   },
-  "updated_at": "2023-12-11T11:03:22.368Z"
+  "updated_at": "2023-12-14T13:23:20.966Z"
 }

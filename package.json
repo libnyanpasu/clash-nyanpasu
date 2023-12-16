@@ -94,7 +94,7 @@
     "colorize-template": "1.0.0",
     "consola": "3.2.3",
     "cross-env": "^7.0.3",
-    "eslint": "8.55.0",
+    "eslint": "8.56.0",
     "eslint-config-prettier": "9.1.0",
     "eslint-config-standard": "17.1.0",
     "eslint-import-resolver-alias": "1.1.2",

@@ -227,8 +227,8 @@ devDependencies:
     specifier: ^1.54.0
     version: 1.54.8
   shikiji:
-    specifier: 0.9.4
-    version: 0.9.4
+    specifier: 0.9.6
+    version: 0.9.6
   stylelint:
     specifier: 16.0.2
     version: 16.0.2(typescript@5.3.2)
@@ -6137,14 +6137,14 @@ packages:
     resolution: {integrity: sha512-6j1W9l1iAs/4xYBI1SYOVZyFcCis9b4KCLQ8fgAGG07QvzaRLVVRQvAy85yNmmZSjYjg4MWh4gNvlPujU/5LpA==}
     dev: true
 
-  /shikiji-core@0.9.4:
-    resolution: {integrity: sha512-8HYVsejb1FTorl5UcsWCam/ANWX9T36irFqqOW+4MeD+WqmxQu6iwCqbTaatHxfYfWCcQLCZ+D5nOM6798O16A==}
+  /shikiji-core@0.9.6:
+    resolution: {integrity: sha512-lP5YI9NAtUejMxBT+y41H2chTt3V5P0GsZvwPyVyVnKrfrwGlI1oppAB3D/rp3lVgOxgeYWV26itYl+WLQfxiQ==}
     dev: true
 
-  /shikiji@0.9.4:
-    resolution: {integrity: sha512-fyGSLi+UGgbh1CvQjAv4Jy1Zsj+sitF+qDgead4mo9SISRkQS3wOmVeKfnl0zk7wz29HDorcQ0cghe8I/RNo7g==}
+  /shikiji@0.9.6:
+    resolution: {integrity: sha512-LKEk9ImH8XoCcEzMfsuc6zGhLkiBZ8aigPWAEIPjaKULgUZL/c8bWf3RxyxMD6WlPvSotIM/P6ADQlKqJMKpJQ==}
     dependencies:
-      shikiji-core: 0.9.4
+      shikiji-core: 0.9.6
     dev: true
 
   /side-channel@1.0.4:

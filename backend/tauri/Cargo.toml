@@ -56,6 +56,12 @@ zip-extensions = "0.6.2"
 gunzip = { version = "0.1.0", git = "https://github.com/TechHara/gunzip.git" }
 tempfile = "3.8.1"
 glob = "0.3.1"
+async-trait = "0.1.74"
+dyn-clone = "1.0.16"
+rs-snowflake = "0.6"
+rocksdb = "0.21"
+thiserror = { workspace = true, version = "1.0" }
+simd-json = "0.13.4"
 
 [target.'cfg(windows)'.dependencies]
 runas = "=1.1.0"

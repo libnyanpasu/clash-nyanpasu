@@ -10,7 +10,7 @@ keywords = ["system-proxy", "proxy", "networksetup", "gsettings"]
 description = "A library for set/get system proxy. Supports Windows, macOS and linux (via gsettings)."
 
 [dependencies]
-thiserror = "1"
+thiserror = { workspace = true, version = "1.0" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 interfaces = "0.0.9"

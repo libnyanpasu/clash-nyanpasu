@@ -9,6 +9,7 @@ license = "GPL-3.0"
 authors = ["zzzgydi", "keiko233"]
 
 [workspace.dependencies]
+thiserror = "1"
 
 [profile.release]
 panic = "abort"

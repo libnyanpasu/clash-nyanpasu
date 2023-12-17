@@ -13,6 +13,7 @@ static APP_DIR: &str = "clash-verge-dev";
 static CLASH_CONFIG: &str = "config.yaml";
 static VERGE_CONFIG: &str = "verge.yaml";
 static PROFILE_YAML: &str = "profiles.yaml";
+static STORAGE_DB: &str = "storage.db";
 
 static mut RESOURCE_DIR: Option<PathBuf> = None;
 
@@ -105,6 +106,10 @@ pub fn verge_path() -> Result<PathBuf> {
 
 pub fn profiles_path() -> Result<PathBuf> {
     Ok(app_home_dir()?.join(PROFILE_YAML))
+}
+
+pub fn storage_path() -> Result<PathBuf> {
+    Ok(app_home_dir()?.join(STORAGE_DB))
 }
 
 #[allow(unused)]

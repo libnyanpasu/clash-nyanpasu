@@ -21,6 +21,7 @@ fn main() -> std::io::Result<()> {
     }
 
     crate::log_err!(init::init_config());
+    core::tasks::task::TaskManager::global(); // init task manager
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()

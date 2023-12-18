@@ -1,9 +1,9 @@
 use crate::config::{ClashCore, IVerge, WindowState};
+use crate::core::tasks::{jobs::ProfilesJobGuard, JobsManager};
 use crate::{config::Config, core::*, utils::init, utils::server};
 use crate::{log_err, trace_err};
 use anyhow::Result;
 use semver::Version;
-use serde::de;
 use serde_yaml::Mapping;
 use std::net::TcpListener;
 use tauri::api::process::Command;
@@ -86,7 +86,10 @@ pub fn resolve_setup(app: &mut App) {
 
     log_err!(handle::Handle::update_systray_part());
     log_err!(hotkey::Hotkey::global().init(app.app_handle()));
-    log_err!(timer::Timer::global().init());
+
+    // setup jobs
+    log_err!(JobsManager::global_register()); // init task manager
+    log_err!(ProfilesJobGuard::global().lock().init());
 }
 
 /// reset system proxy

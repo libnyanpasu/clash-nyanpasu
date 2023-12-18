@@ -7,7 +7,6 @@ pub mod manager;
 pub mod storage;
 pub mod sysopt;
 pub mod tasks;
-pub mod timer;
 pub mod tray;
 pub mod updater;
 pub mod win_service;

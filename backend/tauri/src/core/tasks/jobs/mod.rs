@@ -1,12 +1,14 @@
-pub mod logger;
+mod logger;
+mod profiles;
 
 use super::{
     task::Task,
     utils::{ConfigChangedNotifier, Result},
 };
 use anyhow::anyhow;
-use std::sync::{Arc, Mutex, OnceLock};
-
+use parking_lot::Mutex;
+pub use profiles::ProfilesJobGuard;
+use std::sync::{Arc, OnceLock};
 pub trait JobExt {
     fn name(&self) -> &'static str;
     fn setup(&self) -> Option<Task>; // called when the app starts or the config changed
@@ -28,12 +30,9 @@ impl JobsManager {
         for job in jobs {
             let task = job.setup();
             if let Some(task) = task {
-                super::task::TaskManager::global()
-                    .write()
-                    .unwrap()
-                    .add_task(task)?;
+                super::task::TaskManager::global().write().add_task(task)?;
             }
-            JobsManager::global().lock().unwrap().jobs.push(job);
+            JobsManager::global().lock().jobs.push(job);
         }
         Ok(())
     }
@@ -48,7 +47,7 @@ impl ConfigChangedNotifier for JobsManager {
             .ok_or(anyhow!("job not exist"))?;
         let task = job.setup();
         if let Some(task) = task {
-            let mut task_manager = super::task::TaskManager::global().write().unwrap();
+            let mut task_manager = super::task::TaskManager::global().write();
             task_manager.remove_task(task.id)?;
             task_manager.add_task(task)?;
         }

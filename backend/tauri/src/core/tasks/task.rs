@@ -11,14 +11,11 @@ use delay_timer::{
     timer::task::TaskBuilder as TimerTaskBuilder,
     utils::convenience::cron_expression_grammatical_candy::{CandyCronStr, CandyFrequency},
 };
+use parking_lot::{Mutex, RwLock as RW};
 use serde::{Deserialize, Serialize};
 use snowflake::SnowflakeIdGenerator;
 use std::sync::OnceLock;
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex, RwLock as RW},
-    time::Duration,
-};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 pub type TaskID = u64;
 pub type TaskEventID = i64; // 任务事件 ID，适用于任务并发执行，区分不同的执行事件
@@ -249,7 +246,7 @@ trait TaskListOps {
 }
 impl TaskListOps for TaskList {
     fn get_task_state(&self, task_id: TaskID) -> Result<TaskState> {
-        let list = self.read().unwrap();
+        let list = self.read();
         let item = list
             .iter()
             .find(|t| t.id == task_id)
@@ -263,7 +260,7 @@ impl TaskListOps for TaskList {
         state: TaskState,
         result: Option<TaskRunResult>,
     ) -> Result<()> {
-        let mut list = self.write().unwrap();
+        let mut list = self.write();
         let item = list
             .iter_mut()
             .find(|t| t.id == task_id)
@@ -315,14 +312,14 @@ impl TaskManager {
             task_manager.restore().unwrap();
             std::thread::spawn(move || loop {
                 std::thread::sleep(Duration::from_secs(5));
-                let _ = TaskManager::global().write().unwrap().dump();
+                let _ = TaskManager::global().write().dump();
             });
             Arc::new(RW::new(task_manager))
         })
     }
 
     pub fn restore_tasks(&mut self, tasks: Vec<Task>) {
-        let mut list = self.restore_list.write().unwrap();
+        let mut list = self.restore_list.write();
         list.clear();
         for task in tasks {
             list.push(task);
@@ -344,7 +341,7 @@ impl TaskManager {
         check_task_input!(task);
 
         let (mut task, mut builder) = {
-            let list = self.list.read().unwrap();
+            let list = self.list.read();
             build_task(task, list.len())
         };
         let restored_task = self.get_task_from_restored(task.id);
@@ -382,8 +379,8 @@ impl TaskManager {
             builder.free(); // 在错误处理之前，先释放内存
         }
 
-        let timer = self.timer.lock().unwrap();
-        let mut list = self.list.write().unwrap();
+        let timer = self.timer.lock();
+        let mut list = self.list.write();
         timer
             .add_task(timer_task.map_err(|e| {
                 Error::new_task_error("failed to create a delay task instance".to_string(), e)
@@ -396,12 +393,12 @@ impl TaskManager {
     }
 
     fn get_task_from_restored(&self, task_id: TaskID) -> Option<Task> {
-        let list = self.restore_list.read().unwrap();
+        let list = self.restore_list.read();
         list.iter().find(|t| t.id == task_id).cloned()
     }
 
     pub fn pick_task(&self, task_id: TaskID) -> Result<Task> {
-        let list = self.list.read().unwrap();
+        let list = self.list.read();
         list.iter()
             .find(|t| t.id == task_id)
             .cloned()
@@ -409,26 +406,25 @@ impl TaskManager {
     }
 
     pub fn total(&self) -> usize {
-        let list = self.list.read().unwrap();
+        let list = self.list.read();
         list.len()
     }
 
     // get current task list
     // note: this method will clone the task list
     pub fn list(&self) -> Vec<Task> {
-        let list = self.list.read().unwrap();
+        let list = self.list.read();
         list.clone()
     }
 
     pub fn remove_task(&mut self, task_id: TaskID) -> Result<()> {
-        let mut list = self.list.write().unwrap();
+        let mut list = self.list.write();
         let index = list
             .iter()
             .position(|t| t.id == task_id)
             .ok_or(Error::CreateTaskFailed(TaskCreationError::NotFound))?;
         self.timer
             .lock()
-            .unwrap()
             .remove_task(task_id)
             .map_err(|e| Error::new_task_error("failed to remove task".to_string(), e))?;
         list.remove(index);
@@ -436,7 +432,7 @@ impl TaskManager {
     }
 
     pub fn advance_task(&mut self, task_id: TaskID) -> Result<()> {
-        let timer = self.timer.lock().unwrap();
+        let timer = self.timer.lock();
         timer
             .advance_task(task_id)
             .map_err(|e| Error::new_task_error("failed to advance a task".to_string(), e))?;

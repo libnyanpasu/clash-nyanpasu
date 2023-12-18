@@ -1,9 +1,19 @@
+use super::JobExt;
 use crate::config::Config;
+use crate::core::tasks::executor::{AsyncJobExecutor, TaskExecutor};
+use crate::core::tasks::task::TaskSchedule;
 use crate::utils::dirs;
 use anyhow::Result;
+use async_trait::async_trait;
 use chrono::{DateTime, Local, TimeZone};
 use std::fs::{self, DirEntry};
 use std::str::FromStr;
+use std::time::Duration;
+
+const CLEAR_LOG_TASK_NAME: &str = "clear_logs";
+
+#[derive(Clone, Default)]
+pub struct ClearLogsJob;
 
 /// Clear logs from the logs directory
 pub fn clear_logs() -> Result<()> {
@@ -69,4 +79,26 @@ pub fn clear_logs() -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[async_trait]
+impl AsyncJobExecutor for ClearLogsJob {
+    async fn execute(&self) -> Result<()> {
+        clear_logs()
+    }
+}
+
+impl JobExt for ClearLogsJob {
+    fn name(&self) -> &'static str {
+        CLEAR_LOG_TASK_NAME
+    }
+
+    fn setup(&self) -> Option<crate::core::tasks::task::Task> {
+        Some(crate::core::tasks::task::Task {
+            name: CLEAR_LOG_TASK_NAME.to_string(),
+            schedule: TaskSchedule::Interval(Duration::from_secs(30 * 60)), // 30 minutes 清理一次
+            executor: TaskExecutor::Async(Box::new(self.clone())),
+            ..Default::default()
+        })
+    }
 }

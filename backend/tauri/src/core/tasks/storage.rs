@@ -1,20 +1,12 @@
 // store is a interface to save and restore task states
 use super::task::{TaskEventID, TaskManager};
+use super::utils::Result;
 use super::{events::TaskEvent, task::TaskID};
 use crate::core::storage::Storage;
 use crate::core::tasks::task::Task;
 use log::debug;
+use std::str;
 use std::sync::{Arc, OnceLock};
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum TaskStorageError {
-    #[error("storage operation failed: {0:?}")]
-    StorageOperationFailed(#[from] rocksdb::Error),
-
-    #[error("json parse failed: {0:?}")]
-    JsonParseFailed(#[from] simd_json::Error),
-}
 
 pub struct EventsGuard;
 
@@ -27,7 +19,7 @@ impl EventsGuard {
     }
 
     /// get_event get a task event by event id
-    pub fn get_event(&self, event_id: TaskEventID) -> Result<Option<TaskEvent>, TaskStorageError> {
+    pub fn get_event(&self, event_id: TaskEventID) -> Result<Option<TaskEvent>> {
         let db = Storage::global().get_instance();
         let key = format!("task:event:id:{}", event_id);
         let value = db.get(key.as_bytes())?;
@@ -41,7 +33,7 @@ impl EventsGuard {
     }
 
     /// get_events get all events of a task
-    pub fn get_events(&self, task_id: TaskID) -> Result<Option<Vec<TaskEvent>>, TaskStorageError> {
+    pub fn get_events(&self, task_id: TaskID) -> Result<Option<Vec<TaskEvent>>> {
         let mut value = match self.get_event_ids(task_id)? {
             Some(value) => value,
             None => return Ok(None),
@@ -55,10 +47,7 @@ impl EventsGuard {
         Ok(Some(events))
     }
 
-    pub fn get_event_ids(
-        &self,
-        task_id: TaskID,
-    ) -> Result<Option<Vec<TaskEventID>>, TaskStorageError> {
+    pub fn get_event_ids(&self, task_id: TaskID) -> Result<Option<Vec<TaskEventID>>> {
         let db = Storage::global().get_instance();
         let key = format!("task:events:task_id:{}", task_id);
         let value = db.get(key.as_bytes())?;
@@ -70,7 +59,7 @@ impl EventsGuard {
     }
 
     /// add_event add a new event to the storage
-    pub fn add_event(&self, event: &TaskEvent) -> Result<(), TaskStorageError> {
+    pub fn add_event(&self, event: &TaskEvent) -> Result<()> {
         let mut event_ids = match self.get_event_ids(event.task_id)? {
             Some(value) => value,
             None => Vec::new(),
@@ -90,7 +79,7 @@ impl EventsGuard {
     }
 
     /// update_event update a event in the storage
-    pub fn update_event(&self, event: &TaskEvent) -> Result<(), TaskStorageError> {
+    pub fn update_event(&self, event: &TaskEvent) -> Result<()> {
         let db = Storage::global().get_instance();
         let event_key = format!("task:event:id:{}", event.id);
         let event_value = simd_json::to_vec(event)?;
@@ -99,11 +88,7 @@ impl EventsGuard {
     }
 
     /// remove_event remove a event from the storage
-    pub fn remove_event(
-        &self,
-        event_id: TaskEventID,
-        task_id: TaskID,
-    ) -> Result<(), TaskStorageError> {
+    pub fn remove_event(&self, event_id: TaskEventID, task_id: TaskID) -> Result<()> {
         let event_ids: Vec<TaskEventID> = match self.get_event_ids(task_id)? {
             Some(value) => value.into_iter().filter(|v| v != &event_id).collect(),
             None => return Ok(()),
@@ -126,13 +111,13 @@ impl EventsGuard {
 
 // pub struct TaskGuard;
 pub trait TaskGuard {
-    fn restore(&mut self) -> Result<(), TaskStorageError>;
-    fn dump(&self) -> Result<(), TaskStorageError>;
+    fn restore(&mut self) -> Result<()>;
+    fn dump(&self) -> Result<()>;
 }
 
 /// TaskGuard is a bridge between the tasks and the storage
 impl TaskGuard for TaskManager {
-    fn restore(&mut self) -> Result<(), TaskStorageError> {
+    fn restore(&mut self) -> Result<()> {
         let db = Storage::global().get_instance();
         let iter = db.iterator(rocksdb::IteratorMode::From(
             b"task:id:",
@@ -141,15 +126,18 @@ impl TaskGuard for TaskManager {
         let mut tasks = Vec::new();
         for item in iter {
             let (key, mut value) = item?;
-            debug!("restore task: {:?} {:?}", key, value);
+            debug!(
+                "restore task: {:?} {:?}",
+                str::from_utf8(&key).unwrap(),
+                str::from_utf8(&value).unwrap()
+            );
             let task = simd_json::from_slice::<Task>(&mut value)?;
             tasks.push(task);
         }
         self.restore_tasks(tasks);
         Ok(())
     }
-
-    fn dump(&self) -> Result<(), TaskStorageError> {
+    fn dump(&self) -> Result<()> {
         let tasks = self.list();
         let db = Storage::global().get_instance();
         let tx = db.transaction();

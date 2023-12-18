@@ -1,10 +1,10 @@
 use super::storage::TaskGuard;
 use super::{
-    events::{TaskEvent, TaskEventState, TaskEvents, TaskEventsDispatcher},
+    events::{TaskEventState, TaskEvents, TaskEventsDispatcher},
     executor::{AsyncJob, Job, TaskExecutor},
+    utils::{Error, Result, TaskCreationError},
 };
 use crate::error;
-use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
 use delay_timer::{
     entity::{DelayTimer, DelayTimerBuilder},
@@ -69,15 +69,15 @@ pub struct Task {
     pub id: TaskID,
     pub name: String,
     #[serde(skip_serializing, skip_deserializing)]
-    pub schedule: TaskSchedule,
+    pub(super) schedule: TaskSchedule,
     #[serde(skip_serializing, skip_deserializing)]
-    pub state: TaskState,
+    pub(super) state: TaskState,
     #[serde(skip_serializing, skip_deserializing)]
-    pub opts: TaskOptions,
-    pub last_run: Option<(Timestamp, TaskRunResult)>,
-    pub next_run: Option<Timestamp>, // timestamp
+    pub(super) opts: TaskOptions,
+    pub(super) last_run: Option<(Timestamp, TaskRunResult)>,
+    pub(super) next_run: Option<Timestamp>, // timestamp
     #[serde(skip_serializing, skip_deserializing)]
-    executor: TaskExecutor,
+    pub(super) executor: TaskExecutor,
     pub created_at: Timestamp,
 }
 
@@ -99,27 +99,34 @@ impl Default for Task {
 
 pub type Timestamp = i64;
 
+// 参数校验失败
+macro_rules! params_validated_failed {
+    ($fmt:expr) => {
+        Err(Error::ParamsValidationFailed($fmt))
+    };
+}
+
 // 检查任务输入
 macro_rules! check_task_input {
     ($task:ident) => {
         if $task.name.is_empty() {
-            return Err(anyhow!("task name is empty"));
+            return params_validated_failed!("task name is empty");
         }
 
         match &$task.schedule {
             TaskSchedule::Once(duration) => {
                 if duration.as_secs() <= 0 {
-                    return Err(anyhow!("task interval must be greater than 0"));
+                    return params_validated_failed!("task interval must be greater than 0");
                 }
             }
             TaskSchedule::Interval(duration) => {
                 if duration.as_secs() <= 0 {
-                    return Err(anyhow!("task interval must be greater than 0"));
+                    return params_validated_failed!("task interval must be greater than 0");
                 }
             }
             TaskSchedule::Cron(cron) => {
                 if cron.is_empty() {
-                    return Err(anyhow!("task cron is empty"));
+                    return params_validated_failed!("task cron is empty");
                 }
             }
         }
@@ -145,7 +152,7 @@ fn build_task<'a>(task: Task, len: usize) -> (Task, TimerTaskBuilder<'a>) {
 
     match &task.schedule {
         TaskSchedule::Cron(cron) => {
-            // NOTE: 由于 DelayTimer 的垃圾设计，因此继续使用弃用的 candy 方法
+            // NOTE: 由于 DelayTimer 的设计，因此继续使用弃用的 candy 方法
             // NOTE: 请注意一定需要回收内存，否则会造成内存泄漏
             let cron = cron.clone();
             builder.set_frequency_by_candy(CandyFrequency::Repeated(CandyCronStr(cron)));
@@ -165,12 +172,15 @@ fn build_task<'a>(task: Task, len: usize) -> (Task, TimerTaskBuilder<'a>) {
     (task, builder)
 }
 
+// TODO: 改成使用宏生成
 fn wrap_job(list: TaskList, mut id_generator: SnowflakeIdGenerator, task_id: TaskID, job: Job) {
     let event_id = id_generator.generate();
     {
         let _ = list.set_task_state(task_id, TaskState::Running(event_id), None);
-        TaskEvents::global().new_event(task_id, event_id);
-        TaskEvents::global().dispatch(event_id, TaskEventState::Running);
+        TaskEvents::global().new_event(task_id, event_id).unwrap(); // TODO: error handling
+        TaskEvents::global()
+            .dispatch(event_id, TaskEventState::Running)
+            .unwrap();
     };
     let res = job.execute();
     {
@@ -186,7 +196,9 @@ fn wrap_job(list: TaskList, mut id_generator: SnowflakeIdGenerator, task_id: Tas
                 let _ = list.set_task_state(task_id, TaskState::Idle, Some(res.clone()));
             }
         }
-        TaskEvents::global().dispatch(event_id, TaskEventState::Finished(res));
+        TaskEvents::global()
+            .dispatch(event_id, TaskEventState::Finished(res))
+            .unwrap();
     }
 }
 
@@ -199,8 +211,10 @@ async fn wrap_async_job(
     let event_id = id_generator.generate();
     {
         let _ = list.set_task_state(task_id, TaskState::Running(event_id), None);
-        TaskEvents::global().new_event(task_id, event_id);
-        TaskEvents::global().dispatch(event_id, TaskEventState::Running);
+        TaskEvents::global().new_event(task_id, event_id).unwrap(); // TODO: error handling
+        TaskEvents::global()
+            .dispatch(event_id, TaskEventState::Running)
+            .unwrap();
     };
     let res = async_job.execute().await;
     {
@@ -216,7 +230,9 @@ async fn wrap_async_job(
                 let _ = list.set_task_state(task_id, TaskState::Idle, Some(res.clone()));
             }
         }
-        TaskEvents::global().dispatch(event_id, TaskEventState::Finished(res));
+        TaskEvents::global()
+            .dispatch(event_id, TaskEventState::Finished(res))
+            .unwrap();
     }
 }
 
@@ -237,7 +253,7 @@ impl TaskListOps for TaskList {
         let item = list
             .iter()
             .find(|t| t.id == task_id)
-            .ok_or(anyhow!("task {} not found", task_id))?;
+            .ok_or(Error::CreateTaskFailed(TaskCreationError::NotFound))?;
         Ok(item.state.clone())
     }
 
@@ -251,7 +267,7 @@ impl TaskListOps for TaskList {
         let item = list
             .iter_mut()
             .find(|t| t.id == task_id)
-            .ok_or(anyhow!("task {} not found", task_id))?;
+            .ok_or(Error::CreateTaskFailed(TaskCreationError::NotFound))?;
         match state {
             TaskState::Running(event_id) => {
                 item.state = TaskState::Running(event_id);
@@ -260,10 +276,7 @@ impl TaskListOps for TaskList {
                 if let TaskState::Running(_) = item.state {
                     item.last_run = Some((
                         Utc::now().timestamp(),
-                        result.ok_or(anyhow!(
-                            "change task {} state from running to idle, but result is none",
-                            task_id
-                        ))?,
+                        result.ok_or(Error::CreateTaskFailed(TaskCreationError::NotFound))?,
                     ));
                 }
                 item.state = TaskState::Idle;
@@ -289,8 +302,8 @@ pub struct TaskManager {
 }
 
 impl TaskManager {
-    pub fn global() -> &'static Self {
-        static TASK_MANAGER: OnceLock<TaskManager> = OnceLock::new();
+    pub fn global() -> &'static Arc<RW<Self>> {
+        static TASK_MANAGER: OnceLock<Arc<RW<TaskManager>>> = OnceLock::new();
 
         TASK_MANAGER.get_or_init(|| {
             let mut task_manager = TaskManager {
@@ -300,25 +313,20 @@ impl TaskManager {
                 id_generator: SnowflakeIdGenerator::new(1, 1),
             };
             task_manager.restore().unwrap();
-            task_manager.start_dump_task();
-            task_manager
+            std::thread::spawn(move || loop {
+                std::thread::sleep(Duration::from_secs(5));
+                let _ = TaskManager::global().write().unwrap().dump();
+            });
+            Arc::new(RW::new(task_manager))
         })
     }
 
-    pub fn restore_tasks(&mut self, tasks: Vec<Task>) -> Result<()> {
+    pub fn restore_tasks(&mut self, tasks: Vec<Task>) {
         let mut list = self.restore_list.write().unwrap();
         list.clear();
         for task in tasks {
             list.push(task);
         }
-        Ok(())
-    }
-
-    fn start_dump_task(&self) {
-        std::thread::spawn(move || loop {
-            std::thread::sleep(Duration::from_secs(5));
-            let _ = TaskManager::global().dump();
-        });
     }
 
     /// add task
@@ -334,10 +342,18 @@ impl TaskManager {
     /// task_manager.add_task(task, job.into());
     pub fn add_task(&mut self, task: Task) -> Result<()> {
         check_task_input!(task);
-        let (task, mut builder) = {
+
+        let (mut task, mut builder) = {
             let list = self.list.read().unwrap();
             build_task(task, list.len())
         };
+        let restored_task = self.get_task_from_restored(task.id);
+        if let Some(restored_task) = restored_task {
+            if restored_task.name == task.name {
+                task.last_run = restored_task.last_run;
+                task.created_at = restored_task.created_at;
+            }
+        }
 
         let task_id = task.id;
         let id_generator = self.id_generator;
@@ -369,10 +385,19 @@ impl TaskManager {
         let timer = self.timer.lock().unwrap();
         let mut list = self.list.write().unwrap();
         timer
-            .add_task(timer_task.context("failed to build a task")?)
-            .context("failed to add a task to scheduler")?;
+            .add_task(timer_task.map_err(|e| {
+                Error::new_task_error("failed to create a delay task instance".to_string(), e)
+            })?)
+            .map_err(|e| {
+                Error::new_task_error("failed to add a task to scheduler".to_string(), e)
+            })?;
         list.push(task);
         Ok(())
+    }
+
+    fn get_task_from_restored(&self, task_id: TaskID) -> Option<Task> {
+        let list = self.restore_list.read().unwrap();
+        list.iter().find(|t| t.id == task_id).cloned()
     }
 
     pub fn pick_task(&self, task_id: TaskID) -> Result<Task> {
@@ -380,7 +405,7 @@ impl TaskManager {
         list.iter()
             .find(|t| t.id == task_id)
             .cloned()
-            .ok_or(anyhow!("task {} not found", task_id))
+            .ok_or(Error::CreateTaskFailed(TaskCreationError::NotFound))
     }
 
     pub fn total(&self) -> usize {
@@ -400,9 +425,21 @@ impl TaskManager {
         let index = list
             .iter()
             .position(|t| t.id == task_id)
-            .ok_or(anyhow!("task {} not found", task_id))?;
-        self.timer.lock().unwrap().remove_task(task_id)?;
+            .ok_or(Error::CreateTaskFailed(TaskCreationError::NotFound))?;
+        self.timer
+            .lock()
+            .unwrap()
+            .remove_task(task_id)
+            .map_err(|e| Error::new_task_error("failed to remove task".to_string(), e))?;
         list.remove(index);
+        Ok(())
+    }
+
+    pub fn advance_task(&mut self, task_id: TaskID) -> Result<()> {
+        let timer = self.timer.lock().unwrap();
+        timer
+            .advance_task(task_id)
+            .map_err(|e| Error::new_task_error("failed to advance a task".to_string(), e))?;
         Ok(())
     }
 }

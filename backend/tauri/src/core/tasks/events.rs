@@ -3,14 +3,15 @@ use serde::{Deserialize, Serialize};
 
 use super::storage::EventsGuard;
 use super::task::{TaskEventID, TaskID, TaskRunResult, Timestamp};
+use super::utils::Result;
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 pub struct TaskEvents;
 
 pub trait TaskEventsDispatcher {
     fn new() -> Self;
-    fn new_event(&self, task_id: TaskID, event_id: TaskEventID) -> TaskEventID;
-    fn dispatch(&self, event_id: TaskEventID, state: TaskEventState);
+    fn new_event(&self, task_id: TaskID, event_id: TaskEventID) -> Result<TaskEventID>;
+    fn dispatch(&self, event_id: TaskEventID, state: TaskEventState) -> Result<()>;
 }
 
 impl TaskEvents {
@@ -26,21 +27,22 @@ impl TaskEventsDispatcher for TaskEvents {
         TaskEvents {}
     }
 
-    fn new_event(&self, task_id: TaskID, event_id: TaskEventID) -> TaskEventID {
+    fn new_event(&self, task_id: TaskID, event_id: TaskEventID) -> Result<TaskEventID> {
         let mut event = TaskEvent {
             id: event_id,
             task_id,
             ..TaskEvent::default()
         };
         event.dispatch(TaskEventState::Pending);
-        EventsGuard::global().add_event(&event).unwrap();
-        event_id
+        EventsGuard::global().add_event(&event)?;
+        Ok(event_id)
     }
 
-    fn dispatch(&self, event_id: TaskEventID, state: TaskEventState) {
+    fn dispatch(&self, event_id: TaskEventID, state: TaskEventState) -> Result<()> {
         let mut event = EventsGuard::global().get_event(event_id).unwrap().unwrap(); // unwrap because it should be exist here, if not, it's a bug
         event.dispatch(state);
-        EventsGuard::global().update_event(&event).unwrap();
+        EventsGuard::global().update_event(&event)?;
+        Ok(())
     }
 }
 

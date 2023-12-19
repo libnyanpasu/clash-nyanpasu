@@ -13,6 +13,10 @@ module.exports = {
     // 'stylelint-config-prettier'
   ],
   rules: {
+    "selector-pseudo-class-no-unknown": [
+      true,
+      { ignorePseudoClasses: ["global"] },
+    ],
     "font-family-name-quotes": null,
     "font-family-no-missing-generic-family-keyword": null,
     "max-nesting-depth": [
@@ -24,7 +28,7 @@ module.exports = {
     "declaration-block-no-duplicate-properties": true,
     "no-duplicate-selectors": true,
     "no-descending-specificity": null,
-    "selector-class-pattern": "^([a-z][a-z0-9]*)((-|__)[a-z0-9]+)*$",
+    "selector-class-pattern": null,
     "value-no-vendor-prefix": [true, { ignoreValues: ["box"] }],
     "at-rule-no-unknown": [
       true,

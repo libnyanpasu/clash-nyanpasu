@@ -64,7 +64,7 @@ thiserror = { workspace = true, version = "1.0" }
 simd-json = "0.13.4"
 
 [target.'cfg(windows)'.dependencies]
-runas = "=1.0.0" # blocked by https://github.com/mitsuhiko/rust-runas/issues/13
+runas = "=1.1.0" # blocked by https://github.com/mitsuhiko/rust-runas/issues/13
 deelevate = "0.2.0"
 winreg = { version = "0.50", features = ["transactions"] }
 windows-sys = { version = "0.48", features = [

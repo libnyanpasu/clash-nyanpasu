@@ -46,6 +46,7 @@ fn main() -> std::io::Result<()> {
             cmds::get_runtime_yaml,
             cmds::get_runtime_exists,
             cmds::get_runtime_logs,
+            cmds::clash_api_get_proxy_delay,
             cmds::uwp::invoke_uwp_tool,
             // updater
             cmds::fetch_latest_core_versions,

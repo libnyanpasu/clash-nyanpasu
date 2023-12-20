@@ -1,6 +1,7 @@
 use crate::config::Config;
 use anyhow::{bail, Result};
 use reqwest::header::HeaderMap;
+use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 use std::collections::HashMap;
 
@@ -19,7 +20,7 @@ pub async fn put_configs(path: &str) -> Result<()> {
 
     match response.status().as_u16() {
         204 => Ok(()),
-        status @ _ => {
+        status => {
             bail!("failed to put configs with status \"{status}\"")
         }
     }
@@ -34,6 +35,31 @@ pub async fn patch_configs(config: &Mapping) -> Result<()> {
     let builder = client.patch(&url).headers(headers.clone()).json(config);
     builder.send().await?;
     Ok(())
+}
+
+#[derive(Default, Debug, Clone, Deserialize, Serialize)]
+pub struct DelayRes {
+    delay: u64,
+}
+
+/// GET /proxies/{name}/delay
+/// 获取代理延迟
+pub async fn get_proxy_delay(name: String, test_url: Option<String>) -> Result<DelayRes> {
+    let (url, headers) = clash_client_info()?;
+    let url = format!("{url}/proxies/{name}/delay");
+    let default_url = "http://www.gstatic.com/generate_204";
+    let test_url = test_url
+        .map(|s| if s.is_empty() { default_url.into() } else { s })
+        .unwrap_or(default_url.into());
+
+    let client = reqwest::ClientBuilder::new().no_proxy().build()?;
+    let builder = client
+        .get(&url)
+        .headers(headers)
+        .query(&[("timeout", "10000"), ("url", &test_url)]);
+    let response = builder.send().await?;
+
+    Ok(response.json::<DelayRes>().await?)
 }
 
 /// 根据clash info获取clash服务地址和请求头
@@ -56,12 +82,12 @@ fn clash_client_info() -> Result<(String, HeaderMap)> {
 /// 缩短clash的日志
 pub fn parse_log(log: String) -> String {
     if log.starts_with("time=") && log.len() > 33 {
-        return (&log[33..]).to_owned();
+        return log[33..].to_owned();
     }
     if log.len() > 9 {
-        return (&log[9..]).to_owned();
+        return log[9..].to_owned();
     }
-    return log;
+    log
 }
 
 /// 缩短clash -t的错误输出
@@ -78,7 +104,7 @@ pub fn parse_check_output(log: String) -> String {
         };
 
         if mr > m {
-            return (&log[e..mr]).to_owned();
+            return log[e..mr].to_owned();
         }
     }
 
@@ -86,7 +112,7 @@ pub fn parse_check_output(log: String) -> String {
     let r = log.find("path=").or(Some(log.len()));
 
     if let (Some(l), Some(r)) = (l, r) {
-        return (&log[(l + 6)..(r - 1)]).to_owned();
+        return log[(l + 6)..(r - 1)].to_owned();
     }
 
     log

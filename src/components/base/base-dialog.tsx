@@ -1,3 +1,4 @@
+import { classNames } from "@/utils";
 import { LoadingButton } from "@mui/lab";
 import {
   Button,
@@ -11,6 +12,8 @@ import {
 import { TransitionProps } from "@mui/material/transitions";
 import { AnimatePresence, motion } from "framer-motion";
 import React, { ReactNode } from "react";
+import styles from "./base-dialog.module.scss";
+
 interface Props {
   title: ReactNode;
   open: boolean;
@@ -50,7 +53,6 @@ export function BaseDialog(props: Props) {
 
   return (
     <Dialog
-      className="123"
       open={open}
       onClose={props.onClose}
       keepMounted
@@ -93,12 +95,22 @@ const BaseDialogTransition = React.forwardRef(function BaseDialogTransition(
     <AnimatePresence>
       {inProp && (
         <motion.div
+          className={classNames(styles.basePageTransition)}
           style={{
             width: "fit-content",
             height: "fit-content",
-            margin: "auto",
+            // margin: "auto",
+            maxHeight: "100vh",
+            position: "fixed",
           }}
-          initial={{ opacity: 0, scale: 0 }}
+          initial={{
+            opacity: 0,
+            scale: 0,
+            top: "50%",
+            left: "50%",
+            translateX: "-50%",
+            translateY: "-50%",
+          }}
           animate={{
             opacity: 1,
             scale: 1,

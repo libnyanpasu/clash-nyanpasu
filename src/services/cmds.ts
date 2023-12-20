@@ -212,3 +212,8 @@ export async function updateCore(
 export async function collectLogs() {
   return invoke<void>("collect_logs");
 }
+
+export async function cmdGetProxyDelay(name: string, url?: string) {
+  name = encodeURIComponent(name);
+  return invoke<{ delay: number }>("clash_api_get_proxy_delay", { name, url });
+}

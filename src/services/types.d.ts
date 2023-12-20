@@ -186,6 +186,7 @@ interface IVergeConfig {
     css_injection?: string;
     page_transition_duration?: number;
   };
+  auto_log_clean?: number;
   auto_close_connection?: boolean;
   default_latency_test?: string;
   enable_clash_fields?: boolean;

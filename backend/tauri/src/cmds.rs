@@ -1,9 +1,6 @@
 use crate::{
     config::*,
-    core::{
-        updater::{ManifestVersion, ManifestVersionLatest},
-        *,
-    },
+    core::{tasks::jobs::ProfilesJobGuard, updater::ManifestVersionLatest, *},
     feat,
     utils::{
         candy, dirs, help,
@@ -91,7 +88,8 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult {
 #[tauri::command]
 pub fn patch_profile(index: String, profile: PrfItem) -> CmdResult {
     wrap_err!(Config::profiles().data().patch_item(index, profile))?;
-    wrap_err!(timer::Timer::global().refresh())
+    ProfilesJobGuard::global().lock().refresh();
+    Ok(())
 }
 
 #[tauri::command]

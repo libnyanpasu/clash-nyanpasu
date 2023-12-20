@@ -113,6 +113,14 @@
   "Check Updates": "Check Updates",
   "Restart": "Restart",
 
+  "Tasks": "Tasks",
+  "Auto Log Clean": "Auto Log Clean",
+  "Never Clean": "Never",
+  "Retain 3 Days": "Retain 3 Days",
+  "Retain 7 Days": "Retain 7 Days",
+  "Retain 30 Days": "Retain 30 Days",
+  "Retain 90 Days": "Retain 90 Days",
+
   "Collect Logs": "Collect Logs",
 
   "Back": "Back",

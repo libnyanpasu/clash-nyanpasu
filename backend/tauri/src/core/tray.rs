@@ -5,6 +5,8 @@ use tauri::{
     SystemTraySubmenu,
 };
 
+use super::storage;
+
 pub struct Tray {}
 
 impl Tray {
@@ -201,6 +203,8 @@ impl Tray {
                     resolve::resolve_reset();
                     api::process::kill_children();
                     app_handle.exit(0);
+                    // flush all data to disk
+                    storage::Storage::global().destroy().unwrap();
                     std::process::exit(0);
                 }
                 _ => {}

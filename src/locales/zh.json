@@ -113,6 +113,14 @@
   "Check Updates": "检查更新",
   "Restart": "重启内核",
 
+  "Tasks": "定期任务",
+  "Auto Log Clean": "自动清理日志",
+  "Never Clean": "不清理",
+  "Retain 3 Days": "保留3天",
+  "Retain 7 Days": "保留7天",
+  "Retain 30 Days": "保留30天",
+  "Retain 90 Days": "保留90天",
+
   "Collect Logs": "收集日志",
 
   "Back": "返回",

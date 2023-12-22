@@ -15,10 +15,20 @@ jobs:
   release:
     strategy:
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        targets:
+          - os: windows-latest
+            category: nsis # and portable
+          - os: windows-latest
+            category: msi
+          - os: ubuntu-latest
+            category: all
+          - os: macos-13
+            category: amd64
+          - os: macos-13
+            category: aarch64
 
-    runs-on: ${{ matrix.os }}
-    if: startsWith(github.repository, 'keiko233')
+    runs-on: ${{ matrix.targets.os }}
+    # if: startsWith(github.repository, 'keiko233')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -32,10 +42,10 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          key: ${{ matrix.os }}
+          key: ${{ matrix.targets.os }}
 
       - name: Install the missing rust target (macOS Only)
-        if: startsWith(matrix.os, 'macos-')
+        if: startsWith(matrix.targets.os, 'macos-')
         run: |
           rustup target add aarch64-apple-darwin
 
@@ -51,7 +61,7 @@ jobs:
           run_install: false
 
       - name: Delete current release assets
-        if: startsWith(matrix.os, 'ubuntu-')
+        if: startsWith(matrix.targets.os, 'ubuntu-')
         uses: mknejp/delete-release-assets@v1
         with:
           token: ${{ secrets.GH_TOKEN }}
@@ -70,17 +80,32 @@ jobs:
             *.json
 
       - name: Install Dependencies (Ubuntu Only)
-        if: startsWith(matrix.os, 'ubuntu-')
+        if: startsWith(matrix.targets.os, 'ubuntu-')
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev webkit2gtk-4.0 libappindicator3-dev librsvg2-dev patchelf openssl
-
+      - uses: maxim-lobanov/setup-xcode@v1
+        if: startsWith(matrix.targets.os, 'macos-')
+        with:
+          xcode-version: "15.0"
       - name: Pnpm install and check
         run: |
           pnpm i
-          pnpm check && pnpm prepare:nightly
-
+          pnpm check
+      - name: Nightly Prepare
+        if: startsWith(matrix.targets.os, 'windows-') == false
+        run: |
+          pnpm prepare:nightly
+      - name: Nightly Prepare (MSI only)
+        if: startsWith(matrix.targets.os, 'windows-') && matrix.targets.category == 'msi'
+        run: |
+          pnpm prepare:nightly  --msi
+      - name: Nightly Prepare (Windows NSIS and Portable)
+        if: startsWith(matrix.targets.os, 'windows-') && matrix.targets.category == 'nsis'
+        run: |
+          pnpm prepare:nightly --nsis
       - name: Tauri build
+        if: startsWith(matrix.targets.os, 'macos-') == false || matrix.targets.category != 'aarch64'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
@@ -92,11 +117,10 @@ jobs:
           releaseBody: "More new features are now supported."
           releaseDraft: false
           prerelease: true
-          tauriScript: pnpm
+          tauriScript: pnpm tauri
           args: -f default-meta nightly -c ./backend/tauri/tauri.nightly.conf.json
-
       - name: Portable Bundle (Windows Only)
-        if: matrix.os == 'windows-latest'
+        if: startsWith(matrix.targets.os, 'windows-') && matrix.targets.category == 'nsis'
         run: |
           pnpm portable
         env:
@@ -107,12 +131,12 @@ jobs:
           VITE_WIN_PORTABLE: 1
 
       - name: Pnpm check (macOS aarch64)
-        if: startsWith(matrix.os, 'macos-')
+        if: startsWith(matrix.targets.os, 'macos-') && matrix.targets.category == 'aarch64'
         run: |
           pnpm check --arch arm64 --sidecar-host aarch64-apple-darwin
 
       - name: Tauri build with Upload (macOS aarch64)
-        if: startsWith(matrix.os, 'macos-')
+        if: startsWith(matrix.targets.os, 'macos-') && matrix.targets.category == 'aarch64'
         env:
           TAG_NAME: pre-release
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
@@ -126,7 +150,7 @@ jobs:
     name: Update tag
     runs-on: ubuntu-latest
     needs: [release]
-    if: startsWith(github.repository, 'keiko233')
+    # if: startsWith(github.repository, 'keiko233')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -146,23 +170,25 @@ jobs:
           cat > release.txt << 'EOF'
           ## Clash Nyanpasu Nightly Build
           Release created at  ${{ env.BUILDTIME }}.
-          Daily build of Clash Nyanpasu Dev branch.
-          [See the development log here](https://t.me/keikolog/462)
+          Daily build of **Clash Nyanpasu** on *dev* branch.
+          ***[See the development log here](https://t.me/keikolog/462)***
           EOF
       - name: Update Release
-        uses: ncipollo/release-action@v1
+        uses: softprops/action-gh-release@v1
         with:
           name: Clash Nyanpasu Dev
-          tag: pre-release
-          bodyFile: release.txt
+          tag_name: pre-release
+          body_path: release.txt
           prerelease: true
+          generate_release_notes: true
+          target_commitish: dev
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
   updater:
-    name: Update Nigthly Updater
+    name: Update Nightly Updater
     runs-on: ubuntu-latest
     needs: [release, update_tag]
-    if: startsWith(github.repository, 'keiko233')
+    # if: startsWith(github.repository, 'keiko233')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

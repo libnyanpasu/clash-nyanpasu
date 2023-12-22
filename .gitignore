@@ -9,3 +9,6 @@ scripts/_env.sh
 
 .eslintcache
 .stylelintcache
+
+tauri.nightly.conf.json
+

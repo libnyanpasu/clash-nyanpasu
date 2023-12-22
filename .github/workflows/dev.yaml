@@ -28,7 +28,7 @@ jobs:
             category: aarch64
 
     runs-on: ${{ matrix.targets.os }}
-    # if: startsWith(github.repository, 'keiko233')
+    if: startsWith(github.repository, 'keiko233')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -150,7 +150,7 @@ jobs:
     name: Update tag
     runs-on: ubuntu-latest
     needs: [release]
-    # if: startsWith(github.repository, 'keiko233')
+    if: startsWith(github.repository, 'keiko233')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -188,7 +188,7 @@ jobs:
     name: Update Nightly Updater
     runs-on: ubuntu-latest
     needs: [release, update_tag]
-    # if: startsWith(github.repository, 'keiko233')
+    if: startsWith(github.repository, 'keiko233')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

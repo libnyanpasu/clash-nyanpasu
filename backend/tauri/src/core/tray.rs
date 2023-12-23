@@ -13,7 +13,7 @@ impl Tray {
     pub fn tray_menu(app_handle: &AppHandle) -> SystemTrayMenu {
         let zh = { Config::verge().latest().language == Some("zh".into()) };
 
-        let version = app_handle.package_info().version.to_string();
+        let version = env!("NYANPASU_VERSION");
 
         macro_rules! t {
             ($en: expr, $zh: expr) => {

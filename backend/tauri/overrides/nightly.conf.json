@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/1.x/tooling/cli/schema.json",
+  "package": {
+    "version": "1.4.2"
+  },
+  "tauri": {
+    "updater": {
+      "endpoints": [
+        "https://mirror.ghproxy.com/https://github.com/keiko233/clash-nyanpasu/releases/download/updater/update-nightly-proxy.json",
+        "https://ghproxy.com/https://github.com/keiko233/clash-nyanpasu/releases/download/updater/update-nightly-proxy.json",
+        "https://github.com/keiko233/clash-nyanpasu/releases/download/updater/update-nightly.json"
+      ]
+    }
+  }
+}

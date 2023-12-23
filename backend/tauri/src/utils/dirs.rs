@@ -21,7 +21,7 @@ static mut RESOURCE_DIR: Option<PathBuf> = None;
 #[allow(unused)]
 static mut PORTABLE_FLAG: bool = false;
 
-pub static mut APP_VERSION: &str = "v1.2.0";
+pub static mut APP_VERSION: &str = env!("NYANPASU_VERSION");
 
 /// initialize portable flag
 #[cfg(target_os = "windows")]
@@ -77,10 +77,6 @@ pub fn app_resources_dir(package_info: &PackageInfo) -> Result<PathBuf> {
 
     unsafe {
         RESOURCE_DIR = Some(res_dir.clone());
-
-        let ver = package_info.version.to_string();
-        let ver_str = format!("v{ver}");
-        APP_VERSION = Box::leak(Box::new(ver_str));
     }
 
     Ok(res_dir)

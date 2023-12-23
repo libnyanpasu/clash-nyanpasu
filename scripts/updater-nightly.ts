@@ -1,7 +1,8 @@
 import { context, getOctokit } from "@actions/github";
 import { execSync } from "child_process";
+import { camelCase, upperFirst } from "lodash-es";
 import fetch from "node-fetch";
-import tauriNightly from "../backend/tauri/tauri.nightly.conf.json";
+import tauriNightly from "../backend/tauri/overrides/nightly.conf.json";
 import { getGithubUrl } from "./utils";
 import { consola } from "./utils/logger";
 const UPDATE_TAG_NAME = "updater";
@@ -14,9 +15,14 @@ async function resolveUpdater() {
   if (process.env.GITHUB_TOKEN === undefined) {
     throw new Error("GITHUB_TOKEN is required");
   }
-
-  const options = { owner: context.repo.owner, repo: context.repo.repo };
+  consola.start("start to generate updater files");
+  const options = {
+    owner: context.repo.owner,
+    repo: context.repo.repo,
+  };
   const github = getOctokit(process.env.GITHUB_TOKEN);
+
+  consola.debug("resolve latest pre-release files...");
   // latest pre-release tag
   const { data: latestPreRelease } = await github.rest.repos.getReleaseByTag({
     ...options,
@@ -24,7 +30,11 @@ async function resolveUpdater() {
   });
   const shortHash = await execSync(
     `git rev-parse --short ${latestPreRelease.target_commitish}`,
-  );
+  )
+    .toString()
+    .replace("\n", "")
+    .replace("\r", "");
+  consola.info(`latest pre-release short hash: ${shortHash}`);
   const updateData = {
     name: `v${tauriNightly.package.version}-alpha+${shortHash}`,
     notes: "Nightly build. Full changes see commit history.",
@@ -96,6 +106,7 @@ async function resolveUpdater() {
   await Promise.allSettled(promises);
   consola.info(updateData);
 
+  consola.debug("generate updater metadata...");
   // maybe should test the signature as well
   // delete the null field
   Object.entries(updateData.platforms).forEach(([key, value]) => {
@@ -120,10 +131,26 @@ async function resolveUpdater() {
   });
 
   // update the update.json
-  const { data: updateRelease } = await github.rest.repos.getReleaseByTag({
-    ...options,
-    tag: UPDATE_TAG_NAME,
-  });
+  consola.debug("update updater files...");
+  let updateRelease;
+  try {
+    const { data } = await github.rest.repos.getReleaseByTag({
+      ...options,
+      tag: UPDATE_TAG_NAME,
+    });
+    updateRelease = data;
+  } catch (err) {
+    consola.error(err);
+    consola.error("failed to get release by tag, create one");
+    const { data } = await github.rest.repos.createRelease({
+      ...options,
+      tag_name: UPDATE_TAG_NAME,
+      name: upperFirst(camelCase(UPDATE_TAG_NAME)),
+      body: "files for programs to check for updates",
+      prerelease: true,
+    });
+    updateRelease = data;
+  }
 
   // delete the old assets
   for (const asset of updateRelease.assets) {
@@ -157,6 +184,7 @@ async function resolveUpdater() {
     name: UPDATE_JSON_PROXY,
     data: JSON.stringify(updateDataNew, null, 2),
   });
+  consola.success("updater files updated");
 }
 
 // get the signature file content

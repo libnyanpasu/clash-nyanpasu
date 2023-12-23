@@ -9,7 +9,7 @@ import { consola } from "./utils/logger";
 const TAURI_APP_CONF_PATH = path.join(TAURI_APP_DIR, "tauri.conf.json");
 const TAURI_NIGHTLY_APP_CONF_PATH = path.join(
   TAURI_APP_DIR,
-  "tauri.nightly.conf.json",
+  "overrides/nightly.conf.json",
 );
 const PACKAGE_JSON_PATH = path.join(cwd, "package.json");
 

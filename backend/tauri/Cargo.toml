@@ -11,6 +11,8 @@ build = "build.rs"
 
 [build-dependencies]
 tauri-build = { version = "1", features = [] }
+serde = "1"
+simd-json = "0.13"
 
 [dependencies]
 warp = "0.3"

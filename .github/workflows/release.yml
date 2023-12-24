@@ -16,9 +16,7 @@ jobs:
       matrix:
         targets:
           - os: windows-latest
-            category: nsis
-          - os: windows-latest
-            category: msi
+            category: all
           - os: ubuntu-latest
             category: all
           - os: macos-13
@@ -111,7 +109,7 @@ jobs:
           args: -f default-meta -c ./backend/tauri/tauri.conf.json
 
       - name: Portable Bundle (Windows Only)
-        if: startsWith(matrix.targets.os, 'windows-') && matrix.targets.category == 'nsis'
+        if: startsWith(matrix.targets.os, 'windows-')
         run: |
           pnpm portable
         env:

@@ -115,7 +115,6 @@ jobs:
         run: |
           pnpm portable
         env:
-          TAG_NAME: v__VERSION__
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
@@ -129,7 +128,6 @@ jobs:
       - name: Tauri build with Upload (macOS aarch64)
         if: startsWith(matrix.targets.os, 'macos-') && matrix.targets.category == 'aarch64'
         env:
-          TAG_NAME: v__VERSION__
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}

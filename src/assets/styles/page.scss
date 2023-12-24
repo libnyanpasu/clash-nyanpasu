@@ -33,7 +33,7 @@
       scrollbar-gutter: stable;
 
       .base-content {
-        width: 90%;
+        width: calc(100% - 28px * 2);
         // max-width: 850px;
         margin: 0 auto;
         // animation: var(--base-content-animation, opacity-content-in) var(base-content-in, 300ms) normal 1 forwards;

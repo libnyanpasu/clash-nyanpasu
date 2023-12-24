@@ -1,3 +1,35 @@
+## v1.4.2
+
+### Features
+
+- Support Clash-rs v0.1.10. [@greenhat616](https://github.com/greenhat616)
+- New Windows tray icon & support tun mode icon. [@keiko233](https://github.com/keiko233)
+- Support Log file export. [@greenhat616](https://github.com/greenhat616)
+- Hotkey Support toggle. [@greenhat616](https://github.com/greenhat616)
+- Built-in Mihomo alpha. [@greenhat616](https://github.com/greenhat616)
+- Use shikiji process log. [@greenhat616](https://github.com/greenhat616)
+- More Animation support. [@greenhat616](https://github.com/greenhat616)
+- New Built-in updater support. [@greenhat616](https://github.com/greenhat616)
+- Support DNS auto config in macos. [@greenhat616](https://github.com/greenhat616)
+- Support log file auto clean. [@keiko233](https://github.com/keiko233)
+- Use Christmas Logo. [@keiko233](https://github.com/keiko233)
+
+### Bug Fixes
+
+- Fix Windows resize bug. [@greenhat616](https://github.com/greenhat616)
+- Fix Hotkey repeat binding . [@greenhat616](https://github.com/greenhat616)
+- Fix Proxies dalay value rending color. [@greenhat616](https://github.com/greenhat616)
+- Fix Mihomo alpha & Clash-rs Service not working. [@greenhat616](https://github.com/greenhat616)
+- Fix dialog position. [@greenhat616](https://github.com/greenhat616)
+- Fix shikiji color rending err. [@keiko233](https://github.com/keiko233)
+
+### Others
+
+- Use GitHub issues template. [@greenhat616](https://github.com/greenhat616) [@keiko233](https://github.com/keiko233) [@txyyh](https://github.com/txyyh)
+- Support nightly builds. [@greenhat616](https://github.com/greenhat616)
+
+---
+
 ## v1.4.1
 
 ### Features

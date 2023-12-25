@@ -13,7 +13,7 @@ static APP_DIR: &str = "clash-verge-dev";
 static CLASH_CONFIG: &str = "config.yaml";
 static VERGE_CONFIG: &str = "verge.yaml";
 static PROFILE_YAML: &str = "profiles.yaml";
-static STORAGE_DB: &str = "storage.db";
+static STORAGE_DB: &str = "storage";
 
 static mut RESOURCE_DIR: Option<PathBuf> = None;
 

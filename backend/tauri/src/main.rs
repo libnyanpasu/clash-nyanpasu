@@ -22,6 +22,14 @@ fn main() -> std::io::Result<()> {
 
     crate::log_err!(init::init_config());
 
+    // Panic Hook to show a panic dialog and save logs
+    let default_panic = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        error!(format!("panic hook: {:?}", info));
+        utils::dialog::panic_dialog(&format!("{:?}", info));
+        default_panic(info);
+    }));
+
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
         .system_tray(SystemTray::new())

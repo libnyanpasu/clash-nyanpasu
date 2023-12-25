@@ -123,7 +123,7 @@
     "stylelint": "16.1.0",
     "stylelint-config-html": "1.1.0",
     "stylelint-config-recess-order": "4.4.0",
-    "stylelint-config-standard": "35.0.0",
+    "stylelint-config-standard": "36.0.0",
     "stylelint-declaration-block-no-ignored-properties": "2.7.0",
     "stylelint-order": "6.0.4",
     "stylelint-scss": "6.0.0",

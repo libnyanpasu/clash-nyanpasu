@@ -242,8 +242,8 @@ devDependencies:
     specifier: 36.0.0
     version: 36.0.0(stylelint@16.1.0)
   stylelint-declaration-block-no-ignored-properties:
-    specifier: 2.7.0
-    version: 2.7.0(stylelint@16.1.0)
+    specifier: 2.8.0
+    version: 2.8.0(stylelint@16.1.0)
   stylelint-order:
     specifier: 6.0.4
     version: 6.0.4(stylelint@16.1.0)
@@ -6517,11 +6517,11 @@ packages:
       stylelint-config-recommended: 14.0.0(stylelint@16.1.0)
     dev: true
 
-  /stylelint-declaration-block-no-ignored-properties@2.7.0(stylelint@16.1.0):
-    resolution: {integrity: sha512-44SpI9+9Oc1ICuwwRfwS/3npQ2jPobDSTnwWdNgZGryGqQCp17CgEIWjCv1BgUOSzND3RqywNCNLKvO1AOxbfg==}
+  /stylelint-declaration-block-no-ignored-properties@2.8.0(stylelint@16.1.0):
+    resolution: {integrity: sha512-Ws8Cav7Y+SPN0JsV407LrnNXWOrqGjxShf+37GBtnU/C58Syve9c0+I/xpLcFOosST3ternykn3Lp77f3ITnFw==}
     engines: {node: '>=6'}
     peerDependencies:
-      stylelint: ^7.0.0 || ^8.0.0 || ^9.0.0 || ^10.0.0 || ^11.0.0 || ^12.0.0 || ^13.0.0 || ^14.0.0 || ^15.0.0
+      stylelint: ^7.0.0 || ^8.0.0 || ^9.0.0 || ^10.0.0 || ^11.0.0 || ^12.0.0 || ^13.0.0 || ^14.0.0 || ^15.0.0 || ^16.0.0
     dependencies:
       stylelint: 16.1.0(typescript@5.3.2)
     dev: true

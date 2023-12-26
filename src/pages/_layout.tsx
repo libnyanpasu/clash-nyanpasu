@@ -73,6 +73,12 @@ export default function Layout() {
           break;
       }
     });
+
+    setTimeout(() => {
+      appWindow.show();
+      appWindow.unminimize();
+      appWindow.setFocus();
+    }, 50);
   }, []);
 
   useEffect(() => {

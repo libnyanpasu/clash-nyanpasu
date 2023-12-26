@@ -159,6 +159,7 @@ jobs:
       - name: Set Env
         run: |
           echo "BUILDTIME=$(TZ=Asia/Shanghai date)" >> $GITHUB_ENV
+          echo "CURRENT_GIT_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
         shell: bash
       - name: Update Tag
         uses: richardsimko/update-tag@v1.0.11
@@ -166,6 +167,7 @@ jobs:
           tag_name: pre-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_SHA: ${{ env.CURRENT_GIT_SHA }}
       - run: |
           cat > release.txt << 'EOF'
           ## Clash Nyanpasu Nightly Build

@@ -56,7 +56,7 @@ semver = "1.0"
 zip = "0.6.6"
 zip-extensions = "0.6.2"
 gunzip = { version = "0.1.0", git = "https://github.com/TechHara/gunzip.git" }
-tempfile = "3.8.1"
+tempfile = "3.9.0"
 glob = "0.3.1"
 async-trait = "0.1.74"
 dyn-clone = "1.0.16"

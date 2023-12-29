@@ -40,13 +40,13 @@ tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
 tauri = { version = "1.5.3", features = [
+  "updater",
   "os-all",
   "global-shortcut-all",
   "notification-all",
   "process-all",
   "shell-all",
   "system-tray",
-  "updater",
   "window-all",
 ] }
 window-vibrancy = { version = "0.4.3" }
@@ -64,9 +64,9 @@ rs-snowflake = "0.6"
 rocksdb = "0.21"
 thiserror = { workspace = true, version = "1.0" }
 simd-json = "0.13.4"
+runas = "=1.0.0" # blocked by https://github.com/mitsuhiko/rust-runas/issues/13
 
 [target.'cfg(windows)'.dependencies]
-runas = "=1.0.0" # blocked by https://github.com/mitsuhiko/rust-runas/issues/13
 deelevate = "0.2.0"
 winreg = { version = "0.50", features = ["transactions"] }
 windows-sys = { version = "0.48", features = [

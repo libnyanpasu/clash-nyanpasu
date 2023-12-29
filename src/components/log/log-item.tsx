@@ -68,7 +68,11 @@ const LogItem = (props: Props) => {
         }
       >
         <span
-          className={classNames(styles.item, "data")}
+          className={classNames(
+            styles.item,
+            theme.palette.mode === "dark" && styles.dark,
+            "data",
+          )}
           dangerouslySetInnerHTML={{
             __html: payload,
           }}

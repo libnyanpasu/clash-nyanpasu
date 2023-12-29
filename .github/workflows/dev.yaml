@@ -159,11 +159,13 @@ jobs:
       - name: Set Env
         run: |
           echo "BUILDTIME=$(TZ=Asia/Shanghai date)" >> $GITHUB_ENV
+          echo "CURRENT_GIT_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
         shell: bash
       - name: Update Tag
-        uses: richardsimko/update-tag@v1.0.11
+        uses: greenhat616/update-tag@v1
         with:
           tag_name: pre-release
+          ref: dev
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: |

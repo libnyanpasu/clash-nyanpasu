@@ -1,5 +1,4 @@
 .item {
-  /* stylelint-disable-next-line selector-pseudo-class-no-unknown */
   :global(.shiki) {
     margin-top: 0.25em;
     margin-bottom: 0;
@@ -10,8 +9,15 @@
     }
 
     span {
-      color: var(--shiki-dark) !important;
       white-space: normal;
+    }
+  }
+
+  &.dark {
+    :global(.shiki) {
+      span {
+        color: var(--shiki-dark) !important;
+      }
     }
   }
 }

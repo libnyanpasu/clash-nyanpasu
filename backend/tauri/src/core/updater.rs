@@ -1,17 +1,17 @@
 use std::{collections::HashMap, io::Cursor, path::Path, sync::OnceLock};
 
+use super::CoreManager;
 use crate::config::ClashCore;
 use anyhow::{anyhow, Result};
 use gunzip::Decompressor;
-use log::debug;
-use serde::{de, Deserialize, Serialize};
+use log::{debug, warn};
+use runas::Command as RunasCommand;
+use serde::{Deserialize, Serialize};
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
 use tempfile::{tempdir, TempDir};
 use tokio::{join, sync::RwLock, task::spawn_blocking};
 use zip::ZipArchive;
-
-use super::CoreManager;
 
 pub struct Updater {
     manifest_version: ManifestVersion,
@@ -123,14 +123,15 @@ impl Updater {
             self.mirror.as_str(),
             "MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt"
         );
-        Ok(client
-            .get(url)
-            .send()
-            .await?
-            .text()
-            .await?
-            .trim()
-            .to_string())
+        let res = client.get(url).send().await?;
+        let status_code = res.status();
+        if !status_code.is_success() {
+            anyhow::bail!(
+                "failed to get mihomo alpha version: response status is {}, expected 200",
+                status_code
+            );
+        }
+        Ok(res.text().await?.trim().to_string())
     }
 
     pub async fn update_core(&self, core_type: &ClashCore) -> Result<()> {
@@ -154,7 +155,7 @@ impl Updater {
         .await??;
         // 3. if core is used, close it
         if current_core == *core_type {
-            CoreManager::global().stop_core()?;
+            tokio::task::spawn_blocking(move || CoreManager::global().stop_core()).await??;
         }
         // 4. replace core
         #[cfg(target_os = "windows")]
@@ -165,10 +166,47 @@ impl Updater {
         let core_dir = core_dir.parent().ok_or(anyhow!("failed to get core dir"))?;
         let target_core = core_dir.join(target_core);
         debug!("copying core to {:?}", target_core);
-        std::fs::copy(
-            tmp_dir.path().join(core_type.clone().to_string()),
-            target_core,
-        )?;
+        let tmp_core_path = tmp_dir.path().join(core_type.clone().to_string());
+        match std::fs::copy(tmp_core_path.clone(), target_core.clone()) {
+            Ok(_) => {}
+            Err(err) => {
+                warn!(
+                    "failed to copy core: {}, trying to use elevated permission to copy and override core",
+                    err
+                );
+                let mut target_core_str = target_core.to_str().unwrap().to_string();
+                if target_core_str.starts_with("\\\\?\\") {
+                    target_core_str = target_core_str[4..].to_string();
+                }
+                debug!("tmp core path: {:?}", tmp_core_path);
+                debug!("target core path: {:?}", target_core_str);
+                // 防止 UAC 弹窗堵塞主线程
+                let status_code = tokio::task::spawn_blocking(move || {
+                    #[cfg(target_os = "windows")]
+                    {
+                        RunasCommand::new("cmd")
+                            .args(&[
+                                "/C",
+                                "copy",
+                                "/Y",
+                                tmp_core_path.to_str().unwrap(),
+                                &target_core_str,
+                            ])
+                            .status()
+                    }
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        RunasCommand::new("cp")
+                            .args(&["-f", tmp_core_path.to_str().unwrap(), &target_core_str])
+                            .status()
+                    }
+                })
+                .await??;
+                if !status_code.success() {
+                    anyhow::bail!("failed to copy core: {}", status_code);
+                }
+            }
+        };
 
         // 5. if core is used before, restart it
         if current_core == *core_type {
@@ -235,7 +273,15 @@ impl Updater {
         let mut dst = std::fs::File::create(&file_path)?;
 
         let client = reqwest::Client::new();
-        let mut buff = Cursor::new(client.get(url).send().await?.bytes().await?);
+        let res = client.get(url).send().await?;
+        let status_code = res.status();
+        if !status_code.is_success() {
+            anyhow::bail!(
+                "failed to download core: response status is {}, expected 200",
+                status_code
+            );
+        }
+        let mut buff = Cursor::new(res.bytes().await?);
         std::io::copy(&mut buff, &mut dst)?;
         Ok(artifact)
     }
@@ -284,7 +330,7 @@ fn decompress_and_set_permission(
     };
     let tmp_core = tmp_path.join(core_type.clone().to_string());
     debug!("writing core to {:?} ({} bytes)", tmp_core, buff.len());
-    let mut core_file = std::fs::File::create(tmp_core.to_owned())?;
+    let mut core_file = std::fs::File::create(&tmp_core)?;
     std::io::copy(&mut buff.as_slice(), &mut core_file)?;
     #[cfg(target_family = "unix")]
     {
@@ -300,12 +346,15 @@ pub async fn get_latest_version_manifest(mirror: &str) -> Result<ManifestVersion
     );
     log::debug!("{}", url);
     let client = reqwest::Client::new();
-    Ok(client
-        .get(url)
-        .send()
-        .await?
-        .json::<ManifestVersion>()
-        .await?)
+    let res = client.get(url).send().await?;
+    let status_code = res.status();
+    if !status_code.is_success() {
+        anyhow::bail!(
+            "failed to get latest version manifest: response status is {}, expected 200",
+            status_code
+        );
+    }
+    Ok(res.json::<ManifestVersion>().await?)
 }
 
 enum CoreTypeMeta {

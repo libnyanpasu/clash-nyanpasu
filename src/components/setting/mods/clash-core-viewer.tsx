@@ -70,7 +70,7 @@ export const ClashCoreViewer = forwardRef<DialogRef>((props, ref) => {
         ...each,
         latest:
           each.core === "clash"
-            ? results["clash_premium"]
+            ? `n${results["clash_premium"]}`
             : results[each.core.replace(/-/g, "_") as keyof typeof results],
       }));
       setValidCores(buf);
@@ -101,7 +101,7 @@ export const ClashCoreViewer = forwardRef<DialogRef>((props, ref) => {
     }
   });
 
-  useAsyncEffect(async () => {
+  const getCoreVersions = async () => {
     try {
       const versions = await Promise.all(
         VALID_CORE.reduce(
@@ -126,7 +126,8 @@ export const ClashCoreViewer = forwardRef<DialogRef>((props, ref) => {
         console.error(e);
       }
     }
-  }, []);
+  };
+  useAsyncEffect(getCoreVersions, []);
 
   return (
     <BaseDialog
@@ -180,6 +181,9 @@ export const ClashCoreViewer = forwardRef<DialogRef>((props, ref) => {
               if (state === "start") setLock(true);
               else setLock(false);
             }}
+            onCoreUpdated={() => {
+              getCoreVersions();
+            }}
           />
         ))}
       </List>
@@ -194,11 +198,13 @@ function CoreElement({
   core,
   lock,
   onCoreChanged,
+  onCoreUpdated,
 }: {
   selected: boolean;
   core: Core;
   lock: boolean;
   onCoreChanged: (core: string, state: "start" | "finish") => void;
+  onCoreUpdated?: (core: string) => void;
 }) {
   const { t } = useTranslation();
   const { mutateVerge } = useVerge();
@@ -250,6 +256,7 @@ function CoreElement({
           mutate("getVersion");
         }, 100);
         useNotification(t("Success"), `Successfully updated to ${core}`);
+        onCoreUpdated?.(core);
       } catch (err: any) {
         useNotification(t("Error"), err?.message || err.toString());
       } finally {

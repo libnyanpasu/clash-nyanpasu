@@ -90,8 +90,7 @@ const resolveMihomoAlpha: LatestVersionResolver = async () => {
 
   const archMapping: ArchMapping = {
     // [SupportedArch.WindowsX86]: "mihomo-windows-386-{}.zip",
-    [SupportedArch.WindowsX86_64]:
-      "mihomo-windows-amd64-compatible-alpha-{}.zip",
+    [SupportedArch.WindowsX86_64]: "mihomo-windows-amd64-compatible-{}.zip",
     // [SupportedArch.WindowsAarch64]: "mihomo-windows-arm64-{}.zip",
     [SupportedArch.LinuxAarch64]: "mihomo-linux-arm64-{}.gz",
     [SupportedArch.LinuxAmd64]: "mihomo-linux-amd64-compatible-{}.gz",

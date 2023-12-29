@@ -155,7 +155,7 @@ impl Updater {
         .await??;
         // 3. if core is used, close it
         if current_core == *core_type {
-            CoreManager::global().stop_core()?;
+            tokio::task::spawn_blocking(move || CoreManager::global().stop_core()).await??;
         }
         // 4. replace core
         #[cfg(target_os = "windows")]
@@ -174,7 +174,12 @@ impl Updater {
                     "failed to copy core: {}, trying to use elevated permission to copy and override core",
                     err
                 );
-
+                let mut target_core_str = target_core.to_str().unwrap().to_string();
+                if target_core_str.starts_with("\\\\?\\") {
+                    target_core_str = target_core_str[4..].to_string();
+                }
+                debug!("tmp core path: {:?}", tmp_core_path);
+                debug!("target core path: {:?}", target_core_str);
                 // 防止 UAC 弹窗堵塞主线程
                 let status_code = tokio::task::spawn_blocking(move || {
                     #[cfg(target_os = "windows")]
@@ -185,18 +190,14 @@ impl Updater {
                                 "copy",
                                 "/Y",
                                 tmp_core_path.to_str().unwrap(),
-                                target_core.to_str().unwrap(),
+                                &target_core_str,
                             ])
                             .status()
                     }
                     #[cfg(not(target_os = "windows"))]
                     {
                         RunasCommand::new("cp")
-                            .args(&[
-                                "-f",
-                                tmp_core_path.to_str().unwrap(),
-                                target_core.to_str().unwrap(),
-                            ])
+                            .args(&["-f", tmp_core_path.to_str().unwrap(), &target_core_str])
                             .status()?;
                     }
                 })

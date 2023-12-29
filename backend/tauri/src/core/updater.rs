@@ -174,10 +174,11 @@ impl Updater {
                     "failed to copy core: {}, trying to use elevated permission to copy and override core",
                     err
                 );
-                #[cfg(target_os = "windows")]
-                {
-                    // 防止 UAC 弹窗堵塞主线程
-                    tokio::task::spawn_blocking(move || {
+
+                // 防止 UAC 弹窗堵塞主线程
+                let status_code = tokio::task::spawn_blocking(move || {
+                    #[cfg(target_os = "windows")]
+                    {
                         RunasCommand::new("cmd")
                             .args(&[
                                 "/C",
@@ -187,18 +188,21 @@ impl Updater {
                                 target_core.to_str().unwrap(),
                             ])
                             .status()
-                    })
-                    .await??;
-                }
-                #[cfg(not(target_os = "windows"))]
-                {
-                    RunasCommand::new("cp")
-                        .args(&[
-                            "-f",
-                            tmp_core_path.to_str().unwrap(),
-                            target_core.to_str().unwrap(),
-                        ])
-                        .status()?;
+                    }
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        RunasCommand::new("cp")
+                            .args(&[
+                                "-f",
+                                tmp_core_path.to_str().unwrap(),
+                                target_core.to_str().unwrap(),
+                            ])
+                            .status()?;
+                    }
+                })
+                .await??;
+                if !status_code.success() {
+                    anyhow::bail!("failed to copy core: {}", status_code);
                 }
             }
         };

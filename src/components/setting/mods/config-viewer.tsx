@@ -2,7 +2,6 @@ import { BaseDialog, DialogRef } from "@/components/base";
 import { getRuntimeYaml } from "@/services/cmds";
 import { atomThemeMode } from "@/services/states";
 import { Chip } from "@mui/material";
-import { editor } from "monaco-editor/esm/vs/editor/editor.api";
 import {
   forwardRef,
   useEffect,
@@ -13,16 +12,14 @@ import {
 import { useTranslation } from "react-i18next";
 import { useRecoilValue } from "recoil";
 
-import "monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution.js";
-import "monaco-editor/esm/vs/editor/contrib/folding/browser/folding.js";
+import { monaco } from "@/services/monaco";
 
 export const ConfigViewer = forwardRef<DialogRef>((props, ref) => {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
   const editorRef = useRef<any>();
-  const instanceRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const instanceRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const themeMode = useRecoilValue(atomThemeMode);
 
   useEffect(() => {
@@ -44,7 +41,7 @@ export const ConfigViewer = forwardRef<DialogRef>((props, ref) => {
         if (!dom) return;
         if (instanceRef.current) instanceRef.current.dispose();
 
-        instanceRef.current = editor.create(editorRef.current, {
+        instanceRef.current = monaco.editor.create(editorRef.current, {
           value: data ?? "# Error\n",
           language: "yaml",
           theme: themeMode === "light" ? "vs" : "vs-dark",

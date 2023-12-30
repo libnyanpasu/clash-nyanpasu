@@ -1,7 +1,5 @@
-import { useEffect, useRef } from "react";
-import { useLockFn } from "ahooks";
-import { useRecoilValue } from "recoil";
-import { useTranslation } from "react-i18next";
+import { readProfileFile, saveProfileFile } from "@/services/cmds";
+import { atomThemeMode } from "@/services/states";
 import {
   Button,
   Dialog,
@@ -9,14 +7,13 @@ import {
   DialogContent,
   DialogTitle,
 } from "@mui/material";
-import { atomThemeMode } from "@/services/states";
-import { readProfileFile, saveProfileFile } from "@/services/cmds";
+import { useLockFn } from "ahooks";
+import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import { useRecoilValue } from "recoil";
 
-import "monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution.js";
-import "monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution.js";
-import "monaco-editor/esm/vs/editor/contrib/folding/browser/folding.js";
-import { editor } from "monaco-editor/esm/vs/editor/editor.api";
 import { useNotification } from "@/hooks/use-notification";
+import { monaco } from "@/services/monaco";
 
 interface Props {
   uid: string;
@@ -31,7 +28,7 @@ export const EditorViewer = (props: Props) => {
 
   const { t } = useTranslation();
   const editorRef = useRef<any>();
-  const instanceRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const instanceRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const themeMode = useRecoilValue(atomThemeMode);
 
   useEffect(() => {
@@ -43,7 +40,7 @@ export const EditorViewer = (props: Props) => {
       if (!dom) return;
       if (instanceRef.current) instanceRef.current.dispose();
 
-      instanceRef.current = editor.create(editorRef.current, {
+      instanceRef.current = monaco.editor.create(editorRef.current, {
         value: data,
         language: mode,
         theme: themeMode === "light" ? "vs" : "vs-dark",

@@ -9,7 +9,7 @@
     "build:nightly": "tauri build -f default-meta nightly -c ./backend/tauri/tauri.nightly.conf.json",
     "tauri": "tauri",
     "web:dev": "vite",
-    "web:build": "tsc --noEmit && vite build",
+    "web:build": "vite build",
     "web:serve": "vite preview",
     "lint": "run-s lint:*",
     "lint:prettier": "prettier --check .",

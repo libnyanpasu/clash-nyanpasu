@@ -39,7 +39,7 @@ jobs:
         with:
           workspaces: "./backend/"
           prefix-key: "rust-stable"
-          key: "macos-13"
+          key: ${{ matrix.targets.os }}
           shared-key: "release"
 
       - name: Install the missing rust target (macOS Only)

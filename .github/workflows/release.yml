@@ -33,13 +33,14 @@ jobs:
           ref: main
 
       - name: install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        run: rustup install 1.74.1 --profile minimal && rustup default 1.74.1
 
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: "./backend/"
+          prefix-key: "rust-stable"
           key: ${{ matrix.targets.os }}
+          shared-key: "release"
 
       - name: Install the missing rust target (macOS Only)
         if: startsWith(matrix.targets.os, 'macos-')

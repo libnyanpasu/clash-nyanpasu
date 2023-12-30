@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Rust
-        run: rustup toolchain install stable --profile minimal && rustup default stable && rustup component add clippy rustfmt && rustc --version && cargo --version && rustup show
+        run: rustup toolchain install 1.74.1 --profile minimal && rustup default 1.74.1 && rustup component add clippy rustfmt && rustc --version && cargo --version && rustup show
       - name: Tauri dependencies
         run: >-
           sudo apt-get update &&
@@ -90,7 +90,7 @@ jobs:
 
       # install the latest Rust stable
       - name: Rust stable
-        run: rustup toolchain install stable --profile minimal
+        run: rustup toolchain install 1.74.1 --profile minimal && rustup default 1.74.1
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: "./backend/"

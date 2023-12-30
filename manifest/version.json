@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "latest": {
     "mihomo": "v1.17.0",
-    "mihomo_alpha": "alpha-2e87c6f",
+    "mihomo_alpha": "alpha-b604886",
     "clash_rs": "v0.1.11",
     "clash_premium": "2023-09-05-gdcc8d87"
   },
@@ -36,5 +36,5 @@
       "darwin-x64": "clash-darwin-amd64-n{}.gz"
     }
   },
-  "updated_at": "2023-12-29T22:25:16.981Z"
+  "updated_at": "2023-12-30T22:24:26.114Z"
 }

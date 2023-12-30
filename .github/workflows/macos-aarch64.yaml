@@ -14,13 +14,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        run: rustup install 1.74.1 --profile minimal && rustup default 1.74.1
 
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
-          key: macos-latest
+          workspaces: "./backend/"
+          prefix-key: "rust-stable"
+          key: "macos-13"
+          shared-key: "release"
 
       - name: install the missing rust target
         run: |

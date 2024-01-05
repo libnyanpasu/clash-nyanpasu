@@ -5,6 +5,7 @@ import {
   ListItemButton,
   Typography,
   styled,
+  Paper,
 } from "@mui/material";
 import {
   ExpandLessRounded,
@@ -33,57 +34,89 @@ export const ProxyRender = (props: RenderProps) => {
 
   if (type === 0) {
     return (
-      <ListItemButton
-        dense
-        onClick={() => onHeadState(group.name, { open: !headState?.open })}
+      <Paper
+        sx={{
+          boxShadow: 2,
+          borderRadius: 7,
+          marginTop: 2,
+          marginBottom: 2,
+        }}
       >
-        <ListItemText
-          primary={group.name}
-          secondary={
-            <ListItemTextChild
-              sx={{
-                overflow: "hidden",
-                display: "flex",
-                alignItems: "center",
-                pt: "2px",
-              }}
-            >
-              <StyledTypeBox>{group.type}</StyledTypeBox>
-              <StyledSubtitle>{group.now}</StyledSubtitle>
-            </ListItemTextChild>
-          }
-          secondaryTypographyProps={{
-            sx: { display: "flex", alignItems: "center" },
+        <ListItemButton
+          dense
+          onClick={() => onHeadState(group.name, { open: !headState?.open })}
+          sx={{
+            borderRadius: 7,
           }}
-        />
-        {headState?.open ? <ExpandLessRounded /> : <ExpandMoreRounded />}
-      </ListItemButton>
+        >
+          <ListItemText
+            primary={group.name}
+            secondary={
+              <ListItemTextChild
+                sx={{
+                  overflow: "hidden",
+                  display: "flex",
+                  alignItems: "center",
+                  pt: "2px",
+                }}
+              >
+                <StyledTypeBox>{group.type}</StyledTypeBox>
+                <StyledSubtitle>{group.now}</StyledSubtitle>
+              </ListItemTextChild>
+            }
+            secondaryTypographyProps={{
+              sx: { display: "flex", alignItems: "center" },
+            }}
+          />
+          {headState?.open ? <ExpandLessRounded /> : <ExpandMoreRounded />}
+        </ListItemButton>
+      </Paper>
     );
   }
 
   if (type === 1) {
     return (
-      <ProxyHead
-        sx={{ pl: indent ? 4.5 : 2.5, pr: 3, mt: indent ? 1 : 0.5, mb: 1 }}
-        groupName={group.name}
-        headState={headState!}
-        onLocation={() => onLocation(group)}
-        onCheckDelay={() => onCheckAll(group.name)}
-        onHeadState={(p) => onHeadState(group.name, p)}
-      />
+      <Paper
+        sx={{
+          boxShadow: 2,
+          borderTopLeftRadius: "28px",
+          borderTopRightRadius: "28px",
+          borderBottomLeftRadius: "0",
+          borderBottomRightRadius: "0",
+        }}
+      >
+        <ProxyHead
+          sx={{
+            padding: 2,
+            mt: indent ? 1 : 0.5,
+          }}
+          groupName={group.name}
+          headState={headState!}
+          onLocation={() => onLocation(group)}
+          onCheckDelay={() => onCheckAll(group.name)}
+          onHeadState={(p) => onHeadState(group.name, p)}
+        />
+      </Paper>
     );
   }
 
   if (type === 2) {
     return (
-      <ProxyItem
-        groupName={group.name}
-        proxy={proxy!}
-        selected={group.now === proxy?.name}
-        showType={headState?.showType}
-        sx={{ py: 0, pl: indent ? 4 : 2 }}
-        onClick={() => onChangeProxy(group, proxy!)}
-      />
+      <Paper
+        sx={{
+          boxShadow: 2,
+          borderRadius: "0",
+        }}
+      >
+        <ProxyItem
+          groupName={group.name}
+          proxy={proxy!}
+          selected={group.now === proxy?.name}
+          showType={headState?.showType}
+          sx={{ py: 0, pl: 2, pb: 1 }}
+          onClick={() => onChangeProxy(group, proxy!)}
+        />
+      </Paper>
     );
   }
 
@@ -107,28 +140,50 @@ export const ProxyRender = (props: RenderProps) => {
 
   if (type === 4) {
     return (
-      <Box
+      <Paper
         sx={{
-          height: 56,
-          display: "grid",
-          gap: 1,
-          pl: indent ? 4 : 2,
-          pr: 2,
-          pb: 1,
-          gridTemplateColumns: `repeat(${item.col! || 2}, 1fr)`,
+          boxShadow: 2,
+          borderRadius: "0",
         }}
       >
-        {proxyCol?.map((proxy) => (
-          <ProxyItemMini
-            key={item.key + proxy.name}
-            groupName={group.name}
-            proxy={proxy!}
-            selected={group.now === proxy.name}
-            showType={headState?.showType}
-            onClick={() => onChangeProxy(group, proxy!)}
-          />
-        ))}
-      </Box>
+        <Box
+          sx={{
+            height: 56,
+            display: "grid",
+            gap: 1.5,
+            pl: 4,
+            pr: 4,
+            pb: 1.5,
+            gridTemplateColumns: `repeat(${item.col! || 2}, 1fr)`,
+          }}
+        >
+          {proxyCol?.map((proxy) => (
+            <ProxyItemMini
+              key={item.key + proxy.name}
+              groupName={group.name}
+              proxy={proxy!}
+              selected={group.now === proxy.name}
+              showType={headState?.showType}
+              onClick={() => onChangeProxy(group, proxy!)}
+            />
+          ))}
+        </Box>
+      </Paper>
+    );
+  }
+
+  if (type === 5) {
+    return (
+      <Paper
+        sx={{
+          boxShadow: 2,
+          borderTopLeftRadius: "0",
+          borderTopRightRadius: "0",
+          borderBottomLeftRadius: "28px",
+          borderBottomRightRadius: "28px",
+          height: 28,
+        }}
+      />
     );
   }
 

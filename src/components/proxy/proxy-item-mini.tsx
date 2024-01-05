@@ -47,8 +47,8 @@ export const ProxyItemMini = (props: Props) => {
       sx={[
         {
           height: 56,
-          borderRadius: 1,
-          pl: 1.5,
+          borderRadius: 7,
+          pl: 2,
           pr: 1,
           justifyContent: "space-between",
           alignItems: "center",

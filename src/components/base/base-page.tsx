@@ -7,10 +7,11 @@ interface Props {
   header?: React.ReactNode; // something behind title
   contentStyle?: React.CSSProperties;
   children?: ReactNode;
+  full?: boolean;
 }
 
 export const BasePage: React.FC<Props> = (props) => {
-  const { title, header, contentStyle, children } = props;
+  const { title, header, contentStyle, full, children } = props;
 
   return (
     <BaseErrorBoundary>
@@ -23,7 +24,7 @@ export const BasePage: React.FC<Props> = (props) => {
           {header}
         </header>
 
-        <div className="base-container">
+        <div className={full ? "base-container no-padding" : "base-container"}>
           <section>
             <div className="base-content" style={contentStyle} data-windrag>
               {children}

@@ -13,6 +13,8 @@ import { BaseEmpty } from "../base";
 import { useRenderList } from "./use-render-list";
 import { ProxyRender } from "./proxy-render";
 import delayManager from "@/services/delay";
+import { classNames } from "@/utils";
+import styles from "./proxy-group.module.scss";
 
 interface Props {
   mode: string;
@@ -117,6 +119,7 @@ export const ProxyGroups = (props: Props) => {
     <Virtuoso
       ref={virtuosoRef}
       style={{ height: "100%" }}
+      className={classNames(styles.proxyVirtuoso)}
       totalCount={renderList.length}
       increaseViewportBy={256}
       itemContent={(index) => (

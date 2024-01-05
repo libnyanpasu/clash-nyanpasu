@@ -55,6 +55,7 @@ export default function ProxyPage() {
 
   return (
     <BasePage
+      full
       contentStyle={{ height: "100%" }}
       title={t("Proxy Groups")}
       header={
@@ -76,17 +77,7 @@ export default function ProxyPage() {
         </Box>
       }
     >
-      <Paper
-        sx={{
-          borderRadius: 1,
-          boxShadow: 2,
-          height: "100%",
-          boxSizing: "border-box",
-          py: 1,
-        }}
-      >
-        <ProxyGroups mode={curMode!} />
-      </Paper>
+      <ProxyGroups mode={curMode!} />
     </BasePage>
   );
 }

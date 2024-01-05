@@ -34,20 +34,17 @@
 
       .base-content {
         width: calc(100% - 28px * 2);
-        // max-width: 850px;
         margin: 0 auto;
-        // animation: var(--base-content-animation, opacity-content-in) var(base-content-in, 300ms) normal 1 forwards;
+      }
+    }
 
-        @keyframes base-content-in {
-          0% {
-            opacity: 0;
-            transform: translateY(50%) scale(0.9);
-          }
+    &.no-padding {
+      > section {
+        padding: 0;
+        overflow: visible;
 
-          100% {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
+        .base-content {
+          width: 100%;
         }
       }
     }

@@ -74,7 +74,7 @@ export const ProxyItem = (props: Props) => {
         selected={selected}
         onClick={() => onClick?.(proxy.name)}
         sx={[
-          { borderRadius: 1 },
+          { borderRadius: 7 },
           ({ palette: { mode, primary } }) => {
             const bgcolor =
               mode === "light"

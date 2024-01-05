@@ -140,12 +140,14 @@ export default function Layout() {
             </div>
           </div>
 
-          <div className="layout__right" data-windrag>
+          <div className="layout__right">
             {OS === "windows" && (
               <div className="the-bar">
                 <LayoutControl />
               </div>
             )}
+
+            <div className="drag-mask" data-windrag />
 
             <AnimatePresence mode="wait">
               {React.cloneElement(routes, { key: location.pathname })}

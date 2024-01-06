@@ -6,6 +6,7 @@ import {
   Typography,
   styled,
   Paper,
+  Divider,
 } from "@mui/material";
 import {
   ExpandLessRounded,
@@ -44,13 +45,13 @@ export const ProxyRender = (props: RenderProps) => {
       >
         <ListItemButton
           dense
-          onClick={() => onHeadState(group.name, { open: !headState?.open })}
+          onClick={() => onHeadState(group!.name, { open: !headState?.open })}
           sx={{
             borderRadius: 7,
           }}
         >
           <ListItemText
-            primary={group.name}
+            primary={group!.name}
             secondary={
               <ListItemTextChild
                 sx={{
@@ -60,8 +61,8 @@ export const ProxyRender = (props: RenderProps) => {
                   pt: "2px",
                 }}
               >
-                <StyledTypeBox>{group.type}</StyledTypeBox>
-                <StyledSubtitle>{group.now}</StyledSubtitle>
+                <StyledTypeBox>{group!.type}</StyledTypeBox>
+                <StyledSubtitle>{group!.now}</StyledSubtitle>
               </ListItemTextChild>
             }
             secondaryTypographyProps={{
@@ -87,15 +88,20 @@ export const ProxyRender = (props: RenderProps) => {
       >
         <ProxyHead
           sx={{
-            padding: 2,
+            pl: 2,
+            pr: 2,
+            pt: 1,
+            pb: 1,
             mt: indent ? 1 : 0.5,
           }}
-          groupName={group.name}
+          groupName={group!.name}
           headState={headState!}
-          onLocation={() => onLocation(group)}
-          onCheckDelay={() => onCheckAll(group.name)}
-          onHeadState={(p) => onHeadState(group.name, p)}
+          onLocation={() => onLocation(group!)}
+          onCheckDelay={() => onCheckAll(group!.name)}
+          onHeadState={(p) => onHeadState(group!.name, p)}
         />
+
+        <Divider />
       </Paper>
     );
   }
@@ -109,12 +115,12 @@ export const ProxyRender = (props: RenderProps) => {
         }}
       >
         <ProxyItem
-          groupName={group.name}
+          groupName={group!.name}
           proxy={proxy!}
-          selected={group.now === proxy?.name}
+          selected={group!.now === proxy?.name}
           showType={headState?.showType}
           sx={{ py: 0, pl: 2, pb: 1 }}
-          onClick={() => onChangeProxy(group, proxy!)}
+          onClick={() => onChangeProxy(group!, proxy!)}
         />
       </Paper>
     );
@@ -142,7 +148,8 @@ export const ProxyRender = (props: RenderProps) => {
     return (
       <Paper
         sx={{
-          boxShadow: 2,
+          boxShadow:
+            "0px 1px 1px -2px rgba(0,0,0,0.2), 0px 2px 2px 0px rgba(0,0,0,0.14), 0px 5px 5px 0px rgba(0,0,0,0.12)",
           borderRadius: "0",
         }}
       >
@@ -151,20 +158,21 @@ export const ProxyRender = (props: RenderProps) => {
             height: 56,
             display: "grid",
             gap: 1.5,
-            pl: 4,
-            pr: 4,
-            pb: 1.5,
+            pl: 2,
+            pr: 2,
+            pt: 1,
+            pb: 1,
             gridTemplateColumns: `repeat(${item.col! || 2}, 1fr)`,
           }}
         >
           {proxyCol?.map((proxy) => (
             <ProxyItemMini
               key={item.key + proxy.name}
-              groupName={group.name}
+              groupName={group!.name}
               proxy={proxy!}
-              selected={group.now === proxy.name}
+              selected={group!.now === proxy.name}
               showType={headState?.showType}
-              onClick={() => onChangeProxy(group, proxy!)}
+              onClick={() => onChangeProxy(group!, proxy!)}
             />
           ))}
         </Box>
@@ -176,11 +184,24 @@ export const ProxyRender = (props: RenderProps) => {
     return (
       <Paper
         sx={{
-          boxShadow: 2,
+          boxShadow:
+            "0px 1px 1px -2px rgba(0,0,0,0.2), 0px 2px 2px 0px rgba(0,0,0,0.14), 0px 5px 5px 0px rgba(0,0,0,0.12)",
           borderTopLeftRadius: "0",
           borderTopRightRadius: "0",
           borderBottomLeftRadius: "28px",
           borderBottomRightRadius: "28px",
+          height: 28,
+        }}
+      >
+        <Divider />
+      </Paper>
+    );
+  }
+
+  if (type === 6) {
+    return (
+      <Box
+        sx={{
           height: 28,
         }}
       />

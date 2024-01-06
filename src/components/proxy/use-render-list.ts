@@ -11,10 +11,10 @@ import {
 } from "./use-head-state";
 
 export interface IRenderItem {
-  // 组 ｜ head ｜ item ｜ empty | item col | item bottom
-  type: 0 | 1 | 2 | 3 | 4 | 5;
+  // 组 ｜ head ｜ item ｜ empty | item col | item bottom | empty-padding
+  type: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   key: string;
-  group: IProxyGroupItem;
+  group?: IProxyGroupItem;
   proxy?: IProxyItem;
   col?: number;
   proxyCol?: IProxyItem[];
@@ -123,16 +123,23 @@ export const useRenderList = (mode: string) => {
         lists.push({
           type: 5,
           key: `footer-${group.name}`,
-          group,
-          headState,
         });
 
         return lists;
       }
+
       return ret;
     });
 
     if (!useRule) return retList.slice(1);
+
+    console.log(retList);
+
+    retList.push({
+      type: 6,
+      key: `empty-padding`,
+    });
+
     return retList;
   }, [headStates, proxiesData, mode, col]);
 

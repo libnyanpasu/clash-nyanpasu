@@ -64,7 +64,7 @@ rs-snowflake = "0.6"
 rocksdb = "0.21"
 thiserror = { workspace = true, version = "1.0" }
 simd-json = "0.13.4"
-runas = "=1.0.0" # blocked by https://github.com/mitsuhiko/rust-runas/issues/13
+runas = "=1.1.0" # blocked by https://github.com/mitsuhiko/rust-runas/issues/13
 
 [target.'cfg(windows)'.dependencies]
 deelevate = "0.2.0"

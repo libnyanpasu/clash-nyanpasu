@@ -33,7 +33,7 @@ jobs:
           ref: main
 
       - name: install Rust stable
-        run: rustup install 1.74.1 --profile minimal && rustup default 1.74.1
+        run: rustup install stable --profile minimal && rustup default stable
 
       - uses: Swatinem/rust-cache@v2
         with:

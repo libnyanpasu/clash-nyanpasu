@@ -11,13 +11,11 @@ const checkPermission = async () => {
   if (permissionGranted == null) {
     permissionGranted = await isPermissionGranted();
   }
-  if (permissionGranted == false) {
+  if (!permissionGranted) {
     const permission = await requestPermission();
     permissionGranted = permission === "granted";
-    return permissionGranted;
-  } else {
-    return permissionGranted;
   }
+  return permissionGranted;
 };
 
 export type NotificationOptions = {

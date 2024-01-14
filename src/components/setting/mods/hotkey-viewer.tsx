@@ -1,5 +1,5 @@
 import { BaseDialog, DialogRef } from "@/components/base";
-import { useNotification } from "@/hooks/use-notification";
+import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { useVerge } from "@/hooks/use-verge";
 import { Typography, styled } from "@mui/material";
 import { useLatest, useLockFn } from "ahooks";
@@ -99,7 +99,11 @@ export const HotkeyViewer = forwardRef<DialogRef>((props, ref) => {
     try {
       await patchVerge({ hotkeys });
     } catch (err: any) {
-      useNotification(t("Error"), err.message || err.toString());
+      useNotification({
+        title: t("Error"),
+        body: err.message || err.toString(),
+        type: NotificationType.Error,
+      });
     }
   });
 

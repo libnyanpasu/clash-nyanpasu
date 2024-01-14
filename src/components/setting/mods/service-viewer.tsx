@@ -1,5 +1,5 @@
 import { BaseDialog, DialogRef } from "@/components/base";
-import { useNotification } from "@/hooks/use-notification";
+import { NotificationType, useNotification } from "@/hooks/use-notification";
 import {
   checkService,
   installService,
@@ -44,10 +44,18 @@ export const ServiceViewer = forwardRef<DialogRef, Props>((props, ref) => {
       await installService();
       mutateCheck();
       setOpen(false);
-      useNotification(t("Success"), "Service installed successfully");
+      useNotification({
+        title: t("Success"),
+        body: "Service installed successfully",
+        type: NotificationType.Success,
+      });
     } catch (err: any) {
       mutateCheck();
-      useNotification(t("Error"), err.message || err.toString());
+      useNotification({
+        title: t("Error"),
+        body: err.message || err.toString(),
+        type: NotificationType.Error,
+      });
     }
   });
 
@@ -60,10 +68,18 @@ export const ServiceViewer = forwardRef<DialogRef, Props>((props, ref) => {
       await uninstallService();
       mutateCheck();
       setOpen(false);
-      useNotification(t("Success"), "Service uninstalled successfully");
+      useNotification({
+        title: t("Success"),
+        body: "Service uninstalled successfully",
+        type: NotificationType.Success,
+      });
     } catch (err: any) {
       mutateCheck();
-      useNotification(t("Error"), err.message || err.toString());
+      useNotification({
+        title: t("Error"),
+        body: err.message || err.toString(),
+        type: NotificationType.Error,
+      });
     }
   });
 
@@ -75,7 +91,11 @@ export const ServiceViewer = forwardRef<DialogRef, Props>((props, ref) => {
       setOpen(false);
     } catch (err: any) {
       mutateCheck();
-      useNotification(t("Error"), err.message || err.toString());
+      useNotification({
+        title: t("Error"),
+        body: err.message || err.toString(),
+        type: NotificationType.Error,
+      });
     }
   });
 

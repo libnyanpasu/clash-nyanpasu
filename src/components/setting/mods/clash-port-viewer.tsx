@@ -1,6 +1,6 @@
 import { BaseDialog, DialogRef } from "@/components/base";
 import { useClashInfo } from "@/hooks/use-clash";
-import { useNotification } from "@/hooks/use-notification";
+import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { useVerge } from "@/hooks/use-verge";
 import { List, ListItem, ListItemText, TextField } from "@mui/material";
 import { useLockFn } from "ahooks";
@@ -35,9 +35,17 @@ export const ClashPortViewer = forwardRef<DialogRef>((props, ref) => {
       await patchInfo({ "mixed-port": port });
       await patchVerge({ verge_mixed_port: port });
       setOpen(false);
-      useNotification(t("Success"), "Change Clash port successfully!");
+      useNotification({
+        title: t("Success"),
+        body: t("Change Clash Port successfully!"),
+        type: NotificationType.Success,
+      });
     } catch (err: any) {
-      useNotification(t("Error"), err.message || err.toString());
+      useNotification({
+        title: t("Error"),
+        body: err.message || err.toString(),
+        type: NotificationType.Error,
+      });
     }
   });
 

@@ -12,7 +12,7 @@ import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useRecoilValue } from "recoil";
 
-import { useNotification } from "@/hooks/use-notification";
+import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { monaco } from "@/services/monaco";
 
 interface Props {
@@ -66,7 +66,11 @@ export const EditorViewer = (props: Props) => {
       onChange?.();
       onClose();
     } catch (err: any) {
-      useNotification(t("Error"), err.message || err.toString());
+      useNotification({
+        title: t("Error"),
+        body: err.message || err.toString(),
+        type: NotificationType.Error,
+      });
     }
   });
 

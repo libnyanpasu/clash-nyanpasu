@@ -1,5 +1,5 @@
 import { DialogRef } from "@/components/base";
-import { useNotification } from "@/hooks/use-notification";
+import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { useVerge } from "@/hooks/use-verge";
 import {
   collectLogs,
@@ -60,12 +60,19 @@ const SettingVerge = ({ onError }: Props) => {
     try {
       const info = await checkUpdate();
       if (!info?.shouldUpdate) {
-        useNotification(t("Success"), "No Updates Available");
+        useNotification({
+          title: t("Success"),
+          body: t("No updates available"),
+        });
       } else {
         updateRef.current?.open();
       }
     } catch (err: any) {
-      useNotification(t("Error"), err.message || err.toString());
+      useNotification({
+        title: t("Error"),
+        body: err.message || err.toString(),
+        type: NotificationType.Error,
+      });
     }
   });
 

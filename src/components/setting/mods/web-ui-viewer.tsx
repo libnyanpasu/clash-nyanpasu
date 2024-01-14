@@ -1,6 +1,6 @@
 import { BaseDialog, BaseEmpty, DialogRef } from "@/components/base";
 import { useClashInfo } from "@/hooks/use-clash";
-import { useNotification } from "@/hooks/use-notification";
+import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { useVerge } from "@/hooks/use-verge";
 import { openWebUrl } from "@/services/cmds";
 import { Box, Button, Typography } from "@mui/material";
@@ -69,7 +69,11 @@ export const WebUIViewer = forwardRef<DialogRef>((props, ref) => {
 
       await openWebUrl(url);
     } catch (e: any) {
-      useNotification(t("Error"), e.message || e.toString());
+      useNotification({
+        title: t("Error"),
+        body: e.message || e.toString(),
+        type: NotificationType.Error,
+      });
     }
   });
 

@@ -1,28 +1,28 @@
-import dayjs from "dayjs";
-import { mutate } from "swr";
-import { useEffect, useState } from "react";
-import { useLockFn } from "ahooks";
-import { useRecoilState } from "recoil";
-import { useTranslation } from "react-i18next";
+import { NotificationType, useNotification } from "@/hooks/use-notification";
+import { deleteProfile, updateProfile, viewProfile } from "@/services/cmds";
+import { atomLoadingCache } from "@/services/states";
+import parseTraffic from "@/utils/parse-traffic";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { DragIndicator, RefreshRounded } from "@mui/icons-material";
 import {
   Box,
-  Typography,
-  LinearProgress,
-  IconButton,
-  keyframes,
-  MenuItem,
-  Menu,
   CircularProgress,
+  IconButton,
+  LinearProgress,
+  Menu,
+  MenuItem,
+  Typography,
+  keyframes,
 } from "@mui/material";
-import { RefreshRounded, DragIndicator } from "@mui/icons-material";
-import { atomLoadingCache } from "@/services/states";
-import { updateProfile, deleteProfile, viewProfile } from "@/services/cmds";
+import { useLockFn } from "ahooks";
+import dayjs from "dayjs";
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { useRecoilState } from "recoil";
+import { mutate } from "swr";
 import { EditorViewer } from "./editor-viewer";
 import { ProfileBox } from "./profile-box";
-import parseTraffic from "@/utils/parse-traffic";
-import { useNotification } from "@/hooks/use-notification";
 
 const round = keyframes`
   from { transform: rotate(0deg); }
@@ -113,7 +113,11 @@ export const ProfileItem = (props: Props) => {
     try {
       await viewProfile(itemData.uid);
     } catch (err: any) {
-      useNotification(t("Error"), err?.message || err.toString());
+      useNotification({
+        title: t("Error"),
+        body: err.message || err.toString(),
+        type: NotificationType.Error,
+      });
     }
   });
 
@@ -146,11 +150,13 @@ export const ProfileItem = (props: Props) => {
       mutate("getProfiles");
     } catch (err: any) {
       const errmsg = err?.message || err.toString();
-      useNotification(
-        t("Error"),
-        err.message ||
+      useNotification({
+        title: t("Error"),
+        body:
+          err.message ||
           errmsg.replace(/error sending request for url (\S+?): /, ""),
-      );
+        type: NotificationType.Error,
+      });
     } finally {
       setLoadingCache((cache) => ({ ...cache, [itemData.uid]: false }));
     }
@@ -162,7 +168,11 @@ export const ProfileItem = (props: Props) => {
       await deleteProfile(itemData.uid);
       mutate("getProfiles");
     } catch (err: any) {
-      useNotification(t("Error"), err?.message || err.toString());
+      useNotification({
+        title: t("Error"),
+        body: err.message || err.toString(),
+        type: NotificationType.Error,
+      });
     }
   });
 

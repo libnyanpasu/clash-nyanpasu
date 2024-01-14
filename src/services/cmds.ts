@@ -1,7 +1,8 @@
-import { useNotification } from "@/hooks/use-notification";
+import { NotificationType, useNotification } from "@/hooks/use-notification";
 import type { ManifestVersion } from "@root/scripts/generate-latest-version";
 import { invoke } from "@tauri-apps/api/tauri";
 import dayjs from "dayjs";
+import { t } from "i18next";
 export async function getClashLogs() {
   const regex = /time="(.+?)"\s+level=(.+?)\s+msg="(.+?)"/;
   const newRegex = /(.+?)\s+(.+?)\s+(.+)/;
@@ -140,19 +141,31 @@ export async function grantPermission(core: string) {
 
 export async function openAppDir() {
   return invoke<void>("open_app_dir").catch((err) =>
-    useNotification("Error", err?.message || err.toString()),
+    useNotification({
+      title: t("Error"),
+      body: err.message || err.toString(),
+      type: NotificationType.Error,
+    }),
   );
 }
 
 export async function openCoreDir() {
   return invoke<void>("open_core_dir").catch((err) =>
-    useNotification("Error", err?.message || err.toString()),
+    useNotification({
+      title: t("Error"),
+      body: err.message || err.toString(),
+      type: NotificationType.Error,
+    }),
   );
 }
 
 export async function openLogsDir() {
   return invoke<void>("open_logs_dir").catch((err) =>
-    useNotification("Error", err?.message || err.toString()),
+    useNotification({
+      title: t("Error"),
+      body: err.message || err.toString(),
+      type: NotificationType.Error,
+    }),
   );
 }
 
@@ -183,13 +196,21 @@ export async function uninstallService() {
 
 export async function invoke_uwp_tool() {
   return invoke<void>("invoke_uwp_tool").catch((err) =>
-    useNotification("Error", err?.message || err.toString()),
+    useNotification({
+      title: t("Error"),
+      body: err.message || err.toString(),
+      type: NotificationType.Error,
+    }),
   );
 }
 
 export async function save_window_size_state() {
   return invoke<void>("save_window_size_state").catch((err) =>
-    useNotification("Error", err?.message || err.toString()),
+    useNotification({
+      title: t("Error"),
+      body: err.message || err.toString(),
+      type: NotificationType.Error,
+    }),
   );
 }
 

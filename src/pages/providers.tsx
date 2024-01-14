@@ -1,6 +1,6 @@
 import { BasePage } from "@/components/base";
 import RulesProvider from "@/components/providers/rules-provider";
-import { useNotification } from "@/hooks/use-notification";
+import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { getRulesProviders, updateRulesProviders } from "@/services/api";
 import { Error as ErrorIcon } from "@mui/icons-material";
 import { LoadingButton } from "@mui/lab";
@@ -35,10 +35,18 @@ export default function ProvidersPage() {
       );
       await Promise.all(queue);
       await mutateRulesProviders();
-      useNotification(t("Success"), t("Update Rules Providers Success"));
+      useNotification({
+        title: t("Success"),
+        body: t("Update Rules Providers Success"),
+        type: NotificationType.Success,
+      });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
-      useNotification(t("Error"), err.message || err.toString());
+      useNotification({
+        title: t("Error"),
+        body: err.message || err.toString(),
+        type: NotificationType.Error,
+      });
     } finally {
       setUpdating(false);
     }

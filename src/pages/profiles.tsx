@@ -6,7 +6,7 @@ import {
   ProfileViewerRef,
 } from "@/components/profile/profile-viewer";
 import { ConfigViewer } from "@/components/setting/mods/config-viewer";
-import { useNotification } from "@/hooks/use-notification";
+import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { useProfiles } from "@/hooks/use-profiles";
 import { closeAllConnections } from "@/services/api";
 import {
@@ -103,7 +103,11 @@ export default function ProfilePage() {
 
     try {
       await importProfile(url);
-      useNotification(t("Success"), "Successfully import profile.");
+      useNotification({
+        title: t("Success"),
+        body: "Successfully import profile.",
+        type: NotificationType.Success,
+      });
       setUrl("");
       setLoading(false);
 
@@ -119,7 +123,11 @@ export default function ProfilePage() {
         }
       });
     } catch (err: any) {
-      useNotification(t("Error"), err.message || err.toString());
+      useNotification({
+        title: t("Error"),
+        body: err.message || err.toString(),
+        type: NotificationType.Error,
+      });
       setLoading(false);
     } finally {
       setDisabled(false);
@@ -146,9 +154,17 @@ export default function ProfilePage() {
       mutateLogs();
       closeAllConnections();
       setTimeout(() => activateSelected(), 2000);
-      useNotification(t("Success"), "Refresh Clash Config");
+      useNotification({
+        title: t("Success"),
+        body: "Refresh Clash Config",
+        type: NotificationType.Success,
+      });
     } catch (err: any) {
-      useNotification(t("Error"), err?.message || err.toString());
+      useNotification({
+        title: t("Error"),
+        body: err.message || err.toString(),
+        type: NotificationType.Error,
+      });
     } finally {
       clearTimeout(reset);
       setActivating("");
@@ -159,9 +175,17 @@ export default function ProfilePage() {
     try {
       await enhanceProfiles();
       mutateLogs();
-      useNotification(t("Success"), "Refresh Clash Config");
+      useNotification({
+        title: t("Success"),
+        body: "Refresh Clash Config",
+        type: NotificationType.Success,
+      });
     } catch (err: any) {
-      useNotification(t("Error"), err.message || err.toString());
+      useNotification({
+        title: t("Error"),
+        body: err.message || err.toString(),
+        type: NotificationType.Error,
+      });
     }
   });
 
@@ -186,7 +210,11 @@ export default function ProfilePage() {
       mutateProfiles();
       mutateLogs();
     } catch (err: any) {
-      useNotification(t("Error"), err?.message || err.toString());
+      useNotification({
+        title: t("Error"),
+        body: err.message || err.toString(),
+        type: NotificationType.Error,
+      });
     }
   });
 

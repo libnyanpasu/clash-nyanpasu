@@ -1,22 +1,22 @@
+import { NotificationType, useNotification } from "@/hooks/use-notification";
+import { viewProfile } from "@/services/cmds";
+import { FeaturedPlayListRounded } from "@mui/icons-material";
+import {
+  Badge,
+  Box,
+  Chip,
+  IconButton,
+  Menu,
+  MenuItem,
+  Typography,
+} from "@mui/material";
+import { useLockFn } from "ahooks";
 import dayjs from "dayjs";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useLockFn } from "ahooks";
-import {
-  Box,
-  Badge,
-  Chip,
-  Typography,
-  MenuItem,
-  Menu,
-  IconButton,
-} from "@mui/material";
-import { FeaturedPlayListRounded } from "@mui/icons-material";
-import { viewProfile } from "@/services/cmds";
 import { EditorViewer } from "./editor-viewer";
-import { ProfileBox } from "./profile-box";
 import { LogViewer } from "./log-viewer";
-import { useNotification } from "@/hooks/use-notification";
+import { ProfileBox } from "./profile-box";
 
 interface Props {
   selected: boolean;
@@ -68,7 +68,11 @@ export const ProfileMore = (props: Props) => {
     try {
       await viewProfile(itemData.uid);
     } catch (err: any) {
-      useNotification(t("Error"), err?.message || err.toString());
+      useNotification({
+        title: t("Error"),
+        body: err.message || err.toString(),
+        type: NotificationType.Error,
+      });
     }
   });
 

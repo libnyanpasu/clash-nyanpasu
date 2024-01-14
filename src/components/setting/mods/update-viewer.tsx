@@ -1,5 +1,5 @@
 import { BaseDialog, DialogRef } from "@/components/base";
-import { useNotification } from "@/hooks/use-notification";
+import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { atomUpdateState } from "@/services/states";
 import { Box, styled } from "@mui/material";
 import { relaunch } from "@tauri-apps/api/process";
@@ -48,7 +48,11 @@ export const UpdateViewer = forwardRef<DialogRef>((props, ref) => {
       await installUpdate();
       await relaunch();
     } catch (err: any) {
-      useNotification(t("Error"), err?.message || err.toString());
+      useNotification({
+        title: t("Error"),
+        body: err.message || err.toString(),
+        type: NotificationType.Error,
+      });
     } finally {
       setUpdateState(false);
     }

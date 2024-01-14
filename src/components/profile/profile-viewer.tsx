@@ -1,5 +1,5 @@
 import { BaseDialog } from "@/components/base";
-import { useNotification } from "@/hooks/use-notification";
+import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { createProfile, patchProfile } from "@/services/cmds";
 import {
   Box,
@@ -119,7 +119,11 @@ export const ProfileViewer = forwardRef<ProfileViewerRef, Props>(
           fileDataRef.current = null;
           props.onChange();
         } catch (err: any) {
-          useNotification(t("Error"), err.message || err.toString());
+          useNotification({
+            title: t("Error"),
+            body: err.message || err.toString(),
+            type: NotificationType.Error,
+          });
           setLoading(false);
         }
       }),

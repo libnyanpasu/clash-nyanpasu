@@ -1,6 +1,6 @@
 import { DialogRef } from "@/components/base";
 import { useClash } from "@/hooks/use-clash";
-import { useNotification } from "@/hooks/use-notification";
+import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { useVerge } from "@/hooks/use-verge";
 import { invoke_uwp_tool } from "@/services/cmds";
 import getSystem from "@/utils/get-system";
@@ -115,12 +115,12 @@ const SettingClash = ({ onError }: Props) => {
               color={enable_random_port ? "success" : "inherit"}
               size="medium"
               onClick={() => {
-                useNotification(
-                  `${t("Random Port")}: ${
+                useNotification({
+                  title: `${t("Random Port")}: ${
                     enable_random_port ? t("Disable") : t("Enable")
                   }`,
-                  t("After restart to take effect"),
-                );
+                  body: t("After restart to take effect"),
+                });
                 onChangeVerge({ enable_random_port: !enable_random_port });
                 patchVerge({ enable_random_port: !enable_random_port });
               }}

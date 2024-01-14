@@ -2,7 +2,7 @@ import { BasePage } from "@/components/base";
 import SettingClash from "@/components/setting/setting-clash";
 import SettingSystem from "@/components/setting/setting-system";
 import SettingVerge from "@/components/setting/setting-verge";
-import { useNotification } from "@/hooks/use-notification";
+import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { openWebUrl } from "@/services/cmds";
 import { GitHub } from "@mui/icons-material";
 import { Grid, IconButton, Paper } from "@mui/material";
@@ -13,7 +13,11 @@ export default function SettingPage() {
   const { t } = useTranslation();
 
   const onError = (err: any) => {
-    useNotification(t("Error"), err?.message || err.toString());
+    useNotification({
+      title: t("Error"),
+      body: err.message || err.toString(),
+      type: NotificationType.Error,
+    });
   };
 
   const toGithubRepo = useLockFn(() => {

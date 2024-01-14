@@ -4,7 +4,7 @@ import { LayoutItem } from "@/components/layout/layout-item";
 import { LayoutTraffic } from "@/components/layout/layout-traffic";
 import { UpdateButton } from "@/components/layout/update-button";
 import { useCustomTheme } from "@/components/layout/use-custom-theme";
-import { useNotification } from "@/hooks/use-notification";
+import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { useVerge } from "@/hooks/use-verge";
 import { getAxios } from "@/services/api";
 import getSystem from "@/utils/get-system";
@@ -64,10 +64,18 @@ export default function Layout() {
       const [status, msg] = payload as [string, string];
       switch (status) {
         case "set_config::ok":
-          useNotification(t("Success"), "Refresh Clash Config");
+          useNotification({
+            title: t("Success"),
+            body: "Refresh Clash Config",
+            type: NotificationType.Success,
+          });
           break;
         case "set_config::error":
-          useNotification(t("Error"), msg);
+          useNotification({
+            title: t("Error"),
+            body: msg,
+            type: NotificationType.Error,
+          });
           break;
         default:
           break;

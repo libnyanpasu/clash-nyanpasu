@@ -1,6 +1,6 @@
 import { BaseDialog, DialogRef } from "@/components/base";
 import { pageTransitionVariants } from "@/components/layout/page-transition";
-import { useNotification } from "@/hooks/use-notification";
+import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { useVerge } from "@/hooks/use-verge";
 import { List, MenuItem, Select, Switch } from "@mui/material";
 import { forwardRef, useImperativeHandle, useState } from "react";
@@ -21,7 +21,11 @@ export const LayoutViewer = forwardRef<DialogRef>((props, ref) => {
 
   const onSwitchFormat = (_e: any, value: boolean) => value;
   const onError = (err: any) => {
-    useNotification(t("Error"), err.message || err.toString());
+    useNotification({
+      title: t("Error"),
+      body: err.message || err.toString(),
+      type: NotificationType.Error,
+    });
   };
   const onChangeData = (patch: Partial<IVergeConfig>) => {
     mutateVerge({ ...verge, ...patch }, false);

@@ -1,6 +1,6 @@
 import { BaseDialog, DialogRef } from "@/components/base";
 import { useClashInfo } from "@/hooks/use-clash";
-import { useNotification } from "@/hooks/use-notification";
+import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { List, ListItem, ListItemText, TextField } from "@mui/material";
 import { useLockFn } from "ahooks";
 import { forwardRef, useImperativeHandle, useState } from "react";
@@ -29,10 +29,18 @@ export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
     try {
       setLoading(true);
       await patchInfo({ "external-controller": controller, secret });
-      useNotification(t("Success"), "Change Clash Config successfully!");
+      useNotification({
+        title: t("Success"),
+        body: t("Change Clash Config successfully!"),
+        type: NotificationType.Success,
+      });
       setOpen(false);
     } catch (err: any) {
-      useNotification(t("Error"), err.message || err.toString());
+      useNotification({
+        title: t("Error"),
+        body: err.message || err.toString(),
+        type: NotificationType.Error,
+      });
     } finally {
       setLoading(false);
     }

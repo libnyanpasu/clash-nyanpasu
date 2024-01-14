@@ -1,4 +1,4 @@
-import { useNotification } from "@/hooks/use-notification";
+import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { updateRulesProviders, type ProviderRules } from "@/services/api";
 import { Refresh } from "@mui/icons-material";
 import {
@@ -30,9 +30,17 @@ export default function RulesProvider(props: RulesProviderProps) {
     try {
       await updateRulesProviders(provider.name);
       onRulesProviderUpdated();
-      useNotification(t("Success"), t("Update Rules Providers Success"));
+      useNotification({
+        title: t("Success"),
+        body: t("Update Rules Providers Success"),
+        type: NotificationType.Success,
+      });
     } catch (err: any) {
-      useNotification(t("Error"), err.message || err.toString());
+      useNotification({
+        title: t("Error"),
+        body: err.message || err.toString(),
+        type: NotificationType.Error,
+      });
     } finally {
       setUpdating(false);
     }

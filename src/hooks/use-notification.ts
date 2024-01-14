@@ -1,10 +1,10 @@
+import { Notice } from "@/components/base";
 import {
   Options,
   isPermissionGranted,
   requestPermission,
   sendNotification,
 } from "@tauri-apps/api/notification";
-
 let permissionGranted: boolean | null = null;
 
 const checkPermission = async () => {
@@ -19,14 +19,30 @@ const checkPermission = async () => {
   }
 };
 
-export const useNotification = async (
-  title: string | undefined,
-  body?: string,
-) => {
+export type NotificationOptions = {
+  title: string;
+  body?: string;
+  type?: NotificationType;
+};
+
+export enum NotificationType {
+  Success = "success",
+  Info = "info",
+  // Warn = "warn",
+  Error = "error",
+}
+
+export const useNotification = async ({
+  title,
+  body,
+  type = NotificationType.Info,
+}: NotificationOptions) => {
   if (!title) {
     throw new Error("missing message argument!");
   } else if (!checkPermission()) {
-    throw new Error("notification permission not granted!");
+    // fallback to mui notification
+    Notice[type](`${title} ${body ? `: ${body}` : ""}}`);
+    // throw new Error("notification permission not granted!");
   } else {
     const options: Options = {
       title: title,

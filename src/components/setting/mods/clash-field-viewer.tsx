@@ -1,5 +1,5 @@
 import { BaseDialog, DialogRef } from "@/components/base";
-import { useNotification } from "@/hooks/use-notification";
+import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { useProfiles } from "@/hooks/use-profiles";
 import { getRuntimeExists } from "@/services/cmds";
 import {
@@ -58,7 +58,11 @@ export const ClashFieldViewer = forwardRef<DialogRef>((props, ref) => {
       await patchProfiles({ valid: [...curSet] });
       // Notice.success("Refresh clash config", 1000);
     } catch (err: any) {
-      useNotification(t("Error"), err?.message || err.toString());
+      useNotification({
+        title: t("Error"),
+        body: err.message || err.toString(),
+        type: NotificationType.Error,
+      });
     }
   };
 

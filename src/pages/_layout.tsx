@@ -74,6 +74,10 @@ export default function Layout() {
       }
     });
 
+    listen("scheme-request-received", async (req) => {
+      console.log(req);
+    });
+
     setTimeout(() => {
       appWindow.show();
       appWindow.unminimize();

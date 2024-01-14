@@ -11,7 +11,7 @@ mod feat;
 mod utils;
 
 use crate::utils::{init, resolve, server};
-use tauri::{api, SystemTray};
+use tauri::{api, Manager, SystemTray};
 
 fn main() -> std::io::Result<()> {
     // 单例检测
@@ -19,6 +19,8 @@ fn main() -> std::io::Result<()> {
         println!("app exists");
         return Ok(());
     }
+
+    tauri_plugin_deep_link::prepare("moe.elaina.clash.nyanpasu");
 
     crate::log_err!(init::init_config());
 
@@ -35,6 +37,13 @@ fn main() -> std::io::Result<()> {
         .system_tray(SystemTray::new())
         .setup(|app| {
             resolve::resolve_setup(app);
+            // setup custom scheme
+            let handle = app.handle().clone();
+            log_err!(tauri_plugin_deep_link::register("clash", move |request| {
+                log::info!(target: "app", "scheme request received: {:?}", request);
+                resolve::create_window(&handle.clone()); // create window if not exists
+                handle.emit_all("scheme-request-received", request).unwrap();
+            }));
             Ok(())
         })
         .on_system_tray_event(core::tray::Tray::on_system_tray_event)

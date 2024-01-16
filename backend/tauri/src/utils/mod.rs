@@ -1,4 +1,5 @@
 pub mod candy;
+pub mod config;
 pub mod dialog;
 pub mod dirs;
 pub mod help;

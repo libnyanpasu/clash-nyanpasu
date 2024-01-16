@@ -227,7 +227,7 @@ impl PrfItem {
                         builder = builder.proxy(proxy);
                     }
                 }
-                _ => {}
+                _ => todo!(),
             };
         }
 

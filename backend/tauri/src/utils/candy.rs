@@ -1,9 +1,10 @@
-use super::dirs::app_logs_dir;
+use super::{config::NyanpasuReqwestProxyExt, dirs::app_logs_dir};
 use anyhow::Result;
 use chrono::Local;
 use glob::glob;
 use std::path::Path;
 use zip::ZipWriter;
+
 pub fn collect_logs(target_path: &Path) -> Result<()> {
     let logs_dir = app_logs_dir()?;
     let now = Local::now().format("%Y-%m-%d");
@@ -25,4 +26,15 @@ pub fn collect_logs(target_path: &Path) -> Result<()> {
     }
     zip.finish()?;
     Ok(())
+}
+
+// TODO: 添加自定义 User-Agent 等配置，说白了就是重构一下 prfitem 的那坨代码
+pub fn get_reqwest_client() -> Result<reqwest::Client> {
+    let builder = reqwest::ClientBuilder::new();
+    let app_version = super::dirs::get_app_version();
+    let client = builder
+        .swift_set_nyanpasu_proxy()
+        .user_agent(format!("clash-nyanpasu/{}", app_version))
+        .build()?;
+    Ok(client)
 }

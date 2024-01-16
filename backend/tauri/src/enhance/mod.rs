@@ -6,14 +6,10 @@ mod tun;
 
 pub(self) use self::field::*;
 
-use self::chain::*;
-use self::merge::*;
-use self::script::*;
-use self::tun::*;
+use self::{chain::*, merge::*, script::*, tun::*};
 use crate::config::Config;
 use serde_yaml::Mapping;
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 type ResultLog = Vec<(String, String)>;
 

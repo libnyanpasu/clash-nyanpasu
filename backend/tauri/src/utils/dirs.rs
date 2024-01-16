@@ -21,7 +21,11 @@ static mut RESOURCE_DIR: Option<PathBuf> = None;
 #[allow(unused)]
 static mut PORTABLE_FLAG: bool = false;
 
-pub static mut APP_VERSION: &str = env!("NYANPASU_VERSION");
+pub static APP_VERSION: &str = env!("NYANPASU_VERSION");
+
+pub fn get_app_version() -> &'static str {
+    APP_VERSION
+}
 
 /// initialize portable flag
 #[cfg(target_os = "windows")]

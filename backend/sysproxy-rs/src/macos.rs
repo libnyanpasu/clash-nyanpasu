@@ -1,6 +1,9 @@
 use crate::{Error, Result, Sysproxy};
-use std::net::{SocketAddr, UdpSocket};
-use std::{process::Command, str::from_utf8};
+use std::{
+    net::{SocketAddr, UdpSocket},
+    process::Command,
+    str::from_utf8,
+};
 
 impl Sysproxy {
     pub fn get_system_proxy() -> Result<Sysproxy> {

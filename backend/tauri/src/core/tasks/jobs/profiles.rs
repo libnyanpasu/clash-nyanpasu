@@ -1,16 +1,15 @@
 use super::super::{
-    executor::AsyncJobExecutor,
-    executor::TaskExecutor,
+    executor::{AsyncJobExecutor, TaskExecutor},
     task::{Task, TaskID, TaskManager, TaskSchedule},
 };
 use crate::{config::Config, feat};
 use anyhow::Result;
 use async_trait::async_trait;
 use parking_lot::Mutex;
-use std::hash::{Hash, Hasher};
-use std::sync::{Arc, OnceLock};
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
+    hash::{Hash, Hasher},
+    sync::{Arc, OnceLock},
     time::Duration,
 };
 

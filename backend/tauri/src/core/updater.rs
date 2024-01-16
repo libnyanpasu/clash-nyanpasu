@@ -117,7 +117,7 @@ impl Updater {
     }
 
     async fn get_mihomo_alpha_version(&self) -> Result<String> {
-        let client = reqwest::Client::new();
+        let client = crate::utils::candy::get_reqwest_client()?;
         let url = format!(
             "{}/{}",
             self.mirror.as_str(),
@@ -272,7 +272,7 @@ impl Updater {
         debug!("file path: {:?}", file_path);
         let mut dst = std::fs::File::create(&file_path)?;
 
-        let client = reqwest::Client::new();
+        let client = crate::utils::candy::get_reqwest_client()?;
         let res = client.get(url).send().await?;
         let status_code = res.status();
         if !status_code.is_success() {
@@ -345,7 +345,7 @@ pub async fn get_latest_version_manifest(mirror: &str) -> Result<ManifestVersion
         mirror
     );
     log::debug!("{}", url);
-    let client = reqwest::Client::new();
+    let client = crate::utils::candy::get_reqwest_client()?;
     let res = client.get(url).send().await?;
     let status_code = res.status();
     if !status_code.is_success() {

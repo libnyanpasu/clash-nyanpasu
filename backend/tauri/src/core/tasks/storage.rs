@@ -1,12 +1,15 @@
 // store is a interface to save and restore task states
-use super::task::{TaskEventID, TaskManager};
-use super::utils::Result;
-use super::{events::TaskEvent, task::TaskID};
-use crate::core::storage::Storage;
-use crate::core::tasks::task::Task;
+use super::{
+    events::TaskEvent,
+    task::{TaskEventID, TaskID, TaskManager},
+    utils::Result,
+};
+use crate::core::{storage::Storage, tasks::task::Task};
 use log::debug;
-use std::str;
-use std::sync::{Arc, OnceLock};
+use std::{
+    str,
+    sync::{Arc, OnceLock},
+};
 
 pub struct EventsGuard;
 

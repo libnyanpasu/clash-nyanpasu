@@ -4,10 +4,7 @@
 //! - timer 定时器
 //! - cmds 页面调用
 //!
-use crate::config::*;
-use crate::core::*;
-use crate::log_err;
-use crate::utils::resolve;
+use crate::{config::*, core::*, log_err, utils::resolve};
 use anyhow::{bail, Result};
 use serde_yaml::{Mapping, Value};
 use wry::application::clipboard::Clipboard;

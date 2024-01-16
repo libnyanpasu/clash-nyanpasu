@@ -1,14 +1,20 @@
 use super::JobExt;
-use crate::config::Config;
-use crate::core::tasks::executor::{AsyncJobExecutor, TaskExecutor};
-use crate::core::tasks::task::TaskSchedule;
-use crate::utils::dirs;
+use crate::{
+    config::Config,
+    core::tasks::{
+        executor::{AsyncJobExecutor, TaskExecutor},
+        task::TaskSchedule,
+    },
+    utils::dirs,
+};
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{DateTime, Local, TimeZone};
-use std::fs::{self, DirEntry};
-use std::str::FromStr;
-use std::time::Duration;
+use std::{
+    fs::{self, DirEntry},
+    str::FromStr,
+    time::Duration,
+};
 
 const CLEAR_LOG_TASK_NAME: &str = "clear_logs";
 

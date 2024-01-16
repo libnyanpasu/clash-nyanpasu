@@ -1,13 +1,17 @@
-use crate::config::{ClashCore, IVerge, WindowState};
-use crate::core::tasks::{jobs::ProfilesJobGuard, JobsManager};
-use crate::{config::Config, core::*, utils::init, utils::server};
-use crate::{log_err, trace_err};
+use crate::{
+    config::{ClashCore, Config, IVerge, WindowState},
+    core::{
+        tasks::{jobs::ProfilesJobGuard, JobsManager},
+        *,
+    },
+    log_err, trace_err,
+    utils::{init, server},
+};
 use anyhow::Result;
 use semver::Version;
 use serde_yaml::Mapping;
 use std::net::TcpListener;
-use tauri::api::process::Command;
-use tauri::{App, AppHandle, Manager};
+use tauri::{api::process::Command, App, AppHandle, Manager};
 
 pub fn find_unused_port() -> Result<u16> {
     match TcpListener::bind("127.0.0.1:0") {

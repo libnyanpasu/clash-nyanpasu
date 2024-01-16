@@ -1,6 +1,5 @@
 use super::{clash_api, logger::Logger};
-use crate::log_err;
-use crate::{config::*, utils::dirs};
+use crate::{config::*, log_err, utils::dirs};
 use anyhow::{bail, Context, Result};
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;

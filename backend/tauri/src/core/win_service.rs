@@ -1,16 +1,17 @@
 #![cfg(target_os = "windows")]
 
-use crate::config::{ClashCore, Config};
-use crate::utils::dirs;
+use crate::{
+    config::{ClashCore, Config},
+    utils::dirs,
+};
 use anyhow::{bail, Context, Result};
 use deelevate::{PrivilegeLevel, Token};
 use runas::Command as RunasCommand;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::os::windows::process::CommandExt;
-use std::path::PathBuf;
-use std::time::Duration;
-use std::{env::current_exe, process::Command as StdCommand};
+use std::{
+    collections::HashMap, env::current_exe, os::windows::process::CommandExt, path::PathBuf,
+    process::Command as StdCommand, time::Duration,
+};
 use tokio::time::sleep;
 
 const SERVICE_URL: &str = "http://127.0.0.1:33211";

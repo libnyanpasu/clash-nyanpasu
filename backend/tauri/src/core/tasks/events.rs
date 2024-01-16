@@ -1,11 +1,15 @@
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-use super::storage::EventsGuard;
-use super::task::{TaskEventID, TaskID, TaskRunResult, Timestamp};
-use super::utils::Result;
-use std::collections::HashMap;
-use std::sync::{Arc, OnceLock};
+use super::{
+    storage::EventsGuard,
+    task::{TaskEventID, TaskID, TaskRunResult, Timestamp},
+    utils::Result,
+};
+use std::{
+    collections::HashMap,
+    sync::{Arc, OnceLock},
+};
 pub struct TaskEvents;
 
 pub trait TaskEventsDispatcher {

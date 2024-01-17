@@ -90,7 +90,7 @@
     "@typescript-eslint/parser": "6.19.0",
     "@vitejs/plugin-react": "^4.2.1",
     "adm-zip": "^0.5.9",
-    "autoprefixer": "10.4.16",
+    "autoprefixer": "10.4.17",
     "colorize-template": "1.0.0",
     "consola": "3.2.3",
     "cross-env": "^7.0.3",

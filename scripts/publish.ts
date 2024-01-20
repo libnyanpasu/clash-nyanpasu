@@ -1,10 +1,8 @@
-import { execSync } from "child_process";
 import fs from "fs-extra";
 import path from "node:path";
 import packageJson from "../package.json";
-import { resolveUpdateLog } from "./updatelog";
 import { TAURI_APP_DIR, cwd } from "./utils/env";
-import { consola } from "./utils/logger";
+// import { consola } from "./utils/logger";
 
 const TAURI_APP_CONF_PATH = path.join(TAURI_APP_DIR, "tauri.conf.json");
 const TAURI_NIGHTLY_APP_CONF_PATH = path.join(
@@ -39,8 +37,8 @@ async function resolvePublish() {
   tauriNightlyJson.package.version = nextNightlyVersion;
 
   // 发布更新前先写更新日志
-  const nextTag = `v${nextVersion}`;
-  await resolveUpdateLog(nextTag);
+  // const nextTag = `v${nextVersion}`;
+  // await resolveUpdateLog(nextTag);
 
   await fs.writeJSON(PACKAGE_JSON_PATH, packageJson, {
     spaces: 2,
@@ -52,13 +50,14 @@ async function resolvePublish() {
     spaces: 2,
   });
 
-  execSync("git add ./package.json");
-  execSync(`git add ${TAURI_APP_CONF_PATH}`);
-  execSync(`git commit -m "v${nextVersion}"`);
-  execSync(`git tag -a v${nextVersion} -m "v${nextVersion}"`);
-  execSync(`git push`);
-  execSync(`git push origin v${nextVersion}`);
-  consola.success(`Publish Successfully...`);
+  // execSync("git add ./package.json");
+  // execSync(`git add ${TAURI_APP_CONF_PATH}`);
+  // execSync(`git commit -m "v${nextVersion}"`);
+  // execSync(`git tag -a v${nextVersion} -m "v${nextVersion}"`);
+  // execSync(`git push`);
+  // execSync(`git push origin v${nextVersion}`);
+  // consola.success(`Publish Successfully...`);
+  console.log(nextVersion);
 }
 
 resolvePublish();

@@ -1,10 +1,8 @@
 name: Release Build
 
 on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
+  release:
+    types: [published]
 
 env:
   CARGO_INCREMENTAL: 0
@@ -29,8 +27,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          ref: main
 
       - name: install Rust stable
         run: rustup install stable --profile minimal && rustup default stable

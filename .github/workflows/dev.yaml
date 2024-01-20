@@ -2,9 +2,6 @@ name: Dev Build
 
 on:
   workflow_dispatch:
-  # push:
-  #   branches:
-  #     - dev
   schedule:
     - cron: "15 0 * * *" # 每天 08:15 UTC+8 自动构建
 env:
@@ -32,8 +29,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          ref: dev # Dev branch
 
       - name: install Rust stable
         run: rustup install stable --profile minimal && rustup default stable
@@ -155,8 +150,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          ref: dev # Dev branch
       - name: Set Env
         run: |
           echo "BUILDTIME=$(TZ=Asia/Shanghai date)" >> $GITHUB_ENV
@@ -166,7 +159,6 @@ jobs:
         uses: greenhat616/update-tag@v1
         with:
           tag_name: pre-release
-          ref: dev
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: |
@@ -195,8 +187,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          ref: dev # Dev branch
       - uses: pnpm/action-setup@v2
         name: Install pnpm
         with:

@@ -1,0 +1,79 @@
+name: Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      versionType:
+        type: choice
+        description: "<major|minor|patch>"
+        required: true
+        default: "patch"
+        options:
+          - major
+          - minor
+          - patch
+
+jobs:
+  publish:
+    name: Publish ${{ inputs.versionType }} release
+    permissions:
+      # Give the default GITHUB_TOKEN write permission to commit and push the
+      # added or changed files to the repository.
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+      - name: Prepare Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: pnpm/action-setup@v2
+        name: Install pnpm
+        with:
+          version: 8
+          run_install: false
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+      - name: Install
+        run: pnpm i
+      - uses: actions/cache@v3
+        name: Setup pnpm cache
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      - id: update-version
+        shell: bash
+        name: Bump version
+        # Use npm because yarn is for some reason not able to output only the version name
+        run: |
+          echo "version=$(pnpm run publish)" >> $GITHUB_OUTPUT
+          git add .
+      - name: Conventional Changelog Action
+        id: build-changelog
+        uses: TriPSs/conventional-changelog-action@v3
+        with:
+          github-token: ${{ secrets.github_token }}
+          git-message: "chore(release): {version} 🤖 [skip ci]"
+          git-user-name: "github-actions[bot]"
+          git-user-email: "41898282+github-actions[bot]@users.noreply.github.com"
+          preset: "conventionalcommits"
+          tag-prefix: "v"
+          output-file: "UPDATELOG.md"
+          release-count: "10"
+          git-branch: "main"
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          draft: true
+          body: ${{steps.build-changelog.outputs.clean_changelog}}
+          name: ${{steps.update-version.outputs.version}}
+          tag_name: ${{steps.build-changelog.outputs.tag}}
+          # target_commitish: ${{ steps.tag.outputs.sha }}

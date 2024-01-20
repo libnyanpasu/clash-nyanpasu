@@ -1,543 +1,792 @@
-## v1.4.2
+## [1.5.0](https://github.com/keiko233/clash-nyanpasu/compare/v1.4.2...v1.5.0) (2024-01-20)
 
 ### Features
 
-- Support Clash-rs v0.1.10. [@greenhat616](https://github.com/greenhat616)
-- New Windows tray icon & support tun mode icon. [@keiko233](https://github.com/keiko233)
-- Support Log file export. [@greenhat616](https://github.com/greenhat616)
-- Hotkey Support toggle. [@greenhat616](https://github.com/greenhat616)
-- Built-in Mihomo alpha. [@greenhat616](https://github.com/greenhat616)
-- Use shikiji process log. [@greenhat616](https://github.com/greenhat616)
-- More Animation support. [@greenhat616](https://github.com/greenhat616)
-- New Built-in updater support. [@greenhat616](https://github.com/greenhat616)
-- Support DNS auto config in macos. [@greenhat616](https://github.com/greenhat616)
-- Support log file auto clean. [@keiko233](https://github.com/keiko233)
-- Use Christmas Logo. [@keiko233](https://github.com/keiko233)
+- make proxies material you ([2600772](https://github.com/keiko233/clash-nyanpasu/commit/26007724765f051490fd223d2e023089049153a2))
+- new release workflow ([#284](https://github.com/keiko233/clash-nyanpasu/issues/284)) ([21e17b4](https://github.com/keiko233/clash-nyanpasu/commit/21e17b454fd4a8bddab65ea0e5d15b53ed3b8ef0))
+- proxies ui minor tweaks ([8c56e0f](https://github.com/keiko233/clash-nyanpasu/commit/8c56e0fc263cbfb86ab59664e7ea0b9b6c1826c2))
 
 ### Bug Fixes
 
-- Fix Windows resize bug. [@greenhat616](https://github.com/greenhat616)
-- Fix Hotkey repeat binding . [@greenhat616](https://github.com/greenhat616)
-- Fix Proxies dalay value rending color. [@greenhat616](https://github.com/greenhat616)
-- Fix Mihomo alpha & Clash-rs Service not working. [@greenhat616](https://github.com/greenhat616)
-- Fix dialog position. [@greenhat616](https://github.com/greenhat616)
-- Fix shikiji color rending err. [@keiko233](https://github.com/keiko233)
+- [#212](https://github.com/keiko233/clash-nyanpasu/issues/212) ([190a36a](https://github.com/keiko233/clash-nyanpasu/commit/190a36a98fde570c7bb04155a3c682ec1b8b9431))
+- add a panic hook to collect logs and show a dialog ([#191](https://github.com/keiko233/clash-nyanpasu/issues/191)) ([f23eb73](https://github.com/keiko233/clash-nyanpasu/commit/f23eb738521443856746fe55ba2ee3cc35748aa0))
+- **ci:** pin rust version to 1.74.1 ([#213](https://github.com/keiko233/clash-nyanpasu/issues/213)) ([86ff2d4](https://github.com/keiko233/clash-nyanpasu/commit/86ff2d40144556eeb698db81903011f4b54d5f23))
+- **ci:** use dev commit hash when schedule dispatch ([50c777b](https://github.com/keiko233/clash-nyanpasu/commit/50c777b97bac97555a6ee967bf8a57b99b92e8f8))
+- **ci:** use latest action ([9e1d76e](https://github.com/keiko233/clash-nyanpasu/commit/9e1d76ec9795ddb553ddcf8199cd57d3f221395b))
+- dark mode flash in win ([ffe2bde](https://github.com/keiko233/clash-nyanpasu/commit/ffe2bde3b69c9a2ecba1494045f8dbac135d0b49))
+- **deps:** update dependency framer-motion to v10.17.0 ([051c7fb](https://github.com/keiko233/clash-nyanpasu/commit/051c7fbd677880c06373381309e42569b8be80cf))
+- **deps:** update dependency framer-motion to v10.17.4 ([c6c438e](https://github.com/keiko233/clash-nyanpasu/commit/c6c438e3e9dbea5de3822cb621c64c8d690ab9f4))
+- **deps:** update dependency framer-motion to v10.17.6 ([42df02e](https://github.com/keiko233/clash-nyanpasu/commit/42df02ea5c2ba232a20b327c3fe94b488919a57d))
+- **deps:** update dependency framer-motion to v10.17.8 ([cbb7df4](https://github.com/keiko233/clash-nyanpasu/commit/cbb7df4536eb4bb9da096efb50d266a352ed30ec))
+- **deps:** update dependency framer-motion to v10.17.9 ([63a7431](https://github.com/keiko233/clash-nyanpasu/commit/63a743162cfa148c55d4ef6cd4bf8d6c6b32083c))
+- **deps:** update dependency framer-motion to v10.18.0 ([d243e8f](https://github.com/keiko233/clash-nyanpasu/commit/d243e8f623e0bccbffd40860b76c879003fdd66a))
+- **deps:** update rust crate async-trait to 0.1.75 ([6722174](https://github.com/keiko233/clash-nyanpasu/commit/6722174d66dc81b6e01e91d8cc947ad4046a1625))
+- **deps:** update rust crate async-trait to 0.1.77 ([#249](https://github.com/keiko233/clash-nyanpasu/issues/249)) ([fffc081](https://github.com/keiko233/clash-nyanpasu/commit/fffc081a219df3be91f30ee79d9eaf7965384c0b))
+- **deps:** update rust crate ctrlc to 3.4.2 ([0362463](https://github.com/keiko233/clash-nyanpasu/commit/0362463b6de35bf926a77ad9ec2a07e780243ace))
+- **deps:** update rust crate delay_timer to 0.11.5 ([#250](https://github.com/keiko233/clash-nyanpasu/issues/250)) ([48ace4f](https://github.com/keiko233/clash-nyanpasu/commit/48ace4fde690ff200e37290667fe5c380151657e))
+- **deps:** update rust crate rquickjs to 0.4.0 ([#131](https://github.com/keiko233/clash-nyanpasu/issues/131)) ([00c99ca](https://github.com/keiko233/clash-nyanpasu/commit/00c99ca93699537843e5ec97726f337d96582e13)), closes [#243](https://github.com/keiko233/clash-nyanpasu/issues/243)
+- **deps:** update rust crate simd-json to 0.13.6 ([#251](https://github.com/keiko233/clash-nyanpasu/issues/251)) ([36bda5a](https://github.com/keiko233/clash-nyanpasu/commit/36bda5aa4ef60da1f0baa5219f5d5b6976d67a2b))
+- **deps:** update rust crate tauri to 1.5.4 ([8b3e420](https://github.com/keiko233/clash-nyanpasu/commit/8b3e4207b86d733b5ace853cce73bee0d979f2ec))
+- **deps:** update rust crate tempfile to 3.9.0 ([b3404bf](https://github.com/keiko233/clash-nyanpasu/commit/b3404bf3984dc9e9c9be9923bdc6715272469a9a))
+- enable_tun block the process ([#232](https://github.com/keiko233/clash-nyanpasu/issues/232)) ([de1c4a0](https://github.com/keiko233/clash-nyanpasu/commit/de1c4a05f93c1ee2772ef248c8e8679ac242f31e))
+- lint ([46071c6](https://github.com/keiko233/clash-nyanpasu/commit/46071c662798473d0ddec54c8952ee2ac41ba188))
+- **log:** incorrect color in light mode ([211bc44](https://github.com/keiko233/clash-nyanpasu/commit/211bc44793a80a51f52700544c538006fd602365))
+- notification fallback ([#262](https://github.com/keiko233/clash-nyanpasu/issues/262)) ([ce0224d](https://github.com/keiko233/clash-nyanpasu/commit/ce0224d779296515157479276599d157b2e16e52))
+- notification premission check ([#263](https://github.com/keiko233/clash-nyanpasu/issues/263)) ([c1f8c54](https://github.com/keiko233/clash-nyanpasu/commit/c1f8c54df7420509bd588f36abd5011242dcc2ed))
+- open file, closing [#197](https://github.com/keiko233/clash-nyanpasu/issues/197) ([4345dc2](https://github.com/keiko233/clash-nyanpasu/commit/4345dc26c7c91ea981e5daa7a5f16bca2b77e7ce))
+- publish ci ([e3eca94](https://github.com/keiko233/clash-nyanpasu/commit/e3eca94ab0e7292b8e203d065ae4b172e2c15f8f))
+- **rocksdb:** use TransactionDB instead of OptimisticTransactionDB ([#194](https://github.com/keiko233/clash-nyanpasu/issues/194)) ([8373913](https://github.com/keiko233/clash-nyanpasu/commit/83739131fd53e0a59798db986f441d10d6faea33))
+- same text color for `REJECT-DROP` policy as `REJECT` ([#236](https://github.com/keiko233/clash-nyanpasu/issues/236)) ([c78dff4](https://github.com/keiko233/clash-nyanpasu/commit/c78dff4fcb1750629a4218405a9ef8ffdda95396))
+- stable channel build issue ([#248](https://github.com/keiko233/clash-nyanpasu/issues/248)) ([13d7bc4](https://github.com/keiko233/clash-nyanpasu/commit/13d7bc4e0ef40f725483f458f3b2cc566957f5b5))
+- updater ([ca1ed25](https://github.com/keiko233/clash-nyanpasu/commit/ca1ed25d3b252da7fd7a8a50ee31fc316b4ccadf))
+- **updater:** should use nyanpasu proxy or system proxy when performing request ([#273](https://github.com/keiko233/clash-nyanpasu/issues/273)) ([dc582b4](https://github.com/keiko233/clash-nyanpasu/commit/dc582b4adc959eb292dcaa1c10074119c67bd05a))
+- **updater:** add status code judge ([67e26bc](https://github.com/keiko233/clash-nyanpasu/commit/67e26bc0c63d7e87f60b6c872ad3f50d05a94f61))
+- **updater:** allow to use elevated permission to copy and override core ([6c992b7](https://github.com/keiko233/clash-nyanpasu/commit/6c992b7c5fb9221376c30aae8ff004297c14315d))
+- virtuoso scroller bottom not padding ([be3d99c](https://github.com/keiko233/clash-nyanpasu/commit/be3d99cd0f22947cb52fdd87b1e8e1bc21ae7863))
+- **vite:** rm useless shikiji langs support ([#267](https://github.com/keiko233/clash-nyanpasu/issues/267)) ([7768255](https://github.com/keiko233/clash-nyanpasu/commit/7768255b863be4a141d0c551cd3425faee19238e))
+- windrag err ([a7ddd3a](https://github.com/keiko233/clash-nyanpasu/commit/a7ddd3a4dec8ea72e24696009601431ec26646bf))
 
-### Others
-
-- Use GitHub issues template. [@greenhat616](https://github.com/greenhat616) [@keiko233](https://github.com/keiko233) [@txyyh](https://github.com/txyyh)
-- Support nightly builds. [@greenhat616](https://github.com/greenhat616)
-
----
-
-## v1.4.1
+### [1.4.2](https://github.com/keiko233/clash-nyanpasu/compare/v1.4.1...v1.4.2) (2023-12-24)
 
 ### Features
 
-- Support macOS aarch64 build. [@keiko233](https://github.com/keiko233)
-- Built-in Windows UWP Loopback Tool. [@Kuingsmile](https://github.com/Kuingsmile)
-- Built-in Clash-rs support. [@greenhat616](https://github.com/greenhat616)
-- Add tooltip for tray. [@Kuingsmile](https://github.com/Kuingsmile)
-- Update HD tray icons. [@keiko233](https://github.com/keiko233)
-- Support random mixed port. [@Kuingsmile](https://github.com/Kuingsmile)
-- Update Clash.Meta to v1.17.0. [@Kuingsmile](https://github.com/Kuingsmile) [@keiko233](https://github.com/keiko233)
-- Use system notification. [@keiko233](https://github.com/keiko233)
-- Support drag profile item to sort. [@Kuingsmile](https://github.com/Kuingsmile)
-- Add skip-auth-prefixes fields for Clash.Meta v1.17.0. [@greenhat616](https://github.com/greenhat616)
-- Support more animations. [@greenhat616](https://github.com/greenhat616)
-- Use twemoji on Windows. [@greenhat616](https://github.com/greenhat616)
+- auto add dns according this method ([a509863](https://github.com/keiko233/clash-nyanpasu/commit/a509863cb6b726ef34738fc14492c8ca858c40c7))
+- auto log clear ([a320219](https://github.com/keiko233/clash-nyanpasu/commit/a320219f003c90504d4249d4faee68499d7f811b))
+- backport concurrency of latency test ([63f324b](https://github.com/keiko233/clash-nyanpasu/commit/63f324b80c09cdffdf3198f14af5171149d24739))
+- bundled mihomo alpha ([4b46eb5](https://github.com/keiko233/clash-nyanpasu/commit/4b46eb56d4039d8f94cf2e54c28b358e5bbb5d69))
+- improve animations ([6495f4d](https://github.com/keiko233/clash-nyanpasu/commit/6495f4d489c9309de186840bfe9b42c10d640652))
+- **manifest:** latest version generator ([9dfbc07](https://github.com/keiko233/clash-nyanpasu/commit/9dfbc072f17415b58f32a1ab38007a131da84776))
+- new style win tray icon & add blue icon when tun enable ([79c7107](https://github.com/keiko233/clash-nyanpasu/commit/79c710750a713f47fe202af64a18f1d5c7a79861))
+- nightly build with updater ([a76203b](https://github.com/keiko233/clash-nyanpasu/commit/a76203befa9330f59fd04e78f6dc5232200139ac))
+- quick logs collect ([b264720](https://github.com/keiko233/clash-nyanpasu/commit/b2647208eb162b893f7e48ada9214aa343a893ac))
+- rules providers ([59424f4](https://github.com/keiko233/clash-nyanpasu/commit/59424f421a8e85fda35e70c92373a67634ee8e2e))
+- **updater:** finish core updater backend ([6215531](https://github.com/keiko233/clash-nyanpasu/commit/6215531bc234ddeab4ad277102531f99f55c1142))
+- **updater:** finish ui ([aa4e30b](https://github.com/keiko233/clash-nyanpasu/commit/aa4e30b47f49b732c1ceda3addf674928d29573d))
+- use christmas logo ([a7e0f8e](https://github.com/keiko233/clash-nyanpasu/commit/a7e0f8e44e57b9dc4f957f2d5f72a96c4d8db533))
 
 ### Bug Fixes
 
-- Fix install Service bug. [@Kuingsmile](https://github.com/Kuingsmile)
-- Fix Windows proxy bug when VPN enabled. [@greenhat616](https://github.com/greenhat616)
+- [#92](https://github.com/keiko233/clash-nyanpasu/issues/92) ([c7afb45](https://github.com/keiko233/clash-nyanpasu/commit/c7afb457496fc8347bc70e160907ac52ec8d8f4b))
+- [#96](https://github.com/keiko233/clash-nyanpasu/issues/96) ([f047b7c](https://github.com/keiko233/clash-nyanpasu/commit/f047b7c9c2b574ad5b9abd714ab667549c07bacd))
+- bump nightly version after publish ([6a554b6](https://github.com/keiko233/clash-nyanpasu/commit/6a554b694072008d85656d36433881c888e5aafa))
+- ci ([f4b5670](https://github.com/keiko233/clash-nyanpasu/commit/f4b5670985abc00d426720090aea2f4789cd782a))
+- ci ([e100219](https://github.com/keiko233/clash-nyanpasu/commit/e100219a4fe906133bb4eb4019dff90eea3dbcc3))
+- ci ([8712ff9](https://github.com/keiko233/clash-nyanpasu/commit/8712ff9466affdf213618d285420dfe4492a7d62))
+- **ci:** release build ([27920de](https://github.com/keiko233/clash-nyanpasu/commit/27920de55ac2dedc58411b910327f81e4aea2543))
+- **ci:** updater and dev build ([163ab81](https://github.com/keiko233/clash-nyanpasu/commit/163ab81ca89729a8016719c50b5caae1ab188070))
+- dark shikiji display color err ([050a6f0](https://github.com/keiko233/clash-nyanpasu/commit/050a6f00e826a1e338cbe0c383b74fe380f0d9ef))
+- delay color, closing [#124](https://github.com/keiko233/clash-nyanpasu/issues/124) ([5dd0d6c](https://github.com/keiko233/clash-nyanpasu/commit/5dd0d6c5270137a76e668853ff8ef479b74dc4da))
+- **deps:** update dependency @mui/lab to v5.0.0-alpha.155 ([8be9582](https://github.com/keiko233/clash-nyanpasu/commit/8be95827c656b9f1ad95468056abcfb737444ba4))
+- **deps:** update dependency dayjs to v1.11.10 ([#119](https://github.com/keiko233/clash-nyanpasu/issues/119)) ([4fcbb2d](https://github.com/keiko233/clash-nyanpasu/commit/4fcbb2dcc8f12f6f08f8daebd70df9aee06c2fd6))
+- **deps:** update dependency framer-motion to v10.16.16 ([e0f62e0](https://github.com/keiko233/clash-nyanpasu/commit/e0f62e037bbcddfcf4dc5fc14cff3921ff508251))
+- **deps:** update dependency i18next to v23 ([#75](https://github.com/keiko233/clash-nyanpasu/issues/75)) ([ebea511](https://github.com/keiko233/clash-nyanpasu/commit/ebea51154023558b8d9814cbb4ce389141f80585))
+- **deps:** update dependency monaco-editor to ^0.45.0 ([#128](https://github.com/keiko233/clash-nyanpasu/issues/128)) ([e1916d7](https://github.com/keiko233/clash-nyanpasu/commit/e1916d79d579c67a60941adda3d452944a3ea86e))
+- **deps:** update dependency react-error-boundary to v4 ([#147](https://github.com/keiko233/clash-nyanpasu/issues/147)) ([a72443c](https://github.com/keiko233/clash-nyanpasu/commit/a72443c3ea45310898e03dc2b3beb263843337a2))
+- **deps:** update dependency react-i18next to v13 ([#149](https://github.com/keiko233/clash-nyanpasu/issues/149)) ([0d719e1](https://github.com/keiko233/clash-nyanpasu/commit/0d719e153364324599b1fc15ba0c2f2c8c821dd5))
+- **deps:** update dependency react-i18next to v14 ([#183](https://github.com/keiko233/clash-nyanpasu/issues/183)) ([e0b7520](https://github.com/keiko233/clash-nyanpasu/commit/e0b75205556a241a19f467f2cee5da56cd732fb9))
+- **deps:** update dependency react-virtuoso to v4 ([#150](https://github.com/keiko233/clash-nyanpasu/issues/150)) ([165291f](https://github.com/keiko233/clash-nyanpasu/commit/165291f9aafff16e8f63c13308334a392b3b29b1))
+- **deps:** update dependency swr to v2 ([#151](https://github.com/keiko233/clash-nyanpasu/issues/151)) ([584c8fa](https://github.com/keiko233/clash-nyanpasu/commit/584c8fa35127893b1927f5437c7901c236d0bb84))
+- **deps:** update rust crate chrono to 0.4.31 ([#104](https://github.com/keiko233/clash-nyanpasu/issues/104)) ([dad9f68](https://github.com/keiko233/clash-nyanpasu/commit/dad9f686712f81370e9c6283846d29e3a426ce09))
+- **deps:** update rust crate ctrlc to 3.4.1 ([#108](https://github.com/keiko233/clash-nyanpasu/issues/108)) ([f74b6d4](https://github.com/keiko233/clash-nyanpasu/commit/f74b6d490ce0489231ae0972ab4f94a89daa2057))
+- **deps:** update rust crate dirs to 5.0.1 ([#110](https://github.com/keiko233/clash-nyanpasu/issues/110)) ([b340e04](https://github.com/keiko233/clash-nyanpasu/commit/b340e04ef886f83dd1a22c1de1367f6ccc6e5351))
+- **deps:** update rust crate dunce to 1.0.4 ([0d12a5d](https://github.com/keiko233/clash-nyanpasu/commit/0d12a5d12e89439f34120a904bcdc344d222500f))
+- **deps:** update rust crate interfaces to 0.0.9 ([#111](https://github.com/keiko233/clash-nyanpasu/issues/111)) ([ffd7a8e](https://github.com/keiko233/clash-nyanpasu/commit/ffd7a8e287fef309e3ddf076171537f69b503404))
+- **deps:** update rust crate log to 0.4.20 ([e92ee5d](https://github.com/keiko233/clash-nyanpasu/commit/e92ee5d175eb2b3f6bd2115caa59f605b48790e6))
+- **deps:** update rust crate log4rs to 1.2.0 ([#125](https://github.com/keiko233/clash-nyanpasu/issues/125)) ([7759075](https://github.com/keiko233/clash-nyanpasu/commit/77590758eb7e935af1e9e0ac31cce3b8cc24d8c2))
+- **deps:** update rust crate once_cell to 1.18.0 ([#129](https://github.com/keiko233/clash-nyanpasu/issues/129)) ([2944745](https://github.com/keiko233/clash-nyanpasu/commit/2944745c3cf7542b99e72aa8afbb7203a7212ab7))
+- **deps:** update rust crate once_cell to 1.19.0 ([8574388](https://github.com/keiko233/clash-nyanpasu/commit/857438815fb47d805e488af1343fcc9e1a061147))
+- **deps:** update rust crate open to 4.2.0 ([#126](https://github.com/keiko233/clash-nyanpasu/issues/126)) ([a30f56c](https://github.com/keiko233/clash-nyanpasu/commit/a30f56cbae8bb4c688eb5c9ccad6b62bc44d2ba1))
+- **deps:** update rust crate open to 5.0.1 ([8beb165](https://github.com/keiko233/clash-nyanpasu/commit/8beb16583428f46afbe957815d3be33e5b7e933e))
+- **deps:** update rust crate open to v5 ([#152](https://github.com/keiko233/clash-nyanpasu/issues/152)) ([b54e6b5](https://github.com/keiko233/clash-nyanpasu/commit/b54e6b59c05b50eb1b34c0b9c41dee46dfa856bd))
+- **deps:** update rust crate parking_lot to 0.12.1 ([65efbcf](https://github.com/keiko233/clash-nyanpasu/commit/65efbcfa8b564d15f8af0946b5dd75a5b377ed68))
+- **deps:** update rust crate runas to v1.1.0 ([#133](https://github.com/keiko233/clash-nyanpasu/issues/133)) ([0d1eb27](https://github.com/keiko233/clash-nyanpasu/commit/0d1eb27440fe23e81c05d27200f8ec11b6894483))
+- **deps:** update rust crate which to 4.4.2 ([b34ee0d](https://github.com/keiko233/clash-nyanpasu/commit/b34ee0d188dc97c6b42a23d0bde08292b85e8213))
+- **deps:** update rust crate window-vibrancy to 0.4.0 ([#134](https://github.com/keiko233/clash-nyanpasu/issues/134)) ([bf3679c](https://github.com/keiko233/clash-nyanpasu/commit/bf3679c886e7e6867b3ed20c66f2a8c8e5eee3b2))
+- **deps:** update rust crate window-vibrancy to 0.4.3 ([#138](https://github.com/keiko233/clash-nyanpasu/issues/138)) ([e6db194](https://github.com/keiko233/clash-nyanpasu/commit/e6db194361f8e7ab17ac1250097d5fc78316fdcc))
+- dev build branch issue ([ddeb76b](https://github.com/keiko233/clash-nyanpasu/commit/ddeb76bbd79d4eff87d78196df82d46097a1d755))
+- **dialog:** align center and overflow issue ([e0430e1](https://github.com/keiko233/clash-nyanpasu/commit/e0430e15070458221a0a5856485332a51e8d7dd5))
+- format ansi in log viewer ([181c905](https://github.com/keiko233/clash-nyanpasu/commit/181c905687439a05634bfb32f16387d51ea158de))
+- i18n resources ([de64cb8](https://github.com/keiko233/clash-nyanpasu/commit/de64cb80d254e92ee5fec385a2b978a8833f994c))
+- icon issues, close [#55](https://github.com/keiko233/clash-nyanpasu/issues/55) ([21b9f75](https://github.com/keiko233/clash-nyanpasu/commit/21b9f7522131495e9d7cb5e6586f06be40c0d55e))
+- lint ([04cc627](https://github.com/keiko233/clash-nyanpasu/commit/04cc627a7c42b7fdb5d5aa0d833818d8a1da7da7))
+- lint ([4e51ff3](https://github.com/keiko233/clash-nyanpasu/commit/4e51ff31578c405a8e7056790655eb09b79d2983))
+- **lint:** toml fmt ([c174064](https://github.com/keiko233/clash-nyanpasu/commit/c174064eeb0ea57385587bf70406dd6858d2e5ba))
+- **manifest:** mihomo alpha arch template ([fd821ea](https://github.com/keiko233/clash-nyanpasu/commit/fd821ea7ad98c2e8de46e61020dec1c0c7567ad7))
+- minor tweak base-content width ([63c4176](https://github.com/keiko233/clash-nyanpasu/commit/63c4176ccd7a67abc3d3053aa6fcd60fc7003da4))
+- pin runas to v1.0.0 ([05b84f2](https://github.com/keiko233/clash-nyanpasu/commit/05b84f2ca1f53f6cabdc07f543e15d695a726a61))
+- **resources:** win service support and mihomo alpha version proxy ([3a1a124](https://github.com/keiko233/clash-nyanpasu/commit/3a1a124a2e7ef2f5affcdd48f2c8b8c04a371236))
+- shikiji text wrapping err ([ae4371f](https://github.com/keiko233/clash-nyanpasu/commit/ae4371f2ce596747eee3b25fafa93ea3d9f6da91))
+- **updater:** copy logic ([d349ca0](https://github.com/keiko233/clash-nyanpasu/commit/d349ca0a1a4ee64da01ee87ea6f5e58a8d89d2f3))
+- use a workaroud to reduce [#59](https://github.com/keiko233/clash-nyanpasu/issues/59) ([4afa67b](https://github.com/keiko233/clash-nyanpasu/commit/4afa67bfaa44886e88e03acf2035ea70200ae4c8))
+- win state ([46ac762](https://github.com/keiko233/clash-nyanpasu/commit/46ac762bc4ff660eda53318071d1b3e08a4fa386))
+- **window:** add a workaround for close event in windows ([81f6d28](https://github.com/keiko233/clash-nyanpasu/commit/81f6d28bcc93826f4ec9c1c154400cc894e26161))
+- **window:** preserve window state before window minimized ([5127f77](https://github.com/keiko233/clash-nyanpasu/commit/5127f77e744882e408e1bceaa0b3eff0252bbf54))
 
-### Others
-
-- Fixed several build issues. [@keiko233](https://github.com/keiko233)
-- Switch rust code to workspace. [@greenhat616](https://github.com/greenhat616)
-- Add renovate bot support. [@greenhat616](https://github.com/greenhat616)
-
----
-
-## v1.4.0
+### [1.4.1](https://github.com/keiko233/clash-nyanpasu/compare/v1.4.0...v1.4.1) (2023-12-06)
 
 ### Features
 
-- Default use Meta Core.
-- Support copy PowerShell, CMD and sh env command.
-- Add Upload Traffic, Download Traffic and Active Connections to ConnectionsPage.
-- SettingPage use Grid layout.
-- Import LoadingButton & use when Download Profile.
-- New default theme color.
-- Add Nyanpasu Element. (Logo designer [@ReallySnow](https://github.com/ReallySnow))
-- Default enable unified-delay & tcp-concurrent.
-- Use Meta Country.mmdb.
-- Disable IPv6 by default.
-- Add Material You element.
-- Add Router switch transition.
+- add page transition duration options ([83b9660](https://github.com/keiko233/clash-nyanpasu/commit/83b966051fbfe3e1b9d44db9982b3f9a3b07f49d))
+- add page transition mode switch ([41fbbb7](https://github.com/keiko233/clash-nyanpasu/commit/41fbbb7726428c9fb3b370e749cb5e59fe196502))
+- add tooltip for tray ([#24](https://github.com/keiko233/clash-nyanpasu/issues/24)) ([e6cc440](https://github.com/keiko233/clash-nyanpasu/commit/e6cc44064cfdfa28e3b46999f4dcf0bdd1c2e5cc))
+- Add UWP tool support, fix install service bug ([#19](https://github.com/keiko233/clash-nyanpasu/issues/19)) ([b09331e](https://github.com/keiko233/clash-nyanpasu/commit/b09331e251673b3c45f54dae70de0719fd371f74))
+- experimental support `clash-rs` ([#23](https://github.com/keiko233/clash-nyanpasu/issues/23)) ([7e7ce41](https://github.com/keiko233/clash-nyanpasu/commit/7e7ce414aac22ed96fdde7ae5f2ef851d33237cc))
+- new style win tray icon ([4015cb3](https://github.com/keiko233/clash-nyanpasu/commit/4015cb345b3e79f5504d826431406b53230105fd))
+- support drag profile item ([#36](https://github.com/keiko233/clash-nyanpasu/issues/36)) ([0b8f9ed](https://github.com/keiko233/clash-nyanpasu/commit/0b8f9ed6244b3ac573be58a0ad91a1fe810cf7e6))
+- support new clash field ([87e0f5e](https://github.com/keiko233/clash-nyanpasu/commit/87e0f5ea426674c0c382d538c801bf1c8d44d909))
+- support random mixed port ([#29](https://github.com/keiko233/clash-nyanpasu/issues/29)) ([86e29ee](https://github.com/keiko233/clash-nyanpasu/commit/86e29ee75f44ed9b9a040fd195e6ed4ec17b15bd))
+- **transition:** add none and transparent variants ([9087b9a](https://github.com/keiko233/clash-nyanpasu/commit/9087b9a204791a757d1922f0875c4646f0a80943))
+- update new clash.meta close [#20](https://github.com/keiko233/clash-nyanpasu/issues/20) ([#30](https://github.com/keiko233/clash-nyanpasu/issues/30)) ([858de14](https://github.com/keiko233/clash-nyanpasu/commit/858de148feac19ce2491c7aa61e96a2af474a3f9))
+- use framer-motion for smooth page transition ([45aa11e](https://github.com/keiko233/clash-nyanpasu/commit/45aa11e4dfb41875df8586376b978cefac1a6983))
+- use tauri notification api ([d54ae01](https://github.com/keiko233/clash-nyanpasu/commit/d54ae01c7e29e0270c70b6b5e674fcc467b42c15))
+- use twemoji to display flags in win ([#48](https://github.com/keiko233/clash-nyanpasu/issues/48)) ([83dcf47](https://github.com/keiko233/clash-nyanpasu/commit/83dcf47e95964e11351085f261e1c652dd2c1e5b))
+- use workspace in backend ([11ae5ef](https://github.com/keiko233/clash-nyanpasu/commit/11ae5ef4a9d94fe5c812c11a65b2ed8e667a9dc4))
 
 ### Bug Fixes
 
-- Fix touchpad scrolling causes blank area to appear.
+- i18n typos ([7459e41](https://github.com/keiko233/clash-nyanpasu/commit/7459e41c0c311a2a15ce1c3fb44454a97edad29b))
+- item col width too narrow ([341f76f](https://github.com/keiko233/clash-nyanpasu/commit/341f76fdc1498e2fa4732665a55fe8afaa02879e))
+- lint ([fd972d2](https://github.com/keiko233/clash-nyanpasu/commit/fd972d24afdd75122beec2a5c7195ded9cc5627c))
+- lint ([98a647d](https://github.com/keiko233/clash-nyanpasu/commit/98a647dfe651407249b64f758e21ec145b8e83d1))
+- missing scss import ([af006fa](https://github.com/keiko233/clash-nyanpasu/commit/af006fa0f95cd19529124bc191434f3d0fef0bcf))
+- osx-aarch64-upload bundlePath typos ([bb354a9](https://github.com/keiko233/clash-nyanpasu/commit/bb354a9de089e16974142f2136cc7013d15cb7ad))
+- portable missing clash-rs core ([3f962e7](https://github.com/keiko233/clash-nyanpasu/commit/3f962e77017998acc4004989eee3c2b6c30c7858))
+- Portable target dir ([b14325f](https://github.com/keiko233/clash-nyanpasu/commit/b14325f3dfad120197dbaaf0b797f42e9795d362))
+- taskbar maximize toggle icon state ([#46](https://github.com/keiko233/clash-nyanpasu/issues/46)) ([8d76f7a](https://github.com/keiko233/clash-nyanpasu/commit/8d76f7a446cf8dc1d1c6f9cd2341031962db49a8))
+- workflow script typos ([3fe3cd1](https://github.com/keiko233/clash-nyanpasu/commit/3fe3cd1c3efeddc7435fa0fa5bab969c6488e064))
 
----
+### Reverts
 
-## v1.3.7
+- Revert "chore: remove un supported platform" (#10) ([8304b76](https://github.com/keiko233/clash-nyanpasu/commit/8304b767631f4128dee727e37fea0459704d7f48)), closes [#10](https://github.com/keiko233/clash-nyanpasu/issues/10)
+
+## [1.4.0](https://github.com/keiko233/clash-nyanpasu/compare/efc1669b3e8e62dbbcebd642f15e9200fda2d13f...v1.4.0) (2023-11-15)
 
 ### Features
 
-- update clash and clash meta core
-- profiles page add paste button
-- subscriptions url textfield use multi lines
-- set min window size
-- add check for updates buttons
-- add open dashboard to the hotkey list
+- add animation ([eb28ec8](https://github.com/keiko233/clash-nyanpasu/commit/eb28ec866ae64ccfbf03af7bd3a5761c69980d6b))
+- add animation to ProfileNew component ([#252](https://github.com/keiko233/clash-nyanpasu/issues/252)) ([a45dc6e](https://github.com/keiko233/clash-nyanpasu/commit/a45dc6efda76c293d90ea0d63cb8907c1d3462e8))
+- add baseContentIn animation ([34cb796](https://github.com/keiko233/clash-nyanpasu/commit/34cb796505bc1d90ea32128e5b14e55cc58912be))
+- add chains[0] and process to connections display ([#205](https://github.com/keiko233/clash-nyanpasu/issues/205)) ([6423a29](https://github.com/keiko233/clash-nyanpasu/commit/6423a296008aa82875d4dc50350261ace1b2cc74))
+- add check for updates button, close [#766](https://github.com/keiko233/clash-nyanpasu/issues/766) ([f4c7b17](https://github.com/keiko233/clash-nyanpasu/commit/f4c7b17a87ae853ad67fdcea727e93266babf779))
+- add Connections Info to ConnectionsPage ([88d3bba](https://github.com/keiko233/clash-nyanpasu/commit/88d3bba30033c49b760628b974cc12b907ae1496))
+- add default user agent ([b74696a](https://github.com/keiko233/clash-nyanpasu/commit/b74696adbad1c213b0b9a3e8be4dd87628e2a105))
+- add draft ([09965f1](https://github.com/keiko233/clash-nyanpasu/commit/09965f1cc675aea6af74dc225398cf47bfa4c76b))
+- add empty ui ([b915f3b](https://github.com/keiko233/clash-nyanpasu/commit/b915f3b1a936b76b684ddf5ff5340b1b9539f1b3))
+- add error boundary ([9d2017e](https://github.com/keiko233/clash-nyanpasu/commit/9d2017e598a7821cbd83ada66ade3d8b84fa790d))
+- add error boundary to the app root ([6a97451](https://github.com/keiko233/clash-nyanpasu/commit/6a9745171ea4796d7961db8802cdcbbe4e62156e))
+- add favicon ([3be2f5c](https://github.com/keiko233/clash-nyanpasu/commit/3be2f5c4049290575d59c01e856ea89b918a2e0f))
+- add Linux open dir support ([cb94d84](https://github.com/keiko233/clash-nyanpasu/commit/cb94d8414f05ce04915ae4fb230096d9f0f8ab31))
+- add meta feature ([c51e9e6](https://github.com/keiko233/clash-nyanpasu/commit/c51e9e6b2cf6d9c3edb6931e3bba8e699c4c5080))
+- add Open Dashboard to the hotkey, close [#723](https://github.com/keiko233/clash-nyanpasu/issues/723) ([3efd575](https://github.com/keiko233/clash-nyanpasu/commit/3efd575dd206c32b15c4187ee53916fddfeda6ba))
+- add paste and clear icon ([ad228d5](https://github.com/keiko233/clash-nyanpasu/commit/ad228d53b710a6c4aa3da4065a7a0abd115dc818))
+- add pre-dev script ([023e771](https://github.com/keiko233/clash-nyanpasu/commit/023e7715941011e0bbf7c734afc3172cc14a543e))
+- add proxy item check loading ([a2cf26e](https://github.com/keiko233/clash-nyanpasu/commit/a2cf26e7ed35744f60b012d28f9dd7a524652e27))
+- add put_profiles cmd ([0c23845](https://github.com/keiko233/clash-nyanpasu/commit/0c238459708032116e5a3c83881e7d560b314709))
+- add repo link ([2bcaf90](https://github.com/keiko233/clash-nyanpasu/commit/2bcaf90fc842cb904c80d5b8582b0659f451811f))
+- add restart core button ([9a29c9a](https://github.com/keiko233/clash-nyanpasu/commit/9a29c9abddc7e60301aeea36d7159e694cd5a265))
+- add route transition ([1eb34e0](https://github.com/keiko233/clash-nyanpasu/commit/1eb34e0662379e473ffee5993c506f451cfbf68b))
+- add rule page ([b23d3f7](https://github.com/keiko233/clash-nyanpasu/commit/b23d3f7c8b6cfadfee507df016a94ec4bc3bb3ef))
+- Add Russian Language ([#697](https://github.com/keiko233/clash-nyanpasu/issues/697)) ([2c48ea3](https://github.com/keiko233/clash-nyanpasu/commit/2c48ea35083fb16d47d2585703d318995f5a60c8))
+- add serval commands ([13ceb1e](https://github.com/keiko233/clash-nyanpasu/commit/13ceb1e44596c7b6907f01159c2015a9134ad6b7))
+- add some clash api ([4bb9e10](https://github.com/keiko233/clash-nyanpasu/commit/4bb9e10946878d36a8652fbb40bd2c150a0e3ed2))
+- add some commands ([2d0b63c](https://github.com/keiko233/clash-nyanpasu/commit/2d0b63c29d9ee99841fdfd2d951b16859694f247))
+- add sub-rules ([7f65c50](https://github.com/keiko233/clash-nyanpasu/commit/7f65c501c684bd949a31000435071badfa008f6f))
+- add text color ([c009026](https://github.com/keiko233/clash-nyanpasu/commit/c009026961949973eb0bed2847912120b80fc00d))
+- add text color ([3ec2b46](https://github.com/keiko233/clash-nyanpasu/commit/3ec2b46d28b11e01604a52a9fec79d4feef5a351))
+- add theme setting ([aec30b8](https://github.com/keiko233/clash-nyanpasu/commit/aec30b89e0100a93605f61307948a967bb66a854))
+- add unified-delay field ([416e788](https://github.com/keiko233/clash-nyanpasu/commit/416e7884f5e0b825a6853f0c50c62a2c8201c145))
+- add update interval ([cb661aa](https://github.com/keiko233/clash-nyanpasu/commit/cb661aaebde80e8c6dcca1eba996053fc81de25e))
+- add use clash hook ([28d3691](https://github.com/keiko233/clash-nyanpasu/commit/28d3691e0b7f7155a3bf322b4baf1d68ba123627))
+- add use-notice hook ([97f2bc8](https://github.com/keiko233/clash-nyanpasu/commit/97f2bc876149c2b4ab294c7888a88572752c4fd2))
+- add version on tray ([56fe7b3](https://github.com/keiko233/clash-nyanpasu/commit/56fe7b35965d2a2335656cd09f5fe7574cd0eaf7))
+- add wintun.dll by default ([7074bbc](https://github.com/keiko233/clash-nyanpasu/commit/7074bbc4055cdf59c642c32d9dc6a8b0858a1d71))
+- adjust builtin script and support meta guard script ([fe81687](https://github.com/keiko233/clash-nyanpasu/commit/fe8168784f0504c2ac26cfbc65051305cabe9486))
+- adjust clash info parsing logs ([7f321c8](https://github.com/keiko233/clash-nyanpasu/commit/7f321c89cbeb0f735fd8d15b871163e6dd52ec7c))
+- adjust clash log ([f425fba](https://github.com/keiko233/clash-nyanpasu/commit/f425fbaf9db8bff6766f56bac448443b49709a14))
+- adjust clash version display ([f6e821b](https://github.com/keiko233/clash-nyanpasu/commit/f6e821ba6b2b8dae508744d4571b0d2c7dd45cf4))
+- adjust code ([694a776](https://github.com/keiko233/clash-nyanpasu/commit/694a7760b7ae24959d6f96252d1f78f4f7025514))
+- adjust connection page ui ([a6b2db1](https://github.com/keiko233/clash-nyanpasu/commit/a6b2db182d4b30a704adc77b53500405d95e8aab))
+- adjust control ui ([3480d50](https://github.com/keiko233/clash-nyanpasu/commit/3480d50f61977177c78ee3555ba94961406cd64d))
+- adjust fetch profile url ([c60578f](https://github.com/keiko233/clash-nyanpasu/commit/c60578f5b53c23d45bf3efe1c3a2e05797c058ca))
+- adjust macOS window style ([23b728a](https://github.com/keiko233/clash-nyanpasu/commit/23b728a762917931d29c73641f6a2f7b34fcca05))
+- adjust profile item menu ([f2c0462](https://github.com/keiko233/clash-nyanpasu/commit/f2c04621a5134710488873207be6b5219e5d6518))
+- adjust profile item ui ([794d376](https://github.com/keiko233/clash-nyanpasu/commit/794d37634827dbc261efe94a633228374c72429a))
+- adjust profiles page ui ([7338838](https://github.com/keiko233/clash-nyanpasu/commit/7338838b0e9e43f793321e7af4133412c0656aa3))
+- adjust proxy page ([5fcd255](https://github.com/keiko233/clash-nyanpasu/commit/5fcd25506efef7d0777f9c0490d17144d4736c30))
+- adjust runtime config ([78f97ce](https://github.com/keiko233/clash-nyanpasu/commit/78f97ce4dfb78cbfffb86f5c3da5addd2e564a57))
+- adjust setting page style ([0891b5e](https://github.com/keiko233/clash-nyanpasu/commit/0891b5e7b7eb109a5a527797a690ed1a5eae84bf))
+- adjust setting typography ([4097778](https://github.com/keiko233/clash-nyanpasu/commit/40977785c3d3ca1c4360ffdc592e8a331556319c))
+- adjust theme ([5e2271b](https://github.com/keiko233/clash-nyanpasu/commit/5e2271b2373c39928f9d5d762bd394ad3f7d3356))
+- adjust tun mode config ([178fd8e](https://github.com/keiko233/clash-nyanpasu/commit/178fd8e82853ba04b9b32e9f9780d125765af8b4))
+- app log level add silent ([6b0ca29](https://github.com/keiko233/clash-nyanpasu/commit/6b0ca2966ebb1a24ec9f6df5ca9b2ef15633f79a))
+- auto close connection when proxy changed ([0cfd718](https://github.com/keiko233/clash-nyanpasu/commit/0cfd718d8a178b17cd97f33c77bcd01c00772b76))
+- auto proxy layout column ([024db43](https://github.com/keiko233/clash-nyanpasu/commit/024db4358b4d5aab701301005396c4efd7466c67))
+- auto restart core after grand permission ([4ae409c](https://github.com/keiko233/clash-nyanpasu/commit/4ae409c7f45efadb8ad89a428c11788f76e2a9ce))
+- auto update profiles ([f72536b](https://github.com/keiko233/clash-nyanpasu/commit/f72536bce017532faea8d159a75f2e6f5fc6c655))
+- base-dialog: okBtn use LoadingButton ([f57c49c](https://github.com/keiko233/clash-nyanpasu/commit/f57c49ce3a77e7eee76bc86dd4018320433e2ab0))
+- center window when out of monitor ([af70468](https://github.com/keiko233/clash-nyanpasu/commit/af704681d99c1c554eec9b6d01b31d0908bfe9e2))
+- change allow list ([22b11db](https://github.com/keiko233/clash-nyanpasu/commit/22b11db16e657baf0f3502c9c1ba5b8077ba84c0))
+- change clash port in dialog ([ff2c1bf](https://github.com/keiko233/clash-nyanpasu/commit/ff2c1bf8ed23405e0a97098024311efd91a744cc))
+- change default latency test url ([8c8171e](https://github.com/keiko233/clash-nyanpasu/commit/8c8171e7746e3d46f08cf52630e3df2454f0082a))
+- change default singleton port and support to change the port ([c058c29](https://github.com/keiko233/clash-nyanpasu/commit/c058c29755419c16df6492bbbacc1e5c26f85bc3))
+- change global mode ui, close [#226](https://github.com/keiko233/clash-nyanpasu/issues/226) ([f062f7f](https://github.com/keiko233/clash-nyanpasu/commit/f062f7f9feadf75e5fc8ee128f6cff71ff3e11e6))
+- change log file format ([bf5680d](https://github.com/keiko233/clash-nyanpasu/commit/bf5680da6133aab5123f25290848111f84dc342f))
+- change rule page ([03b3a0b](https://github.com/keiko233/clash-nyanpasu/commit/03b3a0b8b30d46c48de9436819b78f58462acd63))
+- change system porxy when changed port ([47155a4](https://github.com/keiko233/clash-nyanpasu/commit/47155a4a29188f6bba5fcfe2f543a0c25635472e))
+- change the log level order ([8738fa3](https://github.com/keiko233/clash-nyanpasu/commit/8738fa3d4f70ef1b8d7b1f6257d8cff8a2be6d74))
+- change the naming strategy ([ef3b10f](https://github.com/keiko233/clash-nyanpasu/commit/ef3b10fa8f76bcc244c238680a8ea160a998c04b))
+- change type ([d982b83](https://github.com/keiko233/clash-nyanpasu/commit/d982b83e14b2fb1f439ca9a7273a908e492a5683))
+- change window style ([97ec5ea](https://github.com/keiko233/clash-nyanpasu/commit/97ec5eabf7c559b4d77b15427cef098d200d736e))
+- check config when change core ([48e14b3](https://github.com/keiko233/clash-nyanpasu/commit/48e14b36b8d39d28b30cb39409a831ad97d8f69e))
+- check remote profile field ([5504994](https://github.com/keiko233/clash-nyanpasu/commit/5504994cb92f8b15f88241d9e0a262656c57b92e))
+- check the remote profile ([9694af8](https://github.com/keiko233/clash-nyanpasu/commit/9694af82f4dcf99243f926a79d1d8512789aceaf))
+- clash field viewer wip ([066b080](https://github.com/keiko233/clash-nyanpasu/commit/066b08040a884cfc0b110b2b5d6253235fe32597))
+- clash meta core support (wip) ([b3a72d5](https://github.com/keiko233/clash-nyanpasu/commit/b3a72d55aecf16829384467b8177fb18589bf776))
+- clash meta core supports ([be9ea4e](https://github.com/keiko233/clash-nyanpasu/commit/be9ea4ea8ef236528f0eee2ad3788cc898daee64))
+- clash tun mode supports ([d7c5ce0](https://github.com/keiko233/clash-nyanpasu/commit/d7c5ce0750e69b9368e80da73fc4d796b683a0f5))
+- ClashFieldViewer BaseDialog maxHeight usage percentage ([#813](https://github.com/keiko233/clash-nyanpasu/issues/813)) ([f5ee6f3](https://github.com/keiko233/clash-nyanpasu/commit/f5ee6f3537a6577c30eff9a2535a02881de1400c))
+- compatible profile config ([19c7b59](https://github.com/keiko233/clash-nyanpasu/commit/19c7b59883922cd7622aeff75a84cdddba4ee736))
+- compatible with macos(wip) ([2b84bbf](https://github.com/keiko233/clash-nyanpasu/commit/2b84bbf3a871f0dd948a1a75c92ce23df2d373e5))
+- compatible with proxy providers health check ([71e6900](https://github.com/keiko233/clash-nyanpasu/commit/71e69003757201207cfbd35fdb0ddea0faf172a3))
+- complete i18n ([ab58968](https://github.com/keiko233/clash-nyanpasu/commit/ab58968f4d66604343d2dbc5f27a065d7b8128c2))
+- connections page simply support ([5b886fe](https://github.com/keiko233/clash-nyanpasu/commit/5b886fe6be6db5acc6705e78e4fd53229287dc0a))
+- connections page supports filter ([41b0e05](https://github.com/keiko233/clash-nyanpasu/commit/41b0e05f624752a5d6a5df5c7869147aed798f92))
+- control final tun config ([cde1738](https://github.com/keiko233/clash-nyanpasu/commit/cde17385b4b3378757de5ddd7d89736c089bf966))
+- create local profile with selected file ([98fa4d5](https://github.com/keiko233/clash-nyanpasu/commit/98fa4d5e6551991dd76d183d56e76484b1508886))
+- custom window decorations ([e86d192](https://github.com/keiko233/clash-nyanpasu/commit/e86d192db7876c8f0ffffcbc006b15b0931db2c5))
+- dayjs i18n ([ed3fc50](https://github.com/keiko233/clash-nyanpasu/commit/ed3fc50858f898761d80640dca3b2b6db89a8cb0))
+- default disable ipv6 ([ae8197b](https://github.com/keiko233/clash-nyanpasu/commit/ae8197be8b079d5b9fc744838c980df8b7d19a90))
+- default enable unified-delay & tcp-concurrent with use meta core ([eafb027](https://github.com/keiko233/clash-nyanpasu/commit/eafb0274a7736211cc74b93bcd3a6accc8a6e6ab))
+- default use meta core ([2981bb3](https://github.com/keiko233/clash-nyanpasu/commit/2981bb3f1941ebdb7c8dcf5d16210ae1995020d5))
+- default user agent same with app version ([f683780](https://github.com/keiko233/clash-nyanpasu/commit/f68378041f90fe6d1bdc56d2cbadb361d414e688))
+- delay put profiles and retry ([b3cd207](https://github.com/keiko233/clash-nyanpasu/commit/b3cd207444508c4b2b5e8c71084a304127fc4892))
+- delete file ([30dd298](https://github.com/keiko233/clash-nyanpasu/commit/30dd298fcaf21152a36e9751a2b787d23b512e32))
+- disable script mode when use clash meta ([8086b6d](https://github.com/keiko233/clash-nyanpasu/commit/8086b6d78c8d8591a13f312e1584a75531ebe96c))
+- disable user select ([8548373](https://github.com/keiko233/clash-nyanpasu/commit/85483737426f97a220dcd79e7267fe6c46ddbb41))
+- display clash core version ([6e3cc57](https://github.com/keiko233/clash-nyanpasu/commit/6e3cc57f480900098bb4963cc8aac886c8399226))
+- display delay check result timely ([a6ac75e](https://github.com/keiko233/clash-nyanpasu/commit/a6ac75e97bc8057de0e2a98cd8a059b4937f2718))
+- display proxy group type ([2f9bf7f](https://github.com/keiko233/clash-nyanpasu/commit/2f9bf7f063aa834fb48cca0c9eab75f65618590f))
+- display version ([61b9670](https://github.com/keiko233/clash-nyanpasu/commit/61b9670b457e9257509d8b9cbc6e0bcc284cc237))
+- distinguish level notice ([83c0bde](https://github.com/keiko233/clash-nyanpasu/commit/83c0bde22ba560fb8f4f04d8136c146b7f0a025f))
+- edit profile item ([17f1c48](https://github.com/keiko233/clash-nyanpasu/commit/17f1c487a84f16ca885fb73ef622fc1658eb78dc))
+- edit system proxy bypass ([78a0cfd](https://github.com/keiko233/clash-nyanpasu/commit/78a0cfd052d6ecf428786a67a4de8ccf17d312cc))
+- enable change mixed port ([d0b87fd](https://github.com/keiko233/clash-nyanpasu/commit/d0b87fd7c39de00bec9bee489e9ca29888681d3b))
+- enable change proxy mode ([6a8ffe1](https://github.com/keiko233/clash-nyanpasu/commit/6a8ffe164292088c49dd7fc88ea9b161ce031db7))
+- enable customize guard duration ([4ff625f](https://github.com/keiko233/clash-nyanpasu/commit/4ff625f23be3c43c13e0ed6380655a3b6588130a))
+- enable force select profile ([5eddf4f](https://github.com/keiko233/clash-nyanpasu/commit/5eddf4f1aa0b13383654726a66fbf88fbf6b12d2))
+- enable show or hide traffic graph ([0245baf](https://github.com/keiko233/clash-nyanpasu/commit/0245baf1b67bfea2c5d236b5b9a913fb1041af1d))
+- enable update clash info ([65fb2ca](https://github.com/keiko233/clash-nyanpasu/commit/65fb2ca2d521385ba376cfeb479bc555480b83a6))
+- enhance clash caller & support more commands ([881a955](https://github.com/keiko233/clash-nyanpasu/commit/881a95520a83fb7e692b5080e1b4205cf506e4cd))
+- enhance connections display order ([4b6189a](https://github.com/keiko233/clash-nyanpasu/commit/4b6189af5feabe08214d6d1de012ca7362795810))
+- enhance log data ([dd15455](https://github.com/keiko233/clash-nyanpasu/commit/dd15455031a5fe2eec6573e018123cae2be4fb6f))
+- enhance profile status ([d63d49f](https://github.com/keiko233/clash-nyanpasu/commit/d63d49f246494cf707e6f09102604e5c51d937fe))
+- enhance system proxy setting ([013dc5f](https://github.com/keiko233/clash-nyanpasu/commit/013dc5f4b5b8fa63bc6395b8088b4cb5fe4d17fd))
+- enhanced mode supports more fields ([c9649ac](https://github.com/keiko233/clash-nyanpasu/commit/c9649ac50156e0a432a1b2e94d16662ffc0bec19))
+- enhanced profile (wip) ([f260d5d](https://github.com/keiko233/clash-nyanpasu/commit/f260d5df49a2e0eb8b7bac38e7059f28aa04a784))
+- event emit when clash config update ([c1eb539](https://github.com/keiko233/clash-nyanpasu/commit/c1eb539a5ce8553e3dda2916fe55985e7ba694b9))
+- fill i18n ([7439633](https://github.com/keiko233/clash-nyanpasu/commit/743963318f2755cde031ab771a98dc1ca3b7e299))
+- fill verge template ([e12e3a3](https://github.com/keiko233/clash-nyanpasu/commit/e12e3a3f2d4d94f5a9478d2803b3f7938716a7d8))
+- filter proxy and display type ([9df3619](https://github.com/keiko233/clash-nyanpasu/commit/9df361935f757108d7bdc23abcfb351d808a4700))
+- finish clash field control ([99c4668](https://github.com/keiko233/clash-nyanpasu/commit/99c46685ac58820a0de2dcf7f82ce4c3382dae35))
+- finish main layout ([a1e99e5](https://github.com/keiko233/clash-nyanpasu/commit/a1e99e53036c206fe7660ee4ced637d4923f80ef))
+- finish some features ([c13a755](https://github.com/keiko233/clash-nyanpasu/commit/c13a755eb656172b8763f1c97053ce41f4f8457c))
+- fix typo ([a2320b3](https://github.com/keiko233/clash-nyanpasu/commit/a2320b3f8d76f1d40a57781801e8743fdb633952))
+- get profile file name from response ([1bff7d5](https://github.com/keiko233/clash-nyanpasu/commit/1bff7d5b0becfb168f2acf0102162c9e7064c9c4))
+- github actions support ([fc0df7b](https://github.com/keiko233/clash-nyanpasu/commit/fc0df7b5773c2b4a63b94ca0d1c1228ac860b1ed))
+- global proxies use virtual list ([f0f45e0](https://github.com/keiko233/clash-nyanpasu/commit/f0f45e007df8b6cf0ec757ae0ced6c9680b0d512))
+- guard state supports debounce guard ([8606af3](https://github.com/keiko233/clash-nyanpasu/commit/8606af3616350ef16ba7ff72e03350646406703e))
+- guard the mixed-port and external-controller ([f95ddd5](https://github.com/keiko233/clash-nyanpasu/commit/f95ddd594eec4bcfa57ea6cb7356ce92ac2c8be4))
+- handle remote clash config fields ([fd99ba6](https://github.com/keiko233/clash-nyanpasu/commit/fd99ba6255731e8019d5eb4e25a968db4f45bf93))
+- hide command window ([e8dbcf8](https://github.com/keiko233/clash-nyanpasu/commit/e8dbcf819b24bb921bd7f351abc46dc9d78009b1))
+- hide window on macos ([7597d33](https://github.com/keiko233/clash-nyanpasu/commit/7597d335b9bd67862f4f68719087d9bc7a98c846))
+- hotkey viewer ([f8d9e5e](https://github.com/keiko233/clash-nyanpasu/commit/f8d9e5e0276854dfe9013485f5e6a176875d7d7b))
+- i18n supports ([4991f7f](https://github.com/keiko233/clash-nyanpasu/commit/4991f7ff39626156077674f2ef932ea9467d6e89))
+- implement a simple singleton process ([34725b5](https://github.com/keiko233/clash-nyanpasu/commit/34725b517b249b3b341fe02459457f77ca24df1d))
+- import profile support ([b0dabbe](https://github.com/keiko233/clash-nyanpasu/commit/b0dabbe55a8980fabe00467d0fe4d9645c2969b3))
+- improve log rule ([4f6fceb](https://github.com/keiko233/clash-nyanpasu/commit/4f6fceb87f7ac351ecd7b8efd3739fd88da86674))
+- improve yaml file error log ([b428eff](https://github.com/keiko233/clash-nyanpasu/commit/b428eff10e5faaeaf0a91de9911331e2d5e11755))
+- init verge config struct ([5b826a3](https://github.com/keiko233/clash-nyanpasu/commit/5b826a3767d272dc9a6eb6742c364f69719ab942))
+- inline config file template ([3a9a392](https://github.com/keiko233/clash-nyanpasu/commit/3a9a392a772b8e7c350e329f72fb74bb1648e6b7))
+- interval update from now field ([18a6bfd](https://github.com/keiko233/clash-nyanpasu/commit/18a6bfd73ab8e670e748b7345aadbede8aaa1597))
+- kill clash by pid ([fcee41f](https://github.com/keiko233/clash-nyanpasu/commit/fcee41f00dff127dd50531bfd8496c29b247723f))
+- kill sidecars when update app ([f709117](https://github.com/keiko233/clash-nyanpasu/commit/f709117cc40a9c2a96a9008ada04c8cadcc819a9))
+- **layout:** add logo & update style ([0028bef](https://github.com/keiko233/clash-nyanpasu/commit/0028bef559cf93fe777a4a86ab82db3611319527))
+- light mode wip ([#96](https://github.com/keiko233/clash-nyanpasu/issues/96)) ([5164aec](https://github.com/keiko233/clash-nyanpasu/commit/5164aec37b2c6fe92d7fc43762058f7019337558))
+- linux system proxy ([7877431](https://github.com/keiko233/clash-nyanpasu/commit/78774315cbd4d44baba07a14ecd852aa0eb65dc6))
+- lock profiles file and support more cmds ([d75fb15](https://github.com/keiko233/clash-nyanpasu/commit/d75fb152c21d98701efa1f9192933e92483f1a15))
+- lock some async functions ([0ff8bb8](https://github.com/keiko233/clash-nyanpasu/commit/0ff8bb8090e55c8da9bfed5516df952191c457d5))
+- log info ([9e7c7ac](https://github.com/keiko233/clash-nyanpasu/commit/9e7c7ac16355fa60d6521b4fca7aa6612a16584a))
+- log page supports filter ([847d5f1](https://github.com/keiko233/clash-nyanpasu/commit/847d5f1b3b18219454979420241f39a608c87e04))
+- **macOS:** support cmd+w and cmd+q ([22c2382](https://github.com/keiko233/clash-nyanpasu/commit/22c2382765edb97eac9167bfa8dcec2863d3d2d3))
+- manage clash config ([d49fd37](https://github.com/keiko233/clash-nyanpasu/commit/d49fd37656f611bfab2fbb17d9a46eebe8c78fdc))
+- manage clash mode ([ab1b589](https://github.com/keiko233/clash-nyanpasu/commit/ab1b5897a6dda9d59a80e5d34bf45edaa03dbe22))
+- Material You! ([01d6310](https://github.com/keiko233/clash-nyanpasu/commit/01d631033f47bdf305d9e0bdb8361681a95beb7e))
+- menu item refresh enhanced mode ([dad94ed](https://github.com/keiko233/clash-nyanpasu/commit/dad94edb20a793ea0856a1ab3fbb1644ce82115b))
+- minor tweaks ([575a14e](https://github.com/keiko233/clash-nyanpasu/commit/575a14e1f306b109b26800b2a008f8db96cba592))
+- more trace logs ([0cf3bba](https://github.com/keiko233/clash-nyanpasu/commit/0cf3bba118cbd6da6f4fbab770e8d5f0817eff23))
+- native menu supports ([d05d8d6](https://github.com/keiko233/clash-nyanpasu/commit/d05d8d6a9e7276f04c962a728646c6ebb8cfb0b6))
+- new profile able to edit name and desc ([5b779b4](https://github.com/keiko233/clash-nyanpasu/commit/5b779b4f14d2c09a30edd5dfe573bb4e2f28d61d))
+- new setting page ([adc634e](https://github.com/keiko233/clash-nyanpasu/commit/adc634e5ea66efa7dcf51f845a0ea88766179117))
+- Nyanpasu Misc ([91074be](https://github.com/keiko233/clash-nyanpasu/commit/91074bebd6133382b89952289dc68ad341618cda))
+- Nyanpasu Misc ([49f41ab](https://github.com/keiko233/clash-nyanpasu/commit/49f41abfdb226077a024f51c688acff4397ed9fe))
+- only put some fields ([cb8c705](https://github.com/keiko233/clash-nyanpasu/commit/cb8c7057ee7229e019f23b3b1a4333961da254c5))
+- open dir on the tray ([b374b9b](https://github.com/keiko233/clash-nyanpasu/commit/b374b9b91ca770ca41d1a65e71625fac01932a5a))
+- optimize config feedback ([e30ba07](https://github.com/keiko233/clash-nyanpasu/commit/e30ba072853d6e523587c1ce6665824fd35b6d88))
+- optimize delay checker concurrency strategy ([3001c78](https://github.com/keiko233/clash-nyanpasu/commit/3001c780bd3694941eb89350bd7c7db8dedf784b))
+- optimize profile page ([33ce235](https://github.com/keiko233/clash-nyanpasu/commit/33ce23571382f7f7c4959f50aab0a1e5abd4a42f))
+- optimize proxy page ui ([a4ce7a4](https://github.com/keiko233/clash-nyanpasu/commit/a4ce7a4037537369ecfca70e696a1b0ed3771156))
+- optimize the animation of the traffic graph ([1b8d703](https://github.com/keiko233/clash-nyanpasu/commit/1b8d70322b01f0f362b4eec69170e93002b0cda3))
+- optimize the proxy group order ([433716c](https://github.com/keiko233/clash-nyanpasu/commit/433716cf33f007179786c4379df16575957a2449))
+- optimize traffic graph quadratic curve ([ab7313c](https://github.com/keiko233/clash-nyanpasu/commit/ab7313cbc4874b8cac6eb11cda6d9332acb72cd9))
+- overwrite resource file according to file modified ([aadfaf7](https://github.com/keiko233/clash-nyanpasu/commit/aadfaf7150640120910748d158785ffeef1841a2))
+- parse update log ([e585e87](https://github.com/keiko233/clash-nyanpasu/commit/e585e87bec51b00b662b58f9cff7a1405a89d1be))
+- press esc hide the window ([4979a47](https://github.com/keiko233/clash-nyanpasu/commit/4979a472def9c22163e8a9717cde3a1bb87ed70a))
+- prevent click same ([6b3e7cb](https://github.com/keiko233/clash-nyanpasu/commit/6b3e7cbc08a771dbfad84de3158edfa5c31f8ec8))
+- prevent context menu on Windows close [#22](https://github.com/keiko233/clash-nyanpasu/issues/22) ([4ce1557](https://github.com/keiko233/clash-nyanpasu/commit/4ce15577cd7cd6bd1f460f5f25856c380ead6767))
+- profile enhanced mode ([ef47a74](https://github.com/keiko233/clash-nyanpasu/commit/ef47a74920eae3d71b8dd656d06f6265ed772da9))
+- profile enhanced ui ([a43dab8](https://github.com/keiko233/clash-nyanpasu/commit/a43dab80571f4c21540aca6db231941fb7420a68))
+- profile item adjust ([f44039b](https://github.com/keiko233/clash-nyanpasu/commit/f44039b628b06c60636387c60a8b3894b5dffd8f))
+- profile item support display updated time ([9d62462](https://github.com/keiko233/clash-nyanpasu/commit/9d62462a96b6ec95cbc593cf88c9e213808f1bda))
+- profile item ui ([99fec25](https://github.com/keiko233/clash-nyanpasu/commit/99fec25ed5bca63a9059d138a2eb62f97a739393))
+- profile loading animation ([2fdcc9c](https://github.com/keiko233/clash-nyanpasu/commit/2fdcc9c5847691b296285c032720b8c72a0dc79c))
+- profile page ui ([ab34044](https://github.com/keiko233/clash-nyanpasu/commit/ab3404419696e29d7ea2f29a06d68cc504da5c02))
+- profile-viewer: handleOk with loading state ([2c2c174](https://github.com/keiko233/clash-nyanpasu/commit/2c2c174874924f5a464d4ec720267a4950d51fde))
+- profiles add menu and delete button ([ea8f1c5](https://github.com/keiko233/clash-nyanpasu/commit/ea8f1c52f95f27606435779c00f99f56d26b0442))
+- profiles ui and put profile support ([ad60013](https://github.com/keiko233/clash-nyanpasu/commit/ad60013f52590ecf4eb09f3f81dfe37d06910ad3))
+- profiles: import btn with loading state ([ee79bcf](https://github.com/keiko233/clash-nyanpasu/commit/ee79bcfc445bec84b716feedc602755e18fbc81c))
+- proxy group auto scroll to current ([5280f1d](https://github.com/keiko233/clash-nyanpasu/commit/5280f1d74589ce8275b62dc3eea6a5de8dacfc0a))
+- proxy page use swr ([81aef73](https://github.com/keiko233/clash-nyanpasu/commit/81aef736d663850b67f82a58680691d854614b05))
+- **proxy:** finish proxy page ui and api support ([5b3f63e](https://github.com/keiko233/clash-nyanpasu/commit/5b3f63ef02a15e4c260cc67e1bde127fbe476d0e))
+- pus_clash_profile support `secret` field ([48f1b27](https://github.com/keiko233/clash-nyanpasu/commit/48f1b27d93799b79c59b4d41eea787b3589bf372))
+- put new profile to clash by default ([b5bb39e](https://github.com/keiko233/clash-nyanpasu/commit/b5bb39ef3d80d306713f4231d9ea0636a17ed3ba))
+- put profile works ([f736951](https://github.com/keiko233/clash-nyanpasu/commit/f736951fc845e0e9edbace2a6af92f34af6a797a))
+- read clash config ([2a986a3](https://github.com/keiko233/clash-nyanpasu/commit/2a986a3d2fa19840e47eca78296cd3fde57663d7))
+- record selected proxy ([14bda4f](https://github.com/keiko233/clash-nyanpasu/commit/14bda4f3a5515aecabc26a9680946d9bc6e54008))
+- recover core after panic, close [#353](https://github.com/keiko233/clash-nyanpasu/issues/353) ([453c230](https://github.com/keiko233/clash-nyanpasu/commit/453c2307163c93208b4a9dc030006a77cb59b97a))
+- reduce gpu usage when hidden ([0be4b12](https://github.com/keiko233/clash-nyanpasu/commit/0be4b1222d2c3a8faea9772e3f5fc2845813a0c7))
+- reduce the impact of the enhanced mode ([7fe9407](https://github.com/keiko233/clash-nyanpasu/commit/7fe94076c703c608cd6b4a4cd4779e9bec88a989))
+- refactor ([7f6dac4](https://github.com/keiko233/clash-nyanpasu/commit/7f6dac4271d1d5999cfffd26719a23ee1abaec44))
+- refactor and adjust ui ([d6c3bc5](https://github.com/keiko233/clash-nyanpasu/commit/d6c3bc57c06c7aa5020b8f39ed2798ac74de6b14))
+- refactor commands and support update profile ([98378e6](https://github.com/keiko233/clash-nyanpasu/commit/98378e626150c281c443d97c533b9bec86439a14))
+- refactor proxy page ([c723252](https://github.com/keiko233/clash-nyanpasu/commit/c7232522eeb363d721c7ccb9fc4ed12afabdcd3e))
+- refactor system proxy config ([1e176c4](https://github.com/keiko233/clash-nyanpasu/commit/1e176c43166674daaa398dd31bff8419c0542dca))
+- refresh ui when hotkey clicked ([8fa7fb3](https://github.com/keiko233/clash-nyanpasu/commit/8fa7fb3b1f0fb3a49237b0e8f416f37323ce797d))
+- reimplement enhanced mode ([1641e02](https://github.com/keiko233/clash-nyanpasu/commit/1641e02a7d5eff2b940aaf8110c97067f662995d))
+- reimplement enhanced mode ([38effaf](https://github.com/keiko233/clash-nyanpasu/commit/38effaf740ce8439761aecf3e30d8c77ed2de138))
+- remove outdated config ([68adf6d](https://github.com/keiko233/clash-nyanpasu/commit/68adf6dc2f76894e2ec27ec6a6f5796523001564))
+- remove sec field ([8d7ef0d](https://github.com/keiko233/clash-nyanpasu/commit/8d7ef0dc9412e702519f88b77425d61a94313d88))
+- remove trailing comma ([ae12853](https://github.com/keiko233/clash-nyanpasu/commit/ae12853ad02c6d1ec252061fad31c9f9852583cc))
+- rename edit as view ([0d5bfc0](https://github.com/keiko233/clash-nyanpasu/commit/0d5bfc0997367436a103554408bca9fc6c812902))
+- rename page ([a842586](https://github.com/keiko233/clash-nyanpasu/commit/a8425862f0bb8d6bc84fdfdc4ce6d150c2c596e8))
+- rename profile page ([4bf0c0d](https://github.com/keiko233/clash-nyanpasu/commit/4bf0c0d19a5ce468b4aa73dcc3fe00d23e35186b))
+- rm some commands ([59c09f9](https://github.com/keiko233/clash-nyanpasu/commit/59c09f90f9dc73829260cb4d142219f980946528))
+- runtime config viewer ([a9bf329](https://github.com/keiko233/clash-nyanpasu/commit/a9bf32919e8c6c10ae9c84e117f584447802e38c))
+- save global selected ([b09b7b1](https://github.com/keiko233/clash-nyanpasu/commit/b09b7b11a187a23b9d19f47d1a4dc9ec68bc14dc))
+- save proxy page state ([7fa3c1e](https://github.com/keiko233/clash-nyanpasu/commit/7fa3c1e12a23f5e2e12eec6efeb107a671c11f6c))
+- save some fields in the runtime config, close [#292](https://github.com/keiko233/clash-nyanpasu/issues/292) ([c62dddd](https://github.com/keiko233/clash-nyanpasu/commit/c62dddd5b9f1ac8c6f1827f981508bcb3a7e57ff))
+- save window size and position ([177a22d](https://github.com/keiko233/clash-nyanpasu/commit/177a22df59f355bf2952ee0452b220168ff0bcdf))
+- script mode ([61e7df7](https://github.com/keiko233/clash-nyanpasu/commit/61e7df77a72db73a9aace95b911152c95225d3c8))
+- scroll to proxy item ([4934a24](https://github.com/keiko233/clash-nyanpasu/commit/4934a2429363c856b42da9eac2c3d8471af3967d))
+- scroller stable ([4dc3cf6](https://github.com/keiko233/clash-nyanpasu/commit/4dc3cf6c6b8f7eb292cc9be520df9c834030d271))
+- set min windows ([396b11c](https://github.com/keiko233/clash-nyanpasu/commit/396b11cc3dd8c081bfd8db5379ddfb30dc514b1c))
+- setting page ([2b89b5f](https://github.com/keiko233/clash-nyanpasu/commit/2b89b5fe7320a7b2bbc3f90a36dd2cd6e10b4b4c))
+- settings use Grid layout ([b060b4b](https://github.com/keiko233/clash-nyanpasu/commit/b060b4b9bf567a35de78a0aa56b66af42b58ec79))
+- show connections with table layout ([5a74377](https://github.com/keiko233/clash-nyanpasu/commit/5a743779e29ca543787a2393053bf9bae7890efb))
+- show loading on proxy group delay check ([0beaa94](https://github.com/keiko233/clash-nyanpasu/commit/0beaa94068984a8c48d4ae86c3d32dcb6c4e1d83))
+- show loading when change profile ([741abc0](https://github.com/keiko233/clash-nyanpasu/commit/741abc03668bf739fe5093ad8511c2ddd567db13))
+- show system proxy info ([7fc9631](https://github.com/keiko233/clash-nyanpasu/commit/7fc9631434d6583d8324ce87f53c3e2152dd06f0))
+- show tray icon variants in different status ([#537](https://github.com/keiko233/clash-nyanpasu/issues/537)) ([ef5adab](https://github.com/keiko233/clash-nyanpasu/commit/ef5adab6387438afc2b30e9a600130c535d9dcbd))
+- sort groups ([1e2e6ca](https://github.com/keiko233/clash-nyanpasu/commit/1e2e6ca8a60edf8c5d28189bcfaf6f9c50bfb8ec))
+- **style:** adjust style impl ([3b1a816](https://github.com/keiko233/clash-nyanpasu/commit/3b1a816b3bfd0b1e917f8a01d4a13571276a482c))
+- Subscription URL TextField use multiline ([#761](https://github.com/keiko233/clash-nyanpasu/issues/761)) ([15ee1e5](https://github.com/keiko233/clash-nyanpasu/commit/15ee1e531b55a86ed81ffd6bec97243d2d7779df))
+- support app log level settings ([b307b9a](https://github.com/keiko233/clash-nyanpasu/commit/b307b9a66b28fc6e035a3ecf5a078c46251ac4df))
+- support blur window ([df5953d](https://github.com/keiko233/clash-nyanpasu/commit/df5953dd7b3d9be8f732cb5e0f09a240cc61eb9c))
+- support builtin script for enhanced mode ([bd0e932](https://github.com/keiko233/clash-nyanpasu/commit/bd0e932910283154d2e7f391723859c0438b87d4))
+- support check delay ([d0e678b](https://github.com/keiko233/clash-nyanpasu/commit/d0e678b5e9dd8aa76521087a5fb91257fe7ec781))
+- support clash fields filter in ui ([ab429df](https://github.com/keiko233/clash-nyanpasu/commit/ab429dfeb626c1193de631edba1f0bcb2317092c))
+- support clash meta memory usage display ([96ffbe2](https://github.com/keiko233/clash-nyanpasu/commit/96ffbe2f84ad2a3ffb5916fa5e64d767e29faa0b))
+- support copy CMD & PowerShell proxy env ([26fd90d](https://github.com/keiko233/clash-nyanpasu/commit/26fd90dfa347103af742813569e0c5de89c97b97))
+- support copy environment variable ([02ba04b](https://github.com/keiko233/clash-nyanpasu/commit/02ba04b5d80f763d7ecdfc532bca9b9bf573de57))
+- support css injection ([0290d9d](https://github.com/keiko233/clash-nyanpasu/commit/0290d9ddfc23ec00bbe8523e29a0da536036d5f1))
+- support dark mode ([c501898](https://github.com/keiko233/clash-nyanpasu/commit/c501898d5fa4ec68f2330c8b618cdf31e0f5a69c))
+- support edit profile item ([99a8e25](https://github.com/keiko233/clash-nyanpasu/commit/99a8e25411a64faec43587c8ee50dbc5a7614574))
+- support hotkey (wip) ([509d833](https://github.com/keiko233/clash-nyanpasu/commit/509d83365e2616ff18548ac63d608971204d396c))
+- support macos proxy config ([fe44a7b](https://github.com/keiko233/clash-nyanpasu/commit/fe44a7b3bc4c4ba594b22a1c137fdc1fdee3f5ff))
+- support more options for remote profile ([fe1fea6](https://github.com/keiko233/clash-nyanpasu/commit/fe1fea671c2862d3fb28715f7801486150c18e13))
+- support new profile ([c53fe0e](https://github.com/keiko233/clash-nyanpasu/commit/c53fe0ed1f983fd9b01f02c022c34464b3fd3eec))
+- support open command for viewing ([6082c2b](https://github.com/keiko233/clash-nyanpasu/commit/6082c2bcac746538f9d3c5736a8ab704e7a22310))
+- support open dir ([3c79238](https://github.com/keiko233/clash-nyanpasu/commit/3c79238a449677572966a89d99614665f8fbb2f9))
+- support proxy provider update ([b4cce23](https://github.com/keiko233/clash-nyanpasu/commit/b4cce23ef41c8eb2fe8254812e9ab8df463e1cb3))
+- support restart app on tray ([66ccbf7](https://github.com/keiko233/clash-nyanpasu/commit/66ccbf70f8d51153ef097fb62deae833c683b26c))
+- support restart sidecar tray event ([cb816e9](https://github.com/keiko233/clash-nyanpasu/commit/cb816e9653b71a5cade2193da489fa973dc2d511))
+- support set system proxy command ([3a9734e](https://github.com/keiko233/clash-nyanpasu/commit/3a9734e97daf53142da23783911fb50272c981bf))
+- support sort proxy node and custom test url ([68ad5e2](https://github.com/keiko233/clash-nyanpasu/commit/68ad5e23201f6f0728ef3d4e429d3ddea1d28893))
+- support theme setting ([f9a96ff](https://github.com/keiko233/clash-nyanpasu/commit/f9a96ff91476cf3909bd1ac848dc82968f10e34d))
+- support to change external controller ([e66a892](https://github.com/keiko233/clash-nyanpasu/commit/e66a89208d1041a9a3eebc62cabe891a92dba4dc))
+- support to change proxy layout column ([4d2b35e](https://github.com/keiko233/clash-nyanpasu/commit/4d2b35e09d34427dc663093d2dfbe07ba24e8a21))
+- support to disable clash fields filter ([027295d](https://github.com/keiko233/clash-nyanpasu/commit/027295d99560bed7206f17fd56936a73240339ad))
+- support to grant permission to clash core ([54a5007](https://github.com/keiko233/clash-nyanpasu/commit/54a5007c0105cc0cdbc61b6d1a755d7fbdbd0346))
+- support to open core dir ([5c5177e](https://github.com/keiko233/clash-nyanpasu/commit/5c5177ec574f612e9d85f2c822f5fae4fc6486d6))
+- support update all profiles ([6c0066d](https://github.com/keiko233/clash-nyanpasu/commit/6c0066dbfbd5e2ddb37dd5066b60edb53a75549c))
+- support update checker ([66340a2](https://github.com/keiko233/clash-nyanpasu/commit/66340a27fa66cb2b42e008e5b4836c96ef1e05dd))
+- support web ui ([5564c96](https://github.com/keiko233/clash-nyanpasu/commit/5564c966a5903b3d660864aadea31981f944f772))
+- supports auto launch on macos and windows ([cc0e930](https://github.com/keiko233/clash-nyanpasu/commit/cc0e930d34db00bdc50264507f94e7afac6b2df1))
+- supports change config dir ([f726e8a](https://github.com/keiko233/clash-nyanpasu/commit/f726e8a7b3535c7db7fd30a0cf56e058efc786d0))
+- supports cron update profiles ([4de944b](https://github.com/keiko233/clash-nyanpasu/commit/4de944b41efdc1a2cfcb740b091aac5bb3d0795a))
+- supports edit profile file ([f31349e](https://github.com/keiko233/clash-nyanpasu/commit/f31349eaa06eaa4a2f0d16576cb9253de1947861))
+- supports more remote headers close [#81](https://github.com/keiko233/clash-nyanpasu/issues/81) ([0e68c5e](https://github.com/keiko233/clash-nyanpasu/commit/0e68c5e8bc5f4f3022ed2eeffcca5272c7322d77))
+- supports show connection detail ([54e491d](https://github.com/keiko233/clash-nyanpasu/commit/54e491d8bf1552151dd5f253f3918b6cb4c79897))
+- supports silent start ([9d44668](https://github.com/keiko233/clash-nyanpasu/commit/9d44668d5f370d9c6a563d42e05483bd5724f85a))
+- supprt log ui ([1a51062](https://github.com/keiko233/clash-nyanpasu/commit/1a51062aa13e581debd8d86d487a05c01149e482))
+- system proxy command demo ([c1bcfc6](https://github.com/keiko233/clash-nyanpasu/commit/c1bcfc67858a385b360dade83b4fb574f24ca196))
+- system proxy guard ([e38dcd8](https://github.com/keiko233/clash-nyanpasu/commit/e38dcd85ac0f50ebcca3f119c4e85ffa9ddda153))
+- system proxy setting ([f9b91fa](https://github.com/keiko233/clash-nyanpasu/commit/f9b91fa18962ee27b71aa5cb144762c21e117111))
+- system tray add tun mode ([1a91249](https://github.com/keiko233/clash-nyanpasu/commit/1a91249da2bcc21c85f7a7561e38aa1bf474c282))
+- system tray support zh language ([e11b403](https://github.com/keiko233/clash-nyanpasu/commit/e11b4038a3653a93b5735ac3902f912fe414b9c9))
+- system tray supports system proxy setting ([acc6e05](https://github.com/keiko233/clash-nyanpasu/commit/acc6e05bdccda78752e8c10e003047410db5e939))
+- **system tray:** support switch rule/global/direct/script mode in system tray ([fbb17a0](https://github.com/keiko233/clash-nyanpasu/commit/fbb17a0ba5d10bc9bd144344fe2e3e5cd1613ee9))
+- test auto gen update.json ci ([46a8dec](https://github.com/keiko233/clash-nyanpasu/commit/46a8dec6557c25ca1c5f5410bffc89d7cb64da18))
+- theme mode support follows system ([8bce2ce](https://github.com/keiko233/clash-nyanpasu/commit/8bce2ce040069df05ec65a586007e430dc7faa58))
+- Theme support modify --background-color ([70fcfe6](https://github.com/keiko233/clash-nyanpasu/commit/70fcfe6d6c8f4e318f461ad62577fda420b40e7c))
+- theme: change color ([dd5e46a](https://github.com/keiko233/clash-nyanpasu/commit/dd5e46a8a7a3157f0ebfa70b45699b737f8ec1b4))
+- toggle log ws ([4213ee6](https://github.com/keiko233/clash-nyanpasu/commit/4213ee660fd1bee9ec3ccb2a90c27f2304c1c6ad))
+- traffic line graph ([457655b](https://github.com/keiko233/clash-nyanpasu/commit/457655b4164d8bb4200fe0b3e6852de35e38fd6d))
+- **traffic:** api support & adjust ([0a3c594](https://github.com/keiko233/clash-nyanpasu/commit/0a3c59450b9d6650492c27637c77ddfd72a889ff))
+- update Clash Default bypass addrs ([6e9f05a](https://github.com/keiko233/clash-nyanpasu/commit/6e9f05abb1f4e9d0aa6e168472d673eb083b2f08))
+- update connection table with wider process column and click to show full detail ([#696](https://github.com/keiko233/clash-nyanpasu/issues/696)) ([a552e44](https://github.com/keiko233/clash-nyanpasu/commit/a552e444833857dbc82a78f3b79f3249d42b24c3))
+- update icons ([c413d93](https://github.com/keiko233/clash-nyanpasu/commit/c413d93bb0bfc93d59d7ca7d2318a66a1a4dff58))
+- update layout style ([ce42e6e](https://github.com/keiko233/clash-nyanpasu/commit/ce42e6ed49056348af6ebb90c602dc448946a87b))
+- update profile supports noproxy ([43af552](https://github.com/keiko233/clash-nyanpasu/commit/43af55252d3d0dd34c0eeb31ad3e278f9348eb0f))
+- update profile with system proxy/clash proxy ([90eeaba](https://github.com/keiko233/clash-nyanpasu/commit/90eeabae7b80e88f4263504847d35675e494ca04))
+- update rule page ([1c3ae5c](https://github.com/keiko233/clash-nyanpasu/commit/1c3ae5c4bc0153c8400c91d8cf751bda9f10753c))
+- update styles ([3a73868](https://github.com/keiko233/clash-nyanpasu/commit/3a73868c10a9d4e1166840f852141170916f0bdc))
+- update tauri version ([6193a84](https://github.com/keiko233/clash-nyanpasu/commit/6193a842f4b83e47efda0648b95f26370a950f9e))
+- use crate open ([a12f58c](https://github.com/keiko233/clash-nyanpasu/commit/a12f58c1c7ad7534d5704a3ef67d2ae1ef2446ec))
+- use decorations in Linux, close [#354](https://github.com/keiko233/clash-nyanpasu/issues/354) ([fb7a36e](https://github.com/keiko233/clash-nyanpasu/commit/fb7a36eb738a83d873c58db38ba717d2bf1e7535))
+- use enhanced guard-state ([9ccc66c](https://github.com/keiko233/clash-nyanpasu/commit/9ccc66ca1ec75a3b5f12d5f4df28c0c0d3255414))
+- use external controller field ([da41ac5](https://github.com/keiko233/clash-nyanpasu/commit/da41ac5b8b4da5712629a540a9092ea9c7ce0963))
+- use lock fn ([98b8a12](https://github.com/keiko233/clash-nyanpasu/commit/98b8a122b6a483a8e171c1072ab1f52f618fa01f))
+- use nanoid ([1880363](https://github.com/keiko233/clash-nyanpasu/commit/1880363aeb5f11645ee6123e3efba477ac9b7532))
+- use paper for list bg ([7cf8fd8](https://github.com/keiko233/clash-nyanpasu/commit/7cf8fd800fbbc9c9333af414792ac10d0b5cfd6a))
+- Use polkit to elevate permission instaed of sudo ([#678](https://github.com/keiko233/clash-nyanpasu/issues/678)) ([6c1ab60](https://github.com/keiko233/clash-nyanpasu/commit/6c1ab6002d21aba22dde5a96b52dd9d5693dbb56))
+- use resources dir to save files ([1500162](https://github.com/keiko233/clash-nyanpasu/commit/1500162a9c1e46b3c2ba52d07866ec0050857c28))
+- use rquickjs crate ([cfd04e9](https://github.com/keiko233/clash-nyanpasu/commit/cfd04e9bb47505a970483dcbfbef7140bfe43098))
+- use tauri updater ([08e4d72](https://github.com/keiko233/clash-nyanpasu/commit/08e4d72758698e0b41ad970e6ec1903cd739d85d))
+- use vite ([efc1669](https://github.com/keiko233/clash-nyanpasu/commit/efc1669b3e8e62dbbcebd642f15e9200fda2d13f))
+- window self startup ([79aad6b](https://github.com/keiko233/clash-nyanpasu/commit/79aad6b5c2e7a2d1f61b3368b6ee1d58e77a6669))
+- Window Send and Sync ([e32bfd9](https://github.com/keiko233/clash-nyanpasu/commit/e32bfd9aaba8959c0ed625ebb3e3b65bcf02086f))
+- windows portable version do not check update ([d5192e2](https://github.com/keiko233/clash-nyanpasu/commit/d5192e2244810fbcb28bbdc04a000efbad5f2295))
+- windows service mode ([34e941c](https://github.com/keiko233/clash-nyanpasu/commit/34e941c8cbc7605e5aece219bcd318e60705408b))
+- windows service mode ui ([6b36895](https://github.com/keiko233/clash-nyanpasu/commit/6b368953f42208224440ce6d0b130d48403e58bb))
+- windows support startup ([6113898](https://github.com/keiko233/clash-nyanpasu/commit/6113898b69aeca1d6abbee3ffbd08ccfa2aa8f97))
+- yaml merge key ([6331447](https://github.com/keiko233/clash-nyanpasu/commit/6331447dcd34632023d90e35fb13e725f27922f0))
 
 ### Bug Fixes
 
-- fix profiles page undefined exception
-
----
-
-## v1.3.6
-
-### Features
-
-- add russian translation
-- support to show connection detail
-- support clash meta memory usage display
-- support proxy provider update ui
-- update geo data file from meta repo
-- adjust setting page
-
-### Bug Fixes
-
-- center the window when it is out of screen
-- use `sudo` when `pkexec` not found (Linux)
-- reconnect websocket when window focus
-
-### Notes
-
-- The current version of the Linux installation package is built by Ubuntu 20.04 (Github Action).
-
----
-
-## v1.3.5
-
-### Features
-
-- update clash core
-
-### Bug Fixes
-
-- fix blurry system tray icon (Windows)
-- fix v1.3.4 wintun.dll not found (Windows)
-- fix v1.3.4 clash core not found (macOS, Linux)
-
----
-
-## v1.3.4
-
-### Features
-
-- update clash and clash meta core
-- optimize traffic graph high CPU usage when window hidden
-- use polkit to elevate permission (Linux)
-- support app log level setting
-- support copy environment variable
-- overwrite resource file according to file modified
-- save window size and position
-
-### Bug Fixes
-
-- remove fallback group select status
-- enable context menu on editable element (Windows)
-
----
-
-## v1.3.3
-
-### Features
-
-- update clash and clash meta core
-- show tray icon variants in different system proxy status (Windows)
-- close all connections when mode changed
-
-### Bug Fixes
-
-- encode controller secret into uri
-- error boundary for each page
-
----
-
-## v1.3.2
-
-### Features
-
-- update clash and clash meta core
-
-### Bug Fixes
-
-- fix import url issue
-- fix profile undefined issue
-
----
-
-## v1.3.1
-
-### Features
-
-- update clash and clash meta core
-
-### Bug Fixes
-
-- fix open url issue
-- fix appimage path panic
-- fix grant root permission in macOS
-- fix linux system proxy default bypass
-
----
-
-## v1.3.0
-
-### Features
-
-- update clash and clash meta
-- support opening dir on tray
-- support updating all profiles with one click
-- support granting root permission to clash core(Linux, macOS)
-- support enable/disable clash fields filter, feel free to experience the latest features of Clash Meta
-
-### Bug Fixes
-
-- deb add openssl depend(Linux)
-- fix the AppImage auto launch path(Linux)
-- fix get the default network service(macOS)
-- remove the esc key listener in macOS, cmd+w instead(macOS)
-- fix infinite retry when websocket error
-
----
-
-## v1.2.3
-
-### Features
-
-- update clash
-- adjust macOS window style
-- profile supports UTF8 with BOM
-
-### Bug Fixes
-
-- fix selected proxy
-- fix error log
-
----
-
-## v1.2.2
-
-### Features
-
-- update clash meta
-- recover clash core after panic
-- use system window decorations(Linux)
-
-### Bug Fixes
-
-- flush system proxy settings(Windows)
-- fix parse log panic
-- fix ui bug
-
----
-
-## v1.2.1
-
-### Features
-
-- update clash version
-- proxy groups support multi columns
-- optimize ui
-
-### Bug Fixes
-
-- fix ui websocket connection
-- adjust delay check concurrency
-- avoid setting login item repeatedly(macOS)
-
----
-
-## v1.2.0
-
-### Features
-
-- update clash meta version
-- support to change external-controller
-- support to change default latency test URL
-- close all connections when proxy changed or profile changed
-- check the config by using the core
-- increase the robustness of the program
-- optimize windows service mode (need to reinstall)
-- optimize ui
-
-### Bug Fixes
-
-- invalid hotkey cause panic
-- invalid theme setting cause panic
-- fix some other glitches
-
----
-
-## v1.1.2
-
-### Features
-
-- the system tray follows i18n
-- change the proxy group ui of global mode
-- support to update profile with the system proxy/clash proxy
-- check the remote profile more strictly
-
-### Bug Fixes
-
-- use app version as default user agent
-- the clash not exit in service mode
-- reset the system proxy when quit the app
-- fix some other glitches
-
----
-
-## v1.1.1
-
-### Features
-
-- optimize clash config feedback
-- hide macOS dock icon
-- use clash meta compatible version (Linux)
-
-### Bug Fixes
-
-- fix some other glitches
-
----
-
-## v1.1.0
-
-### Features
-
-- add rule page
-- supports proxy providers delay check
-- add proxy delay check loading status
-- supports hotkey/shortcut management
-- supports displaying connections data in table layout(refer to yacd)
-
-### Bug Fixes
-
-- supports yaml merge key in clash config
-- detect the network interface and set the system proxy(macOS)
-- fix some other glitches
-
----
-
-## v1.0.6
-
-### Features
-
-- update clash and clash.meta
-
-### Bug Fixes
-
-- only script profile display console
-- automatic configuration update on demand at launch
-
----
-
-## v1.0.5
-
-### Features
-
-- reimplement profile enhanced mode with quick-js
-- optimize the runtime config generation process
-- support web ui management
-- support clash field management
-- support viewing the runtime config
-- adjust some pages style
-
-### Bug Fixes
-
-- fix silent start
-- fix incorrectly reset system proxy on exit
-
----
-
-## v1.0.4
-
-### Features
-
-- update clash core and clash meta version
-- support switch clash mode on system tray
-- theme mode support follows system
-
-### Bug Fixes
-
-- config load error on first use
-
----
-
-## v1.0.3
-
-### Features
-
-- save some states such as URL test, filter, etc
-- update clash core and clash-meta core
-- new icon for macOS
-
----
-
-## v1.0.2
-
-### Features
-
-- supports for switching clash core
-- supports release UI processes
-- supports script mode setting
-
-### Bug Fixes
-
-- fix service mode bug (Windows)
-
----
-
-## v1.0.1
-
-### Features
-
-- adjust default theme settings
-- reduce gpu usage of traffic graph when hidden
-- supports more remote profile response header setting
-- check remote profile data format when imported
-
-### Bug Fixes
-
-- service mode install and start issue (Windows)
-- fix launch panic (Some Windows)
-
----
-
-## v1.0.0
-
-### Features
-
-- update clash core
-- optimize traffic graph animation
-- supports interval update profiles
-- supports service mode (Windows)
-
-### Bug Fixes
-
-- reset system proxy when exit from dock (macOS)
-- adjust clash dns config process strategy
-
----
-
-## v0.0.29
-
-### Features
-
-- sort proxy node
-- custom proxy test url
-- logs page filter
-- connections page filter
-- default user agent for subscription
-- system tray add tun mode toggle
-- enable to change the config dir (Windows only)
-
----
-
-## v0.0.28
-
-### Features
-
-- enable to use clash config fields (UI)
-
-### Bug Fixes
-
-- remove the character
-- fix some icon color
-
----
-
-## v0.0.27
-
-### Features
-
-- supports custom theme color
-- tun mode setting control the final config
-
-### Bug Fixes
-
-- fix transition flickers (macOS)
-- reduce proxy page render
-
----
-
-## v0.0.26
-
-### Features
-
-- silent start
-- profile editor
-- profile enhance mode supports more fields
-- optimize profile enhance mode strategy
-
-### Bug Fixes
-
-- fix csp restriction on macOS
-- window controllers on Linux
-
----
-
-## v0.0.25
-
-### Features
-
-- update clash core version
-
-### Bug Fixes
-
-- app updater error
-- display window controllers on Linux
-
-### Notes
-
-If you can't update the app properly, please consider downloading the latest version from github release.
-
----
-
-## v0.0.24
-
-### Features
-
-- Connections page
-- add wintun.dll (Windows)
-- supports create local profile with selected file (Windows)
-- system tray enable set system proxy
-
-### Bug Fixes
-
-- open dir error
-- auto launch path (Windows)
-- fix some clash config error
-- reduce the impact of the enhanced mode
-
----
-
-## v0.0.23
-
-### Features
-
-- i18n supports
-- Remote profile User Agent supports
-
-### Bug Fixes
-
-- clash config file case ignore
-- clash `external-controller` only port
+- add clash fields ([e1c8f1f](https://github.com/keiko233/clash-nyanpasu/commit/e1c8f1fed9b4df36d40b082f5afe2d6a8cadded9))
+- add https proxy ([33a5fb8](https://github.com/keiko233/clash-nyanpasu/commit/33a5fb88373493027bff6a42f5c75731dff3e153))
+- add meta fields ([91b77e5](https://github.com/keiko233/clash-nyanpasu/commit/91b77e5237367875fa392ef7ced4fafd189b4c96))
+- add meta fields ([780ab20](https://github.com/keiko233/clash-nyanpasu/commit/780ab20aeb01d601fb5c690a61042f6b51ac8a01))
+- add os platform value ([1b44ae0](https://github.com/keiko233/clash-nyanpasu/commit/1b44ae098cbf0e056c7c51b80d75c8f3c3c32e48))
+- add target os linux ([5265888](https://github.com/keiko233/clash-nyanpasu/commit/52658886e75cd2f06fb125fcb74da5a3452275e5))
+- add tray separator ([cbc184e](https://github.com/keiko233/clash-nyanpasu/commit/cbc184e953958443a6ef044acc2f0b7539b2ae46))
+- add valid clash field ([35de233](https://github.com/keiko233/clash-nyanpasu/commit/35de2334fb3ce8165fc65085a15695bdbbe67996))
+- adjsut open cmd error ([2d1780b](https://github.com/keiko233/clash-nyanpasu/commit/2d1780b1cf37ae4a7f3597d7c44ee53c9dc7cfd1))
+- adjust code ([8bad2c2](https://github.com/keiko233/clash-nyanpasu/commit/8bad2c211389b5b091a2e86cb033694dfd2b7933))
+- adjust code ([20a194b](https://github.com/keiko233/clash-nyanpasu/commit/20a194b49a878c541a44691c353b159e967cac22))
+- adjust code ([557abd4](https://github.com/keiko233/clash-nyanpasu/commit/557abd42850e638116fb19a641c2381e29a05eae))
+- adjust connection scroll ([423a7f9](https://github.com/keiko233/clash-nyanpasu/commit/423a7f951a5925525374b580f1277697a17427e8))
+- adjust debounce wait time ([5308970](https://github.com/keiko233/clash-nyanpasu/commit/5308970ad8ddf79e4f81859e9a480d336df277ad))
+- adjust delay check concurrency ([2bcf6fb](https://github.com/keiko233/clash-nyanpasu/commit/2bcf6fb3eb424c079d013c0901bc82dbe1a0d632))
+- adjust dialog action button variant ([cb48600](https://github.com/keiko233/clash-nyanpasu/commit/cb48600b405bae61d74c0edf951ead2a5d4d0efd))
+- adjust dns config ([9e3c080](https://github.com/keiko233/clash-nyanpasu/commit/9e3c0809090c36fa89a52485c2b13e300857fb5f))
+- adjust fields order ([7909cf4](https://github.com/keiko233/clash-nyanpasu/commit/7909cf4067c25d8c171315517f2fd0a75958ea1f))
+- adjust init launch on dev ([1b336d9](https://github.com/keiko233/clash-nyanpasu/commit/1b336d973dfd1411e3c5867a03ef86583af097e7))
+- adjust item ui ([790d832](https://github.com/keiko233/clash-nyanpasu/commit/790d832155620edecc3de2ea9ce54d82f89039aa))
+- adjust log ([b9162f9](https://github.com/keiko233/clash-nyanpasu/commit/b9162f9576f3953fa03e6ccb5d0d2b7fd683a604))
+- adjust log text ([3f58d05](https://github.com/keiko233/clash-nyanpasu/commit/3f58d05aa7b33a9250fde77129b93da690024539))
+- adjust log ui ([132f914](https://github.com/keiko233/clash-nyanpasu/commit/132f914b0de23ee2376a796269f71a85721a9446))
+- adjust notice ([e19fe5c](https://github.com/keiko233/clash-nyanpasu/commit/e19fe5ce1cdc40bf95d0a70a6671508b51b2933d))
+- adjust notice ([f5c6fa8](https://github.com/keiko233/clash-nyanpasu/commit/f5c6fa842aefe0b4d796a9d255bbf46cc97e7ffd))
+- adjust reset proxy ([b635e64](https://github.com/keiko233/clash-nyanpasu/commit/b635e64803c75c6ae99ae26476be480b568d27ec))
+- adjust rule ui ([bfe4f08](https://github.com/keiko233/clash-nyanpasu/commit/bfe4f08232ab1bbfefef9d19c9eaf74a4d70c80f))
+- adjust service mode ui ([06dabf1](https://github.com/keiko233/clash-nyanpasu/commit/06dabf1e4ed05d06d574b15297e8944d3b9b9311))
+- adjust singleton detect ([be81cd7](https://github.com/keiko233/clash-nyanpasu/commit/be81cd72afc8381fa7cc8696239cd4a7767d3311))
+- adjust something ([557f5fe](https://github.com/keiko233/clash-nyanpasu/commit/557f5fe364df76484947711b6340989db230227b))
+- adjust style ([e7841c6](https://github.com/keiko233/clash-nyanpasu/commit/e7841c60df248baf3e914f170383734df5e8d1ea))
+- adjust style ([ffa21fb](https://github.com/keiko233/clash-nyanpasu/commit/ffa21fbfd2eab267571dedd8ca44f949bb605360))
+- adjust swr option ([630249d](https://github.com/keiko233/clash-nyanpasu/commit/630249d22a45907264fbaec717463b1c6ad06896))
+- adjust ui ([ce61309](https://github.com/keiko233/clash-nyanpasu/commit/ce613098db7f4c5a10ac93e235a5230451908e10))
+- adjust ui ([2ce7624](https://github.com/keiko233/clash-nyanpasu/commit/2ce7624c1434a990df4f27b79c5a72ca7dcacf83))
+- adjust update profile notice error ([a4fb2df](https://github.com/keiko233/clash-nyanpasu/commit/a4fb2dfcf825bade055e71dc9e480dba948ffdf9))
+- adjust web ui item style ([bd576ca](https://github.com/keiko233/clash-nyanpasu/commit/bd576ca80864b8f7d649a2e81717b2e3858f7f05))
+- adjust windows style ([b8b0c8f](https://github.com/keiko233/clash-nyanpasu/commit/b8b0c8fa63f1ea686cc345b04c5157dad8b41d2e))
+- api error handle ([38d1fde](https://github.com/keiko233/clash-nyanpasu/commit/38d1fde84f4d732d354022078674d6d23e577df7))
+- api loading delay ([36d8fa7](https://github.com/keiko233/clash-nyanpasu/commit/36d8fa7de4d26d4ddd61067d3ced2b5538185e52))
+- app version to string ([35d0438](https://github.com/keiko233/clash-nyanpasu/commit/35d0438261027b86ab79db01b402f6b673ffa115))
+- app_handle as_ref ([c9b7ecc](https://github.com/keiko233/clash-nyanpasu/commit/c9b7eccbc1260702f67e569eb388564a6c10b46c))
+- appimage auto launch, close [#403](https://github.com/keiko233/clash-nyanpasu/issues/403) ([692f8c8](https://github.com/keiko233/clash-nyanpasu/commit/692f8c845425f9a9d604ff8f15ba3a7e2fc3d0c9))
+- appimage path unwrap panic ([2b6aced](https://github.com/keiko233/clash-nyanpasu/commit/2b6acedae1fa29646e10cee4483105fa3479a2d6))
+- apply_blur parameter ([3afbb56](https://github.com/keiko233/clash-nyanpasu/commit/3afbb5664014d637882a0b171c417a8062120f66))
+- auto launch path ([2d95f2b](https://github.com/keiko233/clash-nyanpasu/commit/2d95f2b0d663e59b082eb73a8bf68a492105bece))
+- auto scroll into view when sorted proxies changed ([59dae64](https://github.com/keiko233/clash-nyanpasu/commit/59dae640db6179f1106076529d250b24bcae982e))
+- avoid setting login item repeatedly, close [#326](https://github.com/keiko233/clash-nyanpasu/issues/326) ([051be92](https://github.com/keiko233/clash-nyanpasu/commit/051be927cdeef4311b1b347915a4706f87abed42))
+- badge color error ([fa65f60](https://github.com/keiko233/clash-nyanpasu/commit/fa65f606b83ff6fd9375be6b078dd0218e456be9))
+- blurry tray icon in Windows ([5d5ab57](https://github.com/keiko233/clash-nyanpasu/commit/5d5ab5746982bf660dce717054583885a3bf2b82))
+- break loop when core terminated ([515af47](https://github.com/keiko233/clash-nyanpasu/commit/515af472ce064f674310a6f4175e379aa89173dc))
+- button color ([929c840](https://github.com/keiko233/clash-nyanpasu/commit/929c84000675202cab22ede7434486028bf02e09))
+- change default app version ([8385050](https://github.com/keiko233/clash-nyanpasu/commit/838505080417a4593bffbf3043c82072c64a5083))
+- change default column to auto ([6e421e6](https://github.com/keiko233/clash-nyanpasu/commit/6e421e60c53728ef81ed8dd8fe6c6669a6b576eb))
+- change default tun dns-hijack ([7ef4b7e](https://github.com/keiko233/clash-nyanpasu/commit/7ef4b7eeb8ab1ce4c46600eb3ebd6dc49f019683))
+- change dev log level ([f5f2fe3](https://github.com/keiko233/clash-nyanpasu/commit/f5f2fe3472e962885308f8845fc6323f3cab7b79))
+- change fields ([c02990e](https://github.com/keiko233/clash-nyanpasu/commit/c02990ef980eceb99d1cea75b966c6b24907dc07))
+- change log file format ([0d8114c](https://github.com/keiko233/clash-nyanpasu/commit/0d8114c9f468da6dd43a443128133aba00a9a8b5))
+- change mixed port error ([ef314c1](https://github.com/keiko233/clash-nyanpasu/commit/ef314c1707c8a4b42427b59b8eb7c293f2abbf51))
+- change proxy bypass on mac ([40a8186](https://github.com/keiko233/clash-nyanpasu/commit/40a818630df8d34baf97cf88ae052770438992f8))
+- change service installer and uninstaller ([f88989b](https://github.com/keiko233/clash-nyanpasu/commit/f88989bd4bcd0eea614b7b1cb8bfab51e2c450b4))
+- change template ([4ae0071](https://github.com/keiko233/clash-nyanpasu/commit/4ae00714d252558490810278a8f8c6f22351726a))
+- change to deep copy ([0a9c817](https://github.com/keiko233/clash-nyanpasu/commit/0a9c81772fcb32e4ac1f32b07b0297ec5908d38c))
+- change window default size ([28a4386](https://github.com/keiko233/clash-nyanpasu/commit/28a43869753c5070c143f4fb2ce941664c74c96e))
+- check button hover style ([0445f9d](https://github.com/keiko233/clash-nyanpasu/commit/0445f9dfc24b96e95af41ccee9149e59891147a9))
+- check config ([3cd2be5](https://github.com/keiko233/clash-nyanpasu/commit/3cd2be5081e1cd2d81e6a92558a3bb64a9bbd9cd))
+- check hotkey and optimize hotkey input, close [#287](https://github.com/keiko233/clash-nyanpasu/issues/287) ([db02866](https://github.com/keiko233/clash-nyanpasu/commit/db028665fd65c5b700d85f420be329c7ea61da5e))
+- check remote profile ([4ea5bb2](https://github.com/keiko233/clash-nyanpasu/commit/4ea5bb2390566d74e5600bd53e2cac7c187ce23e))
+- check script run on all OS ([db0230e](https://github.com/keiko233/clash-nyanpasu/commit/db0230ed753e2de696a13ca62e007e2da407097f))
+- ci strategy ([6b2172d](https://github.com/keiko233/clash-nyanpasu/commit/6b2172d873a0c73bbd837391ec7001ccc1a88391))
+- clash field state error ([2f8146b](https://github.com/keiko233/clash-nyanpasu/commit/2f8146b11f8f2e28cc9c5919cac5bceee0cd7c32))
+- clash meta not load geoip, close [#212](https://github.com/keiko233/clash-nyanpasu/issues/212) ([dd78670](https://github.com/keiko233/clash-nyanpasu/commit/dd78670a4b7c8a425af76f622902642b4bca4e8e))
+- close all connections when change mode ([60046ab](https://github.com/keiko233/clash-nyanpasu/commit/60046abec3d29a9d67a1812d8d7ff545d3f186e1))
+- close connections when profile change ([e031389](https://github.com/keiko233/clash-nyanpasu/commit/e031389021694ba437f4d89579bf284468a19a65))
+- close dialog after save ([2ad771e](https://github.com/keiko233/clash-nyanpasu/commit/2ad771e7fdad189570ae921a02c2e994d6ddca74))
+- cmds params ([d759f48](https://github.com/keiko233/clash-nyanpasu/commit/d759f48ee845380ffd64ca35aff96e78a1dfa360))
+- compatible with UTF8 BOM, close [#283](https://github.com/keiko233/clash-nyanpasu/issues/283) ([bba03d1](https://github.com/keiko233/clash-nyanpasu/commit/bba03d14d4acbb9efdc1ac52649a9623c0f1cf5e))
+- component warning ([b91daeb](https://github.com/keiko233/clash-nyanpasu/commit/b91daebd92d38cadefb07e3fb3b11fe1858aa31c))
+- config file case close [#18](https://github.com/keiko233/clash-nyanpasu/issues/18) ([c73b354](https://github.com/keiko233/clash-nyanpasu/commit/c73b3543860059be0a777a417bf5de12cdf8c9eb))
+- connections is null ([aba0826](https://github.com/keiko233/clash-nyanpasu/commit/aba0826c380a4a8ba48e0e98f02b6043308f4f9e))
+- console warning ([eab671d](https://github.com/keiko233/clash-nyanpasu/commit/eab671d10276f17be8734d7839883682d98c237e))
+- copy resource file ([e64103e](https://github.com/keiko233/clash-nyanpasu/commit/e64103e5f2666377b12e9a809e4e7f88074dc432))
+- cover profile extra ([8dc2c1a](https://github.com/keiko233/clash-nyanpasu/commit/8dc2c1a38fc5c85da58caef362bf32e706235d1f))
+- create dir panic ([8ea3e6f](https://github.com/keiko233/clash-nyanpasu/commit/8ea3e6fa26e2a747374e0cd2d79e316a26a78dbf))
+- create main window ([ae94993](https://github.com/keiko233/clash-nyanpasu/commit/ae94993b09b871a2f5cca5638f428d51624fd582))
+- create theme error, close [#294](https://github.com/keiko233/clash-nyanpasu/issues/294) ([9b18bd0](https://github.com/keiko233/clash-nyanpasu/commit/9b18bd0b4836cce1297a2373c3082ac02bba9b2d))
+- create window correctly ([41b19f6](https://github.com/keiko233/clash-nyanpasu/commit/41b19f69de7abede82d48843a275d86a47367f35))
+- csp image data ([4bd9409](https://github.com/keiko233/clash-nyanpasu/commit/4bd94092f147402d32500942a1f9567d1dc40652))
+- default dns config ([2f740b5](https://github.com/keiko233/clash-nyanpasu/commit/2f740b570d6e261c3098b9f25870a6b7d13e5af1))
+- delay show window ([8bf78fe](https://github.com/keiko233/clash-nyanpasu/commit/8bf78fef108174343107a287121ff611f14f543d))
+- delay update config ([ab53ab2](https://github.com/keiko233/clash-nyanpasu/commit/ab53ab21e2f769718d490e42a03690247d8627ad))
+- delete profile item command ([a4c1573](https://github.com/keiko233/clash-nyanpasu/commit/a4c1573c45ea99482f9a978cf2535c3e84c042a8))
+- direct mode hide proxies ([d20b745](https://github.com/keiko233/clash-nyanpasu/commit/d20b745ae5731be18765e74ac810b4f2ecbe930e))
+- disable auto scroll to proxy ([6e5a2f8](https://github.com/keiko233/clash-nyanpasu/commit/6e5a2f85a1ddfe7a948cc9407dca5d245feac42e))
+- disable spell check ([6c6b405](https://github.com/keiko233/clash-nyanpasu/commit/6c6b40548f576bd87a0add8365afbd4a500a524b))
+- display menu only on macos ([ade34f5](https://github.com/keiko233/clash-nyanpasu/commit/ade34f52170d92bcfcc481102fdb3276aa38664a))
+- do not kill sidecar during updating ([f32c5ba](https://github.com/keiko233/clash-nyanpasu/commit/f32c5ba2441044625d32fe1b21c42a4944520792))
+- do not parse log except the clash core ([e25a455](https://github.com/keiko233/clash-nyanpasu/commit/e25a45569838cd7c0505ad5457443e3d403ba1cc))
+- Do not render div as a descendant of p ([#494](https://github.com/keiko233/clash-nyanpasu/issues/494)) ([66f3f0b](https://github.com/keiko233/clash-nyanpasu/commit/66f3f0ba07a4274f9715c5c1d74d2ac91478decc))
+- do not reset system proxy when consistent ([7eb5951](https://github.com/keiko233/clash-nyanpasu/commit/7eb595170fdd476e8a5a038790caf807cf1cc10b))
+- download clash core from backup repo ([cad8748](https://github.com/keiko233/clash-nyanpasu/commit/cad87484c7bb3502c9c35e2aa2c4ac80dcbfad6f))
+- edit profile info ([798999d](https://github.com/keiko233/clash-nyanpasu/commit/798999d490d31aed2856aa4fb0d0068b38eb58ff))
+- enable context menu in editable element ([4c24363](https://github.com/keiko233/clash-nyanpasu/commit/4c243638cbc4d0ad0276650b1cff433e0e9e2a6a))
+- encode controller secret, close [#601](https://github.com/keiko233/clash-nyanpasu/issues/601) ([f9a68e8](https://github.com/keiko233/clash-nyanpasu/commit/f9a68e8b234102b69db7b623f63d596b17d8a0a4))
+- encodeURIComponent secret ([6cf174c](https://github.com/keiko233/clash-nyanpasu/commit/6cf174c5ed4fa8ae440ef651305643919f5f0290))
+- enhanced profile consistency ([7108d5f](https://github.com/keiko233/clash-nyanpasu/commit/7108d5f3abf96b3b4df933449a5926aa8a76390e))
+- error boundary with key ([3557a77](https://github.com/keiko233/clash-nyanpasu/commit/3557a776450bdc87086d31168a55ef0929c6c887))
+- error log ([3113585](https://github.com/keiko233/clash-nyanpasu/commit/311358544e0cfa580b9f62f80423ea8f80155e2b))
+- error message null ([fb653ff](https://github.com/keiko233/clash-nyanpasu/commit/fb653ff99dabc1ceb89322a9a5aedd9be98988ef))
+- escape path space ([fc5ca96](https://github.com/keiko233/clash-nyanpasu/commit/fc5ca965ba92c60128cdd05b72d760512aea0eb9))
+- escape the space in path ([#451](https://github.com/keiko233/clash-nyanpasu/issues/451)) ([9c4a46b](https://github.com/keiko233/clash-nyanpasu/commit/9c4a46bcdb7ec57c405f3bf5a3e610fca58a9838))
+- external controller allow lan ([a120c8c](https://github.com/keiko233/clash-nyanpasu/commit/a120c8cf988d4e9c8a90966eadc5fb7d67034e6e))
+- external-controller ([4c5aa70](https://github.com/keiko233/clash-nyanpasu/commit/4c5aa7084e3529321c409f2a9c1946a499138dd7))
+- fetch profile panic ([c046a19](https://github.com/keiko233/clash-nyanpasu/commit/c046a1993e087b03bc93de28959dc577356e48c7))
+- fetch profile with system proxy, close [#249](https://github.com/keiko233/clash-nyanpasu/issues/249) ([600134a](https://github.com/keiko233/clash-nyanpasu/commit/600134a3ac6e2c3159958116970e9d007590f539))
+- field sort for filter ([c5289dc](https://github.com/keiko233/clash-nyanpasu/commit/c5289dc0e86e5c7ed6dcfea9019ec5829432a63f))
+- fill button title attr ([a7ba9f1](https://github.com/keiko233/clash-nyanpasu/commit/a7ba9f18864f7f9c6b8eb97d6048c4ee85e94ab5))
+- fix page undefined exception, close [#770](https://github.com/keiko233/clash-nyanpasu/issues/770) ([16d8071](https://github.com/keiko233/clash-nyanpasu/commit/16d80718cbbc00fb030b342a29f2e3971d9f4a51))
+- font family not works in some interfaces, close [#639](https://github.com/keiko233/clash-nyanpasu/issues/639) ([f032228](https://github.com/keiko233/clash-nyanpasu/commit/f032228d0eea1fdb2acb5a5eb71a2178f2f06045))
+- get proxies multiple times ([72c2b30](https://github.com/keiko233/clash-nyanpasu/commit/72c2b306cf294ca1c02ae36b85e823a9a54a0eeb))
+- group proxies render list is null ([b3c1c56](https://github.com/keiko233/clash-nyanpasu/commit/b3c1c565794f5eedcf1a0f84eca5bc6d0f8899d4))
+- handle is none ([2d2fdf0](https://github.com/keiko233/clash-nyanpasu/commit/2d2fdf0b1efb1cbf76df6aa6c9e9a01ced5e56b5))
+- i18n ([9987dc1](https://github.com/keiko233/clash-nyanpasu/commit/9987dc1eb4abad320064b8697dafc3a1eeebd3b1))
+- i18n ([5ebd9be](https://github.com/keiko233/clash-nyanpasu/commit/5ebd9be89a1bb6555d4a8d0d8aa3442ccce1b357))
+- i18n add value ([51cf442](https://github.com/keiko233/clash-nyanpasu/commit/51cf442fa53481691efcf085165e462f19e61233))
+- icon button color ([9e56b9f](https://github.com/keiko233/clash-nyanpasu/commit/9e56b9fbb57dc19964776aed5b7e686b0236c497))
+- icon button color inherit ([910846f](https://github.com/keiko233/clash-nyanpasu/commit/910846f2ce2e1457c34e8c4bb2627ef9e30c57b0))
+- icon button color inherit ([6ade0b2](https://github.com/keiko233/clash-nyanpasu/commit/6ade0b2b1ab599297bae2d439067bbfed3a4c257))
+- icon button title ([0a3402f](https://github.com/keiko233/clash-nyanpasu/commit/0a3402ff439901703cc2b60854f3f63ee1a8fb5c))
+- icon issue ([363e28f](https://github.com/keiko233/clash-nyanpasu/commit/363e28f3236d391393fe86f9c2dfdfd7f2d82549))
+- icon path ([c382ad1](https://github.com/keiko233/clash-nyanpasu/commit/c382ad1cc89ded4cd0763a0867f7bd02bea1c0eb))
+- icon style ([bf0dafa](https://github.com/keiko233/clash-nyanpasu/commit/bf0dafabe2d5696240a390736071de4f10bce343))
+- **icon:** change ico file to fix windows tray ([0f99add](https://github.com/keiko233/clash-nyanpasu/commit/0f99addca71b6d31a92e9714be733fd11e8fe6da))
+- ignore disable auto launch error ([5e429c7](https://github.com/keiko233/clash-nyanpasu/commit/5e429c7a94a06d1f945b086af3ded6b68dddaa51))
+- import error ([e7bba96](https://github.com/keiko233/clash-nyanpasu/commit/e7bba968b3777f7be62afdadfada5af8e973927e))
+- import mod ([659fdd1](https://github.com/keiko233/clash-nyanpasu/commit/659fdd1d376ad782108dd8671b5a4c007db53888))
+- import url error ([#543](https://github.com/keiko233/clash-nyanpasu/issues/543)) ([3eeaee1](https://github.com/keiko233/clash-nyanpasu/commit/3eeaee154f8774220e9a823a274aa9acc4e05bf4))
+- improve external-controller parse and log ([6d0625c](https://github.com/keiko233/clash-nyanpasu/commit/6d0625c409e0e41e483d216fdb20346a9463dbf1))
+- increase delay checker concurrency ([820d1e7](https://github.com/keiko233/clash-nyanpasu/commit/820d1e75707f76ba28ac27c724dd87024ee841c2))
+- infinite retry when websocket error ([db99b4c](https://github.com/keiko233/clash-nyanpasu/commit/db99b4cb54838f5a2ca1e36b51038dfb80167dd9))
+- init config error ([f7dab3c](https://github.com/keiko233/clash-nyanpasu/commit/f7dab3ca560f027f7370d5114f9e7adbf40c0974))
+- init config file ([40c0410](https://github.com/keiko233/clash-nyanpasu/commit/40c041031efcb02034e2b876eefa724d8dd67175))
+- init system proxy correctly ([acff6d0](https://github.com/keiko233/clash-nyanpasu/commit/acff6d043218b1dbaa52c1cdc56836e3dbb84924))
+- initialize profiles state ([774c6f7](https://github.com/keiko233/clash-nyanpasu/commit/774c6f7e053e0739ee36ae82e738b4547817a934))
+- instantiate core after init app, close [#122](https://github.com/keiko233/clash-nyanpasu/issues/122) ([150f0cf](https://github.com/keiko233/clash-nyanpasu/commit/150f0cf48616d60053484be904b79fcab971c1f5))
+- item header bgcolor ([db4993a](https://github.com/keiko233/clash-nyanpasu/commit/db4993ae9b478f81770328c65db64af509b15c4f))
+- keep delay data ([97d82b0](https://github.com/keiko233/clash-nyanpasu/commit/97d82b03aba822858006f82e690bdd5727ab3bd1))
+- kill clash when exit in service mode, close [#241](https://github.com/keiko233/clash-nyanpasu/issues/241) ([294d980](https://github.com/keiko233/clash-nyanpasu/commit/294d980b5237535f2eb24cb81e890d0766576beb))
+- kill sidecars after install still in test ([568511a](https://github.com/keiko233/clash-nyanpasu/commit/568511a4cfec43e9b38d43947878a70fbdb118dc))
+- label text ([e0943ce](https://github.com/keiko233/clash-nyanpasu/commit/e0943ce905d6a06f0badf63f69b084a60774f98f))
+- limit enhanced profile range ([c0ad84a](https://github.com/keiko233/clash-nyanpasu/commit/c0ad84a491f61e869c55c04903316c86ce8494ad))
+- limit theme mode value ([c1734a0](https://github.com/keiko233/clash-nyanpasu/commit/c1734a094cd6896ec48e630662fbeeac1ae92da5))
+- lint ([e00f826](https://github.com/keiko233/clash-nyanpasu/commit/e00f826eb885ebb923ec6b2941ce2e533324819f))
+- linux DEFAULT_BYPASS ([#503](https://github.com/keiko233/clash-nyanpasu/issues/503)) ([fb7b180](https://github.com/keiko233/clash-nyanpasu/commit/fb7b1800cced2bf13426f9ca85647f1b41410b10))
+- linux not change icon ([6e391df](https://github.com/keiko233/clash-nyanpasu/commit/6e391df5ee8ff796519e612e2260102f65a036e3))
+- list compare wrong ([aed1bdf](https://github.com/keiko233/clash-nyanpasu/commit/aed1bdff5a25fe05361d4257be325697a6108d42))
+- list key ([e62eaa6](https://github.com/keiko233/clash-nyanpasu/commit/e62eaa6b4bedcf47838c035d6c1738b5f8f6e1cc))
+- log file ([18f9d6d](https://github.com/keiko233/clash-nyanpasu/commit/18f9d6dec5f7a7881fff645d34989930fa69a6bd))
+- log level warn value ([e94a07b](https://github.com/keiko233/clash-nyanpasu/commit/e94a07b6779cac26fc546b761f6e66d64183c732))
+- log some error ([109fb39](https://github.com/keiko233/clash-nyanpasu/commit/109fb39e094db8c744e9d712bb5a87c7bbca3933))
+- macos auto launch fail ([76081f8](https://github.com/keiko233/clash-nyanpasu/commit/76081f8d89090cb714af48cbf5c5a498c8916aec))
+- macOS disable transparent ([6d3f837](https://github.com/keiko233/clash-nyanpasu/commit/6d3f8378204dc6193376878e07fd296df552b12b))
+- macos not change icon ([cafc206](https://github.com/keiko233/clash-nyanpasu/commit/cafc2060b880affc0a213dec754bc724fd2918ce))
+- macOS transition flickers close [#47](https://github.com/keiko233/clash-nyanpasu/issues/47) ([db3b634](https://github.com/keiko233/clash-nyanpasu/commit/db3b634e6233b3ef8ba20d17d939aed60b7ce51f))
+- **macos:** set auto launch path to application ([57d23eb](https://github.com/keiko233/clash-nyanpasu/commit/57d23eb043e7874de144ef507d46341c3070cf72))
+- manage global proxy correctly ([5027069](https://github.com/keiko233/clash-nyanpasu/commit/502706931e9fee8507290fc2b51a83318a84483f))
+- matchMedia().addEventListener [#258](https://github.com/keiko233/clash-nyanpasu/issues/258) ([#296](https://github.com/keiko233/clash-nyanpasu/issues/296)) ([4046f14](https://github.com/keiko233/clash-nyanpasu/commit/4046f143f6c802c9cc5c8332f293a460774bdde3))
+- MediaQueryList addEventListener polyfill ([fd6633f](https://github.com/keiko233/clash-nyanpasu/commit/fd6633f536870b11eda2b907d998eaa594700ed7))
+- menu without fragment ([2b52584](https://github.com/keiko233/clash-nyanpasu/commit/2b525845479a9940df6178e1ae467ed0e15c6755))
+- mutate at the same time may be wrong ([aa29e18](https://github.com/keiko233/clash-nyanpasu/commit/aa29e185e4b39a3d0b18b2239434e4a6afaf553f))
+- mutex dead lock ([6bc83d9](https://github.com/keiko233/clash-nyanpasu/commit/6bc83d9f2737ea1fb625d235283b2691966e21f9))
+- not create windows when enable slient start ([2d09893](https://github.com/keiko233/clash-nyanpasu/commit/2d0989342f188152412dc8ee8693ee78420811ea))
+- not open file when new profile ([66bf4ba](https://github.com/keiko233/clash-nyanpasu/commit/66bf4ba3ada161a2c44606f06730537bec692f59))
+- notice ui blocking ([d695656](https://github.com/keiko233/clash-nyanpasu/commit/d695656b8ce6b01097a9b77280b603f00aea1539))
+- null type error ([4f56c38](https://github.com/keiko233/clash-nyanpasu/commit/4f56c385998c737bb33f963313c0cd661c80d1a1))
+- only error when selected ([c7e7be4](https://github.com/keiko233/clash-nyanpasu/commit/c7e7be4379a82778c882e5216709aa37cb1bfc15))
+- only script profile can display console ([c611a51](https://github.com/keiko233/clash-nyanpasu/commit/c611a5157598d62f13053c9e4ecc66cb6b94160b))
+- open file ([eea9cb7](https://github.com/keiko233/clash-nyanpasu/commit/eea9cb7c5b3684e04c3931409215e83d682f1733))
+- open file with vscode ([0a33bb8](https://github.com/keiko233/clash-nyanpasu/commit/0a33bb861e5cc30fd0bf8536035cfa6633ceb446))
+- optimize clash launch ([844ffab](https://github.com/keiko233/clash-nyanpasu/commit/844ffab4edd54424feb4e543edae475d6fb2eb95))
+- optimize traffic graph high CPU usage when hidden ([9e9c4ad](https://github.com/keiko233/clash-nyanpasu/commit/9e9c4ad5873bf354c5a80cb38d4bc573216ce287))
+- parse bytes base 1024 ([f76890c](https://github.com/keiko233/clash-nyanpasu/commit/f76890cc56f4a5c1e8ca1f37fdd83568a288540b))
+- parse bytes precision, close [#334](https://github.com/keiko233/clash-nyanpasu/issues/334) ([e7f294a](https://github.com/keiko233/clash-nyanpasu/commit/e7f294a065cf7a9bbe0c9b723e9ce584e4445689))
+- parse external-controller ([a393b8b](https://github.com/keiko233/clash-nyanpasu/commit/a393b8b1224667242580b74949374b45fcfcffb3))
+- parse log cause panic ([e901588](https://github.com/keiko233/clash-nyanpasu/commit/e90158809a9b4e2d732faa136be824cd9fe22b17))
+- parse logger time ([33b1a11](https://github.com/keiko233/clash-nyanpasu/commit/33b1a11d858d85543765b307a989a740fc0ef4b1))
+- patch clash config ([b7c3863](https://github.com/keiko233/clash-nyanpasu/commit/b7c386388296069bc57fe2823f6c82e5d9a48c88))
+- patch item option ([8890051](https://github.com/keiko233/clash-nyanpasu/commit/8890051c1709813a0cdff45ee20daae7e760bebc))
+- patch verge config ([10b55c0](https://github.com/keiko233/clash-nyanpasu/commit/10b55c043c29a2da74534526ea7076da82b2fe44))
+- port value not rerender ([9a85b28](https://github.com/keiko233/clash-nyanpasu/commit/9a85b28b1827ac72038d9e5629bc4b54494f82bc))
+- pretty bytes ([d21bb01](https://github.com/keiko233/clash-nyanpasu/commit/d21bb015e875ab0fcc563e0887b2a83eeeb70898))
+- profile can not edit ([1a31fa9](https://github.com/keiko233/clash-nyanpasu/commit/1a31fa90679ffb79c867ad34ecb87d01b09ae236))
+- profile data undefined error, close [#566](https://github.com/keiko233/clash-nyanpasu/issues/566) ([6114af4](https://github.com/keiko233/clash-nyanpasu/commit/6114af4f933f3cf82d203bd6b75680a972eac879))
+- profile field check ([7437881](https://github.com/keiko233/clash-nyanpasu/commit/743788135f71be0b06315b59a4ebb8109afe8fc0))
+- profile item loading state ([3cde019](https://github.com/keiko233/clash-nyanpasu/commit/3cde019208e21e4cfa6a20c6ea805ab7ea8440fe))
+- profile item menu ui dense ([5f486d0](https://github.com/keiko233/clash-nyanpasu/commit/5f486d0f51666e5c495d6dc44b7550f6ad6597d2))
+- profile updated field ([e9b7ec7](https://github.com/keiko233/clash-nyanpasu/commit/e9b7ec735f47cf292545c846d5e655d77bf0c63c))
+- provider proxy sort by delay ([0bb1790](https://github.com/keiko233/clash-nyanpasu/commit/0bb1790206beec655a3f50e88b356a1596c7b4bd))
+- proxy bypass add <local> ([2a7cabb](https://github.com/keiko233/clash-nyanpasu/commit/2a7cabb06dd9e41021bf75f61a28e48c3a935476))
+- proxy global showType ([e896077](https://github.com/keiko233/clash-nyanpasu/commit/e89607799abc6b59029b738b85210c39d4fd8c4d))
+- proxy item style ([6337788](https://github.com/keiko233/clash-nyanpasu/commit/6337788a2231bcee397a2792e4b5169147fe99c2))
+- proxy list error ([73758ad](https://github.com/keiko233/clash-nyanpasu/commit/73758ad1fd7dac151f446fc07f7bb69f5a881eef))
+- proxy page first render ([954e355](https://github.com/keiko233/clash-nyanpasu/commit/954e3553eebe294567cb3971b0ccddffde31e79e))
+- put profile request with no proxy ([9ec7184](https://github.com/keiko233/clash-nyanpasu/commit/9ec7184aa1252262a5b59b15995491f782258d7e))
+- reconnect traffic websocket ([43dee3e](https://github.com/keiko233/clash-nyanpasu/commit/43dee3ef764d10a59a415e3c8b4ce7f9f9c8e762))
+- reconnect websocket when restart clash ([1a55cca](https://github.com/keiko233/clash-nyanpasu/commit/1a55cca8af0d32b8cf54935d19e4140da6e770dc))
+- reduce logo size ([acfe5db](https://github.com/keiko233/clash-nyanpasu/commit/acfe5dbb49a6cde97cdc8349d7879727b3f506e7))
+- reduce proxy item height ([08587d8](https://github.com/keiko233/clash-nyanpasu/commit/08587d8f2f0568ef8281f038d1a3025571a2b34f))
+- reduce unsafe unwrap ([3242efb](https://github.com/keiko233/clash-nyanpasu/commit/3242efb1a29f1bfada2f3775268f67c746a51bdb))
+- reduce unwrap ([60f6587](https://github.com/keiko233/clash-nyanpasu/commit/60f658716903fc87af341e669b5f7bc87c571ed8))
+- refresh clash ui await patch ([96e7666](https://github.com/keiko233/clash-nyanpasu/commit/96e76665d68cc638bb947be925ffb9b27772844c))
+- refresh proxies interval, close [#235](https://github.com/keiko233/clash-nyanpasu/issues/235) ([cc5b33a](https://github.com/keiko233/clash-nyanpasu/commit/cc5b33a8ec6e05e697b4c7a5f69ec21c96d8db9c))
+- refresh websocket ([376011e](https://github.com/keiko233/clash-nyanpasu/commit/376011ea0836f9b646747bbaf0b2bd271df4f8d1))
+- regenerate config before change core ([f477cec](https://github.com/keiko233/clash-nyanpasu/commit/f477cecdebc4b9b556abb5a5f29c9c403cd71444))
+- remove cargo test ([b5c4175](https://github.com/keiko233/clash-nyanpasu/commit/b5c41750f76f64d876ad6016bca059c20eead2c5))
+- remove dead code ([d6ab73c](https://github.com/keiko233/clash-nyanpasu/commit/d6ab73c9054ea17bdcb52aaea110c2e6bf5b2e88))
+- remove div ([7854775](https://github.com/keiko233/clash-nyanpasu/commit/7854775de5c259e2d598713d63cd9ac1e8ce02d9))
+- remove esc key listener in macOS ([66d93ea](https://github.com/keiko233/clash-nyanpasu/commit/66d93ea037dd7cbc62ae454e92e3e5bb0b208c87))
+- remove fallback group select status, close [#659](https://github.com/keiko233/clash-nyanpasu/issues/659) ([ce23143](https://github.com/keiko233/clash-nyanpasu/commit/ce231431b96fd898de2c7b13f48d74a54fdfac39))
+- remove smoother ([4649454](https://github.com/keiko233/clash-nyanpasu/commit/4649454282550c93c86a4f886bddfefaadc9a6a9))
+- remove the lonely zero ([9902003](https://github.com/keiko233/clash-nyanpasu/commit/9902003da9d606cf9b9253c2326b9e2d565d0f62))
+- remove useless optimizations ([e72ad1f](https://github.com/keiko233/clash-nyanpasu/commit/e72ad1f030ce33c54a791a9be671ff80c56168cb))
+- reset after exit ([f5d0513](https://github.com/keiko233/clash-nyanpasu/commit/f5d0513d1f02b8efc4859c36ecef9b325f941bed))
+- reset proxy ([c0ddddf](https://github.com/keiko233/clash-nyanpasu/commit/c0ddddfb1f457895750ded9444f5e374bcdaa477))
+- reset value correctly ([2dfd725](https://github.com/keiko233/clash-nyanpasu/commit/2dfd725ee005cb2a70a37a217430e081fcd41985))
+- restart clash should update something ([4b5b62c](https://github.com/keiko233/clash-nyanpasu/commit/4b5b62c8aee383a96607fc763cacfb7022de748b))
+- result ([bcdae11](https://github.com/keiko233/clash-nyanpasu/commit/bcdae1169eba6fae0e615f131617c4e119206c90))
+- rm debug code ([b6d50ba](https://github.com/keiko233/clash-nyanpasu/commit/b6d50ba6a40028267c91450972e035f7cc5e5a4b))
+- rm macOS transition props ([2f3b6b2](https://github.com/keiko233/clash-nyanpasu/commit/2f3b6b29ae03395010720d49f9b18c3f1f48ccbe))
+- rm unwrap ([8cdbb31](https://github.com/keiko233/clash-nyanpasu/commit/8cdbb31dbe785bbb6bd484097937f7fcf186f900))
+- root background color ([15ff9b0](https://github.com/keiko233/clash-nyanpasu/commit/15ff9b06a1228c8f86ecb56c856d7406dab0d9c7))
+- runtime config user select ([4037171](https://github.com/keiko233/clash-nyanpasu/commit/403717117e58a8a14d7d52d1a21a02fbbb94700f))
+- rust lint ([84d3c3f](https://github.com/keiko233/clash-nyanpasu/commit/84d3c3f7ebdf16bda28dd7df7d8b2d64e6e377bc))
+- save enable log on localstorage ([d522191](https://github.com/keiko233/clash-nyanpasu/commit/d522191f69efd9db32e8c9ed9f8b31ab4b3eccc9))
+- save profile when update ([4942b0f](https://github.com/keiko233/clash-nyanpasu/commit/4942b0fca5c6859a6e729afc28f6009aed02412c))
+- save window size and pos in Windows ([4f158a4](https://github.com/keiko233/clash-nyanpasu/commit/4f158a482932f2176af8850f6e25171da19bb1c1))
+- script code error ([f1a68ec](https://github.com/keiko233/clash-nyanpasu/commit/f1a68ece01c10e42cb861587656d86926157f85d))
+- script error ([82ba604](https://github.com/keiko233/clash-nyanpasu/commit/82ba604b9966e7e2da8294a033ec4bf11abe7918))
+- script error... ([209a5b1](https://github.com/keiko233/clash-nyanpasu/commit/209a5b12079a16385efc1642ae22498b46a5cbee))
+- script exception handle ([dd56336](https://github.com/keiko233/clash-nyanpasu/commit/dd563360afab5b7bc9d273e5404b86e5ce26b860))
+- service mode error ([31c6cbc](https://github.com/keiko233/clash-nyanpasu/commit/31c6cbc0a255267bd5c641767c668b7b01f9cf1e))
+- service mode error and fallback to sidecar ([5098f14](https://github.com/keiko233/clash-nyanpasu/commit/5098f14aabeae8ab5553a3edc154080d30b38a53))
+- service mode viewer ui ([a355a9c](https://github.com/keiko233/clash-nyanpasu/commit/a355a9c85e598db68951dfc10e8aca495b76eb7e))
+- service ref error ([020bd12](https://github.com/keiko233/clash-nyanpasu/commit/020bd129fb43d1af4f972d6963766b842784cba1))
+- service viewer ref ([781c67b](https://github.com/keiko233/clash-nyanpasu/commit/781c67b31afaf353ca2c44c1a542769be90a94fd))
+- set min window size, close [#734](https://github.com/keiko233/clash-nyanpasu/issues/734) ([8647866](https://github.com/keiko233/clash-nyanpasu/commit/8647866a32a280ac72629a0c6bc0238caaf5aeaf))
+- set_activation_policy ([f2bd6f1](https://github.com/keiko233/clash-nyanpasu/commit/f2bd6f1fce58325af292206694b7f3032fbf2e37))
+- show global when no rule groups ([c935997](https://github.com/keiko233/clash-nyanpasu/commit/c9359978f96eb21b3cd08019bdc4e8d65dab1f7c))
+- show windows on click ([a092da1](https://github.com/keiko233/clash-nyanpasu/commit/a092da194388944e06b53ef387ea84469bf51517))
+- sidecar dir ([e737bb4](https://github.com/keiko233/clash-nyanpasu/commit/e737bb4cea1062a9fa91ca3a8c6300288004d188))
+- silent start ([#150](https://github.com/keiko233/clash-nyanpasu/issues/150)) ([5aa7d5f](https://github.com/keiko233/clash-nyanpasu/commit/5aa7d5ffe9b31d6358ae16588579f14741b82c49))
+- simply compatible with proxy providers ([08fa520](https://github.com/keiko233/clash-nyanpasu/commit/08fa5205b02077410b198424e531dfa84429c52a))
+- something ([a211fc7](https://github.com/keiko233/clash-nyanpasu/commit/a211fc7c975209d031bda202e428f93e5a28c930))
+- something ([eb86b47](https://github.com/keiko233/clash-nyanpasu/commit/eb86b471fee1ab20f209b4e5e068ba0c509541b6))
+- something ([7d8fa4d](https://github.com/keiko233/clash-nyanpasu/commit/7d8fa4d78a6aaee4f3b4b105852e8243aefcfb87))
+- sort proxy during loading, close [#221](https://github.com/keiko233/clash-nyanpasu/issues/221) ([b8a8190](https://github.com/keiko233/clash-nyanpasu/commit/b8a8190a4358a587e63a1c7f7959e1abfdd7dc1b))
+- spawn command ([0aa2565](https://github.com/keiko233/clash-nyanpasu/commit/0aa2565df3c70a4206e5fdb90c554d227cd98796))
+- style ([6e1a627](https://github.com/keiko233/clash-nyanpasu/commit/6e1a627b8490d400f29f947d5f9496f228e62bf7))
+- style ([0495062](https://github.com/keiko233/clash-nyanpasu/commit/0495062110b286d8f92c451bb8d41337dd97573b))
+- style ([5a93ba0](https://github.com/keiko233/clash-nyanpasu/commit/5a93ba05d55a20ff7e919827bfc5fb1024681cd8))
+- style ([02fdb87](https://github.com/keiko233/clash-nyanpasu/commit/02fdb8778ba2b6e255c3b13b427a1c66d803921e))
+- style issue on mac ([ba16ec0](https://github.com/keiko233/clash-nyanpasu/commit/ba16ec02e5941346e4fd6be73e4a4ce1f6fc5bb8))
+- **style:** reduce my ([ebff652](https://github.com/keiko233/clash-nyanpasu/commit/ebff65282492bf42018ec798fbe7c69a7a055446))
+- tag error ([95349ea](https://github.com/keiko233/clash-nyanpasu/commit/95349eacab00b5fc59656226a8d0ca4f81943861))
+- tauri csp ([57c4112](https://github.com/keiko233/clash-nyanpasu/commit/57c411288fa193ebb4c5e137690218a98c0fdc1d))
+- text ([6da7757](https://github.com/keiko233/clash-nyanpasu/commit/6da7757d36049d5e2f8e3ec04734b32414d1f2f0))
+- The profile is replaced when the request fails. ([#246](https://github.com/keiko233/clash-nyanpasu/issues/246)) ([df14af7](https://github.com/keiko233/clash-nyanpasu/commit/df14af7337c41097e2c071e9683f1d4e401e9c4a))
+- timer restore at app launch ([30f9f1a](https://github.com/keiko233/clash-nyanpasu/commit/30f9f1a021f5a2f6df11016fe31c182cdffbc0a1))
+- touchpad scrolling causes blank area to appear ([84b2c07](https://github.com/keiko233/clash-nyanpasu/commit/84b2c07340aa23d718677f8f490deb720f72e4ba))
+- traffic graph adapt to different fps ([fac437b](https://github.com/keiko233/clash-nyanpasu/commit/fac437b8c1eb4dcd38ae795a159d42c7d308f241))
+- trigger new profile dialog, close [#356](https://github.com/keiko233/clash-nyanpasu/issues/356) ([d5037f1](https://github.com/keiko233/clash-nyanpasu/commit/d5037f180ee50650faa6b392c3e9487b49646b3f))
+- try fix blank error ([f5edca9](https://github.com/keiko233/clash-nyanpasu/commit/f5edca94d3ce1ae0c33bfda9ee35b94def43b9f7))
+- try fix undefined error ([b9b6212](https://github.com/keiko233/clash-nyanpasu/commit/b9b6212b75999adece9c132d3fd57db4d66eaf2a))
+- tun mode config ([ec41bb9](https://github.com/keiko233/clash-nyanpasu/commit/ec41bb9c7021a1ade26f6e2e4f6be60111f1e574))
+- type error ([c77db23](https://github.com/keiko233/clash-nyanpasu/commit/c77db23586ea3fb4f2bdfda8aed92af408748696))
+- type error ([b6c58f7](https://github.com/keiko233/clash-nyanpasu/commit/b6c58f74c03ff3acf5c8906117a1739b540a3fc9))
+- typo in api.ts ([#207](https://github.com/keiko233/clash-nyanpasu/issues/207)) ([bbbdc8b](https://github.com/keiko233/clash-nyanpasu/commit/bbbdc8b7a6e9c41590e72c6cf6c10cf5e8baa75b))
+- typos ([bcf40dd](https://github.com/keiko233/clash-nyanpasu/commit/bcf40dde8c4e666af4b52711d882a0f2dcace189))
+- unused ([cf96622](https://github.com/keiko233/clash-nyanpasu/commit/cf9662226131a5dd2500e381db76d4c13fd4ac34))
+- update profile after restart clash ([579f36a](https://github.com/keiko233/clash-nyanpasu/commit/579f36a1ddad3f3e43143977fca44c8e4873dc55))
+- update state ([dd605e2](https://github.com/keiko233/clash-nyanpasu/commit/dd605e26108c43851282827540eb12083da2b430))
+- use crate ([2b6d934](https://github.com/keiko233/clash-nyanpasu/commit/2b6d9348cd1319fc16afca702996bef876a85f06))
+- use full clash config ([bbe2ef4](https://github.com/keiko233/clash-nyanpasu/commit/bbe2ef4e8e03d2a75ffd1baa1cbed5f8e60c4752))
+- use io ([9b8f5c4](https://github.com/keiko233/clash-nyanpasu/commit/9b8f5c4fcf6c5d7a27d3e4a7e5ef978656d800d1))
+- use list item button ([f06fa3f](https://github.com/keiko233/clash-nyanpasu/commit/f06fa3f9b73f7fd652f6fe104dec7adf24ad5969))
+- use meta Country.mmdb ([e393ebe](https://github.com/keiko233/clash-nyanpasu/commit/e393ebede2769dc409d47ec1c6c3509bfb222511))
+- use replace instead ([533dc99](https://github.com/keiko233/clash-nyanpasu/commit/533dc99e7dfcf2b58e9696059c1faf12ce2b5af3))
+- use selected proxy after profile changed ([819c520](https://github.com/keiko233/clash-nyanpasu/commit/819c5207d28daa7bfdf4ba64d1a204130039fb18))
+- use sudo when pkexec not found ([38a9a92](https://github.com/keiko233/clash-nyanpasu/commit/38a9a9240df0aad888a1764b7b407fa929e5378c))
+- use verge hook ([572d81e](https://github.com/keiko233/clash-nyanpasu/commit/572d81ecef1521a0c8d7b4c6277121109ed3ac9a))
+- user agent not works ([cf00c94](https://github.com/keiko233/clash-nyanpasu/commit/cf00c9476ff0b29c5dfd397deaec6dadc6144a74))
+- valid with unified-delay & tcp-concurrent ([88c9b68](https://github.com/keiko233/clash-nyanpasu/commit/88c9b6849f867db15c3f4f4405a4381eef067ac6))
+- version update error ([4e8d4f4](https://github.com/keiko233/clash-nyanpasu/commit/4e8d4f45918703dab8d24ecaaf40ee761a5c7563))
+- Virtuoso no work in legacy browsers ([#318](https://github.com/keiko233/clash-nyanpasu/issues/318)) ([39ade59](https://github.com/keiko233/clash-nyanpasu/commit/39ade591746ef8e37d23ec325291afffc28537b3))
+- web resource outDir ([eddf10e](https://github.com/keiko233/clash-nyanpasu/commit/eddf10e740c458f10d8757b2f66346f50adebac7))
+- web ui port value error ([7a3285a](https://github.com/keiko233/clash-nyanpasu/commit/7a3285adaf29ecce08805079e370e62d55179f47))
+- websocket disconnect when window focus ([6f5acee](https://github.com/keiko233/clash-nyanpasu/commit/6f5acee1c340299221ee92b391eff0fa44bdcc37))
+- when updater failed ([650e017](https://github.com/keiko233/clash-nyanpasu/commit/650e017b723b5eef759edbb2577011d31139d8b3))
+- win11 drag lag ([6596fb0](https://github.com/keiko233/clash-nyanpasu/commit/6596fb00c7e46d19669f82b0ac7215eb52e2f3c6))
+- window center ([2462e68](https://github.com/keiko233/clash-nyanpasu/commit/2462e68ba18f913706367165066ae4b92e36b130))
+- window style close [#45](https://github.com/keiko233/clash-nyanpasu/issues/45) ([b5283ea](https://github.com/keiko233/clash-nyanpasu/commit/b5283eaaed884d7a9d6bedc156c864e723a1f365))
+- window transparent and can not get hwnd ([98b8bd9](https://github.com/keiko233/clash-nyanpasu/commit/98b8bd90eab77d93c0dd0c87df676600df815d36))
+- windows issue ([bcc5ec8](https://github.com/keiko233/clash-nyanpasu/commit/bcc5ec897aa6748755ffb5321e53efb1a396b11e))
+- windows logo size ([6bed7f0](https://github.com/keiko233/clash-nyanpasu/commit/6bed7f0e669fd76fb2e75d6a3f9d25124aefcd59))
+- windows service mode ([1550d52](https://github.com/keiko233/clash-nyanpasu/commit/1550d528bd331e876abcf90084d2bc40c242afec))
+- windows style ([bd0a959](https://github.com/keiko233/clash-nyanpasu/commit/bd0a959e18c74f4b62e6dfd90828937183389689))
+- wrong exe path ([c9c06f8](https://github.com/keiko233/clash-nyanpasu/commit/c9c06f8a3de282dc90856b45633085589a296e47))

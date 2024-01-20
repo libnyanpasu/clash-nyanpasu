@@ -59,7 +59,7 @@ jobs:
         uses: mknejp/delete-release-assets@v1
         with:
           token: ${{ secrets.GH_TOKEN }}
-          tag: v__VERSION__
+          tag: ${{ github.event.release.tag_name }}
           fail-if-no-assets: false
           fail-if-no-release: false
           assets: |
@@ -97,11 +97,11 @@ jobs:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
-          tagName: v__VERSION__
-          releaseName: "Clash Nyanpasu v__VERSION__"
-          releaseBody: "More new features are now supported."
-          releaseDraft: false
-          prerelease: false
+          tagName: ${{ github.event.release.tag_name }}
+          # releaseName: "Clash Nyanpasu ${{ github.event.release.tag_name }}"
+          # releaseBody: "More new features are now supported."
+          # releaseDraft: false
+          # prerelease: false
           tauriScript: pnpm tauri
           args: -f default-meta -c ./backend/tauri/tauri.conf.json
 

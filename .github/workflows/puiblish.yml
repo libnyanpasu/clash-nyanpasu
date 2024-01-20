@@ -39,8 +39,6 @@ jobs:
         shell: bash
         run: |
           echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-      - name: Install
-        run: pnpm i
       - uses: actions/cache@v3
         name: Setup pnpm cache
         with:
@@ -48,32 +46,39 @@ jobs:
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
+      - name: Install
+        run: pnpm i
+
       - id: update-version
         shell: bash
         name: Bump version
         # Use npm because yarn is for some reason not able to output only the version name
         run: |
-          echo "version=$(pnpm run publish)" >> $GITHUB_OUTPUT
+          echo "version=$(pnpm run publish ${{ inputs.versionType }} | tail -n1)" >> $GITHUB_OUTPUT
           git add .
       - name: Conventional Changelog Action
         id: build-changelog
         uses: TriPSs/conventional-changelog-action@v3
         with:
           github-token: ${{ secrets.github_token }}
-          git-message: "chore(release): {version} 🤖 [skip ci]"
+          git-message: "chore(release): {version} 🤖"
           git-user-name: "github-actions[bot]"
           git-user-email: "41898282+github-actions[bot]@users.noreply.github.com"
           preset: "conventionalcommits"
           tag-prefix: "v"
-          output-file: "UPDATELOG.md"
+          # output-file: "UPDATELOG.md" # Since v1.4.3, using conventional-changelog-cli@v2.1.0
           release-count: "10"
+          pre-changelog-generation: ".github/conventional-changelog/pre-changelog-generation.js"
+          config-file-path: ".github/conventional-changelog/config.js"
           git-branch: "main"
+        env:
+          NYANPASU_VERSION: ${{ steps.update-version.outputs.version }}
 
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
           draft: true
           body: ${{steps.build-changelog.outputs.clean_changelog}}
-          name: ${{steps.update-version.outputs.version}}
+          name: Clash Nyanpasu v${{steps.update-version.outputs.version}}
           tag_name: ${{steps.build-changelog.outputs.tag}}
           # target_commitish: ${{ steps.tag.outputs.sha }}

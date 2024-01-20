@@ -173,14 +173,23 @@ async function main() {
     manifest_version: MANIFEST_VERSION,
     latest: {},
     arch_template: {},
-    updated_at: new Date().toISOString(),
   } as ManifestVersion;
   for (const result of results) {
     manifest.latest[result.name as SupportedCore] = result.version;
     manifest.arch_template[result.name as SupportedCore] = result.archMapping;
   }
-  consola.success("Generated manifest");
+
   await fs.ensureDir(MANIFEST_DIR);
+  // If no changes, skip writing manifest
+  const previousManifest = (await fs.readJSON(MANIFEST_VERSION_PATH)) || {};
+  delete previousManifest.updated_at;
+  if (JSON.stringify(previousManifest) === JSON.stringify(manifest)) {
+    consola.success("No changes, skip writing manifest");
+    return;
+  }
+  manifest.updated_at = new Date().toISOString();
+  consola.success("Generated manifest");
+
   await fs.writeJSON(MANIFEST_VERSION_PATH, manifest, { spaces: 2 });
   consola.success("Manifest written");
 }

@@ -58,7 +58,7 @@ jobs:
           git add .
       - name: Conventional Changelog Action
         id: build-changelog
-        uses: TriPSs/conventional-changelog-action@v3
+        uses: TriPSs/conventional-changelog-action@v5
         with:
           github-token: ${{ secrets.github_token }}
           git-message: "chore(release): {version} 🤖"

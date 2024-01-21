@@ -109,19 +109,6 @@ impl Tray {
     }
 
     pub fn update_part(app_handle: &AppHandle) -> Result<()> {
-        #[cfg(not(target_os = "linux"))]
-        {
-            let zh = { Config::verge().latest().language == Some("zh".into()) };
-            macro_rules! t {
-                ($en: expr, $zh: expr) => {
-                    if zh {
-                        $zh
-                    } else {
-                        $en
-                    }
-                };
-            }
-        }
         let mode = {
             Config::clash()
                 .latest()
@@ -162,6 +149,17 @@ impl Tray {
 
         #[cfg(not(target_os = "linux"))]
         {
+            let zh = { Config::verge().latest().language == Some("zh".into()) };
+            macro_rules! t {
+                ($en: expr, $zh: expr) => {
+                    if zh {
+                        $zh
+                    } else {
+                        $en
+                    }
+                };
+            }
+
             let switch_map = {
                 let mut map = std::collections::HashMap::new();
                 map.insert(true, t!("On", "开"));

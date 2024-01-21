@@ -703,8 +703,8 @@ dependencies = [
  "which",
  "window-shadows",
  "window-vibrancy",
- "windows-sys 0.48.0",
- "winreg 0.50.0",
+ "windows-sys 0.52.0",
+ "winreg 0.52.0",
  "wry",
  "zip",
  "zip-extensions",
@@ -4820,7 +4820,7 @@ dependencies = [
  "iptools",
  "thiserror",
  "windows 0.52.0",
- "winreg 0.10.1",
+ "winreg 0.52.0",
 ]
 
 [[package]]
@@ -6513,6 +6513,16 @@ name = "winreg"
 version = "0.51.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "937f3df7948156640f46aacef17a70db0de5917bda9c92b0f751f3a955b588fc"
+dependencies = [
+ "cfg-if",
+ "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "winreg"
+version = "0.52.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a277a57398d4bfa075df44f501a17cfdf8542d224f0d36095a2adc7aee4ef0a5"
 dependencies = [
  "cfg-if",
  "windows-sys 0.48.0",

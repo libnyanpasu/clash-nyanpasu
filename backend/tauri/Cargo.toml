@@ -63,7 +63,7 @@ dyn-clone = "1.0.16"
 rs-snowflake = "0.6"
 rocksdb = "0.21"
 thiserror = { workspace = true }
-simd-json = "0.13.6"
+simd-json = "0.13.8"
 runas = "=1.0.0" # blocked by https://github.com/mitsuhiko/rust-runas/issues/13
 
 [target.'cfg(windows)'.dependencies]

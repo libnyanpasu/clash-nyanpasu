@@ -31,7 +31,7 @@ Notes: If you could not start the app on Windows, please check that you have [We
 
 ### Arch Linux (AUR)
 
-Install the [Stable Release](https://aur.archlinux.org/packages/clash-nyanpasu) or [Git Version](https://aur.archlinux.org/packages/clash-nyanpasu-git).
+Install the [Stable Release](https://aur.archlinux.org/packages/clash-nyanpasu) / [Binary Package](https://aur.archlinux.org/packages/clash-nyanpasu-bin) or [Git Version](https://aur.archlinux.org/packages/clash-nyanpasu-git).
 
 ### FAQ
 

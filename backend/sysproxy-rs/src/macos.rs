@@ -64,7 +64,7 @@ impl Sysproxy {
         let bypass = from_utf8(&bypass_output.stdout)
             .or(Err(Error::ParseStr("bypass".into())))?
             .split('\n')
-            .filter(|s| s.len() > 0)
+            .filter(|s| !s.is_empty())
             .collect::<Vec<&str>>()
             .join(",");
 
@@ -84,7 +84,7 @@ impl Sysproxy {
     }
 
     pub fn set_bypass(&self, service: &str) -> Result<()> {
-        let domains = self.bypass.split(",").collect::<Vec<_>>();
+        let domains = self.bypass.split(',').collect::<Vec<_>>();
         networksetup()
             .args([["-setproxybypassdomains", service].to_vec(), domains].concat())
             .status()?;
@@ -94,8 +94,11 @@ impl Sysproxy {
 
 #[derive(Debug)]
 enum ProxyType {
+    #[allow(clippy::upper_case_acronyms)]
     HTTP,
+    #[allow(clippy::upper_case_acronyms)]
     HTTPS,
+    #[allow(clippy::upper_case_acronyms)]
     SOCKS,
 }
 
@@ -164,7 +167,7 @@ fn parse<'a>(target: &'a str, key: &'a str) -> &'a str {
         Some(idx) => {
             let idx = idx + key.len();
             let value = &target[idx..];
-            let value = match value.find("\n") {
+            let value = match value.find('\n') {
                 Some(end) => &value[..end],
                 None => value,
             };
@@ -183,7 +186,7 @@ fn default_network_service() -> Result<String> {
     let interfaces = interfaces::Interface::get_all().or(Err(Error::NetworkInterface))?;
     let interface = interfaces
         .into_iter()
-        .find(|i| i.addresses.iter().find(|a| a.addr == Some(addr)).is_some())
+        .find(|i| i.addresses.iter().any(|a| a.addr == Some(addr)))
         .map(|i| i.name.to_owned());
 
     match interface {
@@ -213,7 +216,7 @@ fn get_service_by_device(device: String) -> Result<String> {
     let stdout = from_utf8(&output.stdout).or(Err(Error::ParseStr("output".into())))?;
 
     let hardware = stdout.split("Ethernet Address:").find_map(|s| {
-        let lines = s.split("\n");
+        let lines = s.split('\n');
         let mut hardware = None;
         let mut device_ = None;
 

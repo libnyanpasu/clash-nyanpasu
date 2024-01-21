@@ -127,16 +127,13 @@ fn main() -> std::io::Result<()> {
             use tauri::Manager;
 
             if label == "main" {
-                match event {
-                    tauri::WindowEvent::CloseRequested { api, .. } => {
-                        api.prevent_close();
-                        let _ = resolve::save_window_state(app_handle, true);
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = resolve::save_window_state(app_handle, true);
 
-                        app_handle.get_window("main").map(|win| {
-                            let _ = win.hide();
-                        });
+                    if let Some(win) = app_handle.get_window("main") {
+                        let _ = win.hide();
                     }
-                    _ => {}
                 }
             }
         }

@@ -105,7 +105,7 @@ impl CoreManager {
         }
         #[cfg(target_os = "macos")]
         {
-            let enable_tun = Config::verge().latest().enable_tun_mode.clone();
+            let enable_tun = Config::verge().latest().enable_tun_mode;
             let enable_tun = enable_tun.unwrap_or(false);
 
             if enable_tun {
@@ -266,18 +266,16 @@ impl CoreManager {
 
         #[cfg(target_os = "macos")]
         {
-            let enable_tun = Config::verge().latest().enable_tun_mode.clone();
+            let enable_tun = Config::verge().latest().enable_tun_mode;
             let enable_tun = enable_tun.unwrap_or(false);
 
             if enable_tun {
                 log::debug!(target: "app", "try to set system dns");
 
-                match (|| {
-                    // 执行 networksetup -setdnsservers Wi-Fi "Empty"
-                    Command::new("networksetup")
-                        .args(["-setdnsservers", "Wi-Fi", "Empty"])
-                        .output()
-                })() {
+                match Command::new("networksetup")
+                    .args(["-setdnsservers", "Wi-Fi", "Empty"])
+                    .output()
+                {
                     Ok(_) => return Ok(()),
                     Err(err) => {
                         // 修改这个值，免得stop出错

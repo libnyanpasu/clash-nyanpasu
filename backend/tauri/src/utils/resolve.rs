@@ -80,7 +80,7 @@ pub fn resolve_setup(app: &mut App) {
     log::trace!("init system tray");
     log_err!(tray::Tray::update_systray(&app.app_handle()));
 
-    let silent_start = { Config::verge().data().enable_silent_start.clone() };
+    let silent_start = { Config::verge().data().enable_silent_start };
     if !silent_start.unwrap_or(false) {
         create_window(&app.app_handle());
     }
@@ -229,30 +229,6 @@ pub fn is_window_open(app_handle: &AppHandle) -> bool {
     app_handle.get_window("main").is_some()
 }
 
-/// save window size and position
-#[deprecated]
-pub fn save_window_size_position(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
-    let win = app_handle
-        .get_window("main")
-        .ok_or(anyhow::anyhow!("failed to get window"))?;
-
-    let scale = win.scale_factor()?;
-    let size = win.inner_size()?;
-    let size = size.to_logical::<f64>(scale);
-    let pos = win.outer_position()?;
-    let pos = pos.to_logical::<f64>(scale);
-
-    let verge = Config::verge();
-    let mut verge = verge.latest();
-    verge.window_size_position = Some(vec![size.width, size.height, pos.x, pos.y]);
-
-    if save_to_file {
-        verge.save_file()?;
-    }
-
-    Ok(())
-}
-
 pub fn save_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
     let win = app_handle
         .get_window("main")
@@ -315,7 +291,7 @@ pub fn resolve_core_version(core_type: &ClashCore) -> Result<String> {
     for item in out {
         log::debug!(target: "app", "check item: {}", item);
         if item.starts_with('v')
-            || item.starts_with("n")
+            || item.starts_with('n')
             || item.starts_with("alpha")
             || Version::parse(item).is_ok()
         {

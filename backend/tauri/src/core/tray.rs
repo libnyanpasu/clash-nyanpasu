@@ -10,7 +10,7 @@ use super::storage;
 pub struct Tray {}
 
 impl Tray {
-    pub fn tray_menu(app_handle: &AppHandle) -> SystemTrayMenu {
+    pub fn tray_menu(_app_handle: &AppHandle) -> SystemTrayMenu {
         let zh = { Config::verge().latest().language == Some("zh".into()) };
 
         let version = env!("NYANPASU_VERSION");
@@ -109,16 +109,6 @@ impl Tray {
     }
 
     pub fn update_part(app_handle: &AppHandle) -> Result<()> {
-        let zh = { Config::verge().latest().language == Some("zh".into()) };
-        macro_rules! t {
-            ($en: expr, $zh: expr) => {
-                if zh {
-                    $zh
-                } else {
-                    $en
-                }
-            };
-        }
         let mode = {
             Config::clash()
                 .latest()
@@ -157,21 +147,34 @@ impl Tray {
         let _ = tray.get_item("system_proxy").set_selected(*system_proxy);
         let _ = tray.get_item("tun_mode").set_selected(*tun_mode);
 
-        let switch_map = {
-            let mut map = std::collections::HashMap::new();
-            map.insert(true, t!("On", "开"));
-            map.insert(false, t!("Off", "关"));
-            map
-        };
-
         #[cfg(not(target_os = "linux"))]
-        let _ = tray.set_tooltip(&format!(
-            "{}: {}\n{}: {}",
-            t!("System Proxy", "系统代理"),
-            switch_map[system_proxy],
-            t!("TUN Mode", "Tun 模式"),
-            switch_map[tun_mode]
-        ));
+        {
+            let zh = { Config::verge().latest().language == Some("zh".into()) };
+            macro_rules! t {
+                ($en: expr, $zh: expr) => {
+                    if zh {
+                        $zh
+                    } else {
+                        $en
+                    }
+                };
+            }
+
+            let switch_map = {
+                let mut map = std::collections::HashMap::new();
+                map.insert(true, t!("On", "开"));
+                map.insert(false, t!("Off", "关"));
+                map
+            };
+
+            let _ = tray.set_tooltip(&format!(
+                "{}: {}\n{}: {}",
+                t!("System Proxy", "系统代理"),
+                switch_map[system_proxy],
+                t!("TUN Mode", "Tun 模式"),
+                switch_map[tun_mode]
+            ));
+        }
 
         Ok(())
     }

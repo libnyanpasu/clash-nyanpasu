@@ -50,10 +50,8 @@ impl NyanpasuReqwestProxyExt for reqwest::ClientBuilder {
         if let Ok(proxy) = get_self_proxy() {
             builder = builder.swift_set_proxy(&proxy);
         }
-        if let Ok(proxy) = get_system_proxy() {
-            if let Some(proxy) = proxy {
-                builder = builder.swift_set_proxy(&proxy);
-            }
+        if let Ok(Some(proxy)) = get_system_proxy() {
+            builder = builder.swift_set_proxy(&proxy);
         }
         builder
     }

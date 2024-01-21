@@ -11,12 +11,12 @@ impl Sysproxy {
         let https = get_proxy("https")?;
         let http = get_proxy("http")?;
 
-        if socks.host.len() == 0 {
-            if http.host.len() > 0 {
+        if socks.host.is_empty() {
+            if !http.host.is_empty() {
                 socks.host = http.host;
                 socks.port = http.port;
             }
-            if https.host.len() > 0 {
+            if !https.host.is_empty() {
                 socks.host = https.host;
                 socks.port = https.port;
             }
@@ -97,7 +97,7 @@ impl Sysproxy {
                     host = String::from("'") + &host;
                 }
                 if !host.ends_with('\'') && !host.ends_with('"') {
-                    host = host + "'";
+                    host += "'";
                 }
                 host
             })
@@ -168,7 +168,7 @@ fn get_proxy(service: &str) -> Result<Sysproxy> {
     })
 }
 
-fn strip_str<'a>(text: &'a str) -> &'a str {
+fn strip_str(text: &str) -> &str {
     text.strip_prefix('\'')
         .unwrap_or(text)
         .strip_suffix('\'')

@@ -8,7 +8,7 @@ use sysproxy::Sysproxy;
 
 use super::Config;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct PrfItem {
     pub uid: Option<String>,
 
@@ -96,25 +96,7 @@ impl PrfOption {
                 a.update_interval = b.update_interval.or(a.update_interval);
                 Some(a)
             }
-            t @ _ => t.0.or(t.1),
-        }
-    }
-}
-
-impl Default for PrfItem {
-    fn default() -> Self {
-        PrfItem {
-            uid: None,
-            itype: None,
-            name: None,
-            desc: None,
-            file: None,
-            url: None,
-            selected: None,
-            extra: None,
-            updated: None,
-            option: None,
-            file_data: None,
+            t => t.0.or(t.1),
         }
     }
 }
@@ -152,7 +134,7 @@ impl PrfItem {
                 let desc = item.desc.unwrap_or("".into());
                 PrfItem::from_script(name, desc)
             }
-            typ @ _ => bail!("invalid profile item type \"{typ}\""),
+            typ => bail!("invalid profile item type \"{typ}\""),
         }
     }
 
@@ -188,7 +170,7 @@ impl PrfItem {
         let opt_ref = option.as_ref();
         let with_proxy = opt_ref.map_or(false, |o| o.with_proxy.unwrap_or(false));
         let self_proxy = opt_ref.map_or(false, |o| o.self_proxy.unwrap_or(false));
-        let user_agent = opt_ref.map_or(None, |o| o.user_agent.clone());
+        let user_agent = opt_ref.and_then(|o| o.user_agent.clone());
 
         let mut builder = reqwest::ClientBuilder::new().use_rustls_tls().no_proxy();
 
@@ -231,7 +213,7 @@ impl PrfItem {
             };
         }
 
-        let version = unsafe { dirs::APP_VERSION };
+        let version = dirs::get_app_version();
         let version = format!("clash-verge/v{version}");
         builder = builder.user_agent(user_agent.unwrap_or(version));
 

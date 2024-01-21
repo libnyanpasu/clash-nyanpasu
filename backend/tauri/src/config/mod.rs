@@ -1,9 +1,9 @@
 mod clash;
-mod config;
+mod core;
 mod draft;
 mod prfitem;
 mod profiles;
 mod runtime;
 mod verge;
 
-pub use self::{clash::*, config::*, draft::*, prfitem::*, profiles::*, runtime::*, verge::*};
+pub use self::{clash::*, core::*, draft::*, prfitem::*, profiles::*, runtime::*, verge::*};

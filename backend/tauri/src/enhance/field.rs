@@ -75,7 +75,7 @@ pub fn use_valid_fields(mut valid: Vec<String>) -> Vec<String> {
         .collect()
 }
 
-pub fn use_filter(config: Mapping, filter: &Vec<String>, enable: bool) -> Mapping {
+pub fn use_filter(config: Mapping, filter: &[String], enable: bool) -> Mapping {
     if !enable {
         return config;
     }
@@ -114,9 +114,9 @@ pub fn use_sort(config: Mapping, enable_filter: bool) -> Mapping {
         .chain(DEFAULT_FIELDS)
         .for_each(|key| {
             let key = Value::from(key);
-            config.get(&key).map(|value| {
+            if let Some(value) = config.get(&key) {
                 ret.insert(key, value.clone());
-            });
+            }
         });
 
     if !enable_filter {
@@ -126,17 +126,13 @@ pub fn use_sort(config: Mapping, enable_filter: bool) -> Mapping {
             .chain(DEFAULT_FIELDS)
             .collect();
 
-        let config_keys: HashSet<&str> = config
-            .keys()
-            .filter_map(|e| e.as_str())
-            .into_iter()
-            .collect();
+        let config_keys: HashSet<&str> = config.keys().filter_map(|e| e.as_str()).collect();
 
         config_keys.difference(&supported_keys).for_each(|&key| {
             let key = Value::from(key);
-            config.get(&key).map(|value| {
+            if let Some(value) = config.get(&key) {
                 ret.insert(key, value.clone());
-            });
+            }
         });
     }
 
@@ -150,7 +146,7 @@ pub fn use_keys(config: &Mapping) -> Vec<String> {
         .map(|s| {
             let mut s = s.to_string();
             s.make_ascii_lowercase();
-            return s;
+            s
         })
         .collect()
 }

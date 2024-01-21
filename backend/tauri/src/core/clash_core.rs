@@ -34,12 +34,12 @@ impl CoreManager {
             .map(|pid| {
                 let mut system = System::new();
                 system.refresh_all();
-                system.process(Pid::from_u32(pid)).map(|proc| {
+                if let Some(proc) = system.process(Pid::from_u32(pid)) {
                     if proc.name().contains("clash") {
                         log::debug!(target: "app", "kill old clash process");
                         proc.kill();
                     }
-                });
+                }
             });
 
         tauri::async_runtime::spawn(async {
@@ -105,7 +105,7 @@ impl CoreManager {
         }
         #[cfg(target_os = "macos")]
         {
-            let enable_tun = Config::verge().latest().enable_tun_mode.clone();
+            let enable_tun = Config::verge().latest().enable_tun_mode;
             let enable_tun = enable_tun.unwrap_or(false);
 
             if enable_tun {
@@ -125,21 +125,20 @@ impl CoreManager {
             use super::win_service;
 
             // 服务模式
-            let enable = { Config::verge().latest().enable_service_mode.clone() };
+            let enable = { Config::verge().latest().enable_service_mode };
             let enable = enable.unwrap_or(false);
 
             *self.use_service_mode.lock() = enable;
 
             if enable {
-                // 服务模式启动失败就直接运行sidecar
+                // 服务模式启动失败就直接运行 sidecar
                 log::debug!(target: "app", "try to run core in service mode");
-
-                match (|| async {
+                let res = async {
                     win_service::check_service().await?;
                     win_service::run_core_by_service(&config_path).await
-                })()
-                .await
-                {
+                }
+                .await;
+                match res {
                     Ok(_) => return Ok(()),
                     Err(err) => {
                         // 修改这个值，免得stop出错
@@ -155,10 +154,7 @@ impl CoreManager {
 
         let clash_core = { Config::verge().latest().clash_core.clone() };
         let clash_core = clash_core.unwrap_or(ClashCore::ClashPremium);
-        let is_clash = match &clash_core {
-            ClashCore::ClashPremium => true,
-            _ => false,
-        };
+        let is_clash = matches!(&clash_core, ClashCore::ClashPremium);
 
         let config_path = dirs::path_to_str(&config_path)?;
 
@@ -270,18 +266,16 @@ impl CoreManager {
 
         #[cfg(target_os = "macos")]
         {
-            let enable_tun = Config::verge().latest().enable_tun_mode.clone();
+            let enable_tun = Config::verge().latest().enable_tun_mode;
             let enable_tun = enable_tun.unwrap_or(false);
 
             if enable_tun {
                 log::debug!(target: "app", "try to set system dns");
 
-                match (|| {
-                    // 执行 networksetup -setdnsservers Wi-Fi "Empty"
-                    Command::new("networksetup")
-                        .args(["-setdnsservers", "Wi-Fi", "Empty"])
-                        .output()
-                })() {
+                match Command::new("networksetup")
+                    .args(["-setdnsservers", "Wi-Fi", "Empty"])
+                    .output()
+                {
                     Ok(_) => return Ok(()),
                     Err(err) => {
                         // 修改这个值，免得stop出错

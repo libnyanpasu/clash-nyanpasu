@@ -52,7 +52,7 @@ pub fn grant_permission(core: String) -> anyhow::Result<()> {
 }
 
 #[allow(unused)]
-pub fn escape<'a>(text: &'a str) -> Cow<'a, str> {
+pub fn escape(text: &str) -> Cow<'_, str> {
     let bytes = text.as_bytes();
 
     let mut owned = None;
@@ -75,8 +75,8 @@ pub fn escape<'a>(text: &'a str) -> Cow<'a, str> {
     }
 
     if let Some(owned) = owned {
-        unsafe { Cow::Owned(String::from_utf8_unchecked(owned)) }
+        Cow::Owned(String::from_utf8(owned).unwrap())
     } else {
-        unsafe { Cow::Borrowed(std::str::from_utf8_unchecked(bytes)) }
+        Cow::Borrowed(std::str::from_utf8(bytes).unwrap())
     }
 }

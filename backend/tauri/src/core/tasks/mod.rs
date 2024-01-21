@@ -6,5 +6,3 @@ pub mod task;
 mod utils;
 
 pub use jobs::JobsManager;
-pub use task::TaskManager;
-pub use utils::Error;

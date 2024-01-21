@@ -16,7 +16,7 @@ thiserror = { workspace = true }
 interfaces = "0.0.9"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-iptools = "0.2.4"
+iptools = "0.2.5"
 winreg = { version = "0.52", features = ["transactions"] }
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]

@@ -36,6 +36,7 @@ impl EventsGuard {
     }
 
     /// get_events get all events of a task
+    #[allow(dead_code)]
     pub fn get_events(&self, task_id: TaskID) -> Result<Option<Vec<TaskEvent>>> {
         let mut value = match self.get_event_ids(task_id)? {
             Some(value) => value,
@@ -91,6 +92,7 @@ impl EventsGuard {
     }
 
     /// remove_event remove a event from the storage
+    #[allow(dead_code)]
     pub fn remove_event(&self, event_id: TaskEventID, task_id: TaskID) -> Result<()> {
         let event_ids: Vec<TaskEventID> = match self.get_event_ids(task_id)? {
             Some(value) => value.into_iter().filter(|v| v != &event_id).collect(),

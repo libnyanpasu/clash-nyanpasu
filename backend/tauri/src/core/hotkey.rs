@@ -15,7 +15,9 @@ pub struct Hotkey {
 type HotKeyOp<'a> = (&'a str, HotKeyOpType<'a>);
 
 enum HotKeyOpType<'a> {
+    #[allow(unused)]
     Unbind(&'a str),
+    #[allow(unused)]
     Change(&'a str, &'a str),
     Bind(&'a str),
 }

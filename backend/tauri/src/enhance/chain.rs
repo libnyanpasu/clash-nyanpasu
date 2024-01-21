@@ -78,13 +78,16 @@ impl ChainItem {
 impl ChainSupport {
     pub fn is_support(&self, core: Option<&ClashCore>) -> bool {
         match core {
-            Some(core) => match (self, core) {
-                (ChainSupport::All, _) => true,
-                (ChainSupport::Clash, ClashCore::ClashPremium) => true,
-                (ChainSupport::ClashRs, ClashCore::ClashRs) => true,
-                (ChainSupport::Mihomo, ClashCore::Mihomo | ClashCore::MihomoAlpha) => true,
-                _ => false,
-            },
+            Some(core) => matches!(
+                (self, core),
+                (ChainSupport::All, _)
+                    | (ChainSupport::Clash, ClashCore::ClashPremium)
+                    | (ChainSupport::ClashRs, ClashCore::ClashRs)
+                    | (
+                        ChainSupport::Mihomo,
+                        ClashCore::Mihomo | ClashCore::MihomoAlpha
+                    )
+            ),
             None => true,
         }
     }

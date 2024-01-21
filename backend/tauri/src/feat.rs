@@ -10,6 +10,7 @@ use serde_yaml::{Mapping, Value};
 use wry::application::clipboard::Clipboard;
 
 // 打开面板
+#[allow(unused)]
 pub fn open_dashboard() {
     let handle = handle::Handle::global();
     let app_handle = handle.app_handle.lock();
@@ -19,6 +20,7 @@ pub fn open_dashboard() {
 }
 
 // 关闭面板
+#[allow(unused)]
 pub fn close_dashboard() {
     let handle = handle::Handle::global();
     let app_handle = handle.app_handle.lock();
@@ -367,12 +369,12 @@ pub fn copy_clash_env(option: &str) {
     let cmd: String = format!("set http_proxy={http_proxy} \n set https_proxy={http_proxy}");
     let ps: String = format!("$env:HTTP_PROXY=\"{http_proxy}\"; $env:HTTPS_PROXY=\"{http_proxy}\"");
 
-    let mut cliboard = Clipboard::new();
+    let mut clipboard = Clipboard::new();
 
     match option {
-        "sh" => cliboard.write_text(sh),
-        "cmd" => cliboard.write_text(cmd),
-        "ps" => cliboard.write_text(ps),
+        "sh" => clipboard.write_text(sh),
+        "cmd" => clipboard.write_text(cmd),
+        "ps" => clipboard.write_text(ps),
         _ => log::error!(target: "app", "copy_clash_env: Invalid option! {option}"),
     }
 }

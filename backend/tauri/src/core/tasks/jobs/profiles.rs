@@ -22,6 +22,7 @@ type ProfileUID = String;
 pub struct ProfileUpdater(ProfileUID);
 
 impl ProfileUpdater {
+    #[allow(dead_code)]
     pub fn new(profile_uid: &str) -> Self {
         Self(profile_uid.to_string())
     }

@@ -15,7 +15,6 @@ use parking_lot::{Mutex, RwLock as RW};
 use serde::{Deserialize, Serialize};
 use snowflake::SnowflakeIdGenerator;
 use std::{
-    collections::HashMap,
     sync::{Arc, OnceLock},
     time::Duration,
 };
@@ -41,7 +40,8 @@ pub enum TaskRunResult {
 pub enum TaskSchedule {
     Once(Duration),     // 一次性执行
     Interval(Duration), // 按间隔执行
-    Cron(String),       // 按 cron 表达式执行
+    #[allow(dead_code)]
+    Cron(String), // 按 cron 表达式执行
 }
 
 impl Default for TaskSchedule {
@@ -155,6 +155,7 @@ fn build_task<'a>(task: Task, len: usize) -> (Task, TimerTaskBuilder<'a>) {
             // NOTE: 由于 DelayTimer 的设计，因此继续使用弃用的 candy 方法
             // NOTE: 请注意一定需要回收内存，否则会造成内存泄漏
             let cron = cron.clone();
+            #[allow(deprecated)]
             builder.set_frequency_by_candy(CandyFrequency::Repeated(CandyCronStr(cron)));
         }
         TaskSchedule::Interval(duration) => {
@@ -289,8 +290,6 @@ impl TaskListOps for TaskList {
     }
 }
 
-type TasksEvents = Arc<RW<HashMap<TaskID, TaskEvents>>>;
-
 pub struct TaskManager {
     /// cron manager
     timer: Arc<Mutex<DelayTimer>>,
@@ -400,6 +399,7 @@ impl TaskManager {
         list.iter().find(|t| t.id == task_id).cloned()
     }
 
+    #[allow(dead_code)]
     pub fn pick_task(&self, task_id: TaskID) -> Result<Task> {
         let list = self.list.read();
         list.iter()
@@ -408,6 +408,7 @@ impl TaskManager {
             .ok_or(Error::CreateTaskFailed(TaskCreationError::NotFound))
     }
 
+    #[allow(dead_code)]
     pub fn total(&self) -> usize {
         let list = self.list.read();
         list.len()

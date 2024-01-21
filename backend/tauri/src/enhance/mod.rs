@@ -105,7 +105,7 @@ pub fn enhance() -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
                             log::error!(target: "app", "builtin script error `{err}`");
                         }
                     },
-                    _ => {}
+                    ChainType::Merge(_) => todo!(),
                 }
             });
     }

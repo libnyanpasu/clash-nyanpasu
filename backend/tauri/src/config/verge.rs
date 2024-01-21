@@ -261,7 +261,6 @@ impl IVerge {
         patch!(enable_clash_fields);
 
         patch!(auto_log_clean);
-        patch!(window_size_position);
         patch!(window_size_state);
     }
 

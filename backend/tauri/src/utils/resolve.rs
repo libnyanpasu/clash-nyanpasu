@@ -229,30 +229,6 @@ pub fn is_window_open(app_handle: &AppHandle) -> bool {
     app_handle.get_window("main").is_some()
 }
 
-/// save window size and position
-#[deprecated]
-pub fn save_window_size_position(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
-    let win = app_handle
-        .get_window("main")
-        .ok_or(anyhow::anyhow!("failed to get window"))?;
-
-    let scale = win.scale_factor()?;
-    let size = win.inner_size()?;
-    let size = size.to_logical::<f64>(scale);
-    let pos = win.outer_position()?;
-    let pos = pos.to_logical::<f64>(scale);
-
-    let verge = Config::verge();
-    let mut verge = verge.latest();
-    verge.window_size_position = Some(vec![size.width, size.height, pos.x, pos.y]);
-
-    if save_to_file {
-        verge.save_file()?;
-    }
-
-    Ok(())
-}
-
 pub fn save_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
     let win = app_handle
         .get_window("main")

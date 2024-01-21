@@ -37,13 +37,13 @@ impl IProfiles {
                     profiles.items = Some(vec![]);
                 }
                 // compatible with the old old old version
-                profiles.items.as_mut().map(|items| {
+                if let Some(items) = profiles.items.as_mut() {
                     for item in items.iter_mut() {
                         if item.uid.is_none() {
                             item.uid = Some(help::get_uid("d"));
                         }
                     }
-                });
+                }
                 profiles
             }
             Err(err) => {
@@ -163,11 +163,11 @@ impl IProfiles {
         let mut old_index = None;
         let mut new_index = None;
 
-        for i in 0..items.len() {
-            if items[i].uid == Some(active_id.clone()) {
+        for (i, item) in items.iter().enumerate() {
+            if item.uid == Some(active_id.clone()) {
                 old_index = Some(i);
             }
-            if items[i].uid == Some(over_id.clone()) {
+            if item.uid == Some(over_id.clone()) {
                 new_index = Some(i);
             }
         }
@@ -260,8 +260,8 @@ impl IProfiles {
         let mut index = None;
 
         // get the index
-        for i in 0..items.len() {
-            if items[i].uid == Some(uid.clone()) {
+        for (i, item) in items.iter().enumerate() {
+            if item.uid == Some(uid.clone()) {
                 index = Some(i);
                 break;
             }

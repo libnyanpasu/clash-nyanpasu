@@ -11,6 +11,10 @@
   ],
   "packageRules": [
     {
+      "matchManagers": ["npm"],
+      "rangeStrategy": "pin"
+    },
+    {
       "groupName": "Bundler packages",
       "matchPackagePatterns": ["vite", "unplugin"]
     },

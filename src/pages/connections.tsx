@@ -63,11 +63,8 @@ export default function ConnectionsPage() {
 
   const filterConn = useMemo(() => {
     const orderFunc = orderOpts[curOrderOpt];
-    const connections = connData.connections.filter(
-      (conn) =>
-        (conn.metadata.host || conn.metadata.destinationIP)?.includes(
-          filterText,
-        ),
+    const connections = connData.connections.filter((conn) =>
+      (conn.metadata.host || conn.metadata.destinationIP)?.includes(filterText),
     );
 
     if (orderFunc) return orderFunc(connections);

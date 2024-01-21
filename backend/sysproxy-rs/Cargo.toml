@@ -10,14 +10,14 @@ keywords = ["system-proxy", "proxy", "networksetup", "gsettings"]
 description = "A library for set/get system proxy. Supports Windows, macOS and linux (via gsettings)."
 
 [dependencies]
-thiserror = { workspace = true, version = "1.0" }
+thiserror = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 interfaces = "0.0.9"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 iptools = "0.2.4"
-winreg = { version = "0.10", features = ["transactions"] }
+winreg = { version = "0.52", features = ["transactions"] }
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]
 version = "0.52"

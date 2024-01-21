@@ -191,7 +191,7 @@ devDependencies:
     specifier: 7.0.2
     version: 7.0.2
   husky:
-    specifier: ^8.0.3
+    specifier: 8.0.3
     version: 8.0.3
   lint-staged:
     specifier: 15.2.0
@@ -218,7 +218,7 @@ devDependencies:
     specifier: 4.0.9
     version: 4.0.9(postcss@8.4.33)
   prettier:
-    specifier: ^3.2.4
+    specifier: 3.2.4
     version: 3.2.4
   prettier-plugin-toml:
     specifier: 2.0.1

@@ -700,7 +700,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "warp",
- "which",
+ "which 6.0.0",
  "window-shadows",
  "window-vibrancy",
  "windows-sys 0.52.0",
@@ -4101,7 +4101,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed87390fefd18965ff20baae5aeb9913bcf82d2b59dc04c0f6d8f17f7be56ff2"
 dependencies = [
  "cc",
- "which",
+ "which 4.4.2",
 ]
 
 [[package]]
@@ -6034,6 +6034,19 @@ dependencies = [
  "home",
  "once_cell",
  "rustix 0.38.30",
+]
+
+[[package]]
+name = "which"
+version = "6.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7fa5e0c10bf77f44aac573e498d1a82d5fbd5e91f6fc0a99e7be4b38e85e101c"
+dependencies = [
+ "either",
+ "home",
+ "once_cell",
+ "rustix 0.38.30",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

@@ -29,6 +29,10 @@ Or you can build it yourself. Supports Windows, Linux and macOS 10.15+
 
 Notes: If you could not start the app on Windows, please check that you have [Webview2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section) installed.
 
+### Arch Linux (AUR)
+
+Install the [Stable Release](https://aur.archlinux.org/packages/clash-nyanpasu) / [Binary Package](https://aur.archlinux.org/packages/clash-nyanpasu-bin) or [Git Version](https://aur.archlinux.org/packages/clash-nyanpasu-git).
+
 ### FAQ
 
 #### 1. **macOS** "Clash Nyanpasu" is damaged and can't be opened

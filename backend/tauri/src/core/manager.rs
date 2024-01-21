@@ -75,8 +75,8 @@ pub fn escape<'a>(text: &'a str) -> Cow<'a, str> {
     }
 
     if let Some(owned) = owned {
-        unsafe { Cow::Owned(String::from_utf8_unchecked(owned)) }
+        Cow::Owned(String::from_utf8(owned).unwrap())
     } else {
-        unsafe { Cow::Borrowed(std::str::from_utf8_unchecked(bytes)) }
+        Cow::Borrowed(std::str::from_utf8(bytes).unwrap())
     }
 }

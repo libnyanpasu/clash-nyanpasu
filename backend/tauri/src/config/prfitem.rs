@@ -231,7 +231,7 @@ impl PrfItem {
             };
         }
 
-        let version = unsafe { dirs::APP_VERSION };
+        let version = dirs::get_app_version();
         let version = format!("clash-verge/v{version}");
         builder = builder.user_agent(user_agent.unwrap_or(version));
 

@@ -27,6 +27,14 @@ pub fn get_app_version() -> &'static str {
     APP_VERSION
 }
 
+pub fn get_portable_flag() -> bool {
+    unsafe { PORTABLE_FLAG }
+}
+
+pub fn get_resource_dir() -> Option<PathBuf> {
+    unsafe { RESOURCE_DIR.clone() }
+}
+
 /// initialize portable flag
 #[cfg(target_os = "windows")]
 pub unsafe fn init_portable_flag() -> Result<()> {
@@ -48,22 +56,20 @@ pub unsafe fn init_portable_flag() -> Result<()> {
 /// get the verge app home dir
 pub fn app_home_dir() -> Result<PathBuf> {
     #[cfg(target_os = "windows")]
-    unsafe {
-        use tauri::utils::platform::current_exe;
+    use tauri::utils::platform::current_exe;
 
-        if !PORTABLE_FLAG {
-            Ok(home_dir()
-                .ok_or(anyhow::anyhow!("failed to get app home dir"))?
-                .join(".config")
-                .join(APP_DIR))
-        } else {
-            let app_exe = current_exe()?;
-            let app_exe = dunce::canonicalize(app_exe)?;
-            let app_dir = app_exe
-                .parent()
-                .ok_or(anyhow::anyhow!("failed to get the portable app dir"))?;
-            Ok(PathBuf::from(app_dir).join(".config").join(APP_DIR))
-        }
+    if !get_portable_flag() {
+        Ok(home_dir()
+            .ok_or(anyhow::anyhow!("failed to get app home dir"))?
+            .join(".config")
+            .join(APP_DIR))
+    } else {
+        let app_exe = current_exe()?;
+        let app_exe = dunce::canonicalize(app_exe)?;
+        let app_dir = app_exe
+            .parent()
+            .ok_or(anyhow::anyhow!("failed to get the portable app dir"))?;
+        Ok(PathBuf::from(app_dir).join(".config").join(APP_DIR))
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -114,30 +120,19 @@ pub fn storage_path() -> Result<PathBuf> {
 
 #[allow(unused)]
 pub fn app_res_dir() -> Result<PathBuf> {
-    unsafe {
-        Ok(RESOURCE_DIR
-            .clone()
-            .ok_or(anyhow::anyhow!("failed to get the resource dir"))?)
-    }
+    get_resource_dir().ok_or(anyhow::anyhow!("failed to get the resource dir"))
 }
 
 pub fn clash_pid_path() -> Result<PathBuf> {
-    unsafe {
-        Ok(RESOURCE_DIR
-            .clone()
-            .ok_or(anyhow::anyhow!("failed to get the resource dir"))?
-            .join("clash.pid"))
-    }
+    Ok(get_resource_dir()
+        .ok_or(anyhow::anyhow!("failed to get the resource dir"))?
+        .join("clash.pid"))
 }
 
 #[cfg(windows)]
 pub fn service_path() -> Result<PathBuf> {
-    unsafe {
-        let res_dir = RESOURCE_DIR
-            .clone()
-            .ok_or(anyhow::anyhow!("failed to get the resource dir"))?;
-        Ok(res_dir.join("clash-verge-service.exe"))
-    }
+    let res_dir = get_resource_dir().ok_or(anyhow::anyhow!("failed to get the resource dir"))?;
+    Ok(res_dir.join("clash-verge-service.exe"))
 }
 
 #[cfg(windows)]

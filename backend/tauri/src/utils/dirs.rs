@@ -19,6 +19,7 @@ static mut RESOURCE_DIR: Option<PathBuf> = None;
 
 /// portable flag
 #[allow(unused)]
+#[cfg(target_os = "windows")]
 static mut PORTABLE_FLAG: bool = false;
 
 pub static APP_VERSION: &str = env!("NYANPASU_VERSION");
@@ -27,6 +28,7 @@ pub fn get_app_version() -> &'static str {
     APP_VERSION
 }
 
+#[cfg(target_os = "windows")]
 pub fn get_portable_flag() -> bool {
     unsafe { PORTABLE_FLAG }
 }
@@ -56,20 +58,22 @@ pub unsafe fn init_portable_flag() -> Result<()> {
 /// get the verge app home dir
 pub fn app_home_dir() -> Result<PathBuf> {
     #[cfg(target_os = "windows")]
-    use tauri::utils::platform::current_exe;
+    {
+        use tauri::utils::platform::current_exe;
 
-    if !get_portable_flag() {
-        Ok(home_dir()
-            .ok_or(anyhow::anyhow!("failed to get app home dir"))?
-            .join(".config")
-            .join(APP_DIR))
-    } else {
-        let app_exe = current_exe()?;
-        let app_exe = dunce::canonicalize(app_exe)?;
-        let app_dir = app_exe
-            .parent()
-            .ok_or(anyhow::anyhow!("failed to get the portable app dir"))?;
-        Ok(PathBuf::from(app_dir).join(".config").join(APP_DIR))
+        if !get_portable_flag() {
+            Ok(home_dir()
+                .ok_or(anyhow::anyhow!("failed to get app home dir"))?
+                .join(".config")
+                .join(APP_DIR))
+        } else {
+            let app_exe = current_exe()?;
+            let app_exe = dunce::canonicalize(app_exe)?;
+            let app_dir = app_exe
+                .parent()
+                .ok_or(anyhow::anyhow!("failed to get the portable app dir"))?;
+            Ok(PathBuf::from(app_dir).join(".config").join(APP_DIR))
+        }
     }
 
     #[cfg(not(target_os = "windows"))]

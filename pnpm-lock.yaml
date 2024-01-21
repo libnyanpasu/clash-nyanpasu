@@ -6,43 +6,43 @@ settings:
 
 dependencies:
   '@dnd-kit/core':
-    specifier: ^6.1.0
+    specifier: 6.1.0
     version: 6.1.0(react-dom@18.2.0)(react@18.2.0)
   '@dnd-kit/sortable':
-    specifier: ^8.0.0
+    specifier: 8.0.0
     version: 8.0.0(@dnd-kit/core@6.1.0)(react@18.2.0)
   '@dnd-kit/utilities':
-    specifier: ^3.2.2
+    specifier: 3.2.2
     version: 3.2.2(react@18.2.0)
   '@emotion/react':
-    specifier: ^11.11.3
+    specifier: 11.11.3
     version: 11.11.3(@types/react@18.2.48)(react@18.2.0)
   '@emotion/styled':
-    specifier: ^11.11.0
+    specifier: 11.11.0
     version: 11.11.0(@emotion/react@11.11.3)(@types/react@18.2.48)(react@18.2.0)
   '@juggle/resize-observer':
-    specifier: ^3.4.0
+    specifier: 3.4.0
     version: 3.4.0
   '@mui/icons-material':
-    specifier: ^5.15.5
+    specifier: 5.15.5
     version: 5.15.5(@mui/material@5.15.5)(@types/react@18.2.48)(react@18.2.0)
   '@mui/lab':
     specifier: 5.0.0-alpha.161
     version: 5.0.0-alpha.161(@emotion/react@11.11.3)(@emotion/styled@11.11.0)(@mui/material@5.15.5)(@types/react@18.2.48)(react-dom@18.2.0)(react@18.2.0)
   '@mui/material':
-    specifier: ^5.15.5
+    specifier: 5.15.5
     version: 5.15.5(@emotion/react@11.11.3)(@emotion/styled@11.11.0)(@types/react@18.2.48)(react-dom@18.2.0)(react@18.2.0)
   '@mui/x-data-grid':
-    specifier: ^6.19.1
+    specifier: 6.19.1
     version: 6.19.1(@mui/material@5.15.5)(@mui/system@5.15.5)(@types/react@18.2.48)(react-dom@18.2.0)(react@18.2.0)
   '@tauri-apps/api':
-    specifier: ^1.5.3
+    specifier: 1.5.3
     version: 1.5.3
   ahooks:
-    specifier: ^3.7.8
+    specifier: 3.7.8
     version: 3.7.8(react@18.2.0)
   axios:
-    specifier: ^1.6.5
+    specifier: 1.6.5
     version: 1.6.5
   dayjs:
     specifier: 1.11.10
@@ -51,51 +51,51 @@ dependencies:
     specifier: 10.18.0
     version: 10.18.0(react-dom@18.2.0)(react@18.2.0)
   i18next:
-    specifier: ^23.7.18
+    specifier: 23.7.18
     version: 23.7.18
   lodash-es:
-    specifier: ^4.17.21
+    specifier: 4.17.21
     version: 4.17.21
   monaco-editor:
-    specifier: ^0.45.0
+    specifier: 0.45.0
     version: 0.45.0
   react:
-    specifier: ^18.2.0
+    specifier: 18.2.0
     version: 18.2.0
   react-dom:
-    specifier: ^18.2.0
+    specifier: 18.2.0
     version: 18.2.0(react@18.2.0)
   react-error-boundary:
-    specifier: ^4.0.12
+    specifier: 4.0.12
     version: 4.0.12(react@18.2.0)
   react-hook-form:
-    specifier: ^7.49.3
+    specifier: 7.49.3
     version: 7.49.3(react@18.2.0)
   react-i18next:
-    specifier: ^14.0.1
+    specifier: 14.0.1
     version: 14.0.1(i18next@23.7.18)(react-dom@18.2.0)(react@18.2.0)
   react-router-dom:
-    specifier: ^6.21.3
+    specifier: 6.21.3
     version: 6.21.3(react-dom@18.2.0)(react@18.2.0)
   react-transition-group:
-    specifier: ^4.4.5
+    specifier: 4.4.5
     version: 4.4.5(react-dom@18.2.0)(react@18.2.0)
   react-virtuoso:
-    specifier: ^4.6.2
+    specifier: 4.6.2
     version: 4.6.2(react-dom@18.2.0)(react@18.2.0)
   recoil:
-    specifier: ^0.7.7
+    specifier: 0.7.7
     version: 0.7.7(react-dom@18.2.0)(react@18.2.0)
   snarkdown:
-    specifier: ^2.0.0
+    specifier: 2.0.0
     version: 2.0.0
   swr:
-    specifier: ^2.2.4
+    specifier: 2.2.4
     version: 2.2.4(react@18.2.0)
 
 devDependencies:
   '@actions/github':
-    specifier: ^6.0.0
+    specifier: 6.0.0
     version: 6.0.0
   '@commitlint/cli':
     specifier: 18.4.4
@@ -104,7 +104,7 @@ devDependencies:
     specifier: 18.4.4
     version: 18.4.4
   '@tauri-apps/cli':
-    specifier: ^1.5.9
+    specifier: 1.5.9
     version: 1.5.9
   '@types/fs-extra':
     specifier: ^11.0.4
@@ -137,7 +137,7 @@ devDependencies:
     specifier: ^4.2.1
     version: 4.2.1(vite@5.0.12)
   adm-zip:
-    specifier: ^0.5.10
+    specifier: 0.5.10
     version: 0.5.10
   autoprefixer:
     specifier: 10.4.17
@@ -152,7 +152,7 @@ devDependencies:
     specifier: 7.0.2
     version: 7.0.2
   cross-env:
-    specifier: ^7.0.3
+    specifier: 7.0.3
     version: 7.0.3
   eslint:
     specifier: 8.56.0
@@ -185,10 +185,10 @@ devDependencies:
     specifier: 7.33.2
     version: 7.33.2(eslint@8.56.0)
   fs-extra:
-    specifier: ^11.2.0
+    specifier: 11.2.0
     version: 11.2.0
   https-proxy-agent:
-    specifier: ^7.0.2
+    specifier: 7.0.2
     version: 7.0.2
   husky:
     specifier: ^8.0.3
@@ -197,7 +197,7 @@ devDependencies:
     specifier: 15.2.0
     version: 15.2.0
   node-fetch:
-    specifier: ^3.3.2
+    specifier: 3.3.2
     version: 3.3.2
   npm-run-all:
     specifier: 4.1.5
@@ -224,7 +224,7 @@ devDependencies:
     specifier: 2.0.1
     version: 2.0.1(prettier@3.2.4)
   sass:
-    specifier: ^1.70.0
+    specifier: 1.70.0
     version: 1.70.0
   shikiji:
     specifier: 0.9.19
@@ -377,7 +377,7 @@ packages:
     resolution: {integrity: sha512-0pYVBnDKZO2fnSPCrgM/6WMc7eS20Fbok+0r88fp+YtWVLZrp4CkafFGIp+W0VKw4a22sgebPT99y+FDNMdP4w==}
     engines: {node: '>=6.9.0'}
     dependencies:
-      '@babel/types': 7.23.0
+      '@babel/types': 7.23.6
 
   /@babel/helper-module-transforms@7.23.3(@babel/core@7.23.6):
     resolution: {integrity: sha512-7bBs4ED9OmswdfDzpz4MpWgSrV7FXlc3zIagvLFjS5H+Mk7Snr21vQ6QwrsoCGMfNC4e4LQPdoULEt4ykz0SRQ==}
@@ -415,11 +415,11 @@ packages:
   /@babel/helper-string-parser@7.22.5:
     resolution: {integrity: sha512-mM4COjgZox8U+JcXQwPijIZLElkgEpO5rsERVDJTc2qfCDfERyob6k5WegS14SX18IIjv+XD+GrqNumY5JRCDw==}
     engines: {node: '>=6.9.0'}
+    dev: true
 
   /@babel/helper-string-parser@7.23.4:
     resolution: {integrity: sha512-803gmbQdqwdf4olxrX4AJyFBV/RTr3rSmOj0rKwesmzlfhYNDEs+/iOcznzpNWlJlIlTJC2QfPFcHB6DlzdVLQ==}
     engines: {node: '>=6.9.0'}
-    dev: true
 
   /@babel/helper-validator-identifier@7.22.20:
     resolution: {integrity: sha512-Y4OZ+ytlatR8AI+8KZfKuL5urKp7qey08ha31L8b3BwewJAoJamTzyvxPR/5D+KkdJCGPq/+8TukHBlY10FX9A==}
@@ -485,13 +485,6 @@ packages:
       '@babel/helper-plugin-utils': 7.22.5
     dev: true
 
-  /@babel/runtime@7.23.2:
-    resolution: {integrity: sha512-mM8eg4yl5D6i3lu2QKPuPH4FArvJ8KhTofbE7jwMUv9KX5mBvwPAqnV3MlyBNqdp9RyRKP6Yck8TrfYrPvX3bg==}
-    engines: {node: '>=6.9.0'}
-    dependencies:
-      regenerator-runtime: 0.14.0
-    dev: false
-
   /@babel/runtime@7.23.8:
     resolution: {integrity: sha512-Y7KbAP984rn1VGMbGqKmBLio9V7y5Je9GvU4rQPCPinCyNfUcToxIXl06d59URp/F3LwinvODxab5N/G6qggkw==}
     engines: {node: '>=6.9.0'}
@@ -533,6 +526,7 @@ packages:
       '@babel/helper-string-parser': 7.22.5
       '@babel/helper-validator-identifier': 7.22.20
       to-fast-properties: 2.0.0
+    dev: true
 
   /@babel/types@7.23.6:
     resolution: {integrity: sha512-+uarb83brBzPKN38NX1MkB6vb6+mwvR6amUulqAE7ccQw1pEl+bCia9TbdG1lsnFP7lZySvUn37CHyXQdfTwzg==}
@@ -541,7 +535,6 @@ packages:
       '@babel/helper-string-parser': 7.23.4
       '@babel/helper-validator-identifier': 7.22.20
       to-fast-properties: 2.0.0
-    dev: true
 
   /@commitlint/cli@18.4.4(@types/node@18.19.0)(typescript@5.3.3):
     resolution: {integrity: sha512-Ro3wIo//fV3XiV1EkdpHog6huaEyNcUAVrSmtgKqYM5g982wOWmP4FXvEDFwRMVgz878CNBvvCc33dMZ5AQJ/g==}
@@ -791,7 +784,7 @@ packages:
       '@babel/runtime': 7.23.8
       '@emotion/hash': 0.9.1
       '@emotion/memoize': 0.8.1
-      '@emotion/serialize': 1.1.2
+      '@emotion/serialize': 1.1.3
       babel-plugin-macros: 3.1.0
       convert-source-map: 1.8.0
       escape-string-regexp: 4.0.0
@@ -859,16 +852,6 @@ packages:
       react: 18.2.0
     dev: false
 
-  /@emotion/serialize@1.1.2:
-    resolution: {integrity: sha512-zR6a/fkFP4EAcCMQtLOhIgpprZOwNmCldtpaISpvz348+DP4Mz8ZoKaGGCQpbzepNIUWbq4w6hNZkwDyKoS+HA==}
-    dependencies:
-      '@emotion/hash': 0.9.1
-      '@emotion/memoize': 0.8.1
-      '@emotion/unitless': 0.8.1
-      '@emotion/utils': 1.2.1
-      csstype: 3.1.2
-    dev: false
-
   /@emotion/serialize@1.1.3:
     resolution: {integrity: sha512-iD4D6QVZFDhcbH0RAG1uVu1CwVLMWUkCvAqqlewO/rxf8+87yIBAlt4+AxMiiKPLs5hFc0owNk/sLLAOROw3cA==}
     dependencies:
@@ -893,11 +876,11 @@ packages:
       '@types/react':
         optional: true
     dependencies:
-      '@babel/runtime': 7.23.2
+      '@babel/runtime': 7.23.8
       '@emotion/babel-plugin': 11.11.0
       '@emotion/is-prop-valid': 1.2.1
       '@emotion/react': 11.11.3(@types/react@18.2.48)(react@18.2.0)
-      '@emotion/serialize': 1.1.2
+      '@emotion/serialize': 1.1.3
       '@emotion/use-insertion-effect-with-fallbacks': 1.0.1(react@18.2.0)
       '@emotion/utils': 1.2.1
       '@types/react': 18.2.48
@@ -5423,7 +5406,7 @@ packages:
       react: '>=16.6.0'
       react-dom: '>=16.6.0'
     dependencies:
-      '@babel/runtime': 7.23.2
+      '@babel/runtime': 7.23.8
       dom-helpers: 5.2.1
       loose-envify: 1.4.0
       prop-types: 15.8.1

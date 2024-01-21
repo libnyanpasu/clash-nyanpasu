@@ -10,7 +10,7 @@ use super::storage;
 pub struct Tray {}
 
 impl Tray {
-    pub fn tray_menu(app_handle: &AppHandle) -> SystemTrayMenu {
+    pub fn tray_menu(_app_handle: &AppHandle) -> SystemTrayMenu {
         let zh = { Config::verge().latest().language == Some("zh".into()) };
 
         let version = env!("NYANPASU_VERSION");

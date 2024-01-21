@@ -80,7 +80,7 @@ pub fn resolve_setup(app: &mut App) {
     log::trace!("init system tray");
     log_err!(tray::Tray::update_systray(&app.app_handle()));
 
-    let silent_start = { Config::verge().data().enable_silent_start.clone() };
+    let silent_start = { Config::verge().data().enable_silent_start };
     if !silent_start.unwrap_or(false) {
         create_window(&app.app_handle());
     }
@@ -315,7 +315,7 @@ pub fn resolve_core_version(core_type: &ClashCore) -> Result<String> {
     for item in out {
         log::debug!(target: "app", "check item: {}", item);
         if item.starts_with('v')
-            || item.starts_with("n")
+            || item.starts_with('n')
             || item.starts_with("alpha")
             || Version::parse(item).is_ok()
         {

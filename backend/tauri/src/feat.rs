@@ -80,7 +80,7 @@ pub fn change_clash_mode(mode: String) {
 
 // 切换系统代理
 pub fn toggle_system_proxy() {
-    let enable = Config::verge().draft().enable_system_proxy.clone();
+    let enable = Config::verge().draft().enable_system_proxy;
     let enable = enable.unwrap_or(false);
 
     tauri::async_runtime::spawn(async move {
@@ -128,7 +128,7 @@ pub fn disable_system_proxy() {
 
 // 切换tun模式
 pub fn toggle_tun_mode() {
-    let enable = Config::verge().data().enable_tun_mode.clone();
+    let enable = Config::verge().data().enable_tun_mode;
     let enable = enable.unwrap_or(false);
 
     tauri::async_runtime::spawn(async move {
@@ -178,18 +178,18 @@ pub fn disable_tun_mode() {
 pub async fn patch_clash(patch: Mapping) -> Result<()> {
     Config::clash().draft().patch_config(patch.clone());
 
-    match {
+    let res = {
         let mixed_port = patch.get("mixed-port");
         let enable_random_port = Config::verge().latest().enable_random_port.unwrap_or(false);
         if mixed_port.is_some() && !enable_random_port {
-            let changed = mixed_port.clone().unwrap()
+            let changed = mixed_port.unwrap()
                 != Config::verge()
                     .latest()
                     .verge_mixed_port
                     .unwrap_or(Config::clash().data().get_mixed_port());
             // 检查端口占用
             if changed {
-                if let Some(port) = mixed_port.clone().unwrap().as_u64() {
+                if let Some(port) = mixed_port.unwrap().as_u64() {
                     if !port_scanner::local_port_available(port as u16) {
                         Config::clash().discard();
                         bail!("port already in use");
@@ -220,7 +220,8 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
         Config::runtime().latest().patch_config(patch);
 
         <Result<()>>::Ok(())
-    } {
+    };
+    match res {
         Ok(()) => {
             Config::clash().apply();
             Config::clash().data().save_config()?;
@@ -244,7 +245,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
     let proxy_bypass = patch.system_proxy_bypass;
     let language = patch.language;
 
-    match {
+    let res = {
         #[cfg(target_os = "windows")]
         {
             let service_mode = patch.enable_service_mode;
@@ -287,7 +288,8 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
         }
 
         <Result<()>>::Ok(())
-    } {
+    };
+    match res {
         Ok(()) => {
             Config::verge().apply();
             Config::verge().data().save_file()?;

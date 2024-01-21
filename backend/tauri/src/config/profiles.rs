@@ -159,7 +159,7 @@ impl IProfiles {
 
     /// reorder items
     pub fn reorder(&mut self, active_id: String, over_id: String) -> Result<()> {
-        let mut items = self.items.take().unwrap_or(vec![]);
+        let mut items = self.items.take().unwrap_or_default();
         let mut old_index = None;
         let mut new_index = None;
 
@@ -268,19 +268,19 @@ impl IProfiles {
         }
 
         if let Some(index) = index {
-            items.remove(index).file.map(|file| {
+            if let Some(file) = items.remove(index).file {
                 let _ = dirs::app_profiles_dir().map(|path| {
                     let path = path.join(file);
                     if path.exists() {
                         let _ = fs::remove_file(path);
                     }
                 });
-            });
+            }
         }
 
         // delete the original uid
         if current == uid {
-            self.current = match items.len() > 0 {
+            self.current = match !items.is_empty() {
                 true => items[0].uid.clone(),
                 false => None,
             };
@@ -300,7 +300,7 @@ impl IProfiles {
                         Some(file) => dirs::app_profiles_dir()?.join(file),
                         None => bail!("failed to get the file field"),
                     };
-                    return Ok(help::read_merge_mapping(&file_path)?);
+                    return help::read_merge_mapping(&file_path);
                 }
                 bail!("failed to find the current profile \"uid:{current}\"");
             }

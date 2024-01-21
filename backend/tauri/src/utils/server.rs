@@ -36,7 +36,7 @@ pub fn embed_server(app_handle: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let commands = warp::path!("commands" / "visible").map(move || {
             resolve::create_window(&app_handle);
-            format!("ok")
+            "ok".to_string()
         });
 
         warp::serve(commands).bind(([127, 0, 0, 1], port)).await;

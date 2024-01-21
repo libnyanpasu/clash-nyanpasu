@@ -125,7 +125,7 @@ impl CoreManager {
             use super::win_service;
 
             // 服务模式
-            let enable = { Config::verge().latest().enable_service_mode.clone() };
+            let enable = { Config::verge().latest().enable_service_mode };
             let enable = enable.unwrap_or(false);
 
             *self.use_service_mode.lock() = enable;
@@ -134,10 +134,10 @@ impl CoreManager {
                 // 服务模式启动失败就直接运行sidecar
                 log::debug!(target: "app", "try to run core in service mode");
 
-                match (|| async {
+                match async {
                     win_service::check_service().await?;
                     win_service::run_core_by_service(&config_path).await
-                })()
+                }
                 .await
                 {
                     Ok(_) => return Ok(()),

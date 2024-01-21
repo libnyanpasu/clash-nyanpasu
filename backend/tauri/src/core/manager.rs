@@ -52,7 +52,7 @@ pub fn grant_permission(core: String) -> anyhow::Result<()> {
 }
 
 #[allow(unused)]
-pub fn escape<'a>(text: &'a str) -> Cow<'a, str> {
+pub fn escape(text: &str) -> Cow<'_, str> {
     let bytes = text.as_bytes();
 
     let mut owned = None;

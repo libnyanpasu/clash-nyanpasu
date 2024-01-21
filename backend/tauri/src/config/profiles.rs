@@ -151,7 +151,9 @@ impl IProfiles {
             self.items = Some(vec![]);
         }
 
-        self.items.as_mut().map(|items| items.push(item));
+        if let Some(items) = self.items.as_mut() {
+            items.push(item)
+        }
         self.save_file()
     }
 
@@ -181,7 +183,7 @@ impl IProfiles {
 
     /// update the item value
     pub fn patch_item(&mut self, uid: String, item: PrfItem) -> Result<()> {
-        let mut items = self.items.take().unwrap_or(vec![]);
+        let mut items = self.items.take().unwrap_or_default();
 
         for each in items.iter_mut() {
             if each.uid == Some(uid.clone()) {
@@ -254,7 +256,7 @@ impl IProfiles {
         let current = self.current.as_ref().unwrap_or(&uid);
         let current = current.clone();
 
-        let mut items = self.items.take().unwrap_or(vec![]);
+        let mut items = self.items.take().unwrap_or_default();
         let mut index = None;
 
         // get the index

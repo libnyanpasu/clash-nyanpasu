@@ -76,8 +76,8 @@
   },
   "devDependencies": {
     "@actions/github": "6.0.0",
-    "@commitlint/cli": "18.4.4",
-    "@commitlint/config-conventional": "18.4.4",
+    "@commitlint/cli": "18.5.0",
+    "@commitlint/config-conventional": "18.5.0",
     "@tauri-apps/cli": "1.5.9",
     "@types/fs-extra": "11.0.4",
     "@types/js-cookie": "3.0.6",

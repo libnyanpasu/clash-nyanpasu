@@ -195,21 +195,18 @@ impl PrfItem {
         }
         // 使用系统代理
         else if with_proxy {
-            match Sysproxy::get_system_proxy() {
-                Ok(p @ Sysproxy { enable: true, .. }) => {
-                    let proxy_scheme = format!("http://{}:{}", p.host, p.port);
+            if let Ok(p @ Sysproxy { enable: true, .. }) = Sysproxy::get_system_proxy() {
+                let proxy_scheme = format!("http://{}:{}", p.host, p.port);
 
-                    if let Ok(proxy) = reqwest::Proxy::http(&proxy_scheme) {
-                        builder = builder.proxy(proxy);
-                    }
-                    if let Ok(proxy) = reqwest::Proxy::https(&proxy_scheme) {
-                        builder = builder.proxy(proxy);
-                    }
-                    if let Ok(proxy) = reqwest::Proxy::all(&proxy_scheme) {
-                        builder = builder.proxy(proxy);
-                    }
+                if let Ok(proxy) = reqwest::Proxy::http(&proxy_scheme) {
+                    builder = builder.proxy(proxy);
                 }
-                _ => todo!(),
+                if let Ok(proxy) = reqwest::Proxy::https(&proxy_scheme) {
+                    builder = builder.proxy(proxy);
+                }
+                if let Ok(proxy) = reqwest::Proxy::all(&proxy_scheme) {
+                    builder = builder.proxy(proxy);
+                }
             };
         }
 

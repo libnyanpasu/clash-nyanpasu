@@ -96,16 +96,15 @@ pub fn enhance() -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
             .for_each(|item| {
                 log::debug!(target: "app", "run builtin script {}", item.uid);
 
-                match item.data {
-                    ChainType::Script(script) => match use_script(script, config.to_owned()) {
+                if let ChainType::Script(script) = item.data {
+                    match use_script(script, config.to_owned()) {
                         Ok((res_config, _)) => {
                             config = use_filter(res_config, &clash_fields, enable_filter);
                         }
                         Err(err) => {
                             log::error!(target: "app", "builtin script error `{err}`");
                         }
-                    },
-                    ChainType::Merge(_) => todo!(),
+                    }
                 }
             });
     }

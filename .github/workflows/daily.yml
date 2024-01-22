@@ -28,12 +28,19 @@ jobs:
         run: pnpm generate:manifest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # if nothing changed, skip commit
+      - name: Check for changes
+        id: git-check
+        run: echo ::set-output name=has-changes::$(if git diff --quiet; then echo "false"; else echo "true"; fi)
       - uses: oleksiyrudenko/gha-git-credentials@v2-latest
+        if: steps.git-check.outputs.has-changes == 'true'
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
           name: "github-actions[bot]"
           email: "41898282+github-actions[bot]@users.noreply.github.com"
+
       - name: Commit Manifest
+        if: steps.git-check.outputs.has-changes == 'true'
         run: |
           git add .
           git commit -m "chore(manifest): update manifest [skip ci]"
@@ -62,12 +69,19 @@ jobs:
         run: pnpm generate:manifest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # if nothing changed, skip commit
+      - name: Check for changes
+        id: git-check
+        run: echo ::set-output name=has-changes::$(if git diff --quiet; then echo "false"; else echo "true"; fi)
       - uses: oleksiyrudenko/gha-git-credentials@v2-latest
+        if: steps.git-check.outputs.has-changes == 'true'
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
           name: "github-actions[bot]"
           email: "41898282+github-actions[bot]@users.noreply.github.com"
+
       - name: Commit Manifest
+        if: steps.git-check.outputs.has-changes == 'true'
         run: |
           git add .
           git commit -m "chore(manifest): update manifest [skip ci]"

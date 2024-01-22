@@ -119,7 +119,7 @@
     "prettier": "3.2.4",
     "prettier-plugin-toml": "2.0.1",
     "sass": "1.70.0",
-    "shikiji": "0.9.19",
+    "shikiji": "0.10.0",
     "stylelint": "16.2.0",
     "stylelint-config-html": "1.1.0",
     "stylelint-config-recess-order": "4.4.0",

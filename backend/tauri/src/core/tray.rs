@@ -149,7 +149,7 @@ impl Tray {
 
         #[cfg(not(target_os = "linux"))]
         {
-            let zh = { Config::verge().latest().language == Some("zh".into()) };
+            let zh = { verge.language == Some("zh".into()) };
             macro_rules! t {
                 ($en: expr, $zh: expr) => {
                     if zh {

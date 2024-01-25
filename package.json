@@ -56,7 +56,7 @@
     "@mui/lab": "5.0.0-alpha.162",
     "@tauri-apps/api": "1.5.3",
     "ahooks": "3.7.8",
-    "axios": "1.6.5",
+    "axios": "1.6.6",
     "dayjs": "1.11.10",
     "framer-motion": "11.0.3",
     "i18next": "23.7.18",

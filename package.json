@@ -52,7 +52,7 @@
     "@juggle/resize-observer": "3.4.0",
     "@mui/icons-material": "5.15.6",
     "@mui/material": "5.15.6",
-    "@mui/x-data-grid": "6.19.1",
+    "@mui/x-data-grid": "6.19.2",
     "@mui/lab": "5.0.0-alpha.162",
     "@tauri-apps/api": "1.5.3",
     "ahooks": "3.7.8",

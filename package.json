@@ -59,7 +59,7 @@
     "axios": "1.6.6",
     "dayjs": "1.11.10",
     "framer-motion": "11.0.3",
-    "i18next": "23.7.18",
+    "i18next": "23.7.19",
     "lodash-es": "4.17.21",
     "monaco-editor": "0.45.0",
     "react": "18.2.0",

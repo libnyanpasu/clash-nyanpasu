@@ -158,3 +158,4 @@ jobs:
         run: pnpm updater
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          RELEASE_BODY: ${{ github.event.release.body }}

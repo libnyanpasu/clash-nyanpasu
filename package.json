@@ -31,7 +31,7 @@
     "upload:osx-aarch64": "tsx scripts/osx-aarch64-upload.ts",
     "generate:manifest": "run-p generate:manifest:*",
     "generate:manifest:latest-version": "tsx scripts/generate-latest-version.ts",
-    "prepare": "husky install",
+    "prepare": "husky",
     "prepare:nightly": "tsx scripts/prepare-nightly.ts"
   },
   "prettier": {

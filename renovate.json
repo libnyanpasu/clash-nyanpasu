@@ -15,6 +15,10 @@
       "rangeStrategy": "pin"
     },
     {
+      "matchManagers": ["cargo"],
+      "rangeStrategy": "update-lockfile"
+    },
+    {
       "groupName": "Bundler packages",
       "matchPackagePatterns": ["vite", "unplugin"]
     },

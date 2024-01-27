@@ -41,7 +41,7 @@ export const useNotification = async ({
   if (!title) {
     throw new Error("missing message argument!");
   }
-  if (portable == null) {
+  if (portable === null) {
     portable = await isPortable();
   }
   const permissionGranted = portable || (await checkPermission());

@@ -7,6 +7,7 @@ import { colorize, consola } from "./utils/logger";
 const UPDATE_TAG_NAME = "updater";
 const UPDATE_JSON_FILE = "update.json";
 const UPDATE_JSON_PROXY = "update-proxy.json";
+const UPDATE_RELEASE_BODY = process.env.RELEASE_BODY || "";
 
 /// generate update.json
 /// upload to update tag's release asset
@@ -36,7 +37,7 @@ async function resolveUpdater() {
 
   const updateData = {
     name: tag.name,
-    notes: await resolveUpdateLog(tag.name), // use updatelog.md
+    notes: (await resolveUpdateLog(tag.name)) || UPDATE_RELEASE_BODY || "", // use updatelog.md
     pub_date: new Date().toISOString(),
     platforms: {
       win64: { signature: "", url: "" }, // compatible with older formats

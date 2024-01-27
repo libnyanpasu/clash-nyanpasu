@@ -24,6 +24,18 @@ pub fn get_profiles() -> CmdResult<IProfiles> {
     Ok(Config::profiles().data().clone())
 }
 
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub fn is_portable() -> CmdResult<bool> {
+    Ok(crate::utils::dirs::get_portable_flag())
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+pub fn is_portable() -> CmdResult<bool> {
+    Ok(false)
+}
+
 #[tauri::command]
 pub async fn enhance_profiles() -> CmdResult {
     wrap_err!(CoreManager::global().update_config().await)?;

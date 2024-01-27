@@ -238,3 +238,8 @@ export async function cmdGetProxyDelay(name: string, url?: string) {
   name = encodeURIComponent(name);
   return invoke<{ delay: number }>("clash_api_get_proxy_delay", { name, url });
 }
+
+export async function isPortable() {
+  if (OS_PLATFORM !== "win32") return false;
+  return invoke<boolean>("is_portable");
+}

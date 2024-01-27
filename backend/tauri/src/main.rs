@@ -87,6 +87,7 @@ fn main() -> std::io::Result<()> {
             cmds::service::check_service,
             cmds::service::install_service,
             cmds::service::uninstall_service,
+            cmds::is_portable,
         ]);
 
     #[cfg(target_os = "macos")]

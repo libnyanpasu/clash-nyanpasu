@@ -1,4 +1,5 @@
 import { Notice } from "@/components/base";
+import { isPortable } from "@/services/cmds";
 import {
   Options,
   isPermissionGranted,
@@ -6,6 +7,7 @@ import {
   sendNotification,
 } from "@tauri-apps/api/notification";
 let permissionGranted: boolean | null = null;
+let portable: boolean | null = null;
 
 const checkPermission = async () => {
   if (permissionGranted == null) {
@@ -39,8 +41,11 @@ export const useNotification = async ({
   if (!title) {
     throw new Error("missing message argument!");
   }
-  const permissionGranted = await checkPermission();
-  if (!permissionGranted) {
+  if (portable === null) {
+    portable = await isPortable();
+  }
+  const permissionGranted = portable || (await checkPermission());
+  if (portable || !permissionGranted) {
     // fallback to mui notification
     Notice[type](`${title} ${body ? `: ${body}` : ""}}`);
     // throw new Error("notification permission not granted!");

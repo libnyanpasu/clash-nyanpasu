@@ -1,7 +1,11 @@
 "use strict";
 const config = require("conventional-changelog-conventionalcommits");
 
-module.exports = config({
+const GIT_COMMIT_WITH_AUTHOR_FORMAT =
+  "%B%n-hash-%n%H%n-gitTags-%n%d%n-committerDate-%n%ci%n-authorName-%n%an%n-authorEmail-%n%ae%n-gpgStatus-%n%G?%n-gpgSigner-%n%GS";
+const extraCommitMsg = `by {{authorName}}`;
+
+const configs = config({
   types: [
     {
       type: "feat",
@@ -37,3 +41,10 @@ module.exports = config({
     },
   ],
 });
+
+config.gitRawCommitsOpts.format = GIT_COMMIT_WITH_AUTHOR_FORMAT;
+config.writerOpts.commitPartial =
+  config.writerOpts.commitPartial.replace(/\n*$/, "") +
+  ` {{#if @root.linkReferences~}}${extraCommitMsg}{{~/if}}\n`;
+
+module.exports = configs;

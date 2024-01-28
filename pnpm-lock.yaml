@@ -39,8 +39,8 @@ dependencies:
     specifier: 1.5.3
     version: 1.5.3
   ahooks:
-    specifier: 3.7.8
-    version: 3.7.8(react@18.2.0)
+    specifier: 3.7.9
+    version: 3.7.9(react@18.2.0)
   axios:
     specifier: 1.6.7
     version: 1.6.7
@@ -2000,10 +2000,6 @@ packages:
       '@types/node': 18.19.0
     dev: true
 
-  /@types/js-cookie@2.2.7:
-    resolution: {integrity: sha512-aLkWa0C0vO5b4Sr798E26QgOkss68Un0bLjs7u9qxzPT5CG+8DuNTffWES58YzJs3hrVAOs1wonycqEBqNJubA==}
-    dev: false
-
   /@types/js-cookie@3.0.6:
     resolution: {integrity: sha512-wkw9yd1kEXOPnvEeEV1Go1MmxtBJL0RR79aOTAApecWFVu7w0NNXNqhcWgvw2YgZDYadliXkl14pa3WXw5jlCQ==}
     dev: true
@@ -2266,23 +2262,17 @@ packages:
       - supports-color
     dev: true
 
-  /ahooks-v3-count@1.0.0:
-    resolution: {integrity: sha512-V7uUvAwnimu6eh/PED4mCDjE7tokeZQLKlxg9lCTMPhN+NjsSbtdacByVlR1oluXQzD3MOw55wylDmQo4+S9ZQ==}
-    dev: false
-
-  /ahooks@3.7.8(react@18.2.0):
-    resolution: {integrity: sha512-e/NMlQWoCjaUtncNFIZk3FG1ImSkV/JhScQSkTqnftakRwdfZWSw6zzoWSG9OMYqPNs2MguDYBUFFC6THelWXA==}
+  /ahooks@3.7.9(react@18.2.0):
+    resolution: {integrity: sha512-1nuCnaBe/DvZD2QAZVGLLmu0vDi6jxbiAP3Ghkj6Ocqk9YSXI6ydwo2x5I3lXowZyM8MNJDnHFvIo0vJS1CuFw==}
     engines: {node: '>=8.0.0'}
     peerDependencies:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0
     dependencies:
       '@babel/runtime': 7.23.8
-      '@types/js-cookie': 2.2.7
-      ahooks-v3-count: 1.0.0
       dayjs: 1.11.10
       intersection-observer: 0.12.0
       js-cookie: 2.2.1
-      lodash: 4.17.21
+      lodash-es: 4.17.21
       react: 18.2.0
       resize-observer-polyfill: 1.5.1
       screenfull: 5.2.0
@@ -4614,6 +4604,7 @@ packages:
 
   /lodash@4.17.21:
     resolution: {integrity: sha512-v2kDEe57lecTulaDIuNTPy3Ry4gLGJ6Z1O3vE1krgXZNrsQ+LFTGHVxVjcXPs17LhbZVGedAJv8XZ1tvj5FvSg==}
+    dev: true
 
   /log-update@6.0.0:
     resolution: {integrity: sha512-niTvB4gqvtof056rRIrTZvjNYE4rCUzO6X/X+kYjd7WFxXeJ0NwEFnRxX6ehkvv3jTwrXnNdtAak5XYZuIyPFw==}

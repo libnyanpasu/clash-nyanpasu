@@ -37,7 +37,7 @@ pub fn resolve_setup(app: &mut App) {
 
     handle::Handle::global().init(app.app_handle());
 
-    log_err!(init::init_resources(app.package_info()));
+    log_err!(init::init_resources());
 
     // 处理随机端口
     let enable_random_port = Config::verge().latest().enable_random_port.unwrap_or(false);

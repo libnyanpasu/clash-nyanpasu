@@ -11,10 +11,14 @@ async function resolvePortable() {
   if (process.platform !== "win32") return;
 
   const releaseDir = path.join("backend/target/release");
+  const configDir = path.join(releaseDir, ".config");
 
   if (!(await fs.pathExists(releaseDir))) {
     throw new Error("could not found the release dir");
   }
+
+  await fs.ensureDir(configDir);
+  await fs.createFile(path.join(configDir, "PORTABLE"));
 
   const zip = new AdmZip();
 
@@ -23,6 +27,7 @@ async function resolvePortable() {
   zip.addLocalFile(path.join(releaseDir, "mihomo.exe"));
   zip.addLocalFile(path.join(releaseDir, "clash-rs.exe"));
   zip.addLocalFolder(path.join(releaseDir, "resources"), "resources");
+  zip.addLocalFolder(configDir, ".config");
 
   const { version } = packageJson;
 

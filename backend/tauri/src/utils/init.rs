@@ -11,7 +11,6 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 use std::fs;
-use tauri::PackageInfo;
 
 /// initialize this instance's log file
 fn init_log() -> Result<()> {
@@ -76,9 +75,7 @@ fn init_log() -> Result<()> {
 /// before tauri setup
 pub fn init_config() -> Result<()> {
     #[cfg(target_os = "windows")]
-    unsafe {
-        let _ = dirs::init_portable_flag();
-    }
+    let _ = dirs::init_portable_flag();
 
     let _ = init_log();
 
@@ -124,9 +121,9 @@ pub fn init_config() -> Result<()> {
 
 /// initialize app resources
 /// after tauri setup
-pub fn init_resources(package_info: &PackageInfo) -> Result<()> {
+pub fn init_resources() -> Result<()> {
     let app_dir = dirs::app_home_dir()?;
-    let res_dir = dirs::app_resources_dir(package_info)?;
+    let res_dir = dirs::app_resources_dir()?;
 
     if !app_dir.exists() {
         let _ = fs::create_dir_all(&app_dir);

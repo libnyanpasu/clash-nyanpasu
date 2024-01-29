@@ -37,7 +37,7 @@ async function resolveUpdater() {
 
   const updateData = {
     name: tag.name,
-    notes: (await resolveUpdateLog(tag.name)) || UPDATE_RELEASE_BODY || "", // use updatelog.md
+    notes: UPDATE_RELEASE_BODY || (await resolveUpdateLog(tag.name)), // use updatelog.md
     pub_date: new Date().toISOString(),
     platforms: {
       win64: { signature: "", url: "" }, // compatible with older formats

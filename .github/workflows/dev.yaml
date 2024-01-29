@@ -165,7 +165,7 @@ jobs:
           cat > release.txt << 'EOF'
           ## Clash Nyanpasu Nightly Build
           Release created at  ${{ env.BUILDTIME }}.
-          Daily build of **Clash Nyanpasu** on *dev* branch.
+          Daily build of **Clash Nyanpasu** on *main* branch.
           ***[See the development log here](https://t.me/keikolog/462)***
           EOF
       - name: Update Release
@@ -176,7 +176,6 @@ jobs:
           body_path: release.txt
           prerelease: true
           generate_release_notes: true
-          target_commitish: dev
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
   updater:

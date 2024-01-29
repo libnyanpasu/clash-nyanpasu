@@ -73,6 +73,7 @@ jobs:
           git-branch: "main"
         env:
           NYANPASU_VERSION: ${{ steps.update-version.outputs.version }}
+          GITHUB_TOKEN: ${{ secrets.github_token }}
 
       - name: Release
         uses: softprops/action-gh-release@v1

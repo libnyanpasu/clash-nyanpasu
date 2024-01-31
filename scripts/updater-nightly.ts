@@ -28,9 +28,7 @@ async function resolveUpdater() {
     ...options,
     tag: "pre-release",
   });
-  const shortHash = await execSync(
-    `git rev-parse --short ${latestPreRelease.target_commitish}`,
-  )
+  const shortHash = await execSync(`git rev-parse --short pre-release`)
     .toString()
     .replace("\n", "")
     .replace("\r", "");

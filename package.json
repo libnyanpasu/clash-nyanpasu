@@ -111,7 +111,7 @@
     "husky": "9.0.7",
     "lint-staged": "15.2.1",
     "node-fetch": "3.3.2",
-    "npm-run-all2": "6.1.1",
+    "npm-run-all2": "6.1.2",
     "picocolors": "1.0.0",
     "postcss": "8.4.33",
     "postcss-html": "1.6.0",

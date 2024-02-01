@@ -69,8 +69,8 @@ dependencies:
     specifier: 4.0.12
     version: 4.0.12(react@18.2.0)
   react-hook-form:
-    specifier: 7.49.3
-    version: 7.49.3(react@18.2.0)
+    specifier: 7.50.0
+    version: 7.50.0(react@18.2.0)
   react-i18next:
     specifier: 14.0.1
     version: 14.0.1(i18next@23.8.2)(react-dom@18.2.0)(react@18.2.0)
@@ -5263,9 +5263,9 @@ packages:
       react: 18.2.0
     dev: false
 
-  /react-hook-form@7.49.3(react@18.2.0):
-    resolution: {integrity: sha512-foD6r3juidAT1cOZzpmD/gOKt7fRsDhXXZ0y28+Al1CHgX+AY1qIN9VSIIItXRq1dN68QrRwl1ORFlwjBaAqeQ==}
-    engines: {node: '>=18', pnpm: '8'}
+  /react-hook-form@7.50.0(react@18.2.0):
+    resolution: {integrity: sha512-AOhuzM3RdP09ZCnq+Z0yvKGHK25yiOX5phwxjV9L7U6HMla10ezkBnvQ+Pk4GTuDfsC5P2zza3k8mawFwFLVuQ==}
+    engines: {node: '>=12.22.0'}
     peerDependencies:
       react: ^16.8.0 || ^17 || ^18
     dependencies:

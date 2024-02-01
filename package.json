@@ -55,7 +55,7 @@
     "@mui/material": "5.15.7",
     "@mui/x-data-grid": "6.19.2",
     "@tauri-apps/api": "1.5.3",
-    "ahooks": "3.7.9",
+    "ahooks": "3.7.10",
     "axios": "1.6.7",
     "dayjs": "1.11.10",
     "framer-motion": "11.0.3",

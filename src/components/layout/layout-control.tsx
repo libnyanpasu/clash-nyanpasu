@@ -9,7 +9,7 @@ import {
 import { Button } from "@mui/material";
 import { platform, type Platform } from "@tauri-apps/api/os";
 import { appWindow } from "@tauri-apps/api/window";
-import { debounce } from "lodash";
+import { debounce } from "lodash-es";
 import { useEffect, useState } from "react";
 
 export const LayoutControl = () => {

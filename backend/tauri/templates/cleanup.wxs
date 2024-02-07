@@ -1,13 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+  xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
   <Fragment>
     <!-- close nyanpasu processes while install-->
-    <util:CloseApplication Id="NyanpasuCloseApp" Target="Clash Nyanpasu.exe" CloseMessage="yes" RebootPrompt="yes">
-    <util:CloseApplication Id="NyanpasuCloseService" Target="clash-verge-service.exe" CloseMessage="yes" RebootPrompt="yes">
-    <util:CloseApplication Id="NyanpasuCloseMihomo" Target="mihomo.exe" CloseMessage="yes" RebootPrompt="yes">
-    <util:CloseApplication Id="NyanpasuCloseMihomoAlpha" Target="mihomo-alpha.exe" CloseMessage="yes" RebootPrompt="yes">
-    <util:CloseApplication Id="NyanpasuCloseService" Target="clash-rs.exe" CloseMessage="yes" RebootPrompt="yes">
-    <util:CloseApplication Id="NyanpasuCloseService" Target="clash.exe" CloseMessage="yes" RebootPrompt="yes">
-  </util:CloseApplication>
+    <util:CloseApplication Id="NyanpasuCloseApp" Target="Clash Nyanpasu.exe" CloseMessage="yes" RebootPrompt="no" TerminateProcess="1">
+    </util:CloseApplication>
+    <util:CloseApplication Id="NyanpasuCloseService" Target="clash-verge-service.exe" CloseMessage="yes" RebootPrompt="no" TerminateProcess="1">
+    </util:CloseApplication>
+    <util:CloseApplication Id="NyanpasuCloseMihomo" Target="mihomo.exe" CloseMessage="yes" RebootPrompt="no" TerminateProcess="1">
+    </util:CloseApplication>
+    <util:CloseApplication Id="NyanpasuCloseMihomoAlpha" Target="mihomo-alpha.exe" CloseMessage="yes" RebootPrompt="no" TerminateProcess="1">
+    </util:CloseApplication>
+    <util:CloseApplication Id="NyanpasuCloseService" Target="clash-rs.exe" CloseMessage="yes" RebootPrompt="no" TerminateProcess="1">
+    </util:CloseApplication>
+    <util:CloseApplication Id="NyanpasuCloseService" Target="clash.exe" CloseMessage="yes" RebootPrompt="no" TerminateProcess="1">
+    </util:CloseApplication>
   </Fragment>
 </Wix>

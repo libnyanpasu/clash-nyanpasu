@@ -158,5 +158,7 @@
   "Update Rules Providers All": "全部更新",
   "Rule Set rules": "{{rule}} 条规则",
   "Last Update": "{{fromNow}}更新",
-  "Update Rules Providers Success": "更新规则集成功"
+  "Update Rules Providers Success": "更新规则集成功",
+
+  "Portable Update Error": "便携版无法自动更新，请到 Github 下载最新版本"
 }

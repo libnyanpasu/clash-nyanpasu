@@ -5,7 +5,6 @@
   "Label-Logs": "Logs",
   "Label-Rules": "Rules",
   "Label-Settings": "Settings",
-
   "Connections": "Connections",
   "Upload Total": "Upload Total",
   "Download Total": "Download Total",
@@ -18,7 +17,6 @@
   "global": "global",
   "direct": "direct",
   "script": "script",
-
   "Profiles": "Profiles",
   "Profile URL": "Profile URL",
   "Import": "Import",
@@ -41,7 +39,6 @@
   "Update All Profiles": "Update All Profiles",
   "View Runtime Config": "View Runtime Config",
   "Reactivate Profiles": "Reactivate Profiles",
-
   "Location": "Location",
   "Delay check": "Delay check",
   "Sort by default": "Sort by default",
@@ -52,7 +49,6 @@
   "Filter": "Filter",
   "Filter conditions": "Filter conditions",
   "Refresh profiles": "Refresh profiles",
-
   "Type": "Type",
   "Name": "Name",
   "Descriptions": "Descriptions",
@@ -60,7 +56,6 @@
   "Update Interval": "Update Interval",
   "Use System Proxy": "Use System Proxy",
   "Use Clash Proxy": "Use Clash Proxy",
-
   "Settings": "Settings",
   "Clash Setting": "Clash Setting",
   "System Setting": "System Setting",
@@ -97,7 +92,6 @@
   "Page Transition Animation Blur": "Blur",
   "Page Transition Animation Transparent": "Transparent",
   "Page Transition Animation None": "None",
-
   "Language": "Language",
   "Open App Dir": "Open App Dir",
   "Open Core Dir": "Open Core Dir",
@@ -112,7 +106,6 @@
   "ReadOnly": "ReadOnly",
   "Check Updates": "Check Updates",
   "Restart": "Restart",
-
   "Tasks": "Tasks",
   "Auto Log Clean": "Auto Log Clean",
   "Never Clean": "Never",
@@ -120,17 +113,13 @@
   "Retain 7 Days": "Retain 7 Days",
   "Retain 30 Days": "Retain 30 Days",
   "Retain 90 Days": "Retain 90 Days",
-
   "Collect Logs": "Collect Logs",
-
   "Back": "Back",
   "Save": "Save",
   "Cancel": "Cancel",
-
   "Default": "Default",
   "Download Speed": "Download Speed",
   "Upload Speed": "Upload Speed",
-
   "open_or_close_dashboard": "Open or Close Dashboard",
   "clash_mode_rule": "Rule Mode",
   "clash_mode_global": "Global Mode",
@@ -142,21 +131,19 @@
   "toggle_tun_mode": "Toggle Tun Mode",
   "enable_tun_mode": "Enable Tun Mode",
   "disable_tun_mode": "Disable Tun Mode",
-
   "App Log Level": "App Log Level",
   "Auto Close Connections": "Auto Close Connections",
   "Enable Clash Fields Filter": "Enable Clash Fields Filter",
   "Enable Builtin Enhanced": "Enable Builtin Enhanced",
   "Proxy Layout Column": "Proxy Layout Column",
   "Default Latency Test": "Default Latency Test",
-
   "Error": "Error",
   "Success": "Success",
-
   "Providers": "Providers",
   "Rules Providers": "Rules Providers",
   "Update Rules Providers All": "Update Rules Providers All",
   "Rule Set rules": "{{rule}} rules",
   "Last Update": "Last Updated: {{fromNow}}",
-  "Update Rules Providers Success": "Update Rules Providers Success"
+  "Update Rules Providers Success": "Update Rules Providers Success",
+  "Portable Update Error": "Portable Update is not supported, please download the latest version from the official website."
 }

@@ -41,7 +41,18 @@
     "endOfLine": "lf",
     "semi": true,
     "singleQuote": false,
-    "tabWidth": 2
+    "tabWidth": 2,
+    "overrides": [
+      {
+        "files": [
+          "tsconfig.json",
+          "jsconfig.json"
+        ],
+        "options": {
+          "parser": "jsonc"
+        }
+      }
+    ]
   },
   "dependencies": {
     "@dnd-kit/core": "6.1.0",

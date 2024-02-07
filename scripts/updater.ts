@@ -55,12 +55,12 @@ async function resolveUpdater() {
     const { name, browser_download_url } = asset;
 
     // win64 url
-    if (name.endsWith(".msi.zip") && name.includes("en-US")) {
+    if (name.endsWith(".nsis.zip")) {
       updateData.platforms.win64.url = browser_download_url;
       updateData.platforms["windows-x86_64"].url = browser_download_url;
     }
     // win64 signature
-    if (name.endsWith(".msi.zip.sig") && name.includes("en-US")) {
+    if (name.endsWith(".nsis.zip.sig")) {
       const sig = await getSignature(browser_download_url);
       updateData.platforms.win64.signature = sig;
       updateData.platforms["windows-x86_64"].signature = sig;

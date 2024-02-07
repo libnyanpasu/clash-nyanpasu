@@ -1,3 +1,6 @@
+; This file is copied from https://github.com/tauri-apps/tauri/blob/tauri-v1.5/tooling/bundler/src/bundle/windows/templates/installer.nsi
+; and edit to fit the needs of the project. the latest tauri 2.x has a different base nsi script.
+
 Unicode true
 ; Set the compression algorithm. Default is LZMA.
 !if "{{compression}}" == ""
@@ -10,6 +13,7 @@ Unicode true
 !include FileFunc.nsh
 !include x64.nsh
 !include WordFunc.nsh
+!include "LogicLib.nsh"
 !include "StrFunc.nsh"
 ${StrCase}
 ${StrLoc}
@@ -144,6 +148,7 @@ Function PageReinstall
   ; however, this should be fine since the user will have to confirm the uninstallation
   ; and they can chose to abort it if doesn't make sense.
   StrCpy $0 0
+
   wix_loop:
     EnumRegKey $1 HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" $0
     StrCmp $1 "" wix_done ; Exit loop if there is no more keys to loop on
@@ -424,6 +429,7 @@ FunctionEnd
             nsis_tauri_utils::KillProcess "Clash Nyanpasu.exe"
         !endif
     ${EndIf}
+
     
     ; Check if clash-verge-service.exe is running
     nsis_tauri_utils::FindProcess "clash-verge-service.exe"
@@ -436,6 +442,7 @@ FunctionEnd
         !endif
     ${EndIf}
 
+       
     ; Check if mihomo-alpha.exe is running
     nsis_tauri_utils::FindProcess "mihomo-alpha.exe"
     ${If} $R0 != 0
@@ -606,7 +613,7 @@ Section Install
   SetOutPath $INSTDIR
 
   !insertmacro CheckIfAppIsRunning
-
+  !insertmacro CheckAllNyanpasuProcesses
   ; Copy main executable
   File "${MAINBINARYSRCPATH}"
 
@@ -693,7 +700,7 @@ FunctionEnd
 
 Section Uninstall
   !insertmacro CheckIfAppIsRunning
-
+  !insertmacro CheckAllNyanpasuProcesses
   ; Delete the app directory and its content from disk
   ; Copy main executable
   Delete "$INSTDIR\${MAINBINARYNAME}.exe"

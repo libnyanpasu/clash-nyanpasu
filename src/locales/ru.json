@@ -136,5 +136,7 @@
   "Update Rules Providers All": "Обновить все провайдеры правил",
   "Rule Set rules": "{{rule}} правила",
   "Last Update": "Последнее обновление {{fromNow}}",
-  "Update Rules Providers Success": "Провайдеры правил успешно обновлены"
+  "Update Rules Providers Success": "Провайдеры правил успешно обновлены",
+
+  "Portable Update Error": "Обновление портативной версии не поддерживается"
 }

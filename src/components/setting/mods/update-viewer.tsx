@@ -1,5 +1,6 @@
 import { BaseDialog, DialogRef } from "@/components/base";
 import { NotificationType, useNotification } from "@/hooks/use-notification";
+import { isPortable } from "@/services/cmds";
 import { atomUpdateState } from "@/services/states";
 import { Box, styled } from "@mui/material";
 import { relaunch } from "@tauri-apps/api/process";
@@ -41,6 +42,15 @@ export const UpdateViewer = forwardRef<DialogRef>((props, ref) => {
   }, [updateInfo]);
 
   const onUpdate = useLockFn(async () => {
+    const portable = await isPortable();
+    if (portable) {
+      useNotification({
+        type: NotificationType.Error,
+        title: t("Error"),
+        body: t("Portable Update Error"),
+      });
+      return;
+    }
     if (updateState) return;
     setUpdateState(true);
 

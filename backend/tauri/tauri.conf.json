@@ -41,7 +41,7 @@
       },
       "macOS": {
         "frameworks": [],
-        "minimumSystemVersion": "",
+        "minimumSystemVersion": "10.15",
         "exceptionDomain": "",
         "signingIdentity": null,
         "entitlements": null
@@ -50,8 +50,23 @@
         "certificateThumbprint": null,
         "digestAlgorithm": "sha256",
         "timestampUrl": "",
+        "webviewInstallMode": {
+          "silent": true,
+          "type": "embedBootstrapper"
+        },
         "wix": {
-          "language": ["zh-CN", "en-US", "ru-RU"]
+          "language": ["zh-CN", "en-US", "ru-RU"],
+          "template": "./templates/installer.wxs",
+          "license": "../../LICENSE",
+          "fragmentPaths": ["./templates/cleanup.wxs"]
+        },
+        "nsis": {
+          "displayLanguageSelector": true,
+          "installerIcon": "icons/icon.ico",
+          "languages": ["SimpChinese", "English", "Russian"],
+          "license": "../../LICENSE",
+          "installMode": "perMachine",
+          "template": "./templates/installer.nsi"
         }
       }
     },

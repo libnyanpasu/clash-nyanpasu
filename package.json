@@ -72,7 +72,7 @@
     "framer-motion": "11.0.3",
     "i18next": "23.8.2",
     "lodash-es": "4.17.21",
-    "monaco-editor": "0.45.0",
+    "monaco-editor": "0.46.0",
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "react-error-boundary": "4.0.12",

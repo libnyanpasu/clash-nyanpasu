@@ -132,7 +132,7 @@ devDependencies:
     version: 6.21.0(eslint@8.56.0)(typescript@5.3.3)
   '@vitejs/plugin-react':
     specifier: 4.2.1
-    version: 4.2.1(vite@5.0.12)
+    version: 4.2.1(vite@5.1.0)
   adm-zip:
     specifier: 0.5.10
     version: 0.5.10
@@ -257,14 +257,14 @@ devDependencies:
     specifier: 5.3.3
     version: 5.3.3
   vite:
-    specifier: 5.0.12
-    version: 5.0.12(@types/node@18.19.0)(sass@1.70.0)
+    specifier: 5.1.0
+    version: 5.1.0(@types/node@18.19.0)(sass@1.70.0)
   vite-plugin-monaco-editor:
     specifier: 1.1.0
     version: 1.1.0(monaco-editor@0.45.0)
   vite-plugin-svgr:
     specifier: 4.2.0
-    version: 4.2.0(typescript@5.3.3)(vite@5.0.12)
+    version: 4.2.0(typescript@5.3.3)(vite@5.1.0)
 
 packages:
 
@@ -2327,7 +2327,7 @@ packages:
     resolution: {integrity: sha512-zuVdFrMJiuCDQUMCzQaD6KL28MjnqqN8XnAqiEq9PNm/hCPTSGfrXCOfwj1ow4LFb/tNymJPwsNbVePc1xFqrQ==}
     dev: true
 
-  /@vitejs/plugin-react@4.2.1(vite@5.0.12):
+  /@vitejs/plugin-react@4.2.1(vite@5.1.0):
     resolution: {integrity: sha512-oojO9IDc4nCUUi8qIR11KoQm0XFFLIwsRBwHRR4d/88IWghn1y6ckz/bJ8GHDCsYEJee8mDzqtJxh15/cisJNQ==}
     engines: {node: ^14.18.0 || >=16.0.0}
     peerDependencies:
@@ -2338,7 +2338,7 @@ packages:
       '@babel/plugin-transform-react-jsx-source': 7.23.3(@babel/core@7.23.6)
       '@types/babel__core': 7.20.5
       react-refresh: 0.14.0
-      vite: 5.0.12(@types/node@18.19.0)(sass@1.70.0)
+      vite: 5.1.0(@types/node@18.19.0)(sass@1.70.0)
     transitivePeerDependencies:
       - supports-color
     dev: true
@@ -6432,7 +6432,7 @@ packages:
       monaco-editor: 0.45.0
     dev: true
 
-  /vite-plugin-svgr@4.2.0(typescript@5.3.3)(vite@5.0.12):
+  /vite-plugin-svgr@4.2.0(typescript@5.3.3)(vite@5.1.0):
     resolution: {integrity: sha512-SC7+FfVtNQk7So0XMjrrtLAbEC8qjFPifyD7+fs/E6aaNdVde6umlVVh0QuwDLdOMu7vp5RiGFsB70nj5yo0XA==}
     peerDependencies:
       vite: ^2.6.0 || 3 || 4 || 5
@@ -6440,15 +6440,15 @@ packages:
       '@rollup/pluginutils': 5.0.5
       '@svgr/core': 8.1.0(typescript@5.3.3)
       '@svgr/plugin-jsx': 8.1.0(@svgr/core@8.1.0)
-      vite: 5.0.12(@types/node@18.19.0)(sass@1.70.0)
+      vite: 5.1.0(@types/node@18.19.0)(sass@1.70.0)
     transitivePeerDependencies:
       - rollup
       - supports-color
       - typescript
     dev: true
 
-  /vite@5.0.12(@types/node@18.19.0)(sass@1.70.0):
-    resolution: {integrity: sha512-4hsnEkG3q0N4Tzf1+t6NdN9dg/L3BM+q8SWgbSPnJvrgH2kgdyzfVJwbR1ic69/4uMJJ/3dqDZZE5/WwqW8U1w==}
+  /vite@5.1.0(@types/node@18.19.0)(sass@1.70.0):
+    resolution: {integrity: sha512-STmSFzhY4ljuhz14bg9LkMTk3d98IO6DIArnTY6MeBwiD1Za2StcQtz7fzOUnRCqrHSD5+OS2reg4HOz1eoLnw==}
     engines: {node: ^18.0.0 || >=20.0.0}
     hasBin: true
     peerDependencies:

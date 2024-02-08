@@ -418,77 +418,55 @@ Function .onInit
   !endif
 FunctionEnd
 
-!macro CheckAllNyanpasuProcesses
-    ; Check if Clash Nyanpasu.exe is running
-    nsis_tauri_utils::FindProcess "Clash Nyanpasu.exe"
-    ${If} $R0 != 0
-        ; Kill the process
+!macro CheckNyanpasuProcess Process ID
+  !if "${INSTALLMODE}" == "currentUser"
+    nsis_tauri_utils::FindProcessCurrentUser "${Process}"
+  !else
+    nsis_tauri_utils::FindProcess "${Process}"
+  !endif
+  Pop $R0
+  ${If} $R0 = 0
+      IfSilent kill${ID} 0
+      ${IfThen} $PassiveMode != 1 ${|} MessageBox MB_OKCANCEL "${Process} is running, ok to kill?" IDOK kill${ID} IDCANCEL cancel${ID} ${|}
+      kill${ID}:
         !if "${INSTALLMODE}" == "currentUser"
-            nsis_tauri_utils::KillProcessCurrentUser "Clash Nyanpasu.exe"
+          nsis_tauri_utils::KillProcessCurrentUser "${Process}"
         !else
-            nsis_tauri_utils::KillProcess "Clash Nyanpasu.exe"
+          nsis_tauri_utils::KillProcess "${Process}"
         !endif
-    ${EndIf}
-
-    
-    ; Check if clash-verge-service.exe is running
-    nsis_tauri_utils::FindProcess "clash-verge-service.exe"
-    ${If} $R0 != 0
-        ; Kill the process
-        !if "${INSTALLMODE}" == "currentUser"
-            nsis_tauri_utils::KillProcessCurrentUser "clash-verge-service.exe"
-        !else
-            nsis_tauri_utils::KillProcess "clash-verge-service.exe"
-        !endif
-    ${EndIf}
-
-       
-    ; Check if mihomo-alpha.exe is running
-    nsis_tauri_utils::FindProcess "mihomo-alpha.exe"
-    ${If} $R0 != 0
-        ; Kill the process
-        !if "${INSTALLMODE}" == "currentUser"
-            nsis_tauri_utils::KillProcessCurrentUser "mihomo-alpha.exe"
-        !else
-            nsis_tauri_utils::KillProcess "mihomo-alpha.exe"
-        !endif
-    ${EndIf}
-
-    ; Check if mihomo.exe is running
-    nsis_tauri_utils::FindProcess "mihomo.exe"
-    ${If} $R0 != 0
-        ; Kill the process
-        !if "${INSTALLMODE}" == "currentUser"
-            nsis_tauri_utils::KillProcessCurrentUser "mihomo.exe"
-        !else
-            nsis_tauri_utils::KillProcess "mihomo.exe"
-        !endif
-    ${EndIf}
-
-    ; Check if clash.exe is running
-    nsis_tauri_utils::FindProcess "clash.exe"
-    ${If} $R0 != 0
-        ; Kill the process
-        !if "${INSTALLMODE}" == "currentUser"
-            nsis_tauri_utils::KillProcessCurrentUser "clash.exe"
-        !else
-            nsis_tauri_utils::KillProcess "clash.exe"
-        !endif
-    ${EndIf}
-
-    ; Check if clash-rs.exe is running
-    nsis_tauri_utils::FindProcess "clash-rs.exe"
-    ${If} $R0 != 0
-        ; Kill the process
-        !if "${INSTALLMODE}" == "currentUser"
-            nsis_tauri_utils::KillProcessCurrentUser "clash-rs.exe"
-        !else
-            nsis_tauri_utils::KillProcess "clash-rs.exe"
-        !endif
-    ${EndIf}
+        Pop $R0
+        Sleep 500
+        ${If} $R0 = 0
+          Goto process_check_done${ID}
+        ${Else}
+          IfSilent silent${ID} ui${ID}
+          silent${ID}:
+            System::Call 'kernel32::AttachConsole(i -1)i.r0'
+            ${If} $0 != 0
+              System::Call 'kernel32::GetStdHandle(i -11)i.r0'
+              System::call 'kernel32::SetConsoleTextAttribute(i r0, i 0x0004)' ; set red color
+              FileWrite $0 "${Process} is running\n"
+            ${EndIf}
+            Abort
+          ui${ID}:
+            Abort "${Process} is running, failed to kill it"
+        ${EndIf}
+      cancel${ID}:
+        Abort "${Process} is running, aborting installation"
+  ${EndIf}
+  process_check_done${ID}:
 !macroend
 
-Section
+!macro CheckAllNyanpasuProcesses
+  !insertmacro CheckNyanpasuProcess "Clash Nyanpasu.exe" "1"
+  !insertmacro CheckNyanpasuProcess "clash-verge-service.exe" "2"
+  !insertmacro CheckNyanpasuProcess "clash.exe" "3"
+  !insertmacro CheckNyanpasuProcess "clash-rs.exe" "4"
+  !insertmacro CheckNyanpasuProcess "mihomo.exe" "5"
+  !insertmacro CheckNyanpasuProcess "mihomo-alpha.exe" "6"
+!macroend
+
+Section CheckProcesses
   !insertmacro CheckAllNyanpasuProcesses
 SectionEnd
 
@@ -570,50 +548,51 @@ Section WebView2
   webview2_done:
 SectionEnd
 
-!macro CheckIfAppIsRunning
-  !if "${INSTALLMODE}" == "currentUser"
-    nsis_tauri_utils::FindProcessCurrentUser "${MAINBINARYNAME}.exe"
-  !else
-    nsis_tauri_utils::FindProcess "${MAINBINARYNAME}.exe"
-  !endif
-  Pop $R0
-  ${If} $R0 = 0
-      IfSilent kill 0
-      ${IfThen} $PassiveMode != 1 ${|} MessageBox MB_OKCANCEL "$(appRunningOkKill)" IDOK kill IDCANCEL cancel ${|}
-      kill:
-        !if "${INSTALLMODE}" == "currentUser"
-          nsis_tauri_utils::KillProcessCurrentUser "${MAINBINARYNAME}.exe"
-        !else
-          nsis_tauri_utils::KillProcess "${MAINBINARYNAME}.exe"
-        !endif
-        Pop $R0
-        Sleep 500
-        ${If} $R0 = 0
-          Goto app_check_done
-        ${Else}
-          IfSilent silent ui
-          silent:
-            System::Call 'kernel32::AttachConsole(i -1)i.r0'
-            ${If} $0 != 0
-              System::Call 'kernel32::GetStdHandle(i -11)i.r0'
-              System::call 'kernel32::SetConsoleTextAttribute(i r0, i 0x0004)' ; set red color
-              FileWrite $0 "$(appRunning)$\n"
-            ${EndIf}
-            Abort
-          ui:
-            Abort "$(failedToKillApp)"
-        ${EndIf}
-      cancel:
-        Abort "$(appRunning)"
-  ${EndIf}
-  app_check_done:
-!macroend
+; !macro CheckIfAppIsRunning
+;   !if "${INSTALLMODE}" == "currentUser"
+;     nsis_tauri_utils::FindProcessCurrentUser "${MAINBINARYNAME}.exe"
+;   !else
+;     nsis_tauri_utils::FindProcess "${MAINBINARYNAME}.exe"
+;   !endif
+;   Pop $R0
+;   ${If} $R0 = 0
+;       IfSilent kill 0
+;       ${IfThen} $PassiveMode != 1 ${|} MessageBox MB_OKCANCEL "$(appRunningOkKill)" IDOK kill IDCANCEL cancel ${|}
+;       kill:
+;         !if "${INSTALLMODE}" == "currentUser"
+;           nsis_tauri_utils::KillProcessCurrentUser "${MAINBINARYNAME}.exe"
+;         !else
+;           nsis_tauri_utils::KillProcess "${MAINBINARYNAME}.exe"
+;         !endif
+;         Pop $R0
+;         Sleep 500
+;         ${If} $R0 = 0
+;           Goto app_check_done
+;         ${Else}
+;           IfSilent silent ui
+;           silent:
+;             System::Call 'kernel32::AttachConsole(i -1)i.r0'
+;             ${If} $0 != 0
+;               System::Call 'kernel32::GetStdHandle(i -11)i.r0'
+;               System::call 'kernel32::SetConsoleTextAttribute(i r0, i 0x0004)' ; set red color
+;               FileWrite $0 "$(appRunning)$\n"
+;             ${EndIf}
+;             Abort
+;           ui:
+;             Abort "$(failedToKillApp)"
+;         ${EndIf}
+;       cancel:
+;         Abort "$(appRunning)"
+;   ${EndIf}
+;   app_check_done:
+; !macroend
 
 Section Install
   SetOutPath $INSTDIR
 
-  !insertmacro CheckIfAppIsRunning
   !insertmacro CheckAllNyanpasuProcesses
+  ; !insertmacro CheckIfAppIsRunning
+
   ; Copy main executable
   File "${MAINBINARYSRCPATH}"
 
@@ -699,8 +678,9 @@ Function un.onInit
 FunctionEnd
 
 Section Uninstall
-  !insertmacro CheckIfAppIsRunning
   !insertmacro CheckAllNyanpasuProcesses
+  ; !insertmacro CheckIfAppIsRunning
+  
   ; Delete the app directory and its content from disk
   ; Copy main executable
   Delete "$INSTDIR\${MAINBINARYNAME}.exe"
@@ -763,7 +743,7 @@ Function RestorePreviousInstallLocation
   StrCmp $4 "" +2 0
     StrCpy $INSTDIR $4
 FunctionEnd
-
+ 
 Function SkipIfPassive
   ${IfThen} $PassiveMode == 1  ${|} Abort ${|}
 FunctionEnd

@@ -1,64 +1,126 @@
+## [1.4.5](https://github.com/keiko233/clash-nyanpasu/compare/v1.4.4...v1.4.5) (2024-02-08)
+
+### ⚠ BREAKING CHANGES
+
+- **updater:** use nsis instead of msi
+- **nsis:** switch to both installMode
+
+### ✨ Features
+
+- **nsis:** switch to both installMode ([ce3c138](https://github.com/keiko233/clash-nyanpasu/commit/ce3c1388a5d09bb677f63e99efef300c932ee79f)) by @greenhat616
+- **updater:** use nsis instead of msi ([c0cde77](https://github.com/keiko233/clash-nyanpasu/commit/c0cde77ef3dc356639deb855ef8b8e9916abd026)) by @greenhat616
+
+### 🐛 Bug Fixes
+
+- **bundle:** instance is running while updating app ([#393](https://github.com/keiko233/clash-nyanpasu/issues/393)) ([7cb2b5c](https://github.com/keiko233/clash-nyanpasu/commit/7cb2b5ce26338db79aa217e306bae0d917cae51e)) by @greenhat616
+- **bundler:** kill processes while updating in windows ([cffd388](https://github.com/keiko233/clash-nyanpasu/commit/cffd3887dd53d92f392a461083f12fee3150b02a)), closes [#397](https://github.com/keiko233/clash-nyanpasu/issues/397) by @greenhat616
+- **ci:** daily updater issue ([#392](https://github.com/keiko233/clash-nyanpasu/issues/392)) ([c6017cc](https://github.com/keiko233/clash-nyanpasu/commit/c6017cc89931e60b95b0c98e794630124100b067)) by @greenhat616
+- **ci:** nightly updater issue ([4a05f77](https://github.com/keiko233/clash-nyanpasu/commit/4a05f770562f8ee57df4cd5bbb741593fdeaa9df)) by @greenhat616
+- **deps:** update dependency @mui/x-data-grid to v6.19.3 ([c75cac4](https://github.com/keiko233/clash-nyanpasu/commit/c75cac41062f0e1d623b4eeb006c9f70a4c9c414)) by @renovate[bot]
+- **deps:** update dependency ahooks to v3.7.10 ([a8635d5](https://github.com/keiko233/clash-nyanpasu/commit/a8635d56f758e59c74170cdd1fdcd209b3f98dcb)) by @renovate[bot]
+- **deps:** update dependency i18next to v23.8.2 ([6506e28](https://github.com/keiko233/clash-nyanpasu/commit/6506e289f1fb1610057c2042911095ea6aa10ce0)) by @renovate[bot]
+- **deps:** update dependency react-hook-form to v7.50.0 ([909afdf](https://github.com/keiko233/clash-nyanpasu/commit/909afdfafc56c53e4b0b151d84f253db20be77f9)) by @renovate[bot]
+- **deps:** update dependency react-hook-form to v7.50.1 ([#387](https://github.com/keiko233/clash-nyanpasu/issues/387)) ([10505fa](https://github.com/keiko233/clash-nyanpasu/commit/10505fa1dd01c77aa83c0c0afa94f238bbb03190)) by @renovate[bot]
+- **deps:** update dependency react-i18next to v14.0.2 ([78765a0](https://github.com/keiko233/clash-nyanpasu/commit/78765a06ff7343092c70aa37b2367940c658444a)) by @renovate[bot]
+- **deps:** update dependency react-i18next to v14.0.3 ([b1e22f7](https://github.com/keiko233/clash-nyanpasu/commit/b1e22f70913984c8590b0ff6e633c1321cbd6306)) by @renovate[bot]
+- **deps:** update dependency react-i18next to v14.0.4 ([3b3083c](https://github.com/keiko233/clash-nyanpasu/commit/3b3083c4b30c226bea0a9ed28dec0b2d4fc21831)) by @renovate[bot]
+- **deps:** update dependency react-i18next to v14.0.5 ([9841f26](https://github.com/keiko233/clash-nyanpasu/commit/9841f26678b3f2edb894fd47eaca04fe393d90c4)) by @renovate[bot]
+- **deps:** update dependency react-router-dom to v6.22.0 ([f7ce206](https://github.com/keiko233/clash-nyanpasu/commit/f7ce206209746bfa85f4e28cd06f4b969152652a)) by @renovate[bot]
+- **deps:** update material-ui monorepo ([98bb347](https://github.com/keiko233/clash-nyanpasu/commit/98bb3479ac5035726eb9a746d72a1cb8f8e95c13)) by @renovate[bot]
+- **deps:** update material-ui monorepo ([260f539](https://github.com/keiko233/clash-nyanpasu/commit/260f539a614338e59a1559da56a9f1678e9ca00b)) by @renovate[bot]
+- **deps:** update rust crate reqwest to v0.11.24 ([08f6abc](https://github.com/keiko233/clash-nyanpasu/commit/08f6abc6954025f92383673e30c63eedd647a843)) by @renovate[bot]
+- **deps:** update rust crate rquickjs to v0.4.3 ([d6f6a30](https://github.com/keiko233/clash-nyanpasu/commit/d6f6a30c678d0cdc82bf6701971bc88cefad9575)) by @renovate[bot]
+- **deps:** update rust crate tempfile to v3.10.0 ([cb80a1e](https://github.com/keiko233/clash-nyanpasu/commit/cb80a1ecb0189d35799580b296f43b8712987dc8)) by @renovate[bot]
+- **deps:** update rust crate tokio to v1.36.0 ([5036611](https://github.com/keiko233/clash-nyanpasu/commit/503661141afae5d6332c9dec124072dac76f2cd5)) by @renovate[bot]
+- **deps:** update rust crate window-vibrancy to 0.5.0 ([#401](https://github.com/keiko233/clash-nyanpasu/issues/401)) ([ddce748](https://github.com/keiko233/clash-nyanpasu/commit/ddce74884bff3f7dc68f086500b0ef4562223d79)) by @renovate[bot]
+- minimize icon is wrong while resize window ([#394](https://github.com/keiko233/clash-nyanpasu/issues/394)) ([3517d87](https://github.com/keiko233/clash-nyanpasu/commit/3517d87e63b31aaf6caaccb2d941092cb786e009)) by @greenhat616
+- **nsis:** kill nyanpasu processes while updating ([#403](https://github.com/keiko233/clash-nyanpasu/issues/403)) ([40ae424](https://github.com/keiko233/clash-nyanpasu/commit/40ae424042565aefa9f0ad8976025d67379bb5a8)) by @greenhat616
+- portable issues ([#395](https://github.com/keiko233/clash-nyanpasu/issues/395)) ([b249ba9](https://github.com/keiko233/clash-nyanpasu/commit/b249ba9c2b342cd28c59b561397766d849135492)) by @greenhat616
+- resources missing ([52e0760](https://github.com/keiko233/clash-nyanpasu/commit/52e07601cbf1420dc72b3d4716cb49f5f648383a)) by @greenhat616
+- sort connection in numerical comparison for `Download`, `DL Speed`, etc ([#367](https://github.com/keiko233/clash-nyanpasu/issues/367)) ([11195fc](https://github.com/keiko233/clash-nyanpasu/commit/11195fcf22d8abb7ba7b65d823cfe892750a3633)) by @Jeremy-Hibiki
+
+### 🧹 Maintenance
+
+- **deps:** update dependency @types/react to v18.2.51 ([f6124d7](https://github.com/keiko233/clash-nyanpasu/commit/f6124d7b7e9b031a3a02a3b23bcf5f4f07f0c092)) by @renovate[bot]
+- **deps:** update dependency @types/react to v18.2.52 ([eb61d94](https://github.com/keiko233/clash-nyanpasu/commit/eb61d9483e9b9522350fa5cf785f479e60b64835)) by @renovate[bot]
+- **deps:** update dependency @types/react to v18.2.53 ([23e866d](https://github.com/keiko233/clash-nyanpasu/commit/23e866d2d6f1de3787cca034f475495bd45671f6)) by @renovate[bot]
+- **deps:** update dependency @types/react to v18.2.54 ([030e454](https://github.com/keiko233/clash-nyanpasu/commit/030e454a598e2c5d870faec01779e7c20eddf814)) by @renovate[bot]
+- **deps:** update dependency @types/react to v18.2.55 ([69acbb0](https://github.com/keiko233/clash-nyanpasu/commit/69acbb0c5df2b3276a541ab650c4d42202166f94)) by @renovate[bot]
+- **deps:** update dependency @types/react-dom to v18.2.19 ([3930db9](https://github.com/keiko233/clash-nyanpasu/commit/3930db97ce602e644181be9434a2610a4657c295)) by @renovate[bot]
+- **deps:** update dependency lint-staged to v15.2.1 ([06e4fe5](https://github.com/keiko233/clash-nyanpasu/commit/06e4fe5b897fc033384e43ee5d998d3566db5a88)) by @renovate[bot]
+- **deps:** update dependency npm-run-all2 to v6.1.2 ([8f97bb7](https://github.com/keiko233/clash-nyanpasu/commit/8f97bb71f6d32c8ca018e1429771981047acf0c0)) by @renovate[bot]
+- **deps:** update dependency postcss to v8.4.34 ([585dd12](https://github.com/keiko233/clash-nyanpasu/commit/585dd128daa83b8a1f968ca40d07a01abeb6e17b)) by @renovate[bot]
+- **deps:** update dependency postcss to v8.4.35 ([7d4c5f4](https://github.com/keiko233/clash-nyanpasu/commit/7d4c5f4c579593ebc1e78fa70deb21803400c3ab)) by @renovate[bot]
+- **deps:** update dependency stylelint-config-recess-order to v4.6.0 ([8c012d8](https://github.com/keiko233/clash-nyanpasu/commit/8c012d889229498dbbcc60e9d93d53339f9fc010)) by @renovate[bot]
+- **deps:** update lint packages ([798c65e](https://github.com/keiko233/clash-nyanpasu/commit/798c65ee31a4da44363c8f52471896345e157425)) by @renovate[bot]
+- **deps:** update lint packages ([b4d5ef0](https://github.com/keiko233/clash-nyanpasu/commit/b4d5ef0ecfbf7cca8b3ab9f31b03d0f716cb5963)) by @renovate[bot]
+- **deps:** update lint packages ([#375](https://github.com/keiko233/clash-nyanpasu/issues/375)) ([7ded812](https://github.com/keiko233/clash-nyanpasu/commit/7ded8120a5ce8357b99f64c3bed46c292e5096e4)) by @renovate[bot]
+- **manifest:** update manifest [skip ci] ([fa52f94](https://github.com/keiko233/clash-nyanpasu/commit/fa52f941debc03ed306d7488f14cff89b8f06863)) by @github-actions[bot]
+- **manifest:** update manifest [skip ci] ([26722d3](https://github.com/keiko233/clash-nyanpasu/commit/26722d38039c64ac37b62ce3b519f06e4f4d8f32)) by @github-actions[bot]
+- **manifest:** update manifest [skip ci] ([f8e69a3](https://github.com/keiko233/clash-nyanpasu/commit/f8e69a325d24f3fb6708fb382805a198fa371024)) by @github-actions[bot]
+
 ## [1.4.4](https://github.com/keiko233/clash-nyanpasu/compare/v1.4.3...v1.4.4) (2024-01-29)
 
 ### 🐛 Bug Fixes
 
-- **backend:** fix deadlock issue on config ([#312](https://github.com/keiko233/clash-nyanpasu/issues/312)) ([23ced3b](https://github.com/keiko233/clash-nyanpasu/commit/23ced3b6937b9105f2b047c15b13dd45f9324d4e)) by @4o3F
-- **ci:** publish & updater ([a715241](https://github.com/keiko233/clash-nyanpasu/commit/a715241c48d0479ffec14c2bb3f875547835a1c0)) by @greenhat616
-- **ci:** should generate manifest in dev branch for compatible with <= 1.4.3 ([#292](https://github.com/keiko233/clash-nyanpasu/issues/292)) ([ffeb6d7](https://github.com/keiko233/clash-nyanpasu/commit/ffeb6d7e11d62c8cdaa288968c00d4ceec9a0a02)) by @greenhat616
-- **deps:** update dependency @mui/x-data-grid to v6.19.2 ([b5b96f3](https://github.com/keiko233/clash-nyanpasu/commit/b5b96f353308d5b737d96d3b4a945076440fb497)) by @renovate[bot]
-- **deps:** update dependency ahooks to v3.7.9 ([a9da0a9](https://github.com/keiko233/clash-nyanpasu/commit/a9da0a976a28bf332c9094186cf02ab8dd370c06)) by @renovate[bot]
-- **deps:** update dependency axios to v1.6.6 ([47f6e71](https://github.com/keiko233/clash-nyanpasu/commit/47f6e7159efa05fc7817b52fbf6291bf01a1253a)) by @renovate[bot]
-- **deps:** update dependency axios to v1.6.7 ([c0d5258](https://github.com/keiko233/clash-nyanpasu/commit/c0d5258ff4a7e07e30a3eace91f077df67490248)) by @renovate[bot]
-- **deps:** update dependency framer-motion to v11 ([#316](https://github.com/keiko233/clash-nyanpasu/issues/316)) ([97093c5](https://github.com/keiko233/clash-nyanpasu/commit/97093c5a05c22ba057aed03effb6528a6adbda27)) by @renovate[bot]
-- **deps:** update dependency framer-motion to v11.0.2 ([4c11f7d](https://github.com/keiko233/clash-nyanpasu/commit/4c11f7dfd3d91f7624326630687910c406dc4fbb)) by @renovate[bot]
-- **deps:** update dependency framer-motion to v11.0.3 ([4b899ef](https://github.com/keiko233/clash-nyanpasu/commit/4b899ef0f404023ab02fd78ce83c952e19c3fcc5)) by @renovate[bot]
-- **deps:** update dependency i18next to v23.7.19 ([56669df](https://github.com/keiko233/clash-nyanpasu/commit/56669df6426b47f9b463931f2e69f3ea98f68c1d)) by @renovate[bot]
-- **deps:** update dependency i18next to v23.7.20 ([348c908](https://github.com/keiko233/clash-nyanpasu/commit/348c908850edec5e284ec23b434b14a3476464aa)) by @renovate[bot]
-- **deps:** update dependency i18next to v23.8.0 ([a91312b](https://github.com/keiko233/clash-nyanpasu/commit/a91312bc6b93cfc61c1e71c52a84960ce5197227)) by @renovate[bot]
-- **deps:** update dependency i18next to v23.8.1 ([#343](https://github.com/keiko233/clash-nyanpasu/issues/343)) ([c9ee088](https://github.com/keiko233/clash-nyanpasu/commit/c9ee088edbc3639a3fa0605f3463b30d4777e4cc)) by @renovate[bot]
-- **deps:** update dependency react-virtuoso to v4.6.3 ([a6d867b](https://github.com/keiko233/clash-nyanpasu/commit/a6d867bdae710472a97ac59076be810d27ada96c)) by @renovate[bot]
-- **deps:** update deps ([#294](https://github.com/keiko233/clash-nyanpasu/issues/294)) ([42ec60b](https://github.com/keiko233/clash-nyanpasu/commit/42ec60b90bc78a39cb6b0060464860dabf1ba886)) by @greenhat616
-- **deps:** update material-ui monorepo ([d251cf2](https://github.com/keiko233/clash-nyanpasu/commit/d251cf2c48f427dfe0208301216d17cc98321ec2)) by @renovate[bot]
-- **deps:** update rust crate iptools to 0.2.5 ([#299](https://github.com/keiko233/clash-nyanpasu/issues/299)) ([4371160](https://github.com/keiko233/clash-nyanpasu/commit/43711603cf2b5ece46e32ad65bde6fddd638b1ef)) by @renovate[bot]
-- **deps:** update rust crate rquickjs to 0.4.2 ([#300](https://github.com/keiko233/clash-nyanpasu/issues/300)) ([77f9ae8](https://github.com/keiko233/clash-nyanpasu/commit/77f9ae877fa1087868e7ed840f693fe16deaaa06)) by @renovate[bot]
-- **deps:** update rust crate serde_json to v1.0.113 ([#344](https://github.com/keiko233/clash-nyanpasu/issues/344)) ([286b0b8](https://github.com/keiko233/clash-nyanpasu/commit/286b0b853b6f57df4678b2ece30e5ad02fccfb5c)) by @renovate[bot]
-- **deps:** update rust crate serde_yaml to v0.9.31 ([#345](https://github.com/keiko233/clash-nyanpasu/issues/345)) ([397c7a3](https://github.com/keiko233/clash-nyanpasu/commit/397c7a38da989b2ae1b0bd1d84ecc7f6a740889d)) by @renovate[bot]
-- **deps:** update rust crate simd-json to 0.13.8 ([#301](https://github.com/keiko233/clash-nyanpasu/issues/301)) ([5fc147a](https://github.com/keiko233/clash-nyanpasu/commit/5fc147a834782bb5d9ddda29763c0cdd4a092ffc)) by @renovate[bot]
-- **deps:** update rust crate simd-json to 0.13.8 ([#302](https://github.com/keiko233/clash-nyanpasu/issues/302)) ([29f6046](https://github.com/keiko233/clash-nyanpasu/commit/29f6046654ec904bb4c23f1b3ca1c5f1fd735f32)) by @renovate[bot]
-- **portable:** do not use system notification api while app is portable ([#334](https://github.com/keiko233/clash-nyanpasu/issues/334)) ([e9abc47](https://github.com/keiko233/clash-nyanpasu/commit/e9abc47cad9cf322355b97122e9b4af9182edbfe)) by @greenhat616
-- **portable:** portable bundle issue ([#335](https://github.com/keiko233/clash-nyanpasu/issues/335)) ([c9ea3cd](https://github.com/keiko233/clash-nyanpasu/commit/c9ea3cda4412f8993eaef86c665c4a6708bb0511)) by @greenhat616
-- **updater:** use release body as updater note ([#333](https://github.com/keiko233/clash-nyanpasu/issues/333)) ([9db0bac](https://github.com/keiko233/clash-nyanpasu/commit/9db0bacbc2ea6ee8f7206bfe1408eb8baf7b25eb)) by @greenhat616
-- use if let instead ([#309](https://github.com/keiko233/clash-nyanpasu/issues/309)) ([390bf62](https://github.com/keiko233/clash-nyanpasu/commit/390bf624709125df513ae0008c0557789f55b9e8)) by @greenhat616
+- **backend:** fix deadlock issue on config ([#312](https://github.com/keiko233/clash-nyanpasu/issues/312)) ([23ced3b](https://github.com/keiko233/clash-nyanpasu/commit/23ced3b6937b9105f2b047c15b13dd45f9324d4e)) by @
+- **ci:** publish & updater ([a715241](https://github.com/keiko233/clash-nyanpasu/commit/a715241c48d0479ffec14c2bb3f875547835a1c0)) by @
+- **ci:** should generate manifest in dev branch for compatible with <= 1.4.3 ([#292](https://github.com/keiko233/clash-nyanpasu/issues/292)) ([ffeb6d7](https://github.com/keiko233/clash-nyanpasu/commit/ffeb6d7e11d62c8cdaa288968c00d4ceec9a0a02)) by @
+- **deps:** update dependency @mui/x-data-grid to v6.19.2 ([b5b96f3](https://github.com/keiko233/clash-nyanpasu/commit/b5b96f353308d5b737d96d3b4a945076440fb497)) by @
+- **deps:** update dependency ahooks to v3.7.9 ([a9da0a9](https://github.com/keiko233/clash-nyanpasu/commit/a9da0a976a28bf332c9094186cf02ab8dd370c06)) by @
+- **deps:** update dependency axios to v1.6.6 ([47f6e71](https://github.com/keiko233/clash-nyanpasu/commit/47f6e7159efa05fc7817b52fbf6291bf01a1253a)) by @
+- **deps:** update dependency axios to v1.6.7 ([c0d5258](https://github.com/keiko233/clash-nyanpasu/commit/c0d5258ff4a7e07e30a3eace91f077df67490248)) by @
+- **deps:** update dependency framer-motion to v11 ([#316](https://github.com/keiko233/clash-nyanpasu/issues/316)) ([97093c5](https://github.com/keiko233/clash-nyanpasu/commit/97093c5a05c22ba057aed03effb6528a6adbda27)) by @
+- **deps:** update dependency framer-motion to v11.0.2 ([4c11f7d](https://github.com/keiko233/clash-nyanpasu/commit/4c11f7dfd3d91f7624326630687910c406dc4fbb)) by @
+- **deps:** update dependency framer-motion to v11.0.3 ([4b899ef](https://github.com/keiko233/clash-nyanpasu/commit/4b899ef0f404023ab02fd78ce83c952e19c3fcc5)) by @
+- **deps:** update dependency i18next to v23.7.19 ([56669df](https://github.com/keiko233/clash-nyanpasu/commit/56669df6426b47f9b463931f2e69f3ea98f68c1d)) by @
+- **deps:** update dependency i18next to v23.7.20 ([348c908](https://github.com/keiko233/clash-nyanpasu/commit/348c908850edec5e284ec23b434b14a3476464aa)) by @
+- **deps:** update dependency i18next to v23.8.0 ([a91312b](https://github.com/keiko233/clash-nyanpasu/commit/a91312bc6b93cfc61c1e71c52a84960ce5197227)) by @
+- **deps:** update dependency i18next to v23.8.1 ([#343](https://github.com/keiko233/clash-nyanpasu/issues/343)) ([c9ee088](https://github.com/keiko233/clash-nyanpasu/commit/c9ee088edbc3639a3fa0605f3463b30d4777e4cc)) by @
+- **deps:** update dependency react-virtuoso to v4.6.3 ([a6d867b](https://github.com/keiko233/clash-nyanpasu/commit/a6d867bdae710472a97ac59076be810d27ada96c)) by @
+- **deps:** update deps ([#294](https://github.com/keiko233/clash-nyanpasu/issues/294)) ([42ec60b](https://github.com/keiko233/clash-nyanpasu/commit/42ec60b90bc78a39cb6b0060464860dabf1ba886)) by @
+- **deps:** update material-ui monorepo ([d251cf2](https://github.com/keiko233/clash-nyanpasu/commit/d251cf2c48f427dfe0208301216d17cc98321ec2)) by @
+- **deps:** update rust crate iptools to 0.2.5 ([#299](https://github.com/keiko233/clash-nyanpasu/issues/299)) ([4371160](https://github.com/keiko233/clash-nyanpasu/commit/43711603cf2b5ece46e32ad65bde6fddd638b1ef)) by @
+- **deps:** update rust crate rquickjs to 0.4.2 ([#300](https://github.com/keiko233/clash-nyanpasu/issues/300)) ([77f9ae8](https://github.com/keiko233/clash-nyanpasu/commit/77f9ae877fa1087868e7ed840f693fe16deaaa06)) by @
+- **deps:** update rust crate serde_json to v1.0.113 ([#344](https://github.com/keiko233/clash-nyanpasu/issues/344)) ([286b0b8](https://github.com/keiko233/clash-nyanpasu/commit/286b0b853b6f57df4678b2ece30e5ad02fccfb5c)) by @
+- **deps:** update rust crate serde_yaml to v0.9.31 ([#345](https://github.com/keiko233/clash-nyanpasu/issues/345)) ([397c7a3](https://github.com/keiko233/clash-nyanpasu/commit/397c7a38da989b2ae1b0bd1d84ecc7f6a740889d)) by @
+- **deps:** update rust crate simd-json to 0.13.8 ([#301](https://github.com/keiko233/clash-nyanpasu/issues/301)) ([5fc147a](https://github.com/keiko233/clash-nyanpasu/commit/5fc147a834782bb5d9ddda29763c0cdd4a092ffc)) by @
+- **deps:** update rust crate simd-json to 0.13.8 ([#302](https://github.com/keiko233/clash-nyanpasu/issues/302)) ([29f6046](https://github.com/keiko233/clash-nyanpasu/commit/29f6046654ec904bb4c23f1b3ca1c5f1fd735f32)) by @
+- **portable:** do not use system notification api while app is portable ([#334](https://github.com/keiko233/clash-nyanpasu/issues/334)) ([e9abc47](https://github.com/keiko233/clash-nyanpasu/commit/e9abc47cad9cf322355b97122e9b4af9182edbfe)) by @
+- **portable:** portable bundle issue ([#335](https://github.com/keiko233/clash-nyanpasu/issues/335)) ([c9ea3cd](https://github.com/keiko233/clash-nyanpasu/commit/c9ea3cda4412f8993eaef86c665c4a6708bb0511)) by @
+- **updater:** use release body as updater note ([#333](https://github.com/keiko233/clash-nyanpasu/issues/333)) ([9db0bac](https://github.com/keiko233/clash-nyanpasu/commit/9db0bacbc2ea6ee8f7206bfe1408eb8baf7b25eb)) by @
+- use if let instead ([#309](https://github.com/keiko233/clash-nyanpasu/issues/309)) ([390bf62](https://github.com/keiko233/clash-nyanpasu/commit/390bf624709125df513ae0008c0557789f55b9e8)) by @
 
 ### 🧹 Maintenance
 
-- **deps:** pin dependencies ([#295](https://github.com/keiko233/clash-nyanpasu/issues/295)) ([a920469](https://github.com/keiko233/clash-nyanpasu/commit/a92046906f3d7360227ec96a6ca969cdf5973fd6)) by @renovate[bot]
-- **deps:** pin dependencies ([#296](https://github.com/keiko233/clash-nyanpasu/issues/296)) ([0d147b3](https://github.com/keiko233/clash-nyanpasu/commit/0d147b3dd3dc7348e3ebd0f296d1aac94b80ee2b)) by @renovate[bot]
-- **deps:** pin dependencies ([#297](https://github.com/keiko233/clash-nyanpasu/issues/297)) ([8620b3a](https://github.com/keiko233/clash-nyanpasu/commit/8620b3af236debaf7cbb40cfcb7bdecf7363104d)) by @renovate[bot]
-- **deps:** pin dependencies ([#298](https://github.com/keiko233/clash-nyanpasu/issues/298)) ([d413980](https://github.com/keiko233/clash-nyanpasu/commit/d413980d32ebc6922f81e3e98ee9109d28090c43)) by @renovate[bot]
-- **deps:** replace dependency npm-run-all with npm-run-all2 5.0.0 ([#337](https://github.com/keiko233/clash-nyanpasu/issues/337)) ([e091bf3](https://github.com/keiko233/clash-nyanpasu/commit/e091bf32868d53a979ddc1422ee5949c965434b0)) by @renovate[bot]
-- **deps:** update backend deps ([#332](https://github.com/keiko233/clash-nyanpasu/issues/332)) ([506e1df](https://github.com/keiko233/clash-nyanpasu/commit/506e1df6c89b2e7b43383c374d3f1a5f3e05efa9)) by @greenhat616
-- **deps:** update dependency husky to v9 ([#322](https://github.com/keiko233/clash-nyanpasu/issues/322)) ([6eb6a1a](https://github.com/keiko233/clash-nyanpasu/commit/6eb6a1a836fd38e94d3232669a878ee50210fdac)) by @renovate[bot]
-- **deps:** update dependency npm-run-all2 to v5.0.2 ([d6e6536](https://github.com/keiko233/clash-nyanpasu/commit/d6e653606db65f416769033c010774da862f2247)) by @renovate[bot]
-- **deps:** update dependency npm-run-all2 to v6 ([#342](https://github.com/keiko233/clash-nyanpasu/issues/342)) ([a92959c](https://github.com/keiko233/clash-nyanpasu/commit/a92959c53719f37ee507609cae3f37a121b9c540)) by @renovate[bot]
-- **deps:** update dependency shikiji to v0.10.0 ([9d8483a](https://github.com/keiko233/clash-nyanpasu/commit/9d8483aeddd1cf5e102262f1ecc7a9503d307fb9)) by @renovate[bot]
-- **deps:** update dependency shikiji to v0.10.1 ([b54c881](https://github.com/keiko233/clash-nyanpasu/commit/b54c88124f1ffbae58bda5f0762160b6ff7e6c4a)) by @renovate[bot]
-- **deps:** update dependency shikiji to v0.10.2 ([45f3662](https://github.com/keiko233/clash-nyanpasu/commit/45f3662dcbb8f0ca6d0732d76249160664e530e9)) by @renovate[bot]
-- **deps:** update dependency stylelint-scss to v6.1.0 ([005f745](https://github.com/keiko233/clash-nyanpasu/commit/005f745f35050f96367ce0612d12c5c16ffb4401)) by @renovate[bot]
-- **deps:** update lint packages to v18.5.0 ([#308](https://github.com/keiko233/clash-nyanpasu/issues/308)) ([9c9293b](https://github.com/keiko233/clash-nyanpasu/commit/9c9293ba8e391fae719e8ddb01baf461a32bbcf3)) by @renovate[bot]
-- **deps:** update lint packages to v18.6.0 ([d9c3566](https://github.com/keiko233/clash-nyanpasu/commit/d9c356617734695ac2dbb553c7c7c52d7916ac30)) by @renovate[bot]
-- **deps:** update lint packages to v6.19.1 ([4fe3458](https://github.com/keiko233/clash-nyanpasu/commit/4fe3458dd60f65e8b9f2dfdf7d20bf49e0e0f822)) by @renovate[bot]
-- **manifest:** update manifest [skip ci] ([e716aa5](https://github.com/keiko233/clash-nyanpasu/commit/e716aa559b88bc593bd69c5dd5f7348b0109085e)) by @github-actions[bot]
-- **manifest:** update manifest [skip ci] ([1764847](https://github.com/keiko233/clash-nyanpasu/commit/1764847ec46b8b23e9a7d800ac0fe3e52489e085)) by @github-actions[bot]
-- **manifest:** update manifest [skip ci] ([d13a76e](https://github.com/keiko233/clash-nyanpasu/commit/d13a76e5bb3ecb540009ab13bb872f342fceeb58)) by @github-actions[bot]
+- **deps:** pin dependencies ([#295](https://github.com/keiko233/clash-nyanpasu/issues/295)) ([a920469](https://github.com/keiko233/clash-nyanpasu/commit/a92046906f3d7360227ec96a6ca969cdf5973fd6)) by @
+- **deps:** pin dependencies ([#296](https://github.com/keiko233/clash-nyanpasu/issues/296)) ([0d147b3](https://github.com/keiko233/clash-nyanpasu/commit/0d147b3dd3dc7348e3ebd0f296d1aac94b80ee2b)) by @
+- **deps:** pin dependencies ([#297](https://github.com/keiko233/clash-nyanpasu/issues/297)) ([8620b3a](https://github.com/keiko233/clash-nyanpasu/commit/8620b3af236debaf7cbb40cfcb7bdecf7363104d)) by @
+- **deps:** pin dependencies ([#298](https://github.com/keiko233/clash-nyanpasu/issues/298)) ([d413980](https://github.com/keiko233/clash-nyanpasu/commit/d413980d32ebc6922f81e3e98ee9109d28090c43)) by @
+- **deps:** replace dependency npm-run-all with npm-run-all2 5.0.0 ([#337](https://github.com/keiko233/clash-nyanpasu/issues/337)) ([e091bf3](https://github.com/keiko233/clash-nyanpasu/commit/e091bf32868d53a979ddc1422ee5949c965434b0)) by @
+- **deps:** update backend deps ([#332](https://github.com/keiko233/clash-nyanpasu/issues/332)) ([506e1df](https://github.com/keiko233/clash-nyanpasu/commit/506e1df6c89b2e7b43383c374d3f1a5f3e05efa9)) by @
+- **deps:** update dependency husky to v9 ([#322](https://github.com/keiko233/clash-nyanpasu/issues/322)) ([6eb6a1a](https://github.com/keiko233/clash-nyanpasu/commit/6eb6a1a836fd38e94d3232669a878ee50210fdac)) by @
+- **deps:** update dependency npm-run-all2 to v5.0.2 ([d6e6536](https://github.com/keiko233/clash-nyanpasu/commit/d6e653606db65f416769033c010774da862f2247)) by @
+- **deps:** update dependency npm-run-all2 to v6 ([#342](https://github.com/keiko233/clash-nyanpasu/issues/342)) ([a92959c](https://github.com/keiko233/clash-nyanpasu/commit/a92959c53719f37ee507609cae3f37a121b9c540)) by @
+- **deps:** update dependency shikiji to v0.10.0 ([9d8483a](https://github.com/keiko233/clash-nyanpasu/commit/9d8483aeddd1cf5e102262f1ecc7a9503d307fb9)) by @
+- **deps:** update dependency shikiji to v0.10.1 ([b54c881](https://github.com/keiko233/clash-nyanpasu/commit/b54c88124f1ffbae58bda5f0762160b6ff7e6c4a)) by @
+- **deps:** update dependency shikiji to v0.10.2 ([45f3662](https://github.com/keiko233/clash-nyanpasu/commit/45f3662dcbb8f0ca6d0732d76249160664e530e9)) by @
+- **deps:** update dependency stylelint-scss to v6.1.0 ([005f745](https://github.com/keiko233/clash-nyanpasu/commit/005f745f35050f96367ce0612d12c5c16ffb4401)) by @
+- **deps:** update lint packages to v18.5.0 ([#308](https://github.com/keiko233/clash-nyanpasu/issues/308)) ([9c9293b](https://github.com/keiko233/clash-nyanpasu/commit/9c9293ba8e391fae719e8ddb01baf461a32bbcf3)) by @
+- **deps:** update lint packages to v18.6.0 ([d9c3566](https://github.com/keiko233/clash-nyanpasu/commit/d9c356617734695ac2dbb553c7c7c52d7916ac30)) by @
+- **deps:** update lint packages to v6.19.1 ([4fe3458](https://github.com/keiko233/clash-nyanpasu/commit/4fe3458dd60f65e8b9f2dfdf7d20bf49e0e0f822)) by @
+- **manifest:** update manifest [skip ci] ([e716aa5](https://github.com/keiko233/clash-nyanpasu/commit/e716aa559b88bc593bd69c5dd5f7348b0109085e)) by @
+- **manifest:** update manifest [skip ci] ([1764847](https://github.com/keiko233/clash-nyanpasu/commit/1764847ec46b8b23e9a7d800ac0fe3e52489e085)) by @
+- **manifest:** update manifest [skip ci] ([d13a76e](https://github.com/keiko233/clash-nyanpasu/commit/d13a76e5bb3ecb540009ab13bb872f342fceeb58)) by @
+- **release:** v1.4.4 🤖 [skip ci] ([9874b01](https://github.com/keiko233/clash-nyanpasu/commit/9874b01db4392376789f7cb6252a5c109bfb4280)) by @github-actions[bot]
 
 ### 📚 Documentation
 
-- add ArchLinux AUR install suggestion ([#293](https://github.com/keiko233/clash-nyanpasu/issues/293)) ([a7893cb](https://github.com/keiko233/clash-nyanpasu/commit/a7893cbd3ed8b03617f94737d3ab637714ce6851)) by @Kimiblock
+- add ArchLinux AUR install suggestion ([#293](https://github.com/keiko233/clash-nyanpasu/issues/293)) ([a7893cb](https://github.com/keiko233/clash-nyanpasu/commit/a7893cbd3ed8b03617f94737d3ab637714ce6851)) by @
 
 ### 🔨 Refactoring
 
-- **backend:** improve code robustness ([#303](https://github.com/keiko233/clash-nyanpasu/issues/303)) ([ba24602](https://github.com/keiko233/clash-nyanpasu/commit/ba24602fff6c22b0d98396c4a55afced1efc58b1)) by @greenhat616
+- **backend:** improve code robustness ([#303](https://github.com/keiko233/clash-nyanpasu/issues/303)) ([ba24602](https://github.com/keiko233/clash-nyanpasu/commit/ba24602fff6c22b0d98396c4a55afced1efc58b1)) by @
 
 ## [1.4.3](https://github.com/keiko233/clash-nyanpasu/compare/v1.4.2...v1.4.3) (2024-01-20)
 
@@ -167,7 +229,7 @@
 - **manifest:** update manifest [skip ci] ([2e27c9a](https://github.com/keiko233/clash-nyanpasu/commit/2e27c9adbbc9410ddcf9877c75173f8441e26a1e)) by @
 - **manifest:** update manifest [skip ci] ([3c48bb6](https://github.com/keiko233/clash-nyanpasu/commit/3c48bb6edc2d5503614c5859efc0ff96beed5b07)) by @
 - port dev build action to release build ([2a39be3](https://github.com/keiko233/clash-nyanpasu/commit/2a39be37faea84939ade033897071b9fa2800161)) by @
-- **release:** v1.4.3 🤖 [skip ci] ([20bc733](https://github.com/keiko233/clash-nyanpasu/commit/20bc7335c6e162b165010df3830ef5f15d8eb258)) by @github-actions[bot]
+- **release:** v1.4.3 🤖 [skip ci] ([20bc733](https://github.com/keiko233/clash-nyanpasu/commit/20bc7335c6e162b165010df3830ef5f15d8eb258)) by @
 - update change log ([16f9154](https://github.com/keiko233/clash-nyanpasu/commit/16f9154cfed8a7d135a1f1a78c0287c659572444)) by @
 
 ## [1.4.2](https://github.com/keiko233/clash-nyanpasu/compare/v1.4.1...v1.4.2) (2023-12-24)

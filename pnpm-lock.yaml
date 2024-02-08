@@ -138,7 +138,7 @@ devDependencies:
     version: 0.5.10
   autoprefixer:
     specifier: 10.4.17
-    version: 10.4.17(postcss@8.4.34)
+    version: 10.4.17(postcss@8.4.35)
   colorize-template:
     specifier: 1.0.0
     version: 1.0.0
@@ -206,17 +206,17 @@ devDependencies:
     specifier: 1.0.0
     version: 1.0.0
   postcss:
-    specifier: 8.4.34
-    version: 8.4.34
+    specifier: 8.4.35
+    version: 8.4.35
   postcss-html:
     specifier: 1.6.0
     version: 1.6.0
   postcss-import:
     specifier: 16.0.0
-    version: 16.0.0(postcss@8.4.34)
+    version: 16.0.0(postcss@8.4.35)
   postcss-scss:
     specifier: 4.0.9
-    version: 4.0.9(postcss@8.4.34)
+    version: 4.0.9(postcss@8.4.35)
   prettier:
     specifier: 3.2.5
     version: 3.2.5
@@ -2562,7 +2562,7 @@ packages:
     resolution: {integrity: sha512-Oei9OH4tRh0YqU3GxhX79dM/mwVgvbZJaSNaRk+bshkj0S5cfHcgYakreBjrHwatXKbz+IoIdYLxrKim2MjW0Q==}
     dev: false
 
-  /autoprefixer@10.4.17(postcss@8.4.34):
+  /autoprefixer@10.4.17(postcss@8.4.35):
     resolution: {integrity: sha512-/cpVNRLSfhOtcGflT13P2794gVSgmPgTR+erw5ifnMLZb0UnSlkK4tquLmkd3BhA+nLo5tX8Cu0upUsGKvKbmg==}
     engines: {node: ^10 || ^12 || >=14}
     hasBin: true
@@ -2574,7 +2574,7 @@ packages:
       fraction.js: 4.3.7
       normalize-range: 0.1.2
       picocolors: 1.0.0
-      postcss: 8.4.34
+      postcss: 8.4.35
       postcss-value-parser: 4.2.0
     dev: true
 
@@ -5218,17 +5218,17 @@ packages:
     dependencies:
       htmlparser2: 8.0.2
       js-tokens: 8.0.2
-      postcss: 8.4.34
-      postcss-safe-parser: 6.0.0(postcss@8.4.34)
+      postcss: 8.4.35
+      postcss-safe-parser: 6.0.0(postcss@8.4.35)
     dev: true
 
-  /postcss-import@16.0.0(postcss@8.4.34):
+  /postcss-import@16.0.0(postcss@8.4.35):
     resolution: {integrity: sha512-e77lhVvrD1I2y7dYmBv0k9ULTdArgEYZt97T4w6sFIU5uxIHvDFQlKgUUyY7v7Barj0Yf/zm5A4OquZN7jKm5Q==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       postcss: ^8.0.0
     dependencies:
-      postcss: 8.4.34
+      postcss: 8.4.35
       postcss-value-parser: 4.2.0
       read-cache: 1.0.0
       resolve: 1.22.8
@@ -5242,31 +5242,31 @@ packages:
     resolution: {integrity: sha512-HvExULSwLqHLgUy1rl3ANIqCsvMS0WHss2UOsXhXnQaZ9VCc2oBvIpXrl00IUFT5ZDITME0o6oiXeiHr2SAIfw==}
     dev: true
 
-  /postcss-safe-parser@6.0.0(postcss@8.4.34):
+  /postcss-safe-parser@6.0.0(postcss@8.4.35):
     resolution: {integrity: sha512-FARHN8pwH+WiS2OPCxJI8FuRJpTVnn6ZNFiqAM2aeW2LwTHWWmWgIyKC6cUo0L8aeKiF/14MNvnpls6R2PBeMQ==}
     engines: {node: '>=12.0'}
     peerDependencies:
       postcss: ^8.3.3
     dependencies:
-      postcss: 8.4.34
+      postcss: 8.4.35
     dev: true
 
-  /postcss-safe-parser@7.0.0(postcss@8.4.34):
+  /postcss-safe-parser@7.0.0(postcss@8.4.35):
     resolution: {integrity: sha512-ovehqRNVCpuFzbXoTb4qLtyzK3xn3t/CUBxOs8LsnQjQrShaB4lKiHoVqY8ANaC0hBMHq5QVWk77rwGklFUDrg==}
     engines: {node: '>=18.0'}
     peerDependencies:
       postcss: ^8.4.31
     dependencies:
-      postcss: 8.4.34
+      postcss: 8.4.35
     dev: true
 
-  /postcss-scss@4.0.9(postcss@8.4.34):
+  /postcss-scss@4.0.9(postcss@8.4.35):
     resolution: {integrity: sha512-AjKOeiwAitL/MXxQW2DliT28EKukvvbEWx3LBmJIRN8KfBGZbRTxNYW0kSqi1COiTZ57nZ9NW06S6ux//N1c9A==}
     engines: {node: '>=12.0'}
     peerDependencies:
       postcss: ^8.4.29
     dependencies:
-      postcss: 8.4.34
+      postcss: 8.4.35
     dev: true
 
   /postcss-selector-parser@6.0.15:
@@ -5277,20 +5277,20 @@ packages:
       util-deprecate: 1.0.2
     dev: true
 
-  /postcss-sorting@8.0.2(postcss@8.4.34):
+  /postcss-sorting@8.0.2(postcss@8.4.35):
     resolution: {integrity: sha512-M9dkSrmU00t/jK7rF6BZSZauA5MAaBW4i5EnJXspMwt4iqTh/L9j6fgMnbElEOfyRyfLfVbIHj/R52zHzAPe1Q==}
     peerDependencies:
       postcss: ^8.4.20
     dependencies:
-      postcss: 8.4.34
+      postcss: 8.4.35
     dev: true
 
   /postcss-value-parser@4.2.0:
     resolution: {integrity: sha512-1NNCs6uurfkVbeXG4S8JFT9t19m45ICnif8zWLd5oPSZ50QnwMfK+H3jv408d4jw/7Bttv5axS5IiHoLaVNHeQ==}
     dev: true
 
-  /postcss@8.4.34:
-    resolution: {integrity: sha512-4eLTO36woPSocqZ1zIrFD2K1v6wH7pY1uBh0JIM2KKfrVtGvPFiAku6aNOP0W1Wr9qwnaCsF0Z+CrVnryB2A8Q==}
+  /postcss@8.4.35:
+    resolution: {integrity: sha512-u5U8qYpBCpN13BsiEB0CbR1Hhh4Gc0zLFuedrHJKMctHCHAGrMdG0PRM/KErzAL3CU6/eckEtmHNB3x6e3c0vA==}
     engines: {node: ^10 || ^12 || >=14}
     dependencies:
       nanoid: 3.3.7
@@ -6068,8 +6068,8 @@ packages:
     peerDependencies:
       stylelint: ^14.0.0 || ^15.0.0 || ^16.0.1
     dependencies:
-      postcss: 8.4.34
-      postcss-sorting: 8.0.2(postcss@8.4.34)
+      postcss: 8.4.35
+      postcss-sorting: 8.0.2(postcss@8.4.35)
       stylelint: 16.2.1(typescript@5.3.3)
     dev: true
 
@@ -6118,9 +6118,9 @@ packages:
       micromatch: 4.0.5
       normalize-path: 3.0.0
       picocolors: 1.0.0
-      postcss: 8.4.34
+      postcss: 8.4.35
       postcss-resolve-nested-selector: 0.1.1
-      postcss-safe-parser: 7.0.0(postcss@8.4.34)
+      postcss-safe-parser: 7.0.0(postcss@8.4.35)
       postcss-selector-parser: 6.0.15
       postcss-value-parser: 4.2.0
       resolve-from: 5.0.0
@@ -6477,7 +6477,7 @@ packages:
     dependencies:
       '@types/node': 18.19.0
       esbuild: 0.19.10
-      postcss: 8.4.34
+      postcss: 8.4.35
       rollup: 4.9.0
       sass: 1.70.0
     optionalDependencies:

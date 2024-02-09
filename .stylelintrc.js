@@ -1,4 +1,6 @@
-module.exports = {
+import PostCssScss from "postcss-scss";
+
+export default {
   root: true,
   defaultSeverity: "error",
   plugins: [
@@ -48,7 +50,7 @@ module.exports = {
   overrides: [
     {
       files: ["**/*.scss", "*.scss"],
-      customSyntax: require("postcss-scss"),
+      customSyntax: PostCssScss,
       rules: {
         "at-rule-no-unknown": null,
         "import-notation": null,

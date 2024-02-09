@@ -68,8 +68,8 @@ jobs:
           tag-prefix: "v"
           # output-file: "UPDATELOG.md" # Since v1.4.3, using conventional-changelog-cli@v2.1.0
           release-count: "10"
-          pre-changelog-generation: ".github/conventional-changelog/pre-changelog-generation.js"
-          config-file-path: ".github/conventional-changelog/config.js"
+          pre-changelog-generation: ".github/conventional-changelog/pre-changelog-generation.cjs"
+          config-file-path: ".github/conventional-changelog/config.cjs"
           git-branch: "main"
         env:
           NYANPASU_VERSION: ${{ steps.update-version.outputs.version }}

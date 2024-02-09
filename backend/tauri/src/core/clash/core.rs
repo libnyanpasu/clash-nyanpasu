@@ -1,5 +1,5 @@
-use super::{clash_api, logger::Logger};
-use crate::{config::*, log_err, utils::dirs};
+use super::api;
+use crate::{config::*, core::logger::Logger, log_err, utils::dirs};
 use anyhow::{bail, Context, Result};
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
@@ -7,6 +7,9 @@ use std::{fs, io::Write, sync::Arc, time::Duration};
 use sysinfo::{Pid, System};
 use tauri::api::process::{Command, CommandChild, CommandEvent};
 use tokio::time::sleep;
+
+#[cfg(target_os = "windows")]
+use crate::core::win_service;
 
 #[derive(Debug)]
 pub struct CoreManager {
@@ -66,7 +69,7 @@ impl CoreManager {
             .output()?;
 
         if !output.status.success() {
-            let error = clash_api::parse_check_output(output.stdout.clone());
+            let error = api::parse_check_output(output.stdout.clone());
             let error = match !error.is_empty() {
                 true => error,
                 false => output.stdout.clone(),
@@ -95,7 +98,7 @@ impl CoreManager {
         #[cfg(target_os = "windows")]
         if *self.use_service_mode.lock() {
             log::debug!(target: "app", "stop the core by service");
-            log_err!(super::win_service::stop_core_by_service().await);
+            log_err!(win_service::stop_core_by_service().await);
             should_kill = true;
         }
 
@@ -122,8 +125,6 @@ impl CoreManager {
         }
         #[cfg(target_os = "windows")]
         {
-            use super::win_service;
-
             // 服务模式
             let enable = { Config::verge().latest().enable_service_mode };
             let enable = enable.unwrap_or(false);
@@ -190,7 +191,7 @@ impl CoreManager {
                 match event {
                     CommandEvent::Stdout(line) => {
                         if is_clash {
-                            let stdout = clash_api::parse_log(line.clone());
+                            let stdout = api::parse_log(line.clone());
                             log::info!(target: "app", "[clash]: {stdout}");
                         } else {
                             log::info!(target: "app", "[clash]: {line}");
@@ -198,7 +199,7 @@ impl CoreManager {
                         Logger::global().set_log(line);
                     }
                     CommandEvent::Stderr(err) => {
-                        // let stdout = clash_api::parse_log(err.clone());
+                        // let stdout = api::parse_log(err.clone());
                         log::error!(target: "app", "[clash]: {err}");
                         Logger::global().set_log(err);
                     }
@@ -259,7 +260,7 @@ impl CoreManager {
         if *self.use_service_mode.lock() {
             log::debug!(target: "app", "stop the core by service");
             tauri::async_runtime::block_on(async move {
-                log_err!(super::win_service::stop_core_by_service().await);
+                log_err!(win_service::stop_core_by_service().await);
             });
             return Ok(());
         }
@@ -345,7 +346,7 @@ impl CoreManager {
 
         // 发送请求 发送5次
         for i in 0..5 {
-            match clash_api::put_configs(path).await {
+            match api::put_configs(path).await {
                 Ok(_) => break,
                 Err(err) => {
                     if i < 4 {

@@ -65,7 +65,7 @@ pub fn change_clash_mode(mode: String) {
     tauri::async_runtime::spawn(async move {
         log::debug!(target: "app", "change clash mode to {mode}");
 
-        match clash_api::patch_configs(&mapping).await {
+        match clash::api::patch_configs(&mapping).await {
             Ok(_) => {
                 // 更新配置
                 Config::clash().data().patch_config(mapping);

@@ -1,5 +1,4 @@
-pub mod clash_api;
-mod clash_core;
+pub mod clash;
 pub mod handle;
 pub mod hotkey;
 pub mod logger;
@@ -11,4 +10,4 @@ pub mod tray;
 pub mod updater;
 pub mod win_service;
 pub mod win_uwp;
-pub use self::clash_core::*;
+pub use self::clash::core::*;

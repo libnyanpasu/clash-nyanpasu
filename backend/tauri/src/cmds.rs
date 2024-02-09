@@ -317,8 +317,8 @@ pub async fn update_core(core_type: ClashCore) -> CmdResult {
 pub async fn clash_api_get_proxy_delay(
     name: String,
     url: Option<String>,
-) -> CmdResult<clash_api::DelayRes> {
-    match clash_api::get_proxy_delay(name, url).await {
+) -> CmdResult<clash::api::DelayRes> {
+    match clash::api::get_proxy_delay(name, url).await {
         Ok(res) => Ok(res),
         Err(err) => Err(err.to_string()),
     }

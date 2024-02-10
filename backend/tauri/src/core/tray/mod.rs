@@ -9,7 +9,7 @@ use super::storage;
 
 pub struct Tray {}
 
-mod proxies;
+pub mod proxies;
 
 impl Tray {
     pub fn tray_menu(_app_handle: &AppHandle) -> SystemTrayMenu {

@@ -3,7 +3,10 @@ use anyhow::{bail, Result};
 use reqwest::header::HeaderMap;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    fmt::{self, Display, Formatter},
+};
 
 /// PUT /configs
 /// path 是绝对路径
@@ -43,14 +46,14 @@ pub struct ProxiesRes {
     pub proxies: Option<HashMap<String, ProxyItem>>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxyItemHistory {
     pub time: String,
     pub delay: i64,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxyItem {
     pub name: String,
@@ -60,13 +63,52 @@ pub struct ProxyItem {
     pub all: Option<Vec<String>>,
     pub now: Option<String>, // 当前选中的代理
     pub provider: Option<String>,
-    pub alive: Option<bool>,  // Mihomo Or Premium Only
-    pub xudp: Option<bool>,   // Mihomo Only
-    pub tfo: Option<bool>,    // Mihomo Only
+    pub alive: Option<bool>, // Mihomo Or Premium Only
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub xudp: Option<bool>, // Mihomo Only
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tfo: Option<bool>, // Mihomo Only
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>, // Mihomo Only
     #[serde(default)]
     pub hidden: bool, // Mihomo Only
-                              // extra: {}, // Mihomo Only
+                             // extra: {}, // Mihomo Only
+}
+
+impl From<ProxyProviderItem> for ProxyItem {
+    fn from(item: ProxyProviderItem) -> Self {
+        let ProxyProviderItem {
+            name,
+            r#type,
+            proxies,
+            vehicle_type,
+            test_url,
+            expected_status,
+        } = item;
+
+        let now = proxies
+            .iter()
+            .find(|p| p.now.is_some())
+            .map(|p| p.name.clone())
+            .unwrap_or_default();
+
+        let all = proxies.iter().map(|p| p.name.clone()).collect();
+
+        Self {
+            name,
+            r#type: r#type.to_string(),
+            udp: false,
+            history: vec![],
+            all: Some(all),
+            now: Some(now),
+            provider: None,
+            alive: None,
+            xudp: None,
+            tfo: None,
+            icon: None,
+            hidden: false,
+        }
+    }
 }
 
 /// GET /proxies
@@ -102,7 +144,7 @@ pub async fn get_proxy(name: String) -> Result<ProxyItem> {
 /// 选择代理
 /// group: 代理分组名称
 /// name: 代理名称
-pub async fn update_proxy(group: String, name: String) -> Result<()> {
+pub async fn update_proxy(group: &str, name: &str) -> Result<()> {
     let (url, headers) = clash_client_info()?;
     let url = format!("{url}/proxies/{group}");
 
@@ -137,6 +179,16 @@ pub enum ProviderType {
     Unknown,
 }
 
+impl Display for ProviderType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ProviderType::Proxy => write!(f, "Proxy"),
+            ProviderType::Rule => write!(f, "Rule"),
+            ProviderType::Unknown => write!(f, "Unknown"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxyProviderItem {
@@ -144,7 +196,9 @@ pub struct ProxyProviderItem {
     pub r#type: ProviderType,
     pub proxies: Vec<ProxyItem>,
     pub vehicle_type: VehicleType,
-    pub test_url: Option<String>,        // Mihomo Only
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub test_url: Option<String>, // Mihomo Only
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub expected_status: Option<String>, // Mihomo Only
 }
 
@@ -156,7 +210,7 @@ pub struct ProvidersProxiesRes {
 
 /// GET /providers/proxies
 /// 获取所有代理集合的所有代理信息
-pub async fn get_providers_proxies() -> Result<Mapping> {
+pub async fn get_providers_proxies() -> Result<ProvidersProxiesRes> {
     let (url, headers) = clash_client_info()?;
     let url = format!("{url}/providers/proxies");
 
@@ -164,7 +218,7 @@ pub async fn get_providers_proxies() -> Result<Mapping> {
     let builder = client.get(&url).headers(headers);
     let response = builder.send().await?;
 
-    Ok(response.json::<Mapping>().await?)
+    Ok(response.json::<ProvidersProxiesRes>().await?)
 }
 
 /// GET /providers/proxies/:name

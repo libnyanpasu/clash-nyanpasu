@@ -217,6 +217,9 @@ export const ProfileItem = (props: Props) => {
           setAnchorEl(event.currentTarget);
           event.preventDefault();
         }}
+        sx={{
+          borderRadius: 4,
+        }}
       >
         {activating && (
           <Box

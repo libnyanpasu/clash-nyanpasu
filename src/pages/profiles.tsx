@@ -313,7 +313,10 @@ export default function ProfilePage() {
           sx={{ input: { py: 0.65, px: 1.25 } }}
           placeholder={t("Profile URL")}
           InputProps={{
-            sx: { pr: 1 },
+            sx: {
+              borderRadius: 4,
+              pr: 1,
+            },
             endAdornment: !url ? (
               <IconButton
                 size="small"
@@ -341,6 +344,9 @@ export default function ProfilePage() {
           variant="contained"
           size="small"
           onClick={onImport}
+          sx={{
+            borderRadius: 4,
+          }}
         >
           {t("Import")}
         </LoadingButton>
@@ -348,6 +354,9 @@ export default function ProfilePage() {
           variant="contained"
           size="small"
           onClick={() => viewerRef.current?.create()}
+          sx={{
+            borderRadius: 4,
+          }}
         >
           {t("New")}
         </Button>
@@ -359,14 +368,14 @@ export default function ProfilePage() {
         onDragEnd={onDragEnd}
       >
         <Box sx={{ mb: 4.5 }}>
-          <Grid container spacing={{ xs: 1, lg: 1 }}>
+          <Grid container spacing={{ xs: 3, lg: 3 }}>
             <SortableContext
               items={regularItems.map((x) => {
                 return x.uid;
               })}
             >
               {regularItems.map((item) => (
-                <Grid item xs={12} sm={6} md={4} lg={3} key={item.file}>
+                <Grid item xs={12} md={6} lg={4} xl={3} key={item.file}>
                   <ProfileItem
                     id={item.uid}
                     selected={profiles.current === item.uid}

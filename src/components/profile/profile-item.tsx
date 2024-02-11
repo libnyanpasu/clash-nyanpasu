@@ -12,6 +12,7 @@ import {
   LinearProgress,
   Menu,
   MenuItem,
+  Paper,
   Typography,
   keyframes,
 } from "@mui/material";
@@ -237,16 +238,26 @@ export const ProfileItem = (props: Props) => {
         )}
 
         <Box position="relative">
-          <Box sx={{ display: "flex", justifyContent: "start" }}>
-            <Box
-              ref={setNodeRef}
-              sx={{ display: "flex", margin: "auto 0" }}
-              {...attributes}
-              {...listeners}
-            >
-              <DragIndicator sx={{ cursor: "grab" }} />
-            </Box>
+          <Paper
+            ref={setNodeRef}
+            sx={{
+              width: "28px",
+              height: "28px",
+              borderRadius: 4,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              position: "absolute",
+              top: "-24px",
+              left: "-28px",
+            }}
+            {...attributes}
+            {...listeners}
+          >
+            <DragIndicator sx={{ cursor: "grab" }} />
+          </Paper>
 
+          <Box sx={{ display: "flex", justifyContent: "start" }}>
             <Typography
               width="calc(100% - 40px)"
               variant="h6"

@@ -7,9 +7,13 @@ use tauri::{
 };
 
 #[cfg(not(feature = "verge-dev"))]
-static APP_DIR: &str = "clash-verge";
+static OLD_APP_DIR: &str = "clash-verge";
 #[cfg(feature = "verge-dev")]
-static APP_DIR: &str = "clash-verge-dev";
+static OLD_APP_DIR: &str = "clash-verge-dev";
+#[cfg(not(feature = "verge-dev"))]
+static APP_DIR: &str = "clash-nyanpasu";
+#[cfg(feature = "verge-dev")]
+static APP_DIR: &str = "clash-nyanpasu-dev";
 
 static CLASH_CONFIG: &str = "config.yaml";
 static VERGE_CONFIG: &str = "verge.yaml";
@@ -49,6 +53,33 @@ pub fn init_portable_flag() -> Result<()> {
     }
     PORTABLE_FLAG.get_or_init(|| false);
     Ok(())
+}
+
+pub fn old_app_home_dir() -> Result<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        use tauri::utils::platform::current_exe;
+
+        if !PORTABLE_FLAG.get().unwrap_or(&false) {
+            Ok(home_dir()
+                .ok_or(anyhow::anyhow!("failed to check old app home dir"))?
+                .join(".config")
+                .join(OLD_APP_DIR))
+        } else {
+            let app_exe = current_exe()?;
+            let app_exe = dunce::canonicalize(app_exe)?;
+            let app_dir = app_exe
+                .parent()
+                .ok_or(anyhow::anyhow!("failed to check the old portable app dir"))?;
+            Ok(PathBuf::from(app_dir).join(".config").join(OLD_APP_DIR))
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    Ok(home_dir()
+        .ok_or(anyhow::anyhow!("failed to get the app home dir"))?
+        .join(".config")
+        .join(OLD_APP_DIR))
 }
 
 /// get the verge app home dir
@@ -91,6 +122,7 @@ pub fn app_resources_dir() -> Result<PathBuf> {
     };
     Err(anyhow::anyhow!("failed to get the resource dir"))
 }
+
 /// profiles dir
 pub fn app_profiles_dir() -> Result<PathBuf> {
     Ok(app_home_dir()?.join("profiles"))

@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Barrier};
 use tauri::api::dialog::{MessageDialogBuilder, MessageDialogButtons, MessageDialogKind};
 
@@ -15,4 +16,21 @@ pub fn panic_dialog(msg: &str) {
             barrier_ref.wait();
         });
     barrier.wait();
+}
+
+pub fn migrate_dialog() -> bool {
+    let msg = "Old version config file detected\nMigrate to new version or not?\n WARNING: This will override your current config if exists".to_string();
+    let barrier = Arc::new(Barrier::new(2));
+    let barrier_ref = barrier.clone();
+    let migrate = Arc::new(AtomicBool::new(false));
+    let migrate_ref = migrate.clone();
+    MessageDialogBuilder::new("Migration", msg)
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::YesNo)
+        .show(move |_migrate| {
+            migrate_ref.store(_migrate, Ordering::Relaxed);
+            barrier_ref.wait();
+        });
+    barrier.wait();
+    migrate.load(Ordering::Relaxed)
 }

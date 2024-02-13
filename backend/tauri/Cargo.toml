@@ -65,6 +65,7 @@ rocksdb = "0.21"
 thiserror = { workspace = true }
 simd-json = "0.13.8"
 runas = "=1.0.0" # blocked by https://github.com/mitsuhiko/rust-runas/issues/13
+rust-i18n = "3"
 
 [target.'cfg(windows)'.dependencies]
 deelevate = "0.2.0"
@@ -107,3 +108,13 @@ custom-protocol = ["tauri/custom-protocol"]
 verge-dev = []
 default-meta = []
 nightly = []
+
+[package.metadata.i18n]
+# The available locales for your application, default: ["en"].
+available-locales = ["en", "zh"]
+# The default locale, default: "en".
+default-locale = "en"
+# Path for your translations YAML file, default: "locales".
+# This config for let `cargo i18n` command line tool know where to find your translations.
+# You must keep this path same as the one you pass to method `rust_i18n::i18n!`.
+load-path = "locales"

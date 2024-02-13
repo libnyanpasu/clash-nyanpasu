@@ -16,8 +16,6 @@ use self::proxies::SystemTrayMenuProxiesExt;
 
 impl Tray {
     pub fn tray_menu(_app_handle: &AppHandle) -> SystemTrayMenu {
-        let zh = { Config::verge().latest().language == Some("zh".into()) };
-
         let version = env!("NYANPASU_VERSION");
 
         SystemTrayMenu::new()
@@ -111,8 +109,6 @@ impl Tray {
 
         #[cfg(not(target_os = "linux"))]
         {
-            let zh = { verge.language == Some("zh".into()) };
-
             let switch_map = {
                 let mut map = std::collections::HashMap::new();
                 map.insert(true, t!("tray.proxy_action.on"));

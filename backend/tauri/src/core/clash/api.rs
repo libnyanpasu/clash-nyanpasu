@@ -129,6 +129,7 @@ pub async fn get_proxies() -> Result<ProxiesRes> {
 /// name: 代理名称
 /// 返回代理的配置
 ///
+#[allow(dead_code)]
 pub async fn get_proxy(name: String) -> Result<ProxyItem> {
     let (url, headers) = clash_client_info()?;
     let url = format!("{url}/proxies/{name}");
@@ -224,6 +225,7 @@ pub async fn get_providers_proxies() -> Result<ProvidersProxiesRes> {
 /// GET /providers/proxies/:name
 /// 获取单个代理集合的所有代理信息
 /// group: 代理集合名称
+#[allow(dead_code)]
 pub async fn get_providers_proxies_group(group: String) -> Result<ProxyProviderItem> {
     let (url, headers) = clash_client_info()?;
     let url = format!("{url}/providers/proxies/{group}");
@@ -257,6 +259,7 @@ pub async fn update_providers_proxies_group(name: &str) -> Result<()> {
 /// GET /providers/proxies/:name/healthcheck
 /// 获取代理集合的健康检查
 /// name: 代理集合名称
+#[allow(dead_code)]
 pub async fn get_providers_proxies_healthcheck(name: String) -> Result<Mapping> {
     let (url, headers) = clash_client_info()?;
     let url = format!("{url}/providers/proxies/{name}/healthcheck");

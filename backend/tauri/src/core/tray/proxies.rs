@@ -1,5 +1,3 @@
-use std::fmt::Result;
-
 use crate::core::{
     clash::proxies::{ProxiesGuard, ProxiesGuardExt},
     handle::Handle,

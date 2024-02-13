@@ -4,14 +4,8 @@
 //! - timer 定时器
 //! - cmds 页面调用
 //!
-use crate::{
-    config::*,
-    core::{clash::CLASH_API_DEFAULT_BACKOFF_STRATEGY, *},
-    log_err,
-    utils::resolve,
-};
+use crate::{config::*, core::*, log_err, utils::resolve};
 use anyhow::{bail, Result};
-use backon::{ExponentialBuilder, Retryable};
 use serde_yaml::{Mapping, Value};
 use wry::application::clipboard::Clipboard;
 
@@ -83,7 +77,7 @@ pub fn change_clash_mode(mode: String) {
             }
             Err(err) => log::error!(target: "app", "{err}"),
         }
-        if let Err(e) = tx.send(()) {
+        if tx.send(()).is_err() {
             log::error!(target: "app::change_clash_mode", "failed to send tx");
         }
     });

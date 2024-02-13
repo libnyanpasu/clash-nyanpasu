@@ -1,0 +1,37 @@
+{
+  "_version": 1,
+  "tray": {
+    "copy_env": {
+      "cmd": "Copy Env (CMD)",
+      "ps": "Copy Env (PS)",
+      "sh": "Copy Env (sh)"
+    },
+    "dashboard": "Dashboard",
+    "direct_mode": "Direct Mode",
+    "global_mode": "Global Mode",
+    "more": {
+      "menu": "More",
+      "restart_app": "Restart App",
+      "restart_clash": "Restart Clash"
+    },
+    "open_dir": {
+      "menu": "Open Dir",
+      "app_dir": "App Dir",
+      "core_dir": "Core Dir",
+      "log_dir": "Log Dir"
+    },
+    "proxy_action": {
+      "on": "On",
+      "off": "Off"
+    },
+    "quit": "Quit",
+    "rule_mode": "Rule Mode",
+    "script_mode": "Script Mode",
+    "system_proxy": "System Proxy",
+    "tun_mode": "TUN Mode"
+  },
+  "dialog": {
+    "panic": "Please report this issue to Github issue tracker.",
+    "migrate": "Old version config file detected\nMigrate to new version or not?\n WARNING: This will override your current config if exists"
+  }
+}

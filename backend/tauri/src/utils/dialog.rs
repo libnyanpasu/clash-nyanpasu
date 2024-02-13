@@ -1,12 +1,10 @@
+use rust_i18n::t;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Barrier};
 use tauri::api::dialog::{MessageDialogBuilder, MessageDialogButtons, MessageDialogKind};
 
 pub fn panic_dialog(msg: &str) {
-    let msg = format!(
-        "{}\n\nPlease report this issue to Github issue tracker.",
-        msg
-    );
+    let msg = format!("{}\n\n{}", msg, t!("dialog.panic"));
     let barrier = Arc::new(Barrier::new(2));
     let barrier_ref = barrier.clone();
     MessageDialogBuilder::new("Error", msg)
@@ -19,7 +17,7 @@ pub fn panic_dialog(msg: &str) {
 }
 
 pub fn migrate_dialog() -> bool {
-    let msg = "Old version config file detected\nMigrate to new version or not?\n WARNING: This will override your current config if exists".to_string();
+    let msg = format!("{}", t!("dialog.migrate"));
     let barrier = Arc::new(Barrier::new(2));
     let barrier_ref = barrier.clone();
     let migrate = Arc::new(AtomicBool::new(false));

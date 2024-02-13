@@ -1,5 +1,6 @@
 use crate::{cmds, config::Config, feat, utils::resolve};
 use anyhow::Result;
+use rust_i18n::t;
 use tauri::{
     api, AppHandle, CustomMenuItem, Manager, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
     SystemTraySubmenu,
@@ -17,89 +18,52 @@ impl Tray {
 
         let version = env!("NYANPASU_VERSION");
 
-        macro_rules! t {
-            ($en: expr, $zh: expr) => {
-                if zh {
-                    $zh
-                } else {
-                    $en
-                }
-            };
-        }
-
         SystemTrayMenu::new()
-            .add_item(CustomMenuItem::new(
-                "open_window",
-                t!("Dashboard", "打开面板"),
-            ))
+            .add_item(CustomMenuItem::new("open_window", t!("tray.dashboard")))
             .add_native_item(SystemTrayMenuItem::Separator)
-            .add_item(CustomMenuItem::new(
-                "rule_mode",
-                t!("Rule Mode", "规则模式"),
-            ))
-            .add_item(CustomMenuItem::new(
-                "global_mode",
-                t!("Global Mode", "全局模式"),
-            ))
-            .add_item(CustomMenuItem::new(
-                "direct_mode",
-                t!("Direct Mode", "直连模式"),
-            ))
-            .add_item(CustomMenuItem::new(
-                "script_mode",
-                t!("Script Mode", "脚本模式"),
-            ))
+            .add_item(CustomMenuItem::new("rule_mode", t!("tray.rule_mode")))
+            .add_item(CustomMenuItem::new("global_mode", t!("tray.global_mode")))
+            .add_item(CustomMenuItem::new("direct_mode", t!("tray.direct_mode")))
+            .add_item(CustomMenuItem::new("script_mode", t!("tray.script_mode")))
             .add_native_item(SystemTrayMenuItem::Separator)
-            .add_item(CustomMenuItem::new(
-                "system_proxy",
-                t!("System Proxy", "系统代理"),
-            ))
-            .add_item(CustomMenuItem::new("tun_mode", t!("TUN Mode", "Tun 模式")))
-            .add_item(CustomMenuItem::new(
-                "copy_env_sh",
-                t!("Copy Env (sh)", "复制环境变量(sh)"),
-            ))
-            .add_item(CustomMenuItem::new(
-                "copy_env_cmd",
-                t!("Copy Env (CMD)", "复制环境变量(CMD)"),
-            ))
-            .add_item(CustomMenuItem::new(
-                "copy_env_ps",
-                t!("Copy Env (PS)", "复制环境变量(PS)"),
-            ))
+            .add_item(CustomMenuItem::new("system_proxy", t!("tray.system_proxy")))
+            .add_item(CustomMenuItem::new("tun_mode", t!("tray.tun_mode")))
+            .add_item(CustomMenuItem::new("copy_env_sh", t!("tray.copy_env.sh")))
+            .add_item(CustomMenuItem::new("copy_env_cmd", t!("tray.copy_env.cmd")))
+            .add_item(CustomMenuItem::new("copy_env_ps", t!("tray.copy_env.ps")))
             .add_submenu(SystemTraySubmenu::new(
-                t!("Open Dir", "打开目录"),
+                t!("tray.open_dir.menu"),
                 SystemTrayMenu::new()
                     .add_item(CustomMenuItem::new(
                         "open_app_dir",
-                        t!("App Dir", "应用目录"),
+                        t!("tray.open_dir.app_dir"),
                     ))
                     .add_item(CustomMenuItem::new(
                         "open_core_dir",
-                        t!("Core Dir", "内核目录"),
+                        t!("tray.open_dir.core_dir"),
                     ))
                     .add_item(CustomMenuItem::new(
                         "open_logs_dir",
-                        t!("Logs Dir", "日志目录"),
+                        t!("tray.open_dir.log_dir"),
                     )),
             ))
             .add_submenu(SystemTraySubmenu::new(
-                t!("More", "更多"),
+                t!("tray.more.menu"),
                 SystemTrayMenu::new()
                     .add_item(CustomMenuItem::new(
                         "restart_clash",
-                        t!("Restart Clash", "重启 Clash"),
+                        t!("tray.more.restart_clash"),
                     ))
                     .add_item(CustomMenuItem::new(
                         "restart_app",
-                        t!("Restart App", "重启应用"),
+                        t!("tray.more.restart_app"),
                     ))
                     .add_item(
                         CustomMenuItem::new("app_version", format!("Version {version}")).disabled(),
                     ),
             ))
             .add_native_item(SystemTrayMenuItem::Separator)
-            .add_item(CustomMenuItem::new("quit", t!("Quit", "退出")).accelerator("CmdOrControl+Q"))
+            .add_item(CustomMenuItem::new("quit", t!("tray.quit")).accelerator("CmdOrControl+Q"))
     }
 
     pub fn update_systray(app_handle: &AppHandle) -> Result<()> {
@@ -152,28 +116,19 @@ impl Tray {
         #[cfg(not(target_os = "linux"))]
         {
             let zh = { verge.language == Some("zh".into()) };
-            macro_rules! t {
-                ($en: expr, $zh: expr) => {
-                    if zh {
-                        $zh
-                    } else {
-                        $en
-                    }
-                };
-            }
 
             let switch_map = {
                 let mut map = std::collections::HashMap::new();
-                map.insert(true, t!("On", "开"));
-                map.insert(false, t!("Off", "关"));
+                map.insert(true, t!("tray.proxy_action.on"));
+                map.insert(false, t!("tray.proxy_action.off"));
                 map
             };
 
             let _ = tray.set_tooltip(&format!(
                 "{}: {}\n{}: {}",
-                t!("System Proxy", "系统代理"),
+                t!("tray.system_proxy"),
                 switch_map[system_proxy],
-                t!("TUN Mode", "Tun 模式"),
+                t!("tray.tun_mode"),
                 switch_map[tun_mode]
             ));
         }

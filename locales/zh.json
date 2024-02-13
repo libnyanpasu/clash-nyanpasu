@@ -1,0 +1,37 @@
+{
+  "_version": 1,
+  "tray": {
+    "copy_env": {
+      "cmd": "复制环境变量(CMD)",
+      "ps": "复制环境变量(PS)",
+      "sh": "复制环境变量(sh)"
+    },
+    "dashboard": "打开面板",
+    "direct_mode": "直连模式",
+    "global_mode": "全局模式",
+    "more": {
+      "menu": "更多",
+      "restart_app": "重启应用",
+      "restart_clash": "重启 Clash"
+    },
+    "open_dir": {
+      "menu": "打开目录",
+      "app_dir": "应用目录",
+      "core_dir": "内核目录",
+      "log_dir": "日志目录"
+    },
+    "proxy_action": {
+      "on": "开",
+      "off": "关"
+    },
+    "quit": "退出",
+    "rule_mode": "规则模式",
+    "script_mode": "脚本模式",
+    "system_proxy": "系统代理",
+    "tun_mode": "TUN 模式"
+  },
+  "dialog": {
+    "panic": "请将此问题汇报到Github问题追踪器",
+    "migrate": "检测到旧版本配置文件\\n是否迁移到新版本?\\n警告: 此操作会覆盖掉现有配置文件"
+  }
+}

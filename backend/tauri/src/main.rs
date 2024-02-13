@@ -14,7 +14,7 @@ use crate::config::Config;
 use crate::utils::{init, resolve, server};
 use tauri::{api, SystemTray};
 
-rust_i18n::i18n!("locales");
+rust_i18n::i18n!("../../locales");
 
 fn main() -> std::io::Result<()> {
     // 单例检测

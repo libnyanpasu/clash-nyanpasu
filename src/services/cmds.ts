@@ -3,6 +3,7 @@ import type { ManifestVersion } from "@root/scripts/generate-latest-version";
 import { invoke } from "@tauri-apps/api/tauri";
 import dayjs from "dayjs";
 import { t } from "i18next";
+import type { IProxies } from "./api";
 export async function getClashLogs() {
   const regex = /time="(.+?)"\s+level=(.+?)\s+msg="(.+?)"/;
   const newRegex = /(.+?)\s+(.+?)\s+(.+)/;
@@ -242,4 +243,16 @@ export async function cmdGetProxyDelay(name: string, url?: string) {
 export async function isPortable() {
   if (OS_PLATFORM !== "win32") return false;
   return invoke<boolean>("is_portable");
+}
+
+export async function getProxies() {
+  return invoke<IProxies>("get_proxies");
+}
+
+export async function selectProxy(group: string, name: string) {
+  return invoke<void>("select_proxy", { group, name });
+}
+
+export async function updateProxyProvider(name: string) {
+  return invoke<void>("update_proxy_provider", { name });
 }

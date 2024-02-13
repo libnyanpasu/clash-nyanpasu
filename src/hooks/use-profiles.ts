@@ -1,11 +1,12 @@
-import useSWR, { mutate } from "swr";
 import {
   getProfiles,
   patchProfile,
   patchProfilesConfig,
 } from "@/services/cmds";
-import { getProxies, updateProxy } from "@/services/api";
-
+import useSWR, { mutate } from "swr";
+// import { getProxies, updateProxy } from "@/services/api";
+import { updateProxy } from "@/services/api";
+import { getProxies } from "@/services/cmds";
 export const useProfiles = () => {
   const { data: profiles, mutate: mutateProfiles } = useSWR(
     "getProfiles",
@@ -27,6 +28,7 @@ export const useProfiles = () => {
   // 根据selected的节点选择
   const activateSelected = async () => {
     const proxiesData = await getProxies();
+    console.log(proxiesData);
     const profileData = await getProfiles();
 
     if (!profileData || !proxiesData) return;

@@ -2,6 +2,7 @@ use crate::{
     config::{ClashCore, Config, IVerge, WindowState},
     core::{
         tasks::{jobs::ProfilesJobGuard, JobsManager},
+        tray::proxies,
         *,
     },
     log_err, trace_err,
@@ -96,6 +97,9 @@ pub fn resolve_setup(app: &mut App) {
     // setup jobs
     log_err!(JobsManager::global_register()); // init task manager
     log_err!(ProfilesJobGuard::global().lock().init());
+
+    // test job
+    proxies::setup_proxies();
 }
 
 /// reset system proxy
@@ -203,17 +207,34 @@ pub fn create_window(app_handle: &AppHandle) {
                 //             log::error!(target: "app", "failed to create window, get_window is None")
                 //         }
                 //     });
+                #[cfg(debug_assertions)]
+                {
+                    win.open_devtools();
+                }
             }
             Err(err) => log::error!(target: "app", "failed to create window, {err}"),
         }
     }
 
     #[cfg(target_os = "macos")]
-    crate::log_err!(builder
-        .decorations(true)
-        .hidden_title(true)
-        .title_bar_style(tauri::TitleBarStyle::Overlay)
-        .build());
+    {
+        match builder
+            .decorations(true)
+            .hidden_title(true)
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .build()
+        {
+            Ok(win) => {
+                #[cfg(debug_assertions)]
+                {
+                    win.open_devtools();
+                }
+            }
+            Err(err) => {
+                log::error!(target: "app", "failed to create window, {err}");
+            }
+        }
+    }
 
     #[cfg(target_os = "linux")]
     crate::log_err!(builder.decorations(true).transparent(false).build());

@@ -94,6 +94,9 @@ fn main() -> std::io::Result<()> {
             cmds::service::install_service,
             cmds::service::uninstall_service,
             cmds::is_portable,
+            cmds::get_proxies,
+            cmds::select_proxy,
+            cmds::update_proxy_provider,
         ]);
 
     #[cfg(target_os = "macos")]

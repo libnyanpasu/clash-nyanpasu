@@ -1,6 +1,6 @@
-import dayjs from "dayjs";
-import useSWR, { mutate } from "swr";
-import { useState } from "react";
+import { getProviders } from "@/services/api";
+import { updateProxyProvider } from "@/services/cmds";
+import { RefreshRounded } from "@mui/icons-material";
 import {
   Button,
   IconButton,
@@ -8,10 +8,11 @@ import {
   ListItem,
   ListItemText,
 } from "@mui/material";
-import { RefreshRounded } from "@mui/icons-material";
-import { useTranslation } from "react-i18next";
 import { useLockFn } from "ahooks";
-import { getProviders, providerUpdate } from "@/services/api";
+import dayjs from "dayjs";
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import useSWR, { mutate } from "swr";
 import { BaseDialog } from "../base";
 
 export const ProviderButton = () => {
@@ -23,7 +24,7 @@ export const ProviderButton = () => {
   const hasProvider = Object.keys(data || {}).length > 0;
 
   const handleUpdate = useLockFn(async (key: string) => {
-    await providerUpdate(key);
+    await updateProxyProvider(key);
     await mutate("getProxies");
     await mutate("getProviders");
   });

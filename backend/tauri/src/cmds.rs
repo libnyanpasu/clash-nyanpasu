@@ -176,7 +176,9 @@ pub fn get_runtime_logs() -> CmdResult<HashMap<String, Vec<(String, String)>>> {
 
 #[tauri::command]
 pub async fn patch_clash_config(payload: Mapping) -> CmdResult {
-    wrap_err!(feat::patch_clash(payload).await)
+    wrap_err!(feat::patch_clash(payload).await)?;
+    feat::update_proxies_buff(None);
+    Ok(())
 }
 
 #[tauri::command]
@@ -322,6 +324,38 @@ pub async fn clash_api_get_proxy_delay(
         Ok(res) => Ok(res),
         Err(err) => Err(err.to_string()),
     }
+}
+
+#[tauri::command]
+pub async fn get_proxies() -> CmdResult<crate::core::clash::proxies::Proxies> {
+    use crate::core::clash::proxies::ProxiesGuard;
+    use crate::core::clash::proxies::ProxiesGuardExt;
+    match ProxiesGuard::global().update().await {
+        Ok(_) => {
+            let proxies = ProxiesGuard::global().read().inner().clone();
+            Ok(proxies)
+        }
+        Err(err) => Err(err.to_string()),
+    }
+}
+
+#[tauri::command]
+pub async fn select_proxy(group: String, name: String) -> CmdResult<()> {
+    use crate::core::clash::proxies::ProxiesGuard;
+    use crate::core::clash::proxies::ProxiesGuardExt;
+    wrap_err!(ProxiesGuard::global().select_proxy(&group, &name).await)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn update_proxy_provider(name: String) -> CmdResult<()> {
+    use crate::core::clash::{
+        api,
+        proxies::{ProxiesGuard, ProxiesGuardExt},
+    };
+    wrap_err!(api::update_providers_proxies_group(&name).await)?;
+    wrap_err!(ProxiesGuard::global().update().await)?;
+    Ok(())
 }
 
 #[cfg(windows)]

@@ -50,6 +50,12 @@ impl Handle {
         }
     }
 
+    pub fn mutate_proxies() {
+        if let Some(window) = Self::global().get_window() {
+            log_err!(window.emit("verge://mutate-proxies", "yes"));
+        }
+    }
+
     pub fn notice_message<S: Into<String>, M: Into<String>>(status: S, msg: M) {
         if let Some(window) = Self::global().get_window() {
             log_err!(window.emit("verge://notice-message", (status.into(), msg.into())));

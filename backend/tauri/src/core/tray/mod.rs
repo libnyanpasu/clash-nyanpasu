@@ -10,16 +10,18 @@ use super::storage;
 
 pub struct Tray {}
 
-mod proxies;
+pub mod proxies;
+
+use self::proxies::SystemTrayMenuProxiesExt;
 
 impl Tray {
     pub fn tray_menu(_app_handle: &AppHandle) -> SystemTrayMenu {
-        let zh = { Config::verge().latest().language == Some("zh".into()) };
-
         let version = env!("NYANPASU_VERSION");
 
         SystemTrayMenu::new()
             .add_item(CustomMenuItem::new("open_window", t!("tray.dashboard")))
+            .add_native_item(SystemTrayMenuItem::Separator)
+            .setup_proxies() // Setup the proxies menu
             .add_native_item(SystemTrayMenuItem::Separator)
             .add_item(CustomMenuItem::new("rule_mode", t!("tray.rule_mode")))
             .add_item(CustomMenuItem::new("global_mode", t!("tray.global_mode")))
@@ -75,15 +77,7 @@ impl Tray {
     }
 
     pub fn update_part(app_handle: &AppHandle) -> Result<()> {
-        let mode = {
-            Config::clash()
-                .latest()
-                .0
-                .get("mode")
-                .map(|val| val.as_str().unwrap_or("rule"))
-                .unwrap_or("rule")
-                .to_owned()
-        };
+        let mode = crate::utils::config::get_current_clash_mode();
 
         let tray = app_handle.tray_handle();
 
@@ -115,8 +109,6 @@ impl Tray {
 
         #[cfg(not(target_os = "linux"))]
         {
-            let zh = { verge.language == Some("zh".into()) };
-
             let switch_map = {
                 let mut map = std::collections::HashMap::new();
                 map.insert(true, t!("tray.proxy_action.on"));
@@ -167,7 +159,9 @@ impl Tray {
                     storage::Storage::global().destroy().unwrap();
                     std::process::exit(0);
                 }
-                _ => {}
+                _ => {
+                    proxies::on_system_tray_event(&id);
+                }
             },
             #[cfg(target_os = "windows")]
             SystemTrayEvent::LeftClick { .. } => {

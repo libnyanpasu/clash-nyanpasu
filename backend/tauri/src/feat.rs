@@ -4,8 +4,14 @@
 //! - timer 定时器
 //! - cmds 页面调用
 //!
-use crate::{config::*, core::*, log_err, utils::resolve};
+use crate::{
+    config::*,
+    core::{clash::CLASH_API_DEFAULT_BACKOFF_STRATEGY, *},
+    log_err,
+    utils::resolve,
+};
 use anyhow::{bail, Result};
+use backon::{ExponentialBuilder, Retryable};
 use serde_yaml::{Mapping, Value};
 use wry::application::clipboard::Clipboard;
 
@@ -61,7 +67,7 @@ pub fn restart_clash_core() {
 pub fn change_clash_mode(mode: String) {
     let mut mapping = Mapping::new();
     mapping.insert(Value::from("mode"), mode.clone().into());
-
+    let (tx, rx) = tokio::sync::oneshot::channel();
     tauri::async_runtime::spawn(async move {
         log::debug!(target: "app", "change clash mode to {mode}");
 
@@ -77,7 +83,13 @@ pub fn change_clash_mode(mode: String) {
             }
             Err(err) => log::error!(target: "app", "{err}"),
         }
+        if let Err(e) = tx.send(()) {
+            log::error!(target: "app::change_clash_mode", "failed to send tx");
+        }
     });
+
+    // refresh proxies
+    update_proxies_buff(Some(rx));
 }
 
 // 切换系统代理
@@ -377,4 +389,24 @@ pub fn copy_clash_env(option: &str) {
         "ps" => clipboard.write_text(ps),
         _ => log::error!(target: "app", "copy_clash_env: Invalid option! {option}"),
     }
+}
+
+pub fn update_proxies_buff(rx: Option<tokio::sync::oneshot::Receiver<()>>) {
+    use crate::core::clash::proxies::{ProxiesGuard, ProxiesGuardExt};
+
+    tauri::async_runtime::spawn(async move {
+        if let Some(rx) = rx {
+            if let Err(e) = rx.await {
+                log::error!(target: "app::clash::proxies", "update proxies buff by rx failed: {e}");
+            }
+        }
+        match ProxiesGuard::global().update().await {
+            Ok(_) => {
+                log::debug!(target: "app::clash::proxies", "update proxies buff success");
+            }
+            Err(e) => {
+                log::error!(target: "app::clash::proxies", "update proxies buff failed: {e}");
+            }
+        }
+    });
 }

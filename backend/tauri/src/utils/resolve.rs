@@ -99,7 +99,7 @@ pub fn resolve_setup(app: &mut App) {
     log_err!(ProfilesJobGuard::global().lock().init());
 
     // test job
-    proxies::test();
+    proxies::setup_proxies();
 }
 
 /// reset system proxy

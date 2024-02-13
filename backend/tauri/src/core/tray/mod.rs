@@ -11,6 +11,8 @@ pub struct Tray {}
 
 pub mod proxies;
 
+use self::proxies::SystemTrayMenuProxiesExt;
+
 impl Tray {
     pub fn tray_menu(_app_handle: &AppHandle) -> SystemTrayMenu {
         let zh = { Config::verge().latest().language == Some("zh".into()) };
@@ -32,6 +34,8 @@ impl Tray {
                 "open_window",
                 t!("Dashboard", "打开面板"),
             ))
+            .add_native_item(SystemTrayMenuItem::Separator)
+            .setup_proxies() // Setup the proxies menu
             .add_native_item(SystemTrayMenuItem::Separator)
             .add_item(CustomMenuItem::new(
                 "rule_mode",
@@ -111,15 +115,7 @@ impl Tray {
     }
 
     pub fn update_part(app_handle: &AppHandle) -> Result<()> {
-        let mode = {
-            Config::clash()
-                .latest()
-                .0
-                .get("mode")
-                .map(|val| val.as_str().unwrap_or("rule"))
-                .unwrap_or("rule")
-                .to_owned()
-        };
+        let mode = crate::utils::config::get_current_clash_mode();
 
         let tray = app_handle.tray_handle();
 
@@ -212,7 +208,9 @@ impl Tray {
                     storage::Storage::global().destroy().unwrap();
                     std::process::exit(0);
                 }
-                _ => {}
+                _ => {
+                    proxies::on_system_tray_event(&id);
+                }
             },
             #[cfg(target_os = "windows")]
             SystemTrayEvent::LeftClick { .. } => {

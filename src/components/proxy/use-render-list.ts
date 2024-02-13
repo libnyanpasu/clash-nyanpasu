@@ -1,14 +1,15 @@
-import useSWR from "swr";
 import { useEffect, useMemo } from "react";
-import { getProxies } from "@/services/api";
+import useSWR from "swr";
+// import { getProxies } from "@/services/api";
 import { useVerge } from "@/hooks/use-verge";
+import { getProxies } from "@/services/cmds";
 import { filterSort } from "./use-filter-sort";
-import { useWindowWidth } from "./use-window-width";
 import {
-  useHeadStateNew,
   DEFAULT_STATE,
+  useHeadStateNew,
   type HeadState,
 } from "./use-head-state";
+import { useWindowWidth } from "./use-window-width";
 
 export interface IRenderItem {
   // 组 ｜ head ｜ item ｜ empty | item col | item bottom | empty-padding
@@ -24,7 +25,11 @@ export interface IRenderItem {
 export const useRenderList = (mode: string) => {
   const { data: proxiesData, mutate: mutateProxies } = useSWR(
     "getProxies",
-    getProxies,
+    async () => {
+      const res = await getProxies();
+      console.log(res);
+      return res;
+    },
     { refreshInterval: 45000 },
   );
 

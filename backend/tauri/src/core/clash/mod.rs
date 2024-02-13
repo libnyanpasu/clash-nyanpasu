@@ -8,5 +8,5 @@ pub static CLASH_API_DEFAULT_BACKOFF_STRATEGY: Lazy<ExponentialBuilder> = Lazy::
     ExponentialBuilder::default()
         .with_min_delay(std::time::Duration::from_millis(50))
         .with_max_delay(std::time::Duration::from_secs(5))
-        .with_max_times(3)
+        .with_max_times(5)
 });

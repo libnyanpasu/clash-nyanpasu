@@ -81,9 +81,9 @@ impl From<ProxyProviderItem> for ProxyItem {
             name,
             r#type,
             proxies,
-            vehicle_type,
-            test_url,
-            expected_status,
+            vehicle_type: _,
+            test_url: _,
+            expected_status: _,
         } = item;
 
         let now = proxies
@@ -238,7 +238,7 @@ pub async fn get_providers_proxies_group(group: String) -> Result<ProxyProviderI
 /// PUT /providers/proxies/:name
 /// 更新代理集合
 /// name: 代理集合名称
-pub async fn update_providers_proxies_group(name: String) -> Result<()> {
+pub async fn update_providers_proxies_group(name: &str) -> Result<()> {
     let (url, headers) = clash_client_info()?;
     let url = format!("{url}/providers/proxies/{name}");
 

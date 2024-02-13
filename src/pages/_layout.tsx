@@ -82,6 +82,11 @@ export default function Layout() {
       }
     });
 
+    listen("verge://mutate-proxies", () => {
+      mutate("getProxies");
+      mutate("getProviders");
+    });
+
     setTimeout(() => {
       appWindow.show();
       appWindow.unminimize();

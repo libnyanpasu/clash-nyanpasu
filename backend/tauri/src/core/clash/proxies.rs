@@ -1,15 +1,17 @@
 /// This module is used to manage the proxies for the Tauri application.
 /// It is used to provide the unite interface between tray and frontend.
+/// TODO: add a diff algorithm to reduce the data transfer, and the rerendering of the tray menu.
 use super::{api, CLASH_API_DEFAULT_BACKOFF_STRATEGY};
 use anyhow::Result;
 use backon::Retryable;
+use log::warn;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     sync::{Arc, OnceLock},
 };
-use tokio::try_join;
+use tokio::{sync::broadcast, try_join};
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -86,6 +88,7 @@ impl Proxies {
                 })
                 .collect()
         };
+
         // 2. mapping provider => providerProxiesItem to name => ProxyItem
         let mut provider_map = HashMap::<String, api::ProxyItem>::new();
         for (provider, record) in providers_proxies.iter() {
@@ -191,32 +194,37 @@ impl Proxies {
 pub struct ProxiesGuard {
     inner: Proxies,
     updated_at: u64,
-    // br: tokio::sync::broadcast::Sender<()>,
+    sender: broadcast::Sender<()>,
 }
 
 impl ProxiesGuard {
     pub fn global() -> &'static Arc<RwLock<ProxiesGuard>> {
         static PROXIES: OnceLock<Arc<RwLock<ProxiesGuard>>> = OnceLock::new();
         PROXIES.get_or_init(|| {
-            // let (tx, _) = tokio::sync::broadcast::channel(5); // 默认提供 5 个消费位置，提供一定的缓冲
+            let (tx, _) = broadcast::channel(5); // 默认提供 5 个消费位置，提供一定的缓冲
             Arc::new(RwLock::new(ProxiesGuard {
-                // br: tx,
+                sender: tx,
                 inner: Proxies::default(),
                 updated_at: 0,
             }))
         })
     }
 
-    // pub fn get_receiver(&self) -> tokio::sync::broadcast::Receiver<()> {
-    //     self.br.subscribe()
-    // }
+    pub fn get_receiver(&self) -> broadcast::Receiver<()> {
+        self.sender.subscribe()
+    }
 
-    pub fn replace(&mut self, proxies: Proxies) -> Result<()> {
+    pub fn replace(&mut self, proxies: Proxies) {
         let now = tokio::time::Instant::now().elapsed().as_secs();
         self.inner = proxies;
         self.updated_at = now;
-        // self.br.send(())?;
-        Ok(())
+
+        if let Err(e) = self.sender.send(()) {
+            warn!(
+                target: "clash::proxies",
+                "send update signal failed: {:?}", e
+            );
+        }
     }
 
     // pub async fn select_proxy(&mut self, group: &str, name: &str) -> Result<()> {
@@ -227,6 +235,10 @@ impl ProxiesGuard {
 
     pub fn inner(&self) -> &Proxies {
         &self.inner
+    }
+
+    pub fn updated_at(&self) -> u64 {
+        self.updated_at
     }
 }
 
@@ -240,7 +252,7 @@ impl ProxiesGuardExt for ProxiesGuardSingleton {
     async fn update(&self) -> Result<()> {
         let proxies = Proxies::fetch().await?;
         {
-            self.write().replace(proxies)?;
+            self.write().replace(proxies);
         }
         Ok(())
     }

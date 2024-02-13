@@ -23,6 +23,16 @@ pub fn get_system_proxy() -> Result<Option<String>> {
     Ok(None)
 }
 
+pub fn get_current_clash_mode() -> String {
+    Config::clash()
+        .latest()
+        .0
+        .get("mode")
+        .map(|val| val.as_str().unwrap_or("rule"))
+        .unwrap_or("rule")
+        .to_owned()
+}
+
 pub trait NyanpasuReqwestProxyExt {
     fn swift_set_proxy(self, url: &str) -> Self;
 

@@ -161,6 +161,8 @@ export const getProviders = async () => {
   );
 };
 
+export type IProxies = Awaited<ReturnType<typeof getProxies>>;
+
 // proxy providers health check
 export const providerHealthCheck = async (name: string) => {
   const instance = await getAxios();

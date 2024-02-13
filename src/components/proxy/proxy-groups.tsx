@@ -1,20 +1,21 @@
-import { useRef } from "react";
-import { useLockFn } from "ahooks";
-import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
-import {
-  getConnections,
-  providerHealthCheck,
-  updateProxy,
-  deleteConnection,
-} from "@/services/api";
 import { useProfiles } from "@/hooks/use-profiles";
 import { useVerge } from "@/hooks/use-verge";
-import { BaseEmpty } from "../base";
-import { useRenderList } from "./use-render-list";
-import { ProxyRender } from "./proxy-render";
+import {
+  // updateProxy,
+  deleteConnection,
+  getConnections,
+  providerHealthCheck,
+} from "@/services/api";
+import { selectProxy } from "@/services/cmds";
 import delayManager from "@/services/delay";
 import { classNames } from "@/utils";
+import { useLockFn } from "ahooks";
+import { useRef } from "react";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+import { BaseEmpty } from "../base";
 import styles from "./proxy-group.module.scss";
+import { ProxyRender } from "./proxy-render";
+import { useRenderList } from "./use-render-list";
 
 interface Props {
   mode: string;
@@ -36,7 +37,7 @@ export const ProxyGroups = (props: Props) => {
       if (group.type !== "Selector" && group.type !== "Fallback") return;
 
       const { name, now } = group;
-      await updateProxy(name, proxy.name);
+      await selectProxy(name, proxy.name);
       onProxies();
 
       // 断开连接

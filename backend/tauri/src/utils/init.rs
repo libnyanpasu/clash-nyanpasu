@@ -1,3 +1,4 @@
+use crate::utils::dialog::migrate_dialog;
 use crate::{
     config::*,
     utils::{dirs, help},
@@ -11,6 +12,7 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 use std::fs;
+use std::path::PathBuf;
 
 /// initialize this instance's log file
 fn init_log() -> Result<()> {
@@ -77,9 +79,23 @@ pub fn init_config() -> Result<()> {
     #[cfg(target_os = "windows")]
     let _ = dirs::init_portable_flag();
 
+    // Check if old config dir exist
+    let mut old_app_dir: Option<PathBuf> = None;
+    crate::log_err!(dirs::old_app_home_dir().map(|_old_app_dir| {
+        if _old_app_dir.exists() && migrate_dialog() {
+            old_app_dir = Some(_old_app_dir);
+        }
+    }));
+
     let _ = init_log();
 
     crate::log_err!(dirs::app_home_dir().map(|app_dir| {
+        // Do migrate
+        if let Some(_old_app_dir) = old_app_dir {
+            let _ = fs::remove_dir_all(&app_dir);
+            let _ = fs::rename(_old_app_dir, &app_dir);
+        }
+
         if !app_dir.exists() {
             let _ = fs::create_dir_all(&app_dir);
         }

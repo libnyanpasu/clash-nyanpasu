@@ -296,6 +296,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
         }
 
         if language.is_some() {
+            rust_i18n::set_locale(language.unwrap().as_str());
             handle::Handle::update_systray()?;
         } else if system_proxy.or(tun_mode).is_some() {
             handle::Handle::update_systray_part()?;

@@ -10,8 +10,11 @@ mod enhance;
 mod feat;
 mod utils;
 
+use crate::config::Config;
 use crate::utils::{init, resolve, server};
 use tauri::{api, SystemTray};
+
+rust_i18n::i18n!("../../locales");
 
 fn main() -> std::io::Result<()> {
     // 单例检测
@@ -21,6 +24,9 @@ fn main() -> std::io::Result<()> {
     }
 
     crate::log_err!(init::init_config());
+
+    let verge = { Config::verge().latest().language.clone().unwrap() };
+    rust_i18n::set_locale(verge.as_str());
 
     // Panic Hook to show a panic dialog and save logs
     let default_panic = std::panic::take_hook();

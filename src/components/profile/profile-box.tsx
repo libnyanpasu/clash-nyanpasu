@@ -36,7 +36,7 @@ export const ProfileBox = styled(Box)(({
     textAlign: "left",
     borderRadius: theme.shape.borderRadius,
     boxShadow: theme.shadows[2],
-    padding: "8px 16px",
+    padding: "10px 14px",
     boxSizing: "border-box",
     backgroundColor,
     color,

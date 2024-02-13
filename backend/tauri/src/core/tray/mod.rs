@@ -32,7 +32,7 @@ impl Tray {
             .add_item(CustomMenuItem::new("copy_env_cmd", t!("tray.copy_env.cmd")))
             .add_item(CustomMenuItem::new("copy_env_ps", t!("tray.copy_env.ps")))
             .add_submenu(SystemTraySubmenu::new(
-                t!("tray.open_dir"),
+                t!("tray.open_dir.menu"),
                 SystemTrayMenu::new()
                     .add_item(CustomMenuItem::new(
                         "open_app_dir",
@@ -48,7 +48,7 @@ impl Tray {
                     )),
             ))
             .add_submenu(SystemTraySubmenu::new(
-                t!("tray.more"),
+                t!("tray.more.menu"),
                 SystemTrayMenu::new()
                     .add_item(CustomMenuItem::new(
                         "restart_clash",

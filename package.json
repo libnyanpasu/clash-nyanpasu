@@ -146,7 +146,7 @@
     "stylelint-scss": "6.1.0",
     "tsx": "4.7.1",
     "typescript": "5.3.3",
-    "vite": "5.1.1",
+    "vite": "5.1.2",
     "vite-plugin-monaco-editor": "1.1.0",
     "vite-plugin-svgr": "4.2.0"
   }

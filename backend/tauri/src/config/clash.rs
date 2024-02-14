@@ -28,7 +28,10 @@ impl IClashTemp {
         map.insert("log-level".into(), "info".into());
         map.insert("allow-lan".into(), false.into());
         map.insert("mode".into(), "rule".into());
-        map.insert("external-controller".into(), "127.0.0.1:9090".into());
+        #[cfg(debug_assertions)]
+        map.insert("external-controller".into(), "127.0.0.1:9872".into());
+        #[cfg(not(debug_assertions))]
+        map.insert("external-controller".into(), "127.0.0.1:17650".into());
         map.insert("secret".into(), "".into());
         #[cfg(feature = "default-meta")]
         map.insert("unified-delay".into(), true.into());

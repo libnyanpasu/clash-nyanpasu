@@ -58,7 +58,7 @@ jobs:
         if: startsWith(matrix.targets.os, 'ubuntu-')
         uses: mknejp/delete-release-assets@v1
         with:
-          token: ${{ secrets.GH_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.event.release.tag_name }}
           fail-if-no-assets: false
           fail-if-no-release: false
@@ -93,7 +93,7 @@ jobs:
         if: startsWith(matrix.targets.os, 'macos-') == false || matrix.targets.category != 'aarch64'
         uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
@@ -111,7 +111,7 @@ jobs:
         run: |
           pnpm portable
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           VITE_WIN_PORTABLE: 1
@@ -124,7 +124,7 @@ jobs:
       - name: Tauri build with Upload (macOS aarch64)
         if: startsWith(matrix.targets.os, 'macos-') && matrix.targets.category == 'aarch64'
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         run: |
@@ -157,5 +157,5 @@ jobs:
       - name: Release updater file
         run: pnpm updater
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_BODY: ${{ github.event.release.body }}

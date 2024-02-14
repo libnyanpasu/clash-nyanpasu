@@ -60,7 +60,7 @@ jobs:
         if: startsWith(matrix.targets.os, 'ubuntu-')
         uses: mknejp/delete-release-assets@v1
         with:
-          token: ${{ secrets.GH_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           tag: pre-release
           fail-if-no-assets: false
           fail-if-no-release: false
@@ -104,7 +104,7 @@ jobs:
         if: startsWith(matrix.targets.os, 'macos-') == false || matrix.targets.category != 'aarch64'
         uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
@@ -121,7 +121,7 @@ jobs:
           pnpm portable
         env:
           TAG_NAME: pre-release
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           VITE_WIN_PORTABLE: 1
@@ -135,7 +135,7 @@ jobs:
         if: startsWith(matrix.targets.os, 'macos-') && matrix.targets.category == 'aarch64'
         env:
           TAG_NAME: pre-release
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         run: |
@@ -177,7 +177,7 @@ jobs:
           prerelease: true
           generate_release_notes: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   updater:
     name: Update Nightly Updater
     runs-on: ubuntu-latest
@@ -199,4 +199,4 @@ jobs:
       - name: Update Updater
         run: pnpm updater:nightly
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

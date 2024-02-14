@@ -89,7 +89,7 @@ pub fn init_config() -> Result<()> {
         app_dir = Some(_app_dir);
     }));
 
-    if let (Some(app_dir), Some(old_app_dir)) = (old_app_dir, app_dir) {
+    if let (Some(app_dir), Some(old_app_dir)) = (app_dir, old_app_dir) {
         if !app_dir.exists() && old_app_dir.exists() && migrate_dialog() {
             if let Err(e) = do_config_migration(&old_app_dir, &app_dir) {
                 super::dialog::error_dialog(format!("failed to do migration: {:?}", e))

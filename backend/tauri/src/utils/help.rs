@@ -125,6 +125,21 @@ macro_rules! log_err {
 }
 
 #[macro_export]
+macro_rules! dialog_err {
+    ($result: expr) => {
+        if let Err(err) = $result {
+            crate::utils::dialog::error_dialog(format!("{:?}", err));
+        }
+    };
+
+    ($result: expr, $err_str: expr) => {
+        if let Err(_) = $result {
+            crate::utils::dialog::error_dialog($err_str.into());
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! trace_err {
     ($result: expr, $err_str: expr) => {
         if let Err(err) = $result {

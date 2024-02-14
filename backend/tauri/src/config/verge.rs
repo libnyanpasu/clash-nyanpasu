@@ -190,9 +190,9 @@ impl IVerge {
     pub fn template() -> Self {
         Self {
             clash_core: Some(ClashCore::default()),
-            language: match cfg!(feature = "default-meta") {
-                false => Some("en".into()),
-                true => Some("zh".into()),
+            language: {
+                let locale = crate::utils::help::get_system_locale();
+                Some(crate::utils::help::mapping_to_i18n_key(&locale).into())
             },
             #[cfg(debug_assertions)]
             app_log_level: Some("debug".into()),

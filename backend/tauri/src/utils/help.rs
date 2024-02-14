@@ -102,6 +102,18 @@ pub fn open_file(app: tauri::AppHandle, path: PathBuf) -> Result<()> {
     Ok(())
 }
 
+pub fn get_system_locale() -> String {
+    tauri::api::os::locale().unwrap_or("en-US".to_string())
+}
+
+pub fn mapping_to_i18n_key(locale_key: &str) -> &'static str {
+    if locale_key.starts_with("zh-") {
+        "zh"
+    } else {
+        "en"
+    }
+}
+
 #[macro_export]
 macro_rules! error {
     ($result: expr) => {

@@ -23,6 +23,13 @@ fn main() -> std::io::Result<()> {
         return Ok(());
     }
 
+    // Use system locale as default
+    let locale = {
+        let locale = utils::help::get_system_locale();
+        utils::help::mapping_to_i18n_key(&locale)
+    };
+    rust_i18n::set_locale(locale);
+
     crate::log_err!(init::init_config());
 
     // Panic Hook to show a panic dialog and save logs

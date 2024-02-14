@@ -124,7 +124,7 @@
     "eslint-plugin-react": "7.33.2",
     "fs-extra": "11.2.0",
     "https-proxy-agent": "7.0.3",
-    "husky": "9.0.10",
+    "husky": "9.0.11",
     "lint-staged": "15.2.2",
     "node-fetch": "3.3.2",
     "npm-run-all2": "6.1.2",

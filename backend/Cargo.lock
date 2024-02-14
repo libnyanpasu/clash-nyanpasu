@@ -709,6 +709,7 @@ dependencies = [
  "sysproxy",
  "tauri",
  "tauri-build",
+ "tauri-plugin-single-instance",
  "tempfile",
  "thiserror",
  "tokio",
@@ -5185,6 +5186,20 @@ dependencies = [
  "syn 1.0.109",
  "tauri-codegen",
  "tauri-utils",
+]
+
+[[package]]
+name = "tauri-plugin-single-instance"
+version = "0.0.0"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v1#67405aed06f495c3ea42e0a62b789e2be48abb3a"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+ "tauri",
+ "thiserror",
+ "windows-sys 0.52.0",
+ "zbus",
 ]
 
 [[package]]

@@ -12,32 +12,40 @@ mod utils;
 
 use crate::config::Config;
 use crate::utils::{init, resolve, server};
-use tauri::{api, SystemTray};
+use tauri::{api, Manager, SystemTray};
 
 rust_i18n::i18n!("../../locales");
 
+#[derive(Clone, serde::Serialize)]
+struct Payload {
+    args: Vec<String>,
+    cwd: String,
+}
+
 fn main() -> std::io::Result<()> {
-    // 单例检测
-    if server::check_singleton().is_err() {
-        println!("app exists");
-        return Ok(());
-    }
-
-    crate::log_err!(init::init_config());
-
-    // Panic Hook to show a panic dialog and save logs
-    let default_panic = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        error!(format!("panic hook: {:?}", info));
-        utils::dialog::panic_dialog(&format!("{:?}", info));
-        default_panic(info);
-    }));
-
-    let verge = { Config::verge().latest().language.clone().unwrap() };
-    rust_i18n::set_locale(verge.as_str());
-
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            println!("{}, {argv:?}, {cwd}", app.package_info().name);
+
+            app.emit_all("single-instance", Payload { args: argv, cwd })
+                .unwrap();
+        }))
+        .setup(|_| {
+            crate::log_err!(init::init_config());
+
+            // Panic Hook to show a panic dialog and save logs
+            let default_panic = std::panic::take_hook();
+            std::panic::set_hook(Box::new(move |info| {
+                error!(format!("panic hook: {:?}", info));
+                utils::dialog::panic_dialog(&format!("{:?}", info));
+                default_panic(info);
+            }));
+
+            let verge = { Config::verge().latest().language.clone().unwrap() };
+            rust_i18n::set_locale(verge.as_str());
+            Ok(())
+        })
         .system_tray(SystemTray::new())
         .setup(|app| {
             resolve::resolve_setup(app);

@@ -89,7 +89,7 @@ mod platform_impl {
         let mut menu = menu.to_owned();
         match mode.as_str() {
             "rule" | "script" | "global" => {
-                if mode == "global" {
+                if mode == "global" || proxies.groups.is_empty() {
                     let group_selector = generate_group_selector(&proxies.global);
                     menu = menu.add_submenu(group_selector);
                 }

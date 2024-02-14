@@ -215,7 +215,7 @@ impl ProxiesGuard {
     }
 
     pub fn replace(&mut self, proxies: Proxies) {
-        let now = tokio::time::Instant::now().elapsed().as_secs();
+        let now = chrono::Utc::now().timestamp() as u64;
         self.inner = proxies;
         self.updated_at = now;
 
@@ -239,6 +239,11 @@ impl ProxiesGuard {
 
     pub fn updated_at(&self) -> u64 {
         self.updated_at
+    }
+
+    pub fn is_updated(&self) -> bool {
+        let now = chrono::Utc::now().timestamp() as u64;
+        now - self.updated_at <= 3
     }
 }
 

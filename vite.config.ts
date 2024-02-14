@@ -1,8 +1,8 @@
-import { defineConfig } from "vite";
-import path from "path";
-import svgr from "vite-plugin-svgr";
 import react from "@vitejs/plugin-react";
+import path from "path";
+import { defineConfig } from "vite";
 import monaco from "vite-plugin-monaco-editor";
+import svgr from "vite-plugin-svgr";
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -13,6 +13,9 @@ export default defineConfig({
     react(),
     monaco({ languageWorkers: ["editorWorkerService", "typescript"] }),
   ],
+  esbuild: {
+    drop: ["console", "debugger"],
+  },
   build: {
     outDir: "../dist",
     emptyOutDir: true,

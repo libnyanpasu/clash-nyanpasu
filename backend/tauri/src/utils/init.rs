@@ -1,7 +1,6 @@
-use crate::utils::dialog::migrate_dialog;
 use crate::{
     config::*,
-    utils::{dirs, help},
+    utils::{dialog::migrate_dialog, dirs, help},
 };
 use anyhow::Result;
 use chrono::Local;
@@ -11,8 +10,8 @@ use log4rs::{
     config::{Appender, Logger, Root},
     encode::pattern::PatternEncoder,
 };
-use std::fs;
-use std::path::PathBuf;
+use runas::Command as RunasCommand;
+use std::{fs, io::ErrorKind, path::PathBuf};
 
 /// initialize this instance's log file
 fn init_log() -> Result<()> {
@@ -79,27 +78,30 @@ pub fn init_config() -> Result<()> {
     #[cfg(target_os = "windows")]
     let _ = dirs::init_portable_flag();
 
-    // Check if old config dir exist
+    // Check if old config dir exist and new config dir is not exist
     let mut old_app_dir: Option<PathBuf> = None;
-    crate::log_err!(dirs::old_app_home_dir().map(|_old_app_dir| {
-        if _old_app_dir.exists() && migrate_dialog() {
-            old_app_dir = Some(_old_app_dir);
-        }
+    let mut app_dir: Option<PathBuf> = None;
+    crate::dialog_err!(dirs::old_app_home_dir().map(|_old_app_dir| {
+        old_app_dir = Some(_old_app_dir);
     }));
 
-    let _ = init_log();
+    crate::dialog_err!(dirs::app_home_dir().map(|_app_dir| {
+        app_dir = Some(_app_dir);
+    }));
 
-    crate::log_err!(dirs::app_home_dir().map(|app_dir| {
-        // Do migrate
-        if let Some(_old_app_dir) = old_app_dir {
-            let _ = fs::remove_dir_all(&app_dir);
-            let _ = fs::rename(_old_app_dir, &app_dir);
+    if let (Some(app_dir), Some(old_app_dir)) = (old_app_dir, app_dir) {
+        if !app_dir.exists() && old_app_dir.exists() && migrate_dialog() {
+            if let Err(e) = do_config_migration(&old_app_dir, &app_dir) {
+                super::dialog::error_dialog(format!("failed to do migration: {:?}", e))
+            }
         }
-
         if !app_dir.exists() {
-            let _ = fs::create_dir_all(&app_dir);
+            let _ = fs::create_dir_all(app_dir);
         }
-    }));
+    }
+
+    // init log
+    let _ = init_log();
 
     crate::log_err!(dirs::app_profiles_dir().map(|profiles_dir| {
         if !profiles_dir.exists() {
@@ -252,5 +254,25 @@ pub fn init_service() -> Result<()> {
         };
     }
 
+    Ok(())
+}
+
+fn do_config_migration(old_app_dir: &PathBuf, app_dir: &PathBuf) -> anyhow::Result<()> {
+    if let Err(e) = fs::rename(old_app_dir, app_dir) {
+        match e.kind() {
+            #[cfg(windows)]
+            ErrorKind::PermissionDenied => {
+                // It seems that clash-verge-service is running, so kill it.
+                let status = RunasCommand::new("cmd")
+                    .args(&["/C", "taskkill", "/IM", "clash-verge-service.exe", "/F"])
+                    .status()?;
+                if !status.success() {
+                    anyhow::bail!("failed to kill clash-verge-service.exe")
+                }
+                fs::rename(old_app_dir, app_dir)?;
+            }
+            _ => return Err(e.into()),
+        };
+    }
     Ok(())
 }

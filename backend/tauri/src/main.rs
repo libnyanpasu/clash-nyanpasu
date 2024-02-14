@@ -25,9 +25,6 @@ fn main() -> std::io::Result<()> {
 
     crate::log_err!(init::init_config());
 
-    let verge = { Config::verge().latest().language.clone().unwrap() };
-    rust_i18n::set_locale(verge.as_str());
-
     // Panic Hook to show a panic dialog and save logs
     let default_panic = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
@@ -35,6 +32,9 @@ fn main() -> std::io::Result<()> {
         utils::dialog::panic_dialog(&format!("{:?}", info));
         default_panic(info);
     }));
+
+    let verge = { Config::verge().latest().language.clone().unwrap() };
+    rust_i18n::set_locale(verge.as_str());
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()

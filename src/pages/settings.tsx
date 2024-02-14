@@ -21,7 +21,7 @@ export default function SettingPage() {
   };
 
   const toGithubRepo = useLockFn(() => {
-    return openWebUrl("https://github.com/keiko233/clash-nyanpasu");
+    return openWebUrl("https://github.com/LibNyanpasu/clash-nyanpasu");
   });
 
   return (

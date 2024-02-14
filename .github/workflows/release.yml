@@ -23,7 +23,7 @@ jobs:
             category: aarch64
 
     runs-on: ${{ matrix.targets.os }}
-    if: startsWith(github.repository, 'keiko233')
+    if: startsWith(github.repository, 'LibNyanpasu')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -135,7 +135,7 @@ jobs:
     needs: release
     runs-on: ubuntu-latest
     if: |
-      startsWith(github.repository, 'keiko233')
+      startsWith(github.repository, 'LibNyanpasu')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

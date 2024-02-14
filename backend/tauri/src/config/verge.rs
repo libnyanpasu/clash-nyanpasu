@@ -194,6 +194,10 @@ impl IVerge {
                 false => Some("en".into()),
                 true => Some("zh".into()),
             },
+            #[cfg(debug_assertions)]
+            app_log_level: Some("debug".into()),
+            #[cfg(not(debug_assertions))]
+            app_log_level: Some("info".into()),
             theme_mode: Some("system".into()),
             theme_blur: Some(false),
             traffic_graph: Some(true),

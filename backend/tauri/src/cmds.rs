@@ -17,8 +17,6 @@ use sysproxy::Sysproxy;
 
 use tauri::api::dialog::FileDialogBuilder;
 
-use self::clash::proxies::ProxiesGuard;
-
 type CmdResult<T = ()> = Result<T, String>;
 
 #[tauri::command]

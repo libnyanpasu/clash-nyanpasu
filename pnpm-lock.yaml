@@ -227,8 +227,8 @@ devDependencies:
     specifier: 2.0.1
     version: 2.0.1(prettier@3.2.5)
   sass:
-    specifier: 1.70.0
-    version: 1.70.0
+    specifier: 1.71.0
+    version: 1.71.0
   shikiji:
     specifier: 0.10.2
     version: 0.10.2
@@ -261,7 +261,7 @@ devDependencies:
     version: 5.3.3
   vite:
     specifier: 5.1.3
-    version: 5.1.3(@types/node@18.19.0)(sass@1.70.0)
+    version: 5.1.3(@types/node@18.19.0)(sass@1.71.0)
   vite-plugin-monaco-editor:
     specifier: npm:vite-plugin-monaco-editor-new@1.1.3
     version: /vite-plugin-monaco-editor-new@1.1.3(monaco-editor@0.46.0)
@@ -2232,7 +2232,7 @@ packages:
       '@babel/plugin-transform-react-jsx-source': 7.23.3(@babel/core@7.23.6)
       '@types/babel__core': 7.20.5
       react-refresh: 0.14.0
-      vite: 5.1.3(@types/node@18.19.0)(sass@1.70.0)
+      vite: 5.1.3(@types/node@18.19.0)(sass@1.71.0)
     transitivePeerDependencies:
       - supports-color
     dev: true
@@ -5620,8 +5620,8 @@ packages:
       is-regex: 1.1.4
     dev: true
 
-  /sass@1.70.0:
-    resolution: {integrity: sha512-uUxNQ3zAHeAx5nRFskBnrWzDUJrrvpCPD5FNAoRvTi0WwremlheES3tg+56PaVtCs5QDRX5CBLxxKMDJMEa1WQ==}
+  /sass@1.71.0:
+    resolution: {integrity: sha512-HKKIKf49Vkxlrav3F/w6qRuPcmImGVbIXJ2I3Kg0VMA+3Bav+8yE9G5XmP5lMj6nl4OlqbPftGAscNaNu28b8w==}
     engines: {node: '>=14.0.0'}
     hasBin: true
     dependencies:
@@ -6357,14 +6357,14 @@ packages:
       '@rollup/pluginutils': 5.0.5
       '@svgr/core': 8.1.0(typescript@5.3.3)
       '@svgr/plugin-jsx': 8.1.0(@svgr/core@8.1.0)
-      vite: 5.1.3(@types/node@18.19.0)(sass@1.70.0)
+      vite: 5.1.3(@types/node@18.19.0)(sass@1.71.0)
     transitivePeerDependencies:
       - rollup
       - supports-color
       - typescript
     dev: true
 
-  /vite@5.1.3(@types/node@18.19.0)(sass@1.70.0):
+  /vite@5.1.3(@types/node@18.19.0)(sass@1.71.0):
     resolution: {integrity: sha512-UfmUD36DKkqhi/F75RrxvPpry+9+tTkrXfMNZD+SboZqBCMsxKtO52XeGzzuh7ioz+Eo/SYDBbdb0Z7vgcDJew==}
     engines: {node: ^18.0.0 || >=20.0.0}
     hasBin: true
@@ -6396,7 +6396,7 @@ packages:
       esbuild: 0.19.10
       postcss: 8.4.35
       rollup: 4.9.0
-      sass: 1.70.0
+      sass: 1.71.0
     optionalDependencies:
       fsevents: 2.3.3
     dev: true

@@ -89,7 +89,7 @@
     "react-virtuoso": "4.6.3",
     "recoil": "0.7.7",
     "snarkdown": "2.0.0",
-    "swr": "2.2.4"
+    "swr": "2.2.5"
   },
   "devDependencies": {
     "@actions/github": "6.0.0",

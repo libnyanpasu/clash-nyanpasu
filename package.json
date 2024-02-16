@@ -123,7 +123,7 @@
     "eslint-plugin-promise": "6.1.1",
     "eslint-plugin-react": "7.33.2",
     "fs-extra": "11.2.0",
-    "https-proxy-agent": "7.0.3",
+    "https-proxy-agent": "7.0.4",
     "husky": "9.0.11",
     "lint-staged": "15.2.2",
     "node-fetch": "3.3.2",

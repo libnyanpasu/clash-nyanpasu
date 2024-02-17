@@ -87,7 +87,7 @@
     "react-i18next": "14.0.5",
     "react-router-dom": "6.22.1",
     "react-transition-group": "4.4.5",
-    "react-virtuoso": "4.6.3",
+    "react-virtuoso": "4.7.0",
     "recoil": "0.7.7",
     "snarkdown": "2.0.0",
     "swr": "2.2.5"

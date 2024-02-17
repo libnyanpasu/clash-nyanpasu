@@ -254,7 +254,7 @@ devDependencies:
     specifier: 6.1.0
     version: 6.1.0(stylelint@16.2.1)
   telegraf:
-    specifier: ^4.15.3
+    specifier: 4.15.3
     version: 4.15.3
   tsx:
     specifier: 4.7.1

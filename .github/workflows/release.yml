@@ -159,3 +159,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_BODY: ${{ github.event.release.body }}
+
+      - name: Send Telegram Channel Notify
+        run: pnpm send-notify
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_TO: "@keikolog"

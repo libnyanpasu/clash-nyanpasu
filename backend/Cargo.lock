@@ -703,7 +703,7 @@ dependencies = [
  "semver 1.0.21",
  "serde",
  "serde_json",
- "serde_yaml 0.9.31",
+ "serde_yaml 0.9.32",
  "simd-json",
  "sysinfo",
  "sysproxy",
@@ -2741,7 +2741,7 @@ dependencies = [
  "serde",
  "serde-value",
  "serde_json",
- "serde_yaml 0.9.31",
+ "serde_yaml 0.9.32",
  "thiserror",
  "thread-id",
  "typemap-ors",
@@ -4566,9 +4566,9 @@ dependencies = [
 
 [[package]]
 name = "serde_yaml"
-version = "0.9.31"
+version = "0.9.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "adf8a49373e98a4c5f0ceb5d05aa7c648d75f63774981ed95b7c7443bbd50c6e"
+checksum = "8fd075d994154d4a774f95b51fb96bdc2832b0ea48425c92546073816cda1f2f"
 dependencies = [
  "indexmap 2.2.3",
  "itoa 1.0.10",

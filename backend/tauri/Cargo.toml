@@ -64,7 +64,7 @@ rs-snowflake = "0.6"
 rocksdb = "0.22"
 thiserror = { workspace = true }
 simd-json = "0.13.8"
-runas = "=1.0.0" # blocked by https://github.com/mitsuhiko/rust-runas/issues/13
+runas = "=1.2.0" # blocked by https://github.com/mitsuhiko/rust-runas/issues/13
 backon = "0.4.1"
 rust-i18n = "3"
 adler = "1.0.2"

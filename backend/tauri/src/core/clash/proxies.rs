@@ -2,6 +2,7 @@
 /// It is used to provide the unite interface between tray and frontend.
 /// TODO: add a diff algorithm to reduce the data transfer, and the rerendering of the tray menu.
 use super::{api, CLASH_API_DEFAULT_BACKOFF_STRATEGY};
+use adler::adler32;
 use anyhow::Result;
 use backon::Retryable;
 use log::warn;
@@ -193,6 +194,7 @@ impl Proxies {
 
 pub struct ProxiesGuard {
     inner: Proxies,
+    checksum: Option<u32>,
     updated_at: u64,
     sender: broadcast::Sender<()>,
 }
@@ -203,6 +205,7 @@ impl ProxiesGuard {
         PROXIES.get_or_init(|| {
             let (tx, _) = broadcast::channel(5); // 默认提供 5 个消费位置，提供一定的缓冲
             Arc::new(RwLock::new(ProxiesGuard {
+                checksum: None,
                 sender: tx,
                 inner: Proxies::default(),
                 updated_at: 0,
@@ -214,9 +217,10 @@ impl ProxiesGuard {
         self.sender.subscribe()
     }
 
-    pub fn replace(&mut self, proxies: Proxies) {
+    pub fn replace(&mut self, proxies: Proxies, checksum: u32) {
         let now = chrono::Utc::now().timestamp() as u64;
         self.inner = proxies;
+        self.checksum = Some(checksum);
         self.updated_at = now;
 
         if let Err(e) = self.sender.send(()) {
@@ -256,9 +260,16 @@ type ProxiesGuardSingleton = &'static Arc<RwLock<ProxiesGuard>>;
 impl ProxiesGuardExt for ProxiesGuardSingleton {
     async fn update(&self) -> Result<()> {
         let proxies = Proxies::fetch().await?;
+        let buf = simd_json::to_string(&proxies)?;
+        let checksum = adler32(buf.as_bytes())?;
         {
-            self.write().replace(proxies);
+            let reader = self.read();
+            if reader.checksum == Some(checksum) {
+                return Ok(());
+            }
         }
+        let mut writer = self.write();
+        writer.replace(proxies, checksum);
         Ok(())
     }
 

@@ -674,6 +674,7 @@ dependencies = [
 name = "clash-verge"
 version = "0.1.0"
 dependencies = [
+ "adler",
  "anyhow",
  "async-trait",
  "auto-launch",

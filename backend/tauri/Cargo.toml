@@ -68,6 +68,7 @@ runas = "=1.0.0" # blocked by https://github.com/mitsuhiko/rust-runas/issues/13
 backon = "0.4.1"
 rust-i18n = "3"
 adler = "1.0.2"
+rfd = "0.14.0"
 
 [target.'cfg(windows)'.dependencies]
 deelevate = "0.2.0"

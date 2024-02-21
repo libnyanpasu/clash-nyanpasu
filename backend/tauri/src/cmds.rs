@@ -328,8 +328,7 @@ pub async fn clash_api_get_proxy_delay(
 
 #[tauri::command]
 pub async fn get_proxies() -> CmdResult<crate::core::clash::proxies::Proxies> {
-    use crate::core::clash::proxies::ProxiesGuard;
-    use crate::core::clash::proxies::ProxiesGuardExt;
+    use crate::core::clash::proxies::{ProxiesGuard, ProxiesGuardExt};
     {
         let guard = ProxiesGuard::global().read();
         if guard.is_updated() {
@@ -347,8 +346,7 @@ pub async fn get_proxies() -> CmdResult<crate::core::clash::proxies::Proxies> {
 
 #[tauri::command]
 pub async fn select_proxy(group: String, name: String) -> CmdResult<()> {
-    use crate::core::clash::proxies::ProxiesGuard;
-    use crate::core::clash::proxies::ProxiesGuardExt;
+    use crate::core::clash::proxies::{ProxiesGuard, ProxiesGuardExt};
     wrap_err!(ProxiesGuard::global().select_proxy(&group, &name).await)?;
     Ok(())
 }

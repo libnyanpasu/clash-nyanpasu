@@ -10,8 +10,10 @@ mod enhance;
 mod feat;
 mod utils;
 
-use crate::config::Config;
-use crate::utils::{init, resolve, server};
+use crate::{
+    config::Config,
+    utils::{init, resolve, server},
+};
 use tauri::{api, SystemTray};
 
 rust_i18n::i18n!("../../locales");

@@ -136,7 +136,7 @@
     "postcss-scss": "4.0.9",
     "prettier": "3.2.5",
     "prettier-plugin-toml": "2.0.1",
-    "sass": "1.71.0",
+    "sass": "1.71.1",
     "shikiji": "0.10.2",
     "stylelint": "16.2.1",
     "stylelint-config-html": "1.1.0",

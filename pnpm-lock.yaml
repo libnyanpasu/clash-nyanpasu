@@ -63,7 +63,7 @@ dependencies:
     specifier: 0.46.0
     version: 0.46.0
   mui-color-input:
-    specifier: ^2.0.3
+    specifier: 2.0.3
     version: 2.0.3(@emotion/react@11.11.3)(@emotion/styled@11.11.0)(@mui/material@5.15.10)(@types/react@18.2.57)(react-dom@18.2.0)(react@18.2.0)
   react:
     specifier: 18.2.0

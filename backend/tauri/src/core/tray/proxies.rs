@@ -33,16 +33,19 @@ async fn loop_task() {
     }
 }
 
+type GroupName = String;
+type FromProxy = String;
+type ToProxy = String;
 #[derive(PartialEq)]
 enum TrayUpdateType {
     None,
     Full,
-    Part(Vec<(String, String)>),
+    Part(Vec<(GroupName, FromProxy, ToProxy)>),
 }
 
 fn diff_proxies(
-    old_proxies: BTreeMap<String, ProxyItem>,
-    new_proxies: BTreeMap<String, ProxyItem>,
+    old_proxies: &BTreeMap<String, ProxyItem>,
+    new_proxies: &BTreeMap<String, ProxyItem>,
 ) -> TrayUpdateType {
     let mut update_mode = TrayUpdateType::None;
     let group_matching = new_proxies
@@ -54,9 +57,9 @@ fn diff_proxies(
         .filter(|&(new, old)| new == old)
         .count();
     if group_matching == old_proxies.len() && group_matching == new_proxies.len() {
-        let mut action_list = Vec::<(String, String)>::new();
+        let mut action_list = Vec::<(GroupName, FromProxy, ToProxy)>::new();
         // Iterate through two btreemap
-        for (group_key, new_proxy) in &new_proxies {
+        for (group_key, new_proxy) in new_proxies {
             match old_proxies.get(group_key) {
                 Some(old_proxy) => {
                     if old_proxy.now.is_some()
@@ -66,8 +69,9 @@ fn diff_proxies(
                         action_list.insert(
                             0,
                             (
-                                format!("{}_{}", group_key, old_proxy.now.as_ref().unwrap()),
-                                format!("{}_{}", group_key, new_proxy.now.as_ref().unwrap()),
+                                group_key.to_owned(),
+                                old_proxy.now.as_ref().unwrap().to_owned(),
+                                new_proxy.now.as_ref().unwrap().to_owned(),
                             ),
                         );
                     }
@@ -114,7 +118,7 @@ pub async fn proxies_updated_receiver() {
                     .into_iter()
                     .collect();
 
-                match diff_proxies(old_proxies.clone(), new_proxies.clone()) {
+                match diff_proxies(&old_proxies, &new_proxies) {
                     TrayUpdateType::None => {}
                     TrayUpdateType::Full => {
                         old_proxies = new_proxies;
@@ -131,7 +135,10 @@ pub async fn proxies_updated_receiver() {
                     TrayUpdateType::Part(action_list) => {
                         old_proxies = new_proxies;
                         for action in action_list {
-                            match Tray::update_selected_proxy(action.0, action.1) {
+                            match Tray::update_selected_proxy(
+                                format!("{}_{}", action.0, action.1),
+                                format!("{}_{}", action.0, action.2),
+                            ) {
                                 Ok(_) => {
                                     debug!(target: "tray::proxies", "update systray part success");
                                 }

@@ -36,8 +36,8 @@ dependencies:
     specifier: 5.15.10
     version: 5.15.10(@emotion/react@11.11.3)(@emotion/styled@11.11.0)(@types/react@18.2.57)(react-dom@18.2.0)(react@18.2.0)
   '@mui/x-data-grid':
-    specifier: 6.19.4
-    version: 6.19.4(@mui/material@5.15.10)(@mui/system@5.15.9)(@types/react@18.2.57)(react-dom@18.2.0)(react@18.2.0)
+    specifier: 6.19.5
+    version: 6.19.5(@mui/material@5.15.10)(@mui/system@5.15.9)(@types/react@18.2.57)(react-dom@18.2.0)(react@18.2.0)
   '@tauri-apps/api':
     specifier: 1.5.3
     version: 1.5.3
@@ -1461,8 +1461,8 @@ packages:
       react-is: 18.2.0
     dev: false
 
-  /@mui/x-data-grid@6.19.4(@mui/material@5.15.10)(@mui/system@5.15.9)(@types/react@18.2.57)(react-dom@18.2.0)(react@18.2.0):
-    resolution: {integrity: sha512-qXBe2mSetdsl3ZPqB/1LpKNkEiaYUiFXIaMHTIjuzLyusXgt+w7UsHYO7R+aJYUU7c3FeHla0R1nwRMY3kZ5ng==}
+  /@mui/x-data-grid@6.19.5(@mui/material@5.15.10)(@mui/system@5.15.9)(@types/react@18.2.57)(react-dom@18.2.0)(react@18.2.0):
+    resolution: {integrity: sha512-jV1ZqwyFslKqFScSn4t+xc/tNxLHOeJjz3HoeK+Wdf5t3bPM69pg/jLeg8TmOkAUY62JmQKCLVmcGWiR3AqUKQ==}
     engines: {node: '>=14.0.0'}
     peerDependencies:
       '@mui/material': ^5.4.1

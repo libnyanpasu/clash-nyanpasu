@@ -71,7 +71,7 @@
     "@mui/icons-material": "5.15.10",
     "@mui/lab": "5.0.0-alpha.165",
     "@mui/material": "5.15.10",
-    "@mui/x-data-grid": "6.19.4",
+    "@mui/x-data-grid": "6.19.5",
     "@tauri-apps/api": "1.5.3",
     "ahooks": "3.7.10",
     "axios": "1.6.7",

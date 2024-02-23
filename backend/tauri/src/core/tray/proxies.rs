@@ -1,8 +1,11 @@
+use crate::core::tray::Tray;
 use crate::core::{
+    clash::api::ProxyItem,
     clash::proxies::{ProxiesGuard, ProxiesGuardExt},
     handle::Handle,
 };
 use log::{debug, error, warn};
+use std::collections::BTreeMap;
 use tauri::SystemTrayMenu;
 
 async fn loop_task() {
@@ -30,8 +33,73 @@ async fn loop_task() {
     }
 }
 
+type GroupName = String;
+type FromProxy = String;
+type ToProxy = String;
+#[derive(PartialEq)]
+enum TrayUpdateType {
+    None,
+    Full,
+    Part(Vec<(GroupName, FromProxy, ToProxy)>),
+}
+
+fn diff_proxies(
+    old_proxies: &BTreeMap<String, ProxyItem>,
+    new_proxies: &BTreeMap<String, ProxyItem>,
+) -> TrayUpdateType {
+    let mut update_mode = TrayUpdateType::None;
+    let group_matching = new_proxies
+        .clone()
+        .into_keys()
+        .collect::<Vec<String>>()
+        .iter()
+        .zip(&old_proxies.clone().into_keys().collect::<Vec<String>>())
+        .filter(|&(new, old)| new == old)
+        .count();
+    if group_matching == old_proxies.len() && group_matching == new_proxies.len() {
+        let mut action_list = Vec::<(GroupName, FromProxy, ToProxy)>::new();
+        // Iterate through two btreemap
+        for (group_key, new_proxy) in new_proxies {
+            match old_proxies.get(group_key) {
+                Some(old_proxy) => {
+                    if old_proxy.now.is_some()
+                        && new_proxy.now.is_some()
+                        && old_proxy.now != new_proxy.now
+                    {
+                        action_list.insert(
+                            0,
+                            (
+                                group_key.to_owned(),
+                                old_proxy.now.as_ref().unwrap().to_owned(),
+                                new_proxy.now.as_ref().unwrap().to_owned(),
+                            ),
+                        );
+                    }
+                }
+                None => {
+                    update_mode = TrayUpdateType::Full;
+                    break;
+                }
+            }
+        }
+        if update_mode != TrayUpdateType::Full && !action_list.is_empty() {
+            update_mode = TrayUpdateType::Part(action_list);
+        }
+    } else {
+        update_mode = TrayUpdateType::Full
+    }
+    update_mode
+}
+
 pub async fn proxies_updated_receiver() {
     let mut rx = ProxiesGuard::global().read().get_receiver();
+    let mut old_proxies: BTreeMap<String, ProxyItem> = ProxiesGuard::global()
+        .read()
+        .inner()
+        .to_owned()
+        .records
+        .into_iter()
+        .collect();
     loop {
         match rx.recv().await {
             Ok(_) => {
@@ -41,12 +109,44 @@ pub async fn proxies_updated_receiver() {
                     continue;
                 }
                 Handle::mutate_proxies();
-                match Handle::update_systray() {
-                    Ok(_) => {
-                        debug!(target: "tray::proxies", "update systray success");
+                // Do diff check
+                let new_proxies: BTreeMap<String, ProxyItem> = ProxiesGuard::global()
+                    .read()
+                    .inner()
+                    .to_owned()
+                    .records
+                    .into_iter()
+                    .collect();
+
+                match diff_proxies(&old_proxies, &new_proxies) {
+                    TrayUpdateType::None => {}
+                    TrayUpdateType::Full => {
+                        old_proxies = new_proxies;
+                        // println!("{}", simd_json::to_string_pretty(&proxies).unwrap());
+                        match Handle::update_systray() {
+                            Ok(_) => {
+                                debug!(target: "tray::proxies", "update systray success");
+                            }
+                            Err(e) => {
+                                warn!(target: "tray::proxies", "update systray failed: {:?}", e);
+                            }
+                        }
                     }
-                    Err(e) => {
-                        warn!(target: "tray::proxies", "update systray failed: {:?}", e);
+                    TrayUpdateType::Part(action_list) => {
+                        old_proxies = new_proxies;
+                        for action in action_list {
+                            match Tray::update_selected_proxy(
+                                format!("{}_{}", action.0, action.1),
+                                format!("{}_{}", action.0, action.2),
+                            ) {
+                                Ok(_) => {
+                                    debug!(target: "tray::proxies", "update systray part success");
+                                }
+                                Err(e) => {
+                                    warn!(target: "tray::proxies", "update systray part failed: {:?}", e);
+                                }
+                            }
+                        }
                     }
                 }
             }

@@ -1,4 +1,4 @@
-use crate::{cmds, config::Config, feat, utils::resolve};
+use crate::{cmds, config::Config, core::handle::Handle, feat, utils::resolve};
 use anyhow::Result;
 use rust_i18n::t;
 use tauri::{
@@ -125,6 +125,22 @@ impl Tray {
             ));
         }
 
+        Ok(())
+    }
+
+    pub fn update_selected_proxy(old: String, new: String) -> Result<()> {
+        let tray = Handle::global()
+            .app_handle
+            .lock()
+            .as_ref()
+            .unwrap()
+            .tray_handle();
+        let _ = tray
+            .get_item(format!("select_proxy_{}", old).as_str())
+            .set_selected(false);
+        let _ = tray
+            .get_item(format!("select_proxy_{}", new).as_str())
+            .set_selected(true);
         Ok(())
     }
 

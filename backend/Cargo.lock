@@ -4118,27 +4118,27 @@ dependencies = [
 
 [[package]]
 name = "rquickjs"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b612b2a7acf86833c7e4ff43b68644fd24f4ee29603f7d12a7cf06c77528a11"
+checksum = "ad7f63201fa6f2ff8173e4758ea552549d687d8f63003361a8b5c50f7c446ded"
 dependencies = [
  "rquickjs-core",
 ]
 
 [[package]]
 name = "rquickjs-core"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62b37de696b9611e3ad734d5c3f1864deeb4cee543045a31ebdc0d12d623993b"
+checksum = "cad00eeddc0f88af54ee202c8385fb214fe0423897c056a7df8369fb482e3695"
 dependencies = [
  "rquickjs-sys",
 ]
 
 [[package]]
 name = "rquickjs-sys"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6d2c985fa20567d9b6d434bc94058faf7d8b1a106ed681c023b22cbf223381a"
+checksum = "120dbbc3296de9b96de8890091635d46f3506cd38b4e8f21800c386c035d64fa"
 dependencies = [
  "cc",
 ]

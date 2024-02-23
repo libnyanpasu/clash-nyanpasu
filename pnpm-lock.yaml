@@ -62,6 +62,9 @@ dependencies:
   monaco-editor:
     specifier: 0.46.0
     version: 0.46.0
+  mui-color-input:
+    specifier: ^2.0.3
+    version: 2.0.3(@emotion/react@11.11.3)(@emotion/styled@11.11.0)(@mui/material@5.15.10)(@types/react@18.2.57)(react-dom@18.2.0)(react@18.2.0)
   react:
     specifier: 18.2.0
     version: 18.2.0
@@ -725,6 +728,11 @@ packages:
     dependencies:
       postcss-selector-parser: 6.0.15
     dev: true
+
+  /@ctrl/tinycolor@4.0.3:
+    resolution: {integrity: sha512-e9nEVehVJwkymQpkGhdSNzLT2Lr9UTTby+JePq4Z2SxBbOQjY7pLgSouAaXvfaGQVSAaY0U4eJdwfSDmCbItcw==}
+    engines: {node: '>=14'}
+    dev: false
 
   /@dnd-kit/accessibility@3.1.0(react@18.2.0):
     resolution: {integrity: sha512-ea7IkhKvlJUv9iSHJOnxinBcoOI3ppGnnL+VDJ75O45Nss6HtZd8IdN8touXPDtASfeI2T2LImb8VOZcL47wjQ==}
@@ -4846,6 +4854,28 @@ packages:
   /ms@2.1.2:
     resolution: {integrity: sha512-sGkPx+VjMtmA6MX27oA4FBFELFCZZ4S4XqeGOXCv68tT+jb3vk/RyaKWP0PTKyWtmLSM0b+adUTEvbs1PEaH2w==}
     dev: true
+
+  /mui-color-input@2.0.3(@emotion/react@11.11.3)(@emotion/styled@11.11.0)(@mui/material@5.15.10)(@types/react@18.2.57)(react-dom@18.2.0)(react@18.2.0):
+    resolution: {integrity: sha512-rAd040qQ0Y+8dk4gE8kkCiJ/vCgA0j4vv1quJ43BfORTFE3uHarHj0xY1Vo9CPbojtx1f5vW+CjckYPRIZPIRg==}
+    peerDependencies:
+      '@emotion/react': ^11.5.0
+      '@emotion/styled': ^11.3.0
+      '@mui/material': ^5.0.0
+      '@types/react': ^18.0.0
+      react: ^18.0.0
+      react-dom: ^18.0.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+    dependencies:
+      '@ctrl/tinycolor': 4.0.3
+      '@emotion/react': 11.11.3(@types/react@18.2.57)(react@18.2.0)
+      '@emotion/styled': 11.11.0(@emotion/react@11.11.3)(@types/react@18.2.57)(react@18.2.0)
+      '@mui/material': 5.15.10(@emotion/react@11.11.3)(@emotion/styled@11.11.0)(@types/react@18.2.57)(react-dom@18.2.0)(react@18.2.0)
+      '@types/react': 18.2.57
+      react: 18.2.0
+      react-dom: 18.2.0(react@18.2.0)
+    dev: false
 
   /nanoid@3.3.7:
     resolution: {integrity: sha512-eSRppjcPIatRIMC1U6UngP8XFcz8MQWGQdt1MTBQ7NaAmvXDfvNxbvWV3x2y6CdEUciCSsDHDQZbhYaB8QEo2g==}

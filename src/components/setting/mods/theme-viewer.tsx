@@ -13,6 +13,8 @@ import {
 import { useLockFn } from "ahooks";
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { MuiColorInput } from "mui-color-input";
+import React from "react";
 
 export const ThemeViewer = forwardRef<DialogRef>((props, ref) => {
   const { t } = useTranslation();
@@ -78,16 +80,28 @@ export const ThemeViewer = forwardRef<DialogRef>((props, ref) => {
   type ThemeKey = keyof typeof theme & keyof typeof defaultTheme;
 
   const renderItem = (label: string, key: ThemeKey) => {
+    const [color, setColor] = React.useState(theme[key] || dt[key]);
+
+    const onChange = (color: string) => {
+      if (!color) {
+        color = dt[key];
+      }
+
+      setColor(color);
+      setTheme((t) => ({ ...t, [key]: color }));
+    };
+
     return (
       <Item>
         <ListItemText primary={label} />
-        <Round sx={{ background: theme[key] || dt[key] }} />
-        <TextField
+
+        <MuiColorInput
           {...textProps}
-          value={theme[key] ?? ""}
-          placeholder={dt[key]}
-          onChange={handleChange(key)}
-          onKeyDown={(e) => e.key === "Enter" && onSave()}
+          value={color}
+          fallbackValue={dt[key]}
+          isAlphaHidden
+          format="hex"
+          onChange={onChange}
         />
       </Item>
     );
@@ -99,7 +113,7 @@ export const ThemeViewer = forwardRef<DialogRef>((props, ref) => {
       title={t("Theme Setting")}
       okBtn={t("Save")}
       cancelBtn={t("Cancel")}
-      contentSx={{ width: 400, maxHeight: 300, overflow: "auto", pb: 0 }}
+      contentSx={{ width: 400, maxHeight: "80%", overflow: "auto", pb: 0 }}
       onClose={() => setOpen(false)}
       onCancel={() => setOpen(false)}
       onOk={onSave}

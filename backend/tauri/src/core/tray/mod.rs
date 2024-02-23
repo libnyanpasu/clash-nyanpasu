@@ -128,6 +128,17 @@ impl Tray {
         Ok(())
     }
 
+    pub fn update_selected_proxy(app_handle: &AppHandle, old: String, new: String) -> Result<()> {
+        let tray = app_handle.tray_handle();
+        let _ = tray
+            .get_item(format!("select_proxy_{}", old).as_str())
+            .set_selected(false);
+        let _ = tray
+            .get_item(format!("select_proxy_{}", new).as_str())
+            .set_selected(true);
+        Ok(())
+    }
+
     pub fn on_system_tray_event(app_handle: &AppHandle, event: SystemTrayEvent) {
         match event {
             SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {

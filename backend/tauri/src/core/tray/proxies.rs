@@ -1,8 +1,10 @@
 use crate::core::{
+    clash::api::ProxyItem,
     clash::proxies::{ProxiesGuard, ProxiesGuardExt},
     handle::Handle,
 };
 use log::{debug, error, warn};
+use std::collections::BTreeMap;
 use tauri::SystemTrayMenu;
 
 async fn loop_task() {
@@ -32,6 +34,13 @@ async fn loop_task() {
 
 pub async fn proxies_updated_receiver() {
     let mut rx = ProxiesGuard::global().read().get_receiver();
+    let mut proxies: BTreeMap<String, ProxyItem> = ProxiesGuard::global()
+        .read()
+        .inner()
+        .to_owned()
+        .records
+        .into_iter()
+        .collect();
     loop {
         match rx.recv().await {
             Ok(_) => {
@@ -41,12 +50,66 @@ pub async fn proxies_updated_receiver() {
                     continue;
                 }
                 Handle::mutate_proxies();
-                match Handle::update_systray() {
-                    Ok(_) => {
-                        debug!(target: "tray::proxies", "update systray success");
+                // Do diff check
+                let mut full_update_flag = false;
+                let new_proxies: BTreeMap<String, ProxyItem> = ProxiesGuard::global()
+                    .read()
+                    .inner()
+                    .to_owned()
+                    .records
+                    .into_iter()
+                    .collect();
+
+                let group_matching = new_proxies
+                    .clone()
+                    .into_keys()
+                    .collect::<Vec<String>>()
+                    .iter()
+                    .zip(&proxies.clone().into_keys().collect::<Vec<String>>())
+                    .filter(|&(new, old)| new == old)
+                    .count();
+                // println!("Proxy Groups Equal {}", group_matching == proxies.records.len() && group_matching == new_proxies.records.len());
+                if group_matching == proxies.len() && group_matching == new_proxies.len() {
+                    // Iterate through two btreemap
+                    for (new_key, new_value) in &new_proxies {
+                        match proxies.get(new_key) {
+                            Some(old_value) => {
+                                if old_value.name != new_value.name {
+                                    full_update_flag = true;
+                                    break;
+                                }
+                            }
+                            None => {
+                                full_update_flag = true;
+                                break;
+                            }
+                        }
                     }
-                    Err(e) => {
-                        warn!(target: "tray::proxies", "update systray failed: {:?}", e);
+                } else {
+                    full_update_flag = true
+                }
+                if full_update_flag {
+                    println!("Full update");
+                    proxies = new_proxies;
+                    // println!("{}", simd_json::to_string_pretty(&proxies).unwrap());
+                    match Handle::update_systray() {
+                        Ok(_) => {
+                            debug!(target: "tray::proxies", "update systray success");
+                        }
+                        Err(e) => {
+                            warn!(target: "tray::proxies", "update systray failed: {:?}", e);
+                        }
+                    }
+                } else {
+                    println!("Partly update");
+                    proxies = new_proxies;
+                    match Handle::update_systray_part() {
+                        Ok(_) => {
+                            debug!(target: "tray::proxies", "update systray part success");
+                        }
+                        Err(e) => {
+                            warn!(target: "tray::proxies", "update systray part failed: {:?}", e);
+                        }
                     }
                 }
             }

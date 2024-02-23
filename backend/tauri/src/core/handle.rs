@@ -80,14 +80,4 @@ impl Handle {
         Tray::update_part(app_handle.as_ref().unwrap())?;
         Ok(())
     }
-
-    /// update the system tray selected proxy
-    pub fn update_systray_proxy(old: String, new: String) -> Result<()> {
-        let app_handle = Self::global().app_handle.lock();
-        if app_handle.is_none() {
-            bail!("update_systray unhandled error");
-        }
-        Tray::update_selected_proxy(app_handle.as_ref().unwrap(), old, new)?;
-        Ok(())
-    }
 }

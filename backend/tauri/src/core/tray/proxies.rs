@@ -1,3 +1,4 @@
+use crate::core::tray::Tray;
 use crate::core::{
     clash::api::ProxyItem,
     clash::proxies::{ProxiesGuard, ProxiesGuardExt},
@@ -32,15 +33,63 @@ async fn loop_task() {
     }
 }
 
+#[derive(PartialEq)]
 enum TrayUpdateType {
     None,
     Full,
-    Part,
+    Part(Vec<(String, String)>),
+}
+
+fn diff_proxies(
+    old_proxies: BTreeMap<String, ProxyItem>,
+    new_proxies: BTreeMap<String, ProxyItem>,
+) -> TrayUpdateType {
+    let mut update_mode = TrayUpdateType::None;
+    let group_matching = new_proxies
+        .clone()
+        .into_keys()
+        .collect::<Vec<String>>()
+        .iter()
+        .zip(&old_proxies.clone().into_keys().collect::<Vec<String>>())
+        .filter(|&(new, old)| new == old)
+        .count();
+    if group_matching == old_proxies.len() && group_matching == new_proxies.len() {
+        let mut action_list = Vec::<(String, String)>::new();
+        // Iterate through two btreemap
+        for (group_key, new_proxy) in &new_proxies {
+            match old_proxies.get(group_key) {
+                Some(old_proxy) => {
+                    if old_proxy.now.is_some()
+                        && new_proxy.now.is_some()
+                        && old_proxy.now != new_proxy.now
+                    {
+                        action_list.insert(
+                            0,
+                            (
+                                format!("{}_{}", group_key, old_proxy.now.as_ref().unwrap()),
+                                format!("{}_{}", group_key, new_proxy.now.as_ref().unwrap()),
+                            ),
+                        );
+                    }
+                }
+                None => {
+                    update_mode = TrayUpdateType::Full;
+                    break;
+                }
+            }
+        }
+        if update_mode != TrayUpdateType::Full && !action_list.is_empty() {
+            update_mode = TrayUpdateType::Part(action_list);
+        }
+    } else {
+        update_mode = TrayUpdateType::Full
+    }
+    update_mode
 }
 
 pub async fn proxies_updated_receiver() {
     let mut rx = ProxiesGuard::global().read().get_receiver();
-    let mut proxies: BTreeMap<String, ProxyItem> = ProxiesGuard::global()
+    let mut old_proxies: BTreeMap<String, ProxyItem> = ProxiesGuard::global()
         .read()
         .inner()
         .to_owned()
@@ -57,8 +106,6 @@ pub async fn proxies_updated_receiver() {
                 }
                 Handle::mutate_proxies();
                 // Do diff check
-                let mut update_mode = TrayUpdateType::None;
-                let mut action_list = Vec::<(String, String)>::new();
                 let new_proxies: BTreeMap<String, ProxyItem> = ProxiesGuard::global()
                     .read()
                     .inner()
@@ -67,55 +114,10 @@ pub async fn proxies_updated_receiver() {
                     .into_iter()
                     .collect();
 
-                let group_matching = new_proxies
-                    .clone()
-                    .into_keys()
-                    .collect::<Vec<String>>()
-                    .iter()
-                    .zip(&proxies.clone().into_keys().collect::<Vec<String>>())
-                    .filter(|&(new, old)| new == old)
-                    .count();
-                if group_matching == proxies.len() && group_matching == new_proxies.len() {
-                    // Iterate through two btreemap
-                    for (group_key, new_proxy) in &new_proxies {
-                        match proxies.get(group_key) {
-                            Some(old_proxy) => {
-                                if old_proxy.now.is_some()
-                                    && new_proxy.now.is_some()
-                                    && old_proxy.now != new_proxy.now
-                                {
-                                    update_mode = TrayUpdateType::Part;
-                                    action_list.insert(
-                                        0,
-                                        (
-                                            format!(
-                                                "{}_{}",
-                                                group_key,
-                                                old_proxy.now.as_ref().unwrap()
-                                            ),
-                                            format!(
-                                                "{}_{}",
-                                                group_key,
-                                                new_proxy.now.as_ref().unwrap()
-                                            ),
-                                        ),
-                                    );
-                                }
-                            }
-                            None => {
-                                update_mode = TrayUpdateType::Full;
-                                break;
-                            }
-                        }
-                    }
-                } else {
-                    update_mode = TrayUpdateType::Full;
-                }
-
-                match update_mode {
+                match diff_proxies(old_proxies.clone(), new_proxies.clone()) {
                     TrayUpdateType::None => {}
                     TrayUpdateType::Full => {
-                        proxies = new_proxies;
+                        old_proxies = new_proxies;
                         // println!("{}", simd_json::to_string_pretty(&proxies).unwrap());
                         match Handle::update_systray() {
                             Ok(_) => {
@@ -126,10 +128,10 @@ pub async fn proxies_updated_receiver() {
                             }
                         }
                     }
-                    TrayUpdateType::Part => {
-                        proxies = new_proxies;
+                    TrayUpdateType::Part(action_list) => {
+                        old_proxies = new_proxies;
                         for action in action_list {
-                            match Handle::update_systray_proxy(action.0, action.1) {
+                            match Tray::update_selected_proxy(action.0, action.1) {
                                 Ok(_) => {
                                     debug!(target: "tray::proxies", "update systray part success");
                                 }

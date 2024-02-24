@@ -1,8 +1,10 @@
-use crate::core::tray::Tray;
 use crate::core::{
-    clash::api::ProxyItem,
-    clash::proxies::{ProxiesGuard, ProxiesGuardExt},
+    clash::{
+        api::ProxyItem,
+        proxies::{ProxiesGuard, ProxiesGuardExt},
+    },
     handle::Handle,
+    tray::Tray,
 };
 use log::{debug, error, warn};
 use std::collections::BTreeMap;

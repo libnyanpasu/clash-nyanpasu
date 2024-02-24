@@ -687,6 +687,7 @@ dependencies = [
  "dyn-clone",
  "glob",
  "gunzip",
+ "indexmap 2.2.3",
  "log",
  "log4rs",
  "nanoid",

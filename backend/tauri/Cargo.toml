@@ -69,6 +69,7 @@ backon = "0.4.1"
 rust-i18n = "3"
 adler = "1.0.2"
 rfd = "0.10" # should bump to v0.14 when clarify why the rfd v0.10 from tauri breaks build
+indexmap = { version = "2.2.3", features = ["serde"] }
 
 [target.'cfg(windows)'.dependencies]
 deelevate = "0.2.0"

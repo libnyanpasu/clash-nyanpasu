@@ -2,8 +2,8 @@ use crate::core::{
     clash::proxies::{Proxies, ProxiesGuard, ProxiesGuardExt},
     handle::Handle,
 };
+use indexmap::IndexMap;
 use log::{debug, error, warn};
-use std::collections::BTreeMap;
 use tauri::SystemTrayMenu;
 
 async fn loop_task() {
@@ -21,11 +21,13 @@ async fn loop_task() {
             if guard.updated_at() == 0 {
                 error!(target: "tray", "proxies not updated yet!!!!");
                 // TODO: add a error dialog or notification, and panic?
-            } else {
-                let proxies = guard.inner();
-                let str = simd_json::to_string_pretty(proxies).unwrap();
-                debug!(target: "tray", "proxies info: {:?}", str);
             }
+
+            // else {
+            //     let proxies = guard.inner();
+            //     let str = simd_json::to_string_pretty(proxies).unwrap();
+            //     debug!(target: "tray", "proxies info: {:?}", str);
+            // }
         }
         tokio::time::sleep(tokio::time::Duration::from_secs(10)).await; // TODO: add a config to control the interval
     }
@@ -46,7 +48,7 @@ struct TrayProxyItem {
     current: Option<String>,
     all: Vec<String>,
 }
-type TrayProxies = BTreeMap<String, TrayProxyItem>;
+type TrayProxies = IndexMap<String, TrayProxyItem>;
 
 /// Convert raw proxies to tray proxies
 fn to_tray_proxies(mode: &str, raw_proxies: &Proxies) -> TrayProxies {
@@ -156,6 +158,7 @@ pub async fn proxies_updated_receiver() {
 
                 match diff_proxies(&tray_proxies_holder, &current_tray_proxies) {
                     TrayUpdateType::Full => {
+                        debug!(target: "tray::proxies", "should do full update");
                         tray_proxies_holder = current_tray_proxies;
                         match Handle::update_systray() {
                             Ok(_) => {
@@ -167,6 +170,7 @@ pub async fn proxies_updated_receiver() {
                         }
                     }
                     TrayUpdateType::Part(action_list) => {
+                        debug!(target: "tray::proxies", "should do partial update, op list: {:?}", action_list);
                         tray_proxies_holder = current_tray_proxies;
                         platform_impl::update_selected_proxies(&action_list);
                         debug!(target: "tray::proxies", "update selected proxies success");
@@ -239,7 +243,9 @@ mod platform_impl {
         for action in actions {
             let from = format!("select_proxy_{}_{}", action.0, action.1);
             let to = format!("select_proxy_{}_{}", action.0, action.2);
-            let _ = tray.get_item(&from).set_selected(false);
+            if let Some(item) = tray.try_get_item(&from) {
+                let _ = item.set_selected(false);
+            }
             let _ = tray.get_item(&to).set_selected(true);
         }
     }

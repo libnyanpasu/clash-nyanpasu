@@ -1,10 +1,11 @@
 use crate::config::Config;
 use anyhow::{bail, Result};
+use indexmap::IndexMap;
 use reqwest::header::HeaderMap;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     fmt::{self, Display, Formatter},
 };
 
@@ -43,7 +44,8 @@ pub async fn patch_configs(config: &Mapping) -> Result<()> {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxiesRes {
-    pub proxies: Option<BTreeMap<String, ProxyItem>>,
+    #[serde(default)]
+    pub proxies: IndexMap<String, ProxyItem>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -206,7 +208,8 @@ pub struct ProxyProviderItem {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProvidersProxiesRes {
-    pub providers: Option<BTreeMap<String, ProxyProviderItem>>,
+    #[serde(default)]
+    pub providers: IndexMap<String, ProxyProviderItem>,
 }
 
 /// GET /providers/proxies

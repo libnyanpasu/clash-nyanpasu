@@ -5,13 +5,11 @@ use super::{api, CLASH_API_DEFAULT_BACKOFF_STRATEGY};
 use adler::adler32;
 use anyhow::Result;
 use backon::Retryable;
+use indexmap::IndexMap;
 use log::warn;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::BTreeMap,
-    sync::{Arc, OnceLock},
-};
+use std::sync::{Arc, OnceLock};
 use tokio::{sync::broadcast, try_join};
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -62,7 +60,7 @@ pub struct Proxies {
     pub global: ProxyGroupItem,
     pub direct: api::ProxyItem,
     pub groups: Vec<ProxyGroupItem>,
-    pub records: BTreeMap<String, api::ProxyItem>,
+    pub records: IndexMap<String, api::ProxyItem>,
     pub proxies: Vec<api::ProxyItem>,
 }
 
@@ -75,10 +73,10 @@ impl Proxies {
         let (inner_proxies, providers_proxies) = fetch_proxies
             .retry(&*CLASH_API_DEFAULT_BACKOFF_STRATEGY)
             .await?;
-        let inner_proxies = inner_proxies.proxies.unwrap_or_default();
+        let inner_proxies = inner_proxies.proxies;
         // 1. filter out the Http or File type provider proxies
-        let providers_proxies: BTreeMap<String, api::ProxyProviderItem> = {
-            let records = providers_proxies.providers.unwrap_or_default();
+        let providers_proxies: IndexMap<String, api::ProxyProviderItem> = {
+            let records = providers_proxies.providers;
             records
                 .into_iter()
                 .filter(|(_k, v)| {
@@ -91,7 +89,7 @@ impl Proxies {
         };
 
         // 2. mapping provider => providerProxiesItem to name => ProxyItem
-        let mut provider_map = BTreeMap::<String, api::ProxyItem>::new();
+        let mut provider_map = IndexMap::<String, api::ProxyItem>::new();
         for (provider, record) in providers_proxies.iter() {
             let name = record.name.clone();
             let mut record: api::ProxyItem = record.clone().into();

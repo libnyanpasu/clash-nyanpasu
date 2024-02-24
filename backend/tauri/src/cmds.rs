@@ -364,7 +364,7 @@ pub async fn update_proxy_provider(name: String) -> CmdResult<()> {
 
 #[cfg(windows)]
 pub mod uwp {
-    use super::*;
+    use super::{wrap_err, CmdResult};
     use crate::core::win_uwp;
 
     #[tauri::command]
@@ -375,7 +375,7 @@ pub mod uwp {
 
 #[cfg(windows)]
 pub mod service {
-    use super::*;
+    use super::{wrap_err, CmdResult};
     use crate::core::win_service;
 
     #[tauri::command]

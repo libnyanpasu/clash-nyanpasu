@@ -1,5 +1,5 @@
 use super::{use_filter, use_lowercase};
-use serde_yaml::{self, Mapping, Sequence, Value};
+use serde_yaml::{Mapping, Sequence, Value};
 
 const MERGE_FIELDS: [&str; 6] = [
     "prepend-rules",

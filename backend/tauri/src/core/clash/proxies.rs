@@ -9,7 +9,7 @@ use log::warn;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     sync::{Arc, OnceLock},
 };
 use tokio::{sync::broadcast, try_join};
@@ -62,7 +62,7 @@ pub struct Proxies {
     pub global: ProxyGroupItem,
     pub direct: api::ProxyItem,
     pub groups: Vec<ProxyGroupItem>,
-    pub records: HashMap<String, api::ProxyItem>,
+    pub records: BTreeMap<String, api::ProxyItem>,
     pub proxies: Vec<api::ProxyItem>,
 }
 
@@ -77,7 +77,7 @@ impl Proxies {
             .await?;
         let inner_proxies = inner_proxies.proxies.unwrap_or_default();
         // 1. filter out the Http or File type provider proxies
-        let providers_proxies: HashMap<String, api::ProxyProviderItem> = {
+        let providers_proxies: BTreeMap<String, api::ProxyProviderItem> = {
             let records = providers_proxies.providers.unwrap_or_default();
             records
                 .into_iter()
@@ -91,7 +91,7 @@ impl Proxies {
         };
 
         // 2. mapping provider => providerProxiesItem to name => ProxyItem
-        let mut provider_map = HashMap::<String, api::ProxyItem>::new();
+        let mut provider_map = BTreeMap::<String, api::ProxyItem>::new();
         for (provider, record) in providers_proxies.iter() {
             let name = record.name.clone();
             let mut record: api::ProxyItem = record.clone().into();

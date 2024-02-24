@@ -1,10 +1,6 @@
 use crate::core::{
-    clash::{
-        api::ProxyItem,
-        proxies::{ProxiesGuard, ProxiesGuardExt},
-    },
+    clash::proxies::{Proxies, ProxiesGuard, ProxiesGuardExt},
     handle::Handle,
-    tray::Tray,
 };
 use log::{debug, error, warn};
 use std::collections::BTreeMap;
@@ -38,70 +34,112 @@ async fn loop_task() {
 type GroupName = String;
 type FromProxy = String;
 type ToProxy = String;
+type ProxySelectAction = (GroupName, FromProxy, ToProxy);
 #[derive(PartialEq)]
 enum TrayUpdateType {
     None,
     Full,
-    Part(Vec<(GroupName, FromProxy, ToProxy)>),
+    Part(Vec<ProxySelectAction>),
 }
 
-fn diff_proxies(
-    old_proxies: &BTreeMap<String, ProxyItem>,
-    new_proxies: &BTreeMap<String, ProxyItem>,
-) -> TrayUpdateType {
-    let mut update_mode = TrayUpdateType::None;
+struct TrayProxyItem {
+    current: Option<String>,
+    all: Vec<String>,
+}
+type TrayProxies = BTreeMap<String, TrayProxyItem>;
+
+/// Convert raw proxies to tray proxies
+fn to_tray_proxies(mode: &str, raw_proxies: &Proxies) -> TrayProxies {
+    let mut tray_proxies = TrayProxies::new();
+    if matches!(mode, "global" | "rule" | "script") {
+        if mode == "global" || raw_proxies.proxies.is_empty() {
+            let global = TrayProxyItem {
+                current: raw_proxies.global.now.clone(),
+                all: raw_proxies
+                    .global
+                    .all
+                    .clone()
+                    .into_iter()
+                    .map(|x| x.name)
+                    .collect(),
+            };
+            tray_proxies.insert("global".to_owned(), global);
+        }
+        for raw_group in raw_proxies.groups.iter() {
+            let group = TrayProxyItem {
+                current: raw_group.now.clone(),
+                all: raw_group.all.clone().into_iter().map(|x| x.name).collect(),
+            };
+            tray_proxies.insert(raw_group.name.to_owned(), group);
+        }
+    }
+    tray_proxies
+}
+
+fn diff_proxies(old_proxies: &TrayProxies, new_proxies: &TrayProxies) -> TrayUpdateType {
+    // 1. check if the length of two map is different
+    if old_proxies.len() != new_proxies.len() {
+        return TrayUpdateType::Full;
+    }
+    // 2. check if the group matching
     let group_matching = new_proxies
-        .clone()
-        .into_keys()
+        .keys()
+        .cloned()
         .collect::<Vec<String>>()
         .iter()
-        .zip(&old_proxies.clone().into_keys().collect::<Vec<String>>())
+        .zip(&old_proxies.keys().cloned().collect::<Vec<String>>())
         .filter(|&(new, old)| new == old)
         .count();
-    if group_matching == old_proxies.len() && group_matching == new_proxies.len() {
-        let mut action_list = Vec::<(GroupName, FromProxy, ToProxy)>::new();
-        // Iterate through two btreemap
-        for (group_key, new_proxy) in new_proxies {
-            match old_proxies.get(group_key) {
-                Some(old_proxy) => {
-                    if old_proxy.now.is_some()
-                        && new_proxy.now.is_some()
-                        && old_proxy.now != new_proxy.now
-                    {
-                        action_list.insert(
-                            0,
-                            (
-                                group_key.to_owned(),
-                                old_proxy.now.as_ref().unwrap().to_owned(),
-                                new_proxy.now.as_ref().unwrap().to_owned(),
-                            ),
-                        );
-                    }
-                }
-                None => {
-                    update_mode = TrayUpdateType::Full;
-                    break;
-                }
-            }
-        }
-        if update_mode != TrayUpdateType::Full && !action_list.is_empty() {
-            update_mode = TrayUpdateType::Part(action_list);
-        }
-    } else {
-        update_mode = TrayUpdateType::Full
+    if group_matching != old_proxies.len() {
+        return TrayUpdateType::Full;
     }
-    update_mode
+    // 3. start checking the group content
+    let mut actions = Vec::new();
+    for (group, item) in new_proxies.iter() {
+        let old_item = old_proxies.get(group).unwrap(); // safe to unwrap
+
+        // check if the length of all list is different
+        if item.all.len() != old_item.all.len() {
+            return TrayUpdateType::Full;
+        }
+
+        // first diff the all list
+        let all_matching = item
+            .all
+            .iter()
+            .zip(&old_item.all)
+            .filter(|&(new, old)| new == old)
+            .count();
+        if all_matching != old_item.all.len() {
+            return TrayUpdateType::Full;
+        }
+        // then diff the current
+        if item.current != old_item.current {
+            actions.push((
+                group.clone(),
+                old_item.current.clone().unwrap(),
+                item.current.clone().unwrap(),
+            ));
+        }
+    }
+    if actions.is_empty() {
+        TrayUpdateType::None
+    } else {
+        TrayUpdateType::Part(actions)
+    }
 }
 
 pub async fn proxies_updated_receiver() {
-    let mut rx = ProxiesGuard::global().read().get_receiver();
-    let mut old_proxies: BTreeMap<String, ProxyItem> = ProxiesGuard::global()
-        .read()
-        .inner()
-        .to_owned()
-        .records
-        .into_iter()
-        .collect();
+    let (mut rx, mut tray_proxies_holder) = {
+        let guard = ProxiesGuard::global().read();
+        let proxies = guard.inner().to_owned();
+        let mode = crate::utils::config::get_current_clash_mode();
+        (
+            guard.get_receiver(),
+            to_tray_proxies(mode.as_str(), &proxies),
+        )
+    };
+
     loop {
         match rx.recv().await {
             Ok(_) => {
@@ -112,19 +150,13 @@ pub async fn proxies_updated_receiver() {
                 }
                 Handle::mutate_proxies();
                 // Do diff check
-                let new_proxies: BTreeMap<String, ProxyItem> = ProxiesGuard::global()
-                    .read()
-                    .inner()
-                    .to_owned()
-                    .records
-                    .into_iter()
-                    .collect();
+                let mode = crate::utils::config::get_current_clash_mode();
+                let current_tray_proxies =
+                    to_tray_proxies(mode.as_str(), ProxiesGuard::global().read().inner());
 
-                match diff_proxies(&old_proxies, &new_proxies) {
-                    TrayUpdateType::None => {}
+                match diff_proxies(&tray_proxies_holder, &current_tray_proxies) {
                     TrayUpdateType::Full => {
-                        old_proxies = new_proxies;
-                        // println!("{}", simd_json::to_string_pretty(&proxies).unwrap());
+                        tray_proxies_holder = current_tray_proxies;
                         match Handle::update_systray() {
                             Ok(_) => {
                                 debug!(target: "tray::proxies", "update systray success");
@@ -135,21 +167,11 @@ pub async fn proxies_updated_receiver() {
                         }
                     }
                     TrayUpdateType::Part(action_list) => {
-                        old_proxies = new_proxies;
-                        for action in action_list {
-                            match Tray::update_selected_proxy(
-                                format!("{}_{}", action.0, action.1),
-                                format!("{}_{}", action.0, action.2),
-                            ) {
-                                Ok(_) => {
-                                    debug!(target: "tray::proxies", "update systray part success");
-                                }
-                                Err(e) => {
-                                    warn!(target: "tray::proxies", "update systray part failed: {:?}", e);
-                                }
-                            }
-                        }
+                        tray_proxies_holder = current_tray_proxies;
+                        platform_impl::update_selected_proxies(&action_list);
+                        debug!(target: "tray::proxies", "update selected proxies success");
                     }
+                    _ => {}
                 }
             }
             Err(e) => {
@@ -165,46 +187,60 @@ pub fn setup_proxies() {
 }
 
 mod platform_impl {
-    use crate::core::clash::proxies::{ProxiesGuard, ProxyGroupItem};
+    use super::{ProxySelectAction, TrayProxyItem};
+    use crate::core::{clash::proxies::ProxiesGuard, handle::Handle};
     use tauri::{CustomMenuItem, SystemTrayMenu, SystemTraySubmenu};
-
-    pub fn generate_group_selector(group: &ProxyGroupItem) -> SystemTraySubmenu {
+    pub fn generate_group_selector(group_name: &str, group: &TrayProxyItem) -> SystemTraySubmenu {
         let mut group_menu = SystemTrayMenu::new();
         for item in group.all.iter() {
             let mut sub_item = CustomMenuItem::new(
-                format!("select_proxy_{}_{}", group.name, item.name.clone()),
-                item.name.clone(),
+                format!("select_proxy_{}_{}", group_name, item),
+                item.clone(),
             );
-            if let Some(now) = group.now.clone() {
-                if now == item.name {
+            if let Some(now) = group.current.clone() {
+                if now == item.as_str() {
                     sub_item = sub_item.selected();
                 }
             }
             group_menu = group_menu.add_item(sub_item);
         }
-        SystemTraySubmenu::new(group.name.clone(), group_menu)
+        SystemTraySubmenu::new(group_name.to_string(), group_menu)
+    }
+
+    pub fn generate_selectors(
+        menu: &SystemTrayMenu,
+        proxies: &super::TrayProxies,
+    ) -> SystemTrayMenu {
+        let mut menu = menu.to_owned();
+        if proxies.is_empty() {
+            return menu.add_item(CustomMenuItem::new("no_proxies", "No Proxies"));
+        }
+        for (group, item) in proxies.iter() {
+            let group_menu = generate_group_selector(group, item);
+            menu = menu.add_submenu(group_menu);
+        }
+        menu
     }
 
     pub fn setup_tray(menu: &mut SystemTrayMenu) -> SystemTrayMenu {
         let proxies = ProxiesGuard::global().read().inner().to_owned();
         let mode = crate::utils::config::get_current_clash_mode();
-        let mut menu = menu.to_owned();
-        match mode.as_str() {
-            "rule" | "script" | "global" => {
-                if mode == "global" || proxies.groups.is_empty() {
-                    let group_selector = generate_group_selector(&proxies.global);
-                    menu = menu.add_submenu(group_selector);
-                }
-                for group in proxies.groups.iter() {
-                    let group_selector = generate_group_selector(group);
-                    menu = menu.add_submenu(group_selector);
-                }
-                menu
-            }
-            _ => {
-                menu.add_item(CustomMenuItem::new("no_proxy", "NO PROXY COULD SELECTED").disabled())
-                // DIRECT
-            }
+        let tray_proxies = super::to_tray_proxies(mode.as_str(), &proxies);
+        generate_selectors(menu, &tray_proxies)
+    }
+
+    pub fn update_selected_proxies(actions: &[ProxySelectAction]) {
+        let tray = Handle::global()
+            .app_handle
+            .lock()
+            .as_ref()
+            .unwrap()
+            .tray_handle();
+        for action in actions {
+            let from = format!("select_proxy_{}_{}", action.0, action.1);
+            let to = format!("select_proxy_{}_{}", action.0, action.2);
+            let _ = tray.get_item(&from).set_selected(false);
+            let _ = tray.get_item(&to).set_selected(true);
         }
     }
 }

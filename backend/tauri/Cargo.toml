@@ -23,7 +23,6 @@ open = "5.0.1"
 log = "0.4.20"
 ctrlc = "3.4.2"
 dunce = "1.0.4"
-log4rs = "1.2.0"
 nanoid = "0.4.0"
 chrono = "0.4.31"
 sysinfo = "0.30"
@@ -35,7 +34,7 @@ auto-launch = "0.5"
 once_cell = "1.19.0"
 port_scanner = "0.1.5"
 delay_timer = "0.11.5"
-parking_lot = "0.12.1"
+parking_lot = { version = "0.12.1" }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
@@ -70,6 +69,17 @@ rust-i18n = "3"
 adler = "1.0.2"
 rfd = "0.10" # should bump to v0.14 when clarify why the rfd v0.10 from tauri breaks build
 indexmap = { version = "2.2.3", features = ["serde"] }
+tracing = { workspace = true }
+tracing-attributes = "0.1"
+tracing-futures = "0.2"
+tracing-subscriber = { version = "0.3", features = [
+  "env-filter",
+  "json",
+  "parking_lot",
+] }
+tracing-error = "0.2"
+tracing-log = { version = "0.2" }
+tracing-appender = { version = "0.2", features = ["parking_lot"] }
 
 [target.'cfg(windows)'.dependencies]
 deelevate = "0.2.0"
@@ -112,3 +122,4 @@ custom-protocol = ["tauri/custom-protocol"]
 verge-dev = []
 default-meta = []
 nightly = []
+deadlock-detection = ["parking_lot/deadlock_detection"]

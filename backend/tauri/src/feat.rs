@@ -4,7 +4,12 @@
 //! - timer 定时器
 //! - cmds 页面调用
 //!
-use crate::{config::*, core::*, log_err, utils::resolve};
+use crate::{
+    config::*,
+    core::*,
+    log_err,
+    utils::{self, resolve},
+};
 use anyhow::{bail, Result};
 use serde_yaml::{Mapping, Value};
 use wry::application::clipboard::Clipboard;
@@ -252,6 +257,8 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
     let system_proxy = patch.enable_system_proxy;
     let proxy_bypass = patch.system_proxy_bypass;
     let language = patch.language;
+    let log_level = patch.app_log_level;
+    let log_max_files = patch.max_log_files;
 
     let res = {
         #[cfg(target_os = "windows")]
@@ -294,6 +301,10 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
             handle::Handle::update_systray()?;
         } else if system_proxy.or(tun_mode).is_some() {
             handle::Handle::update_systray_part()?;
+        }
+
+        if log_level.is_some() || log_max_files.is_some() {
+            utils::init::refresh_logger((log_level, log_max_files))?;
         }
 
         <Result<()>>::Ok(())

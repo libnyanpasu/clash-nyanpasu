@@ -3,75 +3,11 @@ use crate::{
     utils::{dialog::migrate_dialog, dirs, help},
 };
 use anyhow::Result;
-use chrono::Local;
-use log::LevelFilter;
-use log4rs::{
-    append::{console::ConsoleAppender, file::FileAppender},
-    config::{Appender, Logger, Root},
-    encode::pattern::PatternEncoder,
-};
 use runas::Command as RunasCommand;
 use std::{fs, io::ErrorKind, path::PathBuf};
 
-/// initialize this instance's log file
-fn init_log() -> Result<()> {
-    let log_dir = dirs::app_logs_dir()?;
-    if !log_dir.exists() {
-        let _ = fs::create_dir_all(&log_dir);
-    }
-
-    let log_level = Config::verge().data().get_log_level();
-    if log_level == LevelFilter::Off {
-        return Ok(());
-    }
-
-    let local_time = Local::now().format("%Y-%m-%d-%H%M").to_string();
-    let log_file = format!("{}.log", local_time);
-    let log_file = log_dir.join(log_file);
-
-    let log_pattern = match log_level {
-        LevelFilter::Trace => "{d(%Y-%m-%d %H:%M:%S)} {l} [{M}] - {m}{n}",
-        _ => "{d(%Y-%m-%d %H:%M:%S)} {l} - {m}{n}",
-    };
-
-    let encode = Box::new(PatternEncoder::new(log_pattern));
-
-    let stdout = ConsoleAppender::builder().encoder(encode.clone()).build();
-    let tofile = FileAppender::builder().encoder(encode).build(log_file)?;
-
-    let mut logger_builder = Logger::builder();
-    let mut root_builder = Root::builder();
-
-    let log_more = log_level == LevelFilter::Trace || log_level == LevelFilter::Debug;
-
-    #[cfg(feature = "verge-dev")]
-    {
-        logger_builder = logger_builder.appenders(["file", "stdout"]);
-        if log_more {
-            root_builder = root_builder.appenders(["file", "stdout"]);
-        } else {
-            root_builder = root_builder.appenders(["stdout"]);
-        }
-    }
-    #[cfg(not(feature = "verge-dev"))]
-    {
-        logger_builder = logger_builder.appenders(["file"]);
-        if log_more {
-            root_builder = root_builder.appenders(["file"]);
-        }
-    }
-
-    let (config, _) = log4rs::config::Config::builder()
-        .appender(Appender::builder().build("stdout", Box::new(stdout)))
-        .appender(Appender::builder().build("file", Box::new(tofile)))
-        .logger(logger_builder.additive(false).build("app", log_level))
-        .build_lossy(root_builder.build(log_level));
-
-    log4rs::init_config(config)?;
-
-    Ok(())
-}
-
+mod logging;
+pub use logging::refresh_logger;
 /// Initialize all the config files
 /// before tauri setup
 pub fn init_config() -> Result<()> {
@@ -101,7 +37,7 @@ pub fn init_config() -> Result<()> {
     }
 
     // init log
-    let _ = init_log();
+    logging::init().unwrap();
 
     crate::log_err!(dirs::app_profiles_dir().map(|profiles_dir| {
         if !profiles_dir.exists() {

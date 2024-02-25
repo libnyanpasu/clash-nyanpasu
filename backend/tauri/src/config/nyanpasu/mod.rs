@@ -1,7 +1,9 @@
 use crate::utils::{dirs, help};
 use anyhow::Result;
-use log::LevelFilter;
+// use log::LevelFilter;
 use serde::{Deserialize, Serialize};
+
+pub mod logging;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub enum ClashCore {
@@ -54,7 +56,7 @@ pub struct IVerge {
 
     /// app log level
     /// silent | error | warn | info | debug | trace
-    pub app_log_level: Option<String>,
+    pub app_log_level: Option<logging::LoggingLevel>,
 
     // i18n
     pub language: Option<String>,
@@ -131,8 +133,10 @@ pub struct IVerge {
 
     /// 日志清理
     /// 分钟数； 0 为不清理
+    #[deprecated(note = "use `window_size_state` instead")]
     pub auto_log_clean: Option<i64>,
-
+    /// 日记轮转时间，单位：天
+    pub max_log_files: Option<usize>,
     /// window size and position
     #[deprecated(note = "use `window_size_state` instead")]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -194,10 +198,7 @@ impl IVerge {
                 let locale = crate::utils::help::get_system_locale();
                 Some(crate::utils::help::mapping_to_i18n_key(&locale).into())
             },
-            #[cfg(debug_assertions)]
-            app_log_level: Some("debug".into()),
-            #[cfg(not(debug_assertions))]
-            app_log_level: Some("info".into()),
+            app_log_level: Some(logging::LoggingLevel::default()),
             theme_mode: Some("system".into()),
             theme_blur: Some(false),
             traffic_graph: Some(true),
@@ -213,7 +214,8 @@ impl IVerge {
             enable_builtin_enhanced: Some(true),
             enable_clash_fields: Some(true),
             page_transition_animation: Some("slide".into()),
-            auto_log_clean: Some(60 * 24 * 7), // 7 days 自动清理日记
+            // auto_log_clean: Some(60 * 24 * 7), // 7 days 自动清理日记
+            max_log_files: Some(7), // 7 days
             ..Self::default()
         }
     }
@@ -264,7 +266,7 @@ impl IVerge {
         patch!(proxy_layout_column);
         patch!(enable_clash_fields);
 
-        patch!(auto_log_clean);
+        patch!(max_log_files);
         patch!(window_size_state);
     }
 
@@ -278,23 +280,6 @@ impl IVerge {
         match dirs::verge_path().and_then(|path| help::read_yaml::<IVerge>(&path)) {
             Ok(config) => config.app_singleton_port.unwrap_or(SERVER_PORT),
             Err(_) => SERVER_PORT, // 这里就不log错误了
-        }
-    }
-
-    /// 获取日志等级
-    pub fn get_log_level(&self) -> LevelFilter {
-        if let Some(level) = self.app_log_level.as_ref() {
-            match level.to_lowercase().as_str() {
-                "silent" => LevelFilter::Off,
-                "error" => LevelFilter::Error,
-                "warn" => LevelFilter::Warn,
-                "info" => LevelFilter::Info,
-                "debug" => LevelFilter::Debug,
-                "trace" => LevelFilter::Trace,
-                _ => LevelFilter::Info,
-            }
-        } else {
-            LevelFilter::Info
         }
     }
 }

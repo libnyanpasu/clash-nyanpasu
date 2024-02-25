@@ -3,23 +3,25 @@ use crate::core::{
     handle::Handle,
 };
 use indexmap::IndexMap;
-use log::{debug, error, warn};
 use tauri::SystemTrayMenu;
+use tracing::{debug, error, warn};
+use tracing_attributes::instrument;
 
+#[instrument]
 async fn loop_task() {
     loop {
         match ProxiesGuard::global().update().await {
             Ok(_) => {
-                debug!(target: "tray", "update proxies success");
+                debug!("update proxies success");
             }
             Err(e) => {
-                warn!(target: "tray", "update proxies failed: {:?}", e);
+                warn!("update proxies failed: {:?}", e);
             }
         }
         {
             let guard = ProxiesGuard::global().read();
             if guard.updated_at() == 0 {
-                error!(target: "tray", "proxies not updated yet!!!!");
+                error!("proxies not updated yet!!!!");
                 // TODO: add a error dialog or notification, and panic?
             }
 
@@ -130,7 +132,7 @@ fn diff_proxies(old_proxies: &TrayProxies, new_proxies: &TrayProxies) -> TrayUpd
         TrayUpdateType::Part(actions)
     }
 }
-
+#[instrument]
 pub async fn proxies_updated_receiver() {
     let (mut rx, mut tray_proxies_holder) = {
         let guard = ProxiesGuard::global().read();
@@ -145,9 +147,9 @@ pub async fn proxies_updated_receiver() {
     loop {
         match rx.recv().await {
             Ok(_) => {
-                debug!(target: "tray::proxies", "proxies updated");
+                debug!("proxies updated");
                 if Handle::global().app_handle.lock().is_none() {
-                    warn!(target: "tray::proxies", "app handle not found");
+                    warn!("app handle not found");
                     continue;
                 }
                 Handle::mutate_proxies();
@@ -158,28 +160,28 @@ pub async fn proxies_updated_receiver() {
 
                 match diff_proxies(&tray_proxies_holder, &current_tray_proxies) {
                     TrayUpdateType::Full => {
-                        debug!(target: "tray::proxies", "should do full update");
+                        debug!("should do full update");
                         tray_proxies_holder = current_tray_proxies;
                         match Handle::update_systray() {
                             Ok(_) => {
-                                debug!(target: "tray::proxies", "update systray success");
+                                debug!("update systray success");
                             }
                             Err(e) => {
-                                warn!(target: "tray::proxies", "update systray failed: {:?}", e);
+                                warn!("update systray failed: {:?}", e);
                             }
                         }
                     }
                     TrayUpdateType::Part(action_list) => {
-                        debug!(target: "tray::proxies", "should do partial update, op list: {:?}", action_list);
+                        debug!("should do partial update, op list: {:?}", action_list);
                         tray_proxies_holder = current_tray_proxies;
                         platform_impl::update_selected_proxies(&action_list);
-                        debug!(target: "tray::proxies", "update selected proxies success");
+                        debug!("update selected proxies success");
                     }
                     _ => {}
                 }
             }
             Err(e) => {
-                warn!(target: "tray::proxies", "proxies updated receiver failed: {:?}", e);
+                warn!("proxies updated receiver failed: {:?}", e);
             }
         }
     }
@@ -261,6 +263,7 @@ impl SystemTrayMenuProxiesExt for SystemTrayMenu {
     }
 }
 
+#[instrument]
 pub fn on_system_tray_event(event: &str) {
     if !event.starts_with("select_proxy_") {
         return; // bypass non-select event
@@ -274,10 +277,10 @@ pub fn on_system_tray_event(event: &str) {
     tauri::async_runtime::spawn(async move {
         match ProxiesGuard::global().select_proxy(&group, &name).await {
             Ok(_) => {
-                debug!(target: "tray", "select proxy success: {} {}", group, name);
+                debug!("select proxy success: {} {}", group, name);
             }
             Err(e) => {
-                warn!(target: "tray", "select proxy failed, {} {}, cause: {:?}", group, name, e);
+                warn!("select proxy failed, {} {}, cause: {:?}", group, name, e);
                 // TODO: add a error dialog or notification
             }
         }

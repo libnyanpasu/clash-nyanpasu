@@ -10,6 +10,7 @@ authors = ["zzzgydi", "keiko233"]
 
 [workspace.dependencies]
 thiserror = "1"
+tracing = "0.1"
 
 [profile.release]
 panic = "abort"

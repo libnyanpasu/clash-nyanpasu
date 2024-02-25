@@ -18,7 +18,32 @@ use tauri::{api, SystemTray};
 
 rust_i18n::i18n!("../../locales");
 
+#[cfg(feature = "deadlock-detection")]
+fn deadlock_detection() {
+    use parking_lot::deadlock;
+    use std::thread;
+    use std::time::Duration;
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_secs(10));
+        let deadlocks = deadlock::check_deadlock();
+        if deadlocks.is_empty() {
+            continue;
+        }
+
+        println!("{} deadlocks detected", deadlocks.len());
+        for (i, threads) in deadlocks.iter().enumerate() {
+            println!("Deadlock #{}", i);
+            for t in threads {
+                println!("Thread Id {:#?}", t.thread_id());
+                println!("{:#?}", t.backtrace());
+            }
+        }
+    });
+}
+
 fn main() -> std::io::Result<()> {
+    #[cfg(feature = "deadlock-detection")]
+    deadlock_detection();
     // 单例检测
     if server::check_singleton().is_err() {
         println!("app exists");

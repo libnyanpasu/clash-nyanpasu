@@ -7,7 +7,7 @@ use runas::Command as RunasCommand;
 use std::{fs, io::ErrorKind, path::PathBuf};
 
 mod logging;
-pub use logging::init as refresh_logger;
+pub use logging::refresh_logger;
 /// Initialize all the config files
 /// before tauri setup
 pub fn init_config() -> Result<()> {
@@ -37,7 +37,7 @@ pub fn init_config() -> Result<()> {
     }
 
     // init log
-    logging::init(None).unwrap();
+    logging::init().unwrap();
 
     crate::log_err!(dirs::app_profiles_dir().map(|profiles_dir| {
         if !profiles_dir.exists() {

@@ -25,8 +25,9 @@ impl JobsManager {
     }
 
     pub fn global_register() -> Result<()> {
-        let jobs: Vec<Box<dyn JobExt + Send + Sync>> =
-            vec![Box::<logger::ClearLogsJob>::default() as Box<dyn JobExt + Send + Sync>];
+        let jobs: Vec<Box<dyn JobExt + Send + Sync>> = vec![
+        // Box::<logger::ClearLogsJob>::default() as Box<dyn JobExt + Send + Sync>
+        ];
         for job in jobs {
             let task = job.setup();
             if let Some(task) = task {

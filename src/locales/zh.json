@@ -120,9 +120,9 @@
   "Retain 7 Days": "保留7天",
   "Retain 30 Days": "保留30天",
   "Retain 90 Days": "保留90天",
+  "Max Log Files": "最大日志文件数",
 
   "Collect Logs": "收集日志",
-
   "Back": "返回",
   "Save": "保存",
   "Cancel": "取消",

@@ -258,6 +258,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
     let proxy_bypass = patch.system_proxy_bypass;
     let language = patch.language;
     let log_level = patch.app_log_level;
+    let log_max_files = patch.max_log_files;
 
     let res = {
         #[cfg(target_os = "windows")]
@@ -302,8 +303,8 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
             handle::Handle::update_systray_part()?;
         }
 
-        if let Some(level) = log_level {
-            utils::init::refresh_logger(Some(level))?;
+        if log_level.is_some() || log_max_files.is_some() {
+            utils::init::refresh_logger((log_level, log_max_files))?;
         }
 
         <Result<()>>::Ok(())

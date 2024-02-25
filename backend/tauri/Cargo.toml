@@ -35,7 +35,7 @@ auto-launch = "0.5"
 once_cell = "1.19.0"
 port_scanner = "0.1.5"
 delay_timer = "0.11.5"
-parking_lot = "0.12.1"
+parking_lot = { version = "0.12.1" }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
@@ -123,3 +123,4 @@ custom-protocol = ["tauri/custom-protocol"]
 verge-dev = []
 default-meta = []
 nightly = []
+deadlock-detection = ["parking_lot/deadlock_detection"]

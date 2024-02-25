@@ -117,29 +117,18 @@ pub fn init() -> Result<()> {
     });
 
     // if debug build, log to stdout and stderr with all levels
-    let terminal_layer = {
-        #[cfg(debug_assertions)]
-        {
-            Some(
-                fmt::Layer::new()
-                    .with_ansi(std::io::stdout().is_terminal())
-                    .compact()
-                    .with_target(false)
-                    .with_file(true)
-                    .with_line_number(true)
-                    .with_writer(std::io::stdout),
-            )
-        }
-        #[cfg(not(debug_assertions))]
-        {
-            None
-        }
-    };
+    #[cfg(debug_assertions)]
+    let terminal_layer = fmt::Layer::new()
+        .with_ansi(std::io::stdout().is_terminal())
+        .compact()
+        .with_target(false)
+        .with_file(true)
+        .with_line_number(true)
+        .with_writer(std::io::stdout);
 
-    let subscriber = tracing_subscriber::registry()
-        .with(filter)
-        .with(file_layer)
-        .with(terminal_layer);
+    let subscriber = tracing_subscriber::registry().with(filter).with(file_layer);
+    #[cfg(debug_assertions)]
+    let subscriber = subscriber.with(terminal_layer);
 
     tracing::subscriber::set_global_default(subscriber)
         .map_err(|x| anyhow!("setup logging error: {}", x))?;

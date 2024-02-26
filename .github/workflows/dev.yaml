@@ -15,8 +15,8 @@ jobs:
         targets:
           - os: windows-latest
             category: nsis # and portable
-          - os: windows-latest
-            category: msi
+          # - os: windows-latest
+          #   category: msi
           - os: ubuntu-latest
             category: all
           - os: macos-13

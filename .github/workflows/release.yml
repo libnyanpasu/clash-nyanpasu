@@ -89,6 +89,10 @@ jobs:
           pnpm i
           pnpm check
 
+      - name: Prepare Tauri manifest (nsis)
+        run: |
+          pnpm prepare:release --nsis
+
       - name: Tauri build
         if: startsWith(matrix.targets.os, 'macos-') == false || matrix.targets.category != 'aarch64'
         uses: tauri-apps/tauri-action@v0

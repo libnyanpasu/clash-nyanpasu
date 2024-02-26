@@ -49,6 +49,7 @@ enum TrayUpdateType {
 struct TrayProxyItem {
     current: Option<String>,
     all: Vec<String>,
+    r#type: String, // TODO: 转成枚举
 }
 type TrayProxies = IndexMap<String, TrayProxyItem>;
 
@@ -66,6 +67,7 @@ fn to_tray_proxies(mode: &str, raw_proxies: &Proxies) -> TrayProxies {
                     .into_iter()
                     .map(|x| x.name)
                     .collect(),
+                r#type: "Selector".to_owned(),
             };
             tray_proxies.insert("global".to_owned(), global);
         }
@@ -73,6 +75,7 @@ fn to_tray_proxies(mode: &str, raw_proxies: &Proxies) -> TrayProxies {
             let group = TrayProxyItem {
                 current: raw_group.now.clone(),
                 all: raw_group.all.clone().into_iter().map(|x| x.name).collect(),
+                r#type: raw_group.r#type.clone(),
             };
             tray_proxies.insert(raw_group.name.to_owned(), group);
         }
@@ -196,6 +199,7 @@ mod platform_impl {
     use super::{ProxySelectAction, TrayProxyItem};
     use crate::core::{clash::proxies::ProxiesGuard, handle::Handle};
     use tauri::{CustomMenuItem, SystemTrayMenu, SystemTraySubmenu};
+    use tracing::warn;
     pub fn generate_group_selector(group_name: &str, group: &TrayProxyItem) -> SystemTraySubmenu {
         let mut group_menu = SystemTrayMenu::new();
         for item in group.all.iter() {
@@ -208,6 +212,11 @@ mod platform_impl {
                     sub_item = sub_item.selected();
                 }
             }
+
+            if !matches!(group.r#type.as_str(), "Selector" | "Fallback") {
+                sub_item = sub_item.disabled();
+            }
+
             group_menu = group_menu.add_item(sub_item);
         }
         SystemTraySubmenu::new(group_name.to_string(), group_menu)
@@ -245,10 +254,23 @@ mod platform_impl {
         for action in actions {
             let from = format!("select_proxy_{}_{}", action.0, action.1);
             let to = format!("select_proxy_{}_{}", action.0, action.2);
-            if let Some(item) = tray.try_get_item(&from) {
-                let _ = item.set_selected(false);
+
+            match tray.try_get_item(&from) {
+                Some(item) => {
+                    let _ = item.set_selected(false);
+                }
+                None => {
+                    warn!("failed to deselect, item not found: {}", from);
+                }
             }
-            let _ = tray.get_item(&to).set_selected(true);
+            match tray.try_get_item(&to) {
+                Some(item) => {
+                    let _ = item.set_selected(true);
+                }
+                None => {
+                    warn!("failed to select, item not found: {}", to);
+                }
+            }
         }
     }
 }

@@ -8,9 +8,11 @@ use std::{
     collections::HashMap,
     fmt::{self, Display, Formatter},
 };
+use tracing_attributes::instrument;
 
 /// PUT /configs
 /// path 是绝对路径
+#[instrument]
 pub async fn put_configs(path: &str) -> Result<()> {
     let (url, headers) = clash_client_info()?;
     let url = format!("{url}/configs");
@@ -31,6 +33,7 @@ pub async fn put_configs(path: &str) -> Result<()> {
 }
 
 /// PATCH /configs
+#[instrument]
 pub async fn patch_configs(config: &Mapping) -> Result<()> {
     let (url, headers) = clash_client_info()?;
     let url = format!("{url}/configs");
@@ -115,6 +118,7 @@ impl From<ProxyProviderItem> for ProxyItem {
 
 /// GET /proxies
 /// 获取代理列表
+#[instrument]
 pub async fn get_proxies() -> Result<ProxiesRes> {
     let (url, headers) = clash_client_info()?;
     let url = format!("{url}/proxies");
@@ -132,6 +136,7 @@ pub async fn get_proxies() -> Result<ProxiesRes> {
 /// 返回代理的配置
 ///
 #[allow(dead_code)]
+#[instrument]
 pub async fn get_proxy(name: String) -> Result<ProxyItem> {
     let (url, headers) = clash_client_info()?;
     let url = format!("{url}/proxies/{name}");
@@ -147,6 +152,7 @@ pub async fn get_proxy(name: String) -> Result<ProxyItem> {
 /// 选择代理
 /// group: 代理分组名称
 /// name: 代理名称
+#[instrument]
 pub async fn update_proxy(group: &str, name: &str) -> Result<()> {
     let (url, headers) = clash_client_info()?;
     let url = format!("{url}/proxies/{group}");
@@ -214,6 +220,7 @@ pub struct ProvidersProxiesRes {
 
 /// GET /providers/proxies
 /// 获取所有代理集合的所有代理信息
+#[instrument]
 pub async fn get_providers_proxies() -> Result<ProvidersProxiesRes> {
     let (url, headers) = clash_client_info()?;
     let url = format!("{url}/providers/proxies");
@@ -229,6 +236,7 @@ pub async fn get_providers_proxies() -> Result<ProvidersProxiesRes> {
 /// 获取单个代理集合的所有代理信息
 /// group: 代理集合名称
 #[allow(dead_code)]
+#[instrument]
 pub async fn get_providers_proxies_group(group: String) -> Result<ProxyProviderItem> {
     let (url, headers) = clash_client_info()?;
     let url = format!("{url}/providers/proxies/{group}");
@@ -243,6 +251,7 @@ pub async fn get_providers_proxies_group(group: String) -> Result<ProxyProviderI
 /// PUT /providers/proxies/:name
 /// 更新代理集合
 /// name: 代理集合名称
+#[instrument]
 pub async fn update_providers_proxies_group(name: &str) -> Result<()> {
     let (url, headers) = clash_client_info()?;
     let url = format!("{url}/providers/proxies/{name}");
@@ -263,6 +272,7 @@ pub async fn update_providers_proxies_group(name: &str) -> Result<()> {
 /// 获取代理集合的健康检查
 /// name: 代理集合名称
 #[allow(dead_code)]
+#[instrument]
 pub async fn get_providers_proxies_healthcheck(name: String) -> Result<Mapping> {
     let (url, headers) = clash_client_info()?;
     let url = format!("{url}/providers/proxies/{name}/healthcheck");
@@ -281,6 +291,7 @@ pub struct DelayRes {
 
 /// GET /proxies/{name}/delay
 /// 获取代理延迟
+#[instrument]
 pub async fn get_proxy_delay(name: String, test_url: Option<String>) -> Result<DelayRes> {
     let (url, headers) = clash_client_info()?;
     let url = format!("{url}/proxies/{name}/delay");
@@ -300,6 +311,7 @@ pub async fn get_proxy_delay(name: String, test_url: Option<String>) -> Result<D
 }
 
 /// 根据clash info获取clash服务地址和请求头
+#[instrument]
 fn clash_client_info() -> Result<(String, HeaderMap)> {
     let client = { Config::clash().data().get_client_info() };
 
@@ -317,6 +329,7 @@ fn clash_client_info() -> Result<(String, HeaderMap)> {
 }
 
 /// 缩短clash的日志
+#[instrument]
 pub fn parse_log(log: String) -> String {
     if log.starts_with("time=") && log.len() > 33 {
         return log[33..].to_owned();
@@ -329,6 +342,7 @@ pub fn parse_log(log: String) -> String {
 
 /// 缩短clash -t的错误输出
 /// 仅适配 clash p核 8-26、clash meta 1.13.1
+#[instrument]
 pub fn parse_check_output(log: String) -> String {
     let t = log.find("time=");
     let m = log.find("msg=");

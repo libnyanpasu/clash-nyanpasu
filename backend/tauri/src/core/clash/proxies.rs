@@ -11,6 +11,7 @@ use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, OnceLock};
 use tokio::{sync::broadcast, try_join};
+use tracing_attributes::instrument;
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -69,6 +70,7 @@ async fn fetch_proxies() -> Result<(api::ProxiesRes, api::ProvidersProxiesRes)> 
 }
 
 impl Proxies {
+    #[instrument]
     pub async fn fetch() -> Result<Self> {
         let (inner_proxies, providers_proxies) = fetch_proxies
             .retry(&*CLASH_API_DEFAULT_BACKOFF_STRATEGY)

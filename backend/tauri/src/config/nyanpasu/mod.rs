@@ -269,17 +269,4 @@ impl IVerge {
         patch!(max_log_files);
         patch!(window_size_state);
     }
-
-    /// 在初始化前尝试拿到单例端口的值
-    pub fn get_singleton_port() -> u16 {
-        #[cfg(not(feature = "verge-dev"))]
-        const SERVER_PORT: u16 = 33331;
-        #[cfg(feature = "verge-dev")]
-        const SERVER_PORT: u16 = 11233;
-
-        match dirs::verge_path().and_then(|path| help::read_yaml::<IVerge>(&path)) {
-            Ok(config) => config.app_singleton_port.unwrap_or(SERVER_PORT),
-            Err(_) => SERVER_PORT, // 这里就不log错误了
-        }
-    }
 }

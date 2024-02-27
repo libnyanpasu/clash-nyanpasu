@@ -12,7 +12,7 @@ mod utils;
 
 use crate::{
     config::Config,
-    utils::{init, resolve, server},
+    utils::{init, resolve},
 };
 use tauri::{api, SystemTray};
 
@@ -44,8 +44,14 @@ fn deadlock_detection() {
 fn main() -> std::io::Result<()> {
     #[cfg(feature = "deadlock-detection")]
     deadlock_detection();
+
+    #[cfg(not(feature = "verge-dev"))]
+    let instance_id = "clash-nyanpasu";
+    #[cfg(feature = "verge-dev")]
+    let instance_id = "clash-nyanpasu-dev";
+
     // 单例检测
-    let instance = single_instance::SingleInstance::new("clash-nyanpasu").unwrap();
+    let instance = single_instance::SingleInstance::new(instance_id).unwrap();
     if !instance.is_single() {
         println!("app exists");
         return Ok(());

@@ -6,7 +6,7 @@ use crate::{
         *,
     },
     log_err, trace_err,
-    utils::{init, server},
+    utils::init,
 };
 use anyhow::Result;
 use semver::Version;
@@ -75,10 +75,6 @@ pub fn resolve_setup(app: &mut App) {
 
     log::trace!("launch core");
     log_err!(CoreManager::global().init());
-
-    // setup a simple http server for singleton
-    log::trace!("launch embed server");
-    server::embed_server(app.app_handle());
 
     log::trace!("init system tray");
     log_err!(tray::Tray::update_systray(&app.app_handle()));

@@ -45,7 +45,8 @@ fn main() -> std::io::Result<()> {
     #[cfg(feature = "deadlock-detection")]
     deadlock_detection();
     // 单例检测
-    if server::check_singleton().is_err() {
+    let instance = single_instance::SingleInstance::new("clash-nyanpasu").unwrap();
+    if !instance.is_single() {
         println!("app exists");
         return Ok(());
     }

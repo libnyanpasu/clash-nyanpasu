@@ -96,7 +96,7 @@
   },
   "devDependencies": {
     "@actions/github": "6.0.0",
-    "@commitlint/cli": "19.0.0",
+    "@commitlint/cli": "19.0.1",
     "@commitlint/config-conventional": "19.0.0",
     "@tauri-apps/cli": "1.5.10",
     "@types/fs-extra": "11.0.4",

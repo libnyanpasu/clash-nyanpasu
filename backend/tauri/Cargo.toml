@@ -80,6 +80,7 @@ tracing-subscriber = { version = "0.3", features = [
 tracing-error = "0.2"
 tracing-log = { version = "0.2" }
 tracing-appender = { version = "0.2", features = ["parking_lot"] }
+base64 = "0.21"
 
 [target.'cfg(windows)'.dependencies]
 deelevate = "0.2.0"

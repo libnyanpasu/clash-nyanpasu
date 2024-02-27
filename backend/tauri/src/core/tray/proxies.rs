@@ -2,6 +2,8 @@ use crate::core::{
     clash::proxies::{Proxies, ProxiesGuard, ProxiesGuardExt},
     handle::Handle,
 };
+use anyhow::Context;
+use base64::{engine::general_purpose::STANDARD as base64_standard, Engine as _};
 use indexmap::IndexMap;
 use tauri::SystemTrayMenu;
 use tracing::{debug, error, warn};
@@ -135,6 +137,7 @@ fn diff_proxies(old_proxies: &TrayProxies, new_proxies: &TrayProxies) -> TrayUpd
         TrayUpdateType::Part(actions)
     }
 }
+
 #[instrument]
 pub async fn proxies_updated_receiver() {
     let (mut rx, mut tray_proxies_holder) = {
@@ -198,13 +201,19 @@ pub fn setup_proxies() {
 mod platform_impl {
     use super::{ProxySelectAction, TrayProxyItem};
     use crate::core::{clash::proxies::ProxiesGuard, handle::Handle};
+    use base64::{engine::general_purpose::STANDARD as base64_standard, Engine as _};
     use tauri::{CustomMenuItem, SystemTrayMenu, SystemTraySubmenu};
     use tracing::warn;
+
     pub fn generate_group_selector(group_name: &str, group: &TrayProxyItem) -> SystemTraySubmenu {
         let mut group_menu = SystemTrayMenu::new();
         for item in group.all.iter() {
             let mut sub_item = CustomMenuItem::new(
-                format!("select_proxy_{}_{}", group_name, item),
+                format!(
+                    "select_proxy_{}_{}",
+                    base64_standard.encode(group_name),
+                    base64_standard.encode(item)
+                ),
                 item.clone(),
             );
             if let Some(now) = group.current.clone() {
@@ -252,8 +261,16 @@ mod platform_impl {
             .unwrap()
             .tray_handle();
         for action in actions {
-            let from = format!("select_proxy_{}_{}", action.0, action.1);
-            let to = format!("select_proxy_{}_{}", action.0, action.2);
+            let from = format!(
+                "select_proxy_{}_{}",
+                base64_standard.encode(&action.0),
+                base64_standard.encode(&action.1)
+            );
+            let to = format!(
+                "select_proxy_{}_{}",
+                base64_standard.encode(&action.0),
+                base64_standard.encode(&action.2)
+            );
 
             match tray.try_get_item(&from) {
                 Some(item) => {
@@ -294,17 +311,24 @@ pub fn on_system_tray_event(event: &str) {
     if parts.len() != 4 {
         return; // bypass invalid event
     }
-    let group = parts[2].to_owned();
-    let name = parts[3].to_owned();
-    tauri::async_runtime::spawn(async move {
-        match ProxiesGuard::global().select_proxy(&group, &name).await {
-            Ok(_) => {
-                debug!("select proxy success: {} {}", group, name);
-            }
-            Err(e) => {
-                warn!("select proxy failed, {} {}, cause: {:?}", group, name, e);
-                // TODO: add a error dialog or notification
-            }
-        }
-    });
+
+    let wrapper = move || -> anyhow::Result<()> {
+        let group = String::from_utf8(base64_standard.decode(parts[2])?)?;
+        let name = String::from_utf8(base64_standard.decode(parts[3])?)?;
+        tauri::async_runtime::block_on(async move {
+            ProxiesGuard::global()
+                .select_proxy(&group, &name)
+                .await
+                .with_context(|| format!("select proxy failed, {} {}, cause: ", group, name))?;
+
+            debug!("select proxy success: {} {}", group, name);
+            Ok::<(), anyhow::Error>(())
+        })?;
+        Ok(())
+    };
+
+    if let Err(e) = wrapper() {
+        // TODO: add a error dialog or notification
+        error!("on_system_tray_event failed: {:?}", e);
+    }
 }

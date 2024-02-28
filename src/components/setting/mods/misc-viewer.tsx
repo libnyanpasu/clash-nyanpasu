@@ -1,4 +1,5 @@
 import { BaseDialog, DialogRef } from "@/components/base";
+import MDYSwitch from "@/components/common/mdy-switch";
 import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { useVerge } from "@/hooks/use-verge";
 import {
@@ -7,7 +8,6 @@ import {
   ListItemText,
   MenuItem,
   Select,
-  Switch,
   TextField,
 } from "@mui/material";
 import { useLockFn } from "ahooks";
@@ -98,7 +98,7 @@ export const MiscViewer = forwardRef<DialogRef>((props, ref) => {
 
         <ListItem sx={{ padding: "5px 2px" }}>
           <ListItemText primary={t("Auto Close Connections")} />
-          <Switch
+          <MDYSwitch
             edge="end"
             checked={values.autoCloseConnection}
             onChange={(_, c) =>
@@ -109,7 +109,7 @@ export const MiscViewer = forwardRef<DialogRef>((props, ref) => {
 
         <ListItem sx={{ padding: "5px 2px" }}>
           <ListItemText primary={t("Enable Clash Fields Filter")} />
-          <Switch
+          <MDYSwitch
             edge="end"
             checked={values.enableClashFields}
             onChange={(_, c) =>
@@ -120,7 +120,7 @@ export const MiscViewer = forwardRef<DialogRef>((props, ref) => {
 
         <ListItem sx={{ padding: "5px 2px" }}>
           <ListItemText primary={t("Enable Builtin Enhanced")} />
-          <Switch
+          <MDYSwitch
             edge="end"
             checked={values.enableBuiltinEnhanced}
             onChange={(_, c) =>

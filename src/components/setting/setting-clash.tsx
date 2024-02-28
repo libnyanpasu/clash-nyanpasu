@@ -9,7 +9,6 @@ import {
   IconButton,
   MenuItem,
   Select,
-  Switch,
   TextField,
   Tooltip,
   Typography,
@@ -23,6 +22,7 @@ import { ControllerViewer } from "./mods/controller-viewer";
 import { GuardState } from "./mods/guard-state";
 import { SettingItem, SettingList } from "./mods/setting-comp";
 import { WebUIViewer } from "./mods/web-ui-viewer";
+import MDYSwitch from "../common/mdy-switch";
 
 const isWIN = getSystem() === "windows";
 
@@ -71,7 +71,7 @@ const SettingClash = ({ onError }: Props) => {
           onChange={(e) => onChangeData({ "allow-lan": e })}
           onGuard={(e) => patchClash({ "allow-lan": e })}
         >
-          <Switch edge="end" />
+          <MDYSwitch edge="end" />
         </GuardState>
       </SettingItem>
 
@@ -84,7 +84,7 @@ const SettingClash = ({ onError }: Props) => {
           onChange={(e) => onChangeData({ ipv6: e })}
           onGuard={(e) => patchClash({ ipv6: e })}
         >
-          <Switch edge="end" />
+          <MDYSwitch edge="end" />
         </GuardState>
       </SettingItem>
 

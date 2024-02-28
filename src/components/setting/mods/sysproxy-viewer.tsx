@@ -1,4 +1,5 @@
 import { BaseDialog, DialogRef } from "@/components/base";
+import MDYSwitch from "@/components/common/mdy-switch";
 import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { useVerge } from "@/hooks/use-verge";
 import { getSystemProxy } from "@/services/cmds";
@@ -8,7 +9,6 @@ import {
   List,
   ListItem,
   ListItemText,
-  Switch,
   TextField,
   Typography,
   styled,
@@ -101,7 +101,7 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
       <List>
         <ListItem sx={{ padding: "5px 2px" }}>
           <ListItemText primary={t("Proxy Guard")} />
-          <Switch
+          <MDYSwitch
             edge="end"
             disabled={!enabled}
             checked={value.guard}

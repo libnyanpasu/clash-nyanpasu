@@ -87,6 +87,11 @@ export default function Layout() {
       mutate("getProviders");
     });
 
+    listen("scheme-request-received", (req) => {
+      console.log("Received event");
+      console.log(req);
+    });
+
     setTimeout(() => {
       appWindow.show();
       appWindow.unminimize();

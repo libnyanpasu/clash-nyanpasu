@@ -14,7 +14,7 @@ use crate::{
     config::Config,
     utils::{init, resolve},
 };
-use tauri::{api, SystemTray};
+use tauri::{api, Manager, SystemTray};
 
 rust_i18n::i18n!("../../locales");
 
@@ -44,6 +44,9 @@ fn deadlock_detection() {
 fn main() -> std::io::Result<()> {
     #[cfg(feature = "deadlock-detection")]
     deadlock_detection();
+
+    // Should be in first place in order prevent single instance check block everything
+    tauri_plugin_deep_link::prepare("moe.elaina.clash.nyanpasu");
 
     #[cfg(not(feature = "verge-dev"))]
     let instance_id = "clash-nyanpasu";
@@ -82,6 +85,24 @@ fn main() -> std::io::Result<()> {
         .system_tray(SystemTray::new())
         .setup(|app| {
             resolve::resolve_setup(app);
+            // setup custom scheme
+            let handle = app.handle().clone();
+            log_err!(tauri_plugin_deep_link::register(
+                "clash-nyanpasu",
+                move |request| {
+                    log::info!(target: "app", "scheme request received: {:?}", &request);
+                    resolve::create_window(&handle.clone()); // create window if not exists
+                    println!("Scheme request received: {:?}", &request);
+                    handle
+                        .get_window("main")
+                        .unwrap()
+                        .emit("scheme-request-received", request.clone())
+                        .unwrap();
+                    handle.emit_all("scheme-request-received", request).unwrap();
+                    println!("Message emited");
+                    // handle.emit_all("scheme-request-received", request).unwrap();
+                }
+            ));
             Ok(())
         })
         .on_system_tray_event(core::tray::Tray::on_system_tray_event)

@@ -1,0 +1,15 @@
+.MDYSwitch-container {
+  position: relative;
+
+  .MDYSwitch-CircularProgress {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 1;
+
+    &.checked {
+      right: 8px;
+      left: unset;
+    }
+  }
+}

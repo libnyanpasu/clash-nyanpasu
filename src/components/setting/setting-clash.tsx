@@ -89,7 +89,7 @@ const SettingClash = ({ onError }: Props) => {
           onCatch={onError}
           onFormat={onSwitchFormat}
           onGuard={(e) => patchClashWithLoading({ "allow-lan": e })}
-          loading={loading["allow-lan"]} 
+          loading={loading["allow-lan"]}
         >
           <MDYSwitch edge="end" />
         </GuardState>
@@ -102,7 +102,7 @@ const SettingClash = ({ onError }: Props) => {
           onCatch={onError}
           onFormat={onSwitchFormat}
           onGuard={(e) => patchClashWithLoading({ ipv6: e })}
-          loading={loading["ipv6"]} 
+          loading={loading["ipv6"]}
         >
           <MDYSwitch edge="end" />
         </GuardState>
@@ -115,7 +115,7 @@ const SettingClash = ({ onError }: Props) => {
           onCatch={onError}
           onFormat={(e: any) => e.target.value}
           onGuard={(e) => patchClashWithLoading({ "log-level": e })}
-          loading={loading["log-level"]} 
+          loading={loading["log-level"]}
         >
           <Select size="small" sx={{ width: 100, "> div": { py: "7.5px" } }}>
             <MenuItem value="debug">Debug</MenuItem>

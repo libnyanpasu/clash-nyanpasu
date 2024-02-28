@@ -93,7 +93,7 @@ const SettingVerge = ({ onError }: Props) => {
           onCatch={onError}
           onFormat={(e: any) => e.target.value}
           onGuard={(e) => patchVerge({ language: e })}
-          loading={loading["language"]} 
+          loading={loading["language"]}
         >
           <Select size="small" sx={{ width: 100, "> div": { py: "7.5px" } }}>
             <MenuItem value="zh">中文</MenuItem>
@@ -108,7 +108,7 @@ const SettingVerge = ({ onError }: Props) => {
           value={theme_mode}
           onCatch={onError}
           onGuard={(e) => patchVerge({ theme_mode: e })}
-          loading={loading["theme_mode"]} 
+          loading={loading["theme_mode"]}
         >
           <ThemeModeSwitch />
         </GuardState>

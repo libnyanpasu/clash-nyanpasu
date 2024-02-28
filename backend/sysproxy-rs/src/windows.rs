@@ -48,7 +48,7 @@ fn unset_proxy() -> Result<()> {
         dwSize: size_of::<INTERNET_PER_CONN_OPTION_LISTW>() as u32,
         dwOptionCount: 1,
         dwOptionError: 0,
-        pOptions: p_opts.as_mut_ptr() as *mut INTERNET_PER_CONN_OPTIONW,
+        pOptions: p_opts.as_mut_ptr(),
         pszConnection: PWSTR::null(),
     };
     let res = apply(&opts);
@@ -83,7 +83,7 @@ fn set_auto_proxy(url: &str) -> Result<()> {
         dwSize: size_of::<INTERNET_PER_CONN_OPTION_LISTW>() as u32,
         dwOptionCount: 2,
         dwOptionError: 0,
-        pOptions: p_opts.as_mut_ptr() as *mut INTERNET_PER_CONN_OPTIONW,
+        pOptions: p_opts.as_mut_ptr(),
         pszConnection: PWSTR::null(),
     };
 
@@ -133,7 +133,7 @@ fn set_global_proxy(server: String, bypass: String) -> Result<()> {
         dwSize: size_of::<INTERNET_PER_CONN_OPTION_LISTW>() as u32,
         dwOptionCount: 3,
         dwOptionError: 0,
-        pOptions: p_opts.as_mut_ptr() as *mut INTERNET_PER_CONN_OPTIONW,
+        pOptions: p_opts.as_mut_ptr(),
         pszConnection: PWSTR::null(),
     };
 

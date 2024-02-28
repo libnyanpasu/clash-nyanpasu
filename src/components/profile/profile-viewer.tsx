@@ -8,7 +8,6 @@ import {
   InputLabel,
   MenuItem,
   Select,
-  Switch,
   TextField,
   styled,
 } from "@mui/material";
@@ -24,6 +23,7 @@ import {
 import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { FileInput } from "./file-input";
+import MDYSwitch from "../common/mdy-switch";
 
 interface Props {
   onChange: () => void;
@@ -259,7 +259,7 @@ export const ProfileViewer = forwardRef<ProfileViewerRef, Props>(
               render={({ field }) => (
                 <StyledBox>
                   <InputLabel>{t("Use System Proxy")}</InputLabel>
-                  <Switch checked={field.value} {...field} color="primary" />
+                  <MDYSwitch checked={field.value} {...field} color="primary" />
                 </StyledBox>
               )}
             />
@@ -270,7 +270,7 @@ export const ProfileViewer = forwardRef<ProfileViewerRef, Props>(
               render={({ field }) => (
                 <StyledBox>
                   <InputLabel>{t("Use Clash Proxy")}</InputLabel>
-                  <Switch checked={field.value} {...field} color="primary" />
+                  <MDYSwitch checked={field.value} {...field} color="primary" />
                 </StyledBox>
               )}
             />

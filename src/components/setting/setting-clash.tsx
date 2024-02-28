@@ -9,12 +9,11 @@ import {
   IconButton,
   MenuItem,
   Select,
-  Switch,
   TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ClashCoreViewer } from "./mods/clash-core-viewer";
 import { ClashFieldViewer } from "./mods/clash-field-viewer";
@@ -23,6 +22,7 @@ import { ControllerViewer } from "./mods/controller-viewer";
 import { GuardState } from "./mods/guard-state";
 import { SettingItem, SettingList } from "./mods/setting-comp";
 import { WebUIViewer } from "./mods/web-ui-viewer";
+import MDYSwitch from "../common/mdy-switch";
 
 const isWIN = getSystem() === "windows";
 
@@ -40,6 +40,28 @@ const SettingClash = ({ onError }: Props) => {
 
   const { enable_random_port = false, verge_mixed_port } = verge ?? {};
 
+  const [loading, setLoading] = useState({
+    ipv6: false,
+    "allow-lan": false,
+    "log-level": false,
+  });
+
+  const patchClashWithLoading = async (value: Partial<IConfigData>) => {
+    try {
+      setLoading((prevLoading) => ({
+        ...prevLoading,
+        ...Object.fromEntries(Object.keys(value).map((key) => [key, true])),
+      }));
+
+      await patchClash(value);
+    } finally {
+      setLoading((prevLoading) => ({
+        ...prevLoading,
+        ...Object.fromEntries(Object.keys(value).map((key) => [key, false])),
+      }));
+    }
+  };
+
   const webRef = useRef<DialogRef>(null);
   const fieldRef = useRef<DialogRef>(null);
   const portRef = useRef<DialogRef>(null);
@@ -47,9 +69,7 @@ const SettingClash = ({ onError }: Props) => {
   const coreRef = useRef<DialogRef>(null);
 
   const onSwitchFormat = (_e: any, value: boolean) => value;
-  const onChangeData = (patch: Partial<IConfigData>) => {
-    mutateClash((old) => ({ ...(old! || {}), ...patch }), false);
-  };
+
   const onChangeVerge = (patch: Partial<IVergeConfig>) => {
     mutateVerge({ ...verge, ...patch }, false);
   };
@@ -68,10 +88,10 @@ const SettingClash = ({ onError }: Props) => {
           valueProps="checked"
           onCatch={onError}
           onFormat={onSwitchFormat}
-          onChange={(e) => onChangeData({ "allow-lan": e })}
-          onGuard={(e) => patchClash({ "allow-lan": e })}
+          onGuard={(e) => patchClashWithLoading({ "allow-lan": e })}
+          loading={loading["allow-lan"]}
         >
-          <Switch edge="end" />
+          <MDYSwitch edge="end" />
         </GuardState>
       </SettingItem>
 
@@ -81,10 +101,10 @@ const SettingClash = ({ onError }: Props) => {
           valueProps="checked"
           onCatch={onError}
           onFormat={onSwitchFormat}
-          onChange={(e) => onChangeData({ ipv6: e })}
-          onGuard={(e) => patchClash({ ipv6: e })}
+          onGuard={(e) => patchClashWithLoading({ ipv6: e })}
+          loading={loading["ipv6"]}
         >
-          <Switch edge="end" />
+          <MDYSwitch edge="end" />
         </GuardState>
       </SettingItem>
 
@@ -94,8 +114,8 @@ const SettingClash = ({ onError }: Props) => {
           value={logLevel === "warn" ? "warning" : logLevel ?? "info"}
           onCatch={onError}
           onFormat={(e: any) => e.target.value}
-          onChange={(e) => onChangeData({ "log-level": e })}
-          onGuard={(e) => patchClash({ "log-level": e })}
+          onGuard={(e) => patchClashWithLoading({ "log-level": e })}
+          loading={loading["log-level"]}
         >
           <Select size="small" sx={{ width: 100, "> div": { py: "7.5px" } }}>
             <MenuItem value="debug">Debug</MenuItem>

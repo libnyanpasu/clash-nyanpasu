@@ -14,6 +14,7 @@ use crate::{
     config::Config,
     utils::{init, resolve},
 };
+use anyhow::Context;
 use tauri::{api, Manager, SystemTray};
 
 rust_i18n::i18n!("../../locales");
@@ -48,17 +49,16 @@ fn main() -> std::io::Result<()> {
     // Should be in first place in order prevent single instance check block everything
     tauri_plugin_deep_link::prepare("moe.elaina.clash.nyanpasu");
 
-    #[cfg(not(feature = "verge-dev"))]
-    let instance_id = "clash-nyanpasu";
-    #[cfg(feature = "verge-dev")]
-    let instance_id = "clash-nyanpasu-dev";
-
     // 单例检测
-    let instance = single_instance::SingleInstance::new(instance_id).unwrap();
-    if !instance.is_single() {
-        println!("app exists");
-        return Ok(());
-    }
+    let single_instance_result: anyhow::Result<()> =
+        single_instance::SingleInstance::new(utils::dirs::APP_NAME)
+            .context("failed to create single instance")
+            .map(|instance| {
+                if !instance.is_single() {
+                    println!("app exists");
+                    std::process::exit(0);
+                }
+            });
 
     // Use system locale as default
     let locale = {
@@ -79,6 +79,11 @@ fn main() -> std::io::Result<()> {
 
     let verge = { Config::verge().latest().language.clone().unwrap() };
     rust_i18n::set_locale(verge.as_str());
+
+    // show a dialog to print the single instance error
+    if let Err(e) = single_instance_result {
+        utils::dialog::panic_dialog(&format!("{:?}", e));
+    }
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()

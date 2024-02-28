@@ -82,6 +82,7 @@ tracing-log = { version = "0.2" }
 tracing-appender = { version = "0.2", features = ["parking_lot"] }
 single-instance = "0.3.3"
 tauri-plugin-deep-link = { path = "../tauri-plugin-deep-link", version = "0.1.2" }
+base64 = "0.21"
 
 [target.'cfg(windows)'.dependencies]
 deelevate = "0.2.0"

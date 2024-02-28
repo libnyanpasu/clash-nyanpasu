@@ -1,7 +1,7 @@
 import useSWR from "swr";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { IconButton, Switch } from "@mui/material";
+import { IconButton } from "@mui/material";
 import { ArrowForward, PrivacyTipRounded, Settings } from "@mui/icons-material";
 import { checkService } from "@/services/cmds";
 import { useVerge } from "@/hooks/use-verge";
@@ -11,6 +11,7 @@ import { GuardState } from "./mods/guard-state";
 import { ServiceViewer } from "./mods/service-viewer";
 import { SysproxyViewer } from "./mods/sysproxy-viewer";
 import getSystem from "@/utils/get-system";
+import MDYSwitch from "../common/mdy-switch";
 
 interface Props {
   onError?: (err: Error) => void;
@@ -21,7 +22,7 @@ const isWIN = getSystem() === "windows";
 const SettingSystem = ({ onError }: Props) => {
   const { t } = useTranslation();
 
-  const { verge, mutateVerge, patchVerge } = useVerge();
+  const { verge, patchVerge } = useVerge();
 
   // service mode
   const { data: serviceStatus } = useSWR(
@@ -45,10 +46,31 @@ const SettingSystem = ({ onError }: Props) => {
     enable_system_proxy,
   } = verge ?? {};
 
-  const onSwitchFormat = (_e: any, value: boolean) => value;
-  const onChangeData = (patch: Partial<IVergeConfig>) => {
-    mutateVerge({ ...verge, ...patch }, false);
+  const [loading, setLoading] = useState({
+    enable_tun_mode: false,
+    enable_auto_launch: false,
+    enable_service_mode: false,
+    enable_silent_start: false,
+    enable_system_proxy: false,
+  });
+
+  const patchVergeWithLoading = async (value: Partial<IVergeConfig>) => {
+    try {
+      setLoading((prevLoading) => ({
+        ...prevLoading,
+        ...Object.fromEntries(Object.keys(value).map((key) => [key, true])),
+      }));
+
+      await patchVerge(value);
+    } finally {
+      setLoading((prevLoading) => ({
+        ...prevLoading,
+        ...Object.fromEntries(Object.keys(value).map((key) => [key, false])),
+      }));
+    }
   };
+
+  const onSwitchFormat = (_e: any, value: boolean) => value;
 
   return (
     <SettingList title={t("System Setting")}>
@@ -63,10 +85,10 @@ const SettingSystem = ({ onError }: Props) => {
           valueProps="checked"
           onCatch={onError}
           onFormat={onSwitchFormat}
-          onChange={(e) => onChangeData({ enable_tun_mode: e })}
-          onGuard={(e) => patchVerge({ enable_tun_mode: e })}
+          onGuard={(e) => patchVergeWithLoading({ enable_tun_mode: e })}
+          loading={loading["enable_tun_mode"]}
         >
-          <Switch edge="end" />
+          <MDYSwitch edge="end" />
         </GuardState>
       </SettingItem>
 
@@ -91,10 +113,10 @@ const SettingSystem = ({ onError }: Props) => {
             valueProps="checked"
             onCatch={onError}
             onFormat={onSwitchFormat}
-            onChange={(e) => onChangeData({ enable_service_mode: e })}
-            onGuard={(e) => patchVerge({ enable_service_mode: e })}
+            onGuard={(e) => patchVergeWithLoading({ enable_service_mode: e })}
+            loading={loading["enable_service_mode"]}
           >
-            <Switch
+            <MDYSwitch
               edge="end"
               disabled={
                 serviceStatus !== "active" && serviceStatus !== "installed"
@@ -124,10 +146,10 @@ const SettingSystem = ({ onError }: Props) => {
           valueProps="checked"
           onCatch={onError}
           onFormat={onSwitchFormat}
-          onChange={(e) => onChangeData({ enable_system_proxy: e })}
-          onGuard={(e) => patchVerge({ enable_system_proxy: e })}
+          onGuard={(e) => patchVergeWithLoading({ enable_system_proxy: e })}
+          loading={loading["enable_system_proxy"]}
         >
-          <Switch edge="end" />
+          <MDYSwitch edge="end" />
         </GuardState>
       </SettingItem>
 
@@ -137,10 +159,10 @@ const SettingSystem = ({ onError }: Props) => {
           valueProps="checked"
           onCatch={onError}
           onFormat={onSwitchFormat}
-          onChange={(e) => onChangeData({ enable_auto_launch: e })}
-          onGuard={(e) => patchVerge({ enable_auto_launch: e })}
+          onGuard={(e) => patchVergeWithLoading({ enable_auto_launch: e })}
+          loading={loading["enable_auto_launch"]}
         >
-          <Switch edge="end" />
+          <MDYSwitch edge="end" />
         </GuardState>
       </SettingItem>
 
@@ -150,10 +172,10 @@ const SettingSystem = ({ onError }: Props) => {
           valueProps="checked"
           onCatch={onError}
           onFormat={onSwitchFormat}
-          onChange={(e) => onChangeData({ enable_silent_start: e })}
-          onGuard={(e) => patchVerge({ enable_silent_start: e })}
+          onGuard={(e) => patchVergeWithLoading({ enable_silent_start: e })}
+          loading={loading["enable_auto_launch"]}
         >
-          <Switch edge="end" />
+          <MDYSwitch edge="end" />
         </GuardState>
       </SettingItem>
     </SettingList>

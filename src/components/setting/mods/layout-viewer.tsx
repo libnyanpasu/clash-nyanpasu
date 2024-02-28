@@ -2,17 +2,23 @@ import { BaseDialog, DialogRef } from "@/components/base";
 import { pageTransitionVariants } from "@/components/layout/page-transition";
 import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { useVerge } from "@/hooks/use-verge";
-import { List, MenuItem, Select, Switch } from "@mui/material";
+import { List, MenuItem, Select } from "@mui/material";
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { GuardState } from "./guard-state";
 import { SettingItem } from "./setting-comp";
+import MDYSwitch from "@/components/common/mdy-switch";
 
 export const LayoutViewer = forwardRef<DialogRef>((props, ref) => {
   const { t } = useTranslation();
   const { verge, patchVerge, mutateVerge } = useVerge();
 
   const [open, setOpen] = useState(false);
+
+  const [loading, setLoading] = useState({
+    theme_blur: false,
+    traffic_graph: false,
+  });
 
   useImperativeHandle(ref, () => ({
     open: () => setOpen(true),
@@ -48,10 +54,10 @@ export const LayoutViewer = forwardRef<DialogRef>((props, ref) => {
             valueProps="checked"
             onCatch={onError}
             onFormat={onSwitchFormat}
-            onChange={(e) => onChangeData({ theme_blur: e })}
             onGuard={(e) => patchVerge({ theme_blur: e })}
+            loading={loading["theme_blur"]}
           >
-            <Switch edge="end" />
+            <MDYSwitch edge="end" />
           </GuardState>
         </SettingItem>
 
@@ -61,10 +67,10 @@ export const LayoutViewer = forwardRef<DialogRef>((props, ref) => {
             valueProps="checked"
             onCatch={onError}
             onFormat={onSwitchFormat}
-            onChange={(e) => onChangeData({ traffic_graph: e })}
             onGuard={(e) => patchVerge({ traffic_graph: e })}
+            loading={loading["traffic_graph"]}
           >
-            <Switch edge="end" />
+            <MDYSwitch edge="end" />
           </GuardState>
         </SettingItem>
 
@@ -74,10 +80,9 @@ export const LayoutViewer = forwardRef<DialogRef>((props, ref) => {
             valueProps="checked"
             onCatch={onError}
             onFormat={onSwitchFormat}
-            onChange={(e) => onChangeData({ enable_memory_usage: e })}
             onGuard={(e) => patchVerge({ enable_memory_usage: e })}
           >
-            <Switch edge="end" />
+            <MDYSwitch edge="end" />
           </GuardState>
         </SettingItem>
         {/* TODO: 将 select 单独开一个 Modal 以符合 Material Design 的设计 */}

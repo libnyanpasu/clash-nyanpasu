@@ -31,6 +31,7 @@ pub fn clear_logs() -> Result<()> {
     let minutes = {
         let verge = Config::verge();
         let verge = verge.data();
+        #[allow(deprecated)]
         verge.auto_log_clean.unwrap_or(0)
     };
     if minutes == 0 {

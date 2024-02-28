@@ -19,7 +19,7 @@ import {
 import { version } from "@root/package.json";
 import { checkUpdate } from "@tauri-apps/api/updater";
 import { useLockFn } from "ahooks";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ConfigViewer } from "./mods/config-viewer";
 import { GuardState } from "./mods/guard-state";
@@ -44,6 +44,11 @@ const SettingVerge = ({ onError }: Props) => {
   const { verge, patchVerge, mutateVerge } = useVerge();
   const { theme_mode, language } = verge ?? {};
 
+  const [loading, setLoading] = useState({
+    theme_mode: false,
+    language: false,
+  });
+
   const configRef = useRef<DialogRef>(null);
   const hotkeyRef = useRef<DialogRef>(null);
   const miscRef = useRef<DialogRef>(null);
@@ -51,10 +56,6 @@ const SettingVerge = ({ onError }: Props) => {
   const layoutRef = useRef<DialogRef>(null);
   const updateRef = useRef<DialogRef>(null);
   const tasksRef = useRef<DialogRef>(null);
-
-  const onChangeData = (patch: Partial<IVergeConfig>) => {
-    mutateVerge({ ...verge, ...patch }, false);
-  };
 
   const onCheckUpdate = useLockFn(async () => {
     try {
@@ -91,8 +92,8 @@ const SettingVerge = ({ onError }: Props) => {
           value={language ?? "en"}
           onCatch={onError}
           onFormat={(e: any) => e.target.value}
-          onChange={(e) => onChangeData({ language: e })}
           onGuard={(e) => patchVerge({ language: e })}
+          loading={loading["language"]}
         >
           <Select size="small" sx={{ width: 100, "> div": { py: "7.5px" } }}>
             <MenuItem value="zh">中文</MenuItem>
@@ -106,8 +107,8 @@ const SettingVerge = ({ onError }: Props) => {
         <GuardState
           value={theme_mode}
           onCatch={onError}
-          onChange={(e) => onChangeData({ theme_mode: e })}
           onGuard={(e) => patchVerge({ theme_mode: e })}
+          loading={loading["theme_mode"]}
         >
           <ThemeModeSwitch />
         </GuardState>

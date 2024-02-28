@@ -15,6 +15,11 @@ export const LayoutViewer = forwardRef<DialogRef>((props, ref) => {
 
   const [open, setOpen] = useState(false);
 
+  const [loading, setLoading] = useState({
+    theme_blur: false,
+    traffic_graph: false,
+  });
+
   useImperativeHandle(ref, () => ({
     open: () => setOpen(true),
     close: () => setOpen(false),
@@ -49,8 +54,8 @@ export const LayoutViewer = forwardRef<DialogRef>((props, ref) => {
             valueProps="checked"
             onCatch={onError}
             onFormat={onSwitchFormat}
-            onChange={(e) => onChangeData({ theme_blur: e })}
             onGuard={(e) => patchVerge({ theme_blur: e })}
+            loading={loading["theme_blur"]}
           >
             <MDYSwitch edge="end" />
           </GuardState>
@@ -62,8 +67,8 @@ export const LayoutViewer = forwardRef<DialogRef>((props, ref) => {
             valueProps="checked"
             onCatch={onError}
             onFormat={onSwitchFormat}
-            onChange={(e) => onChangeData({ traffic_graph: e })}
             onGuard={(e) => patchVerge({ traffic_graph: e })}
+            loading={loading["traffic_graph"]}
           >
             <MDYSwitch edge="end" />
           </GuardState>
@@ -75,7 +80,6 @@ export const LayoutViewer = forwardRef<DialogRef>((props, ref) => {
             valueProps="checked"
             onCatch={onError}
             onFormat={onSwitchFormat}
-            onChange={(e) => onChangeData({ enable_memory_usage: e })}
             onGuard={(e) => patchVerge({ enable_memory_usage: e })}
           >
             <MDYSwitch edge="end" />

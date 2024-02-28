@@ -7,13 +7,13 @@ use tauri::{
 };
 
 #[cfg(not(feature = "verge-dev"))]
-static OLD_APP_DIR: &str = "clash-verge";
+const PREVIOUS_APP_NAME: &str = "clash-verge";
 #[cfg(feature = "verge-dev")]
-static OLD_APP_DIR: &str = "clash-verge-dev";
+const PREVIOUS_APP_NAME: &str = "clash-verge-dev";
 #[cfg(not(feature = "verge-dev"))]
-static APP_DIR: &str = "clash-nyanpasu";
+pub const APP_NAME: &str = "clash-nyanpasu";
 #[cfg(feature = "verge-dev")]
-static APP_DIR: &str = "clash-nyanpasu-dev";
+pub const APP_NAME: &str = "clash-nyanpasu-dev";
 
 static CLASH_CONFIG: &str = "config.yaml";
 static VERGE_CONFIG: &str = "verge.yaml";
@@ -64,14 +64,16 @@ pub fn old_app_home_dir() -> Result<PathBuf> {
             Ok(home_dir()
                 .ok_or(anyhow::anyhow!("failed to check old app home dir"))?
                 .join(".config")
-                .join(OLD_APP_DIR))
+                .join(PREVIOUS_APP_NAME))
         } else {
             let app_exe = current_exe()?;
             let app_exe = dunce::canonicalize(app_exe)?;
             let app_dir = app_exe
                 .parent()
                 .ok_or(anyhow::anyhow!("failed to check the old portable app dir"))?;
-            Ok(PathBuf::from(app_dir).join(".config").join(OLD_APP_DIR))
+            Ok(PathBuf::from(app_dir)
+                .join(".config")
+                .join(PREVIOUS_APP_NAME))
         }
     }
 
@@ -79,7 +81,7 @@ pub fn old_app_home_dir() -> Result<PathBuf> {
     Ok(home_dir()
         .ok_or(anyhow::anyhow!("failed to get the app home dir"))?
         .join(".config")
-        .join(OLD_APP_DIR))
+        .join(PREVIOUS_APP_NAME))
 }
 
 /// get the verge app home dir
@@ -92,14 +94,14 @@ pub fn app_home_dir() -> Result<PathBuf> {
             Ok(home_dir()
                 .ok_or(anyhow::anyhow!("failed to get app home dir"))?
                 .join(".config")
-                .join(APP_DIR))
+                .join(APP_NAME))
         } else {
             let app_exe = current_exe()?;
             let app_exe = dunce::canonicalize(app_exe)?;
             let app_dir = app_exe
                 .parent()
                 .ok_or(anyhow::anyhow!("failed to get the portable app dir"))?;
-            Ok(PathBuf::from(app_dir).join(".config").join(APP_DIR))
+            Ok(PathBuf::from(app_dir).join(".config").join(APP_NAME))
         }
     }
 
@@ -107,7 +109,7 @@ pub fn app_home_dir() -> Result<PathBuf> {
     Ok(home_dir()
         .ok_or(anyhow::anyhow!("failed to get the app home dir"))?
         .join(".config")
-        .join(APP_DIR))
+        .join(APP_NAME))
 }
 
 /// get the resources dir

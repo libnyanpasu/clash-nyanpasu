@@ -60,7 +60,7 @@ const MDYSwitch = styled((props: MDYSwitchProps) => {
     },
   },
   "& .MuiSwitch-switchBase": {
-    padding: "6px 9px 6px 6px",
+    padding: "6px",
   },
   "& .MuiSwitch-thumb": {
     boxShadow: "none",

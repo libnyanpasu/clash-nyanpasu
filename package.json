@@ -1,6 +1,6 @@
 {
   "name": "clash-nyanpasu",
-  "version": "1.4.5",
+  "version": "1.4.4",
   "license": "GPL-3.0",
   "type": "module",
   "scripts": {
@@ -87,11 +87,11 @@
     "react-error-boundary": "4.0.12",
     "react-hook-form": "7.50.1",
     "react-i18next": "14.0.5",
+    "react-markdown": "^9.0.1",
     "react-router-dom": "6.22.2",
     "react-transition-group": "4.4.5",
     "react-virtuoso": "4.7.1",
     "recoil": "0.7.7",
-    "snarkdown": "2.0.0",
     "swr": "2.2.5"
   },
   "devDependencies": {

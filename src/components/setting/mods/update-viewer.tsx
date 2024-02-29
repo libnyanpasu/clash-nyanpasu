@@ -1,20 +1,17 @@
 import { BaseDialog, DialogRef } from "@/components/base";
-import { NotificationType, useNotification } from "@/hooks/use-notification";
+import { useMessage } from "@/hooks/use-notification";
 import { isPortable } from "@/services/cmds";
 import { atomUpdateState } from "@/services/states";
-import { Box, styled } from "@mui/material";
 import { relaunch } from "@tauri-apps/api/process";
 import { checkUpdate, installUpdate } from "@tauri-apps/api/updater";
+import { open as openWebUrl } from "@tauri-apps/api/shell";
 import { useLockFn } from "ahooks";
-import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
+import { forwardRef, useImperativeHandle, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useRecoilState } from "recoil";
-import snarkdown from "snarkdown";
+import Markdown, { Components } from "react-markdown";
 import useSWR from "swr";
-
-const UpdateLog = styled(Box)(() => ({
-  "h1,h2,h3,ul,ol,p": { margin: "0.5em 0", color: "inherit" },
-}));
+import { Chip, Tooltip } from "@mui/material";
 
 export const UpdateViewer = forwardRef<DialogRef>((props, ref) => {
   const { t } = useTranslation();
@@ -33,21 +30,39 @@ export const UpdateViewer = forwardRef<DialogRef>((props, ref) => {
     close: () => setOpen(false),
   }));
 
-  // markdown parser
-  const parseContent = useMemo(() => {
-    if (!updateInfo?.manifest?.body) {
+  const components: Components = {
+    a: ({ children, href }) => {
+      const click = () => openWebUrl(href || "");
+
+      return (
+        <Tooltip title="Show on GitHub">
+          <Chip
+            label={children}
+            size="small"
+            sx={{ height: "20px" }}
+            onClick={click}
+          />
+        </Tooltip>
+      );
+    },
+  };
+
+  const updatePreprocess = () => {
+    const context = updateInfo?.manifest?.body;
+
+    if (!context) {
       return "New Version is available";
     }
-    return snarkdown(updateInfo?.manifest?.body);
-  }, [updateInfo]);
+
+    return context.replace(/@(\w+)/g, "[@$1](https://github.com/$1)");
+  };
 
   const onUpdate = useLockFn(async () => {
     const portable = await isPortable();
     if (portable) {
-      useNotification({
-        type: NotificationType.Error,
+      useMessage(t("Portable Update Error"), {
+        type: "error",
         title: t("Error"),
-        body: t("Portable Update Error"),
       });
       return;
     }
@@ -58,10 +73,9 @@ export const UpdateViewer = forwardRef<DialogRef>((props, ref) => {
       await installUpdate();
       await relaunch();
     } catch (err: any) {
-      useNotification({
+      useMessage(err.message || err.toString(), {
+        type: "error",
         title: t("Error"),
-        body: err.message || err.toString(),
-        type: NotificationType.Error,
       });
     } finally {
       setUpdateState(false);
@@ -72,14 +86,15 @@ export const UpdateViewer = forwardRef<DialogRef>((props, ref) => {
     <BaseDialog
       open={open}
       title={`New Version v${updateInfo?.manifest?.version}`}
-      contentSx={{ minWidth: 360, maxWidth: 400, maxHeight: "50vh" }}
+      contentSx={{ minWidth: 360, maxWidth: 400, maxHeight: "80%" }}
       okBtn={t("Update")}
       cancelBtn={t("Cancel")}
       onClose={() => setOpen(false)}
       onCancel={() => setOpen(false)}
       onOk={onUpdate}
     >
-      <UpdateLog dangerouslySetInnerHTML={{ __html: parseContent }} />
+      {/* <UpdateLog dangerouslySetInnerHTML={{ __html: parseContent }} /> */}
+      <Markdown components={components}>{updatePreprocess()}</Markdown>
     </BaseDialog>
   );
 });

@@ -260,8 +260,8 @@ devDependencies:
     specifier: 6.1.0
     version: 6.1.0(stylelint@16.2.1)
   telegraf:
-    specifier: 4.16.2
-    version: 4.16.2
+    specifier: 4.16.3
+    version: 4.16.3
   tsx:
     specifier: 4.7.1
     version: 4.7.1
@@ -6510,8 +6510,8 @@ packages:
       strip-ansi: 6.0.1
     dev: true
 
-  /telegraf@4.16.2:
-    resolution: {integrity: sha512-d+/XMTBMW8DfQFhYkpyU2f58HMIPygkzClEE03c0LPoEKPGlY9da+9pOVSO7jq9Ar8RRT4OrfwW38sgF/o/x0w==}
+  /telegraf@4.16.3:
+    resolution: {integrity: sha512-yjEu2NwkHlXu0OARWoNhJlIjX09dRktiMQFsM678BAH/PEPVwctzL67+tvXqLCRQQvm3SDtki2saGO9hLlz68w==}
     engines: {node: ^12.20.0 || >=14.13.1}
     hasBin: true
     dependencies:

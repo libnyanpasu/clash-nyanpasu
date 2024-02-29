@@ -46,6 +46,9 @@ fn main() -> std::io::Result<()> {
     #[cfg(feature = "deadlock-detection")]
     deadlock_detection();
 
+    // Should be in first place in order prevent single instance check block everything
+    tauri_plugin_deep_link::prepare("moe.elaina.clash.nyanpasu");
+
     // 单例检测
     let single_instance_result: anyhow::Result<()> =
         single_instance::SingleInstance::new(utils::dirs::APP_NAME)

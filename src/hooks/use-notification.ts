@@ -6,6 +6,8 @@ import {
   requestPermission,
   sendNotification,
 } from "@tauri-apps/api/notification";
+import { MessageDialogOptions, message } from "@tauri-apps/api/dialog";
+
 let permissionGranted: boolean | null = null;
 let portable: boolean | null = null;
 
@@ -56,4 +58,11 @@ export const useNotification = async ({
   };
   if (body) options.body = body;
   sendNotification(options);
+};
+
+export const useMessage = async (
+  value: string,
+  options?: string | MessageDialogOptions | undefined,
+) => {
+  await message(value, options);
 };

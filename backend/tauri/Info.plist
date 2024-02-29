@@ -8,10 +8,10 @@
             <dict>
                 <key>CFBundleURLName</key>
                 <!-- Obviously needs to be replaced with your app's bundle identifier -->
-                <string>moe.elaina.clash.nyanpasu</string>
+                <string>Clash Nyanpasu</string>
                 <key>CFBundleURLSchemes</key>
                 <array>
-                    <string>test-url</string>
+                    <string>clash-nyanpasu</string>
                 </array>
             </dict>
         </array>

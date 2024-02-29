@@ -89,11 +89,15 @@ export default function Layout() {
     });
 
     listen("scheme-request-received", (req) => {
-      console.log("Received event");
-      let url: string = req.payload as string;
-      // remove first 5 letter of url
-      url = url.slice("clash-nyanpasu://".length);
-      navigate("/profile", { state: { scheme: url } });
+      const message: string = req.payload as string;
+      const url = new URL(message);
+      switch (url.pathname) {
+        case "//subscribe-remote-profile":
+        case "//subscribe-remote-profile/":
+          navigate("/profile", {
+            state: { scheme: url.searchParams.get("url") },
+          });
+      }
     });
 
     setTimeout(() => {

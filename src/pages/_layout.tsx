@@ -19,7 +19,7 @@ import { AnimatePresence } from "framer-motion";
 import i18next from "i18next";
 import React, { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { useLocation, useRoutes } from "react-router-dom";
+import { useLocation, useNavigate, useRoutes } from "react-router-dom";
 import { SWRConfig, mutate } from "swr";
 import { routers } from "./_routers";
 
@@ -35,6 +35,7 @@ export default function Layout() {
   const { verge } = useVerge();
   const { theme_blur, language } = verge || {};
 
+  const navigate = useNavigate();
   const location = useLocation();
   const routes = useRoutes(routers);
   if (!routes) return null;
@@ -85,6 +86,18 @@ export default function Layout() {
     listen("verge://mutate-proxies", () => {
       mutate("getProxies");
       mutate("getProviders");
+    });
+
+    listen("scheme-request-received", (req) => {
+      const message: string = req.payload as string;
+      const url = new URL(message);
+      switch (url.pathname) {
+        case "//subscribe-remote-profile":
+        case "//subscribe-remote-profile/":
+          navigate("/profile", {
+            state: { scheme: url.searchParams.get("url") },
+          });
+      }
     });
 
     setTimeout(() => {

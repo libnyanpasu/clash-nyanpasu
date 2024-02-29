@@ -27,6 +27,7 @@ import MDYSwitch from "../common/mdy-switch";
 
 interface Props {
   onChange: () => void;
+  url?: string;
 }
 
 export interface ProfileViewerRef {
@@ -51,7 +52,7 @@ export const ProfileViewer = forwardRef<ProfileViewerRef, Props>(
         type: "remote",
         name: "Remote File",
         desc: "",
-        url: "",
+        url: props.url ?? "",
         option: {
           // user_agent: "",
           with_proxy: false,

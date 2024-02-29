@@ -12,3 +12,4 @@ scripts/_env.sh
 
 tauri.nightly.conf.json
 
+.idea

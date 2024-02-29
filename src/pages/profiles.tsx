@@ -43,13 +43,15 @@ import { LoadingButton } from "@mui/lab";
 import { Box, Button, Grid, IconButton, Stack, TextField } from "@mui/material";
 import { useLockFn } from "ahooks";
 import { throttle } from "lodash-es";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSetRecoilState } from "recoil";
 import useSWR, { mutate } from "swr";
+import { useLocation } from "react-router-dom";
 
 export default function ProfilePage() {
   const { t } = useTranslation();
+  const location = useLocation();
 
   const [url, setUrl] = useState("");
   const [disabled, setDisabled] = useState(false);
@@ -96,6 +98,13 @@ export default function ProfilePage() {
 
     return { regularItems, enhanceItems };
   }, [profiles]);
+
+  useEffect(() => {
+    if (location.state != null) {
+      console.log(location.state.scheme);
+      viewerRef.current?.create();
+    }
+  }, []);
 
   const onImport = async () => {
     if (!url) return;
@@ -412,7 +421,11 @@ export default function ProfilePage() {
         </Grid>
       )}
 
-      <ProfileViewer ref={viewerRef} onChange={() => mutateProfiles()} />
+      <ProfileViewer
+        ref={viewerRef}
+        url={location.state != null ? (location.state.scheme as string) : ""}
+        onChange={() => mutateProfiles()}
+      />
       <ConfigViewer ref={configRef} />
     </BasePage>
   );

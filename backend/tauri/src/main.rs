@@ -97,15 +97,7 @@ fn main() -> std::io::Result<()> {
                 move |request| {
                     log::info!(target: "app", "scheme request received: {:?}", &request);
                     resolve::create_window(&handle.clone()); // create window if not exists
-                    println!("Scheme request received: {:?}", &request);
-                    handle
-                        .get_window("main")
-                        .unwrap()
-                        .emit("scheme-request-received", request.clone())
-                        .unwrap();
                     handle.emit_all("scheme-request-received", request).unwrap();
-                    println!("Message emited");
-                    // handle.emit_all("scheme-request-received", request).unwrap();
                 }
             ));
             Ok(())

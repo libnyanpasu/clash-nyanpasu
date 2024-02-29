@@ -19,7 +19,7 @@ import { AnimatePresence } from "framer-motion";
 import i18next from "i18next";
 import React, { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { useLocation, useRoutes } from "react-router-dom";
+import { useLocation, useNavigate, useRoutes } from "react-router-dom";
 import { SWRConfig, mutate } from "swr";
 import { routers } from "./_routers";
 
@@ -35,6 +35,7 @@ export default function Layout() {
   const { verge } = useVerge();
   const { theme_blur, language } = verge || {};
 
+  const navigate = useNavigate();
   const location = useLocation();
   const routes = useRoutes(routers);
   if (!routes) return null;
@@ -89,7 +90,10 @@ export default function Layout() {
 
     listen("scheme-request-received", (req) => {
       console.log("Received event");
-      console.log(req);
+      let url: string = req.payload as string;
+      // remove first 5 letter of url
+      url = url.slice("clash-nyanpasu://".length);
+      navigate("/profile", { state: { scheme: url } });
     });
 
     setTimeout(() => {

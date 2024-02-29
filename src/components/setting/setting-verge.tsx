@@ -1,5 +1,5 @@
 import { DialogRef } from "@/components/base";
-import { NotificationType, useNotification } from "@/hooks/use-notification";
+import { useMessage } from "@/hooks/use-notification";
 import { useVerge } from "@/hooks/use-verge";
 import {
   collectLogs,
@@ -10,6 +10,8 @@ import {
 import getSystem from "@/utils/get-system";
 import { ArrowForward, IosShare } from "@mui/icons-material";
 import {
+  Chip,
+  CircularProgress,
   IconButton,
   MenuItem,
   Select,
@@ -41,12 +43,17 @@ const OS = getSystem();
 const SettingVerge = ({ onError }: Props) => {
   const { t } = useTranslation();
 
-  const { verge, patchVerge, mutateVerge } = useVerge();
+  const { verge, patchVerge } = useVerge();
   const { theme_mode, language } = verge ?? {};
 
   const [loading, setLoading] = useState({
     theme_mode: false,
     language: false,
+    onCheckUpdate: false,
+  });
+
+  const tipChips = useRef({
+    onCheckUpdate: "",
   });
 
   const configRef = useRef<DialogRef>(null);
@@ -59,21 +66,28 @@ const SettingVerge = ({ onError }: Props) => {
 
   const onCheckUpdate = useLockFn(async () => {
     try {
+      setLoading((prevLoading) => ({
+        ...prevLoading,
+        onCheckUpdate: true,
+      }));
+
       const info = await checkUpdate();
+
       if (!info?.shouldUpdate) {
-        useNotification({
-          title: t("Success"),
-          body: t("No updates available"),
-        });
+        tipChips.current.onCheckUpdate = t("No update available");
       } else {
         updateRef.current?.open();
       }
     } catch (err: any) {
-      useNotification({
+      useMessage(err.message || err.toString(), {
         title: t("Error"),
-        body: err.message || err.toString(),
-        type: NotificationType.Error,
+        type: "error",
       });
+    } finally {
+      setLoading((prevLoading) => ({
+        ...prevLoading,
+        onCheckUpdate: false,
+      }));
     }
   });
 
@@ -232,14 +246,30 @@ const SettingVerge = ({ onError }: Props) => {
       </SettingItem>
 
       {!(OS === "windows" && WIN_PORTABLE) && (
-        <SettingItem label={t("Check for Updates")}>
+        <SettingItem
+          label={t("Check for Updates")}
+          extra={
+            tipChips.current.onCheckUpdate && (
+              <Chip
+                label={tipChips.current.onCheckUpdate}
+                size="small"
+                sx={{ mr: 1 }}
+              />
+            )
+          }
+        >
           <IconButton
             color="inherit"
             size="small"
             sx={{ my: "2px" }}
             onClick={onCheckUpdate}
+            disabled={loading["onCheckUpdate"]}
           >
-            <ArrowForward />
+            {loading["onCheckUpdate"] ? (
+              <CircularProgress color="inherit" size={24} />
+            ) : (
+              <ArrowForward />
+            )}
           </IconButton>
         </SettingItem>
       )}

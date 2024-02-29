@@ -1,5 +1,5 @@
 .TopPanelPaper {
-  @media screen and (width <= 100px) {
+  @media screen and (width <= 1000px) {
     :global(.label) {
       display: none;
     }

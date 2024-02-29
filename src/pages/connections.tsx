@@ -33,6 +33,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso } from "react-virtuoso";
 import { useRecoilState } from "recoil";
+import styles from "./connections..module.scss";
+import { classNames } from "@/utils";
 
 const initConn = { uploadTotal: 0, downloadTotal: 0, connections: [] };
 
@@ -173,14 +175,20 @@ export default function ConnectionsPage() {
         </Box>
       }
     >
-      <Paper sx={{ padding: 2, mb: 2 }}>
+      <Paper
+        sx={{ padding: 2, mb: 2 }}
+        className={classNames(styles.TopPanelPaper)}
+      >
         <Grid container>
           {connectionItems.map((item, index) => (
             <Grid item xs={4} key={index}>
               <Box display="flex" alignItems="center" whiteSpace="nowrap">
                 {item.icon}
-                <Typography sx={{ ml: 1, mr: 1 }}>{item.label}</Typography>
-                <Typography>{item.value}</Typography>
+                <Typography className="label" sx={{ ml: 1, mr: 1 }}>
+                  {item.label}
+                </Typography>
+
+                <Typography className="value">{item.value}</Typography>
               </Box>
             </Grid>
           ))}

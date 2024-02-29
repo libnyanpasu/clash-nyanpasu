@@ -1,0 +1,11 @@
+.TopPanelPaper {
+  @media screen and (width <= 100px) {
+    :global(.label) {
+      display: none;
+    }
+
+    :global(.value) {
+      padding-left: 8px;
+    }
+  }
+}

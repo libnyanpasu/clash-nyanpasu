@@ -161,6 +161,7 @@ interface IVergeConfig {
   traffic_graph?: boolean;
   enable_memory_usage?: boolean;
   page_transition_animation?: keyof typeof import("@/components/layout/page-transition").pageTransitionVariants;
+  disbale_auto_check_update?: boolean;
   enable_tun_mode?: boolean;
   enable_auto_launch?: boolean;
   enable_service_mode?: boolean;

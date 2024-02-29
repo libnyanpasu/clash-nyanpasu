@@ -33,6 +33,7 @@ import { TasksViewer } from "./mods/tasks-viewer";
 import { ThemeModeSwitch } from "./mods/theme-mode-switch";
 import { ThemeViewer } from "./mods/theme-viewer";
 import { UpdateViewer } from "./mods/update-viewer";
+import MDYSwitch from "../common/mdy-switch";
 
 interface Props {
   onError?: (err: Error) => void;
@@ -44,7 +45,7 @@ const SettingVerge = ({ onError }: Props) => {
   const { t } = useTranslation();
 
   const { verge, patchVerge } = useVerge();
-  const { theme_mode, language } = verge ?? {};
+  const { theme_mode, language, disbale_auto_check_update } = verge ?? {};
 
   const [loading, setLoading] = useState({
     theme_mode: false,
@@ -90,6 +91,8 @@ const SettingVerge = ({ onError }: Props) => {
       }));
     }
   });
+
+  const onSwitchFormat = (_e: any, value: boolean) => value;
 
   return (
     <SettingList title={t("Nyanpasu Setting")}>
@@ -246,32 +249,42 @@ const SettingVerge = ({ onError }: Props) => {
       </SettingItem>
 
       {!(OS === "windows" && WIN_PORTABLE) && (
-        <SettingItem
-          label={t("Check for Updates")}
-          extra={
-            tipChips.current.onCheckUpdate && (
-              <Chip
-                label={tipChips.current.onCheckUpdate}
-                size="small"
-                sx={{ mr: 1 }}
-              />
-            )
-          }
-        >
-          <IconButton
-            color="inherit"
-            size="small"
-            sx={{ my: "2px" }}
-            onClick={onCheckUpdate}
-            disabled={loading["onCheckUpdate"]}
+        <>
+          <SettingItem
+            label={t("Check for Updates")}
+            extra={
+              tipChips.current.onCheckUpdate && (
+                <Chip label={tipChips.current.onCheckUpdate} size="small" />
+              )
+            }
           >
-            {loading["onCheckUpdate"] ? (
-              <CircularProgress color="inherit" size={24} />
-            ) : (
-              <ArrowForward />
-            )}
-          </IconButton>
-        </SettingItem>
+            <IconButton
+              color="inherit"
+              size="small"
+              sx={{ my: "2px" }}
+              onClick={onCheckUpdate}
+              disabled={loading["onCheckUpdate"]}
+            >
+              {loading["onCheckUpdate"] ? (
+                <CircularProgress color="inherit" size={24} />
+              ) : (
+                <ArrowForward />
+              )}
+            </IconButton>
+          </SettingItem>
+
+          <SettingItem label={t("Auto Check Updates")}>
+            <GuardState
+              value={!disbale_auto_check_update}
+              valueProps="checked"
+              onFormat={onSwitchFormat}
+              onCatch={onError}
+              onGuard={(e) => patchVerge({ disbale_auto_check_update: !e })}
+            >
+              <MDYSwitch edge="end" />
+            </GuardState>
+          </SettingItem>
+        </>
       )}
 
       <SettingItem label={t("Nyanpasu Version")}>

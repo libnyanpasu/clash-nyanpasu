@@ -150,6 +150,9 @@ pub struct IVerge {
 
     /// verge mixed port 用于覆盖 clash 的 mixed port
     pub verge_mixed_port: Option<u16>,
+
+    /// Check update when app launch
+    pub disbale_auto_check_update: Option<bool>,
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
@@ -216,6 +219,7 @@ impl IVerge {
             page_transition_animation: Some("slide".into()),
             // auto_log_clean: Some(60 * 24 * 7), // 7 days 自动清理日记
             max_log_files: Some(7), // 7 days
+            disbale_auto_check_update: Some(true),
             ..Self::default()
         }
     }
@@ -243,6 +247,7 @@ impl IVerge {
         patch!(traffic_graph);
         patch!(enable_memory_usage);
         patch!(page_transition_animation);
+        patch!(disbale_auto_check_update);
 
         patch!(enable_tun_mode);
         patch!(enable_service_mode);

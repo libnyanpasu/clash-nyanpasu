@@ -10,7 +10,7 @@ use objc2::{
     mutability::InteriorMutable,
     rc::Id,
     runtime::{AnyObject, NSObject},
-    sel, ClassType,
+    sel, ClassType, DeclaredClass,
 };
 use once_cell::sync::OnceCell;
 
@@ -68,7 +68,7 @@ declare_class!(
         const NAME: &'static str = "TauriPluginDeepLinkHandler";
     }
 
-    impl DeclaredClass for MyObject {}
+    impl DeclaredClass for Handler {}
 
     unsafe impl Handler {
         #[method(handleEvent:withReplyEvent:)]

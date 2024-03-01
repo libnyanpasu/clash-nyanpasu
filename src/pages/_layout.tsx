@@ -9,7 +9,7 @@ import { useVerge } from "@/hooks/use-verge";
 import { getAxios } from "@/services/api";
 import getSystem from "@/utils/get-system";
 import { List, Paper, ThemeProvider, alpha } from "@mui/material";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { appWindow } from "@tauri-apps/api/window";
 import dayjs from "dayjs";
 import "dayjs/locale/ru";
@@ -104,6 +104,7 @@ export default function Layout() {
       appWindow.show();
       appWindow.unminimize();
       appWindow.setFocus();
+      emit("init-complete");
     }, 50);
   }, []);
 

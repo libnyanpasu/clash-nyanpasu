@@ -15,6 +15,7 @@ use tracing_appender::{
     non_blocking::{NonBlocking, WorkerGuard},
     rolling::Rotation,
 };
+use tracing_log::log_tracer;
 use tracing_subscriber::{filter, fmt, layer::SubscriberExt, reload, EnvFilter};
 
 pub type ReloadSignal = (Option<config::logging::LoggingLevel>, Option<usize>);
@@ -130,6 +131,7 @@ pub fn init() -> Result<()> {
     #[cfg(debug_assertions)]
     let subscriber = subscriber.with(terminal_layer);
 
+    log_tracer::LogTracer::init()?;
     tracing::subscriber::set_global_default(subscriber)
         .map_err(|x| anyhow!("setup logging error: {}", x))?;
     Ok(())

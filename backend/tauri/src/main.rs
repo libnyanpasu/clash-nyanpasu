@@ -10,6 +10,7 @@ mod enhance;
 mod feat;
 mod utils;
 
+use crate::core::handle::Handle;
 use crate::{
     config::Config,
     utils::{init, resolve},
@@ -92,6 +93,24 @@ fn main() -> std::io::Result<()> {
             resolve::resolve_setup(app);
             // setup custom scheme
             let handle = app.handle().clone();
+            // For start new app from schema
+            #[cfg(not(target_os = "macos"))]
+            if let Some(url) = std::env::args().nth(1) {
+                log::info!(target: "app", "started with schema");
+                if Config::verge().data().enable_silent_start.unwrap_or(true) {
+                    resolve::create_window(&handle.clone());
+                }
+                app.listen_global("init-complete", move |_| {
+                    log::info!(target: "app", "frontend init-complete event received");
+                    Handle::global()
+                        .app_handle
+                        .lock()
+                        .as_ref()
+                        .unwrap()
+                        .emit_all("scheme-request-received", url.clone())
+                        .unwrap();
+                });
+            }
             log_err!(tauri_plugin_deep_link::register(
                 "clash-nyanpasu",
                 move |request| {

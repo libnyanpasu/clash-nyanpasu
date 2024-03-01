@@ -32,7 +32,10 @@ impl IClashTemp {
         map.insert("external-controller".into(), "127.0.0.1:9872".into());
         #[cfg(not(debug_assertions))]
         map.insert("external-controller".into(), "127.0.0.1:17650".into());
-        map.insert("secret".into(), "".into());
+        map.insert(
+            "secret".into(),
+            uuid::Uuid::new_v4().to_string().to_lowercase().into(), // generate a uuid v4 as default secret to secure the communication between clash and the client
+        );
         #[cfg(feature = "default-meta")]
         map.insert("unified-delay".into(), true.into());
         #[cfg(feature = "default-meta")]

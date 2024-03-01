@@ -7,10 +7,10 @@ use std::{
 
 use objc2::{
     class, declare_class, msg_send, msg_send_id,
-    mutability::Immutable,
+    mutability::InteriorMutable,
     rc::Id,
     runtime::{AnyObject, NSObject},
-    sel, ClassType,
+    sel, ClassType, DeclaredClass,
 };
 use once_cell::sync::OnceCell;
 
@@ -64,9 +64,11 @@ declare_class!(
 
     unsafe impl ClassType for Handler {
         type Super = NSObject;
-        type Mutability = Immutable;
+        type Mutability = InteriorMutable;
         const NAME: &'static str = "TauriPluginDeepLinkHandler";
     }
+
+    impl DeclaredClass for Handler {}
 
     unsafe impl Handler {
         #[method(handleEvent:withReplyEvent:)]

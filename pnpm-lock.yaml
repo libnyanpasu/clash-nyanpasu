@@ -72,8 +72,8 @@ dependencies:
     specifier: 18.2.0
     version: 18.2.0(react@18.2.0)
   react-error-boundary:
-    specifier: 4.0.12
-    version: 4.0.12(react@18.2.0)
+    specifier: 4.0.13
+    version: 4.0.13(react@18.2.0)
   react-hook-form:
     specifier: 7.50.1
     version: 7.50.1(react@18.2.0)
@@ -5688,12 +5688,12 @@ packages:
       scheduler: 0.23.0
     dev: false
 
-  /react-error-boundary@4.0.12(react@18.2.0):
-    resolution: {integrity: sha512-kJdxdEYlb7CPC1A0SeUY38cHpjuu6UkvzKiAmqmOFL21VRfMhOcWxTCBgLVCO0VEMh9JhFNcVaXlV4/BTpiwOA==}
+  /react-error-boundary@4.0.13(react@18.2.0):
+    resolution: {integrity: sha512-b6PwbdSv8XeOSYvjt8LpgpKrZ0yGdtZokYwkwV2wlcZbxgopHX/hgPl5VgpnoVOWd868n1hktM8Qm4b+02MiLQ==}
     peerDependencies:
       react: '>=16.13.1'
     dependencies:
-      '@babel/runtime': 7.23.8
+      '@babel/runtime': 7.23.9
       react: 18.2.0
     dev: false
 

@@ -104,7 +104,7 @@ export default function ProfilePage() {
       console.log(location.state.scheme);
       viewerRef.current?.create();
     }
-  }, []);
+  }, [location]);
 
   const onImport = async () => {
     if (!url) return;

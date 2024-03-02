@@ -16,7 +16,8 @@
     },
     {
       "matchManagers": ["cargo"],
-      "rangeStrategy": "update-lockfile"
+      "rangeStrategy": "update-lockfile",
+      "platformAutomerge": false
     },
     {
       "groupName": "Bundler packages",

@@ -229,7 +229,7 @@ fn main() -> std::io::Result<()> {
         tauri::RunEvent::WindowEvent { label, event, .. } => {
             if label == "main" {
                 match event {
-                    tauri::WindowEvent::CloseRequested { .. } => {
+                    tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {
                         // log::info!(target: "app", "window close requested");
                         let _ = resolve::save_window_state(app_handle, true);
                     }

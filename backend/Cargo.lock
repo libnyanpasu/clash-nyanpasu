@@ -723,6 +723,7 @@ dependencies = [
  "tracing-futures",
  "tracing-log",
  "tracing-subscriber",
+ "uuid",
  "warp",
  "which 6.0.0",
  "window-shadows",

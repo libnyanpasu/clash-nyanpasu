@@ -18,7 +18,7 @@ use tracing_appender::{
 use tracing_log::log_tracer;
 use tracing_subscriber::{filter, fmt, layer::SubscriberExt, reload, EnvFilter};
 
-pub type ReloadSignal = (Option<config::logging::LoggingLevel>, Option<usize>);
+pub type ReloadSignal = (Option<config::nyanpasu::LoggingLevel>, Option<usize>);
 
 struct Channel(Option<Sender<ReloadSignal>>);
 impl Channel {

@@ -1,3 +1,4 @@
+use crate::config::nyanpasu::ExternalControllerPortStrategy;
 use anyhow::{anyhow, bail, Context, Result};
 use nanoid::nanoid;
 use serde::{de::DeserializeOwned, Serialize};
@@ -7,6 +8,7 @@ use tauri::{
     api::shell::{open, Program},
     Manager,
 };
+
 /// read data from yaml as struct T
 pub fn read_yaml<T: DeserializeOwned>(path: &PathBuf) -> Result<T> {
     if !path.exists() {
@@ -112,6 +114,30 @@ pub fn mapping_to_i18n_key(locale_key: &str) -> &'static str {
     } else {
         "en"
     }
+}
+
+pub fn get_clash_external_port(
+    strategy: &ExternalControllerPortStrategy,
+    port: u16,
+) -> anyhow::Result<u16> {
+    match strategy {
+        ExternalControllerPortStrategy::Fixed => {
+            if !port_scanner::local_port_available(port) {
+                bail!("Port {} is not available", port);
+            }
+        }
+        ExternalControllerPortStrategy::Random | ExternalControllerPortStrategy::AllowFallback => {
+            if ExternalControllerPortStrategy::AllowFallback == *strategy
+                && port_scanner::local_port_available(port)
+            {
+                return Ok(port);
+            }
+            let new_port = port_scanner::request_open_port()
+                .ok_or_else(|| anyhow!("Can't find an open port"))?;
+            return Ok(new_port);
+        }
+    }
+    Ok(port)
 }
 
 #[macro_export]

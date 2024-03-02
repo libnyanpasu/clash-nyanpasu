@@ -1,11 +1,18 @@
-use crate::utils::{dirs, help};
+use crate::utils::{
+    dirs,
+    help::{self, get_clash_external_port},
+};
 use anyhow::Result;
+use log::warn;
 use serde::{Deserialize, Serialize};
 use serde_yaml::{Mapping, Value};
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     str::FromStr,
 };
+use tracing_attributes::instrument;
+
+use super::Config;
 
 #[derive(Default, Debug, Clone)]
 pub struct IClashTemp(pub Mapping);
@@ -32,7 +39,10 @@ impl IClashTemp {
         map.insert("external-controller".into(), "127.0.0.1:9872".into());
         #[cfg(not(debug_assertions))]
         map.insert("external-controller".into(), "127.0.0.1:17650".into());
-        map.insert("secret".into(), "".into());
+        map.insert(
+            "secret".into(),
+            uuid::Uuid::new_v4().to_string().to_lowercase().into(), // generate a uuid v4 as default secret to secure the communication between clash and the client
+        );
         #[cfg(feature = "default-meta")]
         map.insert("unified-delay".into(), true.into());
         #[cfg(feature = "default-meta")]
@@ -82,6 +92,35 @@ impl IClashTemp {
                 _ => None,
             }),
         }
+    }
+
+    #[allow(dead_code)]
+    pub fn get_external_controller_port(&self) -> u16 {
+        let server = self.get_client_info().server;
+        let port = server.split(':').last().unwrap_or("9090");
+        port.parse().unwrap_or(9090)
+    }
+
+    #[instrument]
+    pub fn prepare_external_controller_port(&mut self) -> Result<()> {
+        let strategy = Config::verge()
+            .latest()
+            .get_external_controller_port_strategy();
+        let server = self.get_client_info().server;
+        let (server_ip, server_port) = server.split_once(':').unwrap_or(("127.0.0.1", "9090"));
+        let server_port = server_port.parse::<u16>().unwrap_or(9090);
+        let port = get_clash_external_port(&strategy, server_port)?;
+        if port != server_port {
+            let new_server = format!("{}:{}", server_ip, port);
+            warn!(
+                "The external controller port has been changed to {}",
+                new_server
+            );
+            let mut map = Mapping::new();
+            map.insert("external-controller".into(), new_server.into());
+            self.patch_config(map);
+        }
+        Ok(())
     }
 
     pub fn guard_mixed_port(config: &Mapping) -> u16 {

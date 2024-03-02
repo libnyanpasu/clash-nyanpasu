@@ -1,7 +1,7 @@
 #![cfg(target_os = "windows")]
 
 use crate::{
-    config::{ClashCore, Config},
+    config::{nyanpasu::ClashCore, Config},
     utils::dirs,
 };
 use anyhow::{bail, Context, Result};

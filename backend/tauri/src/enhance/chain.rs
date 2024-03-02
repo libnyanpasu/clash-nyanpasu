@@ -1,5 +1,5 @@
 use crate::{
-    config::{ClashCore, PrfItem},
+    config::{nyanpasu::ClashCore, PrfItem},
     utils::{dirs, help},
 };
 use serde_yaml::Mapping;

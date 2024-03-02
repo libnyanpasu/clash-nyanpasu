@@ -8,7 +8,7 @@ use crate::{
     config::*,
     core::*,
     log_err,
-    utils::{self, resolve},
+    utils::{self, help::get_clash_external_port, resolve},
 };
 use anyhow::{bail, Result};
 use serde_yaml::{Mapping, Value};
@@ -210,6 +210,20 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
                 }
             }
         };
+
+        // 检测 external-controller port 是否修改
+        if let Some(external_controller) = patch.get("external-controller") {
+            let external_controller = external_controller.as_str().unwrap();
+            let changed = external_controller != Config::clash().data().get_client_info().server;
+            if changed {
+                let (_, port) = external_controller.split_once(':').unwrap();
+                let port = port.parse::<u16>()?;
+                let strategy = Config::verge()
+                    .latest()
+                    .get_external_controller_port_strategy();
+                get_clash_external_port(&strategy, port)?; // Do a check
+            }
+        }
 
         // 激活配置
         if mixed_port.is_some()

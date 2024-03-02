@@ -192,7 +192,7 @@ pub async fn patch_verge_config(payload: IVerge) -> CmdResult {
 }
 
 #[tauri::command]
-pub async fn change_clash_core(clash_core: Option<ClashCore>) -> CmdResult {
+pub async fn change_clash_core(clash_core: Option<nyanpasu::ClashCore>) -> CmdResult {
     wrap_err!(CoreManager::global().change_core(clash_core).await)
 }
 
@@ -272,7 +272,7 @@ pub async fn fetch_latest_core_versions() -> CmdResult<ManifestVersionLatest> {
 }
 
 #[tauri::command]
-pub async fn get_core_version(core_type: ClashCore) -> CmdResult<String> {
+pub async fn get_core_version(core_type: nyanpasu::ClashCore) -> CmdResult<String> {
     match tokio::task::spawn_blocking(move || resolve::resolve_core_version(&core_type)).await {
         Ok(Ok(version)) => Ok(version),
         Ok(Err(err)) => Err(format!("{err}")),
@@ -305,7 +305,7 @@ pub async fn collect_logs() -> CmdResult {
 }
 
 #[tauri::command]
-pub async fn update_core(core_type: ClashCore) -> CmdResult {
+pub async fn update_core(core_type: nyanpasu::ClashCore) -> CmdResult {
     wrap_err!(
         updater::Updater::global()
             .read()

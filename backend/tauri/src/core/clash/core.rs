@@ -1,5 +1,10 @@
 use super::api;
-use crate::{config::*, core::logger::Logger, log_err, utils::dirs};
+use crate::{
+    config::{nyanpasu::ClashCore, Config, ConfigType},
+    core::logger::Logger,
+    log_err,
+    utils::dirs,
+};
 use anyhow::{bail, Context, Result};
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
@@ -83,8 +88,6 @@ impl CoreManager {
 
     /// 启动核心
     pub async fn run_core(&self) -> Result<()> {
-        let config_path = Config::generate_file(ConfigType::Run)?;
-
         #[allow(unused_mut)]
         let mut should_kill = match self.sidecar.lock().take() {
             Some(child) => {
@@ -106,6 +109,14 @@ impl CoreManager {
         if should_kill {
             sleep(Duration::from_millis(500)).await;
         }
+
+        // 检查端口是否可用
+        Config::clash()
+            .latest()
+            .prepare_external_controller_port()?;
+
+        let config_path = Config::generate_file(ConfigType::Run)?;
+
         #[cfg(target_os = "macos")]
         {
             let enable_tun = Config::verge().latest().enable_tun_mode;

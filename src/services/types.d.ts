@@ -161,7 +161,7 @@ interface IVergeConfig {
   traffic_graph?: boolean;
   enable_memory_usage?: boolean;
   page_transition_animation?: keyof typeof import("@/components/layout/page-transition").pageTransitionVariants;
-  disbale_auto_check_update?: boolean;
+  disable_auto_check_update?: boolean;
   enable_tun_mode?: boolean;
   enable_auto_launch?: boolean;
   enable_service_mode?: boolean;
@@ -193,6 +193,10 @@ interface IVergeConfig {
   enable_clash_fields?: boolean;
   enable_builtin_enhanced?: boolean;
   proxy_layout_column?: number;
+
+  clash_strategy?: {
+    external_controller_port_strategy: "fixed" | "random" | "allow_fallback";
+  };
 }
 
 type IClashConfigValue = any;

@@ -1,10 +1,10 @@
-import useSWR from "swr";
-import { useRef } from "react";
+import { useVerge } from "@/hooks/use-verge";
 import { Button } from "@mui/material";
 import { checkUpdate } from "@tauri-apps/api/updater";
-import { UpdateViewer } from "../setting/mods/update-viewer";
+import { useRef } from "react";
+import useSWR from "swr";
 import { DialogRef } from "../base";
-import { useVerge } from "@/hooks/use-verge";
+import { UpdateViewer } from "../setting/mods/update-viewer";
 
 interface Props {
   className?: string;
@@ -17,11 +17,11 @@ export const UpdateButton = (props: Props) => {
 
   const { verge } = useVerge();
 
-  const { disbale_auto_check_update } = verge ?? {};
+  const { disable_auto_check_update } = verge ?? {};
 
   const { data: updateInfo } = useSWR(
-    disbale_auto_check_update ? null : "checkUpdate",
-    disbale_auto_check_update ? null : checkUpdate,
+    disable_auto_check_update ? null : "checkUpdate",
+    disable_auto_check_update ? null : checkUpdate,
     {
       errorRetryCount: 2,
       revalidateIfStale: false,

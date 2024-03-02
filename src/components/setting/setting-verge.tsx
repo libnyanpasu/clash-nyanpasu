@@ -23,6 +23,7 @@ import { checkUpdate } from "@tauri-apps/api/updater";
 import { useLockFn } from "ahooks";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import MDYSwitch from "../common/mdy-switch";
 import { ConfigViewer } from "./mods/config-viewer";
 import { GuardState } from "./mods/guard-state";
 import { HotkeyViewer } from "./mods/hotkey-viewer";
@@ -33,7 +34,6 @@ import { TasksViewer } from "./mods/tasks-viewer";
 import { ThemeModeSwitch } from "./mods/theme-mode-switch";
 import { ThemeViewer } from "./mods/theme-viewer";
 import { UpdateViewer } from "./mods/update-viewer";
-import MDYSwitch from "../common/mdy-switch";
 
 interface Props {
   onError?: (err: Error) => void;
@@ -45,7 +45,7 @@ const SettingVerge = ({ onError }: Props) => {
   const { t } = useTranslation();
 
   const { verge, patchVerge } = useVerge();
-  const { theme_mode, language, disbale_auto_check_update } = verge ?? {};
+  const { theme_mode, language, disable_auto_check_update } = verge ?? {};
 
   const [loading, setLoading] = useState({
     theme_mode: false,
@@ -275,11 +275,11 @@ const SettingVerge = ({ onError }: Props) => {
 
           <SettingItem label={t("Auto Check Updates")}>
             <GuardState
-              value={!disbale_auto_check_update}
+              value={!disable_auto_check_update}
               valueProps="checked"
               onFormat={onSwitchFormat}
               onCatch={onError}
-              onGuard={(e) => patchVerge({ disbale_auto_check_update: !e })}
+              onGuard={(e) => patchVerge({ disable_auto_check_update: !e })}
             >
               <MDYSwitch edge="end" />
             </GuardState>

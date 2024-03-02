@@ -193,6 +193,10 @@ interface IVergeConfig {
   enable_clash_fields?: boolean;
   enable_builtin_enhanced?: boolean;
   proxy_layout_column?: number;
+
+  clash_strategy?: {
+    external_controller_port_strategy: "fixed" | "random" | "allow_fallback";
+  };
 }
 
 type IClashConfigValue = any;

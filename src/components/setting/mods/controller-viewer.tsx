@@ -1,7 +1,15 @@
 import { BaseDialog, DialogRef } from "@/components/base";
 import { useClashInfo } from "@/hooks/use-clash";
 import { NotificationType, useNotification } from "@/hooks/use-notification";
-import { List, ListItem, ListItemText, TextField } from "@mui/material";
+import { useVerge } from "@/hooks/use-verge";
+import {
+  List,
+  ListItem,
+  ListItemText,
+  MenuItem,
+  Select,
+  TextField,
+} from "@mui/material";
 import { useLockFn } from "ahooks";
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -12,9 +20,13 @@ export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
   const [loading, setLoading] = useState(false);
 
   const { clashInfo, patchInfo } = useClashInfo();
-
+  const { verge, patchVerge } = useVerge();
   const [controller, setController] = useState(clashInfo?.server || "");
   const [secret, setSecret] = useState(clashInfo?.secret || "");
+  const [portStrategy, setPortStrategy] = useState(
+    verge?.clash_strategy?.external_controller_port_strategy ||
+      "allow_fallback",
+  );
 
   useImperativeHandle(ref, () => ({
     open: () => {
@@ -28,6 +40,9 @@ export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
   const onSave = useLockFn(async () => {
     try {
       setLoading(true);
+      await patchVerge({
+        clash_strategy: { external_controller_port_strategy: portStrategy },
+      });
       await patchInfo({ "external-controller": controller, secret });
       useNotification({
         title: t("Success"),
@@ -49,7 +64,7 @@ export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
   return (
     <BaseDialog
       open={open}
-      title={t("Clash Port")}
+      title={t("Clash External Controll")}
       contentSx={{ width: 400 }}
       okBtn={t("Save")}
       cancelBtn={t("Cancel")}
@@ -69,6 +84,23 @@ export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
             placeholder="Required"
             onChange={(e) => setController(e.target.value)}
           />
+        </ListItem>
+
+        <ListItem sx={{ padding: "5px 2px" }}>
+          <ListItemText primary="Port Strategy" />
+          <Select
+            size="small"
+            sx={{ width: 175 }}
+            defaultValue="allow_fallback"
+            value={portStrategy}
+            onChange={(e) =>
+              setPortStrategy(e.target.value as typeof portStrategy)
+            }
+          >
+            <MenuItem value="allow_fallback">Allow Fallback</MenuItem>
+            <MenuItem value="fixed">Fixed</MenuItem>
+            <MenuItem value="random">Random</MenuItem>
+          </Select>
         </ListItem>
 
         <ListItem sx={{ padding: "5px 2px" }}>

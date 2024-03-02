@@ -1,7 +1,7 @@
 use std::{collections::HashMap, io::Cursor, path::Path, sync::OnceLock};
 
 use super::CoreManager;
-use crate::config::ClashCore;
+use crate::config::nyanpasu::ClashCore;
 use anyhow::{anyhow, Result};
 use gunzip::Decompressor;
 use log::{debug, warn};

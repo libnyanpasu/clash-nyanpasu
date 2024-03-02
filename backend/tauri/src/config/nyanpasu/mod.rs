@@ -3,7 +3,11 @@ use anyhow::Result;
 // use log::LevelFilter;
 use serde::{Deserialize, Serialize};
 
+mod clash_strategy;
 pub mod logging;
+
+pub use self::clash_strategy::{ClashStrategy, ExternalControllerPortStrategy};
+pub use logging::LoggingLevel;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub enum ClashCore {
@@ -133,7 +137,7 @@ pub struct IVerge {
 
     /// 日志清理
     /// 分钟数； 0 为不清理
-    #[deprecated(note = "use `window_size_state` instead")]
+    #[deprecated(note = "use `max_log_files` instead")]
     pub auto_log_clean: Option<i64>,
     /// 日记轮转时间，单位：天
     pub max_log_files: Option<usize>,
@@ -152,7 +156,10 @@ pub struct IVerge {
     pub verge_mixed_port: Option<u16>,
 
     /// Check update when app launch
-    pub disbale_auto_check_update: Option<bool>,
+    pub disable_auto_check_update: Option<bool>,
+
+    /// Clash 相关策略
+    pub clash_strategy: Option<ClashStrategy>,
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
@@ -219,7 +226,7 @@ impl IVerge {
             page_transition_animation: Some("slide".into()),
             // auto_log_clean: Some(60 * 24 * 7), // 7 days 自动清理日记
             max_log_files: Some(7), // 7 days
-            disbale_auto_check_update: Some(true),
+            disable_auto_check_update: Some(true),
             ..Self::default()
         }
     }
@@ -247,7 +254,7 @@ impl IVerge {
         patch!(traffic_graph);
         patch!(enable_memory_usage);
         patch!(page_transition_animation);
-        patch!(disbale_auto_check_update);
+        patch!(disable_auto_check_update);
 
         patch!(enable_tun_mode);
         patch!(enable_service_mode);
@@ -273,5 +280,6 @@ impl IVerge {
 
         patch!(max_log_files);
         patch!(window_size_state);
+        patch!(clash_strategy);
     }
 }

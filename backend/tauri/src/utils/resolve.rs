@@ -1,5 +1,8 @@
 use crate::{
-    config::{ClashCore, Config, IVerge, WindowState},
+    config::{
+        nyanpasu::{ClashCore, WindowState},
+        Config, IVerge,
+    },
     core::{
         tasks::{jobs::ProfilesJobGuard, JobsManager},
         tray::proxies,

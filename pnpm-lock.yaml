@@ -257,8 +257,8 @@ devDependencies:
     specifier: 6.0.4
     version: 6.0.4(stylelint@16.2.1)
   stylelint-scss:
-    specifier: 6.1.0
-    version: 6.1.0(stylelint@16.2.1)
+    specifier: 6.2.0
+    version: 6.2.0(stylelint@16.2.1)
   telegraf:
     specifier: 4.16.3
     version: 4.16.3
@@ -6392,8 +6392,8 @@ packages:
       stylelint: 16.2.1(typescript@5.3.3)
     dev: true
 
-  /stylelint-scss@6.1.0(stylelint@16.2.1):
-    resolution: {integrity: sha512-kCfK8TQzthGwb4vaZniZgxRsVbCM4ZckmT1b/H5m4FU3I8Dz0id9llKsy1NMp3XXqC8+OPD4rVKtUbSxXlJb5g==}
+  /stylelint-scss@6.2.0(stylelint@16.2.1):
+    resolution: {integrity: sha512-ktYsWKNN+zh4VlpdNMajYCOREwaPI9xZLVue/H5vX4f4v7Kg+ej9Bj0b7fG41J2UboNujZNU9qi0yM/KK3KhOQ==}
     engines: {node: '>=18.12.0'}
     peerDependencies:
       stylelint: ^16.0.2

@@ -1,7 +1,10 @@
+// modified from https://github.com/lerna-lite/lerna-lite/blob//v1.9.0/packages/core/src/conventional-commits/get-github-commits.ts
+// ref: https://github.com/conventional-changelog/conventional-changelog/issues/349#issuecomment-1200070203
 "use strict";
 const conventionalChangelogConfig = require("conventional-changelog-conventionalcommits");
+const core = require("@actions/core");
 const github = require("@actions/github");
-const fs = require("node:fs");
+const { execSync } = require("node:child_process");
 const dedent = require("dedent");
 
 const GIT_COMMIT_WITH_AUTHOR_FORMAT =
@@ -35,6 +38,148 @@ function writerOptsTransform(
 }
 
 /**
+ * Parse git output and return relevant metadata.
+ * @param {string} stdout Result of `git describe`
+ * @param {string} [cwd] Defaults to `process.cwd()`
+ * @param [separator] Separator used within independent version tags, defaults to @
+ * @returns {DescribeRefFallbackResult|DescribeRefDetailedResult}
+ */
+function parse(stdout, cwd, separator) {
+  separator = separator || "@";
+  const minimalShaRegex = /^([0-9a-f]{7,40})(-dirty)?$/;
+  // when git describe fails to locate tags, it returns only the minimal sha
+  if (minimalShaRegex.test(stdout)) {
+    // repo might still be dirty
+    const [, sha, isDirty] = minimalShaRegex.exec(stdout);
+
+    // count number of commits since beginning of time
+    const refCount = execSync("git", ["rev-list", "--count", sha], { cwd });
+
+    return { refCount, sha, isDirty: Boolean(isDirty) };
+  }
+
+  // If the user has specified a custom separator, it may not be regex-safe, so escape it
+  const escapedSeparator = separator.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regexPattern = new RegExp(
+    `^((?:.*${escapedSeparator})?(.*))-(\\d+)-g([0-9a-f]+)(-dirty)?$`,
+  );
+
+  const [, lastTagName, lastVersion, refCount, sha, isDirty] =
+    regexPattern.exec(stdout) || [];
+
+  return { lastTagName, lastVersion, refCount, sha, isDirty: Boolean(isDirty) };
+}
+
+function getArgs(options, includeMergedTags) {
+  let args = [
+    "describe",
+    // fallback to short sha if no tags located
+    "--always",
+    // always return full result, helps identify existing release
+    "--long",
+    // annotate if uncommitted changes present
+    "--dirty",
+    // prefer tags originating on upstream branch
+    "--first-parent",
+  ];
+
+  if (options.match) {
+    args.push("--match", options.match);
+  }
+
+  if (includeMergedTags) {
+    // we want to consider all tags, also from merged branches
+    args = args.filter((arg) => arg !== "--first-parent");
+  }
+
+  return args;
+}
+
+function describeRefSync(options = {}, includeMergedTags, dryRun = false) {
+  const stdout = execSync(
+    "git",
+    getArgs(options, includeMergedTags),
+    options,
+    dryRun,
+  );
+  const result = parse(stdout, options.cwd, options.separator);
+
+  if (options?.match) {
+    core.info("git-describe.sync", "%j => %j", options?.match, stdout);
+  }
+  if (stdout) {
+    core.info("git-describe", "parsed => %j", result);
+  }
+
+  return result;
+}
+
+function getOldestCommitSinceLastTag(
+  execOpts,
+  isIndependent,
+  includeMergedTags,
+) {
+  let commitResult = "";
+  const describeOptions = { ...execOpts };
+  if (isIndependent) {
+    describeOptions.match = "*@*"; // independent tag pattern
+  }
+  const { lastTagName } = describeRefSync(describeOptions, includeMergedTags);
+
+  if (lastTagName) {
+    const gitCommandArgs = [
+      "log",
+      `${lastTagName}..HEAD`,
+      '--format="%h %aI"',
+      "--reverse",
+    ];
+    core.info("git", "getCurrentBranchOldestCommitSinceLastTag");
+    core.info("exec", `git ${gitCommandArgs.join(" ")}`);
+    let stdout = execSync("git", gitCommandArgs, execOpts);
+    if (!stdout) {
+      // in some occasion the previous git command might return nothing, in that case we'll return the tag detail instead
+      stdout =
+        execSync(
+          "git",
+          ["log", "-1", '--format="%h %aI"', lastTagName],
+          execOpts,
+        ) || "";
+    }
+    [commitResult] = stdout.split("\n");
+  } else {
+    const gitCommandArgs = [
+      "log",
+      "--oneline",
+      '--format="%h %aI"',
+      "--reverse",
+      "--max-parents=0",
+      "HEAD",
+    ];
+    core.info("git", "getCurrentBranchFirstCommit");
+    core.info("exec", `git ${gitCommandArgs.join(" ")}`);
+    commitResult = execSync("git", gitCommandArgs, execOpts);
+  }
+
+  const [, commitHash, commitDate] =
+    /^"?([0-9a-f]+)\s([0-9\-|\+T\:]*)"?$/.exec(commitResult) || [];
+  // prettier-ignore
+  core.info('oldestCommitSinceLastTag', `commit found since last tag: ${lastTagName} - (SHA) ${commitHash} - ${commitDate}`);
+
+  return { commitHash, commitDate };
+}
+
+async function getCommitsSinceLastRelease(branchName, isIndependent, execOpts) {
+  // get the last release tag date or the first commit date if no release tag found
+  const { commitDate } = getOldestCommitSinceLastTag(
+    execOpts,
+    isIndependent,
+    false,
+  );
+
+  return getGithubCommits(branchName, commitDate, execOpts);
+}
+
+/**
  * From a dot (.) notation path, find and return a property within an object given a complex object path
  * Note that the object path does should not include the parent itself
  * for example if we want to get `address.zip` from `user` object, we would call `getComplexObjectValue(user, 'address.zip')`
@@ -49,29 +194,65 @@ function getComplexObjectValue(object, path) {
   return path.split(".").reduce((obj, prop) => obj?.[prop], object);
 }
 
+function getOldestCommitSinceLastTag(
+  execOpts,
+  isIndependent,
+  includeMergedTags,
+) {
+  let commitResult = "";
+  const describeOptions = { ...execOpts };
+  if (isIndependent) {
+    describeOptions.match = "*@*"; // independent tag pattern
+  }
+  const { lastTagName } = describeRefSync(describeOptions, includeMergedTags);
+
+  if (lastTagName) {
+    const gitCommandArgs = [
+      "log",
+      `${lastTagName}..HEAD`,
+      '--format="%h %aI"',
+      "--reverse",
+    ];
+    core.info("git", "getCurrentBranchOldestCommitSinceLastTag");
+    core.info("exec", `git ${gitCommandArgs.join(" ")}`);
+    let stdout = execSync("git", gitCommandArgs, execOpts);
+    if (!stdout) {
+      // in some occasion the previous git command might return nothing, in that case we'll return the tag detail instead
+      stdout =
+        execSync(
+          "git",
+          ["log", "-1", '--format="%h %aI"', lastTagName],
+          execOpts,
+        ) || "";
+    }
+    [commitResult] = stdout.split("\n");
+  } else {
+    const gitCommandArgs = [
+      "log",
+      "--oneline",
+      '--format="%h %aI"',
+      "--reverse",
+      "--max-parents=0",
+      "HEAD",
+    ];
+    core.info("git", "getCurrentBranchFirstCommit");
+    core.info("exec", `git ${gitCommandArgs.join(" ")}`);
+    commitResult = execSync("git", gitCommandArgs, execOpts);
+  }
+
+  const [, commitHash, commitDate] =
+    /^"?([0-9a-f]+)\s([0-9\-|\+T\:]*)"?$/.exec(commitResult) || [];
+  // prettier-ignore
+  core.info('oldestCommitSinceLastTag', `commit found since last tag: ${lastTagName} - (SHA) ${commitHash} - ${commitDate}`);
+
+  return { commitHash, commitDate };
+}
+
 // Retrieve previous commits since last release from GitHub API
-async function retrievePreviousCommits(branchName) {
+async function getGithubCommits(branchName, sinceDate, execOpts) {
   const octokit = github.getOctokit(process.env.GITHUB_TOKEN);
-
-  // first retrieve the latest tag
-  const {
-    data: { tag_name },
-  } = await octokit.rest.repos.getLatestRelease({
-    owner: "keiko233",
-    repo: "clash-nyanpasu",
-  });
-
-  // then retrieve the latest tag commit timestamp
-  const { data: commitData } = await octokit.rest.repos.getCommit({
-    owner: "keiko233",
-    repo: "clash-nyanpasu",
-    ref: tag_name,
-  });
-
-  const sinceDate =
-    commitData.commit.committer.date || commitData.commit.author.date;
-
   const remoteCommits = [];
+
   let afterCursor = "";
   let hasNextPage = false;
 
@@ -119,7 +300,7 @@ async function retrievePreviousCommits(branchName) {
     }
   } while (hasNextPage);
 
-  console.log(
+  core.info(
     "github",
     "found %s commits since last release timestamp %s",
     remoteCommits.length,
@@ -130,51 +311,59 @@ async function retrievePreviousCommits(branchName) {
 }
 
 module.exports = (async () => {
-  const config = await conventionalChangelogConfig({
-    types: [
-      {
-        type: "feat",
-        section: "✨ Features",
-      },
-      {
-        type: "fix",
-        section: "🐛 Bug Fixes",
-      },
-      {
-        type: "chore",
-        section: "🧹 Maintenance",
-      },
-      {
-        type: "docs",
-        section: "📚 Documentation",
-      },
-      {
-        type: "style",
-        section: "💅 Styles",
-      },
-      {
-        type: "refactor",
-        section: "🔨 Refactoring",
-      },
-      {
-        type: "perf",
-        section: "⚡ Performance Improvements",
-      },
-      {
-        type: "test",
-        section: "✅ Tests",
-      },
-    ],
-  });
-  const commitsSinceLastRelease = await retrievePreviousCommits("main");
-  config.gitRawCommitsOpts.format = GIT_COMMIT_WITH_AUTHOR_FORMAT;
-  config.writerOpts.commitPartial =
-    config.writerOpts.commitPartial.replace(/\n*$/, "") +
-    ` {{#if @root.linkReferences~}}${extraCommitMsg}{{~/if}}\n`;
-  config.writerOpts.transform = writerOptsTransform.bind(
-    null,
-    config.writerOpts.transform,
-    commitsSinceLastRelease,
-  );
-  return config;
+  try {
+    const config = await conventionalChangelogConfig({
+      types: [
+        {
+          type: "feat",
+          section: "✨ Features",
+        },
+        {
+          type: "fix",
+          section: "🐛 Bug Fixes",
+        },
+        {
+          type: "chore",
+          section: "🧹 Maintenance",
+        },
+        {
+          type: "docs",
+          section: "📚 Documentation",
+        },
+        {
+          type: "style",
+          section: "💅 Styles",
+        },
+        {
+          type: "refactor",
+          section: "🔨 Refactoring",
+        },
+        {
+          type: "perf",
+          section: "⚡ Performance Improvements",
+        },
+        {
+          type: "test",
+          section: "✅ Tests",
+        },
+      ],
+    });
+    const commitsSinceLastRelease = await getCommitsSinceLastRelease(
+      "main",
+      false,
+    );
+    config.gitRawCommitsOpts.format = GIT_COMMIT_WITH_AUTHOR_FORMAT;
+    config.writerOpts.commitPartial =
+      config.writerOpts.commitPartial.replace(/\n*$/, "") +
+      ` {{#if @root.linkReferences~}}${extraCommitMsg}{{~/if}}\n`;
+    config.writerOpts.transform = writerOptsTransform.bind(
+      null,
+      config.writerOpts.transform,
+      commitsSinceLastRelease,
+    );
+    return config;
+  } catch (e) {
+    core.error("pre-changelog-generation", e);
+    process.exit(1);
+  }
 })();

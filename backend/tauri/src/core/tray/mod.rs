@@ -1,25 +1,20 @@
-use crate::{
-    cmds,
-    config::Config,
-    feat,
-    utils::{help, resolve},
-};
+use super::storage;
+use crate::{cmds, config::Config, feat, utils::resolve};
 use anyhow::Result;
 use rust_i18n::t;
 use tauri::{
     api, AppHandle, CustomMenuItem, Manager, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
     SystemTraySubmenu,
 };
-use tracing::debug;
 use tracing_attributes::instrument;
 
-use super::storage;
+mod icon;
+pub mod proxies;
+pub use self::icon::on_scale_factor_changed;
+use self::icon::TrayIcon;
+use self::proxies::SystemTrayMenuProxiesExt;
 
 pub struct Tray {}
-
-pub mod proxies;
-
-use self::proxies::SystemTrayMenuProxiesExt;
 
 impl Tray {
     #[instrument(skip(_app_handle))]
@@ -103,16 +98,14 @@ impl Tray {
 
         #[cfg(target_os = "windows")]
         {
-            let indication_icon = if *tun_mode {
-                include_bytes!("../../../icons/win-tray-icon-blue.png").to_vec()
+            let mode = if *tun_mode {
+                TrayIcon::Tun
             } else if *system_proxy {
-                include_bytes!("../../../icons/win-tray-icon-pink.png").to_vec()
+                TrayIcon::SystemProxy
             } else {
-                include_bytes!("../../../icons/win-tray-icon.png").to_vec()
+                TrayIcon::Normal
             };
-            let scale_factor = help::get_max_scale_factor();
-            debug!("scale factor: {:?}", scale_factor);
-            let icon = help::resize_tray_image(&indication_icon, scale_factor)?;
+            let icon = icon::get_icon(&mode);
             let _ = tray.set_icon(tauri::Icon::Raw(icon));
         }
 

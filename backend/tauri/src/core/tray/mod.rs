@@ -1,10 +1,17 @@
-use crate::{cmds, config::Config, feat, utils::resolve};
+use crate::{
+    cmds,
+    config::Config,
+    feat,
+    utils::{help, resolve},
+};
 use anyhow::Result;
 use rust_i18n::t;
 use tauri::{
     api, AppHandle, CustomMenuItem, Manager, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
     SystemTraySubmenu,
 };
+use tracing::debug;
+use tracing_attributes::instrument;
 
 use super::storage;
 
@@ -15,6 +22,7 @@ pub mod proxies;
 use self::proxies::SystemTrayMenuProxiesExt;
 
 impl Tray {
+    #[instrument(skip(_app_handle))]
     pub fn tray_menu(_app_handle: &AppHandle) -> SystemTrayMenu {
         let version = env!("NYANPASU_VERSION");
 
@@ -68,6 +76,7 @@ impl Tray {
             .add_item(CustomMenuItem::new("quit", t!("tray.quit")).accelerator("CmdOrControl+Q"))
     }
 
+    #[instrument(skip(app_handle))]
     pub fn update_systray(app_handle: &AppHandle) -> Result<()> {
         app_handle
             .tray_handle()
@@ -76,6 +85,7 @@ impl Tray {
         Ok(())
     }
 
+    #[instrument(skip(app_handle))]
     pub fn update_part(app_handle: &AppHandle) -> Result<()> {
         let mode = crate::utils::config::get_current_clash_mode();
 
@@ -100,8 +110,10 @@ impl Tray {
             } else {
                 include_bytes!("../../../icons/win-tray-icon.png").to_vec()
             };
-
-            let _ = tray.set_icon(tauri::Icon::Raw(indication_icon));
+            let scale_factor = help::get_max_scale_factor();
+            debug!("scale factor: {:?}", scale_factor);
+            let icon = help::resize_tray_image(&indication_icon, scale_factor)?;
+            let _ = tray.set_icon(tauri::Icon::Raw(icon));
         }
 
         let _ = tray.get_item("system_proxy").set_selected(*system_proxy);
@@ -128,6 +140,7 @@ impl Tray {
         Ok(())
     }
 
+    #[instrument(skip(app_handle, event))]
     pub fn on_system_tray_event(app_handle: &AppHandle, event: SystemTrayEvent) {
         match event {
             SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {

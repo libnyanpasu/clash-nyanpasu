@@ -170,7 +170,7 @@ pub fn resize_tray_image(img: &[u8], scale_factor: f64) -> Result<Vec<u8>> {
         .multiply_alpha_inplace(&mut src_image.view_mut())
         .context("failed to multiply alpha")?;
     // Create container for data of destination image
-    let size = (16_f64 * scale_factor).round() as u32; // 16px is the base tray size as the dpi is 96
+    let size = (32_f64 * scale_factor).round() as u32; // 32px is the base tray size as the dpi is 96
     let dst_width = NonZeroU32::new(size).unwrap();
     let dst_height = NonZeroU32::new(size).unwrap();
     let mut dst_image = fr::Image::new(dst_width, dst_height, src_image.pixel_type());

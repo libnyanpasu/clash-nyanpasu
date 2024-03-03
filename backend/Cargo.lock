@@ -707,7 +707,7 @@ dependencies = [
  "log",
  "nanoid",
  "once_cell",
- "open 5.1.0",
+ "open 5.0.2",
  "parking_lot",
  "port_scanner",
  "reqwest",
@@ -1243,15 +1243,15 @@ checksum = "bd0c93bb4b0c6d9b77f4435b0ae98c24d17f1c45b2ff844c6151a07256ca923b"
 [[package]]
 name = "display-info"
 version = "0.4.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d756a7bf01fa0ad2efa86d106205f09829b0b03d7423cbdf6ca79e8a1330d65"
+source = "git+https://github.com/greenhat616/display-info.git#093a0c2174edbeb1f5b275b9ae9061c6e9c91cac"
 dependencies = [
  "anyhow",
  "core-graphics 0.23.1",
  "fxhash",
+ "log",
  "smithay-client-toolkit",
  "widestring 1.0.2",
- "windows 0.52.0",
+ "windows 0.54.0",
  "xcb",
 ]
 
@@ -3378,9 +3378,9 @@ dependencies = [
 
 [[package]]
 name = "open"
-version = "5.1.0"
+version = "5.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f2588edf622de56e7a1fed57bf203344f63c03f3d43472ba0434a92373c8f27"
+checksum = "eedff767bc49d336bff300224f73307ae36963c843e38dc9312a22171b012cbc"
 dependencies = [
  "is-wsl",
  "libc",

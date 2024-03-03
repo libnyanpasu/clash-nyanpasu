@@ -15,7 +15,7 @@ use anyhow::Result;
 use semver::Version;
 use serde_yaml::Mapping;
 use std::net::TcpListener;
-use tauri::{api::process::Command, App, AppHandle, Manager};
+use tauri::{api::process::Command, App, AppHandle, Manager, PhysicalPosition, PhysicalSize, Size};
 
 pub fn find_unused_port() -> Result<u16> {
     match TcpListener::bind("127.0.0.1:0") {
@@ -94,7 +94,8 @@ pub fn resolve_setup(app: &mut App) {
     log_err!(hotkey::Hotkey::global().init(app.app_handle()));
 
     // setup jobs
-    log_err!(JobsManager::global_register()); // init task manager
+    log_err!(JobsManager::global_register());
+    // init task manager
     log_err!(ProfilesJobGuard::global().lock().init());
 
     // test job
@@ -171,20 +172,51 @@ pub fn create_window(app_handle: &AppHandle) {
                 trace_err!(set_shadow(&win, true), "set win shadow");
                 log::trace!("try to calculate the monitor size");
                 let center = (|| -> Result<bool> {
-                    let mut center = false;
-                    let monitor = win.current_monitor()?.ok_or(anyhow::anyhow!(""))?;
-                    let size = monitor.size();
-                    let pos = win.outer_position()?;
+                    let mut center;
+                    if let Some(state) = win_state {
+                        let monitor = win.current_monitor()?.ok_or(anyhow::anyhow!(""))?;
+                        let PhysicalPosition { x, y } = *monitor.position();
+                        let PhysicalSize { width, height } = *monitor.size();
+                        let left = x;
+                        let right = x + width as i32;
+                        let top = y;
+                        let bottom = y + height as i32;
 
-                    if pos.x < -400
-                        || pos.x > (size.width - 200).try_into()?
-                        || pos.y < -200
-                        || pos.y > (size.height - 200).try_into()?
-                    {
+                        let x = state.x as i32;
+                        let y = state.y as i32;
+                        let width = state.width as i32;
+                        let height = state.height as i32;
+                        center = ![
+                            (x, y),
+                            (x + width, y),
+                            (x, y + height),
+                            (x + width, y + height),
+                        ]
+                        .into_iter()
+                        .any(|(x, y)| x >= left && x < right && y >= top && y < bottom);
+                    } else {
                         center = true;
                     }
                     Ok(center)
                 })();
+
+                match win_state {
+                    None => {}
+                    Some(state) => {
+                        let current_monitor = win.current_monitor().unwrap();
+                        match current_monitor {
+                            None => {}
+                            Some(monitor) => {
+                                let scale_factor = monitor.scale_factor();
+                                win.set_size(Size::Physical(PhysicalSize {
+                                    width: (state.width * scale_factor) as u32,
+                                    height: (state.height * scale_factor) as u32,
+                                }))
+                                .unwrap();
+                            }
+                        }
+                    }
+                }
 
                 if center.unwrap_or(true) {
                     trace_err!(win.center(), "set win center");
@@ -274,10 +306,10 @@ pub fn save_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<(
                 state.width = size.width;
                 state.height = size.height;
             }
-            let position = win.outer_position()?.to_logical(scale_factor);
+            let position = win.outer_position()?;
             if !state.maximized && !is_minimized {
-                state.x = position.x;
-                state.y = position.y;
+                state.x = f64::from(position.x);
+                state.y = f64::from(position.y);
             }
             verge.window_size_state = Some(state);
         }

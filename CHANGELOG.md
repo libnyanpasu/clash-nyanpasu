@@ -1,4 +1,186 @@
-## [1.4.5](https://github.com/keiko233/clash-nyanpasu/compare/v1.4.4...v1.4.5) (2024-02-08)
+## [1.5.0](https://github.com/LibNyanpasu/clash-nyanpasu/compare/v1.4.5...v1.5.0) (2024-03-03)
+
+### ⚠ BREAKING CHANGES
+
+- **clash:** add default core secret and impl port checker before clash start (#533)
+- **bundler:** remove msi target
+- **config:** modify default external-controller port (#436)
+- **backend:** add tray proxies selector support (#417)
+- **frontend:** migrate to `esm` (#407)
+
+### ✨ Features
+
+- add Auto Check Updates Switch ([a17510a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a17510a84c495d24d227f663ba1e8932f3309703)) by @keiko233
+- add margin for SettingItem extra element ([fa1dcdd](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fa1dcdd42b7a0e1108b3850958074af061a3771d)) by @keiko233
+- add MDYSwitch & replace all Switches with MDYSwitch ([0c86b80](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0c86b807ccd4ffc0782b74cd0297b5366074790a)) by @keiko233
+- add useMessage hook ([1da9951](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1da9951edc47911ff3b8b4bb7ea56aefbe0bbf24)) by @keiko233
+- **backend:** add tray proxies selector support ([#417](https://github.com/LibNyanpasu/clash-nyanpasu/issues/417)) ([17f9319](https://github.com/LibNyanpasu/clash-nyanpasu/commit/17f931963aff892434287c27e532b9b1dc83e202)) by @greenhat616
+- **clash:** add default core secret and impl port checker before clash start ([#533](https://github.com/LibNyanpasu/clash-nyanpasu/issues/533)) ([29c1d9c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/29c1d9c0473564423a2c92e32f68a630d583fb52)) by @greenhat616
+- color select use MuiColorInput ([6ade58c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6ade58cacc1beca25c82172ea70ff4fd84de0193)) by @keiko233
+- **config:** add migration for old config dir ([#419](https://github.com/LibNyanpasu/clash-nyanpasu/issues/419)) ([4688334](https://github.com/LibNyanpasu/clash-nyanpasu/commit/468833467f8bee72903a5b9e1d1eeba858348b33)) by @4o3F
+- **connection:** allow filter out process name ([d277e47](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d277e477dfeb3faac9c07bd289d8e71d7d4df1cf)) by @greenhat616
+- custom schema support ([#516](https://github.com/LibNyanpasu/clash-nyanpasu/issues/516)) ([24617aa](https://github.com/LibNyanpasu/clash-nyanpasu/commit/24617aa8f364161f6f38b27a7c87e9ee68af6f93)) by @4o3F
+- **locale:** use system locale as default ([#437](https://github.com/LibNyanpasu/clash-nyanpasu/issues/437)) ([331996a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/331996a1f3269d145803b1d03ef4d6e018e9b335)) by @greenhat616
+- make profile material you ([5be21a9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5be21a9d76f6d277f9725445f49333f3e6e534d1)) by @keiko233
+- MDYSwitch support loading prop ([a48aa09](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a48aa09475bcf3722df7b0d50e22766ca30337fd)) by @keiko233
+- new style design profile item drag sort ([3745d4b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3745d4bf0c13ecf1cfce257316dace7e7d1abf4e)) by @keiko233
+- onCheckUpdate button supports loading animation & refactoring error removal notification using dialog ([9f0afb7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9f0afb78ad67f705b58c51b70f5f542ac40f8349)) by @keiko233
+- refactor GuardStatus & support loading status ([f2a08d9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f2a08d90cb784405d83a600af7c2fe95a07067f4)) by @keiko233
+- refactor UpdateViewer ([94fff23](https://github.com/LibNyanpasu/clash-nyanpasu/commit/94fff23a2278c8b42ab28aad3c12e96c1477b734)) by @keiko233
+- **tray:** add diff check for system tray partial update ([#477](https://github.com/LibNyanpasu/clash-nyanpasu/issues/477)) ([0e38ee9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0e38ee929ba669842ef88ed6a8b14a115115f6cc)) by @4o3F
+- **tray:** add tray icon resize logic to improve icon rendering ([#540](https://github.com/LibNyanpasu/clash-nyanpasu/issues/540)) ([9f4bd55](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9f4bd5564d28e646f51c22f1f2cf52d6fc7a46d4)) by @greenhat616
+
+### 🐛 Bug Fixes
+
+- build issue ([d68b0be](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d68b0be688ebc9ffb8afc4e996f90c4157840e23)) by @greenhat616
+- ci ([83d8bf4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/83d8bf467145285a100d65c345c61123ac825ee8)) by @greenhat616
+- **ci:** replace github workflow token ([5bf4775](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5bf47755ac71a4fbe2dc8ca69776c82962982f25)) by @keiko233
+- config migration issue ([5772101](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5772101b630d8a3835253b94f7dbf3e2bd1783a5)) by @greenhat616
+- **config:** fix config migration ([#433](https://github.com/LibNyanpasu/clash-nyanpasu/issues/433)) ([ecfd51a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ecfd51adcfb8880ea0bac413c6eec7b8f0232f08)) by @4o3F
+- **custom-schema:** fix schema not working for new opening and dialog not showing with certain route ([#534](https://github.com/LibNyanpasu/clash-nyanpasu/issues/534)) ([f8e58f1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f8e58f1cac58525dacfa35199e0a0be91f3a1a88)) by @4o3F
+- **deps:** pin dependency mui-color-input to 2.0.3 ([#473](https://github.com/LibNyanpasu/clash-nyanpasu/issues/473)) ([a7b6c0a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a7b6c0a10345b6c3481d027bf87d9809039f0142)) by @renovate[bot]
+- **deps:** pin dependency react-markdown to 9.0.1 ([46d33a0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/46d33a052c6b2cd123f5be44838e7f4d47700053)) by @renovate[bot]
+- **deps:** update dependency @emotion/react to v11.11.4 ([233a709](https://github.com/LibNyanpasu/clash-nyanpasu/commit/233a709852f1e53b6b078e2cb1f394215445340a)) by @renovate[bot]
+- **deps:** update dependency @mui/x-data-grid to v6.19.4 ([bb04958](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bb0495800075fff571d3c8593f45f7ddb3146b05)) by @renovate[bot]
+- **deps:** update dependency @mui/x-data-grid to v6.19.5 ([#476](https://github.com/LibNyanpasu/clash-nyanpasu/issues/476)) ([b9da95f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b9da95f871f0c7ffd3ec7f8c6a2cf740f79c57ef)) by @renovate[bot]
+- **deps:** update dependency @mui/x-data-grid to v6.19.6 ([6ad5149](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6ad5149ad2d8b243789945a4734f925fac3039e0)) by @renovate[bot]
+- **deps:** update dependency framer-motion to v11.0.4 ([#427](https://github.com/LibNyanpasu/clash-nyanpasu/issues/427)) ([dce4267](https://github.com/LibNyanpasu/clash-nyanpasu/commit/dce42670716ec201c08d21629693559fa065118b)) by @renovate[bot]
+- **deps:** update dependency framer-motion to v11.0.5 ([#429](https://github.com/LibNyanpasu/clash-nyanpasu/issues/429)) ([5ac56ef](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5ac56efbe842f09cacfd6a7e34cc0013eacde97e)) by @renovate[bot]
+- **deps:** update dependency framer-motion to v11.0.6 ([#475](https://github.com/LibNyanpasu/clash-nyanpasu/issues/475)) ([7a0719c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7a0719cc3ea1926deb768ee1c1f2047d1f0d93db)) by @renovate[bot]
+- **deps:** update dependency framer-motion to v11.0.7 ([d7a097c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d7a097c15640e20ad94ef0d4342891844ad67bbe)) by @renovate[bot]
+- **deps:** update dependency framer-motion to v11.0.8 ([511af58](https://github.com/LibNyanpasu/clash-nyanpasu/commit/511af5885558da7c08cca025703b276c147e4c86)) by @renovate[bot]
+- **deps:** update dependency i18next to v23.10.0 ([#471](https://github.com/LibNyanpasu/clash-nyanpasu/issues/471)) ([63bb5ea](https://github.com/LibNyanpasu/clash-nyanpasu/commit/63bb5ea38446010b374ab4f0179cbacba271eebf)) by @renovate[bot]
+- **deps:** update dependency i18next to v23.8.3 ([2f25bc7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2f25bc746f20e4bb880c350f3a7d0d3ed1deae15)) by @renovate[bot]
+- **deps:** update dependency i18next to v23.9.0 ([2a19c35](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2a19c3598dd9884be7db0eb4bc02518fc5dc855f)) by @renovate[bot]
+- **deps:** update dependency monaco-editor to v0.46.0 ([#405](https://github.com/LibNyanpasu/clash-nyanpasu/issues/405)) ([a85d462](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a85d4626eae392c88beb97d7d98dba03cac50579)) by @renovate[bot]
+- **deps:** update dependency react-error-boundary to v4.0.13 ([#529](https://github.com/LibNyanpasu/clash-nyanpasu/issues/529)) ([7d72707](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7d727074ca852737a0299d0cce21ebcd716c4b36)) by @renovate[bot]
+- **deps:** update dependency react-hook-form to v7.51.0 ([0cce088](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0cce088f3c9ee4fe0f1c946ee843d09c27d220b9)) by @renovate[bot]
+- **deps:** update dependency react-router-dom to v6.22.1 ([b72d9ad](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b72d9ad0ca4cbe10f3c945aafb4458589b23fe30)) by @renovate[bot]
+- **deps:** update dependency react-router-dom to v6.22.2 ([0cee569](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0cee569792dfb3455af121ee520785460e22999c)) by @renovate[bot]
+- **deps:** update dependency react-virtuoso to v4.7.0 ([c537b56](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c537b56067d4618e3625a8386c0e851a36116ffc)) by @renovate[bot]
+- **deps:** update dependency react-virtuoso to v4.7.1 ([#480](https://github.com/LibNyanpasu/clash-nyanpasu/issues/480)) ([277920f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/277920ff2ae1733a8297348cd6e662ef5a42cdb5)) by @renovate[bot]
+- **deps:** update dependency swr to v2.2.5 ([c40e78b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c40e78bf7ebf37a587682bed076050bf4df213db)) by @renovate[bot]
+- **deps:** update material-ui monorepo ([dfa2059](https://github.com/LibNyanpasu/clash-nyanpasu/commit/dfa2059c8393f559128314b35844885feeeff484)) by @renovate[bot]
+- **deps:** update material-ui monorepo ([6c4e349](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6c4e3492b911aac1bcf6041d5486b5f042aea925)) by @renovate[bot]
+- **deps:** update material-ui monorepo to v5.15.10 ([8b8ee13](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8b8ee1351c2c5c03b0b92491b5a549af7e8f2021)) by @renovate[bot]
+- **deps:** update rust crate anyhow to v1.0.80 ([ca84032](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ca84032637e7941f0a9b47182c536af3691a123a)) by @renovate[bot]
+- **deps:** update rust crate base64 to 0.22 ([b981d5f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b981d5f849b6c1eee716a7d2a37589bd35bb09d3)) by @renovate[bot]
+- **deps:** update rust crate chrono to v0.4.34 ([#418](https://github.com/LibNyanpasu/clash-nyanpasu/issues/418)) ([eee6b46](https://github.com/LibNyanpasu/clash-nyanpasu/commit/eee6b46da3a9aa61a769a2cf6ce5afef7567a769)) by @renovate[bot]
+- **deps:** update rust crate dyn-clone to v1.0.17 ([22ec542](https://github.com/LibNyanpasu/clash-nyanpasu/commit/22ec542b9dc18dec4918f40038dc99fa3ac97b27)) by @renovate[bot]
+- **deps:** update rust crate indexmap to v2.2.4 ([aae5cc2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/aae5cc25aef13bd0ccc684e2792f873a7d55b955)) by @renovate[bot]
+- **deps:** update rust crate indexmap to v2.2.5 ([#527](https://github.com/LibNyanpasu/clash-nyanpasu/issues/527)) ([02a2b28](https://github.com/LibNyanpasu/clash-nyanpasu/commit/02a2b28995af0ea79720628c7ed80fcb1ffb96a7)) by @renovate[bot]
+- **deps:** update rust crate log to v0.4.21 ([d30887c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d30887c9a3e8afeb416dd4eff3c534c57ed29567)) by @renovate[bot]
+- **deps:** update rust crate log4rs to v1.3.0 ([#416](https://github.com/LibNyanpasu/clash-nyanpasu/issues/416)) ([cd138f8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cd138f8baab01e6c2151905a6399412f6aee09a5)) by @renovate[bot]
+- **deps:** update rust crate objc2 to 0.5.0 ([#528](https://github.com/LibNyanpasu/clash-nyanpasu/issues/528)) ([2d0302d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2d0302df21f33fc58e23462b7d51f8f71c35016a)) by @renovate[bot]
+- **deps:** update rust crate open to v5.0.2 ([8b7bc08](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8b7bc08e94a9be2a5273a6f385f905bf9bcbf49e)) by @renovate[bot]
+- **deps:** update rust crate open to v5.1.0 ([1c054f6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1c054f6bce6dc65feb9e08a73245dfd172ca22d4)) by @renovate[bot]
+- **deps:** update rust crate open to v5.1.1 ([#542](https://github.com/LibNyanpasu/clash-nyanpasu/issues/542)) ([3c06936](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3c0693684880860f11be92d1ae60423f6aa09b2b)) by @renovate[bot]
+- **deps:** update rust crate rocksdb to 0.22 ([#428](https://github.com/LibNyanpasu/clash-nyanpasu/issues/428)) ([55bbd12](https://github.com/LibNyanpasu/clash-nyanpasu/commit/55bbd125a20acb687083dfba664ef7e2cbae1819)) by @renovate[bot]
+- **deps:** update rust crate rquickjs to 0.5.0 ([d0ebebc](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d0ebebc1c4827ccb9e152003b85862fbdb8c4560)) by @renovate[bot]
+- **deps:** update rust crate rquickjs to v0.5.1 ([#469](https://github.com/LibNyanpasu/clash-nyanpasu/issues/469)) ([72b439b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/72b439bfe4bf9b7c2392bbdd4740099419dee7ac)) by @renovate[bot]
+- **deps:** update rust crate runas to v1.2.0 ([#465](https://github.com/LibNyanpasu/clash-nyanpasu/issues/465)) ([2fd4dd1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2fd4dd1d64156a5b500bd092f888a71ed6dfe093)) by @renovate[bot]
+- **deps:** update rust crate semver to v1.0.22 ([#456](https://github.com/LibNyanpasu/clash-nyanpasu/issues/456)) ([40f80cb](https://github.com/LibNyanpasu/clash-nyanpasu/commit/40f80cb41054203d8a36245e591a2e6f4465086f)) by @renovate[bot]
+- **deps:** update rust crate serde_json to v1.0.114 ([#462](https://github.com/LibNyanpasu/clash-nyanpasu/issues/462)) ([eeea0ee](https://github.com/LibNyanpasu/clash-nyanpasu/commit/eeea0eefd128c35aa6a49332c89daa7bf18c73b3)) by @renovate[bot]
+- **deps:** update rust crate serde_yaml to v0.9.32 ([#457](https://github.com/LibNyanpasu/clash-nyanpasu/issues/457)) ([6d77854](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6d778545bdc6d63be5bc24d5dbebf7c4c596eec7)) by @renovate[bot]
+- **deps:** update rust crate sysinfo to v0.30.6 ([db6a3c4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/db6a3c4c6021405cff47289555e543f8481ddb68)) by @renovate[bot]
+- **deps:** update rust crate tauri to v1.6.0 ([1b17c6c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1b17c6c4c7058d2d6d3cd8c16b6593308e30d80e)) by @renovate[bot]
+- **deps:** update rust crate tauri to v1.6.1 ([#504](https://github.com/LibNyanpasu/clash-nyanpasu/issues/504)) ([9cdd5aa](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9cdd5aae0aefae8e9435c2ee5a944255cbe5335d)) by @renovate[bot]
+- **deps:** update rust crate tempfile to v3.10.1 ([ea90044](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ea9004488968f048c102156405d69a53cb5e3a98)) by @renovate[bot]
+- **deps:** update rust crates ([1a75f5f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1a75f5f7615f01c0df6f7c40bcfd7d15147b4bed)) by @greenhat616
+- fix wrong window position and size with multiple screen ([6a3acb3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6a3acb3225ddf600497edeec8871e957bbda2f05)) by @4o3F
+- fmt ([c33c552](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c33c5527a49517bee6a9dc673a9d2fea14e2d9cf)) by @greenhat616
+- layout error when window width is small ([3fd4619](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3fd461922344264f5debfc74e6a508248bc7591c)) by @keiko233
+- line breaks typos ([e3aa529](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e3aa529fef36227ffafef14c9d24ee99bc592cee)) by @keiko233
+- lint ([978872b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/978872b3b8895057d2858ba5119ff2f1026b9775)) by @greenhat616
+- lint ([3169708](https://github.com/LibNyanpasu/clash-nyanpasu/commit/316970899d41fab79cb839f005bdfe82c81672bb)) by @greenhat616
+- **macos:** use rfd to prevent panic ([f0aa74d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f0aa74d9fd3cd2046cbe045553903e28c5f4e485)) by @greenhat616
+- MDYSwitch switchBase padding value ([5482861](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5482861055118a27c67382c3b64200032976ab08)) by @keiko233
+- media screen value typos ([bf6c1b3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bf6c1b3f86a807a205cece0429ba2b3501132fe7)) by @keiko233
+- **nsis:** should not stop verge service while updating ([36abd6f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/36abd6fed84d16b1b6d92a7e28ca6f314f794f72)) by @greenhat616
+- **proxies:** reduce tray updating interval ([13b8dac](https://github.com/LibNyanpasu/clash-nyanpasu/commit/13b8dac4a8b0002a48c13ee986a60bc5705cb7b4)) by @greenhat616
+- **proxies:** use indexmap instead to correct order ([e0db001](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e0db0015f21f3e1a36ac8e9cb18ea2076841ae3b)) by @greenhat616
+- proxy item box-shadow err ([ad8b2a0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ad8b2a004a1faade6842612ba19da7c90d181110)) by @keiko233
+- release ci ([33e4087](https://github.com/LibNyanpasu/clash-nyanpasu/commit/33e4087eddac946d396745821c7e1a6cc9477ea1)) by @greenhat616
+- release ci ([71503a4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/71503a4aa631601870c8b031bda78ed772437ccd)) by @greenhat616
+- resolve save windows state event ([80fd7dd](https://github.com/LibNyanpasu/clash-nyanpasu/commit/80fd7ddc57dc28caddbfaa57d0910751e8fd8bae)) by @greenhat616
+- **tray:** proxies updating deadlock ([9ae958e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9ae958e42ea135842f041259407ac09559b60dd7)) by @greenhat616
+- **tray:** should disable click expect Selector and Fallback type ([f61ba52](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f61ba52a2d200c248795cfcebda49d394a12bf69)) by @greenhat616
+- **tray:** use base64 encoded id to fix item not found issue ([46a91db](https://github.com/LibNyanpasu/clash-nyanpasu/commit/46a91db394a9daebbf2ee3553695512e903654f4)) by @greenhat616
+
+### 🧹 Maintenance
+
+- **bundler:** drop console and debugger in prod ([ef9673b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ef9673bac3321879a3fa56697182d4f71587a911)) by @greenhat616
+- **bundler:** remove msi target ([c63d846](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c63d8463b0810ee46c96ada4fd5f40e093928fab)) by @greenhat616
+- **config:** modify default external-controller port ([#436](https://github.com/LibNyanpasu/clash-nyanpasu/issues/436)) ([0ac8ca8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0ac8ca89885feef393bae0a16de1fa7895f89443)) by @greenhat616
+- **deps:** pin dependency @types/node to 20.11.21 ([755cff8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/755cff8fd6c4283042adace7c853ae1bb8fa7ce2)) by @renovate[bot]
+- **deps:** pin dependency telegraf to 4.15.3 ([#446](https://github.com/LibNyanpasu/clash-nyanpasu/issues/446)) ([3ddd7b8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3ddd7b80025a7d7cae82143548994286a9add60a)) by @renovate[bot]
+- **deps:** update dependency @commitlint/cli to v19.0.1 ([d8ea303](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d8ea3031dc5923849fbf5dc89e0f9c237bd4c4b5)) by @renovate[bot]
+- **deps:** update dependency @commitlint/config-conventional to v18.6.2 ([e1597c7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e1597c7a234e491f0bed9a9830ebe93ea8f133d5)) by @renovate[bot]
+- **deps:** update dependency @tauri-apps/cli to v1.5.10 ([522e7bf](https://github.com/LibNyanpasu/clash-nyanpasu/commit/522e7bf8ed7fd6def7329e7d6234a2ad776850c1)) by @renovate[bot]
+- **deps:** update dependency @types/node to v20.11.22 ([805dc92](https://github.com/LibNyanpasu/clash-nyanpasu/commit/805dc92bf7d0f3c74026a3abc481024f7a3ac119)) by @renovate[bot]
+- **deps:** update dependency @types/node to v20.11.24 ([#525](https://github.com/LibNyanpasu/clash-nyanpasu/issues/525)) ([e30f3ec](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e30f3ec25c36bc06e52464714536985321fe897d)) by @renovate[bot]
+- **deps:** update dependency @types/react to v18.2.56 ([e4c5b17](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e4c5b1752f2e04d6393a9857a9a9d39bde0e7711)) by @renovate[bot]
+- **deps:** update dependency @types/react to v18.2.57 ([968bf60](https://github.com/LibNyanpasu/clash-nyanpasu/commit/968bf60443f4772989c3133cbd25f8f48beabb19)) by @renovate[bot]
+- **deps:** update dependency @types/react to v18.2.58 ([f297ac1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f297ac1c40783045363d192bdd5b727e9eef98d1)) by @renovate[bot]
+- **deps:** update dependency @types/react to v18.2.59 ([4a816d7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4a816d75cb00b94caff4824b16917d7f044d6427)) by @renovate[bot]
+- **deps:** update dependency @types/react to v18.2.60 ([8f97457](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8f974573e957ce946f62519895bbc90120c23d86)) by @renovate[bot]
+- **deps:** update dependency autoprefixer to v10.4.18 ([5cd3cde](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5cd3cded24a62ee58a808bb8e95140ba91d5ec18)) by @renovate[bot]
+- **deps:** update dependency eslint to v8.57.0 ([73f9b73](https://github.com/LibNyanpasu/clash-nyanpasu/commit/73f9b734b12697b8ac359b8fdda95f79083279fc)) by @renovate[bot]
+- **deps:** update dependency eslint-plugin-html to v8 ([#413](https://github.com/LibNyanpasu/clash-nyanpasu/issues/413)) ([fecf28f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fecf28f7cbb12871d221b36bcdc8830200558bb8)) by @renovate[bot]
+- **deps:** update dependency https-proxy-agent to v7.0.3 ([4efd512](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4efd512ff9dafce3d4d50809d52f3c74e71449f8)) by @renovate[bot]
+- **deps:** update dependency https-proxy-agent to v7.0.4 ([cc9537e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cc9537e4bb6cf4e0369479d9f5eee8058b672b8b)) by @renovate[bot]
+- **deps:** update dependency husky to v9.0.11 ([9755aee](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9755aee92123f37e3ef61ea3935ae917b13b86b8)) by @renovate[bot]
+- **deps:** update dependency postcss-import to v16.0.1 ([4586801](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4586801216f9e79b57fcfadfda7f3de582d09d7a)) by @renovate[bot]
+- **deps:** update dependency sass to v1.71.0 ([7385e5d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7385e5de1a6ef15b9db6f7e2e92c925c4e3158a8)) by @renovate[bot]
+- **deps:** update dependency sass to v1.71.1 ([#466](https://github.com/LibNyanpasu/clash-nyanpasu/issues/466)) ([30f7aac](https://github.com/LibNyanpasu/clash-nyanpasu/commit/30f7aac24997702586e7097d26a09317ca3879f9)) by @renovate[bot]
+- **deps:** update dependency telegraf to v4.16.0 ([5a51834](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5a5183464d006d2ac04a7414e4fbf3058af1ded2)) by @renovate[bot]
+- **deps:** update dependency telegraf to v4.16.1 ([acbbe8b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/acbbe8b2cf48abca51450aae58eca4e05063cb10)) by @renovate[bot]
+- **deps:** update dependency telegraf to v4.16.2 ([8614088](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8614088b7e480cf3f8fd6ffc8632155d6ff5fd2c)) by @renovate[bot]
+- **deps:** update dependency telegraf to v4.16.3 ([4bddfde](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4bddfde12bfc54495f536206392871d83d620a8e)) by @renovate[bot]
+- **deps:** update dependency tsx to v4.7.1 ([42a3ce8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/42a3ce8d39a232282a0d52b02ce30313cf89e8cb)) by @renovate[bot]
+- **deps:** update dependency vite to v5.1.0 ([#404](https://github.com/LibNyanpasu/clash-nyanpasu/issues/404)) ([5fcbd43](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5fcbd43c84bd0fe6ab4bd0767d98f7b3c42a821c)) by @renovate[bot]
+- **deps:** update dependency vite to v5.1.1 ([7b100b8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7b100b868a1b5899276d9bf3aa547593539da612)) by @renovate[bot]
+- **deps:** update dependency vite to v5.1.2 ([f8bd9bd](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f8bd9bdfec5704224ae92e1c0dfc6fe819931c48)) by @renovate[bot]
+- **deps:** update dependency vite to v5.1.3 ([79aef4c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/79aef4c3889f901664b64ae5cfd18048cd8d66af)) by @renovate[bot]
+- **deps:** update dependency vite to v5.1.4 ([#467](https://github.com/LibNyanpasu/clash-nyanpasu/issues/467)) ([a3c5f9e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a3c5f9ededf59f73116759e87f93987869b70b3e)) by @renovate[bot]
+- **deps:** update lint packages to v18.6.1 ([83c166f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/83c166f4bc8c9a6b9fb523281d87af57680add65)) by @renovate[bot]
+- **deps:** update lint packages to v19 ([#498](https://github.com/LibNyanpasu/clash-nyanpasu/issues/498)) ([67cfe88](https://github.com/LibNyanpasu/clash-nyanpasu/commit/67cfe889ee8404f031bc64c8cffa111800228b9f)) by @renovate[bot]
+- **deps:** update lint packages to v19.0.3 ([2ce75a8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2ce75a8b663bf828a2dd9bd82d2c54f3355b35c7)) by @renovate[bot]
+- **deps:** update lint packages to v7 ([#423](https://github.com/LibNyanpasu/clash-nyanpasu/issues/423)) ([8e15824](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8e158246b29acee50c68a4bb50ef81af642dd95e)) by @renovate[bot]
+- **deps:** update lint packages to v7.0.2 ([9d7e93f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9d7e93fa6114c94a47f9a69509534c268ee2da6c)) by @renovate[bot]
+- **deps:** update lint packages to v7.1.0 ([9529dbf](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9529dbfadda37e9ea10ac1f84d6a098639979f9d)) by @renovate[bot]
+- **deps:** update orhun/git-cliff-action action to v3 ([#530](https://github.com/LibNyanpasu/clash-nyanpasu/issues/530)) ([69b7b99](https://github.com/LibNyanpasu/clash-nyanpasu/commit/69b7b999e87cc14596a532609f2c69a31173f7d2)) by @renovate[bot]
+- **deps:** update rust crate serde to v1.0.197 ([e9b5303](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e9b53032846a2b4e972d44d3e2acc21fbaa5f52f)) by @renovate[bot]
+- **deps:** update rust crate thiserror to v1.0.57 ([#420](https://github.com/LibNyanpasu/clash-nyanpasu/issues/420)) ([7a483b9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7a483b9afe71ecc88ca9ceec5abd1ad3cd3653e6)) by @renovate[bot]
+- **deps:** update typescript packages ([4aa830b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4aa830be15d83880990a50ab2e284bcd847d6cb8)) by @renovate[bot]
+- **fix!:** import missing dependencies ([eca7b78](https://github.com/LibNyanpasu/clash-nyanpasu/commit/eca7b7854025c64fe32e477e51af00c0907dd7e0)) by @keiko233
+- **frontend:** migrate to `esm` ([#407](https://github.com/LibNyanpasu/clash-nyanpasu/issues/407)) ([472bba8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/472bba8f8c70ac20ade0a8f9949a7a87842b4c36)) by @greenhat616
+- **manifest:** update manifest [skip ci] ([cf61d23](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cf61d239dd6285742c421b4f848101f88da15ad3)) by @github-actions[bot]
+- **manifest:** update manifest [skip ci] ([e932205](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e932205513aa25d017dbc6ef24358861ae430bb6)) by @github-actions[bot]
+- **manifest:** update manifest [skip ci] ([0bb2ad3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0bb2ad395e709d2482f4c9a5d39f425a3d3a560e)) by @github-actions[bot]
+- **manifest:** update manifest [skip ci] ([33c28db](https://github.com/LibNyanpasu/clash-nyanpasu/commit/33c28db6de0119190e1dcb1fe92506d6953042e2)) by @github-actions[bot]
+- **manifest:** update manifest [skip ci] ([064ca02](https://github.com/LibNyanpasu/clash-nyanpasu/commit/064ca02847d31cc2621c6d4121f800474091f5a4)) by @github-actions[bot]
+- **manifest:** update manifest [skip ci] ([9c65dde](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9c65ddef9bb9b0b4c7342786268ccc5665099d26)) by @github-actions[bot]
+- **manifest:** update manifest [skip ci] ([d4d9ba6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d4d9ba63730f6949efd29b6e9ef699938949c1d8)) by @github-actions[bot]
+- **manifest:** update manifest [skip ci] ([5a80b40](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5a80b409d162565c1c21aebd0f758a185f68e237)) by @github-actions[bot]
+- **manifest:** update manifest [skip ci] ([76bbd23](https://github.com/LibNyanpasu/clash-nyanpasu/commit/76bbd23bcc40a69596b0cb8bec64c6feb2e254b3)) by @github-actions[bot]
+- **manifest:** update manifest [skip ci] ([dad2441](https://github.com/LibNyanpasu/clash-nyanpasu/commit/dad244144ef442671c4f600ca23f4921c78b8348)) by @github-actions[bot]
+- **manifest:** update manifest [skip ci] ([6939399](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6939399cd9f9333a27304b3ca8eabc94a7d811e8)) by @github-actions[bot]
+- remove console and debugger when not in dev mode ([d884426](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d8844269c4c57b708204c1df44aae1ab03d58888)) by @keiko233
+- send release notify to telegram channel ([e66e38e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e66e38e5b5e59d5e643f4d14cc2c6ceec05654c5)) by @keiko233
+- update deps ([3743406](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3743406eb975b69f3827f37e507f628ae4af762d)) by @greenhat616
+- update deps ([aca1ef5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/aca1ef57bbd2a7c0bae06ab60045a426aad41f41)) by @greenhat616
+- use debug as default app log level when debugging ([e6b3356](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e6b33568b6faf71e22a79cdb6fd3bab9b3f3ade4)) by @greenhat616
+
+### 🔨 Refactoring
+
+- **clash:** move api and core manager into one mod ([#411](https://github.com/LibNyanpasu/clash-nyanpasu/issues/411)) ([6720ac1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6720ac16c9cc5efd338cb0b203f354bb2782059c)) by @greenhat616
+- **i18n:** change backend localization to rust-i18n ([#425](https://github.com/LibNyanpasu/clash-nyanpasu/issues/425)) ([f7296db](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f7296dbd51e3a7dcb309519406f6a0fa41704ad6)) by @4o3F
+- **logging:** use `tracing` instead of `log4rs` ([#486](https://github.com/LibNyanpasu/clash-nyanpasu/issues/486)) ([791baa5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/791baa56cc4688da3dce51e4791f43de339e840c)) by @greenhat616
+- **proxies:** proxies hash and diff logic ([483335d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/483335df5c8665ee5e6d9e6da688355c04c37621)) by @greenhat616
+- **single-instance:** refactor single instance check ([#499](https://github.com/LibNyanpasu/clash-nyanpasu/issues/499)) ([11d7241](https://github.com/LibNyanpasu/clash-nyanpasu/commit/11d7241ae8af0e85d6e7c80c35f36839159b2378)) by @4o3F
+
+## [1.4.5](https://github.com/LibNyanpasu/clash-nyanpasu/compare/v1.4.4...v1.4.5) (2024-02-08)
 
 ### ⚠ BREAKING CHANGES
 
@@ -7,1464 +189,1465 @@
 
 ### ✨ Features
 
-- **nsis:** switch to both installMode ([ce3c138](https://github.com/keiko233/clash-nyanpasu/commit/ce3c1388a5d09bb677f63e99efef300c932ee79f)) by @greenhat616
-- **updater:** use nsis instead of msi ([c0cde77](https://github.com/keiko233/clash-nyanpasu/commit/c0cde77ef3dc356639deb855ef8b8e9916abd026)) by @greenhat616
+- **nsis:** switch to both installMode ([ce3c138](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ce3c1388a5d09bb677f63e99efef300c932ee79f)) by @
+- **updater:** use nsis instead of msi ([c0cde77](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c0cde77ef3dc356639deb855ef8b8e9916abd026)) by @
 
 ### 🐛 Bug Fixes
 
-- **bundle:** instance is running while updating app ([#393](https://github.com/keiko233/clash-nyanpasu/issues/393)) ([7cb2b5c](https://github.com/keiko233/clash-nyanpasu/commit/7cb2b5ce26338db79aa217e306bae0d917cae51e)) by @greenhat616
-- **bundler:** kill processes while updating in windows ([cffd388](https://github.com/keiko233/clash-nyanpasu/commit/cffd3887dd53d92f392a461083f12fee3150b02a)), closes [#397](https://github.com/keiko233/clash-nyanpasu/issues/397) by @greenhat616
-- **ci:** daily updater issue ([#392](https://github.com/keiko233/clash-nyanpasu/issues/392)) ([c6017cc](https://github.com/keiko233/clash-nyanpasu/commit/c6017cc89931e60b95b0c98e794630124100b067)) by @greenhat616
-- **ci:** nightly updater issue ([4a05f77](https://github.com/keiko233/clash-nyanpasu/commit/4a05f770562f8ee57df4cd5bbb741593fdeaa9df)) by @greenhat616
-- **deps:** update dependency @mui/x-data-grid to v6.19.3 ([c75cac4](https://github.com/keiko233/clash-nyanpasu/commit/c75cac41062f0e1d623b4eeb006c9f70a4c9c414)) by @renovate[bot]
-- **deps:** update dependency ahooks to v3.7.10 ([a8635d5](https://github.com/keiko233/clash-nyanpasu/commit/a8635d56f758e59c74170cdd1fdcd209b3f98dcb)) by @renovate[bot]
-- **deps:** update dependency i18next to v23.8.2 ([6506e28](https://github.com/keiko233/clash-nyanpasu/commit/6506e289f1fb1610057c2042911095ea6aa10ce0)) by @renovate[bot]
-- **deps:** update dependency react-hook-form to v7.50.0 ([909afdf](https://github.com/keiko233/clash-nyanpasu/commit/909afdfafc56c53e4b0b151d84f253db20be77f9)) by @renovate[bot]
-- **deps:** update dependency react-hook-form to v7.50.1 ([#387](https://github.com/keiko233/clash-nyanpasu/issues/387)) ([10505fa](https://github.com/keiko233/clash-nyanpasu/commit/10505fa1dd01c77aa83c0c0afa94f238bbb03190)) by @renovate[bot]
-- **deps:** update dependency react-i18next to v14.0.2 ([78765a0](https://github.com/keiko233/clash-nyanpasu/commit/78765a06ff7343092c70aa37b2367940c658444a)) by @renovate[bot]
-- **deps:** update dependency react-i18next to v14.0.3 ([b1e22f7](https://github.com/keiko233/clash-nyanpasu/commit/b1e22f70913984c8590b0ff6e633c1321cbd6306)) by @renovate[bot]
-- **deps:** update dependency react-i18next to v14.0.4 ([3b3083c](https://github.com/keiko233/clash-nyanpasu/commit/3b3083c4b30c226bea0a9ed28dec0b2d4fc21831)) by @renovate[bot]
-- **deps:** update dependency react-i18next to v14.0.5 ([9841f26](https://github.com/keiko233/clash-nyanpasu/commit/9841f26678b3f2edb894fd47eaca04fe393d90c4)) by @renovate[bot]
-- **deps:** update dependency react-router-dom to v6.22.0 ([f7ce206](https://github.com/keiko233/clash-nyanpasu/commit/f7ce206209746bfa85f4e28cd06f4b969152652a)) by @renovate[bot]
-- **deps:** update material-ui monorepo ([98bb347](https://github.com/keiko233/clash-nyanpasu/commit/98bb3479ac5035726eb9a746d72a1cb8f8e95c13)) by @renovate[bot]
-- **deps:** update material-ui monorepo ([260f539](https://github.com/keiko233/clash-nyanpasu/commit/260f539a614338e59a1559da56a9f1678e9ca00b)) by @renovate[bot]
-- **deps:** update rust crate reqwest to v0.11.24 ([08f6abc](https://github.com/keiko233/clash-nyanpasu/commit/08f6abc6954025f92383673e30c63eedd647a843)) by @renovate[bot]
-- **deps:** update rust crate rquickjs to v0.4.3 ([d6f6a30](https://github.com/keiko233/clash-nyanpasu/commit/d6f6a30c678d0cdc82bf6701971bc88cefad9575)) by @renovate[bot]
-- **deps:** update rust crate tempfile to v3.10.0 ([cb80a1e](https://github.com/keiko233/clash-nyanpasu/commit/cb80a1ecb0189d35799580b296f43b8712987dc8)) by @renovate[bot]
-- **deps:** update rust crate tokio to v1.36.0 ([5036611](https://github.com/keiko233/clash-nyanpasu/commit/503661141afae5d6332c9dec124072dac76f2cd5)) by @renovate[bot]
-- **deps:** update rust crate window-vibrancy to 0.5.0 ([#401](https://github.com/keiko233/clash-nyanpasu/issues/401)) ([ddce748](https://github.com/keiko233/clash-nyanpasu/commit/ddce74884bff3f7dc68f086500b0ef4562223d79)) by @renovate[bot]
-- minimize icon is wrong while resize window ([#394](https://github.com/keiko233/clash-nyanpasu/issues/394)) ([3517d87](https://github.com/keiko233/clash-nyanpasu/commit/3517d87e63b31aaf6caaccb2d941092cb786e009)) by @greenhat616
-- **nsis:** kill nyanpasu processes while updating ([#403](https://github.com/keiko233/clash-nyanpasu/issues/403)) ([40ae424](https://github.com/keiko233/clash-nyanpasu/commit/40ae424042565aefa9f0ad8976025d67379bb5a8)) by @greenhat616
-- portable issues ([#395](https://github.com/keiko233/clash-nyanpasu/issues/395)) ([b249ba9](https://github.com/keiko233/clash-nyanpasu/commit/b249ba9c2b342cd28c59b561397766d849135492)) by @greenhat616
-- resources missing ([52e0760](https://github.com/keiko233/clash-nyanpasu/commit/52e07601cbf1420dc72b3d4716cb49f5f648383a)) by @greenhat616
-- sort connection in numerical comparison for `Download`, `DL Speed`, etc ([#367](https://github.com/keiko233/clash-nyanpasu/issues/367)) ([11195fc](https://github.com/keiko233/clash-nyanpasu/commit/11195fcf22d8abb7ba7b65d823cfe892750a3633)) by @Jeremy-Hibiki
+- **bundle:** instance is running while updating app ([#393](https://github.com/LibNyanpasu/clash-nyanpasu/issues/393)) ([7cb2b5c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7cb2b5ce26338db79aa217e306bae0d917cae51e)) by @
+- **bundler:** kill processes while updating in windows ([cffd388](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cffd3887dd53d92f392a461083f12fee3150b02a)), closes [#397](https://github.com/LibNyanpasu/clash-nyanpasu/issues/397) by @
+- **ci:** daily updater issue ([#392](https://github.com/LibNyanpasu/clash-nyanpasu/issues/392)) ([c6017cc](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c6017cc89931e60b95b0c98e794630124100b067)) by @
+- **ci:** nightly updater issue ([4a05f77](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4a05f770562f8ee57df4cd5bbb741593fdeaa9df)) by @
+- **deps:** update dependency @mui/x-data-grid to v6.19.3 ([c75cac4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c75cac41062f0e1d623b4eeb006c9f70a4c9c414)) by @
+- **deps:** update dependency ahooks to v3.7.10 ([a8635d5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a8635d56f758e59c74170cdd1fdcd209b3f98dcb)) by @
+- **deps:** update dependency i18next to v23.8.2 ([6506e28](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6506e289f1fb1610057c2042911095ea6aa10ce0)) by @
+- **deps:** update dependency react-hook-form to v7.50.0 ([909afdf](https://github.com/LibNyanpasu/clash-nyanpasu/commit/909afdfafc56c53e4b0b151d84f253db20be77f9)) by @
+- **deps:** update dependency react-hook-form to v7.50.1 ([#387](https://github.com/LibNyanpasu/clash-nyanpasu/issues/387)) ([10505fa](https://github.com/LibNyanpasu/clash-nyanpasu/commit/10505fa1dd01c77aa83c0c0afa94f238bbb03190)) by @
+- **deps:** update dependency react-i18next to v14.0.2 ([78765a0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/78765a06ff7343092c70aa37b2367940c658444a)) by @
+- **deps:** update dependency react-i18next to v14.0.3 ([b1e22f7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b1e22f70913984c8590b0ff6e633c1321cbd6306)) by @
+- **deps:** update dependency react-i18next to v14.0.4 ([3b3083c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3b3083c4b30c226bea0a9ed28dec0b2d4fc21831)) by @
+- **deps:** update dependency react-i18next to v14.0.5 ([9841f26](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9841f26678b3f2edb894fd47eaca04fe393d90c4)) by @
+- **deps:** update dependency react-router-dom to v6.22.0 ([f7ce206](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f7ce206209746bfa85f4e28cd06f4b969152652a)) by @
+- **deps:** update material-ui monorepo ([98bb347](https://github.com/LibNyanpasu/clash-nyanpasu/commit/98bb3479ac5035726eb9a746d72a1cb8f8e95c13)) by @
+- **deps:** update material-ui monorepo ([260f539](https://github.com/LibNyanpasu/clash-nyanpasu/commit/260f539a614338e59a1559da56a9f1678e9ca00b)) by @
+- **deps:** update rust crate reqwest to v0.11.24 ([08f6abc](https://github.com/LibNyanpasu/clash-nyanpasu/commit/08f6abc6954025f92383673e30c63eedd647a843)) by @
+- **deps:** update rust crate rquickjs to v0.4.3 ([d6f6a30](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d6f6a30c678d0cdc82bf6701971bc88cefad9575)) by @
+- **deps:** update rust crate tempfile to v3.10.0 ([cb80a1e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cb80a1ecb0189d35799580b296f43b8712987dc8)) by @
+- **deps:** update rust crate tokio to v1.36.0 ([5036611](https://github.com/LibNyanpasu/clash-nyanpasu/commit/503661141afae5d6332c9dec124072dac76f2cd5)) by @
+- **deps:** update rust crate window-vibrancy to 0.5.0 ([#401](https://github.com/LibNyanpasu/clash-nyanpasu/issues/401)) ([ddce748](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ddce74884bff3f7dc68f086500b0ef4562223d79)) by @
+- minimize icon is wrong while resize window ([#394](https://github.com/LibNyanpasu/clash-nyanpasu/issues/394)) ([3517d87](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3517d87e63b31aaf6caaccb2d941092cb786e009)) by @
+- **nsis:** kill nyanpasu processes while updating ([#403](https://github.com/LibNyanpasu/clash-nyanpasu/issues/403)) ([40ae424](https://github.com/LibNyanpasu/clash-nyanpasu/commit/40ae424042565aefa9f0ad8976025d67379bb5a8)) by @
+- portable issues ([#395](https://github.com/LibNyanpasu/clash-nyanpasu/issues/395)) ([b249ba9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b249ba9c2b342cd28c59b561397766d849135492)) by @
+- resources missing ([52e0760](https://github.com/LibNyanpasu/clash-nyanpasu/commit/52e07601cbf1420dc72b3d4716cb49f5f648383a)) by @
+- sort connection in numerical comparison for `Download`, `DL Speed`, etc ([#367](https://github.com/LibNyanpasu/clash-nyanpasu/issues/367)) ([11195fc](https://github.com/LibNyanpasu/clash-nyanpasu/commit/11195fcf22d8abb7ba7b65d823cfe892750a3633)) by @
 
 ### 🧹 Maintenance
 
-- **deps:** update dependency @types/react to v18.2.51 ([f6124d7](https://github.com/keiko233/clash-nyanpasu/commit/f6124d7b7e9b031a3a02a3b23bcf5f4f07f0c092)) by @renovate[bot]
-- **deps:** update dependency @types/react to v18.2.52 ([eb61d94](https://github.com/keiko233/clash-nyanpasu/commit/eb61d9483e9b9522350fa5cf785f479e60b64835)) by @renovate[bot]
-- **deps:** update dependency @types/react to v18.2.53 ([23e866d](https://github.com/keiko233/clash-nyanpasu/commit/23e866d2d6f1de3787cca034f475495bd45671f6)) by @renovate[bot]
-- **deps:** update dependency @types/react to v18.2.54 ([030e454](https://github.com/keiko233/clash-nyanpasu/commit/030e454a598e2c5d870faec01779e7c20eddf814)) by @renovate[bot]
-- **deps:** update dependency @types/react to v18.2.55 ([69acbb0](https://github.com/keiko233/clash-nyanpasu/commit/69acbb0c5df2b3276a541ab650c4d42202166f94)) by @renovate[bot]
-- **deps:** update dependency @types/react-dom to v18.2.19 ([3930db9](https://github.com/keiko233/clash-nyanpasu/commit/3930db97ce602e644181be9434a2610a4657c295)) by @renovate[bot]
-- **deps:** update dependency lint-staged to v15.2.1 ([06e4fe5](https://github.com/keiko233/clash-nyanpasu/commit/06e4fe5b897fc033384e43ee5d998d3566db5a88)) by @renovate[bot]
-- **deps:** update dependency npm-run-all2 to v6.1.2 ([8f97bb7](https://github.com/keiko233/clash-nyanpasu/commit/8f97bb71f6d32c8ca018e1429771981047acf0c0)) by @renovate[bot]
-- **deps:** update dependency postcss to v8.4.34 ([585dd12](https://github.com/keiko233/clash-nyanpasu/commit/585dd128daa83b8a1f968ca40d07a01abeb6e17b)) by @renovate[bot]
-- **deps:** update dependency postcss to v8.4.35 ([7d4c5f4](https://github.com/keiko233/clash-nyanpasu/commit/7d4c5f4c579593ebc1e78fa70deb21803400c3ab)) by @renovate[bot]
-- **deps:** update dependency stylelint-config-recess-order to v4.6.0 ([8c012d8](https://github.com/keiko233/clash-nyanpasu/commit/8c012d889229498dbbcc60e9d93d53339f9fc010)) by @renovate[bot]
-- **deps:** update lint packages ([798c65e](https://github.com/keiko233/clash-nyanpasu/commit/798c65ee31a4da44363c8f52471896345e157425)) by @renovate[bot]
-- **deps:** update lint packages ([b4d5ef0](https://github.com/keiko233/clash-nyanpasu/commit/b4d5ef0ecfbf7cca8b3ab9f31b03d0f716cb5963)) by @renovate[bot]
-- **deps:** update lint packages ([#375](https://github.com/keiko233/clash-nyanpasu/issues/375)) ([7ded812](https://github.com/keiko233/clash-nyanpasu/commit/7ded8120a5ce8357b99f64c3bed46c292e5096e4)) by @renovate[bot]
-- **manifest:** update manifest [skip ci] ([fa52f94](https://github.com/keiko233/clash-nyanpasu/commit/fa52f941debc03ed306d7488f14cff89b8f06863)) by @github-actions[bot]
-- **manifest:** update manifest [skip ci] ([26722d3](https://github.com/keiko233/clash-nyanpasu/commit/26722d38039c64ac37b62ce3b519f06e4f4d8f32)) by @github-actions[bot]
-- **manifest:** update manifest [skip ci] ([f8e69a3](https://github.com/keiko233/clash-nyanpasu/commit/f8e69a325d24f3fb6708fb382805a198fa371024)) by @github-actions[bot]
+- **deps:** update dependency @types/react to v18.2.51 ([f6124d7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f6124d7b7e9b031a3a02a3b23bcf5f4f07f0c092)) by @
+- **deps:** update dependency @types/react to v18.2.52 ([eb61d94](https://github.com/LibNyanpasu/clash-nyanpasu/commit/eb61d9483e9b9522350fa5cf785f479e60b64835)) by @
+- **deps:** update dependency @types/react to v18.2.53 ([23e866d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/23e866d2d6f1de3787cca034f475495bd45671f6)) by @
+- **deps:** update dependency @types/react to v18.2.54 ([030e454](https://github.com/LibNyanpasu/clash-nyanpasu/commit/030e454a598e2c5d870faec01779e7c20eddf814)) by @
+- **deps:** update dependency @types/react to v18.2.55 ([69acbb0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/69acbb0c5df2b3276a541ab650c4d42202166f94)) by @
+- **deps:** update dependency @types/react-dom to v18.2.19 ([3930db9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3930db97ce602e644181be9434a2610a4657c295)) by @
+- **deps:** update dependency lint-staged to v15.2.1 ([06e4fe5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/06e4fe5b897fc033384e43ee5d998d3566db5a88)) by @
+- **deps:** update dependency npm-run-all2 to v6.1.2 ([8f97bb7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8f97bb71f6d32c8ca018e1429771981047acf0c0)) by @
+- **deps:** update dependency postcss to v8.4.34 ([585dd12](https://github.com/LibNyanpasu/clash-nyanpasu/commit/585dd128daa83b8a1f968ca40d07a01abeb6e17b)) by @
+- **deps:** update dependency postcss to v8.4.35 ([7d4c5f4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7d4c5f4c579593ebc1e78fa70deb21803400c3ab)) by @
+- **deps:** update dependency stylelint-config-recess-order to v4.6.0 ([8c012d8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8c012d889229498dbbcc60e9d93d53339f9fc010)) by @
+- **deps:** update lint packages ([798c65e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/798c65ee31a4da44363c8f52471896345e157425)) by @
+- **deps:** update lint packages ([b4d5ef0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b4d5ef0ecfbf7cca8b3ab9f31b03d0f716cb5963)) by @
+- **deps:** update lint packages ([#375](https://github.com/LibNyanpasu/clash-nyanpasu/issues/375)) ([7ded812](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7ded8120a5ce8357b99f64c3bed46c292e5096e4)) by @
+- **manifest:** update manifest [skip ci] ([fa52f94](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fa52f941debc03ed306d7488f14cff89b8f06863)) by @
+- **manifest:** update manifest [skip ci] ([26722d3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/26722d38039c64ac37b62ce3b519f06e4f4d8f32)) by @
+- **manifest:** update manifest [skip ci] ([f8e69a3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f8e69a325d24f3fb6708fb382805a198fa371024)) by @
+- **release:** v1.4.5 🤖 [skip ci] ([2e94b33](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2e94b339986781a3eba342d8f74e810e33663c84)) by @
 
-## [1.4.4](https://github.com/keiko233/clash-nyanpasu/compare/v1.4.3...v1.4.4) (2024-01-29)
+## [1.4.4](https://github.com/LibNyanpasu/clash-nyanpasu/compare/v1.4.3...v1.4.4) (2024-01-29)
 
 ### 🐛 Bug Fixes
 
-- **backend:** fix deadlock issue on config ([#312](https://github.com/keiko233/clash-nyanpasu/issues/312)) ([23ced3b](https://github.com/keiko233/clash-nyanpasu/commit/23ced3b6937b9105f2b047c15b13dd45f9324d4e)) by @
-- **ci:** publish & updater ([a715241](https://github.com/keiko233/clash-nyanpasu/commit/a715241c48d0479ffec14c2bb3f875547835a1c0)) by @
-- **ci:** should generate manifest in dev branch for compatible with <= 1.4.3 ([#292](https://github.com/keiko233/clash-nyanpasu/issues/292)) ([ffeb6d7](https://github.com/keiko233/clash-nyanpasu/commit/ffeb6d7e11d62c8cdaa288968c00d4ceec9a0a02)) by @
-- **deps:** update dependency @mui/x-data-grid to v6.19.2 ([b5b96f3](https://github.com/keiko233/clash-nyanpasu/commit/b5b96f353308d5b737d96d3b4a945076440fb497)) by @
-- **deps:** update dependency ahooks to v3.7.9 ([a9da0a9](https://github.com/keiko233/clash-nyanpasu/commit/a9da0a976a28bf332c9094186cf02ab8dd370c06)) by @
-- **deps:** update dependency axios to v1.6.6 ([47f6e71](https://github.com/keiko233/clash-nyanpasu/commit/47f6e7159efa05fc7817b52fbf6291bf01a1253a)) by @
-- **deps:** update dependency axios to v1.6.7 ([c0d5258](https://github.com/keiko233/clash-nyanpasu/commit/c0d5258ff4a7e07e30a3eace91f077df67490248)) by @
-- **deps:** update dependency framer-motion to v11 ([#316](https://github.com/keiko233/clash-nyanpasu/issues/316)) ([97093c5](https://github.com/keiko233/clash-nyanpasu/commit/97093c5a05c22ba057aed03effb6528a6adbda27)) by @
-- **deps:** update dependency framer-motion to v11.0.2 ([4c11f7d](https://github.com/keiko233/clash-nyanpasu/commit/4c11f7dfd3d91f7624326630687910c406dc4fbb)) by @
-- **deps:** update dependency framer-motion to v11.0.3 ([4b899ef](https://github.com/keiko233/clash-nyanpasu/commit/4b899ef0f404023ab02fd78ce83c952e19c3fcc5)) by @
-- **deps:** update dependency i18next to v23.7.19 ([56669df](https://github.com/keiko233/clash-nyanpasu/commit/56669df6426b47f9b463931f2e69f3ea98f68c1d)) by @
-- **deps:** update dependency i18next to v23.7.20 ([348c908](https://github.com/keiko233/clash-nyanpasu/commit/348c908850edec5e284ec23b434b14a3476464aa)) by @
-- **deps:** update dependency i18next to v23.8.0 ([a91312b](https://github.com/keiko233/clash-nyanpasu/commit/a91312bc6b93cfc61c1e71c52a84960ce5197227)) by @
-- **deps:** update dependency i18next to v23.8.1 ([#343](https://github.com/keiko233/clash-nyanpasu/issues/343)) ([c9ee088](https://github.com/keiko233/clash-nyanpasu/commit/c9ee088edbc3639a3fa0605f3463b30d4777e4cc)) by @
-- **deps:** update dependency react-virtuoso to v4.6.3 ([a6d867b](https://github.com/keiko233/clash-nyanpasu/commit/a6d867bdae710472a97ac59076be810d27ada96c)) by @
-- **deps:** update deps ([#294](https://github.com/keiko233/clash-nyanpasu/issues/294)) ([42ec60b](https://github.com/keiko233/clash-nyanpasu/commit/42ec60b90bc78a39cb6b0060464860dabf1ba886)) by @
-- **deps:** update material-ui monorepo ([d251cf2](https://github.com/keiko233/clash-nyanpasu/commit/d251cf2c48f427dfe0208301216d17cc98321ec2)) by @
-- **deps:** update rust crate iptools to 0.2.5 ([#299](https://github.com/keiko233/clash-nyanpasu/issues/299)) ([4371160](https://github.com/keiko233/clash-nyanpasu/commit/43711603cf2b5ece46e32ad65bde6fddd638b1ef)) by @
-- **deps:** update rust crate rquickjs to 0.4.2 ([#300](https://github.com/keiko233/clash-nyanpasu/issues/300)) ([77f9ae8](https://github.com/keiko233/clash-nyanpasu/commit/77f9ae877fa1087868e7ed840f693fe16deaaa06)) by @
-- **deps:** update rust crate serde_json to v1.0.113 ([#344](https://github.com/keiko233/clash-nyanpasu/issues/344)) ([286b0b8](https://github.com/keiko233/clash-nyanpasu/commit/286b0b853b6f57df4678b2ece30e5ad02fccfb5c)) by @
-- **deps:** update rust crate serde_yaml to v0.9.31 ([#345](https://github.com/keiko233/clash-nyanpasu/issues/345)) ([397c7a3](https://github.com/keiko233/clash-nyanpasu/commit/397c7a38da989b2ae1b0bd1d84ecc7f6a740889d)) by @
-- **deps:** update rust crate simd-json to 0.13.8 ([#301](https://github.com/keiko233/clash-nyanpasu/issues/301)) ([5fc147a](https://github.com/keiko233/clash-nyanpasu/commit/5fc147a834782bb5d9ddda29763c0cdd4a092ffc)) by @
-- **deps:** update rust crate simd-json to 0.13.8 ([#302](https://github.com/keiko233/clash-nyanpasu/issues/302)) ([29f6046](https://github.com/keiko233/clash-nyanpasu/commit/29f6046654ec904bb4c23f1b3ca1c5f1fd735f32)) by @
-- **portable:** do not use system notification api while app is portable ([#334](https://github.com/keiko233/clash-nyanpasu/issues/334)) ([e9abc47](https://github.com/keiko233/clash-nyanpasu/commit/e9abc47cad9cf322355b97122e9b4af9182edbfe)) by @
-- **portable:** portable bundle issue ([#335](https://github.com/keiko233/clash-nyanpasu/issues/335)) ([c9ea3cd](https://github.com/keiko233/clash-nyanpasu/commit/c9ea3cda4412f8993eaef86c665c4a6708bb0511)) by @
-- **updater:** use release body as updater note ([#333](https://github.com/keiko233/clash-nyanpasu/issues/333)) ([9db0bac](https://github.com/keiko233/clash-nyanpasu/commit/9db0bacbc2ea6ee8f7206bfe1408eb8baf7b25eb)) by @
-- use if let instead ([#309](https://github.com/keiko233/clash-nyanpasu/issues/309)) ([390bf62](https://github.com/keiko233/clash-nyanpasu/commit/390bf624709125df513ae0008c0557789f55b9e8)) by @
+- **backend:** fix deadlock issue on config ([#312](https://github.com/LibNyanpasu/clash-nyanpasu/issues/312)) ([23ced3b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/23ced3b6937b9105f2b047c15b13dd45f9324d4e)) by @
+- **ci:** publish & updater ([a715241](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a715241c48d0479ffec14c2bb3f875547835a1c0)) by @
+- **ci:** should generate manifest in dev branch for compatible with <= 1.4.3 ([#292](https://github.com/LibNyanpasu/clash-nyanpasu/issues/292)) ([ffeb6d7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ffeb6d7e11d62c8cdaa288968c00d4ceec9a0a02)) by @
+- **deps:** update dependency @mui/x-data-grid to v6.19.2 ([b5b96f3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b5b96f353308d5b737d96d3b4a945076440fb497)) by @
+- **deps:** update dependency ahooks to v3.7.9 ([a9da0a9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a9da0a976a28bf332c9094186cf02ab8dd370c06)) by @
+- **deps:** update dependency axios to v1.6.6 ([47f6e71](https://github.com/LibNyanpasu/clash-nyanpasu/commit/47f6e7159efa05fc7817b52fbf6291bf01a1253a)) by @
+- **deps:** update dependency axios to v1.6.7 ([c0d5258](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c0d5258ff4a7e07e30a3eace91f077df67490248)) by @
+- **deps:** update dependency framer-motion to v11 ([#316](https://github.com/LibNyanpasu/clash-nyanpasu/issues/316)) ([97093c5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/97093c5a05c22ba057aed03effb6528a6adbda27)) by @
+- **deps:** update dependency framer-motion to v11.0.2 ([4c11f7d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4c11f7dfd3d91f7624326630687910c406dc4fbb)) by @
+- **deps:** update dependency framer-motion to v11.0.3 ([4b899ef](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4b899ef0f404023ab02fd78ce83c952e19c3fcc5)) by @
+- **deps:** update dependency i18next to v23.7.19 ([56669df](https://github.com/LibNyanpasu/clash-nyanpasu/commit/56669df6426b47f9b463931f2e69f3ea98f68c1d)) by @
+- **deps:** update dependency i18next to v23.7.20 ([348c908](https://github.com/LibNyanpasu/clash-nyanpasu/commit/348c908850edec5e284ec23b434b14a3476464aa)) by @
+- **deps:** update dependency i18next to v23.8.0 ([a91312b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a91312bc6b93cfc61c1e71c52a84960ce5197227)) by @
+- **deps:** update dependency i18next to v23.8.1 ([#343](https://github.com/LibNyanpasu/clash-nyanpasu/issues/343)) ([c9ee088](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c9ee088edbc3639a3fa0605f3463b30d4777e4cc)) by @
+- **deps:** update dependency react-virtuoso to v4.6.3 ([a6d867b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a6d867bdae710472a97ac59076be810d27ada96c)) by @
+- **deps:** update deps ([#294](https://github.com/LibNyanpasu/clash-nyanpasu/issues/294)) ([42ec60b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/42ec60b90bc78a39cb6b0060464860dabf1ba886)) by @
+- **deps:** update material-ui monorepo ([d251cf2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d251cf2c48f427dfe0208301216d17cc98321ec2)) by @
+- **deps:** update rust crate iptools to 0.2.5 ([#299](https://github.com/LibNyanpasu/clash-nyanpasu/issues/299)) ([4371160](https://github.com/LibNyanpasu/clash-nyanpasu/commit/43711603cf2b5ece46e32ad65bde6fddd638b1ef)) by @
+- **deps:** update rust crate rquickjs to 0.4.2 ([#300](https://github.com/LibNyanpasu/clash-nyanpasu/issues/300)) ([77f9ae8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/77f9ae877fa1087868e7ed840f693fe16deaaa06)) by @
+- **deps:** update rust crate serde_json to v1.0.113 ([#344](https://github.com/LibNyanpasu/clash-nyanpasu/issues/344)) ([286b0b8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/286b0b853b6f57df4678b2ece30e5ad02fccfb5c)) by @
+- **deps:** update rust crate serde_yaml to v0.9.31 ([#345](https://github.com/LibNyanpasu/clash-nyanpasu/issues/345)) ([397c7a3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/397c7a38da989b2ae1b0bd1d84ecc7f6a740889d)) by @
+- **deps:** update rust crate simd-json to 0.13.8 ([#301](https://github.com/LibNyanpasu/clash-nyanpasu/issues/301)) ([5fc147a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5fc147a834782bb5d9ddda29763c0cdd4a092ffc)) by @
+- **deps:** update rust crate simd-json to 0.13.8 ([#302](https://github.com/LibNyanpasu/clash-nyanpasu/issues/302)) ([29f6046](https://github.com/LibNyanpasu/clash-nyanpasu/commit/29f6046654ec904bb4c23f1b3ca1c5f1fd735f32)) by @
+- **portable:** do not use system notification api while app is portable ([#334](https://github.com/LibNyanpasu/clash-nyanpasu/issues/334)) ([e9abc47](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e9abc47cad9cf322355b97122e9b4af9182edbfe)) by @
+- **portable:** portable bundle issue ([#335](https://github.com/LibNyanpasu/clash-nyanpasu/issues/335)) ([c9ea3cd](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c9ea3cda4412f8993eaef86c665c4a6708bb0511)) by @
+- **updater:** use release body as updater note ([#333](https://github.com/LibNyanpasu/clash-nyanpasu/issues/333)) ([9db0bac](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9db0bacbc2ea6ee8f7206bfe1408eb8baf7b25eb)) by @
+- use if let instead ([#309](https://github.com/LibNyanpasu/clash-nyanpasu/issues/309)) ([390bf62](https://github.com/LibNyanpasu/clash-nyanpasu/commit/390bf624709125df513ae0008c0557789f55b9e8)) by @
 
 ### 🧹 Maintenance
 
-- **deps:** pin dependencies ([#295](https://github.com/keiko233/clash-nyanpasu/issues/295)) ([a920469](https://github.com/keiko233/clash-nyanpasu/commit/a92046906f3d7360227ec96a6ca969cdf5973fd6)) by @
-- **deps:** pin dependencies ([#296](https://github.com/keiko233/clash-nyanpasu/issues/296)) ([0d147b3](https://github.com/keiko233/clash-nyanpasu/commit/0d147b3dd3dc7348e3ebd0f296d1aac94b80ee2b)) by @
-- **deps:** pin dependencies ([#297](https://github.com/keiko233/clash-nyanpasu/issues/297)) ([8620b3a](https://github.com/keiko233/clash-nyanpasu/commit/8620b3af236debaf7cbb40cfcb7bdecf7363104d)) by @
-- **deps:** pin dependencies ([#298](https://github.com/keiko233/clash-nyanpasu/issues/298)) ([d413980](https://github.com/keiko233/clash-nyanpasu/commit/d413980d32ebc6922f81e3e98ee9109d28090c43)) by @
-- **deps:** replace dependency npm-run-all with npm-run-all2 5.0.0 ([#337](https://github.com/keiko233/clash-nyanpasu/issues/337)) ([e091bf3](https://github.com/keiko233/clash-nyanpasu/commit/e091bf32868d53a979ddc1422ee5949c965434b0)) by @
-- **deps:** update backend deps ([#332](https://github.com/keiko233/clash-nyanpasu/issues/332)) ([506e1df](https://github.com/keiko233/clash-nyanpasu/commit/506e1df6c89b2e7b43383c374d3f1a5f3e05efa9)) by @
-- **deps:** update dependency husky to v9 ([#322](https://github.com/keiko233/clash-nyanpasu/issues/322)) ([6eb6a1a](https://github.com/keiko233/clash-nyanpasu/commit/6eb6a1a836fd38e94d3232669a878ee50210fdac)) by @
-- **deps:** update dependency npm-run-all2 to v5.0.2 ([d6e6536](https://github.com/keiko233/clash-nyanpasu/commit/d6e653606db65f416769033c010774da862f2247)) by @
-- **deps:** update dependency npm-run-all2 to v6 ([#342](https://github.com/keiko233/clash-nyanpasu/issues/342)) ([a92959c](https://github.com/keiko233/clash-nyanpasu/commit/a92959c53719f37ee507609cae3f37a121b9c540)) by @
-- **deps:** update dependency shikiji to v0.10.0 ([9d8483a](https://github.com/keiko233/clash-nyanpasu/commit/9d8483aeddd1cf5e102262f1ecc7a9503d307fb9)) by @
-- **deps:** update dependency shikiji to v0.10.1 ([b54c881](https://github.com/keiko233/clash-nyanpasu/commit/b54c88124f1ffbae58bda5f0762160b6ff7e6c4a)) by @
-- **deps:** update dependency shikiji to v0.10.2 ([45f3662](https://github.com/keiko233/clash-nyanpasu/commit/45f3662dcbb8f0ca6d0732d76249160664e530e9)) by @
-- **deps:** update dependency stylelint-scss to v6.1.0 ([005f745](https://github.com/keiko233/clash-nyanpasu/commit/005f745f35050f96367ce0612d12c5c16ffb4401)) by @
-- **deps:** update lint packages to v18.5.0 ([#308](https://github.com/keiko233/clash-nyanpasu/issues/308)) ([9c9293b](https://github.com/keiko233/clash-nyanpasu/commit/9c9293ba8e391fae719e8ddb01baf461a32bbcf3)) by @
-- **deps:** update lint packages to v18.6.0 ([d9c3566](https://github.com/keiko233/clash-nyanpasu/commit/d9c356617734695ac2dbb553c7c7c52d7916ac30)) by @
-- **deps:** update lint packages to v6.19.1 ([4fe3458](https://github.com/keiko233/clash-nyanpasu/commit/4fe3458dd60f65e8b9f2dfdf7d20bf49e0e0f822)) by @
-- **manifest:** update manifest [skip ci] ([e716aa5](https://github.com/keiko233/clash-nyanpasu/commit/e716aa559b88bc593bd69c5dd5f7348b0109085e)) by @
-- **manifest:** update manifest [skip ci] ([1764847](https://github.com/keiko233/clash-nyanpasu/commit/1764847ec46b8b23e9a7d800ac0fe3e52489e085)) by @
-- **manifest:** update manifest [skip ci] ([d13a76e](https://github.com/keiko233/clash-nyanpasu/commit/d13a76e5bb3ecb540009ab13bb872f342fceeb58)) by @
-- **release:** v1.4.4 🤖 [skip ci] ([9874b01](https://github.com/keiko233/clash-nyanpasu/commit/9874b01db4392376789f7cb6252a5c109bfb4280)) by @github-actions[bot]
+- **deps:** pin dependencies ([#295](https://github.com/LibNyanpasu/clash-nyanpasu/issues/295)) ([a920469](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a92046906f3d7360227ec96a6ca969cdf5973fd6)) by @
+- **deps:** pin dependencies ([#296](https://github.com/LibNyanpasu/clash-nyanpasu/issues/296)) ([0d147b3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0d147b3dd3dc7348e3ebd0f296d1aac94b80ee2b)) by @
+- **deps:** pin dependencies ([#297](https://github.com/LibNyanpasu/clash-nyanpasu/issues/297)) ([8620b3a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8620b3af236debaf7cbb40cfcb7bdecf7363104d)) by @
+- **deps:** pin dependencies ([#298](https://github.com/LibNyanpasu/clash-nyanpasu/issues/298)) ([d413980](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d413980d32ebc6922f81e3e98ee9109d28090c43)) by @
+- **deps:** replace dependency npm-run-all with npm-run-all2 5.0.0 ([#337](https://github.com/LibNyanpasu/clash-nyanpasu/issues/337)) ([e091bf3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e091bf32868d53a979ddc1422ee5949c965434b0)) by @
+- **deps:** update backend deps ([#332](https://github.com/LibNyanpasu/clash-nyanpasu/issues/332)) ([506e1df](https://github.com/LibNyanpasu/clash-nyanpasu/commit/506e1df6c89b2e7b43383c374d3f1a5f3e05efa9)) by @
+- **deps:** update dependency husky to v9 ([#322](https://github.com/LibNyanpasu/clash-nyanpasu/issues/322)) ([6eb6a1a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6eb6a1a836fd38e94d3232669a878ee50210fdac)) by @
+- **deps:** update dependency npm-run-all2 to v5.0.2 ([d6e6536](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d6e653606db65f416769033c010774da862f2247)) by @
+- **deps:** update dependency npm-run-all2 to v6 ([#342](https://github.com/LibNyanpasu/clash-nyanpasu/issues/342)) ([a92959c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a92959c53719f37ee507609cae3f37a121b9c540)) by @
+- **deps:** update dependency shikiji to v0.10.0 ([9d8483a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9d8483aeddd1cf5e102262f1ecc7a9503d307fb9)) by @
+- **deps:** update dependency shikiji to v0.10.1 ([b54c881](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b54c88124f1ffbae58bda5f0762160b6ff7e6c4a)) by @
+- **deps:** update dependency shikiji to v0.10.2 ([45f3662](https://github.com/LibNyanpasu/clash-nyanpasu/commit/45f3662dcbb8f0ca6d0732d76249160664e530e9)) by @
+- **deps:** update dependency stylelint-scss to v6.1.0 ([005f745](https://github.com/LibNyanpasu/clash-nyanpasu/commit/005f745f35050f96367ce0612d12c5c16ffb4401)) by @
+- **deps:** update lint packages to v18.5.0 ([#308](https://github.com/LibNyanpasu/clash-nyanpasu/issues/308)) ([9c9293b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9c9293ba8e391fae719e8ddb01baf461a32bbcf3)) by @
+- **deps:** update lint packages to v18.6.0 ([d9c3566](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d9c356617734695ac2dbb553c7c7c52d7916ac30)) by @
+- **deps:** update lint packages to v6.19.1 ([4fe3458](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4fe3458dd60f65e8b9f2dfdf7d20bf49e0e0f822)) by @
+- **manifest:** update manifest [skip ci] ([e716aa5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e716aa559b88bc593bd69c5dd5f7348b0109085e)) by @
+- **manifest:** update manifest [skip ci] ([1764847](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1764847ec46b8b23e9a7d800ac0fe3e52489e085)) by @
+- **manifest:** update manifest [skip ci] ([d13a76e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d13a76e5bb3ecb540009ab13bb872f342fceeb58)) by @
+- **release:** v1.4.4 🤖 [skip ci] ([9874b01](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9874b01db4392376789f7cb6252a5c109bfb4280)) by @
 
 ### 📚 Documentation
 
-- add ArchLinux AUR install suggestion ([#293](https://github.com/keiko233/clash-nyanpasu/issues/293)) ([a7893cb](https://github.com/keiko233/clash-nyanpasu/commit/a7893cbd3ed8b03617f94737d3ab637714ce6851)) by @
+- add ArchLinux AUR install suggestion ([#293](https://github.com/LibNyanpasu/clash-nyanpasu/issues/293)) ([a7893cb](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a7893cbd3ed8b03617f94737d3ab637714ce6851)) by @
 
 ### 🔨 Refactoring
 
-- **backend:** improve code robustness ([#303](https://github.com/keiko233/clash-nyanpasu/issues/303)) ([ba24602](https://github.com/keiko233/clash-nyanpasu/commit/ba24602fff6c22b0d98396c4a55afced1efc58b1)) by @
+- **backend:** improve code robustness ([#303](https://github.com/LibNyanpasu/clash-nyanpasu/issues/303)) ([ba24602](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ba24602fff6c22b0d98396c4a55afced1efc58b1)) by @
 
-## [1.4.3](https://github.com/keiko233/clash-nyanpasu/compare/v1.4.2...v1.4.3) (2024-01-20)
-
-### ✨ Features
-
-- make proxies material you ([2600772](https://github.com/keiko233/clash-nyanpasu/commit/26007724765f051490fd223d2e023089049153a2)) by @
-- new release workflow ([#284](https://github.com/keiko233/clash-nyanpasu/issues/284)) ([21e17b4](https://github.com/keiko233/clash-nyanpasu/commit/21e17b454fd4a8bddab65ea0e5d15b53ed3b8ef0)) by @
-- proxies ui minor tweaks ([8c56e0f](https://github.com/keiko233/clash-nyanpasu/commit/8c56e0fc263cbfb86ab59664e7ea0b9b6c1826c2)) by @
-
-### 🐛 Bug Fixes
-
-- [#212](https://github.com/keiko233/clash-nyanpasu/issues/212) ([190a36a](https://github.com/keiko233/clash-nyanpasu/commit/190a36a98fde570c7bb04155a3c682ec1b8b9431)) by @
-- add a panic hook to collect logs and show a dialog ([#191](https://github.com/keiko233/clash-nyanpasu/issues/191)) ([f23eb73](https://github.com/keiko233/clash-nyanpasu/commit/f23eb738521443856746fe55ba2ee3cc35748aa0)) by @
-- **ci:** pin rust version to 1.74.1 ([#213](https://github.com/keiko233/clash-nyanpasu/issues/213)) ([86ff2d4](https://github.com/keiko233/clash-nyanpasu/commit/86ff2d40144556eeb698db81903011f4b54d5f23)) by @
-- **ci:** use dev commit hash when schedule dispatch ([50c777b](https://github.com/keiko233/clash-nyanpasu/commit/50c777b97bac97555a6ee967bf8a57b99b92e8f8)) by @
-- **ci:** use latest action ([9e1d76e](https://github.com/keiko233/clash-nyanpasu/commit/9e1d76ec9795ddb553ddcf8199cd57d3f221395b)) by @
-- dark mode flash in win ([ffe2bde](https://github.com/keiko233/clash-nyanpasu/commit/ffe2bde3b69c9a2ecba1494045f8dbac135d0b49)) by @
-- **deps:** update dependency framer-motion to v10.17.0 ([051c7fb](https://github.com/keiko233/clash-nyanpasu/commit/051c7fbd677880c06373381309e42569b8be80cf)) by @
-- **deps:** update dependency framer-motion to v10.17.4 ([c6c438e](https://github.com/keiko233/clash-nyanpasu/commit/c6c438e3e9dbea5de3822cb621c64c8d690ab9f4)) by @
-- **deps:** update dependency framer-motion to v10.17.6 ([42df02e](https://github.com/keiko233/clash-nyanpasu/commit/42df02ea5c2ba232a20b327c3fe94b488919a57d)) by @
-- **deps:** update dependency framer-motion to v10.17.8 ([cbb7df4](https://github.com/keiko233/clash-nyanpasu/commit/cbb7df4536eb4bb9da096efb50d266a352ed30ec)) by @
-- **deps:** update dependency framer-motion to v10.17.9 ([63a7431](https://github.com/keiko233/clash-nyanpasu/commit/63a743162cfa148c55d4ef6cd4bf8d6c6b32083c)) by @
-- **deps:** update dependency framer-motion to v10.18.0 ([d243e8f](https://github.com/keiko233/clash-nyanpasu/commit/d243e8f623e0bccbffd40860b76c879003fdd66a)) by @
-- **deps:** update rust crate async-trait to 0.1.75 ([6722174](https://github.com/keiko233/clash-nyanpasu/commit/6722174d66dc81b6e01e91d8cc947ad4046a1625)) by @
-- **deps:** update rust crate async-trait to 0.1.77 ([#249](https://github.com/keiko233/clash-nyanpasu/issues/249)) ([fffc081](https://github.com/keiko233/clash-nyanpasu/commit/fffc081a219df3be91f30ee79d9eaf7965384c0b)) by @
-- **deps:** update rust crate ctrlc to 3.4.2 ([0362463](https://github.com/keiko233/clash-nyanpasu/commit/0362463b6de35bf926a77ad9ec2a07e780243ace)) by @
-- **deps:** update rust crate delay_timer to 0.11.5 ([#250](https://github.com/keiko233/clash-nyanpasu/issues/250)) ([48ace4f](https://github.com/keiko233/clash-nyanpasu/commit/48ace4fde690ff200e37290667fe5c380151657e)) by @
-- **deps:** update rust crate rquickjs to 0.4.0 ([#131](https://github.com/keiko233/clash-nyanpasu/issues/131)) ([00c99ca](https://github.com/keiko233/clash-nyanpasu/commit/00c99ca93699537843e5ec97726f337d96582e13)), closes [#243](https://github.com/keiko233/clash-nyanpasu/issues/243) by @
-- **deps:** update rust crate simd-json to 0.13.6 ([#251](https://github.com/keiko233/clash-nyanpasu/issues/251)) ([36bda5a](https://github.com/keiko233/clash-nyanpasu/commit/36bda5aa4ef60da1f0baa5219f5d5b6976d67a2b)) by @
-- **deps:** update rust crate tauri to 1.5.4 ([8b3e420](https://github.com/keiko233/clash-nyanpasu/commit/8b3e4207b86d733b5ace853cce73bee0d979f2ec)) by @
-- **deps:** update rust crate tempfile to 3.9.0 ([b3404bf](https://github.com/keiko233/clash-nyanpasu/commit/b3404bf3984dc9e9c9be9923bdc6715272469a9a)) by @
-- enable_tun block the process ([#232](https://github.com/keiko233/clash-nyanpasu/issues/232)) ([de1c4a0](https://github.com/keiko233/clash-nyanpasu/commit/de1c4a05f93c1ee2772ef248c8e8679ac242f31e)) by @
-- lint ([46071c6](https://github.com/keiko233/clash-nyanpasu/commit/46071c662798473d0ddec54c8952ee2ac41ba188)) by @
-- **log:** incorrect color in light mode ([211bc44](https://github.com/keiko233/clash-nyanpasu/commit/211bc44793a80a51f52700544c538006fd602365)) by @
-- notification fallback ([#262](https://github.com/keiko233/clash-nyanpasu/issues/262)) ([ce0224d](https://github.com/keiko233/clash-nyanpasu/commit/ce0224d779296515157479276599d157b2e16e52)) by @
-- notification premission check ([#263](https://github.com/keiko233/clash-nyanpasu/issues/263)) ([c1f8c54](https://github.com/keiko233/clash-nyanpasu/commit/c1f8c54df7420509bd588f36abd5011242dcc2ed)) by @
-- open file, closing [#197](https://github.com/keiko233/clash-nyanpasu/issues/197) ([4345dc2](https://github.com/keiko233/clash-nyanpasu/commit/4345dc26c7c91ea981e5daa7a5f16bca2b77e7ce)) by @
-- publish ci ([a518542](https://github.com/keiko233/clash-nyanpasu/commit/a518542f97d3aa60c4f3668d5ce4987749a834fc)) by @
-- release ci ([c9ae02a](https://github.com/keiko233/clash-nyanpasu/commit/c9ae02a6bb3ffc5c2968a06bc57d87fc20b3fd95)) by @
-- **rocksdb:** use TransactionDB instead of OptimisticTransactionDB ([#194](https://github.com/keiko233/clash-nyanpasu/issues/194)) ([8373913](https://github.com/keiko233/clash-nyanpasu/commit/83739131fd53e0a59798db986f441d10d6faea33)) by @
-- same text color for `REJECT-DROP` policy as `REJECT` ([#236](https://github.com/keiko233/clash-nyanpasu/issues/236)) ([c78dff4](https://github.com/keiko233/clash-nyanpasu/commit/c78dff4fcb1750629a4218405a9ef8ffdda95396)) by @
-- stable channel build issue ([#248](https://github.com/keiko233/clash-nyanpasu/issues/248)) ([13d7bc4](https://github.com/keiko233/clash-nyanpasu/commit/13d7bc4e0ef40f725483f458f3b2cc566957f5b5)) by @
-- updater ([ca1ed25](https://github.com/keiko233/clash-nyanpasu/commit/ca1ed25d3b252da7fd7a8a50ee31fc316b4ccadf)) by @
-- **updater:** should use nyanpasu proxy or system proxy when performing request ([#273](https://github.com/keiko233/clash-nyanpasu/issues/273)) ([dc582b4](https://github.com/keiko233/clash-nyanpasu/commit/dc582b4adc959eb292dcaa1c10074119c67bd05a)) by @
-- **updater:** add status code judge ([67e26bc](https://github.com/keiko233/clash-nyanpasu/commit/67e26bc0c63d7e87f60b6c872ad3f50d05a94f61)) by @
-- **updater:** allow to use elevated permission to copy and override core ([6c992b7](https://github.com/keiko233/clash-nyanpasu/commit/6c992b7c5fb9221376c30aae8ff004297c14315d)) by @
-- virtuoso scroller bottom not padding ([be3d99c](https://github.com/keiko233/clash-nyanpasu/commit/be3d99cd0f22947cb52fdd87b1e8e1bc21ae7863)) by @
-- **vite:** rm useless shikiji langs support ([#267](https://github.com/keiko233/clash-nyanpasu/issues/267)) ([7768255](https://github.com/keiko233/clash-nyanpasu/commit/7768255b863be4a141d0c551cd3425faee19238e)) by @
-- windrag err ([a7ddd3a](https://github.com/keiko233/clash-nyanpasu/commit/a7ddd3a4dec8ea72e24696009601431ec26646bf)) by @
-
-### 🧹 Maintenance
-
-- **backend:** update peer deps ([969a061](https://github.com/keiko233/clash-nyanpasu/commit/969a06159d4b17f0fa96d3cbb86188e667bd21b8)) by @
-- **deps:** update actions/cache action to v4 ([#277](https://github.com/keiko233/clash-nyanpasu/issues/277)) ([a6d1025](https://github.com/keiko233/clash-nyanpasu/commit/a6d1025c4f9ff155c8875f27fb97f8a7a58cb2c2)) by @
-- **deps:** update dependency autoprefixer to v10.4.17 ([5e8eaa2](https://github.com/keiko233/clash-nyanpasu/commit/5e8eaa200d406b1a59399d7f17ecf3f2d49cb6ac)) by @
-- **deps:** update dependency eslint-plugin-n to v16.6.0 ([7e7b645](https://github.com/keiko233/clash-nyanpasu/commit/7e7b64586893dfee2dce3d7a1a30a1abc579bf15)) by @
-- **deps:** update dependency eslint-plugin-n to v16.6.1 ([51049b8](https://github.com/keiko233/clash-nyanpasu/commit/51049b83419c0c2574c979ec2515e302031ca8cc)) by @
-- **deps:** update dependency eslint-plugin-prettier to v5.1.3 ([3659b7a](https://github.com/keiko233/clash-nyanpasu/commit/3659b7aba7f56ee223377cb056df8e42ca9afe79)) by @
-- **deps:** update dependency postcss to v8.4.33 ([884a531](https://github.com/keiko233/clash-nyanpasu/commit/884a53111305de7fc0a50b63dafa3a5b3d3f09ff)) by @
-- **deps:** update dependency postcss-html to v1.6.0 ([7ff9013](https://github.com/keiko233/clash-nyanpasu/commit/7ff9013314a4ae0f3033d1cac33af77986a77687)) by @
-- **deps:** update dependency postcss-import to v16 ([#229](https://github.com/keiko233/clash-nyanpasu/issues/229)) ([eacfcf3](https://github.com/keiko233/clash-nyanpasu/commit/eacfcf323434835779bf94c380ddce341d759293)) by @
-- **deps:** update dependency shikiji to v0.9.12 ([0c7e12f](https://github.com/keiko233/clash-nyanpasu/commit/0c7e12fe60c2161aa8aca16da39b79f11932c3e2)) by @
-- **deps:** update dependency shikiji to v0.9.15 ([fee3885](https://github.com/keiko233/clash-nyanpasu/commit/fee3885b736954889cc67d8dfd02a4905ec03933)) by @
-- **deps:** update dependency shikiji to v0.9.16 ([1bca8fa](https://github.com/keiko233/clash-nyanpasu/commit/1bca8faded9252b359c43ac67b48b1c3a2e5ab65)) by @
-- **deps:** update dependency shikiji to v0.9.17 ([add3d3e](https://github.com/keiko233/clash-nyanpasu/commit/add3d3e1aa1f6a39fb10cb607d34a037b7a43ef0)) by @
-- **deps:** update dependency shikiji to v0.9.18 ([ae18c31](https://github.com/keiko233/clash-nyanpasu/commit/ae18c31990500bc9d4ce61d4d6a8915c3caf3fa7)) by @
-- **deps:** update dependency shikiji to v0.9.19 ([a16e3ad](https://github.com/keiko233/clash-nyanpasu/commit/a16e3adc90c040f12584140f4a8ddc8f86838a90)) by @
-- **deps:** update dependency stylelint to v16.1.0 ([1dbd52e](https://github.com/keiko233/clash-nyanpasu/commit/1dbd52e09bd8d9a826d0e32058ba04d6436c0045)) by @
-- **deps:** update dependency stylelint to v16.2.0 ([28a4a81](https://github.com/keiko233/clash-nyanpasu/commit/28a4a815c0bc8df06ee82a24093a4b1a7669889d)) by @
-- **deps:** update dependency stylelint-config-standard to v36 ([#193](https://github.com/keiko233/clash-nyanpasu/issues/193)) ([1901dca](https://github.com/keiko233/clash-nyanpasu/commit/1901dcabb69a4f125f1202a22885da0474178f45)) by @
-- **deps:** update dependency stylelint-declaration-block-no-ignored-properties to v2.8.0 ([c4cd00f](https://github.com/keiko233/clash-nyanpasu/commit/c4cd00faec7d2e0e3406e9c5c59f1913d0041e17)) by @
-- **deps:** update lint packages ([#246](https://github.com/keiko233/clash-nyanpasu/issues/246)) ([fcc4bb2](https://github.com/keiko233/clash-nyanpasu/commit/fcc4bb29475193bb51cb4596d83a6c623d1efe2b)) by @
-- **deps:** update lint packages to v18.4.4 ([3ef72a0](https://github.com/keiko233/clash-nyanpasu/commit/3ef72a03de36f0d57833ea945448e2f624e303df)) by @
-- **deps:** update lint packages to v6.16.0 ([41752d9](https://github.com/keiko233/clash-nyanpasu/commit/41752d9c16ac8cdad6afcaebc072ec704f5f9de7)) by @
-- **deps:** update lint packages to v6.17.0 ([1e3be59](https://github.com/keiko233/clash-nyanpasu/commit/1e3be5908faec268ddcd24f1ad06359c40af8feb)) by @
-- **deps:** update lint packages to v6.18.0 ([cb752c3](https://github.com/keiko233/clash-nyanpasu/commit/cb752c371edc3b0a25075df38f63343d56348e6d)) by @
-- **deps:** update lint packages to v6.19.0 ([4301ec6](https://github.com/keiko233/clash-nyanpasu/commit/4301ec6838a5b2414ec6f71bc3972555c346a4be)) by @
-- fix build ([85bc278](https://github.com/keiko233/clash-nyanpasu/commit/85bc278c62768ee2758a05abb36e77d30e076fdc)) by @
-- fix build tag typos ([bd7656f](https://github.com/keiko233/clash-nyanpasu/commit/bd7656f4d6231c441e4a960e2869dbbaec4ddeac)) by @
-- fix script consola columns ([4298483](https://github.com/keiko233/clash-nyanpasu/commit/4298483c670e4c6d4b8eefe49d38d479e6417f9c)) by @
-- **manifest:** update manifest [skip ci] ([71e759a](https://github.com/keiko233/clash-nyanpasu/commit/71e759a8bfa999bce949f1a7f5643e25588d0925)) by @
-- **manifest:** update manifest [skip ci] ([738906c](https://github.com/keiko233/clash-nyanpasu/commit/738906c68c81632c9522d19722f4bab67ce1b11b)) by @
-- **manifest:** update manifest [skip ci] ([bbccc15](https://github.com/keiko233/clash-nyanpasu/commit/bbccc15cdfc77bdbef5c08da95fced042a557f9c)) by @
-- **manifest:** update manifest [skip ci] ([76fc8f9](https://github.com/keiko233/clash-nyanpasu/commit/76fc8f970897d18ec2a9a391c541f7952244bdda)) by @
-- **manifest:** update manifest [skip ci] ([04cb5c4](https://github.com/keiko233/clash-nyanpasu/commit/04cb5c40a7238efdf6ffe708db7537859df422d6)) by @
-- **manifest:** update manifest [skip ci] ([10cccc1](https://github.com/keiko233/clash-nyanpasu/commit/10cccc12ced284fdd3ee2465b416f0b98f23b428)) by @
-- **manifest:** update manifest [skip ci] ([2e8e881](https://github.com/keiko233/clash-nyanpasu/commit/2e8e881f170996034b4676db51d34e726dd92097)) by @
-- **manifest:** update manifest [skip ci] ([abd787b](https://github.com/keiko233/clash-nyanpasu/commit/abd787b8927108635fca53fbae5eed355b0a7c47)) by @
-- **manifest:** update manifest [skip ci] ([35d5296](https://github.com/keiko233/clash-nyanpasu/commit/35d5296ee088751d75880011a7fa70b70251cf48)) by @
-- **manifest:** update manifest [skip ci] ([aeeca77](https://github.com/keiko233/clash-nyanpasu/commit/aeeca7761944d7dad67b78f44ef04bc3fe94b0c1)) by @
-- **manifest:** update manifest [skip ci] ([6584023](https://github.com/keiko233/clash-nyanpasu/commit/658402332f91cd3cd6dfb5e29042d6c452632d19)) by @
-- **manifest:** update manifest [skip ci] ([01c4bfe](https://github.com/keiko233/clash-nyanpasu/commit/01c4bfed68e23fe97258e649430ed611775bfe52)) by @
-- **manifest:** update manifest [skip ci] ([5c486df](https://github.com/keiko233/clash-nyanpasu/commit/5c486df13af2e955e3599b7a7794e69add0180f0)) by @
-- **manifest:** update manifest [skip ci] ([ba7a06a](https://github.com/keiko233/clash-nyanpasu/commit/ba7a06a9c6910a729017193f5e2532aae5dc5ffd)) by @
-- **manifest:** update manifest [skip ci] ([0e64c0d](https://github.com/keiko233/clash-nyanpasu/commit/0e64c0dc1cb73b12e53155ad3f9f77a7e22b97c7)) by @
-- **manifest:** update manifest [skip ci] ([bd1d4be](https://github.com/keiko233/clash-nyanpasu/commit/bd1d4bea2ef0d6649d5b396b9363c85d46500c24)) by @
-- **manifest:** update manifest [skip ci] ([3d3f631](https://github.com/keiko233/clash-nyanpasu/commit/3d3f631368d22f34a5ac499e769d288dbbace827)) by @
-- **manifest:** update manifest [skip ci] ([450b285](https://github.com/keiko233/clash-nyanpasu/commit/450b285c1e6ee4d368fe625280a40a101c9a82eb)) by @
-- **manifest:** update manifest [skip ci] ([020e3f7](https://github.com/keiko233/clash-nyanpasu/commit/020e3f72595aff9cd45911413106e617649100d1)) by @
-- **manifest:** update manifest [skip ci] ([a732623](https://github.com/keiko233/clash-nyanpasu/commit/a7326234663453b300b2aeef631bbc0cd798b9a6)) by @
-- **manifest:** update manifest [skip ci] ([3d53aa3](https://github.com/keiko233/clash-nyanpasu/commit/3d53aa377dba5219c394e8bf60e133be8f926091)) by @
-- **manifest:** update manifest [skip ci] ([a04fbb9](https://github.com/keiko233/clash-nyanpasu/commit/a04fbb9917d71cc97d1dac90d4b1bac34a2e09f9)) by @
-- **manifest:** update manifest [skip ci] ([333560a](https://github.com/keiko233/clash-nyanpasu/commit/333560ab3600452e3a2c8efbf475085c691fde2a)) by @
-- **manifest:** update manifest [skip ci] ([5cd919e](https://github.com/keiko233/clash-nyanpasu/commit/5cd919e569392ce64ba1b9cec09b50c577189c5b)) by @
-- **manifest:** update manifest [skip ci] ([41fdc22](https://github.com/keiko233/clash-nyanpasu/commit/41fdc22f6830dfd9d234d538b415d298b47fdf7c)) by @
-- **manifest:** update manifest [skip ci] ([2e27c9a](https://github.com/keiko233/clash-nyanpasu/commit/2e27c9adbbc9410ddcf9877c75173f8441e26a1e)) by @
-- **manifest:** update manifest [skip ci] ([3c48bb6](https://github.com/keiko233/clash-nyanpasu/commit/3c48bb6edc2d5503614c5859efc0ff96beed5b07)) by @
-- port dev build action to release build ([2a39be3](https://github.com/keiko233/clash-nyanpasu/commit/2a39be37faea84939ade033897071b9fa2800161)) by @
-- **release:** v1.4.3 🤖 [skip ci] ([20bc733](https://github.com/keiko233/clash-nyanpasu/commit/20bc7335c6e162b165010df3830ef5f15d8eb258)) by @
-- update change log ([16f9154](https://github.com/keiko233/clash-nyanpasu/commit/16f9154cfed8a7d135a1f1a78c0287c659572444)) by @
-
-## [1.4.2](https://github.com/keiko233/clash-nyanpasu/compare/v1.4.1...v1.4.2) (2023-12-24)
+## [1.4.3](https://github.com/LibNyanpasu/clash-nyanpasu/compare/v1.4.2...v1.4.3) (2024-01-20)
 
 ### ✨ Features
 
-- auto add dns according this method ([a509863](https://github.com/keiko233/clash-nyanpasu/commit/a509863cb6b726ef34738fc14492c8ca858c40c7)) by @
-- auto log clear ([a320219](https://github.com/keiko233/clash-nyanpasu/commit/a320219f003c90504d4249d4faee68499d7f811b)) by @
-- backport concurrency of latency test ([63f324b](https://github.com/keiko233/clash-nyanpasu/commit/63f324b80c09cdffdf3198f14af5171149d24739)) by @
-- bundled mihomo alpha ([4b46eb5](https://github.com/keiko233/clash-nyanpasu/commit/4b46eb56d4039d8f94cf2e54c28b358e5bbb5d69)) by @
-- improve animations ([6495f4d](https://github.com/keiko233/clash-nyanpasu/commit/6495f4d489c9309de186840bfe9b42c10d640652)) by @
-- **manifest:** latest version generator ([9dfbc07](https://github.com/keiko233/clash-nyanpasu/commit/9dfbc072f17415b58f32a1ab38007a131da84776)) by @
-- new style win tray icon & add blue icon when tun enable ([79c7107](https://github.com/keiko233/clash-nyanpasu/commit/79c710750a713f47fe202af64a18f1d5c7a79861)) by @
-- nightly build with updater ([a76203b](https://github.com/keiko233/clash-nyanpasu/commit/a76203befa9330f59fd04e78f6dc5232200139ac)) by @
-- quick logs collect ([b264720](https://github.com/keiko233/clash-nyanpasu/commit/b2647208eb162b893f7e48ada9214aa343a893ac)) by @
-- rules providers ([59424f4](https://github.com/keiko233/clash-nyanpasu/commit/59424f421a8e85fda35e70c92373a67634ee8e2e)) by @
-- **updater:** finish core updater backend ([6215531](https://github.com/keiko233/clash-nyanpasu/commit/6215531bc234ddeab4ad277102531f99f55c1142)) by @
-- **updater:** finish ui ([aa4e30b](https://github.com/keiko233/clash-nyanpasu/commit/aa4e30b47f49b732c1ceda3addf674928d29573d)) by @
-- use christmas logo ([a7e0f8e](https://github.com/keiko233/clash-nyanpasu/commit/a7e0f8e44e57b9dc4f957f2d5f72a96c4d8db533)) by @
+- make proxies material you ([2600772](https://github.com/LibNyanpasu/clash-nyanpasu/commit/26007724765f051490fd223d2e023089049153a2)) by @
+- new release workflow ([#284](https://github.com/LibNyanpasu/clash-nyanpasu/issues/284)) ([21e17b4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/21e17b454fd4a8bddab65ea0e5d15b53ed3b8ef0)) by @
+- proxies ui minor tweaks ([8c56e0f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8c56e0fc263cbfb86ab59664e7ea0b9b6c1826c2)) by @
 
 ### 🐛 Bug Fixes
 
-- [#92](https://github.com/keiko233/clash-nyanpasu/issues/92) ([c7afb45](https://github.com/keiko233/clash-nyanpasu/commit/c7afb457496fc8347bc70e160907ac52ec8d8f4b)) by @
-- [#96](https://github.com/keiko233/clash-nyanpasu/issues/96) ([f047b7c](https://github.com/keiko233/clash-nyanpasu/commit/f047b7c9c2b574ad5b9abd714ab667549c07bacd)) by @
-- bump nightly version after publish ([6a554b6](https://github.com/keiko233/clash-nyanpasu/commit/6a554b694072008d85656d36433881c888e5aafa)) by @
-- ci ([f4b5670](https://github.com/keiko233/clash-nyanpasu/commit/f4b5670985abc00d426720090aea2f4789cd782a)) by @
-- ci ([e100219](https://github.com/keiko233/clash-nyanpasu/commit/e100219a4fe906133bb4eb4019dff90eea3dbcc3)) by @
-- ci ([8712ff9](https://github.com/keiko233/clash-nyanpasu/commit/8712ff9466affdf213618d285420dfe4492a7d62)) by @
-- **ci:** release build ([27920de](https://github.com/keiko233/clash-nyanpasu/commit/27920de55ac2dedc58411b910327f81e4aea2543)) by @
-- **ci:** updater and dev build ([163ab81](https://github.com/keiko233/clash-nyanpasu/commit/163ab81ca89729a8016719c50b5caae1ab188070)) by @
-- dark shikiji display color err ([050a6f0](https://github.com/keiko233/clash-nyanpasu/commit/050a6f00e826a1e338cbe0c383b74fe380f0d9ef)) by @
-- delay color, closing [#124](https://github.com/keiko233/clash-nyanpasu/issues/124) ([5dd0d6c](https://github.com/keiko233/clash-nyanpasu/commit/5dd0d6c5270137a76e668853ff8ef479b74dc4da)) by @
-- **deps:** update dependency @mui/lab to v5.0.0-alpha.155 ([8be9582](https://github.com/keiko233/clash-nyanpasu/commit/8be95827c656b9f1ad95468056abcfb737444ba4)) by @
-- **deps:** update dependency dayjs to v1.11.10 ([#119](https://github.com/keiko233/clash-nyanpasu/issues/119)) ([4fcbb2d](https://github.com/keiko233/clash-nyanpasu/commit/4fcbb2dcc8f12f6f08f8daebd70df9aee06c2fd6)) by @
-- **deps:** update dependency framer-motion to v10.16.16 ([e0f62e0](https://github.com/keiko233/clash-nyanpasu/commit/e0f62e037bbcddfcf4dc5fc14cff3921ff508251)) by @
-- **deps:** update dependency i18next to v23 ([#75](https://github.com/keiko233/clash-nyanpasu/issues/75)) ([ebea511](https://github.com/keiko233/clash-nyanpasu/commit/ebea51154023558b8d9814cbb4ce389141f80585)) by @
-- **deps:** update dependency monaco-editor to ^0.45.0 ([#128](https://github.com/keiko233/clash-nyanpasu/issues/128)) ([e1916d7](https://github.com/keiko233/clash-nyanpasu/commit/e1916d79d579c67a60941adda3d452944a3ea86e)) by @
-- **deps:** update dependency react-error-boundary to v4 ([#147](https://github.com/keiko233/clash-nyanpasu/issues/147)) ([a72443c](https://github.com/keiko233/clash-nyanpasu/commit/a72443c3ea45310898e03dc2b3beb263843337a2)) by @
-- **deps:** update dependency react-i18next to v13 ([#149](https://github.com/keiko233/clash-nyanpasu/issues/149)) ([0d719e1](https://github.com/keiko233/clash-nyanpasu/commit/0d719e153364324599b1fc15ba0c2f2c8c821dd5)) by @
-- **deps:** update dependency react-i18next to v14 ([#183](https://github.com/keiko233/clash-nyanpasu/issues/183)) ([e0b7520](https://github.com/keiko233/clash-nyanpasu/commit/e0b75205556a241a19f467f2cee5da56cd732fb9)) by @
-- **deps:** update dependency react-virtuoso to v4 ([#150](https://github.com/keiko233/clash-nyanpasu/issues/150)) ([165291f](https://github.com/keiko233/clash-nyanpasu/commit/165291f9aafff16e8f63c13308334a392b3b29b1)) by @
-- **deps:** update dependency swr to v2 ([#151](https://github.com/keiko233/clash-nyanpasu/issues/151)) ([584c8fa](https://github.com/keiko233/clash-nyanpasu/commit/584c8fa35127893b1927f5437c7901c236d0bb84)) by @
-- **deps:** update rust crate chrono to 0.4.31 ([#104](https://github.com/keiko233/clash-nyanpasu/issues/104)) ([dad9f68](https://github.com/keiko233/clash-nyanpasu/commit/dad9f686712f81370e9c6283846d29e3a426ce09)) by @
-- **deps:** update rust crate ctrlc to 3.4.1 ([#108](https://github.com/keiko233/clash-nyanpasu/issues/108)) ([f74b6d4](https://github.com/keiko233/clash-nyanpasu/commit/f74b6d490ce0489231ae0972ab4f94a89daa2057)) by @
-- **deps:** update rust crate dirs to 5.0.1 ([#110](https://github.com/keiko233/clash-nyanpasu/issues/110)) ([b340e04](https://github.com/keiko233/clash-nyanpasu/commit/b340e04ef886f83dd1a22c1de1367f6ccc6e5351)) by @
-- **deps:** update rust crate dunce to 1.0.4 ([0d12a5d](https://github.com/keiko233/clash-nyanpasu/commit/0d12a5d12e89439f34120a904bcdc344d222500f)) by @
-- **deps:** update rust crate interfaces to 0.0.9 ([#111](https://github.com/keiko233/clash-nyanpasu/issues/111)) ([ffd7a8e](https://github.com/keiko233/clash-nyanpasu/commit/ffd7a8e287fef309e3ddf076171537f69b503404)) by @
-- **deps:** update rust crate log to 0.4.20 ([e92ee5d](https://github.com/keiko233/clash-nyanpasu/commit/e92ee5d175eb2b3f6bd2115caa59f605b48790e6)) by @
-- **deps:** update rust crate log4rs to 1.2.0 ([#125](https://github.com/keiko233/clash-nyanpasu/issues/125)) ([7759075](https://github.com/keiko233/clash-nyanpasu/commit/77590758eb7e935af1e9e0ac31cce3b8cc24d8c2)) by @
-- **deps:** update rust crate once_cell to 1.18.0 ([#129](https://github.com/keiko233/clash-nyanpasu/issues/129)) ([2944745](https://github.com/keiko233/clash-nyanpasu/commit/2944745c3cf7542b99e72aa8afbb7203a7212ab7)) by @
-- **deps:** update rust crate once_cell to 1.19.0 ([8574388](https://github.com/keiko233/clash-nyanpasu/commit/857438815fb47d805e488af1343fcc9e1a061147)) by @
-- **deps:** update rust crate open to 4.2.0 ([#126](https://github.com/keiko233/clash-nyanpasu/issues/126)) ([a30f56c](https://github.com/keiko233/clash-nyanpasu/commit/a30f56cbae8bb4c688eb5c9ccad6b62bc44d2ba1)) by @
-- **deps:** update rust crate open to 5.0.1 ([8beb165](https://github.com/keiko233/clash-nyanpasu/commit/8beb16583428f46afbe957815d3be33e5b7e933e)) by @
-- **deps:** update rust crate open to v5 ([#152](https://github.com/keiko233/clash-nyanpasu/issues/152)) ([b54e6b5](https://github.com/keiko233/clash-nyanpasu/commit/b54e6b59c05b50eb1b34c0b9c41dee46dfa856bd)) by @
-- **deps:** update rust crate parking_lot to 0.12.1 ([65efbcf](https://github.com/keiko233/clash-nyanpasu/commit/65efbcfa8b564d15f8af0946b5dd75a5b377ed68)) by @
-- **deps:** update rust crate runas to v1.1.0 ([#133](https://github.com/keiko233/clash-nyanpasu/issues/133)) ([0d1eb27](https://github.com/keiko233/clash-nyanpasu/commit/0d1eb27440fe23e81c05d27200f8ec11b6894483)) by @
-- **deps:** update rust crate which to 4.4.2 ([b34ee0d](https://github.com/keiko233/clash-nyanpasu/commit/b34ee0d188dc97c6b42a23d0bde08292b85e8213)) by @
-- **deps:** update rust crate window-vibrancy to 0.4.0 ([#134](https://github.com/keiko233/clash-nyanpasu/issues/134)) ([bf3679c](https://github.com/keiko233/clash-nyanpasu/commit/bf3679c886e7e6867b3ed20c66f2a8c8e5eee3b2)) by @
-- **deps:** update rust crate window-vibrancy to 0.4.3 ([#138](https://github.com/keiko233/clash-nyanpasu/issues/138)) ([e6db194](https://github.com/keiko233/clash-nyanpasu/commit/e6db194361f8e7ab17ac1250097d5fc78316fdcc)) by @
-- dev build branch issue ([ddeb76b](https://github.com/keiko233/clash-nyanpasu/commit/ddeb76bbd79d4eff87d78196df82d46097a1d755)) by @
-- **dialog:** align center and overflow issue ([e0430e1](https://github.com/keiko233/clash-nyanpasu/commit/e0430e15070458221a0a5856485332a51e8d7dd5)) by @
-- format ansi in log viewer ([181c905](https://github.com/keiko233/clash-nyanpasu/commit/181c905687439a05634bfb32f16387d51ea158de)) by @
-- i18n resources ([de64cb8](https://github.com/keiko233/clash-nyanpasu/commit/de64cb80d254e92ee5fec385a2b978a8833f994c)) by @
-- icon issues, close [#55](https://github.com/keiko233/clash-nyanpasu/issues/55) ([21b9f75](https://github.com/keiko233/clash-nyanpasu/commit/21b9f7522131495e9d7cb5e6586f06be40c0d55e)) by @
-- lint ([04cc627](https://github.com/keiko233/clash-nyanpasu/commit/04cc627a7c42b7fdb5d5aa0d833818d8a1da7da7)) by @
-- lint ([4e51ff3](https://github.com/keiko233/clash-nyanpasu/commit/4e51ff31578c405a8e7056790655eb09b79d2983)) by @
-- **lint:** toml fmt ([c174064](https://github.com/keiko233/clash-nyanpasu/commit/c174064eeb0ea57385587bf70406dd6858d2e5ba)) by @
-- **manifest:** mihomo alpha arch template ([fd821ea](https://github.com/keiko233/clash-nyanpasu/commit/fd821ea7ad98c2e8de46e61020dec1c0c7567ad7)) by @
-- minor tweak base-content width ([63c4176](https://github.com/keiko233/clash-nyanpasu/commit/63c4176ccd7a67abc3d3053aa6fcd60fc7003da4)) by @
-- pin runas to v1.0.0 ([05b84f2](https://github.com/keiko233/clash-nyanpasu/commit/05b84f2ca1f53f6cabdc07f543e15d695a726a61)) by @
-- **resources:** win service support and mihomo alpha version proxy ([3a1a124](https://github.com/keiko233/clash-nyanpasu/commit/3a1a124a2e7ef2f5affcdd48f2c8b8c04a371236)) by @
-- shikiji text wrapping err ([ae4371f](https://github.com/keiko233/clash-nyanpasu/commit/ae4371f2ce596747eee3b25fafa93ea3d9f6da91)) by @
-- **updater:** copy logic ([d349ca0](https://github.com/keiko233/clash-nyanpasu/commit/d349ca0a1a4ee64da01ee87ea6f5e58a8d89d2f3)) by @
-- use a workaroud to reduce [#59](https://github.com/keiko233/clash-nyanpasu/issues/59) ([4afa67b](https://github.com/keiko233/clash-nyanpasu/commit/4afa67bfaa44886e88e03acf2035ea70200ae4c8)) by @
-- win state ([46ac762](https://github.com/keiko233/clash-nyanpasu/commit/46ac762bc4ff660eda53318071d1b3e08a4fa386)) by @
-- **window:** add a workaround for close event in windows ([81f6d28](https://github.com/keiko233/clash-nyanpasu/commit/81f6d28bcc93826f4ec9c1c154400cc894e26161)) by @
-- **window:** preserve window state before window minimized ([5127f77](https://github.com/keiko233/clash-nyanpasu/commit/5127f77e744882e408e1bceaa0b3eff0252bbf54)) by @
+- [#212](https://github.com/LibNyanpasu/clash-nyanpasu/issues/212) ([190a36a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/190a36a98fde570c7bb04155a3c682ec1b8b9431)) by @
+- add a panic hook to collect logs and show a dialog ([#191](https://github.com/LibNyanpasu/clash-nyanpasu/issues/191)) ([f23eb73](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f23eb738521443856746fe55ba2ee3cc35748aa0)) by @
+- **ci:** pin rust version to 1.74.1 ([#213](https://github.com/LibNyanpasu/clash-nyanpasu/issues/213)) ([86ff2d4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/86ff2d40144556eeb698db81903011f4b54d5f23)) by @
+- **ci:** use dev commit hash when schedule dispatch ([50c777b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/50c777b97bac97555a6ee967bf8a57b99b92e8f8)) by @
+- **ci:** use latest action ([9e1d76e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9e1d76ec9795ddb553ddcf8199cd57d3f221395b)) by @
+- dark mode flash in win ([ffe2bde](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ffe2bde3b69c9a2ecba1494045f8dbac135d0b49)) by @
+- **deps:** update dependency framer-motion to v10.17.0 ([051c7fb](https://github.com/LibNyanpasu/clash-nyanpasu/commit/051c7fbd677880c06373381309e42569b8be80cf)) by @
+- **deps:** update dependency framer-motion to v10.17.4 ([c6c438e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c6c438e3e9dbea5de3822cb621c64c8d690ab9f4)) by @
+- **deps:** update dependency framer-motion to v10.17.6 ([42df02e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/42df02ea5c2ba232a20b327c3fe94b488919a57d)) by @
+- **deps:** update dependency framer-motion to v10.17.8 ([cbb7df4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cbb7df4536eb4bb9da096efb50d266a352ed30ec)) by @
+- **deps:** update dependency framer-motion to v10.17.9 ([63a7431](https://github.com/LibNyanpasu/clash-nyanpasu/commit/63a743162cfa148c55d4ef6cd4bf8d6c6b32083c)) by @
+- **deps:** update dependency framer-motion to v10.18.0 ([d243e8f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d243e8f623e0bccbffd40860b76c879003fdd66a)) by @
+- **deps:** update rust crate async-trait to 0.1.75 ([6722174](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6722174d66dc81b6e01e91d8cc947ad4046a1625)) by @
+- **deps:** update rust crate async-trait to 0.1.77 ([#249](https://github.com/LibNyanpasu/clash-nyanpasu/issues/249)) ([fffc081](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fffc081a219df3be91f30ee79d9eaf7965384c0b)) by @
+- **deps:** update rust crate ctrlc to 3.4.2 ([0362463](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0362463b6de35bf926a77ad9ec2a07e780243ace)) by @
+- **deps:** update rust crate delay_timer to 0.11.5 ([#250](https://github.com/LibNyanpasu/clash-nyanpasu/issues/250)) ([48ace4f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/48ace4fde690ff200e37290667fe5c380151657e)) by @
+- **deps:** update rust crate rquickjs to 0.4.0 ([#131](https://github.com/LibNyanpasu/clash-nyanpasu/issues/131)) ([00c99ca](https://github.com/LibNyanpasu/clash-nyanpasu/commit/00c99ca93699537843e5ec97726f337d96582e13)), closes [#243](https://github.com/LibNyanpasu/clash-nyanpasu/issues/243) by @
+- **deps:** update rust crate simd-json to 0.13.6 ([#251](https://github.com/LibNyanpasu/clash-nyanpasu/issues/251)) ([36bda5a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/36bda5aa4ef60da1f0baa5219f5d5b6976d67a2b)) by @
+- **deps:** update rust crate tauri to 1.5.4 ([8b3e420](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8b3e4207b86d733b5ace853cce73bee0d979f2ec)) by @
+- **deps:** update rust crate tempfile to 3.9.0 ([b3404bf](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b3404bf3984dc9e9c9be9923bdc6715272469a9a)) by @
+- enable_tun block the process ([#232](https://github.com/LibNyanpasu/clash-nyanpasu/issues/232)) ([de1c4a0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/de1c4a05f93c1ee2772ef248c8e8679ac242f31e)) by @
+- lint ([46071c6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/46071c662798473d0ddec54c8952ee2ac41ba188)) by @
+- **log:** incorrect color in light mode ([211bc44](https://github.com/LibNyanpasu/clash-nyanpasu/commit/211bc44793a80a51f52700544c538006fd602365)) by @
+- notification fallback ([#262](https://github.com/LibNyanpasu/clash-nyanpasu/issues/262)) ([ce0224d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ce0224d779296515157479276599d157b2e16e52)) by @
+- notification premission check ([#263](https://github.com/LibNyanpasu/clash-nyanpasu/issues/263)) ([c1f8c54](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c1f8c54df7420509bd588f36abd5011242dcc2ed)) by @
+- open file, closing [#197](https://github.com/LibNyanpasu/clash-nyanpasu/issues/197) ([4345dc2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4345dc26c7c91ea981e5daa7a5f16bca2b77e7ce)) by @
+- publish ci ([a518542](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a518542f97d3aa60c4f3668d5ce4987749a834fc)) by @
+- release ci ([c9ae02a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c9ae02a6bb3ffc5c2968a06bc57d87fc20b3fd95)) by @
+- **rocksdb:** use TransactionDB instead of OptimisticTransactionDB ([#194](https://github.com/LibNyanpasu/clash-nyanpasu/issues/194)) ([8373913](https://github.com/LibNyanpasu/clash-nyanpasu/commit/83739131fd53e0a59798db986f441d10d6faea33)) by @
+- same text color for `REJECT-DROP` policy as `REJECT` ([#236](https://github.com/LibNyanpasu/clash-nyanpasu/issues/236)) ([c78dff4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c78dff4fcb1750629a4218405a9ef8ffdda95396)) by @
+- stable channel build issue ([#248](https://github.com/LibNyanpasu/clash-nyanpasu/issues/248)) ([13d7bc4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/13d7bc4e0ef40f725483f458f3b2cc566957f5b5)) by @
+- updater ([ca1ed25](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ca1ed25d3b252da7fd7a8a50ee31fc316b4ccadf)) by @
+- **updater:** should use nyanpasu proxy or system proxy when performing request ([#273](https://github.com/LibNyanpasu/clash-nyanpasu/issues/273)) ([dc582b4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/dc582b4adc959eb292dcaa1c10074119c67bd05a)) by @
+- **updater:** add status code judge ([67e26bc](https://github.com/LibNyanpasu/clash-nyanpasu/commit/67e26bc0c63d7e87f60b6c872ad3f50d05a94f61)) by @
+- **updater:** allow to use elevated permission to copy and override core ([6c992b7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6c992b7c5fb9221376c30aae8ff004297c14315d)) by @
+- virtuoso scroller bottom not padding ([be3d99c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/be3d99cd0f22947cb52fdd87b1e8e1bc21ae7863)) by @
+- **vite:** rm useless shikiji langs support ([#267](https://github.com/LibNyanpasu/clash-nyanpasu/issues/267)) ([7768255](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7768255b863be4a141d0c551cd3425faee19238e)) by @
+- windrag err ([a7ddd3a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a7ddd3a4dec8ea72e24696009601431ec26646bf)) by @
 
 ### 🧹 Maintenance
 
-- bump clash-rs to v0.1.10 ([3a449d3](https://github.com/keiko233/clash-nyanpasu/commit/3a449d37203e3624232452803cd6c99cab619df1)) by @
-- Bump Version 1.4.2 ([517e166](https://github.com/keiko233/clash-nyanpasu/commit/517e16645abdf3f969d682522693342a883265ad)) by @
-- change manifest upsteram ([12fc695](https://github.com/keiko233/clash-nyanpasu/commit/12fc6951cb62feea59641f8b8a6e2e5e240a3b30)) by @
-- **deps:** update actions/checkout action to v4 ([#140](https://github.com/keiko233/clash-nyanpasu/issues/140)) ([30a2f5c](https://github.com/keiko233/clash-nyanpasu/commit/30a2f5c5307add0768ddf31fb9c1aa0c41d19954)) by @
-- **deps:** update actions/setup-node action to v4 ([#141](https://github.com/keiko233/clash-nyanpasu/issues/141)) ([5a1e776](https://github.com/keiko233/clash-nyanpasu/commit/5a1e7761cb57197239df144f7d69a0e6ebc0935d)) by @
-- **deps:** update dependency @actions/github to v6 ([#143](https://github.com/keiko233/clash-nyanpasu/issues/143)) ([17eee56](https://github.com/keiko233/clash-nyanpasu/commit/17eee56401b4923e77a8a8c45959b8bc575446f6)) by @
-- **deps:** update dependency @types/fs-extra to v11 ([#144](https://github.com/keiko233/clash-nyanpasu/issues/144)) ([fe8bb32](https://github.com/keiko233/clash-nyanpasu/commit/fe8bb321c4c628f44824d1c440adfb56decb7913)) by @
-- **deps:** update dependency eslint to v8.56.0 ([#163](https://github.com/keiko233/clash-nyanpasu/issues/163)) ([a17e9eb](https://github.com/keiko233/clash-nyanpasu/commit/a17e9eb2db87b0a69b955a60a7db845da7c7d5a8)) by @
-- **deps:** update dependency eslint-plugin-import to v2.29.1 ([1f6bafe](https://github.com/keiko233/clash-nyanpasu/commit/1f6bafef7b681ea6a0d71b7f52e78b499dda0b37)) by @
-- **deps:** update dependency eslint-plugin-n to v16.5.0 ([59a0901](https://github.com/keiko233/clash-nyanpasu/commit/59a090107a117c4bc72559f733e53f03871c1444)) by @
-- **deps:** update dependency eslint-plugin-prettier to v5.1.0 ([71dca60](https://github.com/keiko233/clash-nyanpasu/commit/71dca6041474192d6ad22c7d6880adf6e2cf3fe8)) by @
-- **deps:** update dependency eslint-plugin-prettier to v5.1.1 ([61a2746](https://github.com/keiko233/clash-nyanpasu/commit/61a2746d1d1c8e8fca400ffaf04982694e6cd227)) by @
-- **deps:** update dependency eslint-plugin-prettier to v5.1.2 ([680882f](https://github.com/keiko233/clash-nyanpasu/commit/680882f9a396655a01a8988c2fc266c435e6c636)) by @
-- **deps:** update dependency fs-extra to v11 ([#109](https://github.com/keiko233/clash-nyanpasu/issues/109)) ([8009e3b](https://github.com/keiko233/clash-nyanpasu/commit/8009e3b0c7021532303cf9def1c84242b32fb478)) by @
-- **deps:** update dependency https-proxy-agent to v7 ([#145](https://github.com/keiko233/clash-nyanpasu/issues/145)) ([8673b6a](https://github.com/keiko233/clash-nyanpasu/commit/8673b6a1fe5f7c56b5c9428651534efdd8fd493e)) by @
-- **deps:** update dependency postcss to v8.4.32 ([772928b](https://github.com/keiko233/clash-nyanpasu/commit/772928b73d4f264c17af97733ce505275ffd799a)) by @
-- **deps:** update dependency shikiji to v0.9.10 ([4828c19](https://github.com/keiko233/clash-nyanpasu/commit/4828c197cf2cabf531f01b753b14dcf154d3e6b6)) by @
-- **deps:** update dependency shikiji to v0.9.11 ([d840c51](https://github.com/keiko233/clash-nyanpasu/commit/d840c51a64ed335799ffd295b440ee2d8cf61bc0)) by @
-- **deps:** update dependency shikiji to v0.9.2 ([a1c4632](https://github.com/keiko233/clash-nyanpasu/commit/a1c463214ff76f20afee179fb0a10ffec8c0fb7a)) by @
-- **deps:** update dependency shikiji to v0.9.3 ([2cd9ac1](https://github.com/keiko233/clash-nyanpasu/commit/2cd9ac1276d8c6279b606ae3ef0637b3ab8c327a)) by @
-- **deps:** update dependency shikiji to v0.9.4 ([5423492](https://github.com/keiko233/clash-nyanpasu/commit/5423492555c81005c2f1817006afa9059f2ae818)) by @
-- **deps:** update dependency shikiji to v0.9.6 ([0cf6c61](https://github.com/keiko233/clash-nyanpasu/commit/0cf6c615276f08d098a883dc8ccf29b4095eda95)) by @
-- **deps:** update dependency shikiji to v0.9.7 ([90cabc7](https://github.com/keiko233/clash-nyanpasu/commit/90cabc73add4856f41b534ec8c053a5f879c7d2d)) by @
-- **deps:** update dependency shikiji to v0.9.9 ([4b2624b](https://github.com/keiko233/clash-nyanpasu/commit/4b2624b2b5e5a17bbc7b869e7ab16b6d7ba9efa6)) by @
-- **deps:** update dependency tsx to v4.6.2 ([3e8fb15](https://github.com/keiko233/clash-nyanpasu/commit/3e8fb15fa5d41df2a4ab4bbdc3b35924ecf7e703)) by @
-- **deps:** update dependency tsx to v4.7.0 ([75ea834](https://github.com/keiko233/clash-nyanpasu/commit/75ea8345f7924d354e36a250e1cec3d237eed549)) by @
-- **deps:** update dependency vite to v5 ([#72](https://github.com/keiko233/clash-nyanpasu/issues/72)) ([cd0c874](https://github.com/keiko233/clash-nyanpasu/commit/cd0c874e25739de5d94ba681abd7544d0d6b8df1)) by @
-- **deps:** update lint packages ([1802620](https://github.com/keiko233/clash-nyanpasu/commit/1802620be5016a62faf250f5a2f00abb821b2a3a)) by @
-- **deps:** update lint packages ([#146](https://github.com/keiko233/clash-nyanpasu/issues/146)) ([153ccf1](https://github.com/keiko233/clash-nyanpasu/commit/153ccf1c20ff420854aff3bde901ef4165457017)) by @
-- **deps:** update lint packages to v6.14.0 ([#127](https://github.com/keiko233/clash-nyanpasu/issues/127)) ([dc109a9](https://github.com/keiko233/clash-nyanpasu/commit/dc109a9ead678ff2d2e520dcefc22aae87756ad8)) by @
-- **deps:** update lint packages to v6.15.0 ([ec3df1e](https://github.com/keiko233/clash-nyanpasu/commit/ec3df1e81a66148506aa7f33fcdc920e24a2c6d2)) by @
-- fix missing macOS aarch64 build ([a3cb48b](https://github.com/keiko233/clash-nyanpasu/commit/a3cb48b62c242047a073049ed20d381011eaabf5)) by @
-- rename clash-meta to mihomo ([072b3f6](https://github.com/keiko233/clash-nyanpasu/commit/072b3f6f26b7a65f9be696de33d7f25ed77b64f6)) by @
-- update deps ([1fcd126](https://github.com/keiko233/clash-nyanpasu/commit/1fcd126d109b5fe76028e19245ffb78977cedd31)) by @
-- update issue templates ([#77](https://github.com/keiko233/clash-nyanpasu/issues/77)) ([ec94eba](https://github.com/keiko233/clash-nyanpasu/commit/ec94eba07177186bef1cd760ebb1d7e05de2bd57)) by @
-- use gh-actions user ([60fae64](https://github.com/keiko233/clash-nyanpasu/commit/60fae64f4fb691f8637a620b72bcbb0335e09d6c)) by @
+- **backend:** update peer deps ([969a061](https://github.com/LibNyanpasu/clash-nyanpasu/commit/969a06159d4b17f0fa96d3cbb86188e667bd21b8)) by @
+- **deps:** update actions/cache action to v4 ([#277](https://github.com/LibNyanpasu/clash-nyanpasu/issues/277)) ([a6d1025](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a6d1025c4f9ff155c8875f27fb97f8a7a58cb2c2)) by @
+- **deps:** update dependency autoprefixer to v10.4.17 ([5e8eaa2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5e8eaa200d406b1a59399d7f17ecf3f2d49cb6ac)) by @
+- **deps:** update dependency eslint-plugin-n to v16.6.0 ([7e7b645](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7e7b64586893dfee2dce3d7a1a30a1abc579bf15)) by @
+- **deps:** update dependency eslint-plugin-n to v16.6.1 ([51049b8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/51049b83419c0c2574c979ec2515e302031ca8cc)) by @
+- **deps:** update dependency eslint-plugin-prettier to v5.1.3 ([3659b7a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3659b7aba7f56ee223377cb056df8e42ca9afe79)) by @
+- **deps:** update dependency postcss to v8.4.33 ([884a531](https://github.com/LibNyanpasu/clash-nyanpasu/commit/884a53111305de7fc0a50b63dafa3a5b3d3f09ff)) by @
+- **deps:** update dependency postcss-html to v1.6.0 ([7ff9013](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7ff9013314a4ae0f3033d1cac33af77986a77687)) by @
+- **deps:** update dependency postcss-import to v16 ([#229](https://github.com/LibNyanpasu/clash-nyanpasu/issues/229)) ([eacfcf3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/eacfcf323434835779bf94c380ddce341d759293)) by @
+- **deps:** update dependency shikiji to v0.9.12 ([0c7e12f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0c7e12fe60c2161aa8aca16da39b79f11932c3e2)) by @
+- **deps:** update dependency shikiji to v0.9.15 ([fee3885](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fee3885b736954889cc67d8dfd02a4905ec03933)) by @
+- **deps:** update dependency shikiji to v0.9.16 ([1bca8fa](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1bca8faded9252b359c43ac67b48b1c3a2e5ab65)) by @
+- **deps:** update dependency shikiji to v0.9.17 ([add3d3e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/add3d3e1aa1f6a39fb10cb607d34a037b7a43ef0)) by @
+- **deps:** update dependency shikiji to v0.9.18 ([ae18c31](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ae18c31990500bc9d4ce61d4d6a8915c3caf3fa7)) by @
+- **deps:** update dependency shikiji to v0.9.19 ([a16e3ad](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a16e3adc90c040f12584140f4a8ddc8f86838a90)) by @
+- **deps:** update dependency stylelint to v16.1.0 ([1dbd52e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1dbd52e09bd8d9a826d0e32058ba04d6436c0045)) by @
+- **deps:** update dependency stylelint to v16.2.0 ([28a4a81](https://github.com/LibNyanpasu/clash-nyanpasu/commit/28a4a815c0bc8df06ee82a24093a4b1a7669889d)) by @
+- **deps:** update dependency stylelint-config-standard to v36 ([#193](https://github.com/LibNyanpasu/clash-nyanpasu/issues/193)) ([1901dca](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1901dcabb69a4f125f1202a22885da0474178f45)) by @
+- **deps:** update dependency stylelint-declaration-block-no-ignored-properties to v2.8.0 ([c4cd00f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c4cd00faec7d2e0e3406e9c5c59f1913d0041e17)) by @
+- **deps:** update lint packages ([#246](https://github.com/LibNyanpasu/clash-nyanpasu/issues/246)) ([fcc4bb2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fcc4bb29475193bb51cb4596d83a6c623d1efe2b)) by @
+- **deps:** update lint packages to v18.4.4 ([3ef72a0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3ef72a03de36f0d57833ea945448e2f624e303df)) by @
+- **deps:** update lint packages to v6.16.0 ([41752d9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/41752d9c16ac8cdad6afcaebc072ec704f5f9de7)) by @
+- **deps:** update lint packages to v6.17.0 ([1e3be59](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1e3be5908faec268ddcd24f1ad06359c40af8feb)) by @
+- **deps:** update lint packages to v6.18.0 ([cb752c3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cb752c371edc3b0a25075df38f63343d56348e6d)) by @
+- **deps:** update lint packages to v6.19.0 ([4301ec6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4301ec6838a5b2414ec6f71bc3972555c346a4be)) by @
+- fix build ([85bc278](https://github.com/LibNyanpasu/clash-nyanpasu/commit/85bc278c62768ee2758a05abb36e77d30e076fdc)) by @
+- fix build tag typos ([bd7656f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bd7656f4d6231c441e4a960e2869dbbaec4ddeac)) by @
+- fix script consola columns ([4298483](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4298483c670e4c6d4b8eefe49d38d479e6417f9c)) by @
+- **manifest:** update manifest [skip ci] ([71e759a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/71e759a8bfa999bce949f1a7f5643e25588d0925)) by @
+- **manifest:** update manifest [skip ci] ([738906c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/738906c68c81632c9522d19722f4bab67ce1b11b)) by @
+- **manifest:** update manifest [skip ci] ([bbccc15](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bbccc15cdfc77bdbef5c08da95fced042a557f9c)) by @
+- **manifest:** update manifest [skip ci] ([76fc8f9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/76fc8f970897d18ec2a9a391c541f7952244bdda)) by @
+- **manifest:** update manifest [skip ci] ([04cb5c4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/04cb5c40a7238efdf6ffe708db7537859df422d6)) by @
+- **manifest:** update manifest [skip ci] ([10cccc1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/10cccc12ced284fdd3ee2465b416f0b98f23b428)) by @
+- **manifest:** update manifest [skip ci] ([2e8e881](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2e8e881f170996034b4676db51d34e726dd92097)) by @
+- **manifest:** update manifest [skip ci] ([abd787b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/abd787b8927108635fca53fbae5eed355b0a7c47)) by @
+- **manifest:** update manifest [skip ci] ([35d5296](https://github.com/LibNyanpasu/clash-nyanpasu/commit/35d5296ee088751d75880011a7fa70b70251cf48)) by @
+- **manifest:** update manifest [skip ci] ([aeeca77](https://github.com/LibNyanpasu/clash-nyanpasu/commit/aeeca7761944d7dad67b78f44ef04bc3fe94b0c1)) by @
+- **manifest:** update manifest [skip ci] ([6584023](https://github.com/LibNyanpasu/clash-nyanpasu/commit/658402332f91cd3cd6dfb5e29042d6c452632d19)) by @
+- **manifest:** update manifest [skip ci] ([01c4bfe](https://github.com/LibNyanpasu/clash-nyanpasu/commit/01c4bfed68e23fe97258e649430ed611775bfe52)) by @
+- **manifest:** update manifest [skip ci] ([5c486df](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5c486df13af2e955e3599b7a7794e69add0180f0)) by @
+- **manifest:** update manifest [skip ci] ([ba7a06a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ba7a06a9c6910a729017193f5e2532aae5dc5ffd)) by @
+- **manifest:** update manifest [skip ci] ([0e64c0d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0e64c0dc1cb73b12e53155ad3f9f77a7e22b97c7)) by @
+- **manifest:** update manifest [skip ci] ([bd1d4be](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bd1d4bea2ef0d6649d5b396b9363c85d46500c24)) by @
+- **manifest:** update manifest [skip ci] ([3d3f631](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3d3f631368d22f34a5ac499e769d288dbbace827)) by @
+- **manifest:** update manifest [skip ci] ([450b285](https://github.com/LibNyanpasu/clash-nyanpasu/commit/450b285c1e6ee4d368fe625280a40a101c9a82eb)) by @
+- **manifest:** update manifest [skip ci] ([020e3f7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/020e3f72595aff9cd45911413106e617649100d1)) by @
+- **manifest:** update manifest [skip ci] ([a732623](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a7326234663453b300b2aeef631bbc0cd798b9a6)) by @
+- **manifest:** update manifest [skip ci] ([3d53aa3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3d53aa377dba5219c394e8bf60e133be8f926091)) by @
+- **manifest:** update manifest [skip ci] ([a04fbb9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a04fbb9917d71cc97d1dac90d4b1bac34a2e09f9)) by @
+- **manifest:** update manifest [skip ci] ([333560a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/333560ab3600452e3a2c8efbf475085c691fde2a)) by @
+- **manifest:** update manifest [skip ci] ([5cd919e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5cd919e569392ce64ba1b9cec09b50c577189c5b)) by @
+- **manifest:** update manifest [skip ci] ([41fdc22](https://github.com/LibNyanpasu/clash-nyanpasu/commit/41fdc22f6830dfd9d234d538b415d298b47fdf7c)) by @
+- **manifest:** update manifest [skip ci] ([2e27c9a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2e27c9adbbc9410ddcf9877c75173f8441e26a1e)) by @
+- **manifest:** update manifest [skip ci] ([3c48bb6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3c48bb6edc2d5503614c5859efc0ff96beed5b07)) by @
+- port dev build action to release build ([2a39be3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2a39be37faea84939ade033897071b9fa2800161)) by @
+- **release:** v1.4.3 🤖 [skip ci] ([20bc733](https://github.com/LibNyanpasu/clash-nyanpasu/commit/20bc7335c6e162b165010df3830ef5f15d8eb258)) by @
+- update change log ([16f9154](https://github.com/LibNyanpasu/clash-nyanpasu/commit/16f9154cfed8a7d135a1f1a78c0287c659572444)) by @
+
+## [1.4.2](https://github.com/LibNyanpasu/clash-nyanpasu/compare/v1.4.1...v1.4.2) (2023-12-24)
+
+### ✨ Features
+
+- auto add dns according this method ([a509863](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a509863cb6b726ef34738fc14492c8ca858c40c7)) by @
+- auto log clear ([a320219](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a320219f003c90504d4249d4faee68499d7f811b)) by @
+- backport concurrency of latency test ([63f324b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/63f324b80c09cdffdf3198f14af5171149d24739)) by @
+- bundled mihomo alpha ([4b46eb5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4b46eb56d4039d8f94cf2e54c28b358e5bbb5d69)) by @
+- improve animations ([6495f4d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6495f4d489c9309de186840bfe9b42c10d640652)) by @
+- **manifest:** latest version generator ([9dfbc07](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9dfbc072f17415b58f32a1ab38007a131da84776)) by @
+- new style win tray icon & add blue icon when tun enable ([79c7107](https://github.com/LibNyanpasu/clash-nyanpasu/commit/79c710750a713f47fe202af64a18f1d5c7a79861)) by @
+- nightly build with updater ([a76203b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a76203befa9330f59fd04e78f6dc5232200139ac)) by @
+- quick logs collect ([b264720](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b2647208eb162b893f7e48ada9214aa343a893ac)) by @
+- rules providers ([59424f4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/59424f421a8e85fda35e70c92373a67634ee8e2e)) by @
+- **updater:** finish core updater backend ([6215531](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6215531bc234ddeab4ad277102531f99f55c1142)) by @
+- **updater:** finish ui ([aa4e30b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/aa4e30b47f49b732c1ceda3addf674928d29573d)) by @
+- use christmas logo ([a7e0f8e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a7e0f8e44e57b9dc4f957f2d5f72a96c4d8db533)) by @
+
+### 🐛 Bug Fixes
+
+- [#92](https://github.com/LibNyanpasu/clash-nyanpasu/issues/92) ([c7afb45](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c7afb457496fc8347bc70e160907ac52ec8d8f4b)) by @
+- [#96](https://github.com/LibNyanpasu/clash-nyanpasu/issues/96) ([f047b7c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f047b7c9c2b574ad5b9abd714ab667549c07bacd)) by @
+- bump nightly version after publish ([6a554b6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6a554b694072008d85656d36433881c888e5aafa)) by @
+- ci ([f4b5670](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f4b5670985abc00d426720090aea2f4789cd782a)) by @
+- ci ([e100219](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e100219a4fe906133bb4eb4019dff90eea3dbcc3)) by @
+- ci ([8712ff9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8712ff9466affdf213618d285420dfe4492a7d62)) by @
+- **ci:** release build ([27920de](https://github.com/LibNyanpasu/clash-nyanpasu/commit/27920de55ac2dedc58411b910327f81e4aea2543)) by @
+- **ci:** updater and dev build ([163ab81](https://github.com/LibNyanpasu/clash-nyanpasu/commit/163ab81ca89729a8016719c50b5caae1ab188070)) by @
+- dark shikiji display color err ([050a6f0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/050a6f00e826a1e338cbe0c383b74fe380f0d9ef)) by @
+- delay color, closing [#124](https://github.com/LibNyanpasu/clash-nyanpasu/issues/124) ([5dd0d6c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5dd0d6c5270137a76e668853ff8ef479b74dc4da)) by @
+- **deps:** update dependency @mui/lab to v5.0.0-alpha.155 ([8be9582](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8be95827c656b9f1ad95468056abcfb737444ba4)) by @
+- **deps:** update dependency dayjs to v1.11.10 ([#119](https://github.com/LibNyanpasu/clash-nyanpasu/issues/119)) ([4fcbb2d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4fcbb2dcc8f12f6f08f8daebd70df9aee06c2fd6)) by @
+- **deps:** update dependency framer-motion to v10.16.16 ([e0f62e0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e0f62e037bbcddfcf4dc5fc14cff3921ff508251)) by @
+- **deps:** update dependency i18next to v23 ([#75](https://github.com/LibNyanpasu/clash-nyanpasu/issues/75)) ([ebea511](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ebea51154023558b8d9814cbb4ce389141f80585)) by @
+- **deps:** update dependency monaco-editor to ^0.45.0 ([#128](https://github.com/LibNyanpasu/clash-nyanpasu/issues/128)) ([e1916d7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e1916d79d579c67a60941adda3d452944a3ea86e)) by @
+- **deps:** update dependency react-error-boundary to v4 ([#147](https://github.com/LibNyanpasu/clash-nyanpasu/issues/147)) ([a72443c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a72443c3ea45310898e03dc2b3beb263843337a2)) by @
+- **deps:** update dependency react-i18next to v13 ([#149](https://github.com/LibNyanpasu/clash-nyanpasu/issues/149)) ([0d719e1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0d719e153364324599b1fc15ba0c2f2c8c821dd5)) by @
+- **deps:** update dependency react-i18next to v14 ([#183](https://github.com/LibNyanpasu/clash-nyanpasu/issues/183)) ([e0b7520](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e0b75205556a241a19f467f2cee5da56cd732fb9)) by @
+- **deps:** update dependency react-virtuoso to v4 ([#150](https://github.com/LibNyanpasu/clash-nyanpasu/issues/150)) ([165291f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/165291f9aafff16e8f63c13308334a392b3b29b1)) by @
+- **deps:** update dependency swr to v2 ([#151](https://github.com/LibNyanpasu/clash-nyanpasu/issues/151)) ([584c8fa](https://github.com/LibNyanpasu/clash-nyanpasu/commit/584c8fa35127893b1927f5437c7901c236d0bb84)) by @
+- **deps:** update rust crate chrono to 0.4.31 ([#104](https://github.com/LibNyanpasu/clash-nyanpasu/issues/104)) ([dad9f68](https://github.com/LibNyanpasu/clash-nyanpasu/commit/dad9f686712f81370e9c6283846d29e3a426ce09)) by @
+- **deps:** update rust crate ctrlc to 3.4.1 ([#108](https://github.com/LibNyanpasu/clash-nyanpasu/issues/108)) ([f74b6d4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f74b6d490ce0489231ae0972ab4f94a89daa2057)) by @
+- **deps:** update rust crate dirs to 5.0.1 ([#110](https://github.com/LibNyanpasu/clash-nyanpasu/issues/110)) ([b340e04](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b340e04ef886f83dd1a22c1de1367f6ccc6e5351)) by @
+- **deps:** update rust crate dunce to 1.0.4 ([0d12a5d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0d12a5d12e89439f34120a904bcdc344d222500f)) by @
+- **deps:** update rust crate interfaces to 0.0.9 ([#111](https://github.com/LibNyanpasu/clash-nyanpasu/issues/111)) ([ffd7a8e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ffd7a8e287fef309e3ddf076171537f69b503404)) by @
+- **deps:** update rust crate log to 0.4.20 ([e92ee5d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e92ee5d175eb2b3f6bd2115caa59f605b48790e6)) by @
+- **deps:** update rust crate log4rs to 1.2.0 ([#125](https://github.com/LibNyanpasu/clash-nyanpasu/issues/125)) ([7759075](https://github.com/LibNyanpasu/clash-nyanpasu/commit/77590758eb7e935af1e9e0ac31cce3b8cc24d8c2)) by @
+- **deps:** update rust crate once_cell to 1.18.0 ([#129](https://github.com/LibNyanpasu/clash-nyanpasu/issues/129)) ([2944745](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2944745c3cf7542b99e72aa8afbb7203a7212ab7)) by @
+- **deps:** update rust crate once_cell to 1.19.0 ([8574388](https://github.com/LibNyanpasu/clash-nyanpasu/commit/857438815fb47d805e488af1343fcc9e1a061147)) by @
+- **deps:** update rust crate open to 4.2.0 ([#126](https://github.com/LibNyanpasu/clash-nyanpasu/issues/126)) ([a30f56c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a30f56cbae8bb4c688eb5c9ccad6b62bc44d2ba1)) by @
+- **deps:** update rust crate open to 5.0.1 ([8beb165](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8beb16583428f46afbe957815d3be33e5b7e933e)) by @
+- **deps:** update rust crate open to v5 ([#152](https://github.com/LibNyanpasu/clash-nyanpasu/issues/152)) ([b54e6b5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b54e6b59c05b50eb1b34c0b9c41dee46dfa856bd)) by @
+- **deps:** update rust crate parking_lot to 0.12.1 ([65efbcf](https://github.com/LibNyanpasu/clash-nyanpasu/commit/65efbcfa8b564d15f8af0946b5dd75a5b377ed68)) by @
+- **deps:** update rust crate runas to v1.1.0 ([#133](https://github.com/LibNyanpasu/clash-nyanpasu/issues/133)) ([0d1eb27](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0d1eb27440fe23e81c05d27200f8ec11b6894483)) by @
+- **deps:** update rust crate which to 4.4.2 ([b34ee0d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b34ee0d188dc97c6b42a23d0bde08292b85e8213)) by @
+- **deps:** update rust crate window-vibrancy to 0.4.0 ([#134](https://github.com/LibNyanpasu/clash-nyanpasu/issues/134)) ([bf3679c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bf3679c886e7e6867b3ed20c66f2a8c8e5eee3b2)) by @
+- **deps:** update rust crate window-vibrancy to 0.4.3 ([#138](https://github.com/LibNyanpasu/clash-nyanpasu/issues/138)) ([e6db194](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e6db194361f8e7ab17ac1250097d5fc78316fdcc)) by @
+- dev build branch issue ([ddeb76b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ddeb76bbd79d4eff87d78196df82d46097a1d755)) by @
+- **dialog:** align center and overflow issue ([e0430e1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e0430e15070458221a0a5856485332a51e8d7dd5)) by @
+- format ansi in log viewer ([181c905](https://github.com/LibNyanpasu/clash-nyanpasu/commit/181c905687439a05634bfb32f16387d51ea158de)) by @
+- i18n resources ([de64cb8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/de64cb80d254e92ee5fec385a2b978a8833f994c)) by @
+- icon issues, close [#55](https://github.com/LibNyanpasu/clash-nyanpasu/issues/55) ([21b9f75](https://github.com/LibNyanpasu/clash-nyanpasu/commit/21b9f7522131495e9d7cb5e6586f06be40c0d55e)) by @
+- lint ([04cc627](https://github.com/LibNyanpasu/clash-nyanpasu/commit/04cc627a7c42b7fdb5d5aa0d833818d8a1da7da7)) by @
+- lint ([4e51ff3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4e51ff31578c405a8e7056790655eb09b79d2983)) by @
+- **lint:** toml fmt ([c174064](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c174064eeb0ea57385587bf70406dd6858d2e5ba)) by @
+- **manifest:** mihomo alpha arch template ([fd821ea](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fd821ea7ad98c2e8de46e61020dec1c0c7567ad7)) by @
+- minor tweak base-content width ([63c4176](https://github.com/LibNyanpasu/clash-nyanpasu/commit/63c4176ccd7a67abc3d3053aa6fcd60fc7003da4)) by @
+- pin runas to v1.0.0 ([05b84f2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/05b84f2ca1f53f6cabdc07f543e15d695a726a61)) by @
+- **resources:** win service support and mihomo alpha version proxy ([3a1a124](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3a1a124a2e7ef2f5affcdd48f2c8b8c04a371236)) by @
+- shikiji text wrapping err ([ae4371f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ae4371f2ce596747eee3b25fafa93ea3d9f6da91)) by @
+- **updater:** copy logic ([d349ca0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d349ca0a1a4ee64da01ee87ea6f5e58a8d89d2f3)) by @
+- use a workaroud to reduce [#59](https://github.com/LibNyanpasu/clash-nyanpasu/issues/59) ([4afa67b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4afa67bfaa44886e88e03acf2035ea70200ae4c8)) by @
+- win state ([46ac762](https://github.com/LibNyanpasu/clash-nyanpasu/commit/46ac762bc4ff660eda53318071d1b3e08a4fa386)) by @
+- **window:** add a workaround for close event in windows ([81f6d28](https://github.com/LibNyanpasu/clash-nyanpasu/commit/81f6d28bcc93826f4ec9c1c154400cc894e26161)) by @
+- **window:** preserve window state before window minimized ([5127f77](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5127f77e744882e408e1bceaa0b3eff0252bbf54)) by @
+
+### 🧹 Maintenance
+
+- bump clash-rs to v0.1.10 ([3a449d3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3a449d37203e3624232452803cd6c99cab619df1)) by @
+- Bump Version 1.4.2 ([517e166](https://github.com/LibNyanpasu/clash-nyanpasu/commit/517e16645abdf3f969d682522693342a883265ad)) by @
+- change manifest upsteram ([12fc695](https://github.com/LibNyanpasu/clash-nyanpasu/commit/12fc6951cb62feea59641f8b8a6e2e5e240a3b30)) by @
+- **deps:** update actions/checkout action to v4 ([#140](https://github.com/LibNyanpasu/clash-nyanpasu/issues/140)) ([30a2f5c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/30a2f5c5307add0768ddf31fb9c1aa0c41d19954)) by @
+- **deps:** update actions/setup-node action to v4 ([#141](https://github.com/LibNyanpasu/clash-nyanpasu/issues/141)) ([5a1e776](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5a1e7761cb57197239df144f7d69a0e6ebc0935d)) by @
+- **deps:** update dependency @actions/github to v6 ([#143](https://github.com/LibNyanpasu/clash-nyanpasu/issues/143)) ([17eee56](https://github.com/LibNyanpasu/clash-nyanpasu/commit/17eee56401b4923e77a8a8c45959b8bc575446f6)) by @
+- **deps:** update dependency @types/fs-extra to v11 ([#144](https://github.com/LibNyanpasu/clash-nyanpasu/issues/144)) ([fe8bb32](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fe8bb321c4c628f44824d1c440adfb56decb7913)) by @
+- **deps:** update dependency eslint to v8.56.0 ([#163](https://github.com/LibNyanpasu/clash-nyanpasu/issues/163)) ([a17e9eb](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a17e9eb2db87b0a69b955a60a7db845da7c7d5a8)) by @
+- **deps:** update dependency eslint-plugin-import to v2.29.1 ([1f6bafe](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1f6bafef7b681ea6a0d71b7f52e78b499dda0b37)) by @
+- **deps:** update dependency eslint-plugin-n to v16.5.0 ([59a0901](https://github.com/LibNyanpasu/clash-nyanpasu/commit/59a090107a117c4bc72559f733e53f03871c1444)) by @
+- **deps:** update dependency eslint-plugin-prettier to v5.1.0 ([71dca60](https://github.com/LibNyanpasu/clash-nyanpasu/commit/71dca6041474192d6ad22c7d6880adf6e2cf3fe8)) by @
+- **deps:** update dependency eslint-plugin-prettier to v5.1.1 ([61a2746](https://github.com/LibNyanpasu/clash-nyanpasu/commit/61a2746d1d1c8e8fca400ffaf04982694e6cd227)) by @
+- **deps:** update dependency eslint-plugin-prettier to v5.1.2 ([680882f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/680882f9a396655a01a8988c2fc266c435e6c636)) by @
+- **deps:** update dependency fs-extra to v11 ([#109](https://github.com/LibNyanpasu/clash-nyanpasu/issues/109)) ([8009e3b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8009e3b0c7021532303cf9def1c84242b32fb478)) by @
+- **deps:** update dependency https-proxy-agent to v7 ([#145](https://github.com/LibNyanpasu/clash-nyanpasu/issues/145)) ([8673b6a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8673b6a1fe5f7c56b5c9428651534efdd8fd493e)) by @
+- **deps:** update dependency postcss to v8.4.32 ([772928b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/772928b73d4f264c17af97733ce505275ffd799a)) by @
+- **deps:** update dependency shikiji to v0.9.10 ([4828c19](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4828c197cf2cabf531f01b753b14dcf154d3e6b6)) by @
+- **deps:** update dependency shikiji to v0.9.11 ([d840c51](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d840c51a64ed335799ffd295b440ee2d8cf61bc0)) by @
+- **deps:** update dependency shikiji to v0.9.2 ([a1c4632](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a1c463214ff76f20afee179fb0a10ffec8c0fb7a)) by @
+- **deps:** update dependency shikiji to v0.9.3 ([2cd9ac1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2cd9ac1276d8c6279b606ae3ef0637b3ab8c327a)) by @
+- **deps:** update dependency shikiji to v0.9.4 ([5423492](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5423492555c81005c2f1817006afa9059f2ae818)) by @
+- **deps:** update dependency shikiji to v0.9.6 ([0cf6c61](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0cf6c615276f08d098a883dc8ccf29b4095eda95)) by @
+- **deps:** update dependency shikiji to v0.9.7 ([90cabc7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/90cabc73add4856f41b534ec8c053a5f879c7d2d)) by @
+- **deps:** update dependency shikiji to v0.9.9 ([4b2624b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4b2624b2b5e5a17bbc7b869e7ab16b6d7ba9efa6)) by @
+- **deps:** update dependency tsx to v4.6.2 ([3e8fb15](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3e8fb15fa5d41df2a4ab4bbdc3b35924ecf7e703)) by @
+- **deps:** update dependency tsx to v4.7.0 ([75ea834](https://github.com/LibNyanpasu/clash-nyanpasu/commit/75ea8345f7924d354e36a250e1cec3d237eed549)) by @
+- **deps:** update dependency vite to v5 ([#72](https://github.com/LibNyanpasu/clash-nyanpasu/issues/72)) ([cd0c874](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cd0c874e25739de5d94ba681abd7544d0d6b8df1)) by @
+- **deps:** update lint packages ([1802620](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1802620be5016a62faf250f5a2f00abb821b2a3a)) by @
+- **deps:** update lint packages ([#146](https://github.com/LibNyanpasu/clash-nyanpasu/issues/146)) ([153ccf1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/153ccf1c20ff420854aff3bde901ef4165457017)) by @
+- **deps:** update lint packages to v6.14.0 ([#127](https://github.com/LibNyanpasu/clash-nyanpasu/issues/127)) ([dc109a9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/dc109a9ead678ff2d2e520dcefc22aae87756ad8)) by @
+- **deps:** update lint packages to v6.15.0 ([ec3df1e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ec3df1e81a66148506aa7f33fcdc920e24a2c6d2)) by @
+- fix missing macOS aarch64 build ([a3cb48b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a3cb48b62c242047a073049ed20d381011eaabf5)) by @
+- rename clash-meta to mihomo ([072b3f6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/072b3f6f26b7a65f9be696de33d7f25ed77b64f6)) by @
+- update deps ([1fcd126](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1fcd126d109b5fe76028e19245ffb78977cedd31)) by @
+- update issue templates ([#77](https://github.com/LibNyanpasu/clash-nyanpasu/issues/77)) ([ec94eba](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ec94eba07177186bef1cd760ebb1d7e05de2bd57)) by @
+- use gh-actions user ([60fae64](https://github.com/LibNyanpasu/clash-nyanpasu/commit/60fae64f4fb691f8637a620b72bcbb0335e09d6c)) by @
 
 ### 📚 Documentation
 
-- put issue config into effect ([#148](https://github.com/keiko233/clash-nyanpasu/issues/148)) ([fddb447](https://github.com/keiko233/clash-nyanpasu/commit/fddb447800d52cededd6e2692708bb5b7b6492da)) by @
-- update issues template & upload ISSUE.md ([259e348](https://github.com/keiko233/clash-nyanpasu/commit/259e348e4d451a4fa4cbe7709f5a043ccfc06ea9)) by @
-- upload missing issue config ([b5902b7](https://github.com/keiko233/clash-nyanpasu/commit/b5902b7e57621cfa350005c94f8c92c3f1b137b8)) by @
+- put issue config into effect ([#148](https://github.com/LibNyanpasu/clash-nyanpasu/issues/148)) ([fddb447](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fddb447800d52cededd6e2692708bb5b7b6492da)) by @
+- update issues template & upload ISSUE.md ([259e348](https://github.com/LibNyanpasu/clash-nyanpasu/commit/259e348e4d451a4fa4cbe7709f5a043ccfc06ea9)) by @
+- upload missing issue config ([b5902b7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b5902b7e57621cfa350005c94f8c92c3f1b137b8)) by @
 
 ### 🔨 Refactoring
 
-- profile updater ([b141f2a](https://github.com/keiko233/clash-nyanpasu/commit/b141f2a8d4fc10e9774b5ab4776907452e73e5ef)) by @
-- **tasks:** provide a universal abstract layer for task managing ([#15](https://github.com/keiko233/clash-nyanpasu/issues/15)) ([ad82b58](https://github.com/keiko233/clash-nyanpasu/commit/ad82b58d0bddeaa171ecb46bc4c5cc41d68e92e2)), closes [#48](https://github.com/keiko233/clash-nyanpasu/issues/48) by @
+- profile updater ([b141f2a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b141f2a8d4fc10e9774b5ab4776907452e73e5ef)) by @
+- **tasks:** provide a universal abstract layer for task managing ([#15](https://github.com/LibNyanpasu/clash-nyanpasu/issues/15)) ([ad82b58](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ad82b58d0bddeaa171ecb46bc4c5cc41d68e92e2)), closes [#48](https://github.com/LibNyanpasu/clash-nyanpasu/issues/48) by @
 
-## [1.4.1](https://github.com/keiko233/clash-nyanpasu/compare/v1.4.0...v1.4.1) (2023-12-06)
+## [1.4.1](https://github.com/LibNyanpasu/clash-nyanpasu/compare/v1.4.0...v1.4.1) (2023-12-06)
 
 ### ✨ Features
 
-- add page transition duration options ([83b9660](https://github.com/keiko233/clash-nyanpasu/commit/83b966051fbfe3e1b9d44db9982b3f9a3b07f49d)) by @
-- add page transition mode switch ([41fbbb7](https://github.com/keiko233/clash-nyanpasu/commit/41fbbb7726428c9fb3b370e749cb5e59fe196502)) by @
-- add tooltip for tray ([#24](https://github.com/keiko233/clash-nyanpasu/issues/24)) ([e6cc440](https://github.com/keiko233/clash-nyanpasu/commit/e6cc44064cfdfa28e3b46999f4dcf0bdd1c2e5cc)) by @
-- Add UWP tool support, fix install service bug ([#19](https://github.com/keiko233/clash-nyanpasu/issues/19)) ([b09331e](https://github.com/keiko233/clash-nyanpasu/commit/b09331e251673b3c45f54dae70de0719fd371f74)) by @
-- experimental support `clash-rs` ([#23](https://github.com/keiko233/clash-nyanpasu/issues/23)) ([7e7ce41](https://github.com/keiko233/clash-nyanpasu/commit/7e7ce414aac22ed96fdde7ae5f2ef851d33237cc)) by @
-- new style win tray icon ([4015cb3](https://github.com/keiko233/clash-nyanpasu/commit/4015cb345b3e79f5504d826431406b53230105fd)) by @
-- support drag profile item ([#36](https://github.com/keiko233/clash-nyanpasu/issues/36)) ([0b8f9ed](https://github.com/keiko233/clash-nyanpasu/commit/0b8f9ed6244b3ac573be58a0ad91a1fe810cf7e6)) by @
-- support new clash field ([87e0f5e](https://github.com/keiko233/clash-nyanpasu/commit/87e0f5ea426674c0c382d538c801bf1c8d44d909)) by @
-- support random mixed port ([#29](https://github.com/keiko233/clash-nyanpasu/issues/29)) ([86e29ee](https://github.com/keiko233/clash-nyanpasu/commit/86e29ee75f44ed9b9a040fd195e6ed4ec17b15bd)) by @
-- **transition:** add none and transparent variants ([9087b9a](https://github.com/keiko233/clash-nyanpasu/commit/9087b9a204791a757d1922f0875c4646f0a80943)) by @
-- update new clash.meta close [#20](https://github.com/keiko233/clash-nyanpasu/issues/20) ([#30](https://github.com/keiko233/clash-nyanpasu/issues/30)) ([858de14](https://github.com/keiko233/clash-nyanpasu/commit/858de148feac19ce2491c7aa61e96a2af474a3f9)) by @
-- use framer-motion for smooth page transition ([45aa11e](https://github.com/keiko233/clash-nyanpasu/commit/45aa11e4dfb41875df8586376b978cefac1a6983)) by @
-- use tauri notification api ([d54ae01](https://github.com/keiko233/clash-nyanpasu/commit/d54ae01c7e29e0270c70b6b5e674fcc467b42c15)) by @
-- use twemoji to display flags in win ([#48](https://github.com/keiko233/clash-nyanpasu/issues/48)) ([83dcf47](https://github.com/keiko233/clash-nyanpasu/commit/83dcf47e95964e11351085f261e1c652dd2c1e5b)) by @
-- use workspace in backend ([11ae5ef](https://github.com/keiko233/clash-nyanpasu/commit/11ae5ef4a9d94fe5c812c11a65b2ed8e667a9dc4)) by @
+- add page transition duration options ([83b9660](https://github.com/LibNyanpasu/clash-nyanpasu/commit/83b966051fbfe3e1b9d44db9982b3f9a3b07f49d)) by @
+- add page transition mode switch ([41fbbb7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/41fbbb7726428c9fb3b370e749cb5e59fe196502)) by @
+- add tooltip for tray ([#24](https://github.com/LibNyanpasu/clash-nyanpasu/issues/24)) ([e6cc440](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e6cc44064cfdfa28e3b46999f4dcf0bdd1c2e5cc)) by @
+- Add UWP tool support, fix install service bug ([#19](https://github.com/LibNyanpasu/clash-nyanpasu/issues/19)) ([b09331e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b09331e251673b3c45f54dae70de0719fd371f74)) by @
+- experimental support `clash-rs` ([#23](https://github.com/LibNyanpasu/clash-nyanpasu/issues/23)) ([7e7ce41](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7e7ce414aac22ed96fdde7ae5f2ef851d33237cc)) by @
+- new style win tray icon ([4015cb3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4015cb345b3e79f5504d826431406b53230105fd)) by @
+- support drag profile item ([#36](https://github.com/LibNyanpasu/clash-nyanpasu/issues/36)) ([0b8f9ed](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0b8f9ed6244b3ac573be58a0ad91a1fe810cf7e6)) by @
+- support new clash field ([87e0f5e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/87e0f5ea426674c0c382d538c801bf1c8d44d909)) by @
+- support random mixed port ([#29](https://github.com/LibNyanpasu/clash-nyanpasu/issues/29)) ([86e29ee](https://github.com/LibNyanpasu/clash-nyanpasu/commit/86e29ee75f44ed9b9a040fd195e6ed4ec17b15bd)) by @
+- **transition:** add none and transparent variants ([9087b9a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9087b9a204791a757d1922f0875c4646f0a80943)) by @
+- update new clash.meta close [#20](https://github.com/LibNyanpasu/clash-nyanpasu/issues/20) ([#30](https://github.com/LibNyanpasu/clash-nyanpasu/issues/30)) ([858de14](https://github.com/LibNyanpasu/clash-nyanpasu/commit/858de148feac19ce2491c7aa61e96a2af474a3f9)) by @
+- use framer-motion for smooth page transition ([45aa11e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/45aa11e4dfb41875df8586376b978cefac1a6983)) by @
+- use tauri notification api ([d54ae01](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d54ae01c7e29e0270c70b6b5e674fcc467b42c15)) by @
+- use twemoji to display flags in win ([#48](https://github.com/LibNyanpasu/clash-nyanpasu/issues/48)) ([83dcf47](https://github.com/LibNyanpasu/clash-nyanpasu/commit/83dcf47e95964e11351085f261e1c652dd2c1e5b)) by @
+- use workspace in backend ([11ae5ef](https://github.com/LibNyanpasu/clash-nyanpasu/commit/11ae5ef4a9d94fe5c812c11a65b2ed8e667a9dc4)) by @
 
 ### 🐛 Bug Fixes
 
-- i18n typos ([7459e41](https://github.com/keiko233/clash-nyanpasu/commit/7459e41c0c311a2a15ce1c3fb44454a97edad29b)) by @
-- item col width too narrow ([341f76f](https://github.com/keiko233/clash-nyanpasu/commit/341f76fdc1498e2fa4732665a55fe8afaa02879e)) by @
-- lint ([fd972d2](https://github.com/keiko233/clash-nyanpasu/commit/fd972d24afdd75122beec2a5c7195ded9cc5627c)) by @
-- lint ([98a647d](https://github.com/keiko233/clash-nyanpasu/commit/98a647dfe651407249b64f758e21ec145b8e83d1)) by @
-- missing scss import ([af006fa](https://github.com/keiko233/clash-nyanpasu/commit/af006fa0f95cd19529124bc191434f3d0fef0bcf)) by @
-- osx-aarch64-upload bundlePath typos ([bb354a9](https://github.com/keiko233/clash-nyanpasu/commit/bb354a9de089e16974142f2136cc7013d15cb7ad)) by @
-- portable missing clash-rs core ([3f962e7](https://github.com/keiko233/clash-nyanpasu/commit/3f962e77017998acc4004989eee3c2b6c30c7858)) by @
-- Portable target dir ([b14325f](https://github.com/keiko233/clash-nyanpasu/commit/b14325f3dfad120197dbaaf0b797f42e9795d362)) by @
-- taskbar maximize toggle icon state ([#46](https://github.com/keiko233/clash-nyanpasu/issues/46)) ([8d76f7a](https://github.com/keiko233/clash-nyanpasu/commit/8d76f7a446cf8dc1d1c6f9cd2341031962db49a8)) by @
-- workflow script typos ([3fe3cd1](https://github.com/keiko233/clash-nyanpasu/commit/3fe3cd1c3efeddc7435fa0fa5bab969c6488e064)) by @
+- i18n typos ([7459e41](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7459e41c0c311a2a15ce1c3fb44454a97edad29b)) by @
+- item col width too narrow ([341f76f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/341f76fdc1498e2fa4732665a55fe8afaa02879e)) by @
+- lint ([fd972d2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fd972d24afdd75122beec2a5c7195ded9cc5627c)) by @
+- lint ([98a647d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/98a647dfe651407249b64f758e21ec145b8e83d1)) by @
+- missing scss import ([af006fa](https://github.com/LibNyanpasu/clash-nyanpasu/commit/af006fa0f95cd19529124bc191434f3d0fef0bcf)) by @
+- osx-aarch64-upload bundlePath typos ([bb354a9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bb354a9de089e16974142f2136cc7013d15cb7ad)) by @
+- portable missing clash-rs core ([3f962e7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3f962e77017998acc4004989eee3c2b6c30c7858)) by @
+- Portable target dir ([b14325f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b14325f3dfad120197dbaaf0b797f42e9795d362)) by @
+- taskbar maximize toggle icon state ([#46](https://github.com/LibNyanpasu/clash-nyanpasu/issues/46)) ([8d76f7a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8d76f7a446cf8dc1d1c6f9cd2341031962db49a8)) by @
+- workflow script typos ([3fe3cd1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3fe3cd1c3efeddc7435fa0fa5bab969c6488e064)) by @
 
 ### 🧹 Maintenance
 
-- add rustfmt check ([a0c16ef](https://github.com/keiko233/clash-nyanpasu/commit/a0c16ef1c0cc178deb4a9d9ab917fb3b8a113d56)) by @
-- add stylelint ([542cf32](https://github.com/keiko233/clash-nyanpasu/commit/542cf32cecb4d535e6fd7eb23a835c2289e04a5d)) by @
-- add test scripts ([bb44f65](https://github.com/keiko233/clash-nyanpasu/commit/bb44f65439f9f6788d6f6443418a024d3d0b051d)) by @
-- add updater workflow ([0820d6d](https://github.com/keiko233/clash-nyanpasu/commit/0820d6d6fbd91e6c2e6c7f605bdeeed99586ada3)) by @
-- Bump Version to 1.4.1 ([4dbe309](https://github.com/keiko233/clash-nyanpasu/commit/4dbe309d8e6b889b6301dbef1bebb83817f757f8)) by @
-- clean up workflows ([5402214](https://github.com/keiko233/clash-nyanpasu/commit/540221467a35d90c48cb27dd182c8f173523a1fb)) by @
-- commitlint ([8e68421](https://github.com/keiko233/clash-nyanpasu/commit/8e684215b2ea717230fc8b3c1854fd322bf4fbc8)) by @
-- configure eslint ([3b2b489](https://github.com/keiko233/clash-nyanpasu/commit/3b2b489d1e369bfe95fdc5b2c46d201529b2ee5d)) by @
-- configure renovate ([43f1828](https://github.com/keiko233/clash-nyanpasu/commit/43f18283337ca77862085f0c72ded374e2a0373e)) by @
-- dev build support macOS aarch64 ([60e36b4](https://github.com/keiko233/clash-nyanpasu/commit/60e36b480387f858fe33a21045f4c227678b0ee2)) by @
-- fix missing assets type ([2322733](https://github.com/keiko233/clash-nyanpasu/commit/2322733427e9b9c1fe5bbf1027007df97421fcf6)) by @
-- fix typos ([3f2ce3c](https://github.com/keiko233/clash-nyanpasu/commit/3f2ce3cb8058e972db5bc00f43f43e2ae0415d3e)) by @
-- fix typos ([0c2e4fe](https://github.com/keiko233/clash-nyanpasu/commit/0c2e4fe34a4ae19d98a703ebbdcff99461c21211)) by @
-- fmt ([1554ed7](https://github.com/keiko233/clash-nyanpasu/commit/1554ed7cc35a902158969a2e6cd8fcc463847b0c)) by @
-- fmt ([35aa063](https://github.com/keiko233/clash-nyanpasu/commit/35aa063d44eee2aa66e182b96ffb624c70d5cd4e)) by @
-- **lint:** ignore extra cargo fmt job ([ef06e59](https://github.com/keiko233/clash-nyanpasu/commit/ef06e59fee4e4100da13fdd256a53de6f14fbe76)) by @
-- no need for second build ([d58c299](https://github.com/keiko233/clash-nyanpasu/commit/d58c29907d105eadf7d4aa89beb18f6929cf7225)) by @
-- remove un supported platform ([a8c74e3](https://github.com/keiko233/clash-nyanpasu/commit/a8c74e39c210d5259312fefea63e5a8f20ebab42)) by @
-- remove un supported platform ([d76e8fe](https://github.com/keiko233/clash-nyanpasu/commit/d76e8fe85a2886e2b1fb7847fd8801e6cdcddf63)) by @
-- tauri modify desc ([d6960e7](https://github.com/keiko233/clash-nyanpasu/commit/d6960e7f21396cfbee3407b1ad724667d71cec60)) by @
-- test: fix missing env & upload to release ([9e2ae31](https://github.com/keiko233/clash-nyanpasu/commit/9e2ae311cd47f7b6fb60e77283955b21c9bbb846)) by @
-- test: macos aarch64 build ([0c9a9f0](https://github.com/keiko233/clash-nyanpasu/commit/0c9a9f01f59b4384cd102371b2b5b7315b651e16)) by @
-- **transition:** reduce slide animation duration ([4bc980f](https://github.com/keiko233/clash-nyanpasu/commit/4bc980fbedc82fce3ba8c7a91d5f43d0f300238d)) by @
-- try fix lint-stage color issue ([419efc3](https://github.com/keiko233/clash-nyanpasu/commit/419efc36d7b6d8cfa53ba3401544cda511071df2)) by @
-- use clash meta v1.17.0 ([93fe0ca](https://github.com/keiko233/clash-nyanpasu/commit/93fe0cada158f9d6d064eddf30e662600477800d)) by @
-- use lint-staged instead of pretty-quick ([a48cb6d](https://github.com/keiko233/clash-nyanpasu/commit/a48cb6d98a17a6e1e5ede9348ea899a5bc54e70c)) by @
+- add rustfmt check ([a0c16ef](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a0c16ef1c0cc178deb4a9d9ab917fb3b8a113d56)) by @
+- add stylelint ([542cf32](https://github.com/LibNyanpasu/clash-nyanpasu/commit/542cf32cecb4d535e6fd7eb23a835c2289e04a5d)) by @
+- add test scripts ([bb44f65](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bb44f65439f9f6788d6f6443418a024d3d0b051d)) by @
+- add updater workflow ([0820d6d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0820d6d6fbd91e6c2e6c7f605bdeeed99586ada3)) by @
+- Bump Version to 1.4.1 ([4dbe309](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4dbe309d8e6b889b6301dbef1bebb83817f757f8)) by @
+- clean up workflows ([5402214](https://github.com/LibNyanpasu/clash-nyanpasu/commit/540221467a35d90c48cb27dd182c8f173523a1fb)) by @
+- commitlint ([8e68421](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8e684215b2ea717230fc8b3c1854fd322bf4fbc8)) by @
+- configure eslint ([3b2b489](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3b2b489d1e369bfe95fdc5b2c46d201529b2ee5d)) by @
+- configure renovate ([43f1828](https://github.com/LibNyanpasu/clash-nyanpasu/commit/43f18283337ca77862085f0c72ded374e2a0373e)) by @
+- dev build support macOS aarch64 ([60e36b4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/60e36b480387f858fe33a21045f4c227678b0ee2)) by @
+- fix missing assets type ([2322733](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2322733427e9b9c1fe5bbf1027007df97421fcf6)) by @
+- fix typos ([3f2ce3c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3f2ce3cb8058e972db5bc00f43f43e2ae0415d3e)) by @
+- fix typos ([0c2e4fe](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0c2e4fe34a4ae19d98a703ebbdcff99461c21211)) by @
+- fmt ([1554ed7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1554ed7cc35a902158969a2e6cd8fcc463847b0c)) by @
+- fmt ([35aa063](https://github.com/LibNyanpasu/clash-nyanpasu/commit/35aa063d44eee2aa66e182b96ffb624c70d5cd4e)) by @
+- **lint:** ignore extra cargo fmt job ([ef06e59](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ef06e59fee4e4100da13fdd256a53de6f14fbe76)) by @
+- no need for second build ([d58c299](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d58c29907d105eadf7d4aa89beb18f6929cf7225)) by @
+- remove un supported platform ([a8c74e3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a8c74e39c210d5259312fefea63e5a8f20ebab42)) by @
+- remove un supported platform ([d76e8fe](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d76e8fe85a2886e2b1fb7847fd8801e6cdcddf63)) by @
+- tauri modify desc ([d6960e7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d6960e7f21396cfbee3407b1ad724667d71cec60)) by @
+- test: fix missing env & upload to release ([9e2ae31](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9e2ae311cd47f7b6fb60e77283955b21c9bbb846)) by @
+- test: macos aarch64 build ([0c9a9f0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0c9a9f01f59b4384cd102371b2b5b7315b651e16)) by @
+- **transition:** reduce slide animation duration ([4bc980f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4bc980fbedc82fce3ba8c7a91d5f43d0f300238d)) by @
+- try fix lint-stage color issue ([419efc3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/419efc36d7b6d8cfa53ba3401544cda511071df2)) by @
+- use clash meta v1.17.0 ([93fe0ca](https://github.com/LibNyanpasu/clash-nyanpasu/commit/93fe0cada158f9d6d064eddf30e662600477800d)) by @
+- use lint-staged instead of pretty-quick ([a48cb6d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a48cb6d98a17a6e1e5ede9348ea899a5bc54e70c)) by @
 
 ### 📚 Documentation
 
-- add preview gif ([30b6c87](https://github.com/keiko233/clash-nyanpasu/commit/30b6c87a49ce651d961bf2d10c8026d260989e14)) by @
+- add preview gif ([30b6c87](https://github.com/LibNyanpasu/clash-nyanpasu/commit/30b6c87a49ce651d961bf2d10c8026d260989e14)) by @
 
 ### 🔨 Refactoring
 
-- **scripts:** use ts and consola instead ([cd2fcea](https://github.com/keiko233/clash-nyanpasu/commit/cd2fcea55f4c6b90ffb580abeb38a59021835ad1)) by @
+- **scripts:** use ts and consola instead ([cd2fcea](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cd2fcea55f4c6b90ffb580abeb38a59021835ad1)) by @
 
-## [1.4.0](https://github.com/keiko233/clash-nyanpasu/compare/1afaa4c51ea0cc79c2e2ecb225dc4ea78864080c...v1.4.0) (2023-11-15)
+## [1.4.0](https://github.com/LibNyanpasu/clash-nyanpasu/compare/1afaa4c51ea0cc79c2e2ecb225dc4ea78864080c...v1.4.0) (2023-11-15)
 
 ### ✨ Features
 
-- add animation ([eb28ec8](https://github.com/keiko233/clash-nyanpasu/commit/eb28ec866ae64ccfbf03af7bd3a5761c69980d6b)) by @
-- add animation to ProfileNew component ([#252](https://github.com/keiko233/clash-nyanpasu/issues/252)) ([a45dc6e](https://github.com/keiko233/clash-nyanpasu/commit/a45dc6efda76c293d90ea0d63cb8907c1d3462e8)) by @
-- add baseContentIn animation ([34cb796](https://github.com/keiko233/clash-nyanpasu/commit/34cb796505bc1d90ea32128e5b14e55cc58912be)) by @
-- add chains[0] and process to connections display ([#205](https://github.com/keiko233/clash-nyanpasu/issues/205)) ([6423a29](https://github.com/keiko233/clash-nyanpasu/commit/6423a296008aa82875d4dc50350261ace1b2cc74)) by @
-- add check for updates button, close [#766](https://github.com/keiko233/clash-nyanpasu/issues/766) ([f4c7b17](https://github.com/keiko233/clash-nyanpasu/commit/f4c7b17a87ae853ad67fdcea727e93266babf779)) by @
-- add Connections Info to ConnectionsPage ([88d3bba](https://github.com/keiko233/clash-nyanpasu/commit/88d3bba30033c49b760628b974cc12b907ae1496)) by @
-- add default user agent ([b74696a](https://github.com/keiko233/clash-nyanpasu/commit/b74696adbad1c213b0b9a3e8be4dd87628e2a105)) by @
-- add draft ([09965f1](https://github.com/keiko233/clash-nyanpasu/commit/09965f1cc675aea6af74dc225398cf47bfa4c76b)) by @
-- add empty ui ([b915f3b](https://github.com/keiko233/clash-nyanpasu/commit/b915f3b1a936b76b684ddf5ff5340b1b9539f1b3)) by @
-- add error boundary ([9d2017e](https://github.com/keiko233/clash-nyanpasu/commit/9d2017e598a7821cbd83ada66ade3d8b84fa790d)) by @
-- add error boundary to the app root ([6a97451](https://github.com/keiko233/clash-nyanpasu/commit/6a9745171ea4796d7961db8802cdcbbe4e62156e)) by @
-- add favicon ([3be2f5c](https://github.com/keiko233/clash-nyanpasu/commit/3be2f5c4049290575d59c01e856ea89b918a2e0f)) by @
-- add Linux open dir support ([cb94d84](https://github.com/keiko233/clash-nyanpasu/commit/cb94d8414f05ce04915ae4fb230096d9f0f8ab31)) by @
-- add meta feature ([c51e9e6](https://github.com/keiko233/clash-nyanpasu/commit/c51e9e6b2cf6d9c3edb6931e3bba8e699c4c5080)) by @
-- add Open Dashboard to the hotkey, close [#723](https://github.com/keiko233/clash-nyanpasu/issues/723) ([3efd575](https://github.com/keiko233/clash-nyanpasu/commit/3efd575dd206c32b15c4187ee53916fddfeda6ba)) by @
-- add paste and clear icon ([ad228d5](https://github.com/keiko233/clash-nyanpasu/commit/ad228d53b710a6c4aa3da4065a7a0abd115dc818)) by @
-- add pre-dev script ([023e771](https://github.com/keiko233/clash-nyanpasu/commit/023e7715941011e0bbf7c734afc3172cc14a543e)) by @
-- add proxy item check loading ([a2cf26e](https://github.com/keiko233/clash-nyanpasu/commit/a2cf26e7ed35744f60b012d28f9dd7a524652e27)) by @
-- add put_profiles cmd ([0c23845](https://github.com/keiko233/clash-nyanpasu/commit/0c238459708032116e5a3c83881e7d560b314709)) by @
-- add repo link ([2bcaf90](https://github.com/keiko233/clash-nyanpasu/commit/2bcaf90fc842cb904c80d5b8582b0659f451811f)) by @
-- add restart core button ([9a29c9a](https://github.com/keiko233/clash-nyanpasu/commit/9a29c9abddc7e60301aeea36d7159e694cd5a265)) by @
-- add route transition ([1eb34e0](https://github.com/keiko233/clash-nyanpasu/commit/1eb34e0662379e473ffee5993c506f451cfbf68b)) by @
-- add rule page ([b23d3f7](https://github.com/keiko233/clash-nyanpasu/commit/b23d3f7c8b6cfadfee507df016a94ec4bc3bb3ef)) by @
-- Add Russian Language ([#697](https://github.com/keiko233/clash-nyanpasu/issues/697)) ([2c48ea3](https://github.com/keiko233/clash-nyanpasu/commit/2c48ea35083fb16d47d2585703d318995f5a60c8)) by @
-- add serval commands ([13ceb1e](https://github.com/keiko233/clash-nyanpasu/commit/13ceb1e44596c7b6907f01159c2015a9134ad6b7)) by @
-- add some clash api ([4bb9e10](https://github.com/keiko233/clash-nyanpasu/commit/4bb9e10946878d36a8652fbb40bd2c150a0e3ed2)) by @
-- add some commands ([2d0b63c](https://github.com/keiko233/clash-nyanpasu/commit/2d0b63c29d9ee99841fdfd2d951b16859694f247)) by @
-- add sub-rules ([7f65c50](https://github.com/keiko233/clash-nyanpasu/commit/7f65c501c684bd949a31000435071badfa008f6f)) by @
-- add text color ([c009026](https://github.com/keiko233/clash-nyanpasu/commit/c009026961949973eb0bed2847912120b80fc00d)) by @
-- add text color ([3ec2b46](https://github.com/keiko233/clash-nyanpasu/commit/3ec2b46d28b11e01604a52a9fec79d4feef5a351)) by @
-- add theme setting ([aec30b8](https://github.com/keiko233/clash-nyanpasu/commit/aec30b89e0100a93605f61307948a967bb66a854)) by @
-- add unified-delay field ([416e788](https://github.com/keiko233/clash-nyanpasu/commit/416e7884f5e0b825a6853f0c50c62a2c8201c145)) by @
-- add update interval ([cb661aa](https://github.com/keiko233/clash-nyanpasu/commit/cb661aaebde80e8c6dcca1eba996053fc81de25e)) by @
-- add use clash hook ([28d3691](https://github.com/keiko233/clash-nyanpasu/commit/28d3691e0b7f7155a3bf322b4baf1d68ba123627)) by @
-- add use-notice hook ([97f2bc8](https://github.com/keiko233/clash-nyanpasu/commit/97f2bc876149c2b4ab294c7888a88572752c4fd2)) by @
-- add version on tray ([56fe7b3](https://github.com/keiko233/clash-nyanpasu/commit/56fe7b35965d2a2335656cd09f5fe7574cd0eaf7)) by @
-- add wintun.dll by default ([7074bbc](https://github.com/keiko233/clash-nyanpasu/commit/7074bbc4055cdf59c642c32d9dc6a8b0858a1d71)) by @
-- adjust builtin script and support meta guard script ([fe81687](https://github.com/keiko233/clash-nyanpasu/commit/fe8168784f0504c2ac26cfbc65051305cabe9486)) by @
-- adjust clash info parsing logs ([7f321c8](https://github.com/keiko233/clash-nyanpasu/commit/7f321c89cbeb0f735fd8d15b871163e6dd52ec7c)) by @
-- adjust clash log ([f425fba](https://github.com/keiko233/clash-nyanpasu/commit/f425fbaf9db8bff6766f56bac448443b49709a14)) by @
-- adjust clash version display ([f6e821b](https://github.com/keiko233/clash-nyanpasu/commit/f6e821ba6b2b8dae508744d4571b0d2c7dd45cf4)) by @
-- adjust code ([694a776](https://github.com/keiko233/clash-nyanpasu/commit/694a7760b7ae24959d6f96252d1f78f4f7025514)) by @
-- adjust connection page ui ([a6b2db1](https://github.com/keiko233/clash-nyanpasu/commit/a6b2db182d4b30a704adc77b53500405d95e8aab)) by @
-- adjust control ui ([3480d50](https://github.com/keiko233/clash-nyanpasu/commit/3480d50f61977177c78ee3555ba94961406cd64d)) by @
-- adjust fetch profile url ([c60578f](https://github.com/keiko233/clash-nyanpasu/commit/c60578f5b53c23d45bf3efe1c3a2e05797c058ca)) by @
-- adjust macOS window style ([23b728a](https://github.com/keiko233/clash-nyanpasu/commit/23b728a762917931d29c73641f6a2f7b34fcca05)) by @
-- adjust profile item menu ([f2c0462](https://github.com/keiko233/clash-nyanpasu/commit/f2c04621a5134710488873207be6b5219e5d6518)) by @
-- adjust profile item ui ([794d376](https://github.com/keiko233/clash-nyanpasu/commit/794d37634827dbc261efe94a633228374c72429a)) by @
-- adjust profiles page ui ([7338838](https://github.com/keiko233/clash-nyanpasu/commit/7338838b0e9e43f793321e7af4133412c0656aa3)) by @
-- adjust proxy page ([5fcd255](https://github.com/keiko233/clash-nyanpasu/commit/5fcd25506efef7d0777f9c0490d17144d4736c30)) by @
-- adjust runtime config ([78f97ce](https://github.com/keiko233/clash-nyanpasu/commit/78f97ce4dfb78cbfffb86f5c3da5addd2e564a57)) by @
-- adjust setting page style ([0891b5e](https://github.com/keiko233/clash-nyanpasu/commit/0891b5e7b7eb109a5a527797a690ed1a5eae84bf)) by @
-- adjust setting typography ([4097778](https://github.com/keiko233/clash-nyanpasu/commit/40977785c3d3ca1c4360ffdc592e8a331556319c)) by @
-- adjust theme ([5e2271b](https://github.com/keiko233/clash-nyanpasu/commit/5e2271b2373c39928f9d5d762bd394ad3f7d3356)) by @
-- adjust tun mode config ([178fd8e](https://github.com/keiko233/clash-nyanpasu/commit/178fd8e82853ba04b9b32e9f9780d125765af8b4)) by @
-- app log level add silent ([6b0ca29](https://github.com/keiko233/clash-nyanpasu/commit/6b0ca2966ebb1a24ec9f6df5ca9b2ef15633f79a)) by @
-- auto close connection when proxy changed ([0cfd718](https://github.com/keiko233/clash-nyanpasu/commit/0cfd718d8a178b17cd97f33c77bcd01c00772b76)) by @
-- auto proxy layout column ([024db43](https://github.com/keiko233/clash-nyanpasu/commit/024db4358b4d5aab701301005396c4efd7466c67)) by @
-- auto restart core after grand permission ([4ae409c](https://github.com/keiko233/clash-nyanpasu/commit/4ae409c7f45efadb8ad89a428c11788f76e2a9ce)) by @
-- auto update profiles ([f72536b](https://github.com/keiko233/clash-nyanpasu/commit/f72536bce017532faea8d159a75f2e6f5fc6c655)) by @
-- base-dialog: okBtn use LoadingButton ([f57c49c](https://github.com/keiko233/clash-nyanpasu/commit/f57c49ce3a77e7eee76bc86dd4018320433e2ab0)) by @
-- center window when out of monitor ([af70468](https://github.com/keiko233/clash-nyanpasu/commit/af704681d99c1c554eec9b6d01b31d0908bfe9e2)) by @
-- change allow list ([22b11db](https://github.com/keiko233/clash-nyanpasu/commit/22b11db16e657baf0f3502c9c1ba5b8077ba84c0)) by @
-- change clash port in dialog ([ff2c1bf](https://github.com/keiko233/clash-nyanpasu/commit/ff2c1bf8ed23405e0a97098024311efd91a744cc)) by @
-- change default latency test url ([8c8171e](https://github.com/keiko233/clash-nyanpasu/commit/8c8171e7746e3d46f08cf52630e3df2454f0082a)) by @
-- change default singleton port and support to change the port ([c058c29](https://github.com/keiko233/clash-nyanpasu/commit/c058c29755419c16df6492bbbacc1e5c26f85bc3)) by @
-- change global mode ui, close [#226](https://github.com/keiko233/clash-nyanpasu/issues/226) ([f062f7f](https://github.com/keiko233/clash-nyanpasu/commit/f062f7f9feadf75e5fc8ee128f6cff71ff3e11e6)) by @
-- change log file format ([bf5680d](https://github.com/keiko233/clash-nyanpasu/commit/bf5680da6133aab5123f25290848111f84dc342f)) by @
-- change rule page ([03b3a0b](https://github.com/keiko233/clash-nyanpasu/commit/03b3a0b8b30d46c48de9436819b78f58462acd63)) by @
-- change system porxy when changed port ([47155a4](https://github.com/keiko233/clash-nyanpasu/commit/47155a4a29188f6bba5fcfe2f543a0c25635472e)) by @
-- change the log level order ([8738fa3](https://github.com/keiko233/clash-nyanpasu/commit/8738fa3d4f70ef1b8d7b1f6257d8cff8a2be6d74)) by @
-- change the naming strategy ([ef3b10f](https://github.com/keiko233/clash-nyanpasu/commit/ef3b10fa8f76bcc244c238680a8ea160a998c04b)) by @
-- change type ([d982b83](https://github.com/keiko233/clash-nyanpasu/commit/d982b83e14b2fb1f439ca9a7273a908e492a5683)) by @
-- change window style ([97ec5ea](https://github.com/keiko233/clash-nyanpasu/commit/97ec5eabf7c559b4d77b15427cef098d200d736e)) by @
-- check config when change core ([48e14b3](https://github.com/keiko233/clash-nyanpasu/commit/48e14b36b8d39d28b30cb39409a831ad97d8f69e)) by @
-- check remote profile field ([5504994](https://github.com/keiko233/clash-nyanpasu/commit/5504994cb92f8b15f88241d9e0a262656c57b92e)) by @
-- check the remote profile ([9694af8](https://github.com/keiko233/clash-nyanpasu/commit/9694af82f4dcf99243f926a79d1d8512789aceaf)) by @
-- clash field viewer wip ([066b080](https://github.com/keiko233/clash-nyanpasu/commit/066b08040a884cfc0b110b2b5d6253235fe32597)) by @
-- clash meta core support (wip) ([b3a72d5](https://github.com/keiko233/clash-nyanpasu/commit/b3a72d55aecf16829384467b8177fb18589bf776)) by @
-- clash meta core supports ([be9ea4e](https://github.com/keiko233/clash-nyanpasu/commit/be9ea4ea8ef236528f0eee2ad3788cc898daee64)) by @
-- clash tun mode supports ([d7c5ce0](https://github.com/keiko233/clash-nyanpasu/commit/d7c5ce0750e69b9368e80da73fc4d796b683a0f5)) by @
-- ClashFieldViewer BaseDialog maxHeight usage percentage ([#813](https://github.com/keiko233/clash-nyanpasu/issues/813)) ([f5ee6f3](https://github.com/keiko233/clash-nyanpasu/commit/f5ee6f3537a6577c30eff9a2535a02881de1400c)) by @
-- compatible profile config ([19c7b59](https://github.com/keiko233/clash-nyanpasu/commit/19c7b59883922cd7622aeff75a84cdddba4ee736)) by @
-- compatible with macos(wip) ([2b84bbf](https://github.com/keiko233/clash-nyanpasu/commit/2b84bbf3a871f0dd948a1a75c92ce23df2d373e5)) by @
-- compatible with proxy providers health check ([71e6900](https://github.com/keiko233/clash-nyanpasu/commit/71e69003757201207cfbd35fdb0ddea0faf172a3)) by @
-- complete i18n ([ab58968](https://github.com/keiko233/clash-nyanpasu/commit/ab58968f4d66604343d2dbc5f27a065d7b8128c2)) by @
-- connections page simply support ([5b886fe](https://github.com/keiko233/clash-nyanpasu/commit/5b886fe6be6db5acc6705e78e4fd53229287dc0a)) by @
-- connections page supports filter ([41b0e05](https://github.com/keiko233/clash-nyanpasu/commit/41b0e05f624752a5d6a5df5c7869147aed798f92)) by @
-- control final tun config ([cde1738](https://github.com/keiko233/clash-nyanpasu/commit/cde17385b4b3378757de5ddd7d89736c089bf966)) by @
-- create local profile with selected file ([98fa4d5](https://github.com/keiko233/clash-nyanpasu/commit/98fa4d5e6551991dd76d183d56e76484b1508886)) by @
-- custom window decorations ([e86d192](https://github.com/keiko233/clash-nyanpasu/commit/e86d192db7876c8f0ffffcbc006b15b0931db2c5)) by @
-- dayjs i18n ([ed3fc50](https://github.com/keiko233/clash-nyanpasu/commit/ed3fc50858f898761d80640dca3b2b6db89a8cb0)) by @
-- default disable ipv6 ([ae8197b](https://github.com/keiko233/clash-nyanpasu/commit/ae8197be8b079d5b9fc744838c980df8b7d19a90)) by @
-- default enable unified-delay & tcp-concurrent with use meta core ([eafb027](https://github.com/keiko233/clash-nyanpasu/commit/eafb0274a7736211cc74b93bcd3a6accc8a6e6ab)) by @
-- default use meta core ([2981bb3](https://github.com/keiko233/clash-nyanpasu/commit/2981bb3f1941ebdb7c8dcf5d16210ae1995020d5)) by @
-- default user agent same with app version ([f683780](https://github.com/keiko233/clash-nyanpasu/commit/f68378041f90fe6d1bdc56d2cbadb361d414e688)) by @
-- delay put profiles and retry ([b3cd207](https://github.com/keiko233/clash-nyanpasu/commit/b3cd207444508c4b2b5e8c71084a304127fc4892)) by @
-- delete file ([30dd298](https://github.com/keiko233/clash-nyanpasu/commit/30dd298fcaf21152a36e9751a2b787d23b512e32)) by @
-- disable script mode when use clash meta ([8086b6d](https://github.com/keiko233/clash-nyanpasu/commit/8086b6d78c8d8591a13f312e1584a75531ebe96c)) by @
-- disable user select ([8548373](https://github.com/keiko233/clash-nyanpasu/commit/85483737426f97a220dcd79e7267fe6c46ddbb41)) by @
-- display clash core version ([6e3cc57](https://github.com/keiko233/clash-nyanpasu/commit/6e3cc57f480900098bb4963cc8aac886c8399226)) by @
-- display delay check result timely ([a6ac75e](https://github.com/keiko233/clash-nyanpasu/commit/a6ac75e97bc8057de0e2a98cd8a059b4937f2718)) by @
-- display proxy group type ([2f9bf7f](https://github.com/keiko233/clash-nyanpasu/commit/2f9bf7f063aa834fb48cca0c9eab75f65618590f)) by @
-- display version ([61b9670](https://github.com/keiko233/clash-nyanpasu/commit/61b9670b457e9257509d8b9cbc6e0bcc284cc237)) by @
-- distinguish level notice ([83c0bde](https://github.com/keiko233/clash-nyanpasu/commit/83c0bde22ba560fb8f4f04d8136c146b7f0a025f)) by @
-- edit profile item ([17f1c48](https://github.com/keiko233/clash-nyanpasu/commit/17f1c487a84f16ca885fb73ef622fc1658eb78dc)) by @
-- edit system proxy bypass ([78a0cfd](https://github.com/keiko233/clash-nyanpasu/commit/78a0cfd052d6ecf428786a67a4de8ccf17d312cc)) by @
-- enable change mixed port ([d0b87fd](https://github.com/keiko233/clash-nyanpasu/commit/d0b87fd7c39de00bec9bee489e9ca29888681d3b)) by @
-- enable change proxy mode ([6a8ffe1](https://github.com/keiko233/clash-nyanpasu/commit/6a8ffe164292088c49dd7fc88ea9b161ce031db7)) by @
-- enable customize guard duration ([4ff625f](https://github.com/keiko233/clash-nyanpasu/commit/4ff625f23be3c43c13e0ed6380655a3b6588130a)) by @
-- enable force select profile ([5eddf4f](https://github.com/keiko233/clash-nyanpasu/commit/5eddf4f1aa0b13383654726a66fbf88fbf6b12d2)) by @
-- enable show or hide traffic graph ([0245baf](https://github.com/keiko233/clash-nyanpasu/commit/0245baf1b67bfea2c5d236b5b9a913fb1041af1d)) by @
-- enable update clash info ([65fb2ca](https://github.com/keiko233/clash-nyanpasu/commit/65fb2ca2d521385ba376cfeb479bc555480b83a6)) by @
-- enhance clash caller & support more commands ([881a955](https://github.com/keiko233/clash-nyanpasu/commit/881a95520a83fb7e692b5080e1b4205cf506e4cd)) by @
-- enhance connections display order ([4b6189a](https://github.com/keiko233/clash-nyanpasu/commit/4b6189af5feabe08214d6d1de012ca7362795810)) by @
-- enhance log data ([dd15455](https://github.com/keiko233/clash-nyanpasu/commit/dd15455031a5fe2eec6573e018123cae2be4fb6f)) by @
-- enhance profile status ([d63d49f](https://github.com/keiko233/clash-nyanpasu/commit/d63d49f246494cf707e6f09102604e5c51d937fe)) by @
-- enhance system proxy setting ([013dc5f](https://github.com/keiko233/clash-nyanpasu/commit/013dc5f4b5b8fa63bc6395b8088b4cb5fe4d17fd)) by @
-- enhanced mode supports more fields ([c9649ac](https://github.com/keiko233/clash-nyanpasu/commit/c9649ac50156e0a432a1b2e94d16662ffc0bec19)) by @
-- enhanced profile (wip) ([f260d5d](https://github.com/keiko233/clash-nyanpasu/commit/f260d5df49a2e0eb8b7bac38e7059f28aa04a784)) by @
-- event emit when clash config update ([c1eb539](https://github.com/keiko233/clash-nyanpasu/commit/c1eb539a5ce8553e3dda2916fe55985e7ba694b9)) by @
-- fill i18n ([7439633](https://github.com/keiko233/clash-nyanpasu/commit/743963318f2755cde031ab771a98dc1ca3b7e299)) by @
-- fill verge template ([e12e3a3](https://github.com/keiko233/clash-nyanpasu/commit/e12e3a3f2d4d94f5a9478d2803b3f7938716a7d8)) by @
-- filter proxy and display type ([9df3619](https://github.com/keiko233/clash-nyanpasu/commit/9df361935f757108d7bdc23abcfb351d808a4700)) by @
-- finish clash field control ([99c4668](https://github.com/keiko233/clash-nyanpasu/commit/99c46685ac58820a0de2dcf7f82ce4c3382dae35)) by @
-- finish main layout ([a1e99e5](https://github.com/keiko233/clash-nyanpasu/commit/a1e99e53036c206fe7660ee4ced637d4923f80ef)) by @
-- finish some features ([c13a755](https://github.com/keiko233/clash-nyanpasu/commit/c13a755eb656172b8763f1c97053ce41f4f8457c)) by @
-- fix typo ([a2320b3](https://github.com/keiko233/clash-nyanpasu/commit/a2320b3f8d76f1d40a57781801e8743fdb633952)) by @
-- get profile file name from response ([1bff7d5](https://github.com/keiko233/clash-nyanpasu/commit/1bff7d5b0becfb168f2acf0102162c9e7064c9c4)) by @
-- github actions support ([fc0df7b](https://github.com/keiko233/clash-nyanpasu/commit/fc0df7b5773c2b4a63b94ca0d1c1228ac860b1ed)) by @
-- global proxies use virtual list ([f0f45e0](https://github.com/keiko233/clash-nyanpasu/commit/f0f45e007df8b6cf0ec757ae0ced6c9680b0d512)) by @
-- guard state supports debounce guard ([8606af3](https://github.com/keiko233/clash-nyanpasu/commit/8606af3616350ef16ba7ff72e03350646406703e)) by @
-- guard the mixed-port and external-controller ([f95ddd5](https://github.com/keiko233/clash-nyanpasu/commit/f95ddd594eec4bcfa57ea6cb7356ce92ac2c8be4)) by @
-- handle remote clash config fields ([fd99ba6](https://github.com/keiko233/clash-nyanpasu/commit/fd99ba6255731e8019d5eb4e25a968db4f45bf93)) by @
-- hide command window ([e8dbcf8](https://github.com/keiko233/clash-nyanpasu/commit/e8dbcf819b24bb921bd7f351abc46dc9d78009b1)) by @
-- hide window on macos ([7597d33](https://github.com/keiko233/clash-nyanpasu/commit/7597d335b9bd67862f4f68719087d9bc7a98c846)) by @
-- hotkey viewer ([f8d9e5e](https://github.com/keiko233/clash-nyanpasu/commit/f8d9e5e0276854dfe9013485f5e6a176875d7d7b)) by @
-- i18n supports ([4991f7f](https://github.com/keiko233/clash-nyanpasu/commit/4991f7ff39626156077674f2ef932ea9467d6e89)) by @
-- implement a simple singleton process ([34725b5](https://github.com/keiko233/clash-nyanpasu/commit/34725b517b249b3b341fe02459457f77ca24df1d)) by @
-- import profile support ([b0dabbe](https://github.com/keiko233/clash-nyanpasu/commit/b0dabbe55a8980fabe00467d0fe4d9645c2969b3)) by @
-- improve log rule ([4f6fceb](https://github.com/keiko233/clash-nyanpasu/commit/4f6fceb87f7ac351ecd7b8efd3739fd88da86674)) by @
-- improve yaml file error log ([b428eff](https://github.com/keiko233/clash-nyanpasu/commit/b428eff10e5faaeaf0a91de9911331e2d5e11755)) by @
-- init verge config struct ([5b826a3](https://github.com/keiko233/clash-nyanpasu/commit/5b826a3767d272dc9a6eb6742c364f69719ab942)) by @
-- inline config file template ([3a9a392](https://github.com/keiko233/clash-nyanpasu/commit/3a9a392a772b8e7c350e329f72fb74bb1648e6b7)) by @
-- interval update from now field ([18a6bfd](https://github.com/keiko233/clash-nyanpasu/commit/18a6bfd73ab8e670e748b7345aadbede8aaa1597)) by @
-- kill clash by pid ([fcee41f](https://github.com/keiko233/clash-nyanpasu/commit/fcee41f00dff127dd50531bfd8496c29b247723f)) by @
-- kill sidecars when update app ([f709117](https://github.com/keiko233/clash-nyanpasu/commit/f709117cc40a9c2a96a9008ada04c8cadcc819a9)) by @
-- **layout:** add logo & update style ([0028bef](https://github.com/keiko233/clash-nyanpasu/commit/0028bef559cf93fe777a4a86ab82db3611319527)) by @
-- light mode wip ([#96](https://github.com/keiko233/clash-nyanpasu/issues/96)) ([5164aec](https://github.com/keiko233/clash-nyanpasu/commit/5164aec37b2c6fe92d7fc43762058f7019337558)) by @
-- linux system proxy ([7877431](https://github.com/keiko233/clash-nyanpasu/commit/78774315cbd4d44baba07a14ecd852aa0eb65dc6)) by @
-- lock profiles file and support more cmds ([d75fb15](https://github.com/keiko233/clash-nyanpasu/commit/d75fb152c21d98701efa1f9192933e92483f1a15)) by @
-- lock some async functions ([0ff8bb8](https://github.com/keiko233/clash-nyanpasu/commit/0ff8bb8090e55c8da9bfed5516df952191c457d5)) by @
-- log info ([9e7c7ac](https://github.com/keiko233/clash-nyanpasu/commit/9e7c7ac16355fa60d6521b4fca7aa6612a16584a)) by @
-- log page supports filter ([847d5f1](https://github.com/keiko233/clash-nyanpasu/commit/847d5f1b3b18219454979420241f39a608c87e04)) by @
-- **macOS:** support cmd+w and cmd+q ([22c2382](https://github.com/keiko233/clash-nyanpasu/commit/22c2382765edb97eac9167bfa8dcec2863d3d2d3)) by @
-- manage clash config ([d49fd37](https://github.com/keiko233/clash-nyanpasu/commit/d49fd37656f611bfab2fbb17d9a46eebe8c78fdc)) by @
-- manage clash mode ([ab1b589](https://github.com/keiko233/clash-nyanpasu/commit/ab1b5897a6dda9d59a80e5d34bf45edaa03dbe22)) by @
-- Material You! ([01d6310](https://github.com/keiko233/clash-nyanpasu/commit/01d631033f47bdf305d9e0bdb8361681a95beb7e)) by @
-- menu item refresh enhanced mode ([dad94ed](https://github.com/keiko233/clash-nyanpasu/commit/dad94edb20a793ea0856a1ab3fbb1644ce82115b)) by @
-- minor tweaks ([575a14e](https://github.com/keiko233/clash-nyanpasu/commit/575a14e1f306b109b26800b2a008f8db96cba592)) by @
-- more trace logs ([0cf3bba](https://github.com/keiko233/clash-nyanpasu/commit/0cf3bba118cbd6da6f4fbab770e8d5f0817eff23)) by @
-- native menu supports ([d05d8d6](https://github.com/keiko233/clash-nyanpasu/commit/d05d8d6a9e7276f04c962a728646c6ebb8cfb0b6)) by @
-- new profile able to edit name and desc ([5b779b4](https://github.com/keiko233/clash-nyanpasu/commit/5b779b4f14d2c09a30edd5dfe573bb4e2f28d61d)) by @
-- new setting page ([adc634e](https://github.com/keiko233/clash-nyanpasu/commit/adc634e5ea66efa7dcf51f845a0ea88766179117)) by @
-- Nyanpasu Misc ([91074be](https://github.com/keiko233/clash-nyanpasu/commit/91074bebd6133382b89952289dc68ad341618cda)) by @
-- Nyanpasu Misc ([49f41ab](https://github.com/keiko233/clash-nyanpasu/commit/49f41abfdb226077a024f51c688acff4397ed9fe)) by @
-- only put some fields ([cb8c705](https://github.com/keiko233/clash-nyanpasu/commit/cb8c7057ee7229e019f23b3b1a4333961da254c5)) by @
-- open dir on the tray ([b374b9b](https://github.com/keiko233/clash-nyanpasu/commit/b374b9b91ca770ca41d1a65e71625fac01932a5a)) by @
-- optimize config feedback ([e30ba07](https://github.com/keiko233/clash-nyanpasu/commit/e30ba072853d6e523587c1ce6665824fd35b6d88)) by @
-- optimize delay checker concurrency strategy ([3001c78](https://github.com/keiko233/clash-nyanpasu/commit/3001c780bd3694941eb89350bd7c7db8dedf784b)) by @
-- optimize profile page ([33ce235](https://github.com/keiko233/clash-nyanpasu/commit/33ce23571382f7f7c4959f50aab0a1e5abd4a42f)) by @
-- optimize proxy page ui ([a4ce7a4](https://github.com/keiko233/clash-nyanpasu/commit/a4ce7a4037537369ecfca70e696a1b0ed3771156)) by @
-- optimize the animation of the traffic graph ([1b8d703](https://github.com/keiko233/clash-nyanpasu/commit/1b8d70322b01f0f362b4eec69170e93002b0cda3)) by @
-- optimize the proxy group order ([433716c](https://github.com/keiko233/clash-nyanpasu/commit/433716cf33f007179786c4379df16575957a2449)) by @
-- optimize traffic graph quadratic curve ([ab7313c](https://github.com/keiko233/clash-nyanpasu/commit/ab7313cbc4874b8cac6eb11cda6d9332acb72cd9)) by @
-- overwrite resource file according to file modified ([aadfaf7](https://github.com/keiko233/clash-nyanpasu/commit/aadfaf7150640120910748d158785ffeef1841a2)) by @
-- parse update log ([e585e87](https://github.com/keiko233/clash-nyanpasu/commit/e585e87bec51b00b662b58f9cff7a1405a89d1be)) by @
-- press esc hide the window ([4979a47](https://github.com/keiko233/clash-nyanpasu/commit/4979a472def9c22163e8a9717cde3a1bb87ed70a)) by @
-- prevent click same ([6b3e7cb](https://github.com/keiko233/clash-nyanpasu/commit/6b3e7cbc08a771dbfad84de3158edfa5c31f8ec8)) by @
-- prevent context menu on Windows close [#22](https://github.com/keiko233/clash-nyanpasu/issues/22) ([4ce1557](https://github.com/keiko233/clash-nyanpasu/commit/4ce15577cd7cd6bd1f460f5f25856c380ead6767)) by @
-- profile enhanced mode ([ef47a74](https://github.com/keiko233/clash-nyanpasu/commit/ef47a74920eae3d71b8dd656d06f6265ed772da9)) by @
-- profile enhanced ui ([a43dab8](https://github.com/keiko233/clash-nyanpasu/commit/a43dab80571f4c21540aca6db231941fb7420a68)) by @
-- profile item adjust ([f44039b](https://github.com/keiko233/clash-nyanpasu/commit/f44039b628b06c60636387c60a8b3894b5dffd8f)) by @
-- profile item support display updated time ([9d62462](https://github.com/keiko233/clash-nyanpasu/commit/9d62462a96b6ec95cbc593cf88c9e213808f1bda)) by @
-- profile item ui ([99fec25](https://github.com/keiko233/clash-nyanpasu/commit/99fec25ed5bca63a9059d138a2eb62f97a739393)) by @
-- profile loading animation ([2fdcc9c](https://github.com/keiko233/clash-nyanpasu/commit/2fdcc9c5847691b296285c032720b8c72a0dc79c)) by @
-- profile page ui ([ab34044](https://github.com/keiko233/clash-nyanpasu/commit/ab3404419696e29d7ea2f29a06d68cc504da5c02)) by @
-- profile-viewer: handleOk with loading state ([2c2c174](https://github.com/keiko233/clash-nyanpasu/commit/2c2c174874924f5a464d4ec720267a4950d51fde)) by @
-- profiles add menu and delete button ([ea8f1c5](https://github.com/keiko233/clash-nyanpasu/commit/ea8f1c52f95f27606435779c00f99f56d26b0442)) by @
-- profiles ui and put profile support ([ad60013](https://github.com/keiko233/clash-nyanpasu/commit/ad60013f52590ecf4eb09f3f81dfe37d06910ad3)) by @
-- profiles: import btn with loading state ([ee79bcf](https://github.com/keiko233/clash-nyanpasu/commit/ee79bcfc445bec84b716feedc602755e18fbc81c)) by @
-- proxy group auto scroll to current ([5280f1d](https://github.com/keiko233/clash-nyanpasu/commit/5280f1d74589ce8275b62dc3eea6a5de8dacfc0a)) by @
-- proxy page use swr ([81aef73](https://github.com/keiko233/clash-nyanpasu/commit/81aef736d663850b67f82a58680691d854614b05)) by @
-- **proxy:** finish proxy page ui and api support ([5b3f63e](https://github.com/keiko233/clash-nyanpasu/commit/5b3f63ef02a15e4c260cc67e1bde127fbe476d0e)) by @
-- pus_clash_profile support `secret` field ([48f1b27](https://github.com/keiko233/clash-nyanpasu/commit/48f1b27d93799b79c59b4d41eea787b3589bf372)) by @
-- put new profile to clash by default ([b5bb39e](https://github.com/keiko233/clash-nyanpasu/commit/b5bb39ef3d80d306713f4231d9ea0636a17ed3ba)) by @
-- put profile works ([f736951](https://github.com/keiko233/clash-nyanpasu/commit/f736951fc845e0e9edbace2a6af92f34af6a797a)) by @
-- read clash config ([2a986a3](https://github.com/keiko233/clash-nyanpasu/commit/2a986a3d2fa19840e47eca78296cd3fde57663d7)) by @
-- record selected proxy ([14bda4f](https://github.com/keiko233/clash-nyanpasu/commit/14bda4f3a5515aecabc26a9680946d9bc6e54008)) by @
-- recover core after panic, close [#353](https://github.com/keiko233/clash-nyanpasu/issues/353) ([453c230](https://github.com/keiko233/clash-nyanpasu/commit/453c2307163c93208b4a9dc030006a77cb59b97a)) by @
-- reduce gpu usage when hidden ([0be4b12](https://github.com/keiko233/clash-nyanpasu/commit/0be4b1222d2c3a8faea9772e3f5fc2845813a0c7)) by @
-- reduce the impact of the enhanced mode ([7fe9407](https://github.com/keiko233/clash-nyanpasu/commit/7fe94076c703c608cd6b4a4cd4779e9bec88a989)) by @
-- refactor ([7f6dac4](https://github.com/keiko233/clash-nyanpasu/commit/7f6dac4271d1d5999cfffd26719a23ee1abaec44)) by @
-- refactor and adjust ui ([d6c3bc5](https://github.com/keiko233/clash-nyanpasu/commit/d6c3bc57c06c7aa5020b8f39ed2798ac74de6b14)) by @
-- refactor commands and support update profile ([98378e6](https://github.com/keiko233/clash-nyanpasu/commit/98378e626150c281c443d97c533b9bec86439a14)) by @
-- refactor proxy page ([c723252](https://github.com/keiko233/clash-nyanpasu/commit/c7232522eeb363d721c7ccb9fc4ed12afabdcd3e)) by @
-- refactor system proxy config ([1e176c4](https://github.com/keiko233/clash-nyanpasu/commit/1e176c43166674daaa398dd31bff8419c0542dca)) by @
-- refresh ui when hotkey clicked ([8fa7fb3](https://github.com/keiko233/clash-nyanpasu/commit/8fa7fb3b1f0fb3a49237b0e8f416f37323ce797d)) by @
-- reimplement enhanced mode ([1641e02](https://github.com/keiko233/clash-nyanpasu/commit/1641e02a7d5eff2b940aaf8110c97067f662995d)) by @
-- reimplement enhanced mode ([38effaf](https://github.com/keiko233/clash-nyanpasu/commit/38effaf740ce8439761aecf3e30d8c77ed2de138)) by @
-- remove outdated config ([68adf6d](https://github.com/keiko233/clash-nyanpasu/commit/68adf6dc2f76894e2ec27ec6a6f5796523001564)) by @
-- remove sec field ([8d7ef0d](https://github.com/keiko233/clash-nyanpasu/commit/8d7ef0dc9412e702519f88b77425d61a94313d88)) by @
-- remove trailing comma ([ae12853](https://github.com/keiko233/clash-nyanpasu/commit/ae12853ad02c6d1ec252061fad31c9f9852583cc)) by @
-- rename edit as view ([0d5bfc0](https://github.com/keiko233/clash-nyanpasu/commit/0d5bfc0997367436a103554408bca9fc6c812902)) by @
-- rename page ([a842586](https://github.com/keiko233/clash-nyanpasu/commit/a8425862f0bb8d6bc84fdfdc4ce6d150c2c596e8)) by @
-- rename profile page ([4bf0c0d](https://github.com/keiko233/clash-nyanpasu/commit/4bf0c0d19a5ce468b4aa73dcc3fe00d23e35186b)) by @
-- rm some commands ([59c09f9](https://github.com/keiko233/clash-nyanpasu/commit/59c09f90f9dc73829260cb4d142219f980946528)) by @
-- runtime config viewer ([a9bf329](https://github.com/keiko233/clash-nyanpasu/commit/a9bf32919e8c6c10ae9c84e117f584447802e38c)) by @
-- save global selected ([b09b7b1](https://github.com/keiko233/clash-nyanpasu/commit/b09b7b11a187a23b9d19f47d1a4dc9ec68bc14dc)) by @
-- save proxy page state ([7fa3c1e](https://github.com/keiko233/clash-nyanpasu/commit/7fa3c1e12a23f5e2e12eec6efeb107a671c11f6c)) by @
-- save some fields in the runtime config, close [#292](https://github.com/keiko233/clash-nyanpasu/issues/292) ([c62dddd](https://github.com/keiko233/clash-nyanpasu/commit/c62dddd5b9f1ac8c6f1827f981508bcb3a7e57ff)) by @
-- save window size and position ([177a22d](https://github.com/keiko233/clash-nyanpasu/commit/177a22df59f355bf2952ee0452b220168ff0bcdf)) by @
-- script mode ([61e7df7](https://github.com/keiko233/clash-nyanpasu/commit/61e7df77a72db73a9aace95b911152c95225d3c8)) by @
-- scroll to proxy item ([4934a24](https://github.com/keiko233/clash-nyanpasu/commit/4934a2429363c856b42da9eac2c3d8471af3967d)) by @
-- scroller stable ([4dc3cf6](https://github.com/keiko233/clash-nyanpasu/commit/4dc3cf6c6b8f7eb292cc9be520df9c834030d271)) by @
-- set min windows ([396b11c](https://github.com/keiko233/clash-nyanpasu/commit/396b11cc3dd8c081bfd8db5379ddfb30dc514b1c)) by @
-- setting page ([2b89b5f](https://github.com/keiko233/clash-nyanpasu/commit/2b89b5fe7320a7b2bbc3f90a36dd2cd6e10b4b4c)) by @
-- settings use Grid layout ([b060b4b](https://github.com/keiko233/clash-nyanpasu/commit/b060b4b9bf567a35de78a0aa56b66af42b58ec79)) by @
-- show connections with table layout ([5a74377](https://github.com/keiko233/clash-nyanpasu/commit/5a743779e29ca543787a2393053bf9bae7890efb)) by @
-- show loading on proxy group delay check ([0beaa94](https://github.com/keiko233/clash-nyanpasu/commit/0beaa94068984a8c48d4ae86c3d32dcb6c4e1d83)) by @
-- show loading when change profile ([741abc0](https://github.com/keiko233/clash-nyanpasu/commit/741abc03668bf739fe5093ad8511c2ddd567db13)) by @
-- show system proxy info ([7fc9631](https://github.com/keiko233/clash-nyanpasu/commit/7fc9631434d6583d8324ce87f53c3e2152dd06f0)) by @
-- show tray icon variants in different status ([#537](https://github.com/keiko233/clash-nyanpasu/issues/537)) ([ef5adab](https://github.com/keiko233/clash-nyanpasu/commit/ef5adab6387438afc2b30e9a600130c535d9dcbd)) by @
-- sort groups ([1e2e6ca](https://github.com/keiko233/clash-nyanpasu/commit/1e2e6ca8a60edf8c5d28189bcfaf6f9c50bfb8ec)) by @
-- **style:** adjust style impl ([3b1a816](https://github.com/keiko233/clash-nyanpasu/commit/3b1a816b3bfd0b1e917f8a01d4a13571276a482c)) by @
-- Subscription URL TextField use multiline ([#761](https://github.com/keiko233/clash-nyanpasu/issues/761)) ([15ee1e5](https://github.com/keiko233/clash-nyanpasu/commit/15ee1e531b55a86ed81ffd6bec97243d2d7779df)) by @
-- support app log level settings ([b307b9a](https://github.com/keiko233/clash-nyanpasu/commit/b307b9a66b28fc6e035a3ecf5a078c46251ac4df)) by @
-- support blur window ([df5953d](https://github.com/keiko233/clash-nyanpasu/commit/df5953dd7b3d9be8f732cb5e0f09a240cc61eb9c)) by @
-- support builtin script for enhanced mode ([bd0e932](https://github.com/keiko233/clash-nyanpasu/commit/bd0e932910283154d2e7f391723859c0438b87d4)) by @
-- support check delay ([d0e678b](https://github.com/keiko233/clash-nyanpasu/commit/d0e678b5e9dd8aa76521087a5fb91257fe7ec781)) by @
-- support clash fields filter in ui ([ab429df](https://github.com/keiko233/clash-nyanpasu/commit/ab429dfeb626c1193de631edba1f0bcb2317092c)) by @
-- support clash meta memory usage display ([96ffbe2](https://github.com/keiko233/clash-nyanpasu/commit/96ffbe2f84ad2a3ffb5916fa5e64d767e29faa0b)) by @
-- support copy CMD & PowerShell proxy env ([26fd90d](https://github.com/keiko233/clash-nyanpasu/commit/26fd90dfa347103af742813569e0c5de89c97b97)) by @
-- support copy environment variable ([02ba04b](https://github.com/keiko233/clash-nyanpasu/commit/02ba04b5d80f763d7ecdfc532bca9b9bf573de57)) by @
-- support css injection ([0290d9d](https://github.com/keiko233/clash-nyanpasu/commit/0290d9ddfc23ec00bbe8523e29a0da536036d5f1)) by @
-- support dark mode ([c501898](https://github.com/keiko233/clash-nyanpasu/commit/c501898d5fa4ec68f2330c8b618cdf31e0f5a69c)) by @
-- support edit profile item ([99a8e25](https://github.com/keiko233/clash-nyanpasu/commit/99a8e25411a64faec43587c8ee50dbc5a7614574)) by @
-- support hotkey (wip) ([509d833](https://github.com/keiko233/clash-nyanpasu/commit/509d83365e2616ff18548ac63d608971204d396c)) by @
-- support macos proxy config ([fe44a7b](https://github.com/keiko233/clash-nyanpasu/commit/fe44a7b3bc4c4ba594b22a1c137fdc1fdee3f5ff)) by @
-- support more options for remote profile ([fe1fea6](https://github.com/keiko233/clash-nyanpasu/commit/fe1fea671c2862d3fb28715f7801486150c18e13)) by @
-- support new profile ([c53fe0e](https://github.com/keiko233/clash-nyanpasu/commit/c53fe0ed1f983fd9b01f02c022c34464b3fd3eec)) by @
-- support open command for viewing ([6082c2b](https://github.com/keiko233/clash-nyanpasu/commit/6082c2bcac746538f9d3c5736a8ab704e7a22310)) by @
-- support open dir ([3c79238](https://github.com/keiko233/clash-nyanpasu/commit/3c79238a449677572966a89d99614665f8fbb2f9)) by @
-- support proxy provider update ([b4cce23](https://github.com/keiko233/clash-nyanpasu/commit/b4cce23ef41c8eb2fe8254812e9ab8df463e1cb3)) by @
-- support restart app on tray ([66ccbf7](https://github.com/keiko233/clash-nyanpasu/commit/66ccbf70f8d51153ef097fb62deae833c683b26c)) by @
-- support restart sidecar tray event ([cb816e9](https://github.com/keiko233/clash-nyanpasu/commit/cb816e9653b71a5cade2193da489fa973dc2d511)) by @
-- support set system proxy command ([3a9734e](https://github.com/keiko233/clash-nyanpasu/commit/3a9734e97daf53142da23783911fb50272c981bf)) by @
-- support sort proxy node and custom test url ([68ad5e2](https://github.com/keiko233/clash-nyanpasu/commit/68ad5e23201f6f0728ef3d4e429d3ddea1d28893)) by @
-- support theme setting ([f9a96ff](https://github.com/keiko233/clash-nyanpasu/commit/f9a96ff91476cf3909bd1ac848dc82968f10e34d)) by @
-- support to change external controller ([e66a892](https://github.com/keiko233/clash-nyanpasu/commit/e66a89208d1041a9a3eebc62cabe891a92dba4dc)) by @
-- support to change proxy layout column ([4d2b35e](https://github.com/keiko233/clash-nyanpasu/commit/4d2b35e09d34427dc663093d2dfbe07ba24e8a21)) by @
-- support to disable clash fields filter ([027295d](https://github.com/keiko233/clash-nyanpasu/commit/027295d99560bed7206f17fd56936a73240339ad)) by @
-- support to grant permission to clash core ([54a5007](https://github.com/keiko233/clash-nyanpasu/commit/54a5007c0105cc0cdbc61b6d1a755d7fbdbd0346)) by @
-- support to open core dir ([5c5177e](https://github.com/keiko233/clash-nyanpasu/commit/5c5177ec574f612e9d85f2c822f5fae4fc6486d6)) by @
-- support update all profiles ([6c0066d](https://github.com/keiko233/clash-nyanpasu/commit/6c0066dbfbd5e2ddb37dd5066b60edb53a75549c)) by @
-- support update checker ([66340a2](https://github.com/keiko233/clash-nyanpasu/commit/66340a27fa66cb2b42e008e5b4836c96ef1e05dd)) by @
-- support web ui ([5564c96](https://github.com/keiko233/clash-nyanpasu/commit/5564c966a5903b3d660864aadea31981f944f772)) by @
-- supports auto launch on macos and windows ([cc0e930](https://github.com/keiko233/clash-nyanpasu/commit/cc0e930d34db00bdc50264507f94e7afac6b2df1)) by @
-- supports change config dir ([f726e8a](https://github.com/keiko233/clash-nyanpasu/commit/f726e8a7b3535c7db7fd30a0cf56e058efc786d0)) by @
-- supports cron update profiles ([4de944b](https://github.com/keiko233/clash-nyanpasu/commit/4de944b41efdc1a2cfcb740b091aac5bb3d0795a)) by @
-- supports edit profile file ([f31349e](https://github.com/keiko233/clash-nyanpasu/commit/f31349eaa06eaa4a2f0d16576cb9253de1947861)) by @
-- supports more remote headers close [#81](https://github.com/keiko233/clash-nyanpasu/issues/81) ([0e68c5e](https://github.com/keiko233/clash-nyanpasu/commit/0e68c5e8bc5f4f3022ed2eeffcca5272c7322d77)) by @
-- supports show connection detail ([54e491d](https://github.com/keiko233/clash-nyanpasu/commit/54e491d8bf1552151dd5f253f3918b6cb4c79897)) by @
-- supports silent start ([9d44668](https://github.com/keiko233/clash-nyanpasu/commit/9d44668d5f370d9c6a563d42e05483bd5724f85a)) by @
-- supprt log ui ([1a51062](https://github.com/keiko233/clash-nyanpasu/commit/1a51062aa13e581debd8d86d487a05c01149e482)) by @
-- system proxy command demo ([c1bcfc6](https://github.com/keiko233/clash-nyanpasu/commit/c1bcfc67858a385b360dade83b4fb574f24ca196)) by @
-- system proxy guard ([e38dcd8](https://github.com/keiko233/clash-nyanpasu/commit/e38dcd85ac0f50ebcca3f119c4e85ffa9ddda153)) by @
-- system proxy setting ([f9b91fa](https://github.com/keiko233/clash-nyanpasu/commit/f9b91fa18962ee27b71aa5cb144762c21e117111)) by @
-- system tray add tun mode ([1a91249](https://github.com/keiko233/clash-nyanpasu/commit/1a91249da2bcc21c85f7a7561e38aa1bf474c282)) by @
-- system tray support zh language ([e11b403](https://github.com/keiko233/clash-nyanpasu/commit/e11b4038a3653a93b5735ac3902f912fe414b9c9)) by @
-- system tray supports system proxy setting ([acc6e05](https://github.com/keiko233/clash-nyanpasu/commit/acc6e05bdccda78752e8c10e003047410db5e939)) by @
-- **system tray:** support switch rule/global/direct/script mode in system tray ([fbb17a0](https://github.com/keiko233/clash-nyanpasu/commit/fbb17a0ba5d10bc9bd144344fe2e3e5cd1613ee9)) by @
-- test auto gen update.json ci ([46a8dec](https://github.com/keiko233/clash-nyanpasu/commit/46a8dec6557c25ca1c5f5410bffc89d7cb64da18)) by @
-- theme mode support follows system ([8bce2ce](https://github.com/keiko233/clash-nyanpasu/commit/8bce2ce040069df05ec65a586007e430dc7faa58)) by @
-- Theme support modify --background-color ([70fcfe6](https://github.com/keiko233/clash-nyanpasu/commit/70fcfe6d6c8f4e318f461ad62577fda420b40e7c)) by @
-- theme: change color ([dd5e46a](https://github.com/keiko233/clash-nyanpasu/commit/dd5e46a8a7a3157f0ebfa70b45699b737f8ec1b4)) by @
-- toggle log ws ([4213ee6](https://github.com/keiko233/clash-nyanpasu/commit/4213ee660fd1bee9ec3ccb2a90c27f2304c1c6ad)) by @
-- traffic line graph ([457655b](https://github.com/keiko233/clash-nyanpasu/commit/457655b4164d8bb4200fe0b3e6852de35e38fd6d)) by @
-- **traffic:** api support & adjust ([0a3c594](https://github.com/keiko233/clash-nyanpasu/commit/0a3c59450b9d6650492c27637c77ddfd72a889ff)) by @
-- update Clash Default bypass addrs ([6e9f05a](https://github.com/keiko233/clash-nyanpasu/commit/6e9f05abb1f4e9d0aa6e168472d673eb083b2f08)) by @
-- update connection table with wider process column and click to show full detail ([#696](https://github.com/keiko233/clash-nyanpasu/issues/696)) ([a552e44](https://github.com/keiko233/clash-nyanpasu/commit/a552e444833857dbc82a78f3b79f3249d42b24c3)) by @
-- update icons ([c413d93](https://github.com/keiko233/clash-nyanpasu/commit/c413d93bb0bfc93d59d7ca7d2318a66a1a4dff58)) by @
-- update layout style ([ce42e6e](https://github.com/keiko233/clash-nyanpasu/commit/ce42e6ed49056348af6ebb90c602dc448946a87b)) by @
-- update profile supports noproxy ([43af552](https://github.com/keiko233/clash-nyanpasu/commit/43af55252d3d0dd34c0eeb31ad3e278f9348eb0f)) by @
-- update profile with system proxy/clash proxy ([90eeaba](https://github.com/keiko233/clash-nyanpasu/commit/90eeabae7b80e88f4263504847d35675e494ca04)) by @
-- update rule page ([1c3ae5c](https://github.com/keiko233/clash-nyanpasu/commit/1c3ae5c4bc0153c8400c91d8cf751bda9f10753c)) by @
-- update styles ([3a73868](https://github.com/keiko233/clash-nyanpasu/commit/3a73868c10a9d4e1166840f852141170916f0bdc)) by @
-- update tauri version ([6193a84](https://github.com/keiko233/clash-nyanpasu/commit/6193a842f4b83e47efda0648b95f26370a950f9e)) by @
-- use crate open ([a12f58c](https://github.com/keiko233/clash-nyanpasu/commit/a12f58c1c7ad7534d5704a3ef67d2ae1ef2446ec)) by @
-- use decorations in Linux, close [#354](https://github.com/keiko233/clash-nyanpasu/issues/354) ([fb7a36e](https://github.com/keiko233/clash-nyanpasu/commit/fb7a36eb738a83d873c58db38ba717d2bf1e7535)) by @
-- use enhanced guard-state ([9ccc66c](https://github.com/keiko233/clash-nyanpasu/commit/9ccc66ca1ec75a3b5f12d5f4df28c0c0d3255414)) by @
-- use external controller field ([da41ac5](https://github.com/keiko233/clash-nyanpasu/commit/da41ac5b8b4da5712629a540a9092ea9c7ce0963)) by @
-- use lock fn ([98b8a12](https://github.com/keiko233/clash-nyanpasu/commit/98b8a122b6a483a8e171c1072ab1f52f618fa01f)) by @
-- use nanoid ([1880363](https://github.com/keiko233/clash-nyanpasu/commit/1880363aeb5f11645ee6123e3efba477ac9b7532)) by @
-- use paper for list bg ([7cf8fd8](https://github.com/keiko233/clash-nyanpasu/commit/7cf8fd800fbbc9c9333af414792ac10d0b5cfd6a)) by @
-- Use polkit to elevate permission instaed of sudo ([#678](https://github.com/keiko233/clash-nyanpasu/issues/678)) ([6c1ab60](https://github.com/keiko233/clash-nyanpasu/commit/6c1ab6002d21aba22dde5a96b52dd9d5693dbb56)) by @
-- use resources dir to save files ([1500162](https://github.com/keiko233/clash-nyanpasu/commit/1500162a9c1e46b3c2ba52d07866ec0050857c28)) by @
-- use rquickjs crate ([cfd04e9](https://github.com/keiko233/clash-nyanpasu/commit/cfd04e9bb47505a970483dcbfbef7140bfe43098)) by @
-- use tauri updater ([08e4d72](https://github.com/keiko233/clash-nyanpasu/commit/08e4d72758698e0b41ad970e6ec1903cd739d85d)) by @
-- use vite ([efc1669](https://github.com/keiko233/clash-nyanpasu/commit/efc1669b3e8e62dbbcebd642f15e9200fda2d13f)) by @
-- window self startup ([79aad6b](https://github.com/keiko233/clash-nyanpasu/commit/79aad6b5c2e7a2d1f61b3368b6ee1d58e77a6669)) by @
-- Window Send and Sync ([e32bfd9](https://github.com/keiko233/clash-nyanpasu/commit/e32bfd9aaba8959c0ed625ebb3e3b65bcf02086f)) by @
-- windows portable version do not check update ([d5192e2](https://github.com/keiko233/clash-nyanpasu/commit/d5192e2244810fbcb28bbdc04a000efbad5f2295)) by @
-- windows service mode ([34e941c](https://github.com/keiko233/clash-nyanpasu/commit/34e941c8cbc7605e5aece219bcd318e60705408b)) by @
-- windows service mode ui ([6b36895](https://github.com/keiko233/clash-nyanpasu/commit/6b368953f42208224440ce6d0b130d48403e58bb)) by @
-- windows support startup ([6113898](https://github.com/keiko233/clash-nyanpasu/commit/6113898b69aeca1d6abbee3ffbd08ccfa2aa8f97)) by @
-- yaml merge key ([6331447](https://github.com/keiko233/clash-nyanpasu/commit/6331447dcd34632023d90e35fb13e725f27922f0)) by @
+- add animation ([eb28ec8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/eb28ec866ae64ccfbf03af7bd3a5761c69980d6b)) by @
+- add animation to ProfileNew component ([#252](https://github.com/LibNyanpasu/clash-nyanpasu/issues/252)) ([a45dc6e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a45dc6efda76c293d90ea0d63cb8907c1d3462e8)) by @
+- add baseContentIn animation ([34cb796](https://github.com/LibNyanpasu/clash-nyanpasu/commit/34cb796505bc1d90ea32128e5b14e55cc58912be)) by @
+- add chains[0] and process to connections display ([#205](https://github.com/LibNyanpasu/clash-nyanpasu/issues/205)) ([6423a29](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6423a296008aa82875d4dc50350261ace1b2cc74)) by @
+- add check for updates button, close [#766](https://github.com/LibNyanpasu/clash-nyanpasu/issues/766) ([f4c7b17](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f4c7b17a87ae853ad67fdcea727e93266babf779)) by @
+- add Connections Info to ConnectionsPage ([88d3bba](https://github.com/LibNyanpasu/clash-nyanpasu/commit/88d3bba30033c49b760628b974cc12b907ae1496)) by @
+- add default user agent ([b74696a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b74696adbad1c213b0b9a3e8be4dd87628e2a105)) by @
+- add draft ([09965f1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/09965f1cc675aea6af74dc225398cf47bfa4c76b)) by @
+- add empty ui ([b915f3b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b915f3b1a936b76b684ddf5ff5340b1b9539f1b3)) by @
+- add error boundary ([9d2017e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9d2017e598a7821cbd83ada66ade3d8b84fa790d)) by @
+- add error boundary to the app root ([6a97451](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6a9745171ea4796d7961db8802cdcbbe4e62156e)) by @
+- add favicon ([3be2f5c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3be2f5c4049290575d59c01e856ea89b918a2e0f)) by @
+- add Linux open dir support ([cb94d84](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cb94d8414f05ce04915ae4fb230096d9f0f8ab31)) by @
+- add meta feature ([c51e9e6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c51e9e6b2cf6d9c3edb6931e3bba8e699c4c5080)) by @
+- add Open Dashboard to the hotkey, close [#723](https://github.com/LibNyanpasu/clash-nyanpasu/issues/723) ([3efd575](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3efd575dd206c32b15c4187ee53916fddfeda6ba)) by @
+- add paste and clear icon ([ad228d5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ad228d53b710a6c4aa3da4065a7a0abd115dc818)) by @
+- add pre-dev script ([023e771](https://github.com/LibNyanpasu/clash-nyanpasu/commit/023e7715941011e0bbf7c734afc3172cc14a543e)) by @
+- add proxy item check loading ([a2cf26e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a2cf26e7ed35744f60b012d28f9dd7a524652e27)) by @
+- add put_profiles cmd ([0c23845](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0c238459708032116e5a3c83881e7d560b314709)) by @
+- add repo link ([2bcaf90](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2bcaf90fc842cb904c80d5b8582b0659f451811f)) by @
+- add restart core button ([9a29c9a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9a29c9abddc7e60301aeea36d7159e694cd5a265)) by @
+- add route transition ([1eb34e0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1eb34e0662379e473ffee5993c506f451cfbf68b)) by @
+- add rule page ([b23d3f7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b23d3f7c8b6cfadfee507df016a94ec4bc3bb3ef)) by @
+- Add Russian Language ([#697](https://github.com/LibNyanpasu/clash-nyanpasu/issues/697)) ([2c48ea3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2c48ea35083fb16d47d2585703d318995f5a60c8)) by @
+- add serval commands ([13ceb1e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/13ceb1e44596c7b6907f01159c2015a9134ad6b7)) by @
+- add some clash api ([4bb9e10](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4bb9e10946878d36a8652fbb40bd2c150a0e3ed2)) by @
+- add some commands ([2d0b63c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2d0b63c29d9ee99841fdfd2d951b16859694f247)) by @
+- add sub-rules ([7f65c50](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7f65c501c684bd949a31000435071badfa008f6f)) by @
+- add text color ([c009026](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c009026961949973eb0bed2847912120b80fc00d)) by @
+- add text color ([3ec2b46](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3ec2b46d28b11e01604a52a9fec79d4feef5a351)) by @
+- add theme setting ([aec30b8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/aec30b89e0100a93605f61307948a967bb66a854)) by @
+- add unified-delay field ([416e788](https://github.com/LibNyanpasu/clash-nyanpasu/commit/416e7884f5e0b825a6853f0c50c62a2c8201c145)) by @
+- add update interval ([cb661aa](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cb661aaebde80e8c6dcca1eba996053fc81de25e)) by @
+- add use clash hook ([28d3691](https://github.com/LibNyanpasu/clash-nyanpasu/commit/28d3691e0b7f7155a3bf322b4baf1d68ba123627)) by @
+- add use-notice hook ([97f2bc8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/97f2bc876149c2b4ab294c7888a88572752c4fd2)) by @
+- add version on tray ([56fe7b3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/56fe7b35965d2a2335656cd09f5fe7574cd0eaf7)) by @
+- add wintun.dll by default ([7074bbc](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7074bbc4055cdf59c642c32d9dc6a8b0858a1d71)) by @
+- adjust builtin script and support meta guard script ([fe81687](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fe8168784f0504c2ac26cfbc65051305cabe9486)) by @
+- adjust clash info parsing logs ([7f321c8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7f321c89cbeb0f735fd8d15b871163e6dd52ec7c)) by @
+- adjust clash log ([f425fba](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f425fbaf9db8bff6766f56bac448443b49709a14)) by @
+- adjust clash version display ([f6e821b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f6e821ba6b2b8dae508744d4571b0d2c7dd45cf4)) by @
+- adjust code ([694a776](https://github.com/LibNyanpasu/clash-nyanpasu/commit/694a7760b7ae24959d6f96252d1f78f4f7025514)) by @
+- adjust connection page ui ([a6b2db1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a6b2db182d4b30a704adc77b53500405d95e8aab)) by @
+- adjust control ui ([3480d50](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3480d50f61977177c78ee3555ba94961406cd64d)) by @
+- adjust fetch profile url ([c60578f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c60578f5b53c23d45bf3efe1c3a2e05797c058ca)) by @
+- adjust macOS window style ([23b728a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/23b728a762917931d29c73641f6a2f7b34fcca05)) by @
+- adjust profile item menu ([f2c0462](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f2c04621a5134710488873207be6b5219e5d6518)) by @
+- adjust profile item ui ([794d376](https://github.com/LibNyanpasu/clash-nyanpasu/commit/794d37634827dbc261efe94a633228374c72429a)) by @
+- adjust profiles page ui ([7338838](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7338838b0e9e43f793321e7af4133412c0656aa3)) by @
+- adjust proxy page ([5fcd255](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5fcd25506efef7d0777f9c0490d17144d4736c30)) by @
+- adjust runtime config ([78f97ce](https://github.com/LibNyanpasu/clash-nyanpasu/commit/78f97ce4dfb78cbfffb86f5c3da5addd2e564a57)) by @
+- adjust setting page style ([0891b5e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0891b5e7b7eb109a5a527797a690ed1a5eae84bf)) by @
+- adjust setting typography ([4097778](https://github.com/LibNyanpasu/clash-nyanpasu/commit/40977785c3d3ca1c4360ffdc592e8a331556319c)) by @
+- adjust theme ([5e2271b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5e2271b2373c39928f9d5d762bd394ad3f7d3356)) by @
+- adjust tun mode config ([178fd8e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/178fd8e82853ba04b9b32e9f9780d125765af8b4)) by @
+- app log level add silent ([6b0ca29](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6b0ca2966ebb1a24ec9f6df5ca9b2ef15633f79a)) by @
+- auto close connection when proxy changed ([0cfd718](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0cfd718d8a178b17cd97f33c77bcd01c00772b76)) by @
+- auto proxy layout column ([024db43](https://github.com/LibNyanpasu/clash-nyanpasu/commit/024db4358b4d5aab701301005396c4efd7466c67)) by @
+- auto restart core after grand permission ([4ae409c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4ae409c7f45efadb8ad89a428c11788f76e2a9ce)) by @
+- auto update profiles ([f72536b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f72536bce017532faea8d159a75f2e6f5fc6c655)) by @
+- base-dialog: okBtn use LoadingButton ([f57c49c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f57c49ce3a77e7eee76bc86dd4018320433e2ab0)) by @
+- center window when out of monitor ([af70468](https://github.com/LibNyanpasu/clash-nyanpasu/commit/af704681d99c1c554eec9b6d01b31d0908bfe9e2)) by @
+- change allow list ([22b11db](https://github.com/LibNyanpasu/clash-nyanpasu/commit/22b11db16e657baf0f3502c9c1ba5b8077ba84c0)) by @
+- change clash port in dialog ([ff2c1bf](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ff2c1bf8ed23405e0a97098024311efd91a744cc)) by @
+- change default latency test url ([8c8171e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8c8171e7746e3d46f08cf52630e3df2454f0082a)) by @
+- change default singleton port and support to change the port ([c058c29](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c058c29755419c16df6492bbbacc1e5c26f85bc3)) by @
+- change global mode ui, close [#226](https://github.com/LibNyanpasu/clash-nyanpasu/issues/226) ([f062f7f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f062f7f9feadf75e5fc8ee128f6cff71ff3e11e6)) by @
+- change log file format ([bf5680d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bf5680da6133aab5123f25290848111f84dc342f)) by @
+- change rule page ([03b3a0b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/03b3a0b8b30d46c48de9436819b78f58462acd63)) by @
+- change system porxy when changed port ([47155a4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/47155a4a29188f6bba5fcfe2f543a0c25635472e)) by @
+- change the log level order ([8738fa3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8738fa3d4f70ef1b8d7b1f6257d8cff8a2be6d74)) by @
+- change the naming strategy ([ef3b10f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ef3b10fa8f76bcc244c238680a8ea160a998c04b)) by @
+- change type ([d982b83](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d982b83e14b2fb1f439ca9a7273a908e492a5683)) by @
+- change window style ([97ec5ea](https://github.com/LibNyanpasu/clash-nyanpasu/commit/97ec5eabf7c559b4d77b15427cef098d200d736e)) by @
+- check config when change core ([48e14b3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/48e14b36b8d39d28b30cb39409a831ad97d8f69e)) by @
+- check remote profile field ([5504994](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5504994cb92f8b15f88241d9e0a262656c57b92e)) by @
+- check the remote profile ([9694af8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9694af82f4dcf99243f926a79d1d8512789aceaf)) by @
+- clash field viewer wip ([066b080](https://github.com/LibNyanpasu/clash-nyanpasu/commit/066b08040a884cfc0b110b2b5d6253235fe32597)) by @
+- clash meta core support (wip) ([b3a72d5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b3a72d55aecf16829384467b8177fb18589bf776)) by @
+- clash meta core supports ([be9ea4e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/be9ea4ea8ef236528f0eee2ad3788cc898daee64)) by @
+- clash tun mode supports ([d7c5ce0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d7c5ce0750e69b9368e80da73fc4d796b683a0f5)) by @
+- ClashFieldViewer BaseDialog maxHeight usage percentage ([#813](https://github.com/LibNyanpasu/clash-nyanpasu/issues/813)) ([f5ee6f3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f5ee6f3537a6577c30eff9a2535a02881de1400c)) by @
+- compatible profile config ([19c7b59](https://github.com/LibNyanpasu/clash-nyanpasu/commit/19c7b59883922cd7622aeff75a84cdddba4ee736)) by @
+- compatible with macos(wip) ([2b84bbf](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2b84bbf3a871f0dd948a1a75c92ce23df2d373e5)) by @
+- compatible with proxy providers health check ([71e6900](https://github.com/LibNyanpasu/clash-nyanpasu/commit/71e69003757201207cfbd35fdb0ddea0faf172a3)) by @
+- complete i18n ([ab58968](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ab58968f4d66604343d2dbc5f27a065d7b8128c2)) by @
+- connections page simply support ([5b886fe](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5b886fe6be6db5acc6705e78e4fd53229287dc0a)) by @
+- connections page supports filter ([41b0e05](https://github.com/LibNyanpasu/clash-nyanpasu/commit/41b0e05f624752a5d6a5df5c7869147aed798f92)) by @
+- control final tun config ([cde1738](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cde17385b4b3378757de5ddd7d89736c089bf966)) by @
+- create local profile with selected file ([98fa4d5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/98fa4d5e6551991dd76d183d56e76484b1508886)) by @
+- custom window decorations ([e86d192](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e86d192db7876c8f0ffffcbc006b15b0931db2c5)) by @
+- dayjs i18n ([ed3fc50](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ed3fc50858f898761d80640dca3b2b6db89a8cb0)) by @
+- default disable ipv6 ([ae8197b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ae8197be8b079d5b9fc744838c980df8b7d19a90)) by @
+- default enable unified-delay & tcp-concurrent with use meta core ([eafb027](https://github.com/LibNyanpasu/clash-nyanpasu/commit/eafb0274a7736211cc74b93bcd3a6accc8a6e6ab)) by @
+- default use meta core ([2981bb3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2981bb3f1941ebdb7c8dcf5d16210ae1995020d5)) by @
+- default user agent same with app version ([f683780](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f68378041f90fe6d1bdc56d2cbadb361d414e688)) by @
+- delay put profiles and retry ([b3cd207](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b3cd207444508c4b2b5e8c71084a304127fc4892)) by @
+- delete file ([30dd298](https://github.com/LibNyanpasu/clash-nyanpasu/commit/30dd298fcaf21152a36e9751a2b787d23b512e32)) by @
+- disable script mode when use clash meta ([8086b6d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8086b6d78c8d8591a13f312e1584a75531ebe96c)) by @
+- disable user select ([8548373](https://github.com/LibNyanpasu/clash-nyanpasu/commit/85483737426f97a220dcd79e7267fe6c46ddbb41)) by @
+- display clash core version ([6e3cc57](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6e3cc57f480900098bb4963cc8aac886c8399226)) by @
+- display delay check result timely ([a6ac75e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a6ac75e97bc8057de0e2a98cd8a059b4937f2718)) by @
+- display proxy group type ([2f9bf7f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2f9bf7f063aa834fb48cca0c9eab75f65618590f)) by @
+- display version ([61b9670](https://github.com/LibNyanpasu/clash-nyanpasu/commit/61b9670b457e9257509d8b9cbc6e0bcc284cc237)) by @
+- distinguish level notice ([83c0bde](https://github.com/LibNyanpasu/clash-nyanpasu/commit/83c0bde22ba560fb8f4f04d8136c146b7f0a025f)) by @
+- edit profile item ([17f1c48](https://github.com/LibNyanpasu/clash-nyanpasu/commit/17f1c487a84f16ca885fb73ef622fc1658eb78dc)) by @
+- edit system proxy bypass ([78a0cfd](https://github.com/LibNyanpasu/clash-nyanpasu/commit/78a0cfd052d6ecf428786a67a4de8ccf17d312cc)) by @
+- enable change mixed port ([d0b87fd](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d0b87fd7c39de00bec9bee489e9ca29888681d3b)) by @
+- enable change proxy mode ([6a8ffe1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6a8ffe164292088c49dd7fc88ea9b161ce031db7)) by @
+- enable customize guard duration ([4ff625f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4ff625f23be3c43c13e0ed6380655a3b6588130a)) by @
+- enable force select profile ([5eddf4f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5eddf4f1aa0b13383654726a66fbf88fbf6b12d2)) by @
+- enable show or hide traffic graph ([0245baf](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0245baf1b67bfea2c5d236b5b9a913fb1041af1d)) by @
+- enable update clash info ([65fb2ca](https://github.com/LibNyanpasu/clash-nyanpasu/commit/65fb2ca2d521385ba376cfeb479bc555480b83a6)) by @
+- enhance clash caller & support more commands ([881a955](https://github.com/LibNyanpasu/clash-nyanpasu/commit/881a95520a83fb7e692b5080e1b4205cf506e4cd)) by @
+- enhance connections display order ([4b6189a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4b6189af5feabe08214d6d1de012ca7362795810)) by @
+- enhance log data ([dd15455](https://github.com/LibNyanpasu/clash-nyanpasu/commit/dd15455031a5fe2eec6573e018123cae2be4fb6f)) by @
+- enhance profile status ([d63d49f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d63d49f246494cf707e6f09102604e5c51d937fe)) by @
+- enhance system proxy setting ([013dc5f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/013dc5f4b5b8fa63bc6395b8088b4cb5fe4d17fd)) by @
+- enhanced mode supports more fields ([c9649ac](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c9649ac50156e0a432a1b2e94d16662ffc0bec19)) by @
+- enhanced profile (wip) ([f260d5d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f260d5df49a2e0eb8b7bac38e7059f28aa04a784)) by @
+- event emit when clash config update ([c1eb539](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c1eb539a5ce8553e3dda2916fe55985e7ba694b9)) by @
+- fill i18n ([7439633](https://github.com/LibNyanpasu/clash-nyanpasu/commit/743963318f2755cde031ab771a98dc1ca3b7e299)) by @
+- fill verge template ([e12e3a3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e12e3a3f2d4d94f5a9478d2803b3f7938716a7d8)) by @
+- filter proxy and display type ([9df3619](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9df361935f757108d7bdc23abcfb351d808a4700)) by @
+- finish clash field control ([99c4668](https://github.com/LibNyanpasu/clash-nyanpasu/commit/99c46685ac58820a0de2dcf7f82ce4c3382dae35)) by @
+- finish main layout ([a1e99e5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a1e99e53036c206fe7660ee4ced637d4923f80ef)) by @
+- finish some features ([c13a755](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c13a755eb656172b8763f1c97053ce41f4f8457c)) by @
+- fix typo ([a2320b3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a2320b3f8d76f1d40a57781801e8743fdb633952)) by @
+- get profile file name from response ([1bff7d5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1bff7d5b0becfb168f2acf0102162c9e7064c9c4)) by @
+- github actions support ([fc0df7b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fc0df7b5773c2b4a63b94ca0d1c1228ac860b1ed)) by @
+- global proxies use virtual list ([f0f45e0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f0f45e007df8b6cf0ec757ae0ced6c9680b0d512)) by @
+- guard state supports debounce guard ([8606af3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8606af3616350ef16ba7ff72e03350646406703e)) by @
+- guard the mixed-port and external-controller ([f95ddd5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f95ddd594eec4bcfa57ea6cb7356ce92ac2c8be4)) by @
+- handle remote clash config fields ([fd99ba6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fd99ba6255731e8019d5eb4e25a968db4f45bf93)) by @
+- hide command window ([e8dbcf8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e8dbcf819b24bb921bd7f351abc46dc9d78009b1)) by @
+- hide window on macos ([7597d33](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7597d335b9bd67862f4f68719087d9bc7a98c846)) by @
+- hotkey viewer ([f8d9e5e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f8d9e5e0276854dfe9013485f5e6a176875d7d7b)) by @
+- i18n supports ([4991f7f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4991f7ff39626156077674f2ef932ea9467d6e89)) by @
+- implement a simple singleton process ([34725b5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/34725b517b249b3b341fe02459457f77ca24df1d)) by @
+- import profile support ([b0dabbe](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b0dabbe55a8980fabe00467d0fe4d9645c2969b3)) by @
+- improve log rule ([4f6fceb](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4f6fceb87f7ac351ecd7b8efd3739fd88da86674)) by @
+- improve yaml file error log ([b428eff](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b428eff10e5faaeaf0a91de9911331e2d5e11755)) by @
+- init verge config struct ([5b826a3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5b826a3767d272dc9a6eb6742c364f69719ab942)) by @
+- inline config file template ([3a9a392](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3a9a392a772b8e7c350e329f72fb74bb1648e6b7)) by @
+- interval update from now field ([18a6bfd](https://github.com/LibNyanpasu/clash-nyanpasu/commit/18a6bfd73ab8e670e748b7345aadbede8aaa1597)) by @
+- kill clash by pid ([fcee41f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fcee41f00dff127dd50531bfd8496c29b247723f)) by @
+- kill sidecars when update app ([f709117](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f709117cc40a9c2a96a9008ada04c8cadcc819a9)) by @
+- **layout:** add logo & update style ([0028bef](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0028bef559cf93fe777a4a86ab82db3611319527)) by @
+- light mode wip ([#96](https://github.com/LibNyanpasu/clash-nyanpasu/issues/96)) ([5164aec](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5164aec37b2c6fe92d7fc43762058f7019337558)) by @
+- linux system proxy ([7877431](https://github.com/LibNyanpasu/clash-nyanpasu/commit/78774315cbd4d44baba07a14ecd852aa0eb65dc6)) by @
+- lock profiles file and support more cmds ([d75fb15](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d75fb152c21d98701efa1f9192933e92483f1a15)) by @
+- lock some async functions ([0ff8bb8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0ff8bb8090e55c8da9bfed5516df952191c457d5)) by @
+- log info ([9e7c7ac](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9e7c7ac16355fa60d6521b4fca7aa6612a16584a)) by @
+- log page supports filter ([847d5f1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/847d5f1b3b18219454979420241f39a608c87e04)) by @
+- **macOS:** support cmd+w and cmd+q ([22c2382](https://github.com/LibNyanpasu/clash-nyanpasu/commit/22c2382765edb97eac9167bfa8dcec2863d3d2d3)) by @
+- manage clash config ([d49fd37](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d49fd37656f611bfab2fbb17d9a46eebe8c78fdc)) by @
+- manage clash mode ([ab1b589](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ab1b5897a6dda9d59a80e5d34bf45edaa03dbe22)) by @
+- Material You! ([01d6310](https://github.com/LibNyanpasu/clash-nyanpasu/commit/01d631033f47bdf305d9e0bdb8361681a95beb7e)) by @
+- menu item refresh enhanced mode ([dad94ed](https://github.com/LibNyanpasu/clash-nyanpasu/commit/dad94edb20a793ea0856a1ab3fbb1644ce82115b)) by @
+- minor tweaks ([575a14e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/575a14e1f306b109b26800b2a008f8db96cba592)) by @
+- more trace logs ([0cf3bba](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0cf3bba118cbd6da6f4fbab770e8d5f0817eff23)) by @
+- native menu supports ([d05d8d6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d05d8d6a9e7276f04c962a728646c6ebb8cfb0b6)) by @
+- new profile able to edit name and desc ([5b779b4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5b779b4f14d2c09a30edd5dfe573bb4e2f28d61d)) by @
+- new setting page ([adc634e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/adc634e5ea66efa7dcf51f845a0ea88766179117)) by @
+- Nyanpasu Misc ([91074be](https://github.com/LibNyanpasu/clash-nyanpasu/commit/91074bebd6133382b89952289dc68ad341618cda)) by @
+- Nyanpasu Misc ([49f41ab](https://github.com/LibNyanpasu/clash-nyanpasu/commit/49f41abfdb226077a024f51c688acff4397ed9fe)) by @
+- only put some fields ([cb8c705](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cb8c7057ee7229e019f23b3b1a4333961da254c5)) by @
+- open dir on the tray ([b374b9b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b374b9b91ca770ca41d1a65e71625fac01932a5a)) by @
+- optimize config feedback ([e30ba07](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e30ba072853d6e523587c1ce6665824fd35b6d88)) by @
+- optimize delay checker concurrency strategy ([3001c78](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3001c780bd3694941eb89350bd7c7db8dedf784b)) by @
+- optimize profile page ([33ce235](https://github.com/LibNyanpasu/clash-nyanpasu/commit/33ce23571382f7f7c4959f50aab0a1e5abd4a42f)) by @
+- optimize proxy page ui ([a4ce7a4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a4ce7a4037537369ecfca70e696a1b0ed3771156)) by @
+- optimize the animation of the traffic graph ([1b8d703](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1b8d70322b01f0f362b4eec69170e93002b0cda3)) by @
+- optimize the proxy group order ([433716c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/433716cf33f007179786c4379df16575957a2449)) by @
+- optimize traffic graph quadratic curve ([ab7313c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ab7313cbc4874b8cac6eb11cda6d9332acb72cd9)) by @
+- overwrite resource file according to file modified ([aadfaf7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/aadfaf7150640120910748d158785ffeef1841a2)) by @
+- parse update log ([e585e87](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e585e87bec51b00b662b58f9cff7a1405a89d1be)) by @
+- press esc hide the window ([4979a47](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4979a472def9c22163e8a9717cde3a1bb87ed70a)) by @
+- prevent click same ([6b3e7cb](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6b3e7cbc08a771dbfad84de3158edfa5c31f8ec8)) by @
+- prevent context menu on Windows close [#22](https://github.com/LibNyanpasu/clash-nyanpasu/issues/22) ([4ce1557](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4ce15577cd7cd6bd1f460f5f25856c380ead6767)) by @
+- profile enhanced mode ([ef47a74](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ef47a74920eae3d71b8dd656d06f6265ed772da9)) by @
+- profile enhanced ui ([a43dab8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a43dab80571f4c21540aca6db231941fb7420a68)) by @
+- profile item adjust ([f44039b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f44039b628b06c60636387c60a8b3894b5dffd8f)) by @
+- profile item support display updated time ([9d62462](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9d62462a96b6ec95cbc593cf88c9e213808f1bda)) by @
+- profile item ui ([99fec25](https://github.com/LibNyanpasu/clash-nyanpasu/commit/99fec25ed5bca63a9059d138a2eb62f97a739393)) by @
+- profile loading animation ([2fdcc9c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2fdcc9c5847691b296285c032720b8c72a0dc79c)) by @
+- profile page ui ([ab34044](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ab3404419696e29d7ea2f29a06d68cc504da5c02)) by @
+- profile-viewer: handleOk with loading state ([2c2c174](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2c2c174874924f5a464d4ec720267a4950d51fde)) by @
+- profiles add menu and delete button ([ea8f1c5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ea8f1c52f95f27606435779c00f99f56d26b0442)) by @
+- profiles ui and put profile support ([ad60013](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ad60013f52590ecf4eb09f3f81dfe37d06910ad3)) by @
+- profiles: import btn with loading state ([ee79bcf](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ee79bcfc445bec84b716feedc602755e18fbc81c)) by @
+- proxy group auto scroll to current ([5280f1d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5280f1d74589ce8275b62dc3eea6a5de8dacfc0a)) by @
+- proxy page use swr ([81aef73](https://github.com/LibNyanpasu/clash-nyanpasu/commit/81aef736d663850b67f82a58680691d854614b05)) by @
+- **proxy:** finish proxy page ui and api support ([5b3f63e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5b3f63ef02a15e4c260cc67e1bde127fbe476d0e)) by @
+- pus_clash_profile support `secret` field ([48f1b27](https://github.com/LibNyanpasu/clash-nyanpasu/commit/48f1b27d93799b79c59b4d41eea787b3589bf372)) by @
+- put new profile to clash by default ([b5bb39e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b5bb39ef3d80d306713f4231d9ea0636a17ed3ba)) by @
+- put profile works ([f736951](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f736951fc845e0e9edbace2a6af92f34af6a797a)) by @
+- read clash config ([2a986a3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2a986a3d2fa19840e47eca78296cd3fde57663d7)) by @
+- record selected proxy ([14bda4f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/14bda4f3a5515aecabc26a9680946d9bc6e54008)) by @
+- recover core after panic, close [#353](https://github.com/LibNyanpasu/clash-nyanpasu/issues/353) ([453c230](https://github.com/LibNyanpasu/clash-nyanpasu/commit/453c2307163c93208b4a9dc030006a77cb59b97a)) by @
+- reduce gpu usage when hidden ([0be4b12](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0be4b1222d2c3a8faea9772e3f5fc2845813a0c7)) by @
+- reduce the impact of the enhanced mode ([7fe9407](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7fe94076c703c608cd6b4a4cd4779e9bec88a989)) by @
+- refactor ([7f6dac4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7f6dac4271d1d5999cfffd26719a23ee1abaec44)) by @
+- refactor and adjust ui ([d6c3bc5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d6c3bc57c06c7aa5020b8f39ed2798ac74de6b14)) by @
+- refactor commands and support update profile ([98378e6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/98378e626150c281c443d97c533b9bec86439a14)) by @
+- refactor proxy page ([c723252](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c7232522eeb363d721c7ccb9fc4ed12afabdcd3e)) by @
+- refactor system proxy config ([1e176c4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1e176c43166674daaa398dd31bff8419c0542dca)) by @
+- refresh ui when hotkey clicked ([8fa7fb3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8fa7fb3b1f0fb3a49237b0e8f416f37323ce797d)) by @
+- reimplement enhanced mode ([1641e02](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1641e02a7d5eff2b940aaf8110c97067f662995d)) by @
+- reimplement enhanced mode ([38effaf](https://github.com/LibNyanpasu/clash-nyanpasu/commit/38effaf740ce8439761aecf3e30d8c77ed2de138)) by @
+- remove outdated config ([68adf6d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/68adf6dc2f76894e2ec27ec6a6f5796523001564)) by @
+- remove sec field ([8d7ef0d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8d7ef0dc9412e702519f88b77425d61a94313d88)) by @
+- remove trailing comma ([ae12853](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ae12853ad02c6d1ec252061fad31c9f9852583cc)) by @
+- rename edit as view ([0d5bfc0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0d5bfc0997367436a103554408bca9fc6c812902)) by @
+- rename page ([a842586](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a8425862f0bb8d6bc84fdfdc4ce6d150c2c596e8)) by @
+- rename profile page ([4bf0c0d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4bf0c0d19a5ce468b4aa73dcc3fe00d23e35186b)) by @
+- rm some commands ([59c09f9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/59c09f90f9dc73829260cb4d142219f980946528)) by @
+- runtime config viewer ([a9bf329](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a9bf32919e8c6c10ae9c84e117f584447802e38c)) by @
+- save global selected ([b09b7b1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b09b7b11a187a23b9d19f47d1a4dc9ec68bc14dc)) by @
+- save proxy page state ([7fa3c1e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7fa3c1e12a23f5e2e12eec6efeb107a671c11f6c)) by @
+- save some fields in the runtime config, close [#292](https://github.com/LibNyanpasu/clash-nyanpasu/issues/292) ([c62dddd](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c62dddd5b9f1ac8c6f1827f981508bcb3a7e57ff)) by @
+- save window size and position ([177a22d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/177a22df59f355bf2952ee0452b220168ff0bcdf)) by @
+- script mode ([61e7df7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/61e7df77a72db73a9aace95b911152c95225d3c8)) by @
+- scroll to proxy item ([4934a24](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4934a2429363c856b42da9eac2c3d8471af3967d)) by @
+- scroller stable ([4dc3cf6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4dc3cf6c6b8f7eb292cc9be520df9c834030d271)) by @
+- set min windows ([396b11c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/396b11cc3dd8c081bfd8db5379ddfb30dc514b1c)) by @
+- setting page ([2b89b5f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2b89b5fe7320a7b2bbc3f90a36dd2cd6e10b4b4c)) by @
+- settings use Grid layout ([b060b4b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b060b4b9bf567a35de78a0aa56b66af42b58ec79)) by @
+- show connections with table layout ([5a74377](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5a743779e29ca543787a2393053bf9bae7890efb)) by @
+- show loading on proxy group delay check ([0beaa94](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0beaa94068984a8c48d4ae86c3d32dcb6c4e1d83)) by @
+- show loading when change profile ([741abc0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/741abc03668bf739fe5093ad8511c2ddd567db13)) by @
+- show system proxy info ([7fc9631](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7fc9631434d6583d8324ce87f53c3e2152dd06f0)) by @
+- show tray icon variants in different status ([#537](https://github.com/LibNyanpasu/clash-nyanpasu/issues/537)) ([ef5adab](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ef5adab6387438afc2b30e9a600130c535d9dcbd)) by @
+- sort groups ([1e2e6ca](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1e2e6ca8a60edf8c5d28189bcfaf6f9c50bfb8ec)) by @
+- **style:** adjust style impl ([3b1a816](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3b1a816b3bfd0b1e917f8a01d4a13571276a482c)) by @
+- Subscription URL TextField use multiline ([#761](https://github.com/LibNyanpasu/clash-nyanpasu/issues/761)) ([15ee1e5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/15ee1e531b55a86ed81ffd6bec97243d2d7779df)) by @
+- support app log level settings ([b307b9a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b307b9a66b28fc6e035a3ecf5a078c46251ac4df)) by @
+- support blur window ([df5953d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/df5953dd7b3d9be8f732cb5e0f09a240cc61eb9c)) by @
+- support builtin script for enhanced mode ([bd0e932](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bd0e932910283154d2e7f391723859c0438b87d4)) by @
+- support check delay ([d0e678b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d0e678b5e9dd8aa76521087a5fb91257fe7ec781)) by @
+- support clash fields filter in ui ([ab429df](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ab429dfeb626c1193de631edba1f0bcb2317092c)) by @
+- support clash meta memory usage display ([96ffbe2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/96ffbe2f84ad2a3ffb5916fa5e64d767e29faa0b)) by @
+- support copy CMD & PowerShell proxy env ([26fd90d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/26fd90dfa347103af742813569e0c5de89c97b97)) by @
+- support copy environment variable ([02ba04b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/02ba04b5d80f763d7ecdfc532bca9b9bf573de57)) by @
+- support css injection ([0290d9d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0290d9ddfc23ec00bbe8523e29a0da536036d5f1)) by @
+- support dark mode ([c501898](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c501898d5fa4ec68f2330c8b618cdf31e0f5a69c)) by @
+- support edit profile item ([99a8e25](https://github.com/LibNyanpasu/clash-nyanpasu/commit/99a8e25411a64faec43587c8ee50dbc5a7614574)) by @
+- support hotkey (wip) ([509d833](https://github.com/LibNyanpasu/clash-nyanpasu/commit/509d83365e2616ff18548ac63d608971204d396c)) by @
+- support macos proxy config ([fe44a7b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fe44a7b3bc4c4ba594b22a1c137fdc1fdee3f5ff)) by @
+- support more options for remote profile ([fe1fea6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fe1fea671c2862d3fb28715f7801486150c18e13)) by @
+- support new profile ([c53fe0e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c53fe0ed1f983fd9b01f02c022c34464b3fd3eec)) by @
+- support open command for viewing ([6082c2b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6082c2bcac746538f9d3c5736a8ab704e7a22310)) by @
+- support open dir ([3c79238](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3c79238a449677572966a89d99614665f8fbb2f9)) by @
+- support proxy provider update ([b4cce23](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b4cce23ef41c8eb2fe8254812e9ab8df463e1cb3)) by @
+- support restart app on tray ([66ccbf7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/66ccbf70f8d51153ef097fb62deae833c683b26c)) by @
+- support restart sidecar tray event ([cb816e9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cb816e9653b71a5cade2193da489fa973dc2d511)) by @
+- support set system proxy command ([3a9734e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3a9734e97daf53142da23783911fb50272c981bf)) by @
+- support sort proxy node and custom test url ([68ad5e2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/68ad5e23201f6f0728ef3d4e429d3ddea1d28893)) by @
+- support theme setting ([f9a96ff](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f9a96ff91476cf3909bd1ac848dc82968f10e34d)) by @
+- support to change external controller ([e66a892](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e66a89208d1041a9a3eebc62cabe891a92dba4dc)) by @
+- support to change proxy layout column ([4d2b35e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4d2b35e09d34427dc663093d2dfbe07ba24e8a21)) by @
+- support to disable clash fields filter ([027295d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/027295d99560bed7206f17fd56936a73240339ad)) by @
+- support to grant permission to clash core ([54a5007](https://github.com/LibNyanpasu/clash-nyanpasu/commit/54a5007c0105cc0cdbc61b6d1a755d7fbdbd0346)) by @
+- support to open core dir ([5c5177e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5c5177ec574f612e9d85f2c822f5fae4fc6486d6)) by @
+- support update all profiles ([6c0066d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6c0066dbfbd5e2ddb37dd5066b60edb53a75549c)) by @
+- support update checker ([66340a2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/66340a27fa66cb2b42e008e5b4836c96ef1e05dd)) by @
+- support web ui ([5564c96](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5564c966a5903b3d660864aadea31981f944f772)) by @
+- supports auto launch on macos and windows ([cc0e930](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cc0e930d34db00bdc50264507f94e7afac6b2df1)) by @
+- supports change config dir ([f726e8a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f726e8a7b3535c7db7fd30a0cf56e058efc786d0)) by @
+- supports cron update profiles ([4de944b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4de944b41efdc1a2cfcb740b091aac5bb3d0795a)) by @
+- supports edit profile file ([f31349e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f31349eaa06eaa4a2f0d16576cb9253de1947861)) by @
+- supports more remote headers close [#81](https://github.com/LibNyanpasu/clash-nyanpasu/issues/81) ([0e68c5e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0e68c5e8bc5f4f3022ed2eeffcca5272c7322d77)) by @
+- supports show connection detail ([54e491d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/54e491d8bf1552151dd5f253f3918b6cb4c79897)) by @
+- supports silent start ([9d44668](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9d44668d5f370d9c6a563d42e05483bd5724f85a)) by @
+- supprt log ui ([1a51062](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1a51062aa13e581debd8d86d487a05c01149e482)) by @
+- system proxy command demo ([c1bcfc6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c1bcfc67858a385b360dade83b4fb574f24ca196)) by @
+- system proxy guard ([e38dcd8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e38dcd85ac0f50ebcca3f119c4e85ffa9ddda153)) by @
+- system proxy setting ([f9b91fa](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f9b91fa18962ee27b71aa5cb144762c21e117111)) by @
+- system tray add tun mode ([1a91249](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1a91249da2bcc21c85f7a7561e38aa1bf474c282)) by @
+- system tray support zh language ([e11b403](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e11b4038a3653a93b5735ac3902f912fe414b9c9)) by @
+- system tray supports system proxy setting ([acc6e05](https://github.com/LibNyanpasu/clash-nyanpasu/commit/acc6e05bdccda78752e8c10e003047410db5e939)) by @
+- **system tray:** support switch rule/global/direct/script mode in system tray ([fbb17a0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fbb17a0ba5d10bc9bd144344fe2e3e5cd1613ee9)) by @
+- test auto gen update.json ci ([46a8dec](https://github.com/LibNyanpasu/clash-nyanpasu/commit/46a8dec6557c25ca1c5f5410bffc89d7cb64da18)) by @
+- theme mode support follows system ([8bce2ce](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8bce2ce040069df05ec65a586007e430dc7faa58)) by @
+- Theme support modify --background-color ([70fcfe6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/70fcfe6d6c8f4e318f461ad62577fda420b40e7c)) by @
+- theme: change color ([dd5e46a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/dd5e46a8a7a3157f0ebfa70b45699b737f8ec1b4)) by @
+- toggle log ws ([4213ee6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4213ee660fd1bee9ec3ccb2a90c27f2304c1c6ad)) by @
+- traffic line graph ([457655b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/457655b4164d8bb4200fe0b3e6852de35e38fd6d)) by @
+- **traffic:** api support & adjust ([0a3c594](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0a3c59450b9d6650492c27637c77ddfd72a889ff)) by @
+- update Clash Default bypass addrs ([6e9f05a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6e9f05abb1f4e9d0aa6e168472d673eb083b2f08)) by @
+- update connection table with wider process column and click to show full detail ([#696](https://github.com/LibNyanpasu/clash-nyanpasu/issues/696)) ([a552e44](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a552e444833857dbc82a78f3b79f3249d42b24c3)) by @
+- update icons ([c413d93](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c413d93bb0bfc93d59d7ca7d2318a66a1a4dff58)) by @
+- update layout style ([ce42e6e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ce42e6ed49056348af6ebb90c602dc448946a87b)) by @
+- update profile supports noproxy ([43af552](https://github.com/LibNyanpasu/clash-nyanpasu/commit/43af55252d3d0dd34c0eeb31ad3e278f9348eb0f)) by @
+- update profile with system proxy/clash proxy ([90eeaba](https://github.com/LibNyanpasu/clash-nyanpasu/commit/90eeabae7b80e88f4263504847d35675e494ca04)) by @
+- update rule page ([1c3ae5c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1c3ae5c4bc0153c8400c91d8cf751bda9f10753c)) by @
+- update styles ([3a73868](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3a73868c10a9d4e1166840f852141170916f0bdc)) by @
+- update tauri version ([6193a84](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6193a842f4b83e47efda0648b95f26370a950f9e)) by @
+- use crate open ([a12f58c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a12f58c1c7ad7534d5704a3ef67d2ae1ef2446ec)) by @
+- use decorations in Linux, close [#354](https://github.com/LibNyanpasu/clash-nyanpasu/issues/354) ([fb7a36e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fb7a36eb738a83d873c58db38ba717d2bf1e7535)) by @
+- use enhanced guard-state ([9ccc66c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9ccc66ca1ec75a3b5f12d5f4df28c0c0d3255414)) by @
+- use external controller field ([da41ac5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/da41ac5b8b4da5712629a540a9092ea9c7ce0963)) by @
+- use lock fn ([98b8a12](https://github.com/LibNyanpasu/clash-nyanpasu/commit/98b8a122b6a483a8e171c1072ab1f52f618fa01f)) by @
+- use nanoid ([1880363](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1880363aeb5f11645ee6123e3efba477ac9b7532)) by @
+- use paper for list bg ([7cf8fd8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7cf8fd800fbbc9c9333af414792ac10d0b5cfd6a)) by @
+- Use polkit to elevate permission instaed of sudo ([#678](https://github.com/LibNyanpasu/clash-nyanpasu/issues/678)) ([6c1ab60](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6c1ab6002d21aba22dde5a96b52dd9d5693dbb56)) by @
+- use resources dir to save files ([1500162](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1500162a9c1e46b3c2ba52d07866ec0050857c28)) by @
+- use rquickjs crate ([cfd04e9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cfd04e9bb47505a970483dcbfbef7140bfe43098)) by @
+- use tauri updater ([08e4d72](https://github.com/LibNyanpasu/clash-nyanpasu/commit/08e4d72758698e0b41ad970e6ec1903cd739d85d)) by @
+- use vite ([efc1669](https://github.com/LibNyanpasu/clash-nyanpasu/commit/efc1669b3e8e62dbbcebd642f15e9200fda2d13f)) by @
+- window self startup ([79aad6b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/79aad6b5c2e7a2d1f61b3368b6ee1d58e77a6669)) by @
+- Window Send and Sync ([e32bfd9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e32bfd9aaba8959c0ed625ebb3e3b65bcf02086f)) by @
+- windows portable version do not check update ([d5192e2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d5192e2244810fbcb28bbdc04a000efbad5f2295)) by @
+- windows service mode ([34e941c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/34e941c8cbc7605e5aece219bcd318e60705408b)) by @
+- windows service mode ui ([6b36895](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6b368953f42208224440ce6d0b130d48403e58bb)) by @
+- windows support startup ([6113898](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6113898b69aeca1d6abbee3ffbd08ccfa2aa8f97)) by @
+- yaml merge key ([6331447](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6331447dcd34632023d90e35fb13e725f27922f0)) by @
 
 ### 🐛 Bug Fixes
 
-- add clash fields ([e1c8f1f](https://github.com/keiko233/clash-nyanpasu/commit/e1c8f1fed9b4df36d40b082f5afe2d6a8cadded9)) by @
-- add https proxy ([33a5fb8](https://github.com/keiko233/clash-nyanpasu/commit/33a5fb88373493027bff6a42f5c75731dff3e153)) by @
-- add meta fields ([91b77e5](https://github.com/keiko233/clash-nyanpasu/commit/91b77e5237367875fa392ef7ced4fafd189b4c96)) by @
-- add meta fields ([780ab20](https://github.com/keiko233/clash-nyanpasu/commit/780ab20aeb01d601fb5c690a61042f6b51ac8a01)) by @
-- add os platform value ([1b44ae0](https://github.com/keiko233/clash-nyanpasu/commit/1b44ae098cbf0e056c7c51b80d75c8f3c3c32e48)) by @
-- add target os linux ([5265888](https://github.com/keiko233/clash-nyanpasu/commit/52658886e75cd2f06fb125fcb74da5a3452275e5)) by @
-- add tray separator ([cbc184e](https://github.com/keiko233/clash-nyanpasu/commit/cbc184e953958443a6ef044acc2f0b7539b2ae46)) by @
-- add valid clash field ([35de233](https://github.com/keiko233/clash-nyanpasu/commit/35de2334fb3ce8165fc65085a15695bdbbe67996)) by @
-- adjsut open cmd error ([2d1780b](https://github.com/keiko233/clash-nyanpasu/commit/2d1780b1cf37ae4a7f3597d7c44ee53c9dc7cfd1)) by @
-- adjust code ([8bad2c2](https://github.com/keiko233/clash-nyanpasu/commit/8bad2c211389b5b091a2e86cb033694dfd2b7933)) by @
-- adjust code ([20a194b](https://github.com/keiko233/clash-nyanpasu/commit/20a194b49a878c541a44691c353b159e967cac22)) by @
-- adjust code ([557abd4](https://github.com/keiko233/clash-nyanpasu/commit/557abd42850e638116fb19a641c2381e29a05eae)) by @
-- adjust connection scroll ([423a7f9](https://github.com/keiko233/clash-nyanpasu/commit/423a7f951a5925525374b580f1277697a17427e8)) by @
-- adjust debounce wait time ([5308970](https://github.com/keiko233/clash-nyanpasu/commit/5308970ad8ddf79e4f81859e9a480d336df277ad)) by @
-- adjust delay check concurrency ([2bcf6fb](https://github.com/keiko233/clash-nyanpasu/commit/2bcf6fb3eb424c079d013c0901bc82dbe1a0d632)) by @
-- adjust dialog action button variant ([cb48600](https://github.com/keiko233/clash-nyanpasu/commit/cb48600b405bae61d74c0edf951ead2a5d4d0efd)) by @
-- adjust dns config ([9e3c080](https://github.com/keiko233/clash-nyanpasu/commit/9e3c0809090c36fa89a52485c2b13e300857fb5f)) by @
-- adjust fields order ([7909cf4](https://github.com/keiko233/clash-nyanpasu/commit/7909cf4067c25d8c171315517f2fd0a75958ea1f)) by @
-- adjust init launch on dev ([1b336d9](https://github.com/keiko233/clash-nyanpasu/commit/1b336d973dfd1411e3c5867a03ef86583af097e7)) by @
-- adjust item ui ([790d832](https://github.com/keiko233/clash-nyanpasu/commit/790d832155620edecc3de2ea9ce54d82f89039aa)) by @
-- adjust log ([b9162f9](https://github.com/keiko233/clash-nyanpasu/commit/b9162f9576f3953fa03e6ccb5d0d2b7fd683a604)) by @
-- adjust log text ([3f58d05](https://github.com/keiko233/clash-nyanpasu/commit/3f58d05aa7b33a9250fde77129b93da690024539)) by @
-- adjust log ui ([132f914](https://github.com/keiko233/clash-nyanpasu/commit/132f914b0de23ee2376a796269f71a85721a9446)) by @
-- adjust notice ([e19fe5c](https://github.com/keiko233/clash-nyanpasu/commit/e19fe5ce1cdc40bf95d0a70a6671508b51b2933d)) by @
-- adjust notice ([f5c6fa8](https://github.com/keiko233/clash-nyanpasu/commit/f5c6fa842aefe0b4d796a9d255bbf46cc97e7ffd)) by @
-- adjust reset proxy ([b635e64](https://github.com/keiko233/clash-nyanpasu/commit/b635e64803c75c6ae99ae26476be480b568d27ec)) by @
-- adjust rule ui ([bfe4f08](https://github.com/keiko233/clash-nyanpasu/commit/bfe4f08232ab1bbfefef9d19c9eaf74a4d70c80f)) by @
-- adjust service mode ui ([06dabf1](https://github.com/keiko233/clash-nyanpasu/commit/06dabf1e4ed05d06d574b15297e8944d3b9b9311)) by @
-- adjust singleton detect ([be81cd7](https://github.com/keiko233/clash-nyanpasu/commit/be81cd72afc8381fa7cc8696239cd4a7767d3311)) by @
-- adjust something ([557f5fe](https://github.com/keiko233/clash-nyanpasu/commit/557f5fe364df76484947711b6340989db230227b)) by @
-- adjust style ([e7841c6](https://github.com/keiko233/clash-nyanpasu/commit/e7841c60df248baf3e914f170383734df5e8d1ea)) by @
-- adjust style ([ffa21fb](https://github.com/keiko233/clash-nyanpasu/commit/ffa21fbfd2eab267571dedd8ca44f949bb605360)) by @
-- adjust swr option ([630249d](https://github.com/keiko233/clash-nyanpasu/commit/630249d22a45907264fbaec717463b1c6ad06896)) by @
-- adjust ui ([ce61309](https://github.com/keiko233/clash-nyanpasu/commit/ce613098db7f4c5a10ac93e235a5230451908e10)) by @
-- adjust ui ([2ce7624](https://github.com/keiko233/clash-nyanpasu/commit/2ce7624c1434a990df4f27b79c5a72ca7dcacf83)) by @
-- adjust update profile notice error ([a4fb2df](https://github.com/keiko233/clash-nyanpasu/commit/a4fb2dfcf825bade055e71dc9e480dba948ffdf9)) by @
-- adjust web ui item style ([bd576ca](https://github.com/keiko233/clash-nyanpasu/commit/bd576ca80864b8f7d649a2e81717b2e3858f7f05)) by @
-- adjust windows style ([b8b0c8f](https://github.com/keiko233/clash-nyanpasu/commit/b8b0c8fa63f1ea686cc345b04c5157dad8b41d2e)) by @
-- api error handle ([38d1fde](https://github.com/keiko233/clash-nyanpasu/commit/38d1fde84f4d732d354022078674d6d23e577df7)) by @
-- api loading delay ([36d8fa7](https://github.com/keiko233/clash-nyanpasu/commit/36d8fa7de4d26d4ddd61067d3ced2b5538185e52)) by @
-- app version to string ([35d0438](https://github.com/keiko233/clash-nyanpasu/commit/35d0438261027b86ab79db01b402f6b673ffa115)) by @
-- app_handle as_ref ([c9b7ecc](https://github.com/keiko233/clash-nyanpasu/commit/c9b7eccbc1260702f67e569eb388564a6c10b46c)) by @
-- appimage auto launch, close [#403](https://github.com/keiko233/clash-nyanpasu/issues/403) ([692f8c8](https://github.com/keiko233/clash-nyanpasu/commit/692f8c845425f9a9d604ff8f15ba3a7e2fc3d0c9)) by @
-- appimage path unwrap panic ([2b6aced](https://github.com/keiko233/clash-nyanpasu/commit/2b6acedae1fa29646e10cee4483105fa3479a2d6)) by @
-- apply_blur parameter ([3afbb56](https://github.com/keiko233/clash-nyanpasu/commit/3afbb5664014d637882a0b171c417a8062120f66)) by @
-- auto launch path ([2d95f2b](https://github.com/keiko233/clash-nyanpasu/commit/2d95f2b0d663e59b082eb73a8bf68a492105bece)) by @
-- auto scroll into view when sorted proxies changed ([59dae64](https://github.com/keiko233/clash-nyanpasu/commit/59dae640db6179f1106076529d250b24bcae982e)) by @
-- avoid setting login item repeatedly, close [#326](https://github.com/keiko233/clash-nyanpasu/issues/326) ([051be92](https://github.com/keiko233/clash-nyanpasu/commit/051be927cdeef4311b1b347915a4706f87abed42)) by @
-- badge color error ([fa65f60](https://github.com/keiko233/clash-nyanpasu/commit/fa65f606b83ff6fd9375be6b078dd0218e456be9)) by @
-- blurry tray icon in Windows ([5d5ab57](https://github.com/keiko233/clash-nyanpasu/commit/5d5ab5746982bf660dce717054583885a3bf2b82)) by @
-- break loop when core terminated ([515af47](https://github.com/keiko233/clash-nyanpasu/commit/515af472ce064f674310a6f4175e379aa89173dc)) by @
-- button color ([929c840](https://github.com/keiko233/clash-nyanpasu/commit/929c84000675202cab22ede7434486028bf02e09)) by @
-- change default app version ([8385050](https://github.com/keiko233/clash-nyanpasu/commit/838505080417a4593bffbf3043c82072c64a5083)) by @
-- change default column to auto ([6e421e6](https://github.com/keiko233/clash-nyanpasu/commit/6e421e60c53728ef81ed8dd8fe6c6669a6b576eb)) by @
-- change default tun dns-hijack ([7ef4b7e](https://github.com/keiko233/clash-nyanpasu/commit/7ef4b7eeb8ab1ce4c46600eb3ebd6dc49f019683)) by @
-- change dev log level ([f5f2fe3](https://github.com/keiko233/clash-nyanpasu/commit/f5f2fe3472e962885308f8845fc6323f3cab7b79)) by @
-- change fields ([c02990e](https://github.com/keiko233/clash-nyanpasu/commit/c02990ef980eceb99d1cea75b966c6b24907dc07)) by @
-- change log file format ([0d8114c](https://github.com/keiko233/clash-nyanpasu/commit/0d8114c9f468da6dd43a443128133aba00a9a8b5)) by @
-- change mixed port error ([ef314c1](https://github.com/keiko233/clash-nyanpasu/commit/ef314c1707c8a4b42427b59b8eb7c293f2abbf51)) by @
-- change proxy bypass on mac ([40a8186](https://github.com/keiko233/clash-nyanpasu/commit/40a818630df8d34baf97cf88ae052770438992f8)) by @
-- change service installer and uninstaller ([f88989b](https://github.com/keiko233/clash-nyanpasu/commit/f88989bd4bcd0eea614b7b1cb8bfab51e2c450b4)) by @
-- change template ([4ae0071](https://github.com/keiko233/clash-nyanpasu/commit/4ae00714d252558490810278a8f8c6f22351726a)) by @
-- change to deep copy ([0a9c817](https://github.com/keiko233/clash-nyanpasu/commit/0a9c81772fcb32e4ac1f32b07b0297ec5908d38c)) by @
-- change window default size ([28a4386](https://github.com/keiko233/clash-nyanpasu/commit/28a43869753c5070c143f4fb2ce941664c74c96e)) by @
-- check button hover style ([0445f9d](https://github.com/keiko233/clash-nyanpasu/commit/0445f9dfc24b96e95af41ccee9149e59891147a9)) by @
-- check config ([3cd2be5](https://github.com/keiko233/clash-nyanpasu/commit/3cd2be5081e1cd2d81e6a92558a3bb64a9bbd9cd)) by @
-- check hotkey and optimize hotkey input, close [#287](https://github.com/keiko233/clash-nyanpasu/issues/287) ([db02866](https://github.com/keiko233/clash-nyanpasu/commit/db028665fd65c5b700d85f420be329c7ea61da5e)) by @
-- check remote profile ([4ea5bb2](https://github.com/keiko233/clash-nyanpasu/commit/4ea5bb2390566d74e5600bd53e2cac7c187ce23e)) by @
-- check script run on all OS ([db0230e](https://github.com/keiko233/clash-nyanpasu/commit/db0230ed753e2de696a13ca62e007e2da407097f)) by @
-- ci strategy ([6b2172d](https://github.com/keiko233/clash-nyanpasu/commit/6b2172d873a0c73bbd837391ec7001ccc1a88391)) by @
-- clash field state error ([2f8146b](https://github.com/keiko233/clash-nyanpasu/commit/2f8146b11f8f2e28cc9c5919cac5bceee0cd7c32)) by @
-- clash meta not load geoip, close [#212](https://github.com/keiko233/clash-nyanpasu/issues/212) ([dd78670](https://github.com/keiko233/clash-nyanpasu/commit/dd78670a4b7c8a425af76f622902642b4bca4e8e)) by @
-- close all connections when change mode ([60046ab](https://github.com/keiko233/clash-nyanpasu/commit/60046abec3d29a9d67a1812d8d7ff545d3f186e1)) by @
-- close connections when profile change ([e031389](https://github.com/keiko233/clash-nyanpasu/commit/e031389021694ba437f4d89579bf284468a19a65)) by @
-- close dialog after save ([2ad771e](https://github.com/keiko233/clash-nyanpasu/commit/2ad771e7fdad189570ae921a02c2e994d6ddca74)) by @
-- cmds params ([d759f48](https://github.com/keiko233/clash-nyanpasu/commit/d759f48ee845380ffd64ca35aff96e78a1dfa360)) by @
-- compatible with UTF8 BOM, close [#283](https://github.com/keiko233/clash-nyanpasu/issues/283) ([bba03d1](https://github.com/keiko233/clash-nyanpasu/commit/bba03d14d4acbb9efdc1ac52649a9623c0f1cf5e)) by @
-- component warning ([b91daeb](https://github.com/keiko233/clash-nyanpasu/commit/b91daebd92d38cadefb07e3fb3b11fe1858aa31c)) by @
-- config file case close [#18](https://github.com/keiko233/clash-nyanpasu/issues/18) ([c73b354](https://github.com/keiko233/clash-nyanpasu/commit/c73b3543860059be0a777a417bf5de12cdf8c9eb)) by @
-- connections is null ([aba0826](https://github.com/keiko233/clash-nyanpasu/commit/aba0826c380a4a8ba48e0e98f02b6043308f4f9e)) by @
-- console warning ([eab671d](https://github.com/keiko233/clash-nyanpasu/commit/eab671d10276f17be8734d7839883682d98c237e)) by @
-- copy resource file ([e64103e](https://github.com/keiko233/clash-nyanpasu/commit/e64103e5f2666377b12e9a809e4e7f88074dc432)) by @
-- cover profile extra ([8dc2c1a](https://github.com/keiko233/clash-nyanpasu/commit/8dc2c1a38fc5c85da58caef362bf32e706235d1f)) by @
-- create dir panic ([8ea3e6f](https://github.com/keiko233/clash-nyanpasu/commit/8ea3e6fa26e2a747374e0cd2d79e316a26a78dbf)) by @
-- create main window ([ae94993](https://github.com/keiko233/clash-nyanpasu/commit/ae94993b09b871a2f5cca5638f428d51624fd582)) by @
-- create theme error, close [#294](https://github.com/keiko233/clash-nyanpasu/issues/294) ([9b18bd0](https://github.com/keiko233/clash-nyanpasu/commit/9b18bd0b4836cce1297a2373c3082ac02bba9b2d)) by @
-- create window correctly ([41b19f6](https://github.com/keiko233/clash-nyanpasu/commit/41b19f69de7abede82d48843a275d86a47367f35)) by @
-- csp image data ([4bd9409](https://github.com/keiko233/clash-nyanpasu/commit/4bd94092f147402d32500942a1f9567d1dc40652)) by @
-- default dns config ([2f740b5](https://github.com/keiko233/clash-nyanpasu/commit/2f740b570d6e261c3098b9f25870a6b7d13e5af1)) by @
-- delay show window ([8bf78fe](https://github.com/keiko233/clash-nyanpasu/commit/8bf78fef108174343107a287121ff611f14f543d)) by @
-- delay update config ([ab53ab2](https://github.com/keiko233/clash-nyanpasu/commit/ab53ab21e2f769718d490e42a03690247d8627ad)) by @
-- delete profile item command ([a4c1573](https://github.com/keiko233/clash-nyanpasu/commit/a4c1573c45ea99482f9a978cf2535c3e84c042a8)) by @
-- direct mode hide proxies ([d20b745](https://github.com/keiko233/clash-nyanpasu/commit/d20b745ae5731be18765e74ac810b4f2ecbe930e)) by @
-- disable auto scroll to proxy ([6e5a2f8](https://github.com/keiko233/clash-nyanpasu/commit/6e5a2f85a1ddfe7a948cc9407dca5d245feac42e)) by @
-- disable spell check ([6c6b405](https://github.com/keiko233/clash-nyanpasu/commit/6c6b40548f576bd87a0add8365afbd4a500a524b)) by @
-- display menu only on macos ([ade34f5](https://github.com/keiko233/clash-nyanpasu/commit/ade34f52170d92bcfcc481102fdb3276aa38664a)) by @
-- do not kill sidecar during updating ([f32c5ba](https://github.com/keiko233/clash-nyanpasu/commit/f32c5ba2441044625d32fe1b21c42a4944520792)) by @
-- do not parse log except the clash core ([e25a455](https://github.com/keiko233/clash-nyanpasu/commit/e25a45569838cd7c0505ad5457443e3d403ba1cc)) by @
-- Do not render div as a descendant of p ([#494](https://github.com/keiko233/clash-nyanpasu/issues/494)) ([66f3f0b](https://github.com/keiko233/clash-nyanpasu/commit/66f3f0ba07a4274f9715c5c1d74d2ac91478decc)) by @
-- do not reset system proxy when consistent ([7eb5951](https://github.com/keiko233/clash-nyanpasu/commit/7eb595170fdd476e8a5a038790caf807cf1cc10b)) by @
-- download clash core from backup repo ([cad8748](https://github.com/keiko233/clash-nyanpasu/commit/cad87484c7bb3502c9c35e2aa2c4ac80dcbfad6f)) by @
-- edit profile info ([798999d](https://github.com/keiko233/clash-nyanpasu/commit/798999d490d31aed2856aa4fb0d0068b38eb58ff)) by @
-- enable context menu in editable element ([4c24363](https://github.com/keiko233/clash-nyanpasu/commit/4c243638cbc4d0ad0276650b1cff433e0e9e2a6a)) by @
-- encode controller secret, close [#601](https://github.com/keiko233/clash-nyanpasu/issues/601) ([f9a68e8](https://github.com/keiko233/clash-nyanpasu/commit/f9a68e8b234102b69db7b623f63d596b17d8a0a4)) by @
-- encodeURIComponent secret ([6cf174c](https://github.com/keiko233/clash-nyanpasu/commit/6cf174c5ed4fa8ae440ef651305643919f5f0290)) by @
-- enhanced profile consistency ([7108d5f](https://github.com/keiko233/clash-nyanpasu/commit/7108d5f3abf96b3b4df933449a5926aa8a76390e)) by @
-- error boundary with key ([3557a77](https://github.com/keiko233/clash-nyanpasu/commit/3557a776450bdc87086d31168a55ef0929c6c887)) by @
-- error log ([3113585](https://github.com/keiko233/clash-nyanpasu/commit/311358544e0cfa580b9f62f80423ea8f80155e2b)) by @
-- error message null ([fb653ff](https://github.com/keiko233/clash-nyanpasu/commit/fb653ff99dabc1ceb89322a9a5aedd9be98988ef)) by @
-- escape path space ([fc5ca96](https://github.com/keiko233/clash-nyanpasu/commit/fc5ca965ba92c60128cdd05b72d760512aea0eb9)) by @
-- escape the space in path ([#451](https://github.com/keiko233/clash-nyanpasu/issues/451)) ([9c4a46b](https://github.com/keiko233/clash-nyanpasu/commit/9c4a46bcdb7ec57c405f3bf5a3e610fca58a9838)) by @
-- external controller allow lan ([a120c8c](https://github.com/keiko233/clash-nyanpasu/commit/a120c8cf988d4e9c8a90966eadc5fb7d67034e6e)) by @
-- external-controller ([4c5aa70](https://github.com/keiko233/clash-nyanpasu/commit/4c5aa7084e3529321c409f2a9c1946a499138dd7)) by @
-- fetch profile panic ([c046a19](https://github.com/keiko233/clash-nyanpasu/commit/c046a1993e087b03bc93de28959dc577356e48c7)) by @
-- fetch profile with system proxy, close [#249](https://github.com/keiko233/clash-nyanpasu/issues/249) ([600134a](https://github.com/keiko233/clash-nyanpasu/commit/600134a3ac6e2c3159958116970e9d007590f539)) by @
-- field sort for filter ([c5289dc](https://github.com/keiko233/clash-nyanpasu/commit/c5289dc0e86e5c7ed6dcfea9019ec5829432a63f)) by @
-- fill button title attr ([a7ba9f1](https://github.com/keiko233/clash-nyanpasu/commit/a7ba9f18864f7f9c6b8eb97d6048c4ee85e94ab5)) by @
-- fix page undefined exception, close [#770](https://github.com/keiko233/clash-nyanpasu/issues/770) ([16d8071](https://github.com/keiko233/clash-nyanpasu/commit/16d80718cbbc00fb030b342a29f2e3971d9f4a51)) by @
-- font family not works in some interfaces, close [#639](https://github.com/keiko233/clash-nyanpasu/issues/639) ([f032228](https://github.com/keiko233/clash-nyanpasu/commit/f032228d0eea1fdb2acb5a5eb71a2178f2f06045)) by @
-- get proxies multiple times ([72c2b30](https://github.com/keiko233/clash-nyanpasu/commit/72c2b306cf294ca1c02ae36b85e823a9a54a0eeb)) by @
-- group proxies render list is null ([b3c1c56](https://github.com/keiko233/clash-nyanpasu/commit/b3c1c565794f5eedcf1a0f84eca5bc6d0f8899d4)) by @
-- handle is none ([2d2fdf0](https://github.com/keiko233/clash-nyanpasu/commit/2d2fdf0b1efb1cbf76df6aa6c9e9a01ced5e56b5)) by @
-- i18n ([9987dc1](https://github.com/keiko233/clash-nyanpasu/commit/9987dc1eb4abad320064b8697dafc3a1eeebd3b1)) by @
-- i18n ([5ebd9be](https://github.com/keiko233/clash-nyanpasu/commit/5ebd9be89a1bb6555d4a8d0d8aa3442ccce1b357)) by @
-- i18n add value ([51cf442](https://github.com/keiko233/clash-nyanpasu/commit/51cf442fa53481691efcf085165e462f19e61233)) by @
-- icon button color ([9e56b9f](https://github.com/keiko233/clash-nyanpasu/commit/9e56b9fbb57dc19964776aed5b7e686b0236c497)) by @
-- icon button color inherit ([910846f](https://github.com/keiko233/clash-nyanpasu/commit/910846f2ce2e1457c34e8c4bb2627ef9e30c57b0)) by @
-- icon button color inherit ([6ade0b2](https://github.com/keiko233/clash-nyanpasu/commit/6ade0b2b1ab599297bae2d439067bbfed3a4c257)) by @
-- icon button title ([0a3402f](https://github.com/keiko233/clash-nyanpasu/commit/0a3402ff439901703cc2b60854f3f63ee1a8fb5c)) by @
-- icon issue ([363e28f](https://github.com/keiko233/clash-nyanpasu/commit/363e28f3236d391393fe86f9c2dfdfd7f2d82549)) by @
-- icon path ([c382ad1](https://github.com/keiko233/clash-nyanpasu/commit/c382ad1cc89ded4cd0763a0867f7bd02bea1c0eb)) by @
-- icon style ([bf0dafa](https://github.com/keiko233/clash-nyanpasu/commit/bf0dafabe2d5696240a390736071de4f10bce343)) by @
-- **icon:** change ico file to fix windows tray ([0f99add](https://github.com/keiko233/clash-nyanpasu/commit/0f99addca71b6d31a92e9714be733fd11e8fe6da)) by @
-- ignore disable auto launch error ([5e429c7](https://github.com/keiko233/clash-nyanpasu/commit/5e429c7a94a06d1f945b086af3ded6b68dddaa51)) by @
-- import error ([e7bba96](https://github.com/keiko233/clash-nyanpasu/commit/e7bba968b3777f7be62afdadfada5af8e973927e)) by @
-- import mod ([659fdd1](https://github.com/keiko233/clash-nyanpasu/commit/659fdd1d376ad782108dd8671b5a4c007db53888)) by @
-- import url error ([#543](https://github.com/keiko233/clash-nyanpasu/issues/543)) ([3eeaee1](https://github.com/keiko233/clash-nyanpasu/commit/3eeaee154f8774220e9a823a274aa9acc4e05bf4)) by @
-- improve external-controller parse and log ([6d0625c](https://github.com/keiko233/clash-nyanpasu/commit/6d0625c409e0e41e483d216fdb20346a9463dbf1)) by @
-- increase delay checker concurrency ([820d1e7](https://github.com/keiko233/clash-nyanpasu/commit/820d1e75707f76ba28ac27c724dd87024ee841c2)) by @
-- infinite retry when websocket error ([db99b4c](https://github.com/keiko233/clash-nyanpasu/commit/db99b4cb54838f5a2ca1e36b51038dfb80167dd9)) by @
-- init config error ([f7dab3c](https://github.com/keiko233/clash-nyanpasu/commit/f7dab3ca560f027f7370d5114f9e7adbf40c0974)) by @
-- init config file ([40c0410](https://github.com/keiko233/clash-nyanpasu/commit/40c041031efcb02034e2b876eefa724d8dd67175)) by @
-- init system proxy correctly ([acff6d0](https://github.com/keiko233/clash-nyanpasu/commit/acff6d043218b1dbaa52c1cdc56836e3dbb84924)) by @
-- initialize profiles state ([774c6f7](https://github.com/keiko233/clash-nyanpasu/commit/774c6f7e053e0739ee36ae82e738b4547817a934)) by @
-- instantiate core after init app, close [#122](https://github.com/keiko233/clash-nyanpasu/issues/122) ([150f0cf](https://github.com/keiko233/clash-nyanpasu/commit/150f0cf48616d60053484be904b79fcab971c1f5)) by @
-- item header bgcolor ([db4993a](https://github.com/keiko233/clash-nyanpasu/commit/db4993ae9b478f81770328c65db64af509b15c4f)) by @
-- keep delay data ([97d82b0](https://github.com/keiko233/clash-nyanpasu/commit/97d82b03aba822858006f82e690bdd5727ab3bd1)) by @
-- kill clash when exit in service mode, close [#241](https://github.com/keiko233/clash-nyanpasu/issues/241) ([294d980](https://github.com/keiko233/clash-nyanpasu/commit/294d980b5237535f2eb24cb81e890d0766576beb)) by @
-- kill sidecars after install still in test ([568511a](https://github.com/keiko233/clash-nyanpasu/commit/568511a4cfec43e9b38d43947878a70fbdb118dc)) by @
-- label text ([e0943ce](https://github.com/keiko233/clash-nyanpasu/commit/e0943ce905d6a06f0badf63f69b084a60774f98f)) by @
-- limit enhanced profile range ([c0ad84a](https://github.com/keiko233/clash-nyanpasu/commit/c0ad84a491f61e869c55c04903316c86ce8494ad)) by @
-- limit theme mode value ([c1734a0](https://github.com/keiko233/clash-nyanpasu/commit/c1734a094cd6896ec48e630662fbeeac1ae92da5)) by @
-- lint ([e00f826](https://github.com/keiko233/clash-nyanpasu/commit/e00f826eb885ebb923ec6b2941ce2e533324819f)) by @
-- linux DEFAULT_BYPASS ([#503](https://github.com/keiko233/clash-nyanpasu/issues/503)) ([fb7b180](https://github.com/keiko233/clash-nyanpasu/commit/fb7b1800cced2bf13426f9ca85647f1b41410b10)) by @
-- linux not change icon ([6e391df](https://github.com/keiko233/clash-nyanpasu/commit/6e391df5ee8ff796519e612e2260102f65a036e3)) by @
-- list compare wrong ([aed1bdf](https://github.com/keiko233/clash-nyanpasu/commit/aed1bdff5a25fe05361d4257be325697a6108d42)) by @
-- list key ([e62eaa6](https://github.com/keiko233/clash-nyanpasu/commit/e62eaa6b4bedcf47838c035d6c1738b5f8f6e1cc)) by @
-- log file ([18f9d6d](https://github.com/keiko233/clash-nyanpasu/commit/18f9d6dec5f7a7881fff645d34989930fa69a6bd)) by @
-- log level warn value ([e94a07b](https://github.com/keiko233/clash-nyanpasu/commit/e94a07b6779cac26fc546b761f6e66d64183c732)) by @
-- log some error ([109fb39](https://github.com/keiko233/clash-nyanpasu/commit/109fb39e094db8c744e9d712bb5a87c7bbca3933)) by @
-- macos auto launch fail ([76081f8](https://github.com/keiko233/clash-nyanpasu/commit/76081f8d89090cb714af48cbf5c5a498c8916aec)) by @
-- macOS disable transparent ([6d3f837](https://github.com/keiko233/clash-nyanpasu/commit/6d3f8378204dc6193376878e07fd296df552b12b)) by @
-- macos not change icon ([cafc206](https://github.com/keiko233/clash-nyanpasu/commit/cafc2060b880affc0a213dec754bc724fd2918ce)) by @
-- macOS transition flickers close [#47](https://github.com/keiko233/clash-nyanpasu/issues/47) ([db3b634](https://github.com/keiko233/clash-nyanpasu/commit/db3b634e6233b3ef8ba20d17d939aed60b7ce51f)) by @
-- **macos:** set auto launch path to application ([57d23eb](https://github.com/keiko233/clash-nyanpasu/commit/57d23eb043e7874de144ef507d46341c3070cf72)) by @
-- manage global proxy correctly ([5027069](https://github.com/keiko233/clash-nyanpasu/commit/502706931e9fee8507290fc2b51a83318a84483f)) by @
-- matchMedia().addEventListener [#258](https://github.com/keiko233/clash-nyanpasu/issues/258) ([#296](https://github.com/keiko233/clash-nyanpasu/issues/296)) ([4046f14](https://github.com/keiko233/clash-nyanpasu/commit/4046f143f6c802c9cc5c8332f293a460774bdde3)) by @
-- MediaQueryList addEventListener polyfill ([fd6633f](https://github.com/keiko233/clash-nyanpasu/commit/fd6633f536870b11eda2b907d998eaa594700ed7)) by @
-- menu without fragment ([2b52584](https://github.com/keiko233/clash-nyanpasu/commit/2b525845479a9940df6178e1ae467ed0e15c6755)) by @
-- mutate at the same time may be wrong ([aa29e18](https://github.com/keiko233/clash-nyanpasu/commit/aa29e185e4b39a3d0b18b2239434e4a6afaf553f)) by @
-- mutex dead lock ([6bc83d9](https://github.com/keiko233/clash-nyanpasu/commit/6bc83d9f2737ea1fb625d235283b2691966e21f9)) by @
-- not create windows when enable slient start ([2d09893](https://github.com/keiko233/clash-nyanpasu/commit/2d0989342f188152412dc8ee8693ee78420811ea)) by @
-- not open file when new profile ([66bf4ba](https://github.com/keiko233/clash-nyanpasu/commit/66bf4ba3ada161a2c44606f06730537bec692f59)) by @
-- notice ui blocking ([d695656](https://github.com/keiko233/clash-nyanpasu/commit/d695656b8ce6b01097a9b77280b603f00aea1539)) by @
-- null type error ([4f56c38](https://github.com/keiko233/clash-nyanpasu/commit/4f56c385998c737bb33f963313c0cd661c80d1a1)) by @
-- only error when selected ([c7e7be4](https://github.com/keiko233/clash-nyanpasu/commit/c7e7be4379a82778c882e5216709aa37cb1bfc15)) by @
-- only script profile can display console ([c611a51](https://github.com/keiko233/clash-nyanpasu/commit/c611a5157598d62f13053c9e4ecc66cb6b94160b)) by @
-- open file ([eea9cb7](https://github.com/keiko233/clash-nyanpasu/commit/eea9cb7c5b3684e04c3931409215e83d682f1733)) by @
-- open file with vscode ([0a33bb8](https://github.com/keiko233/clash-nyanpasu/commit/0a33bb861e5cc30fd0bf8536035cfa6633ceb446)) by @
-- optimize clash launch ([844ffab](https://github.com/keiko233/clash-nyanpasu/commit/844ffab4edd54424feb4e543edae475d6fb2eb95)) by @
-- optimize traffic graph high CPU usage when hidden ([9e9c4ad](https://github.com/keiko233/clash-nyanpasu/commit/9e9c4ad5873bf354c5a80cb38d4bc573216ce287)) by @
-- parse bytes base 1024 ([f76890c](https://github.com/keiko233/clash-nyanpasu/commit/f76890cc56f4a5c1e8ca1f37fdd83568a288540b)) by @
-- parse bytes precision, close [#334](https://github.com/keiko233/clash-nyanpasu/issues/334) ([e7f294a](https://github.com/keiko233/clash-nyanpasu/commit/e7f294a065cf7a9bbe0c9b723e9ce584e4445689)) by @
-- parse external-controller ([a393b8b](https://github.com/keiko233/clash-nyanpasu/commit/a393b8b1224667242580b74949374b45fcfcffb3)) by @
-- parse log cause panic ([e901588](https://github.com/keiko233/clash-nyanpasu/commit/e90158809a9b4e2d732faa136be824cd9fe22b17)) by @
-- parse logger time ([33b1a11](https://github.com/keiko233/clash-nyanpasu/commit/33b1a11d858d85543765b307a989a740fc0ef4b1)) by @
-- patch clash config ([b7c3863](https://github.com/keiko233/clash-nyanpasu/commit/b7c386388296069bc57fe2823f6c82e5d9a48c88)) by @
-- patch item option ([8890051](https://github.com/keiko233/clash-nyanpasu/commit/8890051c1709813a0cdff45ee20daae7e760bebc)) by @
-- patch verge config ([10b55c0](https://github.com/keiko233/clash-nyanpasu/commit/10b55c043c29a2da74534526ea7076da82b2fe44)) by @
-- port value not rerender ([9a85b28](https://github.com/keiko233/clash-nyanpasu/commit/9a85b28b1827ac72038d9e5629bc4b54494f82bc)) by @
-- pretty bytes ([d21bb01](https://github.com/keiko233/clash-nyanpasu/commit/d21bb015e875ab0fcc563e0887b2a83eeeb70898)) by @
-- profile can not edit ([1a31fa9](https://github.com/keiko233/clash-nyanpasu/commit/1a31fa90679ffb79c867ad34ecb87d01b09ae236)) by @
-- profile data undefined error, close [#566](https://github.com/keiko233/clash-nyanpasu/issues/566) ([6114af4](https://github.com/keiko233/clash-nyanpasu/commit/6114af4f933f3cf82d203bd6b75680a972eac879)) by @
-- profile field check ([7437881](https://github.com/keiko233/clash-nyanpasu/commit/743788135f71be0b06315b59a4ebb8109afe8fc0)) by @
-- profile item loading state ([3cde019](https://github.com/keiko233/clash-nyanpasu/commit/3cde019208e21e4cfa6a20c6ea805ab7ea8440fe)) by @
-- profile item menu ui dense ([5f486d0](https://github.com/keiko233/clash-nyanpasu/commit/5f486d0f51666e5c495d6dc44b7550f6ad6597d2)) by @
-- profile updated field ([e9b7ec7](https://github.com/keiko233/clash-nyanpasu/commit/e9b7ec735f47cf292545c846d5e655d77bf0c63c)) by @
-- provider proxy sort by delay ([0bb1790](https://github.com/keiko233/clash-nyanpasu/commit/0bb1790206beec655a3f50e88b356a1596c7b4bd)) by @
-- proxy bypass add <local> ([2a7cabb](https://github.com/keiko233/clash-nyanpasu/commit/2a7cabb06dd9e41021bf75f61a28e48c3a935476)) by @
-- proxy global showType ([e896077](https://github.com/keiko233/clash-nyanpasu/commit/e89607799abc6b59029b738b85210c39d4fd8c4d)) by @
-- proxy item style ([6337788](https://github.com/keiko233/clash-nyanpasu/commit/6337788a2231bcee397a2792e4b5169147fe99c2)) by @
-- proxy list error ([73758ad](https://github.com/keiko233/clash-nyanpasu/commit/73758ad1fd7dac151f446fc07f7bb69f5a881eef)) by @
-- proxy page first render ([954e355](https://github.com/keiko233/clash-nyanpasu/commit/954e3553eebe294567cb3971b0ccddffde31e79e)) by @
-- put profile request with no proxy ([9ec7184](https://github.com/keiko233/clash-nyanpasu/commit/9ec7184aa1252262a5b59b15995491f782258d7e)) by @
-- reconnect traffic websocket ([43dee3e](https://github.com/keiko233/clash-nyanpasu/commit/43dee3ef764d10a59a415e3c8b4ce7f9f9c8e762)) by @
-- reconnect websocket when restart clash ([1a55cca](https://github.com/keiko233/clash-nyanpasu/commit/1a55cca8af0d32b8cf54935d19e4140da6e770dc)) by @
-- reduce logo size ([acfe5db](https://github.com/keiko233/clash-nyanpasu/commit/acfe5dbb49a6cde97cdc8349d7879727b3f506e7)) by @
-- reduce proxy item height ([08587d8](https://github.com/keiko233/clash-nyanpasu/commit/08587d8f2f0568ef8281f038d1a3025571a2b34f)) by @
-- reduce unsafe unwrap ([3242efb](https://github.com/keiko233/clash-nyanpasu/commit/3242efb1a29f1bfada2f3775268f67c746a51bdb)) by @
-- reduce unwrap ([60f6587](https://github.com/keiko233/clash-nyanpasu/commit/60f658716903fc87af341e669b5f7bc87c571ed8)) by @
-- refresh clash ui await patch ([96e7666](https://github.com/keiko233/clash-nyanpasu/commit/96e76665d68cc638bb947be925ffb9b27772844c)) by @
-- refresh proxies interval, close [#235](https://github.com/keiko233/clash-nyanpasu/issues/235) ([cc5b33a](https://github.com/keiko233/clash-nyanpasu/commit/cc5b33a8ec6e05e697b4c7a5f69ec21c96d8db9c)) by @
-- refresh websocket ([376011e](https://github.com/keiko233/clash-nyanpasu/commit/376011ea0836f9b646747bbaf0b2bd271df4f8d1)) by @
-- regenerate config before change core ([f477cec](https://github.com/keiko233/clash-nyanpasu/commit/f477cecdebc4b9b556abb5a5f29c9c403cd71444)) by @
-- remove cargo test ([b5c4175](https://github.com/keiko233/clash-nyanpasu/commit/b5c41750f76f64d876ad6016bca059c20eead2c5)) by @
-- remove dead code ([d6ab73c](https://github.com/keiko233/clash-nyanpasu/commit/d6ab73c9054ea17bdcb52aaea110c2e6bf5b2e88)) by @
-- remove div ([7854775](https://github.com/keiko233/clash-nyanpasu/commit/7854775de5c259e2d598713d63cd9ac1e8ce02d9)) by @
-- remove esc key listener in macOS ([66d93ea](https://github.com/keiko233/clash-nyanpasu/commit/66d93ea037dd7cbc62ae454e92e3e5bb0b208c87)) by @
-- remove fallback group select status, close [#659](https://github.com/keiko233/clash-nyanpasu/issues/659) ([ce23143](https://github.com/keiko233/clash-nyanpasu/commit/ce231431b96fd898de2c7b13f48d74a54fdfac39)) by @
-- remove smoother ([4649454](https://github.com/keiko233/clash-nyanpasu/commit/4649454282550c93c86a4f886bddfefaadc9a6a9)) by @
-- remove the lonely zero ([9902003](https://github.com/keiko233/clash-nyanpasu/commit/9902003da9d606cf9b9253c2326b9e2d565d0f62)) by @
-- remove useless optimizations ([e72ad1f](https://github.com/keiko233/clash-nyanpasu/commit/e72ad1f030ce33c54a791a9be671ff80c56168cb)) by @
-- reset after exit ([f5d0513](https://github.com/keiko233/clash-nyanpasu/commit/f5d0513d1f02b8efc4859c36ecef9b325f941bed)) by @
-- reset proxy ([c0ddddf](https://github.com/keiko233/clash-nyanpasu/commit/c0ddddfb1f457895750ded9444f5e374bcdaa477)) by @
-- reset value correctly ([2dfd725](https://github.com/keiko233/clash-nyanpasu/commit/2dfd725ee005cb2a70a37a217430e081fcd41985)) by @
-- restart clash should update something ([4b5b62c](https://github.com/keiko233/clash-nyanpasu/commit/4b5b62c8aee383a96607fc763cacfb7022de748b)) by @
-- result ([bcdae11](https://github.com/keiko233/clash-nyanpasu/commit/bcdae1169eba6fae0e615f131617c4e119206c90)) by @
-- rm debug code ([b6d50ba](https://github.com/keiko233/clash-nyanpasu/commit/b6d50ba6a40028267c91450972e035f7cc5e5a4b)) by @
-- rm macOS transition props ([2f3b6b2](https://github.com/keiko233/clash-nyanpasu/commit/2f3b6b29ae03395010720d49f9b18c3f1f48ccbe)) by @
-- rm unwrap ([8cdbb31](https://github.com/keiko233/clash-nyanpasu/commit/8cdbb31dbe785bbb6bd484097937f7fcf186f900)) by @
-- root background color ([15ff9b0](https://github.com/keiko233/clash-nyanpasu/commit/15ff9b06a1228c8f86ecb56c856d7406dab0d9c7)) by @
-- runtime config user select ([4037171](https://github.com/keiko233/clash-nyanpasu/commit/403717117e58a8a14d7d52d1a21a02fbbb94700f)) by @
-- rust lint ([84d3c3f](https://github.com/keiko233/clash-nyanpasu/commit/84d3c3f7ebdf16bda28dd7df7d8b2d64e6e377bc)) by @
-- save enable log on localstorage ([d522191](https://github.com/keiko233/clash-nyanpasu/commit/d522191f69efd9db32e8c9ed9f8b31ab4b3eccc9)) by @
-- save profile when update ([4942b0f](https://github.com/keiko233/clash-nyanpasu/commit/4942b0fca5c6859a6e729afc28f6009aed02412c)) by @
-- save window size and pos in Windows ([4f158a4](https://github.com/keiko233/clash-nyanpasu/commit/4f158a482932f2176af8850f6e25171da19bb1c1)) by @
-- script code error ([f1a68ec](https://github.com/keiko233/clash-nyanpasu/commit/f1a68ece01c10e42cb861587656d86926157f85d)) by @
-- script error ([82ba604](https://github.com/keiko233/clash-nyanpasu/commit/82ba604b9966e7e2da8294a033ec4bf11abe7918)) by @
-- script error... ([209a5b1](https://github.com/keiko233/clash-nyanpasu/commit/209a5b12079a16385efc1642ae22498b46a5cbee)) by @
-- script exception handle ([dd56336](https://github.com/keiko233/clash-nyanpasu/commit/dd563360afab5b7bc9d273e5404b86e5ce26b860)) by @
-- service mode error ([31c6cbc](https://github.com/keiko233/clash-nyanpasu/commit/31c6cbc0a255267bd5c641767c668b7b01f9cf1e)) by @
-- service mode error and fallback to sidecar ([5098f14](https://github.com/keiko233/clash-nyanpasu/commit/5098f14aabeae8ab5553a3edc154080d30b38a53)) by @
-- service mode viewer ui ([a355a9c](https://github.com/keiko233/clash-nyanpasu/commit/a355a9c85e598db68951dfc10e8aca495b76eb7e)) by @
-- service ref error ([020bd12](https://github.com/keiko233/clash-nyanpasu/commit/020bd129fb43d1af4f972d6963766b842784cba1)) by @
-- service viewer ref ([781c67b](https://github.com/keiko233/clash-nyanpasu/commit/781c67b31afaf353ca2c44c1a542769be90a94fd)) by @
-- set min window size, close [#734](https://github.com/keiko233/clash-nyanpasu/issues/734) ([8647866](https://github.com/keiko233/clash-nyanpasu/commit/8647866a32a280ac72629a0c6bc0238caaf5aeaf)) by @
-- set_activation_policy ([f2bd6f1](https://github.com/keiko233/clash-nyanpasu/commit/f2bd6f1fce58325af292206694b7f3032fbf2e37)) by @
-- show global when no rule groups ([c935997](https://github.com/keiko233/clash-nyanpasu/commit/c9359978f96eb21b3cd08019bdc4e8d65dab1f7c)) by @
-- show windows on click ([a092da1](https://github.com/keiko233/clash-nyanpasu/commit/a092da194388944e06b53ef387ea84469bf51517)) by @
-- sidecar dir ([e737bb4](https://github.com/keiko233/clash-nyanpasu/commit/e737bb4cea1062a9fa91ca3a8c6300288004d188)) by @
-- silent start ([#150](https://github.com/keiko233/clash-nyanpasu/issues/150)) ([5aa7d5f](https://github.com/keiko233/clash-nyanpasu/commit/5aa7d5ffe9b31d6358ae16588579f14741b82c49)) by @
-- simply compatible with proxy providers ([08fa520](https://github.com/keiko233/clash-nyanpasu/commit/08fa5205b02077410b198424e531dfa84429c52a)) by @
-- something ([a211fc7](https://github.com/keiko233/clash-nyanpasu/commit/a211fc7c975209d031bda202e428f93e5a28c930)) by @
-- something ([eb86b47](https://github.com/keiko233/clash-nyanpasu/commit/eb86b471fee1ab20f209b4e5e068ba0c509541b6)) by @
-- something ([7d8fa4d](https://github.com/keiko233/clash-nyanpasu/commit/7d8fa4d78a6aaee4f3b4b105852e8243aefcfb87)) by @
-- sort proxy during loading, close [#221](https://github.com/keiko233/clash-nyanpasu/issues/221) ([b8a8190](https://github.com/keiko233/clash-nyanpasu/commit/b8a8190a4358a587e63a1c7f7959e1abfdd7dc1b)) by @
-- spawn command ([0aa2565](https://github.com/keiko233/clash-nyanpasu/commit/0aa2565df3c70a4206e5fdb90c554d227cd98796)) by @
-- style ([6e1a627](https://github.com/keiko233/clash-nyanpasu/commit/6e1a627b8490d400f29f947d5f9496f228e62bf7)) by @
-- style ([0495062](https://github.com/keiko233/clash-nyanpasu/commit/0495062110b286d8f92c451bb8d41337dd97573b)) by @
-- style ([5a93ba0](https://github.com/keiko233/clash-nyanpasu/commit/5a93ba05d55a20ff7e919827bfc5fb1024681cd8)) by @
-- style ([02fdb87](https://github.com/keiko233/clash-nyanpasu/commit/02fdb8778ba2b6e255c3b13b427a1c66d803921e)) by @
-- style issue on mac ([ba16ec0](https://github.com/keiko233/clash-nyanpasu/commit/ba16ec02e5941346e4fd6be73e4a4ce1f6fc5bb8)) by @
-- **style:** reduce my ([ebff652](https://github.com/keiko233/clash-nyanpasu/commit/ebff65282492bf42018ec798fbe7c69a7a055446)) by @
-- tag error ([95349ea](https://github.com/keiko233/clash-nyanpasu/commit/95349eacab00b5fc59656226a8d0ca4f81943861)) by @
-- tauri csp ([57c4112](https://github.com/keiko233/clash-nyanpasu/commit/57c411288fa193ebb4c5e137690218a98c0fdc1d)) by @
-- text ([6da7757](https://github.com/keiko233/clash-nyanpasu/commit/6da7757d36049d5e2f8e3ec04734b32414d1f2f0)) by @
-- The profile is replaced when the request fails. ([#246](https://github.com/keiko233/clash-nyanpasu/issues/246)) ([df14af7](https://github.com/keiko233/clash-nyanpasu/commit/df14af7337c41097e2c071e9683f1d4e401e9c4a)) by @
-- timer restore at app launch ([30f9f1a](https://github.com/keiko233/clash-nyanpasu/commit/30f9f1a021f5a2f6df11016fe31c182cdffbc0a1)) by @
-- touchpad scrolling causes blank area to appear ([84b2c07](https://github.com/keiko233/clash-nyanpasu/commit/84b2c07340aa23d718677f8f490deb720f72e4ba)) by @
-- traffic graph adapt to different fps ([fac437b](https://github.com/keiko233/clash-nyanpasu/commit/fac437b8c1eb4dcd38ae795a159d42c7d308f241)) by @
-- trigger new profile dialog, close [#356](https://github.com/keiko233/clash-nyanpasu/issues/356) ([d5037f1](https://github.com/keiko233/clash-nyanpasu/commit/d5037f180ee50650faa6b392c3e9487b49646b3f)) by @
-- try fix blank error ([f5edca9](https://github.com/keiko233/clash-nyanpasu/commit/f5edca94d3ce1ae0c33bfda9ee35b94def43b9f7)) by @
-- try fix undefined error ([b9b6212](https://github.com/keiko233/clash-nyanpasu/commit/b9b6212b75999adece9c132d3fd57db4d66eaf2a)) by @
-- tun mode config ([ec41bb9](https://github.com/keiko233/clash-nyanpasu/commit/ec41bb9c7021a1ade26f6e2e4f6be60111f1e574)) by @
-- type error ([c77db23](https://github.com/keiko233/clash-nyanpasu/commit/c77db23586ea3fb4f2bdfda8aed92af408748696)) by @
-- type error ([b6c58f7](https://github.com/keiko233/clash-nyanpasu/commit/b6c58f74c03ff3acf5c8906117a1739b540a3fc9)) by @
-- typo in api.ts ([#207](https://github.com/keiko233/clash-nyanpasu/issues/207)) ([bbbdc8b](https://github.com/keiko233/clash-nyanpasu/commit/bbbdc8b7a6e9c41590e72c6cf6c10cf5e8baa75b)) by @
-- typos ([bcf40dd](https://github.com/keiko233/clash-nyanpasu/commit/bcf40dde8c4e666af4b52711d882a0f2dcace189)) by @
-- unused ([cf96622](https://github.com/keiko233/clash-nyanpasu/commit/cf9662226131a5dd2500e381db76d4c13fd4ac34)) by @
-- update profile after restart clash ([579f36a](https://github.com/keiko233/clash-nyanpasu/commit/579f36a1ddad3f3e43143977fca44c8e4873dc55)) by @
-- update state ([dd605e2](https://github.com/keiko233/clash-nyanpasu/commit/dd605e26108c43851282827540eb12083da2b430)) by @
-- use crate ([2b6d934](https://github.com/keiko233/clash-nyanpasu/commit/2b6d9348cd1319fc16afca702996bef876a85f06)) by @
-- use full clash config ([bbe2ef4](https://github.com/keiko233/clash-nyanpasu/commit/bbe2ef4e8e03d2a75ffd1baa1cbed5f8e60c4752)) by @
-- use io ([9b8f5c4](https://github.com/keiko233/clash-nyanpasu/commit/9b8f5c4fcf6c5d7a27d3e4a7e5ef978656d800d1)) by @
-- use list item button ([f06fa3f](https://github.com/keiko233/clash-nyanpasu/commit/f06fa3f9b73f7fd652f6fe104dec7adf24ad5969)) by @
-- use meta Country.mmdb ([e393ebe](https://github.com/keiko233/clash-nyanpasu/commit/e393ebede2769dc409d47ec1c6c3509bfb222511)) by @
-- use replace instead ([533dc99](https://github.com/keiko233/clash-nyanpasu/commit/533dc99e7dfcf2b58e9696059c1faf12ce2b5af3)) by @
-- use selected proxy after profile changed ([819c520](https://github.com/keiko233/clash-nyanpasu/commit/819c5207d28daa7bfdf4ba64d1a204130039fb18)) by @
-- use sudo when pkexec not found ([38a9a92](https://github.com/keiko233/clash-nyanpasu/commit/38a9a9240df0aad888a1764b7b407fa929e5378c)) by @
-- use verge hook ([572d81e](https://github.com/keiko233/clash-nyanpasu/commit/572d81ecef1521a0c8d7b4c6277121109ed3ac9a)) by @
-- user agent not works ([cf00c94](https://github.com/keiko233/clash-nyanpasu/commit/cf00c9476ff0b29c5dfd397deaec6dadc6144a74)) by @
-- valid with unified-delay & tcp-concurrent ([88c9b68](https://github.com/keiko233/clash-nyanpasu/commit/88c9b6849f867db15c3f4f4405a4381eef067ac6)) by @
-- version update error ([4e8d4f4](https://github.com/keiko233/clash-nyanpasu/commit/4e8d4f45918703dab8d24ecaaf40ee761a5c7563)) by @
-- Virtuoso no work in legacy browsers ([#318](https://github.com/keiko233/clash-nyanpasu/issues/318)) ([39ade59](https://github.com/keiko233/clash-nyanpasu/commit/39ade591746ef8e37d23ec325291afffc28537b3)) by @
-- web resource outDir ([eddf10e](https://github.com/keiko233/clash-nyanpasu/commit/eddf10e740c458f10d8757b2f66346f50adebac7)) by @
-- web ui port value error ([7a3285a](https://github.com/keiko233/clash-nyanpasu/commit/7a3285adaf29ecce08805079e370e62d55179f47)) by @
-- websocket disconnect when window focus ([6f5acee](https://github.com/keiko233/clash-nyanpasu/commit/6f5acee1c340299221ee92b391eff0fa44bdcc37)) by @
-- when updater failed ([650e017](https://github.com/keiko233/clash-nyanpasu/commit/650e017b723b5eef759edbb2577011d31139d8b3)) by @
-- win11 drag lag ([6596fb0](https://github.com/keiko233/clash-nyanpasu/commit/6596fb00c7e46d19669f82b0ac7215eb52e2f3c6)) by @
-- window center ([2462e68](https://github.com/keiko233/clash-nyanpasu/commit/2462e68ba18f913706367165066ae4b92e36b130)) by @
-- window style close [#45](https://github.com/keiko233/clash-nyanpasu/issues/45) ([b5283ea](https://github.com/keiko233/clash-nyanpasu/commit/b5283eaaed884d7a9d6bedc156c864e723a1f365)) by @
-- window transparent and can not get hwnd ([98b8bd9](https://github.com/keiko233/clash-nyanpasu/commit/98b8bd90eab77d93c0dd0c87df676600df815d36)) by @
-- windows issue ([bcc5ec8](https://github.com/keiko233/clash-nyanpasu/commit/bcc5ec897aa6748755ffb5321e53efb1a396b11e)) by @
-- windows logo size ([6bed7f0](https://github.com/keiko233/clash-nyanpasu/commit/6bed7f0e669fd76fb2e75d6a3f9d25124aefcd59)) by @
-- windows service mode ([1550d52](https://github.com/keiko233/clash-nyanpasu/commit/1550d528bd331e876abcf90084d2bc40c242afec)) by @
-- windows style ([bd0a959](https://github.com/keiko233/clash-nyanpasu/commit/bd0a959e18c74f4b62e6dfd90828937183389689)) by @
-- wrong exe path ([c9c06f8](https://github.com/keiko233/clash-nyanpasu/commit/c9c06f8a3de282dc90856b45633085589a296e47)) by @
+- add clash fields ([e1c8f1f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e1c8f1fed9b4df36d40b082f5afe2d6a8cadded9)) by @
+- add https proxy ([33a5fb8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/33a5fb88373493027bff6a42f5c75731dff3e153)) by @
+- add meta fields ([91b77e5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/91b77e5237367875fa392ef7ced4fafd189b4c96)) by @
+- add meta fields ([780ab20](https://github.com/LibNyanpasu/clash-nyanpasu/commit/780ab20aeb01d601fb5c690a61042f6b51ac8a01)) by @
+- add os platform value ([1b44ae0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1b44ae098cbf0e056c7c51b80d75c8f3c3c32e48)) by @
+- add target os linux ([5265888](https://github.com/LibNyanpasu/clash-nyanpasu/commit/52658886e75cd2f06fb125fcb74da5a3452275e5)) by @
+- add tray separator ([cbc184e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cbc184e953958443a6ef044acc2f0b7539b2ae46)) by @
+- add valid clash field ([35de233](https://github.com/LibNyanpasu/clash-nyanpasu/commit/35de2334fb3ce8165fc65085a15695bdbbe67996)) by @
+- adjsut open cmd error ([2d1780b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2d1780b1cf37ae4a7f3597d7c44ee53c9dc7cfd1)) by @
+- adjust code ([8bad2c2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8bad2c211389b5b091a2e86cb033694dfd2b7933)) by @
+- adjust code ([20a194b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/20a194b49a878c541a44691c353b159e967cac22)) by @
+- adjust code ([557abd4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/557abd42850e638116fb19a641c2381e29a05eae)) by @
+- adjust connection scroll ([423a7f9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/423a7f951a5925525374b580f1277697a17427e8)) by @
+- adjust debounce wait time ([5308970](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5308970ad8ddf79e4f81859e9a480d336df277ad)) by @
+- adjust delay check concurrency ([2bcf6fb](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2bcf6fb3eb424c079d013c0901bc82dbe1a0d632)) by @
+- adjust dialog action button variant ([cb48600](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cb48600b405bae61d74c0edf951ead2a5d4d0efd)) by @
+- adjust dns config ([9e3c080](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9e3c0809090c36fa89a52485c2b13e300857fb5f)) by @
+- adjust fields order ([7909cf4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7909cf4067c25d8c171315517f2fd0a75958ea1f)) by @
+- adjust init launch on dev ([1b336d9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1b336d973dfd1411e3c5867a03ef86583af097e7)) by @
+- adjust item ui ([790d832](https://github.com/LibNyanpasu/clash-nyanpasu/commit/790d832155620edecc3de2ea9ce54d82f89039aa)) by @
+- adjust log ([b9162f9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b9162f9576f3953fa03e6ccb5d0d2b7fd683a604)) by @
+- adjust log text ([3f58d05](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3f58d05aa7b33a9250fde77129b93da690024539)) by @
+- adjust log ui ([132f914](https://github.com/LibNyanpasu/clash-nyanpasu/commit/132f914b0de23ee2376a796269f71a85721a9446)) by @
+- adjust notice ([e19fe5c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e19fe5ce1cdc40bf95d0a70a6671508b51b2933d)) by @
+- adjust notice ([f5c6fa8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f5c6fa842aefe0b4d796a9d255bbf46cc97e7ffd)) by @
+- adjust reset proxy ([b635e64](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b635e64803c75c6ae99ae26476be480b568d27ec)) by @
+- adjust rule ui ([bfe4f08](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bfe4f08232ab1bbfefef9d19c9eaf74a4d70c80f)) by @
+- adjust service mode ui ([06dabf1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/06dabf1e4ed05d06d574b15297e8944d3b9b9311)) by @
+- adjust singleton detect ([be81cd7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/be81cd72afc8381fa7cc8696239cd4a7767d3311)) by @
+- adjust something ([557f5fe](https://github.com/LibNyanpasu/clash-nyanpasu/commit/557f5fe364df76484947711b6340989db230227b)) by @
+- adjust style ([e7841c6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e7841c60df248baf3e914f170383734df5e8d1ea)) by @
+- adjust style ([ffa21fb](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ffa21fbfd2eab267571dedd8ca44f949bb605360)) by @
+- adjust swr option ([630249d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/630249d22a45907264fbaec717463b1c6ad06896)) by @
+- adjust ui ([ce61309](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ce613098db7f4c5a10ac93e235a5230451908e10)) by @
+- adjust ui ([2ce7624](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2ce7624c1434a990df4f27b79c5a72ca7dcacf83)) by @
+- adjust update profile notice error ([a4fb2df](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a4fb2dfcf825bade055e71dc9e480dba948ffdf9)) by @
+- adjust web ui item style ([bd576ca](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bd576ca80864b8f7d649a2e81717b2e3858f7f05)) by @
+- adjust windows style ([b8b0c8f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b8b0c8fa63f1ea686cc345b04c5157dad8b41d2e)) by @
+- api error handle ([38d1fde](https://github.com/LibNyanpasu/clash-nyanpasu/commit/38d1fde84f4d732d354022078674d6d23e577df7)) by @
+- api loading delay ([36d8fa7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/36d8fa7de4d26d4ddd61067d3ced2b5538185e52)) by @
+- app version to string ([35d0438](https://github.com/LibNyanpasu/clash-nyanpasu/commit/35d0438261027b86ab79db01b402f6b673ffa115)) by @
+- app_handle as_ref ([c9b7ecc](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c9b7eccbc1260702f67e569eb388564a6c10b46c)) by @
+- appimage auto launch, close [#403](https://github.com/LibNyanpasu/clash-nyanpasu/issues/403) ([692f8c8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/692f8c845425f9a9d604ff8f15ba3a7e2fc3d0c9)) by @
+- appimage path unwrap panic ([2b6aced](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2b6acedae1fa29646e10cee4483105fa3479a2d6)) by @
+- apply_blur parameter ([3afbb56](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3afbb5664014d637882a0b171c417a8062120f66)) by @
+- auto launch path ([2d95f2b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2d95f2b0d663e59b082eb73a8bf68a492105bece)) by @
+- auto scroll into view when sorted proxies changed ([59dae64](https://github.com/LibNyanpasu/clash-nyanpasu/commit/59dae640db6179f1106076529d250b24bcae982e)) by @
+- avoid setting login item repeatedly, close [#326](https://github.com/LibNyanpasu/clash-nyanpasu/issues/326) ([051be92](https://github.com/LibNyanpasu/clash-nyanpasu/commit/051be927cdeef4311b1b347915a4706f87abed42)) by @
+- badge color error ([fa65f60](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fa65f606b83ff6fd9375be6b078dd0218e456be9)) by @
+- blurry tray icon in Windows ([5d5ab57](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5d5ab5746982bf660dce717054583885a3bf2b82)) by @
+- break loop when core terminated ([515af47](https://github.com/LibNyanpasu/clash-nyanpasu/commit/515af472ce064f674310a6f4175e379aa89173dc)) by @
+- button color ([929c840](https://github.com/LibNyanpasu/clash-nyanpasu/commit/929c84000675202cab22ede7434486028bf02e09)) by @
+- change default app version ([8385050](https://github.com/LibNyanpasu/clash-nyanpasu/commit/838505080417a4593bffbf3043c82072c64a5083)) by @
+- change default column to auto ([6e421e6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6e421e60c53728ef81ed8dd8fe6c6669a6b576eb)) by @
+- change default tun dns-hijack ([7ef4b7e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7ef4b7eeb8ab1ce4c46600eb3ebd6dc49f019683)) by @
+- change dev log level ([f5f2fe3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f5f2fe3472e962885308f8845fc6323f3cab7b79)) by @
+- change fields ([c02990e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c02990ef980eceb99d1cea75b966c6b24907dc07)) by @
+- change log file format ([0d8114c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0d8114c9f468da6dd43a443128133aba00a9a8b5)) by @
+- change mixed port error ([ef314c1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ef314c1707c8a4b42427b59b8eb7c293f2abbf51)) by @
+- change proxy bypass on mac ([40a8186](https://github.com/LibNyanpasu/clash-nyanpasu/commit/40a818630df8d34baf97cf88ae052770438992f8)) by @
+- change service installer and uninstaller ([f88989b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f88989bd4bcd0eea614b7b1cb8bfab51e2c450b4)) by @
+- change template ([4ae0071](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4ae00714d252558490810278a8f8c6f22351726a)) by @
+- change to deep copy ([0a9c817](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0a9c81772fcb32e4ac1f32b07b0297ec5908d38c)) by @
+- change window default size ([28a4386](https://github.com/LibNyanpasu/clash-nyanpasu/commit/28a43869753c5070c143f4fb2ce941664c74c96e)) by @
+- check button hover style ([0445f9d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0445f9dfc24b96e95af41ccee9149e59891147a9)) by @
+- check config ([3cd2be5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3cd2be5081e1cd2d81e6a92558a3bb64a9bbd9cd)) by @
+- check hotkey and optimize hotkey input, close [#287](https://github.com/LibNyanpasu/clash-nyanpasu/issues/287) ([db02866](https://github.com/LibNyanpasu/clash-nyanpasu/commit/db028665fd65c5b700d85f420be329c7ea61da5e)) by @
+- check remote profile ([4ea5bb2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4ea5bb2390566d74e5600bd53e2cac7c187ce23e)) by @
+- check script run on all OS ([db0230e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/db0230ed753e2de696a13ca62e007e2da407097f)) by @
+- ci strategy ([6b2172d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6b2172d873a0c73bbd837391ec7001ccc1a88391)) by @
+- clash field state error ([2f8146b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2f8146b11f8f2e28cc9c5919cac5bceee0cd7c32)) by @
+- clash meta not load geoip, close [#212](https://github.com/LibNyanpasu/clash-nyanpasu/issues/212) ([dd78670](https://github.com/LibNyanpasu/clash-nyanpasu/commit/dd78670a4b7c8a425af76f622902642b4bca4e8e)) by @
+- close all connections when change mode ([60046ab](https://github.com/LibNyanpasu/clash-nyanpasu/commit/60046abec3d29a9d67a1812d8d7ff545d3f186e1)) by @
+- close connections when profile change ([e031389](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e031389021694ba437f4d89579bf284468a19a65)) by @
+- close dialog after save ([2ad771e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2ad771e7fdad189570ae921a02c2e994d6ddca74)) by @
+- cmds params ([d759f48](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d759f48ee845380ffd64ca35aff96e78a1dfa360)) by @
+- compatible with UTF8 BOM, close [#283](https://github.com/LibNyanpasu/clash-nyanpasu/issues/283) ([bba03d1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bba03d14d4acbb9efdc1ac52649a9623c0f1cf5e)) by @
+- component warning ([b91daeb](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b91daebd92d38cadefb07e3fb3b11fe1858aa31c)) by @
+- config file case close [#18](https://github.com/LibNyanpasu/clash-nyanpasu/issues/18) ([c73b354](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c73b3543860059be0a777a417bf5de12cdf8c9eb)) by @
+- connections is null ([aba0826](https://github.com/LibNyanpasu/clash-nyanpasu/commit/aba0826c380a4a8ba48e0e98f02b6043308f4f9e)) by @
+- console warning ([eab671d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/eab671d10276f17be8734d7839883682d98c237e)) by @
+- copy resource file ([e64103e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e64103e5f2666377b12e9a809e4e7f88074dc432)) by @
+- cover profile extra ([8dc2c1a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8dc2c1a38fc5c85da58caef362bf32e706235d1f)) by @
+- create dir panic ([8ea3e6f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8ea3e6fa26e2a747374e0cd2d79e316a26a78dbf)) by @
+- create main window ([ae94993](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ae94993b09b871a2f5cca5638f428d51624fd582)) by @
+- create theme error, close [#294](https://github.com/LibNyanpasu/clash-nyanpasu/issues/294) ([9b18bd0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9b18bd0b4836cce1297a2373c3082ac02bba9b2d)) by @
+- create window correctly ([41b19f6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/41b19f69de7abede82d48843a275d86a47367f35)) by @
+- csp image data ([4bd9409](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4bd94092f147402d32500942a1f9567d1dc40652)) by @
+- default dns config ([2f740b5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2f740b570d6e261c3098b9f25870a6b7d13e5af1)) by @
+- delay show window ([8bf78fe](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8bf78fef108174343107a287121ff611f14f543d)) by @
+- delay update config ([ab53ab2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ab53ab21e2f769718d490e42a03690247d8627ad)) by @
+- delete profile item command ([a4c1573](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a4c1573c45ea99482f9a978cf2535c3e84c042a8)) by @
+- direct mode hide proxies ([d20b745](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d20b745ae5731be18765e74ac810b4f2ecbe930e)) by @
+- disable auto scroll to proxy ([6e5a2f8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6e5a2f85a1ddfe7a948cc9407dca5d245feac42e)) by @
+- disable spell check ([6c6b405](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6c6b40548f576bd87a0add8365afbd4a500a524b)) by @
+- display menu only on macos ([ade34f5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ade34f52170d92bcfcc481102fdb3276aa38664a)) by @
+- do not kill sidecar during updating ([f32c5ba](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f32c5ba2441044625d32fe1b21c42a4944520792)) by @
+- do not parse log except the clash core ([e25a455](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e25a45569838cd7c0505ad5457443e3d403ba1cc)) by @
+- Do not render div as a descendant of p ([#494](https://github.com/LibNyanpasu/clash-nyanpasu/issues/494)) ([66f3f0b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/66f3f0ba07a4274f9715c5c1d74d2ac91478decc)) by @
+- do not reset system proxy when consistent ([7eb5951](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7eb595170fdd476e8a5a038790caf807cf1cc10b)) by @
+- download clash core from backup repo ([cad8748](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cad87484c7bb3502c9c35e2aa2c4ac80dcbfad6f)) by @
+- edit profile info ([798999d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/798999d490d31aed2856aa4fb0d0068b38eb58ff)) by @
+- enable context menu in editable element ([4c24363](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4c243638cbc4d0ad0276650b1cff433e0e9e2a6a)) by @
+- encode controller secret, close [#601](https://github.com/LibNyanpasu/clash-nyanpasu/issues/601) ([f9a68e8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f9a68e8b234102b69db7b623f63d596b17d8a0a4)) by @
+- encodeURIComponent secret ([6cf174c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6cf174c5ed4fa8ae440ef651305643919f5f0290)) by @
+- enhanced profile consistency ([7108d5f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7108d5f3abf96b3b4df933449a5926aa8a76390e)) by @
+- error boundary with key ([3557a77](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3557a776450bdc87086d31168a55ef0929c6c887)) by @
+- error log ([3113585](https://github.com/LibNyanpasu/clash-nyanpasu/commit/311358544e0cfa580b9f62f80423ea8f80155e2b)) by @
+- error message null ([fb653ff](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fb653ff99dabc1ceb89322a9a5aedd9be98988ef)) by @
+- escape path space ([fc5ca96](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fc5ca965ba92c60128cdd05b72d760512aea0eb9)) by @
+- escape the space in path ([#451](https://github.com/LibNyanpasu/clash-nyanpasu/issues/451)) ([9c4a46b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9c4a46bcdb7ec57c405f3bf5a3e610fca58a9838)) by @
+- external controller allow lan ([a120c8c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a120c8cf988d4e9c8a90966eadc5fb7d67034e6e)) by @
+- external-controller ([4c5aa70](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4c5aa7084e3529321c409f2a9c1946a499138dd7)) by @
+- fetch profile panic ([c046a19](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c046a1993e087b03bc93de28959dc577356e48c7)) by @
+- fetch profile with system proxy, close [#249](https://github.com/LibNyanpasu/clash-nyanpasu/issues/249) ([600134a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/600134a3ac6e2c3159958116970e9d007590f539)) by @
+- field sort for filter ([c5289dc](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c5289dc0e86e5c7ed6dcfea9019ec5829432a63f)) by @
+- fill button title attr ([a7ba9f1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a7ba9f18864f7f9c6b8eb97d6048c4ee85e94ab5)) by @
+- fix page undefined exception, close [#770](https://github.com/LibNyanpasu/clash-nyanpasu/issues/770) ([16d8071](https://github.com/LibNyanpasu/clash-nyanpasu/commit/16d80718cbbc00fb030b342a29f2e3971d9f4a51)) by @
+- font family not works in some interfaces, close [#639](https://github.com/LibNyanpasu/clash-nyanpasu/issues/639) ([f032228](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f032228d0eea1fdb2acb5a5eb71a2178f2f06045)) by @
+- get proxies multiple times ([72c2b30](https://github.com/LibNyanpasu/clash-nyanpasu/commit/72c2b306cf294ca1c02ae36b85e823a9a54a0eeb)) by @
+- group proxies render list is null ([b3c1c56](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b3c1c565794f5eedcf1a0f84eca5bc6d0f8899d4)) by @
+- handle is none ([2d2fdf0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2d2fdf0b1efb1cbf76df6aa6c9e9a01ced5e56b5)) by @
+- i18n ([9987dc1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9987dc1eb4abad320064b8697dafc3a1eeebd3b1)) by @
+- i18n ([5ebd9be](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5ebd9be89a1bb6555d4a8d0d8aa3442ccce1b357)) by @
+- i18n add value ([51cf442](https://github.com/LibNyanpasu/clash-nyanpasu/commit/51cf442fa53481691efcf085165e462f19e61233)) by @
+- icon button color ([9e56b9f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9e56b9fbb57dc19964776aed5b7e686b0236c497)) by @
+- icon button color inherit ([910846f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/910846f2ce2e1457c34e8c4bb2627ef9e30c57b0)) by @
+- icon button color inherit ([6ade0b2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6ade0b2b1ab599297bae2d439067bbfed3a4c257)) by @
+- icon button title ([0a3402f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0a3402ff439901703cc2b60854f3f63ee1a8fb5c)) by @
+- icon issue ([363e28f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/363e28f3236d391393fe86f9c2dfdfd7f2d82549)) by @
+- icon path ([c382ad1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c382ad1cc89ded4cd0763a0867f7bd02bea1c0eb)) by @
+- icon style ([bf0dafa](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bf0dafabe2d5696240a390736071de4f10bce343)) by @
+- **icon:** change ico file to fix windows tray ([0f99add](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0f99addca71b6d31a92e9714be733fd11e8fe6da)) by @
+- ignore disable auto launch error ([5e429c7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5e429c7a94a06d1f945b086af3ded6b68dddaa51)) by @
+- import error ([e7bba96](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e7bba968b3777f7be62afdadfada5af8e973927e)) by @
+- import mod ([659fdd1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/659fdd1d376ad782108dd8671b5a4c007db53888)) by @
+- import url error ([#543](https://github.com/LibNyanpasu/clash-nyanpasu/issues/543)) ([3eeaee1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3eeaee154f8774220e9a823a274aa9acc4e05bf4)) by @
+- improve external-controller parse and log ([6d0625c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6d0625c409e0e41e483d216fdb20346a9463dbf1)) by @
+- increase delay checker concurrency ([820d1e7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/820d1e75707f76ba28ac27c724dd87024ee841c2)) by @
+- infinite retry when websocket error ([db99b4c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/db99b4cb54838f5a2ca1e36b51038dfb80167dd9)) by @
+- init config error ([f7dab3c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f7dab3ca560f027f7370d5114f9e7adbf40c0974)) by @
+- init config file ([40c0410](https://github.com/LibNyanpasu/clash-nyanpasu/commit/40c041031efcb02034e2b876eefa724d8dd67175)) by @
+- init system proxy correctly ([acff6d0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/acff6d043218b1dbaa52c1cdc56836e3dbb84924)) by @
+- initialize profiles state ([774c6f7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/774c6f7e053e0739ee36ae82e738b4547817a934)) by @
+- instantiate core after init app, close [#122](https://github.com/LibNyanpasu/clash-nyanpasu/issues/122) ([150f0cf](https://github.com/LibNyanpasu/clash-nyanpasu/commit/150f0cf48616d60053484be904b79fcab971c1f5)) by @
+- item header bgcolor ([db4993a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/db4993ae9b478f81770328c65db64af509b15c4f)) by @
+- keep delay data ([97d82b0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/97d82b03aba822858006f82e690bdd5727ab3bd1)) by @
+- kill clash when exit in service mode, close [#241](https://github.com/LibNyanpasu/clash-nyanpasu/issues/241) ([294d980](https://github.com/LibNyanpasu/clash-nyanpasu/commit/294d980b5237535f2eb24cb81e890d0766576beb)) by @
+- kill sidecars after install still in test ([568511a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/568511a4cfec43e9b38d43947878a70fbdb118dc)) by @
+- label text ([e0943ce](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e0943ce905d6a06f0badf63f69b084a60774f98f)) by @
+- limit enhanced profile range ([c0ad84a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c0ad84a491f61e869c55c04903316c86ce8494ad)) by @
+- limit theme mode value ([c1734a0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c1734a094cd6896ec48e630662fbeeac1ae92da5)) by @
+- lint ([e00f826](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e00f826eb885ebb923ec6b2941ce2e533324819f)) by @
+- linux DEFAULT_BYPASS ([#503](https://github.com/LibNyanpasu/clash-nyanpasu/issues/503)) ([fb7b180](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fb7b1800cced2bf13426f9ca85647f1b41410b10)) by @
+- linux not change icon ([6e391df](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6e391df5ee8ff796519e612e2260102f65a036e3)) by @
+- list compare wrong ([aed1bdf](https://github.com/LibNyanpasu/clash-nyanpasu/commit/aed1bdff5a25fe05361d4257be325697a6108d42)) by @
+- list key ([e62eaa6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e62eaa6b4bedcf47838c035d6c1738b5f8f6e1cc)) by @
+- log file ([18f9d6d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/18f9d6dec5f7a7881fff645d34989930fa69a6bd)) by @
+- log level warn value ([e94a07b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e94a07b6779cac26fc546b761f6e66d64183c732)) by @
+- log some error ([109fb39](https://github.com/LibNyanpasu/clash-nyanpasu/commit/109fb39e094db8c744e9d712bb5a87c7bbca3933)) by @
+- macos auto launch fail ([76081f8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/76081f8d89090cb714af48cbf5c5a498c8916aec)) by @
+- macOS disable transparent ([6d3f837](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6d3f8378204dc6193376878e07fd296df552b12b)) by @
+- macos not change icon ([cafc206](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cafc2060b880affc0a213dec754bc724fd2918ce)) by @
+- macOS transition flickers close [#47](https://github.com/LibNyanpasu/clash-nyanpasu/issues/47) ([db3b634](https://github.com/LibNyanpasu/clash-nyanpasu/commit/db3b634e6233b3ef8ba20d17d939aed60b7ce51f)) by @
+- **macos:** set auto launch path to application ([57d23eb](https://github.com/LibNyanpasu/clash-nyanpasu/commit/57d23eb043e7874de144ef507d46341c3070cf72)) by @
+- manage global proxy correctly ([5027069](https://github.com/LibNyanpasu/clash-nyanpasu/commit/502706931e9fee8507290fc2b51a83318a84483f)) by @
+- matchMedia().addEventListener [#258](https://github.com/LibNyanpasu/clash-nyanpasu/issues/258) ([#296](https://github.com/LibNyanpasu/clash-nyanpasu/issues/296)) ([4046f14](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4046f143f6c802c9cc5c8332f293a460774bdde3)) by @
+- MediaQueryList addEventListener polyfill ([fd6633f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fd6633f536870b11eda2b907d998eaa594700ed7)) by @
+- menu without fragment ([2b52584](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2b525845479a9940df6178e1ae467ed0e15c6755)) by @
+- mutate at the same time may be wrong ([aa29e18](https://github.com/LibNyanpasu/clash-nyanpasu/commit/aa29e185e4b39a3d0b18b2239434e4a6afaf553f)) by @
+- mutex dead lock ([6bc83d9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6bc83d9f2737ea1fb625d235283b2691966e21f9)) by @
+- not create windows when enable slient start ([2d09893](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2d0989342f188152412dc8ee8693ee78420811ea)) by @
+- not open file when new profile ([66bf4ba](https://github.com/LibNyanpasu/clash-nyanpasu/commit/66bf4ba3ada161a2c44606f06730537bec692f59)) by @
+- notice ui blocking ([d695656](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d695656b8ce6b01097a9b77280b603f00aea1539)) by @
+- null type error ([4f56c38](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4f56c385998c737bb33f963313c0cd661c80d1a1)) by @
+- only error when selected ([c7e7be4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c7e7be4379a82778c882e5216709aa37cb1bfc15)) by @
+- only script profile can display console ([c611a51](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c611a5157598d62f13053c9e4ecc66cb6b94160b)) by @
+- open file ([eea9cb7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/eea9cb7c5b3684e04c3931409215e83d682f1733)) by @
+- open file with vscode ([0a33bb8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0a33bb861e5cc30fd0bf8536035cfa6633ceb446)) by @
+- optimize clash launch ([844ffab](https://github.com/LibNyanpasu/clash-nyanpasu/commit/844ffab4edd54424feb4e543edae475d6fb2eb95)) by @
+- optimize traffic graph high CPU usage when hidden ([9e9c4ad](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9e9c4ad5873bf354c5a80cb38d4bc573216ce287)) by @
+- parse bytes base 1024 ([f76890c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f76890cc56f4a5c1e8ca1f37fdd83568a288540b)) by @
+- parse bytes precision, close [#334](https://github.com/LibNyanpasu/clash-nyanpasu/issues/334) ([e7f294a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e7f294a065cf7a9bbe0c9b723e9ce584e4445689)) by @
+- parse external-controller ([a393b8b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a393b8b1224667242580b74949374b45fcfcffb3)) by @
+- parse log cause panic ([e901588](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e90158809a9b4e2d732faa136be824cd9fe22b17)) by @
+- parse logger time ([33b1a11](https://github.com/LibNyanpasu/clash-nyanpasu/commit/33b1a11d858d85543765b307a989a740fc0ef4b1)) by @
+- patch clash config ([b7c3863](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b7c386388296069bc57fe2823f6c82e5d9a48c88)) by @
+- patch item option ([8890051](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8890051c1709813a0cdff45ee20daae7e760bebc)) by @
+- patch verge config ([10b55c0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/10b55c043c29a2da74534526ea7076da82b2fe44)) by @
+- port value not rerender ([9a85b28](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9a85b28b1827ac72038d9e5629bc4b54494f82bc)) by @
+- pretty bytes ([d21bb01](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d21bb015e875ab0fcc563e0887b2a83eeeb70898)) by @
+- profile can not edit ([1a31fa9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1a31fa90679ffb79c867ad34ecb87d01b09ae236)) by @
+- profile data undefined error, close [#566](https://github.com/LibNyanpasu/clash-nyanpasu/issues/566) ([6114af4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6114af4f933f3cf82d203bd6b75680a972eac879)) by @
+- profile field check ([7437881](https://github.com/LibNyanpasu/clash-nyanpasu/commit/743788135f71be0b06315b59a4ebb8109afe8fc0)) by @
+- profile item loading state ([3cde019](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3cde019208e21e4cfa6a20c6ea805ab7ea8440fe)) by @
+- profile item menu ui dense ([5f486d0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5f486d0f51666e5c495d6dc44b7550f6ad6597d2)) by @
+- profile updated field ([e9b7ec7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e9b7ec735f47cf292545c846d5e655d77bf0c63c)) by @
+- provider proxy sort by delay ([0bb1790](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0bb1790206beec655a3f50e88b356a1596c7b4bd)) by @
+- proxy bypass add <local> ([2a7cabb](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2a7cabb06dd9e41021bf75f61a28e48c3a935476)) by @
+- proxy global showType ([e896077](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e89607799abc6b59029b738b85210c39d4fd8c4d)) by @
+- proxy item style ([6337788](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6337788a2231bcee397a2792e4b5169147fe99c2)) by @
+- proxy list error ([73758ad](https://github.com/LibNyanpasu/clash-nyanpasu/commit/73758ad1fd7dac151f446fc07f7bb69f5a881eef)) by @
+- proxy page first render ([954e355](https://github.com/LibNyanpasu/clash-nyanpasu/commit/954e3553eebe294567cb3971b0ccddffde31e79e)) by @
+- put profile request with no proxy ([9ec7184](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9ec7184aa1252262a5b59b15995491f782258d7e)) by @
+- reconnect traffic websocket ([43dee3e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/43dee3ef764d10a59a415e3c8b4ce7f9f9c8e762)) by @
+- reconnect websocket when restart clash ([1a55cca](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1a55cca8af0d32b8cf54935d19e4140da6e770dc)) by @
+- reduce logo size ([acfe5db](https://github.com/LibNyanpasu/clash-nyanpasu/commit/acfe5dbb49a6cde97cdc8349d7879727b3f506e7)) by @
+- reduce proxy item height ([08587d8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/08587d8f2f0568ef8281f038d1a3025571a2b34f)) by @
+- reduce unsafe unwrap ([3242efb](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3242efb1a29f1bfada2f3775268f67c746a51bdb)) by @
+- reduce unwrap ([60f6587](https://github.com/LibNyanpasu/clash-nyanpasu/commit/60f658716903fc87af341e669b5f7bc87c571ed8)) by @
+- refresh clash ui await patch ([96e7666](https://github.com/LibNyanpasu/clash-nyanpasu/commit/96e76665d68cc638bb947be925ffb9b27772844c)) by @
+- refresh proxies interval, close [#235](https://github.com/LibNyanpasu/clash-nyanpasu/issues/235) ([cc5b33a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cc5b33a8ec6e05e697b4c7a5f69ec21c96d8db9c)) by @
+- refresh websocket ([376011e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/376011ea0836f9b646747bbaf0b2bd271df4f8d1)) by @
+- regenerate config before change core ([f477cec](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f477cecdebc4b9b556abb5a5f29c9c403cd71444)) by @
+- remove cargo test ([b5c4175](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b5c41750f76f64d876ad6016bca059c20eead2c5)) by @
+- remove dead code ([d6ab73c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d6ab73c9054ea17bdcb52aaea110c2e6bf5b2e88)) by @
+- remove div ([7854775](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7854775de5c259e2d598713d63cd9ac1e8ce02d9)) by @
+- remove esc key listener in macOS ([66d93ea](https://github.com/LibNyanpasu/clash-nyanpasu/commit/66d93ea037dd7cbc62ae454e92e3e5bb0b208c87)) by @
+- remove fallback group select status, close [#659](https://github.com/LibNyanpasu/clash-nyanpasu/issues/659) ([ce23143](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ce231431b96fd898de2c7b13f48d74a54fdfac39)) by @
+- remove smoother ([4649454](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4649454282550c93c86a4f886bddfefaadc9a6a9)) by @
+- remove the lonely zero ([9902003](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9902003da9d606cf9b9253c2326b9e2d565d0f62)) by @
+- remove useless optimizations ([e72ad1f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e72ad1f030ce33c54a791a9be671ff80c56168cb)) by @
+- reset after exit ([f5d0513](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f5d0513d1f02b8efc4859c36ecef9b325f941bed)) by @
+- reset proxy ([c0ddddf](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c0ddddfb1f457895750ded9444f5e374bcdaa477)) by @
+- reset value correctly ([2dfd725](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2dfd725ee005cb2a70a37a217430e081fcd41985)) by @
+- restart clash should update something ([4b5b62c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4b5b62c8aee383a96607fc763cacfb7022de748b)) by @
+- result ([bcdae11](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bcdae1169eba6fae0e615f131617c4e119206c90)) by @
+- rm debug code ([b6d50ba](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b6d50ba6a40028267c91450972e035f7cc5e5a4b)) by @
+- rm macOS transition props ([2f3b6b2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2f3b6b29ae03395010720d49f9b18c3f1f48ccbe)) by @
+- rm unwrap ([8cdbb31](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8cdbb31dbe785bbb6bd484097937f7fcf186f900)) by @
+- root background color ([15ff9b0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/15ff9b06a1228c8f86ecb56c856d7406dab0d9c7)) by @
+- runtime config user select ([4037171](https://github.com/LibNyanpasu/clash-nyanpasu/commit/403717117e58a8a14d7d52d1a21a02fbbb94700f)) by @
+- rust lint ([84d3c3f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/84d3c3f7ebdf16bda28dd7df7d8b2d64e6e377bc)) by @
+- save enable log on localstorage ([d522191](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d522191f69efd9db32e8c9ed9f8b31ab4b3eccc9)) by @
+- save profile when update ([4942b0f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4942b0fca5c6859a6e729afc28f6009aed02412c)) by @
+- save window size and pos in Windows ([4f158a4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4f158a482932f2176af8850f6e25171da19bb1c1)) by @
+- script code error ([f1a68ec](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f1a68ece01c10e42cb861587656d86926157f85d)) by @
+- script error ([82ba604](https://github.com/LibNyanpasu/clash-nyanpasu/commit/82ba604b9966e7e2da8294a033ec4bf11abe7918)) by @
+- script error... ([209a5b1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/209a5b12079a16385efc1642ae22498b46a5cbee)) by @
+- script exception handle ([dd56336](https://github.com/LibNyanpasu/clash-nyanpasu/commit/dd563360afab5b7bc9d273e5404b86e5ce26b860)) by @
+- service mode error ([31c6cbc](https://github.com/LibNyanpasu/clash-nyanpasu/commit/31c6cbc0a255267bd5c641767c668b7b01f9cf1e)) by @
+- service mode error and fallback to sidecar ([5098f14](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5098f14aabeae8ab5553a3edc154080d30b38a53)) by @
+- service mode viewer ui ([a355a9c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a355a9c85e598db68951dfc10e8aca495b76eb7e)) by @
+- service ref error ([020bd12](https://github.com/LibNyanpasu/clash-nyanpasu/commit/020bd129fb43d1af4f972d6963766b842784cba1)) by @
+- service viewer ref ([781c67b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/781c67b31afaf353ca2c44c1a542769be90a94fd)) by @
+- set min window size, close [#734](https://github.com/LibNyanpasu/clash-nyanpasu/issues/734) ([8647866](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8647866a32a280ac72629a0c6bc0238caaf5aeaf)) by @
+- set_activation_policy ([f2bd6f1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f2bd6f1fce58325af292206694b7f3032fbf2e37)) by @
+- show global when no rule groups ([c935997](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c9359978f96eb21b3cd08019bdc4e8d65dab1f7c)) by @
+- show windows on click ([a092da1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a092da194388944e06b53ef387ea84469bf51517)) by @
+- sidecar dir ([e737bb4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e737bb4cea1062a9fa91ca3a8c6300288004d188)) by @
+- silent start ([#150](https://github.com/LibNyanpasu/clash-nyanpasu/issues/150)) ([5aa7d5f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5aa7d5ffe9b31d6358ae16588579f14741b82c49)) by @
+- simply compatible with proxy providers ([08fa520](https://github.com/LibNyanpasu/clash-nyanpasu/commit/08fa5205b02077410b198424e531dfa84429c52a)) by @
+- something ([a211fc7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a211fc7c975209d031bda202e428f93e5a28c930)) by @
+- something ([eb86b47](https://github.com/LibNyanpasu/clash-nyanpasu/commit/eb86b471fee1ab20f209b4e5e068ba0c509541b6)) by @
+- something ([7d8fa4d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7d8fa4d78a6aaee4f3b4b105852e8243aefcfb87)) by @
+- sort proxy during loading, close [#221](https://github.com/LibNyanpasu/clash-nyanpasu/issues/221) ([b8a8190](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b8a8190a4358a587e63a1c7f7959e1abfdd7dc1b)) by @
+- spawn command ([0aa2565](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0aa2565df3c70a4206e5fdb90c554d227cd98796)) by @
+- style ([6e1a627](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6e1a627b8490d400f29f947d5f9496f228e62bf7)) by @
+- style ([0495062](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0495062110b286d8f92c451bb8d41337dd97573b)) by @
+- style ([5a93ba0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5a93ba05d55a20ff7e919827bfc5fb1024681cd8)) by @
+- style ([02fdb87](https://github.com/LibNyanpasu/clash-nyanpasu/commit/02fdb8778ba2b6e255c3b13b427a1c66d803921e)) by @
+- style issue on mac ([ba16ec0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ba16ec02e5941346e4fd6be73e4a4ce1f6fc5bb8)) by @
+- **style:** reduce my ([ebff652](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ebff65282492bf42018ec798fbe7c69a7a055446)) by @
+- tag error ([95349ea](https://github.com/LibNyanpasu/clash-nyanpasu/commit/95349eacab00b5fc59656226a8d0ca4f81943861)) by @
+- tauri csp ([57c4112](https://github.com/LibNyanpasu/clash-nyanpasu/commit/57c411288fa193ebb4c5e137690218a98c0fdc1d)) by @
+- text ([6da7757](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6da7757d36049d5e2f8e3ec04734b32414d1f2f0)) by @
+- The profile is replaced when the request fails. ([#246](https://github.com/LibNyanpasu/clash-nyanpasu/issues/246)) ([df14af7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/df14af7337c41097e2c071e9683f1d4e401e9c4a)) by @
+- timer restore at app launch ([30f9f1a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/30f9f1a021f5a2f6df11016fe31c182cdffbc0a1)) by @
+- touchpad scrolling causes blank area to appear ([84b2c07](https://github.com/LibNyanpasu/clash-nyanpasu/commit/84b2c07340aa23d718677f8f490deb720f72e4ba)) by @
+- traffic graph adapt to different fps ([fac437b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fac437b8c1eb4dcd38ae795a159d42c7d308f241)) by @
+- trigger new profile dialog, close [#356](https://github.com/LibNyanpasu/clash-nyanpasu/issues/356) ([d5037f1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d5037f180ee50650faa6b392c3e9487b49646b3f)) by @
+- try fix blank error ([f5edca9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f5edca94d3ce1ae0c33bfda9ee35b94def43b9f7)) by @
+- try fix undefined error ([b9b6212](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b9b6212b75999adece9c132d3fd57db4d66eaf2a)) by @
+- tun mode config ([ec41bb9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ec41bb9c7021a1ade26f6e2e4f6be60111f1e574)) by @
+- type error ([c77db23](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c77db23586ea3fb4f2bdfda8aed92af408748696)) by @
+- type error ([b6c58f7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b6c58f74c03ff3acf5c8906117a1739b540a3fc9)) by @
+- typo in api.ts ([#207](https://github.com/LibNyanpasu/clash-nyanpasu/issues/207)) ([bbbdc8b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bbbdc8b7a6e9c41590e72c6cf6c10cf5e8baa75b)) by @
+- typos ([bcf40dd](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bcf40dde8c4e666af4b52711d882a0f2dcace189)) by @
+- unused ([cf96622](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cf9662226131a5dd2500e381db76d4c13fd4ac34)) by @
+- update profile after restart clash ([579f36a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/579f36a1ddad3f3e43143977fca44c8e4873dc55)) by @
+- update state ([dd605e2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/dd605e26108c43851282827540eb12083da2b430)) by @
+- use crate ([2b6d934](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2b6d9348cd1319fc16afca702996bef876a85f06)) by @
+- use full clash config ([bbe2ef4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bbe2ef4e8e03d2a75ffd1baa1cbed5f8e60c4752)) by @
+- use io ([9b8f5c4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9b8f5c4fcf6c5d7a27d3e4a7e5ef978656d800d1)) by @
+- use list item button ([f06fa3f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f06fa3f9b73f7fd652f6fe104dec7adf24ad5969)) by @
+- use meta Country.mmdb ([e393ebe](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e393ebede2769dc409d47ec1c6c3509bfb222511)) by @
+- use replace instead ([533dc99](https://github.com/LibNyanpasu/clash-nyanpasu/commit/533dc99e7dfcf2b58e9696059c1faf12ce2b5af3)) by @
+- use selected proxy after profile changed ([819c520](https://github.com/LibNyanpasu/clash-nyanpasu/commit/819c5207d28daa7bfdf4ba64d1a204130039fb18)) by @
+- use sudo when pkexec not found ([38a9a92](https://github.com/LibNyanpasu/clash-nyanpasu/commit/38a9a9240df0aad888a1764b7b407fa929e5378c)) by @
+- use verge hook ([572d81e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/572d81ecef1521a0c8d7b4c6277121109ed3ac9a)) by @
+- user agent not works ([cf00c94](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cf00c9476ff0b29c5dfd397deaec6dadc6144a74)) by @
+- valid with unified-delay & tcp-concurrent ([88c9b68](https://github.com/LibNyanpasu/clash-nyanpasu/commit/88c9b6849f867db15c3f4f4405a4381eef067ac6)) by @
+- version update error ([4e8d4f4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4e8d4f45918703dab8d24ecaaf40ee761a5c7563)) by @
+- Virtuoso no work in legacy browsers ([#318](https://github.com/LibNyanpasu/clash-nyanpasu/issues/318)) ([39ade59](https://github.com/LibNyanpasu/clash-nyanpasu/commit/39ade591746ef8e37d23ec325291afffc28537b3)) by @
+- web resource outDir ([eddf10e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/eddf10e740c458f10d8757b2f66346f50adebac7)) by @
+- web ui port value error ([7a3285a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7a3285adaf29ecce08805079e370e62d55179f47)) by @
+- websocket disconnect when window focus ([6f5acee](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6f5acee1c340299221ee92b391eff0fa44bdcc37)) by @
+- when updater failed ([650e017](https://github.com/LibNyanpasu/clash-nyanpasu/commit/650e017b723b5eef759edbb2577011d31139d8b3)) by @
+- win11 drag lag ([6596fb0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6596fb00c7e46d19669f82b0ac7215eb52e2f3c6)) by @
+- window center ([2462e68](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2462e68ba18f913706367165066ae4b92e36b130)) by @
+- window style close [#45](https://github.com/LibNyanpasu/clash-nyanpasu/issues/45) ([b5283ea](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b5283eaaed884d7a9d6bedc156c864e723a1f365)) by @
+- window transparent and can not get hwnd ([98b8bd9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/98b8bd90eab77d93c0dd0c87df676600df815d36)) by @
+- windows issue ([bcc5ec8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bcc5ec897aa6748755ffb5321e53efb1a396b11e)) by @
+- windows logo size ([6bed7f0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6bed7f0e669fd76fb2e75d6a3f9d25124aefcd59)) by @
+- windows service mode ([1550d52](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1550d528bd331e876abcf90084d2bc40c242afec)) by @
+- windows style ([bd0a959](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bd0a959e18c74f4b62e6dfd90828937183389689)) by @
+- wrong exe path ([c9c06f8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c9c06f8a3de282dc90856b45633085589a296e47)) by @
 
 ### 🧹 Maintenance
 
-- aarch script ([2643e85](https://github.com/keiko233/clash-nyanpasu/commit/2643e853af43d9cbfa503e5aa67b696f1f28014e)) by @
-- aarch upload script ([aaa4fbc](https://github.com/keiko233/clash-nyanpasu/commit/aaa4fbcdbdeb46d179b718249eed4e9571825f73)) by @
-- add ahooks ([0bd29d7](https://github.com/keiko233/clash-nyanpasu/commit/0bd29d71be73a0f9038d22ca5248462b1af0e9ec)) by @
-- add api ([9c0276f](https://github.com/keiko233/clash-nyanpasu/commit/9c0276f97b057eafacec497a024f932f4817abab)) by @
-- add auto-launch ([3c3d77f](https://github.com/keiko233/clash-nyanpasu/commit/3c3d77fbea5ebdfd98396fa6604e157d87c58ed8)) by @
-- add ci ([cb9d309](https://github.com/keiko233/clash-nyanpasu/commit/cb9d3098de3a8ca609b85c8192f4d86e7f206c47)) by @
-- add debug feature ([5b9e078](https://github.com/keiko233/clash-nyanpasu/commit/5b9e078061d7777d19996a4019da33898836bfb4)) by @
-- add default bypass ([42fbee0](https://github.com/keiko233/clash-nyanpasu/commit/42fbee0cdb26966e8a2ffa97461199c88ed93dec)) by @
-- add dev feature ([a3e7626](https://github.com/keiko233/clash-nyanpasu/commit/a3e7626dd9bddbc1c6348ecef3a8f7387e01d565)) by @
-- add dev workflow ([b8ad641](https://github.com/keiko233/clash-nyanpasu/commit/b8ad641ed605240cb815013365f93d1d63f1af41)) by @
-- add faq and download link ([5138a45](https://github.com/keiko233/clash-nyanpasu/commit/5138a45b0fd7acc4f0a3881d65c41db21cfbd4ca)) by @
-- add husky ([afa56e9](https://github.com/keiko233/clash-nyanpasu/commit/afa56e916eb199d34e45022732c164e59d2aa36f)) by @
-- add item template yaml ([069abed](https://github.com/keiko233/clash-nyanpasu/commit/069abed784e14872eabc53cd2e1f85352c120412)) by @
-- add linux link ([6293318](https://github.com/keiko233/clash-nyanpasu/commit/629331870bb5765371754fe265e440341df24d9a)) by @
-- add log level ([f714b30](https://github.com/keiko233/clash-nyanpasu/commit/f714b30ead382c40f82a5a927e0d3462b2cbe3df)) by @
-- add macos startup todo ([8f5b2b4](https://github.com/keiko233/clash-nyanpasu/commit/8f5b2b4a0e52fd96f95e8a0de03a49b670a800b6)) by @
-- add openssl depend ([#395](https://github.com/keiko233/clash-nyanpasu/issues/395)) ([6783355](https://github.com/keiko233/clash-nyanpasu/commit/6783355c4d9064393464dc2db4d0015cb2702dea)) by @
-- add promotion ([b224d4f](https://github.com/keiko233/clash-nyanpasu/commit/b224d4fa8a7fbf695219308fddd4b5b016a4fbef)) by @
-- add pubkey ([2e82eaf](https://github.com/keiko233/clash-nyanpasu/commit/2e82eaf59af633e05811fb4db55b9c22dfd97983)) by @
-- add release build ([595554f](https://github.com/keiko233/clash-nyanpasu/commit/595554f18a70db429fc517b0885bd4f9855ce8fc)) by @
-- add support for windows arm64, close [#216](https://github.com/keiko233/clash-nyanpasu/issues/216) ([#209](https://github.com/keiko233/clash-nyanpasu/issues/209)) ([a9d6167](https://github.com/keiko233/clash-nyanpasu/commit/a9d6167a9fe1b76fd9cc7a2ed9f6448883d54777)) by @
-- add support linux arm64 ([#215](https://github.com/keiko233/clash-nyanpasu/issues/215)) ([a916d88](https://github.com/keiko233/clash-nyanpasu/commit/a916d88e85a681eb89dcbf17282ed6cb09670a2d)) by @
-- add test ci os version ([e1c869a](https://github.com/keiko233/clash-nyanpasu/commit/e1c869a3585116beed61b7fa1936074025b5cb6f)) by @
-- add updater script ([ae8c30f](https://github.com/keiko233/clash-nyanpasu/commit/ae8c30fe57416109d85c55abae0ce840c1a10db9)) by @
-- add x ([7e5999e](https://github.com/keiko233/clash-nyanpasu/commit/7e5999e86227681f00ba70ce75deaad5bf5a6172)) by @
-- adjust ([5735719](https://github.com/keiko233/clash-nyanpasu/commit/573571978cfa59602b8b9fb4afbf99ee5eed310d)) by @
-- adjust ci ([4f02c37](https://github.com/keiko233/clash-nyanpasu/commit/4f02c373c21b6e095374c74df75a79c71c0cfb94)) by @
-- adjust ci and script ([936b213](https://github.com/keiko233/clash-nyanpasu/commit/936b2131e001dc4389fec80a9ca38b7cd6da3ea7)) by @
-- adjust code ([d1ba0ed](https://github.com/keiko233/clash-nyanpasu/commit/d1ba0ed2b2d9ee1b233030ee5b00d210b2e4fd26)) by @
-- adjust code ([a32c77c](https://github.com/keiko233/clash-nyanpasu/commit/a32c77c5f18807c7f8f231134afecf3a5ec1fd2b)) by @
-- adjust code ([5225c84](https://github.com/keiko233/clash-nyanpasu/commit/5225c841ae5b9c86a0826aff006247f036e170c6)) by @
-- adjust error log ([4e806e2](https://github.com/keiko233/clash-nyanpasu/commit/4e806e21a625c74e9c91cace4960a801d4b09ea3)) by @
-- adjust files ([fc48aa7](https://github.com/keiko233/clash-nyanpasu/commit/fc48aa71556a4e4cb112d9ffdb80b499a0f8abf0)) by @
-- adjust guard log ([e67b50b](https://github.com/keiko233/clash-nyanpasu/commit/e67b50b97617101596eeb76b27afc951667ab71c)) by @
-- adjust icon ([754c22c](https://github.com/keiko233/clash-nyanpasu/commit/754c22c84e244e8a19de8565475c50dfaad6fb6c)) by @
-- adjust log field ([220a494](https://github.com/keiko233/clash-nyanpasu/commit/220a49469252a0acbc9eeb3418ce97e70ec2ff93)) by @
-- adjust style ([5d0ffbe](https://github.com/keiko233/clash-nyanpasu/commit/5d0ffbe4539733aa97f439ec056882f201ec1463)) by @
-- adjust type ([6eafb15](https://github.com/keiko233/clash-nyanpasu/commit/6eafb15cf9a97bc6ef1380d90d0ee82b9f17e94d)) by @
-- allow unused ([439d885](https://github.com/keiko233/clash-nyanpasu/commit/439d885ee153c43b65f439abdfadcc3836861a1e)) by @
-- alpha ([10f6bc0](https://github.com/keiko233/clash-nyanpasu/commit/10f6bc092acc4f26f3e6cea066c3c783dddca25a)) by @
-- alpha ci ([b978aae](https://github.com/keiko233/clash-nyanpasu/commit/b978aaec211c6a64c5ab8c2a611feed155e0141e)) by @
-- alpha ci ([e6c36ad](https://github.com/keiko233/clash-nyanpasu/commit/e6c36ad6028fcc044312fb137ad2a16fd8271019)) by @
-- alpha ci ([1b7a52d](https://github.com/keiko233/clash-nyanpasu/commit/1b7a52d5afbc64bba761068d55d0d6140795ac9a)) by @
-- alpha ci ([e510978](https://github.com/keiko233/clash-nyanpasu/commit/e5109789bf9a18fcdfab17c0b82390cb381435bb)) by @
-- alpha ci ([490ba9f](https://github.com/keiko233/clash-nyanpasu/commit/490ba9f140207e8b7e951cf58b60b0bf9ef20c8c)) by @
-- alpha ci ([10f3ba4](https://github.com/keiko233/clash-nyanpasu/commit/10f3ba4ff42d9d28a98ac34eebe5623e83d8f757)) by @
-- alpha ci ([70bcd24](https://github.com/keiko233/clash-nyanpasu/commit/70bcd2428f713e8b4688409bdac61443bcc1e17c)) by @
-- alpha ci ([ff6b119](https://github.com/keiko233/clash-nyanpasu/commit/ff6b119f27e08d7b704fc1a8a8f53d53a2ef6366)) by @
-- alpha ci ([536e3ff](https://github.com/keiko233/clash-nyanpasu/commit/536e3ffb111c6746059a8df8a732bd76b79241ed)) by @
-- alpha ci ([f24f6ea](https://github.com/keiko233/clash-nyanpasu/commit/f24f6ead92a60224875c05469ea13faf8b47a64e)) by @
-- alpha release add portable ([e4e1699](https://github.com/keiko233/clash-nyanpasu/commit/e4e16999c8d4c93642ddbe67b66f8af6711d4e70)) by @
-- cargo update ([aa7df42](https://github.com/keiko233/clash-nyanpasu/commit/aa7df4282efc86918738e06e4356788aaec4b3d2)) by @
-- cargo update ([43c63ff](https://github.com/keiko233/clash-nyanpasu/commit/43c63ffa7007d6cf7733e379b70db9b00edcf29b)) by @
-- cargo update ([e08032c](https://github.com/keiko233/clash-nyanpasu/commit/e08032c0fa5eefdd6b05cccf664a640fb22b0be7)) by @
-- change ci ([9ca83d3](https://github.com/keiko233/clash-nyanpasu/commit/9ca83d32916721bf7af6349d9e2fcf37977e1a66)) by @
-- change default height ([df0b5a8](https://github.com/keiko233/clash-nyanpasu/commit/df0b5a80dc24d86e1ff8937d32e03b0418b26f1e)) by @
-- change default user agent ([75ba162](https://github.com/keiko233/clash-nyanpasu/commit/75ba16281be2f45571865745993254876c5c7e85)) by @
-- change tauri to git repo ([26ef4c9](https://github.com/keiko233/clash-nyanpasu/commit/26ef4c996159529adb8a7fa4df7bfdbe8ddd3625)) by @
-- change tray icon ([3b460ab](https://github.com/keiko233/clash-nyanpasu/commit/3b460ab91fa79b13b6df160543bbd29e48e3e70b)) by @
-- change ubuntu ci version ([23351c4](https://github.com/keiko233/clash-nyanpasu/commit/23351c4f1cdadf803efd6aab96600474f4854dc4)) by @
-- check script proxy agent supports ([d83b404](https://github.com/keiko233/clash-nyanpasu/commit/d83b404fc3d91f1eb85e1b8a780ddcdb8eefefef)) by @
-- ci ([4480ecc](https://github.com/keiko233/clash-nyanpasu/commit/4480ecc96d631626bded0d1171cfaa91eaef36d9)) by @
-- ci ([73119bb](https://github.com/keiko233/clash-nyanpasu/commit/73119bb7c524593ce5ac04ff340137527123ffd4)) by @
-- ci ([6e19a4a](https://github.com/keiko233/clash-nyanpasu/commit/6e19a4ab8bf437fb4f736f7116d30b027cc08f47)) by @
-- ci ([b156523](https://github.com/keiko233/clash-nyanpasu/commit/b156523a7fb46d8de7afc5d1e5eabfeb33795cdf)) by @
-- ci ([558b849](https://github.com/keiko233/clash-nyanpasu/commit/558b8499af6262e007ed84e1f44104e4d324e121)) by @
-- ci ([770d5cd](https://github.com/keiko233/clash-nyanpasu/commit/770d5cd11cdb63a07d44000c9f86b21afbe5171c)) by @
-- ci ([49e37a1](https://github.com/keiko233/clash-nyanpasu/commit/49e37a19a58f21a3072132043cbced3b6a60ad1d)) by @
-- ci ([f981a44](https://github.com/keiko233/clash-nyanpasu/commit/f981a44861e585c2d9e17777f1b81453e17f83b8)) by @
-- ci add macos ([4c1a50a](https://github.com/keiko233/clash-nyanpasu/commit/4c1a50a3cacbf5c5e574c859a2ea3fb335a0f55b)) by @
-- ci support linux ([b756ae3](https://github.com/keiko233/clash-nyanpasu/commit/b756ae39d0fd5cc92f2249e552a880e457ef0b5a)) by @
-- clash meta compatible and geosite.dat ([f7500f4](https://github.com/keiko233/clash-nyanpasu/commit/f7500f4cad1df8e7a38fed24274cf7650589e17f)) by @
-- clash meta linux use compatible version ([ab2f054](https://github.com/keiko233/clash-nyanpasu/commit/ab2f0548a38360981e0781fc398316519a154633)) by @
-- compatible ci ([5f5cc55](https://github.com/keiko233/clash-nyanpasu/commit/5f5cc5533176267b42164cdb077cb89cacbf1a46)) by @
-- compatible with macos ([f320d51](https://github.com/keiko233/clash-nyanpasu/commit/f320d515d5e7cf4915eef744d0ef3b5351db3f12)) by @
-- continue on error ([91c1421](https://github.com/keiko233/clash-nyanpasu/commit/91c14211c6facb648f31306f16042af497369036)) by @
-- correct verge temp config ([7808a04](https://github.com/keiko233/clash-nyanpasu/commit/7808a0436702f833e17a5ac57d6c78e705943712)) by @
-- default release body ([b615bda](https://github.com/keiko233/clash-nyanpasu/commit/b615bda17ebc3a13e512159d4d4e3d742ff686dc)) by @
-- delete current release assets ([d87bb25](https://github.com/keiko233/clash-nyanpasu/commit/d87bb25bafce6942a4d38d87da3b120d13058bf7)) by @
-- deps ([17f7247](https://github.com/keiko233/clash-nyanpasu/commit/17f724748fcc3b6f832cf699d4ff83041c3cd7c4)) by @
-- dev support macos ([240f4dc](https://github.com/keiko233/clash-nyanpasu/commit/240f4dcfb16e36bc39e88aad9b154503497e633a)) by @
-- do not save clash bin ([e224709](https://github.com/keiko233/clash-nyanpasu/commit/e22470969e51f695b48915a9306335878ad4c539)) by @
-- do something ([f095d1b](https://github.com/keiko233/clash-nyanpasu/commit/f095d1bf84c7507778bd0b171795f599b0fa02fe)) by @
-- drop upload-artifact & use prerelease ([a86eeb6](https://github.com/keiko233/clash-nyanpasu/commit/a86eeb636da74b19c85a7167ea9f4e63ae5ee721)) by @
-- emptyOutDir ([38e55be](https://github.com/keiko233/clash-nyanpasu/commit/38e55be7aa57466846d1194018df49922ddb3bb4)) by @
-- enable meta by default ([aaef6a9](https://github.com/keiko233/clash-nyanpasu/commit/aaef6a9e9cb0ccdc7b61d36b1561a48e60c1df53)) by @
-- enhance ci ([1a5d9f7](https://github.com/keiko233/clash-nyanpasu/commit/1a5d9f7dad7a610ff46b2377a913b3868b9226f7)) by @
-- enhance ci ([327b9a1](https://github.com/keiko233/clash-nyanpasu/commit/327b9a175762602f34b8687063f8e302de498919)) by @
-- enhance publish ci ([81ee989](https://github.com/keiko233/clash-nyanpasu/commit/81ee989f1f817c2da69f0c71f3fc4a8232f306b6)) by @
-- enhance wip ([0f5923a](https://github.com/keiko233/clash-nyanpasu/commit/0f5923a10a55dc4fde7a251c1b0312d496f2343c)) by @
-- error text ([d610319](https://github.com/keiko233/clash-nyanpasu/commit/d6103191ba6b28dd5519ca967153d2ee302aeace)) by @
-- evaluate error context lazily ([#447](https://github.com/keiko233/clash-nyanpasu/issues/447)) ([94f647b](https://github.com/keiko233/clash-nyanpasu/commit/94f647b24ade77be1eaf6bdb6df3ab4086a66ddb)) by @
-- fix alpha ci ([d02431e](https://github.com/keiko233/clash-nyanpasu/commit/d02431e260810e627aab16579947578c980f16e1)) by @
-- fix check script ([e8eb68b](https://github.com/keiko233/clash-nyanpasu/commit/e8eb68bf245b81be7f81b8cb17fc9809e98f0e76)) by @
-- fix check script ([24f4e8a](https://github.com/keiko233/clash-nyanpasu/commit/24f4e8ab997cea32328c8610c98460c1579d7110)) by @
-- fix ci ([8174ab7](https://github.com/keiko233/clash-nyanpasu/commit/8174ab7616175790356d0a55acc5ea7b2b8622a9)) by @
-- fix ci ([8caf363](https://github.com/keiko233/clash-nyanpasu/commit/8caf36349fae32ffe6cd739aa02d0e5cff3d80c5)) by @
-- fix ci ([6934de5](https://github.com/keiko233/clash-nyanpasu/commit/6934de58e5ca0023bee948d91a37474fac34fcdf)) by @
-- fix ci ([ebccf40](https://github.com/keiko233/clash-nyanpasu/commit/ebccf401ddb379e1e6ff71eadb0c1dbb84dbbc5d)) by @
-- fix ci ([6649484](https://github.com/keiko233/clash-nyanpasu/commit/66494845b7a742b50c98e97344a2f154db5c64a9)) by @
-- fix ci ([173f354](https://github.com/keiko233/clash-nyanpasu/commit/173f35487e9f2d60e4655c20618d86e7be6fec32)) by @
-- fix ci ([74cbe82](https://github.com/keiko233/clash-nyanpasu/commit/74cbe82dd1be949bdb2153b0d281ebc6de39deda)) by @
-- fix ci ([a8c30d3](https://github.com/keiko233/clash-nyanpasu/commit/a8c30d30a91e2c0466e4d27cf9539e2790e07adb)) by @
-- fix ci ([320ac81](https://github.com/keiko233/clash-nyanpasu/commit/320ac81f482cb4153aac703aea2ec7b3a9c77a8f)) by @
-- fix ci ([aab5141](https://github.com/keiko233/clash-nyanpasu/commit/aab5141404351e7b1a1e550d6a7707aa5a77cef7)) by @
-- fix ci ([8db554b](https://github.com/keiko233/clash-nyanpasu/commit/8db554b377a65842325341da538f2ec18f2e536b)) by @
-- fix ci ([bef4033](https://github.com/keiko233/clash-nyanpasu/commit/bef4033d94da9ff754bee0019279668827113e0e)) by @
-- fix ci ([2dcf8ac](https://github.com/keiko233/clash-nyanpasu/commit/2dcf8ac96f78bf449a46399a3f52afaa549bcb15)) by @
-- fix ci ([e1793f5](https://github.com/keiko233/clash-nyanpasu/commit/e1793f57efcc8e341d166a8f8a93403cc645080a)) by @
-- fix ci env ([d9ce998](https://github.com/keiko233/clash-nyanpasu/commit/d9ce99887c13ff91e4e00fa1ec9f3a8b4ecaad14)) by @
-- fix clash map, close [#736](https://github.com/keiko233/clash-nyanpasu/issues/736) ([c843bdd](https://github.com/keiko233/clash-nyanpasu/commit/c843bddbfe7804fbb465707566ebf10b5008e601)) by @
-- fix faq ([2fda4c9](https://github.com/keiko233/clash-nyanpasu/commit/2fda4c9f670e4ed3ec20e53ccf5bd7098af3f0bc)) by @
-- fix linux build ci ([b93284b](https://github.com/keiko233/clash-nyanpasu/commit/b93284bc2fc852de62deba656f8797f897ca1451)) by @
-- fix mmdb url ([3e555ec](https://github.com/keiko233/clash-nyanpasu/commit/3e555ec9f1197ddf0cab551712cf1f11252071e0)) by @
-- fix mod ([db802e9](https://github.com/keiko233/clash-nyanpasu/commit/db802e959d4dc44f0211c5f6daa79cdd52c7b62d)) by @
-- fix rust lint ([74252cb](https://github.com/keiko233/clash-nyanpasu/commit/74252cb66bf8bc0cf0f67a9f311604760e6110e3)) by @
-- fix test ci ([1443ddf](https://github.com/keiko233/clash-nyanpasu/commit/1443ddfe6c89fea24d903bee28ecf072d37d3edd)) by @
-- fix test ci ([54457a3](https://github.com/keiko233/clash-nyanpasu/commit/54457a3e1be1a2bf25a734cc45c196e3afed9c35)) by @
-- fix test ci ([64216cb](https://github.com/keiko233/clash-nyanpasu/commit/64216cba6756f7c39acb5a9107108e897936e517)) by @
-- fix updater ([74d0957](https://github.com/keiko233/clash-nyanpasu/commit/74d095774d95a679928713b2d0244b4e79168d2e)) by @
-- fix updater ([17a2722](https://github.com/keiko233/clash-nyanpasu/commit/17a2722e6ddddc12274de75a9a0f42b166f8db4e)) by @
-- fix updater script ([7633f9f](https://github.com/keiko233/clash-nyanpasu/commit/7633f9f88b69b65f70ee43776c30f39ac98e6a16)) by @
-- fix: typos ([417a5a8](https://github.com/keiko233/clash-nyanpasu/commit/417a5a8214d031feba8f20838c059fcdccbb13bc)) by @
-- fixed tauri rev ([771af6a](https://github.com/keiko233/clash-nyanpasu/commit/771af6ae08835c9ae7cc0e3f291c4dcb214c9d28)) by @
-- format ([a68eb4a](https://github.com/keiko233/clash-nyanpasu/commit/a68eb4a73e362396cc6199f90debf241519ace4a)) by @
-- format rust code ([4668be6](https://github.com/keiko233/clash-nyanpasu/commit/4668be6e24dbc36fc07074f2854ce5953fbc6b11)) by @
-- green version bundle ([0d189ca](https://github.com/keiko233/clash-nyanpasu/commit/0d189ca617cfaeca50d84793525982112deff099)) by @
-- ignore update json ([dbb3cb8](https://github.com/keiko233/clash-nyanpasu/commit/dbb3cb8cc8711cea001af0064b8358093c53cd10)) by @
-- import MUI Lab ([06121ac](https://github.com/keiko233/clash-nyanpasu/commit/06121acfac09d915075e4dfea0503a4d69c00e44)) by @
-- init connections page ([65dd6bc](https://github.com/keiko233/clash-nyanpasu/commit/65dd6bc6a6b346e993fe2117cf7658bafea70d5a)) by @
-- init project ([1afaa4c](https://github.com/keiko233/clash-nyanpasu/commit/1afaa4c51ea0cc79c2e2ecb225dc4ea78864080c)) by @
-- lock version ([71f5ada](https://github.com/keiko233/clash-nyanpasu/commit/71f5ada0a3b97ce7388842968fbd7a60729c1036)) by @
-- meta ([b7bdb7a](https://github.com/keiko233/clash-nyanpasu/commit/b7bdb7ae50c5829d16322041c009a334e5c65bbe)) by @
-- meta ci ([ac66c08](https://github.com/keiko233/clash-nyanpasu/commit/ac66c086f88c657383a7b24cd352b00c2c36a2bc)) by @
-- new logo for mac ([43ef3cc](https://github.com/keiko233/clash-nyanpasu/commit/43ef3cc562891922d2e043377d2c76675d2381a1)) by @
-- new rule page ([74b5150](https://github.com/keiko233/clash-nyanpasu/commit/74b51509b6a938b1c194fc20889ddfb934f47568)) by @
-- portable script ([3b59936](https://github.com/keiko233/clash-nyanpasu/commit/3b5993652f7ff9f3e9a274da3e90e276f3d646f9)) by @
-- post version script ([92fc094](https://github.com/keiko233/clash-nyanpasu/commit/92fc09493e0e41272b9291e599ba6e613de4a224)) by @
-- profile release ([6ea5677](https://github.com/keiko233/clash-nyanpasu/commit/6ea567742b4f0daeda0a618d47164e9fbb7b9a46)) by @
-- readme ([0ff2fca](https://github.com/keiko233/clash-nyanpasu/commit/0ff2fcac11955944ce224f4bdbe08a6bc07b4a38)) by @
-- readme ([cac1ce6](https://github.com/keiko233/clash-nyanpasu/commit/cac1ce68956b021e8e00f466d14def81ae8eeb36)) by @
-- readme ([c15c38e](https://github.com/keiko233/clash-nyanpasu/commit/c15c38ea8ffdc74f49cdb5a4a7b852cbc0c4d16f)) by @
-- readme ([#43](https://github.com/keiko233/clash-nyanpasu/issues/43)) ([9910f6b](https://github.com/keiko233/clash-nyanpasu/commit/9910f6b817348760450d3da704f59e83f09c86d9)) by @
-- readme remove ad ([7daa322](https://github.com/keiko233/clash-nyanpasu/commit/7daa3224415d1736012a3f099e35d7fb8a315a1f)) by @
-- reduce icon size on macOS ([04c754c](https://github.com/keiko233/clash-nyanpasu/commit/04c754c0acaa94b2feab0140df2d412e0e5eba2c)) by @
-- rename file ([ee26bb3](https://github.com/keiko233/clash-nyanpasu/commit/ee26bb3b5d9058ea606605fbf95cdda7b3c33028)) by @
-- rename green to portable ([c2449e5](https://github.com/keiko233/clash-nyanpasu/commit/c2449e53c4de65f3da74dba6d2f5ee5a09961cb0)) by @
-- rename productName ([68450d2](https://github.com/keiko233/clash-nyanpasu/commit/68450d20425c88619f484b0dfd0e26b4355d9194)) by @
-- rename script ([18c48db](https://github.com/keiko233/clash-nyanpasu/commit/18c48db7f72604e1d4cec8288950b21d082ce35f)) by @
-- rename temp dir ([5cb5d74](https://github.com/keiko233/clash-nyanpasu/commit/5cb5d74eed704d623147d2d963e009e7d5b1dc69)) by @
-- resolve wintun.dll ([6eee10d](https://github.com/keiko233/clash-nyanpasu/commit/6eee10d46d7c60fd2cbead717365743362f2edb7)) by @
-- rm aarch64 ci ([ec94218](https://github.com/keiko233/clash-nyanpasu/commit/ec94218a4b46f58829b4340762eacaa4430c4838)) by @
-- rm code ([58366c0](https://github.com/keiko233/clash-nyanpasu/commit/58366c0b870f9578f9dddd4668641f943f198d32)) by @
-- rm code ([57aef1d](https://github.com/keiko233/clash-nyanpasu/commit/57aef1d3c206507664e207969e61b17277375ce8)) by @
-- rm code ([fcf570e](https://github.com/keiko233/clash-nyanpasu/commit/fcf570e96ef49b7ca85f060699b3fff9f8969b6d)) by @
-- rm console ([c8ccba0](https://github.com/keiko233/clash-nyanpasu/commit/c8ccba0192c998ef5bfe2447675dfb2bc0f180e7)) by @
-- rm dead code ([72ff9c0](https://github.com/keiko233/clash-nyanpasu/commit/72ff9c096404e102e52c3d9de8036d93460dba60)) by @
-- rm dead code ([45fc84d](https://github.com/keiko233/clash-nyanpasu/commit/45fc84d8be35e5653dfd4cc31b7c149b7ea880ca)) by @
-- rm dead code ([732a1f4](https://github.com/keiko233/clash-nyanpasu/commit/732a1f46940c6beb0e7146ee741be2c131485388)) by @
-- rm file ([4fde644](https://github.com/keiko233/clash-nyanpasu/commit/4fde64473314ce92f78d938de8079dc6a0a859cc)) by @
-- rm file ([9327006](https://github.com/keiko233/clash-nyanpasu/commit/9327006e618c4c0dc03abdd1e5ab42b9f0d4bee1)) by @
-- rm file ([db6bc10](https://github.com/keiko233/clash-nyanpasu/commit/db6bc101966966d74c27912421d4802f5c1752db)) by @
-- rm polyfill ([f33c419](https://github.com/keiko233/clash-nyanpasu/commit/f33c419ed9bf6edba186b24ae4e456a5510b9299)) by @
-- rm some files ([359b82c](https://github.com/keiko233/clash-nyanpasu/commit/359b82c29cc3982e864d121d2346f379a617aa9e)) by @
-- rm then ([dc9bcc4](https://github.com/keiko233/clash-nyanpasu/commit/dc9bcc40ee35892be18015561422086ca5fd9a8c)) by @
-- rust cache ([b54171b](https://github.com/keiko233/clash-nyanpasu/commit/b54171bc2cd0e49d8324a1fb5ff3167442ac83a1)) by @
-- save lock file ([01e8db3](https://github.com/keiko233/clash-nyanpasu/commit/01e8db317ee27476374e7f8928d0921ccbf595ca)) by @
-- show open app and log dir failed message ([bae721c](https://github.com/keiko233/clash-nyanpasu/commit/bae721c49eb85b590fde3b2d1158f79086d44c9f)) by @
-- something ([7d878d2](https://github.com/keiko233/clash-nyanpasu/commit/7d878d25519e30bdeb0f7e2df4685554edde37ff)) by @
-- someting ([860c44e](https://github.com/keiko233/clash-nyanpasu/commit/860c44e93df067e9ad1558ba20fcd30d1284ec5e)) by @
-- switch updater endpoints ([3459a16](https://github.com/keiko233/clash-nyanpasu/commit/3459a16b48caa5e379e03395277cf3062442db7d)) by @
-- tag name ([1f20845](https://github.com/keiko233/clash-nyanpasu/commit/1f208454aea793b368fe267ecfc9f71cffc24366)) by @
-- tauri allowList ([2f6efbe](https://github.com/keiko233/clash-nyanpasu/commit/2f6efbed637ccf3c8558a231dff1bbe7aa47afe6)) by @
-- tauri feature ([991897a](https://github.com/keiko233/clash-nyanpasu/commit/991897aff4432adb43cfc6e5e65db1e83f0779fb)) by @
-- tauri updater env ([74bbd3c](https://github.com/keiko233/clash-nyanpasu/commit/74bbd3c3a2ba10bf064c08c80c6d6e3b7a5ab3a0)) by @
-- temp ([182bf49](https://github.com/keiko233/clash-nyanpasu/commit/182bf49ad0c327a9c9e65c1b81924b9220d521cc)) by @
-- test ci ([bf180e6](https://github.com/keiko233/clash-nyanpasu/commit/bf180e6a2c2ca84b8fb5077b023ab3e7c4e31204)) by @
-- test ci ([864a582](https://github.com/keiko233/clash-nyanpasu/commit/864a5820c9cc9dd4401d5510733f71260ac8ae9e)) by @
-- test ci ([a3a724e](https://github.com/keiko233/clash-nyanpasu/commit/a3a724e2e6ad37dc65abc45e5ce26880be87d1e8)) by @
-- test ci ([73235c8](https://github.com/keiko233/clash-nyanpasu/commit/73235c86993997dd0d34672973e2a497e298b613)) by @
-- test ci ([c2e5c7c](https://github.com/keiko233/clash-nyanpasu/commit/c2e5c7cf385a5d1326eb2481d6a2431440e2255c)) by @
-- test ci ([bac5734](https://github.com/keiko233/clash-nyanpasu/commit/bac57345277aef33292d896716a08042afbadfa7)) by @
-- test ci ([a173624](https://github.com/keiko233/clash-nyanpasu/commit/a17362437ac55d5c042723a4acfa3051b794a144)) by @
-- test ci ([5421c94](https://github.com/keiko233/clash-nyanpasu/commit/5421c94853c710ef1bdd112e703a2caea1e481d5)) by @
-- test ci ([a543436](https://github.com/keiko233/clash-nyanpasu/commit/a5434360bcf5a681d800a7ca9e557a9a19f44008)) by @
-- test ci ([99c855b](https://github.com/keiko233/clash-nyanpasu/commit/99c855b01bc42a853617640ca1f5946227a392b3)) by @
-- test ci ([c2eaedc](https://github.com/keiko233/clash-nyanpasu/commit/c2eaedc959c0fddabcf5579f23aed322f31cd4bf)) by @
-- test ci ([66fccd3](https://github.com/keiko233/clash-nyanpasu/commit/66fccd3c68c3a9dff2e45f4e1bdcee390714d3a5)) by @
-- test ci ([9a4ebf4](https://github.com/keiko233/clash-nyanpasu/commit/9a4ebf4daab3c13d6245e06093377998af41494d)) by @
-- test ci ([591add6](https://github.com/keiko233/clash-nyanpasu/commit/591add6e0c2741ccbbeefeef34b54a1ccf6e69a4)) by @
-- test ci fix deps ([a631cd6](https://github.com/keiko233/clash-nyanpasu/commit/a631cd67ecbbb655a508bb5ee75205c63a155de4)) by @
-- test linux ([1ea07c4](https://github.com/keiko233/clash-nyanpasu/commit/1ea07c458bf7ffc637d2c54daac25ef05b8f7b61)) by @
-- test: use pnpm ([890f55c](https://github.com/keiko233/clash-nyanpasu/commit/890f55c9dc62ab99bdde9e4d338e92d3021804ea)) by @
-- tmpl add clash core ([f0ab03a](https://github.com/keiko233/clash-nyanpasu/commit/f0ab03a9fb4832411dd8c537b66b660decd0a0ac)) by @
-- try fix missing libssl3 ([#378](https://github.com/keiko233/clash-nyanpasu/issues/378)) ([2637918](https://github.com/keiko233/clash-nyanpasu/commit/26379182db635772fde72e12c74af461baf3ed4d)) by @
-- tsconfig: skip Lib Check ([ae25ade](https://github.com/keiko233/clash-nyanpasu/commit/ae25ade3186b33dd1e6a27ae0f6488485d04760d)) by @
-- update aarch rule ([5e8dfe7](https://github.com/keiko233/clash-nyanpasu/commit/5e8dfe7267dcb780bd7eb028b65276321ddba596)) by @
-- update actions ([cc96b5a](https://github.com/keiko233/clash-nyanpasu/commit/cc96b5ad0425d71f52943808fd02b193ad9a1bc4)) by @
-- update alpha ci ([0477744](https://github.com/keiko233/clash-nyanpasu/commit/047774475cba12a2e0951402718ec2015601b2a0)) by @
-- update auto launch ([de90c95](https://github.com/keiko233/clash-nyanpasu/commit/de90c959e09717d9787c6bafe55c3f6fce92550c)) by @
-- update auto launch ([db324f5](https://github.com/keiko233/clash-nyanpasu/commit/db324f54eb67951c3c4a0d219f9aeb0f5e8d3410)) by @
-- update check script ([9638eef](https://github.com/keiko233/clash-nyanpasu/commit/9638eefc91cca295eb9bb1fd24fe36a1e2a92396)) by @
-- update check script ([e7db2a8](https://github.com/keiko233/clash-nyanpasu/commit/e7db2a85739680496a97996b5b0569e4bf5f7190)) by @
-- update check script ([76cf007](https://github.com/keiko233/clash-nyanpasu/commit/76cf007fff15e7fc30bcf1238e46b3757cdb5c90)) by @
-- update check script ([a13d469](https://github.com/keiko233/clash-nyanpasu/commit/a13d4698be964e7c7aebe272dd5425e749a528b0)) by @
-- update ci ([241b22a](https://github.com/keiko233/clash-nyanpasu/commit/241b22a46585f7dc4e474f781de395b549888968)) by @
-- update ci ([525e5f8](https://github.com/keiko233/clash-nyanpasu/commit/525e5f88ae47c45270ec44ff94cc484fdc447322)) by @
-- update ci ([2f8b391](https://github.com/keiko233/clash-nyanpasu/commit/2f8b39186fdfee3500e805578647bb907b764822)) by @
-- update ci ([1ac1d6e](https://github.com/keiko233/clash-nyanpasu/commit/1ac1d6e9030460f8a2dae42795dfbc2dee52cf0e)) by @
-- update ci ([664be2d](https://github.com/keiko233/clash-nyanpasu/commit/664be2d0ba30ca23aa0bb4c59b1042413b891c13)) by @
-- update ci node version ([005eeb0](https://github.com/keiko233/clash-nyanpasu/commit/005eeb0e0b9e4b8eb9a0fadcacec924448ddf0c9)) by @
-- update clash ([1367c30](https://github.com/keiko233/clash-nyanpasu/commit/1367c304cfd79ba420ce113b920c413b248b9b5a)) by @
-- update clash ([06e1e14](https://github.com/keiko233/clash-nyanpasu/commit/06e1e14e02d926348329804f08895a8b2a2830e0)) by @
-- update clash ([ed17551](https://github.com/keiko233/clash-nyanpasu/commit/ed17551170accc1364fa249a563e788e4eb9074d)) by @
-- update clash ([d00e8f6](https://github.com/keiko233/clash-nyanpasu/commit/d00e8f6e193c1d7aea93dd742944ce8531a04256)) by @
-- update clash ([5b8c246](https://github.com/keiko233/clash-nyanpasu/commit/5b8c246d5372f46a9e47bfc7c897b1a3734db3b1)) by @
-- update clash ([b79456e](https://github.com/keiko233/clash-nyanpasu/commit/b79456e91b636dd658b0d5dca9d9fb7e5546c69f)) by @
-- update clash ([8643dc4](https://github.com/keiko233/clash-nyanpasu/commit/8643dc43b1026cbd24956e42bdba24d8483658bf)) by @
-- update clash & clash meta ([c2109d2](https://github.com/keiko233/clash-nyanpasu/commit/c2109d245f1c7a2695e852d45afd099cf6d053cd)) by @
-- update clash core ([31978d8](https://github.com/keiko233/clash-nyanpasu/commit/31978d8de0cc5918c77e5d3e470fa03d5516ac50)) by @
-- update clash core ([8c31629](https://github.com/keiko233/clash-nyanpasu/commit/8c3162965568b428c9c7d0969fc130a6883a993a)) by @
-- update clash core ([4a74bae](https://github.com/keiko233/clash-nyanpasu/commit/4a74bae8c74c547469032f70e9c393e04772d589)) by @
-- update clash core ([9f492fa](https://github.com/keiko233/clash-nyanpasu/commit/9f492fad49f52fdb1d58b4e71bd3f5dea544446c)) by @
-- update clash core version ([#476](https://github.com/keiko233/clash-nyanpasu/issues/476)) ([af5e0d5](https://github.com/keiko233/clash-nyanpasu/commit/af5e0d589ec0825ba50485fb5414d88e87fb7cf1)) by @
-- update clash meta ([8a5f12b](https://github.com/keiko233/clash-nyanpasu/commit/8a5f12b97cc3997962896816a7e801e44e88a202)) by @
-- update clash meta ([b0d651e](https://github.com/keiko233/clash-nyanpasu/commit/b0d651ece1db949c7bfb5ddbb6653de8db5bae38)) by @
-- update clash meta ([97be286](https://github.com/keiko233/clash-nyanpasu/commit/97be28638b872c26b6b9d287051b4931124037f1)) by @
-- update clash meta ([56ccd3a](https://github.com/keiko233/clash-nyanpasu/commit/56ccd3a0ac1ca6cb59f4834972edc7193bad62ae)) by @
-- update clash meta ([f20f0f0](https://github.com/keiko233/clash-nyanpasu/commit/f20f0f064e8bd27d96f0799ef760234c572464fd)) by @
-- update clash meta ([0cb802e](https://github.com/keiko233/clash-nyanpasu/commit/0cb802ed9a9cc2f2c080600dd114b5cebfc49816)) by @
-- update clash meta ([38e1a4f](https://github.com/keiko233/clash-nyanpasu/commit/38e1a4febf206cb2a1eae00b76cd778c631e5633)) by @
-- update clash meta version ([5a35ea1](https://github.com/keiko233/clash-nyanpasu/commit/5a35ea116f7ca76a079afe7c0958d6c9a8c955f3)) by @
-- update clash version ([f3a917b](https://github.com/keiko233/clash-nyanpasu/commit/f3a917b5e7b6b11403c599f76c7e1bf3db45f37a)) by @
-- update clash version ([d717fe7](https://github.com/keiko233/clash-nyanpasu/commit/d717fe7e8c43c6192561a44af1d10bbe9b152e68)) by @
-- update clash version ([711b220](https://github.com/keiko233/clash-nyanpasu/commit/711b220a05c668901d646bbc50f983ea8791c0ba)) by @
-- update clash version ([b5432c3](https://github.com/keiko233/clash-nyanpasu/commit/b5432c372886075ed1f59d0842cd3b49c40fe451)) by @
-- update clash version ([1581e9b](https://github.com/keiko233/clash-nyanpasu/commit/1581e9b1cd31bb4da5f619dd9830c663462daafe)) by @
-- update clash version ([dc492a2](https://github.com/keiko233/clash-nyanpasu/commit/dc492a2a0a4fc246022339e87ddbcdfcf301ec50)) by @
-- update clash version ([2f284cf](https://github.com/keiko233/clash-nyanpasu/commit/2f284cfdc961564d33b073d181d8d9db6c9fa4d8)) by @
-- update clash version ([5cff4e2](https://github.com/keiko233/clash-nyanpasu/commit/5cff4e299bd4baf49c0bb947dad1fdf9fd94201b)) by @
-- update clash version ([0ef1d5d](https://github.com/keiko233/clash-nyanpasu/commit/0ef1d5d0deaa9bd49ef16b0ef36aa2eb30a72514)) by @
-- update clash version ([72ff261](https://github.com/keiko233/clash-nyanpasu/commit/72ff261fe38dc1c58d34a79a3751dba268689cb6)) by @
-- update comments ([b5d0c2b](https://github.com/keiko233/clash-nyanpasu/commit/b5d0c2b78bacf3676a771d750aa6f85d9b0c39e8)) by @
-- update config ([a35cd28](https://github.com/keiko233/clash-nyanpasu/commit/a35cd28562a5507eb8bc6d4d5a5a344e562d4364)) by @
-- update copyright ([9cd6c5c](https://github.com/keiko233/clash-nyanpasu/commit/9cd6c5c6245fe179af18cdc0d6541ad61de9e7a7)) by @
-- update dep ([359812b](https://github.com/keiko233/clash-nyanpasu/commit/359812b7ed13b3a60db8d9bb85db2063ecb30cda)) by @
-- update dependencies ([89bdc8e](https://github.com/keiko233/clash-nyanpasu/commit/89bdc8ec75c481bef66d973bd30234f1281794f1)) by @
-- Update dependencies ([2078ce7](https://github.com/keiko233/clash-nyanpasu/commit/2078ce7446d647fdd10a212d4ec9e0d927d5fdd7)) by @
-- update deps ([b1f4575](https://github.com/keiko233/clash-nyanpasu/commit/b1f45752cf95970b7b7129d565aa8b9700326d5d)) by @
-- update deps ([03c8a8e](https://github.com/keiko233/clash-nyanpasu/commit/03c8a8edb28eeade7080396db88df8aa59151855)) by @
-- update deps ([ff573bf](https://github.com/keiko233/clash-nyanpasu/commit/ff573bf377d450ef6d98d9b57c0e29bb53ab5dad)) by @
-- update deps ([7287562](https://github.com/keiko233/clash-nyanpasu/commit/728756289b458ff22abdbdf234c7cffa4ab0d718)) by @
-- update deps ([daf66bc](https://github.com/keiko233/clash-nyanpasu/commit/daf66bcec4ce64066eaaa5794df459e3bd017315)) by @
-- update deps ([4d97916](https://github.com/keiko233/clash-nyanpasu/commit/4d979160c21078019d1f65736508571e605d34ff)) by @
-- update deps ([c71ba6f](https://github.com/keiko233/clash-nyanpasu/commit/c71ba6ff8d948a60c5116b04621f245daecb4c9f)) by @
-- update deps ([d93b00c](https://github.com/keiko233/clash-nyanpasu/commit/d93b00cd15f14cfa576611fd2ad3027fd9b19209)) by @
-- update deps ([0309c81](https://github.com/keiko233/clash-nyanpasu/commit/0309c815b96d7f23dd023faee84436fa655b504f)) by @
-- update deps ([54af0b6](https://github.com/keiko233/clash-nyanpasu/commit/54af0b675d8b3babdcb857f3217d2932a3301b5b)) by @
-- update deps ([62d4c65](https://github.com/keiko233/clash-nyanpasu/commit/62d4c65e1c79ab24bd62c932b19b1a33c6994178)) by @
-- update deps ([3bd9287](https://github.com/keiko233/clash-nyanpasu/commit/3bd9287c5db1922b94f22cdbbf03b08a4678ec5b)) by @
-- update deps ([acf47ac](https://github.com/keiko233/clash-nyanpasu/commit/acf47ac9475863287b0f0a59eac1f1cbd6ec0585)) by @
-- update deps ([fda24e5](https://github.com/keiko233/clash-nyanpasu/commit/fda24e5f5a06a384dc3b794fb66149d98e6a0510)) by @
-- update deps ([55cc83a](https://github.com/keiko233/clash-nyanpasu/commit/55cc83a5d4bb73cd4b0709b2eab327c68a2221c0)) by @
-- update deps ([8637a98](https://github.com/keiko233/clash-nyanpasu/commit/8637a9823e5a896c16e96a6e72dd6032d3c82779)) by @
-- update deps ([b615c48](https://github.com/keiko233/clash-nyanpasu/commit/b615c485f78fd9b3ad8e4c228dd60cbda66e0827)) by @
-- update deps ([7aecd83](https://github.com/keiko233/clash-nyanpasu/commit/7aecd83c4a1a6af92cf1ec304cbc35a5f86770af)) by @
-- update deps ([35aee15](https://github.com/keiko233/clash-nyanpasu/commit/35aee15b6d9fff055c84ae3bb7d38676b2591724)) by @
-- update deps ([8464e31](https://github.com/keiko233/clash-nyanpasu/commit/8464e319fd172d30a4eb2fd9d014f56a8aa6ba4a)) by @
-- update deps ([72f10aa](https://github.com/keiko233/clash-nyanpasu/commit/72f10aaed13ab951ed4f3bfb9e7e9ab0bd6ce532)) by @
-- update deps ([ba29c66](https://github.com/keiko233/clash-nyanpasu/commit/ba29c66e3b8658dfb796b69a28bff186cc876478)) by @
-- update deps ([a238f7b](https://github.com/keiko233/clash-nyanpasu/commit/a238f7beba4075027ff1106bf76ea6b4973a3f3b)) by @
-- update deps ([b5e229b](https://github.com/keiko233/clash-nyanpasu/commit/b5e229b19c9bc75a134d47d19573e2b8df4ab50b)) by @
-- update deps ([40bcb22](https://github.com/keiko233/clash-nyanpasu/commit/40bcb229771b83a9e5d1b52b8b905c52dc879098)) by @
-- update deps ([36b9c07](https://github.com/keiko233/clash-nyanpasu/commit/36b9c079283e535f0928d00e4904ab37c73f935c)) by @
-- update deps ([c72f176](https://github.com/keiko233/clash-nyanpasu/commit/c72f17605cd2f2674eb95039c1b816ee1702a648)) by @
-- update deps ([f7c7cd1](https://github.com/keiko233/clash-nyanpasu/commit/f7c7cd1d3ca4bd05a5af340aa16127c53ceb49b6)) by @
-- update deps ([4df6571](https://github.com/keiko233/clash-nyanpasu/commit/4df6571ad916c52adff9acf3fdb0ec08821ad807)) by @
-- update deps ([b6aa50d](https://github.com/keiko233/clash-nyanpasu/commit/b6aa50d3dccd9c64a5cc418b52b4a8c9436bbf0a)) by @
-- update deps ([7e4506c](https://github.com/keiko233/clash-nyanpasu/commit/7e4506c8603f8cd38848f8ebb0a34c7119f00c5f)) by @
-- update deps ([ccb68bc](https://github.com/keiko233/clash-nyanpasu/commit/ccb68bcda9c34f7423c9d8f955d9d326d21b6610)) by @
-- update deps and app name ([5ef4285](https://github.com/keiko233/clash-nyanpasu/commit/5ef428555896e33417b01616f88ab69f7dfb3cb3)) by @
-- update geo data to meta, close [#707](https://github.com/keiko233/clash-nyanpasu/issues/707) ([ab6374e](https://github.com/keiko233/clash-nyanpasu/commit/ab6374e27885acd92c44de66ea8da90f84aa769c)) by @
-- update gh proxy ([78fc47a](https://github.com/keiko233/clash-nyanpasu/commit/78fc47a9c44d7aa3b1dce5220b1a6e71affb6f76)) by @
-- update issue templates ([9ea08f4](https://github.com/keiko233/clash-nyanpasu/commit/9ea08f4fede0daf1f1259016adc7798b6c8aaa09)) by @
-- update license ([1cd7ae7](https://github.com/keiko233/clash-nyanpasu/commit/1cd7ae7db2a4cbe0ed78a911a509c8266707f62e)) by @
-- update log ([7af2ffc](https://github.com/keiko233/clash-nyanpasu/commit/7af2ffcebf8fe784ecaba9fefafdee92fea479df)) by @
-- update log ([f39a5ac](https://github.com/keiko233/clash-nyanpasu/commit/f39a5ac9c2b123e6f9e1049574faf6fc22a0544c)) by @
-- update log ([c49c3cf](https://github.com/keiko233/clash-nyanpasu/commit/c49c3cf7f08680506a8fd3463169f91e23ebe6b2)) by @
-- update log ([6193395](https://github.com/keiko233/clash-nyanpasu/commit/61933954f395c6ac0f336e845d26a473091a2244)) by @
-- update log ([30243c8](https://github.com/keiko233/clash-nyanpasu/commit/30243c84cd21e0011c2dece0bf2a17d1d14a4143)) by @
-- update log ([4c7cc56](https://github.com/keiko233/clash-nyanpasu/commit/4c7cc563dccb337021905ac2f2ce7c257e488a8b)) by @
-- update log ([6b4f6fc](https://github.com/keiko233/clash-nyanpasu/commit/6b4f6fc71e7371afea507e0907b6ae02d49ca629)) by @
-- update log ([88aa270](https://github.com/keiko233/clash-nyanpasu/commit/88aa27072863fbd49e97613b88b6a4238aaa38e2)) by @
-- update log ([eb770ed](https://github.com/keiko233/clash-nyanpasu/commit/eb770ede1a1086e69e651e7af5c719887c82552d)) by @
-- update log ([99adfb4](https://github.com/keiko233/clash-nyanpasu/commit/99adfb4a9e8d0b4f1c90e53e17effe485d498720)) by @
-- update log ([351cb39](https://github.com/keiko233/clash-nyanpasu/commit/351cb391e546b9fc9493ea51a51e134b294018fa)) by @
-- update log ([446d2ab](https://github.com/keiko233/clash-nyanpasu/commit/446d2ab3af95080b3e83548f39518fea9efd2188)) by @
-- update log ([e545d55](https://github.com/keiko233/clash-nyanpasu/commit/e545d552f684184022a13961292459c7243fa963)) by @
-- update log ([48f3a93](https://github.com/keiko233/clash-nyanpasu/commit/48f3a934c94a24643ae10387b53247cc4daa6fbf)) by @
-- update log ([eedc4ab](https://github.com/keiko233/clash-nyanpasu/commit/eedc4ab6488acfbf29a2902206c48f72193d9bfd)) by @
-- update log ([68d2a6e](https://github.com/keiko233/clash-nyanpasu/commit/68d2a6e951b9f7c7b4ddf5c91dfcd924b2becb68)) by @
-- update log ([23ebeb1](https://github.com/keiko233/clash-nyanpasu/commit/23ebeb1cc05a0f59a9d1a9b79e275fba71d8264b)) by @
-- update log ([6507426](https://github.com/keiko233/clash-nyanpasu/commit/65074264b8d98e6d042d950294e90da624685dfb)) by @
-- update log ([f4a1f1f](https://github.com/keiko233/clash-nyanpasu/commit/f4a1f1fdc819dbafcb4efd29fe1a32464462db7d)) by @
-- update log ([aa0740f](https://github.com/keiko233/clash-nyanpasu/commit/aa0740ff94d413be29e6f273a8e407066e0905bc)) by @
-- update log ([f54ba05](https://github.com/keiko233/clash-nyanpasu/commit/f54ba05b00401d731bdbac9f6b279ea7d71430f2)) by @
-- update log ([b829183](https://github.com/keiko233/clash-nyanpasu/commit/b8291837fce95215dff1bbde1ddf895e8a0e136b)) by @
-- update log ([74e10dc](https://github.com/keiko233/clash-nyanpasu/commit/74e10dc01258af360020319b2002736cf42e2162)) by @
-- update log ([d298bda](https://github.com/keiko233/clash-nyanpasu/commit/d298bda92c84c6c16c0177176011e4672a462864)) by @
-- update log ([fe0ad0f](https://github.com/keiko233/clash-nyanpasu/commit/fe0ad0f5cb8aa8b996e3a0219142976ba59b5496)) by @
-- update log ([4140fc8](https://github.com/keiko233/clash-nyanpasu/commit/4140fc86ee83935db16b00a2b290e4bb26d53633)) by @
-- update log ([4678fc7](https://github.com/keiko233/clash-nyanpasu/commit/4678fc7dde9354f2d759ecf53a9b4794703c1065)) by @
-- update log ([366c465](https://github.com/keiko233/clash-nyanpasu/commit/366c465cade5eb5f845f4bcd46cc10dacea15916)) by @
-- update log supports ([6a4924b](https://github.com/keiko233/clash-nyanpasu/commit/6a4924bb16550c896ed503e8f16b597c0208fb18)) by @
-- update macos icon ([2f1ea08](https://github.com/keiko233/clash-nyanpasu/commit/2f1ea08b8a63aaf6158f4d732d99c2ce09c10fdb)) by @
-- update mmdb ([1c8fb33](https://github.com/keiko233/clash-nyanpasu/commit/1c8fb3392ad5c7aea71dbfc2781b3acba62f483d)) by @
-- update mmdb ([c9d9909](https://github.com/keiko233/clash-nyanpasu/commit/c9d9909d74ed94a72fd22a34051758edbae918bc)) by @
-- update product name ([5cfe5a4](https://github.com/keiko233/clash-nyanpasu/commit/5cfe5a4939a1b37d587c85ca8a5e6ed333d38894)) by @
-- update profuct name ([584d490](https://github.com/keiko233/clash-nyanpasu/commit/584d490856b50c6053bec4e4dd7da5ea78bf7b54)) by @
-- update publish script ([b6543bd](https://github.com/keiko233/clash-nyanpasu/commit/b6543bd87f6f31eb6b4d648cbab46c5db64ca574)) by @
-- update readme ([afc77e7](https://github.com/keiko233/clash-nyanpasu/commit/afc77e7adc1c3685a16358c1f02c45c076610ac4)) by @
-- update readme ([024f42f](https://github.com/keiko233/clash-nyanpasu/commit/024f42fce6b1f32531328a426d820beb6911e0d1)) by @
-- update readme ([954b21c](https://github.com/keiko233/clash-nyanpasu/commit/954b21cf39e4da320a3c5624fa04499f5e003814)) by @
-- update readme ([12ac7bb](https://github.com/keiko233/clash-nyanpasu/commit/12ac7bb338c0ef310329bd2ab77f4a3d2bf7680b)) by @
-- update readme ([f94734a](https://github.com/keiko233/clash-nyanpasu/commit/f94734a5c80126762b57834ab8da4b87ccc5df9d)) by @
-- update readme ([1fba903](https://github.com/keiko233/clash-nyanpasu/commit/1fba9039afd60222f1cb9f597ebfa0ce5307f789)) by @
-- update README ([#435](https://github.com/keiko233/clash-nyanpasu/issues/435)) ([d191877](https://github.com/keiko233/clash-nyanpasu/commit/d19187700231c27204e2b22af1716ea51be04556)) by @
-- update README.md ([f7218aa](https://github.com/keiko233/clash-nyanpasu/commit/f7218aaa9e276d9bab437ec43c20c2675618e696)) by @
-- update release link ([26d6bcb](https://github.com/keiko233/clash-nyanpasu/commit/26d6bcb074ab2c6b173f717c98c89d9074d1064c)) by @
-- update resource ([019b2a1](https://github.com/keiko233/clash-nyanpasu/commit/019b2a1681c7702689b896c8370ba7fb3a51d22f)) by @
-- update tauri ([91b8504](https://github.com/keiko233/clash-nyanpasu/commit/91b8504df55fe9c70bde77a453cd4731d3ac77ee)) by @
-- update tauri ([bd82308](https://github.com/keiko233/clash-nyanpasu/commit/bd82308024971bc8c91b6de3398a49e2f6e642e9)) by @
-- update tauri ([7e47f8f](https://github.com/keiko233/clash-nyanpasu/commit/7e47f8f8939ae3f978295777de46bdb74cd4e481)) by @
-- update tauri action ([dbd09a8](https://github.com/keiko233/clash-nyanpasu/commit/dbd09a87434b6ea8b7f9a1301ca44bb25accc1e1)) by @
-- update tauri version ([8a052bb](https://github.com/keiko233/clash-nyanpasu/commit/8a052bbed61d5cb346b5039100f65d0b07f7ab58)) by @
-- update toml file ([98bc9b0](https://github.com/keiko233/clash-nyanpasu/commit/98bc9b07b8d24195de9a7f37e7550c3b948a5828)) by @
-- update version ([55b7af2](https://github.com/keiko233/clash-nyanpasu/commit/55b7af26236eeaed00993ddc462d063449ed2537)) by @
-- update version ([18750f2](https://github.com/keiko233/clash-nyanpasu/commit/18750f275aee44c5136e0ca58fea460317f61d17)) by @
-- update version ([d686a85](https://github.com/keiko233/clash-nyanpasu/commit/d686a853f4cad9b0bbfa2efd62fff971a4eda916)) by @
-- update version ([b286b8f](https://github.com/keiko233/clash-nyanpasu/commit/b286b8f8c16de3486e0ff29d405607a07ec852bb)) by @
-- updater json supports arch field ([ab82db9](https://github.com/keiko233/clash-nyanpasu/commit/ab82db9e22b704ffb536a00541cc6c004fb76ddd)) by @
-- updater proxy ([ab0d516](https://github.com/keiko233/clash-nyanpasu/commit/ab0d516d911fa8308a22c7d6348800cd6581f7b1)) by @
-- updater script ([be4ad89](https://github.com/keiko233/clash-nyanpasu/commit/be4ad8947f6770c9c6f3d171b85e71734cda4807)) by @
-- Upgrade to React 18 ([#495](https://github.com/keiko233/clash-nyanpasu/issues/495)) ([30c2680](https://github.com/keiko233/clash-nyanpasu/commit/30c2680b6f9f7c6980c3ee40a1e3dcd04e89ddbb)) by @
-- use log crate ([df435fc](https://github.com/keiko233/clash-nyanpasu/commit/df435fc9dfe51a35cc3530721b4fe0a23317ebf7)) by @
-- use tauri cli ([7212797](https://github.com/keiko233/clash-nyanpasu/commit/72127979c360cdc303237b5880d4a53da9a04831)) by @
-- use ubuntu 18.04 ([05eca8e](https://github.com/keiko233/clash-nyanpasu/commit/05eca8e4d8f282ff3c1e8860cc740459b9ef992f)) by @
-- use ubuntu latest ([c00ed8a](https://github.com/keiko233/clash-nyanpasu/commit/c00ed8aa5a9dbdc4dd025706090ff7095a5a7508)) by @
-- Use your own update endpoints and public keys ([ee2135b](https://github.com/keiko233/clash-nyanpasu/commit/ee2135bfb3f609ea80aea5a4bdf16d2fccdcfc7d)) by @
+- aarch script ([2643e85](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2643e853af43d9cbfa503e5aa67b696f1f28014e)) by @
+- aarch upload script ([aaa4fbc](https://github.com/LibNyanpasu/clash-nyanpasu/commit/aaa4fbcdbdeb46d179b718249eed4e9571825f73)) by @
+- add ahooks ([0bd29d7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0bd29d71be73a0f9038d22ca5248462b1af0e9ec)) by @
+- add api ([9c0276f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9c0276f97b057eafacec497a024f932f4817abab)) by @
+- add auto-launch ([3c3d77f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3c3d77fbea5ebdfd98396fa6604e157d87c58ed8)) by @
+- add ci ([cb9d309](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cb9d3098de3a8ca609b85c8192f4d86e7f206c47)) by @
+- add debug feature ([5b9e078](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5b9e078061d7777d19996a4019da33898836bfb4)) by @
+- add default bypass ([42fbee0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/42fbee0cdb26966e8a2ffa97461199c88ed93dec)) by @
+- add dev feature ([a3e7626](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a3e7626dd9bddbc1c6348ecef3a8f7387e01d565)) by @
+- add dev workflow ([b8ad641](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b8ad641ed605240cb815013365f93d1d63f1af41)) by @
+- add faq and download link ([5138a45](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5138a45b0fd7acc4f0a3881d65c41db21cfbd4ca)) by @
+- add husky ([afa56e9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/afa56e916eb199d34e45022732c164e59d2aa36f)) by @
+- add item template yaml ([069abed](https://github.com/LibNyanpasu/clash-nyanpasu/commit/069abed784e14872eabc53cd2e1f85352c120412)) by @
+- add linux link ([6293318](https://github.com/LibNyanpasu/clash-nyanpasu/commit/629331870bb5765371754fe265e440341df24d9a)) by @
+- add log level ([f714b30](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f714b30ead382c40f82a5a927e0d3462b2cbe3df)) by @
+- add macos startup todo ([8f5b2b4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8f5b2b4a0e52fd96f95e8a0de03a49b670a800b6)) by @
+- add openssl depend ([#395](https://github.com/LibNyanpasu/clash-nyanpasu/issues/395)) ([6783355](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6783355c4d9064393464dc2db4d0015cb2702dea)) by @
+- add promotion ([b224d4f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b224d4fa8a7fbf695219308fddd4b5b016a4fbef)) by @
+- add pubkey ([2e82eaf](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2e82eaf59af633e05811fb4db55b9c22dfd97983)) by @
+- add release build ([595554f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/595554f18a70db429fc517b0885bd4f9855ce8fc)) by @
+- add support for windows arm64, close [#216](https://github.com/LibNyanpasu/clash-nyanpasu/issues/216) ([#209](https://github.com/LibNyanpasu/clash-nyanpasu/issues/209)) ([a9d6167](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a9d6167a9fe1b76fd9cc7a2ed9f6448883d54777)) by @
+- add support linux arm64 ([#215](https://github.com/LibNyanpasu/clash-nyanpasu/issues/215)) ([a916d88](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a916d88e85a681eb89dcbf17282ed6cb09670a2d)) by @
+- add test ci os version ([e1c869a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e1c869a3585116beed61b7fa1936074025b5cb6f)) by @
+- add updater script ([ae8c30f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ae8c30fe57416109d85c55abae0ce840c1a10db9)) by @
+- add x ([7e5999e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7e5999e86227681f00ba70ce75deaad5bf5a6172)) by @
+- adjust ([5735719](https://github.com/LibNyanpasu/clash-nyanpasu/commit/573571978cfa59602b8b9fb4afbf99ee5eed310d)) by @
+- adjust ci ([4f02c37](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4f02c373c21b6e095374c74df75a79c71c0cfb94)) by @
+- adjust ci and script ([936b213](https://github.com/LibNyanpasu/clash-nyanpasu/commit/936b2131e001dc4389fec80a9ca38b7cd6da3ea7)) by @
+- adjust code ([d1ba0ed](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d1ba0ed2b2d9ee1b233030ee5b00d210b2e4fd26)) by @
+- adjust code ([a32c77c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a32c77c5f18807c7f8f231134afecf3a5ec1fd2b)) by @
+- adjust code ([5225c84](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5225c841ae5b9c86a0826aff006247f036e170c6)) by @
+- adjust error log ([4e806e2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4e806e21a625c74e9c91cace4960a801d4b09ea3)) by @
+- adjust files ([fc48aa7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fc48aa71556a4e4cb112d9ffdb80b499a0f8abf0)) by @
+- adjust guard log ([e67b50b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e67b50b97617101596eeb76b27afc951667ab71c)) by @
+- adjust icon ([754c22c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/754c22c84e244e8a19de8565475c50dfaad6fb6c)) by @
+- adjust log field ([220a494](https://github.com/LibNyanpasu/clash-nyanpasu/commit/220a49469252a0acbc9eeb3418ce97e70ec2ff93)) by @
+- adjust style ([5d0ffbe](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5d0ffbe4539733aa97f439ec056882f201ec1463)) by @
+- adjust type ([6eafb15](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6eafb15cf9a97bc6ef1380d90d0ee82b9f17e94d)) by @
+- allow unused ([439d885](https://github.com/LibNyanpasu/clash-nyanpasu/commit/439d885ee153c43b65f439abdfadcc3836861a1e)) by @
+- alpha ([10f6bc0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/10f6bc092acc4f26f3e6cea066c3c783dddca25a)) by @
+- alpha ci ([b978aae](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b978aaec211c6a64c5ab8c2a611feed155e0141e)) by @
+- alpha ci ([e6c36ad](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e6c36ad6028fcc044312fb137ad2a16fd8271019)) by @
+- alpha ci ([1b7a52d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1b7a52d5afbc64bba761068d55d0d6140795ac9a)) by @
+- alpha ci ([e510978](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e5109789bf9a18fcdfab17c0b82390cb381435bb)) by @
+- alpha ci ([490ba9f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/490ba9f140207e8b7e951cf58b60b0bf9ef20c8c)) by @
+- alpha ci ([10f3ba4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/10f3ba4ff42d9d28a98ac34eebe5623e83d8f757)) by @
+- alpha ci ([70bcd24](https://github.com/LibNyanpasu/clash-nyanpasu/commit/70bcd2428f713e8b4688409bdac61443bcc1e17c)) by @
+- alpha ci ([ff6b119](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ff6b119f27e08d7b704fc1a8a8f53d53a2ef6366)) by @
+- alpha ci ([536e3ff](https://github.com/LibNyanpasu/clash-nyanpasu/commit/536e3ffb111c6746059a8df8a732bd76b79241ed)) by @
+- alpha ci ([f24f6ea](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f24f6ead92a60224875c05469ea13faf8b47a64e)) by @
+- alpha release add portable ([e4e1699](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e4e16999c8d4c93642ddbe67b66f8af6711d4e70)) by @
+- cargo update ([aa7df42](https://github.com/LibNyanpasu/clash-nyanpasu/commit/aa7df4282efc86918738e06e4356788aaec4b3d2)) by @
+- cargo update ([43c63ff](https://github.com/LibNyanpasu/clash-nyanpasu/commit/43c63ffa7007d6cf7733e379b70db9b00edcf29b)) by @
+- cargo update ([e08032c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e08032c0fa5eefdd6b05cccf664a640fb22b0be7)) by @
+- change ci ([9ca83d3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9ca83d32916721bf7af6349d9e2fcf37977e1a66)) by @
+- change default height ([df0b5a8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/df0b5a80dc24d86e1ff8937d32e03b0418b26f1e)) by @
+- change default user agent ([75ba162](https://github.com/LibNyanpasu/clash-nyanpasu/commit/75ba16281be2f45571865745993254876c5c7e85)) by @
+- change tauri to git repo ([26ef4c9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/26ef4c996159529adb8a7fa4df7bfdbe8ddd3625)) by @
+- change tray icon ([3b460ab](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3b460ab91fa79b13b6df160543bbd29e48e3e70b)) by @
+- change ubuntu ci version ([23351c4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/23351c4f1cdadf803efd6aab96600474f4854dc4)) by @
+- check script proxy agent supports ([d83b404](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d83b404fc3d91f1eb85e1b8a780ddcdb8eefefef)) by @
+- ci ([4480ecc](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4480ecc96d631626bded0d1171cfaa91eaef36d9)) by @
+- ci ([73119bb](https://github.com/LibNyanpasu/clash-nyanpasu/commit/73119bb7c524593ce5ac04ff340137527123ffd4)) by @
+- ci ([6e19a4a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6e19a4ab8bf437fb4f736f7116d30b027cc08f47)) by @
+- ci ([b156523](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b156523a7fb46d8de7afc5d1e5eabfeb33795cdf)) by @
+- ci ([558b849](https://github.com/LibNyanpasu/clash-nyanpasu/commit/558b8499af6262e007ed84e1f44104e4d324e121)) by @
+- ci ([770d5cd](https://github.com/LibNyanpasu/clash-nyanpasu/commit/770d5cd11cdb63a07d44000c9f86b21afbe5171c)) by @
+- ci ([49e37a1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/49e37a19a58f21a3072132043cbced3b6a60ad1d)) by @
+- ci ([f981a44](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f981a44861e585c2d9e17777f1b81453e17f83b8)) by @
+- ci add macos ([4c1a50a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4c1a50a3cacbf5c5e574c859a2ea3fb335a0f55b)) by @
+- ci support linux ([b756ae3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b756ae39d0fd5cc92f2249e552a880e457ef0b5a)) by @
+- clash meta compatible and geosite.dat ([f7500f4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f7500f4cad1df8e7a38fed24274cf7650589e17f)) by @
+- clash meta linux use compatible version ([ab2f054](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ab2f0548a38360981e0781fc398316519a154633)) by @
+- compatible ci ([5f5cc55](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5f5cc5533176267b42164cdb077cb89cacbf1a46)) by @
+- compatible with macos ([f320d51](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f320d515d5e7cf4915eef744d0ef3b5351db3f12)) by @
+- continue on error ([91c1421](https://github.com/LibNyanpasu/clash-nyanpasu/commit/91c14211c6facb648f31306f16042af497369036)) by @
+- correct verge temp config ([7808a04](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7808a0436702f833e17a5ac57d6c78e705943712)) by @
+- default release body ([b615bda](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b615bda17ebc3a13e512159d4d4e3d742ff686dc)) by @
+- delete current release assets ([d87bb25](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d87bb25bafce6942a4d38d87da3b120d13058bf7)) by @
+- deps ([17f7247](https://github.com/LibNyanpasu/clash-nyanpasu/commit/17f724748fcc3b6f832cf699d4ff83041c3cd7c4)) by @
+- dev support macos ([240f4dc](https://github.com/LibNyanpasu/clash-nyanpasu/commit/240f4dcfb16e36bc39e88aad9b154503497e633a)) by @
+- do not save clash bin ([e224709](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e22470969e51f695b48915a9306335878ad4c539)) by @
+- do something ([f095d1b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f095d1bf84c7507778bd0b171795f599b0fa02fe)) by @
+- drop upload-artifact & use prerelease ([a86eeb6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a86eeb636da74b19c85a7167ea9f4e63ae5ee721)) by @
+- emptyOutDir ([38e55be](https://github.com/LibNyanpasu/clash-nyanpasu/commit/38e55be7aa57466846d1194018df49922ddb3bb4)) by @
+- enable meta by default ([aaef6a9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/aaef6a9e9cb0ccdc7b61d36b1561a48e60c1df53)) by @
+- enhance ci ([1a5d9f7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1a5d9f7dad7a610ff46b2377a913b3868b9226f7)) by @
+- enhance ci ([327b9a1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/327b9a175762602f34b8687063f8e302de498919)) by @
+- enhance publish ci ([81ee989](https://github.com/LibNyanpasu/clash-nyanpasu/commit/81ee989f1f817c2da69f0c71f3fc4a8232f306b6)) by @
+- enhance wip ([0f5923a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0f5923a10a55dc4fde7a251c1b0312d496f2343c)) by @
+- error text ([d610319](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d6103191ba6b28dd5519ca967153d2ee302aeace)) by @
+- evaluate error context lazily ([#447](https://github.com/LibNyanpasu/clash-nyanpasu/issues/447)) ([94f647b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/94f647b24ade77be1eaf6bdb6df3ab4086a66ddb)) by @
+- fix alpha ci ([d02431e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d02431e260810e627aab16579947578c980f16e1)) by @
+- fix check script ([e8eb68b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e8eb68bf245b81be7f81b8cb17fc9809e98f0e76)) by @
+- fix check script ([24f4e8a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/24f4e8ab997cea32328c8610c98460c1579d7110)) by @
+- fix ci ([8174ab7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8174ab7616175790356d0a55acc5ea7b2b8622a9)) by @
+- fix ci ([8caf363](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8caf36349fae32ffe6cd739aa02d0e5cff3d80c5)) by @
+- fix ci ([6934de5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6934de58e5ca0023bee948d91a37474fac34fcdf)) by @
+- fix ci ([ebccf40](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ebccf401ddb379e1e6ff71eadb0c1dbb84dbbc5d)) by @
+- fix ci ([6649484](https://github.com/LibNyanpasu/clash-nyanpasu/commit/66494845b7a742b50c98e97344a2f154db5c64a9)) by @
+- fix ci ([173f354](https://github.com/LibNyanpasu/clash-nyanpasu/commit/173f35487e9f2d60e4655c20618d86e7be6fec32)) by @
+- fix ci ([74cbe82](https://github.com/LibNyanpasu/clash-nyanpasu/commit/74cbe82dd1be949bdb2153b0d281ebc6de39deda)) by @
+- fix ci ([a8c30d3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a8c30d30a91e2c0466e4d27cf9539e2790e07adb)) by @
+- fix ci ([320ac81](https://github.com/LibNyanpasu/clash-nyanpasu/commit/320ac81f482cb4153aac703aea2ec7b3a9c77a8f)) by @
+- fix ci ([aab5141](https://github.com/LibNyanpasu/clash-nyanpasu/commit/aab5141404351e7b1a1e550d6a7707aa5a77cef7)) by @
+- fix ci ([8db554b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8db554b377a65842325341da538f2ec18f2e536b)) by @
+- fix ci ([bef4033](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bef4033d94da9ff754bee0019279668827113e0e)) by @
+- fix ci ([2dcf8ac](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2dcf8ac96f78bf449a46399a3f52afaa549bcb15)) by @
+- fix ci ([e1793f5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e1793f57efcc8e341d166a8f8a93403cc645080a)) by @
+- fix ci env ([d9ce998](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d9ce99887c13ff91e4e00fa1ec9f3a8b4ecaad14)) by @
+- fix clash map, close [#736](https://github.com/LibNyanpasu/clash-nyanpasu/issues/736) ([c843bdd](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c843bddbfe7804fbb465707566ebf10b5008e601)) by @
+- fix faq ([2fda4c9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2fda4c9f670e4ed3ec20e53ccf5bd7098af3f0bc)) by @
+- fix linux build ci ([b93284b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b93284bc2fc852de62deba656f8797f897ca1451)) by @
+- fix mmdb url ([3e555ec](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3e555ec9f1197ddf0cab551712cf1f11252071e0)) by @
+- fix mod ([db802e9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/db802e959d4dc44f0211c5f6daa79cdd52c7b62d)) by @
+- fix rust lint ([74252cb](https://github.com/LibNyanpasu/clash-nyanpasu/commit/74252cb66bf8bc0cf0f67a9f311604760e6110e3)) by @
+- fix test ci ([1443ddf](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1443ddfe6c89fea24d903bee28ecf072d37d3edd)) by @
+- fix test ci ([54457a3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/54457a3e1be1a2bf25a734cc45c196e3afed9c35)) by @
+- fix test ci ([64216cb](https://github.com/LibNyanpasu/clash-nyanpasu/commit/64216cba6756f7c39acb5a9107108e897936e517)) by @
+- fix updater ([74d0957](https://github.com/LibNyanpasu/clash-nyanpasu/commit/74d095774d95a679928713b2d0244b4e79168d2e)) by @
+- fix updater ([17a2722](https://github.com/LibNyanpasu/clash-nyanpasu/commit/17a2722e6ddddc12274de75a9a0f42b166f8db4e)) by @
+- fix updater script ([7633f9f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7633f9f88b69b65f70ee43776c30f39ac98e6a16)) by @
+- fix: typos ([417a5a8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/417a5a8214d031feba8f20838c059fcdccbb13bc)) by @
+- fixed tauri rev ([771af6a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/771af6ae08835c9ae7cc0e3f291c4dcb214c9d28)) by @
+- format ([a68eb4a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a68eb4a73e362396cc6199f90debf241519ace4a)) by @
+- format rust code ([4668be6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4668be6e24dbc36fc07074f2854ce5953fbc6b11)) by @
+- green version bundle ([0d189ca](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0d189ca617cfaeca50d84793525982112deff099)) by @
+- ignore update json ([dbb3cb8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/dbb3cb8cc8711cea001af0064b8358093c53cd10)) by @
+- import MUI Lab ([06121ac](https://github.com/LibNyanpasu/clash-nyanpasu/commit/06121acfac09d915075e4dfea0503a4d69c00e44)) by @
+- init connections page ([65dd6bc](https://github.com/LibNyanpasu/clash-nyanpasu/commit/65dd6bc6a6b346e993fe2117cf7658bafea70d5a)) by @
+- init project ([1afaa4c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1afaa4c51ea0cc79c2e2ecb225dc4ea78864080c)) by @
+- lock version ([71f5ada](https://github.com/LibNyanpasu/clash-nyanpasu/commit/71f5ada0a3b97ce7388842968fbd7a60729c1036)) by @
+- meta ([b7bdb7a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b7bdb7ae50c5829d16322041c009a334e5c65bbe)) by @
+- meta ci ([ac66c08](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ac66c086f88c657383a7b24cd352b00c2c36a2bc)) by @
+- new logo for mac ([43ef3cc](https://github.com/LibNyanpasu/clash-nyanpasu/commit/43ef3cc562891922d2e043377d2c76675d2381a1)) by @
+- new rule page ([74b5150](https://github.com/LibNyanpasu/clash-nyanpasu/commit/74b51509b6a938b1c194fc20889ddfb934f47568)) by @
+- portable script ([3b59936](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3b5993652f7ff9f3e9a274da3e90e276f3d646f9)) by @
+- post version script ([92fc094](https://github.com/LibNyanpasu/clash-nyanpasu/commit/92fc09493e0e41272b9291e599ba6e613de4a224)) by @
+- profile release ([6ea5677](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6ea567742b4f0daeda0a618d47164e9fbb7b9a46)) by @
+- readme ([0ff2fca](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0ff2fcac11955944ce224f4bdbe08a6bc07b4a38)) by @
+- readme ([cac1ce6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cac1ce68956b021e8e00f466d14def81ae8eeb36)) by @
+- readme ([c15c38e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c15c38ea8ffdc74f49cdb5a4a7b852cbc0c4d16f)) by @
+- readme ([#43](https://github.com/LibNyanpasu/clash-nyanpasu/issues/43)) ([9910f6b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9910f6b817348760450d3da704f59e83f09c86d9)) by @
+- readme remove ad ([7daa322](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7daa3224415d1736012a3f099e35d7fb8a315a1f)) by @
+- reduce icon size on macOS ([04c754c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/04c754c0acaa94b2feab0140df2d412e0e5eba2c)) by @
+- rename file ([ee26bb3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ee26bb3b5d9058ea606605fbf95cdda7b3c33028)) by @
+- rename green to portable ([c2449e5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c2449e53c4de65f3da74dba6d2f5ee5a09961cb0)) by @
+- rename productName ([68450d2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/68450d20425c88619f484b0dfd0e26b4355d9194)) by @
+- rename script ([18c48db](https://github.com/LibNyanpasu/clash-nyanpasu/commit/18c48db7f72604e1d4cec8288950b21d082ce35f)) by @
+- rename temp dir ([5cb5d74](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5cb5d74eed704d623147d2d963e009e7d5b1dc69)) by @
+- resolve wintun.dll ([6eee10d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6eee10d46d7c60fd2cbead717365743362f2edb7)) by @
+- rm aarch64 ci ([ec94218](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ec94218a4b46f58829b4340762eacaa4430c4838)) by @
+- rm code ([58366c0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/58366c0b870f9578f9dddd4668641f943f198d32)) by @
+- rm code ([57aef1d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/57aef1d3c206507664e207969e61b17277375ce8)) by @
+- rm code ([fcf570e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fcf570e96ef49b7ca85f060699b3fff9f8969b6d)) by @
+- rm console ([c8ccba0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c8ccba0192c998ef5bfe2447675dfb2bc0f180e7)) by @
+- rm dead code ([72ff9c0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/72ff9c096404e102e52c3d9de8036d93460dba60)) by @
+- rm dead code ([45fc84d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/45fc84d8be35e5653dfd4cc31b7c149b7ea880ca)) by @
+- rm dead code ([732a1f4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/732a1f46940c6beb0e7146ee741be2c131485388)) by @
+- rm file ([4fde644](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4fde64473314ce92f78d938de8079dc6a0a859cc)) by @
+- rm file ([9327006](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9327006e618c4c0dc03abdd1e5ab42b9f0d4bee1)) by @
+- rm file ([db6bc10](https://github.com/LibNyanpasu/clash-nyanpasu/commit/db6bc101966966d74c27912421d4802f5c1752db)) by @
+- rm polyfill ([f33c419](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f33c419ed9bf6edba186b24ae4e456a5510b9299)) by @
+- rm some files ([359b82c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/359b82c29cc3982e864d121d2346f379a617aa9e)) by @
+- rm then ([dc9bcc4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/dc9bcc40ee35892be18015561422086ca5fd9a8c)) by @
+- rust cache ([b54171b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b54171bc2cd0e49d8324a1fb5ff3167442ac83a1)) by @
+- save lock file ([01e8db3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/01e8db317ee27476374e7f8928d0921ccbf595ca)) by @
+- show open app and log dir failed message ([bae721c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bae721c49eb85b590fde3b2d1158f79086d44c9f)) by @
+- something ([7d878d2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7d878d25519e30bdeb0f7e2df4685554edde37ff)) by @
+- someting ([860c44e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/860c44e93df067e9ad1558ba20fcd30d1284ec5e)) by @
+- switch updater endpoints ([3459a16](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3459a16b48caa5e379e03395277cf3062442db7d)) by @
+- tag name ([1f20845](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1f208454aea793b368fe267ecfc9f71cffc24366)) by @
+- tauri allowList ([2f6efbe](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2f6efbed637ccf3c8558a231dff1bbe7aa47afe6)) by @
+- tauri feature ([991897a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/991897aff4432adb43cfc6e5e65db1e83f0779fb)) by @
+- tauri updater env ([74bbd3c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/74bbd3c3a2ba10bf064c08c80c6d6e3b7a5ab3a0)) by @
+- temp ([182bf49](https://github.com/LibNyanpasu/clash-nyanpasu/commit/182bf49ad0c327a9c9e65c1b81924b9220d521cc)) by @
+- test ci ([bf180e6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bf180e6a2c2ca84b8fb5077b023ab3e7c4e31204)) by @
+- test ci ([864a582](https://github.com/LibNyanpasu/clash-nyanpasu/commit/864a5820c9cc9dd4401d5510733f71260ac8ae9e)) by @
+- test ci ([a3a724e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a3a724e2e6ad37dc65abc45e5ce26880be87d1e8)) by @
+- test ci ([73235c8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/73235c86993997dd0d34672973e2a497e298b613)) by @
+- test ci ([c2e5c7c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c2e5c7cf385a5d1326eb2481d6a2431440e2255c)) by @
+- test ci ([bac5734](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bac57345277aef33292d896716a08042afbadfa7)) by @
+- test ci ([a173624](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a17362437ac55d5c042723a4acfa3051b794a144)) by @
+- test ci ([5421c94](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5421c94853c710ef1bdd112e703a2caea1e481d5)) by @
+- test ci ([a543436](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a5434360bcf5a681d800a7ca9e557a9a19f44008)) by @
+- test ci ([99c855b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/99c855b01bc42a853617640ca1f5946227a392b3)) by @
+- test ci ([c2eaedc](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c2eaedc959c0fddabcf5579f23aed322f31cd4bf)) by @
+- test ci ([66fccd3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/66fccd3c68c3a9dff2e45f4e1bdcee390714d3a5)) by @
+- test ci ([9a4ebf4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9a4ebf4daab3c13d6245e06093377998af41494d)) by @
+- test ci ([591add6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/591add6e0c2741ccbbeefeef34b54a1ccf6e69a4)) by @
+- test ci fix deps ([a631cd6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a631cd67ecbbb655a508bb5ee75205c63a155de4)) by @
+- test linux ([1ea07c4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1ea07c458bf7ffc637d2c54daac25ef05b8f7b61)) by @
+- test: use pnpm ([890f55c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/890f55c9dc62ab99bdde9e4d338e92d3021804ea)) by @
+- tmpl add clash core ([f0ab03a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f0ab03a9fb4832411dd8c537b66b660decd0a0ac)) by @
+- try fix missing libssl3 ([#378](https://github.com/LibNyanpasu/clash-nyanpasu/issues/378)) ([2637918](https://github.com/LibNyanpasu/clash-nyanpasu/commit/26379182db635772fde72e12c74af461baf3ed4d)) by @
+- tsconfig: skip Lib Check ([ae25ade](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ae25ade3186b33dd1e6a27ae0f6488485d04760d)) by @
+- update aarch rule ([5e8dfe7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5e8dfe7267dcb780bd7eb028b65276321ddba596)) by @
+- update actions ([cc96b5a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cc96b5ad0425d71f52943808fd02b193ad9a1bc4)) by @
+- update alpha ci ([0477744](https://github.com/LibNyanpasu/clash-nyanpasu/commit/047774475cba12a2e0951402718ec2015601b2a0)) by @
+- update auto launch ([de90c95](https://github.com/LibNyanpasu/clash-nyanpasu/commit/de90c959e09717d9787c6bafe55c3f6fce92550c)) by @
+- update auto launch ([db324f5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/db324f54eb67951c3c4a0d219f9aeb0f5e8d3410)) by @
+- update check script ([9638eef](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9638eefc91cca295eb9bb1fd24fe36a1e2a92396)) by @
+- update check script ([e7db2a8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e7db2a85739680496a97996b5b0569e4bf5f7190)) by @
+- update check script ([76cf007](https://github.com/LibNyanpasu/clash-nyanpasu/commit/76cf007fff15e7fc30bcf1238e46b3757cdb5c90)) by @
+- update check script ([a13d469](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a13d4698be964e7c7aebe272dd5425e749a528b0)) by @
+- update ci ([241b22a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/241b22a46585f7dc4e474f781de395b549888968)) by @
+- update ci ([525e5f8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/525e5f88ae47c45270ec44ff94cc484fdc447322)) by @
+- update ci ([2f8b391](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2f8b39186fdfee3500e805578647bb907b764822)) by @
+- update ci ([1ac1d6e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1ac1d6e9030460f8a2dae42795dfbc2dee52cf0e)) by @
+- update ci ([664be2d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/664be2d0ba30ca23aa0bb4c59b1042413b891c13)) by @
+- update ci node version ([005eeb0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/005eeb0e0b9e4b8eb9a0fadcacec924448ddf0c9)) by @
+- update clash ([1367c30](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1367c304cfd79ba420ce113b920c413b248b9b5a)) by @
+- update clash ([06e1e14](https://github.com/LibNyanpasu/clash-nyanpasu/commit/06e1e14e02d926348329804f08895a8b2a2830e0)) by @
+- update clash ([ed17551](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ed17551170accc1364fa249a563e788e4eb9074d)) by @
+- update clash ([d00e8f6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d00e8f6e193c1d7aea93dd742944ce8531a04256)) by @
+- update clash ([5b8c246](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5b8c246d5372f46a9e47bfc7c897b1a3734db3b1)) by @
+- update clash ([b79456e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b79456e91b636dd658b0d5dca9d9fb7e5546c69f)) by @
+- update clash ([8643dc4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8643dc43b1026cbd24956e42bdba24d8483658bf)) by @
+- update clash & clash meta ([c2109d2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c2109d245f1c7a2695e852d45afd099cf6d053cd)) by @
+- update clash core ([31978d8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/31978d8de0cc5918c77e5d3e470fa03d5516ac50)) by @
+- update clash core ([8c31629](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8c3162965568b428c9c7d0969fc130a6883a993a)) by @
+- update clash core ([4a74bae](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4a74bae8c74c547469032f70e9c393e04772d589)) by @
+- update clash core ([9f492fa](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9f492fad49f52fdb1d58b4e71bd3f5dea544446c)) by @
+- update clash core version ([#476](https://github.com/LibNyanpasu/clash-nyanpasu/issues/476)) ([af5e0d5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/af5e0d589ec0825ba50485fb5414d88e87fb7cf1)) by @
+- update clash meta ([8a5f12b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8a5f12b97cc3997962896816a7e801e44e88a202)) by @
+- update clash meta ([b0d651e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b0d651ece1db949c7bfb5ddbb6653de8db5bae38)) by @
+- update clash meta ([97be286](https://github.com/LibNyanpasu/clash-nyanpasu/commit/97be28638b872c26b6b9d287051b4931124037f1)) by @
+- update clash meta ([56ccd3a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/56ccd3a0ac1ca6cb59f4834972edc7193bad62ae)) by @
+- update clash meta ([f20f0f0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f20f0f064e8bd27d96f0799ef760234c572464fd)) by @
+- update clash meta ([0cb802e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0cb802ed9a9cc2f2c080600dd114b5cebfc49816)) by @
+- update clash meta ([38e1a4f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/38e1a4febf206cb2a1eae00b76cd778c631e5633)) by @
+- update clash meta version ([5a35ea1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5a35ea116f7ca76a079afe7c0958d6c9a8c955f3)) by @
+- update clash version ([f3a917b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f3a917b5e7b6b11403c599f76c7e1bf3db45f37a)) by @
+- update clash version ([d717fe7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d717fe7e8c43c6192561a44af1d10bbe9b152e68)) by @
+- update clash version ([711b220](https://github.com/LibNyanpasu/clash-nyanpasu/commit/711b220a05c668901d646bbc50f983ea8791c0ba)) by @
+- update clash version ([b5432c3](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b5432c372886075ed1f59d0842cd3b49c40fe451)) by @
+- update clash version ([1581e9b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1581e9b1cd31bb4da5f619dd9830c663462daafe)) by @
+- update clash version ([dc492a2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/dc492a2a0a4fc246022339e87ddbcdfcf301ec50)) by @
+- update clash version ([2f284cf](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2f284cfdc961564d33b073d181d8d9db6c9fa4d8)) by @
+- update clash version ([5cff4e2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5cff4e299bd4baf49c0bb947dad1fdf9fd94201b)) by @
+- update clash version ([0ef1d5d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0ef1d5d0deaa9bd49ef16b0ef36aa2eb30a72514)) by @
+- update clash version ([72ff261](https://github.com/LibNyanpasu/clash-nyanpasu/commit/72ff261fe38dc1c58d34a79a3751dba268689cb6)) by @
+- update comments ([b5d0c2b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b5d0c2b78bacf3676a771d750aa6f85d9b0c39e8)) by @
+- update config ([a35cd28](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a35cd28562a5507eb8bc6d4d5a5a344e562d4364)) by @
+- update copyright ([9cd6c5c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9cd6c5c6245fe179af18cdc0d6541ad61de9e7a7)) by @
+- update dep ([359812b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/359812b7ed13b3a60db8d9bb85db2063ecb30cda)) by @
+- update dependencies ([89bdc8e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/89bdc8ec75c481bef66d973bd30234f1281794f1)) by @
+- Update dependencies ([2078ce7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2078ce7446d647fdd10a212d4ec9e0d927d5fdd7)) by @
+- update deps ([b1f4575](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b1f45752cf95970b7b7129d565aa8b9700326d5d)) by @
+- update deps ([03c8a8e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/03c8a8edb28eeade7080396db88df8aa59151855)) by @
+- update deps ([ff573bf](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ff573bf377d450ef6d98d9b57c0e29bb53ab5dad)) by @
+- update deps ([7287562](https://github.com/LibNyanpasu/clash-nyanpasu/commit/728756289b458ff22abdbdf234c7cffa4ab0d718)) by @
+- update deps ([daf66bc](https://github.com/LibNyanpasu/clash-nyanpasu/commit/daf66bcec4ce64066eaaa5794df459e3bd017315)) by @
+- update deps ([4d97916](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4d979160c21078019d1f65736508571e605d34ff)) by @
+- update deps ([c71ba6f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c71ba6ff8d948a60c5116b04621f245daecb4c9f)) by @
+- update deps ([d93b00c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d93b00cd15f14cfa576611fd2ad3027fd9b19209)) by @
+- update deps ([0309c81](https://github.com/LibNyanpasu/clash-nyanpasu/commit/0309c815b96d7f23dd023faee84436fa655b504f)) by @
+- update deps ([54af0b6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/54af0b675d8b3babdcb857f3217d2932a3301b5b)) by @
+- update deps ([62d4c65](https://github.com/LibNyanpasu/clash-nyanpasu/commit/62d4c65e1c79ab24bd62c932b19b1a33c6994178)) by @
+- update deps ([3bd9287](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3bd9287c5db1922b94f22cdbbf03b08a4678ec5b)) by @
+- update deps ([acf47ac](https://github.com/LibNyanpasu/clash-nyanpasu/commit/acf47ac9475863287b0f0a59eac1f1cbd6ec0585)) by @
+- update deps ([fda24e5](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fda24e5f5a06a384dc3b794fb66149d98e6a0510)) by @
+- update deps ([55cc83a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/55cc83a5d4bb73cd4b0709b2eab327c68a2221c0)) by @
+- update deps ([8637a98](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8637a9823e5a896c16e96a6e72dd6032d3c82779)) by @
+- update deps ([b615c48](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b615c485f78fd9b3ad8e4c228dd60cbda66e0827)) by @
+- update deps ([7aecd83](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7aecd83c4a1a6af92cf1ec304cbc35a5f86770af)) by @
+- update deps ([35aee15](https://github.com/LibNyanpasu/clash-nyanpasu/commit/35aee15b6d9fff055c84ae3bb7d38676b2591724)) by @
+- update deps ([8464e31](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8464e319fd172d30a4eb2fd9d014f56a8aa6ba4a)) by @
+- update deps ([72f10aa](https://github.com/LibNyanpasu/clash-nyanpasu/commit/72f10aaed13ab951ed4f3bfb9e7e9ab0bd6ce532)) by @
+- update deps ([ba29c66](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ba29c66e3b8658dfb796b69a28bff186cc876478)) by @
+- update deps ([a238f7b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a238f7beba4075027ff1106bf76ea6b4973a3f3b)) by @
+- update deps ([b5e229b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b5e229b19c9bc75a134d47d19573e2b8df4ab50b)) by @
+- update deps ([40bcb22](https://github.com/LibNyanpasu/clash-nyanpasu/commit/40bcb229771b83a9e5d1b52b8b905c52dc879098)) by @
+- update deps ([36b9c07](https://github.com/LibNyanpasu/clash-nyanpasu/commit/36b9c079283e535f0928d00e4904ab37c73f935c)) by @
+- update deps ([c72f176](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c72f17605cd2f2674eb95039c1b816ee1702a648)) by @
+- update deps ([f7c7cd1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f7c7cd1d3ca4bd05a5af340aa16127c53ceb49b6)) by @
+- update deps ([4df6571](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4df6571ad916c52adff9acf3fdb0ec08821ad807)) by @
+- update deps ([b6aa50d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b6aa50d3dccd9c64a5cc418b52b4a8c9436bbf0a)) by @
+- update deps ([7e4506c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7e4506c8603f8cd38848f8ebb0a34c7119f00c5f)) by @
+- update deps ([ccb68bc](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ccb68bcda9c34f7423c9d8f955d9d326d21b6610)) by @
+- update deps and app name ([5ef4285](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5ef428555896e33417b01616f88ab69f7dfb3cb3)) by @
+- update geo data to meta, close [#707](https://github.com/LibNyanpasu/clash-nyanpasu/issues/707) ([ab6374e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ab6374e27885acd92c44de66ea8da90f84aa769c)) by @
+- update gh proxy ([78fc47a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/78fc47a9c44d7aa3b1dce5220b1a6e71affb6f76)) by @
+- update issue templates ([9ea08f4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9ea08f4fede0daf1f1259016adc7798b6c8aaa09)) by @
+- update license ([1cd7ae7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1cd7ae7db2a4cbe0ed78a911a509c8266707f62e)) by @
+- update log ([7af2ffc](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7af2ffcebf8fe784ecaba9fefafdee92fea479df)) by @
+- update log ([f39a5ac](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f39a5ac9c2b123e6f9e1049574faf6fc22a0544c)) by @
+- update log ([c49c3cf](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c49c3cf7f08680506a8fd3463169f91e23ebe6b2)) by @
+- update log ([6193395](https://github.com/LibNyanpasu/clash-nyanpasu/commit/61933954f395c6ac0f336e845d26a473091a2244)) by @
+- update log ([30243c8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/30243c84cd21e0011c2dece0bf2a17d1d14a4143)) by @
+- update log ([4c7cc56](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4c7cc563dccb337021905ac2f2ce7c257e488a8b)) by @
+- update log ([6b4f6fc](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6b4f6fc71e7371afea507e0907b6ae02d49ca629)) by @
+- update log ([88aa270](https://github.com/LibNyanpasu/clash-nyanpasu/commit/88aa27072863fbd49e97613b88b6a4238aaa38e2)) by @
+- update log ([eb770ed](https://github.com/LibNyanpasu/clash-nyanpasu/commit/eb770ede1a1086e69e651e7af5c719887c82552d)) by @
+- update log ([99adfb4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/99adfb4a9e8d0b4f1c90e53e17effe485d498720)) by @
+- update log ([351cb39](https://github.com/LibNyanpasu/clash-nyanpasu/commit/351cb391e546b9fc9493ea51a51e134b294018fa)) by @
+- update log ([446d2ab](https://github.com/LibNyanpasu/clash-nyanpasu/commit/446d2ab3af95080b3e83548f39518fea9efd2188)) by @
+- update log ([e545d55](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e545d552f684184022a13961292459c7243fa963)) by @
+- update log ([48f3a93](https://github.com/LibNyanpasu/clash-nyanpasu/commit/48f3a934c94a24643ae10387b53247cc4daa6fbf)) by @
+- update log ([eedc4ab](https://github.com/LibNyanpasu/clash-nyanpasu/commit/eedc4ab6488acfbf29a2902206c48f72193d9bfd)) by @
+- update log ([68d2a6e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/68d2a6e951b9f7c7b4ddf5c91dfcd924b2becb68)) by @
+- update log ([23ebeb1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/23ebeb1cc05a0f59a9d1a9b79e275fba71d8264b)) by @
+- update log ([6507426](https://github.com/LibNyanpasu/clash-nyanpasu/commit/65074264b8d98e6d042d950294e90da624685dfb)) by @
+- update log ([f4a1f1f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f4a1f1fdc819dbafcb4efd29fe1a32464462db7d)) by @
+- update log ([aa0740f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/aa0740ff94d413be29e6f273a8e407066e0905bc)) by @
+- update log ([f54ba05](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f54ba05b00401d731bdbac9f6b279ea7d71430f2)) by @
+- update log ([b829183](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b8291837fce95215dff1bbde1ddf895e8a0e136b)) by @
+- update log ([74e10dc](https://github.com/LibNyanpasu/clash-nyanpasu/commit/74e10dc01258af360020319b2002736cf42e2162)) by @
+- update log ([d298bda](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d298bda92c84c6c16c0177176011e4672a462864)) by @
+- update log ([fe0ad0f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/fe0ad0f5cb8aa8b996e3a0219142976ba59b5496)) by @
+- update log ([4140fc8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4140fc86ee83935db16b00a2b290e4bb26d53633)) by @
+- update log ([4678fc7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4678fc7dde9354f2d759ecf53a9b4794703c1065)) by @
+- update log ([366c465](https://github.com/LibNyanpasu/clash-nyanpasu/commit/366c465cade5eb5f845f4bcd46cc10dacea15916)) by @
+- update log supports ([6a4924b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6a4924bb16550c896ed503e8f16b597c0208fb18)) by @
+- update macos icon ([2f1ea08](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2f1ea08b8a63aaf6158f4d732d99c2ce09c10fdb)) by @
+- update mmdb ([1c8fb33](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1c8fb3392ad5c7aea71dbfc2781b3acba62f483d)) by @
+- update mmdb ([c9d9909](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c9d9909d74ed94a72fd22a34051758edbae918bc)) by @
+- update product name ([5cfe5a4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5cfe5a4939a1b37d587c85ca8a5e6ed333d38894)) by @
+- update profuct name ([584d490](https://github.com/LibNyanpasu/clash-nyanpasu/commit/584d490856b50c6053bec4e4dd7da5ea78bf7b54)) by @
+- update publish script ([b6543bd](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b6543bd87f6f31eb6b4d648cbab46c5db64ca574)) by @
+- update readme ([afc77e7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/afc77e7adc1c3685a16358c1f02c45c076610ac4)) by @
+- update readme ([024f42f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/024f42fce6b1f32531328a426d820beb6911e0d1)) by @
+- update readme ([954b21c](https://github.com/LibNyanpasu/clash-nyanpasu/commit/954b21cf39e4da320a3c5624fa04499f5e003814)) by @
+- update readme ([12ac7bb](https://github.com/LibNyanpasu/clash-nyanpasu/commit/12ac7bb338c0ef310329bd2ab77f4a3d2bf7680b)) by @
+- update readme ([f94734a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f94734a5c80126762b57834ab8da4b87ccc5df9d)) by @
+- update readme ([1fba903](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1fba9039afd60222f1cb9f597ebfa0ce5307f789)) by @
+- update README ([#435](https://github.com/LibNyanpasu/clash-nyanpasu/issues/435)) ([d191877](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d19187700231c27204e2b22af1716ea51be04556)) by @
+- update README.md ([f7218aa](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f7218aaa9e276d9bab437ec43c20c2675618e696)) by @
+- update release link ([26d6bcb](https://github.com/LibNyanpasu/clash-nyanpasu/commit/26d6bcb074ab2c6b173f717c98c89d9074d1064c)) by @
+- update resource ([019b2a1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/019b2a1681c7702689b896c8370ba7fb3a51d22f)) by @
+- update tauri ([91b8504](https://github.com/LibNyanpasu/clash-nyanpasu/commit/91b8504df55fe9c70bde77a453cd4731d3ac77ee)) by @
+- update tauri ([bd82308](https://github.com/LibNyanpasu/clash-nyanpasu/commit/bd82308024971bc8c91b6de3398a49e2f6e642e9)) by @
+- update tauri ([7e47f8f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/7e47f8f8939ae3f978295777de46bdb74cd4e481)) by @
+- update tauri action ([dbd09a8](https://github.com/LibNyanpasu/clash-nyanpasu/commit/dbd09a87434b6ea8b7f9a1301ca44bb25accc1e1)) by @
+- update tauri version ([8a052bb](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8a052bbed61d5cb346b5039100f65d0b07f7ab58)) by @
+- update toml file ([98bc9b0](https://github.com/LibNyanpasu/clash-nyanpasu/commit/98bc9b07b8d24195de9a7f37e7550c3b948a5828)) by @
+- update version ([55b7af2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/55b7af26236eeaed00993ddc462d063449ed2537)) by @
+- update version ([18750f2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/18750f275aee44c5136e0ca58fea460317f61d17)) by @
+- update version ([d686a85](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d686a853f4cad9b0bbfa2efd62fff971a4eda916)) by @
+- update version ([b286b8f](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b286b8f8c16de3486e0ff29d405607a07ec852bb)) by @
+- updater json supports arch field ([ab82db9](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ab82db9e22b704ffb536a00541cc6c004fb76ddd)) by @
+- updater proxy ([ab0d516](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ab0d516d911fa8308a22c7d6348800cd6581f7b1)) by @
+- updater script ([be4ad89](https://github.com/LibNyanpasu/clash-nyanpasu/commit/be4ad8947f6770c9c6f3d171b85e71734cda4807)) by @
+- Upgrade to React 18 ([#495](https://github.com/LibNyanpasu/clash-nyanpasu/issues/495)) ([30c2680](https://github.com/LibNyanpasu/clash-nyanpasu/commit/30c2680b6f9f7c6980c3ee40a1e3dcd04e89ddbb)) by @
+- use log crate ([df435fc](https://github.com/LibNyanpasu/clash-nyanpasu/commit/df435fc9dfe51a35cc3530721b4fe0a23317ebf7)) by @
+- use tauri cli ([7212797](https://github.com/LibNyanpasu/clash-nyanpasu/commit/72127979c360cdc303237b5880d4a53da9a04831)) by @
+- use ubuntu 18.04 ([05eca8e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/05eca8e4d8f282ff3c1e8860cc740459b9ef992f)) by @
+- use ubuntu latest ([c00ed8a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c00ed8aa5a9dbdc4dd025706090ff7095a5a7508)) by @
+- Use your own update endpoints and public keys ([ee2135b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ee2135bfb3f609ea80aea5a4bdf16d2fccdcfc7d)) by @
 
 ### 📚 Documentation
 
-- fix img width ([c2673cd](https://github.com/keiko233/clash-nyanpasu/commit/c2673cd396bf3228f2a87b476c11ebb9d1f1d088)) by @
-- update ([8eb1528](https://github.com/keiko233/clash-nyanpasu/commit/8eb152816ab0e12e30027a029bf8590540571747)) by @
+- fix img width ([c2673cd](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c2673cd396bf3228f2a87b476c11ebb9d1f1d088)) by @
+- update ([8eb1528](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8eb152816ab0e12e30027a029bf8590540571747)) by @
 
 ### 💅 Styles
 
-- resolve formatting problem ([c278f1a](https://github.com/keiko233/clash-nyanpasu/commit/c278f1af00816e80bcc673871eaaa386d0787549)) by @
+- resolve formatting problem ([c278f1a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c278f1af00816e80bcc673871eaaa386d0787549)) by @
 
 ### 🔨 Refactoring
 
-- adjust all path methods and reduce unwrap ([34daffb](https://github.com/keiko233/clash-nyanpasu/commit/34daffbc966755568153130052c7d3219847e770)) by @
-- adjust base components export ([8bb4803](https://github.com/keiko233/clash-nyanpasu/commit/8bb4803ff96b9238257d0ba3a90decbf1c88c49d)) by @
-- adjust dirs structure ([4719649](https://github.com/keiko233/clash-nyanpasu/commit/4719649bf4a880bd0eb6a7c2ced93a067b5eca55)) by @
-- adjust setting dialog component ([892b919](https://github.com/keiko233/clash-nyanpasu/commit/892b919cf3ce0dd3b376218acbfcfa2e201b296b)) by @
-- api and command ([e76855a](https://github.com/keiko233/clash-nyanpasu/commit/e76855ad0eafc29de95f2471dd59362ee5bdc7f9)) by @
-- copy_clash_env ([71a23a4](https://github.com/keiko233/clash-nyanpasu/commit/71a23a4e0216e7b77d4e640fa0db25b9beeca5e4)) by @
-- done ([2667ed1](https://github.com/keiko233/clash-nyanpasu/commit/2667ed13f15fc10f8a99473e54b7743027aeb9fe)) by @
-- enhanced mode ui component ([c927419](https://github.com/keiko233/clash-nyanpasu/commit/c927419c9915bfb3e558ec6df0af30618b09dc19)) by @
-- fix ([5a35c5b](https://github.com/keiko233/clash-nyanpasu/commit/5a35c5b92850db9fa632fac97e63360ac4fc6dbd)) by @
-- fix ([dc94157](https://github.com/keiko233/clash-nyanpasu/commit/dc941575fee2cd0524e1e5e65c85eb079949afdd)) by @
-- fix ([d2852bb](https://github.com/keiko233/clash-nyanpasu/commit/d2852bb34a79ea4742058ef457db9d10eb8c10c3)) by @
-- for windows ([df93cb1](https://github.com/keiko233/clash-nyanpasu/commit/df93cb103c2f22090deb8e6db70c550a334d19e4)) by @
-- **hotkey:** use tauri global shortcut ([8bddf30](https://github.com/keiko233/clash-nyanpasu/commit/8bddf30dcf1603ad7eb0959d912e497d2bbff8db)) by @
-- impl as struct methods ([03f9fa4](https://github.com/keiko233/clash-nyanpasu/commit/03f9fa4bc26241a361c99ae2598756c40b19ca4f)) by @
-- impl structs methods ([e369311](https://github.com/keiko233/clash-nyanpasu/commit/e369311fc261ce4ebbd7ddb7e17caa441e7f5b34)) by @
-- import profile ([eb3daf7](https://github.com/keiko233/clash-nyanpasu/commit/eb3daf7b3ed513b930de5e3fd703e3a4ffc718d3)) by @
-- mode manage on tray ([6a51e93](https://github.com/keiko233/clash-nyanpasu/commit/6a51e93ded3b5cb5cb0c5c0636fbba0b2ff87c8c)) by @
-- mutex ([3076fd1](https://github.com/keiko233/clash-nyanpasu/commit/3076fd19c175a2f07635f4ed70adb4ac7454acf0)) by @
-- notice caller ([4e2cb30](https://github.com/keiko233/clash-nyanpasu/commit/4e2cb30db74eeb2d90b403df24b49294943acb00)) by @
-- optimize ([47c8ccb](https://github.com/keiko233/clash-nyanpasu/commit/47c8ccb0e54fa0c792600389d5b2cea3d20e84ff)) by @
-- optimize enhance mode strategy ([5a38468](https://github.com/keiko233/clash-nyanpasu/commit/5a38468144ff9d3b06776dc82b2b172a541d861f)) by @
-- profile config ([749df89](https://github.com/keiko233/clash-nyanpasu/commit/749df8922993364a5321d1e9fb8e22bee5c2aaa8)) by @
-- proxy head ([453d798](https://github.com/keiko233/clash-nyanpasu/commit/453d798fcfbee2d67db55023513126ad76787f07)) by @
-- rename ([9ad8f71](https://github.com/keiko233/clash-nyanpasu/commit/9ad8f71d7c41188503e6aac458f5996c7d5b703d)) by @
-- rename profiles & command state ([8d7ab9d](https://github.com/keiko233/clash-nyanpasu/commit/8d7ab9d05e9b44384bf6fb976f118f45306d6c94)) by @
-- rm code ([f24cbb6](https://github.com/keiko233/clash-nyanpasu/commit/f24cbb6692b2576001ef204834dfc1bcdff4e46e)) by @
-- rm dead code ([1880da6](https://github.com/keiko233/clash-nyanpasu/commit/1880da63516f9bba32cf4ca7a6934dbf23081e6c)) by @
-- rm update item block_on ([c8e6f3a](https://github.com/keiko233/clash-nyanpasu/commit/c8e6f3a627e8dcc421d8c586e143056f3816a417)) by @
-- setting page ([a3a3db6](https://github.com/keiko233/clash-nyanpasu/commit/a3a3db6abbea703c05aaae95cdc4a3325dac1b50)) by @
-- something ([9c43b31](https://github.com/keiko233/clash-nyanpasu/commit/9c43b31fc08022564f562e62854d0864a654f0c0)) by @
-- ts path alias ([f3341f2](https://github.com/keiko233/clash-nyanpasu/commit/f3341f201fdc5fa21cd0ed7df6deb8dde4b61f86)) by @
-- ui theme ([309c33e](https://github.com/keiko233/clash-nyanpasu/commit/309c33e190537ca921298211a19561cfe64cd13e)) by @
-- update profile menu ([cb8e162](https://github.com/keiko233/clash-nyanpasu/commit/cb8e162f4ea57af3b6ed25ee028d607e7142b8b5)) by @
-- use anyhow to handle error ([dbf380a](https://github.com/keiko233/clash-nyanpasu/commit/dbf380a0d14ded0672378eb5f162b62556f62e46)) by @
-- verge ([5f7a1fa](https://github.com/keiko233/clash-nyanpasu/commit/5f7a1fa5cd22497d5c769c74bc6495f331394e08)) by @
-- wip ([63b474a](https://github.com/keiko233/clash-nyanpasu/commit/63b474a32c7338d67eaf56223ac532b90ecc620b)) by @
-- wip ([abdbf15](https://github.com/keiko233/clash-nyanpasu/commit/abdbf158d1700a77dbc2ee1a0bb18dcc2b0edc75)) by @
-- wip ([ee68d80](https://github.com/keiko233/clash-nyanpasu/commit/ee68d80d0a876dd9216b8248d8668e2bdfe28a3b)) by @
-- wip ([b03c52a](https://github.com/keiko233/clash-nyanpasu/commit/b03c52a501200a0049d3d4a64d2549b601e4930a)) by @
-- wip ([b8ad328](https://github.com/keiko233/clash-nyanpasu/commit/b8ad328cdea286013df532ac358a4034ea03f5aa)) by @
-- wip ([697c250](https://github.com/keiko233/clash-nyanpasu/commit/697c25015e08bb6e207e6733622fe018f923c558)) by @
+- adjust all path methods and reduce unwrap ([34daffb](https://github.com/LibNyanpasu/clash-nyanpasu/commit/34daffbc966755568153130052c7d3219847e770)) by @
+- adjust base components export ([8bb4803](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8bb4803ff96b9238257d0ba3a90decbf1c88c49d)) by @
+- adjust dirs structure ([4719649](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4719649bf4a880bd0eb6a7c2ced93a067b5eca55)) by @
+- adjust setting dialog component ([892b919](https://github.com/LibNyanpasu/clash-nyanpasu/commit/892b919cf3ce0dd3b376218acbfcfa2e201b296b)) by @
+- api and command ([e76855a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e76855ad0eafc29de95f2471dd59362ee5bdc7f9)) by @
+- copy_clash_env ([71a23a4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/71a23a4e0216e7b77d4e640fa0db25b9beeca5e4)) by @
+- done ([2667ed1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/2667ed13f15fc10f8a99473e54b7743027aeb9fe)) by @
+- enhanced mode ui component ([c927419](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c927419c9915bfb3e558ec6df0af30618b09dc19)) by @
+- fix ([5a35c5b](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5a35c5b92850db9fa632fac97e63360ac4fc6dbd)) by @
+- fix ([dc94157](https://github.com/LibNyanpasu/clash-nyanpasu/commit/dc941575fee2cd0524e1e5e65c85eb079949afdd)) by @
+- fix ([d2852bb](https://github.com/LibNyanpasu/clash-nyanpasu/commit/d2852bb34a79ea4742058ef457db9d10eb8c10c3)) by @
+- for windows ([df93cb1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/df93cb103c2f22090deb8e6db70c550a334d19e4)) by @
+- **hotkey:** use tauri global shortcut ([8bddf30](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8bddf30dcf1603ad7eb0959d912e497d2bbff8db)) by @
+- impl as struct methods ([03f9fa4](https://github.com/LibNyanpasu/clash-nyanpasu/commit/03f9fa4bc26241a361c99ae2598756c40b19ca4f)) by @
+- impl structs methods ([e369311](https://github.com/LibNyanpasu/clash-nyanpasu/commit/e369311fc261ce4ebbd7ddb7e17caa441e7f5b34)) by @
+- import profile ([eb3daf7](https://github.com/LibNyanpasu/clash-nyanpasu/commit/eb3daf7b3ed513b930de5e3fd703e3a4ffc718d3)) by @
+- mode manage on tray ([6a51e93](https://github.com/LibNyanpasu/clash-nyanpasu/commit/6a51e93ded3b5cb5cb0c5c0636fbba0b2ff87c8c)) by @
+- mutex ([3076fd1](https://github.com/LibNyanpasu/clash-nyanpasu/commit/3076fd19c175a2f07635f4ed70adb4ac7454acf0)) by @
+- notice caller ([4e2cb30](https://github.com/LibNyanpasu/clash-nyanpasu/commit/4e2cb30db74eeb2d90b403df24b49294943acb00)) by @
+- optimize ([47c8ccb](https://github.com/LibNyanpasu/clash-nyanpasu/commit/47c8ccb0e54fa0c792600389d5b2cea3d20e84ff)) by @
+- optimize enhance mode strategy ([5a38468](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5a38468144ff9d3b06776dc82b2b172a541d861f)) by @
+- profile config ([749df89](https://github.com/LibNyanpasu/clash-nyanpasu/commit/749df8922993364a5321d1e9fb8e22bee5c2aaa8)) by @
+- proxy head ([453d798](https://github.com/LibNyanpasu/clash-nyanpasu/commit/453d798fcfbee2d67db55023513126ad76787f07)) by @
+- rename ([9ad8f71](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9ad8f71d7c41188503e6aac458f5996c7d5b703d)) by @
+- rename profiles & command state ([8d7ab9d](https://github.com/LibNyanpasu/clash-nyanpasu/commit/8d7ab9d05e9b44384bf6fb976f118f45306d6c94)) by @
+- rm code ([f24cbb6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f24cbb6692b2576001ef204834dfc1bcdff4e46e)) by @
+- rm dead code ([1880da6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/1880da63516f9bba32cf4ca7a6934dbf23081e6c)) by @
+- rm update item block_on ([c8e6f3a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c8e6f3a627e8dcc421d8c586e143056f3816a417)) by @
+- setting page ([a3a3db6](https://github.com/LibNyanpasu/clash-nyanpasu/commit/a3a3db6abbea703c05aaae95cdc4a3325dac1b50)) by @
+- something ([9c43b31](https://github.com/LibNyanpasu/clash-nyanpasu/commit/9c43b31fc08022564f562e62854d0864a654f0c0)) by @
+- ts path alias ([f3341f2](https://github.com/LibNyanpasu/clash-nyanpasu/commit/f3341f201fdc5fa21cd0ed7df6deb8dde4b61f86)) by @
+- ui theme ([309c33e](https://github.com/LibNyanpasu/clash-nyanpasu/commit/309c33e190537ca921298211a19561cfe64cd13e)) by @
+- update profile menu ([cb8e162](https://github.com/LibNyanpasu/clash-nyanpasu/commit/cb8e162f4ea57af3b6ed25ee028d607e7142b8b5)) by @
+- use anyhow to handle error ([dbf380a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/dbf380a0d14ded0672378eb5f162b62556f62e46)) by @
+- verge ([5f7a1fa](https://github.com/LibNyanpasu/clash-nyanpasu/commit/5f7a1fa5cd22497d5c769c74bc6495f331394e08)) by @
+- wip ([63b474a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/63b474a32c7338d67eaf56223ac532b90ecc620b)) by @
+- wip ([abdbf15](https://github.com/LibNyanpasu/clash-nyanpasu/commit/abdbf158d1700a77dbc2ee1a0bb18dcc2b0edc75)) by @
+- wip ([ee68d80](https://github.com/LibNyanpasu/clash-nyanpasu/commit/ee68d80d0a876dd9216b8248d8668e2bdfe28a3b)) by @
+- wip ([b03c52a](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b03c52a501200a0049d3d4a64d2549b601e4930a)) by @
+- wip ([b8ad328](https://github.com/LibNyanpasu/clash-nyanpasu/commit/b8ad328cdea286013df532ac358a4034ea03f5aa)) by @
+- wip ([697c250](https://github.com/LibNyanpasu/clash-nyanpasu/commit/697c25015e08bb6e207e6733622fe018f923c558)) by @
 
 ### ✅ Tests
 
-- windows service ([c733bda](https://github.com/keiko233/clash-nyanpasu/commit/c733bda6c31619f67ae39fc9ed1c0254ede03d9d)) by @
+- windows service ([c733bda](https://github.com/LibNyanpasu/clash-nyanpasu/commit/c733bda6c31619f67ae39fc9ed1c0254ede03d9d)) by @

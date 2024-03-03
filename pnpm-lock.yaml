@@ -101,10 +101,10 @@ dependencies:
 
 devDependencies:
   '@actions/core':
-    specifier: ^1.10.1
+    specifier: 1.10.1
     version: 1.10.1
   '@actions/exec':
-    specifier: ^1.1.1
+    specifier: 1.1.1
     version: 1.1.1
   '@actions/github':
     specifier: 6.0.0

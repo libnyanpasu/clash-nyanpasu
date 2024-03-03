@@ -90,6 +90,7 @@ jobs:
           pnpm check
 
       - name: Prepare Tauri manifest (nsis)
+        if: startsWith(matrix.targets.os, 'windows-')
         run: |
           pnpm prepare:release --nsis
 

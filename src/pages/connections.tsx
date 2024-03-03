@@ -9,6 +9,7 @@ import { useClashInfo } from "@/hooks/use-clash";
 import { useWebsocket } from "@/hooks/use-websocket";
 import { closeAllConnections } from "@/services/api";
 import { atomConnectionSetting } from "@/services/states";
+import { classNames } from "@/utils";
 import parseTraffic from "@/utils/parse-traffic";
 import {
   ArrowDownward,
@@ -34,7 +35,6 @@ import { useTranslation } from "react-i18next";
 import { Virtuoso } from "react-virtuoso";
 import { useRecoilState } from "recoil";
 import styles from "./connections..module.scss";
-import { classNames } from "@/utils";
 
 const initConn = { uploadTotal: 0, downloadTotal: 0, connections: [] };
 
@@ -65,8 +65,14 @@ export default function ConnectionsPage() {
 
   const filterConn = useMemo(() => {
     const orderFunc = orderOpts[curOrderOpt];
-    const connections = connData.connections.filter((conn) =>
-      (conn.metadata.host || conn.metadata.destinationIP)?.includes(filterText),
+    const connections = connData.connections.filter(
+      (conn) =>
+        (conn.metadata.host || conn.metadata.destinationIP)?.includes(
+          filterText,
+        ) ||
+        (conn.metadata.process || conn.metadata.processPath)
+          ?.toLowerCase()
+          .includes(filterText.toLowerCase()),
     );
 
     if (orderFunc) return orderFunc(connections);

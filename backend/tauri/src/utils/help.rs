@@ -1,13 +1,24 @@
 use crate::config::nyanpasu::ExternalControllerPortStrategy;
 use anyhow::{anyhow, bail, Context, Result};
+use display_info::DisplayInfo;
+use fast_image_resize as fr;
+use image::{codecs::png::PngEncoder, io::Reader as ImageReader, ColorType, ImageEncoder};
 use nanoid::nanoid;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_yaml::{Mapping, Value};
-use std::{fs, path::PathBuf, str::FromStr};
+use std::{
+    fs,
+    io::{BufWriter, Cursor},
+    num::NonZeroU32,
+    path::PathBuf,
+    str::FromStr,
+};
 use tauri::{
     api::shell::{open, Program},
     Manager,
 };
+use tracing::{debug, warn};
+use tracing_attributes::instrument;
 
 /// read data from yaml as struct T
 pub fn read_yaml<T: DeserializeOwned>(path: &PathBuf) -> Result<T> {
@@ -138,6 +149,73 @@ pub fn get_clash_external_port(
         }
     }
     Ok(port)
+}
+
+pub fn resize_tray_image(img: &[u8], scale_factor: f64) -> Result<Vec<u8>> {
+    let img = ImageReader::new(Cursor::new(img))
+        .with_guessed_format()?
+        .decode()?;
+    let width = NonZeroU32::new(img.width()).unwrap_or(NonZeroU32::new(16).unwrap());
+    let height = NonZeroU32::new(img.height()).unwrap_or(NonZeroU32::new(16).unwrap());
+    let mut src_image = fr::Image::from_vec_u8(
+        width,
+        height,
+        img.to_rgba8().into_raw(),
+        fr::PixelType::U8x4,
+    )
+    .context("failed to parse image")?;
+    // Multiple RGB channels of source image by alpha channel
+    let alpha_mul_div = fr::MulDiv::default();
+    alpha_mul_div
+        .multiply_alpha_inplace(&mut src_image.view_mut())
+        .context("failed to multiply alpha")?;
+    // Create container for data of destination image
+    let size = (32_f64 * scale_factor).round() as u32; // 32px is the base tray size as the dpi is 96
+    let dst_width = NonZeroU32::new(size).unwrap();
+    let dst_height = NonZeroU32::new(size).unwrap();
+    let mut dst_image = fr::Image::new(dst_width, dst_height, src_image.pixel_type());
+
+    // Get mutable view of destination image data
+    let mut dst_view = dst_image.view_mut();
+
+    // Create Resizer instance and resize source image
+    // into buffer of destination image
+    let mut resizer = fr::Resizer::new(fr::ResizeAlg::Convolution(fr::FilterType::Lanczos3));
+    resizer
+        .resize(&src_image.view(), &mut dst_view)
+        .context("failed to resize image")?;
+    // Divide RGB channels of destination image by alpha
+    alpha_mul_div.divide_alpha_inplace(&mut dst_view).unwrap();
+
+    // Write destination image as PNG-file
+    let mut result_buf = BufWriter::new(Vec::new());
+    PngEncoder::new(&mut result_buf).write_image(
+        dst_image.buffer(),
+        dst_width.get(),
+        dst_height.get(),
+        ColorType::Rgba8,
+    )?;
+    Ok(result_buf.buffer().to_vec())
+}
+
+#[instrument]
+pub fn get_max_scale_factor() -> f64 {
+    match DisplayInfo::all() {
+        Ok(displays) => {
+            let mut scale_factor = 0.0;
+            debug!("displays: {:?}", displays);
+            for display in displays {
+                if display.scale_factor > scale_factor {
+                    scale_factor = display.scale_factor;
+                }
+            }
+            scale_factor as f64
+        }
+        Err(err) => {
+            warn!("failed to get display info: {:?}", err);
+            1.0_f64
+        }
+    }
 }
 
 #[macro_export]

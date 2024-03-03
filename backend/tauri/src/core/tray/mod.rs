@@ -1,3 +1,4 @@
+use super::storage;
 use crate::{cmds, config::Config, feat, utils::resolve};
 use anyhow::Result;
 use rust_i18n::t;
@@ -5,16 +6,18 @@ use tauri::{
     api, AppHandle, CustomMenuItem, Manager, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
     SystemTraySubmenu,
 };
+use tracing_attributes::instrument;
 
-use super::storage;
+mod icon;
+pub mod proxies;
+pub use self::icon::on_scale_factor_changed;
+use self::icon::TrayIcon;
+use self::proxies::SystemTrayMenuProxiesExt;
 
 pub struct Tray {}
 
-pub mod proxies;
-
-use self::proxies::SystemTrayMenuProxiesExt;
-
 impl Tray {
+    #[instrument(skip(_app_handle))]
     pub fn tray_menu(_app_handle: &AppHandle) -> SystemTrayMenu {
         let version = env!("NYANPASU_VERSION");
 
@@ -68,6 +71,7 @@ impl Tray {
             .add_item(CustomMenuItem::new("quit", t!("tray.quit")).accelerator("CmdOrControl+Q"))
     }
 
+    #[instrument(skip(app_handle))]
     pub fn update_systray(app_handle: &AppHandle) -> Result<()> {
         app_handle
             .tray_handle()
@@ -76,6 +80,7 @@ impl Tray {
         Ok(())
     }
 
+    #[instrument(skip(app_handle))]
     pub fn update_part(app_handle: &AppHandle) -> Result<()> {
         let mode = crate::utils::config::get_current_clash_mode();
 
@@ -93,15 +98,15 @@ impl Tray {
 
         #[cfg(target_os = "windows")]
         {
-            let indication_icon = if *tun_mode {
-                include_bytes!("../../../icons/win-tray-icon-blue.png").to_vec()
+            let mode = if *tun_mode {
+                TrayIcon::Tun
             } else if *system_proxy {
-                include_bytes!("../../../icons/win-tray-icon-pink.png").to_vec()
+                TrayIcon::SystemProxy
             } else {
-                include_bytes!("../../../icons/win-tray-icon.png").to_vec()
+                TrayIcon::Normal
             };
-
-            let _ = tray.set_icon(tauri::Icon::Raw(indication_icon));
+            let icon = icon::get_icon(&mode);
+            let _ = tray.set_icon(tauri::Icon::Raw(icon));
         }
 
         let _ = tray.get_item("system_proxy").set_selected(*system_proxy);
@@ -128,6 +133,7 @@ impl Tray {
         Ok(())
     }
 
+    #[instrument(skip(app_handle, event))]
     pub fn on_system_tray_event(app_handle: &AppHandle, event: SystemTrayEvent) {
         match event {
             SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {

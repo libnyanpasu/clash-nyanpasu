@@ -229,6 +229,9 @@ fn main() -> std::io::Result<()> {
         tauri::RunEvent::WindowEvent { label, event, .. } => {
             if label == "main" {
                 match event {
+                    tauri::WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                        core::tray::on_scale_factor_changed(scale_factor);
+                    }
                     tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {
                         // log::info!(target: "app", "window close requested");
                         let _ = resolve::save_window_state(app_handle, true);

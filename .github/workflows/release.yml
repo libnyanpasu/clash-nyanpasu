@@ -170,3 +170,4 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_TO: "@keikolog"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -245,8 +245,8 @@ devDependencies:
     specifier: 1.1.0
     version: 1.1.0(postcss-html@1.6.0)(stylelint@16.2.1)
   stylelint-config-recess-order:
-    specifier: 4.6.0
-    version: 4.6.0(stylelint@16.2.1)
+    specifier: 5.0.0
+    version: 5.0.0(stylelint@16.2.1)
   stylelint-config-standard:
     specifier: 36.0.0
     version: 36.0.0(stylelint@16.2.1)
@@ -6345,10 +6345,10 @@ packages:
       stylelint: 16.2.1(typescript@5.3.3)
     dev: true
 
-  /stylelint-config-recess-order@4.6.0(stylelint@16.2.1):
-    resolution: {integrity: sha512-V76fhv3YtcNXh/hyAuAdSzi5FmcrG54Mp2AThJ3D/PTMTSYzUPd7GIhP6z9mTqnRhmkk6YTfcu/JWB8h+Yrcaw==}
+  /stylelint-config-recess-order@5.0.0(stylelint@16.2.1):
+    resolution: {integrity: sha512-D+/Got844O96No2mj/H2NhLjj555iKAy/Mea+JCerfKB9TBKQW3/IudSVkTCxE4QiRDLldfH15x6FH1D1Anjhw==}
     peerDependencies:
-      stylelint: '>=15'
+      stylelint: '>=16'
     dependencies:
       stylelint: 16.2.1(typescript@5.3.3)
       stylelint-order: 6.0.4(stylelint@16.2.1)

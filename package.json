@@ -147,7 +147,7 @@
     "stylelint-config-standard": "36.0.0",
     "stylelint-declaration-block-no-ignored-properties": "2.8.0",
     "stylelint-order": "6.0.4",
-    "stylelint-scss": "6.2.0",
+    "stylelint-scss": "6.2.1",
     "telegraf": "4.16.3",
     "tsx": "4.7.1",
     "typescript": "5.3.3",

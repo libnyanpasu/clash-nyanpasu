@@ -51,8 +51,19 @@ fn main() -> std::io::Result<()> {
     tauri_plugin_deep_link::prepare("moe.elaina.clash.nyanpasu");
 
     // 单例检测
+    #[cfg(not(target_os = "macos"))]
+    let app_name = utils::dirs::APP_NAME.to_string();
+
+    #[cfg(target_os = "macos")]
+    let app_name = api::path::local_data_dir()
+        .unwrap()
+        .into_os_string()
+        .into_string()
+        .unwrap()
+        + utils::dirs::APP_NAME;
+
     let single_instance_result: anyhow::Result<()> =
-        single_instance::SingleInstance::new(utils::dirs::APP_NAME)
+        single_instance::SingleInstance::new(app_name.as_str())
             .context("failed to create single instance")
             .map(|instance| {
                 if !instance.is_single() {

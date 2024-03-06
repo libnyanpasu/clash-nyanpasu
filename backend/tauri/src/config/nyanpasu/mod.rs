@@ -164,10 +164,10 @@ pub struct IVerge {
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
 pub struct WindowState {
-    pub width: f64,
-    pub height: f64,
-    pub x: f64,
-    pub y: f64,
+    pub width: u32,
+    pub height: u32,
+    pub x: i32,
+    pub y: i32,
     pub maximized: bool,
     pub fullscreen: bool,
 }

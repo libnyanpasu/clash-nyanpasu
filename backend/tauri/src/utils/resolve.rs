@@ -15,7 +15,7 @@ use anyhow::Result;
 use semver::Version;
 use serde_yaml::Mapping;
 use std::net::TcpListener;
-use tauri::{api::process::Command, App, AppHandle, Manager, PhysicalPosition, PhysicalSize, Size};
+use tauri::{api::process::Command, App, AppHandle, Manager, PhysicalPosition, PhysicalSize};
 
 pub fn find_unused_port() -> Result<u16> {
     match TcpListener::bind("127.0.0.1:0") {
@@ -127,10 +127,8 @@ pub fn create_window(app_handle: &AppHandle) {
     .min_inner_size(600.0, 520.0);
     let win_state = &Config::verge().latest().window_size_state.clone();
     match win_state {
-        Some(state) => {
-            builder = builder
-                .inner_size(state.width, state.height)
-                .position(state.x, state.y)
+        Some(_) => {
+            builder = builder.inner_size(800., 800.).position(0., 0.);
         }
         _ => {
             #[cfg(target_os = "windows")]
@@ -161,6 +159,20 @@ pub fn create_window(app_handle: &AppHandle) {
             .build()
         {
             Ok(win) => {
+                if win_state.is_some() {
+                    let state = win_state.as_ref().unwrap();
+                    win.set_position(PhysicalPosition {
+                        x: state.x,
+                        y: state.y,
+                    })
+                    .unwrap();
+                    win.set_size(PhysicalSize {
+                        width: state.width,
+                        height: state.height,
+                    })
+                    .unwrap();
+                }
+
                 if let Some(state) = win_state {
                     if state.maximized {
                         trace_err!(win.maximize(), "set win maximize");
@@ -172,7 +184,7 @@ pub fn create_window(app_handle: &AppHandle) {
                 trace_err!(set_shadow(&win, true), "set win shadow");
                 log::trace!("try to calculate the monitor size");
                 let center = (|| -> Result<bool> {
-                    let mut center;
+                    let center;
                     if let Some(state) = win_state {
                         let monitor = win.current_monitor()?.ok_or(anyhow::anyhow!(""))?;
                         let PhysicalPosition { x, y } = *monitor.position();
@@ -182,8 +194,8 @@ pub fn create_window(app_handle: &AppHandle) {
                         let top = y;
                         let bottom = y + height as i32;
 
-                        let x = state.x as i32;
-                        let y = state.y as i32;
+                        let x = state.x;
+                        let y = state.y;
                         let width = state.width as i32;
                         let height = state.height as i32;
                         center = ![
@@ -199,24 +211,6 @@ pub fn create_window(app_handle: &AppHandle) {
                     }
                     Ok(center)
                 })();
-
-                match win_state {
-                    None => {}
-                    Some(state) => {
-                        let current_monitor = win.current_monitor().unwrap();
-                        match current_monitor {
-                            None => {}
-                            Some(monitor) => {
-                                let scale_factor = monitor.scale_factor();
-                                win.set_size(Size::Physical(PhysicalSize {
-                                    width: (state.width * scale_factor) as u32,
-                                    height: (state.height * scale_factor) as u32,
-                                }))
-                                .unwrap();
-                            }
-                        }
-                    }
-                }
 
                 if center.unwrap_or(true) {
                     trace_err!(win.center(), "set win center");
@@ -300,16 +294,15 @@ pub fn save_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<(
             };
             let is_minimized = win.is_minimized()?;
 
-            let scale_factor = monitor.scale_factor();
-            let size = win.inner_size()?.to_logical(scale_factor);
-            if size.width > 0. && size.height > 0. && !state.maximized && !is_minimized {
+            let size = win.inner_size()?;
+            if size.width > 0 && size.height > 0 && !state.maximized && !is_minimized {
                 state.width = size.width;
                 state.height = size.height;
             }
             let position = win.outer_position()?;
             if !state.maximized && !is_minimized {
-                state.x = f64::from(position.x);
-                state.y = f64::from(position.y);
+                state.x = position.x;
+                state.y = position.y;
             }
             verge.window_size_state = Some(state);
         }

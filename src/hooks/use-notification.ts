@@ -49,7 +49,7 @@ export const useNotification = async ({
   const permissionGranted = portable || (await checkPermission());
   if (portable || !permissionGranted) {
     // fallback to mui notification
-    Notice[type](`${title} ${body ? `: ${body}` : ""}}`);
+    Notice[type](`${title} ${body ? `: ${body}` : ""}`);
     // throw new Error("notification permission not granted!");
     return;
   }

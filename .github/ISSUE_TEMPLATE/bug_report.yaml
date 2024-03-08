@@ -61,9 +61,13 @@ body:
     attributes:
       label: 应用日志 / App logs
       description: |
-        在软件的设置内可以找到日志目录，请上传最小复现日志。
-        You can find the log directory in the software settings. Please upload the minimal reproduction log.
-      placeholder: 2023-12-12 09:58:17 INFO - [clash]:...
+        请确保您已移除所有敏感信息，并确保你的日记等级为 `Trace` 或 `Debug`。请参考 [FAQ - 日记目录](https://nyanpasu.elaina.moe/zh-CN/others/faq.html#_2-clash-nyanpasu-%E5%BA%94%E7%94%A8-%E6%97%A5%E8%AE%B0%E7%9B%AE%E5%BD%95%E5%9C%A8%E5%93%AA%E9%87%8C)  
+        如果您可以打开主界面，可以在设置页的日记目录旁找到“收集日记”按钮，点击即可收集日记。（1.5.0 不可用）
+        如果日志过长，请使用 [Gist](https://gist.github.com/) 或 [Hastebin](https://hastebin.com/) 并附上链接。
+        Please make sure you have removed all sensitive information and your log level is `Trace` or `Debug`. Please refer to [FAQ - Log directory](https://nyanpasu.elaina.moe/others/faq.html#_2-where-is-the-clash-nyanpasu-application-logs-directory)
+        If you can open the main interface, you can find the "Collect logs" button next to the log directory in the settings page, click to collect the logs. (Not available in 1.5.0)
+        If the log is too long, please use [Gist](https://gist.github.com/) or [Hastebin](https://hastebin.com/) and provide the link.
+      placeholder: should be a link, a code block or a archive file
     validations:
       required: false
 
@@ -84,11 +88,19 @@ body:
     id: version
     attributes:
       label: Clash Nyapasu 版本号 / Clash Nyapasu
-      description: 您可以在设置 - 关于处找到版本号 / You can get version code in Settings - About
-      placeholder: 1.4.1
+      description: 您可以在 **设置 - 关于** 或在 **托盘 - 更多** 中找到版本号 / You can find the version number in **Settings - About** or **Tray - More**
+      placeholder: 1.5.0
     validations:
       required: true
 
+  - type: input
+    id: core-version
+    attributes:
+      label: Clash 核心及其版本号 / Clash core and version
+      description: 您可以在 **设置 - Clash 内核** 中找到内核及其版本号 / You can find the core and its version number in **Settings - Clash Core**
+      placeholder: v1.18.1 Meta
+    validations:
+      required: true
   - type: input
     id: pre-release
     attributes:
@@ -117,8 +129,9 @@ body:
       options:
         - label: 如果您有足够的时间和能力，并愿意为此提交 PR ，请勾上此复选框 / Pull request is welcome. Check this if you want to start a pull request
           required: false
-
-        - label: 您已仔细查看并知情 [Q&A](https://github.com/keiko233/clash-nyanpasu/blob/main/ISSUE.md) 中的内容 / You have checked [Q&A](https://github.com/keiko233/clash-nyanpasu/blob/main/ISSUE.md) carefully
+        - label: 您已知悉如果没有提供正确的系统信息，以及日记，您的 Issue 会直接被关闭 / You have known that if you don't provide correct system information and logs, your issue will be closed directly
+          required: true
+        - label: 您已仔细查看并知情 [Q&A](https://nyanpasu.elaina.moe/zh-CN/others/issues.html) 和 [FAQ](https://nyanpasu.elaina.moe/zh-CN/others/faq.html) 中的内容 / You have read and understood the contents of [Q&A](https://nyanpasu.elaina.moe/others/issues.html) and [FAQ](https://nyanpasu.elaina.moe/others/faq.html).
           required: true
 
         - label: 您已搜索过 [Issue Tracker](https://github.com/keiko233/clash-nyanpasu/issues)，没有找到类似内容 / I have searched on [Issue Tracker](https://github.com/keiko233/clash-nyanpasu/issues), No duplicate or related open issue has been found

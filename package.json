@@ -80,7 +80,7 @@
     "framer-motion": "11.0.8",
     "i18next": "23.10.1",
     "lodash-es": "4.17.21",
-    "monaco-editor": "0.46.0",
+    "monaco-editor": "0.47.0",
     "mui-color-input": "2.0.3",
     "react": "18.2.0",
     "react-dom": "18.2.0",

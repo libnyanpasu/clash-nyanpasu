@@ -363,6 +363,55 @@ pub async fn update_proxy_provider(name: String) -> CmdResult<()> {
 }
 
 #[cfg(windows)]
+#[tauri::command]
+pub fn get_custom_app_dir() -> CmdResult<Option<String>> {
+    use crate::utils::winreg::get_app_dir;
+    match get_app_dir() {
+        Ok(Some(path)) => Ok(Some(path.to_string_lossy().to_string())),
+        Ok(None) => Ok(None),
+        Err(err) => Err(err.to_string()),
+    }
+}
+
+#[cfg(not(windows))]
+#[tauri::command]
+pub fn get_custom_app_dir() -> CmdResult<Option<String>> {
+    Ok(None)
+}
+
+#[cfg(windows)]
+#[tauri::command]
+pub async fn set_custom_app_dir(path: String) -> CmdResult {
+    use crate::utils::{dialog::migrate_dialog, init::do_config_migration, winreg::set_app_dir};
+    use rust_i18n::t;
+    use std::path::PathBuf;
+
+    let path_str = path.clone();
+    let path = PathBuf::from(path);
+    wrap_err!(set_app_dir(&path))?;
+
+    // show a dialog to ask whether to migrate the data
+    let res = tauri::async_runtime::spawn_blocking(move || {
+        let msg = t!("dialog.custom_app_dir_migrate", path = path_str).to_string();
+        if migrate_dialog(&msg) {
+            let new_dir = PathBuf::from(path_str);
+            let old_dir = dirs::old_app_home_dir().unwrap();
+            do_config_migration(&old_dir, &new_dir)?;
+        }
+        Ok::<_, anyhow::Error>(())
+    })
+    .await;
+    wrap_err!(wrap_err!(res)?)?;
+    Ok(())
+}
+
+#[cfg(not(windows))]
+#[tauri::command]
+pub async fn set_custom_app_dir(_path: String) -> CmdResult {
+    Ok(())
+}
+
+#[cfg(windows)]
 pub mod uwp {
     use super::{wrap_err, CmdResult};
     use crate::core::win_uwp;

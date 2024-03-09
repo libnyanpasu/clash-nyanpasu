@@ -7,3 +7,5 @@ pub mod init;
 pub mod resolve;
 pub mod tmpl;
 // mod winhelp;
+#[cfg(windows)]
+pub mod winreg;

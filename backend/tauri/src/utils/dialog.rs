@@ -11,14 +11,12 @@ pub fn panic_dialog(msg: &str) {
         .show();
 }
 
-pub fn migrate_dialog() -> bool {
-    let msg = format!("{}", t!("dialog.migrate"));
-
+pub fn migrate_dialog(msg: &str) -> bool {
     MessageDialog::new()
         .set_level(MessageLevel::Warning)
         .set_title("Clash Nyanpasu Migration")
         .set_buttons(MessageButtons::YesNo)
-        .set_description(msg.as_str())
+        .set_description(msg)
         .show()
 }
 

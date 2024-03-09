@@ -169,7 +169,7 @@ jobs:
           ***[See the development log here](https://t.me/keikolog/462)***
           EOF
       - name: Update Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           name: Clash Nyanpasu Dev
           tag_name: pre-release

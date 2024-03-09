@@ -4,6 +4,7 @@ use crate::{
 };
 use anyhow::Result;
 use runas::Command as RunasCommand;
+use rust_i18n::t;
 use std::{fs, io::ErrorKind, path::PathBuf};
 
 mod logging;
@@ -26,7 +27,8 @@ pub fn init_config() -> Result<()> {
     }));
 
     if let (Some(app_dir), Some(old_app_dir)) = (app_dir, old_app_dir) {
-        if !app_dir.exists() && old_app_dir.exists() && migrate_dialog() {
+        let msg = t!("dialog.migrate");
+        if !app_dir.exists() && old_app_dir.exists() && migrate_dialog(msg.to_string().as_str()) {
             if let Err(e) = do_config_migration(&old_app_dir, &app_dir) {
                 super::dialog::error_dialog(format!("failed to do migration: {:?}", e))
             }
@@ -193,7 +195,7 @@ pub fn init_service() -> Result<()> {
     Ok(())
 }
 
-fn do_config_migration(old_app_dir: &PathBuf, app_dir: &PathBuf) -> anyhow::Result<()> {
+pub fn do_config_migration(old_app_dir: &PathBuf, app_dir: &PathBuf) -> anyhow::Result<()> {
     if let Err(e) = fs::rename(old_app_dir, app_dir) {
         match e.kind() {
             #[cfg(windows)]

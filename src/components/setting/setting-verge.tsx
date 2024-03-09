@@ -3,12 +3,14 @@ import { useMessage } from "@/hooks/use-notification";
 import { useVerge } from "@/hooks/use-verge";
 import {
   collectLogs,
+  isPortable,
   openAppDir,
   openCoreDir,
   openLogsDir,
+  setCustomAppDir,
 } from "@/services/cmds";
 import getSystem from "@/utils/get-system";
-import { ArrowForward, IosShare } from "@mui/icons-material";
+import { ArrowForward, IosShare, Settings } from "@mui/icons-material";
 import {
   Chip,
   CircularProgress,
@@ -19,8 +21,9 @@ import {
   Typography,
 } from "@mui/material";
 import { version } from "@root/package.json";
+import { open } from "@tauri-apps/api/dialog";
 import { checkUpdate } from "@tauri-apps/api/updater";
-import { useLockFn } from "ahooks";
+import { useAsyncEffect, useLockFn } from "ahooks";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import MDYSwitch from "../common/mdy-switch";
@@ -46,6 +49,11 @@ const SettingVerge = ({ onError }: Props) => {
 
   const { verge, patchVerge } = useVerge();
   const { theme_mode, language, disable_auto_check_update } = verge ?? {};
+  const [portable, setPortable] = useState(false);
+
+  useAsyncEffect(async () => {
+    setPortable(await isPortable());
+  });
 
   const [loading, setLoading] = useState({
     theme_mode: false,
@@ -93,6 +101,30 @@ const SettingVerge = ({ onError }: Props) => {
   });
 
   const onSwitchFormat = (_e: any, value: boolean) => value;
+
+  const [changingAppDir, setChangingAppDir] = useState(false);
+  const changeAppDir = useLockFn(async () => {
+    setChangingAppDir(true);
+    try {
+      const selected = await open({ directory: true, multiple: false }); // TODO: use current app dir as defaultPath
+      if (!selected) return; // user cancelled the selection
+      if (Array.isArray(selected)) {
+        useMessage(t("Multiple directories are not supported"), {
+          title: t("Error"),
+          type: "error",
+        });
+        return;
+      }
+      await setCustomAppDir(selected);
+    } catch (err: any) {
+      useMessage(err.message || err.toString(), {
+        title: t("Error"),
+        type: "error",
+      });
+    } finally {
+      setChangingAppDir(false);
+    }
+  });
 
   return (
     <SettingList title={t("Nyanpasu Setting")}>
@@ -197,7 +229,26 @@ const SettingVerge = ({ onError }: Props) => {
         </IconButton>
       </SettingItem>
 
-      <SettingItem label={t("Open App Dir")}>
+      <SettingItem
+        label={t("Open App Dir")}
+        extra={
+          <IconButton
+            color="inherit"
+            size="small"
+            disabled={changingAppDir}
+            onClick={changeAppDir}
+          >
+            {changingAppDir ? (
+              <CircularProgress color="inherit" size={20} />
+            ) : (
+              <Settings
+                fontSize="inherit"
+                style={{ cursor: "pointer", opacity: 0.75 }}
+              />
+            )}
+          </IconButton>
+        }
+      >
         <IconButton
           color="inherit"
           size="small"

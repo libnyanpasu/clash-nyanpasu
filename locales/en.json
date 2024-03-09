@@ -32,6 +32,7 @@
   },
   "dialog": {
     "panic": "Please report this issue to Github issue tracker.",
-    "migrate": "Old version config file detected\nMigrate to new version or not?\n WARNING: This will override your current config if exists"
+    "migrate": "Old version config file detected\nMigrate to new version or not?\n WARNING: This will override your current config if exists",
+    "custom_app_dir_migrate": "You will set custom app dir to %{path}\n Shall we move the current app dir to the new one?"
   }
 }

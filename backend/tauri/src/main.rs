@@ -178,6 +178,8 @@ fn main() -> std::io::Result<()> {
             cmds::read_profile_file,
             cmds::save_profile_file,
             cmds::save_window_size_state,
+            cmds::get_custom_app_dir,
+            cmds::set_custom_app_dir,
             // service mode
             cmds::service::check_service,
             cmds::service::install_service,

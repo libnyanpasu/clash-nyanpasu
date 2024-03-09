@@ -88,21 +88,25 @@ pub fn old_app_home_dir() -> Result<PathBuf> {
 pub fn app_home_dir() -> Result<PathBuf> {
     #[cfg(target_os = "windows")]
     {
+        use crate::utils::winreg::get_app_dir;
         use tauri::utils::platform::current_exe;
-
         if !PORTABLE_FLAG.get().unwrap_or(&false) {
-            Ok(home_dir()
+            let reg_app_dir = get_app_dir()?;
+            if let Some(reg_app_dir) = reg_app_dir {
+                return Ok(reg_app_dir);
+            }
+            return Ok(home_dir()
                 .ok_or(anyhow::anyhow!("failed to get app home dir"))?
                 .join(".config")
-                .join(APP_NAME))
-        } else {
-            let app_exe = current_exe()?;
-            let app_exe = dunce::canonicalize(app_exe)?;
-            let app_dir = app_exe
-                .parent()
-                .ok_or(anyhow::anyhow!("failed to get the portable app dir"))?;
-            Ok(PathBuf::from(app_dir).join(".config").join(APP_NAME))
+                .join(APP_NAME));
         }
+
+        let app_exe = current_exe()?;
+        let app_exe = dunce::canonicalize(app_exe)?;
+        let app_dir = app_exe
+            .parent()
+            .ok_or(anyhow::anyhow!("failed to get the portable app dir"))?;
+        Ok(PathBuf::from(app_dir).join(".config").join(APP_NAME))
     }
 
     #[cfg(not(target_os = "windows"))]

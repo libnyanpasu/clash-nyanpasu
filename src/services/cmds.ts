@@ -256,3 +256,11 @@ export async function selectProxy(group: string, name: string) {
 export async function updateProxyProvider(name: string) {
   return invoke<void>("update_proxy_provider", { name });
 }
+
+export async function getCustomAppDir() {
+  return invoke<string | null>("get_custom_app_dir");
+}
+
+export async function setCustomAppDir(dir: string) {
+  return invoke<void>("set_custom_app_dir", { dir });
+}

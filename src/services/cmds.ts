@@ -261,6 +261,6 @@ export async function getCustomAppDir() {
   return invoke<string | null>("get_custom_app_dir");
 }
 
-export async function setCustomAppDir(dir: string) {
-  return invoke<void>("set_custom_app_dir", { dir });
+export async function setCustomAppDir(path: string) {
+  return invoke<void>("set_custom_app_dir", { path });
 }

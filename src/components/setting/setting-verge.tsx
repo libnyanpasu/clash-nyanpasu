@@ -1,5 +1,5 @@
 import { DialogRef } from "@/components/base";
-import { useMessage } from "@/hooks/use-notification";
+import { useMessage, useNotification } from "@/hooks/use-notification";
 import { useVerge } from "@/hooks/use-verge";
 import {
   collectLogs,
@@ -9,6 +9,7 @@ import {
   openLogsDir,
   setCustomAppDir,
 } from "@/services/cmds";
+import { sleep } from "@/utils";
 import getSystem from "@/utils/get-system";
 import { ArrowForward, IosShare, Settings } from "@mui/icons-material";
 import {
@@ -22,6 +23,7 @@ import {
 } from "@mui/material";
 import { version } from "@root/package.json";
 import { open } from "@tauri-apps/api/dialog";
+import { relaunch } from "@tauri-apps/api/process";
 import { checkUpdate } from "@tauri-apps/api/updater";
 import { useAsyncEffect, useLockFn } from "ahooks";
 import { useRef, useState } from "react";
@@ -116,6 +118,12 @@ const SettingVerge = ({ onError }: Props) => {
         return;
       }
       await setCustomAppDir(selected);
+      useNotification({
+        title: t("Success"),
+        body: t("App directory changed successfully"),
+      });
+      await sleep(1000);
+      await relaunch();
     } catch (err: any) {
       useMessage(err.message || err.toString(), {
         title: t("Error"),

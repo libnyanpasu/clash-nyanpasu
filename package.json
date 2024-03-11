@@ -151,7 +151,7 @@
     "telegraf": "4.16.3",
     "tsx": "4.7.1",
     "typescript": "5.4.2",
-    "vite": "5.1.5",
+    "vite": "5.1.6",
     "vite-plugin-monaco-editor": "1.1.0",
     "vite-plugin-svgr": "4.2.0"
   }

@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useEffect } from "react";
 
 export type WsMsgFn = (event: MessageEvent<any>) => void;
 
@@ -10,7 +10,7 @@ export interface WsOptions {
 
 export const useWebsocket = (onMessage: WsMsgFn, options?: WsOptions) => {
   const wsRef = useRef<WebSocket | null>(null);
-  const timerRef = useRef<any>(null);
+  const timerRef = useRef<number | null>(null);
 
   const disconnect = () => {
     if (wsRef.current) {
@@ -24,6 +24,7 @@ export const useWebsocket = (onMessage: WsMsgFn, options?: WsOptions) => {
 
   const connect = (url: string) => {
     let errorCount = options?.errorCount ?? 5;
+    const retryInterval = options?.retryInterval ?? 2500;
 
     if (!url) return;
 
@@ -38,16 +39,28 @@ export const useWebsocket = (onMessage: WsMsgFn, options?: WsOptions) => {
         errorCount -= 1;
 
         if (errorCount >= 0) {
-          timerRef.current = setTimeout(connectHelper, 2500);
+          timerRef.current = window.setTimeout(connectHelper, retryInterval);
         } else {
           disconnect();
           options?.onError?.();
         }
       });
+
+      ws.addEventListener("close", () => {
+        // WebSocket connection closed, attempt to reconnect
+        timerRef.current = window.setTimeout(connectHelper, retryInterval);
+      });
     };
 
     connectHelper();
   };
+
+  useEffect(() => {
+    // Cleanup on component unmount
+    return () => {
+      disconnect();
+    };
+  }, []);
 
   return { connect, disconnect };
 };

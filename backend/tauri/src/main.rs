@@ -17,7 +17,10 @@ use crate::{
 };
 use anyhow::Context;
 use tauri::{api, Manager, SystemTray};
+
+#[cfg(target_os = "windows")]
 use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings6;
+#[cfg(target_os = "windows")]
 use windows::core::Interface;
 
 rust_i18n::i18n!("../../locales");

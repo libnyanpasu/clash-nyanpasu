@@ -9,54 +9,49 @@
 A <a href="https://github.com/Dreamacro/clash">Clash</a> GUI based on <a href="https://github.com/tauri-apps/tauri">tauri</a>.
 </h3>
 
+[![Nyanpasu Release](https://img.shields.io/github/v/release/LibNyanpasu/clash-nyanpasu?style=flat-square)](https://github.com/LibNyanpasu/clash-nyanpasu/releases/latest) [![Dev Build Status](https://img.shields.io/github/actions/workflow/status/LibNyanpasu/clash-nyanpasu/dev.yaml?style=flat-square)](https://github.com/LibNyanpasu/clash-nyanpasu/releases/pre-release) [![Nyanpasu stars](https://img.shields.io/github/stars/LibNyanpasu/clash-nyanpasu?style=flat-square)](https://github.com/LibNyanpasu/clash-nyanpasu/stargazers) ![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/LibNyanpasu/clash-nyanpasu/total?style=flat-square)
+
 ## Features
 
 - Full `clash` config supported, Partial `clash premium` config supported.
-- Profiles management and enhancement (by yaml and Javascript). [Doc](https://github.com/keiko233/clash-nyanpasu/wiki/%E4%BD%BF%E7%94%A8%E6%8C%87%E5%8D%97)
-- Simple UI and supports custom theme color.
-- Built-in support [Clash.Meta](https://github.com/MetaCubeX/Clash.Meta) core.
+- Built-in support [Clash.Meta](https://github.com/MetaCubeX/mihomo) core & [ClashRs](https://github.com/Watfaq/clash-rs) core.
+- Profiles management and enhancement (by yaml and Javascript). [Doc](https://nyanpasu.elaina.moe/tutorial/proxy-chain.html)
+- Material You Design UI and amimation support.
 - System proxy setting and guard.
 
 ## Preview
 
 ![preview](./docs/preview.gif)
 
-## Install
+## Links
 
-Download from [release](https://github.com/keiko233/clash-nyanpasu/releases). Supports Windows x64, Linux x86_64 and macOS 11+
-
-Or you can build it yourself. Supports Windows, Linux and macOS 10.15+
-
-Notes: If you could not start the app on Windows, please check that you have [Webview2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section) installed.
-
-### Arch Linux (AUR)
-
-Install the [Stable Release](https://aur.archlinux.org/packages/clash-nyanpasu) / [Binary Package](https://aur.archlinux.org/packages/clash-nyanpasu-bin) or [Git Version](https://aur.archlinux.org/packages/clash-nyanpasu-git).
-
-### FAQ
-
-#### 1. **macOS** "Clash Nyanpasu" is damaged and can't be opened
-
-open the terminal and run `sudo xattr -r -d com.apple.quarantine /Applications/Clash\ Nyanpasu.app`
+- [Install](https://nyanpasu.elaina.moe/tutorial/install.html)
+- [FAQ](https://nyanpasu.elaina.moe/others/faq.html)
+- [Q&A Convention](https://nyanpasu.elaina.moe/others/issues.html)
+- [How To Ask Questions](https://nyanpasu.elaina.moe/others/how-to-ask.html)
 
 ## Development
 
-You should install Rust and Nodejs, see [here](https://tauri.app/v1/guides/getting-started/prerequisites) for more details. Then install Nodejs packages.
+### Configure your development environment
+
+You should install Rust and Nodejs, see [here](https://tauri.app/v1/guides/getting-started/prerequisites) for more details.
+
+Clash Nyanpasu uses the pnpm package manager. See [here](https://pnpm.io/installation) for installation instructions. Then, install Node.js packages.
 
 ```shell
 pnpm i
 ```
 
-Then download the clash binary... Or you can download it from [clash premium release](https://github.com/Dreamacro/clash/releases/tag/premium) and rename it according to [tauri config](https://tauri.studio/docs/api/config/#tauri.bundle.externalBin).
+### Download the Clash binary & other dependencies
 
 ```shell
 # force update to latest version
-# pnpm run check --force
+# pnpm check --force
 
-pnpm run check
+pnpm check
 ```
 
-Then run
+### Run dev
 
 ```shell
 pnpm dev
@@ -65,19 +60,11 @@ pnpm dev
 pnpm dev:diff
 ```
 
-Or you can build it
+### Build application
 
 ```shell
 pnpm build
 ```
-
-## Todos
-
-> This keng is a little big...
-
-## Disclaimer
-
-This is a learning project for Rust practice.
 
 ## Contributions
 
@@ -90,9 +77,15 @@ Clash Nyanpasu was based on or inspired by these projects and so on:
 - [zzzgydi/clash-verge](https://github.com/zzzgydi/clash-verge): A Clash GUI based on tauri. Supports Windows, macOS and Linux.
 - [tauri-apps/tauri](https://github.com/tauri-apps/tauri): Build smaller, faster, and more secure desktop applications with a web frontend.
 - [Dreamacro/clash](https://github.com/Dreamacro/clash): A rule-based tunnel in Go.
-- [MetaCubeX/Clash.Meta](https://github.com/MetaCubeX/Clash.Meta): A rule-based tunnel in Go.
+- [MetaCubeX/Clash.Meta](https://github.com/MetaCubeX/mihomo): A rule-based tunnel in Go.
+- [ClashRs](https://github.com/Watfaq/clash-rs): A custom protocol, rule based network proxy software.
 - [Fndroid/clash_for_windows_pkg](https://github.com/Fndroid/clash_for_windows_pkg): A Windows/macOS GUI based on Clash.
 - [vitejs/vite](https://github.com/vitejs/vite): Next generation frontend tooling. It's fast!
+- [mui/material-ui](https://github.com/mui/material-ui): Ready-to-use foundational React components, free forever.
+
+## Contributors
+
+![Contributors](https://contrib.rocks/image?repo=LibNyanpasu/clash-nyanpasu)
 
 ## License
 

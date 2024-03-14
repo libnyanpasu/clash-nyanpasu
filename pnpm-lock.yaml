@@ -143,8 +143,8 @@ devDependencies:
     specifier: 4.2.1
     version: 4.2.1(vite@5.1.6)
   adm-zip:
-    specifier: 0.5.10
-    version: 0.5.10
+    specifier: 0.5.11
+    version: 0.5.11
   autoprefixer:
     specifier: 10.4.18
     version: 10.4.18(postcss@8.4.35)
@@ -2317,8 +2317,8 @@ packages:
     hasBin: true
     dev: true
 
-  /adm-zip@0.5.10:
-    resolution: {integrity: sha512-x0HvcHqVJNTPk/Bw8JbLWlWoo6Wwnsug0fnYYro1HBrjxZ3G7/AZk7Ahv8JwDe1uIcz8eBqvu86FuF1POiG7vQ==}
+  /adm-zip@0.5.11:
+    resolution: {integrity: sha512-bSG/kcTQRVyCZ3aOWt3nu/KGIxkfSNi7MXzgKr/MHfKbqPakFESQvaujpUaAG8OQuSroxYMY5vLMpdE6+oND2Q==}
     engines: {node: '>=6.0'}
     dev: true
 

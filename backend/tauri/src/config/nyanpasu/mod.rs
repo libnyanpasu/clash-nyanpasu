@@ -160,6 +160,9 @@ pub struct IVerge {
 
     /// Clash 相关策略
     pub clash_strategy: Option<ClashStrategy>,
+
+    /// 是否启用代理托盘选择
+    pub clash_tray_selector: Option<bool>,
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
@@ -227,6 +230,7 @@ impl IVerge {
             // auto_log_clean: Some(60 * 24 * 7), // 7 days 自动清理日记
             max_log_files: Some(7), // 7 days
             disable_auto_check_update: Some(true),
+            clash_tray_selector: Some(true),
             ..Self::default()
         }
     }
@@ -281,5 +285,6 @@ impl IVerge {
         patch!(max_log_files);
         patch!(window_size_state);
         patch!(clash_strategy);
+        patch!(clash_tray_selector);
     }
 }

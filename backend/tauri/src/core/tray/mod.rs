@@ -23,7 +23,6 @@ impl Tray {
 
         SystemTrayMenu::new()
             .add_item(CustomMenuItem::new("open_window", t!("tray.dashboard")))
-            .add_native_item(SystemTrayMenuItem::Separator)
             .setup_proxies() // Setup the proxies menu
             .add_native_item(SystemTrayMenuItem::Separator)
             .add_item(CustomMenuItem::new("rule_mode", t!("tray.rule_mode")))

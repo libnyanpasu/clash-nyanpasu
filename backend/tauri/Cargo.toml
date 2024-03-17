@@ -96,7 +96,7 @@ windows-sys = { version = "0.52", features = [
   "Win32_System_LibraryLoader",
   "Win32_System_SystemInformation",
 ] }
-webview2-com = "0.19"
+webview2-com = "0.29"
 windows = "0.39"
 
 [target.'cfg(windows)'.dependencies.tauri]

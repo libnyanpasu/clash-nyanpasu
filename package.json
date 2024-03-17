@@ -133,7 +133,7 @@
     "node-fetch": "3.3.2",
     "npm-run-all2": "6.1.2",
     "picocolors": "1.0.0",
-    "postcss": "8.4.35",
+    "postcss": "8.4.36",
     "postcss-html": "1.6.0",
     "postcss-import": "16.0.1",
     "postcss-scss": "4.0.9",

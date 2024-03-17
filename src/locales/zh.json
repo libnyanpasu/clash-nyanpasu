@@ -161,5 +161,7 @@
   "Last Update": "{{fromNow}}更新",
   "Update Rules Providers Success": "更新规则集成功",
 
-  "Portable Update Error": "便携版无法自动更新，请到 Github 下载最新版本"
+  "Portable Update Error": "便携版无法自动更新，请到 Github 下载最新版本",
+
+  "Enable Tray Proxies Selector": "开启托盘代理选择"
 }

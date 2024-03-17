@@ -1,6 +1,9 @@
-use crate::core::{
-    clash::proxies::{Proxies, ProxiesGuard, ProxiesGuardExt},
-    handle::Handle,
+use crate::{
+    config::Config,
+    core::{
+        clash::proxies::{Proxies, ProxiesGuard, ProxiesGuardExt},
+        handle::Handle,
+    },
 };
 use anyhow::Context;
 use base64::{engine::general_purpose::STANDARD as base64_standard, Engine as _};
@@ -65,18 +68,17 @@ fn to_tray_proxies(mode: &str, raw_proxies: &Proxies) -> TrayProxies {
                 all: raw_proxies
                     .global
                     .all
-                    .clone()
-                    .into_iter()
-                    .map(|x| x.name)
+                    .iter()
+                    .map(|x| x.name.to_owned())
                     .collect(),
-                r#type: "Selector".to_owned(),
+                r#type: "Selector".to_string(),
             };
             tray_proxies.insert("global".to_owned(), global);
         }
         for raw_group in raw_proxies.groups.iter() {
             let group = TrayProxyItem {
                 current: raw_group.now.clone(),
-                all: raw_group.all.clone().into_iter().map(|x| x.name).collect(),
+                all: raw_group.all.iter().map(|x| x.name.to_owned()).collect(),
                 r#type: raw_group.r#type.clone(),
             };
             tray_proxies.insert(raw_group.name.to_owned(), group);
@@ -159,6 +161,13 @@ pub async fn proxies_updated_receiver() {
                     continue;
                 }
                 Handle::mutate_proxies();
+                {
+                    let is_tray_selector_enabled =
+                        Config::verge().latest().clash_tray_selector.unwrap_or(true);
+                    if !is_tray_selector_enabled {
+                        continue;
+                    }
+                }
                 // Do diff check
                 let mode = crate::utils::config::get_current_clash_mode();
                 let current_tray_proxies =
@@ -202,7 +211,7 @@ mod platform_impl {
     use super::{ProxySelectAction, TrayProxyItem};
     use crate::core::{clash::proxies::ProxiesGuard, handle::Handle};
     use base64::{engine::general_purpose::STANDARD as base64_standard, Engine as _};
-    use tauri::{CustomMenuItem, SystemTrayMenu, SystemTraySubmenu};
+    use tauri::{CustomMenuItem, SystemTrayMenu, SystemTrayMenuItem, SystemTraySubmenu};
     use tracing::warn;
 
     pub fn generate_group_selector(group_name: &str, group: &TrayProxyItem) -> SystemTraySubmenu {
@@ -247,10 +256,20 @@ mod platform_impl {
     }
 
     pub fn setup_tray(menu: &mut SystemTrayMenu) -> SystemTrayMenu {
+        let mut menu = menu.to_owned();
+        let is_tray_selector_enabled = crate::config::Config::verge()
+            .latest()
+            .clash_tray_selector
+            .unwrap_or(true);
+        if !is_tray_selector_enabled {
+            return menu;
+        }
+        // TODO: support submenu
+        menu = menu.add_native_item(SystemTrayMenuItem::Separator);
         let proxies = ProxiesGuard::global().read().inner().to_owned();
         let mode = crate::utils::config::get_current_clash_mode();
         let tray_proxies = super::to_tray_proxies(mode.as_str(), &proxies);
-        generate_selectors(menu, &tray_proxies)
+        generate_selectors(&menu, &tray_proxies)
     }
 
     pub fn update_selected_proxies(actions: &[ProxySelectAction]) {

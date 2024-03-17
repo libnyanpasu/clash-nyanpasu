@@ -265,7 +265,6 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
 /// 一般都是一个个的修改
 pub async fn patch_verge(patch: IVerge) -> Result<()> {
     Config::verge().draft().patch_config(patch.clone());
-
     let tun_mode = patch.enable_tun_mode;
     let auto_launch = patch.enable_auto_launch;
     let system_proxy = patch.enable_system_proxy;
@@ -273,8 +272,9 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
     let language = patch.language;
     let log_level = patch.app_log_level;
     let log_max_files = patch.max_log_files;
+    let enable_tray_selector = patch.clash_tray_selector;
 
-    let res = {
+    let res = || async move {
         #[cfg(target_os = "windows")]
         {
             let service_mode = patch.enable_service_mode;
@@ -321,9 +321,14 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
             utils::init::refresh_logger((log_level, log_max_files))?;
         }
 
+        if enable_tray_selector.is_some() {
+            handle::Handle::update_systray()?;
+        }
+
         <Result<()>>::Ok(())
     };
-    match res {
+
+    match res().await {
         Ok(()) => {
             Config::verge().apply();
             Config::verge().data().save_file()?;

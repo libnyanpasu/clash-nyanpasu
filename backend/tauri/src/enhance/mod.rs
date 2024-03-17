@@ -81,9 +81,13 @@ pub fn enhance() -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
     });
 
     // 合并默认的config
-    for (key, value) in clash_config.into_iter() {
-        config.insert(key, value);
-    }
+    clash_config
+        .iter()
+        // only guarded fields should be overwritten
+        .filter(|(k, _)| HANDLE_FIELDS.contains(&k.as_str().unwrap_or_default()))
+        .for_each(|(key, value)| {
+            config.insert(key.to_owned(), value.clone());
+        });
 
     let clash_fields = use_clash_fields();
 

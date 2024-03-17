@@ -1,5 +1,6 @@
 use super::{use_filter, use_lowercase};
 use serde_yaml::{Mapping, Sequence, Value};
+use tracing_attributes::instrument;
 
 const MERGE_FIELDS: [&str; 6] = [
     "prepend-rules",
@@ -10,11 +11,16 @@ const MERGE_FIELDS: [&str; 6] = [
     "append-proxy-groups",
 ];
 
+#[instrument(skip(merge, config))]
 pub fn use_merge(merge: Mapping, mut config: Mapping) -> Mapping {
+    tracing::trace!("original config: {:#?}", config);
+    tracing::trace!("merge: {:#?}", merge);
     // 直接覆盖原字段
     use_lowercase(merge.clone())
         .into_iter()
+        .filter(|(key, _)| !MERGE_FIELDS.contains(&key.as_str().unwrap_or_default()))
         .for_each(|(key, value)| {
+            tracing::debug!("override: key: {:?}, value: {:?}", key, value);
             config.insert(key, value);
         });
 
@@ -51,6 +57,7 @@ pub fn use_merge(merge: Mapping, mut config: Mapping) -> Mapping {
 
             config.insert(key_val, Value::from(list));
         });
+    tracing::trace!("merged config: {:#?}", config);
     config
 }
 

@@ -395,7 +395,7 @@ pub async fn set_custom_app_dir(path: String) -> CmdResult {
         let msg = t!("dialog.custom_app_dir_migrate", path = path_str).to_string();
         if migrate_dialog(&msg) {
             let new_dir = PathBuf::from(path_str);
-            let old_dir = dirs::old_app_home_dir().unwrap();
+            let old_dir = dirs::app_home_dir().unwrap();
             do_config_migration(&old_dir, &new_dir)?;
         }
         Ok::<_, anyhow::Error>(())

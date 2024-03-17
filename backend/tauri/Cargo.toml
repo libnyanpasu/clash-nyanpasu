@@ -84,7 +84,7 @@ base64 = "0.22"
 single-instance = "0.3.3"
 tauri-plugin-deep-link = { path = "../tauri-plugin-deep-link", version = "0.1.2" }
 uuid = "1.7.0"
-image = "0.24.9"
+image = "0.25.0"
 fast_image_resize = "3.0.4"
 display-info = "0.5.0" # should be removed after upgrading to tauri v2
 dashmap = "5.5.3"

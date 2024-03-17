@@ -193,7 +193,7 @@ pub fn resize_tray_image(img: &[u8], scale_factor: f64) -> Result<Vec<u8>> {
         dst_image.buffer(),
         dst_width.get(),
         dst_height.get(),
-        ColorType::Rgba8,
+        ColorType::Rgba8.into(),
     )?;
     Ok(result_buf.buffer().to_vec())
 }

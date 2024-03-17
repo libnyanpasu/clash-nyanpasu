@@ -285,7 +285,7 @@ pub fn save_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<(
     let verge = Config::verge();
     let mut verge = verge.latest();
     match current_monitor {
-        Some(monitor) => {
+        Some(_) => {
             let previous_state = verge.window_size_state.clone().unwrap_or_default();
             let mut state = WindowState {
                 maximized: win.is_maximized()?,

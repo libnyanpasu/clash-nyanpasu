@@ -139,5 +139,6 @@
   "Last Update": "Последнее обновление {{fromNow}}",
   "Update Rules Providers Success": "Провайдеры правил успешно обновлены",
 
-  "Portable Update Error": "Обновление портативной версии не поддерживается"
+  "Portable Update Error": "Обновление портативной версии не поддерживается",
+  "Enable Tray Proxies Selector": "Включить выбор прокси в трее"
 }

@@ -148,5 +148,6 @@
   "Rule Set rules": "{{rule}} rules",
   "Last Update": "Last Updated: {{fromNow}}",
   "Update Rules Providers Success": "Update Rules Providers Success",
-  "Portable Update Error": "Portable Update is not supported, please download the latest version from the official website."
+  "Portable Update Error": "Portable Update is not supported, please download the latest version from the official website.",
+  "Enable Tray Proxies Selector": "Enable Tray Proxies Selector"
 }

@@ -90,8 +90,8 @@ dependencies:
     specifier: 4.4.5
     version: 4.4.5(react-dom@18.2.0)(react@18.2.0)
   react-virtuoso:
-    specifier: 4.7.2
-    version: 4.7.2(react-dom@18.2.0)(react@18.2.0)
+    specifier: 4.7.3
+    version: 4.7.3(react-dom@18.2.0)(react@18.2.0)
   recoil:
     specifier: 0.7.7
     version: 0.7.7(react-dom@18.2.0)(react@18.2.0)
@@ -6015,8 +6015,8 @@ packages:
       react-dom: 18.2.0(react@18.2.0)
     dev: false
 
-  /react-virtuoso@4.7.2(react-dom@18.2.0)(react@18.2.0):
-    resolution: {integrity: sha512-xF4es1ajK36Hs9MciaiGA9l16tV2bpkpgxM9JVKh0rJSn6uhdAUrxSQ6FttQOOPAGt4GRG2A4gdjlo18JWhyRw==}
+  /react-virtuoso@4.7.3(react-dom@18.2.0)(react@18.2.0):
+    resolution: {integrity: sha512-Q7vY+KUFz6majte+JE3VdomkfUHoLwMywfRtK1okwnG3dlk7mOqpAJlL1JCH94fnGKV1L/paHFwehiE6HVPvQg==}
     engines: {node: '>=10'}
     peerDependencies:
       react: '>=16 || >=17 || >= 18'

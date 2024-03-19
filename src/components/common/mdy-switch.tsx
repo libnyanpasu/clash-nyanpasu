@@ -64,8 +64,8 @@ const MDYSwitch = styled((props: MDYSwitchProps) => {
   },
   "& .MuiSwitch-thumb": {
     boxShadow: "none",
-    width: loading ? 24 : 16,
-    height: loading ? 24 : 16,
+    width: loading ? 24 : 15,
+    height: loading ? 24 : 15,
     margin: loading ? -2 : 3,
     color: checked
       ? theme.palette.getContrastText(theme.palette.primary.main)

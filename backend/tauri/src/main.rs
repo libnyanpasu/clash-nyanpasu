@@ -18,11 +18,6 @@ use crate::{
 use anyhow::Context;
 use tauri::{api, Manager, SystemTray};
 
-#[cfg(target_os = "windows")]
-use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings6;
-#[cfg(target_os = "windows")]
-use windows::core::Interface;
-
 rust_i18n::i18n!("../../locales");
 
 #[cfg(feature = "deadlock-detection")]
@@ -135,21 +130,6 @@ fn main() -> std::io::Result<()> {
                     handle.emit_all("scheme-request-received", request).unwrap();
                 }
             ));
-            let window = app.get_window("main").unwrap();
-            #[cfg(target_os = "windows")]
-            window
-                .with_webview(|webview| unsafe {
-                    let settings = webview
-                        .controller()
-                        .CoreWebView2()
-                        .unwrap()
-                        .Settings()
-                        .unwrap();
-                    let settings: ICoreWebView2Settings6 =
-                        settings.cast::<ICoreWebView2Settings6>().unwrap();
-                    settings.SetIsSwipeNavigationEnabled(false).unwrap();
-                })
-                .unwrap();
             Ok(())
         })
         .on_system_tray_event(core::tray::Tray::on_system_tray_event)

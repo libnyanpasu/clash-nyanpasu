@@ -17,6 +17,11 @@ use serde_yaml::Mapping;
 use std::net::TcpListener;
 use tauri::{api::process::Command, App, AppHandle, Manager, PhysicalPosition, PhysicalSize};
 
+#[cfg(target_os = "windows")]
+use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings6;
+#[cfg(target_os = "windows")]
+use windows::core::Interface;
+
 pub fn find_unused_port() -> Result<u16> {
     match TcpListener::bind("127.0.0.1:0") {
         Ok(listener) => {
@@ -263,6 +268,23 @@ pub fn create_window(app_handle: &AppHandle) {
 
     #[cfg(target_os = "linux")]
     crate::log_err!(builder.decorations(true).transparent(false).build());
+
+    #[cfg(target_os = "windows")]
+    app_handle
+        .get_window("main")
+        .unwrap()
+        .with_webview(|webview| unsafe {
+            let settings = webview
+                .controller()
+                .CoreWebView2()
+                .unwrap()
+                .Settings()
+                .unwrap();
+            let settings: ICoreWebView2Settings6 =
+                settings.cast::<ICoreWebView2Settings6>().unwrap();
+            settings.SetIsSwipeNavigationEnabled(false).unwrap();
+        })
+        .unwrap();
 }
 
 /// close main window

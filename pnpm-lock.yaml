@@ -221,8 +221,8 @@ devDependencies:
     specifier: 1.6.0
     version: 1.6.0
   postcss-import:
-    specifier: 16.0.1
-    version: 16.0.1(postcss@8.4.38)
+    specifier: 16.1.0
+    version: 16.1.0(postcss@8.4.38)
   postcss-scss:
     specifier: 4.0.9
     version: 4.0.9(postcss@8.4.38)
@@ -5973,8 +5973,8 @@ packages:
       postcss-safe-parser: 6.0.0(postcss@8.4.38)
     dev: true
 
-  /postcss-import@16.0.1(postcss@8.4.38):
-    resolution: {integrity: sha512-i2Pci0310NaLHr/5JUFSw1j/8hf1CzwMY13g6ZDxgOavmRHQi2ba3PmUHoihO+sjaum+KmCNzskNsw7JDrg03g==}
+  /postcss-import@16.1.0(postcss@8.4.38):
+    resolution: {integrity: sha512-7hsAZ4xGXl4MW+OKEWCnF6T5jqBw80/EE9aXg1r2yyn1RsVEU8EtKXbijEODa+rg7iih4bKf7vlvTGYR4CnPNg==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       postcss: ^8.0.0

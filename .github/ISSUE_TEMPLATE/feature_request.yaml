@@ -56,7 +56,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Clash Nyapasu 版本号 / Clash Nyapasu
+      label: Clash Nyanpasu 版本号 / Clash Nyanpasu
       description: 您可以在设置 - 关于处找到版本号 / You can get version code in Settings - About
       placeholder: 1.4.1
     validations:

@@ -87,7 +87,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Clash Nyapasu 版本号 / Clash Nyapasu
+      label: Clash Nyanpasu 版本号 / Clash Nyanpasu
       description: 您可以在 **设置 - 关于** 或在 **托盘 - 更多** 中找到版本号 / You can find the version number in **Settings - About** or **Tray - More**
       placeholder: 1.5.0
     validations:

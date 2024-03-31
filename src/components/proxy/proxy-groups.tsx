@@ -123,6 +123,7 @@ export const ProxyGroups = (props: Props) => {
       className={classNames(styles.proxyVirtuoso)}
       totalCount={renderList.length}
       increaseViewportBy={256}
+      overscan={1200}
       itemContent={(index) => (
         <ProxyRender
           key={renderList[index].key}

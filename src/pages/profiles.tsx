@@ -42,7 +42,7 @@ import {
 import { LoadingButton } from "@mui/lab";
 import { Box, Button, Grid, IconButton, Stack, TextField } from "@mui/material";
 import { useLockFn } from "ahooks";
-import { throttle } from "lodash-es";
+import { over, throttle } from "lodash-es";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSetRecoilState } from "recoil";
@@ -275,9 +275,14 @@ export default function ProfilePage() {
     if (text) setUrl(text);
   };
 
+  const [sectionOverflowStatus, setSectionOverflowStatus] = useState(false);
+
   return (
     <BasePage
       title={t("Profiles")}
+      sectionStyle={{
+        overflow: sectionOverflowStatus ? "hidden" : "auto",
+      }}
       header={
         <Box sx={{ mt: 1, display: "flex", alignItems: "center", gap: 1 }}>
           <IconButton
@@ -375,6 +380,8 @@ export default function ProfilePage() {
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragEnd={onDragEnd}
+        onDragStart={() => setSectionOverflowStatus(true)}
+        onDragOver={() => setSectionOverflowStatus(false)}
       >
         <Box sx={{ mb: 4.5 }}>
           <Grid container spacing={{ xs: 3, lg: 3 }}>

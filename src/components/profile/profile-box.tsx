@@ -34,7 +34,7 @@ export const ProfileBox = styled(Box)(({
     display: "block",
     cursor: "pointer",
     textAlign: "left",
-    borderRadius: theme.shape.borderRadius,
+    borderRadius: 14,
     boxShadow: theme.shadows[2],
     padding: "10px 14px",
     boxSizing: "border-box",

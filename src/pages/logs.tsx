@@ -137,7 +137,9 @@ export default function LogPage() {
           <Virtuoso
             initialTopMostItemIndex={999}
             data={filterLogs}
-            itemContent={(index, item) => <LogItem value={item} />}
+            itemContent={(index, item) => (
+              <LogItem index={index} value={item} />
+            )}
             followOutput={"smooth"}
             overscan={900}
           />

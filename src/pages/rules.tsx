@@ -59,7 +59,7 @@ export default function RulesPage() {
           <Virtuoso
             data={rules}
             itemContent={(index, item) => (
-              <RuleItem index={index + 1} value={item} />
+              <RuleItem index={index} value={item} />
             )}
             followOutput={"smooth"}
             overscan={900}

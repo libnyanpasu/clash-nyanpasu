@@ -38,6 +38,7 @@ const RuleItem = (props: Props) => {
       sx={{
         pl: 3.5,
         pr: 3.5,
+        pt: index === 0 ? 8 : 0,
       }}
     >
       <Typography
@@ -45,7 +46,7 @@ const RuleItem = (props: Props) => {
         variant="body2"
         sx={{ lineHeight: 2, minWidth: 30, mr: 2.25, textAlign: "center" }}
       >
-        {index}
+        {index + 1}
       </Typography>
 
       <Box sx={{ userSelect: "text" }}>

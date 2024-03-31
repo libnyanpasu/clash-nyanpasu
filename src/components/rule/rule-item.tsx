@@ -34,7 +34,12 @@ const RuleItem = (props: Props) => {
   const { index, value } = props;
 
   return (
-    <Item>
+    <Item
+      sx={{
+        pl: 3.5,
+        pr: 3.5,
+      }}
+    >
       <Typography
         color="text.secondary"
         variant="body2"

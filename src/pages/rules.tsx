@@ -18,16 +18,20 @@ export default function RulesPage() {
   }, [data, filterText]);
 
   return (
-    <BasePage title={t("Rules")} contentStyle={{ height: "100%" }}>
-      <Paper sx={{ boxSizing: "border-box", boxShadow: 2, height: "100%" }}>
-        <Box
+    <BasePage full title={t("Rules")} contentStyle={{ height: "100%" }}>
+      <Box
+        sx={{
+          padding: 2,
+          width: "calc(100% - 32px)",
+          position: "fixed",
+          borderRadius: 4,
+          zIndex: 10,
+        }}
+      >
+        <Paper
           sx={{
-            pt: 1,
-            mb: 0.5,
-            mx: "12px",
-            height: "36px",
-            display: "flex",
-            alignItems: "center",
+            borderRadius: 4,
+            boxShadow: "none",
           }}
         >
           <TextField
@@ -41,23 +45,28 @@ export default function RulesPage() {
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
             sx={{ input: { py: 0.65, px: 1.25 } }}
+            InputProps={{
+              sx: {
+                borderRadius: 4,
+              },
+            }}
           />
-        </Box>
+        </Paper>
+      </Box>
 
-        <Box height="calc(100% - 50px)">
-          {rules.length > 0 ? (
-            <Virtuoso
-              data={rules}
-              itemContent={(index, item) => (
-                <RuleItem index={index + 1} value={item} />
-              )}
-              followOutput={"smooth"}
-            />
-          ) : (
-            <BaseEmpty text="No Rules" />
-          )}
-        </Box>
-      </Paper>
+      <Box height="100%">
+        {rules.length > 0 ? (
+          <Virtuoso
+            data={rules}
+            itemContent={(index, item) => (
+              <RuleItem index={index + 1} value={item} />
+            )}
+            followOutput={"smooth"}
+          />
+        ) : (
+          <BaseEmpty text="No Rules" />
+        )}
+      </Box>
     </BasePage>
   );
 }

@@ -38,6 +38,7 @@ export default function LogPage() {
 
   return (
     <BasePage
+      full
       title={t("Logs")}
       contentStyle={{ height: "100%" }}
       header={
@@ -64,22 +65,25 @@ export default function LogPage() {
         </Box>
       }
     >
-      <Paper
+      <Box
         sx={{
-          boxSizing: "border-box",
-          boxShadow: 2,
-          height: "100%",
-          userSelect: "text",
+          // pt: 1,
+          // mb: 0.5,
+          // mx: "12px",
+          // height: "36px",
+          display: "flex",
+          alignItems: "center",
+          position: "fixed",
+          width: "calc(100% - 32px)",
+          gap: 1,
+          padding: 2,
+          zIndex: 10,
         }}
       >
-        <Box
+        <Paper
           sx={{
-            pt: 1,
-            mb: 0.5,
-            mx: "12px",
-            height: "36px",
-            display: "flex",
-            alignItems: "center",
+            borderRadius: 7,
+            boxShadow: "none",
           }}
         >
           <Select
@@ -87,14 +91,27 @@ export default function LogPage() {
             autoComplete="off"
             value={logState}
             onChange={(e) => setLogState(e.target.value)}
-            sx={{ width: 120, mr: 1, '[role="button"]': { py: 0.65 } }}
+            sx={{
+              width: 120,
+              height: "36px",
+              borderRadius: 7,
+              '[role="button"]': { py: 0.65 },
+            }}
           >
             <MenuItem value="all">ALL</MenuItem>
             <MenuItem value="inf">INFO</MenuItem>
             <MenuItem value="warn">WARN</MenuItem>
             <MenuItem value="err">ERROR</MenuItem>
           </Select>
+        </Paper>
 
+        <Paper
+          sx={{
+            borderRadius: 7,
+            boxShadow: "none",
+            width: "100%",
+          }}
+        >
           <TextField
             hiddenLabel
             fullWidth
@@ -106,22 +123,28 @@ export default function LogPage() {
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
             sx={{ input: { py: 0.65, px: 1.25 } }}
+            InputProps={{
+              sx: {
+                borderRadius: 7,
+              },
+            }}
           />
-        </Box>
+        </Paper>
+      </Box>
 
-        <Box height="calc(100% - 50px)">
-          {filterLogs.length > 0 ? (
-            <Virtuoso
-              initialTopMostItemIndex={999}
-              data={filterLogs}
-              itemContent={(index, item) => <LogItem value={item} />}
-              followOutput={"smooth"}
-            />
-          ) : (
-            <BaseEmpty text="No Logs" />
-          )}
-        </Box>
-      </Paper>
+      <Box height="100%">
+        {filterLogs.length > 0 ? (
+          <Virtuoso
+            initialTopMostItemIndex={999}
+            data={filterLogs}
+            itemContent={(index, item) => <LogItem value={item} />}
+            followOutput={"smooth"}
+            overscan={900}
+          />
+        ) : (
+          <BaseEmpty text="No Logs" />
+        )}
+      </Box>
     </BasePage>
   );
 }

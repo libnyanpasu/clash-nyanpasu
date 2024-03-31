@@ -53,7 +53,12 @@ const LogItem = (props: Props) => {
   }, [value.payload]);
 
   return (
-    <Item>
+    <Item
+      sx={{
+        ml: 3.5,
+        mr: 3.5,
+      }}
+    >
       <div>
         <span className="time">{value.time}</span>
         <span className="type" data-type={value.type.toLowerCase()}>

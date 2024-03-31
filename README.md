@@ -9,7 +9,12 @@
 A <a href="https://github.com/Dreamacro/clash">Clash</a> GUI based on <a href="https://github.com/tauri-apps/tauri">tauri</a>.
 </h3>
 
-[![Nyanpasu Release](https://img.shields.io/github/v/release/LibNyanpasu/clash-nyanpasu?style=flat-square)](https://github.com/LibNyanpasu/clash-nyanpasu/releases/latest) [![Dev Build Status](https://img.shields.io/github/actions/workflow/status/LibNyanpasu/clash-nyanpasu/dev.yaml?style=flat-square)](https://github.com/LibNyanpasu/clash-nyanpasu/releases/pre-release) [![Nyanpasu stars](https://img.shields.io/github/stars/LibNyanpasu/clash-nyanpasu?style=flat-square)](https://github.com/LibNyanpasu/clash-nyanpasu/stargazers) ![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/LibNyanpasu/clash-nyanpasu/total?style=flat-square)
+<p align="center">
+  <a href="https://github.com/LibNyanpasu/clash-nyanpasu/releases/latest"><img src="https://img.shields.io/github/v/release/LibNyanpasu/clash-nyanpasu?style=flat-square" alt="Nyanpasu Release" /></a>
+  <a href="https://github.com/LibNyanpasu/clash-nyanpasu/releases/pre-release"><img src="https://img.shields.io/github/actions/workflow/status/LibNyanpasu/clash-nyanpasu/dev.yaml?style=flat-square" alt="Dev Build Status" /></a>
+  <a href="https://github.com/LibNyanpasu/clash-nyanpasu/stargazers"><img src="https://img.shields.io/github/stars/LibNyanpasu/clash-nyanpasu?style=flat-square" alt="Nyanpasu stars" /></a>
+  <a href="https://github.com/LibNyanpasu/clash-nyanpasu/releases/latest"><img src="https://img.shields.io/github/downloads/LibNyanpasu/clash-nyanpasu/total?style=flat-square" alt="GitHub Downloads (all assets, all releases)" /></a>
+</p>
 
 ## Features
 

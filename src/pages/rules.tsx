@@ -62,6 +62,7 @@ export default function RulesPage() {
               <RuleItem index={index + 1} value={item} />
             )}
             followOutput={"smooth"}
+            overscan={900}
           />
         ) : (
           <BaseEmpty text="No Rules" />

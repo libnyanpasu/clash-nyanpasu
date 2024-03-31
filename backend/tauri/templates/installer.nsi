@@ -300,17 +300,9 @@ Function PageLeaveReinstall
   reinst_done:
 FunctionEnd
 
-Function CheckInstallDir
-  ${If} ${FileExists} "$INSTDIR\*.*"
-    MessageBox MB_ICONSTOP|MB_OK "The selected installation directory is not empty. Please choose an empty directory!"
-    Abort
-  ${EndIf}
-FunctionEnd
-
 ; 5. Choose install directoy page
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
 !insertmacro MUI_PAGE_DIRECTORY
-!define MUI_PAGE_CUSTOMFUNCTION_LEAVE CheckInstallDir
 
 ; 6. Start menu shortcut page
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
@@ -706,14 +698,10 @@ Section Uninstall
   ; Delete uninstaller
   Delete "$INSTDIR\uninstall.exe"
 
-  ${If} $DeleteAppDataCheckboxState == 1
-    RMDir /R /REBOOTOK "$INSTDIR"
-  ${Else}
-    {{#each resources_ancestors}}
-    RMDir /REBOOTOK "$INSTDIR\\{{this}}"
-    {{/each}}
-    RMDir "$INSTDIR"
-  ${EndIf}
+  {{#each resources_ancestors}}
+  RMDir /REBOOTOK "$INSTDIR\\{{this}}"
+  {{/each}}
+  RMDir "$INSTDIR"
 
   ; Remove start menu shortcut
   !insertmacro MUI_STARTMENU_GETFOLDER Application $AppStartMenuFolder

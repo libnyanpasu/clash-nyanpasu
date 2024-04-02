@@ -24,7 +24,7 @@ dependencies:
     specifier: 11.11.5
     version: 11.11.5(@emotion/react@11.11.4)(@types/react@18.2.74)(react@18.2.0)
   '@generouted/react-router':
-    specifier: ^1.18.5
+    specifier: 1.18.5
     version: 1.18.5(react-router-dom@6.22.3)(react@18.2.0)(vite@5.2.7)
   '@juggle/resize-observer':
     specifier: 3.4.0

@@ -1,19 +1,17 @@
 use anyhow::Ok;
 use clap::{Parser, Subcommand};
 
-#[derive(Parser)]
-#[command(version = None, about = None, long_about = None)]
+#[derive(Parser, Debug)]
+#[command(name = "clash-nyanpasu", version, about, long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 enum Commands {
-    MigrateHomeDir {
-        #[arg(short = 't', long)]
-        target_path: String,
-    },
+    #[command(about = "Migrate home directory to another path.")]
+    MigrateHomeDir { target_path: String },
 }
 
 pub fn parse() -> anyhow::Result<()> {

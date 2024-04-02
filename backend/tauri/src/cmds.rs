@@ -404,8 +404,7 @@ pub async fn set_custom_app_dir(app_handle: tauri::AppHandle, path: String) -> C
                 let args = vec![
                     "/C",
                     app_exe.as_str(),
-                    "migrate_home_dir",
-                    "-t",
+                    "migrate-home-dir",
                     path_str.as_str(),
                 ];
                 runas::Command::new("cmd")

@@ -2,10 +2,7 @@ use crate::core::handle;
 use anyhow::Result;
 use std::{path::PathBuf, sync::OnceLock};
 use tauri::{
-    api::{
-        self,
-        path::{home_dir, resource_dir},
-    },
+    api::path::{home_dir, resource_dir},
     Env,
 };
 

@@ -1,20 +1,20 @@
-import type { Highlighter } from "shikiji";
-import { getHighlighterCore } from "shikiji/core";
+import type { Highlighter } from "shiki";
+import { getHighlighterCore } from "shiki/core";
 
-import minLight from "shikiji/themes/min-light.mjs";
-import nord from "shikiji/themes/nord.mjs";
-import getWasm from "shikiji/wasm";
+import minLight from "shiki/themes/min-light.mjs";
+import nord from "shiki/themes/nord.mjs";
+import getWasm from "shiki/wasm";
 
 let shiki: Highlighter | null = null;
 
 export async function getShikiSingleton() {
   if (!shiki) {
-    shiki = await getHighlighterCore({
+    shiki = (await getHighlighterCore({
       themes: [nord, minLight],
       langs: [],
 
       loadWasm: getWasm,
-    });
+    })) as Highlighter;
   }
   return shiki;
 }

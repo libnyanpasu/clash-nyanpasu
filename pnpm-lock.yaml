@@ -235,9 +235,9 @@ devDependencies:
   sass:
     specifier: 1.72.0
     version: 1.72.0
-  shikiji:
-    specifier: 0.10.2
-    version: 0.10.2
+  shiki:
+    specifier: 1.2.3
+    version: 1.2.3
   stylelint:
     specifier: 16.3.1
     version: 16.3.1(typescript@5.4.3)
@@ -1890,6 +1890,7 @@ packages:
     resolution: {integrity: sha512-Iu0Kno1vrD7zHQDxOmvweqLkAzjxEVqNhUIXBsZ8hu8Oak7/5VTPrxOEZXYC1nmrBVJp0ZcL2E7lSuuOVaE3+w==}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
     requiresBuild: true
     dev: true
     optional: true
@@ -1898,6 +1899,7 @@ packages:
     resolution: {integrity: sha512-C31QrW47llgVyrRjIwiOwsHFcaIwmkKi3PCroQY5aVq4H0A5v/vVVAtFsI1nfBngtoRpeREvZOkIhmRwUKkAdw==}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
     requiresBuild: true
     dev: true
     optional: true
@@ -1906,6 +1908,7 @@ packages:
     resolution: {integrity: sha512-Oq90dtMHvthFOPMl7pt7KmxzX7E71AfyIhh+cPhLY9oko97Zf2C9tt/XJD4RgxhaGeAraAXDtqxvKE1y/j35lA==}
     cpu: [riscv64]
     os: [linux]
+    libc: [glibc]
     requiresBuild: true
     dev: true
     optional: true
@@ -1914,6 +1917,7 @@ packages:
     resolution: {integrity: sha512-yUD/8wMffnTKuiIsl6xU+4IA8UNhQ/f1sAnQebmE/lyQ8abjsVyDkyRkWop0kdMhKMprpNIhPmYlCxgHrPoXoA==}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
     requiresBuild: true
     dev: true
     optional: true
@@ -1922,6 +1926,7 @@ packages:
     resolution: {integrity: sha512-9RyNqoFNdF0vu/qqX63fKotBh43fJQeYC98hCaf89DYQpv+xu0D8QFSOS0biA7cGuqJFOc1bJ+m2rhhsKcw1hw==}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
     requiresBuild: true
     dev: true
     optional: true
@@ -1949,6 +1954,10 @@ packages:
     requiresBuild: true
     dev: true
     optional: true
+
+  /@shikijs/core@1.2.3:
+    resolution: {integrity: sha512-SM+aiQVaEK2P53dEcsvhq9+LJPr0rzwezHbMQhHaSrPN4OlOB4vp1qTdhVEKfMg6atdq8s9ZotWW/CSCzWftwg==}
+    dev: true
 
   /@svgr/babel-plugin-add-jsx-attribute@8.0.0(@babel/core@7.23.6):
     resolution: {integrity: sha512-b9MIk7yhdS1pMCZM8VeNfUlSKVRhsHZNMl5O9SfaX0l0t5wjdgu4IDzGB8bpnGBBOjGST3rRFVsaaEtI4W6f7g==}
@@ -2123,6 +2132,7 @@ packages:
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
     requiresBuild: true
     dev: true
     optional: true
@@ -2132,6 +2142,7 @@ packages:
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
     requiresBuild: true
     dev: true
     optional: true
@@ -2141,6 +2152,7 @@ packages:
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
     requiresBuild: true
     dev: true
     optional: true
@@ -2150,6 +2162,7 @@ packages:
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
     requiresBuild: true
     dev: true
     optional: true
@@ -6625,14 +6638,10 @@ packages:
     resolution: {integrity: sha512-6j1W9l1iAs/4xYBI1SYOVZyFcCis9b4KCLQ8fgAGG07QvzaRLVVRQvAy85yNmmZSjYjg4MWh4gNvlPujU/5LpA==}
     dev: true
 
-  /shikiji-core@0.10.2:
-    resolution: {integrity: sha512-9Of8HMlF96usXJHmCL3Gd0Fcf0EcyJUF9m8EoAKKd98mHXi0La2AZl1h6PegSFGtiYcBDK/fLuKbDa1l16r1fA==}
-    dev: true
-
-  /shikiji@0.10.2:
-    resolution: {integrity: sha512-wtZg3T0vtYV2PnqusWQs3mDaJBdCPWxFDrBM/SE5LfrX92gjUvfEMlc+vJnoKY6Z/S44OWaCRzNIsdBRWcTAiw==}
+  /shiki@1.2.3:
+    resolution: {integrity: sha512-+v7lO5cJMeV2N2ySK4l+51YX3wTh5I49SLjAOs1ch1DbUfeEytU1Ac9KaZPoZJCVBGycDZ09OBQN5nbcPFc5FQ==}
     dependencies:
-      shikiji-core: 0.10.2
+      '@shikijs/core': 1.2.3
     dev: true
 
   /side-channel@1.0.4:

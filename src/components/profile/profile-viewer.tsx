@@ -28,6 +28,8 @@ import MDYSwitch from "../common/mdy-switch";
 interface Props {
   onChange: () => void;
   url?: string;
+  name?: string;
+  desc?: string;
 }
 
 export interface ProfileViewerRef {

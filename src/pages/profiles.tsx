@@ -42,12 +42,12 @@ import {
 import { LoadingButton } from "@mui/lab";
 import { Box, Button, Grid, IconButton, Stack, TextField } from "@mui/material";
 import { useLockFn } from "ahooks";
-import { over, throttle } from "lodash-es";
+import { throttle } from "lodash-es";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useLocation } from "react-router-dom";
 import { useSetRecoilState } from "recoil";
 import useSWR, { mutate } from "swr";
-import { useLocation } from "react-router-dom";
 
 export default function ProfilePage() {
   const { t } = useTranslation();
@@ -430,7 +430,9 @@ export default function ProfilePage() {
 
       <ProfileViewer
         ref={viewerRef}
-        url={location.state != null ? (location.state.scheme as string) : ""}
+        url={location.state?.subscribe?.url as string | undefined}
+        name={location.state?.subscribe?.name as string | undefined}
+        desc={location.state?.subscribe?.desc as string | undefined}
         onChange={() => mutateProfiles()}
       />
       <ConfigViewer ref={configRef} />

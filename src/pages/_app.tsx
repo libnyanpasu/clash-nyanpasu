@@ -201,7 +201,7 @@ export default function App() {
 
             <div className="drag-mask" data-windrag />
 
-            <AnimatePresence mode="wait">
+            <AnimatePresence mode="wait" initial={false}>
               {/* {React.cloneElement(routes, { key: location.pathname })} */}
               <PageTransition />
             </AnimatePresence>

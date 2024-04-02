@@ -34,7 +34,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso } from "react-virtuoso";
 import { useRecoilState } from "recoil";
-import styles from "./connections..module.scss";
+import styles from "./connections.module.scss";
 
 const initConn = { uploadTotal: 0, downloadTotal: 0, connections: [] };
 

@@ -1,8 +1,8 @@
+import parseTraffic from "@/utils/parse-traffic";
+import { truncateStr } from "@/utils/truncate-str";
+import { DataGrid, GridColDef } from "@mui/x-data-grid";
 import dayjs from "dayjs";
 import { useMemo, useState } from "react";
-import { DataGrid, GridColDef } from "@mui/x-data-grid";
-import { truncateStr } from "@/utils/truncate-str";
-import parseTraffic from "@/utils/parse-traffic";
 
 interface Props {
   connections: IConnectionsItem[];
@@ -24,7 +24,7 @@ export const ConnectionTable = (props: Props) => {
       width: 88,
       align: "right",
       headerAlign: "right",
-      valueFormatter: ({ value }) => parseTraffic(value).join(" "),
+      valueFormatter: (value) => parseTraffic(value).join(" "),
     },
     {
       field: "upload",
@@ -32,7 +32,7 @@ export const ConnectionTable = (props: Props) => {
       width: 88,
       align: "right",
       headerAlign: "right",
-      valueFormatter: ({ value }) => parseTraffic(value).join(" "),
+      valueFormatter: (value) => parseTraffic(value).join(" "),
     },
     {
       field: "dlSpeed",
@@ -40,7 +40,7 @@ export const ConnectionTable = (props: Props) => {
       width: 88,
       align: "right",
       headerAlign: "right",
-      valueFormatter: ({ value }) => parseTraffic(value).join(" ") + "/s",
+      valueFormatter: (value) => parseTraffic(value).join(" ") + "/s",
     },
     {
       field: "ulSpeed",
@@ -48,7 +48,7 @@ export const ConnectionTable = (props: Props) => {
       width: 88,
       align: "right",
       headerAlign: "right",
-      valueFormatter: ({ value }) => parseTraffic(value).join(" ") + "/s",
+      valueFormatter: (value) => parseTraffic(value).join(" ") + "/s",
     },
     { field: "chains", headerName: "Chains", flex: 360, minWidth: 360 },
     { field: "rule", headerName: "Rule", flex: 300, minWidth: 250 },

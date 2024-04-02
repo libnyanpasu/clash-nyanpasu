@@ -114,7 +114,7 @@ jobs:
           releaseDraft: false
           prerelease: true
           tauriScript: pnpm tauri
-          args: -f deadlock-detection nightly -c ./backend/tauri/tauri.nightly.conf.json
+          args: -f nightly -c ./backend/tauri/tauri.nightly.conf.json
       - name: Portable Bundle (Windows Only)
         if: startsWith(matrix.targets.os, 'windows-') && matrix.targets.category == 'nsis'
         run: |

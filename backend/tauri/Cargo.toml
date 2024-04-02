@@ -130,8 +130,9 @@ features = [
 
 [features]
 default = ["custom-protocol", "default-meta"]
+nightly = ["devtools", "deadlock-detection"]
 custom-protocol = ["tauri/custom-protocol"]
 verge-dev = []
 default-meta = []
-nightly = []
+devtools = ["tauri/devtools"]
 deadlock-detection = ["parking_lot/deadlock_detection"]

@@ -1,6 +1,8 @@
 import { useVerge } from "@/hooks/use-verge";
 import { classNames } from "@/utils";
 import { motion, type HTMLMotionProps } from "framer-motion";
+import { useState } from "react";
+import { useOutlet } from "react-router-dom";
 
 type Props = {
   children?: React.ReactNode;
@@ -71,7 +73,14 @@ function overrideVariantsTransition(
   );
 }
 
-export default function PageTransition({ children }: Props) {
+const AnimatedOutlet: React.FC = () => {
+  const o = useOutlet();
+  const [outlet] = useState(o);
+
+  return <>{outlet}</>;
+};
+
+export default function PageTransition() {
   const { verge } = useVerge();
   const { theme_setting } = verge ?? {};
   const variants = overrideVariantsTransition(
@@ -85,12 +94,13 @@ export default function PageTransition({ children }: Props) {
   return (
     <motion.div
       className={classNames("page-transition", "the-content")}
+      key={location.pathname}
       variants={variants[verge?.page_transition_animation ?? "slide"]}
       initial="initial"
       animate="visible"
       exit="hidden"
     >
-      {children}
+      <AnimatedOutlet />
     </motion.div>
   );
 }

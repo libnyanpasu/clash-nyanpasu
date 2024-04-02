@@ -28,7 +28,7 @@ module.exports = {
       alias: {
         map: [
           ["@", "./src"],
-          ["@root", "./"],
+          ["~", "./"],
         ],
         extensions: [".tsx", ".ts", ".jsx", ".js", ".mjs", ".cjs"],
       },

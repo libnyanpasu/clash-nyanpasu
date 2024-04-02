@@ -1,6 +1,5 @@
 import LogoSvg from "@/assets/image/logo.svg?react";
 import { LayoutControl } from "@/components/layout/layout-control";
-import { LayoutItem } from "@/components/layout/layout-item";
 import { LayoutTraffic } from "@/components/layout/layout-traffic";
 import { UpdateButton } from "@/components/layout/update-button";
 import { useCustomTheme } from "@/components/layout/use-custom-theme";
@@ -8,7 +7,7 @@ import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { useVerge } from "@/hooks/use-verge";
 import { getAxios } from "@/services/api";
 import getSystem from "@/utils/get-system";
-import { List, Paper, ThemeProvider, alpha } from "@mui/material";
+import { List, Paper, ThemeProvider, alpha, useTheme } from "@mui/material";
 import { emit, listen } from "@tauri-apps/api/event";
 import { appWindow } from "@tauri-apps/api/window";
 import dayjs from "dayjs";
@@ -17,17 +16,32 @@ import "dayjs/locale/zh-cn";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { AnimatePresence } from "framer-motion";
 import i18next from "i18next";
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { useLocation, useNavigate, useRoutes } from "react-router-dom";
 import { SWRConfig, mutate } from "swr";
-import { routers } from "./_routers";
+// import { routers } from "./_routers";
+import { LayoutItem } from "@/components/layout/layout-item";
+import PageTransition from "@/components/layout/page-transition";
+import { classNames } from "@/utils";
+import { Modals } from "@generouted/react-router/lazy";
+import { useNavigate, type Path } from "../router";
+import styles from "./_app.module.scss";
 
 dayjs.extend(relativeTime);
 
 const OS = getSystem();
 
-export default function Layout() {
+export const routes = {
+  proxies: "/proxies",
+  profiles: "/profiles",
+  connections: "/connections",
+  rules: "/rules",
+  logs: "/logs",
+  settings: "/settings",
+  providers: "/providers",
+};
+
+export default function App() {
   const { t } = useTranslation();
 
   const { theme } = useCustomTheme();
@@ -36,9 +50,9 @@ export default function Layout() {
   const { theme_blur, language } = verge || {};
 
   const navigate = useNavigate();
-  const location = useLocation();
-  const routes = useRoutes(routers);
-  if (!routes) return null;
+  // const location = useLocation();
+  // const routes = useRoutes(routers);
+  // if (!routes) return null;
 
   useEffect(() => {
     window.addEventListener("keydown", (e) => {
@@ -95,7 +109,7 @@ export default function Layout() {
       if (url.pathname.startsWith("//")) url.pathname = url.pathname.slice(1);
       switch (url.pathname) {
         case "/subscribe-remote-profile":
-          navigate("/profile", {
+          navigate("/profiles", {
             state: {
               subscribe: {
                 url: url.searchParams.get("url"),
@@ -166,9 +180,9 @@ export default function Layout() {
             </div>
 
             <List className="the-menu">
-              {routers.map((router) => (
-                <LayoutItem key={router.label} to={router.path}>
-                  {t(router.label)}
+              {Object.entries(routes).map(([name, to]) => (
+                <LayoutItem key={name} to={to as Path}>
+                  {t(`label_${name}`)}
                 </LayoutItem>
               ))}
             </List>
@@ -188,11 +202,30 @@ export default function Layout() {
             <div className="drag-mask" data-windrag />
 
             <AnimatePresence mode="wait">
-              {React.cloneElement(routes, { key: location.pathname })}
+              {/* {React.cloneElement(routes, { key: location.pathname })} */}
+              <PageTransition />
             </AnimatePresence>
+            <Modals />
           </div>
         </Paper>
       </ThemeProvider>
     </SWRConfig>
   );
 }
+
+export const Catch = () => {
+  const theme = useTheme();
+  return (
+    <div
+      className={classNames(
+        styles.oops,
+        theme.palette.mode === "dark" && styles.dark,
+      )}
+    >
+      <h1>Oops!</h1>
+      <p>Something went wrong... Caught at _app error boundary</p>
+    </div>
+  );
+};
+
+export const Pending = () => <div>Loading from _app...</div>;

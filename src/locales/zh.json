@@ -1,11 +1,11 @@
 {
-  "Label-Proxies": "代 理",
-  "Label-Profiles": "配 置",
-  "Label-Connections": "连 接",
-  "Label-Logs": "日 志",
-  "Label-Rules": "规 则",
-  "Label-Settings": "设 置",
-  "Label-Providers": "资 源",
+  "label_proxies": "代 理",
+  "label_profiles": "配 置",
+  "label_connections": "连 接",
+  "label_logs": "日 志",
+  "label_rules": "规 则",
+  "label_settings": "设 置",
+  "label_providers": "资 源",
 
   "Connections": "连接",
   "Upload Total": "上传总量",

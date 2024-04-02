@@ -1,10 +1,11 @@
 {
-  "Label-Proxies": "Прокси",
-  "Label-Profiles": "Профили",
-  "Label-Connections": "Соединения",
-  "Label-Logs": "Логи",
-  "Label-Rules": "Правила",
-  "Label-Settings": "Настройки",
+  "label_proxies": "прокси",
+  "label_profiles": "профили",
+  "label_connections": "связи",
+  "label_logs": "журналы",
+  "label_rules": "правила",
+  "label_settings": "настройки",
+  "label_providers": "поставщики",
 
   "Connections": "Соединения",
   "Logs": "Логи",

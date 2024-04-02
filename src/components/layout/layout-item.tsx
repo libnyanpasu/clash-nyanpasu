@@ -1,8 +1,8 @@
-import { alpha, ListItem, ListItemButton, ListItemText } from "@mui/material";
-import { useMatch, useResolvedPath, useNavigate } from "react-router-dom";
-import type { LinkProps } from "react-router-dom";
-
-export const LayoutItem = (props: LinkProps) => {
+import { useNavigate, type Params, type Path } from "@/router";
+import type { LinkProps } from "@generouted/react-router/client";
+import { ListItem, ListItemButton, ListItemText, alpha } from "@mui/material";
+import { useMatch, useResolvedPath } from "react-router-dom";
+export const LayoutItem = (props: LinkProps<Path, Params>) => {
   const { to, children } = props;
 
   const resolved = useResolvedPath(to);

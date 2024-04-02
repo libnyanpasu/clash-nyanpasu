@@ -1,8 +1,8 @@
 import { NotificationType, useNotification } from "@/hooks/use-notification";
-import type { ManifestVersion } from "@root/scripts/generate-latest-version";
 import { invoke } from "@tauri-apps/api/tauri";
 import dayjs from "dayjs";
 import { t } from "i18next";
+import type { ManifestVersion } from "~/scripts/generate-latest-version";
 import type { IProxies } from "./api";
 export async function getClashLogs() {
   const regex = /time="(.+?)"\s+level=(.+?)\s+msg="(.+?)"/;

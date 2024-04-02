@@ -21,13 +21,13 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { version } from "@root/package.json";
 import { open } from "@tauri-apps/api/dialog";
 import { relaunch } from "@tauri-apps/api/process";
 import { checkUpdate } from "@tauri-apps/api/updater";
 import { useAsyncEffect, useLockFn } from "ahooks";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { version } from "~/package.json";
 import MDYSwitch from "../common/mdy-switch";
 import { ConfigViewer } from "./mods/config-viewer";
 import { GuardState } from "./mods/guard-state";

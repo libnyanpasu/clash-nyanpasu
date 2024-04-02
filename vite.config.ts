@@ -1,5 +1,5 @@
+import generouted from "@generouted/react-router/plugin";
 import react from "@vitejs/plugin-react";
-import path from "path";
 import { defineConfig } from "vite";
 import monaco from "vite-plugin-monaco-editor";
 import svgr from "vite-plugin-svgr";
@@ -9,24 +9,25 @@ export default defineConfig(({ command }) => {
   const isDev = command === "serve";
 
   return {
-    root: "src",
+    // root: "/",
     server: { port: 3000 },
     plugins: [
       svgr(),
       react(),
+      generouted(),
       monaco({ languageWorkers: ["editorWorkerService", "typescript"] }),
     ],
     esbuild: {
       drop: isDev ? undefined : ["console", "debugger"],
     },
     build: {
-      outDir: "../dist",
+      outDir: "dist",
       emptyOutDir: true,
     },
     resolve: {
       alias: {
-        "@": path.resolve("./src"),
-        "@root": path.resolve("."),
+        "@": "/src",
+        "~/": "/",
       },
     },
     define: {

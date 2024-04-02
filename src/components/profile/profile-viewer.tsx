@@ -11,7 +11,6 @@ import {
   TextField,
   styled,
 } from "@mui/material";
-import { version } from "@root/package.json";
 import { useLockFn } from "ahooks";
 import {
   forwardRef,
@@ -22,8 +21,9 @@ import {
 } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import { FileInput } from "./file-input";
+import { version } from "~/package.json";
 import MDYSwitch from "../common/mdy-switch";
+import { FileInput } from "./file-input";
 
 interface Props {
   onChange: () => void;

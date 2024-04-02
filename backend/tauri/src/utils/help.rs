@@ -83,15 +83,12 @@ pub fn get_uid(prefix: &str) -> String {
 /// parse the string
 /// xxx=123123; => 123123
 pub fn parse_str<T: FromStr>(target: &str, key: &str) -> Option<T> {
-    target.find(key).and_then(|idx| {
-        let idx = idx + key.len();
-        let value = &target[idx..];
-
-        match value.split(';').next() {
-            Some(value) => value.trim().parse(),
-            None => value.trim().parse(),
+    target.split(';').map(str::trim).find_map(|s| {
+        let mut parts = s.splitn(2, '=');
+        match (parts.next(), parts.next()) {
+            (Some(k), Some(v)) if k == key => v.parse::<T>().ok(),
+            _ => None,
         }
-        .ok()
     })
 }
 

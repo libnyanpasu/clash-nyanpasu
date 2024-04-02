@@ -241,8 +241,22 @@ impl PrfItem {
         // parse the Content-Disposition
         let filename = match header.get("Content-Disposition") {
             Some(value) => {
-                let filename = value.to_str().unwrap_or("");
-                help::parse_str::<String>(filename, "filename=")
+                let filename = format!("{value:?}");
+                let filename = filename.trim_matches('"');
+                match help::parse_str::<String>(filename, "filename*") {
+                    Some(filename) => {
+                        let iter = percent_encoding::percent_decode(filename.as_bytes());
+                        let filename = iter.decode_utf8().unwrap_or_default();
+                        filename.split("''").last().map(|s| s.to_string())
+                    }
+                    None => match help::parse_str::<String>(filename, "filename") {
+                        Some(filename) => {
+                            let filename = filename.trim_matches('"');
+                            Some(filename.to_string())
+                        }
+                        None => None,
+                    },
+                }
             }
             None => None,
         };

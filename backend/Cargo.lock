@@ -876,6 +876,7 @@ dependencies = [
  "once_cell",
  "open 5.1.2",
  "parking_lot",
+ "percent-encoding",
  "port_scanner",
  "reqwest",
  "rfd",

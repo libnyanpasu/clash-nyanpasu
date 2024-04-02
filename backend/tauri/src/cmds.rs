@@ -381,22 +381,41 @@ pub fn get_custom_app_dir() -> CmdResult<Option<String>> {
 
 #[cfg(windows)]
 #[tauri::command]
-pub async fn set_custom_app_dir(path: String) -> CmdResult {
-    use crate::utils::{dialog::migrate_dialog, init::do_config_migration, winreg::set_app_dir};
+pub async fn set_custom_app_dir(app_handle: tauri::AppHandle, path: String) -> CmdResult {
+    use crate::utils::{self, dialog::migrate_dialog, winreg::set_app_dir};
     use rust_i18n::t;
-    use std::path::PathBuf;
+    use std::{path::PathBuf, time::Duration};
 
     let path_str = path.clone();
     let path = PathBuf::from(path);
-    wrap_err!(set_app_dir(&path))?;
 
     // show a dialog to ask whether to migrate the data
     let res = tauri::async_runtime::spawn_blocking(move || {
         let msg = t!("dialog.custom_app_dir_migrate", path = path_str).to_string();
+
         if migrate_dialog(&msg) {
-            let new_dir = PathBuf::from(path_str);
-            let old_dir = dirs::app_home_dir().unwrap();
-            do_config_migration(&old_dir, &new_dir)?;
+            let app_exe = tauri::utils::platform::current_exe()?;
+            let app_exe = dunce::canonicalize(app_exe)?.to_string_lossy().to_string();
+            std::thread::spawn(move || {
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_secs(3));
+                    utils::help::quit_application(&app_handle);
+                });
+                let args = vec![
+                    "/C",
+                    app_exe.as_str(),
+                    "migrate_home_dir",
+                    "-t",
+                    path_str.as_str(),
+                ];
+                runas::Command::new("cmd")
+                    .args(&args)
+                    .show(true)
+                    .status()
+                    .unwrap();
+            });
+        } else {
+            set_app_dir(&path)?;
         }
         Ok::<_, anyhow::Error>(())
     })

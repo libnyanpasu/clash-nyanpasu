@@ -13,7 +13,7 @@ thiserror = "1"
 tracing = "0.1"
 
 [profile.release]
-panic = "abort"
+panic = "unwind"
 codegen-units = 1
 lto = true
 opt-level = "s"

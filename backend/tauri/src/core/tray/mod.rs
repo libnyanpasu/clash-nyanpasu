@@ -1,5 +1,5 @@
 use super::storage;
-use crate::{cmds, config::Config, feat, utils::resolve};
+use crate::{cmds, config::Config, feat, utils, utils::resolve};
 use anyhow::Result;
 use rust_i18n::t;
 use tauri::{
@@ -11,8 +11,7 @@ use tracing_attributes::instrument;
 mod icon;
 pub mod proxies;
 pub use self::icon::on_scale_factor_changed;
-use self::icon::TrayIcon;
-use self::proxies::SystemTrayMenuProxiesExt;
+use self::{icon::TrayIcon, proxies::SystemTrayMenuProxiesExt};
 
 pub struct Tray {}
 
@@ -155,14 +154,7 @@ impl Tray {
                 "restart_clash" => feat::restart_clash_core(),
                 "restart_app" => api::process::restart(&app_handle.env()),
                 "quit" => {
-                    let _ = resolve::save_window_state(app_handle, true);
-
-                    resolve::resolve_reset();
-                    api::process::kill_children();
-                    app_handle.exit(0);
-                    // flush all data to disk
-                    storage::Storage::global().destroy().unwrap();
-                    std::process::exit(0);
+                    utils::help::quit_application(app_handle);
                 }
                 _ => {
                     proxies::on_system_tray_event(&id);

@@ -10,10 +10,10 @@ mod enhance;
 mod feat;
 mod utils;
 
-use crate::core::handle::Handle;
 use crate::{
     config::Config,
-    utils::{init, resolve},
+    core::{commands, handle::Handle},
+    utils::{dirs, init, resolve},
 };
 use anyhow::Context;
 use tauri::{api, Manager, SystemTray};
@@ -23,8 +23,8 @@ rust_i18n::i18n!("../../locales");
 #[cfg(feature = "deadlock-detection")]
 fn deadlock_detection() {
     use parking_lot::deadlock;
-    use std::thread;
-    use std::time::Duration;
+    use std::{thread, time::Duration};
+    use tracing::error;
     thread::spawn(move || loop {
         thread::sleep(Duration::from_secs(10));
         let deadlocks = deadlock::check_deadlock();
@@ -32,12 +32,12 @@ fn deadlock_detection() {
             continue;
         }
 
-        println!("{} deadlocks detected", deadlocks.len());
+        error!("{} deadlocks detected", deadlocks.len());
         for (i, threads) in deadlocks.iter().enumerate() {
-            println!("Deadlock #{}", i);
+            error!("Deadlock #{}", i);
             for t in threads {
-                println!("Thread Id {:#?}", t.thread_id());
-                println!("{:#?}", t.backtrace());
+                error!("Thread Id {:#?}", t.thread_id());
+                error!("{:#?}", t.backtrace());
             }
         }
     });
@@ -47,23 +47,16 @@ fn main() -> std::io::Result<()> {
     #[cfg(feature = "deadlock-detection")]
     deadlock_detection();
 
+    // Parse commands
+    commands::parse().unwrap();
+
     // Should be in first place in order prevent single instance check block everything
     tauri_plugin_deep_link::prepare("moe.elaina.clash.nyanpasu");
 
     // 单例检测
-    #[cfg(not(target_os = "macos"))]
-    let app_name = utils::dirs::APP_NAME.to_string();
-
-    #[cfg(target_os = "macos")]
-    let app_name = api::path::local_data_dir()
-        .unwrap()
-        .into_os_string()
-        .into_string()
-        .unwrap()
-        + utils::dirs::APP_NAME;
-
+    let placeholder = dirs::get_single_instance_placeholder();
     let single_instance_result: anyhow::Result<()> =
-        single_instance::SingleInstance::new(app_name.as_str())
+        single_instance::SingleInstance::new(&placeholder)
             .context("failed to create single instance")
             .map(|instance| {
                 if !instance.is_single() {
@@ -93,9 +86,7 @@ fn main() -> std::io::Result<()> {
     rust_i18n::set_locale(verge.as_str());
 
     // show a dialog to print the single instance error
-    if let Err(e) = single_instance_result {
-        utils::dialog::panic_dialog(&format!("{:?}", e));
-    }
+    single_instance_result.unwrap();
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()

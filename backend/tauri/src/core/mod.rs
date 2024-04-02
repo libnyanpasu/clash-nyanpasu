@@ -1,4 +1,5 @@
 pub mod clash;
+pub mod commands;
 pub mod handle;
 pub mod hotkey;
 pub mod logger;

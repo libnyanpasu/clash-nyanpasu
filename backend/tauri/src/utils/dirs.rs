@@ -200,7 +200,7 @@ pub fn get_single_instance_placeholder() -> String {
 
     #[cfg(target_os = "macos")]
     {
-        api::path::local_data_dir()
+        tauri::api::path::local_data_dir()
             .unwrap()
             .join(APP_NAME)
             .to_string_lossy()

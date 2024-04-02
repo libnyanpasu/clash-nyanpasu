@@ -1,5 +1,4 @@
-import globalClassNames from "../../style.d";
-declare const classNames: typeof globalClassNames & {
+declare const classNames: {
   readonly basePageTransition: "basePageTransition";
   readonly "MuiDialog-paper": "MuiDialog-paper";
 };

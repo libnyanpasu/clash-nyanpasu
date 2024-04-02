@@ -17,7 +17,6 @@ export default defineConfig(({ command }) => {
     css: {
       preprocessorOptions: {
         scss: {
-          additionalData: `@use "@/styles" as common;`,
           importer(...args) {
             if (args[0] !== "@/styles") {
               return;
@@ -35,15 +34,7 @@ export default defineConfig(({ command }) => {
       svgr(),
       react(),
       generouted(),
-      sassDts({
-        enabledMode: ["development", "production"],
-        global: {
-          generate: true,
-          outputFilePath: path.resolve(__dirname, "./src/style.d.ts"),
-        },
-        sourceDir: path.resolve(__dirname, "./src"),
-        outputDir: path.resolve(__dirname, "./dist"),
-      }),
+      sassDts(),
       monaco({ languageWorkers: ["editorWorkerService", "typescript"] }),
     ],
     esbuild: {

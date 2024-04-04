@@ -150,7 +150,7 @@
     "stylelint-order": "6.0.4",
     "stylelint-scss": "6.2.1",
     "telegraf": "4.16.3",
-    "tsx": "4.7.1",
+    "tsx": "4.7.2",
     "typescript": "5.4.3",
     "vite": "5.2.8",
     "vite-plugin-monaco-editor": "1.1.0",

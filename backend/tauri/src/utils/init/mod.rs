@@ -3,9 +3,10 @@ use crate::{
     utils::{dialog::migrate_dialog, dirs, help},
 };
 use anyhow::Result;
+use fs_extra::dir::CopyOptions;
 use runas::Command as RunasCommand;
 use rust_i18n::t;
-use std::{fs, io::ErrorKind, path::PathBuf};
+use std::{fs, path::PathBuf};
 
 mod logging;
 pub use logging::refresh_logger;
@@ -196,10 +197,13 @@ pub fn init_service() -> Result<()> {
 }
 
 pub fn do_config_migration(old_app_dir: &PathBuf, app_dir: &PathBuf) -> anyhow::Result<()> {
-    if let Err(e) = fs::rename(old_app_dir, app_dir) {
-        match e.kind() {
+    let copy_option = CopyOptions::new();
+    let copy_option = copy_option.overwrite(true);
+    let copy_option = copy_option.content_only(true);
+    if let Err(e) = fs_extra::dir::move_dir(old_app_dir, app_dir, &copy_option) {
+        match e.kind {
             #[cfg(windows)]
-            ErrorKind::PermissionDenied => {
+            fs_extra::error::ErrorKind::PermissionDenied => {
                 // It seems that clash-verge-service is running, so kill it.
                 let status = RunasCommand::new("cmd")
                     .args(&["/C", "taskkill", "/IM", "clash-verge-service.exe", "/F"])

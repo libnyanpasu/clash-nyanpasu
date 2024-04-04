@@ -15,6 +15,14 @@ interface PageTransitionVariant {
   transition?: HTMLMotionProps<"div">["transition"];
 }
 
+const commonTransition = {
+  type: "spring",
+  bounce: 0.3,
+  duration: 0.5,
+  delayChildren: 0.2,
+  staggerChildren: 0.05,
+};
+
 export const pageTransitionVariants = {
   blur: {
     initial: { opacity: 0, filter: "blur(10px)" },
@@ -22,18 +30,22 @@ export const pageTransitionVariants = {
     hidden: { opacity: 0, filter: "blur(10px)" },
   },
   slide: {
-    initial: { translateY: "50%", opacity: 0, scale: 0.9 },
+    initial: {
+      translateY: "50%",
+      opacity: 0,
+      scale: 0.9,
+    },
     visible: {
       translateY: "0%",
       opacity: 1,
       scale: 1,
-      transition: { duration: 0.15 },
+      transition: commonTransition,
     },
     hidden: {
       translateY: "-50%",
       opacity: 0,
       scale: 0.9,
-      transition: { duration: 0.15 },
+      transition: commonTransition,
     },
   },
   transparent: {

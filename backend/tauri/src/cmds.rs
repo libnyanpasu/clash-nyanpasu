@@ -397,21 +397,17 @@ pub async fn set_custom_app_dir(app_handle: tauri::AppHandle, path: String) -> C
             let app_exe = tauri::utils::platform::current_exe()?;
             let app_exe = dunce::canonicalize(app_exe)?.to_string_lossy().to_string();
             std::thread::spawn(move || {
-                std::thread::spawn(move || {
-                    std::thread::sleep(Duration::from_secs(3));
-                    utils::help::quit_application(&app_handle);
-                });
-                let args = vec![
-                    "/C",
-                    app_exe.as_str(),
-                    "migrate-home-dir",
-                    path_str.as_str(),
-                ];
-                runas::Command::new("cmd")
-                    .args(&args)
-                    .show(true)
-                    .status()
-                    .unwrap();
+                std::process::Command::new("powershell")
+                    .arg("-Command")
+                    .arg(
+                    format!(
+                        r#"Start-Process '{}' -ArgumentList 'migrate-home-dir','{}' -Verb runAs"#,
+                        app_exe.as_str(),
+                        path_str.as_str()
+                    )
+                    .as_str(),
+                ).spawn().unwrap();
+                utils::help::quit_application(&app_handle);
             });
         } else {
             set_app_dir(&path)?;

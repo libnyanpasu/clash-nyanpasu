@@ -17,6 +17,11 @@ A <a href="https://github.com/Dreamacro/clash">Clash</a> GUI based on <a href="h
   <a href="https://github.com/LibNyanpasu/clash-nyanpasu/blob/main/LICENSE"><img src="https://img.shields.io/github/license/LibNyanpasu/clash-nyanpasu?style=flat-square" alt="Nyanpasu License" /></a>
 </p>
 
+<p align="center">
+  <a href="https://twitter.com/ClashNyanpasu"><img src="https://img.shields.io/twitter/follow/ClashNyanpasu
+  ?style=flat-square" alt="Nyanpasu Twitter" /></a>
+</p>
+
 ## Features
 
 - Full `clash` config supported, Partial `clash premium` config supported.

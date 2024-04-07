@@ -13,9 +13,8 @@ mod utils;
 use crate::{
     config::Config,
     core::{commands, handle::Handle},
-    utils::{dirs, init, resolve},
+    utils::{init, resolve},
 };
-use anyhow::Context;
 use tauri::{api, Manager, SystemTray};
 
 rust_i18n::i18n!("../../locales");
@@ -77,7 +76,7 @@ fn main() -> std::io::Result<()> {
     rust_i18n::set_locale(verge.as_str());
 
     // show a dialog to print the single instance error
-    single_instance_result.unwrap();
+    let _singleton = single_instance_result.unwrap(); // hold the guard until the end of the program
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()

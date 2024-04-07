@@ -196,13 +196,13 @@ pub fn init_service() -> Result<()> {
     Ok(())
 }
 
-pub fn check_singleton() -> Result<()> {
+pub fn check_singleton() -> Result<single_instance::SingleInstance> {
     let placeholder = super::dirs::get_single_instance_placeholder();
     for i in 0..5 {
         let instance = single_instance::SingleInstance::new(&placeholder)
             .context("failed to create single instance")?;
         if instance.is_single() {
-            return Ok(());
+            return Ok(instance);
         }
         if i != 4 {
             std::thread::sleep(std::time::Duration::from_secs(1));

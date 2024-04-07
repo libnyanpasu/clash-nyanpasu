@@ -7,6 +7,7 @@ import {
   openAppDir,
   openCoreDir,
   openLogsDir,
+  restartApplication,
   setCustomAppDir,
 } from "@/services/cmds";
 import { sleep } from "@/utils";
@@ -22,7 +23,6 @@ import {
   Typography,
 } from "@mui/material";
 import { open } from "@tauri-apps/api/dialog";
-import { relaunch } from "@tauri-apps/api/process";
 import { checkUpdate } from "@tauri-apps/api/updater";
 import { useAsyncEffect, useLockFn } from "ahooks";
 import { useRef, useState } from "react";
@@ -123,7 +123,7 @@ const SettingVerge = ({ onError }: Props) => {
         body: t("App directory changed successfully"),
       });
       await sleep(1000);
-      await relaunch();
+      await restartApplication();
     } catch (err: any) {
       useMessage(err.message || err.toString(), {
         title: t("Error"),

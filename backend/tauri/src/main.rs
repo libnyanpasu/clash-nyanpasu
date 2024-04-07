@@ -179,6 +179,7 @@ fn main() -> std::io::Result<()> {
             cmds::get_proxies,
             cmds::select_proxy,
             cmds::update_proxy_provider,
+            cmds::restart_application,
         ]);
 
     #[cfg(target_os = "macos")]

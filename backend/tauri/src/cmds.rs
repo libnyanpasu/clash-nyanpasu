@@ -390,13 +390,13 @@ pub async fn set_custom_app_dir(app_handle: tauri::AppHandle, path: String) -> C
     let path = PathBuf::from(path);
 
     // show a dialog to ask whether to migrate the data
-    let res = tauri::async_runtime::spawn_blocking(move || {
-        let msg = t!("dialog.custom_app_dir_migrate", path = path_str).to_string();
+    let res =
+        tauri::async_runtime::spawn_blocking(move || {
+            let msg = t!("dialog.custom_app_dir_migrate", path = path_str).to_string();
 
-        if migrate_dialog(&msg) {
-            let app_exe = tauri::utils::platform::current_exe()?;
-            let app_exe = dunce::canonicalize(app_exe)?.to_string_lossy().to_string();
-            std::thread::spawn(move || {
+            if migrate_dialog(&msg) {
+                let app_exe = tauri::utils::platform::current_exe()?;
+                let app_exe = dunce::canonicalize(app_exe)?.to_string_lossy().to_string();
                 std::process::Command::new("powershell")
                     .arg("-Command")
                     .arg(
@@ -408,14 +408,19 @@ pub async fn set_custom_app_dir(app_handle: tauri::AppHandle, path: String) -> C
                     .as_str(),
                 ).spawn().unwrap();
                 utils::help::quit_application(&app_handle);
-            });
-        } else {
-            set_app_dir(&path)?;
-        }
-        Ok::<_, anyhow::Error>(())
-    })
-    .await;
+            } else {
+                set_app_dir(&path)?;
+            }
+            Ok::<_, anyhow::Error>(())
+        })
+        .await;
     wrap_err!(wrap_err!(res)?)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn restart_application(app_handle: tauri::AppHandle) -> CmdResult {
+    crate::utils::help::restart_application(&app_handle);
     Ok(())
 }
 

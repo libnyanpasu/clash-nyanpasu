@@ -216,15 +216,25 @@ pub fn get_max_scale_factor() -> f64 {
 }
 
 #[instrument(skip(app_handle))]
-pub fn quit_application(app_handle: &AppHandle) {
+fn cleanup_processes(app_handle: &AppHandle) {
     let _ = super::resolve::save_window_state(app_handle, true);
-
     super::resolve::resolve_reset();
     tauri::api::process::kill_children();
-    app_handle.exit(0);
     // flush all data to disk
     crate::core::storage::Storage::global().destroy().unwrap();
+}
+
+#[instrument(skip(app_handle))]
+pub fn quit_application(app_handle: &AppHandle) {
+    cleanup_processes(app_handle);
+    app_handle.exit(0);
     std::process::exit(0);
+}
+
+#[instrument(skip(app_handle))]
+pub fn restart_application(app_handle: &AppHandle) {
+    cleanup_processes(app_handle);
+    tauri::api::process::restart(&app_handle.env());
 }
 
 #[macro_export]

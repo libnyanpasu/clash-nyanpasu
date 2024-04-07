@@ -14,14 +14,28 @@ enum Commands {
     MigrateHomeDir { target_path: String },
 }
 
+struct DelayedExitGuard;
+impl DelayedExitGuard {
+    pub fn new() -> Self {
+        Self
+    }
+}
+impl Drop for DelayedExitGuard {
+    fn drop(&mut self) {
+        std::thread::sleep(std::time::Duration::from_secs(5));
+    }
+}
+
 pub fn parse() -> anyhow::Result<()> {
     let cli = Cli::parse();
     if let Some(commands) = &cli.command {
+        let guard = DelayedExitGuard::new();
         match commands {
             Commands::MigrateHomeDir { target_path } => {
                 self::handler::migrate_home_dir_handler(target_path).unwrap();
             }
         }
+        drop(guard);
         std::process::exit(0);
     }
     Ok(()) // bypass

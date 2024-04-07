@@ -264,3 +264,7 @@ export async function getCustomAppDir() {
 export async function setCustomAppDir(path: string) {
   return invoke<void>("set_custom_app_dir", { path });
 }
+
+export async function restartApplication() {
+  return invoke<void>("restart_application");
+}

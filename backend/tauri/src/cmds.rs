@@ -401,7 +401,7 @@ pub async fn set_custom_app_dir(app_handle: tauri::AppHandle, path: String) -> C
                     .arg("-Command")
                     .arg(
                     format!(
-                        r#"Start-Process '{}' -ArgumentList 'migrate-home-dir','{}' -Verb runAs"#,
+                        r#"Start-Process '{}' -ArgumentList 'migrate-home-dir','"{}"' -Verb runAs"#,
                         app_exe.as_str(),
                         path_str.as_str()
                     )

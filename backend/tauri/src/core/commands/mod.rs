@@ -36,6 +36,7 @@ mod handler {
         use std::{path::PathBuf, process::Command, str::FromStr, thread, time::Duration};
         use sysinfo::System;
         use tauri::utils::platform::current_exe;
+        println!("target path {}", target_path);
 
         let token = Token::with_current_process()?;
         if let PrivilegeLevel::NotPrivileged = token.privilege_level()? {

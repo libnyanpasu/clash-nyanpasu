@@ -171,3 +171,15 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_TO: "@keikolog"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Post Tweet
+        uses: rg-wood/send-tweet-action@v1
+        with:
+          status: |
+            Clash Nyanpasu ${{ github.event.release.tag_name }} Released!
+
+            Download Link: https://github.com/LibNyanpasu/clash-nyanpasu/releases/tag/v${{ github.event.release.tag_name }}
+          consumer-key: ${{ secrets.TWITTER_CONSUMER_KEY }}
+          consumer-secret: ${{ secrets.TWITTER_CONSUMER_SECRET }}
+          access-token: ${{ secrets.TWITTER_ACCESS_TOKEN }}
+          access-token-secret: ${{ secrets.TWITTER_ACCESS_TOKEN_SECRET }}

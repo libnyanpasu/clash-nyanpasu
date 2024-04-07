@@ -220,8 +220,6 @@ fn cleanup_processes(app_handle: &AppHandle) {
     let _ = super::resolve::save_window_state(app_handle, true);
     super::resolve::resolve_reset();
     tauri::api::process::kill_children();
-    // flush all data to disk
-    crate::core::storage::Storage::global().destroy().unwrap();
 }
 
 #[instrument(skip(app_handle))]

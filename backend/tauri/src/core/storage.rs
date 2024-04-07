@@ -28,3 +28,9 @@ impl Storage {
         rocksdb::DB::destroy(&rocksdb::Options::default(), &self.path)
     }
 }
+
+impl Drop for Storage {
+    fn drop(&mut self) {
+        self.destroy().unwrap();
+    }
+}

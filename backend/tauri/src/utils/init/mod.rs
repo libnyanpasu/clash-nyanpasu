@@ -2,7 +2,7 @@ use crate::{
     config::*,
     utils::{dialog::migrate_dialog, dirs, help},
 };
-use anyhow::Result;
+use anyhow::{Context, Result};
 use fs_extra::dir::CopyOptions;
 use runas::Command as RunasCommand;
 use rust_i18n::t;
@@ -194,6 +194,21 @@ pub fn init_service() -> Result<()> {
     }
 
     Ok(())
+}
+
+pub fn check_singleton() -> Result<()> {
+    let placeholder = super::dirs::get_single_instance_placeholder();
+    for i in 0..5 {
+        let instance = single_instance::SingleInstance::new(&placeholder)
+            .context("failed to create single instance")?;
+        if instance.is_single() {
+            return Ok(());
+        }
+        if i != 4 {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+    }
+    anyhow::bail!("single instance check failed: app still exists after 4s");
 }
 
 pub fn do_config_migration(old_app_dir: &PathBuf, app_dir: &PathBuf) -> anyhow::Result<()> {

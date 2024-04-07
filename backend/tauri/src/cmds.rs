@@ -384,7 +384,7 @@ pub fn get_custom_app_dir() -> CmdResult<Option<String>> {
 pub async fn set_custom_app_dir(app_handle: tauri::AppHandle, path: String) -> CmdResult {
     use crate::utils::{self, dialog::migrate_dialog, winreg::set_app_dir};
     use rust_i18n::t;
-    use std::{path::PathBuf, time::Duration};
+    use std::path::PathBuf;
 
     let path_str = path.clone();
     let path = PathBuf::from(path);

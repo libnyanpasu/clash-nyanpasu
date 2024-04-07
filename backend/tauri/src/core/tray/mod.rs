@@ -2,7 +2,7 @@ use crate::{cmds, config::Config, feat, utils, utils::resolve};
 use anyhow::Result;
 use rust_i18n::t;
 use tauri::{
-    api, AppHandle, CustomMenuItem, Manager, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
+    AppHandle, CustomMenuItem, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
     SystemTraySubmenu,
 };
 use tracing_attributes::instrument;

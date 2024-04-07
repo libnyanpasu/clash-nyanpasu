@@ -54,16 +54,7 @@ fn main() -> std::io::Result<()> {
     tauri_plugin_deep_link::prepare("moe.elaina.clash.nyanpasu");
 
     // 单例检测
-    let placeholder = dirs::get_single_instance_placeholder();
-    let single_instance_result: anyhow::Result<()> =
-        single_instance::SingleInstance::new(&placeholder)
-            .context("failed to create single instance")
-            .map(|instance| {
-                if !instance.is_single() {
-                    println!("app exists");
-                    std::process::exit(0);
-                }
-            });
+    let single_instance_result = utils::init::check_singleton();
 
     // Use system locale as default
     let locale = {

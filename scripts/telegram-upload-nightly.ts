@@ -3,7 +3,7 @@ import { downloadFileToBuffer } from "./utils/fetch";
 import { consola } from "./utils/logger";
 import { execSync } from "child_process";
 import { array2text } from "./utils";
-import { getOctokit } from "@actions/github";
+import { context, getOctokit } from "@actions/github";
 
 export const sendReleaseNotify = async () => {
   if (!process.env.TELEGRAM_TOKEN) {
@@ -20,7 +20,7 @@ export const sendReleaseNotify = async () => {
 
   const github = getOctokit(process.env.GITHUB_TOKEN);
 
-  const release = await github.rest.repos.getLatestRelease();
+  const release = await github.rest.repos.getLatestRelease(context.repo);
 
   const fileList: {
     name: string;

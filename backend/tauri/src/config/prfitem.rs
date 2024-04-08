@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 use std::fs;
 use sysproxy::Sysproxy;
+use tracing_attributes::instrument;
 
 use super::Config;
 
@@ -161,6 +162,7 @@ impl PrfItem {
 
     /// ## Remote type
     /// create a new item from url
+    #[instrument]
     pub async fn from_url(
         url: &str,
         name: Option<String>,
@@ -211,7 +213,7 @@ impl PrfItem {
         }
 
         let version = dirs::get_app_version();
-        let version = format!("clash-verge/v{version}");
+        let version = format!("clash-nyanpasu/v{version}");
         builder = builder.user_agent(user_agent.unwrap_or(version));
 
         let resp = builder.build()?.get(url).send().await?;
@@ -222,25 +224,35 @@ impl PrfItem {
         }
 
         let header = resp.headers();
+        tracing::debug!("headers: {:#?}", header);
 
         // parse the Subscription UserInfo
-        let extra = match header.get("Subscription-Userinfo") {
+        let extra = match header
+            .get("subscription-userinfo")
+            .or(header.get("Subscription-Userinfo"))
+        {
             Some(value) => {
+                tracing::debug!("Subscription-Userinfo: {:?}", value);
                 let sub_info = value.to_str().unwrap_or("");
 
                 Some(PrfExtra {
-                    upload: help::parse_str(sub_info, "upload=").unwrap_or(0),
-                    download: help::parse_str(sub_info, "download=").unwrap_or(0),
-                    total: help::parse_str(sub_info, "total=").unwrap_or(0),
-                    expire: help::parse_str(sub_info, "expire=").unwrap_or(0),
+                    upload: help::parse_str(sub_info, "upload").unwrap_or(0),
+                    download: help::parse_str(sub_info, "download").unwrap_or(0),
+                    total: help::parse_str(sub_info, "total").unwrap_or(0),
+                    expire: help::parse_str(sub_info, "expire").unwrap_or(0),
                 })
             }
             None => None,
         };
 
         // parse the Content-Disposition
-        let filename = match header.get("Content-Disposition") {
+        let filename = match header
+            .get("content-disposition")
+            .or(header.get("Content-Disposition"))
+        {
             Some(value) => {
+                tracing::debug!("Content-Disposition: {:?}", value);
+
                 let filename = format!("{value:?}");
                 let filename = filename.trim_matches('"');
                 match help::parse_str::<String>(filename, "filename*") {
@@ -262,14 +274,20 @@ impl PrfItem {
         };
 
         // parse the profile-update-interval
-        let option = match header.get("profile-update-interval") {
-            Some(value) => match value.to_str().unwrap_or("").parse::<u64>() {
-                Ok(val) => Some(PrfOption {
-                    update_interval: Some(val * 60), // hour -> min
-                    ..PrfOption::default()
-                }),
-                Err(_) => None,
-            },
+        let option = match header
+            .get("profile-update-interval")
+            .or(header.get("Profile-Update-Interval"))
+        {
+            Some(value) => {
+                tracing::debug!("profile-update-interval: {:?}", value);
+                match value.to_str().unwrap_or("").parse::<u64>() {
+                    Ok(val) => Some(PrfOption {
+                        update_interval: Some(val * 60), // hour -> min
+                        ..PrfOption::default()
+                    }),
+                    Err(_) => None,
+                }
+            }
             None => None,
         };
 

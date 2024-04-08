@@ -31,9 +31,9 @@ export const sendReleaseNotify = async () => {
   bot.telegram.sendMessage(
     process.env.TELEGRAM_TO,
     array2text([
-      `Clash Nyanpasu ${stringEscape(version)} Released!`,
+      `Clash Nyanpasu ${stringEscape(version)} Released\!`,
       "",
-      `[Check out updates on GitHub](https://github.com/LibNyanpasu/clash-nyanpasu/compare/v${tags.at(-2)?.name}...v${version})`,
+      `[Check out updates on GitHub](https://github.com/LibNyanpasu/clash-nyanpasu/compare/v${tags[1]?.name}...v${version})`,
       "",
       "*Download Link:*",
       ` - https://github.com/LibNyanpasu/clash-nyanpasu/releases/tag/v${version}`,

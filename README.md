@@ -18,8 +18,7 @@ A <a href="https://github.com/Dreamacro/clash">Clash</a> GUI based on <a href="h
 </p>
 
 <p align="center">
-  <a href="https://twitter.com/ClashNyanpasu"><img src="https://img.shields.io/twitter/follow/ClashNyanpasu
-  ?style=flat-square" alt="Nyanpasu Twitter" /></a>
+  <a href="https://twitter.com/ClashNyanpasu"><img src="https://img.shields.io/twitter/follow/ClashNyanpasu?style=flat-square" alt="Nyanpasu Twitter" /></a>
 </p>
 
 ## Features

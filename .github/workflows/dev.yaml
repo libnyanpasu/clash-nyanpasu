@@ -200,3 +200,33 @@ jobs:
         run: pnpm updater:nightly
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  channel:
+    name: Send release to channel
+    runs-on: ubuntu-latest
+    needs: [release]
+    if: startsWith(github.repository, 'LibNyanpasu')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set Env
+        run: |
+          echo "BUILDTIME=$(TZ=Asia/Shanghai date)" >> $GITHUB_ENV
+        shell: bash
+
+      - uses: pnpm/action-setup@v2
+        name: Install pnpm
+        with:
+          version: 8
+          run_install: false
+
+      - name: Pnpm install
+        run: pnpm i
+
+      - name: Update Updater
+        run: pnpm send-release:nightly
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_TO: "@ClashNyanpasu"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

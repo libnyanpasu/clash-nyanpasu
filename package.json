@@ -28,6 +28,7 @@
     "updater": "tsx scripts/updater.ts",
     "updater:nightly": "tsx scripts/updater-nightly.ts",
     "send-notify": "tsx scripts/telegram-notify.ts",
+    "send-release:nightly": "tsx scripts/telegram-upload-nightly.ts",
     "publish": "tsx scripts/publish.ts",
     "portable": "tsx scripts/portable.ts",
     "upload:osx-aarch64": "tsx scripts/osx-aarch64-upload.ts",

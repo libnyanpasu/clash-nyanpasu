@@ -11,6 +11,8 @@ use crate::utils;
 pub struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
+    #[arg(raw = true)]
+    args: Vec<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -59,6 +61,8 @@ pub fn parse() -> anyhow::Result<()> {
                     Some(appimage) => std::path::PathBuf::from_str(&appimage).unwrap(),
                     None => current_exe().unwrap(),
                 };
+                let mut args = args.clone();
+                args.extend(vec!["--".to_string()]);
                 std::process::Command::new(path).args(args).spawn().unwrap();
             }
         }

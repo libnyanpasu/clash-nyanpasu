@@ -80,7 +80,7 @@
     "axios": "1.6.8",
     "dayjs": "1.11.10",
     "framer-motion": "11.0.25",
-    "i18next": "23.11.0",
+    "i18next": "23.11.1",
     "lodash-es": "4.17.21",
     "monaco-editor": "0.47.0",
     "mui-color-input": "2.0.3",

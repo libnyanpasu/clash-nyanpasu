@@ -18,7 +18,7 @@ pub const APP_NAME: &str = "clash-nyanpasu-dev";
 static CLASH_CONFIG: &str = "config.yaml";
 static VERGE_CONFIG: &str = "verge.yaml";
 static PROFILE_YAML: &str = "profiles.yaml";
-static STORAGE_DB: &str = "storage";
+static STORAGE_DB: &str = "storage.db";
 
 /// portable flag
 #[allow(unused)]

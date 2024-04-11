@@ -78,7 +78,7 @@
     "ahooks": "3.7.11",
     "axios": "1.6.8",
     "dayjs": "1.11.10",
-    "framer-motion": "11.0.27",
+    "framer-motion": "11.0.28",
     "i18next": "23.11.1",
     "lodash-es": "4.17.21",
     "monaco-editor": "0.47.0",

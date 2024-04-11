@@ -15,8 +15,20 @@ pub enum Error {
     #[error("params validation failed: {0}")]
     ParamsValidationFailed(&'static str),
 
-    #[error("storage operation failed: {0:?}")]
-    StorageOperationFailed(#[from] rocksdb::Error),
+    #[error("database operation failed: {0:?}")]
+    DatabaseOperationFailed(#[from] redb::DatabaseError),
+
+    #[error("database transaction failed: {0:?}")]
+    DatabaseTransactionFailed(#[from] redb::TransactionError),
+
+    #[error("database table operation failed: {0:?}")]
+    DatabaseTableOperationFailed(#[from] redb::TableError),
+
+    #[error("database storage operation failed: {0:?}")]
+    DatabaseStorageOperationFailed(#[from] redb::StorageError),
+
+    #[error("database commit operation failed: {0:?}")]
+    DatabaseCommitOperationFailed(#[from] redb::CommitError),
 
     #[error("json parse failed: {0:?}")]
     JsonParseFailed(#[from] simd_json::Error),

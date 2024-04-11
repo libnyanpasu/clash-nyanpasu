@@ -6,10 +6,13 @@ use super::{
 };
 use crate::core::{storage::Storage, tasks::task::Task};
 use log::debug;
+use redb::{ReadableTable, TableDefinition};
 use std::{
     str,
     sync::{Arc, OnceLock},
 };
+
+const TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("clash-nyanpasu");
 
 pub struct EventsGuard;
 
@@ -25,10 +28,13 @@ impl EventsGuard {
     pub fn get_event(&self, event_id: TaskEventID) -> Result<Option<TaskEvent>> {
         let db = Storage::global().get_instance();
         let key = format!("task:event:id:{}", event_id);
-        let value = db.get(key.as_bytes())?;
+        let read_txn = db.begin_read()?;
+        let table = read_txn.open_table(TABLE)?;
+        let value = table.get(key.as_bytes())?;
         match value {
-            Some(mut value) => {
-                let event: TaskEvent = simd_json::from_slice(&mut value)?;
+            Some(value) => {
+                let mut value = value.value().to_owned();
+                let event: TaskEvent = simd_json::from_slice(value.as_mut_slice())?;
                 Ok(Some(event))
             }
             None => Ok(None),
@@ -54,9 +60,14 @@ impl EventsGuard {
     pub fn get_event_ids(&self, task_id: TaskID) -> Result<Option<Vec<TaskEventID>>> {
         let db = Storage::global().get_instance();
         let key = format!("task:events:task_id:{}", task_id);
-        let value = db.get(key.as_bytes())?;
+        let read_txn = db.begin_read()?;
+        let table = read_txn.open_table(TABLE)?;
+        let value = table.get(key.as_bytes())?;
         let value: Vec<TaskEventID> = match value {
-            Some(mut value) => simd_json::from_slice(&mut value)?,
+            Some(value) => {
+                let mut value = value.value().to_owned();
+                simd_json::from_slice(value.as_mut_slice())?
+            }
             None => return Ok(None),
         };
         Ok(Some(value))
@@ -71,14 +82,17 @@ impl EventsGuard {
         event_ids.push(event.id);
 
         let db = Storage::global().get_instance();
-        let tx = db.transaction();
         let event_key = format!("task:event:id:{}", event.id);
         let event_ids_key = format!("task:events:task_id:{}", event.task_id);
         let event_value = simd_json::to_vec(event)?;
         let event_ids = simd_json::to_vec(&event_ids)?;
-        let _ = tx.put(event_key.as_bytes(), event_value);
-        let _ = tx.put(event_ids_key.as_bytes(), event_ids);
-        tx.commit()?;
+        let write_txn = db.begin_write()?;
+        {
+            let mut table = write_txn.open_table(TABLE)?;
+            table.insert(event_key.as_bytes(), event_value.as_slice())?;
+            table.insert(event_ids_key.as_bytes(), event_ids.as_slice())?;
+        }
+        write_txn.commit()?;
         Ok(())
     }
 
@@ -87,7 +101,12 @@ impl EventsGuard {
         let db = Storage::global().get_instance();
         let event_key = format!("task:event:id:{}", event.id);
         let event_value = simd_json::to_vec(event)?;
-        db.put(event_key.as_bytes(), event_value)?;
+        let write_txn = db.begin_write()?;
+        {
+            let mut table = write_txn.open_table(TABLE)?;
+            table.insert(event_key.as_bytes(), event_value.as_slice())?;
+        }
+        write_txn.commit()?;
         Ok(())
     }
 
@@ -99,17 +118,20 @@ impl EventsGuard {
             None => return Ok(()),
         };
         let db = Storage::global().get_instance();
-        let tx = db.transaction();
         let event_key = format!("task:event:id:{}", event_id);
         let event_ids_key = format!("task:events:task_id:{}", event_id);
-        tx.delete(event_key.as_bytes())?;
-        if event_ids.is_empty() {
-            tx.delete(event_ids_key.as_bytes())?
-        } else {
-            let event_ids = simd_json::to_vec(&event_ids)?;
-            tx.put(event_ids_key.as_bytes(), event_ids)?
+        let write_txn = db.begin_write()?;
+        {
+            let mut table = write_txn.open_table(TABLE)?;
+            table.remove(event_key.as_bytes())?;
+            if event_ids.is_empty() {
+                table.remove(event_ids_key.as_bytes())?;
+            } else {
+                let event_ids = simd_json::to_vec(&event_ids)?;
+                table.insert(event_ids_key.as_bytes(), event_ids.as_slice())?;
+            }
         }
-        tx.commit()?;
+        write_txn.commit()?;
         Ok(())
     }
 }
@@ -124,20 +146,23 @@ pub trait TaskGuard {
 impl TaskGuard for TaskManager {
     fn restore(&mut self) -> Result<()> {
         let db = Storage::global().get_instance();
-        let iter = db.iterator(rocksdb::IteratorMode::From(
-            b"task:id:",
-            rocksdb::Direction::Forward,
-        ));
         let mut tasks = Vec::new();
-        for item in iter {
-            let (key, mut value) = item?;
-            debug!(
-                "restore task: {:?} {:?}",
-                str::from_utf8(&key).unwrap(),
-                str::from_utf8(&value).unwrap()
-            );
-            let task = simd_json::from_slice::<Task>(&mut value)?;
-            tasks.push(task);
+
+        let read_txn = db.begin_read()?;
+        let table = read_txn.open_table(TABLE)?;
+        for item in table.iter()? {
+            let (key, value) = item?;
+            let key = key.value();
+            let mut value = value.value().to_owned();
+            if key.starts_with(b"task:id:") {
+                let task = simd_json::from_slice::<Task>(value.as_mut_slice())?;
+                debug!(
+                    "restore task: {:?} {:?}",
+                    str::from_utf8(key).unwrap(),
+                    str::from_utf8(value.as_slice()).unwrap()
+                );
+                tasks.push(task);
+            }
         }
         self.restore_tasks(tasks);
         Ok(())
@@ -145,13 +170,16 @@ impl TaskGuard for TaskManager {
     fn dump(&self) -> Result<()> {
         let tasks = self.list();
         let db = Storage::global().get_instance();
-        let tx = db.transaction();
-        for task in tasks {
-            let key = format!("task:id:{}", task.id);
-            let value = simd_json::to_vec(&task)?;
-            tx.put(key.as_bytes(), value)?;
+        let write_txn = db.begin_write()?;
+        {
+            let mut table = write_txn.open_table(TABLE)?;
+            for task in tasks {
+                let key = format!("task:id:{}", task.id);
+                let value = simd_json::to_vec(&task)?;
+                table.insert(key.as_bytes(), value.as_slice())?;
+            }
         }
-        tx.commit()?;
+        write_txn.commit()?;
         Ok(())
     }
 }

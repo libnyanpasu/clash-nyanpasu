@@ -86,6 +86,13 @@ pub fn old_app_home_dir() -> Result<PathBuf> {
 
 /// get the verge app home dir
 pub fn app_home_dir() -> Result<PathBuf> {
+    if cfg!(feature = "verge-dev") {
+        return Ok(home_dir()
+            .ok_or(anyhow::anyhow!("failed to get the app home dir"))?
+            .join(".config")
+            .join(APP_NAME));
+    }
+
     #[cfg(target_os = "windows")]
     {
         use crate::utils::winreg::get_app_dir;

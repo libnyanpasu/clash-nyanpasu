@@ -164,8 +164,8 @@ devDependencies:
     specifier: 7.0.3
     version: 7.0.3
   dedent:
-    specifier: 1.5.1
-    version: 1.5.1
+    specifier: 1.5.3
+    version: 1.5.3
   eslint:
     specifier: 8.57.0
     version: 8.57.0
@@ -3253,8 +3253,8 @@ packages:
       character-entities: 2.0.2
     dev: false
 
-  /dedent@1.5.1:
-    resolution: {integrity: sha512-+LxW+KLWxu3HW3M2w2ympwtqPrqYRzU8fqi6Fhd18fBALe15blJPI/I4+UHveMVG6lJqB4JNd4UG0S5cnVHwIg==}
+  /dedent@1.5.3:
+    resolution: {integrity: sha512-NHQtfOOW68WD8lgypbLA5oT+Bt0xXJhiYvoR6SmmNXZfpzOGXwdKWmcwG8N7PwVVWV3eF/68nmD9BaJSsTBhyQ==}
     peerDependencies:
       babel-plugin-macros: ^3.1.0
     peerDependenciesMeta:

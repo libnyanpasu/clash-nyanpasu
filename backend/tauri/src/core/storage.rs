@@ -1,5 +1,8 @@
+use redb::TableDefinition;
+
 use crate::utils::dirs;
 use std::{
+    fs,
     path::PathBuf,
     sync::{Arc, OnceLock},
 };
@@ -8,7 +11,6 @@ use std::{
 /// Maybe provide a facade for a kv storage is a good idea?
 pub struct Storage {
     instance: redb::Database,
-    path: String,
 }
 
 impl Storage {
@@ -17,12 +19,22 @@ impl Storage {
 
         STORAGE.get_or_init(|| {
             let path = dirs::storage_path().unwrap().to_str().unwrap().to_string();
-            let instance: redb::Database = if PathBuf::from(&path).exists() {
+            let path = PathBuf::from(&path);
+            let instance: redb::Database = if path.exists() && !path.is_dir() {
                 redb::Database::open(&path).unwrap()
             } else {
-                redb::Database::create(&path).unwrap()
+                if path.exists() && path.is_dir() {
+                    fs::remove_dir(&path).unwrap();
+                }
+                let db = redb::Database::create(&path).unwrap();
+                const TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("clash-nyanpasu");
+                // Create table
+                let write_txn = db.begin_write().unwrap();
+                write_txn.open_table(TABLE).unwrap();
+                write_txn.commit().unwrap();
+                db
             };
-            Arc::new(Storage { instance, path })
+            Arc::new(Storage { instance })
         })
     }
 
@@ -30,8 +42,3 @@ impl Storage {
         &self.instance
     }
 }
-
-// impl Drop for Storage {
-//     fn drop(&mut self) {
-//     }
-// }

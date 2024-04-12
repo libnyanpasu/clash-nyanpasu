@@ -1,4 +1,4 @@
-import path from "node:path";
+import path from "path";
 
 export const cwd = process.cwd();
 export const TAURI_APP_DIR = path.join(cwd, "backend/tauri");

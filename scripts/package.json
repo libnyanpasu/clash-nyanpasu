@@ -1,0 +1,18 @@
+{
+  "name": "@nyanpasu/scripts",
+  "version": "0.1.0",
+  "dependencies": {
+    "@actions/github": "6.0.0",
+    "telegraf": "4.16.3"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "0.5.5",
+    "adm-zip": "0.5.12",
+    "colorize-template": "1.0.0",
+    "consola": "3.2.3",
+    "fs-extra": "11.2.0",
+    "https-proxy-agent": "7.0.4",
+    "node-fetch": "3.3.2",
+    "picocolors": "1.0.0"
+  }
+}

@@ -4,7 +4,7 @@
     "version": "1.5.1"
   },
   "build": {
-    "distDir": "../../dist",
+    "distDir": "../../frontend/nyanpasu/dist",
     "devPath": "http://localhost:3000/",
     "beforeDevCommand": "pnpm run web:dev",
     "beforeBuildCommand": "pnpm run web:build"

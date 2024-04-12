@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="./src/assets/image/logo.png" alt="Clash" width="128" />
+  <img src="./frontend/nyanpasu/src/assets/image/logo.png" alt="Clash" width="128" />
   <br>
   Clash Nyanpasu
   <br>

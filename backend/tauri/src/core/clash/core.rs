@@ -178,8 +178,15 @@ impl CoreManager {
             ClashCore::ClashRs => vec!["-d", app_dir, "-c", config_path],
             ClashCore::ClashPremium => vec!["-d", app_dir, "-f", config_path],
         };
-
-        let cmd = Command::new_sidecar(clash_core)?;
+        let external = Config::verge()
+            .data()
+            .enable_external_cores
+            .unwrap_or(false);
+        let cmd = if external {
+            Command::new(clash_core)
+        } else {
+            Command::new_sidecar(clash_core)?
+        };
         let (mut rx, cmd_child) = cmd.args(args).spawn()?;
 
         // 将pid写入文件中

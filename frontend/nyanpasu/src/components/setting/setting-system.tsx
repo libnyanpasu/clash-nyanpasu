@@ -44,6 +44,7 @@ const SettingSystem = ({ onError }: Props) => {
     enable_service_mode,
     enable_silent_start,
     enable_system_proxy,
+    enable_external_cores,
   } = verge ?? {};
 
   const [loading, setLoading] = useState({
@@ -52,6 +53,7 @@ const SettingSystem = ({ onError }: Props) => {
     enable_service_mode: false,
     enable_silent_start: false,
     enable_system_proxy: false,
+    enable_external_cores: false,
   });
 
   const patchVergeWithLoading = async (value: Partial<IVergeConfig>) => {
@@ -174,6 +176,19 @@ const SettingSystem = ({ onError }: Props) => {
           onFormat={onSwitchFormat}
           onGuard={(e) => patchVergeWithLoading({ enable_silent_start: e })}
           loading={loading["enable_auto_launch"]}
+        >
+          <MDYSwitch edge="end" />
+        </GuardState>
+      </SettingItem>
+
+      <SettingItem label={t("External cores")}>
+        <GuardState
+          value={enable_external_cores ?? false}
+          valueProps="checked"
+          onCatch={onError}
+          onFormat={onSwitchFormat}
+          onGuard={(e) => patchVergeWithLoading({ enable_external_cores: e })}
+          loading={loading["enable_external_cores"]}
         >
           <MDYSwitch edge="end" />
         </GuardState>

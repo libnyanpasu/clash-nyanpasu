@@ -94,6 +94,9 @@ pub struct IVerge {
     /// not show the window on launch
     pub enable_silent_start: Option<bool>,
 
+    /// use system-wide cores
+    pub enable_external_cores: Option<bool>,
+
     /// set system proxy
     pub enable_system_proxy: Option<bool>,
 

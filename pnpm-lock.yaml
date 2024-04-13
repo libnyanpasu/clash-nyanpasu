@@ -130,6 +130,15 @@ importers:
         specifier: 5.4.5
         version: 5.4.5
 
+  frontend/interface:
+    dependencies:
+      '@tauri-apps/api':
+        specifier: 1.5.3
+        version: 1.5.3
+      swr:
+        specifier: 2.2.5
+        version: 2.2.5(react@18.2.0)
+
   frontend/nyanpasu:
     dependencies:
       '@dnd-kit/core':
@@ -165,6 +174,9 @@ importers:
       '@mui/x-data-grid':
         specifier: 7.2.0
         version: 7.2.0(@emotion/react@11.11.4)(@emotion/styled@11.11.5)(@mui/material@5.15.15)(@types/react@18.2.78)(react-dom@18.2.0)(react@18.2.0)
+      '@nyanpasu/interface':
+        specifier: workspace:^
+        version: link:../interface
       '@tauri-apps/api':
         specifier: 1.5.3
         version: 1.5.3

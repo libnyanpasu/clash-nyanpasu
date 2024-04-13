@@ -20,6 +20,7 @@
     "@mui/lab": "5.0.0-alpha.170",
     "@mui/material": "5.15.15",
     "@mui/x-data-grid": "7.2.0",
+    "@nyanpasu/interface": "workspace:^",
     "@tauri-apps/api": "1.5.3",
     "ahooks": "3.7.11",
     "axios": "1.6.8",

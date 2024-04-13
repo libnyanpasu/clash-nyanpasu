@@ -13,16 +13,8 @@ jobs:
     strategy:
       matrix:
         targets:
-          - os: windows-latest
-            category: nsis # and portable
-          # - os: windows-latest
-          #   category: msi
           - os: ubuntu-latest
             category: all
-          - os: macos-13
-            category: amd64
-          - os: macos-13
-            category: aarch64
 
     runs-on: ${{ matrix.targets.os }}
     steps:

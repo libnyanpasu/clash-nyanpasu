@@ -6,3 +6,4 @@ dist/
 pnpm-lock.yaml
 *.lock
 *.wxs
+frontend/nyanpasu/src/router.ts

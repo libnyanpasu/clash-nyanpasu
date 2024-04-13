@@ -5,7 +5,7 @@
   "type": "module",
   "repository": "https://github.com/LibNyanpasu/clash-nyanpasu.git",
   "engines": {
-    "node": ">=20.0.0"
+    "node": "21.7.3"
   },
   "scripts": {
     "dev": "tauri dev -c ./backend/tauri/tauri.conf.json",

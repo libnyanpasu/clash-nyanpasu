@@ -72,7 +72,7 @@ const resolveMihomo: LatestVersionResolver = async () => {
     [SupportedArch.LinuxAarch64]: "mihomo-linux-arm64-{}.gz",
     [SupportedArch.LinuxAmd64]: "mihomo-linux-amd64-compatible-{}.gz",
     [SupportedArch.DarwinArm64]: "mihomo-darwin-arm64-{}.gz",
-    [SupportedArch.DarwinX64]: "mihomo-darwin-amd64-{}.gz",
+    [SupportedArch.DarwinX64]: "mihomo-darwin-amd64-compatible-{}.gz",
   } satisfies ArchMapping;
   return {
     name: "mihomo",
@@ -95,7 +95,7 @@ const resolveMihomoAlpha: LatestVersionResolver = async () => {
     [SupportedArch.LinuxAarch64]: "mihomo-linux-arm64-{}.gz",
     [SupportedArch.LinuxAmd64]: "mihomo-linux-amd64-compatible-{}.gz",
     [SupportedArch.DarwinArm64]: "mihomo-darwin-arm64-{}.gz",
-    [SupportedArch.DarwinX64]: "mihomo-darwin-amd64-{}.gz",
+    [SupportedArch.DarwinX64]: "mihomo-darwin-amd64-compatible-{}.gz",
   } satisfies ArchMapping;
   return {
     name: "mihomo_alpha",

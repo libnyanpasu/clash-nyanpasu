@@ -72,7 +72,7 @@ const MIHOMO_VERSION = versionManifest.latest.mihomo;
 const MIHOMO_URL_PREFIX = `https://github.com/MetaCubeX/mihomo/releases/download/${MIHOMO_VERSION}`;
 const MIHOMO_MAP = {
   "win32-x64": "mihomo-windows-amd64-compatible",
-  "darwin-x64": "mihomo-darwin-amd64",
+  "darwin-x64": "mihomo-darwin-amd64-compatible",
   "darwin-arm64": "mihomo-darwin-arm64",
   "linux-x64": "mihomo-linux-amd64-compatible",
   "linux-arm64": "mihomo-linux-arm64",
@@ -85,7 +85,7 @@ let MIHOMO_ALPHA_VERSION = versionManifest.latest.mihomo_alpha;
 const MIHOMO_ALPHA_URL_PREFIX = `https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha`;
 const MIHOMO_ALPHA_MAP = {
   "win32-x64": "mihomo-windows-amd64-compatible",
-  "darwin-x64": "mihomo-darwin-amd64",
+  "darwin-x64": "mihomo-darwin-amd64-compatible",
   "darwin-arm64": "mihomo-darwin-arm64",
   "linux-x64": "mihomo-linux-amd64-compatible",
   "linux-arm64": "mihomo-linux-arm64",

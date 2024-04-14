@@ -196,8 +196,8 @@ importers:
         specifier: 11.0.28
         version: 11.0.28(react-dom@18.2.0)(react@18.2.0)
       i18next:
-        specifier: 23.11.1
-        version: 23.11.1
+        specifier: 23.11.2
+        version: 23.11.2
       monaco-editor:
         specifier: 0.47.0
         version: 0.47.0
@@ -218,7 +218,7 @@ importers:
         version: 7.51.3(react@18.2.0)
       react-i18next:
         specifier: 14.1.0
-        version: 14.1.0(i18next@23.11.1)(react-dom@18.2.0)(react@18.2.0)
+        version: 14.1.0(i18next@23.11.2)(react-dom@18.2.0)(react@18.2.0)
       react-markdown:
         specifier: 9.0.1
         version: 9.0.1(@types/react@18.2.78)(react@18.2.0)
@@ -4489,8 +4489,8 @@ packages:
     hasBin: true
     dev: false
 
-  /i18next@23.11.1:
-    resolution: {integrity: sha512-mXw4A24BiPZKRsbb9ewgSvjYd6fxFCNwJyfK6nYfSTIAX2GkCWcb598m3DFkDZmqADatvuASrKo6qwORz3VwTQ==}
+  /i18next@23.11.2:
+    resolution: {integrity: sha512-qMBm7+qT8jdpmmDw/kQD16VpmkL9BdL+XNAK5MNbNFaf1iQQq35ZbPrSlqmnNPOSUY4m342+c0t0evinF5l7sA==}
     dependencies:
       '@babel/runtime': 7.24.1
     dev: false
@@ -6011,7 +6011,7 @@ packages:
       react: 18.2.0
     dev: false
 
-  /react-i18next@14.1.0(i18next@23.11.1)(react-dom@18.2.0)(react@18.2.0):
+  /react-i18next@14.1.0(i18next@23.11.2)(react-dom@18.2.0)(react@18.2.0):
     resolution: {integrity: sha512-3KwX6LHpbvGQ+sBEntjV4sYW3Zovjjl3fpoHbUwSgFHf0uRBcbeCBLR5al6ikncI5+W0EFb71QXZmfop+J6NrQ==}
     peerDependencies:
       i18next: '>= 23.2.3'
@@ -6026,7 +6026,7 @@ packages:
     dependencies:
       '@babel/runtime': 7.24.1
       html-parse-stringify: 3.0.1
-      i18next: 23.11.1
+      i18next: 23.11.2
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
     dev: false

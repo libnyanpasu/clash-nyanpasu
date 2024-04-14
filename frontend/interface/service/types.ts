@@ -44,3 +44,9 @@ export interface VergeConfig {
     external_controller_port_strategy: "fixed" | "random" | "allow_fallback";
   };
 }
+
+export interface ClashInfo {
+  port?: number;
+  server?: string;
+  secret?: string;
+}

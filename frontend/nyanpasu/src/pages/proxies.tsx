@@ -1,57 +1,45 @@
 import { BasePage } from "@/components/base";
 import { ProviderButton } from "@/components/proxy/provider-button";
 import { ProxyGroups } from "@/components/proxy/proxy-groups";
-import { useVerge } from "@/hooks/use-verge";
-import {
-  closeAllConnections,
-  getClashConfig,
-  updateConfigs,
-} from "@/services/api";
-import { patchClashConfig } from "@/services/cmds";
-import { Box, Button, ButtonGroup, Paper } from "@mui/material";
+import { Box, Button, ButtonGroup } from "@mui/material";
 import { useLockFn } from "ahooks";
 import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import useSWR from "swr";
+import { useNyanpasu, useClash } from "@nyanpasu/interface";
 
 export default function ProxyPage() {
   const { t } = useTranslation();
 
-  const { data: clashConfig, mutate: mutateClash } = useSWR(
-    "getClashConfig",
-    getClashConfig,
-  );
+  const { nyanpasuConfig } = useNyanpasu();
 
-  const { verge } = useVerge();
+  const { getConfigs, setConfigs, deleteConnections } = useClash();
 
   const modeList = useMemo(() => {
-    if (
-      verge?.clash_core === "mihomo" ||
-      verge?.clash_core === "mihomo-alpha" ||
-      verge?.clash_core === "clash-rs"
-    ) {
-      return ["rule", "global", "direct"];
-    }
-    return ["rule", "global", "direct", "script"];
-  }, [verge?.clash_core]);
+    const defaultModes = ["rule", "global", "direct"];
 
-  const curMode = clashConfig?.mode?.toLowerCase();
+    return ["mihomo", "mihomo-alpha", "clash-rs"].includes(
+      nyanpasuConfig?.clash_core,
+    )
+      ? defaultModes
+      : [...defaultModes, "script"];
+  }, [nyanpasuConfig?.clash_core]);
 
-  const onChangeMode = useLockFn(async (mode: string) => {
-    // 断开连接
-    if (mode !== curMode && verge?.auto_close_connection) {
-      closeAllConnections();
+  const currentMode = getConfigs.data?.mode?.toLowerCase();
+
+  const onChangeMode = useLockFn(async (mode) => {
+    if (mode !== currentMode && nyanpasuConfig?.auto_close_connection) {
+      await deleteConnections();
     }
-    await updateConfigs({ mode });
-    await patchClashConfig({ mode });
-    mutateClash();
+
+    await setConfigs({ mode });
+    await getConfigs.mutate();
   });
 
   useEffect(() => {
-    if (curMode && !modeList.includes(curMode)) {
+    if (currentMode && !modeList.includes(currentMode)) {
       onChangeMode("rule");
     }
-  }, [curMode]);
+  }, [currentMode, modeList, onChangeMode]);
 
   return (
     <BasePage
@@ -66,7 +54,7 @@ export default function ProxyPage() {
             {modeList.map((mode) => (
               <Button
                 key={mode}
-                variant={mode === curMode ? "contained" : "outlined"}
+                variant={mode === currentMode ? "contained" : "outlined"}
                 onClick={() => onChangeMode(mode)}
                 sx={{ textTransform: "capitalize" }}
               >
@@ -77,7 +65,7 @@ export default function ProxyPage() {
         </Box>
       }
     >
-      <ProxyGroups mode={curMode!} />
+      <ProxyGroups mode={currentMode!} />
     </BasePage>
   );
 }

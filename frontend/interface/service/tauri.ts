@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/tauri";
-import { VergeConfig } from "./types";
+import { ClashInfo, VergeConfig } from "./types";
 
 export const nyanpasuConfig = {
   get: async () => {
@@ -9,4 +9,8 @@ export const nyanpasuConfig = {
   set: async (payload: VergeConfig) => {
     return await invoke<void>("patch_verge_config", { payload });
   },
+};
+
+export const getClashInfo = async () => {
+  return await invoke<ClashInfo | null>("get_clash_info");
 };

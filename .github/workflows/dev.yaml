@@ -13,6 +13,8 @@ jobs:
     strategy:
       matrix:
         targets:
+          - os: windows-latest
+            category: nsis # and portable
           - os: ubuntu-latest
             category: all
 

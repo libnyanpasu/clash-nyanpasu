@@ -136,7 +136,7 @@ importers:
         specifier: 1.5.3
         version: 1.5.3
       ofetch:
-        specifier: ^1.3.4
+        specifier: 1.3.4
         version: 1.3.4
       swr:
         specifier: 2.2.5

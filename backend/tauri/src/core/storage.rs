@@ -24,7 +24,7 @@ impl Storage {
                 redb::Database::open(&path).unwrap()
             } else {
                 if path.exists() && path.is_dir() {
-                    fs::remove_dir(&path).unwrap();
+                    fs::remove_dir_all(&path).unwrap();
                 }
                 let db = redb::Database::create(&path).unwrap();
                 const TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("clash-nyanpasu");

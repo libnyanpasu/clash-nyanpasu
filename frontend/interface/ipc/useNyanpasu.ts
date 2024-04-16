@@ -5,7 +5,7 @@ export const useNyanpasu = (options?: {
   onUpdate?: (data?: VergeConfig) => void;
   onError?: (error: any) => void;
 }) => {
-  const { data, error, mutate } = useSWR<VergeConfig>("nynpasuConfig", () =>
+  const { data, error, mutate } = useSWR<VergeConfig>("nyanpasuConfig", () =>
     nyanpasuConfig.get(),
   );
 

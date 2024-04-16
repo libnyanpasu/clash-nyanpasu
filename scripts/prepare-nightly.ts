@@ -13,7 +13,11 @@ const TAURI_DEV_APP_OVERRIDES_PATH = path.join(
   TAURI_APP_DIR,
   "overrides/nightly.conf.json",
 );
-const PACKAGE_JSON_PATH = path.join(cwd, "package.json");
+const ROOT_PACKAGE_JSON_PATH = path.join(cwd, "package.json");
+const NYANPASU_PACKAGE_JSON_PATH = path.join(
+  cwd,
+  "frontend/nyanpasu/package.json",
+);
 // blocked by https://github.com/tauri-apps/tauri/issues/8447
 // const WXS_PATH = path.join(TAURI_APP_DIR, "templates", "nightly.wxs");
 
@@ -25,7 +29,7 @@ async function main() {
   const tauriAppConf = await fs.readJSON(TAURI_APP_CONF);
   const tauriAppOverrides = await fs.readJSON(TAURI_DEV_APP_OVERRIDES_PATH);
   const tauriConf = merge(tauriAppConf, tauriAppOverrides);
-  const packageJson = await fs.readJSON(PACKAGE_JSON_PATH);
+  const packageJson = await fs.readJSON(NYANPASU_PACKAGE_JSON_PATH);
   // const wxsFile = await fs.readFile(WXS_PATH, "utf-8");
 
   if (isNSIS) {
@@ -58,7 +62,7 @@ async function main() {
   // 3. update package version
   consola.debug("Write tauri version to package.json");
   packageJson.version = version;
-  await fs.writeJSON(PACKAGE_JSON_PATH, packageJson, { spaces: 2 });
+  await fs.writeJSON(NYANPASU_PACKAGE_JSON_PATH, packageJson, { spaces: 2 });
   consola.debug("package.json updated");
 }
 

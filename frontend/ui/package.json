@@ -1,4 +1,10 @@
 {
   "name": "@nyanpasu/ui",
-  "version": "0.1.0"
+  "version": "0.1.0",
+  "main": "index.ts",
+  "module": "index.ts",
+  "dependencies": {
+    "@material/material-color-utilities": "^0.2.7",
+    "@mui/material": "5.15.15"
+  }
 }

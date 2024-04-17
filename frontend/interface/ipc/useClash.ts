@@ -1,6 +1,10 @@
 import useSWR from "swr";
 import { clash } from "../service/clash";
 
+/**
+ * useClash with swr.
+ * Data from tauri backend.
+ */
 export const useClash = () => {
   const { setConfigs, setProxies, deleteConnections, ...api } = clash();
 

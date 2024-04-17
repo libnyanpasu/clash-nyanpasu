@@ -1,6 +1,10 @@
 import useSWR from "swr";
 import { getNyanpasuConfig, patchNyanpasuConfig, VergeConfig } from "@/service";
 
+/**
+ * useNyanpasu with swr.
+ * Data from tauri backend.
+ */
 export const useNyanpasu = (options?: {
   onUpdate?: (data?: VergeConfig) => void;
   onError?: (error: any) => void;

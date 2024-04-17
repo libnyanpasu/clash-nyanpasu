@@ -1,17 +1,18 @@
 import useSWR from "swr";
-import { nyanpasuConfig, VergeConfig } from "@/service";
+import { getNyanpasuConfig, patchNyanpasuConfig, VergeConfig } from "@/service";
 
 export const useNyanpasu = (options?: {
   onUpdate?: (data?: VergeConfig) => void;
   onError?: (error: any) => void;
 }) => {
-  const { data, error, mutate } = useSWR<VergeConfig>("nyanpasuConfig", () =>
-    nyanpasuConfig.get(),
+  const { data, error, mutate } = useSWR<VergeConfig>(
+    "nyanpasuConfig",
+    getNyanpasuConfig,
   );
 
   const setNyanpasuConfig = async (payload: Partial<VergeConfig>) => {
     try {
-      await nyanpasuConfig.set(payload);
+      await patchNyanpasuConfig(payload);
 
       const result = await mutate();
 

@@ -295,6 +295,19 @@ importers:
       '@mui/material':
         specifier: 5.15.15
         version: 5.15.15(@emotion/react@11.11.4)(@emotion/styled@11.11.5)(@types/react@18.2.79)(react-dom@18.2.0)(react@18.2.0)
+      '@types/react':
+        specifier: 18.2.79
+        version: 18.2.79
+      react:
+        specifier: 18.2.0
+        version: 18.2.0
+      react-error-boundary:
+        specifier: 4.0.13
+        version: 4.0.13(react@18.2.0)
+    devDependencies:
+      sass:
+        specifier: 1.75.0
+        version: 1.75.0
 
   scripts:
     dependencies:

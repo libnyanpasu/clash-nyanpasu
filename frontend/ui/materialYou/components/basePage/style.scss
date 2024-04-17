@@ -1,0 +1,50 @@
+.MDYBasePage {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+
+  > header {
+    box-sizing: border-box;
+    display: flex;
+    flex: 0 0 64px;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  .MDYBasePage-container {
+    height: 100%;
+    overflow: hidden;
+    border-radius: var(--border-radius);
+
+    > section {
+      position: relative;
+      box-sizing: border-box;
+      flex: 1 1 100%;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background-color: var(--background-color);
+      scrollbar-gutter: stable;
+
+      .MDYBasePage-content {
+        width: calc(100% - 28px * 2);
+        padding: 28px;
+        margin: 0 auto;
+      }
+    }
+
+    &.no-padding {
+      > section {
+        overflow: visible;
+
+        .MDYBasePage-content {
+          width: 100%;
+          padding: 0;
+        }
+      }
+    }
+  }
+}

@@ -41,28 +41,22 @@ export const useCustomTheme = () => {
 
   const [mode, setMode] = useRecoilState(atomThemeMode);
 
+  appWindow.onThemeChanged((e) => {
+    setMode(e.payload);
+  });
+
   useEffect(() => {
-    const themeMode = ["light", "dark", "system"].includes(
-      nyanpasuConfig?.theme_mode,
-    )
-      ? nyanpasuConfig?.theme_mode
-      : "light";
-
-    const handleThemeChange = (mode: "light" | "dark" | "system") => {
-      if (mode !== "system") {
-        setMode(themeMode);
-        return;
-      }
+    if (nyanpasuConfig?.theme_mode === "system") {
       appWindow.theme().then((m) => m && setMode(m));
-    };
 
-    const unlisten = appWindow.onThemeChanged((e) => {
-      handleThemeChange(e.payload);
-    });
+      return;
+    }
 
-    return () => {
-      unlisten.then((fn) => fn());
-    };
+    if (nyanpasuConfig?.theme_mode) {
+      setMode(nyanpasuConfig?.theme_mode);
+    } else {
+      setMode("light");
+    }
   }, [nyanpasuConfig?.theme_mode]);
 
   const theme = useMemo(() => {

@@ -1,9 +1,11 @@
 import createTheme from "@mui/material/styles/createTheme";
+import createPalette from "@mui/material/styles/createPalette";
 import {
   argbFromHex,
   hexFromArgb,
   themeFromSourceColor,
 } from "@material/material-color-utilities";
+import { MuiButton } from "./themeComponents";
 
 interface ThemeSchema {
   primary_color: string;
@@ -25,27 +27,30 @@ export const createMDYTheme = (
     argbFromHex(themeSchema.primary_color),
   );
 
-  return createTheme({
-    palette: {
-      mode,
-      primary: {
-        main: hexFromArgb(materialColor.schemes[mode].primary),
-      },
-      secondary: {
-        main: hexFromArgb(materialColor.schemes[mode].secondary),
-      },
-      error: {
-        main: hexFromArgb(materialColor.schemes[mode].error),
-      },
-      text: {
-        primary: hexFromArgb(materialColor.schemes[mode].onPrimaryContainer),
-        secondary: hexFromArgb(
-          materialColor.schemes[mode].onSecondaryContainer,
-        ),
-      },
+  const palette = createPalette({
+    mode,
+    primary: {
+      main: hexFromArgb(materialColor.schemes[mode].primary),
     },
+    secondary: {
+      main: hexFromArgb(materialColor.schemes[mode].secondary),
+    },
+    error: {
+      main: hexFromArgb(materialColor.schemes[mode].error),
+    },
+    text: {
+      primary: hexFromArgb(materialColor.schemes[mode].onPrimaryContainer),
+      secondary: hexFromArgb(materialColor.schemes[mode].onSecondaryContainer),
+    },
+  });
+
+  return createTheme({
+    palette,
     typography: {
       fontFamily: themeSchema?.font_family,
+    },
+    components: {
+      MuiButton,
     },
   });
 };

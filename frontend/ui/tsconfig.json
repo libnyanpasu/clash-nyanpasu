@@ -14,8 +14,9 @@
     "moduleResolution": "Node",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true,
     "jsx": "preserve",
+    "declaration": true,
+    "composite": true,
     "paths": {
       "@/*": ["./*"],
     },

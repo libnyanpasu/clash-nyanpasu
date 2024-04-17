@@ -22,4 +22,5 @@
     },
   },
   "include": ["./src"],
+  "references": [{ "path": "../interface/tsconfig.json" }],
 }

@@ -1,4 +1,4 @@
-import { ReactNode, FC, CSSProperties } from "react";
+import { ReactNode, FC, CSSProperties, memo } from "react";
 import Typography from "@mui/material/Typography";
 import { BaseErrorBoundary } from "./baseErrorBoundary";
 import "./style.scss";
@@ -12,6 +12,26 @@ interface Props {
   children?: ReactNode;
 }
 
+const Header: FC<{ title?: ReactNode; header?: ReactNode }> = memo(
+  function Header({
+    title,
+    header,
+  }: {
+    title?: ReactNode;
+    header?: ReactNode;
+  }) {
+    return (
+      <header style={{ userSelect: "none" }} data-windrag>
+        <Typography variant="h4" component="h1" fontWeight={500} data-windrag>
+          {title}
+        </Typography>
+
+        {header}
+      </header>
+    );
+  },
+);
+
 export const BasePage: FC<Props> = ({
   title,
   header,
@@ -23,13 +43,7 @@ export const BasePage: FC<Props> = ({
   return (
     <BaseErrorBoundary>
       <div className="MDYBasePage" data-windrag>
-        <header style={{ userSelect: "none" }} data-windrag>
-          <Typography variant="h4" component="h1" fontWeight={500} data-windrag>
-            {title}
-          </Typography>
-
-          {header}
-        </header>
+        <Header title={title} header={header} />
 
         <div className={`MDYBasePage-container ${full ? "no-padding" : ""}`}>
           <section style={sectionStyle}>

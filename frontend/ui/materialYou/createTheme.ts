@@ -5,7 +5,7 @@ import {
   hexFromArgb,
   themeFromSourceColor,
 } from "@material/material-color-utilities";
-import { MuiButton, MuiButtonGroup } from "./themeComponents";
+import { MuiButton, MuiButtonGroup, MuiPaper } from "./themeComponents";
 
 interface ThemeSchema {
   primary_color: string;
@@ -52,6 +52,7 @@ export const createMDYTheme = (
     components: {
       MuiButton,
       MuiButtonGroup,
+      MuiPaper,
     },
   });
 };

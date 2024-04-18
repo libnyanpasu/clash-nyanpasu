@@ -6,20 +6,26 @@ export const BaseCard = ({
   labelChildren,
   children,
 }: {
-  label: string;
+  label?: string;
   labelChildren?: ReactNode;
   children?: ReactNode;
 }) => {
   return (
     <Card>
       <CardContent>
-        <Box display="flex" justifyContent="space-between" alignItems="center">
-          <Typography sx={{ pb: 1 }} variant="h5" component="div">
-            {label}
-          </Typography>
+        {label && (
+          <Box
+            display="flex"
+            justifyContent="space-between"
+            alignItems="center"
+          >
+            <Typography sx={{ pb: 1 }} variant="h5" component="div">
+              {label}
+            </Typography>
 
-          {labelChildren}
-        </Box>
+            {labelChildren}
+          </Box>
+        )}
 
         {children}
       </CardContent>

@@ -81,11 +81,9 @@ export const clash = () => {
   };
 
   const getRules = async () => {
-    interface PrivateRule {
+    return (await buildRequest())<{
       rules: Clash.Rule[];
-    }
-
-    return (await buildRequest())<PrivateRule>("/rules");
+    }>("/rules");
   };
 
   const getProxiesDelay = async (
@@ -107,11 +105,9 @@ export const clash = () => {
   };
 
   const getProxies = async () => {
-    interface PrivateProxy {
+    return (await buildRequest())<{
       proxies: Clash.Proxy[];
-    }
-
-    return (await buildRequest())<PrivateProxy>("/proxies");
+    }>("/proxies");
   };
 
   const setProxies = async ({

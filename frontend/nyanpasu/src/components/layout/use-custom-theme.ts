@@ -41,15 +41,15 @@ export const useCustomTheme = () => {
 
   const [mode, setMode] = useRecoilState(atomThemeMode);
 
-  appWindow.onThemeChanged((e) => {
-    setMode(e.payload);
-  });
-
   useEffect(() => {
     if (nyanpasuConfig?.theme_mode === "system") {
       appWindow.theme().then((m) => m && setMode(m));
 
-      return;
+      const unlisten = appWindow.onThemeChanged((e) => setMode(e.payload));
+
+      return () => {
+        unlisten.then((fn) => fn());
+      };
     }
 
     if (nyanpasuConfig?.theme_mode) {

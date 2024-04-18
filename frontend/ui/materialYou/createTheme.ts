@@ -11,6 +11,7 @@ import {
   MuiCard,
   MuiCardContent,
   MuiPaper,
+  MuiSwitch,
 } from "./themeComponents";
 
 interface ThemeSchema {
@@ -61,6 +62,7 @@ export const createMDYTheme = (
       MuiCard,
       MuiCardContent,
       // MuiPaper,
+      MuiSwitch: MuiSwitch(palette),
     },
     breakpoints: {
       values: {

@@ -52,7 +52,7 @@ export const createMDYTheme = (
     components: {
       MuiButton,
       MuiButtonGroup,
-      MuiPaper,
+      // MuiPaper,
     },
   });
 };

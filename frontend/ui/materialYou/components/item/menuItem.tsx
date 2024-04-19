@@ -14,6 +14,7 @@ export interface MenuItemProps {
   selected: OptionValue;
   onSelected: (value: OptionValue) => void;
   selectSx?: SxProps;
+  disabled?: boolean;
 }
 
 /**
@@ -42,6 +43,7 @@ export const MenuItem = ({
   selected,
   onSelected,
   selectSx,
+  disabled,
 }: MenuItemProps) => {
   return (
     <ListItem sx={{ pl: 0, pr: 0 }}>
@@ -55,6 +57,7 @@ export const MenuItem = ({
           onSelected(e.target.value);
         }}
         sx={{ width: 104, ...selectSx }}
+        disabled={disabled}
       >
         {Object.entries(options).map(([key, value]) => (
           <MuiMenuItem

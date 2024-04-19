@@ -31,6 +31,7 @@ export const MenuItem = ({
         onChange={(e) => {
           onSelected(e.target.value);
         }}
+        sx={{ width: 104 }}
       >
         {Object.entries(options).map(([key, value]) => (
           <MuiMenuItem

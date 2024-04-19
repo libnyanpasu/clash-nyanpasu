@@ -64,5 +64,12 @@ export const useMessage = async (
   value: string,
   options?: string | MessageDialogOptions | undefined,
 ) => {
-  await message(value, options);
+  if (typeof options === "object") {
+    await message(value, {
+      ...options,
+      title: `Clash Nyanpasu - ${options.title}`,
+    });
+  } else {
+    await message(value, options);
+  }
 };

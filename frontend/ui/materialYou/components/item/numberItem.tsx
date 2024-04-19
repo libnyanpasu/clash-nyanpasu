@@ -8,7 +8,7 @@ import {
 } from "@mui/material";
 import Done from "@mui/icons-material/Done";
 import { ChangeEvent, useMemo, useState } from "react";
-import { motion } from "framer-motion";
+import { Expand } from "../expand";
 
 export interface NumberItemprops {
   label: string;
@@ -69,13 +69,7 @@ export const NumberItem = ({
         />
       </ListItem>
 
-      <motion.div
-        animate={changed ? "open" : "closed"}
-        variants={{
-          open: { opacity: 1, height: "auto" },
-          closed: { opacity: 0, height: 0 },
-        }}
-      >
+      <Expand open={changed}>
         <Box
           sx={{ pb: 1 }}
           display="flex"
@@ -102,7 +96,7 @@ export const NumberItem = ({
             Apply
           </Button>
         </Box>
-      </motion.div>
+      </Expand>
     </>
   );
 };

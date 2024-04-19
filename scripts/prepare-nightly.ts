@@ -30,6 +30,7 @@ async function main() {
   const tauriAppOverrides = await fs.readJSON(TAURI_DEV_APP_OVERRIDES_PATH);
   const tauriConf = merge(tauriAppConf, tauriAppOverrides);
   const packageJson = await fs.readJSON(NYANPASU_PACKAGE_JSON_PATH);
+  const rootPackageJson = await fs.readJSON(ROOT_PACKAGE_JSON_PATH);
   // const wxsFile = await fs.readFile(WXS_PATH, "utf-8");
 
   if (isNSIS) {
@@ -63,6 +64,8 @@ async function main() {
   consola.debug("Write tauri version to package.json");
   packageJson.version = version;
   await fs.writeJSON(NYANPASU_PACKAGE_JSON_PATH, packageJson, { spaces: 2 });
+  rootPackageJson.version = version;
+  await fs.writeJSON(ROOT_PACKAGE_JSON_PATH, rootPackageJson, { spaces: 2 });
   consola.debug("package.json updated");
 }
 

@@ -1,5 +1,10 @@
 import useSWR from "swr";
 import { Clash, clash } from "../service/clash";
+import {
+  getClashInfo as getClashInfoFromTauri,
+  patchClashInfo,
+} from "@/service/tauri";
+import { ClashConfig } from "..";
 
 /**
  * useClash with swr.
@@ -7,6 +12,18 @@ import { Clash, clash } from "../service/clash";
  */
 export const useClash = () => {
   const { deleteConnections, ...api } = clash();
+
+  const getClashInfo = useSWR("getClashInfo", getClashInfoFromTauri);
+
+  const setClashInfo = async (payload: Partial<ClashConfig>) => {
+    try {
+      await patchClashInfo(payload);
+
+      await getClashInfo.mutate();
+    } finally {
+      return getClashInfo.data;
+    }
+  };
 
   const getConfigs = useSWR("getClashConfig", api.getConfigs);
 
@@ -39,6 +56,8 @@ export const useClash = () => {
   };
 
   return {
+    getClashInfo,
+    setClashInfo,
     getConfigs,
     setConfigs,
     getVersion,

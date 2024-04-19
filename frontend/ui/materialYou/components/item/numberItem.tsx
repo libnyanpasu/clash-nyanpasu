@@ -5,6 +5,7 @@ import {
   Box,
   Button,
   Typography,
+  Divider,
 } from "@mui/material";
 import Done from "@mui/icons-material/Done";
 import { ChangeEvent, useMemo, useState } from "react";
@@ -16,6 +17,7 @@ export interface NumberItemprops {
   checkEvent: (input: number) => boolean;
   checkLabel: string;
   onApply: (input: number) => void;
+  divider?: boolean;
 }
 
 /**
@@ -44,6 +46,7 @@ export const NumberItem = ({
   checkEvent,
   checkLabel,
   onApply,
+  divider,
 }: NumberItemprops) => {
   const [changed, setChanged] = useState(false);
 
@@ -96,6 +99,8 @@ export const NumberItem = ({
             Apply
           </Button>
         </Box>
+
+        {divider && <Divider />}
       </Expand>
     </>
   );

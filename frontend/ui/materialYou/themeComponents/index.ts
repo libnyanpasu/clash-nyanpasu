@@ -4,3 +4,7 @@ export * from "./MuiPaper";
 export * from "./MuiCard";
 export * from "./MuiCardContent";
 export * from "./MuiSwitch";
+export * from "./MuiDialog";
+export * from "./MuiDialogActions";
+export * from "./MuiDialogContent";
+export * from "./MuiDialogTitle";

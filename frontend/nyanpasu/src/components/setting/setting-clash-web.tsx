@@ -47,7 +47,7 @@ export const SettingClashWeb = () => {
   };
 
   const updateItem = () => {
-    const list = nyanpasuConfig?.web_ui_list;
+    const list = nyanpasuConfig?.web_ui_list || [];
 
     if (!list) return;
 

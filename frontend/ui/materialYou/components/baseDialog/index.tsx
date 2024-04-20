@@ -4,6 +4,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
 } from "@mui/material";
 import LoadingButton from "@mui/lab/LoadingButton";
 import { SxProps } from "@mui/material/styles";
@@ -30,6 +31,7 @@ export interface BaseDialogProps {
   loading?: boolean;
   onOk?: () => void;
   onClose?: () => void;
+  divider?: boolean;
 }
 
 export const BaseDialog = ({
@@ -43,6 +45,7 @@ export const BaseDialog = ({
   loading,
   onOk,
   ok,
+  divider,
 }: BaseDialogProps) => {
   const [mounted, setMounted] = useState(true);
 
@@ -72,18 +75,24 @@ export const BaseDialog = ({
       keepMounted={mounted}
       TransitionComponent={BaseDialogTransition}
     >
-      <DialogTitle>{title}</DialogTitle>
+      <DialogTitle sx={divider ? { pb: 2 } : null}>{title}</DialogTitle>
+
+      {divider && <Divider />}
 
       <DialogContent
         sx={{
           width: 400,
+          pt: divider ? 2 : null,
+          pb: divider ? 2 : null,
           ...contentSx,
         }}
       >
         {children}
       </DialogContent>
 
-      <DialogActions>
+      {divider && (onClose || close || onOk || ok) && <Divider />}
+
+      <DialogActions sx={divider ? { pt: 2 } : null}>
         {onClose && (
           <Button variant="outlined" onClick={handleClose}>
             {close}

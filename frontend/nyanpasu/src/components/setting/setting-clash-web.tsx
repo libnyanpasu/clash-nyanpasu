@@ -98,7 +98,7 @@ export const SettingClashWeb = () => {
       </BaseCard>
 
       <BaseDialog
-        title={editIndex != null ? "New Item" : "Edit Item"}
+        title={editIndex != null ? "Edit Item" : "New Item"}
         open={open}
         onClose={() => {
           setOpen(false);

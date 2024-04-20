@@ -21,6 +21,14 @@ A <a href="https://github.com/Dreamacro/clash">Clash</a> GUI based on <a href="h
   <a href="https://twitter.com/ClashNyanpasu"><img src="https://img.shields.io/twitter/follow/ClashNyanpasu?style=flat-square" alt="Nyanpasu Twitter" /></a>
 </p>
 
+## Nyanpasu 1.6.0
+
+Hey there! Guess what? Clash Nyanpasu 1.6.0 is getting a makeover! (▰˘◡˘▰) We're diving into some serious development work, revamping loads of stuff. Think brand-spanking-new Material You UI design, service mode on all platforms, and supercharged scripting powers!
+
+But wait, there's more! We're not just sprucing things up on the surface. Nope, we're also giving the codebase a good scrub, adding tons of comments and organizing things to make it extra cozy for developers.
+
+Exciting, right? (ᗒᗨᗕ)/ Follow [this link](https://t.me/keikolog) to stay in the loop with the latest developments. Nyanpasu can't wait to grow and glow with all of you! ε٩(๑> ₃ <)۶з
+
 ## Features
 
 - Full `clash` config supported, Partial `clash premium` config supported.

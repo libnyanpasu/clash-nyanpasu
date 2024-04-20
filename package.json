@@ -103,7 +103,7 @@
   },
   "packageManager": "pnpm@9.0.4",
   "engines": {
-    "node": "^20 || ^21"
+    "node": "21.7.3"
   },
   "pnpm": {
     "overrides": {

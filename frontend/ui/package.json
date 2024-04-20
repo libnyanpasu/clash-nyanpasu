@@ -6,8 +6,10 @@
   "dependencies": {
     "@material/material-color-utilities": "0.2.7",
     "@mui/icons-material": "5.15.15",
+    "@mui/lab": "5.0.0-alpha.170",
     "@mui/material": "5.15.15",
     "@types/react": "18.2.79",
+    "ahooks": "3.7.11",
     "framer-motion": "11.1.7",
     "react": "18.2.0",
     "react-error-boundary": "4.0.13"

@@ -1,0 +1,19 @@
+.MDYSwitch-container {
+  position: relative;
+
+  .CircularProgress {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 1;
+    cursor: not-allowed;
+  }
+
+  .CircularProgress-checked {
+    position: absolute;
+    top: 8px;
+    right: 7px;
+    z-index: 1;
+    cursor: not-allowed;
+  }
+}

@@ -84,6 +84,7 @@ export const BaseDialog = ({
           width: 400,
           pt: divider ? 2 : null,
           pb: divider ? 2 : null,
+          maxHeight: "calc(100vh - 256px)",
           ...contentSx,
         }}
       >

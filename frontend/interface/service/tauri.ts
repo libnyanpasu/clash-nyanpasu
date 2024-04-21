@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/tauri";
-import { ClashConfig, ClashInfo, VergeConfig } from "./types";
+import { ClashConfig, ClashInfo, VergeConfig, Profile } from "./types";
 
 export const getNyanpasuConfig = async () => {
   return await invoke<VergeConfig>("get_verge_config");
@@ -15,4 +15,23 @@ export const getClashInfo = async () => {
 
 export const patchClashInfo = async (payload: Partial<ClashConfig>) => {
   return await invoke<void>("patch_clash_config", { payload });
+};
+
+export const getRuntimeExists = async () => {
+  return await invoke<string[]>("get_runtime_exists");
+};
+
+export const getProfiles = async () => {
+  return await invoke<Profile.Config>("get_profiles");
+};
+
+export const setProfiles = async (payload: {
+  index: string;
+  profile: Partial<Profile.Item>;
+}) => {
+  return await invoke<void>("patch_profile", payload);
+};
+
+export const setProfilesConfig = async (profiles: Profile.Config) => {
+  return await invoke<void>("patch_profiles_config", { profiles });
 };

@@ -2,9 +2,13 @@ import useSWR from "swr";
 import { Clash, clash } from "../service/clash";
 import {
   getClashInfo as getClashInfoFromTauri,
+  getRuntimeExists as getRuntimeExistsFromTauri,
+  getProfiles as getProfilesFromTauri,
+  setProfiles as setProfilesFromTauri,
+  setProfilesConfig as setProfilesConfigFromTauri,
   patchClashInfo,
 } from "@/service/tauri";
-import { ClashConfig } from "..";
+import { ClashConfig, Profile } from "..";
 
 /**
  * useClash with swr.
@@ -55,6 +59,36 @@ export const useClash = () => {
     }
   };
 
+  const getRuntimeExists = useSWR(
+    "getRuntimeExists",
+    getRuntimeExistsFromTauri,
+  );
+
+  const getProfiles = useSWR("getProfiles", getProfilesFromTauri);
+
+  const setProfiles = async (payload: {
+    index: string;
+    profile: Partial<Profile.Item>;
+  }) => {
+    try {
+      await setProfilesFromTauri(payload);
+
+      await getProfiles.mutate();
+    } finally {
+      return getProfiles.data;
+    }
+  };
+
+  const setProfilesConfig = async (profiles: Profile.Config) => {
+    try {
+      await setProfilesConfigFromTauri(profiles);
+
+      await getProfiles.mutate();
+    } finally {
+      return getProfiles.data;
+    }
+  };
+
   return {
     getClashInfo,
     setClashInfo,
@@ -66,5 +100,9 @@ export const useClash = () => {
     getProxies,
     setProxies,
     deleteConnections,
+    getRuntimeExists,
+    getProfiles,
+    setProfiles,
+    setProfilesConfig,
   };
 };

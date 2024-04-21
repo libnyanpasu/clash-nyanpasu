@@ -64,3 +64,40 @@ export interface ClashConfig {
   "external-controller": string;
   secret: string;
 }
+
+export namespace Profile {
+  export interface Config {
+    current?: string;
+    chain?: string[];
+    valid?: string[];
+    items?: Item[];
+  }
+
+  export interface Item {
+    uid: string;
+    type?: "local" | "remote" | "merge" | "script";
+    name?: string;
+    desc?: string;
+    file?: string;
+    url?: string;
+    updated?: number;
+    selected?: {
+      name?: string;
+      now?: string;
+    }[];
+    extra?: {
+      upload: number;
+      download: number;
+      total: number;
+      expire: number;
+    };
+    option?: Option;
+  }
+
+  export interface Option {
+    user_agent?: string;
+    with_proxy?: boolean;
+    self_proxy?: boolean;
+    update_interval?: number;
+  }
+}

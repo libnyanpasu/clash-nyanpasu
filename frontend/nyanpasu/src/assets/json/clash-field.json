@@ -1,0 +1,55 @@
+{
+  "default": {
+    "proxies": "https://nyanpasu.elaina.moe/others/field.html#proxies",
+    "proxy-groups": "https://nyanpasu.elaina.moe/others/field.html#proxy-groups",
+    "proxy-providers": "https://nyanpasu.elaina.moe/others/field.html#proxy-providers",
+    "rules": "https://nyanpasu.elaina.moe/others/field.html#rules",
+    "rule-providers": "https://nyanpasu.elaina.moe/others/field.html#rule-providers"
+  },
+  "handle": {
+    "mode": "https://nyanpasu.elaina.moe/others/field.html#mode",
+    "port": "https://nyanpasu.elaina.moe/others/field.html#port",
+    "socks-port": "https://nyanpasu.elaina.moe/others/field.html#socks-port",
+    "mixed-port": "https://nyanpasu.elaina.moe/others/field.html#mixed-port",
+    "allow-lan": "https://nyanpasu.elaina.moe/others/field.html#allow-lan",
+    "log-level": "https://nyanpasu.elaina.moe/others/field.html#log-level",
+    "ipv6": "https://nyanpasu.elaina.moe/others/field.html#ipv6",
+    "secret": "https://nyanpasu.elaina.moe/others/field.html#secret",
+    "external-controller": "https://nyanpasu.elaina.moe/others/field.html#external-controller"
+  },
+  "other": {
+    "dns": "https://nyanpasu.elaina.moe/others/field.html#dns",
+    "tun": "https://nyanpasu.elaina.moe/others/field.html#tun",
+    "ebpf": "https://nyanpasu.elaina.moe/others/field.html#ebpf",
+    "hosts": "https://nyanpasu.elaina.moe/others/field.html#hosts",
+    "script": "https://nyanpasu.elaina.moe/others/field.html#script",
+    "profile": "https://nyanpasu.elaina.moe/others/field.html#profile",
+    "payload": "https://nyanpasu.elaina.moe/others/field.html#payload",
+    "tunnels": "https://nyanpasu.elaina.moe/others/field.html#tunnels",
+    "auto-redir": "https://nyanpasu.elaina.moe/others/field.html#auto-redir",
+    "experimental": "https://nyanpasu.elaina.moe/others/field.html#experimental",
+    "interface-name": "https://nyanpasu.elaina.moe/others/field.html#interface-name",
+    "routing-mark": "https://nyanpasu.elaina.moe/others/field.html#routing-mark",
+    "redir-port": "https://nyanpasu.elaina.moe/others/field.html#redir-port",
+    "tproxy-port": "https://nyanpasu.elaina.moe/others/field.html#tproxy-port",
+    "iptables": "https://nyanpasu.elaina.moe/others/field.html#iptables",
+    "external-ui": "https://nyanpasu.elaina.moe/others/field.html#external-ui",
+    "bind-address": "https://nyanpasu.elaina.moe/others/field.html#bind-address",
+    "authentication": "https://nyanpasu.elaina.moe/others/field.html#authentication"
+  },
+  "meta": {
+    "tls": "https://nyanpasu.elaina.moe/others/field.html#tls",
+    "sniffer": "https://nyanpasu.elaina.moe/others/field.html#sniffer",
+    "geox-url": "https://nyanpasu.elaina.moe/others/field.html#geox-url",
+    "listeners": "https://nyanpasu.elaina.moe/others/field.html#listeners",
+    "sub-rules": "https://nyanpasu.elaina.moe/others/field.html#sub-rules",
+    "geodata-mode": "https://nyanpasu.elaina.moe/others/field.html#geodata-mode",
+    "unified-delay": "https://nyanpasu.elaina.moe/others/field.html#unified-delay",
+    "tcp-concurrent": "https://nyanpasu.elaina.moe/others/field.html#tcp-concurrent",
+    "enable-process": "https://nyanpasu.elaina.moe/others/field.html#enable-process",
+    "find-process-mode": "https://nyanpasu.elaina.moe/others/field.html#find-process-mode",
+    "skip-auth-prefixes": "https://nyanpasu.elaina.moe/others/field.html#skip-auth-prefixes",
+    "external-controller-tls": "https://nyanpasu.elaina.moe/others/field.html#external-controller-tls",
+    "global-client-fingerprint": "https://nyanpasu.elaina.moe/others/field.html#global-client-fingerprint"
+  }
+}

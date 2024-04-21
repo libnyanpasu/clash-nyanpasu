@@ -20,6 +20,11 @@ export const MuiSwitch = (palette: Palette): Components<Theme>["MuiSwitch"] => {
         "&:has(.Mui-checked) .MuiSwitch-track::before": {
           opacity: 0,
         },
+
+        "&:has(.Mui-disabled) .MuiSwitch-track": {
+          opacity: "0.5 !important",
+          cursor: "not-allowed",
+        },
       },
       track: {
         borderRadius: "48px",

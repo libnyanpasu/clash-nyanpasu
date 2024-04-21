@@ -3,7 +3,6 @@ import {
   Chip,
   Divider,
   IconButton,
-  Stack,
   TextField,
   Tooltip,
   Typography,
@@ -14,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import AddIcon from "@mui/icons-material/Add";
 import { useMemo, useState } from "react";
 import { ClashWebItem, extractServer, openWebUrl, renderChip } from "./modules";
+import Grid from "@mui/material/Unstable_Grid2";
 
 export const SettingClashWeb = () => {
   const { t } = useTranslation();
@@ -78,23 +78,24 @@ export const SettingClashWeb = () => {
           </Tooltip>
         }
       >
-        <Stack sx={{ mt: 1 }} spacing={2}>
+        <Grid container sx={{ mt: 1 }} spacing={2}>
           {nyanpasuConfig?.web_ui_list?.map((item, index) => {
             return (
-              <ClashWebItem
-                key={index}
-                label={renderChip(item, labels)}
-                onOpen={() => openWebUrl(item, labels)}
-                onEdit={() => {
-                  setEditIndex(index);
-                  setEditString(item);
-                  setOpen(true);
-                }}
-                onDelete={() => deleteItem(index)}
-              />
+              <Grid key={index} xs={12} xl={6}>
+                <ClashWebItem
+                  label={renderChip(item, labels)}
+                  onOpen={() => openWebUrl(item, labels)}
+                  onEdit={() => {
+                    setEditIndex(index);
+                    setEditString(item);
+                    setOpen(true);
+                  }}
+                  onDelete={() => deleteItem(index)}
+                />
+              </Grid>
             );
           })}
-        </Stack>
+        </Grid>
       </BaseCard>
 
       <BaseDialog

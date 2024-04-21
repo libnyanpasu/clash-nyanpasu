@@ -324,7 +324,7 @@ importers:
         specifier: 1.75.0
         version: 1.75.0
       typescript-plugin-css-modules:
-        specifier: ^5.1.0
+        specifier: 5.1.0
         version: 5.1.0(typescript@5.4.5)
 
   scripts:

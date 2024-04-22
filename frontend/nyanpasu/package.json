@@ -23,7 +23,7 @@
     "@mui/x-data-grid": "7.3.0",
     "@nyanpasu/interface": "workspace:^",
     "@nyanpasu/ui": "workspace:^",
-    "@tauri-apps/api": "1.5.3",
+    "@tauri-apps/api": "1.5.4",
     "ahooks": "3.7.11",
     "axios": "1.6.8",
     "dayjs": "1.11.10",

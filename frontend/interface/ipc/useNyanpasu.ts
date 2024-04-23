@@ -1,5 +1,13 @@
 import useSWR from "swr";
-import { getNyanpasuConfig, patchNyanpasuConfig, VergeConfig } from "@/service";
+import {
+  getNyanpasuConfig,
+  patchNyanpasuConfig,
+  VergeConfig,
+  getCoreVersion,
+  setClashCore as setClashCoreWithTauri,
+  restartSidecar,
+} from "@/service";
+import { fetchCoreVersion, fetchLatestCore } from "@/service/core";
 
 /**
  * useNyanpasu with swr.
@@ -30,10 +38,30 @@ export const useNyanpasu = (options?: {
     }
   };
 
+  const getClashCore = useSWR("getClashCore", fetchCoreVersion);
+
+  const setClashCore = async (
+    clashCore: Required<VergeConfig>["clash_core"],
+  ) => {
+    await setClashCoreWithTauri(clashCore);
+
+    // timeout for restart clash core.
+    setTimeout(() => {
+      getClashCore.mutate();
+    }, 100);
+  };
+
+  const getLatestCore = useSWR("getLatestCore", fetchLatestCore);
+
   return {
     nyanpasuConfig: data,
     isLoading: !data && !error,
     isError: error,
     setNyanpasuConfig,
+    getCoreVersion,
+    getClashCore,
+    setClashCore,
+    restartSidecar,
+    getLatestCore,
   };
 };

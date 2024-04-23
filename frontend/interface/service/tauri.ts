@@ -62,3 +62,7 @@ export const updateCore = async (
 ) => {
   return await invoke<void>("update_core", { coreType });
 };
+
+export const pullupUWPTool = async () => {
+  return await invoke<void>("invoke_uwp_tool");
+};

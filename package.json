@@ -63,7 +63,7 @@
     "lodash-es": "4.17.21"
   },
   "devDependencies": {
-    "@commitlint/cli": "19.2.2",
+    "@commitlint/cli": "19.3.0",
     "@commitlint/config-conventional": "19.2.2",
     "@tauri-apps/cli": "1.5.11",
     "@types/fs-extra": "11.0.4",

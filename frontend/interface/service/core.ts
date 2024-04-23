@@ -30,17 +30,28 @@ export const fetchLatestCore = async () => {
   const results = await fetchLatestCoreVersions();
 
   const cores = VALID_CORE.map((item) => {
-    if (item.core == "clash") {
-      return {
-        ...item,
-        latest: `n${results["clash_premium"]}`,
-      };
-    } else {
-      return {
-        ...item,
-        latest: results[item.core.replace(/-/g, "_") as keyof typeof results],
-      };
+    const key = item.core.replace(/-/g, "_") as keyof typeof results;
+
+    let latest: string;
+
+    switch (item.core) {
+      case "clash":
+        latest = `n${results["clash_premium"]}`;
+        break;
+
+      case "clash-rs":
+        latest = results[key].replace(/v/, "");
+        break;
+
+      default:
+        latest = results[key];
+        break;
     }
+
+    return {
+      ...item,
+      latest: latest,
+    };
   });
 
   return cores;

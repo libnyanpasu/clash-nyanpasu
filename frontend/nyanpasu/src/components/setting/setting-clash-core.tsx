@@ -15,6 +15,7 @@ export const SettingClashCore = () => {
   const loading = useReactive({
     mask: false,
     restart: false,
+    check: false,
   });
 
   const [expand, setExpand] = useState(false);
@@ -87,12 +88,16 @@ export const SettingClashCore = () => {
 
   const handleCheckUpdates = useLockFn(async () => {
     try {
+      loading.check = true;
+
       await getLatestCore.mutate();
     } catch (e) {
       useMessage("Fetch failed, please check your internet connection.", {
         type: "error",
         title: t("Error"),
       });
+    } finally {
+      loading.check = false;
     }
   });
 
@@ -186,7 +191,7 @@ export const SettingClashCore = () => {
             </LoadingButton>
 
             <LoadingButton
-              loading={getLatestCore.isLoading}
+              loading={loading.check || getLatestCore.isLoading}
               variant="contained"
               onClick={handleCheckUpdates}
             >

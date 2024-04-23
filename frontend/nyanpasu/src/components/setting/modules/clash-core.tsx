@@ -8,7 +8,10 @@ import { ClashCore, Core } from "@nyanpasu/interface";
 import Clash from "@/assets/image/core/clash.png";
 import ClashMeta from "@/assets/image/core/clash.meta.png";
 import ClashRs from "@/assets/image/core/clash-rs.png";
-import { FiberManualRecord } from "@mui/icons-material";
+import FiberManualRecord from "@mui/icons-material/FiberManualRecord";
+import Update from "@mui/icons-material/Update";
+import IconButton from "@mui/material/IconButton";
+import Tooltip from "@mui/material/Tooltip";
 
 export const getImage = (core: ClashCore) => {
   switch (core) {
@@ -31,6 +34,7 @@ export interface ClashCoreItemProps {
   selected: boolean;
   data: Core;
   onClick: (core: ClashCore) => void;
+  onUpdate: (core: ClashCore) => void;
 }
 
 /**
@@ -50,6 +54,7 @@ export const ClashCoreItem = ({
   selected,
   data,
   onClick,
+  onUpdate,
 }: ClashCoreItemProps) => {
   const { palette } = useTheme();
 
@@ -92,6 +97,21 @@ export const ClashCoreItem = ({
                 </Typography>
               )}
             </Box>
+
+            {newVersion && (
+              <Tooltip title="Update Core">
+                <IconButton
+                  sx={{ marginLeft: "auto" }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onUpdate(data.core);
+                  }}
+                >
+                  <Update />
+                </IconButton>
+              </Tooltip>
+            )}
           </Box>
         </Item>
       </ListItemButton>

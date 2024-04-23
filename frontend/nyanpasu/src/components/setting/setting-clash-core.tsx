@@ -25,6 +25,7 @@ export const SettingClashCore = () => {
     getClashCore,
     restartSidecar,
     getLatestCore,
+    updateCore,
   } = useNyanpasu();
 
   const { getVersion, deleteConnections } = useClash();
@@ -95,6 +96,28 @@ export const SettingClashCore = () => {
     }
   });
 
+  const handleUpdateCore = useLockFn(
+    async (core: Required<IVergeConfig>["clash_core"]) => {
+      try {
+        loading.mask = true;
+
+        await updateCore(core);
+
+        useMessage(`Successfully update core ${core}`, {
+          type: "info",
+          title: t("Success"),
+        });
+      } catch (e) {
+        useMessage(`Update failed.`, {
+          type: "error",
+          title: t("Error"),
+        });
+      } finally {
+        loading.mask = false;
+      }
+    },
+  );
+
   const mergeCores = useMemo(() => {
     return getClashCore.data?.map((item) => {
       const latest = getLatestCore.data?.find(
@@ -139,6 +162,7 @@ export const SettingClashCore = () => {
                 data={item}
                 selected={item.core == nyanpasuConfig?.clash_core}
                 onClick={() => changeClashCore(item.core)}
+                onUpdate={() => handleUpdateCore(item.core)}
               />
             </motion.div>
           );

@@ -56,3 +56,9 @@ export const restartSidecar = async () => {
 export const fetchLatestCoreVersions = async () => {
   return await invoke<ManifestVersion["latest"]>("fetch_latest_core_versions");
 };
+
+export const updateCore = async (
+  coreType: Required<VergeConfig>["clash_core"],
+) => {
+  return await invoke<void>("update_core", { coreType });
+};

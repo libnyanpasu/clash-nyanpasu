@@ -6,6 +6,7 @@ import {
   getCoreVersion,
   setClashCore as setClashCoreWithTauri,
   restartSidecar,
+  updateCore as updateCoreWithTauri,
 } from "@/service";
 import { fetchCoreVersion, fetchLatestCore } from "@/service/core";
 
@@ -53,6 +54,12 @@ export const useNyanpasu = (options?: {
 
   const getLatestCore = useSWR("getLatestCore", fetchLatestCore);
 
+  const updateCore = async (core: Required<VergeConfig>["clash_core"]) => {
+    await updateCoreWithTauri(core);
+
+    getClashCore.mutate();
+  };
+
   return {
     nyanpasuConfig: data,
     isLoading: !data && !error,
@@ -63,5 +70,6 @@ export const useNyanpasu = (options?: {
     setClashCore,
     restartSidecar,
     getLatestCore,
+    updateCore,
   };
 };

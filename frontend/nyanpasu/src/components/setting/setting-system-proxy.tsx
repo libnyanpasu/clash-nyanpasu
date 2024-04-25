@@ -69,7 +69,7 @@ export const SettingSystemProxy = () => {
       }
     >
       <Grid container spacing={2}>
-        <Grid xs={6} xl={3}>
+        <Grid xs={6}>
           <PaperSwitchBotton
             label={t("Tun Mode")}
             checked={nyanpasuConfig?.enable_tun_mode || false}
@@ -78,7 +78,7 @@ export const SettingSystemProxy = () => {
           />
         </Grid>
 
-        <Grid xs={6} xl={3}>
+        <Grid xs={6}>
           <PaperSwitchBotton
             label={t("System Proxy")}
             checked={nyanpasuConfig?.enable_system_proxy || false}

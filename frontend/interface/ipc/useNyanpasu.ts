@@ -7,6 +7,7 @@ import {
   setClashCore as setClashCoreWithTauri,
   restartSidecar,
   updateCore as updateCoreWithTauri,
+  getSystemProxy as getSystemProxyWithTauri,
 } from "@/service";
 import { fetchCoreVersion, fetchLatestCore } from "@/service/core";
 
@@ -60,6 +61,8 @@ export const useNyanpasu = (options?: {
     getClashCore.mutate();
   };
 
+  const getSystemProxy = useSWR("getSystemProxy", getSystemProxyWithTauri);
+
   return {
     nyanpasuConfig: data,
     isLoading: !data && !error,
@@ -71,5 +74,6 @@ export const useNyanpasu = (options?: {
     restartSidecar,
     getLatestCore,
     updateCore,
+    getSystemProxy,
   };
 };

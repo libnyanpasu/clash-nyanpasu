@@ -101,3 +101,9 @@ export namespace Profile {
     update_interval?: number;
   }
 }
+
+export interface SystemProxy {
+  enable: boolean;
+  server: string;
+  bypass: string;
+}

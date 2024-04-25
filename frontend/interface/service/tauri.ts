@@ -1,5 +1,11 @@
 import { invoke } from "@tauri-apps/api/tauri";
-import { ClashConfig, ClashInfo, VergeConfig, Profile } from "./types";
+import {
+  ClashConfig,
+  ClashInfo,
+  VergeConfig,
+  Profile,
+  SystemProxy,
+} from "./types";
 import { ManifestVersion } from "./core";
 
 export const getNyanpasuConfig = async () => {
@@ -65,4 +71,8 @@ export const updateCore = async (
 
 export const pullupUWPTool = async () => {
   return await invoke<void>("invoke_uwp_tool");
+};
+
+export const getSystemProxy = async () => {
+  return await invoke<SystemProxy>("get_sys_proxy");
 };

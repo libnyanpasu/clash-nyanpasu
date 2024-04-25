@@ -149,6 +149,7 @@ export const SettingClashCore = () => {
           return (
             <motion.div
               key={index}
+              initial={false}
               animate={show ? "open" : "closed"}
               variants={{
                 open: {

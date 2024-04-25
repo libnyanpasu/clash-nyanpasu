@@ -1,13 +1,6 @@
 import useSWR from "swr";
 import { Clash, clash } from "../service/clash";
-import {
-  getClashInfo as getClashInfoFromTauri,
-  getRuntimeExists as getRuntimeExistsFromTauri,
-  getProfiles as getProfilesFromTauri,
-  setProfiles as setProfilesFromTauri,
-  setProfilesConfig as setProfilesConfigFromTauri,
-  patchClashInfo,
-} from "@/service/tauri";
+import * as tauri from "@/service/tauri";
 import { ClashConfig, Profile } from "..";
 
 /**
@@ -17,11 +10,11 @@ import { ClashConfig, Profile } from "..";
 export const useClash = () => {
   const { deleteConnections, ...api } = clash();
 
-  const getClashInfo = useSWR("getClashInfo", getClashInfoFromTauri);
+  const getClashInfo = useSWR("getClashInfo", tauri.getClashInfo);
 
   const setClashInfo = async (payload: Partial<ClashConfig>) => {
     try {
-      await patchClashInfo(payload);
+      await tauri.patchClashInfo(payload);
 
       await getClashInfo.mutate();
     } finally {
@@ -59,19 +52,16 @@ export const useClash = () => {
     }
   };
 
-  const getRuntimeExists = useSWR(
-    "getRuntimeExists",
-    getRuntimeExistsFromTauri,
-  );
+  const getRuntimeExists = useSWR("getRuntimeExists", tauri.getRuntimeExists);
 
-  const getProfiles = useSWR("getProfiles", getProfilesFromTauri);
+  const getProfiles = useSWR("getProfiles", tauri.getProfiles);
 
   const setProfiles = async (payload: {
     index: string;
     profile: Partial<Profile.Item>;
   }) => {
     try {
-      await setProfilesFromTauri(payload);
+      await tauri.setProfiles(payload);
 
       await getProfiles.mutate();
     } finally {
@@ -81,7 +71,7 @@ export const useClash = () => {
 
   const setProfilesConfig = async (profiles: Profile.Config) => {
     try {
-      await setProfilesConfigFromTauri(profiles);
+      await tauri.setProfilesConfig(profiles);
 
       await getProfiles.mutate();
     } finally {

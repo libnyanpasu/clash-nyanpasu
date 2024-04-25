@@ -109,6 +109,8 @@ export const SettingSystemProxy = () => {
             textFieldProps={{
               inputProps: {
                 "aria-autocomplete": "none",
+              },
+              InputProps: {
                 endAdornment: <InputAdornment position="end">s</InputAdornment>,
               },
             }}

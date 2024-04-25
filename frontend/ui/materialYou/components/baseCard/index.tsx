@@ -32,8 +32,9 @@ export const BaseCard = ({
             display="flex"
             justifyContent="space-between"
             alignItems="center"
+            sx={{ pb: 1 }}
           >
-            <Typography sx={{ pb: 1 }} variant="h5" component="div">
+            <Typography variant="h5" component="div">
               {label}
             </Typography>
 

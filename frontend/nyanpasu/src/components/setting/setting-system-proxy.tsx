@@ -63,9 +63,7 @@ export const SettingSystemProxy = () => {
     <BaseCard
       label={t("System Setting")}
       labelChildren={
-        <Tooltip title="Show more">
-          <ExpandMore expand={expand} onClick={() => setExpand(!expand)} />
-        </Tooltip>
+        <ExpandMore expand={expand} onClick={() => setExpand(!expand)} />
       }
     >
       <Grid container spacing={2}>

@@ -47,7 +47,7 @@ export const BaseDialog = ({
   ok,
   divider,
 }: BaseDialogProps) => {
-  const [mounted, setMounted] = useState(true);
+  const [mounted, setMounted] = useState(false);
 
   const { run: runMounted, cancel: cancelMounted } = useDebounceFn(
     () => setMounted(false),

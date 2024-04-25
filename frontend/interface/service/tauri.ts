@@ -76,3 +76,27 @@ export const pullupUWPTool = async () => {
 export const getSystemProxy = async () => {
   return await invoke<SystemProxy>("get_sys_proxy");
 };
+
+export const checkService = async () => {
+  try {
+    const result = await invoke<{ code: number }>("check_service");
+
+    if (result?.code === 0) {
+      return "active";
+    } else if (result?.code === 400) {
+      return "installed";
+    } else {
+      return "unknown";
+    }
+  } catch (e) {
+    return "uninstall";
+  }
+};
+
+export const installService = async () => {
+  return await invoke<void>("install_service");
+};
+
+export const uninstallService = async () => {
+  return await invoke<void>("uninstall_service");
+};

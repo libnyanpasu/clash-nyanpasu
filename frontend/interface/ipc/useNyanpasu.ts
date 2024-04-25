@@ -8,6 +8,9 @@ import {
   restartSidecar,
   updateCore as updateCoreWithTauri,
   getSystemProxy as getSystemProxyWithTauri,
+  checkService,
+  installService,
+  uninstallService,
 } from "@/service";
 import { fetchCoreVersion, fetchLatestCore } from "@/service/core";
 
@@ -63,6 +66,18 @@ export const useNyanpasu = (options?: {
 
   const getSystemProxy = useSWR("getSystemProxy", getSystemProxyWithTauri);
 
+  const getServiceStatus = useSWR("getServiceStatus", checkService);
+
+  const setServiceStatus = async (type: "install" | "uninstall") => {
+    if (type === "install") {
+      await installService();
+    } else {
+      await uninstallService();
+    }
+
+    return getServiceStatus.mutate();
+  };
+
   return {
     nyanpasuConfig: data,
     isLoading: !data && !error,
@@ -75,5 +90,7 @@ export const useNyanpasu = (options?: {
     getLatestCore,
     updateCore,
     getSystemProxy,
+    getServiceStatus,
+    setServiceStatus,
   };
 };

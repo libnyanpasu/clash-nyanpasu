@@ -22,6 +22,7 @@ export const Expand = ({
 }): React.JSX.Element => {
   return (
     <motion.div
+      initial={false}
       animate={open ? "open" : "closed"}
       variants={{
         open: { opacity: 1, height: "auto" },

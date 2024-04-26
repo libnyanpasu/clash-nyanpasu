@@ -46,8 +46,8 @@
   },
   "devDependencies": {
     "@types/js-cookie": "3.0.6",
-    "@types/react": "18.2.79",
-    "@types/react-dom": "18.2.25",
+    "@types/react": "18.3.0",
+    "@types/react-dom": "18.3.0",
     "@types/react-transition-group": "4.4.10",
     "@typescript-eslint/eslint-plugin": "7.7.1",
     "@typescript-eslint/parser": "7.7.1",

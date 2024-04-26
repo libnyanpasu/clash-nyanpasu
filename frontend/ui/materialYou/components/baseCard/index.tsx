@@ -46,6 +46,7 @@ export const BaseCard = ({
       </CardContent>
 
       <motion.div
+        initial={false}
         animate={loading ? "loading" : "none"}
         variants={{
           loading: { opacity: 1, visibility: "visible" },

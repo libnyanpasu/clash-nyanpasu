@@ -1,5 +1,5 @@
 import { Box, Typography } from "@mui/material";
-import { useClash } from "@nyanpasu/interface";
+import { useClash, useNyanpasu } from "@nyanpasu/interface";
 import { BaseCard, BaseDialog } from "@nyanpasu/ui";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -70,6 +70,24 @@ const FieldsControl = ({
   );
 };
 
+const ClashFieldSwitch = () => {
+  const { t } = useTranslation();
+
+  const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu();
+
+  return (
+    <LabelSwitch
+      label={t("Enable Clash Fields Filter")}
+      checked={nyanpasuConfig?.enable_clash_fields}
+      onChange={() =>
+        setNyanpasuConfig({
+          enable_clash_fields: !nyanpasuConfig?.enable_clash_fields,
+        })
+      }
+    />
+  );
+};
+
 export const SettingClashField = () => {
   const { t } = useTranslation();
 
@@ -113,6 +131,10 @@ export const SettingClashField = () => {
 
   return (
     <BaseCard label={t("Clash Field")}>
+      <Box sx={{ pt: 1, pb: 2 }}>
+        <ClashFieldSwitch />
+      </Box>
+
       <Grid container spacing={2}>
         {Object.entries(CLASH_FIELD).map(([key, value], index) => {
           const filltered = filteredField(value);

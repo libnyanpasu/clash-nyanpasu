@@ -1,4 +1,12 @@
-import { ReactNode, FC, CSSProperties, memo, useRef, useEffect } from "react";
+import {
+  ReactNode,
+  FC,
+  CSSProperties,
+  memo,
+  useRef,
+  useEffect,
+  useMemo,
+} from "react";
 import Typography from "@mui/material/Typography";
 import { BaseErrorBoundary } from "./baseErrorBoundary";
 import "./style.scss";
@@ -41,13 +49,14 @@ export const BasePage: FC<Props> = ({
   children,
 }) => {
   const sectionStyleRef = useRef(sectionStyle);
-
   const contentStyleRef = useRef(contentStyle);
 
   useEffect(() => {
     sectionStyleRef.current = sectionStyle;
     contentStyleRef.current = contentStyle;
   }, [sectionStyle, contentStyle]);
+
+  const memoizedChildren = useMemo(() => children, [children]);
 
   return (
     <BaseErrorBoundary>
@@ -60,7 +69,7 @@ export const BasePage: FC<Props> = ({
               className="MDYBasePage-content"
               style={contentStyleRef.current}
             >
-              {children}
+              {memoizedChildren}
             </div>
           </section>
         </div>

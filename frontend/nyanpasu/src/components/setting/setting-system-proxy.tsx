@@ -10,7 +10,7 @@ import Grid from "@mui/material/Unstable_Grid2";
 import { useNyanpasu } from "@nyanpasu/interface";
 import { useLockFn, useReactive } from "ahooks";
 import { useMessage } from "@/hooks/use-notification";
-import { PaperSwitchBotton } from "./modules/system-proxy";
+import { PaperSwitchButton } from "./modules/system-proxy";
 import { useState } from "react";
 import {
   Box,
@@ -68,7 +68,7 @@ export const SettingSystemProxy = () => {
     >
       <Grid container spacing={2}>
         <Grid xs={6}>
-          <PaperSwitchBotton
+          <PaperSwitchButton
             label={t("Tun Mode")}
             checked={nyanpasuConfig?.enable_tun_mode || false}
             loading={loading.enable_tun_mode}
@@ -77,7 +77,7 @@ export const SettingSystemProxy = () => {
         </Grid>
 
         <Grid xs={6}>
-          <PaperSwitchBotton
+          <PaperSwitchButton
             label={t("System Proxy")}
             checked={nyanpasuConfig?.enable_system_proxy || false}
             loading={loading.enable_system_proxy}

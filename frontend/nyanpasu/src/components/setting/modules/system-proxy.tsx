@@ -9,18 +9,18 @@ import {
 } from "@mui/material";
 import { memo } from "react";
 
-export interface PaperSwitchBottonProps extends ButtonBaseProps {
+export interface PaperSwitchButtonProps extends ButtonBaseProps {
   label: string;
   checked: boolean;
   loading?: boolean;
 }
 
-export const PaperSwitchBotton = memo(function PaperSwitchBotton({
+export const PaperSwitchButton = memo(function PaperSwitchButton({
   label,
   checked,
   loading,
   ...props
-}: PaperSwitchBottonProps) {
+}: PaperSwitchButtonProps) {
   const { palette } = useTheme();
 
   return (

@@ -56,7 +56,7 @@ export const SettingSystemProxy = () => {
   const [expand, setExpand] = useState(false);
 
   const [proxyBypass, setProxyBypass] = useState(
-    nyanpasuConfig?.system_proxy_bypass,
+    nyanpasuConfig?.system_proxy_bypass || "",
   );
 
   return (

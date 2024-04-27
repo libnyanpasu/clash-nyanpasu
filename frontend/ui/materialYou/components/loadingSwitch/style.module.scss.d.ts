@@ -3,4 +3,4 @@ declare const classNames: {
   readonly CircularProgress: "CircularProgress";
   readonly "CircularProgress-checked": "CircularProgress-checked";
 };
-export = classNames;
+export default classNames;

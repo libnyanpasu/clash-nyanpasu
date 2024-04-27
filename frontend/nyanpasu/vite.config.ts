@@ -34,7 +34,7 @@ export default defineConfig(({ command }) => {
       svgr(),
       react(),
       generouted(),
-      sassDts(),
+      sassDts({ esmExport: true }),
       monaco({ languageWorkers: ["editorWorkerService", "typescript"] }),
     ],
     esbuild: {

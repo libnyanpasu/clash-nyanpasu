@@ -1,10 +1,12 @@
 import { Button, List, ListItem, ListItemText } from "@mui/material";
 import { BaseCard, MenuItem, SwitchItem } from "@nyanpasu/ui";
 import { useTranslation } from "react-i18next";
-import { createBooleanProps, createMenuProps } from "./modules";
+import { clash } from "./modules";
 import getSystem from "@/utils/get-system";
 import { pullupUWPTool } from "@nyanpasu/interface";
 import { useMessage } from "@/hooks/use-notification";
+
+const { createBooleanProps, createMenuProps } = clash;
 
 const isWIN = getSystem() === "windows";
 

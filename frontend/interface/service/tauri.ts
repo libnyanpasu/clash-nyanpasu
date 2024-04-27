@@ -100,3 +100,27 @@ export const installService = async () => {
 export const uninstallService = async () => {
   return await invoke<void>("uninstall_service");
 };
+
+export const openAppDir = async () => {
+  return await invoke<void>("open_app_dir");
+};
+
+export const openCoreDir = async () => {
+  return await invoke<void>("open_core_dir");
+};
+
+export const openLogsDir = async () => {
+  return await invoke<void>("open_logs_dir");
+};
+
+export const collectLogs = async () => {
+  return await invoke<void>("collect_logs");
+};
+
+export const setCustomAppDir = async (path: string) => {
+  return await invoke<void>("set_custom_app_dir", { path });
+};
+
+export const restartApplication = async () => {
+  return await invoke<void>("restart_application");
+};

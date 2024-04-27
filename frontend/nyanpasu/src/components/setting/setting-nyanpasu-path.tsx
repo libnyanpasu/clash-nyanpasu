@@ -19,10 +19,9 @@ import { sleep } from "@/utils";
 export const SettingNyanpasuPath = () => {
   const { t } = useTranslation();
 
-  const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu();
-
   const migrateAppPath = useLockFn(async () => {
     try {
+      // TODO: use current app dir as defaultPath
       const selected = await open({
         directory: true,
         multiple: false,
@@ -60,40 +59,27 @@ export const SettingNyanpasuPath = () => {
     }
   });
 
+  const gridLists = [
+    { label: t("Open App Dir"), onClick: openAppDir },
+    { label: t("Migration App Path"), onClick: migrateAppPath },
+    { label: t("Open Core Dir"), onClick: openCoreDir },
+    { label: t("Open Logs Dir"), onClick: openLogsDir },
+    { label: t("Collect Logs"), onClick: collectLogs },
+  ];
+
   return (
-    <BaseCard label={t("Path Manager")}>
-      <Grid container spacing={2}>
-        <Grid xs={6}>
-          <PaperButton label={t("Open App Dir")} onClick={() => openAppDir()} />
-        </Grid>
-
-        <Grid xs={6}>
-          <PaperButton
-            label={t("Migration App Path")}
-            onClick={() => migrateAppPath()}
-          />
-        </Grid>
-
-        <Grid xs={6}>
-          <PaperButton
-            label={t("Open Core Dir")}
-            onClick={() => openCoreDir()}
-          />
-        </Grid>
-
-        <Grid xs={6}>
-          <PaperButton
-            label={t("Open Logs Dir")}
-            onClick={() => openLogsDir()}
-          />
-        </Grid>
-
-        <Grid xs={6}>
-          <PaperButton
-            label={t("Collect Logs")}
-            onClick={() => collectLogs()}
-          />
-        </Grid>
+    <BaseCard label={t("Path Config")}>
+      <Grid container alignItems="stretch" spacing={2}>
+        {gridLists.map(({ label, onClick }, index) => (
+          <Grid key={index} xs={6} xl={3}>
+            <PaperButton
+              label={label}
+              onClick={onClick}
+              sxPaper={{ height: "100%" }}
+              sxButton={{ height: "100%" }}
+            />
+          </Grid>
+        ))}
       </Grid>
     </BaseCard>
   );

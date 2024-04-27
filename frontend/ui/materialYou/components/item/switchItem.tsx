@@ -1,4 +1,5 @@
-import { ListItem, ListItemText, Switch, SwitchProps } from "@mui/material";
+import { Switch, SwitchProps } from "@mui/material";
+import { BaseItem } from "./baseItem";
 
 interface Props extends SwitchProps {
   label: string;
@@ -6,10 +7,8 @@ interface Props extends SwitchProps {
 
 export const SwitchItem = ({ label, ...switchProps }: Props) => {
   return (
-    <ListItem sx={{ pl: 0, pr: 0 }}>
-      <ListItemText primary={label} />
-
+    <BaseItem title={label}>
       <Switch {...switchProps} />
-    </ListItem>
+    </BaseItem>
   );
 };

@@ -1,6 +1,4 @@
 import {
-  ListItem,
-  ListItemText,
   TextField,
   Box,
   Button,
@@ -11,6 +9,7 @@ import {
 import Done from "@mui/icons-material/Done";
 import { ChangeEvent, useMemo, useState } from "react";
 import { Expand } from "../expand";
+import { BaseItem } from "./baseItem";
 
 export interface NumberItemprops {
   label: string;
@@ -59,9 +58,7 @@ export const NumberItem = ({
 
   return (
     <>
-      <ListItem sx={{ pl: 0, pr: 0 }}>
-        <ListItemText primary={label} />
-
+      <BaseItem title={label}>
         <TextField
           value={input !== null ? input : vaule}
           size="small"
@@ -74,7 +71,7 @@ export const NumberItem = ({
           }}
           {...textFieldProps}
         />
-      </ListItem>
+      </BaseItem>
 
       <Expand open={changed}>
         <Box

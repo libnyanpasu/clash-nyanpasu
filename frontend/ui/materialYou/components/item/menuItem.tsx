@@ -1,10 +1,5 @@
-import {
-  ListItem,
-  ListItemText,
-  MenuItem as MuiMenuItem,
-  Select,
-  SxProps,
-} from "@mui/material";
+import { MenuItem as MuiMenuItem, Select, SxProps } from "@mui/material";
+import { BaseItem } from "./baseItem";
 
 type OptionValue = string | number | boolean;
 
@@ -46,9 +41,7 @@ export const MenuItem = ({
   disabled,
 }: MenuItemProps) => {
   return (
-    <ListItem sx={{ pl: 0, pr: 0 }}>
-      <ListItemText primary={label} />
-
+    <BaseItem title={label}>
       <Select
         size="small"
         value={selected}
@@ -70,7 +63,7 @@ export const MenuItem = ({
           </MuiMenuItem>
         ))}
       </Select>
-    </ListItem>
+    </BaseItem>
   );
 };
 

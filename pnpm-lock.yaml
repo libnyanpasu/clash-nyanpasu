@@ -124,7 +124,7 @@ importers:
         specifier: 6.2.1
         version: 6.2.1(stylelint@16.4.0(typescript@5.4.5))
       tailwindcss:
-        specifier: ^3.4.3
+        specifier: 3.4.3
         version: 3.4.3
       tsx:
         specifier: 4.7.3

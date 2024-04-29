@@ -98,7 +98,7 @@ export const SettingNyanpasuVersion = () => {
             onChange={() =>
               setNyanpasuConfig({
                 disable_auto_check_update:
-                  nyanpasuConfig?.disable_auto_check_update,
+                  !nyanpasuConfig?.disable_auto_check_update,
               })
             }
           />

@@ -30,7 +30,7 @@
       scrollbar-gutter: stable;
 
       .MDYBasePage-content {
-        width: calc(100% - 28px * 2);
+        width: 100%;
         padding: 28px;
         margin: 0 auto;
       }
@@ -41,7 +41,6 @@
         overflow: visible;
 
         .MDYBasePage-content {
-          width: 100%;
           padding: 0;
         }
       }

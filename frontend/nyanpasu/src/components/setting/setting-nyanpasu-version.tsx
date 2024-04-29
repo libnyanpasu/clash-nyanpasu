@@ -10,9 +10,8 @@ import {
 import { BaseCard } from "@nyanpasu/ui";
 import { useTranslation } from "react-i18next";
 import LogoSvg from "@/assets/image/logo.svg?react";
-import style from "./setting-nyanpasu-version.module.scss";
 import { version } from "~/package.json";
-import { LoadingButton } from "@mui/lab";
+import LoadingButton from "@mui/lab/LoadingButton";
 import { useState } from "react";
 import { useLockFn } from "ahooks";
 import { checkUpdate } from "@tauri-apps/api/updater";
@@ -77,10 +76,9 @@ export const SettingNyanpasuVersion = () => {
               display="flex"
               flexDirection="column"
               alignItems="center"
-              className={style.LogoBox}
               gap={2}
             >
-              <LogoSvg />
+              <LogoSvg className="w-32 h-32" />
 
               <Typography fontWeight={700} noWrap>
                 {"Clash Nyanpasu~(∠・ω< )⌒☆"}​

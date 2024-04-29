@@ -7,7 +7,7 @@ export interface VergeConfig {
   traffic_graph?: boolean;
   enable_memory_usage?: boolean;
   page_transition_animation?: string;
-  disable_auto_check_update?: boolean;
+  enable_auto_check_update?: boolean;
   enable_tun_mode?: boolean;
   enable_auto_launch?: boolean;
   enable_service_mode?: boolean;

@@ -156,7 +156,7 @@ pub struct IVerge {
     pub verge_mixed_port: Option<u16>,
 
     /// Check update when app launch
-    pub disable_auto_check_update: Option<bool>,
+    pub enable_auto_check_update: Option<bool>,
 
     /// Clash 相关策略
     pub clash_strategy: Option<ClashStrategy>,
@@ -229,7 +229,7 @@ impl IVerge {
             page_transition_animation: Some("slide".into()),
             // auto_log_clean: Some(60 * 24 * 7), // 7 days 自动清理日记
             max_log_files: Some(7), // 7 days
-            disable_auto_check_update: Some(true),
+            enable_auto_check_update: Some(true),
             clash_tray_selector: Some(true),
             ..Self::default()
         }
@@ -258,7 +258,7 @@ impl IVerge {
         patch!(traffic_graph);
         patch!(enable_memory_usage);
         patch!(page_transition_animation);
-        patch!(disable_auto_check_update);
+        patch!(enable_auto_check_update);
 
         patch!(enable_tun_mode);
         patch!(enable_service_mode);

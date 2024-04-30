@@ -15,7 +15,7 @@
     "react-error-boundary": "4.0.13"
   },
   "devDependencies": {
-    "sass": "1.75.0",
+    "sass": "1.76.0",
     "typescript-plugin-css-modules": "5.1.0"
   }
 }

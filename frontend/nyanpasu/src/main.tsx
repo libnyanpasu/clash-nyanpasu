@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 /// <reference types="vite-plugin-svgr/client" />
 import "./assets/styles/index.scss";
+import "./assets/styles/tailwind.css";
 
 import { ResizeObserver } from "@juggle/resize-observer";
 if (!window.ResizeObserver) {

@@ -97,7 +97,7 @@
     "stylelint-config-standard": "36.0.0",
     "stylelint-declaration-block-no-ignored-properties": "2.8.0",
     "stylelint-order": "6.0.4",
-    "stylelint-scss": "6.2.1",
+    "stylelint-scss": "6.3.0",
     "tailwindcss": "3.4.3",
     "tsx": "4.9.0",
     "typescript": "5.4.5"

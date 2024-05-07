@@ -7,6 +7,18 @@ import sassDts from "vite-plugin-sass-dts";
 import svgr from "vite-plugin-svgr";
 import tsconfigPaths from "vite-tsconfig-paths";
 
+const devtools = () => {
+  return {
+    name: "react-devtools",
+    transformIndexHtml(html) {
+      return html.replace(
+        /<\/head>/,
+        `<script src="http://localhost:8097"></script></head>`,
+      );
+    },
+  };
+};
+
 // https://vitejs.dev/config/
 export default defineConfig(({ command }) => {
   const isDev = command === "serve";
@@ -36,6 +48,7 @@ export default defineConfig(({ command }) => {
       generouted(),
       sassDts({ esmExport: true }),
       monaco({ languageWorkers: ["editorWorkerService", "typescript"] }),
+      isDev && devtools(),
     ],
     esbuild: {
       drop: isDev ? undefined : ["console", "debugger"],
@@ -48,5 +61,6 @@ export default defineConfig(({ command }) => {
       OS_PLATFORM: `"${process.platform}"`,
       WIN_PORTABLE: !!process.env.VITE_WIN_PORTABLE,
     },
+    html: {},
   };
 });

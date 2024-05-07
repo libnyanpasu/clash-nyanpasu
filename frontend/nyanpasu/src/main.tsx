@@ -11,14 +11,11 @@ if (!window.ResizeObserver) {
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { Routes } from "@generouted/react-router/lazy";
-import { RecoilRoot } from "recoil";
 import "./services/i18n";
 const container = document.getElementById("root")!;
 
 createRoot(container).render(
   <React.StrictMode>
-    <RecoilRoot>
-      <Routes />
-    </RecoilRoot>
+    <Routes />
   </React.StrictMode>,
 );

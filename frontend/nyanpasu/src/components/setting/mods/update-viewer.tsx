@@ -1,23 +1,23 @@
 import { BaseDialog, DialogRef } from "@/components/base";
 import { useMessage } from "@/hooks/use-notification";
 import { isPortable } from "@/services/cmds";
-import { atomUpdateState } from "@/services/states";
 import { relaunch } from "@tauri-apps/api/process";
 import { checkUpdate, installUpdate } from "@tauri-apps/api/updater";
 import { open as openWebUrl } from "@tauri-apps/api/shell";
 import { useLockFn } from "ahooks";
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useRecoilState } from "recoil";
 import Markdown, { Components } from "react-markdown";
 import useSWR from "swr";
 import { Chip, Tooltip } from "@mui/material";
+import { useAtom } from "jotai";
+import { atomUpdateState } from "@/store";
 
 export const UpdateViewer = forwardRef<DialogRef>((props, ref) => {
   const { t } = useTranslation();
 
   const [open, setOpen] = useState(false);
-  const [updateState, setUpdateState] = useRecoilState(atomUpdateState);
+  const [updateState, setUpdateState] = useAtom(atomUpdateState);
 
   const { data: updateInfo } = useSWR("checkUpdate", checkUpdate, {
     errorRetryCount: 2,

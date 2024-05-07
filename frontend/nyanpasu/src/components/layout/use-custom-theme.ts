@@ -1,11 +1,11 @@
 import { useEffect, useMemo } from "react";
-import { useRecoilState } from "recoil";
 import { alpha, Theme } from "@mui/material";
 import { appWindow } from "@tauri-apps/api/window";
-import { atomThemeMode } from "@/services/states";
 import { defaultTheme, defaultDarkTheme } from "@/pages/_theme";
 import { useNyanpasu } from "@nyanpasu/interface";
 import { createMDYTheme } from "@nyanpasu/ui";
+import { useAtom } from "jotai";
+import { themeMode } from "@/store";
 
 const applyRootStyleVar = (mode: "light" | "dark", theme: Theme) => {
   const root = document.documentElement;
@@ -39,7 +39,7 @@ const applyRootStyleVar = (mode: "light" | "dark", theme: Theme) => {
 export const useCustomTheme = () => {
   const { nyanpasuConfig } = useNyanpasu();
 
-  const [mode, setMode] = useRecoilState(atomThemeMode);
+  const [mode, setMode] = useAtom(themeMode);
 
   useEffect(() => {
     if (nyanpasuConfig?.theme_mode === "system") {

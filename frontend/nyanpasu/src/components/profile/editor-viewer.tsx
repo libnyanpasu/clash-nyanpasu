@@ -1,5 +1,4 @@
 import { readProfileFile, saveProfileFile } from "@/services/cmds";
-import { atomThemeMode } from "@/services/states";
 import {
   Button,
   Dialog,
@@ -10,10 +9,10 @@ import {
 import { useLockFn } from "ahooks";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { useRecoilValue } from "recoil";
-
 import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { monaco } from "@/services/monaco";
+import { useAtomValue } from "jotai";
+import { themeMode as atomThemeMode } from "@/store";
 
 interface Props {
   uid: string;
@@ -29,7 +28,7 @@ export const EditorViewer = (props: Props) => {
   const { t } = useTranslation();
   const editorRef = useRef<any>();
   const instanceRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
-  const themeMode = useRecoilValue(atomThemeMode);
+  const themeMode = useAtomValue(atomThemeMode);
 
   useEffect(() => {
     if (!open) return;

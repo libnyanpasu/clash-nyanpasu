@@ -1,6 +1,5 @@
 import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { deleteProfile, updateProfile, viewProfile } from "@/services/cmds";
-import { atomLoadingCache } from "@/services/states";
 import parseTraffic from "@/utils/parse-traffic";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -20,10 +19,11 @@ import { useLockFn } from "ahooks";
 import dayjs from "dayjs";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useRecoilState } from "recoil";
 import { mutate } from "swr";
 import { EditorViewer } from "./editor-viewer";
 import { ProfileBox } from "./profile-box";
+import { useAtom } from "jotai";
+import { atomLoadingCache } from "@/store";
 
 const round = keyframes`
   from { transform: rotate(0deg); }
@@ -48,7 +48,7 @@ export const ProfileItem = (props: Props) => {
   const { t } = useTranslation();
   const [anchorEl, setAnchorEl] = useState<any>(null);
   const [position, setPosition] = useState({ left: 0, top: 0 });
-  const [loadingCache, setLoadingCache] = useRecoilState(atomLoadingCache);
+  const [loadingCache, setLoadingCache] = useAtom(atomLoadingCache);
 
   const { uid, name = "Profile", extra, updated = 0 } = itemData;
 

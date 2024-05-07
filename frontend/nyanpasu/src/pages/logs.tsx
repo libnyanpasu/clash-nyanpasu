@@ -1,6 +1,6 @@
 import { BaseEmpty, BasePage } from "@/components/base";
 import LogItem from "@/components/log/log-item";
-import { atomEnableLog, atomLogData } from "@/services/states";
+import { atomEnableLog, atomLogData } from "@/store";
 import {
   PauseCircleOutlineRounded,
   PlayCircleOutlineRounded,
@@ -14,15 +14,15 @@ import {
   Select,
   TextField,
 } from "@mui/material";
+import { useAtom } from "jotai";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso } from "react-virtuoso";
-import { useRecoilState } from "recoil";
 
 export default function LogPage() {
   const { t } = useTranslation();
-  const [logData, setLogData] = useRecoilState(atomLogData);
-  const [enableLog, setEnableLog] = useRecoilState(atomEnableLog);
+  const [logData, setLogData] = useAtom(atomLogData);
+  const [enableLog, setEnableLog] = useAtom(atomEnableLog);
 
   const [logState, setLogState] = useState("all");
   const [filterText, setFilterText] = useState("");

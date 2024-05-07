@@ -1,6 +1,5 @@
 import { BaseDialog, DialogRef } from "@/components/base";
 import { getRuntimeYaml } from "@/services/cmds";
-import { atomThemeMode } from "@/services/states";
 import { Chip } from "@mui/material";
 import {
   forwardRef,
@@ -10,9 +9,9 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { useRecoilValue } from "recoil";
-
 import { monaco } from "@/services/monaco";
+import { themeMode as atomThemeMode } from "@/store";
+import { useAtomValue } from "jotai";
 
 export const ConfigViewer = forwardRef<DialogRef>((props, ref) => {
   const { t } = useTranslation();
@@ -20,7 +19,7 @@ export const ConfigViewer = forwardRef<DialogRef>((props, ref) => {
 
   const editorRef = useRef<any>();
   const instanceRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
-  const themeMode = useRecoilValue(atomThemeMode);
+  const themeMode = useAtomValue(atomThemeMode);
 
   useEffect(() => {
     return () => {

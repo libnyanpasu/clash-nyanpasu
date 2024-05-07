@@ -18,7 +18,7 @@ import {
   reorderProfile,
   updateProfile,
 } from "@/services/cmds";
-import { atomLoadingCache } from "@/services/states";
+import { atomLoadingCache } from "@/store";
 import {
   DndContext,
   DragEndEvent,
@@ -39,14 +39,14 @@ import {
   RefreshRounded,
   TextSnippetOutlined,
 } from "@mui/icons-material";
-import { LoadingButton } from "@mui/lab";
+import LoadingButton from "@mui/lab/LoadingButton";
 import { Box, Button, Grid, IconButton, Stack, TextField } from "@mui/material";
 import { useLockFn } from "ahooks";
+import { useSetAtom } from "jotai";
 import { throttle } from "lodash-es";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
-import { useSetRecoilState } from "recoil";
 import useSWR, { mutate } from "swr";
 
 export default function ProfilePage() {
@@ -242,7 +242,7 @@ export default function ProfilePage() {
   });
 
   // 更新所有配置
-  const setLoadingCache = useSetRecoilState(atomLoadingCache);
+  const setLoadingCache = useSetAtom(atomLoadingCache);
   const onUpdateAll = useLockFn(async () => {
     const throttleMutate = throttle(mutateProfiles, 2000, {
       trailing: true,

@@ -8,7 +8,6 @@ import { ConnectionTable } from "@/components/connection/connection-table";
 import { useClashInfo } from "@/hooks/use-clash";
 import { useWebsocket } from "@/hooks/use-websocket";
 import { closeAllConnections } from "@/services/api";
-import { atomConnectionSetting } from "@/services/states";
 import { classNames } from "@/utils";
 import parseTraffic from "@/utils/parse-traffic";
 import {
@@ -33,8 +32,9 @@ import { useLockFn } from "ahooks";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso } from "react-virtuoso";
-import { useRecoilState } from "recoil";
 import styles from "./connections.module.scss";
+import { useAtom } from "jotai";
+import { atomConnectionSetting } from "@/store";
 
 const initConn = { uploadTotal: 0, downloadTotal: 0, connections: [] };
 
@@ -48,7 +48,7 @@ export default function ConnectionsPage() {
   const [curOrderOpt, setOrderOpt] = useState("Default");
   const [connData, setConnData] = useState<IConnections>(initConn);
 
-  const [setting, setSetting] = useRecoilState(atomConnectionSetting);
+  const [setting, setSetting] = useAtom(atomConnectionSetting);
 
   const isTableLayout = setting.layout === "table";
 

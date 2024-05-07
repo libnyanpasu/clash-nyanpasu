@@ -1,10 +1,10 @@
 import dayjs from "dayjs";
 import { useEffect } from "react";
-import { useRecoilValue, useSetRecoilState } from "recoil";
 import { getClashLogs } from "@/services/cmds";
 import { useClashInfo } from "@/hooks/use-clash";
-import { atomEnableLog, atomLogData } from "@/services/states";
 import { useWebsocket } from "@/hooks/use-websocket";
+import { useAtomValue, useSetAtom } from "jotai";
+import { atomEnableLog, atomLogData } from "@/store";
 
 const MAX_LOG_NUM = 1000;
 
@@ -12,8 +12,8 @@ const MAX_LOG_NUM = 1000;
 export const useLogSetup = () => {
   const { clashInfo } = useClashInfo();
 
-  const enableLog = useRecoilValue(atomEnableLog);
-  const setLogData = useSetRecoilState(atomLogData);
+  const enableLog = useAtomValue(atomEnableLog);
+  const setLogData = useSetAtom(atomLogData);
 
   const { connect, disconnect } = useWebsocket((event) => {
     const data = JSON.parse(event.data) as ILogItem;

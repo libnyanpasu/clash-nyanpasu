@@ -108,6 +108,10 @@
   },
   "pnpm": {
     "overrides": {
+      "@types/react": "npm:types-react@beta",
+      "@types/react-dom": "npm:types-react-dom@beta",
+      "react": "npm:react@beta",
+      "react-dom": "npm:react-dom@beta",
       "vite-plugin-monaco-editor": "npm:vite-plugin-monaco-editor-new@1.1.3"
     }
   }

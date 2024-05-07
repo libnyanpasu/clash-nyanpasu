@@ -29,17 +29,25 @@ export namespace Clash {
     proxy: string;
   }
 
-  export interface Proxy {
+  export interface Proxy<T = string> {
     name: string;
     type: string;
     udp: boolean;
+    xudp?: boolean;
     history: {
       time: string;
       delay: number;
     }[];
-    all?: string[];
+    all?: T[];
     now?: string;
     provider?: string;
+    alive?: boolean;
+    tfo?: boolean;
+  }
+
+  export interface DelayOptions {
+    url?: string;
+    timeout?: number;
   }
 }
 
@@ -88,13 +96,22 @@ export const clash = () => {
 
   const getProxiesDelay = async (
     name: string,
-    options?: {
-      url?: string;
-      timeout?: number;
-    },
+    options?: Clash.DelayOptions,
   ) => {
     return (await buildRequest())<{ delay: number }>(
       `/proxies/${encodeURIComponent(name)}/delay`,
+      {
+        params: {
+          timeout: options?.timeout || 10000,
+          url: options?.url || "http://www.gstatic.com/generate_204",
+        },
+      },
+    );
+  };
+
+  const getGroupDelay = async (group: string, options?: Clash.DelayOptions) => {
+    return (await buildRequest())<{ [key: string]: number }>(
+      `/group/${encodeURIComponent(group)}/delay`,
       {
         params: {
           timeout: options?.timeout || 10000,
@@ -135,6 +152,7 @@ export const clash = () => {
     getVersion,
     getRules,
     getProxiesDelay,
+    getGroupDelay,
     getProxies,
     setProxies,
     deleteConnections,

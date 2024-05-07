@@ -1,3 +1,5 @@
+import { Clash } from "./clash";
+
 export interface VergeConfig {
   app_log_level?: "trace" | "debug" | "info" | "warn" | "error" | string;
   language?: string;
@@ -106,4 +108,14 @@ export interface SystemProxy {
   enable: boolean;
   server: string;
   bypass: string;
+}
+
+export interface Proxies {
+  direct: Clash.Proxy;
+  global: Clash.Proxy<Clash.Proxy>;
+  groups: Clash.Proxy<Clash.Proxy>[];
+  proxies: Clash.Proxy[];
+  records: {
+    [key: string]: Clash.Proxy;
+  };
 }

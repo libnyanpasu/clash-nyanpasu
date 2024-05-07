@@ -5,6 +5,7 @@ import {
   VergeConfig,
   Profile,
   SystemProxy,
+  Proxies,
 } from "./types";
 import { ManifestVersion } from "./core";
 
@@ -123,4 +124,20 @@ export const setCustomAppDir = async (path: string) => {
 
 export const restartApplication = async () => {
   return await invoke<void>("restart_application");
+};
+
+export const isPortable = async () => {
+  return await invoke<boolean>("is_portable");
+};
+
+export const getProxies = async () => {
+  return await invoke<Proxies>("get_proxies");
+};
+
+export const selectProxy = async (group: string, name: string) => {
+  return await invoke<void>("select_proxy", { group, name });
+};
+
+export const updateProxyProvider = async (name: string) => {
+  return await invoke<void>("update_proxy_provider", { name });
 };

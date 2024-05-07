@@ -47,7 +47,18 @@ export const PaperButton = memo(function PaperButton({
         }}
         {...props}
       >
-        <Typography sx={{ fontWeight: 700 }}>{label}</Typography>
+        <Typography
+          noWrap
+          component="p"
+          width="100%"
+          sx={{
+            fontWeight: 700,
+            textOverflow: "ellipsis",
+            overflow: "hidden",
+          }}
+        >
+          {label}
+        </Typography>
 
         {children}
       </ButtonBase>

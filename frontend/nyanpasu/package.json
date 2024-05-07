@@ -29,7 +29,7 @@
     "dayjs": "1.11.11",
     "framer-motion": "11.1.8",
     "i18next": "23.11.3",
-    "jotai": "^2.8.0",
+    "jotai": "2.8.0",
     "monaco-editor": "0.48.0",
     "mui-color-input": "2.0.3",
     "react": "18.3.1",

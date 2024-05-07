@@ -107,7 +107,7 @@ importers:
         specifier: 2.0.1
         version: 2.0.1(prettier@3.2.5)
       react-devtools:
-        specifier: ^5.1.0
+        specifier: 5.1.0
         version: 5.1.0
       stylelint:
         specifier: 16.5.0

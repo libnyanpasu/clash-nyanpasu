@@ -22,7 +22,7 @@ export default {
     "font-family-name-quotes": null,
     "font-family-no-missing-generic-family-keyword": null,
     "max-nesting-depth": [
-      4,
+      10,
       {
         ignore: ["blockless-at-rules", "pseudo-classes"],
       },

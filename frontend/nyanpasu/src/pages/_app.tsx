@@ -23,7 +23,6 @@ import { SWRConfig, mutate } from "swr";
 import { LayoutItem } from "@/components/layout/layout-item";
 import PageTransition from "@/components/layout/page-transition";
 import { classNames } from "@/utils";
-import { Modals } from "@generouted/react-router/lazy";
 import { useNavigate, type Path } from "../router";
 import styles from "./_app.module.scss";
 
@@ -205,7 +204,6 @@ export default function App() {
               {/* {React.cloneElement(routes, { key: location.pathname })} */}
               <PageTransition />
             </AnimatePresence>
-            <Modals />
           </div>
         </Paper>
       </ThemeProvider>

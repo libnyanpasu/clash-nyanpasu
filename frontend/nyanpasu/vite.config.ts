@@ -1,5 +1,6 @@
 import generouted from "@generouted/react-router/plugin";
-import react from "@vitejs/plugin-react";
+// import react from "@vitejs/plugin-react";
+import react from "@vitejs/plugin-react-swc";
 import path from "node:path";
 import { defineConfig } from "vite";
 import monaco from "vite-plugin-monaco-editor";

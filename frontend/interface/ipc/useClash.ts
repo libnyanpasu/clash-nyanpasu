@@ -38,20 +38,6 @@ export const useClash = () => {
 
   const getRules = useSWR("getClashRules", api.getRules);
 
-  const getProxiesDelay = useSWR("getClashProxiesDelay", api.getProxiesDelay);
-
-  const getProxies = useSWR("getClashProxies", api.getProxies);
-
-  const setProxies = async (payload: { group: string; proxy: string }) => {
-    try {
-      await api.setProxies(payload);
-
-      await getProxies.mutate();
-    } finally {
-      return getProxies.data;
-    }
-  };
-
   const getRuntimeExists = useSWR("getRuntimeExists", tauri.getRuntimeExists);
 
   const getProfiles = useSWR("getProfiles", tauri.getProfiles);
@@ -86,9 +72,6 @@ export const useClash = () => {
     setConfigs,
     getVersion,
     getRules,
-    getProxiesDelay,
-    getProxies,
-    setProxies,
     deleteConnections,
     getRuntimeExists,
     getProfiles,

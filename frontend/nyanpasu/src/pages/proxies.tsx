@@ -69,7 +69,7 @@ export default function ProxyPage() {
     } else {
       return undefined;
     }
-  }, [proxyGroup.selector]);
+  }, [proxyGroup.selector, data?.groups]);
 
   const handleDelayClick = async () => {
     try {

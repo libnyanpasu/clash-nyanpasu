@@ -31,7 +31,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: install Rust stable
-        run: rustup install stable --profile minimal && rustup default stable
+        run: |
+          rustup install stable --profile minimal --no-self-update
+          rustup default stable
 
       - uses: Swatinem/rust-cache@v2
         with:

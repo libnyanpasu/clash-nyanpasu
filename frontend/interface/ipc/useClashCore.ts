@@ -3,7 +3,7 @@ import * as tauri from "@/service/tauri";
 import useSWR from "swr";
 
 export const useClashCore = () => {
-  const { getGroupDelay } = clash();
+  const { getGroupDelay, getProxiesDelay } = clash();
 
   const { data, isLoading, mutate } = useSWR("getProxies", tauri.getProxies);
 
@@ -22,6 +22,17 @@ export const useClashCore = () => {
     await mutate();
   };
 
+  const updateProxiesDelay = async (
+    name: string,
+    options?: Clash.DelayOptions,
+  ) => {
+    const result = await getProxiesDelay(name, options);
+
+    await mutate();
+
+    return result;
+  };
+
   const setGroupProxy = async (index: number, name: string) => {
     const group = data?.groups[index];
 
@@ -38,6 +49,7 @@ export const useClashCore = () => {
     data,
     isLoading,
     updateGroupDelay,
+    updateProxiesDelay,
     setGroupProxy,
   };
 };

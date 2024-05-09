@@ -130,11 +130,13 @@ const DelayChip = memo(function DelayChip({
 const NodeCard = memo(function NodeCard({
   node,
   now,
+  disabled,
   onClick,
   onClickDelay,
 }: {
   node: Clash.Proxy<string>;
   now?: string;
+  disabled?: boolean;
   onClick: () => void;
   onClickDelay: () => Promise<void>;
 }) {
@@ -145,6 +147,7 @@ const NodeCard = memo(function NodeCard({
       label={node.name}
       checked={node.name === now}
       onClick={onClick}
+      disabled={disabled}
     >
       <Box width="100%" display="flex" gap={0.5}>
         <FeatureChip label={node.type} />
@@ -159,6 +162,8 @@ const NodeCard = memo(function NodeCard({
 
 export const NodeList = () => {
   const { data, setGroupProxy, updateProxiesDelay } = useClashCore();
+
+  console.log(data);
 
   const [proxyGroup] = useAtom(proxyGroupAtom);
 
@@ -183,6 +188,7 @@ export const NodeList = () => {
               <NodeCard
                 node={node}
                 now={group.now}
+                disabled={group.type !== "Selector"}
                 onClick={() => hendleClick(node.name)}
                 onClickDelay={async () => {
                   await updateProxiesDelay(node.name);

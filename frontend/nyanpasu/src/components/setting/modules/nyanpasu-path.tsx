@@ -43,6 +43,11 @@ export const PaperButton = memo(function PaperButton({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
+
+          "&.Mui-disabled": {
+            pointerEvents: "auto",
+            cursor: "not-allowed",
+          },
           ...sxButton,
         }}
         {...props}

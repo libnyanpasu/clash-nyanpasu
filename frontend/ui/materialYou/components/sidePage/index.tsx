@@ -53,13 +53,15 @@ export const SidePage: FC<Props> = ({
 
         <div className={style["MDYSidePage-Container"]}>
           <div className={style["MDYSidePage-Layout"]}>
-            <div className={style.LeftContainer}>
-              {sideBar && <div>{sideBar}</div>}
+            {side && (
+              <div className={style.LeftContainer}>
+                {sideBar && <div>{sideBar}</div>}
 
-              <div className={style["LeftContainer-Content"]}>
-                <section>{memoizedSide}</section>
+                <div className={style["LeftContainer-Content"]}>
+                  <section>{memoizedSide}</section>
+                </div>
               </div>
-            </div>
+            )}
 
             <div className={style.RightContainer}>
               {toolBar && (

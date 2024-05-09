@@ -8,8 +8,8 @@ import {
 import Grid from "@mui/material/Unstable_Grid2";
 import { PaperSwitchButton } from "../setting/modules/system-proxy";
 import { Clash, useClashCore, useNyanpasu } from "@nyanpasu/interface";
-import { useAtom } from "jotai";
-import { proxyGroupAtom } from "@/store";
+import { useAtom, useAtomValue } from "jotai";
+import { proxyGroupAtom, proxyGroupSortAtom } from "@/store";
 import { memo, useMemo, useState } from "react";
 import { classNames } from "@/utils";
 
@@ -167,17 +167,43 @@ export const NodeList = () => {
 
   const [proxyGroup] = useAtom(proxyGroupAtom);
 
+  const proxyGroupSort = useAtomValue(proxyGroupSortAtom);
+
   const group = useMemo(() => {
-    if (getCurrentMode.global) {
-      return data?.global;
-    } else {
+    if (!getCurrentMode.global) {
       if (proxyGroup.selector !== null) {
-        return data?.groups[proxyGroup.selector];
-      } else {
-        return undefined;
+        const selectedGroup = data?.groups[proxyGroup.selector];
+
+        if (selectedGroup) {
+          let sortedList = selectedGroup.all?.slice();
+
+          if (proxyGroupSort === "delay") {
+            sortedList = sortedList?.sort((a, b) => {
+              const delayA = filterDelay(a.history);
+              const delayB = filterDelay(b.history);
+
+              if (delayA === -1 || delayA === -2) return 1;
+              if (delayB === -1 || delayB === -2) return -1;
+
+              return delayA - delayB;
+            });
+          } else if (proxyGroupSort === "name") {
+            sortedList = sortedList?.sort((a, b) =>
+              a.name.localeCompare(b.name),
+            );
+          }
+
+          return {
+            ...selectedGroup,
+            all: sortedList,
+          };
+        }
       }
+      return undefined;
     }
-  }, [data?.groups, proxyGroup.selector, getCurrentMode]);
+
+    return data?.global;
+  }, [data?.groups, proxyGroup.selector, getCurrentMode, proxyGroupSort]);
 
   const hendleClick = (node: string) => {
     setGroupProxy(proxyGroup.selector as number, node);

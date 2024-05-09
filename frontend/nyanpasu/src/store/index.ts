@@ -6,6 +6,8 @@ export const proxyGroupAtom = atom<{
   selector: 0,
 });
 
+export const proxyGroupSortAtom = atom<"default" | "delay" | "name">("default");
+
 export const themeMode = atom<"light" | "dark">("light");
 
 export const atomLogData = atom<ILogItem[]>([]);

@@ -3,18 +3,20 @@ import {
   Box,
   Button,
   ButtonGroup,
+  Menu,
+  MenuItem,
   TextField,
   alpha,
   useTheme,
 } from "@mui/material";
-import { memo, useMemo } from "react";
+import { memo, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNyanpasu, useClashCore } from "@nyanpasu/interface";
 import { SidePage } from "@nyanpasu/ui";
 import { DelayButton, GroupList, NodeList } from "@/components/proxies";
 import { Public } from "@mui/icons-material";
 import { useAtom } from "jotai";
-import { proxyGroupAtom } from "@/store";
+import { proxyGroupAtom, proxyGroupSortAtom } from "@/store";
 import ReactTextTransition from "react-text-transition";
 
 const ProxyGroupName = memo(function ProxyGroupName({
@@ -23,6 +25,54 @@ const ProxyGroupName = memo(function ProxyGroupName({
   name: string;
 }) {
   return <ReactTextTransition inline>{name}</ReactTextTransition>;
+});
+
+const SortSelector = memo(function SortSelector() {
+  const { t } = useTranslation();
+
+  const [proxyGroupSort, setProxyGroupSort] = useAtom(proxyGroupSortAtom);
+
+  type SortType = typeof proxyGroupSort;
+
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+
+  const handleClick = (sort: SortType) => {
+    setAnchorEl(null);
+    setProxyGroupSort(sort);
+  };
+
+  const tmaps: { [key: string]: string } = {
+    default: "Sort by default",
+    delay: "Sort by delay",
+    name: "Sort by name",
+  };
+
+  return (
+    <>
+      <Button
+        size="small"
+        variant="outlined"
+        sx={{ textTransform: "none" }}
+        onClick={(e) => setAnchorEl(e.currentTarget)}
+      >
+        {t(tmaps[proxyGroupSort])}
+      </Button>
+
+      <Menu
+        anchorEl={anchorEl}
+        open={Boolean(anchorEl)}
+        onClose={() => setAnchorEl(null)}
+      >
+        {Object.entries(tmaps).map(([key, value], index) => {
+          return (
+            <MenuItem key={index} onClick={() => handleClick(key as SortType)}>
+              {t(value)}
+            </MenuItem>
+          );
+        })}
+      </Menu>
+    </>
+  );
 });
 
 export default function ProxyPage() {
@@ -94,8 +144,12 @@ export default function ProxyPage() {
       side={getCurrentMode.rule && <GroupList />}
       toolBar={
         !getCurrentMode.direct && (
-          <div className="w-full flex items-center content-between">
+          <div className="w-full flex items-center justify-between">
             <div>{group?.name && <ProxyGroupName name={group?.name} />}</div>
+
+            <div>
+              <SortSelector />
+            </div>
           </div>
         )
       }

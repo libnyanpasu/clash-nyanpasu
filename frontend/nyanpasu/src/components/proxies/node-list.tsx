@@ -7,7 +7,7 @@ import {
 } from "@mui/material";
 import Grid from "@mui/material/Unstable_Grid2";
 import { PaperSwitchButton } from "../setting/modules/system-proxy";
-import { Clash, useClashCore } from "@nyanpasu/interface";
+import { Clash, useClashCore, useNyanpasu } from "@nyanpasu/interface";
 import { useAtom } from "jotai";
 import { proxyGroupAtom } from "@/store";
 import { memo, useMemo, useState } from "react";
@@ -130,11 +130,13 @@ const DelayChip = memo(function DelayChip({
 const NodeCard = memo(function NodeCard({
   node,
   now,
+  disabled,
   onClick,
   onClickDelay,
 }: {
   node: Clash.Proxy<string>;
   now?: string;
+  disabled?: boolean;
   onClick: () => void;
   onClickDelay: () => Promise<void>;
 }) {
@@ -145,6 +147,7 @@ const NodeCard = memo(function NodeCard({
       label={node.name}
       checked={node.name === now}
       onClick={onClick}
+      disabled={disabled}
     >
       <Box width="100%" display="flex" gap={0.5}>
         <FeatureChip label={node.type} />
@@ -160,15 +163,21 @@ const NodeCard = memo(function NodeCard({
 export const NodeList = () => {
   const { data, setGroupProxy, updateProxiesDelay } = useClashCore();
 
+  const { getCurrentMode } = useNyanpasu();
+
   const [proxyGroup] = useAtom(proxyGroupAtom);
 
   const group = useMemo(() => {
-    if (proxyGroup.selector !== null) {
-      return data?.groups[proxyGroup.selector];
+    if (getCurrentMode.global) {
+      return data?.global;
     } else {
-      return undefined;
+      if (proxyGroup.selector !== null) {
+        return data?.groups[proxyGroup.selector];
+      } else {
+        return undefined;
+      }
     }
-  }, [data?.groups, proxyGroup.selector]);
+  }, [data?.groups, proxyGroup.selector, getCurrentMode]);
 
   const hendleClick = (node: string) => {
     setGroupProxy(proxyGroup.selector as number, node);
@@ -183,6 +192,7 @@ export const NodeList = () => {
               <NodeCard
                 node={node}
                 now={group.now}
+                disabled={group.type !== "Selector"}
                 onClick={() => hendleClick(node.name)}
                 onClickDelay={async () => {
                   await updateProxiesDelay(node.name);

@@ -2,6 +2,8 @@ import useSWR from "swr";
 import * as service from "@/service";
 import { VergeConfig, restartSidecar, getCoreVersion } from "@/service";
 import { fetchCoreVersion, fetchLatestCore } from "@/service/core";
+import { useClash } from "./useClash";
+import { useMemo } from "react";
 
 /**
  * useNyanpasu with swr.
@@ -11,6 +13,8 @@ export const useNyanpasu = (options?: {
   onUpdate?: (data?: VergeConfig) => void;
   onError?: (error: any) => void;
 }) => {
+  const { getConfigs, setConfigs, deleteConnections } = useClash();
+
   const { data, error, mutate } = useSWR<VergeConfig>(
     "nyanpasuConfig",
     service.getNyanpasuConfig,
@@ -67,6 +71,38 @@ export const useNyanpasu = (options?: {
     return getServiceStatus.mutate();
   };
 
+  const setCurrentMode = async (mode: string) => {
+    await deleteConnections();
+
+    await setConfigs({ mode });
+
+    await mutate();
+  };
+
+  const getCurrentMode = useMemo(() => {
+    const modes: { [key: string]: boolean } = {
+      rule: false,
+      global: false,
+      direct: false,
+    };
+
+    if (data?.clash_core == "clash") {
+      modes.script = false;
+    }
+
+    const mode = getConfigs.data?.mode?.toLowerCase();
+
+    if (mode && modes.hasOwnProperty(mode)) {
+      modes[mode] = true;
+    } else {
+      setCurrentMode("rule");
+
+      modes.rule = true;
+    }
+
+    return modes;
+  }, [data?.clash_core, getConfigs.data?.mode]);
+
   return {
     nyanpasuConfig: data,
     isLoading: !data && !error,
@@ -81,5 +117,7 @@ export const useNyanpasu = (options?: {
     getSystemProxy,
     getServiceStatus,
     setServiceStatus,
+    getCurrentMode,
+    setCurrentMode,
   };
 };

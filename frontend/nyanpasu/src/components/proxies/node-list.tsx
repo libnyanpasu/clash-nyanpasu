@@ -7,7 +7,7 @@ import {
 } from "@mui/material";
 import Grid from "@mui/material/Unstable_Grid2";
 import { PaperSwitchButton } from "../setting/modules/system-proxy";
-import { Clash, useClashCore } from "@nyanpasu/interface";
+import { Clash, useClashCore, useNyanpasu } from "@nyanpasu/interface";
 import { useAtom } from "jotai";
 import { proxyGroupAtom } from "@/store";
 import { memo, useMemo, useState } from "react";
@@ -163,17 +163,21 @@ const NodeCard = memo(function NodeCard({
 export const NodeList = () => {
   const { data, setGroupProxy, updateProxiesDelay } = useClashCore();
 
-  console.log(data);
+  const { getCurrentMode } = useNyanpasu();
 
   const [proxyGroup] = useAtom(proxyGroupAtom);
 
   const group = useMemo(() => {
-    if (proxyGroup.selector !== null) {
-      return data?.groups[proxyGroup.selector];
+    if (getCurrentMode.global) {
+      return data?.global;
     } else {
-      return undefined;
+      if (proxyGroup.selector !== null) {
+        return data?.groups[proxyGroup.selector];
+      } else {
+        return undefined;
+      }
     }
-  }, [data?.groups, proxyGroup.selector]);
+  }, [data?.groups, proxyGroup.selector, getCurrentMode]);
 
   const hendleClick = (node: string) => {
     setGroupProxy(proxyGroup.selector as number, node);

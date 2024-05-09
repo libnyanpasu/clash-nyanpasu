@@ -8,13 +8,13 @@ import {
   alpha,
   useTheme,
 } from "@mui/material";
-import { useLockFn, useReactive } from "ahooks";
-import { useEffect, useMemo } from "react";
+import { useReactive } from "ahooks";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { useNyanpasu, useClash, useClashCore } from "@nyanpasu/interface";
+import { useNyanpasu, useClashCore } from "@nyanpasu/interface";
 import { SidePage } from "@nyanpasu/ui";
 import { GroupList, NodeList } from "@/components/proxies";
-import { Bolt } from "@mui/icons-material";
+import { Bolt, Public } from "@mui/icons-material";
 import { useAtom } from "jotai";
 import { proxyGroupAtom } from "@/store";
 import LoadingButton from "@mui/lab/LoadingButton";
@@ -22,36 +22,7 @@ import LoadingButton from "@mui/lab/LoadingButton";
 export default function ProxyPage() {
   const { t } = useTranslation();
 
-  const { nyanpasuConfig } = useNyanpasu();
-
-  const { getConfigs, setConfigs, deleteConnections } = useClash();
-
-  const modeList = useMemo(() => {
-    const defaultModes = ["rule", "global", "direct"];
-
-    return ["mihomo", "mihomo-alpha", "clash-rs"].includes(
-      nyanpasuConfig?.clash_core as string,
-    )
-      ? defaultModes
-      : [...defaultModes, "script"];
-  }, [nyanpasuConfig?.clash_core]);
-
-  const currentMode = getConfigs.data?.mode?.toLowerCase();
-
-  const onChangeMode = useLockFn(async (mode) => {
-    if (mode !== currentMode && nyanpasuConfig?.auto_close_connection) {
-      await deleteConnections();
-    }
-
-    await setConfigs({ mode });
-    await getConfigs.mutate();
-  });
-
-  useEffect(() => {
-    if (currentMode && !modeList.includes(currentMode)) {
-      onChangeMode("rule");
-    }
-  }, [currentMode, modeList, onChangeMode]);
+  const { getCurrentMode, setCurrentMode } = useNyanpasu();
 
   const { palette } = useTheme();
 
@@ -64,12 +35,18 @@ export default function ProxyPage() {
   });
 
   const group = useMemo(() => {
-    if (proxyGroup.selector !== null) {
-      return data?.groups[proxyGroup.selector];
+    if (getCurrentMode.global) {
+      return data?.global;
+    } else if (getCurrentMode.direct) {
+      return data?.direct;
     } else {
-      return undefined;
+      if (proxyGroup.selector !== null) {
+        return data?.groups[proxyGroup.selector];
+      } else {
+        return undefined;
+      }
     }
-  }, [proxyGroup.selector, data?.groups]);
+  }, [proxyGroup.selector, data?.groups, getCurrentMode]);
 
   const handleDelayClick = async () => {
     try {
@@ -89,14 +66,14 @@ export default function ProxyPage() {
           <ProviderButton />
 
           <ButtonGroup size="small">
-            {modeList.map((mode) => (
+            {Object.entries(getCurrentMode).map(([key, value], index) => (
               <Button
-                key={mode}
-                variant={mode === currentMode ? "contained" : "outlined"}
-                onClick={() => onChangeMode(mode)}
+                key={index}
+                variant={value ? "contained" : "outlined"}
+                onClick={() => setCurrentMode(key)}
                 sx={{ textTransform: "capitalize" }}
               >
-                {t(mode)}
+                {t(key)}
               </Button>
             ))}
           </ButtonGroup>
@@ -118,49 +95,62 @@ export default function ProxyPage() {
           }}
         />
       }
-      side={<GroupList />}
+      side={getCurrentMode.rule && <GroupList />}
       toolBar={
-        <Box
-          width="100%"
-          display="flex"
-          alignItems="center"
-          justifyContent="space-between"
-        >
-          <Box>
-            <Typography>{group?.name}</Typography>
+        !getCurrentMode.direct && (
+          <Box
+            width="100%"
+            display="flex"
+            alignItems="center"
+            justifyContent="space-between"
+          >
+            <Box>
+              <Typography>{group?.name}</Typography>
+            </Box>
           </Box>
-        </Box>
+        )
       }
     >
-      <NodeList />
+      {!getCurrentMode.direct ? (
+        <>
+          <NodeList />
 
-      <LoadingButton
-        size="large"
-        sx={{
-          position: "fixed",
-          bottom: 32,
-          right: 32,
-          zIndex: 10,
-          height: 64,
-          width: 64,
-          borderRadius: 4,
-          boxShadow: 8,
-          backgroundColor: alpha(palette.primary.main, 0.3),
-          backdropFilter: "blur(8px)",
+          <LoadingButton
+            size="large"
+            sx={{
+              position: "fixed",
+              bottom: 32,
+              right: 32,
+              zIndex: 10,
+              height: 64,
+              width: 64,
+              borderRadius: 4,
+              boxShadow: 8,
+              backgroundColor: alpha(palette.primary.main, 0.3),
+              backdropFilter: "blur(8px)",
 
-          "&:hover": {
-            backgroundColor: alpha(palette.primary.main, 0.1),
-          },
+              "&:hover": {
+                backgroundColor: alpha(palette.primary.main, 0.1),
+              },
 
-          "&.MuiLoadingButton-loading": {
-            backgroundColor: alpha(palette.primary.main, 0.15),
-          },
-        }}
-        loading={loading.delay}
-        onClick={handleDelayClick}
-      >
-        <Bolt />
-      </LoadingButton>
+              "&.MuiLoadingButton-loading": {
+                backgroundColor: alpha(palette.primary.main, 0.15),
+              },
+            }}
+            loading={loading.delay}
+            onClick={handleDelayClick}
+          >
+            <Bolt />
+          </LoadingButton>
+        </>
+      ) : (
+        <div className="h-full w-full flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <Public className="!size-16" />
+            <b>Direct Mode</b>
+          </div>
+        </div>
+      )}
     </SidePage>
   );
 }

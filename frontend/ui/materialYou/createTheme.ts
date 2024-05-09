@@ -75,10 +75,10 @@ export const createMDYTheme = (
     breakpoints: {
       values: {
         xs: 0,
-        sm: 720,
-        md: 960,
+        sm: 800,
+        md: 1000,
         lg: 1200,
-        xl: 1536,
+        xl: 1600,
       },
     },
   });

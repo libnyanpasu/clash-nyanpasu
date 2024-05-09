@@ -45,7 +45,7 @@
     "swr": "2.2.5"
   },
   "devDependencies": {
-    "@emotion/babel-plugin": "^11.11.0",
+    "@emotion/babel-plugin": "11.11.0",
     "@emotion/react": "11.11.4",
     "@types/js-cookie": "3.0.6",
     "@types/react": "18.3.1",

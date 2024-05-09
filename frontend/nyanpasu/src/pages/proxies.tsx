@@ -4,11 +4,10 @@ import {
   Button,
   ButtonGroup,
   TextField,
-  Typography,
   alpha,
   useTheme,
 } from "@mui/material";
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useNyanpasu, useClashCore } from "@nyanpasu/interface";
 import { SidePage } from "@nyanpasu/ui";
@@ -16,6 +15,15 @@ import { DelayButton, GroupList, NodeList } from "@/components/proxies";
 import { Public } from "@mui/icons-material";
 import { useAtom } from "jotai";
 import { proxyGroupAtom } from "@/store";
+import ReactTextTransition from "react-text-transition";
+
+const ProxyGroupName = memo(function ProxyGroupName({
+  name,
+}: {
+  name: string;
+}) {
+  return <ReactTextTransition inline>{name}</ReactTextTransition>;
+});
 
 export default function ProxyPage() {
   const { t } = useTranslation();
@@ -86,16 +94,9 @@ export default function ProxyPage() {
       side={getCurrentMode.rule && <GroupList />}
       toolBar={
         !getCurrentMode.direct && (
-          <Box
-            width="100%"
-            display="flex"
-            alignItems="center"
-            justifyContent="space-between"
-          >
-            <Box>
-              <Typography>{group?.name}</Typography>
-            </Box>
-          </Box>
+          <div className="w-full flex items-center content-between">
+            <div>{group?.name && <ProxyGroupName name={group?.name} />}</div>
+          </div>
         )
       }
     >

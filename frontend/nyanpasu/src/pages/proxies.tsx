@@ -8,16 +8,14 @@ import {
   alpha,
   useTheme,
 } from "@mui/material";
-import { useReactive } from "ahooks";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useNyanpasu, useClashCore } from "@nyanpasu/interface";
 import { SidePage } from "@nyanpasu/ui";
-import { GroupList, NodeList } from "@/components/proxies";
-import { Bolt, Public } from "@mui/icons-material";
+import { DelayButton, GroupList, NodeList } from "@/components/proxies";
+import { Public } from "@mui/icons-material";
 import { useAtom } from "jotai";
 import { proxyGroupAtom } from "@/store";
-import LoadingButton from "@mui/lab/LoadingButton";
 
 export default function ProxyPage() {
   const { t } = useTranslation();
@@ -29,10 +27,6 @@ export default function ProxyPage() {
   const { data, updateGroupDelay } = useClashCore();
 
   const [proxyGroup] = useAtom(proxyGroupAtom);
-
-  const loading = useReactive({
-    delay: false,
-  });
 
   const group = useMemo(() => {
     if (getCurrentMode.global) {
@@ -49,13 +43,7 @@ export default function ProxyPage() {
   }, [proxyGroup.selector, data?.groups, getCurrentMode]);
 
   const handleDelayClick = async () => {
-    try {
-      loading.delay = true;
-
-      await updateGroupDelay(proxyGroup.selector as number);
-    } finally {
-      loading.delay = false;
-    }
+    await updateGroupDelay(proxyGroup.selector as number);
   };
 
   return (
@@ -115,33 +103,7 @@ export default function ProxyPage() {
         <>
           <NodeList />
 
-          <LoadingButton
-            size="large"
-            sx={{
-              position: "fixed",
-              bottom: 32,
-              right: 32,
-              zIndex: 10,
-              height: 64,
-              width: 64,
-              borderRadius: 4,
-              boxShadow: 8,
-              backgroundColor: alpha(palette.primary.main, 0.3),
-              backdropFilter: "blur(8px)",
-
-              "&:hover": {
-                backgroundColor: alpha(palette.primary.main, 0.1),
-              },
-
-              "&.MuiLoadingButton-loading": {
-                backgroundColor: alpha(palette.primary.main, 0.15),
-              },
-            }}
-            loading={loading.delay}
-            onClick={handleDelayClick}
-          >
-            <Bolt />
-          </LoadingButton>
+          <DelayButton onClick={handleDelayClick} />
         </>
       ) : (
         <div className="h-full w-full flex items-center justify-center">

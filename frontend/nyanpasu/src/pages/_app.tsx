@@ -1,7 +1,5 @@
-import LogoSvg from "@/assets/image/logo.svg?react";
 import { LayoutControl } from "@/components/layout/layout-control";
 import { LayoutTraffic } from "@/components/layout/layout-traffic";
-import { UpdateButton } from "@/components/layout/update-button";
 import { useCustomTheme } from "@/components/layout/use-custom-theme";
 import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { useVerge } from "@/hooks/use-verge";
@@ -22,9 +20,11 @@ import { SWRConfig, mutate } from "swr";
 // import { routers } from "./_routers";
 import { LayoutItem } from "@/components/layout/layout-item";
 import PageTransition from "@/components/layout/page-transition";
+import { useNavigate, type Path } from "@/router";
 import { classNames } from "@/utils";
-import { Modals } from "@generouted/react-router/lazy";
-import { useNavigate, type Path } from "../router";
+
+import AnimatedLogo from "@/components/layout/animated-logo";
+import { FallbackProps } from "react-error-boundary";
 import styles from "./_app.module.scss";
 
 dayjs.extend(relativeTime);
@@ -171,14 +171,7 @@ export default function App() {
           ]}
         >
           <div className="layout__left" data-windrag>
-            <div className="the-logo" data-windrag>
-              <LogoSvg />
-
-              {!(OS === "windows" && WIN_PORTABLE) && (
-                <UpdateButton className="the-newbtn" />
-              )}
-            </div>
-
+            <AnimatedLogo />
             <List className="the-menu">
               {Object.entries(routes).map(([name, to]) => (
                 <LayoutItem key={name} to={to as Path}>
@@ -205,7 +198,6 @@ export default function App() {
               {/* {React.cloneElement(routes, { key: location.pathname })} */}
               <PageTransition />
             </AnimatePresence>
-            <Modals />
           </div>
         </Paper>
       </ThemeProvider>
@@ -213,7 +205,7 @@ export default function App() {
   );
 }
 
-export const Catch = () => {
+export const Catch = ({ error }: FallbackProps) => {
   const theme = useTheme();
   return (
     <div
@@ -223,7 +215,8 @@ export const Catch = () => {
       )}
     >
       <h1>Oops!</h1>
-      <p>Something went wrong... Caught at _app error boundary</p>
+      <p>Something went wrong... Caught at _app error boundary.</p>
+      <pre>{error.message}</pre>
     </div>
   );
 };

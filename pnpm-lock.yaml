@@ -148,9 +148,16 @@ importers:
       ofetch:
         specifier: 1.3.4
         version: 1.3.4
+      react:
+        specifier: npm:react@beta
+        version: 19.0.0-beta-6946ebe620-20240508
       swr:
         specifier: 2.2.5
-        version: 2.2.5(react@19.0.0-beta-e7d213dfb0-20240507)
+        version: 2.2.5(react@19.0.0-beta-6946ebe620-20240508)
+    devDependencies:
+      '@types/react':
+        specifier: npm:types-react@beta
+        version: types-react@19.0.0-beta.1
 
   frontend/nyanpasu:
     dependencies:
@@ -3985,6 +3992,10 @@ packages:
     peerDependencies:
       react: npm:react@beta
       react-dom: npm:react-dom@beta
+
+  react@19.0.0-beta-6946ebe620-20240508:
+    resolution: {integrity: sha512-oopuXTmA4olWtL8p3jAobiFvYsljLkzAQL21YVc44qjz32WtGmbKFHYSe1EL6Dy/v8PEWlaGBQssJPv5RFVQcw==}
+    engines: {node: '>=0.10.0'}
 
   react@19.0.0-beta-e7d213dfb0-20240507:
     resolution: {integrity: sha512-Mk3lMX4wICxvW0ojMGgFEi0fYBX2ucNeG2nPpqx7EFaAKFG5E5JC5/cI1XiAn1iKUWpFpbYu6ExrDDr4EiHrgg==}
@@ -8668,6 +8679,8 @@ snapshots:
       react: 19.0.0-beta-e7d213dfb0-20240507
       react-dom: 19.0.0-beta-e7d213dfb0-20240507(react@19.0.0-beta-e7d213dfb0-20240507)
 
+  react@19.0.0-beta-6946ebe620-20240508: {}
+
   react@19.0.0-beta-e7d213dfb0-20240507: {}
 
   read-cache@1.0.0:
@@ -9169,6 +9182,12 @@ snapshots:
 
   svg-tags@1.0.0: {}
 
+  swr@2.2.5(react@19.0.0-beta-6946ebe620-20240508):
+    dependencies:
+      client-only: 0.0.1
+      react: 19.0.0-beta-6946ebe620-20240508
+      use-sync-external-store: 1.2.2(react@19.0.0-beta-6946ebe620-20240508)
+
   swr@2.2.5(react@19.0.0-beta-e7d213dfb0-20240507):
     dependencies:
       client-only: 0.0.1
@@ -9462,6 +9481,10 @@ snapshots:
   url-parse-lax@1.0.0:
     dependencies:
       prepend-http: 1.0.4
+
+  use-sync-external-store@1.2.2(react@19.0.0-beta-6946ebe620-20240508):
+    dependencies:
+      react: 19.0.0-beta-6946ebe620-20240508
 
   use-sync-external-store@1.2.2(react@19.0.0-beta-e7d213dfb0-20240507):
     dependencies:

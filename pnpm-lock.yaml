@@ -170,9 +170,6 @@ importers:
       '@dnd-kit/utilities':
         specifier: 3.2.2
         version: 3.2.2(react@19.0.0-beta-e7d213dfb0-20240507)
-      '@emotion/react':
-        specifier: 11.11.4
-        version: 11.11.4(react@19.0.0-beta-e7d213dfb0-20240507)(types-react@19.0.0-beta.1)
       '@emotion/styled':
         specifier: 11.11.5
         version: 11.11.5(@emotion/react@11.11.4(react@19.0.0-beta-e7d213dfb0-20240507)(types-react@19.0.0-beta.1))(react@19.0.0-beta-e7d213dfb0-20240507)(types-react@19.0.0-beta.1)
@@ -270,6 +267,9 @@ importers:
       '@emotion/babel-plugin':
         specifier: ^11.11.0
         version: 11.11.0
+      '@emotion/react':
+        specifier: 11.11.4
+        version: 11.11.4(react@19.0.0-beta-e7d213dfb0-20240507)(types-react@19.0.0-beta.1)
       '@types/js-cookie':
         specifier: 3.0.6
         version: 3.0.6

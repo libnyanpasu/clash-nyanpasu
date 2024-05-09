@@ -46,7 +46,7 @@ export default defineConfig(({ command }) => {
       tsconfigPaths(),
       svgr(),
       react({
-        jsxImportSource: "@emotion/react",
+        // jsxImportSource: "@emotion/react",
         babel: {
           plugins: ["@emotion/babel-plugin"],
         },

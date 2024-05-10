@@ -1,4 +1,4 @@
-import createTheme from "@mui/material/styles/createTheme";
+import extendTheme from "@mui/material/styles/experimental_extendTheme";
 import createPalette from "@mui/material/styles/createPalette";
 import {
   argbFromHex,
@@ -30,33 +30,41 @@ interface ThemeSchema {
   font_family?: string;
 }
 
-export const createMDYTheme = (
-  themeSchema: ThemeSchema,
-  mode: "light" | "dark",
-) => {
+export const createMDYTheme = (themeSchema: ThemeSchema) => {
   const materialColor = themeFromSourceColor(
     argbFromHex(themeSchema.primary_color),
   );
 
-  const palette = createPalette({
-    mode,
-    primary: {
-      main: hexFromArgb(materialColor.schemes[mode].primary),
-    },
-    secondary: {
-      main: hexFromArgb(materialColor.schemes[mode].secondary),
-    },
-    error: {
-      main: hexFromArgb(materialColor.schemes[mode].error),
-    },
-    text: {
-      primary: hexFromArgb(materialColor.schemes[mode].onPrimaryContainer),
-      secondary: hexFromArgb(materialColor.schemes[mode].onSecondaryContainer),
-    },
-  });
+  const generatePalette = (mode: "light" | "dark") => {
+    return createPalette({
+      mode,
+      primary: {
+        main: hexFromArgb(materialColor.schemes[mode].primary),
+      },
+      secondary: {
+        main: hexFromArgb(materialColor.schemes[mode].secondary),
+      },
+      error: {
+        main: hexFromArgb(materialColor.schemes[mode].error),
+      },
+      text: {
+        primary: hexFromArgb(materialColor.schemes[mode].onPrimaryContainer),
+        secondary: hexFromArgb(
+          materialColor.schemes[mode].onSecondaryContainer,
+        ),
+      },
+    });
+  };
 
-  return createTheme({
-    palette,
+  const theme = extendTheme({
+    colorSchemes: {
+      light: {
+        palette: generatePalette("light"),
+      },
+      dark: {
+        palette: generatePalette("dark"),
+      },
+    },
     typography: {
       fontFamily: themeSchema?.font_family,
     },
@@ -70,7 +78,7 @@ export const createMDYTheme = (
       MuiDialogContent,
       MuiDialogTitle,
       // MuiPaper,
-      MuiSwitch: MuiSwitch(palette),
+      MuiSwitch,
     },
     breakpoints: {
       values: {
@@ -82,4 +90,8 @@ export const createMDYTheme = (
       },
     },
   });
+
+  console.log(theme);
+
+  return theme;
 };

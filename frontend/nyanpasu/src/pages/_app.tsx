@@ -1,6 +1,9 @@
 import { LayoutControl } from "@/components/layout/layout-control";
 import { LayoutTraffic } from "@/components/layout/layout-traffic";
-import { useCustomTheme } from "@/components/layout/use-custom-theme";
+import {
+  ThemeModeProvider,
+  useCustomTheme,
+} from "@/components/layout/use-custom-theme";
 import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { useVerge } from "@/hooks/use-verge";
 import { getAxios } from "@/services/api";
@@ -26,6 +29,7 @@ import { classNames } from "@/utils";
 import AnimatedLogo from "@/components/layout/animated-logo";
 import { FallbackProps } from "react-error-boundary";
 import styles from "./_app.module.scss";
+import { Experimental_CssVarsProvider as CssVarsProvider } from "@mui/material/styles";
 
 dayjs.extend(relativeTime);
 
@@ -142,7 +146,8 @@ export default function App() {
 
   return (
     <SWRConfig value={{ errorRetryCount: 3 }}>
-      <ThemeProvider theme={theme}>
+      <CssVarsProvider theme={theme}>
+        <ThemeModeProvider />
         <Paper
           square
           elevation={0}
@@ -200,7 +205,7 @@ export default function App() {
             </AnimatePresence>
           </div>
         </Paper>
-      </ThemeProvider>
+      </CssVarsProvider>
     </SWRConfig>
   );
 }
@@ -216,7 +221,7 @@ export const Catch = ({ error }: FallbackProps) => {
     >
       <h1>Oops!</h1>
       <p>Something went wrong... Caught at _app error boundary.</p>
-      <pre>{error.message}</pre>
+      <pre>{error}</pre>
     </div>
   );
 };

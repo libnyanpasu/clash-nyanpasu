@@ -216,8 +216,8 @@ importers:
         specifier: 11.1.9
         version: 11.1.9(@emotion/is-prop-valid@1.2.2)(react-dom@19.0.0-beta-e7d213dfb0-20240507(react@19.0.0-beta-e7d213dfb0-20240507))(react@19.0.0-beta-e7d213dfb0-20240507)
       i18next:
-        specifier: 23.11.3
-        version: 23.11.3
+        specifier: 23.11.4
+        version: 23.11.4
       jotai:
         specifier: 2.8.0
         version: 2.8.0(react@19.0.0-beta-e7d213dfb0-20240507)(types-react@19.0.0-beta.1)
@@ -244,7 +244,7 @@ importers:
         version: 7.51.4(react@19.0.0-beta-e7d213dfb0-20240507)
       react-i18next:
         specifier: 14.1.1
-        version: 14.1.1(i18next@23.11.3)(react-dom@19.0.0-beta-e7d213dfb0-20240507(react@19.0.0-beta-e7d213dfb0-20240507))(react@19.0.0-beta-e7d213dfb0-20240507)
+        version: 14.1.1(i18next@23.11.4)(react-dom@19.0.0-beta-e7d213dfb0-20240507(react@19.0.0-beta-e7d213dfb0-20240507))(react@19.0.0-beta-e7d213dfb0-20240507)
       react-markdown:
         specifier: 9.0.1
         version: 9.0.1(react@19.0.0-beta-e7d213dfb0-20240507)(types-react@19.0.0-beta.1)
@@ -2864,8 +2864,8 @@ packages:
     resolution: {integrity: sha512-AB6lFlbwwyIqMdHYhwPe+kjOC3Oc5P3nThEoW/AaO2BX3vJDjWPFxYLxokUZOo6RNX20He3AaT8sESs9NJcmEw==}
     engines: {node: '>=18'}
 
-  i18next@23.11.3:
-    resolution: {integrity: sha512-Pq/aSKowir7JM0rj+Wa23Kb6KKDUGno/HjG+wRQu0PxoTbpQ4N89MAT0rFGvXmLkRLNMb1BbBOKGozl01dabzg==}
+  i18next@23.11.4:
+    resolution: {integrity: sha512-CCUjtd5TfaCl+mLUzAA0uPSN+AVn4fP/kWCYt/hocPUwusTpMVczdrRyOBUwk6N05iH40qiKx6q1DoNJtBIwdg==}
 
   iconv-lite@0.6.3:
     resolution: {integrity: sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw==}
@@ -7558,7 +7558,7 @@ snapshots:
 
   husky@9.0.11: {}
 
-  i18next@23.11.3:
+  i18next@23.11.4:
     dependencies:
       '@babel/runtime': 7.24.5
 
@@ -8698,11 +8698,11 @@ snapshots:
     dependencies:
       react: 19.0.0-beta-e7d213dfb0-20240507
 
-  react-i18next@14.1.1(i18next@23.11.3)(react-dom@19.0.0-beta-e7d213dfb0-20240507(react@19.0.0-beta-e7d213dfb0-20240507))(react@19.0.0-beta-e7d213dfb0-20240507):
+  react-i18next@14.1.1(i18next@23.11.4)(react-dom@19.0.0-beta-e7d213dfb0-20240507(react@19.0.0-beta-e7d213dfb0-20240507))(react@19.0.0-beta-e7d213dfb0-20240507):
     dependencies:
       '@babel/runtime': 7.24.5
       html-parse-stringify: 3.0.1
-      i18next: 23.11.3
+      i18next: 23.11.4
       react: 19.0.0-beta-e7d213dfb0-20240507
     optionalDependencies:
       react-dom: 19.0.0-beta-e7d213dfb0-20240507(react@19.0.0-beta-e7d213dfb0-20240507)

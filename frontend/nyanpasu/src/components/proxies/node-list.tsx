@@ -5,13 +5,14 @@ import {
   CircularProgress,
   useTheme,
 } from "@mui/material";
-import Grid from "@mui/material/Unstable_Grid2";
 import { PaperSwitchButton } from "../setting/modules/system-proxy";
 import { Clash, useClashCore, useNyanpasu } from "@nyanpasu/interface";
 import { useAtom, useAtomValue } from "jotai";
 import { proxyGroupAtom, proxyGroupSortAtom } from "@/store";
-import { memo, useMemo, useState } from "react";
+import { CSSProperties, memo, useMemo, useState } from "react";
 import { classNames } from "@/utils";
+import { VList } from "virtua";
+import { useBreakpoint } from "@/hooks/use-breakpoint";
 
 type History = Clash.Proxy["history"];
 
@@ -133,12 +134,14 @@ const NodeCard = memo(function NodeCard({
   disabled,
   onClick,
   onClickDelay,
+  style,
 }: {
   node: Clash.Proxy<string>;
   now?: string;
   disabled?: boolean;
   onClick: () => void;
   onClickDelay: () => Promise<void>;
+  style?: CSSProperties;
 }) {
   const delay = useMemo(() => filterDelay(node.history), [node.history]);
 
@@ -148,6 +151,7 @@ const NodeCard = memo(function NodeCard({
       checked={node.name === now}
       onClick={onClick}
       disabled={disabled}
+      style={style}
     >
       <Box width="100%" display="flex" gap={0.5}>
         <FeatureChip label={node.type} />
@@ -205,29 +209,59 @@ export const NodeList = () => {
     return data?.global;
   }, [data?.groups, proxyGroup.selector, getCurrentMode, proxyGroupSort]);
 
+  const { column } = useBreakpoint({
+    sm: 1,
+    md: 1,
+    lg: 2,
+    xl: 3,
+    default: 4,
+  });
+
+  const renderList = useMemo(() => {
+    return group?.all?.reduce<Clash.Proxy<string>[][]>(
+      (result, value, index) => {
+        if (index % column === 0) result.push([]);
+        result[Math.floor(index / column)].push(value);
+        return result;
+      },
+      [],
+    );
+  }, [group?.all, column]);
+
   const hendleClick = (node: string) => {
     setGroupProxy(proxyGroup.selector as number, node);
   };
 
   return (
-    <Box sx={{ padding: 2 }}>
-      <Grid container spacing={2}>
-        {group?.all?.map((node, index) => {
-          return (
-            <Grid key={index} xs={12} sm={6} lg={4} xl={3}>
-              <NodeCard
-                node={node}
-                now={group.now}
-                disabled={group.type !== "Selector"}
-                onClick={() => hendleClick(node.name)}
-                onClickDelay={async () => {
-                  await updateProxiesDelay(node.name);
-                }}
-              />
-            </Grid>
-          );
-        })}
-      </Grid>
-    </Box>
+    <VList style={{ flex: 1 }} className="p-2">
+      {renderList?.map((node, index) => {
+        return (
+          <div key={index} className="flex">
+            {node.map((render, index) => {
+              return (
+                <div
+                  key={index}
+                  className="relative p-2"
+                  style={{
+                    flex: 1 / column,
+                    width: `calc(100% / ${column})`,
+                  }}
+                >
+                  <NodeCard
+                    node={render}
+                    now={group?.now}
+                    disabled={group?.type !== "Selector"}
+                    onClick={() => hendleClick(render.name)}
+                    onClickDelay={async () => {
+                      await updateProxiesDelay(render.name);
+                    }}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </VList>
   );
 };

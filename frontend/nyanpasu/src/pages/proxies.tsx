@@ -153,6 +153,7 @@ export default function ProxyPage() {
           </div>
         )
       }
+      noChildrenScroll
     >
       {!getCurrentMode.direct ? (
         <>

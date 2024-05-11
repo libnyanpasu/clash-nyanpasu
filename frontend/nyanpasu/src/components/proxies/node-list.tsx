@@ -205,9 +205,9 @@ export const NodeList = () => {
           });
         }
       }
+    } else {
+      setGroup(data?.global);
     }
-
-    setGroup(data?.global);
   }, [data?.groups, proxyGroup.selector, getCurrentMode, proxyGroupSort]);
 
   const { column } = useBreakpoint({

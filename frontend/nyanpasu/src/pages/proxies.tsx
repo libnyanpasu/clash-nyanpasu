@@ -9,9 +9,9 @@ import {
   alpha,
   useTheme,
 } from "@mui/material";
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNyanpasu, useClashCore } from "@nyanpasu/interface";
+import { useNyanpasu, useClashCore, Clash } from "@nyanpasu/interface";
 import { SidePage } from "@nyanpasu/ui";
 import { DelayButton, GroupList, NodeList } from "@/components/proxies";
 import { Public } from "@mui/icons-material";

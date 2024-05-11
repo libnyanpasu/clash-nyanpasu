@@ -1,6 +1,5 @@
 import { proxyGroupAtom } from "@/store";
 import {
-  List,
   ListItem,
   ListItemButton,
   ListItemButtonProps,
@@ -10,6 +9,7 @@ import {
 import { useClashCore } from "@nyanpasu/interface";
 import { useAtom } from "jotai";
 import { memo } from "react";
+import { Virtualizer } from "virtua";
 
 const IconRender = memo(function IconRender({ icon }: { icon: string }) {
   const src = icon.trim().startsWith("<svg")
@@ -33,7 +33,7 @@ export const GroupList = (listItemButtonProps: ListItemButtonProps) => {
   };
 
   return (
-    <List disablePadding>
+    <Virtualizer>
       {data?.groups?.map((group, index) => {
         return (
           <ListItem key={index} disablePadding>
@@ -49,6 +49,6 @@ export const GroupList = (listItemButtonProps: ListItemButtonProps) => {
           </ListItem>
         );
       })}
-    </List>
+    </Virtualizer>
   );
 };

@@ -9,7 +9,7 @@ import { PaperSwitchButton } from "../setting/modules/system-proxy";
 import { Clash, useClashCore, useNyanpasu } from "@nyanpasu/interface";
 import { useAtom, useAtomValue } from "jotai";
 import { proxyGroupAtom, proxyGroupSortAtom } from "@/store";
-import { CSSProperties, memo, useMemo, useState } from "react";
+import { CSSProperties, memo, useEffect, useMemo, useState } from "react";
 import { classNames } from "@/utils";
 import { VList } from "virtua";
 import { useBreakpoint } from "@/hooks/use-breakpoint";
@@ -173,7 +173,9 @@ export const NodeList = () => {
 
   const proxyGroupSort = useAtomValue(proxyGroupSortAtom);
 
-  const group = useMemo(() => {
+  const [group, setGroup] = useState<Clash.Proxy<Clash.Proxy<string>>>();
+
+  useEffect(() => {
     if (!getCurrentMode.global) {
       if (proxyGroup.selector !== null) {
         const selectedGroup = data?.groups[proxyGroup.selector];
@@ -197,16 +199,15 @@ export const NodeList = () => {
             );
           }
 
-          return {
+          setGroup({
             ...selectedGroup,
             all: sortedList,
-          };
+          });
         }
       }
-      return undefined;
     }
 
-    return data?.global;
+    setGroup(data?.global);
   }, [data?.groups, proxyGroup.selector, getCurrentMode, proxyGroupSort]);
 
   const { column } = useBreakpoint({
@@ -217,8 +218,12 @@ export const NodeList = () => {
     default: 4,
   });
 
-  const renderList = useMemo(() => {
-    return group?.all?.reduce<Clash.Proxy<string>[][]>(
+  const [renderList, setRenderList] = useState<Clash.Proxy<string>[][]>([]);
+
+  useEffect(() => {
+    if (!group?.all) return;
+
+    const list = group?.all?.reduce<Clash.Proxy<string>[][]>(
       (result, value, index) => {
         if (index % column === 0) result.push([]);
         result[Math.floor(index / column)].push(value);
@@ -226,6 +231,8 @@ export const NodeList = () => {
       },
       [],
     );
+
+    setRenderList(list);
   }, [group?.all, column]);
 
   const hendleClick = (node: string) => {

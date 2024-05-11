@@ -86,16 +86,17 @@ export default function ProxyPage() {
 
   const [proxyGroup] = useAtom(proxyGroupAtom);
 
-  const group = useMemo(() => {
+  const [group, setGroup] =
+    useState<Clash.Proxy<Clash.Proxy<string> | string>>();
+
+  useEffect(() => {
     if (getCurrentMode.global) {
-      return data?.global;
+      setGroup(data?.global);
     } else if (getCurrentMode.direct) {
-      return data?.direct;
+      setGroup(data?.direct);
     } else {
       if (proxyGroup.selector !== null) {
-        return data?.groups[proxyGroup.selector];
-      } else {
-        return undefined;
+        setGroup(data?.groups[proxyGroup.selector]);
       }
     }
   }, [proxyGroup.selector, data?.groups, getCurrentMode]);

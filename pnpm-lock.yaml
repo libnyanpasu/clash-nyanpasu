@@ -264,7 +264,7 @@ importers:
         specifier: 2.2.5
         version: 2.2.5(react@19.0.0-beta-04b058868c-20240508)
       virtua:
-        specifier: ^0.30.5
+        specifier: 0.30.5
         version: 0.30.5(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)
     devDependencies:
       '@emotion/babel-plugin':

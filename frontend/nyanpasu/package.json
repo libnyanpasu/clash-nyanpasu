@@ -43,7 +43,7 @@
     "react-transition-group": "4.4.5",
     "react-virtuoso": "4.7.10",
     "swr": "2.2.5",
-    "virtua": "^0.30.5"
+    "virtua": "0.30.5"
   },
   "devDependencies": {
     "@emotion/babel-plugin": "11.11.0",

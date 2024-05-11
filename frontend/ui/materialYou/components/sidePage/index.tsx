@@ -42,10 +42,6 @@ export const SidePage: FC<Props> = ({
   side,
   toolBar,
 }) => {
-  const memoizedChildren = useMemo(() => children, [children]);
-
-  const memoizedSide = useMemo(() => side, [side]);
-
   return (
     <BaseErrorBoundary>
       <div className={style["MDYSidePage-Main"]} data-windrag>
@@ -58,7 +54,7 @@ export const SidePage: FC<Props> = ({
                 {sideBar && <div>{sideBar}</div>}
 
                 <div className={style["LeftContainer-Content"]}>
-                  <section>{memoizedSide}</section>
+                  <section>{side}</section>
                 </div>
               </div>
             )}
@@ -76,7 +72,7 @@ export const SidePage: FC<Props> = ({
                 className={style["RightContainer-Content"]}
                 style={toolBar ? { height: "calc(100% - 49px)" } : undefined}
               >
-                <section>{memoizedChildren}</section>
+                <section>{children}</section>
               </div>
             </div>
           </div>

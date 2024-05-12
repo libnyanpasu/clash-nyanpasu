@@ -13,7 +13,7 @@
     "@dnd-kit/sortable": "8.0.0",
     "@dnd-kit/utilities": "3.2.2",
     "@emotion/styled": "11.11.5",
-    "@generouted/react-router": "1.19.3",
+    "@generouted/react-router": "1.19.4",
     "@juggle/resize-observer": "3.4.0",
     "@material/material-color-utilities": "0.2.7",
     "@mui/icons-material": "5.15.17",

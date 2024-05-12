@@ -1,7 +1,15 @@
 import { useTheme } from "@mui/material";
 import { useEffect, useState } from "react";
 
-export const useBreakpoint = (columnMapping: { [key: string]: number }) => {
+export const useBreakpoint = (
+  columnMapping: { [key: string]: number } = {
+    sm: 1,
+    md: 1,
+    lg: 2,
+    xl: 3,
+    default: 4,
+  },
+) => {
   const { breakpoints } = useTheme();
 
   const [breakpoint, setBreakpoint] = useState({

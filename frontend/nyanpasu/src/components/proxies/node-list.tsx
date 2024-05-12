@@ -7,12 +7,12 @@ import {
 } from "@mui/material";
 import { PaperSwitchButton } from "../setting/modules/system-proxy";
 import { Clash, useClashCore, useNyanpasu } from "@nyanpasu/interface";
+import { useBreakpoint } from "@nyanpasu/ui";
 import { useAtom, useAtomValue } from "jotai";
 import { proxyGroupAtom, proxyGroupSortAtom } from "@/store";
 import { CSSProperties, memo, useEffect, useMemo, useState } from "react";
 import { classNames } from "@/utils";
 import { VList } from "virtua";
-import { useBreakpoint } from "@/hooks/use-breakpoint";
 
 type History = Clash.Proxy["history"];
 

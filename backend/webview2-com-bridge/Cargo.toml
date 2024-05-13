@@ -1,0 +1,11 @@
+[package]
+name = "webview2-com-bridge"
+version = "0.1.0"
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+webview2-com = "0.19"
+windows = "0.39"

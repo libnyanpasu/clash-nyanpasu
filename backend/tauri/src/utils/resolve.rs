@@ -16,11 +16,8 @@ use semver::Version;
 use serde_yaml::Mapping;
 use std::net::TcpListener;
 use tauri::{api::process::Command, App, AppHandle, Manager, PhysicalPosition, PhysicalSize};
-
 #[cfg(target_os = "windows")]
-use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings6;
-#[cfg(target_os = "windows")]
-use windows::core::Interface;
+use webview2_com_bridge::windows::core::Interface;
 
 pub fn find_unused_port() -> Result<u16> {
     match TcpListener::bind("127.0.0.1:0") {
@@ -274,6 +271,8 @@ pub fn create_window(app_handle: &AppHandle) {
         .get_window("main")
         .unwrap()
         .with_webview(|webview| unsafe {
+            #[cfg(target_os = "windows")]
+            use webview2_com_bridge::webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings6;
             let settings = webview
                 .controller()
                 .CoreWebView2()

@@ -907,11 +907,10 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "warp",
- "webview2-com",
+ "webview2-com-bridge",
  "which 6.0.1",
  "window-shadows",
  "window-vibrancy",
- "windows 0.39.0",
  "windows-sys 0.52.0",
  "winreg 0.52.0",
  "wry",
@@ -6889,6 +6888,14 @@ dependencies = [
  "webview2-com-sys",
  "windows 0.39.0",
  "windows-implement 0.39.0",
+]
+
+[[package]]
+name = "webview2-com-bridge"
+version = "0.1.0"
+dependencies = [
+ "webview2-com",
+ "windows 0.39.0",
 ]
 
 [[package]]

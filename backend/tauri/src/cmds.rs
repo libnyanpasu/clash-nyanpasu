@@ -45,13 +45,13 @@ pub async fn enhance_profiles() -> CmdResult {
 
 #[tauri::command]
 pub async fn import_profile(url: String, option: Option<PrfOption>) -> CmdResult {
-    let item = wrap_err!(PrfItem::from_url(&url, None, None, option).await)?;
+    let item = wrap_err!(ProfileItem::from_url(&url, None, None, option).await)?;
     wrap_err!(Config::profiles().data().append_item(item))
 }
 
 #[tauri::command]
-pub async fn create_profile(item: PrfItem, file_data: Option<String>) -> CmdResult {
-    let item = wrap_err!(PrfItem::from(item, file_data).await)?;
+pub async fn create_profile(item: ProfileItem, file_data: Option<String>) -> CmdResult {
+    let item = wrap_err!(ProfileItem::duplicate(item, file_data).await)?;
     wrap_err!(Config::profiles().data().append_item(item))
 }
 
@@ -98,7 +98,7 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult {
 
 /// 修改某个profile item的
 #[tauri::command]
-pub fn patch_profile(index: String, profile: PrfItem) -> CmdResult {
+pub fn patch_profile(index: String, profile: ProfileItem) -> CmdResult {
     wrap_err!(Config::profiles().data().patch_item(index, profile))?;
     ProfilesJobGuard::global().lock().refresh();
     Ok(())

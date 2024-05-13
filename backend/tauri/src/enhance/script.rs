@@ -1,8 +1,8 @@
-use super::use_lowercase;
+use super::{use_lowercase, ScriptType, ScriptWrapper};
 use anyhow::Result;
 use serde_yaml::Mapping;
 
-pub fn use_script(script: String, config: Mapping) -> Result<(Mapping, Vec<(String, String)>)> {
+pub fn process_js(script: String, config: Mapping) -> Result<(Mapping, Vec<(String, String)>)> {
     use rquickjs::{function::Func, Context, Runtime};
     use std::sync::{Arc, Mutex};
 
@@ -60,6 +60,16 @@ pub fn use_script(script: String, config: Mapping) -> Result<(Mapping, Vec<(Stri
     }
 }
 
+pub fn use_script(
+    script: ScriptWrapper,
+    config: Mapping,
+) -> Result<(Mapping, Vec<(String, String)>)> {
+    match script.0 {
+        ScriptType::JavaScript => process_js(script.1, config),
+        _ => unimplemented!("unsupported script type"),
+    }
+}
+
 #[test]
 fn test_script() {
     let script = r#"
@@ -84,7 +94,7 @@ fn test_script() {
   "#;
 
     let config = serde_yaml::from_str(config).unwrap();
-    let (config, results) = use_script(script.into(), config).unwrap();
+    let (config, results) = process_js(script.into(), config).unwrap();
 
     let config_str = serde_yaml::to_string(&config).unwrap();
 

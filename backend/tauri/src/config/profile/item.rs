@@ -1,3 +1,5 @@
+use crate::config::Config;
+use crate::enhance::ScriptType;
 use crate::utils::{dirs, help, tmpl};
 use anyhow::{bail, Context, Result};
 use reqwest::StatusCode;
@@ -7,16 +9,16 @@ use std::fs;
 use sysproxy::Sysproxy;
 use tracing_attributes::instrument;
 
-use super::Config;
+use super::item_type::ProfileItemType;
 
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
-pub struct PrfItem {
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ProfileItem {
     pub uid: Option<String>,
 
     /// profile item type
     /// enum value: remote | local | script | merge
     #[serde(rename = "type")]
-    pub itype: Option<String>,
+    pub r#type: Option<ProfileItemType>,
 
     /// profile name
     pub name: Option<String>,
@@ -50,6 +52,24 @@ pub struct PrfItem {
     /// the file data
     #[serde(skip)]
     pub file_data: Option<String>,
+}
+
+impl Default for ProfileItem {
+    fn default() -> Self {
+        ProfileItem {
+            uid: None,
+            r#type: Some(ProfileItemType::Local),
+            name: None,
+            file: None,
+            desc: None,
+            url: None,
+            selected: None,
+            extra: None,
+            updated: None,
+            option: None,
+            file_data: None,
+        }
+    }
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
@@ -102,61 +122,58 @@ impl PrfOption {
     }
 }
 
-impl PrfItem {
+impl ProfileItem {
     /// From partial item
     /// must contain `itype`
-    pub async fn from(item: PrfItem, file_data: Option<String>) -> Result<PrfItem> {
-        if item.itype.is_none() {
-            bail!("type should not be null");
-        }
-
-        match item.itype.unwrap().as_str() {
-            "remote" => {
+    pub async fn duplicate(item: ProfileItem, file_data: Option<String>) -> Result<ProfileItem> {
+        match item.r#type {
+            Some(ProfileItemType::Remote) => {
                 if item.url.is_none() {
                     bail!("url should not be null");
                 }
                 let url = item.url.as_ref().unwrap().as_str();
-                let name = item.name;
-                let desc = item.desc;
-                PrfItem::from_url(url, name, desc, item.option).await
+                let name = item.name.unwrap_or("Remote File".into());
+                let desc = item.desc.unwrap_or("".into());
+                ProfileItem::from_url(url, Some(name), Some(desc), item.option).await
             }
-            "local" => {
+            Some(ProfileItemType::Local) => {
                 let name = item.name.unwrap_or("Local File".into());
                 let desc = item.desc.unwrap_or("".into());
-                PrfItem::from_local(name, desc, file_data)
+                ProfileItem::from_local(name, desc, file_data)
             }
-            "merge" => {
+            Some(ProfileItemType::Merge) => {
                 let name = item.name.unwrap_or("Merge".into());
                 let desc = item.desc.unwrap_or("".into());
-                PrfItem::from_merge(name, desc)
+                ProfileItem::from_merge(name, desc)
             }
-            "script" => {
+            Some(ProfileItemType::Script(script_type)) => {
                 let name = item.name.unwrap_or("Script".into());
                 let desc = item.desc.unwrap_or("".into());
-                PrfItem::from_script(name, desc)
+                ProfileItem::from_script(name, desc, script_type)
             }
-            typ => bail!("invalid profile item type \"{typ}\""),
+            None => bail!("could not find the item type"),
         }
     }
 
     /// ## Local type
     /// create a new item from name/desc
-    pub fn from_local(name: String, desc: String, file_data: Option<String>) -> Result<PrfItem> {
+    pub fn from_local(
+        name: String,
+        desc: String,
+        file_data: Option<String>,
+    ) -> Result<ProfileItem> {
         let uid = help::get_uid("l");
         let file = format!("{uid}.yaml");
 
-        Ok(PrfItem {
+        Ok(ProfileItem {
             uid: Some(uid),
-            itype: Some("local".into()),
+            r#type: Some(ProfileItemType::Local),
             name: Some(name),
             desc: Some(desc),
             file: Some(file),
-            url: None,
-            selected: None,
-            extra: None,
-            option: None,
             updated: Some(chrono::Local::now().timestamp() as usize),
             file_data: Some(file_data.unwrap_or(tmpl::ITEM_LOCAL.into())),
+            ..Default::default()
         })
     }
 
@@ -168,7 +185,7 @@ impl PrfItem {
         name: Option<String>,
         desc: Option<String>,
         option: Option<PrfOption>,
-    ) -> Result<PrfItem> {
+    ) -> Result<ProfileItem> {
         let opt_ref = option.as_ref();
         let with_proxy = opt_ref.map_or(false, |o| o.with_proxy.unwrap_or(false));
         let self_proxy = opt_ref.map_or(false, |o| o.self_proxy.unwrap_or(false));
@@ -307,60 +324,57 @@ impl PrfItem {
             bail!("profile does not contain `proxies` or `proxy-providers`");
         }
 
-        Ok(PrfItem {
+        Ok(ProfileItem {
             uid: Some(uid),
-            itype: Some("remote".into()),
+            r#type: Some(ProfileItemType::Remote),
             name: Some(name),
             desc,
             file: Some(file),
             url: Some(url.into()),
-            selected: None,
             extra,
             option,
             updated: Some(chrono::Local::now().timestamp() as usize),
             file_data: Some(data.into()),
+            ..Default::default()
         })
     }
 
     /// ## Merge type (enhance)
     /// create the enhanced item by using `merge` rule
-    pub fn from_merge(name: String, desc: String) -> Result<PrfItem> {
+    pub fn from_merge(name: String, desc: String) -> Result<ProfileItem> {
         let uid = help::get_uid("m");
         let file = format!("{uid}.yaml");
 
-        Ok(PrfItem {
+        Ok(ProfileItem {
             uid: Some(uid),
-            itype: Some("merge".into()),
+            r#type: Some(ProfileItemType::Merge),
             name: Some(name),
             desc: Some(desc),
             file: Some(file),
-            url: None,
-            selected: None,
-            extra: None,
-            option: None,
             updated: Some(chrono::Local::now().timestamp() as usize),
             file_data: Some(tmpl::ITEM_MERGE.into()),
+            ..Default::default()
         })
     }
 
     /// ## Script type (enhance)
     /// create the enhanced item by using javascript quick.js
-    pub fn from_script(name: String, desc: String) -> Result<PrfItem> {
+    pub fn from_script(name: String, desc: String, script_type: ScriptType) -> Result<ProfileItem> {
         let uid = help::get_uid("s");
-        let file = format!("{uid}.js"); // js ext
+        let file = match script_type {
+            ScriptType::JavaScript => format!("{uid}.js"), // js ext
+            ScriptType::Lua => format!("{uid}.lua"),       // lua ext
+        }; // js ext
 
-        Ok(PrfItem {
+        Ok(ProfileItem {
             uid: Some(uid),
-            itype: Some("script".into()),
+            r#type: Some(ProfileItemType::Script(script_type)),
             name: Some(name),
             desc: Some(desc),
             file: Some(file),
-            url: None,
-            selected: None,
-            extra: None,
-            option: None,
             updated: Some(chrono::Local::now().timestamp() as usize),
             file_data: Some(tmpl::ITEM_SCRIPT.into()),
+            ..Default::default()
         })
     }
 

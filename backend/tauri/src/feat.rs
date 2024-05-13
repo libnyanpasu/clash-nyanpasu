@@ -348,7 +348,9 @@ pub async fn update_profile(uid: String, option: Option<PrfOption>) -> Result<()
         let profiles = Config::profiles();
         let profiles = profiles.latest();
         let item = profiles.get_item(&uid)?;
-        let is_remote = item.itype.as_ref().map_or(false, |s| s == "remote");
+        let is_remote = item.r#type.as_ref().map_or(false, |s| {
+            matches!(s, profile::item_type::ProfileItemType::Remote)
+        });
 
         if !is_remote {
             None // 直接更新
@@ -362,7 +364,7 @@ pub async fn update_profile(uid: String, option: Option<PrfOption>) -> Result<()
     let should_update = match url_opt {
         Some((url, opt)) => {
             let merged_opt = PrfOption::merge(opt, option);
-            let item = PrfItem::from_url(&url, None, None, merged_opt).await?;
+            let item = ProfileItem::from_url(&url, None, None, merged_opt).await?;
 
             let profiles = Config::profiles();
             let mut profiles = profiles.latest();

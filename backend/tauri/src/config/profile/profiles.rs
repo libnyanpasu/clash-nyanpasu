@@ -1,4 +1,4 @@
-use super::prfitem::PrfItem;
+use super::item::ProfileItem;
 use crate::utils::{dirs, help};
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -18,7 +18,7 @@ pub struct IProfiles {
     pub valid: Option<Vec<String>>,
 
     /// profile list
-    pub items: Option<Vec<PrfItem>>,
+    pub items: Option<Vec<ProfileItem>>,
 }
 
 macro_rules! patch {
@@ -104,12 +104,12 @@ impl IProfiles {
     }
 
     /// get items ref
-    pub fn get_items(&self) -> Option<&Vec<PrfItem>> {
+    pub fn get_items(&self) -> Option<&Vec<ProfileItem>> {
         self.items.as_ref()
     }
 
     /// find the item by the uid
-    pub fn get_item(&self, uid: &String) -> Result<&PrfItem> {
+    pub fn get_item(&self, uid: &String) -> Result<&ProfileItem> {
         if let Some(items) = self.items.as_ref() {
             let some_uid = Some(uid.clone());
 
@@ -126,7 +126,7 @@ impl IProfiles {
     /// append new item
     /// if the file_data is some
     /// then should save the data to file
-    pub fn append_item(&mut self, mut item: PrfItem) -> Result<()> {
+    pub fn append_item(&mut self, mut item: ProfileItem) -> Result<()> {
         if item.uid.is_none() {
             bail!("the uid should not be null");
         }
@@ -182,12 +182,12 @@ impl IProfiles {
     }
 
     /// update the item value
-    pub fn patch_item(&mut self, uid: String, item: PrfItem) -> Result<()> {
+    pub fn patch_item(&mut self, uid: String, item: ProfileItem) -> Result<()> {
         let mut items = self.items.take().unwrap_or_default();
 
         for each in items.iter_mut() {
             if each.uid == Some(uid.clone()) {
-                patch!(each, item, itype);
+                patch!(each, item, r#type);
                 patch!(each, item, name);
                 patch!(each, item, desc);
                 patch!(each, item, file);
@@ -208,7 +208,7 @@ impl IProfiles {
 
     /// be used to update the remote item
     /// only patch `updated` `extra` `file_data`
-    pub fn update_item(&mut self, uid: String, mut item: PrfItem) -> Result<()> {
+    pub fn update_item(&mut self, uid: String, mut item: ProfileItem) -> Result<()> {
         if self.items.is_none() {
             self.items = Some(vec![]);
         }

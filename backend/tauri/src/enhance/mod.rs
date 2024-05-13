@@ -4,8 +4,8 @@ mod merge;
 mod script;
 mod tun;
 
+pub use self::chain::ScriptType;
 use self::field::*;
-
 use self::{chain::*, merge::*, script::*, tun::*};
 use crate::config::Config;
 use serde_yaml::Mapping;
@@ -59,12 +59,12 @@ pub fn enhance() -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
 
     // 处理用户的profile
     chain.into_iter().for_each(|item| match item.data {
-        ChainType::Merge(merge) => {
+        ChainTypeWrapper::Merge(merge) => {
             exists_keys.extend(use_keys(&merge));
             config = use_merge(merge, config.to_owned());
             config = use_filter(config.to_owned(), &valid, enable_filter);
         }
-        ChainType::Script(script) => {
+        ChainTypeWrapper::Script(script) => {
             let mut logs = vec![];
 
             match use_script(script, config.to_owned()) {
@@ -100,7 +100,7 @@ pub fn enhance() -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
             .for_each(|item| {
                 log::debug!(target: "app", "run builtin script {}", item.uid);
 
-                if let ChainType::Script(script) = item.data {
+                if let ChainTypeWrapper::Script(script) = item.data {
                     match use_script(script, config.to_owned()) {
                         Ok((res_config, _)) => {
                             config = use_filter(res_config, &clash_fields, enable_filter);

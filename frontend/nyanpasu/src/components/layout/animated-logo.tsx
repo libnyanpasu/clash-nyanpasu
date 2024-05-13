@@ -12,7 +12,7 @@ export default function AnimatedLogo() {
   const constraintsRef = useRef<HTMLDivElement>(null);
 
   return (
-    <div className="the-logo" data-windrag ref={constraintsRef}>
+    <div className="the-logo" ref={constraintsRef}>
       <Logo
         initial={{ opacity: 0, scale: 0.5 }}
         animate={{ opacity: 1, scale: 1 }}

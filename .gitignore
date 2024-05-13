@@ -11,5 +11,6 @@ scripts/_env.sh
 .stylelintcache
 
 tauri.nightly.conf.json
+tauri.preview.conf.json
 
 .idea

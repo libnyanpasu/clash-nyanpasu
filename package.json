@@ -12,6 +12,7 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev -c ./backend/tauri/tauri.conf.json",
     "tauri:diff": "tauri dev -f verge-dev deadlock-detection -c ./backend/tauri/tauri.conf.json",
+    "tauri:preview": "pnpm prepare:preview && tauri dev -f verge-dev deadlock-detection -c ./backend/tauri/tauri.preview.conf.json",
     "web:dev": "pnpm --filter=@nyanpasu/nyanpasu dev",
     "web:build": "pnpm --filter=@nyanpasu/nyanpasu build",
     "web:serve": "pnpm --filter=@nyanpasu/nyanpasu preview",
@@ -39,7 +40,8 @@
     "generate:manifest:latest-version": "tsx scripts/generate-latest-version.ts",
     "prepare": "husky",
     "prepare:nightly": "tsx scripts/prepare-nightly.ts",
-    "prepare:release": "tsx scripts/prepare-release.ts"
+    "prepare:release": "tsx scripts/prepare-release.ts",
+    "prepare:preview": "tsx scripts/prepare-preview.ts"
   },
   "prettier": {
     "endOfLine": "lf",

@@ -52,7 +52,7 @@ window-vibrancy = { version = "0.5.0" }
 window-shadows = { version = "0.2.2" }
 wry = { version = "0.24.6" }
 semver = "1.0"
-zip = "0.6.6"
+zip = "1.0.0"
 zip-extensions = "0.6.2"
 gunzip = { version = "0.1.0", git = "https://github.com/TechHara/gunzip.git" }
 tempfile = "3.9.0"

@@ -106,7 +106,7 @@
     "tsx": "4.10.1",
     "typescript": "5.4.5"
   },
-  "packageManager": "pnpm@9.1.0",
+  "packageManager": "pnpm@9.1.1",
   "engines": {
     "node": "21.7.3"
   },

@@ -75,10 +75,7 @@ impl EventsGuard {
 
     /// add_event add a new event to the storage
     pub fn add_event(&self, event: &TaskEvent) -> Result<()> {
-        let mut event_ids = match self.get_event_ids(event.task_id)? {
-            Some(value) => value,
-            None => Vec::new(),
-        };
+        let mut event_ids = (self.get_event_ids(event.task_id)?).unwrap_or_default();
         event_ids.push(event.id);
 
         let db = Storage::global().get_instance();

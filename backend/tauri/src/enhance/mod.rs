@@ -5,8 +5,7 @@ mod script;
 mod tun;
 
 pub use self::chain::ScriptType;
-use self::field::*;
-use self::{chain::*, merge::*, script::*, tun::*};
+use self::{chain::*, field::*, merge::*, script::*, tun::*};
 use crate::config::Config;
 use serde_yaml::Mapping;
 use std::collections::{HashMap, HashSet};

@@ -1,6 +1,8 @@
-use crate::config::Config;
-use crate::enhance::ScriptType;
-use crate::utils::{dirs, help, tmpl};
+use crate::{
+    config::Config,
+    enhance::ScriptType,
+    utils::{dirs, help, tmpl},
+};
 use anyhow::{bail, Context, Result};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};

@@ -1,4 +1,4 @@
-use super::item::ProfileItem;
+use super::{item::ProfileItem, item_type::ProfileUid};
 use crate::utils::{dirs, help};
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -9,13 +9,13 @@ use std::{fs, io::Write};
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
 pub struct IProfiles {
     /// same as PrfConfig.current
-    pub current: Option<String>,
+    pub current: Option<ProfileUid>,
 
     /// same as PrfConfig.chain
-    pub chain: Option<Vec<String>>,
+    pub chain: Option<Vec<ProfileUid>>,
 
     /// record valid fields for clash
-    pub valid: Option<Vec<String>>,
+    pub valid: Option<Vec<ProfileUid>>,
 
     /// profile list
     pub items: Option<Vec<ProfileItem>>,

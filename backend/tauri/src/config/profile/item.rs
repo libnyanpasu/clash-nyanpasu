@@ -11,7 +11,7 @@ use std::fs;
 use sysproxy::Sysproxy;
 use tracing_attributes::instrument;
 
-use super::item_type::ProfileItemType;
+use super::item_type::{ProfileItemType, ProfileUid};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ProfileItem {
@@ -54,6 +54,9 @@ pub struct ProfileItem {
     /// the file data
     #[serde(skip)]
     pub file_data: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chains: Option<Vec<ProfileUid>>, // Save the profile relates profile chains. The String should be the uid of the profile.
 }
 
 impl Default for ProfileItem {
@@ -70,6 +73,7 @@ impl Default for ProfileItem {
             updated: None,
             option: None,
             file_data: None,
+            chains: None,
         }
     }
 }

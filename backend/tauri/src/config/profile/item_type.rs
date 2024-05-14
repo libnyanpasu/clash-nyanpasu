@@ -13,3 +13,5 @@ pub enum ProfileItemType {
     #[serde(rename = "merge")]
     Merge,
 }
+
+pub type ProfileUid = String;

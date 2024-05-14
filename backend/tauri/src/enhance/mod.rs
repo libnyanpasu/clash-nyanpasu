@@ -3,10 +3,11 @@ mod field;
 mod merge;
 mod script;
 mod tun;
+mod utils;
 
 pub use self::chain::ScriptType;
 use self::{chain::*, field::*, merge::*, script::*, tun::*};
-use crate::config::Config;
+use crate::config::{Config, ProfileItem};
 use serde_yaml::Mapping;
 use std::collections::{HashMap, HashSet};
 
@@ -30,24 +31,29 @@ pub fn enhance() -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
     };
 
     // 从profiles里拿东西
-    let (mut config, chain, valid) = {
+    let (mut config, chains, valid) = {
         let profiles = Config::profiles();
         let profiles = profiles.latest();
 
-        let current = profiles.current_mapping().unwrap_or_default();
+        let current_profile = profiles.get_current().unwrap_or_default();
+        let current_profile = profiles.get_item(&current_profile).unwrap();
+        let mut profile_spec_chains = match &current_profile.chains {
+            Some(chains) => utils::convert_uids_to_scripts(&profiles, chains),
+            None => vec![],
+        };
+
+        let current_mapping = profiles.current_mapping().unwrap_or_default();
 
         let chain = match profiles.chain.as_ref() {
-            Some(chain) => chain
-                .iter()
-                .filter_map(|uid| profiles.get_item(uid).ok())
-                .filter_map(<Option<ChainItem>>::from)
-                .collect::<Vec<ChainItem>>(),
+            Some(chain) => utils::convert_uids_to_scripts(&profiles, chain),
             None => vec![],
         };
 
         let valid = profiles.valid.clone().unwrap_or_default();
 
-        (current, chain, valid)
+        profile_spec_chains.extend(chain); // Profile 里的 Chain -> 全局 Chain
+
+        (current_mapping, profile_spec_chains, valid)
     };
 
     let mut result_map = HashMap::new(); // 保存脚本日志
@@ -57,7 +63,7 @@ pub fn enhance() -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
     config = use_filter(config, &valid, enable_filter);
 
     // 处理用户的profile
-    chain.into_iter().for_each(|item| match item.data {
+    chains.into_iter().for_each(|item| match item.data {
         ChainTypeWrapper::Merge(merge) => {
             exists_keys.extend(use_keys(&merge));
             config = use_merge(merge, config.to_owned());

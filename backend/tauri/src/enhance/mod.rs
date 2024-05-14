@@ -7,7 +7,7 @@ mod utils;
 
 pub use self::chain::ScriptType;
 use self::{chain::*, field::*, merge::*, script::*, tun::*};
-use crate::config::{Config, ProfileItem};
+use crate::config::Config;
 use serde_yaml::Mapping;
 use std::collections::{HashMap, HashSet};
 

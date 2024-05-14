@@ -167,7 +167,7 @@ pub fn resize_tray_image(img: &[u8], scale_factor: f64) -> Result<Vec<u8>> {
     let size = (32_f64 * scale_factor).round() as u32; // 32px is the base tray size as the dpi is 96
     let dst_width = size;
     let dst_height = size;
-    let mut dst_image = Image::new(width, height, src_image.pixel_type());
+    let mut dst_image = Image::new(dst_width, dst_height, src_image.pixel_type());
 
     // Create Resizer instance and resize source image
     // into buffer of destination image
@@ -180,15 +180,18 @@ pub fn resize_tray_image(img: &[u8], scale_factor: f64) -> Result<Vec<u8>> {
         .resize(&src_image, &mut dst_image, &resizer_options)
         .context("failed to resize image")?;
 
+    // Extract raw pixel data from the destination image
+    let dst_image_data = dst_image.buffer().to_vec();
+
     // Write destination image as PNG-file
     let mut result_buf = BufWriter::new(Vec::new());
     PngEncoder::new(&mut result_buf).write_image(
-        dst_image.buffer(),
+        &dst_image_data,
         dst_width,
         dst_height,
         ColorType::Rgba8.into(),
     )?;
-    Ok(result_buf.buffer().to_vec())
+    Ok(result_buf.into_inner()?)
 }
 
 #[instrument]

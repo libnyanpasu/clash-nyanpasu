@@ -213,8 +213,8 @@ importers:
         specifier: 1.11.11
         version: 1.11.11
       framer-motion:
-        specifier: 11.1.9
-        version: 11.1.9(@emotion/is-prop-valid@1.2.2)(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)
+        specifier: 11.2.0
+        version: 11.2.0(@emotion/is-prop-valid@1.2.2)(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)
       i18next:
         specifier: 23.11.4
         version: 23.11.4
@@ -337,8 +337,8 @@ importers:
         specifier: 3.7.11
         version: 3.7.11(react@19.0.0-beta-04b058868c-20240508)
       framer-motion:
-        specifier: 11.1.9
-        version: 11.1.9(@emotion/is-prop-valid@1.2.2)(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)
+        specifier: 11.2.0
+        version: 11.2.0(@emotion/is-prop-valid@1.2.2)(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)
       react:
         specifier: npm:react@beta
         version: 19.0.0-beta-04b058868c-20240508
@@ -2626,8 +2626,8 @@ packages:
   fraction.js@4.3.7:
     resolution: {integrity: sha512-ZsDfxO51wGAXREY55a7la9LScWpwv9RxIrYABrlvOFBlH/ShPnrtsXeuUIfXKKOVicNxQ+o8JTbJvjS4M89yew==}
 
-  framer-motion@11.1.9:
-    resolution: {integrity: sha512-flECDIPV4QDNcOrDafVFiIazp8X01HFpzc01eDKJsdNH/wrATcYydJSH9JbPWMS8UD5lZlw+J1sK8LG2kICgqw==}
+  framer-motion@11.2.0:
+    resolution: {integrity: sha512-LRfLVPEwtO9IXJCAsWvtj3XZxrdZDcTxNNkZEq30aQ8p7/wimfUkDy67TDWdtzPiyKDkqOHDhaQC6XVrQ4Fh7A==}
     peerDependencies:
       '@emotion/is-prop-valid': '*'
       react: npm:react@beta
@@ -7275,7 +7275,7 @@ snapshots:
 
   fraction.js@4.3.7: {}
 
-  framer-motion@11.1.9(@emotion/is-prop-valid@1.2.2)(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508):
+  framer-motion@11.2.0(@emotion/is-prop-valid@1.2.2)(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508):
     dependencies:
       tslib: 2.6.2
     optionalDependencies:

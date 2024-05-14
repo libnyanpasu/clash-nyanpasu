@@ -3,6 +3,7 @@ use anyhow::Result;
 use chrono::Local;
 use glob::glob;
 use std::path::Path;
+use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 
 pub fn collect_logs(target_path: &Path) -> Result<()> {
@@ -20,7 +21,7 @@ pub fn collect_logs(target_path: &Path) -> Result<()> {
     let mut zip = ZipWriter::new(file);
     for path in paths {
         let file_name = path.file_name().unwrap().to_str().unwrap();
-        zip.start_file(file_name, Default::default())?;
+        zip.start_file(file_name, SimpleFileOptions::default())?;
         let mut file = std::fs::File::open(path)?;
         std::io::copy(&mut file, &mut zip)?;
     }

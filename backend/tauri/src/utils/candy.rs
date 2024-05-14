@@ -3,8 +3,7 @@ use anyhow::Result;
 use chrono::Local;
 use glob::glob;
 use std::path::Path;
-use zip::write::SimpleFileOptions;
-use zip::ZipWriter;
+use zip::{write::SimpleFileOptions, ZipWriter};
 
 pub fn collect_logs(target_path: &Path) -> Result<()> {
     let logs_dir = app_logs_dir()?;

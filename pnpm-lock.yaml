@@ -264,8 +264,8 @@ importers:
         specifier: 2.2.5
         version: 2.2.5(react@19.0.0-beta-04b058868c-20240508)
       virtua:
-        specifier: 0.30.5
-        version: 0.30.5(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)
+        specifier: 0.31.0
+        version: 0.31.0(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)
     devDependencies:
       '@emotion/babel-plugin':
         specifier: 11.11.0
@@ -4667,12 +4667,13 @@ packages:
   vfile@6.0.1:
     resolution: {integrity: sha512-1bYqc7pt6NIADBJ98UiG0Bn/CHIVOoZ/IyEkqIruLg0mE1BKzkOXY2D6CSqQIcKqgadppE5lrxgWXJmXd7zZJw==}
 
-  virtua@0.30.5:
-    resolution: {integrity: sha512-rLx19CVwHHf+ombzwUPNVoRVUEd8nJNCzFi000X7ALy/J9hLvftoltiqBSJ/9DxQwv6tZ4B+NZoPDee10mpT+A==}
+  virtua@0.31.0:
+    resolution: {integrity: sha512-E7xGz1OKz4E/YRjIYfCyEHgg1XrASvkYLn5hhpPV6WEbGnMMmG1MF5VyumKRKmpNke3Tu3b7wfUNM8K0HVPlgw==}
     peerDependencies:
       react: npm:react@beta
       react-dom: npm:react-dom@beta
       solid-js: '>=1.0'
+      svelte: '>=4.0'
       vue: '>=3.2'
     peerDependenciesMeta:
       react:
@@ -4680,6 +4681,8 @@ packages:
       react-dom:
         optional: true
       solid-js:
+        optional: true
+      svelte:
         optional: true
       vue:
         optional: true
@@ -9575,7 +9578,7 @@ snapshots:
       unist-util-stringify-position: 4.0.0
       vfile-message: 4.0.2
 
-  virtua@0.30.5(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508):
+  virtua@0.31.0(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508):
     optionalDependencies:
       react: 19.0.0-beta-04b058868c-20240508
       react-dom: 19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508)

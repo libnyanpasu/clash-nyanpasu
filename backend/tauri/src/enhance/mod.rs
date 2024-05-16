@@ -35,11 +35,17 @@ pub fn enhance() -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
         let profiles = Config::profiles();
         let profiles = profiles.latest();
 
-        let current_profile = profiles.get_current().unwrap_or_default();
-        let current_profile = profiles.get_item(&current_profile).unwrap();
-        let mut profile_spec_chains = match &current_profile.chains {
-            Some(chains) => utils::convert_uids_to_scripts(&profiles, chains),
-            None => vec![],
+        let mut profile_spec_chains = {
+            let profile = profiles
+                .get_current()
+                .and_then(|uid| profiles.get_item(&uid).ok());
+            match profile {
+                Some(profile) => match &profile.chains {
+                    Some(chains) => utils::convert_uids_to_scripts(&profiles, chains),
+                    None => vec![],
+                },
+                None => vec![],
+            }
         };
 
         let current_mapping = profiles.current_mapping().unwrap_or_default();

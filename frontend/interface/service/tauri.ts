@@ -29,6 +29,13 @@ export const getRuntimeExists = async () => {
   return await invoke<string[]>("get_runtime_exists");
 };
 
+export const createProfile = async (
+  item: Partial<Profile.Item>,
+  fileData?: string | null,
+) => {
+  return await invoke<void>("create_profile", { item, fileData });
+};
+
 export const getProfiles = async () => {
   return await invoke<Profile.Config>("get_profiles");
 };
@@ -42,6 +49,14 @@ export const setProfiles = async (payload: {
 
 export const setProfilesConfig = async (profiles: Profile.Config) => {
   return await invoke<void>("patch_profiles_config", { profiles });
+};
+
+export const readProfileFile = async (index: string) => {
+  return await invoke<string>("read_profile_file", { index });
+};
+
+export const saveProfileFile = async (index: string, fileData: string) => {
+  return await invoke<void>("save_profile_file", { index, fileData });
 };
 
 export const getCoreVersion = async (

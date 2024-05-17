@@ -1,9 +1,10 @@
 import useSWR from "swr";
 import * as service from "@/service";
-import { VergeConfig, restartSidecar, getCoreVersion } from "@/service";
+import { VergeConfig } from "@/service";
 import { fetchCoreVersion, fetchLatestCore } from "@/service/core";
 import { useClash } from "./useClash";
 import { useMemo } from "react";
+import * as tauri from "@/service/tauri";
 
 /**
  * useNyanpasu with swr.
@@ -103,15 +104,40 @@ export const useNyanpasu = (options?: {
     return modes;
   }, [data?.clash_core, getConfigs.data?.mode]);
 
+  const getProfiles = useSWR("getProfiles", tauri.getProfiles);
+
+  const createProfile = async (
+    item: Partial<service.Profile.Item>,
+    data?: string,
+  ) => {
+    await tauri.createProfile(item, data);
+
+    await getProfiles.mutate();
+  };
+
+  const getProfileFile = async (id?: string) => {
+    if (id) {
+      const result = await tauri.readProfileFile(id);
+
+      if (result) {
+        return result;
+      } else {
+        return "";
+      }
+    } else {
+      return "";
+    }
+  };
+
   return {
     nyanpasuConfig: data,
     isLoading: !data && !error,
     isError: error,
     setNyanpasuConfig,
-    getCoreVersion,
+    getCoreVersion: tauri.getCoreVersion,
     getClashCore,
     setClashCore,
-    restartSidecar,
+    restartSidecar: tauri.restartSidecar,
     getLatestCore,
     updateCore,
     getSystemProxy,
@@ -119,5 +145,9 @@ export const useNyanpasu = (options?: {
     setServiceStatus,
     getCurrentMode,
     setCurrentMode,
+    createProfile,
+    getProfiles,
+    getProfileFile,
+    setProfileFile: tauri.saveProfileFile,
   };
 };

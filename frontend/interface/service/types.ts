@@ -75,9 +75,11 @@ export namespace Profile {
     items?: Item[];
   }
 
+  export type ScriptType = "javascript" | "lua";
+
   export interface Item {
     uid: string;
-    type?: "local" | "remote" | "merge" | "script";
+    type?: "local" | "remote" | "merge" | { script: ScriptType };
     name?: string;
     desc?: string;
     file?: string;
@@ -94,6 +96,7 @@ export namespace Profile {
       expire: number;
     };
     option?: Option;
+    chains?: string[];
   }
 
   export interface Option {

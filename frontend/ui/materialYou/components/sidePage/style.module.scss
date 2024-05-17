@@ -23,14 +23,13 @@
       gap: 16px;
       width: 100%;
       height: 100%;
+      transition: gap 0.3s;
 
       .LeftContainer {
         display: flex;
         flex-direction: column;
         gap: 16px;
         width: 40%;
-        min-width: 200px;
-        max-width: 348px;
         height: 100%;
 
         .LeftContainer-Content {

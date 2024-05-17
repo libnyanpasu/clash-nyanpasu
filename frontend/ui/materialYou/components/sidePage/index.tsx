@@ -4,6 +4,7 @@ import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import { BaseErrorBoundary } from "../basePage/baseErrorBoundary";
 import style from "./style.module.scss";
+import { motion } from "framer-motion";
 
 interface Props {
   title?: ReactNode;
@@ -13,6 +14,7 @@ interface Props {
   side?: ReactNode;
   toolBar?: ReactNode;
   noChildrenScroll?: boolean;
+  flexReverse?: boolean;
 }
 
 const Header: FC<{ title?: ReactNode; header?: ReactNode }> = memo(
@@ -43,6 +45,7 @@ export const SidePage: FC<Props> = ({
   side,
   toolBar,
   noChildrenScroll,
+  flexReverse,
 }) => {
   return (
     <BaseErrorBoundary>
@@ -50,16 +53,38 @@ export const SidePage: FC<Props> = ({
         <Header title={title} header={header} />
 
         <div className={style["MDYSidePage-Container"]}>
-          <div className={style["MDYSidePage-Layout"]}>
-            {side && (
-              <div className={style.LeftContainer}>
-                {sideBar && <div>{sideBar}</div>}
+          <div
+            className={style["MDYSidePage-Layout"]}
+            style={{
+              flexDirection: flexReverse ? "row-reverse" : undefined,
+              gap: side ? undefined : "0px",
+            }}
+          >
+            <motion.div
+              className={style.LeftContainer}
+              initial={false}
+              animate={side ? "open" : "closed"}
+              variants={{
+                open: {
+                  opacity: 1,
+                  maxWidth: "348px",
+                  display: "flex",
+                },
+                closed: {
+                  opacity: 0.5,
+                  maxWidth: 0,
+                  transitionEnd: {
+                    display: "none",
+                  },
+                },
+              }}
+            >
+              {sideBar && <div>{sideBar}</div>}
 
-                <div className={style["LeftContainer-Content"]}>
-                  <section>{side}</section>
-                </div>
+              <div className={style["LeftContainer-Content"]}>
+                <section>{side}</section>
               </div>
-            )}
+            </motion.div>
 
             <div className={style.RightContainer}>
               {toolBar && (

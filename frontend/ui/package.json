@@ -12,7 +12,8 @@
     "ahooks": "3.7.11",
     "framer-motion": "11.2.4",
     "react": "18.3.1",
-    "react-error-boundary": "4.0.13"
+    "react-error-boundary": "4.0.13",
+    "react-i18next": "14.1.1"
   },
   "devDependencies": {
     "sass": "1.77.2",

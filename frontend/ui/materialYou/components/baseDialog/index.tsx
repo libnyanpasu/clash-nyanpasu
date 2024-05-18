@@ -19,6 +19,8 @@ import { TransitionProps } from "@mui/material/transitions";
 import { AnimatePresence, motion } from "framer-motion";
 import React from "react";
 import useDebounceFn from "ahooks/lib/useDebounceFn";
+import { useLockFn } from "ahooks";
+import { useTranslation } from "react-i18next";
 
 export interface BaseDialogProps {
   title: ReactNode;
@@ -26,10 +28,11 @@ export interface BaseDialogProps {
   close?: string;
   ok?: string;
   disabledOk?: boolean;
+  sx?: SxProps;
   contentSx?: SxProps;
   children?: ReactNode;
   loading?: boolean;
-  onOk?: () => void;
+  onOk?: () => void | Promise<void>;
   onClose?: () => void;
   divider?: boolean;
 }
@@ -40,6 +43,7 @@ export const BaseDialog = ({
   close,
   onClose,
   children,
+  sx,
   contentSx,
   disabledOk,
   loading,
@@ -47,7 +51,11 @@ export const BaseDialog = ({
   ok,
   divider,
 }: BaseDialogProps) => {
+  const { t } = useTranslation();
+
   const [mounted, setMounted] = useState(false);
+
+  const [okLoading, setOkLoading] = useState(false);
 
   const { run: runMounted, cancel: cancelMounted } = useDebounceFn(
     () => setMounted(false),
@@ -60,6 +68,22 @@ export const BaseDialog = ({
       runMounted();
     }
   };
+
+  const handleOk = useLockFn(async () => {
+    if (!onOk) return;
+
+    if (onOk.constructor.name === "AsyncFunction") {
+      try {
+        setOkLoading(true);
+
+        await onOk();
+      } finally {
+        setOkLoading(false);
+      }
+    } else {
+      onOk();
+    }
+  });
 
   useEffect(() => {
     if (open) {
@@ -74,6 +98,7 @@ export const BaseDialog = ({
       onClose={handleClose}
       keepMounted={mounted}
       TransitionComponent={BaseDialogTransition}
+      sx={sx}
     >
       <DialogTitle sx={divider ? { pb: 2 } : null}>{title}</DialogTitle>
 
@@ -96,18 +121,18 @@ export const BaseDialog = ({
       <DialogActions sx={divider ? { pt: 2 } : null}>
         {onClose && (
           <Button variant="outlined" onClick={handleClose}>
-            {close}
+            {close || t("Close")}
           </Button>
         )}
 
         {onOk && (
           <LoadingButton
             disabled={loading || disabledOk}
-            loading={loading}
+            loading={okLoading || loading}
             variant="contained"
-            onClick={onOk}
+            onClick={handleOk}
           >
-            {ok}
+            {ok || t("Ok")}
           </LoadingButton>
         )}
       </DialogActions>

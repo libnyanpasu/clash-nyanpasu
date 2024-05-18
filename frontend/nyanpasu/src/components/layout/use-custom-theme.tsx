@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { alpha, Theme, useColorScheme } from "@mui/material";
+import { alpha, darken, lighten, Theme, useColorScheme } from "@mui/material";
 import { appWindow } from "@tauri-apps/api/window";
 import { defaultTheme } from "@/pages/_theme";
 import { useNyanpasu } from "@nyanpasu/interface";
@@ -13,7 +13,10 @@ const applyRootStyleVar = (mode: "light" | "dark", theme: Theme) => {
 
   const isLightMode = mode !== "light";
 
-  const backgroundColor = isLightMode ? "#121212" : "#ffffff";
+  const backgroundColor = isLightMode
+    ? darken(palette.secondary.dark, 0.95)
+    : lighten(palette.secondary.light, 0.95);
+
   const selectionColor = isLightMode ? "#d5d5d5" : "#f5f5f5";
   const scrollerColor = isLightMode ? "#54545480" : "#90939980";
 

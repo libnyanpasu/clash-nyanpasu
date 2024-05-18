@@ -89,7 +89,7 @@
     "eslint-plugin-promise": "6.1.1",
     "eslint-plugin-react": "7.34.1",
     "lint-staged": "15.2.2",
-    "npm-run-all2": "6.1.2",
+    "npm-run-all2": "6.2.0",
     "postcss": "8.4.38",
     "postcss-html": "1.7.0",
     "postcss-import": "16.1.0",

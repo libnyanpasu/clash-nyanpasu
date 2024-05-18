@@ -19,6 +19,15 @@ import { useAtom } from "jotai";
 import { proxyGroupAtom, proxyGroupSortAtom } from "@/store";
 import ReactTextTransition from "react-text-transition";
 
+const ContentDisplay = ({ message }: { message: string }) => (
+  <div className="h-full w-full flex items-center justify-center">
+    <div className="flex flex-col items-center gap-4">
+      <Public className="!size-16" />
+      <b>{message}</b>
+    </div>
+  </div>
+);
+
 const ProxyGroupName = memo(function ProxyGroupName({
   name,
 }: {
@@ -105,6 +114,8 @@ export default function ProxyPage() {
     await updateGroupDelay(proxyGroup.selector as number);
   };
 
+  const hasProxies = Boolean(data?.groups.length);
+
   return (
     <SidePage
       title={t("Proxy Groups")}
@@ -142,8 +153,9 @@ export default function ProxyPage() {
           }}
         />
       }
-      side={getCurrentMode.rule && <GroupList />}
+      side={hasProxies && getCurrentMode.rule && <GroupList />}
       toolBar={
+        hasProxies &&
         !getCurrentMode.direct && (
           <div className="w-full flex items-center justify-between">
             <div>{group?.name && <ProxyGroupName name={group?.name} />}</div>
@@ -157,18 +169,17 @@ export default function ProxyPage() {
       noChildrenScroll
     >
       {!getCurrentMode.direct ? (
-        <>
-          <NodeList />
+        hasProxies ? (
+          <>
+            <NodeList />
 
-          <DelayButton onClick={handleDelayClick} />
-        </>
+            <DelayButton onClick={handleDelayClick} />
+          </>
+        ) : (
+          <ContentDisplay message="None Proxies" />
+        )
       ) : (
-        <div className="h-full w-full flex items-center justify-center">
-          <div className="flex flex-col items-center gap-4">
-            <Public className="!size-16" />
-            <b>Direct Mode</b>
-          </div>
-        </div>
+        <ContentDisplay message="Direct Mode" />
       )}
     </SidePage>
   );

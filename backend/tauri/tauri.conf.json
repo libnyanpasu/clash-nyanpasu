@@ -98,6 +98,9 @@
       },
       "os": {
         "all": true
+      },
+      "clipboard": {
+        "all": true
       }
     },
     "windows": [],

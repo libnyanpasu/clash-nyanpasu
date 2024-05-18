@@ -77,7 +77,7 @@ export const createMDYTheme = (themeSchema: ThemeSchema) => {
       MuiDialogActions,
       MuiDialogContent,
       MuiDialogTitle,
-      // MuiPaper,
+      MuiPaper,
       MuiSwitch,
     },
     breakpoints: {

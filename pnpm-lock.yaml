@@ -184,7 +184,7 @@ importers:
         version: 0.2.7
       '@mui/icons-material':
         specifier: 5.15.18
-        version: 5.15.18(@mui/material@5.15.18(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1)
+        version: 5.15.18(@mui/material@5.15.18(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1)
       '@mui/lab':
         specifier: 5.0.0-alpha.170
         version: 5.0.0-alpha.170(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(@mui/material@5.15.18(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1)
@@ -298,8 +298,8 @@ importers:
         specifier: 1.77.2
         version: 1.77.2
       shiki:
-        specifier: 1.5.2
-        version: 1.5.2
+        specifier: 1.6.0
+        version: 1.6.0
       vite:
         specifier: 5.2.11
         version: 5.2.11(@types/node@20.12.12)(less@4.2.0)(sass@1.77.2)(stylus@0.62.0)
@@ -323,7 +323,7 @@ importers:
         version: 0.2.7
       '@mui/icons-material':
         specifier: 5.15.18
-        version: 5.15.18(@mui/material@5.15.18(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1)
+        version: 5.15.18(@mui/material@5.15.18(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1)
       '@mui/lab':
         specifier: 5.0.0-alpha.170
         version: 5.0.0-alpha.170(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(@mui/material@5.15.18(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1)
@@ -1374,8 +1374,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@shikijs/core@1.5.2':
-    resolution: {integrity: sha512-wSAOgaz48GmhILFElMCeQypSZmj6Ru6DttOOtl3KNkdJ17ApQuGNCfzpk4cClasVrnIu45++2DBwG4LNMQAfaA==}
+  '@shikijs/core@1.6.0':
+    resolution: {integrity: sha512-NIEAi5U5R7BLkbW1pG/ZKu3eb1lzc3/+jD0lFsuxMT7zjaf9bbNwdNyMr7zh/Zl8EXQtQ+MYBAt5G+JLu+5DlA==}
 
   '@sindresorhus/is@4.6.0':
     resolution: {integrity: sha512-t09vSN3MdfsyCHoFcTRCH/iUtG7OJ0CsjzB8cjAmKc/va/kIgeDI/TxsigdncE/4be734m0cvIYwNaV4i2XqAw==}
@@ -4227,8 +4227,8 @@ packages:
   shell-quote@1.8.1:
     resolution: {integrity: sha512-6j1W9l1iAs/4xYBI1SYOVZyFcCis9b4KCLQ8fgAGG07QvzaRLVVRQvAy85yNmmZSjYjg4MWh4gNvlPujU/5LpA==}
 
-  shiki@1.5.2:
-    resolution: {integrity: sha512-fpPbuSaatinmdGijE7VYUD3hxLozR3ZZ+iAx8Iy2X6REmJGyF5hQl94SgmiUNTospq346nXUVZx0035dyGvIVw==}
+  shiki@1.6.0:
+    resolution: {integrity: sha512-P31ROeXcVgW/k3Z+vUUErcxoTah7ZRaimctOpzGuqAntqnnSmx1HOsvnbAB8Z2qfXPRhw61yptAzCsuKOhTHwQ==}
 
   side-channel@1.0.6:
     resolution: {integrity: sha512-fDW/EZ6Q9RiO8eFG8Hj+7u/oW+XrPTIChwCOM2+th2A6OblDtYYIpve9m+KvI9Z4C9qSEXlaGR6bTEYHReuglA==}
@@ -5534,7 +5534,7 @@ snapshots:
 
   '@mui/core-downloads-tracker@5.15.18': {}
 
-  '@mui/icons-material@5.15.18(@mui/material@5.15.18(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1)':
+  '@mui/icons-material@5.15.18(@mui/material@5.15.18(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1)':
     dependencies:
       '@babel/runtime': 7.24.5
       '@mui/material': 5.15.18(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1)
@@ -5810,7 +5810,7 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.17.2':
     optional: true
 
-  '@shikijs/core@1.5.2': {}
+  '@shikijs/core@1.6.0': {}
 
   '@sindresorhus/is@4.6.0': {}
 
@@ -9004,9 +9004,9 @@ snapshots:
 
   shell-quote@1.8.1: {}
 
-  shiki@1.5.2:
+  shiki@1.6.0:
     dependencies:
-      '@shikijs/core': 1.5.2
+      '@shikijs/core': 1.6.0
 
   side-channel@1.0.6:
     dependencies:

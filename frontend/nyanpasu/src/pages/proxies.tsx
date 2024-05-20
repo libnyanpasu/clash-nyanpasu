@@ -17,7 +17,7 @@ import { DelayButton, GroupList, NodeList } from "@/components/proxies";
 import { Public } from "@mui/icons-material";
 import { useAtom } from "jotai";
 import { proxyGroupAtom, proxyGroupSortAtom } from "@/store";
-import ReactTextTransition from "react-text-transition";
+import { AnimatePresence, motion } from "framer-motion";
 
 const ContentDisplay = ({ message }: { message: string }) => (
   <div className="h-full w-full flex items-center justify-center">
@@ -33,7 +33,19 @@ const ProxyGroupName = memo(function ProxyGroupName({
 }: {
   name: string;
 }) {
-  return <ReactTextTransition inline>{name}</ReactTextTransition>;
+  return (
+    <AnimatePresence mode="sync">
+      <motion.div
+        key={`group-name-${name}`}
+        className="absolute"
+        initial={{ x: 100, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: -100, opacity: 0 }}
+      >
+        {name}
+      </motion.div>
+    </AnimatePresence>
+  );
 });
 
 const SortSelector = memo(function SortSelector() {
@@ -158,7 +170,9 @@ export default function ProxyPage() {
         hasProxies &&
         !getCurrentMode.direct && (
           <div className="w-full flex items-center justify-between">
-            <div>{group?.name && <ProxyGroupName name={group?.name} />}</div>
+            <div className="flex items-center gap-4">
+              {group?.name && <ProxyGroupName name={group?.name} />}
+            </div>
 
             <div>
               <SortSelector />

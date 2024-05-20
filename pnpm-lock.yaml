@@ -184,7 +184,7 @@ importers:
         version: 0.2.7
       '@mui/icons-material':
         specifier: 5.15.18
-        version: 5.15.18(@mui/material@5.15.18(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1)
+        version: 5.15.18(@mui/material@5.15.18(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1)
       '@mui/lab':
         specifier: 5.0.0-alpha.170
         version: 5.0.0-alpha.170(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(@mui/material@5.15.18(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1)
@@ -251,9 +251,6 @@ importers:
       react-router-dom:
         specifier: 6.23.1
         version: 6.23.1(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)
-      react-text-transition:
-        specifier: 3.1.0
-        version: 3.1.0(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)
       react-transition-group:
         specifier: 4.4.5
         version: 4.4.5(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)
@@ -1247,30 +1244,6 @@ packages:
 
   '@popperjs/core@2.11.8':
     resolution: {integrity: sha512-P1st0aksCrn9sGZhp8GMYwBnQsbvAWsZAX44oXNNvLHGqAOcoVxmjZiohstwQ7SqKnbR47akdNi+uleWD8+g6A==}
-
-  '@react-spring/animated@9.7.3':
-    resolution: {integrity: sha512-5CWeNJt9pNgyvuSzQH+uy2pvTg8Y4/OisoscZIR8/ZNLIOI+CatFBhGZpDGTF/OzdNFsAoGk3wiUYTwoJ0YIvw==}
-    peerDependencies:
-      react: npm:react@beta
-
-  '@react-spring/core@9.7.3':
-    resolution: {integrity: sha512-IqFdPVf3ZOC1Cx7+M0cXf4odNLxDC+n7IN3MDcVCTIOSBfqEcBebSv+vlY5AhM0zw05PDbjKrNmBpzv/AqpjnQ==}
-    peerDependencies:
-      react: npm:react@beta
-
-  '@react-spring/shared@9.7.3':
-    resolution: {integrity: sha512-NEopD+9S5xYyQ0pGtioacLhL2luflh6HACSSDUZOwLHoxA5eku1UPuqcJqjwSD6luKjjLfiLOspxo43FUHKKSA==}
-    peerDependencies:
-      react: npm:react@beta
-
-  '@react-spring/types@9.7.3':
-    resolution: {integrity: sha512-Kpx/fQ/ZFX31OtlqVEFfgaD1ACzul4NksrvIgYfIFq9JpDHFwQkMVZ10tbo0FU/grje4rcL4EIrjekl3kYwgWw==}
-
-  '@react-spring/web@9.7.3':
-    resolution: {integrity: sha512-BXt6BpS9aJL/QdVqEIX9YoUy8CE6TJrU0mNCqSoxdXlIeNcEBWOfIyE6B14ENNsyQKS3wOWkiJfco0tCr/9tUg==}
-    peerDependencies:
-      react: npm:react@beta
-      react-dom: npm:react-dom@beta
 
   '@remix-run/router@1.16.1':
     resolution: {integrity: sha512-es2g3dq6Nb07iFxGk5GuHN20RwBZOsuDQN7izWIisUcv9r+d2C5jQxqmgkdebXgReWfiyUabcki6Fg77mSNrig==}
@@ -4019,11 +3992,6 @@ packages:
     peerDependencies:
       react: npm:react@beta
 
-  react-text-transition@3.1.0:
-    resolution: {integrity: sha512-NtXEVAXvSh78+8JAnrVjpbftzD4kPowacv4GB2Nyq9C/8ko6fSm6M/XvKWQLCaZi68i9F28b++Sp8uVThlzLyg==}
-    peerDependencies:
-      react: npm:react@beta
-
   react-transition-group@4.4.5:
     resolution: {integrity: sha512-pZcd1MCJoiKiBR2NRxeCRg13uCXbydPnmB4EOeRrY7480qNWO8IIgQG6zlDkm6uRMsURXPuKq0GWtiM59a5Q6g==}
     peerDependencies:
@@ -5534,6 +5502,14 @@ snapshots:
 
   '@mui/core-downloads-tracker@5.15.18': {}
 
+  '@mui/icons-material@5.15.18(@mui/material@5.15.18(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1)':
+    dependencies:
+      '@babel/runtime': 7.24.5
+      '@mui/material': 5.15.18(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1)
+      react: 19.0.0-beta-04b058868c-20240508
+    optionalDependencies:
+      '@types/react': types-react@19.0.0-beta.1
+
   '@mui/icons-material@5.15.18(@mui/material@5.15.18(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1)':
     dependencies:
       '@babel/runtime': 7.24.5
@@ -5722,35 +5698,6 @@ snapshots:
   '@pkgr/core@0.1.1': {}
 
   '@popperjs/core@2.11.8': {}
-
-  '@react-spring/animated@9.7.3(react@19.0.0-beta-04b058868c-20240508)':
-    dependencies:
-      '@react-spring/shared': 9.7.3(react@19.0.0-beta-04b058868c-20240508)
-      '@react-spring/types': 9.7.3
-      react: 19.0.0-beta-04b058868c-20240508
-
-  '@react-spring/core@9.7.3(react@19.0.0-beta-04b058868c-20240508)':
-    dependencies:
-      '@react-spring/animated': 9.7.3(react@19.0.0-beta-04b058868c-20240508)
-      '@react-spring/shared': 9.7.3(react@19.0.0-beta-04b058868c-20240508)
-      '@react-spring/types': 9.7.3
-      react: 19.0.0-beta-04b058868c-20240508
-
-  '@react-spring/shared@9.7.3(react@19.0.0-beta-04b058868c-20240508)':
-    dependencies:
-      '@react-spring/types': 9.7.3
-      react: 19.0.0-beta-04b058868c-20240508
-
-  '@react-spring/types@9.7.3': {}
-
-  '@react-spring/web@9.7.3(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)':
-    dependencies:
-      '@react-spring/animated': 9.7.3(react@19.0.0-beta-04b058868c-20240508)
-      '@react-spring/core': 9.7.3(react@19.0.0-beta-04b058868c-20240508)
-      '@react-spring/shared': 9.7.3(react@19.0.0-beta-04b058868c-20240508)
-      '@react-spring/types': 9.7.3
-      react: 19.0.0-beta-04b058868c-20240508
-      react-dom: 19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508)
 
   '@remix-run/router@1.16.1': {}
 
@@ -8755,13 +8702,6 @@ snapshots:
     dependencies:
       '@remix-run/router': 1.16.1
       react: 19.0.0-beta-04b058868c-20240508
-
-  react-text-transition@3.1.0(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508):
-    dependencies:
-      '@react-spring/web': 9.7.3(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)
-      react: 19.0.0-beta-04b058868c-20240508
-    transitivePeerDependencies:
-      - react-dom
 
   react-transition-group@4.4.5(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508):
     dependencies:

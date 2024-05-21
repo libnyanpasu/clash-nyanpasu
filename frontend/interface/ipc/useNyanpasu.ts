@@ -50,7 +50,9 @@ export const useNyanpasu = (options?: {
     }, 100);
   };
 
-  const getLatestCore = useSWR("getLatestCore", fetchLatestCore);
+  const getLatestCore = useSWR("getLatestCore", fetchLatestCore, {
+    revalidateOnMount: false,
+  });
 
   const updateCore = async (core: Required<VergeConfig>["clash_core"]) => {
     await service.updateCore(core);
@@ -104,31 +106,6 @@ export const useNyanpasu = (options?: {
     return modes;
   }, [data?.clash_core, getConfigs.data?.mode]);
 
-  const getProfiles = useSWR("getProfiles", tauri.getProfiles);
-
-  const createProfile = async (
-    item: Partial<service.Profile.Item>,
-    data?: string,
-  ) => {
-    await tauri.createProfile(item, data);
-
-    await getProfiles.mutate();
-  };
-
-  const getProfileFile = async (id?: string) => {
-    if (id) {
-      const result = await tauri.readProfileFile(id);
-
-      if (result) {
-        return result;
-      } else {
-        return "";
-      }
-    } else {
-      return "";
-    }
-  };
-
   return {
     nyanpasuConfig: data,
     isLoading: !data && !error,
@@ -145,9 +122,5 @@ export const useNyanpasu = (options?: {
     setServiceStatus,
     getCurrentMode,
     setCurrentMode,
-    createProfile,
-    getProfiles,
-    getProfileFile,
-    setProfileFile: tauri.saveProfileFile,
   };
 };

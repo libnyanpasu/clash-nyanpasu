@@ -86,6 +86,7 @@ pub fn on_scale_factor_changed(scale_factor: f64) {
     resize_images(&RESIZED_ICON_CACHE, scale_factor);
 }
 
+#[allow(dead_code)]
 pub fn get_icon(mode: &TrayIcon) -> Vec<u8> {
     RESIZED_ICON_CACHE
         .clone()

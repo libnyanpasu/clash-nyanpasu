@@ -15,7 +15,7 @@ use anyhow::Result;
 use semver::Version;
 use serde_yaml::Mapping;
 use std::net::TcpListener;
-use tauri::{api::process::Command, App, AppHandle, Manager, PhysicalPosition, PhysicalSize};
+use tauri::{api::process::Command, App, AppHandle, Manager};
 
 pub fn find_unused_port() -> Result<u16> {
     match TcpListener::bind("127.0.0.1:0") {
@@ -150,6 +150,7 @@ pub fn create_window(app_handle: &AppHandle) {
 
     #[cfg(target_os = "windows")]
     {
+        use tauri::{PhysicalPosition, PhysicalSize};
         use window_shadows::set_shadow;
 
         match builder

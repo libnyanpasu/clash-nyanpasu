@@ -54,7 +54,7 @@ impl Hotkey {
                     }
                 }
             }
-            *self.current.lock() = hotkeys.clone();
+            self.current.lock().clone_from(hotkeys);
         }
 
         Ok(())

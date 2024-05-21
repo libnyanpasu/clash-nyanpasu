@@ -10,7 +10,7 @@ use tracing_attributes::instrument;
 mod icon;
 pub mod proxies;
 pub use self::icon::on_scale_factor_changed;
-use self::{icon::TrayIcon, proxies::SystemTrayMenuProxiesExt};
+use self::proxies::SystemTrayMenuProxiesExt;
 
 pub struct Tray {}
 
@@ -95,6 +95,8 @@ impl Tray {
 
         #[cfg(target_os = "windows")]
         {
+            use icon::TrayIcon;
+
             let mode = if *tun_mode {
                 TrayIcon::Tun
             } else if *system_proxy {

@@ -4,6 +4,7 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use fs_extra::dir::CopyOptions;
+#[cfg(windows)]
 use runas::Command as RunasCommand;
 use rust_i18n::t;
 use std::{fs, path::PathBuf};

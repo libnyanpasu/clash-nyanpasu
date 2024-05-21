@@ -1,6 +1,6 @@
 use crate::core::handle;
 use anyhow::Result;
-use std::{path::PathBuf, sync::OnceLock};
+use std::path::PathBuf;
 use tauri::{
     api::path::{home_dir, resource_dir},
     Env,
@@ -23,7 +23,7 @@ static STORAGE_DB: &str = "storage.db";
 /// portable flag
 #[allow(unused)]
 #[cfg(target_os = "windows")]
-static PORTABLE_FLAG: OnceLock<bool> = OnceLock::new();
+static PORTABLE_FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 
 pub static APP_VERSION: &str = env!("NYANPASU_VERSION");
 

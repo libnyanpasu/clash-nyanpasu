@@ -148,7 +148,7 @@ mod handler {
     }
 
     #[cfg(not(target_os = "windows"))]
-    pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
+    pub fn migrate_home_dir_handler(_target_path: &str) -> anyhow::Result<()> {
         Ok(())
     }
 }

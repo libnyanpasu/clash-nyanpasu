@@ -240,8 +240,8 @@ importers:
         specifier: 1.6.4
         version: 1.6.4(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)
       react-hook-form:
-        specifier: 7.51.4
-        version: 7.51.4(react@19.0.0-beta-04b058868c-20240508)
+        specifier: 7.51.5
+        version: 7.51.5(react@19.0.0-beta-04b058868c-20240508)
       react-i18next:
         specifier: 14.1.1
         version: 14.1.1(i18next@23.11.5)(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)
@@ -3968,8 +3968,8 @@ packages:
       react: npm:react@beta
       react-dom: npm:react-dom@beta
 
-  react-hook-form@7.51.4:
-    resolution: {integrity: sha512-V14i8SEkh+V1gs6YtD0hdHYnoL4tp/HX/A45wWQN15CYr9bFRmmRdYStSO5L65lCCZRF+kYiSKhm9alqbcdiVA==}
+  react-hook-form@7.51.5:
+    resolution: {integrity: sha512-J2ILT5gWx1XUIJRETiA7M19iXHlG74+6O3KApzvqB/w8S5NQR7AbU8HVZrMALdmDgWpRPYiZJl0zx8Z4L2mP6Q==}
     engines: {node: '>=12.22.0'}
     peerDependencies:
       react: npm:react@beta
@@ -8690,7 +8690,7 @@ snapshots:
       react: 19.0.0-beta-04b058868c-20240508
       react-dom: 19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508)
 
-  react-hook-form@7.51.4(react@19.0.0-beta-04b058868c-20240508):
+  react-hook-form@7.51.5(react@19.0.0-beta-04b058868c-20240508):
     dependencies:
       react: 19.0.0-beta-04b058868c-20240508
 

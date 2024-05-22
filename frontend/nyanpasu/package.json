@@ -27,7 +27,7 @@
     "axios": "1.7.1",
     "dayjs": "1.11.11",
     "framer-motion": "11.2.4",
-    "i18next": "23.11.4",
+    "i18next": "23.11.5",
     "jotai": "2.8.0",
     "monaco-editor": "0.48.0",
     "mui-color-input": "2.0.3",

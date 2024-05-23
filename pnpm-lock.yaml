@@ -243,8 +243,8 @@ importers:
         specifier: 7.51.5
         version: 7.51.5(react@19.0.0-beta-04b058868c-20240508)
       react-i18next:
-        specifier: 14.1.1
-        version: 14.1.1(i18next@23.11.5)(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)
+        specifier: 14.1.2
+        version: 14.1.2(i18next@23.11.5)(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)
       react-markdown:
         specifier: 9.0.1
         version: 9.0.1(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1)
@@ -343,8 +343,8 @@ importers:
         specifier: 4.0.13
         version: 4.0.13(react@19.0.0-beta-04b058868c-20240508)
       react-i18next:
-        specifier: 14.1.1
-        version: 14.1.1(i18next@23.11.5)(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)
+        specifier: 14.1.2
+        version: 14.1.2(i18next@23.11.5)(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)
     devDependencies:
       sass:
         specifier: 1.77.2
@@ -4099,8 +4099,8 @@ packages:
     peerDependencies:
       react: npm:react@beta
 
-  react-i18next@14.1.1:
-    resolution: {integrity: sha512-QSiKw+ihzJ/CIeIYWrarCmXJUySHDwQr5y8uaNIkbxoGRm/5DukkxZs+RPla79IKyyDPzC/DRlgQCABHtrQuQQ==}
+  react-i18next@14.1.2:
+    resolution: {integrity: sha512-FSIcJy6oauJbGEXfhUgVeLzvWBhIBIS+/9c6Lj4niwKZyGaGb4V4vUbATXSlsHJDXXB+ociNxqFNiFuV1gmoqg==}
     peerDependencies:
       i18next: '>= 23.2.3'
       react: npm:react@beta
@@ -8982,7 +8982,7 @@ snapshots:
     dependencies:
       react: 19.0.0-beta-04b058868c-20240508
 
-  react-i18next@14.1.1(i18next@23.11.5)(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508):
+  react-i18next@14.1.2(i18next@23.11.5)(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508):
     dependencies:
       '@babel/runtime': 7.24.5
       html-parse-stringify: 3.0.1

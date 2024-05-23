@@ -12,8 +12,6 @@ export const consola = createConsola({
   },
 });
 
-consola.wrapAll();
-
 export const colorize = createColorize({
   ...pc,
   success: pc.green,

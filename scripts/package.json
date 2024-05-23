@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "dependencies": {
     "@actions/github": "6.0.0",
+    "@types/figlet": "^1.5.8",
+    "figlet": "^1.7.0",
     "telegraf": "4.16.3"
   },
   "devDependencies": {

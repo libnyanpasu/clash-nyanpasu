@@ -35,7 +35,9 @@ export const downloadFile = async (url: string, path: string) => {
 
   await fs.writeFile(path, new Uint8Array(buffer));
 
-  consola.debug(colorize`download finished {gray "${url}"}`);
+  consola.success(
+    colorize`download finished {gray "${url.split("/").at(-1)}"}`,
+  );
 };
 
 export const resolveSidecar = async (

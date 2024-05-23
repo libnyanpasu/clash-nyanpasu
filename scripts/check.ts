@@ -3,6 +3,7 @@ import os from "node:os";
 import { colorize, consola } from "./utils/logger";
 import { archCheck } from "./utils/arch-check";
 import { Resolve } from "./utils/resolve";
+import { printNyanpasu } from "./utils";
 
 // force download
 const FORCE = process.argv.includes("--force");
@@ -104,5 +105,19 @@ const jobs = new Array(Math.ceil(os.cpus.length / 2) || 2)
   .map(() => runTask());
 
 Promise.all(jobs).then(() => {
-  consola.success("all resources download finished");
+  printNyanpasu();
+
+  consola.success("all resources download finished\n");
+
+  const commands = [
+    "pnpm dev - development with react dev tools",
+    "pnpm dev:diff - deadlock development with react dev tools (recommend)",
+    "pnpm tauri:diff - deadlock development",
+  ];
+
+  consola.log("  next command:\n");
+
+  commands.forEach((text) => {
+    consola.log(`    ${text}`);
+  });
 });

@@ -41,7 +41,7 @@ export const downloadFile = async (url: string, path: string) => {
 export const resolveSidecar = async (
   binInfo: BinInfo,
   platform: string,
-  option?: { force: boolean },
+  option?: { force?: boolean },
 ) => {
   const { name, targetFile, tmpFile, exeFile, downloadURL } = binInfo;
 

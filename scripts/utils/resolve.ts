@@ -152,7 +152,9 @@ export class Resolve {
   }
 
   private sidecar(binInfo: BinInfo) {
-    return resolveSidecar(binInfo, this.options.platform);
+    return resolveSidecar(binInfo, this.options.platform, {
+      force: this.options.force,
+    });
   }
 
   public async clash() {

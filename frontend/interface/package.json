@@ -10,6 +10,6 @@
     "swr": "2.2.5"
   },
   "devDependencies": {
-    "@types/react": "18.3.2"
+    "@types/react": "18.3.3"
   }
 }

@@ -17,7 +17,7 @@ export const FloatingButton = ({
     <Button
       className={`size-16 backdrop-blur !rounded-2xl z-10 bottom-8 right-8 ${className}`}
       sx={{
-        position: "absolute",
+        position: "fixed",
         boxShadow: 8,
         backgroundColor: alpha(palette.primary.main, 0.3),
 

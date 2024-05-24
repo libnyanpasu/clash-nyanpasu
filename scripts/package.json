@@ -4,8 +4,7 @@
   "dependencies": {
     "@actions/github": "6.0.0",
     "@types/figlet": "1.5.8",
-    "figlet": "1.7.0",
-    "telegraf": "4.16.3"
+    "figlet": "1.7.0"
   },
   "devDependencies": {
     "@types/adm-zip": "0.5.5",

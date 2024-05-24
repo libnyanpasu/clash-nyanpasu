@@ -41,7 +41,7 @@
     "react-markdown": "9.0.1",
     "react-router-dom": "6.23.1",
     "react-transition-group": "4.4.5",
-    "react-virtuoso": "4.7.10",
+    "react-virtuoso": "4.7.11",
     "swr": "2.2.5",
     "virtua": "0.31.0"
   },

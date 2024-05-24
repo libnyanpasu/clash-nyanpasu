@@ -6,3 +6,4 @@ export * from "./baseDialog";
 export * from "./loadingSwitch";
 export * from "./expandMore";
 export * from "./sidePage";
+export * from "./floatingButton";

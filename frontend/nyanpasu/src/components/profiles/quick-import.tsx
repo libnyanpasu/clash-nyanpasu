@@ -83,6 +83,10 @@ export const QuickImport = () => {
     sx: {
       borderRadius: 7,
       backgroundColor: alpha(palette.primary.main, 0.1),
+
+      fieldset: {
+        border: "none",
+      },
     },
     endAdornment: endAdornment(),
   };

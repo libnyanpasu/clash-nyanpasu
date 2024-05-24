@@ -42,17 +42,10 @@ export const useClash = () => {
 
   const getProfiles = useSWR("getProfiles", tauri.getProfiles);
 
-  const setProfiles = async (payload: {
-    index: string;
-    profile: Partial<Profile.Item>;
-  }) => {
-    try {
-      await tauri.setProfiles(payload);
+  const setProfiles = async (index: string, profile: Partial<Profile.Item>) => {
+    await tauri.setProfiles({ index, profile });
 
-      await getProfiles.mutate();
-    } finally {
-      return getProfiles.data;
-    }
+    await getProfiles.mutate();
   };
 
   const setProfilesConfig = async (profiles: Profile.Config) => {
@@ -64,6 +57,36 @@ export const useClash = () => {
       return getProfiles.data;
     }
   };
+
+  const createProfile = async (item: Partial<Profile.Item>, data?: string) => {
+    await tauri.createProfile(item, data);
+
+    await getProfiles.mutate();
+  };
+
+  const getProfileFile = async (id?: string) => {
+    if (id) {
+      const result = await tauri.readProfileFile(id);
+
+      if (result) {
+        return result;
+      } else {
+        return "";
+      }
+    } else {
+      return "";
+    }
+  };
+
+  const importProfile = async (url: string, option?: Profile.Option) => {
+    await tauri.importProfile(url, option);
+
+    await getProfiles.mutate();
+  };
+
+  const getRuntimeLogs = useSWR("getRuntimeLogs", tauri.getRuntimeLogs, {
+    refreshInterval: 1000,
+  });
 
   return {
     getClashInfo,
@@ -77,5 +100,9 @@ export const useClash = () => {
     getProfiles,
     setProfiles,
     setProfilesConfig,
+    createProfile,
+    importProfile,
+    getProfileFile,
+    getRuntimeLogs,
   };
 };

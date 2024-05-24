@@ -29,6 +29,10 @@ export const getRuntimeExists = async () => {
   return await invoke<string[]>("get_runtime_exists");
 };
 
+export const getRuntimeLogs = async () => {
+  return await invoke<Record<string, [string, string][]>>("get_runtime_logs");
+};
+
 export const createProfile = async (
   item: Partial<Profile.Item>,
   fileData?: string | null,
@@ -57,6 +61,16 @@ export const readProfileFile = async (index: string) => {
 
 export const saveProfileFile = async (index: string, fileData: string) => {
   return await invoke<void>("save_profile_file", { index, fileData });
+};
+
+export const importProfile = async (
+  url: string,
+  option: Profile.Option = { with_proxy: true },
+) => {
+  return await invoke<void>("import_profile", {
+    url,
+    option,
+  });
 };
 
 export const getCoreVersion = async (

@@ -7,6 +7,8 @@ import { downloadFile } from "./utils/download";
 import path from "path";
 import { TEMP_DIR } from "./utils/env";
 import { GIT_SHORT_HASH } from "./utils/shell";
+import { existsSync } from "fs";
+import { mkdirp } from "fs-extra";
 
 const nightlyBuild = process.argv.includes("--nightly");
 
@@ -76,14 +78,25 @@ const isValidFormat = (fileName: string): boolean => {
     }
   });
 
-  await Promise.all(downloadTasks);
+  try {
+    mkdirp(TEMP_DIR);
+
+    await Promise.all(downloadTasks);
+  } catch (error) {
+    consola.error(error);
+    throw new Error("Error during download or upload tasks");
+  }
+
+  reourceMappping.forEach((item) => {
+    consola.log(`exited ${item}:`, existsSync(item));
+  });
 
   consola.start("Staring upload tasks (nightly)");
 
   await client.sendFile(TELEGRAM_TO_NIGHTLY, {
     file: reourceMappping,
     forceDocument: true,
-    caption: `Clash Nyanpasu Nighly Build ${GIT_SHORT_HASH}`,
+    caption: `Clash Nyanpasu Nightly Build ${GIT_SHORT_HASH}`,
   });
 
   consola.success("Upload finished (nightly)");

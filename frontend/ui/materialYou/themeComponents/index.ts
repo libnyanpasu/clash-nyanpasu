@@ -8,3 +8,4 @@ export * from "./MuiDialog";
 export * from "./MuiDialogActions";
 export * from "./MuiDialogContent";
 export * from "./MuiDialogTitle";
+export * from "./MuiLinearProgress";

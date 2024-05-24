@@ -97,6 +97,8 @@ const isValidFormat = (fileName: string): boolean => {
     file: reourceMappping,
     forceDocument: true,
     caption: `Clash Nyanpasu Nightly Build ${GIT_SHORT_HASH}`,
+    workers: 10,
+    progressCallback: (progress) => consola.start(`Uploading ${progress}`),
   });
 
   consola.success("Upload finished (nightly)");
@@ -113,6 +115,8 @@ const isValidFormat = (fileName: string): boolean => {
         "Check out on GitHub:",
         ` - https://github.com/LibNyanpasu/clash-nyanpasu/releases/tag/v${version}`,
       ],
+      workers: 10,
+      progressCallback: (progress) => consola.start(`Uploading ${progress}`),
     });
 
     consola.success("Upload finished (release)");

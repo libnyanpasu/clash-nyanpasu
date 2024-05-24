@@ -9,3 +9,4 @@ export * from "./MuiDialogActions";
 export * from "./MuiDialogContent";
 export * from "./MuiDialogTitle";
 export * from "./MuiLinearProgress";
+export * from "./MuiMenu";

@@ -341,7 +341,7 @@ fn decompress_and_set_permission(
 
 pub async fn get_latest_version_manifest(mirror: &str) -> Result<ManifestVersion> {
     let url = format!(
-        "{}/LibNyanpasu/clash-nyanpasu/raw/dev/manifest/version.json",
+        "{}/LibNyanpasu/clash-nyanpasu/raw/main/manifest/version.json",
         mirror
     );
     log::debug!("{}", url);

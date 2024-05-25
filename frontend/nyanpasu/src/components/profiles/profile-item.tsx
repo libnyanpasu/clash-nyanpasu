@@ -1,5 +1,10 @@
 import parseTraffic from "@/utils/parse-traffic";
-import { Update, FilterDrama, InsertDriveFile } from "@mui/icons-material";
+import {
+  Update,
+  FilterDrama,
+  InsertDriveFile,
+  FiberManualRecord,
+} from "@mui/icons-material";
 import LoadingButton from "@mui/lab/LoadingButton";
 import {
   Paper,
@@ -9,6 +14,8 @@ import {
   Tooltip,
   Menu,
   MenuItem,
+  useTheme,
+  lighten,
 } from "@mui/material";
 import { Profile } from "@nyanpasu/interface";
 import dayjs from "dayjs";
@@ -18,12 +25,16 @@ import { ProfileDialog } from "./profile-dialog";
 
 export interface ProfileItemProps {
   item: Profile.Item;
+  selected?: boolean;
 }
 
 export const ProfileItem = memo(function ProfileItem({
   item,
+  selected,
 }: ProfileItemProps) {
   const { t } = useTranslation();
+
+  const { palette } = useTheme();
 
   const calc = () => {
     let progress = 0;
@@ -64,8 +75,16 @@ export const ProfileItem = memo(function ProfileItem({
 
   return (
     <>
-      <Paper className="p-5 flex flex-col gap-4" sx={{ borderRadius: 6 }}>
-        <div className="flex items-center justify-between">
+      <Paper
+        className="p-5 flex flex-col gap-4"
+        sx={{
+          borderRadius: 6,
+          backgroundColor: selected
+            ? lighten(palette.primary.main, 0.9)
+            : undefined,
+        }}
+      >
+        <div className="flex items-center justify-between gap-2">
           <Tooltip title={item.url}>
             <Chip
               className="!pl-2 !pr-2 font-bold"
@@ -73,6 +92,13 @@ export const ProfileItem = memo(function ProfileItem({
               label={isRemote ? "Remote" : "Local"}
             />
           </Tooltip>
+
+          {selected && (
+            <FiberManualRecord
+              className="!size-3 mr-auto animate-bounce top-0"
+              sx={{ fill: palette.success.main }}
+            />
+          )}
 
           <div className="text-sm">
             {item.updated! > 0 ? dayjs(item.updated! * 1000).fromNow() : ""}

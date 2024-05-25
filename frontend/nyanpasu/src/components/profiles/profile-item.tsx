@@ -189,7 +189,7 @@ export const ProfileItem = memo(function ProfileItem({
 
             <Tooltip title={`${parseTraffic(used)} / ${parseTraffic(total)}`}>
               <div className="text-sm font-bold">
-                {(used / total).toFixed(2)}%
+                {((used / total) * 100).toFixed(2)}%
               </div>
             </Tooltip>
           </div>

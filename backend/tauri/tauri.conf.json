@@ -101,6 +101,9 @@
       },
       "clipboard": {
         "all": true
+      },
+      "fs": {
+        "all": true
       }
     },
     "windows": [],

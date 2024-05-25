@@ -104,5 +104,6 @@ export const useClash = () => {
     importProfile,
     getProfileFile,
     getRuntimeLogs,
+    setProfileFile: tauri.saveProfileFile,
   };
 };

@@ -8,7 +8,6 @@ import {
 import LoadingButton from "@mui/lab/LoadingButton";
 import {
   Paper,
-  Button,
   LinearProgress,
   Chip,
   Tooltip,
@@ -17,11 +16,13 @@ import {
   useTheme,
   lighten,
 } from "@mui/material";
-import { Profile } from "@nyanpasu/interface";
+import { Profile, useClash } from "@nyanpasu/interface";
 import dayjs from "dayjs";
 import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ProfileDialog } from "./profile-dialog";
+import { useMessage } from "@/hooks/use-notification";
+import { useLockFn, useSetState } from "ahooks";
 
 export interface ProfileItemProps {
   item: Profile.Item;
@@ -35,6 +36,14 @@ export const ProfileItem = memo(function ProfileItem({
   const { t } = useTranslation();
 
   const { palette } = useTheme();
+
+  const { setProfilesConfig, deleteConnections, updateProfile, deleteProfile } =
+    useClash();
+
+  const [loading, setLoading] = useSetState({
+    update: false,
+    menu: false,
+  });
 
   const calc = () => {
     let progress = 0;
@@ -67,8 +76,70 @@ export const ProfileItem = memo(function ProfileItem({
     func();
   };
 
+  const handleSelect = useLockFn(async () => {
+    if (selected) {
+      return;
+    }
+
+    try {
+      setLoading({ menu: true });
+
+      await setProfilesConfig({ current: item.uid });
+
+      await deleteConnections();
+    } catch (err) {
+      useMessage(`Error setting profile: \n ${JSON.stringify(err)}`, {
+        title: t("Error"),
+        type: "error",
+      });
+    } finally {
+      setLoading({ menu: false });
+    }
+  });
+
+  const handleUpdate = useLockFn(async (proxy?: boolean) => {
+    const options: Profile.Option = item.option || {
+      with_proxy: false,
+      self_proxy: false,
+    };
+
+    if (proxy) {
+      if (item.option?.self_proxy) {
+        options.with_proxy = false;
+        options.self_proxy = true;
+      } else {
+        options.with_proxy = true;
+        options.self_proxy = false;
+      }
+    }
+
+    try {
+      setLoading({ update: true });
+
+      await updateProfile(item.uid, options);
+    } finally {
+      setLoading({ update: false });
+    }
+  });
+
+  const handleDelete = useLockFn(async () => {
+    try {
+      await deleteProfile(item.uid);
+    } catch (err) {
+      useMessage(`Delete failed: \n ${JSON.stringify(err)}`, {
+        title: t("Error"),
+        type: "error",
+      });
+    }
+  });
+
   const menuMapping = {
+    Select: () => handleSelect(),
     Edit: () => setOpen(true),
+    "Open File": () => {},
+    Update: () => handleUpdate(),
+    "Update(Proxy)": () => handleUpdate(true),
+    Delete: () => handleDelete(),
   };
 
   const [open, setOpen] = useState(false);
@@ -130,18 +201,21 @@ export const ProfileItem = memo(function ProfileItem({
               size="small"
               variant="outlined"
               startIcon={<Update />}
+              onClick={menuMapping.Update}
+              loading={loading.update}
             >
               {t("Update")}
             </LoadingButton>
           )}
 
-          <Button
+          <LoadingButton
             size="small"
             variant="outlined"
             onClick={(e) => setAnchorEl(e.currentTarget)}
+            loading={loading.menu}
           >
             {t("Menu")}
-          </Button>
+          </LoadingButton>
 
           <Menu
             anchorEl={anchorEl}

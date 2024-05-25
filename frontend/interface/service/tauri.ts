@@ -40,6 +40,14 @@ export const createProfile = async (
   return await invoke<void>("create_profile", { item, fileData });
 };
 
+export const updateProfile = async (uid: string, option?: Profile.Option) => {
+  return await invoke<void>("update_profile", { index: uid, option });
+};
+
+export const deleteProfile = async (uid: string) => {
+  return await invoke<void>("delete_profile", { index: uid });
+};
+
 export const getProfiles = async () => {
   return await invoke<Profile.Config>("get_profiles");
 };

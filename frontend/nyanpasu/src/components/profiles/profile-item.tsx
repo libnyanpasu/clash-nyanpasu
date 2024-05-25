@@ -37,8 +37,13 @@ export const ProfileItem = memo(function ProfileItem({
 
   const { palette } = useTheme();
 
-  const { setProfilesConfig, deleteConnections, updateProfile, deleteProfile } =
-    useClash();
+  const {
+    setProfilesConfig,
+    deleteConnections,
+    updateProfile,
+    deleteProfile,
+    viewProfile,
+  } = useClash();
 
   const [loading, setLoading] = useSetState({
     update: false,
@@ -136,7 +141,7 @@ export const ProfileItem = memo(function ProfileItem({
   const menuMapping = {
     Select: () => handleSelect(),
     Edit: () => setOpen(true),
-    "Open File": () => {},
+    "Open File": () => viewProfile(item.uid),
     Update: () => handleUpdate(),
     "Update(Proxy)": () => handleUpdate(true),
     Delete: () => handleDelete(),

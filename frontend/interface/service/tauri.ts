@@ -48,6 +48,10 @@ export const deleteProfile = async (uid: string) => {
   return await invoke<void>("delete_profile", { index: uid });
 };
 
+export const viewProfile = async (uid: string) => {
+  return await invoke<void>("view_profile", { index: uid });
+};
+
 export const getProfiles = async () => {
   return await invoke<Profile.Config>("get_profiles");
 };

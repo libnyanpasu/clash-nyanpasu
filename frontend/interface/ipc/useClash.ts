@@ -116,6 +116,7 @@ export const useClash = () => {
     updateProfile,
     deleteProfile,
     importProfile,
+    viewProfile: tauri.viewProfile,
     getProfileFile,
     getRuntimeLogs,
     setProfileFile: tauri.saveProfileFile,

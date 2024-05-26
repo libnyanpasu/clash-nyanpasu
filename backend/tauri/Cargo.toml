@@ -26,7 +26,7 @@ nanoid = "0.4.0"
 chrono = "0.4.31"
 sysinfo = "0.30"
 sysproxy = { path = "../sysproxy-rs", version = "0.3" }
-rquickjs = "0.6.0"
+rquickjs = { version = "0.6.2", features = ["futures", "loader", "indexmap"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
 auto-launch = "0.5"
@@ -37,6 +37,7 @@ parking_lot = { version = "0.12.1" }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
+relative-path = "1.9"
 tauri = { version = "1.5.4", features = [
   "fs-all",
   "clipboard-all",

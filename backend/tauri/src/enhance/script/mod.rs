@@ -2,6 +2,9 @@ use super::{use_lowercase, ScriptType, ScriptWrapper};
 use anyhow::Result;
 use serde_yaml::Mapping;
 
+mod js;
+mod lua;
+pub mod runner;
 pub fn process_js(script: String, config: Mapping) -> Result<(Mapping, Vec<(String, String)>)> {
     use rquickjs::{function::Func, Context, Runtime};
     use std::sync::{Arc, Mutex};

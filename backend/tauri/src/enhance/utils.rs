@@ -1,3 +1,5 @@
+use serde_yaml::Mapping;
+
 use crate::config::profile::{item_type::ProfileUid, profiles::IProfiles};
 
 use super::ChainItem;

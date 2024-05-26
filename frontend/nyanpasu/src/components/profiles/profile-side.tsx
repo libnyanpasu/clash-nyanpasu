@@ -7,7 +7,7 @@ import {
   IconButton,
   List,
   useTheme,
-  lighten,
+  alpha,
 } from "@mui/material";
 import { Profile, useClash } from "@nyanpasu/interface";
 import { useState } from "react";
@@ -88,14 +88,14 @@ export const ProfileSide = ({ profile, global, onClose }: ProfileSideProps) => {
                 className="!mt-2 !mb-2"
                 sx={{
                   backgroundColor: selected
-                    ? lighten(palette.primary.main, 0.9)
-                    : palette.grey[200],
+                    ? alpha(palette.primary.main, 0.3)
+                    : alpha(palette.grey[100], 0.1),
                   borderRadius: 4,
 
                   "&:hover": {
                     backgroundColor: selected
-                      ? lighten(palette.primary.main, 0.7)
-                      : palette.grey[300],
+                      ? alpha(palette.primary.main, 0.5)
+                      : undefined,
                   },
                 }}
                 onClick={() => handleChainClick(item.uid)}
@@ -120,7 +120,7 @@ export const ProfileSide = ({ profile, global, onClose }: ProfileSideProps) => {
           <ListItemButton
             className="!mt-2!mb-2"
             sx={{
-              backgroundColor: palette.grey[200],
+              backgroundColor: alpha(palette.grey[100], 0.1),
               borderRadius: 4,
             }}
             onClick={() => setOpen(true)}

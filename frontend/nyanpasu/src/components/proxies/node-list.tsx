@@ -13,8 +13,11 @@ import { proxyGroupAtom, proxyGroupSortAtom } from "@/store";
 import { CSSProperties, memo, useEffect, useMemo, useState } from "react";
 import { classNames } from "@/utils";
 import { VList } from "virtua";
+import { AnimatePresence, motion } from "framer-motion";
 
 type History = Clash.Proxy["history"];
+
+type RenderClashProxy = Clash.Proxy<string> & { renderLayoutKey: string };
 
 const filterDelay = (history?: History): number => {
   if (!history || history.length == 0) {
@@ -218,15 +221,36 @@ export const NodeList = () => {
     default: 4,
   });
 
-  const [renderList, setRenderList] = useState<Clash.Proxy<string>[][]>([]);
+  const [renderList, setRenderList] = useState<RenderClashProxy[][]>([]);
 
   useEffect(() => {
     if (!group?.all) return;
 
-    const list = group?.all?.reduce<Clash.Proxy<string>[][]>(
+    const nodeNames: string[] = [];
+
+    const list = group?.all?.reduce<RenderClashProxy[][]>(
       (result, value, index) => {
-        if (index % column === 0) result.push([]);
-        result[Math.floor(index / column)].push(value);
+        const getKey = () => {
+          const filter = nodeNames.filter((i) => i === value.name);
+
+          if (filter.length === 0) {
+            return value.name;
+          } else {
+            return `${value.name}-${filter.length}`;
+          }
+        };
+
+        if (index % column === 0) {
+          result.push([]);
+        }
+
+        result[Math.floor(index / column)].push({
+          ...value,
+          renderLayoutKey: getKey(),
+        });
+
+        nodeNames.push(value.name);
+
         return result;
       },
       [],
@@ -240,35 +264,42 @@ export const NodeList = () => {
   };
 
   return (
-    <VList style={{ flex: 1 }} className="p-2">
-      {renderList?.map((node, index) => {
-        return (
-          <div key={index} className="flex">
-            {node.map((render, index) => {
-              return (
-                <div
-                  key={index}
-                  className="relative p-2"
-                  style={{
-                    flex: 1 / column,
-                    width: `calc(100% / ${column})`,
-                  }}
-                >
-                  <NodeCard
-                    node={render}
-                    now={group?.now}
-                    disabled={group?.type !== "Selector"}
-                    onClick={() => hendleClick(render.name)}
-                    onClickDelay={async () => {
-                      await updateProxiesDelay(render.name);
-                    }}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
-    </VList>
+    <AnimatePresence initial={false}>
+      <VList style={{ flex: 1 }} className="p-2">
+        {renderList?.map((node, index) => {
+          return (
+            <div
+              key={index}
+              className="grid gap-2 pb-2"
+              style={{ gridTemplateColumns: `repeat(${column} , 1fr)` }}
+            >
+              {node.map((render) => {
+                return (
+                  <motion.div
+                    key={render.name}
+                    layoutId={`node-${render.renderLayoutKey}`}
+                    className="relative overflow-hidden"
+                    layout="position"
+                    initial={false}
+                    animate="center"
+                    exit="exit"
+                  >
+                    <NodeCard
+                      node={render}
+                      now={group?.now}
+                      disabled={group?.type !== "Selector"}
+                      onClick={() => hendleClick(render.name)}
+                      onClickDelay={async () => {
+                        await updateProxiesDelay(render.name);
+                      }}
+                    />
+                  </motion.div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </VList>
+    </AnimatePresence>
   );
 };

@@ -15,8 +15,8 @@ import {
   Menu,
   MenuItem,
   useTheme,
-  lighten,
   Button,
+  alpha,
 } from "@mui/material";
 import { Profile, useClash } from "@nyanpasu/interface";
 import dayjs from "dayjs";
@@ -163,7 +163,7 @@ export const ProfileItem = memo(function ProfileItem({
         sx={{
           borderRadius: 6,
           backgroundColor: selected
-            ? lighten(palette.primary.main, 0.9)
+            ? alpha(palette.primary.main, 0.2)
             : undefined,
         }}
       >

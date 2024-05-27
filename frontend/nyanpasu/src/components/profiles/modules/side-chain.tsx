@@ -64,16 +64,10 @@ const ChainItem = memo(function ChainItem({
 export interface SideChainProps {
   global?: boolean;
   profile?: Profile.Item;
-  onClickClose: () => void;
-  onChainEdit: (item: Profile.Item) => void | Promise<void>;
+  onChainEdit: (item?: Profile.Item) => void | Promise<void>;
 }
 
-export const SideChain = ({
-  global,
-  profile,
-  onClickClose,
-  onChainEdit,
-}: SideChainProps) => {
+export const SideChain = ({ global, profile, onChainEdit }: SideChainProps) => {
   const { palette } = useTheme();
 
   const { getProfiles, setProfilesConfig, setProfiles } = useClash();
@@ -121,7 +115,7 @@ export const SideChain = ({
           backgroundColor: alpha(palette.secondary.main, 0.1),
           borderRadius: 4,
         }}
-        onClick={onClickClose}
+        onClick={() => onChainEdit()}
       >
         <ListItemIcon>
           <Add color="primary" />

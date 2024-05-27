@@ -19,7 +19,7 @@ export const ProfileSide = ({ profile, global, onClose }: ProfileSideProps) => {
 
   const [item, setItem] = useState<Profile.Item>();
 
-  const handleEditChain = async (item: Profile.Item) => {
+  const handleEditChain = async (item?: Profile.Item) => {
     setItem(item);
     setOpen(true);
   };
@@ -46,7 +46,6 @@ export const ProfileSide = ({ profile, global, onClose }: ProfileSideProps) => {
             <SideChain
               global={global}
               profile={profile}
-              onClickClose={() => setOpen(false)}
               onChainEdit={handleEditChain}
             />
           </Allotment.Pane>

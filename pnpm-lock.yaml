@@ -206,6 +206,9 @@ importers:
       ahooks:
         specifier: 3.8.0
         version: 3.8.0(react@19.0.0-rc-935180c7e0-20240524)
+      allotment:
+        specifier: ^1.20.2
+        version: 1.20.2(react-dom@19.0.0-rc-935180c7e0-20240524(react@19.0.0-rc-935180c7e0-20240524))(react@19.0.0-rc-935180c7e0-20240524)
       axios:
         specifier: 1.7.2
         version: 1.7.2
@@ -1709,6 +1712,12 @@ packages:
   ajv@8.13.0:
     resolution: {integrity: sha512-PRA911Blj99jR5RMeTunVbNXMF6Lp4vZXnk5GQjcnUWUTsrXtekg/pnmFFI2u/I36Y/2bITGS30GZCXei6uNkA==}
 
+  allotment@1.20.2:
+    resolution: {integrity: sha512-TaCuHfYNcsJS9EPk04M7TlG5Rl3vbAdHeAyrTE9D5vbpzV+wxnRoUrulDbfnzaQcPIZKpHJNixDOoZNuzliKEA==}
+    peerDependencies:
+      react: npm:react@rc
+      react-dom: npm:react-dom@rc
+
   ansi-align@2.0.0:
     resolution: {integrity: sha512-TdlOggdA/zURfMYa7ABC66j+oqfMew58KpJMbUlH3bcZP1b+cBHIHDDn5uH9INsxrHBPjsqM0tDB4jPTF/vgJA==}
 
@@ -1956,6 +1965,9 @@ packages:
 
   ci-info@1.6.0:
     resolution: {integrity: sha512-vsGdkwSCDpWmP80ncATX7iea5DWQemg1UgCW5J8tqjU3lYw4FBYuj89J0CTVomA7BEfvSZd84GmHko+MxFQU2A==}
+
+  classnames@2.5.1:
+    resolution: {integrity: sha512-saHYOzhIQs6wy2sVxTM6bUDsQO4F50V9RQ22qBpEdCW+I+/Wmke2HOl6lS6dTpdxVhb88/I6+Hs+438c3lfUow==}
 
   cli-boxes@1.0.0:
     resolution: {integrity: sha512-3Fo5wu8Ytle8q9iCzS4D2MWVL2X7JVWRiS1BnXbTFDhS9c/REkM9vd1AmabsoZoY5/dGi5TT9iKL8Kb6DeBRQg==}
@@ -3339,6 +3351,15 @@ packages:
 
   lodash.camelcase@4.3.0:
     resolution: {integrity: sha512-TwuEnCnxbc3rAvhf/LbG7tJUDzhqXyFnv3dtzLOPgCG/hODL7WFnsbwktkD7yUV0RrreP/l1PALq/YSg6VvjlA==}
+
+  lodash.clamp@4.0.3:
+    resolution: {integrity: sha512-HvzRFWjtcguTW7yd8NJBshuNaCa8aqNFtnswdT7f/cMd/1YKy5Zzoq4W/Oxvnx9l7aeY258uSdDfM793+eLsVg==}
+
+  lodash.debounce@4.0.8:
+    resolution: {integrity: sha512-FT1yDzDYEoYWhnSGnpE/4Kj1fLZkDFyqRb7fNt6FdYOSxlUWAtp42Eh6Wb0rGIv/m9Bgo7x4GhQbm5Ys4SG5ow==}
+
+  lodash.isequal@4.5.0:
+    resolution: {integrity: sha512-pDo3lu8Jhfjqls6GkMgpahsF9kCyayhgykjyLMNFTKWrpVdAQtYyB4muAMWozBB4ig/dtWAmsMxLEI8wuz+DYQ==}
 
   lodash.isplainobject@4.0.6:
     resolution: {integrity: sha512-oSXzaWypCMHkPC3NvBEaPHf0KsA5mvPrOPgQWDsbg8n7orZ290M0BmC/jgRZ4vcJ6DTAhjrsSYgdsW/F+MFOBA==}
@@ -4789,6 +4810,12 @@ packages:
   url-parse-lax@1.0.0:
     resolution: {integrity: sha512-BVA4lR5PIviy2PMseNd2jbFQ+jwSwQGdJejf5ctd1rEXt0Ypd7yanUK9+lYechVlN5VaTJGsu2U/3MDDu6KgBA==}
     engines: {node: '>=0.10.0'}
+
+  use-resize-observer@9.1.0:
+    resolution: {integrity: sha512-R25VqO9Wb3asSD4eqtcxk8sJalvIOYBqS8MNZlpDSQ4l4xMQxC/J7Id9HoTqPq8FwULIn0PVW+OAqF2dyYbjow==}
+    peerDependencies:
+      react: npm:react@rc
+      react-dom: npm:react-dom@rc
 
   use-sync-external-store@1.2.2:
     resolution: {integrity: sha512-PElTlVMwpblvbNqQ82d2n6RjStvdSoNe9FG28kNfz3WiXilJm4DdNkEzRhCZuIDwY8U08WVihhGR5iRqAwfDiw==}
@@ -6310,6 +6337,17 @@ snapshots:
       require-from-string: 2.0.2
       uri-js: 4.4.1
 
+  allotment@1.20.2(react-dom@19.0.0-rc-935180c7e0-20240524(react@19.0.0-rc-935180c7e0-20240524))(react@19.0.0-rc-935180c7e0-20240524):
+    dependencies:
+      classnames: 2.5.1
+      eventemitter3: 5.0.1
+      lodash.clamp: 4.0.3
+      lodash.debounce: 4.0.8
+      lodash.isequal: 4.5.0
+      react: 19.0.0-rc-935180c7e0-20240524
+      react-dom: 19.0.0-rc-935180c7e0-20240524(react@19.0.0-rc-935180c7e0-20240524)
+      use-resize-observer: 9.1.0(react-dom@19.0.0-rc-935180c7e0-20240524(react@19.0.0-rc-935180c7e0-20240524))(react@19.0.0-rc-935180c7e0-20240524)
+
   ansi-align@2.0.0:
     dependencies:
       string-width: 2.1.1
@@ -6591,6 +6629,8 @@ snapshots:
       fsevents: 2.3.3
 
   ci-info@1.6.0: {}
+
+  classnames@2.5.1: {}
 
   cli-boxes@1.0.0: {}
 
@@ -8137,6 +8177,12 @@ snapshots:
   lodash-es@4.17.21: {}
 
   lodash.camelcase@4.3.0: {}
+
+  lodash.clamp@4.0.3: {}
+
+  lodash.debounce@4.0.8: {}
+
+  lodash.isequal@4.5.0: {}
 
   lodash.isplainobject@4.0.6: {}
 
@@ -9817,6 +9863,12 @@ snapshots:
   url-parse-lax@1.0.0:
     dependencies:
       prepend-http: 1.0.4
+
+  use-resize-observer@9.1.0(react-dom@19.0.0-rc-935180c7e0-20240524(react@19.0.0-rc-935180c7e0-20240524))(react@19.0.0-rc-935180c7e0-20240524):
+    dependencies:
+      '@juggle/resize-observer': 3.4.0
+      react: 19.0.0-rc-935180c7e0-20240524
+      react-dom: 19.0.0-rc-935180c7e0-20240524(react@19.0.0-rc-935180c7e0-20240524)
 
   use-sync-external-store@1.2.2(react@19.0.0-rc-935180c7e0-20240524):
     dependencies:

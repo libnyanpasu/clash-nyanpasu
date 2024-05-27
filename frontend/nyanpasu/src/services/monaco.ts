@@ -11,4 +11,10 @@ import "monaco-editor/esm/vs/language/typescript/monaco.contribution.js";
 
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
 
+monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
+  target: monaco.languages.typescript.ScriptTarget.ES2020,
+  allowNonTsExtensions: true,
+  allowJs: true,
+});
+
 export { monaco };

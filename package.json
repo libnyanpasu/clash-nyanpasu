@@ -98,7 +98,7 @@
     "prettier": "3.2.5",
     "prettier-plugin-toml": "2.0.1",
     "react-devtools": "5.2.0",
-    "stylelint": "16.6.0",
+    "stylelint": "16.6.1",
     "stylelint-config-html": "1.1.0",
     "stylelint-config-recess-order": "5.0.1",
     "stylelint-config-standard": "36.0.0",

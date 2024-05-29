@@ -1,7 +1,7 @@
 import { Button } from "@mui/material";
 import { Profile, useClash } from "@nyanpasu/interface";
 import { SidePage } from "@nyanpasu/ui";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import ProfileItem from "@/components/profiles/profile-item";
 import ProfileSide from "@/components/profiles/profile-side";
@@ -9,19 +9,14 @@ import { filterProfiles } from "@/components/profiles/utils";
 import NewProfileButton from "@/components/profiles/new-profile-button";
 import { QuickImport } from "@/components/profiles/quick-import";
 import Masonry from "@mui/lab/Masonry";
+import { Public } from "@mui/icons-material";
 
 export const ProfilePage = () => {
   const { t } = useTranslation();
 
   const { getProfiles } = useClash();
 
-  const { profiles, scripts } = filterProfiles(getProfiles.data?.items);
-
-  useEffect(() => {
-    console.log("getProfiles.data:", getProfiles.data);
-    console.log("profiles:", profiles);
-    console.log("scripts:", scripts);
-  }, [getProfiles.data?.items]);
+  const { profiles } = filterProfiles(getProfiles.data?.items);
 
   const [globalChain, setGlobalChain] = useState(false);
 
@@ -54,8 +49,10 @@ export const ProfilePage = () => {
       header={
         <div>
           <Button
+            size="small"
             variant={globalChain ? "contained" : "outlined"}
             onClick={handleGlobalChainClick}
+            startIcon={<Public />}
           >
             Global Chain
           </Button>

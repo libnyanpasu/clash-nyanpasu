@@ -12,12 +12,15 @@ import Marquee from "react-fast-marquee";
 import ArrowForwardIos from "@mui/icons-material/ArrowForwardIos";
 import { alpha, useTheme } from "@mui/material";
 import { LoadingSwitch } from "@nyanpasu/ui";
-import { useState } from "react";
+import { ChangeEvent, useState } from "react";
 
 export interface LabelSwitchProps extends SwitchProps {
   label: string;
   url?: string;
-  onChange?: () => Promise<void> | void;
+  onChange?: (
+    event: ChangeEvent<HTMLInputElement>,
+    checked: boolean,
+  ) => Promise<void> | void;
 }
 
 /**
@@ -43,12 +46,15 @@ export const LabelSwitch = ({
 
   const [loading, setLoading] = useState(false);
 
-  const handleChange = async () => {
+  const handleChange = async (
+    event: ChangeEvent<HTMLInputElement>,
+    checked: boolean,
+  ) => {
     if (onChange) {
       try {
         setLoading(true);
 
-        await onChange();
+        await onChange(event, checked);
       } finally {
         setLoading(false);
       }

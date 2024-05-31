@@ -10,7 +10,7 @@
     "@mui/material": "5.15.19",
     "@types/react": "18.3.3",
     "ahooks": "3.8.0",
-    "framer-motion": "11.2.9",
+    "framer-motion": "11.2.10",
     "react": "18.3.1",
     "react-error-boundary": "4.0.13",
     "react-i18next": "14.1.2"

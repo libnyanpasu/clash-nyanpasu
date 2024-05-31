@@ -216,8 +216,8 @@ importers:
         specifier: 1.11.11
         version: 1.11.11
       framer-motion:
-        specifier: 11.2.9
-        version: 11.2.9(@emotion/is-prop-valid@1.2.2)(react-dom@19.0.0-rc-9d4fba0788-20240530(react@19.0.0-rc-9d4fba0788-20240530))(react@19.0.0-rc-9d4fba0788-20240530)
+        specifier: 11.2.10
+        version: 11.2.10(@emotion/is-prop-valid@1.2.2)(react-dom@19.0.0-rc-9d4fba0788-20240530(react@19.0.0-rc-9d4fba0788-20240530))(react@19.0.0-rc-9d4fba0788-20240530)
       i18next:
         specifier: 23.11.5
         version: 23.11.5
@@ -340,8 +340,8 @@ importers:
         specifier: 3.8.0
         version: 3.8.0(react@19.0.0-rc-9d4fba0788-20240530)
       framer-motion:
-        specifier: 11.2.9
-        version: 11.2.9(@emotion/is-prop-valid@1.2.2)(react-dom@19.0.0-rc-9d4fba0788-20240530(react@19.0.0-rc-9d4fba0788-20240530))(react@19.0.0-rc-9d4fba0788-20240530)
+        specifier: 11.2.10
+        version: 11.2.10(@emotion/is-prop-valid@1.2.2)(react-dom@19.0.0-rc-9d4fba0788-20240530(react@19.0.0-rc-9d4fba0788-20240530))(react@19.0.0-rc-9d4fba0788-20240530)
       react:
         specifier: npm:react@rc
         version: 19.0.0-rc-9d4fba0788-20240530
@@ -2689,8 +2689,8 @@ packages:
   fraction.js@4.3.7:
     resolution: {integrity: sha512-ZsDfxO51wGAXREY55a7la9LScWpwv9RxIrYABrlvOFBlH/ShPnrtsXeuUIfXKKOVicNxQ+o8JTbJvjS4M89yew==}
 
-  framer-motion@11.2.9:
-    resolution: {integrity: sha512-gfxNSkp4dC3vpy2hGNQK3K9bNOKwfasqOhrqvmZzYxCPSJ9Tpv/9JlCkeCMgFdKefgPr8+JiouGjVmaDzu750w==}
+  framer-motion@11.2.10:
+    resolution: {integrity: sha512-/gr3PLZUVFCc86a9MqCUboVrALscrdluzTb3yew+2/qKBU8CX6nzs918/SRBRCqaPbx0TZP10CB6yFgK2C5cYQ==}
     peerDependencies:
       '@emotion/is-prop-valid': '*'
       react: npm:react@rc
@@ -7509,7 +7509,7 @@ snapshots:
 
   fraction.js@4.3.7: {}
 
-  framer-motion@11.2.9(@emotion/is-prop-valid@1.2.2)(react-dom@19.0.0-rc-9d4fba0788-20240530(react@19.0.0-rc-9d4fba0788-20240530))(react@19.0.0-rc-9d4fba0788-20240530):
+  framer-motion@11.2.10(@emotion/is-prop-valid@1.2.2)(react-dom@19.0.0-rc-9d4fba0788-20240530(react@19.0.0-rc-9d4fba0788-20240530))(react@19.0.0-rc-9d4fba0788-20240530):
     dependencies:
       tslib: 2.6.2
     optionalDependencies:

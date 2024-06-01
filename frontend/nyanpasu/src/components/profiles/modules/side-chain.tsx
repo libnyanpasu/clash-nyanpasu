@@ -121,7 +121,7 @@ export const SideChain = ({ global, profile, onChainEdit }: SideChainProps) => {
           <Add color="primary" />
         </ListItemIcon>
 
-        <ListItemText primary="New Chian" />
+        <ListItemText primary="New Chain" />
       </ListItemButton>
     </div>
   );

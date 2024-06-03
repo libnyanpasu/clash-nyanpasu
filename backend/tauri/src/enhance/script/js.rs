@@ -1,9 +1,10 @@
-use std::{path::Path, sync::Arc};
+use std::sync::Arc;
 
 use crate::utils::dirs;
 
-use super::runner::RunnerManager;
+use super::runner::{ProcessOutput, Runner};
 use anyhow::Context;
+use async_trait::async_trait;
 use parking_lot::Mutex;
 use rquickjs::{
     async_with,
@@ -13,10 +14,10 @@ use rquickjs::{
 use serde_yaml::Mapping;
 use tauri::async_runtime;
 use tracing_attributes::instrument;
+pub struct JSRunner(AsyncRuntime);
 
-struct JSRunner(AsyncRuntime);
-
-impl RunnerManager for JSRunner {
+#[async_trait]
+impl Runner for JSRunner {
     #[instrument]
     fn try_new() -> Result<JSRunner, anyhow::Error> {
         let js_runtime = AsyncRuntime::new().context("failed to create rquickjs runtime")?;
@@ -36,7 +37,18 @@ impl RunnerManager for JSRunner {
         Ok(JSRunner(runtime))
     }
 
-    async fn process(&self, mapping: Mapping, path: &str) -> Result<Mapping, anyhow::Error> {
+    async fn process(&self, mapping: Mapping, path: &str) -> Result<ProcessOutput, anyhow::Error> {
+        let content = tokio::fs::read_to_string(path)
+            .await
+            .context("failed to read the script file")?;
+        self.process_honey(mapping, &content).await
+    }
+
+    async fn process_honey(
+        &self,
+        mapping: Mapping,
+        script: &str,
+    ) -> Result<ProcessOutput, anyhow::Error> {
         let ctx = AsyncContext::full(&self.0)
             .await
             .context("failed to get a context")?;
@@ -47,8 +59,9 @@ impl RunnerManager for JSRunner {
             tracing::debug!("script log: {:?}", msg);
             outs.push(msg.clone())
         };
-
-        let result = async_with!(ctx => |ctx| {
+        let script = utils::wrap_script_if_not_esm(script);
+        let config = simd_json::to_string_pretty(&mapping)?;
+        let mut result = async_with!(ctx => |ctx| {
             let global = ctx.globals();
             global
                 .set(
@@ -56,62 +69,41 @@ impl RunnerManager for JSRunner {
                     Function::new(ctx.clone(), print)?.with_name("print")?,
                 )
                 .context("failed to set print fn")?;
-            // get filename
-            let filename = Path::new(path)
-                .file_name()
-                .ok_or(anyhow::anyhow!("failed convert to filename"))?
-                .to_string_lossy();
-            let config = simd_json::to_string_pretty(&mapping)?;
-            let promise = Module::evaluate(
-                ctx.clone(),
-                "main",
-                format!(
-                    r#"import main from "{filename}"
+            // if user script fn is main(config): config should convert to esm
+            Module::declare(ctx.clone(), "user_script", script).context("fail to define the user_script module")?;
+            let module = Module::declare(ctx, "process_honey", format!(r#"
+            import user_script from "user_script"
             const config = JSON.parse(`{config}`)
-            const result = main(config)
-            JSON.stringify(result)
-            "#
-                ),
-            )
-            .context("failed eval module")?;
-            let mut output = promise
-                .into_future::<rquickjs::String>()
-                .await?
-                .to_string()
-                .context("failed to convert the result to std string")?;
-            let buff = unsafe { output.as_bytes_mut() };
-            let mapping = simd_json::from_slice::<Mapping>(buff)
-                .context("failed to convert the result to mapping")?;
-            // TODO: maybe it can be solved mapping in the future?
-            // let mut loader = ModuleLoader::default();
-            // let module = loader.load(&ctx, path).context("failed to load script")?;
-            // let (module, promise) = module.eval().context("failed to eval module")?;
-            // promise.into_future::<()>().await.context("failed to eval module")?;
-            // let default_fn = module.get::<&str, Function>("default")?;
-            // let args = Args::new(ctx, 1);
-            // args.push_arg(mapping);
-            Ok::<Mapping, anyhow::Error>(mapping)
-        })
-        .await?;
-
-        Ok(result)
-    }
-
-    async fn process_honey(&self, mapping: Mapping, script: &str) -> Result<Mapping, anyhow::Error> {
-        let ctx = AsyncContext::full(&self.0)
-            .await
-            .context("failed to get a context")?;
-        let outputs: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(vec![]));
-        let outputs_clone = outputs.clone();
-        let print = move |msg: String| {
-            let mut outs = outputs_clone.lock();
-            tracing::debug!("script log: {:?}", msg);
-            outs.push(msg.clone())
-        };
-        let result = async_with!(ctx => |ctx| {
-            let module = Module::declare(ctx, "script", r#""#).context("fail to define the module")?;
-            Ok::<(), anyhow::Error>(())
+            export const final_result = JSON.stringify(await user_script(config))
+            "#)).context("fail to define the process_honey module")?;
+            let (decl, promises) = module.eval().context("fail to eval the process_honey module")?;
+            promises
+                .into_future::<()>()
+                .await
+                .context("fail to eval the module")?;
+            let ns = decl.namespace().context("fail to get the process_honey module namespace")?;
+            let final_result = ns.get::<&str, String>("final_result").context("fail to get the final_result")?;
+            Ok::<String, anyhow::Error>(final_result)
         }).await?;
-        Ok(mapping)
+        let buff = unsafe { result.as_bytes_mut() };
+        let mapping = simd_json::from_slice::<Mapping>(buff)
+            .context("failed to convert the result to mapping")?;
+        let outs = outputs.lock();
+        Ok((mapping, outs.to_vec()))
+    }
+}
+
+mod utils {
+    use once_cell::sync::Lazy;
+    use regex::Regex;
+    static RE: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"^(\bexport\b)[\s\S]*?\bfunction\b[\s\S]*?\bmain\b").unwrap());
+    pub fn wrap_script_if_not_esm(script: &str) -> String {
+        let script = script.trim_matches(&[' ', '\n', '\t', '\r']);
+        if !RE.is_match(script) {
+            script.to_string()
+        } else {
+            format!("export default {}", script)
+        }
     }
 }

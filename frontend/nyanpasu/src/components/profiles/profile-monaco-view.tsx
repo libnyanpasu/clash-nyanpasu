@@ -1,6 +1,6 @@
-import { forwardRef, useImperativeHandle, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { monaco } from "@/services/monaco";
-import { useDebounceEffect } from "ahooks";
+import { useDebounceEffect, useUpdateEffect } from "ahooks";
 import { themeMode } from "@/store";
 import { useAtomValue } from "jotai";
 
@@ -52,6 +52,14 @@ export const ProfileMonacoView = forwardRef(function ProfileMonacoView(
   useImperativeHandle(ref, () => ({
     getValue: () => instanceRef.current?.getValue(),
   }));
+
+  useUpdateEffect(() => {
+    if (!language) return;
+
+    monaco.editor.setModelLanguage(instanceRef.current!.getModel()!, language);
+
+    console.log(language, instanceRef.current?.getModel()?.getLanguageId());
+  }, [language]);
 
   return open && <div ref={monacoRef} className={className} />;
 });

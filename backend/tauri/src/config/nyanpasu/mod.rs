@@ -196,12 +196,30 @@ pub struct IVergeTheme {
 impl IVerge {
     pub fn new() -> Self {
         match dirs::verge_path().and_then(|path| help::read_yaml::<IVerge>(&path)) {
-            Ok(config) => config,
+            Ok(config) => Self::merge_with_template(config),
             Err(err) => {
                 log::error!(target: "app", "{err}");
                 Self::template()
             }
         }
+    }
+
+    fn merge_with_template(mut config: IVerge) -> Self {
+        let template = Self::template();
+
+        if config.enable_auto_check_update.is_none() {
+            config.enable_auto_check_update = template.enable_auto_check_update;
+        }
+
+        if config.clash_tray_selector.is_none() {
+            config.clash_tray_selector = template.clash_tray_selector;
+        }
+
+        if config.max_log_files.is_none() {
+            config.max_log_files = template.max_log_files;
+        }
+
+        config
     }
 
     pub fn template() -> Self {

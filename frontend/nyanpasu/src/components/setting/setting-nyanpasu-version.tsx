@@ -19,6 +19,24 @@ import { useMessage } from "@/hooks/use-notification";
 import { useNyanpasu } from "@nyanpasu/interface";
 import { LabelSwitch } from "./modules/clash-field";
 
+const AutoCheckUpdate = () => {
+  const { t } = useTranslation();
+
+  const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu();
+
+  return (
+    <LabelSwitch
+      label={t("Auto Check Updates")}
+      checked={nyanpasuConfig?.enable_auto_check_update}
+      onChange={() =>
+        setNyanpasuConfig({
+          enable_auto_check_update: !nyanpasuConfig?.enable_auto_check_update,
+        })
+      }
+    />
+  );
+};
+
 export const SettingNyanpasuVersion = () => {
   const { t } = useTranslation();
 
@@ -91,18 +109,9 @@ export const SettingNyanpasuVersion = () => {
           </Paper>
         </ListItem>
 
-        <Box sx={{ pt: 1, pb: 1 }}>
-          <LabelSwitch
-            label={t("Auto Check Updates")}
-            value={nyanpasuConfig?.enable_auto_check_update || true}
-            onChange={() =>
-              setNyanpasuConfig({
-                enable_auto_check_update:
-                  !nyanpasuConfig?.enable_auto_check_update,
-              })
-            }
-          />
-        </Box>
+        <div className="mt-1 mb-1">
+          <AutoCheckUpdate />
+        </div>
 
         <ListItem sx={{ pl: 0, pr: 0 }}>
           <LoadingButton

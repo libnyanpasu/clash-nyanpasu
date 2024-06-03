@@ -4,6 +4,7 @@ import {
   FilterDrama,
   InsertDriveFile,
   FiberManualRecord,
+  Terminal,
 } from "@mui/icons-material";
 import LoadingButton from "@mui/lab/LoadingButton";
 import {
@@ -14,7 +15,8 @@ import {
   Menu,
   MenuItem,
   useTheme,
-  lighten,
+  Button,
+  alpha,
 } from "@mui/material";
 import { Profile, useClash } from "@nyanpasu/interface";
 import dayjs from "dayjs";
@@ -27,11 +29,15 @@ import { useLockFn, useSetState } from "ahooks";
 export interface ProfileItemProps {
   item: Profile.Item;
   selected?: boolean;
+  onClickChains: (item: Profile.Item) => void;
+  chainsSelected?: boolean;
 }
 
 export const ProfileItem = memo(function ProfileItem({
   item,
   selected,
+  onClickChains,
+  chainsSelected,
 }: ProfileItemProps) {
   const { t } = useTranslation();
 
@@ -141,6 +147,7 @@ export const ProfileItem = memo(function ProfileItem({
   const menuMapping = {
     Select: () => handleSelect(),
     Edit: () => setOpen(true),
+    Chains: () => onClickChains(item),
     "Open File": () => viewProfile(item.uid),
     Update: () => handleUpdate(),
     "Update(Proxy)": () => handleUpdate(true),
@@ -156,7 +163,7 @@ export const ProfileItem = memo(function ProfileItem({
         sx={{
           borderRadius: 6,
           backgroundColor: selected
-            ? lighten(palette.primary.main, 0.9)
+            ? alpha(palette.primary.main, 0.2)
             : undefined,
         }}
       >
@@ -201,6 +208,16 @@ export const ProfileItem = memo(function ProfileItem({
         )}
 
         <div className="flex gap-2 justify-end">
+          <Button
+            className="!mr-auto"
+            size="small"
+            variant={chainsSelected ? "contained" : "outlined"}
+            startIcon={<Terminal />}
+            onClick={() => onClickChains(item)}
+          >
+            Chains
+          </Button>
+
           {isRemote && (
             <LoadingButton
               size="small"

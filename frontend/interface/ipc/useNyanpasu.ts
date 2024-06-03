@@ -98,8 +98,6 @@ export const useNyanpasu = (options?: {
     if (mode && modes.hasOwnProperty(mode)) {
       modes[mode] = true;
     } else {
-      setCurrentMode("rule");
-
       modes.rule = true;
     }
 

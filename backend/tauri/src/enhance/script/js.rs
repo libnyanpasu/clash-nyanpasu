@@ -96,8 +96,7 @@ impl Runner for JSRunner {
 mod utils {
     use once_cell::sync::Lazy;
     use regex::Regex;
-    static RE: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r"^(\bexport\b)[\s\S]*?\bfunction\b[\s\S]*?\bmain\b").unwrap());
+    static RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^function\b[\s\S]*?\bmain\b").unwrap());
     pub fn wrap_script_if_not_esm(script: &str) -> String {
         let script = script.trim_matches(&[' ', '\n', '\t', '\r']);
         if !RE.is_match(script) {

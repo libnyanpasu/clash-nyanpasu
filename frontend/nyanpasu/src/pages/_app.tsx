@@ -191,11 +191,7 @@ export default function App() {
           </div>
 
           <div className="layout__right">
-            {OS === "windows" && (
-              <div className="the-bar">
-                <LayoutControl />
-              </div>
-            )}
+            {OS === "windows" && <LayoutControl className="the-bar" />}
 
             <div className="drag-mask" data-windrag />
 

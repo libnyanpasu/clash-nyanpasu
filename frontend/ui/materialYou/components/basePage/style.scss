@@ -7,10 +7,11 @@
   > header {
     box-sizing: border-box;
     display: flex;
-    flex: 0 0 64px;
-    align-items: center;
+    align-items: end;
     justify-content: space-between;
     width: 100%;
+    height: 72px;
+    padding-bottom: 12px;
     margin: 0 auto;
   }
 

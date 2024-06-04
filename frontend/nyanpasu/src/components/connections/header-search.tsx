@@ -32,6 +32,7 @@ export const HeaderSearch = () => {
           hiddenLabel
           placeholder={t("Type to Filter")}
           variant="filled"
+          className="!pb-0"
           sx={{ input: { py: 1, fontSize: 14 } }}
           InputProps={inputProps}
         />

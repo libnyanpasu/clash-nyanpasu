@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::utils::dirs;
+// use crate::utils::dirs;
 
 use super::runner::{ProcessOutput, Runner};
 use anyhow::Context;
@@ -8,7 +8,11 @@ use async_trait::async_trait;
 use parking_lot::Mutex;
 use rquickjs::{
     async_with,
-    loader::{BuiltinResolver, FileResolver, ScriptLoader},
+    loader::{
+        BuiltinResolver,
+        // FileResolver,
+        ScriptLoader,
+    },
     AsyncContext, AsyncRuntime, Function, Module,
 };
 use serde_yaml::Mapping;
@@ -22,11 +26,11 @@ impl Runner for JSRunner {
     fn try_new() -> Result<JSRunner, anyhow::Error> {
         let js_runtime = AsyncRuntime::new().context("failed to create rquickjs runtime")?;
         // let ctx = AsyncContext::full(&js_runtime);
-        let app_path = dirs::app_profiles_dir()?;
-        let app_path = relative_path::RelativePathBuf::from_path(app_path)?;
+        // let app_path = dirs::app_profiles_dir().context("failed to get app profiles dir")?;
+        // let app_path = relative_path::RelativePathBuf::from_path(app_path)?;
         let resolver = (
             BuiltinResolver::default(), // .with_module(path)
-            FileResolver::default().with_path(app_path),
+                                        // FileResolver::default().with_path(app_path),
         );
         let loader = ScriptLoader::default();
         let runtime: AsyncRuntime = async_runtime::block_on(async move {
@@ -73,8 +77,8 @@ impl Runner for JSRunner {
             Module::declare(ctx.clone(), "user_script", script).context("fail to define the user_script module")?;
             let module = Module::declare(ctx, "process_honey", format!(r#"
             import user_script from "user_script"
-            const config = JSON.parse(`{config}`)
-            export const final_result = JSON.stringify(await user_script(config))
+            let config = JSON.parse(`{config}`)
+            export let final_result = JSON.stringify(await user_script(config))
             "#)).context("fail to define the process_honey module")?;
             let (decl, promises) = module.eval().context("fail to eval the process_honey module")?;
             promises
@@ -104,5 +108,67 @@ mod utils {
         } else {
             format!("export default {}", script)
         }
+    }
+}
+
+mod test {
+    use super::{super::runner::Runner, JSRunner};
+
+    #[test]
+    fn test_wrap_script_if_not_esm() {
+        let script = r#"function main(config) {
+            return config
+        };"#;
+        let script = super::utils::wrap_script_if_not_esm(script);
+        assert_eq!(
+            script,
+            "export default function main(config) {\n            return config\n        };"
+        );
+    }
+
+    #[test]
+    fn test_process_honey() {
+        let runner = JSRunner::try_new().unwrap();
+        let mapping = serde_yaml::from_str(
+            r#"
+        rules:
+            - 111
+            - 222
+        tun:
+            enable: false
+        dns:
+            enable: false
+        "#,
+        )
+        .unwrap();
+        let script = r#"
+        export default async function main(config) {
+            if (Array.isArray(config.rules)) {
+                config.rules = [...config.rules, "add"];
+            }
+            print(JSON.stringify(config));
+            config.proxies = ["111"];
+            return config;
+        }"#;
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async move {
+            let (mapping, outs) = runner.process_honey(mapping, script).await.unwrap();
+            assert_eq!(
+                mapping["rules"],
+                serde_yaml::Value::Sequence(vec![
+                    serde_yaml::Value::String("111".to_string()),
+                    serde_yaml::Value::String("222".to_string()),
+                    serde_yaml::Value::String("add".to_string()),
+                ])
+            );
+            assert_eq!(
+                mapping["proxies"],
+                serde_yaml::Value::Sequence(vec![serde_yaml::Value::String("111".to_string()),])
+            );
+            assert_eq!(outs, vec!["{\"rules\":[\"111\",\"222\"],\"tun\":{\"enable\":false,\"dns\":{\"enable\":false}},\"proxies\":[\"111\"]}"]);
+        }) ;
     }
 }

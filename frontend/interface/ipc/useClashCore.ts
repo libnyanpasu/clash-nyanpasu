@@ -1,9 +1,9 @@
-import { Clash, clash } from "@/service";
+import { Clash, clash as clashApi } from "@/service";
 import * as tauri from "@/service/tauri";
 import useSWR from "swr";
 
 export const useClashCore = () => {
-  const { getGroupDelay, getProxiesDelay } = clash();
+  const { getGroupDelay, getProxiesDelay, ...clash } = clashApi();
 
   const { data, isLoading, mutate } = useSWR("getProxies", tauri.getProxies);
 
@@ -45,12 +45,15 @@ export const useClashCore = () => {
     await mutate();
   };
 
+  const getRules = useSWR("getRules", clash.getRules);
+
   return {
     data,
     isLoading,
     updateGroupDelay,
     updateProxiesDelay,
     setGroupProxy,
+    getRules,
   };
 };
 

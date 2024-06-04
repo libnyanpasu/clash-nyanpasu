@@ -162,6 +162,6 @@ export namespace Connection {
     downloadTotal: number;
     uploadTotal: number;
     memory?: number;
-    connections: Item[];
+    connections?: Item[];
   }
 }

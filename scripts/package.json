@@ -15,6 +15,6 @@
     "https-proxy-agent": "7.0.4",
     "node-fetch": "3.3.2",
     "picocolors": "1.0.1",
-    "telegram": "2.21.2"
+    "telegram": "2.22.2"
   }
 }

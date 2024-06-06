@@ -399,8 +399,8 @@ importers:
         specifier: 1.0.1
         version: 1.0.1
       telegram:
-        specifier: 2.21.2
-        version: 2.21.2
+        specifier: 2.22.2
+        version: 2.22.2
 
 packages:
 
@@ -4601,8 +4601,8 @@ packages:
     engines: {node: '>=14.0.0'}
     hasBin: true
 
-  telegram@2.21.2:
-    resolution: {integrity: sha512-fvLY49uXsL+TyDdGv7K1JOMMdd0AUkBx+kb5NRC3UYB30Y0h4IQPmTyAAQI6i6/6x6Of6ZK0nXezlSXC9es+EA==}
+  telegram@2.22.2:
+    resolution: {integrity: sha512-9payizc801Aqqu4eTGPc0huxKnIwFe0hn18mrpbgAKKiMLurX/UIQW/fjPhI5ONzockDFsaXDFqTreXBoG1u3A==}
 
   term-size@1.2.0:
     resolution: {integrity: sha512-7dPUZQGy/+m3/wjVz3ZW5dobSoD/02NxJpoXUX0WIyjfVS3l0c+b/+9phIDFA7FHzkYtwtMFgeGZ/Y8jVTeqQQ==}
@@ -9595,7 +9595,7 @@ snapshots:
     transitivePeerDependencies:
       - ts-node
 
-  telegram@2.21.2:
+  telegram@2.22.2:
     dependencies:
       '@cryptography/aes': 0.1.1
       async-mutex: 0.3.2

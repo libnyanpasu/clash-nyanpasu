@@ -163,5 +163,7 @@
 
   "Portable Update Error": "便携版无法自动更新，请到 Github 下载最新版本",
 
-  "Enable Tray Proxies Selector": "开启托盘代理选择"
+  "Enable Tray Proxies Selector": "开启托盘代理选择",
+  "Proxy Set proxies": "{{rule}} 个节点",
+  "Update Proxies Providers All": "全部更新"
 }

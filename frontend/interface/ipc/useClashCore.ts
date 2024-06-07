@@ -1,4 +1,9 @@
-import { Clash, ProviderRules, clash as clashApi } from "@/service";
+import {
+  Clash,
+  ProviderItem,
+  ProviderRules,
+  clash as clashApi,
+} from "@/service";
 import * as tauri from "@/service/tauri";
 import useSWR from "swr";
 
@@ -58,6 +63,17 @@ export const useClashCore = () => {
     await getRulesProviders.mutate();
   };
 
+  const getProxiesProviders = useSWR<{ [name: string]: ProviderItem }>(
+    "getProxiesProviders",
+    clash.getProxiesProviders,
+  );
+
+  const updateProxiesProviders = async (name: string) => {
+    await clash.updateProxiesProviders(name);
+
+    await getProxiesProviders.mutate();
+  };
+
   return {
     data,
     isLoading,
@@ -67,5 +83,7 @@ export const useClashCore = () => {
     getRules,
     getRulesProviders,
     updateRulesProviders,
+    getProxiesProviders,
+    updateProxiesProviders,
   };
 };

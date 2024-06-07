@@ -181,3 +181,11 @@ export interface ProviderRules {
   updatedAt: string;
   vehicleType: string;
 }
+
+export interface ProviderItem {
+  name: string;
+  type: string;
+  proxies: Clash.Proxy[];
+  updatedAt: string;
+  vehicleType: string;
+}

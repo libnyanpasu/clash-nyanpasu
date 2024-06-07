@@ -1,18 +1,56 @@
+import { LogMessage } from "@nyanpasu/interface";
 import { atom } from "jotai";
 
-export const proxyGroupAtom = atom<{
+const atomWithLocalStorage = <T>(key: string, initialValue: T) => {
+  const getInitialValue = (): T => {
+    const item = localStorage.getItem(key);
+
+    return item ? JSON.parse(item) : initialValue;
+  };
+
+  const baseAtom = atom<T>(getInitialValue());
+
+  const derivedAtom = atom(
+    (get) => get(baseAtom),
+    (get, set, update: T | ((prev: T) => T)) => {
+      const nextValue =
+        typeof update === "function"
+          ? (update as (prev: T) => T)(get(baseAtom))
+          : update;
+
+      set(baseAtom, nextValue);
+
+      localStorage.setItem(key, JSON.stringify(nextValue));
+    },
+  );
+
+  return derivedAtom;
+};
+
+export const proxyGroupAtom = atomWithLocalStorage<{
   selector: number | null;
-}>({
+}>("proxyGroupAtom", {
   selector: 0,
 });
 
-export const proxyGroupSortAtom = atom<"default" | "delay" | "name">("default");
+export const proxyGroupSortAtom = atomWithLocalStorage<
+  "default" | "delay" | "name"
+>("proxyGroupSortAtom", "default");
 
-export const themeMode = atom<"light" | "dark">("light");
+export const themeMode = atomWithLocalStorage<"light" | "dark">(
+  "themeMode",
+  "light",
+);
 
-export const atomLogData = atom<ILogItem[]>([]);
+export const atomLogData = atomWithLocalStorage<LogMessage[]>(
+  "atomLogData",
+  [],
+);
 
-export const atomEnableLog = atom<boolean>(false);
+export const atomEnableLog = atomWithLocalStorage<boolean>(
+  "atomEnableLog",
+  true,
+);
 
 // save the state of each profile item loading
 export const atomLoadingCache = atom<Record<string, boolean>>({});

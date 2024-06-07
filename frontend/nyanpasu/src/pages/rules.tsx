@@ -1,73 +1,66 @@
-import { BaseEmpty, BasePage } from "@/components/base";
-import RuleItem from "@/components/rule/rule-item";
-import { getRules } from "@/services/api";
-import { Box, Paper, TextField } from "@mui/material";
+import { BaseEmpty } from "@/components/base";
+import RuleItem from "@/components/rules/rule-item";
+import { alpha, FilledInputProps, TextField, useTheme } from "@mui/material";
+import { useClashCore } from "@nyanpasu/interface";
+import { BasePage } from "@nyanpasu/ui";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Virtuoso } from "react-virtuoso";
-import useSWR from "swr";
+import { VList } from "virtua";
 
 export default function RulesPage() {
   const { t } = useTranslation();
-  const { data = [] } = useSWR("getRules", getRules);
+
+  const { palette } = useTheme();
+
+  const { getRules } = useClashCore();
 
   const [filterText, setFilterText] = useState("");
 
   const rules = useMemo(() => {
-    return data.filter((each) => each.payload.includes(filterText));
-  }, [data, filterText]);
+    return getRules.data?.rules.filter((each) =>
+      each.payload.includes(filterText),
+    );
+  }, [getRules.data, filterText]);
+
+  const inputProps: Partial<FilledInputProps> = {
+    sx: {
+      borderRadius: 7,
+      backgroundColor: alpha(palette.primary.main, 0.1),
+
+      fieldset: {
+        border: "none",
+      },
+    },
+  };
 
   return (
-    <BasePage full title={t("Rules")} contentStyle={{ height: "100%" }}>
-      <Box
-        sx={{
-          padding: 2,
-          width: "calc(100% - 32px)",
-          position: "fixed",
-          borderRadius: 4,
-          zIndex: 10,
-        }}
-      >
-        <Paper
-          sx={{
-            borderRadius: 4,
-            boxShadow: "none",
-          }}
-        >
-          <TextField
-            hiddenLabel
-            fullWidth
-            size="small"
-            autoComplete="off"
-            variant="outlined"
-            spellCheck="false"
-            placeholder={t("Filter conditions")}
-            value={filterText}
-            onChange={(e) => setFilterText(e.target.value)}
-            sx={{ input: { py: 0.65, px: 1.25 } }}
-            InputProps={{
-              sx: {
-                borderRadius: 4,
-              },
-            }}
-          />
-        </Paper>
-      </Box>
-
-      <Box height="100%">
-        {rules.length > 0 ? (
-          <Virtuoso
-            data={rules}
-            itemContent={(index, item) => (
-              <RuleItem index={index} value={item} />
-            )}
-            followOutput={"smooth"}
-            overscan={900}
-          />
+    <BasePage
+      full
+      title={t("Rules")}
+      contentStyle={{ height: "100%" }}
+      header={
+        <TextField
+          hiddenLabel
+          autoComplete="off"
+          spellCheck="false"
+          value={filterText}
+          placeholder={t("Filter conditions")}
+          onChange={(e) => setFilterText(e.target.value)}
+          className="!pb-0"
+          sx={{ input: { py: 1, fontSize: 14 } }}
+          InputProps={inputProps}
+        />
+      }
+    >
+      <VList className="flex flex-col gap-2 p-2 overflow-auto select-text">
+        {rules ? (
+          rules.map((item, index) => {
+            return <RuleItem key={index} index={index} value={item} />;
+          })
         ) : (
           <BaseEmpty text="No Rules" />
         )}
-      </Box>
+      </VList>
     </BasePage>
   );
 }

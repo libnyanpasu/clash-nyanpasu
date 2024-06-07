@@ -1,9 +1,14 @@
-import { Clash, clash } from "@/service";
+import {
+  Clash,
+  ProviderItem,
+  ProviderRules,
+  clash as clashApi,
+} from "@/service";
 import * as tauri from "@/service/tauri";
 import useSWR from "swr";
 
 export const useClashCore = () => {
-  const { getGroupDelay, getProxiesDelay } = clash();
+  const { getGroupDelay, getProxiesDelay, ...clash } = clashApi();
 
   const { data, isLoading, mutate } = useSWR("getProxies", tauri.getProxies);
 
@@ -45,41 +50,40 @@ export const useClashCore = () => {
     await mutate();
   };
 
+  const getRules = useSWR("getRules", clash.getRules);
+
+  const getRulesProviders = useSWR<{ [name: string]: ProviderRules }>(
+    "getRulesProviders",
+    clash.getRulesProviders,
+  );
+
+  const updateRulesProviders = async (name: string) => {
+    await clash.updateRulesProviders(name);
+
+    await getRulesProviders.mutate();
+  };
+
+  const getProxiesProviders = useSWR<{ [name: string]: ProviderItem }>(
+    "getProxiesProviders",
+    clash.getProxiesProviders,
+  );
+
+  const updateProxiesProviders = async (name: string) => {
+    await clash.updateProxiesProviders(name);
+
+    await getProxiesProviders.mutate();
+  };
+
   return {
     data,
     isLoading,
     updateGroupDelay,
     updateProxiesDelay,
     setGroupProxy,
+    getRules,
+    getRulesProviders,
+    updateRulesProviders,
+    getProxiesProviders,
+    updateProxiesProviders,
   };
 };
-
-// export class UseClashCore {
-//   public proxies;
-
-//   constructor() {
-//     this.proxies = useSWR("getProxies", getProxies);
-//   }
-
-//   public async updateGroupDelay(index: number, options?: Clash.DelayOptions) {
-//     console.log(index);
-//     // const group = this.proxies.data?.groups[index];
-//     console.log(this.proxies.data?.groups);
-
-//     // if (!group) {
-//     //   return;
-//     // }
-
-//     // const result = await getGroupDelay(group?.name, options);
-
-//     // console.log(result);
-
-//     // group.all?.forEach((item) => {
-//     //   if (result)
-//     // })
-
-//     // Object.entries(result).forEach(([name, delay]) => {
-
-//     // })
-//   }
-// }

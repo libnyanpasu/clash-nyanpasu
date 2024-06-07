@@ -1,29 +1,29 @@
 import { useMessage } from "@/hooks/use-notification";
 import { Refresh } from "@mui/icons-material";
-import LoadingButton from "@mui/lab/LoadingButton/LoadingButton";
+import LoadingButton from "@mui/lab/LoadingButton";
 import { Chip, Paper } from "@mui/material";
-import { ProviderRules, useClashCore } from "@nyanpasu/interface";
+import { ProviderItem, useClashCore } from "@nyanpasu/interface";
 import { useLockFn } from "ahooks";
 import dayjs from "dayjs";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-export interface RulesProviderProps {
-  provider: ProviderRules;
+export interface ProxiesProviderProps {
+  provider: ProviderItem;
 }
 
-export default function RulesProvider({ provider }: RulesProviderProps) {
+export const ProxiesProvider = ({ provider }: ProxiesProviderProps) => {
   const { t } = useTranslation();
 
   const [loading, setLoading] = useState(false);
 
-  const { updateRulesProviders } = useClashCore();
+  const { updateProxiesProviders } = useClashCore();
 
   const handleClick = useLockFn(async () => {
     try {
       setLoading(true);
 
-      await updateRulesProviders(provider.name);
+      await updateProxiesProviders(provider.name);
     } catch (e) {
       useMessage(`Update ${provider.name} failed.\n${String(e)}`, {
         type: "error",
@@ -46,7 +46,7 @@ export default function RulesProvider({ provider }: RulesProviderProps) {
           <p className="text-lg font-bold truncate">{provider.name}</p>
 
           <p className="truncate text-sm">
-            {provider.vehicleType}/{provider.behavior}
+            {provider.vehicleType}/{provider.type}
           </p>
         </div>
 
@@ -60,8 +60,8 @@ export default function RulesProvider({ provider }: RulesProviderProps) {
       <div className="flex items-center justify-between">
         <Chip
           className="font-bold truncate"
-          label={t("Rule Set rules", {
-            rule: provider.ruleCount,
+          label={t("Proxy Set proxies", {
+            rule: provider.proxies.length,
           })}
         />
 
@@ -77,4 +77,6 @@ export default function RulesProvider({ provider }: RulesProviderProps) {
       </div>
     </Paper>
   );
-}
+};
+
+export default ProxiesProvider;

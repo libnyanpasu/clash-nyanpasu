@@ -1,144 +1,61 @@
-import { BasePage } from "@/components/base";
+import ProxiesProvider from "@/components/providers/proxies-provider";
 import RulesProvider from "@/components/providers/rules-provider";
-import { NotificationType, useNotification } from "@/hooks/use-notification";
-import { getRulesProviders, updateRulesProviders } from "@/services/api";
-import { Error as ErrorIcon } from "@mui/icons-material";
-import { LoadingButton } from "@mui/lab";
-import {
-  Box,
-  Button,
-  CircularProgress,
-  Stack,
-  Typography,
-} from "@mui/material";
+import UpdateProviders from "@/components/providers/update-providers";
+import UpdateProxiesProviders from "@/components/providers/update-proxies-providers";
+import { Chip } from "@mui/material";
 import Grid from "@mui/material/Unstable_Grid2";
-import { useLockFn } from "ahooks";
-import { useState } from "react";
+import { useClashCore } from "@nyanpasu/interface";
+import { BasePage } from "@nyanpasu/ui";
 import { useTranslation } from "react-i18next";
-import useSWR from "swr";
 
 export default function ProvidersPage() {
   const { t } = useTranslation();
-  const {
-    data: rulesProviders,
-    error: rulesProvidersError,
-    isLoading: rulesProvidersLoading,
-    mutate: mutateRulesProviders,
-  } = useSWR("getClashProvidersRules", getRulesProviders);
 
-  const [updating, setUpdating] = useState(false);
-  const onUpdateAll = useLockFn(async () => {
-    setUpdating(true);
-    try {
-      const queue = rulesProviders!.map((provider) =>
-        updateRulesProviders(provider.name),
-      );
-      await Promise.all(queue);
-      await mutateRulesProviders();
-      useNotification({
-        title: t("Success"),
-        body: t("Update Rules Providers Success"),
-        type: NotificationType.Success,
-      });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (err: any) {
-      useNotification({
-        title: t("Error"),
-        body: err.message || err.toString(),
-        type: NotificationType.Error,
-      });
-    } finally {
-      setUpdating(false);
-    }
-  });
-
-  const onRulesProviderUpdated = () => {
-    mutateRulesProviders();
-  };
+  const { getRulesProviders, getProxiesProviders } = useClashCore();
 
   return (
     <BasePage title={t("Providers")}>
-      <Box display="flex" justifyContent="space-between" alignItems="center">
-        <Typography
-          variant="h5"
-          style={{
-            margin: 0,
-          }}
-        >
-          {t("Rules Providers")}
-        </Typography>
-        <LoadingButton
-          variant="contained"
-          loading={updating}
-          disabled={updating}
-          onClick={onUpdateAll}
-        >
-          {t("Update Rules Providers All")}
-        </LoadingButton>
-      </Box>
-      <Stack
-        spacing={2}
-        sx={{
-          marginTop: 2,
-        }}
-      >
-        {
-          /* 这里需要抽象个状态机组件出来 */
-          rulesProvidersLoading || rulesProvidersError ? (
-            <Box
-              display="flex"
-              justifyContent="center"
-              alignItems="center"
-              sx={{
-                height: 200,
-              }}
-            >
-              {rulesProvidersLoading ? (
-                <CircularProgress />
-              ) : (
-                <Stack spacing={3} alignItems="center">
-                  <h3
-                    style={{
-                      textAlign: "center",
-                    }}
-                  >
-                    {t("Error")}
-                  </h3>
-                  <ErrorIcon
-                    color="error"
-                    sx={{
-                      fontSize: "4em",
-                    }}
-                  />
-                  <Button
-                    variant="outlined"
-                    onClick={() => mutateRulesProviders()}
-                  >
-                    {t("Retry")}
-                  </Button>
-                </Stack>
-              )}
-            </Box>
-          ) : (
-            <Grid
-              container
-              spacing={2}
-              style={{
-                marginTop: "0.8em",
-              }}
-            >
-              {rulesProviders!.map((provider) => (
-                <Grid xs={12} md={6} xl={4} key={provider.name}>
-                  <RulesProvider
-                    provider={provider}
-                    onRulesProviderUpdated={onRulesProviderUpdated}
-                  />
+      <div className="flex flex-col gap-4">
+        <div className="flex justify-between items-center">
+          <Chip
+            className="font-bold !text-lg truncate !p-2 !h-10 !rounded-full"
+            label={`${t("Proxies Providers")} (${Object.entries(getProxiesProviders.data ?? {}).length})`}
+          />
+
+          <UpdateProxiesProviders />
+        </div>
+
+        {getProxiesProviders.data && (
+          <Grid container spacing={2}>
+            {Object.entries(getProxiesProviders.data).map(
+              ([name, provider]) => (
+                <Grid sm={12} md={6} lg={4} xl={3} key={name}>
+                  <ProxiesProvider provider={provider} />
                 </Grid>
-              ))}
-            </Grid>
-          )
-        }
-      </Stack>
+              ),
+            )}
+          </Grid>
+        )}
+
+        <div className="flex justify-between items-center">
+          <Chip
+            className="font-bold !text-lg truncate !p-2 !h-10 !rounded-full"
+            label={`${t("Rules Providers")} (${Object.entries(getRulesProviders.data ?? {}).length})`}
+          />
+
+          <UpdateProviders />
+        </div>
+
+        {getRulesProviders.data && (
+          <Grid container spacing={2}>
+            {Object.entries(getRulesProviders.data).map(([name, provider]) => (
+              <Grid sm={12} md={6} lg={4} xl={3} key={name}>
+                <RulesProvider provider={provider} />
+              </Grid>
+            ))}
+          </Grid>
+        )}
+      </div>
     </BasePage>
   );
 }

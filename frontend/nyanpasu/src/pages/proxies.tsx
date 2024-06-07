@@ -1,4 +1,3 @@
-import { ProviderButton } from "@/components/proxy/provider-button";
 import {
   Box,
   Button,
@@ -133,8 +132,6 @@ export default function ProxyPage() {
       title={t("Proxy Groups")}
       header={
         <Box display="flex" alignItems="center" gap={1}>
-          <ProviderButton />
-
           <ButtonGroup size="small">
             {Object.entries(getCurrentMode).map(([key, value], index) => (
               <Button

@@ -1,5 +1,6 @@
 import { ofetch } from "ofetch";
 import { getClashInfo } from "./tauri";
+import { ProviderItem } from "./types";
 
 export namespace Clash {
   export interface Config {
@@ -147,6 +148,47 @@ export const clash = () => {
     });
   };
 
+  const getRulesProviders = async () => {
+    return (
+      await (
+        await buildRequest()
+      )("/providers/rules", {
+        method: "GET",
+      })
+    )?.providers;
+  };
+
+  const updateRulesProviders = async (name: string) => {
+    return (await buildRequest())(`/providers/rules/${name}`, {
+      method: "PUT",
+    });
+  };
+
+  const getProxiesProviders = async () => {
+    const result: { [key: string]: ProviderItem } = (
+      await (
+        await buildRequest()
+      )("/providers/proxies")
+    )?.providers;
+
+    const types = ["http", "file"];
+
+    return Object.fromEntries(
+      Object.entries(result).filter(([, value]) =>
+        types.includes(value.vehicleType.toLowerCase()),
+      ),
+    );
+  };
+
+  const updateProxiesProviders = async (name: string) => {
+    return (await buildRequest())(
+      `/providers/proxies/${encodeURIComponent(name)}`,
+      {
+        method: "PUT",
+      },
+    );
+  };
+
   return {
     getConfigs,
     setConfigs,
@@ -157,5 +199,9 @@ export const clash = () => {
     getProxies,
     setProxies,
     deleteConnections,
+    getRulesProviders,
+    updateRulesProviders,
+    getProxiesProviders,
+    updateProxiesProviders,
   };
 };

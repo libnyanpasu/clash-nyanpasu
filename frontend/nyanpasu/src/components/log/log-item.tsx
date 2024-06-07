@@ -58,7 +58,7 @@ const LogItem = (props: Props) => {
       sx={{
         ml: 3.5,
         mr: 3.5,
-        pt: index === 0 ? 8 : 0,
+        // pt: index === 0 ? 8 : 0,
       }}
     >
       <div>

@@ -26,7 +26,6 @@ export default function RulesPage() {
     sx: {
       borderRadius: 7,
       backgroundColor: alpha(palette.primary.main, 0.1),
-      backdropFilter: "blur(8px)",
 
       fieldset: {
         border: "none",
@@ -35,30 +34,29 @@ export default function RulesPage() {
   };
 
   return (
-    <BasePage full title={t("Rules")} contentStyle={{ height: "100%" }}>
-      <div className="fixed z-10 w-full p-6">
+    <BasePage
+      full
+      title={t("Rules")}
+      contentStyle={{ height: "100%" }}
+      header={
         <TextField
           hiddenLabel
-          fullWidth
           autoComplete="off"
           spellCheck="false"
           value={filterText}
           placeholder={t("Filter conditions")}
           onChange={(e) => setFilterText(e.target.value)}
-          sx={{ input: { py: 1, px: 2 } }}
+          className="!pb-0"
+          sx={{ input: { py: 1, fontSize: 14 } }}
           InputProps={inputProps}
         />
-      </div>
-
+      }
+    >
       <VList className="flex flex-col gap-2 p-2 overflow-auto select-text">
         {rules ? (
-          <>
-            <div className="h-16" />
-
-            {rules.map((item, index) => {
-              return <RuleItem key={index} index={index} value={item} />;
-            })}
-          </>
+          rules.map((item, index) => {
+            return <RuleItem key={index} index={index} value={item} />;
+          })
         ) : (
           <BaseEmpty text="No Rules" />
         )}

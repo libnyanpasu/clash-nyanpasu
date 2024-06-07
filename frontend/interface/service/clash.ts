@@ -147,6 +147,22 @@ export const clash = () => {
     });
   };
 
+  const getRulesProviders = async () => {
+    return (
+      await (
+        await buildRequest()
+      )("/providers/rules", {
+        method: "GET",
+      })
+    )?.providers;
+  };
+
+  const updateRulesProviders = async (name: string) => {
+    return (await buildRequest())(`/providers/rules/${name}`, {
+      method: "PUT",
+    });
+  };
+
   return {
     getConfigs,
     setConfigs,
@@ -157,5 +173,7 @@ export const clash = () => {
     getProxies,
     setProxies,
     deleteConnections,
+    getRulesProviders,
+    updateRulesProviders,
   };
 };

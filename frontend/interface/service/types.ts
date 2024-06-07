@@ -171,3 +171,13 @@ export interface LogMessage {
   time?: string;
   payload: string;
 }
+
+export interface ProviderRules {
+  behavior: string;
+  format: string;
+  name: string;
+  ruleCount: number;
+  type: string;
+  updatedAt: string;
+  vehicleType: string;
+}

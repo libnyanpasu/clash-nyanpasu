@@ -1,4 +1,4 @@
-import { Clash, clash as clashApi } from "@/service";
+import { Clash, ProviderRules, clash as clashApi } from "@/service";
 import * as tauri from "@/service/tauri";
 import useSWR from "swr";
 
@@ -47,6 +47,17 @@ export const useClashCore = () => {
 
   const getRules = useSWR("getRules", clash.getRules);
 
+  const getRulesProviders = useSWR<{ [name: string]: ProviderRules }>(
+    "getRulesProviders",
+    clash.getRulesProviders,
+  );
+
+  const updateRulesProviders = async (name: string) => {
+    await clash.updateRulesProviders(name);
+
+    await getRulesProviders.mutate();
+  };
+
   return {
     data,
     isLoading,
@@ -54,35 +65,7 @@ export const useClashCore = () => {
     updateProxiesDelay,
     setGroupProxy,
     getRules,
+    getRulesProviders,
+    updateRulesProviders,
   };
 };
-
-// export class UseClashCore {
-//   public proxies;
-
-//   constructor() {
-//     this.proxies = useSWR("getProxies", getProxies);
-//   }
-
-//   public async updateGroupDelay(index: number, options?: Clash.DelayOptions) {
-//     console.log(index);
-//     // const group = this.proxies.data?.groups[index];
-//     console.log(this.proxies.data?.groups);
-
-//     // if (!group) {
-//     //   return;
-//     // }
-
-//     // const result = await getGroupDelay(group?.name, options);
-
-//     // console.log(result);
-
-//     // group.all?.forEach((item) => {
-//     //   if (result)
-//     // })
-
-//     // Object.entries(result).forEach(([name, delay]) => {
-
-//     // })
-//   }
-// }

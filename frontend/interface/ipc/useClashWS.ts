@@ -17,15 +17,21 @@ export const useClashWS = () => {
     return `${getBaseUrl()}/${path}?${getTokenUrl()}`;
   };
 
-  const connectionsUrl = useMemo(() => {
+  const url = useMemo(() => {
     if (getClashInfo.data) {
-      return resolveUrl("connections");
+      return {
+        connections: resolveUrl("connections"),
+        logs: resolveUrl("logs"),
+      };
     }
   }, [getClashInfo.data]);
 
-  const connections = useWebSocket(connectionsUrl ?? "");
+  const connections = useWebSocket(url?.connections ?? "");
+
+  const logs = useWebSocket(url?.logs ?? "");
 
   return {
     connections,
+    logs,
   };
 };

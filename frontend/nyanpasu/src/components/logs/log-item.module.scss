@@ -1,0 +1,22 @@
+.item {
+  :global(.shiki) {
+    margin-bottom: 0;
+    background-color: transparent !important;
+
+    * {
+      font-family: var(--item-font);
+    }
+
+    span {
+      white-space: normal;
+    }
+  }
+
+  &.dark {
+    :global(.shiki) {
+      span {
+        color: var(--shiki-dark) !important;
+      }
+    }
+  }
+}

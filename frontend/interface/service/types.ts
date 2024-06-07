@@ -165,3 +165,9 @@ export namespace Connection {
     connections?: Item[];
   }
 }
+
+export interface LogMessage {
+  type: string;
+  time?: string;
+  payload: string;
+}

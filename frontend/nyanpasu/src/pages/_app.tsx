@@ -30,6 +30,7 @@ import AnimatedLogo from "@/components/layout/animated-logo";
 import { FallbackProps } from "react-error-boundary";
 import styles from "./_app.module.scss";
 import { Experimental_CssVarsProvider as CssVarsProvider } from "@mui/material/styles";
+import LogProvider from "@/components/logs/log-provider";
 
 dayjs.extend(relativeTime);
 
@@ -148,6 +149,8 @@ export default function App() {
     <SWRConfig value={{ errorRetryCount: 3 }}>
       <CssVarsProvider theme={theme}>
         <ThemeModeProvider />
+        <LogProvider />
+
         <Paper
           square
           elevation={0}

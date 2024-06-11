@@ -10,7 +10,14 @@ import { Clash, useClashCore, useNyanpasu } from "@nyanpasu/interface";
 import { useBreakpoint } from "@nyanpasu/ui";
 import { useAtom, useAtomValue } from "jotai";
 import { proxyGroupAtom, proxyGroupSortAtom } from "@/store";
-import { CSSProperties, memo, useEffect, useMemo, useState } from "react";
+import {
+  CSSProperties,
+  memo,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
 import { classNames } from "@/utils";
 import { VList } from "virtua";
 import { AnimatePresence, motion } from "framer-motion";
@@ -172,6 +179,8 @@ export const NodeList = () => {
   const { data, setGroupProxy, setGlobalProxy, updateProxiesDelay } =
     useClashCore();
 
+  const [isPending, startTransition] = useTransition();
+
   const { getCurrentMode } = useNyanpasu();
 
   const [proxyGroup] = useAtom(proxyGroupAtom);
@@ -228,7 +237,7 @@ export const NodeList = () => {
 
   const [renderList, setRenderList] = useState<RenderClashProxy[][]>([]);
 
-  useEffect(() => {
+  const updateRenderList = () => {
     if (!group?.all) return;
 
     const nodeNames: string[] = [];
@@ -262,6 +271,12 @@ export const NodeList = () => {
     );
 
     setRenderList(list);
+  };
+
+  useEffect(() => {
+    startTransition(() => {
+      updateRenderList();
+    });
   }, [group?.all, column]);
 
   const hendleClick = (node: string) => {
@@ -274,7 +289,14 @@ export const NodeList = () => {
 
   return (
     <AnimatePresence initial={false} mode="sync">
-      <VList style={{ flex: 1 }} className="p-2">
+      <VList
+        style={{ flex: 1 }}
+        className={classNames(
+          "transition-opacity",
+          "p-2",
+          isPending ? "opacity-0" : "opacity-1",
+        )}
+      >
         {renderList?.map((node, index) => {
           return (
             <div

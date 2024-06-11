@@ -31,10 +31,11 @@ const getColorForDelay = (delay: number): string => {
   const { palette } = useTheme();
 
   const delayColorMapping: { [key: string]: string } = {
-    "0": palette.text.secondary,
+    "0": palette.error.main,
+    "1": palette.text.secondary,
     "100": palette.success.main,
     "500": palette.warning.main,
-    "1000": palette.error.main,
+    "10000": palette.error.main,
   };
 
   let color: string = palette.text.secondary;
@@ -102,7 +103,7 @@ const DelayChip = memo(function DelayChip({
               loading ? "opacity-0" : "opacity-1",
             )}
           >
-            {`${delay} ms`}
+            {delay ? `${delay} ms` : "timeout"}
           </span>
 
           <CircularProgress
@@ -194,6 +195,9 @@ export const NodeList = () => {
 
               if (delayA === -1 || delayA === -2) return 1;
               if (delayB === -1 || delayB === -2) return -1;
+
+              if (delayA === 0) return 1;
+              if (delayB === 0) return -1;
 
               return delayA - delayB;
             });

@@ -273,7 +273,7 @@ export const NodeList = () => {
   };
 
   return (
-    <AnimatePresence initial={false}>
+    <AnimatePresence initial={false} mode="sync">
       <VList style={{ flex: 1 }} className="p-2">
         {renderList?.map((node, index) => {
           return (
@@ -289,9 +289,9 @@ export const NodeList = () => {
                     layoutId={`node-${render.renderLayoutKey}`}
                     className="relative overflow-hidden"
                     layout="position"
-                    initial={false}
-                    animate="center"
-                    exit="exit"
+                    initial={{ scale: 0.7, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ opacity: 0 }}
                   >
                     <NodeCard
                       node={render}

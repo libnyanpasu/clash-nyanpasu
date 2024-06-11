@@ -168,7 +168,8 @@ const NodeCard = memo(function NodeCard({
 });
 
 export const NodeList = () => {
-  const { data, setGroupProxy, updateProxiesDelay } = useClashCore();
+  const { data, setGroupProxy, setGlobalProxy, updateProxiesDelay } =
+    useClashCore();
 
   const { getCurrentMode } = useNyanpasu();
 
@@ -260,7 +261,11 @@ export const NodeList = () => {
   }, [group?.all, column]);
 
   const hendleClick = (node: string) => {
-    setGroupProxy(proxyGroup.selector as number, node);
+    if (!getCurrentMode.global) {
+      setGroupProxy(proxyGroup.selector as number, node);
+    } else {
+      setGlobalProxy(node);
+    }
   };
 
   return (

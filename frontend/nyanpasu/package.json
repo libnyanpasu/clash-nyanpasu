@@ -56,7 +56,7 @@
     "@typescript-eslint/eslint-plugin": "7.13.0",
     "@typescript-eslint/parser": "7.13.0",
     "@vitejs/plugin-react": "4.3.1",
-    "sass": "1.77.4",
+    "sass": "1.77.5",
     "shiki": "1.6.3",
     "vite": "5.2.13",
     "vite-plugin-monaco-editor": "1.1.3",

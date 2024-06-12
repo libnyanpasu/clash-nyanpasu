@@ -1,5 +1,6 @@
 import { useTheme } from "@mui/material";
-import { useEffect, useState } from "react";
+import { useSetState } from "ahooks";
+import { useEffect, useCallback, useMemo } from "react";
 
 export const useBreakpoint = (
   columnMapping: { [key: string]: number } = {
@@ -12,21 +13,38 @@ export const useBreakpoint = (
 ) => {
   const { breakpoints } = useTheme();
 
-  const [breakpoint, setBreakpoint] = useState({
+  const [breakpoint, setBreakpoint] = useSetState({
     key: "sm",
     column: 1,
   });
 
-  const getBreakpoint = (width: number) => {
-    for (const [key, value] of Object.entries(breakpoints.values)) {
-      if (value >= width) {
-        setBreakpoint({ key, column: columnMapping[key] });
-        return;
-      }
-    }
+  const breakpointsValues = useMemo(() => {
+    return Object.entries(breakpoints.values);
+  }, [breakpoints.values]);
 
-    setBreakpoint((p) => ({ ...p, column: columnMapping["default"] }));
-  };
+  const getBreakpoint = useCallback(
+    (width: number) => {
+      for (const [key, value] of breakpointsValues) {
+        if (value >= width) {
+          if (key !== breakpoint.key) {
+            setBreakpoint({
+              key,
+              column: columnMapping[key],
+            });
+          }
+          return;
+        }
+      }
+
+      if (breakpoint.key !== "default") {
+        setBreakpoint({
+          column: columnMapping["default"],
+          key: "default",
+        });
+      }
+    },
+    [breakpointsValues, columnMapping, breakpoint.key, setBreakpoint],
+  );
 
   useEffect(() => {
     const observer = new ResizeObserver((entries) => {
@@ -42,7 +60,7 @@ export const useBreakpoint = (
     return () => {
       observer.disconnect();
     };
-  }, []);
+  }, [getBreakpoint]);
 
   return breakpoint;
 };

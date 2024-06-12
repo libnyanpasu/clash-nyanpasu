@@ -10,7 +10,14 @@ import { Clash, useClashCore, useNyanpasu } from "@nyanpasu/interface";
 import { useBreakpoint } from "@nyanpasu/ui";
 import { useAtom, useAtomValue } from "jotai";
 import { proxyGroupAtom, proxyGroupSortAtom } from "@/store";
-import { CSSProperties, memo, useEffect, useMemo, useState } from "react";
+import {
+  CSSProperties,
+  memo,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
 import { classNames } from "@/utils";
 import { VList } from "virtua";
 import { AnimatePresence, motion } from "framer-motion";
@@ -31,10 +38,11 @@ const getColorForDelay = (delay: number): string => {
   const { palette } = useTheme();
 
   const delayColorMapping: { [key: string]: string } = {
-    "0": palette.text.secondary,
+    "0": palette.error.main,
+    "1": palette.text.secondary,
     "100": palette.success.main,
     "500": palette.warning.main,
-    "1000": palette.error.main,
+    "10000": palette.error.main,
   };
 
   let color: string = palette.text.secondary;
@@ -102,7 +110,7 @@ const DelayChip = memo(function DelayChip({
               loading ? "opacity-0" : "opacity-1",
             )}
           >
-            {`${delay} ms`}
+            {delay ? `${delay} ms` : "timeout"}
           </span>
 
           <CircularProgress
@@ -168,7 +176,10 @@ const NodeCard = memo(function NodeCard({
 });
 
 export const NodeList = () => {
-  const { data, setGroupProxy, updateProxiesDelay } = useClashCore();
+  const { data, setGroupProxy, setGlobalProxy, updateProxiesDelay } =
+    useClashCore();
+
+  const [isPending, startTransition] = useTransition();
 
   const { getCurrentMode } = useNyanpasu();
 
@@ -193,6 +204,9 @@ export const NodeList = () => {
 
               if (delayA === -1 || delayA === -2) return 1;
               if (delayB === -1 || delayB === -2) return -1;
+
+              if (delayA === 0) return 1;
+              if (delayB === 0) return -1;
 
               return delayA - delayB;
             });
@@ -223,7 +237,7 @@ export const NodeList = () => {
 
   const [renderList, setRenderList] = useState<RenderClashProxy[][]>([]);
 
-  useEffect(() => {
+  const updateRenderList = () => {
     if (!group?.all) return;
 
     const nodeNames: string[] = [];
@@ -257,15 +271,32 @@ export const NodeList = () => {
     );
 
     setRenderList(list);
+  };
+
+  useEffect(() => {
+    startTransition(() => {
+      updateRenderList();
+    });
   }, [group?.all, column]);
 
   const hendleClick = (node: string) => {
-    setGroupProxy(proxyGroup.selector as number, node);
+    if (!getCurrentMode.global) {
+      setGroupProxy(proxyGroup.selector as number, node);
+    } else {
+      setGlobalProxy(node);
+    }
   };
 
   return (
-    <AnimatePresence initial={false}>
-      <VList style={{ flex: 1 }} className="p-2">
+    <AnimatePresence initial={false} mode="sync">
+      <VList
+        style={{ flex: 1 }}
+        className={classNames(
+          "transition-opacity",
+          "p-2",
+          isPending ? "opacity-0" : "opacity-1",
+        )}
+      >
         {renderList?.map((node, index) => {
           return (
             <div
@@ -280,9 +311,9 @@ export const NodeList = () => {
                     layoutId={`node-${render.renderLayoutKey}`}
                     className="relative overflow-hidden"
                     layout="position"
-                    initial={false}
-                    animate="center"
-                    exit="exit"
+                    initial={{ scale: 0.7, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ opacity: 0 }}
                   >
                     <NodeCard
                       node={render}

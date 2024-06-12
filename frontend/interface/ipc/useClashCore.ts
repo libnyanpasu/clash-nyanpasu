@@ -50,6 +50,18 @@ export const useClashCore = () => {
     await mutate();
   };
 
+  const setGlobalProxy = async (name: string) => {
+    const group = data?.global;
+
+    if (!group) {
+      return;
+    }
+
+    await tauri.selectProxy(group?.name, name);
+
+    await mutate();
+  };
+
   const getRules = useSWR("getRules", clash.getRules);
 
   const getRulesProviders = useSWR<{ [name: string]: ProviderRules }>(
@@ -80,6 +92,7 @@ export const useClashCore = () => {
     updateGroupDelay,
     updateProxiesDelay,
     setGroupProxy,
+    setGlobalProxy,
     getRules,
     getRulesProviders,
     updateRulesProviders,

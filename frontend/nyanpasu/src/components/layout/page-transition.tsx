@@ -1,29 +1,21 @@
-import { useVerge } from "@/hooks/use-verge";
 import { classNames } from "@/utils";
-import { motion, type HTMLMotionProps } from "framer-motion";
-import { useState } from "react";
-import { useOutlet } from "react-router-dom";
+import { useNyanpasu } from "@nyanpasu/interface";
+import { AnimatePresence, Variant, motion } from "framer-motion";
+import { useLocation, useOutlet } from "react-router-dom";
 
-type Props = {
-  children?: React.ReactNode;
+type PageVariantKey = "initial" | "visible" | "hidden";
+
+type PageVariant = {
+  [key in PageVariantKey]: Variant;
 };
-
-interface PageTransitionVariant {
-  initial: HTMLMotionProps<"div">["initial"];
-  visible: HTMLMotionProps<"div">["animate"];
-  hidden: HTMLMotionProps<"div">["exit"];
-  transition?: HTMLMotionProps<"div">["transition"];
-}
 
 const commonTransition = {
   type: "spring",
-  bounce: 0.3,
-  duration: 0.5,
-  delayChildren: 0.2,
-  staggerChildren: 0.05,
+  bounce: 0,
+  duration: 0.35,
 };
 
-export const pageTransitionVariants = {
+export const pageTransitionVariants: { [name: string]: PageVariant } = {
   blur: {
     initial: { opacity: 0, filter: "blur(10px)" },
     visible: { opacity: 1, filter: "blur(0px)" },
@@ -31,9 +23,9 @@ export const pageTransitionVariants = {
   },
   slide: {
     initial: {
-      translateY: "50%",
+      translateY: "30%",
       opacity: 0,
-      scale: 0.9,
+      scale: 0.95,
     },
     visible: {
       translateY: "0%",
@@ -42,7 +34,6 @@ export const pageTransitionVariants = {
       transition: commonTransition,
     },
     hidden: {
-      translateY: "-50%",
       opacity: 0,
       scale: 0.9,
       transition: commonTransition,
@@ -58,61 +49,31 @@ export const pageTransitionVariants = {
     visible: {},
     hidden: {},
   },
-} satisfies Record<string, PageTransitionVariant>;
-
-function overrideVariantsTransition(
-  variants: Record<string, PageTransitionVariant>,
-  transition?: HTMLMotionProps<"div">["transition"],
-) {
-  if (!transition) return variants;
-  return Object.keys(variants).reduce(
-    (acc, cur) => {
-      acc[cur] = Object.entries(variants[cur]).reduce((acc, [key, value]) => {
-        if (key === "initial") {
-          acc[key] = value;
-          return acc;
-        }
-        // @ts-expect-error ts(7053) - 懒得针对工具方法做类型体操了
-        acc[key] = {
-          ...value,
-          transition,
-        };
-        return acc;
-      }, {} as PageTransitionVariant);
-      return acc;
-    },
-    {} as Record<string, PageTransitionVariant>,
-  );
-}
-
-const AnimatedOutlet: React.FC = () => {
-  const o = useOutlet();
-  const [outlet] = useState(o);
-
-  return <>{outlet}</>;
 };
 
-export default function PageTransition() {
-  const { verge } = useVerge();
-  const { theme_setting } = verge ?? {};
-  const variants = overrideVariantsTransition(
-    pageTransitionVariants,
-    theme_setting?.page_transition_duration
-      ? {
-          duration: theme_setting.page_transition_duration,
-        }
-      : undefined,
-  ) as typeof pageTransitionVariants;
+export default function PageTransition({ className }: { className?: string }) {
+  const { nyanpasuConfig } = useNyanpasu();
+
+  const outlet = useOutlet();
+
+  const hashkey = useLocation().pathname;
+
+  const variants = nyanpasuConfig?.page_transition_animation ?? "slide";
+
   return (
-    <motion.div
-      className={classNames("page-transition", "the-content")}
-      key={location.pathname}
-      variants={variants[verge?.page_transition_animation ?? "slide"]}
-      initial="initial"
-      animate="visible"
-      exit="hidden"
-    >
-      <AnimatedOutlet />
-    </motion.div>
+    <AnimatePresence mode="popLayout" initial={false}>
+      <motion.div
+        className={classNames("page-transition", className)}
+        key={hashkey}
+        layout
+        layoutId={hashkey}
+        variants={pageTransitionVariants[variants]}
+        initial="initial"
+        animate="visible"
+        exit="hidden"
+      >
+        {outlet}
+      </motion.div>
+    </AnimatePresence>
   );
 }

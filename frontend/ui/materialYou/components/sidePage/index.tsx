@@ -70,6 +70,7 @@ export const SidePage: FC<Props> = ({
                 open: {
                   opacity: 1,
                   maxWidth: "348px",
+                  minWidth: "192px",
                   display: "flex",
                 },
                 closed: {

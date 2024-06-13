@@ -1,0 +1,7 @@
+.LogoSchema {
+  fill: var(--primary-main);
+
+  :global(#bg) {
+    fill: var(--background-color);
+  }
+}

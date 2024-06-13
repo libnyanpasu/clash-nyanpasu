@@ -1,34 +1,30 @@
 import LogoSvg from "@/assets/image/logo.svg?react";
-import getSystem from "@/utils/get-system";
 import { motion } from "framer-motion";
-import { useRef } from "react";
-import { UpdateButton } from "./update-button";
-
-const OS = getSystem();
+import { classNames } from "@/utils";
+import { CSSProperties } from "react";
+import styles from "./animated-logo.module.scss";
 
 const Logo = motion(LogoSvg);
 
-export default function AnimatedLogo() {
-  const constraintsRef = useRef<HTMLDivElement>(null);
-
+export default function AnimatedLogo({
+  className,
+  style,
+}: {
+  className?: string;
+  style?: CSSProperties;
+}) {
   return (
-    <div className="the-logo" ref={constraintsRef}>
-      <Logo
-        initial={{ opacity: 0, scale: 0.5 }}
-        animate={{ opacity: 1, scale: 1 }}
-        whileHover={{ scale: 1.1 }}
-        transition={{
-          type: "spring",
-          stiffness: 260,
-          damping: 20,
-        }}
-        drag
-        dragConstraints={constraintsRef}
-      />
-
-      {!(OS === "windows" && WIN_PORTABLE) && (
-        <UpdateButton className="the-newbtn" />
-      )}
-    </div>
+    <Logo
+      className={classNames(styles.LogoSchema, className)}
+      initial={{ opacity: 0, scale: 0.5 }}
+      animate={{ opacity: 1, scale: 1 }}
+      whileHover={{ scale: 1.1 }}
+      transition={{
+        type: "spring",
+        stiffness: 260,
+        damping: 20,
+      }}
+      style={style}
+    />
   );
 }

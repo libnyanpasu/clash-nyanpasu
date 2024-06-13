@@ -44,7 +44,11 @@ export const GroupList = (listItemButtonProps: ListItemButtonProps) => {
             >
               {group.icon && <IconRender icon={group.icon} />}
 
-              <ListItemText primary={group.name} secondary={group.now} />
+              <ListItemText
+                className="!truncate"
+                primary={group.name}
+                secondary={group.now}
+              />
             </ListItemButton>
           </ListItem>
         );

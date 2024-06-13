@@ -6,9 +6,8 @@ export default function Layout() {
 }
 
 export const Catch = ({ error }: FallbackProps) => {
-  // const theme = useTheme();
   return (
-    <div>
+    <div style={{ backgroundColor: "#fff" }}>
       <h1>Oops!</h1>
       <p>Something went wrong... Caught at _layout error boundary.</p>
       <pre>{error.message}</pre>

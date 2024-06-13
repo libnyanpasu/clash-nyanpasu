@@ -1,7 +1,0 @@
-.proxyVirtuoso {
-  :global(div[data-viewport-type="element"]) {
-    width: calc(100% - 28px * 2) !important;
-    height: calc(100% - 28px) !important;
-    padding: 14px 28px;
-  }
-}

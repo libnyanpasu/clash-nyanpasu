@@ -2,7 +2,7 @@ import parseTraffic from "@/utils/parse-traffic";
 import { GridColDef, DataGrid } from "@mui/x-data-grid";
 import { useClashWS, Connection } from "@nyanpasu/interface";
 import dayjs from "dayjs";
-import { useRef, useMemo, useEffect } from "react";
+import { useRef, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import HeaderSearch from "./header-search";
 
@@ -20,7 +20,7 @@ export const ConnectionsTable = () => {
   const { t } = useTranslation();
 
   const {
-    connections: { readyState, latestMessage },
+    connections: { latestMessage },
   } = useClashWS();
 
   const historyMessage = useRef<TableMessage | undefined>(undefined);
@@ -61,8 +61,18 @@ export const ConnectionsTable = () => {
   }, [latestMessage?.data]);
 
   const columns: GridColDef[] = [
-    { field: "host", headerName: t("Host"), flex: 240, minWidth: 240 },
-    { field: "process", headerName: t("Process"), flex: 100, minWidth: 100 },
+    {
+      field: "host",
+      headerName: t("Host"),
+      flex: 240,
+      minWidth: 240,
+    },
+    {
+      field: "process",
+      headerName: t("Process"),
+      flex: 100,
+      minWidth: 100,
+    },
     {
       field: "download",
       headerName: t("Download"),
@@ -94,7 +104,12 @@ export const ConnectionsTable = () => {
       minWidth: 360,
       valueFormatter: (value) => [...value].reverse().join(" / "),
     },
-    { field: "rule", headerName: "Rule", flex: 300, minWidth: 250 },
+    {
+      field: "rule",
+      headerName: "Rule",
+      flex: 300,
+      minWidth: 250,
+    },
     {
       field: "start",
       headerName: t("Time"),
@@ -102,14 +117,24 @@ export const ConnectionsTable = () => {
       minWidth: 100,
       valueFormatter: (value) => dayjs(value).fromNow(),
     },
-    { field: "source", headerName: "Source", flex: 200, minWidth: 130 },
+    {
+      field: "source",
+      headerName: "Source",
+      flex: 200,
+      minWidth: 130,
+    },
     {
       field: "destinationIP",
       headerName: t("Destination IP"),
       flex: 200,
       minWidth: 130,
     },
-    { field: "type", headerName: t("Type"), flex: 160, minWidth: 100 },
+    {
+      field: "type",
+      headerName: t("Type"),
+      flex: 160,
+      minWidth: 100,
+    },
   ];
 
   return (
@@ -118,6 +143,7 @@ export const ConnectionsTable = () => {
         rows={connectionsMessage.connections}
         columns={columns}
         density="compact"
+        autosizeOnMount
         hideFooter
         disableColumnFilter
         disableColumnSelector

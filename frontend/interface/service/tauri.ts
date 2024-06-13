@@ -182,3 +182,7 @@ export const selectProxy = async (group: string, name: string) => {
 export const updateProxyProvider = async (name: string) => {
   return await invoke<void>("update_proxy_provider", { name });
 };
+
+export const save_window_size_state = async () => {
+  return await invoke<void>("save_window_size_state");
+};

@@ -23,7 +23,6 @@ const asyncComponents = [
   () => import("@/components/setting/setting-nyanpasu-misc"),
   () => import("@/components/setting/setting-nyanpasu-path"),
   () => import("@/components/setting/setting-nyanpasu-version"),
-  () => import("@/components/setting/setting-legacy"),
 ];
 
 const GithubIcon = () => {

@@ -6,6 +6,7 @@ import { useNyanpasu } from "@nyanpasu/interface";
 import { createMDYTheme } from "@nyanpasu/ui";
 import { useAtomValue, useSetAtom } from "jotai";
 import { themeMode as themeModeAtom } from "@/store";
+import { useWhyDidYouUpdate } from "ahooks";
 
 const applyRootStyleVar = (mode: "light" | "dark", theme: Theme) => {
   const root = document.documentElement;
@@ -36,6 +37,8 @@ const applyRootStyleVar = (mode: "light" | "dark", theme: Theme) => {
 export const useCustomTheme = () => {
   const { nyanpasuConfig } = useNyanpasu();
   const themeMode = useAtomValue(themeModeAtom);
+
+  useWhyDidYouUpdate("useCustomTheme", { nyanpasuConfig, themeMode });
 
   const theme = useMemo(() => {
     const mergedTheme = createMDYTheme({

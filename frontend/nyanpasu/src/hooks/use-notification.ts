@@ -1,5 +1,4 @@
 import { Notice } from "@/components/base";
-import { isPortable } from "@/services/cmds";
 import {
   Options,
   isPermissionGranted,
@@ -7,6 +6,7 @@ import {
   sendNotification,
 } from "@tauri-apps/api/notification";
 import { MessageDialogOptions, message } from "@tauri-apps/api/dialog";
+import { isPortable } from "@nyanpasu/interface";
 
 let permissionGranted: boolean | null = null;
 let portable: boolean | null = null;

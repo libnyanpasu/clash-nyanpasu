@@ -2,98 +2,20 @@ import {
   Box,
   Button,
   ButtonGroup,
-  Menu,
-  MenuItem,
   TextField,
   alpha,
   useTheme,
 } from "@mui/material";
-import { memo, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNyanpasu, useClashCore, Clash } from "@nyanpasu/interface";
 import { SidePage } from "@nyanpasu/ui";
 import { DelayButton, GroupList, NodeList } from "@/components/proxies";
-import { Public } from "@mui/icons-material";
 import { useAtom } from "jotai";
-import { proxyGroupAtom, proxyGroupSortAtom } from "@/store";
-import { AnimatePresence, motion } from "framer-motion";
-
-const ContentDisplay = ({ message }: { message: string }) => (
-  <div className="h-full w-full flex items-center justify-center">
-    <div className="flex flex-col items-center gap-4">
-      <Public className="!size-16" />
-      <b>{message}</b>
-    </div>
-  </div>
-);
-
-const ProxyGroupName = memo(function ProxyGroupName({
-  name,
-}: {
-  name: string;
-}) {
-  return (
-    <AnimatePresence mode="sync">
-      <motion.div
-        key={`group-name-${name}`}
-        className="absolute"
-        initial={{ x: 100, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        exit={{ x: -100, opacity: 0 }}
-      >
-        {name}
-      </motion.div>
-    </AnimatePresence>
-  );
-});
-
-const SortSelector = memo(function SortSelector() {
-  const { t } = useTranslation();
-
-  const [proxyGroupSort, setProxyGroupSort] = useAtom(proxyGroupSortAtom);
-
-  type SortType = typeof proxyGroupSort;
-
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-
-  const handleClick = (sort: SortType) => {
-    setAnchorEl(null);
-    setProxyGroupSort(sort);
-  };
-
-  const tmaps: { [key: string]: string } = {
-    default: "Sort by default",
-    delay: "Sort by delay",
-    name: "Sort by name",
-  };
-
-  return (
-    <>
-      <Button
-        size="small"
-        variant="outlined"
-        sx={{ textTransform: "none" }}
-        onClick={(e) => setAnchorEl(e.currentTarget)}
-      >
-        {t(tmaps[proxyGroupSort])}
-      </Button>
-
-      <Menu
-        anchorEl={anchorEl}
-        open={Boolean(anchorEl)}
-        onClose={() => setAnchorEl(null)}
-      >
-        {Object.entries(tmaps).map(([key, value], index) => {
-          return (
-            <MenuItem key={index} onClick={() => handleClick(key as SortType)}>
-              {t(value)}
-            </MenuItem>
-          );
-        })}
-      </Menu>
-    </>
-  );
-});
+import { proxyGroupAtom } from "@/store";
+import ContentDisplay from "@/components/base/content-display";
+import SortSelector from "@/components/proxies/sort-selector";
+import ProxyGroupName from "@/components/proxies/proxy-group-name";
 
 export default function ProxyPage() {
   const { t } = useTranslation();

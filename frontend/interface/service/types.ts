@@ -8,7 +8,7 @@ export interface VergeConfig {
   theme_blur?: boolean;
   traffic_graph?: boolean;
   enable_memory_usage?: boolean;
-  page_transition_animation?: string;
+  lighten_animation_effects?: boolean;
   enable_auto_check_update?: boolean;
   enable_tun_mode?: boolean;
   enable_auto_launch?: boolean;

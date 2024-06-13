@@ -152,5 +152,6 @@
   "Portable Update Error": "Portable Update is not supported, please download the latest version from the official website.",
   "Enable Tray Proxies Selector": "Enable Tray Proxies Selector",
   "Proxy Set proxies": "{{rule}} proxies",
-  "Update Proxies Providers All": "Update Rules Proxies All"
+  "Update Proxies Providers All": "Update Rules Proxies All",
+  "Lighten up Animation Effects": "Lighten up Animation Effects"
 }

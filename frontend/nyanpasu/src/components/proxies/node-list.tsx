@@ -1,179 +1,15 @@
-import {
-  Box,
-  Chip,
-  ChipProps,
-  CircularProgress,
-  useTheme,
-} from "@mui/material";
-import { PaperSwitchButton } from "../setting/modules/system-proxy";
 import { Clash, useClashCore, useNyanpasu } from "@nyanpasu/interface";
 import { useBreakpoint } from "@nyanpasu/ui";
 import { useAtom, useAtomValue } from "jotai";
 import { proxyGroupAtom, proxyGroupSortAtom } from "@/store";
-import {
-  CSSProperties,
-  memo,
-  useEffect,
-  useMemo,
-  useState,
-  useTransition,
-} from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { classNames } from "@/utils";
 import { VList } from "virtua";
 import { AnimatePresence, motion } from "framer-motion";
-
-type History = Clash.Proxy["history"];
+import { filterDelay } from "./utils";
+import NodeCard from "./node-card";
 
 type RenderClashProxy = Clash.Proxy<string> & { renderLayoutKey: string };
-
-const filterDelay = (history?: History): number => {
-  if (!history || history.length == 0) {
-    return 0;
-  } else {
-    return history[history.length - 1].delay;
-  }
-};
-
-const getColorForDelay = (delay: number): string => {
-  const { palette } = useTheme();
-
-  const delayColorMapping: { [key: string]: string } = {
-    "0": palette.error.main,
-    "1": palette.text.secondary,
-    "100": palette.success.main,
-    "500": palette.warning.main,
-    "10000": palette.error.main,
-  };
-
-  let color: string = palette.text.secondary;
-
-  for (const key in delayColorMapping) {
-    if (delay <= parseInt(key)) {
-      color = delayColorMapping[key];
-      break;
-    }
-  }
-
-  return color;
-};
-
-const FeatureChip = memo(function FeatureChip(props: ChipProps) {
-  return (
-    <Chip
-      variant="outlined"
-      size="small"
-      {...props}
-      sx={{
-        fontSize: 10,
-        height: 16,
-        padding: 0,
-
-        "& .MuiChip-label": {
-          padding: "0 4px",
-        },
-        ...props.sx,
-      }}
-    />
-  );
-});
-
-const DelayChip = memo(function DelayChip({
-  delay,
-  onClick,
-}: {
-  delay: number;
-  onClick: () => Promise<void>;
-}) {
-  const [loading, setLoading] = useState(false);
-
-  const handleClick = async () => {
-    try {
-      setLoading(true);
-
-      await onClick();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <FeatureChip
-      sx={{
-        ml: "auto",
-        color: getColorForDelay(delay),
-      }}
-      label={
-        <>
-          <span
-            className={classNames(
-              "transition-opacity",
-              loading ? "opacity-0" : "opacity-1",
-            )}
-          >
-            {delay ? `${delay} ms` : "timeout"}
-          </span>
-
-          <CircularProgress
-            size={12}
-            className={classNames(
-              "transition-opacity",
-              "absolute",
-              "animate-spin",
-              "top-0",
-              "bottom-0",
-              "left-0",
-              "right-0",
-              "m-auto",
-              loading ? "opacity-1" : "opacity-0",
-            )}
-          />
-        </>
-      }
-      variant="filled"
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        handleClick();
-      }}
-    />
-  );
-});
-
-const NodeCard = memo(function NodeCard({
-  node,
-  now,
-  disabled,
-  onClick,
-  onClickDelay,
-  style,
-}: {
-  node: Clash.Proxy<string>;
-  now?: string;
-  disabled?: boolean;
-  onClick: () => void;
-  onClickDelay: () => Promise<void>;
-  style?: CSSProperties;
-}) {
-  const delay = useMemo(() => filterDelay(node.history), [node.history]);
-
-  return (
-    <PaperSwitchButton
-      label={node.name}
-      checked={node.name === now}
-      onClick={onClick}
-      disabled={disabled}
-      style={style}
-    >
-      <Box width="100%" display="flex" gap={0.5}>
-        <FeatureChip label={node.type} />
-
-        {node.udp && <FeatureChip label="UDP" />}
-
-        <DelayChip delay={delay} onClick={onClickDelay} />
-      </Box>
-    </PaperSwitchButton>
-  );
-});
 
 export const NodeList = () => {
   const { data, setGroupProxy, setGlobalProxy, updateProxiesDelay } =
@@ -189,7 +25,7 @@ export const NodeList = () => {
 
   const [group, setGroup] = useState<Clash.Proxy<Clash.Proxy<string>>>();
 
-  useEffect(() => {
+  const sortGroup = useCallback(() => {
     if (!getCurrentMode.global) {
       if (proxyGroup.selector !== null) {
         const selectedGroup = data?.groups[proxyGroup.selector];
@@ -225,7 +61,17 @@ export const NodeList = () => {
     } else {
       setGroup(data?.global);
     }
-  }, [data?.groups, proxyGroup.selector, getCurrentMode, proxyGroupSort]);
+  }, [
+    data?.groups,
+    proxyGroup.selector,
+    getCurrentMode,
+    proxyGroupSort,
+    setGroup,
+  ]);
+
+  useEffect(() => {
+    sortGroup();
+  }, [sortGroup]);
 
   const { column } = useBreakpoint({
     sm: 1,
@@ -287,6 +133,10 @@ export const NodeList = () => {
     }
   };
 
+  const { nyanpasuConfig } = useNyanpasu();
+
+  const disableMotion = nyanpasuConfig?.lighten_animation_effects;
+
   return (
     <AnimatePresence initial={false} mode="sync">
       <VList
@@ -305,7 +155,21 @@ export const NodeList = () => {
               style={{ gridTemplateColumns: `repeat(${column} , 1fr)` }}
             >
               {node.map((render) => {
-                return (
+                const Card = () => (
+                  <NodeCard
+                    node={render}
+                    now={group?.now}
+                    disabled={group?.type !== "Selector"}
+                    onClick={() => hendleClick(render.name)}
+                    onClickDelay={async () => {
+                      await updateProxiesDelay(render.name);
+                    }}
+                  />
+                );
+
+                return disableMotion ? (
+                  <Card />
+                ) : (
                   <motion.div
                     key={render.name}
                     layoutId={`node-${render.renderLayoutKey}`}
@@ -315,15 +179,7 @@ export const NodeList = () => {
                     animate={{ scale: 1, opacity: 1 }}
                     exit={{ opacity: 0 }}
                   >
-                    <NodeCard
-                      node={render}
-                      now={group?.now}
-                      disabled={group?.type !== "Selector"}
-                      onClick={() => hendleClick(render.name)}
-                      onClickDelay={async () => {
-                        await updateProxiesDelay(render.name);
-                      }}
-                    />
+                    <Card />
                   </motion.div>
                 );
               })}

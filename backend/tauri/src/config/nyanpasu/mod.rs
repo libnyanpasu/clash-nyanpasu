@@ -78,8 +78,8 @@ pub struct IVerge {
     /// show memory info (only for Clash Meta)
     pub enable_memory_usage: Option<bool>,
 
-    /// page transition animation, default is `slide`
-    pub page_transition_animation: Option<String>,
+    /// global ui framer motion effects
+    pub lighten_animation_effects: Option<bool>,
 
     /// clash tun mode
     pub enable_tun_mode: Option<bool>,
@@ -219,6 +219,10 @@ impl IVerge {
             config.max_log_files = template.max_log_files;
         }
 
+        if config.lighten_animation_effects.is_none() {
+            config.lighten_animation_effects = template.lighten_animation_effects;
+        }
+
         config
     }
 
@@ -244,7 +248,7 @@ impl IVerge {
             auto_close_connection: Some(true),
             enable_builtin_enhanced: Some(true),
             enable_clash_fields: Some(true),
-            page_transition_animation: Some("slide".into()),
+            lighten_animation_effects: Some(false),
             // auto_log_clean: Some(60 * 24 * 7), // 7 days 自动清理日记
             max_log_files: Some(7), // 7 days
             enable_auto_check_update: Some(true),
@@ -275,7 +279,7 @@ impl IVerge {
         patch!(theme_blur);
         patch!(traffic_graph);
         patch!(enable_memory_usage);
-        patch!(page_transition_animation);
+        patch!(lighten_animation_effects);
         patch!(enable_auto_check_update);
 
         patch!(enable_tun_mode);

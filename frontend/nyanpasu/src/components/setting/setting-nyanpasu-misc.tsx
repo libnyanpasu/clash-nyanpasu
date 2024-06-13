@@ -47,6 +47,11 @@ export const SettingNyanpasuMisc = () => {
           {...createBooleanProps("clash_tray_selector")}
         />
 
+        <SwitchItem
+          label={t("Lighten up Animation Effects")}
+          {...createBooleanProps("lighten_animation_effects")}
+        />
+
         <TextItem
           label={t("Default Latency Test")}
           placeholder="http://www.gstatic.com/generate_204"

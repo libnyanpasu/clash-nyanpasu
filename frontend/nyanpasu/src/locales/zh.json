@@ -165,5 +165,6 @@
 
   "Enable Tray Proxies Selector": "开启托盘代理选择",
   "Proxy Set proxies": "{{rule}} 个节点",
-  "Update Proxies Providers All": "全部更新"
+  "Update Proxies Providers All": "全部更新",
+  "Lighten up Animation Effects": "减轻动画效果"
 }

@@ -44,11 +44,6 @@ export const pageTransitionVariants: { [name: string]: PageVariant } = {
     visible: { opacity: 1 },
     hidden: { opacity: 0 },
   },
-  none: {
-    initial: {},
-    visible: {},
-    hidden: {},
-  },
 };
 
 export default function PageTransition({ className }: { className?: string }) {
@@ -58,7 +53,9 @@ export default function PageTransition({ className }: { className?: string }) {
 
   const hashkey = useLocation().pathname;
 
-  const variants = nyanpasuConfig?.page_transition_animation ?? "slide";
+  const variants = nyanpasuConfig?.lighten_animation_effects
+    ? pageTransitionVariants.transparent
+    : pageTransitionVariants.slide;
 
   return (
     <AnimatePresence mode="popLayout" initial={false}>
@@ -67,7 +64,7 @@ export default function PageTransition({ className }: { className?: string }) {
         key={hashkey}
         layout
         layoutId={hashkey}
-        variants={pageTransitionVariants[variants]}
+        variants={variants}
         initial="initial"
         animate="visible"
         exit="hidden"

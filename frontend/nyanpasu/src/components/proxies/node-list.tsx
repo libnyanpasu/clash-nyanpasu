@@ -168,7 +168,9 @@ export const NodeList = () => {
                 );
 
                 return disableMotion ? (
-                  <Card />
+                  <div className="relative overflow-hidden">
+                    <Card />
+                  </div>
                 ) : (
                   <motion.div
                     key={render.name}

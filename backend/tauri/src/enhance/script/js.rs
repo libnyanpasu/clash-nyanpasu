@@ -66,28 +66,44 @@ impl Runner for JSRunner {
         let script = utils::wrap_script_if_not_esm(script);
         let config = simd_json::to_string_pretty(&mapping)?;
         let mut result = async_with!(ctx => |ctx| {
-            let global = ctx.globals();
-            global
-                .set(
-                    "print",
-                    Function::new(ctx.clone(), print)?.with_name("print")?,
-                )
-                .context("failed to set print fn")?;
-            // if user script fn is main(config): config should convert to esm
-            Module::declare(ctx.clone(), "user_script", script).context("fail to define the user_script module")?;
-            let module = Module::declare(ctx, "process_honey", format!(r#"
-            import user_script from "user_script"
-            let config = JSON.parse(`{config}`)
-            export let final_result = JSON.stringify(await user_script(config))
-            "#)).context("fail to define the process_honey module")?;
-            let (decl, promises) = module.eval().context("fail to eval the process_honey module")?;
-            promises
-                .into_future::<()>()
-                .await
-                .context("fail to eval the module")?;
-            let ns = decl.namespace().context("fail to get the process_honey module namespace")?;
-            let final_result = ns.get::<&str, String>("final_result").context("fail to get the final_result")?;
-            Ok::<String, anyhow::Error>(final_result)
+            let raw_ctx = ctx.clone();
+            let run = || async move {
+                let global = ctx.globals();
+                global
+                    .set(
+                        "print",
+                        Function::new(ctx.clone(), print)?.with_name("print")?,
+                    )
+                    .context("failed to set print fn")?;
+                // if user script fn is main(config): config should convert to esm
+                Module::declare(ctx.clone(), "user_script", script).context("fail to define the user_script module")?;
+                let module = Module::declare(ctx, "process_honey", format!(r#"
+                import user_script from "user_script"
+                let config = JSON.parse(`{}`)
+                export let final_result = JSON.stringify(await user_script(config))
+                "#, config)).context("fail to define the process_honey module")?;
+                let (decl, promises) = module.eval().context("fail to eval the process_honey module")?;
+                promises
+                    .into_future::<()>()
+                    .await
+                    .context("fail to eval the module")?;
+                let ns = decl.namespace().context("fail to get the process_honey module namespace")?;
+                let final_result = ns.get::<&str, String>("final_result").context("fail to get the final_result")?;
+                Ok::<String, anyhow::Error>(final_result)
+            };
+            let res = run().await;
+            res.map_err(|e| {
+                // println!("error: {:?}", e);
+                // check whether the error inside is a QuickJS exception
+                for cause in e.chain() {
+                    println!("cause: {:?}", cause);
+                    if let Some(rquickjs::Error::Exception) = cause.downcast_ref::<rquickjs::Error>() {
+                        let raw_exception = raw_ctx.catch();
+                        return e.context(format!("QuickJS exception: {:?}", raw_exception))
+                    }
+                }
+                e
+            })
         }).await?;
         let buff = unsafe { result.as_bytes_mut() };
         let mapping = simd_json::from_slice::<Mapping>(buff)
@@ -112,7 +128,6 @@ mod utils {
 }
 
 mod test {
-    use super::{super::runner::Runner, JSRunner};
 
     #[test]
     fn test_wrap_script_if_not_esm() {
@@ -128,6 +143,8 @@ mod test {
 
     #[test]
     fn test_process_honey() {
+        use super::super::runner::Runner;
+        use super::JSRunner;
         let runner = JSRunner::try_new().unwrap();
         let mapping = serde_yaml::from_str(
             r#"
@@ -150,7 +167,7 @@ mod test {
             config.proxies = ["111"];
             return config;
         }"#;
-        tokio::runtime::Builder::new_multi_thread()
+        tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap()

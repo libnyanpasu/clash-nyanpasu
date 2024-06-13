@@ -93,10 +93,9 @@ impl Runner for JSRunner {
             };
             let res = run().await;
             res.map_err(|e| {
-                // println!("error: {:?}", e);
                 // check whether the error inside is a QuickJS exception
+                // TODO: maybe the chains should be Context -> RawException -> Error?
                 for cause in e.chain() {
-                    println!("cause: {:?}", cause);
                     if let Some(rquickjs::Error::Exception) = cause.downcast_ref::<rquickjs::Error>() {
                         let raw_exception = raw_ctx.catch();
                         return e.context(format!("QuickJS exception: {:?}", raw_exception))

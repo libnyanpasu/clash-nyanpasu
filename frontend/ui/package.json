@@ -5,9 +5,9 @@
   "module": "index.ts",
   "dependencies": {
     "@material/material-color-utilities": "0.2.7",
-    "@mui/icons-material": "5.15.19",
+    "@mui/icons-material": "5.15.20",
     "@mui/lab": "5.0.0-alpha.170",
-    "@mui/material": "5.15.19",
+    "@mui/material": "5.15.20",
     "@types/react": "18.3.3",
     "ahooks": "3.8.0",
     "framer-motion": "11.2.10",

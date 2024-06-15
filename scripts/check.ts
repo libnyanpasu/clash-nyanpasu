@@ -4,6 +4,7 @@ import { colorize, consola } from "./utils/logger";
 import { archCheck } from "./utils/arch-check";
 import { Resolve } from "./utils/resolve";
 import { printNyanpasu } from "./utils";
+import { generateLatestVersion } from "generate-latest-version";
 
 // force download
 const FORCE = process.argv.includes("--force");

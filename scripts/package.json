@@ -8,7 +8,7 @@
     "figlet": "1.7.0"
   },
   "devDependencies": {
-    "@octokit/types": "^13.5.0",
+    "@octokit/types": "13.5.0",
     "@types/adm-zip": "0.5.5",
     "adm-zip": "0.5.14",
     "colorize-template": "1.0.0",
@@ -16,7 +16,7 @@
     "fs-extra": "11.2.0",
     "https-proxy-agent": "7.0.4",
     "node-fetch": "3.3.2",
-    "octokit": "^4.0.2",
+    "octokit": "4.0.2",
     "picocolors": "1.0.1",
     "telegram": "2.22.2"
   }

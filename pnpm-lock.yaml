@@ -375,7 +375,7 @@ importers:
         version: 1.7.0
     devDependencies:
       '@octokit/types':
-        specifier: ^13.5.0
+        specifier: 13.5.0
         version: 13.5.0
       '@types/adm-zip':
         specifier: 0.5.5
@@ -399,7 +399,7 @@ importers:
         specifier: 3.3.2
         version: 3.3.2
       octokit:
-        specifier: ^4.0.2
+        specifier: 4.0.2
         version: 4.0.2
       picocolors:
         specifier: 1.0.1

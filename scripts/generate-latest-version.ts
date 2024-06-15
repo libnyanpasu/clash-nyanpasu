@@ -9,12 +9,6 @@ import {
   resolveClashPremium,
 } from "./utils/manifest";
 
-if (!process.env.GITHUB_TOKEN) {
-  throw new Error("GITHUB_TOKEN is required");
-}
-
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-
 const MANIFEST_VERSION = 1;
 
 export async function generateLatestVersion() {
@@ -27,7 +21,7 @@ export async function generateLatestVersion() {
 
   consola.start("Resolving latest versions");
 
-  const results = await Promise.all(resolvers.map((r) => r(GITHUB_TOKEN)));
+  const results = await Promise.all(resolvers.map((r) => r()));
 
   consola.success("Resolved latest versions");
 

@@ -1,6 +1,6 @@
-import { getOctokit } from "@actions/github";
 import consola from "consola";
 import { SupportedArch } from "../types/index";
+import { octokit } from "./octokit";
 
 export type ArchMapping = { [key in SupportedArch]: string };
 
@@ -11,11 +11,7 @@ export type LatestVersionResolver = Promise<{
   archMapping: ArchMapping;
 }>;
 
-export const resolveMihomo = async (
-  GITHUB_TOKEN: string,
-): LatestVersionResolver => {
-  const octokit = getOctokit(GITHUB_TOKEN);
-
+export const resolveMihomo = async (): LatestVersionResolver => {
   const latestRelease = await octokit.rest.repos.getLatestRelease({
     owner: "MetaCubeX",
     repo: "mihomo",
@@ -66,11 +62,7 @@ export const resolveMihomoAlpha = async (): LatestVersionResolver => {
   };
 };
 
-export const resolveClashRs = async (
-  GITHUB_TOKEN: string,
-): LatestVersionResolver => {
-  const octokit = getOctokit(GITHUB_TOKEN);
-
+export const resolveClashRs = async (): LatestVersionResolver => {
   const latestRelease = await octokit.rest.repos.getLatestRelease({
     owner: "Watfaq",
     repo: "clash-rs",
@@ -95,11 +87,7 @@ export const resolveClashRs = async (
   };
 };
 
-export const resolveClashPremium = async (
-  GITHUB_TOKEN: string,
-): LatestVersionResolver => {
-  const octokit = getOctokit(GITHUB_TOKEN);
-
+export const resolveClashPremium = async (): LatestVersionResolver => {
   const latestRelease = await octokit.rest.repos.getLatestRelease({
     owner: "zhongfly",
     repo: "Clash-premium-backup",

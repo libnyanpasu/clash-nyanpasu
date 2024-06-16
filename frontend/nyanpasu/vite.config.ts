@@ -1,6 +1,6 @@
 import generouted from "@generouted/react-router/plugin";
-import react from "@vitejs/plugin-react";
-// import react from "@vitejs/plugin-react-swc";
+// import react from "@vitejs/plugin-react";
+import react from "@vitejs/plugin-react-swc";
 import path from "node:path";
 import { defineConfig } from "vite";
 import monaco from "vite-plugin-monaco-editor";
@@ -46,10 +46,10 @@ export default defineConfig(({ command }) => {
       tsconfigPaths(),
       svgr(),
       react({
-        // jsxImportSource: "@emotion/react",
-        babel: {
-          plugins: ["@emotion/babel-plugin"],
-        },
+        jsxImportSource: "@emotion/react",
+        // babel: {
+        //   plugins: ["@emotion/babel-plugin"],
+        // },
       }),
       generouted(),
       sassDts({ esmExport: true }),

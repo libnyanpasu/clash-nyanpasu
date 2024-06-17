@@ -120,7 +120,7 @@ pub fn create_window(app_handle: &AppHandle) {
     let mut builder = tauri::window::WindowBuilder::new(
         app_handle,
         "main".to_string(),
-        tauri::WindowUrl::App("/proxies".into()),
+        tauri::WindowUrl::App("/dashboard".into()),
     )
     .title("Clash Nyanpasu")
     .fullscreen(false)

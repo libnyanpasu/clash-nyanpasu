@@ -23,7 +23,7 @@ export const RouteListItem = ({
 
   return (
     <ListItemButton
-      className="!pr-12 !rounded-full"
+      className="!pr-14 !rounded-full"
       sx={{
         backgroundColor: match ? alpha(palette.primary.main, 0.3) : undefined,
 
@@ -42,7 +42,7 @@ export const RouteListItem = ({
       </ListItemIcon>
 
       <div
-        className="pt-1 pb-1"
+        className="pt-1 pb-1 w-full text-center text-nowrap"
         style={{ color: match ? palette.primary.main : undefined }}
       >
         {t(`label_${name}`)}

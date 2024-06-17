@@ -1,5 +1,6 @@
 import { useTheme } from "@mui/material";
-import { useSetState } from "ahooks";
+import { appWindow } from "@tauri-apps/api/window";
+import { useDebounceFn, useSetState } from "ahooks";
 import { useEffect, useCallback, useMemo } from "react";
 
 export const useBreakpoint = (
@@ -23,7 +24,13 @@ export const useBreakpoint = (
   }, [breakpoints.values]);
 
   const getBreakpoint = useCallback(
-    (width: number) => {
+    async (width: number) => {
+      const isMinimized = await appWindow.isMinimized();
+
+      if (isMinimized) {
+        return;
+      }
+
       for (const [key, value] of breakpointsValues) {
         if (value >= width) {
           if (key !== breakpoint.key) {
@@ -46,21 +53,25 @@ export const useBreakpoint = (
     [breakpointsValues, columnMapping, breakpoint.key, setBreakpoint],
   );
 
-  useEffect(() => {
-    const observer = new ResizeObserver((entries) => {
-      if (!Array.isArray(entries) || !entries.length) return;
-
-      const { width } = entries[0].contentRect;
-
+  const { run: triggerBreakpoint } = useDebounceFn(
+    () => {
+      const width = document.body.clientWidth;
       getBreakpoint(width);
-    });
+    },
+    {
+      wait: 100,
+    },
+  );
+
+  useEffect(() => {
+    const observer = new ResizeObserver(triggerBreakpoint);
 
     observer.observe(document.body);
 
     return () => {
       observer.disconnect();
     };
-  }, [getBreakpoint]);
+  }, [triggerBreakpoint]);
 
   return breakpoint;
 };

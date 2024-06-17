@@ -33,11 +33,25 @@ export const AppDrawer = ({ isDrawer }: { isDrawer?: boolean }) => {
         }}
         data-windrag
       >
-        <div
-          className="w-full h-full max-w-32 max-h-32 ml-auto mr-auto"
-          data-windrag
-        >
-          <AnimatedLogo className="w-full h-full" data-windrag />
+        <div className="flex items-center justify-center">
+          <div
+            className={classNames(
+              isDrawer && "w-10 h-10",
+              "w-full h-full max-w-32 max-h-32 ml-auto mr-auto",
+            )}
+            data-windrag
+          >
+            <AnimatedLogo className="w-full h-full" data-windrag />
+          </div>
+
+          {isDrawer && (
+            <div
+              className="text-lg text-nowrap font-bold mt-1 mr-2"
+              data-windrag
+            >
+              Clash Nyanpasu
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-2">

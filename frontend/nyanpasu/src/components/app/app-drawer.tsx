@@ -54,7 +54,7 @@ export const AppDrawer = ({ isDrawer }: { isDrawer?: boolean }) => {
           )}
         </div>
 
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 overflow-y-auto scrollbar-hidden">
           {Object.entries(routes).map(([name, { path, icon }]) => {
             return (
               <RouteListItem key={name} name={name} path={path} icon={icon} />

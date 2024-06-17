@@ -46,7 +46,6 @@ export default defineConfig(({ command }) => {
       tsconfigPaths(),
       svgr(),
       react({
-        jsxImportSource: "@emotion/react",
         // babel: {
         //   plugins: ["@emotion/babel-plugin"],
         // },
@@ -57,12 +56,7 @@ export default defineConfig(({ command }) => {
       isDev && devtools(),
     ],
     optimizeDeps: {
-      include: [
-        "@emotion/react",
-        "@emotion/styled",
-        "@mui/lab/*",
-        "@mui/material/*",
-      ],
+      include: ["@emotion/styled", "@mui/lab/*", "@mui/material/*"],
     },
     esbuild: {
       drop: isDev ? undefined : ["console", "debugger"],

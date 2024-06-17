@@ -1,6 +1,7 @@
-import type { Config } from "tailwindcss";
-import plugin from "tailwindcss/plugin";
+/* eslint-disable @typescript-eslint/no-var-requires */
+const plugin = require("tailwindcss/plugin");
 
+/** @type {import('tailwindcss').Config} */
 export default {
   content: ["./src/**/*.{tsx,ts}"],
   theme: {
@@ -20,4 +21,4 @@ export default {
       });
     }),
   ],
-} as Config;
+};

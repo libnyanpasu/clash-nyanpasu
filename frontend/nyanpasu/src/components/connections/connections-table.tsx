@@ -45,9 +45,14 @@ export const ConnectionsTable = () => {
         ? connection.upload - previousConnection.upload
         : 0;
 
+      const host = String(
+        connection.metadata.host || connection.metadata.destinationIP,
+      );
+
       updatedConnections.push({
         ...connection,
         ...connection.metadata,
+        host,
         downloadSpeed,
         uploadSpeed,
       });

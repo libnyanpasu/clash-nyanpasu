@@ -106,7 +106,7 @@
     "stylelint-order": "6.0.4",
     "stylelint-scss": "6.3.1",
     "tailwindcss": "3.4.4",
-    "tsx": "4.15.5",
+    "tsx": "4.15.6",
     "typescript": "5.4.5"
   },
   "packageManager": "pnpm@9.3.0",

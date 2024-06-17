@@ -134,8 +134,8 @@ importers:
         specifier: 3.4.4
         version: 3.4.4
       tsx:
-        specifier: 4.15.5
-        version: 4.15.5
+        specifier: 4.15.6
+        version: 4.15.6
       typescript:
         specifier: 5.4.5
         version: 5.4.5
@@ -346,7 +346,7 @@ importers:
         specifier: 1.5.6
         version: 1.5.6
       '@types/d3':
-        specifier: ^7.4.3
+        specifier: 7.4.3
         version: 7.4.3
       '@types/react':
         specifier: npm:types-react@rc
@@ -5294,8 +5294,8 @@ packages:
   tslib@2.6.2:
     resolution: {integrity: sha512-AEYxH93jGFPn/a2iVAwW87VuUIkR1FVUKB77NwMF7nBTDkDrrT/Hpt/IrCJ0QXhW27jTBDcf5ZY7w6RiqTMw2Q==}
 
-  tsx@4.15.5:
-    resolution: {integrity: sha512-iKi8jQ2VBmZ2kU/FkGkL2OSHBHsazsUzsdC/W/RwhKIEsIoZ1alCclZHP5jGfNHEaEWUJFM1GquzCf+4db3b0w==}
+  tsx@4.15.6:
+    resolution: {integrity: sha512-is0VQQlfNZRHEuSSTKA6m4xw74IU4AizmuB6lAYLRt9XtuyeQnyJYexhNZOPCB59SqC4JzmSzPnHGBXxf3k0hA==}
     engines: {node: '>=18.0.0'}
     hasBin: true
 
@@ -10995,7 +10995,7 @@ snapshots:
 
   tslib@2.6.2: {}
 
-  tsx@4.15.5:
+  tsx@4.15.6:
     dependencies:
       esbuild: 0.21.4
       get-tsconfig: 4.7.5

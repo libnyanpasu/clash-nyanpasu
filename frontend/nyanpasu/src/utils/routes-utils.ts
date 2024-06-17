@@ -1,5 +1,6 @@
 import {
   Apps,
+  Dashboard,
   DesignServices,
   GridView,
   Public,
@@ -10,7 +11,7 @@ import {
 } from "@mui/icons-material";
 
 const routes: { [key: string]: SvgIconComponent } = {
-  dashboard: Public,
+  dashboard: Dashboard,
   proxies: Public,
   profiles: GridView,
   connections: SettingsEthernet,

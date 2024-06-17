@@ -1,4 +1,5 @@
 {
+  "label_dashboard": "概 览",
   "label_proxies": "代 理",
   "label_profiles": "配 置",
   "label_connections": "连 接",
@@ -6,10 +7,13 @@
   "label_rules": "规 则",
   "label_settings": "设 置",
   "label_providers": "资 源",
-
   "Connections": "连接",
   "Upload Total": "上传总量",
   "Download Total": "下载总量",
+  "Upload Traffic": "上传流量",
+  "Download Traffic": "下载流量",
+  "Total": "总量",
+  "Memory": "内存占用",
   "Active Connections": "活动连接",
   "Logs": "日志",
   "Clear": "清除",
@@ -19,7 +23,7 @@
   "global": "全局",
   "direct": "直连",
   "script": "脚本",
-
+  "Dashboard": "概览",
   "Profiles": "配置",
   "Profile URL": "配置文件链接",
   "Import": "导入",
@@ -42,7 +46,6 @@
   "Update All Profiles": "更新所有配置",
   "View Runtime Config": "查看运行时配置",
   "Reactivate Profiles": "重新激活配置",
-
   "Location": "当前节点",
   "Delay check": "延迟测试",
   "Sort by default": "默认排序",
@@ -53,7 +56,6 @@
   "Filter": "过滤节点",
   "Filter conditions": "过滤条件",
   "Refresh profiles": "刷新配置",
-
   "Type": "类型",
   "Name": "名称",
   "Descriptions": "描述",
@@ -61,7 +63,6 @@
   "Update Interval": "更新间隔",
   "Use System Proxy": "使用系统代理更新",
   "Use Clash Proxy": "使用Clash代理更新",
-
   "Settings": "设置",
   "Clash Setting": "Clash 设置",
   "System Setting": "系统设置",
@@ -113,7 +114,6 @@
   "ReadOnly": "只读",
   "Check Updates": "检查更新",
   "Restart": "重启内核",
-
   "Tasks": "定期任务",
   "Auto Log Clean": "自动清理日志",
   "Never Clean": "不清理",
@@ -122,16 +122,13 @@
   "Retain 30 Days": "保留30天",
   "Retain 90 Days": "保留90天",
   "Max Log Files": "最大日志文件数",
-
   "Collect Logs": "收集日志",
   "Back": "返回",
   "Save": "保存",
   "Cancel": "取消",
-
   "Default": "默认",
   "Download Speed": "下载速度",
   "Upload Speed": "上传速度",
-
   "open_or_close_dashboard": "打开/关闭面板",
   "clash_mode_rule": "规则模式",
   "clash_mode_global": "全局模式",
@@ -143,26 +140,21 @@
   "toggle_tun_mode": "切换Tun模式",
   "enable_tun_mode": "开启Tun模式",
   "disable_tun_mode": "关闭Tun模式",
-
   "App Log Level": "App日志等级",
   "Auto Close Connections": "自动关闭连接",
   "Enable Clash Fields Filter": "开启Clash字段过滤",
   "Enable Builtin Enhanced": "开启内建增强功能",
   "Proxy Layout Column": "代理页布局列数",
   "Default Latency Test": "默认测试链接",
-
   "Error": "错误",
   "Success": "成功",
-
   "Providers": "资源",
   "Rules Providers": "规则集",
   "Update Rules Providers All": "全部更新",
   "Rule Set rules": "{{rule}} 条规则",
   "Last Update": "{{fromNow}}更新",
   "Update Rules Providers Success": "更新规则集成功",
-
   "Portable Update Error": "便携版无法自动更新，请到 Github 下载最新版本",
-
   "Enable Tray Proxies Selector": "开启托盘代理选择",
   "Proxy Set proxies": "{{rule}} 个节点",
   "Update Proxies Providers All": "全部更新",

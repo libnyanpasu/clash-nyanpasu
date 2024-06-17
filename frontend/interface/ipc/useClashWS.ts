@@ -22,6 +22,8 @@ export const useClashWS = () => {
       return {
         connections: resolveUrl("connections"),
         logs: resolveUrl("logs"),
+        traffic: resolveUrl("traffic"),
+        memory: resolveUrl("memory"),
       };
     }
   }, [getClashInfo.data]);
@@ -30,8 +32,14 @@ export const useClashWS = () => {
 
   const logs = useWebSocket(url?.logs ?? "");
 
+  const traffic = useWebSocket(url?.traffic ?? "");
+
+  const memory = useWebSocket(url?.memory ?? "");
+
   return {
     connections,
     logs,
+    traffic,
+    memory,
   };
 };

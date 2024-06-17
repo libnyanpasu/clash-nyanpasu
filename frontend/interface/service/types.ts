@@ -189,3 +189,13 @@ export interface ProviderItem {
   updatedAt: string;
   vehicleType: string;
 }
+
+export interface Traffic {
+  up: number;
+  down: number;
+}
+
+export interface Memory {
+  inuse: number;
+  oslimit: number;
+}

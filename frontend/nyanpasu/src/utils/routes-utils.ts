@@ -10,6 +10,7 @@ import {
 } from "@mui/icons-material";
 
 const routes: { [key: string]: SvgIconComponent } = {
+  dashboard: Public,
   proxies: Public,
   profiles: GridView,
   connections: SettingsEthernet,

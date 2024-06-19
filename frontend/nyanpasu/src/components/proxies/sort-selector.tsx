@@ -1,11 +1,13 @@
 import { proxyGroupSortAtom } from "@/store";
-import { Button, Menu, MenuItem } from "@mui/material";
+import { Button, Menu, MenuItem, alpha, useTheme } from "@mui/material";
 import { useAtom } from "jotai";
 import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 export const SortSelector = memo(function SortSelector() {
   const { t } = useTranslation();
+
+  const { palette } = useTheme();
 
   const [proxyGroupSort, setProxyGroupSort] = useAtom(proxyGroupSortAtom);
 
@@ -28,8 +30,11 @@ export const SortSelector = memo(function SortSelector() {
     <>
       <Button
         size="small"
-        variant="outlined"
-        sx={{ textTransform: "none" }}
+        className="!px-2"
+        sx={{
+          textTransform: "none",
+          backgroundColor: alpha(palette.primary.main, 0.1),
+        }}
         onClick={(e) => setAnchorEl(e.currentTarget)}
       >
         {t(tmaps[proxyGroupSort])}

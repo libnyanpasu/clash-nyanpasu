@@ -2,16 +2,28 @@ import { Clash, useClashCore, useNyanpasu } from "@nyanpasu/interface";
 import { useBreakpoint } from "@nyanpasu/ui";
 import { useAtom, useAtomValue } from "jotai";
 import { proxyGroupAtom, proxyGroupSortAtom } from "@/store";
-import { useCallback, useEffect, useState, useTransition } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { classNames } from "@/utils";
-import { VList } from "virtua";
+import { VList, VListHandle } from "virtua";
 import { AnimatePresence, motion } from "framer-motion";
 import { filterDelay } from "./utils";
 import NodeCard from "./node-card";
 
 type RenderClashProxy = Clash.Proxy<string> & { renderLayoutKey: string };
 
-export const NodeList = () => {
+export interface NodeListRef {
+  scrollToCurrent: () => void;
+}
+
+export const NodeList = forwardRef(function NodeList({}, ref) {
   const { data, setGroupProxy, setGlobalProxy, updateProxiesDelay } =
     useClashCore();
 
@@ -137,9 +149,25 @@ export const NodeList = () => {
 
   const disableMotion = nyanpasuConfig?.lighten_animation_effects;
 
+  const vListRef = useRef<VListHandle>(null);
+
+  useImperativeHandle(ref, () => ({
+    scrollToCurrent: () => {
+      const index = renderList.findIndex((node) =>
+        node.some((item) => item.name === group?.now),
+      );
+
+      vListRef.current?.scrollToIndex(index, {
+        align: "center",
+        smooth: true,
+      });
+    },
+  }));
+
   return (
     <AnimatePresence initial={false} mode="sync">
       <VList
+        ref={vListRef}
         style={{ flex: 1 }}
         className={classNames(
           "transition-opacity",
@@ -191,4 +219,4 @@ export const NodeList = () => {
       </VList>
     </AnimatePresence>
   );
-};
+});

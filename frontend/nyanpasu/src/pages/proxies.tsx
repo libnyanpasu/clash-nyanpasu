@@ -6,16 +6,22 @@ import {
   alpha,
   useTheme,
 } from "@mui/material";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNyanpasu, useClashCore, Clash } from "@nyanpasu/interface";
 import { SidePage } from "@nyanpasu/ui";
-import { DelayButton, GroupList, NodeList } from "@/components/proxies";
+import {
+  DelayButton,
+  GroupList,
+  NodeList,
+  NodeListRef,
+} from "@/components/proxies";
 import { useAtom } from "jotai";
 import { proxyGroupAtom } from "@/store";
 import ContentDisplay from "@/components/base/content-display";
 import SortSelector from "@/components/proxies/sort-selector";
 import ProxyGroupName from "@/components/proxies/proxy-group-name";
+import ScrollCurrentNode from "@/components/proxies/scroll-current-node";
 
 export default function ProxyPage() {
   const { t } = useTranslation();
@@ -48,6 +54,8 @@ export default function ProxyPage() {
   };
 
   const hasProxies = Boolean(data?.groups.length);
+
+  const nodeListRef = useRef<NodeListRef>(null);
 
   return (
     <SidePage
@@ -93,7 +101,13 @@ export default function ProxyPage() {
               {group?.name && <ProxyGroupName name={group?.name} />}
             </div>
 
-            <div>
+            <div className="flex gap-2">
+              <ScrollCurrentNode
+                onClick={() => {
+                  nodeListRef.current?.scrollToCurrent();
+                }}
+              />
+
               <SortSelector />
             </div>
           </div>
@@ -104,7 +118,7 @@ export default function ProxyPage() {
       {!getCurrentMode.direct ? (
         hasProxies ? (
           <>
-            <NodeList />
+            <NodeList ref={nodeListRef} />
 
             <DelayButton onClick={handleDelayClick} />
           </>

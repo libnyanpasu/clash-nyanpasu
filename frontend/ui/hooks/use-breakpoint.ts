@@ -1,6 +1,6 @@
 import { useTheme } from "@mui/material";
 import { appWindow } from "@tauri-apps/api/window";
-import { useDebounceFn, useSetState } from "ahooks";
+import { useSetState, useThrottleFn } from "ahooks";
 import { useEffect, useCallback, useMemo } from "react";
 
 export const useBreakpoint = (
@@ -53,7 +53,7 @@ export const useBreakpoint = (
     [breakpointsValues, columnMapping, breakpoint.key, setBreakpoint],
   );
 
-  const { run: triggerBreakpoint } = useDebounceFn(
+  const { run: triggerBreakpoint } = useThrottleFn(
     () => {
       const width = document.body.clientWidth;
       getBreakpoint(width);

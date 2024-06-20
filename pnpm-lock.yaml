@@ -228,8 +228,8 @@ importers:
         specifier: 2.8.3
         version: 2.8.3(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1)
       monaco-editor:
-        specifier: 0.49.0
-        version: 0.49.0
+        specifier: 0.50.0
+        version: 0.50.0
       mui-color-input:
         specifier: 2.0.3
         version: 2.0.3(@emotion/react@11.11.4(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(@mui/material@5.15.20(@emotion/react@11.11.4(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1)
@@ -317,7 +317,7 @@ importers:
         version: 5.3.1(@types/node@20.14.6)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0)
       vite-plugin-monaco-editor:
         specifier: npm:vite-plugin-monaco-editor-new@1.1.3
-        version: vite-plugin-monaco-editor-new@1.1.3(monaco-editor@0.49.0)
+        version: vite-plugin-monaco-editor-new@1.1.3(monaco-editor@0.50.0)
       vite-plugin-sass-dts:
         specifier: 1.3.22
         version: 1.3.22(postcss@8.4.38)(prettier@3.3.2)(sass@1.77.6)(vite@5.3.1(@types/node@20.14.6)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0))
@@ -4151,8 +4151,8 @@ packages:
     resolution: {integrity: sha512-oGZRv2OT1lO2UF1zUcwdTb3wqUwI0kBGTgt/T7OdSj6M6N5m3o5uPf0AIW6lVxGGoiWUR7e2AwTE+xiwK8WQig==}
     engines: {node: '>=16 || 14 >=14.17'}
 
-  monaco-editor@0.49.0:
-    resolution: {integrity: sha512-2I8/T3X/hLxB2oPHgqcNYUVdA/ZEFShT7IAujifIPMfKkNbLOqY8XCoyHCXrsdjb36dW9MwoTwBCFpXKMwNwaQ==}
+  monaco-editor@0.50.0:
+    resolution: {integrity: sha512-8CclLCmrRRh+sul7C08BmPBP3P8wVWfBHomsTcndxg5NRCEPfu/mc2AGU8k37ajjDVXcXFc12ORAMUkmk+lkFA==}
 
   ms@2.0.0:
     resolution: {integrity: sha512-Tpp60P6IUJDTuOq/5Z8cdskzJujfwqfOTkrwIwj7IRISpnkJnT6SyJ4PCPnGMoFjC9ddhal5KVIYtAt97ix05A==}
@@ -9737,7 +9737,7 @@ snapshots:
 
   minipass@7.1.0: {}
 
-  monaco-editor@0.49.0: {}
+  monaco-editor@0.50.0: {}
 
   ms@2.0.0: {}
 
@@ -11215,10 +11215,10 @@ snapshots:
       react: 19.0.0-rc-fb9a90fa48-20240614
       react-dom: 19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614)
 
-  vite-plugin-monaco-editor-new@1.1.3(monaco-editor@0.49.0):
+  vite-plugin-monaco-editor-new@1.1.3(monaco-editor@0.50.0):
     dependencies:
       esbuild: 0.19.12
-      monaco-editor: 0.49.0
+      monaco-editor: 0.50.0
 
   vite-plugin-sass-dts@1.3.22(postcss@8.4.38)(prettier@3.3.2)(sass@1.77.6)(vite@5.3.1(@types/node@20.14.6)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0)):
     dependencies:

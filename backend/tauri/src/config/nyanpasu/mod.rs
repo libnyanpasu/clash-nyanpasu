@@ -223,6 +223,10 @@ impl IVerge {
             config.lighten_animation_effects = template.lighten_animation_effects;
         }
 
+        if config.enable_service_mode.is_none() {
+            config.enable_service_mode = template.enable_service_mode;
+        }
+
         config
     }
 
@@ -253,6 +257,7 @@ impl IVerge {
             max_log_files: Some(7), // 7 days
             enable_auto_check_update: Some(true),
             clash_tray_selector: Some(true),
+            enable_service_mode: Some(false),
             ..Self::default()
         }
     }

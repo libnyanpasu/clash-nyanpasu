@@ -9,6 +9,9 @@ import {
 import { useNyanpasu } from "@nyanpasu/interface";
 import { BaseCard, SwitchItem } from "@nyanpasu/ui";
 import { useTranslation } from "react-i18next";
+import { nyanpasu } from "./modules/create-props";
+
+const { createBooleanProps } = nyanpasu;
 
 export const SettingSystemService = () => {
   const { t } = useTranslation();
@@ -65,7 +68,11 @@ export const SettingSystemService = () => {
   return (
     <BaseCard label="System Service">
       <List disablePadding>
-        <SwitchItem label={t("Service Mode")} disabled={checkDisbale} />
+        <SwitchItem
+          label={t("Service Mode")}
+          disabled={checkDisbale}
+          {...createBooleanProps("enable_service_mode")}
+        />
 
         {checkDisbale && (
           <ListItem sx={{ pl: 0, pr: 0 }}>

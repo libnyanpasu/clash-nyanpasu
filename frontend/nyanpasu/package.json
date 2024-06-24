@@ -15,7 +15,7 @@
     "@emotion/styled": "11.11.5",
     "@generouted/react-router": "1.19.5",
     "@juggle/resize-observer": "3.4.0",
-    "@material/material-color-utilities": "0.2.7",
+    "@material/material-color-utilities": "0.3.0",
     "@mui/icons-material": "5.15.20",
     "@mui/lab": "5.0.0-alpha.170",
     "@mui/material": "5.15.20",

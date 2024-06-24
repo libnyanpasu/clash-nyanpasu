@@ -4,7 +4,7 @@
   "main": "index.ts",
   "module": "index.ts",
   "dependencies": {
-    "@material/material-color-utilities": "0.2.7",
+    "@material/material-color-utilities": "0.3.0",
     "@mui/icons-material": "5.15.20",
     "@mui/lab": "5.0.0-alpha.170",
     "@mui/material": "5.15.20",

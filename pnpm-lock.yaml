@@ -183,8 +183,8 @@ importers:
         specifier: 3.4.0
         version: 3.4.0
       '@material/material-color-utilities':
-        specifier: 0.2.7
-        version: 0.2.7
+        specifier: 0.3.0
+        version: 0.3.0
       '@mui/icons-material':
         specifier: 5.15.20
         version: 5.15.20(@mui/material@5.15.20(@emotion/react@11.11.4(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1)
@@ -331,8 +331,8 @@ importers:
   frontend/ui:
     dependencies:
       '@material/material-color-utilities':
-        specifier: 0.2.7
-        version: 0.2.7
+        specifier: 0.3.0
+        version: 0.3.0
       '@mui/icons-material':
         specifier: 5.15.20
         version: 5.15.20(@mui/material@5.15.20(@emotion/react@11.11.4(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1)
@@ -1100,8 +1100,8 @@ packages:
   '@juggle/resize-observer@3.4.0':
     resolution: {integrity: sha512-dfLbk+PwWvFzSxwk3n5ySL0hfBog779o8h68wK/7/APo/7cgyWp5jcXockbxdk5kFRkbeXWm4Fbi9FrdN381sA==}
 
-  '@material/material-color-utilities@0.2.7':
-    resolution: {integrity: sha512-0FCeqG6WvK4/Cc06F/xXMd/pv4FeisI0c1tUpBbfhA2n9Y8eZEv4Karjbmf2ZqQCPUWMrGp8A571tCjizxoTiQ==}
+  '@material/material-color-utilities@0.3.0':
+    resolution: {integrity: sha512-ztmtTd6xwnuh2/xu+Vb01btgV8SQWYCaK56CkRK8gEkWe5TuDyBcYJ0wgkMRn+2VcE9KUmhvkz+N9GHrqw/C0g==}
 
   '@mui/base@5.0.0-beta.40':
     resolution: {integrity: sha512-I/lGHztkCzvwlXpjD2+SNmvNQvB4227xBXhISPjEaJUXGImOQ9f3D2Yj/T3KasSI/h0MLWy74X0J6clhPmsRbQ==}
@@ -6321,7 +6321,7 @@ snapshots:
 
   '@juggle/resize-observer@3.4.0': {}
 
-  '@material/material-color-utilities@0.2.7': {}
+  '@material/material-color-utilities@0.3.0': {}
 
   '@mui/base@5.0.0-beta.40(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1)':
     dependencies:

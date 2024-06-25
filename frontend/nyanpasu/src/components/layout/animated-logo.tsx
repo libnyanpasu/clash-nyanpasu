@@ -1,9 +1,9 @@
 import LogoSvg from "@/assets/image/logo.svg?react";
-import { AnimatePresence, Variants, motion } from "framer-motion";
 import { classNames } from "@/utils";
+import { useNyanpasu } from "@nyanpasu/interface";
+import { AnimatePresence, Variants, motion } from "framer-motion";
 import { CSSProperties } from "react";
 import styles from "./animated-logo.module.scss";
-import { useNyanpasu } from "@nyanpasu/interface";
 
 const Logo = motion(LogoSvg);
 
@@ -61,6 +61,11 @@ export default function AnimatedLogo({
         className={classNames(styles.LogoSchema, className)}
         variants={motionVariants[disbale ? "none" : "default"]}
         style={style}
+        drag
+        dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+        whileDrag={{ scale: 1.15 }}
+        dragSnapToOrigin={true}
+        dragElastic={0.1}
       />
     </AnimatePresence>
   );

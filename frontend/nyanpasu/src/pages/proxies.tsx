@@ -1,3 +1,14 @@
+import ContentDisplay from "@/components/base/content-display";
+import {
+  DelayButton,
+  GroupList,
+  NodeList,
+  NodeListRef,
+} from "@/components/proxies";
+import ProxyGroupName from "@/components/proxies/proxy-group-name";
+import ScrollCurrentNode from "@/components/proxies/scroll-current-node";
+import SortSelector from "@/components/proxies/sort-selector";
+import { proxyGroupAtom } from "@/store";
 import {
   Box,
   Button,
@@ -6,22 +17,11 @@ import {
   alpha,
   useTheme,
 } from "@mui/material";
+import { Clash, useClashCore, useNyanpasu } from "@nyanpasu/interface";
+import { SidePage } from "@nyanpasu/ui";
+import { useAtom } from "jotai";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNyanpasu, useClashCore, Clash } from "@nyanpasu/interface";
-import { SidePage } from "@nyanpasu/ui";
-import {
-  DelayButton,
-  GroupList,
-  NodeList,
-  NodeListRef,
-} from "@/components/proxies";
-import { useAtom } from "jotai";
-import { proxyGroupAtom } from "@/store";
-import ContentDisplay from "@/components/base/content-display";
-import SortSelector from "@/components/proxies/sort-selector";
-import ProxyGroupName from "@/components/proxies/proxy-group-name";
-import ScrollCurrentNode from "@/components/proxies/scroll-current-node";
 
 export default function ProxyPage() {
   const { t } = useTranslation();
@@ -123,7 +123,7 @@ export default function ProxyPage() {
             <DelayButton onClick={handleDelayClick} />
           </>
         ) : (
-          <ContentDisplay message="None Proxies" />
+          <ContentDisplay message="No Proxy" />
         )
       ) : (
         <ContentDisplay message="Direct Mode" />

@@ -57,6 +57,8 @@
     "@typescript-eslint/parser": "7.14.1",
     "@vitejs/plugin-react": "4.3.1",
     "@vitejs/plugin-react-swc": "3.7.0",
+    "clsx": "^2.1.1",
+    "react-resizable-panels": "^2.0.19",
     "sass": "1.77.6",
     "shiki": "1.9.0",
     "tailwindcss-textshadow": "2.1.3",

@@ -1,11 +1,12 @@
-import { classNames } from "@/utils";
 import { getRoutesWithIcon } from "@/utils/routes-utils";
+import { MenuOpen } from "@mui/icons-material";
 import { Backdrop, IconButton, alpha, useTheme } from "@mui/material";
+import clsx from "clsx";
+import { AnimatePresence, motion } from "framer-motion";
+import { useState } from "react";
+import { Panel } from "react-resizable-panels";
 import AnimatedLogo from "../layout/animated-logo";
 import RouteListItem from "./modules/route-list-item";
-import { MenuOpen } from "@mui/icons-material";
-import { useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 
 export const AppDrawer = ({ isDrawer }: { isDrawer?: boolean }) => {
   const { palette } = useTheme();
@@ -17,9 +18,8 @@ export const AppDrawer = ({ isDrawer }: { isDrawer?: boolean }) => {
   const Content = ({ className }: { className?: string }) => {
     return (
       <div
-        className={classNames(
-          "max-w-60",
-          "min-w-28",
+        className={clsx(
+          isDrawer ? ["max-w-60", "min-w-28"] : "w-full",
           "p-4",
           "pt-8",
           "h-full",
@@ -34,13 +34,13 @@ export const AppDrawer = ({ isDrawer }: { isDrawer?: boolean }) => {
         data-windrag
       >
         <div
-          className={classNames(
+          className={clsx(
             "flex items-center justify-center gap-4 ",
             isDrawer && "mx-2",
           )}
         >
           <div
-            className={classNames(
+            className={clsx(
               isDrawer && "w-10 h-10",
               "w-full h-full max-w-32 max-h-32 ml-auto mr-auto",
             )}
@@ -131,7 +131,9 @@ export const AppDrawer = ({ isDrawer }: { isDrawer?: boolean }) => {
       </Backdrop>
     </>
   ) : (
-    <Content />
+    <Panel id="sidebar" defaultSize={20} order={1} minSize={10}>
+      <Content />
+    </Panel>
   );
 };
 

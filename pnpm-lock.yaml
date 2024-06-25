@@ -304,10 +304,10 @@ importers:
         specifier: 3.7.0
         version: 3.7.0(vite@5.3.1(@types/node@20.14.8)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0))
       clsx:
-        specifier: ^2.1.1
+        specifier: 2.1.1
         version: 2.1.1
       react-resizable-panels:
-        specifier: ^2.0.19
+        specifier: 2.0.19
         version: 2.0.19(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614)
       sass:
         specifier: 1.77.6

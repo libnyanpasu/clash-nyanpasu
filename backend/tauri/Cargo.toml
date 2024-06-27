@@ -94,6 +94,7 @@ fs_extra = "1.3.0"
 redb = "2.0.0"
 futures = "0.3"
 num_cpus = "1"
+url = "2"
 
 [target.'cfg(windows)'.dependencies]
 deelevate = "0.2.0"

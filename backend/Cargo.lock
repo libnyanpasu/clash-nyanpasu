@@ -920,6 +920,7 @@ dependencies = [
  "tracing-futures",
  "tracing-log",
  "tracing-subscriber",
+ "url",
  "uuid",
  "webview2-com-bridge",
  "which 6.0.1",

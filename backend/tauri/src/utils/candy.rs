@@ -3,6 +3,7 @@ use anyhow::Result;
 use chrono::Local;
 use glob::glob;
 use std::{path::Path, time::Duration};
+use url::Url;
 use zip::{write::SimpleFileOptions, ZipWriter};
 
 pub fn collect_logs(target_path: &Path) -> Result<()> {
@@ -41,46 +42,60 @@ pub fn get_reqwest_client() -> Result<reqwest::Client> {
 
 pub async fn mirror_speed_test<'a>(
     mirrors: &'a [&'a str],
-) -> anyhow::Result<Vec<(&'a str, Duration)>> {
-    let client = reqwest::Client::new();
+    path: &'a str,
+) -> anyhow::Result<Vec<(&'a str, f64)>> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(3))
+        .user_agent(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0",
+        )
+        .build()?;
     // 預熱一下，丟棄第一次的結果
-    let requests = mirrors.iter().map(|&url| {
+    let requests = mirrors.iter().map(|&mirror| {
         let client = &client;
+        let mut url = Url::parse(mirror).unwrap();
+        url.set_path(path);
         async move { tokio::time::timeout(Duration::from_secs(3), client.get(url).send()).await }
     });
     let _ = futures::future::join_all(requests).await; // 忽略第一次的結果
-    let requests = mirrors.iter().map(|&url| {
+    let requests = mirrors.iter().map(|&mirror| {
         let client = &client;
         async move {
             let start = tokio::time::Instant::now();
+            let mut url = Url::parse(mirror).unwrap();
+            url.set_path(path);
             let result = tokio::time::timeout(Duration::from_secs(3), client.get(url).send()).await;
             match result {
                 Ok(Ok(response)) if response.status().is_success() => {
-                    let elapsed = start.elapsed();
-                    Some((url, elapsed))
+                    let content_length = response.content_length().unwrap_or(0) as f64;
+                    let elapsed = start.elapsed().as_secs_f64();
+                    let speed = content_length / elapsed;
+                    Some((mirror, speed))
                 }
-                _ => None,
+                _ => Some((mirror, 0.0)), // 超时
             }
         }
     });
     let results = futures::future::join_all(requests).await;
-    let results = results.into_iter().flatten().collect();
+    let mut results = results.into_iter().flatten().collect::<Vec<_>>();
+    results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
     Ok(results)
 }
 
 mod test {
-    pub use super::*;
+    #[allow(unused_imports)]
+    use super::*;
 
     #[tokio::test]
     async fn test_mirror_speed_test() {
         let mirrors = &[
-            "https://github.com",
-            "https://gh-proxy.com",
+            "https://github.com/",
+            "https://gh-proxy.com/",
             "https://ghproxy.org/",
-            "https://mirror.ghproxy.com",
+            "https://mirror.ghproxy.com/",
             "https://gh.idayer.com/",
         ];
-        let results = mirror_speed_test(mirrors).await.unwrap();
+        let results = mirror_speed_test(mirrors, "https://gist.githubusercontent.com/khaykov/a6105154becce4c0530da38e723c2330/raw/41ab415ac41c93a198f7da5b47d604956157c5c3/gistfile1.txt").await.unwrap();
         println!("{:?}", results);
         assert_eq!(results.len(), 5);
     }

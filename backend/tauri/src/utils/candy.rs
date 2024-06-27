@@ -40,45 +40,76 @@ pub fn get_reqwest_client() -> Result<reqwest::Client> {
     Ok(client)
 }
 
+pub const INTERNAL_MIRRORS: &[&str] = &[
+    "https://github.com/",
+    "https://gh-proxy.com/",
+    "https://ghproxy.org/",
+    "https://mirror.ghproxy.com/",
+    "https://gh.idayer.com/",
+];
+
+pub fn parse_gh_url(mirror: &str, path: &str) -> Result<Url, url::ParseError> {
+    if mirror.contains("github.com") && !path.starts_with('/') {
+        Url::parse(path)
+    } else {
+        let mut url = Url::parse(mirror)?;
+        url.set_path(path);
+        Ok(url)
+    }
+}
+
 pub async fn mirror_speed_test<'a>(
     mirrors: &'a [&'a str],
     path: &'a str,
-) -> anyhow::Result<Vec<(&'a str, f64)>> {
+) -> Result<Vec<(&'a str, f64)>> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(3))
         .user_agent(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0",
         )
         .build()?;
-    // 預熱一下，丟棄第一次的結果
-    let requests = mirrors.iter().map(|&mirror| {
-        let client = &client;
-        let mut url = Url::parse(mirror).unwrap();
-        url.set_path(path);
-        async move { tokio::time::timeout(Duration::from_secs(3), client.get(url).send()).await }
-    });
-    let _ = futures::future::join_all(requests).await; // 忽略第一次的結果
-    let requests = mirrors.iter().map(|&mirror| {
+
+    let results = futures::future::join_all(mirrors.iter().map(|&mirror| {
         let client = &client;
         async move {
             let start = tokio::time::Instant::now();
-            let mut url = Url::parse(mirror).unwrap();
-            url.set_path(path);
-            let result = tokio::time::timeout(Duration::from_secs(3), client.get(url).send()).await;
+            // if mirror is github.com, we should use it directly
+            let url = parse_gh_url(mirror, path)?;
+            tracing::debug!("Testing {}", url.as_str());
+            let _ = client.get(url.as_str()).send().await; // warm up
+            let result = client
+                .get(url)
+                .send()
+                .await
+                .and_then(|response| response.error_for_status());
             match result {
-                Ok(Ok(response)) if response.status().is_success() => {
+                Ok(response) => {
                     let content_length = response.content_length().unwrap_or(0) as f64;
-                    let elapsed = start.elapsed().as_secs_f64();
-                    let speed = content_length / elapsed;
-                    Some((mirror, speed))
+                    // should read all the response body to get the correct speed
+                    match response.bytes().await {
+                        Ok(_) => {
+                            let elapsed = start.elapsed().as_secs_f64();
+                            let speed = content_length / elapsed;
+                            Ok((mirror, speed))
+                        }
+                        Err(e) => {
+                            tracing::warn!("test mirror {} failed: {}", mirror, e);
+                            Ok((mirror, 0.0))
+                        }
+                    }
                 }
-                _ => Some((mirror, 0.0)), // 超时
+                Err(e) => {
+                    tracing::warn!("test mirror {} failed: {}", mirror, e);
+                    Ok((mirror, 0.0))
+                }
             }
         }
-    });
-    let results = futures::future::join_all(requests).await;
-    let mut results = results.into_iter().flatten().collect::<Vec<_>>();
+    }))
+    .await;
+    let collected_result: Result<Vec<_>, anyhow::Error> = results.into_iter().collect();
+    let mut results = collected_result?;
     results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+
     Ok(results)
 }
 
@@ -88,14 +119,12 @@ mod test {
 
     #[tokio::test]
     async fn test_mirror_speed_test() {
-        let mirrors = &[
-            "https://github.com/",
-            "https://gh-proxy.com/",
-            "https://ghproxy.org/",
-            "https://mirror.ghproxy.com/",
-            "https://gh.idayer.com/",
-        ];
-        let results = mirror_speed_test(mirrors, "https://gist.githubusercontent.com/khaykov/a6105154becce4c0530da38e723c2330/raw/41ab415ac41c93a198f7da5b47d604956157c5c3/gistfile1.txt").await.unwrap();
+        let results = mirror_speed_test(
+            INTERNAL_MIRRORS,
+            "https://raw.githubusercontent.com/simonw/github-large-file-test/master/1.5mb.txt",
+        )
+        .await
+        .unwrap();
         println!("{:?}", results);
         assert_eq!(results.len(), 5);
     }

@@ -95,6 +95,10 @@ redb = "2.0.0"
 futures = "0.3"
 num_cpus = "1"
 url = "2"
+derive_builder = "0.20"
+test-log = { version = "0.2.16", features = ["trace"] }
+md-5 = "0.10.6"
+hex = "0.4"
 
 [target.'cfg(windows)'.dependencies]
 deelevate = "0.2.0"

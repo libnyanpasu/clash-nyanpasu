@@ -270,8 +270,8 @@ importers:
         specifier: 2.2.5
         version: 2.2.5(react@19.0.0-rc-fb9a90fa48-20240614)
       virtua:
-        specifier: 0.33.1
-        version: 0.33.1(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614)
+        specifier: 0.33.2
+        version: 0.33.2(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614)
     devDependencies:
       '@emotion/babel-plugin':
         specifier: 11.11.0
@@ -5519,8 +5519,8 @@ packages:
   vfile@6.0.1:
     resolution: {integrity: sha512-1bYqc7pt6NIADBJ98UiG0Bn/CHIVOoZ/IyEkqIruLg0mE1BKzkOXY2D6CSqQIcKqgadppE5lrxgWXJmXd7zZJw==}
 
-  virtua@0.33.1:
-    resolution: {integrity: sha512-xOzF5J+4KN12w1k7rNbocxjLYrWmGP2gXEDXqcHz7zWkf2vrCrsP/N3M/m3RhME/f/bNc5X22cvpIPqQeOP2MA==}
+  virtua@0.33.2:
+    resolution: {integrity: sha512-4NgtryQH/idQ3oKkwM6DRCoCsn+IrjrStGcDOARPdlY7zIg0AtTcUq24nysM8YyHoS6KhqcVe8A3+lHJidNQWA==}
     peerDependencies:
       react: npm:react@rc
       react-dom: npm:react-dom@rc
@@ -11325,7 +11325,7 @@ snapshots:
       unist-util-stringify-position: 4.0.0
       vfile-message: 4.0.2
 
-  virtua@0.33.1(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614):
+  virtua@0.33.2(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614):
     optionalDependencies:
       react: 19.0.0-rc-fb9a90fa48-20240614
       react-dom: 19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614)

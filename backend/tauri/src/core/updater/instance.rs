@@ -7,6 +7,8 @@ use crate::{
 use anyhow::anyhow;
 use runas::Command as RunasCommand;
 use serde::Serialize;
+#[cfg(target_family = "unix")]
+use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 use tempfile::TempDir;
 use tokio::sync::Mutex;

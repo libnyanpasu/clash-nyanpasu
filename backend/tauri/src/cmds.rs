@@ -266,7 +266,7 @@ pub fn save_window_size_state() -> CmdResult<()> {
 
 #[tauri::command]
 pub async fn fetch_latest_core_versions() -> CmdResult<ManifestVersionLatest> {
-    let mut updater = updater::Updater::global().write().await; // It is intended to block here
+    let mut updater = updater::UpdaterManager::global().write().await; // It is intended to block here
     wrap_err!(updater.fetch_latest().await)?;
     Ok(updater.get_latest_versions())
 }
@@ -305,14 +305,24 @@ pub async fn collect_logs() -> CmdResult {
 }
 
 #[tauri::command]
-pub async fn update_core(core_type: nyanpasu::ClashCore) -> CmdResult {
+pub async fn update_core(core_type: nyanpasu::ClashCore) -> CmdResult<usize> {
     wrap_err!(
-        updater::Updater::global()
-            .read()
+        updater::UpdaterManager::global()
+            .write()
             .await
             .update_core(&core_type)
             .await
     )
+}
+
+#[tauri::command]
+pub async fn inspect_updater(updater_id: usize) -> CmdResult<updater::UpdaterSummary> {
+    let updater = wrap_err!(updater::UpdaterManager::global()
+        .read()
+        .await
+        .inspect_updater(updater_id)
+        .ok_or(anyhow::anyhow!("updater is not exist")))?;
+    Ok(updater)
 }
 
 #[tauri::command]

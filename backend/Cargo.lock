@@ -895,6 +895,7 @@ dependencies = [
  "parking_lot",
  "percent-encoding",
  "port_scanner",
+ "rand 0.8.5",
  "redb",
  "reqwest",
  "rfd",

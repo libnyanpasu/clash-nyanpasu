@@ -142,6 +142,7 @@ fn main() -> std::io::Result<()> {
             // updater
             cmds::fetch_latest_core_versions,
             cmds::update_core,
+            cmds::inspect_updater,
             cmds::get_core_version,
             // utils
             cmds::collect_logs,

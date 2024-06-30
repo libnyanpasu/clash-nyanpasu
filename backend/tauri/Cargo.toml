@@ -99,6 +99,7 @@ derive_builder = "0.20"
 test-log = { version = "0.2.16", features = ["trace"] }
 md-5 = "0.10.6"
 hex = "0.4"
+rand = "0.8"
 
 [target.'cfg(windows)'.dependencies]
 deelevate = "0.2.0"

@@ -23,6 +23,8 @@ pub enum UpdaterState {
     Failed(String),
 }
 
+type DownloaderWithDynCallback = Downloader<Box<dyn Fn(DownloaderState) + Send + Sync>>;
+
 pub(super) struct Updater {
     id: usize,
     temp_dir: TempDir,
@@ -30,7 +32,7 @@ pub(super) struct Updater {
     artifact: String,
     inner: parking_lot::RwLock<UpdaterInner>,
     rx: Mutex<tokio::sync::mpsc::Receiver<DownloaderState>>,
-    downloader: Arc<Downloader<Box<dyn Fn(DownloaderState) + Send + Sync>>>,
+    downloader: Arc<DownloaderWithDynCallback>,
 }
 
 struct UpdaterInner {
@@ -261,6 +263,7 @@ impl Updater {
         };
 
         if current_core == self.core_type {
+            self.dispatch_state(UpdaterState::Restarting);
             CoreManager::global().run_core().await?;
         }
 

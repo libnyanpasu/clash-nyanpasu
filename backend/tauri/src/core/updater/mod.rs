@@ -19,7 +19,7 @@ pub struct UpdaterManager {
     manifest_version: ManifestVersion,
     client: reqwest::Client,
     mirror: Arc<parking_lot::RwLock<Option<(String, u64)>>>,
-    instances: Arc<DashMap<usize, instance::Updater>>,
+    instances: Arc<DashMap<usize, Arc<instance::Updater>>>,
 }
 
 impl Default for UpdaterManager {
@@ -80,7 +80,7 @@ impl Default for ManifestVersionLatest {
 }
 
 impl ManifestVersion {
-    pub fn get_matches(&self, core_type: &ClashCore) -> Option<(String, CoreTypeMeta)> {
+    pub(self) fn get_matches(&self, core_type: &ClashCore) -> Option<(String, CoreTypeMeta)> {
         let arch = get_arch().ok()?;
         match core_type {
             ClashCore::ClashPremium => Some((
@@ -221,16 +221,22 @@ impl UpdaterManager {
             .get_matches(core_type)
             .ok_or(anyhow!("no matches found for core type: {:?}", core_type))?;
         let mirror = self.get_mirror().unwrap();
-        let updater = instance::UpdaterBuilder::new()
-            .set_client(self.client.clone())
-            .set_core_type(core_type.clone())
-            .set_mirror(mirror)
-            .set_artifact(artifact)
-            .set_tag(tag)
-            .build()
-            .await?;
+        let updater = Arc::new(
+            instance::UpdaterBuilder::new()
+                .set_client(self.client.clone())
+                .set_core_type(core_type.clone())
+                .set_mirror(mirror)
+                .set_artifact(artifact)
+                .set_tag(tag)
+                .build()
+                .await?,
+        );
+        let updater_ref = updater.clone();
         let updater_id = updater.get_updater_id();
         self.instances.insert(updater_id, updater);
+        tokio::spawn(async move {
+            updater_ref.start().await;
+        });
         Ok(updater_id)
     }
 
@@ -247,6 +253,6 @@ impl UpdaterManager {
                 map.remove(&updater_id);
             });
         }
-        return Some(report);
+        Some(report)
     }
 }

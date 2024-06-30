@@ -149,6 +149,7 @@ pub struct DownloadStatus {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(private_interfaces)]
 pub struct ChunkStatus {
     pub state: ChunkThreadState,
     pub start: usize,

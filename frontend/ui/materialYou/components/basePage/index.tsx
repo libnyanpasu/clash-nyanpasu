@@ -54,14 +54,9 @@ export const BasePage: FC<Props> = ({
         <Header title={title} header={header} />
 
         <div className={`MDYBasePage-container ${full ? "no-padding" : ""}`}>
-          <section style={sectionStyleRef.current}>
-            <div
-              className="MDYBasePage-content"
-              style={contentStyleRef.current}
-            >
-              {children}
-            </div>
-          </section>
+          <div className="MDYBasePage-content" style={contentStyleRef.current}>
+            <section style={sectionStyleRef.current}>{children}</section>
+          </div>
         </div>
       </div>
     </BaseErrorBoundary>

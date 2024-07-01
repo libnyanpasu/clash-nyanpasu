@@ -29,7 +29,14 @@ export default function ProvidersPage() {
           <Grid container spacing={2}>
             {Object.entries(getProxiesProviders.data).map(
               ([name, provider]) => (
-                <Grid sm={12} md={6} lg={4} xl={3} key={name}>
+                <Grid
+                  key={name}
+                  className="w-full"
+                  sm={12}
+                  md={6}
+                  lg={4}
+                  xl={3}
+                >
                   <ProxiesProvider provider={provider} />
                 </Grid>
               ),
@@ -49,7 +56,7 @@ export default function ProvidersPage() {
         {getRulesProviders.data && (
           <Grid container spacing={2}>
             {Object.entries(getRulesProviders.data).map(([name, provider]) => (
-              <Grid sm={12} md={6} lg={4} xl={3} key={name}>
+              <Grid key={name} className="w-full" sm={12} md={6} lg={4} xl={3}>
                 <RulesProvider provider={provider} />
               </Grid>
             ))}

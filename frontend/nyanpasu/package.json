@@ -58,7 +58,7 @@
     "@vitejs/plugin-react": "4.3.1",
     "@vitejs/plugin-react-swc": "3.7.0",
     "clsx": "2.1.1",
-    "react-resizable-panels": "2.0.19",
+    "react-resizable-panels": "2.0.20",
     "sass": "1.77.6",
     "shiki": "1.10.1",
     "tailwindcss-textshadow": "2.1.3",

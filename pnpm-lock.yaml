@@ -246,11 +246,11 @@ importers:
         specifier: 1.6.5
         version: 1.6.5(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614)
       react-hook-form:
-        specifier: 7.52.0
-        version: 7.52.0(react@19.0.0-rc-fb9a90fa48-20240614)
+        specifier: 7.52.1
+        version: 7.52.1(react@19.0.0-rc-fb9a90fa48-20240614)
       react-hook-form-mui:
         specifier: 7.0.0
-        version: 7.0.0(zwihrdjnuz7uekpqkqd7rvdhli)
+        version: 7.0.0(hnsbxdphojlfk7ty6r3hqlevge)
       react-i18next:
         specifier: 14.1.2
         version: 14.1.2(i18next@23.11.5)(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614)
@@ -4893,8 +4893,8 @@ packages:
       '@mui/x-date-pickers':
         optional: true
 
-  react-hook-form@7.52.0:
-    resolution: {integrity: sha512-mJX506Xc6mirzLsmXUJyqlAI3Kj9Ph2RhplYhUVffeOQSnubK2uVqBFOBJmvKikvbFV91pxVXmDiR+QMF19x6A==}
+  react-hook-form@7.52.1:
+    resolution: {integrity: sha512-uNKIhaoICJ5KQALYZ4TOaOLElyM+xipord+Ha3crEFhTntdLvWZqVY49Wqd/0GiVCA/f9NjemLeiNPjG7Hpurg==}
     engines: {node: '>=12.22.0'}
     peerDependencies:
       react: npm:react@rc
@@ -10606,15 +10606,15 @@ snapshots:
       react: 19.0.0-rc-fb9a90fa48-20240614
       react-dom: 19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614)
 
-  react-hook-form-mui@7.0.0(zwihrdjnuz7uekpqkqd7rvdhli):
+  react-hook-form-mui@7.0.0(hnsbxdphojlfk7ty6r3hqlevge):
     dependencies:
       '@mui/material': 5.15.21(@emotion/react@11.11.4(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1)
       react: 19.0.0-rc-fb9a90fa48-20240614
-      react-hook-form: 7.52.0(react@19.0.0-rc-fb9a90fa48-20240614)
+      react-hook-form: 7.52.1(react@19.0.0-rc-fb9a90fa48-20240614)
     optionalDependencies:
       '@mui/icons-material': 5.15.21(@mui/material@5.15.21(@emotion/react@11.11.4(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1)
 
-  react-hook-form@7.52.0(react@19.0.0-rc-fb9a90fa48-20240614):
+  react-hook-form@7.52.1(react@19.0.0-rc-fb9a90fa48-20240614):
     dependencies:
       react: 19.0.0-rc-fb9a90fa48-20240614
 

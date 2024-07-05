@@ -5,9 +5,9 @@
   "module": "index.ts",
   "dependencies": {
     "@material/material-color-utilities": "0.3.0",
-    "@mui/icons-material": "5.15.21",
-    "@mui/lab": "5.0.0-alpha.170",
-    "@mui/material": "5.15.21",
+    "@mui/icons-material": "5.16.0",
+    "@mui/lab": "5.0.0-alpha.171",
+    "@mui/material": "5.16.0",
     "@tauri-apps/api": "1.6.0",
     "@types/d3": "7.4.3",
     "@types/react": "18.3.3",

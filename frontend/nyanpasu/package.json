@@ -19,7 +19,7 @@
     "@mui/icons-material": "5.16.0",
     "@mui/lab": "5.0.0-alpha.171",
     "@mui/material": "5.16.0",
-    "@mui/x-data-grid": "7.8.0",
+    "@mui/x-data-grid": "7.9.0",
     "@nyanpasu/interface": "workspace:^",
     "@nyanpasu/ui": "workspace:^",
     "@tauri-apps/api": "1.6.0",

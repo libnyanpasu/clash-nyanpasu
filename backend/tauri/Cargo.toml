@@ -101,6 +101,10 @@ md-5 = "0.10.6"
 hex = "0.4"
 rand = "0.8"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa = "0.25.0"
+objc = "0.2.7"
+
 [target.'cfg(windows)'.dependencies]
 deelevate = "0.2.0"
 winreg = { version = "0.52", features = ["transactions"] }

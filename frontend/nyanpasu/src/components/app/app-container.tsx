@@ -6,6 +6,7 @@ import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { LayoutControl } from "../layout/layout-control";
 import styles from "./app-container.module.scss";
 import AppDrawer from "./app-drawer";
+import { alpha, useTheme } from "@mui/material";
 
 const OS = getSystem();
 
@@ -20,6 +21,8 @@ export const AppContainer = ({
   // const onLayout = useDebounce(() => {}, {
   //   wait: 100,
   // });
+
+  const { palette } = useTheme();
 
   return (
     <Paper
@@ -46,7 +49,17 @@ export const AppContainer = ({
               <LayoutControl className="fixed right-6 top-1.5 !z-50" />
             )}
 
-            <div className="h-9" data-windrag />
+            {OS === "macos" && (
+              <div
+                className="fixed z-50 left-6 top-3 h-8 w-[4.5rem] rounded-full"
+                style={{ backgroundColor: alpha(palette.primary.main, 0.1) }}
+              />
+            )}
+
+            <div
+              className={OS === "macos" ? "h-[2.75rem]" : "h-9"}
+              data-windrag
+            />
 
             {children}
           </div>

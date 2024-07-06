@@ -7,6 +7,8 @@ import { useState } from "react";
 import { Panel } from "react-resizable-panels";
 import AnimatedLogo from "../layout/animated-logo";
 import RouteListItem from "./modules/route-list-item";
+import { classNames } from "@/utils";
+import getSystem from "@/utils/get-system";
 
 export const AppDrawer = ({ isDrawer }: { isDrawer?: boolean }) => {
   const { palette } = useTheme();
@@ -21,7 +23,7 @@ export const AppDrawer = ({ isDrawer }: { isDrawer?: boolean }) => {
         className={clsx(
           isDrawer ? ["max-w-60", "min-w-28"] : "w-full",
           "p-4",
-          "pt-8",
+          getSystem() === "macos" ? "pt-14" : "pt-8",
           "h-full",
           "flex",
           "flex-col",
@@ -70,7 +72,10 @@ export const AppDrawer = ({ isDrawer }: { isDrawer?: boolean }) => {
   const DrawerTitle = () => {
     return (
       <div
-        className="flex items-center gap-2 fixed z-10 top-1.5 left-6"
+        className={classNames(
+          "flex items-center gap-2 fixed z-10",
+          getSystem() === "macos" ? "left-[6.5rem] top-3" : "left-6 top-1.5",
+        )}
         data-windrag
       >
         <IconButton

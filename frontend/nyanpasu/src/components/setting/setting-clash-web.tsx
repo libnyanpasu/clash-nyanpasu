@@ -51,7 +51,7 @@ export const SettingClashWeb = () => {
 
     if (!list) return;
 
-    if (editIndex) {
+    if (editIndex !== null) {
       list[editIndex] = editString;
     } else {
       list.push(editString);

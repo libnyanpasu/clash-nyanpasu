@@ -38,6 +38,7 @@ export default function LogPage() {
       full
       title={t("Logs")}
       contentStyle={{ height: "100%" }}
+      sectionStyle={{ height: "100%" }}
       header={
         <div className="flex gap-2">
           <LogToggle />

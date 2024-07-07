@@ -188,6 +188,12 @@ export interface ProviderItem {
   proxies: Clash.Proxy[];
   updatedAt: string;
   vehicleType: string;
+  subscriptionInfo?: {
+    Upload?: number;
+    Download?: number;
+    Total?: number;
+    Expire?: number;
+  };
 }
 
 export interface Traffic {

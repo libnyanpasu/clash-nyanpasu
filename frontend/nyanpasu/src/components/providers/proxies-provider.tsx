@@ -1,12 +1,14 @@
 import { useMessage } from "@/hooks/use-notification";
+import parseTraffic from "@/utils/parse-traffic";
 import { Refresh } from "@mui/icons-material";
 import LoadingButton from "@mui/lab/LoadingButton";
-import { Chip, Paper } from "@mui/material";
+import { Chip, LinearProgress, Paper, Tooltip } from "@mui/material";
 import { ProviderItem, useClashCore } from "@nyanpasu/interface";
 import { useLockFn } from "ahooks";
 import dayjs from "dayjs";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import ProxiesProviderTraffic from "./proxies-provider-traffic";
 
 export interface ProxiesProviderProps {
   provider: ProviderItem;
@@ -36,7 +38,7 @@ export const ProxiesProvider = ({ provider }: ProxiesProviderProps) => {
 
   return (
     <Paper
-      className="p-5 flex flex-col gap-2"
+      className="p-5 flex flex-col gap-2 justify-between h-full"
       sx={{
         borderRadius: 6,
       }}
@@ -56,6 +58,10 @@ export const ProxiesProvider = ({ provider }: ProxiesProviderProps) => {
           })}
         </div>
       </div>
+
+      {provider.subscriptionInfo && (
+        <ProxiesProviderTraffic provider={provider} />
+      )}
 
       <div className="flex items-center justify-between">
         <Chip

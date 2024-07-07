@@ -36,7 +36,7 @@
           height: 100%;
           overflow: hidden;
           background-color: var(--background-color);
-          border-radius: var(--border-radius);
+          border-radius: calc(var(--border-radius) * 2);
 
           > section {
             position: relative;
@@ -55,7 +55,7 @@
         height: 100%;
         overflow: hidden;
         background-color: var(--background-color);
-        border-radius: var(--border-radius);
+        border-radius: calc(var(--border-radius) * 2);
 
         .RightContainer-Content {
           height: 100%;

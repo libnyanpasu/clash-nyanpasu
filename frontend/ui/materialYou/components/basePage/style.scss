@@ -23,7 +23,7 @@
     height: 100%;
     overflow: auto;
     background-color: var(--background-color);
-    border-radius: var(--border-radius);
+    border-radius: calc(var(--border-radius) * 2);
     scrollbar-gutter: stable;
 
     .MDYBasePage-content {

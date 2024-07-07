@@ -39,7 +39,7 @@ export const Dataline: FC<DatalineProps> = ({
         </div>
 
         <div className=" h-5">
-          {total && (
+          {total !== undefined && (
             <span className="text-shadow-sm">
               {t("Total")}: {parseTraffic(total).join(" ")}
             </span>

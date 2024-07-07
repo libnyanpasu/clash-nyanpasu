@@ -38,6 +38,7 @@ export default function RulesPage() {
       full
       title={t("Rules")}
       contentStyle={{ height: "100%" }}
+      sectionStyle={{ height: "100%" }}
       header={
         <TextField
           hiddenLabel

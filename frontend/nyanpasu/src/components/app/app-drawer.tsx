@@ -3,12 +3,14 @@ import { MenuOpen } from "@mui/icons-material";
 import { Backdrop, IconButton, alpha, useTheme } from "@mui/material";
 import clsx from "clsx";
 import { AnimatePresence, motion } from "framer-motion";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Panel } from "react-resizable-panels";
 import AnimatedLogo from "../layout/animated-logo";
 import RouteListItem from "./modules/route-list-item";
 import { classNames } from "@/utils";
 import getSystem from "@/utils/get-system";
+import { useNyanpasu } from "@nyanpasu/interface";
+import { languageQuirks } from "@/utils/language";
 
 export const AppDrawer = ({ isDrawer }: { isDrawer?: boolean }) => {
   const { palette } = useTheme();
@@ -16,6 +18,28 @@ export const AppDrawer = ({ isDrawer }: { isDrawer?: boolean }) => {
   const routes = getRoutesWithIcon();
 
   const [open, setOpen] = useState(false);
+
+  const { nyanpasuConfig } = useNyanpasu();
+
+  const [onlyIcon, setOnlyIcon] = useState(false);
+
+  const handleResize = useCallback(
+    (value?: number) => {
+      if (value) {
+        if (
+          value <
+          languageQuirks[nyanpasuConfig?.language ?? "en"].drawer.minWidth
+        ) {
+          setOnlyIcon(true);
+        } else {
+          setOnlyIcon(false);
+        }
+      } else {
+        setOnlyIcon(false);
+      }
+    },
+    [nyanpasuConfig?.language],
+  );
 
   const Content = ({ className }: { className?: string }) => {
     return (
@@ -35,33 +59,34 @@ export const AppDrawer = ({ isDrawer }: { isDrawer?: boolean }) => {
         }}
         data-windrag
       >
-        <div
-          className={clsx(
-            "flex items-center justify-center gap-4 ",
-            isDrawer && "mx-2",
-          )}
-        >
-          <div
-            className={clsx(
-              isDrawer && "w-10 h-10",
-              "w-full h-full max-w-32 max-h-32 ml-auto mr-auto",
-            )}
-            data-windrag
-          >
+        <div className="flex items-center justify-center gap-4 mx-2">
+          <div className=" h-full max-w-28 max-h-28" data-windrag>
             <AnimatedLogo className="w-full h-full" data-windrag />
           </div>
 
-          {isDrawer && (
-            <div className="text-lg text-nowrap font-bold mt-1" data-windrag>
-              Clash Nyanpasu
+          {(isDrawer || !onlyIcon) && (
+            <div
+              className={classNames(
+                "text-lg font-bold mt-1 whitespace-pre-wrap",
+                isDrawer && "mr-1",
+              )}
+              data-windrag
+            >
+              {"Clash\nNyanpasu"}
             </div>
           )}
         </div>
 
-        <div className="flex flex-col gap-2 overflow-y-auto scrollbar-hidden">
+        <div className="flex flex-col gap-2 overflow-y-auto scrollbar-hidden !overflow-x-hidden">
           {Object.entries(routes).map(([name, { path, icon }]) => {
             return (
-              <RouteListItem key={name} name={name} path={path} icon={icon} />
+              <RouteListItem
+                key={name}
+                name={name}
+                path={path}
+                icon={icon}
+                onlyIcon={!isDrawer && onlyIcon}
+              />
             );
           })}
         </div>
@@ -136,7 +161,16 @@ export const AppDrawer = ({ isDrawer }: { isDrawer?: boolean }) => {
       </Backdrop>
     </>
   ) : (
-    <Panel id="sidebar" defaultSize={20} order={1} minSize={10}>
+    <Panel
+      id="sidebar"
+      defaultSize={
+        languageQuirks[nyanpasuConfig?.language ?? "en"].drawer.minWidth
+      }
+      order={1}
+      minSize={11}
+      maxSize={36}
+      onResize={handleResize}
+    >
       <Content />
     </Panel>
   );

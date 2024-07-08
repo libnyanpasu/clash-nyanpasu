@@ -1,3 +1,4 @@
+import { languageOptions } from "@/utils/language";
 import Done from "@mui/icons-material/Done";
 import { Box, Button, List, ListItem, ListItemText } from "@mui/material";
 import { useNyanpasu, VergeConfig } from "@nyanpasu/interface";
@@ -10,12 +11,6 @@ export const SettingNyanpasuUI = () => {
   const { t } = useTranslation();
 
   const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu();
-
-  const languageOptions = {
-    zh: "中文",
-    en: "English",
-    ru: "Русский",
-  };
 
   const themeOptions = {
     dark: t("theme.dark"),

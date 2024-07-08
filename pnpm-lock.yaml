@@ -177,8 +177,8 @@ importers:
         specifier: 11.11.5
         version: 11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1)
       '@generouted/react-router':
-        specifier: 1.19.5
-        version: 1.19.5(react-router-dom@6.24.1(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614)(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0))
+        specifier: 1.19.6
+        version: 1.19.6(react-router-dom@6.24.1(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614)(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0))
       '@juggle/resize-observer':
         specifier: 3.4.0
         version: 3.4.0
@@ -1061,8 +1061,8 @@ packages:
   '@fullhuman/postcss-purgecss@2.3.0':
     resolution: {integrity: sha512-qnKm5dIOyPGJ70kPZ5jiz0I9foVOic0j+cOzNDoo8KoCf6HjicIZ99UfO2OmE7vCYSKAAepEwJtNzpiiZAh9xw==}
 
-  '@generouted/react-router@1.19.5':
-    resolution: {integrity: sha512-9m42I+F12VcpAWSYAAZco6qS1WLzvwLJ3L4EKy8swXsnebPbPDA2BFUHlWMohyx7pwC8CuxfJjewfUk3qTpYxQ==}
+  '@generouted/react-router@1.19.6':
+    resolution: {integrity: sha512-czOBAwmYYr1E9GZstiek8Kd16NSLT+/yZs4HU/NW/Xd27Yk3SpI1q8hll4kD9mzvM4yuJZxWsOyQsZsxY2MNsA==}
     peerDependencies:
       react: npm:react@rc
       react-router-dom: '>=6'
@@ -3248,8 +3248,8 @@ packages:
   functions-have-names@1.2.3:
     resolution: {integrity: sha512-xckBUXyTIqT97tq2x2AMb+g163b5JFysYk0x4qxNFwbfQkmNZoiRHb6sPzI9/QV33WeuvVYBUIiD4NzNIyqaRQ==}
 
-  generouted@1.19.5:
-    resolution: {integrity: sha512-hts4B0UhYzPKGmGsGhkbCclcZWAeTe3EKW6oLY4tfXMj/A/wk/QTzeYgJqHL9dJd5d0E8vUoqpV6TucH50I9Rw==}
+  generouted@1.19.6:
+    resolution: {integrity: sha512-IkeOH3vnPlG9dLrF3NGC0G6aG8185MTjvMiR5Vzlx9Ztz3VoHJrO2LCen/g/kCBBB3gzD6qqxcdWdKws/bYndA==}
     peerDependencies:
       vite: '>=3'
 
@@ -4103,10 +4103,6 @@ packages:
 
   micromark@4.0.0:
     resolution: {integrity: sha512-o/sd0nMof8kYff+TqcDx3VSrgBTcZpSvYcAHIfHhv5VAuNmisCxjhx6YmxS8PFEpb9z5WKWKPdzf0jM23ro3RQ==}
-
-  micromatch@4.0.5:
-    resolution: {integrity: sha512-DMy+ERcEW2q8Z2Po+WNXuw3c5YaUSFjAO5GsJqfEl7UjvtIuFKO6ZrKvcItdy98dwFI2N1tg3zNIdKaQT+aNdA==}
-    engines: {node: '>=8.6'}
 
   micromatch@4.0.7:
     resolution: {integrity: sha512-LPP/3KorzCwBxfeUuZmaR6bG2kdeHSbe0P2tY3FLRU4vYrjYz5hI4QZwV0njUx3jeuKe67YukQ1LSPZBKDqO/Q==}
@@ -6308,10 +6304,10 @@ snapshots:
       postcss: 7.0.32
       purgecss: 2.3.0
 
-  '@generouted/react-router@1.19.5(react-router-dom@6.24.1(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614)(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0))':
+  '@generouted/react-router@1.19.6(react-router-dom@6.24.1(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614)(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0))':
     dependencies:
       fast-glob: 3.3.2
-      generouted: 1.19.5(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0))
+      generouted: 1.19.6(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0))
       react: 19.0.0-rc-fb9a90fa48-20240614
       react-router-dom: 6.24.1(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614)
       vite: 5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0)
@@ -8655,7 +8651,7 @@ snapshots:
       '@nodelib/fs.walk': 1.2.8
       glob-parent: 5.1.2
       merge2: 1.4.1
-      micromatch: 4.0.5
+      micromatch: 4.0.7
 
   fast-json-stable-stringify@2.1.0: {}
 
@@ -8775,7 +8771,7 @@ snapshots:
 
   functions-have-names@1.2.3: {}
 
-  generouted@1.19.5(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0)):
+  generouted@1.19.6(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0)):
     dependencies:
       vite: 5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0)
 
@@ -9741,11 +9737,6 @@ snapshots:
       micromark-util-types: 2.0.0
     transitivePeerDependencies:
       - supports-color
-
-  micromatch@4.0.5:
-    dependencies:
-      braces: 3.0.3
-      picomatch: 2.3.1
 
   micromatch@4.0.7:
     dependencies:

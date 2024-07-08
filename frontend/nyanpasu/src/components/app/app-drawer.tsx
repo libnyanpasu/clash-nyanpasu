@@ -167,9 +167,11 @@ export const AppDrawer = ({ isDrawer }: { isDrawer?: boolean }) => {
         languageQuirks[nyanpasuConfig?.language ?? "en"].drawer.minWidth
       }
       order={1}
-      minSize={11}
+      minSize={languageQuirks[nyanpasuConfig?.language ?? "en"].drawer.minWidth}
+      collapsedSize={11}
       maxSize={36}
       onResize={handleResize}
+      collapsible
     >
       <Content />
     </Panel>

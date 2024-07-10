@@ -128,8 +128,8 @@ importers:
         specifier: 6.0.4
         version: 6.0.4(stylelint@16.6.1(typescript@5.5.3))
       stylelint-scss:
-        specifier: 6.4.0
-        version: 6.4.0(stylelint@16.6.1(typescript@5.5.3))
+        specifier: 6.4.1
+        version: 6.4.1(stylelint@16.6.1(typescript@5.5.3))
       tailwindcss:
         specifier: 3.4.4
         version: 3.4.4
@@ -5390,8 +5390,8 @@ packages:
     peerDependencies:
       stylelint: ^14.0.0 || ^15.0.0 || ^16.0.1
 
-  stylelint-scss@6.4.0:
-    resolution: {integrity: sha512-1BKRzh2TW38hZm/IWdvBVjlJRERB2zTiwm1xaOeDtUEmEKfxYMNr9THBQQtBV8wGxal/sN+TRsF7v9A5sqGI1A==}
+  stylelint-scss@6.4.1:
+    resolution: {integrity: sha512-+clI2bQC2FPOt06ZwUlXZZ95IO2C5bKTP0GLN1LNQPVvISfSNcgMKv/VTwym1mK9vnqhHbOk8lO4rj4nY7L9pw==}
     engines: {node: '>=18.12.0'}
     peerDependencies:
       stylelint: ^16.0.2
@@ -11206,7 +11206,7 @@ snapshots:
       postcss-sorting: 8.0.2(postcss@8.4.39)
       stylelint: 16.6.1(typescript@5.5.3)
 
-  stylelint-scss@6.4.0(stylelint@16.6.1(typescript@5.5.3)):
+  stylelint-scss@6.4.1(stylelint@16.6.1(typescript@5.5.3)):
     dependencies:
       known-css-properties: 0.34.0
       postcss-media-query-parser: 0.2.3

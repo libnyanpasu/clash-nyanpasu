@@ -46,12 +46,12 @@ export const AppContainer = ({
         <Panel order={2} minSize={50}>
           <div className={styles.container}>
             {OS === "windows" && (
-              <LayoutControl className="fixed right-6 top-1.5 !z-50" />
+              <LayoutControl className="fixed right-6 top-1.5 !z-top" />
             )}
 
             {OS === "macos" && (
               <div
-                className="fixed z-50 left-6 top-3 h-8 w-[4.5rem] rounded-full"
+                className="fixed z-top left-6 top-3 h-8 w-[4.5rem] rounded-full"
                 style={{ backgroundColor: alpha(palette.primary.main, 0.1) }}
               />
             )}

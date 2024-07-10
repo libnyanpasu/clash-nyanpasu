@@ -9,6 +9,9 @@ export default {
       maxHeight: {
         "1/8": "calc(100vh / 8)",
       },
+      zIndex: {
+        top: 100000,
+      },
     },
   },
   plugins: [

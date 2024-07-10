@@ -7,6 +7,7 @@ import { createMDYTheme } from "@nyanpasu/ui";
 import { useAtomValue, useSetAtom } from "jotai";
 import { themeMode as themeModeAtom } from "@/store";
 import { useWhyDidYouUpdate } from "ahooks";
+import { mergeWith } from "lodash-es";
 
 const applyRootStyleVar = (mode: "light" | "dark", theme: Theme) => {
   const root = document.documentElement;
@@ -41,10 +42,18 @@ export const useCustomTheme = () => {
   useWhyDidYouUpdate("useCustomTheme", { nyanpasuConfig, themeMode });
 
   const theme = useMemo(() => {
-    const mergedTheme = createMDYTheme({
-      ...defaultTheme,
-      ...nyanpasuConfig?.theme_setting,
-    });
+    const mergedTheme = createMDYTheme(
+      mergeWith(
+        {},
+        defaultTheme,
+        nyanpasuConfig?.theme_setting,
+        (objValue, srcValue) => {
+          return srcValue === undefined || srcValue === ""
+            ? objValue
+            : srcValue;
+        },
+      ),
+    );
 
     applyRootStyleVar(themeMode, mergedTheme);
 

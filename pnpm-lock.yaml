@@ -178,7 +178,7 @@ importers:
         version: 11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
       '@generouted/react-router':
         specifier: 1.19.6
-        version: 1.19.6(react-router-dom@6.24.1(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0))
+        version: 1.19.6(react-router-dom@6.24.1(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.7)(stylus@0.62.0))
       '@juggle/resize-observer':
         specifier: 3.4.0
         version: 3.4.0
@@ -299,10 +299,10 @@ importers:
         version: 7.16.0(eslint@8.57.0)(typescript@5.5.3)
       '@vitejs/plugin-react':
         specifier: 4.3.1
-        version: 4.3.1(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0))
+        version: 4.3.1(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.7)(stylus@0.62.0))
       '@vitejs/plugin-react-swc':
         specifier: 3.7.0
-        version: 3.7.0(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0))
+        version: 3.7.0(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.7)(stylus@0.62.0))
       clsx:
         specifier: 2.1.1
         version: 2.1.1
@@ -310,8 +310,8 @@ importers:
         specifier: 2.0.20
         version: 2.0.20(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)
       sass:
-        specifier: 1.77.6
-        version: 1.77.6
+        specifier: 1.77.7
+        version: 1.77.7
       shiki:
         specifier: 1.10.3
         version: 1.10.3
@@ -320,19 +320,19 @@ importers:
         version: 2.1.3
       vite:
         specifier: 5.3.3
-        version: 5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0)
+        version: 5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.7)(stylus@0.62.0)
       vite-plugin-monaco-editor:
         specifier: npm:vite-plugin-monaco-editor-new@1.1.3
         version: vite-plugin-monaco-editor-new@1.1.3(monaco-editor@0.50.0)
       vite-plugin-sass-dts:
         specifier: 1.3.22
-        version: 1.3.22(postcss@8.4.39)(prettier@3.3.2)(sass@1.77.6)(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0))
+        version: 1.3.22(postcss@8.4.39)(prettier@3.3.2)(sass@1.77.7)(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.7)(stylus@0.62.0))
       vite-plugin-svgr:
         specifier: 4.2.0
-        version: 4.2.0(rollup@4.17.2)(typescript@5.5.3)(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0))
+        version: 4.2.0(rollup@4.17.2)(typescript@5.5.3)(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.7)(stylus@0.62.0))
       vite-tsconfig-paths:
         specifier: 4.3.2
-        version: 4.3.2(typescript@5.5.3)(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0))
+        version: 4.3.2(typescript@5.5.3)(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.7)(stylus@0.62.0))
 
   frontend/ui:
     dependencies:
@@ -377,8 +377,8 @@ importers:
         version: 14.1.2(i18next@23.11.5)(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)
     devDependencies:
       sass:
-        specifier: 1.77.6
-        version: 1.77.6
+        specifier: 1.77.7
+        version: 1.77.7
       typescript-plugin-css-modules:
         specifier: 5.1.0
         version: 5.1.0(typescript@5.5.3)
@@ -4921,8 +4921,8 @@ packages:
   safer-buffer@2.1.2:
     resolution: {integrity: sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==}
 
-  sass@1.77.6:
-    resolution: {integrity: sha512-ByXE1oLD79GVq9Ht1PeHWCPMPB8XHpBuz1r85oByKHjZY6qV6rWnQovQzXJXuQ/XyE1Oj3iPk3lo28uzaRA2/Q==}
+  sass@1.77.7:
+    resolution: {integrity: sha512-9ywH75cO+rLjbrZ6en3Gp8qAMwPGBapFtlsMJoDTkcMU/bSe5a6cjKVUn5Jr4Gzg5GbP3HE8cm+02pLCgcoMow==}
     engines: {node: '>=14.0.0'}
     hasBin: true
 
@@ -6307,13 +6307,13 @@ snapshots:
       postcss: 7.0.32
       purgecss: 2.3.0
 
-  '@generouted/react-router@1.19.6(react-router-dom@6.24.1(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0))':
+  '@generouted/react-router@1.19.6(react-router-dom@6.24.1(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.7)(stylus@0.62.0))':
     dependencies:
       fast-glob: 3.3.2
-      generouted: 1.19.6(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0))
+      generouted: 1.19.6(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.7)(stylus@0.62.0))
       react: 19.0.0-rc-df783f9ea1-20240708
       react-router-dom: 6.24.1(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)
-      vite: 5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0)
+      vite: 5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.7)(stylus@0.62.0)
 
   '@humanwhocodes/config-array@0.11.14':
     dependencies:
@@ -7279,21 +7279,21 @@ snapshots:
 
   '@ungap/structured-clone@1.2.0': {}
 
-  '@vitejs/plugin-react-swc@3.7.0(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0))':
+  '@vitejs/plugin-react-swc@3.7.0(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.7)(stylus@0.62.0))':
     dependencies:
       '@swc/core': 1.6.1
-      vite: 5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0)
+      vite: 5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.7)(stylus@0.62.0)
     transitivePeerDependencies:
       - '@swc/helpers'
 
-  '@vitejs/plugin-react@4.3.1(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0))':
+  '@vitejs/plugin-react@4.3.1(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.7)(stylus@0.62.0))':
     dependencies:
       '@babel/core': 7.24.5
       '@babel/plugin-transform-react-jsx-self': 7.24.5(@babel/core@7.24.5)
       '@babel/plugin-transform-react-jsx-source': 7.24.1(@babel/core@7.24.5)
       '@types/babel__core': 7.20.5
       react-refresh: 0.14.2
-      vite: 5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0)
+      vite: 5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.7)(stylus@0.62.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -8774,9 +8774,9 @@ snapshots:
 
   functions-have-names@1.2.3: {}
 
-  generouted@1.19.6(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0)):
+  generouted@1.19.6(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.7)(stylus@0.62.0)):
     dependencies:
-      vite: 5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0)
+      vite: 5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.7)(stylus@0.62.0)
 
   gensync@1.0.0-beta.2: {}
 
@@ -10556,7 +10556,7 @@ snapshots:
 
   safer-buffer@2.1.2: {}
 
-  sass@1.77.6:
+  sass@1.77.7:
     dependencies:
       chokidar: 3.6.0
       immutable: 4.3.5
@@ -11142,7 +11142,7 @@ snapshots:
       postcss-modules-local-by-default: 4.0.5(postcss@8.4.38)
       postcss-modules-scope: 3.2.0(postcss@8.4.38)
       reserved-words: 0.1.2
-      sass: 1.77.6
+      sass: 1.77.7
       source-map-js: 1.2.0
       stylus: 0.62.0
       tsconfig-paths: 4.2.0
@@ -11288,37 +11288,37 @@ snapshots:
       esbuild: 0.19.12
       monaco-editor: 0.50.0
 
-  vite-plugin-sass-dts@1.3.22(postcss@8.4.39)(prettier@3.3.2)(sass@1.77.6)(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0)):
+  vite-plugin-sass-dts@1.3.22(postcss@8.4.39)(prettier@3.3.2)(sass@1.77.7)(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.7)(stylus@0.62.0)):
     dependencies:
       postcss: 8.4.39
       postcss-js: 4.0.1(postcss@8.4.39)
       prettier: 3.3.2
-      sass: 1.77.6
-      vite: 5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0)
+      sass: 1.77.7
+      vite: 5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.7)(stylus@0.62.0)
 
-  vite-plugin-svgr@4.2.0(rollup@4.17.2)(typescript@5.5.3)(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0)):
+  vite-plugin-svgr@4.2.0(rollup@4.17.2)(typescript@5.5.3)(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.7)(stylus@0.62.0)):
     dependencies:
       '@rollup/pluginutils': 5.1.0(rollup@4.17.2)
       '@svgr/core': 8.1.0(typescript@5.5.3)
       '@svgr/plugin-jsx': 8.1.0(@svgr/core@8.1.0(typescript@5.5.3))
-      vite: 5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0)
+      vite: 5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.7)(stylus@0.62.0)
     transitivePeerDependencies:
       - rollup
       - supports-color
       - typescript
 
-  vite-tsconfig-paths@4.3.2(typescript@5.5.3)(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0)):
+  vite-tsconfig-paths@4.3.2(typescript@5.5.3)(vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.7)(stylus@0.62.0)):
     dependencies:
       debug: 4.3.4
       globrex: 0.1.2
       tsconfck: 3.0.3(typescript@5.5.3)
     optionalDependencies:
-      vite: 5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0)
+      vite: 5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.7)(stylus@0.62.0)
     transitivePeerDependencies:
       - supports-color
       - typescript
 
-  vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0):
+  vite@5.3.3(@types/node@20.14.10)(less@4.2.0)(sass@1.77.7)(stylus@0.62.0):
     dependencies:
       esbuild: 0.21.5
       postcss: 8.4.39
@@ -11327,7 +11327,7 @@ snapshots:
       '@types/node': 20.14.10
       fsevents: 2.3.3
       less: 4.2.0
-      sass: 1.77.6
+      sass: 1.77.7
       stylus: 0.62.0
 
   void-elements@3.1.0: {}

@@ -135,16 +135,9 @@ export const ScriptDialog = ({
       onClose={() => onClose()}
       onOk={onSubmit}
       divider
-      sx={{
-        " .MuiDialog-paper": {
-          maxWidth: "90vw",
-          maxHeight: "90vh",
-        },
-      }}
-      contentSx={{
-        overflow: "auto",
+      contentStyle={{
+        height: "80vh",
         width: "90vw",
-        height: "90vh",
         padding: 0,
       }}
       {...props}

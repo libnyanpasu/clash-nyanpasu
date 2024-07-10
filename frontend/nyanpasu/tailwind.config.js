@@ -3,7 +3,7 @@ const plugin = require("tailwindcss/plugin");
 
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ["./src/**/*.{tsx,ts}"],
+  content: ["./src/**/*.{tsx,ts}", "../ui/**/*.{tsx,ts}"],
   theme: {
     extend: {
       maxHeight: {

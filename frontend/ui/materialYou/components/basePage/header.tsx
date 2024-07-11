@@ -1,0 +1,23 @@
+import { FC, ReactNode, memo } from "react";
+
+export const Header: FC<{ title?: ReactNode; header?: ReactNode }> = memo(
+  function Header({
+    title,
+    header,
+  }: {
+    title?: ReactNode;
+    header?: ReactNode;
+  }) {
+    return (
+      <header className="pl-2 select-none" data-windrag>
+        <h1 className="mb-1 text-4xl font-medium" data-windrag>
+          {title}
+        </h1>
+
+        {header}
+      </header>
+    );
+  },
+);
+
+export default Header;

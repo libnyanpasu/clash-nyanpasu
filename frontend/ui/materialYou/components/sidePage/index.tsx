@@ -1,10 +1,10 @@
-import { ReactNode, FC, memo } from "react";
+import { ReactNode, FC } from "react";
 import Divider from "@mui/material/Divider";
 import Toolbar from "@mui/material/Toolbar";
-import Typography from "@mui/material/Typography";
 import { BaseErrorBoundary } from "../basePage/baseErrorBoundary";
 import style from "./style.module.scss";
 import { motion } from "framer-motion";
+import Header from "../basePage/header";
 
 interface Props {
   title?: ReactNode;
@@ -17,26 +17,6 @@ interface Props {
   noChildrenScroll?: boolean;
   flexReverse?: boolean;
 }
-
-const Header: FC<{ title?: ReactNode; header?: ReactNode }> = memo(
-  function Header({
-    title,
-    header,
-  }: {
-    title?: ReactNode;
-    header?: ReactNode;
-  }) {
-    return (
-      <header style={{ userSelect: "none" }} data-windrag>
-        <Typography variant="h4" component="h1" fontWeight={500} data-windrag>
-          {title}
-        </Typography>
-
-        {header}
-      </header>
-    );
-  },
-);
 
 export const SidePage: FC<Props> = ({
   title,

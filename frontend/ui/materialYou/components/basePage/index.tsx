@@ -1,7 +1,7 @@
-import { ReactNode, FC, CSSProperties, memo, useRef, useEffect } from "react";
-import Typography from "@mui/material/Typography";
+import { ReactNode, FC, CSSProperties, useRef, useEffect } from "react";
 import { BaseErrorBoundary } from "./baseErrorBoundary";
 import "./style.scss";
+import Header from "./header";
 
 interface Props {
   title?: ReactNode;
@@ -11,26 +11,6 @@ interface Props {
   full?: boolean;
   children?: ReactNode;
 }
-
-const Header: FC<{ title?: ReactNode; header?: ReactNode }> = memo(
-  function Header({
-    title,
-    header,
-  }: {
-    title?: ReactNode;
-    header?: ReactNode;
-  }) {
-    return (
-      <header style={{ userSelect: "none" }} data-windrag>
-        <Typography variant="h4" component="h1" fontWeight={500} data-windrag>
-          {title}
-        </Typography>
-
-        {header}
-      </header>
-    );
-  },
-);
 
 export const BasePage: FC<Props> = ({
   title,

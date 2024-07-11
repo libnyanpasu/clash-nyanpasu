@@ -142,8 +142,8 @@ export const clash = () => {
     });
   };
 
-  const deleteConnections = async () => {
-    return (await buildRequest())(`/connections`, {
+  const deleteConnections = async (id?: string) => {
+    return (await buildRequest())(`/connections/${id}`, {
       method: "DELETE",
     });
   };

@@ -1,23 +1,35 @@
 import parseTraffic from "@/utils/parse-traffic";
-import { GridColDef, DataGrid } from "@mui/x-data-grid";
-import { useClashWS, Connection } from "@nyanpasu/interface";
+import {
+  MaterialReactTable,
+  useMaterialReactTable,
+  type MRT_ColumnDef,
+} from "material-react-table";
+import { useClashWS, Connection, useClash } from "@nyanpasu/interface";
 import dayjs from "dayjs";
 import { useRef, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import HeaderSearch from "./header-search";
+import { useLockFn } from "ahooks";
+import Cancel from "@mui/icons-material/Cancel";
+import { IconButton } from "@mui/material";
+import { containsSearchTerm } from "@/utils";
 
-export type TableConnection = Connection.Item &
-  Connection.Metadata & {
-    downloadSpeed?: number;
-    uploadSpeed?: number;
-  };
+export type TableConnection = Connection.Item & {
+  downloadSpeed?: number;
+  uploadSpeed?: number;
+};
 
 export interface TableMessage extends Omit<Connection.Response, "connections"> {
   connections: TableConnection[];
 }
 
-export const ConnectionsTable = () => {
+export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
   const { t } = useTranslation();
+
+  const { deleteConnections } = useClash();
+
+  const closeConnect = useLockFn(async (id?: string) => {
+    await deleteConnections(id);
+  });
 
   const {
     connections: { latestMessage },
@@ -32,7 +44,13 @@ export const ConnectionsTable = () => {
 
     const updatedConnections: TableConnection[] = [];
 
-    result.connections?.forEach((connection) => {
+    const filteredConnections = searchTerm
+      ? result.connections?.filter((connection) =>
+          containsSearchTerm(connection, searchTerm),
+        )
+      : result.connections;
+
+    filteredConnections?.forEach((connection) => {
       const previousConnection = historyMessage.current?.connections.find(
         (history) => history.id === connection.id,
       );
@@ -45,14 +63,8 @@ export const ConnectionsTable = () => {
         ? connection.upload - previousConnection.upload
         : 0;
 
-      const host = String(
-        connection.metadata.host || connection.metadata.destinationIP,
-      );
-
       updatedConnections.push({
         ...connection,
-        ...connection.metadata,
-        host,
         downloadSpeed,
         uploadSpeed,
       });
@@ -63,103 +75,121 @@ export const ConnectionsTable = () => {
     historyMessage.current = data;
 
     return data;
-  }, [latestMessage?.data]);
+  }, [latestMessage?.data, searchTerm]);
 
-  const columns: GridColDef[] = [
+  const columns: MRT_ColumnDef<TableConnection>[] = [
     {
-      field: "host",
-      headerName: t("Host"),
-      flex: 240,
-      minWidth: 240,
+      header: t("Actions"),
+      size: 80,
+      enableSorting: false,
+      enableGlobalFilter: false,
+      accessorFn: ({ id }) => (
+        <div className="w-full flex justify-center">
+          <IconButton
+            color="primary"
+            className="size-5"
+            onClick={closeConnect(id)}
+          >
+            <Cancel />
+          </IconButton>
+        </div>
+      ),
     },
     {
-      field: "process",
-      headerName: t("Process"),
-      flex: 100,
-      minWidth: 100,
+      header: t("Host"),
+      size: 240,
+      accessorFn: ({ metadata }) => metadata.host || metadata.destinationIP,
     },
     {
-      field: "download",
-      headerName: t("Download"),
-      width: 88,
-      valueFormatter: (value) => parseTraffic(value).join(" "),
+      header: t("Process"),
+      size: 140,
+      accessorFn: ({ metadata }) => metadata.process,
     },
     {
-      field: "upload",
-      headerName: t("Upload"),
-      width: 88,
-      valueFormatter: (value) => parseTraffic(value).join(" "),
+      header: t("Download"),
+      size: 88,
+      accessorFn: ({ download }) => parseTraffic(download).join(" "),
     },
     {
-      field: "downloadSpeed",
-      headerName: t("DL Speed"),
-      width: 88,
-      valueFormatter: (value) => parseTraffic(value).join(" ") + "/s",
+      header: t("Upload"),
+      size: 88,
+      accessorFn: ({ upload }) => parseTraffic(upload).join(" "),
     },
     {
-      field: "uploadSpeed",
-      headerName: t("UL Speed"),
-      width: 88,
-      valueFormatter: (value) => parseTraffic(value).join(" ") + "/s",
+      header: t("DL Speed"),
+      size: 88,
+      accessorFn: ({ downloadSpeed }) =>
+        parseTraffic(downloadSpeed).join(" ") + "/s",
     },
     {
-      field: "chains",
-      headerName: t("Chains"),
-      flex: 360,
-      minWidth: 360,
-      valueFormatter: (value) => [...value].reverse().join(" / "),
+      header: t("UL Speed"),
+      size: 88,
+      accessorFn: ({ uploadSpeed }) =>
+        parseTraffic(uploadSpeed).join(" ") + "/s",
     },
     {
-      field: "rule",
-      headerName: "Rule",
-      flex: 300,
-      minWidth: 250,
+      header: t("Chains"),
+      size: 360,
+      accessorFn: ({ chains }) => [...chains].reverse().join(" / "),
     },
     {
-      field: "start",
-      headerName: t("Time"),
-      flex: 120,
-      minWidth: 100,
-      valueFormatter: (value) => dayjs(value).fromNow(),
+      header: "Rule",
+      size: 200,
+      accessorFn: ({ rule, rulePayload }) =>
+        rulePayload ? `${rule} (${rulePayload})` : rule,
     },
     {
-      field: "source",
-      headerName: "Source",
-      flex: 200,
-      minWidth: 130,
+      header: t("Time"),
+      size: 120,
+      accessorFn: ({ start }) => dayjs(start).fromNow(),
     },
     {
-      field: "destinationIP",
-      headerName: t("Destination IP"),
-      flex: 200,
-      minWidth: 130,
+      header: "Source",
+      size: 200,
+      accessorFn: ({ metadata: { sourceIP, sourcePort } }) =>
+        `${sourceIP}:${sourcePort}`,
     },
     {
-      field: "type",
-      headerName: t("Type"),
-      flex: 160,
-      minWidth: 100,
+      header: t("Destination"),
+      size: 200,
+      accessorFn: ({ metadata: { destinationIP, destinationPort } }) =>
+        `${destinationIP}:${destinationPort}`,
+    },
+    {
+      accessorKey: "type",
+      header: t("Type"),
+      size: 160,
     },
   ];
 
+  const table = useMaterialReactTable({
+    columns,
+    data: connectionsMessage?.connections ?? [],
+    initialState: {
+      density: "compact",
+    },
+    defaultDisplayColumn: {
+      enableResizing: true,
+    },
+    enableTopToolbar: false,
+    enableColumnActions: false,
+    enablePagination: false,
+    enableBottomToolbar: false,
+    enableColumnResizing: true,
+    enableGlobalFilterModes: true,
+    enableColumnPinning: true,
+    muiTableContainerProps: {
+      sx: { minHeight: "100%" },
+      className: "!absolute !h-full !w-full",
+    },
+    enableRowVirtualization: true,
+    enableColumnVirtualization: true,
+    rowVirtualizerOptions: { overscan: 5 },
+    columnVirtualizerOptions: { overscan: 2 },
+  });
+
   return (
-    connectionsMessage?.connections && (
-      <DataGrid
-        rows={connectionsMessage.connections}
-        columns={columns}
-        density="compact"
-        autosizeOnMount
-        hideFooter
-        disableColumnFilter
-        disableColumnSelector
-        disableDensitySelector
-        sx={{ border: "none", "div:focus": { outline: "none !important" } }}
-        className="!absolute !h-full !w-full"
-        slots={{
-          toolbar: HeaderSearch,
-        }}
-      />
-    )
+    connectionsMessage?.connections && <MaterialReactTable table={table} />
   );
 };
 

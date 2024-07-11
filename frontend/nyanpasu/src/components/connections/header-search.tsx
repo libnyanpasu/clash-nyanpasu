@@ -1,9 +1,13 @@
-import { FilledInputProps, Portal, alpha, useTheme } from "@mui/material";
-import { GridToolbarQuickFilter } from "@mui/x-data-grid";
-import { Fragment } from "react";
+import {
+  FilledInputProps,
+  TextField,
+  TextFieldProps,
+  alpha,
+  useTheme,
+} from "@mui/material";
 import { useTranslation } from "react-i18next";
 
-export const HeaderSearch = () => {
+export const HeaderSearch = (props: TextFieldProps) => {
   const { t } = useTranslation();
 
   const { palette } = useTheme();
@@ -24,20 +28,17 @@ export const HeaderSearch = () => {
   };
 
   return (
-    <Fragment>
-      <Portal container={() => document.getElementById("filter-panel")}>
-        <GridToolbarQuickFilter
-          autoComplete="off"
-          spellCheck="false"
-          hiddenLabel
-          placeholder={t("Type to Filter")}
-          variant="filled"
-          className="!pb-0"
-          sx={{ input: { py: 1, fontSize: 14 } }}
-          InputProps={inputProps}
-        />
-      </Portal>
-    </Fragment>
+    <TextField
+      autoComplete="off"
+      spellCheck="false"
+      hiddenLabel
+      placeholder={t("Type to Filter")}
+      variant="filled"
+      className="!pb-0"
+      sx={{ input: { py: 1, fontSize: 14 } }}
+      InputProps={inputProps}
+      {...props}
+    />
   );
 };
 

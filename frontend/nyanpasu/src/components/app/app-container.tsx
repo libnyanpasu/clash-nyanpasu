@@ -1,7 +1,7 @@
 import getSystem from "@/utils/get-system";
 import Paper from "@mui/material/Paper";
 import { appWindow } from "@tauri-apps/api/window";
-import { ReactNode } from "react";
+import { ReactNode, useEffect } from "react";
 import { LayoutControl } from "../layout/layout-control";
 import styles from "./app-container.module.scss";
 import AppDrawer from "./app-drawer";
@@ -27,6 +27,10 @@ export const AppContainer = ({
 
   const { palette } = useTheme();
 
+  useEffect(() => {
+    console.log(isDrawer);
+  }, [isDrawer]);
+
   return (
     <Paper
       square
@@ -41,10 +45,10 @@ export const AppContainer = ({
         e.preventDefault();
       }}
     >
+      {isDrawer && <AppDrawer data-windrag isDrawer />}
+
       <Allotment separator proportionalLayout={false}>
-        {isDrawer ? (
-          <AppDrawer data-windrag />
-        ) : (
+        {!isDrawer && (
           <Allotment.Pane className="h-full" minSize={96} maxSize={260}>
             <DrawerContent data-windrag />
           </Allotment.Pane>

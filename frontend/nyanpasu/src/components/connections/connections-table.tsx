@@ -12,6 +12,7 @@ import { useLockFn } from "ahooks";
 import Cancel from "@mui/icons-material/Cancel";
 import { IconButton } from "@mui/material";
 import { containsSearchTerm } from "@/utils";
+import ContentDisplay from "../base/content-display";
 
 export type TableConnection = Connection.Item & {
   downloadSpeed?: number;
@@ -188,8 +189,13 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
     columnVirtualizerOptions: { overscan: 2 },
   });
 
-  return (
-    connectionsMessage?.connections && <MaterialReactTable table={table} />
+  return connectionsMessage?.connections.length ? (
+    <MaterialReactTable table={table} />
+  ) : (
+    <ContentDisplay
+      className="!absolute !h-full !w-full"
+      message="No Connection"
+    />
   );
 };
 

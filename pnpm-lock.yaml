@@ -225,7 +225,7 @@ importers:
         specifier: 2.9.0
         version: 2.9.0(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
       material-react-table:
-        specifier: ^2.13.0
+        specifier: 2.13.0
         version: 2.13.0(h2dbiieozg7pp2cyeyv6onws2y)
       monaco-editor:
         specifier: 0.50.0

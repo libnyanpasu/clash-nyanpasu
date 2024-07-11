@@ -14,18 +14,18 @@ export const languageQuirks: {
 } = {
   zh: {
     drawer: {
-      minWidth: 22,
+      minWidth: 180,
       itemClassNames: "text-center",
     },
   },
   en: {
     drawer: {
-      minWidth: 26,
+      minWidth: 240,
     },
   },
   ru: {
     drawer: {
-      minWidth: 26,
+      minWidth: 240,
     },
   },
 };

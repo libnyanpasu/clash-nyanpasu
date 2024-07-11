@@ -187,7 +187,7 @@ importers:
         version: 0.3.0
       '@mui/icons-material':
         specifier: 5.16.0
-        version: 5.16.0(@mui/material@5.16.0(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
+        version: 5.16.0(@mui/material@5.16.0(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
       '@mui/lab':
         specifier: 5.0.0-alpha.171
         version: 5.0.0-alpha.171(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(@mui/material@5.16.0(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
@@ -260,6 +260,9 @@ importers:
       react-router-dom:
         specifier: 6.24.1
         version: 6.24.1(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)
+      react-split-grid:
+        specifier: ^1.0.4
+        version: 1.0.4(react@19.0.0-rc-df783f9ea1-20240708)
       react-transition-group:
         specifier: 4.4.5
         version: 4.4.5(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)
@@ -306,9 +309,6 @@ importers:
       clsx:
         specifier: 2.1.1
         version: 2.1.1
-      react-resizable-panels:
-        specifier: 2.0.20
-        version: 2.0.20(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)
       sass:
         specifier: 1.77.7
         version: 1.77.7
@@ -5021,12 +5021,6 @@ packages:
       '@types/react':
         optional: true
 
-  react-resizable-panels@2.0.20:
-    resolution: {integrity: sha512-aMbK3VF8U+VBICG+rwhE0Rr/eFZaRzmNq3akBRL1TrayIpLXz7Rbok0//kYeWj6SQRsjcQ3f4eRplJicM+oL6w==}
-    peerDependencies:
-      react: npm:react@rc
-      react-dom: npm:react-dom@rc
-
   react-router-dom@6.24.1:
     resolution: {integrity: sha512-U19KtXqooqw967Vw0Qcn5cOvrX5Ejo9ORmOtJMzYWtCT4/WOfFLIZGGsVLxcd9UkBO0mSTZtXqhZBsWlHr7+Sg==}
     engines: {node: '>=14.0.0'}
@@ -5037,6 +5031,11 @@ packages:
   react-router@6.24.1:
     resolution: {integrity: sha512-PTXFXGK2pyXpHzVo3rR9H7ip4lSPZZc0bHG5CARmj65fTT6qG7sTngmb6lcYu1gf3y/8KxORoy9yn59pGpCnpg==}
     engines: {node: '>=14.0.0'}
+    peerDependencies:
+      react: npm:react@rc
+
+  react-split-grid@1.0.4:
+    resolution: {integrity: sha512-RMEzFFnntgn+u5GFq+ognmv30CsTgrR97zB4RkMx2VSX9Sw8A7fjzCUfw/Avj7m8GCEw19GIjoUQGOQUOOjlcA==}
     peerDependencies:
       react: npm:react@rc
 
@@ -5329,6 +5328,9 @@ packages:
 
   space-separated-tokens@2.0.2:
     resolution: {integrity: sha512-PEGlAwrG8yXGXRjW32fGbg66JAlOAwbObuqVoJpv/mRgoWDQfgH1wDPvtzWyUSNAXBGSk8h755YDbbcEy3SH2Q==}
+
+  split-grid@1.0.11:
+    resolution: {integrity: sha512-ELtFtxc3r5we5GZfe6Fi0BFFxIi2M6BY1YEntBscKRDD3zx4JVHqx2VnTRSQu1BixCYSTH3MTjKd4esI2R7EgQ==}
 
   split2@4.2.0:
     resolution: {integrity: sha512-UcjcJOWknrNkF6PLX83qcHM6KHgVKNkV62Y8a5uYDVv9ydGQVwAHMKqHdJje1VTWpljG0WYpCDhrCdAOYH4TWg==}
@@ -6672,6 +6674,14 @@ snapshots:
       '@types/react': types-react@19.0.0-rc.1
 
   '@mui/core-downloads-tracker@5.16.0': {}
+
+  '@mui/icons-material@5.16.0(@mui/material@5.16.0(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)':
+    dependencies:
+      '@babel/runtime': 7.24.7
+      '@mui/material': 5.16.0(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
+      react: 19.0.0-rc-df783f9ea1-20240708
+    optionalDependencies:
+      '@types/react': types-react@19.0.0-rc.1
 
   '@mui/icons-material@5.16.0(@mui/material@5.16.0(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)':
     dependencies:
@@ -9963,7 +9973,7 @@ snapshots:
     dependencies:
       '@emotion/react': 11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
       '@emotion/styled': 11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
-      '@mui/icons-material': 5.16.0(@mui/material@5.16.0(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
+      '@mui/icons-material': 5.16.0(@mui/material@5.16.0(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
       '@mui/material': 5.16.0(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
       '@mui/x-date-pickers': 7.9.0(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(@mui/material@5.16.0(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(dayjs@1.11.11)(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
       '@tanstack/match-sorter-utils': 8.15.1
@@ -10782,7 +10792,7 @@ snapshots:
       react: 19.0.0-rc-df783f9ea1-20240708
       react-hook-form: 7.52.1(react@19.0.0-rc-df783f9ea1-20240708)
     optionalDependencies:
-      '@mui/icons-material': 5.16.0(@mui/material@5.16.0(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
+      '@mui/icons-material': 5.16.0(@mui/material@5.16.0(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
       '@mui/x-date-pickers': 7.9.0(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(@mui/material@5.16.0(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(@emotion/styled@11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(dayjs@1.11.11)(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
 
   react-hook-form@7.52.1(react@19.0.0-rc-df783f9ea1-20240708):
@@ -10840,11 +10850,6 @@ snapshots:
     optionalDependencies:
       '@types/react': types-react@19.0.0-rc.1
 
-  react-resizable-panels@2.0.20(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708):
-    dependencies:
-      react: 19.0.0-rc-df783f9ea1-20240708
-      react-dom: 19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708)
-
   react-router-dom@6.24.1(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708):
     dependencies:
       '@remix-run/router': 1.17.1
@@ -10856,6 +10861,12 @@ snapshots:
     dependencies:
       '@remix-run/router': 1.17.1
       react: 19.0.0-rc-df783f9ea1-20240708
+
+  react-split-grid@1.0.4(react@19.0.0-rc-df783f9ea1-20240708):
+    dependencies:
+      prop-types: 15.8.1
+      react: 19.0.0-rc-df783f9ea1-20240708
+      split-grid: 1.0.11
 
   react-style-singleton@2.2.1(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1):
     dependencies:
@@ -11172,6 +11183,8 @@ snapshots:
   source-map@0.7.4: {}
 
   space-separated-tokens@2.0.2: {}
+
+  split-grid@1.0.11: {}
 
   split2@4.2.0: {}
 

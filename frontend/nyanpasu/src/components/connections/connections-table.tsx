@@ -157,9 +157,9 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
         `${destinationIP}:${destinationPort}`,
     },
     {
-      accessorKey: "type",
       header: t("Type"),
       size: 160,
+      accessorFn: ({ metadata }) => `${metadata.type} (${metadata.network})`,
     },
   ];
 

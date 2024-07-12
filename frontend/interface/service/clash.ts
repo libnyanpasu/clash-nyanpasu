@@ -180,6 +180,10 @@ export const clash = () => {
     );
   };
 
+  const getAllProxiesProviders = async () => {
+    return (await (await buildRequest())("/providers/proxies"))?.providers;
+  };
+
   const updateProxiesProviders = async (name: string) => {
     return (await buildRequest())(
       `/providers/proxies/${encodeURIComponent(name)}`,
@@ -202,6 +206,7 @@ export const clash = () => {
     getRulesProviders,
     updateRulesProviders,
     getProxiesProviders,
+    getAllProxiesProviders,
     updateProxiesProviders,
   };
 };

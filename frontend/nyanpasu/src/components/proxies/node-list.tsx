@@ -24,8 +24,13 @@ export interface NodeListRef {
 }
 
 export const NodeList = forwardRef(function NodeList({}, ref) {
-  const { data, setGroupProxy, setGlobalProxy, updateProxiesDelay } =
-    useClashCore();
+  const {
+    data,
+    setGroupProxy,
+    setGlobalProxy,
+    updateProxiesDelay,
+    getAllProxiesProviders,
+  } = useClashCore();
 
   const [isPending, startTransition] = useTransition();
 
@@ -164,6 +169,18 @@ export const NodeList = forwardRef(function NodeList({}, ref) {
     },
   }));
 
+  const handleClickDelay = async (name: string) => {
+    const getGroupTestUrl = () => {
+      if (group?.name) {
+        return getAllProxiesProviders.data?.[group?.name].testUrl;
+      }
+    };
+
+    await updateProxiesDelay(name, {
+      url: getGroupTestUrl(),
+    });
+  };
+
   return (
     <AnimatePresence initial={false} mode="sync">
       <VList
@@ -189,9 +206,9 @@ export const NodeList = forwardRef(function NodeList({}, ref) {
                     now={group?.now}
                     disabled={group?.type !== "Selector"}
                     onClick={() => hendleClick(render.name)}
-                    onClickDelay={async () => {
-                      await updateProxiesDelay(render.name);
-                    }}
+                    onClickDelay={async () =>
+                      await handleClickDelay(render.name)
+                    }
                   />
                 );
 

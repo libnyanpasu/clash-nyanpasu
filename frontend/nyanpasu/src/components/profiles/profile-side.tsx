@@ -51,7 +51,7 @@ export const ProfileSide = ({ profile, global, onClose }: ProfileSideProps) => {
           </Allotment.Pane>
 
           <Allotment.Pane minSize={40}>
-            <SideLog className="h-full" />
+            <SideLog className="h-full border-t-2" />
           </Allotment.Pane>
         </Allotment>
       </div>

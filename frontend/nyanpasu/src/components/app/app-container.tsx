@@ -1,14 +1,13 @@
 import getSystem from "@/utils/get-system";
 import Paper from "@mui/material/Paper";
 import { appWindow } from "@tauri-apps/api/window";
-import { ReactNode, useEffect } from "react";
+import { ReactNode } from "react";
 import { LayoutControl } from "../layout/layout-control";
 import styles from "./app-container.module.scss";
 import AppDrawer from "./app-drawer";
 import { alpha, useTheme } from "@mui/material";
 import { Allotment } from "allotment";
 import "allotment/dist/style.css";
-import "./app-container.scss";
 import DrawerContent from "./drawer-content";
 
 const OS = getSystem();
@@ -26,10 +25,6 @@ export const AppContainer = ({
   // });
 
   const { palette } = useTheme();
-
-  useEffect(() => {
-    console.log(isDrawer);
-  }, [isDrawer]);
 
   return (
     <Paper

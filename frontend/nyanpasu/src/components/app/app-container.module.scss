@@ -1,3 +1,8 @@
+:root {
+  --focus-border: transparent !important;
+  --separator-border: transparent !important;
+}
+
 .layout {
   display: flex;
   width: 100%;
@@ -10,19 +15,5 @@
     flex: 1 1 75%;
     height: 100%;
     background-color: var(--background-color-alpha);
-  }
-
-  .resize-bar {
-    &:hover {
-      ::after {
-        position: absolute;
-        top: 0;
-        right: 0;
-        bottom: 0;
-        width: 1px;
-        content: "";
-        background-color: var(--border-color);
-      }
-    }
   }
 }

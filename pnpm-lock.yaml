@@ -212,6 +212,9 @@ importers:
       axios:
         specifier: 1.7.2
         version: 1.7.2
+      country-code-emoji:
+        specifier: ^2.3.0
+        version: 2.3.0
       dayjs:
         specifier: 1.11.11
         version: 1.11.11
@@ -2678,6 +2681,9 @@ packages:
     peerDependenciesMeta:
       typescript:
         optional: true
+
+  country-code-emoji@2.3.0:
+    resolution: {integrity: sha512-MqmIWr3aucoU/3XZU44e0sz6izAlErqaUYp9/NFzdnzb9TrwwornyW3ws2da5TSnpTUr2qP2840oJW9oNKXCoQ==}
 
   create-error-class@3.0.2:
     resolution: {integrity: sha512-gYTKKexFO3kh200H1Nit76sRwRtOY32vQd3jpAQKpLtZqyNsSQNfI4N7o3eP2wUjV35pTWKRYqFUDBvUha/Pkw==}
@@ -8236,6 +8242,8 @@ snapshots:
       parse-json: 5.2.0
     optionalDependencies:
       typescript: 5.5.3
+
+  country-code-emoji@2.3.0: {}
 
   create-error-class@3.0.2:
     dependencies:

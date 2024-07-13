@@ -213,7 +213,7 @@ importers:
         specifier: 1.7.2
         version: 1.7.2
       country-code-emoji:
-        specifier: ^2.3.0
+        specifier: 2.3.0
         version: 2.3.0
       dayjs:
         specifier: 1.11.11

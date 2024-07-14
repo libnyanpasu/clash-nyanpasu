@@ -28,7 +28,7 @@
     "country-code-emoji": "2.3.0",
     "dayjs": "1.11.11",
     "framer-motion": "12.0.0-alpha.0",
-    "i18next": "23.11.5",
+    "i18next": "23.12.1",
     "jotai": "2.9.0",
     "material-react-table": "2.13.0",
     "monaco-editor": "0.50.0",

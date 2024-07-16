@@ -1,8 +1,8 @@
 import { createTiming } from "./utils";
 
 export const timing = {
-  Google: createTiming("http://www.gstatic.com/generate_204"),
-  GitHub: createTiming("http://github.com/"),
-  BingCN: createTiming("http://cn.bing.com/"),
-  Baidu: createTiming("http://www.baidu.com/"),
+  Google: createTiming("https://www.gstatic.com/generate_204"),
+  GitHub: createTiming("https://github.com/"),
+  BingCN: createTiming("https://cn.bing.com/"),
+  Baidu: createTiming("https://www.baidu.com/"),
 };

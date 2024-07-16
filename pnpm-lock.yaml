@@ -178,7 +178,7 @@ importers:
         version: 11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
       '@generouted/react-router':
         specifier: 1.19.6
-        version: 1.19.6(react-router-dom@6.24.1(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)(vite@5.3.4(@types/node@20.14.10)(less@4.2.0)(sass@1.77.8)(stylus@0.62.0))
+        version: 1.19.6(react-router-dom@6.25.0(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)(vite@5.3.4(@types/node@20.14.10)(less@4.2.0)(sass@1.77.8)(stylus@0.62.0))
       '@juggle/resize-observer':
         specifier: 3.4.0
         version: 3.4.0
@@ -258,8 +258,8 @@ importers:
         specifier: 9.0.1
         version: 9.0.1(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
       react-router-dom:
-        specifier: 6.24.1
-        version: 6.24.1(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)
+        specifier: 6.25.0
+        version: 6.25.0(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)
       react-split-grid:
         specifier: 1.0.4
         version: 1.0.4(react@19.0.0-rc-df783f9ea1-20240708)
@@ -1593,8 +1593,8 @@ packages:
       '@types/react':
         optional: true
 
-  '@remix-run/router@1.17.1':
-    resolution: {integrity: sha512-mCOMec4BKd6BRGBZeSnGiIgwsbLGp3yhVqAD8H+PxiRNEHgDpZb8J1TnrSDlg97t0ySKMQJTHCWBCmBpSmkF6Q==}
+  '@remix-run/router@1.18.0':
+    resolution: {integrity: sha512-L3jkqmqoSVBVKHfpGZmLrex0lxR5SucGA0sUfFzGctehw+S/ggL9L/0NnC5mw6P8HUWpFZ3nQw3cRApjjWx9Sw==}
     engines: {node: '>=14.0.0'}
 
   '@rollup/pluginutils@5.1.0':
@@ -5015,15 +5015,15 @@ packages:
       '@types/react':
         optional: true
 
-  react-router-dom@6.24.1:
-    resolution: {integrity: sha512-U19KtXqooqw967Vw0Qcn5cOvrX5Ejo9ORmOtJMzYWtCT4/WOfFLIZGGsVLxcd9UkBO0mSTZtXqhZBsWlHr7+Sg==}
+  react-router-dom@6.25.0:
+    resolution: {integrity: sha512-BhcczgDWWgvGZxjDDGuGHrA8HrsSudilqTaRSBYLWDayvo1ClchNIDVt5rldqp6e7Dro5dEFx9Mzc+r292lN0w==}
     engines: {node: '>=14.0.0'}
     peerDependencies:
       react: npm:react@rc
       react-dom: npm:react-dom@rc
 
-  react-router@6.24.1:
-    resolution: {integrity: sha512-PTXFXGK2pyXpHzVo3rR9H7ip4lSPZZc0bHG5CARmj65fTT6qG7sTngmb6lcYu1gf3y/8KxORoy9yn59pGpCnpg==}
+  react-router@6.25.0:
+    resolution: {integrity: sha512-bziKjCcDbcxgWS9WlWFcQIVZ2vJHnCP6DGpQDT0l+0PFDasfJKgzf9CM22eTyhFsZkjk8ApCdKjJwKtzqH80jQ==}
     engines: {node: '>=14.0.0'}
     peerDependencies:
       react: npm:react@rc
@@ -6596,12 +6596,12 @@ snapshots:
       postcss: 7.0.32
       purgecss: 2.3.0
 
-  '@generouted/react-router@1.19.6(react-router-dom@6.24.1(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)(vite@5.3.4(@types/node@20.14.10)(less@4.2.0)(sass@1.77.8)(stylus@0.62.0))':
+  '@generouted/react-router@1.19.6(react-router-dom@6.25.0(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)(vite@5.3.4(@types/node@20.14.10)(less@4.2.0)(sass@1.77.8)(stylus@0.62.0))':
     dependencies:
       fast-glob: 3.3.2
       generouted: 1.19.6(vite@5.3.4(@types/node@20.14.10)(less@4.2.0)(sass@1.77.8)(stylus@0.62.0))
       react: 19.0.0-rc-df783f9ea1-20240708
-      react-router-dom: 6.24.1(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)
+      react-router-dom: 6.25.0(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)
       vite: 5.3.4(@types/node@20.14.10)(less@4.2.0)(sass@1.77.8)(stylus@0.62.0)
 
   '@humanwhocodes/config-array@0.11.14':
@@ -7119,7 +7119,7 @@ snapshots:
     optionalDependencies:
       '@types/react': types-react@19.0.0-rc.1
 
-  '@remix-run/router@1.17.1': {}
+  '@remix-run/router@1.18.0': {}
 
   '@rollup/pluginutils@5.1.0(rollup@4.17.2)':
     dependencies:
@@ -10831,16 +10831,16 @@ snapshots:
     optionalDependencies:
       '@types/react': types-react@19.0.0-rc.1
 
-  react-router-dom@6.24.1(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708):
+  react-router-dom@6.25.0(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708):
     dependencies:
-      '@remix-run/router': 1.17.1
+      '@remix-run/router': 1.18.0
       react: 19.0.0-rc-df783f9ea1-20240708
       react-dom: 19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708)
-      react-router: 6.24.1(react@19.0.0-rc-df783f9ea1-20240708)
+      react-router: 6.25.0(react@19.0.0-rc-df783f9ea1-20240708)
 
-  react-router@6.24.1(react@19.0.0-rc-df783f9ea1-20240708):
+  react-router@6.25.0(react@19.0.0-rc-df783f9ea1-20240708):
     dependencies:
-      '@remix-run/router': 1.17.1
+      '@remix-run/router': 1.18.0
       react: 19.0.0-rc-df783f9ea1-20240708
 
   react-split-grid@1.0.4(react@19.0.0-rc-df783f9ea1-20240708):

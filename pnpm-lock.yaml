@@ -252,8 +252,8 @@ importers:
         specifier: 7.0.1
         version: 7.0.1(7cllkcphevtaad3vgre6vmruby)
       react-i18next:
-        specifier: 14.1.2
-        version: 14.1.2(i18next@23.12.1)(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)
+        specifier: 14.1.3
+        version: 14.1.3(i18next@23.12.1)(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)
       react-markdown:
         specifier: 9.0.1
         version: 9.0.1(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
@@ -364,8 +364,8 @@ importers:
         specifier: 4.0.13
         version: 4.0.13(react@19.0.0-rc-df783f9ea1-20240708)
       react-i18next:
-        specifier: 14.1.2
-        version: 14.1.2(i18next@23.12.1)(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)
+        specifier: 14.1.3
+        version: 14.1.3(i18next@23.12.1)(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)
     devDependencies:
       clsx:
         specifier: 2.1.1
@@ -4966,8 +4966,8 @@ packages:
     peerDependencies:
       react: npm:react@rc
 
-  react-i18next@14.1.2:
-    resolution: {integrity: sha512-FSIcJy6oauJbGEXfhUgVeLzvWBhIBIS+/9c6Lj4niwKZyGaGb4V4vUbATXSlsHJDXXB+ociNxqFNiFuV1gmoqg==}
+  react-i18next@14.1.3:
+    resolution: {integrity: sha512-wZnpfunU6UIAiJ+bxwOiTmBOAaB14ha97MjOEnLGac2RJ+h/maIYXZuTHlmyqQVX1UVHmU1YDTQ5vxLmwfXTjw==}
     peerDependencies:
       i18next: '>= 23.2.3'
       react: npm:react@rc
@@ -10780,9 +10780,9 @@ snapshots:
     dependencies:
       react: 19.0.0-rc-df783f9ea1-20240708
 
-  react-i18next@14.1.2(i18next@23.12.1)(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708):
+  react-i18next@14.1.3(i18next@23.12.1)(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708):
     dependencies:
-      '@babel/runtime': 7.24.5
+      '@babel/runtime': 7.24.7
       html-parse-stringify: 3.0.1
       i18next: 23.12.1
       react: 19.0.0-rc-df783f9ea1-20240708

@@ -39,7 +39,9 @@ Exciting, right? (ᗒᗨᗕ)/ Follow [this link](https://t.me/keikolog) to stay 
 
 ## Preview
 
-![preview](./docs/preview.gif)
+![preview-light](https://nyanpasu.elaina.moe/images/screenshot/app-dashboard-light.png)
+
+![preview-dark](https://nyanpasu.elaina.moe/images/screenshot/app-dashboard-dark.png)
 
 ## Links
 

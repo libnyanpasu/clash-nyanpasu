@@ -1557,9 +1557,9 @@ dependencies = [
 
 [[package]]
 name = "document-features"
-version = "0.2.8"
+version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef5282ad69563b5fc40319526ba27e0e7363d552a896f0297d54f767717f9b95"
+checksum = "cb6969eaabd2421f8a2775cfd2471a2b634372b4a25d41e3bd647b79912850a0"
 dependencies = [
  "litrs",
 ]
@@ -1779,9 +1779,9 @@ dependencies = [
 
 [[package]]
 name = "fast_image_resize"
-version = "4.1.0"
+version = "4.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89a06940fe3bab6e93dc275bb8a67cc833b70f4078124e7e7f7352f5c8470e63"
+checksum = "81cd2f79218cdfe398519739df6872a6f5747ca08e1f4fd3179f4b053a0b05f9"
 dependencies = [
  "cfg-if",
  "document-features",

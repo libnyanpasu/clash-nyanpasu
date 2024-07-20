@@ -12,7 +12,7 @@
     "@dnd-kit/core": "6.1.0",
     "@dnd-kit/sortable": "8.0.0",
     "@dnd-kit/utilities": "3.2.2",
-    "@emotion/styled": "11.12.0",
+    "@emotion/styled": "11.13.0",
     "@generouted/react-router": "1.19.6",
     "@juggle/resize-observer": "3.4.0",
     "@material/material-color-utilities": "0.3.0",
@@ -47,7 +47,7 @@
   },
   "devDependencies": {
     "@emotion/babel-plugin": "11.12.0",
-    "@emotion/react": "11.12.0",
+    "@emotion/react": "11.13.0",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
     "@typescript-eslint/eslint-plugin": "7.16.0",

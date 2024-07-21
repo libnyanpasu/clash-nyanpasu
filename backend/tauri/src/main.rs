@@ -13,6 +13,7 @@ extern crate objc;
 
 mod cmds;
 mod config;
+mod consts;
 mod core;
 mod enhance;
 mod feat;

@@ -1,11 +1,11 @@
 [package]
-name = "clash-verge"
+name = "clash-nyanpasu"
 version = "0.1.0"
 description = "clash verge"
 authors = { workspace = true }
 license = { workspace = true }
 repository = { workspace = true }
-default-run = "clash-verge"
+default-run = "clash-nyanpasu"
 edition = { workspace = true }
 build = "build.rs"
 
@@ -13,6 +13,8 @@ build = "build.rs"
 tauri-build = { version = "1", features = [] }
 serde = "1"
 simd-json = "0.13"
+chrono = "0.4"
+rustc_version = "0.4"
 
 [dependencies]
 which = "6"
@@ -100,6 +102,9 @@ test-log = { version = "0.2.16", features = ["trace"] }
 md-5 = "0.10.6"
 hex = "0.4"
 rand = "0.8"
+colored = "2.1.0"
+timeago = "0.4"
+ansi-str = "0.8"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.25.0"

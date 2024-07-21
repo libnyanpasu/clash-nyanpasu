@@ -10,3 +10,5 @@ pub mod tmpl;
 pub mod downloader;
 #[cfg(windows)]
 pub mod winreg;
+
+pub mod collect;

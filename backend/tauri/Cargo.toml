@@ -17,6 +17,7 @@ chrono = "0.4"
 rustc_version = "0.4"
 
 [dependencies]
+nyanpasu-utils = { git = "https://github.com/LibNyanpasu/nyanpasu-utils" }
 which = "6"
 anyhow = "1.0"
 dirs = "5.0.1"
@@ -105,6 +106,7 @@ rand = "0.8"
 colored = "2.1.0"
 timeago = "0.4"
 ansi-str = "0.8"
+humansize = "2.1.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.25.0"

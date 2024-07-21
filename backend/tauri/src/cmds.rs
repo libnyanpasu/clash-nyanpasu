@@ -3,7 +3,9 @@ use crate::{
     core::{tasks::jobs::ProfilesJobGuard, updater::ManifestVersionLatest, *},
     feat, ret_err,
     utils::{
-        candy, dirs, help,
+        candy,
+        collect::EnvInfo,
+        dirs, help,
         resolve::{self, save_window_state},
     },
     wrap_err,
@@ -370,6 +372,11 @@ pub async fn update_proxy_provider(name: String) -> CmdResult<()> {
     wrap_err!(api::update_providers_proxies_group(&name).await)?;
     wrap_err!(ProxiesGuard::global().update().await)?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn collect_envs<'a>() -> CmdResult<EnvInfo<'a>> {
+    Ok(wrap_err!(crate::utils::collect::collect_envs())?)
 }
 
 #[cfg(windows)]

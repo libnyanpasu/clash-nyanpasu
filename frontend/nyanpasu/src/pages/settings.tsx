@@ -1,12 +1,14 @@
-import { GitHub } from "@mui/icons-material";
-import { IconButton } from "@mui/material";
+import { formatEnvInfos } from "@/utils";
+import { Feedback, GitHub } from "@mui/icons-material";
 import Masonry from "@mui/lab/Masonry";
-import { useLockFn } from "ahooks";
-import { useTranslation } from "react-i18next";
+import { IconButton } from "@mui/material";
+import { collect_envs } from "@nyanpasu/interface";
 import { BasePage } from "@nyanpasu/ui";
 import { open } from "@tauri-apps/api/shell";
+import { useLockFn } from "ahooks";
 import { motion } from "framer-motion";
 import { lazy, Suspense } from "react";
+import { useTranslation } from "react-i18next";
 
 const asyncComponents = [
   () => import("@/components/setting/setting-system-proxy"),
@@ -41,11 +43,35 @@ const GithubIcon = () => {
   );
 };
 
+const FeedbackIcon = () => {
+  const toFeedback = useLockFn(async () => {
+    const envs = await collect_envs();
+    const formattedEnv = encodeURIComponent(formatEnvInfos(envs));
+    return open(
+      "https://github.com/LibNyanpasu/clash-nyanpasu/issues/new?assignees=&labels=T%3A+Bug%2CS%3A+Untriaged&projects=&template=bug_report.yaml&env_infos=" +
+        formattedEnv,
+    );
+  });
+  return (
+    <IconButton color="inherit" title="Feedback" onClick={toFeedback}>
+      <Feedback fontSize="inherit" />
+    </IconButton>
+  );
+};
+
 export default function SettingPage() {
   const { t } = useTranslation();
 
   return (
-    <BasePage title={t("Settings")} header={<GithubIcon />}>
+    <BasePage
+      title={t("Settings")}
+      header={
+        <div className="flex gap-1">
+          <FeedbackIcon />
+          <GithubIcon />
+        </div>
+      }
+    >
       <Masonry
         columns={{ xs: 1, sm: 1, md: 2 }}
         spacing={3}

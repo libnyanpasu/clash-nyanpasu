@@ -1,3 +1,4 @@
+import { EnvInfos } from "@nyanpasu/interface";
 import { includes, isArray, isObject, isString, some } from "lodash-es";
 
 /**
@@ -27,3 +28,27 @@ export const containsSearchTerm = (obj: any, term: string): boolean => {
 
   return false;
 };
+
+export function formatEnvInfos(envs: EnvInfos) {
+  let result = "----------- System -----------\n";
+  result += `OS: ${envs.os}\n`;
+  result += `Arch: ${envs.arch}\n`;
+  result += `----------- Device -----------\n`;
+  for (const cpu of envs.device.cpu) {
+    result += `CPU: ${cpu}\n`;
+  }
+  result += `Memory: ${envs.device.memory}\n`;
+  result += `----------- Core -----------\n`;
+  for (const key in envs.core) {
+    result += `${key}: ${envs.core[key]}\n`;
+  }
+  result += `----------- Build Info -----------\n`;
+  for (const k of Object.keys(envs.build_info) as string[]) {
+    const key = k
+      .split("_")
+      .map((v) => v.charAt(0).toUpperCase() + v.slice(1))
+      .join(" ");
+    result += `${key}: ${envs.build_info[key]}\n`;
+  }
+  return result;
+}

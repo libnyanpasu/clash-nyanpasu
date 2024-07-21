@@ -1,13 +1,14 @@
 import { invoke } from "@tauri-apps/api/tauri";
+import { ManifestVersion } from "./core";
 import {
   ClashConfig,
   ClashInfo,
-  VergeConfig,
+  EnvInfos,
   Profile,
-  SystemProxy,
   Proxies,
+  SystemProxy,
+  VergeConfig,
 } from "./types";
-import { ManifestVersion } from "./core";
 
 export const getNyanpasuConfig = async () => {
   return await invoke<VergeConfig>("get_verge_config");
@@ -185,4 +186,8 @@ export const updateProxyProvider = async (name: string) => {
 
 export const save_window_size_state = async () => {
   return await invoke<void>("save_window_size_state");
+};
+
+export const collect_envs = async () => {
+  return await invoke<EnvInfos>("collect_envs");
 };

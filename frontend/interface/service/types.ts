@@ -206,3 +206,14 @@ export interface Memory {
   inuse: number;
   oslimit: number;
 }
+
+export interface EnvInfos {
+  os: string;
+  arch: string;
+  core: { [key: string]: string };
+  device: {
+    cpu: Array<string>;
+    memory: string;
+  };
+  build_info: { [key: string]: string };
+}

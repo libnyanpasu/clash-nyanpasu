@@ -46,7 +46,12 @@ const GithubIcon = () => {
 const FeedbackIcon = () => {
   const toFeedback = useLockFn(async () => {
     const envs = await collect_envs();
-    const formattedEnv = encodeURIComponent(formatEnvInfos(envs));
+    const formattedEnv = encodeURIComponent(
+      formatEnvInfos(envs)
+        .split("\n")
+        .map((v) => `> ${v}`)
+        .join("\n"),
+    );
     return open(
       "https://github.com/LibNyanpasu/clash-nyanpasu/issues/new?assignees=&labels=T%3A+Bug%2CS%3A+Untriaged&projects=&template=bug_report.yaml&env_infos=" +
         formattedEnv,

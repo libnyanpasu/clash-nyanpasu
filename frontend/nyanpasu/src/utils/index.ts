@@ -40,7 +40,7 @@ export function formatEnvInfos(envs: EnvInfos) {
   result += `Memory: ${envs.device.memory}\n`;
   result += `----------- Core -----------\n`;
   for (const key in envs.core) {
-    result += `${key}: ${envs.core[key]}\n`;
+    result += `${key}: \`${envs.core[key]}\`\n`;
   }
   result += `----------- Build Info -----------\n`;
   for (const k of Object.keys(envs.build_info) as string[]) {
@@ -48,7 +48,7 @@ export function formatEnvInfos(envs: EnvInfos) {
       .split("_")
       .map((v) => v.charAt(0).toUpperCase() + v.slice(1))
       .join(" ");
-    result += `${key}: ${envs.build_info[key]}\n`;
+    result += `${key}: ${envs.build_info[k]}\n`;
   }
   return result;
 }

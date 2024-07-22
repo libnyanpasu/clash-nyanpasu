@@ -1,7 +1,7 @@
-import { CSSProperties, FC, useEffect, useRef } from "react";
-import * as d3 from "d3";
 import { alpha, useTheme } from "@mui/material";
-
+import * as d3 from "d3";
+import { interpolatePath } from "d3-interpolate-path";
+import { CSSProperties, FC, useEffect, useRef } from "react";
 interface SparklineProps {
   data: number[];
   className?: string;
@@ -82,9 +82,26 @@ export const Sparkline: FC<SparklineProps> = ({ data, className, style }) => {
       xScale.domain([0, data.length - 1]);
       yScale.domain([0, d3.max(data) ?? 0]);
 
-      svg.select(".area").datum(data).attr("d", area);
+      const t = svg.transition().duration(750).ease(d3.easeCubic);
+      svg
+        .select(".area")
+        .datum(data)
+        .transition(t as any)
+        .attrTween("d", function (d) {
+          const previous = d3.select(this).attr("d");
+          const current = area(d);
+          return interpolatePath(previous, current as string);
+        });
 
-      svg.select(".line").datum(data).attr("d", line);
+      svg
+        .select(".line")
+        .datum(data)
+        .transition(t as any)
+        .attrTween("d", function (d) {
+          const previous = d3.select(this).attr("d");
+          const current = line(d);
+          return interpolatePath(previous, current as string);
+        });
     };
 
     updateChart();

@@ -1,5 +1,12 @@
 import Dataline, { DatalineProps } from "@/components/dashboard/dataline";
 import {
+  ArrowDownward,
+  ArrowUpward,
+  MemoryOutlined,
+  SettingsEthernet,
+} from "@mui/icons-material";
+import Grid from "@mui/material/Unstable_Grid2";
+import {
   Connection,
   Memory,
   Traffic,
@@ -8,24 +15,17 @@ import {
 } from "@nyanpasu/interface";
 import { useInterval } from "ahooks";
 import { useState } from "react";
-import {
-  ArrowDownward,
-  ArrowUpward,
-  MemoryOutlined,
-  SettingsEthernet,
-} from "@mui/icons-material";
-import Grid from "@mui/material/Unstable_Grid2";
 import { useTranslation } from "react-i18next";
 
 export const DataPanel = () => {
   const { t } = useTranslation();
 
   const [traffic, setTraffice] = useState<Traffic[]>(
-    new Array(16).fill({ up: 0, down: 0 }),
+    new Array(20).fill({ up: 0, down: 0 }),
   );
 
   const [memory, setMemory] = useState<Memory[]>(
-    new Array(16).fill({ inuse: 0 }),
+    new Array(20).fill({ inuse: 0 }),
   );
 
   const [connection, setConnection] = useState<
@@ -35,7 +35,7 @@ export const DataPanel = () => {
       connections: number;
     }[]
   >(
-    new Array(16).fill({
+    new Array(20).fill({
       downloadTotal: 0,
       uploadTotal: 0,
       connections: 0,

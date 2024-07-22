@@ -368,7 +368,7 @@ importers:
         version: 15.0.0(i18next@23.12.2)(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)
     devDependencies:
       '@types/d3-interpolate-path':
-        specifier: ^2.0.3
+        specifier: 2.0.3
         version: 2.0.3
       clsx:
         specifier: 2.1.1

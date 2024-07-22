@@ -1,0 +1,20 @@
+.wrapper {
+  .input {
+    &:hover {
+      + .items {
+        border-color: var(--input-hover-border-color);
+      }
+    }
+
+    &:focus {
+      + .items {
+        border-color: var(--input-focus-border-color);
+        border-width: 2px;
+      }
+    }
+  }
+
+  .items {
+    border-color: var(--border-color);
+  }
+}

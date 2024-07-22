@@ -1,6 +1,12 @@
-import { Button, Divider } from "@mui/material";
+import { useClickPosition } from "@/hooks";
+import { cn } from "@/utils";
 import LoadingButton from "@mui/lab/LoadingButton";
+import { Button, Divider } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
+import * as Dialog from "@radix-ui/react-dialog";
+import { useLockFn } from "ahooks";
+import useDebounceFn from "ahooks/lib/useDebounceFn";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   CSSProperties,
   ReactNode,
@@ -8,14 +14,7 @@ import {
   useLayoutEffect,
   useState,
 } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import React from "react";
-import useDebounceFn from "ahooks/lib/useDebounceFn";
-import { useLockFn } from "ahooks";
 import { useTranslation } from "react-i18next";
-import * as Dialog from "@radix-ui/react-dialog";
-import { cn } from "@/utils";
-import { useClickPosition } from "@/hooks";
 
 export interface BaseDialogProps {
   title: ReactNode;
@@ -208,3 +207,5 @@ export const BaseDialog = ({
     </Dialog.Root>
   );
 };
+
+export const BaseDialogTrigger = Dialog.Trigger;

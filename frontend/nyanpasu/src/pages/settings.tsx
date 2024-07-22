@@ -1,5 +1,6 @@
+import HotkeyDialog from "@/components/setting/modules/hotkey-dialog";
 import { formatEnvInfos } from "@/utils";
-import { Feedback, GitHub } from "@mui/icons-material";
+import { Feedback, GitHub, Keyboard } from "@mui/icons-material";
 import Masonry from "@mui/lab/Masonry";
 import { IconButton } from "@mui/material";
 import { collect_envs } from "@nyanpasu/interface";
@@ -7,7 +8,7 @@ import { BasePage } from "@nyanpasu/ui";
 import { open } from "@tauri-apps/api/shell";
 import { useLockFn } from "ahooks";
 import { motion } from "framer-motion";
-import { lazy, Suspense } from "react";
+import React, { lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
 
 const asyncComponents = [
@@ -64,6 +65,19 @@ const FeedbackIcon = () => {
   );
 };
 
+// FIXME: it should move to a proper place
+const HotkeyButton = () => {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <HotkeyDialog open={open} onClose={() => setOpen(false)} />
+      <IconButton color="inherit" title="Hotkeys" onClick={() => setOpen(true)}>
+        <Keyboard fontSize="inherit" />
+      </IconButton>
+    </>
+  );
+};
+
 export default function SettingPage() {
   const { t } = useTranslation();
 
@@ -72,6 +86,7 @@ export default function SettingPage() {
       title={t("Settings")}
       header={
         <div className="flex gap-1">
+          <HotkeyButton />
           <FeedbackIcon />
           <GithubIcon />
         </div>

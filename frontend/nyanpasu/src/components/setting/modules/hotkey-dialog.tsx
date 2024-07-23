@@ -96,10 +96,10 @@ export default function HotkeyDialog({
 
   // 自动保存
   useEffect(() => {
-    if (!duplicateItems.length && open) {
+    if (!isDuplicated && open) {
       saveState();
     }
-  }, [hotkeyMap, duplicateItems, open]);
+  }, [hotkeyMap, isDuplicated, open]);
 
   const onSave = () => {
     saveState().then(() => {

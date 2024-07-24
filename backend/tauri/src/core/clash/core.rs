@@ -66,7 +66,7 @@ impl CoreManager {
         let clash_core = { Config::verge().latest().clash_core.clone() };
         let clash_core = clash_core.unwrap_or(ClashCore::ClashPremium).to_string();
 
-        let app_dir = dirs::app_home_dir()?;
+        let app_dir = dirs::app_data_dir()?;
         let app_dir = dirs::path_to_str(&app_dir)?;
         log::debug!(target: "app", "check config in `{clash_core}`");
         let output = Command::new_sidecar(clash_core)?
@@ -161,7 +161,7 @@ impl CoreManager {
             }
         }
 
-        let app_dir = dirs::app_home_dir()?;
+        let app_dir = dirs::app_data_dir()?;
         let app_dir = dirs::path_to_str(&app_dir)?;
 
         let clash_core = { Config::verge().latest().clash_core.clone() };

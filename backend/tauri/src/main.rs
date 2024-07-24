@@ -130,7 +130,8 @@ fn main() -> std::io::Result<()> {
         .invoke_handler(tauri::generate_handler![
             // common
             cmds::get_sys_proxy,
-            cmds::open_app_dir,
+            cmds::open_app_config_dir,
+            cmds::open_app_data_dir,
             cmds::open_logs_dir,
             cmds::open_web_url,
             cmds::open_core_dir,

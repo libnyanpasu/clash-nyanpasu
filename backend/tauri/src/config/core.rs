@@ -7,8 +7,8 @@ use anyhow::{anyhow, Result};
 use once_cell::sync::OnceCell;
 use std::{env::temp_dir, path::PathBuf};
 
-pub const RUNTIME_CONFIG: &str = "clash-verge.yaml";
-pub const CHECK_CONFIG: &str = "clash-verge-check.yaml";
+pub const RUNTIME_CONFIG: &str = "clash-config.yaml";
+pub const CHECK_CONFIG: &str = "clash-config-check.yaml";
 
 pub struct Config {
     clash_config: Draft<IClashTemp>,
@@ -51,7 +51,7 @@ impl Config {
         if let Err(err) = Self::generate_file(ConfigType::Run) {
             log::error!(target: "app", "{err}");
 
-            let runtime_path = dirs::app_home_dir()?.join(RUNTIME_CONFIG);
+            let runtime_path = dirs::app_config_dir()?.join(RUNTIME_CONFIG);
             // 如果不存在就将默认的clash文件拿过来
             if !runtime_path.exists() {
                 help::save_yaml(
@@ -67,7 +67,7 @@ impl Config {
     /// 将配置丢到对应的文件中
     pub fn generate_file(typ: ConfigType) -> Result<PathBuf> {
         let path = match typ {
-            ConfigType::Run => dirs::app_home_dir()?.join(RUNTIME_CONFIG),
+            ConfigType::Run => dirs::app_config_dir()?.join(RUNTIME_CONFIG),
             ConfigType::Check => temp_dir().join(CHECK_CONFIG),
         };
 

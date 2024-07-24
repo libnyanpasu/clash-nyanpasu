@@ -49,7 +49,7 @@ pub fn init_config() -> Result<()> {
         }
     }));
 
-    crate::log_err!(dirs::clash_path().map(|path| {
+    crate::log_err!(dirs::clash_guard_overrides_path().map(|path| {
         if !path.exists() {
             help::save_yaml(
                 &path,
@@ -60,7 +60,7 @@ pub fn init_config() -> Result<()> {
         <Result<()>>::Ok(())
     }));
 
-    crate::log_err!(dirs::verge_path().map(|path| {
+    crate::log_err!(dirs::nyanpasu_config_path().map(|path| {
         if !path.exists() {
             help::save_yaml(&path, &IVerge::template(), Some("# Clash Nyanpasu"))?;
         }

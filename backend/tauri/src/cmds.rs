@@ -235,9 +235,15 @@ pub fn get_clash_logs() -> CmdResult<VecDeque<String>> {
 }
 
 #[tauri::command]
-pub fn open_app_dir() -> CmdResult<()> {
-    let app_dir = wrap_err!(dirs::app_home_dir())?;
-    wrap_err!(open::that(app_dir))
+pub fn open_app_config_dir() -> CmdResult<()> {
+    let config_dir = wrap_err!(dirs::app_config_dir())?;
+    wrap_err!(open::that(config_dir))
+}
+
+#[tauri::command]
+pub fn open_app_data_dir() -> CmdResult<()> {
+    let data_dir = wrap_err!(dirs::app_data_dir())?;
+    wrap_err!(open::that(data_dir))
 }
 
 #[tauri::command]

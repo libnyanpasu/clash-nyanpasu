@@ -37,8 +37,12 @@ impl Tray {
                 t!("tray.open_dir.menu"),
                 SystemTrayMenu::new()
                     .add_item(CustomMenuItem::new(
-                        "open_app_dir",
-                        t!("tray.open_dir.app_dir"),
+                        "open_app_config_dir",
+                        t!("tray.open_dir.app_config_dir"),
+                    ))
+                    .add_item(CustomMenuItem::new(
+                        "open_app_data_dir",
+                        t!("tray.open_dir.app_data_dir"),
                     ))
                     .add_item(CustomMenuItem::new(
                         "open_core_dir",
@@ -149,7 +153,8 @@ impl Tray {
                 "copy_env_cmd" => feat::copy_clash_env("cmd"),
                 #[cfg(target_os = "windows")]
                 "copy_env_ps" => feat::copy_clash_env("ps"),
-                "open_app_dir" => crate::log_err!(cmds::open_app_dir()),
+                "open_app_config_dir" => crate::log_err!(cmds::open_app_config_dir()),
+                "open_app_data_dir" => crate::log_err!(cmds::open_app_config_dir()),
                 "open_core_dir" => crate::log_err!(cmds::open_core_dir()),
                 "open_logs_dir" => crate::log_err!(cmds::open_logs_dir()),
                 "restart_clash" => feat::restart_clash_core(),

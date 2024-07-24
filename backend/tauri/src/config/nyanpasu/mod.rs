@@ -195,7 +195,7 @@ pub struct IVergeTheme {
 
 impl IVerge {
     pub fn new() -> Self {
-        match dirs::verge_path().and_then(|path| help::read_yaml::<IVerge>(&path)) {
+        match dirs::nyanpasu_config_path().and_then(|path| help::read_yaml::<IVerge>(&path)) {
             Ok(config) => Self::merge_with_template(config),
             Err(err) => {
                 log::error!(target: "app", "{err}");
@@ -264,7 +264,11 @@ impl IVerge {
 
     /// Save IVerge App Config
     pub fn save_file(&self) -> Result<()> {
-        help::save_yaml(&dirs::verge_path()?, &self, Some("# Clash Nyanpasu Config"))
+        help::save_yaml(
+            &dirs::nyanpasu_config_path()?,
+            &self,
+            Some("# Clash Nyanpasu Config"),
+        )
     }
 
     /// patch verge config

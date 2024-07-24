@@ -2,15 +2,98 @@ use crate::{
     config::*,
     utils::{dialog::migrate_dialog, dirs, help},
 };
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use fs_extra::dir::CopyOptions;
 #[cfg(windows)]
 use runas::Command as RunasCommand;
 use rust_i18n::t;
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    io::{BufReader, Write},
+    path::PathBuf,
+    sync::Arc,
+};
+use tauri::utils::platform::current_exe;
 
 mod logging;
 pub use logging::refresh_logger;
+
+pub fn run_pending_migrations() -> Result<()> {
+    let current_exe = current_exe()?;
+    let current_exe = dunce::canonicalize(current_exe)?;
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(crate::utils::dirs::app_data_dir()?.join("migration.log"))?;
+    let file = Arc::new(parking_lot::Mutex::new(file));
+    let (stdout_reader, stdout_writer) = os_pipe::pipe()?;
+    let (stderr_reader, stderr_writer) = os_pipe::pipe()?;
+    let errs = Arc::new(parking_lot::Mutex::new(String::new()));
+    let guard = Arc::new(parking_lot::RwLock::new(()));
+    let mut child = std::process::Command::new(current_exe)
+        .arg("migrate")
+        .stderr(stderr_writer)
+        .stdout(stdout_writer)
+        .spawn()?;
+    let file_ = file.clone();
+    let guard_ = guard.clone();
+    std::thread::spawn(move || {
+        let _l = guard_.read();
+        let mut reader = BufReader::new(stdout_reader);
+        let mut buf = Vec::new();
+        loop {
+            buf.clear();
+            match nyanpasu_utils::io::read_line(&mut reader, &mut buf) {
+                Ok(0) => break,
+                Ok(_) => {
+                    let mut file = file_.lock();
+                    let _ = file.write_all(&buf);
+                }
+                Err(e) => {
+                    log::error!("failed to read stdout: {:?}", e);
+                    break;
+                }
+            }
+        }
+    });
+    let errs_ = errs.clone();
+    let guard_ = guard.clone();
+    std::thread::spawn(move || {
+        let _l = guard_.read();
+        let mut reader = BufReader::new(stderr_reader);
+        let mut buf = Vec::new();
+        loop {
+            buf.clear();
+            match nyanpasu_utils::io::read_line(&mut reader, &mut buf) {
+                Ok(0) => break,
+                Ok(_) => {
+                    let mut file = file.lock();
+                    let _ = file.write_all(&buf);
+                    let mut errs = errs_.lock();
+                    errs.push_str(unsafe { std::str::from_utf8_unchecked(&buf) });
+                }
+                Err(e) => {
+                    log::error!("failed to read stderr: {:?}", e);
+                    break;
+                }
+            }
+        }
+    });
+    let err = errs.lock();
+    let result = child.wait();
+    let _l = guard.write(); // Just for waiting the thread read all the output
+    result
+        .map_err(|e| anyhow!("failed to wait for child: {:?}, errs: {}", e, err))
+        .and_then(|status| {
+            if !status.success() {
+                Err(anyhow!("child process failed: {:?}, err: {}", status, err))
+            } else {
+                Ok(())
+            }
+        })
+}
+
 /// Initialize all the config files
 /// before tauri setup
 pub fn init_config() -> Result<()> {

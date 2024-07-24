@@ -34,7 +34,9 @@ impl<'a> Migration<'a> for MigrateAppHomeDir {
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
         // move the config files to the new config dir
         let file_opts = fs_extra::file::CopyOptions::default().skip_exist(true);
-        let dir_opts = fs_extra::dir::CopyOptions::default().skip_exist(true);
+        let dir_opts = fs_extra::dir::CopyOptions::default()
+            .skip_exist(true)
+            .content_only(true);
         let home_dir = crate::utils::dirs::app_home_dir().unwrap();
         // move clash runtime config
         let path = home_dir.join("clash-verge.yaml");

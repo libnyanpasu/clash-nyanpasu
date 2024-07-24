@@ -971,6 +971,7 @@ dependencies = [
  "objc",
  "once_cell",
  "open 5.3.0",
+ "os_pipe",
  "parking_lot",
  "percent-encoding",
  "port_scanner",

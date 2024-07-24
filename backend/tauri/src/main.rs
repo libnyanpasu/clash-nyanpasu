@@ -76,6 +76,11 @@ fn main() -> std::io::Result<()> {
     };
     rust_i18n::set_locale(locale);
 
+    if let Err(e) = init::run_pending_migrations() {
+        utils::dialog::panic_dialog(&format!("failed to finish migration event: {}\n\n Please see the migration.log in your data dir, and submit it.", e));
+        std::process::exit(1);
+    }
+
     crate::log_err!(init::init_config());
 
     // Panic Hook to show a panic dialog and save logs

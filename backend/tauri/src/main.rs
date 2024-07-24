@@ -1,3 +1,4 @@
+#![feature(auto_traits, negative_impls)]
 #![cfg_attr(
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
@@ -17,11 +18,11 @@ mod consts;
 mod core;
 mod enhance;
 mod feat;
+mod ipc;
 mod utils;
-
 use crate::{
     config::Config,
-    core::{commands, handle::Handle},
+    core::handle::Handle,
     utils::{init, resolve},
 };
 use tauri::{api, Manager, SystemTray};
@@ -56,7 +57,7 @@ fn main() -> std::io::Result<()> {
     deadlock_detection();
 
     // Parse commands
-    commands::parse().unwrap();
+    cmds::parse().unwrap();
 
     // Should be in first place in order prevent single instance check block everything
     #[cfg(feature = "verge-dev")]
@@ -129,63 +130,63 @@ fn main() -> std::io::Result<()> {
         .on_system_tray_event(core::tray::Tray::on_system_tray_event)
         .invoke_handler(tauri::generate_handler![
             // common
-            cmds::get_sys_proxy,
-            cmds::open_app_config_dir,
-            cmds::open_app_data_dir,
-            cmds::open_logs_dir,
-            cmds::open_web_url,
-            cmds::open_core_dir,
+            ipc::get_sys_proxy,
+            ipc::open_app_config_dir,
+            ipc::open_app_data_dir,
+            ipc::open_logs_dir,
+            ipc::open_web_url,
+            ipc::open_core_dir,
             // cmds::kill_sidecar,
-            cmds::restart_sidecar,
-            cmds::grant_permission,
+            ipc::restart_sidecar,
+            ipc::grant_permission,
             // clash
-            cmds::get_clash_info,
-            cmds::get_clash_logs,
-            cmds::patch_clash_config,
-            cmds::change_clash_core,
-            cmds::get_runtime_config,
-            cmds::get_runtime_yaml,
-            cmds::get_runtime_exists,
-            cmds::get_runtime_logs,
-            cmds::clash_api_get_proxy_delay,
-            cmds::uwp::invoke_uwp_tool,
+            ipc::get_clash_info,
+            ipc::get_clash_logs,
+            ipc::patch_clash_config,
+            ipc::change_clash_core,
+            ipc::get_runtime_config,
+            ipc::get_runtime_yaml,
+            ipc::get_runtime_exists,
+            ipc::get_runtime_logs,
+            ipc::clash_api_get_proxy_delay,
+            ipc::uwp::invoke_uwp_tool,
             // updater
-            cmds::fetch_latest_core_versions,
-            cmds::update_core,
-            cmds::inspect_updater,
-            cmds::get_core_version,
+            ipc::fetch_latest_core_versions,
+            ipc::update_core,
+            ipc::inspect_updater,
+            ipc::get_core_version,
             // utils
-            cmds::collect_logs,
+            ipc::collect_logs,
             // verge
-            cmds::get_verge_config,
-            cmds::patch_verge_config,
+            ipc::get_verge_config,
+            ipc::patch_verge_config,
             // cmds::update_hotkeys,
             // profile
-            cmds::get_profiles,
-            cmds::enhance_profiles,
-            cmds::patch_profiles_config,
-            cmds::view_profile,
-            cmds::patch_profile,
-            cmds::create_profile,
-            cmds::import_profile,
-            cmds::reorder_profile,
-            cmds::update_profile,
-            cmds::delete_profile,
-            cmds::read_profile_file,
-            cmds::save_profile_file,
-            cmds::save_window_size_state,
-            cmds::get_custom_app_dir,
-            cmds::set_custom_app_dir,
+            ipc::get_profiles,
+            ipc::enhance_profiles,
+            ipc::patch_profiles_config,
+            ipc::view_profile,
+            ipc::patch_profile,
+            ipc::create_profile,
+            ipc::import_profile,
+            ipc::reorder_profile,
+            ipc::update_profile,
+            ipc::delete_profile,
+            ipc::read_profile_file,
+            ipc::save_profile_file,
+            ipc::save_window_size_state,
+            ipc::get_custom_app_dir,
+            ipc::set_custom_app_dir,
             // service mode
-            cmds::service::check_service,
-            cmds::service::install_service,
-            cmds::service::uninstall_service,
-            cmds::is_portable,
-            cmds::get_proxies,
-            cmds::select_proxy,
-            cmds::update_proxy_provider,
-            cmds::restart_application,
-            cmds::collect_envs,
+            ipc::service::check_service,
+            ipc::service::install_service,
+            ipc::service::uninstall_service,
+            ipc::is_portable,
+            ipc::get_proxies,
+            ipc::select_proxy,
+            ipc::update_proxy_provider,
+            ipc::restart_application,
+            ipc::collect_envs,
         ]);
 
     #[cfg(target_os = "macos")]

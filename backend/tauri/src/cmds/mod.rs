@@ -2,6 +2,7 @@ use std::str::FromStr;
 
 use anyhow::Ok;
 use clap::{Parser, Subcommand};
+use migrate::MigrateOpts;
 use tauri::utils::platform::current_exe;
 
 use crate::utils;
@@ -24,9 +25,11 @@ pub struct Cli {
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// Migrate home directory to another path.
-    MigrateHomeDir {
-        target_path: String,
-    },
+    MigrateHomeDir { target_path: String },
+    /// do migration
+    Migrate(MigrateOpts),
+
+    /// Collect the environment variables.
     Collect,
     /// A launch bridge to resolve the delay exit issue.
     Launch {
@@ -55,6 +58,9 @@ pub fn parse() -> anyhow::Result<()> {
     if let Some(commands) = &cli.command {
         let guard = DelayedExitGuard::new();
         match commands {
+            Commands::Migrate(opts) => {
+                migrate::parse(opts);
+            }
             Commands::MigrateHomeDir { target_path } => {
                 migrate::migrate_home_dir_handler(target_path).unwrap();
             }

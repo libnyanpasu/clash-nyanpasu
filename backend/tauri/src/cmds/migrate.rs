@@ -1,3 +1,82 @@
+use clap::Args;
+
+use crate::core::migration::{
+    self,
+    units::{find_migration, get_migrations},
+    MigrationAdvice, Runner,
+};
+use colored::Colorize;
+
+#[derive(Debug, Args)]
+pub struct MigrateOpts {
+    /// force to run migration without advice
+    #[arg(long, default_value = "false")]
+    skip_advice: bool,
+    /// Run specific migration
+    #[arg(long)]
+    migration: Option<String>,
+    /// Run migration up to specific version
+    #[arg(long)]
+    version: Option<String>,
+    /// List all migrations
+    #[arg(long)]
+    list: bool,
+}
+
+pub fn parse(args: &MigrateOpts) {
+    let runner = if args.skip_advice {
+        Runner::new_with_skip_advice()
+    } else {
+        Runner::default()
+    };
+    if args.list {
+        println!("Available migrations:\n");
+        let migrations = get_migrations();
+        for migration in migrations {
+            let advice = runner.advice_migration(migration.as_ref());
+            println!(
+                "[{}] {} - {}",
+                match &advice {
+                    MigrationAdvice::Pending => format!("{}", advice).yellow(),
+                    MigrationAdvice::Ignored => format!("{}", advice).cyan(),
+                    MigrationAdvice::Done => format!("{}", advice).green(),
+                },
+                migration.version(),
+                migration.name()
+            );
+        }
+        std::process::exit(0);
+    }
+
+    if args.migration.is_some() && args.version.is_some() {
+        eprintln!("Please specify only one of migration or version.");
+        std::process::exit(1);
+    }
+
+    if args.migration.is_none() && args.version.is_none() {
+        println!("No migration or version specified. Running migrations up to current version.");
+        runner
+            .run_units_up_to_version(&runner.current_version)
+            .unwrap();
+    }
+
+    if let Some(migration) = args.migration.as_ref() {
+        let migration = find_migration(migration);
+        match migration {
+            Some(migration) => {
+                runner.run_migration(migration.as_ref()).unwrap();
+            }
+            None => {
+                eprintln!("Migration not found.");
+                std::process::exit(1);
+            }
+        }
+    } else if let Some(version) = args.version.as_deref() {
+        let version = semver::Version::parse(version).unwrap();
+        runner.run_units_up_to_version(&version).unwrap();
+    }
+}
+
 #[cfg(target_os = "windows")]
 pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
     use crate::utils::{self, dirs};
@@ -14,7 +93,7 @@ pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
         std::process::exit(1);
     }
 
-    let current_home_dir = dirs::app_home_dir()?;
+    let current_home_dir = dirs::app_config_dir()?;
     let target_home_dir = PathBuf::from_str(target_path)?;
 
     // 1. waiting for app exited

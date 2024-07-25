@@ -10,6 +10,8 @@ struct PackageJson {
 fn main() {
     let mut pkg_json = read("../../package.json").unwrap();
     let pkg_json: PackageJson = simd_json::from_slice(&mut pkg_json).unwrap();
+    let version = semver::Version::parse(pkg_json.version.as_str()).unwrap();
+    let is_prerelase = version.pre.is_empty();
     println!("cargo:rustc-env=NYANPASU_VERSION={}", pkg_json.version);
     // Git Information
     let output = Command::new("git")
@@ -42,10 +44,14 @@ fn main() {
     // Build Profile
     println!(
         "cargo:rustc-env=BUILD_PROFILE={}",
-        match env::var("PROFILE").unwrap().as_str() {
-            "release" => "Release",
-            "debug" => "Debug",
-            _ => "Unknown",
+        if is_prerelase {
+            "Nightly"
+        } else {
+            match env::var("PROFILE").unwrap().as_str() {
+                "release" => "Release",
+                "debug" => "Debug",
+                _ => "Unknown",
+            }
         }
     );
     // Build Platform

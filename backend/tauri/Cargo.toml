@@ -15,6 +15,7 @@ serde = "1"
 simd-json = "0.13"
 chrono = "0.4"
 rustc_version = "0.4"
+semver = "1.0"
 
 [dependencies]
 nyanpasu-utils = { git = "https://github.com/LibNyanpasu/nyanpasu-utils" }

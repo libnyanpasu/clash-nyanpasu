@@ -90,6 +90,12 @@ pub fn app_config_dir() -> Result<PathBuf> {
     }
     suggest_config_dir(&APP_DIR_PLACEHOLDER)
         .ok_or(anyhow::anyhow!("failed to get the app config dir"))
+        .and_then(|dir| {
+            if !dir.exists() {
+                fs::create_dir_all(&dir)?;
+            }
+            Ok(dir)
+        })
 }
 
 pub fn app_data_dir() -> Result<PathBuf> {
@@ -114,14 +120,14 @@ pub fn app_data_dir() -> Result<PathBuf> {
         }
     }
 
-    let data_dir = suggest_data_dir(&APP_DIR_PLACEHOLDER)
-        .ok_or(anyhow::anyhow!("failed to get the app data dir"))?;
-
-    if !data_dir.exists() {
-        fs::create_dir_all(&data_dir)?;
-    }
-
-    Ok(data_dir)
+    suggest_data_dir(&APP_DIR_PLACEHOLDER)
+        .ok_or(anyhow::anyhow!("failed to get the app data dir"))
+        .and_then(|dir| {
+            if !dir.exists() {
+                fs::create_dir_all(&dir)?;
+            }
+            Ok(dir)
+        })
 }
 
 pub fn old_app_home_dir() -> Result<PathBuf> {

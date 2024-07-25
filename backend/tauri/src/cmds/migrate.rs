@@ -54,10 +54,20 @@ pub fn parse(args: &MigrateOpts) {
     }
 
     if args.migration.is_none() && args.version.is_none() {
-        println!("No migration or version specified. Running migrations up to current version.");
-        runner
-            .run_units_up_to_version(&runner.current_version)
-            .unwrap();
+        match crate::consts::BUILD_INFO.build_profile {
+            "Nightly" => {
+                println!("Running all upcoming migrations.");
+                runner.run_upcoming_units().unwrap();
+            }
+            _ => {
+                println!(
+                    "No migration or version specified. Running migrations up to current version."
+                );
+                runner
+                    .run_units_up_to_version(&runner.current_version)
+                    .unwrap();
+            }
+        }
     }
 
     if let Some(migration) = args.migration.as_ref() {

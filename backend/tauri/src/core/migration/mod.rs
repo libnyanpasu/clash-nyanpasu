@@ -302,4 +302,15 @@ impl Runner<'_> {
         }
         Ok(())
     }
+    pub fn run_upcoming_units(&self) -> std::io::Result<()> {
+        println!("Running all upcoming units. It is supposed to run in Nightly build. If you see this message in Stable channel, report it in Github Issues Tracker please.");
+        let store = self.store.borrow();
+        let units = units::UNITS
+            .iter()
+            .filter(|(ver, _)| **ver >= store.version.as_ref());
+        for (_, unit) in units {
+            self.run_unit(unit)?;
+        }
+        Ok(())
+    }
 }

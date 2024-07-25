@@ -39,7 +39,7 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const resourceFormats = [
   "x64-setup.exe",
   "x64_portable.zip",
-  "amd64.AppImage",
+  "x86_64.rpm",
   "amd64.deb",
   "x64.dmg",
   "aarch64.dmg",

@@ -1,0 +1,80 @@
+name: "[Entire] Build Developer Version"
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 0 * * *" # 每天 08:15 UTC+8 自动构建
+
+env:
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: short
+
+jobs:
+  delete_current_releases:
+    name: Delete Current Releases
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'LibNyanpasu') }}
+    uses: ./.github/workflows/deps-delete-releases.yaml
+    with:
+      tag: "pre-release"
+
+  windows_build:
+    name: Windows Build
+    uses: ./.github/workflows/deps-build-windows-nsis.yaml
+    needs: [delete_current_releases]
+    with:
+      portable: true
+      nightly: true
+      tag: "pre-release"
+    secrets: inherit
+
+  linux_build:
+    name: Linux Build
+    uses: ./.github/workflows/deps-build-linux.yaml
+    needs: [delete_current_releases]
+    with:
+      nightly: true
+      tag: "pre-release"
+    secrets: inherit
+
+  macos_amd64_build:
+    name: macOS amd64 Build
+    uses: ./.github/workflows/deps-build-macos.yaml
+    needs: [delete_current_releases]
+    with:
+      nightly: true
+      aarch64: false
+      tag: "pre-release"
+    secrets: inherit
+
+  macos_aarch64_build:
+    name: macOS aarch64 Build
+    uses: ./.github/workflows/deps-build-macos.yaml
+    needs: [delete_current_releases]
+    with:
+      nightly: true
+      aarch64: true
+      tag: "pre-release"
+    secrets: inherit
+
+  update_tag:
+    name: Update tag
+    needs: [windows_build, linux_build, macos_amd64_build, macos_aarch64_build]
+    uses: ./.github/workflows/deps-update-tag.yaml
+    with:
+      tag: "pre-release"
+
+  updater:
+    name: Create Updater
+    needs: [update_tag]
+    uses: ./.github/workflows/deps-create-updater.yaml
+    with:
+      nightly: true
+
+  telegram:
+    name: Send Release Message to Telegram
+    if: startsWith(github.repository, 'LibNyanpasu')
+    needs: [update_tag]
+    uses: ./.github/workflows/deps-message-telegram.yaml
+    with:
+      nightly: true
+    secrets: inherit

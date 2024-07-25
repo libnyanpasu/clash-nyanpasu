@@ -1,0 +1,43 @@
+name: "[Single] Delete Current Releases"
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release Tag"
+        required: true
+        type: string
+
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release Tag"
+        required: true
+        type: string
+
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Delete current release assets
+        uses: mknejp/delete-release-assets@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ inputs.tag }}
+          fail-if-no-assets: false
+          fail-if-no-release: false
+          assets: |
+            *.zip
+            *.gz
+            *.AppImage
+            *.deb
+            *.rpm
+            *.dmg
+            *.msi
+            *.sig
+            *.exe
+            *.json

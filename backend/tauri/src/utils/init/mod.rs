@@ -38,6 +38,7 @@ pub fn run_pending_migrations() -> Result<()> {
         .spawn()?;
     let file_ = file.clone();
     let guard_ = guard.clone();
+    let errs_ = errs.clone();
     std::thread::spawn(move || {
         let _l = guard_.read();
         let mut reader = BufReader::new(stdout_reader);
@@ -51,7 +52,9 @@ pub fn run_pending_migrations() -> Result<()> {
                     let _ = file.write_all(&buf);
                 }
                 Err(e) => {
-                    log::error!("failed to read stdout: {:?}", e);
+                    eprintln!("failed to read stdout: {:?}", e);
+                    let mut errs = errs_.lock();
+                    errs.push_str(&format!("failed to read stdout: {:?}\n", e));
                     break;
                 }
             }
@@ -74,17 +77,19 @@ pub fn run_pending_migrations() -> Result<()> {
                     errs.push_str(unsafe { std::str::from_utf8_unchecked(&buf) });
                 }
                 Err(e) => {
-                    log::error!("failed to read stderr: {:?}", e);
+                    eprintln!("failed to read stderr: {:?}", e);
+                    let mut errs = errs_.lock();
+                    errs.push_str(&format!("failed to read stderr: {:?}\n", e));
                     break;
                 }
             }
         }
     });
-    let err = errs.lock();
     let result = child.wait();
     let _l = guard.write(); // Just for waiting the thread read all the output
+    let err = errs.lock();
     result
-        .map_err(|e| anyhow!("failed to wait for child: {:?}, errs: {}", e, err))
+        .map_err(|e| anyhow!("Failed to wait for child: {:?}, errs: {}", e, err))
         .and_then(|status| {
             if !status.success() {
                 Err(anyhow!("child process failed: {:?}, err: {}", status, err))

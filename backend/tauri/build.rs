@@ -11,7 +11,7 @@ fn main() {
     let mut pkg_json = read("../../package.json").unwrap();
     let pkg_json: PackageJson = simd_json::from_slice(&mut pkg_json).unwrap();
     let version = semver::Version::parse(pkg_json.version.as_str()).unwrap();
-    let is_prerelase = version.pre.is_empty();
+    let is_prerelase = !version.pre.is_empty();
     println!("cargo:rustc-env=NYANPASU_VERSION={}", pkg_json.version);
     // Git Information
     let output = Command::new("git")

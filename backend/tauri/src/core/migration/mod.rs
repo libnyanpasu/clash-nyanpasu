@@ -291,12 +291,15 @@ impl Runner<'_> {
         }
     }
 
-    pub fn run_units_up_to_version(&self, version: &Version) -> std::io::Result<()> {
-        println!("Running units up to version: {}", version);
-        let store = self.store.borrow();
+    pub fn run_units_up_to_version(&self, to_ver: &Version) -> std::io::Result<()> {
+        println!("Running units up to version: {}", to_ver);
+        let version = {
+            let store = self.store.borrow();
+            store.version.clone()
+        };
         let units = units::UNITS
             .iter()
-            .filter(|(ver, _)| **ver >= store.version.as_ref() && **ver <= version);
+            .filter(|(ver, _)| **ver >= &version && **ver <= to_ver);
         for (_, unit) in units {
             self.run_unit(unit)?;
         }
@@ -304,10 +307,12 @@ impl Runner<'_> {
     }
     pub fn run_upcoming_units(&self) -> std::io::Result<()> {
         println!("Running all upcoming units. It is supposed to run in Nightly build. If you see this message in Stable channel, report it in Github Issues Tracker please.");
-        let store = self.store.borrow();
-        let units = units::UNITS
-            .iter()
-            .filter(|(ver, _)| **ver >= store.version.as_ref());
+        let version = {
+            let store = self.store.borrow();
+            store.version.clone()
+        };
+        let units = units::UNITS.iter().filter(|(ver, _)| **ver >= &version);
+
         for (_, unit) in units {
             self.run_unit(unit)?;
         }

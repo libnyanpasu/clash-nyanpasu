@@ -79,7 +79,7 @@ fn main() -> std::io::Result<()> {
     if let Err(e) = init::run_pending_migrations() {
         utils::dialog::panic_dialog(
             &format!(
-                "Failed to finish migration event: {}\n\n You can see the detailed information at migration.log in your local data dir. \n You're supposed to submit it as the attachment of new issue.", 
+                "Failed to finish migration event: {}\nYou can see the detailed information at migration.log in your local data dir.\nYou're supposed to submit it as the attachment of new issue.", 
                 e,
             )
         );

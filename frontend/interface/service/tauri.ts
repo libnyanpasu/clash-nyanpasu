@@ -144,8 +144,12 @@ export const uninstallService = async () => {
   return await invoke<void>("uninstall_service");
 };
 
-export const openAppDir = async () => {
-  return await invoke<void>("open_app_dir");
+export const openAppConfigDir = async () => {
+  return await invoke<void>("open_app_config_dir");
+};
+
+export const openAppDataDir = async () => {
+  return await invoke<void>("open_app_data_dir");
 };
 
 export const openCoreDir = async () => {

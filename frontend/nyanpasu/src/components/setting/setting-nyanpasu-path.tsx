@@ -1,20 +1,20 @@
+import { useMessage } from "@/hooks/use-notification";
+import { sleep } from "@/utils";
+import Grid from "@mui/material/Unstable_Grid2";
 import {
   collectLogs,
-  openAppDir,
+  openAppConfigDir,
+  openAppDataDir,
   openCoreDir,
   openLogsDir,
   restartApplication,
   setCustomAppDir,
-  useNyanpasu,
 } from "@nyanpasu/interface";
 import { BaseCard } from "@nyanpasu/ui";
-import { useTranslation } from "react-i18next";
-import Grid from "@mui/material/Unstable_Grid2";
-import { PaperButton } from "./modules/nyanpasu-path";
-import { useLockFn } from "ahooks";
 import { open } from "@tauri-apps/api/dialog";
-import { useMessage } from "@/hooks/use-notification";
-import { sleep } from "@/utils";
+import { useLockFn } from "ahooks";
+import { useTranslation } from "react-i18next";
+import { PaperButton } from "./modules/nyanpasu-path";
 
 export const SettingNyanpasuPath = () => {
   const { t } = useTranslation();
@@ -60,7 +60,8 @@ export const SettingNyanpasuPath = () => {
   });
 
   const gridLists = [
-    { label: t("Open App Dir"), onClick: openAppDir },
+    { label: t("Open Config Dir"), onClick: openAppConfigDir },
+    { label: t("Open Data Dir"), onClick: openAppDataDir },
     { label: t("Migration App Path"), onClick: migrateAppPath },
     { label: t("Open Core Dir"), onClick: openCoreDir },
     { label: t("Open Logs Dir"), onClick: openLogsDir },

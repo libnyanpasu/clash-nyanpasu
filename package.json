@@ -5,8 +5,8 @@
   "license": "GPL-3.0",
   "type": "module",
   "scripts": {
-    "dev": "run-p web:devtools tauri:dev",
-    "dev:diff": "run-p web:devtools tauri:diff",
+    "dev": "run-p -r web:devtools tauri:dev",
+    "dev:diff": "run-p -r web:devtools tauri:diff",
     "build": "tauri build -c ./backend/tauri/tauri.conf.json",
     "build:nightly": "tauri build -f nightly -c ./backend/tauri/tauri.nightly.conf.json",
     "tauri": "tauri",

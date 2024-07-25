@@ -1,7 +1,6 @@
 use clap::Args;
 
 use crate::core::migration::{
-    self,
     units::{find_migration, get_migrations},
     MigrationAdvice, Runner,
 };

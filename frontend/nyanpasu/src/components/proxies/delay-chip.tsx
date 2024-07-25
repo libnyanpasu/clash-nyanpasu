@@ -1,13 +1,16 @@
+import { classNames } from "@/utils";
+import { Bolt } from "@mui/icons-material";
+import { CircularProgress } from "@mui/material";
 import { memo, useState } from "react";
 import FeatureChip from "./feature-chip";
 import { getColorForDelay } from "./utils";
-import { classNames } from "@/utils";
-import { CircularProgress } from "@mui/material";
 
 export const DelayChip = memo(function DelayChip({
+  className,
   delay,
   onClick,
 }: {
+  className?: string;
   delay: number;
   onClick: () => Promise<void>;
 }) {
@@ -25,6 +28,7 @@ export const DelayChip = memo(function DelayChip({
 
   return (
     <FeatureChip
+      className={className}
       sx={{
         ml: "auto",
         color: getColorForDelay(delay),
@@ -37,7 +41,13 @@ export const DelayChip = memo(function DelayChip({
               loading ? "opacity-0" : "opacity-1",
             )}
           >
-            {delay ? `${delay} ms` : "timeout"}
+            {delay === -1 ? (
+              <Bolt />
+            ) : !!delay && delay < 10000 ? (
+              `${delay} ms`
+            ) : (
+              "timeout"
+            )}
           </span>
 
           <CircularProgress

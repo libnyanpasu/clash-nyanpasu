@@ -1,10 +1,13 @@
+import Box from "@mui/material/Box";
 import { Clash } from "@nyanpasu/interface";
 import { CSSProperties, memo, useMemo } from "react";
-import { filterDelay } from "./utils";
 import { PaperSwitchButton } from "../setting/modules/system-proxy";
-import Box from "@mui/material/Box";
-import FeatureChip from "./feature-chip";
 import DelayChip from "./delay-chip";
+import FeatureChip from "./feature-chip";
+import { filterDelay } from "./utils";
+
+import clsx from "clsx";
+import styles from "./node-card.module.scss";
 
 export const NodeCard = memo(function NodeCard({
   node,
@@ -30,13 +33,18 @@ export const NodeCard = memo(function NodeCard({
       onClick={onClick}
       disabled={disabled}
       style={style}
+      className={clsx(styles.Card, delay === -1 && styles.NoDelay)}
     >
       <Box width="100%" display="flex" gap={0.5}>
         <FeatureChip label={node.type} />
 
         {node.udp && <FeatureChip label="UDP" />}
 
-        <DelayChip delay={delay} onClick={onClickDelay} />
+        <DelayChip
+          className={styles.DelayChip}
+          delay={delay}
+          onClick={onClickDelay}
+        />
       </Box>
     </PaperSwitchButton>
   );

@@ -20,7 +20,7 @@ iptools = "0.2.5"
 winreg = { version = "0.52", features = ["transactions"] }
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]
-version = "0.57"
+version = "0.58"
 features = [
   "Win32_Networking_WinInet",
   # "Win32_Networking_WinHttp",

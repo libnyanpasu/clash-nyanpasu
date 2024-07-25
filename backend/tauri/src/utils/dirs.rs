@@ -2,7 +2,7 @@ use crate::core::handle;
 use anyhow::Result;
 use nyanpasu_utils::dirs::{suggest_config_dir, suggest_data_dir};
 use once_cell::sync::Lazy;
-use std::{borrow::Cow, path::PathBuf};
+use std::{borrow::Cow, fs, path::PathBuf};
 use tauri::{
     api::path::{home_dir, resource_dir},
     Env,
@@ -103,10 +103,25 @@ pub fn app_data_dir() -> Result<PathBuf> {
             let app_dir = app_exe
                 .parent()
                 .ok_or(anyhow::anyhow!("failed to check the old portable app dir"))?;
-            return Ok(PathBuf::from(app_dir).join(".data").join(PREVIOUS_APP_NAME));
+
+            let data_dir = PathBuf::from(app_dir).join(".data").join(PREVIOUS_APP_NAME);
+
+            if !data_dir.exists() {
+                fs::create_dir_all(&data_dir)?;
+            }
+
+            return Ok(data_dir);
         }
     }
-    suggest_data_dir(&APP_DIR_PLACEHOLDER).ok_or(anyhow::anyhow!("failed to get the app data dir"))
+
+    let data_dir = suggest_data_dir(&APP_DIR_PLACEHOLDER)
+        .ok_or(anyhow::anyhow!("failed to get the app data dir"))?;
+
+    if !data_dir.exists() {
+        fs::create_dir_all(&data_dir)?;
+    }
+
+    Ok(data_dir)
 }
 
 pub fn old_app_home_dir() -> Result<PathBuf> {

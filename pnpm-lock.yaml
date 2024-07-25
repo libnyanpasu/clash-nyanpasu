@@ -131,8 +131,8 @@ importers:
         specifier: 6.4.1
         version: 6.4.1(stylelint@16.7.0(typescript@5.5.4))
       tailwindcss:
-        specifier: 3.4.6
-        version: 3.4.6
+        specifier: 3.4.7
+        version: 3.4.7
       tsx:
         specifier: 4.16.2
         version: 4.16.2
@@ -5539,8 +5539,8 @@ packages:
     engines: {node: '>=8.9.0'}
     hasBin: true
 
-  tailwindcss@3.4.6:
-    resolution: {integrity: sha512-1uRHzPB+Vzu57ocybfZ4jh5Q3SdlH7XW23J5sQoM9LhE9eIOlzxer/3XPSsycvih3rboRsvt0QCmzSrqyOYUIA==}
+  tailwindcss@3.4.7:
+    resolution: {integrity: sha512-rxWZbe87YJb4OcSopb7up2Ba4U82BoiSGUdoDr3Ydrg9ckxFS/YWsvhN323GMcddgU65QRy7JndC7ahhInhvlQ==}
     engines: {node: '>=14.0.0'}
     hasBin: true
 
@@ -11483,7 +11483,7 @@ snapshots:
       reduce-css-calc: 2.1.8
       resolve: 1.22.8
 
-  tailwindcss@3.4.6:
+  tailwindcss@3.4.7:
     dependencies:
       '@alloc/quick-lru': 5.2.0
       arg: 5.0.2

@@ -77,7 +77,12 @@ fn main() -> std::io::Result<()> {
     rust_i18n::set_locale(locale);
 
     if let Err(e) = init::run_pending_migrations() {
-        utils::dialog::panic_dialog(&format!("failed to finish migration event: {}\n\n Please see the migration.log in your data dir, and submit it.", e));
+        utils::dialog::panic_dialog(
+            &format!(
+                "Failed to finish migration event: {}\n\n You can see the detailed information at migration.log in your local data dir. \n You're supposed to submit it as the attachment of new issue.", 
+                e,
+            )
+        );
         std::process::exit(1);
     }
 

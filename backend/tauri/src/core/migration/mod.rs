@@ -239,6 +239,7 @@ impl Runner<'_> {
                     let item_advice = self.advice_migration(item);
                     if item_advice == MigrationAdvice::Pending {
                         advice = MigrationAdvice::Pending;
+                        break;
                     } else if item_advice == MigrationAdvice::Done {
                         advice = MigrationAdvice::Done;
                     }

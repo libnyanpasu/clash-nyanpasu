@@ -64,7 +64,7 @@ impl<'a> Migration<'a> for MigrateAppHomeDir {
                 path,
                 crate::utils::dirs::app_config_dir()
                     .unwrap()
-                    .join("nyanpasu-config.yaml"),
+                    .join(crate::utils::dirs::NYANPASU_CONFIG),
                 &file_opts,
             )
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;

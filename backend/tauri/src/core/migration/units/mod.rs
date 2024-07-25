@@ -12,7 +12,7 @@ pub static UNITS: Lazy<HashMap<&'static Version, Unit<'static, DynMigration>>> =
     units
 });
 
-pub fn find_migration<'a>(name: &'a str) -> Option<Cow<'static, DynMigration<'static>>> {
+pub fn find_migration(name: &str) -> Option<Cow<'static, DynMigration<'static>>> {
     for unit in UNITS.values() {
         match unit {
             Unit::Batch(units) => {

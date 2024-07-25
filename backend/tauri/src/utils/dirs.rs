@@ -30,10 +30,10 @@ pub static APP_DIR_PLACEHOLDER: Lazy<Cow<'static, str>> = Lazy::new(|| {
     }
 });
 
-static CLASH_CFG_GUARD_OVERRIDES: &str = "clash-guard-overrides.yaml";
-static NYANPASU_CONFIG: &str = "nyanpasu-config.yaml";
-static PROFILE_YAML: &str = "profiles.yaml";
-static STORAGE_DB: &str = "storage.db";
+pub const CLASH_CFG_GUARD_OVERRIDES: &str = "clash-guard-overrides.yaml";
+pub const NYANPASU_CONFIG: &str = "nyanpasu-config.yaml";
+pub const PROFILE_YAML: &str = "profiles.yaml";
+pub const STORAGE_DB: &str = "storage.db";
 
 /// portable flag
 #[allow(unused)]

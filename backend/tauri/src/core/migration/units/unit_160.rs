@@ -24,20 +24,31 @@ impl<'a> Migration<'a> for MigrateAppHomeDir {
     // Allow deprecated because we are moving deprecated files to new locations
     #[allow(deprecated)]
     fn migrate(&self) -> std::io::Result<()> {
+        let home_dir = crate::utils::dirs::app_home_dir().unwrap();
+        if !home_dir.exists() {
+            println!("Home dir not found, skipping migration");
+            return Ok(());
+        }
+
         // create the app config and data dir
         println!("Creating app config and data dir");
         let app_config_dir = crate::utils::dirs::app_config_dir().unwrap();
-        fs_extra::dir::create_all(crate::utils::dirs::app_config_dir().unwrap(), false)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+        if !app_config_dir.exists() {
+            std::fs::create_dir_all(&app_config_dir)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+        }
         let app_data_dir = crate::utils::dirs::app_data_dir().unwrap();
-        fs_extra::dir::create_all(crate::utils::dirs::app_data_dir().unwrap(), false)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+        if !app_data_dir.exists() {
+            std::fs::create_dir_all(&app_data_dir)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+        }
+
         // move the config files to the new config dir
         let file_opts = fs_extra::file::CopyOptions::default().skip_exist(true);
         let dir_opts = fs_extra::dir::CopyOptions::default()
             .skip_exist(true)
             .content_only(true);
-        let home_dir = crate::utils::dirs::app_home_dir().unwrap();
+
         // move clash runtime config
         let path = home_dir.join("clash-verge.yaml");
         if path.exists() {

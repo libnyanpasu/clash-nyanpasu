@@ -45,7 +45,7 @@
     "prepare:preview": "tsx scripts/prepare-preview.ts"
   },
   "dependencies": {
-    "husky": "9.1.2",
+    "husky": "9.1.3",
     "lodash-es": "4.17.21"
   },
   "devDependencies": {

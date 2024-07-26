@@ -82,13 +82,10 @@ export const resolveSidecar = async (
       consola.debug(colorize`{green "${name}"} unzip finished`);
     } else if (tmpFile.endsWith(".tar.gz")) {
       // decompress and untar the file
-      await tar.x(
-        {
-          file: tempFile,
-          cwd: tempDir,
-        },
-        [exeFile],
-      );
+      await tar.x({
+        file: tempFile,
+        cwd: tempDir,
+      });
       await fs.rename(tempExe, sidecarPath);
       consola.debug(colorize`{green "${name}"} untar finished`);
     } else if (tmpFile.endsWith(".gz")) {

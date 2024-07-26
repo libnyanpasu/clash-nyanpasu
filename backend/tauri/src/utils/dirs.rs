@@ -71,63 +71,79 @@ pub fn init_portable_flag() -> Result<()> {
 }
 
 pub fn app_config_dir() -> Result<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        use tauri::utils::platform::current_exe;
-
-        if *PORTABLE_FLAG.get().unwrap_or(&false) {
-            let app_exe = current_exe()?;
-            let app_exe = dunce::canonicalize(app_exe)?;
-            let app_dir = app_exe
-                .parent()
-                .ok_or(anyhow::anyhow!("failed to check the old portable app dir"))?;
-            return Ok(PathBuf::from(app_dir)
-                .join(".config")
-                .join(PREVIOUS_APP_NAME));
-        } else if let Ok(Some(path)) = super::winreg::get_app_dir() {
-            return Ok(path);
-        }
-    }
-    suggest_config_dir(&APP_DIR_PLACEHOLDER)
-        .ok_or(anyhow::anyhow!("failed to get the app config dir"))
-        .and_then(|dir| {
-            if !dir.exists() {
-                fs::create_dir_all(&dir)?;
+    let path: Option<PathBuf> = {
+        #[cfg(target_os = "windows")]
+        {
+            use tauri::utils::platform::current_exe;
+            if *PORTABLE_FLAG.get().unwrap_or(&false) {
+                let app_exe = current_exe()?;
+                let app_exe = dunce::canonicalize(app_exe)?;
+                let app_dir = app_exe
+                    .parent()
+                    .ok_or(anyhow::anyhow!("failed to check the old portable app dir"))?;
+                Some(
+                    PathBuf::from(app_dir)
+                        .join(".config")
+                        .join(PREVIOUS_APP_NAME),
+                )
+            } else if let Ok(Some(path)) = super::winreg::get_app_dir() {
+                Some(path)
+            } else {
+                None
             }
-            Ok(dir)
-        })
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            None
+        }
+    };
+
+    match path {
+        Some(path) => Ok(path),
+        None => suggest_config_dir(&APP_DIR_PLACEHOLDER)
+            .ok_or(anyhow::anyhow!("failed to get the app config dir")),
+    }
+    .and_then(|dir| {
+        if !dir.exists() {
+            fs::create_dir_all(&dir)?;
+        }
+        Ok(dir)
+    })
 }
 
 pub fn app_data_dir() -> Result<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        use tauri::utils::platform::current_exe;
-
-        if *PORTABLE_FLAG.get().unwrap_or(&false) {
-            let app_exe = current_exe()?;
-            let app_exe = dunce::canonicalize(app_exe)?;
-            let app_dir = app_exe
-                .parent()
-                .ok_or(anyhow::anyhow!("failed to check the old portable app dir"))?;
-
-            let data_dir = PathBuf::from(app_dir).join(".data").join(PREVIOUS_APP_NAME);
-
-            if !data_dir.exists() {
-                fs::create_dir_all(&data_dir)?;
+    let path: Option<PathBuf> = {
+        #[cfg(target_os = "windows")]
+        {
+            use tauri::utils::platform::current_exe;
+            if *PORTABLE_FLAG.get().unwrap_or(&false) {
+                let app_exe = current_exe()?;
+                let app_exe = dunce::canonicalize(app_exe)?;
+                let app_dir = app_exe
+                    .parent()
+                    .ok_or(anyhow::anyhow!("failed to check the old portable app dir"))?;
+                Some(PathBuf::from(app_dir).join(".data").join(PREVIOUS_APP_NAME))
+            } else {
+                None
             }
-
-            return Ok(data_dir);
         }
-    }
+        #[cfg(not(target_os = "windows"))]
+        {
+            None
+        }
+    };
 
-    suggest_data_dir(&APP_DIR_PLACEHOLDER)
-        .ok_or(anyhow::anyhow!("failed to get the app data dir"))
-        .and_then(|dir| {
-            if !dir.exists() {
-                fs::create_dir_all(&dir)?;
-            }
-            Ok(dir)
-        })
+    match path {
+        Some(path) => Ok(path),
+        None => suggest_data_dir(&APP_DIR_PLACEHOLDER)
+            .ok_or(anyhow::anyhow!("failed to get the app data dir")),
+    }
+    .and_then(|dir| {
+        if !dir.exists() {
+            fs::create_dir_all(&dir)?;
+        }
+        Ok(dir)
+    })
 }
 
 pub fn old_app_home_dir() -> Result<PathBuf> {

@@ -435,13 +435,13 @@ importers:
         specifier: 1.0.1
         version: 1.0.1
       tar:
-        specifier: ^7.4.3
+        specifier: 7.4.3
         version: 7.4.3
       telegram:
         specifier: 2.22.2
         version: 2.22.2
       undici:
-        specifier: ^6.19.4
+        specifier: 6.19.4
         version: 6.19.4
 
 packages:
@@ -4337,10 +4337,6 @@ packages:
 
   minimist@1.2.8:
     resolution: {integrity: sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==}
-
-  minipass@7.1.0:
-    resolution: {integrity: sha512-oGZRv2OT1lO2UF1zUcwdTb3wqUwI0kBGTgt/T7OdSj6M6N5m3o5uPf0AIW6lVxGGoiWUR7e2AwTE+xiwK8WQig==}
-    engines: {node: '>=16 || 14 >=14.17'}
 
   minipass@7.1.2:
     resolution: {integrity: sha512-qOOzS1cBTWYF4BH8fVePDBOO9iptMnGUEZwNc/cMWnTV2nVLZ7VoNWEPHkYczZA0pdoA7dl6e7FL659nX9S2aw==}
@@ -9211,7 +9207,7 @@ snapshots:
       foreground-child: 3.1.1
       jackspeak: 2.3.6
       minimatch: 9.0.4
-      minipass: 7.1.0
+      minipass: 7.1.2
       path-scurry: 1.10.2
 
   glob@7.2.3:
@@ -10170,8 +10166,6 @@ snapshots:
 
   minimist@1.2.8: {}
 
-  minipass@7.1.0: {}
-
   minipass@7.1.2: {}
 
   minizlib@3.0.1:
@@ -10443,7 +10437,7 @@ snapshots:
   path-scurry@1.10.2:
     dependencies:
       lru-cache: 10.2.2
-      minipass: 7.1.0
+      minipass: 7.1.2
 
   path-type@4.0.0: {}
 

@@ -5,7 +5,7 @@ use crate::{
     log_err,
     utils::dirs,
 };
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use nyanpasu_ipc::{api::status::CoreState, utils::get_current_ts};
 use nyanpasu_utils::{
     core::{
@@ -18,8 +18,6 @@ use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
 use std::{
     borrow::Cow,
-    fs,
-    io::Write,
     path::PathBuf,
     sync::{
         atomic::{AtomicBool, AtomicI64, Ordering},
@@ -27,8 +25,7 @@ use std::{
     },
     time::Duration,
 };
-use sysinfo::{Pid, System};
-use tauri::api::process::{Command, CommandChild};
+use tauri::api::process::Command;
 use tokio::time::sleep;
 
 pub enum RunType {
@@ -179,19 +176,19 @@ impl Instance {
                                                     err_buf.join("\n")
                                                 ));
                                                 tracing::error!("{}\n{}", err, err_buf.join("\n"));
-                                                if let Err(_) = tx.send(Err(err)).await {
-                                                    if !kill_flag.load(Ordering::Relaxed) {
-                                                        std::thread::spawn(move || {
-                                                            block_on(async {
-                                                                tracing::info!(
-                                                                    "Trying to recover core."
-                                                                );
-                                                                let _ = CoreManager::global()
-                                                                    .recover_core()
-                                                                    .await;
-                                                            });
+                                                if tx.send(Err(err)).await.is_err()
+                                                    && !kill_flag.load(Ordering::Relaxed)
+                                                {
+                                                    std::thread::spawn(move || {
+                                                        block_on(async {
+                                                            tracing::info!(
+                                                                "Trying to recover core."
+                                                            );
+                                                            let _ = CoreManager::global()
+                                                                .recover_core()
+                                                                .await;
                                                         });
-                                                    }
+                                                    });
                                                 }
                                             }
                                             break;
@@ -275,9 +272,6 @@ impl Instance {
         }
     }
 }
-
-#[cfg(target_os = "windows")]
-use crate::core::win_service;
 
 #[derive(Debug)]
 pub struct CoreManager {

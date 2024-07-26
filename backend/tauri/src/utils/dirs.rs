@@ -70,11 +70,7 @@ pub fn app_config_dir() -> Result<PathBuf> {
         {
             if *PORTABLE_FLAG.get().unwrap_or(&false) {
                 let app_dir = app_install_dir()?;
-                Some(
-                    PathBuf::from(app_dir)
-                        .join(".config")
-                        .join(PREVIOUS_APP_NAME),
-                )
+                Some(app_dir.join(".config").join(PREVIOUS_APP_NAME))
             } else if let Ok(Some(path)) = super::winreg::get_app_dir() {
                 Some(path)
             } else {
@@ -106,7 +102,7 @@ pub fn app_data_dir() -> Result<PathBuf> {
         {
             if *PORTABLE_FLAG.get().unwrap_or(&false) {
                 let app_dir = app_install_dir()?;
-                Some(PathBuf::from(app_dir).join(".data").join(PREVIOUS_APP_NAME))
+                Some(app_dir.join(".data").join(PREVIOUS_APP_NAME))
             } else {
                 None
             }
@@ -140,9 +136,7 @@ pub fn old_app_home_dir() -> Result<PathBuf> {
                 .join(PREVIOUS_APP_NAME))
         } else {
             let app_dir = app_install_dir()?;
-            Ok(PathBuf::from(app_dir)
-                .join(".config")
-                .join(PREVIOUS_APP_NAME))
+            Ok(app_dir.join(".config").join(PREVIOUS_APP_NAME))
         }
     }
 
@@ -179,9 +173,7 @@ pub fn app_home_dir() -> Result<PathBuf> {
                 .join(".config")
                 .join(APP_NAME));
         }
-        Ok(PathBuf::from(app_install_dir()?)
-            .join(".config")
-            .join(APP_NAME))
+        Ok((app_install_dir()?).join(".config").join(APP_NAME))
     }
 
     #[cfg(not(target_os = "windows"))]

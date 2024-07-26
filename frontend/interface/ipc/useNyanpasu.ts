@@ -1,10 +1,10 @@
+import { useMemo } from "react";
 import useSWR from "swr";
 import * as service from "@/service";
 import { VergeConfig } from "@/service";
 import { fetchCoreVersion, fetchLatestCore } from "@/service/core";
-import { useClash } from "./useClash";
-import { useMemo } from "react";
 import * as tauri from "@/service/tauri";
+import { useClash } from "./useClash";
 
 /**
  * useNyanpasu with swr.

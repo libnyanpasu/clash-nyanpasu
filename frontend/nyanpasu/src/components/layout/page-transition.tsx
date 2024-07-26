@@ -1,7 +1,7 @@
+import { AnimatePresence, motion, Variant } from "framer-motion";
+import { useLocation, useOutlet } from "react-router-dom";
 import { classNames } from "@/utils";
 import { useNyanpasu } from "@nyanpasu/interface";
-import { AnimatePresence, Variant, motion } from "framer-motion";
-import { useLocation, useOutlet } from "react-router-dom";
 
 type PageVariantKey = "initial" | "visible" | "hidden";
 

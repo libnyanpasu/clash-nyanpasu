@@ -1,12 +1,12 @@
 import { Notice } from "@/components/base";
+import { isPortable } from "@nyanpasu/interface";
+import { message, MessageDialogOptions } from "@tauri-apps/api/dialog";
 import {
-  Options,
   isPermissionGranted,
+  Options,
   requestPermission,
   sendNotification,
 } from "@tauri-apps/api/notification";
-import { MessageDialogOptions, message } from "@tauri-apps/api/dialog";
-import { isPortable } from "@nyanpasu/interface";
 
 let permissionGranted: boolean | null = null;
 let portable: boolean | null = null;

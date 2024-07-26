@@ -1,3 +1,4 @@
+import { memo, ReactNode } from "react";
 import {
   alpha,
   ButtonBase,
@@ -7,7 +8,6 @@ import {
   Typography,
   useTheme,
 } from "@mui/material";
-import { memo, ReactNode } from "react";
 
 export interface PaperButtonProps extends ButtonBaseProps {
   label: string;

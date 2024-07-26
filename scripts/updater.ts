@@ -1,5 +1,5 @@
-import { context, getOctokit } from "@actions/github";
 import fetch from "node-fetch";
+import { context, getOctokit } from "@actions/github";
 import { resolveUpdateLog } from "./updatelog";
 import { getGithubUrl } from "./utils";
 import { colorize, consola } from "./utils/logger";

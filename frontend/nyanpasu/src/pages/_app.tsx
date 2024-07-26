@@ -1,25 +1,23 @@
-import { useTheme } from "@mui/material";
-import { Experimental_CssVarsProvider as CssVarsProvider } from "@mui/material/styles";
 import { AnimatePresence } from "framer-motion";
-import { classNames } from "@/utils";
+import { FallbackProps } from "react-error-boundary";
+import { SWRConfig } from "swr";
+import AppContainer from "@/components/app/app-container";
+import LocalesProvider from "@/components/app/locales-provider";
+import NoticeProvider from "@/components/layout/notice-provider";
+import PageTransition from "@/components/layout/page-transition";
+import SchemeProvider from "@/components/layout/scheme-provider";
 import {
   ThemeModeProvider,
   useCustomTheme,
 } from "@/components/layout/use-custom-theme";
-import PageTransition from "@/components/layout/page-transition";
 import LogProvider from "@/components/logs/log-provider";
-import LocalesProvider from "@/components/app/locales-provider";
-import AppContainer from "@/components/app/app-container";
-import NoticeProvider from "@/components/layout/notice-provider";
-import SchemeProvider from "@/components/layout/scheme-provider";
+import { classNames } from "@/utils";
+import { useTheme } from "@mui/material";
+import { Experimental_CssVarsProvider as CssVarsProvider } from "@mui/material/styles";
 import { useBreakpoint } from "@nyanpasu/ui";
-import { FallbackProps } from "react-error-boundary";
-import { SWRConfig } from "swr";
 import styles from "./_app.module.scss";
-
 import "dayjs/locale/ru";
 import "dayjs/locale/zh-cn";
-
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { useMemo } from "react";

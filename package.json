@@ -44,26 +44,6 @@
     "prepare:release": "tsx scripts/prepare-release.ts",
     "prepare:preview": "tsx scripts/prepare-preview.ts"
   },
-  "prettier": {
-    "endOfLine": "lf",
-    "plugins": [
-      "prettier-plugin-toml"
-    ],
-    "semi": true,
-    "singleQuote": false,
-    "tabWidth": 2,
-    "overrides": [
-      {
-        "files": [
-          "tsconfig.json",
-          "jsconfig.json"
-        ],
-        "options": {
-          "parser": "jsonc"
-        }
-      }
-    ]
-  },
   "dependencies": {
     "husky": "9.0.11",
     "lodash-es": "4.17.21"
@@ -71,6 +51,7 @@
   "devDependencies": {
     "@commitlint/cli": "19.3.0",
     "@commitlint/config-conventional": "19.2.2",
+    "@ianvs/prettier-plugin-sort-imports": "^4.3.1",
     "@tauri-apps/cli": "1.6.0",
     "@types/fs-extra": "11.0.4",
     "@types/lodash-es": "4.17.12",
@@ -96,6 +77,7 @@
     "postcss-import": "16.1.0",
     "postcss-scss": "4.0.9",
     "prettier": "3.3.2",
+    "prettier-plugin-tailwindcss": "^0.6.5",
     "prettier-plugin-toml": "2.0.1",
     "react-devtools": "5.3.1",
     "stylelint": "16.7.0",

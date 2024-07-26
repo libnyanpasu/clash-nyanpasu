@@ -1,7 +1,7 @@
+import { FC, memo, ReactNode } from "react";
 import { SxProps } from "@mui/material";
 import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
-import { FC, memo, ReactNode } from "react";
 
 export interface BaseItemProps {
   title: ReactNode;

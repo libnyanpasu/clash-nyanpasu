@@ -1,5 +1,5 @@
-import { alpha, Box, Typography } from "@mui/material";
 import { InboxRounded } from "@mui/icons-material";
+import { alpha, Box, Typography } from "@mui/material";
 
 interface Props {
   text?: React.ReactNode;

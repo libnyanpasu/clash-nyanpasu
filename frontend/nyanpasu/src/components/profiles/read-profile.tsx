@@ -1,8 +1,8 @@
+import { useState } from "react";
 import getSystem from "@/utils/get-system";
 import LoadingButton from "@mui/lab/LoadingButton";
 import { open } from "@tauri-apps/api/dialog";
 import { readTextFile } from "@tauri-apps/api/fs";
-import { useState } from "react";
 
 const isWin = getSystem() === "windows";
 

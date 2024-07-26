@@ -1,12 +1,11 @@
 import clsx from "clsx";
+import { useTheme } from "@mui/material";
+import styles from "./index.module.scss";
 
 export type Props = React.DetailedHTMLProps<
   React.HTMLAttributes<HTMLElement>,
   HTMLElement
 >;
-
-import { useTheme } from "@mui/material";
-import styles from "./index.module.scss";
 
 export default function Kbd({ className, children, ...rest }: Props) {
   const theme = useTheme();

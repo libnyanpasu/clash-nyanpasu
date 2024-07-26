@@ -1,4 +1,4 @@
-import { FC, ReactNode, memo } from "react";
+import { FC, memo, ReactNode } from "react";
 
 export const Header: FC<{ title?: ReactNode; header?: ReactNode }> = memo(
   function Header({
@@ -9,7 +9,7 @@ export const Header: FC<{ title?: ReactNode; header?: ReactNode }> = memo(
     header?: ReactNode;
   }) {
     return (
-      <header className="pl-2 select-none" data-windrag>
+      <header className="select-none pl-2" data-windrag>
         <h1 className="mb-1 text-4xl font-medium" data-windrag>
           {title}
         </h1>

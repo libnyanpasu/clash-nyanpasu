@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useMessage } from "@/hooks/use-notification";
 import {
   Button,
@@ -8,7 +9,6 @@ import {
 } from "@mui/material";
 import { useNyanpasu } from "@nyanpasu/interface";
 import { BaseCard, SwitchItem } from "@nyanpasu/ui";
-import { useTranslation } from "react-i18next";
 import { nyanpasu } from "./modules/create-props";
 
 const { createBooleanProps } = nyanpasu;

@@ -1,5 +1,5 @@
-import useSWR from "swr";
 import { ofetch } from "ofetch";
+import useSWR from "swr";
 
 interface IPSBResponse {
   organization: string;

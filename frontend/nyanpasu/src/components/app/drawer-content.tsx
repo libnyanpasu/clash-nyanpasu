@@ -1,12 +1,12 @@
-import getSystem from "@/utils/get-system";
-import clsx from "clsx";
-import AnimatedLogo from "../layout/animated-logo";
-import { getRoutesWithIcon } from "@/utils/routes-utils";
-import RouteListItem from "./modules/route-list-item";
-import { useCallback, useEffect, useRef, useState } from "react";
 import { useSize } from "ahooks";
+import clsx from "clsx";
+import { useCallback, useEffect, useRef, useState } from "react";
+import getSystem from "@/utils/get-system";
 import { languageQuirks } from "@/utils/language";
+import { getRoutesWithIcon } from "@/utils/routes-utils";
 import { useNyanpasu } from "@nyanpasu/interface";
+import AnimatedLogo from "../layout/animated-logo";
+import RouteListItem from "./modules/route-list-item";
 
 export const DrawerContent = ({ className }: { className?: string }) => {
   const [onlyIcon, setOnlyIcon] = useState(false);
@@ -59,14 +59,14 @@ export const DrawerContent = ({ className }: { className?: string }) => {
       }}
       data-windrag
     >
-      <div className="flex items-center justify-center gap-4 mx-2">
-        <div className=" h-full max-w-28 max-h-28" data-windrag>
-          <AnimatedLogo className="w-full h-full" data-windrag />
+      <div className="mx-2 flex items-center justify-center gap-4">
+        <div className="h-full max-h-28 max-w-28" data-windrag>
+          <AnimatedLogo className="h-full w-full" data-windrag />
         </div>
 
         {!onlyIcon && (
           <div
-            className="text-lg font-bold mt-1 mr-1 whitespace-pre-wrap"
+            className="mr-1 mt-1 whitespace-pre-wrap text-lg font-bold"
             data-windrag
           >
             {"Clash\nNyanpasu"}
@@ -74,7 +74,7 @@ export const DrawerContent = ({ className }: { className?: string }) => {
         )}
       </div>
 
-      <div className="flex flex-col gap-2 overflow-y-auto scrollbar-hidden !overflow-x-hidden">
+      <div className="scrollbar-hidden flex flex-col gap-2 overflow-y-auto !overflow-x-hidden">
         {Object.entries(routes).map(([name, { path, icon }]) => {
           return (
             <RouteListItem

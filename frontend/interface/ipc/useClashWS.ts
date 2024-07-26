@@ -1,6 +1,6 @@
 import { useWebSocket } from "ahooks";
-import { useClash } from "./useClash";
 import { useMemo } from "react";
+import { useClash } from "./useClash";
 
 export const useClashWS = () => {
   const { getClashInfo } = useClash();

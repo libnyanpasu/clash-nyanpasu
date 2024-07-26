@@ -1,3 +1,5 @@
+import { useLockFn } from "ahooks";
+import { useTranslation } from "react-i18next";
 import { useMessage } from "@/hooks/use-notification";
 import { sleep } from "@/utils";
 import Grid from "@mui/material/Unstable_Grid2";
@@ -12,8 +14,6 @@ import {
 } from "@nyanpasu/interface";
 import { BaseCard } from "@nyanpasu/ui";
 import { open } from "@tauri-apps/api/dialog";
-import { useLockFn } from "ahooks";
-import { useTranslation } from "react-i18next";
 import { PaperButton } from "./modules/nyanpasu-path";
 
 export const SettingNyanpasuPath = () => {

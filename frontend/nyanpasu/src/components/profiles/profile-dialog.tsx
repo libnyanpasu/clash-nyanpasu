@@ -1,5 +1,5 @@
-import { Profile, useClash } from "@nyanpasu/interface";
-import { BaseDialog } from "@nyanpasu/ui";
+import { version } from "~/package.json";
+import { useAsyncEffect, useReactive } from "ahooks";
 import { useRef, useState } from "react";
 import {
   Controller,
@@ -8,13 +8,13 @@ import {
   useForm,
 } from "react-hook-form-mui";
 import { useTranslation } from "react-i18next";
-import { version } from "~/package.json";
-import { LabelSwitch } from "../setting/modules/clash-field";
-import { ReadProfile } from "./read-profile";
-import { Divider, InputAdornment } from "@mui/material";
-import { ProfileMonacoView, ProfileMonacoViewRef } from "./profile-monaco-view";
-import { useAsyncEffect, useReactive } from "ahooks";
 import { classNames } from "@/utils";
+import { Divider, InputAdornment } from "@mui/material";
+import { Profile, useClash } from "@nyanpasu/interface";
+import { BaseDialog } from "@nyanpasu/ui";
+import { LabelSwitch } from "../setting/modules/clash-field";
+import { ProfileMonacoView, ProfileMonacoViewRef } from "./profile-monaco-view";
+import { ReadProfile } from "./read-profile";
 
 export interface ProfileDialogProps {
   profile?: Profile.Item;
@@ -126,7 +126,7 @@ export const ProfileDialog = ({
   };
 
   const MetaInfo = ({ className }: { className?: string }) => (
-    <div className={classNames("flex flex-col gap-4 pt-2 pb-2", className)}>
+    <div className={classNames("flex flex-col gap-4 pb-2 pt-2", className)}>
       {!isEdit && (
         <SelectElement
           label={t("Type")}
@@ -231,7 +231,7 @@ export const ProfileDialog = ({
             <ReadProfile onSelected={handleProfileSelected} />
 
             {localProfileMessage && (
-              <div className="text-red-500 ml-2">{localProfileMessage}</div>
+              <div className="ml-2 text-red-500">{localProfileMessage}</div>
             )}
           </>
         )
@@ -260,7 +260,7 @@ export const ProfileDialog = ({
     >
       {isEdit ? (
         <div className="flex h-full">
-          <div className="pt-4 pb-4 overflow-auto w-96">
+          <div className="w-96 overflow-auto pb-4 pt-4">
             <MetaInfo className="pl-4 pr-4" />
           </div>
 

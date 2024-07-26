@@ -1,13 +1,13 @@
+import { useWhyDidYouUpdate } from "ahooks";
+import { useAtomValue, useSetAtom } from "jotai";
+import { mergeWith } from "lodash-es";
 import { useEffect, useMemo } from "react";
-import { alpha, darken, lighten, Theme, useColorScheme } from "@mui/material";
-import { appWindow } from "@tauri-apps/api/window";
 import { defaultTheme } from "@/pages/_theme";
+import { themeMode as themeModeAtom } from "@/store";
+import { alpha, darken, lighten, Theme, useColorScheme } from "@mui/material";
 import { useNyanpasu } from "@nyanpasu/interface";
 import { createMDYTheme } from "@nyanpasu/ui";
-import { useAtomValue, useSetAtom } from "jotai";
-import { themeMode as themeModeAtom } from "@/store";
-import { useWhyDidYouUpdate } from "ahooks";
-import { mergeWith } from "lodash-es";
+import { appWindow } from "@tauri-apps/api/window";
 
 const applyRootStyleVar = (mode: "light" | "dark", theme: Theme) => {
   const root = document.documentElement;

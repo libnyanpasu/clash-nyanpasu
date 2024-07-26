@@ -1,8 +1,8 @@
-import { BasePage } from "@nyanpasu/ui";
-import Grid from "@mui/material/Unstable_Grid2";
-import DataPanel from "@/components/dashboard/data-panel";
 import { useTranslation } from "react-i18next";
+import DataPanel from "@/components/dashboard/data-panel";
 import HealthPanel from "@/components/dashboard/health-panel";
+import Grid from "@mui/material/Unstable_Grid2";
+import { BasePage } from "@nyanpasu/ui";
 
 export const Dashboard = () => {
   const { t } = useTranslation();

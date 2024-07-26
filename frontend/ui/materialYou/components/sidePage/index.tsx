@@ -1,10 +1,10 @@
-import { ReactNode, FC } from "react";
+import { motion } from "framer-motion";
+import { FC, ReactNode } from "react";
 import Divider from "@mui/material/Divider";
 import Toolbar from "@mui/material/Toolbar";
 import { BaseErrorBoundary } from "../basePage/baseErrorBoundary";
-import style from "./style.module.scss";
-import { motion } from "framer-motion";
 import Header from "../basePage/header";
+import style from "./style.module.scss";
 
 interface Props {
   title?: ReactNode;

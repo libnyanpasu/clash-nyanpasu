@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ClearRounded,
   ContentCopyRounded,
@@ -12,10 +14,8 @@ import {
   Tooltip,
   useTheme,
 } from "@mui/material";
-import { useState } from "react";
-import { useTranslation } from "react-i18next";
-import { readText } from "@tauri-apps/api/clipboard";
 import { useClash } from "@nyanpasu/interface";
+import { readText } from "@tauri-apps/api/clipboard";
 
 export const QuickImport = () => {
   const { t } = useTranslation();

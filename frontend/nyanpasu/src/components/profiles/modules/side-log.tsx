@@ -1,11 +1,11 @@
+import { isEmpty } from "lodash-es";
+import { memo } from "react";
+import { VList } from "virtua";
+import { classNames } from "@/utils";
 import { RamenDining, Terminal } from "@mui/icons-material";
 import { Divider } from "@mui/material";
 import { useClash } from "@nyanpasu/interface";
-import { memo } from "react";
-import { isEmpty } from "lodash-es";
-import { VList } from "virtua";
 import { filterProfiles } from "../utils";
-import { classNames } from "@/utils";
 
 const LogListItem = memo(function LogListItem({
   name,
@@ -20,7 +20,7 @@ const LogListItem = memo(function LogListItem({
     <>
       {showDivider && <Divider />}
 
-      <div className="w-full font-mono break-all">
+      <div className="w-full break-all font-mono">
         <span className="text-red-500">[{name}]: </span>
         <span>{item}</span>
       </div>
@@ -39,7 +39,7 @@ export const SideLog = ({ className }: SideLogProps) => {
 
   return (
     <div className={classNames("w-full", className)}>
-      <div className="p-2 pl-4 flex justify-between items-center">
+      <div className="flex items-center justify-between p-2 pl-4">
         <div className="flex items-center gap-2">
           <Terminal />
 
@@ -49,7 +49,7 @@ export const SideLog = ({ className }: SideLogProps) => {
 
       <Divider />
 
-      <VList className="flex flex-col gap-2 p-2 overflow-auto select-text">
+      <VList className="flex select-text flex-col gap-2 overflow-auto p-2">
         {!isEmpty(getRuntimeLogs.data) ? (
           Object.entries(getRuntimeLogs.data).map(([uid, content]) => {
             return content.map((item, index) => {
@@ -66,7 +66,7 @@ export const SideLog = ({ className }: SideLogProps) => {
             });
           })
         ) : (
-          <div className="w-full h-full min-h-48 flex flex-col justify-center items-center">
+          <div className="flex h-full min-h-48 w-full flex-col items-center justify-center">
             <RamenDining className="!size-10" />
             <p>No Log</p>
           </div>

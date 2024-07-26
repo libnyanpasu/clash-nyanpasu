@@ -1,7 +1,5 @@
-import { Clash, useClashCore, useNyanpasu } from "@nyanpasu/interface";
-import { useBreakpoint } from "@nyanpasu/ui";
+import { AnimatePresence, motion } from "framer-motion";
 import { useAtom, useAtomValue } from "jotai";
-import { proxyGroupAtom, proxyGroupSortAtom } from "@/store";
 import {
   forwardRef,
   useCallback,
@@ -11,11 +9,13 @@ import {
   useState,
   useTransition,
 } from "react";
-import { classNames } from "@/utils";
 import { VList, VListHandle } from "virtua";
-import { AnimatePresence, motion } from "framer-motion";
-import { filterDelay } from "./utils";
+import { proxyGroupAtom, proxyGroupSortAtom } from "@/store";
+import { classNames } from "@/utils";
+import { Clash, useClashCore, useNyanpasu } from "@nyanpasu/interface";
+import { useBreakpoint } from "@nyanpasu/ui";
 import NodeCard from "./node-card";
+import { filterDelay } from "./utils";
 
 type RenderClashProxy = Clash.Proxy<string> & { renderLayoutKey: string };
 

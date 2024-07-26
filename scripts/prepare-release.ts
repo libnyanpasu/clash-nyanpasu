@@ -1,7 +1,8 @@
-import fs from "fs-extra";
 import path from "node:path";
-import { TAURI_APP_DIR, cwd } from "./utils/env";
+import fs from "fs-extra";
+import { cwd, TAURI_APP_DIR } from "./utils/env";
 import { consola } from "./utils/logger";
+
 const TAURI_APP_CONF = path.join(TAURI_APP_DIR, "tauri.conf.json");
 // TODO: define overrides
 // const TAURI_DEV_APP_OVERRIDES_PATH = path.join(

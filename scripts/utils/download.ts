@@ -1,13 +1,13 @@
-import { BinInfo } from "types";
-import { colorize, consola } from "./logger";
+import { execSync } from "child_process";
+import path from "path";
+import zlib from "zlib";
+import AdmZip from "adm-zip";
+import fs from "fs-extra";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import fetch, { type RequestInit } from "node-fetch";
+import { BinInfo } from "types";
 import { TAURI_APP_DIR, TEMP_DIR } from "./env";
-import fs from "fs-extra";
-import path from "path";
-import AdmZip from "adm-zip";
-import zlib from "zlib";
-import { execSync } from "child_process";
+import { colorize, consola } from "./logger";
 
 /**
  * download sidecar and rename

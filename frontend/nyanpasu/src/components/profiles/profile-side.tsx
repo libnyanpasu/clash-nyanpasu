@@ -1,10 +1,10 @@
+import { Allotment } from "allotment";
+import { useState } from "react";
 import { Close } from "@mui/icons-material";
 import { IconButton } from "@mui/material";
 import { Profile } from "@nyanpasu/interface";
-import { useState } from "react";
-import { ScriptDialog } from "./script-dialog";
 import { SideLog } from "./modules/side-log";
-import { Allotment } from "allotment";
+import { ScriptDialog } from "./script-dialog";
 import "allotment/dist/style.css";
 import { SideChain } from "./modules/side-chain";
 
@@ -26,7 +26,7 @@ export const ProfileSide = ({ profile, global, onClose }: ProfileSideProps) => {
 
   return (
     <>
-      <div className="p-4 pr-2 flex justify-between items-start">
+      <div className="flex items-start justify-between p-4 pr-2">
         <div>
           <div className="text-xl font-bold">Proxy Chains</div>
 

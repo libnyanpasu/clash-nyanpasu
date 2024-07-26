@@ -1,11 +1,11 @@
+import { MuiColorInput } from "mui-color-input";
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { languageOptions } from "@/utils/language";
 import Done from "@mui/icons-material/Done";
 import { Box, Button, List, ListItem, ListItemText } from "@mui/material";
 import { useNyanpasu, VergeConfig } from "@nyanpasu/interface";
 import { BaseCard, Expand, MenuItem } from "@nyanpasu/ui";
-import { MuiColorInput } from "mui-color-input";
-import { useState } from "react";
-import { useTranslation } from "react-i18next";
 
 export const SettingNyanpasuUI = () => {
   const { t } = useTranslation();

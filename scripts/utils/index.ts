@@ -1,5 +1,5 @@
-import { GITHUB_PROXY } from "./env";
 import figlet from "figlet";
+import { GITHUB_PROXY } from "./env";
 import { consola } from "./logger";
 
 export const getGithubUrl = (url: string) => {

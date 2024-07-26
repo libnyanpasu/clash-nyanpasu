@@ -37,7 +37,7 @@ const RuleItem = ({ index, value }: Props) => {
   };
 
   return (
-    <div className="p-2 pl-7 pr-7 flex">
+    <div className="flex p-2 pl-7 pr-7">
       <div style={{ color: palette.text.secondary }} className="min-w-14">
         {index + 1}
       </div>
@@ -48,10 +48,10 @@ const RuleItem = ({ index, value }: Props) => {
         </div>
 
         <div className="flex gap-8">
-          <div className="text-sm min-w-40">{value.type}</div>
+          <div className="min-w-40 text-sm">{value.type}</div>
 
           <div
-            className="text-sm text-s"
+            className="text-s text-sm"
             style={{ color: parseColor(value.proxy) }}
           >
             {value.proxy}

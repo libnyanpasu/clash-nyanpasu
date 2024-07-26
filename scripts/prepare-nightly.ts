@@ -1,9 +1,10 @@
 import { execSync } from "child_process";
+import path from "node:path";
 import fs from "fs-extra";
 import { merge } from "lodash-es";
-import path from "node:path";
-import { TAURI_APP_DIR, cwd } from "./utils/env";
+import { cwd, TAURI_APP_DIR } from "./utils/env";
 import { consola } from "./utils/logger";
+
 const TAURI_DEV_APP_CONF_PATH = path.join(
   TAURI_APP_DIR,
   "tauri.nightly.conf.json",

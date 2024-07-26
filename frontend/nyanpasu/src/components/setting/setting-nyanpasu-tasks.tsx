@@ -1,7 +1,7 @@
+import { useTranslation } from "react-i18next";
 import { List } from "@mui/material";
 import { useNyanpasu } from "@nyanpasu/interface";
 import { BaseCard, NumberItem } from "@nyanpasu/ui";
-import { useTranslation } from "react-i18next";
 
 export const SettingNyanpasuTasks = () => {
   const { t } = useTranslation();

@@ -1,8 +1,8 @@
-import { proxyGroupSortAtom } from "@/store";
-import { Button, Menu, MenuItem, alpha, useTheme } from "@mui/material";
 import { useAtom } from "jotai";
 import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { proxyGroupSortAtom } from "@/store";
+import { alpha, Button, Menu, MenuItem, useTheme } from "@mui/material";
 
 export const SortSelector = memo(function SortSelector() {
   const { t } = useTranslation();

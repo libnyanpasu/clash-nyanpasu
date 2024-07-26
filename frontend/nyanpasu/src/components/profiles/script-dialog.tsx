@@ -1,12 +1,12 @@
-import { Divider } from "@mui/material";
-import { BaseDialog, BaseDialogProps } from "@nyanpasu/ui";
-import { useRef } from "react";
 import { useAsyncEffect, useReactive } from "ahooks";
-import { Profile, useClash } from "@nyanpasu/interface";
-import { ProfileMonacoView, ProfileMonacoViewRef } from "./profile-monaco-view";
+import { isEqual } from "lodash-es";
+import { useRef } from "react";
 import { SelectElement, TextFieldElement, useForm } from "react-hook-form-mui";
 import { useTranslation } from "react-i18next";
-import { isEqual } from "lodash-es";
+import { Divider } from "@mui/material";
+import { Profile, useClash } from "@nyanpasu/interface";
+import { BaseDialog, BaseDialogProps } from "@nyanpasu/ui";
+import { ProfileMonacoView, ProfileMonacoViewRef } from "./profile-monaco-view";
 
 export interface ScriptDialogProps extends Omit<BaseDialogProps, "title"> {
   open: boolean;
@@ -143,8 +143,8 @@ export const ScriptDialog = ({
       {...props}
     >
       <div className="flex h-full">
-        <div className="pt-4 pb-4 overflow-auto">
-          <div className="flex flex-col gap-4 pl-4 pr-4 pb-4">
+        <div className="overflow-auto pb-4 pt-4">
+          <div className="flex flex-col gap-4 pb-4 pl-4 pr-4">
             {!isEdit && (
               <SelectElement
                 label={t("Type")}

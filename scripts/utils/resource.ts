@@ -1,12 +1,12 @@
 import { HttpsProxyAgent } from "https-proxy-agent";
+import fetch, { type RequestInit } from "node-fetch";
+import { BinInfo } from "types";
 import {
   CLASH_META_ALPHA_MANIFEST,
   CLASH_META_MANIFEST,
 } from "../manifest/clash-meta";
 import { CLASH_MANIFEST } from "../manifest/clash-premium";
 import { CLASH_RS_MANIFEST } from "../manifest/clash-rs";
-import fetch, { type RequestInit } from "node-fetch";
-import { BinInfo } from "types";
 
 export const getClashInfo = ({
   platform,

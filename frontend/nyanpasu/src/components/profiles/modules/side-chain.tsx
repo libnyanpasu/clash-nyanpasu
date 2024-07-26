@@ -1,16 +1,16 @@
-import { Edit, Add } from "@mui/icons-material";
+import { useLockFn } from "ahooks";
+import { memo } from "react";
+import { Add, Edit } from "@mui/icons-material";
 import {
-  ListItemButton,
   alpha,
-  ListItemText,
   IconButton,
+  ListItemButton,
   ListItemIcon,
+  ListItemText,
   useTheme,
 } from "@mui/material";
 import { Profile, useClash } from "@nyanpasu/interface";
 import { filterProfiles } from "../utils";
-import { useLockFn } from "ahooks";
-import { memo } from "react";
 
 const ChainItem = memo(function ChainItem({
   name,
@@ -29,7 +29,7 @@ const ChainItem = memo(function ChainItem({
 
   return (
     <ListItemButton
-      className="!mt-2 !mb-2"
+      className="!mb-2 !mt-2"
       sx={{
         backgroundColor: selected
           ? alpha(palette.primary.main, 0.3)
@@ -91,7 +91,7 @@ export const SideChain = ({ global, profile, onChainEdit }: SideChainProps) => {
   });
 
   return (
-    <div className="!pl-2 !pr-2 overflow-auto h-full">
+    <div className="h-full overflow-auto !pl-2 !pr-2">
       {scripts?.map((item, index) => {
         const selected = global
           ? getProfiles.data?.chain?.includes(item.uid)
@@ -110,7 +110,7 @@ export const SideChain = ({ global, profile, onChainEdit }: SideChainProps) => {
       })}
 
       <ListItemButton
-        className="!mt-2 !mb-2"
+        className="!mb-2 !mt-2"
         sx={{
           backgroundColor: alpha(palette.secondary.main, 0.1),
           borderRadius: 4,

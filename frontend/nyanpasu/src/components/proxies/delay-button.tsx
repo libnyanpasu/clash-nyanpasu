@@ -1,3 +1,6 @@
+import { useDebounceFn, useLockFn } from "ahooks";
+import { memo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { classNames } from "@/utils";
 import { Bolt, Done } from "@mui/icons-material";
 import {
@@ -7,9 +10,6 @@ import {
   Tooltip,
   useTheme,
 } from "@mui/material";
-import { useDebounceFn, useLockFn } from "ahooks";
-import { memo, useState } from "react";
-import { useTranslation } from "react-i18next";
 
 export const DelayButton = memo(function DelayButton({
   onClick,
@@ -47,7 +47,7 @@ export const DelayButton = memo(function DelayButton({
   return (
     <Tooltip title={t("Delay check")}>
       <Button
-        className="size-16 backdrop-blur !rounded-2xl !fixed z-10 bottom-8 right-8"
+        className="!fixed bottom-8 right-8 z-10 size-16 !rounded-2xl backdrop-blur"
         sx={{
           boxShadow: 8,
           backgroundColor: alpha(

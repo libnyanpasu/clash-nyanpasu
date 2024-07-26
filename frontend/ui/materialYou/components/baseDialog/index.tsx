@@ -1,9 +1,3 @@
-import { useClickPosition } from "@/hooks";
-import { cn } from "@/utils";
-import LoadingButton from "@mui/lab/LoadingButton";
-import { Button, Divider } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
-import * as Dialog from "@radix-ui/react-dialog";
 import { useLockFn } from "ahooks";
 import useDebounceFn from "ahooks/lib/useDebounceFn";
 import { AnimatePresence, motion } from "framer-motion";
@@ -15,6 +9,12 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { useClickPosition } from "@/hooks";
+import { cn } from "@/utils";
+import LoadingButton from "@mui/lab/LoadingButton";
+import { Button, Divider } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
+import * as Dialog from "@radix-ui/react-dialog";
 
 export interface BaseDialogProps {
   title: ReactNode;
@@ -109,7 +109,7 @@ export const BaseDialog = ({
           <Dialog.Portal forceMount>
             <Dialog.Overlay asChild onClick={handleClose}>
               <motion.div
-                className="fixed inset-0 z-50 backdrop-brightness-50"
+                className="fixed"
                 animate={open ? "open" : "closed"}
                 initial={{
                   opacity: 0,
@@ -128,7 +128,7 @@ export const BaseDialog = ({
             <Dialog.Content forceMount>
               <motion.div
                 className={cn(
-                  "fixed z-50 rounded-3xl shadow-lg min-w-96",
+                  "fixed z-50 min-w-96 rounded-3xl shadow-lg",
                   palette.mode === "dark" ? "text-white" : "text-black",
                 )}
                 style={{
@@ -165,12 +165,12 @@ export const BaseDialog = ({
                   duration: 0.35,
                 }}
               >
-                <Dialog.Title className="text-xl m-4">{title}</Dialog.Title>
+                <Dialog.Title className="m-4 text-xl">{title}</Dialog.Title>
 
                 {divider && <Divider />}
 
                 <div
-                  className="p-4 overflow-x-hidden overflow-y-auto"
+                  className="overflow-y-auto overflow-x-hidden p-4"
                   style={{
                     maxHeight: "calc(100vh - 160px)",
                     ...contentStyle,
@@ -181,7 +181,7 @@ export const BaseDialog = ({
 
                 {divider && <Divider />}
 
-                <div className="flex gap-2 justify-end m-2">
+                <div className="m-2 flex justify-end gap-2">
                   {onClose && (
                     <Button variant="outlined" onClick={handleClose}>
                       {close || t("Close")}

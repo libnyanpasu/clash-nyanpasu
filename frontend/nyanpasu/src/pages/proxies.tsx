@@ -1,3 +1,6 @@
+import { useAtom } from "jotai";
+import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import ContentDisplay from "@/components/base/content-display";
 import {
   DelayButton,
@@ -10,18 +13,15 @@ import ScrollCurrentNode from "@/components/proxies/scroll-current-node";
 import SortSelector from "@/components/proxies/sort-selector";
 import { proxyGroupAtom } from "@/store";
 import {
+  alpha,
   Box,
   Button,
   ButtonGroup,
   TextField,
-  alpha,
   useTheme,
 } from "@mui/material";
 import { Clash, useClashCore, useNyanpasu } from "@nyanpasu/interface";
 import { SidePage } from "@nyanpasu/ui";
-import { useAtom } from "jotai";
-import { useEffect, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
 
 export default function ProxyPage() {
   const { t } = useTranslation();
@@ -96,7 +96,7 @@ export default function ProxyPage() {
       toolBar={
         hasProxies &&
         !getCurrentMode.direct && (
-          <div className="w-full flex items-center justify-between">
+          <div className="flex w-full items-center justify-between">
             <div className="flex items-center gap-4">
               {group?.name && <ProxyGroupName name={group?.name} />}
             </div>

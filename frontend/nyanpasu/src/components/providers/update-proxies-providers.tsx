@@ -1,10 +1,10 @@
-import { useMessage } from "@/hooks/use-notification";
-import LoadingButton from "@mui/lab/LoadingButton";
-import { useClashCore } from "@nyanpasu/interface";
 import { useLockFn } from "ahooks";
 import { useState } from "react";
-import { Refresh } from "@mui/icons-material";
 import { useTranslation } from "react-i18next";
+import { useMessage } from "@/hooks/use-notification";
+import { Refresh } from "@mui/icons-material";
+import LoadingButton from "@mui/lab/LoadingButton";
+import { useClashCore } from "@nyanpasu/interface";
 
 export const UpdateProxiesProviders = () => {
   const { t } = useTranslation();

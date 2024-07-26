@@ -1,6 +1,6 @@
+import { ReactNode } from "react";
 import { classNames } from "@/utils";
 import { Public } from "@mui/icons-material";
-import { ReactNode } from "react";
 
 export interface ContentDisplayProps {
   className?: string;
@@ -15,7 +15,7 @@ export const ContentDisplay = ({
 }: ContentDisplayProps) => (
   <div
     className={classNames(
-      "h-full w-full flex items-center justify-center",
+      "flex h-full w-full items-center justify-center",
       className,
     )}
   >

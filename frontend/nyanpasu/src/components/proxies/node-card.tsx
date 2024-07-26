@@ -1,13 +1,12 @@
+import clsx from "clsx";
+import { CSSProperties, memo, useMemo } from "react";
 import Box from "@mui/material/Box";
 import { Clash } from "@nyanpasu/interface";
-import { CSSProperties, memo, useMemo } from "react";
 import { PaperSwitchButton } from "../setting/modules/system-proxy";
 import DelayChip from "./delay-chip";
 import FeatureChip from "./feature-chip";
-import { filterDelay } from "./utils";
-
-import clsx from "clsx";
 import styles from "./node-card.module.scss";
+import { filterDelay } from "./utils";
 
 export const NodeCard = memo(function NodeCard({
   node,

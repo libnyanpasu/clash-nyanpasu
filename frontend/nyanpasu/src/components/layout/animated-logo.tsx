@@ -1,8 +1,8 @@
+import { AnimatePresence, motion, Variants } from "framer-motion";
+import { CSSProperties } from "react";
 import LogoSvg from "@/assets/image/logo.svg?react";
 import { classNames } from "@/utils";
 import { useNyanpasu } from "@nyanpasu/interface";
-import { AnimatePresence, Variants, motion } from "framer-motion";
-import { CSSProperties } from "react";
 import styles from "./animated-logo.module.scss";
 
 const Logo = motion(LogoSvg);

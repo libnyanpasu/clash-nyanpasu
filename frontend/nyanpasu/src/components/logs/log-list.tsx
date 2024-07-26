@@ -1,7 +1,7 @@
-import { LogMessage } from "@nyanpasu/interface";
 import { useDebounceEffect } from "ahooks";
 import { useRef } from "react";
 import { VList, VListHandle } from "virtua";
+import { LogMessage } from "@nyanpasu/interface";
 import LogItem from "./log-item";
 
 export const LogList = ({ data }: { data: LogMessage[] }) => {
@@ -25,7 +25,7 @@ export const LogList = ({ data }: { data: LogMessage[] }) => {
   return (
     <VList
       ref={vListRef}
-      className="flex flex-col gap-2 p-2 overflow-auto select-text min-h-full"
+      className="flex min-h-full select-text flex-col gap-2 overflow-auto p-2"
       reverse
     >
       {data.map((item, index) => {

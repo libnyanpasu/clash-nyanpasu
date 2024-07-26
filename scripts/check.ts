@@ -1,10 +1,10 @@
 import { execSync } from "node:child_process";
 import os from "node:os";
-import { colorize, consola } from "./utils/logger";
-import { archCheck } from "./utils/arch-check";
-import { Resolve } from "./utils/resolve";
-import { printNyanpasu } from "./utils";
 import { generateLatestVersion } from "generate-latest-version";
+import { printNyanpasu } from "./utils";
+import { archCheck } from "./utils/arch-check";
+import { colorize, consola } from "./utils/logger";
+import { Resolve } from "./utils/resolve";
 
 // force download
 const FORCE = process.argv.includes("--force");

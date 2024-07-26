@@ -1,11 +1,11 @@
+import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { VList } from "virtua";
 import { BaseEmpty } from "@/components/base";
 import RuleItem from "@/components/rules/rule-item";
 import { alpha, FilledInputProps, TextField, useTheme } from "@mui/material";
 import { useClashCore } from "@nyanpasu/interface";
 import { BasePage } from "@nyanpasu/ui";
-import { useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { VList } from "virtua";
 
 export default function RulesPage() {
   const { t } = useTranslation();
@@ -53,7 +53,7 @@ export default function RulesPage() {
         />
       }
     >
-      <VList className="flex flex-col gap-2 p-2 overflow-auto select-text">
+      <VList className="flex select-text flex-col gap-2 overflow-auto p-2">
         {rules ? (
           rules.map((item, index) => {
             return <RuleItem key={index} index={index} value={item} />;

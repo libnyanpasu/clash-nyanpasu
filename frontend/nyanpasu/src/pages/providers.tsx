@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import ProxiesProvider from "@/components/providers/proxies-provider";
 import RulesProvider from "@/components/providers/rules-provider";
 import UpdateProviders from "@/components/providers/update-providers";
@@ -6,7 +7,6 @@ import { Chip } from "@mui/material";
 import Grid from "@mui/material/Unstable_Grid2";
 import { useClashCore } from "@nyanpasu/interface";
 import { BasePage } from "@nyanpasu/ui";
-import { useTranslation } from "react-i18next";
 
 export default function ProvidersPage() {
   const { t } = useTranslation();
@@ -16,9 +16,9 @@ export default function ProvidersPage() {
   return (
     <BasePage title={t("Providers")}>
       <div className="flex flex-col gap-4">
-        <div className="flex justify-between items-center">
+        <div className="flex items-center justify-between">
           <Chip
-            className="font-bold !text-lg truncate !p-2 !h-10 !rounded-full"
+            className="!h-10 truncate !rounded-full !p-2 !text-lg font-bold"
             label={`${t("Proxies Providers")} (${Object.entries(getProxiesProviders.data ?? {}).length})`}
           />
 
@@ -44,9 +44,9 @@ export default function ProvidersPage() {
           </Grid>
         )}
 
-        <div className="flex justify-between items-center">
+        <div className="flex items-center justify-between">
           <Chip
-            className="font-bold !text-lg truncate !p-2 !h-10 !rounded-full"
+            className="!h-10 truncate !rounded-full !p-2 !text-lg font-bold"
             label={`${t("Rules Providers")} (${Object.entries(getRulesProviders.data ?? {}).length})`}
           />
 

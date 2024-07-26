@@ -1,9 +1,9 @@
+import clsx from "clsx";
+import { CSSProperties, useRef, useState } from "react";
 import { parseHotkey } from "@/utils/parse-hotkey";
 import { DeleteRounded } from "@mui/icons-material";
 import { alpha, IconButton, useTheme } from "@mui/material";
 import Kbd from "@nyanpasu/ui/materialYou/components/kbd";
-import clsx from "clsx";
-import { CSSProperties, useRef, useState } from "react";
 import styles from "./hotkey-input.module.scss";
 
 export interface Props extends React.HTMLAttributes<HTMLInputElement> {
@@ -31,10 +31,10 @@ export default function HotkeyInput({
   const [keys, setKeys] = useState(value || []);
   return (
     <div className="flex items-center gap-2">
-      <div className={clsx("relative w-[165px] min-h-[36px]", styles.wrapper)}>
+      <div className={clsx("relative min-h-[36px] w-[165px]", styles.wrapper)}>
         <input
           className={clsx(
-            "absolute top-0 left-0 w-full h-full z-[1] opacity-0",
+            "absolute left-0 top-0 z-[1] h-full w-full opacity-0",
             styles.input,
             className,
           )}
@@ -62,7 +62,7 @@ export default function HotkeyInput({
         />
         <div
           className={clsx(
-            "flex items-center flex-wrap w-full h-full min-h-[36px] box-border py-1 px-1 border border-solid rounded last:mr-0",
+            "box-border flex h-full min-h-[36px] w-full flex-wrap items-center rounded border border-solid px-1 py-1 last:mr-0",
             styles.items,
           )}
           style={

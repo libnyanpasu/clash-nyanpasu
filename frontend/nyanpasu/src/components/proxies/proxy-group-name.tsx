@@ -1,6 +1,6 @@
-import { useNyanpasu } from "@nyanpasu/interface";
 import { AnimatePresence, motion } from "framer-motion";
 import { memo } from "react";
+import { useNyanpasu } from "@nyanpasu/interface";
 
 export const ProxyGroupName = memo(function ProxyGroupName({
   name,

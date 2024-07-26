@@ -1,3 +1,6 @@
+import { useInterval } from "ahooks";
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import Dataline, { DatalineProps } from "@/components/dashboard/dataline";
 import {
   ArrowDownward,
@@ -13,9 +16,6 @@ import {
   useClashWS,
   useNyanpasu,
 } from "@nyanpasu/interface";
-import { useInterval } from "ahooks";
-import { useState } from "react";
-import { useTranslation } from "react-i18next";
 
 export const DataPanel = () => {
   const { t } = useTranslation();
@@ -125,7 +125,7 @@ export const DataPanel = () => {
   return Datalines.map((props, index) => {
     return (
       <Grid key={`data-${index}`} {...gridLayout} className="w-full">
-        <Dataline {...props} className="min-h-48 max-h-1/8" />
+        <Dataline {...props} className="max-h-1/8 min-h-48" />
       </Grid>
     );
   });

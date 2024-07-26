@@ -1,7 +1,7 @@
-import { SwitchProps } from "@mui/material";
-import { BaseItem } from "./baseItem";
 import { ChangeEvent, useState } from "react";
+import { SwitchProps } from "@mui/material";
 import LoadingSwitch from "../loadingSwitch";
+import { BaseItem } from "./baseItem";
 
 interface Props extends SwitchProps {
   label: string;

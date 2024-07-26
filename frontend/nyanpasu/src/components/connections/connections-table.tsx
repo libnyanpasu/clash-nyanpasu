@@ -1,17 +1,17 @@
-import parseTraffic from "@/utils/parse-traffic";
+import { useLockFn } from "ahooks";
+import dayjs from "dayjs";
 import {
   MaterialReactTable,
   useMaterialReactTable,
   type MRT_ColumnDef,
 } from "material-react-table";
-import { useClashWS, Connection, useClash } from "@nyanpasu/interface";
-import dayjs from "dayjs";
-import { useRef, useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { useLockFn } from "ahooks";
+import { containsSearchTerm } from "@/utils";
+import parseTraffic from "@/utils/parse-traffic";
 import Cancel from "@mui/icons-material/Cancel";
 import { IconButton } from "@mui/material";
-import { containsSearchTerm } from "@/utils";
+import { Connection, useClash, useClashWS } from "@nyanpasu/interface";
 import ContentDisplay from "../base/content-display";
 
 export type TableConnection = Connection.Item & {
@@ -85,7 +85,7 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
       enableSorting: false,
       enableGlobalFilter: false,
       accessorFn: ({ id }) => (
-        <div className="w-full flex justify-center">
+        <div className="flex w-full justify-center">
           <IconButton
             color="primary"
             className="size-5"

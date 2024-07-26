@@ -1,6 +1,7 @@
-import fs from "fs-extra";
 import path from "path";
+import fs from "fs-extra";
 import { cwd } from "./utils/env";
+
 const UPDATE_LOG = "UPDATELOG.md";
 
 // parse the UPDATELOG.md

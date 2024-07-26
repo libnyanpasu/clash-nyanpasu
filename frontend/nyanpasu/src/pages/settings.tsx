@@ -1,3 +1,7 @@
+import { useLockFn } from "ahooks";
+import { motion } from "framer-motion";
+import React, { lazy, Suspense } from "react";
+import { useTranslation } from "react-i18next";
 import HotkeyDialog from "@/components/setting/modules/hotkey-dialog";
 import { formatEnvInfos } from "@/utils";
 import { Feedback, GitHub, Keyboard } from "@mui/icons-material";
@@ -6,10 +10,6 @@ import { IconButton } from "@mui/material";
 import { collect_envs } from "@nyanpasu/interface";
 import { BasePage } from "@nyanpasu/ui";
 import { open } from "@tauri-apps/api/shell";
-import { useLockFn } from "ahooks";
-import { motion } from "framer-motion";
-import React, { lazy, Suspense } from "react";
-import { useTranslation } from "react-i18next";
 
 const asyncComponents = [
   () => import("@/components/setting/setting-system-proxy"),

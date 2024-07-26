@@ -1,12 +1,12 @@
-import generouted from "@generouted/react-router/plugin";
-// import react from "@vitejs/plugin-react";
-import react from "@vitejs/plugin-react-swc";
 import path from "node:path";
 import { defineConfig } from "vite";
 import monaco from "vite-plugin-monaco-editor";
 import sassDts from "vite-plugin-sass-dts";
 import svgr from "vite-plugin-svgr";
 import tsconfigPaths from "vite-tsconfig-paths";
+import generouted from "@generouted/react-router/plugin";
+// import react from "@vitejs/plugin-react";
+import react from "@vitejs/plugin-react-swc";
 
 const devtools = () => {
   return {

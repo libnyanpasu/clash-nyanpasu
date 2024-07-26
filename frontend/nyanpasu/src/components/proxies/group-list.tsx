@@ -1,3 +1,6 @@
+import { useAtom } from "jotai";
+import { memo } from "react";
+import { Virtualizer } from "virtua";
 import { proxyGroupAtom } from "@/store";
 import {
   ListItem,
@@ -7,9 +10,6 @@ import {
   ListItemText,
 } from "@mui/material";
 import { useClashCore } from "@nyanpasu/interface";
-import { useAtom } from "jotai";
-import { memo } from "react";
-import { Virtualizer } from "virtua";
 
 const IconRender = memo(function IconRender({ icon }: { icon: string }) {
   const src = icon.trim().startsWith("<svg")
@@ -18,7 +18,7 @@ const IconRender = memo(function IconRender({ icon }: { icon: string }) {
 
   return (
     <ListItemIcon>
-      <img className="w-11 h-11" src={src} />
+      <img className="h-11 w-11" src={src} />
     </ListItemIcon>
   );
 });

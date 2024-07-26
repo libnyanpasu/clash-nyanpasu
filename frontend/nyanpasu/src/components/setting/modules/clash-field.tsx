@@ -1,18 +1,18 @@
+import { ChangeEvent, useState } from "react";
+import Marquee from "react-fast-marquee";
+import ArrowForwardIos from "@mui/icons-material/ArrowForwardIos";
 import OpenInNewRounded from "@mui/icons-material/OpenInNewRounded";
+import { alpha, useTheme } from "@mui/material";
 import Box from "@mui/material/Box";
+import ButtonBase, { ButtonBaseProps } from "@mui/material/ButtonBase";
 import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
 import { SwitchProps } from "@mui/material/Switch";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
-import { open } from "@tauri-apps/api/shell";
 import Grid from "@mui/material/Unstable_Grid2";
-import ButtonBase, { ButtonBaseProps } from "@mui/material/ButtonBase";
-import Marquee from "react-fast-marquee";
-import ArrowForwardIos from "@mui/icons-material/ArrowForwardIos";
-import { alpha, useTheme } from "@mui/material";
 import { LoadingSwitch } from "@nyanpasu/ui";
-import { ChangeEvent, useState } from "react";
+import { open } from "@tauri-apps/api/shell";
 
 export interface LabelSwitchProps extends SwitchProps {
   label: string;

@@ -1,6 +1,5 @@
 import type { Highlighter } from "shiki";
 import { getHighlighterCore } from "shiki/core";
-
 import minLight from "shiki/themes/min-light.mjs";
 import nord from "shiki/themes/nord.mjs";
 import getWasm from "shiki/wasm";

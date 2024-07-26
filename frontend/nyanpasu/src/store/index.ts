@@ -1,5 +1,5 @@
-import { LogMessage } from "@nyanpasu/interface";
 import { atom } from "jotai";
+import { LogMessage } from "@nyanpasu/interface";
 
 const atomWithLocalStorage = <T>(key: string, initialValue: T) => {
   const getInitialValue = (): T => {

@@ -1,3 +1,10 @@
+import { version } from "~/package.json";
+import { useLockFn } from "ahooks";
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import LogoSvg from "@/assets/image/logo.svg?react";
+import { useMessage } from "@/hooks/use-notification";
+import LoadingButton from "@mui/lab/LoadingButton";
 import {
   alpha,
   Box,
@@ -7,16 +14,9 @@ import {
   Typography,
   useTheme,
 } from "@mui/material";
-import { BaseCard } from "@nyanpasu/ui";
-import { useTranslation } from "react-i18next";
-import LogoSvg from "@/assets/image/logo.svg?react";
-import { version } from "~/package.json";
-import LoadingButton from "@mui/lab/LoadingButton";
-import { useEffect, useState } from "react";
-import { useLockFn } from "ahooks";
-import { checkUpdate } from "@tauri-apps/api/updater";
-import { useMessage } from "@/hooks/use-notification";
 import { useNyanpasu } from "@nyanpasu/interface";
+import { BaseCard } from "@nyanpasu/ui";
+import { checkUpdate } from "@tauri-apps/api/updater";
 import { LabelSwitch } from "./modules/clash-field";
 
 const AutoCheckUpdate = () => {
@@ -96,7 +96,7 @@ export const SettingNyanpasuVersion = () => {
               alignItems="center"
               gap={2}
             >
-              <LogoSvg className="w-32 h-32" />
+              <LogoSvg className="h-32 w-32" />
 
               <Typography fontWeight={700} noWrap>
                 {"Clash Nyanpasu~(∠・ω< )⌒☆"}​
@@ -109,7 +109,7 @@ export const SettingNyanpasuVersion = () => {
           </Paper>
         </ListItem>
 
-        <div className="mt-1 mb-1">
+        <div className="mb-1 mt-1">
           <AutoCheckUpdate />
         </div>
 

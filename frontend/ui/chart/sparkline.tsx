@@ -1,7 +1,8 @@
-import { alpha, useTheme } from "@mui/material";
 import * as d3 from "d3";
 import { interpolatePath } from "d3-interpolate-path";
 import { CSSProperties, FC, useEffect, useRef } from "react";
+import { alpha, useTheme } from "@mui/material";
+
 interface SparklineProps {
   data: number[];
   className?: string;

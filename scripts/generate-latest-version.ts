@@ -1,12 +1,12 @@
 import fs from "fs-extra";
+import { ManifestVersion, SupportedCore } from "./types/index";
 import { MANIFEST_DIR, MANIFEST_VERSION_PATH } from "./utils/env";
 import { consola } from "./utils/logger";
-import { ManifestVersion, SupportedCore } from "./types/index";
 import {
+  resolveClashPremium,
+  resolveClashRs,
   resolveMihomo,
   resolveMihomoAlpha,
-  resolveClashRs,
-  resolveClashPremium,
 } from "./utils/manifest";
 
 const MANIFEST_VERSION = 1;

@@ -1,10 +1,10 @@
-import { MenuOpen } from "@mui/icons-material";
-import { Backdrop, IconButton, alpha, useTheme } from "@mui/material";
 import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
-import AnimatedLogo from "../layout/animated-logo";
 import { classNames } from "@/utils";
 import getSystem from "@/utils/get-system";
+import { MenuOpen } from "@mui/icons-material";
+import { alpha, Backdrop, IconButton, useTheme } from "@mui/material";
+import AnimatedLogo from "../layout/animated-logo";
 import DrawerContent from "./drawer-content";
 
 export const AppDrawer = () => {
@@ -16,7 +16,7 @@ export const AppDrawer = () => {
     return (
       <div
         className={classNames(
-          "flex items-center gap-2 fixed z-10",
+          "fixed z-10 flex items-center gap-2",
           getSystem() === "macos" ? "left-[6.5rem] top-3" : "left-6 top-1.5",
         )}
         data-windrag
@@ -33,7 +33,7 @@ export const AppDrawer = () => {
         </IconButton>
 
         <div className="size-5" data-windrag>
-          <AnimatedLogo className="w-full h-full" data-windrag />
+          <AnimatedLogo className="h-full w-full" data-windrag />
         </div>
 
         <div className="text-lg" data-windrag>
@@ -56,7 +56,7 @@ export const AppDrawer = () => {
         onClick={() => setOpen(false)}
       >
         <AnimatePresence initial={false}>
-          <div className="w-full h-full">
+          <div className="h-full w-full">
             <motion.div
               className="h-full"
               animate={open ? "open" : "closed"}

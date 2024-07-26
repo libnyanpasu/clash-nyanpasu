@@ -1,8 +1,8 @@
+import clsx from "clsx";
+import { memo, useState } from "react";
 import { classNames } from "@/utils";
 import { Bolt } from "@mui/icons-material";
 import { CircularProgress } from "@mui/material";
-import clsx from "clsx";
-import { memo, useState } from "react";
 import FeatureChip from "./feature-chip";
 import { getColorForDelay } from "./utils";
 
@@ -38,7 +38,7 @@ export const DelayChip = memo(function DelayChip({
         <>
           <span
             className={classNames(
-              "transition-opacity flex items-center px-[1px]",
+              "flex items-center px-[1px] transition-opacity",
               loading ? "opacity-0" : "opacity-1",
             )}
           >

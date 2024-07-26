@@ -1,10 +1,10 @@
+import { useInterval } from "ahooks";
+import { countryCodeEmoji } from "country-code-emoji";
+import { useRef, useState } from "react";
+import { Visibility, VisibilityOff } from "@mui/icons-material";
 import { CircularProgress, IconButton, Paper, Tooltip } from "@mui/material";
 import Grid from "@mui/material/Unstable_Grid2";
 import { timing, useIPSB } from "@nyanpasu/interface";
-import { useInterval } from "ahooks";
-import { useRef, useState } from "react";
-import { countryCodeEmoji } from "country-code-emoji";
-import { Visibility, VisibilityOff } from "@mui/icons-material";
 import { cn } from "@nyanpasu/ui";
 import { getColorForDelay } from "../proxies/utils";
 
@@ -57,12 +57,12 @@ export const HealthPanel = () => {
 
   return (
     <Grid sm={12} md={8} lg={6} xl={4} className="w-full">
-      <Paper className="!rounded-3xl relative">
-        <div className="p-4 flex justify-between gap-8">
+      <Paper className="relative !rounded-3xl">
+        <div className="flex justify-between gap-8 p-4">
           <div className="flex flex-col justify-between">
             {Object.entries(health).map(([name, value]) => {
               return (
-                <div key={name} className="flex gap-1 justify-between">
+                <div key={name} className="flex justify-between gap-1">
                   <div className="min-w-20 font-bold">{name}:</div>
 
                   <div
@@ -76,11 +76,11 @@ export const HealthPanel = () => {
             })}
           </div>
 
-          <div className="flex justify-center gap-4 flex-1 relative select-text">
+          <div className="relative flex flex-1 select-text justify-center gap-4">
             {data && (
               <>
-                <div className="text-5xl relative">
-                  <span className="blur opacity-50">
+                <div className="relative text-5xl">
+                  <span className="opacity-50 blur">
                     {countryCodeEmoji(data.country_code)}
                   </span>
 
@@ -90,7 +90,7 @@ export const HealthPanel = () => {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <div className="text-xl font-bold text-shadow-md flex justify-between items-end">
+                  <div className="text-shadow-md flex items-end justify-between text-xl font-bold">
                     <div>{data.country}</div>
 
                     <Tooltip title="Click to Refresh Now">
@@ -111,8 +111,8 @@ export const HealthPanel = () => {
 
                   <div className="text-sm">AS{data.asn}</div>
 
-                  <div className="w-full flex gap-4 items-center">
-                    <div className="font-mono relative">
+                  <div className="flex w-full items-center gap-4">
+                    <div className="relative font-mono">
                       <span
                         className={cn(
                           "transition-opacity",
@@ -124,10 +124,10 @@ export const HealthPanel = () => {
 
                       <span
                         className={cn(
-                          "bg-slate-300 absolute w-full h-full left-0 transition-opacity rounded-lg",
+                          "absolute left-0 h-full w-full rounded-lg bg-slate-300 transition-opacity",
                           showIPAddress
                             ? "opacity-0"
-                            : "opacity-100 animate-pulse",
+                            : "animate-pulse opacity-100",
                         )}
                       />
                     </div>

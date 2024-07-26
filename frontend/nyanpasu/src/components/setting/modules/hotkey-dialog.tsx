@@ -1,10 +1,10 @@
+import { useLockFn, useMemoizedFn } from "ahooks";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { Typography } from "@mui/material";
 import { useNyanpasu } from "@nyanpasu/interface";
 import { BaseDialog, BaseDialogProps } from "@nyanpasu/ui";
-import { useLockFn, useMemoizedFn } from "ahooks";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
 import HotkeyInput from "./hotkey-input";
 
 export interface HotkeyDialogProps extends Omit<BaseDialogProps, "title"> {}
@@ -115,9 +115,9 @@ export default function HotkeyDialog({
       {...rest}
     >
       {children}
-      <div className="grid grid-1 gap-3">
+      <div className="grid-1 grid gap-3">
         {HOTKEY_FUNC.map((func) => (
-          <div className="flex px-2 items-center justify-between" key={func}>
+          <div className="flex items-center justify-between px-2" key={func}>
             <Typography>{t(func)}</Typography>
             <HotkeyInput
               func={func}

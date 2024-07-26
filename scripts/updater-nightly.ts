@@ -1,10 +1,11 @@
-import { context, getOctokit } from "@actions/github";
 import { execSync } from "child_process";
 import { camelCase, upperFirst } from "lodash-es";
 import fetch from "node-fetch";
+import { context, getOctokit } from "@actions/github";
 import tauriNightly from "../backend/tauri/overrides/nightly.conf.json";
 import { getGithubUrl } from "./utils";
 import { consola } from "./utils/logger";
+
 const UPDATE_TAG_NAME = "updater";
 const UPDATE_JSON_FILE = "update-nightly.json";
 const UPDATE_JSON_PROXY = "update-nightly-proxy.json";

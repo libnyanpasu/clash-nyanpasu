@@ -1,10 +1,10 @@
+import { useAsyncEffect } from "ahooks";
+import { useState } from "react";
+import { classNames } from "@/utils";
 import { formatAnsi } from "@/utils/shiki";
 import { useTheme } from "@mui/material";
 import { LogMessage } from "@nyanpasu/interface";
-import { useAsyncEffect } from "ahooks";
-import { useState } from "react";
 import styles from "./log-item.module.scss";
-import { classNames } from "@/utils";
 
 export const LogItem = ({ value }: { value: LogMessage }) => {
   const { palette } = useTheme();
@@ -22,7 +22,7 @@ export const LogItem = ({ value }: { value: LogMessage }) => {
   }, [value.payload]);
 
   return (
-    <div className="w-full font-mono p-4 pt-2 pb-0">
+    <div className="w-full p-4 pb-0 pt-2 font-mono">
       <div className="flex gap-2">
         <span className="font-thin">{value.time}</span>
 
@@ -36,7 +36,7 @@ export const LogItem = ({ value }: { value: LogMessage }) => {
         </span>
       </div>
 
-      <div className="text-wrap border-slate-200 border-b pb-2">
+      <div className="text-wrap border-b border-slate-200 pb-2">
         <p
           className={classNames(
             styles.item,

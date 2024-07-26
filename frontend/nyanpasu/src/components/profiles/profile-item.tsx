@@ -1,30 +1,30 @@
-import parseTraffic from "@/utils/parse-traffic";
-import {
-  Update,
-  FilterDrama,
-  InsertDriveFile,
-  FiberManualRecord,
-  Terminal,
-} from "@mui/icons-material";
-import LoadingButton from "@mui/lab/LoadingButton";
-import {
-  Paper,
-  LinearProgress,
-  Chip,
-  Tooltip,
-  Menu,
-  MenuItem,
-  useTheme,
-  Button,
-  alpha,
-} from "@mui/material";
-import { Profile, useClash } from "@nyanpasu/interface";
+import { useLockFn, useSetState } from "ahooks";
 import dayjs from "dayjs";
 import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ProfileDialog } from "./profile-dialog";
 import { useMessage } from "@/hooks/use-notification";
-import { useLockFn, useSetState } from "ahooks";
+import parseTraffic from "@/utils/parse-traffic";
+import {
+  FiberManualRecord,
+  FilterDrama,
+  InsertDriveFile,
+  Terminal,
+  Update,
+} from "@mui/icons-material";
+import LoadingButton from "@mui/lab/LoadingButton";
+import {
+  alpha,
+  Button,
+  Chip,
+  LinearProgress,
+  Menu,
+  MenuItem,
+  Paper,
+  Tooltip,
+  useTheme,
+} from "@mui/material";
+import { Profile, useClash } from "@nyanpasu/interface";
+import { ProfileDialog } from "./profile-dialog";
 
 export interface ProfileItemProps {
   item: Profile.Item;
@@ -159,7 +159,7 @@ export const ProfileItem = memo(function ProfileItem({
   return (
     <>
       <Paper
-        className="p-5 flex flex-col gap-4"
+        className="flex flex-col gap-4 p-5"
         sx={{
           borderRadius: 6,
           backgroundColor: selected
@@ -178,7 +178,7 @@ export const ProfileItem = memo(function ProfileItem({
 
           {selected && (
             <FiberManualRecord
-              className="!size-3 mr-auto animate-bounce top-0"
+              className="top-0 mr-auto !size-3 animate-bounce"
               sx={{ fill: palette.success.main }}
             />
           )}
@@ -189,7 +189,7 @@ export const ProfileItem = memo(function ProfileItem({
         </div>
 
         <div>
-          <p className="text-lg font-bold truncate">{item.name}</p>
+          <p className="truncate text-lg font-bold">{item.name}</p>
           <p className="truncate">{item.desc}</p>
         </div>
 
@@ -207,7 +207,7 @@ export const ProfileItem = memo(function ProfileItem({
           </div>
         )}
 
-        <div className="flex gap-2 justify-end">
+        <div className="flex justify-end gap-2">
           <Button
             className="!mr-auto"
             size="small"

@@ -1,6 +1,6 @@
-import { Radar } from "@mui/icons-material";
-import { Button, Tooltip, alpha, useTheme } from "@mui/material";
 import { useTranslation } from "react-i18next";
+import { Radar } from "@mui/icons-material";
+import { alpha, Button, Tooltip, useTheme } from "@mui/material";
 
 export const ScrollCurrentNode = ({ onClick }: { onClick?: () => void }) => {
   const { t } = useTranslation();
@@ -11,7 +11,7 @@ export const ScrollCurrentNode = ({ onClick }: { onClick?: () => void }) => {
     <Tooltip title={t("Location")}>
       <Button
         size="small"
-        className="!min-w-0 !size-8"
+        className="!size-8 !min-w-0"
         sx={{
           backgroundColor: alpha(palette.primary.main, 0.1),
         }}

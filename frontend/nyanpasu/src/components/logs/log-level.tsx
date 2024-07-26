@@ -1,5 +1,5 @@
-import { Button, Menu, MenuItem, alpha, useTheme } from "@mui/material";
 import { useState } from "react";
+import { alpha, Button, Menu, MenuItem, useTheme } from "@mui/material";
 
 export interface LogLevelProps {
   value: string;

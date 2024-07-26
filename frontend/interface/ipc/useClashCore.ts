@@ -1,11 +1,11 @@
+import useSWR from "swr";
 import {
   Clash,
+  clash as clashApi,
   ProviderItem,
   ProviderRules,
-  clash as clashApi,
 } from "@/service";
 import * as tauri from "@/service/tauri";
-import useSWR from "swr";
 
 export const useClashCore = () => {
   const { getGroupDelay, getProxiesDelay, ...clash } = clashApi();

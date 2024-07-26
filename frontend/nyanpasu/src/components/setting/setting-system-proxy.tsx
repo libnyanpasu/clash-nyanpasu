@@ -1,17 +1,8 @@
-import {
-  BaseCard,
-  Expand,
-  ExpandMore,
-  NumberItem,
-  SwitchItem,
-} from "@nyanpasu/ui";
-import { useTranslation } from "react-i18next";
-import Grid from "@mui/material/Unstable_Grid2";
-import { useNyanpasu } from "@nyanpasu/interface";
 import { useLockFn, useReactive } from "ahooks";
-import { useMessage } from "@/hooks/use-notification";
-import { PaperSwitchButton } from "./modules/system-proxy";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import { useMessage } from "@/hooks/use-notification";
+import { Done } from "@mui/icons-material";
 import {
   Box,
   Button,
@@ -22,7 +13,16 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { Done } from "@mui/icons-material";
+import Grid from "@mui/material/Unstable_Grid2";
+import { useNyanpasu } from "@nyanpasu/interface";
+import {
+  BaseCard,
+  Expand,
+  ExpandMore,
+  NumberItem,
+  SwitchItem,
+} from "@nyanpasu/ui";
+import { PaperSwitchButton } from "./modules/system-proxy";
 
 export const SettingSystemProxy = () => {
   const { t } = useTranslation();

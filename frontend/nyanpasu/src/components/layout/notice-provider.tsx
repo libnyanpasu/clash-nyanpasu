@@ -1,7 +1,7 @@
-import { NotificationType, useNotification } from "@/hooks/use-notification";
-import { listen } from "@tauri-apps/api/event";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { NotificationType, useNotification } from "@/hooks/use-notification";
+import { listen } from "@tauri-apps/api/event";
 
 export const NoticeProvider = () => {
   const { t } = useTranslation();

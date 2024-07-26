@@ -1,16 +1,16 @@
 import path from "path";
-import { TAURI_APP_DIR, TEMP_DIR } from "./env";
-import fs from "fs-extra";
-import { downloadFile, resolveSidecar } from "./download";
-import { colorize, consola } from "./logger";
 import AdmZip from "adm-zip";
+import fs from "fs-extra";
+import { BinInfo } from "types";
+import { downloadFile, resolveSidecar } from "./download";
+import { TAURI_APP_DIR, TEMP_DIR } from "./env";
+import { colorize, consola } from "./logger";
 import {
   getClashBackupInfo,
   getClashMetaAlphaInfo,
   getClashMetaInfo,
   getClashRustInfo,
 } from "./resource";
-import { BinInfo } from "types";
 
 const SERVICE_URL =
   "https://github.com/greenhat616/clash-verge-service/releases/download/latest";

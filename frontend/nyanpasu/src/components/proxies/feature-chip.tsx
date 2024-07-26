@@ -1,5 +1,5 @@
-import { Chip, ChipProps } from "@mui/material";
 import { memo } from "react";
+import { Chip, ChipProps } from "@mui/material";
 
 export const FeatureChip = memo(function FeatureChip(props: ChipProps) {
   return (

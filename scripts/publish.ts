@@ -1,7 +1,8 @@
-import fs from "fs-extra";
 import path from "node:path";
+import fs from "fs-extra";
 import packageJson from "../package.json";
-import { TAURI_APP_DIR, cwd } from "./utils/env";
+import { cwd, TAURI_APP_DIR } from "./utils/env";
+
 // import { consola } from "./utils/logger";
 
 const TAURI_APP_CONF_PATH = path.join(TAURI_APP_DIR, "tauri.conf.json");

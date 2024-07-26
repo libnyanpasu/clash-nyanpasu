@@ -48,7 +48,6 @@ const tasks: {
     name: "nyanpasu-service",
     func: () => resolve.service(),
     retry: 5,
-    winOnly: true,
   },
   { name: "mmdb", func: () => resolve.mmdb(), retry: 5 },
   { name: "geoip", func: () => resolve.geoip(), retry: 5 },

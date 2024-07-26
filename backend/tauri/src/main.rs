@@ -53,6 +53,7 @@ fn deadlock_detection() {
 }
 
 fn main() -> std::io::Result<()> {
+    // share the tauri async runtime to nyanpasu-utils
     #[cfg(feature = "deadlock-detection")]
     deadlock_detection();
 

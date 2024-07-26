@@ -15,7 +15,7 @@ use anyhow::Result;
 use semver::Version;
 use serde_yaml::Mapping;
 use std::net::TcpListener;
-use tauri::{api::process::Command, App, AppHandle, Manager};
+use tauri::{api::process::Command, async_runtime::block_on, App, AppHandle, Manager};
 
 #[cfg(target_os = "macos")]
 fn set_window_controls_pos(window: cocoa::base::id, x: f64, y: f64) {
@@ -139,7 +139,7 @@ pub fn resolve_setup(app: &mut App) {
 /// reset system proxy
 pub fn resolve_reset() {
     log_err!(sysopt::Sysopt::global().reset_sysproxy());
-    log_err!(CoreManager::global().stop_core());
+    log_err!(block_on(CoreManager::global().stop_core()));
 }
 
 /// create main window

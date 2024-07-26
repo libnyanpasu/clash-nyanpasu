@@ -9,6 +9,7 @@ pub mod logging;
 pub use self::clash_strategy::{ClashStrategy, ExternalControllerPortStrategy};
 pub use logging::LoggingLevel;
 
+// TODO: when support sing-box, remove this struct
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub enum ClashCore {
     #[serde(rename = "clash", alias = "clash-premium")]
@@ -48,6 +49,41 @@ impl std::fmt::Display for ClashCore {
             ClashCore::ClashRs => write!(f, "clash-rs"),
             ClashCore::Mihomo => write!(f, "mihomo"),
             ClashCore::MihomoAlpha => write!(f, "mihomo-alpha"),
+        }
+    }
+}
+
+impl From<&ClashCore> for nyanpasu_utils::core::CoreType {
+    fn from(core: &ClashCore) -> Self {
+        match core {
+            ClashCore::ClashPremium => nyanpasu_utils::core::CoreType::Clash(
+                nyanpasu_utils::core::ClashCoreType::ClashPremium,
+            ),
+            ClashCore::ClashRs => nyanpasu_utils::core::CoreType::Clash(
+                nyanpasu_utils::core::ClashCoreType::ClashRust,
+            ),
+            ClashCore::Mihomo => {
+                nyanpasu_utils::core::CoreType::Clash(nyanpasu_utils::core::ClashCoreType::Mihomo)
+            }
+            ClashCore::MihomoAlpha => nyanpasu_utils::core::CoreType::Clash(
+                nyanpasu_utils::core::ClashCoreType::MihomoAlpha,
+            ),
+        }
+    }
+}
+
+impl TryFrom<&nyanpasu_utils::core::CoreType> for ClashCore {
+    type Error = anyhow::Error;
+
+    fn try_from(core: &nyanpasu_utils::core::CoreType) -> Result<Self> {
+        match core {
+            nyanpasu_utils::core::CoreType::Clash(clash) => match clash {
+                nyanpasu_utils::core::ClashCoreType::ClashPremium => Ok(ClashCore::ClashPremium),
+                nyanpasu_utils::core::ClashCoreType::ClashRust => Ok(ClashCore::ClashRs),
+                nyanpasu_utils::core::ClashCoreType::Mihomo => Ok(ClashCore::Mihomo),
+                nyanpasu_utils::core::ClashCoreType::MihomoAlpha => Ok(ClashCore::MihomoAlpha),
+            },
+            _ => Err(anyhow::anyhow!("unsupported core type")),
         }
     }
 }

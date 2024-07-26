@@ -211,7 +211,7 @@ impl Updater {
             .clone()
             .unwrap_or_default();
         if current_core == self.core_type {
-            tokio::task::spawn_blocking(move || CoreManager::global().stop_core()).await??;
+            CoreManager::global().stop_core().await?;
             return Ok(());
         }
         #[cfg(target_os = "windows")]

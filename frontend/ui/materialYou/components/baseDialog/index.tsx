@@ -105,7 +105,7 @@ export const BaseDialog = ({
   return (
     <AnimatePresence initial={false}>
       {mounted && (
-        <Portal.Root className="fixed left-0 top-0 h-dvh w-full">
+        <Portal.Root className="fixed left-0 top-0 z-50 h-dvh w-full">
           <motion.div
             className="absolute inset-0 z-50 backdrop-blur-xl"
             style={{

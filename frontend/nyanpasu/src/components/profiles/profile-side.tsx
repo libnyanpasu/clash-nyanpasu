@@ -1,12 +1,12 @@
 import { Allotment } from "allotment";
+import "allotment/dist/style.css";
 import { useState } from "react";
 import { Close } from "@mui/icons-material";
 import { IconButton } from "@mui/material";
 import { Profile } from "@nyanpasu/interface";
+import { SideChain } from "./modules/side-chain";
 import { SideLog } from "./modules/side-log";
 import { ScriptDialog } from "./script-dialog";
-import "allotment/dist/style.css";
-import { SideChain } from "./modules/side-chain";
 
 export interface ProfileSideProps {
   profile?: Profile.Item;

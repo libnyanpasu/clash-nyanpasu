@@ -1,7 +1,7 @@
 import { CSSProperties, FC, ReactNode, useEffect, useRef } from "react";
 import { BaseErrorBoundary } from "./baseErrorBoundary";
-import "./style.scss";
 import Header from "./header";
+import "./style.scss";
 
 interface Props {
   title?: ReactNode;

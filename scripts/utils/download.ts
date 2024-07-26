@@ -3,9 +3,10 @@ import path from "path";
 import zlib from "zlib";
 import AdmZip from "adm-zip";
 import fs from "fs-extra";
-import { HttpsProxyAgent } from "https-proxy-agent";
 import fetch, { type RequestInit } from "node-fetch";
+import * as tar from "tar";
 import { BinInfo } from "types";
+import { getProxyAgent } from "./";
 import { TAURI_APP_DIR, TEMP_DIR } from "./env";
 import { colorize, consola } from "./logger";
 
@@ -15,14 +16,10 @@ import { colorize, consola } from "./logger";
 export const downloadFile = async (url: string, path: string) => {
   const options: Partial<RequestInit> = {};
 
-  const httpProxy =
-    process.env.HTTP_PROXY ||
-    process.env.http_proxy ||
-    process.env.HTTPS_PROXY ||
-    process.env.https_proxy;
+  const httpProxy = getProxyAgent();
 
   if (httpProxy) {
-    options.agent = new HttpsProxyAgent(httpProxy);
+    options.agent = httpProxy;
   }
 
   const response = await fetch(url, {
@@ -41,11 +38,11 @@ export const downloadFile = async (url: string, path: string) => {
 };
 
 export const resolveSidecar = async (
-  binInfo: BinInfo,
+  binInfo: PromiseLike<BinInfo> | BinInfo,
   platform: string,
   option?: { force?: boolean },
 ) => {
-  const { name, targetFile, tmpFile, exeFile, downloadURL } = binInfo;
+  const { name, targetFile, tmpFile, exeFile, downloadURL } = await binInfo;
 
   consola.debug(colorize`resolve {cyan ${name}}...`);
 
@@ -83,6 +80,17 @@ export const resolveSidecar = async (
       await fs.rename(tempExe, sidecarPath);
 
       consola.debug(colorize`{green "${name}"} unzip finished`);
+    } else if (tmpFile.endsWith(".tar.gz")) {
+      // decompress and untar the file
+      await tar.x(
+        {
+          file: tempFile,
+          cwd: tempDir,
+        },
+        [exeFile],
+      );
+      await fs.rename(tempExe, sidecarPath);
+      consola.debug(colorize`{green "${name}"} untar finished`);
     } else if (tmpFile.endsWith(".gz")) {
       // gz
       const readStream = fs.createReadStream(tempFile);

@@ -54,17 +54,11 @@ pub fn get_portable_flag() -> bool {
 /// initialize portable flag
 #[cfg(target_os = "windows")]
 pub fn init_portable_flag() -> Result<()> {
-    use tauri::utils::platform::current_exe;
-
-    let exe = current_exe()?;
-
-    if let Some(dir) = exe.parent() {
-        let dir = PathBuf::from(dir).join(".config/PORTABLE");
-
-        if dir.exists() {
-            PORTABLE_FLAG.get_or_init(|| true);
-            return Ok(());
-        }
+    let dir = app_install_dir()?;
+    let portable_file = dir.join(".config/PORTABLE");
+    if portable_file.exists() {
+        PORTABLE_FLAG.get_or_init(|| true);
+        return Ok(());
     }
     PORTABLE_FLAG.get_or_init(|| false);
     Ok(())
@@ -74,13 +68,8 @@ pub fn app_config_dir() -> Result<PathBuf> {
     let path: Option<PathBuf> = {
         #[cfg(target_os = "windows")]
         {
-            use tauri::utils::platform::current_exe;
             if *PORTABLE_FLAG.get().unwrap_or(&false) {
-                let app_exe = current_exe()?;
-                let app_exe = dunce::canonicalize(app_exe)?;
-                let app_dir = app_exe
-                    .parent()
-                    .ok_or(anyhow::anyhow!("failed to check the old portable app dir"))?;
+                let app_dir = app_install_dir()?;
                 Some(
                     PathBuf::from(app_dir)
                         .join(".config")
@@ -115,13 +104,8 @@ pub fn app_data_dir() -> Result<PathBuf> {
     let path: Option<PathBuf> = {
         #[cfg(target_os = "windows")]
         {
-            use tauri::utils::platform::current_exe;
             if *PORTABLE_FLAG.get().unwrap_or(&false) {
-                let app_exe = current_exe()?;
-                let app_exe = dunce::canonicalize(app_exe)?;
-                let app_dir = app_exe
-                    .parent()
-                    .ok_or(anyhow::anyhow!("failed to check the old portable app dir"))?;
+                let app_dir = app_install_dir()?;
                 Some(PathBuf::from(app_dir).join(".data").join(PREVIOUS_APP_NAME))
             } else {
                 None
@@ -149,19 +133,13 @@ pub fn app_data_dir() -> Result<PathBuf> {
 pub fn old_app_home_dir() -> Result<PathBuf> {
     #[cfg(target_os = "windows")]
     {
-        use tauri::utils::platform::current_exe;
-
         if !PORTABLE_FLAG.get().unwrap_or(&false) {
             Ok(home_dir()
                 .ok_or(anyhow::anyhow!("failed to check old app home dir"))?
                 .join(".config")
                 .join(PREVIOUS_APP_NAME))
         } else {
-            let app_exe = current_exe()?;
-            let app_exe = dunce::canonicalize(app_exe)?;
-            let app_dir = app_exe
-                .parent()
-                .ok_or(anyhow::anyhow!("failed to check the old portable app dir"))?;
+            let app_dir = app_install_dir()?;
             Ok(PathBuf::from(app_dir)
                 .join(".config")
                 .join(PREVIOUS_APP_NAME))
@@ -191,7 +169,6 @@ pub fn app_home_dir() -> Result<PathBuf> {
     #[cfg(target_os = "windows")]
     {
         use crate::utils::winreg::get_app_dir;
-        use tauri::utils::platform::current_exe;
         if !PORTABLE_FLAG.get().unwrap_or(&false) {
             let reg_app_dir = get_app_dir()?;
             if let Some(reg_app_dir) = reg_app_dir {
@@ -202,13 +179,9 @@ pub fn app_home_dir() -> Result<PathBuf> {
                 .join(".config")
                 .join(APP_NAME));
         }
-
-        let app_exe = current_exe()?;
-        let app_exe = dunce::canonicalize(app_exe)?;
-        let app_dir = app_exe
-            .parent()
-            .ok_or(anyhow::anyhow!("failed to get the portable app dir"))?;
-        Ok(PathBuf::from(app_dir).join(".config").join(APP_NAME))
+        Ok(PathBuf::from(app_install_dir()?)
+            .join(".config")
+            .join(APP_NAME))
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -229,6 +202,30 @@ pub fn app_resources_dir() -> Result<PathBuf> {
         return Ok(res_dir);
     };
     Err(anyhow::anyhow!("failed to get the resource dir"))
+}
+
+/// Cache dir, it safe to clean up
+pub fn cache_dir() -> Result<PathBuf> {
+    let mut dir = dirs::cache_dir()
+        .ok_or(anyhow::anyhow!("failed to get the cache dir"))?
+        .join(APP_DIR_PLACEHOLDER.as_ref());
+    if cfg!(windows) {
+        dir.push("cache");
+    }
+    if !dir.exists() {
+        fs::create_dir_all(&dir)?;
+    }
+    Ok(dir)
+}
+
+/// App install dir, sidecars should placed here
+pub fn app_install_dir() -> Result<PathBuf> {
+    let exe = tauri::utils::platform::current_exe()?;
+    let exe = dunce::canonicalize(exe)?;
+    let dir = exe
+        .parent()
+        .ok_or(anyhow::anyhow!("failed to get the app install dir"))?;
+    Ok(PathBuf::from(dir))
 }
 
 /// profiles dir

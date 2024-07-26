@@ -10,10 +10,8 @@ import {
   getClashMetaAlphaInfo,
   getClashMetaInfo,
   getClashRustInfo,
+  getNyanpasuServiceInfo,
 } from "./resource";
-
-const SERVICE_URL =
-  "https://github.com/greenhat616/clash-verge-service/releases/download/latest";
 
 /**
  * download the file to the resources dir
@@ -41,7 +39,7 @@ export class Resolve {
   private infoOption: {
     platform: string;
     arch: string;
-    sidecarHost?: string | undefined;
+    sidecarHost: string;
   };
 
   constructor(
@@ -49,7 +47,7 @@ export class Resolve {
       force?: boolean;
       platform: string;
       arch: string;
-      sidecarHost?: string;
+      sidecarHost: string;
     },
   ) {
     this.infoOption = {
@@ -102,25 +100,8 @@ export class Resolve {
     consola.success(colorize`resolve {green wintun.dll} finished`);
   }
 
-  public service() {
-    return resolveResource({
-      file: "clash-verge-service.exe",
-      downloadURL: `${SERVICE_URL}/clash-verge-service.exe`,
-    });
-  }
-
-  public serviceInstall() {
-    return resolveResource({
-      file: "install-service.exe",
-      downloadURL: `${SERVICE_URL}/install-service.exe`,
-    });
-  }
-
-  public serviceUninstall() {
-    return resolveResource({
-      file: "uninstall-service.exe",
-      downloadURL: `${SERVICE_URL}/uninstall-service.exe`,
-    });
+  public async service() {
+    return await this.sidecar(getNyanpasuServiceInfo(this.infoOption));
   }
 
   public mmdb() {
@@ -151,7 +132,7 @@ export class Resolve {
     });
   }
 
-  private sidecar(binInfo: BinInfo) {
+  private sidecar(binInfo: BinInfo | PromiseLike<BinInfo>) {
     return resolveSidecar(binInfo, this.options.platform, {
       force: this.options.force,
     });

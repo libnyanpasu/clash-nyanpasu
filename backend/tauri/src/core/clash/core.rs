@@ -13,6 +13,16 @@ use sysinfo::{Pid, System};
 use tauri::api::process::{Command, CommandChild, CommandEvent};
 use tokio::time::sleep;
 
+pub enum RunType {
+    /// Run as child process directly
+    Normal,
+    /// Run by Nyanpasu Service via a ipc call
+    Service,
+    // TODO: Not implemented yet
+    /// Run as elevated process, if profile advice to run as elevated
+    Elevated,
+}
+
 #[cfg(target_os = "windows")]
 use crate::core::win_service;
 

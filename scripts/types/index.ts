@@ -1,3 +1,5 @@
+import { ArchMapping } from "utils/manifest";
+
 export interface ClashManifest {
   URL_PREFIX: string;
   LATEST_DATE?: string;

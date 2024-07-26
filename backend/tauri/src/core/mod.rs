@@ -12,3 +12,4 @@ pub mod win_service;
 pub mod win_uwp;
 pub use self::clash::core::*;
 pub mod migration;
+pub mod service;

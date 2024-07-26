@@ -18,6 +18,8 @@
     "node-fetch": "3.3.2",
     "octokit": "4.0.2",
     "picocolors": "1.0.1",
-    "telegram": "2.22.2"
+    "tar": "^7.4.3",
+    "telegram": "2.22.2",
+    "undici": "^6.19.4"
   }
 }

@@ -1,6 +1,6 @@
 import consola from "consola";
 import { SupportedArch } from "../types/index";
-import { octokit } from "./octokit";
+import { applyProxy, octokit } from "./octokit";
 
 export type ArchMapping = { [key in SupportedArch]: string };
 
@@ -12,10 +12,12 @@ export type LatestVersionResolver = Promise<{
 }>;
 
 export const resolveMihomo = async (): LatestVersionResolver => {
-  const latestRelease = await octokit.rest.repos.getLatestRelease({
-    owner: "MetaCubeX",
-    repo: "mihomo",
-  });
+  const latestRelease = await octokit.rest.repos.getLatestRelease(
+    applyProxy({
+      owner: "MetaCubeX",
+      repo: "mihomo",
+    }),
+  );
 
   consola.debug(`mihomo latest release: ${latestRelease.data.tag_name}`);
 
@@ -63,10 +65,12 @@ export const resolveMihomoAlpha = async (): LatestVersionResolver => {
 };
 
 export const resolveClashRs = async (): LatestVersionResolver => {
-  const latestRelease = await octokit.rest.repos.getLatestRelease({
-    owner: "Watfaq",
-    repo: "clash-rs",
-  });
+  const latestRelease = await octokit.rest.repos.getLatestRelease(
+    applyProxy({
+      owner: "Watfaq",
+      repo: "clash-rs",
+    }),
+  );
 
   consola.debug(`clash-rs latest release: ${latestRelease.data.tag_name}`);
 
@@ -88,10 +92,12 @@ export const resolveClashRs = async (): LatestVersionResolver => {
 };
 
 export const resolveClashPremium = async (): LatestVersionResolver => {
-  const latestRelease = await octokit.rest.repos.getLatestRelease({
-    owner: "zhongfly",
-    repo: "Clash-premium-backup",
-  });
+  const latestRelease = await octokit.rest.repos.getLatestRelease(
+    applyProxy({
+      owner: "zhongfly",
+      repo: "Clash-premium-backup",
+    }),
+  );
 
   consola.debug(`clash-premium latest release: ${latestRelease.data.tag_name}`);
 

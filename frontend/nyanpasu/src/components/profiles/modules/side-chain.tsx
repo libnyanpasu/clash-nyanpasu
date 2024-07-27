@@ -76,8 +76,8 @@ export const SideChain = ({ global, profile, onChainEdit }: SideChainProps) => {
 
   const handleChainClick = useLockFn(async (uid: string) => {
     const chains = global
-      ? getProfiles.data?.chain ?? []
-      : profile?.chains ?? [];
+      ? (getProfiles.data?.chain ?? [])
+      : (profile?.chains ?? []);
 
     const updatedChains = chains.includes(uid)
       ? chains.filter((chain) => chain !== uid)

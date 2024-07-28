@@ -1,3 +1,5 @@
+use std::os::windows;
+
 use crate::utils::dirs::{app_config_dir, app_data_dir, app_install_dir};
 use runas::Command as RunasCommand;
 
@@ -157,16 +159,18 @@ pub async fn restart_service() -> anyhow::Result<()> {
 }
 
 pub async fn status<'a>() -> anyhow::Result<nyanpasu_ipc::types::StatusInfo<'a>> {
-    let child = tokio::process::Command::new(SERVICE_PATH.as_path())
-        .args(["status", "--json"])
-        .output()
-        .await?;
-    if !child.status.success() {
+    let mut cmd = tokio::process::Command::new(SERVICE_PATH.as_path());
+    cmd.args(["status", "--json"]);
+    #[cfg(windows)]
+    cmd.creation_flags(0x8000000); // CREATE_NO_WINDOW
+    let output = cmd.output().await?;
+    if !output.status.success() {
         anyhow::bail!(
             "failed to get service status, exit code: {}",
-            child.status.code().unwrap()
+            output.status.code().unwrap_or(-1)
         );
     }
-    let mut status = String::from_utf8(child.stdout)?;
+    let mut status = String::from_utf8(output.stdout)?;
+    tracing::debug!("service status: {}", status);
     Ok(unsafe { simd_json::serde::from_str(&mut status)? })
 }

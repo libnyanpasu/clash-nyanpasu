@@ -64,11 +64,28 @@ export const useNyanpasu = (options?: {
 
   const getServiceStatus = useSWR("getServiceStatus", service.statusService);
 
-  const setServiceStatus = async (type: "install" | "uninstall") => {
-    if (type === "install") {
-      await service.installService();
-    } else {
-      await service.uninstallService();
+  const setServiceStatus = async (
+    type: "install" | "uninstall" | "start" | "stop",
+  ) => {
+    switch (type) {
+      case "install":
+        await service.installService();
+        break;
+
+      case "uninstall":
+        await service.uninstallService();
+        break;
+
+      case "start":
+        await service.startService();
+        break;
+
+      case "stop":
+        await service.stopService();
+        break;
+
+      default:
+        break;
     }
 
     return getServiceStatus.mutate();

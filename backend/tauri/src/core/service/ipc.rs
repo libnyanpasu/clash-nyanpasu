@@ -2,8 +2,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use atomic_enum::atomic_enum;
 
-use delay_timer::prelude::future_lite::block_on;
 use nyanpasu_ipc::types::ServiceStatus;
+use nyanpasu_utils::runtime::block_on;
 use serde::Serialize;
 use tracing_attributes::instrument;
 
@@ -40,6 +40,7 @@ pub(super) fn spawn_health_check() {
         block_on(async {
             loop {
                 if KILL_FLAG.load(Ordering::Acquire) {
+                    set_ipc_state(IpcState::Disconnected);
                     HEALTH_CHECK_RUNNING.store(false, Ordering::Release);
                     break;
                 }

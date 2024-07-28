@@ -14,6 +14,7 @@ use std::{
     sync::Arc,
 };
 use tauri::utils::platform::current_exe;
+use tracing_attributes::instrument;
 
 mod logging;
 pub use logging::refresh_logger;
@@ -168,7 +169,7 @@ pub fn init_config() -> Result<()> {
 /// initialize app resources
 /// after tauri setup
 pub fn init_resources() -> Result<()> {
-    let app_dir = dirs::app_home_dir()?;
+    let app_dir = dirs::app_data_dir()?;
     let res_dir = dirs::app_resources_dir()?;
 
     if !app_dir.exists() {
@@ -226,9 +227,10 @@ pub fn init_resources() -> Result<()> {
 
 /// initialize service resources
 /// after tauri setup
+#[instrument]
 pub fn init_service() -> Result<()> {
     use nyanpasu_utils::runtime::block_on;
-
+    tracing::debug!("init services");
     block_on(async move {
         let enable_service = {
             *Config::verge()
@@ -240,10 +242,16 @@ pub fn init_service() -> Result<()> {
         if enable_service {
             match crate::core::service::control::status().await {
                 Ok(status) => {
+                    tracing::info!(
+                        "service mode is enabled and service is running, do a update check"
+                    );
                     if let Some(info) = status.server {
                         let server_ver = semver::Version::parse(info.version.as_ref()).unwrap();
                         let app_ver = semver::Version::parse(status.version.as_ref()).unwrap();
                         if app_ver > server_ver {
+                            tracing::info!(
+                                "client service ver is newer than exist one, do service update"
+                            );
                             if let Err(e) = crate::core::service::control::update_service().await {
                                 log::error!(target: "app", "failed to update service: {:?}", e);
                             }

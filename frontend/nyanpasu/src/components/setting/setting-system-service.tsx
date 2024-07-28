@@ -1,13 +1,10 @@
+import { useMemoizedFn } from "ahooks";
+import { ChangeEvent, useTransition } from "react";
 import { useTranslation } from "react-i18next";
 import { useMessage } from "@/hooks/use-notification";
-import {
-  Button,
-  List,
-  ListItem,
-  ListItemText,
-  Typography,
-} from "@mui/material";
-import { useNyanpasu } from "@nyanpasu/interface";
+import { LoadingButton } from "@mui/lab";
+import { List, ListItem, ListItemText, Typography } from "@mui/material";
+import { restartSidecar, useNyanpasu } from "@nyanpasu/interface";
 import { BaseCard, SwitchItem } from "@nyanpasu/ui";
 import { nyanpasu } from "./modules/create-props";
 
@@ -18,51 +15,99 @@ export const SettingSystemService = () => {
 
   const { getServiceStatus, setServiceStatus } = useNyanpasu();
 
-  const getButtonString = () => {
+  const getInstallButtonString = () => {
     switch (getServiceStatus.data) {
-      case "unknown":
-      case "installed":
-      case "active": {
+      case "running":
+      case "stopped": {
         return "Uninstall";
       }
 
-      case "uninstall": {
+      case "not_installed": {
         return "Install";
       }
     }
   };
-
-  const checkDisbale =
-    getServiceStatus.data === "unknown" ||
-    getServiceStatus.data === "uninstall";
-
-  const handleClick = async () => {
-    try {
-      switch (getServiceStatus.data) {
-        case "unknown":
-        case "installed":
-        case "active":
-          setServiceStatus("uninstall");
-          break;
-
-        case "uninstall":
-          setServiceStatus("install");
-          break;
-
-        default:
-          break;
+  const getControlButtonString = () => {
+    switch (getServiceStatus.data) {
+      case "running": {
+        return "Stop";
       }
-    } catch (e) {
-      const errorMessage =
-        getServiceStatus.data === "uninstall"
-          ? "Install failed"
-          : "Uninstall failed";
 
-      useMessage(errorMessage, {
-        type: "error",
-        title: t("Error"),
-      });
+      case "stopped": {
+        return "Start";
+      }
     }
+  };
+
+  const isDisabled = getServiceStatus.data === "not_installed";
+
+  const [installOrUninstallPending, startInstallOrUninstall] = useTransition();
+  const handleInstallClick = useMemoizedFn(() => {
+    startInstallOrUninstall(async () => {
+      try {
+        switch (getServiceStatus.data) {
+          case "running":
+          case "stopped":
+            await setServiceStatus("uninstall");
+            break;
+
+          case "not_installed":
+            await setServiceStatus("install");
+            break;
+
+          default:
+            break;
+        }
+        await restartSidecar();
+      } catch (e) {
+        const errorMessage =
+          getServiceStatus.data === "not_installed"
+            ? "Install failed"
+            : "Uninstall failed";
+
+        useMessage(errorMessage, {
+          type: "error",
+          title: t("Error"),
+        });
+      }
+    });
+  });
+
+  const [serviceControlPending, startServiceControl] = useTransition();
+  const handleControlClick = useMemoizedFn(() => {
+    startServiceControl(async () => {
+      try {
+        switch (getServiceStatus.data) {
+          case "running":
+            await setServiceStatus("stop");
+            break;
+
+          case "stopped":
+            await setServiceStatus("start");
+            break;
+
+          default:
+            break;
+        }
+        await restartSidecar();
+      } catch (e) {
+        const errorMessage =
+          getServiceStatus.data === "running" ? "Stop failed" : "Start failed";
+
+        useMessage(errorMessage, {
+          type: "error",
+          title: t("Error"),
+        });
+      }
+    });
+  });
+  const serviceToggleProps = createBooleanProps("enable_service_mode");
+  const onChange = async (
+    event: ChangeEvent<HTMLInputElement>,
+    checked: boolean,
+  ) => {
+    await serviceToggleProps.onChange?.(event, checked);
+    await restartSidecar();
   };
 
   return (
@@ -70,11 +115,12 @@ export const SettingSystemService = () => {
       <List disablePadding>
         <SwitchItem
           label={t("Service Mode")}
-          disabled={checkDisbale}
-          {...createBooleanProps("enable_service_mode")}
+          disabled={isDisabled}
+          {...serviceToggleProps}
+          onChange={onChange}
         />
 
-        {checkDisbale && (
+        {isDisabled && (
           <ListItem sx={{ pl: 0, pr: 0 }}>
             <Typography>
               Information: Please make sure that the Clash Nyanpasu Service is
@@ -85,10 +131,27 @@ export const SettingSystemService = () => {
 
         <ListItem sx={{ pl: 0, pr: 0 }}>
           <ListItemText primary={`Current State: ${getServiceStatus.data}`} />
+          <div className="flex gap-2">
+            {!isDisabled && (
+              <LoadingButton
+                variant="contained"
+                onClick={handleControlClick}
+                loading={serviceControlPending}
+                disabled={installOrUninstallPending || serviceControlPending}
+              >
+                {getControlButtonString()}
+              </LoadingButton>
+            )}
 
-          <Button variant="contained" onClick={handleClick}>
-            {getButtonString()}
-          </Button>
+            <LoadingButton
+              variant="contained"
+              onClick={handleInstallClick}
+              loading={installOrUninstallPending}
+              disabled={installOrUninstallPending || serviceControlPending}
+            >
+              {getInstallButtonString()}
+            </LoadingButton>
+          </div>
         </ListItem>
       </List>
     </BaseCard>

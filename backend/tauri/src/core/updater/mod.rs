@@ -3,7 +3,10 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
-use crate::{config::nyanpasu::ClashCore, utils::candy::ReqwestSpeedTestExt};
+use crate::{
+    config::nyanpasu::ClashCore,
+    utils::candy::{parse_gh_url, ReqwestSpeedTestExt},
+};
 use anyhow::{anyhow, Result};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
@@ -138,10 +141,10 @@ impl UpdaterManager {
     }
 
     async fn get_latest_version_manifest(&self, mirror: &str) -> Result<ManifestVersion> {
-        let url = format!(
-            "{}/LibNyanpasu/clash-nyanpasu/raw/main/manifest/version.json",
-            mirror
-        );
+        let url = parse_gh_url(
+            mirror,
+            "/LibNyanpasu/clash-nyanpasu/raw/main/manifest/version.json",
+        )?;
         log::debug!("{}", url);
         let res = self.client.get(url).send().await?;
         let status_code = res.status();
@@ -201,7 +204,7 @@ impl UpdaterManager {
         let mirror = self.get_mirror().unwrap();
         let url = crate::utils::candy::parse_gh_url(
             &mirror,
-            "MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt",
+            "/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt",
         )?;
         let res = self.client.get(url).send().await?;
         let status_code = res.status();

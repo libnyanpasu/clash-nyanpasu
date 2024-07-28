@@ -469,7 +469,7 @@ pub mod service {
     use crate::core::service;
 
     #[tauri::command]
-    pub async fn status<'a>() -> CmdResult<nyanpasu_ipc::types::StatusInfo<'a>> {
+    pub async fn status_service<'a>() -> CmdResult<nyanpasu_ipc::types::StatusInfo<'a>> {
         wrap_err!(service::control::status().await)
     }
 

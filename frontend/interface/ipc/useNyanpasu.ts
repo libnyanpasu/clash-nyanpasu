@@ -62,7 +62,7 @@ export const useNyanpasu = (options?: {
 
   const getSystemProxy = useSWR("getSystemProxy", service.getSystemProxy);
 
-  const getServiceStatus = useSWR("getServiceStatus", service.checkService);
+  const getServiceStatus = useSWR("getServiceStatus", service.statusService);
 
   const setServiceStatus = async (type: "install" | "uninstall") => {
     if (type === "install") {

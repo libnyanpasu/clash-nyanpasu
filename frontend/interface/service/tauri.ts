@@ -120,19 +120,15 @@ export const getSystemProxy = async () => {
   return await invoke<SystemProxy>("get_sys_proxy");
 };
 
-export const checkService = async () => {
+export const statusService = async () => {
   try {
-    const result = await invoke<{ code: number }>("check_service");
-
-    if (result?.code === 0) {
-      return "active";
-    } else if (result?.code === 400) {
-      return "installed";
-    } else {
-      return "unknown";
-    }
+    const result = await invoke<{
+      status: "running" | "stopped" | "not_installed";
+    }>("status_service");
+    return result.status;
   } catch (e) {
-    return "uninstall";
+    console.error(e);
+    return "not_installed";
   }
 };
 
@@ -142,6 +138,18 @@ export const installService = async () => {
 
 export const uninstallService = async () => {
   return await invoke<void>("uninstall_service");
+};
+
+export const startService = async () => {
+  return await invoke<void>("start_service");
+};
+
+export const stopService = async () => {
+  return await invoke<void>("stop_service");
+};
+
+export const restartService = async () => {
+  return await invoke<void>("restart_service");
 };
 
 export const openAppConfigDir = async () => {

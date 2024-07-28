@@ -464,24 +464,38 @@ pub mod uwp {
     }
 }
 
-#[cfg(windows)]
 pub mod service {
     use super::{wrap_err, CmdResult};
-    use crate::core::win_service;
+    use crate::core::service;
 
     #[tauri::command]
-    pub async fn check_service() -> CmdResult<win_service::JsonResponse> {
-        wrap_err!(win_service::check_service().await)
+    pub async fn status<'a>() -> CmdResult<nyanpasu_ipc::types::StatusInfo<'a>> {
+        wrap_err!(service::control::status().await)
     }
 
     #[tauri::command]
     pub async fn install_service() -> CmdResult {
-        wrap_err!(win_service::install_service().await)
+        wrap_err!(service::control::install_service().await)
     }
 
     #[tauri::command]
     pub async fn uninstall_service() -> CmdResult {
-        wrap_err!(win_service::uninstall_service().await)
+        wrap_err!(service::control::uninstall_service().await)
+    }
+
+    #[tauri::command]
+    pub async fn start_service() -> CmdResult {
+        wrap_err!(service::control::start_service().await)
+    }
+
+    #[tauri::command]
+    pub async fn stop_service() -> CmdResult {
+        wrap_err!(service::control::stop_service().await)
+    }
+
+    #[tauri::command]
+    pub async fn restart_service() -> CmdResult {
+        wrap_err!(service::control::restart_service().await)
     }
 }
 

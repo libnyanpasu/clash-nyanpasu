@@ -76,7 +76,6 @@ pub fn resolve_setup(app: &mut App) {
     handle::Handle::global().init(app.app_handle());
 
     log_err!(init::init_resources());
-    #[cfg(target_os = "windows")]
     log_err!(init::init_service());
 
     // 处理随机端口

@@ -8,7 +8,6 @@ pub mod sysopt;
 pub mod tasks;
 pub mod tray;
 pub mod updater;
-pub mod win_service;
 pub mod win_uwp;
 pub use self::clash::core::*;
 pub mod migration;

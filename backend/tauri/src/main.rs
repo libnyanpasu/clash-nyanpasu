@@ -189,9 +189,12 @@ fn main() -> std::io::Result<()> {
             ipc::get_custom_app_dir,
             ipc::set_custom_app_dir,
             // service mode
-            ipc::service::check_service,
+            ipc::service::status,
             ipc::service::install_service,
             ipc::service::uninstall_service,
+            ipc::service::start_service,
+            ipc::service::stop_service,
+            ipc::service::restart_service,
             ipc::is_portable,
             ipc::get_proxies,
             ipc::select_proxy,

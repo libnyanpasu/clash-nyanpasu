@@ -6,7 +6,10 @@ use crate::{
     utils::dirs,
 };
 use anyhow::{bail, Result};
-use nyanpasu_ipc::{api::status::CoreState, utils::get_current_ts};
+use nyanpasu_ipc::{
+    api::{core::start::CoreStartReq, status::CoreState},
+    utils::get_current_ts,
+};
 use nyanpasu_utils::{
     core::{
         instance::{CoreInstance, CoreInstanceBuilder},
@@ -40,13 +43,18 @@ pub enum RunType {
 
 impl Default for RunType {
     fn default() -> Self {
-        let enable_service = Config::verge()
-            .latest()
-            .enable_service_mode
-            .unwrap_or(false);
-        if enable_service {
+        let enable_service = {
+            *Config::verge()
+                .latest()
+                .enable_service_mode
+                .as_ref()
+                .unwrap_or(&false)
+        };
+        if enable_service && crate::core::service::ipc::get_ipc_state().is_connected() {
+            tracing::info!("run core as service");
             RunType::Service
         } else {
+            tracing::info!("run core as child process");
             RunType::Normal
         }
     }
@@ -59,7 +67,10 @@ enum Instance {
         stated_changed_at: Arc<AtomicI64>,
         kill_flag: Arc<AtomicBool>,
     },
-    Service,
+    Service {
+        config_path: PathBuf,
+        core_type: nyanpasu_utils::core::CoreType,
+    },
 }
 
 impl Instance {
@@ -93,7 +104,10 @@ impl Instance {
                     stated_changed_at: Arc::new(AtomicI64::new(get_current_ts())),
                 })
             }
-            RunType::Service => Ok(Instance::Service),
+            RunType::Service => Ok(Instance::Service {
+                config_path,
+                core_type,
+            }),
             RunType::Elevated => {
                 todo!()
             }
@@ -111,13 +125,16 @@ impl Instance {
                     let child = child.lock();
                     child.clone()
                 };
-                let is_premium = {
+                let (is_premium, core_type) = {
                     let child = child.lock();
-                    matches!(
-                        child.core_type,
-                        nyanpasu_utils::core::CoreType::Clash(
-                            nyanpasu_utils::core::ClashCoreType::ClashPremium
-                        )
+                    (
+                        matches!(
+                            child.core_type,
+                            nyanpasu_utils::core::CoreType::Clash(
+                                nyanpasu_utils::core::ClashCoreType::ClashPremium
+                            )
+                        ),
+                        child.core_type.clone(),
                     )
                 };
                 let (tx, mut rx) = tokio::sync::mpsc::channel::<anyhow::Result<()>>(1); // use mpsc channel just to avoid type moved error, though it never fails
@@ -127,7 +144,7 @@ impl Instance {
                 tokio::spawn(async move {
                     match instance.run().await {
                         Ok((_, mut rx)) => {
-                            kill_flag.store(false, Ordering::Relaxed); // reset kill flag
+                            kill_flag.store(false, Ordering::Release); // reset kill flag
                             let mut err_buf: Vec<String> = Vec::with_capacity(6);
                             loop {
                                 if let Some(event) = rx.recv().await {
@@ -135,19 +152,19 @@ impl Instance {
                                         CommandEvent::Stdout(line) => {
                                             if is_premium {
                                                 let log = api::parse_log(line.clone());
-                                                log::info!(target: "app", "[clash]: {}", log);
+                                                log::info!(target: "app", "[{}]: {}", core_type, log);
                                             } else {
-                                                log::info!(target: "app", "[clash]: {}", line);
+                                                log::info!(target: "app", "[{}]: {}", core_type, line);
                                             }
                                             Logger::global().set_log(line);
                                         }
                                         CommandEvent::Stderr(line) => {
-                                            log::error!(target: "app", "[clash]: {}", line);
+                                            log::error!(target: "app", "[{}]: {}", core_type, line);
                                             err_buf.push(line.clone());
                                             Logger::global().set_log(line);
                                         }
                                         CommandEvent::Error(e) => {
-                                            log::error!(target: "app", "[clash]: {}", e);
+                                            log::error!(target: "app", "[{}]: {}", core_type, e);
                                             let err = anyhow::anyhow!(format!(
                                                 "{}\n{}",
                                                 e,
@@ -177,7 +194,7 @@ impl Instance {
                                                 ));
                                                 tracing::error!("{}\n{}", err, err_buf.join("\n"));
                                                 if tx.send(Err(err)).await.is_err()
-                                                    && !kill_flag.load(Ordering::Relaxed)
+                                                    && !kill_flag.load(Ordering::Acquire)
                                                 {
                                                     std::thread::spawn(move || {
                                                         block_on(async {
@@ -213,14 +230,24 @@ impl Instance {
                 rx.recv().await.unwrap()?;
                 Ok(())
             }
-            Instance::Service => {
-                todo!()
+            Instance::Service {
+                config_path,
+                core_type,
+            } => {
+                let payload = CoreStartReq {
+                    config_file: Cow::Borrowed(config_path),
+                    core_type: Cow::Borrowed(core_type),
+                };
+                nyanpasu_ipc::client::shortcuts::Client::service_default()
+                    .start_core(&payload)
+                    .await?;
+                Ok(())
             }
         }
     }
 
     pub async fn stop(&self) -> Result<()> {
-        let state = self.state();
+        let state = self.state().await;
         match self {
             Instance::Child {
                 child,
@@ -230,7 +257,7 @@ impl Instance {
                 if matches!(state.as_ref(), CoreState::Stopped(_)) {
                     anyhow::bail!("core is already stopped");
                 }
-                kill_flag.store(true, Ordering::Relaxed);
+                kill_flag.store(true, Ordering::Release);
                 let child = {
                     let child = child.lock();
                     child.clone()
@@ -239,35 +266,47 @@ impl Instance {
                 stated_changed_at.store(get_current_ts(), Ordering::Relaxed);
                 Ok(())
             }
-            Instance::Service => {
-                todo!()
+            Instance::Service { .. } => {
+                Ok(nyanpasu_ipc::client::shortcuts::Client::service_default()
+                    .stop_core()
+                    .await?)
             }
         }
     }
 
     pub async fn restart(&self) -> Result<()> {
-        let state = self.state();
+        let state = self.state().await;
         if matches!(state.as_ref(), CoreState::Running) {
             self.stop().await?;
         }
         self.start().await
     }
 
-    pub fn state<'a>(&self) -> Cow<'a, CoreState> {
+    pub async fn state<'a>(&self) -> Cow<'a, CoreState> {
         match self {
             Instance::Child { child, .. } => {
                 let this = child.lock();
-                Cow::Owned(match this.state() {
+                Cow::Borrowed(match this.state() {
                     nyanpasu_utils::core::instance::CoreInstanceState::Running => {
-                        CoreState::Running
+                        &CoreState::Running
                     }
                     nyanpasu_utils::core::instance::CoreInstanceState::Stopped => {
-                        CoreState::Stopped(None)
+                        &CoreState::Stopped(None)
                     }
                 })
             }
-            Instance::Service => {
-                todo!()
+            Instance::Service { .. } => {
+                let status = nyanpasu_ipc::client::shortcuts::Client::service_default()
+                    .status()
+                    .await
+                    .map(|info| match info.core_infos.state {
+                        nyanpasu_ipc::api::status::CoreState::Running => CoreState::Running,
+                        nyanpasu_ipc::api::status::CoreState::Stopped(_) => {
+                            CoreState::Stopped(None)
+                        }
+                    })
+                    .unwrap_or(CoreState::Stopped(None));
+                Cow::Owned(status)
             }
         }
     }
@@ -331,7 +370,7 @@ impl CoreManager {
                 instance.as_ref().cloned()
             };
             if let Some(instance) = instance.as_ref() {
-                if matches!(instance.state().as_ref(), CoreState::Running) {
+                if matches!(instance.state().await.as_ref(), CoreState::Running) {
                     log::debug!(target: "app", "core is already running, stop it first...");
                     instance.stop().await?;
                 }
@@ -343,7 +382,7 @@ impl CoreManager {
         Config::clash()
             .latest()
             .prepare_external_controller_port()?;
-        let instance = Arc::new(Instance::try_new(RunType::Normal)?);
+        let instance = Arc::new(Instance::try_new(RunType::default())?);
 
         #[cfg(target_os = "macos")]
         {
@@ -406,7 +445,7 @@ impl CoreManager {
                 this.take()
             };
             if let Some(instance) = instance {
-                if matches!(instance.state().as_ref(), CoreState::Running) {
+                if matches!(instance.state().await.as_ref(), CoreState::Running) {
                     log::debug!(target: "app", "core is running, stop it first...");
                     instance.stop().await?;
                 }

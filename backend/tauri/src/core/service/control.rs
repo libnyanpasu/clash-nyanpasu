@@ -1,5 +1,3 @@
-use std::os::windows;
-
 use crate::utils::dirs::{app_config_dir, app_data_dir, app_install_dir};
 use runas::Command as RunasCommand;
 

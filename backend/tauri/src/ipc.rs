@@ -500,24 +500,6 @@ pub mod service {
 }
 
 #[cfg(not(windows))]
-pub mod service {
-    use super::*;
-
-    #[tauri::command]
-    pub async fn check_service() -> CmdResult {
-        Ok(())
-    }
-    #[tauri::command]
-    pub async fn install_service() -> CmdResult {
-        Ok(())
-    }
-    #[tauri::command]
-    pub async fn uninstall_service() -> CmdResult {
-        Ok(())
-    }
-}
-
-#[cfg(not(windows))]
 pub mod uwp {
     use super::*;
 

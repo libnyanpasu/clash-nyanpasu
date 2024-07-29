@@ -149,8 +149,7 @@ mod test {
 
     #[test]
     fn test_process_honey() {
-        use super::super::runner::Runner;
-        use super::JSRunner;
+        use super::{super::runner::Runner, JSRunner};
         let runner = JSRunner::try_new().unwrap();
         let mapping = serde_yaml::from_str(
             r#"

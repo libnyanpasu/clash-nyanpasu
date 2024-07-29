@@ -39,5 +39,6 @@ jobs:
             *.dmg
             *.msi
             *.sig
+            *.sha256
             *.exe
             *.json

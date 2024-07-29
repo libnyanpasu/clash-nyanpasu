@@ -86,3 +86,20 @@ jobs:
           prerelease: true
           tauriScript: pnpm tauri
           args: -f nightly -c ./backend/tauri/tauri.nightly.conf.json
+
+      - name: Calc the archive signature
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME=${{ inputs.tag }}
+          find ./backend/target/release/bundle \( -name "*.deb" -o -name "*.rpm" \) | while read file; do
+            sha_file="$file.sha256"
+
+            if [[ ! -f "$sha_file" ]]; then
+              sha256sum "$file" > "$sha_file"
+              echo "Created checksum file for: $file"
+            fi
+
+            gh release upload $TAG_NAME "$sha_file" --clobber
+            echo "Uploaded $sha_file to release $TAG_NAME"
+          done

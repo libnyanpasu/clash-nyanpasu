@@ -15,7 +15,41 @@ use anyhow::Result;
 use semver::Version;
 use serde_yaml::Mapping;
 use std::net::TcpListener;
-use tauri::{api::process::Command, App, AppHandle, Manager};
+use tauri::{api::process::Command, async_runtime::block_on, App, AppHandle, Manager};
+
+#[cfg(target_os = "macos")]
+fn set_window_controls_pos(window: cocoa::base::id, x: f64, y: f64) {
+    use cocoa::{
+        appkit::{NSView, NSWindow, NSWindowButton},
+        foundation::NSRect,
+    };
+
+    unsafe {
+        let close = window.standardWindowButton_(NSWindowButton::NSWindowCloseButton);
+        let miniaturize = window.standardWindowButton_(NSWindowButton::NSWindowMiniaturizeButton);
+        let zoom = window.standardWindowButton_(NSWindowButton::NSWindowZoomButton);
+
+        let title_bar_container_view = close.superview().superview();
+
+        let close_rect: NSRect = msg_send![close, frame];
+        let button_height = close_rect.size.height;
+
+        let title_bar_frame_height = button_height + y;
+        let mut title_bar_rect = NSView::frame(title_bar_container_view);
+        title_bar_rect.size.height = title_bar_frame_height;
+        title_bar_rect.origin.y = NSView::frame(window).size.height - title_bar_frame_height;
+        let _: () = msg_send![title_bar_container_view, setFrame: title_bar_rect];
+
+        let window_buttons = vec![close, miniaturize, zoom];
+        let space_between = NSView::frame(miniaturize).origin.x - NSView::frame(close).origin.x;
+
+        for (i, button) in window_buttons.into_iter().enumerate() {
+            let mut rect: NSRect = NSView::frame(button);
+            rect.origin.x = x + (i as f64 * space_between);
+            button.setFrameOrigin(rect.origin);
+        }
+    }
+}
 
 pub fn find_unused_port() -> Result<u16> {
     match TcpListener::bind("127.0.0.1:0") {
@@ -42,7 +76,6 @@ pub fn resolve_setup(app: &mut App) {
     handle::Handle::global().init(app.app_handle());
 
     log_err!(init::init_resources());
-    #[cfg(target_os = "windows")]
     log_err!(init::init_service());
 
     // 处理随机端口
@@ -105,7 +138,7 @@ pub fn resolve_setup(app: &mut App) {
 /// reset system proxy
 pub fn resolve_reset() {
     log_err!(sysopt::Sysopt::global().reset_sysproxy());
-    log_err!(CoreManager::global().stop_core());
+    log_err!(block_on(CoreManager::global().stop_core()));
 }
 
 /// create main window
@@ -120,7 +153,7 @@ pub fn create_window(app_handle: &AppHandle) {
     let mut builder = tauri::window::WindowBuilder::new(
         app_handle,
         "main".to_string(),
-        tauri::WindowUrl::App("/proxies".into()),
+        tauri::WindowUrl::App("/dashboard".into()),
     )
     .title("Clash Nyanpasu")
     .fullscreen(false)
@@ -244,6 +277,18 @@ pub fn create_window(app_handle: &AppHandle) {
 
     #[cfg(target_os = "macos")]
     {
+        fn set_controls_and_log_error(app_handle: &tauri::AppHandle, window_name: &str) {
+            match app_handle.get_window(window_name).unwrap().ns_window() {
+                Ok(raw_window) => {
+                    let window_id: cocoa::base::id = raw_window as _;
+                    set_window_controls_pos(window_id, 33.0, 26.0);
+                }
+                Err(err) => {
+                    log::error!(target: "app", "failed to get ns_window, {err}");
+                }
+            }
+        }
+
         match builder
             .decorations(true)
             .hidden_title(true)
@@ -252,9 +297,16 @@ pub fn create_window(app_handle: &AppHandle) {
         {
             Ok(win) => {
                 #[cfg(debug_assertions)]
-                {
-                    win.open_devtools();
-                }
+                win.open_devtools();
+
+                set_controls_and_log_error(&app_handle, "main");
+
+                let app_handle_clone = app_handle.clone();
+                win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::Resized(_) = event {
+                        set_controls_and_log_error(&app_handle_clone, "main");
+                    }
+                });
             }
             Err(err) => {
                 log::error!(target: "app", "failed to create window, {err}");

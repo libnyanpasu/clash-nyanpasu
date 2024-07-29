@@ -1,3 +1,8 @@
+import { ReactNode } from "react";
+import Marquee from "react-fast-marquee";
+import DeleteRounded from "@mui/icons-material/DeleteRounded";
+import EditRounded from "@mui/icons-material/EditRounded";
+import OpenInNewRounded from "@mui/icons-material/OpenInNewRounded";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
 import IconButton from "@mui/material/IconButton";
@@ -5,11 +10,6 @@ import Paper from "@mui/material/Paper";
 import { alpha, styled } from "@mui/material/styles";
 import Typography from "@mui/material/Typography";
 import { open } from "@tauri-apps/api/shell";
-import OpenInNewRounded from "@mui/icons-material/OpenInNewRounded";
-import DeleteRounded from "@mui/icons-material/DeleteRounded";
-import EditRounded from "@mui/icons-material/EditRounded";
-import Marquee from "react-fast-marquee";
-import { ReactNode } from "react";
 
 /**
  * @example

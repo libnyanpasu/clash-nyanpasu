@@ -1,14 +1,14 @@
 // import { Telegraf } from "telegraf";
-import { version } from "../package.json";
-import { getOctokit } from "@actions/github";
-import { consola } from "./utils/logger";
-import { client } from "./utils/telegram";
-import { downloadFile } from "./utils/download";
-import path from "path";
-import { TEMP_DIR } from "./utils/env";
-import { GIT_SHORT_HASH } from "./utils/shell";
 import { existsSync } from "fs";
+import path from "path";
 import { mkdirp } from "fs-extra";
+import { getOctokit } from "@actions/github";
+import { version } from "../package.json";
+import { downloadFile } from "./utils/download";
+import { TEMP_DIR } from "./utils/env";
+import { consola } from "./utils/logger";
+import { GIT_SHORT_HASH } from "./utils/shell";
+import { client } from "./utils/telegram";
 
 const nightlyBuild = process.argv.includes("--nightly");
 
@@ -39,7 +39,7 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const resourceFormats = [
   "x64-setup.exe",
   "x64_portable.zip",
-  "amd64.AppImage",
+  "x86_64.rpm",
   "amd64.deb",
   "x64.dmg",
   "aarch64.dmg",

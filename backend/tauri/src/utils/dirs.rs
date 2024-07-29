@@ -1,6 +1,8 @@
 use crate::core::handle;
 use anyhow::Result;
-use std::path::PathBuf;
+use nyanpasu_utils::dirs::{suggest_config_dir, suggest_data_dir};
+use once_cell::sync::Lazy;
+use std::{borrow::Cow, fs, path::PathBuf};
 use tauri::{
     api::path::{home_dir, resource_dir},
     Env,
@@ -15,10 +17,23 @@ pub const APP_NAME: &str = "clash-nyanpasu";
 #[cfg(feature = "verge-dev")]
 pub const APP_NAME: &str = "clash-nyanpasu-dev";
 
-static CLASH_CONFIG: &str = "config.yaml";
-static VERGE_CONFIG: &str = "verge.yaml";
-static PROFILE_YAML: &str = "profiles.yaml";
-static STORAGE_DB: &str = "storage.db";
+/// App Dir placeholder
+/// It is used to create the config and data dir in the filesystem
+/// For windows, the style should be similar to `C:/Users/nyanapasu/AppData/Roaming/Clash Nyanpasu`
+/// For other platforms, it should be similar to `/home/nyanpasu/.config/clash-nyanpasu`
+pub static APP_DIR_PLACEHOLDER: Lazy<Cow<'static, str>> = Lazy::new(|| {
+    use convert_case::{Case, Casing};
+    if cfg!(windows) {
+        Cow::Owned(APP_NAME.to_case(Case::Title))
+    } else {
+        Cow::Borrowed(APP_NAME)
+    }
+});
+
+pub const CLASH_CFG_GUARD_OVERRIDES: &str = "clash-guard-overrides.yaml";
+pub const NYANPASU_CONFIG: &str = "nyanpasu-config.yaml";
+pub const PROFILE_YAML: &str = "profiles.yaml";
+pub const STORAGE_DB: &str = "storage.db";
 
 /// portable flag
 #[allow(unused)]
@@ -39,41 +54,89 @@ pub fn get_portable_flag() -> bool {
 /// initialize portable flag
 #[cfg(target_os = "windows")]
 pub fn init_portable_flag() -> Result<()> {
-    use tauri::utils::platform::current_exe;
-
-    let exe = current_exe()?;
-
-    if let Some(dir) = exe.parent() {
-        let dir = PathBuf::from(dir).join(".config/PORTABLE");
-
-        if dir.exists() {
-            PORTABLE_FLAG.get_or_init(|| true);
-            return Ok(());
-        }
+    let dir = app_install_dir()?;
+    let portable_file = dir.join(".config/PORTABLE");
+    if portable_file.exists() {
+        PORTABLE_FLAG.get_or_init(|| true);
+        return Ok(());
     }
     PORTABLE_FLAG.get_or_init(|| false);
     Ok(())
 }
 
+pub fn app_config_dir() -> Result<PathBuf> {
+    let path: Option<PathBuf> = {
+        #[cfg(target_os = "windows")]
+        {
+            if *PORTABLE_FLAG.get().unwrap_or(&false) {
+                let app_dir = app_install_dir()?;
+                Some(app_dir.join(".config").join(PREVIOUS_APP_NAME))
+            } else if let Ok(Some(path)) = super::winreg::get_app_dir() {
+                Some(path)
+            } else {
+                None
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            None
+        }
+    };
+
+    match path {
+        Some(path) => Ok(path),
+        None => suggest_config_dir(&APP_DIR_PLACEHOLDER)
+            .ok_or(anyhow::anyhow!("failed to get the app config dir")),
+    }
+    .and_then(|dir| {
+        if !dir.exists() {
+            fs::create_dir_all(&dir)?;
+        }
+        Ok(dir)
+    })
+}
+
+pub fn app_data_dir() -> Result<PathBuf> {
+    let path: Option<PathBuf> = {
+        #[cfg(target_os = "windows")]
+        {
+            if *PORTABLE_FLAG.get().unwrap_or(&false) {
+                let app_dir = app_install_dir()?;
+                Some(app_dir.join(".data").join(PREVIOUS_APP_NAME))
+            } else {
+                None
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            None
+        }
+    };
+
+    match path {
+        Some(path) => Ok(path),
+        None => suggest_data_dir(&APP_DIR_PLACEHOLDER)
+            .ok_or(anyhow::anyhow!("failed to get the app data dir")),
+    }
+    .and_then(|dir| {
+        if !dir.exists() {
+            fs::create_dir_all(&dir)?;
+        }
+        Ok(dir)
+    })
+}
+
 pub fn old_app_home_dir() -> Result<PathBuf> {
     #[cfg(target_os = "windows")]
     {
-        use tauri::utils::platform::current_exe;
-
         if !PORTABLE_FLAG.get().unwrap_or(&false) {
             Ok(home_dir()
                 .ok_or(anyhow::anyhow!("failed to check old app home dir"))?
                 .join(".config")
                 .join(PREVIOUS_APP_NAME))
         } else {
-            let app_exe = current_exe()?;
-            let app_exe = dunce::canonicalize(app_exe)?;
-            let app_dir = app_exe
-                .parent()
-                .ok_or(anyhow::anyhow!("failed to check the old portable app dir"))?;
-            Ok(PathBuf::from(app_dir)
-                .join(".config")
-                .join(PREVIOUS_APP_NAME))
+            let app_dir = app_install_dir()?;
+            Ok(app_dir.join(".config").join(PREVIOUS_APP_NAME))
         }
     }
 
@@ -85,6 +148,10 @@ pub fn old_app_home_dir() -> Result<PathBuf> {
 }
 
 /// get the verge app home dir
+#[deprecated(
+    since = "1.6.0",
+    note = "should use self::app_config_dir or self::app_data_dir instead"
+)]
 pub fn app_home_dir() -> Result<PathBuf> {
     if cfg!(feature = "verge-dev") {
         return Ok(home_dir()
@@ -96,7 +163,6 @@ pub fn app_home_dir() -> Result<PathBuf> {
     #[cfg(target_os = "windows")]
     {
         use crate::utils::winreg::get_app_dir;
-        use tauri::utils::platform::current_exe;
         if !PORTABLE_FLAG.get().unwrap_or(&false) {
             let reg_app_dir = get_app_dir()?;
             if let Some(reg_app_dir) = reg_app_dir {
@@ -107,13 +173,7 @@ pub fn app_home_dir() -> Result<PathBuf> {
                 .join(".config")
                 .join(APP_NAME));
         }
-
-        let app_exe = current_exe()?;
-        let app_exe = dunce::canonicalize(app_exe)?;
-        let app_dir = app_exe
-            .parent()
-            .ok_or(anyhow::anyhow!("failed to get the portable app dir"))?;
-        Ok(PathBuf::from(app_dir).join(".config").join(APP_NAME))
+        Ok((app_install_dir()?).join(".config").join(APP_NAME))
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -136,47 +196,80 @@ pub fn app_resources_dir() -> Result<PathBuf> {
     Err(anyhow::anyhow!("failed to get the resource dir"))
 }
 
+/// Cache dir, it safe to clean up
+pub fn cache_dir() -> Result<PathBuf> {
+    let mut dir = dirs::cache_dir()
+        .ok_or(anyhow::anyhow!("failed to get the cache dir"))?
+        .join(APP_DIR_PLACEHOLDER.as_ref());
+    if cfg!(windows) {
+        dir.push("cache");
+    }
+    if !dir.exists() {
+        fs::create_dir_all(&dir)?;
+    }
+    Ok(dir)
+}
+
+/// App install dir, sidecars should placed here
+pub fn app_install_dir() -> Result<PathBuf> {
+    let exe = tauri::utils::platform::current_exe()?;
+    let exe = dunce::canonicalize(exe)?;
+    let dir = exe
+        .parent()
+        .ok_or(anyhow::anyhow!("failed to get the app install dir"))?;
+    Ok(PathBuf::from(dir))
+}
+
 /// profiles dir
 pub fn app_profiles_dir() -> Result<PathBuf> {
-    Ok(app_home_dir()?.join("profiles"))
+    Ok(app_config_dir()?.join("profiles"))
 }
 
 /// logs dir
 pub fn app_logs_dir() -> Result<PathBuf> {
-    Ok(app_home_dir()?.join("logs"))
+    Ok(app_data_dir()?.join("logs"))
 }
 
-pub fn clash_path() -> Result<PathBuf> {
-    Ok(app_home_dir()?.join(CLASH_CONFIG))
+pub fn clash_guard_overrides_path() -> Result<PathBuf> {
+    Ok(app_config_dir()?.join(CLASH_CFG_GUARD_OVERRIDES))
 }
 
-pub fn verge_path() -> Result<PathBuf> {
-    Ok(app_home_dir()?.join(VERGE_CONFIG))
+pub fn nyanpasu_config_path() -> Result<PathBuf> {
+    Ok(app_config_dir()?.join(NYANPASU_CONFIG))
 }
 
 pub fn profiles_path() -> Result<PathBuf> {
-    Ok(app_home_dir()?.join(PROFILE_YAML))
+    Ok(app_config_dir()?.join(PROFILE_YAML))
 }
 
 pub fn storage_path() -> Result<PathBuf> {
-    Ok(app_home_dir()?.join(STORAGE_DB))
+    Ok(app_data_dir()?.join(STORAGE_DB))
 }
 
 pub fn clash_pid_path() -> Result<PathBuf> {
-    Ok(app_home_dir()?.join("clash.pid"))
+    Ok(app_data_dir()?.join("clash.pid"))
 }
 
 #[cfg(windows)]
+#[deprecated(
+    since = "1.6.0",
+    note = "should use nyanpasu_utils::dirs::suggest_service_{config|data}_dir instead"
+)]
 pub fn service_dir() -> Result<PathBuf> {
     Ok(app_home_dir()?.join("service"))
 }
 
 #[cfg(windows)]
+#[deprecated(
+    since = "1.6.0",
+    note = "should use nyanpasu_utils::dirs::suggest_service_data_dir instead"
+)]
 pub fn service_path() -> Result<PathBuf> {
     Ok(service_dir()?.join("clash-verge-service.exe"))
 }
 
 #[cfg(windows)]
+#[deprecated(since = "1.6.0", note = "should use nyanpasu_utils::dirs mod instead")]
 pub fn service_log_file() -> Result<PathBuf> {
     use chrono::Local;
 
@@ -212,5 +305,17 @@ pub fn get_single_instance_placeholder() -> String {
             .join(APP_NAME)
             .to_string_lossy()
             .to_string()
+    }
+}
+
+mod test {
+    #[test]
+    fn test_dir_placeholder() {
+        let placeholder = super::APP_DIR_PLACEHOLDER.clone();
+        if cfg!(windows) {
+            assert_eq!(placeholder, "Clash Nyanpasu");
+        } else {
+            assert_eq!(placeholder, "clash-nyanpasu");
+        }
     }
 }

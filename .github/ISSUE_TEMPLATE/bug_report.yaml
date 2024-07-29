@@ -83,41 +83,52 @@ body:
         Additional details and attachments
     validations:
       required: false
+  - type: textarea
+    id: env_infos
+    attributes:
+      label: 环境信息 / Environment information
+      description: |
+        请在此处提供您的环境信息，例如操作系统、Clash Nyanpasu 版本号、Clash 核心及其版本号等
+        Please provide your environment information here, such as operating system, Clash Nyanpasu version number, Clash core and its version number, etc.
+      placeholder: |
+        此处应该由 Nyanpasu 设置页面反馈按钮自动填写的内容，如果是老版本，请手动填写。
+        This should be automatically filled in by the feedback button on the Nyanpasu settings page. If it is an old version, please fill it in manually.
+    validations:
+      required: true
+  # - type: input
+  #   id: version
+  #   attributes:
+  #     label: Clash Nyanpasu 版本号 / Clash Nyanpasu
+  #     description: 您可以在 **设置 - 关于** 或在 **托盘 - 更多** 中找到版本号 / You can find the version number in **Settings - About** or **Tray - More**
+  #     placeholder: 1.5.0
+  #   validations:
+  #     required: true
 
-  - type: input
-    id: version
-    attributes:
-      label: Clash Nyanpasu 版本号 / Clash Nyanpasu
-      description: 您可以在 **设置 - 关于** 或在 **托盘 - 更多** 中找到版本号 / You can find the version number in **Settings - About** or **Tray - More**
-      placeholder: 1.5.0
-    validations:
-      required: true
+  # - type: input
+  #   id: core-version
+  #   attributes:
+  #     label: Clash 核心及其版本号 / Clash core and version
+  #     description: 您可以在 **设置 - Clash 内核** 中找到内核及其版本号 / You can find the core and its version number in **Settings - Clash Core**
+  #     placeholder: v1.18.1 Meta
+  #   validations:
+  #     required: true
+  # - type: input
+  #   id: pre-release
+  #   attributes:
+  #     label: 是否为 Pre-release / Is pre-release version
+  #     description: 是否为 Pre-release 下载的应用，若是则填写对应的commit hash / Is this an app downloaded from Pre-release? If so, please fill in the corresponding commit hash.
+  #     placeholder: 26f05a0
+  #   validations:
+  #     required: true
 
-  - type: input
-    id: core-version
-    attributes:
-      label: Clash 核心及其版本号 / Clash core and version
-      description: 您可以在 **设置 - Clash 内核** 中找到内核及其版本号 / You can find the core and its version number in **Settings - Clash Core**
-      placeholder: v1.18.1 Meta
-    validations:
-      required: true
-  - type: input
-    id: pre-release
-    attributes:
-      label: 是否为 Pre-release / Is pre-release version
-      description: 是否为 Pre-release 下载的应用，若是则填写对应的commit hash / Is this an app downloaded from Pre-release? If so, please fill in the corresponding commit hash.
-      placeholder: 26f05a0
-    validations:
-      required: true
-
-  - type: input
-    id: system
-    attributes:
-      label: 操作系统及版本 / OS version
-      description: 操作系统 + 版本号 / OS + version code
-      placeholder: Windows 11, macOS 14
-    validations:
-      required: true
+  # - type: input
+  #   id: system
+  #   attributes:
+  #     label: 操作系统及版本 / OS version
+  #     description: 操作系统 + 版本号 / OS + version code
+  #     placeholder: Windows 11, macOS 14
+  #   validations:
+  #     required: true
 
   - type: checkboxes
     id: check

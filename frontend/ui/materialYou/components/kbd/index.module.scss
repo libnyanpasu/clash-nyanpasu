@@ -1,0 +1,18 @@
+.kbd {
+  padding-right: 0.4em;
+  padding-left: 0.4em;
+  font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: bold;
+  white-space: nowrap;
+  background-color: #edf2f7;
+  border-color: #e2e8f0;
+  border-style: solid;
+  border-width: 1px;
+  border-bottom-width: 3px;
+  border-radius: 0.375rem;
+
+  &.dark {
+    background-color: rgb(255 255 255 / 6%);
+    border-color: rgb(255 255 255 / 16%);
+  }
+}

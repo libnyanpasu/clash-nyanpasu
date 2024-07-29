@@ -1,9 +1,9 @@
-import { execSync } from "node:child_process";
 import os from "node:os";
-import { colorize, consola } from "./utils/logger";
-import { archCheck } from "./utils/arch-check";
-import { Resolve } from "./utils/resolve";
 import { printNyanpasu } from "./utils";
+import { archCheck } from "./utils/arch-check";
+import { SIDECAR_HOST } from "./utils/consts";
+import { colorize, consola } from "./utils/logger";
+import { Resolve } from "./utils/resolve";
 
 // force download
 const FORCE = process.argv.includes("--force");
@@ -14,12 +14,6 @@ const ARCH = process.argv.includes("--arch")
   : undefined;
 
 // cross platform build support
-const SIDECAR_HOST: string | undefined = process.argv.includes("--sidecar-host")
-  ? process.argv[process.argv.indexOf("--sidecar-host") + 1]
-  : execSync("rustc -vV")
-      .toString()
-      ?.match(/(?<=host: ).+(?=\s*)/g)?.[0];
-
 if (!SIDECAR_HOST) {
   consola.fatal(colorize`{red.bold SIDECAR_HOST} not found`);
 } else {
@@ -35,7 +29,7 @@ archCheck(platform, arch);
 const resolve = new Resolve({
   platform,
   arch,
-  sidecarHost: SIDECAR_HOST,
+  sidecarHost: SIDECAR_HOST!,
   force: FORCE,
 });
 
@@ -50,18 +44,10 @@ const tasks: {
   { name: "mihomo-alpha", func: () => resolve.clashMetaAlpha(), retry: 5 },
   { name: "clash-rs", func: () => resolve.clashRust(), retry: 5 },
   { name: "wintun", func: () => resolve.wintun(), retry: 5, winOnly: true },
-  { name: "service", func: () => resolve.service(), retry: 5, winOnly: true },
   {
-    name: "install",
-    func: () => resolve.serviceInstall(),
+    name: "nyanpasu-service",
+    func: () => resolve.service(),
     retry: 5,
-    winOnly: true,
-  },
-  {
-    name: "uninstall",
-    func: () => resolve.serviceUninstall(),
-    retry: 5,
-    winOnly: true,
   },
   { name: "mmdb", func: () => resolve.mmdb(), retry: 5 },
   { name: "geoip", func: () => resolve.geoip(), retry: 5 },

@@ -1,5 +1,7 @@
+import { useSetState, useThrottleFn } from "ahooks";
+import { useCallback, useEffect, useMemo } from "react";
 import { useTheme } from "@mui/material";
-import { useEffect, useState } from "react";
+import { appWindow } from "@tauri-apps/api/window";
 
 export const useBreakpoint = (
   columnMapping: { [key: string]: number } = {
@@ -12,37 +14,64 @@ export const useBreakpoint = (
 ) => {
   const { breakpoints } = useTheme();
 
-  const [breakpoint, setBreakpoint] = useState({
+  const [breakpoint, setBreakpoint] = useSetState({
     key: "sm",
     column: 1,
   });
 
-  const getBreakpoint = (width: number) => {
-    for (const [key, value] of Object.entries(breakpoints.values)) {
-      if (value >= width) {
-        setBreakpoint({ key, column: columnMapping[key] });
+  const breakpointsValues = useMemo(() => {
+    return Object.entries(breakpoints.values);
+  }, [breakpoints.values]);
+
+  const getBreakpoint = useCallback(
+    async (width: number) => {
+      const isMinimized = await appWindow.isMinimized();
+
+      if (isMinimized) {
         return;
       }
-    }
 
-    setBreakpoint((p) => ({ ...p, column: columnMapping["default"] }));
-  };
+      for (const [key, value] of breakpointsValues) {
+        if (value >= width) {
+          if (key !== breakpoint.key) {
+            setBreakpoint({
+              key,
+              column: columnMapping[key],
+            });
+          }
+          return;
+        }
+      }
+
+      if (breakpoint.key !== "default") {
+        setBreakpoint({
+          column: columnMapping["default"],
+          key: "default",
+        });
+      }
+    },
+    [breakpointsValues, columnMapping, breakpoint.key, setBreakpoint],
+  );
+
+  const { run: triggerBreakpoint } = useThrottleFn(
+    () => {
+      const width = document.body.clientWidth;
+      getBreakpoint(width);
+    },
+    {
+      wait: 100,
+    },
+  );
 
   useEffect(() => {
-    const observer = new ResizeObserver((entries) => {
-      if (!Array.isArray(entries) || !entries.length) return;
-
-      const { width } = entries[0].contentRect;
-
-      getBreakpoint(width);
-    });
+    const observer = new ResizeObserver(triggerBreakpoint);
 
     observer.observe(document.body);
 
     return () => {
       observer.disconnect();
     };
-  }, []);
+  }, [triggerBreakpoint]);
 
   return breakpoint;
 };

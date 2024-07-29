@@ -1,15 +1,15 @@
+import { useAtomValue } from "jotai";
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { BaseEmpty } from "@/components/base";
 import ClearLogButton from "@/components/logs/clear-log-button";
+import { LogFilter } from "@/components/logs/log-filter";
+import { LogLevel } from "@/components/logs/log-level";
+import { LogList } from "@/components/logs/log-list";
 import LogToggle from "@/components/logs/log-toggle";
 import { atomLogData } from "@/store";
 import { LogMessage } from "@nyanpasu/interface";
 import { BasePage } from "@nyanpasu/ui";
-import { useAtomValue } from "jotai";
-import { useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { LogLevel } from "@/components/logs/log-level";
-import { LogList } from "@/components/logs/log-list";
-import { LogFilter } from "@/components/logs/log-filter";
 
 export default function LogPage() {
   const { t } = useTranslation();
@@ -38,6 +38,7 @@ export default function LogPage() {
       full
       title={t("Logs")}
       contentStyle={{ height: "100%" }}
+      sectionStyle={{ height: "100%" }}
       header={
         <div className="flex gap-2">
           <LogToggle />

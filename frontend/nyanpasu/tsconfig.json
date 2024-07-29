@@ -20,6 +20,7 @@
       "@/*": ["src/*"],
       "~/*": ["./*"],
     },
+    "jsxImportSource": "@emotion/react",
   },
   "include": ["./src"],
   "references": [{ "path": "../interface/tsconfig.json" }],

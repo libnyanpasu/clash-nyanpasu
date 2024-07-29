@@ -1,5 +1,6 @@
+import { debounce } from "lodash-es";
+import { useEffect, useState } from "react";
 import { NotificationType, useNotification } from "@/hooks/use-notification";
-import { save_window_size_state } from "@/services/cmds";
 import { classNames } from "@/utils";
 import {
   CloseRounded,
@@ -8,10 +9,9 @@ import {
   HorizontalRuleRounded,
 } from "@mui/icons-material";
 import { alpha, Button, ButtonProps, useTheme } from "@mui/material";
+import { save_window_size_state } from "@nyanpasu/interface";
 import { platform, type Platform } from "@tauri-apps/api/os";
 import { appWindow } from "@tauri-apps/api/window";
-import { debounce } from "lodash-es";
-import { useEffect, useState } from "react";
 
 const CtrlButton = (props: ButtonProps) => {
   const { palette } = useTheme();

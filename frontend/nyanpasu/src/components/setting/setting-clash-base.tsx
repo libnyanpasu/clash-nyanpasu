@@ -1,10 +1,10 @@
-import { Button, List, ListItem, ListItemText } from "@mui/material";
-import { BaseCard, MenuItem, SwitchItem } from "@nyanpasu/ui";
 import { useTranslation } from "react-i18next";
-import { clash } from "./modules";
-import getSystem from "@/utils/get-system";
-import { pullupUWPTool } from "@nyanpasu/interface";
 import { useMessage } from "@/hooks/use-notification";
+import getSystem from "@/utils/get-system";
+import { Button, List, ListItem, ListItemText } from "@mui/material";
+import { pullupUWPTool } from "@nyanpasu/interface";
+import { BaseCard, MenuItem, SwitchItem } from "@nyanpasu/ui";
+import { clash } from "./modules";
 
 const { createBooleanProps, createMenuProps } = clash;
 

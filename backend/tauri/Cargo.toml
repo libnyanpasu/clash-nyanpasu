@@ -1,11 +1,11 @@
 [package]
-name = "clash-verge"
+name = "clash-nyanpasu"
 version = "0.1.0"
 description = "clash verge"
 authors = { workspace = true }
 license = { workspace = true }
 repository = { workspace = true }
-default-run = "clash-verge"
+default-run = "clash-nyanpasu"
 edition = { workspace = true }
 build = "build.rs"
 
@@ -13,8 +13,15 @@ build = "build.rs"
 tauri-build = { version = "1", features = [] }
 serde = "1"
 simd-json = "0.13"
+chrono = "0.4"
+rustc_version = "0.4"
+semver = "1.0"
 
 [dependencies]
+nyanpasu-ipc = { git = "https://github.com/LibNyanpasu/nyanpasu-service.git", features = [
+  "client",
+] }
+nyanpasu-utils = { git = "https://github.com/LibNyanpasu/nyanpasu-utils.git" }
 which = "6"
 anyhow = "1.0"
 dirs = "5.0.1"
@@ -93,12 +100,32 @@ uuid = "1.7.0"
 image = "0.25.0"
 fast_image_resize = "4"
 display-info = "0.5.0" # should be removed after upgrading to tauri v2
-dashmap = "5.5.3"
+dashmap = "6"
 clap = { version = "4.5.4", features = ["derive"] } # add supports for commands
 percent-encoding = "2.3.1"
 fs_extra = "1.3.0"
 redb = "2.0.0"
 regex = "1.10.4"
+futures = "0.3"
+num_cpus = "1"
+url = "2"
+derive_builder = "0.20"
+test-log = { version = "0.2.16", features = ["trace"] }
+md-5 = "0.10.6"
+hex = "0.4"
+rand = "0.8"
+colored = "2.1.0"
+timeago = "0.4"
+ansi-str = "0.8"
+humansize = "2.1.3"
+convert_case = "0.6.0"
+os_pipe = "1.2.0"
+whoami = "1.5.1"
+atomic_enum = "0.3.0"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa = "0.25.0"
+objc = "0.2.7"
 
 [target.'cfg(windows)'.dependencies]
 deelevate = "0.2.0"

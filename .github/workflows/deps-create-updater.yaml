@@ -1,0 +1,54 @@
+name: "[Single] Create Updater"
+
+on:
+  workflow_dispatch:
+    inputs:
+      nightly:
+        description: "Nightly"
+        required: true
+        type: boolean
+        default: false
+
+  workflow_call:
+    inputs:
+      nightly:
+        description: "Nightly"
+        required: true
+        type: boolean
+        default: false
+
+jobs:
+  updater:
+    name: Update Nightly Updater
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-tags: true # Fetch all tags
+
+      - name: Install Node latest
+        uses: actions/setup-node@v4
+        with:
+          node-version: latest
+
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
+        with:
+          run_install: false
+
+      - name: Pnpm install
+        run: pnpm i
+
+      - name: Update Updater
+        if: ${{ inputs.nightly == true }}
+        run: pnpm updater:nightly
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release updater file
+        if: ${{ inputs.nightly == false }}
+        run: pnpm updater
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BODY: ${{ github.event.release.body }}

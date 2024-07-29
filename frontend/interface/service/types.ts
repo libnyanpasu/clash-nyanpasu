@@ -8,7 +8,7 @@ export interface VergeConfig {
   theme_blur?: boolean;
   traffic_graph?: boolean;
   enable_memory_usage?: boolean;
-  page_transition_animation?: string;
+  lighten_animation_effects?: boolean;
   enable_auto_check_update?: boolean;
   enable_tun_mode?: boolean;
   enable_auto_launch?: boolean;
@@ -186,6 +186,34 @@ export interface ProviderItem {
   name: string;
   type: string;
   proxies: Clash.Proxy[];
-  updatedAt: string;
+  updatedAt?: string;
   vehicleType: string;
+  subscriptionInfo?: {
+    Upload?: number;
+    Download?: number;
+    Total?: number;
+    Expire?: number;
+  };
+  testUrl?: string;
+}
+
+export interface Traffic {
+  up: number;
+  down: number;
+}
+
+export interface Memory {
+  inuse: number;
+  oslimit: number;
+}
+
+export interface EnvInfos {
+  os: string;
+  arch: string;
+  core: { [key: string]: string };
+  device: {
+    cpu: Array<string>;
+    memory: string;
+  };
+  build_info: { [key: string]: string };
 }

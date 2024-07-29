@@ -1,12 +1,12 @@
-import { BaseCard, ExpandMore } from "@nyanpasu/ui";
-import { useTranslation } from "react-i18next";
-import { useMemo, useState } from "react";
-import { Box, List, ListItem, Tooltip } from "@mui/material";
-import { ClashCore, useClash, useNyanpasu } from "@nyanpasu/interface";
 import { useLockFn, useReactive } from "ahooks";
+import { motion } from "framer-motion";
+import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useMessage } from "@/hooks/use-notification";
 import LoadingButton from "@mui/lab/LoadingButton";
-import { motion } from "framer-motion";
+import { Box, List, ListItem } from "@mui/material";
+import { ClashCore, useClash, useNyanpasu } from "@nyanpasu/interface";
+import { BaseCard, ExpandMore } from "@nyanpasu/ui";
 import { ClashCoreItem } from "./modules/clash-core";
 
 export const SettingClashCore = () => {
@@ -55,7 +55,9 @@ export const SettingClashCore = () => {
       });
     } catch (e) {
       useMessage(
-        "Switching failed, please check log and modify your profile file.",
+        `Switching failed, you could see the details in the log. \nError: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
         {
           type: "error",
           title: t("Error"),

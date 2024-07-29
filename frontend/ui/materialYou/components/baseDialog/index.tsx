@@ -1,26 +1,20 @@
+import { useLockFn } from "ahooks";
+import useDebounceFn from "ahooks/lib/useDebounceFn";
+import { AnimatePresence, motion } from "framer-motion";
 import {
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Divider,
-} from "@mui/material";
-import LoadingButton from "@mui/lab/LoadingButton";
-import { SxProps } from "@mui/material/styles";
-import {
-  cloneElement,
-  forwardRef,
+  CSSProperties,
   ReactNode,
   useEffect,
+  useLayoutEffect,
   useState,
 } from "react";
-import { TransitionProps } from "@mui/material/transitions";
-import { AnimatePresence, motion } from "framer-motion";
-import React from "react";
-import useDebounceFn from "ahooks/lib/useDebounceFn";
-import { useLockFn } from "ahooks";
 import { useTranslation } from "react-i18next";
+import { useClickPosition } from "@/hooks";
+import { cn } from "@/utils";
+import LoadingButton from "@mui/lab/LoadingButton";
+import { Button, Divider } from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
+import * as Portal from "@radix-ui/react-portal";
 
 export interface BaseDialogProps {
   title: ReactNode;
@@ -28,8 +22,7 @@ export interface BaseDialogProps {
   close?: string;
   ok?: string;
   disabledOk?: boolean;
-  sx?: SxProps;
-  contentSx?: SxProps;
+  contentStyle?: CSSProperties;
   children?: ReactNode;
   loading?: boolean;
   onOk?: () => void | Promise<void>;
@@ -43,8 +36,7 @@ export const BaseDialog = ({
   close,
   onClose,
   children,
-  sx,
-  contentSx,
+  contentStyle,
   disabledOk,
   loading,
   onOk,
@@ -53,7 +45,14 @@ export const BaseDialog = ({
 }: BaseDialogProps) => {
   const { t } = useTranslation();
 
+  const { palette } = useTheme();
+
   const [mounted, setMounted] = useState(false);
+
+  const [offset, setOffset] = useState({
+    x: 0,
+    y: 0,
+  });
 
   const [okLoading, setOkLoading] = useState(false);
 
@@ -61,6 +60,17 @@ export const BaseDialog = ({
     () => setMounted(false),
     { wait: 300 },
   );
+
+  const clickPosition = useClickPosition();
+
+  useLayoutEffect(() => {
+    if (open) {
+      setOffset({
+        x: clickPosition?.x ?? 0,
+        y: clickPosition?.y ?? 0,
+      });
+    }
+  }, [open]);
 
   const handleClose = () => {
     if (onClose) {
@@ -93,102 +103,99 @@ export const BaseDialog = ({
   }, [open]);
 
   return (
-    <Dialog
-      open={open}
-      onClose={handleClose}
-      keepMounted={mounted}
-      TransitionComponent={BaseDialogTransition}
-      sx={sx}
-    >
-      <DialogTitle sx={divider ? { pb: 2 } : null}>{title}</DialogTitle>
+    <AnimatePresence initial={false}>
+      {mounted && (
+        <Portal.Root className="fixed left-0 top-0 z-50 h-dvh w-full">
+          <motion.div
+            className="absolute inset-0 z-50 backdrop-blur-xl"
+            style={{
+              backgroundColor: alpha(palette.primary[palette.mode], 0.1),
+            }}
+            animate={open ? "open" : "closed"}
+            initial={{ opacity: 0 }}
+            variants={{
+              open: { opacity: 1 },
+              closed: { opacity: 0 },
+            }}
+            onClick={handleClose}
+          />
 
-      {divider && <Divider />}
-
-      <DialogContent
-        sx={{
-          width: 400,
-          pt: divider ? 2 : null,
-          pb: divider ? 2 : null,
-          maxHeight: "calc(100vh - 256px)",
-          ...contentSx,
-        }}
-      >
-        {children}
-      </DialogContent>
-
-      {divider && (onClose || close || onOk || ok) && <Divider />}
-
-      <DialogActions sx={divider ? { pt: 2 } : null}>
-        {onClose && (
-          <Button variant="outlined" onClick={handleClose}>
-            {close || t("Close")}
-          </Button>
-        )}
-
-        {onOk && (
-          <LoadingButton
-            disabled={loading || disabledOk}
-            loading={okLoading || loading}
-            variant="contained"
-            onClick={handleOk}
-          >
-            {ok || t("Ok")}
-          </LoadingButton>
-        )}
-      </DialogActions>
-    </Dialog>
-  );
-};
-
-const BaseDialogTransition = forwardRef(function BaseDialogTransition(
-  props: TransitionProps,
-  ref,
-) {
-  const { in: inProp, children } = props;
-
-  return (
-    <AnimatePresence>
-      {inProp && (
-        <motion.div
-          style={{
-            width: "fit-content",
-            height: "fit-content",
-            maxHeight: "100vh",
-            position: "fixed",
-          }}
-          initial={{
-            opacity: 0,
-            scale: 0,
-            top: "50%",
-            left: "50%",
-            translateX: "-50%",
-            translateY: "-50%",
-          }}
-          animate={{
-            opacity: 1,
-            scale: 1,
-          }}
-          exit={{
-            opacity: 0,
-            scale: 0,
-          }}
-        >
-          {children &&
-            cloneElement(
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              React.Children.only(children as unknown as any),
-              {
-                style: {
-                  opacity: 1,
-                  visibility: "visible",
-                },
-                // TODO: 也许 framer motion 就不会产生这个，手动设定一下。等弄清楚了再说。
-                tabIndex: -1,
-                ref: ref,
-              },
+          <motion.div
+            className={cn(
+              "absolute left-[50%] top-[50%] z-50 min-w-96 rounded-3xl shadow",
+              palette.mode === "dark"
+                ? "text-white shadow-zinc-900"
+                : "text-black",
             )}
-        </motion.div>
+            style={{
+              backgroundColor: palette.background.default,
+            }}
+            animate={open ? "open" : "closed"}
+            initial={{
+              opacity: 0.3,
+              scale: 0,
+              x: offset.x - window.innerWidth / 2,
+              y: offset.y - window.innerHeight / 2,
+              translateX: "-50%",
+              translateY: "-50%",
+            }}
+            variants={{
+              open: {
+                opacity: 1,
+                scale: 1,
+                x: 0,
+                y: 0,
+              },
+              closed: {
+                opacity: 0.3,
+                scale: 0,
+                x: offset.x - window.innerWidth / 2,
+                y: offset.y - window.innerHeight / 2,
+              },
+            }}
+            transition={{
+              type: "spring",
+              bounce: 0,
+              duration: 0.35,
+            }}
+          >
+            <div className="m-4 text-xl">{title}</div>
+
+            {divider && <Divider />}
+
+            <div
+              className="relative overflow-y-auto overflow-x-hidden p-4"
+              style={{
+                maxHeight: "calc(100vh - 200px)",
+                ...contentStyle,
+              }}
+            >
+              {children}
+            </div>
+
+            {divider && <Divider />}
+
+            <div className="m-2 flex justify-end gap-2">
+              {onClose && (
+                <Button variant="outlined" onClick={handleClose}>
+                  {close || t("Close")}
+                </Button>
+              )}
+
+              {onOk && (
+                <LoadingButton
+                  disabled={loading || disabledOk}
+                  loading={okLoading || loading}
+                  variant="contained"
+                  onClick={handleOk}
+                >
+                  {ok || t("Ok")}
+                </LoadingButton>
+              )}
+            </div>
+          </motion.div>
+        </Portal.Root>
       )}
     </AnimatePresence>
   );
-});
+};

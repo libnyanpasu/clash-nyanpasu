@@ -9,6 +9,7 @@ pub mod logging;
 pub use self::clash_strategy::{ClashStrategy, ExternalControllerPortStrategy};
 pub use logging::LoggingLevel;
 
+// TODO: when support sing-box, remove this struct
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub enum ClashCore {
     #[serde(rename = "clash", alias = "clash-premium")]
@@ -52,6 +53,41 @@ impl std::fmt::Display for ClashCore {
     }
 }
 
+impl From<&ClashCore> for nyanpasu_utils::core::CoreType {
+    fn from(core: &ClashCore) -> Self {
+        match core {
+            ClashCore::ClashPremium => nyanpasu_utils::core::CoreType::Clash(
+                nyanpasu_utils::core::ClashCoreType::ClashPremium,
+            ),
+            ClashCore::ClashRs => nyanpasu_utils::core::CoreType::Clash(
+                nyanpasu_utils::core::ClashCoreType::ClashRust,
+            ),
+            ClashCore::Mihomo => {
+                nyanpasu_utils::core::CoreType::Clash(nyanpasu_utils::core::ClashCoreType::Mihomo)
+            }
+            ClashCore::MihomoAlpha => nyanpasu_utils::core::CoreType::Clash(
+                nyanpasu_utils::core::ClashCoreType::MihomoAlpha,
+            ),
+        }
+    }
+}
+
+impl TryFrom<&nyanpasu_utils::core::CoreType> for ClashCore {
+    type Error = anyhow::Error;
+
+    fn try_from(core: &nyanpasu_utils::core::CoreType) -> Result<Self> {
+        match core {
+            nyanpasu_utils::core::CoreType::Clash(clash) => match clash {
+                nyanpasu_utils::core::ClashCoreType::ClashPremium => Ok(ClashCore::ClashPremium),
+                nyanpasu_utils::core::ClashCoreType::ClashRust => Ok(ClashCore::ClashRs),
+                nyanpasu_utils::core::ClashCoreType::Mihomo => Ok(ClashCore::Mihomo),
+                nyanpasu_utils::core::ClashCoreType::MihomoAlpha => Ok(ClashCore::MihomoAlpha),
+            },
+            _ => Err(anyhow::anyhow!("unsupported core type")),
+        }
+    }
+}
+
 /// ### `verge.yaml` schema
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
 pub struct IVerge {
@@ -78,8 +114,8 @@ pub struct IVerge {
     /// show memory info (only for Clash Meta)
     pub enable_memory_usage: Option<bool>,
 
-    /// page transition animation, default is `slide`
-    pub page_transition_animation: Option<String>,
+    /// global ui framer motion effects
+    pub lighten_animation_effects: Option<bool>,
 
     /// clash tun mode
     pub enable_tun_mode: Option<bool>,
@@ -195,7 +231,7 @@ pub struct IVergeTheme {
 
 impl IVerge {
     pub fn new() -> Self {
-        match dirs::verge_path().and_then(|path| help::read_yaml::<IVerge>(&path)) {
+        match dirs::nyanpasu_config_path().and_then(|path| help::read_yaml::<IVerge>(&path)) {
             Ok(config) => Self::merge_with_template(config),
             Err(err) => {
                 log::error!(target: "app", "{err}");
@@ -217,6 +253,14 @@ impl IVerge {
 
         if config.max_log_files.is_none() {
             config.max_log_files = template.max_log_files;
+        }
+
+        if config.lighten_animation_effects.is_none() {
+            config.lighten_animation_effects = template.lighten_animation_effects;
+        }
+
+        if config.enable_service_mode.is_none() {
+            config.enable_service_mode = template.enable_service_mode;
         }
 
         config
@@ -244,18 +288,23 @@ impl IVerge {
             auto_close_connection: Some(true),
             enable_builtin_enhanced: Some(true),
             enable_clash_fields: Some(true),
-            page_transition_animation: Some("slide".into()),
+            lighten_animation_effects: Some(false),
             // auto_log_clean: Some(60 * 24 * 7), // 7 days 自动清理日记
             max_log_files: Some(7), // 7 days
             enable_auto_check_update: Some(true),
             clash_tray_selector: Some(true),
+            enable_service_mode: Some(false),
             ..Self::default()
         }
     }
 
     /// Save IVerge App Config
     pub fn save_file(&self) -> Result<()> {
-        help::save_yaml(&dirs::verge_path()?, &self, Some("# Clash Nyanpasu Config"))
+        help::save_yaml(
+            &dirs::nyanpasu_config_path()?,
+            &self,
+            Some("# Clash Nyanpasu Config"),
+        )
     }
 
     /// patch verge config
@@ -275,7 +324,7 @@ impl IVerge {
         patch!(theme_blur);
         patch!(traffic_graph);
         patch!(enable_memory_usage);
-        patch!(page_transition_animation);
+        patch!(lighten_animation_effects);
         patch!(enable_auto_check_update);
 
         patch!(enable_tun_mode);

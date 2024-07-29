@@ -1,0 +1,13 @@
+.Card {
+  &.NoDelay {
+    .DelayChip {
+      visibility: hidden;
+    }
+
+    &:hover {
+      .DelayChip {
+        visibility: visible;
+      }
+    }
+  }
+}

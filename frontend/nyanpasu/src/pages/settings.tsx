@@ -1,12 +1,15 @@
-import { GitHub } from "@mui/icons-material";
-import { IconButton } from "@mui/material";
-import Masonry from "@mui/lab/Masonry";
 import { useLockFn } from "ahooks";
+import { motion } from "framer-motion";
+import React, { lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
+import HotkeyDialog from "@/components/setting/modules/hotkey-dialog";
+import { formatEnvInfos } from "@/utils";
+import { Feedback, GitHub, Keyboard } from "@mui/icons-material";
+import Masonry from "@mui/lab/Masonry";
+import { IconButton } from "@mui/material";
+import { collect_envs } from "@nyanpasu/interface";
 import { BasePage } from "@nyanpasu/ui";
 import { open } from "@tauri-apps/api/shell";
-import { motion } from "framer-motion";
-import { lazy, Suspense } from "react";
 
 const asyncComponents = [
   () => import("@/components/setting/setting-system-proxy"),
@@ -23,7 +26,6 @@ const asyncComponents = [
   () => import("@/components/setting/setting-nyanpasu-misc"),
   () => import("@/components/setting/setting-nyanpasu-path"),
   () => import("@/components/setting/setting-nyanpasu-version"),
-  () => import("@/components/setting/setting-legacy"),
 ];
 
 const GithubIcon = () => {
@@ -42,11 +44,54 @@ const GithubIcon = () => {
   );
 };
 
+const FeedbackIcon = () => {
+  const toFeedback = useLockFn(async () => {
+    const envs = await collect_envs();
+    const formattedEnv = encodeURIComponent(
+      formatEnvInfos(envs)
+        .split("\n")
+        .map((v) => `> ${v}`)
+        .join("\n"),
+    );
+    return open(
+      "https://github.com/LibNyanpasu/clash-nyanpasu/issues/new?assignees=&labels=T%3A+Bug%2CS%3A+Untriaged&projects=&template=bug_report.yaml&env_infos=" +
+        formattedEnv,
+    );
+  });
+  return (
+    <IconButton color="inherit" title="Feedback" onClick={toFeedback}>
+      <Feedback fontSize="inherit" />
+    </IconButton>
+  );
+};
+
+// FIXME: it should move to a proper place
+const HotkeyButton = () => {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <HotkeyDialog open={open} onClose={() => setOpen(false)} />
+      <IconButton color="inherit" title="Hotkeys" onClick={() => setOpen(true)}>
+        <Keyboard fontSize="inherit" />
+      </IconButton>
+    </>
+  );
+};
+
 export default function SettingPage() {
   const { t } = useTranslation();
 
   return (
-    <BasePage title={t("Settings")} header={<GithubIcon />}>
+    <BasePage
+      title={t("Settings")}
+      header={
+        <div className="flex gap-1">
+          <HotkeyButton />
+          <FeedbackIcon />
+          <GithubIcon />
+        </div>
+      }
+    >
       <Masonry
         columns={{ xs: 1, sm: 1, md: 2 }}
         spacing={3}

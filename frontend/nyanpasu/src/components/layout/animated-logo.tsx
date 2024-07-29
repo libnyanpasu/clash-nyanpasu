@@ -1,34 +1,72 @@
+import { AnimatePresence, motion, Variants } from "framer-motion";
+import { CSSProperties } from "react";
 import LogoSvg from "@/assets/image/logo.svg?react";
-import getSystem from "@/utils/get-system";
-import { motion } from "framer-motion";
-import { useRef } from "react";
-import { UpdateButton } from "./update-button";
-
-const OS = getSystem();
+import { classNames } from "@/utils";
+import { useNyanpasu } from "@nyanpasu/interface";
+import styles from "./animated-logo.module.scss";
 
 const Logo = motion(LogoSvg);
 
-export default function AnimatedLogo() {
-  const constraintsRef = useRef<HTMLDivElement>(null);
+const transition = {
+  type: "spring",
+  stiffness: 260,
+  damping: 20,
+};
+
+const motionVariants: { [name: string]: Variants } = {
+  default: {
+    initial: {
+      opacity: 0,
+      scale: 0.5,
+      transition,
+    },
+    animate: {
+      opacity: 1,
+      scale: 1,
+      transition,
+    },
+    exit: {
+      opacity: 0,
+      scale: 0.5,
+      transition,
+    },
+    whileHover: {
+      scale: 1.1,
+      transition,
+    },
+  },
+  none: {
+    initial: {},
+    animate: {},
+    exit: {},
+  },
+};
+
+export default function AnimatedLogo({
+  className,
+  style,
+  disbaleMotion,
+}: {
+  className?: string;
+  style?: CSSProperties;
+  disbaleMotion?: boolean;
+}) {
+  const { nyanpasuConfig } = useNyanpasu();
+
+  const disbale = disbaleMotion ?? nyanpasuConfig?.lighten_animation_effects;
 
   return (
-    <div className="the-logo" ref={constraintsRef}>
+    <AnimatePresence initial={false}>
       <Logo
-        initial={{ opacity: 0, scale: 0.5 }}
-        animate={{ opacity: 1, scale: 1 }}
-        whileHover={{ scale: 1.1 }}
-        transition={{
-          type: "spring",
-          stiffness: 260,
-          damping: 20,
-        }}
+        className={classNames(styles.LogoSchema, className)}
+        variants={motionVariants[disbale ? "none" : "default"]}
+        style={style}
         drag
-        dragConstraints={constraintsRef}
+        dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+        whileDrag={{ scale: 1.15 }}
+        dragSnapToOrigin={true}
+        dragElastic={0.1}
       />
-
-      {!(OS === "windows" && WIN_PORTABLE) && (
-        <UpdateButton className="the-newbtn" />
-      )}
-    </div>
+    </AnimatePresence>
   );
 }

@@ -2,9 +2,9 @@
  * Build and upload assets
  * for macOS(aarch)
  */
-import { context, getOctokit } from "@actions/github";
-import fs from "fs-extra";
 import path from "node:path";
+import fs from "fs-extra";
+import { context, getOctokit } from "@actions/github";
 import pkgJson from "../package.json";
 import { consola } from "./utils/logger";
 

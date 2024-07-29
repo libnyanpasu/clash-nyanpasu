@@ -1,3 +1,5 @@
+import { motion } from "framer-motion";
+import { ReactNode } from "react";
 import {
   alpha,
   Box,
@@ -7,9 +9,7 @@ import {
   Typography,
   useTheme,
 } from "@mui/material";
-import { ReactNode } from "react";
 import style from "./style.module.scss";
-import { motion } from "framer-motion";
 
 export const BaseCard = ({
   label,

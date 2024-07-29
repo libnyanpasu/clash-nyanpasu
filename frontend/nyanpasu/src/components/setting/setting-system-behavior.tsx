@@ -1,8 +1,8 @@
-import { BaseCard } from "@nyanpasu/ui";
-import Grid from "@mui/material/Unstable_Grid2";
-import { PaperSwitchButton } from "./modules/system-proxy";
 import { useTranslation } from "react-i18next";
+import Grid from "@mui/material/Unstable_Grid2";
 import { useNyanpasu } from "@nyanpasu/interface";
+import { BaseCard } from "@nyanpasu/ui";
+import { PaperSwitchButton } from "./modules/system-proxy";
 
 export const SettingSystemBehavior = () => {
   const { t } = useTranslation();

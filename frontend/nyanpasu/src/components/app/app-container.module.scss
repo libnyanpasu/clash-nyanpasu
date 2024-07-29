@@ -1,0 +1,19 @@
+:root {
+  --focus-border: transparent !important;
+  --separator-border: transparent !important;
+}
+
+.layout {
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  background-color: var(--background-color);
+
+  .container {
+    position: relative;
+    flex: 1 1 75%;
+    height: 100%;
+    background-color: var(--background-color-alpha);
+  }
+}

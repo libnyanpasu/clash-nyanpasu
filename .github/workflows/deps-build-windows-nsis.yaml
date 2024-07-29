@@ -1,0 +1,106 @@
+name: "[Single] Build Windows NSIS"
+
+on:
+  workflow_dispatch:
+    inputs:
+      portable:
+        description: "Build Portable pkg"
+        required: true
+        type: boolean
+        default: false
+
+      nightly:
+        description: "Nightly prepare"
+        required: true
+        type: boolean
+        default: false
+
+      tag:
+        description: "Release Tag"
+        required: true
+        type: string
+
+  workflow_call:
+    inputs:
+      portable:
+        description: "Build Portable pkg"
+        required: true
+        type: boolean
+        default: false
+
+      nightly:
+        description: "Nightly prepare"
+        required: true
+        type: boolean
+        default: false
+
+      tag:
+        description: "Release Tag"
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        run: |
+          rustup install stable --profile minimal --no-self-update
+          rustup default stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./backend/"
+          prefix-key: "rust-stable"
+          key: windows-latest
+          shared-key: "release"
+
+      - name: Install Node latest
+        uses: actions/setup-node@v4
+        with:
+          node-version: latest
+
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
+        with:
+          run_install: false
+
+      - name: Pnpm install deps and download resources
+        run: |
+          pnpm i
+          pnpm check
+
+      - name: Nightly Prepare (Windows NSIS and Portable)
+        if: ${{ inputs.nightly == true }}
+        run: |
+          pnpm prepare:nightly --nsis
+
+      - name: Tauri build
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        with:
+          tagName: ${{ inputs.tag }}
+          releaseName: "Clash Nyanpasu Dev"
+          releaseBody: "More new features are now supported."
+          releaseDraft: false
+          prerelease: true
+          tauriScript: pnpm tauri
+          args: -f nightly -c ./backend/tauri/tauri.nightly.conf.json
+
+      - name: Portable Bundle
+        if: ${{ inputs.portable == true }}
+        run: |
+          pnpm portable
+        env:
+          TAG_NAME: ${{ inputs.tag }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          VITE_WIN_PORTABLE: 1

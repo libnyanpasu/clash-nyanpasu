@@ -1,12 +1,13 @@
-import {
-  getProfiles,
-  patchProfile,
-  patchProfilesConfig,
-} from "@/services/cmds";
 import useSWR, { mutate } from "swr";
 // import { getProxies, updateProxy } from "@/services/api";
 import { updateProxy } from "@/services/api";
-import { getProxies } from "@/services/cmds";
+import {
+  getProfiles,
+  getProxies,
+  patchProfile,
+  patchProfilesConfig,
+} from "@/services/cmds";
+
 export const useProfiles = () => {
   const { data: profiles, mutate: mutateProfiles } = useSWR(
     "getProfiles",

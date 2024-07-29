@@ -1,5 +1,5 @@
-import Switch, { SwitchProps } from "@mui/material/Switch";
 import CircularProgress from "@mui/material/CircularProgress";
+import Switch, { SwitchProps } from "@mui/material/Switch";
 import style from "./style.module.scss";
 
 interface LoadingSwitchProps extends SwitchProps {

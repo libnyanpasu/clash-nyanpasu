@@ -1,12 +1,12 @@
-import generouted from "@generouted/react-router/plugin";
-import react from "@vitejs/plugin-react";
-// import react from "@vitejs/plugin-react-swc";
 import path from "node:path";
 import { defineConfig } from "vite";
 import monaco from "vite-plugin-monaco-editor";
 import sassDts from "vite-plugin-sass-dts";
 import svgr from "vite-plugin-svgr";
 import tsconfigPaths from "vite-tsconfig-paths";
+import generouted from "@generouted/react-router/plugin";
+// import react from "@vitejs/plugin-react";
+import react from "@vitejs/plugin-react-swc";
 
 const devtools = () => {
   return {
@@ -46,10 +46,9 @@ export default defineConfig(({ command }) => {
       tsconfigPaths(),
       svgr(),
       react({
-        // jsxImportSource: "@emotion/react",
-        babel: {
-          plugins: ["@emotion/babel-plugin"],
-        },
+        // babel: {
+        //   plugins: ["@emotion/babel-plugin"],
+        // },
       }),
       generouted(),
       sassDts({ esmExport: true }),
@@ -57,12 +56,7 @@ export default defineConfig(({ command }) => {
       isDev && devtools(),
     ],
     optimizeDeps: {
-      include: [
-        "@emotion/react",
-        "@emotion/styled",
-        "@mui/lab/*",
-        "@mui/material/*",
-      ],
+      include: ["@emotion/styled", "@mui/lab/*", "@mui/material/*"],
     },
     esbuild: {
       drop: isDev ? undefined : ["console", "debugger"],

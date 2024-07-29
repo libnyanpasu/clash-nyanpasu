@@ -1,12 +1,15 @@
-import { HttpsProxyAgent } from "https-proxy-agent";
+import fetch, { type RequestInit } from "node-fetch";
+import { BinInfo } from "types";
 import {
   CLASH_META_ALPHA_MANIFEST,
   CLASH_META_MANIFEST,
 } from "../manifest/clash-meta";
 import { CLASH_MANIFEST } from "../manifest/clash-premium";
 import { CLASH_RS_MANIFEST } from "../manifest/clash-rs";
-import fetch, { type RequestInit } from "node-fetch";
-import { BinInfo } from "types";
+import { getProxyAgent } from "./";
+import { SIDECAR_HOST } from "./consts";
+
+const SERVICE_REPO = "LibNyanpasu/nyanpasu-service";
 
 export const getClashInfo = ({
   platform,
@@ -182,14 +185,10 @@ export const getMetaAlphaLatestVersion = async () => {
   try {
     const opts = {} as Partial<RequestInit>;
 
-    const httpProxy =
-      process.env.HTTP_PROXY ||
-      process.env.http_proxy ||
-      process.env.HTTPS_PROXY ||
-      process.env.https_proxy;
+    const httpProxy = getProxyAgent();
 
     if (httpProxy) {
-      opts.agent = new HttpsProxyAgent(httpProxy);
+      opts.agent = httpProxy;
     }
 
     const response = await fetch(VERSION_URL!, {
@@ -207,4 +206,60 @@ export const getMetaAlphaLatestVersion = async () => {
 
     process.exit(1);
   }
+};
+
+export const getNyanpasuServiceLatestVersion = async () => {
+  try {
+    const opts = {} as Partial<RequestInit>;
+
+    const httpProxy = getProxyAgent();
+    if (httpProxy) {
+      opts.agent = httpProxy;
+    }
+
+    const url = new URL("https://github.com");
+    url.pathname = `/${SERVICE_REPO}/releases/latest`;
+    const response = await fetch(url, {
+      method: "GET",
+      redirect: "manual",
+      ...opts,
+    });
+
+    const location = response.headers.get("location");
+    if (!location) {
+      throw new Error("Cannot find location from the response header");
+    }
+    const tag = location.split("/").pop();
+    if (!tag) {
+      throw new Error("Cannot find tag from the location");
+    }
+    console.log(`Latest release version: ${tag}`);
+    return tag.trim();
+  } catch (error) {
+    console.error("Error fetching latest release version:", error);
+    process.exit(1);
+  }
+};
+
+export const getNyanpasuServiceInfo = async ({
+  sidecarHost,
+}: {
+  sidecarHost: string;
+}): Promise<BinInfo> => {
+  const name = `nyanpasu-service`;
+  const isWin = SIDECAR_HOST?.includes("windows");
+  const urlExt = isWin ? "zip" : "tar.gz";
+  // first we had to get the latest tag
+  const version = await getNyanpasuServiceLatestVersion();
+  const downloadURL = `https://github.com/${SERVICE_REPO}/releases/download/${version}/${name}-${sidecarHost}.${urlExt}`;
+  const exeFile = `${name}${isWin ? ".exe" : ""}`;
+  const tmpFile = `${name}-${sidecarHost}.${urlExt}`;
+  const targetFile = `nyanpasu-service-${sidecarHost}${isWin ? ".exe" : ""}`;
+  return {
+    name: "clash",
+    targetFile,
+    exeFile,
+    tmpFile,
+    downloadURL,
+  };
 };

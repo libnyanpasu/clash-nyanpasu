@@ -1,11 +1,11 @@
+import useSWR from "swr";
 import {
   Clash,
+  clash as clashApi,
   ProviderItem,
   ProviderRules,
-  clash as clashApi,
 } from "@/service";
 import * as tauri from "@/service/tauri";
-import useSWR from "swr";
 
 export const useClashCore = () => {
   const { getGroupDelay, getProxiesDelay, ...clash } = clashApi();
@@ -80,6 +80,11 @@ export const useClashCore = () => {
     clash.getProxiesProviders,
   );
 
+  const getAllProxiesProviders = useSWR<{ [name: string]: ProviderItem }>(
+    "getAllProxiesProviders",
+    clash.getAllProxiesProviders,
+  );
+
   const updateProxiesProviders = async (name: string) => {
     await clash.updateProxiesProviders(name);
 
@@ -97,6 +102,7 @@ export const useClashCore = () => {
     getRulesProviders,
     updateRulesProviders,
     getProxiesProviders,
+    getAllProxiesProviders,
     updateProxiesProviders,
   };
 };

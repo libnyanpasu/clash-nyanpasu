@@ -1,6 +1,6 @@
-import { ReactNode, FC, CSSProperties, memo, useRef, useEffect } from "react";
-import Typography from "@mui/material/Typography";
+import { CSSProperties, FC, ReactNode, useEffect, useRef } from "react";
 import { BaseErrorBoundary } from "./baseErrorBoundary";
+import Header from "./header";
 import "./style.scss";
 
 interface Props {
@@ -11,26 +11,6 @@ interface Props {
   full?: boolean;
   children?: ReactNode;
 }
-
-const Header: FC<{ title?: ReactNode; header?: ReactNode }> = memo(
-  function Header({
-    title,
-    header,
-  }: {
-    title?: ReactNode;
-    header?: ReactNode;
-  }) {
-    return (
-      <header style={{ userSelect: "none" }} data-windrag>
-        <Typography variant="h4" component="h1" fontWeight={500} data-windrag>
-          {title}
-        </Typography>
-
-        {header}
-      </header>
-    );
-  },
-);
 
 export const BasePage: FC<Props> = ({
   title,
@@ -54,14 +34,9 @@ export const BasePage: FC<Props> = ({
         <Header title={title} header={header} />
 
         <div className={`MDYBasePage-container ${full ? "no-padding" : ""}`}>
-          <section style={sectionStyleRef.current}>
-            <div
-              className="MDYBasePage-content"
-              style={contentStyleRef.current}
-            >
-              {children}
-            </div>
-          </section>
+          <div className="MDYBasePage-content" style={contentStyleRef.current}>
+            <section style={sectionStyleRef.current}>{children}</section>
+          </div>
         </div>
       </div>
     </BaseErrorBoundary>

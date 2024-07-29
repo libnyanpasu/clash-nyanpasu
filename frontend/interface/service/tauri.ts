@@ -1,13 +1,14 @@
 import { invoke } from "@tauri-apps/api/tauri";
+import { ManifestVersion } from "./core";
 import {
   ClashConfig,
   ClashInfo,
-  VergeConfig,
+  EnvInfos,
   Profile,
-  SystemProxy,
   Proxies,
+  SystemProxy,
+  VergeConfig,
 } from "./types";
-import { ManifestVersion } from "./core";
 
 export const getNyanpasuConfig = async () => {
   return await invoke<VergeConfig>("get_verge_config");
@@ -119,19 +120,15 @@ export const getSystemProxy = async () => {
   return await invoke<SystemProxy>("get_sys_proxy");
 };
 
-export const checkService = async () => {
+export const statusService = async () => {
   try {
-    const result = await invoke<{ code: number }>("check_service");
-
-    if (result?.code === 0) {
-      return "active";
-    } else if (result?.code === 400) {
-      return "installed";
-    } else {
-      return "unknown";
-    }
+    const result = await invoke<{
+      status: "running" | "stopped" | "not_installed";
+    }>("status_service");
+    return result.status;
   } catch (e) {
-    return "uninstall";
+    console.error(e);
+    return "not_installed";
   }
 };
 
@@ -143,8 +140,24 @@ export const uninstallService = async () => {
   return await invoke<void>("uninstall_service");
 };
 
-export const openAppDir = async () => {
-  return await invoke<void>("open_app_dir");
+export const startService = async () => {
+  return await invoke<void>("start_service");
+};
+
+export const stopService = async () => {
+  return await invoke<void>("stop_service");
+};
+
+export const restartService = async () => {
+  return await invoke<void>("restart_service");
+};
+
+export const openAppConfigDir = async () => {
+  return await invoke<void>("open_app_config_dir");
+};
+
+export const openAppDataDir = async () => {
+  return await invoke<void>("open_app_data_dir");
 };
 
 export const openCoreDir = async () => {
@@ -181,4 +194,12 @@ export const selectProxy = async (group: string, name: string) => {
 
 export const updateProxyProvider = async (name: string) => {
   return await invoke<void>("update_proxy_provider", { name });
+};
+
+export const save_window_size_state = async () => {
+  return await invoke<void>("save_window_size_state");
+};
+
+export const collect_envs = async () => {
+  return await invoke<EnvInfos>("collect_envs");
 };

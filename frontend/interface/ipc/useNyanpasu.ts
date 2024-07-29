@@ -1,10 +1,10 @@
+import { useMemo } from "react";
 import useSWR from "swr";
 import * as service from "@/service";
 import { VergeConfig } from "@/service";
 import { fetchCoreVersion, fetchLatestCore } from "@/service/core";
-import { useClash } from "./useClash";
-import { useMemo } from "react";
 import * as tauri from "@/service/tauri";
+import { useClash } from "./useClash";
 
 /**
  * useNyanpasu with swr.
@@ -62,13 +62,30 @@ export const useNyanpasu = (options?: {
 
   const getSystemProxy = useSWR("getSystemProxy", service.getSystemProxy);
 
-  const getServiceStatus = useSWR("getServiceStatus", service.checkService);
+  const getServiceStatus = useSWR("getServiceStatus", service.statusService);
 
-  const setServiceStatus = async (type: "install" | "uninstall") => {
-    if (type === "install") {
-      await service.installService();
-    } else {
-      await service.uninstallService();
+  const setServiceStatus = async (
+    type: "install" | "uninstall" | "start" | "stop",
+  ) => {
+    switch (type) {
+      case "install":
+        await service.installService();
+        break;
+
+      case "uninstall":
+        await service.uninstallService();
+        break;
+
+      case "start":
+        await service.startService();
+        break;
+
+      case "stop":
+        await service.stopService();
+        break;
+
+      default:
+        break;
     }
 
     return getServiceStatus.mutate();

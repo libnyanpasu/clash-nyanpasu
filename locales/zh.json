@@ -16,7 +16,8 @@
     },
     "open_dir": {
       "menu": "打开目录",
-      "app_dir": "应用目录",
+      "app_config_dir": "配置目录",
+      "app_data_dir": "数据目录",
       "core_dir": "内核目录",
       "log_dir": "日志目录"
     },

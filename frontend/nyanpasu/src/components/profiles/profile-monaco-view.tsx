@@ -1,8 +1,8 @@
+import { useDebounceEffect, useUpdateEffect } from "ahooks";
+import { useAtomValue } from "jotai";
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { monaco } from "@/services/monaco";
-import { useDebounceEffect, useUpdateEffect } from "ahooks";
 import { themeMode } from "@/store";
-import { useAtomValue } from "jotai";
 
 export interface ProfileMonacoViewProps {
   open: boolean;

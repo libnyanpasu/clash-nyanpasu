@@ -1,5 +1,5 @@
-import { alpha, CircularProgress, useTheme } from "@mui/material";
 import { memo, ReactNode } from "react";
+import { alpha, CircularProgress, useTheme } from "@mui/material";
 import { PaperButton, PaperButtonProps } from "./nyanpasu-path";
 
 export interface PaperSwitchButtonProps extends PaperButtonProps {

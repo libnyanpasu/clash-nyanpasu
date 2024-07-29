@@ -1,11 +1,11 @@
-import { Box, Typography } from "@mui/material";
-import { useClash, useNyanpasu } from "@nyanpasu/interface";
-import { BaseCard, BaseDialog } from "@nyanpasu/ui";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import CLASH_FIELD from "@/assets/json/clash-field.json";
-import { ClashFieldItem, LabelSwitch } from "./modules/clash-field";
+import { Box, Typography } from "@mui/material";
 import Grid from "@mui/material/Unstable_Grid2";
+import { useClash, useNyanpasu } from "@nyanpasu/interface";
+import { BaseCard, BaseDialog } from "@nyanpasu/ui";
+import { ClashFieldItem, LabelSwitch } from "./modules/clash-field";
 
 const FieldsControl = ({
   label,

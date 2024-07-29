@@ -1,7 +1,7 @@
-import { CheckCircleRounded, Close, ErrorRounded } from "@mui/icons-material";
-import { Box, IconButton, Slide, Snackbar, Typography } from "@mui/material";
 import { ReactNode, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { CheckCircleRounded, Close, ErrorRounded } from "@mui/icons-material";
+import { Box, IconButton, Slide, Snackbar, Typography } from "@mui/material";
 
 interface InnerProps {
   type: string;

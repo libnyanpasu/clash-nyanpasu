@@ -1,0 +1,128 @@
+name: "[Single] Build macOS"
+
+on:
+  workflow_dispatch:
+    inputs:
+      aarch64:
+        description: "Build aarch64 pkg"
+        required: true
+        type: boolean
+        default: false
+
+      nightly:
+        description: "Nightly prepare"
+        required: true
+        type: boolean
+        default: false
+
+      tag:
+        description: "Release Tag"
+        required: true
+        type: string
+
+  workflow_call:
+    inputs:
+      aarch64:
+        description: "Build aarch64 pkg"
+        required: true
+        type: boolean
+        default: false
+
+      nightly:
+        description: "Nightly prepare"
+        required: true
+        type: boolean
+        default: false
+
+      tag:
+        description: "Release Tag"
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: ${{ inputs.aarch64 && 'macos-14' || 'macos-13' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: install Rust stable
+        run: |
+          rustup install stable --profile minimal --no-self-update
+          rustup default stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./backend/"
+          prefix-key: "rust-stable"
+          key: ${{ inputs.aarch64 && 'macos-14' || 'macos-13' }}
+          shared-key: "release"
+
+      - name: Install the missing rust target (aarch64 Only)
+        if: ${{ inputs.aarch64 == 'macos-14' }}
+        run: |
+          rustup target add aarch64-apple-darwin
+
+      - name: Install Node latest
+        uses: actions/setup-node@v4
+        with:
+          node-version: latest
+
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
+        with:
+          run_install: false
+
+      - name: Set xcode version (amd64 Only)
+        uses: maxim-lobanov/setup-xcode@v1
+        if: ${{ inputs.aarch64 == false }}
+        with:
+          xcode-version: "15.0"
+
+      - name: Pnpm install
+        run: |
+          pnpm i
+          pnpm check
+
+      - name: Pnpm check (macOS amd64)
+        if: ${{ inputs.aarch64 == false }}
+        run: |
+          pnpm check
+
+      - name: Pnpm check (macOS aarch64)
+        if: ${{ inputs.aarch64 == true }}
+        run: |
+          pnpm check --arch arm64 --sidecar-host aarch64-apple-darwin
+
+      - name: Nightly Prepare
+        if: ${{ inputs.nightly == true }}
+        run: |
+          pnpm prepare:nightly
+
+      - name: Tauri build
+        if: ${{ inputs.aarch64 == false }}
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        with:
+          tagName: ${{ inputs.tag }}
+          releaseName: "Clash Nyanpasu Dev"
+          releaseBody: "More new features are now supported."
+          releaseDraft: false
+          prerelease: true
+          tauriScript: pnpm tauri
+          args: -f nightly -c ./backend/tauri/tauri.nightly.conf.json
+
+      - name: Tauri build with Upload (macOS aarch64)
+        if: ${{ inputs.aarch64 == true }}
+        env:
+          TAG_NAME: ${{ inputs.tag }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        run: |
+          pnpm build:nightly --target aarch64-apple-darwin
+          pnpm upload:osx-aarch64

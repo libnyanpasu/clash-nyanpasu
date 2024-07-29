@@ -1,8 +1,8 @@
-import { List } from "@mui/material";
-import { BaseCard, MenuItem, SwitchItem, TextItem } from "@nyanpasu/ui";
 import { useTranslation } from "react-i18next";
-import { nyanpasu } from "./modules/create-props";
+import { List } from "@mui/material";
 import { useNyanpasu } from "@nyanpasu/interface";
+import { BaseCard, MenuItem, SwitchItem, TextItem } from "@nyanpasu/ui";
+import { nyanpasu } from "./modules/create-props";
 
 const { createBooleanProps } = nyanpasu;
 
@@ -45,6 +45,11 @@ export const SettingNyanpasuMisc = () => {
         <SwitchItem
           label={t("Enable Tray Proxies Selector")}
           {...createBooleanProps("clash_tray_selector")}
+        />
+
+        <SwitchItem
+          label={t("Lighten up Animation Effects")}
+          {...createBooleanProps("lighten_animation_effects")}
         />
 
         <TextItem

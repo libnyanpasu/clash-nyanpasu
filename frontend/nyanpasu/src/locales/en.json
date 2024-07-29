@@ -1,4 +1,5 @@
 {
+  "label_dashboard": "Dashboard",
   "label_proxies": "Proxies",
   "label_profiles": "Profiles",
   "label_connections": "Connections",
@@ -7,8 +8,10 @@
   "label_settings": "Settings",
   "label_providers": "Providers",
   "Connections": "Connections",
-  "Upload Total": "Upload Total",
-  "Download Total": "Download Total",
+  "Upload Traffic": "Upload",
+  "Download Traffic": "Download",
+  "Total": "Total",
+  "Memory": "Memory",
   "Active Connections": "Active Connections",
   "Logs": "Logs",
   "Clear": "Clear",
@@ -18,6 +21,7 @@
   "global": "global",
   "direct": "direct",
   "script": "script",
+  "Dashboard": "Dashboard",
   "Profiles": "Profiles",
   "Profile URL": "Profile URL",
   "Import": "Import",
@@ -94,7 +98,8 @@
   "Page Transition Animation Transparent": "Transparent",
   "Page Transition Animation None": "None",
   "Language": "Language",
-  "Open App Dir": "Open App Dir",
+  "Open Config Dir": "Open Config Dir",
+  "Open Data Dir": "Open Data Dir",
   "Open Core Dir": "Open Core Dir",
   "Open Logs Dir": "Open Logs Dir",
   "Auto Check Updates": "Auto Check Updates",
@@ -116,7 +121,6 @@
   "Retain 30 Days": "Retain 30 Days",
   "Retain 90 Days": "Retain 90 Days",
   "Max Log Files": "Max Log Files",
-
   "Collect Logs": "Collect Logs",
   "Back": "Back",
   "Save": "Save",
@@ -152,5 +156,6 @@
   "Portable Update Error": "Portable Update is not supported, please download the latest version from the official website.",
   "Enable Tray Proxies Selector": "Enable Tray Proxies Selector",
   "Proxy Set proxies": "{{rule}} proxies",
-  "Update Proxies Providers All": "Update Rules Proxies All"
+  "Update Proxies Providers All": "Update Rules Proxies All",
+  "Lighten up Animation Effects": "Lighten up Animation Effects"
 }

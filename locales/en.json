@@ -16,7 +16,8 @@
     },
     "open_dir": {
       "menu": "Open Dir",
-      "app_dir": "App Dir",
+      "app_config_dir": "Config Dir",
+      "app_data_dir": "Data Dir",
       "core_dir": "Core Dir",
       "log_dir": "Log Dir"
     },

@@ -1,6 +1,6 @@
+import { CLASH_META_MANIFEST } from "../manifest/clash-meta";
 import { CLASH_MANIFEST } from "../manifest/clash-premium";
 import { colorize, consola } from "./logger";
-import { CLASH_META_MANIFEST } from "../manifest/clash-meta";
 
 export const archCheck = (platform: string, arch: string) => {
   consola.debug(colorize`platform {yellow ${platform}}`);

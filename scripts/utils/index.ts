@@ -1,6 +1,6 @@
-import { GITHUB_PROXY } from "./env";
 import figlet from "figlet";
-import { consola } from "./logger";
+import { HttpsProxyAgent } from "https-proxy-agent";
+import { GITHUB_PROXY } from "./env";
 
 export const getGithubUrl = (url: string) => {
   return new URL(url.replace(/^https?:\/\//g, ""), GITHUB_PROXY).toString();
@@ -38,3 +38,17 @@ export const printNyanpasu = () => {
 
   console.log(ascii);
 };
+
+export const HTTP_PROXY =
+  process.env.HTTP_PROXY ||
+  process.env.http_proxy ||
+  process.env.HTTPS_PROXY ||
+  process.env.https_proxy;
+
+export function getProxyAgent() {
+  if (HTTP_PROXY) {
+    return new HttpsProxyAgent(HTTP_PROXY);
+  }
+
+  return undefined;
+}

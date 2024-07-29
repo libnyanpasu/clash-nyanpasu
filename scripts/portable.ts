@@ -1,7 +1,7 @@
-import { context, getOctokit } from "@actions/github";
+import path from "node:path";
 import AdmZip from "adm-zip";
 import fs from "fs-extra";
-import path from "node:path";
+import { context, getOctokit } from "@actions/github";
 import packageJson from "../package.json";
 import { colorize, consola } from "./utils/logger";
 

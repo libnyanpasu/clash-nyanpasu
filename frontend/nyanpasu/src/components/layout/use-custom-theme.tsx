@@ -1,11 +1,13 @@
+import { useWhyDidYouUpdate } from "ahooks";
+import { useAtomValue, useSetAtom } from "jotai";
+import { mergeWith } from "lodash-es";
 import { useEffect, useMemo } from "react";
-import { alpha, darken, lighten, Theme, useColorScheme } from "@mui/material";
-import { appWindow } from "@tauri-apps/api/window";
 import { defaultTheme } from "@/pages/_theme";
+import { themeMode as themeModeAtom } from "@/store";
+import { alpha, darken, lighten, Theme, useColorScheme } from "@mui/material";
 import { useNyanpasu } from "@nyanpasu/interface";
 import { createMDYTheme } from "@nyanpasu/ui";
-import { useAtomValue, useSetAtom } from "jotai";
-import { themeMode as themeModeAtom } from "@/store";
+import { appWindow } from "@tauri-apps/api/window";
 
 const applyRootStyleVar = (mode: "light" | "dark", theme: Theme) => {
   const root = document.documentElement;
@@ -37,11 +39,21 @@ export const useCustomTheme = () => {
   const { nyanpasuConfig } = useNyanpasu();
   const themeMode = useAtomValue(themeModeAtom);
 
+  useWhyDidYouUpdate("useCustomTheme", { nyanpasuConfig, themeMode });
+
   const theme = useMemo(() => {
-    const mergedTheme = createMDYTheme({
-      ...defaultTheme,
-      ...nyanpasuConfig?.theme_setting,
-    });
+    const mergedTheme = createMDYTheme(
+      mergeWith(
+        {},
+        defaultTheme,
+        nyanpasuConfig?.theme_setting,
+        (objValue, srcValue) => {
+          return srcValue === undefined || srcValue === ""
+            ? objValue
+            : srcValue;
+        },
+      ),
+    );
 
     applyRootStyleVar(themeMode, mergedTheme);
 

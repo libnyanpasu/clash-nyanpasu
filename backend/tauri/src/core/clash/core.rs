@@ -5,51 +5,327 @@ use crate::{
     log_err,
     utils::dirs,
 };
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
+use nyanpasu_ipc::{
+    api::{core::start::CoreStartReq, status::CoreState},
+    utils::get_current_ts,
+};
+use nyanpasu_utils::{
+    core::{
+        instance::{CoreInstance, CoreInstanceBuilder},
+        CommandEvent,
+    },
+    runtime::{block_on, spawn},
+};
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
-use std::{fs, io::Write, sync::Arc, time::Duration};
-use sysinfo::{Pid, System};
-use tauri::api::process::{Command, CommandChild, CommandEvent};
+use std::{
+    borrow::Cow,
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicBool, AtomicI64, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
+use tauri::api::process::Command;
 use tokio::time::sleep;
 
-#[cfg(target_os = "windows")]
-use crate::core::win_service;
+pub enum RunType {
+    /// Run as child process directly
+    Normal,
+    /// Run by Nyanpasu Service via a ipc call
+    Service,
+    // TODO: Not implemented yet
+    /// Run as elevated process, if profile advice to run as elevated
+    Elevated,
+}
+
+impl Default for RunType {
+    fn default() -> Self {
+        let enable_service = {
+            *Config::verge()
+                .latest()
+                .enable_service_mode
+                .as_ref()
+                .unwrap_or(&false)
+        };
+        if enable_service && crate::core::service::ipc::get_ipc_state().is_connected() {
+            tracing::info!("run core as service");
+            RunType::Service
+        } else {
+            tracing::info!("run core as child process");
+            RunType::Normal
+        }
+    }
+}
+
+#[derive(Debug)]
+enum Instance {
+    Child {
+        child: Mutex<Arc<CoreInstance>>,
+        stated_changed_at: Arc<AtomicI64>,
+        kill_flag: Arc<AtomicBool>,
+    },
+    Service {
+        config_path: PathBuf,
+        core_type: nyanpasu_utils::core::CoreType,
+    },
+}
+
+impl Instance {
+    pub fn try_new(run_type: RunType) -> Result<Self> {
+        let core_type: nyanpasu_utils::core::CoreType = {
+            (Config::verge()
+                .latest()
+                .clash_core
+                .as_ref()
+                .unwrap_or(&ClashCore::ClashPremium))
+            .into()
+        };
+        let data_dir = dirs::app_data_dir()?;
+        let binary = find_binary_path(&core_type)?;
+        let config_path = Config::generate_file(ConfigType::Run)?;
+        let pid_path = dirs::clash_pid_path()?;
+        match run_type {
+            RunType::Normal => {
+                let instance = Arc::new(
+                    CoreInstanceBuilder::default()
+                        .core_type(core_type)
+                        .app_dir(data_dir)
+                        .binary_path(binary)
+                        .config_path(config_path.clone())
+                        .pid_path(pid_path)
+                        .build()?,
+                );
+                Ok(Instance::Child {
+                    child: Mutex::new(instance),
+                    kill_flag: Arc::new(AtomicBool::new(false)),
+                    stated_changed_at: Arc::new(AtomicI64::new(get_current_ts())),
+                })
+            }
+            RunType::Service => Ok(Instance::Service {
+                config_path,
+                core_type,
+            }),
+            RunType::Elevated => {
+                todo!()
+            }
+        }
+    }
+
+    pub async fn start(&self) -> Result<()> {
+        match self {
+            Instance::Child {
+                child,
+                kill_flag,
+                stated_changed_at,
+            } => {
+                let instance = {
+                    let child = child.lock();
+                    child.clone()
+                };
+                let (is_premium, core_type) = {
+                    let child = child.lock();
+                    (
+                        matches!(
+                            child.core_type,
+                            nyanpasu_utils::core::CoreType::Clash(
+                                nyanpasu_utils::core::ClashCoreType::ClashPremium
+                            )
+                        ),
+                        child.core_type.clone(),
+                    )
+                };
+                let (tx, mut rx) = tokio::sync::mpsc::channel::<anyhow::Result<()>>(1); // use mpsc channel just to avoid type moved error, though it never fails
+                let stated_changed_at = stated_changed_at.clone();
+                let kill_flag = kill_flag.clone();
+                // This block below is to handle the stdio from the core process
+                tokio::spawn(async move {
+                    match instance.run().await {
+                        Ok((_, mut rx)) => {
+                            kill_flag.store(false, Ordering::Release); // reset kill flag
+                            let mut err_buf: Vec<String> = Vec::with_capacity(6);
+                            loop {
+                                if let Some(event) = rx.recv().await {
+                                    match event {
+                                        CommandEvent::Stdout(line) => {
+                                            if is_premium {
+                                                let log = api::parse_log(line.clone());
+                                                log::info!(target: "app", "[{}]: {}", core_type, log);
+                                            } else {
+                                                log::info!(target: "app", "[{}]: {}", core_type, line);
+                                            }
+                                            Logger::global().set_log(line);
+                                        }
+                                        CommandEvent::Stderr(line) => {
+                                            log::error!(target: "app", "[{}]: {}", core_type, line);
+                                            err_buf.push(line.clone());
+                                            Logger::global().set_log(line);
+                                        }
+                                        CommandEvent::Error(e) => {
+                                            log::error!(target: "app", "[{}]: {}", core_type, e);
+                                            let err = anyhow::anyhow!(format!(
+                                                "{}\n{}",
+                                                e,
+                                                err_buf.join("\n")
+                                            ));
+                                            Logger::global().set_log(e);
+                                            let _ = tx.send(Err(err)).await;
+                                            stated_changed_at
+                                                .store(get_current_ts(), Ordering::Relaxed);
+                                            break;
+                                        }
+                                        CommandEvent::Terminated(status) => {
+                                            log::error!(
+                                                target: "app",
+                                                "core terminated with status: {:?}",
+                                                status
+                                            );
+                                            stated_changed_at
+                                                .store(get_current_ts(), Ordering::Relaxed);
+                                            if status.code != Some(0)
+                                                || !matches!(status.signal, Some(9) | Some(15))
+                                            {
+                                                let err = anyhow::anyhow!(format!(
+                                                    "core terminated with status: {:?}\n{}",
+                                                    status,
+                                                    err_buf.join("\n")
+                                                ));
+                                                tracing::error!("{}\n{}", err, err_buf.join("\n"));
+                                                if tx.send(Err(err)).await.is_err()
+                                                    && !kill_flag.load(Ordering::Acquire)
+                                                {
+                                                    std::thread::spawn(move || {
+                                                        block_on(async {
+                                                            tracing::info!(
+                                                                "Trying to recover core."
+                                                            );
+                                                            let _ = CoreManager::global()
+                                                                .recover_core()
+                                                                .await;
+                                                        });
+                                                    });
+                                                }
+                                            }
+                                            break;
+                                        }
+                                        CommandEvent::DelayCheckpointPass => {
+                                            tracing::debug!("delay checkpoint pass");
+                                            stated_changed_at
+                                                .store(get_current_ts(), Ordering::Relaxed);
+                                            tx.send(Ok(())).await.unwrap();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            spawn(async move {
+                                tx.send(Err(err.into())).await.unwrap();
+                            });
+                        }
+                    }
+                });
+                rx.recv().await.unwrap()?;
+                Ok(())
+            }
+            Instance::Service {
+                config_path,
+                core_type,
+            } => {
+                let payload = CoreStartReq {
+                    config_file: Cow::Borrowed(config_path),
+                    core_type: Cow::Borrowed(core_type),
+                };
+                nyanpasu_ipc::client::shortcuts::Client::service_default()
+                    .start_core(&payload)
+                    .await?;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn stop(&self) -> Result<()> {
+        let state = self.state().await;
+        match self {
+            Instance::Child {
+                child,
+                stated_changed_at,
+                kill_flag,
+            } => {
+                if matches!(state.as_ref(), CoreState::Stopped(_)) {
+                    anyhow::bail!("core is already stopped");
+                }
+                kill_flag.store(true, Ordering::Release);
+                let child = {
+                    let child = child.lock();
+                    child.clone()
+                };
+                child.kill().await?;
+                stated_changed_at.store(get_current_ts(), Ordering::Relaxed);
+                Ok(())
+            }
+            Instance::Service { .. } => {
+                Ok(nyanpasu_ipc::client::shortcuts::Client::service_default()
+                    .stop_core()
+                    .await?)
+            }
+        }
+    }
+
+    pub async fn restart(&self) -> Result<()> {
+        let state = self.state().await;
+        if matches!(state.as_ref(), CoreState::Running) {
+            self.stop().await?;
+        }
+        self.start().await
+    }
+
+    pub async fn state<'a>(&self) -> Cow<'a, CoreState> {
+        match self {
+            Instance::Child { child, .. } => {
+                let this = child.lock();
+                Cow::Borrowed(match this.state() {
+                    nyanpasu_utils::core::instance::CoreInstanceState::Running => {
+                        &CoreState::Running
+                    }
+                    nyanpasu_utils::core::instance::CoreInstanceState::Stopped => {
+                        &CoreState::Stopped(None)
+                    }
+                })
+            }
+            Instance::Service { .. } => {
+                let status = nyanpasu_ipc::client::shortcuts::Client::service_default()
+                    .status()
+                    .await
+                    .map(|info| match info.core_infos.state {
+                        nyanpasu_ipc::api::status::CoreState::Running => CoreState::Running,
+                        nyanpasu_ipc::api::status::CoreState::Stopped(_) => {
+                            CoreState::Stopped(None)
+                        }
+                    })
+                    .unwrap_or(CoreState::Stopped(None));
+                Cow::Owned(status)
+            }
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct CoreManager {
-    sidecar: Arc<Mutex<Option<CommandChild>>>,
-
-    #[allow(unused)]
-    use_service_mode: Arc<Mutex<bool>>,
+    instance: Mutex<Option<Arc<Instance>>>,
 }
 
 impl CoreManager {
     pub fn global() -> &'static CoreManager {
         static CORE_MANAGER: OnceCell<CoreManager> = OnceCell::new();
-
         CORE_MANAGER.get_or_init(|| CoreManager {
-            sidecar: Arc::new(Mutex::new(None)),
-            use_service_mode: Arc::new(Mutex::new(false)),
+            instance: Mutex::new(None),
         })
     }
 
     pub fn init(&self) -> Result<()> {
-        // kill old clash process
-        let _ = dirs::clash_pid_path()
-            .and_then(|path| fs::read(path).map(|p| p.to_vec()).context(""))
-            .and_then(|pid| String::from_utf8_lossy(&pid).parse().context(""))
-            .map(|pid| {
-                let mut system = System::new();
-                system.refresh_all();
-                if let Some(proc) = system.process(Pid::from_u32(pid)) {
-                    if proc.name().contains("clash") {
-                        log::debug!(target: "app", "kill old clash process");
-                        proc.kill();
-                    }
-                }
-            });
-
         tauri::async_runtime::spawn(async {
             // 启动clash
             log_err!(Self::global().run_core().await);
@@ -66,7 +342,7 @@ impl CoreManager {
         let clash_core = { Config::verge().latest().clash_core.clone() };
         let clash_core = clash_core.unwrap_or(ClashCore::ClashPremium).to_string();
 
-        let app_dir = dirs::app_home_dir()?;
+        let app_dir = dirs::app_data_dir()?;
         let app_dir = dirs::path_to_str(&app_dir)?;
         log::debug!(target: "app", "check config in `{clash_core}`");
         let output = Command::new_sidecar(clash_core)?
@@ -88,34 +364,25 @@ impl CoreManager {
 
     /// 启动核心
     pub async fn run_core(&self) -> Result<()> {
-        #[allow(unused_mut)]
-        let mut should_kill = match self.sidecar.lock().take() {
-            Some(child) => {
-                log::debug!(target: "app", "stop the core by sidecar");
-                let _ = child.kill();
-                true
+        {
+            let instance = {
+                let instance = self.instance.lock();
+                instance.as_ref().cloned()
+            };
+            if let Some(instance) = instance.as_ref() {
+                if matches!(instance.state().await.as_ref(), CoreState::Running) {
+                    log::debug!(target: "app", "core is already running, stop it first...");
+                    instance.stop().await?;
+                }
             }
-            None => false,
-        };
-
-        #[cfg(target_os = "windows")]
-        if *self.use_service_mode.lock() {
-            log::debug!(target: "app", "stop the core by service");
-            log_err!(win_service::stop_core_by_service().await);
-            should_kill = true;
-        }
-
-        // 这里得等一会儿
-        if should_kill {
-            sleep(Duration::from_millis(500)).await;
         }
 
         // 检查端口是否可用
+        // TODO: 修复下面这个方法，从而允许 Fallback 到其他端口
         Config::clash()
             .latest()
             .prepare_external_controller_port()?;
-
-        let config_path = Config::generate_file(ConfigType::Run)?;
+        let instance = Arc::new(Instance::try_new(RunType::default())?);
 
         #[cfg(target_os = "macos")]
         {
@@ -134,147 +401,81 @@ impl CoreManager {
                 log::debug!(target: "app", "{event:?}");
             }
         }
-        #[cfg(target_os = "windows")]
+        // FIXME: 重构服务模式
+        // #[cfg(target_os = "windows")]
+        // {
+        //     // 服务模式
+        //     let enable = { Config::verge().latest().enable_service_mode };
+        //     let enable = enable.unwrap_or(false);
+
+        //     *self.use_service_mode.lock() = enable;
+
+        //     if enable {
+        //         // 服务模式启动失败就直接运行 sidecar
+        //         log::debug!(target: "app", "try to run core in service mode");
+        //         let res = async {
+        //             win_service::check_service().await?;
+        //             win_service::run_core_by_service(&config_path).await
+        //         }
+        //         .await;
+        //         match res {
+        //             Ok(_) => return Ok(()),
+        //             Err(err) => {
+        //                 // 修改这个值，免得stop出错
+        //                 *self.use_service_mode.lock() = false;
+        //                 log::error!(target: "app", "{err}");
+        //             }
+        //         }
+        //     }
+        // }
+
         {
-            // 服务模式
-            let enable = { Config::verge().latest().enable_service_mode };
-            let enable = enable.unwrap_or(false);
-
-            *self.use_service_mode.lock() = enable;
-
-            if enable {
-                // 服务模式启动失败就直接运行 sidecar
-                log::debug!(target: "app", "try to run core in service mode");
-                let res = async {
-                    win_service::check_service().await?;
-                    win_service::run_core_by_service(&config_path).await
-                }
-                .await;
-                match res {
-                    Ok(_) => return Ok(()),
-                    Err(err) => {
-                        // 修改这个值，免得stop出错
-                        *self.use_service_mode.lock() = false;
-                        log::error!(target: "app", "{err}");
-                    }
-                }
-            }
+            let mut this = self.instance.lock();
+            *this = Some(instance.clone());
         }
-
-        let app_dir = dirs::app_home_dir()?;
-        let app_dir = dirs::path_to_str(&app_dir)?;
-
-        let clash_core = { Config::verge().latest().clash_core.clone() };
-        let clash_core = clash_core.unwrap_or(ClashCore::ClashPremium);
-        let is_clash = matches!(&clash_core, ClashCore::ClashPremium);
-
-        let config_path = dirs::path_to_str(&config_path)?;
-
-        // fix #212
-        let args = match &clash_core {
-            ClashCore::Mihomo | ClashCore::MihomoAlpha => {
-                vec!["-m", "-d", app_dir, "-f", config_path]
-            }
-            ClashCore::ClashRs => vec!["-d", app_dir, "-c", config_path],
-            ClashCore::ClashPremium => vec!["-d", app_dir, "-f", config_path],
-        };
-
-        let cmd = Command::new_sidecar(clash_core)?;
-        let (mut rx, cmd_child) = cmd.args(args).spawn()?;
-
-        // 将pid写入文件中
-        crate::log_err!((|| {
-            let pid = cmd_child.pid();
-            let path = dirs::clash_pid_path()?;
-            fs::File::create(path)
-                .context("failed to create the pid file")?
-                .write(format!("{pid}").as_bytes())
-                .context("failed to write pid to the file")?;
-            <Result<()>>::Ok(())
-        })());
-
-        let mut sidecar = self.sidecar.lock();
-        *sidecar = Some(cmd_child);
-        drop(sidecar);
-
-        tauri::async_runtime::spawn(async move {
-            while let Some(event) = rx.recv().await {
-                match event {
-                    CommandEvent::Stdout(line) => {
-                        if is_clash {
-                            let stdout = api::parse_log(line.clone());
-                            log::info!(target: "app", "[clash]: {stdout}");
-                        } else {
-                            log::info!(target: "app", "[clash]: {line}");
-                        };
-                        Logger::global().set_log(line);
-                    }
-                    CommandEvent::Stderr(err) => {
-                        // let stdout = api::parse_log(err.clone());
-                        log::error!(target: "app", "[clash]: {err}");
-                        Logger::global().set_log(err);
-                    }
-                    CommandEvent::Error(err) => {
-                        log::error!(target: "app", "[clash]: {err}");
-                        Logger::global().set_log(err);
-                    }
-                    CommandEvent::Terminated(_) => {
-                        log::info!(target: "app", "clash core terminated");
-                        let _ = CoreManager::global().recover_core();
-                        break;
-                    }
-                    _ => {}
-                }
-            }
-        });
-
-        Ok(())
+        instance.start().await
     }
 
     /// 重启内核
-    pub fn recover_core(&'static self) -> Result<()> {
-        // 服务模式不管
-        #[cfg(target_os = "windows")]
-        if *self.use_service_mode.lock() {
-            return Ok(());
-        }
-
-        // 清空原来的sidecar值
-        if let Some(sidecar) = self.sidecar.lock().take() {
-            let _ = sidecar.kill();
-        }
-
-        tauri::async_runtime::spawn(async move {
-            // 6秒之后再查看服务是否正常 (时间随便搞的)
-            // terminated 可能是切换内核 (切换内核已经有500ms的延迟)
-            sleep(Duration::from_millis(6666)).await;
-
-            if self.sidecar.lock().is_none() {
-                log::info!(target: "app", "recover clash core");
-
-                // 重新启动app
-                if let Err(err) = self.run_core().await {
-                    log::error!(target: "app", "failed to recover clash core");
-                    log::error!(target: "app", "{err}");
-
-                    let _ = self.recover_core();
+    pub async fn recover_core(&'static self) -> Result<()> {
+        // 清除原来的实例
+        {
+            let instance = {
+                let mut this = self.instance.lock();
+                this.take()
+            };
+            if let Some(instance) = instance {
+                if matches!(instance.state().await.as_ref(), CoreState::Running) {
+                    log::debug!(target: "app", "core is running, stop it first...");
+                    instance.stop().await?;
                 }
             }
-        });
+        }
+
+        if let Err(err) = self.run_core().await {
+            log::error!(target: "app", "failed to recover clash core");
+            log::error!(target: "app", "{err}");
+            tokio::time::sleep(Duration::from_secs(5)).await; // sleep 5s
+            std::thread::spawn(move || {
+                block_on(async {
+                    let _ = CoreManager::global().recover_core().await;
+                })
+            });
+        }
 
         Ok(())
     }
 
     /// 停止核心运行
-    pub fn stop_core(&self) -> Result<()> {
-        #[cfg(target_os = "windows")]
-        if *self.use_service_mode.lock() {
-            log::debug!(target: "app", "stop the core by service");
-            tauri::async_runtime::block_on(async move {
-                log_err!(win_service::stop_core_by_service().await);
-            });
-            return Ok(());
-        }
+    pub async fn stop_core(&self) -> Result<()> {
+        // #[cfg(target_os = "windows")]
+        // if *self.use_service_mode.lock() {
+        //     log::debug!(target: "app", "stop the core by service");
+        //     tauri::async_runtime::block_on(async move {
+        //         log_err!(win_service::stop_core_by_service().await);
+        //     });
+        //     return Ok(());
+        // }
 
         #[cfg(target_os = "macos")]
         {
@@ -291,16 +492,18 @@ impl CoreManager {
                     Ok(_) => return Ok(()),
                     Err(err) => {
                         // 修改这个值，免得stop出错
-                        *self.use_service_mode.lock() = false;
+                        // *self.use_service_mode.lock() = false;
                         log::error!(target: "app", "{err}");
                     }
                 }
             }
         }
-        let mut sidecar = self.sidecar.lock();
-        if let Some(child) = sidecar.take() {
-            log::debug!(target: "app", "stop the core by sidecar");
-            let _ = child.kill();
+        let instance = {
+            let instance = self.instance.lock();
+            instance.as_ref().cloned()
+        };
+        if let Some(instance) = instance.as_ref() {
+            instance.stop().await?;
         }
         Ok(())
     }
@@ -308,10 +511,6 @@ impl CoreManager {
     /// 切换核心
     pub async fn change_core(&self, clash_core: Option<ClashCore>) -> Result<()> {
         let clash_core = clash_core.ok_or(anyhow::anyhow!("clash core is null"))?;
-
-        // if &clash_core != "clash" && &clash_core != "clash-meta" && &clash_core != "clash-rs" {
-        //     bail!("invalid clash core name \"{clash_core}\"");
-        // }
 
         log::debug!(target: "app", "change core to `{clash_core}`");
 
@@ -335,6 +534,7 @@ impl CoreManager {
             Err(err) => {
                 Config::verge().discard();
                 Config::runtime().discard();
+                self.run_core().await?;
                 Err(err)
             }
         }
@@ -372,4 +572,26 @@ impl CoreManager {
 
         Ok(())
     }
+}
+
+// TODO: support system path search via a config or flag
+// FIXME: move this fn to nyanpasu-utils
+/// Search the binary path of the core: Data Dir -> Sidecar Dir
+pub fn find_binary_path(core_type: &nyanpasu_utils::core::CoreType) -> std::io::Result<PathBuf> {
+    let data_dir = dirs::app_data_dir()
+        .map_err(|err| std::io::Error::new(std::io::ErrorKind::NotFound, err.to_string()))?;
+    let binary_path = data_dir.join(core_type.get_executable_name());
+    if binary_path.exists() {
+        return Ok(binary_path);
+    }
+    let app_dir = dirs::app_install_dir()
+        .map_err(|err| std::io::Error::new(std::io::ErrorKind::NotFound, err.to_string()))?;
+    let binary_path = app_dir.join(core_type.get_executable_name());
+    if binary_path.exists() {
+        return Ok(binary_path);
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        format!("{} not found", core_type.get_executable_name()),
+    ))
 }

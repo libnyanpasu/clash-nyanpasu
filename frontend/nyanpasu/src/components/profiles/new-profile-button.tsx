@@ -1,6 +1,6 @@
+import { useState } from "react";
 import { Add } from "@mui/icons-material";
 import { FloatingButton } from "@nyanpasu/ui";
-import { useState } from "react";
 import { ProfileDialog } from "./profile-dialog";
 
 export const NewProfileButton = () => {
@@ -9,7 +9,7 @@ export const NewProfileButton = () => {
   return (
     <>
       <FloatingButton onClick={() => setOpen(true)}>
-        <Add className="!size-8 absolute" />
+        <Add className="absolute !size-8" />
       </FloatingButton>
 
       <ProfileDialog open={open} onClose={() => setOpen(false)} />

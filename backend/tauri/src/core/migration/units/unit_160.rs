@@ -87,14 +87,8 @@ impl<'a> Migration<'a> for MigrateAppHomeDir {
             let path = home_dir.join("profiles.yaml");
             if path.exists() {
                 println!("Moving profiles.yaml to profiles dir");
-                fs_extra::file::move_file(
-                    path,
-                    crate::utils::dirs::app_profiles_dir()
-                        .unwrap()
-                        .join("profiles.yaml"),
-                    &file_opts,
-                )
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+                fs_extra::file::move_file(path, app_config_dir.join("profiles.yaml"), &file_opts)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
             }
             // move profiles dir
             let path = home_dir.join("profiles");

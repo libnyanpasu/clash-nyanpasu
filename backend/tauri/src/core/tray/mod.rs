@@ -154,7 +154,7 @@ impl Tray {
                 #[cfg(target_os = "windows")]
                 "copy_env_ps" => feat::copy_clash_env("ps"),
                 "open_app_config_dir" => crate::log_err!(ipc::open_app_config_dir()),
-                "open_app_data_dir" => crate::log_err!(ipc::open_app_config_dir()),
+                "open_app_data_dir" => crate::log_err!(ipc::open_app_data_dir()),
                 "open_core_dir" => crate::log_err!(ipc::open_core_dir()),
                 "open_logs_dir" => crate::log_err!(ipc::open_logs_dir()),
                 "restart_clash" => feat::restart_clash_core(),

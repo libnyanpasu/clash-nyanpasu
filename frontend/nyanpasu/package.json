@@ -30,7 +30,7 @@
     "framer-motion": "12.0.0-alpha.0",
     "i18next": "23.12.2",
     "jotai": "2.9.1",
-    "material-react-table": "2.13.0",
+    "material-react-table": "2.13.1",
     "monaco-editor": "0.50.0",
     "mui-color-input": "3.0.0",
     "react": "18.3.1",

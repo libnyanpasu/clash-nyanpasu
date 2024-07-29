@@ -20,10 +20,11 @@ pub const APP_NAME: &str = "clash-nyanpasu-dev";
 /// App Dir placeholder
 /// It is used to create the config and data dir in the filesystem
 /// For windows, the style should be similar to `C:/Users/nyanapasu/AppData/Roaming/Clash Nyanpasu`
+/// For macos, it should be similar to `/Users/nyanpasu/Library/Application Support/Clash Nyanpasu`
 /// For other platforms, it should be similar to `/home/nyanpasu/.config/clash-nyanpasu`
 pub static APP_DIR_PLACEHOLDER: Lazy<Cow<'static, str>> = Lazy::new(|| {
     use convert_case::{Case, Casing};
-    if cfg!(windows) {
+    if cfg!(any(target_os = "windows", target_os = "macos")) {
         Cow::Owned(APP_NAME.to_case(Case::Title))
     } else {
         Cow::Borrowed(APP_NAME)
@@ -89,9 +90,7 @@ pub fn app_config_dir() -> Result<PathBuf> {
             .ok_or(anyhow::anyhow!("failed to get the app config dir")),
     }
     .and_then(|dir| {
-        if !dir.exists() {
-            fs::create_dir_all(&dir)?;
-        }
+        create_dir_all(&dir)?;
         Ok(dir)
     })
 }
@@ -119,9 +118,7 @@ pub fn app_data_dir() -> Result<PathBuf> {
             .ok_or(anyhow::anyhow!("failed to get the app data dir")),
     }
     .and_then(|dir| {
-        if !dir.exists() {
-            fs::create_dir_all(&dir)?;
-        }
+        create_dir_all(&dir)?;
         Ok(dir)
     })
 }
@@ -306,6 +303,22 @@ pub fn get_single_instance_placeholder() -> String {
             .to_string_lossy()
             .to_string()
     }
+}
+
+fn create_dir_all(dir: &PathBuf) -> Result<(), std::io::Error> {
+    let meta = fs::metadata(dir);
+    if let Ok(meta) = meta {
+        if !meta.is_dir() {
+            fs::remove_file(dir)?;
+        }
+    }
+    fs_extra::dir::create_all(dir, false).map_err(|e| {
+        std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("failed to create dir: {:?}, kind: {:?}", e, e.kind),
+        )
+    })?;
+    Ok(())
 }
 
 mod test {

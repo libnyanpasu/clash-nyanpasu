@@ -297,9 +297,9 @@ pub fn get_single_instance_placeholder() -> String {
 
     #[cfg(target_os = "macos")]
     {
-        tauri::api::path::local_data_dir()
+        crate::utils::dirs::app_data_dir()
             .unwrap()
-            .join(APP_NAME)
+            .join("instance.lock")
             .to_string_lossy()
             .to_string()
     }

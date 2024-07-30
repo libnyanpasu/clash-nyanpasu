@@ -15,7 +15,7 @@ import { classNames } from "@/utils";
 import { Clash, useClashCore, useNyanpasu } from "@nyanpasu/interface";
 import { useBreakpoint } from "@nyanpasu/ui";
 import NodeCard from "./node-card";
-import { filterDelay } from "./utils";
+import { nodeSortingFn } from "./utils";
 
 type RenderClashProxy = Clash.Proxy<string> & { renderLayoutKey: string };
 
@@ -48,35 +48,15 @@ export const NodeList = forwardRef(function NodeList({}, ref) {
         const selectedGroup = data?.groups[proxyGroup.selector];
 
         if (selectedGroup) {
-          let sortedList = selectedGroup.all?.slice();
-
-          if (proxyGroupSort === "delay") {
-            sortedList = sortedList?.sort((a, b) => {
-              const delayA = filterDelay(a.history);
-              const delayB = filterDelay(b.history);
-
-              if (delayA === -1 || delayA === -2) return 1;
-              if (delayB === -1 || delayB === -2) return -1;
-
-              if (delayA === 0) return 1;
-              if (delayB === 0) return -1;
-
-              return delayA - delayB;
-            });
-          } else if (proxyGroupSort === "name") {
-            sortedList = sortedList?.sort((a, b) =>
-              a.name.localeCompare(b.name),
-            );
-          }
-
-          setGroup({
-            ...selectedGroup,
-            all: sortedList,
-          });
+          setGroup(nodeSortingFn(selectedGroup, proxyGroupSort));
         }
       }
     } else {
-      setGroup(data?.global);
+      if (data?.global) {
+        setGroup(nodeSortingFn(data?.global, proxyGroupSort));
+      } else {
+        setGroup(data?.global);
+      }
     }
   }, [
     data?.groups,

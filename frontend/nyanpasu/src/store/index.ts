@@ -1,4 +1,5 @@
 import { atom } from "jotai";
+import { SortType } from "@/components/proxies/utils";
 import { LogMessage } from "@nyanpasu/interface";
 
 const atomWithLocalStorage = <T>(key: string, initialValue: T) => {
@@ -33,9 +34,10 @@ export const proxyGroupAtom = atomWithLocalStorage<{
   selector: 0,
 });
 
-export const proxyGroupSortAtom = atomWithLocalStorage<
-  "default" | "delay" | "name"
->("proxyGroupSortAtom", "default");
+export const proxyGroupSortAtom = atomWithLocalStorage<SortType>(
+  "proxyGroupSortAtom",
+  SortType.Default,
+);
 
 export const themeMode = atomWithLocalStorage<"light" | "dark">(
   "themeMode",

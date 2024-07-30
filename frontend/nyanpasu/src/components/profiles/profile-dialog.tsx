@@ -111,18 +111,11 @@ export const ProfileDialog = ({
   });
 
   const dialogProps = isEdit && {
-    sx: {
-      " .MuiDialog-paper": {
-        maxWidth: "90vw",
-        maxHeight: "90vh",
-      },
-    },
-    contentSx: {
-      overflow: "auto",
-      width: "90vw",
-      height: "90vh",
+    contentStyle: {
+      overflow: "hidden",
       padding: 0,
     },
+    full: true,
   };
 
   const MetaInfo = ({ className }: { className?: string }) => (
@@ -260,7 +253,7 @@ export const ProfileDialog = ({
     >
       {isEdit ? (
         <div className="flex h-full">
-          <div className="w-96 overflow-auto pb-4 pt-4">
+          <div className="min-w-72 overflow-auto pb-4 pt-4">
             <MetaInfo className="pl-4 pr-4" />
           </div>
 

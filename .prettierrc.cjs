@@ -1,8 +1,5 @@
-// @ts-check
-import IanvsSorImportsPlugin from "@ianvs/prettier-plugin-sort-imports";
-
 /** @type {import("prettier").Config} */
-export default {
+module.exports = {
   endOfLine: "lf",
   semi: true,
   singleQuote: false,
@@ -27,7 +24,7 @@ export default {
   importOrderParserPlugins: ["typescript", "jsx", "decorators-legacy"],
   importOrderTypeScriptVersion: "5.0.0",
   plugins: [
-    IanvsSorImportsPlugin,
+    "@ianvs/prettier-plugin-sort-imports",
     "prettier-plugin-tailwindcss",
     "prettier-plugin-toml",
   ],

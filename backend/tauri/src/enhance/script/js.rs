@@ -1,19 +1,23 @@
 use super::runner::{wrap_result, ProcessOutput, Runner};
-use crate::enhance::{Logs, LogsExt};
+use crate::enhance::utils::{Logs, LogsExt};
 use anyhow::Context as _;
 use async_trait::async_trait;
+use boa_console::Console;
 use boa_engine::{
     builtins::promise::PromiseState,
     js_string,
     module::{Module, SimpleModuleLoader},
+    property::Attribute,
     Context, JsError, JsNativeError, JsValue, NativeFunction, Source,
 };
 use once_cell::sync::Lazy;
+use parking_lot::Mutex;
 use serde_yaml::Mapping;
 use std::{
     cell::RefCell,
     path::{Path, PathBuf},
     rc::Rc,
+    sync::Arc,
 };
 use tracing_attributes::instrument;
 use utils::wrap_script_if_not_esm;
@@ -45,6 +49,22 @@ pub enum JsRunnerError {
     Other(String),
 }
 
+pub struct BoaConsoleLogger(Arc<Mutex<Option<Logs>>>);
+impl boa_console::Logger for BoaConsoleLogger {
+    fn log(&self, msg: boa_console::LogMessage, _: &Console) {
+        match msg {
+            boa_console::LogMessage::Log(msg) => self.0.lock().as_mut().unwrap().log(msg),
+            boa_console::LogMessage::Info(msg) => self.0.lock().as_mut().unwrap().info(msg),
+            boa_console::LogMessage::Warn(msg) => self.0.lock().as_mut().unwrap().warn(msg),
+            boa_console::LogMessage::Error(msg) => self.0.lock().as_mut().unwrap().error(msg),
+        }
+    }
+}
+
+fn take_logs(logs: Arc<Mutex<Option<Logs>>>) -> Logs {
+    logs.lock().take().unwrap()
+}
+
 pub struct JSRunner;
 
 // boa engine is single-thread runner so that we can not define it in runner trait directly
@@ -61,6 +81,15 @@ impl BoaRunner {
             ctx: Rc::new(RefCell::new(context)),
             loader,
         })
+    }
+
+    pub fn setup_console(&self, logger: BoaConsoleLogger) -> Result<()> {
+        let ctx = &mut self.ctx.borrow_mut();
+        // it not concurrency safe. we should move to new boa_runtime console when it is ready for custom logger
+        boa_console::set_logger(Arc::new(logger));
+        let console = Console::init(ctx);
+        ctx.register_global_property(js_string!(Console::NAME), console, Attribute::all())?;
+        Ok(())
     }
 
     pub fn get_ctx(&self) -> Rc<RefCell<Context>> {
@@ -174,12 +203,14 @@ impl Runner for JSRunner {
         // boa engine is single-thread runner so that we can use it in tokio::task::spawn_blocking
         let res = tokio::task::spawn_blocking(move || {
             let wrapped_fn = move || {
-                let mut logs = Logs::new();
-                let boa_runner = wrap_result!(BoaRunner::try_new(), logs);
+                let logs = Arc::new(Mutex::new(Some(Logs::new())));
+                let logger = BoaConsoleLogger(logs.clone());
+                let boa_runner = wrap_result!(BoaRunner::try_new(), take_logs(logs));
+                wrap_result!(boa_runner.setup_console(logger), take_logs(logs));
                 let config = wrap_result!(
                     simd_json::serde::to_string_pretty(&mapping)
                         .map_err(|e| { std::io::Error::new(std::io::ErrorKind::InvalidData, e) }),
-                    logs
+                    take_logs(logs)
                 );
                 let execute_module = format!(
                     r#"import process from "./{hash}.mjs";
@@ -196,34 +227,29 @@ impl Runner for JSRunner {
                 // );
                 // wrap_result!(boa_runner.execute_module(&process_module));
                 let main_module = wrap_result!(
-                    boa_runner
-                        .parse_module(&execute_module, "main")
-                        .map_err(|e| {
-                            logs.error(format!("failed to parse the main module: {:?}", e));
-                            e
-                        }),
-                    logs
+                    boa_runner.parse_module(&execute_module, "main"),
+                    take_logs(logs)
                 );
                 wrap_result!(boa_runner.execute_module(&main_module));
                 let ctx = boa_runner.get_ctx();
                 let namespace = main_module.namespace(&mut ctx.borrow_mut());
                 let result = wrap_result!(
                     namespace.get(js_string!("result"), &mut ctx.borrow_mut()),
-                    logs
+                    take_logs(logs)
                 );
                 let mut result = wrap_result!(
                     result
                         .as_string()
                         .ok_or_else(|| JsNativeError::typ().with_message("Expected string"))
                         .map(|str| str.to_std_string_escaped()),
-                    logs
+                    take_logs(logs)
                 );
                 let mapping = wrap_result!(
                     unsafe { simd_json::serde::from_str::<Mapping>(&mut result) }
                         .map_err(|e| { std::io::Error::new(std::io::ErrorKind::InvalidData, e) }),
-                    logs
+                    take_logs(logs)
                 );
-                (Ok::<Mapping, JsRunnerError>(mapping), logs)
+                (Ok::<Mapping, JsRunnerError>(mapping), take_logs(logs))
             };
             let (res, logs) = wrapped_fn();
             match res {
@@ -321,7 +347,6 @@ mod utils {
 }
 
 mod test {
-
     #[test]
     fn test_wrap_script_if_not_esm() {
         let script = r#"function main(config) {
@@ -357,6 +382,9 @@ mod test {
                 config.rules = [...config.rules, "MATCH,🚀"];
             }
             // print(JSON.stringify(config));
+            console.log("Test console log");
+            console.warn("Test console log");
+            console.error("Test console log");
             config.proxies = ["Test"];
             return config;
         }"#;
@@ -383,7 +411,11 @@ mod test {
                         "Test".to_string()
                     ),])
                 );
-                // assert_eq!(outs, vec!["{\"rules\":[\"111\",\"222\"],\"tun\":{\"enable\":false,\"dns\":{\"enable\":false}},\"proxies\":[\"111\"]}"]);
+                let outs = simd_json::serde::to_string(&logs).unwrap();
+                assert_eq!(
+                    outs,
+                    r#"[["log","Test console log"],["warn","Test console log"],["error","Test console log"]]"#
+                );
             });
     }
 }

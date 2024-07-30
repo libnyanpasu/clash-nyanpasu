@@ -1,5 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 
+use serde::{Deserialize, Serialize};
+
 use crate::config::profile::{item_type::ProfileUid, profiles::IProfiles};
 
 use super::ChainItem;
@@ -11,83 +13,48 @@ pub fn convert_uids_to_scripts(profiles: &IProfiles, uids: &[ProfileUid]) -> Vec
         .collect::<Vec<ChainItem>>()
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum EnhanceLogLevel {
-    Info,  // print fn in script
-    Warn,  // Something not recommended, it should be filtered by internal check after
-    Error, // It should be interrupted by runner or internal check
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LogSpan {
+    Log,
+    Info,
+    Warn,
+    Error,
 }
 
-impl Display for EnhanceLogLevel {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+impl AsRef<str> for LogSpan {
+    fn as_ref(&self) -> &str {
         match self {
-            Self::Info => write!(f, "INFO"),
-            Self::Warn => write!(f, "WARN"),
-            Self::Error => write!(f, "ERROR"),
+            LogSpan::Log => "log",
+            LogSpan::Info => "info",
+            LogSpan::Warn => "warn",
+            LogSpan::Error => "error",
         }
     }
 }
 
-impl From<EnhanceLogLevel> for &str {
-    fn from(level: EnhanceLogLevel) -> Self {
-        match level {
-            EnhanceLogLevel::Info => "INFO",
-            EnhanceLogLevel::Warn => "WARN",
-            EnhanceLogLevel::Error => "ERROR",
-        }
+pub type Logs = Vec<(LogSpan, String)>;
+pub trait LogsExt {
+    fn span<T: AsRef<str>>(&mut self, span: LogSpan, msg: T);
+    fn log<T: AsRef<str>>(&mut self, msg: T);
+    fn info<T: AsRef<str>>(&mut self, msg: T);
+    fn warn<T: AsRef<str>>(&mut self, msg: T);
+    fn error<T: AsRef<str>>(&mut self, msg: T);
+}
+impl LogsExt for Logs {
+    fn span<T: AsRef<str>>(&mut self, span: LogSpan, msg: T) {
+        self.push((span, msg.as_ref().to_string()));
+    }
+    fn log<T: AsRef<str>>(&mut self, msg: T) {
+        self.span(LogSpan::Log, msg);
+    }
+    fn info<T: AsRef<str>>(&mut self, msg: T) {
+        self.span(LogSpan::Info, msg);
+    }
+    fn warn<T: AsRef<str>>(&mut self, msg: T) {
+        self.span(LogSpan::Warn, msg);
+    }
+    fn error<T: AsRef<str>>(&mut self, msg: T) {
+        self.span(LogSpan::Error, msg);
     }
 }
-
-impl From<EnhanceLogLevel> for String {
-    fn from(level: EnhanceLogLevel) -> Self {
-        match level {
-            EnhanceLogLevel::Info => "INFO".to_string(),
-            EnhanceLogLevel::Warn => "WARN".to_string(),
-            EnhanceLogLevel::Error => "ERROR".to_string(),
-        }
-    }
-}
-
-impl From<&EnhanceLogLevel> for String {
-    fn from(level: &EnhanceLogLevel) -> Self {
-        match level {
-            EnhanceLogLevel::Info => "INFO".to_string(),
-            EnhanceLogLevel::Warn => "WARN".to_string(),
-            EnhanceLogLevel::Error => "ERROR".to_string(),
-        }
-    }
-}
-
-impl From<&EnhanceLogLevel> for &str {
-    fn from(level: &EnhanceLogLevel) -> Self {
-        match level {
-            EnhanceLogLevel::Info => "INFO",
-            EnhanceLogLevel::Warn => "WARN",
-            EnhanceLogLevel::Error => "ERROR",
-        }
-    }
-}
-
-pub type LogSpan = (EnhanceLogLevel, String);
-pub trait LogSpanExt {
-    #[allow(dead_code)]
-    fn record(&self);
-}
-
-impl LogSpanExt for LogSpan {
-    fn record(&self) {
-        match self.0 {
-            EnhanceLogLevel::Info => {
-                tracing::info!("{}", self.1);
-            }
-            EnhanceLogLevel::Warn => {
-                tracing::warn!("{}", self.1);
-            }
-            EnhanceLogLevel::Error => {
-                tracing::error!("{}", self.1);
-            }
-        }
-    }
-}
-
-pub type ResultLog = Vec<(EnhanceLogLevel, String)>;

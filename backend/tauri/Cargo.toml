@@ -22,6 +22,7 @@ nyanpasu-ipc = { git = "https://github.com/LibNyanpasu/nyanpasu-service.git", fe
   "client",
 ] }
 nyanpasu-utils = { git = "https://github.com/LibNyanpasu/nyanpasu-utils.git" }
+boa_console = { path = "../boa_console" } # should be removed when boa support console customize
 which = "6"
 anyhow = "1.0"
 dirs = "5.0.1"
@@ -116,7 +117,7 @@ convert_case = "0.6.0"
 os_pipe = "1.2.0"
 whoami = "1.5.1"
 atomic_enum = "0.3.0"
-boa_engine = "0.19.0"
+boa_engine.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.25.0"
@@ -125,7 +126,7 @@ objc = "0.2.7"
 [target.'cfg(windows)'.dependencies]
 deelevate = "0.2.0"
 winreg = { version = "0.52", features = ["transactions"] }
-windows-sys = { version = "0.52", features = [
+windows-sys = { version = "0.59", features = [
   "Win32_System_LibraryLoader",
   "Win32_System_SystemInformation",
 ] }

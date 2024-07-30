@@ -9,12 +9,14 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { useClickPosition } from "@/hooks";
+import { getSystem, useClickPosition } from "@/hooks";
 import { cn } from "@/utils";
 import LoadingButton from "@mui/lab/LoadingButton";
 import { Button, Divider } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import * as Portal from "@radix-ui/react-portal";
+
+const OS = getSystem();
 
 export interface BaseDialogProps {
   title: ReactNode;
@@ -25,6 +27,7 @@ export interface BaseDialogProps {
   contentStyle?: CSSProperties;
   children?: ReactNode;
   loading?: boolean;
+  full?: boolean;
   onOk?: () => void | Promise<void>;
   onClose?: () => void;
   divider?: boolean;
@@ -39,6 +42,7 @@ export const BaseDialog = ({
   contentStyle,
   disabledOk,
   loading,
+  full,
   onOk,
   ok,
   divider,
@@ -106,23 +110,26 @@ export const BaseDialog = ({
     <AnimatePresence initial={false}>
       {mounted && (
         <Portal.Root className="fixed left-0 top-0 z-50 h-dvh w-full">
-          <motion.div
-            className="absolute inset-0 z-50 backdrop-blur-xl"
-            style={{
-              backgroundColor: alpha(palette.primary[palette.mode], 0.1),
-            }}
-            animate={open ? "open" : "closed"}
-            initial={{ opacity: 0 }}
-            variants={{
-              open: { opacity: 1 },
-              closed: { opacity: 0 },
-            }}
-            onClick={handleClose}
-          />
+          {!full && (
+            <motion.div
+              className="absolute inset-0 z-50 backdrop-blur-xl"
+              style={{
+                backgroundColor: alpha(palette.primary[palette.mode], 0.1),
+              }}
+              animate={open ? "open" : "closed"}
+              initial={{ opacity: 0 }}
+              variants={{
+                open: { opacity: 1 },
+                closed: { opacity: 0 },
+              }}
+              onClick={handleClose}
+            />
+          )}
 
           <motion.div
             className={cn(
-              "absolute left-[50%] top-[50%] z-50 min-w-96 rounded-3xl shadow",
+              "absolute left-[50%] top-[50%] z-50",
+              full ? "h-dvh w-full" : "min-w-96 rounded-3xl shadow",
               palette.mode === "dark"
                 ? "text-white shadow-zinc-900"
                 : "text-black",
@@ -159,14 +166,24 @@ export const BaseDialog = ({
               duration: 0.35,
             }}
           >
-            <div className="m-4 text-xl">{title}</div>
+            <div
+              className={cn(
+                "text-xl",
+                !full ? "m-4" : OS === "macos" ? "ml-20 p-3" : "m-2 ml-6",
+              )}
+            >
+              {title}
+            </div>
 
             {divider && <Divider />}
 
             <div
-              className="relative overflow-y-auto overflow-x-hidden p-4"
+              className={cn(
+                "relative overflow-y-auto overflow-x-hidden p-4",
+                full && "h-full px-6",
+              )}
               style={{
-                maxHeight: "calc(100vh - 200px)",
+                maxHeight: full ? "calc(100vh - 100px)" : "calc(100vh - 200px)",
                 ...contentStyle,
               }}
             >
@@ -175,7 +192,7 @@ export const BaseDialog = ({
 
             {divider && <Divider />}
 
-            <div className="m-2 flex justify-end gap-2">
+            <div className={cn("m-2 flex justify-end gap-2", full && "mx-6")}>
               {onClose && (
                 <Button variant="outlined" onClick={handleClose}>
                   {close || t("Close")}

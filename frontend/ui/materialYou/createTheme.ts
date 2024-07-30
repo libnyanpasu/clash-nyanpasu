@@ -3,6 +3,7 @@ import {
   hexFromArgb,
   themeFromSourceColor,
 } from "@material/material-color-utilities";
+import type { BreakpointsOptions } from "@mui/material/styles";
 import createPalette from "@mui/material/styles/createPalette";
 import extendTheme from "@mui/material/styles/experimental_extendTheme";
 import {
@@ -31,6 +32,16 @@ interface ThemeSchema {
   success_color: string;
   font_family?: string;
 }
+
+export const MUI_BREAKPOINTS: BreakpointsOptions = {
+  values: {
+    xs: 0,
+    sm: 400,
+    md: 800,
+    lg: 1200,
+    xl: 1600,
+  },
+};
 
 export const createMDYTheme = (themeSchema: ThemeSchema) => {
   const materialColor = themeFromSourceColor(
@@ -84,18 +95,8 @@ export const createMDYTheme = (themeSchema: ThemeSchema) => {
       MuiPaper,
       MuiSwitch,
     },
-    breakpoints: {
-      values: {
-        xs: 0,
-        sm: 800,
-        md: 1000,
-        lg: 1200,
-        xl: 1600,
-      },
-    },
+    breakpoints: MUI_BREAKPOINTS,
   });
-
-  console.log(theme);
 
   return theme;
 };

@@ -54,7 +54,7 @@ export const ProfilePage = () => {
             onClick={handleGlobalChainClick}
             startIcon={<Public />}
           >
-            Global Chain
+            {t("Global Proxy Chains")}
           </Button>
         </div>
       }

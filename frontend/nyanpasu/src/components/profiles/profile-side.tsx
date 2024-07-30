@@ -1,6 +1,7 @@
 import { Allotment } from "allotment";
 import "allotment/dist/style.css";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Close } from "@mui/icons-material";
 import { IconButton } from "@mui/material";
 import { Profile } from "@nyanpasu/interface";
@@ -15,6 +16,8 @@ export interface ProfileSideProps {
 }
 
 export const ProfileSide = ({ profile, global, onClose }: ProfileSideProps) => {
+  const { t } = useTranslation();
+
   const [open, setOpen] = useState(false);
 
   const [item, setItem] = useState<Profile.Item>();
@@ -28,10 +31,10 @@ export const ProfileSide = ({ profile, global, onClose }: ProfileSideProps) => {
     <>
       <div className="flex items-start justify-between p-4 pr-2">
         <div>
-          <div className="text-xl font-bold">Proxy Chains</div>
+          <div className="text-xl font-bold">{t("Proxy Chains")}</div>
 
           <div className="truncate">
-            {global ? "Global Chain" : profile?.name}
+            {global ? t("Global Proxy Chains") : profile?.name}
           </div>
         </div>
 

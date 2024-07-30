@@ -57,41 +57,53 @@ export default function ProxyPage() {
 
   const nodeListRef = useRef<NodeListRef>(null);
 
+  const Header = () => {
+    const handleSwitch = (key: string) => {
+      setCurrentMode(key);
+    };
+
+    return (
+      <Box display="flex" alignItems="center" gap={1}>
+        <ButtonGroup size="small">
+          {Object.entries(getCurrentMode).map(([key, value], index) => (
+            <Button
+              key={index}
+              variant={value ? "contained" : "outlined"}
+              onClick={() => handleSwitch(key)}
+              sx={{ textTransform: "capitalize" }}
+            >
+              {t(key)}
+            </Button>
+          ))}
+        </ButtonGroup>
+      </Box>
+    );
+  };
+
+  const SideBar = () => {
+    return (
+      <TextField
+        hiddenLabel
+        fullWidth
+        autoComplete="off"
+        spellCheck="false"
+        placeholder={t("Filter conditions")}
+        sx={{ input: { py: 1, px: 2 } }}
+        InputProps={{
+          sx: {
+            borderRadius: 7,
+            backgroundColor: alpha(palette.primary.main, 0.1),
+          },
+        }}
+      />
+    );
+  };
+
   return (
     <SidePage
       title={t("Proxy Groups")}
-      header={
-        <Box display="flex" alignItems="center" gap={1}>
-          <ButtonGroup size="small">
-            {Object.entries(getCurrentMode).map(([key, value], index) => (
-              <Button
-                key={index}
-                variant={value ? "contained" : "outlined"}
-                onClick={() => setCurrentMode(key)}
-                sx={{ textTransform: "capitalize" }}
-              >
-                {t(key)}
-              </Button>
-            ))}
-          </ButtonGroup>
-        </Box>
-      }
-      sideBar={
-        <TextField
-          hiddenLabel
-          fullWidth
-          autoComplete="off"
-          spellCheck="false"
-          placeholder={t("Filter conditions")}
-          sx={{ input: { py: 1, px: 2 } }}
-          InputProps={{
-            sx: {
-              borderRadius: 7,
-              backgroundColor: alpha(palette.primary.main, 0.1),
-            },
-          }}
-        />
-      }
+      header={<Header />}
+      sideBar={<SideBar />}
       side={hasProxies && getCurrentMode.rule && <GroupList />}
       toolBar={
         hasProxies &&

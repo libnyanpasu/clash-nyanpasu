@@ -1,5 +1,6 @@
 import { useLockFn, useSetState } from "ahooks";
 import dayjs from "dayjs";
+import { motion } from "framer-motion";
 import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMessage } from "@/hooks/use-notification";
@@ -8,6 +9,7 @@ import {
   FiberManualRecord,
   FilterDrama,
   InsertDriveFile,
+  Menu as MenuIcon,
   Terminal,
   Update,
 } from "@mui/icons-material";
@@ -24,6 +26,7 @@ import {
   useTheme,
 } from "@mui/material";
 import { Profile, useClash } from "@nyanpasu/interface";
+import { cleanDeepClickEvent, cn } from "@nyanpasu/ui";
 import { ProfileDialog } from "./profile-dialog";
 
 export interface ProfileItemProps {
@@ -53,7 +56,7 @@ export const ProfileItem = memo(function ProfileItem({
 
   const [loading, setLoading] = useSetState({
     update: false,
-    menu: false,
+    card: false,
   });
 
   const calc = () => {
@@ -82,9 +85,14 @@ export const ProfileItem = memo(function ProfileItem({
 
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
-  const handleClick = (func: () => void) => {
-    setAnchorEl(null);
-    func();
+  const menuMapping = {
+    Select: () => handleSelect(),
+    "Edit Info": () => setOpen(true),
+    "Proxy Chains": () => onClickChains(item),
+    "Open File": () => viewProfile(item.uid),
+    Update: () => handleUpdate(),
+    "Update(Proxy)": () => handleUpdate(true),
+    Delete: () => handleDelete(),
   };
 
   const handleSelect = useLockFn(async () => {
@@ -93,7 +101,7 @@ export const ProfileItem = memo(function ProfileItem({
     }
 
     try {
-      setLoading({ menu: true });
+      setLoading({ card: true });
 
       await setProfilesConfig({ current: item.uid });
 
@@ -104,7 +112,7 @@ export const ProfileItem = memo(function ProfileItem({
         type: "error",
       });
     } finally {
-      setLoading({ menu: false });
+      setLoading({ card: false });
     }
   });
 
@@ -144,14 +152,33 @@ export const ProfileItem = memo(function ProfileItem({
     }
   });
 
-  const menuMapping = {
-    Select: () => handleSelect(),
-    Edit: () => setOpen(true),
-    Chains: () => onClickChains(item),
-    "Open File": () => viewProfile(item.uid),
-    Update: () => handleUpdate(),
-    "Update(Proxy)": () => handleUpdate(true),
-    Delete: () => handleDelete(),
+  const MenuComp = () => {
+    const handleClick = (func: () => void) => {
+      setAnchorEl(null);
+      func();
+    };
+
+    return (
+      <Menu
+        anchorEl={anchorEl}
+        open={Boolean(anchorEl)}
+        onClose={() => setAnchorEl(null)}
+      >
+        {Object.entries(menuMapping).map(([key, func], index) => {
+          return (
+            <MenuItem
+              key={index}
+              onClick={(e) => {
+                cleanDeepClickEvent(e);
+                handleClick(func);
+              }}
+            >
+              {t(key)}
+            </MenuItem>
+          );
+        })}
+      </Menu>
+    );
   };
 
   const [open, setOpen] = useState(false);
@@ -159,7 +186,7 @@ export const ProfileItem = memo(function ProfileItem({
   return (
     <>
       <Paper
-        className="flex flex-col gap-4 p-5"
+        className="relative transition-all"
         sx={{
           borderRadius: 6,
           backgroundColor: selected
@@ -167,93 +194,117 @@ export const ProfileItem = memo(function ProfileItem({
             : undefined,
         }}
       >
-        <div className="flex items-center justify-between gap-2">
-          <Tooltip title={item.url}>
-            <Chip
-              className="!pl-2 !pr-2 font-bold"
-              avatar={<IconComponent className="!size-5" color="primary" />}
-              label={isRemote ? "Remote" : "Local"}
-            />
-          </Tooltip>
-
-          {selected && (
-            <FiberManualRecord
-              className="top-0 mr-auto !size-3 animate-bounce"
-              sx={{ fill: palette.success.main }}
-            />
-          )}
-
-          <div className="text-sm">
-            {item.updated! > 0 ? dayjs(item.updated! * 1000).fromNow() : ""}
-          </div>
-        </div>
-
-        <div>
-          <p className="truncate text-lg font-bold">{item.name}</p>
-          <p className="truncate">{item.desc}</p>
-        </div>
-
-        {isRemote && (
-          <div className="flex items-center justify-between gap-4">
-            <div className="w-full">
-              <LinearProgress variant="determinate" value={progress} />
-            </div>
-
-            <Tooltip title={`${parseTraffic(used)} / ${parseTraffic(total)}`}>
-              <div className="text-sm font-bold">
-                {((used / total) * 100).toFixed(2)}%
-              </div>
+        <div
+          className="flex cursor-pointer flex-col gap-4 p-5"
+          onClick={handleSelect}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <Tooltip title={item.url}>
+              <Chip
+                className="!pl-2 !pr-2 font-bold"
+                avatar={<IconComponent className="!size-5" color="primary" />}
+                label={isRemote ? "Remote" : "Local"}
+              />
             </Tooltip>
-          </div>
-        )}
 
-        <div className="flex justify-end gap-2">
-          <Button
-            className="!mr-auto"
-            size="small"
-            variant={chainsSelected ? "contained" : "outlined"}
-            startIcon={<Terminal />}
-            onClick={() => onClickChains(item)}
-          >
-            Chains
-          </Button>
+            {selected && (
+              <FiberManualRecord
+                className="top-0 mr-auto !size-3 animate-bounce"
+                sx={{ fill: palette.success.main }}
+              />
+            )}
+
+            <div className="text-sm">
+              {item.updated! > 0 ? dayjs(item.updated! * 1000).fromNow() : ""}
+            </div>
+          </div>
+
+          <div>
+            <p className="truncate text-lg font-bold">{item.name}</p>
+            <p className="truncate">{item.desc}</p>
+          </div>
 
           {isRemote && (
-            <LoadingButton
-              size="small"
-              variant="outlined"
-              startIcon={<Update />}
-              onClick={menuMapping.Update}
-              loading={loading.update}
-            >
-              {t("Update")}
-            </LoadingButton>
+            <div className="flex items-center justify-between gap-4">
+              <div className="w-full">
+                <LinearProgress variant="determinate" value={progress} />
+              </div>
+
+              <Tooltip title={`${parseTraffic(used)} / ${parseTraffic(total)}`}>
+                <div className="text-sm font-bold">
+                  {((used / total) * 100).toFixed(2)}%
+                </div>
+              </Tooltip>
+            </div>
           )}
 
-          <LoadingButton
-            size="small"
-            variant="outlined"
-            onClick={(e) => setAnchorEl(e.currentTarget)}
-            loading={loading.menu}
-          >
-            {t("Menu")}
-          </LoadingButton>
+          <div className="flex justify-end gap-2">
+            <Button
+              className="!mr-auto"
+              size="small"
+              variant={chainsSelected ? "contained" : "outlined"}
+              startIcon={<Terminal />}
+              onClick={(e) => {
+                cleanDeepClickEvent(e);
+                onClickChains(item);
+              }}
+            >
+              {t("Proxy Chains")}
+            </Button>
 
-          <Menu
-            anchorEl={anchorEl}
-            open={Boolean(anchorEl)}
-            onClose={() => setAnchorEl(null)}
-          >
-            {Object.entries(menuMapping).map(([key, func], index) => {
-              return (
-                <MenuItem key={index} onClick={() => handleClick(func)}>
-                  {t(key)}
-                </MenuItem>
-              );
-            })}
-          </Menu>
+            {isRemote && (
+              <Tooltip title={t("Update")}>
+                <LoadingButton
+                  size="small"
+                  variant="outlined"
+                  className="!size-8 !min-w-0"
+                  onClick={(e) => {
+                    cleanDeepClickEvent(e);
+                    menuMapping.Update();
+                  }}
+                  loading={loading.update}
+                >
+                  <Update />
+                </LoadingButton>
+              </Tooltip>
+            )}
+
+            <Tooltip title={t("Menu")}>
+              <Button
+                size="small"
+                variant="contained"
+                className="!size-8 !min-w-0"
+                onClick={(e) => {
+                  cleanDeepClickEvent(e);
+                  setAnchorEl(e.currentTarget);
+                }}
+              >
+                <MenuIcon />
+              </Button>
+            </Tooltip>
+          </div>
         </div>
+
+        <motion.div
+          className={cn(
+            "absolute left-0 top-0 h-full w-full",
+            "flex-col items-center justify-center gap-4",
+            "text-shadow-xl rounded-3xl font-bold backdrop-blur",
+          )}
+          initial={{ opacity: 0, display: "none" }}
+          animate={loading.card ? "show" : "hidden"}
+          variants={{
+            show: { opacity: 1, display: "flex" },
+            hidden: { opacity: 0, transitionEnd: { display: "none" } },
+          }}
+        >
+          <LinearProgress className="w-40" />
+
+          <div>Applying Profile...</div>
+        </motion.div>
       </Paper>
+
+      <MenuComp />
 
       <ProfileDialog
         open={open}

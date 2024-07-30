@@ -4,10 +4,30 @@ use serde_yaml::Mapping;
 use std::collections::HashMap;
 
 use super::js;
-use crate::enhance::{ScriptType, ScriptWrapper};
+use crate::enhance::{Logs, ScriptType, ScriptWrapper};
 
-type Logs = Vec<String>;
-pub type ProcessOutput = (Mapping, Logs);
+/// The output of the process function is a tuple of the mapping and the logs.
+/// Although the process fails, the logs should be returned.
+pub type ProcessOutput = (Result<Mapping, anyhow::Error>, Logs);
+
+/// warp a result and return the ProcessOutput
+macro_rules! wrap_result {
+    ($result:expr) => {
+        match $result {
+            Ok(inner) => inner,
+            Err(e) => return (Err(e.into()), Vec::new()),
+        }
+    };
+
+    ($result:expr, $logs:expr) => {
+        match $result {
+            Ok(inner) => inner,
+            Err(e) => return (Err(e.into()), $logs),
+        }
+    };
+}
+
+pub(super) use wrap_result;
 
 #[async_trait]
 pub trait Runner: Send + Sync {
@@ -16,11 +36,11 @@ pub trait Runner: Send + Sync {
         Self: std::marker::Sized;
     #[allow(dead_code)]
     /// Process profiles by script file path
-    async fn process(&self, mapping: Mapping, path: &str) -> Result<ProcessOutput, Error>;
+    async fn process(&self, mapping: Mapping, path: &str) -> ProcessOutput;
 
     /// Honey replacement - use in memory code str to load module and exec it!
     /// It might not be implemented - due to some embeded engine is not support.
-    async fn process_honey(&self, mapping: Mapping, script: &str) -> Result<ProcessOutput, Error> {
+    async fn process_honey(&self, mapping: Mapping, script: &str) -> ProcessOutput {
         tracing::debug!("mapping: {:?}\nscript:{}", mapping, script);
         unimplemented!()
     }
@@ -48,12 +68,8 @@ impl RunnerManager {
         Ok(self.runners.get(script_type).unwrap().as_ref())
     }
 
-    pub fn process_script(
-        &mut self,
-        script: ScriptWrapper,
-        config: Mapping,
-    ) -> anyhow::Result<ProcessOutput> {
-        let runner = self.get_or_init_runner(&script.0)?;
+    pub fn process_script(&mut self, script: ScriptWrapper, config: Mapping) -> ProcessOutput {
+        let runner = wrap_result!(self.get_or_init_runner(&script.0));
         tauri::async_runtime::block_on(runner.process_honey(config, script.1.as_str()))
     }
 }

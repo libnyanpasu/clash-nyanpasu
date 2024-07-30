@@ -33,12 +33,6 @@ nanoid = "0.4.0"
 chrono = "0.4.31"
 sysinfo = "0.30"
 sysproxy = { path = "../sysproxy-rs", version = "0.3" }
-rquickjs = { version = "0.6.2", features = [
-  "futures",
-  "loader",
-  "indexmap",
-  "parallel",
-] }
 serde_json = "1.0"
 serde_yaml = "0.9"
 auto-launch = "0.5"
@@ -122,6 +116,7 @@ convert_case = "0.6.0"
 os_pipe = "1.2.0"
 whoami = "1.5.1"
 atomic_enum = "0.3.0"
+boa_engine = "0.19.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.25.0"

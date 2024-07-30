@@ -8,14 +8,59 @@ mod utils;
 pub use self::chain::ScriptType;
 use self::{chain::*, field::*, merge::*, script::*, tun::*};
 use crate::config::Config;
+use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 use std::collections::{HashMap, HashSet};
 
-type ResultLog = Vec<(String, String)>;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LogSpan {
+    Log,
+    Info,
+    Warn,
+    Error,
+}
+
+impl AsRef<str> for LogSpan {
+    fn as_ref(&self) -> &str {
+        match self {
+            LogSpan::Log => "log",
+            LogSpan::Info => "info",
+            LogSpan::Warn => "warn",
+            LogSpan::Error => "error",
+        }
+    }
+}
+
+pub type Logs = Vec<(LogSpan, String)>;
+pub trait LogsExt {
+    fn span<T: AsRef<str>>(&mut self, span: LogSpan, msg: T);
+    fn log<T: AsRef<str>>(&mut self, msg: T);
+    fn info<T: AsRef<str>>(&mut self, msg: T);
+    fn warn<T: AsRef<str>>(&mut self, msg: T);
+    fn error<T: AsRef<str>>(&mut self, msg: T);
+}
+impl LogsExt for Logs {
+    fn span<T: AsRef<str>>(&mut self, span: LogSpan, msg: T) {
+        self.push((span, msg.as_ref().to_string()));
+    }
+    fn log<T: AsRef<str>>(&mut self, msg: T) {
+        self.span(LogSpan::Log, msg);
+    }
+    fn info<T: AsRef<str>>(&mut self, msg: T) {
+        self.span(LogSpan::Info, msg);
+    }
+    fn warn<T: AsRef<str>>(&mut self, msg: T) {
+        self.span(LogSpan::Warn, msg);
+    }
+    fn error<T: AsRef<str>>(&mut self, msg: T) {
+        self.span(LogSpan::Error, msg);
+    }
+}
 
 /// Enhance mode
 /// 返回最终配置、该配置包含的键、和script执行的结果
-pub fn enhance() -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
+pub fn enhance() -> (Mapping, Vec<String>, HashMap<String, Logs>) {
     // config.yaml 的配置
     let clash_config = { Config::clash().latest().0.clone() };
 
@@ -81,14 +126,15 @@ pub fn enhance() -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
             }
             ChainTypeWrapper::Script(script) => {
                 let mut logs = vec![];
-                match script_runner.process_script(script, config.to_owned()) {
-                    Ok((res_config, res_logs)) => {
+                let (res, process_logs) = script_runner.process_script(script, config.to_owned());
+                logs.extend(process_logs);
+                // TODO: 修改日记 level 格式？
+                match res {
+                    Ok(res_config) => {
                         exists_keys.extend(use_keys(&res_config));
                         config = use_filter(res_config, &valid, enable_filter);
-                        logs.extend(res_logs.into_iter().map(|msg| ("info".into(), msg)));
-                        // TODO: 修改日记 level 格式？
                     }
-                    Err(err) => logs.push(("exception".into(), err.to_string())),
+                    Err(err) => logs.error(err.to_string()),
                 }
                 // TODO: 这里添加对 field 的检查，触发 WARN 日记。此外，需要对 Merge 的结果进行检查？
                 result_map.insert(item.uid, logs);
@@ -118,8 +164,9 @@ pub fn enhance() -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
                 log::debug!(target: "app", "run builtin script {}", item.uid);
 
                 if let ChainTypeWrapper::Script(script) = item.data {
-                    match script_runner.process_script(script, config.to_owned()) {
-                        Ok((res_config, _)) => {
+                    let (res, logs) = script_runner.process_script(script, config.to_owned());
+                    match res {
+                        Ok(res_config) => {
                             config = use_filter(res_config, &clash_fields, enable_filter);
                         }
                         Err(err) => {

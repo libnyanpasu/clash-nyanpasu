@@ -1,6 +1,7 @@
 use crate::{
     config::*,
     core::{tasks::jobs::ProfilesJobGuard, updater::ManifestVersionLatest, *},
+    enhance::Logs,
     feat, ret_err,
     utils::{
         candy,
@@ -172,7 +173,7 @@ pub fn get_runtime_exists() -> CmdResult<Vec<String>> {
 }
 
 #[tauri::command]
-pub fn get_runtime_logs() -> CmdResult<HashMap<String, Vec<(String, String)>>> {
+pub fn get_runtime_logs() -> CmdResult<HashMap<String, Logs>> {
     Ok(Config::runtime().latest().chain_logs.clone())
 }
 

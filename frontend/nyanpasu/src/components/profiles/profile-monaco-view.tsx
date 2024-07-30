@@ -1,7 +1,7 @@
-import { useDebounceEffect, useUpdateEffect } from "ahooks";
+import { useAsyncEffect } from "ahooks";
 import { useAtomValue } from "jotai";
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
-import { monaco } from "@/services/monaco";
+import { forwardRef, useImperativeHandle, useRef } from "react";
+import type { monaco } from "@/services/monaco";
 import { themeMode } from "@/store";
 
 export interface ProfileMonacoViewProps {
@@ -25,41 +25,29 @@ export const ProfileMonacoView = forwardRef(function ProfileMonacoView(
 
   const instanceRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 
-  // wait for editor to be initialized
-  useDebounceEffect(
-    () => {
-      const setupEditor = async () => {
-        if (open && monacoRef.current) {
-          instanceRef.current = monaco.editor.create(monacoRef.current, {
-            value,
-            language,
-            theme: mode === "light" ? "vs" : "vs-dark",
-            minimap: { enabled: false },
-          });
+  useAsyncEffect(async () => {
+    if (open) {
+      const { monaco } = await import("@/services/monaco");
 
-          return () => {
-            instanceRef.current?.dispose();
-          };
-        }
-      };
+      if (!monacoRef.current) {
+        return;
+      }
 
-      setupEditor();
-    },
-    [open],
-    { wait: 100 },
-  );
+      instanceRef.current = monaco.editor.create(monacoRef.current, {
+        value,
+        language,
+        theme: mode === "light" ? "vs" : "vs-dark",
+        minimap: { enabled: false },
+        automaticLayout: true,
+      });
+    } else {
+      instanceRef.current?.dispose();
+    }
+  }, [open]);
 
   useImperativeHandle(ref, () => ({
     getValue: () => instanceRef.current?.getValue(),
   }));
 
-  useUpdateEffect(() => {
-    if (!language) return;
-
-    monaco.editor.setModelLanguage(instanceRef.current!.getModel()!, language);
-
-    console.log(language, instanceRef.current?.getModel()?.getLanguageId());
-  }, [language]);
-
-  return open && <div ref={monacoRef} className={className} />;
+  return <div ref={monacoRef} className={className} />;
 });

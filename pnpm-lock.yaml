@@ -140,8 +140,8 @@ importers:
         specifier: 3.4.7
         version: 3.4.7
       tsx:
-        specifier: 4.16.2
-        version: 4.16.2
+        specifier: 4.16.3
+        version: 4.16.3
       typescript:
         specifier: 5.5.4
         version: 5.5.4
@@ -5644,8 +5644,8 @@ packages:
   tslib@2.6.2:
     resolution: {integrity: sha512-AEYxH93jGFPn/a2iVAwW87VuUIkR1FVUKB77NwMF7nBTDkDrrT/Hpt/IrCJ0QXhW27jTBDcf5ZY7w6RiqTMw2Q==}
 
-  tsx@4.16.2:
-    resolution: {integrity: sha512-C1uWweJDgdtX2x600HjaFaucXTilT7tgUZHbOE4+ypskZ1OP8CRCSDkCxG6Vya9EwaFIVagWwpaVAn5wzypaqQ==}
+  tsx@4.16.3:
+    resolution: {integrity: sha512-MP8AEUxVnboD2rCC6kDLxnpDBNWN9k3BSVU/0/nNxgm70bPBnfn+yCKcnOsIVPQwdkbKYoFOlKjjWZWJ2XCXUg==}
     engines: {node: '>=18.0.0'}
     hasBin: true
 
@@ -6892,8 +6892,8 @@ snapshots:
       '@babel/runtime': 7.24.8
       '@mui/base': 5.0.0-beta.40(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
       '@mui/material': 5.16.6(@emotion/react@11.13.0(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(@emotion/styled@11.13.0(@emotion/react@11.13.0(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-df783f9ea1-20240708(react@19.0.0-rc-df783f9ea1-20240708))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
-      '@mui/system': 5.16.5(@emotion/react@11.13.0(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(@emotion/styled@11.13.0(@emotion/react@11.13.0(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
-      '@mui/utils': 5.16.5(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
+      '@mui/system': 5.16.6(@emotion/react@11.13.0(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(@emotion/styled@11.13.0(@emotion/react@11.13.0(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1))(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
+      '@mui/utils': 5.16.6(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
       '@types/react-transition-group': 4.4.10
       clsx: 2.1.1
       prop-types: 15.8.1
@@ -11604,7 +11604,7 @@ snapshots:
 
   tslib@2.6.2: {}
 
-  tsx@4.16.2:
+  tsx@4.16.3:
     dependencies:
       esbuild: 0.21.5
       get-tsconfig: 4.7.5

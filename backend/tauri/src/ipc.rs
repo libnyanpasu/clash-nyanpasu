@@ -13,9 +13,10 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use chrono::Local;
+use indexmap::IndexMap;
 use log::debug;
 use serde_yaml::Mapping;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use sysproxy::Sysproxy;
 
 use tauri::api::dialog::FileDialogBuilder;
@@ -173,7 +174,7 @@ pub fn get_runtime_exists() -> CmdResult<Vec<String>> {
 }
 
 #[tauri::command]
-pub fn get_runtime_logs() -> CmdResult<HashMap<String, Logs>> {
+pub fn get_runtime_logs() -> CmdResult<IndexMap<String, Logs>> {
     Ok(Config::runtime().latest().chain_logs.clone())
 }
 

@@ -8,13 +8,14 @@ mod utils;
 pub use self::chain::ScriptType;
 use self::{chain::*, field::*, merge::*, script::*, tun::*};
 use crate::config::Config;
+use indexmap::IndexMap;
 use serde_yaml::Mapping;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 pub use utils::{Logs, LogsExt};
 
 /// Enhance mode
 /// 返回最终配置、该配置包含的键、和script执行的结果
-pub async fn enhance() -> (Mapping, Vec<String>, HashMap<String, Logs>) {
+pub async fn enhance() -> (Mapping, Vec<String>, IndexMap<String, Logs>) {
     // config.yaml 的配置
     let clash_config = { Config::clash().latest().0.clone() };
 
@@ -61,7 +62,7 @@ pub async fn enhance() -> (Mapping, Vec<String>, HashMap<String, Logs>) {
         (current_mapping, profile_spec_chains, valid)
     };
 
-    let mut result_map = HashMap::new(); // 保存脚本日志
+    let mut result_map = IndexMap::new(); // 保存脚本日志
     let mut exists_keys = use_keys(&config); // 保存出现过的keys
 
     let valid = use_valid_fields(valid);

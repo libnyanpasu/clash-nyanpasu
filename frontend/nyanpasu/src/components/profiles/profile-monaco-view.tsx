@@ -1,7 +1,7 @@
-import { useAsyncEffect } from "ahooks";
+import { useAsyncEffect, useLockFn, useUpdateEffect } from "ahooks";
 import { useAtomValue } from "jotai";
 import { forwardRef, useImperativeHandle, useRef } from "react";
-import type { monaco } from "@/services/monaco";
+import { monaco } from "@/services/monaco";
 import { themeMode } from "@/store";
 
 export interface ProfileMonacoViewProps {
@@ -48,6 +48,22 @@ export const ProfileMonacoView = forwardRef(function ProfileMonacoView(
   useImperativeHandle(ref, () => ({
     getValue: () => instanceRef.current?.getValue(),
   }));
+
+  const changeLanguage = useLockFn(async () => {
+    const { monaco } = await import("@/services/monaco");
+
+    const text = instanceRef.current?.getModel();
+
+    if (!text || !language) {
+      return;
+    }
+
+    monaco.editor.setModelLanguage(text, language);
+  });
+
+  useUpdateEffect(() => {
+    changeLanguage();
+  }, [language]);
 
   return <div ref={monacoRef} className={className} />;
 });

@@ -310,6 +310,47 @@ impl Instance {
             }
         }
     }
+
+    /// get core state with state changed timestamp
+    pub async fn status<'a>(&self) -> (Cow<'a, CoreState>, i64) {
+        match self {
+            Instance::Child {
+                child,
+                stated_changed_at,
+                ..
+            } => {
+                let this = child.lock();
+                (
+                    Cow::Borrowed(match this.state() {
+                        nyanpasu_utils::core::instance::CoreInstanceState::Running => {
+                            &CoreState::Running
+                        }
+                        nyanpasu_utils::core::instance::CoreInstanceState::Stopped => {
+                            &CoreState::Stopped(None)
+                        }
+                    }),
+                    stated_changed_at.load(Ordering::Relaxed),
+                )
+            }
+            Instance::Service { .. } => {
+                let status = nyanpasu_ipc::client::shortcuts::Client::service_default()
+                    .status()
+                    .await;
+                match status {
+                    Ok(info) => (
+                        Cow::Owned(match info.core_infos.state {
+                            nyanpasu_ipc::api::status::CoreState::Running => CoreState::Running,
+                            nyanpasu_ipc::api::status::CoreState::Stopped(_) => {
+                                CoreState::Stopped(None)
+                            }
+                        }),
+                        info.core_infos.state_changed_at,
+                    ),
+                    Err(_) => (Cow::Owned(CoreState::Stopped(None)), 0),
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -323,6 +364,18 @@ impl CoreManager {
         CORE_MANAGER.get_or_init(|| CoreManager {
             instance: Mutex::new(None),
         })
+    }
+
+    pub async fn status<'a>(&self) -> (Cow<'a, CoreState>, i64) {
+        let instance = {
+            let instance = self.instance.lock();
+            instance.as_ref().cloned()
+        };
+        if let Some(instance) = instance {
+            instance.status().await
+        } else {
+            (Cow::Owned(CoreState::Stopped(None)), 0_i64)
+        }
     }
 
     pub fn init(&self) -> Result<()> {
@@ -378,7 +431,6 @@ impl CoreManager {
         }
 
         // 检查端口是否可用
-        // TODO: 修复下面这个方法，从而允许 Fallback 到其他端口
         Config::clash()
             .latest()
             .prepare_external_controller_port()?;

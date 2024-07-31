@@ -1,6 +1,6 @@
-use super::{runner::ProcessOutput, use_filter, use_lowercase, Logs, LogsExt};
+use super::{runner::ProcessOutput, use_lowercase, Logs, LogsExt};
 use mlua::LuaSerdeExt;
-use serde_yaml::{Mapping, Sequence, Value};
+use serde_yaml::{Mapping, Value};
 use tracing_attributes::instrument;
 
 // Override recursive, and if the value is sequence, it should be append to the end.

@@ -11,6 +11,7 @@ use crate::{
     utils::{self, help::get_clash_external_port, resolve},
 };
 use anyhow::{bail, Result};
+use nyanpasu_ipc::api::status::CoreState;
 use serde_yaml::{Mapping, Value};
 use wry::application::clipboard::Clipboard;
 
@@ -221,7 +222,13 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
                 let strategy = Config::verge()
                     .latest()
                     .get_external_controller_port_strategy();
-                get_clash_external_port(&strategy, port)?; // Do a check
+                let core_state = crate::core::CoreManager::global().status().await;
+                if matches!(core_state.0.as_ref(), &CoreState::Running)
+                    && get_clash_external_port(&strategy, port).is_err()
+                {
+                    Config::clash().discard();
+                    bail!("can not select fixed: current port is not available.");
+                }
             }
         }
 

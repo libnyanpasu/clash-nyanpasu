@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["tauri", "sysproxy-rs", "webview2-com-bridge"]
+members = ["tauri", "sysproxy-rs", "webview2-com-bridge", "boa_utils"]
 
 [workspace.package]
 repository = "https://github.com/keiko233/clash-nyanpasu.git"
@@ -11,6 +11,7 @@ authors = ["zzzgydi", "keiko233"]
 [workspace.dependencies]
 thiserror = "1"
 tracing = "0.1"
+boa_engine = "0.19"
 
 [profile.release]
 panic = "unwind"

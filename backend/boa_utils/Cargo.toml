@@ -1,0 +1,21 @@
+[package]
+name = "boa_utils"
+version = "0.1.0"
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+rustc-hash = { version = "2", features = ["std"] }
+boa_engine.workspace = true
+boa_gc = "0.19"
+boa_parser = "0.19"
+isahc = "1.7"
+futures-util = "0.3"
+smol = "2"
+tracing = "0.1"
+
+[dev-dependencies]
+indoc = "2"
+textwrap = "0.16"

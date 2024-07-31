@@ -103,6 +103,10 @@ pub trait Migration<'a>: DynClone {
     fn migrate(&self) -> std::io::Result<()> {
         unimplemented!()
     }
+
+    fn discard(&self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 clone_trait_object!(Migration<'_>);
@@ -268,7 +272,18 @@ impl Runner<'_> {
                 Ok(())
             }
             Err(e) => {
-                eprintln!("Migration {} failed: {}", name, e);
+                eprintln!(
+                    "Migration {} failed: {}; trying to discard changes",
+                    name, e
+                );
+                match migration.discard() {
+                    Ok(_) => {
+                        eprintln!("Migration {} discarded.", name);
+                    }
+                    Err(e) => {
+                        eprintln!("Migration {} discard failed: {}", name, e);
+                    }
+                }
                 store.set_state(Cow::Owned(name.to_string()), MigrationState::Failed);
                 Err(e)
             }

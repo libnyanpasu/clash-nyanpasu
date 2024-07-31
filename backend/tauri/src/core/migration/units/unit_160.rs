@@ -109,4 +109,62 @@ impl<'a> Migration<'a> for MigrateAppHomeDir {
         println!("Migration completed");
         Ok(())
     }
+
+    #[allow(deprecated)]
+    fn discard(&self) -> std::io::Result<()> {
+        let home_dir = crate::utils::dirs::app_home_dir().unwrap();
+        let app_config_dir = crate::utils::dirs::app_config_dir().unwrap();
+        let app_data_dir = crate::utils::dirs::app_data_dir().unwrap();
+        if !home_dir.exists() {
+            std::fs::create_dir_all(&home_dir)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+        }
+        let file_opts = fs_extra::file::CopyOptions::default().skip_exist(true);
+        let dir_opts = fs_extra::dir::CopyOptions::default()
+            .skip_exist(true)
+            .content_only(true);
+        if home_dir != app_config_dir {
+            // move profiles.yaml
+            let path = app_config_dir.join("profiles.yaml");
+            if path.exists() {
+                println!("Moving profiles.yaml to home dir");
+                fs_extra::file::move_file(path, home_dir.join("profiles.yaml"), &file_opts)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+            }
+            // move profiles dir
+            let path = crate::utils::dirs::app_profiles_dir().unwrap();
+            if path.exists() {
+                println!("Moving profiles dir to home dir");
+                fs_extra::dir::move_dir(path, home_dir.join("profiles"), &dir_opts)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+            }
+            // move other files and dirs to home dir
+            println!("Moving other files and dirs to home dir");
+            fs_extra::dir::move_dir(app_data_dir, &home_dir, &dir_opts)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+        }
+        // move nyanpasu config
+        let path = app_config_dir.join(crate::utils::dirs::NYANPASU_CONFIG);
+        if path.exists() {
+            println!("Moving verge.yaml to home dir");
+            fs_extra::file::move_file(path, home_dir.join("verge.yaml"), &file_opts)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+        }
+        // move clash guard overrides
+        let path = crate::utils::dirs::clash_guard_overrides_path().unwrap();
+        if path.exists() {
+            println!("Moving config.yaml to home dir");
+            fs_extra::file::move_file(path, home_dir.join("config.yaml"), &file_opts)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+        }
+        // move clash runtime config
+        let path = app_config_dir.join(RUNTIME_CONFIG);
+        if path.exists() {
+            println!("Moving clash-verge.yaml to home dir");
+            fs_extra::file::move_file(path, home_dir.join("clash-verge.yaml"), &file_opts)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+        }
+        println!("Migration discarded");
+        Ok(())
+    }
 }

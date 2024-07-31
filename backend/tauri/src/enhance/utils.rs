@@ -1,5 +1,3 @@
-use std::fmt::{self, Display, Formatter};
-
 use serde::{Deserialize, Serialize};
 
 use crate::config::profile::{item_type::ProfileUid, profiles::IProfiles};

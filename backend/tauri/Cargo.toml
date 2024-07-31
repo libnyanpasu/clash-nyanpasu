@@ -118,6 +118,13 @@ os_pipe = "1.2.0"
 whoami = "1.5.1"
 atomic_enum = "0.3.0"
 boa_engine.workspace = true
+mlua = { version = "0.9", features = [
+  "lua54",
+  "async",
+  "serialize",
+  "parking_lot",
+  "vendored",
+] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.25.0"

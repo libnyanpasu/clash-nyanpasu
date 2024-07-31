@@ -1,5 +1,6 @@
 mod js;
 mod lua;
+pub use lua::create_lua_context;
 pub mod runner;
 pub use runner::RunnerManager;
 // TODO: add test

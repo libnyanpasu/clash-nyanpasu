@@ -74,9 +74,13 @@ pub async fn enhance() -> (Mapping, Vec<String>, HashMap<String, Logs>) {
         config = use_lowercase(config.clone()); // 将所有的 key 转为小写（递归）
         match item.data {
             ChainTypeWrapper::Merge(merge) => {
+                let mut logs = vec![];
                 exists_keys.extend(use_keys(&merge));
-                config = use_merge(merge, config.to_owned());
+                let (res, process_logs) = use_merge(merge, config.to_owned());
+                config = res.unwrap();
                 config = use_filter(config.to_owned(), &valid, enable_filter);
+                logs.extend(process_logs);
+                result_map.insert(item.uid, logs);
             }
             ChainTypeWrapper::Script(script) => {
                 let mut logs = vec![];

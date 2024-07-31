@@ -135,7 +135,14 @@ pub fn use_merge(merge: Mapping, mut config: Mapping) -> ProcessOutput {
                         continue;
                     }
                     let filter = value.as_str().unwrap_or_default();
-                    let lua = super::script::create_lua_context();
+                    let lua = match super::script::create_lua_context() {
+                        Ok(lua) => lua,
+                        Err(e) => {
+                            logs.error(e.to_string());
+                            continue;
+                        }
+                    };
+
                     let list = field.as_sequence_mut().unwrap();
                     // apply filter to each item
                     list.retain(|item| {

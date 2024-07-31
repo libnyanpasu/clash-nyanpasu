@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use serde_yaml::Mapping;
 use std::collections::HashMap;
 
-use super::js;
+use super::{js, lua};
 use crate::enhance::{Logs, ScriptType, ScriptWrapper};
 
 /// The output of the process function is a tuple of the mapping and the logs.
@@ -61,7 +61,7 @@ impl RunnerManager {
         if !self.runners.contains_key(script_type) {
             let runner = match script_type {
                 ScriptType::JavaScript => Box::new(js::JSRunner::try_new()?) as Box<dyn Runner>,
-                ScriptType::Lua => unimplemented!("LuaRunner is not implemented yet"),
+                ScriptType::Lua => Box::new(lua::LuaRunner::try_new()?) as Box<dyn Runner>,
             };
             self.runners.insert(script_type.clone(), runner);
         }

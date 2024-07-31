@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use crate::config::profile::{item_type::ProfileUid, profiles::IProfiles};
 
 use super::ChainItem;
+use parking_lot::Mutex;
+use std::sync::Arc;
 
 pub fn convert_uids_to_scripts(profiles: &IProfiles, uids: &[ProfileUid]) -> Vec<ChainItem> {
     uids.iter()
@@ -55,4 +57,8 @@ impl LogsExt for Logs {
     fn error<T: AsRef<str>>(&mut self, msg: T) {
         self.span(LogSpan::Error, msg);
     }
+}
+
+pub fn take_logs(logs: Arc<Mutex<Option<Logs>>>) -> Logs {
+    logs.lock().take().unwrap()
 }

@@ -1,5 +1,5 @@
 use super::runner::{wrap_result, ProcessOutput, Runner};
-use crate::enhance::utils::{Logs, LogsExt};
+use crate::enhance::utils::{take_logs, Logs, LogsExt};
 use anyhow::Context as _;
 use async_trait::async_trait;
 use boa_engine::{
@@ -65,10 +65,6 @@ impl boa_utils::Logger for BoaConsoleLogger {
             boa_utils::LogMessage::Error(msg) => self.0.lock().as_mut().unwrap().error(msg),
         }
     }
-}
-
-fn take_logs(logs: Arc<Mutex<Option<Logs>>>) -> Logs {
-    logs.lock().take().unwrap()
 }
 
 pub struct JSRunner;

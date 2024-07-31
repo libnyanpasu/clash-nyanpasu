@@ -14,7 +14,7 @@ pub use utils::{Logs, LogsExt};
 
 /// Enhance mode
 /// 返回最终配置、该配置包含的键、和script执行的结果
-pub fn enhance() -> (Mapping, Vec<String>, HashMap<String, Logs>) {
+pub async fn enhance() -> (Mapping, Vec<String>, HashMap<String, Logs>) {
     // config.yaml 的配置
     let clash_config = { Config::clash().latest().0.clone() };
 
@@ -69,7 +69,7 @@ pub fn enhance() -> (Mapping, Vec<String>, HashMap<String, Logs>) {
 
     // 处理用户的profile
     let mut script_runner = RunnerManager::new();
-    chains.into_iter().for_each(|item| {
+    for item in chains.into_iter() {
         // TODO: 想一个更好的办法，避免内存拷贝
         config = use_lowercase(config.clone()); // 将所有的 key 转为小写（递归）
         match item.data {
@@ -80,7 +80,9 @@ pub fn enhance() -> (Mapping, Vec<String>, HashMap<String, Logs>) {
             }
             ChainTypeWrapper::Script(script) => {
                 let mut logs = vec![];
-                let (res, process_logs) = script_runner.process_script(script, config.to_owned());
+                let (res, process_logs) = script_runner
+                    .process_script(script, config.to_owned())
+                    .await;
                 logs.extend(process_logs);
                 // TODO: 修改日记 level 格式？
                 match res {
@@ -94,7 +96,7 @@ pub fn enhance() -> (Mapping, Vec<String>, HashMap<String, Logs>) {
                 result_map.insert(item.uid, logs);
             }
         }
-    });
+    }
     config = use_lowercase(config); // 将所有的 key 转为小写（递归）
 
     // 合并默认的config
@@ -110,25 +112,27 @@ pub fn enhance() -> (Mapping, Vec<String>, HashMap<String, Logs>) {
 
     // 内建脚本最后跑
     if enable_builtin {
-        ChainItem::builtin()
+        for item in ChainItem::builtin()
             .into_iter()
             .filter(|(s, _)| s.is_support(clash_core.as_ref()))
             .map(|(_, c)| c)
-            .for_each(|item| {
-                log::debug!(target: "app", "run builtin script {}", item.uid);
+        {
+            log::debug!(target: "app", "run builtin script {}", item.uid);
 
-                if let ChainTypeWrapper::Script(script) = item.data {
-                    let (res, logs) = script_runner.process_script(script, config.to_owned());
-                    match res {
-                        Ok(res_config) => {
-                            config = use_filter(res_config, &clash_fields, enable_filter);
-                        }
-                        Err(err) => {
-                            log::error!(target: "app", "builtin script error `{err}`");
-                        }
+            if let ChainTypeWrapper::Script(script) = item.data {
+                let (res, logs) = script_runner
+                    .process_script(script, config.to_owned())
+                    .await;
+                match res {
+                    Ok(res_config) => {
+                        config = use_filter(res_config, &clash_fields, enable_filter);
+                    }
+                    Err(err) => {
+                        log::error!(target: "app", "builtin script error `{err}`");
                     }
                 }
-            });
+            }
+        }
     }
 
     config = use_filter(config, &clash_fields, enable_filter);

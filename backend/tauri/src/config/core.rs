@@ -4,6 +4,7 @@ use crate::{
     utils::{dirs, help},
 };
 use anyhow::{anyhow, Result};
+use nyanpasu_utils::runtime::block_on;
 use once_cell::sync::OnceCell;
 use std::{env::temp_dir, path::PathBuf};
 
@@ -47,7 +48,7 @@ impl Config {
 
     /// 初始化配置
     pub fn init_config() -> Result<()> {
-        crate::log_err!(Self::generate());
+        crate::log_err!(block_on(Self::generate()));
         if let Err(err) = Self::generate_file(ConfigType::Run) {
             log::error!(target: "app", "{err}");
 
@@ -83,8 +84,8 @@ impl Config {
     }
 
     /// 生成配置存好
-    pub fn generate() -> Result<()> {
-        let (config, exists_keys, logs) = enhance::enhance();
+    pub async fn generate() -> Result<()> {
+        let (config, exists_keys, logs) = enhance::enhance().await;
 
         *Config::runtime().draft() = IRuntime {
             config: Some(config),

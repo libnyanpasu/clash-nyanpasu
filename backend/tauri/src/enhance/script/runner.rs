@@ -68,8 +68,12 @@ impl RunnerManager {
         Ok(self.runners.get(script_type).unwrap().as_ref())
     }
 
-    pub fn process_script(&mut self, script: ScriptWrapper, config: Mapping) -> ProcessOutput {
+    pub async fn process_script(
+        &mut self,
+        script: ScriptWrapper,
+        config: Mapping,
+    ) -> ProcessOutput {
         let runner = wrap_result!(self.get_or_init_runner(&script.0));
-        tauri::async_runtime::block_on(runner.process_honey(config, script.1.as_str()))
+        runner.process_honey(config, script.1.as_str()).await
     }
 }

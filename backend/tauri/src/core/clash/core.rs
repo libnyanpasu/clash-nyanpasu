@@ -517,7 +517,7 @@ impl CoreManager {
         Config::verge().draft().clash_core = Some(clash_core);
 
         // 更新配置
-        Config::generate()?;
+        Config::generate().await?;
 
         self.check_config()?;
 
@@ -546,7 +546,7 @@ impl CoreManager {
         log::debug!(target: "app", "try to update clash config");
 
         // 更新配置
-        Config::generate()?;
+        Config::generate().await?;
 
         // 检查配置是否正常
         self.check_config()?;

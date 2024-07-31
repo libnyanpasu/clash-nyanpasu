@@ -22,7 +22,7 @@ nyanpasu-ipc = { git = "https://github.com/LibNyanpasu/nyanpasu-service.git", fe
   "client",
 ] }
 nyanpasu-utils = { git = "https://github.com/LibNyanpasu/nyanpasu-utils.git" }
-boa_console = { path = "../boa_console" } # should be removed when boa support console customize
+boa_utils = { path = "../boa_utils" } # should be removed when boa support console customize
 which = "6"
 anyhow = "1.0"
 dirs = "5.0.1"

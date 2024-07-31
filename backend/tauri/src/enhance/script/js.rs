@@ -2,13 +2,19 @@ use super::runner::{wrap_result, ProcessOutput, Runner};
 use crate::enhance::utils::{Logs, LogsExt};
 use anyhow::Context as _;
 use async_trait::async_trait;
-use boa_console::Console;
 use boa_engine::{
     builtins::promise::PromiseState,
     js_string,
-    module::{Module, SimpleModuleLoader},
+    module::{Module, ModuleLoader as BoaModuleLoader, SimpleModuleLoader},
     property::Attribute,
-    Context, JsError, JsNativeError, JsValue, NativeFunction, Source,
+    Context, JsError, JsNativeError, JsValue, Source,
+};
+use boa_utils::{
+    module::{
+        http::{HttpModuleLoader, Queue},
+        ModuleLoader,
+    },
+    Console,
 };
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
@@ -50,13 +56,13 @@ pub enum JsRunnerError {
 }
 
 pub struct BoaConsoleLogger(Arc<Mutex<Option<Logs>>>);
-impl boa_console::Logger for BoaConsoleLogger {
-    fn log(&self, msg: boa_console::LogMessage, _: &Console) {
+impl boa_utils::Logger for BoaConsoleLogger {
+    fn log(&self, msg: boa_utils::LogMessage, _: &Console) {
         match msg {
-            boa_console::LogMessage::Log(msg) => self.0.lock().as_mut().unwrap().log(msg),
-            boa_console::LogMessage::Info(msg) => self.0.lock().as_mut().unwrap().info(msg),
-            boa_console::LogMessage::Warn(msg) => self.0.lock().as_mut().unwrap().warn(msg),
-            boa_console::LogMessage::Error(msg) => self.0.lock().as_mut().unwrap().error(msg),
+            boa_utils::LogMessage::Log(msg) => self.0.lock().as_mut().unwrap().log(msg),
+            boa_utils::LogMessage::Info(msg) => self.0.lock().as_mut().unwrap().info(msg),
+            boa_utils::LogMessage::Warn(msg) => self.0.lock().as_mut().unwrap().warn(msg),
+            boa_utils::LogMessage::Error(msg) => self.0.lock().as_mut().unwrap().error(msg),
         }
     }
 }
@@ -70,23 +76,32 @@ pub struct JSRunner;
 // boa engine is single-thread runner so that we can not define it in runner trait directly
 pub struct BoaRunner {
     ctx: Rc<RefCell<Context>>,
-    loader: Rc<SimpleModuleLoader>,
+    simple_loader: Rc<SimpleModuleLoader>,
 }
 
 impl BoaRunner {
     pub fn try_new() -> Result<Self> {
-        let loader = Rc::new(SimpleModuleLoader::new(CUSTOM_SCRIPTS_DIR.as_path())?);
-        let context = Context::builder().module_loader(loader.clone()).build()?;
+        let simple_loader = Rc::new(SimpleModuleLoader::new(CUSTOM_SCRIPTS_DIR.as_path())?);
+        let http_loader: Rc<dyn BoaModuleLoader> = Rc::new(HttpModuleLoader);
+        let loader = Rc::new(ModuleLoader::from(vec![
+            simple_loader.clone() as Rc<dyn BoaModuleLoader>,
+            http_loader,
+        ]));
+        let queue = Rc::new(Queue::default());
+        let context = Context::builder()
+            .job_queue(queue)
+            .module_loader(loader.clone())
+            .build()?;
         Ok(Self {
             ctx: Rc::new(RefCell::new(context)),
-            loader,
+            simple_loader,
         })
     }
 
     pub fn setup_console(&self, logger: BoaConsoleLogger) -> Result<()> {
         let ctx = &mut self.ctx.borrow_mut();
         // it not concurrency safe. we should move to new boa_runtime console when it is ready for custom logger
-        boa_console::set_logger(Arc::new(logger));
+        boa_utils::set_logger(Arc::new(logger));
         let console = Console::init(ctx);
         ctx.register_global_property(js_string!(Console::NAME), console, Attribute::all())?;
         Ok(())
@@ -108,72 +123,35 @@ impl BoaRunner {
         //
         // Simulate as if the "fake" module is located in the modules root, just to ensure that
         // the loader won't double load in case someone tries to import "./main.mjs".
-        self.loader
+        self.simple_loader
             .insert(CUSTOM_SCRIPTS_DIR.join(&path_name), module.clone());
         Ok(module)
     }
 
     pub fn execute_module(&self, module: &Module) -> Result<()> {
         let ctx = &mut self.ctx.borrow_mut();
-        // The lifecycle of the module is tracked using promises which can be a bit cumbersome to use.
-        // If you just want to directly execute a module, you can use the `Module::load_link_evaluate`
-        // method to skip all the boilerplate.
-        // This does the full version for demonstration purposes.
-        //
-        // parse -> load -> link -> evaluate
-        let promise_result = module
-            // Initial load that recursively loads the module's dependencies.
-            // This returns a `JsPromise` that will be resolved when loading finishes,
-            // which allows async loads and async fetches.
-            .load(ctx)
-            .then(
-                Some(
-                    NativeFunction::from_copy_closure_with_captures(
-                        |_, _, module, context| {
-                            // After loading, link all modules by resolving the imports
-                            // and exports on the full module graph, initializing module
-                            // environments. This returns a plain `Err` since all modules
-                            // must link at the same time.
-                            module.link(context)?;
-                            Ok(JsValue::undefined())
-                        },
-                        module.clone(),
-                    )
-                    .to_js_function(ctx.realm()),
-                ),
-                None,
-                ctx,
-            )
-            .then(
-                Some(
-                    NativeFunction::from_copy_closure_with_captures(
-                        // Finally, evaluate the root module.
-                        // This returns a `JsPromise` since a module could have
-                        // top-level await statements, which defers module execution to the
-                        // job queue.
-                        |_, _, module, context| Ok(module.evaluate(context).into()),
-                        module.clone(),
-                    )
-                    .to_js_function(ctx.realm()),
-                ),
-                None,
-                ctx,
-            );
+        let promise_result = module.load_link_evaluate(ctx);
 
         // Very important to push forward the job queue after queueing promises.
         ctx.run_jobs();
 
         // Checking if the final promise didn't return an error.
-        match promise_result.state() {
-            PromiseState::Pending => {
-                return Err(JsRunnerError::Other("module didn't execute!".to_owned()))
+        for i in 0..20 {
+            match promise_result.state() {
+                PromiseState::Pending => {
+                    if i == 19 {
+                        return Err(JsRunnerError::Other("module didn't execute!".to_string()));
+                    }
+                }
+                PromiseState::Fulfilled(v) => {
+                    assert_eq!(v, JsValue::undefined());
+                    break;
+                }
+                PromiseState::Rejected(err) => {
+                    return Err(JsError::from_opaque(err).try_native(ctx)?.into())
+                }
             }
-            PromiseState::Fulfilled(v) => {
-                assert_eq!(v, JsValue::undefined());
-            }
-            PromiseState::Rejected(err) => {
-                return Err(JsError::from_opaque(err).try_native(ctx)?.into())
-            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
         }
         Ok(())
     }
@@ -266,69 +244,6 @@ impl Runner for JSRunner {
             Ok(output) => output,
             Err(e) => (Err(e.into()), vec![]),
         }
-        // let ctx = AsyncContext::full(&self.0)
-        //     .await
-        //     .context("failed to get a context")?;
-        // let outputs: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(vec![]));
-        // let outputs_clone = outputs.clone();
-        // let print = move |msg: String| {
-        //     let mut outs = outputs_clone.lock();
-        //     tracing::debug!("script log: {:?}", msg);
-        //     outs.push(msg.clone())
-        // };
-        // let script = utils::wrap_script_if_not_esm(script);
-        // let config = simd_json::to_string_pretty(&mapping)?;
-        // let mut result = async_with!(ctx => |ctx| {
-        //     let raw_ctx = ctx.clone();
-        //     let run = || async move {
-        //         let global = ctx.globals();
-        //         global
-        //             .set(
-        //                 "print",
-        //                 Function::new(ctx.clone(), print)?.with_name("print")?,
-        //             )
-        //             .context("failed to set print fn")?;
-        //         // if user script fn is main(config): config should convert to esm
-        //         let user_module = format!("{script};
-        //         let config = JSON.parse('{config}');
-        //         export let _processed_config = await main(config);
-        //         ");
-        //         println!("user_module: {:?}", user_module);
-        //         Module::declare(ctx.clone(), "user_script", user_module).context("fail to define the user_script module")?;
-        //         let promises = Module::evaluate(ctx.clone(), "process_honey", "
-        //         import { _processed_config } from \"user_script\";
-        //         globalThis.final_result = JSON.stringify(_processed_config);
-        //         ").context("fail to eval the process_honey module")?;
-        //         promises
-        //             .into_future::<()>()
-        //             .await
-        //             .context("fail to eval the module")?;
-        //         let final_result = ctx.globals()
-        //             .get::<_, rquickjs::String>("final_result")
-        //             .context("fail to get the final result")?
-        //             .to_string()
-        //             .context("fail to convert the final result to string")?;
-        //         Ok::<String, anyhow::Error>(final_result)
-        //     };
-        //     let res = run().await;
-        //     res.map_err(|e| {
-        //         // println!("error: {:?}", e);
-        //         // check whether the error inside is a QuickJS exception
-        //         // TODO: maybe the chains should be Context -> RawException -> Error
-        //         for cause in e.chain() {
-        //             if let Some(rquickjs::Error::Exception) = cause.downcast_ref::<rquickjs::Error>() {
-        //                 let raw_exception = raw_ctx.catch();
-        //                 return e.context(format!("QuickJS exception: {:?}", raw_exception))
-        //             }
-        //         }
-        //         e
-        //     })
-        // }).await?;
-        // let buff = unsafe { result.as_bytes_mut() };
-        // let mapping = simd_json::from_slice::<Mapping>(buff)
-        //     .context("failed to convert the result to mapping")?;
-        // let outs = outputs.lock();
-        // Ok((mapping, outs.to_vec()))
     }
 }
 
@@ -416,6 +331,68 @@ mod test {
                     outs,
                     r#"[["log","Test console log"],["warn","Test console log"],["error","Test console log"]]"#
                 );
+            });
+    }
+
+    #[test]
+    fn test_process_honey_with_fetch() {
+        use super::{super::runner::Runner, JSRunner};
+        let runner = JSRunner::try_new().unwrap();
+        let mapping = serde_yaml::from_str(
+            r#"
+        rules:
+                - RULE-SET,custom-reject,REJECT
+                - RULE-SET,custom-direct,DIRECT
+                - RULE-SET,custom-proxy,🚀
+        tun:
+            enable: false
+        dns:
+            enable: false
+        "#,
+        )
+        .unwrap();
+        let script = r#"
+        import YAML from 'https://esm.run/yaml@2.3.4';
+        import fromAsync from 'https://esm.run/array-from-async@3.0.0';
+        import { Base64 } from 'https://esm.run/js-base64@3.7.6';
+
+
+        export default async function main(config) {
+            const data = `
+            object:
+                array: ["hello", "world"]
+                key: "value"
+            `;
+
+            const object = YAML.parse(data).object;
+
+            let result = await fromAsync([
+                Promise.resolve(Base64.encode(object.array[0])),
+                Promise.resolve(Base64.encode(object.array[1])),
+            ]);
+            // add result to config.rules
+            config.rules.push(`${result[0]}`);
+            config.rules.push(`${result[1]}`);
+            return config;
+        }"#;
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async move {
+                let (res, logs) = runner.process_honey(mapping, script).await;
+                eprintln!("logs: {:?}", logs);
+                let mapping = res.unwrap();
+                assert_eq!(
+                    mapping["rules"],
+                    serde_yaml::Value::Sequence(vec![
+                        serde_yaml::Value::String("RULE-SET,custom-reject,REJECT".to_string()),
+                        serde_yaml::Value::String("RULE-SET,custom-direct,DIRECT".to_string()),
+                        serde_yaml::Value::String("RULE-SET,custom-proxy,🚀".to_string())
+                    ])
+                );
+                let outs = simd_json::serde::to_string(&logs).unwrap();
+                assert_eq!(outs, r#"[]"#);
             });
     }
 }

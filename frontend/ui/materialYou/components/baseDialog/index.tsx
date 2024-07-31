@@ -173,6 +173,7 @@ export const BaseDialog = ({
                 "text-xl",
                 !full ? "m-4" : OS === "macos" ? "ml-20 p-3" : "m-2 ml-6",
               )}
+              data-windrag={full}
             >
               {title}
             </div>

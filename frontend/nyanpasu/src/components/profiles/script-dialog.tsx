@@ -173,6 +173,7 @@ export const ScriptDialog = ({
               control={control}
               {...commonProps}
               size="small"
+              multiline
             />
           </div>
         </div>

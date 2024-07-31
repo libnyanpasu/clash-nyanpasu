@@ -156,6 +156,7 @@ export const ProfileDialog = ({
         control={control}
         {...commonProps}
         size="small"
+        multiline
       />
 
       {isRemote ? (

@@ -103,6 +103,8 @@ export const BaseDialog = ({
     if (open) {
       setMounted(true);
       cancelMounted();
+    } else {
+      handleClose();
     }
   }, [open]);
 

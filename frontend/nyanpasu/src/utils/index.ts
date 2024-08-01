@@ -29,6 +29,10 @@ export const containsSearchTerm = (obj: any, term: string): boolean => {
   return false;
 };
 
+export function formatError(err: unknown): string {
+  return `Error: ${err instanceof Error ? err.message : String(err)}`;
+}
+
 export function formatEnvInfos(envs: EnvInfos) {
   let result = "----------- System -----------\n";
   result += `OS: ${envs.os}\n`;

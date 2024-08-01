@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useMessage } from "@/hooks/use-notification";
+import { useCoreType } from "@/hooks/use-store";
 import getSystem from "@/utils/get-system";
 import { Button, List, ListItem, ListItemText } from "@mui/material";
 import { pullupUWPTool } from "@nyanpasu/interface";
@@ -12,7 +13,7 @@ const isWIN = getSystem() === "windows";
 
 export const SettingClashBase = () => {
   const { t } = useTranslation();
-
+  const [coreType] = useCoreType();
   const clickUWP = async () => {
     try {
       await pullupUWPTool();
@@ -32,7 +33,9 @@ export const SettingClashBase = () => {
           {...createBooleanProps("allow-lan")}
         />
 
-        <SwitchItem label={t("IPv6")} {...createBooleanProps("ipv6")} />
+        {coreType !== "clash-rs" && (
+          <SwitchItem label={t("IPv6")} {...createBooleanProps("ipv6")} />
+        )}
 
         <MenuItem
           label={t("Log Level")}

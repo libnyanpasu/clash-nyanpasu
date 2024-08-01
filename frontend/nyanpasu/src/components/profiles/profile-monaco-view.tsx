@@ -1,4 +1,4 @@
-import { useAsyncEffect, useLockFn, useUpdateEffect } from "ahooks";
+import { useAsyncEffect, useUpdateEffect } from "ahooks";
 import { useAtomValue } from "jotai";
 import { forwardRef, useImperativeHandle, useRef } from "react";
 import { monaco } from "@/services/monaco";
@@ -23,11 +23,15 @@ export const ProfileMonacoView = forwardRef(function ProfileMonacoView(
 
   const monacoRef = useRef<HTMLDivElement>(null);
 
+  const monacoeditorRef = useRef<typeof monaco | null>(null);
+
   const instanceRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 
   useAsyncEffect(async () => {
     if (open) {
       const { monaco } = await import("@/services/monaco");
+
+      monacoeditorRef.current = monaco;
 
       if (!monacoRef.current) {
         return;
@@ -49,21 +53,25 @@ export const ProfileMonacoView = forwardRef(function ProfileMonacoView(
     getValue: () => instanceRef.current?.getValue(),
   }));
 
-  const changeLanguage = useLockFn(async () => {
-    const { monaco } = await import("@/services/monaco");
+  useUpdateEffect(() => {
+    const model = instanceRef.current?.getModel();
 
-    const text = instanceRef.current?.getModel();
-
-    if (!text || !language) {
+    if (!model || !language) {
       return;
     }
 
-    monaco.editor.setModelLanguage(text, language);
-  });
+    monacoeditorRef.current?.editor.setModelLanguage(model, language);
+  }, [language]);
 
   useUpdateEffect(() => {
-    changeLanguage();
-  }, [language]);
+    const model = instanceRef.current?.getModel();
+
+    if (!model || !value) {
+      return;
+    }
+
+    model.setValue(value);
+  }, [value]);
 
   return <div ref={monacoRef} className={className} />;
 });

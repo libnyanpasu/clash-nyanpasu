@@ -1,4 +1,4 @@
-export function main(params) {
+export default function main(params) {
   if (params.mode === "script") {
     params.mode = "rule";
   }

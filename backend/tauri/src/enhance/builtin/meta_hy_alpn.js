@@ -1,4 +1,4 @@
-export function main(params) {
+export default function main(params) {
   if (Array.isArray(params.proxies)) {
     params.proxies.forEach((p, i) => {
       if (p.type === "hysteria" && typeof p.alpn === "string") {

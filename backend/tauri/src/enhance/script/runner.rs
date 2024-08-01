@@ -74,6 +74,7 @@ impl RunnerManager {
         config: Mapping,
     ) -> ProcessOutput {
         let runner = wrap_result!(self.get_or_init_runner(&script.0));
+        tracing::debug!("script: {:?}", script);
         runner.process_honey(config, script.1.as_str()).await
     }
 }

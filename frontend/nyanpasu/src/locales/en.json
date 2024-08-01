@@ -162,5 +162,7 @@
   "Submenu": "Submenu",
   "Proxy Set proxies": "{{rule}} proxies",
   "Update Proxies Providers All": "Update Rules Proxies All",
-  "Lighten up Animation Effects": "Lighten up Animation Effects"
+  "Lighten up Animation Effects": "Lighten up Animation Effects",
+  "Subscription": "Subscription",
+  "FetchError": "Failed to fetch {{content}} due to network issue. Please check your network connection and try again later."
 }

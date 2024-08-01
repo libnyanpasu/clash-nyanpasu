@@ -164,5 +164,7 @@
   "Submenu": "子菜单",
   "Proxy Set proxies": "{{rule}} 个节点",
   "Update Proxies Providers All": "全部更新",
-  "Lighten up Animation Effects": "减轻动画效果"
+  "Lighten up Animation Effects": "减轻动画效果",
+  "Subscription": "订阅",
+  "FetchError": "由于网络问题，无法获取{{content}}内容。请检查网络连接或稍后再试。"
 }

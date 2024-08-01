@@ -107,10 +107,18 @@ export const ProfileItem = memo(function ProfileItem({
 
       await deleteConnections();
     } catch (err) {
-      useMessage(`Error setting profile: \n ${JSON.stringify(err)}`, {
-        title: t("Error"),
-        type: "error",
-      });
+      const is_fetch_error = err instanceof Error && err.name === "FetchError";
+      useMessage(
+        is_fetch_error
+          ? t("FetchError", {
+              content: t("Subscription"),
+            })
+          : `Error setting profile: \n ${err instanceof Error ? err.message : String(err)}`,
+        {
+          title: t("Error"),
+          type: "error",
+        },
+      );
     } finally {
       setLoading({ card: false });
     }

@@ -392,7 +392,7 @@ impl CoreManager {
         let config_path = Config::generate_file(ConfigType::Check)?;
         let config_path = dirs::path_to_str(&config_path)?;
 
-        let clash_core = { Config::verge().latest().clash_core.clone() };
+        let clash_core = { Config::verge().latest().clash_core };
         let clash_core = clash_core.unwrap_or(ClashCore::ClashPremium).to_string();
 
         let app_dir = dirs::app_data_dir()?;

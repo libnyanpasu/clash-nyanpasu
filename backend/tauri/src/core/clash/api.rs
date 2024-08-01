@@ -1,7 +1,7 @@
 use crate::config::Config;
 use anyhow::{bail, Result};
 use indexmap::IndexMap;
-use reqwest::header::HeaderMap;
+use reqwest::{header::HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 use std::{
@@ -22,12 +22,12 @@ pub async fn put_configs(path: &str) -> Result<()> {
 
     let client = reqwest::ClientBuilder::new().no_proxy().build()?;
     let builder = client.put(&url).headers(headers).json(&data);
-    let response = builder.send().await?;
+    let response = builder.send().await?.error_for_status()?;
 
-    match response.status().as_u16() {
-        204 => Ok(()),
-        status => {
-            bail!("failed to put configs with status \"{status}\"")
+    match response.status() {
+        StatusCode::NO_CONTENT | StatusCode::ACCEPTED => Ok(()),
+        _ => {
+            bail!("failed to put configs")
         }
     }
 }
@@ -40,7 +40,7 @@ pub async fn patch_configs(config: &Mapping) -> Result<()> {
 
     let client = reqwest::ClientBuilder::new().no_proxy().build()?;
     let builder = client.patch(&url).headers(headers.clone()).json(config);
-    builder.send().await?;
+    builder.send().await?.error_for_status()?;
     Ok(())
 }
 
@@ -125,7 +125,7 @@ pub async fn get_proxies() -> Result<ProxiesRes> {
 
     let client = reqwest::ClientBuilder::new().no_proxy().build()?;
     let builder = client.get(&url).headers(headers);
-    let response = builder.send().await?;
+    let response = builder.send().await?.error_for_status()?;
 
     Ok(response.json::<ProxiesRes>().await?)
 }
@@ -143,7 +143,7 @@ pub async fn get_proxy(name: String) -> Result<ProxyItem> {
 
     let client = reqwest::ClientBuilder::new().no_proxy().build()?;
     let builder = client.get(&url).headers(headers);
-    let response = builder.send().await?;
+    let response = builder.send().await?.error_for_status()?;
 
     Ok(response.json::<ProxyItem>().await?)
 }
@@ -162,10 +162,10 @@ pub async fn update_proxy(group: &str, name: &str) -> Result<()> {
 
     let client = reqwest::ClientBuilder::new().no_proxy().build()?;
     let builder = client.put(&url).headers(headers).json(&data);
-    let response = builder.send().await?;
+    let response = builder.send().await?.error_for_status()?;
 
-    match response.status().as_u16() {
-        204 => Ok(()),
+    match response.status() {
+        StatusCode::ACCEPTED | StatusCode::NO_CONTENT => Ok(()),
         status => {
             bail!("failed to put proxy with status \"{status}\"")
         }
@@ -227,7 +227,7 @@ pub async fn get_providers_proxies() -> Result<ProvidersProxiesRes> {
 
     let client = reqwest::ClientBuilder::new().no_proxy().build()?;
     let builder = client.get(&url).headers(headers);
-    let response = builder.send().await?;
+    let response = builder.send().await?.error_for_status()?;
 
     Ok(response.json::<ProvidersProxiesRes>().await?)
 }
@@ -243,7 +243,7 @@ pub async fn get_providers_proxies_group(group: String) -> Result<ProxyProviderI
 
     let client = reqwest::ClientBuilder::new().no_proxy().build()?;
     let builder = client.get(&url).headers(headers);
-    let response = builder.send().await?;
+    let response = builder.send().await?.error_for_status()?;
 
     Ok(response.json::<ProxyProviderItem>().await?)
 }
@@ -258,10 +258,10 @@ pub async fn update_providers_proxies_group(name: &str) -> Result<()> {
 
     let client = reqwest::ClientBuilder::new().no_proxy().build()?;
     let builder = client.put(&url).headers(headers);
-    let response = builder.send().await?;
+    let response = builder.send().await?.error_for_status()?;
 
-    match response.status().as_u16() {
-        204 => Ok(()),
+    match response.status() {
+        StatusCode::NO_CONTENT | StatusCode::ACCEPTED => Ok(()),
         status => {
             bail!("failed to put providers proxies name with status \"{status}\"")
         }
@@ -279,7 +279,7 @@ pub async fn get_providers_proxies_healthcheck(name: String) -> Result<Mapping> 
 
     let client = reqwest::ClientBuilder::new().no_proxy().build()?;
     let builder = client.get(&url).headers(headers);
-    let response = builder.send().await?;
+    let response = builder.send().await?.error_for_status()?;
 
     Ok(response.json::<Mapping>().await?)
 }
@@ -305,7 +305,7 @@ pub async fn get_proxy_delay(name: String, test_url: Option<String>) -> Result<D
         .get(&url)
         .headers(headers)
         .query(&[("timeout", "10000"), ("url", &test_url)]);
-    let response = builder.send().await?;
+    let response = builder.send().await?.error_for_status()?;
 
     Ok(response.json::<DelayRes>().await?)
 }

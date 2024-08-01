@@ -208,7 +208,6 @@ impl Updater {
         let current_core = crate::config::Config::verge()
             .latest()
             .clash_core
-            .clone()
             .unwrap_or_default();
         if current_core == self.core_type {
             CoreManager::global().stop_core().await?;

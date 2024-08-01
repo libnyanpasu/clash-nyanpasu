@@ -227,7 +227,7 @@ impl UpdaterManager {
         let updater = Arc::new(
             instance::UpdaterBuilder::new()
                 .set_client(self.client.clone())
-                .set_core_type(core_type.clone())
+                .set_core_type(*core_type)
                 .set_mirror(mirror)
                 .set_artifact(artifact)
                 .set_tag(tag)

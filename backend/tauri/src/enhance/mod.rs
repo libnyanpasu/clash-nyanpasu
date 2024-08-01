@@ -23,7 +23,7 @@ pub async fn enhance() -> (Mapping, Vec<String>, IndexMap<String, Logs>) {
         let verge = Config::verge();
         let verge = verge.latest();
         (
-            verge.clash_core.clone(),
+            verge.clash_core,
             verge.enable_tun_mode.unwrap_or(false),
             verge.enable_builtin_enhanced.unwrap_or(true),
             verge.enable_clash_fields.unwrap_or(true),

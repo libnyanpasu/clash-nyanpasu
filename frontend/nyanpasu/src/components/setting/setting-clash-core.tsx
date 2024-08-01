@@ -44,8 +44,11 @@ export const SettingClashCore = () => {
   const changeClashCore = useLockFn(async (core: ClashCore) => {
     try {
       loading.mask = true;
-
-      await deleteConnections();
+      try {
+        await deleteConnections();
+      } catch (e) {
+        console.error(e);
+      }
 
       await setClashCore(core);
 

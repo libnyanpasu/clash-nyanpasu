@@ -1,6 +1,6 @@
-import { useAsyncEffect, useUpdateEffect } from "ahooks";
+import { useUpdateEffect } from "ahooks";
 import { useAtomValue } from "jotai";
-import { forwardRef, useImperativeHandle, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { monaco } from "@/services/monaco";
 import { themeMode } from "@/store";
 
@@ -27,10 +27,9 @@ export const ProfileMonacoView = forwardRef(function ProfileMonacoView(
 
   const instanceRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 
-  useAsyncEffect(async () => {
-    if (open) {
+  useEffect(() => {
+    const run = async () => {
       const { monaco } = await import("@/services/monaco");
-
       monacoeditorRef.current = monaco;
 
       if (!monacoRef.current) {
@@ -44,9 +43,13 @@ export const ProfileMonacoView = forwardRef(function ProfileMonacoView(
         minimap: { enabled: false },
         automaticLayout: true,
       });
-    } else {
-      instanceRef.current?.dispose();
+    };
+    if (open) {
+      run().catch(console.error);
     }
+    return () => {
+      instanceRef.current?.dispose();
+    };
   }, [open]);
 
   useImperativeHandle(ref, () => ({

@@ -1,7 +1,7 @@
 use crate::{
     config::Config,
     enhance::ScriptType,
-    utils::{dirs, help, tmpl},
+    utils::{dirs, help},
 };
 use anyhow::{bail, Context, Result};
 use reqwest::StatusCode;
@@ -150,12 +150,12 @@ impl ProfileItem {
             Some(ProfileItemType::Merge) => {
                 let name = item.name.unwrap_or("Merge".into());
                 let desc = item.desc.unwrap_or("".into());
-                ProfileItem::from_merge(name, desc)
+                ProfileItem::from_merge(name, desc, file_data)
             }
             Some(ProfileItemType::Script(script_type)) => {
                 let name = item.name.unwrap_or("Script".into());
                 let desc = item.desc.unwrap_or("".into());
-                ProfileItem::from_script(name, desc, script_type)
+                ProfileItem::from_script(name, desc, script_type, file_data)
             }
             None => bail!("could not find the item type"),
         }
@@ -178,7 +178,7 @@ impl ProfileItem {
             desc: Some(desc),
             file: Some(file),
             updated: Some(chrono::Local::now().timestamp() as usize),
-            file_data: Some(file_data.unwrap_or(tmpl::ITEM_LOCAL.into())),
+            file_data,
             ..Default::default()
         })
     }
@@ -347,7 +347,11 @@ impl ProfileItem {
 
     /// ## Merge type (enhance)
     /// create the enhanced item by using `merge` rule
-    pub fn from_merge(name: String, desc: String) -> Result<ProfileItem> {
+    pub fn from_merge(
+        name: String,
+        desc: String,
+        file_data: Option<String>,
+    ) -> Result<ProfileItem> {
         let uid = help::get_uid("m");
         let file = format!("{uid}.yaml");
 
@@ -358,14 +362,19 @@ impl ProfileItem {
             desc: Some(desc),
             file: Some(file),
             updated: Some(chrono::Local::now().timestamp() as usize),
-            file_data: Some(tmpl::ITEM_MERGE.into()),
+            file_data,
             ..Default::default()
         })
     }
 
     /// ## Script type (enhance)
     /// create the enhanced item by using javascript quick.js
-    pub fn from_script(name: String, desc: String, script_type: ScriptType) -> Result<ProfileItem> {
+    pub fn from_script(
+        name: String,
+        desc: String,
+        script_type: ScriptType,
+        file_data: Option<String>,
+    ) -> Result<ProfileItem> {
         let uid = help::get_uid("s");
         let file = match script_type {
             ScriptType::JavaScript => format!("{uid}.js"), // js ext
@@ -379,7 +388,7 @@ impl ProfileItem {
             desc: Some(desc),
             file: Some(file),
             updated: Some(chrono::Local::now().timestamp() as usize),
-            file_data: Some(tmpl::ITEM_SCRIPT.into()),
+            file_data,
             ..Default::default()
         })
     }

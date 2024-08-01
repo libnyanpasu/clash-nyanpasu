@@ -1,5 +1,9 @@
-import { useState } from "react";
+import { useAtom } from "jotai";
 import { useTranslation } from "react-i18next";
+import {
+  atomChainsSelected,
+  atomGlobalChainCurrent,
+} from "@/components/profiles/modules/store";
 import NewProfileButton from "@/components/profiles/new-profile-button";
 import ProfileItem from "@/components/profiles/profile-item";
 import ProfileSide from "@/components/profiles/profile-side";
@@ -18,14 +22,14 @@ export const ProfilePage = () => {
 
   const { profiles } = filterProfiles(getProfiles.data?.items);
 
-  const [globalChain, setGlobalChain] = useState(false);
+  const [globalChain, setGlobalChain] = useAtom(atomGlobalChainCurrent);
+
+  const [chainsSelected, setChainsSelected] = useAtom(atomChainsSelected);
 
   const handleGlobalChainClick = () => {
     setChainsSelected(undefined);
     setGlobalChain(!globalChain);
   };
-
-  const [chainsSelected, setChainsSelected] = useState<Profile.Item>();
 
   const onClickChains = (profile: Profile.Item) => {
     setGlobalChain(false);
@@ -61,11 +65,7 @@ export const ProfilePage = () => {
       sideClassName="!overflow-visible"
       side={
         (globalChain || chainsSelected) && (
-          <ProfileSide
-            profile={chainsSelected}
-            global={globalChain}
-            onClose={handleSideClose}
-          />
+          <ProfileSide onClose={handleSideClose} />
         )
       }
     >

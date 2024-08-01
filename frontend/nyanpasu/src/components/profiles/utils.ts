@@ -1,3 +1,4 @@
+import { isEqual } from "lodash-es";
 import { Profile } from "@nyanpasu/interface";
 
 export const filterProfiles = (items?: Profile.Item[]) => {
@@ -21,16 +22,38 @@ export const filterProfiles = (items?: Profile.Item[]) => {
     });
   };
 
-  const profiles = getItems(["local", "remote"]);
+  const profiles = getItems([Profile.Type.Local, Profile.Type.Remote]);
 
   const scripts = getItems([
-    "merge",
-    { script: "javascript" },
-    { script: "lua" },
+    Profile.Type.Merge,
+    Profile.Type.JavaScript,
+    Profile.Type.LuaScript,
   ]);
 
   return {
     profiles,
     scripts,
   };
+};
+
+export const getLanguage = (type: Profile.Item["type"], snake?: boolean) => {
+  switch (true) {
+    case isEqual(type, Profile.Type.JavaScript):
+    case isEqual(type, Profile.Type.JavaScript.script): {
+      return snake ? "JavaScript" : "javascript";
+    }
+
+    case isEqual(type, Profile.Type.LuaScript):
+    case isEqual(type, Profile.Type.LuaScript.script): {
+      return snake ? "Lua" : "lua";
+    }
+
+    case isEqual(type, Profile.Type.Merge): {
+      return snake ? "YAML" : "yaml";
+    }
+
+    default: {
+      return;
+    }
+  }
 };

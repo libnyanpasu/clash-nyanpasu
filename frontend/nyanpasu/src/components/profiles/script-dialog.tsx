@@ -1,22 +1,60 @@
 import { useAsyncEffect, useReactive } from "ahooks";
-import { isEqual } from "lodash-es";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SelectElement, TextFieldElement, useForm } from "react-hook-form-mui";
 import { useTranslation } from "react-i18next";
 import { Divider } from "@mui/material";
 import { Profile, useClash } from "@nyanpasu/interface";
 import { BaseDialog, BaseDialogProps } from "@nyanpasu/ui";
+import LanguageChip from "./modules/language-chip";
 import { ProfileMonacoView, ProfileMonacoViewRef } from "./profile-monaco-view";
+import { getLanguage } from "./utils";
+
+const formCommonProps = {
+  autoComplete: "off",
+  autoCorrect: "off",
+  fullWidth: true,
+};
+
+const optionTypeMapping = [
+  {
+    id: "js",
+    value: Profile.Type.JavaScript,
+    language: "javascript",
+    label: "JavaScript",
+  },
+  {
+    id: "lua",
+    value: Profile.Type.LuaScript,
+    language: "lua",
+    label: "LuaScript",
+  },
+  {
+    id: "merge",
+    value: Profile.Type.Merge,
+    language: "yaml",
+    label: "Merge",
+  },
+];
+
+const convertTypeMapping = (data: Profile.Item) => {
+  optionTypeMapping.forEach((option) => {
+    if (option.id === data.type) {
+      data.type = option.value;
+    }
+  });
+
+  return data;
+};
 
 export interface ScriptDialogProps extends Omit<BaseDialogProps, "title"> {
   open: boolean;
   onClose: () => void;
-  item?: Profile.Item;
+  profile?: Profile.Item;
 }
 
 export const ScriptDialog = ({
   open,
-  item,
+  profile,
   onClose,
   ...props
 }: ScriptDialogProps) => {
@@ -25,121 +63,120 @@ export const ScriptDialog = ({
   const { getProfileFile, setProfileFile, createProfile, setProfiles } =
     useClash();
 
-  const optionTypeMapping = [
-    {
-      id: "js",
-      value: { script: "javascript" },
-      language: "javascript",
-      label: t("JavaScript"),
-    },
-    {
-      id: "lua",
-      value: { script: "lua" },
-      language: "lua",
-      label: t("LuaScript"),
-    },
-    {
-      id: "merge",
-      value: "merge",
-      language: "yaml",
-      label: t("Merge"),
-    },
-  ];
+  const form = useForm<Profile.Item>();
 
-  const preprocessing = () => {
-    const result = optionTypeMapping.find((option) =>
-      isEqual(option.value, item?.type),
-    );
+  const isEdit = Boolean(profile);
 
-    return { ...item, type: result?.id } as Profile.Item;
-  };
+  useEffect(() => {
+    if (isEdit) {
+      form.reset(profile);
+    } else {
+      form.reset({
+        type: "merge",
+        chains: [],
+        name: "New Script",
+        desc: "",
+      });
+    }
+  }, [isEdit]);
 
-  const { control, watch, handleSubmit, reset } = useForm<Profile.Item>({
-    defaultValues: item
-      ? preprocessing()
-      : {
-          type: "merge",
-          chains: [],
-          name: "New Script",
-          desc: "",
-        },
-  });
+  const [openMonaco, setOpenMonaco] = useState(false);
 
   const profileMonacoViewRef = useRef<ProfileMonacoViewRef>(null);
 
-  const editor = useReactive({
-    value: "",
-    language: "javascript",
+  const editor = useReactive<{
+    value: string;
+    language: string;
+    rawType: Profile.Item["type"];
+  }>({
+    value: Profile.Template.merge,
+    language: "yaml",
+    rawType: "merge",
   });
 
-  const handleTypeChange = () => {
-    const language = optionTypeMapping.find((option) =>
-      isEqual(option.id, watch("type")),
-    )?.language;
+  const onSubmit = form.handleSubmit(async (data) => {
+    convertTypeMapping(data);
 
-    if (language) {
-      editor.language = language;
+    const editorValue = profileMonacoViewRef.current?.getValue();
+
+    if (!editorValue) {
+      return;
     }
-  };
-
-  const isEdit = Boolean(item);
-
-  const commonProps = {
-    autoComplete: "off",
-    autoCorrect: "off",
-    fullWidth: true,
-  };
-
-  const onSubmit = handleSubmit(async (form) => {
-    const value = profileMonacoViewRef.current?.getValue() || "";
-
-    const type = optionTypeMapping.find((option) =>
-      isEqual(option.id, form.type),
-    )?.value;
-
-    const data = {
-      ...form,
-      type,
-    } as Profile.Item;
 
     try {
       if (isEdit) {
         await setProfiles(data.uid, data);
 
-        await setProfileFile(data.uid, value);
+        await setProfileFile(data.uid, editorValue);
       } else {
-        await createProfile(data, value);
+        await createProfile(data, editorValue);
       }
-
-      setTimeout(() => reset(), 300);
-
-      onClose();
     } finally {
+      onClose();
     }
   });
 
   useAsyncEffect(async () => {
-    editor.value = await getProfileFile(item?.uid);
-
-    if (item) {
-      reset(item);
+    if (isEdit) {
+      editor.value = await getProfileFile(profile?.uid);
+      editor.language = getLanguage(profile?.type)!;
     } else {
-      reset();
+      editor.value = Profile.Template.merge;
+      editor.language = "yaml";
     }
+
+    setOpenMonaco(open);
   }, [open]);
+
+  const handleTypeChange = () => {
+    const data = form.getValues();
+
+    editor.rawType = convertTypeMapping(data).type;
+
+    const lang = getLanguage(editor.rawType);
+
+    if (!lang) {
+      return;
+    }
+
+    editor.language = lang;
+
+    switch (lang) {
+      case "yaml": {
+        editor.value = Profile.Template.merge;
+        break;
+      }
+
+      case "lua": {
+        editor.value = Profile.Template.luascript;
+        break;
+      }
+
+      case "javascript": {
+        editor.value = Profile.Template.javascript;
+        break;
+      }
+    }
+  };
 
   return (
     <BaseDialog
-      title={isEdit ? "Edit Script" : "New Script"}
+      title={
+        <div className="flex gap-2">
+          <span>{isEdit ? "Edit Script" : "New Script"}</span>
+
+          <LanguageChip type={isEdit ? profile?.type : editor.rawType} />
+        </div>
+      }
       open={open}
       onClose={() => onClose()}
       onOk={onSubmit}
       divider
       contentStyle={{
-        height: "80vh",
-        width: "90vw",
+        overflow: "hidden",
         padding: 0,
       }}
+      full
       {...props}
     >
       <div className="flex h-full">
@@ -149,8 +186,8 @@ export const ScriptDialog = ({
               <SelectElement
                 label={t("Type")}
                 name="type"
-                control={control}
-                {...commonProps}
+                control={form.control}
+                {...formCommonProps}
                 size="small"
                 required
                 options={optionTypeMapping}
@@ -161,8 +198,8 @@ export const ScriptDialog = ({
             <TextFieldElement
               label={t("Name")}
               name="name"
-              control={control}
-              {...commonProps}
+              control={form.control}
+              {...formCommonProps}
               size="small"
               required
             />
@@ -170,8 +207,8 @@ export const ScriptDialog = ({
             <TextFieldElement
               label={t("Descriptions")}
               name="desc"
-              control={control}
-              {...commonProps}
+              control={form.control}
+              {...formCommonProps}
               size="small"
               multiline
             />
@@ -183,7 +220,7 @@ export const ScriptDialog = ({
         <ProfileMonacoView
           className="w-full"
           ref={profileMonacoViewRef}
-          open={open}
+          open={openMonaco}
           value={editor.value}
           language={editor.language}
         />

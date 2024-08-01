@@ -6,6 +6,7 @@
       "ps": "复制环境变量(PS)",
       "sh": "复制环境变量(sh)"
     },
+    "select_proxies": "选择代理",
     "dashboard": "打开面板",
     "direct_mode": "直连模式",
     "global_mode": "全局模式",

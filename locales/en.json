@@ -6,6 +6,7 @@
       "ps": "Copy Env (PS)",
       "sh": "Copy Env (sh)"
     },
+    "select_proxies": "Select Proxies",
     "dashboard": "Dashboard",
     "direct_mode": "Direct Mode",
     "global_mode": "Global Mode",

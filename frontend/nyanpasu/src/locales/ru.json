@@ -142,5 +142,8 @@
   "Update Rules Providers Success": "Провайдеры правил успешно обновлены",
 
   "Portable Update Error": "Обновление портативной версии не поддерживается",
-  "Enable Tray Proxies Selector": "Включить выбор прокси в трее"
+  "Tray Proxies Selector": "Выбор прокси в трее",
+  "Hidden": "Скрыть",
+  "Normal": "Обычный",
+  "Submenu": "Подменю"
 }

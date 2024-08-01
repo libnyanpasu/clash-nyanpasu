@@ -1,5 +1,5 @@
 use crate::{
-    config::Config,
+    config::{nyanpasu::ProxiesSelectorMode, Config},
     core::{
         clash::proxies::{Proxies, ProxiesGuard, ProxiesGuardExt},
         handle::Handle,
@@ -162,8 +162,11 @@ pub async fn proxies_updated_receiver() {
                 }
                 Handle::mutate_proxies();
                 {
-                    let is_tray_selector_enabled =
-                        Config::verge().latest().clash_tray_selector.unwrap_or(true);
+                    let is_tray_selector_enabled = Config::verge()
+                        .latest()
+                        .clash_tray_selector
+                        .unwrap_or_default()
+                        != ProxiesSelectorMode::Hidden;
                     if !is_tray_selector_enabled {
                         continue;
                     }
@@ -209,8 +212,12 @@ pub fn setup_proxies() {
 
 mod platform_impl {
     use super::{ProxySelectAction, TrayProxyItem};
-    use crate::core::{clash::proxies::ProxiesGuard, handle::Handle};
+    use crate::{
+        config::nyanpasu::ProxiesSelectorMode,
+        core::{clash::proxies::ProxiesGuard, handle::Handle},
+    };
     use base64::{engine::general_purpose::STANDARD as base64_standard, Engine as _};
+    use rust_i18n::t;
     use tauri::{CustomMenuItem, SystemTrayMenu, SystemTrayMenuItem, SystemTraySubmenu};
     use tracing::warn;
 
@@ -256,20 +263,30 @@ mod platform_impl {
     }
 
     pub fn setup_tray(menu: &mut SystemTrayMenu) -> SystemTrayMenu {
-        let mut menu = menu.to_owned();
-        let is_tray_selector_enabled = crate::config::Config::verge()
+        let mut parent_menu = menu.to_owned();
+        let selector_mode = crate::config::Config::verge()
             .latest()
             .clash_tray_selector
-            .unwrap_or(true);
-        if !is_tray_selector_enabled {
-            return menu;
-        }
-        // TODO: support submenu
-        menu = menu.add_native_item(SystemTrayMenuItem::Separator);
+            .unwrap_or_default();
+        let mut menu = match selector_mode {
+            ProxiesSelectorMode::Hidden => return parent_menu,
+            ProxiesSelectorMode::Normal => {
+                parent_menu = parent_menu.add_native_item(SystemTrayMenuItem::Separator);
+                parent_menu.clone()
+            }
+            ProxiesSelectorMode::Submenu => SystemTrayMenu::new(),
+        };
         let proxies = ProxiesGuard::global().read().inner().to_owned();
         let mode = crate::utils::config::get_current_clash_mode();
         let tray_proxies = super::to_tray_proxies(mode.as_str(), &proxies);
-        generate_selectors(&menu, &tray_proxies)
+        menu = generate_selectors(&menu, &tray_proxies);
+        if selector_mode == ProxiesSelectorMode::Submenu {
+            parent_menu =
+                parent_menu.add_submenu(SystemTraySubmenu::new(t!("tray.select_proxies"), menu));
+            parent_menu
+        } else {
+            menu
+        }
     }
 
     pub fn update_selected_proxies(actions: &[ProxySelectAction]) {

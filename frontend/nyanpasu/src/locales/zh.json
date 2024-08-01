@@ -158,7 +158,10 @@
   "Last Update": "{{fromNow}}更新",
   "Update Rules Providers Success": "更新规则集成功",
   "Portable Update Error": "便携版无法自动更新，请到 Github 下载最新版本",
-  "Enable Tray Proxies Selector": "开启托盘代理选择",
+  "Tray Proxies Selector": "托盘代理选择",
+  "Hidden": "隐藏",
+  "Normal": "开启",
+  "Submenu": "子菜单",
   "Proxy Set proxies": "{{rule}} 个节点",
   "Update Proxies Providers All": "全部更新",
   "Lighten up Animation Effects": "减轻动画效果"

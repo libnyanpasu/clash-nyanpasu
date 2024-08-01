@@ -10,7 +10,7 @@ pub use self::clash_strategy::{ClashStrategy, ExternalControllerPortStrategy};
 pub use logging::LoggingLevel;
 
 // TODO: when support sing-box, remove this struct
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 pub enum ClashCore {
     #[serde(rename = "clash", alias = "clash-premium")]
     ClashPremium,

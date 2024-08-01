@@ -1,5 +1,7 @@
 use serde_yaml::{Mapping, Value};
 
+use crate::config::{nyanpasu::ClashCore, Config};
+
 macro_rules! revise {
     ($map: expr, $key: expr, $val: expr) => {
         let ret_key = Value::String($key.into());
@@ -31,10 +33,21 @@ pub fn use_tun(mut config: Mapping, enable: bool) -> Mapping {
 
     revise!(tun_val, "enable", enable);
     if enable {
-        append!(tun_val, "stack", "gvisor");
-        append!(tun_val, "dns-hijack", vec!["any:53"]);
-        append!(tun_val, "auto-route", true);
-        append!(tun_val, "auto-detect-interface", true);
+        let core = {
+            *Config::verge()
+                .latest()
+                .clash_core
+                .as_ref()
+                .unwrap_or(&ClashCore::default())
+        };
+        if core == ClashCore::ClashRs {
+            append!(tun_val, "device-id", "dev://utun1989");
+        } else {
+            append!(tun_val, "stack", "gvisor");
+            append!(tun_val, "dns-hijack", vec!["any:53"]);
+            append!(tun_val, "auto-route", true);
+            append!(tun_val, "auto-detect-interface", true);
+        }
     }
 
     revise!(config, "tun", tun_val);

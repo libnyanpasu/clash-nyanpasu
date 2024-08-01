@@ -125,9 +125,16 @@ impl ChainItem {
             ChainTypeWrapper::new_js(include_str!("./builtin/meta_hy_alpn.js").to_string()),
         );
 
+        // 移除或转换 Clash Rs 不支持的字段
+        let clash_rs_comp = ChainItem::to_script(
+            "clash_rs_comp",
+            ChainTypeWrapper::new_js(include_str!("./builtin/clash_rs_comp.lua").to_string()),
+        );
+
         vec![
             (ChainSupport::Mihomo, hy_alpn),
             (ChainSupport::Mihomo, meta_guard),
+            (ChainSupport::ClashRs, clash_rs_comp),
         ]
     }
 

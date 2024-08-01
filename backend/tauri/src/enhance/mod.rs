@@ -125,7 +125,7 @@ pub async fn enhance() -> (Mapping, Vec<String>, IndexMap<String, Logs>) {
             log::debug!(target: "app", "run builtin script {}", item.uid);
 
             if let ChainTypeWrapper::Script(script) = item.data {
-                let (res, logs) = script_runner
+                let (res, _) = script_runner
                     .process_script(script, config.to_owned())
                     .await;
                 match res {

@@ -113,6 +113,7 @@ mod tests {
         - 123
         - 12312
         - asdxxx
+        shoud_remove: 123
         "#;
 
         let mapping = serde_yaml::from_str::<Mapping>(mapping).unwrap();
@@ -121,6 +122,7 @@ mod tests {
             console.warn("Hello, world!");
             console.error("Hello, world!");
             config["proxies"] = {1, 2, 3};
+            config["shoud_remove"] = nil;
             return config;
         "#;
         let expected = r#"

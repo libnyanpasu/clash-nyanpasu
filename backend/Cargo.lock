@@ -1211,6 +1211,7 @@ dependencies = [
  "display-info",
  "dunce",
  "dyn-clone",
+ "enumflags2",
  "fast_image_resize",
  "fs_extra",
  "futures",

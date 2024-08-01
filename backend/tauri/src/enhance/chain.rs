@@ -2,6 +2,7 @@ use crate::{
     config::{nyanpasu::ClashCore, profile::item_type::ProfileItemType, ProfileItem},
     utils::{dirs, help},
 };
+use enumflags2::BitFlags;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 use std::fs;
@@ -102,17 +103,9 @@ pub enum ScriptType {
     Lua,
 }
 
-#[derive(Debug, Clone)]
-pub enum ChainSupport {
-    Clash,
-    Mihomo,
-    ClashRs,
-    All,
-}
-
 impl ChainItem {
     /// 内建支持一些脚本
-    pub fn builtin() -> Vec<(ChainSupport, ChainItem)> {
+    pub fn builtin() -> Vec<(BitFlags<ClashCore>, ChainItem)> {
         // meta 的一些处理
         let meta_guard = ChainItem::to_script(
             "verge_meta_guard",
@@ -128,13 +121,13 @@ impl ChainItem {
         // 移除或转换 Clash Rs 不支持的字段
         let clash_rs_comp = ChainItem::to_script(
             "clash_rs_comp",
-            ChainTypeWrapper::new_js(include_str!("./builtin/clash_rs_comp.lua").to_string()),
+            ChainTypeWrapper::new_lua(include_str!("./builtin/clash_rs_comp.lua").to_string()),
         );
 
         vec![
-            (ChainSupport::Mihomo, hy_alpn),
-            (ChainSupport::Mihomo, meta_guard),
-            (ChainSupport::ClashRs, clash_rs_comp),
+            (ClashCore::Mihomo | ClashCore::MihomoAlpha, hy_alpn),
+            (ClashCore::Mihomo | ClashCore::MihomoAlpha, meta_guard),
+            (ClashCore::ClashRs.into(), clash_rs_comp),
         ]
     }
 
@@ -142,24 +135,6 @@ impl ChainItem {
         Self {
             uid: uid.into(),
             data: data.into(),
-        }
-    }
-}
-
-impl ChainSupport {
-    pub fn is_support(&self, core: Option<&ClashCore>) -> bool {
-        match core {
-            Some(core) => matches!(
-                (self, core),
-                (ChainSupport::All, _)
-                    | (ChainSupport::Clash, ClashCore::ClashPremium)
-                    | (ChainSupport::ClashRs, ClashCore::ClashRs)
-                    | (
-                        ChainSupport::Mihomo,
-                        ClashCore::Mihomo | ClashCore::MihomoAlpha
-                    )
-            ),
-            None => true,
         }
     }
 }

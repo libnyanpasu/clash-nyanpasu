@@ -1,8 +1,8 @@
 use crate::utils::{dirs, help};
 use anyhow::Result;
 // use log::LevelFilter;
+use enumflags2::bitflags;
 use serde::{Deserialize, Serialize};
-
 mod clash_strategy;
 pub mod logging;
 
@@ -10,10 +10,12 @@ pub use self::clash_strategy::{ClashStrategy, ExternalControllerPortStrategy};
 pub use logging::LoggingLevel;
 
 // TODO: when support sing-box, remove this struct
+#[bitflags]
+#[repr(u8)]
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 pub enum ClashCore {
     #[serde(rename = "clash", alias = "clash-premium")]
-    ClashPremium,
+    ClashPremium = 0b0001,
     #[serde(rename = "clash-rs")]
     ClashRs,
     #[serde(rename = "mihomo", alias = "clash-meta")]

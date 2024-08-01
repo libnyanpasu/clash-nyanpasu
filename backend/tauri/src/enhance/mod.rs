@@ -7,7 +7,7 @@ mod utils;
 
 pub use self::chain::ScriptType;
 use self::{chain::*, field::*, merge::*, script::*, tun::*};
-use crate::config::Config;
+use crate::config::{nyanpasu::ClashCore, Config};
 use indexmap::IndexMap;
 use serde_yaml::Mapping;
 use std::collections::HashSet;
@@ -119,7 +119,7 @@ pub async fn enhance() -> (Mapping, Vec<String>, IndexMap<String, Logs>) {
     if enable_builtin {
         for item in ChainItem::builtin()
             .into_iter()
-            .filter(|(s, _)| s.is_support(clash_core.as_ref()))
+            .filter(|(s, _)| s.contains(*clash_core.as_ref().unwrap_or(&ClashCore::default())))
             .map(|(_, c)| c)
         {
             log::debug!(target: "app", "run builtin script {}", item.uid);

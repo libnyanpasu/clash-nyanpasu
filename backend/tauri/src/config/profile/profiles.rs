@@ -196,6 +196,7 @@ impl IProfiles {
                 patch!(each, item, extra);
                 patch!(each, item, updated);
                 patch!(each, item, option);
+                patch!(each, item, chains);
 
                 self.items = Some(items);
                 return self.save_file();

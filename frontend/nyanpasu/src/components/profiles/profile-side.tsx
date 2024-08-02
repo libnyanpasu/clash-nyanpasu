@@ -1,15 +1,16 @@
 import { Allotment } from "allotment";
 import "allotment/dist/style.css";
 import { useAtomValue } from "jotai";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Close } from "@mui/icons-material";
 import { IconButton } from "@mui/material";
-import { Profile } from "@nyanpasu/interface";
+import { Profile, useClash } from "@nyanpasu/interface";
 import { SideChain } from "./modules/side-chain";
 import { SideLog } from "./modules/side-log";
 import { atomChainsSelected, atomGlobalChainCurrent } from "./modules/store";
 import { ScriptDialog } from "./script-dialog";
+import { filterProfiles } from "./utils";
 
 export interface ProfileSideProps {
   onClose: () => void;
@@ -24,7 +25,15 @@ export const ProfileSide = ({ onClose }: ProfileSideProps) => {
 
   const isGlobalChainCurrent = useAtomValue(atomGlobalChainCurrent);
 
-  const currentProfile = useAtomValue(atomChainsSelected);
+  const currentProfileUid = useAtomValue(atomChainsSelected);
+
+  const { getProfiles } = useClash();
+
+  const currentProfile = useMemo(() => {
+    return getProfiles.data?.items?.find(
+      (item) => item.uid === currentProfileUid,
+    );
+  }, [getProfiles.data?.items, currentProfileUid]);
 
   const handleEditChain = async (_item?: Profile.Item) => {
     setItem(_item);

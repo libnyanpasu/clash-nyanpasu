@@ -34,10 +34,10 @@ export const ProfilePage = () => {
   const onClickChains = (profile: Profile.Item) => {
     setGlobalChain(false);
 
-    if (chainsSelected?.uid == profile.uid) {
+    if (chainsSelected == profile.uid) {
       setChainsSelected(undefined);
     } else {
-      setChainsSelected(profile);
+      setChainsSelected(profile.uid);
     }
   };
 
@@ -85,7 +85,7 @@ export const ProfilePage = () => {
                   item={item}
                   onClickChains={onClickChains}
                   selected={getProfiles.data?.current == item.uid}
-                  chainsSelected={chainsSelected?.uid == item.uid}
+                  chainsSelected={chainsSelected == item.uid}
                 />
               );
             })}

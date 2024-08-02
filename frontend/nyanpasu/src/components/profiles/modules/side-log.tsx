@@ -1,5 +1,5 @@
 import { isEmpty } from "lodash-es";
-import { memo } from "react";
+import { memo, useEffect } from "react";
 import { VList } from "virtua";
 import { classNames } from "@/utils";
 import { RamenDining, Terminal } from "@mui/icons-material";
@@ -21,8 +21,9 @@ const LogListItem = memo(function LogListItem({
       {showDivider && <Divider />}
 
       <div className="w-full break-all font-mono">
-        <span className="text-red-500">[{name}]: </span>
-        <span>{item}</span>
+        <span className="rounded-sm bg-blue-600 px-0.5">{name}</span>
+        <span className="text-red-500"> [{item?.[0]}]: </span>
+        <span>{item?.[1]}</span>
       </div>
     </>
   );

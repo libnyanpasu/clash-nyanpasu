@@ -24,7 +24,7 @@ export const useNyanpasu = (options?: {
       onSuccess: options?.onSuccess,
     },
   );
-  console.log(data);
+
   const setNyanpasuConfig = async (payload: Partial<VergeConfig>) => {
     try {
       await service.patchNyanpasuConfig(payload);

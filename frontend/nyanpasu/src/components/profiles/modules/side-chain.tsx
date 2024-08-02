@@ -1,5 +1,6 @@
 import { useLockFn } from "ahooks";
 import { useAtomValue } from "jotai";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { formatError } from "@/utils";
 import { message } from "@/utils/notification";
@@ -21,11 +22,17 @@ export const SideChain = ({ onChainEdit }: SideChainProps) => {
 
   const isGlobalChainCurrent = useAtomValue(atomGlobalChainCurrent);
 
-  const currentProfile = useAtomValue(atomChainsSelected);
+  const currentProfileUid = useAtomValue(atomChainsSelected);
 
   const { getProfiles, setProfilesConfig, setProfiles } = useClash();
 
   const { scripts } = filterProfiles(getProfiles.data?.items);
+
+  const currentProfile = useMemo(() => {
+    return getProfiles.data?.items?.find(
+      (item) => item.uid === currentProfileUid,
+    );
+  }, [getProfiles.data?.items, currentProfileUid]);
 
   const handleChainClick = useLockFn(async (uid: string) => {
     const chains = isGlobalChainCurrent

@@ -1,5 +1,8 @@
 import { useLockFn } from "ahooks";
 import { useAtomValue } from "jotai";
+import { useTranslation } from "react-i18next";
+import { useMessage } from "@/hooks/use-notification";
+import { formatError } from "@/utils";
 import { Add } from "@mui/icons-material";
 import { alpha, ListItemButton, useTheme } from "@mui/material";
 import { Profile, useClash } from "@nyanpasu/interface";
@@ -12,18 +15,15 @@ export interface SideChainProps {
 }
 
 export const SideChain = ({ onChainEdit }: SideChainProps) => {
+  const { t } = useTranslation();
+
   const { palette } = useTheme();
 
   const isGlobalChainCurrent = useAtomValue(atomGlobalChainCurrent);
 
   const currnetProfile = useAtomValue(atomChainsSelected);
 
-  const {
-    getProfiles,
-    setProfilesConfig,
-    setProfiles,
-    getRuntimeLogs: { mutate: mutateRuntimeLogs },
-  } = useClash();
+  const { getProfiles, setProfilesConfig, setProfiles } = useClash();
 
   const { scripts } = filterProfiles(getProfiles.data?.items);
 
@@ -36,13 +36,18 @@ export const SideChain = ({ onChainEdit }: SideChainProps) => {
       ? chains.filter((chain) => chain !== uid)
       : [...chains, uid];
 
-    if (isGlobalChainCurrent) {
-      await setProfilesConfig({ chain: updatedChains });
-    } else {
-      await setProfiles(uid, { chains: updatedChains });
+    try {
+      if (isGlobalChainCurrent) {
+        await setProfilesConfig({ chain: updatedChains });
+      } else {
+        await setProfiles(uid, { chains: updatedChains });
+      }
+    } catch (e) {
+      useMessage(`Apply error: ${formatError(e)}`, {
+        type: "error",
+        title: t("Error"),
+      });
     }
-
-    mutateRuntimeLogs();
   });
 
   return (

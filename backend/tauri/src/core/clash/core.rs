@@ -30,6 +30,7 @@ use std::{
 };
 use tauri::api::process::Command;
 use tokio::time::sleep;
+use tracing_attributes::instrument;
 
 pub enum RunType {
     /// Run as child process directly
@@ -561,6 +562,7 @@ impl CoreManager {
     }
 
     /// 切换核心
+    #[instrument(skip(self))]
     pub async fn change_core(&self, clash_core: Option<ClashCore>) -> Result<()> {
         let clash_core = clash_core.ok_or(anyhow::anyhow!("clash core is null"))?;
 
@@ -578,12 +580,14 @@ impl CoreManager {
 
         match self.run_core().await {
             Ok(_) => {
+                tracing::info!("change core success");
                 Config::verge().apply();
                 Config::runtime().apply();
                 log_err!(Config::verge().latest().save_file());
                 Ok(())
             }
             Err(err) => {
+                tracing::error!("failed to change core: {err}");
                 Config::verge().discard();
                 Config::runtime().discard();
                 self.run_core().await?;

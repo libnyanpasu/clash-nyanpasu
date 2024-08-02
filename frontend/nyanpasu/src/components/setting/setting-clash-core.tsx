@@ -39,7 +39,7 @@ export const SettingClashCore = () => {
       : data?.meta
         ? `${data.version} Meta`
         : data?.version || "-";
-  }, [getVersion.data, nyanpasuConfig]);
+  }, [getVersion.data]);
 
   const changeClashCore = useLockFn(async (core: ClashCore) => {
     try {
@@ -140,7 +140,7 @@ export const SettingClashCore = () => {
       };
     });
   }, [getClashCore.data, getLatestCore.data]);
-
+  console.log(nyanpasuConfig?.clash_core);
   return (
     <BaseCard
       label={t("Clash Core")}

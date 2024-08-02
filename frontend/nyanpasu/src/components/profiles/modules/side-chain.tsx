@@ -21,7 +21,7 @@ export const SideChain = ({ onChainEdit }: SideChainProps) => {
 
   const isGlobalChainCurrent = useAtomValue(atomGlobalChainCurrent);
 
-  const currnetProfile = useAtomValue(atomChainsSelected);
+  const currentProfile = useAtomValue(atomChainsSelected);
 
   const { getProfiles, setProfilesConfig, setProfiles } = useClash();
 
@@ -30,7 +30,7 @@ export const SideChain = ({ onChainEdit }: SideChainProps) => {
   const handleChainClick = useLockFn(async (uid: string) => {
     const chains = isGlobalChainCurrent
       ? (getProfiles.data?.chain ?? [])
-      : (currnetProfile?.chains ?? []);
+      : (currentProfile?.chains ?? []);
 
     const updatedChains = chains.includes(uid)
       ? chains.filter((chain) => chain !== uid)
@@ -40,7 +40,10 @@ export const SideChain = ({ onChainEdit }: SideChainProps) => {
       if (isGlobalChainCurrent) {
         await setProfilesConfig({ chain: updatedChains });
       } else {
-        await setProfiles(uid, { chains: updatedChains });
+        if (!currentProfile?.uid) {
+          return;
+        }
+        await setProfiles(currentProfile!.uid, { chains: updatedChains });
       }
     } catch (e) {
       message(`Apply error: ${formatError(e)}`, {
@@ -55,7 +58,7 @@ export const SideChain = ({ onChainEdit }: SideChainProps) => {
       {scripts?.map((item, index) => {
         const selected = isGlobalChainCurrent
           ? getProfiles.data?.chain?.includes(item.uid)
-          : currnetProfile?.chains?.includes(item.uid);
+          : currentProfile?.chains?.includes(item.uid);
 
         return (
           <ChainItem

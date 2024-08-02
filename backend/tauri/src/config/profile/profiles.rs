@@ -4,6 +4,7 @@ use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 use std::{fs, io::Write};
+use tracing_attributes::instrument;
 
 /// Define the `profiles.yaml` schema
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
@@ -182,7 +183,9 @@ impl IProfiles {
     }
 
     /// update the item value
+    #[instrument]
     pub fn patch_item(&mut self, uid: String, item: ProfileItem) -> Result<()> {
+        tracing::debug!("patch item: {uid} with {item:?}");
         let mut items = self.items.take().unwrap_or_default();
 
         for each in items.iter_mut() {
@@ -197,7 +200,7 @@ impl IProfiles {
                 patch!(each, item, updated);
                 patch!(each, item, option);
                 patch!(each, item, chains);
-
+                tracing::debug!("patch item: {each:?}");
                 self.items = Some(items);
                 return self.save_file();
             }

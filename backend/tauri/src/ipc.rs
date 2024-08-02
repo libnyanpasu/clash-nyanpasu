@@ -103,6 +103,7 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult {
 /// 修改某个profile item的
 #[tauri::command]
 pub fn patch_profile(index: String, profile: ProfileItem) -> CmdResult {
+    tracing::debug!("patch profile: {index} with {profile:?}");
     wrap_err!(Config::profiles().data().patch_item(index, profile))?;
     ProfilesJobGuard::global().lock().refresh();
     Ok(())

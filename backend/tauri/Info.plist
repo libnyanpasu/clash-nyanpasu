@@ -2,18 +2,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-    <dict>
-        <key>CFBundleURLTypes</key>
+  <dict>
+    <key>CFBundleURLTypes</key>
+    <array>
+      <dict>
+        <key>CFBundleURLName</key>
+        <!-- Obviously needs to be replaced with your app's bundle identifier -->
+        <string>Clash Nyanpasu</string>
+        <key>CFBundleURLSchemes</key>
         <array>
-            <dict>
-                <key>CFBundleURLName</key>
-                <!-- Obviously needs to be replaced with your app's bundle identifier -->
-                <string>Clash Nyanpasu</string>
-                <key>CFBundleURLSchemes</key>
-                <array>
-                    <string>clash-nyanpasu</string>
-                </array>
-            </dict>
+          <string>clash-nyanpasu</string>
+          <!-- Compatible with Clash common register handler -->
+          <string>clash</string>
         </array>
-    </dict>
+      </dict>
+    </array>
+  </dict>
 </plist>

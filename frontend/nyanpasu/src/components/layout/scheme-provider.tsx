@@ -20,6 +20,7 @@ export const SchemeProvider = () => {
       }
 
       switch (url.pathname) {
+        case "/install-config":
         case "/subscribe-remote-profile":
           navigate("/profiles", {
             state: {

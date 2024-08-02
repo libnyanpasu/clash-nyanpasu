@@ -21,7 +21,7 @@ export const ChainItem = memo(function ChainItem({
 
   const { palette } = useTheme();
 
-  const { deleteProfile } = useClash();
+  const { deleteProfile, viewProfile } = useClash();
 
   const [isPending, startTransition] = useTransition();
 
@@ -34,6 +34,7 @@ export const ChainItem = memo(function ChainItem({
   const menuMapping = {
     Apply: () => handleClick(),
     "Edit Info": () => onChainEdit(),
+    "Open File": () => viewProfile(item.uid),
     Delete: () => deleteProfile(item.uid),
   };
 

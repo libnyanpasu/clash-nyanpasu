@@ -18,7 +18,7 @@ pub fn register<F: FnMut(String) + Send + 'static>(schemes: &[&str], handler: F)
 
     create_dir_all(&target)?;
 
-    for (i, scheme) in schemas.iter().enumerate() {
+    for (i, scheme) in schemes.iter().enumerate() {
         let exe = tauri_utils::platform::current_exe()?;
 
         let file_name = format!(
@@ -52,16 +52,16 @@ pub fn register<F: FnMut(String) + Send + 'static>(schemes: &[&str], handler: F)
             .as_bytes(),
         )?;
 
+        Command::new("update-desktop-database")
+            .arg(&target)
+            .status()?;
+
+        Command::new("xdg-mime")
+            .args(["default", &file_name, scheme])
+            .status()?;
+
         target.pop();
     }
-
-    Command::new("update-desktop-database")
-        .arg(target)
-        .status()?;
-
-    Command::new("xdg-mime")
-        .args(["default", &file_name, scheme])
-        .status()?;
 
     Ok(())
 }
@@ -74,14 +74,15 @@ pub fn unregister(schemes: &[&str]) -> Result<()> {
 
     for (i, _) in schemes.iter().enumerate() {
         target.push(format!(
-            "{}-handler.desktop",
+            "{}-handler-{}.desktop",
             tauri_utils::platform::current_exe()?
                 .file_name()
                 .ok_or_else(|| Error::new(
                     ErrorKind::NotFound,
                     "Couldn't get file name of curent executable.",
                 ))?
-                .to_string_lossy()
+                .to_string_lossy(),
+            i
         ));
 
         remove_file(&target)?;

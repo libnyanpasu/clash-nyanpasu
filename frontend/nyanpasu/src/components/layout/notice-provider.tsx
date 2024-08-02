@@ -37,7 +37,7 @@ export const NoticeProvider = () => {
     return () => {
       unlistenFn.current?.();
     };
-  }, []);
+  }, [t]);
 
   return null;
 };

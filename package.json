@@ -24,6 +24,7 @@
     "lint:ts": "tsc --noEmit",
     "lint:clippy": "cargo clippy --manifest-path ./backend/Cargo.toml --all-targets --all-features",
     "lint:rustfmt": "cargo fmt --manifest-path ./backend/Cargo.toml --all -- --check",
+    "knip": "knip",
     "test": "run-p test:*",
     "test:backend": "cargo test --manifest-path ./backend/Cargo.toml --all-features",
     "fmt": "run-p fmt:*",

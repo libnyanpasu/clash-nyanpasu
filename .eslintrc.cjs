@@ -12,7 +12,7 @@ module.exports = {
   ],
   ignorePatterns: ["index.html", "node_modules/", "dist/", "backend/**/target"],
   parser: "@typescript-eslint/parser",
-  plugins: ["@typescript-eslint"],
+  plugins: ["@typescript-eslint", "react-compiler", "react-hooks"],
   rules: {
     "no-console": process.env.NODE_ENV === "production" ? "error" : "off",
     "no-debugger": process.env.NODE_ENV === "production" ? "error" : "off",
@@ -20,6 +20,9 @@ module.exports = {
     "@typescript-eslint/no-explicit-any": "warn",
     "react/react-in-jsx-scope": "off",
     "@typescript-eslint/no-namespace": "off",
+    "react-compiler/react-compiler": "error",
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn",
   },
   settings: {
     react: {

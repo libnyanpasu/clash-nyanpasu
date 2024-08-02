@@ -1,8 +1,8 @@
 import { useLockFn } from "ahooks";
 import { useAtomValue } from "jotai";
 import { useTranslation } from "react-i18next";
-import { useMessage } from "@/hooks/use-notification";
 import { formatError } from "@/utils";
+import { message } from "@/utils/notification";
 import { Add } from "@mui/icons-material";
 import { alpha, ListItemButton, useTheme } from "@mui/material";
 import { Profile, useClash } from "@nyanpasu/interface";
@@ -43,7 +43,7 @@ export const SideChain = ({ onChainEdit }: SideChainProps) => {
         await setProfiles(uid, { chains: updatedChains });
       }
     } catch (e) {
-      useMessage(`Apply error: ${formatError(e)}`, {
+      message(`Apply error: ${formatError(e)}`, {
         type: "error",
         title: t("Error"),
       });

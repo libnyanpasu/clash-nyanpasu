@@ -1,12 +1,12 @@
 import { useInterval } from "ahooks";
 import { countryCodeEmoji } from "country-code-emoji";
 import { useRef, useState } from "react";
+import { useColorForDelay } from "@/hooks/theme";
 import { Visibility, VisibilityOff } from "@mui/icons-material";
 import { CircularProgress, IconButton, Paper, Tooltip } from "@mui/material";
 import Grid from "@mui/material/Unstable_Grid2";
 import { timing, useIPSB } from "@nyanpasu/interface";
 import { cn } from "@nyanpasu/ui";
-import { getColorForDelay } from "../proxies/utils";
 
 const IP_REFRESH_SECONDS = 180;
 
@@ -60,20 +60,9 @@ export const HealthPanel = () => {
       <Paper className="relative !rounded-3xl">
         <div className="flex justify-between gap-8 p-4">
           <div className="flex flex-col justify-between">
-            {Object.entries(health).map(([name, value]) => {
-              return (
-                <div key={name} className="flex justify-between gap-1">
-                  <div className="min-w-20 font-bold">{name}:</div>
-
-                  <div
-                    className="min-w-16 text-end"
-                    style={{ color: getColorForDelay(value) }}
-                  >
-                    {value ? `${value.toFixed(0)} ms` : "Timeout"}
-                  </div>
-                </div>
-              );
-            })}
+            {Object.entries(health).map(([name, value]) => (
+              <LatencyTag key={name} name={name} value={value} />
+            ))}
           </div>
 
           <div className="relative flex flex-1 select-text justify-center gap-4">
@@ -149,5 +138,18 @@ export const HealthPanel = () => {
     </Grid>
   );
 };
+
+function LatencyTag({ name, value }: { name: string; value: number }) {
+  const color = useColorForDelay(value);
+  return (
+    <div className="flex justify-between gap-1">
+      <div className="min-w-20 font-bold">{name}:</div>
+
+      <div className="min-w-16 text-end" style={{ color }}>
+        {value ? `${value.toFixed(0)} ms` : "Timeout"}
+      </div>
+    </div>
+  );
+}
 
 export default HealthPanel;

@@ -1,7 +1,7 @@
 import { useLockFn } from "ahooks";
 import { useTranslation } from "react-i18next";
-import { useMessage } from "@/hooks/use-notification";
 import { sleep } from "@/utils";
+import { message } from "@/utils/notification";
 import Grid from "@mui/material/Unstable_Grid2";
 import {
   collectLogs,
@@ -33,7 +33,7 @@ export const SettingNyanpasuPath = () => {
       }
 
       if (Array.isArray(selected)) {
-        useMessage(t("Multiple directories are not supported"), {
+        message(t("Multiple directories are not supported"), {
           title: t("Error"),
           type: "error",
         });
@@ -43,7 +43,7 @@ export const SettingNyanpasuPath = () => {
 
       await setCustomAppDir(selected);
 
-      useMessage(t("App directory changed successfully"), {
+      message(t("App directory changed successfully"), {
         title: t("Success"),
         type: "error",
       });
@@ -52,7 +52,7 @@ export const SettingNyanpasuPath = () => {
 
       await restartApplication();
     } catch (e) {
-      useMessage(`Migration failed! ${JSON.stringify(e)}`, {
+      message(`Migration failed! ${JSON.stringify(e)}`, {
         title: t("Error"),
         type: "error",
       });

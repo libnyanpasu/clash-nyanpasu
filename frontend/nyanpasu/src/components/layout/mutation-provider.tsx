@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { useGlobalMutation } from "@/utils/mutation";
+import { notification, NotificationType } from "@/utils/notification";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 
 export default function MutationProvider() {
@@ -71,7 +71,7 @@ export default function MutationProvider() {
         unlistenFn.current = unlisten;
       })
       .catch((e) => {
-        useNotification({
+        notification({
           title: t("Error"),
           body: e.message,
           type: NotificationType.Error,

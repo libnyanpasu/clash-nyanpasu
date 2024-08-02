@@ -1,7 +1,7 @@
 import { debounce } from "lodash-es";
 import { useEffect, useState } from "react";
-import { NotificationType, useNotification } from "@/hooks/use-notification";
 import { classNames } from "@/utils";
+import { notification, NotificationType } from "@/utils/notification";
 import {
   CloseRounded,
   CropSquareRounded,
@@ -38,7 +38,7 @@ export const LayoutControl = ({ className }: { className?: string }) => {
       const isMaximized = await appWindow.isMaximized();
       setIsMaximized(() => isMaximized);
     } catch (error) {
-      useNotification({
+      notification({
         type: NotificationType.Error,
         title: "Error",
         body: typeof error === "string" ? error : (error as Error).message,

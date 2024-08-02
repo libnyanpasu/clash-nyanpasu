@@ -4,7 +4,7 @@ import { useNyanpasu } from "@nyanpasu/interface";
 import { BaseCard, MenuItem, SwitchItem, TextItem } from "@nyanpasu/ui";
 import { nyanpasu } from "./modules/create-props";
 
-const { createBooleanProps } = nyanpasu;
+const { useBooleanProps: createBooleanProps } = nyanpasu;
 
 export const SettingNyanpasuMisc = () => {
   const { t } = useTranslation();

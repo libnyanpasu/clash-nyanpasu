@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
+/* eslint-disable @typescript-eslint/no-require-imports */
 const plugin = require("tailwindcss/plugin");
 
 /** @type {import('tailwindcss').Config} */
-export default {
+module.exports = {
   content: ["./src/**/*.{tsx,ts}", "../ui/**/*.{tsx,ts}"],
   theme: {
     extend: {

@@ -1,7 +1,7 @@
 import { useLockFn, useReactive } from "ahooks";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useMessage } from "@/hooks/use-notification";
+import { message } from "@/utils/notification";
 import { Done } from "@mui/icons-material";
 import {
   Box,
@@ -10,7 +10,6 @@ import {
   List,
   ListItem,
   TextField,
-  Tooltip,
   Typography,
 } from "@mui/material";
 import Grid from "@mui/material/Unstable_Grid2";
@@ -43,7 +42,7 @@ export const SettingSystemProxy = () => {
           [key]: !nyanpasuConfig?.[key],
         });
       } catch (e) {
-        useMessage(`Activation failed!`, {
+        message(`Activation failed!`, {
           title: t("Error"),
           type: "error",
         });

@@ -1,7 +1,7 @@
 import { useLockFn } from "ahooks";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useMessage } from "@/hooks/use-notification";
+import { message } from "@/utils/notification";
 import { Refresh } from "@mui/icons-material";
 import LoadingButton from "@mui/lab/LoadingButton";
 import { useClashCore } from "@nyanpasu/interface";
@@ -15,7 +15,7 @@ export const UpdateProxiesProviders = () => {
 
   const handleProviderUpdate = useLockFn(async () => {
     if (!getProxiesProviders.data) {
-      useMessage(`No Providers.`, {
+      message(`No Providers.`, {
         type: "info",
         title: t("Info"),
       });
@@ -34,7 +34,7 @@ export const UpdateProxiesProviders = () => {
         providers.map((provider) => updateProxiesProviders(provider)),
       );
     } catch (e) {
-      useMessage(`Update all failed.\n${String(e)}`, {
+      message(`Update all failed.\n${String(e)}`, {
         type: "error",
         title: t("Error"),
       });

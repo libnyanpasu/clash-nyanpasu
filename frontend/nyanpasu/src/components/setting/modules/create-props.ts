@@ -22,7 +22,7 @@ export const clash = {
    * @author keiko233 <i@elaina.moe>
    * @copyright LibNyanpasu org. 2024
    */
-  createBooleanProps: (
+  useBooleanProps: (
     propName: {
       [K in keyof Clash.Config]: Clash.Config[K] extends boolean ? K : never;
     }[keyof Clash.Config],
@@ -52,7 +52,7 @@ export const clash = {
    * @author keiko233 <i@elaina.moe>
    * @copyright LibNyanpasu org. 2024
    */
-  createMenuProps: (
+  useMenuProps: (
     propName: keyof Clash.Config,
     { options, fallbackSelect }: CreateMenuPropsOptions,
   ): Omit<MenuItemProps, "label"> => {
@@ -81,7 +81,7 @@ export const nyanpasu = {
    * @author keiko233 <i@elaina.moe>
    * @copyright LibNyanpasu org. 2024
    */
-  createBooleanProps: (propName: keyof VergeConfig): SwitchProps => {
+  useBooleanProps: (propName: keyof VergeConfig): SwitchProps => {
     const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu();
 
     if (typeof nyanpasuConfig?.[propName] !== "boolean") {

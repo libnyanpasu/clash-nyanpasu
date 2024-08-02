@@ -14,6 +14,6 @@ export function useCoreType() {
     if (nyanpasuConfig?.clash_core !== coreType) {
       setNyanpasuConfig({ clash_core: coreType });
     }
-  }, [coreType]);
+  }, [coreType, nyanpasuConfig?.clash_core, setNyanpasuConfig]);
   return [coreType, setCoreType] as const;
 }

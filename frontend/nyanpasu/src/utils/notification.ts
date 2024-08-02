@@ -1,6 +1,9 @@
 import { Notice } from "@/components/base";
 import { isPortable } from "@nyanpasu/interface";
-import { message, MessageDialogOptions } from "@tauri-apps/api/dialog";
+import {
+  MessageDialogOptions,
+  message as tauriMessage,
+} from "@tauri-apps/api/dialog";
 import {
   isPermissionGranted,
   Options,
@@ -35,7 +38,7 @@ export enum NotificationType {
   Error = "error",
 }
 
-export const useNotification = async ({
+export const notification = async ({
   title,
   body,
   type = NotificationType.Info,
@@ -60,16 +63,16 @@ export const useNotification = async ({
   sendNotification(options);
 };
 
-export const useMessage = async (
+export const message = async (
   value: string,
   options?: string | MessageDialogOptions | undefined,
 ) => {
   if (typeof options === "object") {
-    await message(value, {
+    await tauriMessage(value, {
       ...options,
       title: `Clash Nyanpasu - ${options.title}`,
     });
   } else {
-    await message(value, options);
+    await tauriMessage(value, options);
   }
 };

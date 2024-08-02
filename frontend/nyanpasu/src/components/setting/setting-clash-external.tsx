@@ -1,6 +1,6 @@
 import { ChangeEvent, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useMessage } from "@/hooks/use-notification";
+import { message } from "@/utils/notification";
 import Done from "@mui/icons-material/Done";
 import LoadingButton from "@mui/lab/LoadingButton";
 import {
@@ -79,7 +79,7 @@ export const SettingClashExternal = () => {
         }),
       ]);
     } catch (e) {
-      useMessage(JSON.stringify(e), {
+      message(JSON.stringify(e), {
         title: t("Error"),
         type: "error",
       });

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { NotificationType, useNotification } from "@/hooks/use-notification";
+import { notification, NotificationType } from "@/utils/notification";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 
 export const NoticeProvider = () => {
@@ -11,13 +11,13 @@ export const NoticeProvider = () => {
       set_config: { ok: string } | { err: string };
     }>("nyanpasu://notice-message", ({ payload }) => {
       if ("ok" in payload?.set_config) {
-        useNotification({
+        notification({
           title: t("Success"),
           body: "Refresh Clash Config",
           type: NotificationType.Success,
         });
       } else if ("err" in payload?.set_config) {
-        useNotification({
+        notification({
           title: t("Error"),
           body: payload.set_config.err,
           type: NotificationType.Error,
@@ -28,7 +28,7 @@ export const NoticeProvider = () => {
         unlistenFn.current = unlisten;
       })
       .catch((e) => {
-        useNotification({
+        notification({
           title: t("Error"),
           body: e.message,
           type: NotificationType.Error,

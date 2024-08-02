@@ -1,9 +1,9 @@
 import { version } from "~/package.json";
 import { useLockFn } from "ahooks";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import LogoSvg from "@/assets/image/logo.svg?react";
-import { useMessage } from "@/hooks/use-notification";
+import { message } from "@/utils/notification";
 import LoadingButton from "@mui/lab/LoadingButton";
 import {
   alpha,
@@ -53,24 +53,21 @@ export const SettingNyanpasuVersion = () => {
       const info = await checkUpdate();
 
       if (!info?.shouldUpdate) {
-        useMessage(t("No update available."), {
+        message(t("No update available."), {
           title: t("Info"),
           type: "info",
         });
       } else {
-        useMessage(`New Version: ${info.manifest?.version}`, {
+        message(`New Version: ${info.manifest?.version}`, {
           title: t("New Version"),
           type: "info",
         });
       }
     } catch (e) {
-      useMessage(
-        "Update check failed. Please verify your network connection.",
-        {
-          title: t("Error"),
-          type: "error",
-        },
-      );
+      message("Update check failed. Please verify your network connection.", {
+        title: t("Error"),
+        type: "error",
+      });
     } finally {
       setLoading(false);
     }

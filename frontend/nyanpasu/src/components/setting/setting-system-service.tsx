@@ -1,14 +1,14 @@
 import { useMemoizedFn } from "ahooks";
 import { ChangeEvent, useTransition } from "react";
 import { useTranslation } from "react-i18next";
-import { useMessage } from "@/hooks/use-notification";
+import { message } from "@/utils/notification";
 import { LoadingButton } from "@mui/lab";
 import { List, ListItem, ListItemText, Typography } from "@mui/material";
 import { restartSidecar, useNyanpasu } from "@nyanpasu/interface";
 import { BaseCard, SwitchItem } from "@nyanpasu/ui";
 import { nyanpasu } from "./modules/create-props";
 
-const { createBooleanProps } = nyanpasu;
+const { useBooleanProps: createBooleanProps } = nyanpasu;
 
 export const SettingSystemService = () => {
   const { t } = useTranslation();
@@ -65,7 +65,7 @@ export const SettingSystemService = () => {
             ? "Install failed"
             : "Uninstall failed";
 
-        useMessage(errorMessage, {
+        message(errorMessage, {
           type: "error",
           title: t("Error"),
         });
@@ -94,7 +94,7 @@ export const SettingSystemService = () => {
         const errorMessage =
           getServiceStatus.data === "running" ? "Stop failed" : "Start failed";
 
-        useMessage(errorMessage, {
+        message(errorMessage, {
           type: "error",
           title: t("Error"),
         });

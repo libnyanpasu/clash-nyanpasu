@@ -2,7 +2,7 @@ import { useLockFn, useReactive } from "ahooks";
 import { motion } from "framer-motion";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useMessage } from "@/hooks/use-notification";
+import { message } from "@/utils/notification";
 import LoadingButton from "@mui/lab/LoadingButton";
 import { Box, List, ListItem } from "@mui/material";
 import { ClashCore, useClash, useNyanpasu } from "@nyanpasu/interface";
@@ -52,12 +52,12 @@ export const SettingClashCore = () => {
 
       await setClashCore(core);
 
-      useMessage(`Successfully switch to ${core}`, {
+      message(`Successfully switch to ${core}`, {
         type: "info",
         title: t("Success"),
       });
     } catch (e) {
-      useMessage(
+      message(
         `Switching failed, you could see the details in the log. \nError: ${
           e instanceof Error ? e.message : String(e)
         }`,
@@ -77,12 +77,12 @@ export const SettingClashCore = () => {
 
       await restartSidecar();
 
-      useMessage(t("Successfully restart core"), {
+      message(t("Successfully restart core"), {
         type: "info",
         title: t("Success"),
       });
     } catch (e) {
-      useMessage("Restart failed, please check log.", {
+      message("Restart failed, please check log.", {
         type: "error",
         title: t("Error"),
       });
@@ -97,7 +97,7 @@ export const SettingClashCore = () => {
 
       await getLatestCore.mutate();
     } catch (e) {
-      useMessage("Fetch failed, please check your internet connection.", {
+      message("Fetch failed, please check your internet connection.", {
         type: "error",
         title: t("Error"),
       });
@@ -113,12 +113,12 @@ export const SettingClashCore = () => {
 
         await updateCore(core);
 
-        useMessage(`Successfully update core ${core}`, {
+        message(`Successfully update core ${core}`, {
           type: "info",
           title: t("Success"),
         });
       } catch (e) {
-        useMessage(`Update failed.`, {
+        message(`Update failed.`, {
           type: "error",
           title: t("Error"),
         });

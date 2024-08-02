@@ -2,11 +2,10 @@ import { useLockFn } from "ahooks";
 import dayjs from "dayjs";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useMessage } from "@/hooks/use-notification";
-import parseTraffic from "@/utils/parse-traffic";
+import { message } from "@/utils/notification";
 import { Refresh } from "@mui/icons-material";
 import LoadingButton from "@mui/lab/LoadingButton";
-import { Chip, LinearProgress, Paper, Tooltip } from "@mui/material";
+import { Chip, Paper } from "@mui/material";
 import { ProviderItem, useClashCore } from "@nyanpasu/interface";
 import ProxiesProviderTraffic from "./proxies-provider-traffic";
 
@@ -27,7 +26,7 @@ export const ProxiesProvider = ({ provider }: ProxiesProviderProps) => {
 
       await updateProxiesProviders(provider.name);
     } catch (e) {
-      useMessage(`Update ${provider.name} failed.\n${String(e)}`, {
+      message(`Update ${provider.name} failed.\n${String(e)}`, {
         type: "error",
         title: t("Error"),
       });

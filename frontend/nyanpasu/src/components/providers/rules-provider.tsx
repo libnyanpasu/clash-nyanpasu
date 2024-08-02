@@ -2,7 +2,7 @@ import { useLockFn } from "ahooks";
 import dayjs from "dayjs";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useMessage } from "@/hooks/use-notification";
+import { message } from "@/utils/notification";
 import { Refresh } from "@mui/icons-material";
 import LoadingButton from "@mui/lab/LoadingButton/LoadingButton";
 import { Chip, Paper } from "@mui/material";
@@ -25,7 +25,7 @@ export default function RulesProvider({ provider }: RulesProviderProps) {
 
       await updateRulesProviders(provider.name);
     } catch (e) {
-      useMessage(`Update ${provider.name} failed.\n${String(e)}`, {
+      message(`Update ${provider.name} failed.\n${String(e)}`, {
         type: "error",
         title: t("Error"),
       });

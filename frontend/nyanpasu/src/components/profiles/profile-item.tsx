@@ -3,7 +3,7 @@ import dayjs from "dayjs";
 import { motion } from "framer-motion";
 import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useMessage } from "@/hooks/use-notification";
+import { message } from "@/utils/notification";
 import parseTraffic from "@/utils/parse-traffic";
 import {
   FiberManualRecord,
@@ -108,7 +108,7 @@ export const ProfileItem = memo(function ProfileItem({
       await deleteConnections();
     } catch (err) {
       const is_fetch_error = err instanceof Error && err.name === "FetchError";
-      useMessage(
+      message(
         is_fetch_error
           ? t("FetchError", {
               content: t("Subscription"),
@@ -153,7 +153,7 @@ export const ProfileItem = memo(function ProfileItem({
     try {
       await deleteProfile(item.uid);
     } catch (err) {
-      useMessage(`Delete failed: \n ${JSON.stringify(err)}`, {
+      message(`Delete failed: \n ${JSON.stringify(err)}`, {
         title: t("Error"),
         type: "error",
       });

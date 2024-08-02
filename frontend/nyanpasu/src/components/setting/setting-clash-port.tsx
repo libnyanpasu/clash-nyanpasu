@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { useMessage } from "@/hooks/use-notification";
+import { message } from "@/utils/notification";
 import { List } from "@mui/material";
 import { useClash, useNyanpasu } from "@nyanpasu/interface";
 import { BaseCard, NumberItem, SwitchItem } from "@nyanpasu/ui";
@@ -43,12 +43,12 @@ export const SettingClashPort = () => {
                 enable_random_port: !nyanpasuConfig?.enable_random_port,
               });
             } catch (e) {
-              useMessage(JSON.stringify(e), {
+              message(JSON.stringify(e), {
                 title: t("Error"),
                 type: "error",
               });
             } finally {
-              useMessage(t("After restart to take effect"), {
+              message(t("After restart to take effect"), {
                 title: t("Success"),
                 type: "info",
               });

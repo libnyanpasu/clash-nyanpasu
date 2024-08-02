@@ -1,10 +1,10 @@
 import clsx from "clsx";
 import { memo, useState } from "react";
+import { useColorForDelay } from "@/hooks/theme";
 import { classNames } from "@/utils";
 import { Bolt } from "@mui/icons-material";
 import { CircularProgress } from "@mui/material";
 import FeatureChip from "./feature-chip";
-import { getColorForDelay } from "./utils";
 
 export const DelayChip = memo(function DelayChip({
   className,
@@ -32,7 +32,7 @@ export const DelayChip = memo(function DelayChip({
       className={clsx(className, loading && "!visible")}
       sx={{
         ml: "auto",
-        color: getColorForDelay(delay),
+        color: useColorForDelay(delay),
       }}
       label={
         <>

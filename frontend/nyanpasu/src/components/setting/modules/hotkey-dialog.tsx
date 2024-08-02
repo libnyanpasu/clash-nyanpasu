@@ -1,13 +1,13 @@
 import { useLockFn, useMemoizedFn } from "ahooks";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { NotificationType, useNotification } from "@/hooks/use-notification";
+import { notification, NotificationType } from "@/utils/notification";
 import { Typography } from "@mui/material";
 import { useNyanpasu } from "@nyanpasu/interface";
 import { BaseDialog, BaseDialogProps } from "@nyanpasu/ui";
 import HotkeyInput from "./hotkey-input";
 
-export interface HotkeyDialogProps extends Omit<BaseDialogProps, "title"> {}
+export type HotkeyDialogProps = Omit<BaseDialogProps, "title">;
 
 const HOTKEY_FUNC = [
   "open_or_close_dashboard",
@@ -86,7 +86,7 @@ export default function HotkeyDialog({
     try {
       await setNyanpasuConfig({ hotkeys });
     } catch (err: any) {
-      useNotification({
+      notification({
         title: t("Error"),
         body: err.message || err.toString(),
         type: NotificationType.Error,

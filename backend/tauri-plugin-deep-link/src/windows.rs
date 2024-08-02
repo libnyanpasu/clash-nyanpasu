@@ -12,42 +12,46 @@ use winreg::{enums::HKEY_CURRENT_USER, RegKey};
 
 use crate::ID;
 
-pub fn register<F: FnMut(String) + Send + 'static>(scheme: &str, handler: F) -> Result<()> {
+pub fn register<F: FnMut(String) + Send + 'static>(schemes: &[&str], handler: F) -> Result<()> {
     listen(handler)?;
 
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let base = Path::new("Software").join("Classes").join(scheme);
+    for scheme in schemes {
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let base = Path::new("Software").join("Classes").join(scheme);
 
-    let exe = tauri_utils::platform::current_exe()?
-        .display()
-        .to_string()
-        .replace("\\\\?\\", "");
+        let exe = tauri_utils::platform::current_exe()?
+            .display()
+            .to_string()
+            .replace("\\\\?\\", "");
 
-    let (key, _) = hkcu.create_subkey(&base)?;
-    key.set_value(
-        "",
-        &format!(
-            "URL:{}",
-            ID.get().expect("register() called before prepare()")
-        ),
-    )?;
-    key.set_value("URL Protocol", &"")?;
+        let (key, _) = hkcu.create_subkey(&base)?;
+        key.set_value(
+            "",
+            &format!(
+                "URL:{}",
+                ID.get().expect("register() called before prepare()")
+            ),
+        )?;
+        key.set_value("URL Protocol", &"")?;
 
-    let (icon, _) = hkcu.create_subkey(base.join("DefaultIcon"))?;
-    icon.set_value("", &format!("\"{}\",0", &exe))?;
+        let (icon, _) = hkcu.create_subkey(base.join("DefaultIcon"))?;
+        icon.set_value("", &format!("\"{}\",0", &exe))?;
 
-    let (cmd, _) = hkcu.create_subkey(base.join("shell").join("open").join("command"))?;
+        let (cmd, _) = hkcu.create_subkey(base.join("shell").join("open").join("command"))?;
 
-    cmd.set_value("", &format!("\"{}\" \"%1\"", &exe))?;
+        cmd.set_value("", &format!("\"{}\" \"%1\"", &exe))?;
+    }
 
     Ok(())
 }
 
-pub fn unregister(scheme: &str) -> Result<()> {
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let base = Path::new("Software").join("Classes").join(scheme);
+pub fn unregister(schemes: &[&str]) -> Result<()> {
+    for scheme in schemes {
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let base = Path::new("Software").join("Classes").join(scheme);
 
-    hkcu.delete_subkey_all(base)?;
+        hkcu.delete_subkey_all(base)?;
+    }
 
     Ok(())
 }

@@ -129,18 +129,13 @@ fn main() -> std::io::Result<()> {
                 });
             }
 
-            let custom_schema_handler = move |request| {
-                log::info!(target: "app", "scheme request received: {:?}", &request);
-                resolve::create_window(&handle.clone()); // create window if not exists
-                handle.emit_all("scheme-request-received", request).unwrap();
-            };
             log_err!(tauri_plugin_deep_link::register(
-                "clash-nyanpasu",
-                custom_schema_handler.clone()
-            ));
-            log_err!(tauri_plugin_deep_link::register(
-                "clash",
-                custom_schema_handler.clone()
+                &["clash-nyanpasu", "clash"],
+                move |request| {
+                    log::info!(target: "app", "scheme request received: {:?}", &request);
+                    resolve::create_window(&handle.clone()); // create window if not exists
+                    handle.emit_all("scheme-request-received", request).unwrap();
+                }
             ));
             Ok(())
         })

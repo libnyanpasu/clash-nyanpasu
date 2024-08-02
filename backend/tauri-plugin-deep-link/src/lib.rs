@@ -30,7 +30,7 @@ pub fn set_identifier(identifier: &str) -> Result<()> {
 /// ## Platform-specific:
 ///
 /// - **macOS**: On macOS schemes must be defined in an Info.plist file, therefore this function only calls [`listen()`] without registering the scheme. This function can only be called once on macOS.
-pub fn register<F: FnMut(String) + Send + 'static>(scheme: &str, handler: F) -> Result<()> {
+pub fn register<F: FnMut(String) + Send + 'static>(scheme: &[&str], handler: F) -> Result<()> {
     platform_impl::register(scheme, handler)
 }
 
@@ -48,7 +48,7 @@ pub fn listen<F: FnMut(String) + Send + 'static>(handler: F) -> Result<()> {
 /// ## Platform-specific:
 ///
 /// - **macOS**: This function has no effect on macOS.
-pub fn unregister(scheme: &str) -> Result<()> {
+pub fn unregister(scheme: &[&str]) -> Result<()> {
     platform_impl::unregister(scheme)
 }
 

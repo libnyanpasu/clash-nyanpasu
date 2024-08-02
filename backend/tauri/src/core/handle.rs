@@ -3,13 +3,31 @@ use crate::log_err;
 use anyhow::{bail, Result};
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{AppHandle, Manager, Window};
-
 #[derive(Debug, Default, Clone)]
 pub struct Handle {
     pub app_handle: Arc<Mutex<Option<AppHandle>>>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StateChanged {
+    NyanpasuConfig,
+    ClashConfig,
+    Profiles,
+    Proxies,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Message {
+    SetConfig(Result<(), String>),
+}
+
+const STATE_CHANGED_URI: &str = "nyanpasu://mutation";
+const NOTIFY_MESSAGE_URI: &str = "nyanpasu://notice-message";
 
 impl Handle {
     pub fn global() -> &'static Handle {
@@ -33,32 +51,32 @@ impl Handle {
 
     pub fn refresh_clash() {
         if let Some(window) = Self::global().get_window() {
-            log_err!(window.emit("verge://refresh-clash-config", "yes"));
+            log_err!(window.emit(STATE_CHANGED_URI, StateChanged::ClashConfig));
         }
     }
 
     pub fn refresh_verge() {
         if let Some(window) = Self::global().get_window() {
-            log_err!(window.emit("verge://refresh-verge-config", "yes"));
+            log_err!(window.emit(STATE_CHANGED_URI, StateChanged::NyanpasuConfig));
         }
     }
 
     #[allow(unused)]
     pub fn refresh_profiles() {
         if let Some(window) = Self::global().get_window() {
-            log_err!(window.emit("verge://refresh-profiles-config", "yes"));
+            log_err!(window.emit(STATE_CHANGED_URI, StateChanged::Profiles));
         }
     }
 
     pub fn mutate_proxies() {
         if let Some(window) = Self::global().get_window() {
-            log_err!(window.emit("verge://mutate-proxies", "yes"));
+            log_err!(window.emit(STATE_CHANGED_URI, StateChanged::Proxies));
         }
     }
 
-    pub fn notice_message<S: Into<String>, M: Into<String>>(status: S, msg: M) {
+    pub fn notice_message(message: &Message) {
         if let Some(window) = Self::global().get_window() {
-            log_err!(window.emit("verge://notice-message", (status.into(), msg.into())));
+            log_err!(window.emit(NOTIFY_MESSAGE_URI, message));
         }
     }
 

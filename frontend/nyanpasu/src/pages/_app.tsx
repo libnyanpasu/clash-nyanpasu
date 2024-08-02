@@ -1,13 +1,7 @@
 import dayjs from "dayjs";
-import "dayjs/locale/ru";
-import "dayjs/locale/zh-cn";
-import relativeTime from "dayjs/plugin/relativeTime";
-import { AnimatePresence } from "framer-motion";
-import { useMemo } from "react";
-import { FallbackProps } from "react-error-boundary";
-import { SWRConfig } from "swr";
 import AppContainer from "@/components/app/app-container";
 import LocalesProvider from "@/components/app/locales-provider";
+import MutationProvider from "@/components/layout/mutation-provider";
 import NoticeProvider from "@/components/layout/notice-provider";
 import PageTransition from "@/components/layout/page-transition";
 import SchemeProvider from "@/components/layout/scheme-provider";
@@ -20,6 +14,12 @@ import { classNames } from "@/utils";
 import { useTheme } from "@mui/material";
 import { Experimental_CssVarsProvider as CssVarsProvider } from "@mui/material/styles";
 import { useBreakpoint } from "@nyanpasu/ui";
+import "dayjs/locale/ru";
+import "dayjs/locale/zh-cn";
+import relativeTime from "dayjs/plugin/relativeTime";
+import { useMemo } from "react";
+import { FallbackProps } from "react-error-boundary";
+import { SWRConfig } from "swr";
 import styles from "./_app.module.scss";
 
 dayjs.extend(relativeTime);
@@ -37,6 +37,7 @@ export default function App() {
         <ThemeModeProvider />
         <LogProvider />
         <LocalesProvider />
+        <MutationProvider />
         <NoticeProvider />
         <SchemeProvider />
 

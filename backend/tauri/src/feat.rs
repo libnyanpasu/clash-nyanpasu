@@ -11,6 +11,7 @@ use crate::{
     utils::{self, help::get_clash_external_port, resolve},
 };
 use anyhow::{bail, Result};
+use handle::Message;
 use nyanpasu_ipc::api::status::CoreState;
 use serde_yaml::{Mapping, Value};
 use wry::application::clipboard::Clipboard;
@@ -53,10 +54,10 @@ pub fn restart_clash_core() {
         match CoreManager::global().run_core().await {
             Ok(_) => {
                 handle::Handle::refresh_clash();
-                handle::Handle::notice_message("set_config::ok", "ok");
+                handle::Handle::notice_message(&Message::SetConfig(Ok(())));
             }
             Err(err) => {
-                handle::Handle::notice_message("set_config::error", format!("{err}"));
+                handle::Handle::notice_message(&Message::SetConfig(Err(format!("{err}"))));
                 log::error!(target:"app", "{err}");
             }
         }
@@ -394,11 +395,11 @@ async fn update_core_config() -> Result<()> {
     match CoreManager::global().update_config().await {
         Ok(_) => {
             handle::Handle::refresh_clash();
-            handle::Handle::notice_message("set_config::ok", "ok");
+            handle::Handle::notice_message(&Message::SetConfig(Ok(())));
             Ok(())
         }
         Err(err) => {
-            handle::Handle::notice_message("set_config::error", format!("{err}"));
+            handle::Handle::notice_message(&Message::SetConfig(Err(format!("{err}"))));
             Err(err)
         }
     }

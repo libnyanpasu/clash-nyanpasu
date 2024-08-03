@@ -75,7 +75,7 @@ fn main() -> std::io::Result<()> {
         None => None,
     };
     #[cfg(target_os = "macos")]
-    let custom_schema = None;
+    let custom_schema: Option<url::Url> = None;
 
     // 单例检测
     let single_instance_result = utils::init::check_singleton();

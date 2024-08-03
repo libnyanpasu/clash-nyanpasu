@@ -7,7 +7,7 @@ use tauri::{
 };
 use tracing_attributes::instrument;
 
-mod icon;
+pub mod icon;
 pub mod proxies;
 pub use self::icon::on_scale_factor_changed;
 use self::proxies::SystemTrayMenuProxiesExt;

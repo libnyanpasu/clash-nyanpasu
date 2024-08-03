@@ -80,9 +80,26 @@ async fn cache_icon(query: Query<CacheIcon>) -> Response<Body> {
     }
 }
 
+#[derive(Deserialize)]
+struct TrayIconReq {
+    mode: crate::core::tray::icon::TrayIcon,
+}
+
+async fn tray_icon(query: Query<TrayIconReq>) -> Response<Body> {
+    let mode = query.mode;
+    let icon = crate::core::tray::icon::get_raw_icon(mode);
+    let mut response = Response::new(Body::from(icon));
+    response
+        .headers_mut()
+        .insert("content-type", "image/png".parse().unwrap());
+    response
+}
+
 #[instrument]
 pub async fn run(port: u16) -> std::io::Result<()> {
-    let app = Router::new().route("/cache/icon", get(cache_icon));
+    let app = Router::new()
+        .route("/cache/icon", get(cache_icon))
+        .route("/tray/icon", get(tray_icon));
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;
     tracing::debug!(
         "internal http server listening on {}",

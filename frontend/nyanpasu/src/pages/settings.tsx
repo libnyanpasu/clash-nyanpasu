@@ -1,8 +1,10 @@
+import MdiTrayFull from "~icons/mdi/tray-full";
 import { useLockFn } from "ahooks";
 import { motion } from "framer-motion";
 import React, { lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
 import HotkeyDialog from "@/components/setting/modules/hotkey-dialog";
+import TrayIconDialog from "@/components/setting/modules/tray-icon-dialog";
 import { formatEnvInfos } from "@/utils";
 import { Feedback, GitHub, Keyboard } from "@mui/icons-material";
 import Masonry from "@mui/lab/Masonry";
@@ -78,6 +80,19 @@ const HotkeyButton = () => {
   );
 };
 
+// FIXME: it should move to a proper place
+const TrayIconButton = () => {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <TrayIconDialog open={open} onClose={() => setOpen(false)} />
+      <IconButton color="inherit" title="Hotkeys" onClick={() => setOpen(true)}>
+        <MdiTrayFull fontSize="inherit" />
+      </IconButton>
+    </>
+  );
+};
+
 export default function SettingPage() {
   const { t } = useTranslation();
 
@@ -86,6 +101,7 @@ export default function SettingPage() {
       title={t("Settings")}
       header={
         <div className="flex gap-1">
+          <TrayIconButton />
           <HotkeyButton />
           <FeedbackIcon />
           <GithubIcon />

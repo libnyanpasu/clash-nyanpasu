@@ -225,6 +225,8 @@ fn main() -> std::io::Result<()> {
             ipc::restart_application,
             ipc::collect_envs,
             ipc::get_server_port,
+            ipc::set_tray_icon,
+            ipc::is_tray_icon_set,
         ]);
 
     #[cfg(target_os = "macos")]

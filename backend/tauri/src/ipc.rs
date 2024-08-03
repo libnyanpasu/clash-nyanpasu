@@ -17,8 +17,9 @@ use indexmap::IndexMap;
 use log::debug;
 use profile::item_type::ProfileItemType;
 use serde_yaml::Mapping;
-use std::collections::VecDeque;
+use std::{collections::VecDeque, path::PathBuf};
 use sysproxy::Sysproxy;
+use tray::icon::TrayIcon;
 
 use tauri::api::dialog::FileDialogBuilder;
 
@@ -504,6 +505,23 @@ pub mod uwp {
     pub async fn invoke_uwp_tool() -> CmdResult {
         wrap_err!(win_uwp::invoke_uwptools().await)
     }
+}
+
+#[tauri::command]
+pub async fn set_tray_icon(
+    app_handle: tauri::AppHandle,
+    mode: TrayIcon,
+    path: Option<PathBuf>,
+) -> CmdResult {
+    wrap_err!(crate::core::tray::icon::set_icon(mode, path))?;
+    wrap_err!(crate::core::tray::Tray::update_part(&app_handle))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn is_tray_icon_set(mode: TrayIcon) -> CmdResult<bool> {
+    let icon_path = wrap_err!(crate::utils::dirs::tray_icons_path(mode.as_str()))?;
+    Ok(tokio::fs::metadata(icon_path).await.is_ok())
 }
 
 pub mod service {

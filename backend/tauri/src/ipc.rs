@@ -488,17 +488,56 @@ pub mod service {
 
     #[tauri::command]
     pub async fn start_service() -> CmdResult {
-        wrap_err!(service::control::start_service().await)
+        let res = wrap_err!(service::control::start_service().await);
+        let enabled_service = {
+            *crate::config::Config::verge()
+                .latest()
+                .enable_service_mode
+                .as_ref()
+                .unwrap_or(&false)
+        };
+        if enabled_service {
+            if let Err(e) = crate::core::CoreManager::global().run_core().await {
+                log::error!(target: "app", "{e}");
+            }
+        }
+        res
     }
 
     #[tauri::command]
     pub async fn stop_service() -> CmdResult {
-        wrap_err!(service::control::stop_service().await)
+        let res = wrap_err!(service::control::stop_service().await);
+        let enabled_service = {
+            *crate::config::Config::verge()
+                .latest()
+                .enable_service_mode
+                .as_ref()
+                .unwrap_or(&false)
+        };
+        if enabled_service {
+            if let Err(e) = crate::core::CoreManager::global().run_core().await {
+                log::error!(target: "app", "{e}");
+            }
+        }
+        res
     }
 
     #[tauri::command]
     pub async fn restart_service() -> CmdResult {
-        wrap_err!(service::control::restart_service().await)
+        let res = wrap_err!(service::control::restart_service().await);
+        let enabled_service = {
+            *crate::config::Config::verge()
+                .latest()
+                .enable_service_mode
+                .as_ref()
+                .unwrap_or(&false)
+        };
+        if enabled_service {
+            if let Err(e) = crate::core::CoreManager::global().run_core().await {
+                log::error!(target: "app", "{e}");
+            }
+        }
+        res
     }
 }
 

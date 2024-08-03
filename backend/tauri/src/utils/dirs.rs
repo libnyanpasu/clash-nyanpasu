@@ -251,6 +251,14 @@ pub fn cache_dir() -> Result<PathBuf> {
     Ok(app_data_dir()?.join("cache"))
 }
 
+pub fn tray_icons_path(mode: &str) -> Result<PathBuf> {
+    let icons_dir = app_config_dir()?.join("icons");
+    if !icons_dir.exists() {
+        fs::create_dir_all(&icons_dir)?;
+    }
+    Ok(icons_dir.join(format!("{mode}.png")))
+}
+
 #[cfg(windows)]
 #[deprecated(
     since = "1.6.0",

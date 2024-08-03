@@ -164,5 +164,8 @@
   "Update Proxies Providers All": "Update Rules Proxies All",
   "Lighten up Animation Effects": "Lighten up Animation Effects",
   "Subscription": "Subscription",
-  "FetchError": "Failed to fetch {{content}} due to network issue. Please check your network connection and try again later."
+  "FetchError": "Failed to fetch {{content}} due to network issue. Please check your network connection and try again later.",
+  "tun": "Tun",
+  "normal": "Normal",
+  "system_proxy": "System Proxy"
 }

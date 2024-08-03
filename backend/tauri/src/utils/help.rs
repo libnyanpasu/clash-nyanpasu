@@ -5,7 +5,7 @@ use fast_image_resize::{
     images::{Image, ImageRef},
     FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer,
 };
-use image::{codecs::png::PngEncoder, io::Reader as ImageReader, ColorType, ImageEncoder};
+use image::{codecs::png::PngEncoder, ColorType, ImageEncoder, ImageReader};
 use nanoid::nanoid;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_yaml::{Mapping, Value};

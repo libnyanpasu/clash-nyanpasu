@@ -15,6 +15,7 @@ use anyhow::{Context, Result};
 use chrono::Local;
 use indexmap::IndexMap;
 use log::debug;
+use profile::item_type::ProfileItemType;
 use serde_yaml::Mapping;
 use std::collections::VecDeque;
 use sysproxy::Sysproxy;
@@ -159,7 +160,14 @@ pub fn read_profile_file(index: String) -> CmdResult<String> {
     let profiles = Config::profiles();
     let profiles = profiles.latest();
     let item = wrap_err!(profiles.get_item(&index))?;
-    let data = wrap_err!(item.read_file())?;
+    let data = match item.r#type.as_ref().unwrap_or(&ProfileItemType::Local) {
+        ProfileItemType::Local | ProfileItemType::Remote => {
+            let raw = wrap_err!(item.read_file())?;
+            let data = wrap_err!(serde_yaml::from_str::<Mapping>(&raw))?;
+            wrap_err!(serde_yaml::to_string(&data).context("failed to convert yaml to string"))?
+        }
+        _ => wrap_err!(item.read_file())?,
+    };
     Ok(data)
 }
 

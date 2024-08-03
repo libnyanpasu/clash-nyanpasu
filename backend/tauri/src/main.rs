@@ -67,6 +67,16 @@ fn main() -> std::io::Result<()> {
     #[cfg(not(feature = "verge-dev"))]
     tauri_plugin_deep_link::prepare("moe.elaina.clash.nyanpasu");
 
+    // Custom scheme check
+    #[cfg(not(target_os = "macos"))]
+    // on macos the plugin handles this (macos doesn't use cli args for the url)
+    let custom_schema = match std::env::args().nth(1) {
+        Some(url) => url::Url::parse(&url).ok(),
+        None => None,
+    };
+    #[cfg(target_os = "macos")]
+    let custom_schema = None;
+
     // 单例检测
     let single_instance_result = utils::init::check_singleton();
 
@@ -77,14 +87,16 @@ fn main() -> std::io::Result<()> {
     };
     rust_i18n::set_locale(locale);
 
-    if let Err(e) = init::run_pending_migrations() {
-        utils::dialog::panic_dialog(
-            &format!(
-                "Failed to finish migration event: {}\nYou can see the detailed information at migration.log in your local data dir.\nYou're supposed to submit it as the attachment of new issue.", 
-                e,
-            )
-        );
-        std::process::exit(1);
+    if single_instance_result.is_ok() {
+        if let Err(e) = init::run_pending_migrations() {
+            utils::dialog::panic_dialog(
+                &format!(
+                    "Failed to finish migration event: {}\nYou can see the detailed information at migration.log in your local data dir.\nYou're supposed to submit it as the attachment of new issue.", 
+                    e,
+                )
+            );
+            std::process::exit(1);
+        }
     }
 
     crate::log_err!(init::init_config());
@@ -101,7 +113,9 @@ fn main() -> std::io::Result<()> {
     rust_i18n::set_locale(verge.as_str());
 
     // show a dialog to print the single instance error
-    let _singleton = single_instance_result.unwrap(); // hold the guard until the end of the program
+    if custom_schema.is_none() {
+        let _singleton = single_instance_result.unwrap(); // hold the guard until the end of the program
+    }
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
@@ -112,7 +126,7 @@ fn main() -> std::io::Result<()> {
             let handle = app.handle().clone();
             // For start new app from schema
             #[cfg(not(target_os = "macos"))]
-            if let Some(url) = std::env::args().nth(1) {
+            if let Some(url) = custom_schema {
                 log::info!(target: "app", "started with schema");
                 if Config::verge().data().enable_silent_start.unwrap_or(true) {
                     resolve::create_window(&handle.clone());
@@ -128,7 +142,7 @@ fn main() -> std::io::Result<()> {
                         .unwrap();
                 });
             }
-
+            // This operation should terminate the app if app is called by custom scheme and this instance is not the primary instance
             log_err!(tauri_plugin_deep_link::register(
                 &["clash-nyanpasu", "clash"],
                 move |request| {

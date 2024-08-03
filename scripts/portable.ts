@@ -26,6 +26,7 @@ async function resolvePortable() {
   zip.addLocalFile(path.join(releaseDir, "clash.exe"));
   zip.addLocalFile(path.join(releaseDir, "mihomo.exe"));
   zip.addLocalFile(path.join(releaseDir, "mihomo-alpha.exe"));
+  zip.addLocalFile(path.join(releaseDir, "nyanpasu-service.exe"));
   zip.addLocalFile(path.join(releaseDir, "clash-rs.exe"));
   zip.addLocalFolder(path.join(releaseDir, "resources"), "resources");
   zip.addLocalFolder(configDir, ".config");

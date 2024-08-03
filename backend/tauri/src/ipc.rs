@@ -102,10 +102,22 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult {
 
 /// 修改某个profile item的
 #[tauri::command]
-pub fn patch_profile(index: String, profile: ProfileItem) -> CmdResult {
+pub async fn patch_profile(index: String, profile: ProfileItem) -> CmdResult {
     tracing::debug!("patch profile: {index} with {profile:?}");
-    wrap_err!(Config::profiles().data().patch_item(index, profile))?;
+    wrap_err!(Config::profiles().data().patch_item(index.clone(), profile))?;
     ProfilesJobGuard::global().lock().refresh();
+    let is_current =
+        { matches!(Config::profiles().latest().current, Some(ref current) if *current == index) };
+    if is_current {
+        match CoreManager::global().update_config().await {
+            Ok(_) => {
+                handle::Handle::refresh_clash();
+            }
+            Err(err) => {
+                log::error!(target: "app", "{err}");
+            }
+        }
+    }
     Ok(())
 }
 

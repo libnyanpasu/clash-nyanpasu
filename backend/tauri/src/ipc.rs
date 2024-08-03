@@ -110,19 +110,17 @@ pub async fn patch_profile(index: String, profile: ProfileItem) -> CmdResult {
     let need_update = {
         let profiles = Config::profiles();
         let profiles = profiles.latest();
-        match &profiles.chain {
-            Some(chains) => chains.contains(&index),
-            None => match &profiles.current {
-                Some(current_profile) if current_profile == &index => true,
-                Some(current_profile) => match profiles.get_item(current_profile) {
-                    Ok(item) => item
-                        .chains
-                        .as_ref()
-                        .map_or(false, |chain| chain.contains(&index)),
-                    Err(_) => false,
-                },
-                None => false,
+        match (&profiles.chain, &profiles.current) {
+            (Some(chains), _) if chains.contains(&index) => true,
+            (_, Some(current_chain)) if current_chain == &index => true,
+            (_, Some(current_chain)) => match profiles.get_item(current_chain) {
+                Ok(item) => item
+                    .chains
+                    .as_ref()
+                    .map_or(false, |chain| chain.contains(&index)),
+                Err(_) => false,
             },
+            _ => false,
         }
     };
     if need_update {

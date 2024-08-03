@@ -1,4 +1,5 @@
 import { useLockFn, useSetState } from "ahooks";
+import clsx from "clsx";
 import dayjs from "dayjs";
 import { motion } from "framer-motion";
 import { memo, useState } from "react";
@@ -232,19 +233,22 @@ export const ProfileItem = memo(function ProfileItem({
             <p className="truncate">{item.desc}</p>
           </div>
 
-          {isRemote && (
-            <div className="flex items-center justify-between gap-4">
-              <div className="w-full">
-                <LinearProgress variant="determinate" value={progress} />
-              </div>
-
-              <Tooltip title={`${parseTraffic(used)} / ${parseTraffic(total)}`}>
-                <div className="text-sm font-bold">
-                  {((used / total) * 100).toFixed(2)}%
-                </div>
-              </Tooltip>
+          <div
+            className={clsx(
+              "flex items-center justify-between gap-4",
+              !isRemote && "invisible",
+            )}
+          >
+            <div className="w-full">
+              <LinearProgress variant="determinate" value={progress} />
             </div>
-          )}
+
+            <Tooltip title={`${parseTraffic(used)} / ${parseTraffic(total)}`}>
+              <div className="text-sm font-bold">
+                {((used / total) * 100).toFixed(2)}%
+              </div>
+            </Tooltip>
+          </div>
 
           <div className="flex justify-end gap-2">
             <Button

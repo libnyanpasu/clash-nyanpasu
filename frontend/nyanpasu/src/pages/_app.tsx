@@ -32,7 +32,14 @@ export default function App() {
   const isDrawer = useMemo(() => Boolean(column === 1), [column]);
 
   return (
-    <SWRConfig value={{ errorRetryCount: 3 }}>
+    <SWRConfig
+      value={{
+        errorRetryCount: 5,
+        revalidateOnMount: true,
+        revalidateOnFocus: true,
+        refreshInterval: 5000,
+      }}
+    >
       <CssVarsProvider theme={theme}>
         <ThemeModeProvider />
         <LogProvider />

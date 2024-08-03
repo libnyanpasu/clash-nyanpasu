@@ -22,6 +22,6 @@
     },
     "jsxImportSource": "@emotion/react",
   },
-  "include": ["./src"],
+  "include": ["./src", "./auto-imports.d.ts"],
   "references": [{ "path": "../interface/tsconfig.json" }],
 }

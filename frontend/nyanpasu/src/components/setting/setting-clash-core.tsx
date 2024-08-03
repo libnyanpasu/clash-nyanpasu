@@ -5,7 +5,12 @@ import { useTranslation } from "react-i18next";
 import { message } from "@/utils/notification";
 import LoadingButton from "@mui/lab/LoadingButton";
 import { Box, List, ListItem } from "@mui/material";
-import { ClashCore, useClash, useNyanpasu } from "@nyanpasu/interface";
+import {
+  ClashCore,
+  useClash,
+  useNyanpasu,
+  VergeConfig,
+} from "@nyanpasu/interface";
 import { BaseCard, ExpandMore } from "@nyanpasu/ui";
 import { ClashCoreItem } from "./modules/clash-core";
 
@@ -107,7 +112,7 @@ export const SettingClashCore = () => {
   });
 
   const handleUpdateCore = useLockFn(
-    async (core: Required<IVergeConfig>["clash_core"]) => {
+    async (core: Required<VergeConfig>["clash_core"]) => {
       try {
         loading.mask = true;
 

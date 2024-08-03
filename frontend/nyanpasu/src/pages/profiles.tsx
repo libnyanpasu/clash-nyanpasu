@@ -1,4 +1,5 @@
 import { useAtom } from "jotai";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   atomChainsSelected,
@@ -8,10 +9,11 @@ import NewProfileButton from "@/components/profiles/new-profile-button";
 import ProfileItem from "@/components/profiles/profile-item";
 import ProfileSide from "@/components/profiles/profile-side";
 import { QuickImport } from "@/components/profiles/quick-import";
+import RuntimeConfigDiffDialog from "@/components/profiles/runtime-config-diff-dialog";
 import { filterProfiles } from "@/components/profiles/utils";
 import { Public } from "@mui/icons-material";
 import Masonry from "@mui/lab/Masonry";
-import { Button } from "@mui/material";
+import { Button, IconButton } from "@mui/material";
 import { Profile, useClash } from "@nyanpasu/interface";
 import { SidePage } from "@nyanpasu/ui";
 
@@ -46,12 +48,25 @@ export const ProfilePage = () => {
     setGlobalChain(false);
   };
 
+  const [runtimeConfigViewerOpen, setRuntimeConfigViewerOpen] = useState(false);
+  console.log(runtimeConfigViewerOpen);
   return (
     <SidePage
       title={t("Profiles")}
       flexReverse
       header={
         <div>
+          <RuntimeConfigDiffDialog
+            open={runtimeConfigViewerOpen}
+            onClose={() => setRuntimeConfigViewerOpen(false)}
+          />
+          <IconButton
+            onClick={() => {
+              setRuntimeConfigViewerOpen(true);
+            }}
+          >
+            <IconMdiTextBoxCheckOutline />
+          </IconButton>
           <Button
             size="small"
             variant={globalChain ? "contained" : "outlined"}

@@ -298,7 +298,7 @@ importers:
         specifier: 11.13.0
         version: 11.13.0(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
       '@iconify/json':
-        specifier: ^2.2.233
+        specifier: 2.2.233
         version: 2.2.233
       '@types/react':
         specifier: npm:types-react@rc

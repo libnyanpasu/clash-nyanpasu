@@ -207,3 +207,7 @@ export const collect_envs = async () => {
 export const getRuntimeYaml = async () => {
   return await invoke<string>("get_runtime_yaml");
 };
+
+export const getServerPort = async () => {
+  return await invoke<number>("get_server_port");
+};

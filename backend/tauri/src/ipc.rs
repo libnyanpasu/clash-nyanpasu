@@ -486,6 +486,11 @@ pub fn restart_application(app_handle: tauri::AppHandle) -> CmdResult {
     Ok(())
 }
 
+#[tauri::command]
+pub fn get_server_port() -> CmdResult<u16> {
+    Ok(*crate::server::SERVER_PORT)
+}
+
 #[cfg(not(windows))]
 #[tauri::command]
 pub async fn set_custom_app_dir(_path: String) -> CmdResult {

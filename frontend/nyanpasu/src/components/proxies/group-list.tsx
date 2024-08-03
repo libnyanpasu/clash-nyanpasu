@@ -1,5 +1,6 @@
 import { useAtom } from "jotai";
-import { memo } from "react";
+import { memo, useMemo } from "react";
+import useSWR from "swr";
 import { Virtualizer } from "virtua";
 import { proxyGroupAtom } from "@/store";
 import {
@@ -9,16 +10,30 @@ import {
   ListItemIcon,
   ListItemText,
 } from "@mui/material";
-import { useClashCore } from "@nyanpasu/interface";
+import { getServerPort, useClashCore } from "@nyanpasu/interface";
 
 const IconRender = memo(function IconRender({ icon }: { icon: string }) {
+  const {
+    data: serverPort,
+    isLoading,
+    error,
+  } = useSWR("/getServerPort", getServerPort);
   const src = icon.trim().startsWith("<svg")
     ? `data:image/svg+xml;base64,${btoa(icon)}`
     : icon;
-
+  const cachedUrl = useMemo(() => {
+    if (!src.startsWith("http")) {
+      return src;
+    }
+    return `http://localhost:${serverPort}/cache/icon?url=${btoa(src)}`;
+  }, [src, serverPort]);
+  console.log(serverPort, isLoading, error);
+  if (isLoading || error) {
+    return null;
+  }
   return (
     <ListItemIcon>
-      <img className="h-11 w-11" src={src} />
+      <img className="h-11 w-11" src={cachedUrl} />
     </ListItemIcon>
   );
 });

@@ -19,6 +19,7 @@ mod core;
 mod enhance;
 mod feat;
 mod ipc;
+mod server;
 mod utils;
 use crate::{
     config::Config,
@@ -151,6 +152,13 @@ fn main() -> std::io::Result<()> {
                     handle.emit_all("scheme-request-received", request).unwrap();
                 }
             ));
+            std::thread::spawn(move || {
+                nyanpasu_utils::runtime::block_on(async move {
+                    server::run(*server::SERVER_PORT)
+                        .await
+                        .expect("failed to start server");
+                });
+            });
             Ok(())
         })
         .on_system_tray_event(core::tray::Tray::on_system_tray_event)
@@ -216,6 +224,7 @@ fn main() -> std::io::Result<()> {
             ipc::update_proxy_provider,
             ipc::restart_application,
             ipc::collect_envs,
+            ipc::get_server_port,
         ]);
 
     #[cfg(target_os = "macos")]

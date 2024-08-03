@@ -27,9 +27,7 @@ pub async fn init_service() {
         ..
     }) = control::status().await
     {
-        if !enable_service {
-            control::stop_service().await.unwrap();
-        } else {
+        if enable_service {
             ipc::spawn_health_check()
         }
     }

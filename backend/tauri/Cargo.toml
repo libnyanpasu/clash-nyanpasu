@@ -59,6 +59,10 @@ tauri = { version = "1.5.4", features = [
 ] }
 window-vibrancy = { version = "0.5.0" }
 window-shadows = { version = "0.2.2" }
+axum = "0.7"
+mime = "0.3"
+bincode = "1"
+bytes = { version = "1", features = ["serde"] }
 wry = { version = "0.24.6" }
 semver = "1.0"
 zip = "2.0.0"
@@ -126,7 +130,7 @@ mlua = { version = "0.9", features = [
   "vendored",
 ] }
 enumflags2 = "0.7"
-
+sha2 = "0.10"
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.25.0"
 objc = "0.2.7"

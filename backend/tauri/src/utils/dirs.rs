@@ -194,18 +194,18 @@ pub fn app_resources_dir() -> Result<PathBuf> {
 }
 
 /// Cache dir, it safe to clean up
-pub fn cache_dir() -> Result<PathBuf> {
-    let mut dir = dirs::cache_dir()
-        .ok_or(anyhow::anyhow!("failed to get the cache dir"))?
-        .join(APP_DIR_PLACEHOLDER.as_ref());
-    if cfg!(windows) {
-        dir.push("cache");
-    }
-    if !dir.exists() {
-        fs::create_dir_all(&dir)?;
-    }
-    Ok(dir)
-}
+// pub fn cache_dir() -> Result<PathBuf> {
+//     let mut dir = dirs::cache_dir()
+//         .ok_or(anyhow::anyhow!("failed to get the cache dir"))?
+//         .join(APP_DIR_PLACEHOLDER.as_ref());
+//     if cfg!(windows) {
+//         dir.push("cache");
+//     }
+//     if !dir.exists() {
+//         fs::create_dir_all(&dir)?;
+//     }
+//     Ok(dir)
+// }
 
 /// App install dir, sidecars should placed here
 pub fn app_install_dir() -> Result<PathBuf> {
@@ -245,6 +245,10 @@ pub fn storage_path() -> Result<PathBuf> {
 
 pub fn clash_pid_path() -> Result<PathBuf> {
     Ok(app_data_dir()?.join("clash.pid"))
+}
+
+pub fn cache_dir() -> Result<PathBuf> {
+    Ok(app_data_dir()?.join("cache"))
 }
 
 #[cfg(windows)]

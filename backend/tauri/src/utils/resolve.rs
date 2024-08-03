@@ -150,6 +150,14 @@ pub fn create_window(app_handle: &AppHandle) {
         return;
     }
 
+    let always_on_top = {
+        *Config::verge()
+            .latest()
+            .always_on_top
+            .as_ref()
+            .unwrap_or(&false)
+    };
+
     let mut builder = tauri::window::WindowBuilder::new(
         app_handle,
         "main".to_string(),
@@ -157,7 +165,9 @@ pub fn create_window(app_handle: &AppHandle) {
     )
     .title("Clash Nyanpasu")
     .fullscreen(false)
+    .always_on_top(always_on_top)
     .min_inner_size(600.0, 520.0);
+
     let win_state = &Config::verge().latest().window_size_state.clone();
     match win_state {
         Some(_) => {

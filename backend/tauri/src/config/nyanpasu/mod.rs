@@ -2,6 +2,7 @@ use crate::utils::{dirs, help};
 use anyhow::Result;
 // use log::LevelFilter;
 use enumflags2::bitflags;
+use semver::Op;
 use serde::{Deserialize, Serialize};
 mod clash_strategy;
 pub mod logging;
@@ -230,6 +231,8 @@ pub struct IVerge {
     /// 是否启用代理托盘选择
     pub clash_tray_selector: Option<ProxiesSelectorMode>,
 
+    pub always_on_top: Option<bool>,
+
     /// Tun 堆栈选择
     /// TODO: 弃用此字段，转移到 clash config 里
     pub tun_stack: Option<TunStack>,
@@ -328,6 +331,7 @@ impl IVerge {
             enable_auto_check_update: Some(true),
             clash_tray_selector: Some(ProxiesSelectorMode::default()),
             enable_service_mode: Some(false),
+            always_on_top: Some(false),
             ..Self::default()
         }
     }
@@ -388,5 +392,6 @@ impl IVerge {
         patch!(clash_strategy);
         patch!(clash_tray_selector);
         patch!(tun_stack);
+        patch!(always_on_top);
     }
 }

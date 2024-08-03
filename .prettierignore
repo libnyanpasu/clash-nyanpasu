@@ -7,3 +7,4 @@ pnpm-lock.yaml
 *.lock
 *.wxs
 frontend/nyanpasu/src/router.ts
+frontend/nyanpasu/auto-imports.d.ts

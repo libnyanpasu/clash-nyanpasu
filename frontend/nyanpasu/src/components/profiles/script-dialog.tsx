@@ -78,7 +78,7 @@ export const ScriptDialog = ({
         desc: "",
       });
     }
-  }, [isEdit]);
+  }, [form, isEdit, profile]);
 
   const [openMonaco, setOpenMonaco] = useState(false);
 

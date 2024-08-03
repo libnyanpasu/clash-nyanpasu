@@ -99,6 +99,25 @@ pub enum ProxiesSelectorMode {
     Submenu,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TunStack {
+    System,
+    #[default]
+    Gvisor,
+    Mixed,
+}
+
+impl AsRef<str> for TunStack {
+    fn as_ref(&self) -> &str {
+        match self {
+            TunStack::System => "system",
+            TunStack::Gvisor => "gvisor",
+            TunStack::Mixed => "mixed",
+        }
+    }
+}
+
 /// ### `verge.yaml` schema
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
 pub struct IVerge {
@@ -210,6 +229,10 @@ pub struct IVerge {
 
     /// 是否启用代理托盘选择
     pub clash_tray_selector: Option<ProxiesSelectorMode>,
+
+    /// Tun 堆栈选择
+    /// TODO: 弃用此字段，转移到 clash config 里
+    pub tun_stack: Option<TunStack>,
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
@@ -364,5 +387,6 @@ impl IVerge {
         patch!(window_size_state);
         patch!(clash_strategy);
         patch!(clash_tray_selector);
+        patch!(tun_stack);
     }
 }

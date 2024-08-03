@@ -6,7 +6,7 @@
 //!
 use crate::{
     config::*,
-    core::*,
+    core::{service::ipc::get_ipc_state, *},
     log_err,
     utils::{self, help::get_clash_external_port, resolve},
 };
@@ -283,21 +283,15 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
     let enable_tray_selector = patch.clash_tray_selector;
 
     let res = || async move {
-        #[cfg(target_os = "windows")]
-        {
-            let service_mode = patch.enable_service_mode;
+        let service_mode = patch.enable_service_mode;
+        let ipc_state = get_ipc_state();
+        if service_mode.is_some() && ipc_state.is_connected() {
+            log::debug!(target: "app", "change service mode to {}", service_mode.unwrap());
 
-            if service_mode.is_some() {
-                log::debug!(target: "app", "change service mode to {}", service_mode.unwrap());
-
-                Config::generate().await?;
-                CoreManager::global().run_core().await?;
-            } else if tun_mode.is_some() {
-                update_core_config().await?;
-            }
+            Config::generate().await?;
+            CoreManager::global().run_core().await?;
         }
 
-        #[cfg(not(target_os = "windows"))]
         if tun_mode.is_some() {
             update_core_config().await?;
         }

@@ -16,6 +16,7 @@ import { Experimental_CssVarsProvider as CssVarsProvider } from "@mui/material/s
 import { useBreakpoint } from "@nyanpasu/ui";
 import "dayjs/locale/ru";
 import "dayjs/locale/zh-cn";
+import { useMount } from "ahooks";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { useMemo } from "react";
 import { FallbackProps } from "react-error-boundary";
@@ -30,6 +31,14 @@ export default function App() {
   const { column } = useBreakpoint();
 
   const isDrawer = useMemo(() => Boolean(column === 1), [column]);
+
+  useMount(() => {
+    import("@tauri-apps/api/window").then(({ appWindow }) => {
+      appWindow.show();
+      appWindow.unminimize();
+      appWindow.setFocus();
+    });
+  });
 
   return (
     <SWRConfig

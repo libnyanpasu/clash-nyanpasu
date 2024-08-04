@@ -1,6 +1,10 @@
 use std::{
     io::{BufRead, BufReader, Result, Write},
     path::Path,
+    sync::{
+        atomic::{AtomicU16, AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
 use interprocess::local_socket::{LocalSocketListener, LocalSocketStream};
@@ -56,26 +60,43 @@ pub fn unregister(schemes: &[&str]) -> Result<()> {
     Ok(())
 }
 
+static CRASH_COUNT: AtomicU16 = AtomicU16::new(0);
+
 pub fn listen<F: FnMut(String) + Send + 'static>(mut handler: F) -> Result<()> {
+    if CRASH_COUNT.load(Ordering::Acquire) > 5 {
+        panic!("Local socket too many crashes");
+    }
+
     std::thread::spawn(move || {
         let listener =
             LocalSocketListener::bind(ID.get().expect("listen() called before prepare()").as_str())
                 .expect("Can't create listener");
 
-        for conn in listener.incoming().filter_map(|c| {
-            c.map_err(|error| log::error!("Incoming connection failed: {}", error))
-                .ok()
-        }) {
-            // Listen for the launch arguments
-            let mut conn = BufReader::new(conn);
-            let mut buffer = String::new();
-            if let Err(io_err) = conn.read_line(&mut buffer) {
-                log::error!("Error reading incoming connection: {}", io_err.to_string());
-            };
-            buffer.pop();
+        let mut err_count = 0;
+        for conn in listener.incoming() {
+            match conn {
+                Ok(conn) => {
+                    // Listen for the launch arguments
+                    let mut conn = BufReader::new(conn);
+                    let mut buffer = String::new();
+                    if let Err(io_err) = conn.read_line(&mut buffer) {
+                        log::error!("Error reading incoming connection: {}", io_err.to_string());
+                    };
+                    buffer.pop();
 
-            handler(buffer);
+                    handler(buffer);
+                }
+                Err(error) => {
+                    log::error!("Incoming connection failed: {}", error);
+                    err_count += 1;
+                    if err_count > 10 {
+                        break;
+                    }
+                }
+            }
         }
+        CRASH_COUNT.fetch_add(1, Ordering::Release);
+        let _ = listen(handler);
     });
 
     Ok(())

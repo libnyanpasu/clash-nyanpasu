@@ -1,7 +1,9 @@
 import { useInterval } from "ahooks";
+import { useAtomValue } from "jotai";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import Dataline, { DatalineProps } from "@/components/dashboard/dataline";
+import { atomIsDrawer } from "@/store";
 import {
   ArrowDownward,
   ArrowUpward,
@@ -115,8 +117,10 @@ export const DataPanel = () => {
     });
   }
 
+  const isDrawer = useAtomValue(atomIsDrawer);
+
   const gridLayout = {
-    sm: 12,
+    sm: isDrawer ? 6 : 12,
     md: 6,
     lg: supportMemory ? 3 : 4,
     xl: supportMemory ? 3 : 4,

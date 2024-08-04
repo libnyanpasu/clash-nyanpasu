@@ -1,5 +1,7 @@
 import countryCodeEmoji from "country-code-emoji";
+import { useAtomValue } from "jotai";
 import { useState } from "react";
+import { atomIsDrawer } from "@/store";
 import { Visibility, VisibilityOff } from "@mui/icons-material";
 import { LoadingButton } from "@mui/lab";
 import { CircularProgress, IconButton, Paper, Tooltip } from "@mui/material";
@@ -32,8 +34,10 @@ export const IPASNPanel = ({ refreshCount }: { refreshCount: number }) => {
 
   const [showIPAddress, setShowIPAddress] = useState(false);
 
+  const isDrawer = useAtomValue(atomIsDrawer);
+
   return (
-    <Grid sm={12} md={8} lg={4} xl={3}>
+    <Grid sm={isDrawer ? 7 : 12} md={8} lg={4} xl={3}>
       <Paper className="relative flex !h-full select-text gap-4 !rounded-3xl px-4 py-3">
         {data ? (
           <>

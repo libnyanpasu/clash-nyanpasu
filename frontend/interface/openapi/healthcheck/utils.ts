@@ -1,24 +1,9 @@
-import { ofetch } from "ofetch";
+import { urlDelayTest } from "@/service";
 
-export const $request = ofetch.create({
-  mode: "no-cors",
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const timingFn = async (func: () => Promise<any>) => {
-  const start = performance.now();
-
-  await func();
-
-  const end = performance.now();
-
-  return end - start;
+export const timing = async (url: string, code: number) => {
+  return (await urlDelayTest(url, code)) ?? 0;
 };
 
-export const timing = async (url: string) => {
-  return await timingFn(() => $request(url));
-};
-
-export const createTiming = (url: string) => {
-  return () => timing(url);
+export const createTiming = (url: string, code: number = 204) => {
+  return () => timing(url, code);
 };

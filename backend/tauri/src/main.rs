@@ -230,6 +230,8 @@ fn main() -> std::io::Result<()> {
             ipc::get_server_port,
             ipc::set_tray_icon,
             ipc::is_tray_icon_set,
+            ipc::get_core_status,
+            ipc::url_delay_test,
         ]);
 
     #[cfg(target_os = "macos")]

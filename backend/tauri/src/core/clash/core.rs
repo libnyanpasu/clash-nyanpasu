@@ -19,6 +19,7 @@ use nyanpasu_utils::{
 };
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
     path::PathBuf,
@@ -32,6 +33,8 @@ use tauri::api::process::Command;
 use tokio::time::sleep;
 use tracing_attributes::instrument;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum RunType {
     /// Run as child process directly
     Normal,
@@ -112,6 +115,13 @@ impl Instance {
             RunType::Elevated => {
                 todo!()
             }
+        }
+    }
+
+    pub fn run_type(&self) -> RunType {
+        match self {
+            Instance::Child { .. } => RunType::Normal,
+            Instance::Service { .. } => RunType::Service,
         }
     }
 
@@ -367,15 +377,20 @@ impl CoreManager {
         })
     }
 
-    pub async fn status<'a>(&self) -> (Cow<'a, CoreState>, i64) {
+    pub async fn status<'a>(&self) -> (Cow<'a, CoreState>, i64, RunType) {
         let instance = {
             let instance = self.instance.lock();
             instance.as_ref().cloned()
         };
         if let Some(instance) = instance {
-            instance.status().await
+            let (state, ts) = instance.status().await;
+            (state, ts, instance.run_type())
         } else {
-            (Cow::Owned(CoreState::Stopped(None)), 0_i64)
+            (
+                Cow::Owned(CoreState::Stopped(None)),
+                0_i64,
+                RunType::default(),
+            )
         }
     }
 

@@ -15,9 +15,10 @@ use anyhow::{Context, Result};
 use chrono::Local;
 use indexmap::IndexMap;
 use log::debug;
+use nyanpasu_ipc::api::status::CoreState;
 use profile::item_type::ProfileItemType;
 use serde_yaml::Mapping;
-use std::{collections::VecDeque, path::PathBuf};
+use std::{borrow::Cow, collections::VecDeque, path::PathBuf};
 use sysproxy::Sysproxy;
 use tray::icon::TrayIcon;
 
@@ -212,6 +213,16 @@ pub fn get_runtime_exists() -> CmdResult<Vec<String>> {
 #[tauri::command]
 pub fn get_runtime_logs() -> CmdResult<IndexMap<String, Logs>> {
     Ok(Config::runtime().latest().chain_logs.clone())
+}
+
+#[tauri::command]
+pub async fn get_core_status<'n>() -> CmdResult<(Cow<'n, CoreState>, i64, RunType)> {
+    Ok(CoreManager::global().status().await)
+}
+
+#[tauri::command]
+pub async fn url_delay_test(url: &str, expected_status: u16) -> CmdResult<Option<u64>> {
+    Ok(crate::utils::net::url_delay_test(url, expected_status).await)
 }
 
 #[tauri::command]

@@ -226,3 +226,16 @@ export const isTrayIconSet = async (
     mode,
   });
 };
+
+export const getCoreStatus = async () => {
+  return await invoke<
+    ["Running" | { Stopped: string | null }, number, "normal" | "service"]
+  >("get_core_status");
+};
+
+export const urlDelayTest = async (url: string, expectedStatus: number) => {
+  return await invoke<number | null>("url_delay_test", {
+    url,
+    expectedStatus,
+  });
+};

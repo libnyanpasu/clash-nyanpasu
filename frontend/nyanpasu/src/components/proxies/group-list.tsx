@@ -27,7 +27,6 @@ const IconRender = memo(function IconRender({ icon }: { icon: string }) {
     }
     return `http://localhost:${serverPort}/cache/icon?url=${btoa(src)}`;
   }, [src, serverPort]);
-  console.log(serverPort, isLoading, error);
   if (isLoading || error) {
     return null;
   }

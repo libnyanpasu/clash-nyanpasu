@@ -17,7 +17,7 @@ use tracing_attributes::instrument;
 use url::Url;
 pub static SERVER_PORT: Lazy<u16> = Lazy::new(|| port_scanner::request_open_port().unwrap());
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct CacheIcon {
     /// should be encoded as base64
     url: String,
@@ -63,6 +63,7 @@ async fn cache_icon_inner<'n>(url: &str) -> Result<CacheFile<'n>> {
     Ok(data)
 }
 
+#[tracing_attributes::instrument]
 async fn cache_icon(query: Query<CacheIcon>) -> Response<Body> {
     match cache_icon_inner(&query.url).await {
         Ok(data) => {
@@ -73,6 +74,7 @@ async fn cache_icon(query: Query<CacheIcon>) -> Response<Body> {
             response
         }
         Err(e) => {
+            tracing::error!("{}", e);
             let mut response = Response::new(Body::from(e.to_string()));
             *response.status_mut() = StatusCode::BAD_REQUEST;
             response

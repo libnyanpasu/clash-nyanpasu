@@ -20,6 +20,7 @@ impl IRuntime {
 
     // 这里只更改 allow-lan | ipv6 | log-level
     pub fn patch_config(&mut self, patch: Mapping) {
+        tracing::debug!("patching runtime config: {:?}", patch);
         if let Some(config) = self.config.as_mut() {
             ["allow-lan", "ipv6", "log-level"]
                 .into_iter()

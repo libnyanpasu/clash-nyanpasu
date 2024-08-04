@@ -17,6 +17,8 @@ export const useClash = () => {
       await tauri.patchClashInfo(payload);
 
       await getClashInfo.mutate();
+    } catch (e) {
+      console.error(e);
     } finally {
       return getClashInfo.data;
     }

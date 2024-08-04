@@ -215,8 +215,13 @@ pub fn get_runtime_logs() -> CmdResult<IndexMap<String, Logs>> {
 }
 
 #[tauri::command]
+#[tracing_attributes::instrument]
 pub async fn patch_clash_config(payload: Mapping) -> CmdResult {
-    wrap_err!(feat::patch_clash(payload).await)?;
+    tracing::debug!("patch_clash_config: {payload:?}");
+    if let Err(e) = feat::patch_clash(payload).await {
+        tracing::error!("{e}");
+        return Err(format!("{e}"));
+    }
     feat::update_proxies_buff(None);
     Ok(())
 }

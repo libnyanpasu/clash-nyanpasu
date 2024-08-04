@@ -37,7 +37,7 @@ export const SchemeProvider = () => {
           });
       }
     });
-  }, []);
+  }, [navigate]);
 
   return null;
 };

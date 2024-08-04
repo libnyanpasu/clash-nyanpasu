@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useCoreType } from "@/hooks/use-store";
 import getSystem from "@/utils/get-system";
+import { useGlobalMutation } from "@/utils/mutation";
 import { message } from "@/utils/notification";
 import { Button, List, ListItem, ListItemText } from "@mui/material";
 import { pullupUWPTool, useNyanpasu, VergeConfig } from "@nyanpasu/interface";
@@ -45,6 +46,8 @@ export const SettingClashBase = () => {
     const stack = nyanpasuConfig?.tun_stack || "gvisor";
     return stack in tunStackOptions ? stack : "gvisor";
   }, [nyanpasuConfig?.tun_stack, tunStackOptions]);
+  const mutate = useGlobalMutation();
+
   return (
     <BaseCard label={t("Clash Setting")}>
       <List disablePadding>
@@ -68,6 +71,11 @@ export const SettingClashBase = () => {
                 payload.enable_tun_mode = true; // just to reload clash config
               }
               setNyanpasuConfig(payload);
+              mutate(
+                (key) =>
+                  typeof key === "string" &&
+                  key.includes("/getRuntimeConfigYaml"),
+              );
             }}
           />
         )}

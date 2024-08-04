@@ -49,7 +49,6 @@ export default function RuntimeConfigDiffDialog({
       const run = async () => {
         const { monaco } = await import("@/services/monaco");
         monacoRef.current = monaco;
-        console.log(domRef.current);
         editorRef.current = monaco.editor.createDiffEditor(domRef.current!, {
           theme: mode === "light" ? "vs" : "vs-dark",
           minimap: { enabled: false },
@@ -68,7 +67,6 @@ export default function RuntimeConfigDiffDialog({
       editorRef.current?.dispose();
     };
   }, [mode, open, runtimeConfig, profileConfig]);
-  console.log(currentProfileUid);
   if (!currentProfileUid) {
     return null;
   }

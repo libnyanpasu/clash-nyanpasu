@@ -1,5 +1,6 @@
 import { ChangeEvent, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useGlobalMutation } from "@/utils/mutation";
 import { message } from "@/utils/notification";
 import Done from "@mui/icons-material/Done";
 import LoadingButton from "@mui/lab/LoadingButton";
@@ -37,6 +38,7 @@ export const SettingClashExternal = () => {
   const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu();
 
   const { getClashInfo, setClashInfo } = useClash();
+  const mutate = useGlobalMutation();
 
   // What even are these fields?????
   // I had to write the shit code to make it run like a pile of crap.
@@ -88,6 +90,10 @@ export const SettingClashExternal = () => {
 
       setTimeout(() => {
         setLoading(false);
+        mutate(
+          (key) =>
+            typeof key === "string" && key.includes("/getRuntimeConfigYaml"),
+        );
       }, 300);
     }
   };

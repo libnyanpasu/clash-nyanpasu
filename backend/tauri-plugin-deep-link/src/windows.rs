@@ -72,7 +72,6 @@ pub fn listen<F: FnMut(String) + Send + 'static>(mut handler: F) -> Result<()> {
             LocalSocketListener::bind(ID.get().expect("listen() called before prepare()").as_str())
                 .expect("Can't create listener");
 
-        let mut err_count = 0;
         for conn in listener.incoming() {
             match conn {
                 Ok(conn) => {
@@ -88,8 +87,7 @@ pub fn listen<F: FnMut(String) + Send + 'static>(mut handler: F) -> Result<()> {
                 }
                 Err(error) => {
                     log::error!("Incoming connection failed: {}", error);
-                    err_count += 1;
-                    if err_count > 10 {
+                    if error.raw_os_error() == Some(232) || error.to_string().contains("232") {
                         break;
                     }
                 }

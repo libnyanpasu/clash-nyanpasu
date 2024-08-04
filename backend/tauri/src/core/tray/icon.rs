@@ -120,7 +120,7 @@ pub fn set_icon(mode: TrayIcon, path: Option<PathBuf>) -> anyhow::Result<()> {
         }
         None => {
             // use default icon
-            std::fs::write(tray_icons_path(mode.as_str())?, mode.raw_bytes())?;
+            std::fs::remove_file(tray_icons_path(mode.as_str())?)?;
         }
     }
     let factor = crate::utils::help::get_max_scale_factor();

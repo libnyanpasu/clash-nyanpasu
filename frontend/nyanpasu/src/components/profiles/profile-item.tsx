@@ -224,6 +224,7 @@ export const ProfileItem = memo(function ProfileItem({
             )}
 
             <TextCarousel
+              className="w-30 flex h-6 items-center"
               nodes={[
                 !!item.updated && (
                   <TimeSpan ts={item.updated!} k="Subscription Updated At" />
@@ -342,7 +343,7 @@ function TimeSpan({ ts, k }: { ts: number; k: string }) {
   const { t } = useTranslation();
   return (
     <Tooltip title={time.format("YYYY/MM/DD HH:mm:ss")}>
-      <div className="w-full text-right text-sm">
+      <div className="animate-marquee h-fit whitespace-nowrap text-right text-sm font-medium">
         {t(k, {
           time: time.fromNow(),
         })}
@@ -351,7 +352,7 @@ function TimeSpan({ ts, k }: { ts: number; k: string }) {
   );
 }
 
-function TextCarousel(props: { nodes: React.ReactNode[] }) {
+function TextCarousel(props: { nodes: React.ReactNode[]; className?: string }) {
   const [index, setIndex] = useState(0);
   const nodes = useMemo(
     () => props.nodes.filter((item) => !!item),
@@ -363,23 +364,32 @@ function TextCarousel(props: { nodes: React.ReactNode[] }) {
   });
 
   useEffect(() => {
+    if (nodes.length <= 1) {
+      return;
+    }
     const timer = setInterval(() => {
       nextNode();
-    }, 5000);
+    }, 8000);
     return () => clearInterval(timer);
-  }, [index, nextNode]);
+  }, [index, nextNode, nodes.length]);
+  if (nodes.length === 0) {
+    return null;
+  }
   return (
-    <div className="h-6 w-24 overflow-hidden" onClick={() => nextNode()}>
+    <div
+      className={cn("overflow-hidden", props.className)}
+      onClick={() => nextNode()}
+    >
       <AnimatePresence mode="wait">
         {nodes.map(
           (node, i) =>
             i == index && (
               <motion.div
-                className="flex h-full w-full items-center justify-center"
+                className="h-full w-full"
                 key={index}
-                initial={{ y: 40, opacity: 0, scale: 0.5 }}
+                initial={{ y: 40, opacity: 0, scale: 0.8 }}
                 animate={{ y: 0, opacity: 1, scale: 1 }}
-                exit={{ y: -40, opacity: 0, scale: 0.5 }}
+                exit={{ y: -40, opacity: 0, scale: 0.8 }}
               >
                 {node}
               </motion.div>

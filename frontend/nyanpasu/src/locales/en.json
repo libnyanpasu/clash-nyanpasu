@@ -167,5 +167,6 @@
   "FetchError": "Failed to fetch {{content}} due to network issue. Please check your network connection and try again later.",
   "tun": "Tun",
   "normal": "Normal",
-  "system_proxy": "System Proxy"
+  "system_proxy": "System Proxy",
+  "Proxy takeover Status": "Proxy takeover Status"
 }

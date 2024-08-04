@@ -169,5 +169,6 @@
   "FetchError": "由于网络问题，无法获取{{content}}内容。请检查网络连接或稍后再试。",
   "tun": "Tun",
   "normal": "默认",
-  "system_proxy": "系统代理"
+  "system_proxy": "系统代理",
+  "Proxy takeover Status": "代理接管状态"
 }

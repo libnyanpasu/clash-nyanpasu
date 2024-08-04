@@ -37,7 +37,7 @@ export const IPASNPanel = ({ refreshCount }: { refreshCount: number }) => {
   const isDrawer = useAtomValue(atomIsDrawer);
 
   return (
-    <Grid sm={isDrawer ? 7 : 12} md={8} lg={4} xl={3}>
+    <Grid sm={isDrawer ? 7 : 12} md={8} lg={5} xl={3}>
       <Paper className="relative flex !h-full select-text gap-4 !rounded-3xl px-4 py-3">
         {data ? (
           <>

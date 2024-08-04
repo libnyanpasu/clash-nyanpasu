@@ -1,12 +1,14 @@
+import { useControllableValue } from "ahooks";
 import { memo, ReactNode } from "react";
 import { alpha, CircularProgress, useTheme } from "@mui/material";
 import { PaperButton, PaperButtonProps } from "./nyanpasu-path";
 
 export interface PaperSwitchButtonProps extends PaperButtonProps {
-  label: string;
+  label?: string;
   checked: boolean;
   loading?: boolean;
   children?: ReactNode;
+  onClick?: () => Promise<void> | void;
 }
 
 export const PaperSwitchButton = memo(function PaperSwitchButton({
@@ -14,9 +16,25 @@ export const PaperSwitchButton = memo(function PaperSwitchButton({
   checked,
   loading,
   children,
+  onClick,
   ...props
 }: PaperSwitchButtonProps) {
   const { palette } = useTheme();
+
+  const [pending, setPending] = useControllableValue<boolean>(
+    { loading },
+    {
+      defaultValue: false,
+    },
+  );
+
+  const handleClick = async () => {
+    if (onClick) {
+      setPending(true);
+      await onClick();
+      setPending(false);
+    }
+  };
 
   return (
     <PaperButton
@@ -27,16 +45,17 @@ export const PaperSwitchButton = memo(function PaperSwitchButton({
           : palette.mode == "dark"
             ? palette.common.black
             : palette.grey[100],
-        cursor: loading ? "progress" : "none",
+        cursor: pending ? "progress" : "none",
       }}
       sxButton={{
         flexDirection: "column",
         alignItems: "start",
         gap: 0.5,
       }}
+      onClick={handleClick}
       {...props}
     >
-      {loading === true && (
+      {pending === true && (
         <CircularProgress
           sx={{
             position: "absolute",

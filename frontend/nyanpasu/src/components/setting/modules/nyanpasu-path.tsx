@@ -10,7 +10,7 @@ import {
 } from "@mui/material";
 
 export interface PaperButtonProps extends ButtonBaseProps {
-  label: string;
+  label?: string;
   children?: ReactNode;
   sxPaper?: SxProps;
   sxButton?: SxProps;
@@ -52,18 +52,20 @@ export const PaperButton = memo(function PaperButton({
         }}
         {...props}
       >
-        <Typography
-          noWrap
-          component="p"
-          width="100%"
-          sx={{
-            fontWeight: 700,
-            textOverflow: "ellipsis",
-            overflow: "hidden",
-          }}
-        >
-          {label}
-        </Typography>
+        {label && (
+          <Typography
+            noWrap
+            component="p"
+            width="100%"
+            sx={{
+              fontWeight: 700,
+              textOverflow: "ellipsis",
+              overflow: "hidden",
+            }}
+          >
+            {label}
+          </Typography>
+        )}
 
         {children}
       </ButtonBase>

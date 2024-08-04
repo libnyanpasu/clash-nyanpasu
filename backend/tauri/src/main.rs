@@ -59,9 +59,6 @@ fn main() -> std::io::Result<()> {
     #[cfg(feature = "deadlock-detection")]
     deadlock_detection();
 
-    // Parse commands
-    cmds::parse().unwrap();
-
     // Should be in first place in order prevent single instance check block everything
     #[cfg(feature = "verge-dev")]
     tauri_plugin_deep_link::prepare("moe.elaina.clash.nyanpasu.dev");
@@ -78,6 +75,11 @@ fn main() -> std::io::Result<()> {
     };
     #[cfg(target_os = "macos")]
     let custom_schema: Option<url::Url> = None;
+
+    if custom_schema.is_none() {
+        // Parse commands
+        cmds::parse().unwrap();
+    }
 
     // 单例检测
     let single_instance_result = utils::init::check_singleton();

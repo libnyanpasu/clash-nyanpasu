@@ -170,5 +170,7 @@
   "tun": "Tun",
   "normal": "默认",
   "system_proxy": "系统代理",
-  "Proxy takeover Status": "代理接管状态"
+  "Proxy takeover Status": "代理接管状态",
+  "Subscription Expires In": "{{time}}到期",
+  "Subscription Updated At": "{{time}}更新"
 }

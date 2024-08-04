@@ -168,5 +168,7 @@
   "tun": "Tun",
   "normal": "Normal",
   "system_proxy": "System Proxy",
-  "Proxy takeover Status": "Proxy takeover Status"
+  "Proxy takeover Status": "Proxy takeover Status",
+  "Subscription Expires In": "Expires in {{time}}",
+  "Subscription Updated At": "Updated at {{time}}"
 }

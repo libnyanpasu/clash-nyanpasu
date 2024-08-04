@@ -1,8 +1,8 @@
-import { useLockFn, useSetState } from "ahooks";
+import { useLockFn, useMemoizedFn, useSetState } from "ahooks";
 import clsx from "clsx";
 import dayjs from "dayjs";
-import { motion } from "framer-motion";
-import { memo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { memo, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { message } from "@/utils/notification";
 import parseTraffic from "@/utils/parse-traffic";
@@ -223,9 +223,19 @@ export const ProfileItem = memo(function ProfileItem({
               />
             )}
 
-            <div className="text-sm">
-              {item.updated! > 0 ? dayjs(item.updated! * 1000).fromNow() : ""}
-            </div>
+            <TextCarousel
+              nodes={[
+                !!item.updated && (
+                  <TimeSpan ts={item.updated!} k="Subscription Updated At" />
+                ),
+                !!item.extra?.expire && (
+                  <TimeSpan
+                    ts={item.extra!.expire!}
+                    k="Subscription Expires In"
+                  />
+                ),
+              ]}
+            ></TextCarousel>
           </div>
 
           <div>
@@ -326,5 +336,58 @@ export const ProfileItem = memo(function ProfileItem({
     </>
   );
 });
+
+function TimeSpan({ ts, k }: { ts: number; k: string }) {
+  const time = dayjs(ts * 1000);
+  const { t } = useTranslation();
+  return (
+    <Tooltip title={time.format("YYYY/MM/DD HH:mm:ss")}>
+      <div className="w-full text-right text-sm">
+        {t(k, {
+          time: time.fromNow(),
+        })}
+      </div>
+    </Tooltip>
+  );
+}
+
+function TextCarousel(props: { nodes: React.ReactNode[] }) {
+  const [index, setIndex] = useState(0);
+  const nodes = useMemo(
+    () => props.nodes.filter((item) => !!item),
+    [props.nodes],
+  );
+
+  const nextNode = useMemoizedFn(() => {
+    setIndex((i) => (i + 1) % nodes.length);
+  });
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      nextNode();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [index, nextNode]);
+  return (
+    <div className="h-6 w-24 overflow-hidden" onClick={() => nextNode()}>
+      <AnimatePresence mode="wait">
+        {nodes.map(
+          (node, i) =>
+            i == index && (
+              <motion.div
+                className="flex h-full w-full items-center justify-center"
+                key={index}
+                initial={{ y: 40, opacity: 0, scale: 0.5 }}
+                animate={{ y: 0, opacity: 1, scale: 1 }}
+                exit={{ y: -40, opacity: 0, scale: 0.5 }}
+              >
+                {node}
+              </motion.div>
+            ),
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 export default ProfileItem;

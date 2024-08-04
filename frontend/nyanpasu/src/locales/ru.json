@@ -151,5 +151,7 @@
 
   "tun": "Tun",
   "normal": "Обычный",
-  "system_proxy": "Системный прокси"
+  "system_proxy": "Системный прокси",
+  "Subscription Expires In": "Подписка истекает через {{time}}",
+  "Subscription Updated At": "Подписка обновлена {{time}}"
 }

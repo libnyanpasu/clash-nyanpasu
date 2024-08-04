@@ -70,7 +70,8 @@ export default defineConfig(({ command }) => {
       isDev && devtools(),
     ],
     optimizeDeps: {
-      include: ["@emotion/styled", "@mui/lab/*", "@mui/material/*"],
+      entries: ["./src/pages/**/*.tsx", "./src/main.tsx"],
+      include: ["@emotion/styled"],
     },
     esbuild: {
       drop: isDev ? undefined : ["console", "debugger"],

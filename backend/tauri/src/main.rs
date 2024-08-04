@@ -27,6 +27,7 @@ use crate::{
     utils::{init, resolve},
 };
 use tauri::{api, Manager, SystemTray};
+use utils::resolve::reset_window_open_counter;
 
 rust_i18n::i18n!("../../locales");
 
@@ -269,6 +270,7 @@ fn main() -> std::io::Result<()> {
             if label == "main" {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
+                    reset_window_open_counter();
                     let _ = resolve::save_window_state(app_handle, true);
 
                     if let Some(win) = app_handle.get_window("main") {
@@ -286,6 +288,7 @@ fn main() -> std::io::Result<()> {
                     }
                     tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {
                         // log::info!(target: "app", "window close requested");
+                        reset_window_open_counter();
                         let _ = resolve::save_window_state(app_handle, true);
                     }
                     tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {

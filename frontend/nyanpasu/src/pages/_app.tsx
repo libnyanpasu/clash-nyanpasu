@@ -1,3 +1,4 @@
+import { useMount } from "ahooks";
 import dayjs from "dayjs";
 import AppContainer from "@/components/app/app-container";
 import LocalesProvider from "@/components/app/locales-provider";
@@ -14,9 +15,9 @@ import { classNames } from "@/utils";
 import { useTheme } from "@mui/material";
 import { Experimental_CssVarsProvider as CssVarsProvider } from "@mui/material/styles";
 import { useBreakpoint } from "@nyanpasu/ui";
+import { emit } from "@tauri-apps/api/event";
 import "dayjs/locale/ru";
 import "dayjs/locale/zh-cn";
-import { useMount } from "ahooks";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { useMemo } from "react";
 import { FallbackProps } from "react-error-boundary";
@@ -33,11 +34,13 @@ export default function App() {
   const isDrawer = useMemo(() => Boolean(column === 1), [column]);
 
   useMount(() => {
-    import("@tauri-apps/api/window").then(({ appWindow }) => {
-      appWindow.show();
-      appWindow.unminimize();
-      appWindow.setFocus();
-    });
+    import("@tauri-apps/api/window")
+      .then(({ appWindow }) => {
+        appWindow.show();
+        appWindow.unminimize();
+        appWindow.setFocus();
+      })
+      .finally(() => emit("react_app_mounted"));
   });
 
   return (

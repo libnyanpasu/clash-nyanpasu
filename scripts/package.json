@@ -10,7 +10,7 @@
   "devDependencies": {
     "@octokit/types": "13.5.0",
     "@types/adm-zip": "0.5.5",
-    "adm-zip": "0.5.14",
+    "adm-zip": "0.5.15",
     "colorize-template": "1.0.0",
     "consola": "3.2.3",
     "fs-extra": "11.2.0",

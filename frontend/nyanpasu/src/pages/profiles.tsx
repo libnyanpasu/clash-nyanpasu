@@ -1,11 +1,16 @@
 import { useAtom } from "jotai";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useLocation } from "react-router-dom";
 import {
   atomChainsSelected,
   atomGlobalChainCurrent,
 } from "@/components/profiles/modules/store";
 import NewProfileButton from "@/components/profiles/new-profile-button";
+import {
+  AddProfileContext,
+  AddProfileContextValue,
+} from "@/components/profiles/profile-dialog";
 import ProfileItem from "@/components/profiles/profile-item";
 import ProfileSide from "@/components/profiles/profile-side";
 import { QuickImport } from "@/components/profiles/quick-import";
@@ -19,7 +24,6 @@ import { SidePage } from "@nyanpasu/ui";
 
 export const ProfilePage = () => {
   const { t } = useTranslation();
-
   const { getProfiles } = useClash();
 
   const { profiles } = filterProfiles(getProfiles.data?.items);
@@ -49,7 +53,18 @@ export const ProfilePage = () => {
   };
 
   const [runtimeConfigViewerOpen, setRuntimeConfigViewerOpen] = useState(false);
-  console.log(runtimeConfigViewerOpen);
+  const location = useLocation();
+  const addProfileCtxValue = useMemo(() => {
+    if (!location.state || !location.state.subscribe) {
+      return null;
+    }
+    return {
+      name: location.state.subscribe.name,
+      desc: location.state.subscribe.desc,
+      url: location.state.subscribe.url,
+    } satisfies AddProfileContextValue;
+  }, [location.state]);
+
   return (
     <SidePage
       title={t("Profiles")}
@@ -107,8 +122,9 @@ export const ProfilePage = () => {
           </Masonry>
         )}
       </div>
-
-      <NewProfileButton />
+      <AddProfileContext.Provider value={addProfileCtxValue}>
+        <NewProfileButton />
+      </AddProfileContext.Provider>
     </SidePage>
   );
 };

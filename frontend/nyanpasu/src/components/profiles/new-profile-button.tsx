@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { use, useState } from "react";
 import { Add } from "@mui/icons-material";
 import { FloatingButton } from "@nyanpasu/ui";
-import { ProfileDialog } from "./profile-dialog";
+import { AddProfileContext, ProfileDialog } from "./profile-dialog";
 
 export const NewProfileButton = () => {
-  const [open, setOpen] = useState(false);
+  const addProfileCtx = use(AddProfileContext);
+  const [open, setOpen] = useState(!!addProfileCtx);
 
   return (
     <>

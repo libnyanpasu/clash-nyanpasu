@@ -1,6 +1,6 @@
 import { version } from "~/package.json";
 import { useAsyncEffect, useReactive } from "ahooks";
-import { useRef, useState } from "react";
+import { createContext, use, useRef, useState } from "react";
 import {
   Controller,
   SelectElement,
@@ -22,6 +22,16 @@ export interface ProfileDialogProps {
   onClose: () => void;
 }
 
+export type AddProfileContextValue = {
+  name: string | null;
+  desc: string | null;
+  url: string;
+};
+
+export const AddProfileContext = createContext<AddProfileContextValue | null>(
+  null,
+);
+
 export const ProfileDialog = ({
   profile,
   open,
@@ -33,15 +43,15 @@ export const ProfileDialog = ({
     useClash();
 
   const localProfile = useRef("");
-
+  const addProfileCtx = use(AddProfileContext);
   const [localProfileMessage, setLocalProfileMessage] = useState("");
 
   const { control, watch, handleSubmit, reset } = useForm<Profile.Item>({
     defaultValues: profile || {
       type: "remote",
-      name: `New Profile`,
-      desc: "",
-      url: "",
+      name: addProfileCtx?.name || `New Profile`,
+      desc: addProfileCtx?.desc || "",
+      url: addProfileCtx?.url || "",
       option: {
         // user_agent: "",
         with_proxy: false,

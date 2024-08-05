@@ -60,12 +60,6 @@ fn main() -> std::io::Result<()> {
     deadlock_detection();
 
     // Should be in first place in order prevent single instance check block everything
-    #[cfg(feature = "verge-dev")]
-    tauri_plugin_deep_link::prepare("moe.elaina.clash.nyanpasu.dev");
-
-    #[cfg(not(feature = "verge-dev"))]
-    tauri_plugin_deep_link::prepare("moe.elaina.clash.nyanpasu");
-
     // Custom scheme check
     #[cfg(not(target_os = "macos"))]
     // on macos the plugin handles this (macos doesn't use cli args for the url)
@@ -79,7 +73,12 @@ fn main() -> std::io::Result<()> {
     if custom_schema.is_none() {
         // Parse commands
         cmds::parse().unwrap();
-    }
+    };
+    #[cfg(feature = "verge-dev")]
+    tauri_plugin_deep_link::prepare("moe.elaina.clash.nyanpasu.dev");
+
+    #[cfg(not(feature = "verge-dev"))]
+    tauri_plugin_deep_link::prepare("moe.elaina.clash.nyanpasu");
 
     // 单例检测
     let single_instance_result = utils::init::check_singleton();
@@ -117,9 +116,7 @@ fn main() -> std::io::Result<()> {
     rust_i18n::set_locale(verge.as_str());
 
     // show a dialog to print the single instance error
-    if custom_schema.is_none() {
-        let _singleton = single_instance_result.unwrap(); // hold the guard until the end of the program
-    }
+    let _singleton = single_instance_result.unwrap(); // hold the guard until the end of the program
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()

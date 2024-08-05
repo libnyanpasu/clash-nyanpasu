@@ -48,7 +48,6 @@ relative-path = "1.9"
 tauri = { version = "1.5.4", features = [
   "fs-all",
   "clipboard-all",
-  "updater",
   "os-all",
   "global-shortcut-all",
   "notification-all",
@@ -56,6 +55,7 @@ tauri = { version = "1.5.4", features = [
   "shell-all",
   "system-tray",
   "window-all",
+  "updater",
 ] }
 window-vibrancy = { version = "0.5.0" }
 window-shadows = { version = "0.2.2" }

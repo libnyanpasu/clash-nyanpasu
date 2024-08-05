@@ -1,6 +1,6 @@
 import { version } from "~/package.json";
 import { useAsyncEffect, useReactive } from "ahooks";
-import { createContext, use, useRef, useState } from "react";
+import { createContext, use, useEffect, useRef, useState } from "react";
 import {
   Controller,
   SelectElement,
@@ -46,19 +46,28 @@ export const ProfileDialog = ({
   const addProfileCtx = use(AddProfileContext);
   const [localProfileMessage, setLocalProfileMessage] = useState("");
 
-  const { control, watch, handleSubmit, reset } = useForm<Profile.Item>({
-    defaultValues: profile || {
-      type: "remote",
-      name: addProfileCtx?.name || `New Profile`,
-      desc: addProfileCtx?.desc || "",
-      url: addProfileCtx?.url || "",
-      option: {
-        // user_agent: "",
-        with_proxy: false,
-        self_proxy: false,
+  const { control, watch, handleSubmit, reset, setValue } =
+    useForm<Profile.Item>({
+      defaultValues: profile || {
+        type: "remote",
+        name: addProfileCtx?.name || `New Profile`,
+        desc: addProfileCtx?.desc || "",
+        url: addProfileCtx?.url || "",
+        option: {
+          // user_agent: "",
+          with_proxy: false,
+          self_proxy: false,
+        },
       },
-    },
-  });
+    });
+
+  useEffect(() => {
+    if (addProfileCtx) {
+      setValue("url", addProfileCtx.url);
+      if (addProfileCtx.desc) setValue("desc", addProfileCtx.desc);
+      if (addProfileCtx.name) setValue("name", addProfileCtx.name);
+    }
+  }, [addProfileCtx, setValue]);
 
   const isRemote = watch("type") === "remote";
 

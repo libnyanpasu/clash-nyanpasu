@@ -168,10 +168,10 @@ impl Runner for JSRunner {
     }
 
     async fn process_honey(&self, mapping: Mapping, script: &str) -> ProcessOutput {
-        let script = wrap_script_if_not_esm(script);
+        let script = wrap_result!(wrap_script_if_not_esm(script));
         let hash = crate::utils::help::get_uid("script");
         let path = CUSTOM_SCRIPTS_DIR.join(format!("{}.mjs", hash));
-        wrap_result!(tokio::fs::write(&path, script)
+        wrap_result!(tokio::fs::write(&path, script.as_bytes())
             .await
             .context("failed to write the script file"));
         // boa engine is single-thread runner so that we can use it in tokio::task::spawn_blocking
@@ -244,15 +244,88 @@ impl Runner for JSRunner {
 }
 
 mod utils {
-    use once_cell::sync::Lazy;
-    use regex::Regex;
-    static RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^function\b[\s\S]*?\bmain\b").unwrap());
-    pub fn wrap_script_if_not_esm(script: &str) -> String {
-        let script = script.trim_matches(&[' ', '\n', '\t', '\r']);
-        if !RE.is_match(script) {
-            script.to_string()
-        } else {
-            format!("export default {}", script)
+    use oxc_allocator::Allocator;
+    use oxc_ast::{
+        visit::walk::{walk_function, walk_module_export_name},
+        Visit,
+    };
+    use oxc_parser::Parser;
+    use oxc_span::{SourceType, Span};
+    use oxc_syntax::scope::ScopeFlags;
+
+    use std::borrow::Cow;
+
+    use crate::enhance::script;
+
+    #[derive(Debug, Default)]
+    struct FunctionVisitor<'n> {
+        exported_name: Vec<Cow<'n, str>>,
+        declared_functions: Vec<(Cow<'n, str>, Cow<'n, Span>)>,
+    }
+
+    impl<'n> Visit<'n> for FunctionVisitor<'n> {
+        // Visit module exported name to confirm whether exists default export
+        fn visit_module_export_name(&mut self, it: &oxc_ast::ast::ModuleExportName<'n>) {
+            match it {
+                oxc_ast::ast::ModuleExportName::IdentifierName(id) => {
+                    self.exported_name.push(Cow::Borrowed(id.name.as_str()))
+                }
+                oxc_ast::ast::ModuleExportName::IdentifierReference(id) => {
+                    self.exported_name.push(Cow::Borrowed(id.name.as_str()))
+                }
+                oxc_ast::ast::ModuleExportName::StringLiteral(s) => {
+                    self.exported_name.push(Cow::Borrowed(s.value.as_str()))
+                }
+            }
+            walk_module_export_name(self, it);
+        }
+
+        // Visit function declaration to save the function name and span and check whether it is default export
+        fn visit_function(&mut self, it: &oxc_ast::ast::Function<'n>, flags: ScopeFlags) {
+            // eprintln!("function: {:#?}", it);
+            if let Some(id) = it.id.clone() {
+                self.declared_functions
+                    .push((Cow::Borrowed(id.name.as_str()), Cow::Owned(it.span)));
+            }
+            walk_function(self, it, flags);
+        }
+    }
+
+    pub fn wrap_script_if_not_esm(script: &str) -> Result<Cow<'_, str>, anyhow::Error> {
+        let allocator = Allocator::default();
+        let source_type = SourceType::default().with_module(true);
+        let source_text = script.trim_matches(['\t', '\n', '\r', ' ']);
+        let result = Parser::new(&allocator, source_text, source_type).parse();
+
+        if !result.errors.is_empty() {
+            let mut errors = String::new();
+            for error in result.errors {
+                errors.push_str(&format!(
+                    "{:?}\n",
+                    error.with_source_code(source_text.to_string())
+                ));
+            }
+            return Err(anyhow::anyhow!("parse error: {}", errors));
+        }
+        // eprintln!("result: {:#?}", result.program);
+        let mut visitor = FunctionVisitor::default();
+        visitor.visit_program(&result.program);
+        if visitor.exported_name.iter().any(|s| s.contains("default")) {
+            return Ok(Cow::Borrowed(script));
+        }
+        // check whether `function main` exists
+        match visitor
+            .declared_functions
+            .iter()
+            .find(|(name, _)| name.contains("main"))
+        {
+            Some((_, span)) => {
+                // just insert `export default` before the function
+                let mut script = script.to_string();
+                script.insert_str(span.start as usize, "export default ");
+                Ok(Cow::Owned(script))
+            }
+            None => Err(anyhow::anyhow!("no default export or main function")),
         }
     }
 }
@@ -263,10 +336,67 @@ mod test {
         let script = r#"function main(config) {
             return config
         };"#;
-        let script = super::utils::wrap_script_if_not_esm(script);
+        let script = super::utils::wrap_script_if_not_esm(script).unwrap();
         assert_eq!(
             script,
             "export default function main(config) {\n            return config\n        };"
+        );
+    }
+
+    #[test]
+    fn test_wrap_script_if_esm() {
+        let script =
+            "export default function main(config) {\n            return config\n        };";
+        let script = super::utils::wrap_script_if_not_esm(script).unwrap();
+        assert_eq!(
+            script,
+            "export default function main(config) {\n            return config\n        };"
+        );
+    }
+
+    #[test]
+    fn test_wrap_script_if_not_esm_sample_2() {
+        let script = r#"// 国内DNS服务器
+const domesticNameservers = [
+  "https://dns.alidns.com/dns-query", // 阿里云公共DNS
+  "https://doh.pub/dns-query", // 腾讯DNSPod
+  "https://doh.360.cn/dns-query" // 360安全DNS
+];
+// 国外DNS服务器
+const foreignNameservers = [
+  "https://1.1.1.1/dns-query", // Cloudflare(主)
+  "https://1.0.0.1/dns-query", // Cloudflare(备)
+  "https://208.67.222.222/dns-query", // OpenDNS(主)
+  "https://208.67.220.220/dns-query", // OpenDNS(备)
+  "https://194.242.2.2/dns-query", // Mullvad(主)
+  "https://194.242.2.3/dns-query" // Mullvad(备)
+];
+        function main(config) {
+            // do something
+            return config
+        };"#;
+        let script = super::utils::wrap_script_if_not_esm(script).unwrap();
+        assert_eq!(
+            script,
+            r#"// 国内DNS服务器
+const domesticNameservers = [
+  "https://dns.alidns.com/dns-query", // 阿里云公共DNS
+  "https://doh.pub/dns-query", // 腾讯DNSPod
+  "https://doh.360.cn/dns-query" // 360安全DNS
+];
+// 国外DNS服务器
+const foreignNameservers = [
+  "https://1.1.1.1/dns-query", // Cloudflare(主)
+  "https://1.0.0.1/dns-query", // Cloudflare(备)
+  "https://208.67.222.222/dns-query", // OpenDNS(主)
+  "https://208.67.220.220/dns-query", // OpenDNS(备)
+  "https://194.242.2.2/dns-query", // Mullvad(主)
+  "https://194.242.2.3/dns-query" // Mullvad(备)
+];
+        export default function main(config) {
+            // do something
+            return config
+        };"#
         );
     }
 

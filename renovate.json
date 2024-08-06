@@ -20,6 +20,10 @@
       "platformAutomerge": false
     },
     {
+      "groupName": "Oxc packages",
+      "matchPackagePatterns": ["oxc"]
+    },
+    {
       "groupName": "Bundler packages",
       "matchPackagePatterns": ["vite", "unplugin"]
     },

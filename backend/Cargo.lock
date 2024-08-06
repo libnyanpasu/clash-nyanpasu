@@ -5017,9 +5017,9 @@ checksum = "caff54706df99d2a78a5a4e3455ff45448d81ef1bb63c22cd14052ca0e993a3f"
 
 [[package]]
 name = "oxc_allocator"
-version = "0.23.0"
+version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce3c5442368a2b966a045e2499fb1075c2470abc91c7f4cc4bd8fb369c144e78"
+checksum = "0222635617c93d6b8cf04931d33f865af48f092219bd3a5748a0a10aadba3357"
 dependencies = [
  "allocator-api2",
  "bumpalo",
@@ -5085,9 +5085,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_span"
-version = "0.23.0"
+version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4754789169acb508592992125a9f8aae5144064860aee4df7f5df0dd5bad06f8"
+checksum = "e11728a24c5e0219c0f93b633e8cf472f4963635911de6bece7ec663c762099f"
 dependencies = [
  "compact_str",
  "miette",

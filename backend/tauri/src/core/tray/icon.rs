@@ -1,7 +1,6 @@
 use crate::utils::dirs::tray_icons_path;
 use serde::{Deserialize, Serialize};
 use std::{
-    any::Any,
     borrow::Cow,
     fmt::{Display, Formatter},
     path::PathBuf,

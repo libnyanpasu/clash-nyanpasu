@@ -255,8 +255,6 @@ mod utils {
 
     use std::borrow::Cow;
 
-    use crate::enhance::script;
-
     #[derive(Debug, Default)]
     struct FunctionVisitor<'n> {
         exported_name: Vec<Cow<'n, str>>,

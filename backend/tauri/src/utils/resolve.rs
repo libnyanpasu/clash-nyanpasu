@@ -22,6 +22,10 @@ use tauri::{api::process::Command, async_runtime::block_on, App, AppHandle, Mana
 
 static OPEN_WINDOWS_COUNTER: AtomicU16 = AtomicU16::new(0);
 
+pub fn is_window_opened() -> bool {
+    OPEN_WINDOWS_COUNTER.load(Ordering::Acquire) == 0 // 0 means no window open or windows is initialized
+}
+
 pub fn reset_window_open_counter() {
     OPEN_WINDOWS_COUNTER.store(0, Ordering::Release);
 }

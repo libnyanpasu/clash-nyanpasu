@@ -2,7 +2,6 @@ use crate::utils::{dirs, help};
 use anyhow::Result;
 // use log::LevelFilter;
 use enumflags2::bitflags;
-use semver::Op;
 use serde::{Deserialize, Serialize};
 mod clash_strategy;
 pub mod logging;

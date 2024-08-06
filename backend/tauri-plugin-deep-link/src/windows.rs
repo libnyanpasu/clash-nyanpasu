@@ -1,16 +1,22 @@
 use std::{
-    io::{BufRead, BufReader, Result, Write},
     path::Path,
-    sync::{
-        atomic::{AtomicU16, AtomicUsize, Ordering},
-        Arc,
-    },
+    sync::atomic::{AtomicU16, Ordering},
 };
 
-use interprocess::local_socket::{LocalSocketListener, LocalSocketStream};
+use interprocess::{
+    bound_util::RefTokioAsyncRead,
+    local_socket::{
+        tokio::prelude::*,
+        traits::tokio::{Listener, Stream},
+        GenericNamespaced, ListenerNonblockingMode, ListenerOptions, Name, ToNsName,
+    },
+};
+use std::io::Result;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use windows_sys::Win32::UI::{
     Input::KeyboardAndMouse::{SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT},
     WindowsAndMessaging::{AllowSetForegroundWindow, ASFW_ANY},
+    // WindowsAndMessaging::{AllowSetForegroundWindow, ASFW_ANY},
 };
 use winreg::{enums::HKEY_CURRENT_USER, RegKey};
 
@@ -68,65 +74,115 @@ pub fn listen<F: FnMut(String) + Send + 'static>(mut handler: F) -> Result<()> {
     }
 
     std::thread::spawn(move || {
-        let listener =
-            LocalSocketListener::bind(ID.get().expect("listen() called before prepare()").as_str())
-                .expect("Can't create listener");
+        let name = ID
+            .get()
+            .expect("listen() called before prepare()")
+            .as_str()
+            .to_ns_name::<GenericNamespaced>()
+            .unwrap();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to create tokio runtime")
+            .block_on(async move {
+                let listener = ListenerOptions::new()
+                    .name(name)
+                    .nonblocking(ListenerNonblockingMode::Both)
+                    .create_tokio()
+                    .expect("Can't create listener");
 
-        for conn in listener.incoming() {
-            match conn {
-                Ok(conn) => {
-                    // Listen for the launch arguments
-                    let mut conn = BufReader::new(conn);
-                    let mut buffer = String::new();
-                    if let Err(io_err) = conn.read_line(&mut buffer) {
-                        log::error!("Error reading incoming connection: {}", io_err.to_string());
-                    };
-                    buffer.pop();
-
-                    handler(buffer);
-                }
-                Err(error) => {
-                    log::error!("Incoming connection failed: {}", error);
-                    if error.raw_os_error() == Some(232) || error.to_string().contains("232") {
-                        break;
+                loop {
+                    match listener.accept().await {
+                        Ok(conn) => {
+                            let (rx, mut tx) = conn.split();
+                            let mut reader = BufReader::new(rx);
+                            let mut buf = String::new();
+                            if let Err(e) = reader.read_line(&mut buf).await {
+                                log::error!("Error reading from connection: {}", e);
+                                continue;
+                            }
+                            buf.pop();
+                            let current_pid = std::process::id();
+                            let response = format!("{current_pid}\n");
+                            if let Err(e) = tx.write_all(response.as_bytes()).await {
+                                log::error!("Error writing to connection: {}", e);
+                                continue;
+                            }
+                            handler(buf);
+                        }
+                        Err(e) if e.raw_os_error() == Some(232) => {
+                            // 234 is WSAEINTR, which means the listener was closed.
+                            break;
+                        }
+                        Err(e) => {
+                            log::error!("Error accepting connection: {}", e);
+                        }
                     }
                 }
-            }
-        }
-        CRASH_COUNT.fetch_add(1, Ordering::Release);
-        let _ = listen(handler);
+                CRASH_COUNT.fetch_add(1, Ordering::Release);
+                let _ = listen(handler);
+            });
     });
 
     Ok(())
 }
 
 pub fn prepare(identifier: &str) {
-    if let Ok(mut conn) = LocalSocketStream::connect(identifier) {
-        // We are the secondary instance.
-        // Prep to activate primary instance by allowing another process to take focus.
+    let name: Name = identifier
+        .to_ns_name::<GenericNamespaced>()
+        .expect("Invalid identifier");
 
-        // A workaround to allow AllowSetForegroundWindow to succeed - press a key.
-        // This was originally used by Chromium: https://bugs.chromium.org/p/chromium/issues/detail?id=837796
-        dummy_keypress();
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("failed to create tokio runtime")
+        .block_on(async move {
+            if let Ok(conn) = LocalSocketStream::connect(name).await {
+                // We are the secondary instance.
+                // Prep to activate primary instance by allowing another process to take focus.
 
-        let primary_instance_pid = conn.peer_pid().unwrap_or(ASFW_ANY);
-        unsafe {
-            let success = AllowSetForegroundWindow(primary_instance_pid) != 0;
-            if !success {
-                log::warn!("AllowSetForegroundWindow failed.");
-            }
-        }
+                // A workaround to allow AllowSetForegroundWindow to succeed - press a key.
+                // This was originally used by Chromium: https://bugs.chromium.org/p/chromium/issues/detail?id=837796
+                // dummy_keypress();
 
-        if let Err(io_err) = conn.write_all(std::env::args().nth(1).unwrap_or_default().as_bytes())
-        {
-            log::error!(
-                "Error sending message to primary instance: {}",
-                io_err.to_string()
-            );
-        };
-        let _ = conn.write_all(b"\n");
-        std::process::exit(0);
-    };
+                // let primary_instance_pid = conn.peer_pid().unwrap_or(ASFW_ANY);
+                // unsafe {
+                //     let success = AllowSetForegroundWindow(primary_instance_pid) != 0;
+                //     if !success {
+                //         log::warn!("AllowSetForegroundWindow failed.");
+                //     }
+                // }
+                let (socket_rx, mut socket_tx) = conn.split();
+                let mut socket_rx = socket_rx.as_tokio_async_read();
+                let url = std::env::args().nth(1).expect("URL not provided");
+                socket_tx
+                    .write_all(url.as_bytes())
+                    .await
+                    .expect("Failed to write to socket");
+                socket_tx
+                    .write_all(b"\n")
+                    .await
+                    .expect("Failed to write to socket");
+                socket_tx.flush().await.expect("Failed to flush socket");
+
+                let mut reader = BufReader::new(&mut socket_rx);
+                let mut buf = String::new();
+                if let Err(e) = reader.read_line(&mut buf).await {
+                    eprintln!("Error reading from connection: {}", e);
+                }
+                buf.pop();
+                dummy_keypress();
+                let pid = buf.parse::<u32>().unwrap_or(ASFW_ANY);
+                unsafe {
+                    let success = AllowSetForegroundWindow(pid) != 0;
+                    if !success {
+                        eprintln!("AllowSetForegroundWindow failed.");
+                    }
+                }
+                std::process::exit(0);
+            };
+        });
+
     ID.set(identifier.to_string())
         .expect("prepare() called more than once with different identifiers.");
 }

@@ -27,7 +27,7 @@ use crate::{
     utils::{init, resolve},
 };
 use tauri::{api, Manager, SystemTray};
-use utils::resolve::reset_window_open_counter;
+use utils::resolve::{is_window_opened, reset_window_open_counter};
 
 rust_i18n::i18n!("../../locales");
 
@@ -129,19 +129,18 @@ fn main() -> std::io::Result<()> {
             #[cfg(not(target_os = "macos"))]
             if let Some(url) = custom_schema {
                 log::info!(target: "app", "started with schema");
-                if Config::verge().data().enable_silent_start.unwrap_or(true) {
-                    resolve::create_window(&handle.clone());
+                resolve::create_window(&handle.clone());
+                while !is_window_opened() {
+                    log::info!(target: "app", "waiting for window open");
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                 }
-                app.listen_global("init-complete", move |_| {
-                    log::info!(target: "app", "frontend init-complete event received");
-                    Handle::global()
-                        .app_handle
-                        .lock()
-                        .as_ref()
-                        .unwrap()
-                        .emit_all("scheme-request-received", url.clone())
-                        .unwrap();
-                });
+                Handle::global()
+                    .app_handle
+                    .lock()
+                    .as_ref()
+                    .unwrap()
+                    .emit_all("scheme-request-received", url.clone())
+                    .unwrap();
             }
             // This operation should terminate the app if app is called by custom scheme and this instance is not the primary instance
             log_err!(tauri_plugin_deep_link::register(
@@ -149,6 +148,10 @@ fn main() -> std::io::Result<()> {
                 move |request| {
                     log::info!(target: "app", "scheme request received: {:?}", &request);
                     resolve::create_window(&handle.clone()); // create window if not exists
+                    while !is_window_opened() {
+                        log::info!(target: "app", "waiting for window open");
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                    }
                     handle.emit_all("scheme-request-received", request).unwrap();
                 }
             ));

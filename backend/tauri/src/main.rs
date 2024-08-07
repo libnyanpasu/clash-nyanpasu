@@ -82,7 +82,9 @@ fn main() -> std::io::Result<()> {
 
     // 单例检测
     let single_instance_result = utils::init::check_singleton();
-
+    if single_instance_result.is_err() {
+        std::process::exit(0);
+    }
     // Use system locale as default
     let locale = {
         let locale = utils::help::get_system_locale();

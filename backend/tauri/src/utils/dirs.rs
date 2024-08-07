@@ -302,12 +302,12 @@ pub fn path_to_str(path: &PathBuf) -> Result<&str> {
 }
 
 pub fn get_single_instance_placeholder() -> String {
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
     {
         APP_NAME.to_string()
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(not(windows))]
     {
         crate::utils::dirs::app_data_dir()
             .unwrap()

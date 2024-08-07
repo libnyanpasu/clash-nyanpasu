@@ -72,7 +72,6 @@ pub async fn enhance() -> (Mapping, Vec<String>, IndexMap<String, Logs>) {
     let mut script_runner = RunnerManager::new();
     for item in chains.into_iter() {
         // TODO: 想一个更好的办法，避免内存拷贝
-        config = use_lowercase(config.clone()); // 将所有的 key 转为小写（递归）
         match item.data {
             ChainTypeWrapper::Merge(merge) => {
                 let mut logs = vec![];
@@ -102,7 +101,6 @@ pub async fn enhance() -> (Mapping, Vec<String>, IndexMap<String, Logs>) {
             }
         }
     }
-    config = use_lowercase(config); // 将所有的 key 转为小写（递归）
 
     // 合并默认的config
     clash_config

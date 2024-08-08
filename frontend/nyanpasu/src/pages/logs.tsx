@@ -1,14 +1,12 @@
-import { useAtomValue } from "jotai";
-import { useEffect, useState } from "react";
+import { useDebounceEffect } from "ahooks";
+import { useAtomValue, useSetAtom } from "jotai";
+import { RefObject, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { BaseEmpty } from "@/components/base";
-import ClearLogButton from "@/components/logs/clear-log-button";
 import { LogFilter } from "@/components/logs/log-filter";
 import { LogLevel } from "@/components/logs/log-level";
-import { LogList } from "@/components/logs/log-list";
 import LogToggle from "@/components/logs/log-toggle";
+import { atomLogList } from "@/components/logs/modules/store";
 import { atomLogData } from "@/store";
-import { LogMessage } from "@nyanpasu/interface";
 import { BasePage } from "@nyanpasu/ui";
 
 export default function LogPage() {
@@ -20,25 +18,30 @@ export default function LogPage() {
 
   const [filterText, setFilterText] = useState("");
 
-  const [filterLogs, setFilterLogs] = useState<LogMessage[]>([]);
+  const setLogList = useSetAtom(atomLogList);
 
-  useEffect(() => {
-    setFilterLogs(
-      logData.filter((data) => {
-        return (
-          data.payload.includes(filterText) &&
-          (logState === "all" ? true : data.type.includes(logState))
-        );
-      }),
-    );
-  }, [logData, logState, filterText]);
+  const viewportRef = useRef<HTMLDivElement>(null);
+
+  useDebounceEffect(
+    () => {
+      setLogList({
+        data: logData.filter((data) => {
+          return (
+            data.payload.includes(filterText) &&
+            (logState === "all" ? true : data.type.includes(logState))
+          );
+        }),
+        scrollRef: viewportRef as RefObject<HTMLElement>,
+      });
+    },
+    [logData, logState, filterText],
+    { wait: 150 },
+  );
 
   return (
     <BasePage
       full
       title={t("Logs")}
-      contentStyle={{ height: "100%" }}
-      sectionStyle={{ height: "100%" }}
       header={
         <div className="flex gap-2">
           <LogToggle />
@@ -51,14 +54,8 @@ export default function LogPage() {
           />
         </div>
       }
-    >
-      {filterLogs.length ? (
-        <LogList data={filterLogs} />
-      ) : (
-        <BaseEmpty text="No Logs" />
-      )}
-
-      <ClearLogButton />
-    </BasePage>
+      viewportRef={viewportRef}
+      children={() => import("@/components/logs/log-page")}
+    />
   );
 }

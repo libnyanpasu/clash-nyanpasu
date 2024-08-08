@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useDebounceEffect } from "ahooks";
+import { useSetAtom } from "jotai";
+import { RefObject, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { VList } from "virtua";
-import { BaseEmpty } from "@/components/base";
-import RuleItem from "@/components/rules/rule-item";
+import { atomRulePage } from "@/components/rules/modules/store";
 import { alpha, FilledInputProps, TextField, useTheme } from "@mui/material";
 import { useClashCore } from "@nyanpasu/interface";
 import { BasePage } from "@nyanpasu/ui";
@@ -16,11 +16,22 @@ export default function RulesPage() {
 
   const [filterText, setFilterText] = useState("");
 
-  const rules = useMemo(() => {
-    return getRules.data?.rules.filter((each) =>
-      each.payload.includes(filterText),
-    );
-  }, [getRules.data, filterText]);
+  const setRule = useSetAtom(atomRulePage);
+
+  const viewportRef = useRef<HTMLDivElement>(null);
+
+  useDebounceEffect(
+    () => {
+      setRule({
+        data: getRules.data?.rules.filter((each) =>
+          each.payload.includes(filterText),
+        ),
+        scrollRef: viewportRef as RefObject<HTMLElement>,
+      });
+    },
+    [getRules.data, viewportRef.current, filterText],
+    { wait: 150 },
+  );
 
   const inputProps: Partial<FilledInputProps> = {
     sx: {
@@ -37,8 +48,6 @@ export default function RulesPage() {
     <BasePage
       full
       title={t("Rules")}
-      contentStyle={{ height: "100%" }}
-      sectionStyle={{ height: "100%" }}
       header={
         <TextField
           hiddenLabel
@@ -52,16 +61,8 @@ export default function RulesPage() {
           InputProps={inputProps}
         />
       }
-    >
-      <VList className="flex select-text flex-col gap-2 overflow-auto p-2">
-        {rules ? (
-          rules.map((item, index) => {
-            return <RuleItem key={index} index={index} value={item} />;
-          })
-        ) : (
-          <BaseEmpty text="No Rules" />
-        )}
-      </VList>
-    </BasePage>
+      viewportRef={viewportRef}
+      children={() => import("@/components/rules/rule-page")}
+    />
   );
 }

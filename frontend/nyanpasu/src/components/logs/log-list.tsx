@@ -1,36 +1,53 @@
 import { useDebounceEffect } from "ahooks";
-import { useRef } from "react";
-import { VList, VListHandle } from "virtua";
+import { RefObject, useRef } from "react";
+import { Virtualizer, VListHandle } from "virtua";
 import { LogMessage } from "@nyanpasu/interface";
 import LogItem from "./log-item";
 
-export const LogList = ({ data }: { data: LogMessage[] }) => {
-  const vListRef = useRef<VListHandle>(null);
+export interface LogListProps {
+  data: LogMessage[];
+  scrollRef: RefObject<HTMLElement>;
+}
+
+export const LogList = ({ data, scrollRef }: LogListProps) => {
+  const virtualizerRef = useRef<VListHandle>(null);
 
   const shouldStickToBottom = useRef(true);
 
+  const isFristScroll = useRef(true);
+
   useDebounceEffect(
     () => {
-      if (shouldStickToBottom.current) {
-        vListRef.current?.scrollToIndex(data.length - 1, {
+      if (shouldStickToBottom) {
+        virtualizerRef.current?.scrollToIndex(data.length - 1, {
           align: "end",
-          smooth: true,
+          smooth: !isFristScroll.current,
         });
+
+        isFristScroll.current = false;
       }
     },
     [data],
     { wait: 100 },
   );
 
+  const handleRangeChange = (_start: number, end: number) => {
+    if (end + 1 === data.length) {
+      shouldStickToBottom.current = true;
+    } else {
+      shouldStickToBottom.current = false;
+    }
+  };
+
   return (
-    <VList
-      ref={vListRef}
-      className="flex min-h-full select-text flex-col gap-2 overflow-auto p-2"
-      reverse
+    <Virtualizer
+      ref={virtualizerRef}
+      scrollRef={scrollRef}
+      onRangeChange={handleRangeChange}
     >
       {data.map((item, index) => {
         return <LogItem key={index} value={item} />;
       })}
-    </VList>
+    </Virtualizer>
   );
 };

@@ -11,7 +11,7 @@ export const Dashboard = () => {
 
   return (
     <BasePage title={t("Dashboard")}>
-      <Grid container spacing={2} sx={{ width: "calc(100% + 24px)" }}>
+      <Grid container spacing={2}>
         <DataPanel />
 
         <HealthPanel />

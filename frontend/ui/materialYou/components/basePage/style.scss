@@ -16,33 +16,10 @@
   }
 
   .MDYBasePage-container {
-    position: relative;
-    box-sizing: border-box;
-    flex: 1 1 100%;
-    width: 100%;
-    height: 100%;
-    overflow: auto;
     background-color: var(--background-color);
-    border-radius: calc(var(--border-radius) * 2);
-    scrollbar-gutter: stable;
 
-    .MDYBasePage-content {
-      > section {
-        padding: 28px;
-        margin: 0 auto;
-      }
-    }
-
-    &.no-padding {
-      scrollbar-gutter: unset;
-
-      .MDYBasePage-content {
-        overflow: visible;
-
-        > section {
-          padding: 0;
-        }
-      }
+    .ScrollArea-Thumb {
+      background-color: var(--scroller-color);
     }
   }
 }

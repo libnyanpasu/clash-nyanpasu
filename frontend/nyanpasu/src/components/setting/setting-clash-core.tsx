@@ -145,7 +145,7 @@ export const SettingClashCore = () => {
       };
     });
   }, [getClashCore.data, getLatestCore.data]);
-  console.log(nyanpasuConfig?.clash_core);
+
   return (
     <BaseCard
       label={t("Clash Core")}

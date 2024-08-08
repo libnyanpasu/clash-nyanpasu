@@ -298,8 +298,8 @@ importers:
         specifier: 11.13.0
         version: 11.13.0(react@19.0.0-rc-e948a5ac-20240807)(types-react@19.0.0-rc.1)
       '@iconify/json':
-        specifier: 2.2.234
-        version: 2.2.234
+        specifier: 2.2.235
+        version: 2.2.235
       '@types/react':
         specifier: npm:types-react@rc
         version: types-react@19.0.0-rc.1
@@ -1219,8 +1219,8 @@ packages:
       '@vue/compiler-sfc':
         optional: true
 
-  '@iconify/json@2.2.234':
-    resolution: {integrity: sha512-2z0+I0YhHelZ+MPX7wHsSGKv81PicsnVlRfCYNmhZ0s1tyPo7Kkvt8QWjytPZV6f/ypb111I5jpTFB+W7bcAgQ==}
+  '@iconify/json@2.2.235':
+    resolution: {integrity: sha512-8a5r/uIZY3DvJPCkRCMly0BgmsxItMTR6RjGnifQ0kGrLSE7TpdYIfQya9Ckd2qfWjD20WZmWblpFm1FcF6ybQ==}
 
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
@@ -7194,7 +7194,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@iconify/json@2.2.234':
+  '@iconify/json@2.2.235':
     dependencies:
       '@iconify/types': 2.0.0
       pathe: 1.1.2

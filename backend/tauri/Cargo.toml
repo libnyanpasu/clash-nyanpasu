@@ -122,11 +122,11 @@ os_pipe = "1.2.0"
 whoami = "1.5.1"
 atomic_enum = "0.3.0"
 boa_engine.workspace = true
-oxc_parser = "0.23"
-oxc_allocator = "0.23"
-oxc_span = "0.23"
-oxc_ast = "0.23"
-oxc_syntax = "0.23"
+oxc_parser = "0.24"
+oxc_allocator = "0.24"
+oxc_span = "0.24"
+oxc_ast = "0.24"
+oxc_syntax = "0.24"
 mlua = { version = "0.9", features = [
   "lua54",
   "async",

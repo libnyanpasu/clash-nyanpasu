@@ -11,6 +11,7 @@ import {
   ListItemText,
 } from "@mui/material";
 import { getServerPort, useClashCore } from "@nyanpasu/interface";
+import LazyImage from "@nyanpasu/ui/materialYou/components/lazyImage";
 
 const IconRender = memo(function IconRender({ icon }: { icon: string }) {
   const {
@@ -32,7 +33,11 @@ const IconRender = memo(function IconRender({ icon }: { icon: string }) {
   }
   return (
     <ListItemIcon>
-      <img className="h-11 w-11" src={cachedUrl} />
+      <LazyImage
+        className="h-11 w-11"
+        loadingClassName="rounded-full"
+        src={cachedUrl}
+      />
     </ListItemIcon>
   );
 });

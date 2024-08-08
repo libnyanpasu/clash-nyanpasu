@@ -364,7 +364,7 @@ importers:
         specifier: 1.1.1
         version: 1.1.1(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
       '@radix-ui/react-scroll-area':
-        specifier: ^1.1.0
+        specifier: 1.1.0
         version: 1.1.0(react@19.0.0-rc-df783f9ea1-20240708)(types-react@19.0.0-rc.1)
       '@tauri-apps/api':
         specifier: 1.6.0

@@ -14,6 +14,7 @@ export const useNyanpasu = (options?: {
   onSuccess?: (data?: VergeConfig) => void;
   onUpdate?: (data?: VergeConfig) => void;
   onError?: (error: any) => void;
+  onLatestCoreError?: (error: any) => void;
 }) => {
   const { getConfigs, setConfigs, deleteConnections } = useClash();
 
@@ -56,6 +57,9 @@ export const useNyanpasu = (options?: {
 
   const getLatestCore = useSWR("getLatestCore", fetchLatestCore, {
     revalidateOnMount: false,
+    revalidateOnFocus: false,
+    refreshInterval: 0,
+    onError: options?.onLatestCoreError,
   });
 
   const updateCore = async (core: Required<VergeConfig>["clash_core"]) => {

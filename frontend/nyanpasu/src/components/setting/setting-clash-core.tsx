@@ -2,6 +2,7 @@ import { useLockFn, useReactive } from "ahooks";
 import { motion } from "framer-motion";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { formatError } from "@/utils";
 import { message } from "@/utils/notification";
 import LoadingButton from "@mui/lab/LoadingButton";
 import { Box, List, ListItem } from "@mui/material";
@@ -32,7 +33,14 @@ export const SettingClashCore = () => {
     restartSidecar,
     getLatestCore,
     updateCore,
-  } = useNyanpasu();
+  } = useNyanpasu({
+    onLatestCoreError: (error) => {
+      message(`Fetch latest core failed: ${formatError(error)}`, {
+        type: "error",
+        title: t("Error"),
+      });
+    },
+  });
 
   const { getVersion, deleteConnections } = useClash();
 

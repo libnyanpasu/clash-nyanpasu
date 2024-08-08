@@ -22,7 +22,7 @@ export const LogItem = ({ value }: { value: LogMessage }) => {
   }, [value.payload]);
 
   return (
-    <div className="w-full p-4 pb-0 pt-2 font-mono">
+    <div className="w-full select-text p-4 pb-0 pt-2 font-mono">
       <div className="flex gap-2">
         <span className="font-thin">{value.time}</span>
 

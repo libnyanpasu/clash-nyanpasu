@@ -6,7 +6,7 @@ import { defaultTheme } from "@/pages/_theme";
 import { themeMode as themeModeAtom } from "@/store";
 import { alpha, darken, lighten, Theme, useColorScheme } from "@mui/material";
 import { useNyanpasu } from "@nyanpasu/interface";
-import { createMDYTheme } from "@nyanpasu/ui";
+import { cn, createMDYTheme } from "@nyanpasu/ui";
 import { appWindow } from "@tauri-apps/api/window";
 
 const applyRootStyleVar = (mode: "light" | "dark", theme: Theme) => {
@@ -14,7 +14,7 @@ const applyRootStyleVar = (mode: "light" | "dark", theme: Theme) => {
   const palette = theme.colorSchemes[mode].palette;
 
   const isLightMode = mode !== "light";
-
+  root.className = cn(mode === "dark" && "dark");
   const backgroundColor = isLightMode
     ? darken(palette.secondary.dark, 0.95)
     : lighten(palette.secondary.light, 0.95);

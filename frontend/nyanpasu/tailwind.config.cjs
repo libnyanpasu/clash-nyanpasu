@@ -5,6 +5,7 @@ const plugin = require("tailwindcss/plugin");
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: ["./src/**/*.{tsx,ts}", "../ui/**/*.{tsx,ts}"],
+  darkMode: "selector",
   theme: {
     extend: {
       maxHeight: {

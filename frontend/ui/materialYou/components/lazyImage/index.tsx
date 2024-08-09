@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { cn } from "@/utils";
 
 export interface LazyImageProps
@@ -7,28 +7,22 @@ export interface LazyImageProps
 }
 export default function LazyImage(props: LazyImageProps) {
   const [loading, setLoading] = useState(true);
-  const imgRef = useRef<HTMLImageElement>(null);
-  useEffect(() => {
-    if (imgRef.current) {
-      imgRef.current.onload = () => setLoading(false);
-    }
-  }, [props.src]);
 
   return (
     <>
       <div
         className={cn(
-          "inline-block animate-pulse bg-slate-100 ring-1 ring-white dark:bg-slate-700 dark:ring-slate-700",
+          "inline-block animate-pulse bg-slate-200 ring-1 ring-slate-200 dark:bg-slate-700 dark:ring-slate-700",
           props.className,
           props.loadingClassName,
-          loading && "block",
+          loading ? "inline-block" : "hidden",
         )}
       />
       <img
         {...props}
         loading="lazy"
-        ref={imgRef}
-        className={cn(props.className, !loading && "block")}
+        onLoad={() => setLoading(false)}
+        className={cn(props.className, loading ? "hidden" : "inline-block")}
       />
     </>
   );

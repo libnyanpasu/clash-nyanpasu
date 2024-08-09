@@ -20,7 +20,6 @@ export default function LazyImage(props: LazyImageProps) {
       />
       <img
         {...props}
-        loading="lazy"
         onLoad={() => setLoading(false)}
         className={cn(props.className, loading ? "hidden" : "inline-block")}
       />

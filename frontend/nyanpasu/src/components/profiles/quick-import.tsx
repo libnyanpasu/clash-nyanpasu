@@ -100,6 +100,7 @@ export const QuickImport = () => {
       value={url}
       placeholder={t("Profile URL")}
       onChange={(e) => setUrl(e.target.value)}
+      onKeyDown={(e) => url !== "" && e.key === "Enter" && handleImport()}
       sx={{ input: { py: 1, px: 2 } }}
       InputProps={inputProps}
     />

@@ -172,5 +172,6 @@
   "system_proxy": "系统代理",
   "Proxy takeover Status": "代理接管状态",
   "Subscription Expires In": "{{time}}到期",
-  "Subscription Updated At": "{{time}}更新"
+  "Subscription Updated At": "{{time}}更新",
+  "Select file to import or leave blank to touch new one.": "选择文件导入或留空新建。"
 }

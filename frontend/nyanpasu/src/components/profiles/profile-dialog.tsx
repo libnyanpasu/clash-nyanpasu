@@ -93,9 +93,8 @@ export const ProfileDialog = ({
         if (localProfile.current) {
           await createProfile(form, localProfile.current);
         } else {
-          setLocalProfileMessage("Not selected profile");
-
-          return;
+          // setLocalProfileMessage("Not selected profile");
+          await createProfile(form, "rules: []");
         }
       }
     };
@@ -246,6 +245,9 @@ export const ProfileDialog = ({
             {localProfileMessage && (
               <div className="ml-2 text-red-500">{localProfileMessage}</div>
             )}
+            <span className="px-2 text-xs">
+              * {t("Select file to import or leave blank to touch new one.")}
+            </span>
           </>
         )
       )}

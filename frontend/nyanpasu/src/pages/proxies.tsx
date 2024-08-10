@@ -47,7 +47,13 @@ export default function ProxyPage() {
         setGroup(data?.groups[proxyGroup.selector]);
       }
     }
-  }, [proxyGroup.selector, data?.groups, getCurrentMode]);
+  }, [
+    proxyGroup.selector,
+    data?.groups,
+    getCurrentMode,
+    data?.global,
+    data?.direct,
+  ]);
 
   const handleDelayClick = async () => {
     await updateGroupDelay(proxyGroup.selector as number);

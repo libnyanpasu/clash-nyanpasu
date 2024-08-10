@@ -1,21 +1,20 @@
 import { motion } from "framer-motion";
 import { ComponentType, lazy, Suspense, useState } from "react";
-import { cn } from "@/utils";
+import { Awaitable, cn } from "@/utils";
 import LinearProgress from "@mui/material/LinearProgress";
 
 export interface AsyncComponentProps {
-  component: () => Promise<{ default: ComponentType }>;
+  component: () => Awaitable<{ default: ComponentType }>;
 }
 
 export const AsyncComponent = ({ component }: AsyncComponentProps) => {
   const [isLoaded, setIsLoaded] = useState(false);
 
-  const Component = lazy(() =>
-    component().then(async (module) => {
-      setIsLoaded(true);
-      return module;
-    }),
-  );
+  const Component = lazy(async () => {
+    const module = await component();
+    setIsLoaded(true);
+    return module;
+  });
 
   return (
     <Suspense

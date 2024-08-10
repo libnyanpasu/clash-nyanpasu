@@ -89,7 +89,7 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
           <IconButton
             color="primary"
             className="size-5"
-            onClick={closeConnect(id)}
+            onClick={() => closeConnect(id)}
           >
             <Cancel />
           </IconButton>

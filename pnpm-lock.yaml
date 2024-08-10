@@ -462,8 +462,8 @@ importers:
         specifier: 2.23.10
         version: 2.23.10
       undici:
-        specifier: 6.19.6
-        version: 6.19.6
+        specifier: 6.19.7
+        version: 6.19.7
 
 packages:
 
@@ -6190,8 +6190,8 @@ packages:
     resolution: {integrity: sha512-72RFADWFqKmUb2hmmvNODKL3p9hcB6Gt2DOQMis1SEBaV6a4MH8soBvzg+95CYhCKPFedut2JY9bMfrDl9D23g==}
     engines: {node: '>=14.0'}
 
-  undici@6.19.6:
-    resolution: {integrity: sha512-KfINKY5js30ub8NAGQlUyxldk2NTvNkyKBnJtMpSVCk8fqrPpUDEvDkHV6t+lTHCv9NwbUcHU3Jnm2ohE01G+Q==}
+  undici@6.19.7:
+    resolution: {integrity: sha512-HR3W/bMGPSr90i8AAp2C4DM3wChFdJPLrWYpIS++LxS8K+W535qftjt+4MyjNYHeWabMj1nvtmLIi7l++iq91A==}
     engines: {node: '>=18.17'}
 
   unicorn-magic@0.1.0:
@@ -12700,7 +12700,7 @@ snapshots:
     dependencies:
       '@fastify/busboy': 2.1.1
 
-  undici@6.19.6: {}
+  undici@6.19.7: {}
 
   unicorn-magic@0.1.0: {}
 

@@ -1,13 +1,9 @@
 import { useThrottle } from "ahooks";
-import { lazy, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import CloseConnectionsButton from "@/components/connections/close-connections-button";
+import { SearchTermCtx } from "@/components/connections/connection-search-term";
 import HeaderSearch from "@/components/connections/header-search";
 import { BasePage } from "@nyanpasu/ui";
-
-const ConnectionsTable = lazy(
-  () => import("@/components/connections/connections-table"),
-);
 
 export const Connections = () => {
   const { t } = useTranslation();
@@ -17,24 +13,21 @@ export const Connections = () => {
   const throttledSearchTerm = useThrottle(searchTerm, { wait: 150 });
 
   return (
-    <BasePage
-      title={t("Connections")}
-      full
-      header={
-        <div className="max-h-96">
-          <HeaderSearch
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-      }
-      children={() => (
-        <>
-          <ConnectionsTable searchTerm={throttledSearchTerm} />
-          <CloseConnectionsButton />
-        </>
-      )}
-    ></BasePage>
+    <SearchTermCtx.Provider value={throttledSearchTerm}>
+      <BasePage
+        title={t("Connections")}
+        full
+        header={
+          <div className="max-h-96">
+            <HeaderSearch
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+        }
+        children={() => import("@/components/connections/connection-page")}
+      ></BasePage>
+    </SearchTermCtx.Provider>
   );
 };
 

@@ -18,14 +18,48 @@ import RuntimeConfigDiffDialog from "@/components/profiles/runtime-config-diff-d
 import { filterProfiles } from "@/components/profiles/utils";
 import { Public } from "@mui/icons-material";
 import Masonry from "@mui/lab/Masonry";
-import { Button, IconButton } from "@mui/material";
+import { Badge, Button, IconButton } from "@mui/material";
 import { Profile, useClash } from "@nyanpasu/interface";
 import { SidePage } from "@nyanpasu/ui";
 
 export const ProfilePage = () => {
   const { t } = useTranslation();
-  const { getProfiles } = useClash();
-
+  const { getProfiles, getRuntimeLogs } = useClash();
+  const maxLogLevelTriggered = useMemo(() => {
+    const currentProfileChains =
+      getProfiles.data?.items?.find(
+        (item) => item.uid == getProfiles.data?.current,
+      )?.chains || [];
+    return Object.entries(getRuntimeLogs.data || {}).reduce(
+      (acc, [key, value]) => {
+        const accKey = currentProfileChains.includes(key)
+          ? "current"
+          : "global";
+        if (acc[accKey] == "error") {
+          return acc;
+        }
+        for (const log of value) {
+          switch (log[0]) {
+            case "error":
+              return { ...acc, [accKey]: "error" };
+            case "warn":
+              acc = { ...acc, [accKey]: "warn" };
+              break;
+            case "info":
+              if (acc[accKey] != "warn") {
+                acc = { ...acc, [accKey]: "info" };
+              }
+              break;
+          }
+        }
+        return acc;
+      },
+      {} as {
+        global: undefined | "info" | "error" | "warn";
+        current: undefined | "info" | "error" | "warn";
+      },
+    );
+  }, [getRuntimeLogs.data, getProfiles.data]);
   const { profiles } = filterProfiles(getProfiles.data?.items);
 
   const [globalChain, setGlobalChain] = useAtom(atomGlobalChainCurrent);
@@ -82,14 +116,26 @@ export const ProfilePage = () => {
           >
             <IconMdiTextBoxCheckOutline />
           </IconButton>
-          <Button
-            size="small"
-            variant={globalChain ? "contained" : "outlined"}
-            onClick={handleGlobalChainClick}
-            startIcon={<Public />}
+          <Badge
+            variant="dot"
+            color={
+              maxLogLevelTriggered.global === "error"
+                ? "error"
+                : maxLogLevelTriggered.global === "warn"
+                  ? "warning"
+                  : "primary"
+            }
+            invisible={!maxLogLevelTriggered.global}
           >
-            {t("Global Proxy Chains")}
-          </Button>
+            <Button
+              size="small"
+              variant={globalChain ? "contained" : "outlined"}
+              onClick={handleGlobalChainClick}
+              startIcon={<Public />}
+            >
+              {t("Global Proxy Chains")}
+            </Button>
+          </Badge>
         </div>
       }
       sideClassName="!overflow-visible"
@@ -115,6 +161,7 @@ export const ProfilePage = () => {
                   item={item}
                   onClickChains={onClickChains}
                   selected={getProfiles.data?.current == item.uid}
+                  maxLogLevelTriggered={maxLogLevelTriggered}
                   chainsSelected={chainsSelected == item.uid}
                 />
               );

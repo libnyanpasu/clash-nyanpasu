@@ -17,6 +17,7 @@ import {
 import LoadingButton from "@mui/lab/LoadingButton";
 import {
   alpha,
+  Badge,
   Button,
   Chip,
   LinearProgress,
@@ -33,6 +34,10 @@ import { ProfileDialog } from "./profile-dialog";
 export interface ProfileItemProps {
   item: Profile.Item;
   selected?: boolean;
+  maxLogLevelTriggered?: {
+    global: undefined | "info" | "error" | "warn";
+    current: undefined | "info" | "error" | "warn";
+  };
   onClickChains: (item: Profile.Item) => void;
   chainsSelected?: boolean;
 }
@@ -42,6 +47,7 @@ export const ProfileItem = memo(function ProfileItem({
   selected,
   onClickChains,
   chainsSelected,
+  maxLogLevelTriggered,
 }: ProfileItemProps) {
   const { t } = useTranslation();
 
@@ -219,7 +225,9 @@ export const ProfileItem = memo(function ProfileItem({
             {selected && (
               <FiberManualRecord
                 className="top-0 mr-auto !size-3 animate-bounce"
-                sx={{ fill: palette.success.main }}
+                sx={{
+                  fill: palette.success.main,
+                }}
               />
             )}
 
@@ -262,18 +270,30 @@ export const ProfileItem = memo(function ProfileItem({
           </div>
 
           <div className="flex justify-end gap-2">
-            <Button
-              className="!mr-auto"
-              size="small"
-              variant={chainsSelected ? "contained" : "outlined"}
-              startIcon={<Terminal />}
-              onClick={(e) => {
-                cleanDeepClickEvent(e);
-                onClickChains(item);
-              }}
+            <Badge
+              variant="dot"
+              color={
+                maxLogLevelTriggered?.current === "error"
+                  ? "error"
+                  : maxLogLevelTriggered?.current === "warn"
+                    ? "warning"
+                    : "primary"
+              }
+              invisible={!selected || !maxLogLevelTriggered?.current}
             >
-              {t("Proxy Chains")}
-            </Button>
+              <Button
+                className="!mr-auto"
+                size="small"
+                variant={chainsSelected ? "contained" : "outlined"}
+                startIcon={<Terminal />}
+                onClick={(e) => {
+                  cleanDeepClickEvent(e);
+                  onClickChains(item);
+                }}
+              >
+                {t("Proxy Chains")}
+              </Button>
+            </Badge>
 
             {isRemote && (
               <Tooltip title={t("Update")}>

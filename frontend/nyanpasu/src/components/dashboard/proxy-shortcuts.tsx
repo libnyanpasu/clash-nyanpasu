@@ -45,7 +45,7 @@ const TitleComp = () => {
         color: "error",
       };
     }
-  }, [getSystemProxy.data]);
+  }, [clashConfigs, getSystemProxy.data]);
 
   return (
     <div className="flex items-center gap-2 px-1">

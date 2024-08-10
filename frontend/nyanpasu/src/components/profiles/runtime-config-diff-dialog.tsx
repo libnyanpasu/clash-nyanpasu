@@ -1,11 +1,11 @@
 import { useAtomValue } from "jotai";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import useSWR from "swr";
 import { monaco } from "@/services/monaco";
 import { themeMode } from "@/store";
 import { getRuntimeYaml, useClash } from "@nyanpasu/interface";
-import { BaseDialog } from "@nyanpasu/ui";
+import { BaseDialog, cn } from "@nyanpasu/ui";
 
 export type RuntimeConfigDiffDialogProps = {
   open: boolean;
@@ -20,6 +20,7 @@ export default function RuntimeConfigDiffDialog({
   const { getProfiles, getProfileFile } = useClash();
   const currentProfileUid = getProfiles.data?.current;
   const mode = useAtomValue(themeMode);
+  const [loaded, setLoaded] = useState(false);
   const {
     data: runtimeConfig,
     isLoading: isLoadingRuntimeConfig,
@@ -59,12 +60,14 @@ export default function RuntimeConfigDiffDialog({
           original: monaco.editor.createModel(profileConfig, "yaml"),
           modified: monaco.editor.createModel(runtimeConfig, "yaml"),
         });
+        setLoaded(true);
       };
       run().catch(console.error);
     }
     return () => {
       monacoRef.current = null;
       editorRef.current?.dispose();
+      setLoaded(false);
     };
   }, [mode, open, runtimeConfig, profileConfig]);
   if (!currentProfileUid) {
@@ -74,6 +77,15 @@ export default function RuntimeConfigDiffDialog({
   return (
     <BaseDialog title={t("Runtime Config")} open={open} onClose={onClose}>
       <div className="xs:w-[95vw] h-full w-[80vw] px-4">
+        <div
+          className={cn(
+            "items-center justify-between px-5 pb-2",
+            loaded ? "flex" : "hidden",
+          )}
+        >
+          <span className="text-base font-semibold">原始配置</span>
+          <span className="text-base font-semibold">运行配置</span>
+        </div>
         <div ref={domRef} className="h-[75vh] w-full" />
       </div>
     </BaseDialog>

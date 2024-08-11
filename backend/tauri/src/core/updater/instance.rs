@@ -14,6 +14,7 @@ use tempfile::TempDir;
 use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, Serialize, Default)]
+#[serde(rename_all = "snake_case")]
 pub enum UpdaterState {
     #[default]
     Idle,

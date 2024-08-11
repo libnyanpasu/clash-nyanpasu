@@ -63,9 +63,9 @@ export const useNyanpasu = (options?: {
   });
 
   const updateCore = async (core: Required<VergeConfig>["clash_core"]) => {
-    await service.updateCore(core);
+    return await service.updateCore(core);
 
-    getClashCore.mutate();
+    // getClashCore.mutate();
   };
 
   const getSystemProxy = useSWR("getSystemProxy", service.getSystemProxy);

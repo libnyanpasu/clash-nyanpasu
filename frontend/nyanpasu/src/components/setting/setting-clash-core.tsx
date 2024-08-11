@@ -1,4 +1,4 @@
-import { useLockFn, useReactive } from "ahooks";
+import { useLockFn, useMemoizedFn, useReactive } from "ahooks";
 import { motion } from "framer-motion";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -119,17 +119,24 @@ export const SettingClashCore = () => {
     }
   });
 
+  const [coreUpdaterState, setCoreUpdaterState] = useState<{
+    [key: string]: number;
+  }>({});
+
   const handleUpdateCore = useLockFn(
     async (core: Required<VergeConfig>["clash_core"]) => {
       try {
         loading.mask = true;
 
-        await updateCore(core);
-
-        message(`Successfully update core ${core}`, {
-          type: "info",
-          title: t("Success"),
-        });
+        const updater_id = await updateCore(core);
+        setCoreUpdaterState((state) => ({
+          ...state,
+          [core]: updater_id,
+        }));
+        // message(`Successfully update core ${core}`, {
+        //   type: "info",
+        //   title: t("Success"),
+        // });
       } catch (e) {
         message(`Update failed.`, {
           type: "error",
@@ -153,6 +160,28 @@ export const SettingClashCore = () => {
       };
     });
   }, [getClashCore.data, getLatestCore.data]);
+
+  const onUpdaterStateChanged = useMemoizedFn(
+    (core: string, state: "success" | "error", msg?: string) => {
+      if (state === "success") {
+        message(`Successfully update core ${core}`, {
+          type: "info",
+          title: t("Success"),
+        });
+        getClashCore.mutate();
+      } else {
+        message(`Update failed. ${msg}`, {
+          type: "error",
+          title: t("Error"),
+        });
+      }
+      setCoreUpdaterState((state) => {
+        const newState = { ...state };
+        delete newState[core];
+        return newState;
+      });
+    },
+  );
 
   return (
     <BaseCard
@@ -187,6 +216,10 @@ export const SettingClashCore = () => {
                 selected={item.core == nyanpasuConfig?.clash_core}
                 onClick={() => changeClashCore(item.core)}
                 onUpdate={() => handleUpdateCore(item.core)}
+                onUpdaterStateChanged={(state, msg) => {
+                  onUpdaterStateChanged(item.core, state, msg);
+                }}
+                updaterId={coreUpdaterState[item.core]}
               />
             </motion.div>
           );

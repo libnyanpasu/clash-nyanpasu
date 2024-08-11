@@ -121,6 +121,7 @@ impl<F: Fn(DownloaderState)> DownloaderBuilder<F> {
 }
 
 #[derive(Debug, Serialize, Default, Clone)]
+#[serde(rename_all = "snake_case")]
 pub enum DownloaderState {
     #[default]
     Idle,

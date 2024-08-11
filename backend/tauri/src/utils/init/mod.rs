@@ -268,19 +268,19 @@ pub fn init_service() -> Result<()> {
     Ok(())
 }
 
-pub fn check_singleton() -> Result<single_instance::SingleInstance> {
+pub fn check_singleton() -> Result<Option<single_instance::SingleInstance>> {
     let placeholder = super::dirs::get_single_instance_placeholder();
     for i in 0..5 {
         let instance = single_instance::SingleInstance::new(&placeholder)
             .context("failed to create single instance")?;
         if instance.is_single() {
-            return Ok(instance);
+            return Ok(Some(instance));
         }
         if i != 4 {
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
     }
-    anyhow::bail!("single instance check failed: app still exists after 4s");
+    Ok(None)
 }
 
 pub fn do_config_migration(old_app_dir: &PathBuf, app_dir: &PathBuf) -> anyhow::Result<()> {

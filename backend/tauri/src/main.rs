@@ -82,7 +82,10 @@ fn main() -> std::io::Result<()> {
 
     // 单例检测
     let single_instance_result = utils::init::check_singleton();
-    if single_instance_result.is_err() {
+    if single_instance_result
+        .as_ref()
+        .is_ok_and(|instance| instance.is_none())
+    {
         std::process::exit(0);
     }
     // Use system locale as default
@@ -92,7 +95,10 @@ fn main() -> std::io::Result<()> {
     };
     rust_i18n::set_locale(locale);
 
-    if single_instance_result.is_ok() {
+    if single_instance_result
+        .as_ref()
+        .is_ok_and(|instance| instance.is_some())
+    {
         if let Err(e) = init::run_pending_migrations() {
             utils::dialog::panic_dialog(
                 &format!(
@@ -118,7 +124,7 @@ fn main() -> std::io::Result<()> {
     rust_i18n::set_locale(verge.as_str());
 
     // show a dialog to print the single instance error
-    let _singleton = single_instance_result.unwrap(); // hold the guard until the end of the program
+    let _singleton = single_instance_result.unwrap().unwrap(); // hold the guard until the end of the program
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()

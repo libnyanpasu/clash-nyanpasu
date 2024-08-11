@@ -7,5 +7,6 @@ export * from "./expandMore";
 export * from "./floatingButton";
 export * from "./item";
 export * from "./lazyImage";
+export * from "./loadingButton";
 export * from "./loadingSwitch";
 export * from "./sidePage";

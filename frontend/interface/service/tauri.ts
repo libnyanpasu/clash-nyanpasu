@@ -4,6 +4,7 @@ import {
   ClashConfig,
   ClashInfo,
   EnvInfos,
+  InspectUpdater,
   Profile,
   Proxies,
   SystemProxy,
@@ -113,37 +114,7 @@ export const updateCore = async (
 };
 
 export const inspectUpdater = async (updaterId: number) => {
-  return await invoke<{
-    id: number;
-    state:
-      | "idle"
-      | "downloading"
-      | "decompressing"
-      | "replacing"
-      | "restarting"
-      | "done"
-      | { failed: string };
-    downloader: {
-      state:
-        | "idle"
-        | "downloading"
-        | "waiting_for_merge"
-        | "merging"
-        | { failed: string }
-        | "finished";
-      downloaded: number;
-      total: number;
-      speed: number;
-      chunks: Array<{
-        state: "idle" | "downloading" | "finished";
-        start: number;
-        end: number;
-        downloaded: number;
-        speed: number;
-      }>;
-      now: number;
-    };
-  }>("inspect_updater", { updaterId });
+  return await invoke<InspectUpdater>("inspect_updater", { updaterId });
 };
 
 export const pullupUWPTool = async () => {

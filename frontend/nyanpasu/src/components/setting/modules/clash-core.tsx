@@ -1,47 +1,28 @@
-import useSWR from "swr";
+import { motion } from "framer-motion";
+import { isObject } from "lodash-es";
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import ClashRs from "@/assets/image/core/clash-rs.png";
 import ClashMeta from "@/assets/image/core/clash.meta.png";
 import Clash from "@/assets/image/core/clash.png";
+import { formatError } from "@/utils";
+import parseTraffic from "@/utils/parse-traffic";
 import FiberManualRecord from "@mui/icons-material/FiberManualRecord";
 import Update from "@mui/icons-material/Update";
-import { CircularProgress, CircularProgressProps } from "@mui/material";
-import Box from "@mui/material/Box";
-import IconButton from "@mui/material/IconButton";
+import LoadingButton from "@mui/lab/LoadingButton";
 import ListItem from "@mui/material/ListItem";
 import ListItemButton from "@mui/material/ListItemButton";
 import { alpha, useTheme } from "@mui/material/styles";
 import Tooltip from "@mui/material/Tooltip";
-import Typography from "@mui/material/Typography";
-import { ClashCore, Core, inspectUpdater } from "@nyanpasu/interface";
-import { Item } from "./clash-web";
-
-function CircularProgressWithLabel(
-  props: CircularProgressProps & { value: number },
-) {
-  return (
-    <Box sx={{ position: "relative", display: "inline-flex" }}>
-      <CircularProgress variant="determinate" {...props} />
-      <Box
-        sx={{
-          top: 0,
-          left: 0,
-          bottom: 0,
-          right: 0,
-          position: "absolute",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Typography
-          variant="caption"
-          component="div"
-          color="text.secondary"
-        >{`${Math.round(props.value)}%`}</Typography>
-      </Box>
-    </Box>
-  );
-}
+import {
+  ClashCore,
+  Core,
+  InspectUpdater,
+  inspectUpdater,
+  useNyanpasu,
+} from "@nyanpasu/interface";
+import { cleanDeepClickEvent, cn } from "@nyanpasu/ui";
+import { message } from "@tauri-apps/api/dialog";
 
 export const getImage = (core: ClashCore) => {
   switch (core) {
@@ -60,16 +41,78 @@ export const getImage = (core: ClashCore) => {
   }
 };
 
+const calcProgress = (data?: InspectUpdater) => {
+  return (
+    (Number(data?.downloader?.downloaded) / Number(data?.downloader?.total)) *
+    100
+  );
+};
+
+const CardProgress = ({
+  data,
+  show,
+}: {
+  data?: InspectUpdater;
+  show?: boolean;
+}) => {
+  const { palette } = useTheme();
+
+  const parsedState = () => {
+    if (data?.downloader?.state) {
+      return "waiting";
+    } else if (isObject(data?.downloader.state)) {
+      return data?.downloader.state.failed;
+    } else {
+      return data?.downloader.state;
+    }
+  };
+
+  return (
+    <motion.div
+      className={cn(
+        "absolute left-0 top-0 z-10 h-full w-full rounded-2xl backdrop-blur",
+        "flex flex-col items-center justify-center gap-2",
+      )}
+      style={{
+        backgroundColor: alpha(palette.primary.main, 0.3),
+      }}
+      animate={show ? "open" : "closed"}
+      initial={{ opacity: 0 }}
+      variants={{
+        open: {
+          opacity: 1,
+          display: "flex",
+        },
+        closed: {
+          opacity: 0,
+          transitionEnd: {
+            display: "none",
+          },
+        },
+      }}
+    >
+      <div
+        className="absolute left-0 h-full rounded-2xl transition-all"
+        style={{
+          backgroundColor: alpha(palette.primary.main, 0.3),
+          width: `${calcProgress(data) < 10 ? 10 : calcProgress(data)}%`,
+        }}
+      />
+
+      <div className="truncate capitalize">{parsedState()}</div>
+
+      <div className="truncate">
+        {calcProgress(data).toFixed(0)}%{""}
+        <span>({parseTraffic(data?.downloader.speed)}/s)</span>
+      </div>
+    </motion.div>
+  );
+};
+
 export interface ClashCoreItemProps {
   selected: boolean;
   data: Core;
-  updaterId?: number;
-  onUpdaterStateChanged?: (
-    state: "success" | "error",
-    message?: string,
-  ) => void;
   onClick: (core: ClashCore) => void;
-  onUpdate: (core: ClashCore) => void;
 }
 
 /**
@@ -89,95 +132,118 @@ export const ClashCoreItem = ({
   selected,
   data,
   onClick,
-  onUpdate,
-  updaterId,
-  onUpdaterStateChanged,
 }: ClashCoreItemProps) => {
+  const { t } = useTranslation();
+
   const { palette } = useTheme();
 
-  const newVersion = data.latest ? data.latest !== data.version : false;
-  const updaterInfo = useSWR(
-    updaterId ? `/inspectId?updaterId=${updaterId}` : null,
-    () => inspectUpdater(updaterId!),
-    {
-      refreshInterval: 100,
-      onSuccess: (data) => {
-        if (data.state === "done") {
-          onUpdaterStateChanged?.("success");
-        } else if (typeof data.state === "object" && data.state.failed) {
-          onUpdaterStateChanged?.("error", data.state.failed);
-        }
-      },
-    },
-  );
+  const { updateCore } = useNyanpasu();
+
+  const haveNewVersion = data.latest ? data.latest !== data.version : false;
+
+  const [downloadState, setDownloadState] = useState(false);
+
+  const [updater, setUpdater] = useState<InspectUpdater>();
+
+  const handleUpdateCore = async () => {
+    try {
+      setDownloadState(true);
+
+      const updaterId = await updateCore(data.core);
+
+      await new Promise<void>((resolve, reject) => {
+        const interval = setInterval(async () => {
+          const result = await inspectUpdater(updaterId);
+
+          setUpdater(result);
+
+          if (
+            isObject(result.downloader.state) &&
+            result.downloader.state.failed
+          ) {
+            reject(result.downloader.state.failed);
+            clearInterval(interval);
+          }
+
+          if (result.state === "done") {
+            resolve();
+            clearInterval(interval);
+          }
+        }, 100);
+      });
+
+      message(`Successfully update core ${data.name}`, {
+        type: "info",
+        title: t("Success"),
+      });
+    } catch (e) {
+      message(`Update failed. ${formatError(e)}`, {
+        type: "error",
+        title: t("Error"),
+      });
+    } finally {
+      setDownloadState(false);
+    }
+  };
+
   return (
     <ListItem sx={{ pl: 0, pr: 0 }}>
       <ListItemButton
+        className="!relative !p-0"
         sx={{
-          padding: 0,
           borderRadius: "16px",
+          backgroundColor: alpha(palette.background.paper, 0.3),
 
           "&.Mui-selected": {
-            backgroundColor: alpha(palette.success.main, 0.2),
+            backgroundColor: alpha(palette.primary.main, 0.3),
           },
         }}
         selected={selected}
-        onClick={() => onClick(data.core)}
+        onClick={() => {
+          if (!downloadState) {
+            onClick(data.core);
+          }
+        }}
       >
-        <Item elevation={0} sx={{ width: "100%" }}>
-          <Box display="flex" alignItems="center" gap={2}>
-            <img style={{ width: "64px" }} src={getImage(data.core)} />
+        <CardProgress data={updater} show={downloadState} />
 
-            <Box>
-              <Typography variant="subtitle1" fontWeight={700}>
-                {data.name}
+        <div className="flex w-full items-center gap-2 p-4">
+          <img style={{ width: "64px" }} src={getImage(data.core)} />
 
-                {newVersion && (
-                  <FiberManualRecord
-                    sx={{ height: 10, fill: palette.success.main }}
-                  />
-                )}
-              </Typography>
+          <div className="flex-1">
+            <div className="truncate font-bold">
+              {data.name}
 
-              <Typography>{data.version}</Typography>
-
-              {newVersion && (
-                <Typography variant="body2">
-                  New Version: {data.latest}
-                </Typography>
+              {haveNewVersion && (
+                <FiberManualRecord
+                  sx={{ height: 10, fill: palette.success.main }}
+                />
               )}
-            </Box>
+            </div>
 
-            {newVersion &&
-              (updaterInfo.data?.state !== "done" ? (
-                <Tooltip
-                  title={`Current State: ${updaterInfo.data?.state}\n Speed: ${updaterInfo.data?.downloader.speed}`}
-                >
-                  <CircularProgressWithLabel
-                    value={
-                      updaterInfo.data
-                        ? updaterInfo.data.downloader.downloaded /
-                          updaterInfo.data.downloader.total
-                        : 0
-                    }
-                  />
-                </Tooltip>
-              ) : (
-                <Tooltip title="Update Core">
-                  <IconButton
-                    sx={{ marginLeft: "auto" }}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      onUpdate(data.core);
-                    }}
-                  >
-                    <Update />
-                  </IconButton>
-                </Tooltip>
-              ))}
-          </Box>
-        </Item>
+            <div className="truncate text-sm">{data.version}</div>
+
+            {haveNewVersion && (
+              <div className="truncate text-sm">New: {data.latest}</div>
+            )}
+          </div>
+
+          {haveNewVersion && (
+            <Tooltip title="Update Core">
+              <LoadingButton
+                variant="text"
+                className="!size-8 !min-w-0"
+                loading={downloadState}
+                onClick={(e) => {
+                  cleanDeepClickEvent(e);
+                  handleUpdateCore();
+                }}
+              >
+                <Update />
+              </LoadingButton>
+            </Tooltip>
+          )}
+        </div>
       </ListItemButton>
     </ListItem>
   );

@@ -25,7 +25,7 @@
     "clsx": "2.1.1",
     "d3-interpolate-path": "2.3.0",
     "sass": "1.77.8",
-    "tailwind-merge": "2.5.0",
+    "tailwind-merge": "2.5.1",
     "typescript-plugin-css-modules": "5.1.0"
   }
 }

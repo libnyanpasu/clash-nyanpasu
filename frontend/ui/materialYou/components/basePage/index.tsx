@@ -1,10 +1,10 @@
-import { CSSProperties, FC, ReactNode, Ref } from "react";
+import { CSSProperties, FC, ReactNode, Ref, Suspense } from "react";
 import { BaseErrorBoundary } from "./baseErrorBoundary";
 import Header from "./header";
 import "./style.scss";
+import { motion } from "framer-motion";
 import { cn } from "@/utils";
 import * as ScrollArea from "@radix-ui/react-scroll-area";
-import { AsyncComponent, AsyncComponentProps } from "../asyncComponent";
 
 interface BasePageProps {
   title?: ReactNode;
@@ -13,7 +13,7 @@ interface BasePageProps {
   sectionStyle?: CSSProperties;
   full?: boolean;
   viewportRef?: Ref<HTMLDivElement>;
-  children?: ReactNode | AsyncComponentProps["component"];
+  children?: ReactNode;
 }
 
 export const BasePage: FC<BasePageProps> = ({
@@ -25,16 +25,6 @@ export const BasePage: FC<BasePageProps> = ({
   viewportRef,
   children,
 }) => {
-  const isAsyncComponent = typeof children === "function";
-
-  const Children = () => {
-    return isAsyncComponent ? (
-      <AsyncComponent component={children} />
-    ) : (
-      children
-    );
-  };
-
   return (
     <BaseErrorBoundary>
       <div className="MDYBasePage" data-windrag>
@@ -52,7 +42,11 @@ export const BasePage: FC<BasePageProps> = ({
             ref={viewportRef}
             style={sectionStyle}
           >
-            <Children />
+            <Suspense>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                {children}
+              </motion.div>
+            </Suspense>
           </ScrollArea.Viewport>
 
           <ScrollArea.Scrollbar

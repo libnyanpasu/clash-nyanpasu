@@ -1,4 +1,3 @@
-export * from "./asyncComponent";
 export * from "./baseCard";
 export * from "./baseDialog";
 export * from "./basePage";

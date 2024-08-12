@@ -1,4 +1,6 @@
 import { atom } from "jotai";
-import { LogListProps } from "../log-list";
+import { LogMessage } from "@nyanpasu/interface";
 
-export const atomLogList = atom<LogListProps>();
+export const atomLogList = atom<LogMessage[]>([]);
+
+export const atomLogLevel = atom<string>("all");

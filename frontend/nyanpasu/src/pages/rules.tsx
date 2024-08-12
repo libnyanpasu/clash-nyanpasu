@@ -1,6 +1,6 @@
 import { useDebounceEffect } from "ahooks";
 import { useSetAtom } from "jotai";
-import { RefObject, useRef, useState } from "react";
+import { lazy, RefObject, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { atomRulePage } from "@/components/rules/modules/store";
 import { alpha, FilledInputProps, TextField, useTheme } from "@mui/material";
@@ -44,6 +44,8 @@ export default function RulesPage() {
     },
   };
 
+  const Component = lazy(() => import("@/components/rules/rule-page"));
+
   return (
     <BasePage
       full
@@ -62,7 +64,8 @@ export default function RulesPage() {
         />
       }
       viewportRef={viewportRef}
-      children={() => import("@/components/rules/rule-page")}
-    />
+    >
+      <Component />
+    </BasePage>
   );
 }

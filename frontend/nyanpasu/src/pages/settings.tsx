@@ -1,6 +1,6 @@
 import MdiTrayFull from "~icons/mdi/tray-full";
 import { useLockFn } from "ahooks";
-import React from "react";
+import React, { lazy } from "react";
 import { useTranslation } from "react-i18next";
 import HotkeyDialog from "@/components/setting/modules/hotkey-dialog";
 import TrayIconDialog from "@/components/setting/modules/tray-icon-dialog";
@@ -81,6 +81,8 @@ const TrayIconButton = () => {
 export default function SettingPage() {
   const { t } = useTranslation();
 
+  const Component = lazy(() => import("@/components/setting/setting-page"));
+
   return (
     <BasePage
       title={t("Settings")}
@@ -92,7 +94,8 @@ export default function SettingPage() {
           <GithubIcon />
         </div>
       }
-      children={() => import("@/components/setting/setting-page")}
-    />
+    >
+      <Component />
+    </BasePage>
   );
 }

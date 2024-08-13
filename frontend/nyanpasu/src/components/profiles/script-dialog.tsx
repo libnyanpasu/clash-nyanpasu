@@ -105,9 +105,8 @@ export const ScriptDialog = ({
 
     try {
       if (isEdit) {
-        await setProfiles(data.uid, data);
-
         await setProfileFile(data.uid, editorValue);
+        await setProfiles(data.uid, data);
       } else {
         await createProfile(data, editorValue);
       }

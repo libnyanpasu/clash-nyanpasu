@@ -100,11 +100,9 @@ export const ProfileDialog = ({
     };
 
     const toUpdate = async () => {
-      await setProfiles(form.uid, form);
-
       const value = profileMonacoViewRef.current?.getValue() || "";
-
       await setProfileFile(form.uid, value);
+      await setProfiles(form.uid, form);
     };
 
     try {

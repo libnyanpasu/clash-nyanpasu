@@ -246,8 +246,8 @@ importers:
         specifier: 23.12.3
         version: 23.12.3
       jotai:
-        specifier: 2.9.2
-        version: 2.9.2(react@19.0.0-rc-e948a5ac-20240807)(types-react@19.0.0-rc.1)
+        specifier: 2.9.3
+        version: 2.9.3(react@19.0.0-rc-e948a5ac-20240807)(types-react@19.0.0-rc.1)
       material-react-table:
         specifier: 2.13.1
         version: 2.13.1(zikvz2olh6trlppkve56bpaqvi)
@@ -4390,8 +4390,8 @@ packages:
     resolution: {integrity: sha512-2yTgeWTWzMWkHu6Jp9NKgePDaYHbntiwvYuuJLbbN9vl7DC9DvXKOB2BC3ZZ92D3cvV/aflH0osDfwpHepQ53w==}
     hasBin: true
 
-  jotai@2.9.2:
-    resolution: {integrity: sha512-jIBXEadOHCziOuMY6HAy2KQcHipGhnsbF+twqh8Lcmcz/Yei0gdBtW5mOYdKmbQxGqkvfvXM3w/oHtJ2WNGSFg==}
+  jotai@2.9.3:
+    resolution: {integrity: sha512-IqMWKoXuEzWSShjd9UhalNsRGbdju5G2FrqNLQJT+Ih6p41VNYe2sav5hnwQx4HJr25jq9wRqvGSWGviGG6Gjw==}
     engines: {node: '>=12.20.0'}
     peerDependencies:
       '@types/react': npm:types-react@rc
@@ -10686,7 +10686,7 @@ snapshots:
 
   jiti@1.21.6: {}
 
-  jotai@2.9.2(react@19.0.0-rc-e948a5ac-20240807)(types-react@19.0.0-rc.1):
+  jotai@2.9.3(react@19.0.0-rc-e948a5ac-20240807)(types-react@19.0.0-rc.1):
     optionalDependencies:
       '@types/react': types-react@19.0.0-rc.1
       react: 19.0.0-rc-e948a5ac-20240807

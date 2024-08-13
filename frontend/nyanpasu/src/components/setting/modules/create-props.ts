@@ -73,7 +73,7 @@ export const clash = {
       selected: getConfigs.data?.[propName] || fallbackSelect,
       onSelected: (value: OptionValue) => {
         Promise.all([
-          setClashInfo({ [propName]: !getConfigs.data?.[propName] }),
+          setClashInfo({ [propName]: value }),
           setConfigs({ [propName]: value }),
         ]).finally(() => {
           mutate(

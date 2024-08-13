@@ -2,7 +2,7 @@ use crate::{
     config::{nyanpasu::ClashCore, profile::item_type::ProfileItemType, ProfileItem},
     utils::{dirs, help},
 };
-use enumflags2::BitFlags;
+use enumflags2::{BitFlag, BitFlags};
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 use std::fs;
@@ -118,6 +118,12 @@ impl ChainItem {
             ChainTypeWrapper::new_js(include_str!("./builtin/meta_hy_alpn.js").to_string()),
         );
 
+        // 修复配置的一些问题
+        let config_fixer = ChainItem::to_script(
+            "config_fixer",
+            ChainTypeWrapper::new_lua(include_str!("./builtin/config_fixer.lua").to_string()),
+        );
+
         // 移除或转换 Clash Rs 不支持的字段
         let clash_rs_comp = ChainItem::to_script(
             "clash_rs_comp",
@@ -127,6 +133,7 @@ impl ChainItem {
         vec![
             (ClashCore::Mihomo | ClashCore::MihomoAlpha, hy_alpn),
             (ClashCore::Mihomo | ClashCore::MihomoAlpha, meta_guard),
+            (ClashCore::all(), config_fixer),
             (ClashCore::ClashRs.into(), clash_rs_comp),
         ]
     }

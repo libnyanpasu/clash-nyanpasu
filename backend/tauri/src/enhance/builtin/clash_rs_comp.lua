@@ -12,4 +12,4 @@ if config["allow_lan"] == true then
     config["bind_address"] = "0.0.0.0"
 end
 
-return config;
+return config

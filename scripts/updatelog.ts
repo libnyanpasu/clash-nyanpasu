@@ -17,7 +17,7 @@ export async function resolveUpdateLog(tag: string) {
 
   const data = await fs.readFile(file).then((d) => d.toString("utf8"));
 
-  const map = {};
+  const map = {} as Record<string, string[]>;
   let p = "";
 
   data.split("\n").forEach((line) => {

@@ -59,6 +59,7 @@ async function resolvePortable() {
     ...options,
     release_id: release.id,
     name: zipFile,
+    // @ts-expect-error data is Buffer should work fine
     data: zip.toBuffer(),
   });
 }

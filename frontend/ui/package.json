@@ -21,6 +21,7 @@
     "react-i18next": "15.0.1"
   },
   "devDependencies": {
+    "@emotion/react": "11.13.0",
     "@types/d3-interpolate-path": "2.0.3",
     "clsx": "2.1.1",
     "d3-interpolate-path": "2.3.0",

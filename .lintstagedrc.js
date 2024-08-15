@@ -1,9 +1,24 @@
 export default {
   "*.{js,cjs,.mjs,jsx}": ["prettier --write", "eslint --cache --fix"],
-  "*.{ts,tsx}": [
+  "scripts/**/*.{ts,tsx}": [
     "prettier --write",
     "eslint --cache --fix",
-    () => "tsc -p tsconfig.json --noEmit",
+    () => "tsc -p scripts/tsconfig.json --noEmit",
+  ],
+  "frontend/interface/**/*.{ts,tsx}": [
+    "prettier --write",
+    "eslint --cache --fix",
+    () => "tsc -p frontend/interface/tsconfig.json --noEmit",
+  ],
+  "frontend/ui/**/*.{ts,tsx}": [
+    "prettier --write",
+    "eslint --cache --fix",
+    () => "tsc -p frontend/ui/tsconfig.json --noEmit",
+  ],
+  "frontend/nyanpasu/**/*.{ts,tsx}": [
+    "prettier --write",
+    "eslint --cache --fix",
+    () => "tsc -p frontend/nyanpasu/tsconfig.json --noEmit",
   ],
   "backend/**/*.{rs,toml}": [
     () =>

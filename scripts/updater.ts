@@ -111,7 +111,7 @@ async function resolveUpdater() {
   Object.entries(updateData.platforms).forEach(([key, value]) => {
     if (!value.url) {
       consola.error(`failed to parse release for "${key}"`);
-      delete updateData.platforms[key];
+      delete updateData.platforms[key as keyof typeof updateData.platforms];
     }
   });
 
@@ -123,7 +123,8 @@ async function resolveUpdater() {
 
   Object.entries(updateDataNew.platforms).forEach(([key, value]) => {
     if (value.url) {
-      updateDataNew.platforms[key].url = getGithubUrl(value.url);
+      updateDataNew.platforms[key as keyof typeof updateData.platforms].url =
+        getGithubUrl(value.url);
     } else {
       consola.error(`updateDataNew.platforms.${key} is null`);
     }
@@ -170,7 +171,7 @@ async function resolveUpdater() {
 }
 
 // get the signature file content
-async function getSignature(url) {
+async function getSignature(url: string) {
   const response = await fetch(url, {
     method: "GET",
     headers: { "Content-Type": "application/octet-stream" },

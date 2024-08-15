@@ -29,7 +29,7 @@ async function resolve() {
   const bundlePath = path.join(
     "backend/target/aarch64-apple-darwin/release/bundle",
   );
-  const join = (p) => path.join(bundlePath, p);
+  const join = (p: string) => path.join(bundlePath, p);
 
   const appPathList = [
     join("macos/Clash Nyanpasu.aarch64.app.tar.gz"),
@@ -71,7 +71,7 @@ async function uploadAssets(releaseId: number, assets: string[]) {
   const github = getOctokit(GITHUB_TOKEN);
 
   // Determine content-length for header to upload asset
-  const contentLength = (filePath) => fs.statSync(filePath).size;
+  const contentLength = (filePath: string) => fs.statSync(filePath).size;
 
   for (const assetPath of assets) {
     const headers = {
@@ -100,7 +100,10 @@ async function uploadAssets(releaseId: number, assets: string[]) {
       });
       consola.success(`Uploaded ${assetName}`);
     } catch (error) {
-      consola.error("Failed to upload release asset", error.message);
+      consola.error(
+        "Failed to upload release asset",
+        error instanceof Error ? error.message : error,
+      );
     }
   }
 }

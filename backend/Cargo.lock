@@ -914,7 +914,7 @@ dependencies = [
  "indoc",
  "isahc",
  "rustc-hash 2.0.0",
- "smol 2.0.0",
+ "smol 2.0.1",
  "textwrap",
  "tracing",
 ]
@@ -6816,9 +6816,9 @@ dependencies = [
 
 [[package]]
 name = "smol"
-version = "2.0.0"
+version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e635339259e51ef85ac7aa29a1cd991b957047507288697a690e80ab97d07cad"
+checksum = "aad24f41392790e6ac67f4f4cd871da61f7d758e07b5622431e491e897d9c8a7"
 dependencies = [
  "async-channel 2.3.1",
  "async-executor",

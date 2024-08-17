@@ -1,6 +1,22 @@
+import { MUI_BREAKPOINTS } from "@nyanpasu/ui/materialYou/createTheme";
+
 /* eslint-disable @typescript-eslint/no-var-requires */
 /* eslint-disable @typescript-eslint/no-require-imports */
 const plugin = require("tailwindcss/plugin");
+
+const getMUuiScreen = () => {
+  const breakpoints = MUI_BREAKPOINTS.values;
+
+  const result = {};
+
+  for (const key in breakpoints) {
+    if (breakpoints.hasOwnProperty(key)) {
+      result[key] = `${breakpoints[key]}px`;
+    }
+  }
+
+  return result;
+};
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
@@ -23,7 +39,12 @@ module.exports = {
           "100%": { transform: "translateX(-100%)" },
         },
       },
+      colors: {
+        scroller: "var(--scroller-color)",
+        container: "var(--background-color)",
+      },
     },
+    screen: getMUuiScreen(),
   },
   plugins: [
     require("tailwindcss-textshadow"),

@@ -202,9 +202,7 @@ export const NodeList = forwardRef(function NodeList({}, ref) {
                     layoutId={`node-${render.renderLayoutKey}`}
                     className="relative overflow-hidden"
                     layout="position"
-                    initial={{ scale: 0.7, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ opacity: 0 }}
+                    initial={false}
                   >
                     <Card />
                   </motion.div>

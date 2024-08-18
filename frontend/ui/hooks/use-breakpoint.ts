@@ -1,77 +1,62 @@
-import { useSetState, useThrottleFn } from "ahooks";
-import { useCallback, useEffect, useMemo } from "react";
-import { useTheme } from "@mui/material";
+import { useAsyncEffect } from "ahooks";
+import { useEffect, useState } from "react";
+import { createBreakpoint } from "react-use";
+import { MUI_BREAKPOINTS } from "@/materialYou";
 import { appWindow } from "@tauri-apps/api/window";
 
-export const useBreakpoint = (
-  columnMapping: { [key: string]: number } = {
-    sm: 1,
-    md: 1,
-    lg: 2,
-    xl: 3,
-    default: 4,
-  },
-) => {
-  const { breakpoints } = useTheme();
+export type Breakpoint = "xs" | "sm" | "md" | "lg" | "xl";
 
-  const [breakpoint, setBreakpoint] = useSetState({
-    key: "sm",
-    column: 1,
-  });
+const breakpointsOrder: Breakpoint[] = ["xs", "sm", "md", "lg", "xl"];
 
-  const breakpointsValues = useMemo(() => {
-    return Object.entries(breakpoints.values);
-  }, [breakpoints.values]);
+export const useBreakpoint = createBreakpoint(
+  MUI_BREAKPOINTS.values,
+) as () => Breakpoint;
 
-  const getBreakpoint = useCallback(
-    async (width: number) => {
-      const isMinimized = await appWindow.isMinimized();
+type BreakpointEffectCallback = (currentBreakpoint: Breakpoint) => void;
 
-      if (isMinimized) {
-        return;
-      }
-
-      for (const [key, value] of breakpointsValues) {
-        if (value >= width) {
-          if (key !== breakpoint.key) {
-            setBreakpoint({
-              key,
-              column: columnMapping[key],
-            });
-          }
-          return;
-        }
-      }
-
-      if (breakpoint.key !== "default") {
-        setBreakpoint({
-          column: columnMapping["default"],
-          key: "default",
-        });
-      }
-    },
-    [breakpointsValues, columnMapping, breakpoint.key, setBreakpoint],
-  );
-
-  const { run: triggerBreakpoint } = useThrottleFn(
-    () => {
-      const width = document.body.clientWidth;
-      getBreakpoint(width);
-    },
-    {
-      wait: 100,
-    },
-  );
+export const useBreakpointEffect = (callback: BreakpointEffectCallback) => {
+  const currentBreakpoint = useBreakpoint();
 
   useEffect(() => {
-    const observer = new ResizeObserver(triggerBreakpoint);
+    callback(currentBreakpoint);
+  }, [currentBreakpoint, callback]);
+};
 
-    observer.observe(document.body);
+type BreakpointValues<T> = Partial<Record<Breakpoint, T>>;
 
-    return () => {
-      observer.disconnect();
-    };
-  }, [triggerBreakpoint]);
+export const useBreakpointValue = <T>(
+  values: BreakpointValues<T>,
+  defaultValue?: T,
+): T => {
+  const currentBreakpoint = useBreakpoint();
 
-  return breakpoint;
+  const calculateValue = (): T => {
+    const value = values[currentBreakpoint];
+
+    if (value !== undefined) {
+      return value as T;
+    }
+
+    const currentIndex = breakpointsOrder.indexOf(currentBreakpoint);
+
+    for (let i = currentIndex; i >= 0; i--) {
+      const fallbackValue = values[breakpointsOrder[i]];
+
+      if (fallbackValue !== undefined) {
+        return fallbackValue as T;
+      }
+    }
+
+    return defaultValue ?? (values[breakpointsOrder[0]] as T);
+  };
+
+  const [result, setResult] = useState<T>(calculateValue);
+
+  useAsyncEffect(async () => {
+    if (!(await appWindow.isMinimized())) {
+      setResult(calculateValue);
+    }
+  }, [currentBreakpoint, values, defaultValue]);
+
+  return result;
 };

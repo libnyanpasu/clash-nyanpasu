@@ -7,5 +7,5 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-webview2-com = "0.19"
+webview2-com = "0.33"
 windows = "0.39"

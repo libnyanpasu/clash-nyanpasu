@@ -25,5 +25,6 @@ export function applyProxy(opts: ConstructorParameters<typeof Octokit>[0]) {
     request: {
       fetch: fetcher,
     },
-  };
+    auth: process.env.GITHUB_TOKEN || process.env.GH_TOKEN || undefined,
+  } satisfies ConstructorParameters<typeof Octokit>[0];
 }

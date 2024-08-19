@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use serde_yaml::Mapping;
+
 use super::candy::get_reqwest_client;
 
 #[tracing_attributes::instrument]
@@ -19,4 +21,16 @@ pub async fn url_delay_test(url: &str, expected_status: u16) -> Option<u64> {
         return None;
     }
     Some(tick.elapsed().as_millis() as u64)
+}
+
+#[tracing_attributes::instrument]
+pub async fn get_ipsb_asn() -> anyhow::Result<Mapping> {
+    let client = get_reqwest_client()?;
+    let response = client
+        .get("https://api.ip.sb/geoip")
+        .send()
+        .await?
+        .error_for_status()?;
+    let data: Mapping = response.json().await?;
+    Ok(data)
 }

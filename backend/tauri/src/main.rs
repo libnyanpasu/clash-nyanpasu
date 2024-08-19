@@ -240,6 +240,7 @@ fn main() -> std::io::Result<()> {
             ipc::is_tray_icon_set,
             ipc::get_core_status,
             ipc::url_delay_test,
+            ipc::get_ipsb_asn,
         ]);
 
     #[cfg(target_os = "macos")]

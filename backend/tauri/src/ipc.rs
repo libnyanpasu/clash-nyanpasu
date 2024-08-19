@@ -226,6 +226,11 @@ pub async fn url_delay_test(url: &str, expected_status: u16) -> CmdResult<Option
 }
 
 #[tauri::command]
+pub async fn get_ipsb_asn() -> CmdResult<Mapping> {
+    wrap_err!(crate::utils::net::get_ipsb_asn().await)
+}
+
+#[tauri::command]
 #[tracing_attributes::instrument]
 pub async fn patch_clash_config(payload: Mapping) -> CmdResult {
     tracing::debug!("patch_clash_config: {payload:?}");

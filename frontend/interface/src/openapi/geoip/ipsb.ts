@@ -1,7 +1,7 @@
-import { ofetch } from "ofetch";
 import useSWR from "swr";
+import { getIpsbASN } from "@/service";
 
-interface IPSBResponse {
+export interface IPSBResponse {
   organization: string;
   longitude: number;
   timezone: string;
@@ -17,8 +17,5 @@ interface IPSBResponse {
 }
 
 export const useIPSB = () => {
-  return useSWR(
-    "https://api.ip.sb/geoip",
-    async () => await ofetch<IPSBResponse>("https://api.ip.sb/geoip"),
-  );
+  return useSWR("https://api.ip.sb/geoip", () => getIpsbASN());
 };

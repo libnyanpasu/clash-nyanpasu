@@ -1,3 +1,4 @@
+import { IPSBResponse } from "@/openapi";
 import { invoke } from "@tauri-apps/api/tauri";
 import { ManifestVersion } from "./core";
 import {
@@ -244,3 +245,5 @@ export const urlDelayTest = async (url: string, expectedStatus: number) => {
     expectedStatus,
   });
 };
+
+export const getIpsbASN = async () => invoke<IPSBResponse>("get_ipsb_asn");

@@ -5,7 +5,7 @@ export interface LazyImageProps
   extends React.ImgHTMLAttributes<HTMLImageElement> {
   loadingClassName?: string;
 }
-export default function LazyImage(props: LazyImageProps) {
+export function LazyImage(props: LazyImageProps) {
   const [loading, setLoading] = useState(true);
 
   return (

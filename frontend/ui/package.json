@@ -1,8 +1,20 @@
 {
   "name": "@nyanpasu/ui",
   "version": "0.1.0",
-  "main": "index.ts",
-  "module": "index.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs"
+    }
+  },
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "mkdist -d"
+  },
   "dependencies": {
     "@material/material-color-utilities": "0.3.0",
     "@mui/icons-material": "5.16.7",
@@ -26,6 +38,7 @@
     "@types/d3-interpolate-path": "2.0.3",
     "clsx": "2.1.1",
     "d3-interpolate-path": "2.3.0",
+    "mkdist": "1.5.4",
     "sass": "1.77.8",
     "tailwind-merge": "2.5.2",
     "typescript-plugin-css-modules": "5.1.0"

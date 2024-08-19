@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactElement, ReactNode } from "react";
 import Marquee from "react-fast-marquee";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import EditRounded from "@mui/icons-material/EditRounded";
@@ -28,7 +28,7 @@ export const renderChip = (
   labels: {
     [label: string]: string | number | undefined;
   },
-): (string | JSX.Element)[] => {
+): (string | ReactElement)[] => {
   return string.split(/(%[^&?]+)/).map((part, index) => {
     if (part.startsWith("%")) {
       const label = labels[part.replace("%", "")];

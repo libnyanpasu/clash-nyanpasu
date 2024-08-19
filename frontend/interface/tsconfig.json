@@ -15,11 +15,12 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
-    "declaration": true,
     "composite": true,
+    "declaration": true,
     "paths": {
-      "@/*": ["./*"],
+      "@/*": ["./src/*"],
     },
+    "outDir": "./dist",
   },
-  "include": ["./"],
+  "include": ["src"],
 }

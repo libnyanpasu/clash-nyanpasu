@@ -1,8 +1,19 @@
 {
   "compilerOptions": {
+    "baseUrl": ".",
     "skipLibCheck": true,
     "esModuleInterop": true,
+    "composite": true,
+    "paths": {
+      "@nyanpasu/ui/*": ["./frontend/ui/*"],
+      "@nyanpasu/nyanpasu/*": ["./frontend/nyanpasu/*"],
+      "@nyanpasu/interface/*": ["./frontend/interface/*"],
+    }
   },
-  "include": ["./frontend/**/tsconfig.json", "./scripts/updater.ts"],
-  "exclude": ["node_modules"],
+  "references": [
+    { "path": "./frontend/ui" },
+    { "path": "./frontend/nyanpasu" },
+    { "path": "./frontend/interface" },
+    { "path": "./scripts" },
+  ]
 }

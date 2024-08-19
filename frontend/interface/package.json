@@ -1,8 +1,15 @@
 {
   "name": "@nyanpasu/interface",
   "version": "0.1.0",
-  "main": "index.ts",
-  "module": "index.ts",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "require": {
+    ".": "dist/src/index.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc"
+  },
   "dependencies": {
     "@tauri-apps/api": "1.6.0",
     "ahooks": "3.8.1",

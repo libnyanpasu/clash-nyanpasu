@@ -1,6 +1,6 @@
 import useSWR from "swr";
 import * as tauri from "@/service/tauri";
-import { ClashConfig, Profile } from "..";
+import { ClashConfig, Profile } from "../../dist";
 import { Clash, clash } from "../service/clash";
 
 /**

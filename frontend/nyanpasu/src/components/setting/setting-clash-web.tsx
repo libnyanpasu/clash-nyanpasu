@@ -113,7 +113,7 @@ export const SettingClashWeb = () => {
         }}
         ok="Submit"
         close="Close"
-        contentSx={{ overflow: editString ? "auto" : "hidden" }}
+        contentStyle={{ overflow: editString ? "auto" : "hidden" }}
         divider
       >
         <Box display="flex" flexDirection="column" gap={1}>

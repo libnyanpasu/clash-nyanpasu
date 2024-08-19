@@ -1,8 +1,8 @@
+import { useMemoizedFn } from "ahooks";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAtom, useAtomValue } from "jotai";
 import {
   forwardRef,
-  useCallback,
   useEffect,
   useImperativeHandle,
   useRef,
@@ -42,7 +42,7 @@ export const NodeList = forwardRef(function NodeList({}, ref) {
 
   const [group, setGroup] = useState<Clash.Proxy<Clash.Proxy<string>>>();
 
-  const sortGroup = useCallback(() => {
+  const sortGroup = useMemoizedFn(() => {
     if (!getCurrentMode.global) {
       if (proxyGroup.selector !== null) {
         const selectedGroup = data?.groups[proxyGroup.selector];
@@ -58,13 +58,7 @@ export const NodeList = forwardRef(function NodeList({}, ref) {
         setGroup(data?.global);
       }
     }
-  }, [
-    data?.groups,
-    proxyGroup.selector,
-    getCurrentMode,
-    proxyGroupSort,
-    setGroup,
-  ]);
+  });
 
   useEffect(() => {
     sortGroup();
@@ -80,7 +74,7 @@ export const NodeList = forwardRef(function NodeList({}, ref) {
 
   const [renderList, setRenderList] = useState<RenderClashProxy[][]>([]);
 
-  const updateRenderList = () => {
+  const updateRenderList = useMemoizedFn(() => {
     if (!group?.all) return;
 
     const nodeNames: string[] = [];
@@ -114,13 +108,13 @@ export const NodeList = forwardRef(function NodeList({}, ref) {
     );
 
     setRenderList(list);
-  };
+  });
 
   useEffect(() => {
     startTransition(() => {
       updateRenderList();
     });
-  }, [group?.all, column]);
+  }, [group?.all, column, updateRenderList]);
 
   const hendleClick = (node: string) => {
     if (!getCurrentMode.global) {

@@ -15,13 +15,15 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
+    "jsxFactory": "React.createElement",
+    "jsxFragmentFactory": "React.Fragment",
     "declaration": true,
     "composite": true,
     "paths": {
-      "@/*": ["./*"],
+      "@/*": ["./src/*"],
     },
-    "jsxImportSource": "@emotion/react",
     "plugins": [{ "name": "typescript-plugin-css-modules" }],
+    "outDir": "./dist",
   },
-  "include": ["./"],
+  "include": ["src"],
 }

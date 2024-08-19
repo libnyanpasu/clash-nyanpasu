@@ -1,10 +1,10 @@
 import { Allotment } from "allotment";
-import "allotment/dist/style.css";
-import { ReactNode } from "react";
 import getSystem from "@/utils/get-system";
 import { alpha, useTheme } from "@mui/material";
 import Paper from "@mui/material/Paper";
 import { appWindow } from "@tauri-apps/api/window";
+import "allotment/dist/style.css";
+import { ReactNode } from "react";
 import { LayoutControl } from "../layout/layout-control";
 import styles from "./app-container.module.scss";
 import AppDrawer from "./app-drawer";
@@ -40,7 +40,7 @@ export const AppContainer = ({
         e.preventDefault();
       }}
     >
-      {isDrawer && <AppDrawer data-windrag isDrawer />}
+      {isDrawer && <AppDrawer data-windrag />}
 
       <Allotment separator proportionalLayout={false}>
         {!isDrawer && (

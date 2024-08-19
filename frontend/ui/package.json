@@ -5,6 +5,9 @@
   "exports": {
     ".": {
       "import": "./dist/index.mjs"
+    },
+    "./materialYou/createTheme": {
+      "import": "./dist/materialYou/createTheme.mjs"
     }
   },
   "main": "./dist/index.mjs",

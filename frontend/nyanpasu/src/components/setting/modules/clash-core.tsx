@@ -137,7 +137,7 @@ export const ClashCoreItem = ({
 
   const { palette } = useTheme();
 
-  const { updateCore } = useNyanpasu();
+  const { updateCore, getClashCore } = useNyanpasu();
 
   const haveNewVersion = data.latest ? data.latest !== data.version : false;
 
@@ -171,6 +171,8 @@ export const ClashCoreItem = ({
           }
         }, 100);
       });
+
+      getClashCore.mutate();
 
       message(`Successfully update core ${data.name}`, {
         type: "info",

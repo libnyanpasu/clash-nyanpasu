@@ -42,7 +42,7 @@
     "react-router-dom": "6.26.1",
     "react-split-grid": "1.0.4",
     "swr": "2.2.5",
-    "virtua": "0.33.6"
+    "virtua": "0.33.7"
   },
   "devDependencies": {
     "@emotion/babel-plugin": "11.12.0",

@@ -99,7 +99,9 @@ jobs:
         if: ${{ inputs.nightly == true }}
         run: |
           pnpm prepare:nightly
-
+      - name: Build UI
+        run: |
+          pnpm -F ui build
       - name: Tauri build
         if: ${{ inputs.aarch64 == false }}
         uses: tauri-apps/tauri-action@v0

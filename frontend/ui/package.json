@@ -3,20 +3,15 @@
   "version": "0.1.0",
   "type": "module",
   "exports": {
-    ".": {
-      "import": "./dist/index.mjs"
-    },
-    "./materialYou/createTheme": {
-      "import": "./dist/materialYou/createTheme.mjs"
-    }
+    ".": "./dist/index.js"
   },
-  "main": "./dist/index.mjs",
+  "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "mkdist -d"
+    "build": "vite build"
   },
   "dependencies": {
     "@material/material-color-utilities": "0.3.0",
@@ -28,22 +23,25 @@
     "@tauri-apps/api": "1.6.0",
     "@types/d3": "7.4.3",
     "@types/react": "18.3.3",
+    "@vitejs/plugin-react": "4.3.1",
     "ahooks": "3.8.1",
     "d3": "7.9.0",
     "framer-motion": "12.0.0-alpha.0",
     "react": "18.3.1",
     "react-error-boundary": "4.0.13",
     "react-i18next": "15.0.1",
-    "react-use": "^17.5.1"
+    "react-use": "^17.5.1",
+    "vite": "5.4.0",
+    "vite-tsconfig-paths": "5.0.1"
   },
   "devDependencies": {
     "@emotion/react": "11.13.0",
     "@types/d3-interpolate-path": "2.0.3",
     "clsx": "2.1.1",
     "d3-interpolate-path": "2.3.0",
-    "mkdist": "1.5.4",
     "sass": "1.77.8",
     "tailwind-merge": "2.5.2",
-    "typescript-plugin-css-modules": "5.1.0"
+    "typescript-plugin-css-modules": "5.1.0",
+    "vite-plugin-dts": "^4.0.3"
   }
 }

@@ -74,7 +74,7 @@ export const BaseDialog = ({
         y: clickPosition?.y ?? 0,
       });
     }
-  }, [open]);
+  }, [clickPosition?.x, clickPosition?.y, open]);
 
   const handleClose = () => {
     if (onClose) {
@@ -106,7 +106,7 @@ export const BaseDialog = ({
     } else {
       handleClose();
     }
-  }, [open]);
+  }, [cancelMounted, handleClose, open]);
 
   return (
     <AnimatePresence initial={false}>

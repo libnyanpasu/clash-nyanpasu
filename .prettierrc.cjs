@@ -15,7 +15,7 @@ module.exports = {
     },
   ],
   importOrder: [
-    "^@ui/(.*)$",
+    "^@nyanpasu/ui/(.*)$",
     "^@nyanpasu/interface/(.*)$",
     "^@/(.*)$",
     "^@(.*)$",

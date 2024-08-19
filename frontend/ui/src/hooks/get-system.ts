@@ -11,13 +11,13 @@ type Platform =
   | "cygwin"
   | "netbsd";
 
-declare const OS_PLATFORM: Platform;
+declare const OS_PLATFORM: Platform | undefined;
 
 // get the system os
 // according to UA
 export function getSystem() {
-  const ua = navigator.userAgent;
-  const platform = OS_PLATFORM;
+  const ua = typeof window === "undefined" ? "" : window.navigator?.userAgent;
+  const platform = typeof OS_PLATFORM !== "undefined" ? OS_PLATFORM : "unknown";
 
   if (ua.includes("Mac OS X") || platform === "darwin") return "macos";
 

@@ -1,8 +1,7 @@
 import { useAsyncEffect } from "ahooks";
 import { useEffect, useState } from "react";
 import { createBreakpoint } from "react-use";
-import { MUI_BREAKPOINTS } from "@/materialYou";
-import { appWindow } from "@tauri-apps/api/window";
+import { MUI_BREAKPOINTS } from "../materialYou";
 
 export type Breakpoint = "xs" | "sm" | "md" | "lg" | "xl";
 
@@ -29,7 +28,6 @@ export const useBreakpointValue = <T>(
   defaultValue?: T,
 ): T => {
   const currentBreakpoint = useBreakpoint();
-
   const calculateValue = (): T => {
     const value = values[currentBreakpoint];
 
@@ -53,6 +51,7 @@ export const useBreakpointValue = <T>(
   const [result, setResult] = useState<T>(calculateValue);
 
   useAsyncEffect(async () => {
+    const { appWindow } = await import("@tauri-apps/api/window");
     if (!(await appWindow.isMinimized())) {
       setResult(calculateValue);
     }

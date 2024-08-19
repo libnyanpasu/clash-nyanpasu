@@ -1,10 +1,10 @@
+import { motion } from "framer-motion";
 import { CSSProperties, FC, ReactNode, Ref, Suspense } from "react";
+import { cn } from "@/utils";
+import * as ScrollArea from "@radix-ui/react-scroll-area";
 import { BaseErrorBoundary } from "./baseErrorBoundary";
 import Header from "./header";
 import "./style.scss";
-import { motion } from "framer-motion";
-import { cn } from "@/utils";
-import * as ScrollArea from "@radix-ui/react-scroll-area";
 
 interface BasePageProps {
   title?: ReactNode;

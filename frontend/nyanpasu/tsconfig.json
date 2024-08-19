@@ -14,14 +14,14 @@
     "moduleResolution": "Node",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true,
     "jsx": "preserve",
+    "composite": true,
     "paths": {
-      "@/*": ["src/*"],
+      "@/*": ["./src/*"],
       "~/*": ["./*"],
     },
     "jsxImportSource": "@emotion/react",
   },
   "include": ["./src", "./auto-imports.d.ts"],
-  "references": [{ "path": "../interface/tsconfig.json" }],
+  "references": [{ "path": "../interface" }, { "path": "../ui" }],
 }

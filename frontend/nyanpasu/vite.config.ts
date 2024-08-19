@@ -11,6 +11,8 @@ import generouted from "@generouted/react-router/plugin";
 // import react from "@vitejs/plugin-react";
 import react from "@vitejs/plugin-react-swc";
 
+const __dirname = path.dirname(new URL(import.meta.url).pathname);
+
 const devtools = () => {
   return {
     name: "react-devtools",
@@ -69,6 +71,12 @@ export default defineConfig(({ command }) => {
       monaco({ languageWorkers: ["editorWorkerService", "typescript"] }),
       isDev && devtools(),
     ],
+    resolve: {
+      alias: {
+        "@nyanpasu/ui": path.resolve("../ui/src"),
+        "@nyanpasu/interface": path.resolve("../interface/src"),
+      },
+    },
     optimizeDeps: {
       entries: ["./src/pages/**/*.tsx", "./src/main.tsx"],
       include: ["@emotion/styled"],

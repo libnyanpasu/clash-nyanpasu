@@ -103,7 +103,7 @@ const CardProgress = ({
 
       <div className="truncate">
         {calcProgress(data).toFixed(0)}%{""}
-        <span>({parseTraffic(data?.downloader.speed)}/s)</span>
+        <span>({parseTraffic(data?.downloader.speed || 0)}/s)</span>
       </div>
     </motion.div>
   );

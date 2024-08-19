@@ -11,8 +11,6 @@ import generouted from "@generouted/react-router/plugin";
 // import react from "@vitejs/plugin-react";
 import react from "@vitejs/plugin-react-swc";
 
-const __dirname = path.dirname(new URL(import.meta.url).pathname);
-
 const devtools = () => {
   return {
     name: "react-devtools",

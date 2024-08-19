@@ -115,6 +115,8 @@ impl UpdaterBuilder {
         download_url.set_path(&download_path);
         let download_url = crate::utils::candy::parse_gh_url(&mirror, download_url.as_str())?;
         let file = tokio::fs::File::create(temp_dir.path().join(&artifact)).await?;
+        tracing::debug!("downloader url: {}", download_url);
+        tracing::debug!("downloader file: {:?}", file);
         let (tx, rx) = tokio::sync::mpsc::channel::<DownloaderState>(1);
         let callback: Box<dyn Fn(DownloaderState) + Send + Sync> = Box::new(move |state| {
             let tx = tx.clone();
@@ -146,6 +148,7 @@ impl UpdaterBuilder {
 
 impl Updater {
     fn dispatch_state(&self, state: UpdaterState) {
+        tracing::debug!("dispatching updater state: {:?}", state);
         let mut inner = self.inner.write();
         inner.state = state;
     }
@@ -162,8 +165,8 @@ impl Updater {
             match artifact {
                 fname if fname.ends_with(".gz") => {
                     tracing::debug!("decompressing gz file");
-                    let mut decompressor = gunzip::Decompressor::new(tmp_file, true);
-                    std::io::copy(&mut decompressor, &mut buff)?;
+                    let mut decoder = flate2::read::GzDecoder::new(&mut tmp_file);
+                    std::io::copy(&mut decoder, &mut buff)?;
                 }
                 fname if fname.ends_with(".zip") => {
                     tracing::debug!("decompressing zip file");
@@ -193,7 +196,11 @@ impl Updater {
             Ok::<_, anyhow::Error>(buff)
         })
         .await??;
-        let tmp_core = self.temp_dir.path().join(self.core_type.to_string());
+        let tmp_core = self.temp_dir.path().join(format!(
+            "{}{}",
+            self.core_type,
+            std::env::consts::EXE_SUFFIX
+        ));
         tracing::debug!("writing core to {:?} ({} bytes)", tmp_core, buff.len());
         let mut core_file = tokio::fs::File::create(&tmp_core).await?;
         tokio::io::copy(&mut buff.as_slice(), &mut core_file).await?;
@@ -222,7 +229,11 @@ impl Updater {
         let core_dir = core_dir.parent().ok_or(anyhow!("failed to get core dir"))?;
         let target_core = core_dir.join(target_core);
         tracing::debug!("copying core to {:?}", target_core);
-        let tmp_core_path = self.temp_dir.path().join(&self.artifact);
+        let tmp_core_path = self.temp_dir.path().join(format!(
+            "{}{}",
+            self.core_type,
+            std::env::consts::EXE_SUFFIX
+        ));
         match tokio::fs::copy(tmp_core_path.clone(), target_core.clone()).await {
             Ok(_) => {}
             Err(err) => {

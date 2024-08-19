@@ -240,8 +240,8 @@ importers:
         specifier: 12.0.0-alpha.0
         version: 12.0.0-alpha.0(@emotion/is-prop-valid@1.3.0)(react-dom@19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807))(react@19.0.0-rc-e948a5ac-20240807)
       i18next:
-        specifier: 23.12.3
-        version: 23.12.3
+        specifier: 23.14.0
+        version: 23.14.0
       jotai:
         specifier: 2.9.3
         version: 2.9.3(react@19.0.0-rc-e948a5ac-20240807)(types-react@19.0.0-rc.1)
@@ -271,7 +271,7 @@ importers:
         version: 7.0.1(lz7u4tf6gn2dl5jquupqms4fd4)
       react-i18next:
         specifier: 15.0.1
-        version: 15.0.1(i18next@23.12.3)(react-dom@19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807))(react@19.0.0-rc-e948a5ac-20240807)
+        version: 15.0.1(i18next@23.14.0)(react-dom@19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807))(react@19.0.0-rc-e948a5ac-20240807)
       react-markdown:
         specifier: 9.0.1
         version: 9.0.1(react@19.0.0-rc-e948a5ac-20240807)(types-react@19.0.0-rc.1)
@@ -392,7 +392,7 @@ importers:
         version: 4.0.13(react@19.0.0-rc-e948a5ac-20240807)
       react-i18next:
         specifier: 15.0.1
-        version: 15.0.1(i18next@23.12.3)(react-dom@19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807))(react@19.0.0-rc-e948a5ac-20240807)
+        version: 15.0.1(i18next@23.14.0)(react-dom@19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807))(react@19.0.0-rc-e948a5ac-20240807)
       react-use:
         specifier: 17.5.1
         version: 17.5.1(react@19.0.0-rc-e948a5ac-20240807)
@@ -4189,8 +4189,8 @@ packages:
   hyphenate-style-name@1.1.0:
     resolution: {integrity: sha512-WDC/ui2VVRrz3jOVi+XtjqkDjiVjTtFaAGiW37k6b+ohyQ5wYDOGkvCZa8+H0nx3gyvv0+BST9xuOgIyGQ00gw==}
 
-  i18next@23.12.3:
-    resolution: {integrity: sha512-DyigQmrR10V9U2N6pjhbfahW13GY7n8BQD9swN09JuRRropgsksWVi4vRLeex0Qf7zCPnBfIqQfhcBzdZBQBYw==}
+  i18next@23.14.0:
+    resolution: {integrity: sha512-Y5GL4OdA8IU2geRrt2+Uc1iIhsjICdHZzT9tNwQ3TVqdNzgxHToGCKf/TPRP80vTCAP6svg2WbbJL+Gx5MFQVA==}
 
   iconv-lite@0.6.3:
     resolution: {integrity: sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw==}
@@ -10808,7 +10808,7 @@ snapshots:
 
   hyphenate-style-name@1.1.0: {}
 
-  i18next@23.12.3:
+  i18next@23.14.0:
     dependencies:
       '@babel/runtime': 7.24.8
 
@@ -12222,11 +12222,11 @@ snapshots:
     dependencies:
       react: 19.0.0-rc-e948a5ac-20240807
 
-  react-i18next@15.0.1(i18next@23.12.3)(react-dom@19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807))(react@19.0.0-rc-e948a5ac-20240807):
+  react-i18next@15.0.1(i18next@23.14.0)(react-dom@19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807))(react@19.0.0-rc-e948a5ac-20240807):
     dependencies:
       '@babel/runtime': 7.24.8
       html-parse-stringify: 3.0.1
-      i18next: 23.12.3
+      i18next: 23.14.0
       react: 19.0.0-rc-e948a5ac-20240807
     optionalDependencies:
       react-dom: 19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807)

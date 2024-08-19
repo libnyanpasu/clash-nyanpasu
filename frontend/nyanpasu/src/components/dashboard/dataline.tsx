@@ -1,11 +1,12 @@
 import { cloneElement, FC } from "react";
 import { useTranslation } from "react-i18next";
 import parseTraffic from "@/utils/parse-traffic";
-import { SvgIconComponent } from "@mui/icons-material";
+import { type SvgIconComponent } from "@mui/icons-material";
 import { Paper } from "@mui/material";
-import { Sparkline } from "@nyanpasu/ui";
+import { cn, Sparkline } from "@nyanpasu/ui";
 
 export interface DatalineProps {
+  className?: string;
   data: number[];
   icon: SvgIconComponent;
   title: string;
@@ -19,15 +20,17 @@ export const Dataline: FC<DatalineProps> = ({
   title,
   total,
   type,
+  className,
 }) => {
   const { t } = useTranslation();
 
   return (
-    <Paper className="relative !rounded-3xl">
+    <Paper className={cn("relative !rounded-3xl", className)}>
       <Sparkline data={data} className="rounded-3xl" />
 
       <div className="absolute top-0 flex h-full flex-col justify-between gap-4 p-4">
         <div className="flex items-center gap-2">
+          {/* @ts-expect-error icon should be cloneable */}
           {cloneElement(icon)}
 
           <div className="font-bold">{title}</div>

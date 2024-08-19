@@ -1,9 +1,10 @@
-import clsx from "clsx";
-import { CSSProperties, useRef, useState } from "react";
 import { parseHotkey } from "@/utils/parse-hotkey";
 import { DeleteRounded } from "@mui/icons-material";
 import { alpha, IconButton, useTheme } from "@mui/material";
-import Kbd from "@nyanpasu/ui/materialYou/components/kbd";
+import type {} from "@mui/material/themeCssVarsAugmentation";
+import clsx from "clsx";
+import { CSSProperties, useRef, useState } from "react";
+import { Kbd } from "@nyanpasu/ui";
 import styles from "./hotkey-input.module.scss";
 
 export interface Props extends React.HTMLAttributes<HTMLInputElement> {

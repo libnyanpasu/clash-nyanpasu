@@ -11,7 +11,7 @@ import {
   ListItemText,
 } from "@mui/material";
 import { getServerPort, useClashCore } from "@nyanpasu/interface";
-import LazyImage from "@nyanpasu/ui/materialYou/components/lazyImage";
+import { LazyImage } from "@nyanpasu/ui";
 
 const IconRender = memo(function IconRender({ icon }: { icon: string }) {
   const {

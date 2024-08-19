@@ -72,7 +72,7 @@ export const AppDrawer = () => {
                 type: "tween",
               }}
             >
-              <DrawerContent isDrawer className="max-w-64" />
+              <DrawerContent className="max-w-64" />
             </motion.div>
           </div>
         </AnimatePresence>

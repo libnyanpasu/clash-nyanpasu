@@ -58,7 +58,7 @@ const FieldsControl = ({
         close="Close"
         onClose={() => setOpen(false)}
         divider
-        contentSx={{ overflow: "auto" }}
+        contentStyle={{ overflow: "auto" }}
       >
         <Box display="flex" flexDirection="column" gap={1}>
           {disabled && <Typography>Clash Nyanpasu Control Fields.</Typography>}

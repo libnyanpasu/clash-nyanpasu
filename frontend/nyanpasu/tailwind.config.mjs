@@ -1,4 +1,4 @@
-import { MUI_BREAKPOINTS } from "@nyanpasu/ui/materialYou/createTheme";
+import { MUI_BREAKPOINTS } from "@nyanpasu/ui";
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 /* eslint-disable @typescript-eslint/no-require-imports */

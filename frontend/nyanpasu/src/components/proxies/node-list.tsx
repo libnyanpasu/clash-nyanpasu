@@ -5,6 +5,7 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
   useTransition,
@@ -64,13 +65,21 @@ export const NodeList = forwardRef(function NodeList({}, ref) {
     sortGroup();
   }, [sortGroup]);
 
-  const { column } = useBreakpoint({
-    sm: 1,
-    md: 1,
-    lg: 2,
-    xl: 3,
-    default: 4,
-  });
+  const breakpoint = useBreakpoint();
+  const column = useMemo(() => {
+    switch (breakpoint) {
+      case "sm":
+        return 1;
+      case "md":
+        return 1;
+      case "lg":
+        return 2;
+      case "xl":
+        return 3;
+      default:
+        return 4;
+    }
+  }, [breakpoint]);
 
   const [renderList, setRenderList] = useState<RenderClashProxy[][]>([]);
 

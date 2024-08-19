@@ -11,6 +11,7 @@ import {
   useCustomTheme,
 } from "@/components/layout/use-custom-theme";
 import LogProvider from "@/components/logs/log-provider";
+import { atomIsDrawer } from "@/store";
 import { classNames } from "@/utils";
 import { useTheme } from "@mui/material";
 import { Experimental_CssVarsProvider as CssVarsProvider } from "@mui/material/styles";
@@ -23,7 +24,6 @@ import { useAtom } from "jotai";
 import { useEffect } from "react";
 import { FallbackProps } from "react-error-boundary";
 import { SWRConfig } from "swr";
-import { atomIsDrawer } from "@/store";
 import styles from "./_app.module.scss";
 
 dayjs.extend(relativeTime);
@@ -31,13 +31,13 @@ dayjs.extend(relativeTime);
 export default function App() {
   const { theme } = useCustomTheme();
 
-  const { column } = useBreakpoint();
+  const breakpoint = useBreakpoint();
 
   const [isDrawer, setIsDrawer] = useAtom(atomIsDrawer);
 
   useEffect(() => {
-    setIsDrawer(Boolean(column === 1));
-  }, [column]);
+    setIsDrawer(breakpoint === "sm" || breakpoint === "xs");
+  }, [breakpoint, setIsDrawer]);
 
   useMount(() => {
     import("@tauri-apps/api/window")

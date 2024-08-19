@@ -8,12 +8,12 @@
       "@nyanpasu/ui/*": ["./frontend/ui/*"],
       "@nyanpasu/nyanpasu/*": ["./frontend/nyanpasu/*"],
       "@nyanpasu/interface/*": ["./frontend/interface/*"],
-    }
+    },
   },
   "references": [
     { "path": "./frontend/ui" },
     { "path": "./frontend/nyanpasu" },
     { "path": "./frontend/interface" },
     { "path": "./scripts" },
-  ]
+  ],
 }

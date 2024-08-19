@@ -75,7 +75,7 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Prepare fronend
-        run: pnpm -F ui build && pnpm -F nyanpasu build # Build frontend
+        run: pnpm -r build # Build frontend
       - name: Prepare sidecar and resources
         run: pnpm check
       - name: Lint

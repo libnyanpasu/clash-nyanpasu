@@ -2,19 +2,18 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useAtom, useAtomValue } from "jotai";
 import {
   forwardRef,
+  RefObject,
   useCallback,
   useEffect,
   useImperativeHandle,
-  useMemo,
   useRef,
   useState,
   useTransition,
 } from "react";
-import { VList, VListHandle } from "virtua";
+import { Virtualizer, VListHandle } from "virtua";
 import { proxyGroupAtom, proxyGroupSortAtom } from "@/store";
-import { classNames } from "@/utils";
 import { Clash, useClashCore, useNyanpasu } from "@nyanpasu/interface";
-import { useBreakpoint } from "@nyanpasu/ui";
+import { cn, useBreakpointValue } from "@nyanpasu/ui";
 import NodeCard from "./node-card";
 import { nodeSortingFn } from "./utils";
 
@@ -24,7 +23,10 @@ export interface NodeListRef {
   scrollToCurrent: () => void;
 }
 
-export const NodeList = forwardRef(function NodeList({}, ref) {
+export const NodeList = forwardRef(function NodeList(
+  { scrollRef }: { scrollRef: RefObject<HTMLElement> },
+  ref,
+) {
   const {
     data,
     setGroupProxy,
@@ -33,7 +35,7 @@ export const NodeList = forwardRef(function NodeList({}, ref) {
     getAllProxiesProviders,
   } = useClashCore();
 
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
   const { getCurrentMode } = useNyanpasu();
 
@@ -62,32 +64,27 @@ export const NodeList = forwardRef(function NodeList({}, ref) {
   }, [
     data?.global,
     data?.groups,
-    getCurrentMode.global,
     proxyGroup.selector,
+    getCurrentMode,
     proxyGroupSort,
+    setGroup,
   ]);
 
   useEffect(() => {
     sortGroup();
   }, [sortGroup]);
 
-  const breakpoint = useBreakpoint();
-  const column = useMemo(() => {
-    switch (breakpoint) {
-      case "xs":
-      case "sm":
-        return 1;
-      case "md":
-      case "lg":
-        return 2;
-      case "xl":
-        return 4;
-    }
-  }, [breakpoint]);
+  const column = useBreakpointValue({
+    xs: 1,
+    sm: 1,
+    md: 2,
+    lg: 3,
+    xl: 4,
+  });
 
   const [renderList, setRenderList] = useState<RenderClashProxy[][]>([]);
 
-  const updateRenderList = useCallback(() => {
+  const updateRenderList = () => {
     if (!group?.all) return;
 
     const nodeNames: string[] = [];
@@ -121,7 +118,7 @@ export const NodeList = forwardRef(function NodeList({}, ref) {
     );
 
     setRenderList(list);
-  }, [column, group?.all]);
+  };
 
   useEffect(() => {
     startTransition(() => {
@@ -170,20 +167,12 @@ export const NodeList = forwardRef(function NodeList({}, ref) {
 
   return (
     <AnimatePresence initial={false} mode="sync">
-      <VList
-        ref={vListRef}
-        style={{ flex: 1 }}
-        className={classNames(
-          "transition-opacity",
-          "p-2",
-          isPending ? "opacity-0" : "opacity-1",
-        )}
-      >
+      <Virtualizer ref={vListRef} scrollRef={scrollRef}>
         {renderList?.map((node, index) => {
           return (
             <div
               key={index}
-              className="grid gap-2 pb-2"
+              className={cn("grid gap-2 px-2 pb-2", index === 0 && "pt-14")}
               style={{ gridTemplateColumns: `repeat(${column} , 1fr)` }}
             >
               {node.map((render) => {
@@ -218,7 +207,7 @@ export const NodeList = forwardRef(function NodeList({}, ref) {
             </div>
           );
         })}
-      </VList>
+      </Virtualizer>
     </AnimatePresence>
   );
 });

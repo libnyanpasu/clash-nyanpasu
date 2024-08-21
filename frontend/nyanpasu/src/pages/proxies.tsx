@@ -1,5 +1,5 @@
 import { useAtom } from "jotai";
-import { useEffect, useRef, useState } from "react";
+import { RefObject, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import ContentDisplay from "@/components/base/content-display";
 import {
@@ -21,7 +21,7 @@ import {
   useTheme,
 } from "@mui/material";
 import { Clash, useClashCore, useNyanpasu } from "@nyanpasu/interface";
-import { SidePage } from "@nyanpasu/ui";
+import { cn, SidePage } from "@nyanpasu/ui";
 
 export default function ProxyPage() {
   const { t } = useTranslation();
@@ -86,6 +86,10 @@ export default function ProxyPage() {
     );
   };
 
+  const leftViewportRef = useRef<HTMLDivElement>(null);
+
+  const rightViewportRef = useRef<HTMLDivElement>(null);
+
   const SideBar = () => {
     return (
       <TextField
@@ -94,11 +98,16 @@ export default function ProxyPage() {
         autoComplete="off"
         spellCheck="false"
         placeholder={t("Filter conditions")}
-        sx={{ input: { py: 1, px: 2 } }}
+        className="!pb-0"
+        sx={{ input: { py: 1.2, fontSize: 14 } }}
         InputProps={{
           sx: {
             borderRadius: 7,
             backgroundColor: alpha(palette.primary.main, 0.1),
+
+            fieldset: {
+              border: "none",
+            },
           },
         }}
       />
@@ -110,11 +119,23 @@ export default function ProxyPage() {
       title={t("Proxy Groups")}
       header={<Header />}
       sideBar={<SideBar />}
-      side={hasProxies && getCurrentMode.rule && <GroupList />}
-      toolBar={
+      leftViewportRef={leftViewportRef}
+      rightViewportRef={rightViewportRef}
+      side={
+        hasProxies &&
+        getCurrentMode.rule && (
+          <GroupList scrollRef={leftViewportRef as RefObject<HTMLElement>} />
+        )
+      }
+      portalRightRoot={
         hasProxies &&
         !getCurrentMode.direct && (
-          <div className="flex w-full items-center justify-between">
+          <div
+            className={cn(
+              "absolute z-10 flex w-full items-center justify-between px-4 py-2 backdrop-blur",
+              "bg-gray-200/30 dark:bg-gray-900/30",
+            )}
+          >
             <div className="flex items-center gap-4">
               {group?.name && <ProxyGroupName name={group?.name} />}
             </div>
@@ -131,20 +152,22 @@ export default function ProxyPage() {
           </div>
         )
       }
-      noChildrenScroll
     >
       {!getCurrentMode.direct ? (
         hasProxies ? (
           <>
-            <NodeList ref={nodeListRef} />
+            <NodeList
+              ref={nodeListRef}
+              scrollRef={rightViewportRef as RefObject<HTMLElement>}
+            />
 
             <DelayButton onClick={handleDelayClick} />
           </>
         ) : (
-          <ContentDisplay message="No Proxy" />
+          <ContentDisplay className="absolute" message="No Proxy" />
         )
       ) : (
-        <ContentDisplay message="Direct Mode" />
+        <ContentDisplay className="absolute" message="Direct Mode" />
       )}
     </SidePage>
   );

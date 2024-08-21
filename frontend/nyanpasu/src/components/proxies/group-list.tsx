@@ -1,5 +1,5 @@
 import { useAtom } from "jotai";
-import { memo, useMemo } from "react";
+import { memo, RefObject, useMemo } from "react";
 import useSWR from "swr";
 import { Virtualizer } from "virtua";
 import { proxyGroupAtom } from "@/store";
@@ -42,7 +42,14 @@ const IconRender = memo(function IconRender({ icon }: { icon: string }) {
   );
 });
 
-export const GroupList = (listItemButtonProps: ListItemButtonProps) => {
+export interface GroupListProps extends ListItemButtonProps {
+  scrollRef: RefObject<HTMLElement>;
+}
+
+export const GroupList = ({
+  scrollRef,
+  ...listItemButtonProps
+}: GroupListProps) => {
   const { data } = useClashCore();
 
   const [proxyGroup, setProxyGroup] = useAtom(proxyGroupAtom);
@@ -52,7 +59,7 @@ export const GroupList = (listItemButtonProps: ListItemButtonProps) => {
   };
 
   return (
-    <Virtualizer>
+    <Virtualizer scrollRef={scrollRef}>
       {data?.groups?.map((group, index) => {
         return (
           <ListItem key={index} disablePadding>

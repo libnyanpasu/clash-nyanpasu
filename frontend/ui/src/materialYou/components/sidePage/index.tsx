@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
-import { FC, ReactNode } from "react";
-import Divider from "@mui/material/Divider";
-import Toolbar from "@mui/material/Toolbar";
+import { FC, ReactNode, Ref } from "react";
+import { cn } from "@/utils";
+import * as ScrollArea from "@radix-ui/react-scroll-area";
 import { BaseErrorBoundary } from "../basePage/baseErrorBoundary";
 import Header from "../basePage/header";
 import style from "./style.module.scss";
@@ -13,9 +13,11 @@ interface Props {
   sideBar?: ReactNode;
   side?: ReactNode;
   sideClassName?: string;
-  toolBar?: ReactNode;
+  portalRightRoot?: ReactNode;
   noChildrenScroll?: boolean;
   flexReverse?: boolean;
+  leftViewportRef?: Ref<HTMLDivElement>;
+  rightViewportRef?: Ref<HTMLDivElement>;
 }
 
 export const SidePage: FC<Props> = ({
@@ -25,10 +27,15 @@ export const SidePage: FC<Props> = ({
   sideBar,
   side,
   sideClassName,
-  toolBar,
-  noChildrenScroll,
+  portalRightRoot,
   flexReverse,
+  leftViewportRef,
+  rightViewportRef,
 }) => {
+  const sideBarStyle = {
+    height: sideBar ? "calc(100% - 56px)" : undefined,
+  };
+
   return (
     <BaseErrorBoundary>
       <div className={style["MDYSidePage-Main"]} data-windrag>
@@ -36,59 +43,91 @@ export const SidePage: FC<Props> = ({
 
         <div className={style["MDYSidePage-Container"]}>
           <div
-            className={style["MDYSidePage-Layout"]}
-            style={{
-              flexDirection: flexReverse ? "row-reverse" : undefined,
-              gap: side ? undefined : "0px",
-            }}
+            className={cn(
+              "flex h-full w-full",
+              flexReverse && "flex-row-reverse",
+            )}
           >
-            <motion.div
-              className={style.LeftContainer}
-              initial={false}
-              animate={side ? "open" : "closed"}
-              variants={{
-                open: {
-                  opacity: 1,
-                  maxWidth: "348px",
-                  minWidth: "192px",
-                  display: "flex",
-                },
-                closed: {
-                  opacity: 0.5,
-                  maxWidth: 0,
-                  transitionEnd: {
-                    display: "none",
+            <ScrollArea.Root asChild>
+              <motion.div
+                className="w-1/3"
+                initial={false}
+                animate={side ? "open" : "closed"}
+                variants={{
+                  open: {
+                    opacity: 1,
+                    maxWidth: "348px",
+                    minWidth: "192px",
+                    display: "block",
+                    marginLeft: flexReverse ? "16px" : undefined,
+                    marginRight: flexReverse ? undefined : "16px",
                   },
-                },
-              }}
-            >
-              {sideBar && <div>{sideBar}</div>}
-
-              <div className={style["LeftContainer-Content"]}>
-                <section className={sideClassName}>{side}</section>
-              </div>
-            </motion.div>
-
-            <div className={style.RightContainer}>
-              {toolBar && (
-                <>
-                  <Toolbar variant="dense">{toolBar}</Toolbar>
-
-                  <Divider />
-                </>
-              )}
-
-              <div
-                className={style["RightContainer-Content"]}
-                style={toolBar ? { height: "calc(100% - 49px)" } : undefined}
+                  closed: {
+                    opacity: 0.5,
+                    maxWidth: 0,
+                    marginLeft: "0px",
+                    marginRight: "0px",
+                    transitionEnd: {
+                      display: "none",
+                    },
+                  },
+                }}
               >
-                <section
-                  style={noChildrenScroll ? { overflow: "visible" } : undefined}
+                {sideBar && <div className="mb-4 h-10">{sideBar}</div>}
+
+                <ScrollArea.Viewport
+                  className={cn(
+                    style["Container-common"],
+                    "relative w-full [&>div]:!block",
+                    sideClassName,
+                  )}
+                  style={sideBarStyle}
+                  ref={leftViewportRef}
                 >
-                  {children}
-                </section>
-              </div>
-            </div>
+                  {side}
+                </ScrollArea.Viewport>
+
+                <ScrollArea.Scrollbar
+                  className={cn(
+                    "flex touch-none select-none py-6 pr-1.5",
+                    sideBar && "!top-14",
+                  )}
+                  orientation="vertical"
+                  style={sideBarStyle}
+                >
+                  <ScrollArea.Thumb
+                    className={cn(
+                      style["ScrollArea-Thumb"],
+                      "relative flex !w-1.5 flex-1 rounded-full",
+                    )}
+                  />
+                </ScrollArea.Scrollbar>
+
+                <ScrollArea.Corner className="ScrollAreaCorner" />
+              </motion.div>
+            </ScrollArea.Root>
+
+            <ScrollArea.Root
+              className={cn(style["Container-common"], "w-full")}
+            >
+              {portalRightRoot}
+
+              <ScrollArea.Viewport
+                className={cn("relative h-full w-full [&>div]:!block")}
+                ref={rightViewportRef}
+              >
+                {children}
+              </ScrollArea.Viewport>
+
+              <ScrollArea.Scrollbar
+                className="flex touch-none select-none py-6 pr-1.5"
+                orientation="vertical"
+              >
+                <ScrollArea.Thumb className="!bg-scroller relative flex !w-1.5 flex-1 rounded-full" />
+              </ScrollArea.Scrollbar>
+
+              <ScrollArea.Corner className="ScrollAreaCorner" />
+            </ScrollArea.Root>
           </div>
         </div>
       </div>

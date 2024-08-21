@@ -67,14 +67,18 @@ export const BaseDialog = ({
 
   const clickPosition = useClickPosition();
 
-  useLayoutEffect(() => {
-    if (open) {
-      setOffset({
-        x: clickPosition?.x ?? 0,
-        y: clickPosition?.y ?? 0,
-      });
-    }
-  }, [clickPosition?.x, clickPosition?.y, open]);
+  useLayoutEffect(
+    () => {
+      if (open) {
+        setOffset({
+          x: clickPosition?.x ?? 0,
+          y: clickPosition?.y ?? 0,
+        });
+      }
+    },
+    // not need clickPosition
+    [open],
+  );
 
   const handleClose = () => {
     if (onClose) {

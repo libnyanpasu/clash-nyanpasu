@@ -4,11 +4,13 @@ import useSWR from "swr";
 import { Virtualizer } from "virtua";
 import { proxyGroupAtom } from "@/store";
 import {
+  alpha,
   ListItem,
   ListItemButton,
   ListItemButtonProps,
   ListItemIcon,
   ListItemText,
+  useTheme,
 } from "@mui/material";
 import { getServerPort, useClashCore } from "@nyanpasu/interface";
 import { LazyImage } from "@nyanpasu/ui";
@@ -52,6 +54,8 @@ export const GroupList = ({
 }: GroupListProps) => {
   const { data } = useClashCore();
 
+  const { palette } = useTheme();
+
   const [proxyGroup, setProxyGroup] = useAtom(proxyGroupAtom);
 
   const handleSelect = (index: number) => {
@@ -61,11 +65,18 @@ export const GroupList = ({
   return (
     <Virtualizer scrollRef={scrollRef}>
       {data?.groups?.map((group, index) => {
+        const selected = index === proxyGroup.selector;
+
         return (
           <ListItem key={index} disablePadding>
             <ListItemButton
-              selected={index === proxyGroup.selector}
+              selected={selected}
               onClick={() => handleSelect(index)}
+              sx={{
+                backgroundColor: selected
+                  ? `${alpha(palette.primary.main, 0.3)} !important`
+                  : undefined,
+              }}
               {...listItemButtonProps}
             >
               {group.icon && <IconRender icon={group.icon} />}

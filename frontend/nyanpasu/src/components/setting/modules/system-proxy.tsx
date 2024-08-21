@@ -1,6 +1,7 @@
 import { useControllableValue } from "ahooks";
+import { merge } from "lodash-es";
 import { memo, ReactNode } from "react";
-import { alpha, CircularProgress, useTheme } from "@mui/material";
+import { alpha, CircularProgress, SxProps, useTheme } from "@mui/material";
 import { PaperButton, PaperButtonProps } from "./nyanpasu-path";
 
 export interface PaperSwitchButtonProps extends PaperButtonProps {
@@ -9,6 +10,7 @@ export interface PaperSwitchButtonProps extends PaperButtonProps {
   loading?: boolean;
   children?: ReactNode;
   onClick?: () => Promise<void> | void;
+  sxPaper?: SxProps;
 }
 
 export const PaperSwitchButton = memo(function PaperSwitchButton({
@@ -17,6 +19,7 @@ export const PaperSwitchButton = memo(function PaperSwitchButton({
   loading,
   children,
   onClick,
+  sxPaper,
   ...props
 }: PaperSwitchButtonProps) {
   const { palette } = useTheme();
@@ -39,14 +42,17 @@ export const PaperSwitchButton = memo(function PaperSwitchButton({
   return (
     <PaperButton
       label={label}
-      sxPaper={{
-        backgroundColor: checked
-          ? alpha(palette.primary.main, 0.1)
-          : palette.mode == "dark"
-            ? palette.common.black
-            : palette.grey[100],
-        cursor: pending ? "progress" : "none",
-      }}
+      sxPaper={merge(
+        {
+          backgroundColor: checked
+            ? alpha(palette.primary.main, 0.1)
+            : palette.mode == "dark"
+              ? palette.common.black
+              : palette.grey[100],
+          cursor: pending ? "progress" : "none",
+        },
+        sxPaper,
+      )}
       sxButton={{
         flexDirection: "column",
         alignItems: "start",

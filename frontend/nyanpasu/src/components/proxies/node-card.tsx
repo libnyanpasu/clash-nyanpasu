@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import { CSSProperties, memo, useMemo } from "react";
+import { alpha, useTheme } from "@mui/material";
 import Box from "@mui/material/Box";
 import { Clash } from "@nyanpasu/interface";
 import { PaperSwitchButton } from "../setting/modules/system-proxy";
@@ -23,16 +24,27 @@ export const NodeCard = memo(function NodeCard({
   onClickDelay: () => Promise<void>;
   style?: CSSProperties;
 }) {
+  const { palette } = useTheme();
+
   const delay = useMemo(() => filterDelay(node.history), [node.history]);
+
+  const checked = node.name === now;
 
   return (
     <PaperSwitchButton
       label={node.name}
-      checked={node.name === now}
+      checked={checked}
       onClick={onClick}
       disabled={disabled}
       style={style}
       className={clsx(styles.Card, delay === -1 && styles.NoDelay)}
+      sxPaper={{
+        backgroundColor: checked
+          ? alpha(palette.primary.main, 0.3)
+          : palette.mode == "dark"
+            ? alpha(palette.grey[900], 0.3)
+            : palette.grey[100],
+      }}
     >
       <Box width="100%" display="flex" gap={0.5}>
         <FeatureChip label={node.type} />

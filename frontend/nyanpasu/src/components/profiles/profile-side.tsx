@@ -41,7 +41,7 @@ export const ProfileSide = ({ onClose }: ProfileSideProps) => {
   };
 
   return (
-    <>
+    <div className="absolute h-full w-full">
       <div className="flex items-start justify-between p-4 pr-2">
         <div>
           <div className="text-xl font-bold">{t("Proxy Chains")}</div>
@@ -78,7 +78,7 @@ export const ProfileSide = ({ onClose }: ProfileSideProps) => {
           setItem(undefined);
         }}
       />
-    </>
+    </div>
   );
 };
 

@@ -1,7 +1,9 @@
+import { AnimatePresence, motion } from "framer-motion";
 import { useAtom } from "jotai";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
+import { useWindowSize } from "react-use";
 import {
   atomChainsSelected,
   atomGlobalChainCurrent,
@@ -17,8 +19,8 @@ import { QuickImport } from "@/components/profiles/quick-import";
 import RuntimeConfigDiffDialog from "@/components/profiles/runtime-config-diff-dialog";
 import { filterProfiles } from "@/components/profiles/utils";
 import { Public } from "@mui/icons-material";
-import Masonry from "@mui/lab/Masonry";
 import { Badge, Button, IconButton } from "@mui/material";
+import Grid from "@mui/material/Unstable_Grid2";
 import { Profile, useClash } from "@nyanpasu/interface";
 import { SidePage } from "@nyanpasu/ui";
 
@@ -99,6 +101,10 @@ export const ProfilePage = () => {
     } satisfies AddProfileContextValue;
   }, [location.state]);
 
+  const hasSide = globalChain || chainsSelected;
+
+  const { width } = useWindowSize();
+
   return (
     <SidePage
       title={t("Profiles")}
@@ -138,37 +144,44 @@ export const ProfilePage = () => {
           </Badge>
         </div>
       }
-      sideClassName="!overflow-visible"
-      side={
-        (globalChain || chainsSelected) && (
-          <ProfileSide onClose={handleSideClose} />
-        )
-      }
+      side={hasSide && <ProfileSide onClose={handleSideClose} />}
     >
-      <div className="flex flex-col gap-4 p-6">
-        <QuickImport />
+      <AnimatePresence initial={false} mode="sync">
+        <div className="flex flex-col gap-4 p-6">
+          <QuickImport />
 
-        {profiles && (
-          <Masonry
-            columns={{ xs: 1, sm: 1, md: 2, xl: 3 }}
-            spacing={2}
-            sx={{ width: "calc(100% + 24px)" }}
-          >
-            {profiles.map((item, index) => {
-              return (
-                <ProfileItem
-                  key={index}
-                  item={item}
-                  onClickChains={onClickChains}
-                  selected={getProfiles.data?.current == item.uid}
-                  maxLogLevelTriggered={maxLogLevelTriggered}
-                  chainsSelected={chainsSelected == item.uid}
-                />
-              );
-            })}
-          </Masonry>
-        )}
-      </div>
+          {profiles && (
+            <Grid container spacing={2}>
+              {profiles.map((item, index) => (
+                <Grid
+                  key={item.uid}
+                  xs={12}
+                  sm={12}
+                  md={hasSide && width <= 1000 ? 12 : 6}
+                  lg={4}
+                  xl={3}
+                >
+                  <motion.div
+                    key={item.uid}
+                    layoutId={`profile-${item.uid}`}
+                    layout="position"
+                    initial={false}
+                  >
+                    <ProfileItem
+                      item={item}
+                      onClickChains={onClickChains}
+                      selected={getProfiles.data?.current == item.uid}
+                      maxLogLevelTriggered={maxLogLevelTriggered}
+                      chainsSelected={chainsSelected == item.uid}
+                    />
+                  </motion.div>
+                </Grid>
+              ))}
+            </Grid>
+          )}
+        </div>
+      </AnimatePresence>
+
       <AddProfileContext.Provider value={addProfileCtxValue}>
         <NewProfileButton />
       </AddProfileContext.Provider>

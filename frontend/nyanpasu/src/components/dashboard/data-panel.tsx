@@ -129,7 +129,7 @@ export const DataPanel = () => {
   return Datalines.map((props, index) => {
     return (
       <Grid key={`data-${index}`} {...gridLayout} className="w-full">
-        <Dataline {...props} className="max-h-1/8 min-h-48" />
+        <Dataline {...props} className="max-h-1/8 min-h-40" />
       </Grid>
     );
   });

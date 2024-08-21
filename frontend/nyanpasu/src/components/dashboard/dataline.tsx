@@ -26,7 +26,7 @@ export const Dataline: FC<DatalineProps> = ({
 
   return (
     <Paper className={cn("relative !rounded-3xl", className)}>
-      <Sparkline data={data} className="rounded-3xl" />
+      <Sparkline data={data} className="absolute rounded-3xl" />
 
       <div className="absolute top-0 flex h-full flex-col justify-between gap-4 p-4">
         <div className="flex items-center gap-2">

@@ -8,7 +8,6 @@ import {
   useImperativeHandle,
   useRef,
   useState,
-  useTransition,
 } from "react";
 import { Virtualizer, VListHandle } from "virtua";
 import { proxyGroupAtom, proxyGroupSortAtom } from "@/store";
@@ -34,8 +33,6 @@ export const NodeList = forwardRef(function NodeList(
     updateProxiesDelay,
     getAllProxiesProviders,
   } = useClashCore();
-
-  const [, startTransition] = useTransition();
 
   const { getCurrentMode } = useNyanpasu();
 
@@ -84,7 +81,7 @@ export const NodeList = forwardRef(function NodeList(
 
   const [renderList, setRenderList] = useState<RenderClashProxy[][]>([]);
 
-  const updateRenderList = () => {
+  useEffect(() => {
     if (!group?.all) return;
 
     const nodeNames: string[] = [];
@@ -118,13 +115,7 @@ export const NodeList = forwardRef(function NodeList(
     );
 
     setRenderList(list);
-  };
-
-  useEffect(() => {
-    startTransition(() => {
-      updateRenderList();
-    });
-  }, [group?.all, column, updateRenderList]);
+  }, [group?.all, column]);
 
   const hendleClick = (node: string) => {
     if (!getCurrentMode.global) {

@@ -51,7 +51,7 @@ export default function HotkeyDialog({
       setHotkeyMap(map);
       setDuplicateItems([]);
     }
-  }, [open]);
+  }, [nyanpasuConfig?.hotkeys, open]);
   const isDuplicated = useMemo(() => !!duplicateItems.length, [duplicateItems]);
 
   const onBlurCb = useMemoizedFn(
@@ -99,7 +99,7 @@ export default function HotkeyDialog({
     if (!isDuplicated && open) {
       saveState();
     }
-  }, [hotkeyMap, isDuplicated, open]);
+  }, [hotkeyMap, isDuplicated, open, saveState]);
 
   const onSave = () => {
     saveState().then(() => {

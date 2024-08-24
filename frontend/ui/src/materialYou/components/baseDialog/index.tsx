@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   CSSProperties,
   ReactNode,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useState,
@@ -77,15 +78,15 @@ export const BaseDialog = ({
       }
     },
     // not need clickPosition
-    [open],
+    [clickPosition?.x, clickPosition?.y, open],
   );
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     if (onClose) {
       onClose();
       runMounted();
     }
-  };
+  }, [onClose, runMounted]);
 
   const handleOk = useLockFn(async () => {
     if (!onOk) return;

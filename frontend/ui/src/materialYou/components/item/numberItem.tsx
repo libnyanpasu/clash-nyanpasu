@@ -54,7 +54,10 @@ export const NumberItem = ({
 
   const [input, setInput] = useState<number | null>(null);
 
-  const applyCheck = useMemo(() => checkEvent(input as number), [input]);
+  const applyCheck = useMemo(
+    () => checkEvent(input as number),
+    [checkEvent, input],
+  );
 
   return (
     <>

@@ -80,6 +80,6 @@ export default function MutationProvider() {
     return () => {
       unlistenFn.current?.();
     };
-  }, []);
+  }, [mutate, t]);
   return null;
 }

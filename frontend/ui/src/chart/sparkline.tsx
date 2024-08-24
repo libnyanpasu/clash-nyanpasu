@@ -106,7 +106,7 @@ export const Sparkline: FC<SparklineProps> = ({ data, className, style }) => {
     };
 
     updateChart();
-  }, [data]);
+  }, [data, palette.primary.main]);
 
   return (
     <svg

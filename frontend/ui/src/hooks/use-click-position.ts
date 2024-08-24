@@ -29,7 +29,7 @@ export const useClickPosition = () => {
     return () => {
       document.removeEventListener("click", updateMousePosition, true);
     };
-  }, []);
+  }, [setMousePosition]);
 
   return mousePosition;
 };

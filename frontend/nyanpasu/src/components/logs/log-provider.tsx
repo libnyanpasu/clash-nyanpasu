@@ -29,7 +29,7 @@ export const LogProvider = () => {
 
       return [...prev, { ...data, time }];
     });
-  }, [latestMessage?.data]);
+  }, [latestMessage?.data, setLogData]);
 
   return null;
 };

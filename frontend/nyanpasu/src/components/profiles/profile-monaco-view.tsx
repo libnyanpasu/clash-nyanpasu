@@ -50,7 +50,7 @@ export const ProfileMonacoView = forwardRef(function ProfileMonacoView(
     return () => {
       instanceRef.current?.dispose();
     };
-  }, [open]);
+  }, [language, mode, open, value]);
 
   useImperativeHandle(ref, () => ({
     getValue: () => instanceRef.current?.getValue(),

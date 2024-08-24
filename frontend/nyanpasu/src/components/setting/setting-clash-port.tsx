@@ -18,7 +18,7 @@ export const SettingClashPort = () => {
       nyanpasuConfig?.verge_mixed_port ||
       7890
     );
-  }, [getConfigs.data?.["mixed-port"], nyanpasuConfig?.verge_mixed_port]);
+  }, [getConfigs.data, nyanpasuConfig?.verge_mixed_port]);
 
   return (
     <BaseCard label={t("Clash Port")}>

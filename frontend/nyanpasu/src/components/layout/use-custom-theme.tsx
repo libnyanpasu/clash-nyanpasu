@@ -92,7 +92,7 @@ export const ThemeModeProvider = () => {
     const chosenThemeMode = nyanpasuConfig?.theme_mode || "light";
     setThemeMode(chosenThemeMode);
     setMode(chosenThemeMode);
-  }, [nyanpasuConfig?.theme_mode]);
+  }, [nyanpasuConfig?.theme_mode, setMode, setThemeMode]);
 
   return null;
 };

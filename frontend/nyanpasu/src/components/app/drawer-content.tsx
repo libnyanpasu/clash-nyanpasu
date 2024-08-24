@@ -17,7 +17,7 @@ export const DrawerContent = ({ className }: { className?: string }) => {
 
   const contentRef = useRef<HTMLDivElement | null>(null);
 
-  const size = useSize(contentRef.current);
+  const size = useSize(contentRef);
 
   const handleResize = useCallback(
     (value?: number) => {
@@ -39,7 +39,7 @@ export const DrawerContent = ({ className }: { className?: string }) => {
 
   useEffect(() => {
     handleResize(size?.width);
-  }, [size?.width]);
+  }, [handleResize, size?.width]);
 
   return (
     <div

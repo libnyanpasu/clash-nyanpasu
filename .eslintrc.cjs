@@ -21,7 +21,7 @@ module.exports = {
     "react/jsx-no-undef": "off",
     "react/react-in-jsx-scope": "off",
     "@typescript-eslint/no-namespace": "off",
-    "react-compiler/react-compiler": "error",
+    "react-compiler/react-compiler": "warn", // blocked by https://github.com/facebook/react/issues/30782
     "react-hooks/rules-of-hooks": "error",
     "react-hooks/exhaustive-deps": "warn",
     "react/no-children-prop": "off",

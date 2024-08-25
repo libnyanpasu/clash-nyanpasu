@@ -2,1847 +2,832 @@
 
 ### ✨ Features
 
-- Perf motion transition by keiko233
+- **backend:** Allow to hide tray selector (#626) by @greenhat616 in [#626](https://github.com/LibNyanpasu/clash-nyanpasu/pull/626)
 
-- Lock rustup toolchain to stable channel by 4o3F
+- **config:** Support custom app dir in windows (#582) by @greenhat616 in [#582](https://github.com/LibNyanpasu/clash-nyanpasu/pull/582)
 
-- Add support for name and desc fields by Jonson Petard
+- **custom-schema:** Add support for name and desc fields by @greenhat616
 
-- New design log page by keiko233
+- Perf motion transition by @keiko233
 
-- New desigin rules page by keiko233
+- Lock rustup toolchain to stable channel by @4o3F
 
-- Allow to hide tray selector (#626) by Jonson Petard
+- New design log page by @keiko233
 
-- Improve WebSocket reconnection in useWebsocket hook by keiko233
+- New desigin rules page by @keiko233
 
-- Support custom app dir in windows (#582) by Jonson Petard
+- Improve WebSocket reconnection in useWebsocket hook by @keiko233
 
 ### 🐛 Bug Fixes
 
-- Revert previous commit by Jonson Petard
+- **bundler/nsis:** Don't use /R flag on installation dir by @keiko233
 
-- Subscription info parse issue, closing #729 by Jonson Petard
+- **chains:** Only guard fields should be overwritten (#629) by @greenhat616 in [#629](https://github.com/LibNyanpasu/clash-nyanpasu/pull/629)
 
-- Fix misinterprete of tauri's application args by 4o3F
+- **cmds:** Migrate custom app dir typo (#628) by @greenhat616 in [#628](https://github.com/LibNyanpasu/clash-nyanpasu/pull/628)
 
-- Missing github repo context by keiko233
+- **cmds:** `path` in changing app dir call (#591) by @greenhat616 in [#591](https://github.com/LibNyanpasu/clash-nyanpasu/pull/591)
 
-- Update rust crate backon to v0.4.4 (#731) by renovate[bot]
+- **docs:** Fix url typos by @keiko233
 
-- Fix url typos by keiko233
+- **notification:** Unexpected `}` (#563) by @WOSHIZHAZHA120 in [#563](https://github.com/LibNyanpasu/clash-nyanpasu/pull/563)
 
-- Update dependency @generouted/react-router to v1.18.7 by renovate[bot]
+- Revert previous commit by @greenhat616
 
-- Try to add a launch command to make restart application work by Jonson Petard
+- Subscription info parse issue, closing #729 by @greenhat616
 
-- Try to use delayed singleton check to make restart app work by Jonson Petard
+- Fix misinterprete of tauri's application args by @4o3F
 
-- Panic while quit application by Jonson Petard
+- Missing github repo context by @keiko233
 
-- Restart application not work by Jonson Petard
+- Try to add a launch command to make restart application work by @greenhat616
 
-- Fix migration issue for path with space by 4o3F
+- Try to use delayed singleton check to make restart app work by @greenhat616
 
-- Update dependency react-virtuoso to v4.7.8 (#724) by renovate[bot]
+- Panic while quit application by @greenhat616
 
-- Update rust crate warp to v0.3.7 by renovate[bot]
+- Restart application not work by @greenhat616
 
-- Update dependency framer-motion to v11.0.25 by renovate[bot]
+- Fix migration issue for path with space by @4o3F
 
-- Update dependency @mui/x-data-grid to v7.1.1 by renovate[bot]
+- Fix migration child process issue by @4o3F
 
-- Fix migration child process issue by 4o3F
+- Fix rename permission issue by @4o3F
 
-- Fix rename permission issue by 4o3F
+- Connection page NaN and first enter animation by @greenhat616
 
-- Update material-ui monorepo (#715) by renovate[bot]
+- Use shiki intead of shikiji by @greenhat616
 
-- Update dependency @generouted/react-router to v1.18.6 by renovate[bot]
+- Use clash verge rev patch to resolve Content-Disposition Filename issue, closing #703 by @greenhat616
 
-- Connection page NaN and first enter animation by Jonson Petard
+- Lint by @greenhat616
 
-- Pin dependency @generouted/react-router to 1.18.5 by renovate[bot]
+- Command path by @greenhat616
 
-- Use shiki intead of shikiji by Jonson Petard
+- Draft patch to resolve custom app config migration by @greenhat616
 
-- Update rust crate sysinfo to v0.30.8 by renovate[bot]
+- Proxy groups virtuoso also overscan by @keiko233
 
-- Use clash verge rev patch to resolve Content-Disposition Filename issue, closing #703 by Jonson Petard
+- Top item no padding by @keiko233
 
-- Lint by Jonson Petard
+- Use overscan to prevent blank scrolling by @keiko233
 
-- Command path by Jonson Petard
+- Profiles when drag sort container scroll style by @keiko233
 
-- Draft patch to resolve custom app config migration by Jonson Petard
+- Profile-box border radius value by @keiko233
 
-- Update dependency ahooks to v3.7.11 (#700) by renovate[bot]
+- Slinet start get_window err by @keiko233
 
-- Proxy groups virtuoso also overscan by keiko233
+- MDYSwitch-thumb size by @keiko233
 
-- Top item no padding by keiko233
+- Build by @keiko233
 
-- Use overscan to prevent blank scrolling by keiko233
+- Disable webview2 SwipeNavigation by @keiko233
 
-- Profiles when drag sort container scroll style by keiko233
+- Fix wrong window size and position by @4o3F
 
-- Profile-box border radius value by keiko233
-
-- Don't use /R flag on installation dir by keiko233
-
-- Update rust crate image to v0.25.1 by renovate[bot]
-
-- Update dependency react-virtuoso to v4.7.7 by renovate[bot]
-
-- Update dependency @emotion/styled to v11.11.5 by renovate[bot]
-
-- Update dependency framer-motion to v11.0.24 by renovate[bot]
-
-- Update rust crate tokio to v1.37.0 by renovate[bot]
-
-- Update dependency @mui/x-data-grid to v7.1.0 by renovate[bot]
-
-- Update dependency react-virtuoso to v4.7.6 by renovate[bot]
-
-- Update dependency framer-motion to v11.0.23 by renovate[bot]
-
-- Update rust crate chrono to v0.4.37 by renovate[bot]
-
-- Update dependency react-virtuoso to v4.7.5 by renovate[bot]
-
-- Update dependency react-hook-form to v7.51.2 by renovate[bot]
-
-- Update dependency framer-motion to v11.0.22 by renovate[bot]
-
-- Update rust crate serde_json to v1.0.115 (#677) by renovate[bot]
-
-- Update dependency framer-motion to v11.0.21 (#676) by renovate[bot]
-
-- Update rust crate serde_yaml to v0.9.34 by renovate[bot]
-
-- Update rust crate async-trait to v0.1.79 by renovate[bot]
-
-- Update rust crate indexmap to v2.2.6 (#663) by renovate[bot]
-
-- Update rust crate which to v6.0.1 by renovate[bot]
-
-- Update dependency @mui/x-data-grid to v7 (#659) by renovate[bot]
-
-- Update dependency framer-motion to v11.0.20 by renovate[bot]
-
-- Update dependency @mui/x-data-grid to v6.19.8 (#651) by renovate[bot]
-
-- Update dependency react-virtuoso to v4.7.4 (#648) by renovate[bot]
-
-- Update dependency framer-motion to v11.0.18 (#647) by renovate[bot]
-
-- Update rust crate reqwest to v0.11.27 (#645) by renovate[bot]
-
-- Update dependency react-virtuoso to v4.7.3 by renovate[bot]
-
-- Update dependency framer-motion to v11.0.15 (#641) by renovate[bot]
-
-- Update material-ui monorepo (#638) by renovate[bot]
-
-- Slinet start get_window err by keiko233
-
-- MDYSwitch-thumb size by keiko233
-
-- Update rust crate uuid to v1.8.0 by renovate[bot]
-
-- Only guard fields should be overwritten (#629) by Jonson Petard
-
-- Migrate custom app dir typo (#628) by Jonson Petard
-
-- Update rust crate serde_yaml to v0.9.33 (#624) by renovate[bot]
-
-- Update dependency react-hook-form to v7.51.1 by renovate[bot]
-
-- Update dependency axios to v1.6.8 by renovate[bot]
-
-- Update dependency framer-motion to v11.0.14 (#616) by renovate[bot]
-
-- Update material-ui monorepo (#607) by renovate[bot]
-
-- Update dependency framer-motion to v11.0.13 by renovate[bot]
-
-- Build by keiko233
-
-- Disable webview2 SwipeNavigation by keiko233
-
-- Update rust crate reqwest to v0.11.26 by renovate[bot]
-
-- Update dependency framer-motion to v11.0.12 by renovate[bot]
-
-- Update rust crate anyhow to v1.0.81 by renovate[bot]
-
-- `path` in changing app dir call (#591) by Jonson Petard
-
-- Update rust crate ctrlc to v3.4.4 by renovate[bot]
-
-- Update rust crate reqwest to v0.11.25 (#581) by renovate[bot]
-
-- Update dependency monaco-editor to v0.47.0 by renovate[bot]
-
-- Update dependency react-virtuoso to v4.7.2 by renovate[bot]
-
-- Update rust crate backon to v0.4.3 (#578) by renovate[bot]
-
-- Update dependency i18next to v23.10.1 by renovate[bot]
-
-- Update rust crate open to v5.1.2 by renovate[bot]
-
-- Update dependency react-router-dom to v6.22.3 by renovate[bot]
-
-- Update dependency react-i18next to v14.1.0 by renovate[bot]
-
-- Update dependency react-i18next to v14.0.8 by renovate[bot]
-
-- Update rust crate sysinfo to v0.30.7 (#567) by renovate[bot]
-
-- Update rust crate chrono to v0.4.35 by renovate[bot]
-
-- Fix wrong window size and position by 4o3F
-
-- Unexpected `}` (#563) by 渣渣120
-
-- Update material-ui monorepo (#562) by renovate[bot]
-
-- Fix single instance check failing on macos by 4o3F
+- Fix single instance check failing on macos by @4o3F
 
 ### 📚 Documentation
 
-- Add clash-verge-rev acknowledgement by Jonson Petard
+- Add clash-verge-rev acknowledgement by @greenhat616
 
-- Add twitter img tag by keiko233
+- Add twitter img tag by @keiko233
 
-- Add license img tag by keiko233
+- Add license img tag by @keiko233
 
-- Align center tag imgs by keiko233
+- Align center tag imgs by @keiko233
 
-- Update readme by keiko233
+- Update readme by @keiko233
 
-- Update issues template by Jonson Petard
+- Update issues template by @greenhat616
 
 ### 🔨 Refactor
 
-- Use lazy load routes to improve performance by Jonson Petard
-
-### 🧹 Miscellaneous Tasks
-
-- V1.5.1 🤖 [skip ci] by github-actions[bot]
-
-- Add send-release:nightly script & trigger when nightly build by keiko233
-
-- Send nightly build to telegram channel by keiko233
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Post tweet when release by keiko233
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency @types/node to v20.12.5 (#722) by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency typescript to v5.4.4 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency tsx to v4.7.2 (#714) by renovate[bot]
-
-- Update dependency sass to v1.74.1 (#713) by renovate[bot]
-
-- Update typescript packages by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency vite to v5.2.8 (#710) by renovate[bot]
-
-- Update dependency shiki to v1.2.4 (#709) by renovate[bot]
-
-- Update dependency @types/node to v20.12.3 (#708) by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Rm global scss dts by Jonson Petard
-
-- Pin dependencies by renovate[bot]
-
-- Add scss dts for better DX by Jonson Petard
-
-- Update dependency @types/react to v18.2.74 by renovate[bot]
-
-- Enable devtools in nightly build by Jonson Petard
-
-- Update lint packages to v7.5.0 (#701) by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Drop unused scss by keiko233
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency @types/node to v20.12.2 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency vite to v5.2.7 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency @types/react-dom to v18.2.23 by renovate[bot]
-
-- Update dependency @types/react to v18.2.73 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update rust crates by Petard Jonson
-
-- Update dependency @types/react to v18.2.72 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency stylelint to v16.3.1 (#678) by renovate[bot]
-
-- Fix issues template typos by keiko233
-
-- Update dependency @types/react to v18.2.71 (#675) by renovate[bot]
-
-- Update lint packages to v7.4.0 by renovate[bot]
-
-- Update dependency @types/react to v18.2.70 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency vite to v5.2.6 by renovate[bot]
-
-- Update dependency vite to v5.2.5 (#669) by renovate[bot]
-
-- Update dependency stylelint to v16.3.0 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency vite to v5.2.4 by renovate[bot]
-
-- Update dependency @types/react to v18.2.69 (#661) by renovate[bot]
-
-- Update dependency vite to v5.2.3 by renovate[bot]
-
-- Fix nsis installer empty dir check by keiko233
-
-- Rename copyright by keiko233
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency postcss-import to v16.1.0 by renovate[bot]
-
-- Update dependency typescript to v5.4.3 (#654) by renovate[bot]
-
-- Update dependency postcss to v8.4.38 (#653) by renovate[bot]
-
-- Update dependency autoprefixer to v10.4.19 by renovate[bot]
-
-- Update dependency vite to v5.2.2 (#649) by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency postcss to v8.4.37 by renovate[bot]
-
-- Update rust crate simd-json to v0.13.9 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency @types/node to v20.11.30 (#640) by renovate[bot]
-
-- Update dependency @commitlint/cli to v19.2.1 by renovate[bot]
-
-- Update lint packages to v7.3.1 by renovate[bot]
-
-- Update typescript packages by renovate[bot]
-
-- Update dependency postcss to v8.4.36 (#630) by renovate[bot]
-
-- Bump rust crates by Petard Jonson
-
-- Update dependency eslint-plugin-react to v7.34.1 by renovate[bot]
-
-- Update dependency @types/node to v20.11.28 (#615) by renovate[bot]
-
-- Update dependency @commitlint/cli to v19.2.0 (#613) by renovate[bot]
-
-- Update dependency sass to v1.72.0 (#608) by renovate[bot]
-
-- Update dependency adm-zip to v0.5.12 (#609) by renovate[bot]
-
-- Update dependency @types/react to v18.2.66 (#612) by renovate[bot]
-
-- Update dependency adm-zip to v0.5.11 (#606) by renovate[bot]
-
-- Update typescript packages (#604) by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update lint packages to v19.1.0 by renovate[bot]
-
-- Update rust crate thiserror to v1.0.58 by renovate[bot]
-
-- Update typescript packages by renovate[bot]
-
-- Update lint packages to v7.2.0 by renovate[bot]
-
-- Update dependency vite to v5.1.6 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update deps by Jonson Petard
-
-- Update softprops/action-gh-release action to v2 (#580) by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency @tauri-apps/cli to v1.5.11 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency @types/react-dom to v18.2.21 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update typescript packages by renovate[bot]
-
-- Update dependency stylelint-scss to v6.2.1 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency @types/react-dom to v18.2.20 by renovate[bot]
-
-- Update dependency @types/react to v18.2.63 by renovate[bot]
-
-- Update lint packages to v7.1.1 (#556) by renovate[bot]
-
-- Update dependency vite to v5.1.5 by renovate[bot]
-
-- Update dependency @types/react to v18.2.62 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency eslint-plugin-react to v7.34.0 by renovate[bot]
-
-- Fix version escape & version get err by keiko233
-
-- Update dependency stylelint-config-recess-order to v5 (#546) by renovate[bot]
-
-- Update dependency stylelint-scss to v6.2.0 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
+- Use lazy load routes to improve performance by @greenhat616
 
 ---
 
-**Full Changelog**: https://github.com/LibNyanpasu/nyanpasu-service/compare/v1.5.0...v1.5.1
+## New Contributors
+
+- @WOSHIZHAZHA120 made their first contribution in [#563](https://github.com/LibNyanpasu/clash-nyanpasu/pull/563)
+
+**Full Changelog**: https://github.com/LibNyanpasu/clash-nyanpasu/compare/v1.5.0...v1.5.1
 
 ## [1.5.0] - 2024-03-03
 
+### 💥 Breaking Changes
+
+- **backend:** Add tray proxies selector support (#417) by @greenhat616 in [#417](https://github.com/LibNyanpasu/clash-nyanpasu/pull/417)
+
+- **clash:** Add default core secret and impl port checker before clash start (#533) by @greenhat616 in [#533](https://github.com/LibNyanpasu/clash-nyanpasu/pull/533)
+
 ### ✨ Features
 
-- Add tray icon resize logic to improve icon rendering (#540) by Jonson Petard
+- **config:** Add migration for old config dir (#419) by @4o3F in [#419](https://github.com/LibNyanpasu/clash-nyanpasu/pull/419)
 
-- Allow filter out process name by Jonson Petard
+- **connection:** Allow filter out process name by @greenhat616
 
-- Add default core secret and impl port checker before clash start (#533) by Jonson Petard
+- **locale:** Use system locale as default (#437) by @greenhat616 in [#437](https://github.com/LibNyanpasu/clash-nyanpasu/pull/437)
 
-- Custom schema support (#516) by 403F
+- **tray:** Add tray icon resize logic to improve icon rendering (#540) by @greenhat616 in [#540](https://github.com/LibNyanpasu/clash-nyanpasu/pull/540)
 
-- Add Auto Check Updates Switch by keiko233
+- **tray:** Add diff check for system tray partial update (#477) by @4o3F in [#477](https://github.com/LibNyanpasu/clash-nyanpasu/pull/477)
 
-- Refactor UpdateViewer by keiko233
+- Custom schema support (#516) by @4o3F in [#516](https://github.com/LibNyanpasu/clash-nyanpasu/pull/516)
 
-- OnCheckUpdate button supports loading animation & refactoring error removal notification using dialog by keiko233
+- Add Auto Check Updates Switch by @keiko233
 
-- Add margin for SettingItem extra element by keiko233
+- Refactor UpdateViewer by @keiko233
 
-- Add useMessage hook by keiko233
+- OnCheckUpdate button supports loading animation & refactoring error removal notification using dialog by @keiko233
 
-- Refactor GuardStatus & support loading status by keiko233
+- Add margin for SettingItem extra element by @keiko233
 
-- MDYSwitch support loading prop by keiko233
+- Add useMessage hook by @keiko233
 
-- Add MDYSwitch & replace all Switches with MDYSwitch by keiko233
+- Refactor GuardStatus & support loading status by @keiko233
 
-- Add diff check for system tray partial update (#477) by 403F
+- MDYSwitch support loading prop by @keiko233
 
-- Color select use MuiColorInput by keiko233
+- Add MDYSwitch & replace all Switches with MDYSwitch by @keiko233
 
-- Use system locale as default (#437) by Jonson Petard
+- Color select use MuiColorInput by @keiko233
 
-- Add tray proxies selector support (#417) by Jonson Petard
+- Make profile material you by @keiko233
 
-- Add migration for old config dir (#419) by 403F
-
-- Make profile material you by keiko233
-
-- New style design profile item drag sort by keiko233
+- New style design profile item drag sort by @keiko233
 
 ### 🐛 Bug Fixes
 
-- Release ci by Jonson Petard
+- **ci:** Replace github workflow token by @keiko233
 
-- Release ci by Jonson Petard
+- **config:** Fix config migration (#433) by @4o3F in [#433](https://github.com/LibNyanpasu/clash-nyanpasu/pull/433)
 
-- Update rust crate open to v5.1.1 (#542) by renovate[bot]
+- **custom-schema:** Fix schema not working for new opening and dialog not showing with certain route (#534) by @4o3F in [#534](https://github.com/LibNyanpasu/clash-nyanpasu/pull/534)
 
-- Fix wrong window position and size with multiple screen by 4o3F
+- **deps:** Update rust crates by @greenhat616
 
-- Resolve save windows state event by Jonson Petard
+- **macos:** Use rfd to prevent panic by @greenhat616
 
-- Update rust crates by Jonson Petard
+- **nsis:** Should not stop verge service while updating by @greenhat616
 
-- Update dependency @mui/x-data-grid to v6.19.6 by renovate[bot]
+- **proxies:** Use indexmap instead to correct order by @greenhat616
 
-- Update rust crate base64 to 0.22 by renovate[bot]
+- **proxies:** Reduce tray updating interval by @greenhat616
 
-- Update dependency react-hook-form to v7.51.0 by renovate[bot]
+- **tray:** Use base64 encoded id to fix item not found issue by @greenhat616
 
-- Update rust crate sysinfo to v0.30.6 by renovate[bot]
+- **tray:** Should disable click expect Selector and Fallback type by @greenhat616
 
-- Fix schema not working for new opening and dialog not showing with certain route (#534) by 403F
+- **tray:** Proxies updating deadlock by @greenhat616
 
-- Update rust crate objc2 to 0.5.0 (#528) by renovate[bot]
+- Release ci by @greenhat616
 
-- Update rust crate indexmap to v2.2.5 (#527) by renovate[bot]
+- Release ci by @greenhat616
 
-- Update rust crate open to v5.1.0 by renovate[bot]
+- Fix wrong window position and size with multiple screen by @4o3F
 
-- Update dependency react-error-boundary to v4.0.13 (#529) by renovate[bot]
+- Resolve save windows state event by @greenhat616
 
-- Update dependency framer-motion to v11.0.8 by renovate[bot]
+- Media screen value typos by @keiko233
 
-- Update dependency framer-motion to v11.0.7 by renovate[bot]
+- Layout error when window width is small by @keiko233
 
-- Media screen value typos by keiko233
+- Lint by @greenhat616
 
-- Layout error when window width is small by keiko233
+- Line breaks typos by @keiko233
 
-- Pin dependency react-markdown to 9.0.1 by renovate[bot]
+- MDYSwitch switchBase padding value by @keiko233
 
-- Update rust crate indexmap to v2.2.4 by renovate[bot]
+- Lint by @greenhat616
 
-- Update rust crate log to v0.4.21 by renovate[bot]
+- Fmt by @greenhat616
 
-- Update dependency react-router-dom to v6.22.2 by renovate[bot]
+- Build issue by @greenhat616
 
-- Lint by Jonson Petard
+- Config migration issue by @greenhat616
 
-- Line breaks typos by keiko233
+- Ci by @greenhat616
 
-- MDYSwitch switchBase padding value by keiko233
-
-- Update rust crate open to v5.0.2 by renovate[bot]
-
-- Update rust crate tauri to v1.6.1 (#504) by renovate[bot]
-
-- Update dependency @emotion/react to v11.11.4 by renovate[bot]
-
-- Use base64 encoded id to fix item not found issue by Jonson Petard
-
-- Update rust crate tempfile to v3.10.1 by renovate[bot]
-
-- Should disable click expect Selector and Fallback type by Jonson Petard
-
-- Update rust crate dyn-clone to v1.0.17 by renovate[bot]
-
-- Should not stop verge service while updating by Jonson Petard
-
-- Update material-ui monorepo by renovate[bot]
-
-- Update dependency react-virtuoso to v4.7.1 (#480) by renovate[bot]
-
-- Use indexmap instead to correct order by Jonson Petard
-
-- Lint by Jonson Petard
-
-- Update dependency i18next to v23.10.0 (#471) by renovate[bot]
-
-- Pin dependency mui-color-input to 2.0.3 (#473) by renovate[bot]
-
-- Update dependency @mui/x-data-grid to v6.19.5 (#476) by renovate[bot]
-
-- Update dependency framer-motion to v11.0.6 (#475) by renovate[bot]
-
-- Update rust crate rquickjs to v0.5.1 (#469) by renovate[bot]
-
-- Fmt by greenhat616
-
-- Build issue by greenhat616
-
-- Update rust crate runas to v1.2.0 (#465) by renovate[bot]
-
-- Use rfd to prevent panic by Jonson Petard
-
-- Reduce tray updating interval by Jonson Petard
-
-- Update rust crate serde_json to v1.0.114 (#462) by renovate[bot]
-
-- Update rust crate semver to v1.0.22 (#456) by renovate[bot]
-
-- Update rust crate serde_yaml to v0.9.32 (#457) by renovate[bot]
-
-- Update rust crate anyhow to v1.0.80 by renovate[bot]
-
-- Update rust crate tauri to v1.6.0 by renovate[bot]
-
-- Update dependency i18next to v23.9.0 by renovate[bot]
-
-- Update dependency i18next to v23.8.3 by renovate[bot]
-
-- Update dependency react-virtuoso to v4.7.0 by renovate[bot]
-
-- Update rust crate rquickjs to 0.5.0 by renovate[bot]
-
-- Update dependency react-router-dom to v6.22.1 by renovate[bot]
-
-- Update dependency swr to v2.2.5 by renovate[bot]
-
-- Fix config migration (#433) by 403F
-
-- Proxies updating deadlock by Jonson Petard
-
-- Config migration issue by Jonson Petard
-
-- Replace github workflow token by keiko233
-
-- Ci by Jonson Petard
-
-- Update dependency framer-motion to v11.0.5 (#429) by renovate[bot]
-
-- Update dependency framer-motion to v11.0.4 (#427) by renovate[bot]
-
-- Update rust crate rocksdb to 0.22 (#428) by renovate[bot]
-
-- Update material-ui monorepo to v5.15.10 by renovate[bot]
-
-- Update rust crate chrono to v0.4.34 (#418) by renovate[bot]
-
-- Proxy item box-shadow err by keiko233
-
-- Update rust crate log4rs to v1.3.0 (#416) by renovate[bot]
-
-- Update dependency @mui/x-data-grid to v6.19.4 by renovate[bot]
-
-- Update material-ui monorepo by renovate[bot]
-
-- Update dependency monaco-editor to v0.46.0 (#405) by renovate[bot]
+- Proxy item box-shadow err by @keiko233
 
 ### 🔨 Refactor
 
-- Refactor single instance check (#499) by 403F
+- **clash:** Move api and core manager into one mod (#411) by @greenhat616 in [#411](https://github.com/LibNyanpasu/clash-nyanpasu/pull/411)
 
-- Use `tracing` instead of `log4rs` (#486) by Jonson Petard
+- **i18n:** Change backend localization to rust-i18n (#425) by @4o3F in [#425](https://github.com/LibNyanpasu/clash-nyanpasu/pull/425)
 
-- Proxies hash and diff logic by Jonson Petard
+- **logging:** Use `tracing` instead of `log4rs` (#486) by @greenhat616 in [#486](https://github.com/LibNyanpasu/clash-nyanpasu/pull/486)
 
-- Change backend localization to rust-i18n (#425) by 403F
+- **proxies:** Proxies hash and diff logic by @greenhat616
 
-- Move api and core manager into one mod (#411) by Jonson Petard
-
-### 🧹 Miscellaneous Tasks
-
-- V1.5.0 🤖 [skip ci] by github-actions[bot]
-
-- Update dependency autoprefixer to v10.4.18 by renovate[bot]
-
-- Update orhun/git-cliff-action action to v3 (#530) by renovate[bot]
-
-- Update dependency @types/node to v20.11.24 (#525) by renovate[bot]
-
-- Update typescript packages by renovate[bot]
-
-- Update dependency telegraf to v4.16.3 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency @types/node to v20.11.22 by renovate[bot]
-
-- Update lint packages to v19.0.3 by renovate[bot]
-
-- Pin dependency @types/node to 20.11.21 by renovate[bot]
-
-- Import missing dependencies by keiko233
-
-- Remove console and debugger when not in dev mode by keiko233
-
-- Update dependency @commitlint/cli to v19.0.1 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update lint packages to v19 (#498) by renovate[bot]
-
-- Update dependency @types/react to v18.2.60 by renovate[bot]
-
-- Update lint packages to v7.1.0 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency @types/react to v18.2.59 by renovate[bot]
-
-- Update dependency telegraf to v4.16.2 by renovate[bot]
-
-- Remove msi target by Jonson Petard
-
-- Update dependency telegraf to v4.16.1 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency telegraf to v4.16.0 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update deps by Jonson Petard
-
-- Update dependency eslint to v8.57.0 by renovate[bot]
-
-- Update dependency @types/react to v18.2.58 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency vite to v5.1.4 (#467) by renovate[bot]
-
-- Update dependency sass to v1.71.1 (#466) by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update rust crate serde to v1.0.197 by renovate[bot]
-
-- Update dependency @types/react to v18.2.57 by renovate[bot]
-
-- Update lint packages to v7.0.2 by renovate[bot]
-
-- Update deps by Jonson Petard
-
-- Update dependency @tauri-apps/cli to v1.5.10 by renovate[bot]
-
-- Update dependency @types/react to v18.2.56 by renovate[bot]
-
-- Pin dependency telegraf to 4.15.3 (#446) by renovate[bot]
-
-- Send release notify to telegram channel by keiko233
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency sass to v1.71.0 by renovate[bot]
-
-- Update dependency https-proxy-agent to v7.0.4 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency vite to v5.1.3 by renovate[bot]
-
-- Update dependency postcss-import to v16.0.1 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Modify default external-controller port (#436) by Jonson Petard
-
-- Update dependency vite to v5.1.2 by renovate[bot]
-
-- Update dependency @commitlint/config-conventional to v18.6.2 by renovate[bot]
-
-- Use debug as default app log level when debugging by Jonson Petard
-
-- Drop console and debugger in prod by Jonson Petard
-
-- Update dependency husky to v9.0.11 by renovate[bot]
-
-- Update lint packages to v18.6.1 by renovate[bot]
-
-- Update lint packages to v7 (#423) by renovate[bot]
-
-- Update dependency https-proxy-agent to v7.0.3 by renovate[bot]
-
-- Update rust crate thiserror to v1.0.57 (#420) by renovate[bot]
-
-- Update dependency eslint-plugin-html to v8 (#413) by renovate[bot]
-
-- Update dependency tsx to v4.7.1 by renovate[bot]
-
-- Update dependency vite to v5.1.1 by renovate[bot]
-
-- Migrate to `esm` (#407) by Jonson Petard
-
-- Update dependency vite to v5.1.0 (#404) by renovate[bot]
+- **single-instance:** Refactor single instance check (#499) by @4o3F in [#499](https://github.com/LibNyanpasu/clash-nyanpasu/pull/499)
 
 ---
 
-**Full Changelog**: https://github.com/LibNyanpasu/nyanpasu-service/compare/v1.4.5...v1.5.0
+**Full Changelog**: https://github.com/LibNyanpasu/clash-nyanpasu/compare/v1.4.5...v1.5.0
 
 ## [1.4.5] - 2024-02-08
 
-### ✨ Features
+### 💥 Breaking Changes
 
-- Use nsis instead of msi by Jonson Petard
+- **nsis:** Switch to both installMode by @greenhat616
 
-- Switch to both installMode by Jonson Petard
+- **updater:** Use nsis instead of msi by @greenhat616
 
 ### 🐛 Bug Fixes
 
-- Kill nyanpasu processes while updating (#403) by Jonson Petard
+- **bundle:** Instance is running while updating app (#393) by @greenhat616 in [#393](https://github.com/LibNyanpasu/clash-nyanpasu/pull/393)
 
-- Update rust crate window-vibrancy to 0.5.0 (#401) by renovate[bot]
+- **bundler:** Kill processes while updating in windows by @greenhat616
 
-- Kill processes while updating in windows by Jonson Petard
+- **ci:** Daily updater issue (#392) by @greenhat616 in [#392](https://github.com/LibNyanpasu/clash-nyanpasu/pull/392)
 
-- Portable issues (#395) by Jonson Petard
+- **ci:** Nightly updater issue by @greenhat616
 
-- Minimize icon is wrong while resize window (#394) by Jonson Petard
+- **nsis:** Kill nyanpasu processes while updating (#403) by @greenhat616 in [#403](https://github.com/LibNyanpasu/clash-nyanpasu/pull/403)
 
-- Instance is running while updating app (#393) by Jonson Petard
+- Portable issues (#395) by @greenhat616 in [#395](https://github.com/LibNyanpasu/clash-nyanpasu/pull/395)
 
-- Daily updater issue (#392) by Jonson Petard
+- Minimize icon is wrong while resize window (#394) by @greenhat616 in [#394](https://github.com/LibNyanpasu/clash-nyanpasu/pull/394)
 
-- Update material-ui monorepo by renovate[bot]
+- Sort connection in numerical comparison for `Download`, `DL Speed`, etc (#367) by @Jeremy-Hibiki in [#367](https://github.com/LibNyanpasu/clash-nyanpasu/pull/367)
 
-- Update dependency react-i18next to v14.0.5 by renovate[bot]
-
-- Update dependency react-i18next to v14.0.4 by renovate[bot]
-
-- Update dependency react-hook-form to v7.50.1 (#387) by renovate[bot]
-
-- Update rust crate tempfile to v3.10.0 by renovate[bot]
-
-- Update dependency react-i18next to v14.0.3 by renovate[bot]
-
-- Update dependency react-i18next to v14.0.2 by renovate[bot]
-
-- Update rust crate tokio to v1.36.0 by renovate[bot]
-
-- Update dependency react-router-dom to v6.22.0 by renovate[bot]
-
-- Update dependency react-hook-form to v7.50.0 by renovate[bot]
-
-- Sort connection in numerical comparison for `Download`, `DL Speed`, etc (#367) by Jeremy JIANG
-
-- Update dependency @mui/x-data-grid to v6.19.3 by renovate[bot]
-
-- Update dependency ahooks to v3.7.10 by renovate[bot]
-
-- Update rust crate reqwest to v0.11.24 by renovate[bot]
-
-- Update material-ui monorepo by renovate[bot]
-
-- Update dependency i18next to v23.8.2 by renovate[bot]
-
-- Resources missing by Jonson Petard
-
-- Nightly updater issue by Jonson Petard
-
-- Update rust crate rquickjs to v0.4.3 by renovate[bot]
-
-### 🧹 Miscellaneous Tasks
-
-- V1.4.5 🤖 [skip ci] by github-actions[bot]
-
-- Update dependency stylelint-config-recess-order to v4.6.0 by renovate[bot]
-
-- Update dependency postcss to v8.4.35 by renovate[bot]
-
-- Update dependency @types/react-dom to v18.2.19 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update lint packages (#375) by renovate[bot]
-
-- Update dependency @types/react to v18.2.55 by renovate[bot]
-
-- Update dependency postcss to v8.4.34 by renovate[bot]
-
-- Update dependency @types/react to v18.2.54 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency @types/react to v18.2.53 by renovate[bot]
-
-- Update dependency @types/react to v18.2.52 by renovate[bot]
-
-- Update lint packages by renovate[bot]
-
-- Update dependency @types/react to v18.2.51 by renovate[bot]
-
-- Update dependency npm-run-all2 to v6.1.2 by renovate[bot]
-
-- Update dependency lint-staged to v15.2.1 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update lint packages by renovate[bot]
+- Resources missing by @greenhat616 in [#354](https://github.com/LibNyanpasu/clash-nyanpasu/pull/354)
 
 ---
 
-**Full Changelog**: https://github.com/LibNyanpasu/nyanpasu-service/compare/v1.4.4...v1.4.5
+## New Contributors
+
+- @Jeremy-Hibiki made their first contribution in [#367](https://github.com/LibNyanpasu/clash-nyanpasu/pull/367)
+
+**Full Changelog**: https://github.com/LibNyanpasu/clash-nyanpasu/compare/v1.4.4...v1.4.5
 
 ## [1.4.4] - 2024-01-29
 
 ### 🐛 Bug Fixes
 
-- Publish & updater by Jonson Petard
+- **backend:** Fix deadlock issue on config (#312) by @4o3F in [#312](https://github.com/LibNyanpasu/clash-nyanpasu/pull/312)
 
-- Update dependency i18next to v23.8.1 (#343) by renovate[bot]
+- **ci:** Publish & updater by @greenhat616
 
-- Update rust crate serde_yaml to v0.9.31 (#345) by renovate[bot]
+- **ci:** Should generate manifest in dev branch for compatible with <= 1.4.3 (#292) by @greenhat616 in [#292](https://github.com/LibNyanpasu/clash-nyanpasu/pull/292)
 
-- Update rust crate serde_json to v1.0.113 (#344) by renovate[bot]
+- **deps:** Update deps (#294) by @greenhat616 in [#294](https://github.com/LibNyanpasu/clash-nyanpasu/pull/294)
 
-- Update dependency i18next to v23.8.0 by renovate[bot]
+- **portable:** Portable bundle issue (#335) by @greenhat616 in [#335](https://github.com/LibNyanpasu/clash-nyanpasu/pull/335)
 
-- Update dependency react-virtuoso to v4.6.3 by renovate[bot]
+- **portable:** Do not use system notification api while app is portable (#334) by @greenhat616 in [#334](https://github.com/LibNyanpasu/clash-nyanpasu/pull/334)
 
-- Update dependency ahooks to v3.7.9 by renovate[bot]
+- **updater:** Use release body as updater note (#333) by @greenhat616 in [#333](https://github.com/LibNyanpasu/clash-nyanpasu/pull/333)
 
-- Portable bundle issue (#335) by Jonson Petard
-
-- Do not use system notification api while app is portable (#334) by Jonson Petard
-
-- Use release body as updater note (#333) by Jonson Petard
-
-- Update dependency i18next to v23.7.20 by renovate[bot]
-
-- Update dependency axios to v1.6.7 by renovate[bot]
-
-- Update dependency @mui/x-data-grid to v6.19.2 by renovate[bot]
-
-- Update dependency i18next to v23.7.19 by renovate[bot]
-
-- Update dependency axios to v1.6.6 by renovate[bot]
-
-- Update dependency framer-motion to v11.0.3 by renovate[bot]
-
-- Update dependency framer-motion to v11.0.2 by renovate[bot]
-
-- Update dependency framer-motion to v11 (#316) by renovate[bot]
-
-- Fix deadlock issue on config (#312) by 403F
-
-- Update material-ui monorepo by renovate[bot]
-
-- Use if let instead (#309) by Jonson Petard
-
-- Update rust crate simd-json to 0.13.8 (#302) by renovate[bot]
-
-- Update rust crate iptools to 0.2.5 (#299) by renovate[bot]
-
-- Update rust crate rquickjs to 0.4.2 (#300) by renovate[bot]
-
-- Update rust crate simd-json to 0.13.8 (#301) by renovate[bot]
-
-- Update deps (#294) by Jonson Petard
-
-- Should generate manifest in dev branch for compatible with <= 1.4.3 (#292) by Jonson Petard
+- Use if let instead (#309) by @greenhat616 in [#309](https://github.com/LibNyanpasu/clash-nyanpasu/pull/309)
 
 ### 📚 Documentation
 
-- Add ArchLinux AUR install suggestion (#293) by Kimiblock Moe
+- Add ArchLinux AUR install suggestion (#293) by @Kimiblock in [#293](https://github.com/LibNyanpasu/clash-nyanpasu/pull/293)
 
 ### 🔨 Refactor
 
-- Improve code robustness (#303) by Jonson Petard
-
-### 🧹 Miscellaneous Tasks
-
-- V1.4.4 🤖 [skip ci] by github-actions[bot]
-
-- Update dependency npm-run-all2 to v6 (#342) by renovate[bot]
-
-- Update dependency npm-run-all2 to v5.0.2 by renovate[bot]
-
-- Replace dependency npm-run-all with npm-run-all2 5.0.0 (#337) by renovate[bot]
-
-- Update backend deps (#332) by Jonson Petard
-
-- Update dependency shikiji to v0.10.2 by renovate[bot]
-
-- Update dependency husky to v9 (#322) by renovate[bot]
-
-- Update dependency shikiji to v0.10.1 by renovate[bot]
-
-- Update lint packages to v18.6.0 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update lint packages to v6.19.1 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency shikiji to v0.10.0 by renovate[bot]
-
-- Update lint packages to v18.5.0 (#308) by renovate[bot]
-
-- Update dependency stylelint-scss to v6.1.0 by renovate[bot]
-
-- Pin dependencies (#297) by renovate[bot]
-
-- Pin dependencies (#298) by renovate[bot]
-
-- Pin dependencies (#296) by renovate[bot]
-
-- Pin dependencies (#295) by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
+- **backend:** Improve code robustness (#303) by @greenhat616 in [#303](https://github.com/LibNyanpasu/clash-nyanpasu/pull/303)
 
 ---
 
-**Full Changelog**: https://github.com/LibNyanpasu/nyanpasu-service/compare/v1.4.3...v1.4.4
+**Full Changelog**: https://github.com/LibNyanpasu/clash-nyanpasu/compare/v1.4.3...v1.4.4
 
 ## [1.4.3] - 2024-01-20
 
 ### ✨ Features
 
-- New release workflow (#284) by Jonson Petard
+- New release workflow (#284) by @greenhat616 in [#284](https://github.com/LibNyanpasu/clash-nyanpasu/pull/284)
 
-- Proxies ui minor tweaks by keiko233
+- Proxies ui minor tweaks by @keiko233
 
-- Make proxies material you by keiko233
+- Make proxies material you by @keiko233
 
 ### 🐛 Bug Fixes
 
-- Release ci by Jonson Petard
+- **ci:** Pin rust version to 1.74.1 (#213) by @greenhat616 in [#213](https://github.com/LibNyanpasu/clash-nyanpasu/pull/213)
 
-- Publish ci by Jonson Petard
+- **ci:** Use latest action by @greenhat616
 
-- Should use nyanpasu proxy or system proxy when performing request (#273) by Jonson Petard
+- **ci:** Use dev commit hash when schedule dispatch by @greenhat616
 
-- Rm useless shikiji langs support (#267) by Jonson Petard
+- **log:** Incorrect color in light mode by @greenhat616
 
-- Notification premission check (#263) by Jonson Petard
+- **rocksdb:** Use TransactionDB instead of OptimisticTransactionDB (#194) by @greenhat616 in [#194](https://github.com/LibNyanpasu/clash-nyanpasu/pull/194)
 
-- Notification fallback (#262) by Jonson Petard
+- **updater:** Should use nyanpasu proxy or system proxy when performing request (#273) by @greenhat616 in [#273](https://github.com/LibNyanpasu/clash-nyanpasu/pull/273)
 
-- Update dependency framer-motion to v10.18.0 by renovate[bot]
+- **updater:** Add status code judge by @greenhat616
 
-- Update rust crate async-trait to 0.1.77 (#249) by renovate[bot]
+- **updater:** Allow to use elevated permission to copy and override core by @greenhat616
 
-- Update rust crate simd-json to 0.13.6 (#251) by renovate[bot]
+- **vite:** Rm useless shikiji langs support (#267) by @greenhat616 in [#267](https://github.com/LibNyanpasu/clash-nyanpasu/pull/267)
 
-- Update rust crate delay_timer to 0.11.5 (#250) by renovate[bot]
+- Release ci by @greenhat616
 
-- Stable channel build issue (#248) by Jonson Petard
+- Publish ci by @greenhat616
 
-- Update rust crate rquickjs to 0.4.0 (#131) by renovate[bot]
+- Notification premission check (#263) by @greenhat616 in [#263](https://github.com/LibNyanpasu/clash-nyanpasu/pull/263)
 
-- Virtuoso scroller bottom not padding by keiko233
+- Notification fallback (#262) by @greenhat616 in [#262](https://github.com/LibNyanpasu/clash-nyanpasu/pull/262)
 
-- Update dependency framer-motion to v10.17.9 by renovate[bot]
+- Stable channel build issue (#248) by @greenhat616 in [#248](https://github.com/LibNyanpasu/clash-nyanpasu/pull/248)
 
-- Windrag err by keiko233
+- Virtuoso scroller bottom not padding by @keiko233
 
-- Update dependency framer-motion to v10.17.8 by renovate[bot]
+- Windrag err by @keiko233
 
-- Same text color for `REJECT-DROP` policy as `REJECT` (#236) by xkww3n
+- Same text color for `REJECT-DROP` policy as `REJECT` (#236) by @xkww3n in [#236](https://github.com/LibNyanpasu/clash-nyanpasu/pull/236)
 
-- Update dependency framer-motion to v10.17.6 by renovate[bot]
+- Enable_tun block the process (#232) by @dyxushuai
 
-- Enable_tun block the process (#232) by John Smith
+- #212 by @greenhat616
 
-- Update dependency framer-motion to v10.17.4 by renovate[bot]
+- Lint by @greenhat616
 
-- Update dependency framer-motion to v10.17.0 by renovate[bot]
+- Updater by @greenhat616
 
-- Update rust crate tauri to 1.5.4 by renovate[bot]
+- Dark mode flash in win by @greenhat616
 
-- Update rust crate ctrlc to 3.4.2 by renovate[bot]
+- Open file, closing #197 by @greenhat616
 
-- Update rust crate async-trait to 0.1.75 by renovate[bot]
-
-- #212 by Jonson Petard
-
-- Pin rust version to 1.74.1 (#213) by Jonson Petard
-
-- Lint by Jonson Petard
-
-- Updater by Jonson Petard
-
-- Add status code judge by Jonson Petard
-
-- Allow to use elevated permission to copy and override core by Jonson Petard
-
-- Use latest action by Jonson Petard
-
-- Use dev commit hash when schedule dispatch by Jonson Petard
-
-- Dark mode flash in win by Jonson Petard
-
-- Open file, closing #197 by Jonson Petard
-
-- Incorrect color in light mode by Jonson Petard
-
-- Update rust crate tempfile to 3.9.0 by renovate[bot]
-
-- Use TransactionDB instead of OptimisticTransactionDB (#194) by Jonson Petard
-
-- Add a panic hook to collect logs and show a dialog (#191) by Jonson Petard
-
-### 🧹 Miscellaneous Tasks
-
-- V1.4.3 🤖 [skip ci] by github-actions[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency stylelint to v16.2.0 by renovate[bot]
-
-- Update actions/cache action to v4 (#277) by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency autoprefixer to v10.4.17 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update lint packages to v6.19.0 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency shikiji to v0.9.19 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency postcss-html to v1.6.0 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency eslint-plugin-prettier to v5.1.3 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update lint packages (#246) by renovate[bot]
-
-- Update dependency shikiji to v0.9.18 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update lint packages to v6.18.0 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Fix script consola columns by keiko233
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency postcss to v8.4.33 by renovate[bot]
-
-- Update lint packages to v18.4.4 by renovate[bot]
-
-- Update dependency postcss-import to v16 (#229) by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency eslint-plugin-n to v16.6.1 by renovate[bot]
-
-- Update dependency shikiji to v0.9.17 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update lint packages to v6.17.0 by renovate[bot]
-
-- Update dependency shikiji to v0.9.16 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update peer deps by Jonson Petard
-
-- Update dependency eslint-plugin-n to v16.6.0 by renovate[bot]
-
-- Update dependency shikiji to v0.9.15 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency stylelint-declaration-block-no-ignored-properties to v2.8.0 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update dependency shikiji to v0.9.12 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Update lint packages to v6.16.0 by renovate[bot]
-
-- Update dependency stylelint-config-standard to v36 (#193) by renovate[bot]
-
-- Update dependency stylelint to v16.1.0 by renovate[bot]
-
-- Update manifest [skip ci] by github-actions[bot]
-
-- Fix build by keiko233
-
-- Fix build tag typos by keiko233
-
-- Update change log by keiko233
-
-- Port dev build action to release build by keiko233
+- Add a panic hook to collect logs and show a dialog (#191) by @greenhat616 in [#191](https://github.com/LibNyanpasu/clash-nyanpasu/pull/191)
 
 ---
 
-**Full Changelog**: https://github.com/LibNyanpasu/nyanpasu-service/compare/v1.4.2...v1.4.3
+## New Contributors
+
+- @xkww3n made their first contribution in [#236](https://github.com/LibNyanpasu/clash-nyanpasu/pull/236)
+
+**Full Changelog**: https://github.com/LibNyanpasu/clash-nyanpasu/compare/v1.4.2...v1.4.3
 
 ## [1.4.2] - 2023-12-24
 
 ### ✨ Features
 
-- Use christmas logo by keiko233
+- **updater:** Finish ui by @greenhat616
 
-- Auto add dns according this method by roy
+- **updater:** Finish core updater backend by @greenhat616
 
-- Backport concurrency of latency test by Jonson Petard
+- Use christmas logo by @keiko233
 
-- Auto log clear by Jonson Petard
+- Auto add dns according this method by @yswtrue
 
-- Nightly build with updater by Jonson Petard
+- Backport concurrency of latency test by @greenhat616
 
-- Rules providers by Jonson Petard
+- Auto log clear by @greenhat616
 
-- Improve animations by Jonson Petard
+- Nightly build with updater by @greenhat616
 
-- Quick logs collect by Jonson Petard
+- Rules providers by @greenhat616
 
-- Finish ui by Jonson Petard
+- Improve animations by @greenhat616
 
-- Bundled mihomo alpha by Jonson Petard
+- Quick logs collect by @greenhat616
 
-- New style win tray icon & add blue icon when tun enable by keiko233
+- Bundled mihomo alpha by @greenhat616
 
-- Finish core updater backend by Jonson Petard
-
-- Latest version generator by Jonson Petard
+- New style win tray icon & add blue icon when tun enable by @keiko233
 
 ### 🐛 Bug Fixes
 
-- Minor tweak base-content width by keiko233
+- **ci:** Release build by @greenhat616
 
-- Shikiji text wrapping err by keiko233
+- **ci:** Updater and dev build by @greenhat616
 
-- Dark shikiji display color err by keiko233
+- **dialog:** Align center and overflow issue by @greenhat616
 
-- Release build by Jonson Petard
+- **lint:** Toml fmt by @greenhat616
 
-- Updater and dev build by Jonson Petard
+- **resources:** Win service support and mihomo alpha version proxy by @greenhat616
 
-- Update dependency react-i18next to v14 (#183) by renovate[bot]
+- **updater:** Copy logic by @greenhat616
 
-- Align center and overflow issue by Jonson Petard
+- **window:** Preserve window state before window minimized by @greenhat616
 
-- Pin runas to v1.0.0 by Jonson Petard
+- **window:** Add a workaround for close event in windows by @greenhat616
 
-- Lint by Jonson Petard
+- Minor tweak base-content width by @keiko233
 
-- Bump nightly version after publish by Jonson Petard
+- Shikiji text wrapping err by @keiko233
 
-- I18n resources by Jonson Petard
+- Dark shikiji display color err by @keiko233
 
-- Format ansi in log viewer by Jonson Petard
+- Pin runas to v1.0.0 by @greenhat616
 
-- Win service support and mihomo alpha version proxy by Jonson Petard
+- Lint by @greenhat616
 
-- Mihomo alpha arch template by Jonson Petard
+- Bump nightly version after publish by @greenhat616
 
-- Delay color, closing #124 by Jonson Petard
+- I18n resources by @greenhat616
 
-- Update rust crate open to 5.0.1 by renovate[bot]
+- Format ansi in log viewer by @greenhat616
 
-- Update rust crate open to v5 (#152) by renovate[bot]
+- Delay color, closing #124 by @greenhat616
 
-- Update dependency react-virtuoso to v4 (#150) by renovate[bot]
+- #96 by @greenhat616
 
-- Update dependency swr to v2 (#151) by renovate[bot]
+- #92 by @greenhat616
 
-- Update dependency react-i18next to v13 (#149) by renovate[bot]
+- Lint by @greenhat616
 
-- Update dependency i18next to v23 (#75) by renovate[bot]
+- Ci by @greenhat616
 
-- Update rust crate window-vibrancy to 0.4.3 (#138) by renovate[bot]
+- Ci by @greenhat616
 
-- Update dependency react-error-boundary to v4 (#147) by renovate[bot]
+- Ci by @greenhat616
 
-- Update rust crate runas to v1.1.0 (#133) by renovate[bot]
+- Dev build branch issue by @greenhat616
 
-- Update rust crate once_cell to 1.19.0 by renovate[bot]
+- Icon issues, close #55 by @greenhat616
 
-- Update rust crate open to 4.2.0 (#126) by renovate[bot]
+- Use a workaroud to reduce #59 by @greenhat616
 
-- Update rust crate window-vibrancy to 0.4.0 (#134) by renovate[bot]
-
-- Update rust crate log4rs to 1.2.0 (#125) by renovate[bot]
-
-- Update dependency monaco-editor to ^0.45.0 (#128) by renovate[bot]
-
-- Update rust crate dirs to 5.0.1 (#110) by renovate[bot]
-
-- Update rust crate ctrlc to 3.4.1 (#108) by renovate[bot]
-
-- Update rust crate once_cell to 1.18.0 (#129) by renovate[bot]
-
-- Update rust crate chrono to 0.4.31 (#104) by renovate[bot]
-
-- Update rust crate interfaces to 0.0.9 (#111) by renovate[bot]
-
-- Update dependency dayjs to v1.11.10 (#119) by renovate[bot]
-
-- #96 by Jonson Petard
-
-- #92 by Jonson Petard
-
-- Lint by Jonson Petard
-
-- Copy logic by Jonson Petard
-
-- Toml fmt by Jonson Petard
-
-- Update rust crate which to 4.4.2 by renovate[bot]
-
-- Update rust crate parking_lot to 0.12.1 by renovate[bot]
-
-- Update rust crate log to 0.4.20 by renovate[bot]
-
-- Update rust crate dunce to 1.0.4 by renovate[bot]
-
-- Update dependency framer-motion to v10.16.16 by renovate[bot]
-
-- Ci by Jonson Petard
-
-- Ci by Jonson Petard
-
-- Ci by Jonson Petard
-
-- Dev build branch issue by Jonson Petard
-
-- Update dependency @mui/lab to v5.0.0-alpha.155 by renovate[bot]
-
-- Icon issues, close #55 by Jonson Petard
-
-- Use a workaroud to reduce #59 by Jonson Petard
-
-- Preserve window state before window minimized by Jonson Petard
-
-- Add a workaround for close event in windows by Jonson Petard
-
-- Win state by Jonson Petard
+- Win state by @greenhat616
 
 ### 📚 Documentation
 
-- Put issue config into effect (#148) by txyyh
+- Put issue config into effect (#148) by @txyyh in [#148](https://github.com/LibNyanpasu/clash-nyanpasu/pull/148)
 
-- Upload missing issue config by txyyh
+- Upload missing issue config by @txyyh
 
-- Update issues template & upload ISSUE.md by keiko233
+- Update issues template & upload ISSUE.md by @keiko233
 
 ### 🔨 Refactor
 
-- Profile updater by Jonson Petard
+- **tasks:** Provide a universal abstract layer for task managing (#15) by @greenhat616
 
-- Provide a universal abstract layer for task managing (#15) by Jonson Petard
-
-### 🧹 Miscellaneous Tasks
-
-- Bump Version 1.4.2 by keiko233
-
-- Update dependency eslint-plugin-prettier to v5.1.2 by renovate[bot]
-
-- Update dependency shikiji to v0.9.11 by renovate[bot]
-
-- Update dependency eslint-plugin-prettier to v5.1.1 by renovate[bot]
-
-- Update dependency shikiji to v0.9.10 by renovate[bot]
-
-- Update dependency eslint-plugin-n to v16.5.0 by renovate[bot]
-
-- Update dependency eslint-plugin-prettier to v5.1.0 by renovate[bot]
-
-- Update dependency tsx to v4.7.0 by renovate[bot]
-
-- Update lint packages to v6.15.0 by renovate[bot]
-
-- Update dependency shikiji to v0.9.9 by renovate[bot]
-
-- Update dependency shikiji to v0.9.7 by renovate[bot]
-
-- Update dependency shikiji to v0.9.6 by renovate[bot]
-
-- Update dependency eslint to v8.56.0 (#163) by renovate[bot]
-
-- Update dependency shikiji to v0.9.4 by renovate[bot]
-
-- Update dependency shikiji to v0.9.3 by renovate[bot]
-
-- Update dependency shikiji to v0.9.2 by renovate[bot]
-
-- Update dependency eslint-plugin-import to v2.29.1 by renovate[bot]
-
-- Update dependency vite to v5 (#72) by renovate[bot]
-
-- Update dependency https-proxy-agent to v7 (#145) by renovate[bot]
-
-- Update lint packages (#146) by renovate[bot]
-
-- Update dependency @actions/github to v6 (#143) by renovate[bot]
-
-- Update dependency @types/fs-extra to v11 (#144) by renovate[bot]
-
-- Update actions/checkout action to v4 (#140) by renovate[bot]
-
-- Update actions/setup-node action to v4 (#141) by renovate[bot]
-
-- Update lint packages to v6.14.0 (#127) by renovate[bot]
-
-- Update dependency fs-extra to v11 (#109) by renovate[bot]
-
-- Update dependency postcss to v8.4.32 by renovate[bot]
-
-- Change manifest upsteram by Jonson Petard
-
-- Update dependency tsx to v4.6.2 by renovate[bot]
-
-- Update lint packages by renovate[bot]
-
-- Rename clash-meta to mihomo by Jonson Petard
-
-- Use gh-actions user by Jonson Petard
-
-- Update issue templates (#77) by Jonson Petard
-
-- Bump clash-rs to v0.1.10 by Jonson Petard
-
-- Update deps by Jonson Petard
-
-- Fix missing macOS aarch64 build by keiko233
+- Profile updater by @greenhat616
 
 ---
 
-**Full Changelog**: https://github.com/LibNyanpasu/nyanpasu-service/compare/v1.4.1...v1.4.2
+## New Contributors
+
+- @yswtrue made their first contribution
+- @txyyh made their first contribution in [#148](https://github.com/LibNyanpasu/clash-nyanpasu/pull/148)
+
+**Full Changelog**: https://github.com/LibNyanpasu/clash-nyanpasu/compare/v1.4.1...v1.4.2
 
 ## [1.4.1] - 2023-12-06
 
 ### ✨ Features
 
-- Use twemoji to display flags in win (#48) by Jonson Petard
+- **transition:** Add none and transparent variants by @greenhat616
 
-- Add page transition mode and duration options by Majokeiko
+- Use twemoji to display flags in win (#48) by @greenhat616 in [#48](https://github.com/LibNyanpasu/clash-nyanpasu/pull/48)
 
-- Add page transition duration options by Jonson Petard
+- Add page transition mode and duration options by @keiko233 in [#42](https://github.com/LibNyanpasu/clash-nyanpasu/pull/42)
 
-- Add none and transparent variants by Jonson Petard
+- Add page transition duration options by @greenhat616
 
-- Add page transition mode switch by Jonson Petard
+- Add page transition mode switch by @greenhat616
 
-- Use framer-motion for smooth page transition by Jonson Petard
+- Use framer-motion for smooth page transition by @greenhat616
 
-- Support new clash field by Jonson Petard
+- Support new clash field by @greenhat616
 
-- Support drag profile item (#36) by Kuingsmile
+- Support drag profile item (#36) by @Kuingsmile in [#36](https://github.com/LibNyanpasu/clash-nyanpasu/pull/36)
 
-- Use tauri notification api by keiko233
+- Use tauri notification api by @keiko233
 
-- Update new clash.meta close #20 (#30) by Kuingsmile
+- Update new clash.meta close #20 (#30) by @Kuingsmile in [#30](https://github.com/LibNyanpasu/clash-nyanpasu/pull/30)
 
-- Support random mixed port (#29) by Kuingsmile
+- Support random mixed port (#29) by @Kuingsmile in [#29](https://github.com/LibNyanpasu/clash-nyanpasu/pull/29)
 
-- Use workspace in backend by Jonson Petard
+- Use workspace in backend by @greenhat616
 
-- New style win tray icon by keiko233
+- New style win tray icon by @keiko233
 
-- Add tooltip for tray (#24) by Kuingsmile
+- Add tooltip for tray (#24) by @Kuingsmile in [#24](https://github.com/LibNyanpasu/clash-nyanpasu/pull/24)
 
-- Experimental support `clash-rs` (#23) by Jonson Petard
+- Experimental support `clash-rs` (#23) by @greenhat616 in [#23](https://github.com/LibNyanpasu/clash-nyanpasu/pull/23)
 
-- Add UWP tool support, fix install service bug (#19) by Kuingsmile
+- Add UWP tool support, fix install service bug (#19) by @Kuingsmile in [#19](https://github.com/LibNyanpasu/clash-nyanpasu/pull/19)
 
 ### 🐛 Bug Fixes
 
-- Taskbar maximize toggle icon state (#46) by Jonson Petard
+- Taskbar maximize toggle icon state (#46) by @greenhat616 in [#46](https://github.com/LibNyanpasu/clash-nyanpasu/pull/46)
 
-- Missing scss import by Jonson Petard
+- Missing scss import by @greenhat616
 
-- Lint by Jonson Petard
+- Lint by @greenhat616
 
-- Lint by Jonson Petard
+- Lint by @greenhat616
 
-- Workflow script typos by keiko233
+- Workflow script typos by @keiko233
 
-- Osx-aarch64-upload bundlePath typos by keiko233
+- Osx-aarch64-upload bundlePath typos by @keiko233
 
-- Portable target dir by keiko233
+- Portable target dir by @keiko233
 
-- Portable missing clash-rs core by keiko233
+- Portable missing clash-rs core by @keiko233
 
-- Item col width too narrow by keiko233
+- Item col width too narrow by @keiko233
 
-- I18n typos by keiko233
+- I18n typos by @keiko233
 
 ### 📚 Documentation
 
-- Add preview gif by keiko233
+- Add preview gif by @keiko233
 
 ### 🔨 Refactor
 
-- Use `workspace` in backend by Majokeiko
+- **scripts:** Use ts and consola instead by @greenhat616
 
-- Use ts and consola instead by Jonson Petard
-
-### 🧹 Miscellaneous Tasks
-
-- Bump Version to 1.4.1 by keiko233
-
-- Use clash meta v1.17.0 by keiko233
-
-- Reduce slide animation duration by Jonson Petard
-
-- Ignore extra cargo fmt job by Jonson Petard
-
-- Auto bump deps via `renovate` by Majokeiko
-
-- Commitlint by Jonson Petard
-
-- Add test scripts by Jonson Petard
-
-- Add rustfmt check by Jonson Petard
-
-- Add stylelint by Jonson Petard
-
-- Try fix lint-stage color issue by Jonson Petard
-
-- Use lint-staged instead of pretty-quick by Jonson Petard
-
-- Fmt by Jonson Petard
-
-- Configure eslint by Jonson Petard
-
-- Configure renovate by Jonson Petard
-
-- Tauri modify desc by keiko233
-
-- Fmt by Jonson Petard
-
-- Dev build support macOS aarch64 by keiko233
-
-- Test: fix missing env & upload to release by keiko233
-
-- Test: macos aarch64 build by keiko233
-
-- Fix typos by keiko233
-
-- Add updater workflow by keiko233
-
-- Remove un supported platform by keiko233
-
-- No need for second build by keiko233
-
-- Fix missing assets type by keiko233
-
-- Remove un supported platform by keiko233
-
-- Fix typos by keiko233
-
-- Clean up workflows by keiko233
+- Use `workspace` in backend by @keiko233 in [#28](https://github.com/LibNyanpasu/clash-nyanpasu/pull/28)
 
 ---
 
-**Full Changelog**: https://github.com/LibNyanpasu/nyanpasu-service/compare/v1.4.0...v1.4.1
+## New Contributors
+
+- @Kuingsmile made their first contribution in [#36](https://github.com/LibNyanpasu/clash-nyanpasu/pull/36)
+
+**Full Changelog**: https://github.com/LibNyanpasu/clash-nyanpasu/compare/v1.4.0...v1.4.1
 
 ## [1.4.0] - 2023-11-15
 
 ### ✅ Testing
 
-- Windows service by GyDi
+- Windows service by @zzzgydi
 
 ### ✨ Features
 
-- Minor tweaks by keiko233
+- **layout:** Add logo & update style by @zzzgydi
 
-- Nyanpasu Misc by keiko233
+- **macOS:** Support cmd+w and cmd+q by @zzzgydi
 
-- Add baseContentIn animation by keiko233
+- **proxy:** Finish proxy page ui and api support by @zzzgydi
 
-- Add route transition by keiko233
+- **style:** Adjust style impl by @zzzgydi
 
-- Material You! by keiko233
+- **system tray:** Support switch rule/global/direct/script mode in system tray by @Limsanity
 
-- Default disable ipv6 by keiko233
+- **traffic:** Api support & adjust by @zzzgydi
 
-- Default enable unified-delay & tcp-concurrent with use meta core by keiko233
+- Minor tweaks by @keiko233
 
-- Support copy CMD & PowerShell proxy env by keiko233
+- Nyanpasu Misc by @keiko233
 
-- Default use meta core by keiko233
+- Add baseContentIn animation by @keiko233
 
-- Update Clash Default bypass addrs by keiko233
+- Add route transition by @keiko233
 
-- Theme: change color by keiko233
+- Material You! by @keiko233
 
-- Profiles: import btn with loading state by keiko233
+- Default disable ipv6 by @keiko233
 
-- Profile-viewer: handleOk with loading state by keiko233
+- Default enable unified-delay & tcp-concurrent with use meta core by @keiko233
 
-- Base-dialog: okBtn use LoadingButton by keiko233
+- Support copy CMD & PowerShell proxy env by @keiko233
 
-- Nyanpasu Misc by keiko233
+- Default use meta core by @keiko233
 
-- Theme support modify --background-color by keiko233
+- Update Clash Default bypass addrs by @keiko233
 
-- Settings use Grid layout by keiko233
+- Theme: change color by @keiko233
 
-- Add Connections Info to ConnectionsPage by keiko233
+- Profiles: import btn with loading state by @keiko233
 
-- ClashFieldViewer BaseDialog maxHeight usage percentage (#813) by Majokeiko
+- Profile-viewer: handleOk with loading state by @keiko233
 
-- Add Open Dashboard to the hotkey, close #723 by GyDi
+- Base-dialog: okBtn use LoadingButton by @keiko233
 
-- Add check for updates button, close #766 by GyDi
+- Nyanpasu Misc by @keiko233
 
-- Add paste and clear icon by GyDi
+- Theme support modify --background-color by @keiko233
 
-- Subscription URL TextField use multiline (#761) by Majokeiko
+- Settings use Grid layout by @keiko233
 
-- Show loading when change profile by GyDi
+- Add Connections Info to ConnectionsPage by @keiko233
 
-- Support proxy provider update by GyDi
+- ClashFieldViewer BaseDialog maxHeight usage percentage (#813) by @keiko233
 
-- Add repo link by GyDi
+- Add Open Dashboard to the hotkey, close #723 by @zzzgydi
 
-- Support clash meta memory usage display by GyDi
+- Add check for updates button, close #766 by @zzzgydi
 
-- Supports show connection detail by GyDi
+- Add paste and clear icon by @zzzgydi
 
-- Update connection table with wider process column and click to show full detail (#696) by whitemirror33
+- Subscription URL TextField use multiline (#761) by @keiko233
 
-- More trace logs by GyDi
+- Show loading when change profile by @zzzgydi
 
-- Add Russian Language (#697) by Andrei Shevchuk
+- Support proxy provider update by @zzzgydi
 
-- Center window when out of monitor by GyDi
+- Add repo link by @zzzgydi
 
-- Support copy environment variable by GyDi
+- Support clash meta memory usage display by @zzzgydi
 
-- Save window size and position by GyDi
+- Supports show connection detail by @zzzgydi
 
-- App log level add silent by GyDi
+- Update connection table with wider process column and click to show full detail (#696) by @whitemirror33
 
-- Overwrite resource file according to file modified by GyDi
+- More trace logs by @zzzgydi
 
-- Support app log level settings by GyDi
+- Add Russian Language (#697) by @shvchk
 
-- Use polkit to elevate permission instaed of sudo (#678) by Kimiblock Moe
+- Center window when out of monitor by @zzzgydi
 
-- Add unified-delay field by GyDi
+- Support copy environment variable by @zzzgydi
 
-- Add error boundary to the app root by GyDi
+- Save window size and position by @zzzgydi
 
-- Show tray icon variants in different status (#537) by w568w
+- App log level add silent by @zzzgydi
 
-- Auto restart core after grand permission by GyDi
+- Overwrite resource file according to file modified by @zzzgydi
 
-- Add restart core button by GyDi
+- Support app log level settings by @zzzgydi
 
-- Support update all profiles by GyDi
+- Use polkit to elevate permission instaed of sudo (#678) by @Kimiblock
 
-- Support to grant permission to clash core by GyDi
+- Add unified-delay field by @zzzgydi
 
-- Support clash fields filter in ui by GyDi
+- Add error boundary to the app root by @zzzgydi
 
-- Open dir on the tray by GyDi
+- Show tray icon variants in different status (#537) by @w568w
 
-- Support to disable clash fields filter by GyDi
+- Auto restart core after grand permission by @zzzgydi
 
-- Adjust macOS window style by GyDi
+- Add restart core button by @zzzgydi
 
-- Recover core after panic, close #353 by GyDi
+- Support update all profiles by @zzzgydi
 
-- Use decorations in Linux, close #354 by GyDi
+- Support to grant permission to clash core by @zzzgydi
 
-- Auto proxy layout column by GyDi
+- Support clash fields filter in ui by @zzzgydi
 
-- Support to change proxy layout column by GyDi
+- Open dir on the tray by @zzzgydi
 
-- Support to open core dir by GyDi
+- Support to disable clash fields filter by @zzzgydi
 
-- Profile page ui by GyDi
+- Adjust macOS window style by @zzzgydi
 
-- Save some fields in the runtime config, close #292 by GyDi
+- Recover core after panic, close #353 by @zzzgydi
 
-- Add meta feature by GyDi
+- Use decorations in Linux, close #354 by @zzzgydi
 
-- Display proxy group type by GyDi
+- Auto proxy layout column by @zzzgydi
 
-- Add use clash hook by GyDi
+- Support to change proxy layout column by @zzzgydi
 
-- Guard the mixed-port and external-controller by GyDi
+- Support to open core dir by @zzzgydi
 
-- Adjust builtin script and support meta guard script by GyDi
+- Profile page ui by @zzzgydi
 
-- Disable script mode when use clash meta by GyDi
+- Save some fields in the runtime config, close #292 by @zzzgydi
 
-- Check config when change core by GyDi
+- Add meta feature by @zzzgydi
 
-- Support builtin script for enhanced mode by GyDi
+- Display proxy group type by @zzzgydi
 
-- Adjust profiles page ui by GyDi
+- Add use clash hook by @zzzgydi
 
-- Optimize proxy page ui by GyDi
+- Guard the mixed-port and external-controller by @zzzgydi
 
-- Add error boundary by GyDi
+- Adjust builtin script and support meta guard script by @zzzgydi
 
-- Adjust clash log by GyDi
+- Disable script mode when use clash meta by @zzzgydi
 
-- Add draft by GyDi
+- Check config when change core by @zzzgydi
 
-- Change default latency test url by GyDi
+- Support builtin script for enhanced mode by @zzzgydi
 
-- Auto close connection when proxy changed by GyDi
+- Adjust profiles page ui by @zzzgydi
 
-- Support to change external controller by GyDi
+- Optimize proxy page ui by @zzzgydi
 
-- Add sub-rules by GyDi
+- Add error boundary by @zzzgydi
 
-- Support cmd+w and cmd+q by GyDi
+- Adjust clash log by @zzzgydi
 
-- Add version on tray by GyDi
+- Add draft by @zzzgydi
 
-- Add animation by GyDi
+- Change default latency test url by @zzzgydi
 
-- Add animation to ProfileNew component (#252) by angrylid
+- Auto close connection when proxy changed by @zzzgydi
 
-- Check remote profile field by GyDi
+- Support to change external controller by @zzzgydi
 
-- System tray support zh language by GyDi
+- Add sub-rules by @zzzgydi
 
-- Display delay check result timely by GyDi
+- Add version on tray by @zzzgydi
 
-- Update profile with system proxy/clash proxy by GyDi
+- Add animation by @zzzgydi
 
-- Change global mode ui, close #226 by GyDi
+- Add animation to ProfileNew component (#252) by @angryLid
 
-- Default user agent same with app version by GyDi
+- Check remote profile field by @zzzgydi
 
-- Optimize config feedback by GyDi
+- System tray support zh language by @zzzgydi
 
-- Show connections with table layout by GyDi
+- Display delay check result timely by @zzzgydi
 
-- Show loading on proxy group delay check by GyDi
+- Update profile with system proxy/clash proxy by @zzzgydi
 
-- Add chains[0] and process to connections display (#205) by Shun Li
+- Change global mode ui, close #226 by @zzzgydi
 
-- Adjust connection page ui by GyDi
+- Default user agent same with app version by @zzzgydi
 
-- Yaml merge key by GyDi
+- Optimize config feedback by @zzzgydi
 
-- Toggle log ws by GyDi
+- Show connections with table layout by @zzzgydi
 
-- Add rule page by GyDi
+- Show loading on proxy group delay check by @zzzgydi
 
-- Hotkey viewer by GyDi
+- Add chains[0] and process to connections display (#205) by @riverscn
 
-- Refresh ui when hotkey clicked by GyDi
+- Adjust connection page ui by @zzzgydi
 
-- Support hotkey (wip) by GyDi
+- Yaml merge key by @zzzgydi
 
-- Hide window on macos by GyDi
+- Toggle log ws by @zzzgydi
 
-- System proxy setting by GyDi
+- Add rule page by @zzzgydi
 
-- Change default singleton port and support to change the port by GyDi
+- Hotkey viewer by @zzzgydi
 
-- Log info by GyDi
+- Refresh ui when hotkey clicked by @zzzgydi
 
-- Kill clash by pid by GyDi
+- Support hotkey (wip) by @zzzgydi
 
-- Change clash port in dialog by GyDi
+- Hide window on macos by @zzzgydi
 
-- Add proxy item check loading by GyDi
+- System proxy setting by @zzzgydi
 
-- Compatible with proxy providers health check by GyDi
+- Change default singleton port and support to change the port by @zzzgydi
 
-- Add empty ui by GyDi
+- Log info by @zzzgydi
 
-- Complete i18n by GyDi
+- Kill clash by pid by @zzzgydi
 
-- Windows portable version do not check update by GyDi
+- Change clash port in dialog by @zzzgydi
 
-- Adjust clash info parsing logs by GyDi
+- Add proxy item check loading by @zzzgydi
 
-- Adjust runtime config by GyDi
+- Compatible with proxy providers health check by @zzzgydi
 
-- Support restart app on tray by GyDi
+- Add empty ui by @zzzgydi
 
-- Optimize profile page by GyDi
+- Complete i18n by @zzzgydi
 
-- Refactor by GyDi
+- Windows portable version do not check update by @zzzgydi
 
-- Adjust tun mode config by GyDi
+- Adjust clash info parsing logs by @zzzgydi
 
-- Reimplement enhanced mode by GyDi
+- Adjust runtime config by @zzzgydi
 
-- Use rquickjs crate by GyDi
+- Support restart app on tray by @zzzgydi
 
-- Reimplement enhanced mode by GyDi
+- Optimize profile page by @zzzgydi
 
-- Finish clash field control by GyDi
+- Refactor by @zzzgydi
 
-- Clash field viewer wip by GyDi
+- Adjust tun mode config by @zzzgydi
 
-- Support web ui by GyDi
+- Reimplement enhanced mode by @zzzgydi
 
-- Adjust setting page style by GyDi
+- Use rquickjs crate by @zzzgydi
 
-- Runtime config viewer by GyDi
+- Reimplement enhanced mode by @zzzgydi
 
-- Improve log rule by GyDi
+- Finish clash field control by @zzzgydi
 
-- Theme mode support follows system by GyDi
+- Clash field viewer wip by @zzzgydi
 
-- Support switch rule/global/direct/script mode in system tray by limsanity
+- Support web ui by @zzzgydi
 
-- Improve yaml file error log by GyDi
+- Adjust setting page style by @zzzgydi
 
-- Save proxy page state by GyDi
+- Runtime config viewer by @zzzgydi
 
-- Light mode wip (#96) by ctaoist
+- Improve log rule by @zzzgydi
 
-- Clash meta core supports by GyDi
+- Theme mode support follows system by @zzzgydi
 
-- Script mode by GyDi
+- Improve yaml file error log by @zzzgydi
 
-- Clash meta core support (wip) by GyDi
+- Save proxy page state by @zzzgydi
 
-- Reduce gpu usage when hidden by GyDi
+- Light mode wip (#96) by @ctaoist
 
-- Interval update from now field by GyDi
+- Clash meta core supports by @zzzgydi
 
-- Adjust theme by GyDi
+- Script mode by @zzzgydi
 
-- Supports more remote headers close #81 by GyDi
+- Clash meta core support (wip) by @zzzgydi
 
-- Check the remote profile by GyDi
+- Reduce gpu usage when hidden by @zzzgydi
+
+- Interval update from now field by @zzzgydi
+
+- Adjust theme by @zzzgydi
+
+- Supports more remote headers close #81 by @zzzgydi
+
+- Check the remote profile by @zzzgydi
 
 - Fix typo by tianyoulan
 
@@ -1850,1785 +835,1096 @@
 
 - Remove outdated config by tianyoulan
 
-- Windows service mode ui by GyDi
+- Windows service mode ui by @zzzgydi
 
-- Add some commands by GyDi
+- Add some commands by @zzzgydi
 
-- Windows service mode by GyDi
+- Windows service mode by @zzzgydi
 
-- Add update interval by GyDi
+- Add update interval by @zzzgydi
 
-- Refactor and supports cron tasks by GyDi
+- Refactor and supports cron tasks by @zzzgydi
 
-- Supports cron update profiles by GyDi
+- Supports cron update profiles by @zzzgydi
 
-- Optimize traffic graph quadratic curve by GyDi
+- Optimize traffic graph quadratic curve by @zzzgydi
 
-- Optimize the animation of the traffic graph by GyDi
+- Optimize the animation of the traffic graph by @zzzgydi
 
-- System tray add tun mode by GyDi
+- System tray add tun mode by @zzzgydi
 
-- Supports change config dir by GyDi
+- Supports change config dir by @zzzgydi
 
-- Add default user agent by GyDi
+- Add default user agent by @zzzgydi
 
-- Connections page supports filter by GyDi
+- Connections page supports filter by @zzzgydi
 
-- Log page supports filter by GyDi
+- Log page supports filter by @zzzgydi
 
-- Optimize delay checker concurrency strategy by GyDi
+- Optimize delay checker concurrency strategy by @zzzgydi
 
-- Support sort proxy node and custom test url by GyDi
+- Support sort proxy node and custom test url by @zzzgydi
 
-- Handle remote clash config fields by GyDi
+- Handle remote clash config fields by @zzzgydi
 
-- Add text color by GyDi
+- Add text color by @zzzgydi
 
-- Control final tun config by GyDi
+- Control final tun config by @zzzgydi
 
-- Support css injection by GyDi
+- Support css injection by @zzzgydi
 
-- Support theme setting by GyDi
+- Support theme setting by @zzzgydi
 
-- Add text color by GyDi
+- Add text color by @zzzgydi
 
-- Add theme setting by GyDi
+- Add theme setting by @zzzgydi
 
-- Enhanced mode supports more fields by GyDi
+- Enhanced mode supports more fields by @zzzgydi
 
-- Supports edit profile file by GyDi
+- Supports edit profile file by @zzzgydi
 
-- Supports silent start by GyDi
+- Supports silent start by @zzzgydi
 
-- Use crate open by GyDi
+- Use crate open by @zzzgydi
 
-- Enhance connections display order by GyDi
+- Enhance connections display order by @zzzgydi
 
-- Save global selected by GyDi
+- Save global selected by @zzzgydi
 
-- System tray supports system proxy setting by GyDi
+- System tray supports system proxy setting by @zzzgydi
 
-- Prevent context menu on Windows close #22 by GyDi
+- Prevent context menu on Windows close #22 by @zzzgydi
 
-- Create local profile with selected file by GyDi
+- Create local profile with selected file by @zzzgydi
 
-- Reduce the impact of the enhanced mode by GyDi
+- Reduce the impact of the enhanced mode by @zzzgydi
 
-- Parse update log by GyDi
+- Parse update log by @zzzgydi
 
-- Fill i18n by GyDi
+- Fill i18n by @zzzgydi
 
-- Dayjs i18n by GyDi
+- Dayjs i18n by @zzzgydi
 
-- Connections page simply support by GyDi
+- Connections page simply support by @zzzgydi
 
-- Add wintun.dll by default by GyDi
+- Add wintun.dll by default by @zzzgydi
 
-- Event emit when clash config update by GyDi
+- Event emit when clash config update by @zzzgydi
 
-- I18n supports by GyDi
+- I18n supports by @zzzgydi
 
-- Change open command on linux by GyDi
+- Change open command on linux by @zzzgydi
 
-- Feat: add Linux open dir support
-  refactor(logging): refine open dir failed log message by ttyS3
+- Support more options for remote profile by @zzzgydi
 
-- Support more options for remote profile by GyDi
+- Linux system proxy by @zzzgydi
 
-- Linux system proxy by GyDi
+- Enhance profile status by @zzzgydi
 
-- Enhance profile status by GyDi
+- Menu item refresh enhanced mode by @zzzgydi
 
-- Menu item refresh enhanced mode by GyDi
+- Profile enhanced mode by @zzzgydi
 
-- Profile enhanced mode by GyDi
+- Profile enhanced ui by @zzzgydi
 
-- Profile enhanced ui by GyDi
+- Profile item adjust by @zzzgydi
 
-- Profile item adjust by GyDi
+- Enhanced profile (wip) by @zzzgydi
 
-- Enhanced profile (wip) by GyDi
+- Edit profile item by @zzzgydi
 
-- Edit profile item by GyDi
+- Use nanoid by @zzzgydi
 
-- Use nanoid by GyDi
+- Compatible profile config by @zzzgydi
 
-- Compatible profile config by GyDi
+- Native menu supports by @zzzgydi
 
-- Native menu supports by GyDi
+- Filter proxy and display type by @zzzgydi
 
-- Filter proxy and display type by GyDi
+- Use lock fn by @zzzgydi
 
-- Use lock fn by GyDi
+- Refactor proxy page by @zzzgydi
 
-- Refactor proxy page by GyDi
+- Proxy group auto scroll to current by @zzzgydi
 
-- Proxy group auto scroll to current by GyDi
+- Clash tun mode supports by @zzzgydi
 
-- Clash tun mode supports by GyDi
+- Use enhanced guard-state by @zzzgydi
 
-- Use enhanced guard-state by GyDi
+- Guard state supports debounce guard by @zzzgydi
 
-- Guard state supports debounce guard by GyDi
+- Adjust clash version display by @zzzgydi
 
-- Adjust clash version display by GyDi
+- Hide command window by @zzzgydi
 
-- Hide command window by GyDi
+- Enhance log data by @zzzgydi
 
-- Enhance log data by GyDi
+- Change window style by @zzzgydi
 
-- Change window style by GyDi
+- Fill verge template by @zzzgydi
 
-- Fill verge template by GyDi
+- Enable customize guard duration by @zzzgydi
 
-- Enable customize guard duration by GyDi
+- System proxy guard by @zzzgydi
 
-- System proxy guard by GyDi
+- Enable show or hide traffic graph by @zzzgydi
 
-- Enable show or hide traffic graph by GyDi
+- Traffic line graph by @zzzgydi
 
-- Traffic line graph by GyDi
+- Adjust profile item ui by @zzzgydi
 
-- Adjust profile item ui by GyDi
+- Adjust fetch profile url by @zzzgydi
 
-- Adjust fetch profile url by GyDi
+- Inline config file template by @zzzgydi
 
-- Inline config file template by GyDi
+- Kill sidecars when update app by @zzzgydi
 
-- Kill sidecars when update app by GyDi
+- Delete file by @zzzgydi
 
-- Delete file by GyDi
+- Lock some async functions by @zzzgydi
 
-- Lock some async functions by GyDi
+- Support open dir by @zzzgydi
 
-- Support open dir by GyDi
+- Change allow list by @zzzgydi
 
-- Change allow list by GyDi
+- Support check delay by @zzzgydi
 
-- Support check delay by GyDi
+- Scroll to proxy item by @zzzgydi
 
-- Scroll to proxy item by GyDi
+- Edit system proxy bypass by @zzzgydi
 
-- Edit system proxy bypass by GyDi
+- Disable user select by @zzzgydi
 
-- Disable user select by GyDi
+- New profile able to edit name and desc by @zzzgydi
 
-- New profile able to edit name and desc by GyDi
+- Update tauri version by @zzzgydi
 
-- Update tauri version by GyDi
+- Display clash core version by @zzzgydi
 
-- Display clash core version by GyDi
+- Adjust profile item menu by @zzzgydi
 
-- Adjust profile item menu by GyDi
+- Profile item ui by @zzzgydi
 
-- Profile item ui by GyDi
+- Support new profile by @zzzgydi
 
-- Support new profile by GyDi
+- Support open command for viewing by @zzzgydi
 
-- Support open command for viewing by GyDi
+- Global proxies use virtual list by @zzzgydi
 
-- Global proxies use virtual list by GyDi
+- Enable change proxy mode by @zzzgydi
 
-- Enable change proxy mode by GyDi
+- Update styles by @zzzgydi
 
-- Update styles by GyDi
+- Manage clash mode by @zzzgydi
 
-- Manage clash mode by GyDi
+- Change system porxy when changed port by @zzzgydi
 
-- Change system porxy when changed port by GyDi
+- Enable change mixed port by @zzzgydi
 
-- Enable change mixed port by GyDi
+- Manage clash config by @zzzgydi
 
-- Manage clash config by GyDi
+- Enable update clash info by @zzzgydi
 
-- Enable update clash info by GyDi
+- Rename edit as view by @zzzgydi
 
-- Rename edit as view by GyDi
+- Test auto gen update.json ci by @zzzgydi
 
-- Test auto gen update.json ci by GyDi
+- Adjust setting typography by @zzzgydi
 
-- Adjust setting typography by GyDi
+- Enable force select profile by @zzzgydi
 
-- Enable force select profile by GyDi
+- Support edit profile item by @zzzgydi
 
-- Support edit profile item by GyDi
+- Adjust control ui by @zzzgydi
 
-- Adjust control ui by GyDi
+- Update profile supports noproxy by @zzzgydi
 
-- Update profile supports noproxy by GyDi
+- Rename page by @zzzgydi
 
-- Rename page by GyDi
+- Refactor and adjust ui by @zzzgydi
 
-- Refactor and adjust ui by GyDi
+- Rm some commands by @zzzgydi
 
-- Rm some commands by GyDi
+- Change type by @zzzgydi
 
-- Change type by GyDi
+- Supports auto launch on macos and windows by @zzzgydi
 
-- Supports auto launch on macos and windows by GyDi
+- Adjust proxy page by @zzzgydi
 
-- Adjust proxy page by GyDi
+- Press esc hide the window by @zzzgydi
 
-- Press esc hide the window by GyDi
+- Show system proxy info by @zzzgydi
 
-- Show system proxy info by GyDi
+- Support blur window by @zzzgydi
 
-- Support blur window by GyDi
+- Windows support startup by @zzzgydi
 
-- Windows support startup by GyDi
+- Window self startup by @zzzgydi
 
-- Window self startup by GyDi
+- Use tauri updater by @zzzgydi
 
-- Use tauri updater by GyDi
+- Support update checker by @zzzgydi
 
-- Support update checker by GyDi
+- Support macos proxy config by @zzzgydi
 
-- Support macos proxy config by GyDi
+- Custom window decorations by @zzzgydi
 
-- Custom window decorations by GyDi
+- Profiles add menu and delete button by @zzzgydi
 
-- Profiles add menu and delete button by GyDi
+- Delay put profiles and retry by @zzzgydi
 
-- Delay put profiles and retry by GyDi
+- Window Send and Sync by @zzzgydi
 
-- Window Send and Sync by GyDi
+- Support restart sidecar tray event by @zzzgydi
 
-- Support restart sidecar tray event by GyDi
+- Prevent click same by @zzzgydi
 
-- Prevent click same by GyDi
+- Scroller stable by @zzzgydi
 
-- Scroller stable by GyDi
+- Compatible with macos(wip) by @zzzgydi
 
-- Compatible with macos(wip) by GyDi
+- Record selected proxy by @zzzgydi
 
-- Record selected proxy by GyDi
+- Display version by @zzzgydi
 
-- Display version by GyDi
+- Enhance system proxy setting by @zzzgydi
 
-- Enhance system proxy setting by GyDi
+- Profile loading animation by @zzzgydi
 
-- Profile loading animation by GyDi
+- Github actions support by @zzzgydi
 
-- Github actions support by GyDi
+- Rename profile page by @zzzgydi
 
-- Rename profile page by GyDi
+- Add pre-dev script by @zzzgydi
 
-- Add pre-dev script by GyDi
+- Implement a simple singleton process by @zzzgydi
 
-- Implement a simple singleton process by GyDi
+- Use paper for list bg by @zzzgydi
 
-- Use paper for list bg by GyDi
+- Supprt log ui by @zzzgydi
 
-- Supprt log ui by GyDi
+- Auto update profiles by @zzzgydi
 
-- Auto update profiles by GyDi
+- Proxy page use swr by @zzzgydi
 
-- Proxy page use swr by GyDi
+- Profile item support display updated time by @zzzgydi
 
-- Profile item support display updated time by GyDi
+- Change the log level order by @zzzgydi
 
-- Change the log level order by GyDi
+- Only put some fields by @zzzgydi
 
-- Only put some fields by GyDi
+- Setting page by @zzzgydi
 
-- Setting page by GyDi
+- Add serval commands by @zzzgydi
 
-- Add serval commands by GyDi
+- Change log file format by @zzzgydi
 
-- Change log file format by GyDi
+- Adjust code by @zzzgydi
 
-- Adjust code by GyDi
+- Refactor commands and support update profile by @zzzgydi
 
-- Refactor commands and support update profile by GyDi
+- System proxy command demo by @zzzgydi
 
-- System proxy command demo by GyDi
+- Support set system proxy command by @zzzgydi
 
-- Support set system proxy command by GyDi
+- Profiles ui and put profile support by @zzzgydi
 
-- Profiles ui and put profile support by GyDi
+- Remove sec field by @zzzgydi
 
-- Remove sec field by GyDi
+- Put profile works by @zzzgydi
 
-- Put profile works by GyDi
+- Distinguish level notice by @zzzgydi
 
-- Distinguish level notice by GyDi
+- Add use-notice hook by @zzzgydi
 
-- Add use-notice hook by GyDi
+- Pus_clash_profile support `secret` field by @zzzgydi
 
-- Pus_clash_profile support `secret` field by GyDi
+- Add put_profiles cmd by @zzzgydi
 
-- Add put_profiles cmd by GyDi
+- Update rule page by @zzzgydi
 
-- Update rule page by GyDi
+- Use external controller field by @zzzgydi
 
-- Use external controller field by GyDi
+- Lock profiles file and support more cmds by @zzzgydi
 
-- Lock profiles file and support more cmds by GyDi
+- Put new profile to clash by default by @zzzgydi
 
-- Put new profile to clash by default by GyDi
+- Enhance clash caller & support more commands by @zzzgydi
 
-- Enhance clash caller & support more commands by GyDi
+- Read clash config by @zzzgydi
 
-- Read clash config by GyDi
+- Get profile file name from response by @zzzgydi
 
-- Get profile file name from response by GyDi
+- Change the naming strategy by @zzzgydi
 
-- Change the naming strategy by GyDi
+- Change rule page by @zzzgydi
 
-- Change rule page by GyDi
+- Import profile support by @zzzgydi
 
-- Import profile support by GyDi
+- Init verge config struct by @zzzgydi
 
-- Init verge config struct by GyDi
+- Add some clash api by @zzzgydi
 
-- Add some clash api by GyDi
+- Optimize the proxy group order by @zzzgydi
 
-- Optimize the proxy group order by GyDi
+- Refactor system proxy config by @zzzgydi
 
-- Refactor system proxy config by GyDi
+- Use resources dir to save files by @zzzgydi
 
-- Use resources dir to save files by GyDi
+- New setting page by @zzzgydi
 
-- Adjust style impl by GyDi
+- Sort groups by @zzzgydi
 
-- New setting page by GyDi
+- Add favicon by @zzzgydi
 
-- Sort groups by GyDi
+- Update icons by @zzzgydi
 
-- Add favicon by GyDi
+- Update layout style by @zzzgydi
 
-- Finish proxy page ui and api support by GyDi
+- Support dark mode by @zzzgydi
 
-- Api support & adjust by GyDi
+- Set min windows by @zzzgydi
 
-- Add logo & update style by GyDi
+- Finish some features by @zzzgydi
 
-- Update icons by GyDi
+- Finish main layout by @zzzgydi
 
-- Update layout style by GyDi
-
-- Support dark mode by GyDi
-
-- Set min windows by GyDi
-
-- Finish some features by GyDi
-
-- Finish main layout by GyDi
-
-- Use vite by GyDi
+- Use vite by @zzzgydi
 
 ### 🐛 Bug Fixes
 
-- Rust lint by keiko233
+- **icon:** Change ico file to fix windows tray by @zzzgydi
 
-- Valid with unified-delay & tcp-concurrent by keiko233
+- **macos:** Set auto launch path to application by @zzzgydi
 
-- Touchpad scrolling causes blank area to appear by keiko233
+- **style:** Reduce my by @zzzgydi
 
-- Typos by keiko233
+- Rust lint by @keiko233
 
-- Download clash core from backup repo by keiko233
+- Valid with unified-delay & tcp-concurrent by @keiko233
 
-- Use meta Country.mmdb by keiko233
+- Touchpad scrolling causes blank area to appear by @keiko233
 
-- I18n by GyDi
+- Typos by @keiko233
 
-- Fix page undefined exception, close #770 by GyDi
+- Download clash core from backup repo by @keiko233
 
-- Set min window size, close #734 by GyDi
+- Use meta Country.mmdb by @keiko233
 
-- Rm debug code by GyDi
+- I18n by @zzzgydi
 
-- Use sudo when pkexec not found by GyDi
+- Fix page undefined exception, close #770 by @zzzgydi
 
-- Remove div by GyDi
+- Set min window size, close #734 by @zzzgydi
 
-- List key by GyDi
+- Rm debug code by @zzzgydi
 
-- Websocket disconnect when window focus by GyDi
+- Use sudo when pkexec not found by @zzzgydi
 
-- Try fix undefined error by GyDi
+- Remove div by @zzzgydi
 
-- Blurry tray icon in Windows by GyDi
+- List key by @zzzgydi
 
-- Enable context menu in editable element by GyDi
+- Websocket disconnect when window focus by @zzzgydi
 
-- Save window size and pos in Windows by GyDi
+- Try fix undefined error by @zzzgydi
 
-- Optimize traffic graph high CPU usage when hidden by GyDi
+- Blurry tray icon in Windows by @zzzgydi
 
-- Remove fallback group select status, close #659 by GyDi
+- Enable context menu in editable element by @zzzgydi
 
-- Error boundary with key by GyDi
+- Save window size and pos in Windows by @zzzgydi
 
-- Connections is null by GyDi
+- Optimize traffic graph high CPU usage when hidden by @zzzgydi
 
-- Font family not works in some interfaces, close #639 by GyDi
+- Remove fallback group select status, close #659 by @zzzgydi
 
-- EncodeURIComponent secret by GyDi
+- Error boundary with key by @zzzgydi
 
-- Encode controller secret, close #601 by GyDi
+- Connections is null by @zzzgydi
 
-- Linux not change icon by GyDi
+- Font family not works in some interfaces, close #639 by @zzzgydi
 
-- Try fix blank error by GyDi
+- EncodeURIComponent secret by @zzzgydi
 
-- Close all connections when change mode by GyDi
+- Encode controller secret, close #601 by @zzzgydi
 
-- Macos not change icon by GyDi
+- Linux not change icon by @zzzgydi
 
-- Error message null by GyDi
+- Try fix blank error by @zzzgydi
 
-- Profile data undefined error, close #566 by GyDi
+- Close all connections when change mode by @zzzgydi
 
-- Import url error (#543) by yettera765
+- Macos not change icon by @zzzgydi
 
-- Linux DEFAULT_BYPASS (#503) by Mr-Spade
+- Error message null by @zzzgydi
 
-- Open file with vscode by GyDi
+- Profile data undefined error, close #566 by @zzzgydi
 
-- Do not render div as a descendant of p (#494) by Tatius Titus
+- Import url error (#543) by @yettera765
 
-- Use replace instead by GyDi
+- Linux DEFAULT_BYPASS (#503) by @Mr-Spade
 
-- Escape path space by GyDi
+- Open file with vscode by @zzzgydi
 
-- Escape the space in path (#451) by John Smith
+- Do not render div as a descendant of p (#494) by @tatiustaitus
 
-- Add target os linux by GyDi
+- Use replace instead by @zzzgydi
 
-- Appimage path unwrap panic by GyDi
+- Escape path space by @zzzgydi
 
-- Remove esc key listener in macOS by GyDi
+- Escape the space in path (#451) by @dyxushuai
 
-- Adjust style by GyDi
+- Add target os linux by @zzzgydi
 
-- Adjust swr option by GyDi
+- Appimage path unwrap panic by @zzzgydi
 
-- Infinite retry when websocket error by GyDi
+- Remove esc key listener in macOS by @zzzgydi
 
-- Type error by GyDi
+- Adjust style by @zzzgydi
 
-- Do not parse log except the clash core by GyDi
+- Adjust swr option by @zzzgydi
 
-- Field sort for filter by GyDi
+- Infinite retry when websocket error by @zzzgydi
 
-- Add meta fields by GyDi
+- Type error by @zzzgydi
 
-- Runtime config user select by GyDi
+- Do not parse log except the clash core by @zzzgydi
 
-- App_handle as_ref by GyDi
+- Field sort for filter by @zzzgydi
 
-- Use crate by GyDi
+- Add meta fields by @zzzgydi
 
-- Appimage auto launch, close #403 by GyDi
+- Runtime config user select by @zzzgydi
 
-- Compatible with UTF8 BOM, close #283 by GyDi
+- App_handle as_ref by @zzzgydi
 
-- Use selected proxy after profile changed by GyDi
+- Use crate by @zzzgydi
 
-- Error log by GyDi
+- Appimage auto launch, close #403 by @zzzgydi
 
-- Adjust fields order by GyDi
+- Compatible with UTF8 BOM, close #283 by @zzzgydi
 
-- Add meta fields by GyDi
+- Use selected proxy after profile changed by @zzzgydi
 
-- Add os platform value by GyDi
+- Error log by @zzzgydi
 
-- Reconnect traffic websocket by GyDi
+- Adjust fields order by @zzzgydi
 
-- Parse bytes precision, close #334 by GyDi
+- Add meta fields by @zzzgydi
 
-- Trigger new profile dialog, close #356 by GyDi
+- Add os platform value by @zzzgydi
 
-- Parse log cause panic by GyDi
+- Reconnect traffic websocket by @zzzgydi
 
-- Avoid setting login item repeatedly, close #326 by GyDi
+- Parse bytes precision, close #334 by @zzzgydi
 
-- Adjust code by GyDi
+- Trigger new profile dialog, close #356 by @zzzgydi
 
-- Adjust delay check concurrency by GyDi
+- Parse log cause panic by @zzzgydi
 
-- Change default column to auto by GyDi
+- Avoid setting login item repeatedly, close #326 by @zzzgydi
 
-- Change default app version by GyDi
+- Adjust code by @zzzgydi
 
-- Adjust rule ui by GyDi
+- Adjust delay check concurrency by @zzzgydi
 
-- Adjust log ui by GyDi
+- Change default column to auto by @zzzgydi
 
-- Keep delay data by GyDi
+- Change default app version by @zzzgydi
 
-- Use list item button by GyDi
+- Adjust rule ui by @zzzgydi
 
-- Proxy item style by GyDi
+- Adjust log ui by @zzzgydi
 
-- Virtuoso no work in legacy browsers (#318) by MoeShin
+- Keep delay data by @zzzgydi
 
-- Adjust ui by GyDi
+- Use list item button by @zzzgydi
 
-- Refresh websocket by GyDi
+- Proxy item style by @zzzgydi
 
-- Adjust ui by GyDi
+- Virtuoso no work in legacy browsers (#318) by @moeshin
 
-- Parse bytes base 1024 by GyDi
+- Adjust ui by @zzzgydi
 
-- Add clash fields by GyDi
+- Refresh websocket by @zzzgydi
 
-- Direct mode hide proxies by GyDi
+- Adjust ui by @zzzgydi
 
-- Profile can not edit by GyDi
+- Parse bytes base 1024 by @zzzgydi
 
-- Parse logger time by GyDi
+- Add clash fields by @zzzgydi
 
-- Adjust service mode ui by GyDi
+- Direct mode hide proxies by @zzzgydi
 
-- Adjust style by GyDi
+- Profile can not edit by @zzzgydi
 
-- Check hotkey and optimize hotkey input, close #287 by GyDi
+- Parse logger time by @zzzgydi
 
-- Mutex dead lock by GyDi
+- Adjust service mode ui by @zzzgydi
 
-- Adjust item ui by GyDi
+- Adjust style by @zzzgydi
 
-- Regenerate config before change core by GyDi
+- Check hotkey and optimize hotkey input, close #287 by @zzzgydi
 
-- Close connections when profile change by GyDi
+- Mutex dead lock by @zzzgydi
 
-- Lint by GyDi
+- Adjust item ui by @zzzgydi
 
-- Windows service mode by GyDi
+- Regenerate config before change core by @zzzgydi
 
-- Init config file by GyDi
+- Close connections when profile change by @zzzgydi
 
-- Service mode error and fallback to sidecar by GyDi
+- Lint by @zzzgydi
 
-- Service mode viewer ui by GyDi
+- Windows service mode by @zzzgydi
 
-- Create theme error, close #294 by GyDi
+- Init config file by @zzzgydi
 
-- MatchMedia().addEventListener #258 (#296) by MoeShin
+- Service mode error and fallback to sidecar by @zzzgydi
 
-- Check config by GyDi
+- Service mode viewer ui by @zzzgydi
 
-- Show global when no rule groups by GyDi
+- Create theme error, close #294 by @zzzgydi
 
-- Service viewer ref by GyDi
+- MatchMedia().addEventListener #258 (#296) by @moeshin
 
-- Service ref error by GyDi
+- Check config by @zzzgydi
 
-- Group proxies render list is null by GyDi
+- Show global when no rule groups by @zzzgydi
 
-- Pretty bytes by GyDi
+- Service viewer ref by @zzzgydi
 
-- Use verge hook by GyDi
+- Service ref error by @zzzgydi
 
-- Adjust notice by GyDi
+- Group proxies render list is null by @zzzgydi
 
-- Windows issue by GyDi
+- Pretty bytes by @zzzgydi
 
-- Change dev log level by GyDi
+- Use verge hook by @zzzgydi
 
-- Patch clash config by GyDi
+- Adjust notice by @zzzgydi
 
-- Cmds params by GyDi
+- Windows issue by @zzzgydi
 
-- Adjust singleton detect by GyDi
+- Change dev log level by @zzzgydi
 
-- Change template by GyDi
+- Patch clash config by @zzzgydi
 
-- Copy resource file by GyDi
+- Cmds params by @zzzgydi
 
-- MediaQueryList addEventListener polyfill by GyDi
+- Adjust singleton detect by @zzzgydi
 
-- Change default tun dns-hijack by GyDi
+- Change template by @zzzgydi
 
-- Something by GyDi
+- Copy resource file by @zzzgydi
 
-- Provider proxy sort by delay by GyDi
+- MediaQueryList addEventListener polyfill by @zzzgydi
 
-- Profile item menu ui dense by GyDi
+- Change default tun dns-hijack by @zzzgydi
 
-- Disable auto scroll to proxy by GyDi
+- Something by @zzzgydi
 
-- Check remote profile by GyDi
+- Provider proxy sort by delay by @zzzgydi
 
-- Remove smoother by GyDi
+- Profile item menu ui dense by @zzzgydi
 
-- Icon button color by GyDi
+- Disable auto scroll to proxy by @zzzgydi
 
-- Init system proxy correctly by GyDi
+- Check remote profile by @zzzgydi
 
-- Open file by GyDi
+- Remove smoother by @zzzgydi
 
-- Reset proxy by GyDi
+- Icon button color by @zzzgydi
 
-- Init config error by GyDi
+- Init system proxy correctly by @zzzgydi
 
-- Adjust reset proxy by GyDi
+- Open file by @zzzgydi
 
-- Adjust code by GyDi
+- Reset proxy by @zzzgydi
 
-- Add https proxy by GyDi
+- Init config error by @zzzgydi
 
-- Auto scroll into view when sorted proxies changed by GyDi
+- Adjust reset proxy by @zzzgydi
 
-- Refresh proxies interval, close #235 by GyDi
+- Adjust code by @zzzgydi
 
-- Style by GyDi
+- Add https proxy by @zzzgydi
 
-- Fetch profile with system proxy, close #249 by GyDi
+- Auto scroll into view when sorted proxies changed by @zzzgydi
 
-- The profile is replaced when the request fails. (#246) by LooSheng
+- Refresh proxies interval, close #235 by @zzzgydi
 
-- Default dns config by GyDi
+- Style by @zzzgydi
 
-- Kill clash when exit in service mode, close #241 by GyDi
+- Fetch profile with system proxy, close #249 by @zzzgydi
 
-- Icon button color inherit by GyDi
+- The profile is replaced when the request fails. (#246) by @loosheng
 
-- App version to string by GyDi
+- Default dns config by @zzzgydi
 
-- Break loop when core terminated by GyDi
+- Kill clash when exit in service mode, close #241 by @zzzgydi
 
-- Api error handle by GyDi
+- Icon button color inherit by @zzzgydi
 
-- Clash meta not load geoip, close #212 by GyDi
+- App version to string by @zzzgydi
 
-- Sort proxy during loading, close #221 by GyDi
+- Break loop when core terminated by @zzzgydi
 
-- Not create windows when enable slient start by GyDi
+- Api error handle by @zzzgydi
 
-- Root background color by GyDi
+- Clash meta not load geoip, close #212 by @zzzgydi
 
-- Create window correctly by GyDi
+- Sort proxy during loading, close #221 by @zzzgydi
 
-- Set_activation_policy by GyDi
+- Not create windows when enable slient start by @zzzgydi
 
-- Disable spell check by GyDi
+- Root background color by @zzzgydi
 
-- Adjust init launch on dev by GyDi
+- Create window correctly by @zzzgydi
 
-- Ignore disable auto launch error by GyDi
+- Set_activation_policy by @zzzgydi
 
-- Set auto launch path to application by GyDi
+- Disable spell check by @zzzgydi
 
-- I18n by GyDi
+- Adjust init launch on dev by @zzzgydi
 
-- Style by GyDi
+- Ignore disable auto launch error by @zzzgydi
 
-- Save enable log on localstorage by GyDi
+- I18n by @zzzgydi
 
-- Typo in api.ts (#207) by Priestch
+- Style by @zzzgydi
 
-- Refresh clash ui await patch by GyDi
+- Save enable log on localstorage by @zzzgydi
 
-- Remove dead code by GyDi
+- Typo in api.ts (#207) by @Priestch
 
-- Style by GyDi
+- Refresh clash ui await patch by @zzzgydi
 
-- Handle is none by GyDi
+- Remove dead code by @zzzgydi
 
-- Unused by GyDi
+- Style by @zzzgydi
 
-- Style by GyDi
+- Handle is none by @zzzgydi
 
-- Windows logo size by GyDi
+- Unused by @zzzgydi
 
-- Do not kill sidecar during updating by GyDi
+- Style by @zzzgydi
 
-- Delay update config by GyDi
+- Windows logo size by @zzzgydi
 
-- Reduce logo size by GyDi
+- Do not kill sidecar during updating by @zzzgydi
 
-- Window center by GyDi
+- Delay update config by @zzzgydi
 
-- Log level warn value by GyDi
+- Reduce logo size by @zzzgydi
 
-- Increase delay checker concurrency by GyDi
+- Window center by @zzzgydi
 
-- External controller allow lan by GyDi
+- Log level warn value by @zzzgydi
 
-- Remove useless optimizations by GyDi
+- Increase delay checker concurrency by @zzzgydi
 
-- Reduce unsafe unwrap by GyDi
+- External controller allow lan by @zzzgydi
 
-- Timer restore at app launch by FoundTheWOUT
+- Remove useless optimizations by @zzzgydi
 
-- Adjust log text by GyDi
+- Reduce unsafe unwrap by @zzzgydi
 
-- Only script profile can display console by GyDi
+- Timer restore at app launch by @FoundTheWOUT
 
-- Fill button title attr by GyDi
+- Adjust log text by @zzzgydi
 
-- Do not reset system proxy when consistent by GyDi
+- Only script profile can display console by @zzzgydi
 
-- Adjust web ui item style by GyDi
+- Fill button title attr by @zzzgydi
 
-- Clash field state error by GyDi
+- Do not reset system proxy when consistent by @zzzgydi
 
-- Badge color error by GyDi
+- Adjust web ui item style by @zzzgydi
 
-- Web ui port value error by GyDi
+- Clash field state error by @zzzgydi
 
-- Delay show window by GyDi
+- Badge color error by @zzzgydi
 
-- Adjust dialog action button variant by GyDi
+- Web ui port value error by @zzzgydi
 
-- Script code error by GyDi
+- Delay show window by @zzzgydi
 
-- Script exception handle by GyDi
+- Adjust dialog action button variant by @zzzgydi
 
-- Change fields by GyDi
+- Script code error by @zzzgydi
 
-- Silent start (#150) by FoundTheWOUT
+- Script exception handle by @zzzgydi
 
-- Save profile when update by GyDi
+- Change fields by @zzzgydi
 
-- List compare wrong by GyDi
+- Silent start (#150) by @FoundTheWOUT
 
-- Button color by GyDi
+- Save profile when update by @zzzgydi
 
-- Limit theme mode value by GyDi
+- List compare wrong by @zzzgydi
 
-- Add valid clash field by GyDi
+- Button color by @zzzgydi
 
-- Icon style by GyDi
+- Limit theme mode value by @zzzgydi
 
-- Reduce unwrap by GyDi
+- Add valid clash field by @zzzgydi
 
-- Import mod by GyDi
+- Icon style by @zzzgydi
 
-- Add tray separator by GyDi
+- Reduce unwrap by @zzzgydi
 
-- Instantiate core after init app, close #122 by GyDi
+- Import mod by @zzzgydi
 
-- Rm macOS transition props by GyDi
+- Add tray separator by @zzzgydi
 
-- Improve external-controller parse and log by GyDi
+- Instantiate core after init app, close #122 by @zzzgydi
 
-- Show windows on click by GyDi
+- Rm macOS transition props by @zzzgydi
 
-- Adjust update profile notice error by GyDi
+- Improve external-controller parse and log by @zzzgydi
 
-- Style issue on mac by GyDi
+- Show windows on click by @zzzgydi
 
-- Check script run on all OS by FoundTheWOUT
+- Adjust update profile notice error by @zzzgydi
 
-- MacOS disable transparent by GyDi
+- Style issue on mac by @zzzgydi
 
-- Window transparent and can not get hwnd by GyDi
+- Check script run on all OS by @FoundTheWOUT
 
-- Create main window by GyDi
+- MacOS disable transparent by @zzzgydi
 
-- Adjust notice by GyDi
+- Window transparent and can not get hwnd by @zzzgydi
 
-- Label text by GyDi
+- Create main window by @zzzgydi
 
-- Icon path by GyDi
+- Adjust notice by @zzzgydi
 
-- Icon issue by GyDi
+- Label text by @zzzgydi
 
-- Notice ui blocking by GyDi
+- Icon path by @zzzgydi
 
-- Service mode error by GyDi
+- Icon issue by @zzzgydi
 
-- Win11 drag lag by GyDi
+- Notice ui blocking by @zzzgydi
 
-- Rm unwrap by GyDi
+- Service mode error by @zzzgydi
 
-- Edit profile info by GyDi
+- Win11 drag lag by @zzzgydi
 
-- Change window default size by GyDi
+- Rm unwrap by @zzzgydi
 
-- Change service installer and uninstaller by GyDi
+- Edit profile info by @zzzgydi
 
-- Adjust connection scroll by GyDi
+- Change window default size by @zzzgydi
 
-- Adjust something by GyDi
+- Change service installer and uninstaller by @zzzgydi
 
-- Adjust debounce wait time by GyDi
+- Adjust connection scroll by @zzzgydi
 
-- Adjust dns config by GyDi
+- Adjust something by @zzzgydi
 
-- Traffic graph adapt to different fps by GyDi
+- Adjust debounce wait time by @zzzgydi
 
-- Optimize clash launch by GyDi
+- Adjust dns config by @zzzgydi
 
-- Reset after exit by GyDi
+- Traffic graph adapt to different fps by @zzzgydi
 
-- Adjust code by GyDi
+- Optimize clash launch by @zzzgydi
 
-- Adjust log by GyDi
+- Reset after exit by @zzzgydi
 
-- Check button hover style by GyDi
+- Adjust code by @zzzgydi
 
-- Icon button color inherit by GyDi
+- Adjust log by @zzzgydi
 
-- Remove the lonely zero by GyDi
+- Check button hover style by @zzzgydi
 
-- I18n add value by GyDi
+- Icon button color inherit by @zzzgydi
 
-- Proxy page first render by GyDi
+- Remove the lonely zero by @zzzgydi
 
-- Console warning by GyDi
+- I18n add value by @zzzgydi
 
-- Icon button title by GyDi
+- Proxy page first render by @zzzgydi
 
-- MacOS transition flickers close #47 by GyDi
+- Console warning by @zzzgydi
 
-- Csp image data by GyDi
+- Icon button title by @zzzgydi
 
-- Close dialog after save by GyDi
+- MacOS transition flickers close #47 by @zzzgydi
 
-- Change to deep copy by GyDi
+- Csp image data by @zzzgydi
 
-- Window style close #45 by GyDi
+- Close dialog after save by @zzzgydi
 
-- Manage global proxy correctly by GyDi
+- Change to deep copy by @zzzgydi
 
-- Tauri csp by GyDi
+- Window style close #45 by @zzzgydi
 
-- Windows style by GyDi
+- Manage global proxy correctly by @zzzgydi
 
-- Update state by GyDi
+- Tauri csp by @zzzgydi
 
-- Profile item loading state by GyDi
+- Windows style by @zzzgydi
 
-- Adjust windows style by GyDi
+- Update state by @zzzgydi
 
-- Change mixed port error by GyDi
+- Profile item loading state by @zzzgydi
 
-- Auto launch path by GyDi
+- Adjust windows style by @zzzgydi
 
-- Tun mode config by GyDi
+- Change mixed port error by @zzzgydi
 
-- Adjsut open cmd error by GyDi
+- Auto launch path by @zzzgydi
 
-- Parse external-controller by GyDi
+- Tun mode config by @zzzgydi
 
-- Config file case close #18 by GyDi
+- Adjsut open cmd error by @zzzgydi
 
-- Patch item option by GyDi
+- Parse external-controller by @zzzgydi
 
-- User agent not works by GyDi
+- Config file case close #18 by @zzzgydi
 
-- External-controller by GyDi
+- Patch item option by @zzzgydi
 
-- Change proxy bypass on mac by GyDi
+- User agent not works by @zzzgydi
 
-- Kill sidecars after install still in test by GyDi
+- External-controller by @zzzgydi
 
-- Log some error by GyDi
+- Change proxy bypass on mac by @zzzgydi
 
-- Apply_blur parameter by GyDi
+- Kill sidecars after install still in test by @zzzgydi
 
-- Limit enhanced profile range by GyDi
+- Log some error by @zzzgydi
 
-- Profile updated field by GyDi
+- Apply_blur parameter by @zzzgydi
 
-- Profile field check by GyDi
+- Limit enhanced profile range by @zzzgydi
 
-- Create dir panic by GyDi
+- Profile updated field by @zzzgydi
 
-- Only error when selected by GyDi
+- Profile field check by @zzzgydi
 
-- Enhanced profile consistency by GyDi
+- Create dir panic by @zzzgydi
 
-- Simply compatible with proxy providers by GyDi
+- Only error when selected by @zzzgydi
 
-- Component warning by GyDi
+- Enhanced profile consistency by @zzzgydi
 
-- When updater failed by GyDi
+- Simply compatible with proxy providers by @zzzgydi
 
-- Log file by GyDi
+- Component warning by @zzzgydi
 
-- Result by GyDi
+- When updater failed by @zzzgydi
 
-- Cover profile extra by GyDi
+- Log file by @zzzgydi
 
-- Display menu only on macos by GyDi
+- Result by @zzzgydi
 
-- Proxy global showType by GyDi
+- Cover profile extra by @zzzgydi
 
-- Use full clash config by GyDi
+- Display menu only on macos by @zzzgydi
 
-- Reconnect websocket when restart clash by GyDi
+- Proxy global showType by @zzzgydi
 
-- Wrong exe path by GyDi
+- Use full clash config by @zzzgydi
 
-- Patch verge config by GyDi
+- Reconnect websocket when restart clash by @zzzgydi
 
-- Fetch profile panic by GyDi
+- Wrong exe path by @zzzgydi
 
-- Spawn command by GyDi
+- Patch verge config by @zzzgydi
 
-- Import error by GyDi
+- Fetch profile panic by @zzzgydi
 
-- Not open file when new profile by GyDi
+- Spawn command by @zzzgydi
 
-- Reset value correctly by GyDi
+- Import error by @zzzgydi
 
-- Something by GyDi
+- Not open file when new profile by @zzzgydi
 
-- Menu without fragment by GyDi
+- Reset value correctly by @zzzgydi
 
-- Proxy list error by GyDi
+- Something by @zzzgydi
 
-- Something by GyDi
+- Menu without fragment by @zzzgydi
 
-- Macos auto launch fail by GyDi
+- Proxy list error by @zzzgydi
 
-- Type error by GyDi
+- Something by @zzzgydi
 
-- Restart clash should update something by GyDi
+- Macos auto launch fail by @zzzgydi
 
-- Script error... by GyDi
+- Type error by @zzzgydi
 
-- Tag error by GyDi
+- Restart clash should update something by @zzzgydi
 
-- Script error by GyDi
+- Script error... by @zzzgydi
 
-- Remove cargo test by GyDi
+- Tag error by @zzzgydi
 
-- Reduce proxy item height by GyDi
+- Script error by @zzzgydi
 
-- Put profile request with no proxy by GyDi
+- Remove cargo test by @zzzgydi
 
-- Ci strategy by GyDi
+- Reduce proxy item height by @zzzgydi
 
-- Version update error by GyDi
+- Put profile request with no proxy by @zzzgydi
 
-- Text by GyDi
+- Ci strategy by @zzzgydi
 
-- Update profile after restart clash by GyDi
+- Version update error by @zzzgydi
 
-- Get proxies multiple times by GyDi
+- Text by @zzzgydi
 
-- Delete profile item command by GyDi
+- Update profile after restart clash by @zzzgydi
 
-- Initialize profiles state by GyDi
+- Get proxies multiple times by @zzzgydi
 
-- Item header bgcolor by GyDi
+- Delete profile item command by @zzzgydi
 
-- Null type error by GyDi
+- Initialize profiles state by @zzzgydi
 
-- Api loading delay by GyDi
+- Item header bgcolor by @zzzgydi
 
-- Mutate at the same time may be wrong by GyDi
+- Null type error by @zzzgydi
 
-- Port value not rerender by GyDi
+- Api loading delay by @zzzgydi
 
-- Change log file format by GyDi
+- Mutate at the same time may be wrong by @zzzgydi
 
-- Proxy bypass add <local> by GyDi
+- Port value not rerender by @zzzgydi
 
-- Sidecar dir by GyDi
+- Change log file format by @zzzgydi
 
-- Change ico file to fix windows tray by GyDi
+- Proxy bypass add <local> by @zzzgydi
 
-- Web resource outDir by GyDi
+- Sidecar dir by @zzzgydi
 
-- Reduce my by GyDi
+- Web resource outDir by @zzzgydi
 
-- Use io by GyDi
+- Use io by @zzzgydi
 
 ### 💅 Styling
 
-- Resolve formatting problem by limsanity
+- Resolve formatting problem by @Limsanity
 
 ### 📚 Documentation
 
-- Fix img width by GyDi
+- Fix img width by @zzzgydi
 
-- Update by GyDi
+- Update by @zzzgydi
 
 ### 🔨 Refactor
 
-- Copy_clash_env by keiko233
+- **hotkey:** Use tauri global shortcut by @zzzgydi
 
-- Adjust base components export by GyDi
+- Copy_clash_env by @keiko233
 
-- Adjust setting dialog component by GyDi
+- Adjust base components export by @zzzgydi
 
-- Done by GyDi
+- Adjust setting dialog component by @zzzgydi
 
-- Adjust all path methods and reduce unwrap by GyDi
+- Done by @zzzgydi
 
-- Rm code by GyDi
+- Adjust all path methods and reduce unwrap by @zzzgydi
 
-- Fix by GyDi
+- Rm code by @zzzgydi
 
-- Rm dead code by GyDi
+- Fix by @zzzgydi
 
-- For windows by GyDi
+- Rm dead code by @zzzgydi
 
-- Wip by GyDi
+- For windows by @zzzgydi
 
-- Wip by GyDi
+- Wip by @zzzgydi
 
-- Wip by GyDi
+- Wip by @zzzgydi
 
-- Rm update item block_on by GyDi
+- Wip by @zzzgydi
 
-- Fix by GyDi
+- Rm update item block_on by @zzzgydi
 
-- Fix by GyDi
+- Fix by @zzzgydi
 
-- Wip by GyDi
+- Fix by @zzzgydi
 
-- Use tauri global shortcut by GyDi
+- Wip by @zzzgydi
 
-- Optimize by GyDi
+- Optimize by @zzzgydi
 
-- Ts path alias by GyDi
+- Ts path alias by @zzzgydi
 
-- Mode manage on tray by GyDi
+- Mode manage on tray by @zzzgydi
 
-- Verge by GyDi
+- Verge by @zzzgydi
 
-- Wip by GyDi
+- Wip by @zzzgydi
 
-- Mutex by GyDi
+- Mutex by @zzzgydi
 
-- Wip by GyDi
+- Wip by @zzzgydi
 
-- Proxy head by GyDi
+- Proxy head by @zzzgydi
 
-- Update profile menu by GyDi
+- Update profile menu by @zzzgydi
 
-- Enhanced mode ui component by GyDi
+- Enhanced mode ui component by @zzzgydi
 
-- Ui theme by GyDi
+- Ui theme by @zzzgydi
 
-- Optimize enhance mode strategy by GyDi
+- Optimize enhance mode strategy by @zzzgydi
 
-- Profile config by GyDi
+- Profile config by @zzzgydi
 
-- Use anyhow to handle error by GyDi
+- Use anyhow to handle error by @zzzgydi
 
-- Rename profiles & command state by GyDi
+- Rename profiles & command state by @zzzgydi
 
-- Something by GyDi
+- Something by @zzzgydi
 
-- Notice caller by GyDi
+- Notice caller by @zzzgydi
 
-- Setting page by GyDi
+- Setting page by @zzzgydi
 
-- Rename by GyDi
+- Rename by @zzzgydi
 
-- Impl structs methods by GyDi
+- Impl structs methods by @zzzgydi
 
-- Impl as struct methods by GyDi
+- Impl as struct methods by @zzzgydi
 
-- Api and command by GyDi
+- Api and command by @zzzgydi
 
-- Import profile by GyDi
+- Import profile by @zzzgydi
 
-- Adjust dirs structure by GyDi
-
-### 🧹 Miscellaneous Tasks
-
-- Add release build by keiko233
-
-- Test: use pnpm by keiko233
-
-- Switch updater endpoints by keiko233
-
-- Delete current release assets by keiko233
-
-- Drop upload-artifact & use prerelease by keiko233
-
-- Fix: typos by keiko233
-
-- Add dev workflow by keiko233
-
-- Update dependencies by keiko233
-
-- Tsconfig: skip Lib Check by keiko233
-
-- Update README.md by keiko233
-
-- Import MUI Lab by keiko233
-
-- Update dependencies by keiko233
-
-- Use your own update endpoints and public keys by keiko233
-
-- Readme remove ad by keiko233
-
-- Fix rust lint by GyDi
-
-- Update readme by GyDi
-
-- Update readme by GyDi
-
-- Update clash meta by GyDi
-
-- Update readme by GyDi
-
-- Fix updater by GyDi
-
-- Fix updater by GyDi
-
-- Fix clash map, close #736 by GyDi
-
-- Update log by GyDi
-
-- Update auto launch by GyDi
-
-- Update mmdb by GyDi
-
-- Change ubuntu ci version by GyDi
-
-- Update clash by GyDi
-
-- Update release link by GyDi
-
-- Update clash meta by GyDi
-
-- Update log by GyDi
-
-- Update ci by GyDi
-
-- Update geo data to meta, close #707 by GyDi
-
-- Fix faq by GyDi
-
-- Add faq and download link by GyDi
-
-- Add promotion by GyDi
-
-- Alpha ci by GyDi
-
-- Fix test ci by GyDi
-
-- Fix test ci by GyDi
-
-- Test ci by GyDi
-
-- Test ci by GyDi
-
-- Update log by GyDi
-
-- Update clash core by GyDi
-
-- Fix check script by GyDi
-
-- Update issue templates by GyDi
-
-- Update log by GyDi
-
-- Update check script by GyDi
-
-- Update clash by GyDi
-
-- Update log by GyDi
-
-- Update clash meta by GyDi
-
-- Update clash & clash meta by GyDi
-
-- Update deps by GyDi
-
-- Update clash by GyDi
-
-- Update gh proxy by GyDi
-
-- Update log by GyDi
-
-- Update clash core by GyDi
-
-- Update deps by GyDi
-
-- Update log by GyDi
-
-- Upgrade to React 18 (#495) by Tatius Titus
-
-- Update deps by GyDi
-
-- Update deps by GyDi
-
-- Update clash meta by GyDi
-
-- Update clash core version (#476) by Srinivas Gowda
-
-- Fix ci by GyDi
-
-- Update log by GyDi
-
-- Rm file by GyDi
-
-- Evaluate error context lazily (#447) by hybo
-
-- Update deps by GyDi
-
-- Fix ci by GyDi
-
-- Fix ci by GyDi
-
-- Update README (#435) by boatrainlsz
-
-- Update deps by GyDi
-
-- Update clash by GyDi
-
-- Update clash by GyDi
-
-- Add openssl depend (#395) by inRm3D
-
-- Update log by GyDi
-
-- Aarch script by GyDi
-
-- Update clash by GyDi
-
-- Meta ci by GyDi
-
-- Fix ci by GyDi
-
-- Fix ci by GyDi
-
-- Alpha ci by GyDi
-
-- Try fix missing libssl3 (#378) by inRm3D
-
-- Ci by GyDi
-
-- Update log by GyDi
-
-- Ci by GyDi
-
-- Update clash meta by GyDi
-
-- Allow unused by GyDi
-
-- Update deps by GyDi
-
-- Update clash meta by GyDi
-
-- Update log by GyDi
-
-- Adjust code by GyDi
-
-- Fix ci by GyDi
-
-- Fix ci by GyDi
-
-- Fix ci by GyDi
-
-- Alpha ci by GyDi
-
-- Alpha ci by GyDi
-
-- Update deps by GyDi
-
-- Update deps by GyDi
-
-- Deps by GyDi
-
-- Update clash version by GyDi
-
-- Alpha ci by GyDi
-
-- Ci by GyDi
-
-- Ci by GyDi
-
-- Ci by GyDi
-
-- Ci by GyDi
-
-- Update log by GyDi
-
-- Rm dead code by GyDi
-
-- Fix check script by GyDi
-
-- Fix mmdb url by GyDi
-
-- Update check script by GyDi
-
-- Alpha release add portable by GyDi
-
-- Alpha ci by GyDi
-
-- Update ci by GyDi
-
-- Update ci node version by GyDi
-
-- Adjust type by GyDi
-
-- Rm polyfill by GyDi
-
-- Rm code by GyDi
-
-- Tmpl add clash core by GyDi
-
-- Fix ci by GyDi
-
-- Alpha ci by GyDi
-
-- Lock version by GyDi
-
-- Fix ci by GyDi
-
-- Alpha ci by GyDi
-
-- Format rust code by GyDi
-
-- Update deps by GyDi
-
-- Rm dead code by GyDi
-
-- Clash meta compatible and geosite.dat by GyDi
-
-- Update clash meta by GyDi
-
-- Fix ci by GyDi
-
-- Compatible ci by GyDi
-
-- Update ci by GyDi
-
-- Test ci by GyDi
-
-- Test ci by GyDi
-
-- Add x by GyDi
-
-- Update log by GyDi
-
-- Update deps by GyDi
-
-- Update mmdb by GyDi
-
-- Adjust code by GyDi
-
-- Update log by GyDi
-
-- Rm aarch64 ci by GyDi
-
-- Test ci by GyDi
-
-- Test ci by GyDi
-
-- Fix ci by GyDi
-
-- Fix test ci by GyDi
-
-- Add support for windows arm64, close #216 (#209) by Particle_G
-
-- Add support linux arm64 (#215) by 苏业钦
-
-- Clash meta linux use compatible version by GyDi
-
-- Update log by GyDi
-
-- Use ubuntu latest by GyDi
-
-- Update deps by GyDi
-
-- Update resource by GyDi
-
-- Update log by GyDi
-
-- Update deps by GyDi
-
-- Update deps by GyDi
-
-- Use ubuntu 18.04 by GyDi
-
-- Update clash meta version by GyDi
-
-- Test ci by GyDi
-
-- Update clash by GyDi
-
-- Add test ci os version by GyDi
-
-- Update auto launch by GyDi
-
-- Update log by GyDi
-
-- Format by GyDi
-
-- Rm code by GyDi
-
-- Fix updater script by GyDi
-
-- Update log by GyDi
-
-- Update deps by GyDi
-
-- Rm code by GyDi
-
-- Update deps by GyDi
-
-- Update clash version by GyDi
-
-- Update aarch rule by GyDi
-
-- Aarch upload script by GyDi
-
-- Update clash version by GyDi
-
-- Update deps by GyDi
-
-- Update deps by GyDi
-
-- Change tray icon by GyDi
-
-- Update log by GyDi
-
-- Update clash version by GyDi
-
-- Update macos icon by GyDi
-
-- New logo for mac by GyDi
-
-- Update alpha ci by GyDi
-
-- Update tauri by GyDi
-
-- Update version by GyDi
-
-- Update deps by GyDi
-
-- Portable script by GyDi
-
-- Updater script by GyDi
-
-- Update log by GyDi
-
-- Rm some files by GyDi
-
-- Rust cache by GyDi
-
-- Adjust ci and script by GyDi
-
-- Enable meta by default by GyDi
-
-- Rm file by GyDi
-
-- Adjust code by GyDi
-
-- Update deps by GyDi
-
-- Update deps by GyDi
-
-- Update clash core by GyDi
-
-- Update clash version by GyDi
-
-- Alpha ci by GyDi
-
-- Error text by GyDi
-
-- Ci by GyDi
-
-- Fix alpha ci by GyDi
-
-- Alpha ci by GyDi
-
-- Meta by GyDi
-
-- Fix ci by GyDi
-
-- Test ci by GyDi
-
-- Alpha by GyDi
-
-- Test ci by GyDi
-
-- Update deps by GyDi
-
-- Fix linux build ci by GyDi
-
-- Test ci by GyDi
-
-- Test ci by GyDi
-
-- Test ci fix deps by GyDi
-
-- Test ci by GyDi
-
-- Test ci by GyDi
-
-- Continue on error by GyDi
-
-- Test linux by GyDi
-
-- Test ci by GyDi
-
-- Update log by GyDi
-
-- Change default height by GyDi
-
-- Update deps by GyDi
-
-- Change default user agent by GyDi
-
-- Merge by GyDi
-
-- Update log by GyDi
-
-- Update check script by GyDi
-
-- Adjust guard log by GyDi
-
-- Adjust by GyDi
-
-- Update clash version by GyDi
-
-- Check script proxy agent supports by GyDi
-
-- Update log by GyDi
-
-- Update dep by GyDi
-
-- Rename green to portable by GyDi
-
-- Update clash version by GyDi
-
-- Rm console by GyDi
-
-- Update deps by GyDi
-
-- Update log by GyDi
-
-- Readme by GyDi
-
-- Update log by GyDi
-
-- Add updater script by GyDi
-
-- Updater json supports arch field by GyDi
-
-- Add ci by GyDi
-
-- Add debug feature by GyDi
-
-- Add api by GyDi
-
-- Update tauri by GyDi
-
-- Update deps by GyDi
-
-- Readme by GyDi
-
-- Update log by GyDi
-
-- Profile release by GyDi
-
-- Adjust style by GyDi
-
-- Update log by GyDi
-
-- Update clash core by GyDi
-
-- Readme (#43) by inRm3D
-
-- Tauri feature by GyDi
-
-- Tauri allowList by GyDi
-
-- Update clash version by GyDi
-
-- Update log by GyDi
-
-- Update log supports by GyDi
-
-- Updater proxy by GyDi
-
-- Ci support linux by GyDi
-
-- Readme by GyDi
-
-- Add dev feature by GyDi
-
-- Rename temp dir by GyDi
-
-- Resolve wintun.dll by GyDi
-
-- Fix ci env by GyDi
-
-- Fix ci by GyDi
-
-- Update tauri action by GyDi
-
-- Green version bundle by GyDi
-
-- Rm then by GyDi
-
-- Merge by GyDi
-
-- Show open app and log dir failed message by ttyS3
-
-- Adjust error log by GyDi
-
-- Rm dead code by GyDi
-
-- Reduce icon size on macOS by GyDi
-
-- Adjust icon by GyDi
-
-- Add linux link by GyDi
-
-- Update deps by GyDi
-
-- Rename productName by GyDi
-
-- Update tauri version by GyDi
-
-- Update deps by GyDi
-
-- Add default bypass by GyDi
-
-- Default release body by GyDi
-
-- Update deps by GyDi
-
-- Update copyright by GyDi
-
-- Update deps by GyDi
-
-- Enhance wip by GyDi
-
-- Adjust log field by GyDi
-
-- Rm file by GyDi
-
-- Update deps by GyDi
-
-- Ci by GyDi
-
-- Update readme by GyDi
-
-- Enhance publish ci by GyDi
-
-- Use tauri cli by GyDi
-
-- Update deps by GyDi
-
-- Update check script by GyDi
-
-- Tauri updater env by GyDi
-
-- Add pubkey by GyDi
-
-- Update deps by GyDi
-
-- Adjust files by GyDi
-
-- Add item template yaml by GyDi
-
-- Update deps and app name by GyDi
-
-- Cargo update by GyDi
-
-- Update clash version by GyDi
-
-- Update readme by GyDi
-
-- Update ci by GyDi
-
-- Add ahooks by GyDi
-
-- Adjust ci by GyDi
-
-- Change ci by GyDi
-
-- Enhance ci by GyDi
-
-- Add auto-launch by GyDi
-
-- Add macos startup todo by GyDi
-
-- Cargo update by GyDi
-
-- Update ci by GyDi
-
-- Ignore update json by GyDi
-
-- Ci add macos by GyDi
-
-- Temp by GyDi
-
-- Enhance ci by GyDi
-
-- Rename script by GyDi
-
-- Update publish script by GyDi
-
-- Update clash version by GyDi
-
-- Fixed tauri rev by GyDi
-
-- Update tauri by GyDi
-
-- Change tauri to git repo by GyDi
-
-- Dev support macos by GyDi
-
-- Save lock file by GyDi
-
-- Post version script by GyDi
-
-- Update version by GyDi
-
-- Update version by GyDi
-
-- Cargo update by GyDi
-
-- Correct verge temp config by GyDi
-
-- Tag name by GyDi
-
-- Update actions by GyDi
-
-- Update profuct name by GyDi
-
-- Update version by GyDi
-
-- Update readme by GyDi
-
-- Something by GyDi
-
-- Update config by GyDi
-
-- Add husky by GyDi
-
-- EmptyOutDir by GyDi
-
-- Update license by GyDi
-
-- Add log level by GyDi
-
-- Do something by GyDi
-
-- Someting by GyDi
-
-- Init connections page by GyDi
-
-- Update toml file by GyDi
-
-- Fix mod by GyDi
-
-- Rename file by GyDi
-
-- Update comments by GyDi
-
-- New rule page by GyDi
-
-- Update product name by GyDi
-
-- Use log crate by GyDi
-
-- Compatible with macos by GyDi
-
-- Do not save clash bin by GyDi
-
-- Init project by GyDi
+- Adjust dirs structure by @zzzgydi
 
 ---
+
+## New Contributors
+
+- @zzzgydi made their first contribution
+- @whitemirror33 made their first contribution
+- @shvchk made their first contribution
+- @w568w made their first contribution
+- @yettera765 made their first contribution
+- @tatiustaitus made their first contribution
+- @Mr-Spade made their first contribution
+- @solancer made their first contribution
+- @me1ting made their first contribution
+- @boatrainlsz made their first contribution
+- @inRm3D made their first contribution
+- @moeshin made their first contribution
+- @angryLid made their first contribution
+- @loosheng made their first contribution
+- @ParticleG made their first contribution
+- @HougeLangley made their first contribution
+- @Priestch made their first contribution
+- @riverscn made their first contribution
+- @FoundTheWOUT made their first contribution
+- @Limsanity made their first contribution
+- @ctaoist made their first contribution
+- @ made their first contribution
+- @ttys3 made their first contribution

@@ -10,19 +10,46 @@ All notable changes to this project will be documented in this file.\n
 # template for the changelog body
 # https://keats.github.io/tera/docs/#introduction
 body = """
+{% set whitespace = " " %}
 {% if version %}\
     ## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
 {% else %}\
     ## [unreleased]
 {% endif %}\
-{% for group, commits in commits | group_by(attribute="group") %}
+{% for group, commits in commits | filter(attribute="breaking", value=true) | group_by(attribute="group") %}
     ### {{ group | upper_first }}
-    {% for commit in commits %}
-        - {{ commit.message | upper_first | trim_end }}\
+    {% for commit in commits | filter(attribute="scope") | sort(attribute="scope") %}
+        - **{{ commit.scope | trim_end}}:**{{ whitespace }}{{ commit.message | upper_first | trim_end }}\
           {% if commit.github.username %} by @{{ commit.github.username }} {% else %} by {{ commit.author.name }} {%- endif -%}
           {% if commit.github.pr_number %} in \
             [#{{ commit.github.pr_number }}]({{ self::remote_url() }}/pull/{{ commit.github.pr_number }}) \
     {%- endif %}
+    {% endfor %}\
+    {% for commit in commits %}{% if not commit.scope %}
+        - {{ commit.message | upper_first | trim_end }}\
+          {% if commit.github.username %} by @{{ commit.github.username }} {% else %} by {{ commit.author.name }} {%- endif -%}
+          {% if commit.github.pr_number %} in \
+            [#{{ commit.github.pr_number }}]({{ self::remote_url() }}/pull/{{ commit.github.pr_number }}) \
+          {%- endif %}
+        {% else %}{%- endif -%}
+    {% endfor %}
+{% endfor %}
+{% for group, commits in commits | filter(attribute="breaking", value=false) | group_by(attribute="group") %}
+    ### {{ group | upper_first }}
+    {% for commit in commits | filter(attribute="scope") | sort(attribute="scope") %}
+        - **{{ commit.scope | trim_end}}:**{{ whitespace }}{{ commit.message | upper_first | trim_end }}\
+          {% if commit.github.username %} by @{{ commit.github.username }} {% else %} by {{ commit.author.name }} {%- endif -%}
+          {% if commit.github.pr_number %} in \
+            [#{{ commit.github.pr_number }}]({{ self::remote_url() }}/pull/{{ commit.github.pr_number }}) \
+    {%- endif %}
+    {% endfor %}\
+    {% for commit in commits %}{% if not commit.scope %}
+        - {{ commit.message | upper_first | trim_end }}\
+          {% if commit.github.username %} by @{{ commit.github.username }} {% else %} by {{ commit.author.name }} {%- endif -%}
+          {% if commit.github.pr_number %} in \
+            [#{{ commit.github.pr_number }}]({{ self::remote_url() }}/pull/{{ commit.github.pr_number }}) \
+          {%- endif %}
+        {% else %}{%- endif -%}
     {% endfor %}
 {% endfor %}\n
 
@@ -68,6 +95,9 @@ filter_unconventional = false
 split_commits = false
 # regex for parsing and grouping commits
 commit_parsers = [
+  { field = "author.name", pattern = "renovate\\[bot\\]", group = "Renovate", skip = true },
+  { field = "scope", pattern = "manifest", message = "^chore", skip = true },
+  { field = "breaking", pattern = "true", group = "💥 Breaking Changes" },
   { message = "^feat", group = "✨ Features" },
   { message = "^fix", group = "🐛 Bug Fixes" },
   { message = "^doc", group = "📚 Documentation" },

@@ -46,6 +46,7 @@ serde = { version = "1.0", features = ["derive"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"] }
 relative-path = "1.9"
 tauri = { version = "1.5.4", features = [
+  "updater",
   "fs-all",
   "clipboard-all",
   "os-all",
@@ -55,7 +56,6 @@ tauri = { version = "1.5.4", features = [
   "shell-all",
   "system-tray",
   "window-all",
-  "updater",
 ] }
 window-vibrancy = { version = "0.5.0" }
 window-shadows = { version = "0.2.2" }

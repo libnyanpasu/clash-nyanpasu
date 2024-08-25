@@ -1,4 +1,5 @@
 use std::{
+    os::windows::thread,
     path::Path,
     sync::atomic::{AtomicU16, Ordering},
 };
@@ -9,6 +10,9 @@ use interprocess::{
         tokio::prelude::*,
         traits::tokio::{Listener, Stream},
         GenericNamespaced, ListenerNonblockingMode, ListenerOptions, Name, ToNsName,
+    },
+    os::windows::{
+        local_socket::ListenerOptionsExt, security_descriptor::SecurityDescriptor, ToWtf16,
     },
 };
 use std::io::Result;
@@ -85,9 +89,12 @@ pub fn listen<F: FnMut(String) + Send + 'static>(mut handler: F) -> Result<()> {
             .build()
             .expect("failed to create tokio runtime")
             .block_on(async move {
+                let sdsf = "D:(A;;GA;;;WD)".to_wtf_16().unwrap();
+                let sd = SecurityDescriptor::deserialize(&sdsf).expect("Failed to deserialize SD");
                 let listener = ListenerOptions::new()
                     .name(name)
                     .nonblocking(ListenerNonblockingMode::Both)
+                    .security_descriptor(sd)
                     .create_tokio()
                     .expect("Can't create listener");
 
@@ -127,6 +134,7 @@ pub fn listen<F: FnMut(String) + Send + 'static>(mut handler: F) -> Result<()> {
     Ok(())
 }
 
+#[inline(never)]
 pub fn prepare(identifier: &str) {
     let name: Name = identifier
         .to_ns_name::<GenericNamespaced>()
@@ -137,50 +145,58 @@ pub fn prepare(identifier: &str) {
         .build()
         .expect("failed to create tokio runtime")
         .block_on(async move {
-            if let Ok(conn) = LocalSocketStream::connect(name).await {
-                // We are the secondary instance.
-                // Prep to activate primary instance by allowing another process to take focus.
+            for _ in 0..3 {
+                match LocalSocketStream::connect(name.clone()).await {
+                    Ok(conn) => {
+                        // We are the secondary instance.
+                        // Prep to activate primary instance by allowing another process to take focus.
 
-                // A workaround to allow AllowSetForegroundWindow to succeed - press a key.
-                // This was originally used by Chromium: https://bugs.chromium.org/p/chromium/issues/detail?id=837796
-                // dummy_keypress();
+                        // A workaround to allow AllowSetForegroundWindow to succeed - press a key.
+                        // This was originally used by Chromium: https://bugs.chromium.org/p/chromium/issues/detail?id=837796
+                        // dummy_keypress();
 
-                // let primary_instance_pid = conn.peer_pid().unwrap_or(ASFW_ANY);
-                // unsafe {
-                //     let success = AllowSetForegroundWindow(primary_instance_pid) != 0;
-                //     if !success {
-                //         log::warn!("AllowSetForegroundWindow failed.");
-                //     }
-                // }
-                let (socket_rx, mut socket_tx) = conn.split();
-                let mut socket_rx = socket_rx.as_tokio_async_read();
-                let url = std::env::args().nth(1).expect("URL not provided");
-                socket_tx
-                    .write_all(url.as_bytes())
-                    .await
-                    .expect("Failed to write to socket");
-                socket_tx
-                    .write_all(b"\n")
-                    .await
-                    .expect("Failed to write to socket");
-                socket_tx.flush().await.expect("Failed to flush socket");
+                        // let primary_instance_pid = conn.peer_pid().unwrap_or(ASFW_ANY);
+                        // unsafe {
+                        //     let success = AllowSetForegroundWindow(primary_instance_pid) != 0;
+                        //     if !success {
+                        //         log::warn!("AllowSetForegroundWindow failed.");
+                        //     }
+                        // }
+                        let (socket_rx, mut socket_tx) = conn.split();
+                        let mut socket_rx = socket_rx.as_tokio_async_read();
+                        let url = std::env::args().nth(1).expect("URL not provided");
+                        socket_tx
+                            .write_all(url.as_bytes())
+                            .await
+                            .expect("Failed to write to socket");
+                        socket_tx
+                            .write_all(b"\n")
+                            .await
+                            .expect("Failed to write to socket");
+                        socket_tx.flush().await.expect("Failed to flush socket");
 
-                let mut reader = BufReader::new(&mut socket_rx);
-                let mut buf = String::new();
-                if let Err(e) = reader.read_line(&mut buf).await {
-                    eprintln!("Error reading from connection: {}", e);
-                }
-                buf.pop();
-                dummy_keypress();
-                let pid = buf.parse::<u32>().unwrap_or(ASFW_ANY);
-                unsafe {
-                    let success = AllowSetForegroundWindow(pid) != 0;
-                    if !success {
-                        eprintln!("AllowSetForegroundWindow failed.");
+                        let mut reader = BufReader::new(&mut socket_rx);
+                        let mut buf = String::new();
+                        if let Err(e) = reader.read_line(&mut buf).await {
+                            eprintln!("Error reading from connection: {}", e);
+                        }
+                        buf.pop();
+                        dummy_keypress();
+                        let pid = buf.parse::<u32>().unwrap_or(ASFW_ANY);
+                        unsafe {
+                            let success = AllowSetForegroundWindow(pid) != 0;
+                            if !success {
+                                eprintln!("AllowSetForegroundWindow failed.");
+                            }
+                        }
+                        std::process::exit(0);
                     }
-                }
-                std::process::exit(0);
-            };
+                    Err(e) => {
+                        eprintln!("Failed to connect to local socket: {}", e);
+                        std::thread::sleep(std::time::Duration::from_millis(1));
+                    }
+                };
+            }
         });
 
     ID.set(identifier.to_string())

@@ -620,13 +620,11 @@ dependencies = [
 
 [[package]]
 name = "backon"
-version = "0.4.4"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d67782c3f868daa71d3533538e98a8e13713231969def7536e8039606fc46bf0"
+checksum = "33e5b65cc81d81fbb8488f36458ab4771be35a722967bbc959df28b47397e3ff"
 dependencies = [
  "fastrand 2.1.0",
- "futures-core",
- "pin-project",
  "tokio",
 ]
 
@@ -1310,7 +1308,7 @@ dependencies = [
  "sha2 0.10.8",
  "simd-json",
  "single-instance",
- "sysinfo 0.30.13",
+ "sysinfo",
  "sysproxy",
  "tauri",
  "tauri-build",
@@ -4044,7 +4042,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4979f22fdb869068da03c9f7528f8297c6fd2606bc3a4affe42e6a823fdb8da4"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -4814,7 +4812,7 @@ dependencies = [
  "parking_lot",
  "serde",
  "shared_child",
- "sysinfo 0.31.2",
+ "sysinfo",
  "thiserror",
  "tokio",
  "tracing",
@@ -7227,21 +7225,6 @@ dependencies = [
 
 [[package]]
 name = "sysinfo"
-version = "0.30.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a5b4ddaee55fb2bea2bf0e5000747e5f5c0de765e5a5ff87f4cd106439f4bb3"
-dependencies = [
- "cfg-if",
- "core-foundation-sys",
- "libc",
- "ntapi",
- "once_cell",
- "rayon",
- "windows 0.52.0",
-]
-
-[[package]]
-name = "sysinfo"
 version = "0.31.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4115055da5f572fff541dd0c4e61b0262977f453cc9fe04be83aba25a89bdab"
@@ -8895,7 +8878,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

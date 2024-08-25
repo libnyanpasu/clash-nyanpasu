@@ -32,7 +32,7 @@ ctrlc = "3.4.2"
 dunce = "1.0.4"
 nanoid = "0.4.0"
 chrono = "0.4.31"
-sysinfo = "0.30"
+sysinfo = "0.31"
 sysproxy = { git = "https://github.com/zzzgydi/sysproxy-rs.git", version = "0.3" }
 serde_json = "1.0"
 serde_yaml = "0.9"
@@ -76,7 +76,7 @@ rs-snowflake = "0.6"
 thiserror = { workspace = true }
 simd-json = "0.13.8"
 runas = "1.2.0"
-backon = "0.4.1"
+backon = { version = "0.5", features = ["tokio-sleep"] }
 rust-i18n = "3"
 adler = "1.0.2"
 rfd = "0.10" # should bump to v0.14 when clarify why the rfd v0.10 from tauri breaks build

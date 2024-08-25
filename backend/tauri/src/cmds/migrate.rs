@@ -91,7 +91,7 @@ pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
     use crate::utils::{self, dirs};
     use anyhow::Context;
     use deelevate::{PrivilegeLevel, Token};
-    use std::{path::PathBuf, process::Command, str::FromStr, thread, time::Duration};
+    use std::{borrow::Cow, path::PathBuf, process::Command, str::FromStr, thread, time::Duration};
     use sysinfo::System;
     use tauri::utils::platform::current_exe;
     println!("target path {}", target_path);
@@ -129,10 +129,12 @@ pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
     ];
     let sys = System::new_all();
     'outer: for process in sys.processes().values() {
-        let mut process_name = process.name();
-        if process_name.ends_with(".exe") {
-            process_name = &process_name[..process_name.len() - 4]; // remove .exe
-        }
+        let process_name = process.name().to_string_lossy(); // TODO: check if it's utf-8
+        let process_name = if let Some(name) = process_name.strip_suffix(".exe") {
+            Cow::Borrowed(name)
+        } else {
+            process_name
+        };
         for name in related_names.iter() {
             if process_name.ends_with(name) {
                 println!(

@@ -20,6 +20,7 @@ jobs:
       # Give the default GITHUB_TOKEN write permission to commit and push the
       # added or changed files to the repository.
       contents: write
+      discussions: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -48,7 +49,8 @@ jobs:
             ${{ runner.os }}-pnpm-store-
       - name: Install
         run: pnpm i
-
+      - name: Install git-cliff
+        uses: taiki-e/install-action@git-cliff
       - id: update-version
         shell: bash
         name: Bump version
@@ -56,30 +58,40 @@ jobs:
         run: |
           echo "version=$(pnpm run publish ${{ inputs.versionType }} | tail -n1)" >> $GITHUB_OUTPUT
           git add .
-      - name: Conventional Changelog Action
+      - name: Generate a changelog for the new version
+        shell: bash
         id: build-changelog
-        uses: TriPSs/conventional-changelog-action@v5
-        with:
-          github-token: ${{ secrets.github_token }}
-          git-message: "chore(release): {version} 🤖"
-          git-user-name: "github-actions[bot]"
-          git-user-email: "41898282+github-actions[bot]@users.noreply.github.com"
-          preset: "conventionalcommits"
-          tag-prefix: "v"
-          # output-file: "UPDATELOG.md" # Since v1.4.3, using conventional-changelog-cli@v2.1.0
-          release-count: "10"
-          pre-changelog-generation: ".github/conventional-changelog/pre-changelog-generation.cjs"
-          config-file-path: ".github/conventional-changelog/config.cjs"
-          git-branch: "main"
+        run: |
+          touch /tmp/changelog.md
+          git-cliff --config  cliff.toml --verbose --strip header --unreleased --tag v${{ steps.update-version.outputs.version }} > /tmp/changelog.md
+          if [ $? -eq 0 ]; then
+            CONTENT=$(cat /tmp/changelog.md)
+            cat /tmp/changelog.md  >> ./CHANGELOG.md
+            {
+              echo 'content<<EOF'
+              echo "$CONTENT"
+              echo EOF
+            } >> $GITHUB_OUTPUT
+            echo "version=${{ steps.update-version.outputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "Failed to generate changelog"
+            exit 1
+          fi
         env:
-          NYANPASU_VERSION: ${{ steps.update-version.outputs.version }}
-          GITHUB_TOKEN: ${{ secrets.github_token }}
-
+          GITHUB_REPO: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Commit changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: bump version to v${{ steps.update-version.outputs.version }}"
+          commit_user_name: "github-actions[bot]"
+          commit_user_email: "41898282+github-actions[bot]@users.noreply.github.com"
+          tagging_message: "v${{ steps.update-version.outputs.version }}"
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          body: ${{steps.build-changelog.outputs.clean_changelog}}
+          body: ${{steps.build-changelog.outputs.content}}
           name: Clash Nyanpasu v${{steps.update-version.outputs.version}}
-          tag_name: ${{steps.build-changelog.outputs.tag}}
+          tag_name: "v${{ steps.update-version.outputs.version }}"
           # target_commitish: ${{ steps.tag.outputs.sha }}

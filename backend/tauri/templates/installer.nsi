@@ -428,6 +428,7 @@ FunctionEnd
   !endif
   Pop $R0
   ${If} $R0 = 0
+      DetailPrint "${Process} is running"
       IfSilent kill${ID} 0
       ${IfThen} $PassiveMode != 1 ${|} MessageBox MB_OKCANCEL "${Process} is running, ok to kill?" IDOK kill${ID} IDCANCEL cancel${ID} ${|}
       kill${ID}:
@@ -589,9 +590,17 @@ SectionEnd
 ;   app_check_done:
 ; !macroend
 
+!macro StopCoreByService
+  nsExec::ExecToStack `cmd /C if exist "%ProgramData%\nyanpasu-service\data\nyanpasu-service.exe" (
+    "%ProgramData%\nyanpasu-service\data\nyanpasu-service.exe" rpc stop-core
+  )`
+  Pop $0  ; 获取退出代码
+  DetailPrint "Stopping core service with exit code $0"
+!macroend
+
 Section Install
   SetOutPath $INSTDIR
-
+  !insertmacro StopCoreByService
   !insertmacro CheckAllNyanpasuProcesses
   ; !insertmacro CheckIfAppIsRunning
 
@@ -708,7 +717,30 @@ FunctionEnd
   ${EndIf}
 !macroend
 
+!macro StopAndRemoveServiceDirectory
+  ; 先停止服务
+  nsExec::ExecToStack `cmd /C if exist "%ProgramData%\nyanpasu-service\data\nyanpasu-service.exe" (
+    "%ProgramData%\nyanpasu-service\data\nyanpasu-service.exe" stop
+  )`
+  Pop $0  ; 获取停止服务的退出代码
+  DetailPrint "Stopping service with exit code $0"
+
+  ; 如果停止服务成功（假设成功的退出代码为0），则继续删除目录
+  StrCmp $0 0 +2
+  Goto EndMacro
+
+  ; 删除目录
+  nsExec::ExecToStack `cmd /C if exist "%ProgramData%\nyanpasu-service\" (
+    rmdir /s /q "%ProgramData%\nyanpasu-service"
+  )`
+  Pop $0  ; 获取删除目录的退出代码
+  DetailPrint "Removed service directory with exit code $0"
+
+  EndMacro:
+!macroend
+
 Section Uninstall
+  !insertmacro RemoveServiceDirectory
   !insertmacro CheckAllNyanpasuProcesses
   ; !insertmacro CheckIfAppIsRunning
   

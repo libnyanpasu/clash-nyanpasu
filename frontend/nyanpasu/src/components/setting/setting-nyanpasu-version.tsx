@@ -1,8 +1,11 @@
 import { version } from "~/package.json";
 import { useLockFn } from "ahooks";
+import { useSetAtom } from "jotai";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import LogoSvg from "@/assets/image/logo.svg?react";
+import { UpdaterManifestAtom } from "@/store/updater";
+import { formatError } from "@/utils";
 import { message } from "@/utils/notification";
 import LoadingButton from "@mui/lab/LoadingButton";
 import {
@@ -45,7 +48,7 @@ export const SettingNyanpasuVersion = () => {
   const [loading, setLoading] = useState(false);
 
   const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu();
-
+  const setUpdaterManifest = useSetAtom(UpdaterManifestAtom);
   const onCheckUpdate = useLockFn(async () => {
     try {
       setLoading(true);
@@ -58,16 +61,16 @@ export const SettingNyanpasuVersion = () => {
           type: "info",
         });
       } else {
-        message(`New Version: ${info.manifest?.version}`, {
-          title: t("New Version"),
-          type: "info",
-        });
+        setUpdaterManifest(info.manifest || null);
       }
     } catch (e) {
-      message("Update check failed. Please verify your network connection.", {
-        title: t("Error"),
-        type: "error",
-      });
+      message(
+        `Update check failed. Please verify your network connection.\n\n${formatError(e)}`,
+        {
+          title: t("Error"),
+          type: "error",
+        },
+      );
     } finally {
       setLoading(false);
     }

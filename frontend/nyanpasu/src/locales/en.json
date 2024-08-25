@@ -171,5 +171,10 @@
   "Proxy takeover Status": "Proxy takeover Status",
   "Subscription Expires In": "Expires {{time}}",
   "Subscription Updated At": "Updated at {{time}}",
-  "Select file to import or leave blank to touch new one.": "Select file to import or leave blank to touch new one."
+  "Select file to import or leave blank to touch new one.": "Select file to import or leave blank to touch new one.",
+  "updater": {
+    "title": "New version available",
+    "close": "Ignore",
+    "update": "Update Now"
+  }
 }

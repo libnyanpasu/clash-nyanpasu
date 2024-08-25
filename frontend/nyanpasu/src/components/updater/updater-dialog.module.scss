@@ -1,0 +1,44 @@
+.UpdaterDialog {
+  .MarkdownContent {
+    h1 {
+      @apply pb-2 text-3xl font-bold;
+    }
+
+    h2 {
+      @apply pb-2 text-2xl font-bold;
+    }
+
+    h3 {
+      @apply pb-2 text-xl font-bold;
+    }
+
+    h4 {
+      @apply text-lg font-bold;
+    }
+
+    h5 {
+      @apply text-base font-bold;
+    }
+
+    h6 {
+      @apply text-sm font-bold;
+    }
+
+    p,
+    li {
+      @apply text-base;
+    }
+
+    a {
+      @apply text-blue-500 underline underline-offset-2;
+    }
+
+    ul {
+      @apply list-inside list-disc pb-4;
+    }
+
+    ol {
+      @apply list-inside list-decimal;
+    }
+  }
+}

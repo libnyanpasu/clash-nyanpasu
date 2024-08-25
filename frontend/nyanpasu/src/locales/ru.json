@@ -154,5 +154,10 @@
   "system_proxy": "Системный прокси",
   "Subscription Expires In": "Подписка истекает через {{time}}",
   "Subscription Updated At": "Подписка обновлена {{time}}",
-  "Select file to import or leave blank to touch new one.": "Выберите файл для импорта или оставьте пустым, чтобы создать новый."
+  "Select file to import or leave blank to touch new one.": "Выберите файл для импорта или оставьте пустым, чтобы создать новый.",
+  "updater": {
+    "title": "Доступно обновление",
+    "close": "Закрыть",
+    "update": "Обновить"
+  }
 }

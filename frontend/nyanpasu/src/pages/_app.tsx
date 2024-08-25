@@ -11,6 +11,8 @@ import {
   useCustomTheme,
 } from "@/components/layout/use-custom-theme";
 import LogProvider from "@/components/logs/log-provider";
+import UpdaterDialog from "@/components/updater/updater-dialog-wrapper";
+import useUpdater from "@/hooks/use-updater";
 import { atomIsDrawer } from "@/store";
 import { classNames } from "@/utils";
 import { useTheme } from "@mui/material";
@@ -34,6 +36,8 @@ export default function App() {
   const breakpoint = useBreakpoint();
 
   const [isDrawer, setIsDrawer] = useAtom(atomIsDrawer);
+
+  useUpdater();
 
   useEffect(() => {
     setIsDrawer(breakpoint === "sm" || breakpoint === "xs");
@@ -65,6 +69,7 @@ export default function App() {
         <MutationProvider />
         <NoticeProvider />
         <SchemeProvider />
+        <UpdaterDialog />
 
         <AppContainer isDrawer={isDrawer}>
           <PageTransition

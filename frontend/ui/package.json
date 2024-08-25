@@ -31,7 +31,7 @@
     "react-error-boundary": "4.0.13",
     "react-i18next": "15.0.1",
     "react-use": "17.5.1",
-    "vite": "5.4.1",
+    "vite": "5.4.2",
     "vite-tsconfig-paths": "5.0.1"
   },
   "devDependencies": {

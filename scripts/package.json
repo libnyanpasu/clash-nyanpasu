@@ -19,7 +19,7 @@
     "octokit": "4.0.2",
     "picocolors": "1.0.1",
     "tar": "7.4.3",
-    "telegram": "2.23.10",
+    "telegram": "2.24.11",
     "undici": "6.19.8"
   }
 }

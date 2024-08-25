@@ -104,7 +104,7 @@
   },
   "packageManager": "pnpm@9.8.0",
   "engines": {
-    "node": "22.6.0"
+    "node": "22.7.0"
   },
   "pnpm": {
     "overrides": {

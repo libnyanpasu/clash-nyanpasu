@@ -72,14 +72,14 @@ export default function ProxyPage() {
     return (
       <Box display="flex" alignItems="center" gap={1}>
         <ButtonGroup size="small">
-          {Object.entries(getCurrentMode).map(([key, value], index) => (
+          {Object.entries(getCurrentMode).map(([key, enabled]) => (
             <Button
-              key={index}
-              variant={value ? "contained" : "outlined"}
+              key={key}
+              variant={enabled ? "contained" : "outlined"}
               onClick={() => handleSwitch(key)}
               sx={{ textTransform: "capitalize" }}
             >
-              {value && <Check className="-ml-2 mr-[0.1rem] scale-75" />}
+              {enabled && <Check className="-ml-2 mr-[0.1rem] scale-75" />}
               {t(key)}
             </Button>
           ))}

@@ -5,7 +5,11 @@ export interface LazyImageProps
   extends React.ImgHTMLAttributes<HTMLImageElement> {
   loadingClassName?: string;
 }
-export function LazyImage(props: LazyImageProps) {
+export function LazyImage({
+  className,
+  loadingClassName,
+  ...others
+}: LazyImageProps) {
   const [loading, setLoading] = useState(true);
 
   return (
@@ -13,15 +17,15 @@ export function LazyImage(props: LazyImageProps) {
       <div
         className={cn(
           "inline-block animate-pulse bg-slate-200 ring-1 ring-slate-200 dark:bg-slate-700 dark:ring-slate-700",
-          props.className,
-          props.loadingClassName,
+          className,
+          loadingClassName,
           loading ? "inline-block" : "hidden",
         )}
       />
       <img
-        {...props}
+        {...others}
         onLoad={() => setLoading(false)}
-        className={cn(props.className, loading ? "hidden" : "inline-block")}
+        className={cn(className, loading ? "hidden" : "inline-block")}
       />
     </>
   );

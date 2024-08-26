@@ -12,6 +12,7 @@ import ProxyGroupName from "@/components/proxies/proxy-group-name";
 import ScrollCurrentNode from "@/components/proxies/scroll-current-node";
 import SortSelector from "@/components/proxies/sort-selector";
 import { proxyGroupAtom } from "@/store";
+import { Check } from "@mui/icons-material";
 import {
   alpha,
   Box,
@@ -78,6 +79,7 @@ export default function ProxyPage() {
               onClick={() => handleSwitch(key)}
               sx={{ textTransform: "capitalize" }}
             >
+              {value && <Check className="-ml-2 mr-[0.1rem] scale-75" />}
               {t(key)}
             </Button>
           ))}

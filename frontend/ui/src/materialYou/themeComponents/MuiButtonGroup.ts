@@ -1,17 +1,34 @@
-import { Theme } from "@mui/material";
+import { alpha, darken, Theme } from "@mui/material";
 import { Components } from "@mui/material/styles/components";
 
 export const MuiButtonGroup: Components<Theme>["MuiButtonGroup"] = {
   styleOverrides: {
-    grouped: {
+    grouped: ({ theme }) => ({
       fontWeight: 700,
-    },
+      height: "2.5em",
+      padding: "0 1.25em",
+      border: `1px solid ${darken(theme.palette.primary.main, 0.09)}`,
+      color: darken(theme.palette.primary.main, 0.2),
+
+      "&.MuiButton-containedPrimary": {
+        boxShadow: "none",
+        border: `1px solid ${theme.palette.primary.mainChannel}`,
+        backgroundColor: alpha(theme.palette.primary.main, 0.2),
+        color: theme.palette.primary.main,
+        "&::before": {
+          content: "none",
+        },
+        "&:hover": {
+          backgroundColor: alpha(theme.palette.primary.main, 0.3),
+        },
+      },
+    }),
     firstButton: {
       borderTopLeftRadius: 48,
       borderBottomLeftRadius: 48,
 
       "&.MuiButton-sizeSmall": {
-        paddingLeft: "14px",
+        paddingLeft: "1.5em",
       },
 
       "&.MuiButton-sizeMedium": {
@@ -27,7 +44,7 @@ export const MuiButtonGroup: Components<Theme>["MuiButtonGroup"] = {
       borderBottomRightRadius: 48,
 
       "&.MuiButton-sizeSmall": {
-        paddingRight: "14px",
+        paddingRight: "1.5em",
       },
 
       "&.MuiButton-sizeMedium": {
@@ -39,4 +56,4 @@ export const MuiButtonGroup: Components<Theme>["MuiButtonGroup"] = {
       },
     },
   },
-};
+} satisfies Components<Theme>["MuiButtonGroup"];

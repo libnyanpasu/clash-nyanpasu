@@ -1,7 +1,7 @@
 import { useDebounceEffect } from "ahooks";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useState } from "react";
-import { atomEnableLog, atomLogData } from "@/store";
+import { atomLogData } from "@/store";
 import { LogFilter } from "./log-filter";
 import { LogLevel } from "./log-level";
 import LogToggle from "./log-toggle";
@@ -13,24 +13,21 @@ export const LogHeader = () => {
   const [filterText, setFilterText] = useState("");
 
   const logData = useAtomValue(atomLogData);
-  const enableLog = useAtomValue(atomEnableLog);
 
   const setLogList = useSetAtom(atomLogList);
 
   useDebounceEffect(
     () => {
-      if (enableLog) {
-        setLogList(
-          logData.filter((data) => {
-            return (
-              data.payload.includes(filterText) &&
-              (logState === "all" ? true : data.type.includes(logState))
-            );
-          }),
-        );
-      }
+      setLogList(
+        logData.filter((data) => {
+          return (
+            data.payload.includes(filterText) &&
+            (logState === "all" ? true : data.type.includes(logState))
+          );
+        }),
+      );
     },
-    [logData, logState, filterText, enableLog],
+    [logData, logState, filterText],
     { wait: 150 },
   );
 

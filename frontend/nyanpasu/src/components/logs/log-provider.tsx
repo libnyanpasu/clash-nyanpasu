@@ -31,7 +31,7 @@ export const LogProvider = () => {
 
       return [...prev, { ...data, time }];
     });
-  }, [latestMessage?.data, setLogData]);
+  }, [enableLog, latestMessage?.data, setLogData]);
 
   return null;
 };

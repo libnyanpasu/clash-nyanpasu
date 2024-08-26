@@ -1,5 +1,4 @@
 use std::{
-    os::windows::thread,
     path::Path,
     sync::atomic::{AtomicU16, Ordering},
 };

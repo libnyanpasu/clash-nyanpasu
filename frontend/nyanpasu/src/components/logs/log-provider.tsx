@@ -1,7 +1,7 @@
 import dayjs from "dayjs";
-import { useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { useEffect } from "react";
-import { atomLogData } from "@/store";
+import { atomEnableLog, atomLogData } from "@/store";
 import { LogMessage, useClashWS } from "@nyanpasu/interface";
 
 const MAX_LOG_NUM = 1000;
@@ -15,8 +15,10 @@ export const LogProvider = () => {
 
   const setLogData = useSetAtom(atomLogData);
 
+  const enableLog = useAtomValue(atomEnableLog);
+
   useEffect(() => {
-    if (!latestMessage?.data) {
+    if (!latestMessage?.data || !enableLog) {
       return;
     }
 

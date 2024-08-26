@@ -19,7 +19,7 @@ import { QuickImport } from "@/components/profiles/quick-import";
 import RuntimeConfigDiffDialog from "@/components/profiles/runtime-config-diff-dialog";
 import { filterProfiles } from "@/components/profiles/utils";
 import { Public } from "@mui/icons-material";
-import { Badge, Button, IconButton } from "@mui/material";
+import { Badge, Button, IconButton, useTheme } from "@mui/material";
 import Grid from "@mui/material/Unstable_Grid2";
 import { Profile, useClash } from "@nyanpasu/interface";
 import { SidePage } from "@nyanpasu/ui";
@@ -27,6 +27,7 @@ import { SidePage } from "@nyanpasu/ui";
 export const ProfilePage = () => {
   const { t } = useTranslation();
   const { getProfiles, getRuntimeLogs } = useClash();
+  const theme = useTheme();
   const maxLogLevelTriggered = useMemo(() => {
     const currentProfileChains =
       getProfiles.data?.items?.find(
@@ -110,17 +111,24 @@ export const ProfilePage = () => {
       title={t("Profiles")}
       flexReverse
       header={
-        <div>
+        <div className="flex items-center gap-2">
           <RuntimeConfigDiffDialog
             open={runtimeConfigViewerOpen}
             onClose={() => setRuntimeConfigViewerOpen(false)}
           />
           <IconButton
+            className="h-10 w-10"
+            color="inherit"
+            title="Runtime Config"
             onClick={() => {
               setRuntimeConfigViewerOpen(true);
             }}
           >
-            <IconMdiTextBoxCheckOutline />
+            <IconMdiTextBoxCheckOutline
+            // style={{
+            //   color: theme.palette.text.primary,
+            // }}
+            />
           </IconButton>
           <Badge
             variant="dot"

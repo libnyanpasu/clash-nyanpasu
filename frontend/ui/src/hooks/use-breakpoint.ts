@@ -1,7 +1,7 @@
 import { useAsyncEffect } from "ahooks";
 import { useEffect, useState } from "react";
 import { createBreakpoint } from "react-use";
-import { MUI_BREAKPOINTS } from "../materialYou";
+import { MUI_BREAKPOINTS } from "../materialYou/themeConsts.mjs";
 
 export type Breakpoint = "xs" | "sm" | "md" | "lg" | "xl";
 

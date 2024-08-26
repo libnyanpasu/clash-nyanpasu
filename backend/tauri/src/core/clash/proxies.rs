@@ -73,7 +73,7 @@ impl Proxies {
     #[instrument]
     pub async fn fetch() -> Result<Self> {
         let (inner_proxies, providers_proxies) = fetch_proxies
-            .retry(&*CLASH_API_DEFAULT_BACKOFF_STRATEGY)
+            .retry(*CLASH_API_DEFAULT_BACKOFF_STRATEGY)
             .await?;
         let inner_proxies = inner_proxies.proxies;
         // 1. filter out the Http or File type provider proxies

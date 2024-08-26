@@ -76,7 +76,7 @@ rs-snowflake = "0.6"
 thiserror = { workspace = true }
 simd-json = "0.13.8"
 runas = "1.2.0"
-backon = { version = "0.5", features = ["tokio-sleep"] }
+backon = { version = "1.0.1", features = ["tokio-sleep"] }
 rust-i18n = "3"
 adler = "1.0.2"
 rfd = "0.10" # should bump to v0.14 when clarify why the rfd v0.10 from tauri breaks build

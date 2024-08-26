@@ -48,6 +48,8 @@ ${StrLoc}
 !define UNINSTALLERSIGNCOMMAND "{{uninstaller_sign_cmd}}"
 !define ESTIMATEDSIZE "{{estimated_size}}"
 
+Var ProgramDataPathVar
+
 Name "${PRODUCTNAME}"
 BrandingText "${COPYRIGHT}"
 OutFile "${OUTFILE}"
@@ -381,6 +383,23 @@ FunctionEnd
   ${EndIf}
 !macroend
 
+!define FOLDERID_ProgramData "{62AB5D82-FDC1-4DC3-A9DD-070D1D495D97}"
+!macro GetProgramDataPath
+    ; 调用SHGetKnownFolderIDList获取PIDL
+    System::Call 'shell32::SHGetKnownFolderIDList(g"${FOLDERID_ProgramData}", i0x1000, i0, *i.r1)i.r0'
+    ${If} $0 = 0
+        ; 调用SHGetPathFromIDList将PIDL转换为路径
+        System::Call 'shell32::SHGetPathFromIDList(ir1,t.r0)'
+        StrCpy $ProgramDataPathVar $0 ; 将结果保存到变量
+        DetailPrint "ProgramData Path: $ProgramDataPathVar"
+        
+        ; 释放PIDL内存
+        System::Call 'ole32::CoTaskMemFree(ir1)'
+    ${Else}
+        DetailPrint "Failed to get ProgramData path, error code: $0"
+    ${EndIf}
+!macroend
+
 Var PassiveMode
 Function .onInit
   ${GetOptions} $CMDLINE "/P" $PassiveMode
@@ -410,7 +429,8 @@ Function .onInit
     !else if "${INSTALLMODE}" == "currentUser"
       StrCpy $INSTDIR "$LOCALAPPDATA\${PRODUCTNAME}"
     !endif
-
+    ; 扩展环境变量 %ProgramData% 到一个全局变量中
+    !insertmacro GetProgramDataPath
     Call RestorePreviousInstallLocation
   ${EndIf}
 
@@ -591,11 +611,18 @@ SectionEnd
 ; !macroend
 
 !macro StopCoreByService
-  nsExec::ExecToStack `cmd /C if exist "%ProgramData%\nyanpasu-service\data\nyanpasu-service.exe" (
-    "%ProgramData%\nyanpasu-service\data\nyanpasu-service.exe" rpc stop-core
-  )`
-  Pop $0  ; 获取退出代码
+  ; 构建服务可执行文件的完整路径
+  StrCpy $1 "${ProgramDataPathVar}\nyanpasu-service\data\nyanpasu-service.exe"
+
+  ; 检查文件是否存在
+  IfFileExists "$1" 0 +3
+
+  ; 文件存在，执行停止核心服务
+  ExecWait '"$1" rpc stop-core' $0
   DetailPrint "Stopping core service with exit code $0"
+  
+  ; 如果文件不存在，打印错误
+  DetailPrint "Nyanpasu Service is not installed, skipping stop-core"
 !macroend
 
 Section Install
@@ -718,29 +745,30 @@ FunctionEnd
 !macroend
 
 !macro StopAndRemoveServiceDirectory
-  ; 先停止服务
-  nsExec::ExecToStack `cmd /C if exist "%ProgramData%\nyanpasu-service\data\nyanpasu-service.exe" (
-    "%ProgramData%\nyanpasu-service\data\nyanpasu-service.exe" stop
-  )`
-  Pop $0  ; 获取停止服务的退出代码
+  ; 构建服务路径
+  StrCpy $1 "${ProgramDataPathVar}\nyanpasu-service\data\nyanpasu-service.exe"
+
+  ; 检查服务可执行文件是否存在
+  IfFileExists "$1" 0 +3
+  ExecWait '"$1" stop' $0
   DetailPrint "Stopping service with exit code $0"
 
-  ; 如果停止服务成功（假设成功的退出代码为0），则继续删除目录
-  StrCmp $0 0 +2
-  Goto EndMacro
+  ; 检查停止服务是否成功（假设0, 100, 102为成功）
+  IntCmp $0 0 +2
+  IntCmp $0 100 +2
+  IntCmp $0 102 +2
+  Abort "Failed to stop the service. Aborting installation."
 
-  ; 删除目录
-  nsExec::ExecToStack `cmd /C if exist "%ProgramData%\nyanpasu-service\" (
-    rmdir /s /q "%ProgramData%\nyanpasu-service"
-  )`
-  Pop $0  ; 获取删除目录的退出代码
+  ; 如果服务成功停止，继续检查目录是否存在并删除
+  StrCpy $2 "${ProgramDataPathVar}\nyanpasu-service"
+  IfFileExists "$2\*" 0 +3
+  ExecWait '"rmdir /s /q "$2""' $0
   DetailPrint "Removed service directory with exit code $0"
 
-  EndMacro:
 !macroend
 
 Section Uninstall
-  !insertmacro RemoveServiceDirectory
+  !insertmacro StopAndRemoveServiceDirectory
   !insertmacro CheckAllNyanpasuProcesses
   ; !insertmacro CheckIfAppIsRunning
   

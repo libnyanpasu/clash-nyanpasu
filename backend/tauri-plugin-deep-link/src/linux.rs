@@ -33,10 +33,11 @@ pub fn register<F: FnMut(String) + Send + 'static>(schemes: &[&str], handler: F)
     target.push(&file_name);
 
     let mime_types = format!(
-        ";",
+        "{};",
         schemes
-            .as_ref()
+            .iter()
             .map(|s| format!("x-scheme-handler/{}", s))
+            .collect::<Vec<String>>()
             .join(";")
     );
 
@@ -85,8 +86,7 @@ pub fn unregister(_schemes: &[&str]) -> Result<()> {
                 ErrorKind::NotFound,
                 "Couldn't get file name of current executable.",
             ))?
-            .to_string_lossy(),
-        i
+            .to_string_lossy()
     ));
 
     remove_file(&target)?;

@@ -363,6 +363,7 @@ pub fn on_system_tray_event(event: &str) {
     let wrapper = move || -> anyhow::Result<()> {
         let group = String::from_utf8(base64_standard.decode(parts[2])?)?;
         let name = String::from_utf8(base64_standard.decode(parts[3])?)?;
+        tracing::debug!("received select proxy event: {} {}", group, name);
         tauri::async_runtime::block_on(async move {
             ProxiesGuard::global()
                 .select_proxy(&group, &name)

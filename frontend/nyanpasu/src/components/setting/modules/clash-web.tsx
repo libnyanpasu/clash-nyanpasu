@@ -9,7 +9,7 @@ import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
 import { alpha, styled } from "@mui/material/styles";
 import Typography from "@mui/material/Typography";
-import { open } from "@tauri-apps/api/shell";
+import { openThat } from "@nyanpasu/interface";
 
 /**
  * @example
@@ -106,7 +106,7 @@ export const openWebUrl = (
     url = string.replace(regex, labels[key] as string);
   }
 
-  open(url);
+  openThat(url);
 };
 
 /**

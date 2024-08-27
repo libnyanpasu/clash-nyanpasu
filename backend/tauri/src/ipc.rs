@@ -444,6 +444,11 @@ pub fn collect_envs<'a>() -> CmdResult<EnvInfo<'a>> {
     Ok(wrap_err!(crate::utils::collect::collect_envs())?)
 }
 
+#[tauri::command]
+pub fn open_that(path: String) -> CmdResult {
+    wrap_err!(crate::utils::open::that(path))
+}
+
 #[cfg(windows)]
 #[tauri::command]
 pub fn get_custom_app_dir() -> CmdResult<Option<String>> {

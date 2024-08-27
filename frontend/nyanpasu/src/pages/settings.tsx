@@ -7,13 +7,12 @@ import TrayIconDialog from "@/components/setting/modules/tray-icon-dialog";
 import { formatEnvInfos } from "@/utils";
 import { Feedback, GitHub, Keyboard } from "@mui/icons-material";
 import { IconButton } from "@mui/material";
-import { collect_envs } from "@nyanpasu/interface";
+import { collect_envs, openThat } from "@nyanpasu/interface";
 import { BasePage } from "@nyanpasu/ui";
-import { open } from "@tauri-apps/api/shell";
 
 const GithubIcon = () => {
   const toGithubRepo = useLockFn(() => {
-    return open("https://github.com/LibNyanpasu/clash-nyanpasu");
+    return openThat("https://github.com/LibNyanpasu/clash-nyanpasu");
   });
 
   return (
@@ -36,7 +35,7 @@ const FeedbackIcon = () => {
         .map((v) => `> ${v}`)
         .join("\n"),
     );
-    return open(
+    return openThat(
       "https://github.com/LibNyanpasu/clash-nyanpasu/issues/new?assignees=&labels=T%3A+Bug%2CS%3A+Untriaged&projects=&template=bug_report.yaml&env_infos=" +
         formattedEnv,
     );

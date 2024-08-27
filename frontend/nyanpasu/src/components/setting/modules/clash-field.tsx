@@ -11,8 +11,8 @@ import { SwitchProps } from "@mui/material/Switch";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import Grid from "@mui/material/Unstable_Grid2";
+import { openThat } from "@nyanpasu/interface";
 import { LoadingSwitch } from "@nyanpasu/ui";
-import { open } from "@tauri-apps/api/shell";
 
 export interface LabelSwitchProps extends SwitchProps {
   label: string;
@@ -78,7 +78,7 @@ export const LabelSwitch = ({
 
         {url && (
           <Tooltip title="What this field?">
-            <IconButton size="small" onClick={() => open(url)}>
+            <IconButton size="small" onClick={() => openThat(url)}>
               <OpenInNewRounded sx={{ width: 16, height: 16 }} />
             </IconButton>
           </Tooltip>

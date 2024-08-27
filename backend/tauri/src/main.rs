@@ -241,6 +241,7 @@ fn main() -> std::io::Result<()> {
             ipc::get_core_status,
             ipc::url_delay_test,
             ipc::get_ipsb_asn,
+            ipc::open_that,
         ]);
 
     #[cfg(target_os = "macos")]

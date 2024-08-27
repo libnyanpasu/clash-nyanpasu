@@ -236,7 +236,14 @@ mod platform_impl {
             );
             if let Some(now) = group.current.clone() {
                 if now == item.as_str() {
-                    sub_item = sub_item.selected();
+                    #[cfg(target_os = "linux")]
+                    {
+                        sub_item.title = super::super::utils::selected_title(item);
+                    }
+                    #[cfg(not(target_os = "linux"))]
+                    {
+                        sub_item = sub_item.selected();
+                    }
                 }
             }
 
@@ -321,7 +328,14 @@ mod platform_impl {
 
             match tray.try_get_item(&from) {
                 Some(item) => {
-                    let _ = item.set_selected(false);
+                    #[cfg(not(target_os = "linux"))]
+                    {
+                        let _ = item.set_selected(false);
+                    }
+                    #[cfg(target_os = "linux")]
+                    {
+                        let _ = item.set_title(action.1.clone());
+                    }
                 }
                 None => {
                     warn!("failed to deselect, item not found: {}", from);
@@ -329,7 +343,14 @@ mod platform_impl {
             }
             match tray.try_get_item(&to) {
                 Some(item) => {
-                    let _ = item.set_selected(true);
+                    #[cfg(not(target_os = "linux"))]
+                    {
+                        let _ = item.set_selected(true);
+                    }
+                    #[cfg(target_os = "linux")]
+                    {
+                        let _ = item.set_title(super::super::utils::selected_title(&action.2));
+                    }
                 }
                 None => {
                     warn!("failed to select, item not found: {}", to);

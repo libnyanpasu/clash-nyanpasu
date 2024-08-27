@@ -1,7 +1,7 @@
 use crate::{
     config::{nyanpasu::ClashCore, Config},
     feat, ipc,
-    utils::{self, resolve},
+    utils::{help, resolve},
 };
 use anyhow::Result;
 use rust_i18n::t;
@@ -15,7 +15,7 @@ pub mod icon;
 pub mod proxies;
 pub use self::icon::on_scale_factor_changed;
 use self::proxies::SystemTrayMenuProxiesExt;
-
+mod utils;
 pub struct Tray {}
 
 impl Tray {
@@ -123,22 +123,22 @@ impl Tray {
                 "rule" => {
                     let _ = tray
                         .get_item("rule_mode")
-                        .set_title(format!("{} ✓", t!("tray.rule_mode")));
+                        .set_title(utils::selected_title(t!("tray.rule_mode")));
                 }
                 "global" => {
                     let _ = tray
                         .get_item("global_mode")
-                        .set_title(format!("{} ✓", t!("tray.global_mode")));
+                        .set_title(utils::selected_title(t!("tray.global_mode")));
                 }
                 "direct" => {
                     let _ = tray
                         .get_item("direct_mode")
-                        .set_title(format!("{} ✓", t!("tray.direct_mode")));
+                        .set_title(utils::selected_title(t!("tray.direct_mode")));
                 }
                 "script" => {
                     let _ = tray
                         .get_item("script_mode")
-                        .set_title(format!("{} ✓", t!("tray.script_mode")));
+                        .set_title(utils::selected_title(t!("tray.script_mode")));
                 }
                 _ => {}
             }
@@ -183,7 +183,7 @@ impl Tray {
                 true => {
                     let _ = tray
                         .get_item("system_proxy")
-                        .set_title(format!("{} ✓", t!("tray.system_proxy")));
+                        .set_title(utils::selected_title(t!("tray.system_proxy")));
                 }
                 false => {
                     let _ = tray
@@ -196,7 +196,7 @@ impl Tray {
                 true => {
                     let _ = tray
                         .get_item("tun_mode")
-                        .set_title(format!("{} ✓", t!("tray.tun_mode")));
+                        .set_title(utils::selected_title(t!("tray.tun_mode")));
                 }
                 false => {
                     let _ = tray.get_item("tun_mode").set_title(t!("tray.tun_mode"));
@@ -253,9 +253,9 @@ impl Tray {
                 "open_core_dir" => crate::log_err!(ipc::open_core_dir()),
                 "open_logs_dir" => crate::log_err!(ipc::open_logs_dir()),
                 "restart_clash" => feat::restart_clash_core(),
-                "restart_app" => utils::help::restart_application(app_handle),
+                "restart_app" => help::restart_application(app_handle),
                 "quit" => {
-                    utils::help::quit_application(app_handle);
+                    help::quit_application(app_handle);
                 }
                 _ => {
                     proxies::on_system_tray_event(&id);

@@ -80,7 +80,8 @@ export default defineConfig(({ command }) => {
       include: ["@emotion/styled"],
     },
     esbuild: {
-      drop: isDev ? undefined : ["console", "debugger"],
+      drop: isDev ? undefined : ["debugger"],
+      pure: isDev ? [] : ["console.log"],
     },
     build: {
       outDir: "dist",

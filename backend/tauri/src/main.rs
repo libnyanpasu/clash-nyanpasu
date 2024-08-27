@@ -64,14 +64,14 @@ fn main() -> std::io::Result<()> {
     // Custom scheme check
     #[cfg(not(target_os = "macos"))]
     // on macos the plugin handles this (macos doesn't use cli args for the url)
-    let custom_schema = match std::env::args().nth(1) {
+    let custom_scheme = match std::env::args().nth(1) {
         Some(url) => url::Url::parse(&url).ok(),
         None => None,
     };
     #[cfg(target_os = "macos")]
-    let custom_schema: Option<url::Url> = None;
+    let custom_scheme: Option<url::Url> = None;
 
-    if custom_schema.is_none() {
+    if custom_scheme.is_none() {
         // Parse commands
         cmds::parse().unwrap();
     };
@@ -136,7 +136,7 @@ fn main() -> std::io::Result<()> {
             let handle = app.handle().clone();
             // For start new app from schema
             #[cfg(not(target_os = "macos"))]
-            if let Some(url) = custom_schema {
+            if let Some(url) = custom_scheme {
                 log::info!(target: "app", "started with schema");
                 resolve::create_window(&handle.clone());
                 while !is_window_opened() {
@@ -268,7 +268,6 @@ fn main() -> std::io::Result<()> {
     let app = builder
         .build(tauri::generate_context!())
         .expect("error while running tauri application");
-
     app.run(|app_handle, e| match e {
         tauri::RunEvent::ExitRequested { api, .. } => {
             api.prevent_exit();

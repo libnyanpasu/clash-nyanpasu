@@ -222,9 +222,9 @@ impl Tray {
             let _ = tray.set_tooltip(&format!(
                 "{}: {}\n{}: {}",
                 t!("tray.system_proxy"),
-                switch_map[system_proxy],
+                switch_map[&system_proxy],
                 t!("tray.tun_mode"),
-                switch_map[tun_mode]
+                switch_map[&tun_mode]
             ));
         }
 

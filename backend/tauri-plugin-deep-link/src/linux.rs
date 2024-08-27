@@ -57,17 +57,22 @@ pub fn register<F: FnMut(String) + Send + 'static>(schemes: &[&str], handler: F)
         .as_bytes(),
     )?;
 
+    // update-desktop-database [-q|--quiet] [-v|--verbose] [DIRECTORY...]
+    target.pop();
+
     Command::new("update-desktop-database")
         .arg(&target)
         .status()?;
 
     for scheme in schemes {
         Command::new("xdg-mime")
-            .args(["default", &file_name, scheme])
+            .args([
+                "default",
+                &file_name,
+                &format!("x-scheme-handler/{}", scheme),
+            ])
             .status()?;
     }
-
-    target.pop();
 
     Ok(())
 }

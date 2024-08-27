@@ -296,13 +296,13 @@ pub fn get_clash_logs() -> CmdResult<VecDeque<String>> {
 #[tauri::command]
 pub fn open_app_config_dir() -> CmdResult<()> {
     let config_dir = wrap_err!(dirs::app_config_dir())?;
-    wrap_err!(open::that(config_dir))
+    wrap_err!(crate::utils::open::that(config_dir))
 }
 
 #[tauri::command]
 pub fn open_app_data_dir() -> CmdResult<()> {
     let data_dir = wrap_err!(dirs::app_data_dir())?;
-    wrap_err!(open::that(data_dir))
+    wrap_err!(crate::utils::open::that(data_dir))
 }
 
 #[tauri::command]
@@ -311,18 +311,18 @@ pub fn open_core_dir() -> CmdResult<()> {
     let core_dir = core_dir
         .parent()
         .ok_or("failed to get core dir".to_string())?;
-    wrap_err!(open::that(core_dir))
+    wrap_err!(crate::utils::open::that(core_dir))
 }
 
 #[tauri::command]
 pub fn open_logs_dir() -> CmdResult<()> {
     let log_dir = wrap_err!(dirs::app_logs_dir())?;
-    wrap_err!(open::that(log_dir))
+    wrap_err!(crate::utils::open::that(log_dir))
 }
 
 #[tauri::command]
 pub fn open_web_url(url: String) -> CmdResult<()> {
-    wrap_err!(open::that(url))
+    wrap_err!(crate::utils::open::that(url))
 }
 
 #[tauri::command]

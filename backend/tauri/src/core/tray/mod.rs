@@ -166,9 +166,9 @@ impl Tray {
         {
             use icon::TrayIcon;
 
-            let mode = if *tun_mode {
+            let mode = if tun_mode {
                 TrayIcon::Tun
-            } else if *system_proxy {
+            } else if system_proxy {
                 TrayIcon::SystemProxy
             } else {
                 TrayIcon::Normal

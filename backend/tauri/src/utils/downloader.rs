@@ -281,7 +281,7 @@ impl<F: Fn(DownloaderState)> Downloader<F> {
                             .split('=')
                             .last()
                             .unwrap()
-                            .trim_matches(&['"', ';', '\''])
+                            .trim_matches(['"', ';', '\''])
                     })
             })
             .unwrap_or(self.url.path_segments().unwrap().last().unwrap());

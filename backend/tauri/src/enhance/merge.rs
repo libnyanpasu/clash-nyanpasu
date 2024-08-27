@@ -1,4 +1,4 @@
-use super::{runner::ProcessOutput, use_lowercase, Logs, LogsExt};
+use super::{runner::ProcessOutput, Logs, LogsExt};
 use mlua::LuaSerdeExt;
 use serde_yaml::{Mapping, Value};
 use tracing_attributes::instrument;
@@ -77,7 +77,7 @@ pub fn use_merge(merge: Mapping, mut config: Mapping) -> ProcessOutput {
                 match field {
                     Some(field) => {
                         if field.is_sequence() {
-                            merge_sequence(field, &value, false);
+                            merge_sequence(field, value, false);
                         } else {
                             logs.warn(format!("field is not sequence: {:#?}", key_str));
                         }
@@ -98,7 +98,7 @@ pub fn use_merge(merge: Mapping, mut config: Mapping) -> ProcessOutput {
                 match field {
                     Some(field) => {
                         if field.is_sequence() {
-                            merge_sequence(field, &value, true);
+                            merge_sequence(field, value, true);
                         } else {
                             logs.warn(format!("field is not sequence: {:#?}", key_str));
                         }
@@ -162,7 +162,7 @@ pub fn use_merge(merge: Mapping, mut config: Mapping) -> ProcessOutput {
                 continue;
             }
             _ => {
-                override_recursive(map.as_mapping_mut().unwrap(), &key, value.clone());
+                override_recursive(map.as_mapping_mut().unwrap(), key, value.clone());
             }
         }
     }

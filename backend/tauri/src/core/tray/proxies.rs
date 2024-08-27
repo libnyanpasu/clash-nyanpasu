@@ -211,6 +211,8 @@ pub fn setup_proxies() {
 }
 
 mod platform_impl {
+    use std::sync::atomic::AtomicBool;
+
     use super::{ProxySelectAction, TrayProxyItem};
     use crate::{
         config::nyanpasu::ProxiesSelectorMode,
@@ -289,14 +291,23 @@ mod platform_impl {
         }
     }
 
+    static TRAY_ITEM_UPDATE_BARRIER: AtomicBool = AtomicBool::new(false);
+
+    #[tracing_attributes::instrument]
     pub fn update_selected_proxies(actions: &[ProxySelectAction]) {
+        if TRAY_ITEM_UPDATE_BARRIER.load(std::sync::atomic::Ordering::Acquire) {
+            warn!("tray item update is in progress, skip this update");
+            return;
+        }
         let tray = Handle::global()
             .app_handle
             .lock()
             .as_ref()
             .unwrap()
             .tray_handle();
+        TRAY_ITEM_UPDATE_BARRIER.store(true, std::sync::atomic::Ordering::Release);
         for action in actions {
+            tracing::debug!("update selected proxies: {:?}", action);
             let from = format!(
                 "select_proxy_{}_{}",
                 base64_standard.encode(&action.0),
@@ -325,6 +336,7 @@ mod platform_impl {
                 }
             }
         }
+        TRAY_ITEM_UPDATE_BARRIER.store(false, std::sync::atomic::Ordering::Release);
     }
 }
 

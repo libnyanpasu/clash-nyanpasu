@@ -21,6 +21,8 @@ mod feat;
 mod ipc;
 mod server;
 mod utils;
+use core::service::ipc::IpcState;
+
 use crate::{
     config::Config,
     core::handle::Handle,
@@ -277,23 +279,14 @@ fn main() -> std::io::Result<()> {
             api::process::kill_children();
             app_handle.exit(0);
         }
-        #[cfg(target_os = "macos")]
-        tauri::RunEvent::WindowEvent { label, event, .. } => {
-            use tauri::Manager;
-
-            if label == "main" {
-                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                    api.prevent_close();
-                    reset_window_open_counter();
-                    let _ = resolve::save_window_state(app_handle, true);
-
-                    if let Some(win) = app_handle.get_window("main") {
-                        let _ = win.hide();
-                    }
+        tauri::RunEvent::Updater(tauri::UpdaterEvent::Downloaded) => {
+            resolve::resolve_reset();
+            nyanpasu_utils::runtime::block_on(async {
+                if let Err(e) = crate::core::CoreManager::global().stop_core().await {
+                    log::error!(target: "app", "failed to stop core while dispatch updater: {}", e);
                 }
-            }
+            });
         }
-        #[cfg(not(target_os = "macos"))]
         tauri::RunEvent::WindowEvent { label, event, .. } => {
             if label == "main" {
                 match event {

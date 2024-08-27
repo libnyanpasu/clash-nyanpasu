@@ -83,13 +83,13 @@ pub fn find_unused_port() -> Result<u16> {
 
 /// handle something when start app
 pub fn resolve_setup(app: &mut App) {
+    #[cfg(target_os = "macos")]
+    app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
     app.listen_global("react_app_mounted", move |_| {
         tracing::debug!("Frontend React App is mounted, reset open window counter");
         reset_window_open_counter()
     });
-
-    #[cfg(target_os = "macos")]
-    app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
     handle::Handle::global().init(app.app_handle());
 

@@ -291,6 +291,9 @@ importers:
         specifier: 0.33.7
         version: 0.33.7(react-dom@19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807))(react@19.0.0-rc-e948a5ac-20240807)
     devDependencies:
+      '@csstools/normalize.css':
+        specifier: ^12.1.1
+        version: 12.1.1
       '@emotion/babel-plugin':
         specifier: 11.12.0
         version: 11.12.0
@@ -794,6 +797,9 @@ packages:
     peerDependencies:
       '@csstools/css-parser-algorithms': ^3.0.1
       '@csstools/css-tokenizer': ^3.0.1
+
+  '@csstools/normalize.css@12.1.1':
+    resolution: {integrity: sha512-YAYeJ+Xqh7fUou1d1j9XHl44BmsuThiTr4iNrgCQ3J27IbhXsxXDGZ1cXv8Qvs99d4rBbLiSKy3+WZiet32PcQ==}
 
   '@csstools/selector-specificity@4.0.0':
     resolution: {integrity: sha512-189nelqtPd8++phaHNwYovKZI0FOzH1vQEE3QhHHkNIGrg5fSs9CbYP3RvfEH5geztnIA9Jwq91wyOIwAW5JIQ==}
@@ -7236,6 +7242,8 @@ snapshots:
     dependencies:
       '@csstools/css-parser-algorithms': 3.0.1(@csstools/css-tokenizer@3.0.1)
       '@csstools/css-tokenizer': 3.0.1
+
+  '@csstools/normalize.css@12.1.1': {}
 
   '@csstools/selector-specificity@4.0.0(postcss-selector-parser@6.1.2)':
     dependencies:

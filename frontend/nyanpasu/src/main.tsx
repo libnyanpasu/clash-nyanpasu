@@ -4,6 +4,9 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { Routes } from "@generouted/react-router/lazy";
 import { ResizeObserver } from "@juggle/resize-observer";
+// Styles
+import "@csstools/normalize.css/normalize.css";
+import "@csstools/normalize.css/opinionated.css";
 import "./assets/styles/index.scss";
 import "./assets/styles/tailwind.css";
 import "./services/i18n";

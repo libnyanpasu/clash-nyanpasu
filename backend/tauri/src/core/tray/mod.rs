@@ -1,4 +1,8 @@
-use crate::{config::Config, feat, ipc, utils, utils::resolve};
+use crate::{
+    config::{nyanpasu::ClashCore, Config},
+    feat, ipc,
+    utils::{self, resolve},
+};
 use anyhow::Result;
 use rust_i18n::t;
 use tauri::{
@@ -18,16 +22,24 @@ impl Tray {
     #[instrument(skip(_app_handle))]
     pub fn tray_menu(_app_handle: &AppHandle) -> SystemTrayMenu {
         let version = env!("NYANPASU_VERSION");
-
-        SystemTrayMenu::new()
+        let core = {
+            *Config::verge()
+                .latest()
+                .clash_core
+                .as_ref()
+                .unwrap_or(&ClashCore::default())
+        };
+        let mut menu = SystemTrayMenu::new()
             .add_item(CustomMenuItem::new("open_window", t!("tray.dashboard")))
             .setup_proxies() // Setup the proxies menu
             .add_native_item(SystemTrayMenuItem::Separator)
             .add_item(CustomMenuItem::new("rule_mode", t!("tray.rule_mode")))
             .add_item(CustomMenuItem::new("global_mode", t!("tray.global_mode")))
-            .add_item(CustomMenuItem::new("direct_mode", t!("tray.direct_mode")))
-            .add_item(CustomMenuItem::new("script_mode", t!("tray.script_mode")))
-            .add_native_item(SystemTrayMenuItem::Separator)
+            .add_item(CustomMenuItem::new("direct_mode", t!("tray.direct_mode")));
+        if core == ClashCore::ClashPremium {
+            menu = menu.add_item(CustomMenuItem::new("script_mode", t!("tray.script_mode")))
+        }
+        menu.add_native_item(SystemTrayMenuItem::Separator)
             .add_item(CustomMenuItem::new("system_proxy", t!("tray.system_proxy")))
             .add_item(CustomMenuItem::new("tun_mode", t!("tray.tun_mode")))
             .add_item(CustomMenuItem::new("copy_env_sh", t!("tray.copy_env.sh")))
@@ -84,18 +96,71 @@ impl Tray {
     #[instrument(skip(app_handle))]
     pub fn update_part(app_handle: &AppHandle) -> Result<()> {
         let mode = crate::utils::config::get_current_clash_mode();
-
+        let core = {
+            *Config::verge()
+                .latest()
+                .clash_core
+                .as_ref()
+                .unwrap_or(&ClashCore::default())
+        };
         let tray = app_handle.tray_handle();
 
-        let _ = tray.get_item("rule_mode").set_selected(mode == "rule");
-        let _ = tray.get_item("global_mode").set_selected(mode == "global");
-        let _ = tray.get_item("direct_mode").set_selected(mode == "direct");
-        let _ = tray.get_item("script_mode").set_selected(mode == "script");
+        #[cfg(target_os = "linux")]
+        {
+            let _ = tray.get_item("rule_mode").set_title(t!("tray.rule_mode"));
+            let _ = tray
+                .get_item("global_mode")
+                .set_title(t!("tray.global_mode"));
+            let _ = tray
+                .get_item("direct_mode")
+                .set_title(t!("tray.direct_mode"));
+            if core == ClashCore::ClashPremium {
+                let _ = tray
+                    .get_item("script_mode")
+                    .set_title(t!("tray.script_mode"));
+            }
+            match mode.as_str() {
+                "rule" => {
+                    let _ = tray
+                        .get_item("rule_mode")
+                        .set_title(format!("{} ✓", t!("tray.rule_mode")));
+                }
+                "global" => {
+                    let _ = tray
+                        .get_item("global_mode")
+                        .set_title(format!("{} ✓", t!("tray.global_mode")));
+                }
+                "direct" => {
+                    let _ = tray
+                        .get_item("direct_mode")
+                        .set_title(format!("{} ✓", t!("tray.direct_mode")));
+                }
+                "script" => {
+                    let _ = tray
+                        .get_item("script_mode")
+                        .set_title(format!("{} ✓", t!("tray.script_mode")));
+                }
+                _ => {}
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = tray.get_item("rule_mode").set_selected(mode == "rule");
+            let _ = tray.get_item("global_mode").set_selected(mode == "global");
+            let _ = tray.get_item("direct_mode").set_selected(mode == "direct");
+            if core == ClashCore::ClashPremium {
+                let _ = tray.get_item("script_mode").set_selected(mode == "script");
+            }
+        }
 
-        let verge = Config::verge();
-        let verge = verge.latest();
-        let system_proxy = verge.enable_system_proxy.as_ref().unwrap_or(&false);
-        let tun_mode = verge.enable_tun_mode.as_ref().unwrap_or(&false);
+        let (system_proxy, tun_mode) = {
+            let verge = Config::verge();
+            let verge = verge.latest();
+            (
+                *verge.enable_system_proxy.as_ref().unwrap_or(&false),
+                *verge.enable_tun_mode.as_ref().unwrap_or(&false),
+            )
+        };
 
         #[cfg(target_os = "windows")]
         {
@@ -112,8 +177,38 @@ impl Tray {
             let _ = tray.set_icon(tauri::Icon::Raw(icon));
         }
 
-        let _ = tray.get_item("system_proxy").set_selected(*system_proxy);
-        let _ = tray.get_item("tun_mode").set_selected(*tun_mode);
+        #[cfg(target_os = "linux")]
+        {
+            match system_proxy {
+                true => {
+                    let _ = tray
+                        .get_item("system_proxy")
+                        .set_title(format!("{} ✓", t!("tray.system_proxy")));
+                }
+                false => {
+                    let _ = tray
+                        .get_item("system_proxy")
+                        .set_title(t!("tray.system_proxy"));
+                }
+            }
+
+            match tun_mode {
+                true => {
+                    let _ = tray
+                        .get_item("tun_mode")
+                        .set_title(format!("{} ✓", t!("tray.tun_mode")));
+                }
+                false => {
+                    let _ = tray.get_item("tun_mode").set_title(t!("tray.tun_mode"));
+                }
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = tray.get_item("system_proxy").set_selected(system_proxy);
+            let _ = tray.get_item("tun_mode").set_selected(tun_mode);
+        }
 
         #[cfg(not(target_os = "linux"))]
         {

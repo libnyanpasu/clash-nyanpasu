@@ -21,7 +21,6 @@ mod feat;
 mod ipc;
 mod server;
 mod utils;
-use core::service::ipc::IpcState;
 
 use crate::{
     config::Config,

@@ -755,22 +755,24 @@ FunctionEnd
 
   ; 检查服务可执行文件是否存在
   IfFileExists "$1" 0 Skip
-  nsExec::ExecToLog '"$1" stop'
+  nsExec::ExecToLog '"$1" uninstall'
   Pop $0
-  DetailPrint "Stopping service with exit code $0"
+  DetailPrint "uninstall service with exit code $0"
 
   ; 检查停止服务是否成功（假设0, 100, 102为成功）
-  IntCmp $0 0 0 StopFailed StopFailed
-  IntCmp $0 100 0 StopFailed StopFailed
-  IntCmp $0 102 0 StopFailed StopFailed
-  StopFailed:
+  IntCmp $0 0 RemoveDirectories UninstallServiceFailed 0
+  IntCmp $0 100 RemoveDirectories UninstallServiceFailed 0
+  IntCmp $0 102 RemoveDirectories UninstallServiceFailed UninstallServiceFailed
+
+  UninstallServiceFailed:
     Abort "Failed to stop the service. Aborting installation."
 
-  ; 如果服务成功停止，继续检查目录是否存在并删除
-  StrCpy $2 "$ProgramDataPathVar\nyanpasu-service"
-  IfFileExists "$2\*" 0 Skip
-  RMDir /r "$2"
-  DetailPrint "Removed service directory successfully"
+  RemoveDirectories:
+    ; 如果服务成功停止，继续检查目录是否存在并删除
+    StrCpy $2 "$ProgramDataPathVar\nyanpasu-service"
+    IfFileExists "$2\*" 0 Skip
+    RMDir /r "$2"
+    DetailPrint "Removed service directory successfully"
 
   Skip:
     DetailPrint "Service directory does not exist, skipping stop and remove service directory"

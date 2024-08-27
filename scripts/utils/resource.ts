@@ -1,3 +1,4 @@
+import consola from "consola";
 import fetch, { type RequestInit } from "node-fetch";
 import { BinInfo } from "types";
 import {
@@ -113,7 +114,7 @@ export const getClashMetaInfo = ({
   };
 };
 
-export const getClashMetaAlphaInfo = ({
+export const getClashMetaAlphaInfo = async ({
   platform,
   arch,
   sidecarHost,
@@ -121,20 +122,20 @@ export const getClashMetaAlphaInfo = ({
   platform: string;
   arch: string;
   sidecarHost?: string;
-}): BinInfo => {
-  const { BIN_MAP, URL_PREFIX, VERSION } = CLASH_META_ALPHA_MANIFEST;
-
+}): Promise<BinInfo> => {
+  const { BIN_MAP, URL_PREFIX } = CLASH_META_ALPHA_MANIFEST;
+  const version = await getMetaAlphaLatestVersion();
   const name = BIN_MAP[`${platform}-${arch}`];
 
   const isWin = platform === "win32";
 
   const urlExt = isWin ? "zip" : "gz";
 
-  const downloadURL = `${URL_PREFIX}/${name}-${VERSION}.${urlExt}`;
+  const downloadURL = `${URL_PREFIX}/${name}-${version}.${urlExt}`;
 
   const exeFile = `${name}${isWin ? ".exe" : ""}`;
 
-  const tmpFile = `${name}-${VERSION}.${urlExt}`;
+  const tmpFile = `${name}-${version}.${urlExt}`;
 
   const targetFile = `mihomo-alpha-${sidecarHost}${isWin ? ".exe" : ""}`;
 
@@ -198,7 +199,7 @@ export const getMetaAlphaLatestVersion = async () => {
 
     const v = await response.text();
 
-    console.log(`Latest release version: ${VERSION_URL}`);
+    consola.info(`Mihomo Alpha latest release version: ${v}`);
 
     return v.trim();
   } catch (error) {
@@ -233,7 +234,7 @@ export const getNyanpasuServiceLatestVersion = async () => {
     if (!tag) {
       throw new Error("Cannot find tag from the location");
     }
-    console.log(`Latest release version: ${tag}`);
+    consola.info(`Nyanpasu Service latest release version: ${tag}`);
     return tag.trim();
   } catch (error) {
     console.error("Error fetching latest release version:", error);
@@ -256,7 +257,7 @@ export const getNyanpasuServiceInfo = async ({
   const tmpFile = `${name}-${sidecarHost}.${urlExt}`;
   const targetFile = `nyanpasu-service-${sidecarHost}${isWin ? ".exe" : ""}`;
   return {
-    name: "clash",
+    name: "nyanpasu-service",
     targetFile,
     exeFile,
     tmpFile,

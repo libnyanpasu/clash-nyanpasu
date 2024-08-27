@@ -292,7 +292,7 @@ importers:
         version: 0.33.7(react-dom@19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807))(react@19.0.0-rc-e948a5ac-20240807)
     devDependencies:
       '@csstools/normalize.css':
-        specifier: ^12.1.1
+        specifier: 12.1.1
         version: 12.1.1
       '@emotion/babel-plugin':
         specifier: 11.12.0

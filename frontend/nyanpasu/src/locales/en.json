@@ -175,6 +175,7 @@
   "updater": {
     "title": "New version available",
     "close": "Ignore",
-    "update": "Update Now"
+    "update": "Update Now",
+    "go": "View on GitHub"
   }
 }

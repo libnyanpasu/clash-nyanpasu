@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { UpdaterIgnoredAtom } from "@/store/updater";
 import { formatError } from "@/utils";
 import { message } from "@/utils/notification";
+import { Button } from "@mui/material";
 import { BaseDialog, BaseDialogProps, cn } from "@nyanpasu/ui";
 import { relaunch } from "@tauri-apps/api/process";
 import { open as openThat } from "@tauri-apps/api/shell";
@@ -41,6 +42,8 @@ export default function UpdaterDialog({
     }
   });
 
+  console.error("manifest", manifest);
+
   return (
     <BaseDialog
       {...others}
@@ -61,11 +64,24 @@ export default function UpdaterDialog({
           styles.UpdaterDialog,
         )}
       >
-        <div className="flex items-center gap-3 px-2 py-2">
-          <span className="text-xl font-bold">{manifest.version}</span>
-          <span className="text-xs text-slate-500">
-            {dayjs(manifest.date).format("YYYY-MM-DD HH:mm:ss")}
-          </span>
+        <div className="flex items-center justify-between px-2 py-2">
+          <div className="flex gap-3">
+            <span className="text-xl font-bold">{manifest.version}</span>
+            <span className="text-xs text-slate-500">
+              {dayjs(manifest.date).format("YYYY-MM-DD HH:mm:ss")}
+            </span>
+          </div>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={() => {
+              openThat(
+                `https://github.com/LibNyanpasu/clash-nyanpasu/releases/tag/v${manifest.version}`,
+              );
+            }}
+          >
+            {t("updater.go")}
+          </Button>
         </div>
         <div
           className={cn("h-[50vh] overflow-y-auto p-4", styles.MarkdownContent)}
@@ -90,7 +106,7 @@ export default function UpdaterDialog({
                 },
               }}
             >
-              {manifest.body}
+              {manifest.body || "New version available."}
             </Markdown>
           </Suspense>
         </div>

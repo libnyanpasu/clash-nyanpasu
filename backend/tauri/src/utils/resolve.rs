@@ -212,108 +212,106 @@ pub fn create_window(app_handle: &AppHandle) {
         }
     };
 
-    #[cfg(target_os = "windows")]
-    {
-        use tauri::{PhysicalPosition, PhysicalSize};
-        use window_shadows::set_shadow;
+    #[cfg(windows)]
+    let win_res = builder
+        .decorations(false)
+        .transparent(true)
+        .visible(false)
+        .build();
+    #[cfg(target_os = "macos")]
+    let win_res = builder
+        .decorations(true)
+        .transparent(true)
+        .hidden_title(true)
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .build();
+    #[cfg(target_os = "linux")]
+    let win_res = builder.decorations(true).transparent(true).build();
 
-        match builder
-            .decorations(false)
-            .transparent(true)
-            .visible(false)
-            .build()
-        {
-            Ok(win) => {
-                if win_state.is_some() {
-                    let state = win_state.as_ref().unwrap();
-                    win.set_position(PhysicalPosition {
-                        x: state.x,
-                        y: state.y,
-                    })
-                    .unwrap();
-                    win.set_size(PhysicalSize {
-                        width: state.width,
-                        height: state.height,
-                    })
-                    .unwrap();
-                }
-
-                if let Some(state) = win_state {
-                    if state.maximized {
-                        trace_err!(win.maximize(), "set win maximize");
-                    }
-                    if state.fullscreen {
-                        trace_err!(win.set_fullscreen(true), "set win fullscreen");
-                    }
-                }
-                trace_err!(set_shadow(&win, true), "set win shadow");
-                log::trace!("try to calculate the monitor size");
-                let center = (|| -> Result<bool> {
-                    let center;
-                    if let Some(state) = win_state {
-                        let monitor = win.current_monitor()?.ok_or(anyhow::anyhow!(""))?;
-                        let PhysicalPosition { x, y } = *monitor.position();
-                        let PhysicalSize { width, height } = *monitor.size();
-                        let left = x;
-                        let right = x + width as i32;
-                        let top = y;
-                        let bottom = y + height as i32;
-
-                        let x = state.x;
-                        let y = state.y;
-                        let width = state.width as i32;
-                        let height = state.height as i32;
-                        center = ![
-                            (x, y),
-                            (x + width, y),
-                            (x, y + height),
-                            (x + width, y + height),
-                        ]
-                        .into_iter()
-                        .any(|(x, y)| x >= left && x < right && y >= top && y < bottom);
-                    } else {
-                        center = true;
-                    }
-                    Ok(center)
-                })();
-
-                if center.unwrap_or(true) {
-                    trace_err!(win.center(), "set win center");
-                }
-                #[cfg(debug_assertions)]
-                {
-                    win.open_devtools();
-                }
-                OPEN_WINDOWS_COUNTER.fetch_add(1, Ordering::Release);
+    #[cfg(target_os = "macos")]
+    fn set_controls_and_log_error(app_handle: &tauri::AppHandle, window_name: &str) {
+        match app_handle.get_window(window_name).unwrap().ns_window() {
+            Ok(raw_window) => {
+                let window_id: cocoa::base::id = raw_window as _;
+                set_window_controls_pos(window_id, 33.0, 26.0);
             }
-            Err(err) => log::error!(target: "app", "failed to create window, {err}"),
+            Err(err) => {
+                log::error!(target: "app", "failed to get ns_window, {err}");
+            }
         }
     }
 
-    #[cfg(target_os = "macos")]
-    {
-        fn set_controls_and_log_error(app_handle: &tauri::AppHandle, window_name: &str) {
-            match app_handle.get_window(window_name).unwrap().ns_window() {
-                Ok(raw_window) => {
-                    let window_id: cocoa::base::id = raw_window as _;
-                    set_window_controls_pos(window_id, 33.0, 26.0);
+    match win_res {
+        Ok(win) => {
+            use tauri::{PhysicalPosition, PhysicalSize};
+            #[cfg(windows)]
+            use window_shadows::set_shadow;
+
+            if win_state.is_some() {
+                let state = win_state.as_ref().unwrap();
+                win.set_position(PhysicalPosition {
+                    x: state.x,
+                    y: state.y,
+                })
+                .unwrap();
+                win.set_size(PhysicalSize {
+                    width: state.width,
+                    height: state.height,
+                })
+                .unwrap();
+            }
+
+            if let Some(state) = win_state {
+                if state.maximized {
+                    trace_err!(win.maximize(), "set win maximize");
                 }
-                Err(err) => {
-                    log::error!(target: "app", "failed to get ns_window, {err}");
+                if state.fullscreen {
+                    trace_err!(win.set_fullscreen(true), "set win fullscreen");
                 }
             }
-        }
+            #[cfg(windows)]
+            trace_err!(set_shadow(&win, true), "set win shadow");
+            log::trace!("try to calculate the monitor size");
+            let center = (|| -> Result<bool> {
+                let center;
+                if let Some(state) = win_state {
+                    let monitor = win.current_monitor()?.ok_or(anyhow::anyhow!(""))?;
+                    let PhysicalPosition { x, y } = *monitor.position();
+                    let PhysicalSize { width, height } = *monitor.size();
+                    let left = x;
+                    let right = x + width as i32;
+                    let top = y;
+                    let bottom = y + height as i32;
 
-        match builder
-            .decorations(true)
-            .hidden_title(true)
-            .title_bar_style(tauri::TitleBarStyle::Overlay)
-            .build()
-        {
-            Ok(win) => {
-                #[cfg(debug_assertions)]
+                    let x = state.x;
+                    let y = state.y;
+                    let width = state.width as i32;
+                    let height = state.height as i32;
+                    center = ![
+                        (x, y),
+                        (x + width, y),
+                        (x, y + height),
+                        (x + width, y + height),
+                    ]
+                    .into_iter()
+                    .any(|(x, y)| x >= left && x < right && y >= top && y < bottom);
+                } else {
+                    center = true;
+                }
+                Ok(center)
+            })();
+
+            if center.unwrap_or(true) {
+                trace_err!(win.center(), "set win center");
+            }
+
+            #[cfg(debug_assertions)]
+            {
                 win.open_devtools();
+            }
 
+            #[cfg(target_os = "macos")]
+            {
                 set_controls_and_log_error(&app_handle, "main");
 
                 let app_handle_clone = app_handle.clone();
@@ -322,17 +320,8 @@ pub fn create_window(app_handle: &AppHandle) {
                         set_controls_and_log_error(&app_handle_clone, "main");
                     }
                 });
-                OPEN_WINDOWS_COUNTER.fetch_add(1, Ordering::Release);
             }
-            Err(err) => {
-                log::error!(target: "app", "failed to create window, {err}");
-            }
-        }
-    }
 
-    #[cfg(target_os = "linux")]
-    match builder.decorations(true).transparent(false).build() {
-        Ok(_) => {
             OPEN_WINDOWS_COUNTER.fetch_add(1, Ordering::Release);
         }
         Err(err) => {

@@ -17,7 +17,7 @@ export const AppDrawer = () => {
       <div
         className={classNames(
           "fixed z-10 flex items-center gap-2",
-          getSystem() === "macos" ? "left-[6.5rem] top-3" : "left-6 top-1.5",
+          getSystem() === "macos" ? "left-24 top-3" : "left-6 top-1.5",
         )}
         data-windrag
       >

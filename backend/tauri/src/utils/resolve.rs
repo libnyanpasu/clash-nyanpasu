@@ -232,7 +232,7 @@ pub fn create_window(app_handle: &AppHandle) {
         match app_handle.get_window(window_name).unwrap().ns_window() {
             Ok(raw_window) => {
                 let window_id: cocoa::base::id = raw_window as _;
-                set_window_controls_pos(window_id, 33.0, 26.0);
+                set_window_controls_pos(window_id, 26.0, 26.0);
             }
             Err(err) => {
                 log::error!(target: "app", "failed to get ns_window, {err}");

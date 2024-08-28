@@ -122,12 +122,12 @@ export const SettingClashCore = () => {
       labelChildren={<span>{version}</span>}
     >
       <List disablePadding>
-        {mergeCores?.map((item, index) => {
+        {mergeCores?.map((item) => {
           const show = expand || item.core == nyanpasuConfig?.clash_core;
 
           return (
             <motion.div
-              key={index}
+              key={item.name}
               animate={show ? "open" : "closed"}
               variants={{
                 open: {

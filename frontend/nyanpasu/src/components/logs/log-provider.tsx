@@ -6,8 +6,6 @@ import { LogMessage, useClashWS } from "@nyanpasu/interface";
 
 const MAX_LOG_NUM = 1000;
 
-const time = dayjs().format("MM-DD HH:mm:ss");
-
 export const LogProvider = () => {
   const {
     logs: { latestMessage },
@@ -23,12 +21,11 @@ export const LogProvider = () => {
     }
 
     const data = JSON.parse(latestMessage?.data) as LogMessage;
-
+    const time = dayjs(data.time).format("MM-DD HH:mm:ss");
     setLogData((prev) => {
       if (prev.length >= MAX_LOG_NUM) {
         prev.shift();
       }
-
       return [...prev, { ...data, time }];
     });
   }, [enableLog, latestMessage?.data, setLogData]);

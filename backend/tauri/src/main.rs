@@ -243,6 +243,7 @@ fn main() -> std::io::Result<()> {
             ipc::url_delay_test,
             ipc::get_ipsb_asn,
             ipc::open_that,
+            ipc::is_appimage,
         ]);
 
     #[cfg(target_os = "macos")]

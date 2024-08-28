@@ -449,6 +449,11 @@ pub fn open_that(path: String) -> CmdResult {
     wrap_err!(crate::utils::open::that(path))
 }
 
+#[tauri::command]
+pub fn is_appimage() -> CmdResult<bool> {
+    Ok(*crate::consts::IS_APPIMAGE)
+}
+
 #[cfg(windows)]
 #[tauri::command]
 pub fn get_custom_app_dir() -> CmdResult<Option<String>> {

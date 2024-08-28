@@ -251,3 +251,7 @@ export const getIpsbASN = async () => invoke<IPSBResponse>("get_ipsb_asn");
 export const openThat = async (path: string) => {
   return await invoke<void>("open_that", { path });
 };
+
+export const isAppImage = async () => {
+  return await invoke<boolean>("is_appimage");
+};

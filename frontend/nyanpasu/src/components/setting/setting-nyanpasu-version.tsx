@@ -4,6 +4,7 @@ import { useSetAtom } from "jotai";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import LogoSvg from "@/assets/image/logo.svg?react";
+import { useUpdaterPlatformSupported } from "@/hooks/use-updater";
 import { UpdaterManifestAtom } from "@/store/updater";
 import { formatError } from "@/utils";
 import { message } from "@/utils/notification";
@@ -47,8 +48,8 @@ export const SettingNyanpasuVersion = () => {
 
   const [loading, setLoading] = useState(false);
 
-  const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu();
   const setUpdaterManifest = useSetAtom(UpdaterManifestAtom);
+  const isPlatformSupported = useUpdaterPlatformSupported();
   const onCheckUpdate = useLockFn(async () => {
     try {
       setLoading(true);
@@ -109,21 +110,24 @@ export const SettingNyanpasuVersion = () => {
           </Paper>
         </ListItem>
 
-        <div className="mb-1 mt-1">
-          <AutoCheckUpdate />
-        </div>
-
-        <ListItem sx={{ pl: 0, pr: 0 }}>
-          <LoadingButton
-            variant="contained"
-            size="large"
-            loading={loading}
-            onClick={onCheckUpdate}
-            sx={{ width: "100%" }}
-          >
-            {t("Check for Updates")}
-          </LoadingButton>
-        </ListItem>
+        {isPlatformSupported && (
+          <>
+            <div className="mb-1 mt-1">
+              <AutoCheckUpdate />
+            </div>
+            <ListItem sx={{ pl: 0, pr: 0 }}>
+              <LoadingButton
+                variant="contained"
+                size="large"
+                loading={loading}
+                onClick={onCheckUpdate}
+                sx={{ width: "100%" }}
+              >
+                {t("Check for Updates")}
+              </LoadingButton>
+            </ListItem>
+          </>
+        )}
       </List>
     </BaseCard>
   );

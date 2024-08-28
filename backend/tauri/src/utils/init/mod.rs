@@ -103,9 +103,6 @@ pub fn run_pending_migrations() -> Result<()> {
 /// Initialize all the config files
 /// before tauri setup
 pub fn init_config() -> Result<()> {
-    #[cfg(target_os = "windows")]
-    let _ = dirs::init_portable_flag();
-
     // Check if old config dir exist and new config dir is not exist
     let mut old_app_dir: Option<PathBuf> = None;
     let mut app_dir: Option<PathBuf> = None;

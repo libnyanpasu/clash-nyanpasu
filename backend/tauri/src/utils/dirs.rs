@@ -36,11 +36,6 @@ pub const NYANPASU_CONFIG: &str = "nyanpasu-config.yaml";
 pub const PROFILE_YAML: &str = "profiles.yaml";
 pub const STORAGE_DB: &str = "storage.db";
 
-/// portable flag
-#[allow(unused)]
-#[cfg(target_os = "windows")]
-static PORTABLE_FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-
 pub static APP_VERSION: &str = env!("NYANPASU_VERSION");
 
 pub fn get_app_version() -> &'static str {
@@ -49,27 +44,14 @@ pub fn get_app_version() -> &'static str {
 
 #[cfg(target_os = "windows")]
 pub fn get_portable_flag() -> bool {
-    *PORTABLE_FLAG.get().unwrap_or(&false)
-}
-
-/// initialize portable flag
-#[cfg(target_os = "windows")]
-pub fn init_portable_flag() -> Result<()> {
-    let dir = app_install_dir()?;
-    let portable_file = dir.join(".config/PORTABLE");
-    if portable_file.exists() {
-        PORTABLE_FLAG.get_or_init(|| true);
-        return Ok(());
-    }
-    PORTABLE_FLAG.get_or_init(|| false);
-    Ok(())
+    *crate::consts::IS_PORTABLE
 }
 
 pub fn app_config_dir() -> Result<PathBuf> {
     let path: Option<PathBuf> = {
         #[cfg(target_os = "windows")]
         {
-            if *PORTABLE_FLAG.get().unwrap_or(&false) {
+            if get_portable_flag() {
                 let app_dir = app_install_dir()?;
                 Some(app_dir.join(".config").join(PREVIOUS_APP_NAME))
             } else if let Ok(Some(path)) = super::winreg::get_app_dir() {
@@ -99,7 +81,7 @@ pub fn app_data_dir() -> Result<PathBuf> {
     let path: Option<PathBuf> = {
         #[cfg(target_os = "windows")]
         {
-            if *PORTABLE_FLAG.get().unwrap_or(&false) {
+            if get_portable_flag() {
                 let app_dir = app_install_dir()?;
                 Some(app_dir.join(".data").join(PREVIOUS_APP_NAME))
             } else {
@@ -126,7 +108,7 @@ pub fn app_data_dir() -> Result<PathBuf> {
 pub fn old_app_home_dir() -> Result<PathBuf> {
     #[cfg(target_os = "windows")]
     {
-        if !PORTABLE_FLAG.get().unwrap_or(&false) {
+        if !get_portable_flag() {
             Ok(home_dir()
                 .ok_or(anyhow::anyhow!("failed to check old app home dir"))?
                 .join(".config")
@@ -160,7 +142,7 @@ pub fn app_home_dir() -> Result<PathBuf> {
     #[cfg(target_os = "windows")]
     {
         use crate::utils::winreg::get_app_dir;
-        if !PORTABLE_FLAG.get().unwrap_or(&false) {
+        if !get_portable_flag() {
             let reg_app_dir = get_app_dir()?;
             if let Some(reg_app_dir) = reg_app_dir {
                 return Ok(reg_app_dir);

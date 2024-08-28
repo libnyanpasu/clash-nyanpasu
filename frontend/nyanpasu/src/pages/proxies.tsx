@@ -136,6 +136,7 @@ export default function ProxyPage() {
             className={cn(
               "absolute z-10 flex w-full items-center justify-between px-4 py-2 backdrop-blur",
               "bg-gray-200/30 dark:bg-gray-900/30",
+              "!rounded-t-2xl",
             )}
           >
             <div className="flex items-center gap-4">

@@ -174,7 +174,7 @@ export const BaseDialog = ({
             <div
               className={cn(
                 "text-xl",
-                !full ? "m-4" : OS === "macos" ? "ml-20 p-3" : "m-2 ml-6",
+                !full ? "m-4" : OS === "macos" ? "ml-20 p-3.5" : "m-2 ml-6",
               )}
               data-windrag={full}
             >
@@ -189,7 +189,9 @@ export const BaseDialog = ({
                 full && "h-full px-6",
               )}
               style={{
-                maxHeight: full ? "calc(100vh - 100px)" : "calc(100vh - 200px)",
+                maxHeight: full
+                  ? `calc(100vh - ${OS === "macos" ? 114 : 100}px)`
+                  : "calc(100vh - 200px)",
                 ...contentStyle,
               }}
             >

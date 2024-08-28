@@ -238,7 +238,10 @@ export const ProfileDialog = ({
       ) : (
         !isEdit && (
           <>
-            <ReadProfile onSelected={handleProfileSelected} />
+            <ReadProfile
+              key="read_profile"
+              onSelected={handleProfileSelected}
+            />
 
             {localProfileMessage && (
               <div className="ml-2 text-red-500">{localProfileMessage}</div>

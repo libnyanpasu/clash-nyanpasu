@@ -51,7 +51,7 @@ export const AppContainer = ({
 
         <Allotment.Pane visible={true} className={styles.container}>
           {OS === "windows" && (
-            <LayoutControl className="!z-top fixed right-6 top-1.5" />
+            <LayoutControl className="!z-top fixed right-4 top-2" />
           )}
 
           {OS === "macos" && (

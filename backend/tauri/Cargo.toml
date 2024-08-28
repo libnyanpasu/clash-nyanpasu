@@ -46,6 +46,7 @@ serde = { version = "1.0", features = ["derive"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"] }
 relative-path = "1.9"
 tauri = { version = "1.5.4", features = [
+  "dialog-all",
   "updater",
   "fs-all",
   "clipboard-all",

@@ -1,8 +1,9 @@
-import { useAtom } from "jotai";
-import { memo, RefObject, useMemo } from "react";
+import { useAtom, useAtomValue } from "jotai";
+import { memo, RefObject, useDeferredValue, useMemo } from "react";
 import useSWR from "swr";
 import { Virtualizer } from "virtua";
 import { proxyGroupAtom } from "@/store";
+import { proxiesFilterAtom } from "@/store/proxies";
 import {
   alpha,
   ListItem,
@@ -57,14 +58,38 @@ export const GroupList = ({
   const { palette } = useTheme();
 
   const [proxyGroup, setProxyGroup] = useAtom(proxyGroupAtom);
+  const proxiesFilter = useAtomValue(proxiesFilterAtom);
+  const deferredProxiesFilter = useDeferredValue(proxiesFilter);
 
   const handleSelect = (index: number) => {
     setProxyGroup({ selector: index });
   };
 
+  const groups = useMemo(() => {
+    if (!data?.groups) {
+      return [];
+    }
+    if (!deferredProxiesFilter) {
+      return data.groups;
+    }
+    return data.groups.filter((group) => {
+      return (
+        group.name
+          .toLowerCase()
+          .includes(deferredProxiesFilter.toLowerCase()) ||
+        group.all?.some((proxy) => {
+          return proxy.name
+            .toLowerCase()
+            .includes(deferredProxiesFilter.toLowerCase());
+        }) ||
+        false
+      );
+    });
+  }, [data?.groups, deferredProxiesFilter]);
+
   return (
     <Virtualizer scrollRef={scrollRef}>
-      {data?.groups?.map((group, index) => {
+      {groups.map((group, index) => {
         const selected = index === proxyGroup.selector;
 
         return (

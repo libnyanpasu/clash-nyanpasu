@@ -12,6 +12,7 @@ import ProxyGroupName from "@/components/proxies/proxy-group-name";
 import ScrollCurrentNode from "@/components/proxies/scroll-current-node";
 import SortSelector from "@/components/proxies/sort-selector";
 import { proxyGroupAtom } from "@/store";
+import { proxiesFilterAtom } from "@/store/proxies";
 import { Check } from "@mui/icons-material";
 import {
   alpha,
@@ -24,12 +25,42 @@ import {
 import { Clash, useClashCore, useNyanpasu } from "@nyanpasu/interface";
 import { cn, SidePage } from "@nyanpasu/ui";
 
+function SideBar() {
+  const { palette } = useTheme();
+  const [proxiesFilter, setProxiesFilter] = useAtom(proxiesFilterAtom);
+  const { t } = useTranslation();
+
+  return (
+    <TextField
+      hiddenLabel
+      fullWidth
+      autoComplete="off"
+      spellCheck="false"
+      placeholder={t("Filter conditions")}
+      className="!pb-0"
+      sx={{ input: { py: 1.2, fontSize: 14 } }}
+      value={proxiesFilter || ""}
+      onChange={(e) =>
+        setProxiesFilter(!e.target.value.trim().length ? null : e.target.value)
+      }
+      InputProps={{
+        sx: {
+          borderRadius: 7,
+          backgroundColor: alpha(palette.primary.main, 0.1),
+
+          fieldset: {
+            border: "none",
+          },
+        },
+      }}
+    />
+  );
+}
+
 export default function ProxyPage() {
   const { t } = useTranslation();
 
   const { getCurrentMode, setCurrentMode } = useNyanpasu();
-
-  const { palette } = useTheme();
 
   const { data, updateGroupDelay } = useClashCore();
 
@@ -91,30 +122,6 @@ export default function ProxyPage() {
   const leftViewportRef = useRef<HTMLDivElement>(null);
 
   const rightViewportRef = useRef<HTMLDivElement>(null);
-
-  const SideBar = () => {
-    return (
-      <TextField
-        hiddenLabel
-        fullWidth
-        autoComplete="off"
-        spellCheck="false"
-        placeholder={t("Filter conditions")}
-        className="!pb-0"
-        sx={{ input: { py: 1.2, fontSize: 14 } }}
-        InputProps={{
-          sx: {
-            borderRadius: 7,
-            backgroundColor: alpha(palette.primary.main, 0.1),
-
-            fieldset: {
-              border: "none",
-            },
-          },
-        }}
-      />
-    );
-  };
 
   return (
     <SidePage

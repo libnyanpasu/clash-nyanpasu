@@ -1,9 +1,10 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useAtom, useAtomValue } from "jotai";
+import { useAtomValue } from "jotai";
 import {
   forwardRef,
   RefObject,
   useCallback,
+  useDeferredValue,
   useEffect,
   useImperativeHandle,
   useRef,
@@ -11,6 +12,7 @@ import {
 } from "react";
 import { Virtualizer, VListHandle } from "virtua";
 import { proxyGroupAtom, proxyGroupSortAtom } from "@/store";
+import { proxiesFilterAtom } from "@/store/proxies";
 import { Clash, useClashCore, useNyanpasu } from "@nyanpasu/interface";
 import { cn, useBreakpointValue } from "@nyanpasu/ui";
 import NodeCard from "./node-card";
@@ -36,7 +38,9 @@ export const NodeList = forwardRef(function NodeList(
 
   const { getCurrentMode } = useNyanpasu();
 
-  const [proxyGroup] = useAtom(proxyGroupAtom);
+  const proxyGroup = useAtomValue(proxyGroupAtom);
+  const proxiesFilter = useAtomValue(proxiesFilterAtom);
+  const deferredProxiesFilter = useDeferredValue(proxiesFilter);
 
   const proxyGroupSort = useAtomValue(proxyGroupSortAtom);
 
@@ -86,38 +90,42 @@ export const NodeList = forwardRef(function NodeList(
 
     const nodeNames: string[] = [];
 
-    const list = group?.all?.reduce<RenderClashProxy[][]>(
-      (result, value, index) => {
-        const getKey = () => {
-          const filter = nodeNames.filter((i) => i === value.name);
+    let nodes = group?.all || [];
+    if (!!deferredProxiesFilter && deferredProxiesFilter !== group?.name) {
+      nodes = nodes.filter((node) =>
+        node.name.toLowerCase().includes(deferredProxiesFilter.toLowerCase()),
+      );
+    }
 
-          if (filter.length === 0) {
-            return value.name;
-          } else {
-            return `${value.name}-${filter.length}`;
-          }
-        };
+    const list = nodes.reduce<RenderClashProxy[][]>((result, value, index) => {
+      const getKey = () => {
+        const filter = nodeNames.filter((i) => i === value.name);
 
-        if (index % column === 0) {
-          result.push([]);
+        if (filter.length === 0) {
+          return value.name;
+        } else {
+          return `${value.name}-${filter.length}`;
         }
+      };
 
-        result[Math.floor(index / column)].push({
-          ...value,
-          renderLayoutKey: getKey(),
-        });
+      if (index % column === 0) {
+        result.push([]);
+      }
 
-        nodeNames.push(value.name);
+      result[Math.floor(index / column)].push({
+        ...value,
+        renderLayoutKey: getKey(),
+      });
 
-        return result;
-      },
-      [],
-    );
+      nodeNames.push(value.name);
+
+      return result;
+    }, []);
 
     setRenderList(list);
-  }, [group?.all, column]);
+  }, [group?.all, group?.name, column, deferredProxiesFilter]);
 
-  const hendleClick = (node: string) => {
+  const handleClick = (node: string) => {
     if (!getCurrentMode.global) {
       setGroupProxy(proxyGroup.selector as number, node);
     } else {
@@ -172,7 +180,7 @@ export const NodeList = forwardRef(function NodeList(
                     node={render}
                     now={group?.now}
                     disabled={group?.type !== "Selector"}
-                    onClick={() => hendleClick(render.name)}
+                    onClick={() => handleClick(render.name)}
                     onClickDelay={async () =>
                       await handleClickDelay(render.name)
                     }

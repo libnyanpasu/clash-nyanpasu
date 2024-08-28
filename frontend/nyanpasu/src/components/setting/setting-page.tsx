@@ -1,3 +1,4 @@
+import { useIsAppImage } from "@/hooks/use-consts";
 import Masonry from "@mui/lab/Masonry";
 import SettingClashBase from "./setting-clash-base";
 import SettingClashCore from "./setting-clash-core";
@@ -15,6 +16,8 @@ import SettingSystemProxy from "./setting-system-proxy";
 import SettingSystemService from "./setting-system-service";
 
 export const SettingPage = () => {
+  const isAppImage = useIsAppImage();
+
   return (
     <Masonry
       className="w-full"
@@ -41,7 +44,7 @@ export const SettingPage = () => {
 
       <SettingSystemBehavior />
 
-      <SettingSystemService />
+      {!isAppImage && <SettingSystemService />}
 
       <SettingNyanpasuTasks />
 

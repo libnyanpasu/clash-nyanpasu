@@ -2,6 +2,7 @@ import { useLockFn, useReactive } from "ahooks";
 import { motion } from "framer-motion";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { OS } from "@/consts";
 import { formatError } from "@/utils";
 import { message } from "@/utils/notification";
 import { Box, List, ListItem } from "@mui/material";
@@ -17,7 +18,6 @@ export const SettingClashCore = () => {
   });
 
   const [expand, setExpand] = useState(false);
-
   const {
     nyanpasuConfig,
     setClashCore,
@@ -169,13 +169,16 @@ export const SettingClashCore = () => {
               {t("Restart")}
             </LoadingButton>
 
-            <LoadingButton
-              variant="contained"
-              loading={getLatestCore.isLoading}
-              onClick={handleCheckUpdates}
-            >
-              {t("Check Updates")}
-            </LoadingButton>
+            {/** TODO: Support Linux when Manifest v2 released */}
+            {OS !== "linux" && (
+              <LoadingButton
+                variant="contained"
+                loading={getLatestCore.isLoading}
+                onClick={handleCheckUpdates}
+              >
+                {t("Check Updates")}
+              </LoadingButton>
+            )}
           </Box>
 
           <ExpandMore expand={expand} onClick={() => setExpand(!expand)} />

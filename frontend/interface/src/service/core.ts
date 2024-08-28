@@ -20,8 +20,13 @@ export const VALID_CORE: Core[] = [
 export const fetchCoreVersion = async () => {
   return await Promise.all(
     VALID_CORE.map(async (item) => {
-      const version = await getCoreVersion(item.core);
-      return { ...item, version };
+      try {
+        const version = await getCoreVersion(item.core);
+        return { ...item, version };
+      } catch (e) {
+        console.error("failed to fetch core version", e);
+        return { ...item, version: "N/A" };
+      }
     }),
   );
 };

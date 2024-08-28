@@ -1,6 +1,8 @@
 import { useSize } from "ahooks";
 import clsx from "clsx";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useAtom } from "jotai";
+import { useCallback, useEffect, useRef } from "react";
+import { atomIsDrawerOnlyIcon } from "@/store";
 import getSystem from "@/utils/get-system";
 import { languageQuirks } from "@/utils/language";
 import { getRoutesWithIcon } from "@/utils/routes-utils";
@@ -9,7 +11,7 @@ import AnimatedLogo from "../layout/animated-logo";
 import RouteListItem from "./modules/route-list-item";
 
 export const DrawerContent = ({ className }: { className?: string }) => {
-  const [onlyIcon, setOnlyIcon] = useState(false);
+  const [onlyIcon, setOnlyIcon] = useAtom(atomIsDrawerOnlyIcon);
 
   const { nyanpasuConfig } = useNyanpasu();
 
@@ -34,7 +36,7 @@ export const DrawerContent = ({ className }: { className?: string }) => {
         setOnlyIcon(false);
       }
     },
-    [nyanpasuConfig?.language],
+    [nyanpasuConfig?.language, setOnlyIcon],
   );
 
   useEffect(() => {

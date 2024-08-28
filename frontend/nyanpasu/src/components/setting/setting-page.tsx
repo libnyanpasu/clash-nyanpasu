@@ -1,4 +1,7 @@
+import { useAtomValue } from "jotai";
+import { useWindowSize } from "react-use";
 import { useIsAppImage } from "@/hooks/use-consts";
+import { atomIsDrawerOnlyIcon } from "@/store";
 import Masonry from "@mui/lab/Masonry";
 import SettingClashBase from "./setting-clash-base";
 import SettingClashCore from "./setting-clash-core";
@@ -18,10 +21,20 @@ import SettingSystemService from "./setting-system-service";
 export const SettingPage = () => {
   const isAppImage = useIsAppImage();
 
+  const isDrawerOnlyIcon = useAtomValue(atomIsDrawerOnlyIcon);
+
+  const { width } = useWindowSize();
+
   return (
     <Masonry
       className="w-full"
-      columns={{ xs: 1, sm: 1, md: 2 }}
+      columns={{
+        xs: 1,
+        sm: 1,
+        md: isDrawerOnlyIcon ? 2 : width > 1000 ? 2 : 1,
+        lg: 2,
+        xl: 2,
+      }}
       spacing={3}
       sequential
       sx={{ width: "calc(100% + 24px)" }}

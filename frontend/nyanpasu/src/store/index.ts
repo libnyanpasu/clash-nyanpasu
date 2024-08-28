@@ -56,6 +56,8 @@ export const atomEnableLog = atomWithLocalStorage<boolean>(
 
 export const atomIsDrawer = atom<boolean>();
 
+export const atomIsDrawerOnlyIcon = atom<boolean>();
+
 // save the state of each profile item loading
 export const atomLoadingCache = atom<Record<string, boolean>>({});
 

@@ -57,7 +57,7 @@ export const SettingPage = () => {
 
       <SettingSystemBehavior />
 
-      {!isAppImage && <SettingSystemService />}
+      {!isAppImage.data && <SettingSystemService />}
 
       <SettingNyanpasuTasks />
 

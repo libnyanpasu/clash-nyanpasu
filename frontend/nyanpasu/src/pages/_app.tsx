@@ -21,6 +21,7 @@ import { cn, useBreakpoint } from "@nyanpasu/ui";
 import { emit } from "@tauri-apps/api/event";
 import "dayjs/locale/ru";
 import "dayjs/locale/zh-cn";
+import customParseFormat from "dayjs/plugin/customParseFormat";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { useAtom } from "jotai";
 import { useEffect } from "react";
@@ -29,6 +30,7 @@ import { SWRConfig } from "swr";
 import styles from "./_app.module.scss";
 
 dayjs.extend(relativeTime);
+dayjs.extend(customParseFormat);
 
 export default function App() {
   const { theme } = useCustomTheme();

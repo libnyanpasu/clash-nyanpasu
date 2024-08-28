@@ -42,8 +42,6 @@ export default function UpdaterDialog({
     }
   });
 
-  console.error("manifest", manifest);
-
   return (
     <BaseDialog
       {...others}
@@ -68,7 +66,9 @@ export default function UpdaterDialog({
           <div className="flex gap-3">
             <span className="text-xl font-bold">{manifest.version}</span>
             <span className="text-xs text-slate-500">
-              {dayjs(manifest.date).format("YYYY-MM-DD HH:mm:ss")}
+              {dayjs(manifest.date, "YYYY-MM-DD H:mm:ss Z").format(
+                "YYYY-MM-DD HH:mm:ss",
+              )}
             </span>
           </div>
           <Button

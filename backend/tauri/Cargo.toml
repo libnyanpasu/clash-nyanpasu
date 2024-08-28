@@ -76,7 +76,7 @@ dyn-clone = "1.0.16"
 rs-snowflake = "0.6"
 thiserror = { workspace = true }
 simd-json = "0.13.8"
-runas = "1.2.0"
+runas = { git = "https://github.com/libnyanpasu/rust-runas.git" }
 backon = { version = "1.0.1", features = ["tokio-sleep"] }
 rust-i18n = "3"
 adler = "1.0.2"

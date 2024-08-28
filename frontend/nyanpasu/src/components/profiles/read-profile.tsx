@@ -25,7 +25,7 @@ export const ReadProfile = ({ onSelected }: ReadProfileProps) => {
         filters: [
           {
             name: "profile",
-            extensions: ["yaml"],
+            extensions: ["yaml", "yml"],
           },
         ],
       });
@@ -42,6 +42,8 @@ export const ReadProfile = ({ onSelected }: ReadProfileProps) => {
       } else {
         setLabel(selected.split("/").at(-1) as string);
       }
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
@@ -51,6 +53,7 @@ export const ReadProfile = ({ onSelected }: ReadProfileProps) => {
     <LoadingButton
       variant="contained"
       loading={loading}
+      disabled={loading}
       onClick={handleSelectFile}
       color={label ? "success" : "primary"}
     >

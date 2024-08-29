@@ -3,6 +3,13 @@ import fs from "fs-extra";
 import packageJson from "../package.json";
 import { cwd, TAURI_APP_DIR } from "./utils/env";
 
+const MONO_REPO_PATHS = [
+  path.join(cwd, "frontend/nyanpasu"),
+  path.join(cwd, "frontend/ui"),
+  path.join(cwd, "frontend/interface"),
+  path.join(cwd, "scripts"),
+];
+
 // import { consola } from "./utils/logger";
 
 const TAURI_APP_CONF_PATH = path.join(TAURI_APP_DIR, "tauri.conf.json");
@@ -50,6 +57,16 @@ async function resolvePublish() {
   await fs.writeJSON(TAURI_NIGHTLY_APP_CONF_PATH, tauriNightlyJson, {
     spaces: 2,
   });
+
+  // overrides mono repo package.json
+  for (const monoRepoPath of MONO_REPO_PATHS) {
+    const monoRepoPackageJsonPath = path.join(monoRepoPath, "package.json");
+    const monoRepoPackageJson = await fs.readJSON(monoRepoPackageJsonPath);
+    monoRepoPackageJson.version = nextVersion;
+    await fs.writeJSON(monoRepoPackageJsonPath, monoRepoPackageJson, {
+      spaces: 2,
+    });
+  }
 
   // execSync("git add ./package.json");
   // execSync(`git add ${TAURI_APP_CONF_PATH}`);

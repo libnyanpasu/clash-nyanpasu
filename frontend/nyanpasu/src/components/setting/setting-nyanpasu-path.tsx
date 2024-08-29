@@ -1,5 +1,6 @@
 import { useLockFn } from "ahooks";
 import { useTranslation } from "react-i18next";
+import { OS } from "@/consts";
 import { sleep } from "@/utils";
 import { message } from "@/utils/notification";
 import Grid from "@mui/material/Unstable_Grid2";
@@ -62,11 +63,14 @@ export const SettingNyanpasuPath = () => {
   const gridLists = [
     { label: t("Open Config Dir"), onClick: openAppConfigDir },
     { label: t("Open Data Dir"), onClick: openAppDataDir },
-    { label: t("Migration App Path"), onClick: migrateAppPath },
+    OS === "windows" && {
+      label: t("Migrate App Path"),
+      onClick: migrateAppPath,
+    },
     { label: t("Open Core Dir"), onClick: openCoreDir },
     { label: t("Open Logs Dir"), onClick: openLogsDir },
     { label: t("Collect Logs"), onClick: collectLogs },
-  ];
+  ].filter((x) => !!x);
 
   return (
     <BaseCard label={t("Path Config")}>

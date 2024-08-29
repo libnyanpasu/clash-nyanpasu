@@ -49,6 +49,11 @@ const isValidFormat = (fileName: string): boolean => {
   return resourceFormats.some((format) => fileName.endsWith(format));
 };
 
+const repoinfo = {
+  owner: "LibNyanpasu",
+  repo: "clash-nyanpasu",
+};
+
 (async () => {
   await client.start({
     botAuthToken: TELEGRAM_TOKEN,
@@ -58,11 +63,10 @@ const isValidFormat = (fileName: string): boolean => {
 
   const content = nightlyBuild
     ? await github.rest.repos.getReleaseByTag({
-        owner: "LibNyanpasu",
-        repo: "clash-nyanpasu",
+        ...repoinfo,
         tag: "pre-release",
       })
-    : await github.rest.repos.getLatestRelease();
+    : await github.rest.repos.getLatestRelease(repoinfo);
 
   const downloadTasks: Promise<void>[] = [];
 

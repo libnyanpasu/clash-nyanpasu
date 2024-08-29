@@ -71,7 +71,10 @@ export const ProfileDialog = ({
 
   const isRemote = watch("type") === "remote";
 
-  const isEdit = Boolean(profile);
+  const [isEdit, setIsEdit] = useState(!!profile);
+  useEffect(() => {
+    setIsEdit(!!profile);
+  }, [profile]);
 
   const commonProps = {
     autoComplete: "off",
@@ -175,7 +178,7 @@ export const ProfileDialog = ({
         multiline
       />
 
-      {isRemote ? (
+      {isRemote && (
         <>
           <TextFieldElement
             label={t("Subscription URL")}
@@ -235,22 +238,18 @@ export const ProfileDialog = ({
             )}
           />
         </>
-      ) : (
-        !isEdit && (
-          <>
-            <ReadProfile
-              key="read_profile"
-              onSelected={handleProfileSelected}
-            />
+      )}
+      {!isRemote && !isEdit && (
+        <>
+          <ReadProfile key="read_profile" onSelected={handleProfileSelected} />
 
-            {localProfileMessage && (
-              <div className="ml-2 text-red-500">{localProfileMessage}</div>
-            )}
-            <span className="px-2 text-xs">
-              * {t("Select file to import or leave blank to touch new one.")}
-            </span>
-          </>
-        )
+          {localProfileMessage && (
+            <div className="ml-2 text-red-500">{localProfileMessage}</div>
+          )}
+          <span className="px-2 text-xs">
+            * {t("Select file to import or leave blank to touch new one.")}
+          </span>
+        </>
       )}
     </div>
   );

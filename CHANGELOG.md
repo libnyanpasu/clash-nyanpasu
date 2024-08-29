@@ -1,3 +1,994 @@
+## [1.6.0] - 2024-08-29
+
+### 💥 Breaking Changes
+
+- Tsconfig options by @keiko233
+
+### ⚡ Performance Improvements
+
+- **hook:** Add debounce callback & do nothing when minimized by @keiko233
+
+- **proxies:** Add useTransition by @keiko233
+
+- **ui:** Memoized children node by @keiko233
+
+- **ui:** Add ref support for BasePage by @keiko233
+
+- Switch log page & rule page to async component by @keiko233
+
+### ✨ Features
+
+- **component:** Add children props support for PaperButton by @keiko233
+
+- **connections:** Lazy load connections and close #1208 by @greenhat616
+
+- **connections:** Add no connection display by @keiko233
+
+- **connections:** New design for ConnectionsPage by @keiko233
+
+- **custom-schema:** Experimental compatible with common clash schema by @greenhat616
+
+- **custom-scheme:** Use one desktop file to process mime by @greenhat616
+
+- **custom-theme:** Background color picker minor tweak by @keiko233
+
+- **dashboard:** Add service status shortcuts card by @keiko233
+
+- **dashboard:** Add proxy shortcuts panel by @keiko233
+
+- **dashboard:** Special grid layout for drawer by @keiko233
+
+- **dashboard:** Add health panel by @keiko233
+
+- **dashboard:** Init Dashboard Page by @keiko233
+
+- **delay-button:** Minor tweaks for animetion by @keiko233
+
+- **downloader:** Make downloader status readable by @greenhat616
+
+- **drawer:** Enable panel collapsible by @keiko233
+
+- **drawer:** Add small size layout by @keiko233
+
+- **drawer:** Minor tweak for small size by @keiko233
+
+- **enhance:** Experimental add lua runner support by @greenhat616
+
+- **enhance:** Make merge process more powerful by @greenhat616
+
+- **experimental:** Initial react compiler support by @keiko233
+
+- **interface:** Initial ClashWS by @keiko233
+
+- **interface:** Add profile js interface by @keiko233
+
+- **interface:** Add current clash mode interface by @keiko233
+
+- **interface:** Add useClashCore hook method by @keiko233
+
+- **interface:** Add app tauri invoke interface by @keiko233
+
+- **interface:** Add profiles api with SWR by @keiko233
+
+- **interface:** Add ClashInfo interface with SWR by @keiko233
+
+- **interface:** Init code by @keiko233
+
+- **ipc:** Replace timing utils ofetch to tokio by @keiko233
+
+- **ipc:** Export delay test and core status call by @greenhat616
+
+- **layout:** Add scrollbar track margin by @keiko233
+
+- **logs:** New design LogsPage by @keiko233
+
+- **macos:** Try to impl dock show/hide api by @greenhat616
+
+- **macos:** Add traffic control offset for macos by @keiko233
+
+- **migration:** Add discard method for discarding changes while migration failed by @greenhat616
+
+- **monaco:** Add monaco types support by @keiko233
+
+- **monaco:** Add typescript language service by @keiko233
+
+- **monaco:** Import lua language support by @keiko233
+
+- **monaco-edit:** Switch to lazy load module by @keiko233
+
+- **monaco-editor:** Support props value changes and language switching by @keiko233
+
+- **monaco-editor:** Support language change on prop by @keiko233
+
+- **motion:** Add lighten animation effects config by @keiko233
+
+- **nyanpasu:** Node list support proxy delay testing by @keiko233
+
+- **nyanpasu:** Import react devtools on dev env by @keiko233
+
+- **nyanpasu:** Use new design Proxies Page by @keiko233
+
+- **nyanpasu:** Import tailwind css by @keiko233
+
+- **nyanpasu:** Experimentally added new settings interface by @keiko233
+
+- **nyanpasu:** Add SettingLegacy component by @keiko233
+
+- **nyanpasu:** Add SettingNyanpasuVersion component by @keiko233
+
+- **nyanpasu:** Add SettingNyanpasuUI component by @keiko233
+
+- **nyanpasu:** Add SettingNyanpasuPath component by @keiko233
+
+- **nyanpasu:** Add SettingNyanpasuPath component by @keiko233
+
+- **nyanpasu:** Add PaperButton component by @keiko233
+
+- **nyanpasu:** Add SettingNyanpasuTasks component by @keiko233
+
+- **nyanpasu:** Add SettingSystemService component by @keiko233
+
+- **nyanpasu:** Add SettingSystemBehavior component by @keiko233
+
+- **nyanpasu:** Add SettingSystemClash component by @keiko233
+
+- **nyanpasu:** Add SettingClashCore component by @keiko233
+
+- **nyanpasu:** Use grid layout for SettingClashWeb by @keiko233
+
+- **nyanpasu:** Add SettingClashField component by @keiko233
+
+- **nyanpasu:** Add SettingClashWeb component by @keiko233
+
+- **nyanpasu:** Add SettingClashExternal component by @keiko233
+
+- **nyanpasu:** Add SettingClashPort component by @keiko233
+
+- **nyanpasu:** Add SettingClashBase component by @keiko233
+
+- **nyanpasu:** Add nyanpasu setting props creator by @keiko233
+
+- **nyanpasu:** Use new theme create method by @keiko233
+
+- **nynapasu:** Add SettingNyanpasuMisc component by @keiko233
+
+- **profiles:** Adapting scroll area & add position animation by @keiko233
+
+- **profiles:** Add diff dialog hint by @greenhat616
+
+- **profiles:** Add max log level triggered notice, and close #1291 by @greenhat616
+
+- **profiles:** Add black touch new option by @greenhat616
+
+- **profiles:** Add text carousel for subscription expires and updated time by @greenhat616
+
+- **profiles:** Minor tweaks & add click card to apply profile by @keiko233
+
+- **profiles:** Add split pane support & minor tweaks by @keiko233
+
+- **profiles:** Profiles new design by @keiko233
+
+- **profiles:** Add proxy chain side page by @keiko233
+
+- **profiles:** Add monaco editor for ProfileItem by @keiko233
+
+- **profiles:** Complete profile operation menu by @keiko233
+
+- **profiles:** Redesign profile cards & new profile editor by @keiko233
+
+- **profiles:** Profile dialog support edit mode by @keiko233
+
+- **profiles:** Add QuickImport text arae component by @keiko233
+
+- **profiles:** Init new profile page by @keiko233
+
+- **providers:** Add proxy provider traffic display support by @keiko233
+
+- **providers:** Support proxies providers by @keiko233
+
+- **providers:** New design ProvidersPage by @keiko233
+
+- **proxies:** Filter proxies nodes by @greenhat616
+
+- **proxies:** Adapting scroll area by @keiko233
+
+- **proxies:** Support proxy group test url by @keiko233
+
+- **proxies:** Add scroll to current node button by @keiko233
+
+- **proxies:** Add node card animation by @keiko233
+
+- **proxies:** Group name transition use framer motion by @keiko233
+
+- **proxies:** Add none proxies tips by @keiko233
+
+- **proxies:** Add virtual scrolling to grid node list by @keiko233
+
+- **proxies:** Group list use virtual scrolling by @keiko233
+
+- **proxies:** Add node list sorting function by @keiko233
+
+- **proxies:** Add group name text transition by @keiko233
+
+- **proxies:** Add diff clash mode page layout by @keiko233
+
+- **proxies:** Support group icon show by @keiko233
+
+- **proxies:** Disable button when type is not selecor by @keiko233
+
+- **rules:** Move filter text input to header by @keiko233
+
+- **rules:** New design for RulesPage by @keiko233
+
+- **service:** Add a service control panel and sidecar check script by @greenhat616
+
+- **setting-clash-base:** Add uwp tools support by @keiko233
+
+- **setting-clash-core:** Support core update by @keiko233
+
+- **setting-clash-field:** Add ClashFieldFilter switch by @keiko233
+
+- **sotre:** Add persistence support by @keiko233
+
+- **theme:** Add MDYPaper style override by @keiko233
+
+- **tray:** Add custom tray icon support by @greenhat616
+
+- **tray:** Add submenu proxies selector by @greenhat616
+
+- **ui:** Md3 style segmented button by @greenhat616
+
+- **ui:** Add scroll area support for side page by @keiko233
+
+- **ui:** Tailwind css support mui breakpoint by @keiko233
+
+- **ui:** Base page use radix-ui scroll area by @keiko233
+
+- **ui:** Dialog allow windows drag when prop full is true by @keiko233
+
+- **ui:** Add full screen style for dialog by @keiko233
+
+- **ui:** Minor tweaks for border radius by @keiko233
+
+- **ui:** Replace Switch to LoadingSwitch for SwitchItem by @keiko233
+
+- **ui:** Init sparkline chart by @keiko233
+
+- **ui:** Add sideClassName props for SidePage component by @keiko233
+
+- **ui:** Add reverse icon props for ExpandMore component by @keiko233
+
+- **ui:** Add MuiLinearProgress material you style override by @keiko233
+
+- **ui:** Add more props support for BaseDialog by @keiko233
+
+- **ui:** Add side toggle animation & reverse layout props by @keiko233
+
+- **ui:** Add SidePage component by @keiko233
+
+- **ui:** Add TextItem component by @keiko233
+
+- **ui:** Add BaseItem component by @keiko233
+
+- **ui:** Add TextFieldProps for NumberItem by @keiko233
+
+- **ui:** Add ExpandMore component by @keiko233
+
+- **ui:** Add loading props support for BaseCard by @keiko233
+
+- **ui:** Add LoadingSwitch component by @keiko233
+
+- **ui:** Add divider props support for BaseDialog by @keiko233
+
+- **ui:** Add BaseDialog component by @keiko233
+
+- **ui:** Add MuiDialog material you override by @keiko233
+
+- **ui:** Add disabled props for MenuItem by @keiko233
+
+- **ui:** Add selectSx for MenuItem component by @keiko233
+
+- **ui:** Add divider props for NumberItem by @keiko233
+
+- **ui:** Add Expand component by @keiko233
+
+- **ui:** Add NumberItem component by @keiko233
+
+- **ui:** Add MenuItem component by @keiko233
+
+- **ui:** Add SwitchItem component by @keiko233
+
+- **ui:** Add BaseCard label props undefined type support by @keiko233
+
+- **ui:** Add MDYBaseCard component by @keiko233
+
+- **ui:** Add MuiSwitch material you override by @keiko233
+
+- **ui:** Add MuiCard & MuiCardContent material you override by @keiko233
+
+- **ui:** Custom breakpoints by @keiko233
+
+- **ui:** Add memo suuport for MDYBasePage header by @keiko233
+
+- **ui:** Add MuiPaper material you override by @keiko233
+
+- **ui:** Add MDYBasePage component by @keiko233
+
+- **ui:** Add MuiButtonGroup material you override by @keiko233
+
+- **ui:** Add MuiButton material you override by @keiko233
+
+- **ui:** Add new mui theme create method for material you by @keiko233
+
+- **updater:** Add a view github button by @greenhat616
+
+- **use-message:** Add nyanpasu title prefix by @keiko233
+
+- **util:** Add a util to collect env infos to submit issues by @greenhat616
+
+- **web:** Replace default utl to Dashboard Page by @keiko233
+
+- **window:** Always on top by @greenhat616
+
+- Minor tweaks for app layout by @keiko233
+
+- Draft updater dialog, and close #1328 by @greenhat616
+
+- Add core updater progress by @keiko233
+
+- Draft core updater progres by @greenhat616
+
+- Add lazy loading for proxies icons by @greenhat616
+
+- Allow select on rule page & log page by @keiko233
+
+- Add clash icon local cache by @greenhat616
+
+- Add runtime config diff dialog by @greenhat616
+
+- Add tun stack selector by @greenhat616
+
+- Impl script esm and async support (#1266) by @greenhat616 in [#1266](https://github.com/libnyanpasu/clash-nyanpasu/pull/1266)
+
+- Should hidden speed chip while no history by @greenhat616
+
+- Add auto migration before app run by @greenhat616
+
+- Add migrations manager and cmds to run migration by @greenhat616
+
+- Add swift feedback button by @greenhat616
+
+- Print better build info by @greenhat616
+
+- Add a experimental mutlithread file download util by @greenhat616
+
+- Experimental add draggable logo by @greenhat616
+
+- Resizable sidebar without config presistant by @greenhat616
+
+- Use node octokit deps by @keiko233
+
+- Profile spec chains support by @greenhat616
+
+- Support lua script type and do a lot refactor by @greenhat616
+
+### 🐛 Bug Fixes
+
+- **app-setting:** Missing fields with template by @keiko233
+
+- **chians:** Throw backend log on use native dialog by @keiko233
+
+- **ci:** Update publish script by @greenhat616
+
+- **ci:** Updater checkout issue by @greenhat616
+
+- **ci:** Updater checkout issue by @greenhat616
+
+- **ci:** Prepend changelog by @greenhat616
+
+- **ci:** Build by @greenhat616
+
+- **clash:** Accpet clash rs status code and handle status error by @greenhat616
+
+- **clash:** Hidden ipv6 setting while clash rs by @greenhat616
+
+- **clash-web:** Fix reversed Boolean value by @keiko233
+
+- **clash-web:** Empty array err by @keiko233
+
+- **config:** Replace enable_auto_check_update by @keiko233
+
+- **connections:** Table type filed err by @keiko233
+
+- **connections:** Host undefined err by @keiko233
+
+- **csp:** Allow loading local cache server assets by @greenhat616
+
+- **csp:** Allow img-src from https by @keiko233
+
+- **custom-scheme:** Xdg-mime default wrong call format by @greenhat616
+
+- **custom-scheme:** Front page redirect by @greenhat616
+
+- **custom-scheme:** Should pass single-instance while launched by custom schema by @greenhat616
+
+- **custom-scheme:** Support mutiple scheme by @greenhat616
+
+- **custom-theme:** Unregister event when the themoe mode is not system by @keiko233
+
+- **custom-theme:** Fix custom theme effect & system theme sync event by @keiko233
+
+- **dashboard:** Data panel layer size err by @keiko233
+
+- **dashboard:** Zero value display err by @keiko233
+
+- **deep link:** Use different identifiers in dev mode by @keiko233
+
+- **deps:** Add misssing deps by @keiko233
+
+- **deps:** Vite-plugin-monaco-editor version err by @keiko233
+
+- **dev:** When dev feature force use dev app dir by @keiko233
+
+- **drawer:** Style prop merge err by @keiko233
+
+- **drawer:** Offset value err by @keiko233
+
+- **drawer:** Small size drawer layout err by @keiko233
+
+- **drawer:** Minor tweaks by @keiko233
+
+- **drawer:** Fix scroll err & hidden scrollbar by @keiko233
+
+- **drawer:** Fix padding & text position by @keiko233
+
+- **enhance:** Rm useless use_lowercase hook, and close #1323 by @greenhat616
+
+- **enhance:** Use oxc ast to wrap function main, close #1298 by @greenhat616
+
+- **enhance:** Should update after editing activated chain item by @greenhat616
+
+- **enhance:** Transform allow lan decrepation by @greenhat616
+
+- **enhance:** Should export default by @greenhat616
+
+- **enhance:** Use indexmap to ensure the process order by @greenhat616
+
+- **enhance:** Mark process fn async by @greenhat616
+
+- **guard:** Remove ipv6 field while core is clash rs by @greenhat616
+
+- **hook:** Replace DebounceFn to ThrottleFn by @keiko233
+
+- **image-resize:** Correct image buffer extraction and resizing logic by @keiko233
+
+- **interface:** Close all connections err by @keiko233
+
+- **interface:** Drop defalut clash mode set by @keiko233
+
+- **interface:** Bad references by @keiko233
+
+- **interface:** Add clash rs version format method by @keiko233
+
+- **interface:** Request clash when use set by @keiko233
+
+- **interface:** Data type err by @keiko233
+
+- **interface:** Typos by @keiko233
+
+- **layout:** Bringup layout control to top layer by @keiko233
+
+- **lint:** Prettier plugin load err by @keiko233
+
+- **linux:** Replace backdrop blur to background opacity by @keiko233
+
+- **linux:** Service controls gui prompt, and close #1443 by @greenhat616
+
+- **linux:** Try to use symbol to fix tray issue by @greenhat616
+
+- **linux:** Use a workaround to make tray select work by @greenhat616
+
+- **linux:** Try to solve sysproxy resolver in appimage by @greenhat616
+
+- **linux:** Try to solve xdg-open in AppImage by @greenhat616
+
+- **logs:** Disable log state err by @keiko233
+
+- **logs:** Logs page freeze by @keiko233
+
+- **logs:** Logs page style err by @keiko233
+
+- **macos:** App icon size by @keiko233
+
+- **macos:** Dialog layout position err by @keiko233
+
+- **macos:** Remove prevent close block in macos by @greenhat616
+
+- **macos:** Rename single instance check path by @greenhat616
+
+- **macos:** Try to use another name to fix create dir error by @greenhat616
+
+- **node-card:** Layout err by @keiko233
+
+- **nsis:** Uninstall service check by @greenhat616
+
+- **nsis:** Stop running core by service while install and rm service dir while uninstall by @greenhat616
+
+- **nyanpasu:** Missing of recoil drop commit by @keiko233
+
+- **nyanpasu:** Missing tailwind css import by @keiko233
+
+- **nyanpasu:** Word typos by @keiko233
+
+- **nyanpasu:** Undfined value err by @keiko233
+
+- **nyanpasu:** Props usage error by @keiko233
+
+- **nyanpasu:** Drop tooltips to fix mui warning by @keiko233
+
+- **portable:** Add nyanpasu service binary by @greenhat616
+
+- **profile:** Dialog padding err by @keiko233
+
+- **profile:** Just invisble progress by @greenhat616
+
+- **profile:** Correctly handle filtering of script types in filterProfiles function by @keiko233
+
+- **profile-viewer:** Replace default profile user agent to clash-nyanpasu by @keiko233
+
+- **profiles:** Dont use sub component to solve the loss data issue by @greenhat616
+
+- **profiles:** Scoped chians state update err by @keiko233
+
+- **profiles:** Add missing open file on chains menu by @keiko233
+
+- **profiles:** Monaco dialog style err by @keiko233
+
+- **profiles:** Fix new chain method err by @keiko233
+
+- **profiles:** Fix profile item selected color on dark mode by @keiko233
+
+- **profiles:** Fix color on dark mode by @keiko233
+
+- **profiles:** Add missing open file method by @keiko233
+
+- **profiles:** Profile traffic percent calculation error by @keiko233
+
+- **profiles:** Add selected props for ProfileItem by @keiko233
+
+- **providers:** Single line layout err by @keiko233
+
+- **proxies:** Proxy node select err & render err by @keiko233
+
+- **proxies:** Sorting cannot be performed in global mode by @keiko233
+
+- **proxies:** Nodecard transition by @keiko233
+
+- **proxies:** Delay sort & timeout string by @keiko233
+
+- **proxies:** Global proxy select err by @keiko233
+
+- **proxies:** Incorrect judgment leading to value transfer error by @keiko233
+
+- **proxies:** Missing import by @keiko233
+
+- **proxies:** Current group get err by @keiko233
+
+- **route:** Reaplce icon dashboard to Dashboard by @keiko233
+
+- **rules:** Rules page display err by @keiko233
+
+- **script:** Decompress nyanpasu-service by @greenhat616
+
+- **script:** Replace appimage to rpm pkg by @keiko233
+
+- **script:** Use latest node version by @keiko233
+
+- **script:** Fix build with nightly prepare script by @keiko233
+
+- **script:** Nightly prepare package.json path by @keiko233
+
+- **scripts:** Typos by @keiko233
+
+- **scripts:** Telegram notify failed to request github repo releases info by @keiko233
+
+- **service:** Restart core while service mode enabled and service state changed by @greenhat616
+
+- **service:** Adapt the current ui by @greenhat616
+
+- **setting:** Service mod toggle by @keiko233
+
+- **setting-clash-core:** Disable initial animetion by @keiko233
+
+- **setting-clash-core:** Add user triger check update loading status by @keiko233
+
+- **setting-nyanpasu-version:** Incorrect value passing by @keiko233
+
+- **setting-system-proxy:** Grid layout breakpoint value by @keiko233
+
+- **setting-web-ui:** Zero value for index err by @keiko233
+
+- **settings:** Version pkg import err by @keiko233
+
+- **settings:** Swr use err by @keiko233
+
+- **settings:** Page masonry layout err by @keiko233
+
+- **settings:** Fix auto check update fileld stats err by @keiko233
+
+- **single-instance:** Should use path instead of namespace in linux by @greenhat616
+
+- **string:** Typo in side-chain.tsx (#999) by @NalCol in [#999](https://github.com/libnyanpasu/clash-nyanpasu/pull/999)
+
+- **styles:** Try to use normalize.css to solve webkit font issue by @greenhat616
+
+- **tauri:** Missing dialog features by @keiko233
+
+- **tauri:** Mixed content err by @keiko233
+
+- **theme:** Fix value merge null err by @keiko233
+
+- **theme:** Update breakpoint value by @keiko233
+
+- **tray:** Add a barrier to try to solve the tray selector issue in linux by @greenhat616
+
+- **tsconfig:** Typescript type reference issue by @keiko233
+
+- **tun:** Compatible with clash rs by @greenhat616
+
+- **ui:** Dialog exit animation err by @keiko233
+
+- **ui:** Close animetion position err by @keiko233
+
+- **ui:** Fix dialog unmount err by @keiko233
+
+- **ui:** Missing dialog z index css prop by @keiko233
+
+- **ui:** Refactor dialog use radix ui portal by @keiko233
+
+- **ui:** Scroll bar hidden on no padding by @keiko233
+
+- **ui:** Base page dom layout err by @keiko233
+
+- **ui:** Add Menu Paper box shadow by @keiko233
+
+- **ui:** Fixed FloatingButton position by @keiko233
+
+- **ui:** Fixed FloatingButton position by @keiko233
+
+- **ui:** Force set FloadtingButton posotion absolute by @keiko233
+
+- **ui:** Drop memo children too by @keiko233
+
+- **ui:** Drop SidePage memo by @keiko233
+
+- **ui:** Hide SidePage side content when there is no side by @keiko233
+
+- **ui:** Drop width for MDYBasePage-content by @keiko233
+
+- **ui:** Fix BasePage content width by @keiko233
+
+- **ui:** Disable loading mask animetion initial for BaseCard by @keiko233
+
+- **ui:** Default unmount dialog modal by @keiko233
+
+- **ui:** Replace padding to Box element by @keiko233
+
+- **ui:** Disable initial animetion for Expand component by @keiko233
+
+- **ui:** Add disabled overlay for MuiSwitch by @keiko233
+
+- **ui:** Fix BaseDialog content height err by @keiko233
+
+- **ui:** Pin MenuItem width by @keiko233
+
+- **ui:** Disbale MuiPaper override by @keiko233
+
+- **updater:** Invaild date issue by @greenhat616
+
+- **updater:** Fetch version.json from main branch (#968) by @aviraxp in [#968](https://github.com/libnyanpasu/clash-nyanpasu/pull/968)
+
+- **util:** Speed test should use desc order by @greenhat616
+
+- **webkit:** Border radius not apply on absolute layout by @keiko233
+
+- **window:** Show window when frontend mounted by @keiko233
+
+- **windows:** Window controller position by @keiko233
+
+- **windows:** Custom scheme call by @greenhat616
+
+- Disable migrate app dir feature in macos, linux by @greenhat616
+
+- Custom scheme url parser in webkit by @greenhat616
+
+- Try to fix read profile state again by @greenhat616
+
+- Add a key to try to solve read profile issue by @greenhat616
+
+- Log time issue, and close #1447 by @greenhat616
+
+- Disable core update check in linux by @greenhat616
+
+- Disable app updater for linux expect AppImage by @greenhat616
+
+- Rm macos unsupport transparent by @greenhat616
+
+- Try to fix cross platform save win state issue by @greenhat616
+
+- Lint by @greenhat616
+
+- Lint by @greenhat616
+
+- Use open_that workaround for appimage by @greenhat616
+
+- React deps by @greenhat616
+
+- Check button issue by @greenhat616
+
+- Lint by @greenhat616
+
+- Profile runtime config button color by @greenhat616
+
+- Nsis build issue by @greenhat616
+
+- Exhaustive-deps lint by @greenhat616
+
+- Disable react complier lint until it fixes bug by @greenhat616
+
+- Add 172.16.0.0/12 system proxy passby on windows (#1405) by @Remonli in [#1405](https://github.com/libnyanpasu/clash-nyanpasu/pull/1405)
+
+- Use tauri client for asn request by @greenhat616
+
+- Proxies nodes list update issue, and close #1402 by @greenhat616
+
+- Lint by @greenhat616
+
+- Mutate core version while updater finished by @greenhat616
+
+- Updater replace issue, and close #1377 by @greenhat616
+
+- Script prepare gh token by @greenhat616
+
+- Lint by @greenhat616
+
+- Build by @greenhat616
+
+- Build by @greenhat616
+
+- Build by @greenhat616
+
+- Lint by @greenhat616
+
+- Lint by @greenhat616
+
+- Try to fix ts project import issue by @greenhat616
+
+- Ts project settings (#1394) by @greenhat616 in [#1394](https://github.com/libnyanpasu/clash-nyanpasu/pull/1394)
+
+- Ts project lint by @greenhat616
+
+- Correct the update order to ensure the script changes get applied by @greenhat616
+
+- Clash config select issue, and close #1303 by @greenhat616
+
+- Spawn orientation random updater id by @keiko233
+
+- Throw single instance create error by @greenhat616
+
+- Connection page lazy loading by @greenhat616
+
+- Config detect, and close #1305 by @greenhat616
+
+- Quick import submit when enter press by @greenhat616
+
+- Icon loader should not lazy by @greenhat616
+
+- Icon lazy image by @greenhat616
+
+- Show a error dialog while check latest cores error, and close #1302 by @greenhat616
+
+- Issues by @greenhat616
+
+- Marquee by @greenhat616
+
+- No need retry while os error 232 by @greenhat616
+
+- Not save clash overrides config, close #1295 by @greenhat616
+
+- Fix broken pipe causing too many logs #637 by @4o3F
+
+- Fix tray not able to reset by @4o3F
+
+- Update sysproxy-rs to support KDE by @4o3F
+
+- Fix url scheme issue #902 by @4o3F
+
+- Use window open counter to prevent double-click opening the window immediately by @greenhat616
+
+- Should update match by @greenhat616
+
+- Make profile yaml file to be formatted by serde yaml by @greenhat616
+
+- Update config while patch profile scoped chain by @greenhat616
+
+- Lint by @greenhat616
+
+- Lint by @greenhat616
+
+- Lint by @greenhat616
+
+- Clash rs core switch by @greenhat616
+
+- Patch profile chains by @greenhat616
+
+- Patch profile chains by @greenhat616
+
+- Lint by @greenhat616
+
+- Ignore deleteConnection error while applying new profile by @greenhat616
+
+- Make port strategy check better by @greenhat616
+
+- No exit code on unix platform by @greenhat616
+
+- Try to solve the migration failed issue by @greenhat616
+
+- Lint by @greenhat616
+
+- Ui service control and updater path by @greenhat616
+
+- Cleanup codes by @greenhat616
+
+- Lint by @greenhat616
+
+- Lint by @greenhat616
+
+- Skip migration while home dir is not exist, and close #1235 by @greenhat616
+
+- Skip migration while home dir is not exist, and close #1235 by @greenhat616
+
+- Lint by @greenhat616
+
+- Should create data dir and config dir when fetch it if not exist by @greenhat616
+
+- Styles by @greenhat616
+
+- Lint by @greenhat616
+
+- Migration panic by @greenhat616
+
+- Migrate all upcoming migrations while pending by @greenhat616
+
+- Migration missing dirs touch by @keiko233
+
+- Left container scrollbar gutter (#1225) by @fu050409 in [#1225](https://github.com/libnyanpasu/clash-nyanpasu/pull/1225)
+
+- Add quote prefix, and solve the undefined issue by @greenhat616
+
+- Drawer resize panel style by @keiko233
+
+- Lint by @greenhat616
+
+- Lint by @greenhat616
+
+- Build by @keiko233
+
+- Build by @keiko233
+
+- Missing export by @keiko233
+
+- Lint in linux by @greenhat616
+
+- Enhance process panic while profiles is empty by @greenhat616
+
+- Fmt by @greenhat616
+
+- Log path by @greenhat616
+
+- Use webview2-com-bridge to solve ra crash issue by @greenhat616
+
+- Lint by @greenhat616
+
+- Minor issues (#884) by @greenhat616 in [#884](https://github.com/libnyanpasu/clash-nyanpasu/pull/884)
+
+- Ci by @greenhat616
+
+- Lint by @greenhat616
+
+- Vite plugin monaco editor overrides by @greenhat616
+
+- Fix issue #776 by @4o3F
+
+- Mac x64 use mihomo compatible core (#773) by @Sakurasan
+
+- Lint by @keiko233
+
+- Change storage_db name by @4o3F
+
+- Fix database creation issue by @4o3F
+
+### 📚 Documentation
+
+- **readme:** Add nyanpasu 1.6.0 label by @keiko233
+
+- **readme:** Fix resource path err by @keiko233
+
+- Fix dev build shields card link err by @keiko233
+
+- Update screenshot & clean up docs by @keiko233
+
+### 🔨 Refactor
+
+- **chains:** Use bitflags instead of custom support struct by @greenhat616
+
+- **connections:** Drop mui/x-data-grid & use material-react-table by @keiko233
+
+- **core:** Use new core manager from nyanpasu utils to prepare for new nyanpasu service by @greenhat616
+
+- **custom-scheme:** Use nonblocking io and create window if window is not exist by @greenhat616
+
+- **dashboard:** Split health panel by @keiko233
+
+- **dirs:** Split home_dir into config_dir and data_dir by @greenhat616
+
+- **drawer:** Use react-split-grid replace react-resizable-panels by @keiko233
+
+- **frontend:** Make monorepo by @keiko233
+
+- **hook:** Use-breakpoint hook with react-use by @keiko233
+
+- **hook:** Optimize useBreakpoint hook to reduce unnecessary updates by @keiko233
+
+- **hotkeys:** First draft hotkeys setting dialog by @greenhat616
+
+- **interface!:** Increase code readability by @keiko233
+
+- **interface/service:** Tauri interface writing by @keiko233
+
+- **layout:** New layout design by @keiko233
+
+- **nsis:** Use nsis's built-in com plugin instead of ApplicationID plugin (#9606) by @amrbashir
+
+- **profiles:** Chians component by @keiko233
+
+- **proxies:** Drop memo use effert to update by @keiko233
+
+- **proxies:** Delay button using tailwind css and memo by @keiko233
+
+- **script:** Manifest generator script by @keiko233
+
+- **script:** Resource check script by @keiko233
+
+- **service:** Add new service backend support by @greenhat616
+
+- **theme:** Migrating to CSS theme variables by @keiko233
+
+- **ui:** Drop mui dialog & use redix-ui with framer motion by @keiko233
+
+- **updater:** Support speedtest and updater concurrency by @greenhat616
+
+- Drop async component use react suspense by @keiko233
+
+- Proxies page use new interface by @keiko233
+
+- Refactor rocksdb into redb, this should solve #452 by @4o3F in [#755](https://github.com/libnyanpasu/clash-nyanpasu/pull/755)
+
+- Refactor rocksdb into redb, this should fix #452 by @4o3F
+
+---
+
+## New Contributors
+
+- @Remonli made their first contribution in [#1405](https://github.com/libnyanpasu/clash-nyanpasu/pull/1405)
+- @fu050409 made their first contribution in [#1225](https://github.com/libnyanpasu/clash-nyanpasu/pull/1225)
+- @NalCol made their first contribution in [#999](https://github.com/libnyanpasu/clash-nyanpasu/pull/999)
+- @aviraxp made their first contribution in [#968](https://github.com/libnyanpasu/clash-nyanpasu/pull/968)
+- @amrbashir made their first contribution
+- @Sakurasan made their first contribution
+
+**Full Changelog**: https://github.com/libnyanpasu/clash-nyanpasu/compare/v1.5.1...v1.6.0
+
 ## [1.5.1] - 2024-04-08
 
 ### ✨ Features

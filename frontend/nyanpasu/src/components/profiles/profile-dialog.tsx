@@ -293,7 +293,7 @@ export const ProfileDialog = ({
     >
       {isEdit ? (
         <div className="flex h-full">
-          <div className="min-w-72 overflow-auto pb-4 pt-4">{MetaInfo}</div>
+          <div className="min-w-72 overflow-auto p-4">{MetaInfo}</div>
 
           <Divider orientation="vertical" />
 

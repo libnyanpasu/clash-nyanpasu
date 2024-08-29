@@ -1,7 +1,7 @@
 import { useSize } from "ahooks";
 import clsx from "clsx";
 import { useAtom } from "jotai";
-import { useCallback, useEffect, useRef } from "react";
+import { CSSProperties, useCallback, useEffect, useRef } from "react";
 import { atomIsDrawerOnlyIcon } from "@/store";
 import getSystem from "@/utils/get-system";
 import { languageQuirks } from "@/utils/language";
@@ -10,7 +10,13 @@ import { useNyanpasu } from "@nyanpasu/interface";
 import AnimatedLogo from "../layout/animated-logo";
 import RouteListItem from "./modules/route-list-item";
 
-export const DrawerContent = ({ className }: { className?: string }) => {
+export const DrawerContent = ({
+  className,
+  style,
+}: {
+  className?: string;
+  style?: CSSProperties;
+}) => {
   const [onlyIcon, setOnlyIcon] = useAtom(atomIsDrawerOnlyIcon);
 
   const { nyanpasuConfig } = useNyanpasu();
@@ -58,6 +64,7 @@ export const DrawerContent = ({ className }: { className?: string }) => {
       )}
       style={{
         backgroundColor: "var(--background-color-alpha)",
+        ...style,
       }}
       data-windrag
     >

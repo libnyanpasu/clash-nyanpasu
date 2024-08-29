@@ -117,9 +117,15 @@ export const BaseDialog = ({
         <Portal.Root className="fixed left-0 top-0 z-50 h-dvh w-full">
           {!full && (
             <motion.div
-              className="absolute inset-0 z-50 backdrop-blur-xl"
+              className={cn(
+                "absolute inset-0 z-50",
+                OS === "linux" ? "bg-black/50" : "backdrop-blur-xl",
+              )}
               style={{
-                backgroundColor: alpha(palette.primary[palette.mode], 0.1),
+                backgroundColor:
+                  OS === "linux"
+                    ? undefined
+                    : alpha(palette.primary[palette.mode], 0.1),
               }}
               animate={open ? "open" : "closed"}
               initial={{ opacity: 0 }}

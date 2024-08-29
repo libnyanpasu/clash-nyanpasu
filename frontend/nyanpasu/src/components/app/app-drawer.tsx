@@ -3,9 +3,19 @@ import { useState } from "react";
 import { classNames } from "@/utils";
 import getSystem from "@/utils/get-system";
 import { MenuOpen } from "@mui/icons-material";
-import { alpha, Backdrop, IconButton, useTheme } from "@mui/material";
+import {
+  alpha,
+  Backdrop,
+  darken,
+  IconButton,
+  lighten,
+  useTheme,
+} from "@mui/material";
+import { cn } from "@nyanpasu/ui";
 import AnimatedLogo from "../layout/animated-logo";
 import DrawerContent from "./drawer-content";
+
+const OS = getSystem();
 
 export const AppDrawer = () => {
   const { palette } = useTheme();
@@ -17,7 +27,7 @@ export const AppDrawer = () => {
       <div
         className={classNames(
           "fixed z-10 flex items-center gap-2",
-          getSystem() === "macos" ? "left-24 top-3" : "left-4 top-1.5",
+          OS === "macos" ? "left-24 top-3" : "left-4 top-1.5",
         )}
         data-windrag
       >
@@ -48,9 +58,12 @@ export const AppDrawer = () => {
       <DrawerTitle />
 
       <Backdrop
-        className="z-20 backdrop-blur-xl"
+        className={cn("z-20", OS !== "linux" && "backdrop-blur-xl")}
         sx={{
-          backgroundColor: alpha(palette.primary[palette.mode], 0.1),
+          backgroundColor:
+            OS === "linux"
+              ? undefined
+              : alpha(palette.primary[palette.mode], 0.1),
         }}
         open={open}
         onClick={() => setOpen(false)}
@@ -72,7 +85,17 @@ export const AppDrawer = () => {
                 type: "tween",
               }}
             >
-              <DrawerContent className="max-w-64" />
+              <DrawerContent
+                className="max-w-64"
+                style={{
+                  backgroundColor:
+                    OS === "linux"
+                      ? palette.mode === "light"
+                        ? lighten(palette.primary[palette.mode], 0.9)
+                        : darken(palette.primary[palette.mode], 0.7)
+                      : undefined,
+                }}
+              />
             </motion.div>
           </div>
         </AnimatePresence>

@@ -23,6 +23,8 @@ const devtools = () => {
   };
 };
 
+const IS_NIGHTLY = process.env.NIGHTLY?.toLowerCase() === "true";
+
 // https://vitejs.dev/config/
 export default defineConfig(({ command }) => {
   const isDev = command === "serve";
@@ -81,7 +83,7 @@ export default defineConfig(({ command }) => {
     },
     esbuild: {
       drop: isDev ? undefined : ["debugger"],
-      pure: isDev ? [] : ["console.log"],
+      pure: isDev || IS_NIGHTLY ? [] : ["console.log"],
     },
     build: {
       outDir: "dist",

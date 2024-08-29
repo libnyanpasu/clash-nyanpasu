@@ -1,6 +1,13 @@
 import { version } from "~/package.json";
-import { useAsyncEffect, useReactive } from "ahooks";
-import { createContext, use, useEffect, useRef, useState } from "react";
+import { useAsyncEffect } from "ahooks";
+import {
+  createContext,
+  use,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Controller,
   SelectElement,
@@ -124,7 +131,7 @@ export const ProfileDialog = ({
 
   const profileMonacoViewRef = useRef<ProfileMonacoViewRef>(null);
 
-  const editor = useReactive({
+  const [editor, setEditor] = useState({
     value: "",
     language: "yaml",
   });
@@ -137,121 +144,127 @@ export const ProfileDialog = ({
     full: true,
   };
 
-  const MetaInfo = ({ className }: { className?: string }) => (
-    <div className={classNames("flex flex-col gap-4 pb-2 pt-2", className)}>
-      {!isEdit && (
-        <SelectElement
-          label={t("Type")}
-          name="type"
+  const MetaInfo = useMemo(
+    () => (
+      <div className="flex flex-col gap-4 pb-2 pt-2">
+        {!isEdit && (
+          <SelectElement
+            label={t("Type")}
+            name="type"
+            control={control}
+            {...commonProps}
+            size="small"
+            required
+            options={[
+              {
+                id: "remote",
+                label: t("Remote Profile"),
+              },
+              {
+                id: "local",
+                label: t("Local Profile"),
+              },
+            ]}
+          />
+        )}
+
+        <TextFieldElement
+          label={t("Name")}
+          name="name"
+          control={control}
+          size="small"
+          fullWidth
+          required
+        />
+
+        <TextFieldElement
+          label={t("Descriptions")}
+          name="desc"
           control={control}
           {...commonProps}
           size="small"
-          required
-          options={[
-            {
-              id: "remote",
-              label: t("Remote Profile"),
-            },
-            {
-              id: "local",
-              label: t("Local Profile"),
-            },
-          ]}
+          multiline
         />
-      )}
 
-      <TextFieldElement
-        label={t("Name")}
-        name="name"
-        control={control}
-        size="small"
-        fullWidth
-        required
-      />
+        {isRemote && (
+          <>
+            <TextFieldElement
+              label={t("Subscription URL")}
+              name="url"
+              control={control}
+              {...commonProps}
+              size="small"
+              multiline
+              required
+            />
 
-      <TextFieldElement
-        label={t("Descriptions")}
-        name="desc"
-        control={control}
-        {...commonProps}
-        size="small"
-        multiline
-      />
+            <TextFieldElement
+              label="User Agent"
+              name="option.user_agent"
+              control={control}
+              {...commonProps}
+              size="small"
+              placeholder={`clash-nyanpasu/v${version}`}
+            />
 
-      {isRemote && (
-        <>
-          <TextFieldElement
-            label={t("Subscription URL")}
-            name="url"
-            control={control}
-            {...commonProps}
-            size="small"
-            multiline
-            required
-          />
+            <TextFieldElement
+              label={t("Update Interval")}
+              name="option.update_interval"
+              control={control}
+              {...commonProps}
+              size="small"
+              type="number"
+              InputProps={{
+                inputProps: { min: 0 },
+                endAdornment: (
+                  <InputAdornment position="end">mins</InputAdornment>
+                ),
+              }}
+            />
 
-          <TextFieldElement
-            label="User Agent"
-            name="option.user_agent"
-            control={control}
-            {...commonProps}
-            size="small"
-            placeholder={`clash-nyanpasu/v${version}`}
-          />
+            <Controller
+              name="option.with_proxy"
+              control={control}
+              render={({ field }) => (
+                <LabelSwitch
+                  label={t("Use System Proxy")}
+                  checked={field.value}
+                  {...field}
+                />
+              )}
+            />
 
-          <TextFieldElement
-            label={t("Update Interval")}
-            name="option.update_interval"
-            control={control}
-            {...commonProps}
-            size="small"
-            type="number"
-            InputProps={{
-              inputProps: { min: 0 },
-              endAdornment: (
-                <InputAdornment position="end">mins</InputAdornment>
-              ),
-            }}
-          />
+            <Controller
+              name="option.self_proxy"
+              control={control}
+              render={({ field }) => (
+                <LabelSwitch
+                  label={t("Use Clash Proxy")}
+                  checked={field.value}
+                  {...field}
+                />
+              )}
+            />
+          </>
+        )}
+        {!isRemote && !isEdit && (
+          <>
+            <ReadProfile
+              key="read_profile"
+              onSelected={handleProfileSelected}
+            />
 
-          <Controller
-            name="option.with_proxy"
-            control={control}
-            render={({ field }) => (
-              <LabelSwitch
-                label={t("Use System Proxy")}
-                checked={field.value}
-                {...field}
-              />
+            {localProfileMessage && (
+              <div className="ml-2 text-red-500">{localProfileMessage}</div>
             )}
-          />
-
-          <Controller
-            name="option.self_proxy"
-            control={control}
-            render={({ field }) => (
-              <LabelSwitch
-                label={t("Use Clash Proxy")}
-                checked={field.value}
-                {...field}
-              />
-            )}
-          />
-        </>
-      )}
-      {!isRemote && !isEdit && (
-        <>
-          <ReadProfile key="read_profile" onSelected={handleProfileSelected} />
-
-          {localProfileMessage && (
-            <div className="ml-2 text-red-500">{localProfileMessage}</div>
-          )}
-          <span className="px-2 text-xs">
-            * {t("Select file to import or leave blank to touch new one.")}
-          </span>
-        </>
-      )}
-    </div>
+            <span className="px-2 text-xs">
+              * {t("Select file to import or leave blank to touch new one.")}
+            </span>
+          </>
+        )}
+      </div>
+    ),
+    [commonProps, control, isEdit, isRemote, localProfileMessage, t],
   );
 
   useAsyncEffect(async () => {
@@ -260,7 +273,12 @@ export const ProfileDialog = ({
     }
 
     if (isEdit) {
-      editor.value = await getProfileFile(profile?.uid);
+      try {
+        const value = await getProfileFile(profile?.uid);
+        setEditor((editor) => ({ ...editor, value }));
+      } catch (error) {
+        console.error(error);
+      }
     }
   }, [open]);
 
@@ -275,9 +293,7 @@ export const ProfileDialog = ({
     >
       {isEdit ? (
         <div className="flex h-full">
-          <div className="min-w-72 overflow-auto pb-4 pt-4">
-            <MetaInfo className="pl-4 pr-4" />
-          </div>
+          <div className="min-w-72 overflow-auto pb-4 pt-4">{MetaInfo}</div>
 
           <Divider orientation="vertical" />
 
@@ -290,7 +306,7 @@ export const ProfileDialog = ({
           />
         </div>
       ) : (
-        <MetaInfo />
+        MetaInfo
       )}
     </BaseDialog>
   );

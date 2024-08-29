@@ -1,6 +1,7 @@
 import { useSize } from "ahooks";
 import clsx from "clsx";
 import { useAtom } from "jotai";
+import { merge } from "lodash-es";
 import { CSSProperties, useCallback, useEffect, useRef } from "react";
 import { atomIsDrawerOnlyIcon } from "@/store";
 import getSystem from "@/utils/get-system";
@@ -62,10 +63,12 @@ export const DrawerContent = ({
         "gap-4",
         className,
       )}
-      style={{
-        backgroundColor: "var(--background-color-alpha)",
-        ...style,
-      }}
+      style={merge(
+        {
+          backgroundColor: "var(--background-color-alpha)",
+        },
+        style,
+      )}
       data-windrag
     >
       <div className="mx-2 flex items-center justify-center gap-4">

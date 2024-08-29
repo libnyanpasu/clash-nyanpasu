@@ -1,6 +1,6 @@
 {
   "name": "@nyanpasu/monorepo",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "repository": "https://github.com/LibNyanpasu/clash-nyanpasu.git",
   "license": "GPL-3.0",
   "type": "module",

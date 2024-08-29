@@ -2,9 +2,9 @@
 import { existsSync } from "fs";
 import path from "path";
 import { mkdirp } from "fs-extra";
-import { array2text } from "utils";
 import { getOctokit } from "@actions/github";
 import { version } from "../package.json";
+import { array2text } from "./utils";
 import { downloadFile } from "./utils/download";
 import { TEMP_DIR } from "./utils/env";
 import { consola } from "./utils/logger";

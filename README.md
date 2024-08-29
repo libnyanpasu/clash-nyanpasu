@@ -1,41 +1,28 @@
 <h1 align="center">
-  <img src="./frontend/nyanpasu/src/assets/image/logo.png" alt="Clash" width="128" />
-  <br>
-  Clash Nyanpasu
-  <br>
+  <img src="https://nyanpasu.elaina.moe/images/banner/nyanpasu_banner.png" alt="Clash Nyanpasu Banner" />
 </h1>
 
-<h3 align="center">
-A <a href="https://github.com/Dreamacro/clash">Clash</a> GUI based on <a href="https://github.com/tauri-apps/tauri">tauri</a>.
+<h3>Clash Nyanpasu</h3>
+
+<h3>
+  A <a href="https://github.com/Dreamacro/clash">Clash</a> GUI based on <a href="https://github.com/tauri-apps/tauri">tauri</a>.
 </h3>
 
-<p align="center">
+<p>
   <a href="https://github.com/LibNyanpasu/clash-nyanpasu/releases/latest"><img src="https://img.shields.io/github/v/release/LibNyanpasu/clash-nyanpasu?style=flat-square" alt="Nyanpasu Release" /></a>
   <a href="https://github.com/LibNyanpasu/clash-nyanpasu/releases/pre-release"><img src="https://img.shields.io/github/actions/workflow/status/LibNyanpasu/clash-nyanpasu/target-dev-build.yaml?style=flat-square" alt="Dev Build Status" /></a>
   <a href="https://github.com/LibNyanpasu/clash-nyanpasu/stargazers"><img src="https://img.shields.io/github/stars/LibNyanpasu/clash-nyanpasu?style=flat-square" alt="Nyanpasu stars" /></a>
   <a href="https://github.com/LibNyanpasu/clash-nyanpasu/releases/latest"><img src="https://img.shields.io/github/downloads/LibNyanpasu/clash-nyanpasu/total?style=flat-square" alt="GitHub Downloads (all assets, all releases)" /></a>
   <a href="https://github.com/LibNyanpasu/clash-nyanpasu/blob/main/LICENSE"><img src="https://img.shields.io/github/license/LibNyanpasu/clash-nyanpasu?style=flat-square" alt="Nyanpasu License" /></a>
-</p>
-
-<p align="center">
   <a href="https://twitter.com/ClashNyanpasu"><img src="https://img.shields.io/twitter/follow/ClashNyanpasu?style=flat-square" alt="Nyanpasu Twitter" /></a>
 </p>
 
-## Nyanpasu 1.6.0
-
-Hey there! Guess what? Clash Nyanpasu 1.6.0 is getting a makeover! (▰˘◡˘▰) We're diving into some serious development work, revamping loads of stuff. Think brand-spanking-new Material You UI design, service mode on all platforms, and supercharged scripting powers!
-
-But wait, there's more! We're not just sprucing things up on the surface. Nope, we're also giving the codebase a good scrub, adding tons of comments and organizing things to make it extra cozy for developers.
-
-Exciting, right? (ᗒᗨᗕ)/ Follow [this link](https://t.me/keikolog) to stay in the loop with the latest developments. Nyanpasu can't wait to grow and glow with all of you! ε٩(๑> ₃ <)۶з
-
 ## Features
 
-- Full `clash` config supported, Partial `clash premium` config supported.
-- Built-in support [Clash.Meta](https://github.com/MetaCubeX/mihomo) core & [ClashRs](https://github.com/Watfaq/clash-rs) core.
-- Profiles management and enhancement (by yaml and Javascript). [Doc](https://nyanpasu.elaina.moe/tutorial/proxy-chain.html)
-- Material You Design UI and amimation support.
-- System proxy setting and guard.
+- Built-in support [Clash Premium](https://github.com/Dreamacro/clash), [Clash.Meta](https://github.com/MetaCubeX/mihomo) & [Clash-Rust](https://github.com/Watfaq/clash-rs).
+- Profiles management and enhancement (by yaml, JavaScript & Lua). [Doc](https://nyanpasu.elaina.moe/tutorial/proxy-chain.html)
+- Provider management support.
+- Google Material You Design UI and amimation support.
 
 ## Preview
 

@@ -8,7 +8,10 @@ on:
         required: true
         type: boolean
         default: false
-
+      release_body:
+        description: "Release Body"
+        required: false
+        type: string
   workflow_call:
     inputs:
       nightly:
@@ -16,17 +19,23 @@ on:
         required: true
         type: boolean
         default: false
+      release_body:
+        description: "Release Body"
+        required: false
+        type: string
 
 jobs:
   updater:
-    name: Update Nightly Updater
+    name: Update Updater
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-tags: true # Fetch all tags
-
+          ref: ${{ github.ref }}
+          # blocked by https://github.com/actions/checkout/issues/1467
+      - name: Fetch git tags
+        run: git fetch --tags
       - name: Install Node latest
         uses: actions/setup-node@v4
         with:
@@ -40,15 +49,15 @@ jobs:
       - name: Pnpm install
         run: pnpm i
 
-      - name: Update Updater
+      - name: Update Nightly Updater
         if: ${{ inputs.nightly == true }}
         run: pnpm updater:nightly
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Release updater file
+      - name: Update Stable Updater
         if: ${{ inputs.nightly == false }}
         run: pnpm updater
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_BODY: ${{ github.event.release.body }}
+          RELEASE_BODY: ${{ inputs.release_body || github.event.release.body }}

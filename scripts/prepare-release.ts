@@ -29,7 +29,7 @@ async function main() {
 
   consola.debug("Write tauri version to tauri.conf.json");
   await fs.writeJSON(TAURI_APP_CONF, tauriConf, { spaces: 2 });
-  consola.debug("tauri.nightly.conf.json updated");
+  consola.debug("tauri.conf.json updated");
 
   consola.debug("package.json updated");
 }

@@ -74,10 +74,9 @@ jobs:
           pnpm i
           pnpm check
 
-      - name: Nightly Prepare (Windows NSIS and Portable)
-        if: ${{ inputs.nightly == true }}
-        run: |
-          pnpm prepare:nightly --nsis
+      - name: Prepare (Windows NSIS and Portable)
+        run: ${{ inputs.nightly == true && 'pnpm prepare:nightly --nsis' || 'pnpm prepare:release --nsis' }}
+
       - name: Build UI
         run: |
           pnpm -F ui build

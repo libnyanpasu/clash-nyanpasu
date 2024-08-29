@@ -2,6 +2,7 @@
 import { existsSync } from "fs";
 import path from "path";
 import { mkdirp } from "fs-extra";
+import { array2text } from "utils";
 import { getOctokit } from "@actions/github";
 import { version } from "../package.json";
 import { downloadFile } from "./utils/download";
@@ -110,17 +111,13 @@ const repoinfo = {
   if (!nightlyBuild) {
     consola.start("Staring upload tasks (release)");
 
-    await client.sendFile(TELEGRAM_TO, {
-      file: reourceMappping,
-      forceDocument: true,
-      caption: [
+    await client.sendMessage(TELEGRAM_TO, {
+      message: array2text([
         `Clash Nyanpasu ${version} Released!`,
         "",
         "Check out on GitHub:",
         ` - https://github.com/LibNyanpasu/clash-nyanpasu/releases/tag/v${version}`,
-      ],
-      workers: 16,
-      progressCallback: (progress) => consola.start(`Uploading ${progress}`),
+      ]),
     });
 
     consola.success("Upload finished (release)");

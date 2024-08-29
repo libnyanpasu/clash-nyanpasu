@@ -1,0 +1,61 @@
+name: "[Entire] Build Release Version"
+
+on:
+  release:
+    types: [published]
+
+env:
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: short
+
+jobs:
+  windows_build:
+    name: Windows Build
+    uses: ./.github/workflows/deps-build-windows-nsis.yaml
+    with:
+      portable: true
+      nightly: false
+      tag: ${{ github.event.release.tag_name }}
+    secrets: inherit
+
+  linux_build:
+    name: Linux Build
+    uses: ./.github/workflows/deps-build-linux.yaml
+    with:
+      nightly: false
+      tag: ${{ github.event.release.tag_name }}
+    secrets: inherit
+
+  macos_amd64_build:
+    name: macOS amd64 Build
+    uses: ./.github/workflows/deps-build-macos.yaml
+    with:
+      nightly: false
+      aarch64: false
+      tag: ${{ github.event.release.tag_name }}
+    secrets: inherit
+
+  macos_aarch64_build:
+    name: macOS aarch64 Build
+    uses: ./.github/workflows/deps-build-macos.yaml
+    with:
+      nightly: false
+      aarch64: true
+      tag: ${{ github.event.release.tag_name }}
+    secrets: inherit
+
+  updater:
+    name: Create Updater
+    uses: ./.github/workflows/deps-create-updater.yaml
+    needs: [windows_build, linux_build, macos_amd64_build, macos_aarch64_build]
+    with:
+      nightly: false
+
+  telegram:
+    name: Send Release Message to Telegram
+    if: startsWith(github.repository, 'LibNyanpasu')
+    needs: [windows_build, linux_build, macos_amd64_build, macos_aarch64_build]
+    uses: ./.github/workflows/deps-message-telegram.yaml
+    with:
+      nightly: false
+    secrets: inherit

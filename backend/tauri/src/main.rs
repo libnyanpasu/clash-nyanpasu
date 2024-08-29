@@ -296,6 +296,10 @@ fn main() -> std::io::Result<()> {
                         // log::info!(target: "app", "window close requested");
                         reset_window_open_counter();
                         let _ = resolve::save_window_state(app_handle, true);
+                        #[cfg(target_os = "macos")]
+                        unsafe {
+                            crate::utils::dock::macos::hide_dock_icon();
+                        }
                     }
                     tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
                         // log::info!(target: "app", "window moved or resized");

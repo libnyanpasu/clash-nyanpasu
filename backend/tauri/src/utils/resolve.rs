@@ -88,6 +88,10 @@ pub fn resolve_setup(app: &mut App) {
     app.listen_global("react_app_mounted", move |_| {
         tracing::debug!("Frontend React App is mounted, reset open window counter");
         reset_window_open_counter();
+        #[cfg(target_os = "macos")]
+        unsafe {
+            crate::utils::dock::macos::show_dock_icon();
+        }
     });
 
     handle::Handle::global().init(app.app_handle());

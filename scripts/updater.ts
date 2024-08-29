@@ -35,9 +35,16 @@ async function resolveUpdater() {
     tag: tag.name,
   });
 
+  let updateLog: string | null = null;
+  try {
+    updateLog = await resolveUpdateLog(tag.name);
+  } catch (err) {
+    consola.error(err);
+  }
+
   const updateData = {
     name: tag.name,
-    notes: UPDATE_RELEASE_BODY || (await resolveUpdateLog(tag.name)), // use updatelog.md
+    notes: UPDATE_RELEASE_BODY || updateLog || latestRelease.body,
     pub_date: new Date().toISOString(),
     platforms: {
       win64: { signature: "", url: "" }, // compatible with older formats

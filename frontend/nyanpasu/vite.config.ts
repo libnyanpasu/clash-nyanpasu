@@ -73,6 +73,7 @@ export default defineConfig(({ command }) => {
     ],
     resolve: {
       alias: {
+        "@repo": path.resolve("../../"),
         "@nyanpasu/ui": path.resolve("../ui/src"),
         "@nyanpasu/interface": path.resolve("../interface/src"),
       },

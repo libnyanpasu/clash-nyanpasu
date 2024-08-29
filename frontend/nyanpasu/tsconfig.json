@@ -17,6 +17,7 @@
     "jsx": "preserve",
     "composite": true,
     "paths": {
+      "@root/*": ["../../*"],
       "@/*": ["./src/*"],
       "~/*": ["./*"],
     },

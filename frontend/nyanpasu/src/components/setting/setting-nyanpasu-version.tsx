@@ -1,4 +1,3 @@
-import { version } from "~/package.json";
 import { useLockFn } from "ahooks";
 import { useSetAtom } from "jotai";
 import { useState } from "react";
@@ -20,6 +19,7 @@ import {
 } from "@mui/material";
 import { useNyanpasu } from "@nyanpasu/interface";
 import { BaseCard } from "@nyanpasu/ui";
+import { version } from "@root/package.json";
 import { checkUpdate } from "@tauri-apps/api/updater";
 import { LabelSwitch } from "./modules/clash-field";
 

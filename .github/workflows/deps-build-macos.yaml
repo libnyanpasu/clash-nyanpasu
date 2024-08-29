@@ -117,7 +117,7 @@ jobs:
           releaseDraft: false
           prerelease: true
           tauriScript: pnpm tauri
-          args: -f nightly -c ./backend/tauri/tauri.nightly.conf.json
+          args: ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json' || '-f default-meta -c ./backend/tauri/tauri.conf.json' }}
 
       - name: Tauri build with Upload (macOS aarch64)
         if: ${{ inputs.aarch64 == true }}
@@ -128,5 +128,5 @@ jobs:
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
         run: |
-          pnpm build:nightly --target aarch64-apple-darwin
+          ${{ inputs.nightly == true && 'pnpm build:nightly --target aarch64-apple-darwin' || 'pnpm build --target aarch64-apple-darwin' }}
           pnpm upload:osx-aarch64

@@ -1,10 +1,19 @@
+import dayjs from "dayjs";
 import { useAtomValue } from "jotai";
+import { isObject } from "lodash-es";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import useSWR from "swr";
 import { atomIsDrawer } from "@/store";
-import { alpha, CircularProgress, Paper, useTheme } from "@mui/material";
+import {
+  alpha,
+  CircularProgress,
+  Paper,
+  Tooltip,
+  useTheme,
+} from "@mui/material";
 import Grid from "@mui/material/Unstable_Grid2";
-import { useClash, useNyanpasu } from "@nyanpasu/interface";
+import { getCoreStatus, useNyanpasu } from "@nyanpasu/interface";
 
 export const ServiceShortcuts = () => {
   const { t } = useTranslation();
@@ -17,22 +26,23 @@ export const ServiceShortcuts = () => {
     getServiceStatus: { data: serviceStatus },
   } = useNyanpasu();
 
-  const {
-    getVersion: { data: coreVersion },
-  } = useClash();
+  const coreStatusSWR = useSWR("/coreStatus", getCoreStatus, {
+    refreshInterval: 2000,
+    revalidateOnFocus: false,
+  });
 
   const status = useMemo(() => {
     switch (serviceStatus) {
       case "running": {
         return {
-          label: "Running",
+          label: "running",
           color: alpha(palette.success[palette.mode], 0.3),
         };
       }
 
       case "stopped": {
         return {
-          label: "Stopped",
+          label: "stopped",
           color: alpha(palette.error[palette.mode], 0.3),
         };
       }
@@ -40,7 +50,7 @@ export const ServiceShortcuts = () => {
       default:
       case "not_installed": {
         return {
-          label: "Not Installed",
+          label: "not_installed",
           color:
             palette.mode == "light"
               ? palette.grey[100]
@@ -51,48 +61,57 @@ export const ServiceShortcuts = () => {
   }, [serviceStatus, palette]);
 
   const coreStatus = useMemo(() => {
-    if (coreVersion) {
-      if (serviceStatus == "running") {
-        return {
-          label: "Start by Service",
-          color: alpha(palette.success[palette.mode], 0.3),
-        };
-      } else {
-        return {
-          label: "Start by UI",
-          color: alpha(palette.success[palette.mode], 0.3),
-        };
-      }
-    } else {
+    const status = coreStatusSWR.data || [{ Stopped: "" }, 0, "normal"];
+    if (isObject(status[0]) && status[0].Stopped) {
+      const { Stopped } = status[0];
       return {
-        label: "Clash Core did not start",
-        color: alpha(palette.error.main, 0.3),
+        label: !!Stopped.trim()
+          ? t("stopped_reason", { reason: Stopped })
+          : t("stopped"),
+        color: alpha(palette.success[palette.mode], 0.3),
       };
     }
-  }, [coreVersion, serviceStatus, palette]);
+    return {
+      label: t("service_shortcuts.core_started_by", {
+        by: t(status[2] === "normal" ? "UI" : "service"),
+      }),
+      color: alpha(palette.success[palette.mode], 0.3),
+    };
+  }, [coreStatusSWR.data, palette.mode, palette.success, t]);
 
   return (
     <Grid sm={isDrawer ? 6 : 12} md={6} lg={4} xl={3}>
       <Paper className="flex !h-full flex-col justify-between gap-2 !rounded-3xl p-3">
         {serviceStatus ? (
           <>
-            <div className="text-center font-bold">Service Shortcuts</div>
+            <div className="text-center font-bold">
+              {t("service_shortcuts.title")}
+            </div>
 
             <div className="flex w-full flex-col gap-2">
               <div
-                className="flex w-full justify-center gap-2 rounded-2xl py-2"
+                className="flex w-full justify-center gap-[2px] rounded-2xl py-2"
                 style={{ backgroundColor: status.color }}
               >
-                <div>Service Status:</div>
-                <div>{status.label}</div>
+                <div>{t("service_shortcuts.service_status")}</div>
+                <div>{t(status.label)}</div>
               </div>
 
               <div
-                className="flex w-full justify-center gap-2 rounded-2xl py-2"
+                className="flex w-full justify-center gap-[2px] rounded-2xl py-2"
                 style={{ backgroundColor: coreStatus.color }}
               >
-                <div>Core Status:</div>
-                <div>{coreStatus.label}</div>
+                <div>{t("service_shortcuts.core_status")}</div>
+                <Tooltip
+                  title={
+                    !!coreStatusSWR.data?.[1] &&
+                    t("service_shortcuts.last_status_changed_since", {
+                      time: dayjs(coreStatusSWR.data[1]).fromNow(),
+                    })
+                  }
+                >
+                  <div>{coreStatus.label}</div>
+                </Tooltip>
               </div>
             </div>
           </>

@@ -177,5 +177,16 @@
     "close": "Ignore",
     "update": "Update Now",
     "go": "View on GitHub"
+  },
+  "not_install": "Not Installed",
+  "stopped": "Stopped",
+  "running": "Running",
+  "stopped_reason": "Stopped, Reason: {{reason}}",
+  "service_shortcuts": {
+    "title": "Service Shortcuts",
+    "core_status": "Core Status: ",
+    "service_status": "Service Status: ",
+    "core_started_by": "Started by {{by}}",
+    "last_status_changed_since": "Last status changed: {{time}}"
   }
 }

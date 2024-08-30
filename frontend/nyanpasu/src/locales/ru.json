@@ -160,5 +160,16 @@
     "close": "Закрыть",
     "update": "Обновить",
     "go": "Посмотреть на GitHub"
+  },
+  "not_install": "Не установлен",
+  "stopped": "Остановлен",
+  "running": "Запущен",
+  "stopped_reason": "Остановлен по причине: {{reason}}",
+  "service_shortcuts": {
+    "title": "Службы",
+    "core_status": "Статус ядра: ",
+    "service_status": "Статус службы: ",
+    "core_started_by": "Ядро запущено: ",
+    "last_status_changed_since": "Последнее изменение статуса: {{time}}"
   }
 }

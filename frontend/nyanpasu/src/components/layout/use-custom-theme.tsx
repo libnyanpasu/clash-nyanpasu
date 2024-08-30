@@ -42,18 +42,16 @@ export const useCustomTheme = () => {
   useWhyDidYouUpdate("useCustomTheme", { nyanpasuConfig, themeMode });
 
   const theme = useMemo(() => {
-    const mergedTheme = createMDYTheme(
-      mergeWith(
-        {},
-        defaultTheme,
-        nyanpasuConfig?.theme_setting,
-        (objValue, srcValue) => {
-          return srcValue === undefined || srcValue === ""
-            ? objValue
-            : srcValue;
-        },
-      ),
+    const config = mergeWith(
+      {},
+      defaultTheme,
+      nyanpasuConfig?.theme_setting || {},
+      (objValue, srcValue) => {
+        return !srcValue ? objValue : srcValue;
+      },
     );
+    console.log("merged theme config: ", config);
+    const mergedTheme = createMDYTheme(config);
 
     applyRootStyleVar(themeMode, mergedTheme);
 

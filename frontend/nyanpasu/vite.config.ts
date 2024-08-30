@@ -89,6 +89,7 @@ export default defineConfig(({ command }) => {
     build: {
       outDir: "dist",
       emptyOutDir: true,
+      sourcemap: isDev || IS_NIGHTLY ? "inline" : false,
     },
     define: {
       OS_PLATFORM: `"${process.platform}"`,

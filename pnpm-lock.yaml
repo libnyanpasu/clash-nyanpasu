@@ -288,8 +288,8 @@ importers:
         specifier: 2.2.5
         version: 2.2.5(react@19.0.0-rc-e948a5ac-20240807)
       virtua:
-        specifier: 0.34.1
-        version: 0.34.1(react-dom@19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807))(react@19.0.0-rc-e948a5ac-20240807)
+        specifier: 0.34.2
+        version: 0.34.2(react-dom@19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807))(react@19.0.0-rc-e948a5ac-20240807)
     devDependencies:
       '@csstools/normalize.css':
         specifier: 12.1.1
@@ -6557,8 +6557,8 @@ packages:
   vfile@6.0.1:
     resolution: {integrity: sha512-1bYqc7pt6NIADBJ98UiG0Bn/CHIVOoZ/IyEkqIruLg0mE1BKzkOXY2D6CSqQIcKqgadppE5lrxgWXJmXd7zZJw==}
 
-  virtua@0.34.1:
-    resolution: {integrity: sha512-8KrAoZboqvMdAjtaaODJQrsKNFhsf1mgGF1tmWRh5J0PTgeBCG9Mci/rep/YT3A7CbiTfdq+yThJ2SbatqZ+Ug==}
+  virtua@0.34.2:
+    resolution: {integrity: sha512-r43hQsryJRqVChrf6Go52rScyc89szl/IxFclOJRXF5qd6fv1Lzb68K51htI1NhtaPk+GQxuS2Gd21YL5ZGeDg==}
     peerDependencies:
       react: npm:react@rc
       react-dom: npm:react-dom@rc
@@ -13374,7 +13374,7 @@ snapshots:
       unist-util-stringify-position: 4.0.0
       vfile-message: 4.0.2
 
-  virtua@0.34.1(react-dom@19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807))(react@19.0.0-rc-e948a5ac-20240807):
+  virtua@0.34.2(react-dom@19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807))(react@19.0.0-rc-e948a5ac-20240807):
     optionalDependencies:
       react: 19.0.0-rc-e948a5ac-20240807
       react-dom: 19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807)

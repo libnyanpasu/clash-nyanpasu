@@ -71,7 +71,9 @@ jobs:
           deb [arch=armhf,arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security multiverse
           EOF | sudo tee /etc/apt/sources.list.d/arm64.list
           sudo apt update -y && sudo apt upgrade -y
-          sudo apt install libwebkit2gtk-4.0-dev:arm64 libgtk-3-dev:arm64 libappindicator3-dev:arm64 librsvg2-dev:arm64 patchelf:arm64 openssl:arm64 -y
+          apt-get install -y libncurses6:arm64 libtinfo6:arm64 linux-libc-dev:arm64 libncursesw6:arm64 libssl3:arm64 libcups2:arm64
+          apt-get install -y --no-install-recommends g++-aarch64-linux-gnu libc6-dev-arm64-cross libwebkit2gtk-4.0-dev:arm64 libgtk-3-dev:arm64 patchelf:arm64 librsvg2-dev:arm64 libayatana-appindicator3-dev:arm64
+
       - name: Setup x86_64 Toolchain
         if: ${{ inputs.aarch64 == false }}
         run: |
@@ -97,7 +99,7 @@ jobs:
       - name: Pnpm install deps and download resources
         run: |
           pnpm i
-          ${{ inputs.aarch64 == true && 'pnpm check --arch arm64 --sidecar-host aarch64-apple-darwin' || 'pnpm check' }}
+          ${{ inputs.aarch64 == true && 'pnpm check --arch arm64 --sidecar-host aarch64-unknown-linux-gnu' || 'pnpm check' }}
 
       - name: Nightly Prepare
         if: ${{ inputs.nightly == true }}
@@ -130,6 +132,12 @@ jobs:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
+          CXX_aarch64_unknown_linux_gnu: aarch64-linux-gnu-g++
+          PKG_CONFIG_PATH: /usr/lib/aarch64-linux-gnu/pkgconfig
+          PKG_CONFIG_ALLOW_CROSS: 1
+
         run: |
           ${{ inputs.nightly == true && 'pnpm build:nightly --target aarch64-unknown-linux-gnu -b "rpm,deb,updater"' || 'pnpm build --target aarch64-unknown-linux-gnu -b "rpm,deb,updater"' }}
           gh release upload ${{ inputs.tag }} ./backend/target/release/bundle/*.deb ./backend/target/release/bundle/*.rpm --clobber

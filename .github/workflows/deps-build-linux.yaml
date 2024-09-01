@@ -14,6 +14,12 @@ on:
         required: true
         type: string
 
+      aarch64:
+        description: "Build for aarch64"
+        required: false
+        type: boolean
+        default: false
+
   workflow_call:
     inputs:
       nightly:
@@ -27,9 +33,15 @@ on:
         required: true
         type: string
 
+      aarch64:
+        description: "Build for aarch64"
+        required: false
+        type: boolean
+        default: false
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04 # 需要手动升级到 24.04
 
     steps:
       - name: Checkout repository
@@ -40,6 +52,31 @@ jobs:
           rustup install stable --profile minimal --no-self-update
           rustup default stable
 
+      - name: Setup aarch64 Toolchain
+        if: ${{ inputs.aarch64 == true }}
+        run: |
+          rustup target add aarch64-unknown-linux-gnu 
+          sudo apt install gcc-aarch64-linux-gnu -y
+          sudo dpkg --add-architecture arm64 
+          cat <<EOF
+          deb [arch=armhf,arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted
+          deb [arch=armhf,arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted
+          deb [arch=armhf,arm64] http://ports.ubuntu.com/ubuntu-ports jammy universe
+          deb [arch=armhf,arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates universe
+          deb [arch=armhf,arm64] http://ports.ubuntu.com/ubuntu-ports jammy multiverse
+          deb [arch=armhf,arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates multiverse
+          deb [arch=armhf,arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse
+          deb [arch=armhf,arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted
+          deb [arch=armhf,arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security universe
+          deb [arch=armhf,arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security multiverse
+          EOF | sudo tee /etc/apt/sources.list.d/arm64.list
+          sudo apt update -y && sudo apt upgrade -y
+          sudo apt install libwebkit2gtk-4.0-dev:arm64 libgtk-3-dev:arm64 libappindicator3-dev:arm64 librsvg2-dev:arm64 patchelf:arm64 openssl:arm64 -y
+      - name: Setup x86_64 Toolchain
+        if: ${{ inputs.aarch64 == false }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev webkit2gtk-4.0 libappindicator3-dev librsvg2-dev patchelf openssl
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: "./backend/"
@@ -57,15 +94,10 @@ jobs:
         with:
           run_install: false
 
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev webkit2gtk-4.0 libappindicator3-dev librsvg2-dev patchelf openssl
-
       - name: Pnpm install deps and download resources
         run: |
           pnpm i
-          pnpm check
+          ${{ inputs.aarch64 == true && 'pnpm check --arch arm64 --sidecar-host aarch64-apple-darwin' || 'pnpm check' }}
 
       - name: Nightly Prepare
         if: ${{ inputs.nightly == true }}
@@ -76,6 +108,7 @@ jobs:
           pnpm -F ui build
       - name: Tauri build
         uses: tauri-apps/tauri-action@v0
+        if: ${{ inputs.aarch64 == false }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
@@ -89,6 +122,17 @@ jobs:
           prerelease: true
           tauriScript: pnpm tauri
           args: ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json' || '-f default-meta -c ./backend/tauri/tauri.conf.json' }}
+      - name: Tauri build and upload (aarch64)
+        if: ${{ inputs.aarch64 == true }}
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
+        run: |
+          ${{ inputs.nightly == true && 'pnpm build:nightly --target aarch64-unknown-linux-gnu -b "rpm,deb,updater"' || 'pnpm build --target aarch64-unknown-linux-gnu -b "rpm,deb,updater"' }}
+          gh release upload ${{ inputs.tag }} ./backend/target/release/bundle/*.deb ./backend/target/release/bundle/*.rpm --clobber
 
       - name: Calc the archive signature
         env:

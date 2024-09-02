@@ -431,8 +431,8 @@ importers:
         specifier: 5.1.0
         version: 5.1.0(typescript@5.5.4)
       vite-plugin-dts:
-        specifier: 4.0.3
-        version: 4.0.3(@types/node@22.5.2)(rollup@4.21.0)(typescript@5.5.4)(vite@5.4.2(@types/node@22.5.2)(less@4.2.0)(sass@1.77.8)(stylus@0.62.0))
+        specifier: 4.1.0
+        version: 4.1.0(@types/node@22.5.2)(rollup@4.21.0)(typescript@5.5.4)(vite@5.4.2(@types/node@22.5.2)(less@4.2.0)(sass@1.77.8)(stylus@0.62.0))
 
   scripts:
     dependencies:
@@ -6584,8 +6584,8 @@ packages:
       vue:
         optional: true
 
-  vite-plugin-dts@4.0.3:
-    resolution: {integrity: sha512-+xnTsaONwU2kV6zhRjtbRJSGN41uFR/whqmcb4k4fftLFDJElxthp0PP5Fq8gMeM9ytWMt1yk5gGgekLREWYQQ==}
+  vite-plugin-dts@4.1.0:
+    resolution: {integrity: sha512-sRlmt9k2q8MrX4F2058N3KmB6WyJ3Ao6QaExOv1X99F3j0GhPziEz1zscWQ1q2r1PeFc96L7GIUu8Pl2DPr2Hg==}
     engines: {node: ^14.18.0 || >=16.0.0}
     peerDependencies:
       typescript: '*'
@@ -13396,7 +13396,7 @@ snapshots:
       react: 19.0.0-rc-e948a5ac-20240807
       react-dom: 19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807)
 
-  vite-plugin-dts@4.0.3(@types/node@22.5.2)(rollup@4.21.0)(typescript@5.5.4)(vite@5.4.2(@types/node@22.5.2)(less@4.2.0)(sass@1.77.8)(stylus@0.62.0)):
+  vite-plugin-dts@4.1.0(@types/node@22.5.2)(rollup@4.21.0)(typescript@5.5.4)(vite@5.4.2(@types/node@22.5.2)(less@4.2.0)(sass@1.77.8)(stylus@0.62.0)):
     dependencies:
       '@microsoft/api-extractor': 7.47.4(@types/node@22.5.2)
       '@rollup/pluginutils': 5.1.0(rollup@4.21.0)

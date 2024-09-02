@@ -44,6 +44,6 @@
     "sass": "1.77.8",
     "tailwind-merge": "2.5.2",
     "typescript-plugin-css-modules": "5.1.0",
-    "vite-plugin-dts": "4.0.3"
+    "vite-plugin-dts": "4.1.0"
   }
 }

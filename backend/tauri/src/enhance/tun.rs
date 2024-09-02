@@ -46,6 +46,7 @@ pub fn use_tun(mut config: Mapping, enable: bool) -> Mapping {
         };
         if core == ClashCore::ClashRs {
             append!(tun_val, "device-id", "dev://utun1989");
+            append!(tun_val, "auto-route", true);
         } else {
             let mut tun_stack = {
                 *Config::verge()

@@ -59,8 +59,7 @@ jobs:
         run: |
           rustup target add aarch64-unknown-linux-gnu
           cargo binstall -y cross
-      - name: Setup x86_64 Toolchain
-        if: ${{ inputs.aarch64 == false }}
+      - name: Setup Toolchain
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev webkit2gtk-4.0 libappindicator3-dev librsvg2-dev patchelf openssl
@@ -124,15 +123,16 @@ jobs:
           PKG_CONFIG_ALLOW_CROSS: 1
         run: |
           ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target aarch64-unknown-linux-gnu -b "rpm,deb,updater"' || 'pnpm build -r cross --target aarch64-unknown-linux-gnu -b "rpm,deb,updater"' }}
-          gh release upload ${{ inputs.tag }} ./backend/target/**/release/bundle/*.deb ./backend/target/**/bundle/*.rpm --clobber
+          find ./backend/target \( -name "*.deb" -o -name "*.rpm" \) | while read file; do
+            gh release upload ${{ inputs.tag }} "$file" --clobber
+          done
 
       - name: Calc the archive signature
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG_NAME=${{ inputs.tag }}
-          BUNDLE_PATH=${{ inputs.aarch64 == true && './backend/target/aarch64-unknown-linux-gnu/release/bundle' || './backend/target/release/bundle' }}
-          find $BUNDLE_PATH \( -name "*.deb" -o -name "*.rpm" \) | while read file; do
+          find ./backend/target \( -name "*.deb" -o -name "*.rpm" \) | while read file; do
             sha_file="$file.sha256"
 
             if [[ ! -f "$sha_file" ]]; then

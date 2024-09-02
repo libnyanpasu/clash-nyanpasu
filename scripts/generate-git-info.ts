@@ -11,6 +11,7 @@ async function main() {
     },
   )
     .toString()
+    .replace(/'/g, "")
     .split(",");
 
   const summary = {

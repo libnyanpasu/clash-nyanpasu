@@ -44,6 +44,8 @@ const resourceFormats = [
   "amd64.deb",
   "x64.dmg",
   "aarch64.dmg",
+  "aarch64.rpm",
+  "arm64.deb",
 ];
 
 const isValidFormat = (fileName: string): boolean => {

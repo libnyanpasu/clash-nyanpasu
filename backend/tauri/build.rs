@@ -1,37 +1,69 @@
 use chrono::{DateTime, SecondsFormat, Utc};
 use rustc_version::version_meta;
 use serde::Deserialize;
-use std::{env, fs::read, process::Command};
+use std::{
+    env,
+    fs::{exists, read},
+    process::Command,
+};
 #[derive(Deserialize)]
 struct PackageJson {
     version: String, // we only need the version
 }
 
+#[derive(Deserialize)]
+struct TauriJson {
+    package: PackageJson,
+}
+
+#[derive(Deserialize)]
+struct GitInfo {
+    hash: String,
+    author: String,
+    time: String,
+}
+
 fn main() {
-    let mut pkg_json = read("../../package.json").unwrap();
-    let pkg_json: PackageJson = simd_json::from_slice(&mut pkg_json).unwrap();
-    let version = semver::Version::parse(pkg_json.version.as_str()).unwrap();
+    let mut pkg_json = read("./tauri.conf.json").unwrap();
+    let pkg_json: TauriJson = simd_json::from_slice(&mut pkg_json).unwrap();
+    let version = semver::Version::parse(pkg_json.package.version.as_str()).unwrap();
     let is_prerelase = !version.pre.is_empty();
-    println!("cargo:rustc-env=NYANPASU_VERSION={}", pkg_json.version);
+    println!(
+        "cargo:rustc-env=NYANPASU_VERSION={}",
+        pkg_json.package.version
+    );
     // Git Information
-    let output = Command::new("git")
-        .args([
-            "show",
-            "--pretty=format:'%H,%cn,%cI'",
-            "--no-patch",
-            "--no-notes",
-        ])
-        .output()
-        .unwrap();
-    let command_args: Vec<String> = String::from_utf8(output.stdout)
-        .unwrap()
-        .replace('\'', "")
-        .split(',')
-        .map(String::from)
-        .collect();
-    println!("cargo:rustc-env=COMMIT_HASH={}", command_args[0]);
-    println!("cargo:rustc-env=COMMIT_AUTHOR={}", command_args[1]);
-    let commit_date = DateTime::parse_from_rfc3339(command_args[2].as_str())
+    let (commit_hash, commit_author, commit_date) = if let Ok(true) = exists("./.tmp/git-info.json")
+    {
+        let mut git_info = read("./.tmp/git-info.json").unwrap();
+        let git_info: GitInfo = simd_json::from_slice(&mut git_info).unwrap();
+        (git_info.hash, git_info.author, git_info.time)
+    } else {
+        let output = Command::new("git")
+            .args([
+                "show",
+                "--pretty=format:'%H,%cn,%cI'",
+                "--no-patch",
+                "--no-notes",
+            ])
+            .output()
+            .expect("Failed to execute git command");
+        // println!("{}", String::from_utf8(output.stderr.clone()).unwrap());
+        let command_args: Vec<String> = String::from_utf8(output.stdout)
+            .unwrap()
+            .replace('\'', "")
+            .split(',')
+            .map(String::from)
+            .collect();
+        (
+            command_args[0].clone(),
+            command_args[1].clone(),
+            command_args[2].clone(),
+        )
+    };
+    println!("cargo:rustc-env=COMMIT_HASH={}", commit_hash);
+    println!("cargo:rustc-env=COMMIT_AUTHOR={}", commit_author);
+    let commit_date = DateTime::parse_from_rfc3339(&commit_date)
         .unwrap()
         .with_timezone(&Utc)
         .to_rfc3339_opts(SecondsFormat::Millis, true);

@@ -4,10 +4,10 @@
     "version": "1.6.0"
   },
   "build": {
-    "distDir": "../../frontend/nyanpasu/dist",
+    "distDir": "./.tmp/dist",
     "devPath": "http://localhost:3000/",
     "beforeDevCommand": "pnpm run web:dev",
-    "beforeBuildCommand": "pnpm run web:build"
+    "beforeBuildCommand": "pnpm run-p web:build generate:git-info && echo $(pwd) && rm -rf ./tauri/.tmp/dist && mv ../frontend/nyanpasu/dist ./tauri/.tmp/dist"
   },
   "tauri": {
     "systemTray": {

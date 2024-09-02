@@ -1273,6 +1273,7 @@ dependencies = [
  "objc",
  "once_cell",
  "open 5.3.0",
+ "openssl",
  "os_pipe",
  "oxc_allocator",
  "oxc_ast",

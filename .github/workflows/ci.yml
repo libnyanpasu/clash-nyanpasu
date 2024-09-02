@@ -75,7 +75,7 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Prepare fronend
-        run: pnpm -r build # Build frontend
+        run: pnpm -r build && mkdir -p ./backend/tauri/.tmp/dist # Build frontend
       - name: Prepare sidecar and resources
         run: pnpm check
       - name: Lint

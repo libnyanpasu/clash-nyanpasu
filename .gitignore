@@ -16,3 +16,5 @@ tauri.preview.conf.json
 .idea
 
 *.tsbuildinfo
+
+**/.tmp

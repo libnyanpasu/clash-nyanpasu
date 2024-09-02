@@ -27,13 +27,23 @@ jobs:
       tag: "pre-release"
     secrets: inherit
 
-  linux_build:
-    name: Linux Build
+  linux_amd64_build:
+    name: Linux amd64 Build
     uses: ./.github/workflows/deps-build-linux.yaml
     needs: [delete_current_releases]
     with:
       nightly: true
       tag: "pre-release"
+    secrets: inherit
+
+  linux_aarch64_build:
+    name: Linux aarch64 Build
+    uses: ./.github/workflows/deps-build-linux.yaml
+    needs: [delete_current_releases]
+    with:
+      nightly: true
+      tag: "pre-release"
+      aarch64: true
     secrets: inherit
 
   macos_amd64_build:
@@ -58,7 +68,14 @@ jobs:
 
   update_tag:
     name: Update tag
-    needs: [windows_build, linux_build, macos_amd64_build, macos_aarch64_build]
+    needs:
+      [
+        windows_build,
+        linux_amd64_build,
+        linux_aarch64_build,
+        macos_amd64_build,
+        macos_aarch64_build,
+      ]
     uses: ./.github/workflows/deps-update-tag.yaml
     with:
       tag: "pre-release"

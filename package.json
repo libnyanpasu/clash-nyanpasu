@@ -43,6 +43,7 @@
     "publish": "tsx scripts/publish.ts",
     "portable": "tsx scripts/portable.ts",
     "upload:osx-aarch64": "tsx scripts/osx-aarch64-upload.ts",
+    "generate:git-info": "tsx scripts/generate-git-info.ts",
     "generate:manifest": "run-p generate:manifest:*",
     "generate:manifest:latest-version": "tsx scripts/generate-latest-version.ts",
     "prepare": "husky",

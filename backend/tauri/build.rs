@@ -24,14 +24,18 @@ struct GitInfo {
 }
 
 fn main() {
-    let mut pkg_json = read("./tauri.conf.json").unwrap();
-    let pkg_json: TauriJson = simd_json::from_slice(&mut pkg_json).unwrap();
-    let version = semver::Version::parse(pkg_json.package.version.as_str()).unwrap();
+    let version: String = if let Ok(true) = exists("../../package.json") {
+        let mut raw = read("../../package.json").unwrap();
+        let pkg_json: PackageJson = simd_json::from_slice(&mut raw).unwrap();
+        pkg_json.version
+    } else {
+        let mut raw = read("./tauri.conf.json").unwrap(); // TODO: fix it when windows arm64 need it
+        let tauri_json: TauriJson = simd_json::from_slice(&mut raw).unwrap();
+        tauri_json.package.version
+    };
+    let version = semver::Version::parse(&version).unwrap();
     let is_prerelase = !version.pre.is_empty();
-    println!(
-        "cargo:rustc-env=NYANPASU_VERSION={}",
-        pkg_json.package.version
-    );
+    println!("cargo:rustc-env=NYANPASU_VERSION={}", version);
     // Git Information
     let (commit_hash, commit_author, commit_date) = if let Ok(true) = exists("./.tmp/git-info.json")
     {

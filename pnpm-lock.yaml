@@ -267,8 +267,8 @@ importers:
         specifier: 1.6.5
         version: 1.6.5(react-dom@19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807))(react@19.0.0-rc-e948a5ac-20240807)
       react-hook-form-mui:
-        specifier: 7.0.1
-        version: 7.0.1(iu76xnqkigikcfzs5anmurkpse)
+        specifier: 7.2.0
+        version: 7.2.0(iu76xnqkigikcfzs5anmurkpse)
       react-i18next:
         specifier: 15.0.1
         version: 15.0.1(i18next@23.14.0)(react-dom@19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807))(react@19.0.0-rc-e948a5ac-20240807)
@@ -5622,12 +5622,12 @@ packages:
       react: npm:react@rc
       react-dom: npm:react-dom@rc
 
-  react-hook-form-mui@7.0.1:
-    resolution: {integrity: sha512-ik4upg0pc3K9VTJcKSxmGXfwwPVoDLA+mPtD+csF47h1tYx4rrrRBpJ/27fvmzBPhUZS3pFAo7rs1LgMQ94Ukw==}
+  react-hook-form-mui@7.2.0:
+    resolution: {integrity: sha512-F7SAOQ7EGqOaFtiLaGZxDvwXHT4DerTLb6V+jBM3hVdI2/2zDWPA4tkJo1WZSaaUa1YZsTLA0hI3jubru1Aktg==}
     engines: {node: '>=14'}
     peerDependencies:
-      '@mui/icons-material': '>= 5.x <6'
-      '@mui/material': '>= 5.x <6'
+      '@mui/icons-material': '>= 5.x <7'
+      '@mui/material': '>= 5.x <7'
       '@mui/x-date-pickers': '>=7.0.0 <8'
       react: npm:react@rc
       react-hook-form: '>=7.33.1'
@@ -12254,7 +12254,7 @@ snapshots:
       react: 19.0.0-rc-e948a5ac-20240807
       react-dom: 19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807)
 
-  react-hook-form-mui@7.0.1(iu76xnqkigikcfzs5anmurkpse):
+  react-hook-form-mui@7.2.0(iu76xnqkigikcfzs5anmurkpse):
     dependencies:
       '@mui/material': 5.16.7(@emotion/react@11.13.3(react@19.0.0-rc-e948a5ac-20240807)(types-react@19.0.0-rc.1))(@emotion/styled@11.13.0(@emotion/react@11.13.3(react@19.0.0-rc-e948a5ac-20240807)(types-react@19.0.0-rc.1))(react@19.0.0-rc-e948a5ac-20240807)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807))(react@19.0.0-rc-e948a5ac-20240807)(types-react@19.0.0-rc.1)
       react: 19.0.0-rc-e948a5ac-20240807

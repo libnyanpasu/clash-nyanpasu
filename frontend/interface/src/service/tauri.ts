@@ -255,3 +255,7 @@ export const openThat = async (path: string) => {
 export const isAppImage = async () => {
   return await invoke<boolean>("is_appimage");
 };
+
+export const getServiceInstallPrompt = async () => {
+  return await invoke<string>("get_service_install_prompt");
+};

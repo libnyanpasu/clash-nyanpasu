@@ -638,3 +638,17 @@ pub mod uwp {
         Ok(())
     }
 }
+
+#[tauri::command]
+pub async fn get_service_install_prompt() -> CmdResult<String> {
+    let args = wrap_err!(crate::core::service::control::get_service_install_args().await)?
+        .into_iter()
+        .map(|arg| arg.to_string_lossy().to_string())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut prompt = format!("./nyanpasu-service {}", args);
+    if cfg!(not(windows)) {
+        prompt = format!("sudo {}", prompt);
+    }
+    Ok(prompt)
+}

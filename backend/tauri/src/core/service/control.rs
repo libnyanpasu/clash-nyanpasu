@@ -1,12 +1,13 @@
 use crate::utils::dirs::{app_config_dir, app_data_dir, app_install_dir};
 use runas::Command as RunasCommand;
+use std::{borrow::Cow, ffi::OsString};
 
 use super::SERVICE_PATH;
 
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
-pub async fn install_service() -> anyhow::Result<()> {
+pub async fn get_service_install_args<'n>() -> Result<Vec<OsString>, anyhow::Error> {
     let user = {
         #[cfg(windows)]
         {
@@ -20,19 +21,25 @@ pub async fn install_service() -> anyhow::Result<()> {
     let data_dir = app_data_dir()?;
     let config_dir = app_config_dir()?;
     let app_dir = app_install_dir()?;
+    let args: Vec<OsString> = vec![
+        "install".into(),
+        "--user".into(),
+        user.into(),
+        "--nyanpasu-data-dir".into(),
+        data_dir.into(),
+        "--nyanpasu-config-dir".into(),
+        config_dir.into(),
+        "--nyanpasu-app-dir".into(),
+        app_dir.into(),
+    ];
+    Ok(args)
+}
+
+pub async fn install_service() -> anyhow::Result<()> {
+    let args = get_service_install_args().await?;
     let child = tokio::task::spawn_blocking(move || {
         RunasCommand::new(SERVICE_PATH.as_path())
-            .args(&[
-                "install",
-                "--user",
-                &user,
-                "--nyanpasu-data-dir",
-                data_dir.to_str().unwrap(),
-                "--nyanpasu-config-dir",
-                config_dir.to_str().unwrap(),
-                "--nyanpasu-app-dir",
-                app_dir.to_str().unwrap(),
-            ])
+            .args(&args)
             .gui(true)
             .show(true)
             .status()

@@ -244,6 +244,7 @@ fn main() -> std::io::Result<()> {
             ipc::get_ipsb_asn,
             ipc::open_that,
             ipc::is_appimage,
+            ipc::get_service_install_prompt,
         ]);
 
     #[cfg(target_os = "macos")]

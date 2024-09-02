@@ -7,6 +7,10 @@ import { List, ListItem, ListItemText, Typography } from "@mui/material";
 import { restartSidecar, useNyanpasu } from "@nyanpasu/interface";
 import { BaseCard, SwitchItem } from "@nyanpasu/ui";
 import { nyanpasu } from "./modules/create-props";
+import {
+  ServerManualPromptDialogWrapper,
+  useServerManualPromptDialog,
+} from "./modules/service-manual-prompt-dialog";
 
 const { useBooleanProps: createBooleanProps } = nyanpasu;
 
@@ -41,6 +45,8 @@ export const SettingSystemService = () => {
 
   const isDisabled = getServiceStatus.data === "not_installed";
 
+  const promptDialog = useServerManualPromptDialog();
+
   const [installOrUninstallPending, startInstallOrUninstall] = useTransition();
   const handleInstallClick = useMemoizedFn(() => {
     startInstallOrUninstall(async () => {
@@ -69,6 +75,10 @@ export const SettingSystemService = () => {
           type: "error",
           title: t("Error"),
         });
+        // If install failed show a prompt to user to install the service manually
+        if (getServiceStatus.data === "not_installed") {
+          promptDialog.show();
+        }
       }
     });
   });
@@ -112,6 +122,7 @@ export const SettingSystemService = () => {
 
   return (
     <BaseCard label="System Service">
+      <ServerManualPromptDialogWrapper />
       <List disablePadding>
         <SwitchItem
           label={t("Service Mode")}

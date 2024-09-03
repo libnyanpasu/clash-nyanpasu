@@ -1,6 +1,7 @@
 import { useMemoizedFn } from "ahooks";
 import { ChangeEvent, useTransition } from "react";
 import { useTranslation } from "react-i18next";
+import { formatError } from "@/utils";
 import { message } from "@/utils/notification";
 import { LoadingButton } from "@mui/lab";
 import { List, ListItem, ListItemText, Typography } from "@mui/material";
@@ -102,7 +103,9 @@ export const SettingSystemService = () => {
         await restartSidecar();
       } catch (e) {
         const errorMessage =
-          getServiceStatus.data === "running" ? "Stop failed" : "Start failed";
+          getServiceStatus.data === "running"
+            ? `Stop failed: ${formatError(e)}`
+            : `Start failed: ${formatError(e)}`;
 
         message(errorMessage, {
           type: "error",

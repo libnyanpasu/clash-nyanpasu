@@ -220,11 +220,11 @@ pub async fn status<'a>() -> anyhow::Result<nyanpasu_ipc::types::StatusInfo<'a>>
     let mut cmd = tokio::process::Command::new(SERVICE_PATH.as_path());
     cmd.args(["status", "--json"]);
     #[cfg(windows)]
-    cmd.creation_flags(0x8000000); // CREATE_NO_WINDOW
+    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     let output = cmd.output().await?;
     if !output.status.success() {
         anyhow::bail!(
-            "failed to install service, exit code: {}, signal: {:?}",
+            "failed to query service status, exit code: {}, signal: {:?}",
             output.status.code().unwrap_or(-1),
             {
                 #[cfg(unix)]

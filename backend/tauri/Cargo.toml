@@ -64,7 +64,7 @@ axum = "0.7"
 mime = "0.3"
 bincode = "1"
 bytes = { version = "1", features = ["serde"] }
-wry = { version = "0.24.6" }
+wry = { version = "0.43.0" }
 semver = "1.0"
 zip = "2.0.0"
 zip-extensions = "0.8.0"

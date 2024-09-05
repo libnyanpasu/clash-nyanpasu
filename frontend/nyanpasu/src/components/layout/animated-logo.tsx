@@ -5,6 +5,7 @@ import { classNames } from "@/utils";
 import { useNyanpasu } from "@nyanpasu/interface";
 import styles from "./animated-logo.module.scss";
 
+// @ts-expect-error framer-motion types is wrong
 const Logo = motion(LogoSvg);
 
 const transition = {
@@ -45,21 +46,21 @@ const motionVariants: { [name: string]: Variants } = {
 export default function AnimatedLogo({
   className,
   style,
-  disbaleMotion,
+  disableMotion,
 }: {
   className?: string;
   style?: CSSProperties;
-  disbaleMotion?: boolean;
+  disableMotion?: boolean;
 }) {
   const { nyanpasuConfig } = useNyanpasu();
 
-  const disbale = disbaleMotion ?? nyanpasuConfig?.lighten_animation_effects;
+  const disable = disableMotion ?? nyanpasuConfig?.lighten_animation_effects;
 
   return (
     <AnimatePresence initial={false}>
       <Logo
         className={classNames(styles.LogoSchema, className)}
-        variants={motionVariants[disbale ? "none" : "default"]}
+        variants={motionVariants[disable ? "none" : "default"]}
         style={style}
         drag
         dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}

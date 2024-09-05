@@ -15,7 +15,7 @@ export default function ServerManualPromptDialog({
   onClose,
   ...props
 }: ServerManualPromptDialogProps) {
-  const { data: serviceInstallPrompt } = useSWR(
+  const { data: serviceInstallPrompt, error } = useSWR(
     "/service_install_prompt",
     getServiceInstallPrompt,
   );
@@ -32,7 +32,7 @@ export default function ServerManualPromptDialog({
       });
       setCodes(code);
     }
-  }, [serviceInstallPrompt]);
+  }, [serviceInstallPrompt, setCodes]);
 
   return (
     <BaseDialog title="Server Manual" open={open} onClose={onClose} {...props}>
@@ -42,6 +42,7 @@ export default function ServerManualPromptDialog({
           administrator) in Windows or a terminal emulator in macOS, Linux and
           run the following commands:
         </p>
+        {error && <p className="text-red-500">{error.message}</p>}
         {!!codes && (
           <div
             dangerouslySetInnerHTML={{

@@ -67,10 +67,11 @@ export const SettingSystemService = () => {
         }
         await restartSidecar();
       } catch (e) {
-        const errorMessage =
+        const errorMessage = `${
           getServiceStatus.data === "not_installed"
             ? "Install failed"
-            : "Uninstall failed";
+            : "Uninstall failed"
+        }: ${formatError(e)}`;
 
         message(errorMessage, {
           type: "error",

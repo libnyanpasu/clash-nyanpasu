@@ -1,14 +1,11 @@
 use crate::utils::dirs::{app_config_dir, app_data_dir, app_install_dir};
 use runas::Command as RunasCommand;
-use std::ffi::OsString;
+use std::{borrow::Cow, ffi::OsString};
 
 use super::SERVICE_PATH;
 
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
-
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
 
 pub async fn get_service_install_args<'n>() -> Result<Vec<OsString>, anyhow::Error> {
     let user = {
@@ -220,31 +217,28 @@ pub async fn restart_service() -> anyhow::Result<()> {
 }
 
 pub async fn status<'a>() -> anyhow::Result<nyanpasu_ipc::types::StatusInfo<'a>> {
-    let mut status = tokio::task::spawn_blocking(move || {
-        let mut cmd = std::process::Command::new(SERVICE_PATH.as_path());
-        cmd.args(["status", "--json"]);
-        #[cfg(windows)]
-        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-        let output = cmd.output()?;
-        if !output.status.success() {
-            anyhow::bail!(
-                "failed to query service status, exit code: {}, signal: {:?}",
-                output.status.code().unwrap_or(-1),
+    let mut cmd = tokio::process::Command::new(SERVICE_PATH.as_path());
+    cmd.args(["status", "--json"]);
+    #[cfg(windows)]
+    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    let output = cmd.output().await?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "failed to query service status, exit code: {}, signal: {:?}",
+            output.status.code().unwrap_or(-1),
+            {
+                #[cfg(unix)]
                 {
-                    #[cfg(unix)]
-                    {
-                        output.status.signal().unwrap_or(0)
-                    }
-                    #[cfg(not(unix))]
-                    {
-                        0
-                    }
+                    output.status.signal().unwrap_or(0)
                 }
-            );
-        }
-        Ok::<String, anyhow::Error>(String::from_utf8(output.stdout)?)
-    })
-    .await??;
+                #[cfg(not(unix))]
+                {
+                    0
+                }
+            }
+        );
+    }
+    let mut status = String::from_utf8(output.stdout)?;
     tracing::debug!("service status: {}", status);
     Ok(unsafe { simd_json::serde::from_str(&mut status)? })
 }

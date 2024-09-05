@@ -14,7 +14,7 @@ import {
   setCustomAppDir,
 } from "@nyanpasu/interface";
 import { BaseCard } from "@nyanpasu/ui";
-import { open } from "@tauri-apps/api/dialog";
+import { open } from "@tauri-apps/plugin-dialog";
 import { PaperButton } from "./modules/nyanpasu-path";
 
 export const SettingNyanpasuPath = () => {

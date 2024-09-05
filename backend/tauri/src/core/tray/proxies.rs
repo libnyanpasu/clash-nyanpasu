@@ -220,55 +220,65 @@ mod platform_impl {
     };
     use base64::{engine::general_purpose::STANDARD as base64_standard, Engine as _};
     use rust_i18n::t;
-    use tauri::{CustomMenuItem, SystemTrayMenu, SystemTrayMenuItem, SystemTraySubmenu};
+    use tauri::{
+        menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder},
+        AppHandle,
+    };
     use tracing::warn;
 
-    pub fn generate_group_selector(group_name: &str, group: &TrayProxyItem) -> SystemTraySubmenu {
-        let mut group_menu = SystemTrayMenu::new();
+    pub fn generate_group_selector(
+        app_handle: &AppHandle,
+        group_name: &str,
+        group: &TrayProxyItem,
+    ) -> anyhow::Result<SystemTraySubmenu> {
+        let mut group_menu = SubmenuBuilder::new(app_handle, group_name);
         for item in group.all.iter() {
-            let mut sub_item = CustomMenuItem::new(
-                format!(
-                    "select_proxy_{}_{}",
-                    base64_standard.encode(group_name),
-                    base64_standard.encode(item)
-                ),
-                item.clone(),
-            );
+            let mut sub_item_builder = CheckMenuItemBuilder::new(item.clone()).id(format!(
+                "select_proxy_{}_{}",
+                base64_standard.encode(group_name),
+                base64_standard.encode(item)
+            ));
             if let Some(now) = group.current.clone() {
                 if now == item.as_str() {
                     #[cfg(target_os = "linux")]
                     {
-                        sub_item.title = super::super::utils::selected_title(item);
+                        sub_item_builder.title = super::super::utils::selected_title(item);
                     }
                     #[cfg(not(target_os = "linux"))]
                     {
-                        sub_item = sub_item.selected();
+                        sub_item_builder = sub_item_builder.checked(true);
                     }
                 }
             }
 
             if !matches!(group.r#type.as_str(), "Selector" | "Fallback") {
-                sub_item = sub_item.disabled();
+                sub_item_builder = sub_item_builder.enabled(false);
             }
 
-            group_menu = group_menu.add_item(sub_item);
+            group_menu = group_menu.item(&sub_item_builder.build(app_handle)?);
         }
-        SystemTraySubmenu::new(group_name.to_string(), group_menu)
+        group_menu.build()
     }
 
     pub fn generate_selectors(
-        menu: &SystemTrayMenu,
+        app_handle: &AppHandle,
+        menu: &MenuBuilder,
         proxies: &super::TrayProxies,
-    ) -> SystemTrayMenu {
+    ) -> anyhow::Result<MenuBuilder> {
         let mut menu = menu.to_owned();
         if proxies.is_empty() {
-            return menu.add_item(CustomMenuItem::new("no_proxies", "No Proxies"));
+            return Ok(menu.item(
+                &MenuItemBuilder::new("No Proxies")
+                    .id("no_proxies")
+                    .enabled(false)
+                    .build(&app_handle)?,
+            ));
         }
         for (group, item) in proxies.iter() {
-            let group_menu = generate_group_selector(group, item);
-            menu = menu.add_submenu(group_menu);
+            let group_menu = generate_group_selector(app_handle, group, item)?;
+            menu = menu.item(&group_menu);
         }
-        menu
+        Ok(menu)
     }
 
     pub fn setup_tray(menu: &mut SystemTrayMenu) -> SystemTrayMenu {

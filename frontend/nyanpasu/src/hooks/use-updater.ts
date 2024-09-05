@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { OS } from "@/consts";
 import { UpdaterIgnoredAtom, UpdaterManifestAtom } from "@/store/updater";
 import { useNyanpasu } from "@nyanpasu/interface";
-import { checkUpdate } from "@tauri-apps/api/updater";
+import { checkUpdate } from "@tauri-apps/plugin-updater";
 import { useIsAppImage } from "./use-consts";
 
 export function useUpdaterPlatformSupported() {

@@ -20,7 +20,7 @@ import {
 import { useNyanpasu } from "@nyanpasu/interface";
 import { BaseCard } from "@nyanpasu/ui";
 import { version } from "@root/package.json";
-import { checkUpdate } from "@tauri-apps/api/updater";
+import { checkUpdate } from "@tauri-apps/plugin-updater";
 import { LabelSwitch } from "./modules/clash-field";
 
 const AutoCheckUpdate = () => {

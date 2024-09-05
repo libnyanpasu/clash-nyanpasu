@@ -22,7 +22,7 @@ import {
   useNyanpasu,
 } from "@nyanpasu/interface";
 import { cleanDeepClickEvent, cn } from "@nyanpasu/ui";
-import { message } from "@tauri-apps/api/dialog";
+import { message } from "@tauri-apps/plugin-dialog";
 
 export const getImage = (core: ClashCore) => {
   switch (core) {

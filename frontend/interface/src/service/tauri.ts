@@ -1,5 +1,5 @@
 import { IPSBResponse } from "@/openapi";
-import { invoke } from "@tauri-apps/api/tauri";
+import { invoke } from "@tauri-apps/api/core";
 import { ManifestVersion } from "./core";
 import {
   ClashConfig,

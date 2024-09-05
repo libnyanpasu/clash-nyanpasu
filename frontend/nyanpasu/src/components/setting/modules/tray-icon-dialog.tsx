@@ -11,7 +11,7 @@ import {
   setTrayIcon as setTrayIconCall,
 } from "@nyanpasu/interface";
 import { BaseDialog, BaseDialogProps } from "@nyanpasu/ui";
-import { open } from "@tauri-apps/api/dialog";
+import { open } from "@tauri-apps/plugin-dialog";
 
 function TrayIconItem({ mode }: { mode: "system_proxy" | "tun" | "normal" }) {
   const { t } = useTranslation();

@@ -1,6 +1,6 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
-import { UpdateManifest } from "@tauri-apps/api/updater";
+import { UpdateManifest } from "@tauri-apps/plugin-updater";
 
 export const UpdaterIgnoredAtom = atomWithStorage(
   "updaterIgnored",

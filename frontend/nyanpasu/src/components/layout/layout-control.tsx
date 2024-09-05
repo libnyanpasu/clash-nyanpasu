@@ -13,8 +13,9 @@ import {
 } from "@mui/icons-material";
 import { alpha, Button, ButtonProps, useTheme } from "@mui/material";
 import { save_window_size_state, useNyanpasu } from "@nyanpasu/interface";
-import { platform, type Platform } from "@tauri-apps/api/os";
-import { appWindow } from "@tauri-apps/api/window";
+import { platform, type Platform } from "@tauri-apps/plugin-os";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+const appWindow = getCurrentWebviewWindow()
 
 const CtrlButton = (props: ButtonProps) => {
   const { palette } = useTheme();

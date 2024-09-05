@@ -10,7 +10,7 @@ export async function getShikiSingleton() {
   if (!shiki) {
     shiki = (await getSingletonHighlighterCore({
       themes: [nord, minLight],
-      langs: [],
+      langs: [() => import("shiki/langs/shell.mjs")],
 
       loadWasm: getWasm,
     })) as Highlighter;

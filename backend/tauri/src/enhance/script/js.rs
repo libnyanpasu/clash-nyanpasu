@@ -186,9 +186,10 @@ impl Runner for JSRunner {
                         .map_err(|e| { std::io::Error::new(std::io::ErrorKind::InvalidData, e) }),
                     take_logs(logs)
                 );
+                let config = simd_json::to_string(&config).unwrap(); // escape the string
                 let execute_module = format!(
                     r#"import process from "./{hash}.mjs";
-        let config = JSON.parse(`{config}`);
+        let config = JSON.parse({config});
         export let result = JSON.stringify(await process(config));
         "#
                 );

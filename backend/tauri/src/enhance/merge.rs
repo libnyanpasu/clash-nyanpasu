@@ -110,7 +110,9 @@ fn do_filter(logs: &mut Logs, config: &mut Value, field_str: &str, filter: &Valu
     };
     match filter {
         Value::Sequence(filters) => {
-            todo!()
+            for filter in filters {
+                do_filter(logs, config, field_str, filter);
+            }
         }
         Value::String(filter) => {
             let list = field.as_sequence_mut().unwrap();
@@ -292,6 +294,7 @@ pub fn use_merge(merge: Mapping, mut config: Mapping) -> ProcessOutput {
 }
 
 mod tests {
+    use pretty_assertions::{assert_eq, assert_ne};
     #[test]
     fn test_find_field() {
         let config = r"
@@ -447,7 +450,7 @@ mod tests {
     }
 
     #[test]
-    fn test_filter() {
+    fn test_filter_string() {
         let merge = r"
         filter__proxies: |
           type(item) == 'table' and (item.type == 'ss' or item.type == 'hysteria2')
@@ -539,6 +542,156 @@ mod tests {
         let (result, logs) = super::use_merge(merge, config);
         eprintln!("{:#?}\n\n{:#?}", logs, result);
         assert!(logs.len() == 1, "filter_wow should not work");
+        let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
+        assert_eq!(result.unwrap(), expected);
+    }
+
+    #[test]
+    fn test_filter_when_and_expr() {
+        let merge = r"
+        filter__proxies:
+          - when: |
+              type(item) == 'table' and (item.type == 'ss' or item.type == 'hysteria2')
+            expr: |
+              item
+        filter__proxy-groups:
+          - when: |
+              item.name == 'Spotify'
+            expr: |
+              item.icon = 'https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Spotify.png'
+              return item
+        ";
+        let config = r#"proxy-groups:
+- name: Spotify
+  type: select
+  proxies:
+  - Proxies
+  - DIRECT
+  - HK
+  - JP
+  - SG
+  - TW
+  - US
+- name: Steam
+  type: select
+  proxies:
+  - Proxies
+  - DIRECT
+  - HK
+  - JP
+  - SG
+  - TW
+  - US
+- name: Telegram
+  type: select
+  proxies:
+  - Proxies
+  - HK
+  - JP
+  - SG
+  - TW
+  - US"#;
+        let expected = r#"proxy-groups:
+- name: Spotify
+  icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Spotify.png
+  type: select
+  proxies:
+  - Proxies
+  - DIRECT
+  - HK
+  - JP
+  - SG
+  - TW
+  - US
+- name: Steam
+  type: select
+  proxies:
+  - Proxies
+  - DIRECT
+  - HK
+  - JP
+  - SG
+  - TW
+  - US
+- name: Telegram
+  type: select
+  proxies:
+  - Proxies
+  - HK
+  - JP
+  - SG
+  - TW
+  - US"#;
+        let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
+        let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
+        let (result, logs) = super::use_merge(merge, config);
+        eprintln!("{:#?}\n\n{:#?}", logs, result);
+        assert_eq!(logs.len(), 1);
+        let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
+        assert_eq!(result.unwrap(), expected);
+    }
+
+    #[test]
+    fn test_filter_when_and_override() {
+        let merge = r"
+        filter__proxies:
+          - when: |
+              type(item) == 'table' and (item.type == 'ss' or item.type == 'hysteria2')
+            override: OVERRIDDEN
+        ";
+        let config = r#"
+        proxies:
+          - 123
+          - 555
+          - name: "hysteria2"
+            type: hysteria2
+            server: server.com
+            port: 443
+            ports: 443-8443
+            password: yourpassword
+            up: "30 Mbps"
+            down: "200 Mbps"
+            obfs: salamander # 默认为空，如果填写则开启obfs，目前仅支持salamander
+            obfs-password: yourpassword
+
+            sni: server.com
+            skip-cert-verify: false
+            fingerprint: xxxx
+            alpn:
+              - h3
+            ca: "./my.ca"
+            ca-str: "xyz"
+          - name: "hysteria2"
+            type: ss
+            server: server.com
+            port: 443
+            ports: 443-8443
+            password: yourpassword
+            up: "30 Mbps"
+            down: "200 Mbps"
+            obfs: salamander # 默认为空，如果填写则开启obfs，目前仅支持salamander
+            obfs-password: yourpassword
+
+            sni: server.com
+            skip-cert-verify: false
+            fingerprint: xxxx
+            alpn:
+              - h3
+            ca: "./my.ca"
+            ca-str: "xyz"            
+        "#;
+        let expected = r#"
+        proxies:
+          - 123
+          - 555
+          - OVERRIDDEN
+          - OVERRIDDEN
+        "#;
+        let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
+        let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
+        let (result, logs) = super::use_merge(merge, config);
+        eprintln!("{:#?}\n\n{:#?}", logs, result);
+        assert_eq!(logs.len(), 0);
         let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
         assert_eq!(result.unwrap(), expected);
     }

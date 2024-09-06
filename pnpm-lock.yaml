@@ -440,8 +440,8 @@ importers:
         specifier: 5.1.0
         version: 5.1.0(typescript@5.5.4)
       vite-plugin-dts:
-        specifier: 4.1.0
-        version: 4.1.0(@types/node@22.5.4)(rollup@4.21.0)(typescript@5.5.4)(vite@5.4.3(@types/node@22.5.4)(less@4.2.0)(sass@1.78.0)(stylus@0.62.0))
+        specifier: 4.1.1
+        version: 4.1.1(@types/node@22.5.4)(rollup@4.21.0)(typescript@5.5.4)(vite@5.4.3(@types/node@22.5.4)(less@4.2.0)(sass@1.78.0)(stylus@0.62.0))
 
   scripts:
     dependencies:
@@ -6643,8 +6643,8 @@ packages:
       vue:
         optional: true
 
-  vite-plugin-dts@4.1.0:
-    resolution: {integrity: sha512-sRlmt9k2q8MrX4F2058N3KmB6WyJ3Ao6QaExOv1X99F3j0GhPziEz1zscWQ1q2r1PeFc96L7GIUu8Pl2DPr2Hg==}
+  vite-plugin-dts@4.1.1:
+    resolution: {integrity: sha512-SxYXwJQbAZ1IMtGEcOuzzZtDWCdcV2JkU7esvpPA8E5tIWVcJB42rZwN9EdULicWGLfaXrUgPIGVSidXBTae2Q==}
     engines: {node: ^14.18.0 || >=16.0.0}
     peerDependencies:
       typescript: '*'
@@ -9111,7 +9111,7 @@ snapshots:
 
   agent-base@7.1.1:
     dependencies:
-      debug: 4.3.4
+      debug: 4.3.7
     transitivePeerDependencies:
       - supports-color
 
@@ -13546,14 +13546,14 @@ snapshots:
       react: 19.0.0-rc-e948a5ac-20240807
       react-dom: 19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807)
 
-  vite-plugin-dts@4.1.0(@types/node@22.5.4)(rollup@4.21.0)(typescript@5.5.4)(vite@5.4.3(@types/node@22.5.4)(less@4.2.0)(sass@1.78.0)(stylus@0.62.0)):
+  vite-plugin-dts@4.1.1(@types/node@22.5.4)(rollup@4.21.0)(typescript@5.5.4)(vite@5.4.3(@types/node@22.5.4)(less@4.2.0)(sass@1.78.0)(stylus@0.62.0)):
     dependencies:
       '@microsoft/api-extractor': 7.47.4(@types/node@22.5.4)
       '@rollup/pluginutils': 5.1.0(rollup@4.21.0)
       '@volar/typescript': 2.4.0
       '@vue/language-core': 2.0.29(typescript@5.5.4)
       compare-versions: 6.1.1
-      debug: 4.3.6
+      debug: 4.3.7
       kolorist: 1.8.0
       local-pkg: 0.5.0
       magic-string: 0.30.11

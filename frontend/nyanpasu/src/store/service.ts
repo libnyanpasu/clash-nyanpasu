@@ -1,3 +1,5 @@
 import { atom } from "jotai";
 
-export const serviceManualPromptDialogAtom = atom<boolean>(false);
+export const serviceManualPromptDialogAtom = atom<
+  "install" | "uninstall" | "start" | "stop" | null
+>(null);

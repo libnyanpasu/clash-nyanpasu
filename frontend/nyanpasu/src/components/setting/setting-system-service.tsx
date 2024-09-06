@@ -78,9 +78,9 @@ export const SettingSystemService = () => {
           title: t("Error"),
         });
         // If install failed show a prompt to user to install the service manually
-        if (getServiceStatus.data === "not_installed") {
-          promptDialog.show();
-        }
+        promptDialog.show(
+          getServiceStatus.data === "not_installed" ? "install" : "uninstall",
+        );
       }
     });
   });
@@ -112,6 +112,10 @@ export const SettingSystemService = () => {
           type: "error",
           title: t("Error"),
         });
+        // If start failed show a prompt to user to start the service manually
+        promptDialog.show(
+          getServiceStatus.data === "running" ? "stop" : "start",
+        );
       }
     });
   });

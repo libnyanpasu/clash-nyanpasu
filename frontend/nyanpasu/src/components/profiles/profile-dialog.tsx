@@ -15,7 +15,6 @@ import {
   useForm,
 } from "react-hook-form-mui";
 import { useTranslation } from "react-i18next";
-import { classNames } from "@/utils";
 import { Divider, InputAdornment } from "@mui/material";
 import { Profile, useClash } from "@nyanpasu/interface";
 import { BaseDialog } from "@nyanpasu/ui";
@@ -300,6 +299,8 @@ export const ProfileDialog = ({
           <ProfileMonacoView
             className="w-full"
             ref={profileMonacoViewRef}
+            readonly={isRemote}
+            schemaType="clash"
             open={open}
             value={editor.value}
             language={editor.language}

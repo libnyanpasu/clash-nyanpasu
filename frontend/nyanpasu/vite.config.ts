@@ -68,7 +68,15 @@ export default defineConfig(({ command }) => {
       }),
       generouted(),
       sassDts({ esmExport: true }),
-      monaco({ languageWorkers: ["editorWorkerService", "typescript"] }),
+      monaco({
+        languageWorkers: ["editorWorkerService", "typescript"],
+        customWorkers: [
+          {
+            label: "yaml",
+            entry: "monaco-yaml/yaml.worker",
+          },
+        ],
+      }),
       isDev && devtools(),
     ],
     resolve: {

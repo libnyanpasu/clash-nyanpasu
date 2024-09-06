@@ -222,6 +222,9 @@ export const ScriptDialog = ({
           open={openMonaco}
           value={editor.value}
           language={editor.language}
+          schemaType={
+            editor.rawType === Profile.Type.Merge ? "merge" : undefined
+          }
         />
       </div>
     </BaseDialog>

@@ -182,7 +182,7 @@ impl Runner for JSRunner {
                 let boa_runner = wrap_result!(BoaRunner::try_new(), take_logs(logs));
                 wrap_result!(boa_runner.setup_console(logger), take_logs(logs));
                 let config = wrap_result!(
-                    simd_json::serde::to_string_pretty(&mapping)
+                    simd_json::serde::to_string(&mapping)
                         .map_err(|e| { std::io::Error::new(std::io::ErrorKind::InvalidData, e) }),
                     take_logs(logs)
                 );

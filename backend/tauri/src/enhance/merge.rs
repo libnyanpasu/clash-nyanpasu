@@ -1,5 +1,6 @@
 use super::{runner::ProcessOutput, Logs, LogsExt};
 use mlua::LuaSerdeExt;
+use serde::de::DeserializeOwned;
 use serde_yaml::{Mapping, Value};
 use tracing_attributes::instrument;
 
@@ -54,6 +55,159 @@ fn merge_sequence(target: &mut Value, to_merge: &Value, append: bool) {
             target.extend(to_merge.clone());
         } else {
             target.splice(0..0, to_merge.iter().cloned());
+        }
+    }
+}
+
+fn run_expr<T: DeserializeOwned>(logs: &mut Logs, item: &Value, expr: &str) -> Option<T> {
+    let lua_runtime = match super::script::create_lua_context() {
+        Ok(lua) => lua,
+        Err(e) => {
+            logs.error(e.to_string());
+            return None;
+        }
+    };
+    let item = match lua_runtime.to_value(item) {
+        Ok(v) => v,
+        Err(e) => {
+            logs.error(format!("failed to convert item to lua value: {:#?}", e));
+            return None;
+        }
+    };
+
+    if let Err(e) = lua_runtime.globals().set("item", item) {
+        logs.error(e.to_string());
+        return None;
+    }
+    let res = lua_runtime.load(expr).eval::<mlua::Value>();
+    match res {
+        Ok(v) => {
+            if let Ok(v) = lua_runtime.from_value(v) {
+                Some(v)
+            } else {
+                logs.error("failed to convert lua value to serde value");
+                None
+            }
+        }
+        Err(e) => {
+            logs.error(format!("failed to run expr: {:#?}", e));
+            None
+        }
+    }
+}
+
+fn do_filter(logs: &mut Logs, config: &mut Value, field_str: &str, filter: &Value) {
+    let field = match find_field(config, field_str) {
+        Some(field) if !field.is_sequence() => {
+            logs.warn(format!("field is not sequence: {:#?}", field_str));
+            return;
+        }
+        Some(field) => field,
+        None => {
+            logs.warn(format!("field not found: {:#?}", field_str));
+            return;
+        }
+    };
+    match filter {
+        Value::Sequence(filters) => {
+            todo!()
+        }
+        Value::String(filter) => {
+            let list = field.as_sequence_mut().unwrap();
+            list.retain(|item| run_expr(logs, item, filter).unwrap_or(false));
+        }
+        Value::Mapping(filter)
+            if filter.get("when").is_some_and(|v| v.is_string())
+                && filter.get("expr").is_some_and(|v| v.is_string()) =>
+        {
+            let when = filter.get("when").unwrap().as_str().unwrap();
+            let expr = filter.get("expr").unwrap().as_str().unwrap();
+            let list = field.as_sequence_mut().unwrap();
+            list.iter_mut().for_each(|item| {
+                let r#match = run_expr(logs, item, when);
+                if r#match.unwrap_or(false) {
+                    let res: Option<Value> = run_expr(logs, item, expr);
+                    if let Some(res) = res {
+                        *item = res;
+                    }
+                }
+            });
+        }
+        Value::Mapping(filter)
+            if filter.get("when").is_some_and(|v| v.is_string())
+                && filter.contains_key("override") =>
+        {
+            let when = filter.get("when").unwrap().as_str().unwrap();
+            let r#override = filter.get("override").unwrap();
+            let list = field.as_sequence_mut().unwrap();
+            list.iter_mut().for_each(|item| {
+                let r#match = run_expr(logs, item, when);
+                if r#match.unwrap_or(false) {
+                    *item = r#override.clone();
+                }
+            });
+        }
+        Value::Mapping(filter)
+            if filter.get("when").is_some_and(|v| v.is_string())
+                && filter.get("merge").is_some_and(|v| v.is_mapping()) =>
+        {
+            let when = filter.get("when").unwrap().as_str().unwrap();
+            let merge = filter.get("merge").unwrap().as_mapping().unwrap();
+            let list = field.as_sequence_mut().unwrap();
+            list.iter_mut().for_each(|item| {
+                let r#match = run_expr(logs, item, when);
+                if r#match.unwrap_or(false) {
+                    for (key, value) in merge.iter() {
+                        override_recursive(item.as_mapping_mut().unwrap(), key, value.clone());
+                    }
+                }
+            });
+        }
+
+        Value::Mapping(filter)
+            if filter.get("when").is_some_and(|v| v.is_string())
+                && filter.get("remove").is_some_and(|v| v.is_sequence()) =>
+        {
+            let when = filter.get("when").unwrap().as_str().unwrap();
+            let remove = filter.get("remove").unwrap().as_sequence().unwrap();
+            let list = field.as_sequence_mut().unwrap();
+            list.iter_mut().for_each(|item| {
+                let r#match = run_expr(logs, item, when);
+                if r#match.unwrap_or(false) {
+                    remove.iter().for_each(|key| {
+                        if key.is_string() && item.is_mapping() {
+                            let key_str = key.as_str().unwrap();
+                            // 对 key_str 做一下处理，跳过最后一个元素
+                            let mut keys = key_str.split('.').collect::<Vec<_>>();
+                            let last_key = if keys.len() > 1 {
+                                keys.pop().unwrap()
+                            } else {
+                                key_str
+                            };
+                            let key_str = keys.join(".");
+                            if let Some(field) = find_field(item, &key_str) {
+                                field.as_mapping_mut().unwrap().remove(last_key);
+                            }
+                        } else {
+                            match item {
+                                Value::Sequence(list) if key.is_i64() => {
+                                    let index = key.as_i64().unwrap() as usize;
+                                    if index < list.len() {
+                                        list.remove(index);
+                                    }
+                                }
+                                _ => {
+                                    logs.warn(format!("invalid key: {:#?}", key));
+                                }
+                            }
+                        }
+                    });
+                }
+            });
+        }
+
+        _ => {
+            logs.warn(format!("invalid filter: {:#?}", filter));
         }
     }
 }
@@ -124,41 +278,7 @@ pub fn use_merge(merge: Mapping, mut config: Mapping) -> ProcessOutput {
             }
             key_str if key_str.starts_with("filter__") => {
                 let key_str = key_str.replace("filter__", "");
-                if !value.is_string() {
-                    logs.warn(format!("filter value is not string: {:#?}", key_str));
-                    continue;
-                }
-                let field = find_field(&mut map, &key_str);
-                match field {
-                    Some(field) => {
-                        if !field.is_sequence() {
-                            logs.warn(format!("field is not sequence: {:#?}", key_str));
-                            continue;
-                        }
-                        let filter = value.as_str().unwrap_or_default();
-                        let lua = match super::script::create_lua_context() {
-                            Ok(lua) => lua,
-                            Err(e) => {
-                                logs.error(e.to_string());
-                                continue;
-                            }
-                        };
-
-                        let list = field.as_sequence_mut().unwrap();
-                        // apply filter to each item
-                        list.retain(|item| {
-                            let item = lua.to_value(item).unwrap();
-                            if let Err(e) = lua.globals().set("item", item) {
-                                logs.error(e.to_string());
-                                return false;
-                            }
-                            lua.load(filter).eval::<bool>().unwrap_or(false)
-                        });
-                    }
-                    None => {
-                        logs.warn(format!("field not found: {:#?}", key_str));
-                    }
-                }
+                do_filter(&mut logs, &mut map, &key_str, value);
                 continue;
             }
             _ => {
@@ -330,7 +450,7 @@ mod tests {
     fn test_filter() {
         let merge = r"
         filter__proxies: |
-          item.type == 'ss' or item.type == 'hysteria2'
+          type(item) == 'table' and (item.type == 'ss' or item.type == 'hysteria2')
         filter__wow: |
           item == 'wow'
         ";

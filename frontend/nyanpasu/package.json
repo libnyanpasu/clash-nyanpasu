@@ -49,7 +49,7 @@
     "@csstools/normalize.css": "12.1.1",
     "@emotion/babel-plugin": "11.12.0",
     "@emotion/react": "11.13.3",
-    "@iconify/json": "2.2.244",
+    "@iconify/json": "2.2.245",
     "@types/react": "18.3.5",
     "@types/react-dom": "18.3.0",
     "@vitejs/plugin-react": "4.3.1",

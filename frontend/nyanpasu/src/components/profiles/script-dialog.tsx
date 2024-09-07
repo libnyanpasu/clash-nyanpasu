@@ -1,13 +1,14 @@
 import { useAsyncEffect, useReactive } from "ahooks";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { SelectElement, TextFieldElement, useForm } from "react-hook-form-mui";
 import { useTranslation } from "react-i18next";
 import { Divider } from "@mui/material";
 import { Profile, useClash } from "@nyanpasu/interface";
 import { BaseDialog, BaseDialogProps } from "@nyanpasu/ui";
 import LanguageChip from "./modules/language-chip";
-import { ProfileMonacoView, ProfileMonacoViewRef } from "./profile-monaco-view";
 import { getLanguage } from "./utils";
+
+const ProfileMonacoViewer = lazy(() => import("./profile-monaco-viewer"));
 
 const formCommonProps = {
   autoComplete: "off",
@@ -82,8 +83,6 @@ export const ScriptDialog = ({
 
   const [openMonaco, setOpenMonaco] = useState(false);
 
-  const profileMonacoViewRef = useRef<ProfileMonacoViewRef>(null);
-
   const editor = useReactive<{
     value: string;
     language: string;
@@ -97,7 +96,7 @@ export const ScriptDialog = ({
   const onSubmit = form.handleSubmit(async (data) => {
     convertTypeMapping(data);
 
-    const editorValue = profileMonacoViewRef.current?.getValue();
+    const editorValue = editor.value;
 
     if (!editorValue) {
       return;
@@ -216,16 +215,21 @@ export const ScriptDialog = ({
 
         <Divider orientation="vertical" />
 
-        <ProfileMonacoView
-          className="w-full"
-          ref={profileMonacoViewRef}
-          open={openMonaco}
-          value={editor.value}
-          language={editor.language}
-          schemaType={
-            editor.rawType === Profile.Type.Merge ? "merge" : undefined
-          }
-        />
+        <Suspense fallback={null}>
+          {openMonaco && (
+            <ProfileMonacoViewer
+              className="w-full"
+              value={editor.value}
+              onChange={(value) => {
+                editor.value = value;
+              }}
+              language={editor.language}
+              schemaType={
+                editor.rawType === Profile.Type.Merge ? "merge" : undefined
+              }
+            />
+          )}
+        </Suspense>
       </div>
     </BaseDialog>
   );

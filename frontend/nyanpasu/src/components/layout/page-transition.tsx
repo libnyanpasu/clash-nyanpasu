@@ -1,7 +1,7 @@
 import { AnimatePresence, motion, Variant } from "framer-motion";
 import { useLocation, useOutlet } from "react-router-dom";
-import { classNames } from "@/utils";
 import { useNyanpasu } from "@nyanpasu/interface";
+import { cn } from "@nyanpasu/ui";
 
 type PageVariantKey = "initial" | "visible" | "hidden";
 
@@ -60,7 +60,7 @@ export default function PageTransition({ className }: { className?: string }) {
   return (
     <AnimatePresence mode="popLayout" initial={false}>
       <motion.div
-        className={classNames("page-transition", className)}
+        className={cn("page-transition", className)}
         key={hashkey}
         layout
         layoutId={hashkey}

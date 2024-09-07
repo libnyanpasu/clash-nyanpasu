@@ -1,7 +1,6 @@
 import { useMemoizedFn } from "ahooks";
 import { debounce } from "lodash-es";
 import { useEffect, useState } from "react";
-import { classNames } from "@/utils";
 import { notification, NotificationType } from "@/utils/notification";
 import {
   CloseRounded,
@@ -13,6 +12,7 @@ import {
 } from "@mui/icons-material";
 import { alpha, Button, ButtonProps, useTheme } from "@mui/material";
 import { save_window_size_state, useNyanpasu } from "@nyanpasu/interface";
+import { cn } from "@nyanpasu/ui";
 import { platform, type Platform } from "@tauri-apps/api/os";
 import { appWindow } from "@tauri-apps/api/window";
 
@@ -76,7 +76,7 @@ export const LayoutControl = ({ className }: { className?: string }) => {
   }, []);
 
   return (
-    <div className={classNames("flex gap-1", className)} data-tauri-drag-region>
+    <div className={cn("flex gap-1", className)} data-tauri-drag-region>
       <CtrlButton onClick={toggleAlwaysOnTop}>
         {nyanpasuConfig?.always_on_top ? (
           <PushPin fontSize="small" style={{ transform: "rotate(15deg)" }} />

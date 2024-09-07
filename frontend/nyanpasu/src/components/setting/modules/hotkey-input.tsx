@@ -4,7 +4,7 @@ import { alpha, IconButton, useTheme } from "@mui/material";
 import type {} from "@mui/material/themeCssVarsAugmentation";
 import clsx from "clsx";
 import { CSSProperties, useRef, useState } from "react";
-import { Kbd } from "@nyanpasu/ui";
+import { cn, Kbd } from "@nyanpasu/ui";
 import styles from "./hotkey-input.module.scss";
 
 export interface Props extends React.HTMLAttributes<HTMLInputElement> {
@@ -32,9 +32,9 @@ export default function HotkeyInput({
   const [keys, setKeys] = useState(value || []);
   return (
     <div className="flex items-center gap-2">
-      <div className={clsx("relative min-h-[36px] w-[165px]", styles.wrapper)}>
+      <div className={cn("relative min-h-[36px] w-[165px]", styles.wrapper)}>
         <input
-          className={clsx(
+          className={cn(
             "absolute left-0 top-0 z-[1] h-full w-full opacity-0",
             styles.input,
             className,
@@ -62,7 +62,7 @@ export default function HotkeyInput({
           {...rest}
         />
         <div
-          className={clsx(
+          className={cn(
             "box-border flex h-full min-h-[36px] w-full flex-wrap items-center rounded border border-solid px-1 py-1 last:mr-0",
             styles.items,
           )}

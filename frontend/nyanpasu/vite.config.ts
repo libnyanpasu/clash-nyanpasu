@@ -3,10 +3,10 @@ import AutoImport from "unplugin-auto-import/vite";
 import IconsResolver from "unplugin-icons/resolver";
 import Icons from "unplugin-icons/vite";
 import { defineConfig } from "vite";
-import monaco from "vite-plugin-monaco-editor";
 import sassDts from "vite-plugin-sass-dts";
 import svgr from "vite-plugin-svgr";
 import tsconfigPaths from "vite-tsconfig-paths";
+// import monaco from "vite-plugin-monaco-editor";
 import generouted from "@generouted/react-router/plugin";
 // import react from "@vitejs/plugin-react";
 import react from "@vitejs/plugin-react-swc";
@@ -68,15 +68,15 @@ export default defineConfig(({ command }) => {
       }),
       generouted(),
       sassDts({ esmExport: true }),
-      monaco({
-        languageWorkers: ["editorWorkerService", "typescript"],
-        customWorkers: [
-          {
-            label: "yaml",
-            entry: "monaco-yaml/yaml.worker",
-          },
-        ],
-      }),
+      // monaco({
+      //   languageWorkers: ["editorWorkerService", "typescript", "json"],
+      //   customWorkers: [
+      //     {
+      //       label: "yaml",
+      //       entry: "monaco-yaml/yaml.worker",
+      //     },
+      //   ],
+      // }),
       isDev && devtools(),
     ],
     resolve: {

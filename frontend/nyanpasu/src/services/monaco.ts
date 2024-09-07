@@ -1,40 +1,36 @@
-import { type JSONSchema7 } from "json-schema";
-import nyanpasuMergeSchema from "meta-json-schema/schemas/clash-nyanpasu-merge-json-schema.json";
-import clashMetaSchema from "meta-json-schema/schemas/meta-json-schema.json";
-import { configureMonacoYaml } from "monaco-yaml";
 // features
 // langs
 import "monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution.js";
 import "monaco-editor/esm/vs/basic-languages/lua/lua.contribution.js";
 import "monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution.js";
 import "monaco-editor/esm/vs/editor/editor.all.js";
-import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
 // language services
+import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
 import "monaco-editor/esm/vs/language/typescript/monaco.contribution.js";
+// workers
+import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
+import jsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
+import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
+import yamlWorker from "monaco-yaml/yaml.worker?worker";
+// others
+import { loader } from "@monaco-editor/react";
 
-monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
-  target: monaco.languages.typescript.ScriptTarget.ES2020,
-  allowNonTsExtensions: true,
-  allowJs: true,
-});
+self.MonacoEnvironment = {
+  getWorker(_, label) {
+    switch (label) {
+      case "json":
+        return new jsonWorker();
+      case "typescript":
+      case "javascript":
+        return new tsWorker();
+      case "yaml":
+        return new yamlWorker();
+      default:
+        return new editorWorker();
+    }
+  },
+};
 
-configureMonacoYaml(monaco, {
-  validate: true,
-  enableSchemaRequest: true,
-  schemas: [
-    {
-      url: "https://exmaple.com/schema.json",
-      fileMatch: ["**/*.clash.yaml"],
-      // @ts-expect-error JSONSchema7 as JSONSchema
-      schema: clashMetaSchema as JSONSchema7,
-    },
-    {
-      url: "https://exmaple.com/schema.json",
-      fileMatch: ["**/*.merge.yaml"],
-      // @ts-expect-error JSONSchema7 as JSONSchema
-      schema: nyanpasuMergeSchema as JSONSchema7,
-    },
-  ],
-});
+loader.config({ monaco });
 
-export { monaco };
+export { loader };

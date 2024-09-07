@@ -1,8 +1,8 @@
 import { AnimatePresence, motion, Variants } from "framer-motion";
 import { CSSProperties } from "react";
 import LogoSvg from "@/assets/image/logo.svg?react";
-import { classNames } from "@/utils";
 import { useNyanpasu } from "@nyanpasu/interface";
+import { cn } from "@nyanpasu/ui";
 import styles from "./animated-logo.module.scss";
 
 // @ts-expect-error framer-motion types is wrong
@@ -59,7 +59,7 @@ export default function AnimatedLogo({
   return (
     <AnimatePresence initial={false}>
       <Logo
-        className={classNames(styles.LogoSchema, className)}
+        className={cn(styles.LogoSchema, className)}
         variants={motionVariants[disable ? "none" : "default"]}
         style={style}
         drag

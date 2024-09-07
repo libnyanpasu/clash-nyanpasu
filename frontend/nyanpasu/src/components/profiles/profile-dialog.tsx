@@ -2,6 +2,8 @@ import { version } from "~/package.json";
 import { useAsyncEffect } from "ahooks";
 import {
   createContext,
+  lazy,
+  Suspense,
   use,
   useEffect,
   useMemo,
@@ -15,12 +17,14 @@ import {
   useForm,
 } from "react-hook-form-mui";
 import { useTranslation } from "react-i18next";
+import { useLatest } from "react-use";
 import { Divider, InputAdornment } from "@mui/material";
 import { Profile, useClash } from "@nyanpasu/interface";
 import { BaseDialog } from "@nyanpasu/ui";
 import { LabelSwitch } from "../setting/modules/clash-field";
-import { ProfileMonacoView, ProfileMonacoViewRef } from "./profile-monaco-view";
 import { ReadProfile } from "./read-profile";
+
+const ProfileMonacoViewer = lazy(() => import("./profile-monaco-viewer"));
 
 export interface ProfileDialogProps {
   profile?: Profile.Item;
@@ -94,6 +98,13 @@ export const ProfileDialog = ({
     setLocalProfileMessage("");
   };
 
+  const [editor, setEditor] = useState({
+    value: "",
+    language: "yaml",
+  });
+
+  const latestEditor = useLatest(editor);
+
   const onSubmit = handleSubmit(async (form) => {
     const toCreate = async () => {
       if (isRemote) {
@@ -109,7 +120,7 @@ export const ProfileDialog = ({
     };
 
     const toUpdate = async () => {
-      const value = profileMonacoViewRef.current?.getValue() || "";
+      const value = latestEditor.current.value;
       await setProfileFile(form.uid, value);
       await setProfiles(form.uid, form);
     };
@@ -126,13 +137,6 @@ export const ProfileDialog = ({
       onClose();
     } finally {
     }
-  });
-
-  const profileMonacoViewRef = useRef<ProfileMonacoViewRef>(null);
-
-  const [editor, setEditor] = useState({
-    value: "",
-    language: "yaml",
   });
 
   const dialogProps = isEdit && {
@@ -296,15 +300,20 @@ export const ProfileDialog = ({
 
           <Divider orientation="vertical" />
 
-          <ProfileMonacoView
-            className="w-full"
-            ref={profileMonacoViewRef}
-            readonly={isRemote}
-            schemaType="clash"
-            open={open}
-            value={editor.value}
-            language={editor.language}
-          />
+          <Suspense fallback={null}>
+            {open && (
+              <ProfileMonacoViewer
+                className="w-full"
+                readonly={isRemote}
+                schemaType="clash"
+                value={editor.value}
+                onChange={(value) =>
+                  setEditor((editor) => ({ ...editor, value }))
+                }
+                language={editor.language}
+              />
+            )}
+          </Suspense>
         </div>
       ) : (
         MetaInfo

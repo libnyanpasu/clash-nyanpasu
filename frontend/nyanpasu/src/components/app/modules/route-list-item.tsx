@@ -1,11 +1,11 @@
 import { createElement } from "react";
 import { useTranslation } from "react-i18next";
 import { useMatch, useNavigate } from "react-router-dom";
-import { classNames } from "@/utils";
 import { languageQuirks } from "@/utils/language";
 import { SvgIconComponent } from "@mui/icons-material";
 import { alpha, ListItemButton, ListItemIcon, useTheme } from "@mui/material";
 import { useNyanpasu } from "@nyanpasu/interface";
+import { cn } from "@nyanpasu/ui";
 
 export const RouteListItem = ({
   name,
@@ -30,7 +30,7 @@ export const RouteListItem = ({
 
   return (
     <ListItemButton
-      className={classNames(
+      className={cn(
         onlyIcon ? "!mx-auto !size-16 !rounded-3xl" : "!rounded-full !pr-14",
       )}
       sx={{
@@ -55,7 +55,7 @@ export const RouteListItem = ({
 
       {!onlyIcon && (
         <div
-          className={classNames(
+          className={cn(
             "w-full text-nowrap pb-1 pt-1",
             nyanpasuConfig?.language &&
               languageQuirks[nyanpasuConfig?.language].drawer.itemClassNames,

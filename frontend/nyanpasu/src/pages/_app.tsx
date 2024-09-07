@@ -14,7 +14,6 @@ import LogProvider from "@/components/logs/log-provider";
 import UpdaterDialog from "@/components/updater/updater-dialog-wrapper";
 import useUpdater from "@/hooks/use-updater";
 import { atomIsDrawer } from "@/store";
-import { classNames } from "@/utils";
 import { useTheme } from "@mui/material";
 import { Experimental_CssVarsProvider as CssVarsProvider } from "@mui/material/styles";
 import { cn, useBreakpoint } from "@nyanpasu/ui";
@@ -88,10 +87,7 @@ export const Catch = ({ error }: FallbackProps) => {
 
   return (
     <div
-      className={classNames(
-        styles.oops,
-        theme.palette.mode === "dark" && styles.dark,
-      )}
+      className={cn(styles.oops, theme.palette.mode === "dark" && styles.dark)}
     >
       <h1>Oops!</h1>
       <p>Something went wrong... Caught at _app error boundary.</p>

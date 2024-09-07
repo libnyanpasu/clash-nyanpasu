@@ -834,6 +834,8 @@ Section Uninstall
     SetShellVarContext current
     RmDir /r "$APPDATA\${BUNDLEID}"
     RmDir /r "$LOCALAPPDATA\${BUNDLEID}"
+    RmDir /r "$APPDATA\Clash Nyanpasu"
+    RmDir /r "$LOCALAPPDATA\Clash Nyanpasu"
   ${EndIf}
 
   ${GetOptions} $CMDLINE "/P" $R0

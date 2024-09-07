@@ -25,32 +25,38 @@ export interface ProfileMonacoViewRef {
   getValue: () => string | undefined;
 }
 
-export const beforeEditorMount = (monaco: Monaco) => {
-  monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
-    target: monaco.languages.typescript.ScriptTarget.ES2020,
-    allowNonTsExtensions: true,
-    allowJs: true,
-  });
+let initd = false;
 
-  configureMonacoYaml(monaco, {
-    validate: true,
-    enableSchemaRequest: true,
-    completion: true,
-    schemas: [
-      {
-        url: "https://exmaple.com/schema.json",
-        fileMatch: ["**/*.clash.yaml"],
-        // @ts-expect-error JSONSchema7 as JSONSchema
-        schema: clashMetaSchema as JSONSchema7,
-      },
-      {
-        url: "https://exmaple.com/schema.json",
-        fileMatch: ["**/*.merge.yaml"],
-        // @ts-expect-error JSONSchema7 as JSONSchema
-        schema: nyanpasuMergeSchema as JSONSchema7,
-      },
-    ],
-  });
+export const beforeEditorMount = (monaco: Monaco) => {
+  if (!initd) {
+    monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
+      target: monaco.languages.typescript.ScriptTarget.ES2020,
+      allowNonTsExtensions: true,
+      allowJs: true,
+    });
+    console.log(clashMetaSchema);
+    console.log(nyanpasuMergeSchema);
+    configureMonacoYaml(monaco, {
+      validate: true,
+      enableSchemaRequest: true,
+      completion: true,
+      schemas: [
+        {
+          uri: "http://example.com/schema-name.json",
+          fileMatch: ["**/*.clash.yaml"],
+          // @ts-expect-error JSONSchema7 as JSONSchema
+          schema: clashMetaSchema as JSONSchema7,
+        },
+        {
+          uri: "http://example.com/schema-name.json",
+          fileMatch: ["**/*.merge.yaml"],
+          // @ts-expect-error JSONSchema7 as JSONSchema
+          schema: nyanpasuMergeSchema as JSONSchema7,
+        },
+      ],
+    });
+  }
+  initd = true;
 };
 
 export default function ProfileMonacoViewer({

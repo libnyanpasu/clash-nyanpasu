@@ -7,11 +7,11 @@ import "monaco-editor/esm/vs/editor/editor.all.js";
 // language services
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
 import "monaco-editor/esm/vs/language/typescript/monaco.contribution.js";
-// workers
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import jsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
 import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
-import yamlWorker from "monaco-yaml/yaml.worker?worker";
+// workers
+import yamlWorker from "@/utils/monaco-yaml.worker?worker";
 // others
 import { loader } from "@monaco-editor/react";
 
@@ -33,4 +33,13 @@ self.MonacoEnvironment = {
 
 loader.config({ monaco });
 
-export { loader };
+loader
+  .init()
+  .then(() => {
+    console.log("Monaco is ready");
+  })
+  .catch((error) => {
+    console.error("Monaco initialization failed", error);
+  });
+
+export {};

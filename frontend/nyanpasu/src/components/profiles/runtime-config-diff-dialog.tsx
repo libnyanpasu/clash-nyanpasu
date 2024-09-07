@@ -60,24 +60,25 @@ export default function RuntimeConfigDiffDialog({
           <span className="text-base font-semibold">原始配置</span>
           <span className="text-base font-semibold">运行配置</span>
         </div>
-        <Suspense fallback={null}>
-          {loaded && (
-            <MonacoDiffEditor
-              className="h-[75vh] w-full"
-              language="yaml"
-              theme={mode === "light" ? "vs" : "vs-dark"}
-              original={profileConfig}
-              originalModelPath={originalModelPath}
-              modified={runtimeConfig}
-              modifiedModelPath={modifiedModelPath}
-              options={{
-                minimap: { enabled: false },
-                automaticLayout: true,
-                readOnly: true,
-              }}
-            />
-          )}
-        </Suspense>
+        <div className="h-[75vh] w-full">
+          <Suspense fallback={null}>
+            {loaded && (
+              <MonacoDiffEditor
+                language="yaml"
+                theme={mode === "light" ? "vs" : "vs-dark"}
+                original={profileConfig}
+                originalModelPath={originalModelPath}
+                modified={runtimeConfig}
+                modifiedModelPath={modifiedModelPath}
+                options={{
+                  minimap: { enabled: false },
+                  automaticLayout: true,
+                  readOnly: true,
+                }}
+              />
+            )}
+          </Suspense>
+        </div>
       </div>
     </BaseDialog>
   );

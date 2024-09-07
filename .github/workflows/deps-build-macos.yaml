@@ -110,6 +110,7 @@ jobs:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
+          NODE_OPTIONS: "--max_old_space_size=4096"
         with:
           tagName: ${{ inputs.tag }}
           releaseName: "Clash Nyanpasu Dev"
@@ -127,6 +128,7 @@ jobs:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
+          NODE_OPTIONS: "--max_old_space_size=4096"
         run: |
           ${{ inputs.nightly == true && 'pnpm build:nightly --target aarch64-apple-darwin' || 'pnpm build --target aarch64-apple-darwin' }}
           pnpm upload:osx-aarch64

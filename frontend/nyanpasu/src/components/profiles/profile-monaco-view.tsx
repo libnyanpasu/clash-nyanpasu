@@ -68,6 +68,7 @@ export const ProfileMonacoView = forwardRef(function ProfileMonacoView(
       const uri = monaco.Uri.parse(
         `${nanoid()}.${!!schemaType ? `${schemaType}.` : ""}.${language}`,
       );
+      console.log("monaco uri", uri);
       const model = monaco.editor.createModel(value || "", language, uri);
       instanceRef.current.setModel(model);
     };

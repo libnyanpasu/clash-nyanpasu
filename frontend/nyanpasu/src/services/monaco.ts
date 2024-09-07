@@ -22,11 +22,13 @@ configureMonacoYaml(monaco, {
   enableSchemaRequest: true,
   schemas: [
     {
+      url: "https://exmaple.com/schema.json",
       fileMatch: ["**/*.clash.yaml"],
       // @ts-expect-error monaco-yaml parse issue
       schema: clashMetaSchema,
     },
     {
+      url: "https://exmaple.com/schema.json",
       fileMatch: ["**/*.merge.yaml"],
       // @ts-expect-error monaco-yaml parse issue
       schema: nyanpasuMergeSchema,

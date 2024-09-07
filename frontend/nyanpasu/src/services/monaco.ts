@@ -1,3 +1,4 @@
+import { type JSONSchema7 } from "json-schema";
 import nyanpasuMergeSchema from "meta-json-schema/schemas/clash-nyanpasu-merge-json-schema.json";
 import clashMetaSchema from "meta-json-schema/schemas/meta-json-schema.json";
 import { configureMonacoYaml } from "monaco-yaml";
@@ -24,14 +25,14 @@ configureMonacoYaml(monaco, {
     {
       url: "https://exmaple.com/schema.json",
       fileMatch: ["**/*.clash.yaml"],
-      // @ts-expect-error monaco-yaml parse issue
-      schema: clashMetaSchema,
+      // @ts-expect-error JSONSchema7 as JSONSchema
+      schema: clashMetaSchema as JSONSchema7,
     },
     {
       url: "https://exmaple.com/schema.json",
       fileMatch: ["**/*.merge.yaml"],
-      // @ts-expect-error monaco-yaml parse issue
-      schema: nyanpasuMergeSchema,
+      // @ts-expect-error JSONSchema7 as JSONSchema
+      schema: nyanpasuMergeSchema as JSONSchema7,
     },
   ],
 });

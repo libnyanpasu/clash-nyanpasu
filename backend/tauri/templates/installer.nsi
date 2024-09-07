@@ -783,8 +783,10 @@ FunctionEnd
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Clash Nyanpasu"
   DeleteRegValue HKLM "SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run" "Clash Nyanpasu"
   ; cleanup custom protocol handler
-  DeleteRegKey HKCR "Software\Classes\clash"
-  DeleteRegKey HKCR "Software\Classes\clash-nyanpasu"
+  DeleteRegKey HKCU "Software\Classes\clash"
+  DeleteRegKey HKCU "Software\Classes\clash-nyanpasu"
+  DeleteRegKey HKCR "clash"
+  DeleteRegKey HKCR "clash-nyanpasu"
 !macroend
 
 Section Uninstall

@@ -95,7 +95,7 @@ export default defineConfig(({ command }) => {
       pure: isDev || IS_NIGHTLY ? [] : ["console.log"],
     },
     build: {
-      outDir: "dist",
+      outDir: "../../backend/tauri/tmp/dist",
       emptyOutDir: true,
       sourcemap: isDev || IS_NIGHTLY ? "inline" : false,
     },

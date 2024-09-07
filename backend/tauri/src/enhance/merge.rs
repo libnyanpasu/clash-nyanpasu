@@ -160,7 +160,12 @@ fn do_filter(logs: &mut Logs, config: &mut Value, field_str: &str, filter: &Valu
                 let r#match = run_expr(logs, item, when);
                 if r#match.unwrap_or(false) {
                     for (key, value) in merge.iter() {
-                        override_recursive(item.as_mapping_mut().unwrap(), key, value.clone());
+                        let item = item.as_mapping_mut().unwrap();
+                        if item.contains_key(key) {
+                            override_recursive(item, key, value.clone());
+                        } else {
+                            item.insert(key.clone(), value.clone());
+                        }
                     }
                 }
             });
@@ -181,25 +186,44 @@ fn do_filter(logs: &mut Logs, config: &mut Value, field_str: &str, filter: &Valu
                             let key_str = key.as_str().unwrap();
                             // 对 key_str 做一下处理，跳过最后一个元素
                             let mut keys = key_str.split('.').collect::<Vec<_>>();
-                            let last_key = if keys.len() > 1 {
-                                keys.pop().unwrap()
-                            } else {
-                                key_str
-                            };
+                            let last_key = if keys.len() > 1 { keys.pop() } else { None };
                             let key_str = keys.join(".");
-                            if let Some(field) = find_field(item, &key_str) {
-                                field.as_mapping_mut().unwrap().remove(last_key);
+                            match last_key {
+                                None => {
+                                    item.as_mapping_mut().unwrap().remove(key_str);
+                                }
+                                Some(last_key) => {
+                                    let field = find_field(item, &key_str);
+                                    if let Some(field) = field {
+                                        match field {
+                                            Value::Mapping(map) => {
+                                                map.remove(last_key);
+                                            }
+                                            Value::Sequence(list)
+                                                if last_key.parse::<usize>().is_ok() =>
+                                            {
+                                                let index = last_key.parse::<usize>().unwrap();
+                                                if index < list.len() {
+                                                    list.remove(index);
+                                                }
+                                            }
+                                            _ => {
+                                                logs.info(format!("invalid key: {:#?}", last_key));
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         } else {
                             match item {
                                 Value::Sequence(list) if key.is_i64() => {
-                                    let index = key.as_i64().unwrap() as usize;
-                                    if index < list.len() {
-                                        list.remove(index);
+                                    let index = key.as_i64().unwrap();
+                                    if index >= 0 && (index as usize) < list.len() {
+                                        list.remove(index as usize);
                                     }
                                 }
                                 _ => {
-                                    logs.warn(format!("invalid key: {:#?}", key));
+                                    logs.info(format!("invalid key: {:#?}", key));
                                 }
                             }
                         }
@@ -294,7 +318,9 @@ pub fn use_merge(merge: Mapping, mut config: Mapping) -> ProcessOutput {
 }
 
 mod tests {
+    #[allow(unused_imports)]
     use pretty_assertions::{assert_eq, assert_ne};
+
     #[test]
     fn test_find_field() {
         let config = r"
@@ -687,6 +713,312 @@ mod tests {
           - OVERRIDDEN
           - OVERRIDDEN
         "#;
+        let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
+        let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
+        let (result, logs) = super::use_merge(merge, config);
+        eprintln!("{:#?}\n\n{:#?}", logs, result);
+        assert_eq!(logs.len(), 0);
+        let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
+        assert_eq!(result.unwrap(), expected);
+    }
+
+    #[test]
+    fn test_filter_when_and_merge() {
+        let merge = r"
+        filter__proxy-groups:
+          when: |
+            item.name == 'Spotify'
+          merge:
+            icon: 'https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Spotify.png'
+        filter__wow:
+          when: |
+            item == 'wow'
+          merge:
+            item: 'wow'";
+        let config = r#"proxy-groups:
+- name: Spotify
+  type: select
+  proxies:
+  - Proxies
+  - DIRECT
+  - HK
+  - JP
+  - SG
+  - TW
+  - US
+- name: Steam
+  type: select
+  proxies:
+  - Proxies
+  - DIRECT
+  - HK
+  - JP
+  - SG
+  - TW
+  - US
+- name: Telegram
+  type: select
+  proxies:
+  - Proxies
+  - HK
+  - JP
+  - SG
+  - TW
+  - US"#;
+        let expected = r#"proxy-groups:
+- name: Spotify
+  type: select
+  icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Spotify.png
+  proxies:
+  - Proxies
+  - DIRECT
+  - HK
+  - JP
+  - SG
+  - TW
+  - US
+- name: Steam
+  type: select
+  proxies:
+  - Proxies
+  - DIRECT
+  - HK
+  - JP
+  - SG
+  - TW
+  - US
+- name: Telegram
+  type: select
+  proxies:
+  - Proxies
+  - HK
+  - JP
+  - SG
+  - TW
+  - US"#;
+        let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
+        let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
+        let (result, logs) = super::use_merge(merge, config);
+        eprintln!("{:#?}\n\n{:#?}", logs, result);
+        assert_eq!(logs.len(), 1);
+        let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
+        assert_eq!(result.unwrap(), expected);
+    }
+
+    #[test]
+    fn test_filter_when_and_remove() {
+        let merge = r"
+        filter__proxies:
+          when: |
+            type(item) == 'table' and (item.type == 'ss' or item.type == 'hysteria2')
+          remove:
+            - name
+            - type
+        filter__list: # note that Lua table index starts from 1
+          when: |
+            item[1] == 123
+          remove:
+            - 0
+        filter__wow:
+          when: |
+            item.flag == true
+          remove:
+            - test.1
+            - good.should_remove
+        ";
+        let config = r#"
+        wow:
+          - test:
+               - 123
+               - 456
+            flag: true
+          - good:
+              should_remove: true
+              should_not_remove: true
+            flag: true
+        list:
+          - - 123
+            - 456
+            - 222
+          - - 123
+            - 456
+            - 222
+        proxies:
+          - 123
+          - 555
+          - name: "hysteria2"
+            type: hysteria2
+            server: server.com
+            port: 443
+            ports: 443-8443
+            password: yourpassword
+            up: "30 Mbps"
+            down: "200 Mbps"
+            obfs: salamander # 默认为空，如果填写则开启obfs，目前仅支持salamander
+            obfs-password: yourpassword
+
+            sni: server.com
+            skip-cert-verify: false
+            fingerprint: xxxx
+            alpn:
+              - h3
+            ca: "./my.ca"
+            ca-str: "xyz"
+          - name: "hysteria2"
+            type: ss
+            server: server.com
+            port: 443
+            ports: 443-8443
+            password: yourpassword
+            up: "30 Mbps"
+            down: "200 Mbps"
+            obfs: salamander # 默认为空，如果填写则开启obfs，目前仅支持salamander
+            obfs-password: yourpassword
+
+            sni: server.com
+            skip-cert-verify: false
+            fingerprint: xxxx
+            alpn:
+              - h3
+            ca: "./my.ca"
+            ca-str: "xyz"            
+        "#;
+        let expected = r#"
+        wow:
+          - test:
+               - 123
+            flag: true
+          - good:
+              should_not_remove: true
+            flag: true
+        list:
+          - - 456
+            - 222
+          - - 456
+            - 222
+        proxies:
+          - 123
+          - 555
+          - server: server.com
+            port: 443
+            ports: 443-8443
+            password: yourpassword
+            up: "30 Mbps"
+            down: "200 Mbps"
+            obfs: salamander
+            obfs-password: yourpassword
+            sni: server.com
+            skip-cert-verify: false
+            fingerprint: xxxx
+            alpn:
+            - h3
+            ca: "./my.ca"
+            ca-str: "xyz"
+          - server: server.com
+            port: 443
+            ports: 443-8443
+            password: yourpassword
+            up: "30 Mbps"
+            down: "200 Mbps"
+            obfs: salamander
+            obfs-password: yourpassword
+            sni: server.com
+            skip-cert-verify: false
+            fingerprint: xxxx
+            alpn:
+            - h3
+            ca: "./my.ca"
+            ca-str: "xyz"
+        "#;
+        let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
+        let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
+        let (result, logs) = super::use_merge(merge, config);
+        eprintln!("{:#?}\n\n{:#?}", logs, result);
+        assert_eq!(logs.len(), 0);
+        let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
+        assert_eq!(result.unwrap(), expected);
+    }
+
+    #[test]
+    fn test_filter_sequence() {
+        let merge = r"
+        filter__proxy-groups:
+          - when: |
+              item.name == 'Spotify'
+            merge:
+              icon: 'https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Spotify.png'
+          - when: |
+              item.name == 'Steam'
+            merge:
+              icon: 'https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Steam.png'
+          - when: |
+              item.name == 'Telegram'
+            merge:
+              icon: 'https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Telegram.png'  
+              ";
+        let config = r#"proxy-groups:
+- name: Spotify
+  type: select
+  proxies:
+  - Proxies
+  - DIRECT
+  - HK
+  - JP
+  - SG
+  - TW
+  - US
+- name: Steam
+  type: select
+  proxies:
+  - Proxies
+  - DIRECT
+  - HK
+  - JP
+  - SG
+  - TW
+  - US
+- name: Telegram
+  type: select
+  proxies:
+  - Proxies
+  - HK
+  - JP
+  - SG
+  - TW
+  - US"#;
+        let expected = r#"proxy-groups:
+- name: Spotify
+  type: select
+  icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Spotify.png
+  proxies:
+  - Proxies
+  - DIRECT
+  - HK
+  - JP
+  - SG
+  - TW
+  - US
+- name: Steam
+  type: select
+  icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Steam.png
+  proxies:
+  - Proxies
+  - DIRECT
+  - HK
+  - JP
+  - SG
+  - TW
+  - US
+- name: Telegram
+  type: select
+  icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Telegram.png
+  proxies:
+  - Proxies
+  - HK
+  - JP
+  - SG
+  - TW
+  - US"#;
         let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
         let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
         let (result, logs) = super::use_merge(merge, config);

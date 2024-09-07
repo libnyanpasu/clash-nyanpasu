@@ -1,5 +1,6 @@
 import { version } from "~/package.json";
 import { useAsyncEffect } from "ahooks";
+import { type editor } from "monaco-editor";
 import {
   createContext,
   lazy,
@@ -18,6 +19,7 @@ import {
 } from "react-hook-form-mui";
 import { useTranslation } from "react-i18next";
 import { useLatest } from "react-use";
+import { message } from "@/utils/notification";
 import { Divider, InputAdornment } from "@mui/material";
 import { Profile, useClash } from "@nyanpasu/interface";
 import { BaseDialog } from "@nyanpasu/ui";
@@ -86,11 +88,14 @@ export const ProfileDialog = ({
     setIsEdit(!!profile);
   }, [profile]);
 
-  const commonProps = {
-    autoComplete: "off",
-    autoCorrect: "off",
-    fullWidth: true,
-  };
+  const commonProps = useMemo(
+    () => ({
+      autoComplete: "off",
+      autoCorrect: "off",
+      fullWidth: true,
+    }),
+    [],
+  );
 
   const handleProfileSelected = (content: string) => {
     localProfile.current = content;
@@ -105,7 +110,18 @@ export const ProfileDialog = ({
 
   const latestEditor = useLatest(editor);
 
+  const editorMarks = useRef<editor.IMarker[]>([]);
+  const editorHasError = () =>
+    editorMarks.current.length > 0 &&
+    editorMarks.current.some((m) => m.severity === 8);
+
   const onSubmit = handleSubmit(async (form) => {
+    if (editorHasError()) {
+      message("Please fix the error before saving", {
+        type: "error",
+      });
+      return;
+    }
     const toCreate = async () => {
       if (isRemote) {
         await createProfile(form);
@@ -310,6 +326,7 @@ export const ProfileDialog = ({
                 onChange={(value) =>
                   setEditor((editor) => ({ ...editor, value }))
                 }
+                onValidate={(marks) => (editorMarks.current = marks)}
                 language={editor.language}
               />
             )}

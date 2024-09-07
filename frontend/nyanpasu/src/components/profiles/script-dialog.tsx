@@ -1,7 +1,9 @@
 import { useAsyncEffect, useReactive } from "ahooks";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { type editor } from "monaco-editor";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { SelectElement, TextFieldElement, useForm } from "react-hook-form-mui";
 import { useTranslation } from "react-i18next";
+import { message } from "@/utils/notification";
 import { Divider } from "@mui/material";
 import { Profile, useClash } from "@nyanpasu/interface";
 import { BaseDialog, BaseDialogProps } from "@nyanpasu/ui";
@@ -93,7 +95,19 @@ export const ScriptDialog = ({
     rawType: "merge",
   });
 
+  const editorMarks = useRef<editor.IMarker[]>([]);
+  const editorHasError = () =>
+    editorMarks.current.length > 0 &&
+    editorMarks.current.some((m) => m.severity === 8);
+
   const onSubmit = form.handleSubmit(async (data) => {
+    if (editorHasError()) {
+      message("Please fix the error before submitting", {
+        type: "error",
+      });
+      return;
+    }
+
     convertTypeMapping(data);
 
     const editorValue = editor.value;
@@ -224,6 +238,9 @@ export const ScriptDialog = ({
                 editor.value = value;
               }}
               language={editor.language}
+              onValidate={(marks) => {
+                editorMarks.current = marks;
+              }}
               schemaType={
                 editor.rawType === Profile.Type.Merge ? "merge" : undefined
               }

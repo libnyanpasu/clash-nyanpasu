@@ -4,6 +4,7 @@ import { useAtomValue } from "jotai";
 import { type JSONSchema7 } from "json-schema";
 import nyanpasuMergeSchema from "meta-json-schema/schemas/clash-nyanpasu-merge-json-schema.json";
 import clashMetaSchema from "meta-json-schema/schemas/meta-json-schema.json";
+import { type editor } from "monaco-editor";
 import { configureMonacoYaml } from "monaco-yaml";
 import { nanoid } from "nanoid";
 import { useCallback, useMemo } from "react";
@@ -19,6 +20,7 @@ export interface ProfileMonacoViewProps {
   className?: string;
   readonly?: boolean;
   schemaType?: "clash" | "merge";
+  onValidate?: (markers: editor.IMarker[]) => void;
 }
 
 export interface ProfileMonacoViewRef {
@@ -65,6 +67,7 @@ export default function ProfileMonacoViewer({
   readonly = false,
   schemaType,
   className,
+  onValidate,
   ...others
 }: ProfileMonacoViewProps) {
   const mode = useAtomValue(themeMode);
@@ -92,6 +95,7 @@ export default function ProfileMonacoViewer({
       theme={mode === "light" ? "vs" : "vs-dark"}
       beforeMount={beforeEditorMount}
       onChange={onChange}
+      onValidate={onValidate}
       options={{
         readOnly: readonly,
         mouseWheelZoom: true,

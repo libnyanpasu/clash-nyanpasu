@@ -778,10 +778,20 @@ FunctionEnd
     DetailPrint "Service directory does not exist, skipping stop and remove service directory"
 !macroend
 
+!macro RemoveRegs
+  ; cleanup auto start registry keys
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Clash Nyanpasu"
+  DeleteRegValue HKLM "SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run" "Clash Nyanpasu"
+  ; cleanup custom protocol handler
+  DeleteRegKey HKCR "Software\Classes\clash"
+  DeleteRegKey HKCR "Software\Classes\clash-nyanpasu"
+!macroend
+
 Section Uninstall
   !insertmacro GetProgramDataPath
   !insertmacro StopAndRemoveServiceDirectory
   !insertmacro CheckAllNyanpasuProcesses
+  !insertmacro RemoveRegs
   ; !insertmacro CheckIfAppIsRunning
   
   ; Delete the app directory and its content from disk

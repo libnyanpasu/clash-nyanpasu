@@ -45,12 +45,12 @@ export const SettingClashPort = () => {
             } catch (e) {
               message(JSON.stringify(e), {
                 title: t("Error"),
-                type: "error",
+                kind: "error",
               });
             } finally {
               message(t("After restart to take effect"), {
                 title: t("Success"),
-                type: "info",
+                kind: "info",
               });
             }
           }}

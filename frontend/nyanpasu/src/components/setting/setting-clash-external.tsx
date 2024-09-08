@@ -83,7 +83,7 @@ export const SettingClashExternal = () => {
     } catch (e) {
       message(JSON.stringify(e), {
         title: t("Error"),
-        type: "error",
+        kind: "error",
       });
     } finally {
       setExpand(false);

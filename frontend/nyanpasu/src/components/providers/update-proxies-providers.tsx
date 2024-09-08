@@ -16,7 +16,7 @@ export const UpdateProxiesProviders = () => {
   const handleProviderUpdate = useLockFn(async () => {
     if (!getProxiesProviders.data) {
       message(`No Providers.`, {
-        type: "info",
+        kind: "info",
         title: t("Info"),
       });
 
@@ -35,7 +35,7 @@ export const UpdateProxiesProviders = () => {
       );
     } catch (e) {
       message(`Update all failed.\n${String(e)}`, {
-        type: "error",
+        kind: "error",
         title: t("Error"),
       });
     } finally {

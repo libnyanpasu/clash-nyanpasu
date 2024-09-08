@@ -59,7 +59,7 @@ export const SettingNyanpasuVersion = () => {
       if (!info?.shouldUpdate) {
         message(t("No update available."), {
           title: t("Info"),
-          type: "info",
+          kind: "info",
         });
       } else {
         setUpdaterManifest(info.manifest || null);
@@ -69,7 +69,7 @@ export const SettingNyanpasuVersion = () => {
         `Update check failed. Please verify your network connection.\n\n${formatError(e)}`,
         {
           title: t("Error"),
-          type: "error",
+          kind: "error",
         },
       );
     } finally {

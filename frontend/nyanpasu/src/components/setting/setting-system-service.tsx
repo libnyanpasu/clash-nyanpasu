@@ -74,7 +74,7 @@ export const SettingSystemService = () => {
         }: ${formatError(e)}`;
 
         message(errorMessage, {
-          type: "error",
+          kind: "error",
           title: t("Error"),
         });
         // If install failed show a prompt to user to install the service manually
@@ -109,7 +109,7 @@ export const SettingSystemService = () => {
             : `Start failed: ${formatError(e)}`;
 
         message(errorMessage, {
-          type: "error",
+          kind: "error",
           title: t("Error"),
         });
         // If start failed show a prompt to user to start the service manually

@@ -54,7 +54,7 @@ export const SideChain = ({ onChainEdit }: SideChainProps) => {
       }
     } catch (e) {
       message(`Apply error: ${formatError(e)}`, {
-        type: "error",
+        kind: "error",
         title: t("Error"),
       });
     }

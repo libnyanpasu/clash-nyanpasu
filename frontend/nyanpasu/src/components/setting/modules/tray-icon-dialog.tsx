@@ -53,7 +53,7 @@ function TrayIconItem({ mode }: { mode: "system_proxy" | "tun" | "normal" }) {
         return await setTrayIconCall(mode, selected);
       } catch (e) {
         message(formatError(e), {
-          type: "error",
+          kind: "error",
         });
       } finally {
         setTs(Date.now());

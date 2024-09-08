@@ -38,7 +38,7 @@ export default function UpdaterDialog({
       await relaunch();
     } catch (e) {
       console.error(e);
-      message(formatError(e), { type: "error", title: t("Error") });
+      message(formatError(e), { kind: "error", title: t("Error") });
     }
   });
 

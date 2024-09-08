@@ -118,7 +118,7 @@ export const ProfileDialog = ({
   const onSubmit = handleSubmit(async (form) => {
     if (editorHasError()) {
       message("Please fix the error before saving", {
-        type: "error",
+        kind: "error",
       });
       return;
     }

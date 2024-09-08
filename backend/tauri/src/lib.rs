@@ -117,10 +117,39 @@ pub fn run() -> std::io::Result<()> {
 
     // Panic Hook to show a panic dialog and save logs
     let default_panic = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        error!(format!("panic hook: {:?}", info));
-        utils::dialog::panic_dialog(&format!("{:?}", info));
-        default_panic(info);
+    std::panic::set_hook(Box::new(move |panic_info| {
+        use std::backtrace::{Backtrace, BacktraceStatus};
+        let payload = panic_info.payload();
+
+        #[allow(clippy::manual_map)]
+        let payload = if let Some(s) = payload.downcast_ref::<&str>() {
+            Some(&**s)
+        } else if let Some(s) = payload.downcast_ref::<String>() {
+            Some(s.as_str())
+        } else {
+            None
+        };
+
+        let location = panic_info.location().map(|l| l.to_string());
+        let (backtrace, note) = {
+            let backtrace = Backtrace::capture();
+            let note = (backtrace.status() == BacktraceStatus::Disabled)
+                .then_some("run with RUST_BACKTRACE=1 environment variable to display a backtrace");
+            (Some(backtrace), note)
+        };
+
+        tracing::error!(
+            panic.payload = payload,
+            panic.location = location,
+            panic.backtrace = backtrace.as_ref().map(tracing::field::display),
+            panic.note = note,
+            "A panic occurred",
+        );
+        utils::dialog::panic_dialog(&format!(
+            "note: {:?}\nlocation: {:?}\nbacktrace: {:#?}\n\n payload: {:#?}",
+            note, location, backtrace, payload
+        ));
+        default_panic(panic_info);
     }));
 
     let verge = { Config::verge().latest().language.clone().unwrap() };

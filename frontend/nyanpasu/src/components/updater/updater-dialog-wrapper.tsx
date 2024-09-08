@@ -1,6 +1,6 @@
-import { UpdaterInstanceAtom } from "@/store/updater";
 import { useAtom } from "jotai";
 import { lazy, Suspense, useState } from "react";
+import { UpdaterInstanceAtom } from "@/store/updater";
 
 const UpdaterDialog = lazy(() => import("./updater-dialog"));
 

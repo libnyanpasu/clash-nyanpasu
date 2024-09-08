@@ -11,24 +11,14 @@
         "type": "embedBootstrapper"
       },
       "wix": {
-        "language": [
-          "zh-CN",
-          "en-US",
-          "ru-RU"
-        ],
+        "language": ["zh-CN", "en-US", "ru-RU"],
         "template": "./templates/installer.wxs",
-        "fragmentPaths": [
-          "./templates/cleanup.wxs"
-        ]
+        "fragmentPaths": ["./templates/cleanup.wxs"]
       },
       "nsis": {
         "displayLanguageSelector": true,
         "installerIcon": "icons/icon.ico",
-        "languages": [
-          "SimpChinese",
-          "English",
-          "Russian"
-        ],
+        "languages": ["SimpChinese", "English", "Russian"],
         "template": "./templates/installer.nsi",
         "installMode": "both"
       }
@@ -40,9 +30,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [
-      "resources"
-    ],
+    "resources": ["resources"],
     "externalBin": [
       "sidecar/clash",
       "sidecar/mihomo",
@@ -63,9 +51,7 @@
     },
     "linux": {
       "deb": {
-        "depends": [
-          "openssl"
-        ]
+        "depends": ["openssl"]
       }
     },
     "licenseFile": "../../LICENSE",

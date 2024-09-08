@@ -312,6 +312,9 @@ importers:
       '@iconify/json':
         specifier: 2.2.245
         version: 2.2.245
+      '@tauri-apps/plugin-clipboard-manager':
+        specifier: 2.0.0-rc.1
+        version: 2.0.0-rc.1
       '@tauri-apps/plugin-dialog':
         specifier: 2.0.0-rc.1
         version: 2.0.0-rc.1
@@ -350,7 +353,7 @@ importers:
         version: 2.1.1
       meta-json-schema:
         specifier: libnyanpasu/meta-json-schema#main
-        version: git+https://git@github.com:libnyanpasu/meta-json-schema.git#b4b29ee93facde4ca7da6e9c4e0cba50c3c1e074
+        version: https://codeload.github.com/libnyanpasu/meta-json-schema/tar.gz/b4b29ee93facde4ca7da6e9c4e0cba50c3c1e074
       monaco-yaml:
         specifier: 5.2.2
         version: 5.2.2(monaco-editor@0.51.0)
@@ -2396,6 +2399,9 @@ packages:
     resolution: {integrity: sha512-2S8WGmkz54Z9WxpaFVbUYsTiwx5OIEmdD5DDWRygX9VhaWwZg0y6DctsUtCRVre9I/Un/hTnmqkhZqPamCEx8A==}
     engines: {node: '>= 10'}
     hasBin: true
+
+  '@tauri-apps/plugin-clipboard-manager@2.0.0-rc.1':
+    resolution: {integrity: sha512-hFgUABMmQuVGKwHb8PR9fuqfk0WRkedbWUt/ZV5sL4Q6kLrsp3JYJvtzVPeMYdeBvMqHl8WXNxAc/zwSld2h9w==}
 
   '@tauri-apps/plugin-dialog@2.0.0-rc.1':
     resolution: {integrity: sha512-H28gh6BfZtjflHQ+HrmWwunDriBI3AQLAKnMs50GA6zeNUULqbQr7VXbAAKeJL/0CmWcecID4PKXVoSlaWRhEg==}
@@ -4968,8 +4974,8 @@ packages:
     resolution: {integrity: sha512-8q7VEgMJW4J8tcfVPy8g09NcQwZdbwFEqhe/WZkoIzjn/3TGDwtOCYtXGxA3O8tPzpczCCDgv+P2P5y00ZJOOg==}
     engines: {node: '>= 8'}
 
-  meta-json-schema@git+https://git@github.com:libnyanpasu/meta-json-schema.git#b4b29ee93facde4ca7da6e9c4e0cba50c3c1e074:
-    resolution: {commit: b4b29ee93facde4ca7da6e9c4e0cba50c3c1e074, repo: git@github.com:libnyanpasu/meta-json-schema.git, type: git}
+  meta-json-schema@https://codeload.github.com/libnyanpasu/meta-json-schema/tar.gz/b4b29ee93facde4ca7da6e9c4e0cba50c3c1e074:
+    resolution: {tarball: https://codeload.github.com/libnyanpasu/meta-json-schema/tar.gz/b4b29ee93facde4ca7da6e9c4e0cba50c3c1e074}
     version: 1.18.7
 
   micromark-core-commonmark@2.0.1:
@@ -8774,6 +8780,10 @@ snapshots:
       '@tauri-apps/cli-win32-ia32-msvc': 1.6.1
       '@tauri-apps/cli-win32-x64-msvc': 1.6.1
 
+  '@tauri-apps/plugin-clipboard-manager@2.0.0-rc.1':
+    dependencies:
+      '@tauri-apps/api': 2.0.0-rc.4
+
   '@tauri-apps/plugin-dialog@2.0.0-rc.1':
     dependencies:
       '@tauri-apps/api': 2.0.0-rc.4
@@ -11735,7 +11745,7 @@ snapshots:
 
   merge2@1.4.1: {}
 
-  meta-json-schema@git+https://git@github.com:libnyanpasu/meta-json-schema.git#b4b29ee93facde4ca7da6e9c4e0cba50c3c1e074: {}
+  meta-json-schema@https://codeload.github.com/libnyanpasu/meta-json-schema/tar.gz/b4b29ee93facde4ca7da6e9c4e0cba50c3c1e074: {}
 
   micromark-core-commonmark@2.0.1:
     dependencies:

@@ -140,6 +140,7 @@ tauri = { version = "2.0.0-rc", features = [
   "image-ico",
 ] }
 tauri-plugin-deep-link = { path = "../tauri-plugin-deep-link", version = "0.1.2" }
+tauri-plugin-clipboard-manager = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
 tauri-plugin-fs = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
 tauri-plugin-dialog = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
 tauri-plugin-process = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }

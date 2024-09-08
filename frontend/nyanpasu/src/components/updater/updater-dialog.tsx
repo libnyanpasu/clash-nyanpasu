@@ -10,18 +10,18 @@ import { Button } from "@mui/material";
 import { openThat } from "@nyanpasu/interface";
 import { BaseDialog, BaseDialogProps, cn } from "@nyanpasu/ui";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { installUpdate, type UpdateManifest } from "@tauri-apps/plugin-updater";
+import { type Update } from "@tauri-apps/plugin-updater";
 import styles from "./updater-dialog.module.scss";
 
 const Markdown = lazy(() => import("react-markdown"));
 
 export interface UpdaterDialogProps extends Omit<BaseDialogProps, "title"> {
-  manifest: UpdateManifest;
+  update: Update;
 }
 
 export default function UpdaterDialog({
   open,
-  manifest,
+  update,
   onClose,
   ...others
 }: UpdaterDialogProps) {
@@ -31,7 +31,7 @@ export default function UpdaterDialog({
   const handleUpdate = useLockFn(async () => {
     try {
       // Install the update. This will also restart the app on Windows!
-      await installUpdate();
+      await update.downloadAndInstall();
 
       // On macOS and Linux you will need to restart the app manually.
       // You could use this step to display another confirmation dialog.
@@ -48,7 +48,7 @@ export default function UpdaterDialog({
       title={t("updater.title")}
       open={open}
       onClose={() => {
-        setUpdaterIgnore(manifest.version); // TODO: control this behavior
+        setUpdaterIgnore(update.version); // TODO: control this behavior
         onClose?.();
       }}
       onOk={handleUpdate}
@@ -64,9 +64,9 @@ export default function UpdaterDialog({
       >
         <div className="flex items-center justify-between px-2 py-2">
           <div className="flex gap-3">
-            <span className="text-xl font-bold">{manifest.version}</span>
+            <span className="text-xl font-bold">{update.version}</span>
             <span className="text-xs text-slate-500">
-              {dayjs(manifest.date, "YYYY-MM-DD H:mm:ss Z").format(
+              {dayjs(update.date, "YYYY-MM-DD H:mm:ss Z").format(
                 "YYYY-MM-DD HH:mm:ss",
               )}
             </span>
@@ -76,7 +76,7 @@ export default function UpdaterDialog({
             size="small"
             onClick={() => {
               openThat(
-                `https://github.com/LibNyanpasu/clash-nyanpasu/releases/tag/v${manifest.version}`,
+                `https://github.com/LibNyanpasu/clash-nyanpasu/releases/tag/v${update.version}`,
               );
             }}
           >
@@ -106,7 +106,7 @@ export default function UpdaterDialog({
                 },
               }}
             >
-              {manifest.body || "New version available."}
+              {update.body || "New version available."}
             </Markdown>
           </Suspense>
         </div>

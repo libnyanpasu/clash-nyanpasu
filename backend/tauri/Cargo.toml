@@ -144,6 +144,7 @@ tauri-plugin-clipboard-manager = { git = "https://github.com/tauri-apps/plugins-
 tauri-plugin-fs = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
 tauri-plugin-dialog = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
 tauri-plugin-process = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
+tauri-plugin-updater = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
 
 [target.'cfg(all(target_os = "linux", target_arch = "aarch64"))'.dependencies]
 openssl = { version = "0.10", features = ["vendored"] }

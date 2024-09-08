@@ -315,6 +315,28 @@ fn create_dir_all(dir: &PathBuf) -> Result<(), std::io::Error> {
     Ok(())
 }
 
+pub fn get_data_or_sidecar_path(binary_name: impl AsRef<str>) -> Result<PathBuf> {
+    let binary_name = binary_name.as_ref();
+    let data_dir = app_data_dir()?;
+    let path = data_dir.join(if cfg!(windows) && !binary_name.ends_with(".exe") {
+        format!("{}.exe", binary_name)
+    } else {
+        binary_name.to_string()
+    });
+    if path.exists() {
+        return Ok(data_dir);
+    }
+
+    let install_dir = app_install_dir()?;
+    let path = install_dir.join(if cfg!(windows) && !binary_name.ends_with(".exe") {
+        format!("{}.exe", binary_name)
+    } else {
+        binary_name.to_string()
+    });
+
+    Ok(path)
+}
+
 mod test {
     #[test]
     fn test_dir_placeholder() {

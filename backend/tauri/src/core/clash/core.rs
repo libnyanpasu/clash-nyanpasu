@@ -29,7 +29,7 @@ use std::{
     },
     time::Duration,
 };
-use tauri::api::process::Command;
+
 use tokio::time::sleep;
 use tracing_attributes::instrument;
 
@@ -414,17 +414,18 @@ impl CoreManager {
         let app_dir = dirs::app_data_dir()?;
         let app_dir = dirs::path_to_str(&app_dir)?;
         log::debug!(target: "app", "check config in `{clash_core}`");
-        let output = Command::new_sidecar(clash_core)?
+        let output = std::process::Command::new(dirs::get_data_or_sidecar_path(&clash_core)?)
             .args(["-t", "-d", app_dir, "-f", config_path])
             .output()?;
 
         if !output.status.success() {
-            let error = api::parse_check_output(output.stdout.clone());
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let error = api::parse_check_output(stdout.to_string());
             let error = match !error.is_empty() {
                 true => error,
-                false => output.stdout.clone(),
+                false => stdout.to_string(),
             };
-            Logger::global().set_log(output.stdout);
+            Logger::global().set_log(stdout.to_string());
             bail!("{error}");
         }
 

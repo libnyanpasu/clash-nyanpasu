@@ -18,7 +18,8 @@ use std::{
     net::TcpListener,
     sync::atomic::{AtomicU16, Ordering},
 };
-use tauri::{api::process::Command, async_runtime::block_on, App, AppHandle, Manager};
+use tauri::{async_runtime::block_on, App, AppHandle, Listener, Manager};
+use tauri_plugin_shell::ShellExt;
 
 static OPEN_WINDOWS_COUNTER: AtomicU16 = AtomicU16::new(0);
 
@@ -85,7 +86,7 @@ pub fn find_unused_port() -> Result<u16> {
 pub fn resolve_setup(app: &mut App) {
     #[cfg(target_os = "macos")]
     app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-    app.listen_global("react_app_mounted", move |_| {
+    app.listen("react_app_mounted", move |_| {
         tracing::debug!("Frontend React App is mounted, reset open window counter");
         reset_window_open_counter();
         #[cfg(target_os = "macos")]
@@ -94,7 +95,7 @@ pub fn resolve_setup(app: &mut App) {
         }
     });
 
-    handle::Handle::global().init(app.app_handle());
+    handle::Handle::global().init(app.app_handle().clone());
 
     log_err!(init::init_resources());
     log_err!(init::init_service());
@@ -147,7 +148,7 @@ pub fn resolve_setup(app: &mut App) {
     log_err!(sysopt::Sysopt::global().init_sysproxy());
 
     log_err!(handle::Handle::update_systray_part());
-    log_err!(hotkey::Hotkey::global().init(app.app_handle()));
+    log_err!(hotkey::Hotkey::global().init(app.app_handle().clone()));
 
     // setup jobs
     log_err!(JobsManager::global_register());
@@ -166,7 +167,7 @@ pub fn resolve_reset() {
 
 /// create main window
 pub fn create_window(app_handle: &AppHandle) {
-    if let Some(window) = app_handle.get_window("main") {
+    if let Some(window) = app_handle.get_webview_window("main") {
         if OPEN_WINDOWS_COUNTER.load(Ordering::Acquire) == 0 {
             trace_err!(window.unminimize(), "set win unminimize");
             trace_err!(window.show(), "set win visible");
@@ -183,10 +184,10 @@ pub fn create_window(app_handle: &AppHandle) {
             .unwrap_or(&false)
     };
 
-    let mut builder = tauri::window::WindowBuilder::new(
+    let mut builder = tauri::WebviewWindowBuilder::new(
         app_handle,
         "main".to_string(),
-        tauri::WindowUrl::App("/".into()),
+        tauri::WebviewUrl::App("/".into()),
     )
     .title("Clash Nyanpasu")
     .fullscreen(false)
@@ -233,7 +234,11 @@ pub fn create_window(app_handle: &AppHandle) {
 
     #[cfg(target_os = "macos")]
     fn set_controls_and_log_error(app_handle: &tauri::AppHandle, window_name: &str) {
-        match app_handle.get_window(window_name).unwrap().ns_window() {
+        match app_handle
+            .get_webview_window(window_name)
+            .unwrap()
+            .ns_window()
+        {
             Ok(raw_window) => {
                 let window_id: cocoa::base::id = raw_window as _;
                 set_window_controls_pos(window_id, 26.0, 26.0);
@@ -247,8 +252,6 @@ pub fn create_window(app_handle: &AppHandle) {
     match win_res {
         Ok(win) => {
             use tauri::{PhysicalPosition, PhysicalSize};
-            #[cfg(windows)]
-            use window_shadows::set_shadow;
 
             if win_state.is_some() {
                 let state = win_state.as_ref().unwrap();
@@ -273,7 +276,7 @@ pub fn create_window(app_handle: &AppHandle) {
                 }
             }
             #[cfg(windows)]
-            trace_err!(set_shadow(&win, true), "set win shadow");
+            trace_err!(win.set_shadow(true), "set win shadow");
             log::trace!("try to calculate the monitor size");
             let center = (|| -> Result<bool> {
                 let center;
@@ -310,7 +313,9 @@ pub fn create_window(app_handle: &AppHandle) {
 
             #[cfg(debug_assertions)]
             {
-                win.open_devtools();
+                if let Some(webview_window) = win.get_webview_window("main") {
+                    webview_window.open_devtools();
+                }
             }
 
             #[cfg(target_os = "macos")]
@@ -339,7 +344,7 @@ pub fn create_window(app_handle: &AppHandle) {
             windows::core::Interface,
         };
         app_handle
-            .get_window("main")
+            .get_webview_window("main")
             .unwrap()
             .with_webview(|webview| unsafe {
                 let settings = webview
@@ -358,7 +363,7 @@ pub fn create_window(app_handle: &AppHandle) {
 
 /// close main window
 pub fn close_window(app_handle: &AppHandle) {
-    if let Some(window) = app_handle.get_window("main") {
+    if let Some(window) = app_handle.get_webview_window("main") {
         trace_err!(window.close(), "close window");
         reset_window_open_counter()
     }
@@ -366,12 +371,12 @@ pub fn close_window(app_handle: &AppHandle) {
 
 /// is window open
 pub fn is_window_open(app_handle: &AppHandle) -> bool {
-    app_handle.get_window("main").is_some()
+    app_handle.get_webview_window("main").is_some()
 }
 
 pub fn save_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
     let win = app_handle
-        .get_window("main")
+        .get_webview_window("main")
         .ok_or(anyhow::anyhow!("failed to get window"))?;
     let current_monitor = win.current_monitor()?;
     let verge = Config::verge();
@@ -412,21 +417,23 @@ pub fn save_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<(
 
 /// resolve core version
 // TODO: use enum instead
-pub fn resolve_core_version(core_type: &ClashCore) -> Result<String> {
+pub async fn resolve_core_version(app_handle: &AppHandle, core_type: &ClashCore) -> Result<String> {
+    let shell = app_handle.shell();
     let core = core_type.clone().to_string();
     log::debug!(target: "app", "check config in `{core}`");
     let cmd = match core_type {
         ClashCore::ClashPremium | ClashCore::Mihomo | ClashCore::MihomoAlpha => {
-            Command::new_sidecar(core)?.args(["-v"])
+            shell.sidecar(core)?.args(["-v"])
         }
-        ClashCore::ClashRs => Command::new_sidecar(core)?.args(["-V"]),
+        ClashCore::ClashRs => shell.sidecar(core)?.args(["-V"]),
     };
-    let out = cmd.output()?;
+    let out = cmd.output().await?;
     log::debug!(target: "app", "get core version: {:?}", out);
     if !out.status.success() {
         return Err(anyhow::anyhow!("failed to get core version"));
     }
-    let out = out.stdout.trim().split(' ').collect::<Vec<&str>>();
+    let out = String::from_utf8_lossy(&out.stdout);
+    let out = out.trim().split(' ').collect::<Vec<&str>>();
     for item in out {
         log::debug!(target: "app", "check item: {}", item);
         if item.starts_with('v')

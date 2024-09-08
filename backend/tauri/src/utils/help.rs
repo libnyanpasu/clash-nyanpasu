@@ -218,7 +218,6 @@ pub fn get_max_scale_factor() -> f64 {
 fn cleanup_processes(app_handle: &AppHandle) {
     let _ = super::resolve::save_window_state(app_handle, true);
     super::resolve::resolve_reset();
-    tauri::api::process::kill_children();
 }
 
 #[instrument(skip(app_handle))]

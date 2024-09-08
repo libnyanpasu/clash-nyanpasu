@@ -1,4 +1,4 @@
-use rfd::{MessageButtons, MessageDialog, MessageLevel};
+use rfd::{MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 use rust_i18n::t;
 
 pub fn panic_dialog(msg: &str) {
@@ -12,12 +12,15 @@ pub fn panic_dialog(msg: &str) {
 }
 
 pub fn migrate_dialog(msg: &str) -> bool {
-    MessageDialog::new()
-        .set_level(MessageLevel::Warning)
-        .set_title("Clash Nyanpasu Migration")
-        .set_buttons(MessageButtons::YesNo)
-        .set_description(msg)
-        .show()
+    matches!(
+        MessageDialog::new()
+            .set_level(MessageLevel::Warning)
+            .set_title("Clash Nyanpasu Migration")
+            .set_buttons(MessageButtons::YesNo)
+            .set_description(msg)
+            .show(),
+        MessageDialogResult::Yes
+    )
 }
 
 pub fn error_dialog(msg: String) {

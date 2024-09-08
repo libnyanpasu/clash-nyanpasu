@@ -340,10 +340,12 @@ pub async fn fetch_latest_core_versions() -> CmdResult<ManifestVersionLatest> {
 }
 
 #[tauri::command]
-pub async fn get_core_version(core_type: nyanpasu::ClashCore) -> CmdResult<String> {
-    match tokio::task::spawn_blocking(move || resolve::resolve_core_version(&core_type)).await {
-        Ok(Ok(version)) => Ok(version),
-        Ok(Err(err)) => Err(format!("{err}")),
+pub async fn get_core_version(
+    app_handle: AppHandle,
+    core_type: nyanpasu::ClashCore,
+) -> CmdResult<String> {
+    match resolve::resolve_core_version(&app_handle, &core_type).await {
+        Ok(version) => Ok(version),
         Err(err) => Err(format!("{err}")),
     }
 }

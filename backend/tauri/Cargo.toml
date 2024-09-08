@@ -50,8 +50,6 @@ tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"] }
 relative-path = "1.9"
-window-vibrancy = { version = "0.5.0" }
-window-shadows = { version = "0.2.2" }
 axum = "0.7"
 mime = "0.3"
 bincode = "1"
@@ -148,6 +146,7 @@ tauri-plugin-process = { git = "https://github.com/tauri-apps/plugins-workspace"
 tauri-plugin-updater = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
 tauri-plugin-shell = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
 tauri-plugin-notification = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
+window-vibrancy = { version = "0.5.2" }
 
 [target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
 tauri-plugin-global-shortcut = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }

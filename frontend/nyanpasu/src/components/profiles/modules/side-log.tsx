@@ -1,10 +1,10 @@
 import { isEmpty } from "lodash-es";
-import { memo, useEffect } from "react";
+import { memo } from "react";
 import { VList } from "virtua";
-import { classNames } from "@/utils";
 import { RamenDining, Terminal } from "@mui/icons-material";
 import { Divider } from "@mui/material";
 import { useClash } from "@nyanpasu/interface";
+import { cn } from "@nyanpasu/ui";
 import { filterProfiles } from "../utils";
 
 const LogListItem = memo(function LogListItem({
@@ -39,7 +39,7 @@ export const SideLog = ({ className }: SideLogProps) => {
   const { scripts } = filterProfiles(getProfiles.data?.items);
 
   return (
-    <div className={classNames("w-full", className)}>
+    <div className={cn("w-full", className)}>
       <div className="flex items-center justify-between p-2 pl-4">
         <div className="flex items-center gap-2">
           <Terminal />

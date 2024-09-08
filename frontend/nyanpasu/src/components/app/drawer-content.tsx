@@ -1,5 +1,4 @@
 import { useSize } from "ahooks";
-import clsx from "clsx";
 import { useAtom } from "jotai";
 import { merge } from "lodash-es";
 import { CSSProperties, useCallback, useEffect, useRef } from "react";
@@ -8,6 +7,7 @@ import getSystem from "@/utils/get-system";
 import { languageQuirks } from "@/utils/language";
 import { getRoutesWithIcon } from "@/utils/routes-utils";
 import { useNyanpasu } from "@nyanpasu/interface";
+import { cn } from "@nyanpasu/ui";
 import AnimatedLogo from "../layout/animated-logo";
 import RouteListItem from "./modules/route-list-item";
 
@@ -53,7 +53,7 @@ export const DrawerContent = ({
   return (
     <div
       ref={contentRef}
-      className={clsx(
+      className={cn(
         "p-4",
         getSystem() === "macos" ? "pt-14" : "pt-8",
         "w-full",

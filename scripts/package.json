@@ -1,7 +1,7 @@
 {
   "name": "@nyanpasu/scripts",
   "type": "module",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "dependencies": {
     "@actions/github": "6.0.0",
     "@types/figlet": "1.5.8",

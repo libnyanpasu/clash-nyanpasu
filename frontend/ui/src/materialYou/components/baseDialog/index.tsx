@@ -118,7 +118,7 @@ export const BaseDialog = ({
           {!full && (
             <motion.div
               className={cn(
-                "absolute inset-0 z-50",
+                "fixed inset-0 z-50",
                 OS === "linux" ? "bg-black/50" : "backdrop-blur-xl",
               )}
               style={{
@@ -139,7 +139,7 @@ export const BaseDialog = ({
 
           <motion.div
             className={cn(
-              "absolute left-[50%] top-[50%] z-50",
+              "fixed left-[50%] top-[50%] z-50",
               full ? "h-dvh w-full" : "min-w-96 rounded-3xl shadow",
               palette.mode === "dark"
                 ? "text-white shadow-zinc-900"

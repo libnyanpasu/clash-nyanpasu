@@ -72,8 +72,8 @@
     "createUpdaterArtifacts": "v1Compatible"
   },
   "build": {
-    "beforeBuildCommand": "pnpm run-p web:build generate:git-info && echo $(pwd) && rm -rf ./tauri/.tmp/dist && mv ../frontend/nyanpasu/dist ./tauri/.tmp/dist",
-    "frontendDist": "./.tmp/dist",
+    "beforeBuildCommand": "pnpm run-p web:build generate:git-info && echo $(pwd)",
+    "frontendDist": "./tmp/dist",
     "beforeDevCommand": "pnpm run web:dev",
     "devUrl": "http://localhost:3000/"
   },

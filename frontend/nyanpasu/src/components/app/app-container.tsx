@@ -9,7 +9,8 @@ import { LayoutControl } from "../layout/layout-control";
 import styles from "./app-container.module.scss";
 import AppDrawer from "./app-drawer";
 import DrawerContent from "./drawer-content";
-const appWindow = getCurrentWebviewWindow()
+
+const appWindow = getCurrentWebviewWindow();
 
 const OS = getSystem();
 

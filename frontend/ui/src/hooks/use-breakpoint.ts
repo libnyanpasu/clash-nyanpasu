@@ -51,7 +51,10 @@ export const useBreakpointValue = <T>(
   const [result, setResult] = useState<T>(calculateValue);
 
   useAsyncEffect(async () => {
-    const { appWindow } = await import("@tauri-apps/api/window");
+    const { getCurrentWebviewWindow } = await import(
+      "@tauri-apps/api/webviewWindow"
+    );
+    const appWindow = getCurrentWebviewWindow();
     if (!(await appWindow.isMinimized())) {
       setResult(calculateValue);
     }

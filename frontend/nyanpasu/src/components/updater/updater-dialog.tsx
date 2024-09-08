@@ -7,9 +7,9 @@ import { UpdaterIgnoredAtom } from "@/store/updater";
 import { formatError } from "@/utils";
 import { message } from "@/utils/notification";
 import { Button } from "@mui/material";
+import { openThat } from "@nyanpasu/interface";
 import { BaseDialog, BaseDialogProps, cn } from "@nyanpasu/ui";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { open as openThat } from "@tauri-apps/plugin-shell";
 import { installUpdate, type UpdateManifest } from "@tauri-apps/plugin-updater";
 import styles from "./updater-dialog.module.scss";
 

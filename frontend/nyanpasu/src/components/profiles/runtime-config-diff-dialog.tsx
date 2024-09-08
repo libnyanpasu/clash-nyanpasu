@@ -1,11 +1,13 @@
 import { useAtomValue } from "jotai";
-import { useEffect, useRef, useState } from "react";
+import { nanoid } from "nanoid";
+import { lazy, Suspense, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import useSWR from "swr";
-import { monaco } from "@/services/monaco";
 import { themeMode } from "@/store";
 import { getRuntimeYaml, useClash } from "@nyanpasu/interface";
 import { BaseDialog, cn } from "@nyanpasu/ui";
+
+const MonacoDiffEditor = lazy(() => import("./profile-monaco-diff-viewer"));
 
 export type RuntimeConfigDiffDialogProps = {
   open: boolean;
@@ -20,17 +22,12 @@ export default function RuntimeConfigDiffDialog({
   const { getProfiles, getProfileFile } = useClash();
   const currentProfileUid = getProfiles.data?.current;
   const mode = useAtomValue(themeMode);
-  const [loaded, setLoaded] = useState(false);
-  const {
-    data: runtimeConfig,
-    isLoading: isLoadingRuntimeConfig,
-    error: errorRuntimeConfig,
-  } = useSWR(open ? "/getRuntimeConfigYaml" : null, getRuntimeYaml);
-  const {
-    data: profileConfig,
-    isLoading: isLoadingProfileConfig,
-    error: errorProfileConfig,
-  } = useSWR(
+  const { data: runtimeConfig, isLoading: isLoadingRuntimeConfig } = useSWR(
+    open ? "/getRuntimeConfigYaml" : null,
+    getRuntimeYaml,
+    {},
+  );
+  const { data: profileConfig, isLoading: isLoadingProfileConfig } = useSWR(
     open ? `/readProfileFile?uid=${currentProfileUid}` : null,
     async (key) => {
       const url = new URL(key, window.location.origin);
@@ -41,35 +38,12 @@ export default function RuntimeConfigDiffDialog({
       refreshInterval: 0,
     },
   );
-  const monacoRef = useRef<typeof monaco | null>(null);
-  const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
-  const domRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (open && runtimeConfig && profileConfig) {
-      console.log("init monaco");
-      const run = async () => {
-        const { monaco } = await import("@/services/monaco");
-        monacoRef.current = monaco;
-        editorRef.current = monaco.editor.createDiffEditor(domRef.current!, {
-          theme: mode === "light" ? "vs" : "vs-dark",
-          minimap: { enabled: false },
-          automaticLayout: true,
-          readOnly: true,
-        });
-        editorRef.current.setModel({
-          original: monaco.editor.createModel(profileConfig, "yaml"),
-          modified: monaco.editor.createModel(runtimeConfig, "yaml"),
-        });
-        setLoaded(true);
-      };
-      run().catch(console.error);
-    }
-    return () => {
-      monacoRef.current = null;
-      editorRef.current?.dispose();
-      setLoaded(false);
-    };
-  }, [mode, open, runtimeConfig, profileConfig]);
+
+  const loaded = !isLoadingRuntimeConfig && !isLoadingProfileConfig;
+
+  const originalModelPath = useMemo(() => `${nanoid()}.clash.yaml`, []);
+  const modifiedModelPath = useMemo(() => `${nanoid()}.runtime.yaml`, []);
+
   if (!currentProfileUid) {
     return null;
   }
@@ -86,7 +60,25 @@ export default function RuntimeConfigDiffDialog({
           <span className="text-base font-semibold">原始配置</span>
           <span className="text-base font-semibold">运行配置</span>
         </div>
-        <div ref={domRef} className="h-[75vh] w-full" />
+        <div className="h-[75vh] w-full">
+          <Suspense fallback={null}>
+            {loaded && (
+              <MonacoDiffEditor
+                language="yaml"
+                theme={mode === "light" ? "vs" : "vs-dark"}
+                original={profileConfig}
+                originalModelPath={originalModelPath}
+                modified={runtimeConfig}
+                modifiedModelPath={modifiedModelPath}
+                options={{
+                  minimap: { enabled: false },
+                  automaticLayout: true,
+                  readOnly: true,
+                }}
+              />
+            )}
+          </Suspense>
+        </div>
       </div>
     </BaseDialog>
   );

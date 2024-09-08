@@ -37,9 +37,9 @@ fn main() {
     let is_prerelase = !version.pre.is_empty();
     println!("cargo:rustc-env=NYANPASU_VERSION={}", version);
     // Git Information
-    let (commit_hash, commit_author, commit_date) = if let Ok(true) = exists("./.tmp/git-info.json")
+    let (commit_hash, commit_author, commit_date) = if let Ok(true) = exists("./tmp/git-info.json")
     {
-        let mut git_info = read("./.tmp/git-info.json").unwrap();
+        let mut git_info = read("./tmp/git-info.json").unwrap();
         let git_info: GitInfo = simd_json::from_slice(&mut git_info).unwrap();
         (git_info.hash, git_info.author, git_info.time)
     } else {

@@ -1,6 +1,6 @@
 {
   "name": "@nyanpasu/monorepo",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "repository": "https://github.com/LibNyanpasu/clash-nyanpasu.git",
   "license": "GPL-3.0",
   "type": "module",
@@ -81,7 +81,7 @@
     "eslint-plugin-react": "7.35.0",
     "eslint-plugin-react-compiler": "0.0.0-experimental-f8a5409-20240829",
     "eslint-plugin-react-hooks": "4.6.2",
-    "knip": "5.29.2",
+    "knip": "5.30.0",
     "lint-staged": "15.2.9",
     "npm-run-all2": "6.2.2",
     "postcss": "8.4.45",

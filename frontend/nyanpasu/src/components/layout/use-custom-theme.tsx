@@ -8,7 +8,8 @@ import { alpha, darken, lighten, Theme, useColorScheme } from "@mui/material";
 import { useNyanpasu } from "@nyanpasu/interface";
 import { cn, createMDYTheme } from "@nyanpasu/ui";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-const appWindow = getCurrentWebviewWindow()
+
+const appWindow = getCurrentWebviewWindow();
 
 const applyRootStyleVar = (mode: "light" | "dark", theme: Theme) => {
   const root = document.documentElement;

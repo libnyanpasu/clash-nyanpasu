@@ -2195,6 +2195,165 @@
                   }
                 }
               }
+            },
+            {
+              "type": "object",
+              "required": [
+                "identifier"
+              ],
+              "properties": {
+                "identifier": {
+                  "oneOf": [
+                    {
+                      "description": "shell:default -> This permission set configures which\nshell functionality is exposed by default.\n\n#### Granted Permissions\n\nIt allows to use the `open` functionality without any specific\nscope pre-configured. It will allow opening `http(s)://`,\n`tel:` and `mailto:` links.\n",
+                      "type": "string",
+                      "enum": [
+                        "shell:default"
+                      ]
+                    },
+                    {
+                      "description": "shell:allow-execute -> Enables the execute command without any pre-configured scope.",
+                      "type": "string",
+                      "enum": [
+                        "shell:allow-execute"
+                      ]
+                    },
+                    {
+                      "description": "shell:allow-kill -> Enables the kill command without any pre-configured scope.",
+                      "type": "string",
+                      "enum": [
+                        "shell:allow-kill"
+                      ]
+                    },
+                    {
+                      "description": "shell:allow-open -> Enables the open command without any pre-configured scope.",
+                      "type": "string",
+                      "enum": [
+                        "shell:allow-open"
+                      ]
+                    },
+                    {
+                      "description": "shell:allow-spawn -> Enables the spawn command without any pre-configured scope.",
+                      "type": "string",
+                      "enum": [
+                        "shell:allow-spawn"
+                      ]
+                    },
+                    {
+                      "description": "shell:allow-stdin-write -> Enables the stdin_write command without any pre-configured scope.",
+                      "type": "string",
+                      "enum": [
+                        "shell:allow-stdin-write"
+                      ]
+                    },
+                    {
+                      "description": "shell:deny-execute -> Denies the execute command without any pre-configured scope.",
+                      "type": "string",
+                      "enum": [
+                        "shell:deny-execute"
+                      ]
+                    },
+                    {
+                      "description": "shell:deny-kill -> Denies the kill command without any pre-configured scope.",
+                      "type": "string",
+                      "enum": [
+                        "shell:deny-kill"
+                      ]
+                    },
+                    {
+                      "description": "shell:deny-open -> Denies the open command without any pre-configured scope.",
+                      "type": "string",
+                      "enum": [
+                        "shell:deny-open"
+                      ]
+                    },
+                    {
+                      "description": "shell:deny-spawn -> Denies the spawn command without any pre-configured scope.",
+                      "type": "string",
+                      "enum": [
+                        "shell:deny-spawn"
+                      ]
+                    },
+                    {
+                      "description": "shell:deny-stdin-write -> Denies the stdin_write command without any pre-configured scope.",
+                      "type": "string",
+                      "enum": [
+                        "shell:deny-stdin-write"
+                      ]
+                    }
+                  ]
+                },
+                "allow": {
+                  "items": {
+                    "title": "Entry",
+                    "description": "A command allowed to be executed by the webview API.",
+                    "type": "object",
+                    "required": [
+                      "args",
+                      "cmd",
+                      "name",
+                      "sidecar"
+                    ],
+                    "properties": {
+                      "args": {
+                        "description": "The allowed arguments for the command execution.",
+                        "allOf": [
+                          {
+                            "$ref": "#/definitions/ShellAllowedArgs"
+                          }
+                        ]
+                      },
+                      "cmd": {
+                        "description": "The command name. It can start with a variable that resolves to a system base directory. The variables are: `$AUDIO`, `$CACHE`, `$CONFIG`, `$DATA`, `$LOCALDATA`, `$DESKTOP`, `$DOCUMENT`, `$DOWNLOAD`, `$EXE`, `$FONT`, `$HOME`, `$PICTURE`, `$PUBLIC`, `$RUNTIME`, `$TEMPLATE`, `$VIDEO`, `$RESOURCE`, `$APP`, `$LOG`, `$TEMP`, `$APPCONFIG`, `$APPDATA`, `$APPLOCALDATA`, `$APPCACHE`, `$APPLOG`.",
+                        "type": "string"
+                      },
+                      "name": {
+                        "description": "The name for this allowed shell command configuration.\n\nThis name will be used inside of the webview API to call this command along with any specified arguments.",
+                        "type": "string"
+                      },
+                      "sidecar": {
+                        "description": "If this command is a sidecar command.",
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                },
+                "deny": {
+                  "items": {
+                    "title": "Entry",
+                    "description": "A command allowed to be executed by the webview API.",
+                    "type": "object",
+                    "required": [
+                      "args",
+                      "cmd",
+                      "name",
+                      "sidecar"
+                    ],
+                    "properties": {
+                      "args": {
+                        "description": "The allowed arguments for the command execution.",
+                        "allOf": [
+                          {
+                            "$ref": "#/definitions/ShellAllowedArgs"
+                          }
+                        ]
+                      },
+                      "cmd": {
+                        "description": "The command name. It can start with a variable that resolves to a system base directory. The variables are: `$AUDIO`, `$CACHE`, `$CONFIG`, `$DATA`, `$LOCALDATA`, `$DESKTOP`, `$DOCUMENT`, `$DOWNLOAD`, `$EXE`, `$FONT`, `$HOME`, `$PICTURE`, `$PUBLIC`, `$RUNTIME`, `$TEMPLATE`, `$VIDEO`, `$RESOURCE`, `$APP`, `$LOG`, `$TEMP`, `$APPCONFIG`, `$APPDATA`, `$APPLOCALDATA`, `$APPCACHE`, `$APPLOG`.",
+                        "type": "string"
+                      },
+                      "name": {
+                        "description": "The name for this allowed shell command configuration.\n\nThis name will be used inside of the webview API to call this command along with any specified arguments.",
+                        "type": "string"
+                      },
+                      "sidecar": {
+                        "description": "If this command is a sidecar command.",
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                }
+              }
             }
           ]
         }
@@ -6340,6 +6499,433 @@
           ]
         },
         {
+          "description": "global-shortcut:default -> No features are enabled by default, as we believe\nthe shortcuts can be inherently dangerous and it is\napplication specific if specific shortcuts should be\nregistered or unregistered.\n",
+          "type": "string",
+          "enum": [
+            "global-shortcut:default"
+          ]
+        },
+        {
+          "description": "global-shortcut:allow-is-registered -> Enables the is_registered command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "global-shortcut:allow-is-registered"
+          ]
+        },
+        {
+          "description": "global-shortcut:allow-register -> Enables the register command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "global-shortcut:allow-register"
+          ]
+        },
+        {
+          "description": "global-shortcut:allow-register-all -> Enables the register_all command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "global-shortcut:allow-register-all"
+          ]
+        },
+        {
+          "description": "global-shortcut:allow-unregister -> Enables the unregister command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "global-shortcut:allow-unregister"
+          ]
+        },
+        {
+          "description": "global-shortcut:allow-unregister-all -> Enables the unregister_all command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "global-shortcut:allow-unregister-all"
+          ]
+        },
+        {
+          "description": "global-shortcut:deny-is-registered -> Denies the is_registered command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "global-shortcut:deny-is-registered"
+          ]
+        },
+        {
+          "description": "global-shortcut:deny-register -> Denies the register command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "global-shortcut:deny-register"
+          ]
+        },
+        {
+          "description": "global-shortcut:deny-register-all -> Denies the register_all command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "global-shortcut:deny-register-all"
+          ]
+        },
+        {
+          "description": "global-shortcut:deny-unregister -> Denies the unregister command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "global-shortcut:deny-unregister"
+          ]
+        },
+        {
+          "description": "global-shortcut:deny-unregister-all -> Denies the unregister_all command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "global-shortcut:deny-unregister-all"
+          ]
+        },
+        {
+          "description": "notification:default -> This permission set configures which\nnotification features are by default exposed.\n\n#### Granted Permissions\n\nIt allows all notification related features.\n\n",
+          "type": "string",
+          "enum": [
+            "notification:default"
+          ]
+        },
+        {
+          "description": "notification:allow-batch -> Enables the batch command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:allow-batch"
+          ]
+        },
+        {
+          "description": "notification:allow-cancel -> Enables the cancel command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:allow-cancel"
+          ]
+        },
+        {
+          "description": "notification:allow-check-permissions -> Enables the check_permissions command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:allow-check-permissions"
+          ]
+        },
+        {
+          "description": "notification:allow-create-channel -> Enables the create_channel command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:allow-create-channel"
+          ]
+        },
+        {
+          "description": "notification:allow-delete-channel -> Enables the delete_channel command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:allow-delete-channel"
+          ]
+        },
+        {
+          "description": "notification:allow-get-active -> Enables the get_active command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:allow-get-active"
+          ]
+        },
+        {
+          "description": "notification:allow-get-pending -> Enables the get_pending command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:allow-get-pending"
+          ]
+        },
+        {
+          "description": "notification:allow-is-permission-granted -> Enables the is_permission_granted command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:allow-is-permission-granted"
+          ]
+        },
+        {
+          "description": "notification:allow-list-channels -> Enables the list_channels command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:allow-list-channels"
+          ]
+        },
+        {
+          "description": "notification:allow-notify -> Enables the notify command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:allow-notify"
+          ]
+        },
+        {
+          "description": "notification:allow-permission-state -> Enables the permission_state command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:allow-permission-state"
+          ]
+        },
+        {
+          "description": "notification:allow-register-action-types -> Enables the register_action_types command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:allow-register-action-types"
+          ]
+        },
+        {
+          "description": "notification:allow-register-listener -> Enables the register_listener command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:allow-register-listener"
+          ]
+        },
+        {
+          "description": "notification:allow-remove-active -> Enables the remove_active command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:allow-remove-active"
+          ]
+        },
+        {
+          "description": "notification:allow-request-permission -> Enables the request_permission command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:allow-request-permission"
+          ]
+        },
+        {
+          "description": "notification:allow-show -> Enables the show command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:allow-show"
+          ]
+        },
+        {
+          "description": "notification:deny-batch -> Denies the batch command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:deny-batch"
+          ]
+        },
+        {
+          "description": "notification:deny-cancel -> Denies the cancel command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:deny-cancel"
+          ]
+        },
+        {
+          "description": "notification:deny-check-permissions -> Denies the check_permissions command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:deny-check-permissions"
+          ]
+        },
+        {
+          "description": "notification:deny-create-channel -> Denies the create_channel command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:deny-create-channel"
+          ]
+        },
+        {
+          "description": "notification:deny-delete-channel -> Denies the delete_channel command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:deny-delete-channel"
+          ]
+        },
+        {
+          "description": "notification:deny-get-active -> Denies the get_active command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:deny-get-active"
+          ]
+        },
+        {
+          "description": "notification:deny-get-pending -> Denies the get_pending command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:deny-get-pending"
+          ]
+        },
+        {
+          "description": "notification:deny-is-permission-granted -> Denies the is_permission_granted command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:deny-is-permission-granted"
+          ]
+        },
+        {
+          "description": "notification:deny-list-channels -> Denies the list_channels command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:deny-list-channels"
+          ]
+        },
+        {
+          "description": "notification:deny-notify -> Denies the notify command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:deny-notify"
+          ]
+        },
+        {
+          "description": "notification:deny-permission-state -> Denies the permission_state command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:deny-permission-state"
+          ]
+        },
+        {
+          "description": "notification:deny-register-action-types -> Denies the register_action_types command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:deny-register-action-types"
+          ]
+        },
+        {
+          "description": "notification:deny-register-listener -> Denies the register_listener command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:deny-register-listener"
+          ]
+        },
+        {
+          "description": "notification:deny-remove-active -> Denies the remove_active command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:deny-remove-active"
+          ]
+        },
+        {
+          "description": "notification:deny-request-permission -> Denies the request_permission command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:deny-request-permission"
+          ]
+        },
+        {
+          "description": "notification:deny-show -> Denies the show command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "notification:deny-show"
+          ]
+        },
+        {
+          "description": "os:default -> This permission set configures which\noperating system information are available\nto gather from the frontend.\n\n#### Granted Permissions\n\nAll information except the host name are available.\n\n",
+          "type": "string",
+          "enum": [
+            "os:default"
+          ]
+        },
+        {
+          "description": "os:allow-arch -> Enables the arch command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "os:allow-arch"
+          ]
+        },
+        {
+          "description": "os:allow-exe-extension -> Enables the exe_extension command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "os:allow-exe-extension"
+          ]
+        },
+        {
+          "description": "os:allow-family -> Enables the family command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "os:allow-family"
+          ]
+        },
+        {
+          "description": "os:allow-hostname -> Enables the hostname command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "os:allow-hostname"
+          ]
+        },
+        {
+          "description": "os:allow-locale -> Enables the locale command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "os:allow-locale"
+          ]
+        },
+        {
+          "description": "os:allow-os-type -> Enables the os_type command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "os:allow-os-type"
+          ]
+        },
+        {
+          "description": "os:allow-platform -> Enables the platform command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "os:allow-platform"
+          ]
+        },
+        {
+          "description": "os:allow-version -> Enables the version command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "os:allow-version"
+          ]
+        },
+        {
+          "description": "os:deny-arch -> Denies the arch command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "os:deny-arch"
+          ]
+        },
+        {
+          "description": "os:deny-exe-extension -> Denies the exe_extension command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "os:deny-exe-extension"
+          ]
+        },
+        {
+          "description": "os:deny-family -> Denies the family command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "os:deny-family"
+          ]
+        },
+        {
+          "description": "os:deny-hostname -> Denies the hostname command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "os:deny-hostname"
+          ]
+        },
+        {
+          "description": "os:deny-locale -> Denies the locale command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "os:deny-locale"
+          ]
+        },
+        {
+          "description": "os:deny-os-type -> Denies the os_type command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "os:deny-os-type"
+          ]
+        },
+        {
+          "description": "os:deny-platform -> Denies the platform command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "os:deny-platform"
+          ]
+        },
+        {
+          "description": "os:deny-version -> Denies the version command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "os:deny-version"
+          ]
+        },
+        {
           "description": "process:default -> This permission set configures which\nprocess feeatures are by default exposed.\n\n#### Granted Permissions\n\nThis enables to quit via `allow-exit` and restart via `allow-restart`\nthe application.\n",
           "type": "string",
           "enum": [
@@ -6372,6 +6958,83 @@
           "type": "string",
           "enum": [
             "process:deny-restart"
+          ]
+        },
+        {
+          "description": "shell:default -> This permission set configures which\nshell functionality is exposed by default.\n\n#### Granted Permissions\n\nIt allows to use the `open` functionality without any specific\nscope pre-configured. It will allow opening `http(s)://`,\n`tel:` and `mailto:` links.\n",
+          "type": "string",
+          "enum": [
+            "shell:default"
+          ]
+        },
+        {
+          "description": "shell:allow-execute -> Enables the execute command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "shell:allow-execute"
+          ]
+        },
+        {
+          "description": "shell:allow-kill -> Enables the kill command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "shell:allow-kill"
+          ]
+        },
+        {
+          "description": "shell:allow-open -> Enables the open command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "shell:allow-open"
+          ]
+        },
+        {
+          "description": "shell:allow-spawn -> Enables the spawn command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "shell:allow-spawn"
+          ]
+        },
+        {
+          "description": "shell:allow-stdin-write -> Enables the stdin_write command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "shell:allow-stdin-write"
+          ]
+        },
+        {
+          "description": "shell:deny-execute -> Denies the execute command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "shell:deny-execute"
+          ]
+        },
+        {
+          "description": "shell:deny-kill -> Denies the kill command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "shell:deny-kill"
+          ]
+        },
+        {
+          "description": "shell:deny-open -> Denies the open command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "shell:deny-open"
+          ]
+        },
+        {
+          "description": "shell:deny-spawn -> Denies the spawn command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "shell:deny-spawn"
+          ]
+        },
+        {
+          "description": "shell:deny-stdin-write -> Denies the stdin_write command without any pre-configured scope.",
+          "type": "string",
+          "enum": [
+            "shell:deny-stdin-write"
           ]
         },
         {
@@ -6530,6 +7193,50 @@
           "enum": [
             "iOS"
           ]
+        }
+      ]
+    },
+    "ShellAllowedArg": {
+      "description": "A command argument allowed to be executed by the webview API.",
+      "anyOf": [
+        {
+          "description": "A non-configurable argument that is passed to the command in the order it was specified.",
+          "type": "string"
+        },
+        {
+          "description": "A variable that is set while calling the command from the webview API.",
+          "type": "object",
+          "required": [
+            "validator"
+          ],
+          "properties": {
+            "raw": {
+              "description": "Marks the validator as a raw regex, meaning the plugin should not make any modification at runtime.\n\nThis means the regex will not match on the entire string by default, which might be exploited if your regex allow unexpected input to be considered valid. When using this option, make sure your regex is correct.",
+              "default": false,
+              "type": "boolean"
+            },
+            "validator": {
+              "description": "[regex] validator to require passed values to conform to an expected input.\n\nThis will require the argument value passed to this variable to match the `validator` regex before it will be executed.\n\nThe regex string is by default surrounded by `^...$` to match the full string. For example the `https?://\\w+` regex would be registered as `^https?://\\w+$`.\n\n[regex]: <https://docs.rs/regex/latest/regex/#syntax>",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ShellAllowedArgs": {
+      "description": "A set of command arguments allowed to be executed by the webview API.\n\nA value of `true` will allow any arguments to be passed to the command. `false` will disable all arguments. A list of [`ShellAllowedArg`] will set those arguments as the only valid arguments to be passed to the attached command configuration.",
+      "anyOf": [
+        {
+          "description": "Use a simple boolean to allow all or disable all arguments to this command configuration.",
+          "type": "boolean"
+        },
+        {
+          "description": "A specific set of [`ShellAllowedArg`] that are valid to call for the command configuration.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ShellAllowedArg"
+          }
         }
       ]
     }

@@ -349,7 +349,7 @@ pub async fn get_core_version(core_type: nyanpasu::ClashCore) -> CmdResult<Strin
 }
 
 #[tauri::command]
-pub async fn collect_logs(app_handle: &AppHandle) -> CmdResult {
+pub async fn collect_logs(app_handle: AppHandle) -> CmdResult {
     let now = Local::now().format("%Y-%m-%d");
     let fname = format!("{}-log", now);
     let builder = FileDialogBuilder::new(app_handle.dialog().clone());

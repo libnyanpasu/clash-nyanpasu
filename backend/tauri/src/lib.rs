@@ -27,7 +27,8 @@ use crate::{
     core::handle::Handle,
     utils::{init, resolve},
 };
-use tauri::Manager;
+use tauri::{Emitter};
+use tauri_plugin_shell::ShellExt;
 use utils::resolve::{is_window_opened, reset_window_open_counter};
 
 rust_i18n::i18n!("../../locales");
@@ -130,10 +131,14 @@ pub fn run() -> std::io::Result<()> {
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_os::init())
+        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_global_shortcut::Builder::default().build())
         .setup(|app| {
             resolve::resolve_setup(app);
             // setup custom scheme
@@ -152,7 +157,7 @@ pub fn run() -> std::io::Result<()> {
                     .lock()
                     .as_ref()
                     .unwrap()
-                    .emit_all("scheme-request-received", url.clone())
+                    .emit("scheme-request-received", url.clone())
                     .unwrap();
             }
             // This operation should terminate the app if app is called by custom scheme and this instance is not the primary instance
@@ -165,7 +170,7 @@ pub fn run() -> std::io::Result<()> {
                         log::info!(target: "app", "waiting for window open");
                         std::thread::sleep(std::time::Duration::from_millis(100));
                     }
-                    handle.emit_all("scheme-request-received", request).unwrap();
+                    handle.emit("scheme-request-received", request).unwrap();
                 }
             ));
             std::thread::spawn(move || {
@@ -279,8 +284,6 @@ pub fn run() -> std::io::Result<()> {
         }
         tauri::RunEvent::Exit => {
             resolve::resolve_reset();
-            api::process::kill_children();
-            app_handle.exit(0);
         }
         tauri::RunEvent::Updater(tauri::UpdaterEvent::Downloaded) => {
             resolve::resolve_reset();

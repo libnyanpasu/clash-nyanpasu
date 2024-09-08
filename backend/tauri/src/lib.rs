@@ -253,6 +253,7 @@ pub fn run() -> std::io::Result<()> {
             ipc::open_that,
             ipc::is_appimage,
             ipc::get_service_install_prompt,
+            ipc::cleanup_processes,
         ]);
 
     #[cfg(target_os = "macos")]
@@ -284,14 +285,6 @@ pub fn run() -> std::io::Result<()> {
         }
         tauri::RunEvent::Exit => {
             resolve::resolve_reset();
-        }
-        tauri::RunEvent::Updater(tauri::UpdaterEvent::Downloaded) => {
-            resolve::resolve_reset();
-            nyanpasu_utils::runtime::block_on(async {
-                if let Err(e) = crate::core::CoreManager::global().stop_core().await {
-                    log::error!(target: "app", "failed to stop core while dispatch updater: {}", e);
-                }
-            });
         }
         tauri::RunEvent::WindowEvent { label, event, .. } => {
             if label == "main" {

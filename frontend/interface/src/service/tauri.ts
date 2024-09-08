@@ -259,3 +259,7 @@ export const isAppImage = async () => {
 export const getServiceInstallPrompt = async () => {
   return await invoke<string>("get_service_install_prompt");
 };
+
+export const cleanupProcesses = async () => {
+  return await invoke<void>("cleanup_processes");
+};

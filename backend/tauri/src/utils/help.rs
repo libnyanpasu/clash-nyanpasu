@@ -219,9 +219,12 @@ pub fn get_max_scale_factor() -> f64 {
 }
 
 #[instrument(skip(app_handle))]
-fn cleanup_processes(app_handle: &AppHandle) {
+pub fn cleanup_processes(app_handle: &AppHandle) {
     let _ = super::resolve::save_window_state(app_handle, true);
     super::resolve::resolve_reset();
+    let _ = nyanpasu_utils::runtime::block_on(async move {
+        crate::core::CoreManager::global().stop_core().await
+    });
 }
 
 #[instrument(skip(app_handle))]

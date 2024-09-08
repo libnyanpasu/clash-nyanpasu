@@ -80,7 +80,7 @@ export const SettingClashCore = () => {
       await restartSidecar();
 
       message(t("Successfully restart core"), {
-        type: "info",
+        kind: "info",
         title: t("Success"),
       });
     } catch (e) {

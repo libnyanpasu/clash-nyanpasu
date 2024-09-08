@@ -8,7 +8,7 @@ use crate::{
 use anyhow::Context;
 use base64::{engine::general_purpose::STANDARD as base64_standard, Engine as _};
 use indexmap::IndexMap;
-use tauri::SystemTrayMenu;
+use tauri::{menu::MenuBuilder, AppHandle, Manager, Runtime};
 use tracing::{debug, error, warn};
 use tracing_attributes::instrument;
 
@@ -221,16 +221,19 @@ mod platform_impl {
     use base64::{engine::general_purpose::STANDARD as base64_standard, Engine as _};
     use rust_i18n::t;
     use tauri::{
-        menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder},
-        AppHandle,
+        menu::{
+            CheckMenuItemBuilder, IsMenuItem, MenuBuilder, MenuItemBuilder, MenuItemKind, Submenu,
+            SubmenuBuilder,
+        },
+        AppHandle, Manager, Runtime,
     };
     use tracing::warn;
 
-    pub fn generate_group_selector(
-        app_handle: &AppHandle,
+    pub fn generate_group_selector<R: Runtime>(
+        app_handle: &AppHandle<R>,
         group_name: &str,
         group: &TrayProxyItem,
-    ) -> anyhow::Result<SystemTraySubmenu> {
+    ) -> anyhow::Result<Submenu<R>> {
         let mut group_menu = SubmenuBuilder::new(app_handle, group_name);
         for item in group.all.iter() {
             let mut sub_item_builder = CheckMenuItemBuilder::new(item.clone()).id(format!(
@@ -257,55 +260,63 @@ mod platform_impl {
 
             group_menu = group_menu.item(&sub_item_builder.build(app_handle)?);
         }
-        group_menu.build()
+        Ok(group_menu.build()?)
     }
 
-    pub fn generate_selectors(
-        app_handle: &AppHandle,
-        menu: &MenuBuilder,
+    pub fn generate_selectors<'m, R: Runtime, M: Manager<R>>(
+        app_handle: &AppHandle<R>,
         proxies: &super::TrayProxies,
-    ) -> anyhow::Result<MenuBuilder> {
-        let mut menu = menu.to_owned();
+    ) -> anyhow::Result<Vec<MenuItemKind<R>>> {
+        let mut items = Vec::new();
         if proxies.is_empty() {
-            return Ok(menu.item(
-                &MenuItemBuilder::new("No Proxies")
+            items.push(MenuItemKind::MenuItem(
+                MenuItemBuilder::new("No Proxies")
                     .id("no_proxies")
                     .enabled(false)
-                    .build(&app_handle)?,
+                    .build(app_handle)?,
             ));
+            return Ok(items);
         }
         for (group, item) in proxies.iter() {
             let group_menu = generate_group_selector(app_handle, group, item)?;
-            menu = menu.item(&group_menu);
+            items.push(MenuItemKind::Submenu(group_menu));
         }
-        Ok(menu)
+        Ok(items)
     }
 
-    pub fn setup_tray(menu: &mut SystemTrayMenu) -> SystemTrayMenu {
-        let mut parent_menu = menu.to_owned();
+    pub fn setup_tray<'m, R: Runtime, M: Manager<R>>(
+        app_handle: &AppHandle<R>,
+        mut menu: MenuBuilder<'m, R, M>,
+    ) -> anyhow::Result<MenuBuilder<'m, R, M>> {
         let selector_mode = crate::config::Config::verge()
             .latest()
             .clash_tray_selector
             .unwrap_or_default();
-        let mut menu = match selector_mode {
-            ProxiesSelectorMode::Hidden => return parent_menu,
-            ProxiesSelectorMode::Normal => {
-                parent_menu = parent_menu.add_native_item(SystemTrayMenuItem::Separator);
-                parent_menu.clone()
-            }
-            ProxiesSelectorMode::Submenu => SystemTrayMenu::new(),
+        menu = match selector_mode {
+            ProxiesSelectorMode::Hidden => return Ok(menu),
+            ProxiesSelectorMode::Normal => menu.separator(),
+            ProxiesSelectorMode::Submenu => menu,
         };
         let proxies = ProxiesGuard::global().read().inner().to_owned();
         let mode = crate::utils::config::get_current_clash_mode();
         let tray_proxies = super::to_tray_proxies(mode.as_str(), &proxies);
-        menu = generate_selectors(&menu, &tray_proxies);
-        if selector_mode == ProxiesSelectorMode::Submenu {
-            parent_menu =
-                parent_menu.add_submenu(SystemTraySubmenu::new(t!("tray.select_proxies"), menu));
-            parent_menu
-        } else {
-            menu
+        let items = generate_selectors::<R, M>(app_handle, &tray_proxies)?;
+        match selector_mode {
+            ProxiesSelectorMode::Normal => {
+                for item in items {
+                    menu = menu.item(&item);
+                }
+            }
+            ProxiesSelectorMode::Submenu => {
+                let mut submenu = SubmenuBuilder::new(app_handle, t!("tray.select_proxies"));
+                for item in items {
+                    submenu = submenu.item(&item);
+                }
+                menu = menu.item(&submenu.build()?);
+            }
+            _ => {}
         }
+        Ok(menu)
     }
 
     static TRAY_ITEM_UPDATE_BARRIER: AtomicBool = AtomicBool::new(false);
@@ -316,13 +327,13 @@ mod platform_impl {
             warn!("tray item update is in progress, skip this update");
             return;
         }
-        let tray = Handle::global()
-            .app_handle
-            .lock()
+        let app_handle = Handle::global().app_handle.lock();
+        let tray_state = app_handle
             .as_ref()
             .unwrap()
-            .tray_handle();
+            .state::<crate::core::tray::TrayState<tauri::Wry>>();
         TRAY_ITEM_UPDATE_BARRIER.store(true, std::sync::atomic::Ordering::Release);
+        let menu = tray_state.menu.lock();
         for action in actions {
             tracing::debug!("update selected proxies: {:?}", action);
             let from = format!(
@@ -336,32 +347,38 @@ mod platform_impl {
                 base64_standard.encode(&action.2)
             );
 
-            match tray.try_get_item(&from) {
-                Some(item) => {
-                    #[cfg(not(target_os = "linux"))]
-                    {
-                        let _ = item.set_selected(false);
+            match menu.get(&from) {
+                Some(item) => match item.kind() {
+                    MenuItemKind::Check(item) => {
+                        if item.is_checked().is_ok_and(|x| x) {
+                            let _ = item.set_checked(false);
+                        }
                     }
-                    #[cfg(target_os = "linux")]
-                    {
-                        let _ = item.set_title(action.1.clone());
+                    MenuItemKind::MenuItem(item) => {
+                        let _ = item.set_text(action.1.clone());
                     }
-                }
+                    _ => {
+                        warn!("failed to deselect, item is not a check item: {}", from);
+                    }
+                },
                 None => {
                     warn!("failed to deselect, item not found: {}", from);
                 }
             }
-            match tray.try_get_item(&to) {
-                Some(item) => {
-                    #[cfg(not(target_os = "linux"))]
-                    {
-                        let _ = item.set_selected(true);
+            match menu.get(&to) {
+                Some(item) => match item.kind() {
+                    MenuItemKind::Check(item) => {
+                        if item.is_checked().is_ok_and(|x| !x) {
+                            let _ = item.set_checked(true);
+                        }
                     }
-                    #[cfg(target_os = "linux")]
-                    {
-                        let _ = item.set_title(super::super::utils::selected_title(&action.2));
+                    MenuItemKind::MenuItem(item) => {
+                        let _ = item.set_text(action.2.clone());
                     }
-                }
+                    _ => {
+                        warn!("failed to select, item is not a check item: {}", from);
+                    }
+                },
                 None => {
                     warn!("failed to select, item not found: {}", to);
                 }
@@ -371,13 +388,15 @@ mod platform_impl {
     }
 }
 
-pub trait SystemTrayMenuProxiesExt {
-    fn setup_proxies(&mut self) -> Self;
+pub trait SystemTrayMenuProxiesExt<R: Runtime> {
+    fn setup_proxies(self, app_handle: &AppHandle<R>) -> anyhow::Result<Self>
+    where
+        Self: Sized;
 }
 
-impl SystemTrayMenuProxiesExt for SystemTrayMenu {
-    fn setup_proxies(&mut self) -> Self {
-        platform_impl::setup_tray(self)
+impl<'m, R: Runtime, M: Manager<R>> SystemTrayMenuProxiesExt<R> for MenuBuilder<'m, R, M> {
+    fn setup_proxies(self, app_handle: &AppHandle<R>) -> anyhow::Result<Self> {
+        platform_impl::setup_tray(app_handle, self)
     }
 }
 

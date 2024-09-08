@@ -7,12 +7,9 @@ use anyhow::Result;
 use parking_lot::Mutex;
 use rust_i18n::t;
 use tauri::{
-    menu::{
-        CheckMenuItemBuilder, Menu, MenuBuilder, MenuEvent, MenuItemBuilder, PredefinedMenuItem,
-        SubmenuBuilder,
-    },
+    menu::{Menu, MenuBuilder, MenuEvent, MenuItemBuilder, SubmenuBuilder},
     tray::{MouseButton, TrayIcon, TrayIconBuilder, TrayIconEvent},
-    App, AppHandle, Manager,
+    App, AppHandle, Manager, Runtime,
 };
 use tracing_attributes::instrument;
 
@@ -23,14 +20,14 @@ use self::proxies::SystemTrayMenuProxiesExt;
 mod utils;
 pub struct Tray {}
 
-pub struct TrayState {
+pub struct TrayState<R: Runtime> {
     pub tray_icon: TrayIcon,
-    pub menu: Mutex<Menu>,
+    pub menu: Mutex<Menu<R>>,
 }
 
 impl Tray {
     #[instrument(skip(app_handle))]
-    pub fn tray_menu(app_handle: &AppHandle) -> Result<Menu> {
+    pub fn tray_menu<R: Runtime>(app_handle: &AppHandle<R>) -> Result<Menu<R>> {
         let version = env!("NYANPASU_VERSION");
         let core = {
             *Config::verge()
@@ -40,97 +37,35 @@ impl Tray {
                 .unwrap_or(&ClashCore::default())
         };
         let mut menu = MenuBuilder::new(app_handle)
-            .item(
-                &MenuItemBuilder::new(t!("tray.dashboard"))
-                    .id("open_window")
-                    .build(app_handle)?,
-            )
-            // .setup_proxies() // Setup the proxies menu
-            .item(&PredefinedMenuItem::separator(app_handle)?)
-            .item(
-                &CheckMenuItemBuilder::new(t!("tray.rule_mode"))
-                    .id("rule_mode")
-                    .build(app_handle)?,
-            )
-            .item(
-                &CheckMenuItemBuilder::new(t!("tray.global_mode"))
-                    .id("global_mode")
-                    .build(app_handle)?,
-            )
-            .item(
-                &CheckMenuItemBuilder::new(t!("tray.direct_mode"))
-                    .id("direct_mode")
-                    .build(app_handle)?,
-            );
+            .text("open_window", t!("tray.dashboard"))
+            .setup_proxies(app_handle)? // Setup the proxies menu
+            .separator()
+            .check("rule_mode", t!("tray.rule_mode"))
+            .check("global_mode", t!("tray.global_mode"))
+            .check("direct_mode", t!("tray.direct_mode"));
         if core == ClashCore::ClashPremium {
-            menu = menu.item(
-                &CheckMenuItemBuilder::new(t!("tray.script_mode"))
-                    .id("script_mode")
-                    .build(app_handle)?,
-            );
+            menu = menu.check("script_mode", t!("tray.script_mode"));
         }
-        menu.item(&PredefinedMenuItem::separator(app_handle)?)
-            .item(
-                &CheckMenuItemBuilder::new(t!("tray.system_proxy"))
-                    .id("system_proxy")
-                    .build(app_handle)?,
-            )
-            .item(
-                &CheckMenuItemBuilder::new(t!("tray.tun_mode"))
-                    .id("tun_mode")
-                    .build(app_handle)?,
-            )
-            .item(
-                &MenuItemBuilder::new(t!("tray.copy_env_sh"))
-                    .id("copy_env_sh")
-                    .build(app_handle)?,
-            )
-            .item(
-                &MenuItemBuilder::new(t!("tray.copy_env_cmd"))
-                    .id("copy_env_cmd")
-                    .build(app_handle)?,
-            )
-            .item(
-                &MenuItemBuilder::new(t!("tray.copy_env_ps"))
-                    .id("copy_env_ps")
-                    .build(app_handle)?,
-            )
+        menu = menu
+            .separator()
+            .check("system_proxy", t!("tray.system_proxy"))
+            .check("tun_mode", t!("tray.tun_mode"))
+            .separator()
+            .text("copy_env_sh", t!("tray.copy_env_sh"))
+            .text("copy_env_cmd", t!("tray.copy_env_cmd"))
+            .text("copy_env_ps", t!("tray.copy_env_ps"))
             .item(
                 &SubmenuBuilder::new(app_handle, t!("tray.open_dir.menu"))
-                    .item(
-                        &MenuItemBuilder::new(t!("tray.open_dir.app_config_dir"))
-                            .id("open_app_config_dir")
-                            .build(app_handle)?,
-                    )
-                    .item(
-                        &MenuItemBuilder::new(t!("tray.open_dir.app_data_dir"))
-                            .id("open_app_data_dir")
-                            .build(app_handle)?,
-                    )
-                    .item(
-                        &MenuItemBuilder::new(t!("tray.open_dir.core_dir"))
-                            .id("open_core_dir")
-                            .build(app_handle)?,
-                    )
-                    .item(
-                        &MenuItemBuilder::new(t!("tray.open_dir.log_dir"))
-                            .id("open_logs_dir")
-                            .build(app_handle)?,
-                    )
+                    .text("open_app_config_dir", t!("tray.open_dir.app_config_dir"))
+                    .text("open_app_data_dir", t!("tray.open_dir.app_data_dir"))
+                    .text("open_core_dir", t!("tray.open_dir.core_dir"))
+                    .text("open_logs_dir", t!("tray.open_dir.log_dir"))
                     .build()?,
             )
             .item(
                 &SubmenuBuilder::new(app_handle, t!("tray.more.menu"))
-                    .item(
-                        &MenuItemBuilder::new(t!("tray.more.restart_clash"))
-                            .id("restart_clash")
-                            .build(app_handle)?,
-                    )
-                    .item(
-                        &MenuItemBuilder::new(t!("tray.more.restart_app"))
-                            .id("restart_app")
-                            .build(app_handle)?,
-                    )
+                    .text("restart_clash", t!("tray.more.restart_clash"))
+                    .text("restart_app", t!("tray.more.restart_app"))
                     .item(
                         &MenuItemBuilder::new(format!("Version {}", version))
                             .id("app_version")
@@ -139,7 +74,7 @@ impl Tray {
                     )
                     .build()?,
             )
-            .item(&PredefinedMenuItem::separator(app_handle)?)
+            .separator()
             .item(
                 &MenuItemBuilder::new(t!("tray.quit"))
                     .id("quit")
@@ -163,7 +98,7 @@ impl Tray {
                 Tray::on_system_tray_event(tray_icon, event);
             })
             .build(app)?;
-        app.manage::<TrayState>(TrayState {
+        app.manage::<TrayState<_>>(TrayState {
             tray_icon,
             menu: Mutex::new(menu),
         });
@@ -171,8 +106,8 @@ impl Tray {
     }
 
     #[instrument(skip(app_handle))]
-    pub fn update_systray(app_handle: &AppHandle) -> Result<()> {
-        let tray_state = app_handle.state::<TrayState>();
+    pub fn update_systray<R: Runtime>(app_handle: &AppHandle<R>) -> Result<()> {
+        let tray_state = app_handle.state::<TrayState<_>>();
         let menu = Tray::tray_menu(app_handle)?;
         tray_state.tray_icon.set_menu(Some(menu.clone()))?;
         {
@@ -183,7 +118,7 @@ impl Tray {
     }
 
     #[instrument(skip(app_handle))]
-    pub fn update_part(app_handle: &AppHandle) -> Result<()> {
+    pub fn update_part<R: Runtime>(app_handle: &AppHandle<R>) -> Result<()> {
         let mode = crate::utils::config::get_current_clash_mode();
         let core = {
             *Config::verge()
@@ -192,7 +127,7 @@ impl Tray {
                 .as_ref()
                 .unwrap_or(&ClashCore::default())
         };
-        let tray = app_handle.state::<TrayState>();
+        let tray = app_handle.state::<TrayState<R>>();
         let menu = tray.menu.lock();
         #[cfg(target_os = "linux")]
         {
@@ -346,11 +281,11 @@ impl Tray {
             "open_window" => resolve::create_window(app_handle),
             "system_proxy" => feat::toggle_system_proxy(),
             "tun_mode" => feat::toggle_tun_mode(),
-            "copy_env_sh" => feat::copy_clash_env("sh"),
+            "copy_env_sh" => feat::copy_clash_env(app_handle, "sh"),
             #[cfg(target_os = "windows")]
-            "copy_env_cmd" => feat::copy_clash_env("cmd"),
+            "copy_env_cmd" => feat::copy_clash_env(app_handle, "cmd"),
             #[cfg(target_os = "windows")]
-            "copy_env_ps" => feat::copy_clash_env("ps"),
+            "copy_env_ps" => feat::copy_clash_env(app_handle, "ps"),
             "open_app_config_dir" => crate::log_err!(ipc::open_app_config_dir()),
             "open_app_data_dir" => crate::log_err!(ipc::open_app_data_dir()),
             "open_core_dir" => crate::log_err!(ipc::open_core_dir()),

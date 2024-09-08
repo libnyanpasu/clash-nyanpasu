@@ -658,5 +658,6 @@ pub async fn get_service_install_prompt() -> CmdResult<String> {
 
 #[tauri::command]
 pub fn cleanup_processes(app_handle: AppHandle) -> CmdResult {
-    wrap_err!(crate::utils::help::cleanup_processes(&app_handle))
+    crate::utils::help::cleanup_processes(&app_handle);
+    Ok(())
 }

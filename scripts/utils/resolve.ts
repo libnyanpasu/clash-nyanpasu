@@ -134,8 +134,9 @@ export class Resolve {
     if (!(await fs.pathExists(wintunPath))) {
       throw new Error(`path not found "${wintunPath}"`);
     }
-
-    await fs.rename(wintunPath, targetPath);
+    // prepare resource dir
+    await fs.mkdirp(path.dirname(targetPath));
+    await fs.copyFile(wintunPath, targetPath);
 
     await fs.remove(tempDir);
 

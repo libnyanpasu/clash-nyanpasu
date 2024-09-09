@@ -252,14 +252,7 @@ mod platform_impl {
                 .checked(false);
             if let Some(now) = group.current.clone() {
                 if now == item.as_str() {
-                    #[cfg(target_os = "linux")]
-                    {
-                        sub_item_builder.title = super::super::utils::selected_title(item);
-                    }
-                    #[cfg(not(target_os = "linux"))]
-                    {
-                        sub_item_builder = sub_item_builder.checked(true);
-                    }
+                    sub_item_builder = sub_item_builder.checked(true);
                 }
             }
 

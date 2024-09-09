@@ -3,11 +3,7 @@ use anyhow::Result;
 use nyanpasu_utils::dirs::{suggest_config_dir, suggest_data_dir};
 use once_cell::sync::Lazy;
 use std::{borrow::Cow, fs, path::PathBuf};
-use tauri::{
-    path::{BaseDirectory, PathResolver},
-    utils::platform::resource_dir,
-    Env,
-};
+use tauri::{utils::platform::resource_dir, Env};
 
 #[cfg(not(feature = "verge-dev"))]
 const PREVIOUS_APP_NAME: &str = "clash-verge";
@@ -121,7 +117,7 @@ pub fn old_app_home_dir() -> Result<PathBuf> {
     }
 
     #[cfg(not(target_os = "windows"))]
-    Ok(home_dir()
+    Ok(dirs::home_dir()
         .ok_or(anyhow::anyhow!("failed to get the app home dir"))?
         .join(".config")
         .join(PREVIOUS_APP_NAME))
@@ -157,7 +153,7 @@ pub fn app_home_dir() -> Result<PathBuf> {
     }
 
     #[cfg(not(target_os = "windows"))]
-    Ok(home_dir()
+    Ok(dirs::home_dir()
         .ok_or(anyhow::anyhow!("failed to get the app home dir"))?
         .join(".config")
         .join(APP_NAME))

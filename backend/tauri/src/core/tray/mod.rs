@@ -143,60 +143,19 @@ impl Tray {
         let state = app_handle.state::<TrayState<R>>();
         let menu = state.menu.lock();
 
-        #[cfg(target_os = "linux")]
-        {
-            let _ = menu.get_item("rule_mode").set_title(t!("tray.rule_mode"));
-            let _ = tray
-                .get_item("global_mode")
-                .set_title(t!("tray.global_mode"));
-            let _ = tray
-                .get_item("direct_mode")
-                .set_title(t!("tray.direct_mode"));
-            if core == ClashCore::ClashPremium {
-                let _ = tray
-                    .get_item("script_mode")
-                    .set_title(t!("tray.script_mode"));
-            }
-            match mode.as_str() {
-                "rule" => {
-                    let _ = tray
-                        .get("rule_mode")
-                        .set_title(utils::selected_title(t!("tray.rule_mode")));
-                }
-                "global" => {
-                    let _ = tray
-                        .get_item("global_mode")
-                        .set_title(utils::selected_title(t!("tray.global_mode")));
-                }
-                "direct" => {
-                    let _ = tray
-                        .get_item("direct_mode")
-                        .set_title(utils::selected_title(t!("tray.direct_mode")));
-                }
-                "script" => {
-                    let _ = tray
-                        .get_item("script_mode")
-                        .set_title(utils::selected_title(t!("tray.script_mode")));
-                }
-                _ => {}
-            }
-        }
-        #[cfg(not(target_os = "linux"))]
-        {
+        let _ = menu
+            .get("rule_mode")
+            .and_then(|item| item.as_check_menuitem()?.set_checked(mode == "rule").ok());
+        let _ = menu
+            .get("global_mode")
+            .and_then(|item| item.as_check_menuitem()?.set_checked(mode == "global").ok());
+        let _ = menu
+            .get("direct_mode")
+            .and_then(|item| item.as_check_menuitem()?.set_checked(mode == "direct").ok());
+        if core == ClashCore::ClashPremium {
             let _ = menu
-                .get("rule_mode")
-                .and_then(|item| item.as_check_menuitem()?.set_checked(mode == "rule").ok());
-            let _ = menu
-                .get("global_mode")
-                .and_then(|item| item.as_check_menuitem()?.set_checked(mode == "global").ok());
-            let _ = menu
-                .get("direct_mode")
-                .and_then(|item| item.as_check_menuitem()?.set_checked(mode == "direct").ok());
-            if core == ClashCore::ClashPremium {
-                let _ = menu
-                    .get("script_mode")
-                    .and_then(|item| item.as_check_menuitem()?.set_checked(mode == "script").ok());
-            }
+                .get("script_mode")
+                .and_then(|item| item.as_check_menuitem()?.set_checked(mode == "script").ok());
         }
 
         let (system_proxy, tun_mode) = {
@@ -223,42 +182,12 @@ impl Tray {
             let _ = tray.set_icon(Some(tauri::image::Image::from_bytes(&icon)?));
         }
 
-        #[cfg(target_os = "linux")]
-        {
-            match system_proxy {
-                true => {
-                    let _ = tray
-                        .get_item("system_proxy")
-                        .set_title(utils::selected_title(t!("tray.system_proxy")));
-                }
-                false => {
-                    let _ = tray
-                        .get_item("system_proxy")
-                        .set_title(t!("tray.system_proxy"));
-                }
-            }
-
-            match tun_mode {
-                true => {
-                    let _ = tray
-                        .get_item("tun_mode")
-                        .set_title(utils::selected_title(t!("tray.tun_mode")));
-                }
-                false => {
-                    let _ = tray.get_item("tun_mode").set_title(t!("tray.tun_mode"));
-                }
-            }
-        }
-
-        #[cfg(not(target_os = "linux"))]
-        {
-            let _ = menu
-                .get("system_proxy")
-                .and_then(|item| item.as_check_menuitem()?.set_checked(system_proxy).ok());
-            let _ = menu
-                .get("tun_mode")
-                .and_then(|item| item.as_check_menuitem()?.set_checked(tun_mode).ok());
-        }
+        let _ = menu
+            .get("system_proxy")
+            .and_then(|item| item.as_check_menuitem()?.set_checked(system_proxy).ok());
+        let _ = menu
+            .get("tun_mode")
+            .and_then(|item| item.as_check_menuitem()?.set_checked(tun_mode).ok());
 
         #[cfg(not(target_os = "linux"))]
         {

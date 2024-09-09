@@ -10,7 +10,7 @@ use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use rust_i18n::t;
 use tauri::{
-    menu::{Menu, MenuBuilder, MenuEvent, MenuItemBuilder, Submenu, SubmenuBuilder},
+    menu::{Menu, MenuBuilder, MenuEvent, MenuItemBuilder, SubmenuBuilder},
     tray::{MouseButton, TrayIcon, TrayIconBuilder, TrayIconEvent},
     AppHandle, Manager, Runtime,
 };
@@ -34,11 +34,11 @@ const TRAY_ID: &str = "main-tray";
 
 #[cfg(target_os = "linux")]
 static LINUX_TRAY_ID: AtomicU16 = AtomicU16::new(0);
-#[cfg(target_os = "linux")]
-fn bump_tray_id() -> Cow<'static, str> {
-    let id = LINUX_TRAY_ID.fetch_add(1, std::sync::atomic::Ordering::Release) + 1;
-    Cow::Owned(format!("{}-{}", TRAY_ID, id))
-}
+// #[cfg(target_os = "linux")]
+// fn bump_tray_id() -> Cow<'static, str> {
+//     let id = LINUX_TRAY_ID.fetch_add(1, std::sync::atomic::Ordering::Release) + 1;
+//     Cow::Owned(format!("{}-{}", TRAY_ID, id))
+// }
 
 #[inline]
 fn get_tray_id<'n>() -> Cow<'n, str> {
@@ -53,49 +53,49 @@ fn get_tray_id<'n>() -> Cow<'n, str> {
     }
 }
 
-fn dummy_print_submenu<R: Runtime>(submenu: &Submenu<R>) {
-    for item in submenu.items().unwrap() {
-        tracing::debug!("item: {:#?}", item.id());
-        match item {
-            tauri::menu::MenuItemKind::MenuItem(item) => {
-                tracing::debug!(
-                    "item: {:#?}, type: MenuItem, text: {:#?}",
-                    item.id(),
-                    item.text()
-                );
-            }
-            tauri::menu::MenuItemKind::Submenu(submenu) => {
-                tracing::debug!(
-                    "item: {:#?}, type: Submenu, text: {:#?}",
-                    submenu.id(),
-                    submenu.text()
-                );
-                dummy_print_submenu(&submenu);
-            }
-            tauri::menu::MenuItemKind::Predefined(item) => {
-                tracing::debug!(
-                    "item: {:#?}, type: Predefined, text: {:#?}",
-                    item.id(),
-                    item.text()
-                );
-            }
-            tauri::menu::MenuItemKind::Check(item) => {
-                tracing::debug!(
-                    "item: {:#?}, type: Check, text: {:#?}",
-                    item.id(),
-                    item.text()
-                );
-            }
-            tauri::menu::MenuItemKind::Icon(item) => {
-                tracing::debug!(
-                    "item: {:#?}, type: Icon, text: {:#?}",
-                    item.id(),
-                    item.text()
-                );
-            }
-        }
-    }
-}
+// fn dummy_print_submenu<R: Runtime>(submenu: &Submenu<R>) {
+//     for item in submenu.items().unwrap() {
+//         tracing::debug!("item: {:#?}", item.id());
+//         match item {
+//             tauri::menu::MenuItemKind::MenuItem(item) => {
+//                 tracing::debug!(
+//                     "item: {:#?}, type: MenuItem, text: {:#?}",
+//                     item.id(),
+//                     item.text()
+//                 );
+//             }
+//             tauri::menu::MenuItemKind::Submenu(submenu) => {
+//                 tracing::debug!(
+//                     "item: {:#?}, type: Submenu, text: {:#?}",
+//                     submenu.id(),
+//                     submenu.text()
+//                 );
+//                 dummy_print_submenu(&submenu);
+//             }
+//             tauri::menu::MenuItemKind::Predefined(item) => {
+//                 tracing::debug!(
+//                     "item: {:#?}, type: Predefined, text: {:#?}",
+//                     item.id(),
+//                     item.text()
+//                 );
+//             }
+//             tauri::menu::MenuItemKind::Check(item) => {
+//                 tracing::debug!(
+//                     "item: {:#?}, type: Check, text: {:#?}",
+//                     item.id(),
+//                     item.text()
+//                 );
+//             }
+//             tauri::menu::MenuItemKind::Icon(item) => {
+//                 tracing::debug!(
+//                     "item: {:#?}, type: Icon, text: {:#?}",
+//                     item.id(),
+//                     item.text()
+//                 );
+//             }
+//         }
+//     }
+// }
 
 // fn dummy_print_menu<R: Runtime>(menu: &Menu<R>) {
 //     for item in menu.items().unwrap() {
@@ -261,10 +261,6 @@ impl Tray {
                     if let Ok(items) = menu.items() {
                         tracing::debug!("migrating new tray menu items");
                         for item in items {
-                            if item.as_submenu().is_some() {
-                                let item = item.as_submenu_unchecked();
-                                dummy_print_submenu(&item);
-                            }
                             log_err!(previous_menu.append(&item), "failed to append menu item");
                         }
                     }

@@ -145,7 +145,7 @@ impl Tray {
 
         #[cfg(target_os = "linux")]
         {
-            let _ = tray.get_item("rule_mode").set_title(t!("tray.rule_mode"));
+            let _ = menu.get_item("rule_mode").set_title(t!("tray.rule_mode"));
             let _ = tray
                 .get_item("global_mode")
                 .set_title(t!("tray.global_mode"));
@@ -160,7 +160,7 @@ impl Tray {
             match mode.as_str() {
                 "rule" => {
                     let _ = tray
-                        .get_item("rule_mode")
+                        .get("rule_mode")
                         .set_title(utils::selected_title(t!("tray.rule_mode")));
                 }
                 "global" => {

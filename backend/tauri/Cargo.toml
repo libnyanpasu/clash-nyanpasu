@@ -165,7 +165,7 @@ windows-sys = { version = "0.59", features = [
   "Win32_System_LibraryLoader",
   "Win32_System_SystemInformation",
 ] }
-webview2-com-bridge = { path = "../webview2-com-bridge" }
+webview2-com = "0.33"
 
 [features]
 default = ["custom-protocol", "default-meta"]

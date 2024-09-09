@@ -1364,7 +1364,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
- "webview2-com-bridge",
+ "webview2-com",
  "which 6.0.3",
  "whoami",
  "window-vibrancy",
@@ -8942,14 +8942,6 @@ dependencies = [
  "windows-core 0.58.0",
  "windows-implement 0.58.0",
  "windows-interface 0.58.0",
-]
-
-[[package]]
-name = "webview2-com-bridge"
-version = "0.1.0"
-dependencies = [
- "webview2-com",
- "windows 0.58.0",
 ]
 
 [[package]]

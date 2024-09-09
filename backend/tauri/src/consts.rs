@@ -31,6 +31,7 @@ pub static BUILD_INFO: Lazy<BuildInfo> = Lazy::new(|| BuildInfo {
 
 pub static IS_APPIMAGE: Lazy<bool> = Lazy::new(|| std::env::var("APPIMAGE").is_ok());
 
+#[cfg(target_os = "windows")]
 pub static IS_PORTABLE: Lazy<bool> = Lazy::new(|| {
     if cfg!(windows) {
         let dir = crate::utils::dirs::app_install_dir().unwrap();

@@ -245,7 +245,7 @@ pub fn create_window(app_handle: &AppHandle) {
         .title_bar_style(tauri::TitleBarStyle::Overlay)
         .build();
     #[cfg(target_os = "linux")]
-    let win_res = builder.decorations(true).transparent(true).build();
+    let win_res = builder.decorations(true).transparent(false).build();
 
     #[cfg(target_os = "macos")]
     fn set_controls_and_log_error(app_handle: &tauri::AppHandle, window_name: &str) {

@@ -1,13 +1,16 @@
+use std::{borrow::Cow, sync::atomic::AtomicU16};
+
 use crate::{
     config::{nyanpasu::ClashCore, Config},
-    feat, ipc, log_err, trace_err,
+    feat, ipc, log_err,
     utils::{help, resolve},
 };
 use anyhow::Result;
+use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use rust_i18n::t;
 use tauri::{
-    menu::{Menu, MenuBuilder, MenuEvent, MenuItemBuilder, SubmenuBuilder},
+    menu::{Menu, MenuBuilder, MenuEvent, MenuItemBuilder, Submenu, SubmenuBuilder},
     tray::{MouseButton, TrayIcon, TrayIconBuilder, TrayIconEvent},
     AppHandle, Manager, Runtime,
 };
@@ -17,15 +20,126 @@ pub mod icon;
 pub mod proxies;
 pub use self::icon::on_scale_factor_changed;
 use self::proxies::SystemTrayMenuProxiesExt;
-mod utils;
-
-const TRAY_ID: &str = "main";
 
 struct TrayState<R: Runtime> {
     menu: Mutex<Menu<R>>,
 }
 
 pub struct Tray {}
+
+static UPDATE_SYSTRAY_MUTEX: Lazy<parking_lot::Mutex<()>> =
+    Lazy::new(|| parking_lot::Mutex::new(()));
+
+const TRAY_ID: &str = "main-tray";
+
+#[cfg(target_os = "linux")]
+static LINUX_TRAY_ID: AtomicU16 = AtomicU16::new(0);
+#[cfg(target_os = "linux")]
+fn bump_tray_id() -> Cow<'static, str> {
+    let id = LINUX_TRAY_ID.fetch_add(1, std::sync::atomic::Ordering::Release) + 1;
+    Cow::Owned(format!("{}-{}", TRAY_ID, id))
+}
+
+#[inline]
+fn get_tray_id<'n>() -> Cow<'n, str> {
+    #[cfg(target_os = "linux")]
+    {
+        let id = LINUX_TRAY_ID.load(std::sync::atomic::Ordering::Acquire);
+        Cow::Owned(format!("{}-{}", TRAY_ID, id))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        Cow::Borrowed(TRAY_ID)
+    }
+}
+
+fn dummy_print_submenu<R: Runtime>(submenu: &Submenu<R>) {
+    for item in submenu.items().unwrap() {
+        tracing::debug!("item: {:#?}", item.id());
+        match item {
+            tauri::menu::MenuItemKind::MenuItem(item) => {
+                tracing::debug!(
+                    "item: {:#?}, type: MenuItem, text: {:#?}",
+                    item.id(),
+                    item.text()
+                );
+            }
+            tauri::menu::MenuItemKind::Submenu(submenu) => {
+                tracing::debug!(
+                    "item: {:#?}, type: Submenu, text: {:#?}",
+                    submenu.id(),
+                    submenu.text()
+                );
+                dummy_print_submenu(&submenu);
+            }
+            tauri::menu::MenuItemKind::Predefined(item) => {
+                tracing::debug!(
+                    "item: {:#?}, type: Predefined, text: {:#?}",
+                    item.id(),
+                    item.text()
+                );
+            }
+            tauri::menu::MenuItemKind::Check(item) => {
+                tracing::debug!(
+                    "item: {:#?}, type: Check, text: {:#?}",
+                    item.id(),
+                    item.text()
+                );
+            }
+            tauri::menu::MenuItemKind::Icon(item) => {
+                tracing::debug!(
+                    "item: {:#?}, type: Icon, text: {:#?}",
+                    item.id(),
+                    item.text()
+                );
+            }
+        }
+    }
+}
+
+// fn dummy_print_menu<R: Runtime>(menu: &Menu<R>) {
+//     for item in menu.items().unwrap() {
+//         tracing::debug!("item: {:#?}", item.id());
+//         match item {
+//             tauri::menu::MenuItemKind::MenuItem(item) => {
+//                 tracing::debug!(
+//                     "item: {:#?}, type: MenuItem, text: {:#?}",
+//                     item.id(),
+//                     item.text()
+//                 );
+//             }
+//             tauri::menu::MenuItemKind::Submenu(submenu) => {
+//                 tracing::debug!(
+//                     "item: {:#?}, type: Submenu, text: {:#?}",
+//                     submenu.id(),
+//                     submenu.text()
+//                 );
+//                 dummy_print_submenu(&submenu);
+//             }
+//             tauri::menu::MenuItemKind::Predefined(item) => {
+//                 tracing::debug!(
+//                     "item: {:#?}, type: Predefined, text: {:#?}",
+//                     item.id(),
+//                     item.text()
+//                 );
+//             }
+//             tauri::menu::MenuItemKind::Check(item) => {
+//                 tracing::debug!(
+//                     "item: {:#?}, type: Check, text: {:#?}",
+//                     item.id(),
+//                     item.text()
+//                 );
+//             }
+//             tauri::menu::MenuItemKind::Icon(item) => {
+//                 tracing::debug!(
+//                     "item: {:#?}, type: Icon, text: {:#?}",
+//                     item.id(),
+//                     item.text()
+//                 );
+//             }
+//         }
+//     }
+// }
 
 impl Tray {
     #[instrument(skip(app_handle))]
@@ -83,20 +197,29 @@ impl Tray {
                     .accelerator("CmdOrControl+Q")
                     .build(app_handle)?,
             );
+
         Ok(menu.build()?)
     }
 
     #[instrument(skip(app_handle))]
     pub fn update_systray(app_handle: &AppHandle<tauri::Wry>) -> Result<()> {
-        let mut tray = app_handle.tray_by_id(TRAY_ID);
-        if cfg!(target_os = "linux") && tray.is_some() {
-            app_handle.remove_tray_by_id(TRAY_ID);
-            tray = None;
-        }
+        let _guard = UPDATE_SYSTRAY_MUTEX.lock();
+        let tray_id = get_tray_id();
+        let tray = {
+            // if cfg!(target_os = "linux") {
+            //     tracing::debug!("removing tray by id: {}", tray_id);
+            //     let mut tray = app_handle.remove_tray_by_id(tray_id.as_ref());
+            //     tray.take(); // Drop the tray
+            //     tray_id = bump_tray_id();
+            //     tracing::debug!("bumped tray id to: {}", tray_id);
+            // }
+            app_handle.tray_by_id(tray_id.as_ref())
+        };
+
         let menu = Tray::tray_menu(app_handle)?;
         let tray = match tray {
             None => {
-                let mut builder = TrayIconBuilder::with_id(TRAY_ID);
+                let mut builder = TrayIconBuilder::with_id(tray_id);
                 #[cfg(any(windows, target_os = "linux"))]
                 {
                     builder = builder.icon(tauri::image::Image::from_bytes(&icon::get_icon(
@@ -122,23 +245,52 @@ impl Tray {
                     .build(app_handle)?
             }
             Some(tray) => {
-                tray.set_menu(Some(menu.clone()))?;
+                // This is a workaround for linux tray menu update. Due to the api disallow set_menu again
+                // and recreate tray icon will cause buggy tray. No icon and no menu.
+                // So this block is a dirty inheritance of the menu items from the previous tray menu.
+                if cfg!(target_os = "linux") {
+                    let state = app_handle.state::<TrayState<tauri::Wry>>();
+                    let previous_menu = state.menu.lock();
+                    if let Ok(items) = previous_menu.items() {
+                        tracing::debug!("removing previous tray menu items");
+                        for item in items {
+                            log_err!(previous_menu.remove(&item), "failed to remove menu item");
+                        }
+                    }
+                    // migrate the menu items
+                    if let Ok(items) = menu.items() {
+                        tracing::debug!("migrating new tray menu items");
+                        for item in items {
+                            if item.as_submenu().is_some() {
+                                let item = item.as_submenu_unchecked();
+                                dummy_print_submenu(&item);
+                            }
+                            log_err!(previous_menu.append(&item), "failed to append menu item");
+                        }
+                    }
+                } else {
+                    tray.set_menu(Some(menu.clone()))?;
+                }
                 tray
             }
         };
         tray.set_visible(true)?;
         {
             match app_handle.try_state::<TrayState<tauri::Wry>>() {
-                Some(state) => {
+                Some(state) if cfg!(not(target_os = "linux")) => {
+                    tracing::debug!("replacing previous tray menu");
                     *state.menu.lock() = menu;
                 }
                 None => {
+                    tracing::debug!("creating new tray menu");
                     app_handle.manage(TrayState {
                         menu: Mutex::new(menu),
                     });
                 }
+                _ => {}
             }
         }
+        tracing::debug!("full update tray finished");
         Tray::update_part(app_handle)?;
         Ok(())
     }
@@ -153,7 +305,9 @@ impl Tray {
                 .as_ref()
                 .unwrap_or(&ClashCore::default())
         };
-        let tray = app_handle.tray_by_id(TRAY_ID).unwrap();
+        let tray_id = get_tray_id();
+        tracing::debug!("updating tray part: {}", tray_id);
+        let tray = app_handle.tray_by_id(tray_id.as_ref()).unwrap();
         let state = app_handle.state::<TrayState<R>>();
         let menu = state.menu.lock();
 

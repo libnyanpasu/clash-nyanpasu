@@ -7,7 +7,7 @@ use crate::{
 };
 use anyhow::Context;
 use indexmap::IndexMap;
-use tauri::{menu::MenuBuilder, AppHandle, Emitter, Manager, Runtime};
+use tauri::{menu::MenuBuilder, AppHandle, Manager, Runtime};
 use tracing::{debug, error, warn};
 use tracing_attributes::instrument;
 
@@ -224,8 +224,8 @@ mod platform_impl {
     use std::sync::atomic::AtomicBool;
     use tauri::{
         menu::{
-            CheckMenuItemBuilder, IsMenuItem, MenuBuilder, MenuItemBuilder, MenuItemKind, Submenu,
-            SubmenuBuilder,
+            CheckMenuItemBuilder, IsMenuItem, Menu, MenuBuilder, MenuItemBuilder, MenuItemKind,
+            Submenu, SubmenuBuilder,
         },
         AppHandle, Manager, Runtime,
     };
@@ -242,8 +242,15 @@ mod platform_impl {
         group: &TrayProxyItem,
     ) -> anyhow::Result<Submenu<R>> {
         let mut item_ids = ITEM_IDS.lock();
-        item_ids.clear(); // clear the item ids
         let mut group_menu = SubmenuBuilder::new(app_handle, group_name);
+        if group.all.is_empty() {
+            group_menu = group_menu.item(
+                &MenuItemBuilder::new(t!("tray.no_proxies"))
+                    .enabled(false)
+                    .build(app_handle)?,
+            );
+            return Ok(group_menu.build()?);
+        }
         for item in group.all.iter() {
             let key = (group_name.to_string(), item.to_string());
             let id = item_ids.len();
@@ -279,6 +286,10 @@ mod platform_impl {
                     .build(app_handle)?,
             ));
             return Ok(items);
+        }
+        {
+            let mut item_ids = ITEM_IDS.lock();
+            item_ids.clear(); // clear the item ids
         }
         for (group, item) in proxies.iter() {
             let group_menu = generate_group_selector(app_handle, group, item)?;
@@ -339,59 +350,112 @@ mod platform_impl {
         let menu = tray_state.menu.lock();
         let item_ids = ITEM_IDS.lock();
         for action in actions {
-            tracing::debug!("update selected proxies: {:?}", action);
-            let from_id = match item_ids.get_by_left(&(action.0.clone(), action.1.clone())) {
-                Some(id) => *id,
-                None => {
-                    warn!("from item not found: {:?}", action);
-                    continue;
-                }
-            };
-            let from_id = format!("proxy_node_{}", from_id);
+            #[cfg(not(target_os = "linux"))]
+            {
+                tracing::debug!("update selected proxies: {:?}", action);
+                let from_id = match item_ids.get_by_left(&(action.0.clone(), action.1.clone())) {
+                    Some(id) => *id,
+                    None => {
+                        warn!("from item not found: {:?}", action);
+                        continue;
+                    }
+                };
+                let from_id = format!("proxy_node_{}", from_id);
 
-            let to_id = match item_ids.get_by_left(&(action.0.clone(), action.2.clone())) {
-                Some(id) => *id,
-                None => {
-                    warn!("to item not found: {:?}", action);
-                    continue;
-                }
-            };
-            let to_id = format!("proxy_node_{}", to_id);
+                let to_id = match item_ids.get_by_left(&(action.0.clone(), action.2.clone())) {
+                    Some(id) => *id,
+                    None => {
+                        warn!("to item not found: {:?}", action);
+                        continue;
+                    }
+                };
+                let to_id = format!("proxy_node_{}", to_id);
 
-            match menu.get(&from_id) {
-                Some(item) => match item.kind() {
-                    MenuItemKind::Check(item) => {
-                        if item.is_checked().is_ok_and(|x| x) {
-                            let _ = item.set_checked(false);
+                match menu.get(&from_id) {
+                    Some(item) => match item.kind() {
+                        MenuItemKind::Check(item) => {
+                            if item.is_checked().is_ok_and(|x| x) {
+                                let _ = item.set_checked(false);
+                            }
                         }
+                        MenuItemKind::MenuItem(item) => {
+                            let _ = item.set_text(action.1.clone());
+                        }
+                        _ => {
+                            warn!("failed to deselect, item is not a check item: {}", from_id);
+                        }
+                    },
+                    None => {
+                        warn!("failed to deselect, item not found: {}", from_id);
                     }
-                    MenuItemKind::MenuItem(item) => {
-                        let _ = item.set_text(action.1.clone());
+                }
+                match menu.get(&to_id) {
+                    Some(item) => match item.kind() {
+                        MenuItemKind::Check(item) => {
+                            if item.is_checked().is_ok_and(|x| !x) {
+                                let _ = item.set_checked(true);
+                            }
+                        }
+                        MenuItemKind::MenuItem(item) => {
+                            let _ = item.set_text(action.2.clone());
+                        }
+                        _ => {
+                            warn!("failed to select, item is not a check item: {}", to_id);
+                        }
+                    },
+                    None => {
+                        warn!("failed to select, item not found: {}", to_id);
                     }
-                    _ => {
-                        warn!("failed to deselect, item is not a check item: {}", from_id);
-                    }
-                },
-                None => {
-                    warn!("failed to deselect, item not found: {}", from_id);
                 }
             }
-            match menu.get(&to_id) {
-                Some(item) => match item.kind() {
-                    MenuItemKind::Check(item) => {
-                        if item.is_checked().is_ok_and(|x| !x) {
-                            let _ = item.set_checked(true);
-                        }
-                    }
-                    MenuItemKind::MenuItem(item) => {
-                        let _ = item.set_text(action.2.clone());
-                    }
-                    _ => {
-                        warn!("failed to select, item is not a check item: {}", to_id);
-                    }
-                },
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            // here is a fucking workaround for linux getter
+            #[inline]
+            fn find_check_item<R: Runtime>(
+                menu: &Menu<R>,
+                group: GroupName,
+                proxy: ProxyName,
+            ) -> Option<tauri::menu::CheckMenuItem<R>> {
+                menu.items()
+                    .ok()
+                    .and_then(|items| {
+                        items.into_iter().find(|i| matches!(i, tauri::menu::MenuItemKind::Submenu(submenu) if submenu.text().is_ok_and(|text| text == group)))
+                    })
+                    .and_then(|submenu| {
+                        let submenu = submenu.as_submenu_unchecked();
+                        submenu.items().ok()
+                    })
+                    .and_then(|items| {
+                        items.into_iter().find(|i| matches!(i, tauri::menu::MenuItemKind::Check(item) if item.text().is_ok_and(|text| text == proxy)))
+                    }).map(|item| item.as_check_menuitem_unchecked().clone())
+            }
+
+            let from_item = find_check_item(&menu, actions[0].0.clone(), actions[0].1.clone());
+            match from_item {
+                Some(item) => {
+                    let _ = item.set_checked(false);
+                }
                 None => {
-                    warn!("failed to select, item not found: {}", to_id);
+                    warn!(
+                        "failed to deselect, item not found: {} {}",
+                        actions[0].0, actions[0].1
+                    );
+                }
+            }
+
+            let to_item = find_check_item(&menu, actions[0].0.clone(), actions[0].2.clone());
+            match to_item {
+                Some(item) => {
+                    let _ = item.set_checked(true);
+                }
+                None => {
+                    warn!(
+                        "failed to select, item not found: {} {}",
+                        actions[0].0, actions[0].2
+                    );
                 }
             }
         }

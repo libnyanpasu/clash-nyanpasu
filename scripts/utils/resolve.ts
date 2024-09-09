@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import path from "path";
 import AdmZip from "adm-zip";
 import fs from "fs-extra";
@@ -67,6 +68,8 @@ export class Resolve {
     if (platform !== "win32") return;
 
     const url = "https://www.wintun.net/builds/wintun-0.14.1.zip";
+    const hash =
+      "07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51";
 
     const tempDir = path.join(TEMP_DIR, "wintun");
 
@@ -82,6 +85,15 @@ export class Resolve {
 
     if (!(await fs.pathExists(tempZip))) {
       await downloadFile(url, tempZip);
+    }
+
+    // check hash
+    const hashBuffer = await fs.readFile(tempZip);
+    const sha256 = crypto.createHash("sha256");
+    sha256.update(hashBuffer);
+    const hashValue = sha256.digest("hex");
+    if (hashValue !== hash) {
+      throw new Error(`wintun. hash not match ${hashValue}`);
     }
 
     // unzip

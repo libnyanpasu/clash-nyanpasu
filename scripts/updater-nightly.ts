@@ -35,7 +35,7 @@ async function resolveUpdater() {
     .replace("\r", "");
   consola.info(`latest pre-release short hash: ${shortHash}`);
   const updateData = {
-    name: `v${tauriNightly.package.version}-alpha+${shortHash}`,
+    name: `v${tauriNightly.version}-alpha+${shortHash}`,
     notes: "Nightly build. Full changes see commit history.",
     pub_date: new Date().toISOString(),
     platforms: {
@@ -199,4 +199,5 @@ async function getSignature(url: string) {
 
 resolveUpdater().catch((err) => {
   consola.fatal(err);
+  process.exit(1);
 });

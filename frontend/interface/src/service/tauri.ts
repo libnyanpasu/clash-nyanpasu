@@ -1,5 +1,5 @@
 import { IPSBResponse } from "@/openapi";
-import { invoke } from "@tauri-apps/api/tauri";
+import { invoke } from "@tauri-apps/api/core";
 import { ManifestVersion } from "./core";
 import {
   ClashConfig,
@@ -258,4 +258,8 @@ export const isAppImage = async () => {
 
 export const getServiceInstallPrompt = async () => {
   return await invoke<string>("get_service_install_prompt");
+};
+
+export const cleanupProcesses = async () => {
+  return await invoke<void>("cleanup_processes");
 };

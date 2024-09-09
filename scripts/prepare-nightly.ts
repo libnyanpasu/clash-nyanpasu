@@ -35,9 +35,7 @@ async function main() {
   // const wxsFile = await fs.readFile(WXS_PATH, "utf-8");
 
   if (isNSIS) {
-    tauriConf.tauri.bundle.targets = ["nsis", "updater"];
-  } else if (isMSI) {
-    tauriConf.tauri.bundle.targets = ["msi", "updater"];
+    tauriConf.bundle.targets = ["nsis"];
   }
 
   consola.debug("Get current git short hash");
@@ -46,7 +44,7 @@ async function main() {
     .trim();
   consola.debug(`Current git short hash: ${GIT_SHORT_HASH}`);
 
-  const version = `${tauriConf.package.version}-alpha+${GIT_SHORT_HASH}`;
+  const version = `${tauriConf.version}-alpha+${GIT_SHORT_HASH}`;
   // blocked by https://github.com/tauri-apps/tauri/issues/8447
   // 1. update wxs version
   // consola.debug("Write raw version to wxs");
@@ -58,7 +56,7 @@ async function main() {
   // consola.debug("wxs updated");
   // 2. update tauri version
   consola.debug("Write tauri version to tauri.nightly.conf.json");
-  if (!isNSIS && !isMSI) tauriConf.package.version = version;
+  if (!isNSIS && !isMSI) tauriConf.version = version;
   await fs.writeJSON(TAURI_DEV_APP_CONF_PATH, tauriConf, { spaces: 2 });
   consola.debug("tauri.nightly.conf.json updated");
   // 3. update package version

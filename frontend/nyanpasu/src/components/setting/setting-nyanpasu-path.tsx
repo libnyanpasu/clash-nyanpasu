@@ -14,7 +14,7 @@ import {
   setCustomAppDir,
 } from "@nyanpasu/interface";
 import { BaseCard } from "@nyanpasu/ui";
-import { open } from "@tauri-apps/api/dialog";
+import { open } from "@tauri-apps/plugin-dialog";
 import { PaperButton } from "./modules/nyanpasu-path";
 
 export const SettingNyanpasuPath = () => {
@@ -36,7 +36,7 @@ export const SettingNyanpasuPath = () => {
       if (Array.isArray(selected)) {
         message(t("Multiple directories are not supported"), {
           title: t("Error"),
-          type: "error",
+          kind: "error",
         });
 
         return;
@@ -46,7 +46,7 @@ export const SettingNyanpasuPath = () => {
 
       message(t("App directory changed successfully"), {
         title: t("Success"),
-        type: "error",
+        kind: "error",
       });
 
       await sleep(1000);
@@ -55,7 +55,7 @@ export const SettingNyanpasuPath = () => {
     } catch (e) {
       message(`Migration failed! ${JSON.stringify(e)}`, {
         title: t("Error"),
-        type: "error",
+        kind: "error",
       });
     }
   });

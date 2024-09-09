@@ -27,7 +27,7 @@ export const SettingClashCore = () => {
   } = useNyanpasu({
     onLatestCoreError: (error) => {
       message(`Fetch latest core failed: ${formatError(error)}`, {
-        type: "error",
+        kind: "error",
         title: t("Error"),
       });
     },
@@ -57,7 +57,7 @@ export const SettingClashCore = () => {
       await setClashCore(core);
 
       message(`Successfully switch to ${core}`, {
-        type: "info",
+        kind: "info",
         title: t("Success"),
       });
     } catch (e) {
@@ -66,7 +66,7 @@ export const SettingClashCore = () => {
           e instanceof Error ? e.message : String(e)
         }`,
         {
-          type: "error",
+          kind: "error",
           title: t("Error"),
         },
       );
@@ -80,14 +80,18 @@ export const SettingClashCore = () => {
       await restartSidecar();
 
       message(t("Successfully restart core"), {
-        type: "info",
+        kind: "info",
         title: t("Success"),
       });
     } catch (e) {
-      message("Restart failed, please check log.", {
-        type: "error",
-        title: t("Error"),
-      });
+      message(
+        "Restart failed, full detailed please check the log.\n\nError:" +
+          formatError(e),
+        {
+          kind: "error",
+          title: t("Error"),
+        },
+      );
     }
   };
 
@@ -96,7 +100,7 @@ export const SettingClashCore = () => {
       await getLatestCore.mutate();
     } catch (e) {
       message("Fetch failed, please check your internet connection.", {
-        type: "error",
+        kind: "error",
         title: t("Error"),
       });
     }

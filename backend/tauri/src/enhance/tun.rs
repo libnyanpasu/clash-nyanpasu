@@ -22,7 +22,7 @@ macro_rules! append {
     };
 }
 
-#[tracing::instrument]
+#[tracing_attributes::instrument(skip(config))]
 pub fn use_tun(mut config: Mapping, enable: bool) -> Mapping {
     let tun_key = Value::from("tun");
     let tun_val = config.get(&tun_key);

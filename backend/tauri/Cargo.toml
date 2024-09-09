@@ -9,8 +9,12 @@ default-run = "clash-nyanpasu"
 edition = { workspace = true }
 build = "build.rs"
 
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
 [build-dependencies]
-tauri-build = { version = "1", features = [] }
+tauri-build = { version = "2.0.0-rc", features = [] }
 serde = "1"
 simd-json = "0.13"
 chrono = "0.4"
@@ -46,26 +50,10 @@ tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"] }
 relative-path = "1.9"
-tauri = { version = "1.5.4", features = [
-  "dialog-all",
-  "updater",
-  "fs-all",
-  "clipboard-all",
-  "os-all",
-  "global-shortcut-all",
-  "notification-all",
-  "process-all",
-  "shell-all",
-  "system-tray",
-  "window-all",
-] }
-window-vibrancy = { version = "0.5.0" }
-window-shadows = { version = "0.2.2" }
 axum = "0.7"
 mime = "0.3"
 bincode = "1"
 bytes = { version = "1", features = ["serde"] }
-wry = { version = "0.24.6" }
 semver = "1.0"
 zip = "2.0.0"
 zip-extensions = "0.8.0"
@@ -81,7 +69,11 @@ runas = { git = "https://github.com/libnyanpasu/rust-runas.git" }
 backon = { version = "1.0.1", features = ["tokio-sleep"] }
 rust-i18n = "3"
 adler = "1.0.2"
-rfd = "0.10" # should bump to v0.14 when clarify why the rfd v0.10 from tauri breaks build
+rfd = { version = "0.14", default-features = false, features = [
+  "tokio",
+  "gtk3",
+  "common-controls-v6",
+] }
 indexmap = { version = "2.2.3", features = ["serde"] }
 tracing = { workspace = true }
 tracing-attributes = "0.1"
@@ -96,7 +88,6 @@ tracing-log = { version = "0.2" }
 tracing-appender = { version = "0.2", features = ["parking_lot"] }
 base64 = "0.22"
 single-instance = "0.3.3"
-tauri-plugin-deep-link = { path = "../tauri-plugin-deep-link", version = "0.1.2" }
 uuid = "1.7.0"
 image = "0.25.0"
 fast_image_resize = "4"
@@ -138,12 +129,33 @@ mlua = { version = "0.9", features = [
 ] }
 enumflags2 = "0.7"
 sha2 = "0.10"
+bimap = "0.6.3"
+
+# Tauri Dependencies
+tauri = { version = "2.0.0-rc", features = [
+  "tray-icon",
+  "image-png",
+  "image-ico",
+] }
+tauri-plugin-deep-link = { path = "../tauri-plugin-deep-link", version = "0.1.2" }
+tauri-plugin-os = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
+tauri-plugin-clipboard-manager = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
+tauri-plugin-fs = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
+tauri-plugin-dialog = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
+tauri-plugin-process = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
+tauri-plugin-updater = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
+tauri-plugin-shell = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
+tauri-plugin-notification = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
+window-vibrancy = { version = "0.5.2" }
+
+[target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
+tauri-plugin-global-shortcut = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
 
 [target.'cfg(all(target_os = "linux", target_arch = "aarch64"))'.dependencies]
 openssl = { version = "0.10", features = ["vendored"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-cocoa = "0.25.0"
+cocoa = "0.26.0"
 objc = "0.2.7"
 
 [target.'cfg(windows)'.dependencies]
@@ -153,34 +165,8 @@ windows-sys = { version = "0.59", features = [
   "Win32_System_LibraryLoader",
   "Win32_System_SystemInformation",
 ] }
-webview2-com-bridge = { path = "../webview2-com-bridge" }
-
-[target.'cfg(windows)'.dependencies.tauri]
-version = "1.5.4"
-features = [
-  "global-shortcut-all",
-  "icon-png",
-  "process-all",
-  "dialog-all",
-  "shell-all",
-  "system-tray",
-  "updater",
-  "window-all",
-]
-
-[target.'cfg(linux)'.dependencies.tauri]
-version = "1.5.4"
-features = [
-  "global-shortcut-all",
-  "process-all",
-  "dialog-all",
-  "shell-all",
-  "system-tray",
-  "updater",
-  "window-all",
-  "native-tls-vendored",
-  "reqwest-native-tls-vendored",
-]
+windows-core = "0.58.0"
+webview2-com = "0.33"
 
 [features]
 default = ["custom-protocol", "default-meta"]

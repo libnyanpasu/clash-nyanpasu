@@ -7,7 +7,9 @@ import { themeMode as themeModeAtom } from "@/store";
 import { alpha, darken, lighten, Theme, useColorScheme } from "@mui/material";
 import { useNyanpasu } from "@nyanpasu/interface";
 import { cn, createMDYTheme } from "@nyanpasu/ui";
-import { appWindow } from "@tauri-apps/api/window";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+
+const appWindow = getCurrentWebviewWindow();
 
 const applyRootStyleVar = (mode: "light" | "dark", theme: Theme) => {
   const root = document.documentElement;

@@ -103,7 +103,7 @@ export const ScriptDialog = ({
   const onSubmit = form.handleSubmit(async (data) => {
     if (editorHasError()) {
       message("Please fix the error before submitting", {
-        type: "error",
+        kind: "error",
       });
       return;
     }

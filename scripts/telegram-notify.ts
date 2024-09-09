@@ -2,6 +2,7 @@
 import { existsSync } from "fs";
 import path from "path";
 import { mkdirp } from "fs-extra";
+import pRetry from "p-retry";
 import { getOctokit } from "@actions/github";
 import { version } from "../package.json";
 import { array2text } from "./utils";
@@ -52,7 +53,7 @@ const isValidFormat = (fileName: string): boolean => {
   return resourceFormats.some((format) => fileName.endsWith(format));
 };
 
-const repoinfo = {
+const repoInfo = {
   owner: "LibNyanpasu",
   repo: "clash-nyanpasu",
 };
@@ -66,22 +67,26 @@ const repoinfo = {
 
   const content = nightlyBuild
     ? await github.rest.repos.getReleaseByTag({
-        ...repoinfo,
+        ...repoInfo,
         tag: "pre-release",
       })
-    : await github.rest.repos.getLatestRelease(repoinfo);
+    : await github.rest.repos.getLatestRelease(repoInfo);
 
   const downloadTasks: Promise<void>[] = [];
 
-  const reourceMappping: string[] = [];
+  const resourceMapping: string[] = [];
 
   content.data.assets.forEach((asset) => {
     if (isValidFormat(asset.name)) {
       const _path = path.join(TEMP_DIR, asset.name);
 
-      reourceMappping.push(_path);
+      resourceMapping.push(_path);
 
-      downloadTasks.push(downloadFile(asset.browser_download_url, _path));
+      downloadTasks.push(
+        pRetry(() => downloadFile(asset.browser_download_url, _path), {
+          retries: 5,
+        }),
+      );
     }
   });
 
@@ -94,19 +99,23 @@ const repoinfo = {
     throw new Error("Error during download or upload tasks");
   }
 
-  reourceMappping.forEach((item) => {
+  resourceMapping.forEach((item) => {
     consola.log(`exited ${item}:`, existsSync(item));
   });
 
   consola.start("Staring upload tasks (nightly)");
 
-  await client.sendFile(TELEGRAM_TO_NIGHTLY, {
-    file: reourceMappping,
-    forceDocument: true,
-    caption: `Clash Nyanpasu Nightly Build ${GIT_SHORT_HASH}`,
-    workers: 16,
-    progressCallback: (progress) => consola.start(`Uploading ${progress}`),
-  });
+  await pRetry(
+    () =>
+      client.sendFile(TELEGRAM_TO_NIGHTLY, {
+        file: resourceMapping,
+        forceDocument: true,
+        caption: `Clash Nyanpasu Nightly Build ${GIT_SHORT_HASH}`,
+        workers: 16,
+        progressCallback: (progress) => consola.debug(`Uploading ${progress}`),
+      }),
+    { retries: 5 },
+  );
 
   consola.success("Upload finished (nightly)");
 
@@ -128,4 +137,7 @@ const repoinfo = {
   await client.disconnect();
 
   process.exit();
-})();
+})().catch((error) => {
+  consola.fatal(error);
+  process.exit(1);
+});

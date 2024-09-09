@@ -20,9 +20,10 @@ use profile::item_type::ProfileItemType;
 use serde_yaml::Mapping;
 use std::{borrow::Cow, collections::VecDeque, path::PathBuf};
 use sysproxy::Sysproxy;
+use tauri::AppHandle;
 use tray::icon::TrayIcon;
 
-use tauri::api::dialog::FileDialogBuilder;
+use tauri_plugin_dialog::{DialogExt, FileDialogBuilder};
 
 type CmdResult<T = ()> = Result<T, String>;
 
@@ -339,34 +340,36 @@ pub async fn fetch_latest_core_versions() -> CmdResult<ManifestVersionLatest> {
 }
 
 #[tauri::command]
-pub async fn get_core_version(core_type: nyanpasu::ClashCore) -> CmdResult<String> {
-    match tokio::task::spawn_blocking(move || resolve::resolve_core_version(&core_type)).await {
-        Ok(Ok(version)) => Ok(version),
-        Ok(Err(err)) => Err(format!("{err}")),
+pub async fn get_core_version(
+    app_handle: AppHandle,
+    core_type: nyanpasu::ClashCore,
+) -> CmdResult<String> {
+    match resolve::resolve_core_version(&app_handle, &core_type).await {
+        Ok(version) => Ok(version),
         Err(err) => Err(format!("{err}")),
     }
 }
 
 #[tauri::command]
-pub async fn collect_logs() -> CmdResult {
+pub async fn collect_logs(app_handle: AppHandle) -> CmdResult {
     let now = Local::now().format("%Y-%m-%d");
     let fname = format!("{}-log", now);
-    let builder = FileDialogBuilder::new();
+    let builder = FileDialogBuilder::new(app_handle.dialog().clone());
     builder
         .add_filter("archive files", &["zip"])
         .set_file_name(&fname)
         .set_title("Save log archive")
         .save_file(|file_path| match file_path {
-            None => (),
-            Some(path) => {
-                debug!("{:#?}", path.as_os_str());
-                match candy::collect_logs(&path) {
+            Some(path) if path.as_path().is_some() => {
+                debug!("{:#?}", path);
+                match candy::collect_logs(path.as_path().unwrap()) {
                     Ok(_) => (),
                     Err(err) => {
                         log::error!(target: "app", "{err}");
                     }
                 }
             }
+            _ => (),
         });
     Ok(())
 }
@@ -651,4 +654,10 @@ pub async fn get_service_install_prompt() -> CmdResult<String> {
         prompt = format!("sudo {}", prompt);
     }
     Ok(prompt)
+}
+
+#[tauri::command]
+pub fn cleanup_processes(app_handle: AppHandle) -> CmdResult {
+    crate::utils::help::cleanup_processes(&app_handle);
+    Ok(())
 }

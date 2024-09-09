@@ -56,8 +56,9 @@ export default function App() {
   }, [breakpoint, setIsDrawer]);
 
   useMount(() => {
-    import("@tauri-apps/api/window")
-      .then(({ appWindow }) => {
+    import("@tauri-apps/api/webviewWindow")
+      .then(({ getCurrentWebviewWindow }) => {
+        const appWindow = getCurrentWebviewWindow();
         appWindow.show();
         appWindow.unminimize();
         appWindow.setFocus();

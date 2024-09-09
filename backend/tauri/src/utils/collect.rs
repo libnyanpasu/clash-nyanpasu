@@ -60,8 +60,11 @@ pub fn collect_envs<'a>() -> Result<EnvInfo<'a>, std::io::Error> {
     let mut core = HashMap::new();
     for c in CoreType::get_supported_cores() {
         let name: &str = c.as_ref();
-        let command = tauri::api::process::Command::new_sidecar(name)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+
+        let mut command = std::process::Command::new(
+            super::dirs::get_data_or_sidecar_path(name)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?,
+        );
         let output = command
             .args(if matches!(c, CoreType::Clash(ClashCoreType::ClashRust)) {
                 ["-V"]
@@ -70,9 +73,10 @@ pub fn collect_envs<'a>() -> Result<EnvInfo<'a>, std::io::Error> {
             })
             .output()
             .expect("failed to execute sidecar command");
+        let stdout = String::from_utf8_lossy(&output.stdout);
         core.insert(
             Cow::Borrowed(name),
-            Cow::Owned(output.stdout.replace("\n\n", " ").trim().to_owned()),
+            Cow::Owned(stdout.replace("\n\n", " ").trim().to_owned()),
         );
     }
     Ok(EnvInfo {

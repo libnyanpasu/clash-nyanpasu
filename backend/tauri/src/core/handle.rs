@@ -5,7 +5,7 @@ use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tauri::{AppHandle, Manager, Window};
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow, Wry};
 #[derive(Debug, Default, Clone)]
 pub struct Handle {
     pub app_handle: Arc<Mutex<Option<AppHandle>>>,
@@ -42,11 +42,11 @@ impl Handle {
         *self.app_handle.lock() = Some(app_handle);
     }
 
-    pub fn get_window(&self) -> Option<Window> {
+    pub fn get_window(&self) -> Option<WebviewWindow<Wry>> {
         self.app_handle
             .lock()
             .as_ref()
-            .and_then(|a| a.get_window("main"))
+            .and_then(|a| a.get_webview_window("main"))
     }
 
     pub fn refresh_clash() {
@@ -81,11 +81,12 @@ impl Handle {
     }
 
     pub fn update_systray() -> Result<()> {
-        let app_handle = Self::global().app_handle.lock();
-        if app_handle.is_none() {
-            bail!("update_systray unhandled error");
-        }
-        Tray::update_systray(app_handle.as_ref().unwrap())?;
+        // let app_handle = Self::global().app_handle.lock();
+        // if app_handle.is_none() {
+        //     bail!("update_systray unhandled error");
+        // }
+        // Tray::update_systray(app_handle.as_ref().unwrap())?;
+        Handle::emit("update_systray", ())?;
         Ok(())
     }
 
@@ -96,6 +97,16 @@ impl Handle {
             bail!("update_systray unhandled error");
         }
         Tray::update_part(app_handle.as_ref().unwrap())?;
+        Ok(())
+    }
+
+    pub fn emit<S: Serialize + Clone>(event: &str, payload: S) -> Result<()> {
+        let app_handle = Self::global().app_handle.lock();
+        if app_handle.is_none() {
+            bail!("app_handle is not exist");
+        }
+
+        app_handle.as_ref().unwrap().emit(event, payload)?;
         Ok(())
     }
 }

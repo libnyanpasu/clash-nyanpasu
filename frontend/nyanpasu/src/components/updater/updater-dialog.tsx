@@ -1,44 +1,62 @@
 import { useLockFn } from "ahooks";
 import dayjs from "dayjs";
 import { useSetAtom } from "jotai";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { UpdaterIgnoredAtom } from "@/store/updater";
 import { formatError } from "@/utils";
 import { message } from "@/utils/notification";
-import { Button } from "@mui/material";
+import { Button, LinearProgress } from "@mui/material";
+import { cleanupProcesses, openThat } from "@nyanpasu/interface";
 import { BaseDialog, BaseDialogProps, cn } from "@nyanpasu/ui";
-import { relaunch } from "@tauri-apps/api/process";
-import { open as openThat } from "@tauri-apps/api/shell";
-import { installUpdate, type UpdateManifest } from "@tauri-apps/api/updater";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { DownloadEvent, type Update } from "@tauri-apps/plugin-updater";
 import styles from "./updater-dialog.module.scss";
 
 const Markdown = lazy(() => import("react-markdown"));
 
 export interface UpdaterDialogProps extends Omit<BaseDialogProps, "title"> {
-  manifest: UpdateManifest;
+  update: Update;
 }
 
 export default function UpdaterDialog({
   open,
-  manifest,
+  update,
   onClose,
   ...others
 }: UpdaterDialogProps) {
   const { t } = useTranslation();
   const setUpdaterIgnore = useSetAtom(UpdaterIgnoredAtom);
+  const [contentLength, setContentLength] = useState(0);
+  const [contentDownloaded, setContentDownloaded] = useState(0);
+  const progress =
+    contentDownloaded && contentLength
+      ? (contentDownloaded / contentLength) * 100
+      : 0;
+  const onDownloadEvent = useCallback((e: DownloadEvent) => {
+    switch (e.event) {
+      case "Started":
+        setContentLength(e.data.contentLength || 0);
+        break;
+      case "Progress":
+        setContentDownloaded((prev) => prev + e.data.chunkLength);
+        break;
+    }
+  }, []);
 
   const handleUpdate = useLockFn(async () => {
     try {
       // Install the update. This will also restart the app on Windows!
-      await installUpdate();
-
+      await update.download(onDownloadEvent);
+      await cleanupProcesses();
+      // cleanup and stop core
+      await update.install();
       // On macOS and Linux you will need to restart the app manually.
       // You could use this step to display another confirmation dialog.
       await relaunch();
     } catch (e) {
       console.error(e);
-      message(formatError(e), { type: "error", title: t("Error") });
+      message(formatError(e), { kind: "error", title: t("Error") });
     }
   });
 
@@ -48,7 +66,7 @@ export default function UpdaterDialog({
       title={t("updater.title")}
       open={open}
       onClose={() => {
-        setUpdaterIgnore(manifest.version); // TODO: control this behavior
+        setUpdaterIgnore(update.version); // TODO: control this behavior
         onClose?.();
       }}
       onOk={handleUpdate}
@@ -64,9 +82,9 @@ export default function UpdaterDialog({
       >
         <div className="flex items-center justify-between px-2 py-2">
           <div className="flex gap-3">
-            <span className="text-xl font-bold">{manifest.version}</span>
+            <span className="text-xl font-bold">{update.version}</span>
             <span className="text-xs text-slate-500">
-              {dayjs(manifest.date, "YYYY-MM-DD H:mm:ss Z").format(
+              {dayjs(update.date, "YYYY-MM-DD H:mm:ss Z").format(
                 "YYYY-MM-DD HH:mm:ss",
               )}
             </span>
@@ -76,7 +94,7 @@ export default function UpdaterDialog({
             size="small"
             onClick={() => {
               openThat(
-                `https://github.com/LibNyanpasu/clash-nyanpasu/releases/tag/v${manifest.version}`,
+                `https://github.com/LibNyanpasu/clash-nyanpasu/releases/tag/v${update.version}`,
               );
             }}
           >
@@ -106,10 +124,22 @@ export default function UpdaterDialog({
                 },
               }}
             >
-              {manifest.body || "New version available."}
+              {update.body || "New version available."}
             </Markdown>
           </Suspense>
         </div>
+        {contentLength && (
+          <div className="mt-2 flex items-center gap-2">
+            <LinearProgress
+              className="flex-1"
+              variant="determinate"
+              value={progress}
+            />
+            <span className="text-xs text-slate-500">
+              {progress.toFixed(2)}%
+            </span>
+          </div>
+        )}
       </div>
     </BaseDialog>
   );

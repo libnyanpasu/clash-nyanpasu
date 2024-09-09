@@ -2,13 +2,15 @@ import { Allotment } from "allotment";
 import getSystem from "@/utils/get-system";
 import { alpha, useTheme } from "@mui/material";
 import Paper from "@mui/material/Paper";
-import { appWindow } from "@tauri-apps/api/window";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import "allotment/dist/style.css";
 import { ReactNode } from "react";
 import { LayoutControl } from "../layout/layout-control";
 import styles from "./app-container.module.scss";
 import AppDrawer from "./app-drawer";
 import DrawerContent from "./drawer-content";
+
+const appWindow = getCurrentWebviewWindow();
 
 const OS = getSystem();
 

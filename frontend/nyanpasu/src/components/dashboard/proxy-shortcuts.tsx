@@ -81,7 +81,7 @@ export const ProxyShortcuts = () => {
       } catch (e) {
         message(`Activation failed!`, {
           title: t("Error"),
-          type: "error",
+          kind: "error",
         });
       } finally {
       }

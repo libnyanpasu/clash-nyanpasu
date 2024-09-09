@@ -1,12 +1,12 @@
 import { useAtom } from "jotai";
 import { lazy, Suspense, useState } from "react";
-import { UpdaterManifestAtom } from "@/store/updater";
+import { UpdaterInstanceAtom } from "@/store/updater";
 
 const UpdaterDialog = lazy(() => import("./updater-dialog"));
 
 export const UpdaterDialogWrapper = () => {
   const [open, setOpen] = useState(true);
-  const [manifest, setManifest] = useAtom(UpdaterManifestAtom);
+  const [manifest, setManifest] = useAtom(UpdaterInstanceAtom);
   if (!manifest) return null;
   return (
     <Suspense fallback={null}>
@@ -16,7 +16,7 @@ export const UpdaterDialogWrapper = () => {
           setOpen(false);
           setManifest(null);
         }}
-        manifest={manifest}
+        update={manifest}
       />
     </Suspense>
   );

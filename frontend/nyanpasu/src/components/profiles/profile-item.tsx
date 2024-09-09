@@ -122,7 +122,7 @@ export const ProfileItem = memo(function ProfileItem({
           : `Error setting profile: \n ${err instanceof Error ? err.message : String(err)}`,
         {
           title: t("Error"),
-          type: "error",
+          kind: "error",
         },
       );
     } finally {
@@ -161,7 +161,7 @@ export const ProfileItem = memo(function ProfileItem({
     } catch (err) {
       message(`Delete failed: \n ${JSON.stringify(err)}`, {
         title: t("Error"),
-        type: "error",
+        kind: "error",
       });
     }
   });

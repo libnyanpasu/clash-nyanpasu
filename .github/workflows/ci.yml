@@ -35,7 +35,9 @@ jobs:
           sudo apt-get install -y
           libgtk-3-dev
           libayatana-appindicator3-dev
-          libwebkit2gtk-4.0-dev
+          libwebkit2gtk-4.1-dev
+          librsvg2-dev
+          libxdo-dev
           webkit2gtk-driver
           xvfb
       - uses: Swatinem/rust-cache@v2

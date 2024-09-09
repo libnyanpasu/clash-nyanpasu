@@ -12,11 +12,11 @@ async function resolve() {
   if (!process.env.GITHUB_TOKEN) {
     throw new Error("GITHUB_TOKEN is required");
   }
-  if (!process.env.TAURI_PRIVATE_KEY) {
-    throw new Error("TAURI_PRIVATE_KEY is required");
+  if (!process.env.TAURI_SIGNING_PRIVATE_KEY) {
+    throw new Error("TAURI_SIGNING_PRIVATE_KEY is required");
   }
-  if (!process.env.TAURI_KEY_PASSWORD) {
-    throw new Error("TAURI_KEY_PASSWORD is required");
+  if (!process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD) {
+    throw new Error("TAURI_SIGNING_PRIVATE_KEY_PASSWORD is required");
   }
 
   const { version } = pkgJson;

@@ -101,6 +101,10 @@ export class Resolve {
 
     zip.extractAllTo(tempDir, true);
 
+    // recursive list path for debug use
+    const files = await fs.readdir(tempDir, { recursive: true });
+    consola.debug(colorize`{green wintun} files: ${files}`);
+
     if (!(await fs.pathExists(wintunPath))) {
       throw new Error(`path not found "${wintunPath}"`);
     }

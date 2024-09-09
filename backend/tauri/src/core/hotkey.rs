@@ -99,7 +99,7 @@ impl Hotkey {
 
         manager.on_shortcut(hotkey, move |_app_handle, _hotkey, _ev| {
             f();
-        });
+        })?;
 
         log::info!(target: "app", "register hotkey {hotkey} {func}");
         Ok(())

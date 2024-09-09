@@ -34,6 +34,10 @@ async function main() {
   const rootPackageJson = await fs.readJSON(ROOT_PACKAGE_JSON_PATH);
   // const wxsFile = await fs.readFile(WXS_PATH, "utf-8");
 
+  if (isNSIS) {
+    tauriConf.bundle.targets = ["nsis"];
+  }
+
   consola.debug("Get current git short hash");
   const GIT_SHORT_HASH = execSync("git rev-parse --short HEAD")
     .toString()

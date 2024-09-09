@@ -362,7 +362,7 @@ pub fn create_window(app_handle: &AppHandle) {
     #[cfg(target_os = "windows")]
     {
         use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings6;
-        use windows_sys::core::Interface;
+        use windows_core::Interface;
 
         app_handle
             .get_webview_window("main")

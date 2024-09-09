@@ -1368,6 +1368,7 @@ dependencies = [
  "which 6.0.3",
  "whoami",
  "window-vibrancy",
+ "windows-core 0.58.0",
  "windows-sys 0.59.0",
  "winreg 0.52.0",
  "zip",

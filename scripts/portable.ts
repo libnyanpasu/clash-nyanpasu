@@ -21,8 +21,11 @@ async function resolvePortable() {
   await fs.createFile(path.join(configDir, "PORTABLE"));
 
   const zip = new AdmZip();
-
-  zip.addLocalFile(path.join(releaseDir, "Clash Nyanpasu.exe"));
+  let mainEntryPath = path.join(releaseDir, "Clash Nyanpasu.exe");
+  if (!(await fs.pathExists(mainEntryPath))) {
+    mainEntryPath = path.join(releaseDir, "clash-nyanpasu.exe");
+  }
+  zip.addLocalFile(mainEntryPath);
   zip.addLocalFile(path.join(releaseDir, "clash.exe"));
   zip.addLocalFile(path.join(releaseDir, "mihomo.exe"));
   zip.addLocalFile(path.join(releaseDir, "mihomo-alpha.exe"));

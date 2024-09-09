@@ -236,11 +236,13 @@ mod platform_impl {
     ) -> anyhow::Result<Submenu<R>> {
         let mut group_menu = SubmenuBuilder::new(app_handle, group_name);
         for item in group.all.iter() {
-            let mut sub_item_builder = CheckMenuItemBuilder::new(item.clone()).id(format!(
-                "select_proxy_{}_{}",
-                base64_standard.encode(group_name),
-                base64_standard.encode(item)
-            ));
+            let mut sub_item_builder = CheckMenuItemBuilder::new(item.clone())
+                .id(format!(
+                    "select_proxy_{}_{}",
+                    base64_standard.encode(group_name),
+                    base64_standard.encode(item)
+                ))
+                .checked(false);
             if let Some(now) = group.current.clone() {
                 if now == item.as_str() {
                     #[cfg(target_os = "linux")]
@@ -263,7 +265,7 @@ mod platform_impl {
         Ok(group_menu.build()?)
     }
 
-    pub fn generate_selectors<'m, R: Runtime, M: Manager<R>>(
+    pub fn generate_selectors<R: Runtime>(
         app_handle: &AppHandle<R>,
         proxies: &super::TrayProxies,
     ) -> anyhow::Result<Vec<MenuItemKind<R>>> {
@@ -300,7 +302,7 @@ mod platform_impl {
         let proxies = ProxiesGuard::global().read().inner().to_owned();
         let mode = crate::utils::config::get_current_clash_mode();
         let tray_proxies = super::to_tray_proxies(mode.as_str(), &proxies);
-        let items = generate_selectors::<R, M>(app_handle, &tray_proxies)?;
+        let items = generate_selectors::<R>(app_handle, &tray_proxies)?;
         match selector_mode {
             ProxiesSelectorMode::Normal => {
                 for item in items {

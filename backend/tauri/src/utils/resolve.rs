@@ -137,11 +137,12 @@ pub fn resolve_setup(app: &mut App) {
     log::trace!("init system tray");
     #[cfg(windows)]
     tray::icon::resize_images(crate::utils::help::get_max_scale_factor()); // generate latest cache icon by current scale factor
-    log_err!(tray::Tray::update_systray(&app.app_handle()));
+
+    log_err!(tray::Tray::update_systray(app.app_handle()));
 
     let silent_start = { Config::verge().data().enable_silent_start };
     if !silent_start.unwrap_or(false) {
-        create_window(&app.app_handle());
+        create_window(app.app_handle());
     }
 
     log_err!(sysopt::Sysopt::global().init_launch());

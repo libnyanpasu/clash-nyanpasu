@@ -146,9 +146,12 @@ pub fn run() -> std::io::Result<()> {
             "A panic occurred",
         );
         utils::dialog::panic_dialog(&format!(
-            "note: {:?}\nlocation: {:?}\nbacktrace: {:#?}\n\n payload: {:#?}",
-            note, location, backtrace, payload
+            "payload: {:#?}\nlocation: {:?}\nbacktrace: {:#?}\n\nnote: {:?}",
+            payload, location, backtrace, note
         ));
+        nyanpasu_utils::runtime::block_on(async {
+            let _ = crate::core::CoreManager::global().stop_core().await;
+        });
         default_panic(panic_info);
     }));
 

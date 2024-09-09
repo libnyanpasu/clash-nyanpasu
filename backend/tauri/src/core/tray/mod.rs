@@ -18,12 +18,14 @@ pub mod proxies;
 pub use self::icon::on_scale_factor_changed;
 use self::proxies::SystemTrayMenuProxiesExt;
 mod utils;
-pub struct Tray {}
 
-pub struct TrayState<R: Runtime> {
-    pub tray_icon: TrayIcon,
-    pub menu: Mutex<Menu<R>>,
+const TRAY_ID: &str = "main-tray";
+
+struct TrayState<R: Runtime> {
+    menu: Mutex<Menu<R>>,
 }
+
+pub struct Tray {}
 
 impl Tray {
     #[instrument(skip(app_handle))]
@@ -51,9 +53,9 @@ impl Tray {
             .check("system_proxy", t!("tray.system_proxy"))
             .check("tun_mode", t!("tray.tun_mode"))
             .separator()
-            .text("copy_env_sh", t!("tray.copy_env_sh"))
-            .text("copy_env_cmd", t!("tray.copy_env_cmd"))
-            .text("copy_env_ps", t!("tray.copy_env_ps"))
+            .text("copy_env_sh", t!("tray.copy_env.sh"))
+            .text("copy_env_cmd", t!("tray.copy_env.cmd"))
+            .text("copy_env_ps", t!("tray.copy_env.ps"))
             .item(
                 &SubmenuBuilder::new(app_handle, t!("tray.open_dir.menu"))
                     .text("open_app_config_dir", t!("tray.open_dir.app_config_dir"))
@@ -84,34 +86,44 @@ impl Tray {
         Ok(menu.build()?)
     }
 
-    pub fn setup_tray(app: &mut App) -> Result<()> {
-        let menu = Tray::tray_menu(app.handle())?;
-        let tray_icon = TrayIconBuilder::new()
-            .icon(tauri::image::Image::from_bytes(&icon::get_icon(
-                &icon::TrayIcon::Normal,
-            ))?)
-            .menu(&menu)
-            .on_menu_event(|app, event| {
-                Tray::on_menu_item_event(app, event);
-            })
-            .on_tray_icon_event(|tray_icon, event| {
-                Tray::on_system_tray_event(tray_icon, event);
-            })
-            .build(app)?;
-        app.manage::<TrayState<_>>(TrayState {
-            tray_icon,
-            menu: Mutex::new(menu),
-        });
-        Ok(())
-    }
-
     #[instrument(skip(app_handle))]
-    pub fn update_systray<R: Runtime>(app_handle: &AppHandle<R>) -> Result<()> {
-        let tray_state = app_handle.state::<TrayState<_>>();
+    pub fn update_systray(app_handle: &AppHandle<tauri::Wry>) -> Result<()> {
+        let mut tray = app_handle.tray_by_id(TRAY_ID);
+        if cfg!(target_os = "linux") && tray.is_some() {
+            app_handle.remove_tray_by_id(TRAY_ID);
+            tray = None;
+        }
         let menu = Tray::tray_menu(app_handle)?;
-        tray_state.tray_icon.set_menu(Some(menu.clone()))?;
+        match tray {
+            None => {
+                TrayIconBuilder::with_id(TRAY_ID)
+                    .icon(tauri::image::Image::from_bytes(&icon::get_icon(
+                        &icon::TrayIcon::Normal,
+                    ))?)
+                    .menu(&menu)
+                    .on_menu_event(|app, event| {
+                        Tray::on_menu_item_event(app, event);
+                    })
+                    .on_tray_icon_event(|tray_icon, event| {
+                        Tray::on_system_tray_event(tray_icon, event);
+                    })
+                    .build(app_handle)?;
+            }
+            Some(tray) => {
+                tray.set_menu(Some(menu.clone()))?;
+            }
+        }
         {
-            *tray_state.menu.lock() = menu;
+            match app_handle.try_state::<TrayState<tauri::Wry>>() {
+                Some(state) => {
+                    *state.menu.lock() = menu;
+                }
+                None => {
+                    app_handle.manage(TrayState {
+                        menu: Mutex::new(menu),
+                    });
+                }
+            }
         }
         Tray::update_part(app_handle)?;
         Ok(())
@@ -127,8 +139,10 @@ impl Tray {
                 .as_ref()
                 .unwrap_or(&ClashCore::default())
         };
-        let tray = app_handle.state::<TrayState<R>>();
-        let menu = tray.menu.lock();
+        let tray = app_handle.tray_by_id(TRAY_ID).unwrap();
+        let state = app_handle.state::<TrayState<R>>();
+        let menu = state.menu.lock();
+
         #[cfg(target_os = "linux")]
         {
             let _ = tray.get_item("rule_mode").set_title(t!("tray.rule_mode"));
@@ -206,9 +220,7 @@ impl Tray {
                 TrayIcon::Normal
             };
             let icon = icon::get_icon(&mode);
-            let _ = tray
-                .tray_icon
-                .set_icon(Some(tauri::image::Image::from_bytes(&icon)?));
+            let _ = tray.set_icon(Some(tauri::image::Image::from_bytes(&icon)?));
         }
 
         #[cfg(target_os = "linux")]
@@ -257,7 +269,7 @@ impl Tray {
                 map
             };
 
-            let _ = tray.tray_icon.set_tooltip(Some(&format!(
+            let _ = tray.set_tooltip(Some(&format!(
                 "{}: {}\n{}: {}",
                 t!("tray.system_proxy"),
                 switch_map[&system_proxy],
@@ -302,11 +314,12 @@ impl Tray {
     }
 
     pub fn on_system_tray_event(tray_icon: &TrayIcon, event: TrayIconEvent) {
-        match event {
-            TrayIconEvent::Click { button, .. } if button == MouseButton::Left => {
-                resolve::create_window(tray_icon.app_handle());
-            }
-            _ => {}
+        if let TrayIconEvent::Click {
+            button: MouseButton::Left,
+            ..
+        } = event
+        {
+            resolve::create_window(tray_icon.app_handle());
         }
     }
 }

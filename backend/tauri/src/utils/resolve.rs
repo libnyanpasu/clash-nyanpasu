@@ -167,8 +167,10 @@ pub fn resolve_reset() {
 }
 
 /// create main window
+#[tracing_attributes::instrument(skip(app_handle))]
 pub fn create_window(app_handle: &AppHandle) {
     if let Some(window) = app_handle.get_webview_window("main") {
+        tracing::debug!("main window is already opened, try to show it");
         if OPEN_WINDOWS_COUNTER.load(Ordering::Acquire) == 0 {
             trace_err!(window.unminimize(), "set win unminimize");
             trace_err!(window.show(), "set win visible");
@@ -185,6 +187,7 @@ pub fn create_window(app_handle: &AppHandle) {
             .unwrap_or(&false)
     };
 
+    tracing::debug!("create main window...");
     let mut builder = tauri::WebviewWindowBuilder::new(
         app_handle,
         "main".to_string(),
@@ -223,6 +226,7 @@ pub fn create_window(app_handle: &AppHandle) {
         .decorations(false)
         .transparent(true)
         .visible(false)
+        .additional_browser_args("--enable-features=msWebView2EnableDraggableRegions --disable-features=OverscrollHistoryNavigation,msExperimentalScrolling")
         .build();
     #[cfg(target_os = "macos")]
     let win_res = builder
@@ -335,6 +339,13 @@ pub fn create_window(app_handle: &AppHandle) {
         }
         Err(err) => {
             log::error!(target: "app", "failed to create window, {err}");
+            if let Some(win) = app_handle.get_webview_window("main") {
+                // Cleanup window if failed to create, it's a workaround for tauri bug
+                trace_err!(
+                    win.destroy(),
+                    "occur error when close window while failed to create"
+                );
+            }
         }
     }
 
@@ -429,11 +440,11 @@ pub async fn resolve_core_version(app_handle: &AppHandle, core_type: &ClashCore)
         ClashCore::ClashRs => shell.sidecar(core)?.args(["-V"]),
     };
     let out = cmd.output().await?;
-    log::debug!(target: "app", "get core version: {:?}", out);
     if !out.status.success() {
         return Err(anyhow::anyhow!("failed to get core version"));
     }
     let out = String::from_utf8_lossy(&out.stdout);
+    log::trace!(target: "app", "get core version: {:?}", out);
     let out = out.trim().split(' ').collect::<Vec<&str>>();
     for item in out {
         log::debug!(target: "app", "check item: {}", item);

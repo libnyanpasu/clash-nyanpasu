@@ -216,6 +216,7 @@ pub async fn restart_service() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[tracing::instrument]
 pub async fn status<'a>() -> anyhow::Result<nyanpasu_ipc::types::StatusInfo<'a>> {
     let mut cmd = tokio::process::Command::new(SERVICE_PATH.as_path());
     cmd.args(["status", "--json"]);
@@ -239,6 +240,6 @@ pub async fn status<'a>() -> anyhow::Result<nyanpasu_ipc::types::StatusInfo<'a>>
         );
     }
     let mut status = String::from_utf8(output.stdout)?;
-    tracing::debug!("service status: {}", status);
+    tracing::trace!("service status: {}", status);
     Ok(unsafe { simd_json::serde::from_str(&mut status)? })
 }

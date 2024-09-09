@@ -325,7 +325,7 @@ pub fn run() -> std::io::Result<()> {
                         core::tray::on_scale_factor_changed(scale_factor);
                     }
                     tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {
-                        // log::info!(target: "app", "window close requested");
+                        log::debug!(target: "app", "window close requested");
                         reset_window_open_counter();
                         let _ = resolve::save_window_state(app_handle, true);
                         #[cfg(target_os = "macos")]
@@ -334,7 +334,7 @@ pub fn run() -> std::io::Result<()> {
                         }
                     }
                     tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
-                        // log::info!(target: "app", "window moved or resized");
+                        log::debug!(target: "app", "window moved or resized");
                         std::thread::sleep(std::time::Duration::from_nanos(1));
                         let _ = resolve::save_window_state(app_handle, false);
                     }

@@ -1363,7 +1363,6 @@ dependencies = [
  "window-vibrancy",
  "windows-sys 0.59.0",
  "winreg 0.52.0",
- "wry",
  "zip",
  "zip-extensions",
 ]

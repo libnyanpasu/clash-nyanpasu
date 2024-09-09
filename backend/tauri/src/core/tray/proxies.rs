@@ -7,7 +7,7 @@ use crate::{
 };
 use anyhow::Context;
 use indexmap::IndexMap;
-use tauri::{menu::MenuBuilder, AppHandle, Manager, Runtime};
+use tauri::{menu::MenuBuilder, AppHandle, Emitter, Manager, Runtime};
 use tracing::{debug, error, warn};
 use tracing_attributes::instrument;
 
@@ -179,8 +179,9 @@ pub async fn proxies_updated_receiver() {
                 match diff_proxies(&tray_proxies_holder, &current_tray_proxies) {
                     TrayUpdateType::Full => {
                         debug!("should do full update");
+
                         tray_proxies_holder = current_tray_proxies;
-                        match Handle::update_systray() {
+                        match Handle::emit("update_systray", ()) {
                             Ok(_) => {
                                 debug!("update systray success");
                             }

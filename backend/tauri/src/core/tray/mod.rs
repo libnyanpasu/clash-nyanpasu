@@ -1,6 +1,6 @@
 use crate::{
     config::{nyanpasu::ClashCore, Config},
-    feat, ipc,
+    feat, ipc, log_err, trace_err,
     utils::{help, resolve},
 };
 use anyhow::Result;
@@ -9,7 +9,7 @@ use rust_i18n::t;
 use tauri::{
     menu::{Menu, MenuBuilder, MenuEvent, MenuItemBuilder, SubmenuBuilder},
     tray::{MouseButton, TrayIcon, TrayIconBuilder, TrayIconEvent},
-    App, AppHandle, Manager, Runtime,
+    AppHandle, Manager, Runtime,
 };
 use tracing_attributes::instrument;
 
@@ -19,7 +19,7 @@ pub use self::icon::on_scale_factor_changed;
 use self::proxies::SystemTrayMenuProxiesExt;
 mod utils;
 
-const TRAY_ID: &str = "main-tray";
+const TRAY_ID: &str = "main";
 
 struct TrayState<R: Runtime> {
     menu: Mutex<Menu<R>>,
@@ -94,12 +94,24 @@ impl Tray {
             tray = None;
         }
         let menu = Tray::tray_menu(app_handle)?;
-        match tray {
+        let tray = match tray {
             None => {
-                TrayIconBuilder::with_id(TRAY_ID)
-                    .icon(tauri::image::Image::from_bytes(&icon::get_icon(
+                let mut builder = TrayIconBuilder::with_id(TRAY_ID);
+                #[cfg(any(windows, target_os = "linux"))]
+                {
+                    builder = builder.icon(tauri::image::Image::from_bytes(&icon::get_icon(
                         &icon::TrayIcon::Normal,
-                    ))?)
+                    ))?);
+                }
+                #[cfg(target_os = "macos")]
+                {
+                    builder = builder
+                        .icon(tauri::image::Image::from_bytes(include_bytes!(
+                            "../../../icons/icon.icns"
+                        ))?)
+                        .icon_as_template(true);
+                }
+                builder
                     .menu(&menu)
                     .on_menu_event(|app, event| {
                         Tray::on_menu_item_event(app, event);
@@ -107,12 +119,14 @@ impl Tray {
                     .on_tray_icon_event(|tray_icon, event| {
                         Tray::on_system_tray_event(tray_icon, event);
                     })
-                    .build(app_handle)?;
+                    .build(app_handle)?
             }
             Some(tray) => {
                 tray.set_menu(Some(menu.clone()))?;
+                tray
             }
-        }
+        };
+        tray.set_visible(true)?;
         {
             match app_handle.try_state::<TrayState<tauri::Wry>>() {
                 Some(state) => {
@@ -167,7 +181,7 @@ impl Tray {
             )
         };
 
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
         {
             use icon::TrayIcon;
 
@@ -189,16 +203,26 @@ impl Tray {
             .get("tun_mode")
             .and_then(|item| item.as_check_menuitem()?.set_checked(tun_mode).ok());
 
+        let switch_map = {
+            let mut map = std::collections::HashMap::new();
+            map.insert(true, t!("tray.proxy_action.on"));
+            map.insert(false, t!("tray.proxy_action.off"));
+            map
+        };
+
         #[cfg(not(target_os = "linux"))]
         {
-            let switch_map = {
-                let mut map = std::collections::HashMap::new();
-                map.insert(true, t!("tray.proxy_action.on"));
-                map.insert(false, t!("tray.proxy_action.off"));
-                map
-            };
-
             let _ = tray.set_tooltip(Some(&format!(
+                "{}: {}\n{}: {}",
+                t!("tray.system_proxy"),
+                switch_map[&system_proxy],
+                t!("tray.tun_mode"),
+                switch_map[&tun_mode]
+            )));
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let _ = tray.set_title(Some(&format!(
                 "{}: {}\n{}: {}",
                 t!("tray.system_proxy"),
                 switch_map[&system_proxy],

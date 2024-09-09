@@ -18,7 +18,7 @@ use std::{
     net::TcpListener,
     sync::atomic::{AtomicU16, Ordering},
 };
-use tauri::{async_runtime::block_on, App, AppHandle, Listener, Manager};
+use tauri::{async_runtime::block_on, App, AppHandle, Emitter, Listener, Manager};
 use tauri_plugin_shell::ShellExt;
 
 static OPEN_WINDOWS_COUNTER: AtomicU16 = AtomicU16::new(0);
@@ -135,10 +135,20 @@ pub fn resolve_setup(app: &mut App) {
     log_err!(CoreManager::global().init());
 
     log::trace!("init system tray");
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     tray::icon::resize_images(crate::utils::help::get_max_scale_factor()); // generate latest cache icon by current scale factor
-
-    log_err!(tray::Tray::update_systray(app.app_handle()));
+    let app_handle = app.app_handle().clone();
+    app.listen("update_systray", move |_| {
+        // Fix the GTK should run on main thread issue
+        let app_handle_clone = app_handle.clone();
+        log_err!(app_handle.run_on_main_thread(move || {
+            log_err!(
+                tray::Tray::update_systray(&app_handle_clone),
+                "failed to update systray"
+            );
+        }));
+    });
+    log_err!(app.emit("update_systray", ()));
 
     let silent_start = { Config::verge().data().enable_silent_start };
     if !silent_start.unwrap_or(false) {
@@ -341,7 +351,7 @@ pub fn create_window(app_handle: &AppHandle) {
             log::error!(target: "app", "failed to create window, {err}");
             if let Some(win) = app_handle.get_webview_window("main") {
                 // Cleanup window if failed to create, it's a workaround for tauri bug
-                trace_err!(
+                log_err!(
                     win.destroy(),
                     "occur error when close window while failed to create"
                 );

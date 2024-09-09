@@ -149,9 +149,14 @@ pub fn run() -> std::io::Result<()> {
             "payload: {:#?}\nlocation: {:?}\nbacktrace: {:#?}\n\nnote: {:?}",
             payload, location, backtrace, note
         ));
-        nyanpasu_utils::runtime::block_on(async {
-            let _ = crate::core::CoreManager::global().stop_core().await;
+
+        // cleanup the core manager
+        let task = std::thread::spawn(move || {
+            nyanpasu_utils::runtime::block_on(async {
+                let _ = crate::core::CoreManager::global().stop_core().await;
+            });
         });
+        let _ = task.join();
         default_panic(panic_info);
     }));
 

@@ -81,11 +81,12 @@ impl Handle {
     }
 
     pub fn update_systray() -> Result<()> {
-        let app_handle = Self::global().app_handle.lock();
-        if app_handle.is_none() {
-            bail!("update_systray unhandled error");
-        }
-        Tray::update_systray(app_handle.as_ref().unwrap())?;
+        // let app_handle = Self::global().app_handle.lock();
+        // if app_handle.is_none() {
+        //     bail!("update_systray unhandled error");
+        // }
+        // Tray::update_systray(app_handle.as_ref().unwrap())?;
+        Handle::emit("update_systray", ())?;
         Ok(())
     }
 
@@ -96,6 +97,16 @@ impl Handle {
             bail!("update_systray unhandled error");
         }
         Tray::update_part(app_handle.as_ref().unwrap())?;
+        Ok(())
+    }
+
+    pub fn emit<S: Serialize + Clone>(event: &str, payload: S) -> Result<()> {
+        let app_handle = Self::global().app_handle.lock();
+        if app_handle.is_none() {
+            bail!("app_handle is not exist");
+        }
+
+        app_handle.as_ref().unwrap().emit(event, payload)?;
         Ok(())
     }
 }

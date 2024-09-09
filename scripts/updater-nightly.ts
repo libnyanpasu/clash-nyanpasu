@@ -199,4 +199,5 @@ async function getSignature(url: string) {
 
 resolveUpdater().catch((err) => {
   consola.fatal(err);
+  process.exit(1);
 });

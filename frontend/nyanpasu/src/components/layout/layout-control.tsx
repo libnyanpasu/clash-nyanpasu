@@ -73,7 +73,7 @@ export const LayoutControl = ({ className }: { className?: string }) => {
   }, []);
 
   return (
-    <div className={cn("flex gap-1", className)} id="titlebar">
+    <div className={cn("flex gap-1", className)} data-tauri-drag-region>
       <CtrlButton onClick={toggleAlwaysOnTop}>
         {nyanpasuConfig?.always_on_top ? (
           <PushPin fontSize="small" style={{ transform: "rotate(15deg)" }} />

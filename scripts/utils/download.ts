@@ -25,7 +25,11 @@ export const downloadFile = async (url: string, path: string) => {
   const response = await fetch(url, {
     ...options,
     method: "GET",
-    headers: { "Content-Type": "application/octet-stream" },
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0",
+    },
   });
 
   const buffer = await response.arrayBuffer();

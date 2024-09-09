@@ -6,7 +6,6 @@ use crate::{
     },
 };
 use anyhow::Context;
-use base64::{engine::general_purpose::STANDARD as base64_standard, Engine as _};
 use indexmap::IndexMap;
 use tauri::{menu::MenuBuilder, AppHandle, Manager, Runtime};
 use tracing::{debug, error, warn};
@@ -41,8 +40,9 @@ async fn loop_task() {
 }
 
 type GroupName = String;
-type FromProxy = String;
-type ToProxy = String;
+type ProxyName = String;
+type FromProxy = ProxyName;
+type ToProxy = ProxyName;
 type ProxySelectAction = (GroupName, FromProxy, ToProxy);
 #[derive(PartialEq)]
 enum TrayUpdateType {
@@ -211,15 +211,16 @@ pub fn setup_proxies() {
 }
 
 mod platform_impl {
-    use std::sync::atomic::AtomicBool;
-
-    use super::{ProxySelectAction, TrayProxyItem};
+    use super::{GroupName, ProxyName, ProxySelectAction, TrayProxyItem};
     use crate::{
         config::nyanpasu::ProxiesSelectorMode,
         core::{clash::proxies::ProxiesGuard, handle::Handle},
     };
-    use base64::{engine::general_purpose::STANDARD as base64_standard, Engine as _};
+    use bimap::BiMap;
+    use once_cell::sync::Lazy;
+    use parking_lot::Mutex;
     use rust_i18n::t;
+    use std::sync::atomic::AtomicBool;
     use tauri::{
         menu::{
             CheckMenuItemBuilder, IsMenuItem, MenuBuilder, MenuItemBuilder, MenuItemKind, Submenu,
@@ -229,19 +230,25 @@ mod platform_impl {
     };
     use tracing::warn;
 
+    // It store a map of proxy nodes like "GROUP_PROXY" -> ID
+    // TODO: use Cow<str> instead of String
+    pub(super) static ITEM_IDS: Lazy<Mutex<BiMap<(GroupName, ProxyName), usize>>> =
+        Lazy::new(|| Mutex::new(BiMap::new()));
+
     pub fn generate_group_selector<R: Runtime>(
         app_handle: &AppHandle<R>,
         group_name: &str,
         group: &TrayProxyItem,
     ) -> anyhow::Result<Submenu<R>> {
+        let mut item_ids = ITEM_IDS.lock();
+        item_ids.clear(); // clear the item ids
         let mut group_menu = SubmenuBuilder::new(app_handle, group_name);
         for item in group.all.iter() {
+            let key = (group_name.to_string(), item.to_string());
+            let id = item_ids.len();
+            item_ids.insert(key, id);
             let mut sub_item_builder = CheckMenuItemBuilder::new(item.clone())
-                .id(format!(
-                    "select_proxy_{}_{}",
-                    base64_standard.encode(group_name),
-                    base64_standard.encode(item)
-                ))
+                .id(format!("proxy_node_{}", id))
                 .checked(false);
             if let Some(now) = group.current.clone() {
                 if now == item.as_str() {
@@ -336,20 +343,28 @@ mod platform_impl {
             .state::<crate::core::tray::TrayState<tauri::Wry>>();
         TRAY_ITEM_UPDATE_BARRIER.store(true, std::sync::atomic::Ordering::Release);
         let menu = tray_state.menu.lock();
+        let item_ids = ITEM_IDS.lock();
         for action in actions {
             tracing::debug!("update selected proxies: {:?}", action);
-            let from = format!(
-                "select_proxy_{}_{}",
-                base64_standard.encode(&action.0),
-                base64_standard.encode(&action.1)
-            );
-            let to = format!(
-                "select_proxy_{}_{}",
-                base64_standard.encode(&action.0),
-                base64_standard.encode(&action.2)
-            );
+            let from_id = match item_ids.get_by_left(&(action.0.clone(), action.1.clone())) {
+                Some(id) => *id,
+                None => {
+                    warn!("from item not found: {:?}", action);
+                    continue;
+                }
+            };
+            let from_id = format!("proxy_node_{}", from_id);
 
-            match menu.get(&from) {
+            let to_id = match item_ids.get_by_left(&(action.0.clone(), action.2.clone())) {
+                Some(id) => *id,
+                None => {
+                    warn!("to item not found: {:?}", action);
+                    continue;
+                }
+            };
+            let to_id = format!("proxy_node_{}", to_id);
+
+            match menu.get(&from_id) {
                 Some(item) => match item.kind() {
                     MenuItemKind::Check(item) => {
                         if item.is_checked().is_ok_and(|x| x) {
@@ -360,14 +375,14 @@ mod platform_impl {
                         let _ = item.set_text(action.1.clone());
                     }
                     _ => {
-                        warn!("failed to deselect, item is not a check item: {}", from);
+                        warn!("failed to deselect, item is not a check item: {}", from_id);
                     }
                 },
                 None => {
-                    warn!("failed to deselect, item not found: {}", from);
+                    warn!("failed to deselect, item not found: {}", from_id);
                 }
             }
-            match menu.get(&to) {
+            match menu.get(&to_id) {
                 Some(item) => match item.kind() {
                     MenuItemKind::Check(item) => {
                         if item.is_checked().is_ok_and(|x| !x) {
@@ -378,11 +393,11 @@ mod platform_impl {
                         let _ = item.set_text(action.2.clone());
                     }
                     _ => {
-                        warn!("failed to select, item is not a check item: {}", from);
+                        warn!("failed to select, item is not a check item: {}", to_id);
                     }
                 },
                 None => {
-                    warn!("failed to select, item not found: {}", to);
+                    warn!("failed to select, item not found: {}", to_id);
                 }
             }
         }
@@ -404,17 +419,31 @@ impl<'m, R: Runtime, M: Manager<R>> SystemTrayMenuProxiesExt<R> for MenuBuilder<
 
 #[instrument]
 pub fn on_system_tray_event(event: &str) {
-    if !event.starts_with("select_proxy_") {
+    if !event.starts_with("proxy_node_") {
         return; // bypass non-select event
     }
-    let parts: Vec<&str> = event.split('_').collect();
-    if parts.len() != 4 {
-        return; // bypass invalid event
-    }
+    let node_id = event.split('_').last().unwrap(); // safe to unwrap
+    let node_id = match node_id.parse::<usize>() {
+        Ok(id) => id,
+        Err(e) => {
+            error!("parse node id failed: {:?}", e);
+            return;
+        }
+    };
+
+    let (group, name) = {
+        let map = platform_impl::ITEM_IDS.lock();
+        let item = map.get_by_right(&node_id);
+        match item {
+            Some((group, name)) => (group.clone(), name.clone()),
+            None => {
+                error!("node id not found: {}", node_id);
+                return;
+            }
+        }
+    };
 
     let wrapper = move || -> anyhow::Result<()> {
-        let group = String::from_utf8(base64_standard.decode(parts[2])?)?;
-        let name = String::from_utf8(base64_standard.decode(parts[3])?)?;
         tracing::debug!("received select proxy event: {} {}", group, name);
         tauri::async_runtime::block_on(async move {
             ProxiesGuard::global()

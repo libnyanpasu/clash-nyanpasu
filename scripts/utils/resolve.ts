@@ -75,7 +75,7 @@ export class Resolve {
 
     const tempZip = path.join(tempDir, "wintun.zip");
 
-    const wintunPath = path.join(tempDir, "wintun/bin/amd64/wintun.dll");
+    const wintunPath = path.join(tempDir, "bin/amd64/wintun.dll");
 
     const targetPath = path.join(TAURI_APP_DIR, "resources", "wintun.dll");
 
@@ -102,8 +102,8 @@ export class Resolve {
     zip.extractAllTo(tempDir, true);
 
     // recursive list path for debug use
-    const files = await fs.readdir(tempDir, { recursive: true });
-    consola.debug(colorize`{green wintun} files: ${files}`);
+    // const files = await fs.readdir(tempDir, { recursive: true });
+    // consola.debug(colorize`{green wintun} files: ${files}`);
 
     if (!(await fs.pathExists(wintunPath))) {
       throw new Error(`path not found "${wintunPath}"`);

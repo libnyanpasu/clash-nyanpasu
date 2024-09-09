@@ -322,7 +322,11 @@ mod platform_impl {
                 }
             }
             ProxiesSelectorMode::Submenu => {
-                let mut submenu = SubmenuBuilder::new(app_handle, t!("tray.select_proxies"));
+                let mut submenu = SubmenuBuilder::with_id(
+                    app_handle,
+                    "select_proxies",
+                    t!("tray.select_proxies"),
+                );
                 for item in items {
                     submenu = submenu.item(&item);
                 }
@@ -350,69 +354,67 @@ mod platform_impl {
         let menu = tray_state.menu.lock();
         let item_ids = ITEM_IDS.lock();
         for action in actions {
-            #[cfg(not(target_os = "linux"))]
-            {
-                tracing::debug!("update selected proxies: {:?}", action);
-                let from_id = match item_ids.get_by_left(&(action.0.clone(), action.1.clone())) {
-                    Some(id) => *id,
-                    None => {
-                        warn!("from item not found: {:?}", action);
-                        continue;
-                    }
-                };
-                let from_id = format!("proxy_node_{}", from_id);
+            //     #[cfg(not(target_os = "linux"))]
+            //     {
+            //         tracing::debug!("update selected proxies: {:?}", action);
+            //         let from_id = match item_ids.get_by_left(&(action.0.clone(), action.1.clone())) {
+            //             Some(id) => *id,
+            //             None => {
+            //                 warn!("from item not found: {:?}", action);
+            //                 continue;
+            //             }
+            //         };
+            //         let from_id = format!("proxy_node_{}", from_id);
 
-                let to_id = match item_ids.get_by_left(&(action.0.clone(), action.2.clone())) {
-                    Some(id) => *id,
-                    None => {
-                        warn!("to item not found: {:?}", action);
-                        continue;
-                    }
-                };
-                let to_id = format!("proxy_node_{}", to_id);
+            //         let to_id = match item_ids.get_by_left(&(action.0.clone(), action.2.clone())) {
+            //             Some(id) => *id,
+            //             None => {
+            //                 warn!("to item not found: {:?}", action);
+            //                 continue;
+            //             }
+            //         };
+            //         let to_id = format!("proxy_node_{}", to_id);
 
-                match menu.get(&from_id) {
-                    Some(item) => match item.kind() {
-                        MenuItemKind::Check(item) => {
-                            if item.is_checked().is_ok_and(|x| x) {
-                                let _ = item.set_checked(false);
-                            }
-                        }
-                        MenuItemKind::MenuItem(item) => {
-                            let _ = item.set_text(action.1.clone());
-                        }
-                        _ => {
-                            warn!("failed to deselect, item is not a check item: {}", from_id);
-                        }
-                    },
-                    None => {
-                        warn!("failed to deselect, item not found: {}", from_id);
-                    }
-                }
-                match menu.get(&to_id) {
-                    Some(item) => match item.kind() {
-                        MenuItemKind::Check(item) => {
-                            if item.is_checked().is_ok_and(|x| !x) {
-                                let _ = item.set_checked(true);
-                            }
-                        }
-                        MenuItemKind::MenuItem(item) => {
-                            let _ = item.set_text(action.2.clone());
-                        }
-                        _ => {
-                            warn!("failed to select, item is not a check item: {}", to_id);
-                        }
-                    },
-                    None => {
-                        warn!("failed to select, item not found: {}", to_id);
-                    }
-                }
-            }
-        }
+            //         match menu.get(&from_id) {
+            //             Some(item) => match item.kind() {
+            //                 MenuItemKind::Check(item) => {
+            //                     if item.is_checked().is_ok_and(|x| x) {
+            //                         let _ = item.set_checked(false);
+            //                     }
+            //                 }
+            //                 MenuItemKind::MenuItem(item) => {
+            //                     let _ = item.set_text(action.1.clone());
+            //                 }
+            //                 _ => {
+            //                     warn!("failed to deselect, item is not a check item: {}", from_id);
+            //                 }
+            //             },
+            //             None => {
+            //                 warn!("failed to deselect, item not found: {}", from_id);
+            //             }
+            //         }
+            //         match menu.get(&to_id) {
+            //             Some(item) => match item.kind() {
+            //                 MenuItemKind::Check(item) => {
+            //                     if item.is_checked().is_ok_and(|x| !x) {
+            //                         let _ = item.set_checked(true);
+            //                     }
+            //                 }
+            //                 MenuItemKind::MenuItem(item) => {
+            //                     let _ = item.set_text(action.2.clone());
+            //                 }
+            //                 _ => {
+            //                     warn!("failed to select, item is not a check item: {}", to_id);
+            //                 }
+            //             },
+            //             None => {
+            //                 warn!("failed to select, item not found: {}", to_id);
+            //             }
+            //         }
+            //     }
+            // }
 
-        #[cfg(target_os = "linux")]
-        {
-            // here is a fucking workaround for linux getter
+            // here is a fucking workaround for id getter
             #[inline]
             fn find_check_item<R: Runtime>(
                 menu: &Menu<R>,
@@ -422,11 +424,20 @@ mod platform_impl {
                 menu.items()
                     .ok()
                     .and_then(|items| {
-                        items.into_iter().find(|i| matches!(i, tauri::menu::MenuItemKind::Submenu(submenu) if submenu.text().is_ok_and(|text| text == group)))
+                        items.into_iter().find(|i| matches!(i, tauri::menu::MenuItemKind::Submenu(submenu) if submenu.text().is_ok_and(|text| text == group) || submenu.id() == "select_proxies"))
                     })
                     .and_then(|submenu| {
                         let submenu = submenu.as_submenu_unchecked();
-                        submenu.items().ok()
+                        if submenu.id() == "select_proxies" {
+                            submenu.items().ok().and_then(|items| {
+                                items.into_iter().find(|i| matches!(i, tauri::menu::MenuItemKind::Submenu(submenu) if submenu.text().is_ok_and(|text| text == group)))
+                            })
+                            .and_then(|submenu| {
+                                submenu.as_submenu_unchecked().items().ok()
+                            })
+                        } else {
+                            submenu.items().ok()
+                        }
                     })
                     .and_then(|items| {
                         items.into_iter().find(|i| matches!(i, tauri::menu::MenuItemKind::Check(item) if item.text().is_ok_and(|text| text == proxy)))
@@ -458,8 +469,9 @@ mod platform_impl {
                     );
                 }
             }
+
+            TRAY_ITEM_UPDATE_BARRIER.store(false, std::sync::atomic::Ordering::Release);
         }
-        TRAY_ITEM_UPDATE_BARRIER.store(false, std::sync::atomic::Ordering::Release);
     }
 }
 

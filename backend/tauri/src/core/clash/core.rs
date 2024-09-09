@@ -463,11 +463,12 @@ impl CoreManager {
 
                 let tun_device_ip = Config::clash().clone().latest().get_tun_device_ip();
                 // 执行 networksetup -setdnsservers Wi-Fi $tun_device_ip
-                let (mut rx, _) = Command::new("networksetup")
+                let output = tokio::process::Command::new("networksetup")
                     .args(["-setdnsservers", "Wi-Fi", tun_device_ip.as_str()])
-                    .spawn()?;
-                let event = rx.recv().await;
-                log::debug!(target: "app", "{event:?}");
+                    .output()
+                    .await?;
+
+                log::debug!(target: "app", "set system dns: {:?}", output);
             }
         }
         // FIXME: 重构服务模式
@@ -554,9 +555,10 @@ impl CoreManager {
             if enable_tun {
                 log::debug!(target: "app", "try to set system dns");
 
-                match Command::new("networksetup")
+                match tokio::process::Command::new("networksetup")
                     .args(["-setdnsservers", "Wi-Fi", "Empty"])
                     .output()
+                    .await
                 {
                     Ok(_) => return Ok(()),
                     Err(err) => {

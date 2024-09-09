@@ -177,7 +177,26 @@ pub fn run() -> std::io::Result<()> {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::default().build())
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::menu::{MenuBuilder, SubmenuBuilder};
+                let submenu = SubmenuBuilder::new(app, "Edit")
+                    .undo()
+                    .redo()
+                    .copy()
+                    .paste()
+                    .cut()
+                    .select_all()
+                    .close_window()
+                    .quit()
+                    .build()
+                    .unwrap();
+                let menu = MenuBuilder::new(app).item(&submenu).build().unwrap();
+                app.set_menu(menu).unwrap();
+            }
+
             resolve::resolve_setup(app);
+
             // setup custom scheme
             let handle = app.handle().clone();
             // For start new app from schema
@@ -292,26 +311,6 @@ pub fn run() -> std::io::Result<()> {
             ipc::get_service_install_prompt,
             ipc::cleanup_processes,
         ]);
-
-    #[cfg(target_os = "macos")]
-    {
-        use tauri::{Menu, MenuItem, Submenu};
-
-        builder = builder.menu(
-            Menu::new().add_submenu(Submenu::new(
-                "Edit",
-                Menu::new()
-                    .add_native_item(MenuItem::Undo)
-                    .add_native_item(MenuItem::Redo)
-                    .add_native_item(MenuItem::Copy)
-                    .add_native_item(MenuItem::Paste)
-                    .add_native_item(MenuItem::Cut)
-                    .add_native_item(MenuItem::SelectAll)
-                    .add_native_item(MenuItem::CloseWindow)
-                    .add_native_item(MenuItem::Quit),
-            )),
-        );
-    }
 
     let app = builder
         .build(tauri::generate_context!())

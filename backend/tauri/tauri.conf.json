@@ -1,4 +1,5 @@
 {
+  "$schema": "../../node_modules/@tauri-apps/cli/config.schema.json",
   "bundle": {
     "active": true,
     "targets": "all",

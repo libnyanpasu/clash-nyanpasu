@@ -23,9 +23,9 @@ async function main() {
   const tauriConf = tauriAppConf;
   // const wxsFile = await fs.readFile(WXS_PATH, "utf-8");
 
-  if (isNSIS) {
-    tauriConf.tauri.bundle.targets = ["nsis", "updater"];
-  }
+  // if (isNSIS) {
+  //   tauriConf.tauri.bundle.targets = ["nsis", "updater"];
+  // }
 
   consola.debug("Write tauri version to tauri.conf.json");
   await fs.writeJSON(TAURI_APP_CONF, tauriConf, { spaces: 2 });

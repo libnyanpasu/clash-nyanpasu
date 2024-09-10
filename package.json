@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "run-p -r web:devtools tauri:dev",
     "dev:diff": "run-p -r web:devtools tauri:diff",
-    "build": "tauri build -c ./backend/tauri/tauri.conf.json",
+    "build": "tauri build",
     "build:debug": "tauri build -f verge-dev deadlock-detection -d -c \"{ \\\"tauri\\\" : { \\\"updater\\\": { \\\"active\\\": false } }} \"",
     "build:nightly": "tauri build -f nightly -c ./backend/tauri/tauri.nightly.conf.json",
     "tauri": "tauri",

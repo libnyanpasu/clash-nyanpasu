@@ -107,7 +107,7 @@ jobs:
           releaseDraft: false
           prerelease: true
           tauriScript: pnpm tauri
-          args: ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json' || '-f default-meta -c ./backend/tauri/tauri.conf.json' }}
+          args: ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json' || '-f default-meta' }}
       - name: Tauri build and upload (aarch64)
         if: ${{ inputs.aarch64 == true }}
         shell: bash

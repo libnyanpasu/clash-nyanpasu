@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import path from "path";
 import AdmZip from "adm-zip";
 import fs from "fs-extra";
@@ -63,16 +64,35 @@ export class Resolve {
    */
   public async wintun() {
     const { platform } = process;
-
+    let arch = this.options.arch || "x64";
     if (platform !== "win32") return;
 
+    switch (arch) {
+      case "x64":
+        arch = "amd64";
+        break;
+      case "ia32":
+        arch = "x86";
+        break;
+      case "arm":
+        arch = "arm";
+        break;
+      case "arm64":
+        arch = "arm64";
+        break;
+      default:
+        throw new Error(`unsupported arch ${arch}`);
+    }
+
     const url = "https://www.wintun.net/builds/wintun-0.14.1.zip";
+    const hash =
+      "07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51";
 
     const tempDir = path.join(TEMP_DIR, "wintun");
 
     const tempZip = path.join(tempDir, "wintun.zip");
 
-    const wintunPath = path.join(tempDir, "wintun/bin/amd64/wintun.dll");
+    // const wintunPath = path.join(tempDir, "wintun/bin/amd64/wintun.dll");
 
     const targetPath = path.join(TAURI_APP_DIR, "resources", "wintun.dll");
 
@@ -84,16 +104,39 @@ export class Resolve {
       await downloadFile(url, tempZip);
     }
 
+    // check hash
+    const hashBuffer = await fs.readFile(tempZip);
+    const sha256 = crypto.createHash("sha256");
+    sha256.update(hashBuffer);
+    const hashValue = sha256.digest("hex");
+    if (hashValue !== hash) {
+      throw new Error(`wintun. hash not match ${hashValue}`);
+    }
+
     // unzip
     const zip = new AdmZip(tempZip);
 
     zip.extractAllTo(tempDir, true);
 
+    // recursive list path for debug use
+    const files = (await fs.readdir(tempDir, { recursive: true })).filter(
+      (file) => file.includes("wintun.dll"),
+    );
+    consola.debug(colorize`{green wintun} founded dlls: ${files}`);
+
+    const file = files.find((file) => file.includes(arch));
+    if (!file) {
+      throw new Error(`wintun. not found arch ${arch}`);
+    }
+
+    const wintunPath = path.join(tempDir, file.toString());
+
     if (!(await fs.pathExists(wintunPath))) {
       throw new Error(`path not found "${wintunPath}"`);
     }
-
-    await fs.rename(wintunPath, targetPath);
+    // prepare resource dir
+    await fs.mkdirp(path.dirname(targetPath));
+    await fs.copyFile(wintunPath, targetPath);
 
     await fs.remove(tempDir);
 

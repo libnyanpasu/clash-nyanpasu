@@ -1,6 +1,7 @@
 import { MuiColorInput } from "mui-color-input";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { isHexColor } from "validator";
 import { languageOptions } from "@/utils/language";
 import Done from "@mui/icons-material/Done";
 import { Box, Button, List, ListItem, ListItemText } from "@mui/material";
@@ -21,6 +22,7 @@ export const SettingNyanpasuUI = () => {
   const [themeColor, setThemeColor] = useState(
     nyanpasuConfig?.theme_setting?.primary_color || "#fff",
   );
+  const themeColorRef = useRef(themeColor);
 
   const commonSx = {
     width: 128,
@@ -60,6 +62,13 @@ export const SettingNyanpasuUI = () => {
             value={themeColor}
             isAlphaHidden
             format="hex"
+            onBlur={() => {
+              if (!isHexColor(themeColorRef.current)) {
+                setThemeColor(themeColorRef.current);
+                return;
+              }
+              themeColorRef.current = themeColor;
+            }}
             onChange={(color: string) => setThemeColor(color)}
           />
         </ListItem>

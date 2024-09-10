@@ -1,16 +1,25 @@
 [target.aarch64-unknown-linux-gnu]
-image = "ghcr.io/cross-rs/aarch64-unknown-linux-gnu:edge"
-pre-build = [
-  "dpkg --add-architecture $CROSS_DEB_ARCH",
-  """apt-get update && apt-get -y install \
-    libwebkit2gtk-4.1-dev:$CROSS_DEB_ARCH \
-    libxdo-dev:$CROSS_DEB_ARCH \
-    libayatana-appindicator3-dev:$CROSS_DEB_ARCH \
-    librsvg2-dev:$CROSS_DEB_ARCH \
-    libpango1.0-dev:$CROSS_DEB_ARCH \
-    libcairo2-dev:$CROSS_DEB_ARCH \
-    libatk1.0-dev:$CROSS_DEB_ARCH \
-    libsoup2.4-dev:$CROSS_DEB_ARCH \
-    libssl-dev:$CROSS_DEB_ARCH
-  """,
-]
+# dockerfile = "./manifest/docker/ubuntu-22.04-aarch64/Dockerfile"
+image = "ghcr.io/libnyanpasu/builder-ubuntu-22.04-aarch64:latest"
+# pre-build = [
+#   "dpkg --add-architecture $CROSS_DEB_ARCH",
+#   """echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy main restricted universe multiverse" | tee /etc/apt/sources.list && \
+#     echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy-updates main restricted universe multiverse" | tee -a /etc/apt/sources.list && \
+#     echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy-security main restricted universe multiverse" | tee -a /etc/apt/sources.list && \
+#     echo "deb [arch=i386,amd64] http://archive.ubuntu.com/ubuntu/ jammy main restricted universe multiverse" | tee -a /etc/apt/sources.list && \
+#     echo "deb [arch=i386,amd64] http://archive.ubuntu.com/ubuntu/ jammy-updates main restricted universe multiverse" | tee -a /etc/apt/sources.list && \
+#     echo "deb [arch=i386,amd64] http://archive.ubuntu.com/ubuntu/ jammy-security main restricted universe multiverse" | tee -a /etc/apt/sources.list && \
+#     apt-get update && apt-get -y install \
+#     build-essential \
+#     libgtk-3-dev:$CROSS_DEB_ARCH \
+#     libwebkit2gtk-4.1-dev:$CROSS_DEB_ARCH \
+#     libxdo-dev:$CROSS_DEB_ARCH \
+#     libayatana-appindicator3-dev:$CROSS_DEB_ARCH \
+#     librsvg2-dev:$CROSS_DEB_ARCH \
+#     libpango1.0-dev:$CROSS_DEB_ARCH \
+#     libcairo2-dev:$CROSS_DEB_ARCH \
+#     libatk1.0-dev:$CROSS_DEB_ARCH \
+#     libsoup2.4-dev:$CROSS_DEB_ARCH \
+#     libssl-dev:$CROSS_DEB_ARCH \
+#   """,
+# ]

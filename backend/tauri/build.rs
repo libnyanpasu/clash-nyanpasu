@@ -12,11 +12,6 @@ struct PackageJson {
 }
 
 #[derive(Deserialize)]
-struct TauriJson {
-    package: PackageJson,
-}
-
-#[derive(Deserialize)]
 struct GitInfo {
     hash: String,
     author: String,
@@ -30,8 +25,8 @@ fn main() {
         pkg_json.version
     } else {
         let mut raw = read("./tauri.conf.json").unwrap(); // TODO: fix it when windows arm64 need it
-        let tauri_json: TauriJson = simd_json::from_slice(&mut raw).unwrap();
-        tauri_json.package.version
+        let tauri_json: PackageJson = simd_json::from_slice(&mut raw).unwrap();
+        tauri_json.version
     };
     let version = semver::Version::parse(&version).unwrap();
     let is_prerelase = !version.pre.is_empty();

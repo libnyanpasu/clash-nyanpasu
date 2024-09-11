@@ -151,6 +151,7 @@ jobs:
         run: |
           pnpm portable
         env:
+          RUST_ARCH: ${{ inputs.arch }}
           TAG_NAME: ${{ inputs.tag }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}

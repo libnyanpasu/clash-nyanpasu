@@ -73,13 +73,33 @@ export const resolveSidecar = async (
     if (tmpFile.endsWith(".zip")) {
       const zip = new AdmZip(tempFile);
 
+      let entryName;
       zip.getEntries().forEach((entry) => {
         consola.debug(
           colorize`"{green ${name}}" entry name ${entry.entryName}`,
         );
+        if (
+          (entry.entryName.includes(name) &&
+            entry.entryName.endsWith(".exe")) ||
+          (entry.entryName.includes(
+            name
+              .split("-")
+              .filter((o) => o !== "alpha")
+              .join("-"),
+          ) &&
+            entry.entryName.endsWith(".exe"))
+        ) {
+          entryName = entry.entryName;
+        }
       });
 
       zip.extractAllTo(tempDir, true);
+
+      if (!entryName) {
+        throw new Error("cannot find exe file in zip");
+      }
+
+      await fs.rename(path.join(tempDir, entryName), tempExe);
 
       await fs.rename(tempExe, sidecarPath);
 

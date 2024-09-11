@@ -23,3 +23,12 @@ image = "ghcr.io/libnyanpasu/builder-ubuntu-22.04-aarch64:latest"
 #     libssl-dev:$CROSS_DEB_ARCH \
 #   """,
 # ]
+
+[target.armv7-unknown-linux-gnueabihf]
+image = "ghcr.io/libnyanpasu/builder-ubuntu-22.04-armhf:latest"
+
+[target.armv7-unknown-linux-gnueabi]
+image = "ghcr.io/libnyanpasu/builder-debian-trixie-armel:latest"
+
+[target.i686-unknown-linux-gnu]
+image = "ghcr.io/libnyanpasu/builder-debian-trixie-i686:latest"

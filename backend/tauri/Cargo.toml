@@ -16,7 +16,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2.0.0-rc", features = [] }
 serde = "1"
-simd-json = "0.13"
+simd-json = "0.14.0-rc.3"
 chrono = "0.4"
 rustc_version = "0.4"
 semver = "1.0"
@@ -64,7 +64,7 @@ async-trait = "0.1.77"
 dyn-clone = "1.0.16"
 rs-snowflake = "0.6"
 thiserror = { workspace = true }
-simd-json = "0.13.8"
+simd-json = "0.14.0-rc.3"
 runas = { git = "https://github.com/libnyanpasu/rust-runas.git" }
 backon = { version = "1.0.1", features = ["tokio-sleep"] }
 rust-i18n = "3"

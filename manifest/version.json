@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "latest": {
     "mihomo": "v1.18.8",
-    "mihomo_alpha": "alpha-8230bc8",
+    "mihomo_alpha": "alpha-0a2f606",
     "clash_rs": "v0.3.1",
     "clash_premium": "2023-09-05-gdcc8d87"
   },
@@ -23,7 +23,7 @@
       "windows-x86_64": "mihomo-windows-amd64-compatible-{}.zip",
       "linux-aarch64": "mihomo-linux-arm64-{}.gz",
       "linux-amd64": "mihomo-linux-amd64-compatible-{}.gz",
-      "linux-i386": "mihomo-linux-i386-{}.gz",
+      "linux-i386": "mihomo-linux-386-{}.gz",
       "darwin-arm64": "mihomo-darwin-arm64-{}.gz",
       "darwin-x64": "mihomo-darwin-amd64-compatible-{}.gz",
       "linux-armv7": "mihomo-linux-armv5-{}.gz",
@@ -52,5 +52,5 @@
       "linux-armv7hf": "clash-linux-armv7-n{}.gz"
     }
   },
-  "updated_at": "2024-09-11T06:21:25.794Z"
+  "updated_at": "2024-09-11T09:33:37.954Z"
 }

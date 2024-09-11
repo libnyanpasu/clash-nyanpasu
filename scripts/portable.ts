@@ -5,15 +5,22 @@ import { context, getOctokit } from "@actions/github";
 import packageJson from "../package.json";
 import { colorize, consola } from "./utils/logger";
 
+const RUST_ARCH = process.env.RUST_ARCH || "x86_64";
+
 /// Script for ci
 /// 打包绿色版/便携版 (only Windows)
 async function resolvePortable() {
   if (process.platform !== "win32") return;
 
-  const releaseDir = path.join("backend/target/release");
-  const configDir = path.join(releaseDir, ".config");
+  const buildDir = path.join(
+    RUST_ARCH === "x86_64"
+      ? "backend/target/release"
+      : `backend/target/${RUST_ARCH}-pc-windows-msvc/release`,
+  );
 
-  if (!(await fs.pathExists(releaseDir))) {
+  const configDir = path.join(buildDir, ".config");
+
+  if (!(await fs.pathExists(buildDir))) {
     throw new Error("could not found the release dir");
   }
 
@@ -21,22 +28,22 @@ async function resolvePortable() {
   await fs.createFile(path.join(configDir, "PORTABLE"));
 
   const zip = new AdmZip();
-  let mainEntryPath = path.join(releaseDir, "Clash Nyanpasu.exe");
+  let mainEntryPath = path.join(buildDir, "Clash Nyanpasu.exe");
   if (!(await fs.pathExists(mainEntryPath))) {
-    mainEntryPath = path.join(releaseDir, "clash-nyanpasu.exe");
+    mainEntryPath = path.join(buildDir, "clash-nyanpasu.exe");
   }
   zip.addLocalFile(mainEntryPath);
-  zip.addLocalFile(path.join(releaseDir, "clash.exe"));
-  zip.addLocalFile(path.join(releaseDir, "mihomo.exe"));
-  zip.addLocalFile(path.join(releaseDir, "mihomo-alpha.exe"));
-  zip.addLocalFile(path.join(releaseDir, "nyanpasu-service.exe"));
-  zip.addLocalFile(path.join(releaseDir, "clash-rs.exe"));
-  zip.addLocalFolder(path.join(releaseDir, "resources"), "resources");
+  zip.addLocalFile(path.join(buildDir, "clash.exe"));
+  zip.addLocalFile(path.join(buildDir, "mihomo.exe"));
+  zip.addLocalFile(path.join(buildDir, "mihomo-alpha.exe"));
+  zip.addLocalFile(path.join(buildDir, "nyanpasu-service.exe"));
+  zip.addLocalFile(path.join(buildDir, "clash-rs.exe"));
+  zip.addLocalFolder(path.join(buildDir, "resources"), "resources");
   zip.addLocalFolder(configDir, ".config");
 
   const { version } = packageJson;
 
-  const zipFile = `Clash.Nyanpasu_${version}_x64_portable.zip`;
+  const zipFile = `Clash.Nyanpasu_${version}_${RUST_ARCH}_portable.zip`;
   zip.writeZip(zipFile);
 
   consola.success("create portable zip successfully");

@@ -2,39 +2,55 @@
   "manifest_version": 1,
   "latest": {
     "mihomo": "v1.18.8",
-    "mihomo_alpha": "alpha-417d709",
+    "mihomo_alpha": "alpha-8230bc8",
     "clash_rs": "v0.3.1",
     "clash_premium": "2023-09-05-gdcc8d87"
   },
   "arch_template": {
     "mihomo": {
+      "windows-i386": "mihomo-windows-386-{}.zip",
       "windows-x86_64": "mihomo-windows-amd64-compatible-{}.zip",
       "linux-aarch64": "mihomo-linux-arm64-{}.gz",
       "linux-amd64": "mihomo-linux-amd64-compatible-{}.gz",
+      "linux-i386": "mihomo-linux-386-{}.gz",
       "darwin-arm64": "mihomo-darwin-arm64-{}.gz",
-      "darwin-x64": "mihomo-darwin-amd64-compatible-{}.gz"
+      "darwin-x64": "mihomo-darwin-amd64-compatible-{}.gz",
+      "linux-armv7": "mihomo-linux-armv5-{}.gz",
+      "linux-armv7hf": "mihomo-linux-armv7-{}.gz"
     },
     "mihomo_alpha": {
+      "windows-i386": "mihomo-windows-386-{}.zip",
       "windows-x86_64": "mihomo-windows-amd64-compatible-{}.zip",
       "linux-aarch64": "mihomo-linux-arm64-{}.gz",
       "linux-amd64": "mihomo-linux-amd64-compatible-{}.gz",
+      "linux-i386": "mihomo-linux-i386-{}.gz",
       "darwin-arm64": "mihomo-darwin-arm64-{}.gz",
-      "darwin-x64": "mihomo-darwin-amd64-compatible-{}.gz"
+      "darwin-x64": "mihomo-darwin-amd64-compatible-{}.gz",
+      "linux-armv7": "mihomo-linux-armv5-{}.gz",
+      "linux-armv7hf": "mihomo-linux-armv7-{}.gz"
     },
     "clash_rs": {
+      "windows-i386": "clash-i686-pc-windows-msvc-static-crt.exe",
       "windows-x86_64": "clash-x86_64-pc-windows-msvc.exe",
       "linux-aarch64": "clash-aarch64-unknown-linux-gnu-static-crt",
       "linux-amd64": "clash-x86_64-unknown-linux-gnu-static-crt",
+      "linux-i386": "clash-i686-unknown-linux-gnu-static-crt",
       "darwin-arm64": "clash-aarch64-apple-darwin",
-      "darwin-x64": "clash-x86_64-apple-darwin"
+      "darwin-x64": "clash-x86_64-apple-darwin",
+      "linux-armv7": "clash-armv7-unknown-linux-gnueabi-static-crt",
+      "linux-armv7hf": "clash-armv7-unknown-linux-gnueabihf"
     },
     "clash_premium": {
+      "windows-i386": "clash-windows-386-n{}.zip",
       "windows-x86_64": "clash-windows-amd64-n{}.zip",
       "linux-aarch64": "clash-linux-arm64-n{}.gz",
       "linux-amd64": "clash-linux-amd64-n{}.gz",
+      "linux-i386": "clash-linux-386-n{}.gz",
       "darwin-arm64": "clash-darwin-arm64-n{}.gz",
-      "darwin-x64": "clash-darwin-amd64-n{}.gz"
+      "darwin-x64": "clash-darwin-amd64-n{}.gz",
+      "linux-armv7": "clash-linux-armv5-n{}.gz",
+      "linux-armv7hf": "clash-linux-armv7-n{}.gz"
     }
   },
-  "updated_at": "2024-09-10T22:20:30.913Z"
+  "updated_at": "2024-09-11T06:21:25.794Z"
 }

@@ -1,39 +1,66 @@
+// import { ArchMapping } from 'utils/manifest';
 import consola from "consola";
 import fetch, { type RequestInit } from "node-fetch";
-import { BinInfo } from "types";
 import {
   CLASH_META_ALPHA_MANIFEST,
   CLASH_META_MANIFEST,
 } from "../manifest/clash-meta";
 import { CLASH_MANIFEST } from "../manifest/clash-premium";
 import { CLASH_RS_MANIFEST } from "../manifest/clash-rs";
+import { BinInfo, SupportedArch } from "../types";
 import { getProxyAgent } from "./";
 import { SIDECAR_HOST } from "./consts";
 
 const SERVICE_REPO = "LibNyanpasu/nyanpasu-service";
+
+type NodeArch = NodeJS.Architecture | "armel";
+
+function mappingArch(platform: NodeJS.Platform, arch: NodeArch): SupportedArch {
+  const label = `${platform}-${arch}`;
+  switch (label) {
+    case "darwin-x64":
+      return SupportedArch.DarwinX64;
+    case "darwin-arm64":
+      return SupportedArch.DarwinArm64;
+    case "win32-x64":
+      return SupportedArch.WindowsX86_64;
+    case "win32-ia32":
+      return SupportedArch.WindowsX86_32;
+    case "linux-x64":
+      return SupportedArch.LinuxAmd64;
+    case "linux-ia32":
+      return SupportedArch.LinuxI386;
+    case "linux-arm":
+      return SupportedArch.LinuxArmv7hf;
+    case "linux-arm64":
+      return SupportedArch.LinuxAarch64;
+    case "linux-armel":
+      return SupportedArch.LinuxArmv7;
+    default:
+      throw new Error("Unsupported platform/architecture: " + label);
+  }
+}
 
 export const getClashInfo = ({
   platform,
   arch,
   sidecarHost,
 }: {
-  platform: string;
-  arch: string;
+  platform: NodeJS.Platform;
+  arch: NodeArch;
   sidecarHost?: string;
 }): BinInfo => {
-  const { BIN_MAP, URL_PREFIX, LATEST_DATE } = CLASH_MANIFEST;
-
-  const name = BIN_MAP[`${platform}-${arch}`];
+  const { ARCH_MAPPING, URL_PREFIX, LATEST_DATE } = CLASH_MANIFEST;
+  const archLabel = mappingArch(platform, arch);
+  const name = ARCH_MAPPING[archLabel].replace("{}", LATEST_DATE as string);
 
   const isWin = platform === "win32";
 
-  const urlExt = isWin ? "zip" : "gz";
-
-  const downloadURL = `${URL_PREFIX}${name}-${LATEST_DATE}.${urlExt}`;
+  const downloadURL = `${URL_PREFIX}${name}`;
 
   const exeFile = `${name}${isWin ? ".exe" : ""}`;
 
-  const tmpFile = `${name}.${urlExt}`;
+  const tmpFile = `${name}`;
 
   const targetFile = `clash-${sidecarHost}${isWin ? ".exe" : ""}`;
 
@@ -51,23 +78,25 @@ export const getClashBackupInfo = ({
   arch,
   sidecarHost,
 }: {
-  platform: string;
-  arch: string;
+  platform: NodeJS.Platform;
+  arch: NodeArch;
   sidecarHost?: string;
 }): BinInfo => {
-  const { BIN_MAP, BACKUP_URL_PREFIX, BACKUP_LATEST_DATE } = CLASH_MANIFEST;
+  const { ARCH_MAPPING, BACKUP_URL_PREFIX, BACKUP_LATEST_DATE } =
+    CLASH_MANIFEST;
 
-  const name = BIN_MAP[`${platform}-${arch}`];
-
+  const archLabel = mappingArch(platform, arch);
+  const name = ARCH_MAPPING[archLabel].replace(
+    "{}",
+    BACKUP_LATEST_DATE as string,
+  );
   const isWin = platform === "win32";
 
-  const urlExt = isWin ? "zip" : "gz";
-
-  const downloadURL = `${BACKUP_URL_PREFIX}${BACKUP_LATEST_DATE}/${name}-n${BACKUP_LATEST_DATE}.${urlExt}`;
+  const downloadURL = `${BACKUP_URL_PREFIX}${BACKUP_LATEST_DATE}/${name}`;
 
   const exeFile = `${name}${isWin ? ".exe" : ""}`;
 
-  const tmpFile = `${name}.${urlExt}`;
+  const tmpFile = `${name}`;
 
   const targetFile = `clash-${sidecarHost}${isWin ? ".exe" : ""}`;
 
@@ -85,23 +114,22 @@ export const getClashMetaInfo = ({
   arch,
   sidecarHost,
 }: {
-  platform: string;
-  arch: string;
+  platform: NodeJS.Platform;
+  arch: NodeArch;
   sidecarHost?: string;
 }): BinInfo => {
-  const { BIN_MAP, URL_PREFIX, VERSION } = CLASH_META_MANIFEST;
+  const { ARCH_MAPPING, URL_PREFIX, VERSION } = CLASH_META_MANIFEST;
+  const archLabel = mappingArch(platform, arch);
 
-  const name = BIN_MAP[`${platform}-${arch}`];
+  const name = ARCH_MAPPING[archLabel].replace("{}", VERSION as string);
 
   const isWin = platform === "win32";
 
-  const urlExt = isWin ? "zip" : "gz";
-
-  const downloadURL = `${URL_PREFIX}/${name}-${VERSION}.${urlExt}`;
+  const downloadURL = `${URL_PREFIX}/${name}`;
 
   const exeFile = `${name}${isWin ? ".exe" : ""}`;
 
-  const tmpFile = `${name}-${VERSION}.${urlExt}`;
+  const tmpFile = `${name}`;
 
   const targetFile = `mihomo-${sidecarHost}${isWin ? ".exe" : ""}`;
 
@@ -119,23 +147,20 @@ export const getClashMetaAlphaInfo = async ({
   arch,
   sidecarHost,
 }: {
-  platform: string;
-  arch: string;
+  platform: NodeJS.Platform;
+  arch: NodeArch;
   sidecarHost?: string;
 }): Promise<BinInfo> => {
-  const { BIN_MAP, URL_PREFIX } = CLASH_META_ALPHA_MANIFEST;
+  const { ARCH_MAPPING, URL_PREFIX } = CLASH_META_ALPHA_MANIFEST;
   const version = await getMetaAlphaLatestVersion();
-  const name = BIN_MAP[`${platform}-${arch}`];
-
+  const archLabel = mappingArch(platform as NodeJS.Platform, arch as NodeArch);
+  const name = ARCH_MAPPING[archLabel].replace("{}", version);
   const isWin = platform === "win32";
-
-  const urlExt = isWin ? "zip" : "gz";
-
-  const downloadURL = `${URL_PREFIX}/${name}-${version}.${urlExt}`;
+  const downloadURL = `${URL_PREFIX}/${name}`;
 
   const exeFile = `${name}${isWin ? ".exe" : ""}`;
 
-  const tmpFile = `${name}-${version}.${urlExt}`;
+  const tmpFile = `${name}`;
 
   const targetFile = `mihomo-alpha-${sidecarHost}${isWin ? ".exe" : ""}`;
 
@@ -157,17 +182,18 @@ export const getClashRustInfo = ({
   arch: string;
   sidecarHost?: string;
 }): BinInfo => {
-  const { BIN_MAP, URL_PREFIX, VERSION } = CLASH_RS_MANIFEST;
+  const { ARCH_MAPPING, URL_PREFIX, VERSION } = CLASH_RS_MANIFEST;
 
-  const name = BIN_MAP[`${platform}-${arch}`];
+  const archLabel = mappingArch(platform as NodeJS.Platform, arch as NodeArch);
+  const name = ARCH_MAPPING[archLabel].replace("{}", VERSION as string);
 
   const isWin = platform === "win32";
 
-  const exeFile = `${name}${isWin ? ".exe" : ""}`;
+  const exeFile = `${name}`;
 
-  const downloadURL = `${URL_PREFIX}${VERSION}/${name}${isWin ? ".exe" : ""}`;
+  const downloadURL = `${URL_PREFIX}${VERSION}/${name}`;
 
-  const tmpFile = `${name}${isWin ? ".exe" : ""}`;
+  const tmpFile = `${name}`;
 
   const targetFile = `clash-rs-${sidecarHost}${isWin ? ".exe" : ""}`;
 

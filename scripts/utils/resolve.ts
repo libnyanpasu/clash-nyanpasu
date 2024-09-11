@@ -2,10 +2,11 @@ import crypto from "node:crypto";
 import path from "path";
 import AdmZip from "adm-zip";
 import fs from "fs-extra";
-import { BinInfo } from "types";
+import { BinInfo } from "../types";
 import { downloadFile, resolveSidecar } from "./download";
 import { TAURI_APP_DIR, TEMP_DIR } from "./env";
 import { colorize, consola } from "./logger";
+import { NodeArch } from "./manifest";
 import {
   getClashBackupInfo,
   getClashMetaAlphaInfo,
@@ -38,16 +39,16 @@ export const resolveResource = async (
 
 export class Resolve {
   private infoOption: {
-    platform: string;
-    arch: string;
+    platform: NodeJS.Platform;
+    arch: NodeArch;
     sidecarHost: string;
   };
 
   constructor(
     private readonly options: {
       force?: boolean;
-      platform: string;
-      arch: string;
+      platform: NodeJS.Platform;
+      arch: NodeArch;
       sidecarHost: string;
     },
   ) {
@@ -64,7 +65,7 @@ export class Resolve {
    */
   public async wintun() {
     const { platform } = process;
-    let arch = this.options.arch || "x64";
+    let arch: string = this.options.arch || "x64";
     if (platform !== "win32") return;
 
     switch (arch) {

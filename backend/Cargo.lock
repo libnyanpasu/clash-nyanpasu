@@ -787,7 +787,8 @@ dependencies = [
 [[package]]
 name = "boa_ast"
 version = "0.19.1"
-source = "git+https://github.com/boa-dev/boa.git?branch=backport-0.19-fixes#1bf4ef12d9fd9dcace8d994ee4ccf8bf571918e1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a69ee3a749ea36d4e56d92941e7b25076b493d4917c3d155b6cf369e23547d9"
 dependencies = [
  "bitflags 2.6.0",
  "boa_interner",
@@ -800,7 +801,8 @@ dependencies = [
 [[package]]
 name = "boa_engine"
 version = "0.19.1"
-source = "git+https://github.com/boa-dev/boa.git?branch=backport-0.19-fixes#1bf4ef12d9fd9dcace8d994ee4ccf8bf571918e1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "06e4559b35b80ceb2e6328481c0eca9a24506663ea33ee1e279be6b5b618b25c"
 dependencies = [
  "arrayvec 0.7.6",
  "bitflags 2.6.0",
@@ -844,7 +846,8 @@ dependencies = [
 [[package]]
 name = "boa_gc"
 version = "0.19.1"
-source = "git+https://github.com/boa-dev/boa.git?branch=backport-0.19-fixes#1bf4ef12d9fd9dcace8d994ee4ccf8bf571918e1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "716406f57d67bc3ac7fd227d5513b42df401dff14a3be22cbd8ee29817225363"
 dependencies = [
  "boa_macros",
  "boa_profiler",
@@ -856,7 +859,8 @@ dependencies = [
 [[package]]
 name = "boa_interner"
 version = "0.19.1"
-source = "git+https://github.com/boa-dev/boa.git?branch=backport-0.19-fixes#1bf4ef12d9fd9dcace8d994ee4ccf8bf571918e1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e18df2272616e1ba0322a69333d37dbb78797f1aa0595aad9dc41e8ecd06ad9"
 dependencies = [
  "boa_gc",
  "boa_macros",
@@ -871,7 +875,8 @@ dependencies = [
 [[package]]
 name = "boa_macros"
 version = "0.19.1"
-source = "git+https://github.com/boa-dev/boa.git?branch=backport-0.19-fixes#1bf4ef12d9fd9dcace8d994ee4ccf8bf571918e1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "240f4126219a83519bad05c9a40bfc0303921eeb571fc2d7e44c17ffac99d3f1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -882,7 +887,8 @@ dependencies = [
 [[package]]
 name = "boa_parser"
 version = "0.19.1"
-source = "git+https://github.com/boa-dev/boa.git?branch=backport-0.19-fixes#1bf4ef12d9fd9dcace8d994ee4ccf8bf571918e1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62b59dc05bf1dc019b11478a92986f590cff43fced4d20e866eefb913493e91c"
 dependencies = [
  "bitflags 2.6.0",
  "boa_ast",
@@ -900,12 +906,14 @@ dependencies = [
 [[package]]
 name = "boa_profiler"
 version = "0.19.1"
-source = "git+https://github.com/boa-dev/boa.git?branch=backport-0.19-fixes#1bf4ef12d9fd9dcace8d994ee4ccf8bf571918e1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00ee0645509b3b91abd724f25072649d9e8e65653a78ff0b6e592788a58dd838"
 
 [[package]]
 name = "boa_string"
 version = "0.19.1"
-source = "git+https://github.com/boa-dev/boa.git?branch=backport-0.19-fixes#1bf4ef12d9fd9dcace8d994ee4ccf8bf571918e1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae85205289bab1f2c7c8a30ddf0541cf89ba2ff7dbd144feef50bbfa664288d4"
 dependencies = [
  "fast-float",
  "paste",

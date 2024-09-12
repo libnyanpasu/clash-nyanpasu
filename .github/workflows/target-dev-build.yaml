@@ -18,7 +18,7 @@ jobs:
       tag: "pre-release"
 
   windows_amd64_build:
-    name: Windows Build
+    name: Windows x86_64 Build
     uses: ./.github/workflows/deps-build-windows-nsis.yaml
     needs: [delete_current_releases]
     with:
@@ -29,7 +29,7 @@ jobs:
     secrets: inherit
 
   windows_i686_build:
-    name: Windows Build
+    name: Windows i686 Build
     uses: ./.github/workflows/deps-build-windows-nsis.yaml
     needs: [delete_current_releases]
     with:

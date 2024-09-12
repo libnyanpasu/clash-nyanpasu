@@ -33,6 +33,9 @@ use std::{
 use tokio::time::sleep;
 use tracing_attributes::instrument;
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunType {
@@ -414,9 +417,12 @@ impl CoreManager {
         let app_dir = dirs::app_data_dir()?;
         let app_dir = dirs::path_to_str(&app_dir)?;
         log::debug!(target: "app", "check config in `{clash_core}`");
-        let output = std::process::Command::new(dirs::get_data_or_sidecar_path(&clash_core)?)
-            .args(["-t", "-d", app_dir, "-f", config_path])
-            .output()?;
+        let mut builder = std::process::Command::new(dirs::get_data_or_sidecar_path(&clash_core)?);
+        builder.args(["-t", "-d", app_dir, "-f", config_path]);
+        #[cfg(windows)]
+        let builder = builder.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+        let output = builder.output()?;
 
         if !output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);

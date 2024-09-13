@@ -5,7 +5,7 @@ import useSWR from "swr";
 import { OS } from "@/consts";
 import { serviceManualPromptDialogAtom } from "@/store/service";
 import { getShikiSingleton } from "@/utils/shiki";
-import { getServiceInstallPrompt } from "@nyanpasu/interface";
+import { getCoreDir, getServiceInstallPrompt } from "@nyanpasu/interface";
 import { BaseDialog, BaseDialogProps } from "@nyanpasu/ui";
 
 export type ServerManualPromptDialogProps = Omit<BaseDialogProps, "title"> & {
@@ -23,6 +23,7 @@ export default function ServerManualPromptDialog({
     operation === "install" ? "/service_install_prompt" : null,
     getServiceInstallPrompt,
   );
+  const { data: coreDir } = useSWR("/core_dir", () => getCoreDir());
   const [codes, setCodes] = useState<string | null>(null);
   useAsyncEffect(async () => {
     if (operation === "install" && serviceInstallPrompt) {
@@ -38,7 +39,7 @@ export default function ServerManualPromptDialog({
     } else if (!!operation) {
       const shiki = await getShikiSingleton();
       const code = await shiki.codeToHtml(
-        `${OS !== "windows" ? "sudo " : ""}./nyanpasu-service ${operation}`,
+        `cd "${coreDir}"\n${OS !== "windows" ? "sudo " : ""}./nyanpasu-service ${operation}`,
         {
           lang: "shell",
           themes: {
@@ -49,7 +50,7 @@ export default function ServerManualPromptDialog({
       );
       setCodes(code);
     }
-  }, [serviceInstallPrompt, operation, setCodes]);
+  }, [serviceInstallPrompt, operation, coreDir]);
 
   return (
     <BaseDialog
@@ -60,9 +61,9 @@ export default function ServerManualPromptDialog({
     >
       <div className="grid gap-3">
         <p>
-          Unable to install service automatically. Please open a PowerShell(as
-          administrator) in Windows or a terminal emulator in macOS, Linux and
-          run the following commands:
+          Unable to {operation} the service automatically. Please navigate to
+          the core directory, open PowerShell (as Administrator) on Windows or a
+          terminal emulator on macOS/Linux, and run the following commands:
         </p>
         {error && <p className="text-red-500">{error.message}</p>}
         {!!codes && (

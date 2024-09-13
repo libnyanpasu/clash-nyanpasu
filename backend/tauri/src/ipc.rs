@@ -317,6 +317,15 @@ pub fn open_core_dir() -> CmdResult<()> {
 }
 
 #[tauri::command]
+pub fn get_core_dir() -> CmdResult<String> {
+    let core_dir = wrap_err!(tauri::utils::platform::current_exe())?;
+    let core_dir = core_dir
+        .parent()
+        .ok_or("failed to get core dir".to_string())?;
+    Ok(core_dir.to_string_lossy().to_string())
+}
+
+#[tauri::command]
 pub fn open_logs_dir() -> CmdResult<()> {
     let log_dir = wrap_err!(dirs::app_logs_dir())?;
     wrap_err!(crate::utils::open::that(log_dir))

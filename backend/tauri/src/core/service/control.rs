@@ -79,7 +79,7 @@ pub async fn update_service() -> anyhow::Result<()> {
     .await??;
     if !child.success() {
         anyhow::bail!(
-            "failed to install service, exit code: {}, signal: {:?}",
+            "failed to update service, exit code: {}, signal: {:?}",
             child.code().unwrap_or(-1),
             {
                 #[cfg(unix)]
@@ -131,7 +131,7 @@ pub async fn start_service() -> anyhow::Result<()> {
     .await??;
     if !child.success() {
         anyhow::bail!(
-            "failed to install service, exit code: {}, signal: {:?}",
+            "failed to start service, exit code: {}, signal: {:?}",
             child.code().unwrap_or(-1),
             {
                 #[cfg(unix)]
@@ -162,7 +162,7 @@ pub async fn stop_service() -> anyhow::Result<()> {
     .await??;
     if !child.success() {
         anyhow::bail!(
-            "failed to install service, exit code: {}, signal: {:?}",
+            "failed to stop service, exit code: {}, signal: {:?}",
             child.code().unwrap_or(-1),
             {
                 #[cfg(unix)]
@@ -196,7 +196,7 @@ pub async fn restart_service() -> anyhow::Result<()> {
     .await??;
     if !child.success() {
         anyhow::bail!(
-            "failed to install service, exit code: {}, signal: {:?}",
+            "failed to restart service, exit code: {}, signal: {:?}",
             child.code().unwrap_or(-1),
             {
                 #[cfg(unix)]

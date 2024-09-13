@@ -170,6 +170,10 @@ export const openCoreDir = async () => {
   return await invoke<void>("open_core_dir");
 };
 
+export const getCoreDir = async () => {
+  return await invoke<string>("get_core_dir");
+};
+
 export const openLogsDir = async () => {
   return await invoke<void>("open_logs_dir");
 };

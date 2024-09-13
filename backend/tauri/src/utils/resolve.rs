@@ -168,6 +168,7 @@ pub fn resolve_setup(app: &mut App) {
 
     // test job
     proxies::setup_proxies();
+    crate::core::storage::register_web_storage_listener(app.app_handle());
 }
 
 /// reset system proxy

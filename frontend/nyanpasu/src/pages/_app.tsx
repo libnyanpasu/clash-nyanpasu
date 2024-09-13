@@ -12,6 +12,7 @@ import {
 } from "@/components/layout/use-custom-theme";
 import LogProvider from "@/components/logs/log-provider";
 import UpdaterDialog from "@/components/updater/updater-dialog-wrapper";
+import { useNyanpasuStorageSubscribers } from "@/hooks/use-store";
 import useUpdater from "@/hooks/use-updater";
 import { Path } from "@/router";
 import { atomIsDrawer, memorizedRoutePathAtom } from "@/store";
@@ -50,6 +51,7 @@ export default function App() {
   const [isDrawer, setIsDrawer] = useAtom(atomIsDrawer);
 
   useUpdater();
+  useNyanpasuStorageSubscribers();
 
   useEffect(() => {
     setIsDrawer(breakpoint === "sm" || breakpoint === "xs");

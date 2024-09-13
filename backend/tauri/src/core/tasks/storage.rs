@@ -4,15 +4,16 @@ use super::{
     task::{TaskEventID, TaskID, TaskManager},
     utils::Result,
 };
-use crate::core::{storage::Storage, tasks::task::Task};
+use crate::core::{
+    storage::{Storage, NYANPASU_TABLE},
+    tasks::task::Task,
+};
 use log::debug;
 use redb::{ReadableTable, TableDefinition};
 use std::{
     str,
     sync::{Arc, OnceLock},
 };
-
-const TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("clash-nyanpasu");
 
 pub struct EventsGuard;
 
@@ -29,7 +30,7 @@ impl EventsGuard {
         let db = Storage::global().get_instance();
         let key = format!("task:event:id:{}", event_id);
         let read_txn = db.begin_read()?;
-        let table = read_txn.open_table(TABLE)?;
+        let table = read_txn.open_table(NYANPASU_TABLE)?;
         let value = table.get(key.as_bytes())?;
         match value {
             Some(value) => {
@@ -61,7 +62,7 @@ impl EventsGuard {
         let db = Storage::global().get_instance();
         let key = format!("task:events:task_id:{}", task_id);
         let read_txn = db.begin_read()?;
-        let table = read_txn.open_table(TABLE)?;
+        let table = read_txn.open_table(NYANPASU_TABLE)?;
         let value = table.get(key.as_bytes())?;
         let value: Vec<TaskEventID> = match value {
             Some(value) => {
@@ -85,7 +86,7 @@ impl EventsGuard {
         let event_ids = simd_json::to_vec(&event_ids)?;
         let write_txn = db.begin_write()?;
         {
-            let mut table = write_txn.open_table(TABLE)?;
+            let mut table = write_txn.open_table(NYANPASU_TABLE)?;
             table.insert(event_key.as_bytes(), event_value.as_slice())?;
             table.insert(event_ids_key.as_bytes(), event_ids.as_slice())?;
         }
@@ -100,7 +101,7 @@ impl EventsGuard {
         let event_value = simd_json::to_vec(event)?;
         let write_txn = db.begin_write()?;
         {
-            let mut table = write_txn.open_table(TABLE)?;
+            let mut table = write_txn.open_table(NYANPASU_TABLE)?;
             table.insert(event_key.as_bytes(), event_value.as_slice())?;
         }
         write_txn.commit()?;
@@ -119,7 +120,7 @@ impl EventsGuard {
         let event_ids_key = format!("task:events:task_id:{}", event_id);
         let write_txn = db.begin_write()?;
         {
-            let mut table = write_txn.open_table(TABLE)?;
+            let mut table = write_txn.open_table(NYANPASU_TABLE)?;
             table.remove(event_key.as_bytes())?;
             if event_ids.is_empty() {
                 table.remove(event_ids_key.as_bytes())?;
@@ -146,7 +147,7 @@ impl TaskGuard for TaskManager {
         let mut tasks = Vec::new();
 
         let read_txn = db.begin_read()?;
-        let table = read_txn.open_table(TABLE)?;
+        let table = read_txn.open_table(NYANPASU_TABLE)?;
         for item in table.iter()? {
             let (key, value) = item?;
             let key = key.value();
@@ -169,7 +170,7 @@ impl TaskGuard for TaskManager {
         let db = Storage::global().get_instance();
         let write_txn = db.begin_write()?;
         {
-            let mut table = write_txn.open_table(TABLE)?;
+            let mut table = write_txn.open_table(NYANPASU_TABLE)?;
             for task in tasks {
                 let key = format!("task:id:{}", task.id);
                 let value = simd_json::to_vec(&task)?;

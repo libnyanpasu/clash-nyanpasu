@@ -313,6 +313,7 @@ pub fn run() -> std::io::Result<()> {
             ipc::get_storage_item,
             ipc::set_storage_item,
             ipc::remove_storage_item,
+            ipc::mutate_proxies,
         ]);
 
     let app = builder

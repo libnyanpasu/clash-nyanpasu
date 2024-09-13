@@ -246,6 +246,7 @@ fn main() -> std::io::Result<()> {
             ipc::is_appimage,
             ipc::get_service_install_prompt,
             ipc::mutate_proxies,
+            ipc::get_core_dir,
         ]);
 
     #[cfg(target_os = "macos")]

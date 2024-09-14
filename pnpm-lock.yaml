@@ -310,8 +310,8 @@ importers:
         specifier: 11.13.3
         version: 11.13.3(react@19.0.0-rc-e948a5ac-20240807)(types-react@19.0.0-rc.1)
       '@iconify/json':
-        specifier: 2.2.247
-        version: 2.2.247
+        specifier: 2.2.248
+        version: 2.2.248
       '@tauri-apps/plugin-clipboard-manager':
         specifier: 2.0.0-rc.1
         version: 2.0.0-rc.1
@@ -1468,8 +1468,8 @@ packages:
       '@vue/compiler-sfc':
         optional: true
 
-  '@iconify/json@2.2.247':
-    resolution: {integrity: sha512-i3Vm3VDAxtw0KxUR56o2zlNJcfmy4KDddSptxEw17Ze1O6FWA/JMNMI3em7FoaAqJLfcHMycWpzWx0Sbl/NUsA==}
+  '@iconify/json@2.2.248':
+    resolution: {integrity: sha512-hoNQIDqx071K3ny1+kJwwC1YClHex+VnPfYAWFK0YfBmdA3DP4Ij3zsPttpX3dVqsYEnJSpy50tVit0Fsqp9Sg==}
 
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
@@ -7936,7 +7936,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@iconify/json@2.2.247':
+  '@iconify/json@2.2.248':
     dependencies:
       '@iconify/types': 2.0.0
       pathe: 1.1.2

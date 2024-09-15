@@ -12,9 +12,10 @@ import {
 } from "@/components/layout/use-custom-theme";
 import LogProvider from "@/components/logs/log-provider";
 import UpdaterDialog from "@/components/updater/updater-dialog-wrapper";
+import { useNyanpasuStorageSubscribers } from "@/hooks/use-store";
 import useUpdater from "@/hooks/use-updater";
-import { atomIsDrawer } from "@/store";
-import { classNames } from "@/utils";
+import { Path } from "@/router";
+import { atomIsDrawer, memorizedRoutePathAtom } from "@/store";
 import { useTheme } from "@mui/material";
 import { Experimental_CssVarsProvider as CssVarsProvider } from "@mui/material/styles";
 import { cn, useBreakpoint } from "@nyanpasu/ui";
@@ -23,9 +24,10 @@ import "dayjs/locale/ru";
 import "dayjs/locale/zh-cn";
 import customParseFormat from "dayjs/plugin/customParseFormat";
 import relativeTime from "dayjs/plugin/relativeTime";
-import { useAtom } from "jotai";
+import { useAtom, useSetAtom } from "jotai";
 import { useEffect } from "react";
 import { FallbackProps } from "react-error-boundary";
+import { useLocation } from "react-router-dom";
 import { SWRConfig } from "swr";
 import styles from "./_app.module.scss";
 
@@ -37,17 +39,28 @@ export default function App() {
 
   const breakpoint = useBreakpoint();
 
+  const setMemorizedPath = useSetAtom(memorizedRoutePathAtom);
+  const path = useLocation();
+
+  useEffect(() => {
+    if (path.pathname !== "/") {
+      setMemorizedPath(path.pathname as Path);
+    }
+  }, [path.pathname, setMemorizedPath]);
+
   const [isDrawer, setIsDrawer] = useAtom(atomIsDrawer);
 
   useUpdater();
+  useNyanpasuStorageSubscribers();
 
   useEffect(() => {
     setIsDrawer(breakpoint === "sm" || breakpoint === "xs");
   }, [breakpoint, setIsDrawer]);
 
   useMount(() => {
-    import("@tauri-apps/api/window")
-      .then(({ appWindow }) => {
+    import("@tauri-apps/api/webviewWindow")
+      .then(({ getCurrentWebviewWindow }) => {
+        const appWindow = getCurrentWebviewWindow();
         appWindow.show();
         appWindow.unminimize();
         appWindow.setFocus();
@@ -88,10 +101,7 @@ export const Catch = ({ error }: FallbackProps) => {
 
   return (
     <div
-      className={classNames(
-        styles.oops,
-        theme.palette.mode === "dark" && styles.dark,
-      )}
+      className={cn(styles.oops, theme.palette.mode === "dark" && styles.dark)}
     >
       <h1>Oops!</h1>
       <p>Something went wrong... Caught at _app error boundary.</p>

@@ -11,7 +11,7 @@ import {
   setTrayIcon as setTrayIconCall,
 } from "@nyanpasu/interface";
 import { BaseDialog, BaseDialogProps } from "@nyanpasu/ui";
-import { open } from "@tauri-apps/api/dialog";
+import { open } from "@tauri-apps/plugin-dialog";
 
 function TrayIconItem({ mode }: { mode: "system_proxy" | "tun" | "normal" }) {
   const { t } = useTranslation();
@@ -53,7 +53,7 @@ function TrayIconItem({ mode }: { mode: "system_proxy" | "tun" | "normal" }) {
         return await setTrayIconCall(mode, selected);
       } catch (e) {
         message(formatError(e), {
-          type: "error",
+          kind: "error",
         });
       } finally {
         setTs(Date.now());

@@ -8,7 +8,7 @@ export interface ClashManifest {
   BACKUP_LATEST_DATE?: string;
   VERSION?: string;
   VERSION_URL?: string;
-  BIN_MAP: { [key: string]: string };
+  ARCH_MAPPING: ArchMapping;
 }
 
 export interface BinInfo {
@@ -21,12 +21,15 @@ export interface BinInfo {
 
 export enum SupportedArch {
   // blocked by clash-rs
-  // WindowsX86 = "windows-x86",
+  WindowsX86_32 = "windows-i386",
   WindowsX86_64 = "windows-x86_64",
   // blocked by clash-rs#212
   // WindowsArm64 = "windows-arm64",
   LinuxAarch64 = "linux-aarch64",
   LinuxAmd64 = "linux-amd64",
+  LinuxI386 = "linux-i386",
+  LinuxArmv7 = "linux-armv7",
+  LinuxArmv7hf = "linux-armv7hf",
   DarwinArm64 = "darwin-arm64",
   DarwinX64 = "darwin-x64",
 }

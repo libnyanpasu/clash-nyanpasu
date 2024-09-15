@@ -44,7 +44,7 @@ export const SettingSystemProxy = () => {
       } catch (e) {
         message(`Activation failed!`, {
           title: t("Error"),
-          type: "error",
+          kind: "error",
         });
       } finally {
         loading[key] = false;

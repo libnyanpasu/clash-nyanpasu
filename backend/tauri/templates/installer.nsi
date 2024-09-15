@@ -481,11 +481,12 @@ FunctionEnd
 
 !macro CheckAllNyanpasuProcesses
   !insertmacro CheckNyanpasuProcess "Clash Nyanpasu.exe" "1"
-  ; !insertmacro CheckNyanpasuProcess "clash-verge-service.exe" "2"
-  !insertmacro CheckNyanpasuProcess "clash.exe" "3"
-  !insertmacro CheckNyanpasuProcess "clash-rs.exe" "4"
-  !insertmacro CheckNyanpasuProcess "mihomo.exe" "5"
-  !insertmacro CheckNyanpasuProcess "mihomo-alpha.exe" "6"
+  !insertmacro CheckNyanpasuProcess "clash-nyanpasu.exe" "2"
+  ; !insertmacro CheckNyanpasuProcess "clash-verge-service.exe" "3"
+  !insertmacro CheckNyanpasuProcess "clash.exe" "4"
+  !insertmacro CheckNyanpasuProcess "clash-rs.exe" "5"
+  !insertmacro CheckNyanpasuProcess "mihomo.exe" "6"
+  !insertmacro CheckNyanpasuProcess "mihomo-alpha.exe" "7"
 !macroend
 
 ; Section CheckProcesses
@@ -778,10 +779,22 @@ FunctionEnd
     DetailPrint "Service directory does not exist, skipping stop and remove service directory"
 !macroend
 
+!macro RemoveRegs
+  ; cleanup auto start registry keys
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Clash Nyanpasu"
+  DeleteRegValue HKLM "SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run" "Clash Nyanpasu"
+  ; cleanup custom protocol handler
+  DeleteRegKey HKCU "Software\Classes\clash"
+  DeleteRegKey HKCU "Software\Classes\clash-nyanpasu"
+  DeleteRegKey HKCR "clash"
+  DeleteRegKey HKCR "clash-nyanpasu"
+!macroend
+
 Section Uninstall
   !insertmacro GetProgramDataPath
   !insertmacro StopAndRemoveServiceDirectory
   !insertmacro CheckAllNyanpasuProcesses
+  !insertmacro RemoveRegs
   ; !insertmacro CheckIfAppIsRunning
   
   ; Delete the app directory and its content from disk
@@ -834,6 +847,8 @@ Section Uninstall
     SetShellVarContext current
     RmDir /r "$APPDATA\${BUNDLEID}"
     RmDir /r "$LOCALAPPDATA\${BUNDLEID}"
+    RmDir /r "$APPDATA\Clash Nyanpasu"
+    RmDir /r "$LOCALAPPDATA\Clash Nyanpasu"
   ${EndIf}
 
   ${GetOptions} $CMDLINE "/P" $R0

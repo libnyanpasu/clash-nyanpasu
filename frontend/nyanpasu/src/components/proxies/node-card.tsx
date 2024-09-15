@@ -1,8 +1,8 @@
-import clsx from "clsx";
 import { CSSProperties, memo, useMemo } from "react";
 import { alpha, useTheme } from "@mui/material";
 import Box from "@mui/material/Box";
 import { Clash } from "@nyanpasu/interface";
+import { cn } from "@nyanpasu/ui";
 import { PaperSwitchButton } from "../setting/modules/system-proxy";
 import DelayChip from "./delay-chip";
 import FeatureChip from "./feature-chip";
@@ -37,7 +37,7 @@ export const NodeCard = memo(function NodeCard({
       onClick={onClick}
       disabled={disabled}
       style={style}
-      className={clsx(styles.Card, delay === -1 && styles.NoDelay)}
+      className={cn(styles.Card, delay === -1 && styles.NoDelay)}
       sxPaper={{
         backgroundColor: checked
           ? alpha(palette.primary.main, 0.3)

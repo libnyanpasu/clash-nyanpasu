@@ -1,6 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
-import { classNames } from "@/utils";
 import getSystem from "@/utils/get-system";
 import { MenuOpen } from "@mui/icons-material";
 import {
@@ -25,7 +24,7 @@ export const AppDrawer = () => {
   const DrawerTitle = () => {
     return (
       <div
-        className={classNames(
+        className={cn(
           "fixed z-10 flex items-center gap-2",
           OS === "macos" ? "left-24 top-3" : "left-4 top-1.5",
         )}

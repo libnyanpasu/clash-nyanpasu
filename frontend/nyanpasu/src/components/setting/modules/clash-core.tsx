@@ -6,6 +6,7 @@ import ClashRs from "@/assets/image/core/clash-rs.png";
 import ClashMeta from "@/assets/image/core/clash.meta.png";
 import Clash from "@/assets/image/core/clash.png";
 import { formatError } from "@/utils";
+import { message } from "@/utils/notification";
 import parseTraffic from "@/utils/parse-traffic";
 import FiberManualRecord from "@mui/icons-material/FiberManualRecord";
 import Update from "@mui/icons-material/Update";
@@ -22,7 +23,6 @@ import {
   useNyanpasu,
 } from "@nyanpasu/interface";
 import { cleanDeepClickEvent, cn } from "@nyanpasu/ui";
-import { message } from "@tauri-apps/api/dialog";
 
 export const getImage = (core: ClashCore) => {
   switch (core) {
@@ -175,12 +175,12 @@ export const ClashCoreItem = ({
       getClashCore.mutate();
 
       message(`Successfully update core ${data.name}`, {
-        type: "info",
+        kind: "info",
         title: t("Success"),
       });
     } catch (e) {
       message(`Update failed. ${formatError(e)}`, {
-        type: "error",
+        kind: "error",
         title: t("Error"),
       });
     } finally {

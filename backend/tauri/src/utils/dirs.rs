@@ -3,10 +3,7 @@ use anyhow::Result;
 use nyanpasu_utils::dirs::{suggest_config_dir, suggest_data_dir};
 use once_cell::sync::Lazy;
 use std::{borrow::Cow, fs, path::PathBuf};
-use tauri::{
-    api::path::{home_dir, resource_dir},
-    Env,
-};
+use tauri::{utils::platform::resource_dir, Env};
 
 #[cfg(not(feature = "verge-dev"))]
 const PREVIOUS_APP_NAME: &str = "clash-verge";
@@ -109,7 +106,7 @@ pub fn old_app_home_dir() -> Result<PathBuf> {
     #[cfg(target_os = "windows")]
     {
         if !get_portable_flag() {
-            Ok(home_dir()
+            Ok(dirs::home_dir()
                 .ok_or(anyhow::anyhow!("failed to check old app home dir"))?
                 .join(".config")
                 .join(PREVIOUS_APP_NAME))
@@ -120,7 +117,7 @@ pub fn old_app_home_dir() -> Result<PathBuf> {
     }
 
     #[cfg(not(target_os = "windows"))]
-    Ok(home_dir()
+    Ok(dirs::home_dir()
         .ok_or(anyhow::anyhow!("failed to get the app home dir"))?
         .join(".config")
         .join(PREVIOUS_APP_NAME))
@@ -133,7 +130,7 @@ pub fn old_app_home_dir() -> Result<PathBuf> {
 )]
 pub fn app_home_dir() -> Result<PathBuf> {
     if cfg!(feature = "verge-dev") {
-        return Ok(home_dir()
+        return Ok(dirs::home_dir()
             .ok_or(anyhow::anyhow!("failed to get the app home dir"))?
             .join(".config")
             .join(APP_NAME));
@@ -147,7 +144,7 @@ pub fn app_home_dir() -> Result<PathBuf> {
             if let Some(reg_app_dir) = reg_app_dir {
                 return Ok(reg_app_dir);
             }
-            return Ok(home_dir()
+            return Ok(dirs::home_dir()
                 .ok_or(anyhow::anyhow!("failed to get app home dir"))?
                 .join(".config")
                 .join(APP_NAME));
@@ -156,7 +153,7 @@ pub fn app_home_dir() -> Result<PathBuf> {
     }
 
     #[cfg(not(target_os = "windows"))]
-    Ok(home_dir()
+    Ok(dirs::home_dir()
         .ok_or(anyhow::anyhow!("failed to get the app home dir"))?
         .join(".config")
         .join(APP_NAME))
@@ -168,7 +165,7 @@ pub fn app_resources_dir() -> Result<PathBuf> {
     let app_handle = handle.app_handle.lock();
     if let Some(app_handle) = app_handle.as_ref() {
         let res_dir = resource_dir(app_handle.package_info(), &Env::default())
-            .ok_or(anyhow::anyhow!("failed to get the resource dir"))?
+            .map_err(|_| anyhow::anyhow!("failed to get the resource dir"))?
             .join("resources");
         return Ok(res_dir);
     };
@@ -313,6 +310,28 @@ fn create_dir_all(dir: &PathBuf) -> Result<(), std::io::Error> {
         )
     })?;
     Ok(())
+}
+
+pub fn get_data_or_sidecar_path(binary_name: impl AsRef<str>) -> Result<PathBuf> {
+    let binary_name = binary_name.as_ref();
+    let data_dir = app_data_dir()?;
+    let path = data_dir.join(if cfg!(windows) && !binary_name.ends_with(".exe") {
+        format!("{}.exe", binary_name)
+    } else {
+        binary_name.to_string()
+    });
+    if path.exists() {
+        return Ok(data_dir);
+    }
+
+    let install_dir = app_install_dir()?;
+    let path = install_dir.join(if cfg!(windows) && !binary_name.ends_with(".exe") {
+        format!("{}.exe", binary_name)
+    } else {
+        binary_name.to_string()
+    });
+
+    Ok(path)
 }
 
 mod test {

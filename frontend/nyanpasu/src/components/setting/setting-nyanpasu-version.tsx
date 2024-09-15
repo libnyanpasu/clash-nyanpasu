@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import LogoSvg from "@/assets/image/logo.svg?react";
 import { useUpdaterPlatformSupported } from "@/hooks/use-updater";
-import { UpdaterManifestAtom } from "@/store/updater";
+import { UpdaterInstanceAtom } from "@/store/updater";
 import { formatError } from "@/utils";
 import { message } from "@/utils/notification";
 import LoadingButton from "@mui/lab/LoadingButton";
@@ -20,7 +20,7 @@ import {
 import { useNyanpasu } from "@nyanpasu/interface";
 import { BaseCard } from "@nyanpasu/ui";
 import { version } from "@root/package.json";
-import { checkUpdate } from "@tauri-apps/api/updater";
+import { check as checkUpdate } from "@tauri-apps/plugin-updater";
 import { LabelSwitch } from "./modules/clash-field";
 
 const AutoCheckUpdate = () => {
@@ -48,28 +48,28 @@ export const SettingNyanpasuVersion = () => {
 
   const [loading, setLoading] = useState(false);
 
-  const setUpdaterManifest = useSetAtom(UpdaterManifestAtom);
+  const setUpdaterInstance = useSetAtom(UpdaterInstanceAtom);
   const isPlatformSupported = useUpdaterPlatformSupported();
   const onCheckUpdate = useLockFn(async () => {
     try {
       setLoading(true);
 
-      const info = await checkUpdate();
+      const update = await checkUpdate();
 
-      if (!info?.shouldUpdate) {
+      if (!update?.available) {
         message(t("No update available."), {
           title: t("Info"),
-          type: "info",
+          kind: "info",
         });
       } else {
-        setUpdaterManifest(info.manifest || null);
+        setUpdaterInstance(update || null);
       }
     } catch (e) {
       message(
         `Update check failed. Please verify your network connection.\n\n${formatError(e)}`,
         {
           title: t("Error"),
-          type: "error",
+          kind: "error",
         },
       );
     } finally {

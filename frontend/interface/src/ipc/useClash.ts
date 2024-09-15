@@ -1,7 +1,7 @@
 import useSWR from "swr";
 import { ClashConfig, Profile } from "@/index";
 import * as tauri from "@/service/tauri";
-import { Clash, clash } from "../service/clash";
+import { clash } from "../service/clash";
 
 /**
  * useClash with swr.
@@ -11,28 +11,17 @@ export const useClash = () => {
   const { deleteConnections, ...api } = clash();
 
   const getClashInfo = useSWR("getClashInfo", tauri.getClashInfo);
+  const getConfigs = useSWR("getClashConfig", api.getConfigs);
 
-  const setClashInfo = async (payload: Partial<ClashConfig>) => {
+  const setConfigs = async (payload: Partial<ClashConfig>) => {
     try {
-      await tauri.patchClashInfo(payload);
+      await tauri.patchClashConfig(payload);
 
-      await getClashInfo.mutate();
+      await Promise.all([getClashInfo.mutate(), getConfigs.mutate()]);
     } catch (e) {
       console.error(e);
     } finally {
       return getClashInfo.data;
-    }
-  };
-
-  const getConfigs = useSWR("getClashConfig", api.getConfigs);
-
-  const setConfigs = async (payload: Partial<Clash.Config>) => {
-    try {
-      await api.setConfigs(payload);
-
-      await getConfigs.mutate();
-    } finally {
-      return getConfigs.data;
     }
   };
 
@@ -104,7 +93,6 @@ export const useClash = () => {
 
   return {
     getClashInfo,
-    setClashInfo,
     getConfigs,
     setConfigs,
     getVersion,

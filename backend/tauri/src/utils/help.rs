@@ -15,15 +15,12 @@ use std::{
     path::PathBuf,
     str::FromStr,
 };
-use tauri::{
-    api::{
-        process::current_binary,
-        shell::{open, Program},
-    },
-    AppHandle, Manager,
-};
+use tauri::{process::current_binary, AppHandle, Manager};
+use tauri_plugin_shell::ShellExt;
 use tracing::{debug, warn};
 use tracing_attributes::instrument;
+
+use crate::trace_err;
 
 /// read data from yaml as struct T
 pub fn read_yaml<T: DeserializeOwned>(path: &PathBuf) -> Result<T> {
@@ -105,20 +102,27 @@ pub fn open_file(app: tauri::AppHandle, path: PathBuf) -> Result<()> {
     #[cfg(not(target_os = "macos"))]
     let code = "code";
 
-    let _ = match Program::from_str(code) {
-        Ok(code) => open(&app.shell_scope(), path.to_string_lossy(), Some(code)),
-        Err(err) => {
-            log::error!(target: "app", "Can't find VScode `{err}`");
-            // default open
-            open(&app.shell_scope(), path.to_string_lossy(), None)
-        }
-    };
+    let shell = app.shell();
+
+    trace_err!(
+        match which::which(code) {
+            Ok(_) => crate::utils::open::with(path, code),
+            Err(err) => {
+                log::error!(target: "app", "Can't find VScode `{err}`");
+                // default open
+                shell
+                    .open(path.to_string_lossy().to_string(), None)
+                    .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
+            }
+        },
+        "Can't open file"
+    );
 
     Ok(())
 }
 
 pub fn get_system_locale() -> String {
-    tauri::api::os::locale().unwrap_or("en-US".to_string())
+    tauri_plugin_os::locale().unwrap_or("en-US".to_string())
 }
 
 pub fn mapping_to_i18n_key(locale_key: &str) -> &'static str {
@@ -215,10 +219,12 @@ pub fn get_max_scale_factor() -> f64 {
 }
 
 #[instrument(skip(app_handle))]
-fn cleanup_processes(app_handle: &AppHandle) {
+pub fn cleanup_processes(app_handle: &AppHandle) {
     let _ = super::resolve::save_window_state(app_handle, true);
     super::resolve::resolve_reset();
-    tauri::api::process::kill_children();
+    let _ = nyanpasu_utils::runtime::block_on(async move {
+        crate::core::CoreManager::global().stop_core().await
+    });
 }
 
 #[instrument(skip(app_handle))]
@@ -263,9 +269,9 @@ macro_rules! log_err {
         }
     };
 
-    ($result: expr, $err_str: expr) => {
-        if let Err(_) = $result {
-            log::error!(target: "app", "{}", $err_str);
+    ($result: expr, $label: expr) => {
+        if let Err(err) = $result {
+            log::error!(target: "app", "{}: {:#?}", $label, err);
         }
     };
 }

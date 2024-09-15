@@ -1,3 +1,77 @@
+## [1.6.1] - 2024-09-07
+
+### ✨ Features
+
+- **dock:** Try to setup macos dock handler by @greenhat616
+
+- **enhance:** Finish all filter test suites by @greenhat616
+
+- **enhance:** Add sequence filter support and partial test suite by @greenhat616
+
+- **enhance:** Add complex filter syntax support by @greenhat616
+
+- **monaco:** Add onValidation before submit, and close #1491 by @greenhat616
+
+- **monaco:** Add yaml config prompt by @greenhat616
+
+- **nsis:** Cleanup reg while uninstall by @greenhat616
+
+- **service:** Add manual prompt for service uninstall, stop, start by @greenhat616
+
+- **service:** Add a manual install prompt while service install failed by @greenhat616
+
+- **tun:** Support auto-route while clash-rs support it by @greenhat616
+
+- Use cross-rs to build aarch64 by @greenhat616
+
+- Try to support linux aarch64 build by @greenhat616
+
+### 🐛 Bug Fixes
+
+- **ci:** Update publish script by @greenhat616
+
+- **dialog:** Position func err by @keiko233
+
+- **nsis:** Cleanup app config and data dir if option is selected by @greenhat616
+
+- **os:** Create no window by @greenhat616
+
+- **shiki:** Shell lang loader by @greenhat616
+
+- Monaco clash config prompt by @greenhat616
+
+- Monaco url resolve issue by @greenhat616
+
+- Try to resolve the yaml schema by @greenhat616
+
+- Try to escape the string by @greenhat616
+
+- Add service install error prompt by @greenhat616
+
+- Shiki import by @greenhat616
+
+- Try to fix create no window by @greenhat616
+
+- Typo by @greenhat616
+
+- Windows nightly build version issue by @greenhat616
+
+- Build by @greenhat616
+
+- Aarch build by @greenhat616
+
+- Dont merge falsy theme settings by @greenhat616
+
+### 🔨 Refactor
+
+- Use @monaco-editor/react instead by @greenhat616
+
+- Service shoutcuts use core manager internal state by @greenhat616
+
+---
+
+**Full Changelog**: https://github.com/libnyanpasu/clash-nyanpasu/compare/v1.6.0...v1.6.1
+
 ## [1.6.0] - 2024-08-29
 
 ### 💥 Breaking Changes

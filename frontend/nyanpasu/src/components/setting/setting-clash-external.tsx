@@ -37,7 +37,7 @@ export const SettingClashExternal = () => {
 
   const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu();
 
-  const { getClashInfo, setClashInfo } = useClash();
+  const { getClashInfo, setConfigs } = useClash();
   const mutate = useGlobalMutation();
 
   // What even are these fields?????
@@ -75,7 +75,7 @@ export const SettingClashExternal = () => {
           },
         }),
 
-        setClashInfo({
+        setConfigs({
           "external-controller": config.controller,
           secret: config.secret,
         }),
@@ -83,7 +83,7 @@ export const SettingClashExternal = () => {
     } catch (e) {
       message(JSON.stringify(e), {
         title: t("Error"),
-        type: "error",
+        kind: "error",
       });
     } finally {
       setExpand(false);

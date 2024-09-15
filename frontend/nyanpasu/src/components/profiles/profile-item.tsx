@@ -1,5 +1,4 @@
 import { useLockFn, useMemoizedFn, useSetState } from "ahooks";
-import clsx from "clsx";
 import dayjs from "dayjs";
 import { AnimatePresence, motion } from "framer-motion";
 import { memo, useEffect, useMemo, useState } from "react";
@@ -123,7 +122,7 @@ export const ProfileItem = memo(function ProfileItem({
           : `Error setting profile: \n ${err instanceof Error ? err.message : String(err)}`,
         {
           title: t("Error"),
-          type: "error",
+          kind: "error",
         },
       );
     } finally {
@@ -162,7 +161,7 @@ export const ProfileItem = memo(function ProfileItem({
     } catch (err) {
       message(`Delete failed: \n ${JSON.stringify(err)}`, {
         title: t("Error"),
-        type: "error",
+        kind: "error",
       });
     }
   });
@@ -253,7 +252,7 @@ export const ProfileItem = memo(function ProfileItem({
           </div>
 
           <div
-            className={clsx(
+            className={cn(
               "flex items-center justify-between gap-4",
               !isRemote && "invisible",
             )}

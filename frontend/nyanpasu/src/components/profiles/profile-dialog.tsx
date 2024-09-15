@@ -1,7 +1,10 @@
 import { version } from "~/package.json";
 import { useAsyncEffect } from "ahooks";
+import { type editor } from "monaco-editor";
 import {
   createContext,
+  lazy,
+  Suspense,
   use,
   useEffect,
   useMemo,
@@ -15,13 +18,15 @@ import {
   useForm,
 } from "react-hook-form-mui";
 import { useTranslation } from "react-i18next";
-import { classNames } from "@/utils";
+import { useLatest } from "react-use";
+import { message } from "@/utils/notification";
 import { Divider, InputAdornment } from "@mui/material";
 import { Profile, useClash } from "@nyanpasu/interface";
 import { BaseDialog } from "@nyanpasu/ui";
 import { LabelSwitch } from "../setting/modules/clash-field";
-import { ProfileMonacoView, ProfileMonacoViewRef } from "./profile-monaco-view";
 import { ReadProfile } from "./read-profile";
+
+const ProfileMonacoViewer = lazy(() => import("./profile-monaco-viewer"));
 
 export interface ProfileDialogProps {
   profile?: Profile.Item;
@@ -83,11 +88,14 @@ export const ProfileDialog = ({
     setIsEdit(!!profile);
   }, [profile]);
 
-  const commonProps = {
-    autoComplete: "off",
-    autoCorrect: "off",
-    fullWidth: true,
-  };
+  const commonProps = useMemo(
+    () => ({
+      autoComplete: "off",
+      autoCorrect: "off",
+      fullWidth: true,
+    }),
+    [],
+  );
 
   const handleProfileSelected = (content: string) => {
     localProfile.current = content;
@@ -95,7 +103,25 @@ export const ProfileDialog = ({
     setLocalProfileMessage("");
   };
 
+  const [editor, setEditor] = useState({
+    value: "",
+    language: "yaml",
+  });
+
+  const latestEditor = useLatest(editor);
+
+  const editorMarks = useRef<editor.IMarker[]>([]);
+  const editorHasError = () =>
+    editorMarks.current.length > 0 &&
+    editorMarks.current.some((m) => m.severity === 8);
+
   const onSubmit = handleSubmit(async (form) => {
+    if (editorHasError()) {
+      message("Please fix the error before saving", {
+        kind: "error",
+      });
+      return;
+    }
     const toCreate = async () => {
       if (isRemote) {
         await createProfile(form);
@@ -110,7 +136,7 @@ export const ProfileDialog = ({
     };
 
     const toUpdate = async () => {
-      const value = profileMonacoViewRef.current?.getValue() || "";
+      const value = latestEditor.current.value;
       await setProfileFile(form.uid, value);
       await setProfiles(form.uid, form);
     };
@@ -127,13 +153,6 @@ export const ProfileDialog = ({
       onClose();
     } finally {
     }
-  });
-
-  const profileMonacoViewRef = useRef<ProfileMonacoViewRef>(null);
-
-  const [editor, setEditor] = useState({
-    value: "",
-    language: "yaml",
   });
 
   const dialogProps = isEdit && {
@@ -297,13 +316,21 @@ export const ProfileDialog = ({
 
           <Divider orientation="vertical" />
 
-          <ProfileMonacoView
-            className="w-full"
-            ref={profileMonacoViewRef}
-            open={open}
-            value={editor.value}
-            language={editor.language}
-          />
+          <Suspense fallback={null}>
+            {open && (
+              <ProfileMonacoViewer
+                className="w-full"
+                readonly={isRemote}
+                schemaType="clash"
+                value={editor.value}
+                onChange={(value) =>
+                  setEditor((editor) => ({ ...editor, value }))
+                }
+                onValidate={(marks) => (editorMarks.current = marks)}
+                language={editor.language}
+              />
+            )}
+          </Suspense>
         </div>
       ) : (
         MetaInfo

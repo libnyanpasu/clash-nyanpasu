@@ -4,6 +4,8 @@ import { applyProxy, octokit } from "./octokit";
 
 export type ArchMapping = { [key in SupportedArch]: string };
 
+export type NodeArch = NodeJS.Architecture | "armel";
+
 // resolvers block
 export type LatestVersionResolver = Promise<{
   name: string;
@@ -22,13 +24,16 @@ export const resolveMihomo = async (): LatestVersionResolver => {
   consola.debug(`mihomo latest release: ${latestRelease.data.tag_name}`);
 
   const archMapping: ArchMapping = {
-    // [SupportedArch.WindowsX86]: "mihomo-windows-386-{}.zip",
+    [SupportedArch.WindowsX86_32]: "mihomo-windows-386-{}.zip",
     [SupportedArch.WindowsX86_64]: "mihomo-windows-amd64-compatible-{}.zip",
     // [SupportedArch.WindowsAarch64]: "mihomo-windows-arm64-{}.zip",
     [SupportedArch.LinuxAarch64]: "mihomo-linux-arm64-{}.gz",
     [SupportedArch.LinuxAmd64]: "mihomo-linux-amd64-compatible-{}.gz",
+    [SupportedArch.LinuxI386]: "mihomo-linux-386-{}.gz",
     [SupportedArch.DarwinArm64]: "mihomo-darwin-arm64-{}.gz",
     [SupportedArch.DarwinX64]: "mihomo-darwin-amd64-compatible-{}.gz",
+    [SupportedArch.LinuxArmv7]: "mihomo-linux-armv5-{}.gz",
+    [SupportedArch.LinuxArmv7hf]: "mihomo-linux-armv7-{}.gz",
   } satisfies ArchMapping;
 
   return {
@@ -48,13 +53,16 @@ export const resolveMihomoAlpha = async (): LatestVersionResolver => {
   consola.debug(`mihomo alpha release: ${alphaReleaseHash}`);
 
   const archMapping: ArchMapping = {
-    // [SupportedArch.WindowsX86]: "mihomo-windows-386-{}.zip",
+    [SupportedArch.WindowsX86_32]: "mihomo-windows-386-{}.zip",
     [SupportedArch.WindowsX86_64]: "mihomo-windows-amd64-compatible-{}.zip",
     // [SupportedArch.WindowsAarch64]: "mihomo-windows-arm64-{}.zip",
     [SupportedArch.LinuxAarch64]: "mihomo-linux-arm64-{}.gz",
     [SupportedArch.LinuxAmd64]: "mihomo-linux-amd64-compatible-{}.gz",
+    [SupportedArch.LinuxI386]: "mihomo-linux-386-{}.gz",
     [SupportedArch.DarwinArm64]: "mihomo-darwin-arm64-{}.gz",
     [SupportedArch.DarwinX64]: "mihomo-darwin-amd64-compatible-{}.gz",
+    [SupportedArch.LinuxArmv7]: "mihomo-linux-armv5-{}.gz",
+    [SupportedArch.LinuxArmv7hf]: "mihomo-linux-armv7-{}.gz",
   } satisfies ArchMapping;
 
   return {
@@ -75,13 +83,16 @@ export const resolveClashRs = async (): LatestVersionResolver => {
   consola.debug(`clash-rs latest release: ${latestRelease.data.tag_name}`);
 
   const archMapping: ArchMapping = {
-    // [SupportedArch.WindowsX86]: "mihomo-windows-386-alpha-{}.zip",
+    [SupportedArch.WindowsX86_32]: "clash-i686-pc-windows-msvc-static-crt.exe",
     [SupportedArch.WindowsX86_64]: "clash-x86_64-pc-windows-msvc.exe",
     // [SupportedArch.WindowsAarch64]: "mihomo-windows-arm64-alpha-{}.zip",
     [SupportedArch.LinuxAarch64]: "clash-aarch64-unknown-linux-gnu-static-crt",
     [SupportedArch.LinuxAmd64]: "clash-x86_64-unknown-linux-gnu-static-crt",
+    [SupportedArch.LinuxI386]: "clash-i686-unknown-linux-gnu-static-crt",
     [SupportedArch.DarwinArm64]: "clash-aarch64-apple-darwin",
     [SupportedArch.DarwinX64]: "clash-x86_64-apple-darwin",
+    [SupportedArch.LinuxArmv7]: "clash-armv7-unknown-linux-gnueabi-static-crt",
+    [SupportedArch.LinuxArmv7hf]: "clash-armv7-unknown-linux-gnueabihf",
   } satisfies ArchMapping;
 
   return {
@@ -102,13 +113,16 @@ export const resolveClashPremium = async (): LatestVersionResolver => {
   consola.debug(`clash-premium latest release: ${latestRelease.data.tag_name}`);
 
   const archMapping: ArchMapping = {
-    // [SupportedArch.WindowsX86]: "clash-windows-386-n{}.zip",
+    [SupportedArch.WindowsX86_32]: "clash-windows-386-n{}.zip",
     [SupportedArch.WindowsX86_64]: "clash-windows-amd64-n{}.zip",
     // [SupportedArch.WindowsAarch64]: "clash-windows-arm64-n{}.zip",
     [SupportedArch.LinuxAarch64]: "clash-linux-arm64-n{}.gz",
     [SupportedArch.LinuxAmd64]: "clash-linux-amd64-n{}.gz",
+    [SupportedArch.LinuxI386]: "clash-linux-386-n{}.gz",
     [SupportedArch.DarwinArm64]: "clash-darwin-arm64-n{}.gz",
     [SupportedArch.DarwinX64]: "clash-darwin-amd64-n{}.gz",
+    [SupportedArch.LinuxArmv7]: "clash-linux-armv5-n{}.gz",
+    [SupportedArch.LinuxArmv7hf]: "clash-linux-armv7-n{}.gz",
   } satisfies ArchMapping;
 
   return {

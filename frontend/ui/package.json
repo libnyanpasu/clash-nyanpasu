@@ -1,6 +1,6 @@
 {
   "name": "@nyanpasu/ui",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "type": "module",
   "exports": {
     ".": "./dist/index.js",
@@ -22,7 +22,7 @@
     "@mui/material": "6.0.2",
     "@radix-ui/react-portal": "1.1.1",
     "@radix-ui/react-scroll-area": "1.1.0",
-    "@tauri-apps/api": "1.6.0",
+    "@tauri-apps/api": "2.0.0-rc.4",
     "@types/d3": "7.4.3",
     "@types/react": "18.3.5",
     "@vitejs/plugin-react": "4.3.1",
@@ -32,9 +32,9 @@
     "react": "rc",
     "react-dom": "rc",
     "react-error-boundary": "4.0.13",
-    "react-i18next": "15.0.1",
+    "react-i18next": "15.0.2",
     "react-use": "17.5.1",
-    "vite": "5.4.3",
+    "vite": "5.4.5",
     "vite-tsconfig-paths": "5.0.1"
   },
   "devDependencies": {
@@ -45,6 +45,6 @@
     "sass": "1.78.0",
     "tailwind-merge": "2.5.2",
     "typescript-plugin-css-modules": "5.1.0",
-    "vite-plugin-dts": "4.1.0"
+    "vite-plugin-dts": "4.2.1"
   }
 }

@@ -14,7 +14,8 @@ use anyhow::{bail, Result};
 use handle::Message;
 use nyanpasu_ipc::api::status::CoreState;
 use serde_yaml::{Mapping, Value};
-use wry::application::clipboard::Clipboard;
+use tauri::AppHandle;
+use tauri_plugin_clipboard_manager::ClipboardExt;
 
 // 打开面板
 #[allow(unused)]
@@ -193,7 +194,7 @@ pub fn disable_tun_mode() {
 pub async fn patch_clash(patch: Mapping) -> Result<()> {
     Config::clash().draft().patch_config(patch.clone());
 
-    let res = {
+    let run = move || async move {
         let mixed_port = patch.get("mixed-port");
         let enable_random_port = Config::verge().latest().enable_random_port.unwrap_or(false);
         if mixed_port.is_some() && !enable_random_port {
@@ -249,6 +250,7 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
         }
 
         if patch.get("mode").is_some() {
+            crate::feat::update_proxies_buff(None);
             log_err!(handle::Handle::update_systray_part());
         }
 
@@ -256,7 +258,7 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
 
         <Result<()>>::Ok(())
     };
-    match res {
+    match run().await {
         Ok(()) => {
             Config::clash().apply();
             Config::clash().data().save_config()?;
@@ -400,7 +402,7 @@ async fn update_core_config() -> Result<()> {
 }
 
 /// copy env variable
-pub fn copy_clash_env(option: &str) {
+pub fn copy_clash_env(app_handle: &AppHandle, option: &str) {
     let port = { Config::verge().latest().verge_mixed_port.unwrap_or(7890) };
     let http_proxy = format!("http://127.0.0.1:{}", port);
     let socks5_proxy = format!("socks5://127.0.0.1:{}", port);
@@ -410,12 +412,24 @@ pub fn copy_clash_env(option: &str) {
     let cmd: String = format!("set http_proxy={http_proxy} \n set https_proxy={http_proxy}");
     let ps: String = format!("$env:HTTP_PROXY=\"{http_proxy}\"; $env:HTTPS_PROXY=\"{http_proxy}\"");
 
-    let mut clipboard = Clipboard::new();
+    let clipboard = app_handle.clipboard();
 
     match option {
-        "sh" => clipboard.write_text(sh),
-        "cmd" => clipboard.write_text(cmd),
-        "ps" => clipboard.write_text(ps),
+        "sh" => {
+            if let Err(e) = clipboard.write_text(sh) {
+                log::error!(target: "app", "copy_clash_env failed: {e}");
+            }
+        }
+        "cmd" => {
+            if let Err(e) = clipboard.write_text(cmd) {
+                log::error!(target: "app", "copy_clash_env failed: {e}");
+            }
+        }
+        "ps" => {
+            if let Err(e) = clipboard.write_text(ps) {
+                log::error!(target: "app", "copy_clash_env failed: {e}");
+            }
+        }
         _ => log::error!(target: "app", "copy_clash_env: Invalid option! {option}"),
     }
 }

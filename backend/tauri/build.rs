@@ -12,11 +12,6 @@ struct PackageJson {
 }
 
 #[derive(Deserialize)]
-struct TauriJson {
-    package: PackageJson,
-}
-
-#[derive(Deserialize)]
 struct GitInfo {
     hash: String,
     author: String,
@@ -30,16 +25,16 @@ fn main() {
         pkg_json.version
     } else {
         let mut raw = read("./tauri.conf.json").unwrap(); // TODO: fix it when windows arm64 need it
-        let tauri_json: TauriJson = simd_json::from_slice(&mut raw).unwrap();
-        tauri_json.package.version
+        let tauri_json: PackageJson = simd_json::from_slice(&mut raw).unwrap();
+        tauri_json.version
     };
     let version = semver::Version::parse(&version).unwrap();
     let is_prerelase = !version.pre.is_empty();
     println!("cargo:rustc-env=NYANPASU_VERSION={}", version);
     // Git Information
-    let (commit_hash, commit_author, commit_date) = if let Ok(true) = exists("./.tmp/git-info.json")
+    let (commit_hash, commit_author, commit_date) = if let Ok(true) = exists("./tmp/git-info.json")
     {
-        let mut git_info = read("./.tmp/git-info.json").unwrap();
+        let mut git_info = read("./tmp/git-info.json").unwrap();
         let git_info: GitInfo = simd_json::from_slice(&mut git_info).unwrap();
         (git_info.hash, git_info.author, git_info.time)
     } else {

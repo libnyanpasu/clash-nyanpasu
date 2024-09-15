@@ -1,27 +1,32 @@
 import { useAsyncEffect } from "ahooks";
-import { useAtom } from "jotai";
+import { useAtom, useSetAtom } from "jotai";
 import { useState } from "react";
 import useSWR from "swr";
+import { OS } from "@/consts";
 import { serviceManualPromptDialogAtom } from "@/store/service";
 import { getShikiSingleton } from "@/utils/shiki";
-import { getServiceInstallPrompt } from "@nyanpasu/interface";
+import { getCoreDir, getServiceInstallPrompt } from "@nyanpasu/interface";
 import { BaseDialog, BaseDialogProps } from "@nyanpasu/ui";
 
-export type ServerManualPromptDialogProps = Omit<BaseDialogProps, "title">;
+export type ServerManualPromptDialogProps = Omit<BaseDialogProps, "title"> & {
+  operation: "uninstall" | "install" | "start" | "stop" | null;
+};
 
 // TODO: maybe support more commands prompt?
 export default function ServerManualPromptDialog({
   open,
   onClose,
+  operation,
   ...props
 }: ServerManualPromptDialogProps) {
   const { data: serviceInstallPrompt, error } = useSWR(
-    "/service_install_prompt",
+    operation === "install" ? "/service_install_prompt" : null,
     getServiceInstallPrompt,
   );
+  const { data: coreDir } = useSWR("/core_dir", () => getCoreDir());
   const [codes, setCodes] = useState<string | null>(null);
   useAsyncEffect(async () => {
-    if (serviceInstallPrompt) {
+    if (operation === "install" && serviceInstallPrompt) {
       const shiki = await getShikiSingleton();
       const code = await shiki.codeToHtml(serviceInstallPrompt, {
         lang: "shell",
@@ -31,16 +36,34 @@ export default function ServerManualPromptDialog({
         },
       });
       setCodes(code);
+    } else if (!!operation) {
+      const shiki = await getShikiSingleton();
+      const code = await shiki.codeToHtml(
+        `cd "${coreDir}"\n${OS !== "windows" ? "sudo " : ""}./nyanpasu-service ${operation}`,
+        {
+          lang: "shell",
+          themes: {
+            dark: "nord",
+            light: "min-light",
+          },
+        },
+      );
+      setCodes(code);
     }
-  }, [serviceInstallPrompt, setCodes]);
+  }, [serviceInstallPrompt, operation, coreDir]);
 
   return (
-    <BaseDialog title="Server Manual" open={open} onClose={onClose} {...props}>
+    <BaseDialog
+      title="Service Manual Tips"
+      open={open}
+      onClose={onClose}
+      {...props}
+    >
       <div className="grid gap-3">
         <p>
-          Unable to install service automatically. Please open a PowerShell(as
-          administrator) in Windows or a terminal emulator in macOS, Linux and
-          run the following commands:
+          Unable to {operation} the service automatically. Please navigate to
+          the core directory, open PowerShell (as Administrator) on Windows or a
+          terminal emulator on macOS/Linux, and run the following commands:
         </p>
         {error && <p className="text-red-500">{error.message}</p>}
         {!!codes && (
@@ -56,16 +79,21 @@ export default function ServerManualPromptDialog({
 }
 
 export function ServerManualPromptDialogWrapper() {
-  const [open, setOpen] = useAtom(serviceManualPromptDialogAtom);
+  const [prompt, setPrompt] = useAtom(serviceManualPromptDialogAtom);
   return (
-    <ServerManualPromptDialog open={open} onClose={() => setOpen(false)} />
+    <ServerManualPromptDialog
+      open={!!prompt}
+      onClose={() => setPrompt(null)}
+      operation={prompt}
+    />
   );
 }
 
 export function useServerManualPromptDialog() {
-  const [, setOpen] = useAtom(serviceManualPromptDialogAtom);
+  const setPrompt = useSetAtom(serviceManualPromptDialogAtom);
   return {
-    show: () => setOpen(true),
-    close: () => setOpen(false),
+    show: (prompt: "install" | "uninstall" | "stop" | "start") =>
+      setPrompt(prompt),
+    close: () => setPrompt(null),
   };
 }

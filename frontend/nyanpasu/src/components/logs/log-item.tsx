@@ -1,9 +1,9 @@
 import { useAsyncEffect } from "ahooks";
 import { useState } from "react";
-import { classNames } from "@/utils";
 import { formatAnsi } from "@/utils/shiki";
 import { useTheme } from "@mui/material";
 import { LogMessage } from "@nyanpasu/interface";
+import { cn } from "@nyanpasu/ui";
 import styles from "./log-item.module.scss";
 
 export const LogItem = ({ value }: { value: LogMessage }) => {
@@ -38,7 +38,7 @@ export const LogItem = ({ value }: { value: LogMessage }) => {
 
       <div className="text-wrap border-b border-slate-200 pb-2">
         <p
-          className={classNames(
+          className={cn(
             styles.item,
             palette.mode === "dark" && styles.dark,
             "data",

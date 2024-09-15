@@ -27,7 +27,7 @@ export const ProxiesProvider = ({ provider }: ProxiesProviderProps) => {
       await updateProxiesProviders(provider.name);
     } catch (e) {
       message(`Update ${provider.name} failed.\n${String(e)}`, {
-        type: "error",
+        kind: "error",
         title: t("Error"),
       });
     } finally {

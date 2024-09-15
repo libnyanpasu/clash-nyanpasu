@@ -1,7 +1,6 @@
 import { useDebounceFn, useLockFn } from "ahooks";
 import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { classNames } from "@/utils";
 import { Bolt, Done } from "@mui/icons-material";
 import {
   alpha,
@@ -10,6 +9,7 @@ import {
   Tooltip,
   useTheme,
 } from "@mui/material";
+import { cn } from "@nyanpasu/ui";
 
 export const DelayButton = memo(function DelayButton({
   onClick,
@@ -66,7 +66,7 @@ export const DelayButton = memo(function DelayButton({
         onClick={handleClick}
       >
         <Bolt
-          className={classNames(
+          className={cn(
             "!size-8",
             "!transition-opacity",
             mounted ? "opacity-0" : "opacity-1",
@@ -76,7 +76,7 @@ export const DelayButton = memo(function DelayButton({
         {mounted && (
           <CircularProgress
             size={32}
-            className={classNames(
+            className={cn(
               "transition-opacity",
               "absolute",
               loading ? "opacity-1" : "opacity-0",
@@ -86,7 +86,7 @@ export const DelayButton = memo(function DelayButton({
 
         <Done
           color="success"
-          className={classNames(
+          className={cn(
             "!size-8",
             "absolute",
             "!transition-opacity",

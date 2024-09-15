@@ -25,7 +25,11 @@ export const downloadFile = async (url: string, path: string) => {
   const response = await fetch(url, {
     ...options,
     method: "GET",
-    headers: { "Content-Type": "application/octet-stream" },
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0",
+    },
   });
 
   const buffer = await response.arrayBuffer();
@@ -69,13 +73,33 @@ export const resolveSidecar = async (
     if (tmpFile.endsWith(".zip")) {
       const zip = new AdmZip(tempFile);
 
+      let entryName;
       zip.getEntries().forEach((entry) => {
         consola.debug(
           colorize`"{green ${name}}" entry name ${entry.entryName}`,
         );
+        if (
+          (entry.entryName.includes(name) &&
+            entry.entryName.endsWith(".exe")) ||
+          (entry.entryName.includes(
+            name
+              .split("-")
+              .filter((o) => o !== "alpha")
+              .join("-"),
+          ) &&
+            entry.entryName.endsWith(".exe"))
+        ) {
+          entryName = entry.entryName;
+        }
       });
 
       zip.extractAllTo(tempDir, true);
+
+      if (!entryName) {
+        throw new Error("cannot find exe file in zip");
+      }
+
+      await fs.rename(path.join(tempDir, entryName), tempExe);
 
       await fs.rename(tempExe, sidecarPath);
 

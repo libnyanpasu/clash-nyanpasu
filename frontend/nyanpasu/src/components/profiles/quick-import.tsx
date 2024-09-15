@@ -15,7 +15,7 @@ import {
   useTheme,
 } from "@mui/material";
 import { useClash } from "@nyanpasu/interface";
-import { readText } from "@tauri-apps/api/clipboard";
+import { readText } from "@tauri-apps/plugin-clipboard-manager";
 
 export const QuickImport = () => {
   const { t } = useTranslation();

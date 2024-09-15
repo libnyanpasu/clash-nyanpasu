@@ -28,13 +28,13 @@ export const clash = {
       [K in keyof Clash.Config]: Clash.Config[K] extends boolean ? K : never;
     }[keyof Clash.Config],
   ): SwitchProps => {
-    const { getConfigs, setConfigs, setClashInfo } = useClash();
+    const { getConfigs, setConfigs } = useClash();
     const mutate = useGlobalMutation();
     return {
       checked: getConfigs.data?.[propName] || false,
       onChange: () => {
         Promise.all([
-          setClashInfo({ [propName]: !getConfigs.data?.[propName] }),
+          setConfigs({ [propName]: !getConfigs.data?.[propName] }),
           setConfigs({ [propName]: !getConfigs.data?.[propName] }),
         ]).finally(() => {
           mutate(
@@ -65,17 +65,14 @@ export const clash = {
     propName: keyof Clash.Config,
     { options, fallbackSelect }: CreateMenuPropsOptions,
   ): Omit<MenuItemProps, "label"> => {
-    const { getConfigs, setConfigs, setClashInfo } = useClash();
+    const { getConfigs, setConfigs } = useClash();
     const mutate = useGlobalMutation();
 
     return {
       options,
       selected: getConfigs.data?.[propName] || fallbackSelect,
       onSelected: (value: OptionValue) => {
-        Promise.all([
-          setClashInfo({ [propName]: value }),
-          setConfigs({ [propName]: value }),
-        ]).finally(() => {
+        Promise.all([setConfigs({ [propName]: value })]).finally(() => {
           mutate(
             (key) =>
               typeof key === "string" && key.includes("/getRuntimeConfigYaml"),

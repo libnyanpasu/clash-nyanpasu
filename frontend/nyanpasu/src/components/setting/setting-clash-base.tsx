@@ -24,7 +24,7 @@ export const SettingClashBase = () => {
     } catch (e) {
       message(`Failed to Open UWP Tools.\n${JSON.stringify(e)}`, {
         title: t("Error"),
-        type: "error",
+        kind: "error",
       });
     }
   };

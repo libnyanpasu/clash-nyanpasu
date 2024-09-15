@@ -1,13 +1,13 @@
 {
   "name": "@nyanpasu/monorepo",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "repository": "https://github.com/LibNyanpasu/clash-nyanpasu.git",
   "license": "GPL-3.0",
   "type": "module",
   "scripts": {
     "dev": "run-p -r web:devtools tauri:dev",
     "dev:diff": "run-p -r web:devtools tauri:diff",
-    "build": "tauri build -c ./backend/tauri/tauri.conf.json",
+    "build": "tauri build",
     "build:debug": "tauri build -f verge-dev deadlock-detection -d -c \"{ \\\"tauri\\\" : { \\\"updater\\\": { \\\"active\\\": false } }} \"",
     "build:nightly": "tauri build -f nightly -c ./backend/tauri/tauri.nightly.conf.json",
     "tauri": "tauri",
@@ -59,7 +59,7 @@
     "@commitlint/cli": "19.4.1",
     "@commitlint/config-conventional": "19.4.1",
     "@ianvs/prettier-plugin-sort-imports": "4.3.1",
-    "@tauri-apps/cli": "1.6.1",
+    "@tauri-apps/cli": "2.0.0-rc.13",
     "@types/fs-extra": "11.0.4",
     "@types/lodash-es": "4.17.12",
     "@types/node": "22.5.4",
@@ -81,10 +81,10 @@
     "eslint-plugin-react": "7.35.0",
     "eslint-plugin-react-compiler": "0.0.0-experimental-f8a5409-20240829",
     "eslint-plugin-react-hooks": "4.6.2",
-    "knip": "5.29.2",
+    "knip": "5.30.2",
     "lint-staged": "15.2.9",
-    "npm-run-all2": "6.2.2",
-    "postcss": "8.4.45",
+    "npm-run-all2": "6.2.3",
+    "postcss": "8.4.47",
     "postcss-html": "1.7.0",
     "postcss-import": "16.1.0",
     "postcss-scss": "4.0.9",
@@ -99,17 +99,19 @@
     "stylelint-declaration-block-no-ignored-properties": "2.8.0",
     "stylelint-order": "6.0.4",
     "stylelint-scss": "6.5.1",
-    "tailwindcss": "3.4.10",
+    "tailwindcss": "3.4.11",
     "tsx": "4.19.0",
     "typescript": "5.5.4"
   },
-  "packageManager": "pnpm@9.9.0+sha512.60c18acd138bff695d339be6ad13f7e936eea6745660d4cc4a776d5247c540d0edee1a563695c183a66eb917ef88f2b4feb1fc25f32a7adcadc7aaf3438e99c1",
+  "packageManager": "pnpm@9.10.0+sha512.73a29afa36a0d092ece5271de5177ecbf8318d454ecd701343131b8ebc0c1a91c487da46ab77c8e596d6acf1461e3594ced4becedf8921b074fbd8653ed7051c",
   "engines": {
     "node": "22.8.0"
   },
   "pnpm": {
     "overrides": {
-      "vite-plugin-monaco-editor": "npm:vite-plugin-monaco-editor-new@1.1.3"
+      "vite-plugin-monaco-editor": "npm:vite-plugin-monaco-editor-new@1.1.3",
+      "@types/react": "npm:types-react@rc",
+      "@types/react-dom": "npm:types-react-dom@rc"
     }
   }
 }

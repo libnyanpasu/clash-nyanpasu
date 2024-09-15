@@ -4,3 +4,6 @@
 WixTools
 resources
 sidecar
+tmp/
+
+!/tmp/.gitkeep

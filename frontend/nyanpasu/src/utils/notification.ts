@@ -3,13 +3,13 @@ import { isPortable } from "@nyanpasu/interface";
 import {
   MessageDialogOptions,
   message as tauriMessage,
-} from "@tauri-apps/api/dialog";
+} from "@tauri-apps/plugin-dialog";
 import {
   isPermissionGranted,
   Options,
   requestPermission,
   sendNotification,
-} from "@tauri-apps/api/notification";
+} from "@tauri-apps/plugin-notification";
 
 let permissionGranted: boolean | null = null;
 let portable: boolean | null = null;

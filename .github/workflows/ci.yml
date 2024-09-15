@@ -1,8 +1,14 @@
 on:
   pull_request:
-    branches: [main, dev]
+    branches:
+      - main
+      - dev
+      - release-*
   push:
-    branches: [main, dev]
+    branches:
+      - main
+      - dev
+      - release-*
 
 # the name of our workflow
 name: CI
@@ -35,7 +41,9 @@ jobs:
           sudo apt-get install -y
           libgtk-3-dev
           libayatana-appindicator3-dev
-          libwebkit2gtk-4.0-dev
+          libwebkit2gtk-4.1-dev
+          librsvg2-dev
+          libxdo-dev
           webkit2gtk-driver
           xvfb
       - uses: Swatinem/rust-cache@v2
@@ -75,7 +83,7 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Prepare fronend
-        run: pnpm -r build && mkdir -p ./backend/tauri/.tmp/dist # Build frontend
+        run: pnpm -r build # Build frontend
       - name: Prepare sidecar and resources
         run: pnpm check
       - name: Lint

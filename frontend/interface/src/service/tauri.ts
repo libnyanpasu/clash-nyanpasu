@@ -1,5 +1,5 @@
 import { IPSBResponse } from "@/openapi";
-import { invoke } from "@tauri-apps/api/tauri";
+import { invoke } from "@tauri-apps/api/core";
 import { ManifestVersion } from "./core";
 import {
   ClashConfig,
@@ -24,7 +24,7 @@ export const getClashInfo = async () => {
   return await invoke<ClashInfo | null>("get_clash_info");
 };
 
-export const patchClashInfo = async (payload: Partial<ClashConfig>) => {
+export const patchClashConfig = async (payload: Partial<ClashConfig>) => {
   return await invoke<void>("patch_clash_config", { payload });
 };
 
@@ -170,6 +170,10 @@ export const openCoreDir = async () => {
   return await invoke<void>("open_core_dir");
 };
 
+export const getCoreDir = async () => {
+  return await invoke<string>("get_core_dir");
+};
+
 export const openLogsDir = async () => {
   return await invoke<void>("open_logs_dir");
 };
@@ -192,6 +196,10 @@ export const isPortable = async () => {
 
 export const getProxies = async () => {
   return await invoke<Proxies>("get_proxies");
+};
+
+export const mutateProxies = async () => {
+  return await invoke<Proxies>("mutate_proxies");
 };
 
 export const selectProxy = async (group: string, name: string) => {
@@ -258,4 +266,20 @@ export const isAppImage = async () => {
 
 export const getServiceInstallPrompt = async () => {
   return await invoke<string>("get_service_install_prompt");
+};
+
+export const cleanupProcesses = async () => {
+  return await invoke<void>("cleanup_processes");
+};
+
+export const getStorageItem = async (key: string) => {
+  return await invoke<string | null>("get_storage_item", { key });
+};
+
+export const setStorageItem = async (key: string, value: string) => {
+  return await invoke<void>("set_storage_item", { key, value });
+};
+
+export const removeStorageItem = async (key: string) => {
+  return await invoke<void>("remove_storage_item", { key });
 };

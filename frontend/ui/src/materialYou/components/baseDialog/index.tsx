@@ -182,7 +182,7 @@ export const BaseDialog = ({
                 "text-xl",
                 !full ? "m-4" : OS === "macos" ? "ml-20 p-3.5" : "m-2 ml-6",
               )}
-              data-windrag={full}
+              data-tauri-drag-region={full}
             >
               {title}
             </div>

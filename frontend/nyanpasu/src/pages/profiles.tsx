@@ -20,7 +20,7 @@ import RuntimeConfigDiffDialog from "@/components/profiles/runtime-config-diff-d
 import { filterProfiles } from "@/components/profiles/utils";
 import { Public } from "@mui/icons-material";
 import { Badge, Button, IconButton, useTheme } from "@mui/material";
-import Grid from "@mui/material/Unstable_Grid2";
+import Grid from "@mui/material/Grid2";
 import { Profile, useClash } from "@nyanpasu/interface";
 import { SidePage } from "@nyanpasu/ui";
 
@@ -160,14 +160,16 @@ export const ProfilePage = () => {
 
           {profiles && (
             <Grid container spacing={2}>
-              {profiles.map((item, index) => (
+              {profiles.map((item) => (
                 <Grid
                   key={item.uid}
-                  xs={12}
-                  sm={12}
-                  md={hasSide && width <= 1000 ? 12 : 6}
-                  lg={4}
-                  xl={3}
+                  size={{
+                    xs: 12,
+                    sm: 12,
+                    md: hasSide && width <= 1000 ? 12 : 6,
+                    lg: 4,
+                    xl: 3,
+                  }}
                 >
                   <motion.div
                     key={item.uid}

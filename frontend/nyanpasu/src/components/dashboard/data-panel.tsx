@@ -1,6 +1,6 @@
 import { useInterval } from "ahooks";
 import { useAtomValue } from "jotai";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Dataline, { DatalineProps } from "@/components/dashboard/dataline";
 import { atomIsDrawer } from "@/store";
@@ -10,7 +10,7 @@ import {
   MemoryOutlined,
   SettingsEthernet,
 } from "@mui/icons-material";
-import Grid from "@mui/material/Unstable_Grid2";
+import Grid from "@mui/material/Grid2";
 import {
   Connection,
   Memory,
@@ -119,16 +119,19 @@ export const DataPanel = () => {
 
   const isDrawer = useAtomValue(atomIsDrawer);
 
-  const gridLayout = {
-    sm: isDrawer ? 6 : 12,
-    md: 6,
-    lg: supportMemory ? 3 : 4,
-    xl: supportMemory ? 3 : 4,
-  };
+  const gridLayout = useMemo(
+    () => ({
+      sm: isDrawer ? 6 : 12,
+      md: 6,
+      lg: supportMemory ? 3 : 4,
+      xl: supportMemory ? 3 : 4,
+    }),
+    [isDrawer, supportMemory],
+  );
 
   return Datalines.map((props, index) => {
     return (
-      <Grid key={`data-${index}`} {...gridLayout} className="w-full">
+      <Grid key={`data-${index}`} size={gridLayout}>
         <Dataline {...props} className="max-h-1/8 min-h-40" />
       </Grid>
     );

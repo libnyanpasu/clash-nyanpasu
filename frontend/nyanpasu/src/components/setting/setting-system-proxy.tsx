@@ -12,7 +12,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import Grid from "@mui/material/Unstable_Grid2";
+import Grid from "@mui/material/Grid2";
 import { useNyanpasu } from "@nyanpasu/interface";
 import {
   BaseCard,
@@ -66,7 +66,11 @@ export const SettingSystemProxy = () => {
       }
     >
       <Grid container spacing={2}>
-        <Grid xs={6}>
+        <Grid
+          size={{
+            xs: 6,
+          }}
+        >
           <PaperSwitchButton
             label={t("Tun Mode")}
             checked={nyanpasuConfig?.enable_tun_mode || false}
@@ -75,7 +79,7 @@ export const SettingSystemProxy = () => {
           />
         </Grid>
 
-        <Grid xs={6}>
+        <Grid size={{ xs: 6 }}>
           <PaperSwitchButton
             label={t("System Proxy")}
             checked={nyanpasuConfig?.enable_system_proxy || false}

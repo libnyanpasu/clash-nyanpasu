@@ -5,12 +5,12 @@ import OpenInNewRounded from "@mui/icons-material/OpenInNewRounded";
 import { alpha, useTheme } from "@mui/material";
 import Box from "@mui/material/Box";
 import ButtonBase, { ButtonBaseProps } from "@mui/material/ButtonBase";
+import Grid from "@mui/material/Grid2";
 import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
 import { SwitchProps } from "@mui/material/Switch";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
-import Grid from "@mui/material/Unstable_Grid2";
 import { openThat } from "@nyanpasu/interface";
 import { LoadingSwitch } from "@nyanpasu/ui";
 
@@ -117,7 +117,12 @@ export const ClashFieldItem = ({
   const { palette } = useTheme();
 
   return (
-    <Grid xs={6} xl={3}>
+    <Grid
+      size={{
+        xs: 6,
+        xl: 3,
+      }}
+    >
       <Paper
         elevation={0}
         sx={{

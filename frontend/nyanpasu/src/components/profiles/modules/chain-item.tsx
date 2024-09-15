@@ -47,18 +47,29 @@ export const ChainItem = memo(function ChainItem({
     <>
       <ListItemButton
         className="!mb-2 !mt-2 !flex !justify-between gap-2"
-        sx={{
-          backgroundColor: selected
-            ? alpha(palette.primary.main, 0.3)
-            : alpha(palette.secondary.main, 0.1),
-          borderRadius: 4,
-
-          "&:hover": {
-            backgroundColor: selected
-              ? alpha(palette.primary.main, 0.5)
-              : undefined,
+        sx={[
+          {
+            borderRadius: 4,
           },
-        }}
+          selected
+            ? {
+                backgroundColor: alpha(palette.primary.main, 0.3),
+              }
+            : {
+                backgroundColor: alpha(palette.secondary.main, 0.1),
+              },
+          selected
+            ? {
+                "&:hover": {
+                  backgroundColor: alpha(palette.primary.main, 0.5),
+                },
+              }
+            : {
+                "&:hover": {
+                  backgroundColor: null,
+                },
+              },
+        ]}
         onClick={handleClick}
         disabled={isPending}
       >
@@ -79,7 +90,6 @@ export const ChainItem = memo(function ChainItem({
           <MenuIcon />
         </LoadingButton>
       </ListItemButton>
-
       <Menu
         anchorEl={anchorEl}
         open={Boolean(anchorEl)}

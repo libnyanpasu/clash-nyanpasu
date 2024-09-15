@@ -28,7 +28,7 @@ export const AppDrawer = () => {
           "fixed z-10 flex items-center gap-2",
           OS === "macos" ? "left-24 top-3" : "left-4 top-1.5",
         )}
-        data-windrag
+        data-tauri-drag-region
       >
         <IconButton
           className="!size-8 !min-w-0"
@@ -41,11 +41,11 @@ export const AppDrawer = () => {
           <MenuOpen />
         </IconButton>
 
-        <div className="size-5" data-windrag>
-          <AnimatedLogo className="h-full w-full" data-windrag />
+        <div className="size-5" data-tauri-drag-region>
+          <AnimatedLogo className="h-full w-full" data-tauri-drag-region />
         </div>
 
-        <div className="text-lg" data-windrag>
+        <div className="text-lg" data-tauri-drag-region>
           Clash Nyanpasu
         </div>
       </div>
@@ -55,15 +55,17 @@ export const AppDrawer = () => {
   return (
     <>
       <DrawerTitle />
-
       <Backdrop
         className={cn("z-20", OS !== "linux" && "backdrop-blur-xl")}
-        sx={{
-          backgroundColor:
-            OS === "linux"
-              ? undefined
-              : alpha(palette.primary[palette.mode], 0.1),
-        }}
+        sx={[
+          OS === "linux"
+            ? {
+                backgroundColor: null,
+              }
+            : {
+                backgroundColor: alpha(palette.primary[palette.mode], 0.1),
+              },
+        ]}
         open={open}
         onClick={() => setOpen(false)}
       >

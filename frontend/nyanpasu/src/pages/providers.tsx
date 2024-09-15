@@ -4,7 +4,7 @@ import RulesProvider from "@/components/providers/rules-provider";
 import UpdateProviders from "@/components/providers/update-providers";
 import UpdateProxiesProviders from "@/components/providers/update-proxies-providers";
 import { Chip } from "@mui/material";
-import Grid from "@mui/material/Unstable_Grid2";
+import Grid from "@mui/material/Grid2";
 import { useClashCore } from "@nyanpasu/interface";
 import { BasePage } from "@nyanpasu/ui";
 
@@ -32,10 +32,12 @@ export default function ProvidersPage() {
                 <Grid
                   key={name}
                   className="w-full"
-                  sm={12}
-                  md={6}
-                  lg={4}
-                  xl={3}
+                  size={{
+                    sm: 12,
+                    md: 6,
+                    lg: 4,
+                    xl: 3,
+                  }}
                 >
                   <ProxiesProvider provider={provider} />
                 </Grid>
@@ -56,7 +58,15 @@ export default function ProvidersPage() {
         {getRulesProviders.data && (
           <Grid container spacing={2}>
             {Object.entries(getRulesProviders.data).map(([name, provider]) => (
-              <Grid key={name} className="w-full" sm={12} md={6} lg={4} xl={3}>
+              <Grid
+                key={name}
+                size={{
+                  sm: 12,
+                  md: 6,
+                  lg: 4,
+                  xl: 3,
+                }}
+              >
                 <RulesProvider provider={provider} />
               </Grid>
             ))}

@@ -38,7 +38,7 @@ export const SidePage: FC<Props> = ({
 
   return (
     <BaseErrorBoundary>
-      <div className={style["MDYSidePage-Main"]} data-windrag>
+      <div className={style["MDYSidePage-Main"]} data-tauri-drag-region>
         <Header title={title} header={header} />
 
         <div className={style["MDYSidePage-Container"]}>

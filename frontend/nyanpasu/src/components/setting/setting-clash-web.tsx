@@ -10,7 +10,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import Grid from "@mui/material/Unstable_Grid2";
+import Grid from "@mui/material/Grid2";
 import { useClash, useNyanpasu } from "@nyanpasu/interface";
 import { BaseCard, BaseDialog, Expand } from "@nyanpasu/ui";
 import { ClashWebItem, extractServer, openWebUrl, renderChip } from "./modules";
@@ -81,7 +81,13 @@ export const SettingClashWeb = () => {
         <Grid container sx={{ mt: 1 }} spacing={2}>
           {nyanpasuConfig?.web_ui_list?.map((item, index) => {
             return (
-              <Grid key={index} xs={12} xl={6}>
+              <Grid
+                key={index}
+                size={{
+                  xs: 12,
+                  xl: 6,
+                }}
+              >
                 <ClashWebItem
                   label={renderChip(item, labels)}
                   onOpen={() => openWebUrl(item, labels)}

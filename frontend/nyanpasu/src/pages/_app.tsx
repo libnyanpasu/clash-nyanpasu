@@ -17,7 +17,7 @@ import useUpdater from "@/hooks/use-updater";
 import { Path } from "@/router";
 import { atomIsDrawer, memorizedRoutePathAtom } from "@/store";
 import { useTheme } from "@mui/material";
-import { Experimental_CssVarsProvider as CssVarsProvider } from "@mui/material/styles";
+import { StyledEngineProvider, ThemeProvider } from "@mui/material/styles";
 import { cn, useBreakpoint } from "@nyanpasu/ui";
 import { emit } from "@tauri-apps/api/event";
 import "dayjs/locale/ru";
@@ -77,21 +77,23 @@ export default function App() {
         refreshInterval: 5000,
       }}
     >
-      <CssVarsProvider theme={theme}>
-        <ThemeModeProvider />
-        <LogProvider />
-        <LocalesProvider />
-        <MutationProvider />
-        <NoticeProvider />
-        <SchemeProvider />
-        <UpdaterDialog />
+      <StyledEngineProvider injectFirst>
+        <ThemeProvider theme={theme}>
+          <ThemeModeProvider />
+          <LogProvider />
+          <LocalesProvider />
+          <MutationProvider />
+          <NoticeProvider />
+          <SchemeProvider />
+          <UpdaterDialog />
 
-        <AppContainer isDrawer={isDrawer}>
-          <PageTransition
-            className={cn("absolute inset-4 top-10", !isDrawer && "left-0")}
-          />
-        </AppContainer>
-      </CssVarsProvider>
+          <AppContainer isDrawer={isDrawer}>
+            <PageTransition
+              className={cn("absolute inset-4 top-10", !isDrawer && "left-0")}
+            />
+          </AppContainer>
+        </ThemeProvider>
+      </StyledEngineProvider>
     </SWRConfig>
   );
 }

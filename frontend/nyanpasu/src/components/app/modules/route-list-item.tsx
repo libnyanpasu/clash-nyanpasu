@@ -33,15 +33,26 @@ export const RouteListItem = ({
       className={cn(
         onlyIcon ? "!mx-auto !size-16 !rounded-3xl" : "!rounded-full !pr-14",
       )}
-      sx={{
-        backgroundColor: match
-          ? alpha(palette.primary.main, 0.3)
-          : alpha(palette.background.paper, 0.15),
-
-        "&:hover": {
-          backgroundColor: match ? alpha(palette.primary.main, 0.5) : undefined,
-        },
-      }}
+      sx={[
+        match
+          ? {
+              backgroundColor: alpha(palette.primary.main, 0.3),
+            }
+          : {
+              backgroundColor: alpha(palette.background.paper, 0.15),
+            },
+        match
+          ? {
+              "&:hover": {
+                backgroundColor: alpha(palette.primary.main, 0.5),
+              },
+            }
+          : {
+              "&:hover": {
+                backgroundColor: null,
+              },
+            },
+      ]}
       onClick={() => navigate(path)}
     >
       <ListItemIcon>
@@ -52,7 +63,6 @@ export const RouteListItem = ({
           className: onlyIcon ? "!size-8" : undefined,
         })}
       </ListItemIcon>
-
       {!onlyIcon && (
         <div
           className={cn(

@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import Grid from "@mui/material/Unstable_Grid2";
+import Grid from "@mui/material/Grid2";
 import { useNyanpasu } from "@nyanpasu/interface";
 import { BaseCard } from "@nyanpasu/ui";
 import { PaperSwitchButton } from "./modules/system-proxy";
@@ -12,7 +12,7 @@ export const SettingSystemBehavior = () => {
   return (
     <BaseCard label="Initiating Behavior">
       <Grid container spacing={2}>
-        <Grid xs={6}>
+        <Grid size={{ xs: 6 }}>
           <PaperSwitchButton
             label={t("Auto Launch")}
             checked={nyanpasuConfig?.enable_auto_launch || false}
@@ -24,7 +24,11 @@ export const SettingSystemBehavior = () => {
           />
         </Grid>
 
-        <Grid xs={6}>
+        <Grid
+          size={{
+            xs: 6,
+          }}
+        >
           <PaperSwitchButton
             label={t("Silent Start")}
             checked={nyanpasuConfig?.enable_silent_start || false}

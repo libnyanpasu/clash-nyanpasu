@@ -42,12 +42,12 @@ export const AppContainer = ({
         e.preventDefault();
       }}
     >
-      {isDrawer && <AppDrawer data-windrag />}
+      {isDrawer && <AppDrawer data-tauri-drag-region />}
 
       <Allotment separator proportionalLayout={false}>
         {!isDrawer && (
           <Allotment.Pane className="h-full" minSize={96} maxSize={260}>
-            <DrawerContent data-windrag />
+            <DrawerContent data-tauri-drag-region />
           </Allotment.Pane>
         )}
 
@@ -65,7 +65,7 @@ export const AppContainer = ({
 
           <div
             className={OS === "macos" ? "h-[2.75rem]" : "h-9"}
-            data-windrag
+            data-tauri-drag-region
           />
 
           {children}

@@ -5,7 +5,7 @@ import { atomIsDrawer } from "@/store";
 import { Visibility, VisibilityOff } from "@mui/icons-material";
 import { LoadingButton } from "@mui/lab";
 import { CircularProgress, IconButton, Paper, Tooltip } from "@mui/material";
-import Grid from "@mui/material/Unstable_Grid2";
+import Grid from "@mui/material/Grid2";
 import { useIPSB } from "@nyanpasu/interface";
 import { cn } from "@nyanpasu/ui";
 
@@ -37,7 +37,14 @@ export const IPASNPanel = ({ refreshCount }: { refreshCount: number }) => {
   const isDrawer = useAtomValue(atomIsDrawer);
 
   return (
-    <Grid sm={isDrawer ? 7 : 12} md={8} lg={5} xl={3}>
+    <Grid
+      size={{
+        sm: isDrawer ? 7 : 12,
+        md: 8,
+        lg: 5,
+        xl: 3,
+      }}
+    >
       <Paper className="relative flex !h-full select-text gap-4 !rounded-3xl px-4 py-3">
         {data ? (
           <>

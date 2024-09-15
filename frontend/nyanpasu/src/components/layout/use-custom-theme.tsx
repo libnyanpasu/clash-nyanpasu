@@ -13,7 +13,7 @@ const appWindow = getCurrentWebviewWindow();
 
 const applyRootStyleVar = (mode: "light" | "dark", theme: Theme) => {
   const root = document.documentElement;
-  const palette = theme.colorSchemes[mode].palette;
+  const palette = theme.colorSchemes[mode]!.palette;
 
   const isLightMode = mode !== "light";
   root.className = cn(mode === "dark" && "dark");

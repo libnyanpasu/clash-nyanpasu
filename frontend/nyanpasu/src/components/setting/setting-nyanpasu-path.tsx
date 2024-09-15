@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { OS } from "@/consts";
 import { sleep } from "@/utils";
 import { message } from "@/utils/notification";
-import Grid from "@mui/material/Unstable_Grid2";
+import Grid from "@mui/material/Grid2";
 import {
   collectLogs,
   openAppConfigDir,
@@ -75,8 +75,14 @@ export const SettingNyanpasuPath = () => {
   return (
     <BaseCard label={t("Path Config")}>
       <Grid container alignItems="stretch" spacing={2}>
-        {gridLists.map(({ label, onClick }, index) => (
-          <Grid key={index} xs={6} xl={3}>
+        {gridLists.map(({ label, onClick }) => (
+          <Grid
+            key={label}
+            size={{
+              xs: 6,
+              xl: 3,
+            }}
+          >
             <PaperButton
               label={label}
               onClick={onClick}

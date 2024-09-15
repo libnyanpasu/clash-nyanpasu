@@ -236,6 +236,12 @@ pub async fn get_ipsb_asn() -> CmdResult<Mapping> {
 #[tracing_attributes::instrument]
 pub async fn patch_clash_config(payload: Mapping) -> CmdResult {
     tracing::debug!("patch_clash_config: {payload:?}");
+    if RUNTIME_PATCHABLE_KEYS
+        .iter()
+        .any(|key| payload.contains_key(key))
+    {
+        wrap_err!(crate::core::clash::api::patch_configs(&payload).await);
+    }
     if let Err(e) = feat::patch_clash(payload).await {
         tracing::error!("{e}");
         return Err(format!("{e}"));

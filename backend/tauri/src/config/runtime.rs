@@ -4,6 +4,8 @@ use serde_yaml::Mapping;
 
 use crate::enhance::Logs;
 
+pub const RUNTIME_PATCHABLE_KEYS: [&str; 4] = ["allow-lan", "ipv6", "log-level", "mode"];
+
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
 pub struct IRuntime {
     pub config: Option<Mapping>,
@@ -18,17 +20,15 @@ impl IRuntime {
         Self::default()
     }
 
-    // 这里只更改 allow-lan | ipv6 | log-level
+    // 这里只更改 allow-lan | ipv6 | log-level | mode
     pub fn patch_config(&mut self, patch: Mapping) {
         tracing::debug!("patching runtime config: {:?}", patch);
         if let Some(config) = self.config.as_mut() {
-            ["allow-lan", "ipv6", "log-level"]
-                .into_iter()
-                .for_each(|key| {
-                    if let Some(value) = patch.get(key).to_owned() {
-                        config.insert(key.into(), value.clone());
-                    }
-                });
+            RUNTIME_PATCHABLE_KEYS.iter().for_each(|key| {
+                if let Some(value) = patch.get(*key).to_owned() {
+                    config.insert(key.to_string().into(), value.clone());
+                }
+            });
         }
     }
 }

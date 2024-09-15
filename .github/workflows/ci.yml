@@ -1,8 +1,14 @@
 on:
   pull_request:
-    branches: [main, dev]
+    branches:
+      - main
+      - dev
+      - release-*
   push:
-    branches: [main, dev]
+    branches:
+      - main
+      - dev
+      - release-*
 
 # the name of our workflow
 name: CI

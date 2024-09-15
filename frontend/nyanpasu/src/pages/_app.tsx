@@ -17,7 +17,7 @@ import useUpdater from "@/hooks/use-updater";
 import { Path } from "@/router";
 import { atomIsDrawer, memorizedRoutePathAtom } from "@/store";
 import { useTheme } from "@mui/material";
-import { Experimental_CssVarsProvider as CssVarsProvider } from "@mui/material/styles";
+import { CssVarsProvider } from "@mui/material/styles";
 import { cn, useBreakpoint } from "@nyanpasu/ui";
 import { emit } from "@tauri-apps/api/event";
 import "dayjs/locale/ru";

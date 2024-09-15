@@ -12,7 +12,7 @@ import {
   Tooltip,
   useTheme,
 } from "@mui/material";
-import Grid from "@mui/material/Unstable_Grid2";
+import Grid from "@mui/material/Grid2";
 import { getCoreStatus, useNyanpasu } from "@nyanpasu/interface";
 
 export const ServiceShortcuts = () => {
@@ -80,7 +80,14 @@ export const ServiceShortcuts = () => {
   }, [coreStatusSWR.data, palette.mode, palette.success, t]);
 
   return (
-    <Grid sm={isDrawer ? 6 : 12} md={6} lg={4} xl={3}>
+    <Grid
+      size={{
+        sm: isDrawer ? 6 : 12,
+        md: 6,
+        lg: 4,
+        xl: 3,
+      }}
+    >
       <Paper className="flex !h-full flex-col justify-between gap-2 !rounded-3xl p-3">
         {serviceStatus ? (
           <>

@@ -6,7 +6,7 @@ import { atomIsDrawer } from "@/store";
 import { message } from "@/utils/notification";
 import { NetworkPing, SettingsEthernet } from "@mui/icons-material";
 import { Chip, Paper, type ChipProps } from "@mui/material";
-import Grid from "@mui/material/Unstable_Grid2";
+import Grid from "@mui/material/Grid2";
 import { useClash, useNyanpasu } from "@nyanpasu/interface";
 import { PaperSwitchButton } from "../setting/modules/system-proxy";
 
@@ -89,7 +89,14 @@ export const ProxyShortcuts = () => {
   );
 
   return (
-    <Grid sm={isDrawer ? 6 : 12} md={6} lg={4} xl={3}>
+    <Grid
+      size={{
+        sm: isDrawer ? 6 : 12,
+        md: 6,
+        lg: 4,
+        xl: 3,
+      }}
+    >
       <Paper className="flex !h-full flex-col justify-between gap-2 !rounded-3xl p-3">
         <TitleComp />
 

@@ -3,7 +3,7 @@
   "latest": {
     "mihomo": "v1.18.8",
     "mihomo_alpha": "alpha-e33d4a4",
-    "clash_rs": "v0.3.1",
+    "clash_rs": "v0.3.2",
     "clash_premium": "2023-09-05-gdcc8d87"
   },
   "arch_template": {
@@ -52,5 +52,5 @@
       "linux-armv7hf": "clash-linux-armv7-n{}.gz"
     }
   },
-  "updated_at": "2024-09-12T22:20:40.988Z"
+  "updated_at": "2024-09-15T22:20:32.028Z"
 }

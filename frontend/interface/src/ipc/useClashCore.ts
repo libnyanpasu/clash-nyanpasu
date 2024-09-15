@@ -24,7 +24,7 @@ export const useClashCore = () => {
 
     await getGroupDelay(group?.name, options);
 
-    await mutate();
+    await mutate(() => tauri.mutateProxies());
   };
 
   const updateProxiesDelay = async (

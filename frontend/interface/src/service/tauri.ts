@@ -194,6 +194,10 @@ export const getProxies = async () => {
   return await invoke<Proxies>("get_proxies");
 };
 
+export const mutateProxies = async () => {
+  return await invoke<Proxies>("mutate_proxies");
+};
+
 export const selectProxy = async (group: string, name: string) => {
   return await invoke<void>("select_proxy", { group, name });
 };

@@ -245,6 +245,7 @@ fn main() -> std::io::Result<()> {
             ipc::open_that,
             ipc::is_appimage,
             ipc::get_service_install_prompt,
+            ipc::mutate_proxies,
         ]);
 
     #[cfg(target_os = "macos")]

@@ -1,5 +1,5 @@
 import { useAtom } from "jotai";
-import { RefObject, useEffect, useRef, useState } from "react";
+import { RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import ContentDisplay from "@/components/base/content-display";
 import {
@@ -95,11 +95,10 @@ export default function ProxyPage() {
 
   const nodeListRef = useRef<NodeListRef>(null);
 
-  const Header = () => {
+  const Header = useMemo(() => {
     const handleSwitch = (key: string) => {
       setCurrentMode(key);
     };
-
     return (
       <Box display="flex" alignItems="center" gap={1}>
         <ButtonGroup size="small">
@@ -117,7 +116,7 @@ export default function ProxyPage() {
         </ButtonGroup>
       </Box>
     );
-  };
+  }, [getCurrentMode, setCurrentMode, t]);
 
   const leftViewportRef = useRef<HTMLDivElement>(null);
 
@@ -126,7 +125,7 @@ export default function ProxyPage() {
   return (
     <SidePage
       title={t("Proxy Groups")}
-      header={<Header />}
+      header={Header}
       sideBar={<SideBar />}
       leftViewportRef={leftViewportRef}
       rightViewportRef={rightViewportRef}

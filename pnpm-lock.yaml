@@ -388,8 +388,8 @@ importers:
         specifier: npm:vite-plugin-monaco-editor-new@1.1.3
         version: vite-plugin-monaco-editor-new@1.1.3(monaco-editor@0.51.0)
       vite-plugin-sass-dts:
-        specifier: 1.3.26
-        version: 1.3.26(postcss@8.4.47)(prettier@3.3.3)(sass@1.78.0)(vite@5.4.5(@types/node@22.5.4)(less@4.2.0)(sass@1.78.0)(stylus@0.62.0))
+        specifier: 1.3.27
+        version: 1.3.27(postcss@8.4.47)(prettier@3.3.3)(sass@1.78.0)(vite@5.4.5(@types/node@22.5.4)(less@4.2.0)(sass@1.78.0)(stylus@0.62.0))
       vite-plugin-svgr:
         specifier: 4.2.0
         version: 4.2.0(rollup@4.21.0)(typescript@5.5.4)(vite@5.4.5(@types/node@22.5.4)(less@4.2.0)(sass@1.78.0)(stylus@0.62.0))
@@ -6805,8 +6805,8 @@ packages:
     peerDependencies:
       monaco-editor: '>=0.45.0'
 
-  vite-plugin-sass-dts@1.3.26:
-    resolution: {integrity: sha512-GjMasQRuG/vlH0b48KFR4QHfki1Vgp5y+Q9n9v7WKdUkLS5OB19ZE1bf3O1ElGsdRGn/xwWp7iq2Z/uBrSfHSw==}
+  vite-plugin-sass-dts@1.3.27:
+    resolution: {integrity: sha512-AO4l6vr8/JlzeBXq64cVGnY3aUSTsp+uH9vBXN5uVq+u38t5jJ/ngSEXg3zgYe2Z2YvfSYeFNXzExCDqwFbB0A==}
     engines: {node: '>=20'}
     peerDependencies:
       postcss: ^8
@@ -13838,7 +13838,7 @@ snapshots:
       esbuild: 0.19.12
       monaco-editor: 0.51.0
 
-  vite-plugin-sass-dts@1.3.26(postcss@8.4.47)(prettier@3.3.3)(sass@1.78.0)(vite@5.4.5(@types/node@22.5.4)(less@4.2.0)(sass@1.78.0)(stylus@0.62.0)):
+  vite-plugin-sass-dts@1.3.27(postcss@8.4.47)(prettier@3.3.3)(sass@1.78.0)(vite@5.4.5(@types/node@22.5.4)(less@4.2.0)(sass@1.78.0)(stylus@0.62.0)):
     dependencies:
       postcss: 8.4.47
       postcss-js: 4.0.1(postcss@8.4.47)

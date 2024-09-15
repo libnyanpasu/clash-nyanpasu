@@ -25,7 +25,6 @@ module.exports = {
   corePlugins: {
     preflight: true,
   },
-  important: "#root",
   theme: {
     extend: {
       maxHeight: {

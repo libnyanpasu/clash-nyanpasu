@@ -24,7 +24,7 @@ export const getClashInfo = async () => {
   return await invoke<ClashInfo | null>("get_clash_info");
 };
 
-export const patchClashInfo = async (payload: Partial<ClashConfig>) => {
+export const patchClashConfig = async (payload: Partial<ClashConfig>) => {
   return await invoke<void>("patch_clash_config", { payload });
 };
 

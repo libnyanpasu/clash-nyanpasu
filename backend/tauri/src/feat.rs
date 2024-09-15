@@ -194,7 +194,7 @@ pub fn disable_tun_mode() {
 pub async fn patch_clash(patch: Mapping) -> Result<()> {
     Config::clash().draft().patch_config(patch.clone());
 
-    let res = {
+    let run = move || async move {
         let mixed_port = patch.get("mixed-port");
         let enable_random_port = Config::verge().latest().enable_random_port.unwrap_or(false);
         if mixed_port.is_some() && !enable_random_port {
@@ -250,6 +250,7 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
         }
 
         if patch.get("mode").is_some() {
+            crate::feat::update_proxies_buff(None);
             log_err!(handle::Handle::update_systray_part());
         }
 
@@ -257,7 +258,7 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
 
         <Result<()>>::Ok(())
     };
-    match res {
+    match run().await {
         Ok(()) => {
             Config::clash().apply();
             Config::clash().data().save_config()?;

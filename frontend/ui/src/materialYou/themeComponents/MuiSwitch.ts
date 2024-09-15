@@ -22,6 +22,69 @@ export const MuiSwitch: Components<Theme>["MuiSwitch"] = {
         opacity: "0.5 !important",
         cursor: "not-allowed",
       },
+
+      variants: [
+        {
+          props: {
+            size: "medium",
+          },
+          style: {
+            height: 32,
+
+            "& .MuiSwitch-switchBase": {
+              padding: "6px",
+            },
+
+            "& .MuiSwitch-thumb": {
+              width: 14,
+              height: 14,
+              margin: 3,
+            },
+
+            "& .Mui-checked": {
+              "&.MuiSwitch-switchBase": {
+                marginLeft: "6px",
+              },
+
+              "& .MuiSwitch-thumb": {
+                width: 24,
+                height: 24,
+                margin: -2,
+              },
+            },
+          },
+        },
+        {
+          props: {
+            size: "small",
+          },
+          style: {
+            height: 24,
+
+            "& .MuiSwitch-switchBase": {
+              padding: "3px",
+            },
+
+            "& .MuiSwitch-thumb": {
+              width: 12,
+              height: 12,
+              margin: 3,
+            },
+
+            "& .Mui-checked": {
+              "&.MuiSwitch-switchBase": {
+                marginLeft: "1px",
+              },
+
+              "& .MuiSwitch-thumb": {
+                width: 17,
+                height: 17,
+                margin: 0,
+              },
+            },
+          },
+        },
+      ],
     }),
 
     track: ({ theme }) => ({
@@ -58,66 +121,4 @@ export const MuiSwitch: Components<Theme>["MuiSwitch"] = {
       },
     }),
   },
-  variants: [
-    {
-      props: {
-        size: "medium",
-      },
-      style: {
-        height: 32,
-
-        "& .MuiSwitch-switchBase": {
-          padding: "6px",
-        },
-
-        "& .MuiSwitch-thumb": {
-          width: 14,
-          height: 14,
-          margin: 3,
-        },
-
-        "& .Mui-checked": {
-          "&.MuiSwitch-switchBase": {
-            marginLeft: "6px",
-          },
-
-          "& .MuiSwitch-thumb": {
-            width: 24,
-            height: 24,
-            margin: -2,
-          },
-        },
-      },
-    },
-    {
-      props: {
-        size: "small",
-      },
-      style: {
-        height: 24,
-
-        "& .MuiSwitch-switchBase": {
-          padding: "3px",
-        },
-
-        "& .MuiSwitch-thumb": {
-          width: 12,
-          height: 12,
-          margin: 3,
-        },
-
-        "& .Mui-checked": {
-          "&.MuiSwitch-switchBase": {
-            marginLeft: "1px",
-          },
-
-          "& .MuiSwitch-thumb": {
-            width: 17,
-            height: 17,
-            margin: 0,
-          },
-        },
-      },
-    },
-  ],
 };

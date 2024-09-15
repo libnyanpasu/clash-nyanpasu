@@ -3,7 +3,7 @@ import {
   hexFromArgb,
   themeFromSourceColor,
 } from "@material/material-color-utilities";
-import { extendTheme } from "@mui/material/styles";
+import { createTheme } from "@mui/material/styles";
 import createPalette from "@mui/material/styles/createPalette";
 import {
   MuiButton,
@@ -59,7 +59,8 @@ export const createMDYTheme = (themeSchema: ThemeSchema) => {
     });
   };
 
-  const theme = extendTheme({
+  const theme = createTheme({
+    cssVariables: true,
     colorSchemes: {
       light: {
         palette: generatePalette("light"),

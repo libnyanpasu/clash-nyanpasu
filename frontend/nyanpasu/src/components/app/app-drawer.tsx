@@ -55,15 +55,17 @@ export const AppDrawer = () => {
   return (
     <>
       <DrawerTitle />
-
       <Backdrop
         className={cn("z-20", OS !== "linux" && "backdrop-blur-xl")}
-        sx={{
-          backgroundColor:
-            OS === "linux"
-              ? undefined
-              : alpha(palette.primary[palette.mode], 0.1),
-        }}
+        sx={[
+          OS === "linux"
+            ? {
+                backgroundColor: null,
+              }
+            : {
+                backgroundColor: alpha(palette.primary[palette.mode], 0.1),
+              },
+        ]}
         open={open}
         onClick={() => setOpen(false)}
       >

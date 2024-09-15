@@ -97,11 +97,15 @@ export const GroupList = ({
             <ListItemButton
               selected={selected}
               onClick={() => handleSelect(index)}
-              sx={{
-                backgroundColor: selected
-                  ? `${alpha(palette.primary.main, 0.3)} !important`
-                  : undefined,
-              }}
+              sx={[
+                selected
+                  ? {
+                      backgroundColor: `${alpha(palette.primary.main, 0.3)} !important`,
+                    }
+                  : {
+                      backgroundColor: null,
+                    },
+              ]}
               {...listItemButtonProps}
             >
               {group.icon && <IconRender icon={group.icon} />}

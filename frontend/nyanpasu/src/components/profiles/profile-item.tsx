@@ -201,12 +201,18 @@ export const ProfileItem = memo(function ProfileItem({
     <>
       <Paper
         className="relative transition-all"
-        sx={{
-          borderRadius: 6,
-          backgroundColor: selected
-            ? alpha(palette.primary.main, 0.2)
-            : undefined,
-        }}
+        sx={[
+          {
+            borderRadius: 6,
+          },
+          selected
+            ? {
+                backgroundColor: alpha(palette.primary.main, 0.2),
+              }
+            : {
+                backgroundColor: null,
+              },
+        ]}
       >
         <div
           className="flex cursor-pointer flex-col gap-4 p-5"
@@ -345,9 +351,7 @@ export const ProfileItem = memo(function ProfileItem({
           <div>Applying Profile...</div>
         </motion.div>
       </Paper>
-
       <MenuComp />
-
       <ProfileDialog
         open={open}
         onClose={() => setOpen(false)}

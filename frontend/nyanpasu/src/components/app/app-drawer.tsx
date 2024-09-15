@@ -1,16 +1,16 @@
-import { AnimatePresence, motion } from "framer-motion";
-import { useState } from "react";
 import getSystem from "@/utils/get-system";
 import { MenuOpen } from "@mui/icons-material";
 import {
-  alpha,
-  Backdrop,
-  darken,
-  IconButton,
-  lighten,
-  useTheme,
+    alpha,
+    Backdrop,
+    darken,
+    IconButton,
+    lighten,
+    useTheme,
 } from "@mui/material";
 import { cn } from "@nyanpasu/ui";
+import { AnimatePresence, motion } from "framer-motion";
+import { useState } from "react";
 import AnimatedLogo from "../layout/animated-logo";
 import DrawerContent from "./drawer-content";
 
@@ -28,7 +28,7 @@ export const AppDrawer = () => {
           "fixed z-10 flex items-center gap-2",
           OS === "macos" ? "left-24 top-3" : "left-4 top-1.5",
         )}
-        data-windrag
+        data-tauri-drag-region
       >
         <IconButton
           className="!size-8 !min-w-0"
@@ -41,11 +41,11 @@ export const AppDrawer = () => {
           <MenuOpen />
         </IconButton>
 
-        <div className="size-5" data-windrag>
-          <AnimatedLogo className="h-full w-full" data-windrag />
+        <div className="size-5" data-tauri-drag-region>
+          <AnimatedLogo className="h-full w-full" data-tauri-drag-region />
         </div>
 
-        <div className="text-lg" data-windrag>
+        <div className="text-lg" data-tauri-drag-region>
           Clash Nyanpasu
         </div>
       </div>

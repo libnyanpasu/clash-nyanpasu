@@ -23,7 +23,7 @@ module.exports = {
   content: ["./src/**/*.{tsx,ts}", "../ui/**/*.{tsx,ts}"],
   darkMode: "selector",
   corePlugins: {
-    preflight: false,
+    preflight: true,
   },
   important: "#root",
   theme: {

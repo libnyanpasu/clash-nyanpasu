@@ -69,17 +69,17 @@ export const DrawerContent = ({
         },
         style,
       )}
-      data-windrag
+      data-tauri-drag-region
     >
       <div className="mx-2 flex items-center justify-center gap-4">
-        <div className="h-full max-h-28 max-w-28" data-windrag>
-          <AnimatedLogo className="h-full w-full" data-windrag />
+        <div className="h-full max-h-28 max-w-28" data-tauri-drag-region>
+          <AnimatedLogo className="h-full w-full" data-tauri-drag-region />
         </div>
 
         {!onlyIcon && (
           <div
             className="mr-1 mt-1 whitespace-pre-wrap text-lg font-bold"
-            data-windrag
+            data-tauri-drag-region
           >
             {"Clash\nNyanpasu"}
           </div>

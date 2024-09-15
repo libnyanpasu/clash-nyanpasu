@@ -1,7 +1,7 @@
-import { motion } from "framer-motion";
-import { CSSProperties, FC, ReactNode, Ref, Suspense } from "react";
 import { cn } from "@/utils";
 import * as ScrollArea from "@radix-ui/react-scroll-area";
+import { motion } from "framer-motion";
+import { CSSProperties, FC, ReactNode, Ref, Suspense } from "react";
 import { BaseErrorBoundary } from "./baseErrorBoundary";
 import Header from "./header";
 import "./style.scss";
@@ -27,7 +27,7 @@ export const BasePage: FC<BasePageProps> = ({
 }) => {
   return (
     <BaseErrorBoundary>
-      <div className="MDYBasePage" data-windrag>
+      <div className="MDYBasePage" data-tauri-drag-region>
         <Header title={title} header={header} />
 
         <ScrollArea.Root

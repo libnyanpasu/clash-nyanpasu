@@ -1,21 +1,21 @@
-import { useLockFn } from "ahooks";
-import useDebounceFn from "ahooks/lib/useDebounceFn";
-import { AnimatePresence, motion } from "framer-motion";
-import {
-  CSSProperties,
-  ReactNode,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useState,
-} from "react";
-import { useTranslation } from "react-i18next";
 import { getSystem, useClickPosition } from "@/hooks";
 import { cn } from "@/utils";
 import LoadingButton from "@mui/lab/LoadingButton";
 import { Button, Divider } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import * as Portal from "@radix-ui/react-portal";
+import { useLockFn } from "ahooks";
+import useDebounceFn from "ahooks/lib/useDebounceFn";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+    CSSProperties,
+    ReactNode,
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useState,
+} from "react";
+import { useTranslation } from "react-i18next";
 
 const OS = getSystem();
 
@@ -182,7 +182,7 @@ export const BaseDialog = ({
                 "text-xl",
                 !full ? "m-4" : OS === "macos" ? "ml-20 p-3.5" : "m-2 ml-6",
               )}
-              data-windrag={full}
+              data-tauri-drag-region={full}
             >
               {title}
             </div>

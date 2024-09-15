@@ -1,16 +1,16 @@
+import { AnimatePresence, motion } from "framer-motion";
+import { useState } from "react";
 import getSystem from "@/utils/get-system";
 import { MenuOpen } from "@mui/icons-material";
 import {
-    alpha,
-    Backdrop,
-    darken,
-    IconButton,
-    lighten,
-    useTheme,
+  alpha,
+  Backdrop,
+  darken,
+  IconButton,
+  lighten,
+  useTheme,
 } from "@mui/material";
 import { cn } from "@nyanpasu/ui";
-import { AnimatePresence, motion } from "framer-motion";
-import { useState } from "react";
 import AnimatedLogo from "../layout/animated-logo";
 import DrawerContent from "./drawer-content";
 

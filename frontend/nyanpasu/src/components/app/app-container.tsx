@@ -1,8 +1,8 @@
+import { Allotment } from "allotment";
 import getSystem from "@/utils/get-system";
 import { alpha, useTheme } from "@mui/material";
 import Paper from "@mui/material/Paper";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { Allotment } from "allotment";
 import "allotment/dist/style.css";
 import { ReactNode } from "react";
 import { LayoutControl } from "../layout/layout-control";

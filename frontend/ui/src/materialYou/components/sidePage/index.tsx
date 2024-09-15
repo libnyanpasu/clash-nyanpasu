@@ -1,7 +1,7 @@
-import { cn } from "@/utils";
-import * as ScrollArea from "@radix-ui/react-scroll-area";
 import { motion } from "framer-motion";
 import { FC, ReactNode, Ref } from "react";
+import { cn } from "@/utils";
+import * as ScrollArea from "@radix-ui/react-scroll-area";
 import { BaseErrorBoundary } from "../basePage/baseErrorBoundary";
 import Header from "../basePage/header";
 import style from "./style.module.scss";

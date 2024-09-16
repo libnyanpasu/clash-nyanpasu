@@ -16,7 +16,7 @@ import { useNyanpasuStorageSubscribers } from "@/hooks/use-store";
 import useUpdater from "@/hooks/use-updater";
 import { Path } from "@/router";
 import { atomIsDrawer, memorizedRoutePathAtom } from "@/store";
-import { useTheme } from "@mui/material";
+import { CssBaseline, useTheme } from "@mui/material";
 import { StyledEngineProvider, ThemeProvider } from "@mui/material/styles";
 import { cn, useBreakpoint } from "@nyanpasu/ui";
 import { emit } from "@tauri-apps/api/event";
@@ -79,6 +79,7 @@ export default function App() {
     >
       <StyledEngineProvider injectFirst>
         <ThemeProvider theme={theme}>
+          <CssBaseline />
           <ThemeModeProvider />
           <LogProvider />
           <LocalesProvider />

@@ -2,14 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
 import getSystem from "@/utils/get-system";
 import { MenuOpen } from "@mui/icons-material";
-import {
-  alpha,
-  Backdrop,
-  darken,
-  IconButton,
-  lighten,
-  useTheme,
-} from "@mui/material";
+import { alpha, Backdrop, darken, IconButton, lighten } from "@mui/material";
 import { cn } from "@nyanpasu/ui";
 import AnimatedLogo from "../layout/animated-logo";
 import DrawerContent from "./drawer-content";
@@ -17,8 +10,6 @@ import DrawerContent from "./drawer-content";
 const OS = getSystem();
 
 export const AppDrawer = () => {
-  const { palette } = useTheme();
-
   const [open, setOpen] = useState(false);
 
   const DrawerTitle = () => {
@@ -32,10 +23,12 @@ export const AppDrawer = () => {
       >
         <IconButton
           className="!size-8 !min-w-0"
-          sx={{
-            backgroundColor: alpha(palette.primary.main, 0.1),
-            svg: { transform: "scale(0.9)" },
-          }}
+          sx={[
+            (theme) => ({
+              backgroundColor: alpha(theme.palette.primary.main, 0.1),
+              svg: { transform: "scale(0.9)" },
+            }),
+          ]}
           onClick={() => setOpen(true)}
         >
           <MenuOpen />
@@ -58,13 +51,17 @@ export const AppDrawer = () => {
       <Backdrop
         className={cn("z-20", OS !== "linux" && "backdrop-blur-xl")}
         sx={[
-          OS === "linux"
-            ? {
-                backgroundColor: null,
-              }
-            : {
-                backgroundColor: alpha(palette.primary[palette.mode], 0.1),
-              },
+          (theme) =>
+            OS === "linux"
+              ? {
+                  backgroundColor: null,
+                }
+              : {
+                  backgroundColor: alpha(theme.palette.primary.light, 0.1),
+                  ...theme.applyStyles("dark", {
+                    backgroundColor: alpha(theme.palette.primary.dark, 0.1),
+                  }),
+                },
         ]}
         open={open}
         onClick={() => setOpen(false)}
@@ -88,14 +85,23 @@ export const AppDrawer = () => {
             >
               <DrawerContent
                 className="max-w-64"
-                style={{
-                  backgroundColor:
+                sx={[
+                  (theme) =>
                     OS === "linux"
-                      ? palette.mode === "light"
-                        ? lighten(palette.primary[palette.mode], 0.9)
-                        : darken(palette.primary[palette.mode], 0.7)
-                      : undefined,
-                }}
+                      ? {
+                          backgroundColor: lighten(
+                            theme.palette.primary.light,
+                            0.9,
+                          ),
+                          ...theme.applyStyles("dark", {
+                            backgroundColor: darken(
+                              theme.palette.primary.dark,
+                              0.9,
+                            ),
+                          }),
+                        }
+                      : {},
+                ]}
               />
             </motion.div>
           </div>

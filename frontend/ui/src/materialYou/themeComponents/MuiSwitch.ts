@@ -92,10 +92,10 @@ export const MuiSwitch: Components<Theme>["MuiSwitch"] = {
       backgroundColor: theme.palette.grey.A200,
       opacity: `1 !important`,
 
-      [theme.getColorSchemeSelector("dark")]: {
+      ...theme.applyStyles("dark", {
         backgroundColor: theme.palette.grey.A700,
         opacity: `0.7 !important`,
-      },
+      }),
 
       "&::before": {
         content: '""',
@@ -116,9 +116,9 @@ export const MuiSwitch: Components<Theme>["MuiSwitch"] = {
       boxShadow: "none",
       color: theme.palette.grey.A700,
 
-      [theme.getColorSchemeSelector("dark")]: {
+      ...theme.applyStyles("dark", {
         backgroundColor: theme.palette.grey.A200,
-      },
+      }),
     }),
   },
 };

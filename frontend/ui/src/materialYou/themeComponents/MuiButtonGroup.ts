@@ -10,7 +10,7 @@ export const MuiButtonGroup: Components<Theme>["MuiButtonGroup"] = {
       border: `1px solid ${darken(theme.palette.primary.main, 0.09)}`,
       color: darken(theme.palette.primary.main, 0.2),
 
-      "&.MuiButton-containedPrimary": {
+      "&.MuiButton-contained.MuiButton-colorPrimary": {
         boxShadow: "none",
         border: `1px solid ${theme.palette.primary.mainChannel}`,
         backgroundColor: alpha(theme.palette.primary.main, 0.2),

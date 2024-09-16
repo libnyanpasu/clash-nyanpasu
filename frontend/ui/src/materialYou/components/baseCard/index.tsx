@@ -7,7 +7,6 @@ import {
   CardContent,
   CircularProgress,
   Typography,
-  useTheme,
 } from "@mui/material";
 import style from "./style.module.scss";
 
@@ -22,8 +21,6 @@ export const BaseCard = ({
   loading?: boolean;
   children?: ReactNode;
 }) => {
-  const { palette } = useTheme();
-
   return (
     <Card style={{ position: "relative" }}>
       <CardContent>
@@ -58,14 +55,16 @@ export const BaseCard = ({
           },
         }}
       >
-        <div
+        <Box
           className={style.LoadingMask}
-          style={{
-            backgroundColor: alpha(palette.grey[100], 0.1),
-          }}
+          sx={[
+            (theme) => ({
+              backgroundColor: alpha(theme.palette.grey[100], 0.1),
+            }),
+          ]}
         >
           <CircularProgress />
-        </div>
+        </Box>
       </motion.div>
     </Card>
   );

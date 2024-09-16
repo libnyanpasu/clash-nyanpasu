@@ -16,7 +16,7 @@ const applyRootStyleVar = (mode: "light" | "dark", theme: Theme) => {
   const palette = theme.colorSchemes[mode]!.palette;
 
   const isLightMode = mode !== "light";
-  root.className = cn(mode === "dark" && "dark");
+  root.className = cn(mode === "dark" ? "dark" : "light");
   const backgroundColor = isLightMode
     ? darken(palette.secondary.dark, 0.95)
     : lighten(palette.secondary.light, 0.95);
@@ -32,6 +32,11 @@ const applyRootStyleVar = (mode: "light" | "dark", theme: Theme) => {
     "--background-color-alpha",
     alpha(palette.primary.main, 0.1),
   );
+
+  const reactRootDom = document.getElementById("root");
+  if (reactRootDom) {
+    reactRootDom.className = cn(mode === "dark" ? "dark" : "light");
+  }
 };
 
 /**
@@ -78,20 +83,22 @@ export const ThemeModeProvider = () => {
           setMode(m);
         }
       });
-
-      const unlisten = appWindow.onThemeChanged((e) => {
-        setThemeMode(e.payload);
-        setMode(e.payload);
-      });
-
-      return () => {
-        unlisten.then((fn) => fn());
-      };
+    } else {
+      const chosenThemeMode = nyanpasuConfig?.theme_mode || "light";
+      setThemeMode(chosenThemeMode);
+      setMode(chosenThemeMode);
     }
 
-    const chosenThemeMode = nyanpasuConfig?.theme_mode || "light";
-    setThemeMode(chosenThemeMode);
-    setMode(chosenThemeMode);
+    const unlisten = appWindow.onThemeChanged((e) => {
+      if (nyanpasuConfig?.theme_mode === "system") {
+        setThemeMode(e.payload);
+        setMode(e.payload);
+      }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
   }, [nyanpasuConfig?.theme_mode, setMode, setThemeMode]);
 
   return null;

@@ -1,11 +1,11 @@
 import { useSize } from "ahooks";
 import { useAtom } from "jotai";
-import { merge } from "lodash-es";
-import { CSSProperties, useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { atomIsDrawerOnlyIcon } from "@/store";
 import getSystem from "@/utils/get-system";
 import { languageQuirks } from "@/utils/language";
 import { getRoutesWithIcon } from "@/utils/routes-utils";
+import { Box, SxProps, Theme } from "@mui/material";
 import { useNyanpasu } from "@nyanpasu/interface";
 import { cn } from "@nyanpasu/ui";
 import AnimatedLogo from "../layout/animated-logo";
@@ -13,10 +13,10 @@ import RouteListItem from "./modules/route-list-item";
 
 export const DrawerContent = ({
   className,
-  style,
+  sx,
 }: {
   className?: string;
-  style?: CSSProperties;
+  sx?: SxProps<Theme>;
 }) => {
   const [onlyIcon, setOnlyIcon] = useAtom(atomIsDrawerOnlyIcon);
 
@@ -51,7 +51,7 @@ export const DrawerContent = ({
   }, [handleResize, size?.width]);
 
   return (
-    <div
+    <Box
       ref={contentRef}
       className={cn(
         "p-4",
@@ -63,12 +63,11 @@ export const DrawerContent = ({
         "gap-4",
         className,
       )}
-      style={merge(
+      sx={[
         {
           backgroundColor: "var(--background-color-alpha)",
         },
-        style,
-      )}
+      ]}
       data-tauri-drag-region
     >
       <div className="mx-2 flex items-center justify-center gap-4">
@@ -99,7 +98,7 @@ export const DrawerContent = ({
           );
         })}
       </div>
-    </div>
+    </Box>
   );
 };
 

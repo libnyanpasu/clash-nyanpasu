@@ -58,36 +58,47 @@ export const createMDYTheme = (themeSchema: ThemeSchema) => {
       },
     });
   };
-
-  const theme = createTheme({
-    cssVariables: true,
-    colorSchemes: {
-      light: {
-        palette: generatePalette("light"),
+  const colorSchemes = {
+    light: {
+      palette: generatePalette("light"),
+    },
+    dark: {
+      palette: generatePalette("dark"),
+    },
+  };
+  console.log(colorSchemes);
+  const theme = createTheme(
+    {
+      cssVariables: {
+        colorSchemeSelector: "class",
       },
-      dark: {
-        palette: generatePalette("dark"),
+      colorSchemes: {
+        light: true,
+        dark: true,
       },
+      typography: {
+        fontFamily: themeSchema?.font_family,
+      },
+      components: {
+        MuiButton,
+        MuiButtonGroup,
+        MuiCard,
+        MuiCardContent,
+        MuiDialog,
+        MuiDialogActions,
+        MuiDialogContent,
+        MuiDialogTitle,
+        MuiLinearProgress,
+        MuiMenu,
+        MuiPaper,
+        MuiSwitch,
+      },
+      breakpoints: MUI_BREAKPOINTS,
     },
-    typography: {
-      fontFamily: themeSchema?.font_family,
+    {
+      colorSchemes,
     },
-    components: {
-      MuiButton,
-      MuiButtonGroup,
-      MuiCard,
-      MuiCardContent,
-      MuiDialog,
-      MuiDialogActions,
-      MuiDialogContent,
-      MuiDialogTitle,
-      MuiLinearProgress,
-      MuiMenu,
-      MuiPaper,
-      MuiSwitch,
-    },
-    breakpoints: MUI_BREAKPOINTS,
-  });
+  );
 
   return theme;
 };

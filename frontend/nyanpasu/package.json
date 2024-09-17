@@ -21,7 +21,7 @@
     "@mui/material": "6.1.0",
     "@nyanpasu/interface": "workspace:^",
     "@nyanpasu/ui": "workspace:^",
-    "@tauri-apps/api": "2.0.0-rc.4",
+    "@tauri-apps/api": "2.0.0-rc.5",
     "@types/json-schema": "7.0.15",
     "ahooks": "3.8.1",
     "allotment": "1.20.2",

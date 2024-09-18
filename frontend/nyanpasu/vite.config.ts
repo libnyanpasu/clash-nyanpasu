@@ -6,9 +6,8 @@ import { defineConfig } from "vite";
 import sassDts from "vite-plugin-sass-dts";
 import svgr from "vite-plugin-svgr";
 import tsconfigPaths from "vite-tsconfig-paths";
-// import monaco from "vite-plugin-monaco-editor";
-import generouted from "@generouted/react-router/plugin";
 // import react from "@vitejs/plugin-react";
+import { TanStackRouterVite } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react-swc";
 
 const devtools = () => {
@@ -50,6 +49,11 @@ export default defineConfig(({ command }) => {
     plugins: [
       tsconfigPaths(),
       svgr(),
+      TanStackRouterVite({
+        autoCodeSplitting: true,
+        routeFileIgnorePrefix: "-",
+        routesDirectory: "./src/pages",
+      }),
       react({
         // babel: {
         //   plugins: ["@emotion/babel-plugin"],
@@ -66,17 +70,7 @@ export default defineConfig(({ command }) => {
       Icons({
         compiler: "jsx", // or 'solid'
       }),
-      generouted(),
       sassDts({ esmExport: true }),
-      // monaco({
-      //   languageWorkers: ["editorWorkerService", "typescript", "json"],
-      //   customWorkers: [
-      //     {
-      //       label: "yaml",
-      //       entry: "monaco-yaml/yaml.worker",
-      //     },
-      //   ],
-      // }),
       isDev && devtools(),
     ],
     resolve: {
@@ -87,7 +81,7 @@ export default defineConfig(({ command }) => {
       },
     },
     optimizeDeps: {
-      entries: ["./src/pages/**/*.tsx", "./src/main.tsx"],
+      entries: ["./src/main.tsx"],
       include: ["@emotion/styled"],
     },
     esbuild: {

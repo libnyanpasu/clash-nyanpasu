@@ -4,12 +4,17 @@ import { useTranslation } from "react-i18next";
 import { SearchTermCtx } from "@/components/connections/connection-search-term";
 import HeaderSearch from "@/components/connections/header-search";
 import { BasePage } from "@nyanpasu/ui";
+import { createFileRoute } from "@tanstack/react-router";
 
 const Component = lazy(
   () => import("@/components/connections/connection-page"),
 );
 
-export const Connections = () => {
+export const Route = createFileRoute("/connections")({
+  component: Connections,
+});
+
+export default function Connections() {
   const { t } = useTranslation();
 
   const [searchTerm, setSearchTerm] = useState<string>();
@@ -34,6 +39,4 @@ export const Connections = () => {
       </BasePage>
     </SearchTermCtx.Provider>
   );
-};
-
-export default Connections;
+}

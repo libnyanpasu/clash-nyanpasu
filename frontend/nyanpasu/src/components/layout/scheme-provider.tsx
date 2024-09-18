@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useNavigate } from "@/router";
+import { useNavigate } from "@tanstack/react-router";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 
 export const SchemeProvider = () => {
@@ -26,17 +26,16 @@ export const SchemeProvider = () => {
           case "install-config":
           case "subscribe-remote-profile":
             console.log("redirect to profile page");
-            navigate("/profiles", {
-              state: {
-                subscribe: {
-                  url: url.searchParams.get("url"),
-                  name: url.searchParams.has("name")
-                    ? decodeURIComponent(url.searchParams.get("name")!)
-                    : undefined,
-                  desc: url.searchParams.has("desc")
-                    ? decodeURIComponent(url.searchParams.get("desc")!)
-                    : undefined,
-                },
+            navigate({
+              to: "/profiles",
+              search: {
+                subscribeUrl: url.searchParams.get("url") || undefined,
+                subscribeName: url.searchParams.has("name")
+                  ? decodeURIComponent(url.searchParams.get("name")!)
+                  : undefined,
+                subscribeDesc: url.searchParams.has("desc")
+                  ? decodeURIComponent(url.searchParams.get("desc")!)
+                  : undefined,
               },
             });
         }

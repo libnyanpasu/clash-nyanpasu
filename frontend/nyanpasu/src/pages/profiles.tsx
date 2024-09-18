@@ -2,8 +2,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useAtom } from "jotai";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useLocation } from "react-router-dom";
 import { useWindowSize } from "react-use";
+import { z } from "zod";
 import {
   atomChainsSelected,
   atomGlobalChainCurrent,
@@ -19,15 +19,27 @@ import { QuickImport } from "@/components/profiles/quick-import";
 import RuntimeConfigDiffDialog from "@/components/profiles/runtime-config-diff-dialog";
 import { filterProfiles } from "@/components/profiles/utils";
 import { Public } from "@mui/icons-material";
-import { Badge, Button, IconButton, useTheme } from "@mui/material";
+import { Badge, Button, IconButton } from "@mui/material";
 import Grid from "@mui/material/Grid2";
 import { Profile, useClash } from "@nyanpasu/interface";
 import { SidePage } from "@nyanpasu/ui";
+import { createFileRoute, useLocation } from "@tanstack/react-router";
+import { zodSearchValidator } from "@tanstack/router-zod-adapter";
 
-export const ProfilePage = () => {
+const profileSearchParams = z.object({
+  subscribeName: z.string().optional(),
+  subscribeUrl: z.string().url().optional(),
+  subscribeDesc: z.string().optional(),
+});
+
+export const Route = createFileRoute("/profiles")({
+  validateSearch: zodSearchValidator(profileSearchParams),
+  component: ProfilePage,
+});
+
+export default function ProfilePage() {
   const { t } = useTranslation();
   const { getProfiles, getRuntimeLogs } = useClash();
-  const theme = useTheme();
   const maxLogLevelTriggered = useMemo(() => {
     const currentProfileChains =
       getProfiles.data?.items?.find(
@@ -92,15 +104,15 @@ export const ProfilePage = () => {
   const [runtimeConfigViewerOpen, setRuntimeConfigViewerOpen] = useState(false);
   const location = useLocation();
   const addProfileCtxValue = useMemo(() => {
-    if (!location.state || !location.state.subscribe) {
+    if (!location.search || !location.search.subscribeUrl) {
       return null;
     }
     return {
-      name: location.state.subscribe.name,
-      desc: location.state.subscribe.desc,
-      url: location.state.subscribe.url,
+      name: location.search.subscribeName!,
+      desc: location.search.subscribeDesc!,
+      url: location.search.subscribeUrl,
     } satisfies AddProfileContextValue;
-  }, [location.state]);
+  }, [location.search]);
 
   const hasSide = globalChain || chainsSelected;
 
@@ -197,6 +209,4 @@ export const ProfilePage = () => {
       </AddProfileContext.Provider>
     </SidePage>
   );
-};
-
-export default ProfilePage;
+}

@@ -7,6 +7,11 @@ import { Chip } from "@mui/material";
 import Grid from "@mui/material/Grid2";
 import { useClashCore } from "@nyanpasu/interface";
 import { BasePage } from "@nyanpasu/ui";
+import { createFileRoute } from "@tanstack/react-router";
+
+export const Route = createFileRoute("/providers")({
+  component: ProvidersPage,
+});
 
 export default function ProvidersPage() {
   const { t } = useTranslation();

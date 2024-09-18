@@ -24,6 +24,11 @@ import {
 } from "@mui/material";
 import { Clash, useClashCore, useNyanpasu } from "@nyanpasu/interface";
 import { cn, SidePage } from "@nyanpasu/ui";
+import { createFileRoute } from "@tanstack/react-router";
+
+export const Route = createFileRoute("/proxies")({
+  component: ProxyPage,
+});
 
 function SideBar() {
   const { palette } = useTheme();

@@ -2,7 +2,7 @@ import { useWhyDidYouUpdate } from "ahooks";
 import { useAtomValue, useSetAtom } from "jotai";
 import { mergeWith } from "lodash-es";
 import { useEffect, useMemo } from "react";
-import { defaultTheme } from "@/pages/_theme";
+import { defaultTheme } from "@/pages/-theme";
 import { themeMode as themeModeAtom } from "@/store";
 import { alpha, darken, lighten, Theme, useColorScheme } from "@mui/material";
 import { useNyanpasu } from "@nyanpasu/interface";
@@ -13,7 +13,7 @@ const appWindow = getCurrentWebviewWindow();
 
 const applyRootStyleVar = (mode: "light" | "dark", theme: Theme) => {
   const root = document.documentElement;
-  const palette = theme.colorSchemes[mode]!.palette;
+  const palette = theme.palette;
 
   const isLightMode = mode !== "light";
   root.className = cn(mode === "dark" ? "dark" : "light");

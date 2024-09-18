@@ -1,7 +1,14 @@
-import { AnimatePresence, motion, Variant } from "framer-motion";
-import { useLocation, useOutlet } from "react-router-dom";
+import { AnimatePresence, motion, useIsPresent, Variant } from "framer-motion";
+import { cloneDeep } from "lodash-es";
+import { useContext, useRef } from "react";
 import { useNyanpasu } from "@nyanpasu/interface";
 import { cn } from "@nyanpasu/ui";
+import {
+  getRouterContext,
+  Outlet,
+  useMatch,
+  useMatches,
+} from "@tanstack/react-router";
 
 type PageVariantKey = "initial" | "visible" | "hidden";
 
@@ -46,12 +53,50 @@ export const pageTransitionVariants: { [name: string]: PageVariant } = {
   },
 };
 
+function AnimatedOutlet({
+  ref,
+  className,
+  ...others
+}: Parameters<typeof motion.div>["0"]) {
+  const isPresent = useIsPresent();
+
+  const matches = useMatches();
+  const prevMatches = useRef(matches);
+
+  const RouterContext = getRouterContext();
+  const routerContext = useContext(RouterContext);
+
+  let renderedContext = routerContext;
+
+  if (isPresent) {
+    prevMatches.current = cloneDeep(matches);
+  } else {
+    renderedContext = cloneDeep(routerContext);
+    renderedContext.__store.state.matches = [
+      ...matches.map((m, i) => ({
+        ...(prevMatches.current[i] || m),
+        id: m.id,
+      })),
+      ...prevMatches.current.slice(matches.length),
+    ];
+  }
+
+  return (
+    <motion.div ref={ref} className={className} {...others}>
+      <RouterContext.Provider value={renderedContext}>
+        <Outlet />
+      </RouterContext.Provider>
+    </motion.div>
+  );
+}
+
 export default function PageTransition({ className }: { className?: string }) {
   const { nyanpasuConfig } = useNyanpasu();
 
-  const outlet = useOutlet();
-
-  const hashkey = useLocation().pathname;
+  const matches = useMatches();
+  const match = useMatch({ strict: false });
+  const nextMatchIndex = matches.findIndex((d) => d.id === match.id) + 1;
+  const nextMatch = matches[nextMatchIndex];
 
   const variants = nyanpasuConfig?.lighten_animation_effects
     ? pageTransitionVariants.transparent
@@ -59,18 +104,16 @@ export default function PageTransition({ className }: { className?: string }) {
 
   return (
     <AnimatePresence mode="popLayout" initial={false}>
-      <motion.div
+      <AnimatedOutlet
         className={cn("page-transition", className)}
-        key={hashkey}
+        key={nextMatch ? nextMatch.id : ""}
         layout
-        layoutId={hashkey}
+        layoutId={nextMatch.id}
         variants={variants}
         initial="initial"
         animate="visible"
         exit="hidden"
-      >
-        {outlet}
-      </motion.div>
+      />
     </AnimatePresence>
   );
 }

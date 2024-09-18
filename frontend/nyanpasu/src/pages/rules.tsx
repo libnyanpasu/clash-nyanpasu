@@ -6,6 +6,11 @@ import { atomRulePage } from "@/components/rules/modules/store";
 import { alpha, FilledInputProps, TextField, useTheme } from "@mui/material";
 import { useClashCore } from "@nyanpasu/interface";
 import { BasePage } from "@nyanpasu/ui";
+import { createFileRoute } from "@tanstack/react-router";
+
+export const Route = createFileRoute("/rules")({
+  component: RulesPage,
+});
 
 export default function RulesPage() {
   const { t } = useTranslation();

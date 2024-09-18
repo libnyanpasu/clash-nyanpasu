@@ -2,6 +2,11 @@ import { lazy, RefObject, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import LogHeader from "@/components/logs/los-header";
 import { BasePage } from "@nyanpasu/ui";
+import { createFileRoute } from "@tanstack/react-router";
+
+export const Route = createFileRoute("/logs")({
+  component: LogPage,
+});
 
 export default function LogPage() {
   const { t } = useTranslation();

@@ -1,11 +1,10 @@
-import { FallbackProps } from "react-error-boundary";
-import { Outlet } from "react-router-dom";
+import {
+  createFileRoute,
+  ErrorComponentProps,
+  Outlet,
+} from "@tanstack/react-router";
 
-export default function Layout() {
-  return <Outlet />;
-}
-
-export const Catch = ({ error }: FallbackProps) => {
+export const Catch = ({ error }: ErrorComponentProps) => {
   return (
     <div style={{ backgroundColor: "#fff" }}>
       <h1>Oops!</h1>
@@ -16,3 +15,13 @@ export const Catch = ({ error }: FallbackProps) => {
 };
 
 export const Pending = () => <div>Loading from _layout...</div>;
+
+export const Route = createFileRoute("/_layout")({
+  component: Layout,
+  errorComponent: Catch,
+  pendingComponent: Pending,
+});
+
+export default function Layout() {
+  return <Outlet />;
+}

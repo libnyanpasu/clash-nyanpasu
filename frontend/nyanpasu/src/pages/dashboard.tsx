@@ -5,8 +5,13 @@ import ProxyShortcuts from "@/components/dashboard/proxy-shortcuts";
 import ServiceShortcuts from "@/components/dashboard/service-shortcuts";
 import Grid from "@mui/material/Grid2";
 import { BasePage } from "@nyanpasu/ui";
+import { createFileRoute } from "@tanstack/react-router";
 
-export const Dashboard = () => {
+export const Route = createFileRoute("/dashboard")({
+  component: Dashboard,
+});
+
+export default function Dashboard() {
   const { t } = useTranslation();
 
   return (
@@ -22,6 +27,4 @@ export const Dashboard = () => {
       </Grid>
     </BasePage>
   );
-};
-
-export default Dashboard;
+}

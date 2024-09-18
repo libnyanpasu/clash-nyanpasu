@@ -1,11 +1,11 @@
 import { createElement } from "react";
 import { useTranslation } from "react-i18next";
-import { useMatch, useNavigate } from "react-router-dom";
 import { languageQuirks } from "@/utils/language";
 import { SvgIconComponent } from "@mui/icons-material";
 import { alpha, ListItemButton, ListItemIcon, useTheme } from "@mui/material";
 import { useNyanpasu } from "@nyanpasu/interface";
 import { cn } from "@nyanpasu/ui";
+import { useMatch, useNavigate } from "@tanstack/react-router";
 
 export const RouteListItem = ({
   name,
@@ -21,8 +21,11 @@ export const RouteListItem = ({
   const { t } = useTranslation();
 
   const { palette } = useTheme();
-
-  const match = useMatch({ path: path, end: true });
+  const match = useMatch({
+    strict: false,
+    shouldThrow: false,
+    from: path as never,
+  });
 
   const navigate = useNavigate();
 
@@ -34,14 +37,14 @@ export const RouteListItem = ({
         onlyIcon ? "!mx-auto !size-16 !rounded-3xl" : "!rounded-full !pr-14",
       )}
       sx={[
-        match
+        !!match
           ? {
               backgroundColor: alpha(palette.primary.main, 0.3),
             }
           : {
               backgroundColor: alpha(palette.background.paper, 0.15),
             },
-        match
+        !!match
           ? {
               "&:hover": {
                 backgroundColor: alpha(palette.primary.main, 0.5),
@@ -53,7 +56,11 @@ export const RouteListItem = ({
               },
             },
       ]}
-      onClick={() => navigate(path)}
+      onClick={() =>
+        navigate({
+          to: path,
+        })
+      }
     >
       <ListItemIcon>
         {createElement(icon, {

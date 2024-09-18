@@ -9,6 +9,11 @@ import { Feedback, GitHub, Keyboard } from "@mui/icons-material";
 import { IconButton } from "@mui/material";
 import { collect_envs, openThat } from "@nyanpasu/interface";
 import { BasePage } from "@nyanpasu/ui";
+import { createFileRoute } from "@tanstack/react-router";
+
+export const Route = createFileRoute("/settings")({
+  component: SettingPage,
+});
 
 const GithubIcon = () => {
   const toGithubRepo = useLockFn(() => {

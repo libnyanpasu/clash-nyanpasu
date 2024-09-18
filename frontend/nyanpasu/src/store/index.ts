@@ -1,7 +1,7 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { SortType } from "@/components/proxies/utils";
-import { Path } from "@/router";
+import { FileRouteTypes } from "@/routeTree.gen";
 import { LogMessage } from "@nyanpasu/interface";
 
 const atomWithLocalStorage = <T>(key: string, initialValue: T) => {
@@ -30,10 +30,9 @@ const atomWithLocalStorage = <T>(key: string, initialValue: T) => {
   return derivedAtom;
 };
 
-export const memorizedRoutePathAtom = atomWithStorage<Path | null>(
-  "memorizedRoutePathAtom",
-  null,
-);
+export const memorizedRoutePathAtom = atomWithStorage<
+  FileRouteTypes["fullPaths"] | null
+>("memorizedRoutePathAtom", null);
 
 export const proxyGroupAtom = atomWithLocalStorage<{
   selector: number | null;

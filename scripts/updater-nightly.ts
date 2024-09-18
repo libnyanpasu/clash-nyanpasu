@@ -46,7 +46,11 @@ async function resolveUpdater() {
       "darwin-intel": { signature: "", url: "" },
       "darwin-x86_64": { signature: "", url: "" },
       "linux-x86_64": { signature: "", url: "" },
+      // "linux-aarch64": { signature: "", url: "" },
+      // "linux-armv7": { signature: "", url: "" },
       "windows-x86_64": { signature: "", url: "" },
+      "windows-i686": { signature: "", url: "" },
+      "windows-aarch64": { signature: "", url: "" },
     },
   };
 
@@ -54,15 +58,35 @@ async function resolveUpdater() {
     const { name, browser_download_url } = asset;
 
     // win64 url
-    if (name.endsWith(".nsis.zip")) {
+    if (name.endsWith(".nsis.zip") && name.includes("x64")) {
       updateData.platforms.win64.url = browser_download_url;
       updateData.platforms["windows-x86_64"].url = browser_download_url;
     }
     // win64 signature
-    if (name.endsWith(".nsis.zip.sig")) {
+    if (name.endsWith(".nsis.zip.sig") && name.includes("x64")) {
       const sig = await getSignature(browser_download_url);
       updateData.platforms.win64.signature = sig;
       updateData.platforms["windows-x86_64"].signature = sig;
+    }
+
+    // win32 url
+    if (name.endsWith(".nsis.zip") && name.includes("x86")) {
+      updateData.platforms["windows-i686"].url = browser_download_url;
+    }
+    // win32 signature
+    if (name.endsWith(".nsis.zip.sig") && name.includes("x86")) {
+      const sig = await getSignature(browser_download_url);
+      updateData.platforms["windows-i686"].signature = sig;
+    }
+
+    // win arm64 url
+    if (name.endsWith(".nsis.zip") && name.includes("arm64")) {
+      updateData.platforms["windows-aarch64"].url = browser_download_url;
+    }
+    // win arm64 signature
+    if (name.endsWith(".nsis.zip.sig") && name.includes("arm64")) {
+      const sig = await getSignature(browser_download_url);
+      updateData.platforms["windows-aarch64"].signature = sig;
     }
 
     // darwin url (intel)

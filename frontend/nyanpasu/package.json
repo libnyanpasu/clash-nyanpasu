@@ -70,7 +70,7 @@
     "meta-json-schema": "1.18.8",
     "monaco-yaml": "5.2.2",
     "nanoid": "5.0.7",
-    "sass": "1.78.0",
+    "sass": "1.79.1",
     "shiki": "1.17.7",
     "tailwindcss-textshadow": "2.1.3",
     "unplugin-auto-import": "0.18.3",

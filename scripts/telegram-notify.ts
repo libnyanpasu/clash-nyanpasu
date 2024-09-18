@@ -39,14 +39,12 @@ if (!process.env.GITHUB_TOKEN) {
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 
 const resourceFormats = [
-  "x64-setup.exe",
-  "x64_portable.zip",
-  "x86_64.rpm",
-  "amd64.deb",
-  "x64.dmg",
-  "aarch64.dmg",
-  "aarch64.rpm",
-  "arm64.deb",
+  ".exe",
+  "portable.zip",
+  ".rpm",
+  ".deb",
+  ".dmg",
+  ".AppImage",
 ];
 
 const isValidFormat = (fileName: string): boolean => {

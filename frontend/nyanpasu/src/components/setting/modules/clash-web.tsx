@@ -6,7 +6,7 @@ import OpenInNewRounded from "@mui/icons-material/OpenInNewRounded";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
 import IconButton from "@mui/material/IconButton";
-import Paper from "@mui/material/Paper";
+import Paper, { PaperProps } from "@mui/material/Paper";
 import { alpha, styled } from "@mui/material/styles";
 import Typography from "@mui/material/Typography";
 import { openThat } from "@nyanpasu/interface";
@@ -120,14 +120,14 @@ export const openWebUrl = (
  * @author keiko233 <i@elaina.moe>
  * @copyright LibNyanpasu org. 2024
  */
-export const Item = styled(Paper)(({ theme }) => ({
+export const Item = styled(Paper)<PaperProps>(({ theme }) => ({
   backgroundColor: alpha(theme.palette.primary.main, 0.1),
   padding: 16,
   borderRadius: 16,
   display: "flex",
   flexDirection: "column",
   gap: 8,
-}));
+})) as typeof Paper;
 
 export interface ClashWebItemProps {
   label: ReactNode;

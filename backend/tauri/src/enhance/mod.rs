@@ -140,6 +140,7 @@ pub async fn enhance() -> (Mapping, Vec<String>, IndexMap<String, Logs>) {
 
     config = use_filter(config, &clash_fields, enable_filter);
     config = use_tun(config, enable_tun);
+    config = use_cache(config);
     config = use_sort(config, enable_filter);
 
     let mut exists_set = HashSet::new();
@@ -147,4 +148,14 @@ pub async fn enhance() -> (Mapping, Vec<String>, IndexMap<String, Logs>) {
     exists_keys = exists_set.into_iter().collect();
 
     (config, exists_keys, result_map)
+}
+
+fn use_cache(mut config: Mapping) -> Mapping {
+    if !config.contains_key("profile") {
+        let mut profile = Mapping::new();
+        profile.insert("store-selected".into(), true.into());
+        profile.insert("store-fake-ip".into(), true.into());
+        config.insert("profile".into(), profile.into());
+    }
+    config
 }

@@ -1,10 +1,10 @@
 import { useThrottle } from "ahooks";
-import { lazy, useState } from "react";
+import { lazy, useDeferredValue, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SearchTermCtx } from "@/components/connections/connection-search-term";
 import HeaderSearch from "@/components/connections/header-search";
 import { BasePage } from "@nyanpasu/ui";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useBlocker } from "@tanstack/react-router";
 
 const Component = lazy(
   () => import("@/components/connections/connection-page"),
@@ -14,12 +14,24 @@ export const Route = createFileRoute("/connections")({
   component: Connections,
 });
 
-export default function Connections() {
+function Connections() {
   const { t } = useTranslation();
 
   const [searchTerm, setSearchTerm] = useState<string>();
-
   const throttledSearchTerm = useThrottle(searchTerm, { wait: 150 });
+
+  const [mountTable, setMountTable] = useState(true);
+  const deferredMountTable = useDeferredValue(mountTable);
+  const { proceed } = useBlocker({
+    blockerFn: () => setMountTable(false),
+    condition: !mountTable,
+  });
+
+  useEffect(() => {
+    if (!deferredMountTable) {
+      proceed();
+    }
+  }, [proceed, deferredMountTable]);
 
   return (
     <SearchTermCtx.Provider value={throttledSearchTerm}>
@@ -35,7 +47,7 @@ export default function Connections() {
           </div>
         }
       >
-        <Component />
+        {mountTable && <Component />}
       </BasePage>
     </SearchTermCtx.Provider>
   );

@@ -1,0 +1,5 @@
+{
+  "routeFileIgnorePrefix": "-",
+  "routesDirectory": "./src/pages",
+  "autoCodeSplitting": true
+}

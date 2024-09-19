@@ -4,7 +4,7 @@ import {
   Outlet,
 } from "@tanstack/react-router";
 
-export const Catch = ({ error }: ErrorComponentProps) => {
+const Catch = ({ error }: ErrorComponentProps) => {
   return (
     <div style={{ backgroundColor: "#fff" }}>
       <h1>Oops!</h1>
@@ -14,7 +14,7 @@ export const Catch = ({ error }: ErrorComponentProps) => {
   );
 };
 
-export const Pending = () => <div>Loading from _layout...</div>;
+const Pending = () => <div>Loading from _layout...</div>;
 
 export const Route = createFileRoute("/_layout")({
   component: Layout,
@@ -22,6 +22,6 @@ export const Route = createFileRoute("/_layout")({
   pendingComponent: Pending,
 });
 
-export default function Layout() {
+function Layout() {
   return <Outlet />;
 }

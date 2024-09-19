@@ -62,7 +62,7 @@ function SideBar() {
   );
 }
 
-export default function ProxyPage() {
+function ProxyPage() {
   const { t } = useTranslation();
 
   const { getCurrentMode, setCurrentMode } = useNyanpasu();

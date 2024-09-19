@@ -10,240 +10,240 @@
 
 // Import Routes
 
-import { Route as rootRoute } from "./pages/__root";
-import { Route as LayoutImport } from "./pages/_layout";
-import { Route as ConnectionsImport } from "./pages/connections";
-import { Route as DashboardImport } from "./pages/dashboard";
-import { Route as IndexImport } from "./pages/index";
-import { Route as LogsImport } from "./pages/logs";
-import { Route as ProfilesImport } from "./pages/profiles";
-import { Route as ProvidersImport } from "./pages/providers";
-import { Route as ProxiesImport } from "./pages/proxies";
-import { Route as RulesImport } from "./pages/rules";
-import { Route as SettingsImport } from "./pages/settings";
+import { Route as rootRoute } from './pages/__root'
+import { Route as SettingsImport } from './pages/settings'
+import { Route as RulesImport } from './pages/rules'
+import { Route as ProxiesImport } from './pages/proxies'
+import { Route as ProvidersImport } from './pages/providers'
+import { Route as ProfilesImport } from './pages/profiles'
+import { Route as LogsImport } from './pages/logs'
+import { Route as DashboardImport } from './pages/dashboard'
+import { Route as ConnectionsImport } from './pages/connections'
+import { Route as LayoutImport } from './pages/_layout'
+import { Route as IndexImport } from './pages/index'
 
 // Create/Update Routes
 
 const SettingsRoute = SettingsImport.update({
-  path: "/settings",
+  path: '/settings',
   getParentRoute: () => rootRoute,
-} as any);
+} as any)
 
 const RulesRoute = RulesImport.update({
-  path: "/rules",
+  path: '/rules',
   getParentRoute: () => rootRoute,
-} as any);
+} as any)
 
 const ProxiesRoute = ProxiesImport.update({
-  path: "/proxies",
+  path: '/proxies',
   getParentRoute: () => rootRoute,
-} as any);
+} as any)
 
 const ProvidersRoute = ProvidersImport.update({
-  path: "/providers",
+  path: '/providers',
   getParentRoute: () => rootRoute,
-} as any);
+} as any)
 
 const ProfilesRoute = ProfilesImport.update({
-  path: "/profiles",
+  path: '/profiles',
   getParentRoute: () => rootRoute,
-} as any);
+} as any)
 
 const LogsRoute = LogsImport.update({
-  path: "/logs",
+  path: '/logs',
   getParentRoute: () => rootRoute,
-} as any);
+} as any)
 
 const DashboardRoute = DashboardImport.update({
-  path: "/dashboard",
+  path: '/dashboard',
   getParentRoute: () => rootRoute,
-} as any);
+} as any)
 
 const ConnectionsRoute = ConnectionsImport.update({
-  path: "/connections",
+  path: '/connections',
   getParentRoute: () => rootRoute,
-} as any);
+} as any)
 
 const LayoutRoute = LayoutImport.update({
-  id: "/_layout",
+  id: '/_layout',
   getParentRoute: () => rootRoute,
-} as any);
+} as any)
 
 const IndexRoute = IndexImport.update({
-  path: "/",
+  path: '/',
   getParentRoute: () => rootRoute,
-} as any);
+} as any)
 
 // Populate the FileRoutesByPath interface
 
-declare module "@tanstack/react-router" {
+declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    "/": {
-      id: "/";
-      path: "/";
-      fullPath: "/";
-      preLoaderRoute: typeof IndexImport;
-      parentRoute: typeof rootRoute;
-    };
-    "/_layout": {
-      id: "/_layout";
-      path: "";
-      fullPath: "";
-      preLoaderRoute: typeof LayoutImport;
-      parentRoute: typeof rootRoute;
-    };
-    "/connections": {
-      id: "/connections";
-      path: "/connections";
-      fullPath: "/connections";
-      preLoaderRoute: typeof ConnectionsImport;
-      parentRoute: typeof rootRoute;
-    };
-    "/dashboard": {
-      id: "/dashboard";
-      path: "/dashboard";
-      fullPath: "/dashboard";
-      preLoaderRoute: typeof DashboardImport;
-      parentRoute: typeof rootRoute;
-    };
-    "/logs": {
-      id: "/logs";
-      path: "/logs";
-      fullPath: "/logs";
-      preLoaderRoute: typeof LogsImport;
-      parentRoute: typeof rootRoute;
-    };
-    "/profiles": {
-      id: "/profiles";
-      path: "/profiles";
-      fullPath: "/profiles";
-      preLoaderRoute: typeof ProfilesImport;
-      parentRoute: typeof rootRoute;
-    };
-    "/providers": {
-      id: "/providers";
-      path: "/providers";
-      fullPath: "/providers";
-      preLoaderRoute: typeof ProvidersImport;
-      parentRoute: typeof rootRoute;
-    };
-    "/proxies": {
-      id: "/proxies";
-      path: "/proxies";
-      fullPath: "/proxies";
-      preLoaderRoute: typeof ProxiesImport;
-      parentRoute: typeof rootRoute;
-    };
-    "/rules": {
-      id: "/rules";
-      path: "/rules";
-      fullPath: "/rules";
-      preLoaderRoute: typeof RulesImport;
-      parentRoute: typeof rootRoute;
-    };
-    "/settings": {
-      id: "/settings";
-      path: "/settings";
-      fullPath: "/settings";
-      preLoaderRoute: typeof SettingsImport;
-      parentRoute: typeof rootRoute;
-    };
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexImport
+      parentRoute: typeof rootRoute
+    }
+    '/_layout': {
+      id: '/_layout'
+      path: ''
+      fullPath: ''
+      preLoaderRoute: typeof LayoutImport
+      parentRoute: typeof rootRoute
+    }
+    '/connections': {
+      id: '/connections'
+      path: '/connections'
+      fullPath: '/connections'
+      preLoaderRoute: typeof ConnectionsImport
+      parentRoute: typeof rootRoute
+    }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardImport
+      parentRoute: typeof rootRoute
+    }
+    '/logs': {
+      id: '/logs'
+      path: '/logs'
+      fullPath: '/logs'
+      preLoaderRoute: typeof LogsImport
+      parentRoute: typeof rootRoute
+    }
+    '/profiles': {
+      id: '/profiles'
+      path: '/profiles'
+      fullPath: '/profiles'
+      preLoaderRoute: typeof ProfilesImport
+      parentRoute: typeof rootRoute
+    }
+    '/providers': {
+      id: '/providers'
+      path: '/providers'
+      fullPath: '/providers'
+      preLoaderRoute: typeof ProvidersImport
+      parentRoute: typeof rootRoute
+    }
+    '/proxies': {
+      id: '/proxies'
+      path: '/proxies'
+      fullPath: '/proxies'
+      preLoaderRoute: typeof ProxiesImport
+      parentRoute: typeof rootRoute
+    }
+    '/rules': {
+      id: '/rules'
+      path: '/rules'
+      fullPath: '/rules'
+      preLoaderRoute: typeof RulesImport
+      parentRoute: typeof rootRoute
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsImport
+      parentRoute: typeof rootRoute
+    }
   }
 }
 
 // Create and export the route tree
 
 export interface FileRoutesByFullPath {
-  "/": typeof IndexRoute;
-  "": typeof LayoutRoute;
-  "/connections": typeof ConnectionsRoute;
-  "/dashboard": typeof DashboardRoute;
-  "/logs": typeof LogsRoute;
-  "/profiles": typeof ProfilesRoute;
-  "/providers": typeof ProvidersRoute;
-  "/proxies": typeof ProxiesRoute;
-  "/rules": typeof RulesRoute;
-  "/settings": typeof SettingsRoute;
+  '/': typeof IndexRoute
+  '': typeof LayoutRoute
+  '/connections': typeof ConnectionsRoute
+  '/dashboard': typeof DashboardRoute
+  '/logs': typeof LogsRoute
+  '/profiles': typeof ProfilesRoute
+  '/providers': typeof ProvidersRoute
+  '/proxies': typeof ProxiesRoute
+  '/rules': typeof RulesRoute
+  '/settings': typeof SettingsRoute
 }
 
 export interface FileRoutesByTo {
-  "/": typeof IndexRoute;
-  "": typeof LayoutRoute;
-  "/connections": typeof ConnectionsRoute;
-  "/dashboard": typeof DashboardRoute;
-  "/logs": typeof LogsRoute;
-  "/profiles": typeof ProfilesRoute;
-  "/providers": typeof ProvidersRoute;
-  "/proxies": typeof ProxiesRoute;
-  "/rules": typeof RulesRoute;
-  "/settings": typeof SettingsRoute;
+  '/': typeof IndexRoute
+  '': typeof LayoutRoute
+  '/connections': typeof ConnectionsRoute
+  '/dashboard': typeof DashboardRoute
+  '/logs': typeof LogsRoute
+  '/profiles': typeof ProfilesRoute
+  '/providers': typeof ProvidersRoute
+  '/proxies': typeof ProxiesRoute
+  '/rules': typeof RulesRoute
+  '/settings': typeof SettingsRoute
 }
 
 export interface FileRoutesById {
-  __root__: typeof rootRoute;
-  "/": typeof IndexRoute;
-  "/_layout": typeof LayoutRoute;
-  "/connections": typeof ConnectionsRoute;
-  "/dashboard": typeof DashboardRoute;
-  "/logs": typeof LogsRoute;
-  "/profiles": typeof ProfilesRoute;
-  "/providers": typeof ProvidersRoute;
-  "/proxies": typeof ProxiesRoute;
-  "/rules": typeof RulesRoute;
-  "/settings": typeof SettingsRoute;
+  __root__: typeof rootRoute
+  '/': typeof IndexRoute
+  '/_layout': typeof LayoutRoute
+  '/connections': typeof ConnectionsRoute
+  '/dashboard': typeof DashboardRoute
+  '/logs': typeof LogsRoute
+  '/profiles': typeof ProfilesRoute
+  '/providers': typeof ProvidersRoute
+  '/proxies': typeof ProxiesRoute
+  '/rules': typeof RulesRoute
+  '/settings': typeof SettingsRoute
 }
 
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath;
+  fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    | "/"
-    | ""
-    | "/connections"
-    | "/dashboard"
-    | "/logs"
-    | "/profiles"
-    | "/providers"
-    | "/proxies"
-    | "/rules"
-    | "/settings";
-  fileRoutesByTo: FileRoutesByTo;
+    | '/'
+    | ''
+    | '/connections'
+    | '/dashboard'
+    | '/logs'
+    | '/profiles'
+    | '/providers'
+    | '/proxies'
+    | '/rules'
+    | '/settings'
+  fileRoutesByTo: FileRoutesByTo
   to:
-    | "/"
-    | ""
-    | "/connections"
-    | "/dashboard"
-    | "/logs"
-    | "/profiles"
-    | "/providers"
-    | "/proxies"
-    | "/rules"
-    | "/settings";
+    | '/'
+    | ''
+    | '/connections'
+    | '/dashboard'
+    | '/logs'
+    | '/profiles'
+    | '/providers'
+    | '/proxies'
+    | '/rules'
+    | '/settings'
   id:
-    | "__root__"
-    | "/"
-    | "/_layout"
-    | "/connections"
-    | "/dashboard"
-    | "/logs"
-    | "/profiles"
-    | "/providers"
-    | "/proxies"
-    | "/rules"
-    | "/settings";
-  fileRoutesById: FileRoutesById;
+    | '__root__'
+    | '/'
+    | '/_layout'
+    | '/connections'
+    | '/dashboard'
+    | '/logs'
+    | '/profiles'
+    | '/providers'
+    | '/proxies'
+    | '/rules'
+    | '/settings'
+  fileRoutesById: FileRoutesById
 }
 
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute;
-  LayoutRoute: typeof LayoutRoute;
-  ConnectionsRoute: typeof ConnectionsRoute;
-  DashboardRoute: typeof DashboardRoute;
-  LogsRoute: typeof LogsRoute;
-  ProfilesRoute: typeof ProfilesRoute;
-  ProvidersRoute: typeof ProvidersRoute;
-  ProxiesRoute: typeof ProxiesRoute;
-  RulesRoute: typeof RulesRoute;
-  SettingsRoute: typeof SettingsRoute;
+  IndexRoute: typeof IndexRoute
+  LayoutRoute: typeof LayoutRoute
+  ConnectionsRoute: typeof ConnectionsRoute
+  DashboardRoute: typeof DashboardRoute
+  LogsRoute: typeof LogsRoute
+  ProfilesRoute: typeof ProfilesRoute
+  ProvidersRoute: typeof ProvidersRoute
+  ProxiesRoute: typeof ProxiesRoute
+  RulesRoute: typeof RulesRoute
+  SettingsRoute: typeof SettingsRoute
 }
 
 const rootRouteChildren: RootRouteChildren = {
@@ -257,11 +257,11 @@ const rootRouteChildren: RootRouteChildren = {
   ProxiesRoute: ProxiesRoute,
   RulesRoute: RulesRoute,
   SettingsRoute: SettingsRoute,
-};
+}
 
 export const routeTree = rootRoute
   ._addFileChildren(rootRouteChildren)
-  ._addFileTypes<FileRouteTypes>();
+  ._addFileTypes<FileRouteTypes>()
 
 /* prettier-ignore-end */
 

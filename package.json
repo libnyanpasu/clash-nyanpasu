@@ -17,6 +17,7 @@
     "web:dev": "pnpm --filter=@nyanpasu/nyanpasu dev",
     "web:build": "pnpm --filter=@nyanpasu/nyanpasu build",
     "web:serve": "pnpm --filter=@nyanpasu/nyanpasu preview",
+    "web:visualize": "pnpm --filter=@nyanpasu/nyanpasu bundle:visualize",
     "web:devtools": "pnpm react-devtools",
     "lint": "run-s lint:*",
     "lint:prettier": "prettier --check .",

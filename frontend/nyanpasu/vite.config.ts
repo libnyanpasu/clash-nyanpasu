@@ -48,12 +48,8 @@ export default defineConfig(({ command }) => {
     },
     plugins: [
       tsconfigPaths(),
+      TanStackRouterVite(),
       svgr(),
-      TanStackRouterVite({
-        autoCodeSplitting: true,
-        routeFileIgnorePrefix: "-",
-        routesDirectory: "./src/pages",
-      }),
       react({
         // babel: {
         //   plugins: ["@emotion/babel-plugin"],

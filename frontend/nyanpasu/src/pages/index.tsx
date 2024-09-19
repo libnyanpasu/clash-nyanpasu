@@ -7,7 +7,7 @@ export const Route = createFileRoute("/")({
   component: IndexPage,
 });
 
-export default function IndexPage() {
+function IndexPage() {
   const navigate = useNavigate();
   const memorizedNavigate = useAtomValue(memorizedRoutePathAtom);
   useEffect(() => {

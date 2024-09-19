@@ -12,7 +12,7 @@ export const Route = createFileRoute("/rules")({
   component: RulesPage,
 });
 
-export default function RulesPage() {
+function RulesPage() {
   const { t } = useTranslation();
 
   const { palette } = useTheme();

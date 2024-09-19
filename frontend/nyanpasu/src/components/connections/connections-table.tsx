@@ -5,7 +5,7 @@ import {
   useMaterialReactTable,
   type MRT_ColumnDef,
 } from "material-react-table";
-import { useMemo, useRef } from "react";
+import { useDeferredValue, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { containsSearchTerm } from "@/utils";
 import parseTraffic from "@/utils/parse-traffic";
@@ -77,6 +77,7 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
 
     return data;
   }, [latestMessage?.data, searchTerm]);
+  const deferredTableData = useDeferredValue(connectionsMessage?.connections);
 
   const columns: MRT_ColumnDef<TableConnection>[] = [
     {
@@ -165,7 +166,7 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
 
   const table = useMaterialReactTable({
     columns,
-    data: connectionsMessage?.connections ?? [],
+    data: deferredTableData ?? [],
     initialState: {
       density: "compact",
     },

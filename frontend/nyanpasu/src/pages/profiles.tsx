@@ -37,7 +37,7 @@ export const Route = createFileRoute("/profiles")({
   component: ProfilePage,
 });
 
-export default function ProfilePage() {
+function ProfilePage() {
   const { t } = useTranslation();
   const { getProfiles, getRuntimeLogs } = useClash();
   const maxLogLevelTriggered = useMemo(() => {

@@ -8,7 +8,7 @@ export const Route = createFileRoute("/logs")({
   component: LogPage,
 });
 
-export default function LogPage() {
+function LogPage() {
   const { t } = useTranslation();
 
   const viewportRef = useRef<HTMLDivElement>(null);

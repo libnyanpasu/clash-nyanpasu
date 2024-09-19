@@ -82,7 +82,7 @@ const TrayIconButton = () => {
   );
 };
 
-export default function SettingPage() {
+function SettingPage() {
   const { t } = useTranslation();
 
   const Component = lazy(() => import("@/components/setting/setting-page"));

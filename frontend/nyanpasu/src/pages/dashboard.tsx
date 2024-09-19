@@ -11,7 +11,7 @@ export const Route = createFileRoute("/dashboard")({
   component: Dashboard,
 });
 
-export default function Dashboard() {
+function Dashboard() {
   const { t } = useTranslation();
 
   return (

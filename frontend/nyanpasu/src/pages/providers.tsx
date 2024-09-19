@@ -13,7 +13,7 @@ export const Route = createFileRoute("/providers")({
   component: ProvidersPage,
 });
 
-export default function ProvidersPage() {
+function ProvidersPage() {
   const { t } = useTranslation();
 
   const { getRulesProviders, getProxiesProviders } = useClashCore();

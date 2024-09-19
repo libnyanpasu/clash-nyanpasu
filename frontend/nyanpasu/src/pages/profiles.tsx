@@ -1,3 +1,4 @@
+import MdiTextBoxCheckOutline from "~icons/mdi/text-box-check-outline";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAtom } from "jotai";
 import { useMemo, useState } from "react";
@@ -136,7 +137,7 @@ function ProfilePage() {
               setRuntimeConfigViewerOpen(true);
             }}
           >
-            <IconMdiTextBoxCheckOutline
+            <MdiTextBoxCheckOutline
             // style={{
             //   color: theme.palette.text.primary,
             // }}

@@ -189,7 +189,7 @@ checksum = "df099ccb16cd014ff054ac1bf392c67feeef57164b05c42f037cd40f5d4357f4"
 dependencies = [
  "clipboard-win",
  "core-graphics 0.23.2",
- "image 0.25.2",
+ "image",
  "log",
  "objc2",
  "objc2-app-kit",
@@ -242,6 +242,27 @@ dependencies = [
  "serde_repr",
  "tokio",
  "url",
+ "zbus",
+]
+
+[[package]]
+name = "ashpd"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bfe7e0dd0ac5a401dc116ed9f9119cf9decc625600474cb41f0fc0a0050abc9a"
+dependencies = [
+ "enumflags2",
+ "futures-channel",
+ "futures-util",
+ "rand 0.8.5",
+ "raw-window-handle",
+ "serde",
+ "serde_repr",
+ "tokio",
+ "url",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-protocols 0.32.4",
  "zbus",
 ]
 
@@ -696,7 +717,7 @@ dependencies = [
  "bitflags 2.6.0",
  "cexpr",
  "clang-sys",
- "itertools 0.11.0",
+ "itertools 0.12.1",
  "lazy_static",
  "lazycell",
  "log",
@@ -1129,9 +1150,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.1.19"
+version = "1.1.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d74707dde2ba56f86ae90effb3b43ddd369504387e718014de010cec7959800"
+checksum = "07b1695e2c7e8fc85310cde85aeaab7e3097f593c91d209d3f9df76c928100f0"
 dependencies = [
  "jobserver",
  "libc",
@@ -1302,7 +1323,7 @@ dependencies = [
  "glob",
  "hex",
  "humansize",
- "image 0.25.2",
+ "image",
  "indexmap 2.5.0",
  "log",
  "md-5",
@@ -1331,7 +1352,7 @@ dependencies = [
  "regex",
  "relative-path",
  "reqwest",
- "rfd",
+ "rfd 0.14.1",
  "rs-snowflake",
  "runas",
  "rust-i18n",
@@ -2051,7 +2072,7 @@ dependencies = [
 [[package]]
 name = "dirs-utils"
 version = "0.1.0"
-source = "git+https://github.com/LibNyanpasu/nyanpasu-utils.git#42a2e1a2b8768d3cad47344baa152964c5e9a6b4"
+source = "git+https://github.com/LibNyanpasu/nyanpasu-utils.git#87ef4dd8b0d9cdbcb0ae7ee5d925dd5c277b729e"
 dependencies = [
  "dirs-next",
  "thiserror",
@@ -3324,9 +3345,9 @@ dependencies = [
 
 [[package]]
 name = "iana-time-zone"
-version = "0.1.60"
+version = "0.1.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7ffbb5a1b541ea2561f8c41c087286cc091e21e556a4f09a8f6cbf17b69b141"
+checksum = "235e081f3925a06703c2d0117ea8b91f042756fd6e7a6e5d901e8ca1a996b220"
 dependencies = [
  "android_system_properties",
  "core-foundation-sys",
@@ -3503,24 +3524,6 @@ dependencies = [
  "same-file",
  "walkdir",
  "winapi-util",
-]
-
-[[package]]
-name = "image"
-version = "0.24.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5690139d2f55868e080017335e4b94cb7414274c74f1669c84fb5feba2c9f69d"
-dependencies = [
- "bytemuck",
- "byteorder",
- "color_quant",
- "exr",
- "gif",
- "jpeg-decoder",
- "num-traits",
- "png",
- "qoi",
- "tiff",
 ]
 
 [[package]]
@@ -3864,9 +3867,6 @@ name = "jpeg-decoder"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f5d4a7da358eff58addd2877a45865158f0d78c911d43a5784ceb7bbf52833b0"
-dependencies = [
- "rayon",
-]
 
 [[package]]
 name = "js-sys"
@@ -4725,7 +4725,7 @@ dependencies = [
 [[package]]
 name = "nyanpasu-ipc"
 version = "1.0.6"
-source = "git+https://github.com/LibNyanpasu/nyanpasu-service.git#ac0534a0e3f64a87566eba01f2c96e4cbd5de22f"
+source = "git+https://github.com/LibNyanpasu/nyanpasu-service.git#06b52b490e1ef9fce7f798d45dff4c01faa54d5b"
 dependencies = [
  "anyhow",
  "axum",
@@ -4750,7 +4750,7 @@ dependencies = [
 [[package]]
 name = "nyanpasu-utils"
 version = "0.1.0"
-source = "git+https://github.com/LibNyanpasu/nyanpasu-utils.git#42a2e1a2b8768d3cad47344baa152964c5e9a6b4"
+source = "git+https://github.com/LibNyanpasu/nyanpasu-utils.git#87ef4dd8b0d9cdbcb0ae7ee5d925dd5c277b729e"
 dependencies = [
  "constcat",
  "derive_builder",
@@ -4861,6 +4861,7 @@ checksum = "0ee638a5da3799329310ad4cfa62fbf045d5f56e3ef5ba4149e7452dcf89d5a8"
 dependencies = [
  "bitflags 2.6.0",
  "block2",
+ "dispatch",
  "libc",
  "objc2",
 ]
@@ -4919,9 +4920,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.20.0"
+version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33ea5043e58958ee56f3e15a90aee535795cd7dfd319846288d93c5b57d85cbe"
+checksum = "3fdb12b2476b595f9358c5161aa467c2438859caa136dec86c26fdd2efe17b92"
 
 [[package]]
 name = "opaque-debug"
@@ -5022,7 +5023,7 @@ dependencies = [
 [[package]]
 name = "os-utils"
 version = "0.1.0"
-source = "git+https://github.com/LibNyanpasu/nyanpasu-utils.git#42a2e1a2b8768d3cad47344baa152964c5e9a6b4"
+source = "git+https://github.com/LibNyanpasu/nyanpasu-utils.git#87ef4dd8b0d9cdbcb0ae7ee5d925dd5c277b729e"
 dependencies = [
  "nix 0.29.0",
  "shared_child",
@@ -6156,7 +6157,7 @@ version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "25a73a7337fc24366edfca76ec521f51877b114e42dab584008209cca6719251"
 dependencies = [
- "ashpd",
+ "ashpd 0.8.1",
  "block",
  "dispatch",
  "glib-sys",
@@ -6167,6 +6168,29 @@ dependencies = [
  "objc",
  "objc-foundation",
  "objc_id",
+ "raw-window-handle",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "rfd"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8af382a047821a08aa6bfc09ab0d80ff48d45d8726f7cd8e44891f7cb4a4278e"
+dependencies = [
+ "ashpd 0.9.1",
+ "block2",
+ "glib-sys",
+ "gobject-sys",
+ "gtk-sys",
+ "js-sys",
+ "log",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
  "raw-window-handle",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -6935,7 +6959,7 @@ dependencies = [
  "wayland-client",
  "wayland-csd-frame",
  "wayland-cursor",
- "wayland-protocols",
+ "wayland-protocols 0.31.2",
  "wayland-protocols-wlr",
  "wayland-scanner",
  "xkeysym",
@@ -7337,7 +7361,7 @@ dependencies = [
  "gtk",
  "heck 0.5.0",
  "http 1.1.0",
- "image 0.25.2",
+ "image",
  "jni",
  "libc",
  "log",
@@ -7437,9 +7461,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin"
-version = "2.0.0-rc.11"
+version = "2.0.0-rc.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d82a2adea16b8a71b7a5ad23f720bb13f8d2830b820cc1c266512314ba99bf67"
+checksum = "5e3368e91a98aa55ea4e3e8ccff516bc1ed2f85872c335ec35e9b345469032e0"
 dependencies = [
  "anyhow",
  "glob",
@@ -7455,10 +7479,10 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-clipboard-manager"
 version = "2.0.0-rc.4"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#5d39ddcf227a4579fe0f4027ee55b9459142944f"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#6bf1bd8d44bb95618590aa066e638509b014e0f9"
 dependencies = [
  "arboard",
- "image 0.24.9",
+ "image",
  "log",
  "serde",
  "serde_json",
@@ -7485,11 +7509,11 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-dialog"
 version = "2.0.0-rc.7"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#5d39ddcf227a4579fe0f4027ee55b9459142944f"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#6bf1bd8d44bb95618590aa066e638509b014e0f9"
 dependencies = [
  "log",
  "raw-window-handle",
- "rfd",
+ "rfd 0.15.0",
  "serde",
  "serde_json",
  "tauri",
@@ -7502,7 +7526,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-fs"
 version = "2.0.0-rc.5"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#5d39ddcf227a4579fe0f4027ee55b9459142944f"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#6bf1bd8d44bb95618590aa066e638509b014e0f9"
 dependencies = [
  "anyhow",
  "dunce",
@@ -7522,7 +7546,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-global-shortcut"
 version = "2.0.0-rc.2"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#5d39ddcf227a4579fe0f4027ee55b9459142944f"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#6bf1bd8d44bb95618590aa066e638509b014e0f9"
 dependencies = [
  "global-hotkey",
  "log",
@@ -7536,7 +7560,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-notification"
 version = "2.0.0-rc.5"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#5d39ddcf227a4579fe0f4027ee55b9459142944f"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#6bf1bd8d44bb95618590aa066e638509b014e0f9"
 dependencies = [
  "log",
  "notify-rust",
@@ -7554,7 +7578,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-os"
 version = "2.0.0-rc.1"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#5d39ddcf227a4579fe0f4027ee55b9459142944f"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#6bf1bd8d44bb95618590aa066e638509b014e0f9"
 dependencies = [
  "gethostname 0.5.0",
  "log",
@@ -7571,7 +7595,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-process"
 version = "2.0.0-rc.1"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#5d39ddcf227a4579fe0f4027ee55b9459142944f"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#6bf1bd8d44bb95618590aa066e638509b014e0f9"
 dependencies = [
  "tauri",
  "tauri-plugin",
@@ -7580,7 +7604,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-shell"
 version = "2.0.0-rc.3"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#5d39ddcf227a4579fe0f4027ee55b9459142944f"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#6bf1bd8d44bb95618590aa066e638509b014e0f9"
 dependencies = [
  "encoding_rs",
  "log",
@@ -7600,7 +7624,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-updater"
 version = "2.0.0-rc.3"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#5d39ddcf227a4579fe0f4027ee55b9459142944f"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#6bf1bd8d44bb95618590aa066e638509b014e0f9"
 dependencies = [
  "base64 0.22.1",
  "dirs 5.0.1",
@@ -8401,9 +8425,9 @@ checksum = "08f95100a766bf4f8f28f90d77e0a5461bbdb219042e7679bebe79004fed8d75"
 
 [[package]]
 name = "unicode-id-start"
-version = "1.2.0"
+version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc3882f69607a2ac8cc4de3ee7993d8f68bb06f2974271195065b3bd07f2edea"
+checksum = "97e2a3c5fc9de285c0e805d98eba666adb4b2d9e1049ce44821ff7707cc34e91"
 
 [[package]]
 name = "unicode-ident"
@@ -8419,9 +8443,9 @@ checksum = "3b09c83c3c29d37506a3e260c08c03743a6bb66a9cd432c6934ab501a190571f"
 
 [[package]]
 name = "unicode-normalization"
-version = "0.1.23"
+version = "0.1.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a56d1686db2308d901306f92a263857ef59ea39678a5458e7cb17f01415101f5"
+checksum = "5033c97c4262335cded6d6fc3e5c18ab755e1a3dc96376350f3d8e9f009ad956"
 dependencies = [
  "tinyvec",
 ]
@@ -8788,6 +8812,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "wayland-protocols"
+version = "0.32.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b5755d77ae9040bb872a25026555ce4cb0ae75fd923e90d25fba07d81057de0"
+dependencies = [
+ "bitflags 2.6.0",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-scanner",
+]
+
+[[package]]
 name = "wayland-protocols-wlr"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8796,7 +8832,7 @@ dependencies = [
  "bitflags 2.6.0",
  "wayland-backend",
  "wayland-client",
- "wayland-protocols",
+ "wayland-protocols 0.31.2",
  "wayland-scanner",
 ]
 
@@ -8878,9 +8914,9 @@ dependencies = [
 
 [[package]]
 name = "webpki-roots"
-version = "0.26.5"
+version = "0.26.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0bd24728e5af82c6c4ec1b66ac4844bdf8156257fccda846ec58b42cd0cdbe6a"
+checksum = "841c67bff177718f1d4dfefde8d8f0e78f9b6589319ba88312f567fc5841a958"
 dependencies = [
  "rustls-pki-types",
 ]

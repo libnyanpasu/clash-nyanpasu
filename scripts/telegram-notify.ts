@@ -98,19 +98,53 @@ const repoInfo = {
   }
 
   resourceMapping.forEach((item) => {
-    consola.log(`exited ${item}:`, existsSync(item));
+    consola.log(`existed ${item}:`, existsSync(item));
   });
 
   consola.start("Staring upload tasks (nightly)");
 
+  // upload windows binary
   await pRetry(
     () =>
       client.sendFile(TELEGRAM_TO_NIGHTLY, {
-        file: resourceMapping,
+        file: resourceMapping.filter(
+          (item) => item.endsWith(".exe") || item.endsWith("portable.zip"),
+        ),
         forceDocument: true,
-        caption: `Clash Nyanpasu Nightly Build ${GIT_SHORT_HASH}`,
+        caption: `Clash Nyanpasu Nightly Build ${GIT_SHORT_HASH} for Windows`,
         workers: 16,
-        progressCallback: (progress) => consola.debug(`Uploading ${progress}`),
+        progressCallback: (...args) => {
+          console.log("progressCallback", args);
+        },
+      }),
+    { retries: 5 },
+  );
+
+  // upload macOS binary
+  await pRetry(
+    () =>
+      client.sendFile(TELEGRAM_TO_NIGHTLY, {
+        file: resourceMapping.filter((item) => item.endsWith(".dmg")),
+        forceDocument: true,
+        caption: `Clash Nyanpasu Nightly Build ${GIT_SHORT_HASH} for macOS`,
+        workers: 16,
+      }),
+    { retries: 5 },
+  );
+
+  // upload linux binary
+  await pRetry(
+    () =>
+      client.sendFile(TELEGRAM_TO_NIGHTLY, {
+        file: resourceMapping.filter(
+          (item) =>
+            item.endsWith(".rpm") ||
+            item.endsWith(".deb") ||
+            item.endsWith(".AppImage"),
+        ),
+        forceDocument: true,
+        caption: `Clash Nyanpasu Nightly Build ${GIT_SHORT_HASH} for Linux`,
+        workers: 16,
       }),
     { retries: 5 },
   );

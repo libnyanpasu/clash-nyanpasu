@@ -9,7 +9,7 @@ use crate::core::{
     tasks::task::Task,
 };
 use log::debug;
-use redb::{ReadableTable, TableDefinition};
+use redb::ReadableTable;
 use std::{
     str,
     sync::{Arc, OnceLock},

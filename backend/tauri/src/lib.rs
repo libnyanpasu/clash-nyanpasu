@@ -28,7 +28,6 @@ use crate::{
     utils::{init, resolve},
 };
 use tauri::Emitter;
-use tauri_plugin_shell::ShellExt;
 use utils::resolve::{is_window_opened, reset_window_open_counter};
 
 rust_i18n::i18n!("../../locales");

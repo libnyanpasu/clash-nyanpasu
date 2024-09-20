@@ -1,6 +1,6 @@
 use crate::utils::dirs::{app_config_dir, app_data_dir, app_install_dir};
 use runas::Command as RunasCommand;
-use std::{borrow::Cow, ffi::OsString};
+use std::ffi::OsString;
 
 use super::SERVICE_PATH;
 

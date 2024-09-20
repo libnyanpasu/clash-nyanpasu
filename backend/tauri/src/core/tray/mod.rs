@@ -1,4 +1,4 @@
-use std::{borrow::Cow, sync::atomic::AtomicU16};
+use std::borrow::Cow;
 
 use crate::{
     config::{nyanpasu::ClashCore, Config},

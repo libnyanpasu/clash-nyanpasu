@@ -1,6 +1,6 @@
 [target.aarch64-unknown-linux-gnu]
 # dockerfile = "./manifest/docker/ubuntu-22.04-aarch64/Dockerfile"
-image = "ghcr.io/libnyanpasu/builder-ubuntu-22.04-aarch64:latest"
+image = "ghcr.io/libnyanpasu/builder-debian-trixie-aarch64:latest"
 # pre-build = [
 #   "dpkg --add-architecture $CROSS_DEB_ARCH",
 #   """echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ jammy main restricted universe multiverse" | tee /etc/apt/sources.list && \
@@ -25,7 +25,7 @@ image = "ghcr.io/libnyanpasu/builder-ubuntu-22.04-aarch64:latest"
 # ]
 
 [target.armv7-unknown-linux-gnueabihf]
-image = "ghcr.io/libnyanpasu/builder-ubuntu-22.04-armhf:latest"
+image = "ghcr.io/libnyanpasu/builder-debian-trixie-armhf:latest"
 
 [target.armv7-unknown-linux-gnueabi]
 image = "ghcr.io/libnyanpasu/builder-debian-trixie-armel:latest"

@@ -59,7 +59,7 @@ async function resolvePortable() {
 
   const { version } = packageJson;
 
-  const zipFile = `Clash.Nyanpasu_${version}_${RUST_ARCH}${fixedWebview ? "_fixedWebview2" : ""}_portable.zip`;
+  const zipFile = `Clash.Nyanpasu_${version}_${RUST_ARCH}${fixedWebview ? "_fixed-webview" : ""}_portable.zip`;
   zip.writeZip(zipFile);
 
   consola.success("create portable zip successfully");

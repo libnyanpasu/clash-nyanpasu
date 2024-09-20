@@ -54,7 +54,7 @@ jobs:
     secrets: inherit
 
   windows_amd64_build_fixed_webview:
-    name: Windows i686 Build
+    name: Windows x86_64 Build with Fixed WebView
     uses: ./.github/workflows/deps-build-windows-nsis.yaml
     needs: [delete_current_releases]
     with:
@@ -66,7 +66,7 @@ jobs:
     secrets: inherit
 
   windows_aarch64_build_fixed_webview:
-    name: Windows aarch64 Build
+    name: Windows aarch64 Build with Fixed WebView
     uses: ./.github/workflows/deps-build-windows-nsis.yaml
     needs: [delete_current_releases]
     with:
@@ -78,7 +78,7 @@ jobs:
     secrets: inherit
 
   windows_i686_build_fixed_webview:
-    name: Windows i686 Build
+    name: Windows i686 Build with Fixed WebView
     uses: ./.github/workflows/deps-build-windows-nsis.yaml
     needs: [delete_current_releases]
     with:

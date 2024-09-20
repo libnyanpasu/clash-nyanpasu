@@ -51,3 +51,4 @@ jobs:
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
           TELEGRAM_TO: "@keikolog"
           TELEGRAM_TO_NIGHTLY: "@ClashNyanpasu"
+          WORKFLOW_RUN_ID: ${{ github.run_id }}

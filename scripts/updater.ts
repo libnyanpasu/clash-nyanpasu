@@ -7,7 +7,11 @@ import { colorize, consola } from "./utils/logger";
 const UPDATE_TAG_NAME = "updater";
 const UPDATE_JSON_FILE = "update.json";
 const UPDATE_JSON_PROXY = "update-proxy.json";
+const UPDATE_FIXED_WEBVIEW_FILE = "update-fixed-webview.json";
+const UPDATE_FIXED_WEBVIEW_PROXY = "update-fixed-webview-proxy.json";
 const UPDATE_RELEASE_BODY = process.env.RELEASE_BODY || "";
+
+const isFixedWebview = process.argv.includes("--fixed-webview");
 
 /// generate update.json
 /// upload to update tag's release asset
@@ -65,34 +69,49 @@ async function resolveUpdater() {
   const promises = latestRelease.assets.map(async (asset) => {
     const { name, browser_download_url } = asset;
 
+    function isMatch(
+      name: string,
+      isFixedWebview: boolean,
+      extension: string,
+      arch: string,
+    ) {
+      return (
+        name.endsWith(extension) &&
+        name.includes(arch) &&
+        (isFixedWebview
+          ? !name.includes("fixed-webview")
+          : name.includes("fixed-webview"))
+      );
+    }
+
     // win64 url
-    if (name.endsWith(".nsis.zip") && name.includes("x64")) {
+    if (isMatch(name, isFixedWebview, ".nsis.zip", "x64")) {
       updateData.platforms.win64.url = browser_download_url;
       updateData.platforms["windows-x86_64"].url = browser_download_url;
     }
     // win64 signature
-    if (name.endsWith(".nsis.zip.sig") && name.includes("x64")) {
+    if (isMatch(name, isFixedWebview, ".nsis.zip.sig", "x64")) {
       const sig = await getSignature(browser_download_url);
       updateData.platforms.win64.signature = sig;
       updateData.platforms["windows-x86_64"].signature = sig;
     }
 
     // win32 url
-    if (name.endsWith(".nsis.zip") && name.includes("x86")) {
+    if (isMatch(name, isFixedWebview, ".nsis.zip", "x86")) {
       updateData.platforms["windows-i686"].url = browser_download_url;
     }
     // win32 signature
-    if (name.endsWith(".nsis.zip.sig") && name.includes("x86")) {
+    if (isMatch(name, isFixedWebview, ".nsis.zip.sig", "x86")) {
       const sig = await getSignature(browser_download_url);
       updateData.platforms["windows-i686"].signature = sig;
     }
 
     // win arm64 url
-    if (name.endsWith(".nsis.zip") && name.includes("arm64")) {
+    if (isMatch(name, isFixedWebview, ".nsis.zip", "arm64")) {
       updateData.platforms["windows-aarch64"].url = browser_download_url;
     }
     // win arm64 signature
-    if (name.endsWith(".nsis.zip.sig") && name.includes("arm64")) {
+    if (isMatch(name, isFixedWebview, ".nsis.zip.sig", "arm64")) {
       const sig = await getSignature(browser_download_url);
       updateData.platforms["windows-aarch64"].signature = sig;
     }
@@ -169,14 +188,22 @@ async function resolveUpdater() {
 
   // delete the old assets
   for (const asset of updateRelease.assets) {
-    if (asset.name === UPDATE_JSON_FILE) {
+    if (
+      isFixedWebview
+        ? asset.name === UPDATE_FIXED_WEBVIEW_FILE
+        : asset.name === UPDATE_JSON_FILE
+    ) {
       await github.rest.repos.deleteReleaseAsset({
         ...options,
         asset_id: asset.id,
       });
     }
 
-    if (asset.name === UPDATE_JSON_PROXY) {
+    if (
+      isFixedWebview
+        ? asset.name === UPDATE_FIXED_WEBVIEW_PROXY
+        : asset.name === UPDATE_JSON_PROXY
+    ) {
       await github.rest.repos
         .deleteReleaseAsset({ ...options, asset_id: asset.id })
         .catch((err) => {
@@ -189,14 +216,14 @@ async function resolveUpdater() {
   await github.rest.repos.uploadReleaseAsset({
     ...options,
     release_id: updateRelease.id,
-    name: UPDATE_JSON_FILE,
+    name: isFixedWebview ? UPDATE_FIXED_WEBVIEW_FILE : UPDATE_JSON_FILE,
     data: JSON.stringify(updateData, null, 2),
   });
 
   await github.rest.repos.uploadReleaseAsset({
     ...options,
     release_id: updateRelease.id,
-    name: UPDATE_JSON_PROXY,
+    name: isFixedWebview ? UPDATE_FIXED_WEBVIEW_PROXY : UPDATE_JSON_PROXY,
     data: JSON.stringify(updateDataNew, null, 2),
   });
 }

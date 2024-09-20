@@ -50,6 +50,42 @@ jobs:
       tag: "pre-release"
     secrets: inherit
 
+  windows_amd64_build_fixed_webview:
+    name: Windows i686 Build
+    uses: ./.github/workflows/deps-build-windows-nsis.yaml
+    needs: [delete_current_releases]
+    with:
+      portable: true
+      nightly: true
+      arch: "x86_64"
+      fixed-webview: true
+      tag: "pre-release"
+    secrets: inherit
+
+  windows_aarch64_build_fixed_webview:
+    name: Windows aarch64 Build
+    uses: ./.github/workflows/deps-build-windows-nsis.yaml
+    needs: [delete_current_releases]
+    with:
+      portable: true
+      nightly: true
+      arch: "aarch64"
+      fixed-webview: true
+      tag: "pre-release"
+    secrets: inherit
+
+  windows_i686_build_fixed_webview:
+    name: Windows i686 Build
+    uses: ./.github/workflows/deps-build-windows-nsis.yaml
+    needs: [delete_current_releases]
+    with:
+      portable: true
+      nightly: true
+      arch: "i686"
+      fixed-webview: true
+      tag: "pre-release"
+    secrets: inherit
+
   linux_amd64_build:
     name: Linux amd64 Build
     uses: ./.github/workflows/deps-build-linux.yaml
@@ -127,6 +163,9 @@ jobs:
         windows_amd64_build,
         windows_i686_build,
         windows_aarch64_build,
+        windows_amd64_build_fixed_webview,
+        windows_i686_build_fixed_webview,
+        windows_aarch64_build_fixed_webview,
         linux_amd64_build,
         linux_i686_build,
         linux_aarch64_build,

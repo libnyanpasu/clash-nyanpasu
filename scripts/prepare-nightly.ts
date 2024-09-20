@@ -51,6 +51,10 @@ async function main() {
     tauriConf = merge(tauriConf, fixedWebview2Config);
     delete tauriConf.bundle.windows.webviewInstallMode.silent;
     tauriConf.bundle.windows.webviewInstallMode.path = `./${path.basename(webviewPath)}`;
+    tauriConf.plugins.updater.endpoints =
+      tauriConf.plugins.updater.endpoints.map((o: string) =>
+        o.replace("update-", "update-nightly-"),
+      );
   }
 
   if (isNSIS) {

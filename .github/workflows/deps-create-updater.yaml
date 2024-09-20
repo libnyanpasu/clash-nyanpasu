@@ -54,10 +54,22 @@ jobs:
         run: pnpm updater:nightly
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Update Nightly Fixed Webview Updater
+        if: ${{ inputs.nightly == true }}
+        run: pnpm updater:nightly --fixed-webview
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update Stable Updater
         if: ${{ inputs.nightly == false }}
         run: pnpm updater
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BODY: ${{ inputs.release_body || github.event.release.body }}
+
+      - name: Update Stable Fixed Webview Updater
+        if: ${{ inputs.nightly == false }}
+        run: pnpm updater --fixed-webview
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_BODY: ${{ inputs.release_body || github.event.release.body }}

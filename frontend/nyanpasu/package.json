@@ -33,7 +33,7 @@
     "jotai": "2.9.3",
     "json-schema": "0.4.0",
     "material-react-table": "3.0.1",
-    "monaco-editor": "0.51.0",
+    "monaco-editor": "0.52.0",
     "mui-color-input": "4.0.0",
     "react": "rc",
     "react-dom": "rc",

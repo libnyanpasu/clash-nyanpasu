@@ -114,7 +114,7 @@ const repoInfo = {
     });
     consola.success("Send release message to telegram successfully");
   } else {
-    await client.sendMessage(TELEGRAM_TO, {
+    await client.sendMessage(TELEGRAM_TO_NIGHTLY, {
       message: array2text([
         `Clash Nyanpasu Nightly Build ${GIT_SHORT_HASH} released!`,
         "",

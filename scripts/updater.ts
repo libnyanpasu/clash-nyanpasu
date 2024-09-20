@@ -69,49 +69,44 @@ async function resolveUpdater() {
   const promises = latestRelease.assets.map(async (asset) => {
     const { name, browser_download_url } = asset;
 
-    function isMatch(
-      name: string,
-      isFixedWebview: boolean,
-      extension: string,
-      arch: string,
-    ) {
+    function isMatch(name: string, extension: string, arch: string) {
       return (
         name.endsWith(extension) &&
         name.includes(arch) &&
         (isFixedWebview
-          ? !name.includes("fixed-webview")
-          : name.includes("fixed-webview"))
+          ? name.includes("fixed-webview")
+          : !name.includes("fixed-webview"))
       );
     }
 
     // win64 url
-    if (isMatch(name, isFixedWebview, ".nsis.zip", "x64")) {
+    if (isMatch(name, ".nsis.zip", "x64")) {
       updateData.platforms.win64.url = browser_download_url;
       updateData.platforms["windows-x86_64"].url = browser_download_url;
     }
     // win64 signature
-    if (isMatch(name, isFixedWebview, ".nsis.zip.sig", "x64")) {
+    if (isMatch(name, ".nsis.zip.sig", "x64")) {
       const sig = await getSignature(browser_download_url);
       updateData.platforms.win64.signature = sig;
       updateData.platforms["windows-x86_64"].signature = sig;
     }
 
     // win32 url
-    if (isMatch(name, isFixedWebview, ".nsis.zip", "x86")) {
+    if (isMatch(name, ".nsis.zip", "x86")) {
       updateData.platforms["windows-i686"].url = browser_download_url;
     }
     // win32 signature
-    if (isMatch(name, isFixedWebview, ".nsis.zip.sig", "x86")) {
+    if (isMatch(name, ".nsis.zip.sig", "x86")) {
       const sig = await getSignature(browser_download_url);
       updateData.platforms["windows-i686"].signature = sig;
     }
 
     // win arm64 url
-    if (isMatch(name, isFixedWebview, ".nsis.zip", "arm64")) {
+    if (isMatch(name, ".nsis.zip", "arm64")) {
       updateData.platforms["windows-aarch64"].url = browser_download_url;
     }
     // win arm64 signature
-    if (isMatch(name, isFixedWebview, ".nsis.zip.sig", "arm64")) {
+    if (isMatch(name, ".nsis.zip.sig", "arm64")) {
       const sig = await getSignature(browser_download_url);
       updateData.platforms["windows-aarch64"].signature = sig;
     }

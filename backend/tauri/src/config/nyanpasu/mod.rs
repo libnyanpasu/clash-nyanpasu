@@ -22,6 +22,8 @@ pub enum ClashCore {
     Mihomo,
     #[serde(rename = "mihomo-alpha")]
     MihomoAlpha,
+    #[serde(rename = "clash-rs-alpha")]
+    ClashRsAlpha,
 }
 
 impl Default for ClashCore {
@@ -40,6 +42,7 @@ impl From<ClashCore> for String {
             ClashCore::ClashRs => "clash-rs".into(),
             ClashCore::Mihomo => "mihomo".into(),
             ClashCore::MihomoAlpha => "mihomo-alpha".into(),
+            ClashCore::ClashRsAlpha => "clash-rs-alpha".into(),
         }
     }
 }
@@ -51,6 +54,7 @@ impl std::fmt::Display for ClashCore {
             ClashCore::ClashRs => write!(f, "clash-rs"),
             ClashCore::Mihomo => write!(f, "mihomo"),
             ClashCore::MihomoAlpha => write!(f, "mihomo-alpha"),
+            ClashCore::ClashRsAlpha => write!(f, "clash-rs-alpha"),
         }
     }
 }
@@ -70,6 +74,9 @@ impl From<&ClashCore> for nyanpasu_utils::core::CoreType {
             ClashCore::MihomoAlpha => nyanpasu_utils::core::CoreType::Clash(
                 nyanpasu_utils::core::ClashCoreType::MihomoAlpha,
             ),
+            ClashCore::ClashRsAlpha => nyanpasu_utils::core::CoreType::Clash(
+                nyanpasu_utils::core::ClashCoreType::ClashRustAlpha,
+            ),
         }
     }
 }
@@ -82,6 +89,7 @@ impl TryFrom<&nyanpasu_utils::core::CoreType> for ClashCore {
             nyanpasu_utils::core::CoreType::Clash(clash) => match clash {
                 nyanpasu_utils::core::ClashCoreType::ClashPremium => Ok(ClashCore::ClashPremium),
                 nyanpasu_utils::core::ClashCoreType::ClashRust => Ok(ClashCore::ClashRs),
+                nyanpasu_utils::core::ClashCoreType::ClashRustAlpha => Ok(ClashCore::ClashRsAlpha),
                 nyanpasu_utils::core::ClashCoreType::Mihomo => Ok(ClashCore::Mihomo),
                 nyanpasu_utils::core::ClashCoreType::MihomoAlpha => Ok(ClashCore::MihomoAlpha),
             },

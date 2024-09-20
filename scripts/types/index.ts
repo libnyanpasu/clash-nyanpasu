@@ -20,11 +20,9 @@ export interface BinInfo {
 }
 
 export enum SupportedArch {
-  // blocked by clash-rs
   WindowsX86_32 = "windows-i386",
   WindowsX86_64 = "windows-x86_64",
-  // blocked by clash-rs#212
-  // WindowsArm64 = "windows-arm64",
+  WindowsArm64 = "windows-arm64",
   LinuxAarch64 = "linux-aarch64",
   LinuxAmd64 = "linux-amd64",
   LinuxI386 = "linux-i386",
@@ -38,6 +36,7 @@ export enum SupportedCore {
   Mihomo = "mihomo",
   MihomoAlpha = "mihomo_alpha",
   ClashRs = "clash_rs",
+  ClashRsAlpha = "clash_rs_alpha",
   ClashPremium = "clash_premium",
 }
 

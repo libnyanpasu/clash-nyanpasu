@@ -447,7 +447,7 @@ pub async fn resolve_core_version(app_handle: &AppHandle, core_type: &ClashCore)
         ClashCore::ClashPremium | ClashCore::Mihomo | ClashCore::MihomoAlpha => {
             shell.sidecar(core)?.args(["-v"])
         }
-        ClashCore::ClashRs => shell.sidecar(core)?.args(["-V"]),
+        ClashCore::ClashRs | ClashCore::ClashRsAlpha => shell.sidecar(core)?.args(["-V"]),
     };
     let out = cmd.output().await?;
     if !out.status.success() {

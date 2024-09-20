@@ -19,7 +19,7 @@ pub(super) fn get_arch() -> anyhow::Result<&'static str> {
         ("armel", "linux") => Ok("linux-armv7"),
         ("aarch64", "macos") => Ok("darwin-arm64"),
         ("aarch64", "linux") => Ok("linux-aarch64"),
-        // ("aarch64", "windows") => Ok("windows-arm64"),
+        ("aarch64", "windows") => Ok("windows-arm64"),
         _ => anyhow::bail!("unsupported platform"),
     }
 }
@@ -29,6 +29,7 @@ pub(super) enum CoreTypeMeta {
     Mihomo(String),
     MihomoAlpha,
     ClashRs(String),
+    ClashRsAlpha,
 }
 
 pub(super) fn get_download_path(core_type: CoreTypeMeta, artifact: &str) -> String {
@@ -42,6 +43,9 @@ pub(super) fn get_download_path(core_type: CoreTypeMeta, artifact: &str) -> Stri
         ),
         CoreTypeMeta::ClashRs(tag) => {
             format!("Watfaq/clash-rs/releases/download/{}/{}", tag, artifact)
+        }
+        CoreTypeMeta::ClashRsAlpha => {
+            format!("Watfaq/clash-rs/releases/download/latest/{}", artifact)
         }
         CoreTypeMeta::ClashPremium(tag) => format!(
             "zhongfly/Clash-premium-backup/releases/download/{}/{}",

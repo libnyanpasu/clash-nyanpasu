@@ -5,6 +5,7 @@ import { consola } from "./utils/logger";
 import {
   resolveClashPremium,
   resolveClashRs,
+  resolveClashRsAlpha,
   resolveMihomo,
   resolveMihomoAlpha,
 } from "./utils/manifest";
@@ -17,6 +18,7 @@ export async function generateLatestVersion() {
     resolveMihomoAlpha,
     resolveClashRs,
     resolveClashPremium,
+    resolveClashRsAlpha,
   ];
 
   consola.start("Resolving latest versions");

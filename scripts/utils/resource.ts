@@ -6,7 +6,10 @@ import {
   CLASH_META_MANIFEST,
 } from "../manifest/clash-meta";
 import { CLASH_MANIFEST } from "../manifest/clash-premium";
-import { CLASH_RS_MANIFEST } from "../manifest/clash-rs";
+import {
+  CLASH_RS_ALPHA_MANIFEST,
+  CLASH_RS_MANIFEST,
+} from "../manifest/clash-rs";
 import { BinInfo, SupportedArch } from "../types";
 import { getProxyAgent } from "./";
 import { SIDECAR_HOST } from "./consts";
@@ -199,6 +202,68 @@ export const getClashRustInfo = ({
 
   return {
     name: "clash-rs",
+    targetFile,
+    exeFile,
+    tmpFile,
+    downloadURL,
+  };
+};
+
+export const getClashRsAlphaLatestVersion = async () => {
+  const { VERSION_URL } = CLASH_RS_ALPHA_MANIFEST;
+
+  try {
+    const opts = {} as Partial<RequestInit>;
+
+    const httpProxy = getProxyAgent();
+
+    if (httpProxy) {
+      opts.agent = httpProxy;
+    }
+
+    const response = await fetch(VERSION_URL!, {
+      method: "GET",
+      ...opts,
+    });
+
+    const v = (await response.text()).trim().split(" ").pop()!;
+
+    consola.info(`Clash Rs Alpha latest release version: ${v}`);
+
+    return v.trim();
+  } catch (error) {
+    console.error("Error fetching latest release version:", error);
+
+    process.exit(1);
+  }
+};
+
+export const getClashRustAlphaInfo = async ({
+  platform,
+  arch,
+  sidecarHost,
+}: {
+  platform: string;
+  arch: string;
+  sidecarHost?: string;
+}): Promise<BinInfo> => {
+  const { ARCH_MAPPING, URL_PREFIX } = CLASH_RS_ALPHA_MANIFEST;
+  const version = await getClashRsAlphaLatestVersion();
+  const archLabel = mappingArch(platform as NodeJS.Platform, arch as NodeArch);
+  const name = ARCH_MAPPING[archLabel].replace("{}", version as string);
+
+  const isWin = platform === "win32";
+
+  const exeFile = `${name}`;
+
+  const downloadURL = `${URL_PREFIX}/${name}`;
+
+  const tmpFile = `${name}`;
+
+  const targetFile = `clash-rs-${sidecarHost}${isWin ? ".exe" : ""}`;
+
+  return {
+    name: "clash-rs-alpha",
     targetFile,
     exeFile,
     tmpFile,

@@ -4,12 +4,14 @@
     "mihomo": "v1.18.8",
     "mihomo_alpha": "alpha-a08aa10",
     "clash_rs": "v0.4.0",
-    "clash_premium": "2023-09-05-gdcc8d87"
+    "clash_premium": "2023-09-05-gdcc8d87",
+    "clash_rs_alpha": "0.4.0"
   },
   "arch_template": {
     "mihomo": {
       "windows-i386": "mihomo-windows-386-{}.zip",
       "windows-x86_64": "mihomo-windows-amd64-compatible-{}.zip",
+      "windows-arm64": "mihomo-windows-arm64-{}.zip",
       "linux-aarch64": "mihomo-linux-arm64-{}.gz",
       "linux-amd64": "mihomo-linux-amd64-compatible-{}.gz",
       "linux-i386": "mihomo-linux-386-{}.gz",
@@ -21,6 +23,7 @@
     "mihomo_alpha": {
       "windows-i386": "mihomo-windows-386-{}.zip",
       "windows-x86_64": "mihomo-windows-amd64-compatible-{}.zip",
+      "windows-arm64": "mihomo-windows-arm64-{}.zip",
       "linux-aarch64": "mihomo-linux-arm64-{}.gz",
       "linux-amd64": "mihomo-linux-amd64-compatible-{}.gz",
       "linux-i386": "mihomo-linux-386-{}.gz",
@@ -32,6 +35,7 @@
     "clash_rs": {
       "windows-i386": "clash-i686-pc-windows-msvc-static-crt.exe",
       "windows-x86_64": "clash-x86_64-pc-windows-msvc.exe",
+      "windows-arm64": "clash-aarch64-pc-windows-msvc.exe",
       "linux-aarch64": "clash-aarch64-unknown-linux-gnu-static-crt",
       "linux-amd64": "clash-x86_64-unknown-linux-gnu-static-crt",
       "linux-i386": "clash-i686-unknown-linux-gnu-static-crt",
@@ -43,6 +47,7 @@
     "clash_premium": {
       "windows-i386": "clash-windows-386-n{}.zip",
       "windows-x86_64": "clash-windows-amd64-n{}.zip",
+      "windows-arm64": "clash-windows-arm64-n{}.zip",
       "linux-aarch64": "clash-linux-arm64-n{}.gz",
       "linux-amd64": "clash-linux-amd64-n{}.gz",
       "linux-i386": "clash-linux-386-n{}.gz",
@@ -50,7 +55,19 @@
       "darwin-x64": "clash-darwin-amd64-n{}.gz",
       "linux-armv7": "clash-linux-armv5-n{}.gz",
       "linux-armv7hf": "clash-linux-armv7-n{}.gz"
+    },
+    "clash_rs_alpha": {
+      "windows-i386": "clash-i686-pc-windows-msvc-static-crt.exe",
+      "windows-x86_64": "clash-x86_64-pc-windows-msvc.exe",
+      "windows-arm64": "clash-aarch64-pc-windows-msvc.exe",
+      "linux-aarch64": "clash-aarch64-unknown-linux-gnu-static-crt",
+      "linux-amd64": "clash-x86_64-unknown-linux-gnu-static-crt",
+      "linux-i386": "clash-i686-unknown-linux-gnu-static-crt",
+      "darwin-arm64": "clash-aarch64-apple-darwin",
+      "darwin-x64": "clash-x86_64-apple-darwin",
+      "linux-armv7": "clash-armv7-unknown-linux-gnueabi-static-crt",
+      "linux-armv7hf": "clash-armv7-unknown-linux-gnueabihf"
     }
   },
-  "updated_at": "2024-09-19T22:20:29.616Z"
+  "updated_at": "2024-09-20T02:46:22.198Z"
 }

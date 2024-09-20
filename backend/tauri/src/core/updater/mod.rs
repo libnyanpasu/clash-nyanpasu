@@ -49,6 +49,7 @@ pub struct ManifestVersionLatest {
     mihomo: String,
     mihomo_alpha: String,
     clash_rs: String,
+    clash_rs_alpha: String,
     clash_premium: String,
 }
 
@@ -57,6 +58,7 @@ pub struct ArchTemplate {
     mihomo: HashMap<String, String>,
     mihomo_alpha: HashMap<String, String>,
     clash_rs: HashMap<String, String>,
+    clash_rs_alpha: HashMap<String, String>,
     clash_premium: HashMap<String, String>,
 }
 
@@ -77,6 +79,7 @@ impl Default for ManifestVersionLatest {
             mihomo: "".to_string(),
             mihomo_alpha: "".to_string(),
             clash_rs: "".to_string(),
+            clash_rs_alpha: "".to_string(),
             clash_premium: "".to_string(),
         }
     }
@@ -117,6 +120,14 @@ impl ManifestVersion {
                     .clone()
                     .replace("{}", &self.latest.clash_rs),
                 CoreTypeMeta::ClashRs(self.latest.clash_rs.clone()),
+            )),
+            ClashCore::ClashRsAlpha => Some((
+                self.arch_template
+                    .clash_rs_alpha
+                    .get(arch)?
+                    .clone()
+                    .replace("{}", &self.latest.clash_rs_alpha),
+                CoreTypeMeta::ClashRs(self.latest.clash_rs_alpha.clone()),
             )),
         }
     }
@@ -162,11 +173,15 @@ impl UpdaterManager {
         let mirror = self.get_mirror().unwrap();
         let latest = self.get_latest_version_manifest(&mirror);
         let mihomo_alpha_version = self.get_mihomo_alpha_version();
-        let (latest, mihomo_alpha_version) = join!(latest, mihomo_alpha_version);
+        let clash_rs_alpha_version = self.get_clash_rs_alpha_version();
+        let (latest, mihomo_alpha_version, clash_rs_alpha_version) =
+            join!(latest, mihomo_alpha_version, clash_rs_alpha_version);
         log::debug!("latest version: {:?}", latest);
         self.manifest_version = latest?;
         log::debug!("mihomo alpha version: {:?}", mihomo_alpha_version);
         self.manifest_version.latest.mihomo_alpha = mihomo_alpha_version?;
+        log::debug!("clash rs alpha version: {:?}", clash_rs_alpha_version);
+        self.manifest_version.latest.clash_rs_alpha = clash_rs_alpha_version?;
         Ok(())
     }
 
@@ -215,6 +230,30 @@ impl UpdaterManager {
             );
         }
         Ok(res.text().await?.trim().to_string())
+    }
+
+    async fn get_clash_rs_alpha_version(&self) -> Result<String> {
+        self.mirror_speed_test().await?;
+        let mirror = self.get_mirror().unwrap();
+        let url = crate::utils::candy::parse_gh_url(
+            &mirror,
+            "/Watfaq/clash-rs/releases/download/latest/version.txt",
+        )?;
+        let res = self.client.get(url).send().await?;
+        let status_code = res.status();
+        if !status_code.is_success() {
+            anyhow::bail!(
+                "failed to get clash rs alpha version: response status is {}, expected 200",
+                status_code
+            );
+        }
+        let res = res.text().await?;
+        let version = res
+            .trim()
+            .split(' ')
+            .last()
+            .ok_or(anyhow!("no version found"))?;
+        Ok(version.to_string())
     }
 
     pub async fn update_core(&mut self, core_type: &ClashCore) -> Result<usize> {

@@ -11,6 +11,7 @@ import {
   getClashBackupInfo,
   getClashMetaAlphaInfo,
   getClashMetaInfo,
+  getClashRustAlphaInfo,
   getClashRustInfo,
   getNyanpasuServiceInfo,
 } from "./resource";
@@ -196,5 +197,9 @@ export class Resolve {
 
   public async clashRust() {
     return await this.sidecar(getClashRustInfo(this.infoOption));
+  }
+
+  public async clashRustAlpha() {
+    return await this.sidecar(getClashRustAlphaInfo(this.infoOption));
   }
 }

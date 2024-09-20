@@ -26,7 +26,7 @@ export const resolveMihomo = async (): LatestVersionResolver => {
   const archMapping: ArchMapping = {
     [SupportedArch.WindowsX86_32]: "mihomo-windows-386-{}.zip",
     [SupportedArch.WindowsX86_64]: "mihomo-windows-amd64-compatible-{}.zip",
-    // [SupportedArch.WindowsAarch64]: "mihomo-windows-arm64-{}.zip",
+    [SupportedArch.WindowsArm64]: "mihomo-windows-arm64-{}.zip",
     [SupportedArch.LinuxAarch64]: "mihomo-linux-arm64-{}.gz",
     [SupportedArch.LinuxAmd64]: "mihomo-linux-amd64-compatible-{}.gz",
     [SupportedArch.LinuxI386]: "mihomo-linux-386-{}.gz",
@@ -55,7 +55,7 @@ export const resolveMihomoAlpha = async (): LatestVersionResolver => {
   const archMapping: ArchMapping = {
     [SupportedArch.WindowsX86_32]: "mihomo-windows-386-{}.zip",
     [SupportedArch.WindowsX86_64]: "mihomo-windows-amd64-compatible-{}.zip",
-    // [SupportedArch.WindowsAarch64]: "mihomo-windows-arm64-{}.zip",
+    [SupportedArch.WindowsArm64]: "mihomo-windows-arm64-{}.zip",
     [SupportedArch.LinuxAarch64]: "mihomo-linux-arm64-{}.gz",
     [SupportedArch.LinuxAmd64]: "mihomo-linux-amd64-compatible-{}.gz",
     [SupportedArch.LinuxI386]: "mihomo-linux-386-{}.gz",
@@ -85,7 +85,7 @@ export const resolveClashRs = async (): LatestVersionResolver => {
   const archMapping: ArchMapping = {
     [SupportedArch.WindowsX86_32]: "clash-i686-pc-windows-msvc-static-crt.exe",
     [SupportedArch.WindowsX86_64]: "clash-x86_64-pc-windows-msvc.exe",
-    // [SupportedArch.WindowsAarch64]: "mihomo-windows-arm64-alpha-{}.zip",
+    [SupportedArch.WindowsArm64]: "clash-aarch64-pc-windows-msvc.exe",
     [SupportedArch.LinuxAarch64]: "clash-aarch64-unknown-linux-gnu-static-crt",
     [SupportedArch.LinuxAmd64]: "clash-x86_64-unknown-linux-gnu-static-crt",
     [SupportedArch.LinuxI386]: "clash-i686-unknown-linux-gnu-static-crt",
@@ -98,6 +98,37 @@ export const resolveClashRs = async (): LatestVersionResolver => {
   return {
     name: "clash_rs",
     version: latestRelease.data.tag_name,
+    archMapping,
+  };
+};
+
+export const resolveClashRsAlpha = async (): LatestVersionResolver => {
+  const resp = await fetch(
+    "https://github.com/Watfaq/clash-rs/releases/download/latest/version.txt",
+  );
+
+  const alphaVersion = resp.ok
+    ? (await resp.text()).trim().split(" ").pop()!
+    : "latest";
+
+  consola.debug(`clash-rs alpha latest release: ${alphaVersion}`);
+
+  const archMapping: ArchMapping = {
+    [SupportedArch.WindowsX86_32]: "clash-i686-pc-windows-msvc-static-crt.exe",
+    [SupportedArch.WindowsX86_64]: "clash-x86_64-pc-windows-msvc.exe",
+    [SupportedArch.WindowsArm64]: "clash-aarch64-pc-windows-msvc.exe",
+    [SupportedArch.LinuxAarch64]: "clash-aarch64-unknown-linux-gnu-static-crt",
+    [SupportedArch.LinuxAmd64]: "clash-x86_64-unknown-linux-gnu-static-crt",
+    [SupportedArch.LinuxI386]: "clash-i686-unknown-linux-gnu-static-crt",
+    [SupportedArch.DarwinArm64]: "clash-aarch64-apple-darwin",
+    [SupportedArch.DarwinX64]: "clash-x86_64-apple-darwin",
+    [SupportedArch.LinuxArmv7]: "clash-armv7-unknown-linux-gnueabi-static-crt",
+    [SupportedArch.LinuxArmv7hf]: "clash-armv7-unknown-linux-gnueabihf",
+  } satisfies ArchMapping;
+
+  return {
+    name: "clash_rs_alpha",
+    version: alphaVersion,
     archMapping,
   };
 };
@@ -115,7 +146,7 @@ export const resolveClashPremium = async (): LatestVersionResolver => {
   const archMapping: ArchMapping = {
     [SupportedArch.WindowsX86_32]: "clash-windows-386-n{}.zip",
     [SupportedArch.WindowsX86_64]: "clash-windows-amd64-n{}.zip",
-    // [SupportedArch.WindowsAarch64]: "clash-windows-arm64-n{}.zip",
+    [SupportedArch.WindowsArm64]: "clash-windows-arm64-n{}.zip",
     [SupportedArch.LinuxAarch64]: "clash-linux-arm64-n{}.gz",
     [SupportedArch.LinuxAmd64]: "clash-linux-amd64-n{}.gz",
     [SupportedArch.LinuxI386]: "clash-linux-386-n{}.gz",

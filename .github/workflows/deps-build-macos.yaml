@@ -132,3 +132,10 @@ jobs:
         run: |
           ${{ inputs.nightly == true && 'pnpm build:nightly --target aarch64-apple-darwin' || 'pnpm build --target aarch64-apple-darwin' }}
           pnpm upload:osx-aarch64
+
+      - name: Upload to Github Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Clash.Nyanpasu-macOS-${{ inputs.aarch64 == true && 'aarch64' || 'amd64' }}
+          path: |
+            ./backend/target/**/*.dmg

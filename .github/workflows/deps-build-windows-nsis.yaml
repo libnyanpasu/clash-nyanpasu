@@ -232,3 +232,18 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
           VITE_WIN_PORTABLE: 1
+
+      - name: Upload NSIS Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Clash.Nyanpasu-windows-${{ inputs.arch }}${{ inputs.fixed-webview == true && '-fixed-webview' || '' }}-nsis-installer
+          path: |
+            ./backend/target/**/bundle/*.exe
+
+      - name: Upload portable
+        if: ${{ inputs.portable == true }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Clash.Nyanpasu-windows-${{ inputs.arch }}${{ inputs.fixed-webview == true && '-fixed-webview' || '' }}-portable
+          path: |
+            ./*_portable.zip

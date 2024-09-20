@@ -262,7 +262,7 @@ export const getClashRustAlphaInfo = async ({
 
   const tmpFile = `${name}`;
 
-  const targetFile = `clash-rs-${sidecarHost}${isWin ? ".exe" : ""}`;
+  const targetFile = `clash-rs-alpha-${sidecarHost}${isWin ? ".exe" : ""}`;
 
   return {
     name: "clash-rs-alpha",

@@ -40,6 +40,7 @@ async function resolvePortable() {
   zip.addLocalFile(path.join(buildDir, "mihomo-alpha.exe"));
   zip.addLocalFile(path.join(buildDir, "nyanpasu-service.exe"));
   zip.addLocalFile(path.join(buildDir, "clash-rs.exe"));
+  zip.addLocalFile(path.join(buildDir, "clash-rs-alpha.exe"));
   zip.addLocalFolder(path.join(buildDir, "resources"), "resources");
 
   if (fixedWebview) {

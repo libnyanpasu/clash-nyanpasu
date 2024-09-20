@@ -29,6 +29,8 @@ function mappingArch(platform: NodeJS.Platform, arch: NodeArch): SupportedArch {
       return SupportedArch.WindowsX86_64;
     case "win32-ia32":
       return SupportedArch.WindowsX86_32;
+    case "win32-arm64":
+      return SupportedArch.WindowsArm64;
     case "linux-x64":
       return SupportedArch.LinuxAmd64;
     case "linux-ia32":

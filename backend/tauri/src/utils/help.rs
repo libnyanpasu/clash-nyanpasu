@@ -99,14 +99,32 @@ pub fn parse_str<T: FromStr>(target: &str, key: &str) -> Option<T> {
 pub fn open_file(app: tauri::AppHandle, path: PathBuf) -> Result<()> {
     #[cfg(target_os = "macos")]
     let code = "Visual Studio Code";
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    let code = "code.cmd";
+    #[cfg(all(not(windows), not(target_os = "macos")))]
     let code = "code";
 
     let shell = app.shell();
 
     trace_err!(
         match which::which(code) {
-            Ok(_) => crate::utils::open::with(path, code),
+            Ok(code_path) => {
+                log::debug!(target: "app", "find VScode `{}`", code_path.display());
+                #[cfg(not(windows))]
+                {
+                    crate::utils::open::with(path, code)
+                }
+                #[cfg(windows)]
+                {
+                    use std::ffi::OsString;
+                    let mut buf = OsString::with_capacity(path.as_os_str().len() + 2);
+                    buf.push("\"");
+                    buf.push(path.as_os_str());
+                    buf.push("\"");
+
+                    open::with_detached(buf, code)
+                }
+            }
             Err(err) => {
                 log::error!(target: "app", "Can't find VScode `{err}`");
                 // default open

@@ -4,14 +4,6 @@
     windows_subsystem = "windows"
 )]
 
-#[cfg(target_os = "macos")]
-#[macro_use]
-extern crate cocoa;
-
-#[cfg(target_os = "macos")]
-#[macro_use]
-extern crate objc;
-
 mod cmds;
 mod config;
 mod consts;
@@ -337,9 +329,9 @@ pub fn run() -> std::io::Result<()> {
                         reset_window_open_counter();
                         let _ = resolve::save_window_state(app_handle, true);
                         #[cfg(target_os = "macos")]
-                        unsafe {
+                        log_err!(app_handle.run_on_main_thread(|| {
                             crate::utils::dock::macos::hide_dock_icon();
-                        }
+                        }));
                     }
                     tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
                         log::debug!(target: "app", "window moved or resized");

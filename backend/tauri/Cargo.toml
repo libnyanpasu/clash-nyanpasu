@@ -155,8 +155,15 @@ tauri-plugin-global-shortcut = { git = "https://github.com/tauri-apps/plugins-wo
 openssl = { version = "0.10", features = ["vendored"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-cocoa = "0.26.0"
-objc = "0.2.7"
+objc2 = "0.5.2"
+objc2-app-kit = { version = "0.2.2", features = [
+  "NSApplication",
+  "NSResponder",
+  "NSRunningApplication",
+  "NSWindow",
+  "NSView",
+] }
+objc2-foundation = { version = "0.2.2", features = ["NSGeometry"] }
 
 [target.'cfg(windows)'.dependencies]
 deelevate = "0.2.0"

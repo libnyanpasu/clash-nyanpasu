@@ -32,34 +32,39 @@ pub fn reset_window_open_counter() {
 }
 
 #[cfg(target_os = "macos")]
-fn set_window_controls_pos(window: cocoa::base::id, x: f64, y: f64) {
-    use cocoa::{
-        appkit::{NSView, NSWindow, NSWindowButton},
-        foundation::NSRect,
-    };
+fn set_window_controls_pos(window: objc2::rc::Retained<objc2_app_kit::NSWindow>, x: f64, y: f64) {
+    use objc2_app_kit::NSWindowButton;
+    use objc2_foundation::NSRect;
+    let close = window
+        .standardWindowButton(NSWindowButton::NSWindowCloseButton)
+        .unwrap();
+    let miniaturize = window
+        .standardWindowButton(NSWindowButton::NSWindowMiniaturizeButton)
+        .unwrap();
+    let zoom = window
+        .standardWindowButton(NSWindowButton::NSWindowZoomButton)
+        .unwrap();
 
+    let title_bar_container_view = unsafe { close.superview().unwrap().superview().unwrap() };
+
+    let close_rect = close.frame();
+    let button_height = close_rect.size.height;
+
+    let title_bar_frame_height = button_height + y;
+    let mut title_bar_rect = title_bar_container_view.frame();
+    title_bar_rect.size.height = title_bar_frame_height;
+    title_bar_rect.origin.y = window.frame().size.height - title_bar_frame_height;
     unsafe {
-        let close = window.standardWindowButton_(NSWindowButton::NSWindowCloseButton);
-        let miniaturize = window.standardWindowButton_(NSWindowButton::NSWindowMiniaturizeButton);
-        let zoom = window.standardWindowButton_(NSWindowButton::NSWindowZoomButton);
+        title_bar_container_view.setFrame(title_bar_rect);
+    }
 
-        let title_bar_container_view = close.superview().superview();
+    let space_between = miniaturize.frame().origin.x - close.frame().origin.x;
+    let window_buttons = vec![close, miniaturize, zoom];
 
-        let close_rect: NSRect = msg_send![close, frame];
-        let button_height = close_rect.size.height;
-
-        let title_bar_frame_height = button_height + y;
-        let mut title_bar_rect = NSView::frame(title_bar_container_view);
-        title_bar_rect.size.height = title_bar_frame_height;
-        title_bar_rect.origin.y = NSView::frame(window).size.height - title_bar_frame_height;
-        let _: () = msg_send![title_bar_container_view, setFrame: title_bar_rect];
-
-        let window_buttons = vec![close, miniaturize, zoom];
-        let space_between = NSView::frame(miniaturize).origin.x - NSView::frame(close).origin.x;
-
-        for (i, button) in window_buttons.into_iter().enumerate() {
-            let mut rect: NSRect = NSView::frame(button);
-            rect.origin.x = x + (i as f64 * space_between);
+    for (i, button) in window_buttons.into_iter().enumerate() {
+        let mut rect: NSRect = button.frame();
+        rect.origin.x = x + (i as f64 * space_between);
+        unsafe {
             button.setFrameOrigin(rect.origin);
         }
     }
@@ -86,13 +91,15 @@ pub fn find_unused_port() -> Result<u16> {
 pub fn resolve_setup(app: &mut App) {
     #[cfg(target_os = "macos")]
     app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+    #[cfg(target_os = "macos")]
+    let app_handle = app.app_handle().clone();
     app.listen("react_app_mounted", move |_| {
         tracing::debug!("Frontend React App is mounted, reset open window counter");
         reset_window_open_counter();
         #[cfg(target_os = "macos")]
-        unsafe {
+        log_err!(app_handle.run_on_main_thread(move || {
             crate::utils::dock::macos::show_dock_icon();
-        }
+        }));
     });
 
     handle::Handle::global().init(app.app_handle().clone());
@@ -250,14 +257,24 @@ pub fn create_window(app_handle: &AppHandle) {
 
     #[cfg(target_os = "macos")]
     fn set_controls_and_log_error(app_handle: &tauri::AppHandle, window_name: &str) {
+        use objc2::{rc::Retained, runtime::NSObject};
+        use objc2_app_kit::NSWindow;
         match app_handle
             .get_webview_window(window_name)
             .unwrap()
             .ns_window()
         {
             Ok(raw_window) => {
-                let window_id: cocoa::base::id = raw_window as _;
-                set_window_controls_pos(window_id, 26.0, 26.0);
+                let obj: Option<Retained<NSWindow>> =
+                    unsafe { Retained::from_raw(raw_window as *mut NSWindow) };
+                match obj {
+                    Some(window) => {
+                        set_window_controls_pos(window, 26.0, 26.0);
+                    }
+                    None => {
+                        log::error!(target: "app", "failed to get ns_window");
+                    }
+                }
             }
             Err(err) => {
                 log::error!(target: "app", "failed to get ns_window, {err}");

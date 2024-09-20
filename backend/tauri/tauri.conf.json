@@ -9,7 +9,6 @@
       "digestAlgorithm": "sha256",
       "timestampUrl": "",
       "webviewInstallMode": {
-        "silent": true,
         "type": "embedBootstrapper"
       },
       "wix": {

@@ -3,9 +3,11 @@ import AdmZip from "adm-zip";
 import fs from "fs-extra";
 import { context, getOctokit } from "@actions/github";
 import packageJson from "../package.json";
+import { TAURI_APP_DIR } from "./utils/env";
 import { colorize, consola } from "./utils/logger";
 
 const RUST_ARCH = process.env.RUST_ARCH || "x86_64";
+const fixedWebview = process.argv.includes("--fixed-webview");
 
 /// Script for ci
 /// 打包绿色版/便携版 (only Windows)
@@ -39,11 +41,25 @@ async function resolvePortable() {
   zip.addLocalFile(path.join(buildDir, "nyanpasu-service.exe"));
   zip.addLocalFile(path.join(buildDir, "clash-rs.exe"));
   zip.addLocalFolder(path.join(buildDir, "resources"), "resources");
+
+  if (fixedWebview) {
+    const webviewPath = (await fs.readdir(TAURI_APP_DIR)).find((file) =>
+      file.includes("WebView2"),
+    );
+    if (!webviewPath) {
+      throw new Error("WebView2 runtime not found");
+    }
+    zip.addLocalFolder(
+      path.join(TAURI_APP_DIR, webviewPath),
+      path.basename(webviewPath),
+    );
+  }
+
   zip.addLocalFolder(configDir, ".config");
 
   const { version } = packageJson;
 
-  const zipFile = `Clash.Nyanpasu_${version}_${RUST_ARCH}_portable.zip`;
+  const zipFile = `Clash.Nyanpasu_${version}_${RUST_ARCH}${fixedWebview ? "_fixedWebview2" : ""}_portable.zip`;
   zip.writeZip(zipFile);
 
   consola.success("create portable zip successfully");

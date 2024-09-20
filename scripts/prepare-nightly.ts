@@ -2,7 +2,11 @@ import { execSync } from "child_process";
 import path from "node:path";
 import fs from "fs-extra";
 import { merge } from "lodash-es";
-import { cwd, TAURI_APP_DIR } from "./utils/env";
+import {
+  cwd,
+  TAURI_APP_DIR,
+  TAURI_FIXED_WEBVIEW2_CONFIG_OVERRIDE_PATH,
+} from "./utils/env";
 import { consola } from "./utils/logger";
 
 const TAURI_DEV_APP_CONF_PATH = path.join(
@@ -24,15 +28,30 @@ const NYANPASU_PACKAGE_JSON_PATH = path.join(
 
 const isNSIS = process.argv.includes("--nsis"); // only build nsis
 const isMSI = process.argv.includes("--msi"); // only build msi
+const fixedWebview = process.argv.includes("--fixed-webview");
 
 async function main() {
   consola.debug("Read config...");
   const tauriAppConf = await fs.readJSON(TAURI_APP_CONF);
   const tauriAppOverrides = await fs.readJSON(TAURI_DEV_APP_OVERRIDES_PATH);
-  const tauriConf = merge(tauriAppConf, tauriAppOverrides);
+  let tauriConf = merge(tauriAppConf, tauriAppOverrides);
   const packageJson = await fs.readJSON(NYANPASU_PACKAGE_JSON_PATH);
   const rootPackageJson = await fs.readJSON(ROOT_PACKAGE_JSON_PATH);
   // const wxsFile = await fs.readFile(WXS_PATH, "utf-8");
+  if (fixedWebview) {
+    const fixedWebview2Config = await fs.readJSON(
+      TAURI_FIXED_WEBVIEW2_CONFIG_OVERRIDE_PATH,
+    );
+    const webviewPath = (await fs.readdir(TAURI_APP_DIR)).find((file) =>
+      file.includes("WebView2"),
+    );
+    if (!webviewPath) {
+      throw new Error("WebView2 runtime not found");
+    }
+    tauriConf = merge(tauriConf, fixedWebview2Config);
+    delete tauriConf.bundle.windows.webviewInstallMode.silent;
+    tauriConf.bundle.windows.webviewInstallMode.path = `./${path.basename(webviewPath)}`;
+  }
 
   if (isNSIS) {
     tauriConf.bundle.targets = ["nsis"];

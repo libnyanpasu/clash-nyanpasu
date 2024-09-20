@@ -31,7 +31,8 @@ export const getImage = (core: ClashCore) => {
       return ClashMeta;
     }
 
-    case "clash-rs": {
+    case "clash-rs":
+    case "clash-rs-alpha": {
       return ClashRs;
     }
 

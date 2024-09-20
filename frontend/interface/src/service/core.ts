@@ -15,6 +15,7 @@ export const VALID_CORE: Core[] = [
   { name: "Mihomo", core: "mihomo" },
   { name: "Mihomo Alpha", core: "mihomo-alpha" },
   { name: "Clash Rust", core: "clash-rs" },
+  { name: "Clash Rust Alpha", core: "clash-rs-alpha" },
 ];
 
 export const fetchCoreVersion = async () => {

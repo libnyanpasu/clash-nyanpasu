@@ -24,6 +24,7 @@ jobs:
     with:
       portable: true
       nightly: true
+      fixed-webview: false
       arch: "x86_64"
       tag: "pre-release"
     secrets: inherit
@@ -35,6 +36,7 @@ jobs:
     with:
       portable: true
       nightly: true
+      fixed-webview: false
       arch: "aarch64"
       tag: "pre-release"
     secrets: inherit
@@ -46,6 +48,7 @@ jobs:
     with:
       portable: true
       nightly: true
+      fixed-webview: false
       arch: "i686"
       tag: "pre-release"
     secrets: inherit

@@ -204,17 +204,17 @@ jobs:
           }
 
           foreach ($file in $files) {
-            echo "Renaming $file.FullName"
+            echo "Renaming $file"
             $newname = $file.FullName -replace $arch, "fixed-webview-$arch"
-            Rename-Item -Path $file.FullName -NewName $newname
+            Rename-Item -Path $file -NewName $newname
           }
 
       - name: Upload to release
         run: |
           $files = Get-ChildItem -Path "./backend/target" -Recurse -Include "*.exe", "*.zip", "*.zip.sig" | Where-Object { $_.FullName -like "*\bundle\*" }
           foreach ($file in $files) {
-            echo "Uploading $file.FullName"
-            gh release upload ${{ inputs.tag }} "$file.FullName" --clobber
+            echo "Uploading $file"
+            gh release upload ${{ inputs.tag }} "$file" --clobber
           }
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,9 +1,8 @@
 import { parseHotkey } from "@/utils/parse-hotkey";
-import { DeleteRounded } from "@mui/icons-material";
-import { alpha, IconButton, useTheme } from "@mui/material";
+import { Dangerous, DeleteRounded } from "@mui/icons-material";
+import { alpha, CircularProgress, IconButton, useTheme } from "@mui/material";
 import type {} from "@mui/material/themeCssVarsAugmentation";
-import clsx from "clsx";
-import { CSSProperties, useRef, useState } from "react";
+import { CSSProperties, useEffect, useRef, useState } from "react";
 import { cn, Kbd } from "@nyanpasu/ui";
 import styles from "./hotkey-input.module.scss";
 
@@ -13,23 +12,33 @@ export interface Props extends React.HTMLAttributes<HTMLInputElement> {
   onValueChange?: (value: string[]) => void;
   func: string;
   onBlurCb?: (e: React.FocusEvent<HTMLInputElement>, func: string) => void;
+  loading?: boolean;
 }
 
 export default function HotkeyInput({
   isDuplicate = false,
   value,
-  children,
   func,
   onValueChange,
   onBlurCb,
   // native
   className,
+  loading,
   ...rest
 }: Props) {
   const theme = useTheme();
 
   const changeRef = useRef<string[]>([]);
   const [keys, setKeys] = useState(value || []);
+  const [isClearing, setIsClearing] = useState(false);
+
+  useEffect(() => {
+    if (isClearing) {
+      onBlurCb?.({} as React.FocusEvent<HTMLInputElement>, func);
+      setIsClearing(false);
+    }
+  }, [func, isClearing, onBlurCb]);
+
   return (
     <div className="flex items-center gap-2">
       <div className={cn("relative min-h-[36px] w-[165px]", styles.wrapper)}>
@@ -84,6 +93,19 @@ export default function HotkeyInput({
               {key}
             </Kbd>
           ))}
+          {loading && (
+            <CircularProgress className="absolute right-2" size={13} />
+          )}
+          {isDuplicate && (
+            <Dangerous
+              className="absolute right-2 text-base"
+              sx={[
+                (theme) => ({
+                  color: theme.palette.error.main,
+                }),
+              ]}
+            />
+          )}
         </div>
       </div>
 
@@ -94,7 +116,7 @@ export default function HotkeyInput({
         onClick={() => {
           onValueChange?.([]);
           setKeys([]);
-          onBlurCb?.({} as any, func);
+          setIsClearing(true);
         }}
       >
         <DeleteRounded fontSize="inherit" />

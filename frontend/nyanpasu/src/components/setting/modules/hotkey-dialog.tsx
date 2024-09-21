@@ -1,7 +1,8 @@
-import { useLockFn, useMemoizedFn } from "ahooks";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useLockFn } from "ahooks";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { notification, NotificationType } from "@/utils/notification";
+import { formatError } from "@/utils";
+import { message } from "@/utils/notification";
 import { Typography } from "@mui/material";
 import { useNyanpasu } from "@nyanpasu/interface";
 import { BaseDialog, BaseDialogProps } from "@nyanpasu/ui";
@@ -21,7 +22,21 @@ const HOTKEY_FUNC = [
   "toggle_tun_mode",
   // "enable_tun_mode",
   // "disable_tun_mode",
-];
+] as const;
+
+type AllowedHotkeyFunc = (typeof HOTKEY_FUNC)[number];
+
+type Key = string;
+
+type HotKeyErrorMessages = {
+  [K in AllowedHotkeyFunc]: string | null;
+};
+
+type HotKeyLoading = {
+  [K in AllowedHotkeyFunc]: boolean;
+};
+
+type HotkeyMap = { [K in AllowedHotkeyFunc]: Key[] };
 
 export default function HotkeyDialog({
   open,
@@ -31,19 +46,19 @@ export default function HotkeyDialog({
 }: HotkeyDialogProps) {
   const { t } = useTranslation();
 
-  const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu();
-
-  const [hotkeyMap, setHotkeyMap] = useState<Record<string, string[]>>({});
-  const hotkeyMapRef = useRef<Record<string, string[]>>({});
   // 检查是否有快捷键重复
   const [duplicateItems, setDuplicateItems] = useState<string[]>([]);
+  const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu();
+
+  const [hotkeyMap, setHotkeyMap] = useState<HotkeyMap>({} as HotkeyMap);
+
   useEffect(() => {
-    if (open) {
+    if (open && Object.keys(hotkeyMap).length === 0) {
       const map = {} as typeof hotkeyMap;
       nyanpasuConfig?.hotkeys?.forEach((text) => {
         const [func, key] = text.split(",").map((i) => i.trim());
         if (!func || !key) return;
-        map[func] = key
+        map[func as AllowedHotkeyFunc] = key
           .split("+")
           .map((e) => e.trim())
           .map((k) => (k === "PLUS" ? "+" : k));
@@ -51,61 +66,76 @@ export default function HotkeyDialog({
       setHotkeyMap(map);
       setDuplicateItems([]);
     }
-  }, [nyanpasuConfig?.hotkeys, open]);
-  const isDuplicated = useMemo(() => !!duplicateItems.length, [duplicateItems]);
+  }, [hotkeyMap, nyanpasuConfig?.hotkeys, open]);
 
-  const onBlurCb = useMemoizedFn(
-    (e: React.FocusEvent<HTMLInputElement>, func: string) => {
-      console.log(func);
-      const keys = Object.values(hotkeyMapRef.current).flat().filter(Boolean);
-      const set = new Set(keys);
-      if (keys.length !== set.size) {
-        setDuplicateItems([...duplicateItems, func]);
-      } else {
-        setDuplicateItems(duplicateItems.filter((e) => e !== func));
+  const [errorMessages, setErrorMessages] = useState<HotKeyErrorMessages>(
+    HOTKEY_FUNC.reduce(
+      (acc, cur) => ({ ...acc, [cur]: null }),
+      {} as HotKeyErrorMessages,
+    ),
+  );
+
+  const [loading, setLoading] = useState<HotKeyLoading>(
+    HOTKEY_FUNC.reduce(
+      (acc, cur) => ({ ...acc, [cur]: false }),
+      {} as HotKeyLoading,
+    ),
+  );
+
+  const saveState = useLockFn(
+    async (func: AllowedHotkeyFunc, hotkeyMap: HotkeyMap) => {
+      const hotkeys = Object.entries(hotkeyMap)
+        .map(([func, keys]) => {
+          if (!func || !keys?.length) return "";
+
+          const key = keys
+            .map((k) => k.trim())
+            .filter(Boolean)
+            .map((k) => (k === "+" ? "PLUS" : k))
+            .join("+");
+
+          if (!key) return "";
+          return `${func},${key}`;
+        })
+        .filter(Boolean);
+
+      try {
+        await setNyanpasuConfig({ hotkeys });
+      } catch (err: unknown) {
+        setErrorMessages((prev) => ({
+          ...prev,
+          [func]: formatError(err),
+        }));
+        await message(formatError(err), {
+          kind: "error",
+        });
       }
     },
   );
 
-  const saveState = useLockFn(async () => {
-    const hotkeys = Object.entries(hotkeyMap)
-      .map(([func, keys]) => {
-        if (!func || !keys?.length) return "";
+  const onBlurCb = useCallback(
+    (e: React.FocusEvent<HTMLInputElement>, func: string) => {
+      const keys = Object.values(hotkeyMap).flat().filter(Boolean);
+      const set = new Set(keys);
+      if (keys.length !== set.size) {
+        setDuplicateItems([...duplicateItems, func]);
+        return;
+      } else {
+        setDuplicateItems(duplicateItems.filter((e) => e !== func));
+      }
 
-        const key = keys
-          .map((k) => k.trim())
-          .filter(Boolean)
-          .map((k) => (k === "+" ? "PLUS" : k))
-          .join("+");
+      setLoading((prev) => ({ ...prev, [func]: true }));
 
-        if (!key) return "";
-        return `${func},${key}`;
-      })
-      .filter(Boolean);
-
-    try {
-      await setNyanpasuConfig({ hotkeys });
-    } catch (err: any) {
-      notification({
-        title: t("Error"),
-        body: err.message || err.toString(),
-        type: NotificationType.Error,
-      });
-    }
-  });
-
-  // 自动保存
-  useEffect(() => {
-    if (!isDuplicated && open) {
-      saveState();
-    }
-  }, [hotkeyMap, isDuplicated, open, saveState]);
-
-  const onSave = () => {
-    saveState().then(() => {
-      onClose?.();
-    });
-  };
+      saveState(func as AllowedHotkeyFunc, hotkeyMap)
+        .catch(() => {
+          setDuplicateItems([...duplicateItems, func]);
+        })
+        .finally(() => {
+          setLoading((prev) => ({ ...prev, [func]: false }));
+        });
+    },
+    [duplicateItems, hotkeyMap, saveState],
+  );
 
   return (
     <BaseDialog
@@ -121,14 +151,15 @@ export default function HotkeyDialog({
             <Typography>{t(func)}</Typography>
             <HotkeyInput
               func={func}
-              isDuplicate={duplicateItems.includes(func)}
+              isDuplicate={
+                duplicateItems.includes(func) || !!errorMessages[func]
+              }
               onBlurCb={onBlurCb}
+              loading={loading[func]}
               value={hotkeyMap[func] ?? []}
-              onValueChange={(v) => {
-                const map = { ...hotkeyMapRef.current, [func]: v };
-                hotkeyMapRef.current = map;
-                setHotkeyMap(map);
-              }}
+              onValueChange={(v) =>
+                setHotkeyMap((prev) => ({ ...prev, [func]: v }))
+              }
             />
           </div>
         ))}

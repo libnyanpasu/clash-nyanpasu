@@ -38,6 +38,8 @@ export const useNyanpasu = (options?: {
     } catch (error) {
       if (options?.onError) {
         options?.onError(error);
+      } else {
+        throw error;
       }
     }
   };

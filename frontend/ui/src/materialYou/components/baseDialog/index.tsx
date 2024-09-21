@@ -60,6 +60,7 @@ export const BaseDialog = ({
   });
 
   const [okLoading, setOkLoading] = useState(false);
+  const [closeLoading, setCloseLoading] = useState(false);
 
   const { run: runMounted, cancel: cancelMounted } = useDebounceFn(
     () => setMounted(false),
@@ -79,12 +80,22 @@ export const BaseDialog = ({
     }
   }, [open]);
 
-  const handleClose = useCallback(() => {
+  const handleClose = useLockFn(async () => {
     if (onClose) {
-      onClose();
-      runMounted();
+      if (onClose.constructor.name === "AsyncFunction") {
+        try {
+          setCloseLoading(true);
+
+          await onClose();
+        } finally {
+          setCloseLoading(false);
+        }
+      } else {
+        onClose();
+      }
     }
-  }, [onClose, runMounted]);
+    runMounted();
+  });
 
   const handleOk = useLockFn(async () => {
     if (!onOk) return;
@@ -208,9 +219,14 @@ export const BaseDialog = ({
 
             <div className={cn("m-2 flex justify-end gap-2", full && "mx-6")}>
               {onClose && (
-                <Button variant="outlined" onClick={handleClose}>
+                <LoadingButton
+                  disabled={loading || closeLoading}
+                  loading={closeLoading || loading}
+                  variant="outlined"
+                  onClick={handleClose}
+                >
                   {close || t("Close")}
-                </Button>
+                </LoadingButton>
               )}
 
               {onOk && (

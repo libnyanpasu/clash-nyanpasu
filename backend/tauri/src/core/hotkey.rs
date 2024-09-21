@@ -5,7 +5,7 @@ use parking_lot::Mutex;
 use std::{collections::HashMap, sync::Arc};
 use tauri::AppHandle;
 
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 pub struct Hotkey {
     current: Arc<Mutex<Vec<String>>>, // 保存当前的热键设置
@@ -15,6 +15,7 @@ pub struct Hotkey {
 // (hotkey, func)
 type HotKeyOp<'a> = (&'a str, HotKeyOpType<'a>);
 
+#[derive(Debug)]
 enum HotKeyOpType<'a> {
     #[allow(unused)]
     Unbind(&'a str),
@@ -97,8 +98,10 @@ impl Hotkey {
             _ => bail!("invalid function \"{func}\""),
         };
 
-        manager.on_shortcut(hotkey, move |_app_handle, _hotkey, _ev| {
-            f();
+        manager.on_shortcut(hotkey, move |_app_handle, _hotkey, ev| {
+            if let ShortcutState::Pressed = ev.state {
+                f();
+            }
         })?;
 
         log::info!(target: "app", "register hotkey {hotkey} {func}");
@@ -117,6 +120,7 @@ impl Hotkey {
         Ok(())
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn update(&self, new_hotkeys: Vec<String>) -> Result<()> {
         let mut current = self.current.lock();
         let old_map = Self::get_map_from_vec(&current);
@@ -126,10 +130,12 @@ impl Hotkey {
 
         // 先检查一遍所有新的热键是不是可以用的
         for (hotkey, op) in ops.iter() {
-            if let HotKeyOpType::Bind(_) = op {
+            if matches!(op, HotKeyOpType::Bind(_) | HotKeyOpType::Change(_, _)) {
                 Self::check_key(hotkey)?
             }
         }
+
+        tracing::info!("hotkey update: {:?}", ops);
 
         for (hotkey, op) in ops.iter() {
             match op {

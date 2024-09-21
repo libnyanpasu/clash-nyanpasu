@@ -1,7 +1,8 @@
 import MdiTextBoxCheckOutline from "~icons/mdi/text-box-check-outline";
+import { useLockFn } from "ahooks";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAtom } from "jotai";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useTranslation } from "react-i18next";
 import { useWindowSize } from "react-use";
 import { z } from "zod";
@@ -16,14 +17,17 @@ import {
 } from "@/components/profiles/profile-dialog";
 import ProfileItem from "@/components/profiles/profile-item";
 import ProfileSide from "@/components/profiles/profile-side";
+import { GlobalUpdatePendingContext } from "@/components/profiles/provider";
 import { QuickImport } from "@/components/profiles/quick-import";
 import RuntimeConfigDiffDialog from "@/components/profiles/runtime-config-diff-dialog";
 import { filterProfiles } from "@/components/profiles/utils";
-import { Public } from "@mui/icons-material";
-import { Badge, Button, IconButton } from "@mui/material";
+import { formatError } from "@/utils";
+import { message } from "@/utils/notification";
+import { Public, Update } from "@mui/icons-material";
+import { Badge, Button, CircularProgress, IconButton } from "@mui/material";
 import Grid from "@mui/material/Grid2";
-import { Profile, useClash } from "@nyanpasu/interface";
-import { SidePage } from "@nyanpasu/ui";
+import { Profile, updateProfile, useClash } from "@nyanpasu/interface";
+import { FloatingButton, SidePage } from "@nyanpasu/ui";
 import { createFileRoute, useLocation } from "@tanstack/react-router";
 import { zodSearchValidator } from "@tanstack/router-zod-adapter";
 
@@ -119,6 +123,30 @@ function ProfilePage() {
 
   const { width } = useWindowSize();
 
+  const [globalUpdatePending, startGlobalUpdate] = useTransition();
+  const handleGlobalProfileUpdate = useLockFn(async () => {
+    await startGlobalUpdate(async () => {
+      const remoteProfiles =
+        profiles?.filter((item) => item.type == "remote") || [];
+      const updates: Array<Promise<void>> = [];
+      for (const profile of remoteProfiles) {
+        const options: Profile.Option = profile.option || {
+          with_proxy: false,
+          self_proxy: false,
+        };
+
+        updates.push(updateProfile(profile.uid, options));
+      }
+      try {
+        await Promise.all(updates);
+      } catch (e) {
+        message(`failed to update profiles: \n${formatError(e)}`, {
+          kind: "error",
+        });
+      }
+    });
+  });
+
   return (
     <SidePage
       title={t("Profiles")}
@@ -168,45 +196,64 @@ function ProfilePage() {
       side={hasSide && <ProfileSide onClose={handleSideClose} />}
     >
       <AnimatePresence initial={false} mode="sync">
-        <div className="flex flex-col gap-4 p-6">
-          <QuickImport />
+        <GlobalUpdatePendingContext.Provider value={globalUpdatePending}>
+          <div className="flex flex-col gap-4 p-6">
+            <QuickImport />
 
-          {profiles && (
-            <Grid container spacing={2}>
-              {profiles.map((item) => (
-                <Grid
-                  key={item.uid}
-                  size={{
-                    xs: 12,
-                    sm: 12,
-                    md: hasSide && width <= 1000 ? 12 : 6,
-                    lg: 4,
-                    xl: 3,
-                  }}
-                >
-                  <motion.div
+            {profiles && (
+              <Grid container spacing={2}>
+                {profiles.map((item) => (
+                  <Grid
                     key={item.uid}
-                    layoutId={`profile-${item.uid}`}
-                    layout="position"
-                    initial={false}
+                    size={{
+                      xs: 12,
+                      sm: 12,
+                      md: hasSide && width <= 1000 ? 12 : 6,
+                      lg: 4,
+                      xl: 3,
+                    }}
                   >
-                    <ProfileItem
-                      item={item}
-                      onClickChains={onClickChains}
-                      selected={getProfiles.data?.current == item.uid}
-                      maxLogLevelTriggered={maxLogLevelTriggered}
-                      chainsSelected={chainsSelected == item.uid}
-                    />
-                  </motion.div>
-                </Grid>
-              ))}
-            </Grid>
-          )}
-        </div>
+                    <motion.div
+                      key={item.uid}
+                      layoutId={`profile-${item.uid}`}
+                      layout="position"
+                      initial={false}
+                    >
+                      <ProfileItem
+                        item={item}
+                        onClickChains={onClickChains}
+                        selected={getProfiles.data?.current == item.uid}
+                        maxLogLevelTriggered={maxLogLevelTriggered}
+                        chainsSelected={chainsSelected == item.uid}
+                      />
+                    </motion.div>
+                  </Grid>
+                ))}
+              </Grid>
+            )}
+          </div>
+        </GlobalUpdatePendingContext.Provider>
       </AnimatePresence>
 
       <AddProfileContext.Provider value={addProfileCtxValue}>
-        <NewProfileButton />
+        <div className="fixed bottom-8 right-8">
+          <FloatingButton
+            className="relative -right-2.5 -top-3 flex size-11 min-w-fit"
+            sx={[
+              (theme) => ({
+                backgroundColor: theme.palette.grey[200],
+                boxShadow: 4,
+                "&:hover": {
+                  backgroundColor: theme.palette.grey[300],
+                },
+              }),
+            ]}
+            onClick={handleGlobalProfileUpdate}
+          >
+            {globalUpdatePending ? <CircularProgress size={22} /> : <Update />}
+          </FloatingButton>
+          <NewProfileButton className="static" />
+        </div>
       </AddProfileContext.Provider>
     </SidePage>
   );

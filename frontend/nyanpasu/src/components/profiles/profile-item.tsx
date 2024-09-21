@@ -1,7 +1,7 @@
 import { useLockFn, useMemoizedFn, useSetState } from "ahooks";
 import dayjs from "dayjs";
 import { AnimatePresence, motion } from "framer-motion";
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, use, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { message } from "@/utils/notification";
 import parseTraffic from "@/utils/parse-traffic";
@@ -29,6 +29,7 @@ import {
 import { Profile, useClash } from "@nyanpasu/interface";
 import { cleanDeepClickEvent, cn } from "@nyanpasu/ui";
 import { ProfileDialog } from "./profile-dialog";
+import { GlobalUpdatePendingContext } from "./provider";
 
 export interface ProfileItemProps {
   item: Profile.Item;
@@ -60,6 +61,8 @@ export const ProfileItem = memo(function ProfileItem({
     viewProfile,
   } = useClash();
 
+  const globalUpdatePending = use(GlobalUpdatePendingContext);
+
   const [loading, setLoading] = useSetState({
     update: false,
     card: false,
@@ -90,16 +93,6 @@ export const ProfileItem = memo(function ProfileItem({
   const IconComponent = isRemote ? FilterDrama : InsertDriveFile;
 
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-
-  const menuMapping = {
-    Select: () => handleSelect(),
-    "Edit Info": () => setOpen(true),
-    "Proxy Chains": () => onClickChains(item),
-    "Open File": () => viewProfile(item.uid),
-    Update: () => handleUpdate(),
-    "Update(Proxy)": () => handleUpdate(true),
-    Delete: () => handleDelete(),
-  };
 
   const handleSelect = useLockFn(async () => {
     if (selected) {
@@ -166,7 +159,27 @@ export const ProfileItem = memo(function ProfileItem({
     }
   });
 
-  const MenuComp = () => {
+  const menuMapping = useMemo(
+    () => ({
+      Select: () => handleSelect(),
+      "Edit Info": () => setOpen(true),
+      "Proxy Chains": () => onClickChains(item),
+      "Open File": () => viewProfile(item.uid),
+      Update: () => handleUpdate(),
+      "Update(Proxy)": () => handleUpdate(true),
+      Delete: () => handleDelete(),
+    }),
+    [
+      handleDelete,
+      handleSelect,
+      handleUpdate,
+      item,
+      onClickChains,
+      viewProfile,
+    ],
+  );
+
+  const MenuComp = useMemo(() => {
     const handleClick = (func: () => void) => {
       setAnchorEl(null);
       func();
@@ -193,7 +206,7 @@ export const ProfileItem = memo(function ProfileItem({
         })}
       </Menu>
     );
-  };
+  }, [anchorEl, menuMapping, t]);
 
   const [open, setOpen] = useState(false);
 
@@ -310,7 +323,7 @@ export const ProfileItem = memo(function ProfileItem({
                     cleanDeepClickEvent(e);
                     menuMapping.Update();
                   }}
-                  loading={loading.update}
+                  loading={globalUpdatePending || loading.update}
                 >
                   <Update />
                 </LoadingButton>
@@ -351,7 +364,7 @@ export const ProfileItem = memo(function ProfileItem({
           <div>Applying Profile...</div>
         </motion.div>
       </Paper>
-      <MenuComp />
+      {MenuComp}
       <ProfileDialog
         open={open}
         onClose={() => setOpen(false)}

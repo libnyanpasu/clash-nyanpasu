@@ -133,7 +133,9 @@ const repoInfo = {
     () =>
       client.sendFile(TELEGRAM_TO_NIGHTLY, {
         file: resourceMapping.filter(
-          (item) => item.endsWith(".exe") || item.endsWith("portable.zip"),
+          (item) =>
+            !item.includes("fixed-webview") &&
+            (item.endsWith(".exe") || item.endsWith("portable.zip")),
         ),
         forceDocument: true,
         caption: `Clash Nyanpasu Nightly Build ${GIT_SHORT_HASH} for Windows`,

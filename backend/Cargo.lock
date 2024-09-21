@@ -1756,9 +1756,9 @@ dependencies = [
 
 [[package]]
 name = "curl-sys"
-version = "0.4.75+curl-8.10.0"
+version = "0.4.76+curl-8.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a4fd752d337342e4314717c0d9b6586b059a120c80029ebe4d49b11fec7875e"
+checksum = "00462dbe9cbb9344e1b2be34d9094d74e3b8aac59a883495b335eafd02e25120"
 dependencies = [
  "cc",
  "libc",
@@ -3997,7 +3997,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4979f22fdb869068da03c9f7528f8297c6fd2606bc3a4affe42e6a823fdb8da4"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -4709,7 +4709,7 @@ dependencies = [
 [[package]]
 name = "nyanpasu-ipc"
 version = "1.0.6"
-source = "git+https://github.com/LibNyanpasu/nyanpasu-service.git#a9d91584893489ffb96741bfee3f5b20a4f2eba7"
+source = "git+https://github.com/LibNyanpasu/nyanpasu-service.git#eafde94f159754296b7bf896b08f8c50da6bfe05"
 dependencies = [
  "anyhow",
  "axum",
@@ -5583,9 +5583,9 @@ checksum = "325a6d2ac5dee293c3b2612d4993b98aec1dff096b0a2dae70ed7d95784a05da"
 
 [[package]]
 name = "portable-atomic"
-version = "1.7.0"
+version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da544ee218f0d287a911e9c99a39a8c9bc8fcad3cb8db5959940044ecfc67265"
+checksum = "d30538d42559de6b034bc76fd6dd4c38961b1ee5c6c56e3808c50128fdbc22ce"
 
 [[package]]
 name = "powerfmt"
@@ -5750,9 +5750,9 @@ dependencies = [
 
 [[package]]
 name = "quick-xml"
-version = "0.36.1"
+version = "0.36.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96a05e2e8efddfa51a84ca47cec303fac86c8541b686d37cac5efc0e094417bc"
+checksum = "f7649a7b4df05aed9ea7ec6f628c67c9953a43869b8bc50929569b2999d443fe"
 dependencies = [
  "memchr",
 ]
@@ -6446,9 +6446,9 @@ dependencies = [
 
 [[package]]
 name = "security-framework-sys"
-version = "2.11.1"
+version = "2.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75da29fe9b9b08fe9d6b22b5b4bcbc75d8db3aa31e639aa56bb62e9d46bfceaf"
+checksum = "ea4a292869320c0272d7bc55a5a6aafaff59b4f63404a003887b679a2e05b4b6"
 dependencies = [
  "core-foundation-sys",
  "libc",
@@ -7439,7 +7439,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-clipboard-manager"
 version = "2.0.0-rc.4"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#6bf1bd8d44bb95618590aa066e638509b014e0f9"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#221f50f53bd7a87dbd404e4cb1aaf502a5047785"
 dependencies = [
  "arboard",
  "image",
@@ -7469,7 +7469,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-dialog"
 version = "2.0.0-rc.7"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#6bf1bd8d44bb95618590aa066e638509b014e0f9"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#221f50f53bd7a87dbd404e4cb1aaf502a5047785"
 dependencies = [
  "log",
  "raw-window-handle",
@@ -7486,7 +7486,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-fs"
 version = "2.0.0-rc.5"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#6bf1bd8d44bb95618590aa066e638509b014e0f9"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#221f50f53bd7a87dbd404e4cb1aaf502a5047785"
 dependencies = [
  "anyhow",
  "dunce",
@@ -7506,7 +7506,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-global-shortcut"
 version = "2.0.0-rc.2"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#6bf1bd8d44bb95618590aa066e638509b014e0f9"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#221f50f53bd7a87dbd404e4cb1aaf502a5047785"
 dependencies = [
  "global-hotkey",
  "log",
@@ -7520,7 +7520,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-notification"
 version = "2.0.0-rc.5"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#6bf1bd8d44bb95618590aa066e638509b014e0f9"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#221f50f53bd7a87dbd404e4cb1aaf502a5047785"
 dependencies = [
  "log",
  "notify-rust",
@@ -7538,7 +7538,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-os"
 version = "2.0.0-rc.1"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#6bf1bd8d44bb95618590aa066e638509b014e0f9"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#221f50f53bd7a87dbd404e4cb1aaf502a5047785"
 dependencies = [
  "gethostname 0.5.0",
  "log",
@@ -7555,7 +7555,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-process"
 version = "2.0.0-rc.1"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#6bf1bd8d44bb95618590aa066e638509b014e0f9"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#221f50f53bd7a87dbd404e4cb1aaf502a5047785"
 dependencies = [
  "tauri",
  "tauri-plugin",
@@ -7564,7 +7564,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-shell"
 version = "2.0.0-rc.3"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#6bf1bd8d44bb95618590aa066e638509b014e0f9"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#221f50f53bd7a87dbd404e4cb1aaf502a5047785"
 dependencies = [
  "encoding_rs",
  "log",
@@ -7584,7 +7584,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-updater"
 version = "2.0.0-rc.3"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#6bf1bd8d44bb95618590aa066e638509b014e0f9"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#221f50f53bd7a87dbd404e4cb1aaf502a5047785"
 dependencies = [
  "base64 0.22.1",
  "dirs 5.0.1",
@@ -7593,6 +7593,7 @@ dependencies = [
  "http 1.1.0",
  "infer 0.16.0",
  "minisign-verify",
+ "percent-encoding",
  "reqwest",
  "semver 1.0.23",
  "serde",
@@ -8817,7 +8818,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "597f2001b2e5fc1121e3d5b9791d3e78f05ba6bfa4641053846248e3a13661c3"
 dependencies = [
  "proc-macro2",
- "quick-xml 0.36.1",
+ "quick-xml 0.36.2",
  "quote",
 ]
 

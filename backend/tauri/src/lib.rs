@@ -1,4 +1,4 @@
-#![feature(auto_traits, negative_impls)]
+#![feature(auto_traits, negative_impls, let_chains)]
 #![cfg_attr(
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
@@ -136,6 +136,14 @@ pub fn run() -> std::io::Result<()> {
             panic.note = note,
             "A panic occurred",
         );
+
+        // This is a workaround for the upstream issue: https://github.com/tauri-apps/tauri/issues/10546
+        if let Some(s) = payload.as_ref()
+            && s.contains("PostMessage failed ; is the messages queue full?")
+        {
+            return;
+        }
+
         utils::dialog::panic_dialog(&format!(
             "payload: {:#?}\nlocation: {:?}\nbacktrace: {:#?}\n\nnote: {:?}",
             payload, location, backtrace, note
@@ -149,6 +157,7 @@ pub fn run() -> std::io::Result<()> {
         });
         let _ = task.join();
         default_panic(panic_info);
+        std::process::exit(1); // exit if default panic handler doesn't exit
     }));
 
     let verge = { Config::verge().latest().language.clone().unwrap() };
@@ -324,10 +333,13 @@ pub fn run() -> std::io::Result<()> {
                     tauri::WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                         core::tray::on_scale_factor_changed(scale_factor);
                     }
-                    tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {
+                    tauri::WindowEvent::CloseRequested { .. } => {
                         log::debug!(target: "app", "window close requested");
-                        reset_window_open_counter();
                         let _ = resolve::save_window_state(app_handle, true);
+                    }
+                    tauri::WindowEvent::Destroyed => {
+                        log::debug!(target: "app", "window destroyed");
+                        reset_window_open_counter();
                         #[cfg(target_os = "macos")]
                         log_err!(app_handle.run_on_main_thread(|| {
                             crate::utils::dock::macos::hide_dock_icon();

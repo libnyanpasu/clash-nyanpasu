@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { cn } from "@/utils";
 import { alpha, Button, ButtonProps, useTheme } from "@mui/material";
 
 export interface FloatingButtonProps extends ButtonProps {
@@ -15,7 +16,10 @@ export const FloatingButton = ({
 
   return (
     <Button
-      className={`bottom-8 right-8 z-10 size-16 !rounded-2xl backdrop-blur ${className}`}
+      className={cn(
+        `bottom-8 right-8 z-10 size-16 !rounded-2xl backdrop-blur`,
+        className,
+      )}
       sx={{
         position: "fixed",
         boxShadow: 8,

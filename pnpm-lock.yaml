@@ -256,8 +256,8 @@ importers:
         specifier: 0.52.0
         version: 0.52.0
       mui-color-input:
-        specifier: 4.0.0
-        version: 4.0.0(@emotion/react@11.13.3(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(@emotion/styled@11.13.0(@emotion/react@11.13.3(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(@mui/material@6.1.1(@emotion/react@11.13.3(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(@emotion/styled@11.13.0(@emotion/react@11.13.3(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-e4953922-20240919(react@19.0.0-rc-e4953922-20240919))(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-e4953922-20240919(react@19.0.0-rc-e4953922-20240919))(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1)
+        specifier: 4.0.1
+        version: 4.0.1(@emotion/react@11.13.3(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(@emotion/styled@11.13.0(@emotion/react@11.13.3(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(@mui/material@6.1.1(@emotion/react@11.13.3(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(@emotion/styled@11.13.0(@emotion/react@11.13.3(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-e4953922-20240919(react@19.0.0-rc-e4953922-20240919))(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-e4953922-20240919(react@19.0.0-rc-e4953922-20240919))(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1)
       react:
         specifier: rc
         version: 19.0.0-rc-e4953922-20240919
@@ -5144,8 +5144,8 @@ packages:
   muggle-string@0.4.1:
     resolution: {integrity: sha512-VNTrAak/KhO2i8dqqnqnAHOa3cYBwXEZe9h+D5h/1ZqFSTEFHdM65lR7RoIqq3tBBYavsOXV84NoHXZ0AkPyqQ==}
 
-  mui-color-input@4.0.0:
-    resolution: {integrity: sha512-o0G9BXoHSY+AMpOZF2jdVvxNE7NBx3c3DOyFeS8Llq1jmVfgR3v606sVgGLupJ9RMbKdRMSTNQ7hvlwW8mBqgg==}
+  mui-color-input@4.0.1:
+    resolution: {integrity: sha512-Edc3sCa39zUoSL3XR9vjVnhMnLOBgd3mfszVfQc8stFqNMVaOujK2aThMtCOLiuLIyIxGcTa6dKV1qD5MmHPDw==}
     peerDependencies:
       '@emotion/react': ^11.5.0
       '@emotion/styled': ^11.3.0
@@ -12234,7 +12234,7 @@ snapshots:
 
   muggle-string@0.4.1: {}
 
-  mui-color-input@4.0.0(@emotion/react@11.13.3(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(@emotion/styled@11.13.0(@emotion/react@11.13.3(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(@mui/material@6.1.1(@emotion/react@11.13.3(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(@emotion/styled@11.13.0(@emotion/react@11.13.3(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-e4953922-20240919(react@19.0.0-rc-e4953922-20240919))(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-e4953922-20240919(react@19.0.0-rc-e4953922-20240919))(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1):
+  mui-color-input@4.0.1(@emotion/react@11.13.3(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(@emotion/styled@11.13.0(@emotion/react@11.13.3(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(@mui/material@6.1.1(@emotion/react@11.13.3(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(@emotion/styled@11.13.0(@emotion/react@11.13.3(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-e4953922-20240919(react@19.0.0-rc-e4953922-20240919))(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-e4953922-20240919(react@19.0.0-rc-e4953922-20240919))(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1):
     dependencies:
       '@ctrl/tinycolor': 4.1.0
       '@emotion/react': 11.13.3(react@19.0.0-rc-e4953922-20240919)(types-react@19.0.0-rc.1)

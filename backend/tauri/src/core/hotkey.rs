@@ -98,8 +98,9 @@ impl Hotkey {
             _ => bail!("invalid function \"{func}\""),
         };
 
-        manager.on_shortcut(hotkey, move |_app_handle, _hotkey, ev| {
+        manager.on_shortcut(hotkey, move |_app_handle, hotkey, ev| {
             if let ShortcutState::Pressed = ev.state {
+                tracing::info!("hotkey pressed: {}", hotkey);
                 f();
             }
         })?;

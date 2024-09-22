@@ -91,6 +91,12 @@ export const useClash = () => {
     refreshInterval: 1000,
   });
 
+  const reorderProfilesByList = async (list: string[]) => {
+    await tauri.reorderProfilesByList(list);
+
+    await getProfiles.mutate();
+  };
+
   return {
     getClashInfo,
     getConfigs,
@@ -110,5 +116,6 @@ export const useClash = () => {
     getProfileFile,
     getRuntimeLogs,
     setProfileFile: tauri.saveProfileFile,
+    reorderProfilesByList,
   };
 };

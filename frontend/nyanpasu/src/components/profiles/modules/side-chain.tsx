@@ -1,4 +1,5 @@
 import { useLockFn } from "ahooks";
+import { Reorder } from "framer-motion";
 import { useAtomValue } from "jotai";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -24,9 +25,10 @@ export const SideChain = ({ onChainEdit }: SideChainProps) => {
 
   const currentProfileUid = useAtomValue(atomChainsSelected);
 
-  const { getProfiles, setProfilesConfig, setProfiles } = useClash();
+  const { getProfiles, setProfilesConfig, setProfiles, reorderProfilesByList } =
+    useClash();
 
-  const { scripts } = filterProfiles(getProfiles.data?.items);
+  const { scripts, profiles } = filterProfiles(getProfiles.data?.items);
 
   const currentProfile = useMemo(() => {
     return getProfiles.data?.items?.find(
@@ -60,23 +62,39 @@ export const SideChain = ({ onChainEdit }: SideChainProps) => {
     }
   });
 
+  const reorderValues = useMemo(
+    () => scripts?.map((item) => item.uid) || [],
+    [scripts],
+  );
+
   return (
     <div className="h-full overflow-auto !pl-2 !pr-2">
-      {scripts?.map((item, index) => {
-        const selected = isGlobalChainCurrent
-          ? getProfiles.data?.chain?.includes(item.uid)
-          : currentProfile?.chains?.includes(item.uid);
+      <Reorder.Group
+        axis="y"
+        values={reorderValues}
+        onReorder={(values) => {
+          const profileUids = profiles?.map((item) => item.uid) || [];
+          reorderProfilesByList([...profileUids, ...values]);
+        }}
+        layoutScroll
+        style={{ overflowY: "scroll" }}
+      >
+        {scripts?.map((item, index) => {
+          const selected = isGlobalChainCurrent
+            ? getProfiles.data?.chain?.includes(item.uid)
+            : currentProfile?.chains?.includes(item.uid);
 
-        return (
-          <ChainItem
-            key={index}
-            item={item}
-            selected={selected}
-            onClick={async () => await handleChainClick(item.uid)}
-            onChainEdit={() => onChainEdit(item)}
-          />
-        );
-      })}
+          return (
+            <ChainItem
+              key={index}
+              item={item}
+              selected={selected}
+              onClick={async () => await handleChainClick(item.uid)}
+              onChainEdit={() => onChainEdit(item)}
+            />
+          );
+        })}
+      </Reorder.Group>
 
       <ListItemButton
         className="!mb-2 !mt-2 flex justify-center gap-2"

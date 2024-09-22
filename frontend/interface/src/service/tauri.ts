@@ -283,3 +283,7 @@ export const setStorageItem = async (key: string, value: string) => {
 export const removeStorageItem = async (key: string) => {
   return await invoke<void>("remove_storage_item", { key });
 };
+
+export const reorderProfilesByList = async (list: string[]) => {
+  return await invoke<void>("reorder_profiles_by_list", { list });
+};

@@ -280,6 +280,7 @@ pub fn run() -> std::io::Result<()> {
             ipc::create_profile,
             ipc::import_profile,
             ipc::reorder_profile,
+            ipc::reorder_profiles_by_list,
             ipc::update_profile,
             ipc::delete_profile,
             ipc::read_profile_file,

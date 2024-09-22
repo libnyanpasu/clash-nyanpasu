@@ -3,7 +3,7 @@ use crate::utils::{dirs, help};
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
-use std::{fs, io::Write};
+use std::{borrow::Borrow, fs, io::Write};
 use tracing_attributes::instrument;
 
 /// Define the `profiles.yaml` schema
@@ -179,6 +179,24 @@ impl IProfiles {
         let item = items.remove(old_index.unwrap());
         items.insert(new_index.unwrap(), item);
         self.items = Some(items);
+        self.save_file()
+    }
+
+    /// reorder items with the full order list
+    pub fn reorder_by_list<T: Borrow<String>>(&mut self, order: &[T]) -> Result<()> {
+        let mut items = self.items.take().unwrap_or_default();
+        let mut new_items = vec![];
+
+        for uid in order {
+            if let Some(index) = items
+                .iter()
+                .position(|e| e.uid.as_ref() == Some(uid.borrow()))
+            {
+                new_items.push(items.remove(index));
+            }
+        }
+
+        self.items = Some(new_items);
         self.save_file()
     }
 

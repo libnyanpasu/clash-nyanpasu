@@ -72,8 +72,8 @@ importers:
         specifier: 1.1.2
         version: 1.1.2(eslint-plugin-import@2.30.0(@typescript-eslint/parser@8.6.0(eslint@8.57.1)(typescript@5.6.2))(eslint@8.57.1))
       eslint-plugin-html:
-        specifier: 8.1.1
-        version: 8.1.1
+        specifier: 8.1.2
+        version: 8.1.2
       eslint-plugin-import:
         specifier: 2.30.0
         version: 2.30.0(@typescript-eslint/parser@8.6.0(eslint@8.57.1)(typescript@5.6.2))(eslint@8.57.1)
@@ -135,8 +135,8 @@ importers:
         specifier: 1.1.0
         version: 1.1.0(postcss-html@1.7.0)(stylelint@16.9.0(typescript@5.6.2))
       stylelint-config-recess-order:
-        specifier: 5.1.0
-        version: 5.1.0(stylelint@16.9.0(typescript@5.6.2))
+        specifier: 5.1.1
+        version: 5.1.1(stylelint@16.9.0(typescript@5.6.2))
       stylelint-config-standard:
         specifier: 36.0.1
         version: 36.0.1(stylelint@16.9.0(typescript@5.6.2))
@@ -3816,8 +3816,8 @@ packages:
     peerDependencies:
       eslint: '>=8'
 
-  eslint-plugin-html@8.1.1:
-    resolution: {integrity: sha512-6qmlJsc40D2m3Dn9oEH+0PAOkJhxVu0f5sVItqpCE0YWgYnyP4xCjBc3UWTHaJcY9ARkWOLIIuXLq0ndRnQOHw==}
+  eslint-plugin-html@8.1.2:
+    resolution: {integrity: sha512-pbRchDV2SmqbCi/Ev/q3aAikzG9BcFe0IjjqjtMn8eTLq71ZUggyJB6CDmuwGAXmYZHrXI12XTfCqvgcnPRqGw==}
     engines: {node: '>=16.0.0'}
 
   eslint-plugin-import@2.30.0:
@@ -6446,8 +6446,8 @@ packages:
       postcss-html: ^1.0.0
       stylelint: '>=14.0.0'
 
-  stylelint-config-recess-order@5.1.0:
-    resolution: {integrity: sha512-ddapCF6B/kEtQYIFhQFReQ0dvK1ZdgJDM/SGFtIyeooYDbqaJqcOlGkRRGaVErCQYJY/bPSPsLRS2LdQtLJUVQ==}
+  stylelint-config-recess-order@5.1.1:
+    resolution: {integrity: sha512-eDAHWVBelzDbMbdMj15pSw0Ycykv5eLeriJdbGCp0zd44yvhgZLI+wyVHegzXp5NrstxTPSxl0fuOVKdMm0XLA==}
     peerDependencies:
       stylelint: '>=16'
 
@@ -10697,7 +10697,7 @@ snapshots:
       eslint: 8.57.1
       eslint-compat-utils: 0.5.1(eslint@8.57.1)
 
-  eslint-plugin-html@8.1.1:
+  eslint-plugin-html@8.1.2:
     dependencies:
       htmlparser2: 9.1.0
 
@@ -13483,7 +13483,7 @@ snapshots:
       postcss-html: 1.7.0
       stylelint: 16.9.0(typescript@5.6.2)
 
-  stylelint-config-recess-order@5.1.0(stylelint@16.9.0(typescript@5.6.2)):
+  stylelint-config-recess-order@5.1.1(stylelint@16.9.0(typescript@5.6.2)):
     dependencies:
       stylelint: 16.9.0(typescript@5.6.2)
       stylelint-order: 6.0.4(stylelint@16.9.0(typescript@5.6.2))

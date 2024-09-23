@@ -1,3 +1,4 @@
+mod advice;
 mod chain;
 mod field;
 mod merge;
@@ -142,6 +143,9 @@ pub async fn enhance() -> (Mapping, Vec<String>, IndexMap<String, Logs>) {
     config = use_tun(config, enable_tun);
     config = use_cache(config);
     config = use_sort(config, enable_filter);
+
+    let (_, logs) = advice::chain_advice(&config);
+    result_map.insert("chain_advice".into(), logs);
 
     let mut exists_set = HashSet::new();
     exists_set.extend(exists_keys.into_iter().filter(|s| clash_fields.contains(s)));

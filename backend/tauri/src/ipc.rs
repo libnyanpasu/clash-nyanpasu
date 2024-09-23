@@ -276,14 +276,14 @@ pub async fn restart_sidecar() -> CmdResult {
     wrap_err!(CoreManager::global().run_core().await)
 }
 
-#[tauri::command]
-pub fn grant_permission(_core: String) -> CmdResult {
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    return wrap_err!(manager::grant_permission(_core));
+// #[tauri::command]
+// pub fn grant_permission(_core: String) -> CmdResult {
+//     #[cfg(any(target_os = "macos", target_os = "linux"))]
+//     return wrap_err!(manager::grant_permission(_core));
 
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    return Err("Unsupported target".into());
-}
+//     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+//     return Err("Unsupported target".into());
+// }
 
 /// get the system proxy
 #[tauri::command]

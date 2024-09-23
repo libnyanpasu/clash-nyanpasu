@@ -1,13 +1,13 @@
+use crate::{config::nyanpasu::ClashCore, core::find_binary_path};
 use std::borrow::Cow;
 
 /// 给clash内核的tun模式授权
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-pub fn grant_permission(core: String) -> anyhow::Result<()> {
+pub fn grant_permission(core: &ClashCore) -> anyhow::Result<()> {
     use std::process::Command;
     use tauri::utils::platform::current_exe;
 
-    let path = current_exe()?.with_file_name(core).canonicalize()?;
-    let path = path.display().to_string();
+    let path = find_binary_path(&core).map_err(|| anyhow::anyhow!("clash core not found"))?;
 
     log::debug!("grant_permission path: {path}");
 

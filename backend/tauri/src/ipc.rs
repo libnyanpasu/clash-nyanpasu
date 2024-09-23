@@ -74,7 +74,6 @@ pub fn reorder_profiles_by_list(list: Vec<String>) -> CmdResult {
     wrap_err!(Config::profiles().data().reorder_by_list(&list))
 }
 
-
 #[tauri::command]
 pub async fn update_profile(index: String, option: Option<PrfOption>) -> CmdResult {
     wrap_err!(feat::update_profile(index, option).await)

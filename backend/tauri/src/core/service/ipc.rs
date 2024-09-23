@@ -37,26 +37,30 @@ pub(super) fn set_ipc_state(state: IpcState) {
 }
 
 fn dispatch_disconnected() {
-    match IPC_STATE.compare_exchange_weak(
-        IpcState::Connected,
-        IpcState::Disconnected,
-        Ordering::SeqCst,
-        Ordering::Relaxed,
-    ) {
-        Ok(_) => on_ipc_state_changed(IpcState::Disconnected),
-        Err(_) => {}
+    if IPC_STATE
+        .compare_exchange_weak(
+            IpcState::Connected,
+            IpcState::Disconnected,
+            Ordering::SeqCst,
+            Ordering::Relaxed,
+        )
+        .is_ok()
+    {
+        on_ipc_state_changed(IpcState::Disconnected)
     }
 }
 
 fn dispatch_connected() {
-    match IPC_STATE.compare_exchange_weak(
-        IpcState::Disconnected,
-        IpcState::Connected,
-        Ordering::SeqCst,
-        Ordering::Relaxed,
-    ) {
-        Ok(_) => on_ipc_state_changed(IpcState::Connected),
-        Err(_) => {}
+    if IPC_STATE
+        .compare_exchange_weak(
+            IpcState::Disconnected,
+            IpcState::Connected,
+            Ordering::SeqCst,
+            Ordering::Relaxed,
+        )
+        .is_ok()
+    {
+        on_ipc_state_changed(IpcState::Connected)
     }
 }
 

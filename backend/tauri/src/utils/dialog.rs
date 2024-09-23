@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use rfd::{MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 use rust_i18n::t;
 

@@ -1,12 +1,11 @@
 use crate::{
     config::*,
-    utils::{dialog::migrate_dialog, dirs, help},
+    utils::{dirs, help},
 };
 use anyhow::{anyhow, Context, Result};
 use fs_extra::dir::CopyOptions;
 #[cfg(windows)]
 use runas::Command as RunasCommand;
-use rust_i18n::t;
 use std::{
     fs,
     io::{BufReader, Write},

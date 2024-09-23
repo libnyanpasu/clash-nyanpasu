@@ -1,5 +1,4 @@
 #![feature(auto_traits, negative_impls, let_chains)]
-#![feature(std_internals)]
 #![cfg_attr(
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
@@ -249,7 +248,6 @@ pub fn run() -> std::io::Result<()> {
             ipc::open_core_dir,
             // cmds::kill_sidecar,
             ipc::restart_sidecar,
-            // ipc::grant_permission,
             // clash
             ipc::get_clash_info,
             ipc::get_clash_logs,

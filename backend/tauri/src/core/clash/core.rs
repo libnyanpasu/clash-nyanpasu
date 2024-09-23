@@ -477,34 +477,6 @@ impl CoreManager {
                 log::debug!(target: "app", "set system dns: {:?}", output);
             }
         }
-        // FIXME: 重构服务模式
-        // #[cfg(target_os = "windows")]
-        // {
-        //     // 服务模式
-        //     let enable = { Config::verge().latest().enable_service_mode };
-        //     let enable = enable.unwrap_or(false);
-
-        //     *self.use_service_mode.lock() = enable;
-
-        //     if enable {
-        //         // 服务模式启动失败就直接运行 sidecar
-        //         log::debug!(target: "app", "try to run core in service mode");
-        //         let res = async {
-        //             win_service::check_service().await?;
-        //             win_service::run_core_by_service(&config_path).await
-        //         }
-        //         .await;
-        //         match res {
-        //             Ok(_) => return Ok(()),
-        //             Err(err) => {
-        //                 // 修改这个值，免得stop出错
-        //                 *self.use_service_mode.lock() = false;
-        //                 log::error!(target: "app", "{err}");
-        //             }
-        //         }
-        //     }
-        // }
-
         {
             let mut this = self.instance.lock();
             *this = Some(instance.clone());
@@ -544,15 +516,6 @@ impl CoreManager {
 
     /// 停止核心运行
     pub async fn stop_core(&self) -> Result<()> {
-        // #[cfg(target_os = "windows")]
-        // if *self.use_service_mode.lock() {
-        //     log::debug!(target: "app", "stop the core by service");
-        //     tauri::async_runtime::block_on(async move {
-        //         log_err!(win_service::stop_core_by_service().await);
-        //     });
-        //     return Ok(());
-        // }
-
         #[cfg(target_os = "macos")]
         {
             let enable_tun = Config::verge().latest().enable_tun_mode;

@@ -5,7 +5,9 @@ use atomic_enum::atomic_enum;
 use nyanpasu_ipc::types::ServiceStatus;
 use nyanpasu_utils::runtime::block_on;
 use serde::Serialize;
-use tracing_attributes::instrument;
+use tracing::instrument;
+
+use crate::log_err;
 
 #[derive(PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -31,6 +33,59 @@ pub fn get_ipc_state() -> IpcState {
 
 pub(super) fn set_ipc_state(state: IpcState) {
     IPC_STATE.store(state, Ordering::Relaxed);
+    on_ipc_state_changed(state);
+}
+
+fn dispatch_disconnected() {
+    match IPC_STATE.compare_exchange_weak(
+        IpcState::Connected,
+        IpcState::Disconnected,
+        Ordering::SeqCst,
+        Ordering::Relaxed,
+    ) {
+        Ok(_) => on_ipc_state_changed(IpcState::Disconnected),
+        Err(_) => {}
+    }
+}
+
+fn dispatch_connected() {
+    match IPC_STATE.compare_exchange_weak(
+        IpcState::Disconnected,
+        IpcState::Connected,
+        Ordering::SeqCst,
+        Ordering::Relaxed,
+    ) {
+        Ok(_) => on_ipc_state_changed(IpcState::Connected),
+        Err(_) => {}
+    }
+}
+
+// TODO: it might be moved to outer scope?
+#[instrument]
+fn on_ipc_state_changed(state: IpcState) {
+    tracing::info!("IPC state changed: {:?}", state);
+    let enabled_service = {
+        *crate::config::Config::verge()
+            .latest()
+            .enable_service_mode
+            .as_ref()
+            .unwrap_or(&false)
+    };
+    std::thread::spawn(move || {
+        nyanpasu_utils::runtime::block_on(async move {
+            if enabled_service {
+                let (_, _, run_type) = crate::core::CoreManager::global().status().await;
+                match (state, run_type) {
+                    (IpcState::Connected, crate::core::RunType::Normal)
+                    | (IpcState::Disconnected, crate::core::RunType::Service) => {
+                        tracing::info!("Restarting core due to IPC state change");
+                        log_err!(crate::core::CoreManager::global().run_core().await);
+                    }
+                    _ => {}
+                }
+            }
+        })
+    });
 }
 
 pub(super) fn spawn_health_check() {
@@ -56,30 +111,15 @@ async fn health_check() {
     match super::control::status().await {
         Ok(info) => match info.status {
             ServiceStatus::Running => {
-                let _ = IPC_STATE.compare_exchange_weak(
-                    IpcState::Disconnected,
-                    IpcState::Connected,
-                    Ordering::SeqCst,
-                    Ordering::Relaxed,
-                );
+                dispatch_connected();
             }
             ServiceStatus::Stopped | ServiceStatus::NotInstalled => {
-                let _ = IPC_STATE.compare_exchange_weak(
-                    IpcState::Connected,
-                    IpcState::Disconnected,
-                    Ordering::SeqCst,
-                    Ordering::Relaxed,
-                );
+                dispatch_disconnected();
             }
         },
         Err(e) => {
             tracing::error!("IPC health check failed: {}", e);
-            let _ = IPC_STATE.compare_exchange_weak(
-                IpcState::Connected,
-                IpcState::Disconnected,
-                Ordering::SeqCst,
-                Ordering::Relaxed,
-            );
+            dispatch_disconnected();
         }
     }
 }

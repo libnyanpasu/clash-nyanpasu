@@ -160,7 +160,7 @@ export const ClashCoreItem = ({
 
           if (
             isObject(result.downloader.state) &&
-            result.downloader.state.failed
+            result.downloader.state.hasOwnProperty("failed")
           ) {
             reject(result.downloader.state.failed);
             clearInterval(interval);

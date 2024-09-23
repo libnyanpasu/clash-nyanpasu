@@ -61,13 +61,14 @@ export const ServiceShortcuts = () => {
   }, [serviceStatus, palette]);
 
   const coreStatus = useMemo(() => {
-    const status = coreStatusSWR.data || [{ Stopped: "" }, 0, "normal"];
-    if (isObject(status[0]) && status[0].Stopped) {
+    const status = coreStatusSWR.data || [{ Stopped: null }, 0, "normal"];
+    if (isObject(status[0]) && status[0].hasOwnProperty("Stopped")) {
       const { Stopped } = status[0];
       return {
-        label: !!Stopped.trim()
-          ? t("stopped_reason", { reason: Stopped })
-          : t("stopped"),
+        label:
+          !!Stopped && Stopped.trim()
+            ? t("stopped_reason", { reason: Stopped })
+            : t("stopped"),
         color: alpha(palette.success[palette.mode], 0.3),
       };
     }

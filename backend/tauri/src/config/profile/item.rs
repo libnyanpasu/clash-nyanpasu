@@ -1,17 +1,141 @@
+use super::item_type::{ProfileItemType, ProfileUid};
 use crate::{
     config::Config,
     enhance::ScriptType,
     utils::{dirs, help},
 };
 use anyhow::{bail, Context, Result};
+use derive_builder::Builder;
+use indexmap::IndexMap;
 use reqwest::StatusCode;
-use serde::{Deserialize, Serialize};
-use serde_yaml::Mapping;
-use std::fs;
+use serde::{de::Visitor, Deserialize, Serialize};
+use serde_yaml::{Mapping, Value};
+use std::{fmt::Debug, fs, path::PathBuf};
 use sysproxy::Sysproxy;
 use tracing_attributes::instrument;
+use url::Url;
 
-use super::item_type::{ProfileItemType, ProfileUid};
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ProfileShared {
+    pub uid: String,
+
+    /// profile item type
+    /// enum value: remote | local | script | merge
+    #[serde(rename = "type")]
+    pub r#type: ProfileItemType,
+
+    /// profile name
+    pub name: String,
+
+    /// profile holds the file
+    #[serde(alias = "file")]
+    pub files: Vec<String>,
+
+    /// profile description
+    pub desc: Option<String>,
+
+    /// update time
+    pub updated: usize,
+
+    /// process chains
+    pub chains: Option<Vec<ProfileUid>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RemoteProfile {
+    #[serde(flatten)]
+    pub shared: ProfileShared,
+    /// subscription urls, the first one is the main url, others proxies should be merged
+    pub url: Vec<Url>,
+    /// subscription user info
+    pub extra: PrfExtra,
+    /// remote profile options
+    pub option: PrfOption,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct LocalProfile {
+    #[serde(flatten)]
+    pub shared: ProfileShared,
+
+    pub symlinks: IndexMap<String, PathBuf>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Profile {
+    Remote(RemoteProfile),
+    Local(LocalProfile),
+    Merge(ProfileShared),
+    Script(ProfileShared),
+}
+
+impl Serialize for Profile {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        match self {
+            Profile::Remote(profile) => profile.serialize(serializer),
+            Profile::Local(profile) => profile.serialize(serializer),
+            Profile::Merge(profile) => profile.serialize(serializer),
+            Profile::Script(profile) => profile.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Profile {
+    fn deserialize<D>(deserializer: D) -> Result<Profile, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        struct ProfileVisitor;
+
+        impl<'de> Visitor<'de> for ProfileVisitor {
+            type Value = Profile;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a profile")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let mut type_field = None;
+                let mut mapping = Mapping::new();
+                while let Some((key, value)) = map.next_entry::<String, Value>()? {
+                    if "type" == key.as_str() {
+                        type_field = Some(
+                            ProfileItemType::deserialize(value.clone())
+                                .map_err(serde::de::Error::custom)?,
+                        );
+                    }
+                    mapping.insert(key.into(), value);
+                }
+
+                let type_field =
+                    type_field.ok_or_else(|| serde::de::Error::missing_field("type"))?;
+                let other_fields = Value::Mapping(mapping);
+                match type_field {
+                    ProfileItemType::Remote => RemoteProfile::deserialize(other_fields)
+                        .map(Profile::Remote)
+                        .map_err(serde::de::Error::custom),
+                    ProfileItemType::Local => LocalProfile::deserialize(other_fields)
+                        .map(Profile::Local)
+                        .map_err(serde::de::Error::custom),
+                    ProfileItemType::Merge => ProfileShared::deserialize(other_fields)
+                        .map(Profile::Merge)
+                        .map_err(serde::de::Error::custom),
+                    ProfileItemType::Script(_) => ProfileShared::deserialize(other_fields)
+                        .map(Profile::Script)
+                        .map_err(serde::de::Error::custom),
+                }
+            }
+        }
+
+        deserializer.deserialize_map(ProfileVisitor)
+    }
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ProfileItem {
@@ -26,7 +150,8 @@ pub struct ProfileItem {
     pub name: Option<String>,
 
     /// profile file
-    pub file: Option<String>,
+    #[serde(deserialize_with = "deserialize_option_single_or_vec")]
+    pub file: Option<Vec<String>>,
 
     /// profile description
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -55,8 +180,51 @@ pub struct ProfileItem {
     #[serde(skip)]
     pub file_data: Option<String>,
 
+    /// the profile process chains
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chains: Option<Vec<ProfileUid>>, // Save the profile relates profile chains. The String should be the uid of the profile.
+}
+
+fn deserialize_option_single_or_vec<'de, D>(
+    deserializer: D,
+) -> Result<Option<Vec<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct StringOrVec;
+    impl<'de> Visitor<'de> for StringOrVec {
+        type Value = Option<Vec<String>>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("string or sequence of strings")
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(Some(vec![value.to_string()]))
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: serde::de::SeqAccess<'de>,
+        {
+            let mut vec = Vec::new();
+            while let Some(value) = seq.next_element()? {
+                vec.push(value);
+            }
+            Ok(Some(vec))
+        }
+    }
+    deserializer.deserialize_any(StringOrVec)
 }
 
 impl Default for ProfileItem {
@@ -176,7 +344,7 @@ impl ProfileItem {
             r#type: Some(ProfileItemType::Local),
             name: Some(name),
             desc: Some(desc),
-            file: Some(file),
+            file: Some(vec![file]),
             updated: Some(chrono::Local::now().timestamp() as usize),
             file_data,
             ..Default::default()
@@ -186,8 +354,8 @@ impl ProfileItem {
     /// ## Remote type
     /// create a new item from url
     #[instrument]
-    pub async fn from_url(
-        url: &str,
+    pub async fn from_url<T: AsRef<str> + Debug>(
+        url: &[T],
         name: Option<String>,
         desc: Option<String>,
         option: Option<PrfOption>,
@@ -335,7 +503,7 @@ impl ProfileItem {
             r#type: Some(ProfileItemType::Remote),
             name: Some(name),
             desc,
-            file: Some(file),
+            file: Some(vec![file]),
             url: Some(url.into()),
             extra,
             option,
@@ -360,7 +528,7 @@ impl ProfileItem {
             r#type: Some(ProfileItemType::Merge),
             name: Some(name),
             desc: Some(desc),
-            file: Some(file),
+            file: Some(vec![file]),
             updated: Some(chrono::Local::now().timestamp() as usize),
             file_data,
             ..Default::default()
@@ -386,7 +554,7 @@ impl ProfileItem {
             r#type: Some(ProfileItemType::Script(script_type)),
             name: Some(name),
             desc: Some(desc),
-            file: Some(file),
+            file: Some(vec![file]),
             updated: Some(chrono::Local::now().timestamp() as usize),
             file_data,
             ..Default::default()
@@ -394,23 +562,40 @@ impl ProfileItem {
     }
 
     /// get the file data
-    pub fn read_file(&self) -> Result<String> {
-        if self.file.is_none() {
+    pub fn read_file(&self, index: Option<usize>) -> Result<String> {
+        let index = index.unwrap_or(0);
+        if self.file.is_none() || self.file.as_ref().unwrap().get(index).is_none() {
             bail!("could not find the file");
         }
-
-        let file = self.file.clone().unwrap();
+        let files = self.file.clone().unwrap();
+        let file = files.get(index).unwrap();
         let path = dirs::app_profiles_dir()?.join(file);
         fs::read_to_string(path).context("failed to read the file")
     }
 
-    /// save the file data
-    pub fn save_file(&self, data: String) -> Result<()> {
+    pub fn read_file_mapping(&self) -> Result<IndexMap<String, String>> {
         if self.file.is_none() {
             bail!("could not find the file");
         }
+        let files = self.file.clone().unwrap();
+        let mut map = IndexMap::new();
+        for f in files {
+            let path = dirs::app_profiles_dir()?.join(&f);
+            let data = fs::read_to_string(path).context("failed to read the file")?;
+            map.insert(f, data);
+        }
+        Ok(map)
+    }
 
-        let file = self.file.clone().unwrap();
+    /// save the file data
+    pub fn save_file(&self, data: String, index: Option<usize>) -> Result<()> {
+        let index = index.unwrap_or(0);
+        if self.file.is_none() || self.file.as_ref().unwrap().get(index).is_none() {
+            bail!("could not find the file");
+        }
+
+        let files = self.file.clone().unwrap();
+        let file = files.get(index).unwrap();
         let path = dirs::app_profiles_dir()?.join(file);
         fs::write(path, data.as_bytes()).context("failed to save the file")
     }

@@ -2058,7 +2058,7 @@ dependencies = [
 [[package]]
 name = "dirs-utils"
 version = "0.1.0"
-source = "git+https://github.com/LibNyanpasu/nyanpasu-utils.git#a17b1cf262de64adb4fa30dfda629762909ee766"
+source = "git+https://github.com/LibNyanpasu/nyanpasu-utils.git#30c8e36ca1264078593e4bd184995c60e2af70d7"
 dependencies = [
  "dirs-next",
  "thiserror",
@@ -4711,7 +4711,7 @@ dependencies = [
 [[package]]
 name = "nyanpasu-ipc"
 version = "1.0.6"
-source = "git+https://github.com/LibNyanpasu/nyanpasu-service.git#eafde94f159754296b7bf896b08f8c50da6bfe05"
+source = "git+https://github.com/LibNyanpasu/nyanpasu-service.git#3d30a412c3b1cc22c944b1d66e6195a3ae4bd9f1"
 dependencies = [
  "anyhow",
  "axum",
@@ -4736,7 +4736,7 @@ dependencies = [
 [[package]]
 name = "nyanpasu-utils"
 version = "0.1.0"
-source = "git+https://github.com/LibNyanpasu/nyanpasu-utils.git#a17b1cf262de64adb4fa30dfda629762909ee766"
+source = "git+https://github.com/LibNyanpasu/nyanpasu-utils.git#30c8e36ca1264078593e4bd184995c60e2af70d7"
 dependencies = [
  "constcat",
  "derive_builder",
@@ -5009,7 +5009,7 @@ dependencies = [
 [[package]]
 name = "os-utils"
 version = "0.1.0"
-source = "git+https://github.com/LibNyanpasu/nyanpasu-utils.git#a17b1cf262de64adb4fa30dfda629762909ee766"
+source = "git+https://github.com/LibNyanpasu/nyanpasu-utils.git#30c8e36ca1264078593e4bd184995c60e2af70d7"
 dependencies = [
  "nix 0.29.0",
  "shared_child",
@@ -5511,9 +5511,9 @@ dependencies = [
 
 [[package]]
 name = "pkg-config"
-version = "0.3.30"
+version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d231b230927b5e4ad203db57bbcbee2802f6bce620b1e4a9024a07d94e2907ec"
+checksum = "953ec861398dccce10c670dfeaf3ec4911ca479e9c02154b3a215178c5f566f2"
 
 [[package]]
 name = "plist"
@@ -6844,9 +6844,9 @@ dependencies = [
 
 [[package]]
 name = "simdutf8"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f27f6278552951f1f2b8cf9da965d10969b2efdea95a6ec47987ab46edfe263a"
+checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
 
 [[package]]
 name = "single-instance"
@@ -7236,9 +7236,9 @@ dependencies = [
 
 [[package]]
 name = "tao"
-version = "0.30.1"
+version = "0.30.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82e7ede56f9ef03a0bb384c7b2bed4f3985ee7f3f79ec887c50d8466eec21096"
+checksum = "06e48d7c56b3f7425d061886e8ce3b6acfab1993682ed70bef50fd133d721ee6"
 dependencies = [
  "bitflags 2.6.0",
  "cocoa",
@@ -7442,7 +7442,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-clipboard-manager"
 version = "2.0.0-rc.4"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#221f50f53bd7a87dbd404e4cb1aaf502a5047785"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#e564e2aa91131e54af9701416ec92ecc01c33750"
 dependencies = [
  "arboard",
  "image",
@@ -7472,7 +7472,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-dialog"
 version = "2.0.0-rc.7"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#221f50f53bd7a87dbd404e4cb1aaf502a5047785"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#e564e2aa91131e54af9701416ec92ecc01c33750"
 dependencies = [
  "log",
  "raw-window-handle",
@@ -7489,7 +7489,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-fs"
 version = "2.0.0-rc.5"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#221f50f53bd7a87dbd404e4cb1aaf502a5047785"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#e564e2aa91131e54af9701416ec92ecc01c33750"
 dependencies = [
  "anyhow",
  "dunce",
@@ -7509,7 +7509,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-global-shortcut"
 version = "2.0.0-rc.2"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#221f50f53bd7a87dbd404e4cb1aaf502a5047785"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#e564e2aa91131e54af9701416ec92ecc01c33750"
 dependencies = [
  "global-hotkey",
  "log",
@@ -7523,7 +7523,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-notification"
 version = "2.0.0-rc.5"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#221f50f53bd7a87dbd404e4cb1aaf502a5047785"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#e564e2aa91131e54af9701416ec92ecc01c33750"
 dependencies = [
  "log",
  "notify-rust",
@@ -7541,7 +7541,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-os"
 version = "2.0.0-rc.1"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#221f50f53bd7a87dbd404e4cb1aaf502a5047785"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#e564e2aa91131e54af9701416ec92ecc01c33750"
 dependencies = [
  "gethostname 0.5.0",
  "log",
@@ -7558,7 +7558,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-process"
 version = "2.0.0-rc.1"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#221f50f53bd7a87dbd404e4cb1aaf502a5047785"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#e564e2aa91131e54af9701416ec92ecc01c33750"
 dependencies = [
  "tauri",
  "tauri-plugin",
@@ -7567,7 +7567,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-shell"
 version = "2.0.0-rc.3"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#221f50f53bd7a87dbd404e4cb1aaf502a5047785"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#e564e2aa91131e54af9701416ec92ecc01c33750"
 dependencies = [
  "encoding_rs",
  "log",
@@ -7587,7 +7587,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-updater"
 version = "2.0.0-rc.3"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#221f50f53bd7a87dbd404e4cb1aaf502a5047785"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v2#e564e2aa91131e54af9701416ec92ecc01c33750"
 dependencies = [
  "base64 0.22.1",
  "dirs 5.0.1",

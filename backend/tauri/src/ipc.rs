@@ -53,7 +53,7 @@ pub async fn enhance_profiles() -> CmdResult {
 }
 
 #[tauri::command]
-pub async fn import_profile(url: String, option: Option<PrfOption>) -> CmdResult {
+pub async fn import_profile(url: String, option: Option<RemoteProfileOptions>) -> CmdResult {
     let item = wrap_err!(ProfileItem::from_url(&url, None, None, option).await)?;
     wrap_err!(Config::profiles().data().append_item(item))
 }
@@ -75,7 +75,7 @@ pub fn reorder_profiles_by_list(list: Vec<String>) -> CmdResult {
 }
 
 #[tauri::command]
-pub async fn update_profile(index: String, option: Option<PrfOption>) -> CmdResult {
+pub async fn update_profile(index: String, option: Option<RemoteProfileOptions>) -> CmdResult {
     wrap_err!(feat::update_profile(index, option).await)
 }
 

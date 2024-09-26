@@ -15,7 +15,8 @@ use sysproxy::Sysproxy;
 use tracing_attributes::instrument;
 use url::Url;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Builder)]
+#[builder(derive(serde::Serialize, serde::Deserialize))]
 pub struct ProfileShared {
     pub uid: String,
 
@@ -34,39 +35,102 @@ pub struct ProfileShared {
     /// profile description
     pub desc: Option<String>,
 
+    #[builder(default = "chrono::Local::now().timestamp() as usize")]
     /// update time
     pub updated: usize,
-
-    /// process chains
-    pub chains: Option<Vec<ProfileUid>>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Builder)]
+#[builder(derive(Serialize, Deserialize))]
 pub struct RemoteProfile {
     #[serde(flatten)]
+    #[builder(field(
+        ty = "ProfileSharedBuilder",
+        build = "self.shared.build().map_err(Into::into)?"
+    ))]
+    #[builder_field_attr(serde(flatten))]
     pub shared: ProfileShared,
     /// subscription urls, the first one is the main url, others proxies should be merged
     pub url: Vec<Url>,
     /// subscription user info
-    pub extra: PrfExtra,
+    pub extra: IndexMap<Url, RemoteProfileSubscriptionInfo>,
     /// remote profile options
-    pub option: PrfOption,
+    pub option: RemoteProfileOptions,
+    /// process chains
+    pub chains: Vec<ProfileUid>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Builder)]
+#[builder(derive(Serialize, Deserialize))]
 pub struct LocalProfile {
     #[serde(flatten)]
+    #[builder(field(
+        ty = "ProfileSharedBuilder",
+        build = "self.shared.build().map_err(Into::into)?"
+    ))]
+    #[builder_field_attr(serde(flatten))]
     pub shared: ProfileShared,
-
+    /// file symlinks
     pub symlinks: IndexMap<String, PathBuf>,
+    /// process chains
+    #[serde(default)]
+    pub chains: Vec<ProfileUid>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Builder)]
+#[builder(derive(Serialize, Deserialize))]
+pub struct MergeProfile {
+    #[serde(flatten)]
+    #[builder(field(
+        ty = "ProfileSharedBuilder",
+        build = "self.shared.build().map_err(Into::into)?"
+    ))]
+    #[builder_field_attr(serde(flatten))]
+    pub shared: ProfileShared,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Builder)]
+#[builder(derive(Serialize, Deserialize))]
+pub struct ScriptProfile {
+    #[serde(flatten)]
+    #[builder(field(
+        ty = "ProfileSharedBuilder",
+        build = "self.shared.build().map_err(Into::into)?"
+    ))]
+    #[builder_field_attr(serde(flatten))]
+    pub shared: ProfileShared,
 }
 
 #[derive(Debug, Clone)]
 pub enum Profile {
     Remote(RemoteProfile),
     Local(LocalProfile),
-    Merge(ProfileShared),
-    Script(ProfileShared),
+    Merge(MergeProfile),
+    Script(ScriptProfile),
+}
+
+impl From<RemoteProfile> for Profile {
+    fn from(profile: RemoteProfile) -> Self {
+        Profile::Remote(profile)
+    }
+}
+
+impl From<LocalProfile> for Profile {
+    fn from(profile: LocalProfile) -> Self {
+        Profile::Local(profile)
+    }
+}
+
+impl From<MergeProfile> for Profile {
+    fn from(profile: MergeProfile) -> Self {
+        Profile::Merge(profile)
+    }
+}
+
+impl From<ScriptProfile> for Profile {
+    fn from(profile: ScriptProfile) -> Self {
+        Profile::Script(profile)
+    }
 }
 
 impl Serialize for Profile {
@@ -123,10 +187,10 @@ impl<'de> Deserialize<'de> for Profile {
                     ProfileItemType::Local => LocalProfile::deserialize(other_fields)
                         .map(Profile::Local)
                         .map_err(serde::de::Error::custom),
-                    ProfileItemType::Merge => ProfileShared::deserialize(other_fields)
+                    ProfileItemType::Merge => MergeProfile::deserialize(other_fields)
                         .map(Profile::Merge)
                         .map_err(serde::de::Error::custom),
-                    ProfileItemType::Script(_) => ProfileShared::deserialize(other_fields)
+                    ProfileItemType::Script(_) => ScriptProfile::deserialize(other_fields)
                         .map(Profile::Script)
                         .map_err(serde::de::Error::custom),
                 }
@@ -135,54 +199,6 @@ impl<'de> Deserialize<'de> for Profile {
 
         deserializer.deserialize_map(ProfileVisitor)
     }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ProfileItem {
-    pub uid: Option<String>,
-
-    /// profile item type
-    /// enum value: remote | local | script | merge
-    #[serde(rename = "type")]
-    pub r#type: Option<ProfileItemType>,
-
-    /// profile name
-    pub name: Option<String>,
-
-    /// profile file
-    #[serde(deserialize_with = "deserialize_option_single_or_vec")]
-    pub file: Option<Vec<String>>,
-
-    /// profile description
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub desc: Option<String>,
-
-    /// source url
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub url: Option<String>,
-
-    /// selected information
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub selected: Option<Vec<PrfSelected>>,
-
-    /// subscription user info
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub extra: Option<PrfExtra>,
-
-    /// updated time
-    pub updated: Option<usize>,
-
-    /// some options of the item
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub option: Option<PrfOption>,
-
-    /// the file data
-    #[serde(skip)]
-    pub file_data: Option<String>,
-
-    /// the profile process chains
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub chains: Option<Vec<ProfileUid>>, // Save the profile relates profile chains. The String should be the uid of the profile.
 }
 
 fn deserialize_option_single_or_vec<'de, D>(
@@ -227,33 +243,15 @@ where
     deserializer.deserialize_any(StringOrVec)
 }
 
-impl Default for ProfileItem {
-    fn default() -> Self {
-        ProfileItem {
-            uid: None,
-            r#type: Some(ProfileItemType::Local),
-            name: None,
-            file: None,
-            desc: None,
-            url: None,
-            selected: None,
-            extra: None,
-            updated: None,
-            option: None,
-            file_data: None,
-            chains: None,
-        }
-    }
-}
-
-#[derive(Default, Debug, Clone, Deserialize, Serialize)]
-pub struct PrfSelected {
-    pub name: Option<String>,
-    pub now: Option<String>,
-}
+// what it actually did
+// #[derive(Default, Debug, Clone, Deserialize, Serialize)]
+// pub struct PrfSelected {
+//     pub name: Option<String>,
+//     pub now: Option<String>,
+// }
 
 #[derive(Default, Debug, Clone, Copy, Deserialize, Serialize)]
-pub struct PrfExtra {
+pub struct RemoteProfileSubscriptionInfo {
     pub upload: usize,
     pub download: usize,
     pub total: usize,
@@ -261,7 +259,7 @@ pub struct PrfExtra {
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub struct PrfOption {
+pub struct RemoteProfileOptions {
     /// for `remote` profile's http request
     /// see issue #13
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -281,7 +279,7 @@ pub struct PrfOption {
     pub update_interval: Option<u64>,
 }
 
-impl PrfOption {
+impl RemoteProfileOptions {
     pub fn merge(one: Option<Self>, other: Option<Self>) -> Option<Self> {
         match (one, other) {
             (Some(mut a), Some(b)) => {
@@ -293,6 +291,35 @@ impl PrfOption {
             }
             t => t.0.or(t.1),
         }
+    }
+}
+
+impl Profile {
+    /// create a remote Profile with url
+    pub fn new_local(
+        name: String,
+        desc: Option<String>,
+        symlinks: IndexMap<String, PathBuf>,
+    ) -> Result<Profile> {
+        let uid = help::get_uid("l");
+        let file = format!("{uid}.yaml");
+
+        Ok(Profile::Local(
+            LocalProfile {
+                shared: ProfileShared {
+                    uid,
+                    r#type: ProfileItemType::Local,
+                    name,
+                    files: vec![file],
+                    desc,
+                    updated: chrono::Local::now().timestamp() as usize,
+                    chains: None,
+                },
+                symlinks,
+            }
+            .builder()
+            .build()?,
+        ))
     }
 }
 
@@ -358,7 +385,7 @@ impl ProfileItem {
         url: &[T],
         name: Option<String>,
         desc: Option<String>,
-        option: Option<PrfOption>,
+        option: Option<RemoteProfileOptions>,
     ) -> Result<ProfileItem> {
         let opt_ref = option.as_ref();
         let with_proxy = opt_ref.map_or(false, |o| o.with_proxy.unwrap_or(false));
@@ -426,7 +453,7 @@ impl ProfileItem {
                 tracing::debug!("Subscription-Userinfo: {:?}", value);
                 let sub_info = value.to_str().unwrap_or("");
 
-                Some(PrfExtra {
+                Some(RemoteProfileSubscriptionInfo {
                     upload: help::parse_str(sub_info, "upload").unwrap_or(0),
                     download: help::parse_str(sub_info, "download").unwrap_or(0),
                     total: help::parse_str(sub_info, "total").unwrap_or(0),
@@ -472,9 +499,9 @@ impl ProfileItem {
             Some(value) => {
                 tracing::debug!("profile-update-interval: {:?}", value);
                 match value.to_str().unwrap_or("").parse::<u64>() {
-                    Ok(val) => Some(PrfOption {
+                    Ok(val) => Some(RemoteProfileOptions {
                         update_interval: Some(val * 60), // hour -> min
-                        ..PrfOption::default()
+                        ..RemoteProfileOptions::default()
                     }),
                     Err(_) => None,
                 }

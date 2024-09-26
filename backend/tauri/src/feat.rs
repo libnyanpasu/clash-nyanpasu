@@ -347,7 +347,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
 
 /// 更新某个profile
 /// 如果更新当前配置就激活配置
-pub async fn update_profile(uid: String, option: Option<PrfOption>) -> Result<()> {
+pub async fn update_profile(uid: String, option: Option<RemoteProfileOptions>) -> Result<()> {
     let url_opt = {
         let profiles = Config::profiles();
         let profiles = profiles.latest();
@@ -367,7 +367,7 @@ pub async fn update_profile(uid: String, option: Option<PrfOption>) -> Result<()
 
     let should_update = match url_opt {
         Some((url, opt)) => {
-            let merged_opt = PrfOption::merge(opt, option);
+            let merged_opt = RemoteProfileOptions::merge(opt, option);
             let item = ProfileItem::from_url(&url, None, None, merged_opt).await?;
 
             let profiles = Config::profiles();

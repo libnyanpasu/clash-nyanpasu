@@ -26,6 +26,7 @@ nyanpasu-ipc = { git = "https://github.com/LibNyanpasu/nyanpasu-service.git", fe
   "client",
 ] }
 nyanpasu-utils = { git = "https://github.com/LibNyanpasu/nyanpasu-utils.git" }
+nyanpasu-macro = { path = "../nyanpasu-macro" }
 boa_utils = { path = "../boa_utils" } # should be removed when boa support console customize
 pretty_assertions = "1.4.0"
 which = "6"

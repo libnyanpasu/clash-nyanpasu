@@ -1315,6 +1315,7 @@ dependencies = [
  "nix 0.29.0",
  "num_cpus",
  "nyanpasu-ipc",
+ "nyanpasu-macro",
  "nyanpasu-utils",
  "objc2",
  "objc2-app-kit",

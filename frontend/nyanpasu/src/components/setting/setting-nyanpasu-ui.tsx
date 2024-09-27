@@ -1,12 +1,14 @@
+import { useAtom } from "jotai";
 import { MuiColorInput } from "mui-color-input";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { isHexColor } from "validator";
+import { atomIsDrawerOnlyIcon } from "@/store";
 import { languageOptions } from "@/utils/language";
 import Done from "@mui/icons-material/Done";
 import { Box, Button, List, ListItem, ListItemText } from "@mui/material";
 import { useNyanpasu, VergeConfig } from "@nyanpasu/interface";
-import { BaseCard, Expand, MenuItem } from "@nyanpasu/ui";
+import { BaseCard, Expand, MenuItem, SwitchItem } from "@nyanpasu/ui";
 
 export const SettingNyanpasuUI = () => {
   const { t } = useTranslation();
@@ -27,6 +29,8 @@ export const SettingNyanpasuUI = () => {
   const commonSx = {
     width: 128,
   };
+
+  const [onlyIcon, setOnlyIcon] = useAtom(atomIsDrawerOnlyIcon);
 
   return (
     <BaseCard label="User Interface">
@@ -98,6 +102,12 @@ export const SettingNyanpasuUI = () => {
             </Button>
           </Box>
         </Expand>
+
+        <SwitchItem
+          label={t("Icon Navigation Bar")}
+          checked={onlyIcon}
+          onChange={() => setOnlyIcon(!onlyIcon)}
+        />
       </List>
     </BaseCard>
   );

@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
 import getSystem from "@/utils/get-system";
 import { MenuOpen } from "@mui/icons-material";
-import { alpha, Backdrop, darken, IconButton, lighten } from "@mui/material";
+import { alpha, Backdrop, IconButton } from "@mui/material";
 import { cn } from "@nyanpasu/ui";
 import AnimatedLogo from "../layout/animated-logo";
 import DrawerContent from "./drawer-content";
@@ -83,26 +83,7 @@ export const AppDrawer = () => {
                 type: "tween",
               }}
             >
-              <DrawerContent
-                className="max-w-64"
-                sx={[
-                  (theme) =>
-                    OS === "linux"
-                      ? {
-                          backgroundColor: lighten(
-                            theme.palette.primary.light,
-                            0.9,
-                          ),
-                          ...theme.applyStyles("dark", {
-                            backgroundColor: darken(
-                              theme.palette.primary.dark,
-                              0.9,
-                            ),
-                          }),
-                        }
-                      : {},
-                ]}
-              />
+              <DrawerContent className="max-w-64" />
             </motion.div>
           </div>
         </AnimatePresence>

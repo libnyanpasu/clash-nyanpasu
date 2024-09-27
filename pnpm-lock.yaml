@@ -377,8 +377,8 @@ importers:
         specifier: 1.79.3
         version: 1.79.3
       shiki:
-        specifier: 1.19.0
-        version: 1.19.0
+        specifier: 1.20.0
+        version: 1.20.0
       tailwindcss-textshadow:
         specifier: 2.1.3
         version: 2.1.3
@@ -2037,17 +2037,17 @@ packages:
   '@rushstack/ts-command-line@4.22.6':
     resolution: {integrity: sha512-QSRqHT/IfoC5nk9zn6+fgyqOPXHME0BfchII9EUPR19pocsNp/xSbeBCbD3PIR2Lg+Q5qk7OFqk1VhWPMdKHJg==}
 
-  '@shikijs/core@1.19.0':
-    resolution: {integrity: sha512-314J5MPdS1wzfjuD856MXvbAI2wN03ofMnUGkZ5ZDBOza/d38paLwd+YVyuKrrjxJ4hfPMjc4tRmPkXd6UDMPQ==}
+  '@shikijs/core@1.20.0':
+    resolution: {integrity: sha512-KlO3iE0THzSdYkzDFugt8SHe6FR3qNYTkmpbdW1d6xo8juQkMjybxAw/cBi2npL2eb2F4PbbnSs5Z9tDusfvyg==}
 
-  '@shikijs/engine-javascript@1.19.0':
-    resolution: {integrity: sha512-D1sioU61n7fLWfDzTC9JNS19zEYZMr7qxkSVzv6ziEWDxnwzy2PvYoKPedJV4qUf+2VnrYPSaArDz2W0XgGB7A==}
+  '@shikijs/engine-javascript@1.20.0':
+    resolution: {integrity: sha512-ZUMo758uduM0Tfgzi/kd+0IKMbNdumCxxWjY36uf1DIs2Qyg9HIq3vA1Wfa/vc6HE7tHWFpANRi3mv7UzJ68MQ==}
 
-  '@shikijs/engine-oniguruma@1.19.0':
-    resolution: {integrity: sha512-/JxwIefNVLGB4EmpB8i6P4JB/oVYRuzSixbqvx7m6iPW0lQ1T97c/0wmA+JlKbngEiExckSuPwa48fajlShB7A==}
+  '@shikijs/engine-oniguruma@1.20.0':
+    resolution: {integrity: sha512-MQ40WkVTZk7by33ces4PGK6XNFSo6PYvKTSAr2kTWdRNhFmOcnaX+1XzvFwB26eySXR7U74t91czZ1qJkEgxTA==}
 
-  '@shikijs/types@1.19.0':
-    resolution: {integrity: sha512-NZvVp3k1bP4MTRUbmnkGhYzPdoNMjNLSAwczMRUbtUl4oj2LlNRNbwERyeIyJt56Ac9fvPVZ2nn13OXk86E5UQ==}
+  '@shikijs/types@1.20.0':
+    resolution: {integrity: sha512-y+EaDvU2K6/GaXOKXxJaGnr1XtmZMF7MfS0pSEDdxEq66gCtKsLwQvVwoQFdp7R7dLlNAro3ijEE19sMZ0pzqg==}
 
   '@shikijs/vscode-textmate@9.2.2':
     resolution: {integrity: sha512-TMp15K+GGYrWlZM8+Lnj9EaHEFmOen0WJBrfa17hF7taDOYthuPPV0GWzfd/9iMij0akS/8Yw2ikquH7uVi/fg==}
@@ -6243,8 +6243,8 @@ packages:
   shell-quote@1.8.1:
     resolution: {integrity: sha512-6j1W9l1iAs/4xYBI1SYOVZyFcCis9b4KCLQ8fgAGG07QvzaRLVVRQvAy85yNmmZSjYjg4MWh4gNvlPujU/5LpA==}
 
-  shiki@1.19.0:
-    resolution: {integrity: sha512-Ng7Gd6XgWFLsv4Z3so65hOyXjV78qz1M117MuZHwdPQD6fgb5wR2IoLMvSlM/Ml14EXH7n+/YxIpTD74i7kDdw==}
+  shiki@1.20.0:
+    resolution: {integrity: sha512-MZJJ1PCFsQB1Piq+25wiz0a75yUv8Q3/fzy7SzRx5ONdjdtGdyiKwYn8vb/FnK5kjS0voWGnPpjG16POauUR+g==}
 
   side-channel@1.0.6:
     resolution: {integrity: sha512-fDW/EZ6Q9RiO8eFG8Hj+7u/oW+XrPTIChwCOM2+th2A6OblDtYYIpve9m+KvI9Z4C9qSEXlaGR6bTEYHReuglA==}
@@ -8717,27 +8717,27 @@ snapshots:
     transitivePeerDependencies:
       - '@types/node'
 
-  '@shikijs/core@1.19.0':
+  '@shikijs/core@1.20.0':
     dependencies:
-      '@shikijs/engine-javascript': 1.19.0
-      '@shikijs/engine-oniguruma': 1.19.0
-      '@shikijs/types': 1.19.0
+      '@shikijs/engine-javascript': 1.20.0
+      '@shikijs/engine-oniguruma': 1.20.0
+      '@shikijs/types': 1.20.0
       '@shikijs/vscode-textmate': 9.2.2
       '@types/hast': 3.0.4
       hast-util-to-html: 9.0.3
 
-  '@shikijs/engine-javascript@1.19.0':
+  '@shikijs/engine-javascript@1.20.0':
     dependencies:
-      '@shikijs/types': 1.19.0
+      '@shikijs/types': 1.20.0
       '@shikijs/vscode-textmate': 9.2.2
       oniguruma-to-js: 0.4.3
 
-  '@shikijs/engine-oniguruma@1.19.0':
+  '@shikijs/engine-oniguruma@1.20.0':
     dependencies:
-      '@shikijs/types': 1.19.0
+      '@shikijs/types': 1.20.0
       '@shikijs/vscode-textmate': 9.2.2
 
-  '@shikijs/types@1.19.0':
+  '@shikijs/types@1.20.0':
     dependencies:
       '@shikijs/vscode-textmate': 9.2.2
       '@types/hast': 3.0.4
@@ -13274,12 +13274,12 @@ snapshots:
 
   shell-quote@1.8.1: {}
 
-  shiki@1.19.0:
+  shiki@1.20.0:
     dependencies:
-      '@shikijs/core': 1.19.0
-      '@shikijs/engine-javascript': 1.19.0
-      '@shikijs/engine-oniguruma': 1.19.0
-      '@shikijs/types': 1.19.0
+      '@shikijs/core': 1.20.0
+      '@shikijs/engine-javascript': 1.20.0
+      '@shikijs/engine-oniguruma': 1.20.0
+      '@shikijs/types': 1.20.0
       '@shikijs/vscode-textmate': 9.2.2
       '@types/hast': 3.0.4
 

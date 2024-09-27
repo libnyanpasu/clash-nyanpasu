@@ -4734,6 +4734,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nyanpasu-macro"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.77",
+]
+
+[[package]]
 name = "nyanpasu-utils"
 version = "0.1.0"
 source = "git+https://github.com/LibNyanpasu/nyanpasu-utils.git#30c8e36ca1264078593e4bd184995c60e2af70d7"

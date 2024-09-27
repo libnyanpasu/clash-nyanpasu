@@ -82,7 +82,7 @@
     "eslint-plugin-react": "7.36.1",
     "eslint-plugin-react-compiler": "0.0.0-experimental-92aaa43-20240925",
     "eslint-plugin-react-hooks": "4.6.2",
-    "knip": "5.30.5",
+    "knip": "5.30.6",
     "lint-staged": "15.2.10",
     "npm-run-all2": "6.2.3",
     "postcss": "8.4.47",

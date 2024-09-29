@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::{
     config::{
         profile::item_type::{ProfileItemType, ProfileUid},
@@ -8,10 +10,10 @@ use crate::{
 
 use super::{ProfileFileOps, ProfileShared, ProfileSharedBuilder};
 use crate::utils::dirs::APP_VERSION;
-use anyhow::Context;
 use backon::Retryable;
 use derive_builder::Builder;
 use indexmap::IndexMap;
+use itertools::Itertools;
 use nyanpasu_macro::BuilderUpdate;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
@@ -25,7 +27,7 @@ pub trait RemoteProfileSubscription {
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate)]
 #[builder(derive(Serialize, Deserialize))]
-#[builder(build_fn(skip))]
+#[builder(build_fn(skip, error = "RemoteProfileBuilderError"))]
 #[builder_update(patch_fn = "apply")]
 pub struct RemoteProfile {
     #[serde(flatten)]
@@ -57,12 +59,20 @@ struct Subscription {
     pub filename: Option<String>,
     pub data: Mapping,
     pub info: SubscriptionInfo,
+    pub opts: Option<RemoteProfileOptions>,
 }
 
 /// perform a subscription
-async fn subscribe_url(url: &Url, options: &RemoteProfileOptions) -> anyhow::Result<Subscription> {
+#[tracing::instrument]
+async fn subscribe_url(
+    url: &Url,
+    options: &RemoteProfileOptions,
+) -> Result<Subscription, SubscribeError> {
     let options = options.apply_default();
-    let mut builder = reqwest::ClientBuilder::new().use_rustls_tls().no_proxy();
+    let mut builder = reqwest::ClientBuilder::new()
+        .use_rustls_tls()
+        .no_proxy()
+        .timeout(Duration::from_secs(30));
 
     // TODO: 添加一个代理测试环节？
     let proxy_url: Option<String> = if options.self_proxy.unwrap() {
@@ -71,7 +81,6 @@ async fn subscribe_url(url: &Url, options: &RemoteProfileOptions) -> anyhow::Res
             .latest()
             .verge_mixed_port
             .unwrap_or(Config::clash().data().get_mixed_port());
-
         Some(format!("http://127.0.0.1:{port}"))
     } else if options.with_proxy.unwrap() {
         // 使用系统代理
@@ -89,11 +98,34 @@ async fn subscribe_url(url: &Url, options: &RemoteProfileOptions) -> anyhow::Res
 
     builder = builder.user_agent(options.user_agent.unwrap());
 
-    let client = builder.build()?;
-    let perform_req = || async { Ok(client.get(url.as_str()).send().await?.error_for_status()?) };
+    let client = builder.build().map_err(|e| SubscribeError::Network {
+        url: url.to_string(),
+        source: e,
+    })?;
+    let perform_req = || async {
+        Ok::<reqwest::Response, reqwest::Error>(
+            client.get(url.as_str()).send().await?.error_for_status()?,
+        )
+    };
     let resp = perform_req
         .retry(backon::ExponentialBuilder::default())
-        .await?;
+        // Only retry on network errors or server errors
+        .when(|result| {
+            !result.is_status()
+                || result.status().is_some_and(|status_code| {
+                    !matches!(
+                        status_code,
+                        reqwest::StatusCode::FORBIDDEN
+                            | reqwest::StatusCode::NOT_FOUND
+                            | reqwest::StatusCode::UNAUTHORIZED
+                    )
+                })
+        })
+        .await
+        .map_err(|e| SubscribeError::Network {
+            url: url.to_string(),
+            source: e,
+        })?;
 
     let header = resp.headers();
     tracing::debug!("headers: {:#?}", header);
@@ -149,7 +181,7 @@ async fn subscribe_url(url: &Url, options: &RemoteProfileOptions) -> anyhow::Res
     };
 
     // parse the profile-update-interval
-    let option = match header
+    let opts = match header
         .get("profile-update-interval")
         .or(header.get("Profile-Update-Interval"))
     {
@@ -166,24 +198,98 @@ async fn subscribe_url(url: &Url, options: &RemoteProfileOptions) -> anyhow::Res
         None => None,
     };
 
-    let data = resp.text_with_charset("utf-8").await?;
+    let data = resp
+        .text_with_charset("utf-8")
+        .await
+        .map_err(|e| SubscribeError::Network {
+            url: url.to_string(),
+            source: e,
+        })?;
 
     // process the charset "UTF-8 with BOM"
     let data = data.trim_start_matches('\u{feff}');
 
     // check the data whether the valid yaml format
-    let yaml =
-        serde_yaml::from_str::<Mapping>(data).context("the remote profile data is invalid yaml")?;
+    let yaml = serde_yaml::from_str::<Mapping>(data).map_err(|e| SubscribeError::Parse {
+        url: url.to_string(),
+        source: e,
+    })?;
 
     if !yaml.contains_key("proxies") && !yaml.contains_key("proxy-providers") {
-        anyhow::bail!("profile does not contain `proxies` or `proxy-providers`");
+        return Err(SubscribeError::ValidationFailed {
+            url: url.to_string(),
+            reason: "profile does not contain `proxies` or `proxy-providers`".to_string(),
+        });
     }
 
     Ok(Subscription {
         filename,
         data: yaml,
         info: extra.unwrap_or_default(),
+        opts,
     })
+}
+
+/// subscribe multiple urls
+#[tracing::instrument]
+async fn subscribe_urls(
+    urls: &[Url],
+    options: &RemoteProfileOptions,
+) -> Result<Vec<Subscription>, SubscribeError> {
+    if urls.is_empty() {
+        return Err(SubscribeError::ValidationFailed {
+            url: "".to_string(),
+            reason: "urls should not be empty".to_string(),
+        });
+    }
+    let futures = urls.iter().map(|url| subscribe_url(url, options));
+    let results = futures::future::join_all(futures).await;
+    let (successes, errors): (Vec<_>, Vec<_>) = results.into_iter().partition_map(|r| match r {
+        Ok(val) => itertools::Either::Left(val),
+        Err(err) => itertools::Either::Right(err),
+    });
+
+    if !errors.is_empty() {
+        return Err(SubscribeError::MultipleErrors(errors));
+    }
+
+    Ok(successes)
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum SubscribeError {
+    #[error("network issue at {url}: {source}")]
+    Network {
+        url: String,
+        #[source]
+        source: reqwest::Error,
+    },
+
+    #[error("yaml parse error at {url}: {source}")]
+    Parse {
+        url: String,
+        #[source]
+        source: serde_yaml::Error,
+    },
+
+    #[error("invalid profile at {url}: {reason}")]
+    ValidationFailed { url: String, reason: String },
+
+    #[error("multiple errors occurred: {0:?}")]
+    MultipleErrors(Vec<SubscribeError>),
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum RemoteProfileBuilderError {
+    #[error("validation error: {0}")]
+    Validation(String),
+    #[error("error: {0}")]
+    UninitializedField(#[from] derive_builder::UninitializedFieldError),
+    #[error("subscribe failed: {0}")]
+    SubscribeFailed(#[from] SubscribeError),
+
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
 }
 
 impl RemoteProfileBuilder {
@@ -193,91 +299,78 @@ impl RemoteProfileBuilder {
         builder
     }
 
-    async fn import_urls(&mut self, urls: &[Url]) -> anyhow::Result<()> {
-        if urls.is_empty() {
-            anyhow::bail!("url should not be empty");
-        }
-        
-        if self.shared.is_file_none() {
-            anyhow::bail!("file should not be none");
+    fn validate(&self) -> Result<(), RemoteProfileBuilderError> {
+        if self.url.is_none() || self.url.as_ref().is_some_and(|v| v.is_empty()) {
+            return Err(RemoteProfileBuilderError::Validation(
+                "url should not be null".into(),
+            ));
         }
 
-        let options = self.option.build()?;
-
-        let futures = urls.iter().map(|url| subscribe_url(url, &options));
-        let results = futures::future::join_all(futures).await;
-        // filter all failed results, and combine them into one error
-        let failed_jobs = results
-            .iter()
-            .filter_map(|r| r.as_ref().err().clone())
-            .collect::<Vec<_>>();
-        if !failed_jobs.is_empty() {
-            let errors = failed_jobs
-                .iter()
-                .enumerate()
-                // The results is a one to one correspondence with urls, so it is safe to get unchecked here
-                .map(|(i, e)| format!("url: {}, error: {:?}", unsafe { urls.get_unchecked(i) }, e))
-                .collect::<Vec<_>>()
-                .join("\n");
-            anyhow::bail!("failed to import urls:\n{}", errors);
-        }
-
-        self.url = Some(urls.to_vec());
-
-        if self.extra.is_none() {
-            self.extra = Some(IndexMap::new());
-        }
-        let extra = self.extra.as_mut().unwrap();
-
-        let mut data = unsafe { results.get_unchecked(0).as_ref().unwrap().data.clone() };
-
-        for (i, sub) in results.into_iter().filter_map(|r| r.ok()).enumerate() {
-            let url = unsafe { urls.get_unchecked(i) };
-            extra.insert(url.clone(), sub.info);
-            if i > 0
-                && let Some(proxies) = sub.data.get("proxies")
-                && proxies.is_sequence()
-                && !proxies.as_sequence().unwrap().is_empty()
-            {
-                let mut proxies = proxies.as_sequence().unwrap().clone();
-                let main_proxies = data.get_mut("proxies").unwrap().as_sequence_mut().unwrap();
-                main_proxies.append(&mut proxies);
-            }
-        }
-
-        let shared = self.shared.build()?;
-        shared.set_file(serde_yaml::to_string(&data)?).await?;
         Ok(())
     }
 
     pub async fn build_non_blocking(&mut self) -> Result<RemoteProfile, RemoteProfileBuilderError> {
-        if self.url.is_none() || self.url.is_some_and(|v| v.is_empty()) {
-            return Err(RemoteProfileBuilderError::ValidationError(
-                "url should not be null".into(),
-            ));
+        self.validate()?;
+        self.shared.r#type(ProfileItemType::Remote);
+        let url = self.url.take().unwrap();
+        let mut extra = self.extra.take().unwrap_or_default();
+        let options = self
+            .option
+            .build()
+            .map_err(|e| RemoteProfileBuilderError::Validation(e.to_string()))?;
+        // merge subscriptions and merge into the profile
+        let subscriptions = subscribe_urls(&url, &options).await?;
+        let mut data = Mapping::new();
+        for (i, mut sub) in subscriptions.into_iter().enumerate() {
+            if i == 0 {
+                if self.shared.get_name().is_none() && sub.filename.is_some() {
+                    self.shared.name(sub.filename.take().unwrap());
+                }
+                if self.option.get_update_interval().is_none() && sub.opts.is_some() {
+                    self.option
+                        .update_interval(sub.opts.take().unwrap().update_interval);
+                }
+                data.extend(sub.data);
+            } else {
+                let proxies = data.get_mut("proxies").unwrap().as_sequence_mut().unwrap();
+                let sub_proxies = sub.data.get("proxies").unwrap().as_sequence().unwrap();
+                proxies.extend(sub_proxies.iter().cloned());
+            }
+            extra.insert(unsafe { url.get_unchecked(i).clone() }, sub.info);
         }
 
-        self.shared = self.default_shared();
-        self.import_urls(self.url.as_ref().unwrap()).await?;
-        Ok(self.build()?)
-    }
-
-    pub fn build(&mut self) -> Result<RemoteProfile, RemoteProfileBuilderError> {
-        if self.url.is_none() || self.url.is_some_and(|v| v.is_empty()) {
-            return Err(RemoteProfileBuilderError::ValidationError(
-                "url should not be null".into(),
-            ));
-        }
-
-        Ok(RemoteProfile {
+        let profile = RemoteProfile {
             shared: self
                 .shared
                 .build()
-                .map_err(|e| RemoteProfileBuilderError::from(e.to_string()))?,
-            url: self.url.take().unwrap(),
-            extra: self.extra.take().unwrap_or_default(),
-            option: self.option.build().map_err(Into::into)?,
+                .map_err(|e| RemoteProfileBuilderError::Validation(e.to_string()))?,
+            url,
+            extra,
+            option: self.option.build().unwrap(),
             chains: self.chains.take().unwrap_or_default(),
+        };
+        // write the profile to the file
+        profile
+            .shared
+            .set_file(
+                serde_yaml::to_string(&data)
+                    .map_err(|e| RemoteProfileBuilderError::Validation(e.to_string()))?,
+            )
+            .await?;
+        Ok(profile)
+    }
+
+    pub fn build(&mut self) -> Result<RemoteProfile, RemoteProfileBuilderError> {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let local = tokio::task::LocalSet::new();
+            local
+                .run_until(self.build_non_blocking())
+                .await
+                .map_err(|e| RemoteProfileBuilderError::Validation(e.to_string()))
         })
     }
 }
@@ -292,7 +385,7 @@ pub struct SubscriptionInfo {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Builder, BuilderUpdate)]
 #[builder(derive(Serialize, Deserialize))]
-#[builder_update(patch_fn = "apply")]
+#[builder_update(patch_fn = "apply", getter)]
 pub struct RemoteProfileOptions {
     /// see issue #13
     #[serde(skip_serializing_if = "Option::is_none")]

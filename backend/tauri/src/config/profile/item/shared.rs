@@ -16,7 +16,7 @@ pub trait ProfileFileOps {
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate)]
 #[builder(derive(serde::Serialize, serde::Deserialize))]
-#[builder_update(patch_fn = "apply")]
+#[builder_update(patch_fn = "apply", getter)]
 pub struct ProfileShared {
     #[builder(default = "self.default_uid()?")]
     pub uid: String,

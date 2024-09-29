@@ -1307,6 +1307,7 @@ dependencies = [
  "humansize",
  "image",
  "indexmap 2.5.0",
+ "itertools 0.13.0",
  "log",
  "md-5",
  "mime",

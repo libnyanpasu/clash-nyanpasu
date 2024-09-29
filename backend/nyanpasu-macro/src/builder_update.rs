@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote};
-use syn::{spanned::Spanned, DeriveInput, Error, Ident, LitStr, Meta};
+use quote::{format_ident, quote, ToTokens};
+use syn::{spanned::Spanned, DeriveInput, Error, Ident, LitStr, Meta, Type};
 
 pub fn builder_update(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = format_ident!("{}", input.ident);
@@ -8,6 +8,8 @@ pub fn builder_update(input: DeriveInput) -> syn::Result<TokenStream> {
     let mut partial_ty: Option<Ident> = None;
     // search #[builder_update(patch_fn = "fn_name")]
     let mut patch_fn: Option<Ident> = None;
+    // search #[builder_update(getter)] or #[builder_update(getter = "get_{}")]
+    let mut generate_getter: Option<String> = None;
     for attr in &input.attrs {
         if let Some(attr_meta_name) = attr.path().get_ident() {
             if attr_meta_name == "builder_update" {
@@ -26,6 +28,18 @@ pub fn builder_update(input: DeriveInput) -> syn::Result<TokenStream> {
                                     let value = meta.value()?;
                                     let lit_str: LitStr = value.parse()?;
                                     patch_fn = Some(lit_str.parse()?);
+                                }
+                                path if path.is_ident("getter") => {
+                                    match meta.value() {
+                                        Ok(value) => {
+                                            let lit_str: LitStr = value.parse()?;
+                                            generate_getter = Some(lit_str.value());
+                                        }
+                                        Err(_) => {
+                                            // it should be default getter
+                                            generate_getter = Some("get_{}".to_string());
+                                        }
+                                    }
                                 }
                                 _ => {
                                     return Err(meta
@@ -55,12 +69,16 @@ pub fn builder_update(input: DeriveInput) -> syn::Result<TokenStream> {
     };
 
     let mut patch_fields = quote! {};
+    let mut fields_getter = quote! {};
 
     match input.data {
         syn::Data::Struct(ref data) => {
             if let syn::Fields::Named(ref fields) = data.fields {
                 for field in &fields.named {
                     let field_name = field.ident.as_ref().unwrap();
+                    let field_type = &field.ty;
+                    let mut getter_type = wrap_type_in_option(field_type);
+
                     // check whether the field has #[update(nest)]
                     let mut nested = false;
                     for attr in &field.attrs {
@@ -71,6 +89,11 @@ pub fn builder_update(input: DeriveInput) -> syn::Result<TokenStream> {
                                     match path {
                                         path if path.is_ident("nested") => {
                                             nested = true;
+                                        }
+                                        path if path.is_ident("getter_ty") => {
+                                            let value = meta.value()?;
+                                            let lit_str: LitStr = value.parse()?;
+                                            getter_type = syn::parse_str(&lit_str.value())?;
                                         }
                                         _ => {
                                             return Err(meta.error(
@@ -95,6 +118,24 @@ pub fn builder_update(input: DeriveInput) -> syn::Result<TokenStream> {
                             }
                         }
                     });
+
+                    if let Some(getter) = &generate_getter {
+                        let getter_name = format_ident!(
+                            "{}",
+                            getter.replace(
+                                "{}",
+                                field_name
+                                    .to_string()
+                                    .strip_prefix("r#")
+                                    .unwrap_or(&field_name.to_string())
+                            )
+                        );
+                        fields_getter.extend(quote! {
+                            pub fn #getter_name(&self) -> &#getter_type {
+                                &self.#field_name
+                            }
+                        });
+                    }
                 }
             }
         }
@@ -109,7 +150,18 @@ pub fn builder_update(input: DeriveInput) -> syn::Result<TokenStream> {
                 #patch_fields
             }
         }
+
+        impl #partial_ty {
+            #fields_getter
+        }
     };
 
     Ok(expanded)
+}
+
+
+fn wrap_type_in_option(ty: &Type) -> Type {
+    syn::parse_quote! {
+        Option<#ty>
+    }
 }

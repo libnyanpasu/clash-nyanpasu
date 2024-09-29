@@ -1,136 +1,56 @@
-use super::item_type::{ProfileItemType, ProfileUid};
+use super::item_type::ProfileItemType;
 use crate::{
     config::Config,
-    enhance::ScriptType,
     utils::{dirs, help},
 };
 use anyhow::{bail, Context, Result};
-use derive_builder::Builder;
 use indexmap::IndexMap;
+use nyanpasu_macro::EnumWrapperFrom;
 use reqwest::StatusCode;
 use serde::{de::Visitor, Deserialize, Serialize};
 use serde_yaml::{Mapping, Value};
-use std::{fmt::Debug, fs, path::PathBuf};
+use std::{borrow::Borrow, fmt::Debug, fs};
 use sysproxy::Sysproxy;
 use tracing_attributes::instrument;
-use url::Url;
 
-#[derive(Debug, Clone, Deserialize, Serialize, Builder)]
-#[builder(derive(serde::Serialize, serde::Deserialize))]
-pub struct ProfileShared {
-    pub uid: String,
+mod local;
+mod merge;
+mod remote;
+mod script;
+mod shared;
 
-    /// profile item type
-    /// enum value: remote | local | script | merge
-    #[serde(rename = "type")]
-    pub r#type: ProfileItemType,
+pub use local::*;
+pub use merge::*;
+pub use remote::*;
+pub use script::*;
+pub use shared::*;
 
-    /// profile name
-    pub name: String,
-
-    /// profile holds the file
-    #[serde(alias = "file")]
-    pub files: Vec<String>,
-
-    /// profile description
-    pub desc: Option<String>,
-
-    #[builder(default = "chrono::Local::now().timestamp() as usize")]
-    /// update time
-    pub updated: usize,
+trait ProfileHelper {
+    fn files(&self) -> &[String];
+    fn clear_files(&mut self);
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, Builder)]
-#[builder(derive(Serialize, Deserialize))]
-pub struct RemoteProfile {
-    #[serde(flatten)]
-    #[builder(field(
-        ty = "ProfileSharedBuilder",
-        build = "self.shared.build().map_err(Into::into)?"
-    ))]
-    #[builder_field_attr(serde(flatten))]
-    pub shared: ProfileShared,
-    /// subscription urls, the first one is the main url, others proxies should be merged
-    pub url: Vec<Url>,
-    /// subscription user info
-    pub extra: IndexMap<Url, RemoteProfileSubscriptionInfo>,
-    /// remote profile options
-    pub option: RemoteProfileOptions,
-    /// process chains
-    pub chains: Vec<ProfileUid>,
+#[async_trait::async_trait]
+pub trait ProfileCleanup: ProfileHelper {
+    /// remove files and set the files to empty
+    /// It should be useful when the profile is no longer needed, or pending to be deleted
+    async fn remove_files(&mut self) -> Result<()> {
+        let files = self.files();
+        for f in files {
+            let path = dirs::app_profiles_dir()?.join(f);
+            tokio::fs::remove_file(path).await?;
+        }
+        self.clear_files();
+        Ok(())
+    }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, Builder)]
-#[builder(derive(Serialize, Deserialize))]
-pub struct LocalProfile {
-    #[serde(flatten)]
-    #[builder(field(
-        ty = "ProfileSharedBuilder",
-        build = "self.shared.build().map_err(Into::into)?"
-    ))]
-    #[builder_field_attr(serde(flatten))]
-    pub shared: ProfileShared,
-    /// file symlinks
-    pub symlinks: IndexMap<String, PathBuf>,
-    /// process chains
-    #[serde(default)]
-    pub chains: Vec<ProfileUid>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, Builder)]
-#[builder(derive(Serialize, Deserialize))]
-pub struct MergeProfile {
-    #[serde(flatten)]
-    #[builder(field(
-        ty = "ProfileSharedBuilder",
-        build = "self.shared.build().map_err(Into::into)?"
-    ))]
-    #[builder_field_attr(serde(flatten))]
-    pub shared: ProfileShared,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, Builder)]
-#[builder(derive(Serialize, Deserialize))]
-pub struct ScriptProfile {
-    #[serde(flatten)]
-    #[builder(field(
-        ty = "ProfileSharedBuilder",
-        build = "self.shared.build().map_err(Into::into)?"
-    ))]
-    #[builder_field_attr(serde(flatten))]
-    pub shared: ProfileShared,
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, EnumWrapperFrom)]
 pub enum Profile {
     Remote(RemoteProfile),
     Local(LocalProfile),
     Merge(MergeProfile),
     Script(ScriptProfile),
-}
-
-impl From<RemoteProfile> for Profile {
-    fn from(profile: RemoteProfile) -> Self {
-        Profile::Remote(profile)
-    }
-}
-
-impl From<LocalProfile> for Profile {
-    fn from(profile: LocalProfile) -> Self {
-        Profile::Local(profile)
-    }
-}
-
-impl From<MergeProfile> for Profile {
-    fn from(profile: MergeProfile) -> Self {
-        Profile::Merge(profile)
-    }
-}
-
-impl From<ScriptProfile> for Profile {
-    fn from(profile: ScriptProfile) -> Self {
-        Profile::Script(profile)
-    }
 }
 
 impl Serialize for Profile {
@@ -201,48 +121,6 @@ impl<'de> Deserialize<'de> for Profile {
     }
 }
 
-fn deserialize_option_single_or_vec<'de, D>(
-    deserializer: D,
-) -> Result<Option<Vec<String>>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    struct StringOrVec;
-    impl<'de> Visitor<'de> for StringOrVec {
-        type Value = Option<Vec<String>>;
-
-        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-            formatter.write_str("string or sequence of strings")
-        }
-
-        fn visit_none<E>(self) -> Result<Self::Value, E>
-        where
-            E: serde::de::Error,
-        {
-            Ok(None)
-        }
-
-        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-        where
-            E: serde::de::Error,
-        {
-            Ok(Some(vec![value.to_string()]))
-        }
-
-        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-        where
-            A: serde::de::SeqAccess<'de>,
-        {
-            let mut vec = Vec::new();
-            while let Some(value) = seq.next_element()? {
-                vec.push(value);
-            }
-            Ok(Some(vec))
-        }
-    }
-    deserializer.deserialize_any(StringOrVec)
-}
-
 // what it actually did
 // #[derive(Default, Debug, Clone, Deserialize, Serialize)]
 // pub struct PrfSelected {
@@ -250,76 +128,48 @@ where
 //     pub now: Option<String>,
 // }
 
-#[derive(Default, Debug, Clone, Copy, Deserialize, Serialize)]
-pub struct RemoteProfileSubscriptionInfo {
-    pub upload: usize,
-    pub download: usize,
-    pub total: usize,
-    pub expire: usize,
-}
-
-#[derive(Default, Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub struct RemoteProfileOptions {
-    /// for `remote` profile's http request
-    /// see issue #13
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub user_agent: Option<String>,
-
-    /// for `remote` profile
-    /// use system proxy
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub with_proxy: Option<bool>,
-
-    /// for `remote` profile
-    /// use self proxy
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub self_proxy: Option<bool>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub update_interval: Option<u64>,
-}
-
-impl RemoteProfileOptions {
-    pub fn merge(one: Option<Self>, other: Option<Self>) -> Option<Self> {
-        match (one, other) {
-            (Some(mut a), Some(b)) => {
-                a.user_agent = b.user_agent.or(a.user_agent);
-                a.with_proxy = b.with_proxy.or(a.with_proxy);
-                a.self_proxy = b.self_proxy.or(a.self_proxy);
-                a.update_interval = b.update_interval.or(a.update_interval);
-                Some(a)
-            }
-            t => t.0.or(t.1),
+impl Profile {
+    pub fn files(&self) -> &[String] {
+        match self {
+            Profile::Remote(profile) => &profile.shared.files,
+            Profile::Local(profile) => &profile.shared.files,
+            Profile::Merge(profile) => &profile.shared.files,
+            Profile::Script(profile) => &profile.shared.files,
         }
     }
-}
 
-impl Profile {
-    /// create a remote Profile with url
-    pub fn new_local(
-        name: String,
-        desc: Option<String>,
-        symlinks: IndexMap<String, PathBuf>,
-    ) -> Result<Profile> {
-        let uid = help::get_uid("l");
-        let file = format!("{uid}.yaml");
+    /// get the file data
+    pub fn read_file(&self, index: Option<usize>) -> Result<String> {
+        let index = index.unwrap_or(0);
+        let file = self.files().get(index);
+        if file.is_none() {
+            bail!("could not find the file");
+        }
+        let path = dirs::app_profiles_dir()?.join(file.unwrap());
+        fs::read_to_string(path).context("failed to read the file")
+    }
 
-        Ok(Profile::Local(
-            LocalProfile {
-                shared: ProfileShared {
-                    uid,
-                    r#type: ProfileItemType::Local,
-                    name,
-                    files: vec![file],
-                    desc,
-                    updated: chrono::Local::now().timestamp() as usize,
-                    chains: None,
-                },
-                symlinks,
-            }
-            .builder()
-            .build()?,
-        ))
+    pub fn read_file_mapping(&self) -> Result<IndexMap<String, String>> {
+        let files = self.files();
+        let mut map = IndexMap::new();
+        for f in files {
+            let path = dirs::app_profiles_dir()?.join(&f);
+            let data = fs::read_to_string(path).context("failed to read the file")?;
+            map.insert(f.clone(), data);
+        }
+        Ok(map)
+    }
+
+    /// save the file data
+    pub fn save_file<T: Borrow<String>>(&self, data: T, index: Option<usize>) -> Result<()> {
+        let index = index.unwrap_or(0);
+        let file = self.files().get(index);
+        if file.is_none() {
+            bail!("could not find the file");
+        }
+        let file = file.unwrap();
+        let path = dirs::app_profiles_dir()?.join(file);
+        fs::write(path, data.borrow().as_bytes()).context("failed to save the file")
     }
 }
 
@@ -354,28 +204,6 @@ impl ProfileItem {
             }
             None => bail!("could not find the item type"),
         }
-    }
-
-    /// ## Local type
-    /// create a new item from name/desc
-    pub fn from_local(
-        name: String,
-        desc: String,
-        file_data: Option<String>,
-    ) -> Result<ProfileItem> {
-        let uid = help::get_uid("l");
-        let file = format!("{uid}.yaml");
-
-        Ok(ProfileItem {
-            uid: Some(uid),
-            r#type: Some(ProfileItemType::Local),
-            name: Some(name),
-            desc: Some(desc),
-            file: Some(vec![file]),
-            updated: Some(chrono::Local::now().timestamp() as usize),
-            file_data,
-            ..Default::default()
-        })
     }
 
     /// ## Remote type
@@ -453,7 +281,7 @@ impl ProfileItem {
                 tracing::debug!("Subscription-Userinfo: {:?}", value);
                 let sub_info = value.to_str().unwrap_or("");
 
-                Some(RemoteProfileSubscriptionInfo {
+                Some(SubscriptionInfo {
                     upload: help::parse_str(sub_info, "upload").unwrap_or(0),
                     download: help::parse_str(sub_info, "download").unwrap_or(0),
                     total: help::parse_str(sub_info, "total").unwrap_or(0),
@@ -538,92 +366,5 @@ impl ProfileItem {
             file_data: Some(data.into()),
             ..Default::default()
         })
-    }
-
-    /// ## Merge type (enhance)
-    /// create the enhanced item by using `merge` rule
-    pub fn from_merge(
-        name: String,
-        desc: String,
-        file_data: Option<String>,
-    ) -> Result<ProfileItem> {
-        let uid = help::get_uid("m");
-        let file = format!("{uid}.yaml");
-
-        Ok(ProfileItem {
-            uid: Some(uid),
-            r#type: Some(ProfileItemType::Merge),
-            name: Some(name),
-            desc: Some(desc),
-            file: Some(vec![file]),
-            updated: Some(chrono::Local::now().timestamp() as usize),
-            file_data,
-            ..Default::default()
-        })
-    }
-
-    /// ## Script type (enhance)
-    /// create the enhanced item by using javascript quick.js
-    pub fn from_script(
-        name: String,
-        desc: String,
-        script_type: ScriptType,
-        file_data: Option<String>,
-    ) -> Result<ProfileItem> {
-        let uid = help::get_uid("s");
-        let file = match script_type {
-            ScriptType::JavaScript => format!("{uid}.js"), // js ext
-            ScriptType::Lua => format!("{uid}.lua"),       // lua ext
-        }; // js ext
-
-        Ok(ProfileItem {
-            uid: Some(uid),
-            r#type: Some(ProfileItemType::Script(script_type)),
-            name: Some(name),
-            desc: Some(desc),
-            file: Some(vec![file]),
-            updated: Some(chrono::Local::now().timestamp() as usize),
-            file_data,
-            ..Default::default()
-        })
-    }
-
-    /// get the file data
-    pub fn read_file(&self, index: Option<usize>) -> Result<String> {
-        let index = index.unwrap_or(0);
-        if self.file.is_none() || self.file.as_ref().unwrap().get(index).is_none() {
-            bail!("could not find the file");
-        }
-        let files = self.file.clone().unwrap();
-        let file = files.get(index).unwrap();
-        let path = dirs::app_profiles_dir()?.join(file);
-        fs::read_to_string(path).context("failed to read the file")
-    }
-
-    pub fn read_file_mapping(&self) -> Result<IndexMap<String, String>> {
-        if self.file.is_none() {
-            bail!("could not find the file");
-        }
-        let files = self.file.clone().unwrap();
-        let mut map = IndexMap::new();
-        for f in files {
-            let path = dirs::app_profiles_dir()?.join(&f);
-            let data = fs::read_to_string(path).context("failed to read the file")?;
-            map.insert(f, data);
-        }
-        Ok(map)
-    }
-
-    /// save the file data
-    pub fn save_file(&self, data: String, index: Option<usize>) -> Result<()> {
-        let index = index.unwrap_or(0);
-        if self.file.is_none() || self.file.as_ref().unwrap().get(index).is_none() {
-            bail!("could not find the file");
-        }
-
-        let files = self.file.clone().unwrap();
-        let file = files.get(index).unwrap();
-        let path = dirs::app_profiles_dir()?.join(file);
-        fs::write(path, data.as_bytes()).context("failed to save the file")
     }
 }

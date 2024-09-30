@@ -492,8 +492,8 @@ importers:
         specifier: 5.1.0
         version: 5.1.0(typescript@5.6.2)
       vite-plugin-dts:
-        specifier: 4.2.2
-        version: 4.2.2(@types/node@22.7.4)(rollup@4.21.0)(typescript@5.6.2)(vite@5.4.8(@types/node@22.7.4)(less@4.2.0)(sass-embedded@1.78.0)(sass@1.79.4)(stylus@0.62.0))
+        specifier: 4.2.3
+        version: 4.2.3(@types/node@22.7.4)(rollup@4.21.0)(typescript@5.6.2)(vite@5.4.8(@types/node@22.7.4)(less@4.2.0)(sass-embedded@1.78.0)(sass@1.79.4)(stylus@0.62.0))
 
   scripts:
     dependencies:
@@ -6882,8 +6882,8 @@ packages:
     engines: {node: ^18.19.0 || >=20.6.0}
     hasBin: true
 
-  vite-plugin-dts@4.2.2:
-    resolution: {integrity: sha512-USwTMReZFf8yXV+cKkm4WOMqmFjbReAvkyxON5xzdnZzJEBnFgax6BBDZIGGr9WMJYvhHdpaIHLrOjXDcla4OA==}
+  vite-plugin-dts@4.2.3:
+    resolution: {integrity: sha512-O5NalzHANQRwVw1xj8KQun3Bv8OSDAlNJXrnqoAz10BOuW8FVvY5g4ygj+DlJZL5mtSPuMu9vd3OfrdW5d4k6w==}
     engines: {node: ^14.18.0 || >=16.0.0}
     peerDependencies:
       typescript: '*'
@@ -13978,7 +13978,7 @@ snapshots:
       - rollup
       - supports-color
 
-  vite-plugin-dts@4.2.2(@types/node@22.7.4)(rollup@4.21.0)(typescript@5.6.2)(vite@5.4.8(@types/node@22.7.4)(less@4.2.0)(sass-embedded@1.78.0)(sass@1.79.4)(stylus@0.62.0)):
+  vite-plugin-dts@4.2.3(@types/node@22.7.4)(rollup@4.21.0)(typescript@5.6.2)(vite@5.4.8(@types/node@22.7.4)(less@4.2.0)(sass-embedded@1.78.0)(sass@1.79.4)(stylus@0.62.0)):
     dependencies:
       '@microsoft/api-extractor': 7.47.7(@types/node@22.7.4)
       '@rollup/pluginutils': 5.1.0(rollup@4.21.0)

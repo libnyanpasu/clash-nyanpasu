@@ -1,5 +1,9 @@
 use crate::{
-    config::{nyanpasu::ClashCore, profile::item_type::ProfileItemType, ProfileItem},
+    config::{
+        nyanpasu::ClashCore,
+        profile::{item::prelude::*, item_type::ProfileItemType},
+        Profile,
+    },
     utils::{dirs, help},
 };
 use enumflags2::{BitFlag, BitFlags};
@@ -33,13 +37,13 @@ impl ChainTypeWrapper {
     }
 }
 
-impl TryFrom<&ProfileItem> for ChainTypeWrapper {
+impl TryFrom<&Profile> for ChainTypeWrapper {
     type Error = anyhow::Error;
 
-    fn try_from(item: &ProfileItem) -> Result<Self, Self::Error> {
+    fn try_from(item: &Profile) -> Result<Self, Self::Error> {
         use anyhow::Context;
-        let r#type = item.r#type.as_ref().context("type is required")?;
-        let file = item.file.clone().context("file is required")?;
+        let r#type = item.kind();
+        let file = item.file();
         let path = dirs::app_profiles_dir()
             .context("profiles dir not found")?
             .join(file);
@@ -61,19 +65,19 @@ impl TryFrom<&ProfileItem> for ChainTypeWrapper {
     }
 }
 
-impl TryFrom<&ProfileItem> for ChainItem {
+impl TryFrom<&Profile> for ChainItem {
     type Error = anyhow::Error;
 
-    fn try_from(item: &ProfileItem) -> Result<Self, Self::Error> {
-        let uid = item.uid.clone().unwrap_or("".into());
+    fn try_from(item: &Profile) -> Result<Self, Self::Error> {
+        let uid = item.uid().to_string();
         let data = ChainTypeWrapper::try_from(item)?;
         Ok(Self { uid, data })
     }
 }
 
-impl From<&ProfileItem> for Option<ChainItem> {
-    fn from(item: &ProfileItem) -> Self {
-        let uid = item.uid.clone().unwrap_or("".into());
+impl From<&Profile> for Option<ChainItem> {
+    fn from(item: &Profile) -> Self {
+        let uid = item.uid().to_string();
         let data = ChainTypeWrapper::try_from(item);
         match data {
             Err(_) => None,

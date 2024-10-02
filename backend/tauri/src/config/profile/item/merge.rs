@@ -1,11 +1,19 @@
-use super::{ProfileShared, ProfileSharedBuilder};
+use super::{
+    ambassador_impl_ProfileFileIo, ambassador_impl_ProfileSharedGetter,
+    ambassador_impl_ProfileSharedSetter, ProfileFileIo, ProfileShared, ProfileSharedBuilder,
+    ProfileSharedGetter, ProfileSharedSetter,
+};
+use ambassador::Delegate;
 use derive_builder::Builder;
 use nyanpasu_macro::BuilderUpdate;
 use serde::{Deserialize, Serialize};
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate)]
+#[derive(Default, Delegate, Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate)]
 #[builder(derive(Serialize, Deserialize))]
 #[builder_update(patch_fn = "apply")]
+#[delegate(ProfileSharedGetter, target = "shared")]
+#[delegate(ProfileSharedSetter, target = "shared")]
+#[delegate(ProfileFileIo, target = "shared")]
 pub struct MergeProfile {
     #[serde(flatten)]
     #[builder(field(

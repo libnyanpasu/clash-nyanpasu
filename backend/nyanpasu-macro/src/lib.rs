@@ -2,7 +2,7 @@ use proc_macro::TokenStream;
 use syn::{parse_macro_input, DeriveInput};
 
 mod builder_update;
-mod enum_wrapper_from;
+mod enum_wrapper_combined;
 mod verge_patch;
 
 #[proc_macro_derive(BuilderUpdate, attributes(builder_update))]
@@ -23,10 +23,10 @@ pub fn verge_patch(input: TokenStream) -> TokenStream {
     }
 }
 
-#[proc_macro_derive(EnumWrapperFrom)]
+#[proc_macro_derive(EnumWrapperCombined)]
 pub fn enum_wrapper_from(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    match enum_wrapper_from::enum_wrapper_from(input) {
+    match enum_wrapper_combined::enum_combined_wrapper(input) {
         Ok(token_stream) => TokenStream::from(token_stream),
         Err(e) => TokenStream::from(e.to_compile_error()),
     }

@@ -1,15 +1,16 @@
-use std::time::Duration;
-
+use super::{
+    ambassador_impl_ProfileFileIo, ambassador_impl_ProfileSharedGetter,
+    ambassador_impl_ProfileSharedSetter, ProfileCleanup, ProfileFileIo, ProfileHelper,
+    ProfileShared, ProfileSharedBuilder, ProfileSharedGetter, ProfileSharedSetter,
+};
 use crate::{
     config::{
         profile::item_type::{ProfileItemType, ProfileUid},
         Config,
     },
-    utils::{config::NyanpasuReqwestProxyExt, help},
+    utils::{config::NyanpasuReqwestProxyExt, dirs::APP_VERSION, help},
 };
-
-use super::{ProfileFileOps, ProfileShared, ProfileSharedBuilder};
-use crate::utils::dirs::APP_VERSION;
+use ambassador::Delegate;
 use backon::Retryable;
 use derive_builder::Builder;
 use indexmap::IndexMap;
@@ -17,20 +18,22 @@ use itertools::Itertools;
 use nyanpasu_macro::BuilderUpdate;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
+use std::time::Duration;
 use sysproxy::Sysproxy;
 use url::Url;
 
-#[async_trait::async_trait]
 pub trait RemoteProfileSubscription {
     async fn subscribe(&mut self) -> anyhow::Result<()>;
 }
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate)]
+#[derive(Default, Delegate, Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate)]
 #[builder(derive(Serialize, Deserialize))]
 #[builder(build_fn(skip, error = "RemoteProfileBuilderError"))]
 #[builder_update(patch_fn = "apply")]
+#[delegate(ProfileSharedSetter, target = "shared")]
+#[delegate(ProfileSharedGetter, target = "shared")]
+#[delegate(ProfileFileIo, target = "shared")]
 pub struct RemoteProfile {
-    #[serde(flatten)]
     #[builder(field(
         ty = "ProfileSharedBuilder",
         build = "self.shared.build().map_err(Into::into)?"
@@ -54,6 +57,9 @@ pub struct RemoteProfile {
     #[builder(default)]
     pub chains: Vec<ProfileUid>,
 }
+
+impl ProfileHelper for RemoteProfile {}
+impl ProfileCleanup for RemoteProfile {}
 
 struct Subscription {
     pub filename: Option<String>,
@@ -352,7 +358,7 @@ impl RemoteProfileBuilder {
         // write the profile to the file
         profile
             .shared
-            .set_file(
+            .write_file(
                 serde_yaml::to_string(&data)
                     .map_err(|e| RemoteProfileBuilderError::Validation(e.to_string()))?,
             )

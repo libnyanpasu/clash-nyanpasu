@@ -31,6 +31,7 @@ boa_utils = { path = "../boa_utils" } # should be removed when boa support conso
 pretty_assertions = "1.4.0"
 which = "6"
 anyhow = "1.0"
+ambassador = "0.4.1"
 dirs = "5.0.1"
 open = "5.0.1"
 log = "0.4.20"

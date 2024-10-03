@@ -209,6 +209,21 @@ impl Profiles {
         self.save_file()
     }
 
+    /// replace item
+    pub fn replace_item<T: Borrow<String>>(&mut self, uid: T, item: Profile) -> Result<()> {
+        let uid = uid.borrow();
+        let items = self.items.as_mut().ok_or(anyhow::anyhow!(
+            "failed to get the items: the items list is empty"
+        ))?;
+
+        let index = items.iter().position(|e| e.uid() == uid);
+        if let Some(index) = index {
+            items[index] = item;
+        }
+
+        self.save_file()
+    }
+
     /// delete item
     /// if delete the current then return true
     pub async fn delete_item<T: Borrow<String>>(&mut self, uid: T) -> Result<bool> {

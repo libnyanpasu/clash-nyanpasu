@@ -23,7 +23,7 @@ use sysproxy::Sysproxy;
 use url::Url;
 
 pub trait RemoteProfileSubscription {
-    async fn subscribe(&mut self) -> anyhow::Result<()>;
+    async fn subscribe(&mut self, opts: Option<RemoteProfileOptionsBuilder>) -> anyhow::Result<()>;
 }
 
 #[derive(Default, Delegate, Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate)]
@@ -63,8 +63,15 @@ impl ProfileCleanup for RemoteProfile {}
 
 impl RemoteProfileSubscription for RemoteProfile {
     #[tracing::instrument]
-    async fn subscribe(&mut self) -> anyhow::Result<()> {
-        let subscriptions = subscribe_urls(&self.url, &self.option).await?;
+    async fn subscribe(
+        &mut self,
+        partial: Option<RemoteProfileOptionsBuilder>,
+    ) -> anyhow::Result<()> {
+        let mut opts = self.option.clone();
+        if let Some(partial) = partial {
+            opts.apply(partial);
+        }
+        let subscriptions = subscribe_urls(&self.url, &opts).await?;
         let (data, extra) = merge_subscription(&subscriptions);
         self.extra.clear(); // remove the old extra
         self.extra.extend(extra);
@@ -280,7 +287,6 @@ async fn subscribe_urls(
     Ok(successes)
 }
 
-
 /// merge the subscriptions
 #[tracing::instrument]
 fn merge_subscription(
@@ -422,7 +428,7 @@ pub struct SubscriptionInfo {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Builder, BuilderUpdate)]
-#[builder(derive(Serialize, Deserialize))]
+#[builder(derive(Serialize, Deserialize, Debug))]
 #[builder_update(patch_fn = "apply", getter)]
 pub struct RemoteProfileOptions {
     /// see issue #13

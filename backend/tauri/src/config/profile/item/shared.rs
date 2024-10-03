@@ -29,6 +29,7 @@ pub struct ProfileShared {
     pub r#type: ProfileItemType,
 
     /// profile name
+    #[builder(default = "self.default_name()?")]
     pub name: String,
 
     /// profile holds the file
@@ -72,6 +73,16 @@ impl ProfileSharedBuilder {
     fn default_uid(&self) -> Result<String, String> {
         match self.r#type {
             Some(ref kind) => Ok(super::utils::generate_uid(kind)),
+            None => Err("type should not be null".to_string()),
+        }
+    }
+
+    fn default_name(&self) -> Result<String, String> {
+        match self.r#type {
+            Some(ProfileItemType::Remote) => Ok("Remote Profile".to_string()),
+            Some(ProfileItemType::Local) => Ok("Local Profile".to_string()),
+            Some(ProfileItemType::Merge) => Ok("Merge Profile".to_string()),
+            Some(ProfileItemType::Script(_)) => Ok("Script Profile".to_string()),
             None => Err("type should not be null".to_string()),
         }
     }

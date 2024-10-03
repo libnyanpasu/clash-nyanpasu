@@ -41,11 +41,15 @@ pub async fn enhance() -> (Mapping, Vec<String>, IndexMap<String, Logs>) {
                 .get_current()
                 .and_then(|uid| profiles.get_item(&uid).ok());
             match profile {
-                Some(profile) => match &profile.chains {
-                    Some(chains) => utils::convert_uids_to_scripts(&profiles, chains),
-                    None => vec![],
-                },
-                None => vec![],
+                Some(profile) if profile.is_local() => {
+                    let profile = profile.as_local().unwrap();
+                    utils::convert_uids_to_scripts(&profiles, &profile.chains)
+                }
+                Some(profile) if profile.is_remote() => {
+                    let profile = profile.as_remote().unwrap();
+                    utils::convert_uids_to_scripts(&profiles, &profile.chains)
+                }
+                _ => vec![],
             }
         };
 

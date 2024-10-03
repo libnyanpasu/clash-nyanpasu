@@ -66,7 +66,6 @@ macro_rules! draft_define {
 
 // draft_define!(IClash);
 draft_define!(IClashTemp);
-draft_define!(Profiles);
 draft_define!(IRuntime);
 draft_define!(IVerge);
 

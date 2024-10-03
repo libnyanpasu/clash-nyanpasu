@@ -4,6 +4,8 @@
 //! - timer 定时器
 //! - cmds 页面调用
 //!
+use std::borrow::Borrow;
+
 use crate::{
     config::*,
     core::{service::ipc::get_ipc_state, *},
@@ -13,6 +15,7 @@ use crate::{
 use anyhow::{bail, Result};
 use handle::Message;
 use nyanpasu_ipc::api::status::CoreState;
+use profile::profiles;
 use serde_yaml::{Mapping, Value};
 use tauri::AppHandle;
 use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -347,36 +350,29 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
 
 /// 更新某个profile
 /// 如果更新当前配置就激活配置
-pub async fn update_profile(uid: String, option: Option<RemoteProfileOptions>) -> Result<()> {
-    let url_opt = {
-        let profiles = Config::profiles();
-        let profiles = profiles.latest();
-        let item = profiles.get_item(&uid)?;
-        let is_remote = item.r#type.as_ref().map_or(false, |s| {
-            matches!(s, profile::item_type::ProfileItemType::Remote)
-        });
+pub async fn update_profile<T: Borrow<String>>(
+    uid: T,
+    opts: Option<RemoteProfileOptionsBuilder>,
+) -> Result<()> {
+    let uid = uid.borrow();
+    let is_remote = Config::profiles().latest().get_item(uid)?.is_remote();
 
-        if !is_remote {
-            None // 直接更新
-        } else if item.url.is_none() {
-            bail!("failed to get the profile item url");
-        } else {
-            Some((item.url.clone().unwrap(), item.option.clone()))
-        }
-    };
+    let should_update = if is_remote {
+        let mut item = Config::profiles()
+            .latest()
+            .get_item(uid)?
+            .as_remote()
+            .unwrap()
+            .clone();
 
-    let should_update = match url_opt {
-        Some((url, opt)) => {
-            let merged_opt = RemoteProfileOptions::merge(opt, option);
-            let item = ProfileItem::from_url(&url, None, None, merged_opt).await?;
+        item.subscribe(opts).await?;
 
-            let profiles = Config::profiles();
-            let mut profiles = profiles.latest();
-            profiles.update_item(uid.clone(), item)?;
-
-            Some(uid) == profiles.get_current()
-        }
-        None => true,
+        let mut profiles = Config::profiles().draft();
+        profiles.replace_item(uid, item.into())?;
+        Config::profiles().apply();
+        Some(uid) == profiles.get_current().as_ref()
+    } else {
+        false
     };
 
     if should_update {

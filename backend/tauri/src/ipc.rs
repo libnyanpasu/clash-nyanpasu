@@ -53,40 +53,103 @@ pub async fn enhance_profiles() -> CmdResult {
 }
 
 #[tauri::command]
-pub async fn import_profile(url: String, option: Option<RemoteProfileOptions>) -> CmdResult {
-    let item = wrap_err!(ProfileItem::from_url(&url, None, None, option).await)?;
-    wrap_err!(Config::profiles().data().append_item(item))
+pub async fn import_profile(url: String, option: Option<RemoteProfileOptionsBuilder>) -> CmdResult {
+    let url = url::Url::parse(&url).map_err(|e| e.to_string())?;
+    let mut builder = crate::config::profile::item::RemoteProfileBuilder::default();
+    builder.url(vec![url]);
+    if let Some(option) = option {
+        builder.option(option.clone());
+    }
+    let profile = wrap_err!(builder.build_no_blocking().await)?;
+    {
+        wrap_err!(Config::profiles().draft().append_item(profile.into()))?;
+    }
+    Config::profiles().apply();
+    Ok(())
 }
 
 #[tauri::command]
-pub async fn create_profile(item: ProfileItem, file_data: Option<String>) -> CmdResult {
-    let item = wrap_err!(ProfileItem::duplicate(item, file_data).await)?;
-    wrap_err!(Config::profiles().data().append_item(item))
+pub async fn create_profile(item: Mapping, file_data: Option<String>) -> CmdResult {
+    let kind = item
+        .get("type")
+        .and_then(|kind| serde_yaml::from_value::<ProfileItemType>(kind.clone()).ok())
+        .ok_or("the type field is null")?;
+    let item = serde_yaml::to_value(item).map_err(|e| e.to_string())?;
+    let profile: Profile = match kind {
+        ProfileItemType::Local => {
+            let item: LocalProfileBuilder = wrap_err!(serde_yaml::from_value(item))?;
+            wrap_err!(item.build())?.into()
+        }
+        ProfileItemType::Remote => {
+            let mut item: RemoteProfileBuilder = wrap_err!(serde_yaml::from_value(item))?;
+            wrap_err!(item.build())?.into()
+        }
+        ProfileItemType::Merge => {
+            let item: MergeProfileBuilder = wrap_err!(serde_yaml::from_value(item))?;
+            wrap_err!(item.build())?.into()
+        }
+        ProfileItemType::Script(_) => {
+            let item: ScriptProfileBuilder = wrap_err!(serde_yaml::from_value(item))?;
+            wrap_err!(item.build())?.into()
+        }
+    };
+    if let Some(file_data) = file_data
+        && !file_data.is_empty()
+        && kind != ProfileItemType::Remote
+    {
+        wrap_err!(profile.save_file(file_data))?;
+    }
+    {
+        wrap_err!(Config::profiles().draft().append_item(profile))?;
+    }
+    Config::profiles().apply();
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn reorder_profile(active_id: String, over_id: String) -> CmdResult {
-    wrap_err!(Config::profiles().data().reorder(active_id, over_id))
+    wrap_err!(Config::profiles().draft().reorder(active_id, over_id))?;
+    Config::profiles().apply();
+    Ok(())
 }
 
 #[tauri::command]
 pub fn reorder_profiles_by_list(list: Vec<String>) -> CmdResult {
-    wrap_err!(Config::profiles().data().reorder_by_list(&list))
+    wrap_err!(Config::profiles().draft().reorder_by_list(&list))?;
+    Config::profiles().apply();
+    Ok(())
 }
 
 #[tauri::command]
-pub async fn update_profile(index: String, option: Option<RemoteProfileOptions>) -> CmdResult {
-    wrap_err!(feat::update_profile(index, option).await)
+pub async fn update_profile(uid: String, option: Option<RemoteProfileOptionsBuilder>) -> CmdResult {
+    wrap_err!(feat::update_profile(uid, option).await)
 }
 
 #[tauri::command]
-pub async fn delete_profile(index: String) -> CmdResult {
-    let should_update = wrap_err!({ Config::profiles().data().delete_item(index) })?;
+pub async fn delete_profile(uid: String) -> CmdResult {
+    let should_update = wrap_err!(
+        wrap_err!(
+            tokio::task::spawn_blocking(move || async move {
+                let local = tokio::task::LocalSet::new();
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                rt.block_on(async {
+                    local
+                        .run_until(async { Config::profiles().draft().delete_item(&uid).await })
+                        .await
+                })
+            })
+            .await
+        )?
+        .await
+    )?;
+    Config::profiles().apply();
     if should_update {
         wrap_err!(CoreManager::global().update_config().await)?;
         handle::Handle::refresh_clash();
     }
-
     Ok(())
 }
 
@@ -112,22 +175,21 @@ pub async fn patch_profiles_config(profiles: Profiles) -> CmdResult {
 
 /// 修改某个profile item的
 #[tauri::command]
-pub async fn patch_profile(index: String, profile: ProfileItem) -> CmdResult {
-    tracing::debug!("patch profile: {index} with {profile:?}");
-    wrap_err!(Config::profiles().data().patch_item(index.clone(), profile))?;
+pub async fn patch_profile(uid: String, profile: Mapping) -> CmdResult {
+    tracing::debug!("patch profile: {uid} with {profile:?}");
+    wrap_err!(Config::profiles().draft().patch_item(uid.clone(), profile))?;
+    Config::profiles().apply();
     ProfilesJobGuard::global().lock().refresh();
     let need_update = {
         let profiles = Config::profiles();
         let profiles = profiles.latest();
         match (&profiles.chain, &profiles.current) {
-            (Some(chains), _) if chains.contains(&index) => true,
-            (_, Some(current_chain)) if current_chain == &index => true,
+            (Some(chains), _) if chains.contains(&uid) => true,
+            (_, Some(current_chain)) if current_chain == &uid => true,
             (_, Some(current_chain)) => match profiles.get_item(current_chain) {
-                Ok(item) => item
-                    .chains
-                    .as_ref()
-                    .map_or(false, |chain| chain.contains(&index)),
-                Err(_) => false,
+                Ok(item) if item.is_local() => item.as_local().unwrap().chains.contains(&uid),
+                Ok(item) if item.is_remote() => item.as_local().unwrap().chains.contains(&uid),
+                _ => false,
             },
             _ => false,
         }
@@ -146,13 +208,12 @@ pub async fn patch_profile(index: String, profile: ProfileItem) -> CmdResult {
 }
 
 #[tauri::command]
-pub fn view_profile(app_handle: tauri::AppHandle, index: String) -> CmdResult {
+pub fn view_profile(app_handle: tauri::AppHandle, uid: String) -> CmdResult {
     let file = {
-        wrap_err!(Config::profiles().latest().get_item(&index))?
-            .file
-            .clone()
-            .ok_or("the file field is null")
-    }?;
+        wrap_err!(Config::profiles().latest().get_item(&uid))?
+            .file()
+            .to_string()
+    };
 
     let path = wrap_err!(dirs::app_profiles_dir())?.join(file);
     if !path.exists() {
@@ -163,11 +224,11 @@ pub fn view_profile(app_handle: tauri::AppHandle, index: String) -> CmdResult {
 }
 
 #[tauri::command]
-pub fn read_profile_file(index: String) -> CmdResult<String> {
+pub fn read_profile_file(uid: String) -> CmdResult<String> {
     let profiles = Config::profiles();
     let profiles = profiles.latest();
-    let item = wrap_err!(profiles.get_item(&index))?;
-    let data = match item.r#type.as_ref().unwrap_or(&ProfileItemType::Local) {
+    let item = wrap_err!(profiles.get_item(&uid))?;
+    let data = match item.kind() {
         ProfileItemType::Local | ProfileItemType::Remote => {
             let raw = wrap_err!(item.read_file())?;
             let data = wrap_err!(serde_yaml::from_str::<Mapping>(&raw))?;
@@ -179,14 +240,14 @@ pub fn read_profile_file(index: String) -> CmdResult<String> {
 }
 
 #[tauri::command]
-pub fn save_profile_file(index: String, file_data: Option<String>) -> CmdResult {
+pub fn save_profile_file(uid: String, file_data: Option<String>) -> CmdResult {
     if file_data.is_none() {
         return Ok(());
     }
 
     let profiles = Config::profiles();
     let profiles = profiles.latest();
-    let item = wrap_err!(profiles.get_item(&index))?;
+    let item = wrap_err!(profiles.get_item(&uid))?;
     wrap_err!(item.save_file(file_data.unwrap()))
 }
 
@@ -520,7 +581,7 @@ pub async fn set_custom_app_dir(app_handle: tauri::AppHandle, path: String) -> C
                         path_str.as_str()
                     )
                     .as_str(),
-                ).spawn().unwrap();
+                ).spawn().unwrap().wait()?;
                 utils::help::quit_application(&app_handle);
             } else {
                 set_app_dir(&path)?;

@@ -1,2 +1,2 @@
 #![allow(unused_imports)]
-pub use super::{ProfileCleanup, ProfileHelper, ProfileSharedGetter, ProfileFileIo};
+pub use super::{ProfileCleanup, ProfileFileIo, ProfileHelper, ProfileSharedGetter};

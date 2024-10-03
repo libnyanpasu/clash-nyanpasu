@@ -13,6 +13,7 @@ use crate::{
 use ambassador::Delegate;
 use backon::Retryable;
 use derive_builder::Builder;
+use futures::executor;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use nyanpasu_macro::BuilderUpdate;
@@ -60,8 +61,24 @@ pub struct RemoteProfile {
 
 impl ProfileHelper for RemoteProfile {}
 impl ProfileCleanup for RemoteProfile {}
+impl RemoteProfileSubscription for RemoteProfile {
+    #[tracing::instrument]
+    async fn subscribe(&mut self) -> anyhow::Result<()> {
+        let subscriptions = subscribe_urls(&self.url, &self.option).await?;
+        let (data, extra) = merge_subscription(&subscriptions);
+        self.extra.clear(); // remove the old extra
+        self.extra.extend(extra);
 
+        let content = serde_yaml::to_string(&data)?;
+        self.write_file(content).await?;
+        self.set_updated(chrono::Local::now().timestamp() as usize);
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
 struct Subscription {
+    pub url: Url,
     pub filename: Option<String>,
     pub data: Mapping,
     pub info: SubscriptionInfo,
@@ -229,6 +246,7 @@ async fn subscribe_url(
     }
 
     Ok(Subscription {
+        url: url.clone(),
         filename,
         data: yaml,
         info: extra.unwrap_or_default(),
@@ -260,6 +278,25 @@ async fn subscribe_urls(
     }
 
     Ok(successes)
+}
+
+#[tracing::instrument]
+fn merge_subscription(
+    subscriptions: &[Subscription],
+) -> (Mapping, IndexMap<Url, SubscriptionInfo>) {
+    let mut data = Mapping::new();
+    let mut extra = IndexMap::new();
+    for (i, sub) in subscriptions.into_iter().enumerate() {
+        if i == 0 {
+            data.extend(sub.data.clone());
+        } else {
+            let proxies = data.get_mut("proxies").unwrap().as_sequence_mut().unwrap();
+            let sub_proxies = sub.data.get("proxies").unwrap().as_sequence().unwrap();
+            proxies.extend(sub_proxies.iter().cloned());
+        }
+        extra.insert(sub.url.clone(), sub.info);
+    }
+    (data, extra)
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -325,24 +362,17 @@ impl RemoteProfileBuilder {
             .build()
             .map_err(|e| RemoteProfileBuilderError::Validation(e.to_string()))?;
         // merge subscriptions and merge into the profile
-        let subscriptions = subscribe_urls(&url, &options).await?;
-        let mut data = Mapping::new();
-        for (i, mut sub) in subscriptions.into_iter().enumerate() {
-            if i == 0 {
-                if self.shared.get_name().is_none() && sub.filename.is_some() {
-                    self.shared.name(sub.filename.take().unwrap());
-                }
-                if self.option.get_update_interval().is_none() && sub.opts.is_some() {
-                    self.option
-                        .update_interval(sub.opts.take().unwrap().update_interval);
-                }
-                data.extend(sub.data);
-            } else {
-                let proxies = data.get_mut("proxies").unwrap().as_sequence_mut().unwrap();
-                let sub_proxies = sub.data.get("proxies").unwrap().as_sequence().unwrap();
-                proxies.extend(sub_proxies.iter().cloned());
-            }
-            extra.insert(unsafe { url.get_unchecked(i).clone() }, sub.info);
+        let mut subscriptions = subscribe_urls(&url, &options).await?;
+        let (data, extra_sub) = merge_subscription(&subscriptions);
+        extra.extend(extra_sub);
+
+        let first_sub = subscriptions.first_mut().unwrap();
+        if self.shared.get_name().is_none() && first_sub.filename.is_some() {
+            self.shared.name(first_sub.filename.take().unwrap());
+        }
+        if self.option.get_update_interval().is_none() && first_sub.opts.is_some() {
+            self.option
+                .update_interval(first_sub.opts.take().unwrap().update_interval);
         }
 
         let profile = RemoteProfile {

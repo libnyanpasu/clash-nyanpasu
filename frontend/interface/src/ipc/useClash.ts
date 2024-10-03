@@ -33,8 +33,8 @@ export const useClash = () => {
 
   const getProfiles = useSWR("getProfiles", tauri.getProfiles);
 
-  const setProfiles = async (index: string, profile: Partial<Profile.Item>) => {
-    await tauri.setProfiles({ index, profile });
+  const setProfiles = async (uid: string, profile: Partial<Profile.Item>) => {
+    await tauri.setProfiles({ uid, profile });
 
     await getProfiles.mutate();
 

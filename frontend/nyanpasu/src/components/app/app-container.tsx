@@ -1,10 +1,12 @@
-import { Allotment } from "allotment";
 import getSystem from "@/utils/get-system";
 import { alpha, useTheme } from "@mui/material";
 import Paper from "@mui/material/Paper";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import "allotment/dist/style.css";
+import { useAtomValue } from "jotai";
 import { ReactNode } from "react";
+import { atomIsDrawerOnlyIcon } from "@/store";
+import { cn } from "@nyanpasu/ui";
 import { LayoutControl } from "../layout/layout-control";
 import styles from "./app-container.module.scss";
 import AppDrawer from "./app-drawer";
@@ -21,12 +23,9 @@ export const AppContainer = ({
   children?: ReactNode;
   isDrawer?: boolean;
 }) => {
-  // TODO: move layout sidecar size to nyanpasu config file for better compatibility?
-  // const onLayout = useDebounce(() => {}, {
-  //   wait: 100,
-  // });
-
   const { palette } = useTheme();
+
+  const onlyIcon = useAtomValue(atomIsDrawerOnlyIcon);
 
   return (
     <Paper
@@ -44,33 +43,31 @@ export const AppContainer = ({
     >
       {isDrawer && <AppDrawer data-tauri-drag-region />}
 
-      <Allotment separator proportionalLayout={false}>
-        {!isDrawer && (
-          <Allotment.Pane className="h-full" minSize={96} maxSize={260}>
-            <DrawerContent data-tauri-drag-region />
-          </Allotment.Pane>
+      {!isDrawer && (
+        <div className={cn(onlyIcon ? "w-24" : "w-64")}>
+          <DrawerContent data-tauri-drag-region onlyIcon={onlyIcon} />
+        </div>
+      )}
+
+      <div className={styles.container}>
+        {OS === "windows" && (
+          <LayoutControl className="!z-top fixed right-4 top-2" />
         )}
 
-        <Allotment.Pane visible={true} className={styles.container}>
-          {OS === "windows" && (
-            <LayoutControl className="!z-top fixed right-4 top-2" />
-          )}
-
-          {OS === "macos" && (
-            <div
-              className="z-top fixed left-4 top-3 h-8 w-[4.5rem] rounded-full"
-              style={{ backgroundColor: alpha(palette.primary.main, 0.1) }}
-            />
-          )}
-
+        {OS === "macos" && (
           <div
-            className={OS === "macos" ? "h-[2.75rem]" : "h-9"}
-            data-tauri-drag-region
+            className="z-top fixed left-4 top-3 h-8 w-[4.5rem] rounded-full"
+            style={{ backgroundColor: alpha(palette.primary.main, 0.1) }}
           />
+        )}
 
-          {children}
-        </Allotment.Pane>
-      </Allotment>
+        <div
+          className={OS === "macos" ? "h-[2.75rem]" : "h-9"}
+          data-tauri-drag-region
+        />
+
+        {children}
+      </div>
     </Paper>
   );
 };

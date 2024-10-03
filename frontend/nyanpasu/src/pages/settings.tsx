@@ -98,6 +98,9 @@ function SettingPage() {
           <GithubIcon />
         </div>
       }
+      sectionStyle={{
+        paddingRight: 0,
+      }}
     >
       <Component />
     </BasePage>

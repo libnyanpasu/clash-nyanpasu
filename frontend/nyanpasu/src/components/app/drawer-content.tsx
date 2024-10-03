@@ -1,58 +1,21 @@
-import { useSize } from "ahooks";
-import { useAtom } from "jotai";
-import { useCallback, useEffect, useRef } from "react";
-import { atomIsDrawerOnlyIcon } from "@/store";
 import getSystem from "@/utils/get-system";
-import { languageQuirks } from "@/utils/language";
 import { getRoutesWithIcon } from "@/utils/routes-utils";
-import { Box, SxProps, Theme } from "@mui/material";
-import { useNyanpasu } from "@nyanpasu/interface";
+import { Box } from "@mui/material";
 import { cn } from "@nyanpasu/ui";
 import AnimatedLogo from "../layout/animated-logo";
 import RouteListItem from "./modules/route-list-item";
 
 export const DrawerContent = ({
   className,
-  sx,
+  onlyIcon,
 }: {
   className?: string;
-  sx?: SxProps<Theme>;
+  onlyIcon?: boolean;
 }) => {
-  const [onlyIcon, setOnlyIcon] = useAtom(atomIsDrawerOnlyIcon);
-
-  const { nyanpasuConfig } = useNyanpasu();
-
   const routes = getRoutesWithIcon();
-
-  const contentRef = useRef<HTMLDivElement | null>(null);
-
-  const size = useSize(contentRef);
-
-  const handleResize = useCallback(
-    (value?: number) => {
-      if (value) {
-        if (
-          value <
-          languageQuirks[nyanpasuConfig?.language ?? "en"].drawer.minWidth
-        ) {
-          setOnlyIcon(true);
-        } else {
-          setOnlyIcon(false);
-        }
-      } else {
-        setOnlyIcon(false);
-      }
-    },
-    [nyanpasuConfig?.language, setOnlyIcon],
-  );
-
-  useEffect(() => {
-    handleResize(size?.width);
-  }, [handleResize, size?.width]);
 
   return (
     <Box
-      ref={contentRef}
       className={cn(
         "p-4",
         getSystem() === "macos" ? "pt-14" : "pt-8",
@@ -77,7 +40,7 @@ export const DrawerContent = ({
 
         {!onlyIcon && (
           <div
-            className="mr-1 mt-1 whitespace-pre-wrap text-lg font-bold"
+            className="mt-1 flex-1 whitespace-pre-wrap text-lg font-bold"
             data-tauri-drag-region
           >
             {"Clash\nNyanpasu"}

@@ -37,7 +37,6 @@ export const SettingPage = () => {
       }}
       spacing={3}
       sequential
-      sx={{ width: "calc(100% + 24px)" }}
     >
       <SettingSystemProxy />
 

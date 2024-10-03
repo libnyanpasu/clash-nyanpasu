@@ -1,12 +1,15 @@
+import { useAtom } from "jotai";
 import { MuiColorInput } from "mui-color-input";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { isHexColor } from "validator";
+import { defaultTheme } from "@/pages/-theme";
+import { atomIsDrawerOnlyIcon } from "@/store";
 import { languageOptions } from "@/utils/language";
 import Done from "@mui/icons-material/Done";
 import { Box, Button, List, ListItem, ListItemText } from "@mui/material";
 import { useNyanpasu, VergeConfig } from "@nyanpasu/interface";
-import { BaseCard, Expand, MenuItem } from "@nyanpasu/ui";
+import { BaseCard, Expand, MenuItem, SwitchItem } from "@nyanpasu/ui";
 
 export const SettingNyanpasuUI = () => {
   const { t } = useTranslation();
@@ -20,13 +23,15 @@ export const SettingNyanpasuUI = () => {
   };
 
   const [themeColor, setThemeColor] = useState(
-    nyanpasuConfig?.theme_setting?.primary_color || "#fff",
+    nyanpasuConfig?.theme_setting?.primary_color,
   );
   const themeColorRef = useRef(themeColor);
 
   const commonSx = {
     width: 128,
   };
+
+  const [onlyIcon, setOnlyIcon] = useAtom(atomIsDrawerOnlyIcon);
 
   return (
     <BaseCard label="User Interface">
@@ -59,11 +64,13 @@ export const SettingNyanpasuUI = () => {
           <MuiColorInput
             size="small"
             sx={commonSx}
-            value={themeColor}
+            value={themeColor ?? defaultTheme.primary_color}
             isAlphaHidden
             format="hex"
             onBlur={() => {
-              if (!isHexColor(themeColorRef.current)) {
+              if (
+                !isHexColor(themeColorRef.current ?? defaultTheme.primary_color)
+              ) {
                 setThemeColor(themeColorRef.current);
                 return;
               }
@@ -98,6 +105,12 @@ export const SettingNyanpasuUI = () => {
             </Button>
           </Box>
         </Expand>
+
+        <SwitchItem
+          label={t("Icon Navigation Bar")}
+          checked={onlyIcon}
+          onChange={() => setOnlyIcon(!onlyIcon)}
+        />
       </List>
     </BaseCard>
   );

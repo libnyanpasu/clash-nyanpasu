@@ -126,7 +126,7 @@ pub fn open_file(app: tauri::AppHandle, path: PathBuf) -> Result<()> {
                 }
             }
             Err(err) => {
-                log::error!(target: "app", "Can't find VScode `{err}`");
+                log::error!(target: "app", "Can't find VScode `{err:?}`");
                 // default open
                 shell
                     .open(path.to_string_lossy().to_string(), None)
@@ -275,7 +275,7 @@ pub fn restart_application(app_handle: &AppHandle) {
 #[macro_export]
 macro_rules! error {
     ($result: expr) => {
-        log::error!(target: "app", "{}", $result);
+        log::error!(target: "app", "{:?}", $result);
     };
 }
 
@@ -283,7 +283,7 @@ macro_rules! error {
 macro_rules! log_err {
     ($result: expr) => {
         if let Err(err) = $result {
-            log::error!(target: "app", "{err}");
+            log::error!(target: "app", "{:#?}", err);
         }
     };
 
@@ -313,7 +313,7 @@ macro_rules! dialog_err {
 macro_rules! trace_err {
     ($result: expr, $err_str: expr) => {
         if let Err(err) = $result {
-            log::trace!(target: "app", "{}, err {}", $err_str, err);
+            log::trace!(target: "app", "{}, err {:?}", $err_str, err);
         }
     }
 }
@@ -327,7 +327,7 @@ macro_rules! wrap_err {
             Ok(a) => Ok(a),
             Err(err) => {
                 log::error!(target: "app", "{}", err.to_string());
-                Err(format!("{}", err.to_string()))
+                Err(format!("{:?}", err))
             }
         }
     };

@@ -280,7 +280,7 @@ impl IVerge {
         match dirs::nyanpasu_config_path().and_then(|path| help::read_yaml::<IVerge>(&path)) {
             Ok(config) => Self::merge_with_template(config),
             Err(err) => {
-                log::error!(target: "app", "{err}");
+                log::error!(target: "app", "{err:?}");
                 Self::template()
             }
         }

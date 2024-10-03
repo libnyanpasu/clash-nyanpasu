@@ -38,7 +38,7 @@ impl AsyncJobExecutor for ProfileUpdater {
         match feat::update_profile(self.0.clone(), None).await {
             Ok(_) => Ok(()),
             Err(err) => {
-                log::error!(target: "app", "failed to update profile: {err}");
+                log::error!(target: "app", "failed to update profile: {err:?}");
                 Err(err)
             }
         }

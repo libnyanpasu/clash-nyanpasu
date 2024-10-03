@@ -51,7 +51,7 @@ impl Config {
     pub fn init_config() -> Result<()> {
         crate::log_err!(block_on(Self::generate()));
         if let Err(err) = Self::generate_file(ConfigType::Run) {
-            log::error!(target: "app", "{err}");
+            log::error!(target: "app", "{err:?}");
 
             let runtime_path = dirs::app_config_dir()?.join(RUNTIME_CONFIG);
             // 如果不存在就将默认的clash文件拿过来

@@ -167,8 +167,8 @@ pub async fn patch_profiles_config(profiles: Profiles) -> CmdResult {
         }
         Err(err) => {
             Config::profiles().discard();
-            log::error!(target: "app", "{err}");
-            Err(format!("{err}"))
+            log::error!(target: "app", "{err:?}");
+            Err(format!("{err:?}"))
         }
     }
 }
@@ -200,7 +200,7 @@ pub async fn patch_profile(uid: String, profile: Mapping) -> CmdResult {
                 handle::Handle::refresh_clash();
             }
             Err(err) => {
-                log::error!(target: "app", "{err}");
+                log::error!(target: "app", "{err:?}");
             }
         }
     }
@@ -419,7 +419,7 @@ pub async fn get_core_version(
 ) -> CmdResult<String> {
     match resolve::resolve_core_version(&app_handle, &core_type).await {
         Ok(version) => Ok(version),
-        Err(err) => Err(format!("{err}")),
+        Err(err) => Err(format!("{err:?}")),
     }
 }
 
@@ -438,7 +438,7 @@ pub async fn collect_logs(app_handle: AppHandle) -> CmdResult {
                 match candy::collect_logs(path.as_path().unwrap()) {
                     Ok(_) => (),
                     Err(err) => {
-                        log::error!(target: "app", "{err}");
+                        log::error!(target: "app", "{err:?}");
                     }
                 }
             }

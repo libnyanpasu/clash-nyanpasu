@@ -1,7 +1,8 @@
 use super::{
     ambassador_impl_ProfileFileIo, ambassador_impl_ProfileSharedGetter,
-    ambassador_impl_ProfileSharedSetter, ProfileCleanup, ProfileFileIo, ProfileHelper,
-    ProfileShared, ProfileSharedBuilder, ProfileSharedGetter, ProfileSharedSetter,
+    ambassador_impl_ProfileSharedSetter, shared::deserialize_single_or_vec, ProfileCleanup,
+    ProfileFileIo, ProfileHelper, ProfileShared, ProfileSharedBuilder, ProfileSharedGetter,
+    ProfileSharedSetter,
 };
 use crate::{
     config::{
@@ -42,6 +43,7 @@ pub struct RemoteProfile {
     #[builder_update(nested)]
     pub shared: ProfileShared,
     /// subscription urls, the first one is the main url, others proxies should be merged
+    #[serde(deserialize_with = "deserialize_single_or_vec")]
     pub url: Vec<Url>,
     /// subscription user info
     #[builder(default)]

@@ -18,6 +18,8 @@ use tracing_appender::{
 use tracing_log::log_tracer;
 use tracing_subscriber::{filter, fmt, layer::SubscriberExt, reload, EnvFilter};
 
+use super::nyanpasu::LoggingLevel;
+
 pub type ReloadSignal = (Option<config::nyanpasu::LoggingLevel>, Option<usize>);
 
 struct Channel(Option<Sender<ReloadSignal>>);
@@ -56,11 +58,7 @@ pub fn init() -> Result<()> {
     if !log_dir.exists() {
         let _ = fs::create_dir_all(&log_dir);
     }
-    let (log_level, log_max_files) = {
-        let verge = Config::verge();
-        let data = verge.data();
-        (data.get_log_level(), data.max_log_files.unwrap_or(7))
-    };
+    let (log_level, log_max_files) = { (LoggingLevel::Debug, 7) }; // This is intended to capture config loading errors
     let (filter, filter_handle) = reload::Layer::new(
         EnvFilter::builder()
             .with_default_directive(
@@ -134,5 +132,12 @@ pub fn init() -> Result<()> {
     log_tracer::LogTracer::init()?;
     tracing::subscriber::set_global_default(subscriber)
         .map_err(|x| anyhow!("setup logging error: {}", x))?;
+    // reload the log level
+    std::thread::spawn(move || {
+        let config = Config::verge();
+        let log_level = config.latest().get_log_level();
+        let log_max_files = config.latest().max_log_files;
+        let _ = refresh_logger((Some(log_level), log_max_files));
+    });
     Ok(())
 }

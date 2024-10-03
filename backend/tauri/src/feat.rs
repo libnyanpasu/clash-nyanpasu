@@ -60,8 +60,8 @@ pub fn restart_clash_core() {
                 handle::Handle::notice_message(&Message::SetConfig(Ok(())));
             }
             Err(err) => {
-                handle::Handle::notice_message(&Message::SetConfig(Err(format!("{err}"))));
-                log::error!(target:"app", "{err}");
+                handle::Handle::notice_message(&Message::SetConfig(Err(format!("{err:?}"))));
+                log::error!(target:"app", "{err:?}");
             }
         }
     });
@@ -85,7 +85,7 @@ pub fn change_clash_mode(mode: String) {
                     log_err!(handle::Handle::update_systray_part());
                 }
             }
-            Err(err) => log::error!(target: "app", "{err}"),
+            Err(err) => log::error!(target: "app", "{err:?}"),
         }
         if tx.send(()).is_err() {
             log::error!(target: "app::change_clash_mode", "failed to send tx");
@@ -109,7 +109,7 @@ pub fn toggle_system_proxy() {
         .await
         {
             Ok(_) => handle::Handle::refresh_verge(),
-            Err(err) => log::error!(target: "app", "{err}"),
+            Err(err) => log::error!(target: "app", "{err:?}"),
         }
     });
 }
@@ -124,7 +124,7 @@ pub fn enable_system_proxy() {
         .await
         {
             Ok(_) => handle::Handle::refresh_verge(),
-            Err(err) => log::error!(target: "app", "{err}"),
+            Err(err) => log::error!(target: "app", "{err:?}"),
         }
     });
 }
@@ -139,7 +139,7 @@ pub fn disable_system_proxy() {
         .await
         {
             Ok(_) => handle::Handle::refresh_verge(),
-            Err(err) => log::error!(target: "app", "{err}"),
+            Err(err) => log::error!(target: "app", "{err:?}"),
         }
     });
 }
@@ -157,7 +157,7 @@ pub fn toggle_tun_mode() {
         .await
         {
             Ok(_) => handle::Handle::refresh_verge(),
-            Err(err) => log::error!(target: "app", "{err}"),
+            Err(err) => log::error!(target: "app", "{err:?}"),
         }
     });
 }
@@ -172,7 +172,7 @@ pub fn enable_tun_mode() {
         .await
         {
             Ok(_) => handle::Handle::refresh_verge(),
-            Err(err) => log::error!(target: "app", "{err}"),
+            Err(err) => log::error!(target: "app", "{err:?}"),
         }
     });
 }
@@ -187,7 +187,7 @@ pub fn disable_tun_mode() {
         .await
         {
             Ok(_) => handle::Handle::refresh_verge(),
-            Err(err) => log::error!(target: "app", "{err}"),
+            Err(err) => log::error!(target: "app", "{err:?}"),
         }
     });
 }
@@ -390,7 +390,7 @@ async fn update_core_config() -> Result<()> {
             Ok(())
         }
         Err(err) => {
-            handle::Handle::notice_message(&Message::SetConfig(Err(format!("{err}"))));
+            handle::Handle::notice_message(&Message::SetConfig(Err(format!("{err:?}"))));
             Err(err)
         }
     }

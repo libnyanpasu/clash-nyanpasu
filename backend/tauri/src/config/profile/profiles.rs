@@ -38,7 +38,7 @@ impl Profiles {
                 profiles
             }
             Err(err) => {
-                log::error!(target: "app", "{err}");
+                log::error!(target: "app", "{:?} - use the default profiles", err);
                 Self::template()
             }
         }

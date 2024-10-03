@@ -22,7 +22,7 @@ impl IClashTemp {
         match dirs::clash_guard_overrides_path().and_then(|path| help::read_merge_mapping(&path)) {
             Ok(map) => Self(Self::guard(map)),
             Err(err) => {
-                log::error!(target: "app", "{err}");
+                log::error!(target: "app", "{err:?}");
                 Self::template()
             }
         }

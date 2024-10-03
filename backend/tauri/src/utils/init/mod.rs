@@ -190,7 +190,7 @@ pub fn init_resources() -> Result<()> {
             match fs::copy(&src_path, &dest_path) {
                 Ok(_) => log::debug!(target: "app", "resources copied '{file}'"),
                 Err(err) => {
-                    log::error!(target: "app", "failed to copy resources '{file}', {err}")
+                    log::error!(target: "app", "failed to copy resources '{file}', {err:?}")
                 }
             };
         };

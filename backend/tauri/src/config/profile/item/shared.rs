@@ -1,3 +1,5 @@
+use std::{fmt, str::FromStr};
+
 use ambassador::delegatable_trait;
 use derive_builder::Builder;
 use nyanpasu_macro::BuilderUpdate;
@@ -160,23 +162,32 @@ impl ProfileSharedSetter for ProfileShared {
     }
 }
 
-fn deserialize_option_single_or_vec<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+pub(super) fn deserialize_single_or_vec<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
 where
     D: serde::Deserializer<'de>,
+    T: FromStr,
+    T::Err: fmt::Display,
 {
-    struct StringOrVec;
-    impl<'de> Visitor<'de> for StringOrVec {
-        type Value = Vec<String>;
+    use serde::de::Error;
 
-        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-            formatter.write_str("string or sequence of strings")
+    struct StringOrVec<T>(std::marker::PhantomData<T>);
+
+    impl<'de, T> Visitor<'de> for StringOrVec<T>
+    where
+        T: FromStr,
+        T::Err: fmt::Display,
+    {
+        type Value = Vec<T>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a string or a sequence of strings")
         }
 
         fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
         where
             E: serde::de::Error,
         {
-            Ok(vec![value.to_string()])
+            T::from_str(value).map(|v| vec![v]).map_err(E::custom)
         }
 
         fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
@@ -184,11 +195,13 @@ where
             A: serde::de::SeqAccess<'de>,
         {
             let mut vec = Vec::new();
-            while let Some(value) = seq.next_element()? {
-                vec.push(value);
+            while let Some(value) = seq.next_element::<String>()? {
+                let parsed_value = T::from_str(&value).map_err(A::Error::custom)?;
+                vec.push(parsed_value);
             }
             Ok(vec)
         }
     }
-    deserializer.deserialize_any(StringOrVec)
+
+    deserializer.deserialize_any(StringOrVec(std::marker::PhantomData))
 }

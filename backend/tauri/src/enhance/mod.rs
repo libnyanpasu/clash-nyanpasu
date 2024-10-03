@@ -136,7 +136,7 @@ pub async fn enhance() -> (Mapping, Vec<String>, IndexMap<String, Logs>) {
                         config = use_filter(res_config, &clash_fields, enable_filter);
                     }
                     Err(err) => {
-                        log::error!(target: "app", "builtin script error `{err}`");
+                        log::error!(target: "app", "builtin script error `{err:?}`");
                     }
                 }
             }

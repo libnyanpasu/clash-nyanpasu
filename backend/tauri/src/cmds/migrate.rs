@@ -157,6 +157,7 @@ pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
 
     let app_path = current_exe()?;
     thread::spawn(move || {
+        #[allow(clippy::zombie_processes)]
         Command::new(app_path).spawn().unwrap();
     });
     thread::sleep(Duration::from_secs(5));

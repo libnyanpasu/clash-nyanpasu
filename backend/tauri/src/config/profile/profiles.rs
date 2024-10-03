@@ -228,7 +228,7 @@ impl Profiles {
     /// if delete the current then return true
     pub async fn delete_item<T: Borrow<String>>(&mut self, uid: T) -> Result<bool> {
         let uid = uid.borrow();
-        let current = self.current.as_ref().unwrap_or(&uid);
+        let current = self.current.as_ref().unwrap_or(uid);
         let current = current.clone();
 
         let items = self.items.as_mut().ok_or(anyhow::anyhow!(

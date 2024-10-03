@@ -306,7 +306,7 @@ pub async fn patch_clash_config(payload: Mapping) -> CmdResult {
         .iter()
         .any(|key| payload.contains_key(key))
     {
-        wrap_err!(crate::core::clash::api::patch_configs(&payload).await);
+        wrap_err!(crate::core::clash::api::patch_configs(&payload).await)?;
     }
     if let Err(e) = feat::patch_clash(payload).await {
         tracing::error!("{e}");

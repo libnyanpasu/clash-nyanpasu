@@ -132,11 +132,7 @@ async fn subscribe_url(
         url: url.to_string(),
         source: e,
     })?;
-    let perform_req = || async {
-        Ok::<reqwest::Response, reqwest::Error>(
-            client.get(url.as_str()).send().await?.error_for_status()?,
-        )
-    };
+    let perform_req = || async { client.get(url.as_str()).send().await?.error_for_status() };
     let resp = perform_req
         .retry(backon::ExponentialBuilder::default())
         // Only retry on network errors or server errors
@@ -294,7 +290,7 @@ fn merge_subscription(
 ) -> (Mapping, IndexMap<Url, SubscriptionInfo>) {
     let mut data = Mapping::new();
     let mut extra = IndexMap::new();
-    for (i, sub) in subscriptions.into_iter().enumerate() {
+    for (i, sub) in subscriptions.iter().enumerate() {
         if i == 0 {
             data.extend(sub.data.clone());
         } else {

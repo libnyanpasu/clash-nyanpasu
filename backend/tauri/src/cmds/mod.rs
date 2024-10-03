@@ -80,6 +80,7 @@ pub fn parse() -> anyhow::Result<()> {
                 };
                 // let args = args.clone();
                 // args.extend(vec!["--".to_string()]);
+                #[allow(clippy::zombie_processes)]
                 std::process::Command::new(path).args(args).spawn().unwrap();
             }
             Commands::Collect => {

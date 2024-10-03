@@ -3,7 +3,7 @@ use super::super::{
     task::{Task, TaskID, TaskManager, TaskSchedule},
 };
 use crate::{
-    config::{profile::profiles, Config, ProfileSharedGetter},
+    config::{Config, ProfileSharedGetter},
     feat,
 };
 use anyhow::Result;
@@ -181,7 +181,6 @@ fn gen_map() -> HashMap<ProfileUID, Minutes> {
 }
 
 /// get_task_id Get a u64 task id by profile uid
-
 fn get_task_id(uid: &str) -> TaskID {
     let mut hash = DefaultHasher::new();
     uid.hash(&mut hash);

@@ -3,7 +3,8 @@
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
 )]
-
+// This lint was needed by ambassador
+#![allow(clippy::duplicated_attributes)]
 mod cmds;
 mod config;
 mod consts;

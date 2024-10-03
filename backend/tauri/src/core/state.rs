@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 use parking_lot::{
     lock_api::{RwLockReadGuard, RwLockWriteGuard},
     MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock,

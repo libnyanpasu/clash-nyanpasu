@@ -27,7 +27,7 @@ pub struct ScriptProfile {
 }
 
 impl ScriptProfile {
-    pub fn new(script_type: &ScriptType) -> ScriptProfileBuilder {
+    pub fn builder(script_type: &ScriptType) -> ScriptProfileBuilder {
         let mut builder = ScriptProfileBuilder::default();
         let mut shared = ProfileSharedBuilder::default();
         shared.r#type(ProfileItemType::Script(script_type.clone()));

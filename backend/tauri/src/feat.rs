@@ -15,7 +15,6 @@ use crate::{
 use anyhow::{bail, Result};
 use handle::Message;
 use nyanpasu_ipc::api::status::CoreState;
-use profile::profiles;
 use serde_yaml::{Mapping, Value};
 use tauri::AppHandle;
 use tauri_plugin_clipboard_manager::ClipboardExt;

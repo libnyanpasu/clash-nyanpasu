@@ -1,5 +1,5 @@
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote, ToTokens};
+use quote::{format_ident, quote};
 use syn::{spanned::Spanned, DeriveInput, Error, Ident, LitStr, Meta, Type};
 
 pub fn builder_update(input: DeriveInput) -> syn::Result<TokenStream> {
@@ -158,7 +158,6 @@ pub fn builder_update(input: DeriveInput) -> syn::Result<TokenStream> {
 
     Ok(expanded)
 }
-
 
 fn wrap_type_in_option(ty: &Type) -> Type {
     syn::parse_quote! {

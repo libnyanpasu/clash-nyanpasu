@@ -1,4 +1,4 @@
-#![allow(clippy::crate_in_macro_def)]
+#![allow(clippy::crate_in_macro_def, dead_code)]
 use super::item_type::ProfileItemType;
 use crate::{enhance::ScriptType, utils::dirs};
 use ambassador::{delegatable_trait, Delegate};
@@ -48,10 +48,11 @@ pub trait ProfileSharedGetter {
 }
 
 /// A trait that provides some common methods for profile items
+#[allow(private_bounds)]
 pub trait ProfileHelper: Sized + ProfileSharedSetter + ProfileSharedGetter + Clone {
     async fn duplicate(&self) -> Result<Self> {
         let mut duplicate_profile = self.clone();
-        let new_uid = utils::generate_uid(&duplicate_profile.kind());
+        let new_uid = utils::generate_uid(duplicate_profile.kind());
         let new_file = format!(
             "{}.{}",
             new_uid,
@@ -67,7 +68,7 @@ pub trait ProfileHelper: Sized + ProfileSharedSetter + ProfileSharedGetter + Clo
         // copy file
         let path = dirs::profiles_path()?;
         let new_file_path = path.join(&new_file);
-        let old_file_path = path.join(&duplicate_profile.file());
+        let old_file_path = path.join(duplicate_profile.file());
         tokio::fs::copy(&old_file_path, &new_file_path).await?;
         // apply new uid and name
         duplicate_profile.set_uid(new_uid);

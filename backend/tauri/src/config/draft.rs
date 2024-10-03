@@ -1,4 +1,4 @@
-use super::{IClashTemp, Profiles, IRuntime, IVerge};
+use super::{IClashTemp, IRuntime, IVerge};
 use parking_lot::{MappedMutexGuard, Mutex, MutexGuard};
 use std::sync::Arc;
 

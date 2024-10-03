@@ -1,14 +1,20 @@
-use super::{item::ProfileItem, item_type::ProfileUid};
+use super::{
+    item::{
+        prelude::*, LocalProfileBuilder, MergeProfileBuilder, Profile, RemoteProfileBuilder,
+        ScriptProfileBuilder,
+    },
+    item_type::ProfileUid,
+};
 use crate::utils::{dirs, help};
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
-use std::{borrow::Borrow, fs, io::Write};
+use std::borrow::Borrow;
 use tracing_attributes::instrument;
 
 /// Define the `profiles.yaml` schema
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
-pub struct IProfiles {
+pub struct Profiles {
     /// same as PrfConfig.current
     pub current: Option<ProfileUid>,
 
@@ -19,31 +25,15 @@ pub struct IProfiles {
     pub valid: Option<Vec<ProfileUid>>,
 
     /// profile list
-    pub items: Option<Vec<ProfileItem>>,
+    pub items: Option<Vec<Profile>>,
 }
 
-macro_rules! patch {
-    ($lv: expr, $rv: expr, $key: tt) => {
-        if ($rv.$key).is_some() {
-            $lv.$key = $rv.$key;
-        }
-    };
-}
-
-impl IProfiles {
+impl Profiles {
     pub fn new() -> Self {
         match dirs::profiles_path().and_then(|path| help::read_yaml::<Self>(&path)) {
             Ok(mut profiles) => {
                 if profiles.items.is_none() {
                     profiles.items = Some(vec![]);
-                }
-                // compatible with the old old old version
-                if let Some(items) = profiles.items.as_mut() {
-                    for item in items.iter_mut() {
-                        if item.uid.is_none() {
-                            item.uid = Some(help::get_uid("d"));
-                        }
-                    }
                 }
                 profiles
             }
@@ -75,17 +65,16 @@ impl IProfiles {
     }
 
     /// 只修改current，valid和chain
-    pub fn patch_config(&mut self, patch: IProfiles) -> Result<()> {
+    pub fn patch_config(&mut self, patch: Profiles) -> Result<()> {
         if self.items.is_none() {
             self.items = Some(vec![]);
         }
 
         if let Some(current) = patch.current {
             let items = self.items.as_ref().unwrap();
-            let some_uid = Some(current);
 
-            if items.iter().any(|e| e.uid == some_uid) {
-                self.current = some_uid;
+            if items.iter().any(|e| e.uid() == current) {
+                self.current = Some(current);
             }
         }
 
@@ -105,17 +94,15 @@ impl IProfiles {
     }
 
     /// get items ref
-    pub fn get_items(&self) -> Option<&Vec<ProfileItem>> {
+    pub fn get_items(&self) -> Option<&Vec<Profile>> {
         self.items.as_ref()
     }
 
     /// find the item by the uid
-    pub fn get_item(&self, uid: &String) -> Result<&ProfileItem> {
+    pub fn get_item(&self, uid: &str) -> Result<&Profile> {
         if let Some(items) = self.items.as_ref() {
-            let some_uid = Some(uid.clone());
-
             for each in items.iter() {
-                if each.uid == some_uid {
+                if each.uid() == uid {
                     return Ok(each);
                 }
             }
@@ -125,29 +112,7 @@ impl IProfiles {
     }
 
     /// append new item
-    /// if the file_data is some
-    /// then should save the data to file
-    pub fn append_item(&mut self, mut item: ProfileItem) -> Result<()> {
-        if item.uid.is_none() {
-            bail!("the uid should not be null");
-        }
-
-        // save the file data
-        // move the field value after save
-        if let Some(file_data) = item.file_data.take() {
-            if item.file.is_none() {
-                bail!("the file should not be null");
-            }
-
-            let file = item.file.clone().unwrap();
-            let path = dirs::app_profiles_dir()?.join(&file);
-
-            fs::File::create(path)
-                .with_context(|| format!("failed to create file \"{}\"", file))?
-                .write(file_data.as_bytes())
-                .with_context(|| format!("failed to write to file \"{}\"", file))?;
-        }
-
+    pub fn append_item(&mut self, item: Profile) -> Result<()> {
         if self.items.is_none() {
             self.items = Some(vec![]);
         }
@@ -165,10 +130,10 @@ impl IProfiles {
         let mut new_index = None;
 
         for (i, item) in items.iter().enumerate() {
-            if item.uid == Some(active_id.clone()) {
+            if item.uid() == active_id {
                 old_index = Some(i);
             }
-            if item.uid == Some(over_id.clone()) {
+            if item.uid() == over_id {
                 new_index = Some(i);
             }
         }
@@ -188,10 +153,7 @@ impl IProfiles {
         let mut new_items = vec![];
 
         for uid in order {
-            if let Some(index) = items
-                .iter()
-                .position(|e| e.uid.as_ref() == Some(uid.borrow()))
-            {
+            if let Some(index) = items.iter().position(|e| e.uid() == uid.borrow()) {
                 new_items.push(items.remove(index));
             }
         }
@@ -202,126 +164,89 @@ impl IProfiles {
 
     /// update the item value
     #[instrument]
-    pub fn patch_item(&mut self, uid: String, item: ProfileItem) -> Result<()> {
-        tracing::debug!("patch item: {uid} with {item:?}");
-        let mut items = self.items.take().unwrap_or_default();
+    pub fn patch_item(&mut self, uid: String, partial: Mapping) -> Result<()> {
+        tracing::debug!("patch item: {uid} with {partial:?}");
+        let items = self.items.as_mut().ok_or(anyhow::anyhow!(
+            "failed to get the items: the items list is empty"
+        ))?;
 
-        for each in items.iter_mut() {
-            if each.uid == Some(uid.clone()) {
-                patch!(each, item, r#type);
-                patch!(each, item, name);
-                patch!(each, item, desc);
-                patch!(each, item, file);
-                patch!(each, item, url);
-                patch!(each, item, selected);
-                patch!(each, item, extra);
-                patch!(each, item, updated);
-                patch!(each, item, option);
-                patch!(each, item, chains);
-                tracing::debug!("patch item: {each:?}");
-                self.items = Some(items);
-                return self.save_file();
+        let item = items
+            .iter_mut()
+            .find(|e| e.uid() == uid)
+            .ok_or(anyhow::anyhow!(
+                "failed to find the profile item \"uid:{uid}\""
+            ))?;
+
+        match item {
+            Profile::Remote(item) => {
+                let builder: RemoteProfileBuilder = serde_yaml::from_value(
+                    serde_yaml::to_value(partial).context("failed to convert to value")?,
+                )?;
+                item.apply(builder);
             }
-        }
-
-        self.items = Some(items);
-        bail!("failed to find the profile item \"uid:{uid}\"")
-    }
-
-    /// be used to update the remote item
-    /// only patch `updated` `extra` `file_data`
-    pub fn update_item(&mut self, uid: String, mut item: ProfileItem) -> Result<()> {
-        if self.items.is_none() {
-            self.items = Some(vec![]);
-        }
-
-        // find the item
-        let _ = self.get_item(&uid)?;
-
-        if let Some(items) = self.items.as_mut() {
-            let some_uid = Some(uid.clone());
-
-            for each in items.iter_mut() {
-                if each.uid == some_uid {
-                    each.extra = item.extra;
-                    each.updated = item.updated;
-
-                    // save the file data
-                    // move the field value after save
-                    if let Some(file_data) = item.file_data.take() {
-                        let file = each.file.take();
-                        let file =
-                            file.unwrap_or(item.file.take().unwrap_or(format!("{}.yaml", &uid)));
-
-                        // the file must exists
-                        each.file = Some(file.clone());
-
-                        let path = dirs::app_profiles_dir()?.join(&file);
-
-                        fs::File::create(path)
-                            .with_context(|| format!("failed to create file \"{}\"", file))?
-                            .write(file_data.as_bytes())
-                            .with_context(|| format!("failed to write to file \"{}\"", file))?;
-                    }
-
-                    break;
-                }
+            Profile::Local(item) => {
+                let builder: LocalProfileBuilder = serde_yaml::from_value(
+                    serde_yaml::to_value(partial).context("failed to convert to value")?,
+                )?;
+                item.apply(builder);
             }
-        }
+            Profile::Merge(item) => {
+                let builder: MergeProfileBuilder = serde_yaml::from_value(
+                    serde_yaml::to_value(partial).context("failed to convert to value")?,
+                )?;
+                item.apply(builder);
+            }
+            Profile::Script(item) => {
+                let builder: ScriptProfileBuilder = serde_yaml::from_value(
+                    serde_yaml::to_value(partial).context("failed to convert to value")?,
+                )?;
+                item.apply(builder);
+            }
+        };
+
+        tracing::debug!("patch item: {item:?}");
 
         self.save_file()
     }
 
     /// delete item
     /// if delete the current then return true
-    pub fn delete_item(&mut self, uid: String) -> Result<bool> {
+    pub async fn delete_item<T: Borrow<String>>(&mut self, uid: T) -> Result<bool> {
+        let uid = uid.borrow();
         let current = self.current.as_ref().unwrap_or(&uid);
         let current = current.clone();
 
-        let mut items = self.items.take().unwrap_or_default();
-        let mut index = None;
+        let items = self.items.as_mut().ok_or(anyhow::anyhow!(
+            "failed to get the items: the items list is empty"
+        ))?;
 
         // get the index
-        for (i, item) in items.iter().enumerate() {
-            if item.uid == Some(uid.clone()) {
-                index = Some(i);
-                break;
-            }
-        }
-
+        let index = items.iter().position(|e| e.uid() == uid);
         if let Some(index) = index {
-            if let Some(file) = items.remove(index).file {
-                let _ = dirs::app_profiles_dir().map(|path| {
-                    let path = path.join(file);
-                    if path.exists() {
-                        let _ = fs::remove_file(path);
-                    }
-                });
-            }
+            let mut profile = items.remove(index);
+            profile.remove_file().await?;
         }
 
         // delete the original uid
-        if current == uid {
-            self.current = match !items.is_empty() {
-                true => items[0].uid.clone(),
-                false => None,
+        let is_current = current == *uid;
+        if is_current {
+            self.current = if items.is_empty() {
+                None
+            } else {
+                Some(items[0].uid().to_string())
             };
         }
 
-        self.items = Some(items);
         self.save_file()?;
-        Ok(current == uid)
+        Ok(is_current)
     }
 
     /// 获取current指向的配置内容
     pub fn current_mapping(&self) -> Result<Mapping> {
         match (self.current.as_ref(), self.items.as_ref()) {
             (Some(current), Some(items)) => {
-                if let Some(item) = items.iter().find(|e| e.uid.as_ref() == Some(current)) {
-                    let file_path = match item.file.as_ref() {
-                        Some(file) => dirs::app_profiles_dir()?.join(file),
-                        None => bail!("failed to get the file field"),
-                    };
+                if let Some(item) = items.iter().find(|e| e.uid() == current) {
+                    let file_path = dirs::app_profiles_dir()?.join(item.file());
                     return help::read_merge_mapping(&file_path);
                 }
                 bail!("failed to find the current profile \"uid:{current}\"");

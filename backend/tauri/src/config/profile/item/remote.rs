@@ -13,7 +13,6 @@ use crate::{
 use ambassador::Delegate;
 use backon::Retryable;
 use derive_builder::Builder;
-use futures::executor;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use nyanpasu_macro::BuilderUpdate;
@@ -61,6 +60,7 @@ pub struct RemoteProfile {
 
 impl ProfileHelper for RemoteProfile {}
 impl ProfileCleanup for RemoteProfile {}
+
 impl RemoteProfileSubscription for RemoteProfile {
     #[tracing::instrument]
     async fn subscribe(&mut self) -> anyhow::Result<()> {
@@ -280,6 +280,8 @@ async fn subscribe_urls(
     Ok(successes)
 }
 
+
+/// merge the subscriptions
 #[tracing::instrument]
 fn merge_subscription(
     subscriptions: &[Subscription],
@@ -352,7 +354,7 @@ impl RemoteProfileBuilder {
         Ok(())
     }
 
-    pub async fn build_non_blocking(&mut self) -> Result<RemoteProfile, RemoteProfileBuilderError> {
+    pub async fn build_no_blocking(&mut self) -> Result<RemoteProfile, RemoteProfileBuilderError> {
         self.validate()?;
         self.shared.r#type(ProfileItemType::Remote);
         let url = self.url.take().unwrap();
@@ -404,7 +406,7 @@ impl RemoteProfileBuilder {
         rt.block_on(async {
             let local = tokio::task::LocalSet::new();
             local
-                .run_until(self.build_non_blocking())
+                .run_until(self.build_no_blocking())
                 .await
                 .map_err(|e| RemoteProfileBuilderError::Validation(e.to_string()))
         })

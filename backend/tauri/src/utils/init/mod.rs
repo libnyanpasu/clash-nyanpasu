@@ -154,7 +154,7 @@ pub fn init_config() -> Result<()> {
 
     crate::log_err!(dirs::profiles_path().map(|path| {
         if !path.exists() {
-            help::save_yaml(&path, &IProfiles::template(), Some("# Clash Nyanpasu"))?;
+            help::save_yaml(&path, &Profiles::template(), Some("# Clash Nyanpasu"))?;
         }
         <Result<()>>::Ok(())
     }));

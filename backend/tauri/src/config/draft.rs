@@ -1,4 +1,4 @@
-use super::{IClashTemp, IProfiles, IRuntime, IVerge};
+use super::{IClashTemp, Profiles, IRuntime, IVerge};
 use parking_lot::{MappedMutexGuard, Mutex, MutexGuard};
 use std::sync::Arc;
 
@@ -66,7 +66,7 @@ macro_rules! draft_define {
 
 // draft_define!(IClash);
 draft_define!(IClashTemp);
-draft_define!(IProfiles);
+draft_define!(Profiles);
 draft_define!(IRuntime);
 draft_define!(IVerge);
 

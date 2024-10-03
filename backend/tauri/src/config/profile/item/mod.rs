@@ -4,7 +4,6 @@ use crate::{enhance::ScriptType, utils::dirs};
 use ambassador::{delegatable_trait, Delegate};
 use anyhow::{bail, Context, Result};
 use nyanpasu_macro::EnumWrapperCombined;
-
 use serde::{de::Visitor, Deserialize, Serialize};
 use serde_yaml::{Mapping, Value};
 use std::{borrow::Borrow, fmt::Debug, fs, io::Write};
@@ -175,6 +174,9 @@ impl<'de> Deserialize<'de> for Profile {
 //     pub name: Option<String>,
 //     pub now: Option<String>,
 // }
+
+impl ProfileCleanup for Profile {}
+impl ProfileHelper for Profile {}
 
 impl Profile {
     pub fn file(&self) -> &str {

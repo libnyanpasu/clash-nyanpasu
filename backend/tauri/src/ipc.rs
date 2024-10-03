@@ -29,7 +29,7 @@ use tauri_plugin_dialog::{DialogExt, FileDialogBuilder};
 type CmdResult<T = ()> = Result<T, String>;
 
 #[tauri::command]
-pub fn get_profiles() -> CmdResult<IProfiles> {
+pub fn get_profiles() -> CmdResult<Profiles> {
     Ok(Config::profiles().data().clone())
 }
 
@@ -92,7 +92,7 @@ pub async fn delete_profile(index: String) -> CmdResult {
 
 /// 修改profiles的
 #[tauri::command]
-pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult {
+pub async fn patch_profiles_config(profiles: Profiles) -> CmdResult {
     wrap_err!({ Config::profiles().draft().patch_config(profiles) })?;
 
     match CoreManager::global().update_config().await {

@@ -34,5 +34,4 @@ pub struct LocalProfile {
 }
 
 impl ProfileHelper for LocalProfile {}
-
 impl ProfileCleanup for LocalProfile {}

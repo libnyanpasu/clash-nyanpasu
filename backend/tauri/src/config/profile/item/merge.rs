@@ -1,7 +1,7 @@
 use super::{
     ambassador_impl_ProfileFileIo, ambassador_impl_ProfileSharedGetter,
-    ambassador_impl_ProfileSharedSetter, ProfileFileIo, ProfileShared, ProfileSharedBuilder,
-    ProfileSharedGetter, ProfileSharedSetter,
+    ambassador_impl_ProfileSharedSetter, ProfileCleanup, ProfileFileIo, ProfileHelper,
+    ProfileShared, ProfileSharedBuilder, ProfileSharedGetter, ProfileSharedSetter,
 };
 use ambassador::Delegate;
 use derive_builder::Builder;
@@ -24,3 +24,6 @@ pub struct MergeProfile {
     #[builder_update(nested)]
     pub shared: ProfileShared,
 }
+
+impl ProfileCleanup for MergeProfile {}
+impl ProfileHelper for MergeProfile {}

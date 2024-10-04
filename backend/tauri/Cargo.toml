@@ -90,7 +90,7 @@ base64 = "0.22"
 single-instance = "0.3.3"
 uuid = "1.7.0"
 image = "0.25.0"
-fast_image_resize = "4"
+fast_image_resize = "5"
 display-info = "0.5.0" # should be removed after upgrading to tauri v2
 dashmap = "6"
 clap = { version = "4.5.4", features = ["derive"] } # add supports for commands

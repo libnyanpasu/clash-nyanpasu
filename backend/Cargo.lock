@@ -7283,9 +7283,9 @@ checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
 
 [[package]]
 name = "tauri"
-version = "2.0.0"
+version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c9c08beea86d5095b6f5fb1c788fe8759b23c3f71927c66a69e725a91d089cd"
+checksum = "f3fad474c02a3bcd4a304afff97159a31b9bab84e29563f7109c7b0ce8cd774e"
 dependencies = [
  "anyhow",
  "bytes",
@@ -7320,7 +7320,7 @@ dependencies = [
  "tauri-macros",
  "tauri-runtime",
  "tauri-runtime-wry",
- "tauri-utils 2.0.0",
+ "tauri-utils 2.0.1",
  "thiserror",
  "tokio",
  "tray-icon",
@@ -7334,9 +7334,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-build"
-version = "2.0.0"
+version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93bb649a284aec2ab43e8df6831b8c8060d231ec8ddf05bf021d58cb67570e1f"
+checksum = "935f9b3c49b22b3e2e485a57f46d61cd1ae07b1cbb2ba87387a387caf2d8c4e7"
 dependencies = [
  "anyhow",
  "cargo_toml",
@@ -7348,7 +7348,7 @@ dependencies = [
  "semver 1.0.23",
  "serde",
  "serde_json",
- "tauri-utils 2.0.0",
+ "tauri-utils 2.0.1",
  "tauri-winres",
  "toml 0.8.2",
  "walkdir",
@@ -7356,9 +7356,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-codegen"
-version = "2.0.0"
+version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4511912612ba0da11aeb300e18e18b2c7067fd14aa886eac46bdcc43b4fa3ee"
+checksum = "95d7443dd4f0b597704b6a14b964ee2ed16e99928d8e6292ae9825f09fbcd30e"
 dependencies = [
  "base64 0.22.1",
  "brotli",
@@ -7373,7 +7373,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.8",
  "syn 2.0.77",
- "tauri-utils 2.0.0",
+ "tauri-utils 2.0.1",
  "thiserror",
  "time",
  "url",
@@ -7383,16 +7383,16 @@ dependencies = [
 
 [[package]]
 name = "tauri-macros"
-version = "2.0.0"
+version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62ee976578a14b779996d7b6879d7e625c8ce674bc87e223953664f37def2eef"
+checksum = "4d2c0963ccfc3f5194415f2cce7acc975942a8797fbabfb0aa1ed6f59326ae7f"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
  "quote",
  "syn 2.0.77",
  "tauri-codegen",
- "tauri-utils 2.0.0",
+ "tauri-utils 2.0.1",
 ]
 
 [[package]]
@@ -7407,7 +7407,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
- "tauri-utils 2.0.0",
+ "tauri-utils 2.0.1",
  "toml 0.8.2",
  "walkdir",
 ]
@@ -7588,9 +7588,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-runtime"
-version = "2.0.0"
+version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2570e1f33f332a2d2d9967ebb3903bc4e1f92b9c47e4d1b302c10ea4153fcdbb"
+checksum = "af12ad1af974b274ef1d32a94e6eba27a312b429ef28fcb98abc710df7f9151d"
 dependencies = [
  "dpi",
  "gtk",
@@ -7599,7 +7599,7 @@ dependencies = [
  "raw-window-handle",
  "serde",
  "serde_json",
- "tauri-utils 2.0.0",
+ "tauri-utils 2.0.1",
  "thiserror",
  "url",
  "windows 0.58.0",
@@ -7607,9 +7607,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-runtime-wry"
-version = "2.0.0"
+version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8147d8f9ed418d83a90af3d64fbdca5e0e924ae28e5351da88f9568169db8665"
+checksum = "e45e88aa0b11b302d836e6ea3e507a6359044c4a8bc86b865ba99868c695753d"
 dependencies = [
  "gtk",
  "http 1.1.0",
@@ -7623,7 +7623,7 @@ dependencies = [
  "softbuffer",
  "tao",
  "tauri-runtime",
- "tauri-utils 2.0.0",
+ "tauri-utils 2.0.1",
  "url",
  "webkit2gtk",
  "webview2-com",
@@ -7658,9 +7658,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-utils"
-version = "2.0.0"
+version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f87856e9d7fa91fd710362f3c73fccbf6bfd036934908791e65bd803d54dc8a8"
+checksum = "c38b0230d6880cf6dd07b6d7dd7789a0869f98ac12146e0d18d1c1049215a045"
 dependencies = [
  "brotli",
  "cargo_metadata",

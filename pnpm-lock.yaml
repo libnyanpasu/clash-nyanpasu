@@ -96,8 +96,8 @@ importers:
         specifier: 4.6.2
         version: 4.6.2(eslint@8.57.1)
       knip:
-        specifier: 5.30.6
-        version: 5.30.6(@types/node@22.7.4)(typescript@5.6.2)
+        specifier: 5.31.0
+        version: 5.31.0(@types/node@22.7.4)(typescript@5.6.2)
       lint-staged:
         specifier: 15.2.10
         version: 15.2.10
@@ -4659,6 +4659,10 @@ packages:
     resolution: {integrity: sha512-2yTgeWTWzMWkHu6Jp9NKgePDaYHbntiwvYuuJLbbN9vl7DC9DvXKOB2BC3ZZ92D3cvV/aflH0osDfwpHepQ53w==}
     hasBin: true
 
+  jiti@2.1.2:
+    resolution: {integrity: sha512-cYNjJus5X9J4jLzTaI8rYoIq1k6YySiA1lK4wxSnOrBRXkbVyreZfhoboJhsUmwgU82lpPjj1IoU7Ggrau8r3g==}
+    hasBin: true
+
   jju@1.4.0:
     resolution: {integrity: sha512-8wb9Yw966OSxApiCt0K3yNJL8pnNeIv+OEq2YMidz4FKP6nonSRoOXc80iXY4JaN2FC11B9qsNmDsm+ZOfMROA==}
 
@@ -4757,8 +4761,8 @@ packages:
     resolution: {integrity: sha512-dcS1ul+9tmeD95T+x28/ehLgd9mENa3LsvDTtzm3vyBEO7RPptvAD+t44WVXaUjTBRcrpFeFlC8WCruUR456hw==}
     engines: {node: '>=0.10.0'}
 
-  knip@5.30.6:
-    resolution: {integrity: sha512-YkcnRVl0N99xZ7eaXE7KlH/4cPTCn6BGuk9KxINEdCMFN3yita2vGBizApy97ZOHgghy8tb589gQ3xvLMFIO4w==}
+  knip@5.31.0:
+    resolution: {integrity: sha512-4hR+qHx/id7mniCWWUqA4MXwGjYFN75xv3qLmEkl9Hm6eCKAhv0wGP0CyrXKUYxVyDplJQsqQaAlsjuRKYsdPA==}
     engines: {node: '>=18.6.0'}
     hasBin: true
     peerDependencies:
@@ -11610,6 +11614,8 @@ snapshots:
 
   jiti@1.21.6: {}
 
+  jiti@2.1.2: {}
+
   jju@1.4.0: {}
 
   jotai@2.10.0(react@19.0.0-rc-0751fac7-20241002)(types-react@19.0.0-rc.1):
@@ -11683,7 +11689,7 @@ snapshots:
 
   kind-of@6.0.3: {}
 
-  knip@5.30.6(@types/node@22.7.4)(typescript@5.6.2):
+  knip@5.31.0(@types/node@22.7.4)(typescript@5.6.2):
     dependencies:
       '@nodelib/fs.walk': 1.2.8
       '@snyk/github-codeowners': 1.1.0
@@ -11691,7 +11697,7 @@ snapshots:
       easy-table: 1.2.0
       enhanced-resolve: 5.17.1
       fast-glob: 3.3.2
-      jiti: 1.21.6
+      jiti: 2.1.2
       js-yaml: 4.1.0
       minimist: 1.2.8
       picocolors: 1.1.0

@@ -26,8 +26,11 @@ pub struct LocalProfile {
     #[builder_field_attr(serde(flatten))]
     #[builder_update(nested)]
     pub shared: ProfileShared,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(setter(strip_option), default)]
     /// file symlinks
-    pub symlinks: IndexMap<String, PathBuf>,
+    pub symlinks: Option<PathBuf>,
     /// process chains
     #[serde(default)]
     pub chains: Vec<ProfileUid>,

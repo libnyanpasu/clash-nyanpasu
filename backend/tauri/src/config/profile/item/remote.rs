@@ -35,6 +35,7 @@ pub trait RemoteProfileSubscription {
 #[delegate(ProfileSharedGetter, target = "shared")]
 #[delegate(ProfileFileIo, target = "shared")]
 pub struct RemoteProfile {
+    #[serde(flatten)]
     #[builder(field(
         ty = "ProfileSharedBuilder",
         build = "self.shared.build().map_err(Into::into)?"
@@ -47,6 +48,7 @@ pub struct RemoteProfile {
     pub url: Vec<Url>,
     /// subscription user info
     #[builder(default)]
+    #[serde(default)]
     pub extra: IndexMap<Url, SubscriptionInfo>,
     /// remote profile options
     #[builder(field(

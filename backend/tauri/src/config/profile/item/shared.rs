@@ -28,6 +28,7 @@ pub struct ProfileShared {
     /// profile item type
     /// enum value: remote | local | script | merge
     #[serde(rename = "type")]
+    #[serde(deserialize_with = "deserialize_kind")]
     pub r#type: ProfileItemType,
 
     /// profile name
@@ -46,6 +47,31 @@ pub struct ProfileShared {
     #[builder(default = "chrono::Local::now().timestamp() as usize")]
     /// update time
     pub updated: usize,
+}
+
+fn deserialize_kind<'de, D>(deserializer: D) -> Result<ProfileItemType, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_yaml::Value::deserialize(deserializer)?;
+    // FIXME: this is a workaround for the enum type in serde_yaml 0.9
+    Ok(match &value {
+        serde_yaml::Value::String(s) => {
+            ProfileItemType::from_str(s).map_err(serde::de::Error::custom)?
+        }
+        serde_yaml::Value::Tagged(tagged_value)
+            if tagged_value.tag == "script" && tagged_value.value.is_string() =>
+        {
+            let script_type = ScriptType::from_str(tagged_value.value.as_str().unwrap())
+                .map_err(serde::de::Error::custom)?;
+            ProfileItemType::Script(script_type)
+        }
+        _ => {
+            return Err(serde::de::Error::custom(
+                "type field is not a valid string or tagged value",
+            ))
+        }
+    })
 }
 
 #[async_trait::async_trait]

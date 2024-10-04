@@ -5,7 +5,6 @@ use semver::Version;
 use serde_yaml::Mapping;
 
 use crate::{
-    config::profile::profiles,
     core::migration::{DynMigration, Migration},
     utils::dirs,
 };

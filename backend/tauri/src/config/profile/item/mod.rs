@@ -6,7 +6,7 @@ use anyhow::{bail, Context, Result};
 use nyanpasu_macro::EnumWrapperCombined;
 use serde::{de::Visitor, Deserialize, Serialize};
 use serde_yaml::{Mapping, Value};
-use std::{borrow::Borrow, fmt::Debug, fs, io::Write};
+use std::{borrow::Borrow, fmt::Debug, fs, io::Write, str::FromStr};
 
 mod local;
 mod merge;
@@ -137,9 +137,27 @@ impl<'de> Deserialize<'de> for Profile {
                 let mut mapping = Mapping::new();
                 while let Some((key, value)) = map.next_entry::<String, Value>()? {
                     if "type" == key.as_str() {
+                        tracing::debug!("type field: {:#?}", value);
                         type_field = Some(
-                            ProfileItemType::deserialize(value.clone())
-                                .map_err(serde::de::Error::custom)?,
+                            // FIXME: this is a workaround for the enum type in serde_yaml 0.9
+                            match &value {
+                                Value::String(s) => ProfileItemType::from_str(s)
+                                    .map_err(serde::de::Error::custom)?,
+                                Value::Tagged(tagged_value)
+                                    if tagged_value.tag == "script"
+                                        && tagged_value.value.is_string() =>
+                                {
+                                    let script_type =
+                                        ScriptType::from_str(tagged_value.value.as_str().unwrap())
+                                            .map_err(serde::de::Error::custom)?;
+                                    ProfileItemType::Script(script_type)
+                                }
+                                _ => {
+                                    return Err(serde::de::Error::custom(
+                                        "type field is not a valid string or tagged value",
+                                    ))
+                                }
+                            },
                         );
                     }
                     mapping.insert(key.into(), value);

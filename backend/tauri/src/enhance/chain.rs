@@ -10,6 +10,7 @@ use enumflags2::{BitFlag, BitFlags};
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 use std::fs;
+use strum::EnumString;
 
 #[derive(Debug, Clone)]
 pub struct ChainItem {
@@ -98,10 +99,12 @@ pub enum ChainType {
     Script(ScriptType),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, Eq, PartialEq, Hash)]
+#[derive(Debug, EnumString, Clone, Serialize, Deserialize, Default, Eq, PartialEq, Hash)]
+#[strum(serialize_all = "snake_case")]
 pub enum ScriptType {
     #[default]
     #[serde(rename = "javascript")]
+    #[strum(serialize = "javascript")]
     JavaScript,
     #[serde(rename = "lua")]
     Lua,

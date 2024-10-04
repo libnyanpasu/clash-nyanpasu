@@ -6,7 +6,6 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
-
 [lib]
 proc-macro = true
 

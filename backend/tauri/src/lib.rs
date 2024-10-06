@@ -336,14 +336,14 @@ pub fn run() -> std::io::Result<()> {
                     tauri::WindowEvent::CloseRequested { .. } => {
                         log::debug!(target: "app", "window close requested");
                         let _ = resolve::save_window_state(app_handle, true);
-                    }
-                    tauri::WindowEvent::Destroyed => {
-                        log::debug!(target: "app", "window destroyed");
-                        reset_window_open_counter();
                         #[cfg(target_os = "macos")]
                         log_err!(app_handle.run_on_main_thread(|| {
                             crate::utils::dock::macos::hide_dock_icon();
                         }));
+                    }
+                    tauri::WindowEvent::Destroyed => {
+                        log::debug!(target: "app", "window destroyed");
+                        reset_window_open_counter();
                     }
                     tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
                         log::debug!(target: "app", "window moved or resized");

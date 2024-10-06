@@ -132,24 +132,24 @@ sha2 = "0.10"
 bimap = "0.6.3"
 
 # Tauri Dependencies
-tauri = { version = "2.0.0-rc", features = [
+tauri = { version = "2.0.1", features = [
   "tray-icon",
   "image-png",
   "image-ico",
 ] }
-tauri-plugin-deep-link = { path = "../tauri-plugin-deep-link", version = "0.1.2" }
-tauri-plugin-os = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
-tauri-plugin-clipboard-manager = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
-tauri-plugin-fs = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
-tauri-plugin-dialog = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
-tauri-plugin-process = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
-tauri-plugin-updater = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
-tauri-plugin-shell = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
-tauri-plugin-notification = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
+tauri-plugin-deep-link = { path = "../tauri-plugin-deep-link", version = "0.1.2" } # This should be migrated to official tauri plugin
+tauri-plugin-os = "2.0.1"
+tauri-plugin-clipboard-manager = "2.0.1"
+tauri-plugin-fs = "2.0.1"
+tauri-plugin-dialog = "2.0.1"
+tauri-plugin-process = "2.0.1"
+tauri-plugin-updater = "2.0.2"
+tauri-plugin-shell = "2.0.1"
+tauri-plugin-notification = "2.0.1"
 window-vibrancy = { version = "0.5.2" }
 
 [target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
-tauri-plugin-global-shortcut = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
+tauri-plugin-global-shortcut = "2.0.1"
 
 [target.'cfg(all(target_os = "linux", target_arch = "aarch64"))'.dependencies]
 openssl = { version = "0.10", features = ["vendored"] }

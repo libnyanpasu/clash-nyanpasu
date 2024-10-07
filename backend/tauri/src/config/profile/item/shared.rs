@@ -6,12 +6,11 @@ use nyanpasu_macro::BuilderUpdate;
 use serde::{de::Visitor, Deserialize, Serialize};
 
 use crate::{
-    config::profile::item_type::ProfileItemType, enhance::ScriptType, utils::dirs::profiles_path,
+    config::profile::item_type::ProfileItemType, enhance::ScriptType, utils::dirs::app_profiles_dir,
 };
 
 use super::{ProfileSharedGetter, ProfileSharedSetter};
 
-#[async_trait::async_trait]
 #[delegatable_trait]
 pub trait ProfileFileIo {
     async fn read_file(&self) -> std::io::Result<String>;
@@ -48,18 +47,17 @@ pub struct ProfileShared {
     pub updated: usize,
 }
 
-#[async_trait::async_trait]
 impl ProfileFileIo for ProfileShared {
     async fn read_file(&self) -> std::io::Result<String> {
         let path =
-            profiles_path().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            app_profiles_dir().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         let file = path.join(&self.file);
         tokio::fs::read_to_string(file).await
     }
 
     async fn write_file(&self, content: String) -> std::io::Result<()> {
         let path =
-            profiles_path().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            app_profiles_dir().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         let file = path.join(&self.file);
         let mut file = tokio::fs::OpenOptions::new()
             .write(true)

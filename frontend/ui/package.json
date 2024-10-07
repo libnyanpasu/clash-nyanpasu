@@ -24,7 +24,7 @@
     "@radix-ui/react-scroll-area": "1.2.0",
     "@tauri-apps/api": "2.0.1",
     "@types/d3": "7.4.3",
-    "@types/react": "18.3.10",
+    "@types/react": "18.3.11",
     "@vitejs/plugin-react": "4.3.2",
     "ahooks": "3.8.1",
     "d3": "7.9.0",
@@ -43,7 +43,7 @@
     "clsx": "2.1.1",
     "d3-interpolate-path": "2.3.0",
     "sass": "1.79.4",
-    "tailwind-merge": "2.5.2",
+    "tailwind-merge": "2.5.3",
     "typescript-plugin-css-modules": "5.1.0",
     "vite-plugin-dts": "4.2.3"
   }

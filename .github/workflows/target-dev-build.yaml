@@ -129,15 +129,15 @@ jobs:
       arch: "armhf"
     secrets: inherit
 
-  # linux_armel_build:
-  #   name: Linux armel Build
-  #   uses: ./.github/workflows/deps-build-linux.yaml
-  #   needs: [delete_current_releases]
-  #   with:
-  #     nightly: true
-  #     tag: "pre-release"
-  #     arch: "armel"
-  #   secrets: inherit
+  linux_armel_build:
+    name: Linux armel Build
+    uses: ./.github/workflows/deps-build-linux.yaml
+    needs: [delete_current_releases]
+    with:
+      nightly: true
+      tag: "pre-release"
+      arch: "armel"
+    secrets: inherit
 
   macos_amd64_build:
     name: macOS amd64 Build
@@ -161,7 +161,8 @@ jobs:
 
   update_tag:
     name: Update tag
-    needs: [
+    needs:
+      [
         windows_amd64_build,
         windows_i686_build,
         windows_aarch64_build,
@@ -172,7 +173,7 @@ jobs:
         linux_i686_build,
         linux_aarch64_build,
         linux_armhf_build,
-        # linux_armel_build,
+        linux_armel_build,
         macos_amd64_build,
         macos_aarch64_build,
       ]

@@ -14,7 +14,7 @@ include = ["src/**", "Cargo.toml", "LICENSE_*"]
 dirs = "5"
 log = "0.4"
 once_cell = "1"
-tauri-utils = { version = "1" }
+tauri-utils = { version = "2" }
 
 [target.'cfg(windows)'.dependencies]
 interprocess = { version = "2" }

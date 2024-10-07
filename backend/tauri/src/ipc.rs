@@ -170,6 +170,7 @@ pub async fn update_profile(uid: String, option: Option<RemoteProfileOptionsBuil
 #[tauri::command]
 pub async fn delete_profile(uid: String) -> Result {
     let should_update = tokio::task::spawn_blocking(move || {
+        #[allow(clippy::let_and_return)] // a bug in clippy
         nyanpasu_utils::runtime::block_on_current_thread(async move {
             let committer = Config::profiles().auto_commit();
             let x = committer.draft().delete_item(&uid).await;
@@ -714,7 +715,7 @@ pub mod service {
 
     #[tauri::command]
     pub async fn start_service() -> Result {
-        let res = (service::control::start_service().await);
+        let res = service::control::start_service().await;
         let enabled_service = {
             *crate::config::Config::verge()
                 .latest()
@@ -732,7 +733,7 @@ pub mod service {
 
     #[tauri::command]
     pub async fn stop_service() -> Result {
-        let res = (service::control::stop_service().await);
+        let res = service::control::stop_service().await;
         let enabled_service = {
             *crate::config::Config::verge()
                 .latest()
@@ -750,7 +751,7 @@ pub mod service {
 
     #[tauri::command]
     pub async fn restart_service() -> Result {
-        let res = (service::control::restart_service().await);
+        let res = service::control::restart_service().await;
         let enabled_service = {
             *crate::config::Config::verge()
                 .latest()

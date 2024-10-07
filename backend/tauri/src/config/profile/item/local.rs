@@ -6,7 +6,6 @@ use super::{
 use crate::config::profile::item_type::ProfileUid;
 use ambassador::Delegate;
 use derive_builder::Builder;
-use indexmap::IndexMap;
 use nyanpasu_macro::BuilderUpdate;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

@@ -482,7 +482,7 @@ pub trait SystemTrayMenuProxiesExt<R: Runtime> {
         Self: Sized;
 }
 
-impl<'m, R: Runtime, M: Manager<R>> SystemTrayMenuProxiesExt<R> for MenuBuilder<'m, R, M> {
+impl<R: Runtime, M: Manager<R>> SystemTrayMenuProxiesExt<R> for MenuBuilder<'_, R, M> {
     fn setup_proxies(self, app_handle: &AppHandle<R>) -> anyhow::Result<Self> {
         platform_impl::setup_tray(app_handle, self)
     }

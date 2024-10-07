@@ -17,7 +17,7 @@ pub static VERSION: Lazy<semver::Version> = Lazy::new(|| semver::Version::parse(
 #[derive(Debug, Clone)]
 pub struct MigrateMultipleSubscriptionExtras;
 
-impl<'a> Migration<'a> for MigrateMultipleSubscriptionExtras {
+impl Migration<'_> for MigrateMultipleSubscriptionExtras {
     fn version(&self) -> &'static Version {
         &VERSION
     }

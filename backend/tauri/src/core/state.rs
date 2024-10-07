@@ -53,7 +53,7 @@ where
 
 pub struct ManagedStateAutoCommit<'a, T: Clone + Send + Sync>(&'a ManagedState<T>);
 
-impl<'a, T> Deref for ManagedStateAutoCommit<'a, T>
+impl<T> Deref for ManagedStateAutoCommit<'_, T>
 where
     T: Clone + Send + Sync,
 {
@@ -64,7 +64,7 @@ where
     }
 }
 
-impl<'a, T: Clone + Send + Sync> Drop for ManagedStateAutoCommit<'a, T> {
+impl<T: Clone + Send + Sync> Drop for ManagedStateAutoCommit<'_, T> {
     fn drop(&mut self) {
         if self.0.is_dirty() {
             self.0.apply();

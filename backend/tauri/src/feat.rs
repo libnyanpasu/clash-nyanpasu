@@ -354,7 +354,7 @@ pub async fn update_profile<T: Borrow<String>>(
     opts: Option<RemoteProfileOptionsBuilder>,
 ) -> Result<()> {
     let uid = uid.borrow();
-    let is_remote = Config::profiles().latest().get_item(uid)?.is_remote();
+    let is_remote = { Config::profiles().latest().get_item(uid)?.is_remote() };
 
     let should_update = if is_remote {
         let mut item = Config::profiles()
@@ -365,10 +365,9 @@ pub async fn update_profile<T: Borrow<String>>(
             .clone();
 
         item.subscribe(opts).await?;
-
-        let mut profiles = Config::profiles().draft();
+        let committer = Config::profiles().auto_commit();
+        let mut profiles = committer.draft();
         profiles.replace_item(uid, item.into())?;
-        Config::profiles().apply();
         Some(uid) == profiles.get_current().as_ref()
     } else {
         false

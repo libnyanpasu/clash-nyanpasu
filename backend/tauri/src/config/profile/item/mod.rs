@@ -6,7 +6,7 @@ use anyhow::{bail, Context, Result};
 use nyanpasu_macro::EnumWrapperCombined;
 use serde::{de::Visitor, Deserialize, Serialize};
 use serde_yaml::{Mapping, Value};
-use std::{borrow::Borrow, fmt::Debug, fs, io::Write, str::FromStr};
+use std::{borrow::Borrow, fmt::Debug, fs, io::Write};
 
 mod local;
 mod merge;

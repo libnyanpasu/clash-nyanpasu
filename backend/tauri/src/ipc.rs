@@ -62,9 +62,9 @@ pub async fn import_profile(url: String, option: Option<RemoteProfileOptionsBuil
     }
     let profile = wrap_err!(builder.build_no_blocking().await)?;
     {
-        wrap_err!(Config::profiles().draft().append_item(profile.into()))?;
+        let committer = Config::profiles().auto_commit();
+        wrap_err!(committer.draft().append_item(profile.into()))?;
     }
-    Config::profiles().apply();
     Ok(())
 }
 
@@ -100,23 +100,23 @@ pub async fn create_profile(item: Mapping, file_data: Option<String>) -> CmdResu
         wrap_err!(profile.save_file(file_data))?;
     }
     {
-        wrap_err!(Config::profiles().draft().append_item(profile))?;
+        let committer = Config::profiles().auto_commit();
+        wrap_err!(committer.draft().append_item(profile))?;
     }
-    Config::profiles().apply();
     Ok(())
 }
 
 #[tauri::command]
 pub async fn reorder_profile(active_id: String, over_id: String) -> CmdResult {
-    wrap_err!(Config::profiles().draft().reorder(active_id, over_id))?;
-    Config::profiles().apply();
+    let committer = Config::profiles().auto_commit();
+    wrap_err!(committer.draft().reorder(active_id, over_id))?;
     Ok(())
 }
 
 #[tauri::command]
 pub fn reorder_profiles_by_list(list: Vec<String>) -> CmdResult {
-    wrap_err!(Config::profiles().draft().reorder_by_list(&list))?;
-    Config::profiles().apply();
+    let committer = Config::profiles().auto_commit();
+    wrap_err!(committer.draft().reorder_by_list(&list))?;
     Ok(())
 }
 
@@ -135,9 +135,14 @@ pub async fn delete_profile(uid: String) -> CmdResult {
                     .enable_all()
                     .build()
                     .unwrap();
+                #[allow(clippy::let_and_return)]
                 rt.block_on(async {
                     local
-                        .run_until(async { Config::profiles().draft().delete_item(&uid).await })
+                        .run_until(async {
+                            let committer = Config::profiles().auto_commit();
+                            let x = committer.draft().delete_item(&uid).await;
+                            x
+                        })
                         .await
                 })
             })
@@ -145,7 +150,6 @@ pub async fn delete_profile(uid: String) -> CmdResult {
         )?
         .await
     )?;
-    Config::profiles().apply();
     if should_update {
         wrap_err!(CoreManager::global().update_config().await)?;
         handle::Handle::refresh_clash();
@@ -177,8 +181,10 @@ pub async fn patch_profiles_config(profiles: Profiles) -> CmdResult {
 #[tauri::command]
 pub async fn patch_profile(uid: String, profile: Mapping) -> CmdResult {
     tracing::debug!("patch profile: {uid} with {profile:?}");
-    wrap_err!(Config::profiles().draft().patch_item(uid.clone(), profile))?;
-    Config::profiles().apply();
+    {
+        let committer = Config::profiles().auto_commit();
+        wrap_err!(committer.draft().patch_item(uid.clone(), profile))?;
+    }
     ProfilesJobGuard::global().lock().refresh();
     let need_update = {
         let profiles = Config::profiles();

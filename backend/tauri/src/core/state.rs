@@ -41,6 +41,37 @@ where
     }
 }
 
+impl<T> ManagedState<T>
+where
+    T: Clone + Sync + Send,
+{
+    /// to auto commit the state when it is dropped
+    pub fn auto_commit(&self) -> ManagedStateAutoCommit<T> {
+        ManagedStateAutoCommit(self)
+    }
+}
+
+pub struct ManagedStateAutoCommit<'a, T: Clone + Send + Sync>(&'a ManagedState<T>);
+
+impl<'a, T> Deref for ManagedStateAutoCommit<'a, T>
+where
+    T: Clone + Send + Sync,
+{
+    type Target = ManagedState<T>;
+
+    fn deref(&self) -> &Self::Target {
+        self.0
+    }
+}
+
+impl<'a, T: Clone + Send + Sync> Drop for ManagedStateAutoCommit<'a, T> {
+    fn drop(&mut self) {
+        if self.0.is_dirty() {
+            self.0.apply();
+        }
+    }
+}
+
 pub struct ManagedStateInner<T>
 where
     T: Clone + Sync + Send,

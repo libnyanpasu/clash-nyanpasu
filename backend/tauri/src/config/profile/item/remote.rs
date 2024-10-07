@@ -405,17 +405,8 @@ impl RemoteProfileBuilder {
     }
 
     pub fn build(&mut self) -> Result<RemoteProfile, RemoteProfileBuilderError> {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        rt.block_on(async {
-            let local = tokio::task::LocalSet::new();
-            local
-                .run_until(self.build_no_blocking())
-                .await
-                .map_err(|e| RemoteProfileBuilderError::Validation(e.to_string()))
-        })
+        nyanpasu_utils::runtime::block_on_current_thread(self.build_no_blocking())
+            .map_err(|e| RemoteProfileBuilderError::Validation(e.to_string()))
     }
 }
 

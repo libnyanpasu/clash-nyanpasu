@@ -138,27 +138,13 @@ impl<'de> Deserialize<'de> for Profile {
                 while let Some((key, value)) = map.next_entry::<String, Value>()? {
                     if "type" == key.as_str() {
                         tracing::debug!("type field: {:#?}", value);
-                        type_field = Some(
-                            // FIXME: this is a workaround for the enum type in serde_yaml 0.9
-                            match &value {
-                                Value::String(s) => ProfileItemType::from_str(s)
-                                    .map_err(serde::de::Error::custom)?,
-                                Value::Tagged(tagged_value)
-                                    if tagged_value.tag == "script"
-                                        && tagged_value.value.is_string() =>
-                                {
-                                    let script_type =
-                                        ScriptType::from_str(tagged_value.value.as_str().unwrap())
-                                            .map_err(serde::de::Error::custom)?;
-                                    ProfileItemType::Script(script_type)
-                                }
-                                _ => {
-                                    return Err(serde::de::Error::custom(
-                                        "type field is not a valid string or tagged value",
-                                    ))
-                                }
-                            },
-                        );
+                        type_field =
+                            Some(ProfileItemType::deserialize(value.clone()).map_err(|err| {
+                                serde::de::Error::custom(format!(
+                                    "failed to deserialize type: {}",
+                                    err
+                                ))
+                            })?);
                     }
                     mapping.insert(key.into(), value);
                 }

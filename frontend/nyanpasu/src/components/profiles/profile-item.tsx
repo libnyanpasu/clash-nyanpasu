@@ -236,7 +236,7 @@ export const ProfileItem = memo(function ProfileItem({
               <Chip
                 className="!pl-2 !pr-2 font-bold"
                 avatar={<IconComponent className="!size-5" color="primary" />}
-                label={isRemote ? "Remote" : "Local"}
+                label={isRemote ? t("Remote") : t("Local")}
               />
             </Tooltip>
 

@@ -15,15 +15,20 @@ export const Route = createFileRoute("/settings")({
   component: SettingPage,
 });
 
+function SettingPage() {
+  const { t } = useTranslation();
+
+  const Component = lazy(() => import("@/components/setting/setting-page"));
+
 const GithubIcon = () => {
   const toGithubRepo = useLockFn(() => {
-    return openThat("https://github.com/LibNyanpasu/clash-nyanpasu");
+    return openThat("https://github.com/libnyanpasu/clash-nyanpasu");
   });
 
   return (
     <IconButton
       color="inherit"
-      title="@keiko233/clash-nyanpasu"
+      title="@libnyanpasu/clash-nyanpasu"
       onClick={toGithubRepo}
     >
       <GitHub fontSize="inherit" />
@@ -41,12 +46,12 @@ const FeedbackIcon = () => {
         .join("\n"),
     );
     return openThat(
-      "https://github.com/LibNyanpasu/clash-nyanpasu/issues/new?assignees=&labels=T%3A+Bug%2CS%3A+Untriaged&projects=&template=bug_report.yaml&env_infos=" +
+      "https://github.com/libnyanpasu/clash-nyanpasu/issues/new?assignees=&labels=T%3A+Bug%2CS%3A+Untriaged&projects=&template=bug_report.yaml&env_infos=" +
         formattedEnv,
     );
   });
   return (
-    <IconButton color="inherit" title="Feedback" onClick={toFeedback}>
+    <IconButton color="inherit" title={t("Feedback")} onClick={toFeedback}>
       <Feedback fontSize="inherit" />
     </IconButton>
   );
@@ -58,7 +63,11 @@ const HotkeyButton = () => {
   return (
     <>
       <HotkeyDialog open={open} onClose={() => setOpen(false)} />
-      <IconButton color="inherit" title="Hotkeys" onClick={() => setOpen(true)}>
+      <IconButton
+        color="inherit"
+        title={t("Hotkeys")}
+        onClick={() => setOpen(true)}
+      >
         <Keyboard fontSize="inherit" />
       </IconButton>
     </>
@@ -73,7 +82,7 @@ const TrayIconButton = () => {
       <TrayIconDialog open={open} onClose={() => setOpen(false)} />
       <IconButton
         color="inherit"
-        title="Tray Icons"
+        title={t("Tray Icons")}
         onClick={() => setOpen(true)}
       >
         <MdiTrayFull fontSize="inherit" />
@@ -81,11 +90,6 @@ const TrayIconButton = () => {
     </>
   );
 };
-
-function SettingPage() {
-  const { t } = useTranslation();
-
-  const Component = lazy(() => import("@/components/setting/setting-page"));
 
   return (
     <BasePage

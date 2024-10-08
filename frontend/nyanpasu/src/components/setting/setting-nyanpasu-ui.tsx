@@ -34,7 +34,7 @@ export const SettingNyanpasuUI = () => {
   const [onlyIcon, setOnlyIcon] = useAtom(atomIsDrawerOnlyIcon);
 
   return (
-    <BaseCard label="User Interface">
+    <BaseCard label={t("User Interface")}>
       <List disablePadding>
         <MenuItem
           label={t("Language")}

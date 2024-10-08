@@ -129,7 +129,7 @@ export const SettingSystemService = () => {
   };
 
   return (
-    <BaseCard label="System Service">
+    <BaseCard label={t("System Service")}>
       <ServerManualPromptDialogWrapper />
       <List disablePadding>
         <SwitchItem

@@ -30,18 +30,18 @@ const TitleComp = () => {
 
       if (port == clashConfigs?.["mixed-port"]) {
         return {
-          label: "Success",
+          label: t("Success"),
           color: "success",
         };
       } else {
         return {
-          label: "Occupied",
+          label: t("Occupied"),
           color: "warning",
         };
       }
     } else {
       return {
-        label: "Disabled",
+        label: t("Disabled"),
         color: "error",
       };
     }

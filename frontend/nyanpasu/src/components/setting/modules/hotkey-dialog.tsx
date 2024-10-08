@@ -139,7 +139,7 @@ export default function HotkeyDialog({
 
   return (
     <BaseDialog
-      title={t("Hotkeys Setting")}
+      title={t("Hotkey Setting")}
       open={open}
       onClose={onClose}
       {...rest}

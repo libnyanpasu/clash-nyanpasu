@@ -218,7 +218,7 @@ export const ProfileDialog = ({
             />
 
             <TextFieldElement
-              label="User Agent"
+              label={t("User Agent")}
               name="option.user_agent"
               control={control}
               {...commonProps}

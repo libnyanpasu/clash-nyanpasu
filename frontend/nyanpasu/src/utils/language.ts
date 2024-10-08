@@ -1,5 +1,5 @@
 export const languageOptions = {
-  zh: "中文",
+  zh: "简体中文",
   en: "English",
   ru: "Русский",
 };

@@ -98,7 +98,7 @@ export const SettingClashBase = () => {
             <ListItemText primary={t("Open UWP tool")} />
 
             <Button variant="contained" onClick={clickUWP}>
-              Open
+              {t("Open")}
             </Button>
           </ListItem>
         )}

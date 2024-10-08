@@ -73,31 +73,31 @@ impl ProfilesJobGuard {
         self.refresh();
         let cur_timestamp = chrono::Local::now().timestamp();
         let task_map = &self.task_map;
-        let items = &Config::profiles().latest().items;
-        if let Some(items) = items {
-            items
-                .iter()
-                .filter_map(|item| {
-                    if !item.is_remote() {
-                        return None;
-                    }
-                    let item = item.as_remote().unwrap();
-                    // mins to seconds
-                    let interval = ((item.option.update_interval) as i64) * 60;
-                    let updated = item.updated() as i64;
 
-                    if interval > 0 && cur_timestamp - updated >= interval {
-                        Some(item)
-                    } else {
-                        None
-                    }
-                })
-                .for_each(|item| {
-                    if let Some((task_id, _)) = task_map.get(item.uid()) {
-                        crate::log_err!(TaskManager::global().write().advance_task(*task_id));
-                    }
-                })
-        }
+        Config::profiles()
+            .latest()
+            .items
+            .iter()
+            .filter_map(|item| {
+                if !item.is_remote() {
+                    return None;
+                }
+                let item = item.as_remote().unwrap();
+                // mins to seconds
+                let interval = ((item.option.update_interval) as i64) * 60;
+                let updated = item.updated() as i64;
+
+                if interval > 0 && cur_timestamp - updated >= interval {
+                    Some(item)
+                } else {
+                    None
+                }
+            })
+            .for_each(|item| {
+                if let Some((task_id, _)) = task_map.get(item.uid()) {
+                    crate::log_err!(TaskManager::global().write().advance_task(*task_id));
+                }
+            });
 
         Ok(())
     }
@@ -165,17 +165,17 @@ impl ProfilesJobGuard {
 fn gen_map() -> HashMap<ProfileUID, Minutes> {
     let mut new_map = HashMap::new();
 
-    if let Some(items) = Config::profiles().latest().get_items() {
-        items
-            .iter()
-            .filter_map(|item| item.as_remote())
-            .for_each(|item| {
-                let interval = item.option.update_interval;
-                if interval > 0 {
-                    new_map.insert(item.uid().to_string(), interval);
-                }
-            });
-    }
+    Config::profiles()
+        .latest()
+        .get_items()
+        .iter()
+        .filter_map(|item| item.as_remote())
+        .for_each(|item| {
+            let interval = item.option.update_interval;
+            if interval > 0 {
+                new_map.insert(item.uid().to_string(), interval);
+            }
+        });
 
     new_map
 }

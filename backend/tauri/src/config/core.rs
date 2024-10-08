@@ -86,12 +86,12 @@ impl Config {
 
     /// 生成配置存好
     pub async fn generate() -> Result<()> {
-        let (config, exists_keys, logs) = enhance::enhance().await;
+        let (config, exists_keys, postprocessing_outputs) = enhance::enhance().await;
 
         *Config::runtime().draft() = IRuntime {
             config: Some(config),
             exists_keys,
-            chain_logs: logs,
+            postprocessing_output: postprocessing_outputs,
         };
 
         Ok(())

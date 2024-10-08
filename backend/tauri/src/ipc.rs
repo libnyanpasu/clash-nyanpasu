@@ -1,7 +1,7 @@
 use crate::{
     config::*,
     core::{tasks::jobs::ProfilesJobGuard, updater::ManifestVersionLatest, *},
-    enhance::Logs,
+    enhance::{Logs, PostProcessingOutput},
     feat,
     utils::{
         candy,
@@ -190,8 +190,8 @@ pub async fn delete_profile(uid: String) -> Result {
 
 /// 修改profiles的
 #[tauri::command]
-pub async fn patch_profiles_config(profiles: Profiles) -> Result {
-    ({ Config::profiles().draft().patch_config(profiles) })?;
+pub async fn patch_profiles_config(profiles: ProfilesBuilder) -> Result {
+    ({ Config::profiles().draft().apply(profiles) });
 
     match CoreManager::global().update_config().await {
         Ok(_) => {
@@ -221,14 +221,21 @@ pub async fn patch_profile(uid: String, profile: Mapping) -> Result {
         let profiles = Config::profiles();
         let profiles = profiles.latest();
         match (&profiles.chain, &profiles.current) {
-            (Some(chains), _) if chains.contains(&uid) => true,
-            (_, Some(current_chain)) if current_chain == &uid => true,
-            (_, Some(current_chain)) => match profiles.get_item(current_chain) {
-                Ok(item) if item.is_local() => item.as_local().unwrap().chains.contains(&uid),
-                Ok(item) if item.is_remote() => item.as_local().unwrap().chains.contains(&uid),
-                _ => false,
-            },
-            _ => false,
+            (chains, _) if chains.contains(&uid) => true,
+            (_, current_chain) if current_chain.contains(&uid) => true,
+            (_, current_chain) => {
+                current_chain
+                    .iter()
+                    .any(|chain_uid| match profiles.get_item(chain_uid) {
+                        Ok(item) if item.is_local() => {
+                            item.as_local().unwrap().chains.contains(&uid)
+                        }
+                        Ok(item) if item.is_remote() => {
+                            item.as_local().unwrap().chains.contains(&uid)
+                        }
+                        _ => false,
+                    })
+            }
         }
     };
     if need_update {
@@ -321,8 +328,8 @@ pub fn get_runtime_exists() -> Result<Vec<String>> {
 }
 
 #[tauri::command]
-pub fn get_runtime_logs() -> Result<IndexMap<String, Logs>> {
-    Ok(Config::runtime().latest().chain_logs.clone())
+pub fn get_postprocessing_output() -> Result<PostProcessingOutput> {
+    Ok(Config::runtime().latest().postprocessing_output.clone())
 }
 
 #[tauri::command]

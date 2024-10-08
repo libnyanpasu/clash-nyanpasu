@@ -368,7 +368,7 @@ pub async fn update_profile<T: Borrow<String>>(
         let committer = Config::profiles().auto_commit();
         let mut profiles = committer.draft();
         profiles.replace_item(uid, item.into())?;
-        Some(uid) == profiles.get_current().as_ref()
+        profiles.get_current().contains(uid)
     } else {
         false
     };

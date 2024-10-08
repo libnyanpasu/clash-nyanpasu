@@ -1348,6 +1348,7 @@ dependencies = [
  "port_scanner",
  "pretty_assertions",
  "rand 0.8.5",
+ "rayon",
  "redb",
  "regex",
  "relative-path",

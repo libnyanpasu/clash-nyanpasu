@@ -239,7 +239,7 @@ fn do_filter(logs: &mut Logs, config: &mut Value, field_str: &str, filter: &Valu
 }
 
 #[instrument(skip(merge, config))]
-pub fn use_merge(merge: Mapping, mut config: Mapping) -> ProcessOutput {
+pub fn use_merge(merge: &Mapping, mut config: Mapping) -> ProcessOutput {
     tracing::trace!("original config: {:#?}", config);
     tracing::trace!("merge: {:#?}", merge);
     let mut logs = Logs::new();
@@ -381,7 +381,7 @@ mod tests {
         ";
         let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
         let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
-        let (result, logs) = super::use_merge(merge, config);
+        let (result, logs) = super::use_merge(&merge, config);
         eprintln!("{:#?}\n\n{:#?}", logs, result);
         let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
         assert_eq!(logs.len(), 1); // field not found: nothing
@@ -425,7 +425,7 @@ mod tests {
         ";
         let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
         let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
-        let (result, logs) = super::use_merge(merge, config);
+        let (result, logs) = super::use_merge(&merge, config);
         eprintln!("{:#?}\n\n{:#?}", logs, result);
         let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
         assert_eq!(logs.len(), 1); // field not found: nothing
@@ -468,7 +468,7 @@ mod tests {
         ";
         let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
         let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
-        let (result, logs) = super::use_merge(merge, config);
+        let (result, logs) = super::use_merge(&merge, config);
         eprintln!("{:#?}\n\n{:#?}", logs, result);
         let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
         assert_eq!(logs.len(), 1); // field not found: nothing
@@ -565,7 +565,7 @@ mod tests {
         "#;
         let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
         let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
-        let (result, logs) = super::use_merge(merge, config);
+        let (result, logs) = super::use_merge(&merge, config);
         eprintln!("{:#?}\n\n{:#?}", logs, result);
         assert!(logs.len() == 1, "filter_wow should not work");
         let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
@@ -650,7 +650,7 @@ mod tests {
   - US"#;
         let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
         let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
-        let (result, logs) = super::use_merge(merge, config);
+        let (result, logs) = super::use_merge(&merge, config);
         eprintln!("{:#?}\n\n{:#?}", logs, result);
         assert_eq!(logs.len(), 1);
         let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
@@ -715,7 +715,7 @@ mod tests {
         "#;
         let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
         let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
-        let (result, logs) = super::use_merge(merge, config);
+        let (result, logs) = super::use_merge(&merge, config);
         eprintln!("{:#?}\n\n{:#?}", logs, result);
         assert_eq!(logs.len(), 0);
         let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
@@ -798,7 +798,7 @@ mod tests {
   - US"#;
         let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
         let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
-        let (result, logs) = super::use_merge(merge, config);
+        let (result, logs) = super::use_merge(&merge, config);
         eprintln!("{:#?}\n\n{:#?}", logs, result);
         assert_eq!(logs.len(), 1);
         let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
@@ -932,7 +932,7 @@ mod tests {
         "#;
         let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
         let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
-        let (result, logs) = super::use_merge(merge, config);
+        let (result, logs) = super::use_merge(&merge, config);
         eprintln!("{:#?}\n\n{:#?}", logs, result);
         assert_eq!(logs.len(), 0);
         let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
@@ -1021,7 +1021,7 @@ mod tests {
   - US"#;
         let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
         let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
-        let (result, logs) = super::use_merge(merge, config);
+        let (result, logs) = super::use_merge(&merge, config);
         eprintln!("{:#?}\n\n{:#?}", logs, result);
         assert_eq!(logs.len(), 0);
         let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
@@ -1053,7 +1053,7 @@ mod tests {
         let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
         let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
 
-        let (result, logs) = super::use_merge(merge, config);
+        let (result, logs) = super::use_merge(&merge, config);
         eprintln!("{:#?}\n\n{:#?}", logs, result);
         assert_eq!(logs.len(), 0);
         let expected = r#"

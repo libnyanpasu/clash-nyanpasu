@@ -1,8 +1,7 @@
-use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 
-use crate::enhance::Logs;
+use crate::enhance::PostProcessingOutput;
 
 pub const RUNTIME_PATCHABLE_KEYS: [&str; 4] = ["allow-lan", "ipv6", "log-level", "mode"];
 
@@ -12,7 +11,7 @@ pub struct IRuntime {
     // 记录在配置中（包括merge和script生成的）出现过的keys
     // 这些keys不一定都生效
     pub exists_keys: Vec<String>,
-    pub chain_logs: IndexMap<String, Logs>,
+    pub postprocessing_output: PostProcessingOutput,
 }
 
 impl IRuntime {

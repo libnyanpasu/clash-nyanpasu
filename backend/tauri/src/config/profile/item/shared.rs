@@ -160,7 +160,7 @@ impl ProfileSharedSetter for ProfileShared {
     }
 }
 
-pub(super) fn deserialize_single_or_vec<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+pub fn deserialize_single_or_vec<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
 where
     D: serde::Deserializer<'de>,
     T: FromStr,

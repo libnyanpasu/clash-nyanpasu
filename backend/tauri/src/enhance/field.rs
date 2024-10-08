@@ -1,5 +1,5 @@
 use serde_yaml::{Mapping, Value};
-use std::collections::HashSet;
+use std::{ascii::AsciiExt, collections::HashSet};
 
 pub const HANDLE_FIELDS: [&str; 9] = [
     "mode",
@@ -64,18 +64,20 @@ pub fn use_clash_fields() -> Vec<String> {
         .collect()
 }
 
-pub fn use_valid_fields(mut valid: Vec<String>) -> Vec<String> {
+pub fn use_valid_fields(valid: &[String]) -> Vec<String> {
     let others = Vec::from(OTHERS_FIELDS);
 
-    valid.iter_mut().for_each(|s| s.make_ascii_lowercase());
     valid
         .into_iter()
+        .cloned()
+        .map(|s| s.to_ascii_lowercase())
         .filter(|s| others.contains(&s.as_str()))
         .chain(DEFAULT_FIELDS.iter().map(|s| s.to_string()))
         .collect()
 }
 
-pub fn use_filter(config: Mapping, filter: &[String], enable: bool) -> Mapping {
+/// 使用白名单过滤配置字段
+pub fn use_whitelist_fields_filter(config: Mapping, filter: &[String], enable: bool) -> Mapping {
     if !enable {
         return config;
     }

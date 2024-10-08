@@ -1,16 +1,34 @@
 use crate::{
     config::{
         nyanpasu::ClashCore,
-        profile::{item::prelude::*, item_type::ProfileItemType},
+        profile::{
+            item::prelude::*,
+            item_type::{ProfileItemType, ProfileUid},
+        },
         Profile,
     },
     utils::{dirs, help},
 };
 use enumflags2::{BitFlag, BitFlags};
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 use std::fs;
 use strum::EnumString;
+
+use super::Logs;
+
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+/// 后处理输出
+pub struct PostProcessingOutput {
+    /// 局部链的输出
+    pub scopes: IndexMap<ProfileUid, IndexMap<ProfileUid, Logs>>,
+    /// 全局链的输出
+    pub global: IndexMap<ProfileUid, Logs>,
+    /// 根据配置进行的分析建议
+    pub advice: Logs,
+    // TODO: 增加 Meta 信息
+}
 
 #[derive(Debug, Clone)]
 pub struct ChainItem {

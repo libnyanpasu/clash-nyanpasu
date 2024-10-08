@@ -82,7 +82,7 @@ impl Profiles {
     /// find the item by the uid
     pub fn get_item(&self, uid: &str) -> Result<&Profile> {
         self.get_items()
-            .into_iter()
+            .iter()
             .find(|e| e.uid() == uid)
             .ok_or_else(|| anyhow::anyhow!("failed to get the profile item \"uid:{uid}\""))
     }
@@ -216,10 +216,7 @@ impl Profiles {
         let is_current = self.current != current;
         // 尝试激活存在的第一个配置
         if current.is_empty() {
-            let item = items
-                .iter()
-                .filter(|e| e.is_local() || e.is_remote())
-                .next();
+            let item = items.iter().find(|e| e.is_local() || e.is_remote());
             if let Some(item) = item {
                 current.push(item.uid().to_string());
             }

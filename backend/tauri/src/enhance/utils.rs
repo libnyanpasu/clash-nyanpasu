@@ -1,12 +1,10 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use serde_yaml::{Mapping, Sequence};
+use serde_yaml::Mapping;
 
 use crate::config::profile::{item_type::ProfileUid, profiles::Profiles};
 
-use super::{
-    use_keys, use_merge, use_whitelist_fields_filter, ChainItem, ChainTypeWrapper, RunnerManager,
-};
+use super::{use_keys, use_merge, ChainItem, ChainTypeWrapper, RunnerManager};
 use parking_lot::Mutex;
 use std::{borrow::Borrow, sync::Arc};
 
@@ -99,11 +97,11 @@ pub async fn process_chain(
     let mut exists_keys = vec![];
 
     let mut script_runner = RunnerManager::new();
-    for item in nodes.into_iter() {
+    for item in nodes.iter() {
         match &item.data {
             ChainTypeWrapper::Merge(merge) => {
                 let mut logs = vec![];
-                exists_keys.extend(use_keys(&merge));
+                exists_keys.extend(use_keys(merge));
                 let (res, process_logs) = use_merge(merge, config.to_owned());
                 config = res.unwrap();
                 logs.extend(process_logs);

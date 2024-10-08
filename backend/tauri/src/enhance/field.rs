@@ -68,7 +68,7 @@ pub fn use_valid_fields(valid: &[String]) -> Vec<String> {
     let others = Vec::from(OTHERS_FIELDS);
 
     valid
-        .into_iter()
+        .iter()
         .cloned()
         .map(|s| s.to_ascii_lowercase())
         .filter(|s| others.contains(&s.as_str()))

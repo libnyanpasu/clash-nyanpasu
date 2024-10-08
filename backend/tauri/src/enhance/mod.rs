@@ -42,7 +42,7 @@ pub async fn enhance() -> (Mapping, Vec<String>, PostProcessingOutput) {
         let profile_chain_mapping = profiles
             .get_current()
             .iter()
-            .filter_map(|uid| profiles.get_item(&uid).ok())
+            .filter_map(|uid| profiles.get_item(uid).ok())
             .map(|item| {
                 (
                     item.uid().to_string(),

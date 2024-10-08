@@ -1,7 +1,7 @@
 use crate::{
     config::*,
     core::{tasks::jobs::ProfilesJobGuard, updater::ManifestVersionLatest, *},
-    enhance::{Logs, PostProcessingOutput},
+    enhance::PostProcessingOutput,
     feat,
     utils::{
         candy,
@@ -12,7 +12,6 @@ use crate::{
 };
 use anyhow::{anyhow, Context};
 use chrono::Local;
-use indexmap::IndexMap;
 use log::debug;
 use nyanpasu_ipc::api::status::CoreState;
 use profile::item_type::ProfileItemType;
@@ -191,7 +190,7 @@ pub async fn delete_profile(uid: String) -> Result {
 /// 修改profiles的
 #[tauri::command]
 pub async fn patch_profiles_config(profiles: ProfilesBuilder) -> Result {
-    ({ Config::profiles().draft().apply(profiles) });
+    Config::profiles().draft().apply(profiles);
 
     match CoreManager::global().update_config().await {
         Ok(_) => {

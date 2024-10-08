@@ -111,23 +111,30 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
       header: t("Download"),
       size: 88,
       accessorFn: ({ download }) => parseTraffic(download).join(" "),
+      sortingFn: (rowA, rowB) =>
+        rowB.original.download - rowA.original.download,
     },
     {
       header: t("Upload"),
       size: 88,
       accessorFn: ({ upload }) => parseTraffic(upload).join(" "),
+      sortingFn: (rowA, rowB) => rowB.original.upload - rowA.original.upload,
     },
     {
       header: t("DL Speed"),
       size: 88,
       accessorFn: ({ downloadSpeed }) =>
         parseTraffic(downloadSpeed).join(" ") + "/s",
+      sortingFn: (rowA, rowB) =>
+        (rowA.original.downloadSpeed || 0) - (rowB.original.downloadSpeed || 0),
     },
     {
       header: t("UL Speed"),
       size: 88,
       accessorFn: ({ uploadSpeed }) =>
         parseTraffic(uploadSpeed).join(" ") + "/s",
+      sortingFn: (rowA, rowB) =>
+        (rowA.original.uploadSpeed || 0) - (rowB.original.uploadSpeed || 0),
     },
     {
       header: t("Chains"),
@@ -144,6 +151,8 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
       header: t("Time"),
       size: 120,
       accessorFn: ({ start }) => dayjs(start).fromNow(),
+      sortingFn: (rowA, rowB) =>
+        dayjs(rowB.original.start).diff(rowA.original.start),
     },
     {
       header: "Source",

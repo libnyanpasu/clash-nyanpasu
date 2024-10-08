@@ -27,7 +27,7 @@ pub trait RemoteProfileSubscription {
     async fn subscribe(&mut self, opts: Option<RemoteProfileOptionsBuilder>) -> anyhow::Result<()>;
 }
 
-#[derive(Default, Delegate, Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate)]
+#[derive(Delegate, Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate)]
 #[builder(derive(Serialize, Deserialize))]
 #[builder(build_fn(skip, error = "RemoteProfileBuilderError"))]
 #[builder_update(patch_fn = "apply")]
@@ -43,13 +43,12 @@ pub struct RemoteProfile {
     #[builder_field_attr(serde(flatten))]
     #[builder_update(nested)]
     pub shared: ProfileShared,
-    /// subscription urls, the first one is the main url, others proxies should be merged
-    #[serde(deserialize_with = "deserialize_single_or_vec")]
-    pub url: Vec<Url>,
+    /// subscription url
+    pub url: Url,
     /// subscription user info
     #[builder(default)]
     #[serde(default)]
-    pub extra: IndexMap<Url, SubscriptionInfo>,
+    pub extra: SubscriptionInfo,
     /// remote profile options
     #[builder(field(
         ty = "RemoteProfileOptionsBuilder",
@@ -75,12 +74,10 @@ impl RemoteProfileSubscription for RemoteProfile {
         if let Some(partial) = partial {
             opts.apply(partial);
         }
-        let subscriptions = subscribe_urls(&self.url, &opts).await?;
-        let (data, extra) = merge_subscription(&subscriptions);
-        self.extra.clear(); // remove the old extra
-        self.extra.extend(extra);
+        let subscription = subscribe_url(&self.url, &opts).await?;
+        self.extra = subscription.info;
 
-        let content = serde_yaml::to_string(&data)?;
+        let content = serde_yaml::to_string(&subscription.data)?;
         self.write_file(content).await?;
         self.set_updated(chrono::Local::now().timestamp() as usize);
         Ok(())
@@ -351,7 +348,7 @@ impl RemoteProfileBuilder {
     }
 
     fn validate(&self) -> Result<(), RemoteProfileBuilderError> {
-        if self.url.is_none() || self.url.as_ref().is_some_and(|v| v.is_empty()) {
+        if self.url.is_none() {
             return Err(RemoteProfileBuilderError::Validation(
                 "url should not be null".into(),
             ));
@@ -369,18 +366,15 @@ impl RemoteProfileBuilder {
             .option
             .build()
             .map_err(|e| RemoteProfileBuilderError::Validation(e.to_string()))?;
-        // merge subscriptions and merge into the profile
-        let mut subscriptions = subscribe_urls(&url, &options).await?;
-        let (data, extra_sub) = merge_subscription(&subscriptions);
-        extra.extend(extra_sub);
+        let mut subscription = subscribe_url(&url, &options).await?;
+        extra = subscription.info;
 
-        let first_sub = subscriptions.first_mut().unwrap();
-        if self.shared.get_name().is_none() && first_sub.filename.is_some() {
-            self.shared.name(first_sub.filename.take().unwrap());
+        if self.shared.get_name().is_none() && subscription.filename.is_some() {
+            self.shared.name(subscription.filename.take().unwrap());
         }
-        if self.option.get_update_interval().is_none() && first_sub.opts.is_some() {
+        if self.option.get_update_interval().is_none() && subscription.opts.is_some() {
             self.option
-                .update_interval(first_sub.opts.take().unwrap().update_interval);
+                .update_interval(subscription.opts.take().unwrap().update_interval);
         }
 
         let profile = RemoteProfile {
@@ -397,7 +391,7 @@ impl RemoteProfileBuilder {
         profile
             .shared
             .write_file(
-                serde_yaml::to_string(&data)
+                serde_yaml::to_string(&subscription.data)
                     .map_err(|e| RemoteProfileBuilderError::Validation(e.to_string()))?,
             )
             .await?;

@@ -102,6 +102,10 @@ pub async fn enhance() -> (Mapping, Vec<String>, PostProcessingOutput) {
     let (mut config, global_chain_output) = process_chain(config, &global_chain).await;
     postprocessing_output.global = global_chain_output;
 
+    // 记录当前配置包含的键
+    let mut exists_keys = use_keys(&config);
+    config = use_whitelist_fields_filter(config, &valid, enable_filter);
+
     // 合并默认的config
     clash_config
         .iter()
@@ -138,9 +142,6 @@ pub async fn enhance() -> (Mapping, Vec<String>, PostProcessingOutput) {
             }
         }
     }
-
-    // 记录当前配置包含的键
-    let mut exists_keys = use_keys(&config);
 
     config = use_whitelist_fields_filter(config, &clash_fields, enable_filter);
     config = use_tun(config, enable_tun);

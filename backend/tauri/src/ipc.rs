@@ -85,7 +85,7 @@ pub async fn enhance_profiles() -> Result {
 pub async fn import_profile(url: String, option: Option<RemoteProfileOptionsBuilder>) -> Result {
     let url = url::Url::parse(&url).context("failed to parse the url")?;
     let mut builder = crate::config::profile::item::RemoteProfileBuilder::default();
-    builder.url(vec![url]);
+    builder.url(url);
     if let Some(option) = option {
         builder.option(option.clone());
     }

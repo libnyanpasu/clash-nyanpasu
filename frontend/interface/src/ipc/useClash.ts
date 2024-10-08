@@ -41,7 +41,7 @@ export const useClash = () => {
     await getRuntimeLogs.mutate();
   };
 
-  const setProfilesConfig = async (profiles: Profile.Config) => {
+  const setProfilesConfig = async (profiles: Partial<Profile.Config>) => {
     await tauri.setProfilesConfig(profiles);
 
     await getProfiles.mutate();

@@ -76,10 +76,10 @@ export interface ClashConfig {
 
 export namespace Profile {
   export interface Config {
-    current?: string;
-    chain?: string[];
-    valid?: string[];
-    items?: Item[];
+    current: string[];
+    chain: string[];
+    valid: string[];
+    items: Item[];
   }
 
   export const Template = {

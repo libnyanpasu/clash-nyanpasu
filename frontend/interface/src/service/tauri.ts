@@ -66,7 +66,7 @@ export const setProfiles = async (payload: {
   return await invoke<void>("patch_profile", payload);
 };
 
-export const setProfilesConfig = async (profiles: Profile.Config) => {
+export const setProfilesConfig = async (profiles: Partial<Profile.Config>) => {
   return await invoke<void>("patch_profiles_config", { profiles });
 };
 

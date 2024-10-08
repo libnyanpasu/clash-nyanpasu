@@ -1,5 +1,5 @@
 use serde_yaml::{Mapping, Value};
-use std::{ascii::AsciiExt, collections::HashSet};
+use std::collections::HashSet;
 
 pub const HANDLE_FIELDS: [&str; 9] = [
     "mode",

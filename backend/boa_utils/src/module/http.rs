@@ -93,6 +93,7 @@ impl ModuleLoader for HttpModuleLoader {
     }
 }
 
+#[allow(dead_code)]
 fn main() -> JsResult<()> {
     // A simple snippet that imports modules from the web instead of the file system.
     const SRC: &str = r#"

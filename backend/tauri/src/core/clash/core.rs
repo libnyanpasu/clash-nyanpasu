@@ -288,6 +288,7 @@ impl Instance {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn restart(&self) -> Result<()> {
         let state = self.state().await;
         if matches!(state.as_ref(), CoreState::Running) {

@@ -1,8 +1,7 @@
 use super::{
     ambassador_impl_ProfileFileIo, ambassador_impl_ProfileSharedGetter,
-    ambassador_impl_ProfileSharedSetter, shared::deserialize_single_or_vec, ProfileCleanup,
-    ProfileFileIo, ProfileHelper, ProfileShared, ProfileSharedBuilder, ProfileSharedGetter,
-    ProfileSharedSetter,
+    ambassador_impl_ProfileSharedSetter, ProfileCleanup, ProfileFileIo, ProfileHelper,
+    ProfileShared, ProfileSharedBuilder, ProfileSharedGetter, ProfileSharedSetter,
 };
 use crate::{
     config::{
@@ -362,13 +361,12 @@ impl RemoteProfileBuilder {
         self.validate()?;
         self.shared.r#type(ProfileItemType::Remote);
         let url = self.url.take().unwrap();
-        let mut extra = self.extra.take().unwrap_or_default();
         let options = self
             .option
             .build()
             .map_err(|e| RemoteProfileBuilderError::Validation(e.to_string()))?;
         let mut subscription = subscribe_url(&url, &options).await?;
-        extra = subscription.info;
+        let extra = subscription.info;
 
         if self.shared.get_name().is_none() && subscription.filename.is_some() {
             self.shared.name(subscription.filename.take().unwrap());

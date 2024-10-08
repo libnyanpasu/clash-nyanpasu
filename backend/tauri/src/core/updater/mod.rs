@@ -127,7 +127,7 @@ impl ManifestVersion {
                     .get(arch)?
                     .clone()
                     .replace("{}", &self.latest.clash_rs_alpha),
-                CoreTypeMeta::ClashRs(self.latest.clash_rs_alpha.clone()),
+                CoreTypeMeta::ClashRsAlpha,
             )),
         }
     }

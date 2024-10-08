@@ -102,27 +102,6 @@ pub fn app_data_dir() -> Result<PathBuf> {
     })
 }
 
-pub fn old_app_home_dir() -> Result<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        if !get_portable_flag() {
-            Ok(dirs::home_dir()
-                .ok_or(anyhow::anyhow!("failed to check old app home dir"))?
-                .join(".config")
-                .join(PREVIOUS_APP_NAME))
-        } else {
-            let app_dir = app_install_dir()?;
-            Ok(app_dir.join(".config").join(PREVIOUS_APP_NAME))
-        }
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    Ok(dirs::home_dir()
-        .ok_or(anyhow::anyhow!("failed to get the app home dir"))?
-        .join(".config")
-        .join(PREVIOUS_APP_NAME))
-}
-
 /// get the verge app home dir
 #[deprecated(
     since = "1.6.0",
@@ -236,24 +215,6 @@ pub fn tray_icons_path(mode: &str) -> Result<PathBuf> {
         fs::create_dir_all(&icons_dir)?;
     }
     Ok(icons_dir.join(format!("{mode}.png")))
-}
-
-#[cfg(windows)]
-#[deprecated(
-    since = "1.6.0",
-    note = "should use nyanpasu_utils::dirs::suggest_service_{config|data}_dir instead"
-)]
-pub fn service_dir() -> Result<PathBuf> {
-    Ok(app_home_dir()?.join("service"))
-}
-
-#[cfg(windows)]
-#[deprecated(
-    since = "1.6.0",
-    note = "should use nyanpasu_utils::dirs::suggest_service_data_dir instead"
-)]
-pub fn service_path() -> Result<PathBuf> {
-    Ok(service_dir()?.join("clash-verge-service.exe"))
 }
 
 #[cfg(windows)]

@@ -55,6 +55,7 @@ pub struct RemoteProfile {
         build = "self.option.build().map_err(Into::into)?"
     ))]
     #[builder_update(nested)]
+    #[builder_field_attr(serde(default))]
     pub option: RemoteProfileOptions,
     /// process chains
     #[builder(default)]

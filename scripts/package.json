@@ -4,7 +4,7 @@
   "version": "1.6.1",
   "dependencies": {
     "@actions/github": "6.0.0",
-    "@types/figlet": "1.5.8",
+    "@types/figlet": "1.7.0",
     "figlet": "1.7.0",
     "p-retry": "6.2.0"
   },

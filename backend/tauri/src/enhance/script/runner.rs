@@ -70,7 +70,7 @@ impl RunnerManager {
 
     pub async fn process_script(
         &mut self,
-        script: ScriptWrapper,
+        script: &ScriptWrapper,
         config: Mapping,
     ) -> ProcessOutput {
         let runner = wrap_result!(self.get_or_init_runner(&script.0));

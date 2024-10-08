@@ -3,7 +3,8 @@
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
 )]
-
+// This lint was needed by ambassador
+#![allow(clippy::duplicated_attributes)]
 mod cmds;
 mod config;
 mod consts;
@@ -256,7 +257,7 @@ pub fn run() -> std::io::Result<()> {
             ipc::get_runtime_config,
             ipc::get_runtime_yaml,
             ipc::get_runtime_exists,
-            ipc::get_runtime_logs,
+            ipc::get_postprocessing_output,
             ipc::clash_api_get_proxy_delay,
             ipc::uwp::invoke_uwp_tool,
             // updater

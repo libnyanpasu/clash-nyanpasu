@@ -4,11 +4,14 @@ use semver::Version;
 use std::{borrow::Cow, collections::HashMap};
 
 mod unit_160;
+mod unit_200;
 
 pub static UNITS: Lazy<HashMap<&'static Version, Unit<'static, DynMigration>>> = Lazy::new(|| {
     let mut units: HashMap<&'static Version, Unit<'static, DynMigration>> = HashMap::new();
     let unit = Unit::Batch(Cow::Borrowed(&unit_160::UNITS));
     units.insert(unit.version(), unit);
+    // let unit = Unit::Batch(Cow::Borrowed(&unit_200::UNITS));
+    // units.insert(unit.version(), unit);
     units
 });
 

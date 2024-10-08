@@ -2,6 +2,7 @@ use crate::utils::{dirs, help};
 use anyhow::Result;
 // use log::LevelFilter;
 use enumflags2::bitflags;
+use nyanpasu_macro::VergePatch;
 use serde::{Deserialize, Serialize};
 mod clash_strategy;
 pub mod logging;
@@ -127,7 +128,8 @@ impl AsRef<str> for TunStack {
 }
 
 /// ### `verge.yaml` schema
-#[derive(Default, Debug, Clone, Deserialize, Serialize)]
+#[derive(Default, Debug, Clone, Deserialize, Serialize, VergePatch)]
+#[verge(patch_fn = "patch_config")]
 pub struct IVerge {
     /// app listening port for app singleton
     pub app_singleton_port: Option<u16>,
@@ -278,7 +280,7 @@ impl IVerge {
         match dirs::nyanpasu_config_path().and_then(|path| help::read_yaml::<IVerge>(&path)) {
             Ok(config) => Self::merge_with_template(config),
             Err(err) => {
-                log::error!(target: "app", "{err}");
+                log::error!(target: "app", "{err:?}");
                 Self::template()
             }
         }
@@ -350,55 +352,5 @@ impl IVerge {
             &self,
             Some("# Clash Nyanpasu Config"),
         )
-    }
-
-    /// patch verge config
-    /// only save to file
-    pub fn patch_config(&mut self, patch: IVerge) {
-        macro_rules! patch {
-            ($key: tt) => {
-                if patch.$key.is_some() {
-                    self.$key = patch.$key;
-                }
-            };
-        }
-
-        patch!(app_log_level);
-        patch!(language);
-        patch!(theme_mode);
-        patch!(theme_blur);
-        patch!(traffic_graph);
-        patch!(enable_memory_usage);
-        patch!(lighten_animation_effects);
-        patch!(enable_auto_check_update);
-
-        patch!(enable_tun_mode);
-        patch!(enable_service_mode);
-        patch!(enable_auto_launch);
-        patch!(enable_silent_start);
-        patch!(enable_system_proxy);
-        patch!(enable_random_port);
-        patch!(verge_mixed_port);
-        patch!(enable_proxy_guard);
-        patch!(system_proxy_bypass);
-        patch!(proxy_guard_duration);
-
-        patch!(theme_setting);
-        patch!(web_ui_list);
-        patch!(clash_core);
-        patch!(hotkeys);
-
-        patch!(auto_close_connection);
-        patch!(default_latency_test);
-        patch!(enable_builtin_enhanced);
-        patch!(proxy_layout_column);
-        patch!(enable_clash_fields);
-
-        patch!(max_log_files);
-        patch!(window_size_state);
-        patch!(clash_strategy);
-        patch!(clash_tray_selector);
-        patch!(tun_stack);
-        patch!(always_on_top);
     }
 }

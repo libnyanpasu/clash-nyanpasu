@@ -81,7 +81,7 @@ pub fn clear_logs() -> Result<()> {
                 let _ = process_file(file);
             }
             Err(err) => {
-                log::error!(target: "app", "read log dir error: {err}");
+                log::error!(target: "app", "read log dir error: {err:?}");
             }
         }
     }

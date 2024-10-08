@@ -114,7 +114,7 @@ export const SettingClashField = () => {
   };
 
   const updateFiled = async (key: string) => {
-    const getFileds = (): string[] => {
+    const getFields = (): string[] => {
       const valid = getProfiles.data?.valid ?? [];
 
       if (valid.includes(key)) {
@@ -126,7 +126,7 @@ export const SettingClashField = () => {
       }
     };
 
-    await setProfilesConfig({ valid: getFileds() });
+    await setProfilesConfig({ valid: getFields() });
   };
 
   return (
@@ -137,14 +137,14 @@ export const SettingClashField = () => {
 
       <Grid container spacing={2}>
         {Object.entries(CLASH_FIELD).map(([key, value], index) => {
-          const filltered = filteredField(value);
+          const filtered = filteredField(value);
 
           return (
             <FieldsControl
               key={index}
               label={key}
               fields={value}
-              enabledFields={filltered}
+              enabledFields={filtered}
               onChange={updateFiled}
             />
           );

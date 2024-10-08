@@ -172,7 +172,7 @@ pub fn app_resources_dir() -> Result<PathBuf> {
     Err(anyhow::anyhow!("failed to get the resource dir"))
 }
 
-/// Cache dir, it safe to clean up
+// /// Cache dir, it safe to clean up
 // pub fn cache_dir() -> Result<PathBuf> {
 //     let mut dir = dirs::cache_dir()
 //         .ok_or(anyhow::anyhow!("failed to get the cache dir"))?

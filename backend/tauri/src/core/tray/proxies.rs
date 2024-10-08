@@ -224,8 +224,8 @@ mod platform_impl {
     use std::sync::atomic::AtomicBool;
     use tauri::{
         menu::{
-            CheckMenuItemBuilder, IsMenuItem, Menu, MenuBuilder, MenuItemBuilder, MenuItemKind,
-            Submenu, SubmenuBuilder,
+            CheckMenuItemBuilder, Menu, MenuBuilder, MenuItemBuilder, MenuItemKind, Submenu,
+            SubmenuBuilder,
         },
         AppHandle, Manager, Runtime,
     };
@@ -352,7 +352,9 @@ mod platform_impl {
             .state::<crate::core::tray::TrayState<tauri::Wry>>();
         TRAY_ITEM_UPDATE_BARRIER.store(true, std::sync::atomic::Ordering::Release);
         let menu = tray_state.menu.lock();
-        let item_ids = ITEM_IDS.lock();
+        // comment it just because we could not get the access to the menu item via the id
+        // If the tauri team fixes this issue, we could use the following code to update the tray item
+        // let item_ids = ITEM_IDS.lock();
         for action in actions {
             //     #[cfg(not(target_os = "linux"))]
             //     {
@@ -480,7 +482,7 @@ pub trait SystemTrayMenuProxiesExt<R: Runtime> {
         Self: Sized;
 }
 
-impl<'m, R: Runtime, M: Manager<R>> SystemTrayMenuProxiesExt<R> for MenuBuilder<'m, R, M> {
+impl<R: Runtime, M: Manager<R>> SystemTrayMenuProxiesExt<R> for MenuBuilder<'_, R, M> {
     fn setup_proxies(self, app_handle: &AppHandle<R>) -> anyhow::Result<Self> {
         platform_impl::setup_tray(app_handle, self)
     }

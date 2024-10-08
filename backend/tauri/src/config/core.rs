@@ -1,5 +1,6 @@
-use super::{Draft, IClashTemp, IProfiles, IRuntime, IVerge};
+use super::{Draft, IClashTemp, IRuntime, IVerge, Profiles};
 use crate::{
+    core::state::ManagedState,
     enhance,
     utils::{dirs, help},
 };
@@ -14,7 +15,7 @@ pub const CHECK_CONFIG: &str = "clash-config-check.yaml";
 pub struct Config {
     clash_config: Draft<IClashTemp>,
     verge_config: Draft<IVerge>,
-    profiles_config: Draft<IProfiles>,
+    profiles_config: ManagedState<Profiles>,
     runtime_config: Draft<IRuntime>,
 }
 
@@ -25,7 +26,7 @@ impl Config {
         CONFIG.get_or_init(|| Config {
             clash_config: Draft::from(IClashTemp::new()),
             verge_config: Draft::from(IVerge::new()),
-            profiles_config: Draft::from(IProfiles::new()),
+            profiles_config: ManagedState::from(Profiles::new()),
             runtime_config: Draft::from(IRuntime::new()),
         })
     }
@@ -38,8 +39,8 @@ impl Config {
         Self::global().verge_config.clone()
     }
 
-    pub fn profiles() -> Draft<IProfiles> {
-        Self::global().profiles_config.clone()
+    pub fn profiles() -> &'static ManagedState<Profiles> {
+        &Self::global().profiles_config
     }
 
     pub fn runtime() -> Draft<IRuntime> {
@@ -50,7 +51,7 @@ impl Config {
     pub fn init_config() -> Result<()> {
         crate::log_err!(block_on(Self::generate()));
         if let Err(err) = Self::generate_file(ConfigType::Run) {
-            log::error!(target: "app", "{err}");
+            log::error!(target: "app", "{err:?}");
 
             let runtime_path = dirs::app_config_dir()?.join(RUNTIME_CONFIG);
             // 如果不存在就将默认的clash文件拿过来
@@ -85,12 +86,12 @@ impl Config {
 
     /// 生成配置存好
     pub async fn generate() -> Result<()> {
-        let (config, exists_keys, logs) = enhance::enhance().await;
+        let (config, exists_keys, postprocessing_outputs) = enhance::enhance().await;
 
         *Config::runtime().draft() = IRuntime {
             config: Some(config),
             exists_keys,
-            chain_logs: logs,
+            postprocessing_output: postprocessing_outputs,
         };
 
         Ok(())

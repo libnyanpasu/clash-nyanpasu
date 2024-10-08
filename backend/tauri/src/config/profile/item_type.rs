@@ -1,7 +1,9 @@
 use crate::enhance::ScriptType;
 use serde::{Deserialize, Serialize};
+use strum::EnumString;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, EnumString, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[strum(serialize_all = "snake_case")]
 pub enum ProfileItemType {
     #[serde(rename = "remote")]
     Remote,

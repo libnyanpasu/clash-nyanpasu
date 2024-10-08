@@ -48,7 +48,8 @@ function ProfilePage() {
   const maxLogLevelTriggered = useMemo(() => {
     const currentProfileChains =
       getProfiles.data?.items?.find(
-        (item) => item.uid == getProfiles.data?.current,
+        // TODO: 支持多 Profile
+        (item) => getProfiles.data?.current[0] == item.uid,
       )?.chains || [];
     return Object.entries(getRuntimeLogs.data || {}).reduce(
       (acc, [key, value]) => {
@@ -222,7 +223,7 @@ function ProfilePage() {
                       <ProfileItem
                         item={item}
                         onClickChains={onClickChains}
-                        selected={getProfiles.data?.current == item.uid}
+                        selected={getProfiles.data?.current.includes(item.uid)}
                         maxLogLevelTriggered={maxLogLevelTriggered}
                         chainsSelected={chainsSelected == item.uid}
                       />

@@ -44,15 +44,15 @@ export const createProfile = async (
 };
 
 export const updateProfile = async (uid: string, option?: Profile.Option) => {
-  return await invoke<void>("update_profile", { index: uid, option });
+  return await invoke<void>("update_profile", { uid, option });
 };
 
 export const deleteProfile = async (uid: string) => {
-  return await invoke<void>("delete_profile", { index: uid });
+  return await invoke<void>("delete_profile", { uid });
 };
 
 export const viewProfile = async (uid: string) => {
-  return await invoke<void>("view_profile", { index: uid });
+  return await invoke<void>("view_profile", { uid });
 };
 
 export const getProfiles = async () => {
@@ -60,22 +60,22 @@ export const getProfiles = async () => {
 };
 
 export const setProfiles = async (payload: {
-  index: string;
+  uid: string;
   profile: Partial<Profile.Item>;
 }) => {
   return await invoke<void>("patch_profile", payload);
 };
 
-export const setProfilesConfig = async (profiles: Profile.Config) => {
+export const setProfilesConfig = async (profiles: Partial<Profile.Config>) => {
   return await invoke<void>("patch_profiles_config", { profiles });
 };
 
-export const readProfileFile = async (index: string) => {
-  return await invoke<string>("read_profile_file", { index });
+export const readProfileFile = async (uid: string) => {
+  return await invoke<string>("read_profile_file", { uid });
 };
 
-export const saveProfileFile = async (index: string, fileData: string) => {
-  return await invoke<void>("save_profile_file", { index, fileData });
+export const saveProfileFile = async (uid: string, fileData: string) => {
+  return await invoke<void>("save_profile_file", { uid, fileData });
 };
 
 export const importProfile = async (

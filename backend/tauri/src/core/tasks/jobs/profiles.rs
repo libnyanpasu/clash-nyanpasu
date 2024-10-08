@@ -2,7 +2,10 @@ use super::super::{
     executor::{AsyncJobExecutor, TaskExecutor},
     task::{Task, TaskID, TaskManager, TaskSchedule},
 };
-use crate::{config::Config, feat};
+use crate::{
+    config::{Config, ProfileSharedGetter},
+    feat,
+};
 use anyhow::Result;
 use async_trait::async_trait;
 use parking_lot::Mutex;
@@ -35,7 +38,7 @@ impl AsyncJobExecutor for ProfileUpdater {
         match feat::update_profile(self.0.clone(), None).await {
             Ok(_) => Ok(()),
             Err(err) => {
-                log::error!(target: "app", "failed to update profile: {err}");
+                log::error!(target: "app", "failed to update profile: {err:?}");
                 Err(err)
             }
         }
@@ -68,33 +71,33 @@ impl ProfilesJobGuard {
     /// restore timer
     pub fn init(&mut self) -> Result<()> {
         self.refresh();
-
         let cur_timestamp = chrono::Local::now().timestamp();
-
         let task_map = &self.task_map;
 
-        if let Some(items) = Config::profiles().latest().get_items() {
-            items
-                .iter()
-                .filter_map(|item| {
-                    // mins to seconds
-                    let interval = ((item.option.as_ref()?.update_interval?) as i64) * 60;
-                    let updated = item.updated? as i64;
+        Config::profiles()
+            .latest()
+            .items
+            .iter()
+            .filter_map(|item| {
+                if !item.is_remote() {
+                    return None;
+                }
+                let item = item.as_remote().unwrap();
+                // mins to seconds
+                let interval = ((item.option.update_interval) as i64) * 60;
+                let updated = item.updated() as i64;
 
-                    if interval > 0 && cur_timestamp - updated >= interval {
-                        Some(item)
-                    } else {
-                        None
-                    }
-                })
-                .for_each(|item| {
-                    if let Some(uid) = item.uid.as_ref() {
-                        if let Some((task_id, _)) = task_map.get(uid) {
-                            crate::log_err!(TaskManager::global().write().advance_task(*task_id));
-                        }
-                    }
-                })
-        }
+                if interval > 0 && cur_timestamp - updated >= interval {
+                    Some(item)
+                } else {
+                    None
+                }
+            })
+            .for_each(|item| {
+                if let Some((task_id, _)) = task_map.get(item.uid()) {
+                    crate::log_err!(TaskManager::global().write().advance_task(*task_id));
+                }
+            });
 
         Ok(())
     }
@@ -162,24 +165,22 @@ impl ProfilesJobGuard {
 fn gen_map() -> HashMap<ProfileUID, Minutes> {
     let mut new_map = HashMap::new();
 
-    if let Some(items) = Config::profiles().latest().get_items() {
-        for item in items.iter() {
-            if item.option.is_some() {
-                let option = item.option.as_ref().unwrap();
-                let interval = option.update_interval.unwrap_or(0);
-
-                if interval > 0 {
-                    new_map.insert(item.uid.clone().unwrap(), interval);
-                }
+    Config::profiles()
+        .latest()
+        .get_items()
+        .iter()
+        .filter_map(|item| item.as_remote())
+        .for_each(|item| {
+            let interval = item.option.update_interval;
+            if interval > 0 {
+                new_map.insert(item.uid().to_string(), interval);
             }
-        }
-    }
+        });
 
     new_map
 }
 
 /// get_task_id Get a u64 task id by profile uid
-
 fn get_task_id(uid: &str) -> TaskID {
     let mut hash = DefaultHasher::new();
     uid.hash(&mut hash);

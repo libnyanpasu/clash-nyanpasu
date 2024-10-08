@@ -502,7 +502,7 @@ impl CoreManager {
 
         if let Err(err) = self.run_core().await {
             log::error!(target: "app", "failed to recover clash core");
-            log::error!(target: "app", "{err}");
+            log::error!(target: "app", "{err:?}");
             tokio::time::sleep(Duration::from_secs(5)).await; // sleep 5s
             std::thread::spawn(move || {
                 block_on(async {
@@ -533,7 +533,7 @@ impl CoreManager {
                     Err(err) => {
                         // 修改这个值，免得stop出错
                         // *self.use_service_mode.lock() = false;
-                        log::error!(target: "app", "{err}");
+                        log::error!(target: "app", "{err:?}");
                     }
                 }
             }
@@ -574,7 +574,7 @@ impl CoreManager {
                 Ok(())
             }
             Err(err) => {
-                tracing::error!("failed to change core: {err}");
+                tracing::error!("failed to change core: {err:?}");
                 Config::verge().discard();
                 Config::runtime().discard();
                 self.run_core().await?;
@@ -604,7 +604,7 @@ impl CoreManager {
                 Ok(_) => break,
                 Err(err) => {
                     if i < 4 {
-                        log::info!(target: "app", "{err}");
+                        log::info!(target: "app", "{err:?}");
                     } else {
                         bail!(err);
                     }

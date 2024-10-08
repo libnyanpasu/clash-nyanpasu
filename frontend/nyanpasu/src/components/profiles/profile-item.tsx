@@ -102,7 +102,7 @@ export const ProfileItem = memo(function ProfileItem({
     try {
       setLoading({ card: true });
 
-      await setProfilesConfig({ current: item.uid });
+      await setProfilesConfig({ current: [item.uid] });
 
       await deleteConnections();
     } catch (err) {

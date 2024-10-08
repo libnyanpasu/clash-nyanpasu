@@ -1,24 +1,24 @@
 // use std::borrow::Cow;
 
-use once_cell::sync::Lazy;
+// use once_cell::sync::Lazy;
 // use semver::Version;
 // use serde_yaml::Mapping;
 
-use crate::{
-    core::migration::{
-        DynMigration,
-        // Migration
-    },
-    // utils::dirs,
-};
+// use crate::{
+//     core::migration::{
+//         DynMigration,
+//         Migration
+//     },
+//     utils::dirs,
+// };
 
-pub static UNITS: Lazy<Vec<DynMigration>> = Lazy::new(|| {
-    vec![
-    // MigrateMultipleSubscriptionExtras.into()
-    ]
-});
+// pub static UNITS: Lazy<Vec<DynMigration>> = Lazy::new(|| {
+//     vec![
+//     MigrateMultipleSubscriptionExtras.into()
+//     ]
+// });
 
-pub static VERSION: Lazy<semver::Version> = Lazy::new(|| semver::Version::parse("2.0.0").unwrap());
+// pub static VERSION: Lazy<semver::Version> = Lazy::new(|| semver::Version::parse("2.0.0").unwrap());
 
 // #[derive(Debug, Clone)]
 // pub struct MigrateMultipleSubscriptionExtras;

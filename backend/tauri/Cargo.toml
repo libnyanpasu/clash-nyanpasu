@@ -171,7 +171,7 @@ nix = { version = "0.29.0", features = ["user", "fs"] }
 [target.'cfg(windows)'.dependencies]
 deelevate = "0.2.0"
 winreg = { version = "0.52", features = ["transactions"] }
-windows-registry = "0.2"
+windows-registry = "0.3"
 windows-sys = { version = "0.59", features = [
   "Win32_System_LibraryLoader",
   "Win32_System_SystemInformation",

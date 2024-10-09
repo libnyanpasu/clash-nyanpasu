@@ -55,6 +55,7 @@ pub struct RemoteProfile {
     ))]
     #[builder_update(nested)]
     #[builder_field_attr(serde(default))]
+    #[serde(default)]
     pub option: RemoteProfileOptions,
     /// process chains
     #[builder(default)]

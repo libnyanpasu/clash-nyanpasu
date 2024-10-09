@@ -13,7 +13,7 @@
   "dependencies": {
     "@tauri-apps/api": "2.0.2",
     "ahooks": "3.8.1",
-    "ofetch": "1.4.0",
+    "ofetch": "1.4.1",
     "react": "rc",
     "swr": "2.2.5"
   },

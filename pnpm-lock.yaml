@@ -168,8 +168,8 @@ importers:
         specifier: 3.8.1
         version: 3.8.1(react@19.0.0-rc-ed966dac-20241007)
       ofetch:
-        specifier: 1.4.0
-        version: 1.4.0
+        specifier: 1.4.1
+        version: 1.4.1
       react:
         specifier: rc
         version: 19.0.0-rc-ed966dac-20241007
@@ -5395,8 +5395,8 @@ packages:
     resolution: {integrity: sha512-wbqF4uc1YbcldtiBFfkSnquHtECEIpYD78YUXI6ri1Im5OO2NLo6ZVpRdbJpdnpZ05zMrVPssNiEo6JQtea+Qg==}
     engines: {node: '>= 18'}
 
-  ofetch@1.4.0:
-    resolution: {integrity: sha512-MuHgsEhU6zGeX+EMh+8mSMrYTnsqJQQrpM00Q6QHMKNqQ0bKy0B43tk8tL1wg+CnsSTy1kg4Ir2T5Ig6rD+dfQ==}
+  ofetch@1.4.1:
+    resolution: {integrity: sha512-QZj2DfGplQAr2oj9KzceK9Hwz6Whxazmn85yYeVuS3u9XTMOGMRx0kO95MQ+vLsj/S/NwBDMMLU5hpxvI6Tklw==}
 
   once@1.4.0:
     resolution: {integrity: sha512-lNaJgI+2Q5URQBkccEKHTQOPaXdUxnZZElQTZY0MFUAuaEqe1E+Nyvgdz/aIyNi6Z9MzO5dv1H8n58/GELp3+w==}
@@ -6832,9 +6832,6 @@ packages:
     resolution: {integrity: sha512-hjcS1mhfuyi4WW8IWtjP7brDrG2cuDZukyrYrSauoXGNgx0S7zceP07adYkJycEr56BOUTNPzbInooiN3fn1qw==}
     engines: {node: '>=14.17'}
     hasBin: true
-
-  ufo@1.5.3:
-    resolution: {integrity: sha512-Y7HYmWaFwPUmkoQCUIAYpKqkOf+SbVj/2fJJZ4RJMCfZp0rTGwRbzQD+HghfnhKOjL9E01okqz+ncJskGYfBNw==}
 
   ufo@1.5.4:
     resolution: {integrity: sha512-UsUk3byDzKd04EyoZ7U4DOlxQaD14JUKQl6/P7wiX4FNvUfm3XL246n9W5AmqwW5RSFJ27NAuM0iLscAOYUiGQ==}
@@ -12389,7 +12386,7 @@ snapshots:
       acorn: 8.12.1
       pathe: 1.1.2
       pkg-types: 1.1.3
-      ufo: 1.5.3
+      ufo: 1.5.4
 
   monaco-editor@0.52.0: {}
 
@@ -12594,7 +12591,7 @@ snapshots:
       '@octokit/request-error': 6.1.1
       '@octokit/types': 13.6.1
 
-  ofetch@1.4.0:
+  ofetch@1.4.1:
     dependencies:
       destr: 2.0.3
       node-fetch-native: 1.6.4
@@ -14090,8 +14087,6 @@ snapshots:
   typescript@5.4.2: {}
 
   typescript@5.6.3: {}
-
-  ufo@1.5.3: {}
 
   ufo@1.5.4: {}
 

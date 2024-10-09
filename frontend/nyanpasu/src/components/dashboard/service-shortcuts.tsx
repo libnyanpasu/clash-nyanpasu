@@ -35,14 +35,14 @@ export const ServiceShortcuts = () => {
     switch (serviceStatus) {
       case "running": {
         return {
-          label: "running",
+          label: t("running"),
           color: alpha(palette.success[palette.mode], 0.3),
         };
       }
 
       case "stopped": {
         return {
-          label: "stopped",
+          label: t("stopped"),
           color: alpha(palette.error[palette.mode], 0.3),
         };
       }
@@ -50,7 +50,7 @@ export const ServiceShortcuts = () => {
       default:
       case "not_installed": {
         return {
-          label: "not_installed",
+          label: t("not_installed"),
           color:
             palette.mode == "light"
               ? palette.grey[100]

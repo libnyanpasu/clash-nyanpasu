@@ -108,14 +108,14 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
       accessorFn: ({ metadata }) => metadata.process,
     },
     {
-      header: t("Download"),
+      header: t("Downloaded"),
       size: 88,
       accessorFn: ({ download }) => parseTraffic(download).join(" "),
       sortingFn: (rowA, rowB) =>
         rowB.original.download - rowA.original.download,
     },
     {
-      header: t("Upload"),
+      header: t("Uploaded"),
       size: 88,
       accessorFn: ({ upload }) => parseTraffic(upload).join(" "),
       sortingFn: (rowA, rowB) => rowB.original.upload - rowA.original.upload,
@@ -142,7 +142,7 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
       accessorFn: ({ chains }) => [...chains].reverse().join(" / "),
     },
     {
-      header: "Rule",
+      header: t("Rule"),
       size: 200,
       accessorFn: ({ rule, rulePayload }) =>
         rulePayload ? `${rule} (${rulePayload})` : rule,
@@ -155,7 +155,7 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
         dayjs(rowB.original.start).diff(rowA.original.start),
     },
     {
-      header: "Source",
+      header: t("Source"),
       size: 200,
       accessorFn: ({ metadata: { sourceIP, sourcePort } }) =>
         `${sourceIP}:${sourcePort}`,
@@ -204,7 +204,7 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
   ) : (
     <ContentDisplay
       className="!absolute !h-full !w-full"
-      message="No Connection"
+      message={t("No Connection")}
     />
   );
 };

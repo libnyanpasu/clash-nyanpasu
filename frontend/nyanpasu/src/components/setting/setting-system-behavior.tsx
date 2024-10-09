@@ -10,7 +10,7 @@ export const SettingSystemBehavior = () => {
   const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu();
 
   return (
-    <BaseCard label="Initiating Behavior">
+    <BaseCard label={t("Initiating Behavior")}>
       <Grid container spacing={2}>
         <Grid size={{ xs: 6 }}>
           <PaperSwitchButton

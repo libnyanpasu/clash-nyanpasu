@@ -78,7 +78,7 @@ function TrayIconItem({ mode }: { mode: "system_proxy" | "tun" | "normal" }) {
               disabled={loading || isLoading}
               onClick={() => setTrayIcon()}
             >
-              修改
+              {t("Edit")}
             </LoadingButton>
             <LoadingButton
               variant="contained"
@@ -86,7 +86,7 @@ function TrayIconItem({ mode }: { mode: "system_proxy" | "tun" | "normal" }) {
               disabled={loading || isLoading}
               onClick={() => setTrayIcon(true)}
             >
-              重置
+              {t("Reset")}
             </LoadingButton>
           </div>
         ) : (
@@ -96,7 +96,7 @@ function TrayIconItem({ mode }: { mode: "system_proxy" | "tun" | "normal" }) {
             disabled={loading || isLoading}
             onClick={() => setTrayIcon()}
           >
-            设置
+            {t("Set")}
           </LoadingButton>
         )}
       </span>

@@ -32,7 +32,7 @@ export const HeaderSearch = (props: TextFieldProps) => {
       autoComplete="off"
       spellCheck="false"
       hiddenLabel
-      placeholder={t("Type to Filter")}
+      placeholder={t("Filter conditions")}
       variant="filled"
       className="!pb-0"
       sx={{ input: { py: 1, fontSize: 14 } }}

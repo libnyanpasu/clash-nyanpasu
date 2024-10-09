@@ -161,7 +161,7 @@ function ProfilePage() {
           <IconButton
             className="h-10 w-10"
             color="inherit"
-            title="Runtime Config"
+            title={t("Runtime Config")}
             onClick={() => {
               setRuntimeConfigViewerOpen(true);
             }}

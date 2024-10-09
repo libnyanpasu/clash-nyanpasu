@@ -20,76 +20,76 @@ function SettingPage() {
 
   const Component = lazy(() => import("@/components/setting/setting-page"));
 
-const GithubIcon = () => {
-  const toGithubRepo = useLockFn(() => {
-    return openThat("https://github.com/libnyanpasu/clash-nyanpasu");
-  });
+  const GithubIcon = () => {
+    const toGithubRepo = useLockFn(() => {
+      return openThat("https://github.com/libnyanpasu/clash-nyanpasu");
+    });
 
-  return (
-    <IconButton
-      color="inherit"
-      title="@libnyanpasu/clash-nyanpasu"
-      onClick={toGithubRepo}
-    >
-      <GitHub fontSize="inherit" />
-    </IconButton>
-  );
-};
-
-const FeedbackIcon = () => {
-  const toFeedback = useLockFn(async () => {
-    const envs = await collect_envs();
-    const formattedEnv = encodeURIComponent(
-      formatEnvInfos(envs)
-        .split("\n")
-        .map((v) => `> ${v}`)
-        .join("\n"),
-    );
-    return openThat(
-      "https://github.com/libnyanpasu/clash-nyanpasu/issues/new?assignees=&labels=T%3A+Bug%2CS%3A+Untriaged&projects=&template=bug_report.yaml&env_infos=" +
-        formattedEnv,
-    );
-  });
-  return (
-    <IconButton color="inherit" title={t("Feedback")} onClick={toFeedback}>
-      <Feedback fontSize="inherit" />
-    </IconButton>
-  );
-};
-
-// FIXME: it should move to a proper place
-const HotkeyButton = () => {
-  const [open, setOpen] = React.useState(false);
-  return (
-    <>
-      <HotkeyDialog open={open} onClose={() => setOpen(false)} />
+    return (
       <IconButton
         color="inherit"
-        title={t("Hotkeys")}
-        onClick={() => setOpen(true)}
+        title="@libnyanpasu/clash-nyanpasu"
+        onClick={toGithubRepo}
       >
-        <Keyboard fontSize="inherit" />
+        <GitHub fontSize="inherit" />
       </IconButton>
-    </>
-  );
-};
+    );
+  };
 
-// FIXME: it should move to a proper place
-const TrayIconButton = () => {
-  const [open, setOpen] = React.useState(false);
-  return (
-    <>
-      <TrayIconDialog open={open} onClose={() => setOpen(false)} />
-      <IconButton
-        color="inherit"
-        title={t("Tray Icons")}
-        onClick={() => setOpen(true)}
-      >
-        <MdiTrayFull fontSize="inherit" />
+  const FeedbackIcon = () => {
+    const toFeedback = useLockFn(async () => {
+      const envs = await collect_envs();
+      const formattedEnv = encodeURIComponent(
+        formatEnvInfos(envs)
+          .split("\n")
+          .map((v) => `> ${v}`)
+          .join("\n"),
+      );
+      return openThat(
+        "https://github.com/libnyanpasu/clash-nyanpasu/issues/new?assignees=&labels=T%3A+Bug%2CS%3A+Untriaged&projects=&template=bug_report.yaml&env_infos=" +
+          formattedEnv,
+      );
+    });
+    return (
+      <IconButton color="inherit" title={t("Feedback")} onClick={toFeedback}>
+        <Feedback fontSize="inherit" />
       </IconButton>
-    </>
-  );
-};
+    );
+  };
+
+  // FIXME: it should move to a proper place
+  const HotkeyButton = () => {
+    const [open, setOpen] = React.useState(false);
+    return (
+      <>
+        <HotkeyDialog open={open} onClose={() => setOpen(false)} />
+        <IconButton
+          color="inherit"
+          title={t("Hotkeys")}
+          onClick={() => setOpen(true)}
+        >
+          <Keyboard fontSize="inherit" />
+        </IconButton>
+      </>
+    );
+  };
+
+  // FIXME: it should move to a proper place
+  const TrayIconButton = () => {
+    const [open, setOpen] = React.useState(false);
+    return (
+      <>
+        <TrayIconDialog open={open} onClose={() => setOpen(false)} />
+        <IconButton
+          color="inherit"
+          title={t("Tray Icons")}
+          onClick={() => setOpen(true)}
+        >
+          <MdiTrayFull fontSize="inherit" />
+        </IconButton>
+      </>
+    );
+  };
 
   return (
     <BasePage

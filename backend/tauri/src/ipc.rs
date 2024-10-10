@@ -227,10 +227,10 @@ pub async fn patch_profile(uid: String, profile: Mapping) -> Result {
                     .iter()
                     .any(|chain_uid| match profiles.get_item(chain_uid) {
                         Ok(item) if item.is_local() => {
-                            item.as_local().unwrap().chains.contains(&uid)
+                            item.as_local().unwrap().chain.contains(&uid)
                         }
                         Ok(item) if item.is_remote() => {
-                            item.as_local().unwrap().chains.contains(&uid)
+                            item.as_local().unwrap().chain.contains(&uid)
                         }
                         _ => false,
                     })

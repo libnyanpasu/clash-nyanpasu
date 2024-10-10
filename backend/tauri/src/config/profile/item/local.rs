@@ -30,9 +30,11 @@ pub struct LocalProfile {
     #[builder(setter(strip_option), default)]
     /// file symlinks
     pub symlinks: Option<PathBuf>,
-    /// process chains
-    #[serde(default)]
-    pub chains: Vec<ProfileUid>,
+    /// process chain
+    #[builder(default)]
+    #[serde(alias = "chains", default)]
+    #[builder_field_attr(serde(alias = "chains", default))]
+    pub chain: Vec<ProfileUid>,
 }
 
 impl ProfileHelper for LocalProfile {}

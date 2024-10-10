@@ -145,7 +145,7 @@ rules:
       expire: number;
     };
     option?: Option;
-    chains?: string[];
+    chain?: string[];
   }
 
   export interface Option {

@@ -50,7 +50,7 @@ function ProfilePage() {
       getProfiles.data?.items?.find(
         // TODO: 支持多 Profile
         (item) => getProfiles.data?.current[0] == item.uid,
-      )?.chains || [];
+      )?.chain || [];
     return Object.entries(getRuntimeLogs.data || {}).reduce(
       (acc, [key, value]) => {
         const accKey = currentProfileChains.includes(key)

@@ -76,7 +76,7 @@ export const ScriptDialog = ({
     } else {
       form.reset({
         type: "merge",
-        chains: [],
+        chain: [],
         name: "New Script",
         desc: "",
       });

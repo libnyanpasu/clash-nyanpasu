@@ -49,7 +49,7 @@ pub async fn enhance() -> (Mapping, Vec<String>, PostProcessingOutput) {
                     match item {
                         profile if profile.is_local() => {
                             let profile = profile.as_local().unwrap();
-                            utils::convert_uids_to_scripts(&profiles, &profile.chains)
+                            utils::convert_uids_to_scripts(&profiles, &profile.chain)
                         }
                         profile if profile.is_remote() => {
                             let profile = profile.as_remote().unwrap();

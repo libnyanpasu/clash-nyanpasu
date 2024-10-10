@@ -1,6 +1,7 @@
 import countryCodeEmoji from "country-code-emoji";
 import { useAtomValue } from "jotai";
 import { useState } from "react";
+import { mutate } from "swr";
 import { atomIsDrawer } from "@/store";
 import { Visibility, VisibilityOff } from "@mui/icons-material";
 import { LoadingButton } from "@mui/lab";
@@ -48,7 +49,9 @@ export const IPASNPanel = ({ refreshCount }: { refreshCount: number }) => {
       <Paper className="relative flex !h-full select-text gap-4 !rounded-3xl px-4 py-3">
         {data ? (
           <>
-            <EmojiCounty countryCode={data.country_code} />
+            {data.country_code && (
+              <EmojiCounty countryCode={data.country_code} />
+            )}
 
             <div className="flex flex-col gap-1" style={{ width: MAX_WIDTH }}>
               <div className="text-shadow-md flex items-end justify-between text-xl font-bold">

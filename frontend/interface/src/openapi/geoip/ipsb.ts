@@ -1,4 +1,4 @@
-import useSWR from "swr";
+import useSWR, { SWRConfiguration } from "swr";
 import { getIpsbASN } from "@/service";
 
 export interface IPSBResponse {
@@ -16,6 +16,6 @@ export interface IPSBResponse {
   country_code: string;
 }
 
-export const useIPSB = () => {
-  return useSWR("https://api.ip.sb/geoip", () => getIpsbASN());
+export const useIPSB = (config?: SWRConfiguration) => {
+  return useSWR("https://api.ip.sb/geoip", () => getIpsbASN(), config);
 };

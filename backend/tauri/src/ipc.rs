@@ -343,8 +343,7 @@ pub async fn url_delay_test(url: &str, expected_status: u16) -> Result<Option<u6
 
 #[tauri::command]
 pub async fn get_ipsb_asn() -> Result<Mapping> {
-    (crate::utils::net::get_ipsb_asn().await)?;
-    Ok(Mapping::new())
+    Ok(crate::utils::net::get_ipsb_asn().await?)
 }
 
 #[tauri::command]

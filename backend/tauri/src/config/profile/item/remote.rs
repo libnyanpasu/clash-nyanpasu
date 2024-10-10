@@ -362,6 +362,10 @@ impl RemoteProfileBuilder {
 
     pub async fn build_no_blocking(&mut self) -> Result<RemoteProfile, RemoteProfileBuilderError> {
         self.validate()?;
+        if self.shared.get_uid().is_none() {
+            self.shared
+                .uid(super::utils::generate_uid(&ProfileItemType::Remote));
+        }
         self.shared.r#type(ProfileItemType::Remote);
         let url = self.url.take().unwrap();
         let options = self

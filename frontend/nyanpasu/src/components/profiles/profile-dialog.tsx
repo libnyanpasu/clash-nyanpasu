@@ -19,6 +19,7 @@ import {
 } from "react-hook-form-mui";
 import { useTranslation } from "react-i18next";
 import { useLatest } from "react-use";
+import { formatError } from "@/utils";
 import { message } from "@/utils/notification";
 import { Divider, InputAdornment } from "@mui/material";
 import { Profile, useClash } from "@nyanpasu/interface";
@@ -151,6 +152,11 @@ export const ProfileDialog = ({
       setTimeout(() => reset(), 300);
 
       onClose();
+    } catch (err) {
+      message("Failed to save profile: \n" + formatError(err), {
+        kind: "error",
+      });
+      console.error(err);
     } finally {
     }
   });

@@ -18,7 +18,7 @@ pub trait ProfileFileIo {
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate)]
-#[builder(derive(serde::Serialize, serde::Deserialize))]
+#[builder(derive(serde::Serialize, serde::Deserialize), build_fn(skip))]
 #[builder_update(patch_fn = "apply", getter)]
 pub struct ProfileShared {
     #[builder(default = "self.default_uid()?")]
@@ -103,6 +103,37 @@ impl ProfileSharedBuilder {
 
     pub fn is_file_none(&self) -> bool {
         self.file.is_none()
+    }
+
+    pub fn build(&self) -> Result<ProfileShared, ProfileSharedBuilderError> {
+        let mut builder = self.clone();
+        if builder.uid.is_none() {
+            builder.uid = Some(builder.default_uid()?);
+        }
+        if builder.name.is_none() {
+            builder.name = Some(builder.default_name()?);
+        }
+        if builder.file.is_none() {
+            builder.file = Some(builder.default_files()?);
+        }
+
+        Ok(ProfileShared {
+            uid: builder.uid.unwrap(),
+            r#type: match builder.r#type {
+                Some(ref kind) => kind.clone(),
+                None => {
+                    return Err(ProfileSharedBuilderError::UninitializedField(
+                        "type is required",
+                    ))
+                }
+            },
+            name: builder.name.unwrap(),
+            file: builder.file.unwrap(),
+            desc: builder.desc.clone().unwrap_or_default(),
+            updated: builder
+                .updated
+                .unwrap_or_else(|| chrono::Local::now().timestamp() as usize),
+        })
     }
 }
 

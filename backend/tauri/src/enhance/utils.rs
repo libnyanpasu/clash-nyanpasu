@@ -4,7 +4,7 @@ use serde_yaml::Mapping;
 
 use crate::config::profile::{item_type::ProfileUid, profiles::Profiles};
 
-use super::{use_keys, use_merge, ChainItem, ChainTypeWrapper, RunnerManager};
+use super::{use_merge, ChainItem, ChainTypeWrapper, RunnerManager};
 use parking_lot::Mutex;
 use std::{borrow::Borrow, sync::Arc};
 
@@ -94,14 +94,12 @@ pub async fn process_chain(
     nodes: &[ChainItem],
 ) -> (Mapping, IndexMap<ProfileUid, Logs>) {
     let mut result_map = IndexMap::new();
-    let mut exists_keys = vec![];
 
     let mut script_runner = RunnerManager::new();
     for item in nodes.iter() {
         match &item.data {
             ChainTypeWrapper::Merge(merge) => {
                 let mut logs = vec![];
-                exists_keys.extend(use_keys(merge));
                 let (res, process_logs) = use_merge(merge, config.to_owned());
                 config = res.unwrap();
                 logs.extend(process_logs);
@@ -116,7 +114,7 @@ pub async fn process_chain(
                 // TODO: 修改日记 level 格式？
                 match res {
                     Ok(res_config) => {
-                        exists_keys.extend(use_keys(&res_config));
+                        config = res_config;
                     }
                     Err(err) => logs.error(err.to_string()),
                 }

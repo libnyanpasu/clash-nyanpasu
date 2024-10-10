@@ -1,15 +1,23 @@
 use std::borrow::Cow;
 
 use once_cell::sync::Lazy;
-use serde_yaml::Mapping;
+use serde_yaml::{
+    value::{Tag, TaggedValue},
+    Mapping,
+};
 
 use crate::{
     config::RUNTIME_CONFIG,
     core::migration::{DynMigration, Migration},
 };
 
-pub static UNITS: Lazy<Vec<DynMigration>> =
-    Lazy::new(|| vec![MigrateAppHomeDir.into(), MigrateProxiesSelectorMode.into()]);
+pub static UNITS: Lazy<Vec<DynMigration>> = Lazy::new(|| {
+    vec![
+        MigrateAppHomeDir.into(),
+        MigrateProxiesSelectorMode.into(),
+        MigrateScriptProfileType.into(),
+    ]
+});
 
 pub static VERSION: Lazy<semver::Version> = Lazy::new(|| semver::Version::parse("1.6.0").unwrap());
 
@@ -249,6 +257,94 @@ impl<'a> Migration<'a> for MigrateProxiesSelectorMode {
                 println!("Migration discarded");
             }
         }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MigrateScriptProfileType;
+
+impl<'a> Migration<'a> for MigrateScriptProfileType {
+    fn version(&self) -> &'a semver::Version {
+        &VERSION
+    }
+
+    fn name(&self) -> Cow<'a, str> {
+        Cow::Borrowed("Migrate Script Profile Type")
+    }
+
+    fn migrate(&self) -> std::io::Result<()> {
+        let profiles_path = crate::utils::dirs::profiles_path()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string()))?;
+        if !profiles_path.exists() {
+            println!("Profiles dir not found, skipping migration");
+            return Ok(());
+        }
+        let profiles = std::fs::read_to_string(&profiles_path)?;
+        let mut profiles: Mapping = serde_yaml::from_str(&profiles)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+        let items = profiles
+            .get_mut("items")
+            .and_then(|items| items.as_sequence_mut());
+        if let Some(items) = items {
+            for item in items {
+                if let Some(item) = item.as_mapping_mut()
+                    && item
+                        .get("type")
+                        .is_some_and(|ty| ty.as_str().is_some_and(|ty| ty == "script"))
+                {
+                    item.insert(
+                        "type".into(),
+                        serde_yaml::Value::Tagged(Box::new(TaggedValue {
+                            tag: Tag::new("script"),
+                            value: serde_yaml::Value::String("javascript".to_string()),
+                        })),
+                    );
+                }
+            }
+            let profiles = serde_yaml::to_string(&profiles)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+            std::fs::write(profiles_path, profiles)?;
+        }
+
+        Ok(())
+    }
+
+    fn discard(&self) -> std::io::Result<()> {
+        let profiles_path = crate::utils::dirs::profiles_path()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string()))?;
+        if !profiles_path.exists() {
+            println!("Profiles dir not found, skipping migration");
+            return Ok(());
+        }
+        let profiles = std::fs::read_to_string(&profiles_path)?;
+        let mut profiles: Mapping = serde_yaml::from_str(&profiles)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+        let items = profiles
+            .get_mut("items")
+            .and_then(|items| items.as_sequence_mut());
+        if let Some(items) = items {
+            for item in items {
+                if let Some(item) = item.as_mapping_mut()
+                    && item.get("type").is_some_and(|ty| {
+                        if let serde_yaml::Value::Tagged(ty) = ty {
+                            ty.tag == Tag::new("script")
+                        } else {
+                            false
+                        }
+                    })
+                {
+                    item.insert(
+                        "type".into(),
+                        serde_yaml::Value::String("script".to_string()),
+                    );
+                }
+            }
+            let profiles = serde_yaml::to_string(&profiles)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+            std::fs::write(profiles_path, profiles)?;
+        }
+
         Ok(())
     }
 }

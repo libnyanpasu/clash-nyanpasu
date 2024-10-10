@@ -116,7 +116,7 @@ pub async fn create_profile(item: Mapping, file_data: Option<String>) -> Result 
         }
         ProfileItemType::Remote => {
             let mut item: RemoteProfileBuilder = (serde_yaml::from_value(item))?;
-            (item.build())
+            (item.build_no_blocking().await)
                 .context("failed to build remote profile")?
                 .into()
         }

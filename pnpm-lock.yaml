@@ -271,8 +271,8 @@ importers:
         specifier: 1.6.5
         version: 1.6.5(react-dom@19.0.0-rc-d5bba18b-20241009(react@19.0.0-rc-d5bba18b-20241009))(react@19.0.0-rc-d5bba18b-20241009)
       react-hook-form-mui:
-        specifier: 7.2.1
-        version: 7.2.1(qoogzuwhq3vy3np32vork6f6ie)
+        specifier: 7.3.0
+        version: 7.3.0(qoogzuwhq3vy3np32vork6f6ie)
       react-i18next:
         specifier: 15.0.2
         version: 15.0.2(i18next@23.15.2)(react-dom@19.0.0-rc-d5bba18b-20241009(react@19.0.0-rc-d5bba18b-20241009))(react@19.0.0-rc-d5bba18b-20241009)
@@ -5828,13 +5828,13 @@ packages:
       react: '>= 16.8.0 || ^18.0.0'
       react-dom: '>= 16.8.0 || ^18.0.0'
 
-  react-hook-form-mui@7.2.1:
-    resolution: {integrity: sha512-aLMck3QAaAH6Va9geZa+IuQh5xsHwDkqS46M8sswPKDv++NNdEO417yjGsaPaSTDk4SG9TCNteKSEgpmxKzztw==}
+  react-hook-form-mui@7.3.0:
+    resolution: {integrity: sha512-GkyevzxuFfrqzqEwIM3+W9yCYi9YG/bWxsru90ZaXq6JUjtrjc8C/qCwZWY57dNKHEZSSIyhGYcStXiqNbX5tQ==}
     engines: {node: '>=14'}
     peerDependencies:
       '@mui/icons-material': '>= 5.x <7'
       '@mui/material': '>= 5.x <7'
-      '@mui/x-date-pickers': '>=7.0.0 <8'
+      '@mui/x-date-pickers': '>=7.17.0 <8'
       react: '>=17 <19'
       react-hook-form: '>=7.33.1'
     peerDependenciesMeta:
@@ -12902,7 +12902,7 @@ snapshots:
       react: 19.0.0-rc-d5bba18b-20241009
       react-dom: 19.0.0-rc-d5bba18b-20241009(react@19.0.0-rc-d5bba18b-20241009)
 
-  react-hook-form-mui@7.2.1(qoogzuwhq3vy3np32vork6f6ie):
+  react-hook-form-mui@7.3.0(qoogzuwhq3vy3np32vork6f6ie):
     dependencies:
       '@mui/material': 6.1.3(@emotion/react@11.13.3(react@19.0.0-rc-d5bba18b-20241009)(types-react@19.0.0-rc.1))(@emotion/styled@11.13.0(@emotion/react@11.13.3(react@19.0.0-rc-d5bba18b-20241009)(types-react@19.0.0-rc.1))(react@19.0.0-rc-d5bba18b-20241009)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc-d5bba18b-20241009(react@19.0.0-rc-d5bba18b-20241009))(react@19.0.0-rc-d5bba18b-20241009)(types-react@19.0.0-rc.1)
       react: 19.0.0-rc-d5bba18b-20241009

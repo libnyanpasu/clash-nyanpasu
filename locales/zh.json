@@ -30,7 +30,7 @@
     "rule_mode": "规则模式",
     "script_mode": "脚本模式",
     "system_proxy": "系统代理",
-    "tun_mode": "Tun 模式"
+    "tun_mode": "TUN 模式"
   },
   "dialog": {
     "panic": "请将此问题汇报到 GitHub 问题追踪器",

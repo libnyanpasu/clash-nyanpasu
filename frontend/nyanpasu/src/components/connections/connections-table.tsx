@@ -142,7 +142,7 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
       accessorFn: ({ chains }) => [...chains].reverse().join(" / "),
     },
     {
-      header: t("Rule"),
+      header: t("Rules"),
       size: 200,
       accessorFn: ({ rule, rulePayload }) =>
         rulePayload ? `${rule} (${rulePayload})` : rule,
@@ -204,7 +204,7 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
   ) : (
     <ContentDisplay
       className="!absolute !h-full !w-full"
-      message={t("No Connection")}
+      message={t("No Connections")}
     />
   );
 };

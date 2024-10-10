@@ -1,5 +1,6 @@
 import { useDebounceEffect } from "ahooks";
 import { useAtomValue } from "jotai";
+import { useTranslation } from "react-i18next";
 import { RefObject, useEffect, useRef } from "react";
 import { Virtualizer, VListHandle } from "virtua";
 import ContentDisplay from "../base/content-display";
@@ -11,6 +12,8 @@ export const LogList = ({
 }: {
   scrollRef: RefObject<HTMLElement>;
 }) => {
+  const { t } = useTranslation();
+
   const logData = useAtomValue(atomLogList);
 
   const virtualizerRef = useRef<VListHandle>(null);
@@ -59,6 +62,6 @@ export const LogList = ({
       })}
     </Virtualizer>
   ) : (
-    <ContentDisplay className="absolute" message="No logs" />
+    <ContentDisplay className="absolute" message={t("No Logs")} />
   );
 };

@@ -1,10 +1,13 @@
 import { useAtomValue } from "jotai";
+import { useTranslation } from "react-i18next";
 import { Virtualizer } from "virtua";
 import ContentDisplay from "../base/content-display";
 import { atomRulePage } from "./modules/store";
 import RuleItem from "./rule-item";
 
 export const RulePage = () => {
+  const { t } = useTranslation();
+
   const rule = useAtomValue(atomRulePage);
 
   return rule?.data?.length ? (
@@ -14,7 +17,7 @@ export const RulePage = () => {
       })}
     </Virtualizer>
   ) : (
-    <ContentDisplay className="absolute" message="No logs" />
+    <ContentDisplay className="absolute" message={t("No Rules")} />
   );
 };
 

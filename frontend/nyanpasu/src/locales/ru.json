@@ -67,7 +67,7 @@
   "Nyanpasu Setting": "Настройки Nyanpasu",
   "Allow Lan": "Разрешить локальную сеть",
   "IPv6": "IPv6",
-  "Tun Stack": "Tun куча",
+  "Tun Stack": "Туннель куча",
   "Log Level": "Уровень логов",
   "Clash Port": "Clash порт",
   "Mixed Port": "Смешанный порт",
@@ -158,7 +158,7 @@
   "Subscription": "подписка",
   "FetchError": "Из-за проблем с сетью содержимое {{content}} невозможно получить. Пожалуйста, проверьте сетевое соединение или повторите попытку позже.",
 
-  "tun": "Tun",
+  "tun": "Туннель",
   "normal": "Обычный",
   "system_proxy": "Системный прокси",
   "Subscription Expires In": "Подписка истекает через {{time}}",

@@ -1,7 +1,7 @@
 import { useDebounceEffect } from "ahooks";
 import { useAtomValue } from "jotai";
-import { useTranslation } from "react-i18next";
 import { RefObject, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Virtualizer, VListHandle } from "virtua";
 import ContentDisplay from "../base/content-display";
 import LogItem from "./log-item";

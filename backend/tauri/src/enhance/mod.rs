@@ -53,7 +53,7 @@ pub async fn enhance() -> (Mapping, Vec<String>, PostProcessingOutput) {
                         }
                         profile if profile.is_remote() => {
                             let profile = profile.as_remote().unwrap();
-                            utils::convert_uids_to_scripts(&profiles, &profile.chains)
+                            utils::convert_uids_to_scripts(&profiles, &profile.chain)
                         }
                         _ => vec![],
                     },

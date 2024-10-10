@@ -57,9 +57,11 @@ pub struct RemoteProfile {
     #[builder_field_attr(serde(default))]
     #[serde(default)]
     pub option: RemoteProfileOptions,
-    /// process chains
+    /// process chain
     #[builder(default)]
-    pub chains: Vec<ProfileUid>,
+    #[serde(alias = "chains", default)]
+    #[builder_field_attr(serde(alias = "chains", default))]
+    pub chain: Vec<ProfileUid>,
 }
 
 impl ProfileHelper for RemoteProfile {}
@@ -385,7 +387,7 @@ impl RemoteProfileBuilder {
             url,
             extra,
             option: self.option.build().unwrap(),
-            chains: self.chains.take().unwrap_or_default(),
+            chain: self.chain.take().unwrap_or_default(),
         };
         // write the profile to the file
         profile

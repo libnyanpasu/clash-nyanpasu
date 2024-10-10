@@ -1,9 +1,16 @@
 import figlet from "figlet";
+import { filesize } from "filesize";
+import fs from "fs-extra";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { GITHUB_PROXY } from "./env";
 
 export const getGithubUrl = (url: string) => {
   return new URL(url.replace(/^https?:\/\//g, ""), GITHUB_PROXY).toString();
+};
+
+export const getFileSize = (path: string): string => {
+  const stat = fs.statSync(path);
+  return filesize(stat.size);
 };
 
 export const array2text = (

@@ -1,11 +1,11 @@
 // import { Telegraf } from "telegraf";
 import { existsSync } from "fs";
 import path from "path";
-import { mkdirp } from "fs-extra";
+import { fstat, mkdirp } from "fs-extra";
 import pRetry from "p-retry";
 import { getOctokit } from "@actions/github";
 import { version } from "../package.json";
-import { array2text } from "./utils";
+import { array2text, getFileSize } from "./utils";
 import { downloadFile } from "./utils/download";
 import { TEMP_DIR } from "./utils/env";
 import { consola } from "./utils/logger";
@@ -100,7 +100,10 @@ const repoInfo = {
   }
 
   resourceMapping.forEach((item) => {
-    consola.log(`existed ${item}:`, existsSync(item));
+    consola.log(
+      `founded ${item}, size: ${getFileSize(item)}`,
+      existsSync(item),
+    );
   });
 
   if (!nightlyBuild) {
@@ -129,14 +132,19 @@ const repoInfo = {
   consola.start("Staring upload tasks (nightly)");
 
   // upload windows binary
+  consola.info("starting upload windows related binary: here is the list:");
+  let filtered_file = resourceMapping.filter(
+    (item) =>
+      !item.includes("fixed-webview") &&
+      (item.endsWith(".exe") || item.endsWith("portable.zip")),
+  );
+  filtered_file.forEach((v) => {
+    consola.debug(`file: ${v}, size:${getFileSize(v)}`);
+  });
   await pRetry(
     () =>
       client.sendFile(TELEGRAM_TO_NIGHTLY, {
-        file: resourceMapping.filter(
-          (item) =>
-            !item.includes("fixed-webview") &&
-            (item.endsWith(".exe") || item.endsWith("portable.zip")),
-        ),
+        file: filtered_file,
         forceDocument: true,
         caption: `Clash Nyanpasu Nightly Build ${GIT_SHORT_HASH} for Windows`,
         workers: 16,
@@ -147,11 +155,17 @@ const repoInfo = {
     { retries: 5 },
   );
 
+  consola.info("starting upload macos related binary: here is the list:");
+  filtered_file = resourceMapping.filter((item) => item.endsWith(".dmg"));
+  filtered_file.forEach((v) => {
+    consola.debug(`file: ${v}, size:${getFileSize(v)}`);
+  });
+
   // upload macOS binary
   await pRetry(
     () =>
       client.sendFile(TELEGRAM_TO_NIGHTLY, {
-        file: resourceMapping.filter((item) => item.endsWith(".dmg")),
+        file: filtered_file,
         forceDocument: true,
         caption: `Clash Nyanpasu Nightly Build ${GIT_SHORT_HASH} for macOS`,
         workers: 16,
@@ -159,18 +173,55 @@ const repoInfo = {
     { retries: 5 },
   );
 
+  consola.info(
+    "starting upload Linux related binary, part 1: here is the list:",
+  );
+  filtered_file = resourceMapping.filter(
+    (item) =>
+      (item.endsWith(".rpm") ||
+        item.endsWith(".deb") ||
+        item.endsWith(".AppImage")) &&
+      !item.includes("armel") &&
+      !item.includes("armhf"),
+  );
+  filtered_file.forEach((v) => {
+    consola.debug(`file: ${v}, size:${getFileSize(v)}`);
+  });
+
   // upload linux binary
   await pRetry(
     () =>
       client.sendFile(TELEGRAM_TO_NIGHTLY, {
-        file: resourceMapping.filter(
-          (item) =>
-            item.endsWith(".rpm") ||
-            item.endsWith(".deb") ||
-            item.endsWith(".AppImage"),
-        ),
+        file: filtered_file,
         forceDocument: true,
-        caption: `Clash Nyanpasu Nightly Build ${GIT_SHORT_HASH} for Linux`,
+        caption: `Clash Nyanpasu Nightly Build ${GIT_SHORT_HASH} for Linux main target`,
+        workers: 16,
+      }),
+    { retries: 5 },
+  );
+
+  consola.info(
+    "starting upload Linux related binary, part 2: here is the list:",
+  );
+  filtered_file = resourceMapping.filter(
+    (item) =>
+      ((item.endsWith(".rpm") ||
+        item.endsWith(".deb") ||
+        item.endsWith(".AppImage")) &&
+        item.includes("armel")) ||
+      item.includes("armhf"),
+  );
+  filtered_file.forEach((v) => {
+    consola.debug(`file: ${v}, size:${getFileSize(v)}`);
+  });
+
+  // upload linux binary
+  await pRetry(
+    () =>
+      client.sendFile(TELEGRAM_TO_NIGHTLY, {
+        file: filtered_file,
+        forceDocument: true,
+        caption: `Clash Nyanpasu Nightly Build ${GIT_SHORT_HASH} for Linux armv7 target`,
         workers: 16,
       }),
     { retries: 5 },

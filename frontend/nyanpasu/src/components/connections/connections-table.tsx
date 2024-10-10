@@ -119,14 +119,14 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
             size: 88,
             accessorFn: ({ download }) => parseTraffic(download).join(" "),
             sortingFn: (rowA, rowB) =>
-              rowB.original.download - rowA.original.download,
+              rowA.original.download - rowB.original.download,
           },
           {
             header: "Uploaded",
             size: 88,
             accessorFn: ({ upload }) => parseTraffic(upload).join(" "),
             sortingFn: (rowA, rowB) =>
-              rowB.original.upload - rowA.original.upload,
+              rowA.original.upload - rowB.original.upload,
           },
           {
             header: "DL Speed",
@@ -162,7 +162,7 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
             size: 120,
             accessorFn: ({ start }) => dayjs(start).fromNow(),
             sortingFn: (rowA, rowB) =>
-              dayjs(rowB.original.start).diff(rowA.original.start),
+              dayjs(rowA.original.start).diff(rowB.original.start),
           },
           {
             header: "Source",

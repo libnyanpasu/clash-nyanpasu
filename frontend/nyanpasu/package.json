@@ -71,6 +71,7 @@
     "@types/validator": "13.12.2",
     "@vitejs/plugin-react": "4.3.2",
     "@vitejs/plugin-react-swc": "3.7.1",
+    "change-case": "^5.4.4",
     "clsx": "2.1.1",
     "meta-json-schema": "1.18.9",
     "monaco-yaml": "5.2.2",

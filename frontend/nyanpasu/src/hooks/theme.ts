@@ -7,8 +7,8 @@ export const useColorForDelay = (delay: number): string => {
     "-1": palette.text.primary,
     "0": palette.text.secondary,
     "1": palette.text.secondary,
-    "100": palette.success.main,
-    "500": palette.warning.main,
+    "500": palette.success.main,
+    "2000": palette.warning.main,
     "10000": palette.error.main,
   };
 

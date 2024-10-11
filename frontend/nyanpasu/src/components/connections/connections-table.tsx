@@ -8,6 +8,9 @@ import {
   useMaterialReactTable,
   type MRT_ColumnDef,
 } from "material-react-table";
+import { MRT_Localization_EN } from "material-react-table/locales/en";
+import { MRT_Localization_RU } from "material-react-table/locales/ru";
+import { MRT_Localization_ZH_HANS } from "material-react-table/locales/zh-Hans";
 import { useDeferredValue, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { containsSearchTerm } from "@/utils";
@@ -27,7 +30,7 @@ export interface TableMessage extends Omit<Connection.Response, "connections"> {
 }
 
 export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const { deleteConnections } = useClash();
 
@@ -81,6 +84,18 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
     return data;
   }, [latestMessage?.data, searchTerm]);
   const deferredTableData = useDeferredValue(connectionsMessage?.connections);
+
+  const locale = useMemo(() => {
+    switch (i18n.language) {
+      case "zh":
+        return MRT_Localization_ZH_HANS;
+      case "ru":
+        return MRT_Localization_RU;
+      case "en":
+      default:
+        return MRT_Localization_EN;
+    }
+  }, [i18n.language]);
 
   const columns = useMemo(
     () =>
@@ -188,12 +203,10 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
           ({
             ...column,
             id: changeCase.snakeCase(column.header),
-            Header(props) {
-              return <span>{t(column.header)}</span>;
-            },
+            header: t(column.header),
           }) satisfies MRT_ColumnDef<TableConnection>,
       ),
-    [t],
+    [closeConnect, t],
   );
 
   const table = useMaterialReactTable({
@@ -216,6 +229,7 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
       sx: { minHeight: "100%" },
       className: "!absolute !h-full !w-full",
     },
+    localization: locale,
     enableRowVirtualization: true,
     enableColumnVirtualization: true,
     rowVirtualizerOptions: { overscan: 5 },

@@ -92,7 +92,7 @@ export const useColumns = (): Array<MRT_ColumnDef<TableConnection>> => {
             accessorFn: ({ chains }) => [...chains].reverse().join(" / "),
           },
           {
-            header: "Rules",
+            header: "Rule",
             size: 200,
             accessorFn: ({ rule, rulePayload }) =>
               rulePayload ? `${rule} (${rulePayload})` : rule,
@@ -111,7 +111,7 @@ export const useColumns = (): Array<MRT_ColumnDef<TableConnection>> => {
               `${sourceIP}:${sourcePort}`,
           },
           {
-            header: "Destination",
+            header: "Destination IP",
             size: 200,
             accessorFn: ({ metadata: { destinationIP, destinationPort } }) =>
               `${destinationIP}:${destinationPort}`,
@@ -181,6 +181,7 @@ function ColItem({
 export default function ConnectionColumnFilterDialog(
   props: ConnectionColumnFilterDialogProps,
 ) {
+  const { t } = useTranslation();
   const columns = useColumns();
   const [filteredCols, setFilteredCols] = useAtom(connectionTableColumnsAtom);
   const sortedCols = useMemo(
@@ -210,7 +211,7 @@ export default function ConnectionColumnFilterDialog(
   ]) as Array<[string, boolean]>;
 
   return (
-    <BaseDialog title="Connection Columns" {...props}>
+    <BaseDialog title={t("Connection Columns")} {...props}>
       <div className="grid grid-cols-1 gap-1">
         <AnimatePresence>
           <Reorder.Group

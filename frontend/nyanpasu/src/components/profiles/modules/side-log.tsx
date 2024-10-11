@@ -1,5 +1,6 @@
 import { isEmpty } from "lodash-es";
 import { memo } from "react";
+import { useTranslation } from "react-i18next";
 import { VList } from "virtua";
 import { RamenDining, Terminal } from "@mui/icons-material";
 import { Divider } from "@mui/material";
@@ -34,6 +35,8 @@ export interface SideLogProps {
 }
 
 export const SideLog = ({ className }: SideLogProps) => {
+  const { t } = useTranslation();
+
   const { getRuntimeLogs, getProfiles } = useClash();
 
   const { scripts } = filterProfiles(getProfiles.data?.items);
@@ -44,7 +47,7 @@ export const SideLog = ({ className }: SideLogProps) => {
         <div className="flex items-center gap-2">
           <Terminal />
 
-          <span>Console</span>
+          <span>{t("Console")}</span>
         </div>
       </div>
 
@@ -69,7 +72,7 @@ export const SideLog = ({ className }: SideLogProps) => {
         ) : (
           <div className="flex h-full min-h-48 w-full flex-col items-center justify-center">
             <RamenDining className="!size-10" />
-            <p>No Log</p>
+            <p>{t("No Logs")}</p>
           </div>
         )}
       </VList>

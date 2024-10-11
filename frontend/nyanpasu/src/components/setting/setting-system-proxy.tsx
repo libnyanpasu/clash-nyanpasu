@@ -139,7 +139,7 @@ export const SettingSystemProxy = () => {
                   setNyanpasuConfig({ system_proxy_bypass: proxyBypass });
                 }}
               >
-                Apply
+                {t("Apply")}
               </Button>
             </Box>
           </Expand>

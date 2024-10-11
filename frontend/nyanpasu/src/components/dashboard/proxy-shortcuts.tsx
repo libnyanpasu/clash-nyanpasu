@@ -49,7 +49,7 @@ const TitleComp = () => {
 
   return (
     <div className="flex items-center gap-2 px-1">
-      <div>{t("Proxy takeover Status")}</div>
+      <div>{t("Proxy Takeover Status")}</div>
 
       <Chip
         color={status.color}

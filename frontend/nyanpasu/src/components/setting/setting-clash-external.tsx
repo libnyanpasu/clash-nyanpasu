@@ -15,23 +15,6 @@ import {
 import { useClash, useNyanpasu } from "@nyanpasu/interface";
 import { BaseCard, Expand, MenuItem } from "@nyanpasu/ui";
 
-type PortStrategy = "fixed" | "random" | "allow_fallback";
-
-const portStrategyOptions = {
-  allow_fallback: "Allow Fallback",
-  fixed: "Fixed",
-  random: "Random",
-};
-
-const textFieldProps: TextFieldProps = {
-  size: "small",
-  variant: "outlined",
-  sx: { width: 160 },
-  inputProps: {
-    "aria-autocomplete": "none",
-  },
-};
-
 export const SettingClashExternal = () => {
   const { t } = useTranslation();
 
@@ -39,6 +22,23 @@ export const SettingClashExternal = () => {
 
   const { getClashInfo, setConfigs } = useClash();
   const mutate = useGlobalMutation();
+
+  type PortStrategy = "fixed" | "random" | "allow_fallback";
+
+  const portStrategyOptions = {
+    allow_fallback: t("Allow Fallback"),
+    fixed: t("Fixed"),
+    random: t("Random"),
+  };
+
+  const textFieldProps: TextFieldProps = {
+    size: "small",
+    variant: "outlined",
+    sx: { width: 160 },
+    inputProps: {
+      "aria-autocomplete": "none",
+    },
+  };
 
   // What even are these fields?????
   // I had to write the shit code to make it run like a pile of crap.
@@ -102,7 +102,7 @@ export const SettingClashExternal = () => {
     <BaseCard label={t("Clash External Controll")}>
       <List disablePadding>
         <ListItem sx={{ pl: 0, pr: 0 }}>
-          <ListItemText primary="External Controller" />
+          <ListItemText primary={t("External Controller")} />
 
           <TextField
             value={config.controller}
@@ -116,7 +116,7 @@ export const SettingClashExternal = () => {
         </ListItem>
 
         <MenuItem
-          label="Port Strategy"
+          label={t("Port Strategy")}
           options={portStrategyOptions}
           selected={config.portStrategy}
           onSelected={(value) => {
@@ -131,7 +131,7 @@ export const SettingClashExternal = () => {
         />
 
         <ListItem sx={{ pl: 0, pr: 0 }}>
-          <ListItemText primary="Core Secret" />
+          <ListItemText primary={t("Core Secret")} />
 
           <TextField
             value={config.secret}
@@ -152,7 +152,7 @@ export const SettingClashExternal = () => {
               startIcon={<Done />}
               onClick={apply}
             >
-              Apply
+              {t("Apply")}
             </LoadingButton>
           </Box>
         </Expand>

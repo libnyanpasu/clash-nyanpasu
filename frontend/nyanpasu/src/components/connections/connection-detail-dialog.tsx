@@ -2,6 +2,7 @@ import { sentenceCase } from "change-case";
 import dayjs from "dayjs";
 import { filesize } from "filesize";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { Tooltip } from "@mui/material";
 import { Connection } from "@nyanpasu/interface";
 import { BaseDialog, BaseDialogProps, cn } from "@nyanpasu/ui";
@@ -69,10 +70,11 @@ export default function ConnectionDetailDialog({
   item,
   ...others
 }: ConnectionDetailDialogProps) {
+  const { t } = useTranslation();
   if (!item) return null;
 
   return (
-    <BaseDialog {...others} title="Connection Detail">
+    <BaseDialog {...others} title={t("Connection Detail")}>
       <div className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-2 px-3">
         {Object.entries(item)
           .filter(([key, value]) => key !== "metadata" && !!value)
@@ -81,7 +83,7 @@ export default function ConnectionDetailDialog({
           ))}
 
         <h3 className="col-span-2 py-1 pt-5 text-xl font-semibold">
-          Meta Info
+          {t("Meta Info")}
         </h3>
 
         {Object.entries(item.metadata)

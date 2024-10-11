@@ -79,6 +79,8 @@
   "Destination IP": "目标地址",
   "Destination ASN": "目标 ASN",
   "Type": "类型",
+  "Connection Detail": "连接详情",
+  "Meta Info": "元信息",
   "Remote": "远程",
   "Local": "本地",
   "Remote Profile": "远程配置",

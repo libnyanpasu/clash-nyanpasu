@@ -16,6 +16,10 @@ const ColumnFilterDialog = lazy(
   () => import("@/components/connections/connections-column-filter"),
 );
 
+const ConnectionTotal = lazy(
+  () => import("@/components/connections/connections-total"),
+);
+
 export const Route = createFileRoute("/connections")({
   component: Connections,
 });
@@ -47,20 +51,23 @@ function Connections() {
         title={t("Connections")}
         full
         header={
-          <div className="flex max-h-96 items-center gap-1">
-            <Suspense fallback={null}>
-              <ColumnFilterDialog
-                open={openColumnFilter}
-                onClose={() => setOpenColumnFilter(false)}
+          <div className="flex max-h-96 w-full flex-1 items-center justify-between gap-2 pl-5">
+            <ConnectionTotal />
+            <div className="flex items-center gap-1">
+              <Suspense fallback={null}>
+                <ColumnFilterDialog
+                  open={openColumnFilter}
+                  onClose={() => setOpenColumnFilter(false)}
+                />
+              </Suspense>
+              <HeaderSearch
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
               />
-            </Suspense>
-            <HeaderSearch
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-            <IconButton onClick={() => setOpenColumnFilter(true)}>
-              <FilterAlt />
-            </IconButton>
+              <IconButton onClick={() => setOpenColumnFilter(true)}>
+                <FilterAlt />
+              </IconButton>
+            </div>
           </div>
         }
       >

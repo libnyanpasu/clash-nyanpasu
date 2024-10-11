@@ -1,23 +1,16 @@
-import { useLockFn } from "ahooks";
-import * as changeCase from "change-case";
-import dayjs from "dayjs";
 import { useAtomValue } from "jotai";
 import {
   MaterialReactTable,
   useMaterialReactTable,
-  type MRT_ColumnDef,
 } from "material-react-table";
 import { MRT_Localization_EN } from "material-react-table/locales/en";
 import { MRT_Localization_RU } from "material-react-table/locales/ru";
 import { MRT_Localization_ZH_HANS } from "material-react-table/locales/zh-Hans";
-import { useDeferredValue, useEffect, useMemo, useRef } from "react";
+import { useDeferredValue, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { connectionTableColumnsAtom } from "@/store";
 import { containsSearchTerm } from "@/utils";
-import parseTraffic from "@/utils/parse-traffic";
-import Cancel from "@mui/icons-material/Cancel";
-import { IconButton } from "@mui/material";
-import { Connection, useClash, useClashWS } from "@nyanpasu/interface";
+import { Connection, useClashWS } from "@nyanpasu/interface";
 import ContentDisplay from "../base/content-display";
 import { useColumns } from "./connections-column-filter";
 

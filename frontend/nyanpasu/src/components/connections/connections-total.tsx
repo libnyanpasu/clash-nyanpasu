@@ -71,7 +71,7 @@ export default function ConnectionTotal() {
           ]}
         />{" "}
         <span className="font-mono text-xs">
-          {filesize(result.downloadTotal)}
+          {filesize(result.downloadTotal, { pad: true })}
         </span>
       </Paper>
       <Paper
@@ -96,7 +96,7 @@ export default function ConnectionTotal() {
           ]}
         />{" "}
         <span className="font-mono text-xs">
-          {filesize(result.uploadTotal)}
+          {filesize(result.uploadTotal, { pad: true })}
         </span>
       </Paper>
     </div>

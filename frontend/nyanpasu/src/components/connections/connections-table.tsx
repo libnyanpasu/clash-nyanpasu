@@ -1,4 +1,5 @@
 import { useAtomValue } from "jotai";
+import { cloneDeep } from "lodash-es";
 import {
   MaterialReactTable,
   useMaterialReactTable,
@@ -6,13 +7,15 @@ import {
 import { MRT_Localization_EN } from "material-react-table/locales/en";
 import { MRT_Localization_RU } from "material-react-table/locales/ru";
 import { MRT_Localization_ZH_HANS } from "material-react-table/locales/zh-Hans";
-import { useDeferredValue, useMemo, useRef } from "react";
+import { lazy, useDeferredValue, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { connectionTableColumnsAtom } from "@/store";
 import { containsSearchTerm } from "@/utils";
 import { Connection, useClashWS } from "@nyanpasu/interface";
 import ContentDisplay from "../base/content-display";
 import { useColumns } from "./connections-column-filter";
+
+const ConnectionDetailDialog = lazy(() => import("./connection-detail-dialog"));
 
 export type TableConnection = Connection.Item & {
   downloadSpeed?: number;
@@ -30,7 +33,7 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
     connections: { latestMessage },
   } = useClashWS();
 
-  const historyMessage = useRef<TableMessage | undefined>(undefined);
+  const historyMessage = useRef<TableMessage | null>(null);
 
   const connectionsMessage = useMemo(() => {
     if (!latestMessage?.data) return;
@@ -124,6 +127,12 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
     );
   }, [filteredColumns, tableColsOrder]);
 
+  const [connectionDetailDialogOpen, setConnectionDetailDialogOpen] =
+    useState(false);
+  const [connectioNDetailDialogItem, setConnectionDetailDialogItem] = useState<
+    Connection.Item | undefined
+  >(undefined);
+
   const table = useMaterialReactTable({
     columns: filteredColumns,
     data: deferredTableData ?? [],
@@ -151,6 +160,18 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
       sx: { minHeight: "100%" },
       className: "!absolute !h-full !w-full",
     },
+    muiTableBodyRowProps({ row }) {
+      return {
+        onClick() {
+          const id = row.original.id;
+          const item = connectionsMessage?.connections.find((o) => o.id === id);
+          if (item) {
+            setConnectionDetailDialogItem(cloneDeep(item));
+            setConnectionDetailDialogOpen(true);
+          }
+        },
+      };
+    },
     localization: locale,
     enableRowVirtualization: true,
     enableColumnVirtualization: true,
@@ -159,7 +180,14 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
   });
 
   return connectionsMessage?.connections.length ? (
-    <MaterialReactTable table={table} />
+    <>
+      <ConnectionDetailDialog
+        item={connectioNDetailDialogItem}
+        open={connectionDetailDialogOpen}
+        onClose={() => setConnectionDetailDialogOpen(false)}
+      />
+      <MaterialReactTable table={table} />
+    </>
   ) : (
     <ContentDisplay
       className="!absolute !h-full !w-full"

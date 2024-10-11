@@ -32,10 +32,10 @@ export const useColumns = (): Array<MRT_ColumnDef<TableConnection>> => {
             enableGlobalFilter: false,
             enableResizing: false,
             accessorFn: ({ id }) => (
-              <div className="flex w-full justify-center">
+              <div className="flex w-full items-center justify-center gap-2">
                 <IconButton
                   color="primary"
-                  className="size-5"
+                  className="size-4"
                   onClick={() => closeConnect(id)}
                 >
                   <Cancel />

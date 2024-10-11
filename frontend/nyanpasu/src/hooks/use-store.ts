@@ -24,7 +24,10 @@ export function useNyanpasuStorageSubscribers() {
     let unlisten: UnlistenFn | null = null;
     listen<[string, string | null]>("storage_value_changed", (event) => {
       const [key, value] = event.payload;
-      dispatchStorageValueChanged(key, value);
+      dispatchStorageValueChanged(
+        key,
+        typeof value === "string" ? JSON.parse(value) : value,
+      );
     }).then((fn) => {
       unlisten = fn;
     });

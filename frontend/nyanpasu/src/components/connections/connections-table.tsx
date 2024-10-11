@@ -1,8 +1,7 @@
 import { useLockFn } from "ahooks";
 import * as changeCase from "change-case";
 import dayjs from "dayjs";
-import { t } from "i18next";
-import { size } from "lodash-es";
+import { useAtomValue } from "jotai";
 import {
   MaterialReactTable,
   useMaterialReactTable,
@@ -11,14 +10,16 @@ import {
 import { MRT_Localization_EN } from "material-react-table/locales/en";
 import { MRT_Localization_RU } from "material-react-table/locales/ru";
 import { MRT_Localization_ZH_HANS } from "material-react-table/locales/zh-Hans";
-import { useDeferredValue, useMemo, useRef } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { connectionTableColumnsAtom } from "@/store";
 import { containsSearchTerm } from "@/utils";
 import parseTraffic from "@/utils/parse-traffic";
 import Cancel from "@mui/icons-material/Cancel";
 import { IconButton } from "@mui/material";
 import { Connection, useClash, useClashWS } from "@nyanpasu/interface";
 import ContentDisplay from "../base/content-display";
+import { useColumns } from "./connections-column-filter";
 
 export type TableConnection = Connection.Item & {
   downloadSpeed?: number;
@@ -32,12 +33,6 @@ export interface TableMessage extends Omit<Connection.Response, "connections"> {
 export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
   const { t, i18n } = useTranslation();
 
-  const { deleteConnections } = useClash();
-
-  const closeConnect = useLockFn(async (id?: string) => {
-    await deleteConnections(id);
-  });
-
   const {
     connections: { latestMessage },
   } = useClashWS();
@@ -46,9 +41,7 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
 
   const connectionsMessage = useMemo(() => {
     if (!latestMessage?.data) return;
-
     const result = JSON.parse(latestMessage.data) as Connection.Response;
-
     const updatedConnections: TableConnection[] = [];
 
     const filteredConnections = searchTerm
@@ -97,123 +90,59 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
     }
   }, [i18n.language]);
 
-  const columns = useMemo(
+  const columns = useColumns();
+  const tableColsOrder = useAtomValue(connectionTableColumnsAtom);
+  const filteredColumns = useMemo(
     () =>
-      (
-        [
-          {
-            header: "Actions",
-            size: 80,
-            enableSorting: false,
-            enableGlobalFilter: false,
-            accessorFn: ({ id }) => (
-              <div className="flex w-full justify-center">
-                <IconButton
-                  color="primary"
-                  className="size-5"
-                  onClick={() => closeConnect(id)}
-                >
-                  <Cancel />
-                </IconButton>
-              </div>
-            ),
-          },
-          {
-            header: "Host",
-            size: 240,
-            accessorFn: ({ metadata }) =>
-              metadata.host || metadata.destinationIP,
-          },
-          {
-            header: "Process",
-            size: 140,
-            accessorFn: ({ metadata }) => metadata.process,
-          },
-          {
-            header: "Downloaded",
-            size: 88,
-            accessorFn: ({ download }) => parseTraffic(download).join(" "),
-            sortingFn: (rowA, rowB) =>
-              rowA.original.download - rowB.original.download,
-          },
-          {
-            header: "Uploaded",
-            size: 88,
-            accessorFn: ({ upload }) => parseTraffic(upload).join(" "),
-            sortingFn: (rowA, rowB) =>
-              rowA.original.upload - rowB.original.upload,
-          },
-          {
-            header: "DL Speed",
-            size: 88,
-            accessorFn: ({ downloadSpeed }) =>
-              parseTraffic(downloadSpeed).join(" ") + "/s",
-            sortingFn: (rowA, rowB) =>
-              (rowA.original.downloadSpeed || 0) -
-              (rowB.original.downloadSpeed || 0),
-          },
-          {
-            header: "UL Speed",
-            size: 88,
-            accessorFn: ({ uploadSpeed }) =>
-              parseTraffic(uploadSpeed).join(" ") + "/s",
-            sortingFn: (rowA, rowB) =>
-              (rowA.original.uploadSpeed || 0) -
-              (rowB.original.uploadSpeed || 0),
-          },
-          {
-            header: "Chains",
-            size: 360,
-            accessorFn: ({ chains }) => [...chains].reverse().join(" / "),
-          },
-          {
-            header: "Rules",
-            size: 200,
-            accessorFn: ({ rule, rulePayload }) =>
-              rulePayload ? `${rule} (${rulePayload})` : rule,
-          },
-          {
-            header: "Time",
-            size: 120,
-            accessorFn: ({ start }) => dayjs(start).fromNow(),
-            sortingFn: (rowA, rowB) =>
-              dayjs(rowA.original.start).diff(rowB.original.start),
-          },
-          {
-            header: "Source",
-            size: 200,
-            accessorFn: ({ metadata: { sourceIP, sourcePort } }) =>
-              `${sourceIP}:${sourcePort}`,
-          },
-          {
-            header: "Destination",
-            size: 200,
-            accessorFn: ({ metadata: { destinationIP, destinationPort } }) =>
-              `${destinationIP}:${destinationPort}`,
-          },
-          {
-            header: "Type",
-            size: 160,
-            accessorFn: ({ metadata }) =>
-              `${metadata.type} (${metadata.network})`,
-          },
-        ] satisfies Array<MRT_ColumnDef<TableConnection>>
-      ).map(
-        (column) =>
-          ({
-            ...column,
-            id: changeCase.snakeCase(column.header),
-            header: t(column.header),
-          }) satisfies MRT_ColumnDef<TableConnection>,
-      ),
-    [closeConnect, t],
+      columns
+        .filter(
+          (column) =>
+            tableColsOrder.find((o) => o[0] === column.id)?.[1] ?? true,
+        )
+        .sort((a, b) => {
+          const aIndex = tableColsOrder.findIndex((o) => o[0] === a.id);
+          const bIndex = tableColsOrder.findIndex((o) => o[0] === b.id);
+          if (aIndex === -1 && bIndex === -1) {
+            return 0;
+          }
+          if (aIndex === -1) {
+            return 1;
+          }
+          if (bIndex === -1) {
+            return -1;
+          }
+          return aIndex - bIndex;
+        }),
+    [columns, tableColsOrder],
+  );
+  const columnOrder = useMemo(
+    () => filteredColumns.map((column) => column.id) as string[],
+    [filteredColumns],
   );
 
+  const columnVisibility = useMemo(() => {
+    return filteredColumns.reduce(
+      (acc, column) => {
+        acc[column.id as string] =
+          tableColsOrder.find((o) => o[0] === column.id)?.[1] ?? true;
+        return acc;
+      },
+      {} as Record<string, boolean>,
+    );
+  }, [filteredColumns, tableColsOrder]);
+
   const table = useMaterialReactTable({
-    columns,
+    columns: filteredColumns,
     data: deferredTableData ?? [],
     initialState: {
       density: "compact",
+      columnPinning: {
+        left: ["actions"],
+      },
+    },
+    state: {
+      columnOrder,
+      columnVisibility,
     },
     defaultDisplayColumn: {
       enableResizing: true,

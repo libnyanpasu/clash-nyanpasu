@@ -1,7 +1,8 @@
 import { atom } from "jotai";
-import { atomWithStorage } from "jotai/utils";
+import { atomWithStorage, createJSONStorage } from "jotai/utils";
 import { SortType } from "@/components/proxies/utils";
 import { FileRouteTypes } from "@/routeTree.gen";
+import { NyanpasuStorage } from "@/services/storage";
 import { LogMessage } from "@nyanpasu/interface";
 
 const atomWithLocalStorage = <T>(key: string, initialValue: T) => {
@@ -80,5 +81,28 @@ interface IConnectionSetting {
 export const atomConnectionSetting = atom<IConnectionSetting>({
   layout: "table",
 });
+
+// TODO: generate default columns based on COLUMNS
+export const connectionTableColumnsAtom = atomWithStorage<
+  Array<[string, boolean]>
+>(
+  "connections_table_columns",
+  [
+    "host",
+    "process",
+    "downloaded",
+    "uploaded",
+    "dl_speed",
+    "ul_speed",
+    "chains",
+    "rules",
+    "time",
+    "source",
+    "destination",
+    "destination_asn",
+    "type",
+  ].map((key) => [key, true]),
+  createJSONStorage(() => NyanpasuStorage),
+);
 
 // export const themeSchemeAtom = atom<MDYTheme["schemes"] | null>(null);

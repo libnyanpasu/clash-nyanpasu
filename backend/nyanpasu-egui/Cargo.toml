@@ -1,0 +1,19 @@
+[package]
+name = "nyanpasu-egui"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "nyanpasu_egui"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+eframe = "0.29.1"
+egui_extras = { version = "*", features = ["all_loaders"] }
+image = { version = "0.25", features = ["jpeg", "png"] }
+humansize = "2.1.3"
+# for svg currentColor replacement
+resvg = "0.44.0"         # for svg rendering
+usvg = "0.44.0"          # for svg parsing
+csscolorparser = "0.7.0" # for color conversion
+quick-xml = "0.36.2"     # for xml parsing

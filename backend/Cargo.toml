@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["tauri", "boa_utils", "nyanpasu-macro"]
+members = ["tauri", "boa_utils", "nyanpasu-macro", "nyanpasu-egui"]
 
 [workspace.package]
 repository = "https://github.com/keiko233/clash-nyanpasu.git"

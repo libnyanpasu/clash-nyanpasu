@@ -42,7 +42,7 @@
     "react-hook-form-mui": "7.3.0",
     "react-i18next": "15.0.2",
     "react-markdown": "9.0.1",
-    "react-router-dom": "6.26.2",
+    "react-router-dom": "6.27.0",
     "react-split-grid": "1.0.4",
     "react-use": "17.5.1",
     "swr": "2.2.5",

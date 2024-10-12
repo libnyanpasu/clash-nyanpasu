@@ -57,8 +57,10 @@ export default function RuntimeConfigDiffDialog({
             loaded ? "flex" : "hidden",
           )}
         >
-          <span className="text-base font-semibold">原始配置</span>
-          <span className="text-base font-semibold">运行配置</span>
+          <span className="text-base font-semibold">
+            {t("Original Config")}
+          </span>
+          <span className="text-base font-semibold">{t("Runtime Config")}</span>
         </div>
         <div className="h-[75vh] w-full">
           <Suspense fallback={null}>

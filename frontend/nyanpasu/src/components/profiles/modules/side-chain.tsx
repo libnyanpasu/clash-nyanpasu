@@ -106,7 +106,7 @@ export const SideChain = ({ onChainEdit }: SideChainProps) => {
       >
         <Add color="primary" />
 
-        <div className="py-1">New Chain</div>
+        <div className="py-1">{t("New Chain")}</div>
       </ListItemButton>
     </div>
   );

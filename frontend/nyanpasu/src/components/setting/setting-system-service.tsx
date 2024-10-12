@@ -24,22 +24,22 @@ export const SettingSystemService = () => {
     switch (getServiceStatus.data) {
       case "running":
       case "stopped": {
-        return "Uninstall";
+        return t("Uninstall");
       }
 
       case "not_installed": {
-        return "Install";
+        return t("Install");
       }
     }
   };
   const getControlButtonString = () => {
     switch (getServiceStatus.data) {
       case "running": {
-        return "Stop";
+        return t("Stop");
       }
 
       case "stopped": {
-        return "Start";
+        return t("Start");
       }
     }
   };
@@ -69,8 +69,8 @@ export const SettingSystemService = () => {
       } catch (e) {
         const errorMessage = `${
           getServiceStatus.data === "not_installed"
-            ? "Install failed"
-            : "Uninstall failed"
+            ? t("Install failed")
+            : t("Uninstall failed")
         }: ${formatError(e)}`;
 
         message(errorMessage, {
@@ -142,8 +142,9 @@ export const SettingSystemService = () => {
         {isDisabled && (
           <ListItem sx={{ pl: 0, pr: 0 }}>
             <Typography>
-              Information: Please make sure that the Clash Nyanpasu Service is
-              installed and enabled
+              {t(
+                "Information: Please make sure that the Clash Nyanpasu Service is installed and enabled.",
+              )}
             </Typography>
           </ListItem>
         )}

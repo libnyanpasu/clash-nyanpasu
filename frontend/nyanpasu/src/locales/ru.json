@@ -170,7 +170,7 @@
     "update": "Обновить",
     "go": "Посмотреть на GitHub"
   },
-  "not_install": "Не установлен",
+  "not_installed": "Не установлен",
   "stopped": "Остановлен",
   "running": "Запущен",
   "stopped_reason": "Остановлен по причине: {{reason}}",

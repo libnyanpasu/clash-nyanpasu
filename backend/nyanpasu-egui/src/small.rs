@@ -3,12 +3,12 @@
 #![allow(rustdoc::missing_crate_level_docs)] // it's an example
 
 use eframe::egui;
-use nyanpasu_egui::widget::NyanpasuNetworkStatisticLargeWidget;
+use nyanpasu_egui::widget::NyanpasuNetworkStatisticSmallWidget;
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([206.0, 60.0])
+            .with_inner_size([80.0, 32.0])
             .with_decorations(false)
             .with_transparent(true)
             .with_always_on_top()
@@ -19,6 +19,6 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "egui example: custom style",
         options,
-        Box::new(|cc| Ok(Box::new(NyanpasuNetworkStatisticLargeWidget::new(cc)))),
+        Box::new(|cc| Ok(Box::new(NyanpasuNetworkStatisticSmallWidget::new(cc)))),
     )
 }

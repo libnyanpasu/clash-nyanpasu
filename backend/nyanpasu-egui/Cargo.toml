@@ -7,6 +7,14 @@ edition = "2021"
 name = "nyanpasu_egui"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[[bin]]
+name = "nyanpasu-network-statistic-widget-large"
+path = "./src/main.rs"
+
+[[bin]]
+name = "nyanpasu-network-statistic-widget-small"
+path = "./src/small.rs"
+
 [dependencies]
 eframe = "0.29.1"
 egui_extras = { version = "*", features = ["all_loaders"] }

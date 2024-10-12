@@ -217,8 +217,8 @@ importers:
         specifier: workspace:^
         version: link:../ui
       '@tanstack/router-zod-adapter':
-        specifier: 1.64.2
-        version: 1.64.2(@tanstack/react-router@1.64.2(@tanstack/router-generator@1.64.0)(react-dom@19.0.0-rc-09111202-20241011(react@19.0.0-rc-09111202-20241011))(react@19.0.0-rc-09111202-20241011))(zod@3.23.8)
+        specifier: 1.64.3
+        version: 1.64.3(@tanstack/react-router@1.64.3(@tanstack/router-generator@1.64.0)(react-dom@19.0.0-rc-09111202-20241011(react@19.0.0-rc-09111202-20241011))(react@19.0.0-rc-09111202-20241011))(zod@3.23.8)
       '@tauri-apps/api':
         specifier: 2.0.2
         version: 2.0.2
@@ -311,11 +311,11 @@ importers:
         specifier: 4.6.0
         version: 4.6.0(monaco-editor@0.52.0)(react-dom@19.0.0-rc-09111202-20241011(react@19.0.0-rc-09111202-20241011))(react@19.0.0-rc-09111202-20241011)
       '@tanstack/react-router':
-        specifier: 1.64.2
-        version: 1.64.2(@tanstack/router-generator@1.64.0)(react-dom@19.0.0-rc-09111202-20241011(react@19.0.0-rc-09111202-20241011))(react@19.0.0-rc-09111202-20241011)
+        specifier: 1.64.3
+        version: 1.64.3(@tanstack/router-generator@1.64.0)(react-dom@19.0.0-rc-09111202-20241011(react@19.0.0-rc-09111202-20241011))(react@19.0.0-rc-09111202-20241011)
       '@tanstack/router-devtools':
-        specifier: 1.64.2
-        version: 1.64.2(@tanstack/react-router@1.64.2(@tanstack/router-generator@1.64.0)(react-dom@19.0.0-rc-09111202-20241011(react@19.0.0-rc-09111202-20241011))(react@19.0.0-rc-09111202-20241011))(csstype@3.1.3)(react-dom@19.0.0-rc-09111202-20241011(react@19.0.0-rc-09111202-20241011))(react@19.0.0-rc-09111202-20241011)
+        specifier: 1.64.3
+        version: 1.64.3(@tanstack/react-router@1.64.3(@tanstack/router-generator@1.64.0)(react-dom@19.0.0-rc-09111202-20241011(react@19.0.0-rc-09111202-20241011))(react@19.0.0-rc-09111202-20241011))(csstype@3.1.3)(react-dom@19.0.0-rc-09111202-20241011(react@19.0.0-rc-09111202-20241011))(react@19.0.0-rc-09111202-20241011)
       '@tanstack/router-plugin':
         specifier: 1.64.0
         version: 1.64.0(vite@5.4.8(@types/node@22.7.5)(less@4.2.0)(sass-embedded@1.78.0)(sass@1.79.5)(stylus@0.62.0))(webpack-sources@3.2.3)
@@ -2317,8 +2317,8 @@ packages:
     resolution: {integrity: sha512-Wo1iKt2b9OT7d+YGhvEPD3DXvPv2etTusIMhMUoG7fbhmxcXCtIjJDEygy91Y2JFlwGyjqiBPRozme7UD8hoqg==}
     engines: {node: '>=12'}
 
-  '@tanstack/react-router@1.64.2':
-    resolution: {integrity: sha512-TnVx0lAzdV4CL2LO7zZziUBW2bqx02di8L7oJQLPQUMdlaOApUdvQO+VulsywZWb4JWLxPq4rCJsZGcBkt9e6A==}
+  '@tanstack/react-router@1.64.3':
+    resolution: {integrity: sha512-452f9eeG9kCAL2iFAU4zk1ua7TW6vWAkWfCc4wmBWUERmWzBBiAhoc5c7gyD1UuXAQdIlK0GEp8qLlWIz2dc2w==}
     engines: {node: '>=12'}
     peerDependencies:
       '@tanstack/router-generator': 1.64.0
@@ -2347,11 +2347,11 @@ packages:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0
       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0
 
-  '@tanstack/router-devtools@1.64.2':
-    resolution: {integrity: sha512-l/CqLIi9FvoTnicc7ubVGdT0RIt8llyy3WvgNg+xEMbkBjfnMa7h8wRiOjAok7RHboyQU35V9lLRBgtH66Qlmw==}
+  '@tanstack/router-devtools@1.64.3':
+    resolution: {integrity: sha512-0Lj0YCE40GUzGb8iiz9zv2nlWBmABDuZaCkMmSd9u2BKS0x1Bz7DDjB/gAFmSpVcaU1cMymGmWG0nVBbLICxHQ==}
     engines: {node: '>=12'}
     peerDependencies:
-      '@tanstack/react-router': ^1.64.2
+      '@tanstack/react-router': ^1.64.3
       react: '>=18'
       react-dom: '>=18'
 
@@ -2374,8 +2374,8 @@ packages:
       webpack:
         optional: true
 
-  '@tanstack/router-zod-adapter@1.64.2':
-    resolution: {integrity: sha512-NSCBOZ1/npTH4t7cWYtae7AMcDtB0PIYphUwBGhwmizdPYk4dUO1WS/1P5jS3RtgsAR+H4d50G9h1+4T+QX3Gg==}
+  '@tanstack/router-zod-adapter@1.64.3':
+    resolution: {integrity: sha512-fzokciW/zWbYvQOK5x5T5Jf5E375izeftFpYUgqdYKbJ5triFVJggIAqvgN+3Tb3777Bw9I9P/Y9WFHYwSWmug==}
     engines: {node: '>=12'}
     peerDependencies:
       '@tanstack/react-router': '>=1.43.2'
@@ -9079,7 +9079,7 @@ snapshots:
     dependencies:
       remove-accents: 0.5.0
 
-  '@tanstack/react-router@1.64.2(@tanstack/router-generator@1.64.0)(react-dom@19.0.0-rc-09111202-20241011(react@19.0.0-rc-09111202-20241011))(react@19.0.0-rc-09111202-20241011)':
+  '@tanstack/react-router@1.64.3(@tanstack/router-generator@1.64.0)(react-dom@19.0.0-rc-09111202-20241011(react@19.0.0-rc-09111202-20241011))(react@19.0.0-rc-09111202-20241011)':
     dependencies:
       '@tanstack/history': 1.61.1
       '@tanstack/react-store': 0.5.5(react-dom@19.0.0-rc-09111202-20241011(react@19.0.0-rc-09111202-20241011))(react@19.0.0-rc-09111202-20241011)
@@ -9109,9 +9109,9 @@ snapshots:
       react: 19.0.0-rc-09111202-20241011
       react-dom: 19.0.0-rc-09111202-20241011(react@19.0.0-rc-09111202-20241011)
 
-  '@tanstack/router-devtools@1.64.2(@tanstack/react-router@1.64.2(@tanstack/router-generator@1.64.0)(react-dom@19.0.0-rc-09111202-20241011(react@19.0.0-rc-09111202-20241011))(react@19.0.0-rc-09111202-20241011))(csstype@3.1.3)(react-dom@19.0.0-rc-09111202-20241011(react@19.0.0-rc-09111202-20241011))(react@19.0.0-rc-09111202-20241011)':
+  '@tanstack/router-devtools@1.64.3(@tanstack/react-router@1.64.3(@tanstack/router-generator@1.64.0)(react-dom@19.0.0-rc-09111202-20241011(react@19.0.0-rc-09111202-20241011))(react@19.0.0-rc-09111202-20241011))(csstype@3.1.3)(react-dom@19.0.0-rc-09111202-20241011(react@19.0.0-rc-09111202-20241011))(react@19.0.0-rc-09111202-20241011)':
     dependencies:
-      '@tanstack/react-router': 1.64.2(@tanstack/router-generator@1.64.0)(react-dom@19.0.0-rc-09111202-20241011(react@19.0.0-rc-09111202-20241011))(react@19.0.0-rc-09111202-20241011)
+      '@tanstack/react-router': 1.64.3(@tanstack/router-generator@1.64.0)(react-dom@19.0.0-rc-09111202-20241011(react@19.0.0-rc-09111202-20241011))(react@19.0.0-rc-09111202-20241011)
       clsx: 2.1.1
       goober: 2.1.14(csstype@3.1.3)
       react: 19.0.0-rc-09111202-20241011
@@ -9152,9 +9152,9 @@ snapshots:
       - supports-color
       - webpack-sources
 
-  '@tanstack/router-zod-adapter@1.64.2(@tanstack/react-router@1.64.2(@tanstack/router-generator@1.64.0)(react-dom@19.0.0-rc-09111202-20241011(react@19.0.0-rc-09111202-20241011))(react@19.0.0-rc-09111202-20241011))(zod@3.23.8)':
+  '@tanstack/router-zod-adapter@1.64.3(@tanstack/react-router@1.64.3(@tanstack/router-generator@1.64.0)(react-dom@19.0.0-rc-09111202-20241011(react@19.0.0-rc-09111202-20241011))(react@19.0.0-rc-09111202-20241011))(zod@3.23.8)':
     dependencies:
-      '@tanstack/react-router': 1.64.2(@tanstack/router-generator@1.64.0)(react-dom@19.0.0-rc-09111202-20241011(react@19.0.0-rc-09111202-20241011))(react@19.0.0-rc-09111202-20241011)
+      '@tanstack/react-router': 1.64.3(@tanstack/router-generator@1.64.0)(react-dom@19.0.0-rc-09111202-20241011(react@19.0.0-rc-09111202-20241011))(react@19.0.0-rc-09111202-20241011)
       zod: 3.23.8
 
   '@tanstack/store@0.5.5': {}

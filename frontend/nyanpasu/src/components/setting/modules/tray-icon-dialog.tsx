@@ -111,8 +111,9 @@ export default function TrayIconDialog({
   onClose,
   ...props
 }: TrayIconDialogProps) {
+  const { t } = useTranslation();
   return (
-    <BaseDialog title="Tray Icon" open={open} onClose={onClose} {...props}>
+    <BaseDialog title={t("Tray Icons")} open={open} onClose={onClose} {...props}>
       <div className="grid gap-3">
         <TrayIconItem mode="normal" />
         <TrayIconItem mode="tun" />

@@ -93,9 +93,23 @@ pub async fn import_profile(url: String, option: Option<RemoteProfileOptionsBuil
         .build_no_blocking()
         .await
         .context("failed to build a remote profile")?;
+    // 根据是否为 Some(uid) 来判断是否要激活配置
+    let profile_id = {
+        if Config::profiles().draft().current.is_empty() {
+            Some(profile.uid().to_string())
+        } else {
+            None
+        }
+    };
     {
         let committer = Config::profiles().auto_commit();
         (committer.draft().append_item(profile.into()))?;
+    }
+    // TODO: 使用 activate_profile 来激活配置
+    if let Some(profile_id) = profile_id {
+        let mut builder = ProfilesBuilder::default();
+        builder.current(vec![profile_id]);
+        patch_profiles_config(builder).await?;
     }
     Ok(())
 }
@@ -141,9 +155,26 @@ pub async fn create_profile(item: Mapping, file_data: Option<String>) -> Result 
     {
         (profile.save_file(file_data))?;
     }
+
+    // 根据是否为 Some(uid) 来判断是否要激活配置
+    let profile_id = {
+        if (profile.is_local() || profile.is_remote())
+            && Config::profiles().draft().current.is_empty()
+        {
+            Some(profile.uid().to_string())
+        } else {
+            None
+        }
+    };
     {
         let committer = Config::profiles().auto_commit();
-        (committer.draft().append_item(profile))?;
+        committer.draft().append_item(profile)?;
+    };
+    // TODO: 使用 activate_profile 来激活配置
+    if let Some(profile_id) = profile_id {
+        let mut builder = ProfilesBuilder::default();
+        builder.current(vec![profile_id]);
+        patch_profiles_config(builder).await?;
     }
     Ok(())
 }

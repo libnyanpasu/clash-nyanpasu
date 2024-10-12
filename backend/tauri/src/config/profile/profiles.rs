@@ -89,10 +89,6 @@ impl Profiles {
 
     /// append new item
     pub fn append_item(&mut self, item: Profile) -> Result<()> {
-        // 如果 current 为空，则激活此配置
-        if self.current.is_empty() && (item.is_local() || item.is_remote()) {
-            self.current.push(item.uid().to_string());
-        }
         self.items.push(item);
         self.save_file()
     }

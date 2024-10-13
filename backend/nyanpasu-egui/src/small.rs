@@ -13,7 +13,8 @@ fn main() -> eframe::Result {
             .with_transparent(true)
             .with_always_on_top()
             .with_drag_and_drop(true)
-            .with_resizable(false),
+            .with_resizable(false)
+            .with_taskbar(false),
         ..Default::default()
     };
     eframe::run_native(

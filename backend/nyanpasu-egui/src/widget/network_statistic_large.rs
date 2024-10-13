@@ -8,6 +8,7 @@ use eframe::egui::{
 
 // Presets
 const STATUS_ICON_CONTAINER_WIDTH: f32 = 20.0;
+const STATUS_ICON_WIDTH: f32 = 12.0;
 const LOGO_CONTAINER_WIDTH: f32 = 44.0;
 const LOGO_SIZE: Vec2 = Vec2::new(26.0, 31.0);
 
@@ -61,6 +62,7 @@ fn use_global_styles(styles: &mut Style) {
     }
     styles.spacing.window_margin = Margin::same(0.0);
     styles.spacing.item_spacing = Vec2::new(0.0, 0.0);
+    styles.interaction.selectable_labels = false; // disable text selection
 }
 
 fn use_light_green_accent(style: &mut Style) {
@@ -83,18 +85,71 @@ fn use_dark_purple_accent(style: &mut Style) {
     };
 }
 
+#[derive(Debug, Default, Clone, Copy)]
+pub enum LogoPreset {
+    #[default]
+    Default,
+    System,
+    Tun,
+}
+
+#[derive(Debug, Default)]
+pub struct StatisticMessage {
+    download_total: u64,
+    upload_total: u64,
+    download_speed: u64,
+    upload_speed: u64,
+}
+
+#[derive(Debug)]
+pub enum Message {
+    UpdateStatistic(StatisticMessage),
+    UpdateLogo(LogoPreset),
+}
+
+#[derive(Debug)]
 pub struct NyanpasuNetworkStatisticLargeWidget {
-    demo_size: u64,
+    logo_preset: LogoPreset,
+    download_total: u64,
+    upload_total: u64,
+    download_speed: u64,
+    upload_speed: u64,
+}
+
+impl Default for NyanpasuNetworkStatisticLargeWidget {
+    fn default() -> Self {
+        Self {
+            logo_preset: LogoPreset::Default,
+            download_total: 0,
+            upload_total: 0,
+            download_speed: 0,
+            upload_speed: 0,
+        }
+    }
 }
 
 impl NyanpasuNetworkStatisticLargeWidget {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        cc.egui_ctx.set_visuals(Visuals::light());
+        cc.egui_ctx.set_visuals(Visuals::dark());
         setup_fonts(&cc.egui_ctx);
         setup_custom_style(&cc.egui_ctx);
         egui_extras::install_image_loaders(&cc.egui_ctx);
-        Self {
-            demo_size: 100_000_000,
+        Self::default()
+    }
+
+    pub fn handle_message(&mut self, msg: Message) -> bool {
+        match msg {
+            Message::UpdateStatistic(statistic) => {
+                self.download_total = statistic.download_total;
+                self.upload_total = statistic.upload_total;
+                self.download_speed = statistic.download_speed;
+                self.upload_speed = statistic.upload_speed;
+                true
+            }
+            Message::UpdateLogo(logo_preset) => {
+                self.logo_preset = logo_preset;
+                true
+            }
         }
     }
 }
@@ -104,7 +159,7 @@ impl eframe::App for NyanpasuNetworkStatisticLargeWidget {
         egui::Rgba::TRANSPARENT.to_array()
     }
 
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let visuals = &ctx.style().visuals;
 
         egui::CentralPanel::default()
@@ -148,18 +203,19 @@ impl eframe::App for NyanpasuNetworkStatisticLargeWidget {
                     // Download Column
                     ui.allocate_ui_with_layout(egui::Vec2::new(col_width, available_height), egui::Layout::top_down(egui::Align::LEFT), |ui| {
                         ui.add_space(top_gap);
+                        // Download Total
                         ui.allocate_ui_with_layout(egui::Vec2::new(col_width, row_height), Layout::left_to_right(egui::Align::Center), |ui| {
                             egui::Frame::none().rounding(Rounding::same(14.0)).fill(DARK_MODE_STATUS_SHEET_COLOR).show(ui, |ui| {
                                 ui.allocate_ui(egui::Vec2::new(STATUS_ICON_CONTAINER_WIDTH, STATUS_ICON_CONTAINER_WIDTH), |ui| {
                                     egui::Frame::none()
                                         .fill(STATUS_ICON_CONTAINER_COLOR)
-                                        .rounding(Rounding::same(STATUS_ICON_CONTAINER_WIDTH / 2.0))
+                                        .rounding(Rounding::same(STATUS_ICON_WIDTH))
                                         .show(ui, |ui| {
                                             let image = render_svg_with_current_color_replace(
                                                 unsafe { String::from_utf8_unchecked(DOWNLOAD_ICON.to_vec()) }.as_str(),
                                                 csscolorparser::parse(&DARK_MODE_TEXT_COLOR.to_hex()).unwrap(),
-                                                (STATUS_ICON_CONTAINER_WIDTH / 2.0).round() as u32,
-                                                (STATUS_ICON_CONTAINER_WIDTH / 2.0).round() as u32,
+                                                (STATUS_ICON_WIDTH).round() as u32,
+                                                (STATUS_ICON_WIDTH).round() as u32,
                                             )
                                             .unwrap()
                                             .into_wrapper()
@@ -173,25 +229,26 @@ impl eframe::App for NyanpasuNetworkStatisticLargeWidget {
                                 let width = ui.available_width();
                                 let height = ui.available_height();
                                 ui.allocate_ui_with_layout(egui::Vec2::new(width, height), Layout::centered_and_justified(egui::Direction::TopDown), |ui| {
-                                    ui.label(humansize::format_size(self.demo_size, humansize::DECIMAL));
+                                    ui.label(humansize::format_size(self.download_total, humansize::DECIMAL));
                                 });
                             });
                         });
 
                         ui.add_space(vertical_padding); // gap
 
+                        // Download Speed
                         ui.allocate_ui_with_layout(egui::Vec2::new(col_width, row_height), Layout::left_to_right(egui::Align::Center), |ui| {
                             egui::Frame::none().rounding(Rounding::same(14.0)).fill(DARK_MODE_STATUS_SHEET_COLOR).show(ui, |ui| {
                                 ui.allocate_ui(egui::Vec2::new(STATUS_ICON_CONTAINER_WIDTH, STATUS_ICON_CONTAINER_WIDTH), |ui| {
                                     egui::Frame::none()
                                         .fill(STATUS_ICON_CONTAINER_COLOR)
-                                        .rounding(Rounding::same(STATUS_ICON_CONTAINER_WIDTH / 2.0))
+                                        .rounding(Rounding::same(STATUS_ICON_WIDTH))
                                         .show(ui, |ui| {
                                             let image = render_svg_with_current_color_replace(
                                                 unsafe { String::from_utf8_unchecked(DOWN_ICON.to_vec()) }.as_str(),
                                                 csscolorparser::parse(&DARK_MODE_TEXT_COLOR.to_hex()).unwrap(),
-                                                (STATUS_ICON_CONTAINER_WIDTH / 2.0).round() as u32,
-                                                (STATUS_ICON_CONTAINER_WIDTH / 2.0).round() as u32,
+                                                (STATUS_ICON_WIDTH).round() as u32,
+                                                (STATUS_ICON_WIDTH).round() as u32,
                                             )
                                             .unwrap()
                                             .into_wrapper()
@@ -205,7 +262,7 @@ impl eframe::App for NyanpasuNetworkStatisticLargeWidget {
                                 let width = ui.available_width();
                                 let height = ui.available_height();
                                 ui.allocate_ui_with_layout(egui::Vec2::new(width, height), Layout::centered_and_justified(egui::Direction::TopDown), |ui| {
-                                    ui.label(humansize::format_size(self.demo_size, humansize::DECIMAL));
+                                    ui.label(format!("{}/s", humansize::format_size(self.download_speed, humansize::DECIMAL)));
                                 });
                             });
                         })
@@ -216,18 +273,20 @@ impl eframe::App for NyanpasuNetworkStatisticLargeWidget {
                     // Upload Column
                     ui.allocate_ui_with_layout(egui::Vec2::new(col_width, available_height), egui::Layout::top_down(egui::Align::LEFT), |ui| {
                         ui.add_space(top_gap);
+
+                        // Upload Total
                         ui.allocate_ui_with_layout(egui::Vec2::new(col_width, row_height), Layout::left_to_right(egui::Align::Center), |ui| {
                             egui::Frame::none().rounding(Rounding::same(14.0)).fill(DARK_MODE_STATUS_SHEET_COLOR).show(ui, |ui| {
                                 ui.allocate_ui(egui::Vec2::new(STATUS_ICON_CONTAINER_WIDTH, STATUS_ICON_CONTAINER_WIDTH), |ui| {
                                     egui::Frame::none()
                                         .fill(STATUS_ICON_CONTAINER_COLOR)
-                                        .rounding(Rounding::same(STATUS_ICON_CONTAINER_WIDTH / 2.0))
+                                        .rounding(Rounding::same(STATUS_ICON_WIDTH))
                                         .show(ui, |ui| {
                                             let image = render_svg_with_current_color_replace(
                                                 unsafe { String::from_utf8_unchecked(UPLOAD_ICON.to_vec()) }.as_str(),
                                                 csscolorparser::parse(&DARK_MODE_TEXT_COLOR.to_hex()).unwrap(),
-                                                (STATUS_ICON_CONTAINER_WIDTH / 2.0).round() as u32,
-                                                (STATUS_ICON_CONTAINER_WIDTH / 2.0).round() as u32,
+                                                (STATUS_ICON_WIDTH).round() as u32,
+                                                (STATUS_ICON_WIDTH).round() as u32,
                                             )
                                             .unwrap()
                                             .into_wrapper()
@@ -241,25 +300,26 @@ impl eframe::App for NyanpasuNetworkStatisticLargeWidget {
                                 let width = ui.available_width();
                                 let height = ui.available_height();
                                 ui.allocate_ui_with_layout(egui::Vec2::new(width, height), Layout::centered_and_justified(egui::Direction::TopDown), |ui| {
-                                    ui.label(humansize::format_size(self.demo_size, humansize::DECIMAL));
+                                    ui.label(humansize::format_size(self.upload_total, humansize::DECIMAL));
                                 });
                             });
                         });
 
                         ui.add_space(vertical_padding); // gap
 
+                        // Upload Speed
                         ui.allocate_ui_with_layout(egui::Vec2::new(col_width, row_height), Layout::left_to_right(egui::Align::Center), |ui| {
                             egui::Frame::none().rounding(Rounding::same(14.0)).fill(DARK_MODE_STATUS_SHEET_COLOR).show(ui, |ui| {
                                 ui.allocate_ui(egui::Vec2::new(STATUS_ICON_CONTAINER_WIDTH, STATUS_ICON_CONTAINER_WIDTH), |ui| {
                                     egui::Frame::none()
                                         .fill(STATUS_ICON_CONTAINER_COLOR)
-                                        .rounding(Rounding::same(STATUS_ICON_CONTAINER_WIDTH / 2.0))
+                                        .rounding(Rounding::same(STATUS_ICON_WIDTH))
                                         .show(ui, |ui| {
                                             let image = render_svg_with_current_color_replace(
                                                 unsafe { String::from_utf8_unchecked(UP_ICON.to_vec()) }.as_str(),
                                                 csscolorparser::parse(&DARK_MODE_TEXT_COLOR.to_hex()).unwrap(),
-                                                (STATUS_ICON_CONTAINER_WIDTH / 2.0).round() as u32,
-                                                (STATUS_ICON_CONTAINER_WIDTH / 2.0).round() as u32,
+                                                (STATUS_ICON_WIDTH).round() as u32,
+                                                (STATUS_ICON_WIDTH).round() as u32,
                                             )
                                             .unwrap()
                                             .into_wrapper()
@@ -273,7 +333,7 @@ impl eframe::App for NyanpasuNetworkStatisticLargeWidget {
                                 let width = ui.available_width();
                                 let height = ui.available_height();
                                 ui.allocate_ui_with_layout(egui::Vec2::new(width, height), Layout::centered_and_justified(egui::Direction::TopDown), |ui| {
-                                    ui.label(humansize::format_size(self.demo_size, humansize::DECIMAL));
+                                    ui.label(format!("{}/s", humansize::format_size(self.upload_speed, humansize::DECIMAL)));
                                 });
                             });
                         })

@@ -79,6 +79,13 @@ impl Migration<'_> for MigrateProfilesNullValue {
                 );
                 *value = serde_yaml::Value::Null;
             }
+            if key.is_string() && key.as_str().unwrap() == "current" && value.is_sequence() {
+                println!(
+                    "detected sequence value in profiles {:?} should be migrated",
+                    key
+                );
+                *value = serde_yaml::Value::Null;
+            }
         });
         let file = std::fs::OpenOptions::new()
             .write(true)

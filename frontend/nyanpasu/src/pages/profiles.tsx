@@ -247,6 +247,12 @@ function ProfilePage() {
                 "&:hover": {
                   backgroundColor: theme.palette.grey[300],
                 },
+                ...theme.applyStyles("dark", {
+                  backgroundColor: theme.palette.grey[800],
+                  "&:hover": {
+                    backgroundColor: theme.palette.grey[700],
+                  },
+                }),
               }),
             ]}
             onClick={handleGlobalProfileUpdate}

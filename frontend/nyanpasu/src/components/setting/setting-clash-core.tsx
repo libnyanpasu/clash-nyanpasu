@@ -56,15 +56,15 @@ export const SettingClashCore = () => {
 
       await setClashCore(core);
 
-      message(`Successfully switch to ${core}`, {
+      message(t("Successfully switch to clash core", { core: `${core}` }), {
         kind: "info",
         title: t("Success"),
       });
     } catch (e) {
       message(
-        `Switching failed, you could see the details in the log. \nError: ${
-          e instanceof Error ? e.message : String(e)
-        }`,
+        t("Switching failed, you could see the details in the log", {
+          error: `${e instanceof Error ? e.message : String(e)}`,
+        }),
         {
           kind: "error",
           title: t("Error"),
@@ -85,7 +85,7 @@ export const SettingClashCore = () => {
       });
     } catch (e) {
       message(
-        "Restart failed, full detailed please check the log.\n\nError:" +
+        t("Restart failed, full detailed please check the log") +
           formatError(e),
         {
           kind: "error",
@@ -99,7 +99,7 @@ export const SettingClashCore = () => {
     try {
       await getLatestCore.mutate();
     } catch (e) {
-      message("Fetch failed, please check your internet connection.", {
+      message(t("Fetch failed, please check your internet connection"), {
         kind: "error",
         title: t("Error"),
       });

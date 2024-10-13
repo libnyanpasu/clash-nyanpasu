@@ -1,10 +1,13 @@
 import { useAtomValue } from "jotai";
+import { useTranslation } from "react-i18next";
 import { useColorForDelay } from "@/hooks/theme";
 import { atomIsDrawer } from "@/store";
 import { Paper } from "@mui/material";
 import Grid from "@mui/material/Grid2";
 
 function LatencyTag({ name, value }: { name: string; value: number }) {
+  const { t } = useTranslation();
+
   const color = useColorForDelay(value);
 
   return (
@@ -12,7 +15,7 @@ function LatencyTag({ name, value }: { name: string; value: number }) {
       <div className="font-bold">{name}:</div>
 
       <div className="truncate" style={{ color }}>
-        {value ? `${value.toFixed(0)} ms` : "Timeout"}
+        {value ? `${value.toFixed(0)} ms` : t("Timeout")}
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import { useAsyncEffect } from "ahooks";
 import { useAtom, useSetAtom } from "jotai";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import useSWR from "swr";
 import { OS } from "@/consts";
 import { serviceManualPromptDialogAtom } from "@/store/service";
@@ -19,6 +20,7 @@ export default function ServerManualPromptDialog({
   operation,
   ...props
 }: ServerManualPromptDialogProps) {
+  const { t } = useTranslation();
   const { data: serviceInstallPrompt, error } = useSWR(
     operation === "install" ? "/service_install_prompt" : null,
     getServiceInstallPrompt,
@@ -54,16 +56,16 @@ export default function ServerManualPromptDialog({
 
   return (
     <BaseDialog
-      title="Service Manual Tips"
+      title={t("Service Manual Tips")}
       open={open}
       onClose={onClose}
       {...props}
     >
       <div className="grid gap-3">
         <p>
-          Unable to {operation} the service automatically. Please navigate to
-          the core directory, open PowerShell (as Administrator) on Windows or a
-          terminal emulator on macOS/Linux, and run the following commands:
+          {t("Unable to operation the service automatically", {
+            operation: t(`${operation}`),
+          })}
         </p>
         {error && <p className="text-red-500">{error.message}</p>}
         {!!codes && (

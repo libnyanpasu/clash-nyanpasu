@@ -132,6 +132,9 @@ pub fn resolve_setup(app: &mut App) {
     let mut mapping = Mapping::new();
     mapping.insert("mixed-port".into(), port.into());
     Config::clash().data().patch_config(mapping);
+    let _ = Config::clash()
+        .latest()
+        .prepare_external_controller_port();
     let _ = Config::clash().data().save_config();
 
     // 启动核心

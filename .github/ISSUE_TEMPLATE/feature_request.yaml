@@ -9,19 +9,19 @@ body:
   - type: markdown
     attributes:
       value: |
-        提交功能建议前，还请首先完成文末的自查步骤
+        提交功能建议前，还请首先完成文末的自查步骤。
 
-        Please finish verify steps which list in the end first before suggest an idea
+        Please finish verify steps which list in the end first before suggest an idea.
 
   - type: textarea
     id: request
     attributes:
       label: 需求 / Requirement
       description: |
-        在此处描述您的需求。这通常会是一个您想要的功能
-        Ddescribe what you need here.
+        在此处描述您的需求。这通常会是一个您想要的功能。
+        Describe what you need here.
       placeholder: |
-        我需要 XXX 功能 ...
+        我需要 XXX 功能……
         I want ABC feature ...
     validations:
       required: true
@@ -31,11 +31,11 @@ body:
     attributes:
       label: 建议实现 / Suggested implements
       description: |
-        在此处表述您建议的实现方式。如有可能，UI 类功能请求还请尽量附上图示
-        Describe your suggested implements here, It's recommend to add a photo if you are making a UI feature request.
+        在此处表述您建议的实现方式。如有可能，UI 类功能请求还请尽量附上图示。
+        Describe your suggested implements here. It's recommend to add a photo if you are making a UI feature request.
       placeholder: |
-        建议在 XX 处添加 XX ...
-        I recommend add ABC feature to DEF...
+        建议在 XX 处添加 XX……
+        I recommend add ABC feature to DEF ...
         图片（如果有）/ Photos (if exists)
     validations:
       required: true
@@ -45,8 +45,8 @@ body:
     attributes:
       label: 备注 / Addition details
       description: |
-        在此处写下其他您想说的内容
-        Describe addition details here
+        在此处写下其他您想说的内容。
+        Describe addition details here.
       placeholder: |
         其他有用的信息与附件
         Additional details and attachments
@@ -57,7 +57,9 @@ body:
     id: version
     attributes:
       label: Clash Nyanpasu 版本号 / Clash Nyanpasu
-      description: 您可以在设置 - 关于处找到版本号 / You can get version code in Settings - About
+      description: |
+        您可以在 **设置 - Nyanpasu 版本** 处找到版本号。
+        You can get version code in **Settings - Nyanpasu Version**.
       placeholder: 1.4.1
     validations:
       required: true
@@ -66,7 +68,9 @@ body:
     id: pre-release
     attributes:
       label: 是否为 Pre-release / Is pre-release version
-      description: 是否为 Pre-release 下载的应用，若是则填写对应的commit hash / Is this an app downloaded from Pre-release? If so, please fill in the corresponding commit hash.
+      description: |
+        是否为 Pre-release 下载的应用，若是则填写对应的 commit hash。
+        Is this an app downloaded from Pre-release? If so, please fill in the corresponding commit hash.
       placeholder: 26f05a0
     validations:
       required: true
@@ -76,20 +80,20 @@ body:
     attributes:
       label: 自查步骤 / Verify steps
       description: |
-        请确认您已经遵守所有必选项
-        Please ensure you have obtained all needed options
+        请确认您已经遵守所有必选项。
+        Please ensure you have obtained all needed options.
       options:
-        - label: 如果您有足够的时间和能力，并愿意为此提交 PR ，请勾上此复选框 / Pull request is welcome. Check this if you want to start a pull request
+        - label: 如果您有足够的时间和能力，并愿意为此提交 PR，请勾上此复选框 / Pull request is welcome. Check this if you want to start a pull request
           required: false
 
-        - label: 您已仔细查看并知情 [Q&A](https://github.com/keiko233/clash-nyanpasu/blob/main/ISSUE.md) 中的内容 / You have checked [Q&A](https://github.com/keiko233/clash-nyanpasu/blob/main/ISSUE.md) carefully
+        - label: 您已仔细查看并知情 [Q&A](https://nyanpasu.elaina.moe/zh-CN/others/issues) 中的内容 / You have checked [Q&A](https://nyanpasu.elaina.moe/others/issues) carefully
           required: true
 
-        - label: 您已搜索过 [Issue Tracker](https://github.com/keiko233/clash-nyanpasu/issues)，没有找到类似内容 / I have searched on [Issue Tracker](https://github.com/keiko233/clash-nyanpasu/issues), No duplicate or related open issue has been found
+        - label: 您已搜索过 [Issue Tracker](https://github.com/libnyanpasu/clash-nyanpasu/issues)，没有找到类似内容 / I have searched on [Issue Tracker](https://github.com/libnyanpasu/clash-nyanpasu/issues), No duplicate or related open issue has been found
           required: true
 
-        - label: 您确保这个 Issue 只提及一个功能。如果您有多个功能请求，烦请发起多个 Issue / Ensure there is only one feature request in this issue. Please make mutiply issue for mutiply feature request
+        - label: 您确保这个 Issue 只提及一个功能。如果您有多个功能请求，烦请发起多个 Issue / Ensure there is only one feature request in this issue. Please make multiply issue for multiply feature request
           required: true
 
-        - label: 您确保已使用最新 Pre-release 版本测试，并且该问题在最新 Pre-release 版本中并未解决 / This bug have not solved in latest Pre-release version
+        - label: 您确保已使用最新 Pre-release 版本测试，并且该功能在最新 Pre-release 版本中并未实现 / This feature have not implemented in latest Pre-release version
           required: true

@@ -1,10 +1,15 @@
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc,
+};
 
 use futures_util::StreamExt;
-use parking_lot::{Mutex, RwLock};
+use parking_lot::Mutex;
 use serde::Deserialize;
 use tokio::sync::mpsc::Receiver;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+
+use crate::log_err;
 
 #[tracing::instrument]
 async fn connect_clash_server<T: serde::de::DeserializeOwned + Send + Sync + 'static>(
@@ -54,19 +59,33 @@ struct ClashConnectionsMessage {
     // other fields are omitted
 }
 
-pub struct ClashConnectionsConnector {
-    receiver: Option<Receiver<ClashConnectionsMessage>>,
-    subscriptions: Vec<Box<dyn Fn(ClashConnectionsConnector) + Sync + Send + 'static>>,
-    info: Arc<RwLock<ClashConnectionsInfo>>,
+struct ClashConnectionsConnectorInner {
+    is_connected: AtomicBool,
+    stop_signal: AtomicBool,
+    subscriptions: Mutex<Vec<Box<dyn Fn(ClashConnectionsInfoMessage) + Sync + Send + 'static>>>,
+    info: ClashConnectionsInfo,
 }
 
+#[derive(Clone)]
+struct ClashConnectionsConnector {
+    inner: Arc<ClashConnectionsConnectorInner>,
+}
+
+#[derive(Debug, Default)]
 struct ClashConnectionsInfo {
+    pub download_total: AtomicU64,
+    pub upload_total: AtomicU64,
+    pub download_speed: AtomicU64,
+    pub upload_speed: AtomicU64,
+}
+
+#[derive(Debug, Clone, Default, Copy)]
+pub struct ClashConnectionsInfoMessage {
     pub download_total: u64,
     pub upload_total: u64,
     pub download_speed: u64,
     pub upload_speed: u64,
 }
-
 
 impl ClashConnectionsConnector {
     pub fn url() -> String {
@@ -81,33 +100,94 @@ impl ClashConnectionsConnector {
         url
     }
 
-    pub fn new() -> anyhow::Result<Self> {
-        Ok(Self {
-            receiver: None,
-            download_total: 0,
-            upload_total: 0,
-            download_speed: 0,
-            upload_speed: 0,
-        })
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(ClashConnectionsConnectorInner {
+                is_connected: AtomicBool::new(false),
+                stop_signal: AtomicBool::new(false),
+                subscriptions: Mutex::new(Vec::new()),
+                info: ClashConnectionsInfo::default(),
+            }),
+        }
     }
 
     pub fn is_connected(&self) -> bool {
-        self.receiver.as_ref().is_some_and(|rx| rx.is_closed())
+        self.inner.is_connected.load(Ordering::Acquire)
     }
 
-    pub async fn start(&mut self) -> anyhow::Result<()> {
-        let rx = connect_clash_server::<ClashConnectionsMessage>(&Self::url()).await?;
-        self.receiver = Some(rx);
-        let this = Arc
+    pub async fn start(&self) -> anyhow::Result<()> {
+        let this = self.clone();
+        let mut rx = connect_clash_server::<ClashConnectionsMessage>(&Self::url()).await?;
+        self.inner.is_connected.store(true, Ordering::Release);
+        tokio::spawn(async move {
+            loop {
+                if this.inner.stop_signal.load(Ordering::Acquire) {
+                    break; // drop connection
+                }
+                match rx.recv().await {
+                    Some(msg) => {
+                        this.update(msg);
+                        let msg = ClashConnectionsInfoMessage {
+                            download_total: this.inner.info.download_total.load(Ordering::Acquire),
+                            upload_total: this.inner.info.upload_total.load(Ordering::Acquire),
+                            download_speed: this.inner.info.download_speed.load(Ordering::Acquire),
+                            upload_speed: this.inner.info.upload_speed.load(Ordering::Acquire),
+                        };
+                        let subs = this.inner.subscriptions.lock();
+                        subs.iter().for_each(|call| {
+                            call(msg);
+                        });
+                    }
+                    None => {
+                        // The connection was closed, let's restart the connector
+                        // TODO: add a backoff counter
+                        this.inner.is_connected.store(false, Ordering::Release);
+                        let another = this.clone();
+                        std::thread::spawn(move || {
+                            nyanpasu_utils::runtime::block_on(async move {
+                                log_err!(another.start().await);
+                            })
+                        });
+                        break;
+                    }
+                }
+            }
+        });
         Ok(())
     }
 
-    pub async fn update(this: Arc<Mutex<Self>>) {
-        while let Some(message) = self.receiver.try_recv().await {
-            self.download_speed = message.download_total - self.download_total;
-            self.upload_speed = message.upload_total - self.upload_total;
-            self.download_total = message.download_total;
-            self.upload_total = message.upload_total;
-        }
+    pub fn update(&self, msg: ClashConnectionsMessage) {
+        let elder_download_total = self
+            .inner
+            .info
+            .download_total
+            .swap(msg.download_total, Ordering::Release);
+        let elder_upload_total = self
+            .inner
+            .info
+            .upload_total
+            .swap(msg.upload_total, Ordering::Release);
+        self.inner.info.download_speed.store(
+            msg.download_total
+                .checked_sub(elder_download_total)
+                .unwrap_or_default(),
+            Ordering::Release,
+        );
+        self.inner.info.upload_speed.store(
+            msg.upload_total
+                .checked_sub(elder_upload_total)
+                .unwrap_or_default(),
+            Ordering::Release,
+        );
+    }
+
+    pub fn stop(&self) {
+        self.inner.stop_signal.store(true, Ordering::Acquire);
+    }
+}
+
+impl Drop for ClashConnectionsConnector {
+    fn drop(&mut self) {
+        self.stop();
     }
 }

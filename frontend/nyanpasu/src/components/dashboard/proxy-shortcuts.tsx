@@ -122,7 +122,7 @@ export const ProxyShortcuts = () => {
               <div className="flex flex-col gap-2">
                 <SettingsEthernet />
 
-                <div>{t("Tun Mode")}</div>
+                <div>{t("TUN Mode")}</div>
               </div>
             </PaperSwitchButton>
           </div>

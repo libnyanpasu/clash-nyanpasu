@@ -72,7 +72,7 @@ export const SettingSystemProxy = () => {
           }}
         >
           <PaperSwitchButton
-            label={t("Tun Mode")}
+            label={t("TUN Mode")}
             checked={nyanpasuConfig?.enable_tun_mode || false}
             loading={loading.enable_tun_mode}
             onClick={() => handleClick("enable_tun_mode")}
@@ -105,7 +105,7 @@ export const SettingSystemProxy = () => {
             label={t("Guard Duration")}
             vaule={nyanpasuConfig?.proxy_guard_duration || 0}
             checkEvent={(input) => input <= 0}
-            checkLabel="Dueation must be greater than 0."
+            checkLabel={t("Dueation must be greater than 0")}
             onApply={(value) => {
               setNyanpasuConfig({ proxy_guard_duration: value });
             }}

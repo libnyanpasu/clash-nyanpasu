@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import Done from "@mui/icons-material/Done";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -21,6 +22,8 @@ export const TextItem = ({
   applyLabel,
   placeholder,
 }: TextItemProps) => {
+  const { t } = useTranslation();
+
   const [textString, setTextString] = useState(value);
 
   return (
@@ -44,7 +47,7 @@ export const TextItem = ({
             startIcon={<Done />}
             onClick={() => onApply(textString)}
           >
-            {applyLabel ?? "Apply"}
+            {applyLabel ?? t("Apply")}
           </Button>
         </Box>
       </Expand>

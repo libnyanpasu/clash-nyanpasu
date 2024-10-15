@@ -178,10 +178,10 @@ function ProxyPage() {
             <DelayButton onClick={handleDelayClick} />
           </>
         ) : (
-          <ContentDisplay className="absolute" message="No Proxy" />
+          <ContentDisplay className="absolute" message={t("No Proxy")} />
         )
       ) : (
-        <ContentDisplay className="absolute" message="Direct Mode" />
+        <ContentDisplay className="absolute" message={t("Direct Mode")} />
       )}
     </SidePage>
   );

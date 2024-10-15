@@ -175,12 +175,12 @@ export const ClashCoreItem = ({
 
       getClashCore.mutate();
 
-      message(`Successfully update core ${data.name}`, {
+      message(t("Successfully update core", { core: `${data.name}` }), {
         kind: "info",
         title: t("Success"),
       });
     } catch (e) {
-      message(`Update failed. ${formatError(e)}`, {
+      message(t("Update failed", { error: `${formatError(e)}` }), {
         kind: "error",
         title: t("Error"),
       });
@@ -232,7 +232,7 @@ export const ClashCoreItem = ({
           </div>
 
           {haveNewVersion && (
-            <Tooltip title="Update Core">
+            <Tooltip title={t("Update Core")}>
               <LoadingButton
                 variant="text"
                 className="!size-8 !min-w-0"

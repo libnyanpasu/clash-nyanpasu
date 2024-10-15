@@ -77,7 +77,7 @@ export const ScriptDialog = ({
       form.reset({
         type: "merge",
         chain: [],
-        name: "New Script",
+        name: t("New Script"),
         desc: "",
       });
     }
@@ -102,7 +102,7 @@ export const ScriptDialog = ({
 
   const onSubmit = form.handleSubmit(async (data) => {
     if (editorHasError()) {
-      message("Please fix the error before submitting", {
+      message(t("Please fix the error before submitting"), {
         kind: "error",
       });
       return;
@@ -175,7 +175,7 @@ export const ScriptDialog = ({
     <BaseDialog
       title={
         <div className="flex gap-2">
-          <span>{isEdit ? "Edit Script" : "New Script"}</span>
+          <span>{isEdit ? t("Edit Script") : t("New Script")}</span>
 
           <LanguageChip type={isEdit ? profile?.type : editor.rawType} />
         </div>

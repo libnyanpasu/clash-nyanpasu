@@ -22,6 +22,6 @@
     "picocolors": "1.1.0",
     "tar": "7.4.3",
     "telegram": "2.25.15",
-    "undici": "6.20.0"
+    "undici": "6.20.1"
   }
 }

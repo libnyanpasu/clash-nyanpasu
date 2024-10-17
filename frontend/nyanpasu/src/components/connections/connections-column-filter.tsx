@@ -4,22 +4,49 @@ import dayjs from "dayjs";
 import { AnimatePresence, Reorder, useDragControls } from "framer-motion";
 import { useAtom } from "jotai";
 import { type MRT_ColumnDef } from "material-react-table";
-import { useMemo } from "react";
+import { MouseEventHandler, useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { connectionTableColumnsAtom } from "@/store";
 import parseTraffic from "@/utils/parse-traffic";
 import { Cancel, Menu } from "@mui/icons-material";
-import { Checkbox, IconButton } from "@mui/material";
+import { Checkbox, CircularProgress, IconButton } from "@mui/material";
 import { useClash } from "@nyanpasu/interface";
 import { BaseDialog, BaseDialogProps } from "@nyanpasu/ui";
 import { TableConnection } from "./connections-table";
 
-export const useColumns = (): Array<MRT_ColumnDef<TableConnection>> => {
-  const { t } = useTranslation();
+function CloseConnectionButton({ id }: { id: string }) {
   const { deleteConnections } = useClash();
   const closeConnect = useLockFn(async (id?: string) => {
     await deleteConnections(id);
   });
+  const [loading, setLoading] = useState(false);
+
+  const onClick: MouseEventHandler<HTMLButtonElement> = useCallback(
+    (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setLoading(true);
+      closeConnect(id).finally(() => setLoading(false));
+    },
+    [closeConnect, id],
+  );
+
+  return (
+    <div className="flex w-full items-center justify-center gap-2">
+      <IconButton
+        color="primary"
+        className="size-4"
+        onClick={onClick}
+        disabled={loading}
+      >
+        {loading ? <CircularProgress color="primary" /> : <Cancel />}
+      </IconButton>
+    </div>
+  );
+}
+
+export const useColumns = (): Array<MRT_ColumnDef<TableConnection>> => {
+  const { t } = useTranslation();
 
   return useMemo(
     () =>
@@ -31,17 +58,7 @@ export const useColumns = (): Array<MRT_ColumnDef<TableConnection>> => {
             enableSorting: false,
             enableGlobalFilter: false,
             enableResizing: false,
-            accessorFn: ({ id }) => (
-              <div className="flex w-full items-center justify-center gap-2">
-                <IconButton
-                  color="primary"
-                  className="size-4"
-                  onClick={() => closeConnect(id)}
-                >
-                  <Cancel />
-                </IconButton>
-              </div>
-            ),
+            accessorFn: ({ id }) => <CloseConnectionButton id={id} />,
           },
           {
             header: "Host",
@@ -137,7 +154,7 @@ export const useColumns = (): Array<MRT_ColumnDef<TableConnection>> => {
             header: t(column.header),
           }) satisfies MRT_ColumnDef<TableConnection>,
       ),
-    [closeConnect, t],
+    [t],
   );
 };
 

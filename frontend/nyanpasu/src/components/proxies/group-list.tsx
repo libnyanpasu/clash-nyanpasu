@@ -74,7 +74,8 @@ export const GroupList = ({
     }
     return data.groups.filter((group) => {
       return (
-        group.name
+        !group.hidden &&
+        (group.name
           .toLowerCase()
           .includes(deferredProxiesFilter.toLowerCase()) ||
         group.all?.some((proxy) => {
@@ -82,7 +83,7 @@ export const GroupList = ({
             .toLowerCase()
             .includes(deferredProxiesFilter.toLowerCase());
         }) ||
-        false
+        false)
       );
     });
   }, [data?.groups, deferredProxiesFilter]);

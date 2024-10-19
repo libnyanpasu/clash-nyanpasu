@@ -45,6 +45,7 @@ export namespace Clash {
     alive?: boolean;
     tfo?: boolean;
     icon?: string;
+    hidden?: boolean;
   }
 
   export interface DelayOptions {

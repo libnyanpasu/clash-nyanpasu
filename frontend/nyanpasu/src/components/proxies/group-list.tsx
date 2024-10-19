@@ -73,8 +73,9 @@ export const GroupList = ({
       return data.groups;
     }
     return data.groups.filter((group) => {
+      const isHidden = group.hidden ?? false;
       return (
-        !group.hidden &&
+        !isHidden &&
         (group.name
           .toLowerCase()
           .includes(deferredProxiesFilter.toLowerCase()) ||

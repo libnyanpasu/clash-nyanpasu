@@ -265,8 +265,8 @@ importers:
         specifier: rc
         version: 19.0.0-rc-b8ae38f8-20241018(react@19.0.0-rc-b8ae38f8-20241018)
       react-error-boundary:
-        specifier: 4.0.13
-        version: 4.0.13(react@19.0.0-rc-b8ae38f8-20241018)
+        specifier: 4.1.1
+        version: 4.1.1(react@19.0.0-rc-b8ae38f8-20241018)
       react-fast-marquee:
         specifier: 1.6.5
         version: 1.6.5(react-dom@19.0.0-rc-b8ae38f8-20241018(react@19.0.0-rc-b8ae38f8-20241018))(react@19.0.0-rc-b8ae38f8-20241018)
@@ -458,8 +458,8 @@ importers:
         specifier: rc
         version: 19.0.0-rc-b8ae38f8-20241018(react@19.0.0-rc-b8ae38f8-20241018)
       react-error-boundary:
-        specifier: 4.0.13
-        version: 4.0.13(react@19.0.0-rc-b8ae38f8-20241018)
+        specifier: 4.1.1
+        version: 4.1.1(react@19.0.0-rc-b8ae38f8-20241018)
       react-i18next:
         specifier: 15.0.3
         version: 15.0.3(i18next@23.16.0)(react-dom@19.0.0-rc-b8ae38f8-20241018(react@19.0.0-rc-b8ae38f8-20241018))(react@19.0.0-rc-b8ae38f8-20241018)
@@ -5892,8 +5892,9 @@ packages:
     peerDependencies:
       react: 19.0.0-rc-b8ae38f8-20241018
 
-  react-error-boundary@4.0.13:
-    resolution: {integrity: sha512-b6PwbdSv8XeOSYvjt8LpgpKrZ0yGdtZokYwkwV2wlcZbxgopHX/hgPl5VgpnoVOWd868n1hktM8Qm4b+02MiLQ==}
+  react-error-boundary@4.1.1:
+    resolution: {integrity: sha512-EOAEsbVm2EQD8zPS4m24SiaR/506RPC3CjMcjJ5JWKECsctyLsDTKxB26Hvl7jcz7KweSOkBYAcY/hmMpMn2jA==}
+    engines: {pnpm: '=9'}
     peerDependencies:
       react: '>=16.13.1'
 
@@ -13010,9 +13011,9 @@ snapshots:
       react: 19.0.0-rc-b8ae38f8-20241018
       scheduler: 0.25.0-rc-b8ae38f8-20241018
 
-  react-error-boundary@4.0.13(react@19.0.0-rc-b8ae38f8-20241018):
+  react-error-boundary@4.1.1(react@19.0.0-rc-b8ae38f8-20241018):
     dependencies:
-      '@babel/runtime': 7.25.6
+      '@babel/runtime': 7.25.7
       react: 19.0.0-rc-b8ae38f8-20241018
 
   react-fast-compare@3.2.2: {}
@@ -13275,7 +13276,7 @@ snapshots:
 
   rtl-css-js@1.16.1:
     dependencies:
-      '@babel/runtime': 7.25.6
+      '@babel/runtime': 7.25.7
 
   run-parallel@1.2.0:
     dependencies:

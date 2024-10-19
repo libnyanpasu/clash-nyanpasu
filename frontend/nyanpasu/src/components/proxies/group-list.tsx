@@ -75,16 +75,17 @@ export const GroupList = ({
     return data.groups.filter((group) => {
       const isHidden = group.hidden ?? false;
       return (
-        !isHidden &&
-        (group.name
-          .toLowerCase()
-          .includes(deferredProxiesFilter.toLowerCase()) ||
-        group.all?.some((proxy) => {
-          return proxy.name
+        !isHidden && (
+          group.name
             .toLowerCase()
-            .includes(deferredProxiesFilter.toLowerCase());
-        }) ||
-        false)
+            .includes(deferredProxiesFilter.toLowerCase()) ||
+          group.all?.some((proxy) => {
+            return proxy.name
+              .toLowerCase()
+              .includes(deferredProxiesFilter.toLowerCase());
+          }) ||
+          false
+        )
       );
     });
   }, [data?.groups, deferredProxiesFilter]);

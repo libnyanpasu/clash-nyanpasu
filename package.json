@@ -63,7 +63,7 @@
     "@tauri-apps/cli": "2.0.3",
     "@types/fs-extra": "11.0.4",
     "@types/lodash-es": "4.17.12",
-    "@types/node": "22.7.6",
+    "@types/node": "22.7.7",
     "@typescript-eslint/eslint-plugin": "8.10.0",
     "@typescript-eslint/parser": "8.10.0",
     "autoprefixer": "10.4.20",
@@ -106,7 +106,7 @@
   },
   "packageManager": "pnpm@9.12.2+sha512.22721b3a11f81661ae1ec68ce1a7b879425a1ca5b991c975b074ac220b187ce56c708fe5db69f4c962c989452eee76c82877f4ee80f474cebd61ee13461b6228",
   "engines": {
-    "node": "22.9.0"
+    "node": "22.10.0"
   },
   "pnpm": {
     "overrides": {

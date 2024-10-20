@@ -848,7 +848,7 @@ dependencies = [
  "bitflags 2.6.0",
  "cexpr",
  "clang-sys",
- "itertools 0.10.5",
+ "itertools 0.12.1",
  "lazy_static",
  "lazycell",
  "log",
@@ -1642,7 +1642,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3538270d33cc669650c4b093848450d380def10c331d38c768e34cac80576e6e"
 dependencies = [
  "termcolor",
- "unicode-width",
+ "unicode-width 0.1.14",
 ]
 
 [[package]]
@@ -5002,7 +5002,7 @@ dependencies = [
  "owo-colors",
  "textwrap",
  "thiserror",
- "unicode-width",
+ "unicode-width 0.1.14",
 ]
 
 [[package]]
@@ -5954,9 +5954,9 @@ checksum = "fb37767f6569cd834a413442455e0f066d0d522de8630436e2a1761d9726ba56"
 
 [[package]]
 name = "oxc_allocator"
-version = "0.31.0"
+version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9186b2689dd687b435b54ff13a5f8673f8d7d6cd51211f514f9a9fc7f4ca64b6"
+checksum = "40baa80a3e4ae7cea94c1e04dc8820162b934f5f5cbca8a96e80a0b85a2815f4"
 dependencies = [
  "allocator-api2",
  "bumpalo",
@@ -5964,14 +5964,15 @@ dependencies = [
 
 [[package]]
 name = "oxc_ast"
-version = "0.31.0"
+version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d90e2d0a935fa2a9271a37e180e0725a902450474a0f2e8d104fb643f29cce67"
+checksum = "d7eb50a1c3485609b4b2051bd23352c1e6a8743b9e345dd6def70b3470948429"
 dependencies = [
  "bitflags 2.6.0",
  "num-bigint",
  "oxc_allocator",
  "oxc_ast_macros",
+ "oxc_estree",
  "oxc_regular_expression",
  "oxc_span",
  "oxc_syntax",
@@ -5979,9 +5980,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_ast_macros"
-version = "0.31.0"
+version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2b1072cb32335b47745c9ea9d614a6d5d36ba9f528fce1da428d5f7e20c3ed1"
+checksum = "0a4b29106d9f2bbcca4f5ee7a9325c99844ff9721d10103625cd5278795507fe"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5990,28 +5991,47 @@ dependencies = [
 
 [[package]]
 name = "oxc_diagnostics"
-version = "0.31.0"
+version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da1421cd82c209a7dfc830fdd09b5c6372e28dfc419e9e67868c6159ab5c127b"
+checksum = "f2e7c7ff14a1a80cb229593d9fcfae6660c7b2cda8707caa4a89cb489656d156"
 dependencies = [
  "miette",
  "owo-colors",
  "rustc-hash 2.0.0",
  "textwrap",
- "unicode-width",
+ "unicode-width 0.2.0",
 ]
 
 [[package]]
-name = "oxc_index"
-version = "0.31.0"
+name = "oxc_ecmascript"
+version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb46cc4ce3d5820ad5e5737f84f5206307b293f9984f9da219ac51ccdc0ea4c8"
+checksum = "17d5cf1710748afcda1269998d2003af79df1fef7c5b4183054aeb1b2a803ff6"
+dependencies = [
+ "num-bigint",
+ "num-traits",
+ "oxc_ast",
+ "oxc_span",
+ "oxc_syntax",
+]
+
+[[package]]
+name = "oxc_estree"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "befa5f762524cdd768fee0321c4f19ee24e13e7340ca2a64629183a37875ba71"
+
+[[package]]
+name = "oxc_index"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68a576b0f0a1ef9112504880a3ba82fa895c4cceb52cdc37825180c43b01336f"
 
 [[package]]
 name = "oxc_parser"
-version = "0.31.0"
+version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8afe7b80a710daa7a07eec92bc46ed5a2d08581f15e833ee1eded5d929283893"
+checksum = "f43e722cd698a1ac383b645ddf6283757d4977b56f6dc278038b9ea74867a508"
 dependencies = [
  "assert-unchecked",
  "bitflags 2.6.0",
@@ -6022,23 +6042,24 @@ dependencies = [
  "oxc_allocator",
  "oxc_ast",
  "oxc_diagnostics",
+ "oxc_ecmascript",
  "oxc_regular_expression",
  "oxc_span",
  "oxc_syntax",
- "oxc_syntax_operations",
  "rustc-hash 2.0.0",
  "seq-macro",
 ]
 
 [[package]]
 name = "oxc_regular_expression"
-version = "0.31.0"
+version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3bc9d3d0ca89ebc9860b6d458f671d06c887bf1fa08accf504c65b5824ea5d87"
+checksum = "231ed7fd6173c41270e019c4d1b2cd4bfa463a8abba32e0107bed6a7e9ceca93"
 dependencies = [
  "oxc_allocator",
  "oxc_ast_macros",
  "oxc_diagnostics",
+ "oxc_estree",
  "oxc_span",
  "phf 0.11.2",
  "rustc-hash 2.0.0",
@@ -6047,21 +6068,22 @@ dependencies = [
 
 [[package]]
 name = "oxc_span"
-version = "0.31.0"
+version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c6a6c56f8482e48b6b7a953e55efe59ea55a0f00451a3f3aaf3c09c955c11c0"
+checksum = "734602328c49aa8c31840e72662196ca1b0d7bf3585eca1f9ddbef127172112f"
 dependencies = [
  "compact_str",
  "miette",
  "oxc_allocator",
  "oxc_ast_macros",
+ "oxc_estree",
 ]
 
 [[package]]
 name = "oxc_syntax"
-version = "0.31.0"
+version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e1b7860133b880b357bb400e12a791e86dd8165ebcbfda1f3b7f31dd2f645ab"
+checksum = "6a56d62a59f4ace25365c1d056d7ce3129ca3fb20e9337b19a0efe62d6bc84cb"
 dependencies = [
  "assert-unchecked",
  "bitflags 2.6.0",
@@ -6069,21 +6091,13 @@ dependencies = [
  "nonmax",
  "oxc_allocator",
  "oxc_ast_macros",
+ "oxc_estree",
  "oxc_index",
  "oxc_span",
  "phf 0.11.2",
  "rustc-hash 2.0.0",
+ "ryu-js",
  "unicode-id-start",
-]
-
-[[package]]
-name = "oxc_syntax_operations"
-version = "0.31.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "509fc5ab630ee66ce1d6fcb41d07a646cc14d91014bf31b0c731d219d31018cf"
-dependencies = [
- "oxc_ast",
- "oxc_span",
 ]
 
 [[package]]
@@ -8913,7 +8927,7 @@ checksum = "23d434d3f8967a09480fb04132ebe0a3e088c173e6d0ee7897abbdf4eab0f8b9"
 dependencies = [
  "smawk",
  "unicode-linebreak",
- "unicode-width",
+ "unicode-width 0.1.14",
 ]
 
 [[package]]
@@ -9590,6 +9604,12 @@ name = "unicode-width"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
+
+[[package]]
+name = "unicode-width"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fc81956842c57dac11422a97c3b8195a1ff727f06e85c84ed2e8aa277c9a0fd"
 
 [[package]]
 name = "unicode-xid"

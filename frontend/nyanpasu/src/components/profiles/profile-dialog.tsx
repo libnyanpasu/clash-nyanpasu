@@ -63,7 +63,7 @@ export const ProfileDialog = ({
     useForm<Profile.Item>({
       defaultValues: profile || {
         type: "remote",
-        name: addProfileCtx?.name || `New Profile`,
+        name: addProfileCtx?.name || t(`New Profile`),
         desc: addProfileCtx?.desc || "",
         url: addProfileCtx?.url || "",
         option: {

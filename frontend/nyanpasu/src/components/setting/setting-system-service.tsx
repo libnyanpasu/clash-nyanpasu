@@ -24,22 +24,22 @@ export const SettingSystemService = () => {
     switch (getServiceStatus.data) {
       case "running":
       case "stopped": {
-        return t("Uninstall");
+        return t("uninstall");
       }
 
       case "not_installed": {
-        return t("Install");
+        return t("install");
       }
     }
   };
   const getControlButtonString = () => {
     switch (getServiceStatus.data) {
       case "running": {
-        return t("Stop");
+        return t("stop");
       }
 
       case "stopped": {
-        return t("Start");
+        return t("start");
       }
     }
   };
@@ -143,14 +143,18 @@ export const SettingSystemService = () => {
           <ListItem sx={{ pl: 0, pr: 0 }}>
             <Typography>
               {t(
-                "Information: Please make sure that the Clash Nyanpasu Service is installed and enabled.",
+                "Information: Please make sure that the Clash Nyanpasu Service is installed and enabled",
               )}
             </Typography>
           </ListItem>
         )}
 
         <ListItem sx={{ pl: 0, pr: 0 }}>
-          <ListItemText primary={`Current State: ${getServiceStatus.data}`} />
+          <ListItemText
+            primary={t("Current Status", {
+              status: t(`${getServiceStatus.data}`),
+            })}
+          />
           <div className="flex gap-2">
             {!isDisabled && (
               <LoadingButton

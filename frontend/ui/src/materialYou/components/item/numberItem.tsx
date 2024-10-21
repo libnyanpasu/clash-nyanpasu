@@ -1,4 +1,5 @@
 import { ChangeEvent, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import Done from "@mui/icons-material/Done";
 import {
   Box,
@@ -50,6 +51,8 @@ export const NumberItem = ({
   divider,
   textFieldProps,
 }: NumberItemprops) => {
+  const { t } = useTranslation();
+
   const [changed, setChanged] = useState(false);
 
   const [input, setInput] = useState<number | null>(null);
@@ -100,7 +103,7 @@ export const NumberItem = ({
               setChanged(false);
             }}
           >
-            Apply
+            {t("Apply")}
           </Button>
         </Box>
 

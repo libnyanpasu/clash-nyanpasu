@@ -361,7 +361,7 @@ export const ProfileItem = memo(function ProfileItem({
         >
           <LinearProgress className="w-40" />
 
-          <div>Applying Profile...</div>
+          <div>{t("Applying Profile")}</div>
         </motion.div>
       </Paper>
       {MenuComp}

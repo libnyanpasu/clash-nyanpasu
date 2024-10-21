@@ -65,7 +65,7 @@ export const SettingClashWeb = () => {
       <BaseCard
         label={t("Web UI")}
         labelChildren={
-          <Tooltip title="New Item">
+          <Tooltip title={t("New Item")}>
             <IconButton
               onClick={() => {
                 setEditString("");
@@ -105,7 +105,7 @@ export const SettingClashWeb = () => {
       </BaseCard>
 
       <BaseDialog
-        title={editIndex != null ? "Edit Item" : "New Item"}
+        title={editIndex != null ? t("Edit Item") : t("New Item")}
         open={open}
         onClose={() => {
           setOpen(false);
@@ -123,19 +123,19 @@ export const SettingClashWeb = () => {
         divider
       >
         <Box display="flex" flexDirection="column" gap={1}>
-          <Typography variant="h5">Input</Typography>
+          <Typography variant="h5">{t("Input")}</Typography>
 
           <TextField
             sx={{ width: "100%" }}
             value={editString}
             variant="outlined"
             multiline
-            placeholder={`Support %host %port %secret`}
+            placeholder={t(`Support %host %port %secret`)}
             onChange={(e) => setEditString(e.target.value)}
           />
 
           <Typography sx={{ userSelect: "text" }}>
-            Replace host, port, secret with:
+            {t("Replace host, port, secret with")}
           </Typography>
 
           <Box display="flex" gap={1}>
@@ -148,7 +148,7 @@ export const SettingClashWeb = () => {
             <Box display="flex" flexDirection="column" gap={1}>
               <Divider sx={{ mt: 1, mb: 1 }} />
 
-              <Typography variant="h5">Result</Typography>
+              <Typography variant="h5">{t("Result")}</Typography>
 
               <Typography sx={{ userSelect: "text" }} component="div">
                 {renderChip(editString, labels)}

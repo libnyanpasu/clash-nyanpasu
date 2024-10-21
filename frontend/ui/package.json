@@ -22,7 +22,7 @@
     "@mui/material": "6.1.4",
     "@radix-ui/react-portal": "1.1.2",
     "@radix-ui/react-scroll-area": "1.2.0",
-    "@tauri-apps/api": "2.0.2",
+    "@tauri-apps/api": "2.0.3",
     "@types/d3": "7.4.3",
     "@types/react": "18.3.11",
     "@vitejs/plugin-react": "4.3.3",

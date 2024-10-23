@@ -65,7 +65,7 @@
     "@tauri-apps/plugin-process": "2.0.0",
     "@tauri-apps/plugin-shell": "2.0.1",
     "@tauri-apps/plugin-updater": "2.0.0",
-    "@types/react": "18.3.11",
+    "@types/react": "18.3.12",
     "@types/react-dom": "18.3.1",
     "@types/validator": "13.12.2",
     "@vitejs/plugin-react": "4.3.3",

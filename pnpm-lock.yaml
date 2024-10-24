@@ -96,8 +96,8 @@ importers:
         specifier: 4.6.2
         version: 4.6.2(eslint@8.57.1)
       knip:
-        specifier: 5.33.3
-        version: 5.33.3(@types/node@22.7.9)(typescript@5.6.3)
+        specifier: 5.34.0
+        version: 5.34.0(@types/node@22.7.9)(typescript@5.6.3)
       lint-staged:
         specifier: 15.2.10
         version: 15.2.10
@@ -4873,8 +4873,8 @@ packages:
     resolution: {integrity: sha512-dcS1ul+9tmeD95T+x28/ehLgd9mENa3LsvDTtzm3vyBEO7RPptvAD+t44WVXaUjTBRcrpFeFlC8WCruUR456hw==}
     engines: {node: '>=0.10.0'}
 
-  knip@5.33.3:
-    resolution: {integrity: sha512-saUxedVDCa/8p3w445at66vLmYKretzYsX7+elMJ5ROWGzU+1aTRm3EmKELTaho1ue7BlwJB5BxLJROy43+LtQ==}
+  knip@5.34.0:
+    resolution: {integrity: sha512-TuPl8Tfrqoc1LWlR5S1RZwwN2Vk+CUCAGUbji6VAAUFv/nS5S6pzNwBYwDP0tCCN/iAPf9/NhbAni7s135vrQQ==}
     engines: {node: '>=18.6.0'}
     hasBin: true
     peerDependencies:
@@ -11904,7 +11904,7 @@ snapshots:
 
   kind-of@6.0.3: {}
 
-  knip@5.33.3(@types/node@22.7.9)(typescript@5.6.3):
+  knip@5.34.0(@types/node@22.7.9)(typescript@5.6.3):
     dependencies:
       '@nodelib/fs.walk': 1.2.8
       '@snyk/github-codeowners': 1.1.0

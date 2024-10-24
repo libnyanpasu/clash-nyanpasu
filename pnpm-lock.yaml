@@ -217,8 +217,8 @@ importers:
         specifier: workspace:^
         version: link:../ui
       '@tanstack/router-zod-adapter':
-        specifier: 1.74.6
-        version: 1.74.6(@tanstack/react-router@1.74.6(@tanstack/router-generator@1.74.2)(react-dom@19.0.0-rc-1631855f-20241023(react@19.0.0-rc-1631855f-20241023))(react@19.0.0-rc-1631855f-20241023))(zod@3.23.8)
+        specifier: 1.76.1
+        version: 1.76.1(@tanstack/react-router@1.76.1(@tanstack/router-generator@1.74.2)(react-dom@19.0.0-rc-1631855f-20241023(react@19.0.0-rc-1631855f-20241023))(react@19.0.0-rc-1631855f-20241023))(zod@3.23.8)
       '@tauri-apps/api':
         specifier: 2.0.3
         version: 2.0.3
@@ -311,14 +311,14 @@ importers:
         specifier: 4.6.0
         version: 4.6.0(monaco-editor@0.52.0)(react-dom@19.0.0-rc-1631855f-20241023(react@19.0.0-rc-1631855f-20241023))(react@19.0.0-rc-1631855f-20241023)
       '@tanstack/react-router':
-        specifier: 1.74.6
-        version: 1.74.6(@tanstack/router-generator@1.74.2)(react-dom@19.0.0-rc-1631855f-20241023(react@19.0.0-rc-1631855f-20241023))(react@19.0.0-rc-1631855f-20241023)
+        specifier: 1.76.1
+        version: 1.76.1(@tanstack/router-generator@1.74.2)(react-dom@19.0.0-rc-1631855f-20241023(react@19.0.0-rc-1631855f-20241023))(react@19.0.0-rc-1631855f-20241023)
       '@tanstack/router-devtools':
-        specifier: 1.74.6
-        version: 1.74.6(@tanstack/react-router@1.74.6(@tanstack/router-generator@1.74.2)(react-dom@19.0.0-rc-1631855f-20241023(react@19.0.0-rc-1631855f-20241023))(react@19.0.0-rc-1631855f-20241023))(csstype@3.1.3)(react-dom@19.0.0-rc-1631855f-20241023(react@19.0.0-rc-1631855f-20241023))(react@19.0.0-rc-1631855f-20241023)
+        specifier: 1.76.1
+        version: 1.76.1(@tanstack/react-router@1.76.1(@tanstack/router-generator@1.74.2)(react-dom@19.0.0-rc-1631855f-20241023(react@19.0.0-rc-1631855f-20241023))(react@19.0.0-rc-1631855f-20241023))(csstype@3.1.3)(react-dom@19.0.0-rc-1631855f-20241023(react@19.0.0-rc-1631855f-20241023))(react@19.0.0-rc-1631855f-20241023)
       '@tanstack/router-plugin':
-        specifier: 1.74.2
-        version: 1.74.2(vite@5.4.10(@types/node@22.7.9)(less@4.2.0)(sass-embedded@1.78.0)(sass@1.80.4)(stylus@0.62.0))(webpack-sources@3.2.3)
+        specifier: 1.76.0
+        version: 1.76.0(vite@5.4.10(@types/node@22.7.9)(less@4.2.0)(sass-embedded@1.78.0)(sass@1.80.4)(stylus@0.62.0))(webpack-sources@3.2.3)
       '@tauri-apps/plugin-clipboard-manager':
         specifier: 2.0.0
         version: 2.0.0
@@ -2303,8 +2303,8 @@ packages:
     resolution: {integrity: sha512-Wo1iKt2b9OT7d+YGhvEPD3DXvPv2etTusIMhMUoG7fbhmxcXCtIjJDEygy91Y2JFlwGyjqiBPRozme7UD8hoqg==}
     engines: {node: '>=12'}
 
-  '@tanstack/react-router@1.74.6':
-    resolution: {integrity: sha512-mC5TMzzEAiVRvfUEHyOHhvYvt+ORrKfOSA5Tf+R/eoM0pyWo/RHCPlNSAzSfOcWU5S4LZONj8rtAvwU1fHFmFQ==}
+  '@tanstack/react-router@1.76.1':
+    resolution: {integrity: sha512-d8W1Uszni3kecOSseg2CSm+8X4RuhIzoJ14YYtJ6KtjQRkM/t44GSzt8DglVldo3v3xeh4FiVRvtCQ41hZ1MZw==}
     engines: {node: '>=12'}
     peerDependencies:
       '@tanstack/router-generator': 1.74.2
@@ -2333,11 +2333,11 @@ packages:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0
       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0
 
-  '@tanstack/router-devtools@1.74.6':
-    resolution: {integrity: sha512-myaoE6j3/kCfxJ6f69BwRWqJy65DO6//9TI06041PBWMsuFyfs64xPVrLGvnY48pWwHePFTvrb8ryxF4bMXAlA==}
+  '@tanstack/router-devtools@1.76.1':
+    resolution: {integrity: sha512-baN1DzE6sVaYivOIBNHxmPEUvGm57RZ6T/5VR9tx19A3K7n3rnmybnpuUsdzqJzWWT2WAO7J8NIH6wvHuWZLgA==}
     engines: {node: '>=12'}
     peerDependencies:
-      '@tanstack/react-router': ^1.74.6
+      '@tanstack/react-router': ^1.76.1
       react: '>=18'
       react-dom: '>=18'
 
@@ -2345,8 +2345,8 @@ packages:
     resolution: {integrity: sha512-S69fXvYcL+tQsO5Fe9ju/XVa/hZvk4pCaWbtoR2MNjIgR2RmjiFKOgXYeLRMNom/IpP/HAQmQ3m1DwU9jjSUKA==}
     engines: {node: '>=12'}
 
-  '@tanstack/router-plugin@1.74.2':
-    resolution: {integrity: sha512-HcG0FwSZ77g0QH9Ev2I1QYeXS+WWjdThO5Whgm/9abkyJq5GfsiLm2Ey2cw2Va+iHgD2nQdkraP9xL/z9/s6BQ==}
+  '@tanstack/router-plugin@1.76.0':
+    resolution: {integrity: sha512-5JY1NeNbxi7jamTKTAWLyyC9t4Y9Ol+vFZB84h6F1K1BkxqeWQTCJuXMYCY3KawSd7xy2mVT/BgDyZ0AS5hKAA==}
     engines: {node: '>=12'}
     peerDependencies:
       '@rsbuild/core': '>=1.0.2'
@@ -2360,8 +2360,8 @@ packages:
       webpack:
         optional: true
 
-  '@tanstack/router-zod-adapter@1.74.6':
-    resolution: {integrity: sha512-TtWgqdp5IJeRmtpsNWxScIbbkzRYx3wGdRSJh9fDJO9CQNDiR0cMD3LZq7ASdBjeaCA0A99lMHtLgt9tQksacw==}
+  '@tanstack/router-zod-adapter@1.76.1':
+    resolution: {integrity: sha512-+PYKW7kV91ZATJcMaaCSR5tZUKlBmiVo1cRA7taAJfn/aDmUqzUCp5PVCtlOu0Myp+txmO78oKJyULLH36ovWw==}
     engines: {node: '>=12'}
     peerDependencies:
       '@tanstack/react-router': '>=1.43.2'
@@ -9057,7 +9057,7 @@ snapshots:
     dependencies:
       remove-accents: 0.5.0
 
-  '@tanstack/react-router@1.74.6(@tanstack/router-generator@1.74.2)(react-dom@19.0.0-rc-1631855f-20241023(react@19.0.0-rc-1631855f-20241023))(react@19.0.0-rc-1631855f-20241023)':
+  '@tanstack/react-router@1.76.1(@tanstack/router-generator@1.74.2)(react-dom@19.0.0-rc-1631855f-20241023(react@19.0.0-rc-1631855f-20241023))(react@19.0.0-rc-1631855f-20241023)':
     dependencies:
       '@tanstack/history': 1.61.1
       '@tanstack/react-store': 0.5.6(react-dom@19.0.0-rc-1631855f-20241023(react@19.0.0-rc-1631855f-20241023))(react@19.0.0-rc-1631855f-20241023)
@@ -9087,9 +9087,9 @@ snapshots:
       react: 19.0.0-rc-1631855f-20241023
       react-dom: 19.0.0-rc-1631855f-20241023(react@19.0.0-rc-1631855f-20241023)
 
-  '@tanstack/router-devtools@1.74.6(@tanstack/react-router@1.74.6(@tanstack/router-generator@1.74.2)(react-dom@19.0.0-rc-1631855f-20241023(react@19.0.0-rc-1631855f-20241023))(react@19.0.0-rc-1631855f-20241023))(csstype@3.1.3)(react-dom@19.0.0-rc-1631855f-20241023(react@19.0.0-rc-1631855f-20241023))(react@19.0.0-rc-1631855f-20241023)':
+  '@tanstack/router-devtools@1.76.1(@tanstack/react-router@1.76.1(@tanstack/router-generator@1.74.2)(react-dom@19.0.0-rc-1631855f-20241023(react@19.0.0-rc-1631855f-20241023))(react@19.0.0-rc-1631855f-20241023))(csstype@3.1.3)(react-dom@19.0.0-rc-1631855f-20241023(react@19.0.0-rc-1631855f-20241023))(react@19.0.0-rc-1631855f-20241023)':
     dependencies:
-      '@tanstack/react-router': 1.74.6(@tanstack/router-generator@1.74.2)(react-dom@19.0.0-rc-1631855f-20241023(react@19.0.0-rc-1631855f-20241023))(react@19.0.0-rc-1631855f-20241023)
+      '@tanstack/react-router': 1.76.1(@tanstack/router-generator@1.74.2)(react-dom@19.0.0-rc-1631855f-20241023(react@19.0.0-rc-1631855f-20241023))(react@19.0.0-rc-1631855f-20241023)
       clsx: 2.1.1
       goober: 2.1.16(csstype@3.1.3)
       react: 19.0.0-rc-1631855f-20241023
@@ -9104,7 +9104,7 @@ snapshots:
       tsx: 4.19.1
       zod: 3.23.8
 
-  '@tanstack/router-plugin@1.74.2(vite@5.4.10(@types/node@22.7.9)(less@4.2.0)(sass-embedded@1.78.0)(sass@1.80.4)(stylus@0.62.0))(webpack-sources@3.2.3)':
+  '@tanstack/router-plugin@1.76.0(vite@5.4.10(@types/node@22.7.9)(less@4.2.0)(sass-embedded@1.78.0)(sass@1.80.4)(stylus@0.62.0))(webpack-sources@3.2.3)':
     dependencies:
       '@babel/core': 7.25.8
       '@babel/generator': 7.25.7
@@ -9130,9 +9130,9 @@ snapshots:
       - supports-color
       - webpack-sources
 
-  '@tanstack/router-zod-adapter@1.74.6(@tanstack/react-router@1.74.6(@tanstack/router-generator@1.74.2)(react-dom@19.0.0-rc-1631855f-20241023(react@19.0.0-rc-1631855f-20241023))(react@19.0.0-rc-1631855f-20241023))(zod@3.23.8)':
+  '@tanstack/router-zod-adapter@1.76.1(@tanstack/react-router@1.76.1(@tanstack/router-generator@1.74.2)(react-dom@19.0.0-rc-1631855f-20241023(react@19.0.0-rc-1631855f-20241023))(react@19.0.0-rc-1631855f-20241023))(zod@3.23.8)':
     dependencies:
-      '@tanstack/react-router': 1.74.6(@tanstack/router-generator@1.74.2)(react-dom@19.0.0-rc-1631855f-20241023(react@19.0.0-rc-1631855f-20241023))(react@19.0.0-rc-1631855f-20241023)
+      '@tanstack/react-router': 1.76.1(@tanstack/router-generator@1.74.2)(react-dom@19.0.0-rc-1631855f-20241023(react@19.0.0-rc-1631855f-20241023))(react@19.0.0-rc-1631855f-20241023)
       zod: 3.23.8
 
   '@tanstack/store@0.5.5': {}

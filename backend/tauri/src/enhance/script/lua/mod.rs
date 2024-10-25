@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::Error;
 use mlua::prelude::*;
 use parking_lot::Mutex;
-use serde_yaml::Mapping;
+use serde_yaml::{Mapping, Value};
 
 use crate::enhance::{runner::wrap_result, utils::take_logs, Logs, LogsExt};
 
@@ -46,6 +46,48 @@ fn create_console(lua: &Lua, logger: Arc<Mutex<Option<Logs>>>) -> Result<(), any
     table.set("error", error)?;
     lua.globals().set("console", table)?;
     Ok(())
+}
+
+/// This is a workaround for mihomo's yaml config based on the index of the map.
+/// We compare the keys of the index order of the original mapping with the target mapping,
+/// and then we correct the order of the target mapping.
+/// This is a recursive call, so it will correct the order of the nested mapping.
+fn correct_original_mapping_order(target: &mut Value, original: &Value) {
+    if !target.is_mapping() && !target.is_sequence() {
+        return;
+    }
+
+    match (target, original) {
+        (Value::Mapping(target_mapping), Value::Mapping(original_mapping)) => {
+            let original_keys: Vec<_> = original_mapping.keys().collect();
+            let mut new_mapping = serde_yaml::Mapping::new();
+
+            for key in original_keys {
+                if let Some(mut value) = target_mapping.remove(key) {
+                    if let Some(original_value) = original_mapping.get(key) {
+                        correct_original_mapping_order(&mut value, original_value);
+                    }
+                    new_mapping.insert(key.clone(), value);
+                }
+            }
+
+            let remaining_keys = target_mapping.keys().cloned().collect::<Vec<_>>();
+            for key in remaining_keys {
+                if let Some(value) = target_mapping.remove(&key) {
+                    new_mapping.insert(key, value);
+                }
+            }
+
+            *target_mapping = new_mapping;
+        }
+        (Value::Sequence(target), Value::Sequence(original)) if target.len() == original.len() => {
+            for (target_value, original_value) in target.iter_mut().zip(original.iter()) {
+                // TODO: Maybe here exist a bug when the mappings was not in the same order
+                correct_original_mapping_order(target_value, original_value);
+            }
+        }
+        _ => {}
+    }
 }
 
 pub struct LuaRunner;
@@ -96,6 +138,13 @@ impl Runner for LuaRunner {
                 .context("Failed to convert output to config"),
             take_logs(logger)
         );
+
+        // Correct the order of the mapping
+        correct_original_mapping_order(
+            &mut Value::Mapping(config.clone()),
+            &Value::Mapping(mapping),
+        );
+
         (Ok(config), take_logs(logger))
     }
 }
@@ -140,5 +189,45 @@ mod tests {
         assert_eq!(logs.len(), 3);
         let expected = serde_yaml::from_str::<Mapping>(expected).unwrap();
         assert_eq!(expected, result.unwrap());
+    }
+
+    #[test]
+    // TODO: use more common test case
+    fn test_correct_original_mapping_order() {
+        use super::*;
+        use serde_yaml::Mapping;
+
+        let mut target = serde_yaml::from_str::<Value>(
+            r#"
+            proxies:
+            - 123
+            - 12312
+            - asdxxx
+            shoud_remove: 123
+            "#,
+        )
+        .unwrap();
+        let original = serde_yaml::from_str::<Value>(
+            r#"
+            shoud_remove: 123
+            proxies:
+            - 123
+            - 12312
+            - asdxxx
+            "#,
+        )
+        .unwrap();
+        correct_original_mapping_order(&mut target, &original);
+        let expected = serde_yaml::from_str::<Value>(
+            r#"
+            shoud_remove: 123
+            proxies:
+            - 123
+            - 12312
+            - asdxxx
+            "#,
+        )
+        .unwrap();
+        assert_eq!(expected, target);
     }
 }

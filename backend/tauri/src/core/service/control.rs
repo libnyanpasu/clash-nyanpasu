@@ -11,10 +11,7 @@ pub async fn get_service_install_args<'n>() -> Result<Vec<OsString>, anyhow::Err
     let user = {
         #[cfg(windows)]
         {
-            match nyanpasu_utils::os::get_current_user_sid().await {
-                Ok(sid) => sid,
-                Err(_) => "%USERNAME%".to_string(),
-            }
+            nyanpasu_utils::os::get_current_user_sid().await?
         }
         #[cfg(not(windows))]
         {

@@ -182,7 +182,7 @@ impl ClashConnectionsConnector {
     }
 
     pub fn stop(&self) {
-        self.inner.stop_signal.store(true, Ordering::Acquire);
+        self.inner.stop_signal.store(true, Ordering::Release);
     }
 }
 

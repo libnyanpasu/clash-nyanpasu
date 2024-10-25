@@ -1521,6 +1521,7 @@ dependencies = [
  "nanoid",
  "nix 0.29.0",
  "num_cpus",
+ "nyanpasu-egui",
  "nyanpasu-ipc",
  "nyanpasu-macro",
  "nyanpasu-utils",

@@ -14,6 +14,7 @@ mod feat;
 mod ipc;
 mod server;
 mod utils;
+mod event_handler;
 
 use crate::{
     config::Config,

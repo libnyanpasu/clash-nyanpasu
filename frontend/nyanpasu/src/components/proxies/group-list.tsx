@@ -69,22 +69,20 @@ export const GroupList = ({
     if (!data?.groups) {
       return [];
     }
+
     return data.groups.filter((group) => {
-      let matchesFilter = true;
-      if (!deferredProxiesFilter) {
-      } else {
-        matchesFilter =
-          group.name
+      const filterMatches =
+        !deferredProxiesFilter ||
+        group.name
+          .toLowerCase()
+          .includes(deferredProxiesFilter.toLowerCase()) ||
+        group.all?.some((proxy) => {
+          return proxy.name
             .toLowerCase()
-            .includes(deferredProxiesFilter.toLowerCase()) ||
-          group.all?.some((proxy) => {
-            return proxy.name
-              .toLowerCase()
-              .includes(deferredProxiesFilter.toLowerCase());
-          }) ||
-          false;
-      }
-      return !(group.hidden ?? false) && matchesFilter;
+            .includes(deferredProxiesFilter.toLowerCase());
+        }) ||
+        false;
+      return !(group.hidden ?? false) && filterMatches;
     });
   }, [data?.groups, deferredProxiesFilter]);
 

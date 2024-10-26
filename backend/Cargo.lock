@@ -5971,9 +5971,9 @@ checksum = "fb37767f6569cd834a413442455e0f066d0d522de8630436e2a1761d9726ba56"
 
 [[package]]
 name = "oxc_allocator"
-version = "0.33.0"
+version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b951072744cf013eb767d9f61d29b6605e0ae747b05d3da4778a010f3ffa260d"
+checksum = "b5c86018e4c158687698514494cb02b48b0367fd63e463c7b3846e565df53f46"
 dependencies = [
  "allocator-api2",
  "bumpalo",
@@ -5981,9 +5981,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_ast"
-version = "0.33.0"
+version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bccf1b681ed1f6babc3a72241823599ba78ac07b60d31d0ec029182b6bf72cde"
+checksum = "761ab257d19f07de7f91bab40fd7b232e6e0c68164b9086434f416e960f28149"
 dependencies = [
  "bitflags 2.6.0",
  "num-bigint",
@@ -5997,9 +5997,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_ast_macros"
-version = "0.33.0"
+version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "830a9d68d1378023bdaca765a636e3f5608751949ed6f6b2d20708a13412cf21"
+checksum = "a58d52ec144ec10c6c890a5356f7859510aa37e3e2839abd91e419969628302e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6008,9 +6008,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_diagnostics"
-version = "0.33.0"
+version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5739c0992540324c4b9f9e7e9c3e3f1263e07e16f26dfaae566a2a9c4492e16"
+checksum = "980c673834c9b2fa15eb2692d418df45c84294771fd364ab53f9abdf4d3e874b"
 dependencies = [
  "miette",
  "owo-colors",
@@ -6021,9 +6021,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_ecmascript"
-version = "0.33.0"
+version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "45a6cf3633dd508c3f864e7723a2db4087f2467702081aca2095821b5b4648b8"
+checksum = "20243d6de6301a5265c85d9d8007bf3044be5311906ba1686570de67743904a3"
 dependencies = [
  "num-bigint",
  "num-traits",
@@ -6034,21 +6034,21 @@ dependencies = [
 
 [[package]]
 name = "oxc_estree"
-version = "0.33.0"
+version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5e473cefef347ff5e4774a297d55fd84c405e5a457a6a48cdc0289b50637a0d"
+checksum = "7c30428989d3af8c8d868ec5fdd3e227865bbf7bc875e47785de368968282234"
 
 [[package]]
 name = "oxc_index"
-version = "0.33.0"
+version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74ac390082ad5964110a384e117f8d61bde137d5a1548d9a3f30abbbbfd38700"
+checksum = "2c33b9c780ed9ea47548248450b04da65b1e4e8023157403c37407a3210b675a"
 
 [[package]]
 name = "oxc_parser"
-version = "0.33.0"
+version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09157972bc9a1c13be84a676409b8716b5d4659a54d34e519eae733fd7321529"
+checksum = "22251ed2d64a743481450f64e5d279193165b637dc3dce6f5eaa3eeb494d470b"
 dependencies = [
  "assert-unchecked",
  "bitflags 2.6.0",
@@ -6069,9 +6069,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_regular_expression"
-version = "0.33.0"
+version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b0e9930f3a3042866b93e69c5718aeba59259cd6bcbae8631a452f417ca14f4"
+checksum = "fbd944dbd4a2b479bda4e29472e1489bb3abd9efbf8a84397fbe3259944b39b4"
 dependencies = [
  "oxc_allocator",
  "oxc_ast_macros",
@@ -6085,9 +6085,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_span"
-version = "0.33.0"
+version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "517f9a331c761341bc9279a3aa83e963c7e340a3790ad1b841b17d356e24580c"
+checksum = "74ea8734bdf818608fe5b92322ef1ad56c56896d83052b5d477f0197d09e7f15"
 dependencies = [
  "compact_str",
  "miette",
@@ -6098,9 +6098,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_syntax"
-version = "0.33.0"
+version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f10879bd61d0af333b0dacf9746355e0cd82a6fd579695436c4640e54b6891a"
+checksum = "14ecf5a5134b738088f1a56fbae78aa4e478b07f27b5f4db3c07734e0c9e005a"
 dependencies = [
  "assert-unchecked",
  "bitflags 2.6.0",

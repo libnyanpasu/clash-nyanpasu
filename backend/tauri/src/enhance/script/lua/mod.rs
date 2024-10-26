@@ -102,7 +102,7 @@ impl Runner for LuaRunner {
         let file = wrap_result!(tokio::fs::read_to_string(path).await);
         self.process_honey(mapping, &file).await
     }
-
+    // TODO: Keep the order of the dictionary structure in the configuration when processing lua. Because mihomo needs ordered dictionaries for dns policy.
     async fn process_honey(&self, mapping: Mapping, script: &str) -> ProcessOutput {
         let lua = wrap_result!(create_lua_context());
         let logger = Arc::new(Mutex::new(Some(Logs::new())));

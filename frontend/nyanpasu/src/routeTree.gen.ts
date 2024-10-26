@@ -25,41 +25,49 @@ import { Route as IndexImport } from './pages/index'
 // Create/Update Routes
 
 const SettingsRoute = SettingsImport.update({
+  id: '/settings',
   path: '/settings',
   getParentRoute: () => rootRoute,
 } as any)
 
 const RulesRoute = RulesImport.update({
+  id: '/rules',
   path: '/rules',
   getParentRoute: () => rootRoute,
 } as any)
 
 const ProxiesRoute = ProxiesImport.update({
+  id: '/proxies',
   path: '/proxies',
   getParentRoute: () => rootRoute,
 } as any)
 
 const ProvidersRoute = ProvidersImport.update({
+  id: '/providers',
   path: '/providers',
   getParentRoute: () => rootRoute,
 } as any)
 
 const ProfilesRoute = ProfilesImport.update({
+  id: '/profiles',
   path: '/profiles',
   getParentRoute: () => rootRoute,
 } as any)
 
 const LogsRoute = LogsImport.update({
+  id: '/logs',
   path: '/logs',
   getParentRoute: () => rootRoute,
 } as any)
 
 const DashboardRoute = DashboardImport.update({
+  id: '/dashboard',
   path: '/dashboard',
   getParentRoute: () => rootRoute,
 } as any)
 
 const ConnectionsRoute = ConnectionsImport.update({
+  id: '/connections',
   path: '/connections',
   getParentRoute: () => rootRoute,
 } as any)
@@ -70,6 +78,7 @@ const LayoutRoute = LayoutImport.update({
 } as any)
 
 const IndexRoute = IndexImport.update({
+  id: '/',
   path: '/',
   getParentRoute: () => rootRoute,
 } as any)

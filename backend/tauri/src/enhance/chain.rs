@@ -146,7 +146,7 @@ impl ChainItem {
         // 修复配置的一些问题
         let config_fixer = ChainItem::to_script(
             "config_fixer",
-            ChainTypeWrapper::new_lua(include_str!("./builtin/config_fixer.lua").to_string()),
+            ChainTypeWrapper::new_js(include_str!("./builtin/config_fixer.js").to_string()),
         );
 
         // 移除或转换 Clash Rs 不支持的字段

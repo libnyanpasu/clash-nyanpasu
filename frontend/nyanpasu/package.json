@@ -45,7 +45,7 @@
     "react-split-grid": "1.0.4",
     "react-use": "17.5.1",
     "swr": "2.2.5",
-    "virtua": "0.35.1",
+    "virtua": "0.36.0",
     "vite-bundle-visualizer": "1.2.1"
   },
   "devDependencies": {

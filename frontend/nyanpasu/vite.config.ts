@@ -8,6 +8,7 @@ import svgr from "vite-plugin-svgr";
 import tsconfigPaths from "vite-tsconfig-paths";
 // import react from "@vitejs/plugin-react";
 import { TanStackRouterVite } from "@tanstack/router-plugin/vite";
+import legacy from "@vitejs/plugin-legacy";
 import react from "@vitejs/plugin-react-swc";
 
 const devtools = () => {
@@ -48,6 +49,16 @@ export default defineConfig(({ command }) => {
     },
     plugins: [
       tsconfigPaths(),
+      legacy({
+        renderLegacyChunks: false,
+        modernTargets: ["edge>=109", "safari>=13"],
+        modernPolyfills: true,
+        additionalModernPolyfills: [
+          "core-js/modules/es.object.has-own.js",
+          "core-js/modules/web.structured-clone.js",
+          "core-js/modules/es.array.at.js",
+        ],
+      }),
       TanStackRouterVite(),
       svgr(),
       react({

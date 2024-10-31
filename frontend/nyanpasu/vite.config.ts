@@ -8,6 +8,7 @@ import svgr from "vite-plugin-svgr";
 import tsconfigPaths from "vite-tsconfig-paths";
 // import monaco from "vite-plugin-monaco-editor";
 import generouted from "@generouted/react-router/plugin";
+import legacy from "@vitejs/plugin-legacy";
 // import react from "@vitejs/plugin-react";
 import react from "@vitejs/plugin-react-swc";
 
@@ -50,6 +51,16 @@ export default defineConfig(({ command }) => {
     plugins: [
       tsconfigPaths(),
       svgr(),
+      legacy({
+        renderLegacyChunks: false,
+        modernTargets: ["edge>=109", "safari>=13"],
+        modernPolyfills: true,
+        additionalModernPolyfills: [
+          "core-js/modules/es.object.has-own.js",
+          "core-js/modules/web.structured-clone.js",
+          "core-js/modules/es.array.at.js",
+        ],
+      }),
       react({
         // babel: {
         //   plugins: ["@emotion/babel-plugin"],

@@ -46,7 +46,7 @@ tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"] }
 relative-path = "1.9"
-tauri = { version = "1.5.4", features = [
+tauri = { version = "1.8.1", features = [
   "dialog-all",
   "updater",
   "fs-all",
@@ -156,7 +156,7 @@ windows-sys = { version = "0.59", features = [
 webview2-com-bridge = { path = "../webview2-com-bridge" }
 
 [target.'cfg(windows)'.dependencies.tauri]
-version = "1.5.4"
+version = "1.8.1"
 features = [
   "global-shortcut-all",
   "icon-png",
@@ -169,7 +169,7 @@ features = [
 ]
 
 [target.'cfg(linux)'.dependencies.tauri]
-version = "1.5.4"
+version = "1.8.1"
 features = [
   "global-shortcut-all",
   "process-all",

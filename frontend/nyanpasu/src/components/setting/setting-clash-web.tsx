@@ -130,12 +130,12 @@ export const SettingClashWeb = () => {
             value={editString}
             variant="outlined"
             multiline
-            placeholder={t(`Support %host %port %secret`)}
+            placeholder={t(`Support %host %port, and %secret`)}
             onChange={(e) => setEditString(e.target.value)}
           />
 
           <Typography sx={{ userSelect: "text" }}>
-            {t("Replace host, port, secret with")}
+            {t("Replace host, port, and secret with")}
           </Typography>
 
           <Box display="flex" gap={1}>

@@ -60,7 +60,7 @@ export const SettingNyanpasuMisc = () => {
         />
 
         <SwitchItem
-          label={t("Lighten up Animation Effects")}
+          label={t("Lighten Up Animation Effects")}
           {...createBooleanProps("lighten_animation_effects")}
         />
 

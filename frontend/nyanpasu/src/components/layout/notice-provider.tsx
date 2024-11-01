@@ -12,7 +12,7 @@ export const NoticeProvider = () => {
     }>("nyanpasu://notice-message", ({ payload }) => {
       if ("ok" in payload?.set_config) {
         notification({
-          title: t("Success"),
+          title: t("Successful"),
           body: "Refresh Clash Config",
           type: NotificationType.Success,
         });

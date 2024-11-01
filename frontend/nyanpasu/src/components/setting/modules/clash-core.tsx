@@ -175,12 +175,12 @@ export const ClashCoreItem = ({
 
       getClashCore.mutate();
 
-      message(t("Successfully update core", { core: `${data.name}` }), {
+      message(t("Successfully updated the core", { core: `${data.name}` }), {
         kind: "info",
-        title: t("Success"),
+        title: t("Successful"),
       });
     } catch (e) {
-      message(t("Update failed", { error: `${formatError(e)}` }), {
+      message(t("Failed to update", { error: `${formatError(e)}` }), {
         kind: "error",
         title: t("Error"),
       });

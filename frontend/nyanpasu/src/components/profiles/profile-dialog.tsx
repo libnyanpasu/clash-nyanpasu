@@ -283,7 +283,7 @@ export const ProfileDialog = ({
               <div className="ml-2 text-red-500">{localProfileMessage}</div>
             )}
             <span className="px-2 text-xs">
-              * {t("Select file to import or leave blank to touch new one.")}
+              * {t("Choose file to import or leave it blank to create new one")}
             </span>
           </>
         )}

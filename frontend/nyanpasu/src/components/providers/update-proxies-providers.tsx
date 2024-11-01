@@ -50,7 +50,7 @@ export const UpdateProxiesProviders = () => {
       startIcon={<Refresh />}
       onClick={handleProviderUpdate}
     >
-      {t("Update Proxies Providers All")}
+      {t("Update All Proxies Providers")}
     </LoadingButton>
   );
 };

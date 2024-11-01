@@ -267,13 +267,13 @@ impl Sysopt {
             loop {
                 sleep(Duration::from_secs(wait_secs)).await;
 
-                let (enable, guard, guard_duration, bypass) = {
+                let (enable, guard, guard_interval, bypass) = {
                     let verge = Config::verge();
                     let verge = verge.latest();
                     (
                         verge.enable_system_proxy.unwrap_or(false),
                         verge.enable_proxy_guard.unwrap_or(false),
-                        verge.proxy_guard_duration.unwrap_or(10),
+                        verge.proxy_guard_interval.unwrap_or(10),
                         verge.system_proxy_bypass.clone(),
                     )
                 };
@@ -284,7 +284,7 @@ impl Sysopt {
                 }
 
                 // update duration
-                wait_secs = guard_duration;
+                wait_secs = guard_interval;
 
                 log::debug!(target: "app", "try to guard the system proxy");
 

@@ -69,15 +69,15 @@ export const SettingSystemService = () => {
       } catch (e) {
         const errorMessage = `${
           getServiceStatus.data === "not_installed"
-            ? t("Install failed")
-            : t("Uninstall failed")
+            ? t("Failed to install")
+            : t("Failed to uninstall")
         }: ${formatError(e)}`;
 
         message(errorMessage, {
           kind: "error",
           title: t("Error"),
         });
-        // If install failed show a prompt to user to install the service manually
+        // If the installation fails, prompt the user to manually install the service
         promptDialog.show(
           getServiceStatus.data === "not_installed" ? "install" : "uninstall",
         );

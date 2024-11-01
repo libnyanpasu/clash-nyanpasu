@@ -44,8 +44,8 @@ export const SettingNyanpasuPath = () => {
 
       await setCustomAppDir(selected);
 
-      message(t("App directory changed successfully"), {
-        title: t("Success"),
+      message(t("Successfully changed the app directory"), {
+        title: t("Successful"),
         kind: "error",
       });
 

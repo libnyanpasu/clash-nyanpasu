@@ -49,7 +49,7 @@ export const SettingClashPort = () => {
               });
             } finally {
               message(t("After restart to take effect"), {
-                title: t("Success"),
+                title: t("Successful"),
                 kind: "info",
               });
             }

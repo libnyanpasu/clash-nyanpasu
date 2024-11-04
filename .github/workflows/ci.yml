@@ -84,6 +84,8 @@ jobs:
 
       - name: Prepare fronend
         run: pnpm -r build # Build frontend
+        env:
+          NODE_OPTIONS: "--max_old_space_size=4096"
       - name: Prepare sidecar and resources
         run: pnpm check
       - name: Lint
@@ -92,7 +94,8 @@ jobs:
       - name: Lint
         if: startsWith(matrix.targets.os, 'ubuntu-') == false
         run: pnpm run-p lint:clippy lint:rustfmt # Lint
-
+        env:
+          NODE_OPTIONS: "--max_old_space_size=4096"
 
   # 以后完善了新的测试套件后再添加
   # test_unit:

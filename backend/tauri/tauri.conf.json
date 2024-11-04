@@ -46,7 +46,7 @@
     "longDescription": "Clash Nyanpasu! (∠・ω< )⌒☆",
     "macOS": {
       "frameworks": [],
-      "minimumSystemVersion": "11.0",
+      "minimumSystemVersion": "12.6",
       "exceptionDomain": "",
       "signingIdentity": null,
       "entitlements": null

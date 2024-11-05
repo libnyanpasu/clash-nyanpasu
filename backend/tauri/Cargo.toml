@@ -156,7 +156,7 @@ oxc_ast = "0.34"
 oxc_syntax = "0.34"
 
 # Lua Integration
-mlua = { version = "0.9", features = [
+mlua = { version = "0.10", features = [
   "lua54",
   "async",
   "serialize",

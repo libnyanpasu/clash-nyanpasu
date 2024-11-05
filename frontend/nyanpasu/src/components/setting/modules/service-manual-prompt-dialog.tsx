@@ -6,8 +6,10 @@ import useSWR from "swr";
 import { OS } from "@/consts";
 import { serviceManualPromptDialogAtom } from "@/store/service";
 import { getShikiSingleton } from "@/utils/shiki";
+import { useTheme } from "@mui/material";
 import { getCoreDir, getServiceInstallPrompt } from "@nyanpasu/interface";
-import { BaseDialog, BaseDialogProps } from "@nyanpasu/ui";
+import { BaseDialog, BaseDialogProps, cn } from "@nyanpasu/ui";
+import styles from "./service-manual-prompt-dialog.module.scss";
 
 export type ServerManualPromptDialogProps = Omit<BaseDialogProps, "title"> & {
   operation: "uninstall" | "install" | "start" | "stop" | null;
@@ -21,6 +23,7 @@ export default function ServerManualPromptDialog({
   ...props
 }: ServerManualPromptDialogProps) {
   const { t } = useTranslation();
+  const theme = useTheme();
   const { data: serviceInstallPrompt, error } = useSWR(
     operation === "install" ? "/service_install_prompt" : null,
     getServiceInstallPrompt,
@@ -30,13 +33,16 @@ export default function ServerManualPromptDialog({
   useAsyncEffect(async () => {
     if (operation === "install" && serviceInstallPrompt) {
       const shiki = await getShikiSingleton();
-      const code = await shiki.codeToHtml(serviceInstallPrompt, {
-        lang: "shell",
-        themes: {
-          dark: "nord",
-          light: "min-light",
+      const code = await shiki.codeToHtml(
+        `cd "${coreDir}\n${serviceInstallPrompt}"`,
+        {
+          lang: "shell",
+          themes: {
+            dark: "nord",
+            light: "min-light",
+          },
         },
-      });
+      );
       setCodes(code);
     } else if (!!operation) {
       const shiki = await getShikiSingleton();
@@ -70,6 +76,10 @@ export default function ServerManualPromptDialog({
         {error && <p className="text-red-500">{error.message}</p>}
         {!!codes && (
           <div
+            className={cn(
+              "rounded-sm",
+              theme.palette.mode === "dark" && styles.dark,
+            )}
             dangerouslySetInnerHTML={{
               __html: codes,
             }}

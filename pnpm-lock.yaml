@@ -377,8 +377,8 @@ importers:
         specifier: 1.18.9
         version: 1.18.9
       monaco-yaml:
-        specifier: 5.2.2
-        version: 5.2.2(monaco-editor@0.52.0)
+        specifier: 5.2.3
+        version: 5.2.3(monaco-editor@0.52.0)
       nanoid:
         specifier: 5.0.8
         version: 5.0.8
@@ -5790,8 +5790,8 @@ packages:
     peerDependencies:
       monaco-editor: '>=0.30.0'
 
-  monaco-yaml@5.2.2:
-    resolution: {integrity: sha512-NWO/UhtJATlIsqwWPzK7YfbcIvPo3riFGsUkaGxNJoGiNPOvHD8vZ83ecqMQGkHPOpgHtSbe94uokE1AJvpbyQ==}
+  monaco-yaml@5.2.3:
+    resolution: {integrity: sha512-GEplKC+YYmS0TOlJdv0FzbqkDN/IG2FSwEw+95myECVxTlhty2amwERYjzvorvJXmIagP1grd3Lleq7aQEJpPg==}
     peerDependencies:
       monaco-editor: '>=0.36'
 
@@ -7838,11 +7838,6 @@ packages:
   yaml@1.10.2:
     resolution: {integrity: sha512-r3vXyErRCYJ7wg28yvBY5VSoAF8ZvlcW9/BwUzEtUsjvX/DKs24dIkuwjtuprwJJHsbyUbLApepYTR1BN4uHrg==}
     engines: {node: '>= 6'}
-
-  yaml@2.5.0:
-    resolution: {integrity: sha512-2wWLbGbYDiSqqIKoPjar3MPgB94ErzCtrNE1FdqGuaO0pi2JGjmE8aW8TDZwzU7vuxcGRdL/4gPQwQ7hD5AMSw==}
-    engines: {node: '>= 14'}
-    hasBin: true
 
   yaml@2.5.1:
     resolution: {integrity: sha512-bLQOjaX/ADgQ20isPJRvF0iRUHIxVhYvr53Of7wGcWlO2jvtUlH5m87DsmulFVxRpNLOnI4tB6p/oh8D7kpn9Q==}
@@ -13736,7 +13731,7 @@ snapshots:
     dependencies:
       monaco-editor: 0.52.0
 
-  monaco-yaml@5.2.2(monaco-editor@0.52.0):
+  monaco-yaml@5.2.3(monaco-editor@0.52.0):
     dependencies:
       jsonc-parser: 3.3.1
       monaco-editor: 0.52.0
@@ -13749,7 +13744,7 @@ snapshots:
       vscode-languageserver-textdocument: 1.0.12
       vscode-languageserver-types: 3.17.5
       vscode-uri: 3.0.8
-      yaml: 2.5.0
+      yaml: 2.5.1
 
   ms@2.0.0: {}
 
@@ -15882,8 +15877,6 @@ snapshots:
   yallist@5.0.0: {}
 
   yaml@1.10.2: {}
-
-  yaml@2.5.0: {}
 
   yaml@2.5.1: {}
 

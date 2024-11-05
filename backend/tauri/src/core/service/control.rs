@@ -7,7 +7,7 @@ use super::SERVICE_PATH;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
-pub async fn get_service_install_args<'n>() -> Result<Vec<OsString>, anyhow::Error> {
+pub async fn get_service_install_args() -> Result<Vec<OsString>, anyhow::Error> {
     let user = {
         #[cfg(windows)]
         {
@@ -38,11 +38,25 @@ pub async fn get_service_install_args<'n>() -> Result<Vec<OsString>, anyhow::Err
 pub async fn install_service() -> anyhow::Result<()> {
     let args = get_service_install_args().await?;
     let child = tokio::task::spawn_blocking(move || {
-        RunasCommand::new(SERVICE_PATH.as_path())
-            .args(&args)
-            .gui(true)
-            .show(true)
-            .status()
+        #[cfg(not(target_os = "macos"))]
+        {
+            RunasCommand::new(SERVICE_PATH.as_path())
+                .args(&args)
+                .gui(true)
+                .show(true)
+                .status()
+        }
+        #[cfg(target_os = "macos")]
+        {
+            use crate::utils::sudo::sudo;
+            match sudo(SERVICE_PATH.as_path(), &args) {
+                Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
+                Err(e) => {
+                    tracing::error!("failed to install service: {}", e);
+                    Err(e)
+                }
+            }
+        }
     })
     .await??;
     if !child.success() {
@@ -70,11 +84,26 @@ pub async fn install_service() -> anyhow::Result<()> {
 
 pub async fn update_service() -> anyhow::Result<()> {
     let child = tokio::task::spawn_blocking(move || {
-        RunasCommand::new(SERVICE_PATH.as_path())
-            .args(&["update"])
-            .gui(true)
-            .show(true)
-            .status()
+        const ARGS: &[&str] = &["update"];
+        #[cfg(not(target_os = "macos"))]
+        {
+            RunasCommand::new(SERVICE_PATH.as_path())
+                .args(ARGS)
+                .gui(true)
+                .show(true)
+                .status()
+        }
+        #[cfg(target_os = "macos")]
+        {
+            use crate::utils::sudo::sudo;
+            match sudo(SERVICE_PATH.as_path(), ARGS) {
+                Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
+                Err(e) => {
+                    tracing::error!("failed to install service: {}", e);
+                    Err(e)
+                }
+            }
+        }
     })
     .await??;
     if !child.success() {
@@ -98,11 +127,26 @@ pub async fn update_service() -> anyhow::Result<()> {
 
 pub async fn uninstall_service() -> anyhow::Result<()> {
     let child = tokio::task::spawn_blocking(move || {
-        RunasCommand::new(SERVICE_PATH.as_path())
-            .args(&["uninstall"])
-            .gui(true)
-            .show(true)
-            .status()
+        const ARGS: &[&str] = &["uninstall"];
+        #[cfg(not(target_os = "macos"))]
+        {
+            RunasCommand::new(SERVICE_PATH.as_path())
+                .args(ARGS)
+                .gui(true)
+                .show(true)
+                .status()
+        }
+        #[cfg(target_os = "macos")]
+        {
+            use crate::utils::sudo::sudo;
+            match sudo(SERVICE_PATH.as_path(), ARGS) {
+                Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
+                Err(e) => {
+                    tracing::error!("failed to install service: {}", e);
+                    Err(e)
+                }
+            }
+        }
     })
     .await??;
     if !child.success() {
@@ -122,11 +166,26 @@ pub async fn uninstall_service() -> anyhow::Result<()> {
 
 pub async fn start_service() -> anyhow::Result<()> {
     let child = tokio::task::spawn_blocking(move || {
-        RunasCommand::new(SERVICE_PATH.as_path())
-            .args(&["start"])
-            .gui(true)
-            .show(true)
-            .status()
+        const ARGS: &[&str] = &["start"];
+        #[cfg(not(target_os = "macos"))]
+        {
+            RunasCommand::new(SERVICE_PATH.as_path())
+                .args(ARGS)
+                .gui(true)
+                .show(true)
+                .status()
+        }
+        #[cfg(target_os = "macos")]
+        {
+            use crate::utils::sudo::sudo;
+            match sudo(SERVICE_PATH.as_path(), ARGS) {
+                Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
+                Err(e) => {
+                    tracing::error!("failed to install service: {}", e);
+                    Err(e)
+                }
+            }
+        }
     })
     .await??;
     if !child.success() {
@@ -153,11 +212,26 @@ pub async fn start_service() -> anyhow::Result<()> {
 
 pub async fn stop_service() -> anyhow::Result<()> {
     let child = tokio::task::spawn_blocking(move || {
-        RunasCommand::new(SERVICE_PATH.as_path())
-            .args(&["stop"])
-            .gui(true)
-            .show(true)
-            .status()
+        const ARGS: &[&str] = &["stop"];
+        #[cfg(not(target_os = "macos"))]
+        {
+            RunasCommand::new(SERVICE_PATH.as_path())
+                .args(ARGS)
+                .gui(true)
+                .show(true)
+                .status()
+        }
+        #[cfg(target_os = "macos")]
+        {
+            use crate::utils::sudo::sudo;
+            match sudo(SERVICE_PATH.as_path(), ARGS) {
+                Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
+                Err(e) => {
+                    tracing::error!("failed to install service: {}", e);
+                    Err(e)
+                }
+            }
+        }
     })
     .await??;
     if !child.success() {
@@ -187,11 +261,26 @@ pub async fn stop_service() -> anyhow::Result<()> {
 
 pub async fn restart_service() -> anyhow::Result<()> {
     let child = tokio::task::spawn_blocking(move || {
-        RunasCommand::new(SERVICE_PATH.as_path())
-            .args(&["restart"])
-            .gui(true)
-            .show(true)
-            .status()
+        const ARGS: &[&str] = &["restart"];
+        #[cfg(not(target_os = "macos"))]
+        {
+            RunasCommand::new(SERVICE_PATH.as_path())
+                .args(ARGS)
+                .gui(true)
+                .show(true)
+                .status()
+        }
+        #[cfg(target_os = "macos")]
+        {
+            use crate::utils::sudo::sudo;
+            match sudo(SERVICE_PATH.as_path(), ARGS) {
+                Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
+                Err(e) => {
+                    tracing::error!("failed to install service: {}", e);
+                    Err(e)
+                }
+            }
+        }
     })
     .await??;
     if !child.success() {

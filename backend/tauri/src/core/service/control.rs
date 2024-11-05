@@ -49,7 +49,7 @@ pub async fn install_service() -> anyhow::Result<()> {
         #[cfg(target_os = "macos")]
         {
             use crate::utils::sudo::sudo;
-            match sudo(SERVICE_PATH.as_path(), &args) {
+            match sudo(SERVICE_PATH.to_string_lossy(), &args) {
                 Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
                 Err(e) => {
                     tracing::error!("failed to install service: {}", e);
@@ -96,7 +96,7 @@ pub async fn update_service() -> anyhow::Result<()> {
         #[cfg(target_os = "macos")]
         {
             use crate::utils::sudo::sudo;
-            match sudo(SERVICE_PATH.as_path(), ARGS) {
+            match sudo(SERVICE_PATH.to_string_lossy(), ARGS) {
                 Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
                 Err(e) => {
                     tracing::error!("failed to install service: {}", e);
@@ -139,7 +139,7 @@ pub async fn uninstall_service() -> anyhow::Result<()> {
         #[cfg(target_os = "macos")]
         {
             use crate::utils::sudo::sudo;
-            match sudo(SERVICE_PATH.as_path(), ARGS) {
+            match sudo(SERVICE_PATH.to_string_lossy(), ARGS) {
                 Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
                 Err(e) => {
                     tracing::error!("failed to install service: {}", e);
@@ -178,7 +178,7 @@ pub async fn start_service() -> anyhow::Result<()> {
         #[cfg(target_os = "macos")]
         {
             use crate::utils::sudo::sudo;
-            match sudo(SERVICE_PATH.as_path(), ARGS) {
+            match sudo(SERVICE_PATH.to_string_lossy(), ARGS) {
                 Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
                 Err(e) => {
                     tracing::error!("failed to install service: {}", e);
@@ -224,7 +224,7 @@ pub async fn stop_service() -> anyhow::Result<()> {
         #[cfg(target_os = "macos")]
         {
             use crate::utils::sudo::sudo;
-            match sudo(SERVICE_PATH.as_path(), ARGS) {
+            match sudo(SERVICE_PATH.to_string_lossy(), ARGS) {
                 Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
                 Err(e) => {
                     tracing::error!("failed to install service: {}", e);
@@ -273,7 +273,7 @@ pub async fn restart_service() -> anyhow::Result<()> {
         #[cfg(target_os = "macos")]
         {
             use crate::utils::sudo::sudo;
-            match sudo(SERVICE_PATH.as_path(), ARGS) {
+            match sudo(SERVICE_PATH.to_string_lossy(), ARGS) {
                 Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
                 Err(e) => {
                     tracing::error!("failed to install service: {}", e);

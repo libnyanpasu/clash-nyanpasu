@@ -1,6 +1,6 @@
 #[cfg(target_os = "macos")]
 mod macos {
-    pub fn sudo<T: AsRef<str>>(bin: T, args: &[T]) -> std::io::Result<()> {
+    pub fn sudo<M: AsRef<str>, T: AsRef<str>>(bin: M, args: &[T]) -> std::io::Result<()> {
         use std::process::Command;
         let mut cmd = Command::new("osascript");
         let args = args
@@ -26,7 +26,7 @@ mod macos {
             let stderr = std::str::from_utf8(&output.stderr).unwrap_or("");
             Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
-                format!("exit code: {}, err: {}", output.status.code(), stderr),
+                format!("exit code: {:?}, err: {}", output.status.code(), stderr),
             ))
         }
     }

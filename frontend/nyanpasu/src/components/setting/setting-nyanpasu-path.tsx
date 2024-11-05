@@ -53,7 +53,7 @@ export const SettingNyanpasuPath = () => {
 
       await restartApplication();
     } catch (e) {
-      message(t("Migration failed", { error: `${JSON.stringify(e)}` }), {
+      message(t("Failed to migrate", { error: `${JSON.stringify(e)}` }), {
         title: t("Error"),
         kind: "error",
       });

@@ -147,7 +147,7 @@
   "Update All Rules Providers": "Обновить все провайдеры правил",
   "Rule Set rules": "{{rule}} правила",
   "Last Update": "Последнее обновление {{fromNow}}",
-  "Update Rules Providers Success": "Провайдеры правил успешно обновлены",
+  "Successfully Updated Rules Providers": "Провайдеры правил успешно обновлены",
 
   "Portable Update Error": "Обновление портативной версии не поддерживается",
   "Tray Proxies Selector": "Выбор прокси в трее",

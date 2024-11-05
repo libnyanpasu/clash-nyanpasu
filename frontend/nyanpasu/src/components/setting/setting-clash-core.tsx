@@ -82,7 +82,7 @@ export const SettingClashCore = () => {
     try {
       await restartSidecar();
 
-      message(t("Successfully restarted clash core"), {
+      message(t("Successfully restarted the core"), {
         kind: "info",
         title: t("Successful"),
       });

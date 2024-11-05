@@ -254,7 +254,7 @@
   "Information: To enable service mode, make sure the Clash Nyanpasu service is installed and started": "提示信息：如需启用服务模式，请确保 Clash Nyanpasu 服务已安装并启动。",
   "install": "安装",
   "uninstall": "卸载",
-  "start": "启用",
+  "start": "启动",
   "stop": "停止",
   "Failed to install": "安装失败",
   "Failed to uninstall": "卸载失败",

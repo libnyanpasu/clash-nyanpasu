@@ -16,3 +16,4 @@ pub mod net;
 pub mod open;
 
 pub mod dock;
+pub mod sudo;

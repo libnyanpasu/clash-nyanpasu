@@ -153,7 +153,7 @@ impl Updater {
         inner.state = state;
     }
 
-    async fn decompress_and_set_premission(&self) -> anyhow::Result<()> {
+    async fn decompress_and_set_permission(&self) -> anyhow::Result<()> {
         self.dispatch_state(UpdaterState::Decompressing);
         let path = self.temp_dir.path().join(&self.artifact);
         tracing::debug!("decompressing file: {:?}", path);
@@ -217,9 +217,10 @@ impl Updater {
             .latest()
             .clash_core
             .unwrap_or_default();
+        tracing::debug!("current core: {}", current_core);
         if current_core == self.core_type {
+            tracing::debug!("stopping core to replace");
             CoreManager::global().stop_core().await?;
-            return Ok(());
         }
         #[cfg(target_os = "windows")]
         let target_core = format!("{}.exe", self.core_type);
@@ -235,7 +236,9 @@ impl Updater {
             std::env::consts::EXE_SUFFIX
         ));
         match tokio::fs::copy(tmp_core_path.clone(), target_core.clone()).await {
-            Ok(_) => {}
+            Ok(size) => {
+                tracing::debug!("copied core to {:?} ({} bytes)", target_core, size);
+            }
             Err(err) => {
                 tracing::warn!(
                     "failed to copy core: {}, trying to use elevated permission to copy and override core",
@@ -307,7 +310,7 @@ impl Updater {
                     }
                     DownloaderState::Finished => {
                         tracing::debug!("download finished and start to incoming update logic");
-                        if let Err(e) = self.decompress_and_set_premission().await {
+                        if let Err(e) = self.decompress_and_set_permission().await {
                             tracing::error!("failed to decompress and set permission: {}", e);
                             self.dispatch_state(UpdaterState::Failed(e.to_string()));
                             return;

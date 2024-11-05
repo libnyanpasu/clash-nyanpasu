@@ -263,7 +263,7 @@ pub async fn patch_profile(uid: String, profile: Mapping) -> Result {
                             item.as_local().unwrap().chain.contains(&uid)
                         }
                         Ok(item) if item.is_remote() => {
-                            item.as_local().unwrap().chain.contains(&uid)
+                            item.as_remote().unwrap().chain.contains(&uid)
                         }
                         _ => false,
                     })

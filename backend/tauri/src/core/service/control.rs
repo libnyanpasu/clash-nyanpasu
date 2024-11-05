@@ -49,6 +49,7 @@ pub async fn install_service() -> anyhow::Result<()> {
         #[cfg(target_os = "macos")]
         {
             use crate::utils::sudo::sudo;
+            let args = args.iter().map(|s| s.to_string_lossy()).collect::<Vec<_>>();
             match sudo(SERVICE_PATH.to_string_lossy(), &args) {
                 Ok(()) => Ok(std::process::ExitStatus::from_raw(0)),
                 Err(e) => {

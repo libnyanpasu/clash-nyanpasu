@@ -3,7 +3,7 @@ import { ProxyAgent, fetch as undiciFetch } from "undici";
 import { HTTP_PROXY } from "./";
 
 const BASE_OPTIONS = {
-  owner: "LibNyanpasu",
+  owner: "libnyanpasu",
   repo: "clash-nyanpasu",
 };
 

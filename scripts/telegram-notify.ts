@@ -54,7 +54,7 @@ const isValidFormat = (fileName: string): boolean => {
 };
 
 const repoInfo = {
-  owner: "LibNyanpasu",
+  owner: "libnyanpasu",
   repo: "clash-nyanpasu",
 };
 
@@ -112,7 +112,7 @@ const repoInfo = {
         `Clash Nyanpasu ${version} Released!`,
         "",
         "Check out on GitHub:",
-        ` - https://github.com/LibNyanpasu/clash-nyanpasu/releases/tag/v${version}`,
+        ` - https://github.com/libnyanpasu/clash-nyanpasu/releases/tag/v${version}`,
       ]),
     });
     consola.success("Send release message to telegram successfully");

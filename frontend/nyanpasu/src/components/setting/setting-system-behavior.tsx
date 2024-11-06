@@ -14,7 +14,7 @@ export const SettingSystemBehavior = () => {
       <Grid container spacing={2}>
         <Grid size={{ xs: 6 }}>
           <PaperSwitchButton
-            label={t("Auto Launch")}
+            label={t("Auto Start")}
             checked={nyanpasuConfig?.enable_auto_launch || false}
             onClick={() =>
               setNyanpasuConfig({

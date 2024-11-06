@@ -83,7 +83,7 @@ export default function ConnectionDetailDialog({
           ))}
 
         <h3 className="col-span-2 py-1 pt-5 text-xl font-semibold">
-          {t("Meta Info")}
+          {t("Metadata")}
         </h3>
 
         {Object.entries(item.metadata)

@@ -102,12 +102,12 @@ export const SettingSystemProxy = () => {
           />
 
           <NumberItem
-            label={t("Guard Duration")}
-            vaule={nyanpasuConfig?.proxy_guard_duration || 0}
+            label={t("Guard Interval")}
+            vaule={nyanpasuConfig?.proxy_guard_interval || 0}
             checkEvent={(input) => input <= 0}
-            checkLabel={t("Dueation must be greater than 0")}
+            checkLabel={t("The interval must be greater than 0 second")}
             onApply={(value) => {
-              setNyanpasuConfig({ proxy_guard_duration: value });
+              setNyanpasuConfig({ proxy_guard_interval: value });
             }}
             textFieldProps={{
               inputProps: {

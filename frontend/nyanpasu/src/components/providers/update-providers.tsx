@@ -50,7 +50,7 @@ export const UpdateProviders = () => {
       startIcon={<Refresh />}
       onClick={handleProviderUpdate}
     >
-      {t("Update Rules Providers All")}
+      {t("Update All Rules Providers")}
     </LoadingButton>
   );
 };

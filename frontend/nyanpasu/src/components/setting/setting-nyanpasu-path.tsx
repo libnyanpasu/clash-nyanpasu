@@ -44,8 +44,8 @@ export const SettingNyanpasuPath = () => {
 
       await setCustomAppDir(selected);
 
-      message(t("App directory changed successfully"), {
-        title: t("Success"),
+      message(t("Successfully changed the app directory"), {
+        title: t("Successful"),
         kind: "error",
       });
 
@@ -53,7 +53,7 @@ export const SettingNyanpasuPath = () => {
 
       await restartApplication();
     } catch (e) {
-      message(t("Migration failed", { error: `${JSON.stringify(e)}` }), {
+      message(t("Failed to migrate", { error: `${JSON.stringify(e)}` }), {
         title: t("Error"),
         kind: "error",
       });

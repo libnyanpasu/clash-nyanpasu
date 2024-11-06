@@ -23,7 +23,7 @@ export interface VergeConfig {
   enable_random_port?: boolean;
   verge_mixed_port?: number;
   enable_proxy_guard?: boolean;
-  proxy_guard_duration?: number;
+  proxy_guard_interval?: number;
   system_proxy_bypass?: string;
   web_ui_list?: string[];
   hotkeys?: string[];

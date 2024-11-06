@@ -56,13 +56,16 @@ export const SettingClashCore = () => {
 
       await setClashCore(core);
 
-      message(t("Successfully switch to clash core", { core: `${core}` }), {
-        kind: "info",
-        title: t("Success"),
-      });
+      message(
+        t("Successfully switched to the clash core", { core: `${core}` }),
+        {
+          kind: "info",
+          title: t("Successful"),
+        },
+      );
     } catch (e) {
       message(
-        t("Switching failed, you could see the details in the log", {
+        t("Failed to switch. You could see the details in the log", {
           error: `${e instanceof Error ? e.message : String(e)}`,
         }),
         {
@@ -79,13 +82,13 @@ export const SettingClashCore = () => {
     try {
       await restartSidecar();
 
-      message(t("Successfully restart core"), {
+      message(t("Successfully restarted the core"), {
         kind: "info",
-        title: t("Success"),
+        title: t("Successful"),
       });
     } catch (e) {
       message(
-        t("Restart failed, full detailed please check the log") +
+        t("Failed to restart. You could see the details in the log") +
           formatError(e),
         {
           kind: "error",
@@ -99,7 +102,7 @@ export const SettingClashCore = () => {
     try {
       await getLatestCore.mutate();
     } catch (e) {
-      message(t("Fetch failed, please check your internet connection"), {
+      message(t("Failed to fetch. Please check your network connection"), {
         kind: "error",
         title: t("Error"),
       });

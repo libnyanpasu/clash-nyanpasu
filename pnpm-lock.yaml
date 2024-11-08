@@ -274,8 +274,8 @@ importers:
         specifier: 7.4.0
         version: 7.4.0(ccj63cpzu4wsy5wti425jz5utm)
       react-i18next:
-        specifier: 15.1.0
-        version: 15.1.0(i18next@23.16.5)(react-dom@19.0.0-rc-5c56b873-20241107(react@19.0.0-rc-5c56b873-20241107))(react@19.0.0-rc-5c56b873-20241107)
+        specifier: 15.1.1
+        version: 15.1.1(i18next@23.16.5)(react-dom@19.0.0-rc-5c56b873-20241107(react@19.0.0-rc-5c56b873-20241107))(react@19.0.0-rc-5c56b873-20241107)
       react-markdown:
         specifier: 9.0.1
         version: 9.0.1(react@19.0.0-rc-5c56b873-20241107)(types-react@19.0.0-rc.1)
@@ -467,8 +467,8 @@ importers:
         specifier: 4.1.2
         version: 4.1.2(react@19.0.0-rc-5c56b873-20241107)
       react-i18next:
-        specifier: 15.1.0
-        version: 15.1.0(i18next@23.16.5)(react-dom@19.0.0-rc-5c56b873-20241107(react@19.0.0-rc-5c56b873-20241107))(react@19.0.0-rc-5c56b873-20241107)
+        specifier: 15.1.1
+        version: 15.1.1(i18next@23.16.5)(react-dom@19.0.0-rc-5c56b873-20241107(react@19.0.0-rc-5c56b873-20241107))(react@19.0.0-rc-5c56b873-20241107)
       react-use:
         specifier: 17.5.1
         version: 17.5.1(react-dom@19.0.0-rc-5c56b873-20241107(react@19.0.0-rc-5c56b873-20241107))(react@19.0.0-rc-5c56b873-20241107)
@@ -6470,8 +6470,8 @@ packages:
     peerDependencies:
       react: ^16.8.0 || ^17 || ^18 || ^19
 
-  react-i18next@15.1.0:
-    resolution: {integrity: sha512-zj3nJynMnZsy2gPZiOTC7XctCY5eQGqT3tcKMmfJWC9FMvgd+960w/adq61j8iPzpwmsXejqID9qC3Mqu1Xu2Q==}
+  react-i18next@15.1.1:
+    resolution: {integrity: sha512-R/Vg9wIli2P3FfeI8o1eNJUJue5LWpFsQePCHdQDmX0Co3zkr6kdT8gAseb/yGeWbNz1Txc4bKDQuZYsC0kQfw==}
     peerDependencies:
       i18next: '>= 23.2.3'
       react: '>= 16.8.0'
@@ -14353,9 +14353,9 @@ snapshots:
     dependencies:
       react: 19.0.0-rc-5c56b873-20241107
 
-  react-i18next@15.1.0(i18next@23.16.5)(react-dom@19.0.0-rc-5c56b873-20241107(react@19.0.0-rc-5c56b873-20241107))(react@19.0.0-rc-5c56b873-20241107):
+  react-i18next@15.1.1(i18next@23.16.5)(react-dom@19.0.0-rc-5c56b873-20241107(react@19.0.0-rc-5c56b873-20241107))(react@19.0.0-rc-5c56b873-20241107):
     dependencies:
-      '@babel/runtime': 7.25.7
+      '@babel/runtime': 7.26.0
       html-parse-stringify: 3.0.1
       i18next: 23.16.5
       react: 19.0.0-rc-5c56b873-20241107

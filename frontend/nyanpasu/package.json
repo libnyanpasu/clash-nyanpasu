@@ -59,7 +59,7 @@
     "@tanstack/router-plugin": "1.78.3",
     "@tauri-apps/plugin-clipboard-manager": "2.0.0",
     "@tauri-apps/plugin-dialog": "2.0.1",
-    "@tauri-apps/plugin-fs": "2.0.1",
+    "@tauri-apps/plugin-fs": "2.0.2",
     "@tauri-apps/plugin-notification": "2.0.0",
     "@tauri-apps/plugin-os": "2.0.0",
     "@tauri-apps/plugin-process": "2.0.0",

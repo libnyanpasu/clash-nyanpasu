@@ -28,10 +28,12 @@ nyanpasu-ipc = { git = "https://github.com/LibNyanpasu/nyanpasu-service.git", fe
 ] } # IPC bridge between the UI process and service process
 nyanpasu-macro = { path = "../nyanpasu-macro" }
 nyanpasu-utils = { git = "https://github.com/LibNyanpasu/nyanpasu-utils.git" }
+nyanpasu-egui = { path = "../nyanpasu-egui" }
 
 # Common Utilities
 tokio = { version = "1", features = ["full"] }
 futures = "0.3"
+futures-util = "0.3"
 glob = "0.3.1"
 timeago = "0.4"
 humansize = "2.1.3"
@@ -72,10 +74,16 @@ rfd = { version = "0.15", default-features = false, features = [
 rust-i18n = "3"
 
 # Networking Libraries
-axum = "0.7"
+tokio-tungstenite = "0.24.0" # WebSocket
+axum = "0.7" # HTTP Server
 url = "2"
 mime = "0.3"
-reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"] }
+urlencoding = "2"
+reqwest = { version = "0.12", features = [
+  "json",
+  "rustls-tls",
+  "stream",
+] } # HTTP Client
 port_scanner = "0.1.5"
 sysproxy = { git = "https://github.com/LibNyanpasu/sysproxy-rs.git", version = "0.3" }
 backon = { version = "1.0.1", features = ["tokio-sleep"] }

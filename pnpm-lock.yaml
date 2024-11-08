@@ -395,8 +395,8 @@ importers:
         specifier: 0.18.3
         version: 0.18.3(rollup@4.21.0)(webpack-sources@3.2.3)
       unplugin-icons:
-        specifier: 0.20.0
-        version: 0.20.0(@svgr/core@8.1.0(typescript@5.6.3))(webpack-sources@3.2.3)
+        specifier: 0.20.1
+        version: 0.20.1(@svgr/core@8.1.0(typescript@5.6.3))(webpack-sources@3.2.3)
       validator:
         specifier: 13.12.0
         version: 13.12.0
@@ -7510,8 +7510,8 @@ packages:
       '@vueuse/core':
         optional: true
 
-  unplugin-icons@0.20.0:
-    resolution: {integrity: sha512-817iCV6AMADLHHcs9R15XII5Jaz++thnaQRzXbd0IZDcxi43iekoKENpuxqZN3k3+aOqJfqxcZ6I8POJ35UCEA==}
+  unplugin-icons@0.20.1:
+    resolution: {integrity: sha512-0z5sYGx07Q69ZrJB4kjmx7a5LYLNSWwyq95Ox9OuSG2y/sbhJaHUapRPOJcKmKhOAyToDVRdy9P7gxJ05lYipw==}
     peerDependencies:
       '@svgr/core': '>=7.0.0'
       '@svgx/core': ^1.0.1
@@ -15556,7 +15556,7 @@ snapshots:
       - rollup
       - webpack-sources
 
-  unplugin-icons@0.20.0(@svgr/core@8.1.0(typescript@5.6.3))(webpack-sources@3.2.3):
+  unplugin-icons@0.20.1(@svgr/core@8.1.0(typescript@5.6.3))(webpack-sources@3.2.3):
     dependencies:
       '@antfu/install-pkg': 0.4.1
       '@antfu/utils': 0.7.10

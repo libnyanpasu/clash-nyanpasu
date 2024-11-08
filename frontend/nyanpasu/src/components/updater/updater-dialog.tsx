@@ -94,7 +94,7 @@ export default function UpdaterDialog({
             size="small"
             onClick={() => {
               openThat(
-                `https://github.com/LibNyanpasu/clash-nyanpasu/releases/tag/v${update.version}`,
+                `https://github.com/libnyanpasu/clash-nyanpasu/releases/tag/v${update.version}`,
               );
             }}
           >

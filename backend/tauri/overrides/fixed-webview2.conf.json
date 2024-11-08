@@ -11,9 +11,9 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://mirror.ghproxy.com/https://github.com/LibNyanpasu/clash-nyanpasu/releases/download/updater/update-fixed-webview-proxy.json",
-        "https://gh-proxy.com/https://github.com/LibNyanpasu/clash-nyanpasu/releases/download/updater/update-fixed-webview-proxy.json",
-        "https://github.com/LibNyanpasu/clash-nyanpasu/releases/download/updater/update-fixed-webview.json"
+        "https://mirror.ghproxy.com/https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update-fixed-webview-proxy.json",
+        "https://gh-proxy.com/https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update-fixed-webview-proxy.json",
+        "https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update-fixed-webview.json"
       ]
     }
   }

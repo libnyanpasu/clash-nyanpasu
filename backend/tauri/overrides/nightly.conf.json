@@ -5,9 +5,9 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlBMUM0NjMxREZCNDRGMjYKUldRbVQ3VGZNVVljbW43N0FlWjA4UkNrbTgxSWxSSXJQcExXNkZjUTlTQkIyYkJzL0tsSWF2d0cK",
       "endpoints": [
-        "https://mirror.ghproxy.com/https://github.com/LibNyanpasu/clash-nyanpasu/releases/download/updater/update-nightly-proxy.json",
-        "https://gh-proxy.com/https://github.com/LibNyanpasu/clash-nyanpasu/releases/download/updater/update-nightly-proxy.json",
-        "https://github.com/LibNyanpasu/clash-nyanpasu/releases/download/updater/update-nightly.json"
+        "https://mirror.ghproxy.com/https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update-nightly-proxy.json",
+        "https://gh-proxy.com/https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update-nightly-proxy.json",
+        "https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update-nightly.json"
       ]
     }
   }

@@ -12,7 +12,7 @@ env:
 jobs:
   delete_current_releases:
     name: Delete Current Releases
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'LibNyanpasu') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
     uses: ./.github/workflows/deps-delete-releases.yaml
     with:
       tag: "pre-release"
@@ -190,7 +190,7 @@ jobs:
 
   telegram:
     name: Send Release Message to Telegram
-    if: startsWith(github.repository, 'LibNyanpasu')
+    if: startsWith(github.repository, 'libnyanpasu')
     needs: [update_tag]
     uses: ./.github/workflows/deps-message-telegram.yaml
     with:

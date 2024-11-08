@@ -23,11 +23,11 @@ semver = "1.0"
 
 [dependencies]
 # Local Dependencies
-nyanpasu-ipc = { git = "https://github.com/LibNyanpasu/nyanpasu-service.git", features = [
+nyanpasu-ipc = { git = "https://github.com/libnyanpasu/nyanpasu-service.git", features = [
   "client",
 ] } # IPC bridge between the UI process and service process
 nyanpasu-macro = { path = "../nyanpasu-macro" }
-nyanpasu-utils = { git = "https://github.com/LibNyanpasu/nyanpasu-utils.git" }
+nyanpasu-utils = { git = "https://github.com/libnyanpasu/nyanpasu-utils.git" }
 
 # Common Utilities
 tokio = { version = "1", features = ["full"] }
@@ -77,7 +77,7 @@ url = "2"
 mime = "0.3"
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"] }
 port_scanner = "0.1.5"
-sysproxy = { git = "https://github.com/LibNyanpasu/sysproxy-rs.git", version = "0.3" }
+sysproxy = { git = "https://github.com/libnyanpasu/sysproxy-rs.git", version = "0.3" }
 backon = { version = "1.0.1", features = ["tokio-sleep"] }
 
 # Serialization

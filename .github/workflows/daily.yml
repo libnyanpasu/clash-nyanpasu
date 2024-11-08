@@ -9,7 +9,7 @@ jobs:
   generate_manifest:
     name: Generate Manifest
     runs-on: ubuntu-latest
-    if: startsWith(github.repository, 'LibNyanpasu')
+    if: startsWith(github.repository, 'libnyanpasu')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,7 +48,7 @@ jobs:
   generate_manifest_v1:
     name: Generate Manifest V1
     runs-on: ubuntu-latest
-    if: startsWith(github.repository, 'LibNyanpasu')
+    if: startsWith(github.repository, 'libnyanpasu')
     steps:
       - name: Checkout
         uses: actions/checkout@v4

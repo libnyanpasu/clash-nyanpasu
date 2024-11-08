@@ -154,7 +154,7 @@ impl UpdaterManager {
     async fn get_latest_version_manifest(&self, mirror: &str) -> Result<ManifestVersion> {
         let url = parse_gh_url(
             mirror,
-            "/LibNyanpasu/clash-nyanpasu/raw/main/manifest/version.json",
+            "/libnyanpasu/clash-nyanpasu/raw/main/manifest/version.json",
         )?;
         log::debug!("{}", url);
         let res = self.client.get(url).send().await?;
@@ -196,7 +196,7 @@ impl UpdaterManager {
             }
         }
         let mirrors = crate::utils::candy::INTERNAL_MIRRORS;
-        let path = "https://github.com/LibNyanpasu/clash-nyanpasu/raw/main/manifest/version.json";
+        let path = "https://github.com/libnyanpasu/clash-nyanpasu/raw/main/manifest/version.json";
         let client = crate::utils::candy::get_reqwest_client()?;
         let results = client.mirror_speed_test(mirrors, path).await?;
         let (fastest_mirror, speed) = results.first().ok_or(anyhow!("no mirrors found"))?;

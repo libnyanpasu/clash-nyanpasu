@@ -14,7 +14,7 @@ import { BinInfo, SupportedArch } from "../types";
 import { getProxyAgent } from "./";
 import { SIDECAR_HOST } from "./consts";
 
-const SERVICE_REPO = "LibNyanpasu/nyanpasu-service";
+const SERVICE_REPO = "libnyanpasu/nyanpasu-service";
 
 type NodeArch = NodeJS.Architecture | "armel";
 

@@ -2318,7 +2318,7 @@ dependencies = [
 [[package]]
 name = "dirs-utils"
 version = "0.1.0"
-source = "git+https://github.com/LibNyanpasu/nyanpasu-utils.git#f1b93fe1cd57b2fd2b07ea2af6c4a4da9034514b"
+source = "git+https://github.com/libnyanpasu/nyanpasu-utils.git#f1b93fe1cd57b2fd2b07ea2af6c4a4da9034514b"
 dependencies = [
  "dirs 5.0.1",
  "thiserror",
@@ -5481,7 +5481,7 @@ dependencies = [
 [[package]]
 name = "nyanpasu-ipc"
 version = "1.0.7"
-source = "git+https://github.com/LibNyanpasu/nyanpasu-service.git#560746f9101d15d30985224d84646d25284d2524"
+source = "git+https://github.com/libnyanpasu/nyanpasu-service.git#560746f9101d15d30985224d84646d25284d2524"
 dependencies = [
  "anyhow",
  "axum",
@@ -5515,7 +5515,7 @@ dependencies = [
 [[package]]
 name = "nyanpasu-utils"
 version = "0.1.0"
-source = "git+https://github.com/LibNyanpasu/nyanpasu-utils.git#f1b93fe1cd57b2fd2b07ea2af6c4a4da9034514b"
+source = "git+https://github.com/libnyanpasu/nyanpasu-utils.git#f1b93fe1cd57b2fd2b07ea2af6c4a4da9034514b"
 dependencies = [
  "constcat",
  "derive_builder",
@@ -5906,7 +5906,7 @@ dependencies = [
 [[package]]
 name = "os-utils"
 version = "0.1.0"
-source = "git+https://github.com/LibNyanpasu/nyanpasu-utils.git#f1b93fe1cd57b2fd2b07ea2af6c4a4da9034514b"
+source = "git+https://github.com/libnyanpasu/nyanpasu-utils.git#f1b93fe1cd57b2fd2b07ea2af6c4a4da9034514b"
 dependencies = [
  "nix 0.29.0",
  "shared_child",
@@ -8286,7 +8286,7 @@ dependencies = [
 [[package]]
 name = "sysproxy"
 version = "0.3.0"
-source = "git+https://github.com/LibNyanpasu/sysproxy-rs.git#45fffb0cdddb7c2d0ce30300dd72a934bb458c09"
+source = "git+https://github.com/libnyanpasu/sysproxy-rs.git#45fffb0cdddb7c2d0ce30300dd72a934bb458c09"
 dependencies = [
  "interfaces",
  "iptools",

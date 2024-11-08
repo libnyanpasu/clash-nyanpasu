@@ -262,9 +262,11 @@
     "title": "内核信息",
     "core_status": "内核状态：",
     "service_status": "服务状态：",
-    "core_started_by": "通过 {{by}} 启动",
+    "core_started_by": "通过{{by}}启动",
     "last_status_changed_since": "上次状态变更：{{time}}"
   },
+  "service": "服务",
+  "UI": "用户界面",
   "Service Manual Tips": "服务提示手册",
   "Unable to operation the service automatically": "无法自动{{operation}}服务。请导航到内核所在目录，在 Windows 上以管理员身份打开 PowerShell或在 macOS/Linux 上打开终端仿真器，然后执行以下命令：",
   "Successfully switched to the clash core": "成功切换至 {{core}} 内核。",

@@ -22,7 +22,7 @@
     "@nyanpasu/interface": "workspace:^",
     "@nyanpasu/ui": "workspace:^",
     "@tanstack/router-zod-adapter": "1.79.0",
-    "@tauri-apps/api": "2.0.3",
+    "@tauri-apps/api": "2.1.0",
     "@types/json-schema": "7.0.15",
     "ahooks": "3.8.1",
     "allotment": "1.20.2",

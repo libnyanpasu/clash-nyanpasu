@@ -34,7 +34,7 @@ dependencies = [
  "accesskit_consumer",
  "atspi-common",
  "serde",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "zvariant",
 ]
 
@@ -219,7 +219,7 @@ dependencies = [
  "ndk-context",
  "ndk-sys 0.6.0+11769913",
  "num_enum",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -683,7 +683,7 @@ version = "0.5.0"
 source = "git+https://github.com/zzzgydi/auto-launch.git#a0b2680ef3487c186a67ae52d4083b619f1b3a32"
 dependencies = [
  "dirs 5.0.1",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "windows-registry 0.2.0",
 ]
 
@@ -1005,7 +1005,7 @@ dependencies = [
  "static_assertions",
  "tap",
  "thin-vec",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "time",
 ]
 
@@ -1223,7 +1223,7 @@ dependencies = [
  "glib",
  "libc",
  "once_cell",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -1248,7 +1248,7 @@ dependencies = [
  "polling 3.7.3",
  "rustix",
  "slab",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -1292,7 +1292,7 @@ dependencies = [
  "semver 1.0.23",
  "serde",
  "serde_json",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -1572,7 +1572,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tempfile",
  "test-log",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "timeago",
  "tokio",
  "tracing",
@@ -2167,7 +2167,7 @@ dependencies = [
  "rs-snowflake",
  "rustc_version",
  "smol",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "tokio",
  "tracing",
 ]
@@ -2331,7 +2331,7 @@ version = "0.1.0"
 source = "git+https://github.com/libnyanpasu/nyanpasu-utils.git#f1b93fe1cd57b2fd2b07ea2af6c4a4da9034514b"
 dependencies = [
  "dirs 5.0.1",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "tracing",
  "windows 0.58.0",
 ]
@@ -2529,7 +2529,7 @@ dependencies = [
  "egui",
  "epaint",
  "log",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "type-map",
  "web-time",
  "wgpu",
@@ -2827,7 +2827,7 @@ dependencies = [
  "cfg-if",
  "document-features",
  "num-traits",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2871,7 +2871,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7199d965852c3bac31f779ef99cbb4537f80e952e2d6aa0ffeb30cce00f4f46e"
 dependencies = [
  "libc",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "winapi",
 ]
 
@@ -3340,7 +3340,7 @@ dependencies = [
  "once_cell",
  "pin-project-lite",
  "smallvec",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -3387,7 +3387,7 @@ dependencies = [
  "memchr",
  "once_cell",
  "smallvec",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -3432,7 +3432,7 @@ dependencies = [
  "objc2-app-kit",
  "once_cell",
  "serde",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "windows-sys 0.59.0",
  "x11-dl",
 ]
@@ -3601,7 +3601,7 @@ checksum = "fdd4240fc91d3433d5e5b0fc5b67672d771850dc19bbee03c1381e19322803d7"
 dependencies = [
  "log",
  "presser",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "winapi",
  "windows 0.52.0",
 ]
@@ -3768,7 +3768,7 @@ dependencies = [
  "com",
  "libc",
  "libloading 0.7.4",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "widestring 1.1.0",
  "winapi",
 ]
@@ -4511,7 +4511,7 @@ dependencies = [
  "combine",
  "jni-sys",
  "log",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "walkdir",
  "windows-sys 0.45.0",
 ]
@@ -4555,7 +4555,7 @@ dependencies = [
  "jsonptr",
  "serde",
  "serde_json",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -5103,7 +5103,7 @@ dependencies = [
  "once_cell",
  "png",
  "serde",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "windows-sys 0.59.0",
 ]
 
@@ -5124,7 +5124,7 @@ dependencies = [
  "rustc-hash 1.1.0",
  "spirv",
  "termcolor",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "unicode-xid",
 ]
 
@@ -5166,7 +5166,7 @@ dependencies = [
  "ndk-sys 0.6.0+11769913",
  "num_enum",
  "raw-window-handle",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -5474,7 +5474,7 @@ dependencies = [
  "pin-project-lite",
  "serde",
  "simd-json",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "tokio",
  "tokio-util",
  "tracing",
@@ -5507,7 +5507,7 @@ dependencies = [
  "serde",
  "shared_child",
  "sysinfo",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "tokio",
  "tracing",
  "tracing-attributes",
@@ -5943,7 +5943,7 @@ dependencies = [
  "owo-colors",
  "oxc-miette-derive",
  "textwrap",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "unicode-width 0.2.0",
 ]
 
@@ -6192,7 +6192,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "879952a81a83930934cbf1786752d6dedc3b1f29e8f8fb2ad1d0a36f377cf442"
 dependencies = [
  "memchr",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "ucd-trie",
 ]
 
@@ -6712,7 +6712,7 @@ dependencies = [
  "rustc-hash 2.0.0",
  "rustls",
  "socket2",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "tokio",
  "tracing",
 ]
@@ -6729,7 +6729,7 @@ dependencies = [
  "rustc-hash 2.0.0",
  "rustls",
  "slab",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "tinyvec",
  "tracing",
 ]
@@ -6867,7 +6867,7 @@ dependencies = [
  "rand_chacha 0.3.1",
  "simd_helpers",
  "system-deps",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "v_frame",
  "wasm-bindgen",
 ]
@@ -6959,7 +6959,7 @@ checksum = "ba009ff324d1fc1b900bd1fdb31564febe58a8ccc8a6fdbb93b543d33b13ca43"
 dependencies = [
  "getrandom 0.2.15",
  "libredox",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -7855,7 +7855,7 @@ checksum = "4637485391f8545c9d3dbf60f9d9aab27a90c789a700999677583bcb17c8795d"
 dependencies = [
  "libc",
  "nix 0.23.2",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "widestring 0.4.3",
  "winapi",
 ]
@@ -7925,7 +7925,7 @@ dependencies = [
  "log",
  "memmap2",
  "rustix",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "wayland-backend",
  "wayland-client",
  "wayland-csd-frame",
@@ -7950,7 +7950,7 @@ dependencies = [
  "log",
  "memmap2",
  "rustix",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "wayland-backend",
  "wayland-client",
  "wayland-csd-frame",
@@ -8271,7 +8271,7 @@ dependencies = [
  "interfaces",
  "iptools",
  "log",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "windows 0.58.0",
  "winreg",
  "xdg",
@@ -8527,7 +8527,7 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-plugin",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -8559,7 +8559,7 @@ dependencies = [
  "tauri",
  "tauri-plugin",
  "tauri-plugin-fs",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "url",
 ]
 
@@ -8579,7 +8579,7 @@ dependencies = [
  "serde_repr",
  "tauri",
  "tauri-plugin",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "url",
  "uuid",
 ]
@@ -8596,7 +8596,7 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-plugin",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -8613,7 +8613,7 @@ dependencies = [
  "serde_repr",
  "tauri",
  "tauri-plugin",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "time",
  "url",
 ]
@@ -8633,7 +8633,7 @@ dependencies = [
  "sys-locale",
  "tauri",
  "tauri-plugin",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -8663,7 +8663,7 @@ dependencies = [
  "shared_child",
  "tauri",
  "tauri-plugin",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "tokio",
 ]
 
@@ -8689,7 +8689,7 @@ dependencies = [
  "tauri",
  "tauri-plugin",
  "tempfile",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "time",
  "tokio",
  "url",
@@ -8880,7 +8880,7 @@ dependencies = [
  "signal-hook",
  "terminfo",
  "termios",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "ucd-trie",
  "unicode-segmentation",
  "vtparse",
@@ -8934,11 +8934,11 @@ checksum = "a38c90d48152c236a3ab59271da4f4ae63d678c5d7ad6b7714d7cb9760be5e4b"
 
 [[package]]
 name = "thiserror"
-version = "1.0.68"
+version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02dd99dc800bbb97186339685293e1cc5d9df1f8fae2d0aecd9ff1c77efea892"
+checksum = "b6aaf5339b578ea85b50e080feb250a3e8ae8cfcdff9a461c9ec2904bc923f52"
 dependencies = [
- "thiserror-impl 1.0.68",
+ "thiserror-impl 1.0.69",
 ]
 
 [[package]]
@@ -8952,9 +8952,9 @@ dependencies = [
 
 [[package]]
 name = "thiserror-impl"
-version = "1.0.68"
+version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7c61ec9a6f64d2793d8a45faba21efbe3ced62a886d44c36a009b2b519b4c7e"
+checksum = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -9292,7 +9292,7 @@ checksum = "3566e8ce28cc0a3fe42519fc80e6b4c943cc4c8cef275620eb8dac2d3d4e06cf"
 dependencies = [
  "crossbeam-channel",
  "parking_lot",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "time",
  "tracing-subscriber",
 ]
@@ -9398,7 +9398,7 @@ dependencies = [
  "once_cell",
  "png",
  "serde",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "windows-sys 0.59.0",
 ]
 
@@ -9448,7 +9448,7 @@ dependencies = [
  "log",
  "rand 0.8.5",
  "sha1",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "utf-8",
 ]
 
@@ -10248,7 +10248,7 @@ version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a3a3e2eeb58f82361c93f9777014668eb3d07e7d174ee4c819575a9208011886"
 dependencies = [
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "windows 0.58.0",
  "windows-core 0.58.0",
 ]
@@ -10303,7 +10303,7 @@ dependencies = [
  "raw-window-handle",
  "rustc-hash 1.1.0",
  "smallvec",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "wgpu-hal",
  "wgpu-types",
 ]
@@ -10342,7 +10342,7 @@ dependencies = [
  "renderdoc-sys",
  "rustc-hash 1.1.0",
  "smallvec",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "wasm-bindgen",
  "web-sys",
  "wgpu-types",
@@ -11016,7 +11016,7 @@ dependencies = [
  "sha2 0.10.8",
  "soup3",
  "tao-macros",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "url",
  "webkit2gtk",
  "webkit2gtk-sys",
@@ -11380,7 +11380,7 @@ dependencies = [
  "pbkdf2",
  "rand 0.8.5",
  "sha1",
- "thiserror 1.0.68",
+ "thiserror 1.0.69",
  "time",
  "zeroize",
  "zopfli",

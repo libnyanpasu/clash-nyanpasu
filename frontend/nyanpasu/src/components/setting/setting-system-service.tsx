@@ -143,7 +143,7 @@ export const SettingSystemService = () => {
           <ListItem sx={{ pl: 0, pr: 0 }}>
             <Typography>
               {t(
-                "Information: Please make sure that the Clash Nyanpasu Service is installed and enabled",
+                "Information: To enable service mode, make sure the Clash Nyanpasu service is installed and started",
               )}
             </Typography>
           </ListItem>

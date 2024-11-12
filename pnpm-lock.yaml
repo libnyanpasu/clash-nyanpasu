@@ -162,8 +162,8 @@ importers:
   frontend/interface:
     dependencies:
       '@tauri-apps/api':
-        specifier: 2.1.0
-        version: 2.1.0
+        specifier: 2.1.1
+        version: 2.1.1
       ahooks:
         specifier: 3.8.1
         version: 3.8.1(react@19.0.0-rc-ed15d500-20241110)
@@ -220,8 +220,8 @@ importers:
         specifier: 1.81.4
         version: 1.81.4(@tanstack/react-router@1.81.4(@tanstack/router-generator@1.79.0)(react-dom@19.0.0-rc-ed15d500-20241110(react@19.0.0-rc-ed15d500-20241110))(react@19.0.0-rc-ed15d500-20241110))(zod@3.23.8)
       '@tauri-apps/api':
-        specifier: 2.1.0
-        version: 2.1.0
+        specifier: 2.1.1
+        version: 2.1.1
       '@types/json-schema':
         specifier: 7.0.15
         version: 7.0.15
@@ -437,8 +437,8 @@ importers:
         specifier: 1.2.0
         version: 1.2.0(react-dom@19.0.0-rc-ed15d500-20241110(react@19.0.0-rc-ed15d500-20241110))(react@19.0.0-rc-ed15d500-20241110)(types-react@19.0.0-rc.1)
       '@tauri-apps/api':
-        specifier: 2.1.0
-        version: 2.1.0
+        specifier: 2.1.1
+        version: 2.1.1
       '@types/d3':
         specifier: 7.4.3
         version: 7.4.3
@@ -2818,8 +2818,8 @@ packages:
   '@taplo/lib@0.4.0-alpha.2':
     resolution: {integrity: sha512-DV/Re3DPVY+BhBtLZ3dmP4mP6YMLSsgq9qGLXwOV38lvNF/fBlgvQswzlXmzCEefL/3q2eMoefZpOI/+GLuCNA==}
 
-  '@tauri-apps/api@2.1.0':
-    resolution: {integrity: sha512-1w/JygZOiUtdOU7qart78MaB4/qayZ2heB793KhbZRS7I9q4sxXcXaB7He6uFlprD8w5TI9P8HCuEByCvWRtfw==}
+  '@tauri-apps/api@2.1.1':
+    resolution: {integrity: sha512-fzUfFFKo4lknXGJq8qrCidkUcKcH2UHhfaaCNt4GzgzGaW2iS26uFOg4tS3H4P8D6ZEeUxtiD5z0nwFF0UN30A==}
 
   '@tauri-apps/cli-darwin-arm64@2.1.0':
     resolution: {integrity: sha512-ESc6J6CE8hl1yKH2vJ+ALF+thq4Be+DM1mvmTyUCQObvezNCNhzfS6abIUd3ou4x5RGH51ouiANeT3wekU6dCw==}
@@ -10227,7 +10227,7 @@ snapshots:
     dependencies:
       '@taplo/core': 0.1.1
 
-  '@tauri-apps/api@2.1.0': {}
+  '@tauri-apps/api@2.1.1': {}
 
   '@tauri-apps/cli-darwin-arm64@2.1.0':
     optional: true
@@ -10274,35 +10274,35 @@ snapshots:
 
   '@tauri-apps/plugin-clipboard-manager@2.0.0':
     dependencies:
-      '@tauri-apps/api': 2.1.0
+      '@tauri-apps/api': 2.1.1
 
   '@tauri-apps/plugin-dialog@2.0.1':
     dependencies:
-      '@tauri-apps/api': 2.1.0
+      '@tauri-apps/api': 2.1.1
 
   '@tauri-apps/plugin-fs@2.0.2':
     dependencies:
-      '@tauri-apps/api': 2.1.0
+      '@tauri-apps/api': 2.1.1
 
   '@tauri-apps/plugin-notification@2.0.0':
     dependencies:
-      '@tauri-apps/api': 2.1.0
+      '@tauri-apps/api': 2.1.1
 
   '@tauri-apps/plugin-os@2.0.0':
     dependencies:
-      '@tauri-apps/api': 2.1.0
+      '@tauri-apps/api': 2.1.1
 
   '@tauri-apps/plugin-process@2.0.0':
     dependencies:
-      '@tauri-apps/api': 2.1.0
+      '@tauri-apps/api': 2.1.1
 
   '@tauri-apps/plugin-shell@2.0.1':
     dependencies:
-      '@tauri-apps/api': 2.1.0
+      '@tauri-apps/api': 2.1.1
 
   '@tauri-apps/plugin-updater@2.0.0':
     dependencies:
-      '@tauri-apps/api': 2.1.0
+      '@tauri-apps/api': 2.1.1
 
   '@trivago/prettier-plugin-sort-imports@4.3.0(prettier@3.3.3)':
     dependencies:

@@ -42,7 +42,7 @@
     "@types/d3-interpolate-path": "2.0.3",
     "clsx": "2.1.1",
     "d3-interpolate-path": "2.3.0",
-    "sass": "1.80.6",
+    "sass": "1.80.7",
     "tailwind-merge": "2.5.4",
     "typescript-plugin-css-modules": "5.1.0",
     "vite-plugin-dts": "4.3.0"

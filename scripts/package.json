@@ -7,7 +7,7 @@
     "@types/figlet": "1.7.0",
     "figlet": "1.8.0",
     "filesize": "10.1.6",
-    "p-retry": "6.2.0"
+    "p-retry": "6.2.1"
   },
   "devDependencies": {
     "@octokit/types": "13.6.1",

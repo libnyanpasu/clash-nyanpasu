@@ -53,7 +53,7 @@
     "prepare:preview": "tsx scripts/prepare-preview.ts"
   },
   "dependencies": {
-    "husky": "9.1.6",
+    "husky": "9.1.7",
     "lodash-es": "4.17.21"
   },
   "devDependencies": {
@@ -64,8 +64,8 @@
     "@types/fs-extra": "11.0.4",
     "@types/lodash-es": "4.17.12",
     "@types/node": "22.9.0",
-    "@typescript-eslint/eslint-plugin": "8.14.0",
-    "@typescript-eslint/parser": "8.14.0",
+    "@typescript-eslint/eslint-plugin": "8.15.0",
+    "@typescript-eslint/parser": "8.15.0",
     "autoprefixer": "10.4.20",
     "conventional-changelog-conventionalcommits": "8.0.0",
     "cross-env": "7.0.3",

@@ -1,0 +1,282 @@
+diff --git a/dist/declarations/src/PanelResizeHandle.d.ts b/dist/declarations/src/PanelResizeHandle.d.ts
+index 57f773eeccd7f82638a67dedfe50cf108a3850e4..f35c4245e48044d1b671040002e073e2c66e21aa 100644
+--- a/dist/declarations/src/PanelResizeHandle.d.ts
++++ b/dist/declarations/src/PanelResizeHandle.d.ts
+@@ -10,11 +10,12 @@ export type PanelResizeHandleProps = Omit<HTMLAttributes<keyof HTMLElementTagNam
+     onBlur?: () => void;
+     onDragging?: PanelResizeHandleOnDragging;
+     onFocus?: () => void;
++    onDragEnd?: () => void;
+     style?: CSSProperties;
+     tabIndex?: number;
+     tagName?: keyof HTMLElementTagNameMap;
+ }>;
+-export declare function PanelResizeHandle({ children, className: classNameFromProps, disabled, hitAreaMargins, id: idFromProps, onBlur, onDragging, onFocus, style: styleFromProps, tabIndex, tagName: Type, ...rest }: PanelResizeHandleProps): ReactElement;
++export declare function PanelResizeHandle({ children, className: classNameFromProps, disabled, hitAreaMargins, id: idFromProps, onBlur, onDragging, onFocus, onDragEnd, style: styleFromProps, tabIndex, tagName: Type, ...rest }: PanelResizeHandleProps): ReactElement;
+ export declare namespace PanelResizeHandle {
+     var displayName: string;
+ }
+diff --git a/dist/react-resizable-panels.browser.cjs.js b/dist/react-resizable-panels.browser.cjs.js
+index 7326b05d35921150803bdd36cec7e015cd03b999..e712a68999cee3b628784fc2737d0500751049c3 100644
+--- a/dist/react-resizable-panels.browser.cjs.js
++++ b/dist/react-resizable-panels.browser.cjs.js
+@@ -2262,6 +2262,7 @@ function PanelResizeHandle({
+   onBlur,
+   onDragging,
+   onFocus,
++  onDragEnd,
+   style: styleFromProps = {},
+   tabIndex = 0,
+   tagName: Type = "div",
+@@ -2355,6 +2356,9 @@ function PanelResizeHandle({
+               } = callbacksRef.current;
+               if (onDragging) {
+                 onDragging(false);
++                if (onDragEnd) {
++                  onDragEnd();
++                }
+               }
+               break;
+             }
+diff --git a/dist/react-resizable-panels.browser.development.cjs.js b/dist/react-resizable-panels.browser.development.cjs.js
+index 9e95ae95902478944d09353a14c41dac231690bc..299a150272425a67ffafd2ab9a6ec531c707f573 100644
+--- a/dist/react-resizable-panels.browser.development.cjs.js
++++ b/dist/react-resizable-panels.browser.development.cjs.js
+@@ -2368,6 +2368,7 @@ function PanelResizeHandle({
+   onBlur,
+   onDragging,
+   onFocus,
++  onDragEnd,
+   style: styleFromProps = {},
+   tabIndex = 0,
+   tagName: Type = "div",
+@@ -2461,6 +2462,9 @@ function PanelResizeHandle({
+               } = callbacksRef.current;
+               if (onDragging) {
+                 onDragging(false);
++                if (onDragEnd) {
++                  onDragEnd();
++                }
+               }
+               break;
+             }
+diff --git a/dist/react-resizable-panels.browser.development.esm.js b/dist/react-resizable-panels.browser.development.esm.js
+index 38bbc38989fb67f821540ad323abc6f24cca0df6..3571cbce5f690ca243615e4fa0b9df74d079f5f0 100644
+--- a/dist/react-resizable-panels.browser.development.esm.js
++++ b/dist/react-resizable-panels.browser.development.esm.js
+@@ -2344,6 +2344,7 @@ function PanelResizeHandle({
+   onBlur,
+   onDragging,
+   onFocus,
++  onDragEnd,
+   style: styleFromProps = {},
+   tabIndex = 0,
+   tagName: Type = "div",
+@@ -2437,6 +2438,9 @@ function PanelResizeHandle({
+               } = callbacksRef.current;
+               if (onDragging) {
+                 onDragging(false);
++                if (onDragEnd) {
++                  onDragEnd();
++                }
+               }
+               break;
+             }
+diff --git a/dist/react-resizable-panels.browser.esm.js b/dist/react-resizable-panels.browser.esm.js
+index bc8cfc32bd851326877e1d9ce9a0ef7c87a77c87..34cd8a6357612011702548ae1cd1d9a8a7cacb74 100644
+--- a/dist/react-resizable-panels.browser.esm.js
++++ b/dist/react-resizable-panels.browser.esm.js
+@@ -2238,6 +2238,7 @@ function PanelResizeHandle({
+   onBlur,
+   onDragging,
+   onFocus,
++  onDragEnd,
+   style: styleFromProps = {},
+   tabIndex = 0,
+   tagName: Type = "div",
+@@ -2331,6 +2332,9 @@ function PanelResizeHandle({
+               } = callbacksRef.current;
+               if (onDragging) {
+                 onDragging(false);
++                if (onDragEnd) {
++                  onDragEnd();
++                }
+               }
+               break;
+             }
+diff --git a/dist/react-resizable-panels.cjs.js b/dist/react-resizable-panels.cjs.js
+index e43d2db26105814e3441af4b987002ec350f0c85..8f97d216aac86d7418996620525261a2fda17ce7 100644
+--- a/dist/react-resizable-panels.cjs.js
++++ b/dist/react-resizable-panels.cjs.js
+@@ -2264,6 +2264,7 @@ function PanelResizeHandle({
+   onBlur,
+   onDragging,
+   onFocus,
++  onDragEnd,
+   style: styleFromProps = {},
+   tabIndex = 0,
+   tagName: Type = "div",
+@@ -2357,6 +2358,9 @@ function PanelResizeHandle({
+               } = callbacksRef.current;
+               if (onDragging) {
+                 onDragging(false);
++                if (onDragEnd) {
++                  onDragEnd();
++                }
+               }
+               break;
+             }
+diff --git a/dist/react-resizable-panels.development.cjs.js b/dist/react-resizable-panels.development.cjs.js
+index 78201754a3f84b7260e86c0e8e19858a26a588c1..831ac47ee3192e89523b653ba2d4b5ef6088f40f 100644
+--- a/dist/react-resizable-panels.development.cjs.js
++++ b/dist/react-resizable-panels.development.cjs.js
+@@ -2375,6 +2375,7 @@ function PanelResizeHandle({
+   onBlur,
+   onDragging,
+   onFocus,
++  onDragEnd,
+   style: styleFromProps = {},
+   tabIndex = 0,
+   tagName: Type = "div",
+@@ -2468,6 +2469,9 @@ function PanelResizeHandle({
+               } = callbacksRef.current;
+               if (onDragging) {
+                 onDragging(false);
++                if (onDragEnd) {
++                  onDragEnd();
++                }
+               }
+               break;
+             }
+diff --git a/dist/react-resizable-panels.development.esm.js b/dist/react-resizable-panels.development.esm.js
+index c13e6530d568a4e7a774571a36c391218c55b3c9..211cb96223c75e5a0b2ec53a9ceda40a2b14fedb 100644
+--- a/dist/react-resizable-panels.development.esm.js
++++ b/dist/react-resizable-panels.development.esm.js
+@@ -2351,6 +2351,7 @@ function PanelResizeHandle({
+   onBlur,
+   onDragging,
+   onFocus,
++  onDragEnd,
+   style: styleFromProps = {},
+   tabIndex = 0,
+   tagName: Type = "div",
+@@ -2444,6 +2445,9 @@ function PanelResizeHandle({
+               } = callbacksRef.current;
+               if (onDragging) {
+                 onDragging(false);
++                if (onDragEnd) {
++                  onDragEnd();
++                }
+               }
+               break;
+             }
+diff --git a/dist/react-resizable-panels.development.node.cjs.js b/dist/react-resizable-panels.development.node.cjs.js
+index 03dbfe91fc95ab8db162ae950731abf45e45b180..0e291928271e7360d7e5c60787f78e5a19aed3a1 100644
+--- a/dist/react-resizable-panels.development.node.cjs.js
++++ b/dist/react-resizable-panels.development.node.cjs.js
+@@ -2143,6 +2143,7 @@ function PanelResizeHandle({
+   onBlur,
+   onDragging,
+   onFocus,
++  onDragEnd,
+   style: styleFromProps = {},
+   tabIndex = 0,
+   tagName: Type = "div",
+@@ -2233,6 +2234,9 @@ function PanelResizeHandle({
+               } = callbacksRef.current;
+               if (onDragging) {
+                 onDragging(false);
++                if (onDragEnd) {
++                  onDragEnd();
++                }
+               }
+               break;
+             }
+diff --git a/dist/react-resizable-panels.development.node.esm.js b/dist/react-resizable-panels.development.node.esm.js
+index 537009c13f4ae4c4ec7d13cfa49dd83a9b1c2852..356497da6659a84dbe3eb47cc122976c429dcaae 100644
+--- a/dist/react-resizable-panels.development.node.esm.js
++++ b/dist/react-resizable-panels.development.node.esm.js
+@@ -2119,6 +2119,7 @@ function PanelResizeHandle({
+   onBlur,
+   onDragging,
+   onFocus,
++  onDragEnd,
+   style: styleFromProps = {},
+   tabIndex = 0,
+   tagName: Type = "div",
+@@ -2209,6 +2210,9 @@ function PanelResizeHandle({
+               } = callbacksRef.current;
+               if (onDragging) {
+                 onDragging(false);
++                if (onDragEnd) {
++                  onDragEnd();
++                }
+               }
+               break;
+             }
+diff --git a/dist/react-resizable-panels.esm.js b/dist/react-resizable-panels.esm.js
+index 3fb5b020838d9cde1572e8a6d4d36701210ac9cf..af0c4dc55b145f7f7a3a445595e24c09543598cf 100644
+--- a/dist/react-resizable-panels.esm.js
++++ b/dist/react-resizable-panels.esm.js
+@@ -2240,6 +2240,7 @@ function PanelResizeHandle({
+   onBlur,
+   onDragging,
+   onFocus,
++  onDragEnd,
+   style: styleFromProps = {},
+   tabIndex = 0,
+   tagName: Type = "div",
+@@ -2333,6 +2334,9 @@ function PanelResizeHandle({
+               } = callbacksRef.current;
+               if (onDragging) {
+                 onDragging(false);
++                if (onDragEnd) {
++                  onDragEnd();
++                }
+               }
+               break;
+             }
+diff --git a/dist/react-resizable-panels.node.cjs.js b/dist/react-resizable-panels.node.cjs.js
+index 4c30d32ca96b42fc3114e1029c8c9e6168a95250..6422ddb2b9168aecab7e9d3a2ae9dbde6f5ad4f7 100644
+--- a/dist/react-resizable-panels.node.cjs.js
++++ b/dist/react-resizable-panels.node.cjs.js
+@@ -2042,6 +2042,7 @@ function PanelResizeHandle({
+   onBlur,
+   onDragging,
+   onFocus,
++  onDragEnd,
+   style: styleFromProps = {},
+   tabIndex = 0,
+   tagName: Type = "div",
+@@ -2132,6 +2133,9 @@ function PanelResizeHandle({
+               } = callbacksRef.current;
+               if (onDragging) {
+                 onDragging(false);
++                if (onDragEnd) {
++                  onDragEnd();
++                }
+               }
+               break;
+             }
+diff --git a/dist/react-resizable-panels.node.esm.js b/dist/react-resizable-panels.node.esm.js
+index c2e212b013a9cc60df985e725c9b522fd8512d67..c0b54afbc232a977e2a6526fe93e676ac1b43350 100644
+--- a/dist/react-resizable-panels.node.esm.js
++++ b/dist/react-resizable-panels.node.esm.js
+@@ -2018,6 +2018,7 @@ function PanelResizeHandle({
+   onBlur,
+   onDragging,
+   onFocus,
++  onDragEnd,
+   style: styleFromProps = {},
+   tabIndex = 0,
+   tagName: Type = "div",
+@@ -2108,6 +2109,9 @@ function PanelResizeHandle({
+               } = callbacksRef.current;
+               if (onDragging) {
+                 onDragging(false);
++                if (onDragEnd) {
++                  onDragEnd();
++                }
+               }
+               break;
+             }

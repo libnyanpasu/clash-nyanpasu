@@ -1,3 +1,4 @@
+import { motion } from "framer-motion";
 import { createElement } from "react";
 import { useTranslation } from "react-i18next";
 import { languageQuirks } from "@/utils/language";
@@ -67,21 +68,34 @@ export const RouteListItem = ({
           sx: {
             fill: match ? palette.primary.main : undefined,
           },
-          className: onlyIcon ? "!size-8" : undefined,
+          className: cn("transition-all", onlyIcon && "!size-8"),
         })}
       </ListItemIcon>
-      {!onlyIcon && (
-        <div
-          className={cn(
-            "w-full text-nowrap pb-1 pt-1",
-            nyanpasuConfig?.language &&
-              languageQuirks[nyanpasuConfig?.language].drawer.itemClassNames,
-          )}
-          style={{ color: match ? palette.primary.main : undefined }}
-        >
-          {t(`label_${name}`)}
-        </div>
-      )}
+
+      <motion.div
+        className={cn(
+          "w-full text-nowrap pb-1 pt-1",
+          nyanpasuConfig?.language &&
+            languageQuirks[nyanpasuConfig?.language].drawer.itemClassNames,
+        )}
+        style={{ color: match ? palette.primary.main : undefined }}
+        initial={false}
+        animate={onlyIcon ? "hidden" : "show"}
+        variants={{
+          show: {
+            opacity: 1,
+            scale: 1,
+            maxWidth: 999,
+          },
+          hidden: {
+            opacity: 0,
+            scale: 0,
+            maxWidth: 0,
+          },
+        }}
+      >
+        {t(`label_${name}`)}
+      </motion.div>
     </ListItemButton>
   );
 };

@@ -113,6 +113,9 @@
       "vite-plugin-monaco-editor": "npm:vite-plugin-monaco-editor-new@1.1.3",
       "@types/react": "npm:types-react@rc",
       "@types/react-dom": "npm:types-react-dom@rc"
+    },
+    "patchedDependencies": {
+      "react-resizable-panels": "patches/react-resizable-panels.patch"
     }
   }
 }

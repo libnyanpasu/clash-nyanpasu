@@ -57,8 +57,8 @@
     "lodash-es": "4.17.21"
   },
   "devDependencies": {
-    "@commitlint/cli": "19.5.0",
-    "@commitlint/config-conventional": "19.5.0",
+    "@commitlint/cli": "19.6.0",
+    "@commitlint/config-conventional": "19.6.0",
     "@ianvs/prettier-plugin-sort-imports": "4.4.0",
     "@tauri-apps/cli": "2.1.0",
     "@types/fs-extra": "11.0.4",
@@ -90,7 +90,7 @@
     "postcss-import": "16.1.0",
     "postcss-scss": "4.0.9",
     "prettier": "3.3.3",
-    "prettier-plugin-tailwindcss": "0.6.8",
+    "prettier-plugin-tailwindcss": "0.6.9",
     "prettier-plugin-toml": "2.0.1",
     "react-devtools": "6.0.1",
     "stylelint": "16.10.0",

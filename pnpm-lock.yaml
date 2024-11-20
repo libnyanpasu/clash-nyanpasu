@@ -244,8 +244,8 @@ importers:
         specifier: 23.16.6
         version: 23.16.6
       jotai:
-        specifier: 2.10.2
-        version: 2.10.2(react@19.0.0-rc.1)(types-react@19.0.0-rc.1)
+        specifier: 2.10.3
+        version: 2.10.3(react@19.0.0-rc.1)(types-react@19.0.0-rc.1)
       json-schema:
         specifier: 0.4.0
         version: 0.4.0
@@ -5220,8 +5220,8 @@ packages:
   jju@1.4.0:
     resolution: {integrity: sha512-8wb9Yw966OSxApiCt0K3yNJL8pnNeIv+OEq2YMidz4FKP6nonSRoOXc80iXY4JaN2FC11B9qsNmDsm+ZOfMROA==}
 
-  jotai@2.10.2:
-    resolution: {integrity: sha512-DqsBTlRglIBviuJLfK6JxZzpd6vKfbuJ4IqRCz70RFEDeZf46Fcteb/FXxNr1UnoxR5oUy3oq7IE8BrEq0G5DQ==}
+  jotai@2.10.3:
+    resolution: {integrity: sha512-Nnf4IwrLhNfuz2JOQLI0V/AgwcpxvVy8Ec8PidIIDeRi4KCFpwTFIpHAAcU+yCgnw/oASYElq9UY0YdUUegsSA==}
     engines: {node: '>=12.20.0'}
     peerDependencies:
       '@types/react': npm:types-react@rc
@@ -9328,7 +9328,7 @@ snapshots:
   '@mui/styled-engine@5.16.6(@emotion/react@11.13.5(react@19.0.0-rc.1)(types-react@19.0.0-rc.1))(@emotion/styled@11.13.5(@emotion/react@11.13.5(react@19.0.0-rc.1)(types-react@19.0.0-rc.1))(react@19.0.0-rc.1)(types-react@19.0.0-rc.1))(react@19.0.0-rc.1)':
     dependencies:
       '@babel/runtime': 7.26.0
-      '@emotion/cache': 11.13.1
+      '@emotion/cache': 11.13.5
       csstype: 3.1.3
       prop-types: 15.8.1
       react: 19.0.0-rc.1
@@ -12907,7 +12907,7 @@ snapshots:
 
   jju@1.4.0: {}
 
-  jotai@2.10.2(react@19.0.0-rc.1)(types-react@19.0.0-rc.1):
+  jotai@2.10.3(react@19.0.0-rc.1)(types-react@19.0.0-rc.1):
     optionalDependencies:
       '@types/react': types-react@19.0.0-rc.1
       react: 19.0.0-rc.1

@@ -241,8 +241,8 @@ importers:
         specifier: 12.0.0-alpha.2
         version: 12.0.0-alpha.2(@emotion/is-prop-valid@1.3.0)(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)
       i18next:
-        specifier: 23.16.8
-        version: 23.16.8
+        specifier: 24.0.0
+        version: 24.0.0(typescript@5.7.2)
       jotai:
         specifier: 2.10.3
         version: 2.10.3(react@19.0.0-rc.1)(types-react@19.0.0-rc.1)
@@ -275,7 +275,7 @@ importers:
         version: 7.4.0(c6eqiv3v4ro6nnqx6e4soqhoku)
       react-i18next:
         specifier: 15.1.1
-        version: 15.1.1(i18next@23.16.8)(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)
+        version: 15.1.1(i18next@24.0.0(typescript@5.7.2))(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)
       react-markdown:
         specifier: 9.0.1
         version: 9.0.1(react@19.0.0-rc.1)(types-react@19.0.0-rc.1)
@@ -468,7 +468,7 @@ importers:
         version: 4.1.2(react@19.0.0-rc.1)
       react-i18next:
         specifier: 15.1.1
-        version: 15.1.1(i18next@23.16.8)(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)
+        version: 15.1.1(i18next@24.0.0(typescript@5.7.2))(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)
       react-use:
         specifier: 17.5.1
         version: 17.5.1(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)
@@ -4849,8 +4849,13 @@ packages:
   hyphenate-style-name@1.1.0:
     resolution: {integrity: sha512-WDC/ui2VVRrz3jOVi+XtjqkDjiVjTtFaAGiW37k6b+ohyQ5wYDOGkvCZa8+H0nx3gyvv0+BST9xuOgIyGQ00gw==}
 
-  i18next@23.16.8:
-    resolution: {integrity: sha512-06r/TitrM88Mg5FdUXAKL96dJMzgqLE5dv3ryBAra4KCwD9mJ4ndOTS95ZuymIGoE+2hzfdaMak2X11/es7ZWg==}
+  i18next@24.0.0:
+    resolution: {integrity: sha512-ORGCwMrXxpmB/AljFbGEe0UK/9Pz6umb9aZgLZ9qJGE+kjKhlnLj423WX2mt+N0MlEJ78pQXFMBmeMzrkLxriQ==}
+    peerDependencies:
+      typescript: ^5
+    peerDependenciesMeta:
+      typescript:
+        optional: true
 
   iconv-lite@0.6.3:
     resolution: {integrity: sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw==}
@@ -12589,9 +12594,11 @@ snapshots:
 
   hyphenate-style-name@1.1.0: {}
 
-  i18next@23.16.8:
+  i18next@24.0.0(typescript@5.7.2):
     dependencies:
       '@babel/runtime': 7.26.0
+    optionalDependencies:
+      typescript: 5.7.2
 
   iconv-lite@0.6.3:
     dependencies:
@@ -14113,11 +14120,11 @@ snapshots:
     dependencies:
       react: 19.0.0-rc.1
 
-  react-i18next@15.1.1(i18next@23.16.8)(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1):
+  react-i18next@15.1.1(i18next@24.0.0(typescript@5.7.2))(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1):
     dependencies:
       '@babel/runtime': 7.26.0
       html-parse-stringify: 3.0.1
-      i18next: 23.16.8
+      i18next: 24.0.0(typescript@5.7.2)
       react: 19.0.0-rc.1
     optionalDependencies:
       react-dom: 19.0.0-rc.1(react@19.0.0-rc.1)

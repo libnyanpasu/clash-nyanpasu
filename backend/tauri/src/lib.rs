@@ -322,39 +322,35 @@ pub fn run() -> std::io::Result<()> {
         .build(tauri::generate_context!())
         .expect("error while running tauri application");
     app.run(|app_handle, e| match e {
-        tauri::RunEvent::ExitRequested { api, .. } => {
+        tauri::RunEvent::ExitRequested { api, code, .. } if code.is_none() => {
             api.prevent_exit();
         }
-        tauri::RunEvent::Exit => {
-            resolve::resolve_reset();
+        tauri::RunEvent::ExitRequested { .. } => {
+            utils::help::cleanup_processes(app_handle);
         }
-        tauri::RunEvent::WindowEvent { label, event, .. } => {
-            if label == "main" {
-                match event {
-                    tauri::WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-                        core::tray::on_scale_factor_changed(scale_factor);
-                    }
-                    tauri::WindowEvent::CloseRequested { .. } => {
-                        log::debug!(target: "app", "window close requested");
-                        let _ = resolve::save_window_state(app_handle, true);
-                        #[cfg(target_os = "macos")]
-                        log_err!(app_handle.run_on_main_thread(|| {
-                            crate::utils::dock::macos::hide_dock_icon();
-                        }));
-                    }
-                    tauri::WindowEvent::Destroyed => {
-                        log::debug!(target: "app", "window destroyed");
-                        reset_window_open_counter();
-                    }
-                    tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
-                        log::debug!(target: "app", "window moved or resized");
-                        std::thread::sleep(std::time::Duration::from_nanos(1));
-                        let _ = resolve::save_window_state(app_handle, false);
-                    }
-                    _ => {}
-                }
+        tauri::RunEvent::WindowEvent { label, event, .. } if label == "main" => match event {
+            tauri::WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                core::tray::on_scale_factor_changed(scale_factor);
             }
-        }
+            tauri::WindowEvent::CloseRequested { .. } => {
+                log::debug!(target: "app", "window close requested");
+                let _ = resolve::save_window_state(app_handle, true);
+                #[cfg(target_os = "macos")]
+                log_err!(app_handle.run_on_main_thread(|| {
+                    crate::utils::dock::macos::hide_dock_icon();
+                }));
+            }
+            tauri::WindowEvent::Destroyed => {
+                log::debug!(target: "app", "window destroyed");
+                reset_window_open_counter();
+            }
+            tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
+                log::debug!(target: "app", "window moved or resized");
+                std::thread::sleep(std::time::Duration::from_nanos(1));
+                let _ = resolve::save_window_state(app_handle, false);
+            }
+            _ => {}
+        },
         _ => {}
     });
 

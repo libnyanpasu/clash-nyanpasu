@@ -108,7 +108,6 @@ pub fn run() -> std::io::Result<()> {
     crate::log_err!(init::init_config());
 
     // Panic Hook to show a panic dialog and save logs
-    let default_panic = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
         use std::backtrace::{Backtrace, BacktraceStatus};
         let payload = panic_info.payload();
@@ -124,7 +123,7 @@ pub fn run() -> std::io::Result<()> {
 
         let location = panic_info.location().map(|l| l.to_string());
         let (backtrace, note) = {
-            let backtrace = Backtrace::capture();
+            let backtrace = Backtrace::force_capture();
             let note = (backtrace.status() == BacktraceStatus::Disabled)
                 .then_some("run with RUST_BACKTRACE=1 environment variable to display a backtrace");
             (Some(backtrace), note)
@@ -145,20 +144,21 @@ pub fn run() -> std::io::Result<()> {
             return;
         }
 
+        // FIXME: use a new process to show the dialog, and let the main process exit immediately
         utils::dialog::panic_dialog(&format!(
             "payload: {:#?}\nlocation: {:?}\nbacktrace: {:#?}\n\nnote: {:?}",
             payload, location, backtrace, note
         ));
 
-        // cleanup the core manager
-        let task = std::thread::spawn(move || {
-            nyanpasu_utils::runtime::block_on(async {
-                let _ = crate::core::CoreManager::global().stop_core().await;
-            });
-        });
-        let _ = task.join();
-        default_panic(panic_info);
-        std::process::exit(1); // exit if default panic handler doesn't exit
+        match Handle::global().app_handle.lock().as_ref() {
+            Some(app_handle) => {
+                app_handle.exit(1);
+            }
+            None => {
+                log::error!("app handle is not initialized");
+                std::process::exit(1);
+            }
+        }
     }));
 
     let verge = { Config::verge().latest().language.clone().unwrap() };

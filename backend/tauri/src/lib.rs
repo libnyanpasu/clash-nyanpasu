@@ -144,11 +144,19 @@ pub fn run() -> std::io::Result<()> {
             return;
         }
 
-        // FIXME: use a new process to show the dialog, and let the main process exit immediately
-        utils::dialog::panic_dialog(&format!(
-            "payload: {:#?}\nlocation: {:?}\nbacktrace: {:#?}\n\nnote: {:?}",
-            payload, location, backtrace, note
-        ));
+        // FIXME: maybe move this logic to a util function?
+        let msg = format!(
+            "Oops, we encountered some issues and program will exit immediately.\n\npayload: {:#?}\nlocation: {:?}\nbacktrace: {:#?}\n\n",
+            payload, location, backtrace,
+        );
+        let child = std::process::Command::new(tauri::utils::platform::current_exe().unwrap())
+            .arg("panic-dialog")
+            .arg(msg.as_str())
+            .spawn();
+        // fallback to show a dialog directly
+        if child.is_err() {
+            utils::dialog::panic_dialog(msg.as_str());
+        }
 
         match Handle::global().app_handle.lock().as_ref() {
             Some(app_handle) => {

@@ -680,11 +680,12 @@ dependencies = [
 [[package]]
 name = "auto-launch"
 version = "0.5.0"
-source = "git+https://github.com/zzzgydi/auto-launch.git#a0b2680ef3487c186a67ae52d4083b619f1b3a32"
+source = "git+https://github.com/libnyanpasu/auto-launch.git#729d5429dd689067047489af4a0a32f7013854c8"
 dependencies = [
  "dirs 5.0.1",
- "thiserror 1.0.69",
- "windows-registry 0.2.0",
+ "thiserror 2.0.3",
+ "windows-registry 0.3.0",
+ "windows-result 0.2.0",
 ]
 
 [[package]]

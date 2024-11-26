@@ -32,7 +32,7 @@
     "react": "rc",
     "react-dom": "rc",
     "react-error-boundary": "4.1.2",
-    "react-i18next": "15.1.1",
+    "react-i18next": "15.1.2",
     "react-use": "17.5.1",
     "vite": "5.4.11",
     "vite-tsconfig-paths": "5.1.3"

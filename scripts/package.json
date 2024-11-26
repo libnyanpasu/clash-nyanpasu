@@ -10,7 +10,7 @@
     "p-retry": "6.2.1"
   },
   "devDependencies": {
-    "@octokit/types": "13.6.1",
+    "@octokit/types": "13.6.2",
     "@types/adm-zip": "0.5.6",
     "adm-zip": "0.5.16",
     "colorize-template": "1.0.0",

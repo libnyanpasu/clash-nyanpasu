@@ -96,8 +96,8 @@ importers:
         specifier: 4.6.2
         version: 4.6.2(eslint@8.57.1)
       knip:
-        specifier: 5.38.1
-        version: 5.38.1(@types/node@22.10.0)(typescript@5.7.2)
+        specifier: 5.38.2
+        version: 5.38.2(@types/node@22.10.0)(typescript@5.7.2)
       lint-staged:
         specifier: 15.2.10
         version: 15.2.10
@@ -1762,17 +1762,6 @@ packages:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0
       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0
 
-  '@mui/base@5.0.0-beta.62':
-    resolution: {integrity: sha512-TzJLCNlrMkSU4bTCdTT+TVUiGx4sjZLhH673UV6YN+rNNP8wJpkWfRSvjDB5HcbH2T0lUamnz643ZnV+8IiMjw==}
-    engines: {node: '>=14.0.0'}
-    peerDependencies:
-      '@types/react': npm:types-react@rc
-      react: ^17.0.0 || ^18.0.0
-      react-dom: ^17.0.0 || ^18.0.0
-    peerDependenciesMeta:
-      '@types/react':
-        optional: true
-
   '@mui/base@5.0.0-beta.63':
     resolution: {integrity: sha512-W6aIqKP9X8VUX0KhSnYWo2+5C7MnKV1IhYVd517L/apvfkVq5KaTdlnxSBVwnaWt46whayVgQ/9KXwUVCXp6+w==}
     engines: {node: '>=14.0.0'}
@@ -1931,16 +1920,6 @@ packages:
     peerDependencies:
       '@types/react': npm:types-react@rc
       react: ^17.0.0 || ^18.0.0
-    peerDependenciesMeta:
-      '@types/react':
-        optional: true
-
-  '@mui/utils@6.1.8':
-    resolution: {integrity: sha512-O2DWb1kz8hiANVcR7Z4gOB3SvPPsSQGUmStpyBDzde6dJIfBzgV9PbEQOBZd3EBsd1pB+Uv1z5LAJAbymmawrA==}
-    engines: {node: '>=14.0.0'}
-    peerDependencies:
-      '@types/react': npm:types-react@rc
-      react: ^17.0.0 || ^18.0.0 || ^19.0.0
     peerDependenciesMeta:
       '@types/react':
         optional: true
@@ -5303,8 +5282,8 @@ packages:
     resolution: {integrity: sha512-dcS1ul+9tmeD95T+x28/ehLgd9mENa3LsvDTtzm3vyBEO7RPptvAD+t44WVXaUjTBRcrpFeFlC8WCruUR456hw==}
     engines: {node: '>=0.10.0'}
 
-  knip@5.38.1:
-    resolution: {integrity: sha512-qGQpVO9jhHDoJ/4O1paXQ8Y6XyqH3Xm6OTety/z5IouZBEvJuJoWp59iY9E82Dt0pz9BBmKLczliB4sbYMPr2g==}
+  knip@5.38.2:
+    resolution: {integrity: sha512-gVduAQa80bar/uKtQDvOCBzTApdjqiz8e9eDIdRkYFyTAQM/DriWLi2vv/2AlzMcPYeSWddLptBdgN4whGzFtg==}
     engines: {node: '>=18.6.0'}
     hasBin: true
     peerDependencies:
@@ -9147,20 +9126,6 @@ snapshots:
       react: 19.0.0-rc.1
       react-dom: 19.0.0-rc.1(react@19.0.0-rc.1)
 
-  '@mui/base@5.0.0-beta.62(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)(types-react@19.0.0-rc.1)':
-    dependencies:
-      '@babel/runtime': 7.26.0
-      '@floating-ui/react-dom': 2.1.2(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)
-      '@mui/types': 7.2.19(types-react@19.0.0-rc.1)
-      '@mui/utils': 6.1.8(react@19.0.0-rc.1)(types-react@19.0.0-rc.1)
-      '@popperjs/core': 2.11.8
-      clsx: 2.1.1
-      prop-types: 15.8.1
-      react: 19.0.0-rc.1
-      react-dom: 19.0.0-rc.1(react@19.0.0-rc.1)
-    optionalDependencies:
-      '@types/react': types-react@19.0.0-rc.1
-
   '@mui/base@5.0.0-beta.63(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)(types-react@19.0.0-rc.1)':
     dependencies:
       '@babel/runtime': 7.26.0
@@ -9313,18 +9278,6 @@ snapshots:
     optionalDependencies:
       '@types/react': types-react@19.0.0-rc.1
 
-  '@mui/utils@6.1.8(react@19.0.0-rc.1)(types-react@19.0.0-rc.1)':
-    dependencies:
-      '@babel/runtime': 7.26.0
-      '@mui/types': 7.2.19(types-react@19.0.0-rc.1)
-      '@types/prop-types': 15.7.13
-      clsx: 2.1.1
-      prop-types: 15.8.1
-      react: 19.0.0-rc.1
-      react-is: 18.3.1
-    optionalDependencies:
-      '@types/react': types-react@19.0.0-rc.1
-
   '@mui/utils@6.1.9(react@19.0.0-rc.1)(types-react@19.0.0-rc.1)':
     dependencies:
       '@babel/runtime': 7.26.0
@@ -9340,7 +9293,7 @@ snapshots:
   '@mui/x-date-pickers@7.9.0(@emotion/react@11.13.5(react@19.0.0-rc.1)(types-react@19.0.0-rc.1))(@emotion/styled@11.13.5(@emotion/react@11.13.5(react@19.0.0-rc.1)(types-react@19.0.0-rc.1))(react@19.0.0-rc.1)(types-react@19.0.0-rc.1))(@mui/material@6.1.9(@emotion/react@11.13.5(react@19.0.0-rc.1)(types-react@19.0.0-rc.1))(@emotion/styled@11.13.5(@emotion/react@11.13.5(react@19.0.0-rc.1)(types-react@19.0.0-rc.1))(react@19.0.0-rc.1)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)(types-react@19.0.0-rc.1))(dayjs@1.11.13)(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)(types-react@19.0.0-rc.1)':
     dependencies:
       '@babel/runtime': 7.26.0
-      '@mui/base': 5.0.0-beta.62(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)(types-react@19.0.0-rc.1)
+      '@mui/base': 5.0.0-beta.63(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)(types-react@19.0.0-rc.1)
       '@mui/material': 6.1.9(@emotion/react@11.13.5(react@19.0.0-rc.1)(types-react@19.0.0-rc.1))(@emotion/styled@11.13.5(@emotion/react@11.13.5(react@19.0.0-rc.1)(types-react@19.0.0-rc.1))(react@19.0.0-rc.1)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)(types-react@19.0.0-rc.1)
       '@mui/system': 5.16.7(@emotion/react@11.13.5(react@19.0.0-rc.1)(types-react@19.0.0-rc.1))(@emotion/styled@11.13.5(@emotion/react@11.13.5(react@19.0.0-rc.1)(types-react@19.0.0-rc.1))(react@19.0.0-rc.1)(types-react@19.0.0-rc.1))(react@19.0.0-rc.1)(types-react@19.0.0-rc.1)
       '@mui/utils': 5.16.6(react@19.0.0-rc.1)(types-react@19.0.0-rc.1)
@@ -12910,7 +12863,7 @@ snapshots:
 
   kind-of@6.0.3: {}
 
-  knip@5.38.1(@types/node@22.10.0)(typescript@5.7.2):
+  knip@5.38.2(@types/node@22.10.0)(typescript@5.7.2):
     dependencies:
       '@nodelib/fs.walk': 1.2.8
       '@snyk/github-codeowners': 1.1.0

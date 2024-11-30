@@ -962,7 +962,7 @@ dependencies = [
  "boa_macros",
  "indexmap 2.6.0",
  "num-bigint",
- "rustc-hash 2.0.0",
+ "rustc-hash 2.1.0",
 ]
 
 [[package]]
@@ -998,7 +998,7 @@ dependencies = [
  "portable-atomic",
  "rand 0.8.5",
  "regress",
- "rustc-hash 2.0.0",
+ "rustc-hash 2.1.0",
  "ryu-js",
  "serde",
  "serde_json",
@@ -1035,7 +1035,7 @@ dependencies = [
  "indexmap 2.6.0",
  "once_cell",
  "phf 0.11.2",
- "rustc-hash 2.0.0",
+ "rustc-hash 2.1.0",
  "static_assertions",
 ]
 
@@ -1067,7 +1067,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "regress",
- "rustc-hash 2.0.0",
+ "rustc-hash 2.1.0",
 ]
 
 [[package]]
@@ -1084,7 +1084,7 @@ checksum = "ae85205289bab1f2c7c8a30ddf0541cf89ba2ff7dbd144feef50bbfa664288d4"
 dependencies = [
  "fast-float",
  "paste",
- "rustc-hash 2.0.0",
+ "rustc-hash 2.1.0",
  "sptr",
  "static_assertions",
 ]
@@ -1099,7 +1099,7 @@ dependencies = [
  "futures-util",
  "indoc",
  "isahc",
- "rustc-hash 2.0.0",
+ "rustc-hash 2.1.0",
  "smol",
  "textwrap",
  "tracing",
@@ -5051,7 +5051,7 @@ dependencies = [
  "mlua-sys",
  "num-traits",
  "parking_lot",
- "rustc-hash 2.0.0",
+ "rustc-hash 2.1.0",
  "serde",
  "serde-value",
 ]
@@ -5986,7 +5986,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4c94f8b67b5ea708e10498cf7c4e4ee8ec724982851edca2dd0d20d2ad99d47b"
 dependencies = [
  "oxc-miette",
- "rustc-hash 2.0.0",
+ "rustc-hash 2.1.0",
 ]
 
 [[package]]
@@ -6019,7 +6019,7 @@ dependencies = [
  "oxc_regular_expression",
  "oxc_span",
  "oxc_syntax",
- "rustc-hash 2.0.0",
+ "rustc-hash 2.1.0",
  "seq-macro",
 ]
 
@@ -6035,7 +6035,7 @@ dependencies = [
  "oxc_estree",
  "oxc_span",
  "phf 0.11.2",
- "rustc-hash 2.0.0",
+ "rustc-hash 2.1.0",
  "unicode-id-start",
 ]
 
@@ -6068,7 +6068,7 @@ dependencies = [
  "oxc_index",
  "oxc_span",
  "phf 0.11.2",
- "rustc-hash 2.0.0",
+ "rustc-hash 2.1.0",
  "unicode-id-start",
 ]
 
@@ -6691,7 +6691,7 @@ dependencies = [
  "pin-project-lite",
  "quinn-proto",
  "quinn-udp",
- "rustc-hash 2.0.0",
+ "rustc-hash 2.1.0",
  "rustls",
  "socket2",
  "thiserror 2.0.3",
@@ -6709,7 +6709,7 @@ dependencies = [
  "getrandom 0.2.15",
  "rand 0.8.5",
  "ring",
- "rustc-hash 2.0.0",
+ "rustc-hash 2.1.0",
  "rustls",
  "rustls-pki-types",
  "slab",
@@ -7254,9 +7254,9 @@ checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
 name = "rustc-hash"
-version = "2.0.0"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "583034fd73374156e66797ed8e5b0d5690409c9226b22d87cb7f19821c05d152"
+checksum = "c7fb8039b3032c191086b10f11f319a6e99e1e82889c5cc6046f515c9db1d497"
 
 [[package]]
 name = "rustc_version"

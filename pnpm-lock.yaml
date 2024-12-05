@@ -165,8 +165,8 @@ importers:
         specifier: 2.1.1
         version: 2.1.1
       ahooks:
-        specifier: 3.8.2
-        version: 3.8.2(react@19.0.0-rc.1)
+        specifier: 3.8.4
+        version: 3.8.4(react@19.0.0-rc.1)
       ofetch:
         specifier: 1.4.1
         version: 1.4.1
@@ -226,8 +226,8 @@ importers:
         specifier: 7.0.15
         version: 7.0.15
       ahooks:
-        specifier: 3.8.2
-        version: 3.8.2(react@19.0.0-rc.1)
+        specifier: 3.8.4
+        version: 3.8.4(react@19.0.0-rc.1)
       allotment:
         specifier: 1.20.2
         version: 1.20.2(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)
@@ -449,8 +449,8 @@ importers:
         specifier: 4.3.4
         version: 4.3.4(vite@6.0.2(@types/node@22.10.1)(jiti@2.4.0)(less@4.2.0)(sass-embedded@1.78.0)(sass@1.81.1)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.5.1))
       ahooks:
-        specifier: 3.8.2
-        version: 3.8.2(react@19.0.0-rc.1)
+        specifier: 3.8.4
+        version: 3.8.4(react@19.0.0-rc.1)
       d3:
         specifier: 7.9.0
         version: 7.9.0
@@ -3207,8 +3207,8 @@ packages:
     resolution: {integrity: sha512-gOsf2YwSlleG6IjRYG2A7k0HmBMEo6qVNk9Bp/EaLgAJT5ngH6PXbqa4ItvnEwCm/velL5jAnQgsHsWnjhGmvw==}
     engines: {node: '>=18'}
 
-  ahooks@3.8.2:
-    resolution: {integrity: sha512-iuYD3PWopdw9HqH++3ul6/Oxl9Q9/tP+np4yiYd0mIzN3QfDKnyII28MWUcmSkaHF415R6bUcrl0vD/80NNogg==}
+  ahooks@3.8.4:
+    resolution: {integrity: sha512-39wDEw2ZHvypaT14EpMMk4AzosHWt0z9bulY0BeDsvc9PqJEV+Kjh/4TZfftSsotBMq52iYIOFPd3PR56e0ZJg==}
     engines: {node: '>=8.0.0'}
     peerDependencies:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0
@@ -10583,7 +10583,7 @@ snapshots:
       clean-stack: 5.2.0
       indent-string: 5.0.0
 
-  ahooks@3.8.2(react@19.0.0-rc.1):
+  ahooks@3.8.4(react@19.0.0-rc.1):
     dependencies:
       '@babel/runtime': 7.26.0
       dayjs: 1.11.13

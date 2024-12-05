@@ -271,8 +271,8 @@ importers:
         specifier: 1.6.5
         version: 1.6.5(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)
       react-hook-form-mui:
-        specifier: 7.4.0
-        version: 7.4.0(sivtflucb74mxg45qzhfuk7yha)
+        specifier: 7.4.1
+        version: 7.4.1(sivtflucb74mxg45qzhfuk7yha)
       react-i18next:
         specifier: 15.1.3
         version: 15.1.3(i18next@24.0.5(typescript@5.7.2))(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)
@@ -6339,8 +6339,8 @@ packages:
       react: '>= 16.8.0 || ^18.0.0'
       react-dom: '>= 16.8.0 || ^18.0.0'
 
-  react-hook-form-mui@7.4.0:
-    resolution: {integrity: sha512-etciyU/ZfFp1io8NUi7gxx5Eyx7q6aRdccxuqQKKo6zKo69lEj9Fy+gr6Ft6D9miIqq1VyiHy3wZoaoTcLwauA==}
+  react-hook-form-mui@7.4.1:
+    resolution: {integrity: sha512-dN6K6Cn6DaXC6TjarbYxypRajHRa00qJsuQ5r5dKKnofpAAsG8xiNnzsJ6ym9ajuiJ3gC6sc5wMAVzkM3lIRGA==}
     engines: {node: '>=14'}
     peerDependencies:
       '@mui/icons-material': '>= 5.x <7'
@@ -13997,7 +13997,7 @@ snapshots:
       react: 19.0.0-rc.1
       react-dom: 19.0.0-rc.1(react@19.0.0-rc.1)
 
-  react-hook-form-mui@7.4.0(sivtflucb74mxg45qzhfuk7yha):
+  react-hook-form-mui@7.4.1(sivtflucb74mxg45qzhfuk7yha):
     dependencies:
       '@mui/material': 6.1.10(@emotion/react@11.13.5(react@19.0.0-rc.1)(types-react@19.0.0-rc.1))(@emotion/styled@11.13.5(@emotion/react@11.13.5(react@19.0.0-rc.1)(types-react@19.0.0-rc.1))(react@19.0.0-rc.1)(types-react@19.0.0-rc.1))(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)(types-react@19.0.0-rc.1)
       react: 19.0.0-rc.1

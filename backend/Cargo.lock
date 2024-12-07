@@ -849,7 +849,7 @@ dependencies = [
  "bitflags 2.6.0",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools 0.10.5",
  "lazy_static",
  "lazycell",
  "log",
@@ -8672,9 +8672,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-updater"
-version = "2.0.2"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1dd3d2fe0f02bf52eebb5a9d23b987fffac6684646ab6fd683d706dafb18da87"
+checksum = "50ba9adaede60b0df5e0764692c6ac176eb133aade95d326bddeb968ad793320"
 dependencies = [
  "base64 0.22.1",
  "dirs 5.0.1",
@@ -8692,7 +8692,7 @@ dependencies = [
  "tauri",
  "tauri-plugin",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.4",
  "time",
  "tokio",
  "url",

@@ -16,7 +16,7 @@
     "colorize-template": "1.0.0",
     "consola": "3.2.3",
     "fs-extra": "11.2.0",
-    "https-proxy-agent": "7.0.5",
+    "https-proxy-agent": "7.0.6",
     "node-fetch": "3.3.2",
     "octokit": "4.0.2",
     "picocolors": "1.1.1",

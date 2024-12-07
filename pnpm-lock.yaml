@@ -184,11 +184,11 @@ importers:
   frontend/nyanpasu:
     dependencies:
       '@dnd-kit/core':
-        specifier: 6.2.0
-        version: 6.2.0(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)
+        specifier: 6.3.1
+        version: 6.3.1(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)
       '@dnd-kit/sortable':
         specifier: 9.0.0
-        version: 9.0.0(@dnd-kit/core@6.2.0(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1))(react@19.0.0-rc.1)
+        version: 9.0.0(@dnd-kit/core@6.3.1(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1))(react@19.0.0-rc.1)
       '@dnd-kit/utilities':
         specifier: 3.2.2
         version: 3.2.2(react@19.0.0-rc.1)
@@ -1261,8 +1261,8 @@ packages:
     peerDependencies:
       react: '>=16.8.0'
 
-  '@dnd-kit/core@6.2.0':
-    resolution: {integrity: sha512-KVK/CJmaYGTxTPU6P0+Oy4itgffTUa80B8317sXzfOr1qUzSL29jE7Th11llXiu2haB7B9Glpzo2CDElin+geQ==}
+  '@dnd-kit/core@6.3.1':
+    resolution: {integrity: sha512-xkGBRQQab4RLwgXxoqETICr6S5JlogafbhNsidmrkVv2YRs5MLwpjoF2qpiGjQt8S9AoxtIV603s0GIUpY5eYQ==}
     peerDependencies:
       react: '>=16.8.0'
       react-dom: '>=16.8.0'
@@ -8684,7 +8684,7 @@ snapshots:
       react: 19.0.0-rc.1
       tslib: 2.7.0
 
-  '@dnd-kit/core@6.2.0(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)':
+  '@dnd-kit/core@6.3.1(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)':
     dependencies:
       '@dnd-kit/accessibility': 3.1.1(react@19.0.0-rc.1)
       '@dnd-kit/utilities': 3.2.2(react@19.0.0-rc.1)
@@ -8692,9 +8692,9 @@ snapshots:
       react-dom: 19.0.0-rc.1(react@19.0.0-rc.1)
       tslib: 2.7.0
 
-  '@dnd-kit/sortable@9.0.0(@dnd-kit/core@6.2.0(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1))(react@19.0.0-rc.1)':
+  '@dnd-kit/sortable@9.0.0(@dnd-kit/core@6.3.1(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1))(react@19.0.0-rc.1)':
     dependencies:
-      '@dnd-kit/core': 6.2.0(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)
+      '@dnd-kit/core': 6.3.1(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)
       '@dnd-kit/utilities': 3.2.2(react@19.0.0-rc.1)
       react: 19.0.0-rc.1
       tslib: 2.7.0

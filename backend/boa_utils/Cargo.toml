@@ -10,7 +10,7 @@ authors.workspace = true
 rustc-hash = { version = "2", features = ["std"] }
 boa_engine.workspace = true
 boa_gc = { version = "0.19.1" }
-boa_parser = { version = "0.19.1" }
+boa_parser = { version = "0.20.0" }
 isahc = "1.7"
 futures-util = "0.3"
 smol = "2"

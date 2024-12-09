@@ -79,7 +79,7 @@
     "monaco-yaml": "5.2.3",
     "nanoid": "5.0.9",
     "sass": "1.82.0",
-    "shiki": "1.24.0",
+    "shiki": "1.24.1",
     "tailwindcss-textshadow": "2.1.3",
     "unplugin-auto-import": "0.18.6",
     "unplugin-icons": "0.21.0",

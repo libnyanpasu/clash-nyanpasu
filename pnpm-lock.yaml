@@ -274,8 +274,8 @@ importers:
         specifier: 7.4.1
         version: 7.4.1(sivtflucb74mxg45qzhfuk7yha)
       react-i18next:
-        specifier: 15.1.3
-        version: 15.1.3(i18next@24.0.5(typescript@5.7.2))(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)
+        specifier: 15.1.4
+        version: 15.1.4(i18next@24.0.5(typescript@5.7.2))(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)
       react-markdown:
         specifier: 9.0.1
         version: 9.0.1(react@19.0.0-rc.1)(types-react@19.0.0-rc.1)
@@ -467,8 +467,8 @@ importers:
         specifier: 4.1.2
         version: 4.1.2(react@19.0.0-rc.1)
       react-i18next:
-        specifier: 15.1.3
-        version: 15.1.3(i18next@24.0.5(typescript@5.7.2))(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)
+        specifier: 15.1.4
+        version: 15.1.4(i18next@24.0.5(typescript@5.7.2))(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)
       react-use:
         specifier: 17.5.1
         version: 17.5.1(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)
@@ -6366,8 +6366,8 @@ packages:
     peerDependencies:
       react: ^16.8.0 || ^17 || ^18 || ^19
 
-  react-i18next@15.1.3:
-    resolution: {integrity: sha512-J11oA30FbM3NZegUZjn8ySK903z6PLBz/ZuBYyT1JMR0QPrW6PFXvl1WoUhortdGi9dM0m48/zJQlPskVZXgVw==}
+  react-i18next@15.1.4:
+    resolution: {integrity: sha512-2tai71gmehbvl9ZIqPMqlCCkm/cbeV1G4STpmM3C8Uzo6T2l8jDvZxEVSsQKt8blP9X34iRFP/k1ROqG2296MQ==}
     peerDependencies:
       i18next: '>= 23.2.3'
       react: '>= 16.8.0'
@@ -14043,7 +14043,7 @@ snapshots:
     dependencies:
       react: 19.0.0-rc.1
 
-  react-i18next@15.1.3(i18next@24.0.5(typescript@5.7.2))(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1):
+  react-i18next@15.1.4(i18next@24.0.5(typescript@5.7.2))(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1):
     dependencies:
       '@babel/runtime': 7.26.0
       html-parse-stringify: 3.0.1

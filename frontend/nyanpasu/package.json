@@ -56,7 +56,7 @@
     "@monaco-editor/react": "4.6.0",
     "@tanstack/react-router": "1.87.9",
     "@tanstack/router-devtools": "1.87.9",
-    "@tanstack/router-plugin": "1.87.7",
+    "@tanstack/router-plugin": "1.87.11",
     "@tauri-apps/plugin-clipboard-manager": "2.2.0",
     "@tauri-apps/plugin-dialog": "2.2.0",
     "@tauri-apps/plugin-fs": "2.2.0",

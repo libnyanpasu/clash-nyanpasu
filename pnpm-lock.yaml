@@ -332,8 +332,8 @@ importers:
         specifier: 2.2.0
         version: 2.2.0
       '@tauri-apps/plugin-os':
-        specifier: 2.0.0
-        version: 2.0.0
+        specifier: 2.2.0
+        version: 2.2.0
       '@tauri-apps/plugin-process':
         specifier: 2.0.0
         version: 2.0.0
@@ -2829,8 +2829,8 @@ packages:
   '@tauri-apps/plugin-notification@2.2.0':
     resolution: {integrity: sha512-uhE3a2gFlqwiWhY/JbhXOF13K4iILEYxUk0D2Y+q69HP6tnfPqKCuNTHxDM0H+oFAakXESNmJVnYw0Vi4IrMMQ==}
 
-  '@tauri-apps/plugin-os@2.0.0':
-    resolution: {integrity: sha512-M7hG/nNyQYTJxVG/UhTKhp9mpXriwWzrs9mqDreB8mIgqA3ek5nHLdwRZJWhkKjZrnDT4v9CpA9BhYeplTlAiA==}
+  '@tauri-apps/plugin-os@2.2.0':
+    resolution: {integrity: sha512-HszbCdbisMlu5QhCNAN8YIWyz2v33abAWha6+uvV2CKX8P5VSct/y+kEe22JeyqrxCnWlQ3DRx7s49Byg7/0EA==}
 
   '@tauri-apps/plugin-process@2.0.0':
     resolution: {integrity: sha512-OYzi0GnkrF4NAnsHZU7U3tjSoP0PbeAlO7T1Z+vJoBUH9sFQ1NSLqWYWQyf8hcb3gVWe7P1JggjiskO+LST1ug==}
@@ -10142,7 +10142,7 @@ snapshots:
     dependencies:
       '@tauri-apps/api': 2.1.1
 
-  '@tauri-apps/plugin-os@2.0.0':
+  '@tauri-apps/plugin-os@2.2.0':
     dependencies:
       '@tauri-apps/api': 2.1.1
 

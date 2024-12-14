@@ -1558,7 +1558,7 @@ dependencies = [
  "simd-json",
  "single-instance",
  "strum",
- "sysinfo",
+ "sysinfo 0.33.0",
  "sysproxy",
  "tauri",
  "tauri-build",
@@ -5476,7 +5476,7 @@ dependencies = [
  "parking_lot",
  "serde",
  "shared_child",
- "sysinfo",
+ "sysinfo 0.32.1",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
@@ -8237,6 +8237,20 @@ name = "sysinfo"
 version = "0.32.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4c33cd241af0f2e9e3b5c32163b873b29956890b5342e6745b917ce9d490f4af"
+dependencies = [
+ "core-foundation-sys",
+ "libc",
+ "memchr",
+ "ntapi",
+ "rayon",
+ "windows 0.57.0",
+]
+
+[[package]]
+name = "sysinfo"
+version = "0.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "948512566b1895f93b1592c7574baeb2de842f224f2aab158799ecadb8ebbb46"
 dependencies = [
  "core-foundation-sys",
  "libc",

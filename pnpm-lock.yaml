@@ -287,8 +287,8 @@ importers:
         specifier: 2.2.5
         version: 2.2.5(react@19.0.0)
       virtua:
-        specifier: 0.39.1
-        version: 0.39.1(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+        specifier: 0.39.2
+        version: 0.39.2(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       vite-bundle-visualizer:
         specifier: 1.2.1
         version: 1.2.1(rollup@4.27.4)
@@ -1783,17 +1783,6 @@ packages:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0
       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0
 
-  '@mui/base@5.0.0-beta.64':
-    resolution: {integrity: sha512-nu663PoZs/Pee0fkPYkjUADfT+AAi2QWvvHghDhLeSx8sa3i+GGaOoUsFmB4CPlyYqWfq9hRGA7H1T3d6VrGgw==}
-    engines: {node: '>=14.0.0'}
-    peerDependencies:
-      '@types/react': ^17.0.0 || ^18.0.0
-      react: ^17.0.0 || ^18.0.0
-      react-dom: ^17.0.0 || ^18.0.0
-    peerDependenciesMeta:
-      '@types/react':
-        optional: true
-
   '@mui/base@5.0.0-beta.66':
     resolution: {integrity: sha512-1SzcNbtIms0o/Dx+599B6QbvR5qUMBUjwc2Gs47h1HsF7RcEFXxqaq7zrWkIWbvGctIIPx0j330oGx/SkF+UmA==}
     engines: {node: '>=14.0.0'}
@@ -1952,16 +1941,6 @@ packages:
     peerDependencies:
       '@types/react': ^17.0.0 || ^18.0.0
       react: ^17.0.0 || ^18.0.0
-    peerDependenciesMeta:
-      '@types/react':
-        optional: true
-
-  '@mui/utils@6.1.10':
-    resolution: {integrity: sha512-1ETuwswGjUiAf2dP9TkBy8p49qrw2wXa+RuAjNTRE5+91vtXJ1HKrs7H9s8CZd1zDlQVzUcUAPm9lpQwF5ogTw==}
-    engines: {node: '>=14.0.0'}
-    peerDependencies:
-      '@types/react': ^17.0.0 || ^18.0.0 || ^19.0.0
-      react: ^17.0.0 || ^18.0.0 || ^19.0.0
     peerDependenciesMeta:
       '@types/react':
         optional: true
@@ -3063,9 +3042,6 @@ packages:
 
   '@types/postcss-modules-scope@3.0.4':
     resolution: {integrity: sha512-//ygSisVq9kVI0sqx3UPLzWIMCmtSVrzdljtuaAEJtGoGnpjBikZ2sXO5MpH9SnWX9HRfXxHifDAXcQjupWnIQ==}
-
-  '@types/prop-types@15.7.13':
-    resolution: {integrity: sha512-hCZTSvwbzWGvhqxp/RqVqwU999pBf2vp7hzIjiYOsl8wqOmUxkQ6ddw1cV3l8811+kdUFus/q4d1Y3E3SyEifA==}
 
   '@types/prop-types@15.7.14':
     resolution: {integrity: sha512-gNMvNH49DJ7OJYv+KAKn0Xp45p8PLl6zo2YnvDIbTd4J6MER2BmWN49TG7n9LvkyihINxeKW8+3bfS2yDC9dzQ==}
@@ -7530,8 +7506,8 @@ packages:
   vfile@6.0.1:
     resolution: {integrity: sha512-1bYqc7pt6NIADBJ98UiG0Bn/CHIVOoZ/IyEkqIruLg0mE1BKzkOXY2D6CSqQIcKqgadppE5lrxgWXJmXd7zZJw==}
 
-  virtua@0.39.1:
-    resolution: {integrity: sha512-HuKecrk6+HqkVYpFAuEtSAFzGkpyllIndASPM+kkF1zWXsI3lfqfiFMJ5LaAKcH3D2b7lSPsJpADjJg7hR0rkA==}
+  virtua@0.39.2:
+    resolution: {integrity: sha512-KhDYmfDe36L1W5ir1b5+jeV40+u4bb5bRiZggWwGinreGXKnxxcLGdk+yVZlO5dNdBq/nxj4v4w6yxuwgLXSBg==}
     peerDependencies:
       react: '>=16.14.0'
       react-dom: '>=16.14.0'
@@ -9203,20 +9179,6 @@ snapshots:
       react: 19.0.0
       react-dom: 19.0.0(react@19.0.0)
 
-  '@mui/base@5.0.0-beta.64(@types/react@19.0.1)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)':
-    dependencies:
-      '@babel/runtime': 7.26.0
-      '@floating-ui/react-dom': 2.1.2(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
-      '@mui/types': 7.2.19(@types/react@19.0.1)
-      '@mui/utils': 6.1.10(@types/react@19.0.1)(react@19.0.0)
-      '@popperjs/core': 2.11.8
-      clsx: 2.1.1
-      prop-types: 15.8.1
-      react: 19.0.0
-      react-dom: 19.0.0(react@19.0.0)
-    optionalDependencies:
-      '@types/react': 19.0.1
-
   '@mui/base@5.0.0-beta.66(@types/react@19.0.1)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)':
     dependencies:
       '@babel/runtime': 7.26.0
@@ -9361,19 +9323,7 @@ snapshots:
     dependencies:
       '@babel/runtime': 7.26.0
       '@mui/types': 7.2.19(@types/react@19.0.1)
-      '@types/prop-types': 15.7.13
-      clsx: 2.1.1
-      prop-types: 15.8.1
-      react: 19.0.0
-      react-is: 18.3.1
-    optionalDependencies:
-      '@types/react': 19.0.1
-
-  '@mui/utils@6.1.10(@types/react@19.0.1)(react@19.0.0)':
-    dependencies:
-      '@babel/runtime': 7.26.0
-      '@mui/types': 7.2.19(@types/react@19.0.1)
-      '@types/prop-types': 15.7.13
+      '@types/prop-types': 15.7.14
       clsx: 2.1.1
       prop-types: 15.8.1
       react: 19.0.0
@@ -9396,7 +9346,7 @@ snapshots:
   '@mui/x-date-pickers@7.9.0(@emotion/react@11.13.5(@types/react@19.0.1)(react@19.0.0))(@emotion/styled@11.13.5(@emotion/react@11.13.5(@types/react@19.0.1)(react@19.0.0))(@types/react@19.0.1)(react@19.0.0))(@mui/material@6.2.0(@emotion/react@11.13.5(@types/react@19.0.1)(react@19.0.0))(@emotion/styled@11.13.5(@emotion/react@11.13.5(@types/react@19.0.1)(react@19.0.0))(@types/react@19.0.1)(react@19.0.0))(@types/react@19.0.1)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(@types/react@19.0.1)(dayjs@1.11.13)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)':
     dependencies:
       '@babel/runtime': 7.26.0
-      '@mui/base': 5.0.0-beta.64(@types/react@19.0.1)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+      '@mui/base': 5.0.0-beta.66(@types/react@19.0.1)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       '@mui/material': 6.2.0(@emotion/react@11.13.5(@types/react@19.0.1)(react@19.0.0))(@emotion/styled@11.13.5(@emotion/react@11.13.5(@types/react@19.0.1)(react@19.0.0))(@types/react@19.0.1)(react@19.0.0))(@types/react@19.0.1)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       '@mui/system': 5.16.7(@emotion/react@11.13.5(@types/react@19.0.1)(react@19.0.0))(@emotion/styled@11.13.5(@emotion/react@11.13.5(@types/react@19.0.1)(react@19.0.0))(@types/react@19.0.1)(react@19.0.0))(@types/react@19.0.1)(react@19.0.0)
       '@mui/utils': 5.16.6(@types/react@19.0.1)(react@19.0.0)
@@ -10461,8 +10411,6 @@ snapshots:
   '@types/postcss-modules-scope@3.0.4':
     dependencies:
       postcss: 8.4.49
-
-  '@types/prop-types@15.7.13': {}
 
   '@types/prop-types@15.7.14': {}
 
@@ -15422,7 +15370,7 @@ snapshots:
       unist-util-stringify-position: 4.0.0
       vfile-message: 4.0.2
 
-  virtua@0.39.1(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
+  virtua@0.39.2(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
     optionalDependencies:
       react: 19.0.0
       react-dom: 19.0.0(react@19.0.0)

@@ -19,7 +19,7 @@ path = "./src/small.rs"
 eframe = "0.29.1"
 egui_extras = { version = "*", features = ["all_loaders"] }
 parking_lot = "0.12"
-image = { version = "0.25", features = ["jpeg", "png"] }
+image = { version = "0.25.5", features = ["jpeg", "png"] }
 humansize = "2.1.3"
 # for svg currentColor replacement
 resvg = "0.44.0"         # for svg rendering

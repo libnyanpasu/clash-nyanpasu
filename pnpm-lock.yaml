@@ -218,7 +218,7 @@ importers:
         version: link:../ui
       '@tanstack/router-zod-adapter':
         specifier: 1.81.5
-        version: 1.81.5(@tanstack/react-router@1.87.12(@tanstack/router-generator@1.87.7)(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1))(zod@3.23.8)
+        version: 1.81.5(@tanstack/react-router@1.87.12(@tanstack/router-generator@1.87.7)(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1))(zod@3.24.1)
       '@tauri-apps/api':
         specifier: 2.1.1
         version: 2.1.1
@@ -413,8 +413,8 @@ importers:
         specifier: 5.1.4
         version: 5.1.4(typescript@5.7.2)(vite@6.0.3(@types/node@22.10.2)(jiti@2.4.0)(less@4.2.0)(sass-embedded@1.78.0)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.5.1))
       zod:
-        specifier: 3.23.8
-        version: 3.23.8
+        specifier: 3.24.1
+        version: 3.24.1
 
   frontend/ui:
     dependencies:
@@ -7781,8 +7781,8 @@ packages:
     peerDependencies:
       zod: ^3.18.0
 
-  zod@3.23.8:
-    resolution: {integrity: sha512-XBx9AXhXktjUqnepgTiE5flcKIYWi/rme0Eaj+5Y0lftuGBq+jyRu/md4WnuxqgP1ubdpNCsYEYPxrzVHD8d6g==}
+  zod@3.24.1:
+    resolution: {integrity: sha512-muH7gBL9sI1nciMZV67X5fTKKBLtwpZ5VBp1vsOQzj1MhrBZ4wlVCm3gedKZWLp0Oyel8sIGfeiz54Su+OVT+A==}
 
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
@@ -10042,7 +10042,7 @@ snapshots:
       '@tanstack/virtual-file-routes': 1.87.6
       prettier: 3.4.2
       tsx: 4.19.2
-      zod: 3.23.8
+      zod: 3.24.1
 
   '@tanstack/router-plugin@1.87.13(vite@6.0.3(@types/node@22.10.2)(jiti@2.4.0)(less@4.2.0)(sass-embedded@1.78.0)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.5.1))':
     dependencies:
@@ -10063,16 +10063,16 @@ snapshots:
       babel-dead-code-elimination: 1.0.6
       chokidar: 3.6.0
       unplugin: 1.16.0
-      zod: 3.23.8
+      zod: 3.24.1
     optionalDependencies:
       vite: 6.0.3(@types/node@22.10.2)(jiti@2.4.0)(less@4.2.0)(sass-embedded@1.78.0)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.5.1)
     transitivePeerDependencies:
       - supports-color
 
-  '@tanstack/router-zod-adapter@1.81.5(@tanstack/react-router@1.87.12(@tanstack/router-generator@1.87.7)(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1))(zod@3.23.8)':
+  '@tanstack/router-zod-adapter@1.81.5(@tanstack/react-router@1.87.12(@tanstack/router-generator@1.87.7)(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1))(zod@3.24.1)':
     dependencies:
       '@tanstack/react-router': 1.87.12(@tanstack/router-generator@1.87.7)(react-dom@19.0.0-rc.1(react@19.0.0-rc.1))(react@19.0.0-rc.1)
-      zod: 3.23.8
+      zod: 3.24.1
 
   '@tanstack/store@0.6.0': {}
 
@@ -11943,8 +11943,8 @@ snapshots:
       '@babel/plugin-proposal-private-methods': 7.18.6(@babel/core@7.26.0)
       eslint: 8.57.1
       hermes-parser: 0.20.1
-      zod: 3.23.8
-      zod-validation-error: 3.3.1(zod@3.23.8)
+      zod: 3.24.1
+      zod-validation-error: 3.3.1(zod@3.24.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -12936,8 +12936,8 @@ snapshots:
       strip-json-comments: 5.0.1
       summary: 2.1.0
       typescript: 5.7.2
-      zod: 3.23.8
-      zod-validation-error: 3.3.1(zod@3.23.8)
+      zod: 3.24.1
+      zod-validation-error: 3.3.1(zod@3.24.1)
 
   known-css-properties@0.35.0: {}
 
@@ -15624,10 +15624,10 @@ snapshots:
 
   yocto-queue@1.1.1: {}
 
-  zod-validation-error@3.3.1(zod@3.23.8):
+  zod-validation-error@3.3.1(zod@3.24.1):
     dependencies:
-      zod: 3.23.8
+      zod: 3.24.1
 
-  zod@3.23.8: {}
+  zod@3.24.1: {}
 
   zwitch@2.0.4: {}

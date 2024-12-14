@@ -11,7 +11,7 @@ authors = ["zzzgydi", "keiko233"]
 [workspace.dependencies]
 thiserror = "2"
 tracing = "0.1"
-boa_engine = { version = "0.19.1" }
+boa_engine = { version = "0.20" }
 
 [profile.release]
 panic = "unwind"

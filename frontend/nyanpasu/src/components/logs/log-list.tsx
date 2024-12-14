@@ -2,7 +2,7 @@ import { useDebounceEffect } from "ahooks";
 import { useAtomValue } from "jotai";
 import { RefObject, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Virtualizer, VListHandle } from "virtua";
+import { Virtualizer, VirtualizerHandle } from "virtua";
 import ContentDisplay from "../base/content-display";
 import LogItem from "./log-item";
 import { atomLogLevel, atomLogList } from "./modules/store";
@@ -16,21 +16,21 @@ export const LogList = ({
 
   const logData = useAtomValue(atomLogList);
 
-  const virtualizerRef = useRef<VListHandle>(null);
+  const virtualizerRef = useRef<VirtualizerHandle>(null);
 
   const shouldStickToBottom = useRef(true);
 
-  const isFristScroll = useRef(true);
+  const isFirstScroll = useRef(true);
 
   useDebounceEffect(
     () => {
       if (shouldStickToBottom && logData.length) {
         virtualizerRef.current?.scrollToIndex(logData.length - 1, {
           align: "end",
-          smooth: !isFristScroll.current,
+          smooth: !isFirstScroll.current,
         });
 
-        isFristScroll.current = false;
+        isFirstScroll.current = false;
       }
     },
     [logData],
@@ -40,10 +40,11 @@ export const LogList = ({
   const logLevel = useAtomValue(atomLogLevel);
 
   useEffect(() => {
-    isFristScroll.current = true;
+    isFirstScroll.current = true;
   }, [logLevel]);
 
-  const handleRangeChange = (_start: number, end: number) => {
+  const handleScroll = (_offset: number) => {
+    const end = virtualizerRef.current?.findEndIndex() || 0;
     if (end + 1 === logData.length) {
       shouldStickToBottom.current = true;
     } else {
@@ -55,7 +56,7 @@ export const LogList = ({
     <Virtualizer
       ref={virtualizerRef}
       scrollRef={scrollRef}
-      onRangeChange={handleRangeChange}
+      onScroll={handleScroll}
     >
       {logData.map((item, index) => {
         return <LogItem key={index} value={item} />;

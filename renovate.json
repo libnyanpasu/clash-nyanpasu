@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:base",
+    "config:recommended",
     "default:automergeMinor",
     "default:prConcurrentLimit10",
     "default:prHourlyLimitNone",
@@ -21,30 +21,30 @@
     },
     {
       "groupName": "Oxc packages",
-      "matchPackagePatterns": ["oxc"]
+      "matchPackageNames": ["/oxc/"]
     },
     {
       "groupName": "Bundler packages",
-      "matchPackagePatterns": ["vite", "unplugin"]
+      "matchPackageNames": ["/vite/", "/unplugin/"]
     },
     {
       "groupName": "Typescript packages",
-      "matchPackagePatterns": ["@types", "ts-", "tsx", "typescript"]
+      "matchPackageNames": ["/@types/", "/ts-/", "/tsx/", "/typescript/"]
     },
     {
       "groupName": "Lint packages",
-      "matchPackagePatterns": [
-        "eslint",
-        "prettier",
-        "commitlint",
-        "stylelint",
-        "husky",
-        "lint-staged"
+      "matchPackageNames": [
+        "/eslint/",
+        "/prettier/",
+        "/commitlint/",
+        "/stylelint/",
+        "/husky/",
+        "/lint-staged/"
       ]
     },
     {
       "groupName": "Testing packages",
-      "matchPackagePatterns": ["vitest", "cypress", "wdio"]
+      "matchPackageNames": ["/vitest/", "/cypress/", "/wdio/"]
     }
   ]
 }

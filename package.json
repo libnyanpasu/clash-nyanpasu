@@ -59,6 +59,7 @@
   "devDependencies": {
     "@commitlint/cli": "19.6.1",
     "@commitlint/config-conventional": "19.6.0",
+    "@eslint/compat": "^1.2.4",
     "@ianvs/prettier-plugin-sort-imports": "4.4.0",
     "@tauri-apps/cli": "2.1.0",
     "@types/fs-extra": "11.0.4",
@@ -70,7 +71,7 @@
     "conventional-changelog-conventionalcommits": "8.0.0",
     "cross-env": "7.0.3",
     "dedent": "1.5.3",
-    "eslint": "8.57.1",
+    "eslint": "9.17.0",
     "eslint-config-prettier": "9.1.0",
     "eslint-config-standard": "17.1.0",
     "eslint-import-resolver-alias": "1.1.2",
@@ -80,10 +81,12 @@
     "eslint-plugin-prettier": "5.2.1",
     "eslint-plugin-promise": "7.2.1",
     "eslint-plugin-react": "7.37.2",
-    "eslint-plugin-react-compiler": "0.0.0-experimental-fcabbc1-20241106",
-    "eslint-plugin-react-hooks": "4.6.2",
+    "eslint-plugin-react-compiler": "19.0.0-beta-37ed2a7-20241206",
+    "eslint-plugin-react-hooks": "5.1.0",
+    "globals": "^15.13.0",
     "knip": "5.40.0",
     "lint-staged": "15.2.11",
+    "neostandard": "^0.12.0",
     "npm-run-all2": "7.0.1",
     "postcss": "8.4.49",
     "postcss-html": "1.7.0",
@@ -102,7 +105,8 @@
     "stylelint-scss": "6.10.0",
     "tailwindcss": "3.4.16",
     "tsx": "4.19.2",
-    "typescript": "5.7.2"
+    "typescript": "5.7.2",
+    "typescript-eslint": "^8.18.0"
   },
   "packageManager": "pnpm@9.15.0+sha512.76e2379760a4328ec4415815bcd6628dee727af3779aaa4c914e3944156c4299921a89f976381ee107d41f12cfa4b66681ca9c718f0668fa0831ed4c6d8ba56c",
   "engines": {

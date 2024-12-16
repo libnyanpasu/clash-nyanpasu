@@ -23,7 +23,7 @@ if (!SIDECAR_HOST) {
 
 const platform = process.platform
 
-const arch = (ARCH ? ARCH : process.arch) as NodeJS.Architecture | 'armel'
+const arch = (ARCH || process.arch) as NodeJS.Architecture | 'armel'
 
 archCheck(platform, arch)
 

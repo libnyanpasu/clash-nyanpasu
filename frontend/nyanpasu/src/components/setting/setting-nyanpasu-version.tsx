@@ -100,7 +100,7 @@ export const SettingNyanpasuVersion = () => {
               <LogoSvg className="h-32 w-32" />
 
               <Typography fontWeight={700} noWrap>
-                {'Clash Nyanpasu~(∠・ω< )⌒☆'}​
+                {'Clash Nyanpasu~(∠・ω< )⌒☆'}&nbsp;
               </Typography>
 
               <Typography>

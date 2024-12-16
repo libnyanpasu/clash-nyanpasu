@@ -157,7 +157,6 @@ export const ProfileDialog = ({
         kind: 'error',
       })
       console.error(err)
-    } finally {
     }
   })
 

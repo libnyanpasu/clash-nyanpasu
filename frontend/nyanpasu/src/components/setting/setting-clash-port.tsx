@@ -25,7 +25,7 @@ export const SettingClashPort = () => {
       <List disablePadding>
         <NumberItem
           label={t('Mixed Port')}
-          vaule={port}
+          value={port}
           checkEvent={(input) => input > 65535 || input < 1}
           checkLabel="Port must be between 1 and 65535."
           onApply={(value) => {

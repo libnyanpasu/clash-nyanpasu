@@ -14,7 +14,7 @@ import react from '@vitejs/plugin-react-swc'
 const devtools = () => {
   return {
     name: 'react-devtools',
-    transformIndexHtml(html) {
+    transformIndexHtml(html: string) {
       return html.replace(
         /<\/head>/,
         `<script src="http://localhost:8097"></script></head>`,

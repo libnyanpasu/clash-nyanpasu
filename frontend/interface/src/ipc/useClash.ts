@@ -20,9 +20,9 @@ export const useClash = () => {
       await Promise.all([getClashInfo.mutate(), getConfigs.mutate()])
     } catch (e) {
       console.error(e)
-    } finally {
-      return getClashInfo.data
     }
+
+    return getClashInfo.data
   }
 
   const getVersion = useSWR('getClashVersion', api.getVersion)

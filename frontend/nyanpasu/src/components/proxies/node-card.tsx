@@ -41,7 +41,7 @@ export const NodeCard = memo(function NodeCard({
       sxPaper={{
         backgroundColor: checked
           ? alpha(palette.primary.main, 0.3)
-          : palette.mode == 'dark'
+          : palette.mode === 'dark'
             ? alpha(palette.grey[900], 0.3)
             : palette.grey[100],
       }}

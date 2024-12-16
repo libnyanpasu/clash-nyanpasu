@@ -210,11 +210,11 @@ export const updateProxyProvider = async (name: string) => {
   return await invoke<void>('update_proxy_provider', { name })
 }
 
-export const save_window_size_state = async () => {
+export const saveWindowSizeState = async () => {
   return await invoke<void>('save_window_size_state')
 }
 
-export const collect_envs = async () => {
+export const collectEnvs = async () => {
   return await invoke<EnvInfos>('collect_envs')
 }
 

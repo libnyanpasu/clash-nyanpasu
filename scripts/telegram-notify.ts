@@ -130,18 +130,18 @@ const repoInfo = {
 
   // upload windows binary
   consola.info('starting upload windows related binary: here is the list:')
-  let filtered_file = resourceMapping.filter(
+  let filteredFile = resourceMapping.filter(
     (item) =>
       !item.includes('fixed-webview') &&
       (item.endsWith('.exe') || item.endsWith('portable.zip')),
   )
-  filtered_file.forEach((v) => {
+  filteredFile.forEach((v) => {
     consola.debug(`file: ${v}, size:${getFileSize(v)}`)
   })
   await pRetry(
     () =>
       client.sendFile(TELEGRAM_TO_NIGHTLY, {
-        file: filtered_file,
+        file: filteredFile,
         forceDocument: true,
         caption: `Clash Nyanpasu Nightly Build ${GIT_SHORT_HASH} for Windows`,
         workers: 16,
@@ -153,8 +153,8 @@ const repoInfo = {
   )
 
   consola.info('starting upload macos related binary: here is the list:')
-  filtered_file = resourceMapping.filter((item) => item.endsWith('.dmg'))
-  filtered_file.forEach((v) => {
+  filteredFile = resourceMapping.filter((item) => item.endsWith('.dmg'))
+  filteredFile.forEach((v) => {
     consola.debug(`file: ${v}, size:${getFileSize(v)}`)
   })
 
@@ -162,7 +162,7 @@ const repoInfo = {
   await pRetry(
     () =>
       client.sendFile(TELEGRAM_TO_NIGHTLY, {
-        file: filtered_file,
+        file: filteredFile,
         forceDocument: true,
         caption: `Clash Nyanpasu Nightly Build ${GIT_SHORT_HASH} for macOS`,
         workers: 16,
@@ -173,7 +173,7 @@ const repoInfo = {
   consola.info(
     'starting upload Linux related binary, part 1: here is the list:',
   )
-  filtered_file = resourceMapping.filter(
+  filteredFile = resourceMapping.filter(
     (item) =>
       (item.endsWith('.rpm') ||
         item.endsWith('.deb') ||
@@ -181,7 +181,7 @@ const repoInfo = {
       !item.includes('armel') &&
       !item.includes('armhf'),
   )
-  filtered_file.forEach((v) => {
+  filteredFile.forEach((v) => {
     consola.debug(`file: ${v}, size:${getFileSize(v)}`)
   })
 
@@ -189,7 +189,7 @@ const repoInfo = {
   await pRetry(
     () =>
       client.sendFile(TELEGRAM_TO_NIGHTLY, {
-        file: filtered_file,
+        file: filteredFile,
         forceDocument: true,
         caption: `Clash Nyanpasu Nightly Build ${GIT_SHORT_HASH} for Linux main target`,
         workers: 16,
@@ -200,7 +200,7 @@ const repoInfo = {
   consola.info(
     'starting upload Linux related binary, part 2: here is the list:',
   )
-  filtered_file = resourceMapping.filter(
+  filteredFile = resourceMapping.filter(
     (item) =>
       ((item.endsWith('.rpm') ||
         item.endsWith('.deb') ||
@@ -208,7 +208,7 @@ const repoInfo = {
         item.includes('armel')) ||
       item.includes('armhf'),
   )
-  filtered_file.forEach((v) => {
+  filteredFile.forEach((v) => {
     consola.debug(`file: ${v}, size:${getFileSize(v)}`)
   })
 
@@ -216,7 +216,7 @@ const repoInfo = {
   await pRetry(
     () =>
       client.sendFile(TELEGRAM_TO_NIGHTLY, {
-        file: filtered_file,
+        file: filteredFile,
         forceDocument: true,
         caption: `Clash Nyanpasu Nightly Build ${GIT_SHORT_HASH} for Linux armv7 target`,
         workers: 16,

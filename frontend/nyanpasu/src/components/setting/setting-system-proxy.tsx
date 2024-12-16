@@ -103,7 +103,7 @@ export const SettingSystemProxy = () => {
 
           <NumberItem
             label={t('Guard Interval')}
-            vaule={nyanpasuConfig?.proxy_guard_interval || 0}
+            value={nyanpasuConfig?.proxy_guard_interval || 0}
             checkEvent={(input) => input <= 0}
             checkLabel={t('The interval must be greater than 0 second')}
             onApply={(value) => {
@@ -130,7 +130,7 @@ export const SettingSystemProxy = () => {
             />
           </ListItem>
 
-          <Expand open={proxyBypass != nyanpasuConfig?.system_proxy_bypass}>
+          <Expand open={proxyBypass !== nyanpasuConfig?.system_proxy_bypass}>
             <Box sx={{ pb: 1 }} display="flex" justifyContent="end">
               <Button
                 variant="contained"

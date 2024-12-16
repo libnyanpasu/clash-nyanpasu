@@ -46,7 +46,7 @@ export const PaperSwitchButton = memo(function PaperSwitchButton({
         {
           backgroundColor: checked
             ? alpha(palette.primary.main, 0.1)
-            : palette.mode == 'dark'
+            : palette.mode === 'dark'
               ? palette.common.black
               : palette.grey[100],
           cursor: pending ? 'progress' : 'none',

@@ -106,9 +106,9 @@ export const ProfileItem = memo(function ProfileItem({
 
       await deleteConnections()
     } catch (err) {
-      const is_fetch_error = err instanceof Error && err.name === 'FetchError'
+      const isFetchError = err instanceof Error && err.name === 'FetchError'
       message(
-        is_fetch_error
+        isFetchError
           ? t('FetchError', {
               content: t('Subscription'),
             })
@@ -262,7 +262,7 @@ export const ProfileItem = memo(function ProfileItem({
                   />
                 ),
               ]}
-            ></TextCarousel>
+            />
           </div>
 
           <div>
@@ -419,7 +419,7 @@ function TextCarousel(props: { nodes: React.ReactNode[]; className?: string }) {
       <AnimatePresence mode="wait">
         {nodes.map(
           (node, i) =>
-            i == index && (
+            i === index && (
               <motion.div
                 className="h-full w-full"
                 key={index}

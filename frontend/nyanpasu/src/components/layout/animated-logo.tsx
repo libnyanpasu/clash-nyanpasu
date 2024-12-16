@@ -65,7 +65,7 @@ export default function AnimatedLogo({
         drag
         dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
         whileDrag={{ scale: 1.15 }}
-        dragSnapToOrigin={true}
+        dragSnapToOrigin
         dragElastic={0.1}
       />
     </AnimatePresence>

@@ -44,7 +44,7 @@ export default function ServerManualPromptDialog({
         },
       )
       setCodes(code)
-    } else if (!!operation) {
+    } else if (operation) {
       const shiki = await getShikiSingleton()
       const code = await shiki.codeToHtml(
         `cd "${coreDir}"\n${OS !== 'windows' ? 'sudo ' : ''}./nyanpasu-service ${operation}`,

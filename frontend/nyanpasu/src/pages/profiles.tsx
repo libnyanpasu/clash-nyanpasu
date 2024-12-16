@@ -49,12 +49,12 @@ function ProfilePage() {
     const currentProfileChains =
       getProfiles.data?.items?.find(
         // TODO: 支持多 Profile
-        (item) => getProfiles.data?.current[0] == item.uid,
+        (item) => getProfiles.data?.current[0] === item.uid,
       )?.chain || []
     return Object.entries(getRuntimeLogs.data || {}).reduce(
       (acc, [key, value]) => {
         const accKey = currentProfileChains.includes(key) ? 'current' : 'global'
-        if (acc[accKey] == 'error') {
+        if (acc[accKey] === 'error') {
           return acc
         }
         for (const log of value) {
@@ -65,7 +65,7 @@ function ProfilePage() {
               acc = { ...acc, [accKey]: 'warn' }
               break
             case 'info':
-              if (acc[accKey] != 'warn') {
+              if (acc[accKey] !== 'warn') {
                 acc = { ...acc, [accKey]: 'info' }
               }
               break
@@ -93,7 +93,7 @@ function ProfilePage() {
   const onClickChains = (profile: Profile.Item) => {
     setGlobalChain(false)
 
-    if (chainsSelected == profile.uid) {
+    if (chainsSelected === profile.uid) {
       setChainsSelected(undefined)
     } else {
       setChainsSelected(profile.uid)
@@ -126,7 +126,7 @@ function ProfilePage() {
   const handleGlobalProfileUpdate = useLockFn(async () => {
     await startGlobalUpdate(async () => {
       const remoteProfiles =
-        profiles?.filter((item) => item.type == 'remote') || []
+        profiles?.filter((item) => item.type === 'remote') || []
       const updates: Array<Promise<void>> = []
       for (const profile of remoteProfiles) {
         const options: Profile.Option = profile.option || {
@@ -223,7 +223,7 @@ function ProfilePage() {
                         onClickChains={onClickChains}
                         selected={getProfiles.data?.current.includes(item.uid)}
                         maxLogLevelTriggered={maxLogLevelTriggered}
-                        chainsSelected={chainsSelected == item.uid}
+                        chainsSelected={chainsSelected === item.uid}
                       />
                     </motion.div>
                   </Grid>

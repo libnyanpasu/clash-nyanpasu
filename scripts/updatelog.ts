@@ -6,7 +6,7 @@ const UPDATE_LOG = 'UPDATELOG.md'
 
 // parse the UPDATELOG.md
 export async function resolveUpdateLog(tag: string) {
-  const reTitle = /^## v[\d\.]+/
+  const reTitle = /^## v[\d.]+/
   const reEnd = /^---/
 
   const file = path.join(cwd, UPDATE_LOG)

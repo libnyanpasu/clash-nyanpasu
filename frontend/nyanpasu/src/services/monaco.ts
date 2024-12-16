@@ -1,3 +1,4 @@
+/* eslint-disable new-cap */
 // features
 // langs
 import 'monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution.js'

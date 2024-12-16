@@ -11,7 +11,7 @@ import {
   PushPinOutlined,
 } from '@mui/icons-material'
 import { alpha, Button, ButtonProps, useTheme } from '@mui/material'
-import { save_window_size_state, useNyanpasu } from '@nyanpasu/interface'
+import { saveWindowSizeState, useNyanpasu } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { platform as getPlatform } from '@tauri-apps/plugin-os'
@@ -110,7 +110,7 @@ export const LayoutControl = ({ className }: { className?: string }) => {
       <CtrlButton
         onClick={() => {
           if (platform.current === 'windows') {
-            save_window_size_state().finally(() => {
+            saveWindowSizeState().finally(() => {
               appWindow.close()
             })
           } else {

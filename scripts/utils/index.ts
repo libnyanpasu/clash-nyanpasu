@@ -20,9 +20,9 @@ export const array2text = (
   let result = ''
 
   const getSplit = () => {
-    if (type == 'newline') {
+    if (type === 'newline') {
       return '\n'
-    } else if (type == 'space') {
+    } else if (type === 'space') {
       return ' '
     }
   }

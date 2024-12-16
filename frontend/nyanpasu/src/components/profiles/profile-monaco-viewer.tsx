@@ -73,7 +73,7 @@ export default function ProfileMonacoViewer({
   const mode = useAtomValue(themeMode)
 
   const path = useMemo(
-    () => `${nanoid()}.${!!schemaType ? `${schemaType}.` : ''}${language}`,
+    () => `${nanoid()}.${schemaType ? `${schemaType}.` : ''}${language}`,
     [schemaType, language],
   )
 

@@ -1,7 +1,5 @@
 import { MUI_BREAKPOINTS } from '@nyanpasu/ui/src/materialYou/themeConsts.mjs'
 
-/* eslint-disable @typescript-eslint/no-var-requires */
-/* eslint-disable @typescript-eslint/no-require-imports */
 const plugin = require('tailwindcss/plugin')
 
 const getMUuiScreen = () => {
@@ -10,7 +8,7 @@ const getMUuiScreen = () => {
   const result = {}
 
   for (const key in breakpoints) {
-    if (breakpoints.hasOwnProperty(key)) {
+    if (Object.prototype.hasOwnProperty.call(breakpoints, key)) {
       result[key] = `${breakpoints[key]}px`
     }
   }

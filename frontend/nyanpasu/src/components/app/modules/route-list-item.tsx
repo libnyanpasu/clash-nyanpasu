@@ -37,14 +37,14 @@ export const RouteListItem = ({
         onlyIcon ? '!mx-auto !size-16 !rounded-3xl' : '!rounded-full !pr-14',
       )}
       sx={[
-        !!match
+        match
           ? {
               backgroundColor: alpha(palette.primary.main, 0.3),
             }
           : {
               backgroundColor: alpha(palette.background.paper, 0.15),
             },
-        !!match
+        match
           ? {
               '&:hover': {
                 backgroundColor: alpha(palette.primary.main, 0.5),

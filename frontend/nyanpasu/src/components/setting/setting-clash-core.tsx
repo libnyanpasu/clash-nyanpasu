@@ -112,7 +112,7 @@ export const SettingClashCore = () => {
   const mergeCores = useMemo(() => {
     return getClashCore.data?.map((item) => {
       const latest = getLatestCore.data?.find(
-        (i) => i.core == item.core,
+        (i) => i.core === item.core,
       )?.latest
 
       return {
@@ -130,7 +130,7 @@ export const SettingClashCore = () => {
     >
       <List disablePadding>
         {mergeCores?.map((item) => {
-          const show = expand || item.core == nyanpasuConfig?.clash_core
+          const show = expand || item.core === nyanpasuConfig?.clash_core
 
           return (
             <motion.div
@@ -156,7 +156,7 @@ export const SettingClashCore = () => {
             >
               <ClashCoreItem
                 data={item}
-                selected={item.core == nyanpasuConfig?.clash_core}
+                selected={item.core === nyanpasuConfig?.clash_core}
                 onClick={() => changeClashCore(item.core)}
               />
             </motion.div>

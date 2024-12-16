@@ -105,7 +105,10 @@ export const SettingClashField = () => {
     const usedObjects = []
 
     for (const key in fields) {
-      if (fields.hasOwnProperty(key) && mergeFields.includes(key)) {
+      if (
+        Object.prototype.hasOwnProperty.call(fields, key) &&
+        mergeFields.includes(key)
+      ) {
         usedObjects.push(key)
       }
     }

@@ -51,9 +51,5 @@ export const getLanguage = (type: Profile.Item['type'], snake?: boolean) => {
     case isEqual(type, Profile.Type.Merge): {
       return snake ? 'YAML' : 'yaml'
     }
-
-    default: {
-      return
-    }
   }
 }

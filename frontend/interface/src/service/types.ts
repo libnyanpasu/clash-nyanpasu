@@ -74,6 +74,7 @@ export interface ClashConfig {
   secret: string
 }
 
+// eslint-disable-next-line @typescript-eslint/no-namespace
 export namespace Profile {
   export interface Config {
     current: string[]
@@ -172,6 +173,7 @@ export interface Proxies {
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-namespace
 export namespace Connection {
   export interface Item {
     id: string

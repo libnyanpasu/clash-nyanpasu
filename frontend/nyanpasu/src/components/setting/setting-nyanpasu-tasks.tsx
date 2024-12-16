@@ -12,7 +12,7 @@ export const SettingNyanpasuTasks = () => {
     <BaseCard label={t('Tasks')}>
       <List disablePadding>
         <NumberItem
-          vaule={nyanpasuConfig?.max_log_files || 0}
+          value={nyanpasuConfig?.max_log_files || 0}
           label={t('Max Log Files')}
           checkEvent={(value) => value <= 0}
           checkLabel="Value must larger than 0."

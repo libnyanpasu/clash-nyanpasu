@@ -28,7 +28,7 @@ const TitleComp = () => {
     if (data?.enable) {
       const port = Number(data.server.split(':')[1])
 
-      if (port == clashConfigs?.['mixed-port']) {
+      if (port === clashConfigs?.['mixed-port']) {
         return {
           label: t('Successful'),
           color: 'success',
@@ -83,7 +83,6 @@ export const ProxyShortcuts = () => {
           title: t('Error'),
           kind: 'error',
         })
-      } finally {
       }
     },
   )

@@ -113,6 +113,6 @@ export const Sparkline: FC<SparklineProps> = ({ data, className, style }) => {
       className={className}
       ref={svgRef}
       style={{ width: '100%', height: '100%', ...style }}
-    ></svg>
+    />
   )
 }

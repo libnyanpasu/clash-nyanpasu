@@ -3,7 +3,7 @@ import type { Clash } from '@nyanpasu/interface'
 export type History = Clash.Proxy['history']
 
 export const filterDelay = (history?: History): number => {
-  if (!history || history.length == 0) {
+  if (!history || history.length === 0) {
     return -1
   } else {
     return history[history.length - 1].delay

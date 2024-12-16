@@ -17,9 +17,7 @@ export const ContentDisplay = ({
     className={cn('flex h-full w-full items-center justify-center', className)}
   >
     <div className="flex flex-col items-center gap-4">
-      {children ? (
-        children
-      ) : (
+      {children || (
         <>
           <Public className="!size-16" />
 

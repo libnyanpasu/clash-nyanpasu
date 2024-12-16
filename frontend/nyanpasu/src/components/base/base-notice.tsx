@@ -86,7 +86,6 @@ export const Notice: NoticeInstance = (props) => {
 
   root.render(<NoticeInner {...props} onClose={onUnmount} />)
 }
-
 ;(['info', 'error', 'success'] as const).forEach((type) => {
   Notice[type] = (message, duration) => {
     setTimeout(() => Notice({ type, message, duration }), 0)

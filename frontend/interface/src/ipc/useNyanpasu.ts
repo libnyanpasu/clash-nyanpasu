@@ -116,13 +116,13 @@ export const useNyanpasu = (options?: {
       direct: false,
     }
 
-    if (data?.clash_core == 'clash') {
+    if (data?.clash_core === 'clash') {
       modes.script = false
     }
 
     const mode = getConfigs.data?.mode?.toLowerCase()
 
-    if (mode && modes.hasOwnProperty(mode)) {
+    if (mode && Object.prototype.hasOwnProperty.call(modes, mode)) {
       modes[mode] = true
     } else {
       modes.rule = true

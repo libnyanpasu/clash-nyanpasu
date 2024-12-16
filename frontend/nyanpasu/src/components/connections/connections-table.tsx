@@ -1,3 +1,4 @@
+/* eslint-disable camelcase */
 import { useAtomValue } from 'jotai'
 import { cloneDeep } from 'lodash-es'
 import { MaterialReactTable, useMaterialReactTable } from 'material-react-table'

@@ -2,6 +2,7 @@ import { ofetch } from 'ofetch'
 import { getClashInfo } from './tauri'
 import { ProviderItem } from './types'
 
+// eslint-disable-next-line @typescript-eslint/no-namespace
 export namespace Clash {
   export interface Config {
     port: number

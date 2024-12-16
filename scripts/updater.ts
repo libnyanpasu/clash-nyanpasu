@@ -67,7 +67,7 @@ async function resolveUpdater() {
   }
 
   const promises = latestRelease.assets.map(async (asset) => {
-    const { name, browser_download_url } = asset
+    const { name, browser_download_url: browserDownloadUrl } = asset
 
     function isMatch(name: string, extension: string, arch: string) {
       return (
@@ -81,45 +81,45 @@ async function resolveUpdater() {
 
     // win64 url
     if (isMatch(name, '.nsis.zip', 'x64')) {
-      updateData.platforms.win64.url = browser_download_url
-      updateData.platforms['windows-x86_64'].url = browser_download_url
+      updateData.platforms.win64.url = browserDownloadUrl
+      updateData.platforms['windows-x86_64'].url = browserDownloadUrl
     }
     // win64 signature
     if (isMatch(name, '.nsis.zip.sig', 'x64')) {
-      const sig = await getSignature(browser_download_url)
+      const sig = await getSignature(browserDownloadUrl)
       updateData.platforms.win64.signature = sig
       updateData.platforms['windows-x86_64'].signature = sig
     }
 
     // win32 url
     if (isMatch(name, '.nsis.zip', 'x86')) {
-      updateData.platforms['windows-i686'].url = browser_download_url
+      updateData.platforms['windows-i686'].url = browserDownloadUrl
     }
     // win32 signature
     if (isMatch(name, '.nsis.zip.sig', 'x86')) {
-      const sig = await getSignature(browser_download_url)
+      const sig = await getSignature(browserDownloadUrl)
       updateData.platforms['windows-i686'].signature = sig
     }
 
     // win arm64 url
     if (isMatch(name, '.nsis.zip', 'arm64')) {
-      updateData.platforms['windows-aarch64'].url = browser_download_url
+      updateData.platforms['windows-aarch64'].url = browserDownloadUrl
     }
     // win arm64 signature
     if (isMatch(name, '.nsis.zip.sig', 'arm64')) {
-      const sig = await getSignature(browser_download_url)
+      const sig = await getSignature(browserDownloadUrl)
       updateData.platforms['windows-aarch64'].signature = sig
     }
 
     // darwin url (intel)
     if (name.endsWith('.app.tar.gz') && !name.includes('aarch')) {
-      updateData.platforms.darwin.url = browser_download_url
-      updateData.platforms['darwin-intel'].url = browser_download_url
-      updateData.platforms['darwin-x86_64'].url = browser_download_url
+      updateData.platforms.darwin.url = browserDownloadUrl
+      updateData.platforms['darwin-intel'].url = browserDownloadUrl
+      updateData.platforms['darwin-x86_64'].url = browserDownloadUrl
     }
     // darwin signature (intel)
     if (name.endsWith('.app.tar.gz.sig') && !name.includes('aarch')) {
-      const sig = await getSignature(browser_download_url)
+      const sig = await getSignature(browserDownloadUrl)
       updateData.platforms.darwin.signature = sig
       updateData.platforms['darwin-intel'].signature = sig
       updateData.platforms['darwin-x86_64'].signature = sig
@@ -127,22 +127,22 @@ async function resolveUpdater() {
 
     // darwin url (aarch)
     if (name.endsWith('aarch64.app.tar.gz')) {
-      updateData.platforms['darwin-aarch64'].url = browser_download_url
+      updateData.platforms['darwin-aarch64'].url = browserDownloadUrl
     }
     // darwin signature (aarch)
     if (name.endsWith('aarch64.app.tar.gz.sig')) {
-      const sig = await getSignature(browser_download_url)
+      const sig = await getSignature(browserDownloadUrl)
       updateData.platforms['darwin-aarch64'].signature = sig
     }
 
     // linux url
     if (name.endsWith('.AppImage.tar.gz')) {
-      updateData.platforms.linux.url = browser_download_url
-      updateData.platforms['linux-x86_64'].url = browser_download_url
+      updateData.platforms.linux.url = browserDownloadUrl
+      updateData.platforms['linux-x86_64'].url = browserDownloadUrl
     }
     // linux signature
     if (name.endsWith('.AppImage.tar.gz.sig')) {
-      const sig = await getSignature(browser_download_url)
+      const sig = await getSignature(browserDownloadUrl)
       updateData.platforms.linux.signature = sig
       updateData.platforms['linux-x86_64'].signature = sig
     }

@@ -47,22 +47,33 @@ export const ServiceShortcuts = () => {
         }
       }
 
-      default:
-      case 'not_installed': {
+      case 'not_installed':
+      default: {
         return {
           label: t('not_installed'),
           color:
-            palette.mode == 'light'
+            palette.mode === 'light'
               ? palette.grey[100]
               : palette.background.paper,
         }
       }
     }
-  }, [serviceStatus, palette])
+  }, [
+    serviceStatus,
+    t,
+    palette.success,
+    palette.mode,
+    palette.error,
+    palette.grey,
+    palette.background.paper,
+  ])
 
   const coreStatus = useMemo(() => {
     const status = coreStatusSWR.data || [{ Stopped: null }, 0, 'normal']
-    if (isObject(status[0]) && status[0].hasOwnProperty('Stopped')) {
+    if (
+      isObject(status[0]) &&
+      Object.prototype.hasOwnProperty.call(status[0], 'Stopped')
+    ) {
       const { Stopped } = status[0]
       return {
         label:

@@ -11,7 +11,7 @@
     "strict": true,
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
-    "moduleResolution": "nodenext",
+    "moduleResolution": "node",
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
@@ -24,6 +24,10 @@
     "jsxImportSource": "@emotion/react",
     "types": ["unplugin-icons/types/react"],
   },
-  "include": ["src", "./auto-imports.d.ts", "vite.config.ts"],
-  "references": [{ "path": "../interface" }, { "path": "../ui" }],
+  "include": ["src", "./auto-imports.d.ts"],
+  "references": [
+    { "path": "../interface" },
+    { "path": "../ui" },
+    { "path": "./tsconfig.node.json" },
+  ],
 }

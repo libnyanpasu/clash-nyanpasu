@@ -1,8 +1,9 @@
 import path from 'node:path'
+import { NodePackageImporter } from 'sass-embedded'
 import AutoImport from 'unplugin-auto-import/vite'
 import IconsResolver from 'unplugin-icons/resolver'
 import Icons from 'unplugin-icons/vite'
-import { defineConfig } from 'vite'
+import { defineConfig, UserConfig } from 'vite'
 import sassDts from 'vite-plugin-sass-dts'
 import svgr from 'vite-plugin-svgr'
 import tsconfigPaths from 'vite-tsconfig-paths'
@@ -29,21 +30,27 @@ const IS_NIGHTLY = process.env.NIGHTLY?.toLowerCase() === 'true'
 export default defineConfig(({ command }) => {
   const isDev = command === 'serve'
 
-  return {
+  const config = {
     // root: "/",
     server: { port: 3000 },
     css: {
       preprocessorOptions: {
         scss: {
-          importer(...args) {
-            if (args[0] !== '@/styles') {
-              return
-            }
+          api: 'modern-compiler',
+          // @ts-expect-error fucking vite why embedded their own sass types definition????
+          importer: [
+            new NodePackageImporter(),
+            // TODO: fix this when vite-sass-dts support it, or fix it when we use `@alias`
+            // (...args: string[]) => {
+            //   if (args[0] !== '@/styles') {
+            //     return
+            //   }
 
-            return {
-              file: `${path.resolve(__dirname, './src/assets/styles')}`,
-            }
-          },
+            //   return {
+            //     file: `${path.resolve(__dirname, './src/assets/styles')}`,
+            //   }
+            // },
+          ],
         },
       },
     },
@@ -115,5 +122,7 @@ export default defineConfig(({ command }) => {
       WIN_PORTABLE: !!process.env.VITE_WIN_PORTABLE,
     },
     html: {},
-  }
+  } satisfies UserConfig
+  // fucking vite why embedded their own sass types definition????
+  return config as any as UserConfig
 })

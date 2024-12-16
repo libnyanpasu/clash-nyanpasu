@@ -1,6 +1,6 @@
-import { useLockFn } from "ahooks";
-import useDebounceFn from "ahooks/lib/useDebounceFn";
-import { AnimatePresence, motion } from "framer-motion";
+import { useLockFn } from 'ahooks'
+import useDebounceFn from 'ahooks/lib/useDebounceFn'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
   CSSProperties,
   ReactNode,
@@ -8,30 +8,30 @@ import {
   useEffect,
   useLayoutEffect,
   useState,
-} from "react";
-import { useTranslation } from "react-i18next";
-import { getSystem, useClickPosition } from "@/hooks";
-import { cn } from "@/utils";
-import LoadingButton from "@mui/lab/LoadingButton";
-import { Button, Divider } from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
-import * as Portal from "@radix-ui/react-portal";
+} from 'react'
+import { useTranslation } from 'react-i18next'
+import { getSystem, useClickPosition } from '@/hooks'
+import { cn } from '@/utils'
+import LoadingButton from '@mui/lab/LoadingButton'
+import { Button, Divider } from '@mui/material'
+import { alpha, useTheme } from '@mui/material/styles'
+import * as Portal from '@radix-ui/react-portal'
 
-const OS = getSystem();
+const OS = getSystem()
 
 export interface BaseDialogProps {
-  title: ReactNode;
-  open: boolean;
-  close?: string;
-  ok?: string;
-  disabledOk?: boolean;
-  contentStyle?: CSSProperties;
-  children?: ReactNode;
-  loading?: boolean;
-  full?: boolean;
-  onOk?: () => void | Promise<void>;
-  onClose?: () => void;
-  divider?: boolean;
+  title: ReactNode
+  open: boolean
+  close?: string
+  ok?: string
+  disabledOk?: boolean
+  contentStyle?: CSSProperties
+  children?: ReactNode
+  loading?: boolean
+  full?: boolean
+  onOk?: () => void | Promise<void>
+  onClose?: () => void
+  divider?: boolean
 }
 
 export const BaseDialog = ({
@@ -48,79 +48,79 @@ export const BaseDialog = ({
   ok,
   divider,
 }: BaseDialogProps) => {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
 
-  const { palette } = useTheme();
+  const { palette } = useTheme()
 
-  const [mounted, setMounted] = useState(false);
+  const [mounted, setMounted] = useState(false)
 
   const [offset, setOffset] = useState({
     x: 0,
     y: 0,
-  });
+  })
 
-  const [okLoading, setOkLoading] = useState(false);
-  const [closeLoading, setCloseLoading] = useState(false);
+  const [okLoading, setOkLoading] = useState(false)
+  const [closeLoading, setCloseLoading] = useState(false)
 
   const { run: runMounted, cancel: cancelMounted } = useDebounceFn(
     () => setMounted(false),
     { wait: 300 },
-  );
+  )
 
-  const clickPosition = useClickPosition();
+  const clickPosition = useClickPosition()
 
-  const getClickPosition = () => clickPosition;
+  const getClickPosition = () => clickPosition
 
   useLayoutEffect(() => {
     if (open) {
       setOffset({
         x: getClickPosition()?.x ?? 0,
         y: getClickPosition()?.y ?? 0,
-      });
+      })
     }
-  }, [open]);
+  }, [open])
 
   const handleClose = useLockFn(async () => {
     if (onClose) {
-      if (onClose.constructor.name === "AsyncFunction") {
+      if (onClose.constructor.name === 'AsyncFunction') {
         try {
-          setCloseLoading(true);
+          setCloseLoading(true)
 
-          await onClose();
+          await onClose()
         } finally {
-          setCloseLoading(false);
+          setCloseLoading(false)
         }
       } else {
-        onClose();
+        onClose()
       }
     }
-    runMounted();
-  });
+    runMounted()
+  })
 
   const handleOk = useLockFn(async () => {
-    if (!onOk) return;
+    if (!onOk) return
 
-    if (onOk.constructor.name === "AsyncFunction") {
+    if (onOk.constructor.name === 'AsyncFunction') {
       try {
-        setOkLoading(true);
+        setOkLoading(true)
 
-        await onOk();
+        await onOk()
       } finally {
-        setOkLoading(false);
+        setOkLoading(false)
       }
     } else {
-      onOk();
+      onOk()
     }
-  });
+  })
 
   useEffect(() => {
     if (open) {
-      setMounted(true);
-      cancelMounted();
+      setMounted(true)
+      cancelMounted()
     } else {
-      handleClose();
+      handleClose()
     }
-  }, [cancelMounted, handleClose, open]);
+  }, [cancelMounted, handleClose, open])
 
   return (
     <AnimatePresence initial={false}>
@@ -129,16 +129,16 @@ export const BaseDialog = ({
           {!full && (
             <motion.div
               className={cn(
-                "fixed inset-0 z-50",
-                OS === "linux" ? "bg-black/50" : "backdrop-blur-xl",
+                'fixed inset-0 z-50',
+                OS === 'linux' ? 'bg-black/50' : 'backdrop-blur-xl',
               )}
               style={{
                 backgroundColor:
-                  OS === "linux"
+                  OS === 'linux'
                     ? undefined
                     : alpha(palette.primary[palette.mode], 0.1),
               }}
-              animate={open ? "open" : "closed"}
+              animate={open ? 'open' : 'closed'}
               initial={{ opacity: 0 }}
               variants={{
                 open: { opacity: 1 },
@@ -150,23 +150,23 @@ export const BaseDialog = ({
 
           <motion.div
             className={cn(
-              "fixed left-[50%] top-[50%] z-50",
-              full ? "h-dvh w-full" : "min-w-96 rounded-3xl shadow",
-              palette.mode === "dark"
-                ? "text-white shadow-zinc-900"
-                : "text-black",
+              'fixed left-[50%] top-[50%] z-50',
+              full ? 'h-dvh w-full' : 'min-w-96 rounded-3xl shadow',
+              palette.mode === 'dark'
+                ? 'text-white shadow-zinc-900'
+                : 'text-black',
             )}
             style={{
               backgroundColor: palette.background.default,
             }}
-            animate={open ? "open" : "closed"}
+            animate={open ? 'open' : 'closed'}
             initial={{
               opacity: 0.3,
               scale: 0,
               x: offset.x - window.innerWidth / 2,
               y: offset.y - window.innerHeight / 2,
-              translateX: "-50%",
-              translateY: "-50%",
+              translateX: '-50%',
+              translateY: '-50%',
             }}
             variants={{
               open: {
@@ -183,15 +183,15 @@ export const BaseDialog = ({
               },
             }}
             transition={{
-              type: "spring",
+              type: 'spring',
               bounce: 0,
               duration: 0.35,
             }}
           >
             <div
               className={cn(
-                "text-xl",
-                !full ? "m-4" : OS === "macos" ? "ml-20 p-3.5" : "m-2 ml-6",
+                'text-xl',
+                !full ? 'm-4' : OS === 'macos' ? 'ml-20 p-3.5' : 'm-2 ml-6',
               )}
               data-tauri-drag-region={full}
             >
@@ -202,13 +202,13 @@ export const BaseDialog = ({
 
             <div
               className={cn(
-                "relative overflow-y-auto overflow-x-hidden p-4",
-                full && "h-full px-6",
+                'relative overflow-y-auto overflow-x-hidden p-4',
+                full && 'h-full px-6',
               )}
               style={{
                 maxHeight: full
-                  ? `calc(100vh - ${OS === "macos" ? 114 : 100}px)`
-                  : "calc(100vh - 200px)",
+                  ? `calc(100vh - ${OS === 'macos' ? 114 : 100}px)`
+                  : 'calc(100vh - 200px)',
                 ...contentStyle,
               }}
             >
@@ -217,7 +217,7 @@ export const BaseDialog = ({
 
             {divider && <Divider />}
 
-            <div className={cn("m-2 flex justify-end gap-2", full && "mx-6")}>
+            <div className={cn('m-2 flex justify-end gap-2', full && 'mx-6')}>
               {onClose && (
                 <LoadingButton
                   disabled={loading || closeLoading}
@@ -225,7 +225,7 @@ export const BaseDialog = ({
                   variant="outlined"
                   onClick={handleClose}
                 >
-                  {close || t("Close")}
+                  {close || t('Close')}
                 </LoadingButton>
               )}
 
@@ -236,7 +236,7 @@ export const BaseDialog = ({
                   variant="contained"
                   onClick={handleOk}
                 >
-                  {ok || t("Ok")}
+                  {ok || t('Ok')}
                 </LoadingButton>
               )}
             </div>
@@ -244,5 +244,5 @@ export const BaseDialog = ({
         </Portal.Root>
       )}
     </AnimatePresence>
-  );
-};
+  )
+}

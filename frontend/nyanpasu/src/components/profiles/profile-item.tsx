@@ -1,10 +1,10 @@
-import { useLockFn, useMemoizedFn, useSetState } from "ahooks";
-import dayjs from "dayjs";
-import { AnimatePresence, motion } from "framer-motion";
-import { memo, use, useEffect, useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { message } from "@/utils/notification";
-import parseTraffic from "@/utils/parse-traffic";
+import { useLockFn, useMemoizedFn, useSetState } from 'ahooks'
+import dayjs from 'dayjs'
+import { AnimatePresence, motion } from 'framer-motion'
+import { memo, use, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { message } from '@/utils/notification'
+import parseTraffic from '@/utils/parse-traffic'
 import {
   FiberManualRecord,
   FilterDrama,
@@ -12,8 +12,8 @@ import {
   Menu as MenuIcon,
   Terminal,
   Update,
-} from "@mui/icons-material";
-import LoadingButton from "@mui/lab/LoadingButton";
+} from '@mui/icons-material'
+import LoadingButton from '@mui/lab/LoadingButton'
 import {
   alpha,
   Badge,
@@ -25,21 +25,21 @@ import {
   Paper,
   Tooltip,
   useTheme,
-} from "@mui/material";
-import { Profile, useClash } from "@nyanpasu/interface";
-import { cleanDeepClickEvent, cn } from "@nyanpasu/ui";
-import { ProfileDialog } from "./profile-dialog";
-import { GlobalUpdatePendingContext } from "./provider";
+} from '@mui/material'
+import { Profile, useClash } from '@nyanpasu/interface'
+import { cleanDeepClickEvent, cn } from '@nyanpasu/ui'
+import { ProfileDialog } from './profile-dialog'
+import { GlobalUpdatePendingContext } from './provider'
 
 export interface ProfileItemProps {
-  item: Profile.Item;
-  selected?: boolean;
+  item: Profile.Item
+  selected?: boolean
   maxLogLevelTriggered?: {
-    global: undefined | "info" | "error" | "warn";
-    current: undefined | "info" | "error" | "warn";
-  };
-  onClickChains: (item: Profile.Item) => void;
-  chainsSelected?: boolean;
+    global: undefined | 'info' | 'error' | 'warn'
+    current: undefined | 'info' | 'error' | 'warn'
+  }
+  onClickChains: (item: Profile.Item) => void
+  chainsSelected?: boolean
 }
 
 export const ProfileItem = memo(function ProfileItem({
@@ -49,9 +49,9 @@ export const ProfileItem = memo(function ProfileItem({
   chainsSelected,
   maxLogLevelTriggered,
 }: ProfileItemProps) {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
 
-  const { palette } = useTheme();
+  const { palette } = useTheme()
 
   const {
     setProfilesConfig,
@@ -59,114 +59,114 @@ export const ProfileItem = memo(function ProfileItem({
     updateProfile,
     deleteProfile,
     viewProfile,
-  } = useClash();
+  } = useClash()
 
-  const globalUpdatePending = use(GlobalUpdatePendingContext);
+  const globalUpdatePending = use(GlobalUpdatePendingContext)
 
   const [loading, setLoading] = useSetState({
     update: false,
     card: false,
-  });
+  })
 
   const calc = () => {
-    let progress = 0;
-    let total = 0;
-    let used = 0;
+    let progress = 0
+    let total = 0
+    let used = 0
 
     if (item.extra) {
-      const { download, upload, total: t } = item.extra;
+      const { download, upload, total: t } = item.extra
 
-      total = t;
+      total = t
 
-      used = download + upload;
+      used = download + upload
 
-      progress = (used / total) * 100;
+      progress = (used / total) * 100
     }
 
-    return { progress, total, used };
-  };
+    return { progress, total, used }
+  }
 
-  const { progress, total, used } = calc();
+  const { progress, total, used } = calc()
 
-  const isRemote = item.type === "remote";
+  const isRemote = item.type === 'remote'
 
-  const IconComponent = isRemote ? FilterDrama : InsertDriveFile;
+  const IconComponent = isRemote ? FilterDrama : InsertDriveFile
 
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
 
   const handleSelect = useLockFn(async () => {
     if (selected) {
-      return;
+      return
     }
 
     try {
-      setLoading({ card: true });
+      setLoading({ card: true })
 
-      await setProfilesConfig({ current: [item.uid] });
+      await setProfilesConfig({ current: [item.uid] })
 
-      await deleteConnections();
+      await deleteConnections()
     } catch (err) {
-      const is_fetch_error = err instanceof Error && err.name === "FetchError";
+      const is_fetch_error = err instanceof Error && err.name === 'FetchError'
       message(
         is_fetch_error
-          ? t("FetchError", {
-              content: t("Subscription"),
+          ? t('FetchError', {
+              content: t('Subscription'),
             })
           : `Error setting profile: \n ${err instanceof Error ? err.message : String(err)}`,
         {
-          title: t("Error"),
-          kind: "error",
+          title: t('Error'),
+          kind: 'error',
         },
-      );
+      )
     } finally {
-      setLoading({ card: false });
+      setLoading({ card: false })
     }
-  });
+  })
 
   const handleUpdate = useLockFn(async (proxy?: boolean) => {
     const options: Profile.Option = item.option || {
       with_proxy: false,
       self_proxy: false,
-    };
+    }
 
     if (proxy) {
       if (item.option?.self_proxy) {
-        options.with_proxy = false;
-        options.self_proxy = true;
+        options.with_proxy = false
+        options.self_proxy = true
       } else {
-        options.with_proxy = true;
-        options.self_proxy = false;
+        options.with_proxy = true
+        options.self_proxy = false
       }
     }
 
     try {
-      setLoading({ update: true });
+      setLoading({ update: true })
 
-      await updateProfile(item.uid, options);
+      await updateProfile(item.uid, options)
     } finally {
-      setLoading({ update: false });
+      setLoading({ update: false })
     }
-  });
+  })
 
   const handleDelete = useLockFn(async () => {
     try {
-      await deleteProfile(item.uid);
+      await deleteProfile(item.uid)
     } catch (err) {
       message(`Delete failed: \n ${JSON.stringify(err)}`, {
-        title: t("Error"),
-        kind: "error",
-      });
+        title: t('Error'),
+        kind: 'error',
+      })
     }
-  });
+  })
 
   const menuMapping = useMemo(
     () => ({
       Select: () => handleSelect(),
-      "Edit Info": () => setOpen(true),
-      "Proxy Chains": () => onClickChains(item),
-      "Open File": () => viewProfile(item.uid),
+      'Edit Info': () => setOpen(true),
+      'Proxy Chains': () => onClickChains(item),
+      'Open File': () => viewProfile(item.uid),
       Update: () => handleUpdate(),
-      "Update(Proxy)": () => handleUpdate(true),
+      'Update(Proxy)': () => handleUpdate(true),
       Delete: () => handleDelete(),
     }),
     [
@@ -177,13 +177,13 @@ export const ProfileItem = memo(function ProfileItem({
       onClickChains,
       viewProfile,
     ],
-  );
+  )
 
   const MenuComp = useMemo(() => {
     const handleClick = (func: () => void) => {
-      setAnchorEl(null);
-      func();
-    };
+      setAnchorEl(null)
+      func()
+    }
 
     return (
       <Menu
@@ -196,19 +196,19 @@ export const ProfileItem = memo(function ProfileItem({
             <MenuItem
               key={index}
               onClick={(e) => {
-                cleanDeepClickEvent(e);
-                handleClick(func);
+                cleanDeepClickEvent(e)
+                handleClick(func)
               }}
             >
               {t(key)}
             </MenuItem>
-          );
+          )
         })}
       </Menu>
-    );
-  }, [anchorEl, menuMapping, t]);
+    )
+  }, [anchorEl, menuMapping, t])
 
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false)
 
   return (
     <>
@@ -236,7 +236,7 @@ export const ProfileItem = memo(function ProfileItem({
               <Chip
                 className="!pl-2 !pr-2 font-bold"
                 avatar={<IconComponent className="!size-5" color="primary" />}
-                label={isRemote ? t("Remote") : t("Local")}
+                label={isRemote ? t('Remote') : t('Local')}
               />
             </Tooltip>
 
@@ -272,8 +272,8 @@ export const ProfileItem = memo(function ProfileItem({
 
           <div
             className={cn(
-              "flex items-center justify-between gap-4",
-              !isRemote && "invisible",
+              'flex items-center justify-between gap-4',
+              !isRemote && 'invisible',
             )}
           >
             <div className="w-full">
@@ -291,37 +291,37 @@ export const ProfileItem = memo(function ProfileItem({
             <Badge
               variant="dot"
               color={
-                maxLogLevelTriggered?.current === "error"
-                  ? "error"
-                  : maxLogLevelTriggered?.current === "warn"
-                    ? "warning"
-                    : "primary"
+                maxLogLevelTriggered?.current === 'error'
+                  ? 'error'
+                  : maxLogLevelTriggered?.current === 'warn'
+                    ? 'warning'
+                    : 'primary'
               }
               invisible={!selected || !maxLogLevelTriggered?.current}
             >
               <Button
                 className="!mr-auto"
                 size="small"
-                variant={chainsSelected ? "contained" : "outlined"}
+                variant={chainsSelected ? 'contained' : 'outlined'}
                 startIcon={<Terminal />}
                 onClick={(e) => {
-                  cleanDeepClickEvent(e);
-                  onClickChains(item);
+                  cleanDeepClickEvent(e)
+                  onClickChains(item)
                 }}
               >
-                {t("Proxy Chains")}
+                {t('Proxy Chains')}
               </Button>
             </Badge>
 
             {isRemote && (
-              <Tooltip title={t("Update")}>
+              <Tooltip title={t('Update')}>
                 <LoadingButton
                   size="small"
                   variant="outlined"
                   className="!size-8 !min-w-0"
                   onClick={(e) => {
-                    cleanDeepClickEvent(e);
-                    menuMapping.Update();
+                    cleanDeepClickEvent(e)
+                    menuMapping.Update()
                   }}
                   loading={globalUpdatePending || loading.update}
                 >
@@ -330,14 +330,14 @@ export const ProfileItem = memo(function ProfileItem({
               </Tooltip>
             )}
 
-            <Tooltip title={t("Menu")}>
+            <Tooltip title={t('Menu')}>
               <Button
                 size="small"
                 variant="contained"
                 className="!size-8 !min-w-0"
                 onClick={(e) => {
-                  cleanDeepClickEvent(e);
-                  setAnchorEl(e.currentTarget);
+                  cleanDeepClickEvent(e)
+                  setAnchorEl(e.currentTarget)
                 }}
               >
                 <MenuIcon />
@@ -348,20 +348,20 @@ export const ProfileItem = memo(function ProfileItem({
 
         <motion.div
           className={cn(
-            "absolute left-0 top-0 h-full w-full",
-            "flex-col items-center justify-center gap-4",
-            "text-shadow-xl rounded-3xl font-bold backdrop-blur",
+            'absolute left-0 top-0 h-full w-full',
+            'flex-col items-center justify-center gap-4',
+            'text-shadow-xl rounded-3xl font-bold backdrop-blur',
           )}
-          initial={{ opacity: 0, display: "none" }}
-          animate={loading.card ? "show" : "hidden"}
+          initial={{ opacity: 0, display: 'none' }}
+          animate={loading.card ? 'show' : 'hidden'}
           variants={{
-            show: { opacity: 1, display: "flex" },
-            hidden: { opacity: 0, transitionEnd: { display: "none" } },
+            show: { opacity: 1, display: 'flex' },
+            hidden: { opacity: 0, transitionEnd: { display: 'none' } },
           }}
         >
           <LinearProgress className="w-40" />
 
-          <div>{t("Applying Profile")}</div>
+          <div>{t('Applying Profile')}</div>
         </motion.div>
       </Paper>
       {MenuComp}
@@ -371,49 +371,49 @@ export const ProfileItem = memo(function ProfileItem({
         profile={item}
       />
     </>
-  );
-});
+  )
+})
 
 function TimeSpan({ ts, k }: { ts: number; k: string }) {
-  const time = dayjs(ts * 1000);
-  const { t } = useTranslation();
+  const time = dayjs(ts * 1000)
+  const { t } = useTranslation()
   return (
-    <Tooltip title={time.format("YYYY/MM/DD HH:mm:ss")}>
+    <Tooltip title={time.format('YYYY/MM/DD HH:mm:ss')}>
       <div className="animate-marquee h-fit whitespace-nowrap text-right text-sm font-medium">
         {t(k, {
           time: time.fromNow(),
         })}
       </div>
     </Tooltip>
-  );
+  )
 }
 
 function TextCarousel(props: { nodes: React.ReactNode[]; className?: string }) {
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState(0)
   const nodes = useMemo(
     () => props.nodes.filter((item) => !!item),
     [props.nodes],
-  );
+  )
 
   const nextNode = useMemoizedFn(() => {
-    setIndex((i) => (i + 1) % nodes.length);
-  });
+    setIndex((i) => (i + 1) % nodes.length)
+  })
 
   useEffect(() => {
     if (nodes.length <= 1) {
-      return;
+      return
     }
     const timer = setInterval(() => {
-      nextNode();
-    }, 8000);
-    return () => clearInterval(timer);
-  }, [index, nextNode, nodes.length]);
+      nextNode()
+    }, 8000)
+    return () => clearInterval(timer)
+  }, [index, nextNode, nodes.length])
   if (nodes.length === 0) {
-    return null;
+    return null
   }
   return (
     <div
-      className={cn("overflow-hidden", props.className)}
+      className={cn('overflow-hidden', props.className)}
       onClick={() => nextNode()}
     >
       <AnimatePresence mode="wait">
@@ -433,7 +433,7 @@ function TextCarousel(props: { nodes: React.ReactNode[]; className?: string }) {
         )}
       </AnimatePresence>
     </div>
-  );
+  )
 }
 
-export default ProfileItem;
+export default ProfileItem

@@ -2,9 +2,9 @@ import {
   argbFromHex,
   hexFromArgb,
   themeFromSourceColor,
-} from "@material/material-color-utilities";
-import { createTheme } from "@mui/material/styles";
-import createPalette from "@mui/material/styles/createPalette";
+} from '@material/material-color-utilities'
+import { createTheme } from '@mui/material/styles'
+import createPalette from '@mui/material/styles/createPalette'
 import {
   MuiButton,
   MuiButtonGroup,
@@ -18,27 +18,27 @@ import {
   MuiMenu,
   MuiPaper,
   MuiSwitch,
-} from "./themeComponents";
-import { MUI_BREAKPOINTS } from "./themeConsts.mjs";
+} from './themeComponents'
+import { MUI_BREAKPOINTS } from './themeConsts.mjs'
 
 interface ThemeSchema {
-  primary_color: string;
-  secondary_color: string;
-  primary_text: string;
-  secondary_text: string;
-  info_color: string;
-  error_color: string;
-  warning_color: string;
-  success_color: string;
-  font_family?: string;
+  primary_color: string
+  secondary_color: string
+  primary_text: string
+  secondary_text: string
+  info_color: string
+  error_color: string
+  warning_color: string
+  success_color: string
+  font_family?: string
 }
 
 export const createMDYTheme = (themeSchema: ThemeSchema) => {
   const materialColor = themeFromSourceColor(
     argbFromHex(themeSchema.primary_color),
-  );
+  )
 
-  const generatePalette = (mode: "light" | "dark") => {
+  const generatePalette = (mode: 'light' | 'dark') => {
     return createPalette({
       mode,
       primary: {
@@ -56,21 +56,21 @@ export const createMDYTheme = (themeSchema: ThemeSchema) => {
           materialColor.schemes[mode].onSecondaryContainer,
         ),
       },
-    });
-  };
+    })
+  }
   const colorSchemes = {
     light: {
-      palette: generatePalette("light"),
+      palette: generatePalette('light'),
     },
     dark: {
-      palette: generatePalette("dark"),
+      palette: generatePalette('dark'),
     },
-  };
-  console.log(colorSchemes);
+  }
+  console.log(colorSchemes)
   const theme = createTheme(
     {
       cssVariables: {
-        colorSchemeSelector: "class",
+        colorSchemeSelector: 'class',
       },
       colorSchemes: {
         light: true,
@@ -98,7 +98,7 @@ export const createMDYTheme = (themeSchema: ThemeSchema) => {
     {
       colorSchemes,
     },
-  );
+  )
 
-  return theme;
-};
+  return theme
+}

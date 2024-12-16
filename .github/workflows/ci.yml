@@ -48,14 +48,14 @@ jobs:
           xvfb
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "./backend/"
-          prefix-key: "rust-stable"
-          shared-key: "ci"
+          workspaces: './backend/'
+          prefix-key: 'rust-stable'
+          shared-key: 'ci'
           save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - uses: maxim-lobanov/setup-xcode@v1
         if: startsWith(matrix.targets.os, 'macos-')
         with:
-          xcode-version: "15.0"
+          xcode-version: '15.0'
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
@@ -85,7 +85,7 @@ jobs:
       - name: Prepare fronend
         run: pnpm -r build # Build frontend
         env:
-          NODE_OPTIONS: "--max_old_space_size=4096"
+          NODE_OPTIONS: '--max_old_space_size=4096'
       - name: Prepare sidecar and resources
         run: pnpm check
       - name: Lint
@@ -95,7 +95,7 @@ jobs:
         if: startsWith(matrix.targets.os, 'ubuntu-') == false
         run: pnpm run-p lint:clippy lint:rustfmt # Lint
         env:
-          NODE_OPTIONS: "--max_old_space_size=4096"
+          NODE_OPTIONS: '--max_old_space_size=4096'
 
   # 以后完善了新的测试套件后再添加
   # test_unit:

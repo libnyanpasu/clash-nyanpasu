@@ -1,19 +1,19 @@
-import { motion } from "framer-motion";
-import { CSSProperties, FC, ReactNode, Ref, Suspense } from "react";
-import { cn } from "@/utils";
-import * as ScrollArea from "@radix-ui/react-scroll-area";
-import { BaseErrorBoundary } from "./baseErrorBoundary";
-import Header from "./header";
-import "./style.scss";
+import { motion } from 'framer-motion'
+import { CSSProperties, FC, ReactNode, Ref, Suspense } from 'react'
+import { cn } from '@/utils'
+import * as ScrollArea from '@radix-ui/react-scroll-area'
+import { BaseErrorBoundary } from './baseErrorBoundary'
+import Header from './header'
+import './style.scss'
 
 interface BasePageProps {
-  title?: ReactNode;
-  header?: ReactNode;
-  contentStyle?: CSSProperties;
-  sectionStyle?: CSSProperties;
-  full?: boolean;
-  viewportRef?: Ref<HTMLDivElement>;
-  children?: ReactNode;
+  title?: ReactNode
+  header?: ReactNode
+  contentStyle?: CSSProperties
+  sectionStyle?: CSSProperties
+  full?: boolean
+  viewportRef?: Ref<HTMLDivElement>
+  children?: ReactNode
 }
 
 export const BasePage: FC<BasePageProps> = ({
@@ -36,8 +36,8 @@ export const BasePage: FC<BasePageProps> = ({
         >
           <ScrollArea.Viewport
             className={cn(
-              "relative h-full w-full [&>div]:!block",
-              full ?? "p-6",
+              'relative h-full w-full [&>div]:!block',
+              full ?? 'p-6',
             )}
             ref={viewportRef}
             style={sectionStyle}
@@ -66,7 +66,7 @@ export const BasePage: FC<BasePageProps> = ({
         </ScrollArea.Root>
       </div>
     </BaseErrorBoundary>
-  );
-};
+  )
+}
 
-export const ScrollAreaViewport = ScrollArea.Viewport;
+export const ScrollAreaViewport = ScrollArea.Viewport

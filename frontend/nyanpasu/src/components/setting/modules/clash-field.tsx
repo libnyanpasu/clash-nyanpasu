@@ -1,26 +1,26 @@
-import { ChangeEvent, useState } from "react";
-import Marquee from "react-fast-marquee";
-import ArrowForwardIos from "@mui/icons-material/ArrowForwardIos";
-import OpenInNewRounded from "@mui/icons-material/OpenInNewRounded";
-import { alpha, useTheme } from "@mui/material";
-import Box from "@mui/material/Box";
-import ButtonBase, { ButtonBaseProps } from "@mui/material/ButtonBase";
-import Grid from "@mui/material/Grid2";
-import IconButton from "@mui/material/IconButton";
-import Paper from "@mui/material/Paper";
-import { SwitchProps } from "@mui/material/Switch";
-import Tooltip from "@mui/material/Tooltip";
-import Typography from "@mui/material/Typography";
-import { openThat } from "@nyanpasu/interface";
-import { LoadingSwitch } from "@nyanpasu/ui";
+import { ChangeEvent, useState } from 'react'
+import Marquee from 'react-fast-marquee'
+import ArrowForwardIos from '@mui/icons-material/ArrowForwardIos'
+import OpenInNewRounded from '@mui/icons-material/OpenInNewRounded'
+import { alpha, useTheme } from '@mui/material'
+import Box from '@mui/material/Box'
+import ButtonBase, { ButtonBaseProps } from '@mui/material/ButtonBase'
+import Grid from '@mui/material/Grid2'
+import IconButton from '@mui/material/IconButton'
+import Paper from '@mui/material/Paper'
+import { SwitchProps } from '@mui/material/Switch'
+import Tooltip from '@mui/material/Tooltip'
+import Typography from '@mui/material/Typography'
+import { openThat } from '@nyanpasu/interface'
+import { LoadingSwitch } from '@nyanpasu/ui'
 
 export interface LabelSwitchProps extends SwitchProps {
-  label: string;
-  url?: string;
+  label: string
+  url?: string
   onChange?: (
     event: ChangeEvent<HTMLInputElement>,
     checked: boolean,
-  ) => Promise<void> | void;
+  ) => Promise<void> | void
 }
 
 /**
@@ -42,9 +42,9 @@ export const LabelSwitch = ({
   onChange,
   ...props
 }: LabelSwitchProps) => {
-  const { palette } = useTheme();
+  const { palette } = useTheme()
 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false)
 
   const handleChange = async (
     event: ChangeEvent<HTMLInputElement>,
@@ -52,21 +52,21 @@ export const LabelSwitch = ({
   ) => {
     if (onChange) {
       try {
-        setLoading(true);
+        setLoading(true)
 
-        await onChange(event, checked);
+        await onChange(event, checked)
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
     }
-  };
+  }
 
   return (
     <Paper
       sx={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
         padding: 2,
         borderRadius: 6,
         backgroundColor: alpha(palette.primary.light, 0.1),
@@ -88,12 +88,12 @@ export const LabelSwitch = ({
       {/* <Switch {...props} /> */}
       <LoadingSwitch loading={loading} onChange={handleChange} {...props} />
     </Paper>
-  );
-};
+  )
+}
 
 export interface ClashFieldItemProps extends ButtonBaseProps {
-  label: string;
-  fields: string[];
+  label: string
+  fields: string[]
 }
 
 /**
@@ -114,7 +114,7 @@ export const ClashFieldItem = ({
   fields,
   ...props
 }: ClashFieldItemProps) => {
-  const { palette } = useTheme();
+  const { palette } = useTheme()
 
   return (
     <Grid
@@ -133,19 +133,19 @@ export const ClashFieldItem = ({
         <ButtonBase
           sx={{
             borderRadius: 6,
-            width: "100%",
-            textAlign: "start",
+            width: '100%',
+            textAlign: 'start',
             padding: 2,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
           }}
           {...props}
         >
           <Box width="calc(100% - 8px)">
             <Typography
               sx={{
-                textTransform: "capitalize",
+                textTransform: 'capitalize',
                 fontWeight: 700,
               }}
             >
@@ -157,7 +157,7 @@ export const ClashFieldItem = ({
                 <span>Enabled: </span>
 
                 {fields.map((item, index) => {
-                  return <span key={index}>{item}</span>;
+                  return <span key={index}>{item}</span>
                 })}
               </Box>
             </Marquee>
@@ -167,5 +167,5 @@ export const ClashFieldItem = ({
         </ButtonBase>
       </Paper>
     </Grid>
-  );
-};
+  )
+}

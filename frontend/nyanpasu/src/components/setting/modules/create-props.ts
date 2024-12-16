@@ -1,13 +1,13 @@
-import { useGlobalMutation } from "@/utils/mutation";
-import { SwitchProps } from "@mui/material/Switch/Switch";
-import { Clash, useClash, useNyanpasu, VergeConfig } from "@nyanpasu/interface";
-import { MenuItemProps } from "@nyanpasu/ui";
+import { useGlobalMutation } from '@/utils/mutation'
+import { SwitchProps } from '@mui/material/Switch/Switch'
+import { Clash, useClash, useNyanpasu, VergeConfig } from '@nyanpasu/interface'
+import { MenuItemProps } from '@nyanpasu/ui'
 
-type OptionValue = string | number | boolean;
+type OptionValue = string | number | boolean
 
 interface CreateMenuPropsOptions {
-  options: Record<string, OptionValue>;
-  fallbackSelect: OptionValue;
+  options: Record<string, OptionValue>
+  fallbackSelect: OptionValue
 }
 
 export const clash = {
@@ -25,11 +25,11 @@ export const clash = {
    */
   useBooleanProps: (
     propName: {
-      [K in keyof Clash.Config]: Clash.Config[K] extends boolean ? K : never;
+      [K in keyof Clash.Config]: Clash.Config[K] extends boolean ? K : never
     }[keyof Clash.Config],
   ): SwitchProps => {
-    const { getConfigs, setConfigs } = useClash();
-    const mutate = useGlobalMutation();
+    const { getConfigs, setConfigs } = useClash()
+    const mutate = useGlobalMutation()
     return {
       checked: getConfigs.data?.[propName] || false,
       onChange: () => {
@@ -39,11 +39,11 @@ export const clash = {
         ]).finally(() => {
           mutate(
             (key) =>
-              typeof key === "string" && key.includes("/getRuntimeConfigYaml"),
-          );
-        });
+              typeof key === 'string' && key.includes('/getRuntimeConfigYaml'),
+          )
+        })
       },
-    };
+    }
   },
 
   /**
@@ -64,9 +64,9 @@ export const clash = {
   useMenuProps: (
     propName: keyof Clash.Config,
     { options, fallbackSelect }: CreateMenuPropsOptions,
-  ): Omit<MenuItemProps, "label"> => {
-    const { getConfigs, setConfigs } = useClash();
-    const mutate = useGlobalMutation();
+  ): Omit<MenuItemProps, 'label'> => {
+    const { getConfigs, setConfigs } = useClash()
+    const mutate = useGlobalMutation()
 
     return {
       options,
@@ -75,13 +75,13 @@ export const clash = {
         Promise.all([setConfigs({ [propName]: value })]).finally(() => {
           mutate(
             (key) =>
-              typeof key === "string" && key.includes("/getRuntimeConfigYaml"),
-          );
-        });
+              typeof key === 'string' && key.includes('/getRuntimeConfigYaml'),
+          )
+        })
       },
-    };
+    }
   },
-};
+}
 
 export const nyanpasu = {
   /**
@@ -97,17 +97,17 @@ export const nyanpasu = {
    * @copyright LibNyanpasu org. 2024
    */
   useBooleanProps: (propName: keyof VergeConfig): SwitchProps => {
-    const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu();
+    const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu()
 
-    if (typeof nyanpasuConfig?.[propName] !== "boolean") {
-      throw new Error(`Property ${propName} is not a boolean type`);
+    if (typeof nyanpasuConfig?.[propName] !== 'boolean') {
+      throw new Error(`Property ${propName} is not a boolean type`)
     }
 
     return {
       checked: (nyanpasuConfig?.[propName] as boolean) || false,
       onChange: async () => {
-        await setNyanpasuConfig({ [propName]: !nyanpasuConfig?.[propName] });
+        await setNyanpasuConfig({ [propName]: !nyanpasuConfig?.[propName] })
       },
-    };
+    }
   },
-};
+}

@@ -1,5 +1,5 @@
-import { ReactNode } from "react";
-import { ErrorBoundary, FallbackProps } from "react-error-boundary";
+import { ReactNode } from 'react'
+import { ErrorBoundary, FallbackProps } from 'react-error-boundary'
 
 function ErrorFallback({ error }: FallbackProps) {
   return (
@@ -13,11 +13,11 @@ function ErrorFallback({ error }: FallbackProps) {
         <pre>{error.stack}</pre>
       </details>
     </div>
-  );
+  )
 }
 
 interface Props {
-  children?: ReactNode;
+  children?: ReactNode
 }
 
 export const BaseErrorBoundary = (props: Props) => {
@@ -25,5 +25,5 @@ export const BaseErrorBoundary = (props: Props) => {
     <ErrorBoundary FallbackComponent={ErrorFallback}>
       {props.children}
     </ErrorBoundary>
-  );
-};
+  )
+}

@@ -1,2 +1,2 @@
-export * from "./create-props";
-export * from "./clash-web";
+export * from './create-props'
+export * from './clash-web'

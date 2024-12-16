@@ -1,15 +1,15 @@
-import { MenuItem as MuiMenuItem, Select, SxProps } from "@mui/material";
-import { BaseItem } from "./baseItem";
+import { MenuItem as MuiMenuItem, Select, SxProps } from '@mui/material'
+import { BaseItem } from './baseItem'
 
-type OptionValue = string | number | boolean;
+type OptionValue = string | number | boolean
 
 export interface MenuItemProps {
-  label: string;
-  options: Record<string, OptionValue>;
-  selected: OptionValue;
-  onSelected: (value: OptionValue) => void;
-  selectSx?: SxProps;
-  disabled?: boolean;
+  label: string
+  options: Record<string, OptionValue>
+  selected: OptionValue
+  onSelected: (value: OptionValue) => void
+  selectSx?: SxProps
+  disabled?: boolean
 }
 
 /**
@@ -45,9 +45,9 @@ export const MenuItem = ({
       <Select
         size="small"
         value={selected}
-        inputProps={{ "aria-label": "Without label" }}
+        inputProps={{ 'aria-label': 'Without label' }}
         onChange={(e) => {
-          onSelected(e.target.value);
+          onSelected(e.target.value)
         }}
         sx={{ width: 104, ...selectSx }}
         disabled={disabled}
@@ -64,7 +64,7 @@ export const MenuItem = ({
         ))}
       </Select>
     </BaseItem>
-  );
-};
+  )
+}
 
-export default MenuItem;
+export default MenuItem

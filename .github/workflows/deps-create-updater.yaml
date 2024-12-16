@@ -1,26 +1,26 @@
-name: "[Single] Create Updater"
+name: '[Single] Create Updater'
 
 on:
   workflow_dispatch:
     inputs:
       nightly:
-        description: "Nightly"
+        description: 'Nightly'
         required: true
         type: boolean
         default: false
       release_body:
-        description: "Release Body"
+        description: 'Release Body'
         required: false
         type: string
   workflow_call:
     inputs:
       nightly:
-        description: "Nightly"
+        description: 'Nightly'
         required: true
         type: boolean
         default: false
       release_body:
-        description: "Release Body"
+        description: 'Release Body'
         required: false
         type: string
 

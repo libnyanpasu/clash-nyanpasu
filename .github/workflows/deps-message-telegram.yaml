@@ -1,10 +1,10 @@
-name: "[Single] Send Message to Telegram"
+name: '[Single] Send Message to Telegram'
 
 on:
   workflow_dispatch:
     inputs:
       nightly:
-        description: "Nightly"
+        description: 'Nightly'
         required: true
         type: boolean
         default: false
@@ -12,7 +12,7 @@ on:
   workflow_call:
     inputs:
       nightly:
-        description: "Nightly"
+        description: 'Nightly'
         required: true
         type: boolean
         default: false
@@ -49,6 +49,6 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
-          TELEGRAM_TO: "@keikolog"
-          TELEGRAM_TO_NIGHTLY: "@ClashNyanpasu"
+          TELEGRAM_TO: '@keikolog'
+          TELEGRAM_TO_NIGHTLY: '@ClashNyanpasu'
           WORKFLOW_RUN_ID: ${{ github.run_id }}

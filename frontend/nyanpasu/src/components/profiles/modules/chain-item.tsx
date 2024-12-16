@@ -1,5 +1,5 @@
-import { useLongPress } from "ahooks";
-import { Reorder, useDragControls } from "framer-motion";
+import { useLongPress } from 'ahooks'
+import { Reorder, useDragControls } from 'framer-motion'
 import {
   memo,
   PointerEvent,
@@ -7,15 +7,15 @@ import {
   useRef,
   useState,
   useTransition,
-} from "react";
-import { useTranslation } from "react-i18next";
-import { Menu as MenuIcon } from "@mui/icons-material";
-import { LoadingButton } from "@mui/lab";
-import { alpha, ListItemButton, Menu, MenuItem, useTheme } from "@mui/material";
-import { Profile, useClash } from "@nyanpasu/interface";
-import { cleanDeepClickEvent } from "@nyanpasu/ui";
+} from 'react'
+import { useTranslation } from 'react-i18next'
+import { Menu as MenuIcon } from '@mui/icons-material'
+import { LoadingButton } from '@mui/lab'
+import { alpha, ListItemButton, Menu, MenuItem, useTheme } from '@mui/material'
+import { Profile, useClash } from '@nyanpasu/interface'
+import { cleanDeepClickEvent } from '@nyanpasu/ui'
 
-const longPressDelay = 200;
+const longPressDelay = 200
 
 export const ChainItem = memo(function ChainItem({
   item,
@@ -23,45 +23,45 @@ export const ChainItem = memo(function ChainItem({
   onClick,
   onChainEdit,
 }: {
-  item: Profile.Item;
-  selected?: boolean;
-  onClick: () => Promise<void>;
-  onChainEdit: () => void;
+  item: Profile.Item
+  selected?: boolean
+  onClick: () => Promise<void>
+  onChainEdit: () => void
 }) {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
 
-  const { palette } = useTheme();
+  const { palette } = useTheme()
 
-  const { deleteProfile, viewProfile } = useClash();
+  const { deleteProfile, viewProfile } = useClash()
 
-  const [isPending, startTransition] = useTransition();
+  const [isPending, startTransition] = useTransition()
 
   const handleClick = () => {
-    startTransition(onClick);
-  };
+    startTransition(onClick)
+  }
 
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
 
   const menuMapping = {
     Apply: () => handleClick(),
-    "Edit Info": () => onChainEdit(),
-    "Open File": () => viewProfile(item.uid),
+    'Edit Info': () => onChainEdit(),
+    'Open File': () => viewProfile(item.uid),
     Delete: () => deleteProfile(item.uid),
-  };
+  }
 
   const handleMenuClick = (func: () => void) => {
-    setAnchorEl(null);
-    func();
-  };
+    setAnchorEl(null)
+    func()
+  }
 
   // const controls = useDragControls();
 
   const onLongPress = (e: PointerEvent) => {
-    cleanDeepClickEvent(e);
+    cleanDeepClickEvent(e)
     // controls.start(e);
-  };
+  }
 
-  const longPressTimerRef = useRef<number | null>(null);
+  const longPressTimerRef = useRef<number | null>(null)
 
   return (
     <>
@@ -74,16 +74,16 @@ export const ChainItem = memo(function ChainItem({
         // dragControls={controls}
         onPointerDown={(e: PointerEvent) => {
           longPressTimerRef.current = window.setTimeout(() => {
-            longPressTimerRef.current = null;
-            onLongPress(e as unknown as PointerEvent);
-          }, longPressDelay);
+            longPressTimerRef.current = null
+            onLongPress(e as unknown as PointerEvent)
+          }, longPressDelay)
         }}
         onPointerUp={(e: PointerEvent) => {
           if (longPressTimerRef.current) {
-            clearTimeout(longPressTimerRef.current!);
+            clearTimeout(longPressTimerRef.current!)
           } else {
-            cleanDeepClickEvent(e);
-            longPressTimerRef.current = null;
+            cleanDeepClickEvent(e)
+            longPressTimerRef.current = null
           }
         }}
       >
@@ -102,12 +102,12 @@ export const ChainItem = memo(function ChainItem({
                 },
             selected
               ? {
-                  "&:hover": {
+                  '&:hover': {
                     backgroundColor: alpha(palette.primary.main, 0.5),
                   },
                 }
               : {
-                  "&:hover": {
+                  '&:hover': {
                     backgroundColor: null,
                   },
                 },
@@ -125,8 +125,8 @@ export const ChainItem = memo(function ChainItem({
             className="!size-8 !min-w-0"
             loading={isPending}
             onClick={(e) => {
-              cleanDeepClickEvent(e);
-              setAnchorEl(e!.currentTarget as HTMLButtonElement);
+              cleanDeepClickEvent(e)
+              setAnchorEl(e!.currentTarget as HTMLButtonElement)
             }}
           >
             <MenuIcon />
@@ -143,17 +143,17 @@ export const ChainItem = memo(function ChainItem({
             <MenuItem
               key={index}
               onClick={(e) => {
-                cleanDeepClickEvent(e);
-                handleMenuClick(func);
+                cleanDeepClickEvent(e)
+                handleMenuClick(func)
               }}
             >
               {t(key)}
             </MenuItem>
-          );
+          )
         })}
       </Menu>
     </>
-  );
-});
+  )
+})
 
-export default ChainItem;
+export default ChainItem

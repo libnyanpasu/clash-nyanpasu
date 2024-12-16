@@ -1,13 +1,13 @@
-import { useLockFn } from "ahooks";
-import { useSetAtom } from "jotai";
-import { useState } from "react";
-import { useTranslation } from "react-i18next";
-import LogoSvg from "@/assets/image/logo.svg?react";
-import { useUpdaterPlatformSupported } from "@/hooks/use-updater";
-import { UpdaterInstanceAtom } from "@/store/updater";
-import { formatError } from "@/utils";
-import { message } from "@/utils/notification";
-import LoadingButton from "@mui/lab/LoadingButton";
+import { useLockFn } from 'ahooks'
+import { useSetAtom } from 'jotai'
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import LogoSvg from '@/assets/image/logo.svg?react'
+import { useUpdaterPlatformSupported } from '@/hooks/use-updater'
+import { UpdaterInstanceAtom } from '@/store/updater'
+import { formatError } from '@/utils'
+import { message } from '@/utils/notification'
+import LoadingButton from '@mui/lab/LoadingButton'
 import {
   alpha,
   Box,
@@ -16,21 +16,21 @@ import {
   Paper,
   Typography,
   useTheme,
-} from "@mui/material";
-import { useNyanpasu } from "@nyanpasu/interface";
-import { BaseCard } from "@nyanpasu/ui";
-import { version } from "@root/package.json";
-import { check as checkUpdate } from "@tauri-apps/plugin-updater";
-import { LabelSwitch } from "./modules/clash-field";
+} from '@mui/material'
+import { useNyanpasu } from '@nyanpasu/interface'
+import { BaseCard } from '@nyanpasu/ui'
+import { version } from '@root/package.json'
+import { check as checkUpdate } from '@tauri-apps/plugin-updater'
+import { LabelSwitch } from './modules/clash-field'
 
 const AutoCheckUpdate = () => {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
 
-  const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu();
+  const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu()
 
   return (
     <LabelSwitch
-      label={t("Auto Check Updates")}
+      label={t('Auto Check Updates')}
       checked={nyanpasuConfig?.enable_auto_check_update}
       onChange={() =>
         setNyanpasuConfig({
@@ -38,47 +38,47 @@ const AutoCheckUpdate = () => {
         })
       }
     />
-  );
-};
+  )
+}
 
 export const SettingNyanpasuVersion = () => {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
 
-  const { palette } = useTheme();
+  const { palette } = useTheme()
 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false)
 
-  const setUpdaterInstance = useSetAtom(UpdaterInstanceAtom);
-  const isPlatformSupported = useUpdaterPlatformSupported();
+  const setUpdaterInstance = useSetAtom(UpdaterInstanceAtom)
+  const isPlatformSupported = useUpdaterPlatformSupported()
   const onCheckUpdate = useLockFn(async () => {
     try {
-      setLoading(true);
+      setLoading(true)
 
-      const update = await checkUpdate();
+      const update = await checkUpdate()
 
       if (!update?.available) {
-        message(t("No update available."), {
-          title: t("Info"),
-          kind: "info",
-        });
+        message(t('No update available.'), {
+          title: t('Info'),
+          kind: 'info',
+        })
       } else {
-        setUpdaterInstance(update || null);
+        setUpdaterInstance(update || null)
       }
     } catch (e) {
       message(
         `Update check failed. Please verify your network connection.\n\n${formatError(e)}`,
         {
-          title: t("Error"),
-          kind: "error",
+          title: t('Error'),
+          kind: 'error',
         },
-      );
+      )
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  });
+  })
 
   return (
-    <BaseCard label={t("Nyanpasu Version")}>
+    <BaseCard label={t('Nyanpasu Version')}>
       <List disablePadding>
         <ListItem sx={{ pl: 0, pr: 0 }}>
           <Paper
@@ -88,7 +88,7 @@ export const SettingNyanpasuVersion = () => {
               padding: 2,
               backgroundColor: alpha(palette.primary.main, 0.1),
               borderRadius: 6,
-              width: "100%",
+              width: '100%',
             }}
           >
             <Box
@@ -100,7 +100,7 @@ export const SettingNyanpasuVersion = () => {
               <LogoSvg className="h-32 w-32" />
 
               <Typography fontWeight={700} noWrap>
-                {"Clash Nyanpasu~(∠・ω< )⌒☆"}​
+                {'Clash Nyanpasu~(∠・ω< )⌒☆'}​
               </Typography>
 
               <Typography>
@@ -121,16 +121,16 @@ export const SettingNyanpasuVersion = () => {
                 size="large"
                 loading={loading}
                 onClick={onCheckUpdate}
-                sx={{ width: "100%" }}
+                sx={{ width: '100%' }}
               >
-                {t("Check for Updates")}
+                {t('Check for Updates')}
               </LoadingButton>
             </ListItem>
           </>
         )}
       </List>
     </BaseCard>
-  );
-};
+  )
+}
 
-export default SettingNyanpasuVersion;
+export default SettingNyanpasuVersion

@@ -1,1 +1,1 @@
-export * from "./ipsb";
+export * from './ipsb'

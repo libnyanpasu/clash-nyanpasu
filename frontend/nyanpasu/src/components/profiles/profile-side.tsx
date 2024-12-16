@@ -1,54 +1,54 @@
-import { Allotment } from "allotment";
-import "allotment/dist/style.css";
-import { useAtomValue } from "jotai";
-import { useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { Close } from "@mui/icons-material";
-import { IconButton } from "@mui/material";
-import { Profile, useClash } from "@nyanpasu/interface";
-import { SideChain } from "./modules/side-chain";
-import { SideLog } from "./modules/side-log";
-import { atomChainsSelected, atomGlobalChainCurrent } from "./modules/store";
-import { ScriptDialog } from "./script-dialog";
-import { filterProfiles } from "./utils";
+import { Allotment } from 'allotment'
+import 'allotment/dist/style.css'
+import { useAtomValue } from 'jotai'
+import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { Close } from '@mui/icons-material'
+import { IconButton } from '@mui/material'
+import { Profile, useClash } from '@nyanpasu/interface'
+import { SideChain } from './modules/side-chain'
+import { SideLog } from './modules/side-log'
+import { atomChainsSelected, atomGlobalChainCurrent } from './modules/store'
+import { ScriptDialog } from './script-dialog'
+import { filterProfiles } from './utils'
 
 export interface ProfileSideProps {
-  onClose: () => void;
+  onClose: () => void
 }
 
 export const ProfileSide = ({ onClose }: ProfileSideProps) => {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
 
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false)
 
-  const [item, setItem] = useState<Profile.Item>();
+  const [item, setItem] = useState<Profile.Item>()
 
-  const isGlobalChainCurrent = useAtomValue(atomGlobalChainCurrent);
+  const isGlobalChainCurrent = useAtomValue(atomGlobalChainCurrent)
 
-  const currentProfileUid = useAtomValue(atomChainsSelected);
+  const currentProfileUid = useAtomValue(atomChainsSelected)
 
-  const { getProfiles } = useClash();
+  const { getProfiles } = useClash()
 
   const currentProfile = useMemo(() => {
     return getProfiles.data?.items?.find(
       (item) => item.uid === currentProfileUid,
-    );
-  }, [getProfiles.data?.items, currentProfileUid]);
+    )
+  }, [getProfiles.data?.items, currentProfileUid])
 
   const handleEditChain = async (_item?: Profile.Item) => {
-    setItem(_item);
-    setOpen(true);
-  };
+    setItem(_item)
+    setOpen(true)
+  }
 
   return (
     <div className="absolute h-full w-full">
       <div className="flex items-start justify-between p-4 pr-2">
         <div>
-          <div className="text-xl font-bold">{t("Proxy Chains")}</div>
+          <div className="text-xl font-bold">{t('Proxy Chains')}</div>
 
           <div className="truncate">
             {isGlobalChainCurrent
-              ? t("Global Proxy Chains")
+              ? t('Global Proxy Chains')
               : currentProfile?.name}
           </div>
         </div>
@@ -58,7 +58,7 @@ export const ProfileSide = ({ onClose }: ProfileSideProps) => {
         </IconButton>
       </div>
 
-      <div style={{ height: "calc(100% - 84px)" }}>
+      <div style={{ height: 'calc(100% - 84px)' }}>
         <Allotment vertical defaultSizes={[1, 0]}>
           <Allotment.Pane snap>
             <SideChain onChainEdit={handleEditChain} />
@@ -74,12 +74,12 @@ export const ProfileSide = ({ onClose }: ProfileSideProps) => {
         open={open}
         profile={item}
         onClose={() => {
-          setOpen(false);
-          setItem(undefined);
+          setOpen(false)
+          setItem(undefined)
         }}
       />
     </div>
-  );
-};
+  )
+}
 
-export default ProfileSide;
+export default ProfileSide

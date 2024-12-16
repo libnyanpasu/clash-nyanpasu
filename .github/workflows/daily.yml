@@ -1,7 +1,7 @@
 on:
   workflow_dispatch:
   schedule:
-    - cron: "15 22 * * *" # 每天 06:15 UTC+8 自动构建
+    - cron: '15 22 * * *' # 每天 06:15 UTC+8 自动构建
 
 name: Daily
 
@@ -16,7 +16,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '20'
 
       - uses: pnpm/action-setup@v4
         name: Install pnpm
@@ -35,9 +35,9 @@ jobs:
       - uses: oleksiyrudenko/gha-git-credentials@v2-latest
         if: steps.git-check.outputs.has-changes == 'true'
         with:
-          token: "${{ secrets.GITHUB_TOKEN }}"
-          name: "github-actions[bot]"
-          email: "41898282+github-actions[bot]@users.noreply.github.com"
+          token: '${{ secrets.GITHUB_TOKEN }}'
+          name: 'github-actions[bot]'
+          email: '41898282+github-actions[bot]@users.noreply.github.com'
 
       - name: Commit Manifest
         if: steps.git-check.outputs.has-changes == 'true'
@@ -57,7 +57,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '20'
 
       - uses: pnpm/action-setup@v4
         name: Install pnpm
@@ -76,9 +76,9 @@ jobs:
       - uses: oleksiyrudenko/gha-git-credentials@v2-latest
         if: steps.git-check.outputs.has-changes == 'true'
         with:
-          token: "${{ secrets.GITHUB_TOKEN }}"
-          name: "github-actions[bot]"
-          email: "41898282+github-actions[bot]@users.noreply.github.com"
+          token: '${{ secrets.GITHUB_TOKEN }}'
+          name: 'github-actions[bot]'
+          email: '41898282+github-actions[bot]@users.noreply.github.com'
 
       - name: Commit Manifest
         if: steps.git-check.outputs.has-changes == 'true'

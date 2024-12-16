@@ -1,11 +1,11 @@
-import { RefObject } from "react";
-import ClearLogButton from "./clear-log-button";
-import { LogList } from "./log-list";
+import { RefObject } from 'react'
+import ClearLogButton from './clear-log-button'
+import { LogList } from './log-list'
 
 export const LogPage = ({
   scrollRef,
 }: {
-  scrollRef: RefObject<HTMLElement>;
+  scrollRef: RefObject<HTMLElement>
 }) => {
   return (
     <>
@@ -13,7 +13,7 @@ export const LogPage = ({
 
       <ClearLogButton />
     </>
-  );
-};
+  )
+}
 
-export default LogPage;
+export default LogPage

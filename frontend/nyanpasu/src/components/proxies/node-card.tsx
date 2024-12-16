@@ -1,13 +1,13 @@
-import { CSSProperties, memo, useMemo } from "react";
-import { alpha, useTheme } from "@mui/material";
-import Box from "@mui/material/Box";
-import { Clash } from "@nyanpasu/interface";
-import { cn } from "@nyanpasu/ui";
-import { PaperSwitchButton } from "../setting/modules/system-proxy";
-import DelayChip from "./delay-chip";
-import FeatureChip from "./feature-chip";
-import styles from "./node-card.module.scss";
-import { filterDelay } from "./utils";
+import { CSSProperties, memo, useMemo } from 'react'
+import { alpha, useTheme } from '@mui/material'
+import Box from '@mui/material/Box'
+import { Clash } from '@nyanpasu/interface'
+import { cn } from '@nyanpasu/ui'
+import { PaperSwitchButton } from '../setting/modules/system-proxy'
+import DelayChip from './delay-chip'
+import FeatureChip from './feature-chip'
+import styles from './node-card.module.scss'
+import { filterDelay } from './utils'
 
 export const NodeCard = memo(function NodeCard({
   node,
@@ -17,18 +17,18 @@ export const NodeCard = memo(function NodeCard({
   onClickDelay,
   style,
 }: {
-  node: Clash.Proxy<string>;
-  now?: string;
-  disabled?: boolean;
-  onClick: () => void;
-  onClickDelay: () => Promise<void>;
-  style?: CSSProperties;
+  node: Clash.Proxy<string>
+  now?: string
+  disabled?: boolean
+  onClick: () => void
+  onClickDelay: () => Promise<void>
+  style?: CSSProperties
 }) {
-  const { palette } = useTheme();
+  const { palette } = useTheme()
 
-  const delay = useMemo(() => filterDelay(node.history), [node.history]);
+  const delay = useMemo(() => filterDelay(node.history), [node.history])
 
-  const checked = node.name === now;
+  const checked = node.name === now
 
   return (
     <PaperSwitchButton
@@ -41,7 +41,7 @@ export const NodeCard = memo(function NodeCard({
       sxPaper={{
         backgroundColor: checked
           ? alpha(palette.primary.main, 0.3)
-          : palette.mode == "dark"
+          : palette.mode == 'dark'
             ? alpha(palette.grey[900], 0.3)
             : palette.grey[100],
       }}
@@ -58,7 +58,7 @@ export const NodeCard = memo(function NodeCard({
         />
       </Box>
     </PaperSwitchButton>
-  );
-});
+  )
+})
 
-export default NodeCard;
+export default NodeCard

@@ -1,14 +1,14 @@
-import { use, useEffect, useState } from "react";
-import { Add } from "@mui/icons-material";
-import { cn, FloatingButton } from "@nyanpasu/ui";
-import { AddProfileContext, ProfileDialog } from "./profile-dialog";
+import { use, useEffect, useState } from 'react'
+import { Add } from '@mui/icons-material'
+import { cn, FloatingButton } from '@nyanpasu/ui'
+import { AddProfileContext, ProfileDialog } from './profile-dialog'
 
 export const NewProfileButton = ({ className }: { className?: string }) => {
-  const addProfileCtx = use(AddProfileContext);
-  const [open, setOpen] = useState(!!addProfileCtx);
+  const addProfileCtx = use(AddProfileContext)
+  const [open, setOpen] = useState(!!addProfileCtx)
   useEffect(() => {
-    setOpen(!!addProfileCtx);
-  }, [addProfileCtx]);
+    setOpen(!!addProfileCtx)
+  }, [addProfileCtx])
   return (
     <>
       <FloatingButton className={cn(className)} onClick={() => setOpen(true)}>
@@ -17,7 +17,7 @@ export const NewProfileButton = ({ className }: { className?: string }) => {
 
       <ProfileDialog open={open} onClose={() => setOpen(false)} />
     </>
-  );
-};
+  )
+}
 
-export default NewProfileButton;
+export default NewProfileButton

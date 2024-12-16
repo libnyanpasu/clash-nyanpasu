@@ -1,2 +1,2 @@
-export * from "./geoip";
-export * from "./healthcheck";
+export * from './geoip'
+export * from './healthcheck'

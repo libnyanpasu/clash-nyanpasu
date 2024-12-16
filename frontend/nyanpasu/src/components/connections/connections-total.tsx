@@ -1,50 +1,50 @@
-import { filesize } from "filesize";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, Upload } from "@mui/icons-material";
-import { darken, lighten, Paper } from "@mui/material";
-import { Connection, useClashWS } from "@nyanpasu/interface";
+import { filesize } from 'filesize'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Download, Upload } from '@mui/icons-material'
+import { darken, lighten, Paper } from '@mui/material'
+import { Connection, useClashWS } from '@nyanpasu/interface'
 
 export default function ConnectionTotal() {
   const {
     connections: { latestMessage },
-  } = useClashWS();
-  const [downloadHighlight, setDownloadHighlight] = useState(false);
-  const [uploadHighlight, setUploadHighlight] = useState(false);
+  } = useClashWS()
+  const [downloadHighlight, setDownloadHighlight] = useState(false)
+  const [uploadHighlight, setUploadHighlight] = useState(false)
 
-  const downloadHighlightTimerRef = useRef<number | null>(null);
-  const uploadHighlightTimerRef = useRef<number | null>(null);
+  const downloadHighlightTimerRef = useRef<number | null>(null)
+  const uploadHighlightTimerRef = useRef<number | null>(null)
 
   const result = useMemo(() => {
-    if (!latestMessage?.data) return null;
-    return JSON.parse(latestMessage.data) as Connection.Response;
-  }, [latestMessage]);
+    if (!latestMessage?.data) return null
+    return JSON.parse(latestMessage.data) as Connection.Response
+  }, [latestMessage])
 
   useEffect(() => {
     if (result?.downloadTotal && result?.downloadTotal > 0) {
-      setDownloadHighlight(true);
+      setDownloadHighlight(true)
       if (downloadHighlightTimerRef.current) {
-        clearTimeout(downloadHighlightTimerRef.current);
+        clearTimeout(downloadHighlightTimerRef.current)
       }
       downloadHighlightTimerRef.current = window.setTimeout(() => {
-        setDownloadHighlight(false);
-      }, 300);
+        setDownloadHighlight(false)
+      }, 300)
     }
-  }, [result?.downloadTotal]);
+  }, [result?.downloadTotal])
 
   useEffect(() => {
     if (result?.uploadTotal && result?.uploadTotal > 0) {
-      setUploadHighlight(true);
+      setUploadHighlight(true)
       if (uploadHighlightTimerRef.current) {
-        clearTimeout(uploadHighlightTimerRef.current);
+        clearTimeout(uploadHighlightTimerRef.current)
       }
       uploadHighlightTimerRef.current = window.setTimeout(() => {
-        setUploadHighlight(false);
-      }, 300);
+        setUploadHighlight(false)
+      }, 300)
     }
-  }, [result?.uploadTotal]);
+  }, [result?.uploadTotal])
 
   if (!result) {
-    return null;
+    return null
   }
 
   return (
@@ -61,7 +61,7 @@ export default function ConnectionTotal() {
                 theme.palette.primary.main,
                 downloadHighlight ? 0.9 : 0.3,
               ),
-              ...theme.applyStyles("dark", {
+              ...theme.applyStyles('dark', {
                 color: lighten(
                   theme.palette.primary.main,
                   downloadHighlight ? 0.2 : 0.9,
@@ -69,7 +69,7 @@ export default function ConnectionTotal() {
               }),
             }),
           ]}
-        />{" "}
+        />{' '}
         <span className="font-mono text-xs">
           {filesize(result.downloadTotal, { pad: true })}
         </span>
@@ -86,7 +86,7 @@ export default function ConnectionTotal() {
                 theme.palette.primary.main,
                 uploadHighlight ? 0.9 : 0.3,
               ),
-              ...theme.applyStyles("dark", {
+              ...theme.applyStyles('dark', {
                 color: lighten(
                   theme.palette.primary.main,
                   downloadHighlight ? 0.2 : 0.9,
@@ -94,11 +94,11 @@ export default function ConnectionTotal() {
               }),
             }),
           ]}
-        />{" "}
+        />{' '}
         <span className="font-mono text-xs">
           {filesize(result.uploadTotal, { pad: true })}
         </span>
       </Paper>
     </div>
-  );
+  )
 }

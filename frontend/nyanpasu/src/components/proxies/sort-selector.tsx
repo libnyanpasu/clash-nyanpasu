@@ -1,30 +1,30 @@
-import { useAtom } from "jotai";
-import { memo, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { proxyGroupSortAtom } from "@/store";
-import { alpha, Button, Menu, MenuItem, useTheme } from "@mui/material";
+import { useAtom } from 'jotai'
+import { memo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { proxyGroupSortAtom } from '@/store'
+import { alpha, Button, Menu, MenuItem, useTheme } from '@mui/material'
 
 export const SortSelector = memo(function SortSelector() {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
 
-  const { palette } = useTheme();
+  const { palette } = useTheme()
 
-  const [proxyGroupSort, setProxyGroupSort] = useAtom(proxyGroupSortAtom);
+  const [proxyGroupSort, setProxyGroupSort] = useAtom(proxyGroupSortAtom)
 
-  type SortType = typeof proxyGroupSort;
+  type SortType = typeof proxyGroupSort
 
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
 
   const handleClick = (sort: SortType) => {
-    setAnchorEl(null);
-    setProxyGroupSort(sort);
-  };
+    setAnchorEl(null)
+    setProxyGroupSort(sort)
+  }
 
   const tmaps: { [key: string]: string } = {
-    default: "Sort by default",
-    delay: "Sort by delay",
-    name: "Sort by name",
-  };
+    default: 'Sort by default',
+    delay: 'Sort by delay',
+    name: 'Sort by name',
+  }
 
   return (
     <>
@@ -32,7 +32,7 @@ export const SortSelector = memo(function SortSelector() {
         size="small"
         className="!px-2"
         sx={{
-          textTransform: "none",
+          textTransform: 'none',
           backgroundColor: alpha(palette.primary.main, 0.1),
         }}
         onClick={(e) => setAnchorEl(e.currentTarget)}
@@ -50,11 +50,11 @@ export const SortSelector = memo(function SortSelector() {
             <MenuItem key={index} onClick={() => handleClick(key as SortType)}>
               {t(value)}
             </MenuItem>
-          );
+          )
         })}
       </Menu>
     </>
-  );
-});
+  )
+})
 
-export default SortSelector;
+export default SortSelector

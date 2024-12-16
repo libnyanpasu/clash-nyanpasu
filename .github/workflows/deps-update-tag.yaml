@@ -1,17 +1,17 @@
-name: "[Single] Update Tag"
+name: '[Single] Update Tag'
 
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release Tag"
+        description: 'Release Tag'
         required: true
         type: string
 
   workflow_call:
     inputs:
       tag:
-        description: "Release Tag"
+        description: 'Release Tag'
         required: true
         type: string
 

@@ -1,42 +1,42 @@
-import { useLockFn } from "ahooks";
-import { useCallback, useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { formatError } from "@/utils";
-import { message } from "@/utils/notification";
-import { Typography } from "@mui/material";
-import { useNyanpasu } from "@nyanpasu/interface";
-import { BaseDialog, BaseDialogProps } from "@nyanpasu/ui";
-import HotkeyInput from "./hotkey-input";
+import { useLockFn } from 'ahooks'
+import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { formatError } from '@/utils'
+import { message } from '@/utils/notification'
+import { Typography } from '@mui/material'
+import { useNyanpasu } from '@nyanpasu/interface'
+import { BaseDialog, BaseDialogProps } from '@nyanpasu/ui'
+import HotkeyInput from './hotkey-input'
 
-export type HotkeyDialogProps = Omit<BaseDialogProps, "title">;
+export type HotkeyDialogProps = Omit<BaseDialogProps, 'title'>
 
 const HOTKEY_FUNC = [
-  "open_or_close_dashboard",
-  "clash_mode_rule",
-  "clash_mode_global",
-  "clash_mode_direct",
-  "clash_mode_script",
-  "toggle_system_proxy",
+  'open_or_close_dashboard',
+  'clash_mode_rule',
+  'clash_mode_global',
+  'clash_mode_direct',
+  'clash_mode_script',
+  'toggle_system_proxy',
   // "enable_system_proxy",
   // "disable_system_proxy",
-  "toggle_tun_mode",
+  'toggle_tun_mode',
   // "enable_tun_mode",
   // "disable_tun_mode",
-] as const;
+] as const
 
-type AllowedHotkeyFunc = (typeof HOTKEY_FUNC)[number];
+type AllowedHotkeyFunc = (typeof HOTKEY_FUNC)[number]
 
-type Key = string;
+type Key = string
 
 type HotKeyErrorMessages = {
-  [K in AllowedHotkeyFunc]: string | null;
-};
+  [K in AllowedHotkeyFunc]: string | null
+}
 
 type HotKeyLoading = {
-  [K in AllowedHotkeyFunc]: boolean;
-};
+  [K in AllowedHotkeyFunc]: boolean
+}
 
-type HotkeyMap = { [K in AllowedHotkeyFunc]: Key[] };
+type HotkeyMap = { [K in AllowedHotkeyFunc]: Key[] }
 
 export default function HotkeyDialog({
   open,
@@ -44,102 +44,102 @@ export default function HotkeyDialog({
   children,
   ...rest
 }: HotkeyDialogProps) {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
 
   // 检查是否有快捷键重复
-  const [duplicateItems, setDuplicateItems] = useState<string[]>([]);
-  const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu();
+  const [duplicateItems, setDuplicateItems] = useState<string[]>([])
+  const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu()
 
-  const [hotkeyMap, setHotkeyMap] = useState<HotkeyMap>({} as HotkeyMap);
+  const [hotkeyMap, setHotkeyMap] = useState<HotkeyMap>({} as HotkeyMap)
 
   useEffect(() => {
     if (open && Object.keys(hotkeyMap).length === 0) {
-      const map = {} as typeof hotkeyMap;
+      const map = {} as typeof hotkeyMap
       nyanpasuConfig?.hotkeys?.forEach((text) => {
-        const [func, key] = text.split(",").map((i) => i.trim());
-        if (!func || !key) return;
+        const [func, key] = text.split(',').map((i) => i.trim())
+        if (!func || !key) return
         map[func as AllowedHotkeyFunc] = key
-          .split("+")
+          .split('+')
           .map((e) => e.trim())
-          .map((k) => (k === "PLUS" ? "+" : k));
-      });
-      setHotkeyMap(map);
-      setDuplicateItems([]);
+          .map((k) => (k === 'PLUS' ? '+' : k))
+      })
+      setHotkeyMap(map)
+      setDuplicateItems([])
     }
-  }, [hotkeyMap, nyanpasuConfig?.hotkeys, open]);
+  }, [hotkeyMap, nyanpasuConfig?.hotkeys, open])
 
   const [errorMessages, setErrorMessages] = useState<HotKeyErrorMessages>(
     HOTKEY_FUNC.reduce(
       (acc, cur) => ({ ...acc, [cur]: null }),
       {} as HotKeyErrorMessages,
     ),
-  );
+  )
 
   const [loading, setLoading] = useState<HotKeyLoading>(
     HOTKEY_FUNC.reduce(
       (acc, cur) => ({ ...acc, [cur]: false }),
       {} as HotKeyLoading,
     ),
-  );
+  )
 
   const saveState = useLockFn(
     async (func: AllowedHotkeyFunc, hotkeyMap: HotkeyMap) => {
       const hotkeys = Object.entries(hotkeyMap)
         .map(([func, keys]) => {
-          if (!func || !keys?.length) return "";
+          if (!func || !keys?.length) return ''
 
           const key = keys
             .map((k) => k.trim())
             .filter(Boolean)
-            .map((k) => (k === "+" ? "PLUS" : k))
-            .join("+");
+            .map((k) => (k === '+' ? 'PLUS' : k))
+            .join('+')
 
-          if (!key) return "";
-          return `${func},${key}`;
+          if (!key) return ''
+          return `${func},${key}`
         })
-        .filter(Boolean);
+        .filter(Boolean)
 
       try {
-        await setNyanpasuConfig({ hotkeys });
+        await setNyanpasuConfig({ hotkeys })
       } catch (err: unknown) {
         setErrorMessages((prev) => ({
           ...prev,
           [func]: formatError(err),
-        }));
+        }))
         await message(formatError(err), {
-          kind: "error",
-        });
+          kind: 'error',
+        })
       }
     },
-  );
+  )
 
   const onBlurCb = useCallback(
     (e: React.FocusEvent<HTMLInputElement>, func: string) => {
-      const keys = Object.values(hotkeyMap).flat().filter(Boolean);
-      const set = new Set(keys);
+      const keys = Object.values(hotkeyMap).flat().filter(Boolean)
+      const set = new Set(keys)
       if (keys.length !== set.size) {
-        setDuplicateItems([...duplicateItems, func]);
-        return;
+        setDuplicateItems([...duplicateItems, func])
+        return
       } else {
-        setDuplicateItems(duplicateItems.filter((e) => e !== func));
+        setDuplicateItems(duplicateItems.filter((e) => e !== func))
       }
 
-      setLoading((prev) => ({ ...prev, [func]: true }));
+      setLoading((prev) => ({ ...prev, [func]: true }))
 
       saveState(func as AllowedHotkeyFunc, hotkeyMap)
         .catch(() => {
-          setDuplicateItems([...duplicateItems, func]);
+          setDuplicateItems([...duplicateItems, func])
         })
         .finally(() => {
-          setLoading((prev) => ({ ...prev, [func]: false }));
-        });
+          setLoading((prev) => ({ ...prev, [func]: false }))
+        })
     },
     [duplicateItems, hotkeyMap, saveState],
-  );
+  )
 
   return (
     <BaseDialog
-      title={t("Hotkey Setting")}
+      title={t('Hotkey Setting')}
       open={open}
       onClose={onClose}
       {...rest}
@@ -165,5 +165,5 @@ export default function HotkeyDialog({
         ))}
       </div>
     </BaseDialog>
-  );
+  )
 }

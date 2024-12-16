@@ -1,15 +1,15 @@
-import { AnimatePresence, motion } from "framer-motion";
-import { memo } from "react";
-import { useNyanpasu } from "@nyanpasu/interface";
+import { AnimatePresence, motion } from 'framer-motion'
+import { memo } from 'react'
+import { useNyanpasu } from '@nyanpasu/interface'
 
 export const ProxyGroupName = memo(function ProxyGroupName({
   name,
 }: {
-  name: string;
+  name: string
 }) {
-  const { nyanpasuConfig } = useNyanpasu();
+  const { nyanpasuConfig } = useNyanpasu()
 
-  const disbaleMotion = nyanpasuConfig?.lighten_animation_effects;
+  const disbaleMotion = nyanpasuConfig?.lighten_animation_effects
 
   return disbaleMotion ? (
     <>{name}</>
@@ -22,7 +22,7 @@ export const ProxyGroupName = memo(function ProxyGroupName({
         animate={{ x: 0, opacity: 1 }}
         exit={{ x: -100, opacity: 0 }}
         transition={{
-          type: "spring",
+          type: 'spring',
           bounce: 0,
           duration: 0.5,
         }}
@@ -30,7 +30,7 @@ export const ProxyGroupName = memo(function ProxyGroupName({
         {name}
       </motion.div>
     </AnimatePresence>
-  );
-});
+  )
+})
 
-export default ProxyGroupName;
+export default ProxyGroupName

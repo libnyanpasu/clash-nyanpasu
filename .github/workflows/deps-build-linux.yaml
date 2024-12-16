@@ -1,24 +1,24 @@
-name: "[Single] Build Linux"
+name: '[Single] Build Linux'
 
 on:
   workflow_dispatch:
     inputs:
       nightly:
-        description: "Nightly prepare"
+        description: 'Nightly prepare'
         required: true
         type: boolean
         default: false
 
       tag:
-        description: "Release Tag"
+        description: 'Release Tag'
         required: true
         type: string
 
       arch:
         type: choice
-        description: "build arch target"
+        description: 'build arch target'
         required: true
-        default: "x86_64"
+        default: 'x86_64'
         options:
           - x86_64
           - i686
@@ -29,21 +29,21 @@ on:
   workflow_call:
     inputs:
       nightly:
-        description: "Nightly prepare"
+        description: 'Nightly prepare'
         required: true
         type: boolean
         default: false
 
       tag:
-        description: "Release Tag"
+        description: 'Release Tag'
         required: true
         type: string
 
       arch:
         type: string
-        description: "build arch target"
+        description: 'build arch target'
         required: true
-        default: "x86_64"
+        default: 'x86_64'
 
 jobs:
   build:
@@ -86,10 +86,10 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libappindicator3-dev librsvg2-dev patchelf openssl
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "./backend/"
-          prefix-key: "rust-stable"
+          workspaces: './backend/'
+          prefix-key: 'rust-stable'
           key: ubuntu-latest
-          shared-key: "release"
+          shared-key: 'release'
 
       - name: Install Node latest
         uses: actions/setup-node@v4
@@ -142,8 +142,8 @@ jobs:
           NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
         with:
           tagName: ${{ inputs.tag }}
-          releaseName: "Clash Nyanpasu Dev"
-          releaseBody: "More new features are now supported."
+          releaseName: 'Clash Nyanpasu Dev'
+          releaseBody: 'More new features are now supported.'
           releaseDraft: false
           prerelease: true
           tauriScript: pnpm tauri

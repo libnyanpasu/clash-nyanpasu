@@ -1,13 +1,13 @@
-import { useAtom } from "jotai";
-import { atomEnableLog } from "@/store";
+import { useAtom } from 'jotai'
+import { atomEnableLog } from '@/store'
 import {
   PauseCircleOutlineRounded,
   PlayCircleOutlineRounded,
-} from "@mui/icons-material";
-import { IconButton } from "@mui/material";
+} from '@mui/icons-material'
+import { IconButton } from '@mui/material'
 
 export const LogToggle = () => {
-  const [enableLog, setEnableLog] = useAtom(atomEnableLog);
+  const [enableLog, setEnableLog] = useAtom(atomEnableLog)
 
   return (
     <IconButton
@@ -17,7 +17,7 @@ export const LogToggle = () => {
     >
       {enableLog ? <PauseCircleOutlineRounded /> : <PlayCircleOutlineRounded />}
     </IconButton>
-  );
-};
+  )
+}
 
-export default LogToggle;
+export default LogToggle

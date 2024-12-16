@@ -1,41 +1,41 @@
-name: "[Single] Build macOS"
+name: '[Single] Build macOS'
 
 on:
   workflow_dispatch:
     inputs:
       aarch64:
-        description: "Build aarch64 pkg"
+        description: 'Build aarch64 pkg'
         required: true
         type: boolean
         default: false
 
       nightly:
-        description: "Nightly prepare"
+        description: 'Nightly prepare'
         required: true
         type: boolean
         default: false
 
       tag:
-        description: "Release Tag"
+        description: 'Release Tag'
         required: true
         type: string
 
   workflow_call:
     inputs:
       aarch64:
-        description: "Build aarch64 pkg"
+        description: 'Build aarch64 pkg'
         required: true
         type: boolean
         default: false
 
       nightly:
-        description: "Nightly prepare"
+        description: 'Nightly prepare'
         required: true
         type: boolean
         default: false
 
       tag:
-        description: "Release Tag"
+        description: 'Release Tag'
         required: true
         type: string
 
@@ -54,10 +54,10 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "./backend/"
-          prefix-key: "rust-stable"
+          workspaces: './backend/'
+          prefix-key: 'rust-stable'
           key: ${{ inputs.aarch64 && 'macos-14' || 'macos-13' }}
-          shared-key: "release"
+          shared-key: 'release'
 
       - name: Install the missing rust target (aarch64 Only)
         if: ${{ inputs.aarch64 == 'macos-14' }}
@@ -78,7 +78,7 @@ jobs:
         uses: maxim-lobanov/setup-xcode@v1
         if: ${{ inputs.aarch64 == false }}
         with:
-          xcode-version: "15.0"
+          xcode-version: '15.0'
 
       - name: Pnpm install
         run: |
@@ -110,11 +110,11 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
-          NODE_OPTIONS: "--max_old_space_size=4096"
+          NODE_OPTIONS: '--max_old_space_size=4096'
         with:
           tagName: ${{ inputs.tag }}
-          releaseName: "Clash Nyanpasu Dev"
-          releaseBody: "More new features are now supported."
+          releaseName: 'Clash Nyanpasu Dev'
+          releaseBody: 'More new features are now supported.'
           releaseDraft: false
           prerelease: true
           tauriScript: pnpm tauri
@@ -128,7 +128,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
-          NODE_OPTIONS: "--max_old_space_size=4096"
+          NODE_OPTIONS: '--max_old_space_size=4096'
         run: |
           ${{ inputs.nightly == true && 'pnpm build:nightly --target aarch64-apple-darwin' || 'pnpm build --target aarch64-apple-darwin' }}
           pnpm upload:osx-aarch64

@@ -174,7 +174,7 @@ tauri = { version = "2.0.1", features = [
   "image-png",
   "image-ico",
 ] }
-tauri-plugin-deep-link = { path = "../tauri-plugin-deep-link", version = "0.1.2" } # This should be migrated to official tauri plugin
+tauri-plugin-deep-link = { path = "../tauri-plugin-deep-link", version = "2.0.0" } # This should be migrated to official tauri plugin
 tauri-plugin-os = "2.0.1"
 tauri-plugin-clipboard-manager = "2.0.1"
 tauri-plugin-fs = "2.0.1"

@@ -97,7 +97,7 @@ importers:
         specifier: 5.1.0
         version: 5.1.0(eslint@9.17.0(jiti@2.4.1))
       globals:
-        specifier: ^15.13.0
+        specifier: 15.13.0
         version: 15.13.0
       knip:
         specifier: 5.40.0
@@ -106,7 +106,7 @@ importers:
         specifier: 15.2.11
         version: 15.2.11
       neostandard:
-        specifier: ^0.12.0
+        specifier: 0.12.0
         version: 0.12.0(eslint-plugin-import@2.31.0(@typescript-eslint/parser@8.18.1(eslint@9.17.0(jiti@2.4.1))(typescript@5.7.2))(eslint@9.17.0(jiti@2.4.1)))(eslint@9.17.0(jiti@2.4.1))(typescript@5.7.2)
       npm-run-all2:
         specifier: 7.0.1
@@ -10018,7 +10018,7 @@ snapshots:
 
   '@stylistic/eslint-plugin@2.11.0(eslint@9.17.0(jiti@2.4.1))(typescript@5.7.2)':
     dependencies:
-      '@typescript-eslint/utils': 8.18.0(eslint@9.17.0(jiti@2.4.1))(typescript@5.7.2)
+      '@typescript-eslint/utils': 8.18.1(eslint@9.17.0(jiti@2.4.1))(typescript@5.7.2)
       eslint: 9.17.0(jiti@2.4.1)
       eslint-visitor-keys: 4.2.0
       espree: 10.3.0
@@ -12152,8 +12152,8 @@ snapshots:
 
   eslint-plugin-import-x@4.5.0(eslint@9.17.0(jiti@2.4.1))(typescript@5.7.2):
     dependencies:
-      '@typescript-eslint/scope-manager': 8.18.0
-      '@typescript-eslint/utils': 8.18.0(eslint@9.17.0(jiti@2.4.1))(typescript@5.7.2)
+      '@typescript-eslint/scope-manager': 8.18.1
+      '@typescript-eslint/utils': 8.18.1(eslint@9.17.0(jiti@2.4.1))(typescript@5.7.2)
       debug: 4.4.0
       doctrine: 3.0.0
       eslint: 9.17.0(jiti@2.4.1)

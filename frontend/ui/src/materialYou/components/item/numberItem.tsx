@@ -12,9 +12,9 @@ import {
 import { Expand } from '../expand'
 import { BaseItem } from './baseItem'
 
-export interface NumberItemprops {
+export interface NumberItemProps {
   label: string
-  vaule: number
+  value: number
   checkEvent: (input: number) => boolean
   checkLabel: string
   onApply: (input: number) => void
@@ -26,7 +26,7 @@ export interface NumberItemprops {
  * @example
  * <NumberItem
     label={t("Mixed Port")}
-    vaule={port}
+    value={port}
     checkEvent={(input) => input > 65535 || input < 1}
     checkLabel="Port must be between 1 and 65535."
     onApply={(value) => {
@@ -44,13 +44,13 @@ export interface NumberItemprops {
  */
 export const NumberItem = ({
   label,
-  vaule,
+  value,
   checkEvent,
   checkLabel,
   onApply,
   divider,
   textFieldProps,
-}: NumberItemprops) => {
+}: NumberItemProps) => {
   const { t } = useTranslation()
 
   const [changed, setChanged] = useState(false)
@@ -66,7 +66,7 @@ export const NumberItem = ({
     <>
       <BaseItem title={label}>
         <TextField
-          value={input !== null ? input : vaule}
+          value={input !== null ? input : value}
           size="small"
           variant="outlined"
           sx={{ width: 80 }}

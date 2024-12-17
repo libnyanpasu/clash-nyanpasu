@@ -315,8 +315,8 @@ importers:
         specifier: 11.14.0
         version: 11.14.0(@types/react@19.0.1)(react@19.0.0)
       '@iconify/json':
-        specifier: 2.2.282
-        version: 2.2.282
+        specifier: 2.2.284
+        version: 2.2.284
       '@monaco-editor/react':
         specifier: 4.6.0
         version: 4.6.0(monaco-editor@0.52.2)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
@@ -405,8 +405,8 @@ importers:
         specifier: 0.19.0
         version: 0.19.0(rollup@4.27.4)
       unplugin-icons:
-        specifier: 0.21.0
-        version: 0.21.0(@svgr/core@8.1.0(typescript@5.7.2))
+        specifier: 0.22.0
+        version: 0.22.0(@svgr/core@8.1.0(typescript@5.7.2))
       validator:
         specifier: 13.12.0
         version: 13.12.0
@@ -501,7 +501,7 @@ importers:
       d3-interpolate-path:
         specifier: 2.3.0
         version: 2.3.0
-      sass:
+      sass-embedded:
         specifier: 1.83.0
         version: 1.83.0
       tailwind-merge:
@@ -1757,14 +1757,14 @@ packages:
       '@vue/compiler-sfc':
         optional: true
 
-  '@iconify/json@2.2.282':
-    resolution: {integrity: sha512-G3PMvBEziGL8sbf6I2etaS7C0BFk+8swLhvzas3CBEubFmd8CSkbYbV6AwChgDRCcTTVgZ/ls7UALh69ohsGGQ==}
+  '@iconify/json@2.2.284':
+    resolution: {integrity: sha512-s+DpI5CWkLwnRIwF5wg32OJBitqwD0PvVxVRj5WvBO6v8wLJvkxjOG0G/UmS8sWhwyMjfLsAK6NL71LPBNjsvw==}
 
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
 
-  '@iconify/utils@2.1.33':
-    resolution: {integrity: sha512-jP9h6v/g0BIZx0p7XGJJVtkVnydtbgTgt9mVNcGDYwaa7UhdHdI9dvoq+gKj9sijMSJKxUPEG2JyjsgXjxL7Kw==}
+  '@iconify/utils@2.2.1':
+    resolution: {integrity: sha512-0/7J7hk4PqXmxo5PDBDxmnecw5PxklZJfNjIVG9FM0mEfVrvfudS22rYWsqVk6gR3UJ/mSYS90X4R3znXnqfNA==}
 
   '@isaacs/cliui@8.0.2':
     resolution: {integrity: sha512-O8jcjabXaleOG9DQ0+ARXWZBTfnP4WNAqzuiJK7ll44AmxGKv/J2M4TPjxjY3znBCfvBXFzucm1twdyFybFqEA==}
@@ -7522,8 +7522,8 @@ packages:
       '@vueuse/core':
         optional: true
 
-  unplugin-icons@0.21.0:
-    resolution: {integrity: sha512-sRic+yj7cCbpDFwrRj+m55ogOZi6PQRDc/WUEmjHLAnc90v0g5UVxE0cVAZgBOsAPCieizZJui/sgrCYrVx8mQ==}
+  unplugin-icons@0.22.0:
+    resolution: {integrity: sha512-CP+iZq5U7doOifer5bcM0jQ9t3Is7EGybIYt3myVxceI8Zuk8EZEpe1NPtJvh7iqMs1VdbK0L41t9+um9VuuLw==}
     peerDependencies:
       '@svgr/core': '>=7.0.0'
       '@svgx/core': ^1.0.1
@@ -9211,19 +9211,20 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@iconify/json@2.2.282':
+  '@iconify/json@2.2.284':
     dependencies:
       '@iconify/types': 2.0.0
       pathe: 1.1.2
 
   '@iconify/types@2.0.0': {}
 
-  '@iconify/utils@2.1.33':
+  '@iconify/utils@2.2.1':
     dependencies:
       '@antfu/install-pkg': 0.4.1
       '@antfu/utils': 0.7.10
       '@iconify/types': 2.0.0
       debug: 4.4.0
+      globals: 15.13.0
       kolorist: 1.8.0
       local-pkg: 0.5.1
       mlly: 1.7.3
@@ -15492,15 +15493,15 @@ snapshots:
     transitivePeerDependencies:
       - rollup
 
-  unplugin-icons@0.21.0(@svgr/core@8.1.0(typescript@5.7.2)):
+  unplugin-icons@0.22.0(@svgr/core@8.1.0(typescript@5.7.2)):
     dependencies:
       '@antfu/install-pkg': 0.5.0
       '@antfu/utils': 0.7.10
-      '@iconify/utils': 2.1.33
-      debug: 4.3.7
+      '@iconify/utils': 2.2.1
+      debug: 4.4.0
       kolorist: 1.8.0
       local-pkg: 0.5.1
-      unplugin: 1.16.0
+      unplugin: 2.1.0
     optionalDependencies:
       '@svgr/core': 8.1.0(typescript@5.7.2)
     transitivePeerDependencies:

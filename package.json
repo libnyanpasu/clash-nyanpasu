@@ -59,14 +59,14 @@
   "devDependencies": {
     "@commitlint/cli": "19.6.1",
     "@commitlint/config-conventional": "19.6.0",
-    "@eslint/compat": "^1.2.4",
+    "@eslint/compat": "1.2.4",
     "@ianvs/prettier-plugin-sort-imports": "4.4.0",
     "@tauri-apps/cli": "2.1.0",
     "@types/fs-extra": "11.0.4",
     "@types/lodash-es": "4.17.12",
     "@types/node": "22.10.2",
-    "@typescript-eslint/eslint-plugin": "8.18.0",
-    "@typescript-eslint/parser": "8.18.0",
+    "@typescript-eslint/eslint-plugin": "8.18.1",
+    "@typescript-eslint/parser": "8.18.1",
     "autoprefixer": "10.4.20",
     "conventional-changelog-conventionalcommits": "8.0.0",
     "cross-env": "7.0.3",
@@ -81,7 +81,7 @@
     "eslint-plugin-prettier": "5.2.1",
     "eslint-plugin-promise": "7.2.1",
     "eslint-plugin-react": "7.37.2",
-    "eslint-plugin-react-compiler": "19.0.0-beta-37ed2a7-20241206",
+    "eslint-plugin-react-compiler": "19.0.0-beta-df7b47d-20241124",
     "eslint-plugin-react-hooks": "5.1.0",
     "globals": "^15.13.0",
     "knip": "5.40.0",
@@ -106,7 +106,7 @@
     "tailwindcss": "3.4.16",
     "tsx": "4.19.2",
     "typescript": "5.7.2",
-    "typescript-eslint": "^8.18.0"
+    "typescript-eslint": "8.18.0"
   },
   "packageManager": "pnpm@9.15.0+sha512.76e2379760a4328ec4415815bcd6628dee727af3779aaa4c914e3944156c4299921a89f976381ee107d41f12cfa4b66681ca9c718f0668fa0831ed4c6d8ba56c",
   "engines": {

@@ -1,6 +1,6 @@
-import { version } from "~/package.json";
-import { useAsyncEffect } from "ahooks";
-import { type editor } from "monaco-editor";
+import { version } from '~/package.json'
+import { useAsyncEffect } from 'ahooks'
+import { type editor } from 'monaco-editor'
 import {
   createContext,
   lazy,
@@ -10,171 +10,170 @@ import {
   useMemo,
   useRef,
   useState,
-} from "react";
+} from 'react'
 import {
   Controller,
   SelectElement,
   TextFieldElement,
   useForm,
-} from "react-hook-form-mui";
-import { useTranslation } from "react-i18next";
-import { useLatest } from "react-use";
-import { formatError } from "@/utils";
-import { message } from "@/utils/notification";
-import { Divider, InputAdornment } from "@mui/material";
-import { Profile, useClash } from "@nyanpasu/interface";
-import { BaseDialog } from "@nyanpasu/ui";
-import { LabelSwitch } from "../setting/modules/clash-field";
-import { ReadProfile } from "./read-profile";
+} from 'react-hook-form-mui'
+import { useTranslation } from 'react-i18next'
+import { useLatest } from 'react-use'
+import { formatError } from '@/utils'
+import { message } from '@/utils/notification'
+import { Divider, InputAdornment } from '@mui/material'
+import { Profile, useClash } from '@nyanpasu/interface'
+import { BaseDialog } from '@nyanpasu/ui'
+import { LabelSwitch } from '../setting/modules/clash-field'
+import { ReadProfile } from './read-profile'
 
-const ProfileMonacoViewer = lazy(() => import("./profile-monaco-viewer"));
+const ProfileMonacoViewer = lazy(() => import('./profile-monaco-viewer'))
 
 export interface ProfileDialogProps {
-  profile?: Profile.Item;
-  open: boolean;
-  onClose: () => void;
+  profile?: Profile.Item
+  open: boolean
+  onClose: () => void
 }
 
 export type AddProfileContextValue = {
-  name: string | null;
-  desc: string | null;
-  url: string;
-};
+  name: string | null
+  desc: string | null
+  url: string
+}
 
 export const AddProfileContext = createContext<AddProfileContextValue | null>(
   null,
-);
+)
 
 export const ProfileDialog = ({
   profile,
   open,
   onClose,
 }: ProfileDialogProps) => {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
 
   const { createProfile, setProfiles, getProfileFile, setProfileFile } =
-    useClash();
+    useClash()
 
-  const localProfile = useRef("");
-  const addProfileCtx = use(AddProfileContext);
-  const [localProfileMessage, setLocalProfileMessage] = useState("");
+  const localProfile = useRef('')
+  const addProfileCtx = use(AddProfileContext)
+  const [localProfileMessage, setLocalProfileMessage] = useState('')
 
   const { control, watch, handleSubmit, reset, setValue } =
     useForm<Profile.Item>({
       defaultValues: profile || {
-        type: "remote",
+        type: 'remote',
         name: addProfileCtx?.name || t(`New Profile`),
-        desc: addProfileCtx?.desc || "",
-        url: addProfileCtx?.url || "",
+        desc: addProfileCtx?.desc || '',
+        url: addProfileCtx?.url || '',
         option: {
           // user_agent: "",
           with_proxy: false,
           self_proxy: false,
         },
       },
-    });
+    })
 
   useEffect(() => {
     if (addProfileCtx) {
-      setValue("url", addProfileCtx.url);
-      if (addProfileCtx.desc) setValue("desc", addProfileCtx.desc);
-      if (addProfileCtx.name) setValue("name", addProfileCtx.name);
+      setValue('url', addProfileCtx.url)
+      if (addProfileCtx.desc) setValue('desc', addProfileCtx.desc)
+      if (addProfileCtx.name) setValue('name', addProfileCtx.name)
     }
-  }, [addProfileCtx, setValue]);
+  }, [addProfileCtx, setValue])
 
-  const isRemote = watch("type") === "remote";
+  const isRemote = watch('type') === 'remote'
 
-  const [isEdit, setIsEdit] = useState(!!profile);
+  const [isEdit, setIsEdit] = useState(!!profile)
   useEffect(() => {
-    setIsEdit(!!profile);
-  }, [profile]);
+    setIsEdit(!!profile)
+  }, [profile])
 
   const commonProps = useMemo(
     () => ({
-      autoComplete: "off",
-      autoCorrect: "off",
+      autoComplete: 'off',
+      autoCorrect: 'off',
       fullWidth: true,
     }),
     [],
-  );
+  )
 
   const handleProfileSelected = (content: string) => {
-    localProfile.current = content;
+    localProfile.current = content
 
-    setLocalProfileMessage("");
-  };
+    setLocalProfileMessage('')
+  }
 
   const [editor, setEditor] = useState({
-    value: "",
-    language: "yaml",
-  });
+    value: '',
+    language: 'yaml',
+  })
 
-  const latestEditor = useLatest(editor);
+  const latestEditor = useLatest(editor)
 
-  const editorMarks = useRef<editor.IMarker[]>([]);
+  const editorMarks = useRef<editor.IMarker[]>([])
   const editorHasError = () =>
     editorMarks.current.length > 0 &&
-    editorMarks.current.some((m) => m.severity === 8);
+    editorMarks.current.some((m) => m.severity === 8)
 
   const onSubmit = handleSubmit(async (form) => {
     if (editorHasError()) {
-      message("Please fix the error before saving", {
-        kind: "error",
-      });
-      return;
+      message('Please fix the error before saving', {
+        kind: 'error',
+      })
+      return
     }
     const toCreate = async () => {
       if (isRemote) {
-        await createProfile(form);
+        await createProfile(form)
       } else {
         if (localProfile.current) {
-          await createProfile(form, localProfile.current);
+          await createProfile(form, localProfile.current)
         } else {
           // setLocalProfileMessage("Not selected profile");
-          await createProfile(form, "rules: []");
+          await createProfile(form, 'rules: []')
         }
       }
-    };
+    }
 
     const toUpdate = async () => {
-      const value = latestEditor.current.value;
-      await setProfileFile(form.uid, value);
-      await setProfiles(form.uid, form);
-    };
+      const value = latestEditor.current.value
+      await setProfileFile(form.uid, value)
+      await setProfiles(form.uid, form)
+    }
 
     try {
       if (isEdit) {
-        await toUpdate();
+        await toUpdate()
       } else {
-        await toCreate();
+        await toCreate()
       }
 
-      setTimeout(() => reset(), 300);
+      setTimeout(() => reset(), 300)
 
-      onClose();
+      onClose()
     } catch (err) {
-      message("Failed to save profile: \n" + formatError(err), {
-        kind: "error",
-      });
-      console.error(err);
-    } finally {
+      message('Failed to save profile: \n' + formatError(err), {
+        kind: 'error',
+      })
+      console.error(err)
     }
-  });
+  })
 
   const dialogProps = isEdit && {
     contentStyle: {
-      overflow: "hidden",
+      overflow: 'hidden',
       padding: 0,
     },
     full: true,
-  };
+  }
 
   const MetaInfo = useMemo(
     () => (
       <div className="flex flex-col gap-4 pb-2 pt-2">
         {!isEdit && (
           <SelectElement
-            label={t("Type")}
+            label={t('Type')}
             name="type"
             control={control}
             {...commonProps}
@@ -182,19 +181,19 @@ export const ProfileDialog = ({
             required
             options={[
               {
-                id: "remote",
-                label: t("Remote Profile"),
+                id: 'remote',
+                label: t('Remote Profile'),
               },
               {
-                id: "local",
-                label: t("Local Profile"),
+                id: 'local',
+                label: t('Local Profile'),
               },
             ]}
           />
         )}
 
         <TextFieldElement
-          label={t("Name")}
+          label={t('Name')}
           name="name"
           control={control}
           size="small"
@@ -203,7 +202,7 @@ export const ProfileDialog = ({
         />
 
         <TextFieldElement
-          label={t("Descriptions")}
+          label={t('Descriptions')}
           name="desc"
           control={control}
           {...commonProps}
@@ -214,7 +213,7 @@ export const ProfileDialog = ({
         {isRemote && (
           <>
             <TextFieldElement
-              label={t("Subscription URL")}
+              label={t('Subscription URL')}
               name="url"
               control={control}
               {...commonProps}
@@ -224,7 +223,7 @@ export const ProfileDialog = ({
             />
 
             <TextFieldElement
-              label={t("User Agent")}
+              label={t('User Agent')}
               name="option.user_agent"
               control={control}
               {...commonProps}
@@ -233,7 +232,7 @@ export const ProfileDialog = ({
             />
 
             <TextFieldElement
-              label={t("Update Interval")}
+              label={t('Update Interval')}
               name="option.update_interval"
               control={control}
               {...commonProps}
@@ -252,7 +251,7 @@ export const ProfileDialog = ({
               control={control}
               render={({ field }) => (
                 <LabelSwitch
-                  label={t("Use System Proxy")}
+                  label={t('Use System Proxy')}
                   checked={field.value}
                   {...field}
                 />
@@ -264,7 +263,7 @@ export const ProfileDialog = ({
               control={control}
               render={({ field }) => (
                 <LabelSwitch
-                  label={t("Use Clash Proxy")}
+                  label={t('Use Clash Proxy')}
                   checked={field.value}
                   {...field}
                 />
@@ -283,33 +282,33 @@ export const ProfileDialog = ({
               <div className="ml-2 text-red-500">{localProfileMessage}</div>
             )}
             <span className="px-2 text-xs">
-              * {t("Choose file to import or leave it blank to create new one")}
+              * {t('Choose file to import or leave it blank to create new one')}
             </span>
           </>
         )}
       </div>
     ),
     [commonProps, control, isEdit, isRemote, localProfileMessage, t],
-  );
+  )
 
   useAsyncEffect(async () => {
     if (profile) {
-      reset(profile);
+      reset(profile)
     }
 
     if (isEdit) {
       try {
-        const value = await getProfileFile(profile?.uid);
-        setEditor((editor) => ({ ...editor, value }));
+        const value = await getProfileFile(profile?.uid)
+        setEditor((editor) => ({ ...editor, value }))
       } catch (error) {
-        console.error(error);
+        console.error(error)
       }
     }
-  }, [open]);
+  }, [open])
 
   return (
     <BaseDialog
-      title={isEdit ? t("Edit Profile") : t("Create Profile")}
+      title={isEdit ? t('Edit Profile') : t('Create Profile')}
       open={open}
       onClose={() => onClose()}
       onOk={onSubmit}
@@ -342,5 +341,5 @@ export const ProfileDialog = ({
         MetaInfo
       )}
     </BaseDialog>
-  );
-};
+  )
+}

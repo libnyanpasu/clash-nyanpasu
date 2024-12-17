@@ -1,28 +1,28 @@
-import { useAtomValue } from "jotai";
-import { useTranslation } from "react-i18next";
-import { useColorForDelay } from "@/hooks/theme";
-import { atomIsDrawer } from "@/store";
-import { Paper } from "@mui/material";
-import Grid from "@mui/material/Grid2";
+import { useAtomValue } from 'jotai'
+import { useTranslation } from 'react-i18next'
+import { useColorForDelay } from '@/hooks/theme'
+import { atomIsDrawer } from '@/store'
+import { Paper } from '@mui/material'
+import Grid from '@mui/material/Grid2'
 
 function LatencyTag({ name, value }: { name: string; value: number }) {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
 
-  const color = useColorForDelay(value);
+  const color = useColorForDelay(value)
 
   return (
     <div className="flex justify-between gap-1">
       <div className="font-bold">{name}:</div>
 
       <div className="truncate" style={{ color }}>
-        {value ? `${value.toFixed(0)} ms` : t("Timeout")}
+        {value ? `${value.toFixed(0)} ms` : t('Timeout')}
       </div>
     </div>
-  );
+  )
 }
 
 export const TimingPanel = ({ data }: { data: { [key: string]: number } }) => {
-  const isDrawer = useAtomValue(atomIsDrawer);
+  const isDrawer = useAtomValue(atomIsDrawer)
 
   return (
     <Grid
@@ -41,7 +41,7 @@ export const TimingPanel = ({ data }: { data: { [key: string]: number } }) => {
         </div>
       </Paper>
     </Grid>
-  );
-};
+  )
+}
 
-export default TimingPanel;
+export default TimingPanel

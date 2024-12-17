@@ -1,18 +1,18 @@
-import { useState } from "react";
-import { useTranslation } from "react-i18next";
-import Done from "@mui/icons-material/Done";
-import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
-import ListItem from "@mui/material/ListItem";
-import TextField from "@mui/material/TextField";
-import { Expand } from "../expand";
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import Done from '@mui/icons-material/Done'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import ListItem from '@mui/material/ListItem'
+import TextField from '@mui/material/TextField'
+import { Expand } from '../expand'
 
 export interface TextItemProps {
-  value: string;
-  label: string;
-  onApply: (value: string) => void;
-  applyLabel?: string;
-  placeholder?: string;
+  value: string
+  label: string
+  onApply: (value: string) => void
+  applyLabel?: string
+  placeholder?: string
 }
 
 export const TextItem = ({
@@ -22,9 +22,9 @@ export const TextItem = ({
   applyLabel,
   placeholder,
 }: TextItemProps) => {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
 
-  const [textString, setTextString] = useState(value);
+  const [textString, setTextString] = useState(value)
 
   return (
     <>
@@ -33,7 +33,7 @@ export const TextItem = ({
           value={textString}
           label={label}
           variant="outlined"
-          sx={{ width: "100%" }}
+          sx={{ width: '100%' }}
           multiline
           onChange={(e) => setTextString(e.target.value)}
           placeholder={placeholder}
@@ -47,10 +47,10 @@ export const TextItem = ({
             startIcon={<Done />}
             onClick={() => onApply(textString)}
           >
-            {applyLabel ?? t("Apply")}
+            {applyLabel ?? t('Apply')}
           </Button>
         </Box>
       </Expand>
     </>
-  );
-};
+  )
+}

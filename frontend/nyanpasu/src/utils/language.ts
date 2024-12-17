@@ -1,21 +1,21 @@
 export const languageOptions = {
-  zh: "简体中文",
-  en: "English",
-  ru: "Русский",
-};
+  zh: '简体中文',
+  en: 'English',
+  ru: 'Русский',
+}
 
 export const languageQuirks: {
   [key: string]: {
     drawer: {
-      minWidth: number;
-      itemClassNames?: string;
-    };
-  };
+      minWidth: number
+      itemClassNames?: string
+    }
+  }
 } = {
   zh: {
     drawer: {
       minWidth: 180,
-      itemClassNames: "text-center",
+      itemClassNames: 'text-center',
     },
   },
   en: {
@@ -28,4 +28,4 @@ export const languageQuirks: {
       minWidth: 240,
     },
   },
-};
+}

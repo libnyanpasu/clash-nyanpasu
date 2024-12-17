@@ -1,4 +1,4 @@
-import { memo, ReactNode } from "react";
+import { memo, ReactNode } from 'react'
 import {
   alpha,
   ButtonBase,
@@ -7,13 +7,13 @@ import {
   SxProps,
   Typography,
   useTheme,
-} from "@mui/material";
+} from '@mui/material'
 
 export interface PaperButtonProps extends ButtonBaseProps {
-  label?: string;
-  children?: ReactNode;
-  sxPaper?: SxProps;
-  sxButton?: SxProps;
+  label?: string
+  children?: ReactNode
+  sxPaper?: SxProps
+  sxButton?: SxProps
 }
 
 export const PaperButton = memo(function PaperButton({
@@ -23,7 +23,7 @@ export const PaperButton = memo(function PaperButton({
   sxButton,
   ...props
 }: PaperButtonProps) {
-  const { palette } = useTheme();
+  const { palette } = useTheme()
 
   return (
     <Paper
@@ -37,16 +37,16 @@ export const PaperButton = memo(function PaperButton({
       <ButtonBase
         sx={{
           borderRadius: 6,
-          width: "100%",
-          textAlign: "start",
+          width: '100%',
+          textAlign: 'start',
           padding: 2,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
 
-          "&.Mui-disabled": {
-            pointerEvents: "auto",
-            cursor: "not-allowed",
+          '&.Mui-disabled': {
+            pointerEvents: 'auto',
+            cursor: 'not-allowed',
           },
           ...sxButton,
         }}
@@ -59,8 +59,8 @@ export const PaperButton = memo(function PaperButton({
             width="100%"
             sx={{
               fontWeight: 700,
-              textOverflow: "ellipsis",
-              overflow: "hidden",
+              textOverflow: 'ellipsis',
+              overflow: 'hidden',
             }}
           >
             {label}
@@ -70,5 +70,5 @@ export const PaperButton = memo(function PaperButton({
         {children}
       </ButtonBase>
     </Paper>
-  );
-});
+  )
+})

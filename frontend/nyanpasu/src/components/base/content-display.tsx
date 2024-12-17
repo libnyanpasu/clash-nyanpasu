@@ -1,11 +1,11 @@
-import { ReactNode } from "react";
-import { Public } from "@mui/icons-material";
-import { cn } from "@nyanpasu/ui";
+import { ReactNode } from 'react'
+import { Public } from '@mui/icons-material'
+import { cn } from '@nyanpasu/ui'
 
 export interface ContentDisplayProps {
-  className?: string;
-  message?: string;
-  children?: ReactNode;
+  className?: string
+  message?: string
+  children?: ReactNode
 }
 
 export const ContentDisplay = ({
@@ -14,12 +14,10 @@ export const ContentDisplay = ({
   className,
 }: ContentDisplayProps) => (
   <div
-    className={cn("flex h-full w-full items-center justify-center", className)}
+    className={cn('flex h-full w-full items-center justify-center', className)}
   >
     <div className="flex flex-col items-center gap-4">
-      {children ? (
-        children
-      ) : (
+      {children || (
         <>
           <Public className="!size-16" />
 
@@ -28,6 +26,6 @@ export const ContentDisplay = ({
       )}
     </div>
   </div>
-);
+)
 
-export default ContentDisplay;
+export default ContentDisplay

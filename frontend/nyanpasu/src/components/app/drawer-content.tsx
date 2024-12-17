@@ -1,34 +1,34 @@
-import getSystem from "@/utils/get-system";
-import { getRoutesWithIcon } from "@/utils/routes-utils";
-import { Box } from "@mui/material";
-import { cn } from "@nyanpasu/ui";
-import AnimatedLogo from "../layout/animated-logo";
-import RouteListItem from "./modules/route-list-item";
+import getSystem from '@/utils/get-system'
+import { getRoutesWithIcon } from '@/utils/routes-utils'
+import { Box } from '@mui/material'
+import { cn } from '@nyanpasu/ui'
+import AnimatedLogo from '../layout/animated-logo'
+import RouteListItem from './modules/route-list-item'
 
 export const DrawerContent = ({
   className,
   onlyIcon,
 }: {
-  className?: string;
-  onlyIcon?: boolean;
+  className?: string
+  onlyIcon?: boolean
 }) => {
-  const routes = getRoutesWithIcon();
+  const routes = getRoutesWithIcon()
 
   return (
     <Box
       className={cn(
-        "p-4",
-        getSystem() === "macos" ? "pt-14" : "pt-8",
-        "w-full",
-        "h-full",
-        "flex",
-        "flex-col",
-        "gap-4",
+        'p-4',
+        getSystem() === 'macos' ? 'pt-14' : 'pt-8',
+        'w-full',
+        'h-full',
+        'flex',
+        'flex-col',
+        'gap-4',
         className,
       )}
       sx={[
         {
-          backgroundColor: "var(--background-color-alpha)",
+          backgroundColor: 'var(--background-color-alpha)',
         },
       ]}
       data-tauri-drag-region
@@ -43,7 +43,7 @@ export const DrawerContent = ({
             className="mt-1 flex-1 whitespace-pre-wrap text-lg font-bold"
             data-tauri-drag-region
           >
-            {"Clash\nNyanpasu"}
+            {'Clash\nNyanpasu'}
           </div>
         )}
       </div>
@@ -58,11 +58,11 @@ export const DrawerContent = ({
               icon={icon}
               onlyIcon={onlyIcon}
             />
-          );
+          )
         })}
       </div>
     </Box>
-  );
-};
+  )
+}
 
-export default DrawerContent;
+export default DrawerContent

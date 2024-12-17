@@ -1,56 +1,56 @@
-import { useDebounceEffect } from "ahooks";
-import { useAtomValue } from "jotai";
-import { RefObject, useEffect, useRef } from "react";
-import { useTranslation } from "react-i18next";
-import { Virtualizer, VirtualizerHandle } from "virtua";
-import ContentDisplay from "../base/content-display";
-import LogItem from "./log-item";
-import { atomLogLevel, atomLogList } from "./modules/store";
+import { useDebounceEffect } from 'ahooks'
+import { useAtomValue } from 'jotai'
+import { RefObject, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
+import { Virtualizer, VirtualizerHandle } from 'virtua'
+import ContentDisplay from '../base/content-display'
+import LogItem from './log-item'
+import { atomLogLevel, atomLogList } from './modules/store'
 
 export const LogList = ({
   scrollRef,
 }: {
-  scrollRef: RefObject<HTMLElement>;
+  scrollRef: RefObject<HTMLElement>
 }) => {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
 
-  const logData = useAtomValue(atomLogList);
+  const logData = useAtomValue(atomLogList)
 
-  const virtualizerRef = useRef<VirtualizerHandle>(null);
+  const virtualizerRef = useRef<VirtualizerHandle>(null)
 
-  const shouldStickToBottom = useRef(true);
+  const shouldStickToBottom = useRef(true)
 
-  const isFirstScroll = useRef(true);
+  const isFirstScroll = useRef(true)
 
   useDebounceEffect(
     () => {
       if (shouldStickToBottom && logData.length) {
         virtualizerRef.current?.scrollToIndex(logData.length - 1, {
-          align: "end",
+          align: 'end',
           smooth: !isFirstScroll.current,
-        });
+        })
 
-        isFirstScroll.current = false;
+        isFirstScroll.current = false
       }
     },
     [logData],
     { wait: 100 },
-  );
+  )
 
-  const logLevel = useAtomValue(atomLogLevel);
+  const logLevel = useAtomValue(atomLogLevel)
 
   useEffect(() => {
-    isFirstScroll.current = true;
-  }, [logLevel]);
+    isFirstScroll.current = true
+  }, [logLevel])
 
   const handleScroll = (_offset: number) => {
-    const end = virtualizerRef.current?.findEndIndex() || 0;
+    const end = virtualizerRef.current?.findEndIndex() || 0
     if (end + 1 === logData.length) {
-      shouldStickToBottom.current = true;
+      shouldStickToBottom.current = true
     } else {
-      shouldStickToBottom.current = false;
+      shouldStickToBottom.current = false
     }
-  };
+  }
 
   return logData.length ? (
     <Virtualizer
@@ -59,10 +59,10 @@ export const LogList = ({
       onScroll={handleScroll}
     >
       {logData.map((item, index) => {
-        return <LogItem key={index} value={item} />;
+        return <LogItem key={index} value={item} />
       })}
     </Virtualizer>
   ) : (
-    <ContentDisplay className="absolute" message={t("No Logs")} />
-  );
-};
+    <ContentDisplay className="absolute" message={t('No Logs')} />
+  )
+}

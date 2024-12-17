@@ -3,8 +3,8 @@
 name: Bug 反馈 / Bug report
 description: 提交一个问题报告 / Create a bug report
 labels:
-  - "T: Bug"
-  - "S: Untriaged"
+  - 'T: Bug'
+  - 'S: Untriaged'
 body:
   - type: markdown
     attributes:

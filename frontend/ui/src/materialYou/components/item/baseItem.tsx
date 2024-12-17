@@ -1,13 +1,13 @@
-import { FC, memo, ReactNode } from "react";
-import { SxProps } from "@mui/material";
-import ListItem from "@mui/material/ListItem";
-import ListItemText from "@mui/material/ListItemText";
+import { FC, memo, ReactNode } from 'react'
+import { SxProps } from '@mui/material'
+import ListItem from '@mui/material/ListItem'
+import ListItemText from '@mui/material/ListItemText'
 
 export interface BaseItemProps {
-  title: ReactNode;
-  children: ReactNode;
-  sxItem?: SxProps;
-  sxItemText?: SxProps;
+  title: ReactNode
+  children: ReactNode
+  sxItem?: SxProps
+  sxItemText?: SxProps
 }
 
 export const BaseItem: FC<BaseItemProps> = memo(function BaseItem({
@@ -22,5 +22,5 @@ export const BaseItem: FC<BaseItemProps> = memo(function BaseItem({
 
       {children}
     </ListItem>
-  );
-});
+  )
+})

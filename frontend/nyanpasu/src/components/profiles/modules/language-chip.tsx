@@ -1,11 +1,11 @@
-import { alpha, useTheme } from "@mui/material";
-import { Profile } from "@nyanpasu/interface";
-import { getLanguage } from "../utils";
+import { alpha, useTheme } from '@mui/material'
+import { Profile } from '@nyanpasu/interface'
+import { getLanguage } from '../utils'
 
-export const LanguageChip = ({ type }: { type: Profile.Item["type"] }) => {
-  const { palette } = useTheme();
+export const LanguageChip = ({ type }: { type: Profile.Item['type'] }) => {
+  const { palette } = useTheme()
 
-  const lang = getLanguage(type, true);
+  const lang = getLanguage(type, true)
 
   return (
     lang && (
@@ -19,7 +19,7 @@ export const LanguageChip = ({ type }: { type: Profile.Item["type"] }) => {
         {lang}
       </div>
     )
-  );
-};
+  )
+}
 
-export default LanguageChip;
+export default LanguageChip

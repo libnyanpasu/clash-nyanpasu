@@ -1,93 +1,93 @@
-import { motion } from "framer-motion";
-import { isObject } from "lodash-es";
-import { useState } from "react";
-import { useTranslation } from "react-i18next";
-import ClashRs from "@/assets/image/core/clash-rs.png";
-import ClashMeta from "@/assets/image/core/clash.meta.png";
-import Clash from "@/assets/image/core/clash.png";
-import { formatError } from "@/utils";
-import { message } from "@/utils/notification";
-import parseTraffic from "@/utils/parse-traffic";
-import FiberManualRecord from "@mui/icons-material/FiberManualRecord";
-import Update from "@mui/icons-material/Update";
-import LoadingButton from "@mui/lab/LoadingButton";
-import ListItem from "@mui/material/ListItem";
-import ListItemButton from "@mui/material/ListItemButton";
-import { alpha, useTheme } from "@mui/material/styles";
-import Tooltip from "@mui/material/Tooltip";
+import { motion } from 'framer-motion'
+import { isObject } from 'lodash-es'
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import ClashRs from '@/assets/image/core/clash-rs.png'
+import ClashMeta from '@/assets/image/core/clash.meta.png'
+import Clash from '@/assets/image/core/clash.png'
+import { formatError } from '@/utils'
+import { message } from '@/utils/notification'
+import parseTraffic from '@/utils/parse-traffic'
+import FiberManualRecord from '@mui/icons-material/FiberManualRecord'
+import Update from '@mui/icons-material/Update'
+import LoadingButton from '@mui/lab/LoadingButton'
+import ListItem from '@mui/material/ListItem'
+import ListItemButton from '@mui/material/ListItemButton'
+import { alpha, useTheme } from '@mui/material/styles'
+import Tooltip from '@mui/material/Tooltip'
 import {
   ClashCore,
   Core,
   InspectUpdater,
   inspectUpdater,
   useNyanpasu,
-} from "@nyanpasu/interface";
-import { cleanDeepClickEvent, cn } from "@nyanpasu/ui";
+} from '@nyanpasu/interface'
+import { cleanDeepClickEvent, cn } from '@nyanpasu/ui'
 
 export const getImage = (core: ClashCore) => {
   switch (core) {
-    case "mihomo":
-    case "mihomo-alpha": {
-      return ClashMeta;
+    case 'mihomo':
+    case 'mihomo-alpha': {
+      return ClashMeta
     }
 
-    case "clash-rs":
-    case "clash-rs-alpha": {
-      return ClashRs;
+    case 'clash-rs':
+    case 'clash-rs-alpha': {
+      return ClashRs
     }
 
     default: {
-      return Clash;
+      return Clash
     }
   }
-};
+}
 
 const calcProgress = (data?: InspectUpdater) => {
   return (
     (Number(data?.downloader?.downloaded) / Number(data?.downloader?.total)) *
     100
-  );
-};
+  )
+}
 
 const CardProgress = ({
   data,
   show,
 }: {
-  data?: InspectUpdater;
-  show?: boolean;
+  data?: InspectUpdater
+  show?: boolean
 }) => {
-  const { palette } = useTheme();
+  const { palette } = useTheme()
 
   const parsedState = () => {
     if (data?.downloader?.state) {
-      return "waiting";
+      return 'waiting'
     } else if (isObject(data?.downloader.state)) {
-      return data?.downloader.state.failed;
+      return data?.downloader.state.failed
     } else {
-      return data?.downloader.state;
+      return data?.downloader.state
     }
-  };
+  }
 
   return (
     <motion.div
       className={cn(
-        "absolute left-0 top-0 z-10 h-full w-full rounded-2xl backdrop-blur",
-        "flex flex-col items-center justify-center gap-2",
+        'absolute left-0 top-0 z-10 h-full w-full rounded-2xl backdrop-blur',
+        'flex flex-col items-center justify-center gap-2',
       )}
       style={{
         backgroundColor: alpha(palette.primary.main, 0.3),
       }}
-      animate={show ? "open" : "closed"}
+      animate={show ? 'open' : 'closed'}
       initial={{ opacity: 0 }}
       variants={{
         open: {
           opacity: 1,
-          display: "flex",
+          display: 'flex',
         },
         closed: {
           opacity: 0,
           transitionEnd: {
-            display: "none",
+            display: 'none',
           },
         },
       }}
@@ -103,17 +103,17 @@ const CardProgress = ({
       <div className="truncate capitalize">{parsedState()}</div>
 
       <div className="truncate">
-        {calcProgress(data).toFixed(0)}%{""}
+        {calcProgress(data).toFixed(0)}%{''}
         <span>({parseTraffic(data?.downloader.speed || 0)}/s)</span>
       </div>
     </motion.div>
-  );
-};
+  )
+}
 
 export interface ClashCoreItemProps {
-  selected: boolean;
-  data: Core;
-  onClick: (core: ClashCore) => void;
+  selected: boolean
+  data: Core
+  onClick: (core: ClashCore) => void
 }
 
 /**
@@ -134,84 +134,87 @@ export const ClashCoreItem = ({
   data,
   onClick,
 }: ClashCoreItemProps) => {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
 
-  const { palette } = useTheme();
+  const { palette } = useTheme()
 
-  const { updateCore, getClashCore } = useNyanpasu();
+  const { updateCore, getClashCore } = useNyanpasu()
 
-  const haveNewVersion = data.latest ? data.latest !== data.version : false;
+  const haveNewVersion = data.latest ? data.latest !== data.version : false
 
-  const [downloadState, setDownloadState] = useState(false);
+  const [downloadState, setDownloadState] = useState(false)
 
-  const [updater, setUpdater] = useState<InspectUpdater>();
+  const [updater, setUpdater] = useState<InspectUpdater>()
 
   const handleUpdateCore = async () => {
     try {
-      setDownloadState(true);
+      setDownloadState(true)
 
-      const updaterId = await updateCore(data.core);
+      const updaterId = await updateCore(data.core)
 
       await new Promise<void>((resolve, reject) => {
         const interval = setInterval(async () => {
-          const result = await inspectUpdater(updaterId);
+          const result = await inspectUpdater(updaterId)
 
-          setUpdater(result);
+          setUpdater(result)
 
           if (
             isObject(result.downloader.state) &&
-            result.downloader.state.hasOwnProperty("failed")
+            Object.prototype.hasOwnProperty.call(
+              result.downloader.state,
+              'failed',
+            )
           ) {
-            reject(result.downloader.state.failed);
-            clearInterval(interval);
+            reject(result.downloader.state.failed)
+            clearInterval(interval)
           }
 
-          if (result.state === "done") {
-            resolve();
-            clearInterval(interval);
+          if (result.state === 'done') {
+            resolve()
+            clearInterval(interval)
           }
-        }, 100);
-      });
+        }, 100)
+      })
 
-      getClashCore.mutate();
+      getClashCore.mutate()
 
-      message(t("Successfully updated the core", { core: `${data.name}` }), {
-        kind: "info",
-        title: t("Successful"),
-      });
+      message(t('Successfully updated the core', { core: `${data.name}` }), {
+        kind: 'info',
+        title: t('Successful'),
+      })
     } catch (e) {
-      message(t("Failed to update", { error: `${formatError(e)}` }), {
-        kind: "error",
-        title: t("Error"),
-      });
+      message(t('Failed to update', { error: `${formatError(e)}` }), {
+        kind: 'error',
+        title: t('Error'),
+      })
     } finally {
-      setDownloadState(false);
+      setDownloadState(false)
     }
-  };
+  }
 
   return (
     <ListItem sx={{ pl: 0, pr: 0 }}>
       <ListItemButton
         className="!relative !p-0"
         sx={{
-          borderRadius: "16px",
+          borderRadius: '16px',
           backgroundColor: alpha(palette.background.paper, 0.3),
 
-          "&.Mui-selected": {
+          '&.Mui-selected': {
             backgroundColor: alpha(palette.primary.main, 0.3),
           },
         }}
         selected={selected}
         onClick={() => {
           if (!downloadState) {
-            onClick(data.core);
+            onClick(data.core)
           }
         }}
       >
         <CardProgress data={updater} show={downloadState} />
 
         <div className="flex w-full items-center gap-2 p-4">
-          <img style={{ width: "64px" }} src={getImage(data.core)} />
+          <img style={{ width: '64px' }} src={getImage(data.core)} />
 
           <div className="flex-1">
             <div className="truncate font-bold">
@@ -232,14 +235,14 @@ export const ClashCoreItem = ({
           </div>
 
           {haveNewVersion && (
-            <Tooltip title={t("Update Core")}>
+            <Tooltip title={t('Update Core')}>
               <LoadingButton
                 variant="text"
                 className="!size-8 !min-w-0"
                 loading={downloadState}
                 onClick={(e) => {
-                  cleanDeepClickEvent(e);
-                  handleUpdateCore();
+                  cleanDeepClickEvent(e)
+                  handleUpdateCore()
                 }}
               >
                 <Update />
@@ -249,5 +252,5 @@ export const ClashCoreItem = ({
         </div>
       </ListItemButton>
     </ListItem>
-  );
-};
+  )
+}

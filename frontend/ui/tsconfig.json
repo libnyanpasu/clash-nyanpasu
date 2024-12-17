@@ -25,5 +25,5 @@
     "plugins": [{ "name": "typescript-plugin-css-modules" }],
     "outDir": "./dist",
   },
-  "include": ["src"],
+  "include": ["vite.config.ts", "src/"],
 }

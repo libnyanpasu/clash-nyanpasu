@@ -8,7 +8,7 @@ import {
   SettingsEthernet,
   SvgIconComponent,
   Terminal,
-} from "@mui/icons-material";
+} from '@mui/icons-material'
 
 const routes: { [key: string]: SvgIconComponent } = {
   dashboard: Dashboard,
@@ -19,17 +19,17 @@ const routes: { [key: string]: SvgIconComponent } = {
   logs: Terminal,
   settings: Settings,
   providers: Apps,
-};
+}
 
 export const getRoutes = () => {
   return Object.keys(routes).reduce(
     (acc, key) => {
-      acc[key] = `/${key}`;
-      return acc;
+      acc[key] = `/${key}`
+      return acc
     },
     {} as { [key: string]: string },
-  );
-};
+  )
+}
 
 export const getRoutesWithIcon = () => {
   return Object.keys(routes).reduce(
@@ -37,11 +37,11 @@ export const getRoutesWithIcon = () => {
       acc[key] = {
         path: `/${key}`,
         icon: routes[key],
-      };
-      return acc;
+      }
+      return acc
     },
     {} as {
-      [key: string]: { path: string; icon: SvgIconComponent };
+      [key: string]: { path: string; icon: SvgIconComponent }
     },
-  );
-};
+  )
+}

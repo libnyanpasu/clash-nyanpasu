@@ -1,3 +1,3 @@
-import { atom } from "jotai";
+import { atom } from 'jotai'
 
-export const proxiesFilterAtom = atom<string | null>(null);
+export const proxiesFilterAtom = atom<string | null>(null)

@@ -1,9 +1,9 @@
-name: "[Entire] Build Developer Version"
+name: '[Entire] Build Developer Version'
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "15 0 * * *" # 每天 08:15 UTC+8 自动构建
+    - cron: '15 0 * * *' # 每天 08:15 UTC+8 自动构建
 
 env:
   CARGO_INCREMENTAL: 0
@@ -15,7 +15,7 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
     uses: ./.github/workflows/deps-delete-releases.yaml
     with:
-      tag: "pre-release"
+      tag: 'pre-release'
 
   windows_amd64_build:
     name: Windows x86_64 Build
@@ -25,8 +25,8 @@ jobs:
       portable: true
       nightly: true
       fixed-webview: false
-      arch: "x86_64"
-      tag: "pre-release"
+      arch: 'x86_64'
+      tag: 'pre-release'
     secrets: inherit
 
   windows_aarch64_build:
@@ -37,8 +37,8 @@ jobs:
       portable: true
       nightly: true
       fixed-webview: false
-      arch: "aarch64"
-      tag: "pre-release"
+      arch: 'aarch64'
+      tag: 'pre-release'
     secrets: inherit
 
   windows_i686_build:
@@ -49,8 +49,8 @@ jobs:
       portable: true
       nightly: true
       fixed-webview: false
-      arch: "i686"
-      tag: "pre-release"
+      arch: 'i686'
+      tag: 'pre-release'
     secrets: inherit
 
   windows_amd64_build_fixed_webview:
@@ -60,9 +60,9 @@ jobs:
     with:
       portable: true
       nightly: true
-      arch: "x86_64"
+      arch: 'x86_64'
       fixed-webview: true
-      tag: "pre-release"
+      tag: 'pre-release'
     secrets: inherit
 
   windows_aarch64_build_fixed_webview:
@@ -72,9 +72,9 @@ jobs:
     with:
       portable: true
       nightly: true
-      arch: "aarch64"
+      arch: 'aarch64'
       fixed-webview: true
-      tag: "pre-release"
+      tag: 'pre-release'
     secrets: inherit
 
   windows_i686_build_fixed_webview:
@@ -84,9 +84,9 @@ jobs:
     with:
       portable: true
       nightly: true
-      arch: "i686"
+      arch: 'i686'
       fixed-webview: true
-      tag: "pre-release"
+      tag: 'pre-release'
     secrets: inherit
 
   linux_amd64_build:
@@ -95,8 +95,8 @@ jobs:
     needs: [delete_current_releases]
     with:
       nightly: true
-      tag: "pre-release"
-      arch: "x86_64"
+      tag: 'pre-release'
+      arch: 'x86_64'
     secrets: inherit
 
   linux_i686_build:
@@ -105,8 +105,8 @@ jobs:
     needs: [delete_current_releases]
     with:
       nightly: true
-      tag: "pre-release"
-      arch: "i686"
+      tag: 'pre-release'
+      arch: 'i686'
     secrets: inherit
 
   linux_aarch64_build:
@@ -115,8 +115,8 @@ jobs:
     needs: [delete_current_releases]
     with:
       nightly: true
-      tag: "pre-release"
-      arch: "aarch64"
+      tag: 'pre-release'
+      arch: 'aarch64'
     secrets: inherit
 
   linux_armhf_build:
@@ -125,8 +125,8 @@ jobs:
     needs: [delete_current_releases]
     with:
       nightly: true
-      tag: "pre-release"
-      arch: "armhf"
+      tag: 'pre-release'
+      arch: 'armhf'
     secrets: inherit
 
   linux_armel_build:
@@ -135,8 +135,8 @@ jobs:
     needs: [delete_current_releases]
     with:
       nightly: true
-      tag: "pre-release"
-      arch: "armel"
+      tag: 'pre-release'
+      arch: 'armel'
     secrets: inherit
 
   macos_amd64_build:
@@ -146,7 +146,7 @@ jobs:
     with:
       nightly: true
       aarch64: false
-      tag: "pre-release"
+      tag: 'pre-release'
     secrets: inherit
 
   macos_aarch64_build:
@@ -156,7 +156,7 @@ jobs:
     with:
       nightly: true
       aarch64: true
-      tag: "pre-release"
+      tag: 'pre-release'
     secrets: inherit
 
   update_tag:
@@ -179,7 +179,7 @@ jobs:
       ]
     uses: ./.github/workflows/deps-update-tag.yaml
     with:
-      tag: "pre-release"
+      tag: 'pre-release'
 
   updater:
     name: Create Updater

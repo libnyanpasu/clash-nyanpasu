@@ -1,9 +1,9 @@
-import { useLockFn } from "ahooks";
-import { useTranslation } from "react-i18next";
-import { OS } from "@/consts";
-import { sleep } from "@/utils";
-import { message } from "@/utils/notification";
-import Grid from "@mui/material/Grid2";
+import { useLockFn } from 'ahooks'
+import { useTranslation } from 'react-i18next'
+import { OS } from '@/consts'
+import { sleep } from '@/utils'
+import { message } from '@/utils/notification'
+import Grid from '@mui/material/Grid2'
 import {
   collectLogs,
   openAppConfigDir,
@@ -12,13 +12,13 @@ import {
   openLogsDir,
   restartApplication,
   setCustomAppDir,
-} from "@nyanpasu/interface";
-import { BaseCard } from "@nyanpasu/ui";
-import { open } from "@tauri-apps/plugin-dialog";
-import { PaperButton } from "./modules/nyanpasu-path";
+} from '@nyanpasu/interface'
+import { BaseCard } from '@nyanpasu/ui'
+import { open } from '@tauri-apps/plugin-dialog'
+import { PaperButton } from './modules/nyanpasu-path'
 
 export const SettingNyanpasuPath = () => {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
 
   const migrateAppPath = useLockFn(async () => {
     try {
@@ -26,54 +26,54 @@ export const SettingNyanpasuPath = () => {
       const selected = await open({
         directory: true,
         multiple: false,
-      });
+      })
 
       // user cancelled the selection
       if (!selected) {
-        return;
+        return
       }
 
       if (Array.isArray(selected)) {
-        message(t("Multiple directories are not supported"), {
-          title: t("Error"),
-          kind: "error",
-        });
+        message(t('Multiple directories are not supported'), {
+          title: t('Error'),
+          kind: 'error',
+        })
 
-        return;
+        return
       }
 
-      await setCustomAppDir(selected);
+      await setCustomAppDir(selected)
 
-      message(t("Successfully changed the app directory"), {
-        title: t("Successful"),
-        kind: "error",
-      });
+      message(t('Successfully changed the app directory'), {
+        title: t('Successful'),
+        kind: 'error',
+      })
 
-      await sleep(1000);
+      await sleep(1000)
 
-      await restartApplication();
+      await restartApplication()
     } catch (e) {
-      message(t("Failed to migrate", { error: `${JSON.stringify(e)}` }), {
-        title: t("Error"),
-        kind: "error",
-      });
+      message(t('Failed to migrate', { error: `${JSON.stringify(e)}` }), {
+        title: t('Error'),
+        kind: 'error',
+      })
     }
-  });
+  })
 
   const gridLists = [
-    { label: t("Open Config Dir"), onClick: openAppConfigDir },
-    { label: t("Open Data Dir"), onClick: openAppDataDir },
-    OS === "windows" && {
-      label: t("Migrate App Path"),
+    { label: t('Open Config Dir'), onClick: openAppConfigDir },
+    { label: t('Open Data Dir'), onClick: openAppDataDir },
+    OS === 'windows' && {
+      label: t('Migrate App Path'),
       onClick: migrateAppPath,
     },
-    { label: t("Open Core Dir"), onClick: openCoreDir },
-    { label: t("Open Logs Dir"), onClick: openLogsDir },
-    { label: t("Collect Logs"), onClick: collectLogs },
-  ].filter((x) => !!x);
+    { label: t('Open Core Dir'), onClick: openCoreDir },
+    { label: t('Open Logs Dir'), onClick: openLogsDir },
+    { label: t('Collect Logs'), onClick: collectLogs },
+  ].filter((x) => !!x)
 
   return (
-    <BaseCard label={t("Path Config")}>
+    <BaseCard label={t('Path Config')}>
       <Grid container alignItems="stretch" spacing={2}>
         {gridLists.map(({ label, onClick }) => (
           <Grid
@@ -86,14 +86,14 @@ export const SettingNyanpasuPath = () => {
             <PaperButton
               label={label}
               onClick={onClick}
-              sxPaper={{ height: "100%" }}
-              sxButton={{ height: "100%" }}
+              sxPaper={{ height: '100%' }}
+              sxButton={{ height: '100%' }}
             />
           </Grid>
         ))}
       </Grid>
     </BaseCard>
-  );
-};
+  )
+}
 
-export default SettingNyanpasuPath;
+export default SettingNyanpasuPath

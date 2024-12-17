@@ -1,84 +1,95 @@
-import dayjs from "dayjs";
-import { useAtomValue } from "jotai";
-import { isObject } from "lodash-es";
-import { useMemo } from "react";
-import { useTranslation } from "react-i18next";
-import useSWR from "swr";
-import { atomIsDrawer } from "@/store";
+import dayjs from 'dayjs'
+import { useAtomValue } from 'jotai'
+import { isObject } from 'lodash-es'
+import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
+import useSWR from 'swr'
+import { atomIsDrawer } from '@/store'
 import {
   alpha,
   CircularProgress,
   Paper,
   Tooltip,
   useTheme,
-} from "@mui/material";
-import Grid from "@mui/material/Grid2";
-import { getCoreStatus, useNyanpasu } from "@nyanpasu/interface";
+} from '@mui/material'
+import Grid from '@mui/material/Grid2'
+import { getCoreStatus, useNyanpasu } from '@nyanpasu/interface'
 
 export const ServiceShortcuts = () => {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
 
-  const { palette } = useTheme();
+  const { palette } = useTheme()
 
-  const isDrawer = useAtomValue(atomIsDrawer);
+  const isDrawer = useAtomValue(atomIsDrawer)
 
   const {
     getServiceStatus: { data: serviceStatus },
-  } = useNyanpasu();
+  } = useNyanpasu()
 
-  const coreStatusSWR = useSWR("/coreStatus", getCoreStatus, {
+  const coreStatusSWR = useSWR('/coreStatus', getCoreStatus, {
     refreshInterval: 2000,
     revalidateOnFocus: false,
-  });
+  })
 
   const status = useMemo(() => {
     switch (serviceStatus) {
-      case "running": {
+      case 'running': {
         return {
-          label: t("running"),
+          label: t('running'),
           color: alpha(palette.success[palette.mode], 0.3),
-        };
+        }
       }
 
-      case "stopped": {
+      case 'stopped': {
         return {
-          label: t("stopped"),
+          label: t('stopped'),
           color: alpha(palette.error[palette.mode], 0.3),
-        };
+        }
       }
 
-      default:
-      case "not_installed": {
+      case 'not_installed':
+      default: {
         return {
-          label: t("not_installed"),
+          label: t('not_installed'),
           color:
-            palette.mode == "light"
+            palette.mode === 'light'
               ? palette.grey[100]
               : palette.background.paper,
-        };
+        }
       }
     }
-  }, [serviceStatus, palette]);
+  }, [
+    serviceStatus,
+    t,
+    palette.success,
+    palette.mode,
+    palette.error,
+    palette.grey,
+    palette.background.paper,
+  ])
 
   const coreStatus = useMemo(() => {
-    const status = coreStatusSWR.data || [{ Stopped: null }, 0, "normal"];
-    if (isObject(status[0]) && status[0].hasOwnProperty("Stopped")) {
-      const { Stopped } = status[0];
+    const status = coreStatusSWR.data || [{ Stopped: null }, 0, 'normal']
+    if (
+      isObject(status[0]) &&
+      Object.prototype.hasOwnProperty.call(status[0], 'Stopped')
+    ) {
+      const { Stopped } = status[0]
       return {
         label:
           !!Stopped && Stopped.trim()
-            ? t("stopped_reason", { reason: Stopped })
-            : t("stopped"),
+            ? t('stopped_reason', { reason: Stopped })
+            : t('stopped'),
         color: alpha(palette.success[palette.mode], 0.3),
-      };
+      }
     }
     return {
-      label: t("service_shortcuts.core_started_by", {
-        by: t(status[2] === "normal" ? "UI" : "service"),
+      label: t('service_shortcuts.core_started_by', {
+        by: t(status[2] === 'normal' ? 'UI' : 'service'),
       }),
       color: alpha(palette.success[palette.mode], 0.3),
-    };
-  }, [coreStatusSWR.data, palette.mode, palette.success, t]);
+    }
+  }, [coreStatusSWR.data, palette.mode, palette.success, t])
 
   return (
     <Grid
@@ -93,7 +104,7 @@ export const ServiceShortcuts = () => {
         {serviceStatus ? (
           <>
             <div className="text-center font-bold">
-              {t("service_shortcuts.title")}
+              {t('service_shortcuts.title')}
             </div>
 
             <div className="flex w-full flex-col gap-2">
@@ -101,7 +112,7 @@ export const ServiceShortcuts = () => {
                 className="flex w-full justify-center gap-[2px] rounded-2xl py-2"
                 style={{ backgroundColor: status.color }}
               >
-                <div>{t("service_shortcuts.service_status")}</div>
+                <div>{t('service_shortcuts.service_status')}</div>
                 <div>{t(status.label)}</div>
               </div>
 
@@ -109,11 +120,11 @@ export const ServiceShortcuts = () => {
                 className="flex w-full justify-center gap-[2px] rounded-2xl py-2"
                 style={{ backgroundColor: coreStatus.color }}
               >
-                <div>{t("service_shortcuts.core_status")}</div>
+                <div>{t('service_shortcuts.core_status')}</div>
                 <Tooltip
                   title={
                     !!coreStatusSWR.data?.[1] &&
-                    t("service_shortcuts.last_status_changed_since", {
+                    t('service_shortcuts.last_status_changed_since', {
                       time: dayjs(coreStatusSWR.data[1]).fromNow(),
                     })
                   }
@@ -132,7 +143,7 @@ export const ServiceShortcuts = () => {
         )}
       </Paper>
     </Grid>
-  );
-};
+  )
+}
 
-export default ServiceShortcuts;
+export default ServiceShortcuts

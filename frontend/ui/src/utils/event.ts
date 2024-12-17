@@ -1,6 +1,6 @@
 export const cleanDeepClickEvent = (
-  e: Pick<MouseEvent, "preventDefault" | "stopPropagation">,
+  e: Pick<MouseEvent, 'preventDefault' | 'stopPropagation'>,
 ) => {
-  e.preventDefault();
-  e.stopPropagation();
-};
+  e.preventDefault()
+  e.stopPropagation()
+}

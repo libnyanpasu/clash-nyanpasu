@@ -1,20 +1,20 @@
-import { useTranslation } from "react-i18next";
-import Grid from "@mui/material/Grid2";
-import { useNyanpasu } from "@nyanpasu/interface";
-import { BaseCard } from "@nyanpasu/ui";
-import { PaperSwitchButton } from "./modules/system-proxy";
+import { useTranslation } from 'react-i18next'
+import Grid from '@mui/material/Grid2'
+import { useNyanpasu } from '@nyanpasu/interface'
+import { BaseCard } from '@nyanpasu/ui'
+import { PaperSwitchButton } from './modules/system-proxy'
 
 export const SettingSystemBehavior = () => {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
 
-  const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu();
+  const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu()
 
   return (
-    <BaseCard label={t("Initiating Behavior")}>
+    <BaseCard label={t('Initiating Behavior')}>
       <Grid container spacing={2}>
         <Grid size={{ xs: 6 }}>
           <PaperSwitchButton
-            label={t("Auto Start")}
+            label={t('Auto Start')}
             checked={nyanpasuConfig?.enable_auto_launch || false}
             onClick={() =>
               setNyanpasuConfig({
@@ -30,7 +30,7 @@ export const SettingSystemBehavior = () => {
           }}
         >
           <PaperSwitchButton
-            label={t("Silent Start")}
+            label={t('Silent Start')}
             checked={nyanpasuConfig?.enable_silent_start || false}
             onClick={() =>
               setNyanpasuConfig({
@@ -41,7 +41,7 @@ export const SettingSystemBehavior = () => {
         </Grid>
       </Grid>
     </BaseCard>
-  );
-};
+  )
+}
 
-export default SettingSystemBehavior;
+export default SettingSystemBehavior

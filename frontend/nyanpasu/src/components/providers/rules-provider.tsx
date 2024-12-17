@@ -1,38 +1,38 @@
-import { useLockFn } from "ahooks";
-import dayjs from "dayjs";
-import { useState } from "react";
-import { useTranslation } from "react-i18next";
-import { message } from "@/utils/notification";
-import { Refresh } from "@mui/icons-material";
-import LoadingButton from "@mui/lab/LoadingButton/LoadingButton";
-import { Chip, Paper } from "@mui/material";
-import { ProviderRules, useClashCore } from "@nyanpasu/interface";
+import { useLockFn } from 'ahooks'
+import dayjs from 'dayjs'
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { message } from '@/utils/notification'
+import { Refresh } from '@mui/icons-material'
+import LoadingButton from '@mui/lab/LoadingButton/LoadingButton'
+import { Chip, Paper } from '@mui/material'
+import { ProviderRules, useClashCore } from '@nyanpasu/interface'
 
 export interface RulesProviderProps {
-  provider: ProviderRules;
+  provider: ProviderRules
 }
 
 export default function RulesProvider({ provider }: RulesProviderProps) {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false)
 
-  const { updateRulesProviders } = useClashCore();
+  const { updateRulesProviders } = useClashCore()
 
   const handleClick = useLockFn(async () => {
     try {
-      setLoading(true);
+      setLoading(true)
 
-      await updateRulesProviders(provider.name);
+      await updateRulesProviders(provider.name)
     } catch (e) {
       message(`Update ${provider.name} failed.\n${String(e)}`, {
-        kind: "error",
-        title: t("Error"),
-      });
+        kind: 'error',
+        title: t('Error'),
+      })
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  });
+  })
 
   return (
     <Paper
@@ -51,7 +51,7 @@ export default function RulesProvider({ provider }: RulesProviderProps) {
         </div>
 
         <div className="text-right text-sm">
-          {t("Last Update", {
+          {t('Last Update', {
             fromNow: dayjs(provider.updatedAt).fromNow(),
           })}
         </div>
@@ -60,7 +60,7 @@ export default function RulesProvider({ provider }: RulesProviderProps) {
       <div className="flex items-center justify-between">
         <Chip
           className="truncate font-bold"
-          label={t("Rule Set rules", {
+          label={t('Rule Set rules', {
             rule: provider.ruleCount,
           })}
         />
@@ -76,5 +76,5 @@ export default function RulesProvider({ provider }: RulesProviderProps) {
         </LoadingButton>
       </div>
     </Paper>
-  );
+  )
 }

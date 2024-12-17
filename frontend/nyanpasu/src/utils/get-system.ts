@@ -1,3 +1,3 @@
-import { getSystem } from "@nyanpasu/ui";
+import { getSystem } from '@nyanpasu/ui'
 
-export default getSystem;
+export default getSystem

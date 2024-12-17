@@ -1,6 +1,6 @@
-import { atom } from "jotai";
-import { LogMessage } from "@nyanpasu/interface";
+import { atom } from 'jotai'
+import { LogMessage } from '@nyanpasu/interface'
 
-export const atomLogList = atom<LogMessage[]>([]);
+export const atomLogList = atom<LogMessage[]>([])
 
-export const atomLogLevel = atom<string>("all");
+export const atomLogLevel = atom<string>('all')

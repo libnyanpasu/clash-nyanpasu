@@ -1,23 +1,23 @@
-import { AnimatePresence, motion } from "framer-motion";
-import { useState } from "react";
-import getSystem from "@/utils/get-system";
-import { MenuOpen } from "@mui/icons-material";
-import { alpha, Backdrop, IconButton } from "@mui/material";
-import { cn } from "@nyanpasu/ui";
-import AnimatedLogo from "../layout/animated-logo";
-import DrawerContent from "./drawer-content";
+import { AnimatePresence, motion } from 'framer-motion'
+import { useState } from 'react'
+import getSystem from '@/utils/get-system'
+import { MenuOpen } from '@mui/icons-material'
+import { alpha, Backdrop, IconButton } from '@mui/material'
+import { cn } from '@nyanpasu/ui'
+import AnimatedLogo from '../layout/animated-logo'
+import DrawerContent from './drawer-content'
 
-const OS = getSystem();
+const OS = getSystem()
 
 export const AppDrawer = () => {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false)
 
   const DrawerTitle = () => {
     return (
       <div
         className={cn(
-          "fixed z-10 flex items-center gap-2",
-          OS === "macos" ? "left-24 top-3" : "left-4 top-1.5",
+          'fixed z-10 flex items-center gap-2',
+          OS === 'macos' ? 'left-24 top-3' : 'left-4 top-1.5',
         )}
         data-tauri-drag-region
       >
@@ -26,7 +26,7 @@ export const AppDrawer = () => {
           sx={[
             (theme) => ({
               backgroundColor: alpha(theme.palette.primary.main, 0.1),
-              svg: { transform: "scale(0.9)" },
+              svg: { transform: 'scale(0.9)' },
             }),
           ]}
           onClick={() => setOpen(true)}
@@ -42,23 +42,23 @@ export const AppDrawer = () => {
           Clash Nyanpasu
         </div>
       </div>
-    );
-  };
+    )
+  }
 
   return (
     <>
       <DrawerTitle />
       <Backdrop
-        className={cn("z-20", OS !== "linux" && "backdrop-blur-xl")}
+        className={cn('z-20', OS !== 'linux' && 'backdrop-blur-xl')}
         sx={[
           (theme) =>
-            OS === "linux"
+            OS === 'linux'
               ? {
                   backgroundColor: null,
                 }
               : {
                   backgroundColor: alpha(theme.palette.primary.light, 0.1),
-                  ...theme.applyStyles("dark", {
+                  ...theme.applyStyles('dark', {
                     backgroundColor: alpha(theme.palette.primary.dark, 0.1),
                   }),
                 },
@@ -70,7 +70,7 @@ export const AppDrawer = () => {
           <div className="h-full w-full">
             <motion.div
               className="h-full"
-              animate={open ? "open" : "closed"}
+              animate={open ? 'open' : 'closed'}
               variants={{
                 open: {
                   x: 0,
@@ -80,7 +80,7 @@ export const AppDrawer = () => {
                 },
               }}
               transition={{
-                type: "tween",
+                type: 'tween',
               }}
             >
               <DrawerContent className="max-w-64" />
@@ -89,7 +89,7 @@ export const AppDrawer = () => {
         </AnimatePresence>
       </Backdrop>
     </>
-  );
-};
+  )
+}
 
-export default AppDrawer;
+export default AppDrawer

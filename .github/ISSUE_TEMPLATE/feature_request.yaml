@@ -3,8 +3,8 @@
 name: 功能请求 / Feature request
 description: 提出一个功能建议 / Suggest an idea
 labels:
-  - "T: Feature"
-  - "S: Untriaged"
+  - 'T: Feature'
+  - 'S: Untriaged'
 body:
   - type: markdown
     attributes:

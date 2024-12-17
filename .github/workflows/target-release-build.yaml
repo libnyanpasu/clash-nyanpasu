@@ -1,4 +1,4 @@
-name: "[Entire] Build Release Version"
+name: '[Entire] Build Release Version'
 
 on:
   release:

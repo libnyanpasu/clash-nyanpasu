@@ -1,21 +1,21 @@
-import { isEmpty } from "lodash-es";
-import { memo } from "react";
-import { useTranslation } from "react-i18next";
-import { VList } from "virtua";
-import { RamenDining, Terminal } from "@mui/icons-material";
-import { Divider } from "@mui/material";
-import { useClash } from "@nyanpasu/interface";
-import { cn } from "@nyanpasu/ui";
-import { filterProfiles } from "../utils";
+import { isEmpty } from 'lodash-es'
+import { memo } from 'react'
+import { useTranslation } from 'react-i18next'
+import { VList } from 'virtua'
+import { RamenDining, Terminal } from '@mui/icons-material'
+import { Divider } from '@mui/material'
+import { useClash } from '@nyanpasu/interface'
+import { cn } from '@nyanpasu/ui'
+import { filterProfiles } from '../utils'
 
 const LogListItem = memo(function LogListItem({
   name,
   item,
   showDivider,
 }: {
-  name?: string;
-  item?: [string, string];
-  showDivider?: boolean;
+  name?: string
+  item?: [string, string]
+  showDivider?: boolean
 }) {
   return (
     <>
@@ -27,27 +27,27 @@ const LogListItem = memo(function LogListItem({
         <span>{item?.[1]}</span>
       </div>
     </>
-  );
-});
+  )
+})
 
 export interface SideLogProps {
-  className?: string;
+  className?: string
 }
 
 export const SideLog = ({ className }: SideLogProps) => {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
 
-  const { getRuntimeLogs, getProfiles } = useClash();
+  const { getRuntimeLogs, getProfiles } = useClash()
 
-  const { scripts } = filterProfiles(getProfiles.data?.items);
+  const { scripts } = filterProfiles(getProfiles.data?.items)
 
   return (
-    <div className={cn("w-full", className)}>
+    <div className={cn('w-full', className)}>
       <div className="flex items-center justify-between p-2 pl-4">
         <div className="flex items-center gap-2">
           <Terminal />
 
-          <span>{t("Console")}</span>
+          <span>{t('Console')}</span>
         </div>
       </div>
 
@@ -57,7 +57,7 @@ export const SideLog = ({ className }: SideLogProps) => {
         {!isEmpty(getRuntimeLogs.data) ? (
           Object.entries(getRuntimeLogs.data).map(([uid, content]) => {
             return content.map((item, index) => {
-              const name = scripts?.find((script) => script.uid === uid)?.name;
+              const name = scripts?.find((script) => script.uid === uid)?.name
 
               return (
                 <LogListItem
@@ -66,16 +66,16 @@ export const SideLog = ({ className }: SideLogProps) => {
                   item={item}
                   showDivider={index !== 0}
                 />
-              );
-            });
+              )
+            })
           })
         ) : (
           <div className="flex h-full min-h-48 w-full flex-col items-center justify-center">
             <RamenDining className="!size-10" />
-            <p>{t("No Logs")}</p>
+            <p>{t('No Logs')}</p>
           </div>
         )}
       </VList>
     </div>
-  );
-};
+  )
+}

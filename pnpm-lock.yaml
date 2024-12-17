@@ -557,8 +557,8 @@ importers:
         specifier: 2.26.8
         version: 2.26.8
       undici:
-        specifier: 7.1.0
-        version: 7.1.0
+        specifier: 7.1.1
+        version: 7.1.1
 
 packages:
 
@@ -7342,8 +7342,8 @@ packages:
     resolution: {integrity: sha512-72RFADWFqKmUb2hmmvNODKL3p9hcB6Gt2DOQMis1SEBaV6a4MH8soBvzg+95CYhCKPFedut2JY9bMfrDl9D23g==}
     engines: {node: '>=14.0'}
 
-  undici@7.1.0:
-    resolution: {integrity: sha512-3+mdX2R31khuLCm2mKExSlMdJsfol7bJkIMH80tdXA74W34rT1jKemUTlYR7WY3TqsV4wfOgpatWmmB2Jl1+5g==}
+  undici@7.1.1:
+    resolution: {integrity: sha512-WZkQ6eH9f5ZT93gaIffsbUaDpBwjbpvmMbfaEhOnbdUneurTESeRxwPGwjI28mRFESH3W3e8Togijh37ptOQqA==}
     engines: {node: '>=20.18.1'}
 
   unicode-canonical-property-names-ecmascript@2.0.1:
@@ -15205,7 +15205,7 @@ snapshots:
     dependencies:
       '@fastify/busboy': 2.1.1
 
-  undici@7.1.0: {}
+  undici@7.1.1: {}
 
   unicode-canonical-property-names-ecmascript@2.0.1: {}
 

@@ -87,7 +87,7 @@
     "knip": "5.41.1",
     "lint-staged": "15.2.11",
     "neostandard": "0.12.0",
-    "npm-run-all2": "7.0.1",
+    "npm-run-all2": "7.0.2",
     "postcss": "8.4.49",
     "postcss-html": "1.7.0",
     "postcss-import": "16.1.0",

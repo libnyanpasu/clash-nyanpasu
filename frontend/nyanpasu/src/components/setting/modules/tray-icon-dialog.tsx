@@ -1,67 +1,67 @@
-import { useMemoizedFn } from "ahooks";
-import { useState, useTransition } from "react";
-import { useTranslation } from "react-i18next";
-import useSWR from "swr";
-import { formatError, sleep } from "@/utils";
-import { message } from "@/utils/notification";
-import { LoadingButton } from "@mui/lab";
+import { useMemoizedFn } from 'ahooks'
+import { useState, useTransition } from 'react'
+import { useTranslation } from 'react-i18next'
+import useSWR from 'swr'
+import { formatError, sleep } from '@/utils'
+import { message } from '@/utils/notification'
+import { LoadingButton } from '@mui/lab'
 import {
   getServerPort,
   isTrayIconSet,
   setTrayIcon as setTrayIconCall,
-} from "@nyanpasu/interface";
-import { BaseDialog, BaseDialogProps } from "@nyanpasu/ui";
-import { open } from "@tauri-apps/plugin-dialog";
+} from '@nyanpasu/interface'
+import { BaseDialog, BaseDialogProps } from '@nyanpasu/ui'
+import { open } from '@tauri-apps/plugin-dialog'
 
-function TrayIconItem({ mode }: { mode: "system_proxy" | "tun" | "normal" }) {
-  const { t } = useTranslation();
-  const [ts, setTs] = useState(Date.now());
+function TrayIconItem({ mode }: { mode: 'system_proxy' | 'tun' | 'normal' }) {
+  const { t } = useTranslation()
+  const [ts, setTs] = useState(Date.now())
   const {
     data: isSetTrayIcon,
     isLoading,
     mutate,
-  } = useSWR("/isSetTrayIcon?mode=" + mode, () => isTrayIconSet(mode), {
+  } = useSWR('/isSetTrayIcon?mode=' + mode, () => isTrayIconSet(mode), {
     revalidateOnFocus: true,
-  });
-  const { data: serverPort } = useSWR("/getServerPort", getServerPort);
-  const src = `http://localhost:${serverPort}/tray/icon?mode=${mode}&ts=${ts}`;
-  const [loading, startTransition] = useTransition();
+  })
+  const { data: serverPort } = useSWR('/getServerPort', getServerPort)
+  const src = `http://localhost:${serverPort}/tray/icon?mode=${mode}&ts=${ts}`
+  const [loading, startTransition] = useTransition()
   const selectImage = async () => {
     const selected = await open({
       directory: false,
       multiple: false,
       filters: [
-        { name: "Images", extensions: ["png", "jpg", "jpeg", "bmp", "ico"] },
+        { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'bmp', 'ico'] },
       ],
-    });
+    })
     if (Array.isArray(selected)) {
-      throw new Error("Not Support");
+      throw new Error('Not Support')
     } else if (selected === null) {
-      return null;
+      return null
     } else {
-      return selected;
+      return selected
     }
-  };
+  }
 
   const setTrayIcon = useMemoizedFn((reset?: boolean) => {
     startTransition(async () => {
       try {
-        const selected = reset ? undefined : await selectImage();
+        const selected = reset ? undefined : await selectImage()
         if (selected === null) {
-          return;
+          return
         }
-        return await setTrayIconCall(mode, selected);
+        return await setTrayIconCall(mode, selected)
       } catch (e) {
         message(formatError(e), {
-          kind: "error",
-        });
+          kind: 'error',
+        })
       } finally {
-        setTs(Date.now());
-        await sleep(2000);
-        await mutate();
+        setTs(Date.now())
+        await sleep(2000)
+        await mutate()
       }
-    });
-  });
+    })
+  })
 
   return (
     <div className="flex items-center justify-between">
@@ -78,7 +78,7 @@ function TrayIconItem({ mode }: { mode: "system_proxy" | "tun" | "normal" }) {
               disabled={loading || isLoading}
               onClick={() => setTrayIcon()}
             >
-              {t("Edit")}
+              {t('Edit')}
             </LoadingButton>
             <LoadingButton
               variant="contained"
@@ -86,7 +86,7 @@ function TrayIconItem({ mode }: { mode: "system_proxy" | "tun" | "normal" }) {
               disabled={loading || isLoading}
               onClick={() => setTrayIcon(true)}
             >
-              {t("Reset")}
+              {t('Reset')}
             </LoadingButton>
           </div>
         ) : (
@@ -96,25 +96,25 @@ function TrayIconItem({ mode }: { mode: "system_proxy" | "tun" | "normal" }) {
             disabled={loading || isLoading}
             onClick={() => setTrayIcon()}
           >
-            {t("Set")}
+            {t('Set')}
           </LoadingButton>
         )}
       </span>
     </div>
-  );
+  )
 }
 
-export type TrayIconDialogProps = Omit<BaseDialogProps, "title">;
+export type TrayIconDialogProps = Omit<BaseDialogProps, 'title'>
 
 export default function TrayIconDialog({
   open,
   onClose,
   ...props
 }: TrayIconDialogProps) {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
   return (
     <BaseDialog
-      title={t("Tray Icons")}
+      title={t('Tray Icons')}
       open={open}
       onClose={onClose}
       {...props}
@@ -125,5 +125,5 @@ export default function TrayIconDialog({
         <TrayIconItem mode="system_proxy" />
       </div>
     </BaseDialog>
-  );
+  )
 }

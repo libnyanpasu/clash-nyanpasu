@@ -7,4 +7,4 @@ export const MUI_BREAKPOINTS = {
     lg: 1200,
     xl: 1600,
   },
-};
+}

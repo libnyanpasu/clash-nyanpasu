@@ -6,6 +6,7 @@ use std::{borrow::Cow, fs, path::PathBuf};
 use tauri::{utils::platform::resource_dir, Env};
 
 #[cfg(not(feature = "verge-dev"))]
+#[allow(unused)]
 const PREVIOUS_APP_NAME: &str = "clash-verge";
 #[cfg(feature = "verge-dev")]
 const PREVIOUS_APP_NAME: &str = "clash-verge-dev";
@@ -50,7 +51,7 @@ pub fn app_config_dir() -> Result<PathBuf> {
         {
             if get_portable_flag() {
                 let app_dir = app_install_dir()?;
-                Some(app_dir.join(".config").join(PREVIOUS_APP_NAME))
+                Some(app_dir.join(".config").join(APP_NAME))
             } else if let Ok(Some(path)) = super::winreg::get_app_dir() {
                 Some(path)
             } else {
@@ -80,7 +81,7 @@ pub fn app_data_dir() -> Result<PathBuf> {
         {
             if get_portable_flag() {
                 let app_dir = app_install_dir()?;
-                Some(app_dir.join(".data").join(PREVIOUS_APP_NAME))
+                Some(app_dir.join(".data").join(APP_NAME))
             } else {
                 None
             }

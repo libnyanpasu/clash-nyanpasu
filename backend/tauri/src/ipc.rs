@@ -15,7 +15,8 @@ use chrono::Local;
 use log::debug;
 use nyanpasu_ipc::api::status::CoreState;
 use profile::item_type::ProfileItemType;
-use serde_yaml::Mapping;
+use serde::Deserialize;
+use serde_yaml::{value::TaggedValue, Mapping};
 use std::{borrow::Cow, collections::VecDeque, path::PathBuf, result::Result as StdResult};
 use storage::{StorageOperationError, WebStorage};
 use sysproxy::Sysproxy;
@@ -118,8 +119,23 @@ pub async fn import_profile(url: String, option: Option<RemoteProfileOptionsBuil
 pub async fn create_profile(item: Mapping, file_data: Option<String>) -> Result {
     let kind = item
         .get("type")
-        .and_then(|kind| serde_yaml::from_value::<ProfileItemType>(kind.clone()).ok())
-        .ok_or(anyhow!("the type field is null"))?;
+        .ok_or(anyhow!("the type field is not found"))?;
+    // FIXME: a workaround for serde_yaml, and it should be fixed by upstream
+    let kind = serde_yaml::from_value(match kind {
+        serde_yaml::Value::String(_) => kind.clone(),
+        serde_yaml::Value::Mapping(kind) => {
+            let tag = kind
+                .keys()
+                .next()
+                .ok_or(anyhow!("the type field is not found in mapping"))?;
+            serde_yaml::Value::Tagged(Box::new(TaggedValue {
+                tag: serde_yaml::value::Tag::new(tag.as_str().unwrap()),
+                value: kind.get(tag).unwrap().clone(),
+            }))
+        }
+        _ => return Err(anyhow!("the type field is not a string or mapping").into()),
+    })
+    .context("failed to parse the profile type")?;
     let item = serde_yaml::Value::Mapping(item);
     tracing::trace!("create profile: {kind:?} with {item:?}");
     let profile: Profile = match kind {
@@ -263,7 +279,7 @@ pub async fn patch_profile(uid: String, profile: Mapping) -> Result {
                             item.as_local().unwrap().chain.contains(&uid)
                         }
                         Ok(item) if item.is_remote() => {
-                            item.as_local().unwrap().chain.contains(&uid)
+                            item.as_remote().unwrap().chain.contains(&uid)
                         }
                         _ => false,
                     })

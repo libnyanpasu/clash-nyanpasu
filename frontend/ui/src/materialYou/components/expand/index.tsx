@@ -1,5 +1,5 @@
-import { motion } from "framer-motion";
-import { ReactNode } from "react";
+import { motion } from 'framer-motion'
+import { ReactNode } from 'react'
 
 /**
  * @example
@@ -17,19 +17,19 @@ export const Expand = ({
   open,
   children,
 }: {
-  open: boolean;
-  children: ReactNode;
+  open: boolean
+  children: ReactNode
 }): React.JSX.Element => {
   return (
     <motion.div
       initial={false}
-      animate={open ? "open" : "closed"}
+      animate={open ? 'open' : 'closed'}
       variants={{
-        open: { opacity: 1, height: "auto" },
+        open: { opacity: 1, height: 'auto' },
         closed: { opacity: 0, height: 0 },
       }}
     >
       {children}
     </motion.div>
-  );
-};
+  )
+}

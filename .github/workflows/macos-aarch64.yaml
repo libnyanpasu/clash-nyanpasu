@@ -20,13 +20,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "./backend/"
-          prefix-key: "rust-stable"
-          key: "macos-13"
-          shared-key: "release"
+          workspaces: './backend/'
+          prefix-key: 'rust-stable'
+          key: 'macos-13'
+          shared-key: 'release'
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: "15.0"
+          xcode-version: '15.0'
       - name: install the missing rust target
         run: |
           rustup target add aarch64-apple-darwin
@@ -34,7 +34,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '20'
 
       - uses: pnpm/action-setup@v4
         name: Install pnpm

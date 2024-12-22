@@ -1,29 +1,29 @@
-import { useAtomValue } from "jotai";
-import { useWindowSize } from "react-use";
-import { useIsAppImage } from "@/hooks/use-consts";
-import { atomIsDrawerOnlyIcon } from "@/store";
-import Masonry from "@mui/lab/Masonry";
-import SettingClashBase from "./setting-clash-base";
-import SettingClashCore from "./setting-clash-core";
-import SettingClashExternal from "./setting-clash-external";
-import SettingClashField from "./setting-clash-field";
-import SettingClashPort from "./setting-clash-port";
-import SettingClashWeb from "./setting-clash-web";
-import SettingNyanpasuMisc from "./setting-nyanpasu-misc";
-import SettingNyanpasuPath from "./setting-nyanpasu-path";
-import SettingNyanpasuTasks from "./setting-nyanpasu-tasks";
-import SettingNyanpasuUI from "./setting-nyanpasu-ui";
-import SettingNyanpasuVersion from "./setting-nyanpasu-version";
-import SettingSystemBehavior from "./setting-system-behavior";
-import SettingSystemProxy from "./setting-system-proxy";
-import SettingSystemService from "./setting-system-service";
+import { useAtomValue } from 'jotai'
+import { useWindowSize } from 'react-use'
+import { useIsAppImage } from '@/hooks/use-consts'
+import { atomIsDrawerOnlyIcon } from '@/store'
+import Masonry from '@mui/lab/Masonry'
+import SettingClashBase from './setting-clash-base'
+import SettingClashCore from './setting-clash-core'
+import SettingClashExternal from './setting-clash-external'
+import SettingClashField from './setting-clash-field'
+import SettingClashPort from './setting-clash-port'
+import SettingClashWeb from './setting-clash-web'
+import SettingNyanpasuMisc from './setting-nyanpasu-misc'
+import SettingNyanpasuPath from './setting-nyanpasu-path'
+import SettingNyanpasuTasks from './setting-nyanpasu-tasks'
+import SettingNyanpasuUI from './setting-nyanpasu-ui'
+import SettingNyanpasuVersion from './setting-nyanpasu-version'
+import SettingSystemBehavior from './setting-system-behavior'
+import SettingSystemProxy from './setting-system-proxy'
+import SettingSystemService from './setting-system-service'
 
 export const SettingPage = () => {
-  const isAppImage = useIsAppImage();
+  const isAppImage = useIsAppImage()
 
-  const isDrawerOnlyIcon = useAtomValue(atomIsDrawerOnlyIcon);
+  const isDrawerOnlyIcon = useAtomValue(atomIsDrawerOnlyIcon)
 
-  const { width } = useWindowSize();
+  const { width } = useWindowSize()
 
   return (
     <Masonry
@@ -66,7 +66,7 @@ export const SettingPage = () => {
 
       <SettingNyanpasuVersion />
     </Masonry>
-  );
-};
+  )
+}
 
-export default SettingPage;
+export default SettingPage

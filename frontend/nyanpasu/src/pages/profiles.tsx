@@ -1,156 +1,154 @@
-import MdiTextBoxCheckOutline from "~icons/mdi/text-box-check-outline";
-import { useLockFn } from "ahooks";
-import { AnimatePresence, motion } from "framer-motion";
-import { useAtom } from "jotai";
-import { useMemo, useState, useTransition } from "react";
-import { useTranslation } from "react-i18next";
-import { useWindowSize } from "react-use";
-import { z } from "zod";
+import MdiTextBoxCheckOutline from '~icons/mdi/text-box-check-outline'
+import { useLockFn } from 'ahooks'
+import { AnimatePresence, motion } from 'framer-motion'
+import { useAtom } from 'jotai'
+import { useMemo, useState, useTransition } from 'react'
+import { useTranslation } from 'react-i18next'
+import { useWindowSize } from 'react-use'
+import { z } from 'zod'
 import {
   atomChainsSelected,
   atomGlobalChainCurrent,
-} from "@/components/profiles/modules/store";
-import NewProfileButton from "@/components/profiles/new-profile-button";
+} from '@/components/profiles/modules/store'
+import NewProfileButton from '@/components/profiles/new-profile-button'
 import {
   AddProfileContext,
   AddProfileContextValue,
-} from "@/components/profiles/profile-dialog";
-import ProfileItem from "@/components/profiles/profile-item";
-import ProfileSide from "@/components/profiles/profile-side";
-import { GlobalUpdatePendingContext } from "@/components/profiles/provider";
-import { QuickImport } from "@/components/profiles/quick-import";
-import RuntimeConfigDiffDialog from "@/components/profiles/runtime-config-diff-dialog";
-import { filterProfiles } from "@/components/profiles/utils";
-import { formatError } from "@/utils";
-import { message } from "@/utils/notification";
-import { Public, Update } from "@mui/icons-material";
-import { Badge, Button, CircularProgress, IconButton } from "@mui/material";
-import Grid from "@mui/material/Grid2";
-import { Profile, updateProfile, useClash } from "@nyanpasu/interface";
-import { FloatingButton, SidePage } from "@nyanpasu/ui";
-import { createFileRoute, useLocation } from "@tanstack/react-router";
-import { zodSearchValidator } from "@tanstack/router-zod-adapter";
+} from '@/components/profiles/profile-dialog'
+import ProfileItem from '@/components/profiles/profile-item'
+import ProfileSide from '@/components/profiles/profile-side'
+import { GlobalUpdatePendingContext } from '@/components/profiles/provider'
+import { QuickImport } from '@/components/profiles/quick-import'
+import RuntimeConfigDiffDialog from '@/components/profiles/runtime-config-diff-dialog'
+import { filterProfiles } from '@/components/profiles/utils'
+import { formatError } from '@/utils'
+import { message } from '@/utils/notification'
+import { Public, Update } from '@mui/icons-material'
+import { Badge, Button, CircularProgress, IconButton } from '@mui/material'
+import Grid from '@mui/material/Grid2'
+import { Profile, updateProfile, useClash } from '@nyanpasu/interface'
+import { FloatingButton, SidePage } from '@nyanpasu/ui'
+import { createFileRoute, useLocation } from '@tanstack/react-router'
+import { zodSearchValidator } from '@tanstack/router-zod-adapter'
 
 const profileSearchParams = z.object({
   subscribeName: z.string().optional(),
   subscribeUrl: z.string().url().optional(),
   subscribeDesc: z.string().optional(),
-});
+})
 
-export const Route = createFileRoute("/profiles")({
+export const Route = createFileRoute('/profiles')({
   validateSearch: zodSearchValidator(profileSearchParams),
   component: ProfilePage,
-});
+})
 
 function ProfilePage() {
-  const { t } = useTranslation();
-  const { getProfiles, getRuntimeLogs } = useClash();
+  const { t } = useTranslation()
+  const { getProfiles, getRuntimeLogs } = useClash()
   const maxLogLevelTriggered = useMemo(() => {
     const currentProfileChains =
       getProfiles.data?.items?.find(
         // TODO: 支持多 Profile
-        (item) => getProfiles.data?.current[0] == item.uid,
-      )?.chain || [];
+        (item) => getProfiles.data?.current[0] === item.uid,
+      )?.chain || []
     return Object.entries(getRuntimeLogs.data || {}).reduce(
       (acc, [key, value]) => {
-        const accKey = currentProfileChains.includes(key)
-          ? "current"
-          : "global";
-        if (acc[accKey] == "error") {
-          return acc;
+        const accKey = currentProfileChains.includes(key) ? 'current' : 'global'
+        if (acc[accKey] === 'error') {
+          return acc
         }
         for (const log of value) {
           switch (log[0]) {
-            case "error":
-              return { ...acc, [accKey]: "error" };
-            case "warn":
-              acc = { ...acc, [accKey]: "warn" };
-              break;
-            case "info":
-              if (acc[accKey] != "warn") {
-                acc = { ...acc, [accKey]: "info" };
+            case 'error':
+              return { ...acc, [accKey]: 'error' }
+            case 'warn':
+              acc = { ...acc, [accKey]: 'warn' }
+              break
+            case 'info':
+              if (acc[accKey] !== 'warn') {
+                acc = { ...acc, [accKey]: 'info' }
               }
-              break;
+              break
           }
         }
-        return acc;
+        return acc
       },
       {} as {
-        global: undefined | "info" | "error" | "warn";
-        current: undefined | "info" | "error" | "warn";
+        global: undefined | 'info' | 'error' | 'warn'
+        current: undefined | 'info' | 'error' | 'warn'
       },
-    );
-  }, [getRuntimeLogs.data, getProfiles.data]);
-  const { profiles } = filterProfiles(getProfiles.data?.items);
+    )
+  }, [getRuntimeLogs.data, getProfiles.data])
+  const { profiles } = filterProfiles(getProfiles.data?.items)
 
-  const [globalChain, setGlobalChain] = useAtom(atomGlobalChainCurrent);
+  const [globalChain, setGlobalChain] = useAtom(atomGlobalChainCurrent)
 
-  const [chainsSelected, setChainsSelected] = useAtom(atomChainsSelected);
+  const [chainsSelected, setChainsSelected] = useAtom(atomChainsSelected)
 
   const handleGlobalChainClick = () => {
-    setChainsSelected(undefined);
-    setGlobalChain(!globalChain);
-  };
+    setChainsSelected(undefined)
+    setGlobalChain(!globalChain)
+  }
 
   const onClickChains = (profile: Profile.Item) => {
-    setGlobalChain(false);
+    setGlobalChain(false)
 
-    if (chainsSelected == profile.uid) {
-      setChainsSelected(undefined);
+    if (chainsSelected === profile.uid) {
+      setChainsSelected(undefined)
     } else {
-      setChainsSelected(profile.uid);
+      setChainsSelected(profile.uid)
     }
-  };
+  }
 
   const handleSideClose = () => {
-    setChainsSelected(undefined);
-    setGlobalChain(false);
-  };
+    setChainsSelected(undefined)
+    setGlobalChain(false)
+  }
 
-  const [runtimeConfigViewerOpen, setRuntimeConfigViewerOpen] = useState(false);
-  const location = useLocation();
+  const [runtimeConfigViewerOpen, setRuntimeConfigViewerOpen] = useState(false)
+  const location = useLocation()
   const addProfileCtxValue = useMemo(() => {
     if (!location.search || !location.search.subscribeUrl) {
-      return null;
+      return null
     }
     return {
       name: location.search.subscribeName!,
       desc: location.search.subscribeDesc!,
       url: location.search.subscribeUrl,
-    } satisfies AddProfileContextValue;
-  }, [location.search]);
+    } satisfies AddProfileContextValue
+  }, [location.search])
 
-  const hasSide = globalChain || chainsSelected;
+  const hasSide = globalChain || chainsSelected
 
-  const { width } = useWindowSize();
+  const { width } = useWindowSize()
 
-  const [globalUpdatePending, startGlobalUpdate] = useTransition();
+  const [globalUpdatePending, startGlobalUpdate] = useTransition()
   const handleGlobalProfileUpdate = useLockFn(async () => {
     await startGlobalUpdate(async () => {
       const remoteProfiles =
-        profiles?.filter((item) => item.type == "remote") || [];
-      const updates: Array<Promise<void>> = [];
+        profiles?.filter((item) => item.type === 'remote') || []
+      const updates: Array<Promise<void>> = []
       for (const profile of remoteProfiles) {
         const options: Profile.Option = profile.option || {
           with_proxy: false,
           self_proxy: false,
-        };
+        }
 
-        updates.push(updateProfile(profile.uid, options));
+        updates.push(updateProfile(profile.uid, options))
       }
       try {
-        await Promise.all(updates);
+        await Promise.all(updates)
       } catch (e) {
         message(`failed to update profiles: \n${formatError(e)}`, {
-          kind: "error",
-        });
+          kind: 'error',
+        })
       }
-    });
-  });
+    })
+  })
 
   return (
     <SidePage
-      title={t("Profiles")}
+      title={t('Profiles')}
       flexReverse
       header={
         <div className="flex items-center gap-2">
@@ -161,9 +159,9 @@ function ProfilePage() {
           <IconButton
             className="h-10 w-10"
             color="inherit"
-            title={t("Runtime Config")}
+            title={t('Runtime Config')}
             onClick={() => {
-              setRuntimeConfigViewerOpen(true);
+              setRuntimeConfigViewerOpen(true)
             }}
           >
             <MdiTextBoxCheckOutline
@@ -175,21 +173,21 @@ function ProfilePage() {
           <Badge
             variant="dot"
             color={
-              maxLogLevelTriggered.global === "error"
-                ? "error"
-                : maxLogLevelTriggered.global === "warn"
-                  ? "warning"
-                  : "primary"
+              maxLogLevelTriggered.global === 'error'
+                ? 'error'
+                : maxLogLevelTriggered.global === 'warn'
+                  ? 'warning'
+                  : 'primary'
             }
             invisible={!maxLogLevelTriggered.global}
           >
             <Button
               size="small"
-              variant={globalChain ? "contained" : "outlined"}
+              variant={globalChain ? 'contained' : 'outlined'}
               onClick={handleGlobalChainClick}
               startIcon={<Public />}
             >
-              {t("Global Proxy Chains")}
+              {t('Global Proxy Chains')}
             </Button>
           </Badge>
         </div>
@@ -225,7 +223,7 @@ function ProfilePage() {
                         onClickChains={onClickChains}
                         selected={getProfiles.data?.current.includes(item.uid)}
                         maxLogLevelTriggered={maxLogLevelTriggered}
-                        chainsSelected={chainsSelected == item.uid}
+                        chainsSelected={chainsSelected === item.uid}
                       />
                     </motion.div>
                   </Grid>
@@ -244,12 +242,12 @@ function ProfilePage() {
               (theme) => ({
                 backgroundColor: theme.palette.grey[200],
                 boxShadow: 4,
-                "&:hover": {
+                '&:hover': {
                   backgroundColor: theme.palette.grey[300],
                 },
-                ...theme.applyStyles("dark", {
+                ...theme.applyStyles('dark', {
                   backgroundColor: theme.palette.grey[800],
-                  "&:hover": {
+                  '&:hover': {
                     backgroundColor: theme.palette.grey[700],
                   },
                 }),
@@ -263,5 +261,5 @@ function ProfilePage() {
         </div>
       </AddProfileContext.Provider>
     </SidePage>
-  );
+  )
 }

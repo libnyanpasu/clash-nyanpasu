@@ -1,12 +1,12 @@
-import { FC, memo, ReactNode } from "react";
+import { FC, memo, ReactNode } from 'react'
 
 export const Header: FC<{ title?: ReactNode; header?: ReactNode }> = memo(
   function Header({
     title,
     header,
   }: {
-    title?: ReactNode;
-    header?: ReactNode;
+    title?: ReactNode
+    header?: ReactNode
   }) {
     return (
       <header className="select-none pl-2" data-tauri-drag-region>
@@ -16,8 +16,8 @@ export const Header: FC<{ title?: ReactNode; header?: ReactNode }> = memo(
 
         {header}
       </header>
-    );
+    )
   },
-);
+)
 
-export default Header;
+export default Header

@@ -1,5 +1,5 @@
-import { AnimatePresence, motion } from "framer-motion";
-import { useAtomValue } from "jotai";
+import { AnimatePresence, motion } from 'framer-motion'
+import { useAtomValue } from 'jotai'
 import {
   forwardRef,
   RefObject,
@@ -9,19 +9,19 @@ import {
   useImperativeHandle,
   useRef,
   useState,
-} from "react";
-import { Virtualizer, VListHandle } from "virtua";
-import { proxyGroupAtom, proxyGroupSortAtom } from "@/store";
-import { proxiesFilterAtom } from "@/store/proxies";
-import { Clash, useClashCore, useNyanpasu } from "@nyanpasu/interface";
-import { cn, useBreakpointValue } from "@nyanpasu/ui";
-import NodeCard from "./node-card";
-import { nodeSortingFn } from "./utils";
+} from 'react'
+import { Virtualizer, VListHandle } from 'virtua'
+import { proxyGroupAtom, proxyGroupSortAtom } from '@/store'
+import { proxiesFilterAtom } from '@/store/proxies'
+import { Clash, useClashCore, useNyanpasu } from '@nyanpasu/interface'
+import { cn, useBreakpointValue } from '@nyanpasu/ui'
+import NodeCard from './node-card'
+import { nodeSortingFn } from './utils'
 
-type RenderClashProxy = Clash.Proxy<string> & { renderLayoutKey: string };
+type RenderClashProxy = Clash.Proxy<string> & { renderLayoutKey: string }
 
 export interface NodeListRef {
-  scrollToCurrent: () => void;
+  scrollToCurrent: () => void
 }
 
 export const NodeList = forwardRef(function NodeList(
@@ -34,32 +34,32 @@ export const NodeList = forwardRef(function NodeList(
     setGlobalProxy,
     updateProxiesDelay,
     getAllProxiesProviders,
-  } = useClashCore();
+  } = useClashCore()
 
-  const { getCurrentMode } = useNyanpasu();
+  const { getCurrentMode } = useNyanpasu()
 
-  const proxyGroup = useAtomValue(proxyGroupAtom);
-  const proxiesFilter = useAtomValue(proxiesFilterAtom);
-  const deferredProxiesFilter = useDeferredValue(proxiesFilter);
+  const proxyGroup = useAtomValue(proxyGroupAtom)
+  const proxiesFilter = useAtomValue(proxiesFilterAtom)
+  const deferredProxiesFilter = useDeferredValue(proxiesFilter)
 
-  const proxyGroupSort = useAtomValue(proxyGroupSortAtom);
+  const proxyGroupSort = useAtomValue(proxyGroupSortAtom)
 
-  const [group, setGroup] = useState<Clash.Proxy<Clash.Proxy<string>>>();
+  const [group, setGroup] = useState<Clash.Proxy<Clash.Proxy<string>>>()
 
   const sortGroup = useCallback(() => {
     if (!getCurrentMode.global) {
       if (proxyGroup.selector !== null) {
-        const selectedGroup = data?.groups[proxyGroup.selector];
+        const selectedGroup = data?.groups[proxyGroup.selector]
 
         if (selectedGroup) {
-          setGroup(nodeSortingFn(selectedGroup, proxyGroupSort));
+          setGroup(nodeSortingFn(selectedGroup, proxyGroupSort))
         }
       }
     } else {
       if (data?.global) {
-        setGroup(nodeSortingFn(data?.global, proxyGroupSort));
+        setGroup(nodeSortingFn(data?.global, proxyGroupSort))
       } else {
-        setGroup(data?.global);
+        setGroup(data?.global)
       }
     }
   }, [
@@ -69,11 +69,11 @@ export const NodeList = forwardRef(function NodeList(
     getCurrentMode,
     proxyGroupSort,
     setGroup,
-  ]);
+  ])
 
   useEffect(() => {
-    sortGroup();
-  }, [sortGroup]);
+    sortGroup()
+  }, [sortGroup])
 
   const column = useBreakpointValue({
     xs: 1,
@@ -81,88 +81,88 @@ export const NodeList = forwardRef(function NodeList(
     md: 2,
     lg: 3,
     xl: 4,
-  });
+  })
 
-  const [renderList, setRenderList] = useState<RenderClashProxy[][]>([]);
+  const [renderList, setRenderList] = useState<RenderClashProxy[][]>([])
 
   useEffect(() => {
-    if (!group?.all) return;
+    if (!group?.all) return
 
-    const nodeNames: string[] = [];
+    const nodeNames: string[] = []
 
-    let nodes = group?.all || [];
+    let nodes = group?.all || []
     if (!!deferredProxiesFilter && deferredProxiesFilter !== group?.name) {
       nodes = nodes.filter((node) =>
         node.name.toLowerCase().includes(deferredProxiesFilter.toLowerCase()),
-      );
+      )
     }
 
     const list = nodes.reduce<RenderClashProxy[][]>((result, value, index) => {
       const getKey = () => {
-        const filter = nodeNames.filter((i) => i === value.name);
+        const filter = nodeNames.filter((i) => i === value.name)
 
         if (filter.length === 0) {
-          return value.name;
+          return value.name
         } else {
-          return `${value.name}-${filter.length}`;
+          return `${value.name}-${filter.length}`
         }
-      };
+      }
 
       if (index % column === 0) {
-        result.push([]);
+        result.push([])
       }
 
       result[Math.floor(index / column)].push({
         ...value,
         renderLayoutKey: getKey(),
-      });
+      })
 
-      nodeNames.push(value.name);
+      nodeNames.push(value.name)
 
-      return result;
-    }, []);
+      return result
+    }, [])
 
-    setRenderList(list);
-  }, [group?.all, group?.name, column, deferredProxiesFilter]);
+    setRenderList(list)
+  }, [group?.all, group?.name, column, deferredProxiesFilter])
 
   const handleClick = (node: string) => {
     if (!getCurrentMode.global) {
-      setGroupProxy(proxyGroup.selector as number, node);
+      setGroupProxy(proxyGroup.selector as number, node)
     } else {
-      setGlobalProxy(node);
+      setGlobalProxy(node)
     }
-  };
+  }
 
-  const { nyanpasuConfig } = useNyanpasu();
+  const { nyanpasuConfig } = useNyanpasu()
 
-  const disableMotion = nyanpasuConfig?.lighten_animation_effects;
+  const disableMotion = nyanpasuConfig?.lighten_animation_effects
 
-  const vListRef = useRef<VListHandle>(null);
+  const vListRef = useRef<VListHandle>(null)
 
   useImperativeHandle(ref, () => ({
     scrollToCurrent: () => {
       const index = renderList.findIndex((node) =>
         node.some((item) => item.name === group?.now),
-      );
+      )
 
       vListRef.current?.scrollToIndex(index, {
-        align: "center",
+        align: 'center',
         smooth: true,
-      });
+      })
     },
-  }));
+  }))
 
   const handleClickDelay = async (name: string) => {
     const getGroupTestUrl = () => {
       if (group?.name) {
-        return getAllProxiesProviders.data?.[group?.name].testUrl;
+        return getAllProxiesProviders.data?.[group?.name].testUrl
       }
-    };
+    }
 
     await updateProxiesDelay(name, {
       url: getGroupTestUrl(),
-    });
-  };
+    })
+  }
 
   return (
     <AnimatePresence initial={false} mode="sync">
@@ -171,7 +171,7 @@ export const NodeList = forwardRef(function NodeList(
           return (
             <div
               key={index}
-              className={cn("grid gap-2 px-2 pb-2", index === 0 && "pt-14")}
+              className={cn('grid gap-2 px-2 pb-2', index === 0 && 'pt-14')}
               style={{ gridTemplateColumns: `repeat(${column} , 1fr)` }}
             >
               {node.map((render) => {
@@ -179,13 +179,13 @@ export const NodeList = forwardRef(function NodeList(
                   <NodeCard
                     node={render}
                     now={group?.now}
-                    disabled={group?.type !== "Selector"}
+                    disabled={group?.type !== 'Selector'}
                     onClick={() => handleClick(render.name)}
                     onClickDelay={async () =>
                       await handleClickDelay(render.name)
                     }
                   />
-                );
+                )
 
                 return disableMotion ? (
                   <div className="relative overflow-hidden">
@@ -201,12 +201,12 @@ export const NodeList = forwardRef(function NodeList(
                   >
                     <Card />
                   </motion.div>
-                );
+                )
               })}
             </div>
-          );
+          )
         })}
       </Virtualizer>
     </AnimatePresence>
-  );
-});
+  )
+})

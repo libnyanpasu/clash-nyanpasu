@@ -5,9 +5,9 @@ on:
     inputs:
       versionType:
         type: choice
-        description: "<major|minor|patch>"
+        description: '<major|minor|patch>'
         required: true
-        default: "patch"
+        default: 'patch'
         options:
           - major
           - minor
@@ -83,15 +83,15 @@ jobs:
       - name: Commit changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore: bump version to v${{ steps.update-version.outputs.version }}"
-          commit_user_name: "github-actions[bot]"
-          commit_user_email: "41898282+github-actions[bot]@users.noreply.github.com"
-          tagging_message: "v${{ steps.update-version.outputs.version }}"
+          commit_message: 'chore: bump version to v${{ steps.update-version.outputs.version }}'
+          commit_user_name: 'github-actions[bot]'
+          commit_user_email: '41898282+github-actions[bot]@users.noreply.github.com'
+          tagging_message: 'v${{ steps.update-version.outputs.version }}'
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           draft: true
           body: ${{steps.build-changelog.outputs.content}}
           name: Clash Nyanpasu v${{steps.update-version.outputs.version}}
-          tag_name: "v${{ steps.update-version.outputs.version }}"
+          tag_name: 'v${{ steps.update-version.outputs.version }}'
           # target_commitish: ${{ steps.tag.outputs.sha }}

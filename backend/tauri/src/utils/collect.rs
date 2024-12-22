@@ -92,7 +92,7 @@ pub fn collect_envs<'a>() -> Result<EnvInfo<'a>, std::io::Error> {
             .trim()
             .to_owned(),
         ),
-        arch: Cow::Owned(System::cpu_arch().unwrap_or("".to_string())),
+        arch: Cow::Owned(System::cpu_arch()),
         core,
         device,
         build_info: Cow::Borrowed(&BUILD_INFO),

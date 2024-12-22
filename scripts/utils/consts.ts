@@ -1,9 +1,9 @@
-import { execSync } from "child_process";
+import { execSync } from 'child_process'
 
 export const SIDECAR_HOST: string | undefined = process.argv.includes(
-  "--sidecar-host",
+  '--sidecar-host',
 )
-  ? process.argv[process.argv.indexOf("--sidecar-host") + 1]
-  : execSync("rustc -vV")
+  ? process.argv[process.argv.indexOf('--sidecar-host') + 1]
+  : execSync('rustc -vV')
       .toString()
-      ?.match(/(?<=host: ).+(?=\s*)/g)?.[0];
+      ?.match(/(?<=host: ).+(?=\s*)/g)?.[0]

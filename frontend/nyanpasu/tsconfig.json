@@ -11,7 +11,7 @@
     "strict": true,
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
-    "moduleResolution": "Node",
+    "moduleResolution": "node",
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
@@ -25,5 +25,9 @@
     "types": ["unplugin-icons/types/react"],
   },
   "include": ["src", "./auto-imports.d.ts"],
-  "references": [{ "path": "../interface" }, { "path": "../ui" }],
+  "references": [
+    { "path": "../interface" },
+    { "path": "../ui" },
+    { "path": "./tsconfig.node.json" },
+  ],
 }

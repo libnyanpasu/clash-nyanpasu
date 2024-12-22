@@ -1,1 +1,1 @@
-export * from "./sparkline";
+export * from './sparkline'

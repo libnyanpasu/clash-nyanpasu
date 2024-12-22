@@ -1,36 +1,36 @@
-name: "[Single] Build Windows NSIS"
+name: '[Single] Build Windows NSIS'
 
 on:
   workflow_dispatch:
     inputs:
       portable:
-        description: "Build Portable pkg"
+        description: 'Build Portable pkg'
         required: true
         type: boolean
         default: false
 
       fixed-webview:
-        description: "Fixed WebView"
+        description: 'Fixed WebView'
         required: true
         type: boolean
         default: false
 
       nightly:
-        description: "Nightly prepare"
+        description: 'Nightly prepare'
         required: true
         type: boolean
         default: false
 
       tag:
-        description: "Release Tag"
+        description: 'Release Tag'
         required: true
         type: string
 
       arch:
         type: choice
-        description: "build arch target"
+        description: 'build arch target'
         required: true
-        default: "x86_64"
+        default: 'x86_64'
         options:
           - x86_64
           - i686
@@ -39,33 +39,33 @@ on:
   workflow_call:
     inputs:
       portable:
-        description: "Build Portable pkg"
+        description: 'Build Portable pkg'
         required: true
         type: boolean
         default: false
 
       fixed-webview:
-        description: "Fixed WebView"
+        description: 'Fixed WebView'
         required: true
         type: boolean
         default: false
 
       nightly:
-        description: "Nightly prepare"
+        description: 'Nightly prepare'
         required: true
         type: boolean
         default: false
 
       tag:
-        description: "Release Tag"
+        description: 'Release Tag'
         required: true
         type: string
 
       arch:
         type: string
-        description: "build arch target"
+        description: 'build arch target'
         required: true
-        default: "x86_64"
+        default: 'x86_64'
 
 jobs:
   build:
@@ -87,10 +87,10 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: "./backend/"
-          prefix-key: "rust-stable"
+          workspaces: './backend/'
+          prefix-key: 'rust-stable'
           key: windows-latest
-          shared-key: "release"
+          shared-key: 'release'
 
       - name: Install Node latest
         uses: actions/setup-node@v4

@@ -7,21 +7,21 @@
     "@types/figlet": "1.7.0",
     "figlet": "1.8.0",
     "filesize": "10.1.6",
-    "p-retry": "6.2.0"
+    "p-retry": "6.2.1"
   },
   "devDependencies": {
-    "@octokit/types": "13.6.1",
-    "@types/adm-zip": "0.5.5",
+    "@octokit/types": "13.6.2",
+    "@types/adm-zip": "0.5.7",
     "adm-zip": "0.5.16",
     "colorize-template": "1.0.0",
-    "consola": "3.2.3",
+    "consola": "3.3.0",
     "fs-extra": "11.2.0",
-    "https-proxy-agent": "7.0.5",
+    "https-proxy-agent": "7.0.6",
     "node-fetch": "3.3.2",
     "octokit": "4.0.2",
     "picocolors": "1.1.1",
     "tar": "7.4.3",
-    "telegram": "2.25.15",
-    "undici": "6.20.1"
+    "telegram": "2.26.8",
+    "undici": "7.2.0"
   }
 }

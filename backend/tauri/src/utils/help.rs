@@ -247,9 +247,7 @@ pub fn cleanup_processes(app_handle: &AppHandle) {
 
 #[instrument(skip(app_handle))]
 pub fn quit_application(app_handle: &AppHandle) {
-    cleanup_processes(app_handle);
     app_handle.exit(0);
-    std::process::exit(0);
 }
 
 #[instrument(skip(app_handle))]

@@ -1,15 +1,15 @@
-import { ReactElement, ReactNode } from "react";
-import Marquee from "react-fast-marquee";
-import DeleteRounded from "@mui/icons-material/DeleteRounded";
-import EditRounded from "@mui/icons-material/EditRounded";
-import OpenInNewRounded from "@mui/icons-material/OpenInNewRounded";
-import Box from "@mui/material/Box";
-import Chip from "@mui/material/Chip";
-import IconButton from "@mui/material/IconButton";
-import Paper, { PaperProps } from "@mui/material/Paper";
-import { alpha, styled } from "@mui/material/styles";
-import Typography from "@mui/material/Typography";
-import { openThat } from "@nyanpasu/interface";
+import { ReactElement, ReactNode } from 'react'
+import Marquee from 'react-fast-marquee'
+import DeleteRounded from '@mui/icons-material/DeleteRounded'
+import EditRounded from '@mui/icons-material/EditRounded'
+import OpenInNewRounded from '@mui/icons-material/OpenInNewRounded'
+import Box from '@mui/material/Box'
+import Chip from '@mui/material/Chip'
+import IconButton from '@mui/material/IconButton'
+import Paper, { PaperProps } from '@mui/material/Paper'
+import { alpha, styled } from '@mui/material/styles'
+import Typography from '@mui/material/Typography'
+import { openThat } from '@nyanpasu/interface'
 
 /**
  * @example
@@ -26,22 +26,22 @@ import { openThat } from "@nyanpasu/interface";
 export const renderChip = (
   string: string,
   labels: {
-    [label: string]: string | number | undefined;
+    [label: string]: string | number | undefined
   },
 ): (string | ReactElement)[] => {
   return string.split(/(%[^&?]+)/).map((part, index) => {
-    if (part.startsWith("%")) {
-      const label = labels[part.replace("%", "")];
+    if (part.startsWith('%')) {
+      const label = labels[part.replace('%', '')]
 
       // TODO: may should return part string
       if (!label) {
-        return "";
+        return ''
       }
 
       return (
         <Chip
           sx={{
-            "& .MuiChip-label": {
+            '& .MuiChip-label': {
               pl: 0.5,
               pr: 0.5,
             },
@@ -50,12 +50,12 @@ export const renderChip = (
           size="small"
           label={label}
         />
-      );
+      )
     } else {
-      return part;
+      return part
     }
-  });
-};
+  })
+}
 
 /**
  * @example
@@ -72,13 +72,13 @@ export const extractServer = (
 ): { host: string; port: number } => {
   if (!string) {
     // fallback default values
-    return { host: "127.0.0.1", port: 7890 };
+    return { host: '127.0.0.1', port: 7890 }
   } else {
-    const [host, port] = string.split(":");
+    const [host, port] = string.split(':')
 
-    return { host, port: Number(port) };
+    return { host, port: Number(port) }
   }
-};
+}
 
 /**
  * @example
@@ -95,19 +95,19 @@ export const extractServer = (
 export const openWebUrl = (
   string: string,
   labels: {
-    [label: string]: string | number | undefined;
+    [label: string]: string | number | undefined
   },
 ): void => {
-  let url = "";
+  let url = ''
 
   for (const key in labels) {
-    const regex = new RegExp(`%${key}`, "g");
+    const regex = new RegExp(`%${key}`, 'g')
 
-    url = string.replace(regex, labels[key] as string);
+    url = string.replace(regex, labels[key] as string)
   }
 
-  openThat(url);
-};
+  openThat(url)
+}
 
 /**
  * @example
@@ -124,16 +124,16 @@ export const Item = styled(Paper)<PaperProps>(({ theme }) => ({
   backgroundColor: alpha(theme.palette.primary.main, 0.1),
   padding: 16,
   borderRadius: 16,
-  display: "flex",
-  flexDirection: "column",
+  display: 'flex',
+  flexDirection: 'column',
   gap: 8,
-})) as typeof Paper;
+})) as typeof Paper
 
 export interface ClashWebItemProps {
-  label: ReactNode;
-  onOpen: () => void;
-  onDelete: () => void;
-  onEdit: () => void;
+  label: ReactNode
+  onOpen: () => void
+  onDelete: () => void
+  onEdit: () => void
 }
 
 /**
@@ -181,5 +181,5 @@ export const ClashWebItem = ({
         </IconButton>
       </Box>
     </Item>
-  );
-};
+  )
+}

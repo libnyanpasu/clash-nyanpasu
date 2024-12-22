@@ -1,6 +1,6 @@
-import { ChangeEvent, useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
-import Done from "@mui/icons-material/Done";
+import { ChangeEvent, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import Done from '@mui/icons-material/Done'
 import {
   Box,
   Button,
@@ -8,25 +8,25 @@ import {
   TextField,
   TextFieldProps,
   Typography,
-} from "@mui/material";
-import { Expand } from "../expand";
-import { BaseItem } from "./baseItem";
+} from '@mui/material'
+import { Expand } from '../expand'
+import { BaseItem } from './baseItem'
 
-export interface NumberItemprops {
-  label: string;
-  vaule: number;
-  checkEvent: (input: number) => boolean;
-  checkLabel: string;
-  onApply: (input: number) => void;
-  divider?: boolean;
-  textFieldProps?: TextFieldProps;
+export interface NumberItemProps {
+  label: string
+  value: number
+  checkEvent: (input: number) => boolean
+  checkLabel: string
+  onApply: (input: number) => void
+  divider?: boolean
+  textFieldProps?: TextFieldProps
 }
 
 /**
  * @example
  * <NumberItem
     label={t("Mixed Port")}
-    vaule={port}
+    value={port}
     checkEvent={(input) => input > 65535 || input < 1}
     checkLabel="Port must be between 1 and 65535."
     onApply={(value) => {
@@ -44,36 +44,36 @@ export interface NumberItemprops {
  */
 export const NumberItem = ({
   label,
-  vaule,
+  value,
   checkEvent,
   checkLabel,
   onApply,
   divider,
   textFieldProps,
-}: NumberItemprops) => {
-  const { t } = useTranslation();
+}: NumberItemProps) => {
+  const { t } = useTranslation()
 
-  const [changed, setChanged] = useState(false);
+  const [changed, setChanged] = useState(false)
 
-  const [input, setInput] = useState<number | null>(null);
+  const [input, setInput] = useState<number | null>(null)
 
   const applyCheck = useMemo(
     () => checkEvent(input as number),
     [checkEvent, input],
-  );
+  )
 
   return (
     <>
       <BaseItem title={label}>
         <TextField
-          value={input !== null ? input : vaule}
+          value={input !== null ? input : value}
           size="small"
           variant="outlined"
           sx={{ width: 80 }}
-          inputProps={{ "aria-autocomplete": "none" }}
+          inputProps={{ 'aria-autocomplete': 'none' }}
           onChange={(e: ChangeEvent<HTMLInputElement>) => {
-            setInput(Number(e.target.value));
-            setChanged(true);
+            setInput(Number(e.target.value))
+            setChanged(true)
           }}
           {...textFieldProps}
         />
@@ -99,16 +99,16 @@ export const NumberItem = ({
             startIcon={<Done />}
             disabled={applyCheck}
             onClick={() => {
-              onApply(input as number);
-              setChanged(false);
+              onApply(input as number)
+              setChanged(false)
             }}
           >
-            {t("Apply")}
+            {t('Apply')}
           </Button>
         </Box>
 
         {divider && <Divider />}
       </Expand>
     </>
-  );
-};
+  )
+}

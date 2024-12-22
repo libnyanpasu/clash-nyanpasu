@@ -1067,9 +1067,9 @@
 
 ### ✨ Features
 
-- **backend:** Allow to hide tray selector (#626) by @greenhat616 in [#626](https://github.com/LibNyanpasu/clash-nyanpasu/pull/626)
+- **backend:** Allow to hide tray selector (#626) by @greenhat616 in [#626](https://github.com/libnyanpasu/clash-nyanpasu/pull/626)
 
-- **config:** Support custom app dir in windows (#582) by @greenhat616 in [#582](https://github.com/LibNyanpasu/clash-nyanpasu/pull/582)
+- **config:** Support custom app dir in windows (#582) by @greenhat616 in [#582](https://github.com/libnyanpasu/clash-nyanpasu/pull/582)
 
 - **custom-schema:** Add support for name and desc fields by @greenhat616
 
@@ -1087,15 +1087,15 @@
 
 - **bundler/nsis:** Don't use /R flag on installation dir by @keiko233
 
-- **chains:** Only guard fields should be overwritten (#629) by @greenhat616 in [#629](https://github.com/LibNyanpasu/clash-nyanpasu/pull/629)
+- **chains:** Only guard fields should be overwritten (#629) by @greenhat616 in [#629](https://github.com/libnyanpasu/clash-nyanpasu/pull/629)
 
-- **cmds:** Migrate custom app dir typo (#628) by @greenhat616 in [#628](https://github.com/LibNyanpasu/clash-nyanpasu/pull/628)
+- **cmds:** Migrate custom app dir typo (#628) by @greenhat616 in [#628](https://github.com/libnyanpasu/clash-nyanpasu/pull/628)
 
-- **cmds:** `path` in changing app dir call (#591) by @greenhat616 in [#591](https://github.com/LibNyanpasu/clash-nyanpasu/pull/591)
+- **cmds:** `path` in changing app dir call (#591) by @greenhat616 in [#591](https://github.com/libnyanpasu/clash-nyanpasu/pull/591)
 
 - **docs:** Fix url typos by @keiko233
 
-- **notification:** Unexpected `}` (#563) by @WOSHIZHAZHA120 in [#563](https://github.com/LibNyanpasu/clash-nyanpasu/pull/563)
+- **notification:** Unexpected `}` (#563) by @WOSHIZHAZHA120 in [#563](https://github.com/libnyanpasu/clash-nyanpasu/pull/563)
 
 - Revert previous commit by @greenhat616
 
@@ -1175,31 +1175,31 @@
 
 ## New Contributors
 
-- @WOSHIZHAZHA120 made their first contribution in [#563](https://github.com/LibNyanpasu/clash-nyanpasu/pull/563)
+- @WOSHIZHAZHA120 made their first contribution in [#563](https://github.com/libnyanpasu/clash-nyanpasu/pull/563)
 
-**Full Changelog**: https://github.com/LibNyanpasu/clash-nyanpasu/compare/v1.5.0...v1.5.1
+**Full Changelog**: https://github.com/libnyanpasu/clash-nyanpasu/compare/v1.5.0...v1.5.1
 
 ## [1.5.0] - 2024-03-03
 
 ### 💥 Breaking Changes
 
-- **backend:** Add tray proxies selector support (#417) by @greenhat616 in [#417](https://github.com/LibNyanpasu/clash-nyanpasu/pull/417)
+- **backend:** Add tray proxies selector support (#417) by @greenhat616 in [#417](https://github.com/libnyanpasu/clash-nyanpasu/pull/417)
 
-- **clash:** Add default core secret and impl port checker before clash start (#533) by @greenhat616 in [#533](https://github.com/LibNyanpasu/clash-nyanpasu/pull/533)
+- **clash:** Add default core secret and impl port checker before clash start (#533) by @greenhat616 in [#533](https://github.com/libnyanpasu/clash-nyanpasu/pull/533)
 
 ### ✨ Features
 
-- **config:** Add migration for old config dir (#419) by @4o3F in [#419](https://github.com/LibNyanpasu/clash-nyanpasu/pull/419)
+- **config:** Add migration for old config dir (#419) by @4o3F in [#419](https://github.com/libnyanpasu/clash-nyanpasu/pull/419)
 
 - **connection:** Allow filter out process name by @greenhat616
 
-- **locale:** Use system locale as default (#437) by @greenhat616 in [#437](https://github.com/LibNyanpasu/clash-nyanpasu/pull/437)
+- **locale:** Use system locale as default (#437) by @greenhat616 in [#437](https://github.com/libnyanpasu/clash-nyanpasu/pull/437)
 
-- **tray:** Add tray icon resize logic to improve icon rendering (#540) by @greenhat616 in [#540](https://github.com/LibNyanpasu/clash-nyanpasu/pull/540)
+- **tray:** Add tray icon resize logic to improve icon rendering (#540) by @greenhat616 in [#540](https://github.com/libnyanpasu/clash-nyanpasu/pull/540)
 
-- **tray:** Add diff check for system tray partial update (#477) by @4o3F in [#477](https://github.com/LibNyanpasu/clash-nyanpasu/pull/477)
+- **tray:** Add diff check for system tray partial update (#477) by @4o3F in [#477](https://github.com/libnyanpasu/clash-nyanpasu/pull/477)
 
-- Custom schema support (#516) by @4o3F in [#516](https://github.com/LibNyanpasu/clash-nyanpasu/pull/516)
+- Custom schema support (#516) by @4o3F in [#516](https://github.com/libnyanpasu/clash-nyanpasu/pull/516)
 
 - Add Auto Check Updates Switch by @keiko233
 
@@ -1227,9 +1227,9 @@
 
 - **ci:** Replace github workflow token by @keiko233
 
-- **config:** Fix config migration (#433) by @4o3F in [#433](https://github.com/LibNyanpasu/clash-nyanpasu/pull/433)
+- **config:** Fix config migration (#433) by @4o3F in [#433](https://github.com/libnyanpasu/clash-nyanpasu/pull/433)
 
-- **custom-schema:** Fix schema not working for new opening and dialog not showing with certain route (#534) by @4o3F in [#534](https://github.com/LibNyanpasu/clash-nyanpasu/pull/534)
+- **custom-schema:** Fix schema not working for new opening and dialog not showing with certain route (#534) by @4o3F in [#534](https://github.com/libnyanpasu/clash-nyanpasu/pull/534)
 
 - **deps:** Update rust crates by @greenhat616
 
@@ -1279,19 +1279,19 @@
 
 ### 🔨 Refactor
 
-- **clash:** Move api and core manager into one mod (#411) by @greenhat616 in [#411](https://github.com/LibNyanpasu/clash-nyanpasu/pull/411)
+- **clash:** Move api and core manager into one mod (#411) by @greenhat616 in [#411](https://github.com/libnyanpasu/clash-nyanpasu/pull/411)
 
-- **i18n:** Change backend localization to rust-i18n (#425) by @4o3F in [#425](https://github.com/LibNyanpasu/clash-nyanpasu/pull/425)
+- **i18n:** Change backend localization to rust-i18n (#425) by @4o3F in [#425](https://github.com/libnyanpasu/clash-nyanpasu/pull/425)
 
-- **logging:** Use `tracing` instead of `log4rs` (#486) by @greenhat616 in [#486](https://github.com/LibNyanpasu/clash-nyanpasu/pull/486)
+- **logging:** Use `tracing` instead of `log4rs` (#486) by @greenhat616 in [#486](https://github.com/libnyanpasu/clash-nyanpasu/pull/486)
 
 - **proxies:** Proxies hash and diff logic by @greenhat616
 
-- **single-instance:** Refactor single instance check (#499) by @4o3F in [#499](https://github.com/LibNyanpasu/clash-nyanpasu/pull/499)
+- **single-instance:** Refactor single instance check (#499) by @4o3F in [#499](https://github.com/libnyanpasu/clash-nyanpasu/pull/499)
 
 ---
 
-**Full Changelog**: https://github.com/LibNyanpasu/clash-nyanpasu/compare/v1.4.5...v1.5.0
+**Full Changelog**: https://github.com/libnyanpasu/clash-nyanpasu/compare/v1.4.5...v1.5.0
 
 ## [1.4.5] - 2024-02-08
 
@@ -1303,69 +1303,69 @@
 
 ### 🐛 Bug Fixes
 
-- **bundle:** Instance is running while updating app (#393) by @greenhat616 in [#393](https://github.com/LibNyanpasu/clash-nyanpasu/pull/393)
+- **bundle:** Instance is running while updating app (#393) by @greenhat616 in [#393](https://github.com/libnyanpasu/clash-nyanpasu/pull/393)
 
 - **bundler:** Kill processes while updating in windows by @greenhat616
 
-- **ci:** Daily updater issue (#392) by @greenhat616 in [#392](https://github.com/LibNyanpasu/clash-nyanpasu/pull/392)
+- **ci:** Daily updater issue (#392) by @greenhat616 in [#392](https://github.com/libnyanpasu/clash-nyanpasu/pull/392)
 
 - **ci:** Nightly updater issue by @greenhat616
 
-- **nsis:** Kill nyanpasu processes while updating (#403) by @greenhat616 in [#403](https://github.com/LibNyanpasu/clash-nyanpasu/pull/403)
+- **nsis:** Kill nyanpasu processes while updating (#403) by @greenhat616 in [#403](https://github.com/libnyanpasu/clash-nyanpasu/pull/403)
 
-- Portable issues (#395) by @greenhat616 in [#395](https://github.com/LibNyanpasu/clash-nyanpasu/pull/395)
+- Portable issues (#395) by @greenhat616 in [#395](https://github.com/libnyanpasu/clash-nyanpasu/pull/395)
 
-- Minimize icon is wrong while resize window (#394) by @greenhat616 in [#394](https://github.com/LibNyanpasu/clash-nyanpasu/pull/394)
+- Minimize icon is wrong while resize window (#394) by @greenhat616 in [#394](https://github.com/libnyanpasu/clash-nyanpasu/pull/394)
 
-- Sort connection in numerical comparison for `Download`, `DL Speed`, etc (#367) by @Jeremy-Hibiki in [#367](https://github.com/LibNyanpasu/clash-nyanpasu/pull/367)
+- Sort connection in numerical comparison for `Download`, `DL Speed`, etc (#367) by @Jeremy-Hibiki in [#367](https://github.com/libnyanpasu/clash-nyanpasu/pull/367)
 
-- Resources missing by @greenhat616 in [#354](https://github.com/LibNyanpasu/clash-nyanpasu/pull/354)
+- Resources missing by @greenhat616 in [#354](https://github.com/libnyanpasu/clash-nyanpasu/pull/354)
 
 ---
 
 ## New Contributors
 
-- @Jeremy-Hibiki made their first contribution in [#367](https://github.com/LibNyanpasu/clash-nyanpasu/pull/367)
+- @Jeremy-Hibiki made their first contribution in [#367](https://github.com/libnyanpasu/clash-nyanpasu/pull/367)
 
-**Full Changelog**: https://github.com/LibNyanpasu/clash-nyanpasu/compare/v1.4.4...v1.4.5
+**Full Changelog**: https://github.com/libnyanpasu/clash-nyanpasu/compare/v1.4.4...v1.4.5
 
 ## [1.4.4] - 2024-01-29
 
 ### 🐛 Bug Fixes
 
-- **backend:** Fix deadlock issue on config (#312) by @4o3F in [#312](https://github.com/LibNyanpasu/clash-nyanpasu/pull/312)
+- **backend:** Fix deadlock issue on config (#312) by @4o3F in [#312](https://github.com/libnyanpasu/clash-nyanpasu/pull/312)
 
 - **ci:** Publish & updater by @greenhat616
 
-- **ci:** Should generate manifest in dev branch for compatible with <= 1.4.3 (#292) by @greenhat616 in [#292](https://github.com/LibNyanpasu/clash-nyanpasu/pull/292)
+- **ci:** Should generate manifest in dev branch for compatible with <= 1.4.3 (#292) by @greenhat616 in [#292](https://github.com/libnyanpasu/clash-nyanpasu/pull/292)
 
-- **deps:** Update deps (#294) by @greenhat616 in [#294](https://github.com/LibNyanpasu/clash-nyanpasu/pull/294)
+- **deps:** Update deps (#294) by @greenhat616 in [#294](https://github.com/libnyanpasu/clash-nyanpasu/pull/294)
 
-- **portable:** Portable bundle issue (#335) by @greenhat616 in [#335](https://github.com/LibNyanpasu/clash-nyanpasu/pull/335)
+- **portable:** Portable bundle issue (#335) by @greenhat616 in [#335](https://github.com/libnyanpasu/clash-nyanpasu/pull/335)
 
-- **portable:** Do not use system notification api while app is portable (#334) by @greenhat616 in [#334](https://github.com/LibNyanpasu/clash-nyanpasu/pull/334)
+- **portable:** Do not use system notification api while app is portable (#334) by @greenhat616 in [#334](https://github.com/libnyanpasu/clash-nyanpasu/pull/334)
 
-- **updater:** Use release body as updater note (#333) by @greenhat616 in [#333](https://github.com/LibNyanpasu/clash-nyanpasu/pull/333)
+- **updater:** Use release body as updater note (#333) by @greenhat616 in [#333](https://github.com/libnyanpasu/clash-nyanpasu/pull/333)
 
-- Use if let instead (#309) by @greenhat616 in [#309](https://github.com/LibNyanpasu/clash-nyanpasu/pull/309)
+- Use if let instead (#309) by @greenhat616 in [#309](https://github.com/libnyanpasu/clash-nyanpasu/pull/309)
 
 ### 📚 Documentation
 
-- Add ArchLinux AUR install suggestion (#293) by @Kimiblock in [#293](https://github.com/LibNyanpasu/clash-nyanpasu/pull/293)
+- Add ArchLinux AUR install suggestion (#293) by @Kimiblock in [#293](https://github.com/libnyanpasu/clash-nyanpasu/pull/293)
 
 ### 🔨 Refactor
 
-- **backend:** Improve code robustness (#303) by @greenhat616 in [#303](https://github.com/LibNyanpasu/clash-nyanpasu/pull/303)
+- **backend:** Improve code robustness (#303) by @greenhat616 in [#303](https://github.com/libnyanpasu/clash-nyanpasu/pull/303)
 
 ---
 
-**Full Changelog**: https://github.com/LibNyanpasu/clash-nyanpasu/compare/v1.4.3...v1.4.4
+**Full Changelog**: https://github.com/libnyanpasu/clash-nyanpasu/compare/v1.4.3...v1.4.4
 
 ## [1.4.3] - 2024-01-20
 
 ### ✨ Features
 
-- New release workflow (#284) by @greenhat616 in [#284](https://github.com/LibNyanpasu/clash-nyanpasu/pull/284)
+- New release workflow (#284) by @greenhat616 in [#284](https://github.com/libnyanpasu/clash-nyanpasu/pull/284)
 
 - Proxies ui minor tweaks by @keiko233
 
@@ -1373,7 +1373,7 @@
 
 ### 🐛 Bug Fixes
 
-- **ci:** Pin rust version to 1.74.1 (#213) by @greenhat616 in [#213](https://github.com/LibNyanpasu/clash-nyanpasu/pull/213)
+- **ci:** Pin rust version to 1.74.1 (#213) by @greenhat616 in [#213](https://github.com/libnyanpasu/clash-nyanpasu/pull/213)
 
 - **ci:** Use latest action by @greenhat616
 
@@ -1381,31 +1381,31 @@
 
 - **log:** Incorrect color in light mode by @greenhat616
 
-- **rocksdb:** Use TransactionDB instead of OptimisticTransactionDB (#194) by @greenhat616 in [#194](https://github.com/LibNyanpasu/clash-nyanpasu/pull/194)
+- **rocksdb:** Use TransactionDB instead of OptimisticTransactionDB (#194) by @greenhat616 in [#194](https://github.com/libnyanpasu/clash-nyanpasu/pull/194)
 
-- **updater:** Should use nyanpasu proxy or system proxy when performing request (#273) by @greenhat616 in [#273](https://github.com/LibNyanpasu/clash-nyanpasu/pull/273)
+- **updater:** Should use nyanpasu proxy or system proxy when performing request (#273) by @greenhat616 in [#273](https://github.com/libnyanpasu/clash-nyanpasu/pull/273)
 
 - **updater:** Add status code judge by @greenhat616
 
 - **updater:** Allow to use elevated permission to copy and override core by @greenhat616
 
-- **vite:** Rm useless shikiji langs support (#267) by @greenhat616 in [#267](https://github.com/LibNyanpasu/clash-nyanpasu/pull/267)
+- **vite:** Rm useless shikiji langs support (#267) by @greenhat616 in [#267](https://github.com/libnyanpasu/clash-nyanpasu/pull/267)
 
 - Release ci by @greenhat616
 
 - Publish ci by @greenhat616
 
-- Notification premission check (#263) by @greenhat616 in [#263](https://github.com/LibNyanpasu/clash-nyanpasu/pull/263)
+- Notification premission check (#263) by @greenhat616 in [#263](https://github.com/libnyanpasu/clash-nyanpasu/pull/263)
 
-- Notification fallback (#262) by @greenhat616 in [#262](https://github.com/LibNyanpasu/clash-nyanpasu/pull/262)
+- Notification fallback (#262) by @greenhat616 in [#262](https://github.com/libnyanpasu/clash-nyanpasu/pull/262)
 
-- Stable channel build issue (#248) by @greenhat616 in [#248](https://github.com/LibNyanpasu/clash-nyanpasu/pull/248)
+- Stable channel build issue (#248) by @greenhat616 in [#248](https://github.com/libnyanpasu/clash-nyanpasu/pull/248)
 
 - Virtuoso scroller bottom not padding by @keiko233
 
 - Windrag err by @keiko233
 
-- Same text color for `REJECT-DROP` policy as `REJECT` (#236) by @xkww3n in [#236](https://github.com/LibNyanpasu/clash-nyanpasu/pull/236)
+- Same text color for `REJECT-DROP` policy as `REJECT` (#236) by @xkww3n in [#236](https://github.com/libnyanpasu/clash-nyanpasu/pull/236)
 
 - Enable_tun block the process (#232) by @dyxushuai
 
@@ -1419,15 +1419,15 @@
 
 - Open file, closing #197 by @greenhat616
 
-- Add a panic hook to collect logs and show a dialog (#191) by @greenhat616 in [#191](https://github.com/LibNyanpasu/clash-nyanpasu/pull/191)
+- Add a panic hook to collect logs and show a dialog (#191) by @greenhat616 in [#191](https://github.com/libnyanpasu/clash-nyanpasu/pull/191)
 
 ---
 
 ## New Contributors
 
-- @xkww3n made their first contribution in [#236](https://github.com/LibNyanpasu/clash-nyanpasu/pull/236)
+- @xkww3n made their first contribution in [#236](https://github.com/libnyanpasu/clash-nyanpasu/pull/236)
 
-**Full Changelog**: https://github.com/LibNyanpasu/clash-nyanpasu/compare/v1.4.2...v1.4.3
+**Full Changelog**: https://github.com/libnyanpasu/clash-nyanpasu/compare/v1.4.2...v1.4.3
 
 ## [1.4.2] - 2023-12-24
 
@@ -1515,7 +1515,7 @@
 
 ### 📚 Documentation
 
-- Put issue config into effect (#148) by @txyyh in [#148](https://github.com/LibNyanpasu/clash-nyanpasu/pull/148)
+- Put issue config into effect (#148) by @txyyh in [#148](https://github.com/libnyanpasu/clash-nyanpasu/pull/148)
 
 - Upload missing issue config by @txyyh
 
@@ -1532,9 +1532,9 @@
 ## New Contributors
 
 - @yswtrue made their first contribution
-- @txyyh made their first contribution in [#148](https://github.com/LibNyanpasu/clash-nyanpasu/pull/148)
+- @txyyh made their first contribution in [#148](https://github.com/libnyanpasu/clash-nyanpasu/pull/148)
 
-**Full Changelog**: https://github.com/LibNyanpasu/clash-nyanpasu/compare/v1.4.1...v1.4.2
+**Full Changelog**: https://github.com/libnyanpasu/clash-nyanpasu/compare/v1.4.1...v1.4.2
 
 ## [1.4.1] - 2023-12-06
 
@@ -1542,9 +1542,9 @@
 
 - **transition:** Add none and transparent variants by @greenhat616
 
-- Use twemoji to display flags in win (#48) by @greenhat616 in [#48](https://github.com/LibNyanpasu/clash-nyanpasu/pull/48)
+- Use twemoji to display flags in win (#48) by @greenhat616 in [#48](https://github.com/libnyanpasu/clash-nyanpasu/pull/48)
 
-- Add page transition mode and duration options by @keiko233 in [#42](https://github.com/LibNyanpasu/clash-nyanpasu/pull/42)
+- Add page transition mode and duration options by @keiko233 in [#42](https://github.com/libnyanpasu/clash-nyanpasu/pull/42)
 
 - Add page transition duration options by @greenhat616
 
@@ -1554,27 +1554,27 @@
 
 - Support new clash field by @greenhat616
 
-- Support drag profile item (#36) by @Kuingsmile in [#36](https://github.com/LibNyanpasu/clash-nyanpasu/pull/36)
+- Support drag profile item (#36) by @Kuingsmile in [#36](https://github.com/libnyanpasu/clash-nyanpasu/pull/36)
 
 - Use tauri notification api by @keiko233
 
-- Update new clash.meta close #20 (#30) by @Kuingsmile in [#30](https://github.com/LibNyanpasu/clash-nyanpasu/pull/30)
+- Update new clash.meta close #20 (#30) by @Kuingsmile in [#30](https://github.com/libnyanpasu/clash-nyanpasu/pull/30)
 
-- Support random mixed port (#29) by @Kuingsmile in [#29](https://github.com/LibNyanpasu/clash-nyanpasu/pull/29)
+- Support random mixed port (#29) by @Kuingsmile in [#29](https://github.com/libnyanpasu/clash-nyanpasu/pull/29)
 
 - Use workspace in backend by @greenhat616
 
 - New style win tray icon by @keiko233
 
-- Add tooltip for tray (#24) by @Kuingsmile in [#24](https://github.com/LibNyanpasu/clash-nyanpasu/pull/24)
+- Add tooltip for tray (#24) by @Kuingsmile in [#24](https://github.com/libnyanpasu/clash-nyanpasu/pull/24)
 
-- Experimental support `clash-rs` (#23) by @greenhat616 in [#23](https://github.com/LibNyanpasu/clash-nyanpasu/pull/23)
+- Experimental support `clash-rs` (#23) by @greenhat616 in [#23](https://github.com/libnyanpasu/clash-nyanpasu/pull/23)
 
-- Add UWP tool support, fix install service bug (#19) by @Kuingsmile in [#19](https://github.com/LibNyanpasu/clash-nyanpasu/pull/19)
+- Add UWP tool support, fix install service bug (#19) by @Kuingsmile in [#19](https://github.com/libnyanpasu/clash-nyanpasu/pull/19)
 
 ### 🐛 Bug Fixes
 
-- Taskbar maximize toggle icon state (#46) by @greenhat616 in [#46](https://github.com/LibNyanpasu/clash-nyanpasu/pull/46)
+- Taskbar maximize toggle icon state (#46) by @greenhat616 in [#46](https://github.com/libnyanpasu/clash-nyanpasu/pull/46)
 
 - Missing scss import by @greenhat616
 
@@ -1602,15 +1602,15 @@
 
 - **scripts:** Use ts and consola instead by @greenhat616
 
-- Use `workspace` in backend by @keiko233 in [#28](https://github.com/LibNyanpasu/clash-nyanpasu/pull/28)
+- Use `workspace` in backend by @keiko233 in [#28](https://github.com/libnyanpasu/clash-nyanpasu/pull/28)
 
 ---
 
 ## New Contributors
 
-- @Kuingsmile made their first contribution in [#36](https://github.com/LibNyanpasu/clash-nyanpasu/pull/36)
+- @Kuingsmile made their first contribution in [#36](https://github.com/libnyanpasu/clash-nyanpasu/pull/36)
 
-**Full Changelog**: https://github.com/LibNyanpasu/clash-nyanpasu/compare/v1.4.0...v1.4.1
+**Full Changelog**: https://github.com/libnyanpasu/clash-nyanpasu/compare/v1.4.0...v1.4.1
 
 ## [1.4.0] - 2023-11-15
 

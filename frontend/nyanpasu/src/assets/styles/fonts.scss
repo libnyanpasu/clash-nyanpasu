@@ -1,16 +1,16 @@
 // 这个字体是为了解决在 Windows 系统下，微软因为政策问题，不支持显示国旗 emoji 的问题
 @font-face {
-  font-family: "Color Emoji Flags";
-  src: local("Apple Color Emoji"), local("Noto Color Emoji"),
-    url("../fonts/Twemoji.Mozilla.ttf");
+  font-family: 'Color Emoji Flags';
+  src: local('Apple Color Emoji'), local('Noto Color Emoji'),
+    url('../fonts/Twemoji.Mozilla.ttf');
   unicode-range: U+1F1E6-1F1FF;
 }
 
 @font-face {
-  font-family: "Color Emoji";
-  src: local("Apple Color Emoji"), local("Segoe UI Emoji"),
-    local("Segoe UI Symbol"), local("Noto Color Emoji"),
-    url("../fonts/Twemoji.Mozilla.ttf");
+  font-family: 'Color Emoji';
+  src: local('Apple Color Emoji'), local('Segoe UI Emoji'),
+    local('Segoe UI Symbol'), local('Noto Color Emoji'),
+    url('../fonts/Twemoji.Mozilla.ttf');
 
   // use local emoji font for better backward compatibility
 }

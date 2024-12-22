@@ -182,8 +182,9 @@ pub struct IVerge {
     /// set system proxy bypass
     pub system_proxy_bypass: Option<String>,
 
-    /// proxy guard duration
-    pub proxy_guard_duration: Option<u64>,
+    /// proxy guard interval
+    #[serde(alias = "proxy_guard_duration")]
+    pub proxy_guard_interval: Option<u64>,
 
     /// theme setting
     pub theme_setting: Option<IVergeTheme>,
@@ -337,7 +338,7 @@ impl IVerge {
             enable_random_port: Some(false),
             verge_mixed_port: Some(7890),
             enable_proxy_guard: Some(false),
-            proxy_guard_duration: Some(30),
+            proxy_guard_interval: Some(30),
             auto_close_connection: Some(true),
             enable_builtin_enhanced: Some(true),
             enable_clash_fields: Some(true),

@@ -1,10 +1,10 @@
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import IconButton, { IconButtonProps } from "@mui/material/IconButton";
-import useTheme from "@mui/material/styles/useTheme";
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import IconButton, { IconButtonProps } from '@mui/material/IconButton'
+import useTheme from '@mui/material/styles/useTheme'
 
 interface ExpandMoreProps extends IconButtonProps {
-  expand: boolean;
-  reverse?: boolean;
+  expand: boolean
+  reverse?: boolean
 }
 
 /**
@@ -17,7 +17,7 @@ interface ExpandMoreProps extends IconButtonProps {
  * @copyright LibNyanpasu org. 2024
  */
 export const ExpandMore = ({ expand, reverse, ...props }: ExpandMoreProps) => {
-  const { transitions } = useTheme();
+  const { transitions } = useTheme()
 
   return (
     <IconButton {...props}>
@@ -25,17 +25,17 @@ export const ExpandMore = ({ expand, reverse, ...props }: ExpandMoreProps) => {
         sx={{
           transform: !expand
             ? reverse
-              ? "rotate(180deg)"
-              : "rotate(0deg)"
+              ? 'rotate(180deg)'
+              : 'rotate(0deg)'
             : reverse
-              ? "rotate(0deg)"
-              : "rotate(180deg)",
-          marginLeft: "auto",
-          transition: transitions.create("transform", {
+              ? 'rotate(0deg)'
+              : 'rotate(180deg)',
+          marginLeft: 'auto',
+          transition: transitions.create('transform', {
             duration: transitions.duration.shortest,
           }),
         }}
       />
     </IconButton>
-  );
-};
+  )
+}

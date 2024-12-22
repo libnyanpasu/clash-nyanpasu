@@ -1,3 +1,3 @@
-export * from "./ipc";
-export * from "./service";
-export * from "./openapi";
+export * from './ipc'
+export * from './service'
+export * from './openapi'

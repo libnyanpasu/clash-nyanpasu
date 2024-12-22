@@ -1,18 +1,18 @@
-import { ChangeEvent, useState } from "react";
-import { SwitchProps } from "@mui/material";
-import LoadingSwitch from "../loadingSwitch";
-import { BaseItem } from "./baseItem";
+import { ChangeEvent, useState } from 'react'
+import { SwitchProps } from '@mui/material'
+import LoadingSwitch from '../loadingSwitch'
+import { BaseItem } from './baseItem'
 
 interface Props extends SwitchProps {
-  label: string;
+  label: string
   onChange?: (
     event: ChangeEvent<HTMLInputElement>,
     checked: boolean,
-  ) => Promise<void> | void;
+  ) => Promise<void> | void
 }
 
 export const SwitchItem = ({ label, onChange, ...switchProps }: Props) => {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false)
 
   const handleChange = async (
     event: ChangeEvent<HTMLInputElement>,
@@ -20,14 +20,14 @@ export const SwitchItem = ({ label, onChange, ...switchProps }: Props) => {
   ) => {
     if (onChange) {
       try {
-        setLoading(true);
+        setLoading(true)
 
-        await onChange(event, checked);
+        await onChange(event, checked)
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
     }
-  };
+  }
 
   return (
     <BaseItem title={label}>
@@ -37,5 +37,5 @@ export const SwitchItem = ({ label, onChange, ...switchProps }: Props) => {
         {...switchProps}
       />
     </BaseItem>
-  );
-};
+  )
+}

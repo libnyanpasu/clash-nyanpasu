@@ -1,3 +1,3 @@
-import { getSystem } from "@nyanpasu/ui";
+import { getSystem } from '@nyanpasu/ui'
 
-export const OS = getSystem();
+export const OS = getSystem()

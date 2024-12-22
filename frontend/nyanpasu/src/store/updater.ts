@@ -1,10 +1,10 @@
-import { atom } from "jotai";
-import { atomWithStorage } from "jotai/utils";
-import { type Update } from "@tauri-apps/plugin-updater";
+import { atom } from 'jotai'
+import { atomWithStorage } from 'jotai/utils'
+import { type Update } from '@tauri-apps/plugin-updater'
 
 export const UpdaterIgnoredAtom = atomWithStorage(
-  "updaterIgnored",
+  'updaterIgnored',
   null as string | null,
-);
+)
 
-export const UpdaterInstanceAtom = atom<Update | null>(null);
+export const UpdaterInstanceAtom = atom<Update | null>(null)

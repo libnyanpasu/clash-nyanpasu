@@ -1,10 +1,10 @@
-import { ReactNode } from "react";
-import { cn } from "@/utils";
-import { alpha, Button, ButtonProps, useTheme } from "@mui/material";
+import { ReactNode } from 'react'
+import { cn } from '@/utils'
+import { alpha, Button, ButtonProps, useTheme } from '@mui/material'
 
 export interface FloatingButtonProps extends ButtonProps {
-  children: ReactNode;
-  className?: string;
+  children: ReactNode
+  className?: string
 }
 
 export const FloatingButton = ({
@@ -12,7 +12,7 @@ export const FloatingButton = ({
   className,
   ...props
 }: FloatingButtonProps) => {
-  const { palette } = useTheme();
+  const { palette } = useTheme()
 
   return (
     <Button
@@ -21,11 +21,11 @@ export const FloatingButton = ({
         className,
       )}
       sx={{
-        position: "fixed",
+        position: 'fixed',
         boxShadow: 8,
         backgroundColor: alpha(palette.primary.main, 0.3),
 
-        "&:hover": {
+        '&:hover': {
           backgroundColor: alpha(palette.primary.main, 0.45),
         },
       }}
@@ -33,5 +33,5 @@ export const FloatingButton = ({
     >
       {children}
     </Button>
-  );
-};
+  )
+}

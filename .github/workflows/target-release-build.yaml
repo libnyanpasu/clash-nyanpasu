@@ -1,4 +1,4 @@
-name: "[Entire] Build Release Version"
+name: '[Entire] Build Release Version'
 
 on:
   release:
@@ -53,7 +53,7 @@ jobs:
 
   telegram:
     name: Send Release Message to Telegram
-    if: startsWith(github.repository, 'LibNyanpasu')
+    if: startsWith(github.repository, 'libnyanpasu')
     needs: [windows_build, linux_build, macos_amd64_build, macos_aarch64_build]
     uses: ./.github/workflows/deps-message-telegram.yaml
     with:

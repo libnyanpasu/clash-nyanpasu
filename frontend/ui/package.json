@@ -43,7 +43,7 @@
     "clsx": "2.1.1",
     "d3-interpolate-path": "2.3.0",
     "sass-embedded": "1.83.0",
-    "tailwind-merge": "2.5.5",
+    "tailwind-merge": "2.6.0",
     "typescript-plugin-css-modules": "5.1.0",
     "vite-plugin-dts": "4.4.0"
   }

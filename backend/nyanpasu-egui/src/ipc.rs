@@ -55,7 +55,7 @@ pub fn create_ipc_server() -> anyhow::Result<(IPCServer, String)> {
 
 pub(crate) fn setup_ipc_receiver(name: &str) -> anyhow::Result<IpcReceiver<Message>> {
     let oneshot_sender: IpcSender<IpcSender<Message>> = ipc::IpcSender::connect(name.to_string())?;
-    let (tx, rx) = ipc::IpcChannel::connect(oneshot_sender)?;
+    let (tx, rx) = ipc::channel()?;
     oneshot_sender.send(tx)?;
     Ok(rx)
 }

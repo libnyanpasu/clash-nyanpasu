@@ -2,3 +2,6 @@
 
 mod utils;
 pub mod widget;
+pub mod ipc;
+
+

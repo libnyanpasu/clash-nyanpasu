@@ -52,7 +52,7 @@
     "@csstools/normalize.css": "12.1.1",
     "@emotion/babel-plugin": "11.13.5",
     "@emotion/react": "11.14.0",
-    "@iconify/json": "2.2.287",
+    "@iconify/json": "2.2.288",
     "@monaco-editor/react": "4.6.0",
     "@tanstack/react-router": "1.89.2",
     "@tanstack/router-devtools": "1.89.2",

@@ -414,8 +414,8 @@ importers:
         specifier: 6.0.5
         version: 6.0.5(@types/node@22.10.2)(jiti@2.4.1)(less@4.2.0)(sass-embedded@1.83.0)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.6.1)
       vite-plugin-sass-dts:
-        specifier: 1.3.29
-        version: 1.3.29(postcss@8.4.49)(prettier@3.4.2)(sass-embedded@1.83.0)(vite@6.0.5(@types/node@22.10.2)(jiti@2.4.1)(less@4.2.0)(sass-embedded@1.83.0)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.6.1))
+        specifier: 1.3.30
+        version: 1.3.30(postcss@8.4.49)(prettier@3.4.2)(sass-embedded@1.83.0)(vite@6.0.5(@types/node@22.10.2)(jiti@2.4.1)(less@4.2.0)(sass-embedded@1.83.0)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.6.1))
       vite-plugin-svgr:
         specifier: 4.3.0
         version: 4.3.0(rollup@4.27.4)(typescript@5.7.2)(vite@6.0.5(@types/node@22.10.2)(jiti@2.4.1)(less@4.2.0)(sass-embedded@1.83.0)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.6.1))
@@ -7841,8 +7841,8 @@ packages:
       vite:
         optional: true
 
-  vite-plugin-sass-dts@1.3.29:
-    resolution: {integrity: sha512-N0OnqpEZBWeMJL6LHCmeQMRe7bfZrVwImZRzpyIn/YUF7xSzjoPAJCrplIUB2CsOpTOqByt1BjyZVoglGcRYdQ==}
+  vite-plugin-sass-dts@1.3.30:
+    resolution: {integrity: sha512-hqhQRPESqbibtiyg89C5geK3p/HJ85jLk1bspgQsVnk0WOps5UkoUyEWYBETciP6w+IA7R0i/T85TuB7eEYg3w==}
     engines: {node: '>=20'}
     peerDependencies:
       postcss: ^8
@@ -16203,7 +16203,7 @@ snapshots:
       - rollup
       - supports-color
 
-  vite-plugin-sass-dts@1.3.29(postcss@8.4.49)(prettier@3.4.2)(sass-embedded@1.83.0)(vite@6.0.5(@types/node@22.10.2)(jiti@2.4.1)(less@4.2.0)(sass-embedded@1.83.0)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.6.1)):
+  vite-plugin-sass-dts@1.3.30(postcss@8.4.49)(prettier@3.4.2)(sass-embedded@1.83.0)(vite@6.0.5(@types/node@22.10.2)(jiti@2.4.1)(less@4.2.0)(sass-embedded@1.83.0)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.6.1)):
     dependencies:
       postcss: 8.4.49
       postcss-js: 4.0.1(postcss@8.4.49)

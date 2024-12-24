@@ -15,7 +15,7 @@
     "ahooks": "3.8.4",
     "ofetch": "1.4.1",
     "react": "19.0.0",
-    "swr": "2.2.5"
+    "swr": "2.3.0"
   },
   "devDependencies": {
     "@types/react": "19.0.2"

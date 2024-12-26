@@ -32,20 +32,29 @@ pub fn reset_window_open_counter() {
 }
 
 #[cfg(target_os = "macos")]
-fn set_window_controls_pos(window: objc2::rc::Retained<objc2_app_kit::NSWindow>, x: f64, y: f64) {
+fn set_window_controls_pos(
+    window: objc2::rc::Retained<objc2_app_kit::NSWindow>,
+    x: f64,
+    y: f64,
+) -> anyhow::Result<()> {
     use objc2_app_kit::NSWindowButton;
     use objc2_foundation::NSRect;
     let close = window
         .standardWindowButton(NSWindowButton::NSWindowCloseButton)
-        .unwrap();
+        .ok_or(anyhow::anyhow!("failed to get close button"))?;
     let miniaturize = window
         .standardWindowButton(NSWindowButton::NSWindowMiniaturizeButton)
-        .unwrap();
+        .ok_or(anyhow::anyhow!("failed to get miniaturize button"))?;
     let zoom = window
         .standardWindowButton(NSWindowButton::NSWindowZoomButton)
-        .unwrap();
+        .ok_or(anyhow::anyhow!("failed to get zoom button"))?;
 
-    let title_bar_container_view = unsafe { close.superview().unwrap().superview().unwrap() };
+    let title_bar_container_view = unsafe {
+        close
+            .superview()
+            .and_then(|view| view.superview())
+            .ok_or(anyhow::anyhow!("failed to get title bar container view"))?
+    };
 
     let close_rect = close.frame();
     let button_height = close_rect.size.height;
@@ -68,6 +77,7 @@ fn set_window_controls_pos(window: objc2::rc::Retained<objc2_app_kit::NSWindow>,
             button.setFrameOrigin(rect.origin);
         }
     }
+    Ok(())
 }
 
 pub fn find_unused_port() -> Result<u16> {
@@ -258,8 +268,11 @@ pub fn create_window(app_handle: &AppHandle) {
 
     #[cfg(target_os = "macos")]
     fn set_controls_and_log_error(app_handle: &tauri::AppHandle, window_name: &str) {
-        use objc2::{rc::Retained, runtime::NSObject};
+        use objc2::rc::Retained;
         use objc2_app_kit::NSWindow;
+        // should abstract a struct if we want to support multiple windows
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = LOCK.lock();
         match app_handle
             .get_webview_window(window_name)
             .unwrap()
@@ -267,10 +280,12 @@ pub fn create_window(app_handle: &AppHandle) {
         {
             Ok(raw_window) => {
                 let obj: Option<Retained<NSWindow>> =
-                    unsafe { Retained::from_raw(raw_window as *mut NSWindow) };
+                    unsafe { Retained::retain_autoreleased(raw_window as *mut NSWindow) };
                 match obj {
                     Some(window) => {
-                        set_window_controls_pos(window, 26.0, 26.0);
+                        if let Err(e) = set_window_controls_pos(window, 26.0, 26.0) {
+                            log::error!(target: "app", "failed to set window controls pos, {e:?}");
+                        }
                     }
                     None => {
                         log::error!(target: "app", "failed to get ns_window");
@@ -354,12 +369,17 @@ pub fn create_window(app_handle: &AppHandle) {
 
             #[cfg(target_os = "macos")]
             {
-                set_controls_and_log_error(&app_handle, "main");
+                set_controls_and_log_error(app_handle, "main");
 
                 let app_handle_clone = app_handle.clone();
                 win.on_window_event(move |event| {
                     if let tauri::WindowEvent::Resized(_) = event {
-                        set_controls_and_log_error(&app_handle_clone, "main");
+                        let app_handle_ref = app_handle_clone.clone();
+                        if let Err(e) = app_handle_clone.run_on_main_thread(move || {
+                            set_controls_and_log_error(&app_handle_ref, "main");
+                        }) {
+                            log::error!(target: "app", "failed to set window controls pos, {e:?}");
+                        }
                     }
                 });
             }

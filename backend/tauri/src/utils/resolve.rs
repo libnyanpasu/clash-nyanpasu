@@ -270,9 +270,6 @@ pub fn create_window(app_handle: &AppHandle) {
     fn set_controls_and_log_error(app_handle: &tauri::AppHandle, window_name: &str) {
         use objc2::rc::Retained;
         use objc2_app_kit::NSWindow;
-        // should abstract a struct if we want to support multiple windows
-        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        let _guard = LOCK.lock();
         match app_handle
             .get_webview_window(window_name)
             .unwrap()
@@ -374,12 +371,7 @@ pub fn create_window(app_handle: &AppHandle) {
                 let app_handle_clone = app_handle.clone();
                 win.on_window_event(move |event| {
                     if let tauri::WindowEvent::Resized(_) = event {
-                        let app_handle_ref = app_handle_clone.clone();
-                        if let Err(e) = app_handle_clone.run_on_main_thread(move || {
-                            set_controls_and_log_error(&app_handle_ref, "main");
-                        }) {
-                            log::error!(target: "app", "failed to set window controls pos, {e:?}");
-                        }
+                        set_controls_and_log_error(&app_handle_clone, "main");
                     }
                 });
             }

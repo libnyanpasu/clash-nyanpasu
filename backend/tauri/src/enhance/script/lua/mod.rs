@@ -11,7 +11,7 @@ use super::runner::{ProcessOutput, Runner};
 
 pub fn create_lua_context() -> Result<Lua, anyhow::Error> {
     let lua = Lua::new();
-    lua.load_from_std_lib(LuaStdLib::ALL_SAFE)?;
+    lua.load_std_libs(LuaStdLib::ALL_SAFE)?;
     Ok(lua)
 }
 

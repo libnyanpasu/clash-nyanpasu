@@ -321,7 +321,7 @@ importers:
         specifier: 4.6.0
         version: 4.6.0(monaco-editor@0.52.2)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       '@tanstack/react-query':
-        specifier: ^5.62.10
+        specifier: 5.62.10
         version: 5.62.10(react@19.0.0)
       '@tanstack/react-router':
         specifier: 1.89.2

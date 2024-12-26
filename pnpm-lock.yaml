@@ -417,7 +417,7 @@ importers:
         specifier: 6.0.6
         version: 6.0.6(@types/node@22.10.2)(jiti@2.4.1)(less@4.2.0)(sass-embedded@1.83.0)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.6.1)
       vite-plugin-html:
-        specifier: ^3.2.2
+        specifier: 3.2.2
         version: 3.2.2(vite@6.0.6(@types/node@22.10.2)(jiti@2.4.1)(less@4.2.0)(sass-embedded@1.83.0)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.6.1))
       vite-plugin-sass-dts:
         specifier: 1.3.30

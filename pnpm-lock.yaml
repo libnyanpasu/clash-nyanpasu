@@ -551,8 +551,8 @@ importers:
         specifier: 1.0.0
         version: 1.0.0
       consola:
-        specifier: 3.3.1
-        version: 3.3.1
+        specifier: 3.3.2
+        version: 3.3.2
       fs-extra:
         specifier: 11.2.0
         version: 11.2.0
@@ -3804,8 +3804,8 @@ packages:
   consola@2.15.3:
     resolution: {integrity: sha512-9vAdYbHj6x2fLKC4+oPH0kFzY/orMZyG2Aj+kNylHxKGJ/Ed4dpNyAQYwJOdqO4zdM7XpVHmyejQDcQHrnuXbw==}
 
-  consola@3.3.1:
-    resolution: {integrity: sha512-GyKnPG3/I+a4RtJxgHquJXWr70g9I3c4NT3dvqh0LPHQP2nZFQBOBszb7a5u/pGzqr40AKplQA6UxM1BSynSXg==}
+  consola@3.3.2:
+    resolution: {integrity: sha512-X3dcWPU+QeEaPrdtX3zBRQ0P0kIeEnmJV49uNtpy4N/TPnzA3grJvHftKjHuFIQNLrqBPzzykmc3fNrkQDl5yA==}
     engines: {node: ^14.18.0 || >=16.10.0}
 
   conventional-changelog-angular@7.0.0:
@@ -11693,7 +11693,7 @@ snapshots:
 
   consola@2.15.3: {}
 
-  consola@3.3.1: {}
+  consola@3.3.2: {}
 
   conventional-changelog-angular@7.0.0:
     dependencies:

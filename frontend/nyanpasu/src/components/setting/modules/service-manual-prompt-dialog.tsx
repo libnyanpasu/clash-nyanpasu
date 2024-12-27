@@ -9,7 +9,7 @@ import { getShikiSingleton } from '@/utils/shiki'
 import { useTheme } from '@mui/material'
 import { getCoreDir, getServiceInstallPrompt } from '@nyanpasu/interface'
 import { BaseDialog, BaseDialogProps, cn } from '@nyanpasu/ui'
-import styles from './service-manual-prompt-dialog.module.scss'
+import './service-manual-prompt-dialog.scss'
 
 export type ServerManualPromptDialogProps = Omit<BaseDialogProps, 'title'> & {
   operation: 'uninstall' | 'install' | 'start' | 'stop' | null
@@ -77,8 +77,8 @@ export default function ServerManualPromptDialog({
         {!!codes && (
           <div
             className={cn(
-              'rounded-sm',
-              theme.palette.mode === 'dark' && styles.dark,
+              'max-w-[80vw] rounded-sm',
+              theme.palette.mode === 'dark' && 'dark',
             )}
             dangerouslySetInnerHTML={{
               __html: codes,

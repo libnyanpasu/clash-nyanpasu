@@ -34,7 +34,7 @@ export default function ServerManualPromptDialog({
     if (operation === 'install' && serviceInstallPrompt) {
       const shiki = await getShikiSingleton()
       const code = await shiki.codeToHtml(
-        `cd "${coreDir}\n${serviceInstallPrompt}"`,
+        `cd "${coreDir}"\n${serviceInstallPrompt}`,
         {
           lang: 'shell',
           themes: {

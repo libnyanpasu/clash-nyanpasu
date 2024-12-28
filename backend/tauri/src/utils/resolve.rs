@@ -20,7 +20,6 @@ use std::{
 };
 use tauri::{async_runtime::block_on, App, AppHandle, Emitter, Listener, Manager};
 use tauri_plugin_shell::ShellExt;
-
 static OPEN_WINDOWS_COUNTER: AtomicU16 = AtomicU16::new(0);
 
 pub fn is_window_opened() -> bool {
@@ -266,35 +265,6 @@ pub fn create_window(app_handle: &AppHandle) {
     #[cfg(target_os = "linux")]
     let win_res = builder.decorations(true).transparent(false).build();
 
-    #[cfg(target_os = "macos")]
-    fn set_controls_and_log_error(app_handle: &tauri::AppHandle, window_name: &str) {
-        use objc2::rc::Retained;
-        use objc2_app_kit::NSWindow;
-        match app_handle
-            .get_webview_window(window_name)
-            .unwrap()
-            .ns_window()
-        {
-            Ok(raw_window) => {
-                let obj: Option<Retained<NSWindow>> =
-                    unsafe { Retained::retain_autoreleased(raw_window as *mut NSWindow) };
-                match obj {
-                    Some(window) => {
-                        if let Err(e) = set_window_controls_pos(window, 26.0, 26.0) {
-                            log::error!(target: "app", "failed to set window controls pos, {e:?}");
-                        }
-                    }
-                    None => {
-                        log::error!(target: "app", "failed to get ns_window");
-                    }
-                }
-            }
-            Err(err) => {
-                log::error!(target: "app", "failed to get ns_window, {err:?}");
-            }
-        }
-    }
-
     match win_res {
         Ok(win) => {
             use tauri::{PhysicalPosition, PhysicalSize};
@@ -366,14 +336,9 @@ pub fn create_window(app_handle: &AppHandle) {
 
             #[cfg(target_os = "macos")]
             {
-                set_controls_and_log_error(app_handle, "main");
-
-                let app_handle_clone = app_handle.clone();
-                win.on_window_event(move |event| {
-                    if let tauri::WindowEvent::Resized(_) = event {
-                        set_controls_and_log_error(&app_handle_clone, "main");
-                    }
-                });
+                tracing::trace!("setup traffic lights pos");
+                let mtm = objc2_foundation::MainThreadMarker::new().unwrap();
+                crate::window::macos::setup_traffic_lights_pos(win.clone(), (26.0, 26.0), mtm);
             }
 
             OPEN_WINDOWS_COUNTER.fetch_add(1, Ordering::Release);

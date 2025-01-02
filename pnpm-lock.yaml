@@ -315,8 +315,8 @@ importers:
         specifier: 11.14.0
         version: 11.14.0(@types/react@19.0.2)(react@19.0.0)
       '@iconify/json':
-        specifier: 2.2.290
-        version: 2.2.290
+        specifier: 2.2.291
+        version: 2.2.291
       '@monaco-editor/react':
         specifier: 4.6.0
         version: 4.6.0(monaco-editor@0.52.2)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
@@ -1751,8 +1751,8 @@ packages:
       '@vue/compiler-sfc':
         optional: true
 
-  '@iconify/json@2.2.290':
-    resolution: {integrity: sha512-M2puR3K4RPN8CoZR+X3o/5n0stfZBap7N7nSTnldNkdG9mN8RaOCZ4QO9OcuQpjIh8ouEMKJB8xES/owvby9gQ==}
+  '@iconify/json@2.2.291':
+    resolution: {integrity: sha512-RlSZWRx72ZClQ4U5lgdylvlEsECda7wsVY2EreICL0/lnOWIiqyXeYOpy1V5+pD2TLzaHiY+Uae1PU0eLePxPw==}
 
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
@@ -9503,7 +9503,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@iconify/json@2.2.290':
+  '@iconify/json@2.2.291':
     dependencies:
       '@iconify/types': 2.0.0
       pathe: 1.1.2

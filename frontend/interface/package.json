@@ -11,7 +11,7 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@tauri-apps/api": "2.1.1",
+    "@tauri-apps/api": "2.2.0",
     "ahooks": "3.8.4",
     "ofetch": "1.4.1",
     "react": "19.0.0",

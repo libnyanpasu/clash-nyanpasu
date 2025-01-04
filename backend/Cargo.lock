@@ -1586,7 +1586,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
- "webview2-com 0.33.0",
+ "webview2-com",
  "which 7.0.1",
  "whoami",
  "window-vibrancy",
@@ -8436,7 +8436,7 @@ dependencies = [
  "url",
  "urlpattern",
  "webkit2gtk",
- "webview2-com 0.34.0",
+ "webview2-com",
  "window-vibrancy",
  "windows 0.58.0",
 ]
@@ -8745,7 +8745,7 @@ dependencies = [
  "tauri-utils",
  "url",
  "webkit2gtk",
- "webview2-com 0.34.0",
+ "webview2-com",
  "windows 0.58.0",
  "wry",
 ]
@@ -10227,26 +10227,12 @@ dependencies = [
 
 [[package]]
 name = "webview2-com"
-version = "0.33.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f61ff3d9d0ee4efcb461b14eb3acfda2702d10dc329f339303fc3e57215ae2c"
-dependencies = [
- "webview2-com-macros",
- "webview2-com-sys 0.33.0",
- "windows 0.58.0",
- "windows-core 0.58.0",
- "windows-implement 0.58.0",
- "windows-interface 0.58.0",
-]
-
-[[package]]
-name = "webview2-com"
 version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "823e7ebcfaea51e78f72c87fc3b65a1e602c321f407a0b36dbb327d7bb7cd921"
 dependencies = [
  "webview2-com-macros",
- "webview2-com-sys 0.34.0",
+ "webview2-com-sys",
  "windows 0.58.0",
  "windows-core 0.58.0",
  "windows-implement 0.58.0",
@@ -10262,17 +10248,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.94",
-]
-
-[[package]]
-name = "webview2-com-sys"
-version = "0.33.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3a3e2eeb58f82361c93f9777014668eb3d07e7d174ee4c819575a9208011886"
-dependencies = [
- "thiserror 1.0.69",
- "windows 0.58.0",
- "windows-core 0.58.0",
 ]
 
 [[package]]
@@ -11021,7 +10996,7 @@ dependencies = [
  "url",
  "webkit2gtk",
  "webkit2gtk-sys",
- "webview2-com 0.34.0",
+ "webview2-com",
  "windows 0.58.0",
  "windows-core 0.58.0",
  "windows-version",

@@ -321,8 +321,8 @@ importers:
         specifier: 4.6.0
         version: 4.6.0(monaco-editor@0.52.2)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       '@tanstack/react-query':
-        specifier: 5.62.12
-        version: 5.62.12(react@19.0.0)
+        specifier: 5.62.14
+        version: 5.62.14(react@19.0.0)
       '@tanstack/react-router':
         specifier: 1.89.2
         version: 1.89.2(@tanstack/router-generator@1.87.7)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
@@ -2723,8 +2723,8 @@ packages:
   '@tanstack/query-core@5.62.12':
     resolution: {integrity: sha512-6igFeBgymHkCxVgaEk+yiLwkMf9haui/EQLmI3o9CatOyDThEoFKe8toLWvWliZC/Jf+h7NwHi/zjfyLArr1ow==}
 
-  '@tanstack/react-query@5.62.12':
-    resolution: {integrity: sha512-yt8p7l5MlHA3QCt6xF1Cu9dw1Anf93yTK+DMDJQ64h/mshAymVAtcwj8TpsyyBrZNWAAZvza/m76bnTSR79ZtQ==}
+  '@tanstack/react-query@5.62.14':
+    resolution: {integrity: sha512-ev/6eVdJvX9vpomKmFuXsrQb6TwqqBn/7OeB0KZkHjEYk/Bo1XBMj8wRmobn8pqdU8lK271tUjt+0B0UQ9MZ6A==}
     peerDependencies:
       react: ^18 || ^19
 
@@ -10463,7 +10463,7 @@ snapshots:
 
   '@tanstack/query-core@5.62.12': {}
 
-  '@tanstack/react-query@5.62.12(react@19.0.0)':
+  '@tanstack/react-query@5.62.14(react@19.0.0)':
     dependencies:
       '@tanstack/query-core': 5.62.12
       react: 19.0.0

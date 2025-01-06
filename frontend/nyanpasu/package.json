@@ -65,7 +65,7 @@
     "@tauri-apps/plugin-os": "2.2.0",
     "@tauri-apps/plugin-process": "2.2.0",
     "@tauri-apps/plugin-shell": "2.2.0",
-    "@tauri-apps/plugin-updater": "2.3.0",
+    "@tauri-apps/plugin-updater": "2.3.1",
     "@types/react": "19.0.2",
     "@types/react-dom": "19.0.2",
     "@types/validator": "13.12.2",

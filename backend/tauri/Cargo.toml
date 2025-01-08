@@ -44,7 +44,7 @@ async-trait = "0.1.77"
 dyn-clone = "1.0.16"
 thiserror = { workspace = true }
 parking_lot = { version = "0.12.1" }
-itertools = "0.13.0"                                # sweet iterator utilities
+itertools = "0.14"                                  # sweet iterator utilities
 rayon = "1.10"                                      # for iterator parallel processing
 ambassador = "0.4.1"                                # for trait delegation
 derive_builder = "0.20"                             # for builder pattern
@@ -58,7 +58,7 @@ bimap = "0.6.3"
 # Terminal Utilities
 ansi-str = "0.8"                                    # for ansi str stripped
 ctrlc = "3.4.2"
-colored = "2.1.0"
+colored = "3"
 clap = { version = "4.5.4", features = ["derive"] }
 
 # GUI Utilities
@@ -169,24 +169,20 @@ boa_utils = { path = "../boa_utils" } # should be removed when boa support conso
 boa_engine.workspace = true
 
 # Tauri Dependencies
-tauri = { version = "2.0.1", features = [
-  "tray-icon",
-  "image-png",
-  "image-ico",
-] }
+tauri = { version = "2.2", features = ["tray-icon", "image-png", "image-ico"] }
 tauri-plugin-deep-link = { path = "../tauri-plugin-deep-link", version = "0.1.2" } # This should be migrated to official tauri plugin
-tauri-plugin-os = "2.0.1"
-tauri-plugin-clipboard-manager = "2.0.1"
-tauri-plugin-fs = "2.0.1"
-tauri-plugin-dialog = "2.0.1"
-tauri-plugin-process = "2.0.1"
-tauri-plugin-updater = "2.0.2"
-tauri-plugin-shell = "2.0.1"
-tauri-plugin-notification = "2.0.1"
+tauri-plugin-os = "2.2"
+tauri-plugin-clipboard-manager = "2.2"
+tauri-plugin-fs = "2.2"
+tauri-plugin-dialog = "2.2"
+tauri-plugin-process = "2.2"
+tauri-plugin-updater = "2.2"
+tauri-plugin-shell = "2.2"
+tauri-plugin-notification = "2.2"
 window-vibrancy = { version = "0.5.2" }
 
 [target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
-tauri-plugin-global-shortcut = "2.0.1"
+tauri-plugin-global-shortcut = "2.2.0"
 
 [target.'cfg(all(target_os = "linux", target_arch = "aarch64"))'.dependencies]
 openssl = { version = "0.10", features = ["vendored"] }
@@ -207,13 +203,13 @@ nix = { version = "0.29.0", features = ["user", "fs"] }
 
 [target.'cfg(windows)'.dependencies]
 deelevate = "0.2.0"
-winreg = { version = "0.52", features = ["transactions"] }
-windows-registry = "0.3"
+winreg = { version = "0.53", features = ["transactions"] }
+windows-registry = "0.4"
 windows-sys = { version = "0.59", features = [
   "Win32_System_LibraryLoader",
   "Win32_System_SystemInformation",
 ] }
-windows-core = "0.58.0"
+windows-core = "0.59.0"
 webview2-com = "0.34"
 
 [features]

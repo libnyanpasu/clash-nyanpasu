@@ -184,6 +184,17 @@ tauri-plugin-updater = "2.0.2"
 tauri-plugin-shell = "2.0.1"
 tauri-plugin-notification = "2.0.1"
 window-vibrancy = { version = "0.5.2" }
+specta-typescript = "0.0.7"
+tauri-specta = { version = "=2.0.0-rc.20", features = ["derive", "typescript"] }
+specta = { version = "=2.0.0-rc.20", features = [
+  "serde",
+  "serde_json",
+  "serde_yaml",
+  "uuid",
+  "url",
+  "indexmap",
+  "function",
+] }
 
 [target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
 tauri-plugin-global-shortcut = "2.0.1"

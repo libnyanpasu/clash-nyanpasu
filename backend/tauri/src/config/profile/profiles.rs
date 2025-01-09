@@ -17,8 +17,8 @@ use std::borrow::Borrow;
 use tracing_attributes::instrument;
 
 /// Define the `profiles.yaml` schema
-#[derive(Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate)]
-#[builder(derive(Serialize, Deserialize))]
+#[derive(Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate, specta::Type)]
+#[builder(derive(Serialize, Deserialize, specta::Type))]
 #[builder_update(patch_fn = "apply")]
 pub struct Profiles {
     /// same as PrfConfig.current

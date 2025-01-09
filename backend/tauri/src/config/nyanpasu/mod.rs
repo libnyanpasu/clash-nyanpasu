@@ -128,7 +128,7 @@ impl AsRef<str> for TunStack {
 }
 
 /// ### `verge.yaml` schema
-#[derive(Default, Debug, Clone, Deserialize, Serialize, VergePatch)]
+#[derive(Default, Debug, Clone, Deserialize, Serialize, VergePatch, specta::Type)]
 #[verge(patch_fn = "patch_config")]
 pub struct IVerge {
     /// app listening port for app singleton
@@ -258,7 +258,7 @@ pub struct WindowState {
     pub fullscreen: bool,
 }
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize)]
+#[derive(Default, Debug, Clone, Deserialize, Serialize, specta::Type)]
 pub struct IVergeTheme {
     pub primary_color: Option<String>,
     pub secondary_color: Option<String>,

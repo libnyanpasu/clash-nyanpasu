@@ -194,7 +194,7 @@ impl IClashTemp {
     }
 }
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Deserialize, Serialize, PartialEq, Eq, specta::Type)]
 pub struct ClashInfo {
     /// clash core port
     pub port: u16,

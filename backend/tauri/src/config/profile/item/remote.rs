@@ -26,8 +26,8 @@ pub trait RemoteProfileSubscription {
     async fn subscribe(&mut self, opts: Option<RemoteProfileOptionsBuilder>) -> anyhow::Result<()>;
 }
 
-#[derive(Delegate, Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate)]
-#[builder(derive(Serialize, Deserialize))]
+#[derive(Delegate, Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate, specta::Type)]
+#[builder(derive(Serialize, Deserialize, specta::Type))]
 #[builder(build_fn(skip, error = "RemoteProfileBuilderError"))]
 #[builder_update(patch_fn = "apply")]
 #[delegate(ProfileSharedSetter, target = "shared")]

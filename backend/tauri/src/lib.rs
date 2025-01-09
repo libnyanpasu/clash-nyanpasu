@@ -13,6 +13,7 @@ mod enhance;
 mod feat;
 mod ipc;
 mod server;
+mod setup;
 mod utils;
 
 use crate::{
@@ -20,7 +21,9 @@ use crate::{
     core::handle::Handle,
     utils::{init, resolve},
 };
+use specta_typescript::{BigIntExportBehavior, Typescript};
 use tauri::Emitter;
+use tauri_specta::{collect_commands, Builder};
 use utils::resolve::{is_window_opened, reset_window_open_counter};
 
 rust_i18n::i18n!("../../locales");
@@ -169,6 +172,97 @@ pub fn run() -> std::io::Result<()> {
         }
     }));
 
+    // setup specta
+    let specta_builder = tauri_specta::Builder::<tauri::Wry>::new().commands(collect_commands![
+        // common
+        ipc::get_sys_proxy,
+        ipc::open_app_config_dir,
+        ipc::open_app_data_dir,
+        ipc::open_logs_dir,
+        ipc::open_web_url,
+        ipc::open_core_dir,
+        // cmds::kill_sidecar,
+        ipc::restart_sidecar,
+        // clash
+        ipc::get_clash_info,
+        ipc::get_clash_logs,
+        ipc::patch_clash_config,
+        ipc::change_clash_core,
+        ipc::get_runtime_config,
+        ipc::get_runtime_yaml,
+        ipc::get_runtime_exists,
+        ipc::get_postprocessing_output,
+        ipc::clash_api_get_proxy_delay,
+        ipc::uwp::invoke_uwp_tool,
+        // updater
+        ipc::fetch_latest_core_versions,
+        ipc::update_core,
+        ipc::inspect_updater,
+        ipc::get_core_version,
+        // utils
+        ipc::collect_logs,
+        // verge
+        ipc::get_verge_config,
+        ipc::patch_verge_config,
+        // cmds::update_hotkeys,
+        // profile
+        ipc::get_profiles,
+        ipc::enhance_profiles,
+        ipc::patch_profiles_config,
+        ipc::view_profile,
+        ipc::patch_profile,
+        ipc::create_profile,
+        ipc::import_profile,
+        ipc::reorder_profile,
+        ipc::reorder_profiles_by_list,
+        ipc::update_profile,
+        ipc::delete_profile,
+        ipc::read_profile_file,
+        ipc::save_profile_file,
+        ipc::save_window_size_state,
+        ipc::get_custom_app_dir,
+        ipc::set_custom_app_dir,
+        // service mode
+        ipc::service::status_service,
+        ipc::service::install_service,
+        ipc::service::uninstall_service,
+        ipc::service::start_service,
+        ipc::service::stop_service,
+        ipc::service::restart_service,
+        ipc::is_portable,
+        ipc::get_proxies,
+        ipc::select_proxy,
+        ipc::update_proxy_provider,
+        ipc::restart_application,
+        ipc::collect_envs,
+        ipc::get_server_port,
+        ipc::set_tray_icon,
+        ipc::is_tray_icon_set,
+        ipc::get_core_status,
+        ipc::url_delay_test,
+        ipc::get_ipsb_asn,
+        ipc::open_that,
+        ipc::is_appimage,
+        ipc::get_service_install_prompt,
+        ipc::cleanup_processes,
+        ipc::get_storage_item,
+        ipc::set_storage_item,
+        ipc::remove_storage_item,
+        ipc::mutate_proxies,
+        ipc::get_core_dir,
+    ]);
+
+    #[cfg(debug_assertions)]
+    specta_builder
+        .export(
+            Typescript::default()
+                .formatter(specta_typescript::formatter::prettier)
+                .bigint(BigIntExportBehavior::Number)
+                .header("/* eslint-disable */\n// @ts-nocheck"),
+            "../../../frontend/interface/src/ipc/bindings.ts",
+        )
+        .expect("Failed to export typescript bindings");
+
     let verge = { Config::verge().latest().language.clone().unwrap() };
     rust_i18n::set_locale(verge.as_str());
 
@@ -177,6 +271,7 @@ pub fn run() -> std::io::Result<()> {
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
+        .invoke_handler(specta_builder.invoke_handler())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
@@ -246,85 +341,7 @@ pub fn run() -> std::io::Result<()> {
                 });
             });
             Ok(())
-        })
-        .invoke_handler(tauri::generate_handler![
-            // common
-            ipc::get_sys_proxy,
-            ipc::open_app_config_dir,
-            ipc::open_app_data_dir,
-            ipc::open_logs_dir,
-            ipc::open_web_url,
-            ipc::open_core_dir,
-            // cmds::kill_sidecar,
-            ipc::restart_sidecar,
-            // clash
-            ipc::get_clash_info,
-            ipc::get_clash_logs,
-            ipc::patch_clash_config,
-            ipc::change_clash_core,
-            ipc::get_runtime_config,
-            ipc::get_runtime_yaml,
-            ipc::get_runtime_exists,
-            ipc::get_postprocessing_output,
-            ipc::clash_api_get_proxy_delay,
-            ipc::uwp::invoke_uwp_tool,
-            // updater
-            ipc::fetch_latest_core_versions,
-            ipc::update_core,
-            ipc::inspect_updater,
-            ipc::get_core_version,
-            // utils
-            ipc::collect_logs,
-            // verge
-            ipc::get_verge_config,
-            ipc::patch_verge_config,
-            // cmds::update_hotkeys,
-            // profile
-            ipc::get_profiles,
-            ipc::enhance_profiles,
-            ipc::patch_profiles_config,
-            ipc::view_profile,
-            ipc::patch_profile,
-            ipc::create_profile,
-            ipc::import_profile,
-            ipc::reorder_profile,
-            ipc::reorder_profiles_by_list,
-            ipc::update_profile,
-            ipc::delete_profile,
-            ipc::read_profile_file,
-            ipc::save_profile_file,
-            ipc::save_window_size_state,
-            ipc::get_custom_app_dir,
-            ipc::set_custom_app_dir,
-            // service mode
-            ipc::service::status_service,
-            ipc::service::install_service,
-            ipc::service::uninstall_service,
-            ipc::service::start_service,
-            ipc::service::stop_service,
-            ipc::service::restart_service,
-            ipc::is_portable,
-            ipc::get_proxies,
-            ipc::select_proxy,
-            ipc::update_proxy_provider,
-            ipc::restart_application,
-            ipc::collect_envs,
-            ipc::get_server_port,
-            ipc::set_tray_icon,
-            ipc::is_tray_icon_set,
-            ipc::get_core_status,
-            ipc::url_delay_test,
-            ipc::get_ipsb_asn,
-            ipc::open_that,
-            ipc::is_appimage,
-            ipc::get_service_install_prompt,
-            ipc::cleanup_processes,
-            ipc::get_storage_item,
-            ipc::set_storage_item,
-            ipc::remove_storage_item,
-            ipc::mutate_proxies,
-            ipc::get_core_dir,
-        ]);
+        });
 
     let app = builder
         .build(tauri::generate_context!())

@@ -56,26 +56,39 @@ impl serde::Serialize for IpcError {
     }
 }
 
+impl specta::Type for IpcError {
+    fn inline(
+        type_map: &mut specta::TypeMap,
+        generics: specta::Generics,
+    ) -> specta::datatype::DataType {
+        specta::datatype::DataType::Primitive(specta::datatype::PrimitiveType::String)
+    }
+}
+
 type Result<T = ()> = StdResult<T, IpcError>;
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_profiles() -> Result<Profiles> {
     Ok(Config::profiles().data().clone())
 }
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
+#[specta::specta]
 pub fn is_portable() -> Result<bool> {
     Ok(crate::utils::dirs::get_portable_flag())
 }
 
 #[cfg(not(target_os = "windows"))]
 #[tauri::command]
+#[specta::specta]
 pub fn is_portable() -> Result<bool> {
     Ok(false)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn enhance_profiles() -> Result {
     CoreManager::global().update_config().await?;
     handle::Handle::refresh_clash();
@@ -83,6 +96,7 @@ pub async fn enhance_profiles() -> Result {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn import_profile(url: String, option: Option<RemoteProfileOptionsBuilder>) -> Result {
     let url = url::Url::parse(&url).context("failed to parse the url")?;
     let mut builder = crate::config::profile::item::RemoteProfileBuilder::default();
@@ -116,6 +130,7 @@ pub async fn import_profile(url: String, option: Option<RemoteProfileOptionsBuil
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn create_profile(item: Mapping, file_data: Option<String>) -> Result {
     let kind = item
         .get("type")
@@ -196,6 +211,7 @@ pub async fn create_profile(item: Mapping, file_data: Option<String>) -> Result 
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn reorder_profile(active_id: String, over_id: String) -> Result {
     let committer = Config::profiles().auto_commit();
     (committer.draft().reorder(active_id, over_id))?;
@@ -203,6 +219,7 @@ pub async fn reorder_profile(active_id: String, over_id: String) -> Result {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn reorder_profiles_by_list(list: Vec<String>) -> Result {
     let committer = Config::profiles().auto_commit();
     (committer.draft().reorder_by_list(&list))?;
@@ -210,12 +227,14 @@ pub fn reorder_profiles_by_list(list: Vec<String>) -> Result {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn update_profile(uid: String, option: Option<RemoteProfileOptionsBuilder>) -> Result {
     (feat::update_profile(uid, option).await)?;
     Ok(())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn delete_profile(uid: String) -> Result {
     let should_update = tokio::task::spawn_blocking(move || {
         #[allow(clippy::let_and_return)] // a bug in clippy
@@ -238,6 +257,7 @@ pub async fn delete_profile(uid: String) -> Result {
 
 /// 修改profiles的
 #[tauri::command]
+#[specta::specta]
 pub async fn patch_profiles_config(profiles: ProfilesBuilder) -> Result {
     Config::profiles().draft().apply(profiles);
 
@@ -258,6 +278,7 @@ pub async fn patch_profiles_config(profiles: ProfilesBuilder) -> Result {
 
 /// 修改某个profile item的
 #[tauri::command]
+#[specta::specta]
 pub async fn patch_profile(uid: String, profile: Mapping) -> Result {
     tracing::debug!("patch profile: {uid} with {profile:?}");
     {
@@ -300,6 +321,7 @@ pub async fn patch_profile(uid: String, profile: Mapping) -> Result {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn view_profile(app_handle: tauri::AppHandle, uid: String) -> Result {
     let file = {
         Config::profiles()
@@ -319,6 +341,7 @@ pub fn view_profile(app_handle: tauri::AppHandle, uid: String) -> Result {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn read_profile_file(uid: String) -> Result<String> {
     let profiles = Config::profiles();
     let profiles = profiles.latest();
@@ -335,6 +358,7 @@ pub fn read_profile_file(uid: String) -> Result<String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn save_profile_file(uid: String, file_data: Option<String>) -> Result {
     if file_data.is_none() {
         return Ok(());
@@ -348,16 +372,19 @@ pub fn save_profile_file(uid: String, file_data: Option<String>) -> Result {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_clash_info() -> Result<ClashInfo> {
     Ok(Config::clash().latest().get_client_info())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_runtime_config() -> Result<Option<Mapping>> {
     Ok(Config::runtime().latest().config.clone())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_runtime_yaml() -> Result<String> {
     let runtime = Config::runtime();
     let runtime = runtime.latest();
@@ -371,31 +398,37 @@ pub fn get_runtime_yaml() -> Result<String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_runtime_exists() -> Result<Vec<String>> {
     Ok(Config::runtime().latest().exists_keys.clone())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_postprocessing_output() -> Result<PostProcessingOutput> {
     Ok(Config::runtime().latest().postprocessing_output.clone())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_core_status<'n>() -> Result<(Cow<'n, CoreState>, i64, RunType)> {
     Ok(CoreManager::global().status().await)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn url_delay_test(url: &str, expected_status: u16) -> Result<Option<u64>> {
     Ok(crate::utils::net::url_delay_test(url, expected_status).await)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_ipsb_asn() -> Result<Mapping> {
     Ok(crate::utils::net::get_ipsb_asn().await?)
 }
 
 #[tauri::command]
+#[specta::specta]
 #[tracing_attributes::instrument]
 pub async fn patch_clash_config(payload: Mapping) -> Result {
     tracing::debug!("patch_clash_config: {payload:?}");
@@ -414,17 +447,20 @@ pub async fn patch_clash_config(payload: Mapping) -> Result {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_verge_config() -> Result<IVerge> {
     Ok(Config::verge().data().clone())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn patch_verge_config(payload: IVerge) -> Result {
     (feat::patch_verge(payload).await)?;
     Ok(())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn change_clash_core(clash_core: Option<nyanpasu::ClashCore>) -> Result {
     (CoreManager::global().change_core(clash_core).await)?;
     Ok(())
@@ -432,6 +468,7 @@ pub async fn change_clash_core(clash_core: Option<nyanpasu::ClashCore>) -> Resul
 
 /// restart the sidecar
 #[tauri::command]
+#[specta::specta]
 pub async fn restart_sidecar() -> Result {
     (CoreManager::global().run_core().await)?;
     Ok(())
@@ -439,6 +476,7 @@ pub async fn restart_sidecar() -> Result {
 
 /// get the system proxy
 #[tauri::command]
+#[specta::specta]
 pub fn get_sys_proxy() -> Result<Mapping> {
     let current = (Sysproxy::get_system_proxy()).context("failed to get system proxy")?;
 
@@ -454,11 +492,13 @@ pub fn get_sys_proxy() -> Result<Mapping> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_clash_logs() -> Result<VecDeque<String>> {
     Ok(logger::Logger::global().get_log())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn open_app_config_dir() -> Result<()> {
     let config_dir = (dirs::app_config_dir())?;
     (crate::utils::open::that(config_dir))?;
@@ -466,6 +506,7 @@ pub fn open_app_config_dir() -> Result<()> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn open_app_data_dir() -> Result<()> {
     let data_dir = (dirs::app_data_dir())?;
     (crate::utils::open::that(data_dir))?;
@@ -473,6 +514,7 @@ pub fn open_app_data_dir() -> Result<()> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn open_core_dir() -> Result<()> {
     let core_dir = (tauri::utils::platform::current_exe())?;
     let core_dir = core_dir
@@ -483,6 +525,7 @@ pub fn open_core_dir() -> Result<()> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_core_dir() -> Result<String> {
     let core_dir = (tauri::utils::platform::current_exe())?;
     let core_dir = core_dir
@@ -492,6 +535,7 @@ pub fn get_core_dir() -> Result<String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn open_logs_dir() -> Result<()> {
     let log_dir = (dirs::app_logs_dir())?;
     (crate::utils::open::that(log_dir))?;
@@ -499,12 +543,14 @@ pub fn open_logs_dir() -> Result<()> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn open_web_url(url: String) -> Result<()> {
     (crate::utils::open::that(url))?;
     Ok(())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn save_window_size_state() -> Result<()> {
     let handle = handle::Handle::global().app_handle.lock().clone().unwrap();
     (save_window_state(&handle, true))?;
@@ -512,6 +558,7 @@ pub fn save_window_size_state() -> Result<()> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn fetch_latest_core_versions() -> Result<ManifestVersionLatest> {
     let mut updater = updater::UpdaterManager::global().write().await; // It is intended to block here
     (updater.fetch_latest().await)?;
@@ -519,6 +566,7 @@ pub async fn fetch_latest_core_versions() -> Result<ManifestVersionLatest> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_core_version(
     app_handle: AppHandle,
     core_type: nyanpasu::ClashCore,
@@ -530,6 +578,7 @@ pub async fn get_core_version(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn collect_logs(app_handle: AppHandle) -> Result {
     let now = Local::now().format("%Y-%m-%d");
     let fname = format!("{}-log", now);
@@ -554,6 +603,7 @@ pub async fn collect_logs(app_handle: AppHandle) -> Result {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn update_core(core_type: nyanpasu::ClashCore) -> Result<usize> {
     let event_id = (updater::UpdaterManager::global()
         .write()
@@ -564,6 +614,7 @@ pub async fn update_core(core_type: nyanpasu::ClashCore) -> Result<usize> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn inspect_updater(updater_id: usize) -> Result<updater::UpdaterSummary> {
     let updater = (updater::UpdaterManager::global()
         .read()
@@ -574,6 +625,7 @@ pub async fn inspect_updater(updater_id: usize) -> Result<updater::UpdaterSummar
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn clash_api_get_proxy_delay(
     name: String,
     url: Option<String>,
@@ -585,6 +637,7 @@ pub async fn clash_api_get_proxy_delay(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_proxies() -> Result<crate::core::clash::proxies::Proxies> {
     use crate::core::clash::proxies::{ProxiesGuard, ProxiesGuardExt};
     {
@@ -603,6 +656,7 @@ pub async fn get_proxies() -> Result<crate::core::clash::proxies::Proxies> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn mutate_proxies() -> Result<crate::core::clash::proxies::Proxies> {
     use crate::core::clash::proxies::{ProxiesGuard, ProxiesGuardExt};
     (ProxiesGuard::global().update().await)?;
@@ -610,6 +664,7 @@ pub async fn mutate_proxies() -> Result<crate::core::clash::proxies::Proxies> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn select_proxy(group: String, name: String) -> Result<()> {
     use crate::core::clash::proxies::{ProxiesGuard, ProxiesGuardExt};
     (ProxiesGuard::global().select_proxy(&group, &name).await)?;
@@ -617,6 +672,7 @@ pub async fn select_proxy(group: String, name: String) -> Result<()> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn update_proxy_provider(name: String) -> Result<()> {
     use crate::core::clash::{
         api,
@@ -628,23 +684,27 @@ pub async fn update_proxy_provider(name: String) -> Result<()> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn collect_envs<'a>() -> Result<EnvInfo<'a>> {
     Ok((crate::utils::collect::collect_envs())?)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn open_that(path: String) -> Result {
     (crate::utils::open::that(path))?;
     Ok(())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn is_appimage() -> Result<bool> {
     Ok(*crate::consts::IS_APPIMAGE)
 }
 
 #[cfg(windows)]
 #[tauri::command]
+#[specta::specta]
 pub fn get_custom_app_dir() -> Result<Option<String>> {
     use crate::utils::winreg::get_app_dir;
     match get_app_dir() {
@@ -656,12 +716,14 @@ pub fn get_custom_app_dir() -> Result<Option<String>> {
 
 #[cfg(not(windows))]
 #[tauri::command]
+#[specta::specta]
 pub fn get_custom_app_dir() -> Result<Option<String>> {
     Ok(None)
 }
 
 #[cfg(windows)]
 #[tauri::command]
+#[specta::specta]
 pub async fn set_custom_app_dir(app_handle: tauri::AppHandle, path: String) -> Result {
     use crate::utils::{self, dialog::migrate_dialog, winreg::set_app_dir};
     use rust_i18n::t;
@@ -700,18 +762,21 @@ pub async fn set_custom_app_dir(app_handle: tauri::AppHandle, path: String) -> R
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn restart_application(app_handle: tauri::AppHandle) -> Result {
     crate::utils::help::restart_application(&app_handle);
     Ok(())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_server_port() -> Result<u16> {
     Ok(*crate::server::SERVER_PORT)
 }
 
 #[cfg(not(windows))]
 #[tauri::command]
+#[specta::specta]
 pub async fn set_custom_app_dir(_path: String) -> Result {
     Ok(())
 }
@@ -722,6 +787,7 @@ pub mod uwp {
     use crate::core::win_uwp;
 
     #[tauri::command]
+    #[specta::specta]
     pub async fn invoke_uwp_tool() -> Result {
         (win_uwp::invoke_uwptools().await)?;
         Ok(())
@@ -729,6 +795,7 @@ pub mod uwp {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn set_tray_icon(
     app_handle: tauri::AppHandle,
     mode: TrayIcon,
@@ -740,6 +807,7 @@ pub async fn set_tray_icon(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn is_tray_icon_set(mode: TrayIcon) -> Result<bool> {
     let icon_path = (crate::utils::dirs::tray_icons_path(mode.as_str()))?;
     Ok(tokio::fs::metadata(icon_path).await.is_ok())
@@ -750,24 +818,28 @@ pub mod service {
     use crate::core::service;
 
     #[tauri::command]
+    #[specta::specta]
     pub async fn status_service<'a>() -> Result<nyanpasu_ipc::types::StatusInfo<'a>> {
         let res = (service::control::status().await)?;
         Ok(res)
     }
 
     #[tauri::command]
+    #[specta::specta]
     pub async fn install_service() -> Result {
         (service::control::install_service().await)?;
         Ok(())
     }
 
     #[tauri::command]
+    #[specta::specta]
     pub async fn uninstall_service() -> Result {
         (service::control::uninstall_service().await)?;
         Ok(())
     }
 
     #[tauri::command]
+    #[specta::specta]
     pub async fn start_service() -> Result {
         let res = service::control::start_service().await;
         let enabled_service = {
@@ -786,6 +858,7 @@ pub mod service {
     }
 
     #[tauri::command]
+    #[specta::specta]
     pub async fn stop_service() -> Result {
         let res = service::control::stop_service().await;
         let enabled_service = {
@@ -804,6 +877,7 @@ pub mod service {
     }
 
     #[tauri::command]
+    #[specta::specta]
     pub async fn restart_service() -> Result {
         let res = service::control::restart_service().await;
         let enabled_service = {
@@ -827,12 +901,14 @@ pub mod uwp {
     use super::*;
 
     #[tauri::command]
+    #[specta::specta]
     pub async fn invoke_uwp_tool() -> Result {
         Ok(())
     }
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_service_install_prompt() -> Result<String> {
     let args = (crate::core::service::control::get_service_install_args().await)?
         .into_iter()
@@ -847,24 +923,28 @@ pub async fn get_service_install_prompt() -> Result<String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn cleanup_processes(app_handle: AppHandle) -> Result {
     crate::utils::help::cleanup_processes(&app_handle);
     Ok(())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_storage_item(key: String) -> Result<Option<String>> {
     let value = (crate::core::storage::Storage::global().get_item(&key))?;
     Ok(value)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn set_storage_item(key: String, value: String) -> Result {
     (crate::core::storage::Storage::global().set_item(&key, &value))?;
     Ok(())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn remove_storage_item(key: String) -> Result {
     (crate::core::storage::Storage::global().remove_item(&key))?;
     Ok(())

@@ -298,6 +298,7 @@ pub fn get_data_or_sidecar_path(binary_name: impl AsRef<str>) -> Result<PathBuf>
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn check_core_permission(core: &nyanpasu_utils::core::CoreType) -> anyhow::Result<bool> {
+    #[cfg(target_os = "macos")]
     const ROOT_GROUP: &str = "admin";
     #[cfg(target_os = "linux")]
     const ROOT_GROUP: &str = "root";

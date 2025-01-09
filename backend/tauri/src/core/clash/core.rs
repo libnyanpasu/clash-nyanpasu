@@ -6,6 +6,8 @@ use crate::{
     utils::dirs,
 };
 use anyhow::{bail, Result};
+#[cfg(target_os = "macos")]
+use nyanpasu_ipc::api::network::set_dns::NetworkSetDnsReq;
 use nyanpasu_ipc::{
     api::{core::start::CoreStartReq, status::CoreState},
     utils::get_current_ts,
@@ -371,6 +373,8 @@ impl Instance {
 #[derive(Debug)]
 pub struct CoreManager {
     instance: Mutex<Option<Arc<Instance>>>,
+    #[cfg(target_os = "macos")]
+    previous_dns: tokio::sync::Mutex<Option<Vec<std::net::IpAddr>>>,
 }
 
 impl CoreManager {
@@ -378,6 +382,8 @@ impl CoreManager {
         static CORE_MANAGER: OnceCell<CoreManager> = OnceCell::new();
         CORE_MANAGER.get_or_init(|| CoreManager {
             instance: Mutex::new(None),
+            #[cfg(target_os = "macos")]
+            previous_dns: tokio::sync::Mutex::new(None),
         })
     }
 
@@ -458,24 +464,72 @@ impl CoreManager {
         Config::clash()
             .latest()
             .prepare_external_controller_port()?;
-        let instance = Arc::new(Instance::try_new(RunType::default())?);
+        let run_type = RunType::default();
+        let instance = Arc::new(Instance::try_new(run_type)?);
 
         #[cfg(target_os = "macos")]
         {
+            use nyanpasu_utils::network::macos::*;
+
             let enable_tun = Config::verge().latest().enable_tun_mode;
             let enable_tun = enable_tun.unwrap_or(false);
 
-            if enable_tun {
-                log::debug!(target: "app", "try to set system dns");
-
-                let tun_device_ip = Config::clash().clone().latest().get_tun_device_ip();
-                // 执行 networksetup -setdnsservers Wi-Fi $tun_device_ip
-                let output = tokio::process::Command::new("networksetup")
-                    .args(["-setdnsservers", "Wi-Fi", tun_device_ip.as_str()])
-                    .output()
-                    .await?;
-
-                log::debug!(target: "app", "set system dns: {:?}", output);
+            log::debug!(target: "app", "try to set system dns");
+            let default_device = get_default_network_hardware_port()
+                .inspect_err(
+                    |e| log::error!(target: "app", "failed to get default network device: {:?}", e),
+                )
+                .ok();
+            log::debug!(target: "app", "current default network device: {:?}", default_device);
+            let tun_device_ip = Config::clash()
+                .clone()
+                .latest()
+                .get_tun_device_ip()
+                .parse::<std::net::IpAddr>()
+                .unwrap();
+            log::debug!(target: "app", "current tun device ip: {:?}", tun_device_ip);
+            if let Some(default_device) = default_device {
+                let current_dns = get_dns(&default_device)
+                    .inspect_err(
+                        |e| log::error!(target: "app", "failed to get current dns: {:?}", e),
+                    )
+                    .ok()
+                    .flatten();
+                log::debug!(target: "app", "current dns: {:?}", current_dns);
+                let current_dns_contains_tun_device_ip = current_dns
+                    .as_ref()
+                    .is_some_and(|dns| dns.contains(&tun_device_ip));
+                let mut previous_dns = self.previous_dns.lock().await;
+                let previous_dns_clone = previous_dns.clone();
+                let new_dns = match enable_tun {
+                    true if !current_dns_contains_tun_device_ip => {
+                        *previous_dns = current_dns;
+                        Some(Some(vec![tun_device_ip]))
+                    }
+                    false if current_dns_contains_tun_device_ip => Some(previous_dns.take()),
+                    _ => None,
+                };
+                if let Some(new_dns) = new_dns {
+                    log::debug!(target: "app", "set new dns: {:?}", new_dns);
+                    let result = match run_type {
+                        RunType::Service => {
+                            nyanpasu_ipc::client::shortcuts::Client::service_default()
+                                .set_dns(&NetworkSetDnsReq {
+                                    // FIXME: improve this type notation
+                                    dns_servers: new_dns
+                                        .as_ref()
+                                        .map(|dns| dns.iter().map(Cow::Borrowed).collect()),
+                                })
+                                .await
+                                .map_err(anyhow::Error::from)
+                        }
+                        _ => set_dns(&default_device, new_dns).map_err(anyhow::Error::from),
+                    };
+                    if let Err(e) = result {
+                        *previous_dns = previous_dns_clone;
+                        log::error!(target: "app", "failed to set system dns: {:?}", e);
+                    }
+                }
             }
         }
         {
@@ -519,22 +573,58 @@ impl CoreManager {
     pub async fn stop_core(&self) -> Result<()> {
         #[cfg(target_os = "macos")]
         {
+            use crate::core::service::ipc::*;
+            use nyanpasu_utils::network::macos::*;
+
             let enable_tun = Config::verge().latest().enable_tun_mode;
             let enable_tun = enable_tun.unwrap_or(false);
 
-            if enable_tun {
-                log::debug!(target: "app", "try to set system dns");
-
-                match tokio::process::Command::new("networksetup")
-                    .args(["-setdnsservers", "Wi-Fi", "Empty"])
-                    .output()
-                    .await
-                {
-                    Ok(_) => return Ok(()),
-                    Err(err) => {
-                        // 修改这个值，免得stop出错
-                        // *self.use_service_mode.lock() = false;
-                        log::error!(target: "app", "{err:?}");
+            log::debug!(target: "app", "try to reset system dns");
+            let default_device = get_default_network_hardware_port()
+                .inspect_err(
+                    |e| log::error!(target: "app", "failed to get default network device: {:?}", e),
+                )
+                .ok();
+            log::debug!(target: "app", "current default network device: {:?}", default_device);
+            if let Some(default_device) = default_device {
+                let current_dns = get_dns(&default_device)
+                    .inspect_err(
+                        |e| log::error!(target: "app", "failed to get current dns: {:?}", e),
+                    )
+                    .ok()
+                    .flatten();
+                log::debug!(target: "app", "current dns: {:?}", current_dns);
+                let tun_device_ip = Config::clash()
+                    .clone()
+                    .latest()
+                    .get_tun_device_ip()
+                    .parse::<std::net::IpAddr>()
+                    .unwrap();
+                let current_dns_contains_tun_device_ip = current_dns
+                    .as_ref()
+                    .is_some_and(|dns| dns.contains(&tun_device_ip));
+                if current_dns_contains_tun_device_ip && !enable_tun {
+                    let mut previous_dns = self.previous_dns.lock().await;
+                    let previous_dns_clone = previous_dns.clone();
+                    let (_, _, run_type) = self.status().await;
+                    let new_dns = previous_dns.take();
+                    log::debug!(target: "app", "try to reset dns to: {:?}", new_dns);
+                    let result = match run_type {
+                        RunType::Service if get_ipc_state() == IpcState::Connected => {
+                            nyanpasu_ipc::client::shortcuts::Client::service_default()
+                                .set_dns(&NetworkSetDnsReq {
+                                    dns_servers: new_dns
+                                        .as_ref()
+                                        .map(|dns| dns.iter().map(Cow::Borrowed).collect()),
+                                })
+                                .await
+                                .map_err(anyhow::Error::from)
+                        }
+                        _ => set_dns(&default_device, new_dns).map_err(anyhow::Error::from),
+                    };
+                    if let Err(e) = result {
+                        *previous_dns = previous_dns_clone;
+                        log::error!(target: "app", "failed to set system dns: {:?}", e);
                     }
                 }
             }

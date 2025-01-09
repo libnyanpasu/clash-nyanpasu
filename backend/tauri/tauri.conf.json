@@ -57,7 +57,7 @@
       }
     },
     "licenseFile": "../../LICENSE",
-    "createUpdaterArtifacts": false
+    "createUpdaterArtifacts": "v1Compatible"
   },
   "build": {
     "beforeBuildCommand": "pnpm run-p web:build generate:git-info && echo $(pwd)",

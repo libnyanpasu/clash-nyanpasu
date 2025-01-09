@@ -159,16 +159,16 @@ jobs:
         run: |
           case "${{ inputs.arch }}" in
             "i686")
-              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target i686-unknown-linux-gnu -b "rpm,deb"' || 'pnpm build -r cross --target i686-unknown-linux-gnu -b "rpm,deb"' }}
+              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target i686-unknown-linux-gnu -b "rpm,deb" -c ./backend/tauri/tauri.nightly.conf.json' || 'pnpm build -r cross --target i686-unknown-linux-gnu -b "rpm,deb"' }}
               ;;
             "aarch64")
-              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target aarch64-unknown-linux-gnu -b "rpm,deb"' || 'pnpm build -r cross --target aarch64-unknown-linux-gnu -b "rpm,deb"' }}
+              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target aarch64-unknown-linux-gnu -b "rpm,deb" -c ./backend/tauri/tauri.nightly.conf.json' || 'pnpm build -r cross --target aarch64-unknown-linux-gnu -b "rpm,deb"' }}
               ;;
             "armel")
-              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target armv7-unknown-linux-gnueabi -b "rpm,deb"' || 'pnpm build -r cross --target armv7-unknown-linux-gnueabi -b "rpm,deb"' }}
+              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target armv7-unknown-linux-gnueabi -b "rpm,deb" -c ./backend/tauri/tauri.nightly.conf.json' || 'pnpm build -r cross --target armv7-unknown-linux-gnueabi -b "rpm,deb"' }}
               ;;
             "armhf")
-              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target armv7-unknown-linux-gnueabihf -b "rpm,deb"' || 'pnpm build -r cross --target armv7-unknown-linux-gnueabihf -b "rpm,deb"' }}
+              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target armv7-unknown-linux-gnueabihf -b "rpm,deb" -c ./backend/tauri/tauri.nightly.conf.json' || 'pnpm build -r cross --target armv7-unknown-linux-gnueabihf -b "rpm,deb"' }}
               ;;
           esac
 

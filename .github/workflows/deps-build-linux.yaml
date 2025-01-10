@@ -112,23 +112,23 @@ jobs:
               pnpm check
               ;;
             "i686")
-              pnpm check --arch ia32 --sidecar-host i686-unknown-linux-gnu --disable-updater
+              pnpm check --arch ia32 --sidecar-host i686-unknown-linux-gnu
               ;;
             "aarch64")
-              pnpm check --arch arm64 --sidecar-host aarch64-unknown-linux-gnu --disable-updater
+              pnpm check --arch arm64 --sidecar-host aarch64-unknown-linux-gnu
               ;;
             "armel")
-              pnpm check --arch armel --sidecar-host armv7-unknown-linux-gnueabi --disable-updater
+              pnpm check --arch armel --sidecar-host armv7-unknown-linux-gnueabi
               ;;
             "armhf")
-              pnpm check --arch arm --sidecar-host armv7-unknown-linux-gnueabihf --disable-updater
+              pnpm check --arch arm --sidecar-host armv7-unknown-linux-gnueabihf
               ;;
           esac
 
       - name: Nightly Prepare
         if: ${{ inputs.nightly == true }}
         run: |
-          pnpm prepare:nightly
+          pnpm prepare:nightly --disable-updater
       - name: Build UI
         run: |
           pnpm -F ui build
@@ -159,16 +159,16 @@ jobs:
         run: |
           case "${{ inputs.arch }}" in
             "i686")
-              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target i686-unknown-linux-gnu -b "rpm,deb"' || 'pnpm build -r cross --target i686-unknown-linux-gnu -b "rpm,deb"' }}
+              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target i686-unknown-linux-gnu -b "rpm,deb"' || 'pnpm build -r cross --target i686-unknown-linux-gnu -b "rpm,deb" -c "{ "bundle": { "createUpdaterArtifacts": false } }"' }}
               ;;
             "aarch64")
-              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target aarch64-unknown-linux-gnu -b "rpm,deb"' || 'pnpm build -r cross --target aarch64-unknown-linux-gnu -b "rpm,deb"' }}
+              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target aarch64-unknown-linux-gnu -b "rpm,deb"' || 'pnpm build -r cross --target aarch64-unknown-linux-gnu -b "rpm,deb" -c "{ "bundle": { "createUpdaterArtifacts": false } }"' }}
               ;;
             "armel")
-              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target armv7-unknown-linux-gnueabi -b "rpm,deb"' || 'pnpm build -r cross --target armv7-unknown-linux-gnueabi -b "rpm,deb"' }}
+              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target armv7-unknown-linux-gnueabi -b "rpm,deb"' || 'pnpm build -r cross --target armv7-unknown-linux-gnueabi -b "rpm,deb" -c "{ "bundle": { "createUpdaterArtifacts": false } }"' }}
               ;;
             "armhf")
-              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target armv7-unknown-linux-gnueabihf -b "rpm,deb"' || 'pnpm build -r cross --target armv7-unknown-linux-gnueabihf -b "rpm,deb"' }}
+              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target armv7-unknown-linux-gnueabihf -b "rpm,deb"' || 'pnpm build -r cross --target armv7-unknown-linux-gnueabihf -b "rpm,deb" -c "{ "bundle": { "createUpdaterArtifacts": false } }"' }}
               ;;
           esac
 

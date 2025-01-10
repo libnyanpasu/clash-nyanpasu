@@ -22,6 +22,7 @@ pub async fn get_service_install_args() -> Result<Vec<OsString>, anyhow::Error> 
     let config_dir = app_config_dir()?;
     let app_dir = app_install_dir()?;
 
+    #[cfg(not(windows))]
     let args: Vec<OsString> = vec![
         "install".into(),
         "--user".into(),
@@ -33,6 +34,20 @@ pub async fn get_service_install_args() -> Result<Vec<OsString>, anyhow::Error> 
         "--nyanpasu-app-dir".into(),
         format!("\"{}\"", app_dir.to_string_lossy()).into(),
     ];
+
+    #[cfg(windows)]
+    let args: Vec<OsString> = vec![
+        "install".into(),
+        "--user".into(),
+        user.into(),
+        "--nyanpasu-data-dir".into(),
+        data_dir.into(),
+        "--nyanpasu-config-dir".into(),
+        config_dir.into(),
+        "--nyanpasu-app-dir".into(),
+        app_dir.into(),
+    ];
+
     Ok(args)
 }
 

@@ -358,6 +358,10 @@ pub fn run() -> std::io::Result<()> {
             }
             _ => {}
         },
+        #[cfg(target_os = "macos")]
+        tauri::RunEvent::Reopen { .. } => {
+            resolve::create_window(app_handle);
+        }
         _ => {}
     });
 

@@ -24,7 +24,7 @@
     "@radix-ui/react-scroll-area": "1.2.2",
     "@tauri-apps/api": "2.2.0",
     "@types/d3": "7.4.3",
-    "@types/react": "19.0.6",
+    "@types/react": "19.0.7",
     "@vitejs/plugin-react": "4.3.4",
     "ahooks": "3.8.4",
     "d3": "7.9.0",

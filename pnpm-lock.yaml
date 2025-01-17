@@ -287,8 +287,8 @@ importers:
         specifier: 15.4.0
         version: 15.4.0(i18next@24.2.1(typescript@5.7.3))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       react-markdown:
-        specifier: 9.0.1
-        version: 9.0.1(@types/react@19.0.7)(react@19.0.0)
+        specifier: 9.0.3
+        version: 9.0.3(@types/react@19.0.7)(react@19.0.0)
       react-split-grid:
         specifier: 1.0.4
         version: 1.0.4(react@19.0.0)
@@ -6745,8 +6745,8 @@ packages:
   react-is@19.0.0:
     resolution: {integrity: sha512-H91OHcwjZsbq3ClIDHMzBShc1rotbfACdWENsmEf0IFvZ3FgGPtdHMcsv45bQ1hAbgdfiA8SnxTKfDS+x/8m2g==}
 
-  react-markdown@9.0.1:
-    resolution: {integrity: sha512-186Gw/vF1uRkydbsOIkcGXw7aHq0sZOCRFFjGrr7b9+nVZg4UfA4enXCaxm4fUzecU38sWfrNDitGhshuU7rdg==}
+  react-markdown@9.0.3:
+    resolution: {integrity: sha512-Yk7Z94dbgYTOrdk41Z74GoKA7rThnsbbqBTRYuxoe08qvfQ9tJVhmAKw6BJS/ZORG7kTy/s1QvYzSuaoBA1qfw==}
     peerDependencies:
       '@types/react': '>=18'
       react: '>=18'
@@ -15011,7 +15011,7 @@ snapshots:
 
   react-is@19.0.0: {}
 
-  react-markdown@9.0.1(@types/react@19.0.7)(react@19.0.0):
+  react-markdown@9.0.3(@types/react@19.0.7)(react@19.0.0):
     dependencies:
       '@types/hast': 3.0.4
       '@types/react': 19.0.7

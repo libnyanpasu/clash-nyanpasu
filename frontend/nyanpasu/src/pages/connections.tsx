@@ -33,13 +33,16 @@ function Connections() {
   const [mountTable, setMountTable] = useState(true)
   const deferredMountTable = useDeferredValue(mountTable)
   const { proceed } = useBlocker({
-    blockerFn: () => setMountTable(false),
-    condition: !mountTable,
+    shouldBlockFn: (args) => {
+      setMountTable(false)
+      return !mountTable
+    },
+    withResolver: true,
   })
 
   useEffect(() => {
     if (!deferredMountTable) {
-      proceed()
+      proceed?.()
     }
   }, [proceed, deferredMountTable])
 

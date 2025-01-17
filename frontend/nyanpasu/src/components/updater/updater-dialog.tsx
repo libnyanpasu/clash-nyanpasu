@@ -115,7 +115,9 @@ export default function UpdaterDialog({
                       onClick={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
-                        openThat(node.properties.href)
+                        if (typeof node?.properties.href === 'string') {
+                          openThat(node.properties.href)
+                        }
                       }}
                     >
                       {children}

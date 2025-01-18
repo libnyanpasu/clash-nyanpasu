@@ -20,7 +20,6 @@ use std::{
 };
 use tauri::{async_runtime::block_on, App, AppHandle, Emitter, Listener, Manager};
 use tauri_plugin_shell::ShellExt;
-
 static OPEN_WINDOWS_COUNTER: AtomicU16 = AtomicU16::new(0);
 
 pub fn is_window_opened() -> bool {
@@ -32,20 +31,29 @@ pub fn reset_window_open_counter() {
 }
 
 #[cfg(target_os = "macos")]
-fn set_window_controls_pos(window: objc2::rc::Retained<objc2_app_kit::NSWindow>, x: f64, y: f64) {
+fn set_window_controls_pos(
+    window: objc2::rc::Retained<objc2_app_kit::NSWindow>,
+    x: f64,
+    y: f64,
+) -> anyhow::Result<()> {
     use objc2_app_kit::NSWindowButton;
     use objc2_foundation::NSRect;
     let close = window
         .standardWindowButton(NSWindowButton::NSWindowCloseButton)
-        .unwrap();
+        .ok_or(anyhow::anyhow!("failed to get close button"))?;
     let miniaturize = window
         .standardWindowButton(NSWindowButton::NSWindowMiniaturizeButton)
-        .unwrap();
+        .ok_or(anyhow::anyhow!("failed to get miniaturize button"))?;
     let zoom = window
         .standardWindowButton(NSWindowButton::NSWindowZoomButton)
-        .unwrap();
+        .ok_or(anyhow::anyhow!("failed to get zoom button"))?;
 
-    let title_bar_container_view = unsafe { close.superview().unwrap().superview().unwrap() };
+    let title_bar_container_view = unsafe {
+        close
+            .superview()
+            .and_then(|view| view.superview())
+            .ok_or(anyhow::anyhow!("failed to get title bar container view"))?
+    };
 
     let close_rect = close.frame();
     let button_height = close_rect.size.height;
@@ -68,6 +76,7 @@ fn set_window_controls_pos(window: objc2::rc::Retained<objc2_app_kit::NSWindow>,
             button.setFrameOrigin(rect.origin);
         }
     }
+    Ok(())
 }
 
 pub fn find_unused_port() -> Result<u16> {
@@ -256,33 +265,6 @@ pub fn create_window(app_handle: &AppHandle) {
     #[cfg(target_os = "linux")]
     let win_res = builder.decorations(true).transparent(false).build();
 
-    #[cfg(target_os = "macos")]
-    fn set_controls_and_log_error(app_handle: &tauri::AppHandle, window_name: &str) {
-        use objc2::{rc::Retained, runtime::NSObject};
-        use objc2_app_kit::NSWindow;
-        match app_handle
-            .get_webview_window(window_name)
-            .unwrap()
-            .ns_window()
-        {
-            Ok(raw_window) => {
-                let obj: Option<Retained<NSWindow>> =
-                    unsafe { Retained::from_raw(raw_window as *mut NSWindow) };
-                match obj {
-                    Some(window) => {
-                        set_window_controls_pos(window, 26.0, 26.0);
-                    }
-                    None => {
-                        log::error!(target: "app", "failed to get ns_window");
-                    }
-                }
-            }
-            Err(err) => {
-                log::error!(target: "app", "failed to get ns_window, {err:?}");
-            }
-        }
-    }
-
     match win_res {
         Ok(win) => {
             use tauri::{PhysicalPosition, PhysicalSize};
@@ -354,14 +336,9 @@ pub fn create_window(app_handle: &AppHandle) {
 
             #[cfg(target_os = "macos")]
             {
-                set_controls_and_log_error(&app_handle, "main");
-
-                let app_handle_clone = app_handle.clone();
-                win.on_window_event(move |event| {
-                    if let tauri::WindowEvent::Resized(_) = event {
-                        set_controls_and_log_error(&app_handle_clone, "main");
-                    }
-                });
+                tracing::trace!("setup traffic lights pos");
+                let mtm = objc2_foundation::MainThreadMarker::new().unwrap();
+                crate::window::macos::setup_traffic_lights_pos(win.clone(), (26.0, 26.0), mtm);
             }
 
             OPEN_WINDOWS_COUNTER.fetch_add(1, Ordering::Release);

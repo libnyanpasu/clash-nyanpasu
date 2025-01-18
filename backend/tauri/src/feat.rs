@@ -297,7 +297,37 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
         }
 
         if tun_mode.is_some() {
-            update_core_config().await?;
+            log::debug!(target: "app", "toggle tun mode");
+            let mut flag = false;
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            {
+                use crate::utils::dirs::check_core_permission;
+                let current_core = Config::verge().data().clash_core.unwrap_or_default();
+                let current_core: nyanpasu_utils::core::CoreType = (&current_core).into();
+                let service_state = crate::core::service::ipc::get_ipc_state();
+                if !service_state.is_connected() && check_core_permission(&current_core).inspect_err(|e| {
+                    log::error!(target: "app", "clash core is not granted the necessary permissions, grant it: {e:?}");
+                }).is_ok_and(|v| !v) {
+                    log::debug!(target: "app", "grant core permission, and restart core");
+                    flag = true;
+                }
+            }
+            let (state, _, _) = CoreManager::global().status().await;
+            if flag || matches!(state.as_ref(), CoreState::Stopped(_)) {
+                log::debug!(target: "app", "core is stopped, restart core");
+                Config::generate().await?;
+                CoreManager::global().run_core().await?;
+            } else {
+                log::debug!(target: "app", "update core config");
+                #[cfg(target_os = "macos")]
+                let _ = CoreManager::global()
+                    .change_default_network_dns(tun_mode.unwrap_or(false))
+                    .await
+                    .inspect_err(
+                        |e| log::error!(target: "app", "failed to set system dns: {:?}", e),
+                    );
+                update_core_config().await?;
+            }
         }
 
         if auto_launch.is_some() {

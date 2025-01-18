@@ -15,6 +15,7 @@ mod ipc;
 mod server;
 mod setup;
 mod utils;
+mod window;
 
 use crate::{
     config::Config,
@@ -22,8 +23,8 @@ use crate::{
     utils::{init, resolve},
 };
 use specta_typescript::{BigIntExportBehavior, Typescript};
-use tauri::Emitter;
 use tauri_specta::{collect_commands, Builder};
+use tauri::{Emitter, Manager};
 use utils::resolve::{is_window_opened, reset_window_open_counter};
 
 rust_i18n::i18n!("../../locales");
@@ -361,9 +362,7 @@ pub fn run() -> std::io::Result<()> {
                 log::debug!(target: "app", "window close requested");
                 let _ = resolve::save_window_state(app_handle, true);
                 #[cfg(target_os = "macos")]
-                log_err!(app_handle.run_on_main_thread(|| {
-                    crate::utils::dock::macos::hide_dock_icon();
-                }));
+                crate::utils::dock::macos::hide_dock_icon();
             }
             tauri::WindowEvent::Destroyed => {
                 log::debug!(target: "app", "window destroyed");
@@ -376,6 +375,10 @@ pub fn run() -> std::io::Result<()> {
             }
             _ => {}
         },
+        #[cfg(target_os = "macos")]
+        tauri::RunEvent::Reopen { .. } => {
+            resolve::create_window(app_handle);
+        }
         _ => {}
     });
 

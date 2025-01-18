@@ -10,18 +10,18 @@
     "p-retry": "6.2.1"
   },
   "devDependencies": {
-    "@octokit/types": "13.6.2",
+    "@octokit/types": "13.7.0",
     "@types/adm-zip": "0.5.7",
     "adm-zip": "0.5.16",
     "colorize-template": "1.0.0",
-    "consola": "3.3.0",
-    "fs-extra": "11.2.0",
+    "consola": "3.4.0",
+    "fs-extra": "11.3.0",
     "https-proxy-agent": "7.0.6",
     "node-fetch": "3.3.2",
-    "octokit": "4.0.2",
+    "octokit": "4.1.0",
     "picocolors": "1.1.1",
     "tar": "7.4.3",
-    "telegram": "2.26.8",
-    "undici": "7.2.0"
+    "telegram": "2.26.16",
+    "undici": "7.2.3"
   }
 }

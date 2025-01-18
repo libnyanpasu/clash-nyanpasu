@@ -171,7 +171,6 @@ fn use_cache(mut config: Mapping) -> Mapping {
     config
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -192,6 +191,11 @@ mod tests {
         let config = use_cache(config);
         dbg!(&config);
         assert!(config.contains_key("profile"));
-        assert!(config.get("profile").unwrap().as_mapping().unwrap().contains_key("do-not-override"));
+        assert!(config
+            .get("profile")
+            .unwrap()
+            .as_mapping()
+            .unwrap()
+            .contains_key("do-not-override"));
     }
 }

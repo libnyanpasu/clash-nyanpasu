@@ -4,6 +4,8 @@ use anyhow::Result;
 use enumflags2::bitflags;
 use nyanpasu_macro::VergePatch;
 use serde::{Deserialize, Serialize};
+use specta::Type;
+
 mod clash_strategy;
 pub mod logging;
 
@@ -13,7 +15,7 @@ pub use logging::LoggingLevel;
 // TODO: when support sing-box, remove this struct
 #[bitflags]
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Type)]
 pub enum ClashCore {
     #[serde(rename = "clash", alias = "clash-premium")]
     ClashPremium = 0b0001,
@@ -99,7 +101,7 @@ impl TryFrom<&nyanpasu_utils::core::CoreType> for ClashCore {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum ProxiesSelectorMode {
     Hidden,
@@ -108,7 +110,7 @@ pub enum ProxiesSelectorMode {
     Submenu,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum TunStack {
     System,
@@ -248,7 +250,7 @@ pub struct IVerge {
     pub tun_stack: Option<TunStack>,
 }
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize)]
+#[derive(Default, Debug, Clone, Deserialize, Serialize, Type)]
 pub struct WindowState {
     pub width: u32,
     pub height: u32,

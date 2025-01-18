@@ -409,6 +409,9 @@ pub fn get_postprocessing_output() -> Result<PostProcessingOutput> {
     Ok(Config::runtime().latest().postprocessing_output.clone())
 }
 
+#[derive(specta::Type)]
+pub struct Test<'n>(Cow<'n, CoreState>, i64, RunType);
+
 #[tauri::command]
 #[specta::specta]
 pub async fn get_core_status<'n>() -> Result<(Cow<'n, CoreState>, i64, RunType)> {
@@ -423,7 +426,7 @@ pub async fn url_delay_test(url: &str, expected_status: u16) -> Result<Option<u6
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_ipsb_asn() -> Result<Mapping> {
+pub async fn get_ipsb_asn() -> Result<serde_json::Value> {
     Ok(crate::utils::net::get_ipsb_asn().await?)
 }
 

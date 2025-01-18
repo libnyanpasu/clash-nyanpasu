@@ -22,6 +22,7 @@ use nyanpasu_utils::{
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use std::{
     borrow::Cow,
     path::PathBuf,
@@ -31,14 +32,13 @@ use std::{
     },
     time::Duration,
 };
-
 use tokio::time::sleep;
 use tracing_attributes::instrument;
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum RunType {
     /// Run as child process directly

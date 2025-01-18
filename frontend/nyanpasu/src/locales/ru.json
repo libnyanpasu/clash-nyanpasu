@@ -252,6 +252,7 @@
   "stopped_reason": "Остановлено, Причина: {{reason}}",
   "Current Status": "Текущее состояние: {{status}}",
   "Information: To enable service mode, make sure the Clash Nyanpasu service is installed and started": "Информация: Чтобы включить режим службы, убедитесь, что служба Clash Nyanpasu установлена и запущена.",
+  "Prompt": "Подсказка",
   "install": "установить",
   "uninstall": "удалить",
   "start": "запустить",

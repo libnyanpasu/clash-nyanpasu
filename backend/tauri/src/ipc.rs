@@ -488,6 +488,7 @@ pub fn get_core_dir() -> Result<String> {
     let core_dir = core_dir
         .parent()
         .ok_or("failed to get core dir".to_string())?;
+    let core_dir = dunce::canonicalize(core_dir)?;
     Ok(core_dir.to_string_lossy().to_string())
 }
 

@@ -115,8 +115,8 @@ importers:
         specifier: 8.5.1
         version: 8.5.1
       postcss-html:
-        specifier: 1.7.0
-        version: 1.7.0
+        specifier: 1.8.0
+        version: 1.8.0
       postcss-import:
         specifier: 16.1.0
         version: 16.1.0(postcss@8.5.1)
@@ -140,7 +140,7 @@ importers:
         version: 16.13.2(typescript@5.7.3)
       stylelint-config-html:
         specifier: 1.1.0
-        version: 1.1.0(postcss-html@1.7.0)(stylelint@16.13.2(typescript@5.7.3))
+        version: 1.1.0(postcss-html@1.8.0)(stylelint@16.13.2(typescript@5.7.3))
       stylelint-config-recess-order:
         specifier: 5.1.1
         version: 5.1.1(stylelint@16.13.2(typescript@5.7.3))
@@ -5544,9 +5544,6 @@ packages:
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
 
-  js-tokens@9.0.0:
-    resolution: {integrity: sha512-WriZw1luRMlmV3LGJaR6QOJjWwgLUTf89OwT2lUOyjX2dJGBwgmIkbcz+7WFZjrZM635JOIR517++e/67CP9dQ==}
-
   js-tokens@9.0.1:
     resolution: {integrity: sha512-mxa9E9ITFOt0ban3j6L5MpjwegGz6lBQmM1IJkWeBZGcMxto50+eWdjC/52xDbS2vy0k7vIMK0Fe2wfL9OQSpQ==}
 
@@ -6417,8 +6414,8 @@ packages:
   postcss-functions@3.0.0:
     resolution: {integrity: sha512-N5yWXWKA+uhpLQ9ZhBRl2bIAdM6oVJYpDojuI1nF2SzXBimJcdjFwiAouBVbO5VuOF3qA6BSFWFc3wXbbj72XQ==}
 
-  postcss-html@1.7.0:
-    resolution: {integrity: sha512-MfcMpSUIaR/nNgeVS8AyvyDugXlADjN9AcV7e5rDfrF1wduIAGSkL4q2+wgrZgA3sHVAHLDO9FuauHhZYW2nBw==}
+  postcss-html@1.8.0:
+    resolution: {integrity: sha512-5mMeb1TgLWoRKxZ0Xh9RZDfwUUIqRrcxO2uXO+Ezl1N5lqpCiSU5Gk6+1kZediBfBHFtPCdopr2UZ2SgUsKcgQ==}
     engines: {node: ^12 || >=14}
 
   postcss-import@15.1.0:
@@ -13745,8 +13742,6 @@ snapshots:
 
   js-tokens@4.0.0: {}
 
-  js-tokens@9.0.0: {}
-
   js-tokens@9.0.1: {}
 
   js-yaml@4.1.0:
@@ -14757,10 +14752,10 @@ snapshots:
       postcss: 6.0.23
       postcss-value-parser: 3.3.1
 
-  postcss-html@1.7.0:
+  postcss-html@1.8.0:
     dependencies:
       htmlparser2: 8.0.2
-      js-tokens: 9.0.0
+      js-tokens: 9.0.1
       postcss: 8.5.1
       postcss-safe-parser: 6.0.0(postcss@8.5.1)
 
@@ -15757,9 +15752,9 @@ snapshots:
     dependencies:
       inline-style-parser: 0.2.3
 
-  stylelint-config-html@1.1.0(postcss-html@1.7.0)(stylelint@16.13.2(typescript@5.7.3)):
+  stylelint-config-html@1.1.0(postcss-html@1.8.0)(stylelint@16.13.2(typescript@5.7.3)):
     dependencies:
-      postcss-html: 1.7.0
+      postcss-html: 1.8.0
       stylelint: 16.13.2(typescript@5.7.3)
 
   stylelint-config-recess-order@5.1.1(stylelint@16.13.2(typescript@5.7.3)):

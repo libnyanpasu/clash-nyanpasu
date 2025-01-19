@@ -181,7 +181,7 @@ export const SettingSystemService = () => {
                 variant="contained"
                 onClick={() => promptDialog.show('install')}
               >
-                Prompt
+                {t('Prompt')}
               </Button>
             )}
           </div>

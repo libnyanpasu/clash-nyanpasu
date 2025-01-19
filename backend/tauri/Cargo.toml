@@ -203,7 +203,7 @@ nix = { version = "0.29.0", features = ["user", "fs"] }
 
 [target.'cfg(windows)'.dependencies]
 deelevate = "0.2.0"
-winreg = { version = "0.53", features = ["transactions"] }
+winreg = { version = "0.55", features = ["transactions"] }
 windows-registry = "0.4"
 windows-sys = { version = "0.59", features = [
   "Win32_System_LibraryLoader",

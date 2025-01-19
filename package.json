@@ -78,7 +78,7 @@
     "eslint-plugin-html": "8.1.2",
     "eslint-plugin-import": "2.31.0",
     "eslint-plugin-n": "17.15.1",
-    "eslint-plugin-prettier": "5.2.2",
+    "eslint-plugin-prettier": "5.2.3",
     "eslint-plugin-promise": "7.2.1",
     "eslint-plugin-react": "7.37.4",
     "eslint-plugin-react-compiler": "19.0.0-beta-e552027-20250112",

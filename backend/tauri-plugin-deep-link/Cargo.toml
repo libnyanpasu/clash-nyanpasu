@@ -23,7 +23,7 @@ windows-sys = { version = "0.59.0", features = [
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_WindowsAndMessaging",
 ] }
-winreg = "0.53.0"
+winreg = "0.55.0"
 tokio = { version = "1", features = ["full"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]

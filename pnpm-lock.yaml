@@ -254,8 +254,8 @@ importers:
         specifier: 24.2.1
         version: 24.2.1(typescript@5.7.3)
       jotai:
-        specifier: 2.11.0
-        version: 2.11.0(@types/react@19.0.7)(react@19.0.0)
+        specifier: 2.11.1
+        version: 2.11.1(@types/react@19.0.7)(react@19.0.0)
       json-schema:
         specifier: 0.4.0
         version: 0.4.0
@@ -5522,8 +5522,8 @@ packages:
   jju@1.4.0:
     resolution: {integrity: sha512-8wb9Yw966OSxApiCt0K3yNJL8pnNeIv+OEq2YMidz4FKP6nonSRoOXc80iXY4JaN2FC11B9qsNmDsm+ZOfMROA==}
 
-  jotai@2.11.0:
-    resolution: {integrity: sha512-zKfoBBD1uDw3rljwHkt0fWuja1B76R7CjznuBO+mSX6jpsO1EBeWNRKpeaQho9yPI/pvCv4recGfgOXGxwPZvQ==}
+  jotai@2.11.1:
+    resolution: {integrity: sha512-41Su098mpHIX29hF/XOpDb0SqF6EES7+HXfrhuBqVSzRkxX48hD5i8nGsEewWZNAsBWJCTTmuz8M946Ih2PfcQ==}
     engines: {node: '>=12.20.0'}
     peerDependencies:
       '@types/react': '>=17.0.0'
@@ -13727,7 +13727,7 @@ snapshots:
 
   jju@1.4.0: {}
 
-  jotai@2.11.0(@types/react@19.0.7)(react@19.0.0):
+  jotai@2.11.1(@types/react@19.0.7)(react@19.0.0):
     optionalDependencies:
       '@types/react': 19.0.7
       react: 19.0.0

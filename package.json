@@ -71,7 +71,7 @@
     "conventional-changelog-conventionalcommits": "8.0.0",
     "cross-env": "7.0.3",
     "dedent": "1.5.3",
-    "eslint": "9.18.0",
+    "eslint": "9.19.0",
     "eslint-config-prettier": "9.1.0",
     "eslint-config-standard": "17.1.0",
     "eslint-import-resolver-alias": "1.1.2",

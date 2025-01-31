@@ -32,6 +32,8 @@ pub enum IpcError {
     #[error(transparent)]
     SerdeYaml(#[from] serde_yaml::Error),
     #[error(transparent)]
+    SerdeJson(#[from] serde_json::Error),
+    #[error(transparent)]
     Tauri(#[from] tauri::Error),
     #[error(transparent)]
     Storage(#[from] StorageOperationError),

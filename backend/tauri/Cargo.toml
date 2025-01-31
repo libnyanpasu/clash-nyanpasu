@@ -115,7 +115,7 @@ dunce = "1.0.4"                                                                 
 runas = { git = "https://github.com/libnyanpasu/rust-runas.git" }
 single-instance = "0.3.3"
 which = "7"
-dirs = "5.0.1"
+dirs = "6.0.0"
 open = "5.0.1"
 sysinfo = "0.33"
 num_cpus = "1"

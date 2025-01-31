@@ -11,7 +11,7 @@ readme = "README.md"
 include = ["src/**", "Cargo.toml", "LICENSE_*"]
 
 [dependencies]
-dirs = "5"
+dirs = "6"
 log = "0.4"
 once_cell = "1"
 tauri-utils = { version = "2" }

@@ -69,6 +69,20 @@ impl specta::Type for IpcError {
 
 type Result<T = ()> = StdResult<T, IpcError>;
 
+// TODO: remove this struct use Sysproxy
+#[derive(specta::Type, serde::Serialize)]
+pub struct GetSysProxyResponse {
+    // Sysproxy fields (manually defined),
+    // because specta not support serde(flatten)
+    pub enable: bool,
+    pub host: String,
+    pub port: u16,
+    pub bypass: String,
+
+    // old version compatible
+    pub server: String,
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn get_profiles() -> Result<Profiles> {
@@ -131,62 +145,45 @@ pub async fn import_profile(url: String, option: Option<RemoteProfileOptionsBuil
     Ok(())
 }
 
+/// create a new profile
 #[tauri::command]
 #[specta::specta]
-pub async fn create_profile(item: Mapping, file_data: Option<String>) -> Result {
-    let kind = item
-        .get("type")
-        .ok_or(anyhow!("the type field is not found"))?;
-    // FIXME: a workaround for serde_yaml, and it should be fixed by upstream
-    let kind = serde_yaml::from_value(match kind {
-        serde_yaml::Value::String(_) => kind.clone(),
-        serde_yaml::Value::Mapping(kind) => {
-            let tag = kind
-                .keys()
-                .next()
-                .ok_or(anyhow!("the type field is not found in mapping"))?;
-            serde_yaml::Value::Tagged(Box::new(TaggedValue {
-                tag: serde_yaml::value::Tag::new(tag.as_str().unwrap()),
-                value: kind.get(tag).unwrap().clone(),
-            }))
-        }
-        _ => return Err(anyhow!("the type field is not a string or mapping").into()),
-    })
-    .context("failed to parse the profile type")?;
-    let item = serde_yaml::Value::Mapping(item);
-    tracing::trace!("create profile: {kind:?} with {item:?}");
-    let profile: Profile = match kind {
-        ProfileItemType::Local => {
-            let item: LocalProfileBuilder = (serde_yaml::from_value(item))?;
-            (item.build())
+pub async fn create_profile(item: ProfileKind, file_data: Option<String>) -> Result {
+    tracing::trace!("create profile: {item:?}");
+
+    let is_remote = matches!(&item, ProfileKind::Remote(_));
+
+    let profile: Profile = match item {
+        ProfileKind::Local(builder) => {
+            builder.build()
                 .context("failed to build local profile")?
                 .into()
         }
-        ProfileItemType::Remote => {
-            let mut item: RemoteProfileBuilder = (serde_yaml::from_value(item))?;
-            (item.build_no_blocking().await)
+        ProfileKind::Remote(mut builder) => {
+            builder.build_no_blocking().await
                 .context("failed to build remote profile")?
                 .into()
         }
-        ProfileItemType::Merge => {
-            let item: MergeProfileBuilder = (serde_yaml::from_value(item))?;
-            (item.build())
+        ProfileKind::Merge(builder) => {
+            builder.build()
                 .context("failed to build merge profile")?
                 .into()
         }
-        ProfileItemType::Script(_) => {
-            let item: ScriptProfileBuilder = (serde_yaml::from_value(item))?;
-            (item.build())
+        ProfileKind::Script(builder) => {
+            builder.build()
                 .context("failed to build script profile")?
                 .into()
         }
     };
+
     tracing::info!("created new profile: {:#?}", profile);
-    if let Some(file_data) = file_data
+    
+    // Save file data for non-remote profiles
+    if let Some(file_data) = file_data 
         && !file_data.is_empty()
-        && kind != ProfileItemType::Remote
+        && !is_remote
     {
-        (profile.save_file(file_data))?;
+        profile.save_file(file_data)?;
     }
 
     // 根据是否为 Some(uid) 来判断是否要激活配置
@@ -199,6 +196,8 @@ pub async fn create_profile(item: Mapping, file_data: Option<String>) -> Result 
             None
         }
     };
+
+    // Save the profile
     {
         let committer = Config::profiles().auto_commit();
         committer.draft().append_item(profile)?;
@@ -209,6 +208,7 @@ pub async fn create_profile(item: Mapping, file_data: Option<String>) -> Result 
         builder.current(vec![profile_id]);
         patch_profiles_config(builder).await?;
     }
+
     Ok(())
 }
 
@@ -278,10 +278,10 @@ pub async fn patch_profiles_config(profiles: ProfilesBuilder) -> Result {
     }
 }
 
-/// 修改某个profile item的
+/// update profile by uid
 #[tauri::command]
 #[specta::specta]
-pub async fn patch_profile(uid: String, profile: Mapping) -> Result {
+pub async fn patch_profile(uid: String, profile: ProfileKind) -> Result {
     tracing::debug!("patch profile: {uid} with {profile:?}");
     {
         let committer = Config::profiles().auto_commit();
@@ -379,10 +379,19 @@ pub fn get_clash_info() -> Result<ClashInfo> {
     Ok(Config::clash().latest().get_client_info())
 }
 
+/// get the runtime config
 #[tauri::command]
-#[specta::specta]
-pub fn get_runtime_config() -> Result<Option<Mapping>> {
-    Ok(Config::runtime().latest().config.clone())
+#[specta::specta] 
+pub fn get_runtime_config() -> Result<Option<serde_json::Value>> {
+    let config = Config::runtime().latest().config.clone();
+    match config {
+        Some(cfg) => {
+            let yaml_value = serde_yaml::to_value(cfg)?;
+            let json_value = serde_json::to_value(&yaml_value)?;
+            Ok(Some(json_value))
+        }
+        None => Ok(None),
+    }
 }
 
 #[tauri::command]
@@ -432,21 +441,25 @@ pub async fn get_ipsb_asn() -> Result<serde_json::Value> {
     Ok(crate::utils::net::get_ipsb_asn().await?)
 }
 
+/// patch clash runtime config
 #[tauri::command]
 #[specta::specta]
 #[tracing_attributes::instrument]
-pub async fn patch_clash_config(payload: Mapping) -> Result {
+pub async fn patch_clash_config(payload: PatchRuntimeConfig) -> Result {
     tracing::debug!("patch_clash_config: {payload:?}");
-    if RUNTIME_PATCHABLE_KEYS
-        .iter()
-        .any(|key| payload.contains_key(key))
-    {
-        (crate::core::clash::api::patch_configs(&payload).await)?;
-    }
-    if let Err(e) = feat::patch_clash(payload).await {
+
+    let mapping = match serde_yaml::to_value(&payload)? {
+        serde_yaml::Value::Mapping(m) => m,
+        _ => return Err(IpcError::Custom("Expected a mapping".to_string())),
+    };
+
+    (crate::core::clash::api::patch_configs(&mapping).await)?;
+
+    if let Err(e) = feat::patch_clash(mapping).await {
         tracing::error!("{e}");
         return Err(IpcError::from(e));
     }
+
     feat::update_proxies_buff(None);
     Ok(())
 }
@@ -480,20 +493,21 @@ pub async fn restart_sidecar() -> Result {
 }
 
 /// get the system proxy
+/// server field is the combination of host and port
 #[tauri::command]
 #[specta::specta]
-pub fn get_sys_proxy() -> Result<Mapping> {
+pub fn get_sys_proxy() -> Result<GetSysProxyResponse> {
     let current = (Sysproxy::get_system_proxy()).context("failed to get system proxy")?;
 
-    let mut map = Mapping::new();
-    map.insert("enable".into(), current.enable.into());
-    map.insert(
-        "server".into(),
-        format!("{}:{}", current.host, current.port).into(),
-    );
-    map.insert("bypass".into(), current.bypass.into());
+    let server = format!("{}:{}", current.host, current.port);
 
-    Ok(map)
+    Ok(GetSysProxyResponse {
+        enable: current.enable,
+        host: current.host,
+        port: current.port,
+        bypass: current.bypass,
+        server,
+    })
 }
 
 #[tauri::command]

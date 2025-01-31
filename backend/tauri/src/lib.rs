@@ -254,15 +254,24 @@ pub fn run() -> std::io::Result<()> {
     ]);
 
     #[cfg(debug_assertions)]
-    specta_builder
-        .export(
+    {
+        const SPECTA_BINDINGS_PATH: &str = "../../frontend/interface/src/ipc/bindings.ts";
+
+        match specta_builder.export(
             Typescript::default()
                 .formatter(specta_typescript::formatter::prettier)
                 .bigint(BigIntExportBehavior::Number)
                 .header("/* eslint-disable */\n// @ts-nocheck"),
-            "../../../frontend/interface/src/ipc/bindings.ts",
-        )
-        .expect("Failed to export typescript bindings");
+                SPECTA_BINDINGS_PATH,
+        ) {
+            Ok(_) => {
+                log::debug!("Exported typescript bindings, path: {}", SPECTA_BINDINGS_PATH);
+            }
+            Err(e) => {
+                panic!("Failed to export typescript bindings: {}", e);
+            }
+        };
+    }
 
     let verge = { Config::verge().latest().language.clone().unwrap() };
     rust_i18n::set_locale(verge.as_str());

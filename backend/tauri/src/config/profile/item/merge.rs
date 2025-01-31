@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 #[derive(
     Default, Delegate, Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate, specta::Type,
 )]
-#[builder(derive(Serialize, Deserialize, specta::Type))]
+#[builder(derive(Debug, Serialize, Deserialize, specta::Type))]
 #[builder_update(patch_fn = "apply")]
 #[delegate(ProfileSharedGetter, target = "shared")]
 #[delegate(ProfileSharedSetter, target = "shared")]

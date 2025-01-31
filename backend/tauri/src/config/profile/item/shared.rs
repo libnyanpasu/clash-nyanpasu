@@ -19,7 +19,7 @@ pub trait ProfileFileIo {
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate, specta::Type)]
 #[builder(
-    derive(serde::Serialize, serde::Deserialize, specta::Type),
+    derive(Debug, serde::Serialize, serde::Deserialize, specta::Type),
     build_fn(skip)
 )]
 #[builder_update(patch_fn = "apply", getter)]

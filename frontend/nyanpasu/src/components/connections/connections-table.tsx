@@ -5,6 +5,7 @@ import { MaterialReactTable, useMaterialReactTable } from 'material-react-table'
 import { MRT_Localization_EN } from 'material-react-table/locales/en'
 import { MRT_Localization_RU } from 'material-react-table/locales/ru'
 import { MRT_Localization_ZH_HANS } from 'material-react-table/locales/zh-Hans'
+import { MRT_Localization_ZH_HANT } from 'material-react-table/locales/zh-Hant'
 import { lazy, useDeferredValue, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { connectionTableColumnsAtom } from '@/store'
@@ -76,6 +77,8 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
     switch (i18n.language) {
       case 'zh':
         return MRT_Localization_ZH_HANS
+      case 'tw':
+        return MRT_Localization_ZH_HANT
       case 'ru':
         return MRT_Localization_RU
       case 'en':

@@ -10,7 +10,9 @@ use nyanpasu_macro::BuilderUpdate;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Default, Delegate, Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate, specta::Type)]
+#[derive(
+    Default, Delegate, Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate, specta::Type,
+)]
 #[builder(derive(Serialize, Deserialize, specta::Type))]
 #[builder_update(patch_fn = "apply")]
 #[delegate(ProfileSharedGetter, target = "shared")]

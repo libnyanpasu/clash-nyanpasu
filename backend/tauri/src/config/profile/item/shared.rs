@@ -18,7 +18,10 @@ pub trait ProfileFileIo {
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate, specta::Type)]
-#[builder(derive(serde::Serialize, serde::Deserialize, specta::Type), build_fn(skip))]
+#[builder(
+    derive(serde::Serialize, serde::Deserialize, specta::Type),
+    build_fn(skip)
+)]
 #[builder_update(patch_fn = "apply", getter)]
 pub struct ProfileShared {
     #[builder(default = "self.default_uid()?")]

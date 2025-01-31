@@ -17,6 +17,8 @@ mod setup;
 mod utils;
 mod window;
 
+use std::io;
+
 use crate::{
     config::Config,
     core::handle::Handle,
@@ -260,6 +262,21 @@ pub fn run() -> std::io::Result<()> {
         match specta_builder.export(
             Typescript::default()
                 .formatter(specta_typescript::formatter::prettier)
+                .formatter(|file| {
+                    let npx_command = if cfg!(target_os = "windows") {
+                        "npx.cmd"
+                    } else {
+                        "npx"
+                    };
+                
+                    std::process::Command::new(npx_command)
+                        .arg("prettier")
+                        .arg("--write")
+                        .arg(file)
+                        .output()
+                        .map(|_| ())
+                        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+                })
                 .bigint(BigIntExportBehavior::Number)
                 .header("/* eslint-disable */\n// @ts-nocheck"),
                 SPECTA_BINDINGS_PATH,

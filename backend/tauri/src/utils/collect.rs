@@ -9,7 +9,7 @@ use nyanpasu_utils::core::{ClashCoreType, CoreType};
 use serde::Serialize;
 use sysinfo::System;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 pub struct DeviceInfo<'a> {
     /// Device name, such as "Intel Core i5-8250U CPU @ 1.60GHz x 8"
     pub cpu: Vec<Cow<'a, str>>,
@@ -19,7 +19,7 @@ pub struct DeviceInfo<'a> {
     pub memory: Cow<'a, str>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 pub struct EnvInfo<'a> {
     pub os: Cow<'a, str>,
     pub arch: Cow<'a, str>,

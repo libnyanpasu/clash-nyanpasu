@@ -1,6 +1,6 @@
 use once_cell::sync::Lazy;
 
-#[derive(Debug, serde::Serialize, Clone)]
+#[derive(Debug, serde::Serialize, Clone, specta::Type)]
 pub struct BuildInfo {
     pub app_name: &'static str,
     pub app_version: &'static str,

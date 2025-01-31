@@ -4,6 +4,7 @@ use indexmap::IndexMap;
 use reqwest::{header::HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
+use specta::Type;
 use std::{
     collections::HashMap,
     fmt::{self, Display, Formatter},
@@ -44,21 +45,21 @@ pub async fn patch_configs(config: &Mapping) -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxiesRes {
     #[serde(default)]
     pub proxies: IndexMap<String, ProxyItem>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxyItemHistory {
     pub time: String,
     pub delay: i64,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxyItem {
     pub name: String,
@@ -172,7 +173,7 @@ pub async fn update_proxy(group: &str, name: &str) -> Result<()> {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Type)]
 pub enum VehicleType {
     File,
     #[serde(rename = "HTTP")]
@@ -181,7 +182,7 @@ pub enum VehicleType {
     Unknown,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, specta::Type)]
 pub enum ProviderType {
     Proxy,
     Rule,
@@ -198,7 +199,7 @@ impl Display for ProviderType {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxyProviderItem {
     pub name: String,
@@ -211,7 +212,7 @@ pub struct ProxyProviderItem {
     pub expected_status: Option<String>, // Mihomo Only
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ProvidersProxiesRes {
     #[serde(default)]
@@ -284,7 +285,7 @@ pub async fn get_providers_proxies_healthcheck(name: String) -> Result<Mapping> 
     Ok(response.json::<Mapping>().await?)
 }
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize)]
+#[derive(Default, Debug, Clone, Deserialize, Serialize, Type)]
 pub struct DelayRes {
     delay: u64,
 }

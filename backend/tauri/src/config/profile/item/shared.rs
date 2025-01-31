@@ -17,8 +17,11 @@ pub trait ProfileFileIo {
     async fn write_file(&self, content: String) -> std::io::Result<()>;
 }
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate)]
-#[builder(derive(serde::Serialize, serde::Deserialize), build_fn(skip))]
+#[derive(Default, Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate, specta::Type)]
+#[builder(
+    derive(Debug, serde::Serialize, serde::Deserialize, specta::Type),
+    build_fn(skip)
+)]
 #[builder_update(patch_fn = "apply", getter)]
 pub struct ProfileShared {
     #[builder(default = "self.default_uid()?")]

@@ -90,7 +90,7 @@ pub trait ProfileCleanup: ProfileHelper {
     }
 }
 
-#[derive(Debug, Delegate, Clone, EnumWrapperCombined)]
+#[derive(Debug, Delegate, Clone, EnumWrapperCombined, specta::Type)]
 #[delegate(ProfileSharedSetter)]
 #[delegate(ProfileSharedGetter)]
 #[delegate(ProfileFileIo)]

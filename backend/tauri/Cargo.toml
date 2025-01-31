@@ -25,9 +25,12 @@ semver = "1.0"
 # Local Dependencies
 nyanpasu-ipc = { git = "https://github.com/libnyanpasu/nyanpasu-service.git", features = [
   "client",
+  "specta",
 ] } # IPC bridge between the UI process and service process
 nyanpasu-macro = { path = "../nyanpasu-macro" }
-nyanpasu-utils = { git = "https://github.com/libnyanpasu/nyanpasu-utils.git" }
+nyanpasu-utils = { git = "https://github.com/libnyanpasu/nyanpasu-utils.git", features = [
+  "specta",
+] }
 
 # Common Utilities
 tokio = { version = "1", features = ["full"] }
@@ -83,7 +86,9 @@ backon = { version = "1.0.1", features = ["tokio-sleep"] }
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde_yaml = { version = "0.10", package = "serde_yaml_ng", git = "https://github.com/libnyanpasu/serde-yaml-ng.git" }
+serde_yaml = { version = "0.10", package = "serde_yaml_ng", branch = "feat/specta", git = "https://github.com/libnyanpasu/serde-yaml-ng.git", features = [
+  "specta",
+] }
 bincode = "1"
 bytes = { version = "1", features = ["serde"] }
 semver = "1.0"
@@ -180,6 +185,19 @@ tauri-plugin-updater = "2.2"
 tauri-plugin-shell = "2.2"
 tauri-plugin-notification = "2.2"
 window-vibrancy = { version = "0.5.2" }
+
+# Strong typed api binding between typescript and rust
+specta-typescript = "0.0.9"
+tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
+specta = { version = "=2.0.0-rc.22", features = [
+  "serde",
+  "serde_json",
+  "serde_yaml",
+  "uuid",
+  "url",
+  "indexmap",
+  "function",
+] }
 
 [target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
 tauri-plugin-global-shortcut = "2.2.0"

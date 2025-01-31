@@ -18,7 +18,7 @@ use strum::EnumString;
 
 use super::Logs;
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, specta::Type)]
 /// 后处理输出
 pub struct PostProcessingOutput {
     /// 局部链的输出
@@ -117,7 +117,9 @@ pub enum ChainType {
     Script(ScriptType),
 }
 
-#[derive(Debug, EnumString, Clone, Serialize, Deserialize, Default, Eq, PartialEq, Hash)]
+#[derive(
+    Debug, EnumString, Clone, Serialize, Deserialize, Default, Eq, PartialEq, Hash, specta::Type,
+)]
 #[strum(serialize_all = "snake_case")]
 pub enum ScriptType {
     #[default]

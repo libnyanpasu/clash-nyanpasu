@@ -27,6 +27,9 @@ importers:
       '@eslint/compat':
         specifier: 1.2.5
         version: 1.2.5(eslint@9.19.0(jiti@2.4.2))
+      '@eslint/eslintrc':
+        specifier: 3.2.0
+        version: 3.2.0
       '@ianvs/prettier-plugin-sort-imports':
         specifier: 4.4.1
         version: 4.4.1(prettier@3.4.2)
@@ -261,7 +264,7 @@ importers:
         version: 0.4.0
       material-react-table:
         specifier: 3.1.0
-        version: 3.1.0(jov5iuqevj7qu2owwsunlaiuhm)
+        version: 3.1.0(13f1ce96498876d250a4910bfbf0251b)
       monaco-editor:
         specifier: 0.52.2
         version: 0.52.2
@@ -282,7 +285,7 @@ importers:
         version: 1.6.5(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       react-hook-form-mui:
         specifier: 7.5.0
-        version: 7.5.0(mtp6d3ly5w2cbupbd7jkr3oqli)
+        version: 7.5.0(47b17a3b9e65983e6fbf2eab731636c6)
       react-i18next:
         specifier: 15.4.0
         version: 15.4.0(i18next@24.2.2(typescript@5.7.3))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
@@ -13996,7 +13999,7 @@ snapshots:
       escape-string-regexp: 4.0.0
     optional: true
 
-  material-react-table@3.1.0(jov5iuqevj7qu2owwsunlaiuhm):
+  material-react-table@3.1.0(13f1ce96498876d250a4910bfbf0251b):
     dependencies:
       '@emotion/react': 11.14.0(@types/react@19.0.8)(react@19.0.0)
       '@emotion/styled': 11.14.0(@emotion/react@11.14.0(@types/react@19.0.8)(react@19.0.0))(@types/react@19.0.8)(react@19.0.0)
@@ -15006,7 +15009,7 @@ snapshots:
       react: 19.0.0
       react-dom: 19.0.0(react@19.0.0)
 
-  react-hook-form-mui@7.5.0(mtp6d3ly5w2cbupbd7jkr3oqli):
+  react-hook-form-mui@7.5.0(47b17a3b9e65983e6fbf2eab731636c6):
     dependencies:
       '@mui/material': 6.4.2(@emotion/react@11.14.0(@types/react@19.0.8)(react@19.0.0))(@emotion/styled@11.14.0(@emotion/react@11.14.0(@types/react@19.0.8)(react@19.0.0))(@types/react@19.0.8)(react@19.0.0))(@types/react@19.0.8)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       react: 19.0.0

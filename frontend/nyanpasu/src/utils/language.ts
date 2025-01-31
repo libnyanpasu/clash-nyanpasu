@@ -1,8 +1,8 @@
 export const languageOptions = {
   en: 'English',
   ru: 'Русский',
-  zh: '简体中文',
-  tw: '繁體中文',
+  'zh-CN': '简体中文',
+  'zh-TW': '繁體中文',
 }
 
 export const languageQuirks: {
@@ -23,13 +23,13 @@ export const languageQuirks: {
       minWidth: 240,
     },
   },
-  zh: {
+  'zh-CN': {
     drawer: {
       minWidth: 180,
       itemClassNames: 'text-center',
     },
   },
-  tw: {
+  'zh-TW': {
     drawer: {
       minWidth: 180,
       itemClassNames: 'text-center',

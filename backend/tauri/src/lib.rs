@@ -268,7 +268,7 @@ pub fn run() -> std::io::Result<()> {
                     } else {
                         "npx"
                     };
-                
+
                     std::process::Command::new(npx_command)
                         .arg("prettier")
                         .arg("--write")
@@ -279,10 +279,13 @@ pub fn run() -> std::io::Result<()> {
                 })
                 .bigint(BigIntExportBehavior::Number)
                 .header("/* eslint-disable */\n// @ts-nocheck"),
-                SPECTA_BINDINGS_PATH,
+            SPECTA_BINDINGS_PATH,
         ) {
             Ok(_) => {
-                log::debug!("Exported typescript bindings, path: {}", SPECTA_BINDINGS_PATH);
+                log::debug!(
+                    "Exported typescript bindings, path: {}",
+                    SPECTA_BINDINGS_PATH
+                );
             }
             Err(e) => {
                 panic!("Failed to export typescript bindings: {}", e);

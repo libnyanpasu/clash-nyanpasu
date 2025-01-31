@@ -38,14 +38,22 @@ impl IRuntime {
                     .unwrap_or_default();
 
             [
-                ("allow-lan", patch_config.allow_lan.map(serde_yaml::Value::Bool)),
+                (
+                    "allow-lan",
+                    patch_config.allow_lan.map(serde_yaml::Value::Bool),
+                ),
                 ("ipv6", patch_config.ipv6.map(serde_yaml::Value::Bool)),
-                ("log-level", patch_config.log_level.map(serde_yaml::Value::String)),
+                (
+                    "log-level",
+                    patch_config.log_level.map(serde_yaml::Value::String),
+                ),
                 ("mode", patch_config.mode.map(serde_yaml::Value::String)),
             ]
             .into_iter()
             .filter_map(|(key, value)| value.map(|v| (key.into(), v)))
-            .for_each(|(k, v)| { config.insert(k, v); });
+            .for_each(|(k, v)| {
+                config.insert(k, v);
+            });
         }
     }
 }

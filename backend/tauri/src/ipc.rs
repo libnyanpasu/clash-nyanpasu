@@ -154,32 +154,29 @@ pub async fn create_profile(item: ProfileKind, file_data: Option<String>) -> Res
     let is_remote = matches!(&item, ProfileKind::Remote(_));
 
     let profile: Profile = match item {
-        ProfileKind::Local(builder) => {
-            builder.build()
-                .context("failed to build local profile")?
-                .into()
-        }
-        ProfileKind::Remote(mut builder) => {
-            builder.build_no_blocking().await
-                .context("failed to build remote profile")?
-                .into()
-        }
-        ProfileKind::Merge(builder) => {
-            builder.build()
-                .context("failed to build merge profile")?
-                .into()
-        }
-        ProfileKind::Script(builder) => {
-            builder.build()
-                .context("failed to build script profile")?
-                .into()
-        }
+        ProfileKind::Local(builder) => builder
+            .build()
+            .context("failed to build local profile")?
+            .into(),
+        ProfileKind::Remote(mut builder) => builder
+            .build_no_blocking()
+            .await
+            .context("failed to build remote profile")?
+            .into(),
+        ProfileKind::Merge(builder) => builder
+            .build()
+            .context("failed to build merge profile")?
+            .into(),
+        ProfileKind::Script(builder) => builder
+            .build()
+            .context("failed to build script profile")?
+            .into(),
     };
 
     tracing::info!("created new profile: {:#?}", profile);
-    
+
     // Save file data for non-remote profiles
-    if let Some(file_data) = file_data 
+    if let Some(file_data) = file_data
         && !file_data.is_empty()
         && !is_remote
     {
@@ -381,7 +378,7 @@ pub fn get_clash_info() -> Result<ClashInfo> {
 
 /// get the runtime config
 #[tauri::command]
-#[specta::specta] 
+#[specta::specta]
 pub fn get_runtime_config() -> Result<Option<serde_json::Value>> {
     let config = Config::runtime().latest().config.clone();
     match config {

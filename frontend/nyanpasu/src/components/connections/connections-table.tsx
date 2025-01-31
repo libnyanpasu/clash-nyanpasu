@@ -75,9 +75,9 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
 
   const locale = useMemo(() => {
     switch (i18n.language) {
-      case 'zh':
+      case 'zh-CN':
         return MRT_Localization_ZH_HANS
-      case 'tw':
+      case 'zh-TW':
         return MRT_Localization_ZH_HANT
       case 'ru':
         return MRT_Localization_RU

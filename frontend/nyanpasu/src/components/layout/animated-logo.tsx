@@ -5,7 +5,6 @@ import { useNyanpasu } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 import styles from './animated-logo.module.scss'
 
-// @ts-expect-error framer-motion types is wrong
 const Logo = motion.create(LogoSvg)
 
 const transition = {

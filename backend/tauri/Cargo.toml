@@ -104,7 +104,7 @@ percent-encoding = "2.3.1"
 
 # Algorithms
 uuid = "1.7.0"
-rand = "0.8"
+rand = "0.9"
 md-5 = "0.10.6"
 sha2 = "0.10"
 nanoid = "0.4.0"
@@ -120,7 +120,7 @@ dunce = "1.0.4"                                                                 
 runas = { git = "https://github.com/libnyanpasu/rust-runas.git" }
 single-instance = "0.3.3"
 which = "7"
-dirs = "5.0.1"
+dirs = "6"
 open = "5.0.1"
 sysinfo = "0.33"
 num_cpus = "1"
@@ -154,11 +154,11 @@ display-info = "0.5.0"  # should be removed after upgrading to tauri v2
 
 # OXC (The Oxidation Compiler)
 # We use it to parse and transpile the old script profile to esm based script profile
-oxc_parser = "0.47"
-oxc_allocator = "0.47"
-oxc_span = "0.47"
-oxc_ast = "0.47"
-oxc_syntax = "0.47"
+oxc_parser = "0.48"
+oxc_allocator = "0.48"
+oxc_span = "0.48"
+oxc_ast = "0.48"
+oxc_syntax = "0.48"
 
 # Lua Integration
 mlua = { version = "0.10", features = [
@@ -206,22 +206,22 @@ tauri-plugin-global-shortcut = "2.2.0"
 openssl = { version = "0.10", features = ["vendored"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.5.2"
-objc2-app-kit = { version = "0.2.2", features = [
+objc2 = "0.6.0"
+objc2-app-kit = { version = "0.3.0", features = [
   "NSApplication",
   "NSResponder",
   "NSRunningApplication",
   "NSWindow",
   "NSView",
 ] }
-objc2-foundation = { version = "0.2.2", features = ["NSGeometry"] }
+objc2-foundation = { version = "0.3.0", features = ["NSGeometry"] }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29.0", features = ["user", "fs"] }
 
 [target.'cfg(windows)'.dependencies]
 deelevate = "0.2.0"
-winreg = { version = "0.53", features = ["transactions"] }
+winreg = { version = "0.55", features = ["transactions"] }
 windows-registry = "0.4"
 windows-sys = { version = "0.59", features = [
   "Win32_System_LibraryLoader",

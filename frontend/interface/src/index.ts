@@ -1,3 +1,5 @@
 export * from './ipc'
-export * from './service'
 export * from './openapi'
+export * from './provider'
+export * from './service'
+export * from './utils'

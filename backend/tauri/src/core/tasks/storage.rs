@@ -26,7 +26,7 @@ impl TaskStorage {
     }
 
     /// list_tasks list all tasks, for reduce the number of read operations
-    pub fn list_tasks(&self) -> Result<Vec<Task>> {
+    pub fn list_tasks(&self) -> Result<Vec<TaskID>> {
         let db = self.storage.get_instance();
         let read_txn = db.begin_read()?;
         let table = read_txn.open_table(NYANPASU_TABLE)?;
@@ -34,7 +34,7 @@ impl TaskStorage {
         match value {
             Some(value) => {
                 let mut value = value.value().to_owned();
-                let tasks: Vec<Task> = simd_json::from_slice(value.as_mut_slice())?;
+                let tasks: Vec<TaskID> = simd_json::from_slice(value.as_mut_slice())?;
                 Ok(tasks)
             }
             None => Ok(Vec::new()),

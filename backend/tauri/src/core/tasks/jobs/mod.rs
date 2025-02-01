@@ -1,3 +1,4 @@
+mod events_rotate;
 mod logger;
 mod profiles;
 
@@ -27,10 +28,10 @@ impl JobsManager {
         }
     }
 
-    pub fn setup(&mut self) -> Result<()> {
-        let jobs: Vec<Box<dyn JobExt + Send + Sync>> = vec![
-        // Box::<logger::ClearLogsJob>::default() as Box<dyn JobExt + Send + Sync>
-        ];
+    pub fn setup(&mut self) -> anyhow::Result<()> {
+        let jobs: Vec<Box<dyn JobExt + Send + Sync>> = vec![Box::new(
+            events_rotate::EventsRotateJob::new(self.task_manager.read().get_inner_task_storage()),
+        )];
         for job in jobs {
             let task = job.setup();
             if let Some(task) = task {

@@ -1,7 +1,7 @@
 use super::{
     events::{TaskEventState, TaskEvents, TaskEventsDispatcher},
-    executor::{AsyncJob, Job, TaskExecutor},
-    storage::{TaskGuard, TaskStorage},
+    executor::{Job, TaskExecutor},
+    storage::TaskStorage,
     utils::{Error, Result, TaskCreationError},
 };
 use crate::error;
@@ -14,10 +14,7 @@ use delay_timer::{
 use parking_lot::{Mutex, RwLock as RW};
 use serde::{Deserialize, Serialize};
 use snowflake::SnowflakeIdGenerator;
-use std::{
-    sync::{Arc, OnceLock},
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 pub type TaskID = u64;
 pub type TaskEventID = i64; // 任务事件 ID，适用于任务并发执行，区分不同的执行事件
@@ -281,6 +278,13 @@ impl TaskManager {
             list: Arc::new(RW::new(Vec::new())),
             id_generator: SnowflakeIdGenerator::new(1, 1),
         }
+    }
+
+    #[doc(hidden)]
+    /// a hidden method to get the inner task storage
+    /// just for internal jobs to use
+    pub(super) fn get_inner_task_storage(&self) -> Arc<Mutex<TaskStorage>> {
+        self.storage.clone()
     }
 
     pub fn restore_tasks(&mut self, tasks: Vec<Task>) {

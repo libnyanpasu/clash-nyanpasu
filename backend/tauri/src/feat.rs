@@ -298,7 +298,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
 
         if tun_mode.is_some() {
             log::debug!(target: "app", "toggle tun mode");
-            let mut flag = false;
+            let flag = false;
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             {
                 use crate::utils::dirs::check_core_permission;

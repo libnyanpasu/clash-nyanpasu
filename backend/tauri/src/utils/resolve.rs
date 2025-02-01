@@ -3,12 +3,7 @@ use crate::{
         nyanpasu::{ClashCore, WindowState},
         Config, IVerge,
     },
-    core::{
-        storage::Storage,
-        tasks::{jobs::ProfilesJob, JobsManager},
-        tray::proxies,
-        *,
-    },
+    core::{storage::Storage, tray::proxies, *},
     log_err, trace_err,
     utils::init,
 };

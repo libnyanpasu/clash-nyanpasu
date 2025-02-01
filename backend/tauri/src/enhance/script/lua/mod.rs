@@ -194,7 +194,6 @@ mod tests {
     #[test]
     fn test_correct_original_mapping_order() {
         use super::*;
-        use serde_yaml::Mapping;
 
         let mut target = serde_yaml::from_str::<Value>(
             r#"            ######### 锚点 start #######

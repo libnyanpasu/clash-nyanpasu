@@ -26,7 +26,7 @@ use crate::{
 };
 use specta_typescript::{BigIntExportBehavior, Typescript};
 use tauri::{Emitter, Manager};
-use tauri_specta::{collect_commands, Builder};
+use tauri_specta::collect_commands;
 use utils::resolve::{is_window_opened, reset_window_open_counter};
 
 rust_i18n::i18n!("../../locales");

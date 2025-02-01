@@ -6,7 +6,7 @@ use super::{
     item_type::ProfileUid,
 };
 use crate::utils::{dirs, help};
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use derive_builder::Builder;
 use indexmap::IndexMap;
 use nyanpasu_macro::BuilderUpdate;

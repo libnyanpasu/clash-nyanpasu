@@ -118,7 +118,7 @@ impl Sysopt {
         if let Some(mut old) = old_sysproxy.take() {
             // 如果原代理和当前代理 端口一致，就disable关闭，否则就恢复原代理设置
             // 当前没有设置代理的时候，不确定旧设置是否和当前一致，全关了
-            let port_same = cur_sysproxy.map_or(true, |cur| old.port == cur.port);
+            let port_same = cur_sysproxy.is_none_or(|cur| old.port == cur.port);
 
             if old.enable && port_same {
                 old.enable = false;

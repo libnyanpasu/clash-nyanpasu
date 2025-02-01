@@ -8,7 +8,7 @@ use super::{
 };
 use anyhow::anyhow;
 use parking_lot::RwLock;
-pub use profiles::{ProfilesJob, ProfilesJobGuard};
+pub use profiles::ProfilesJobGuard;
 use std::sync::Arc;
 pub trait JobExt {
     fn name(&self) -> &'static str;

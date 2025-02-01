@@ -252,7 +252,7 @@ impl UpdaterManager {
         let version = res
             .trim()
             .split(' ')
-            .last()
+            .next_back()
             .ok_or(anyhow!("no version found"))?;
         Ok(version.to_string())
     }

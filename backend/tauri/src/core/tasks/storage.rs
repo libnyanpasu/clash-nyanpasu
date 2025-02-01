@@ -10,7 +10,7 @@ use crate::core::{
 };
 use log::debug;
 use redb::ReadableTable;
-use std::{collections::HashSet, str, sync::Arc};
+use std::{collections::HashSet, str};
 
 pub struct TaskStorage {
     // TODO: hold storage instance, and better concurrency safety

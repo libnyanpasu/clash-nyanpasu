@@ -339,7 +339,7 @@ impl TaskManager {
                 let body = move || {
                     let list = list_ref.clone();
                     let async_job = async_job.clone();
-                    let mut id_generator = id_generator.clone();
+                    let mut id_generator = id_generator;
                     let task_events = task_events.clone();
                     async move {
                         wrap_job!(

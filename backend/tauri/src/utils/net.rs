@@ -1,7 +1,5 @@
 use std::time::Duration;
 
-use serde_yaml::Mapping;
-
 use super::candy::get_reqwest_client;
 
 #[tracing_attributes::instrument]

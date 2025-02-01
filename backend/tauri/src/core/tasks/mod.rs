@@ -5,8 +5,6 @@ mod storage;
 pub mod task;
 mod utils;
 
-pub use jobs::JobsManager;
-
 pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(
     app: &M,
     storage: super::storage::Storage,

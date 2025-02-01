@@ -228,7 +228,7 @@ windows-sys = { version = "0.59", features = [
   "Win32_System_SystemInformation",
 ] }
 windows-core = "0.58.0"
-webview2-com = "0.34"
+webview2-com = "0.35"
 
 [features]
 default = ["custom-protocol", "default-meta"]

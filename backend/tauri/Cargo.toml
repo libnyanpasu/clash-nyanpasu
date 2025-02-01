@@ -80,7 +80,7 @@ rust-i18n = "3"
 axum = "0.8"
 url = "2"
 mime = "0.3"
-reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
 port_scanner = "0.1.5"
 sysproxy = { git = "https://github.com/libnyanpasu/sysproxy-rs.git", version = "0.3" }
 backon = { version = "1.0.1", features = ["tokio-sleep"] }

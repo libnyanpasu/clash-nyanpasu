@@ -8,13 +8,8 @@ use crate::{
 };
 use anyhow::Result;
 use async_trait::async_trait;
-use parking_lot::Mutex;
-use std::{
-    collections::{hash_map::DefaultHasher, HashMap},
-    hash::{Hash, Hasher},
-    sync::{Arc, OnceLock},
-    time::Duration,
-};
+use parking_lot::RwLock;
+use std::{collections::HashMap, ops::Deref, sync::Arc, time::Duration};
 
 const INITIAL_TASK_ID: TaskID = 10000000; // 留一个初始的 TaskID，避免和其他任务的 ID 冲突
 
@@ -51,21 +46,38 @@ enum ProfileTaskOp {
     Update(TaskID, Minutes),
 }
 
-pub struct ProfilesJobGuard {
+pub struct ProfilesJob {
     task_map: HashMap<ProfileUID, (TaskID, u64)>,
+    task_manager: Arc<RwLock<TaskManager>>,
     // next_id: TaskID,
 }
 
-impl ProfilesJobGuard {
-    pub fn global() -> &'static Arc<Mutex<Self>> {
-        static GUARD: OnceLock<Arc<Mutex<ProfilesJobGuard>>> = OnceLock::new();
+pub struct ProfilesJobGuard {
+    job: Arc<RwLock<ProfilesJob>>,
+}
 
-        GUARD.get_or_init(|| {
-            Arc::new(Mutex::new(Self {
-                task_map: HashMap::new(),
-                // next_id: INITIAL_TASK_ID,
-            }))
-        })
+impl ProfilesJobGuard {
+    pub fn new(task_manager: Arc<RwLock<TaskManager>>) -> Self {
+        Self {
+            job: Arc::new(RwLock::new(ProfilesJob::new(task_manager))),
+        }
+    }
+}
+
+impl Deref for ProfilesJobGuard {
+    type Target = Arc<RwLock<ProfilesJob>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.job
+    }
+}
+
+impl ProfilesJob {
+    pub fn new(task_manager: Arc<RwLock<TaskManager>>) -> Self {
+        Self {
+            task_map: HashMap::new(),
+            task_manager,
+        }
     }
 
     /// restore timer
@@ -95,7 +107,7 @@ impl ProfilesJobGuard {
             })
             .for_each(|item| {
                 if let Some((task_id, _)) = task_map.get(item.uid()) {
-                    crate::log_err!(TaskManager::global().write().advance_task(*task_id));
+                    crate::log_err!(self.task_manager.write().advance_task(*task_id));
                 }
             });
 
@@ -109,18 +121,17 @@ impl ProfilesJobGuard {
             match diff {
                 ProfileTaskOp::Add(task_id, interval) => {
                     let task = new_task(task_id, &uid, interval);
-                    crate::log_err!(TaskManager::global().write().add_task(task));
+                    crate::log_err!(self.task_manager.write().add_task(task));
                     self.task_map.insert(uid, (task_id, interval));
                 }
                 ProfileTaskOp::Remove(task_id) => {
-                    crate::log_err!(TaskManager::global().write().remove_task(task_id));
+                    crate::log_err!(self.task_manager.write().remove_task(task_id));
                     self.task_map.remove(&uid);
                 }
                 ProfileTaskOp::Update(task_id, interval) => {
-                    let mut task_manager = TaskManager::global().write();
-                    crate::log_err!(task_manager.remove_task(task_id));
+                    crate::log_err!(self.task_manager.write().remove_task(task_id));
                     let task = new_task(task_id, &uid, interval);
-                    crate::log_err!(task_manager.add_task(task));
+                    crate::log_err!(self.task_manager.write().add_task(task));
                     self.task_map.insert(uid, (task_id, interval));
                 }
             }
@@ -182,9 +193,7 @@ fn gen_map() -> HashMap<ProfileUID, Minutes> {
 
 /// get_task_id Get a u64 task id by profile uid
 fn get_task_id(uid: &str) -> TaskID {
-    let mut hash = DefaultHasher::new();
-    uid.hash(&mut hash);
-    let task_id = hash.finish();
+    let task_id = seahash::hash(uid.as_bytes());
     if task_id < INITIAL_TASK_ID {
         INITIAL_TASK_ID + task_id
     } else {

@@ -1,6 +1,6 @@
 use crate::{
     config::*,
-    core::{tasks::jobs::ProfilesJobGuard, updater::ManifestVersionLatest, *},
+    core::{storage::Storage, tasks::jobs::ProfilesJobGuard, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
     feat,
     utils::{
@@ -20,7 +20,7 @@ use serde_yaml::{value::TaggedValue, Mapping};
 use std::{borrow::Cow, collections::VecDeque, path::PathBuf, result::Result as StdResult};
 use storage::{StorageOperationError, WebStorage};
 use sysproxy::Sysproxy;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tray::icon::TrayIcon;
 
 use tauri_plugin_dialog::{DialogExt, FileDialogBuilder};
@@ -278,13 +278,16 @@ pub async fn patch_profiles_config(profiles: ProfilesBuilder) -> Result {
 /// update profile by uid
 #[tauri::command]
 #[specta::specta]
-pub async fn patch_profile(uid: String, profile: ProfileKind) -> Result {
+pub async fn patch_profile(app_handle: AppHandle, uid: String, profile: ProfileKind) -> Result {
     tracing::debug!("patch profile: {uid} with {profile:?}");
     {
         let committer = Config::profiles().auto_commit();
         (committer.draft().patch_item(uid.clone(), profile))?;
     }
-    ProfilesJobGuard::global().lock().refresh();
+    {
+        let profiles_jobs = app_handle.state::<ProfilesJobGuard>();
+        profiles_jobs.write().refresh();
+    }
     let need_update = {
         let profiles = Config::profiles();
         let profiles = profiles.latest();
@@ -948,21 +951,24 @@ pub fn cleanup_processes(app_handle: AppHandle) -> Result {
 
 #[tauri::command]
 #[specta::specta]
-pub fn get_storage_item(key: String) -> Result<Option<String>> {
-    let value = (crate::core::storage::Storage::global().get_item(&key))?;
+pub fn get_storage_item(app_handle: AppHandle, key: String) -> Result<Option<String>> {
+    let storage = app_handle.state::<Storage>();
+    let value = (storage.get_item(&key))?;
     Ok(value)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn set_storage_item(key: String, value: String) -> Result {
-    (crate::core::storage::Storage::global().set_item(&key, &value))?;
+pub fn set_storage_item(app_handle: AppHandle, key: String, value: String) -> Result {
+    let storage = app_handle.state::<Storage>();
+    (storage.set_item(&key, &value))?;
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn remove_storage_item(key: String) -> Result {
-    (crate::core::storage::Storage::global().remove_item(&key))?;
+pub fn remove_storage_item(app_handle: AppHandle, key: String) -> Result {
+    let storage = app_handle.state::<Storage>();
+    (storage.remove_item(&key))?;
     Ok(())
 }

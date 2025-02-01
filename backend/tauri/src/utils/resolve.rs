@@ -4,7 +4,8 @@ use crate::{
         Config, IVerge,
     },
     core::{
-        tasks::{jobs::ProfilesJobGuard, JobsManager},
+        storage::Storage,
+        tasks::{jobs::ProfilesJob, JobsManager},
         tray::proxies,
         *,
     },
@@ -148,6 +149,9 @@ pub fn resolve_setup(app: &mut App) {
     log::trace!("init config");
     log_err!(Config::init_config());
 
+    log::trace!("init storage");
+    log_err!(crate::core::storage::setup(app));
+
     log::trace!("launch core");
     log_err!(CoreManager::global().init());
 
@@ -179,9 +183,12 @@ pub fn resolve_setup(app: &mut App) {
     log_err!(hotkey::Hotkey::global().init(app.app_handle().clone()));
 
     // setup jobs
-    log_err!(JobsManager::global_register());
-    // init task manager
-    log_err!(ProfilesJobGuard::global().lock().init());
+    log::trace!("setup jobs");
+    {
+        let storage = app.state::<Storage>();
+        let storage = (*storage).clone();
+        log_err!(crate::core::tasks::setup(app, storage));
+    }
 
     // test job
     proxies::setup_proxies();

@@ -27,4 +27,4 @@ winreg = "0.55.0"
 tokio = { version = "1", features = ["full"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.5.0"
+objc2 = "0.5.2"

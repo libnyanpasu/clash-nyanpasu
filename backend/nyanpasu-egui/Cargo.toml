@@ -16,7 +16,7 @@ name = "nyanpasu-network-statistic-widget-small"
 path = "./src/small.rs"
 
 [dependencies]
-eframe = "0.29.1"
+eframe = "0.30.0"
 egui_extras = { version = "0.29", features = ["all_loaders"] }
 parking_lot = "0.12"
 image = { version = "0.25.5", features = ["jpeg", "png"] }

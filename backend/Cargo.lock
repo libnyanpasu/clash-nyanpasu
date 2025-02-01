@@ -8830,7 +8830,7 @@ dependencies = [
  "dirs 6.0.0",
  "interprocess",
  "log",
- "objc2 0.5.2",
+ "objc2 0.6.0",
  "once_cell",
  "tauri-utils",
  "tokio",

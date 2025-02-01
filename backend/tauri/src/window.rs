@@ -4,11 +4,11 @@
 #[cfg(target_os = "macos")]
 pub mod macos {
     #![allow(non_snake_case)]
-    use std::{borrow::BorrowMut, cell::RefCell};
+    use std::cell::RefCell;
 
     use objc2::{
-        declare_class, msg_send_id, mutability, rc::Retained, runtime::ProtocolObject, ClassType,
-        DeclaredClass,
+        define_class, msg_send, rc::Retained, runtime::ProtocolObject,
+        DeclaredClass, MainThreadOnly,
     };
     use objc2_app_kit::{NSApplicationPresentationOptions, NSWindow, NSWindowDelegate};
     use objc2_foundation::{MainThreadMarker, NSNotification, NSObject, NSObjectProtocol};
@@ -42,13 +42,13 @@ pub mod macos {
         use objc2_app_kit::NSWindowButton;
         use objc2_foundation::NSRect;
         let close = window
-            .standardWindowButton(NSWindowButton::NSWindowCloseButton)
+            .standardWindowButton(NSWindowButton::CloseButton)
             .ok_or(anyhow::anyhow!("failed to get close button"))?;
         let miniaturize = window
-            .standardWindowButton(NSWindowButton::NSWindowMiniaturizeButton)
+            .standardWindowButton(NSWindowButton::MiniaturizeButton)
             .ok_or(anyhow::anyhow!("failed to get miniaturize button"))?;
         let zoom = window
-            .standardWindowButton(NSWindowButton::NSWindowZoomButton)
+            .standardWindowButton(NSWindowButton::ZoomButton)
             .ok_or(anyhow::anyhow!("failed to get zoom button"))?;
 
         let title_bar_container_view = unsafe {
@@ -122,73 +122,67 @@ pub mod macos {
     const WINDOW_WILL_EXIT_FULL_SCREEN: &str = "internal:://window-will-exit-full-screen";
     const WINDOW_DID_EXIT_FULL_SCREEN: &str = "internal:://window-did-exit-full-screen";
 
-    declare_class! {
+    define_class! {
+        #[unsafe(super(NSObject))]
+        #[name = "TrafficLightsPosWindowDelegate"]
+        #[thread_kind = MainThreadOnly]
+        #[ivars = TrafficLightsWindowDelegateIvars]
         struct WindowDelegate;
-
-        unsafe impl ClassType for WindowDelegate {
-            type Super = NSObject;
-            type Mutability = mutability::MainThreadOnly;
-            const NAME: &'static str = "TrafficLightsPosWindowDelegate";
-        }
-
-        impl DeclaredClass for WindowDelegate {
-            type Ivars = TrafficLightsWindowDelegateIvars;
-        }
 
         unsafe impl NSObjectProtocol for WindowDelegate {}
 
         unsafe impl NSWindowDelegate for WindowDelegate {
-            #[method(windowShouldClose:)]
+            #[unsafe(method(windowShouldClose:))]
             unsafe fn windowShouldClose(&self, sender: &NSWindow) -> bool {
                 tracing::trace!("passthrough `windowShouldClose` to TAO layer");
                 self.ivars().super_class.windowShouldClose(sender)
             }
 
-            #[method(windowWillClose:)]
+            #[unsafe(method(windowWillClose:))]
             unsafe fn windowWillClose(&self, notification: &NSNotification) {
                 tracing::trace!("passthrough `windowWillClose` to TAO layer");
                 self.ivars().super_class.windowWillClose(notification)
             }
 
-            #[method(windowDidResize:)]
+            #[unsafe(method(windowDidResize:))]
             unsafe fn windowDidResize(&self, notification: &NSNotification) {
                 self.ivars().app_box.apply_traffic_lights_pos();
                 tracing::trace!("passthrough `windowDidResize` to TAO layer");
                 self.ivars().super_class.windowDidResize(notification)
             }
 
-            #[method(windowDidMove:)]
+            #[unsafe(method(windowDidMove:))]
             unsafe fn windowDidMove(&self, notification: &NSNotification) {
                 tracing::trace!("passthrough `windowDidMove` to TAO layer");
                 self.ivars().super_class.windowDidMove(notification)
             }
 
-            #[method(windowDidChangeBackingProperties:)]
+            #[unsafe(method(windowDidChangeBackingProperties:))]
             unsafe fn windowDidChangeBackingProperties(&self, notification: &NSNotification) {
                 self.ivars().app_box.apply_traffic_lights_pos();
                 tracing::trace!("passthrough `windowDidChangeBackingProperties` to TAO layer");
                 self.ivars().super_class.windowDidChangeBackingProperties(notification)
             }
 
-            #[method(windowDidBecomeKey:)]
+            #[unsafe(method(windowDidBecomeKey:))]
             unsafe fn windowDidBecomeKey(&self, notification: &NSNotification) {
                 tracing::trace!("passthrough `windowDidBecomeKey` to TAO layer");
                 self.ivars().super_class.windowDidBecomeKey(notification)
             }
 
-            #[method(windowDidResignKey:)]
+            #[unsafe(method(windowDidResignKey:))]
             unsafe fn windowDidResignKey(&self, notification: &NSNotification) {
                 tracing::trace!("passthrough `windowDidResignKey` to TAO layer");
                 self.ivars().super_class.windowDidResignKey(notification)
             }
 
-            #[method(window:willUseFullScreenPresentationOptions:)]
+            #[unsafe(method(window:willUseFullScreenPresentationOptions:))]
             unsafe fn window_willUseFullScreenPresentationOptions(&self, window: &NSWindow, options: NSApplicationPresentationOptions) -> NSApplicationPresentationOptions {
                 tracing::trace!("passthrough `window_willUseFullScreenPresentationOptions` to TAO layer");
                 self.ivars().super_class.window_willUseFullScreenPresentationOptions(window, options)
             }
 
-            #[method(windowDidEnterFullScreen:)]
+            #[unsafe(method(windowDidEnterFullScreen:))]
             unsafe fn windowDidEnterFullScreen(&self, notification: &NSNotification) {
                 if let Err(e) = self.ivars().app_box.window.emit(WINDOW_DID_ENTER_FULL_SCREEN, ()) {
                     log::error!("failed to emit window-did-enter-full-screen event: {}", e);
@@ -197,7 +191,7 @@ pub mod macos {
                 self.ivars().super_class.windowDidEnterFullScreen(notification)
             }
 
-            #[method(windowWillEnterFullScreen:)]
+            #[unsafe(method(windowWillEnterFullScreen:))]
             unsafe fn windowWillEnterFullScreen(&self, notification: &NSNotification) {
                 if let Err(e) = self.ivars().app_box.window.emit(WINDOW_WILL_ENTER_FULL_SCREEN, ()) {
                     log::error!("failed to emit window-will-enter-full-screen event: {}", e);
@@ -205,7 +199,7 @@ pub mod macos {
                 self.ivars().super_class.windowWillEnterFullScreen(notification)
             }
 
-            #[method(windowWillExitFullScreen:)]
+            #[unsafe(method(windowWillExitFullScreen:))]
             unsafe fn windowWillExitFullScreen(&self, notification: &NSNotification) {
                 if let Err(e) = self.ivars().app_box.window.emit(WINDOW_WILL_EXIT_FULL_SCREEN, ()) {
                     log::error!("failed to emit window-will-exit-full-screen event: {}", e);
@@ -214,7 +208,7 @@ pub mod macos {
                 self.ivars().super_class.windowWillExitFullScreen(notification)
             }
 
-            #[method(windowDidExitFullScreen:)]
+            #[unsafe(method(windowDidExitFullScreen:))]
             unsafe fn windowDidExitFullScreen(&self, notification: &NSNotification) {
                 if let Err(e) = self.ivars().app_box.window.emit(WINDOW_DID_EXIT_FULL_SCREEN, ()) {
                     log::error!("failed to emit window-did-exit-full-screen event: {}", e);
@@ -224,7 +218,7 @@ pub mod macos {
                 self.ivars().super_class.windowDidExitFullScreen(notification)
             }
 
-            #[method(windowDidFailToEnterFullScreen:)]
+            #[unsafe(method(windowDidFailToEnterFullScreen:))]
             unsafe fn windowDidFailToEnterFullScreen(&self,window: &NSWindow) {
                 tracing::trace!("passthrough `windowDidFailToEnterFullScreen` to TAO layer");
                 self.ivars().super_class.windowDidFailToEnterFullScreen(window)
@@ -235,7 +229,7 @@ pub mod macos {
 
     impl WindowDelegate {
         pub fn new(window_state: WindowState, mtm: MainThreadMarker) -> Retained<Self> {
-            let this = mtm.alloc::<Self>();
+            let this = Self::alloc(mtm);
             let super_class = window_state
                 .with_ns_window(|win| unsafe { win.delegate().expect("failed to get delegate") });
             let ivars = TrafficLightsWindowDelegateIvars {
@@ -243,7 +237,7 @@ pub mod macos {
                 super_class,
             };
             let this = this.set_ivars(ivars);
-            unsafe { msg_send_id![super(this), init] }
+            unsafe { msg_send![super(this), init] }
         }
     }
 

@@ -6,11 +6,10 @@ use std::{
 };
 
 use objc2::{
-    class, declare_class, msg_send, msg_send_id,
-    mutability::InteriorMutable,
-    rc::Id,
+    class, define_class, msg_send, msg_send_id,
+    rc::Retained,
     runtime::{AnyObject, NSObject},
-    sel, ClassType, DeclaredClass,
+    sel, ClassType,
 };
 use once_cell::sync::OnceCell;
 
@@ -59,19 +58,13 @@ fn parse_url_event(event: *mut AnyObject) -> Option<String> {
     }
 }
 
-declare_class!(
+define_class!(
+    #[unsafe(super(NSObject))]
+    #[name = "TauriPluginDeepLinkHandler"]
     struct Handler;
 
-    unsafe impl ClassType for Handler {
-        type Super = NSObject;
-        type Mutability = InteriorMutable;
-        const NAME: &'static str = "TauriPluginDeepLinkHandler";
-    }
-
-    impl DeclaredClass for Handler {}
-
-    unsafe impl Handler {
-        #[method(handleEvent:withReplyEvent:)]
+    impl Handler {
+        #[unsafe(method(handleEvent:withReplyEvent:))]
         fn handle_event(&self, event: *mut AnyObject, _replace: *const AnyObject) {
             let s = parse_url_event(event).unwrap_or_default();
             let mut cb = HANDLER.get().unwrap().lock().unwrap();
@@ -81,7 +74,7 @@ declare_class!(
 );
 
 impl Handler {
-    pub fn new() -> Id<Self> {
+    pub fn new() -> Retained<Self> {
         let cls = Self::class();
         unsafe { msg_send_id![msg_send_id![cls, alloc], init] }
     }
@@ -141,7 +134,7 @@ pub fn listen<F: FnMut(String) + Send + 'static>(handler: F) -> Result<()> {
     }
 
     unsafe {
-        let event_manager: Id<AnyObject> =
+        let event_manager: Retained<AnyObject> =
             msg_send_id![class!(NSAppleEventManager), sharedAppleEventManager];
 
         let handler = Handler::new();

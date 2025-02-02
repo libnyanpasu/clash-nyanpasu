@@ -73,8 +73,7 @@ impl JobExt for EventsRotateJob {
     fn setup(&self) -> Option<crate::core::tasks::task::Task> {
         Some(crate::core::tasks::task::Task {
             name: CLEAR_EVENTS_TASK_NAME.to_string(),
-            // 12:00 every day
-            schedule: TaskSchedule::Cron("0 12 * * *".to_string()),
+            schedule: TaskSchedule::Cron("@hourly".to_string()),
             executor: TaskExecutor::Async(Box::new(self.clone())),
             ..Default::default()
         })

@@ -16,15 +16,17 @@ name = "nyanpasu-network-statistic-widget-small"
 path = "./src/small.rs"
 
 [dependencies]
-eframe = "0.30.0"
-egui_extras = { version = "0.30.0", features = ["all_loaders"] }
+eframe = "0.30"
+egui_extras = { version = "0.30", features = ["all_loaders"] }
 parking_lot = "0.12"
-image = { version = "0.25.5", features = ["jpeg", "png"] }
-humansize = "2.1.3"
+image = { version = "0.25", features = ["jpeg", "png"] }
+humansize = "2"
 # for svg currentColor replacement
-resvg = "0.44.0"                                       # for svg rendering
-usvg = "0.44.0"                                        # for svg parsing
-csscolorparser = "0.7.0"                               # for color conversion
-ipc-channel = "0.19.0"                                 # for IPC between the Widget process and the GUI process
-serde = { version = "1.0.216", features = ["derive"] }
+resvg = "0.44"                                              # for svg rendering
+usvg = "0.44"                                               # for svg parsing
+csscolorparser = "0.7"                                      # for color conversion
+ipc-channel = "0.19"                                        # for IPC between the Widget process and the GUI process
+serde = { version = "1", features = ["derive"] }
 anyhow = "1"
+specta = { version = "=2.0.0-rc.22", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }

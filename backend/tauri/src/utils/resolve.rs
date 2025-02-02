@@ -150,6 +150,10 @@ pub fn resolve_setup(app: &mut App) {
     log::trace!("launch core");
     log_err!(CoreManager::global().init());
 
+    log::trace!("init clash connector");
+    log_err!(crate::core::clash::setup(app));
+
+    #[cfg(any(windows, target_os = "linux"))]
     log::trace!("init system tray");
     #[cfg(any(windows, target_os = "linux"))]
     tray::icon::resize_images(crate::utils::help::get_max_scale_factor()); // generate latest cache icon by current scale factor

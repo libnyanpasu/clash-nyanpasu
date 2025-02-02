@@ -150,9 +150,22 @@ impl NyanpasuNetworkStatisticLargeWidget {
         let rx = crate::ipc::setup_ipc_receiver_with_env().unwrap();
         let widget = Self::default();
         let this = widget.clone();
-        std::thread::spawn(move || {
-            while let Ok(msg) = rx.recv() {
-                let _ = this.handle_message(msg);
+        std::thread::spawn(move || loop {
+            match rx.recv() {
+                Ok(msg) => {
+                    let _ = this.handle_message(msg);
+                }
+                Err(e) => {
+                    eprintln!("Failed to receive message: {}", e);
+                    if matches!(
+                        e,
+                        ipc_channel::ipc::IpcError::Disconnected
+                            | ipc_channel::ipc::IpcError::Io(_)
+                    ) {
+                        let _ = this.handle_message(Message::Stop);
+                        break;
+                    }
+                }
             }
         });
         widget

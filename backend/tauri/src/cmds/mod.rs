@@ -1,11 +1,11 @@
 use std::str::FromStr;
 
+use crate::utils;
 use anyhow::Ok;
 use clap::{Parser, Subcommand};
 use migrate::MigrateOpts;
+use nyanpasu_egui::widget::StatisticWidgetVariant;
 use tauri::utils::platform::current_exe;
-
-use crate::utils;
 
 mod migrate;
 
@@ -39,7 +39,7 @@ enum Commands {
     /// Show a panic dialog while the application is enter panic handler.
     PanicDialog { message: String },
     /// Launch the Widget with the specified name.
-    Widget { variant: String },
+    StatisticWidget { variant: StatisticWidgetVariant },
 }
 
 struct DelayedExitGuard;
@@ -94,19 +94,9 @@ pub fn parse() -> anyhow::Result<()> {
             Commands::PanicDialog { message } => {
                 crate::utils::dialog::panic_dialog(message);
             }
-            Commands::Widget { variant } => {
-                let variant = variant.as_str();
-                match variant {
-                    "network-statistic-small" => {
-                        // crate::event_handler::widget::on_network_statistic_config_changed();
-                    }
-                    "network-statistic-large" => {
-                        nyanpasu_egui::widget::NyanpasuNetworkStatisticLargeWidget::run().unwrap();
-                    }
-                    _ => {
-                        eprintln!("Unknown widget variant: {}", variant);
-                    }
-                }
+            Commands::StatisticWidget { variant } => {
+                nyanpasu_egui::widget::start_statistic_widget(*variant)
+                    .expect("Failed to start statistic widget");
             }
         }
         drop(guard);

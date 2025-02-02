@@ -261,7 +261,7 @@ type ProxiesGuardSingleton = &'static Arc<RwLock<ProxiesGuard>>;
 impl ProxiesGuardExt for ProxiesGuardSingleton {
     async fn update(&self) -> Result<()> {
         let proxies = Proxies::fetch().await?;
-        let buf = simd_json::to_string(&proxies)?;
+        let buf = serde_json::to_string(&proxies)?;
         let checksum = adler32(buf.as_bytes())?;
         {
             let reader = self.read();

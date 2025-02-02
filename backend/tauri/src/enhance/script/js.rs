@@ -182,11 +182,11 @@ impl Runner for JSRunner {
                 let boa_runner = wrap_result!(BoaRunner::try_new(), take_logs(logs));
                 wrap_result!(boa_runner.setup_console(logger), take_logs(logs));
                 let config = wrap_result!(
-                    simd_json::serde::to_string(&mapping)
+                    serde_json::to_string(&mapping)
                         .map_err(|e| { std::io::Error::new(std::io::ErrorKind::InvalidData, e) }),
                     take_logs(logs)
                 );
-                let config = simd_json::to_string(&config).unwrap(); // escape the string
+                let config = serde_json::to_string(&config).unwrap(); // escape the string
                 let execute_module = format!(
                     r#"import process from "./{hash}.mjs";
         let config = JSON.parse({config});
@@ -220,7 +220,7 @@ impl Runner for JSRunner {
                     take_logs(logs)
                 );
                 let mapping = wrap_result!(
-                    unsafe { simd_json::serde::from_str::<Mapping>(&mut result) }
+                    serde_json::from_str(&result)
                         .map_err(|e| { std::io::Error::new(std::io::ErrorKind::InvalidData, e) }),
                     take_logs(logs)
                 );
@@ -451,7 +451,7 @@ const foreignNameservers = [
                         "Test".to_string()
                     ),])
                 );
-                let outs = simd_json::serde::to_string(&logs).unwrap();
+                let outs = serde_json::to_string(&logs).unwrap();
                 assert_eq!(
                     outs,
                     r#"[["log","Test console log"],["warn","Test console log"],["error","Test console log"]]"#
@@ -516,7 +516,7 @@ const foreignNameservers = [
                         serde_yaml::Value::String("RULE-SET,custom-proxy,🚀".to_string())
                     ])
                 );
-                let outs = simd_json::serde::to_string(&logs).unwrap();
+                let outs = serde_json::to_string(&logs).unwrap();
                 assert_eq!(outs, r#"[]"#);
             });
     }

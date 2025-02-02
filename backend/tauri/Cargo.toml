@@ -16,7 +16,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2.0.1", features = [] }
 serde = "1"
-simd-json = "0.14.1"
+serde_json = { version = "1.0", features = ["preserve_order"] }
 chrono = "0.4"
 rustc_version = "0.4"
 semver = "1.0"
@@ -91,7 +91,6 @@ serde_json = { version = "1.0", features = ["preserve_order"] }
 serde_yaml = { version = "0.10", package = "serde_yaml_ng", branch = "feat/specta", git = "https://github.com/libnyanpasu/serde-yaml-ng.git", features = [
   "specta",
 ] }
-simd-json = "0.14.1"
 bincode = "1"
 bytes = { version = "1", features = ["serde"] }
 semver = "1.0"

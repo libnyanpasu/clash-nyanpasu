@@ -1565,7 +1565,6 @@ dependencies = [
  "serde_json",
  "serde_yaml_ng",
  "sha2 0.10.8",
- "simd-json",
  "single-instance",
  "specta",
  "specta-typescript",

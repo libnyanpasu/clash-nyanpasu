@@ -33,8 +33,7 @@ impl TaskStorage {
         let value = table.get(Self::TASKS_KEY.as_bytes())?;
         match value {
             Some(value) => {
-                let mut value = value.value().to_owned();
-                let tasks: Vec<TaskID> = simd_json::from_slice(value.as_mut_slice())?;
+                let tasks: Vec<TaskID> = serde_json::from_slice(value.value())?;
                 Ok(tasks)
             }
             None => Ok(Vec::new()),
@@ -50,14 +49,12 @@ impl TaskStorage {
             let mut tasks = table
                 .get(Self::TASKS_KEY.as_bytes())?
                 .and_then(|val| {
-                    let mut value = val.value().to_owned();
-                    let tasks: HashSet<TaskID> =
-                        simd_json::from_slice(value.as_mut_slice()).ok()?;
+                    let tasks: HashSet<TaskID> = serde_json::from_slice(val.value()).ok()?;
                     Some(tasks)
                 })
                 .unwrap_or_default();
             tasks.insert(task_id);
-            let value = simd_json::to_vec(&tasks)?;
+            let value = serde_json::to_vec(&tasks)?;
             table.insert(Self::TASKS_KEY.as_bytes(), value.as_slice())?;
         }
         write_txn.commit()?;
@@ -85,8 +82,7 @@ impl TaskStorage {
         let value = table.get(key.as_bytes())?;
         match value {
             Some(value) => {
-                let mut value = value.value().to_owned();
-                let event: TaskEvent = simd_json::from_slice(value.as_mut_slice())?;
+                let event: TaskEvent = serde_json::from_slice(value.value())?;
                 Ok(Some(event))
             }
             None => Ok(None),
@@ -116,10 +112,7 @@ impl TaskStorage {
         let table = read_txn.open_table(NYANPASU_TABLE)?;
         let value = table.get(key.as_bytes())?;
         let value: Vec<TaskEventID> = match value {
-            Some(value) => {
-                let mut value = value.value().to_owned();
-                simd_json::from_slice(value.as_mut_slice())?
-            }
+            Some(value) => serde_json::from_slice(value.value())?,
             None => return Ok(None),
         };
         Ok(Some(value))
@@ -133,8 +126,8 @@ impl TaskStorage {
         let db = self.storage.get_instance();
         let event_key = format!("task:event:id:{}", event.id);
         let event_ids_key = format!("task:events:task_id:{}", event.task_id);
-        let event_value = simd_json::to_vec(event)?;
-        let event_ids = simd_json::to_vec(&event_ids)?;
+        let event_value = serde_json::to_vec(event)?;
+        let event_ids = serde_json::to_vec(&event_ids)?;
         let write_txn = db.begin_write()?;
         {
             let mut table = write_txn.open_table(NYANPASU_TABLE)?;
@@ -149,7 +142,7 @@ impl TaskStorage {
     pub fn update_event(&self, event: &TaskEvent) -> Result<()> {
         let db = self.storage.get_instance();
         let event_key = format!("task:event:id:{}", event.id);
-        let event_value = simd_json::to_vec(event)?;
+        let event_value = serde_json::to_vec(event)?;
         let write_txn = db.begin_write()?;
         {
             let mut table = write_txn.open_table(NYANPASU_TABLE)?;
@@ -176,7 +169,7 @@ impl TaskStorage {
             if event_ids.is_empty() {
                 table.remove(event_ids_key.as_bytes())?;
             } else {
-                let event_ids = simd_json::to_vec(&event_ids)?;
+                let event_ids = serde_json::to_vec(&event_ids)?;
                 table.insert(event_ids_key.as_bytes(), event_ids.as_slice())?;
             }
         }
@@ -211,7 +204,7 @@ impl TaskGuard for TaskManager {
                 let key = key.value();
                 let mut value = value.value().to_owned();
                 if key.starts_with(b"task:id:") {
-                    let task = simd_json::from_slice::<Task>(value.as_mut_slice())?;
+                    let task = serde_json::from_slice::<Task>(value.as_mut_slice())?;
                     debug!(
                         "restore task: {:?} {:?}",
                         str::from_utf8(key).unwrap(),
@@ -234,7 +227,7 @@ impl TaskGuard for TaskManager {
             let mut table = write_txn.open_table(NYANPASU_TABLE)?;
             for task in tasks {
                 let key = format!("task:id:{}", task.id);
-                let value = simd_json::to_vec(&task)?;
+                let value = serde_json::to_vec(&task)?;
                 table.insert(key.as_bytes(), value.as_slice())?;
             }
         }

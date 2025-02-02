@@ -49,3 +49,7 @@ static APP_HANDLE: OnceCell<AppHandle> = OnceCell::new();
 pub fn app_handle() -> &'static AppHandle {
     APP_HANDLE.get().expect("app handle not initialized")
 }
+
+pub(super) fn setup_app_handle(app_handle: AppHandle) {
+    let _ = APP_HANDLE.set(app_handle);
+}

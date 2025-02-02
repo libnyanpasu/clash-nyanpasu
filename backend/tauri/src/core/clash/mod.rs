@@ -24,7 +24,7 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(manager: &M) -> anyhow::Re
     manager.manage(ws_connector.clone());
     let app_handle = manager.app_handle().clone();
 
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         // TODO: refactor it while clash core manager use tauri event dispatcher to notify the core state changed
         {
             tokio::time::sleep(std::time::Duration::from_secs(10)).await;

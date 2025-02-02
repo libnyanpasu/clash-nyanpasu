@@ -12,15 +12,18 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tokio::{sync::mpsc::Receiver, task::JoinHandle};
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{client::IntoClientRequest, handshake::client::Request, protocol::Message},
+};
 
 use crate::log_err;
 
 #[tracing::instrument]
 async fn connect_clash_server<T: serde::de::DeserializeOwned + Send + Sync + 'static>(
-    url: &str,
+    endpoint: Request,
 ) -> anyhow::Result<Receiver<T>> {
-    let (stream, _) = connect_async(url).await?;
+    let (stream, _) = connect_async(endpoint).await?;
     let (_, mut read) = stream.split();
     let (tx, rx) = tokio::sync::mpsc::channel(32);
     tokio::spawn(async move {
@@ -118,16 +121,24 @@ impl ClashConnectionsConnector {
         }
     }
 
-    pub fn url() -> String {
-        let (server, port, secret) = {
+    pub fn endpoint() -> anyhow::Result<Request> {
+        let (server, secret) = {
             let info = crate::Config::clash().data().get_client_info();
-            (info.server, info.port, info.secret)
+            (info.server, info.secret)
         };
-        let mut url = format!("ws://{}:{}/connections", server, port);
+        let url = format!("ws://{}/connections", server);
+        let mut request = url
+            .into_client_request()
+            .context("failed to create client request")?;
         if let Some(secret) = secret {
-            url.push_str(&format!("?secret={}", urlencoding::encode(&secret)));
+            request.headers_mut().insert(
+                "Authorization",
+                format!("Bearer {}", secret)
+                    .parse()
+                    .context("failed to create header value")?,
+            );
         }
-        url
+        Ok(request)
     }
 
     #[allow(clippy::manual_async_fn)]
@@ -135,9 +146,10 @@ impl ClashConnectionsConnector {
     // ref: https://github.com/rust-lang/rust/issues/123072
     fn start_internal(&self) -> impl Future<Output = anyhow::Result<()>> + Send + use<'_> {
         async {
-            log::info!("connecting to clash connections ws server");
             self.dispatch_state_changed(ClashConnectionsConnectorState::Connecting);
-            let mut rx = connect_clash_server::<ClashConnectionsMessage>(&Self::url()).await?;
+            let endpoint = Self::endpoint().context("failed to create endpoint")?;
+            log::debug!("connecting to clash connections ws server: {:?}", endpoint);
+            let mut rx = connect_clash_server::<ClashConnectionsMessage>(endpoint).await?;
             self.dispatch_state_changed(ClashConnectionsConnectorState::Connected);
             let this = self.clone();
             let mut connection_handler = self.connection_handler.lock();
@@ -258,5 +270,17 @@ impl Drop for ClashConnectionsConnectorInner {
                 tauri::async_runtime::block_on(cleanup);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_connect_clash_server() {
+        "ws://127.0.0.1:12649:10808/connections"
+            .into_client_request()
+            .unwrap();
     }
 }

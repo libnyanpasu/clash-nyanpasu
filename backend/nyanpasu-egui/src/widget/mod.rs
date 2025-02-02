@@ -13,7 +13,15 @@ pub use network_statistic_small::NyanpasuNetworkStatisticSmallWidget;
 // }
 
 #[derive(
-    Debug, serde::Serialize, serde::Deserialize, specta::Type, Copy, Clone, clap::ValueEnum,
+    Debug,
+    serde::Serialize,
+    serde::Deserialize,
+    specta::Type,
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    clap::ValueEnum,
 )]
 #[serde(rename_all = "snake_case")]
 pub enum StatisticWidgetVariant {

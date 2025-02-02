@@ -707,9 +707,28 @@ export const commands = {
       else return { status: 'error', error: e as any }
     }
   },
+  async getClashWsConnectionsState(): Promise<
+    Result<ClashConnectionsConnectorState, string>
+  > {
+    try {
+      return {
+        status: 'ok',
+        data: await TAURI_INVOKE('get_clash_ws_connections_state'),
+      }
+    } catch (e) {
+      if (e instanceof Error) throw e
+      else return { status: 'error', error: e as any }
+    }
+  },
 }
 
 /** user-defined events **/
+
+export const events = __makeEvents__<{
+  clashConnectionsEvent: ClashConnectionsEvent
+}>({
+  clashConnectionsEvent: 'clash-connections-event',
+})
 
 /** user-defined constants **/
 
@@ -736,6 +755,20 @@ export type ChunkStatus = {
   speed: number
 }
 export type ChunkThreadState = 'Idle' | 'Downloading' | 'Finished'
+export type ClashConnectionsConnectorEvent =
+  | { kind: 'state_changed'; data: ClashConnectionsConnectorState }
+  | { kind: 'update'; data: ClashConnectionsInfo }
+export type ClashConnectionsConnectorState =
+  | 'disconnected'
+  | 'connecting'
+  | 'connected'
+export type ClashConnectionsEvent = ClashConnectionsConnectorEvent
+export type ClashConnectionsInfo = {
+  downloadTotal: number
+  uploadTotal: number
+  downloadSpeed: number
+  uploadSpeed: number
+}
 export type ClashCore =
   | 'clash'
   | 'clash-rs'
@@ -964,6 +997,10 @@ export type IVerge = {
    * TODO: 弃用此字段，转移到 clash config 里
    */
   tun_stack: TunStack | null
+  /**
+   * 是否启用网络统计信息浮窗
+   */
+  network_statistic_widget?: NetworkStatisticWidgetConfig | null
 }
 export type IVergeTheme = {
   primary_color: string | null
@@ -1122,6 +1159,9 @@ export type MergeProfileBuilder = {
    */
   updated: number | null
 }
+export type NetworkStatisticWidgetConfig =
+  | { kind: 'disabled' }
+  | { kind: 'enabled'; value: StatisticWidgetVariant }
 export type PatchRuntimeConfig = {
   allow_lan?: boolean | null
   ipv6?: boolean | null
@@ -1443,6 +1483,7 @@ export type ScriptProfileBuilder = {
 }
 export type ScriptType = 'javascript' | 'lua'
 export type ServiceStatus = 'not_installed' | 'stopped' | 'running'
+export type StatisticWidgetVariant = 'large' | 'small'
 export type StatusInfo = {
   name: string
   version: string

@@ -16,6 +16,7 @@ mod ipc;
 mod server;
 mod setup;
 mod utils;
+mod widget;
 mod window;
 
 use std::io;
@@ -315,7 +316,9 @@ pub fn run() -> std::io::Result<()> {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::default().build())
-        .setup(|app| {
+        .setup(move |app| {
+            specta_builder.mount_events(app);
+
             #[cfg(target_os = "macos")]
             {
                 use tauri::menu::{MenuBuilder, SubmenuBuilder};

@@ -1,4 +1,5 @@
-use ipc_channel::ipc::{self, IpcReceiver, IpcSender};
+pub use ipc_channel::ipc::IpcSender;
+use ipc_channel::ipc::{self, IpcReceiver};
 
 use crate::widget::network_statistic_large::LogoPreset;
 

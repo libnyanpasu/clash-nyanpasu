@@ -101,7 +101,7 @@ where
 
     /// get the current state, it will return the ManagedStateLocker for the state
     pub fn latest(&self) -> MappedRwLockReadGuard<'_, T> {
-        if self.is_dirty.load(std::sync::atomic::Ordering::Relaxed) {
+        if self.is_dirty() {
             let draft = self.draft.read();
             RwLockReadGuard::map(draft, |guard| guard.as_ref().unwrap())
         } else {
@@ -125,8 +125,8 @@ where
         self.is_dirty
             .store(true, std::sync::atomic::Ordering::Release);
 
-        RwLockWriteGuard::map(self.draft.write(), |guard| {
-            *guard = Some(state.clone());
+        RwLockWriteGuard::map(self.draft.write(), move |guard| {
+            *guard = Some(state);
             guard.as_mut().unwrap()
         })
     }

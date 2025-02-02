@@ -21,7 +21,7 @@ const LogListItem = memo(function LogListItem({
     <>
       {showDivider && <Divider />}
 
-      <div className="w-full break-all font-mono">
+      <div className="w-full font-mono break-all">
         <span className="rounded-sm bg-blue-600 px-0.5">{name}</span>
         <span className="text-red-500"> [{item?.[0]}]: </span>
         <span>{item?.[1]}</span>
@@ -53,7 +53,7 @@ export const SideLog = ({ className }: SideLogProps) => {
 
       <Divider />
 
-      <VList className="flex select-text flex-col gap-2 overflow-auto p-2">
+      <VList className="flex flex-col gap-2 overflow-auto p-2 select-text">
         {!isEmpty(getRuntimeLogs.data) ? (
           Object.entries(getRuntimeLogs.data).map(([uid, content]) => {
             return content.map((item, index) => {

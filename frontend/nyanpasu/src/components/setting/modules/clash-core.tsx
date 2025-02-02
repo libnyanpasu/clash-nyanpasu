@@ -71,7 +71,7 @@ const CardProgress = ({
   return (
     <motion.div
       className={cn(
-        'absolute left-0 top-0 z-10 h-full w-full rounded-2xl backdrop-blur',
+        'absolute top-0 left-0 z-10 h-full w-full rounded-2xl backdrop-blur',
         'flex flex-col items-center justify-center gap-2',
       )}
       style={{

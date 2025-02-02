@@ -234,7 +234,7 @@ export const ProfileItem = memo(function ProfileItem({
           <div className="flex items-center justify-between gap-2">
             <Tooltip title={item.url}>
               <Chip
-                className="!pl-2 !pr-2 font-bold"
+                className="!pr-2 !pl-2 font-bold"
                 avatar={<IconComponent className="!size-5" color="primary" />}
                 label={isRemote ? t('Remote') : t('Local')}
               />
@@ -250,7 +250,7 @@ export const ProfileItem = memo(function ProfileItem({
             )}
 
             <TextCarousel
-              className="w-30 flex h-6 items-center"
+              className="flex h-6 w-30 items-center"
               nodes={[
                 !!item.updated && (
                   <TimeSpan ts={item.updated!} k="Subscription Updated At" />
@@ -348,7 +348,7 @@ export const ProfileItem = memo(function ProfileItem({
 
         <motion.div
           className={cn(
-            'absolute left-0 top-0 h-full w-full',
+            'absolute top-0 left-0 h-full w-full',
             'flex-col items-center justify-center gap-4',
             'text-shadow-xl rounded-3xl font-bold backdrop-blur',
           )}
@@ -379,7 +379,7 @@ function TimeSpan({ ts, k }: { ts: number; k: string }) {
   const { t } = useTranslation()
   return (
     <Tooltip title={time.format('YYYY/MM/DD HH:mm:ss')}>
-      <div className="animate-marquee h-fit whitespace-nowrap text-right text-sm font-medium">
+      <div className="animate-marquee h-fit text-right text-sm font-medium whitespace-nowrap">
         {t(k, {
           time: time.fromNow(),
         })}

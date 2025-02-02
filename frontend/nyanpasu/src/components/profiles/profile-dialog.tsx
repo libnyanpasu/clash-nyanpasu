@@ -170,7 +170,7 @@ export const ProfileDialog = ({
 
   const MetaInfo = useMemo(
     () => (
-      <div className="flex flex-col gap-4 pb-2 pt-2">
+      <div className="flex flex-col gap-4 pt-2 pb-2">
         {!isEdit && (
           <SelectElement
             label={t('Type')}

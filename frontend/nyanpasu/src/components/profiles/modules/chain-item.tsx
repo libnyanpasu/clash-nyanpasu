@@ -88,7 +88,7 @@ export const ChainItem = memo(function ChainItem({
         }}
       >
         <ListItemButton
-          className="!mb-2 !mt-2 !flex !justify-between gap-2"
+          className="!mt-2 !mb-2 !flex !justify-between gap-2"
           sx={[
             {
               borderRadius: 4,

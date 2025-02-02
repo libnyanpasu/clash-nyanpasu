@@ -44,7 +44,7 @@ export default function HotkeyInput({
       <div className={cn('relative min-h-[36px] w-[165px]', styles.wrapper)}>
         <input
           className={cn(
-            'absolute left-0 top-0 z-[1] h-full w-full opacity-0',
+            'absolute top-0 left-0 z-[1] h-full w-full opacity-0',
             styles.input,
             className,
           )}

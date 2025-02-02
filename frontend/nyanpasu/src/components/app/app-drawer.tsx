@@ -17,7 +17,7 @@ export const AppDrawer = () => {
       <div
         className={cn(
           'fixed z-10 flex items-center gap-2',
-          OS === 'macos' ? 'left-24 top-3' : 'left-4 top-1.5',
+          OS === 'macos' ? 'top-3 left-24' : 'top-1.5 left-4',
         )}
         data-tauri-drag-region
       >

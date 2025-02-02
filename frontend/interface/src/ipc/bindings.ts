@@ -304,7 +304,7 @@ export const commands = {
    */
   async patchProfile(
     uid: string,
-    profile: ProfileKind,
+    profile: ProfileBuilder,
   ): Promise<Result<null, string>> {
     try {
       return {
@@ -320,7 +320,7 @@ export const commands = {
    * create a new profile
    */
   async createProfile(
-    item: ProfileKind,
+    item: ProfileBuilder,
     fileData: string | null,
   ): Promise<Result<null, string>> {
     try {
@@ -1148,20 +1148,20 @@ export type PostProcessingOutput = {
   advice: [LogSpan, string][]
 }
 export type Profile =
-  | { Remote: RemoteProfile }
-  | { Local: LocalProfile }
-  | { Merge: MergeProfile }
-  | { Script: ScriptProfile }
+  | RemoteProfile
+  | LocalProfile
+  | MergeProfile
+  | ScriptProfile
+export type ProfileBuilder =
+  | RemoteProfileBuilder
+  | LocalProfileBuilder
+  | MergeProfileBuilder
+  | ScriptProfileBuilder
 export type ProfileItemType =
   | 'remote'
   | 'local'
   | { script: ScriptType }
   | 'merge'
-export type ProfileKind =
-  | { Remote: RemoteProfileBuilder }
-  | { Local: LocalProfileBuilder }
-  | { Merge: MergeProfileBuilder }
-  | { Script: ScriptProfileBuilder }
 /**
  * Define the `profiles.yaml` schema
  */

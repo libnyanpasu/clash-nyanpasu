@@ -94,6 +94,7 @@ pub trait ProfileCleanup: ProfileHelper {
 #[delegate(ProfileSharedSetter)]
 #[delegate(ProfileSharedGetter)]
 #[delegate(ProfileFileIo)]
+#[specta(untagged)]
 pub enum Profile {
     Remote(RemoteProfile),
     Local(LocalProfile),

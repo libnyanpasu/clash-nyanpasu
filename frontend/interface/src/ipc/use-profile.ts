@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
-import { commands, ProfileKind, ProfilesBuilder } from './bindings'
+import { commands, ProfileBuilder, ProfilesBuilder } from './bindings'
 
 type URLImportParams = Parameters<typeof commands.importProfile>
 
@@ -132,7 +132,7 @@ export const useProfile = () => {
    * This mutation will automatically invalidate and refetch the 'profiles' query on success
    *
    * @param uid - The unique identifier of the profile to update
-   * @param profile - The profile data of type ProfileKind to update with
+   * @param profile - The profile data of type ProfileBuilder to update with
    *
    * @returns A mutation object containing mutate function and mutation state
    *
@@ -144,7 +144,7 @@ export const useProfile = () => {
       profile,
     }: {
       uid: string
-      profile: ProfileKind
+      profile: ProfileBuilder
     }) => {
       return unwrapResult(await commands.patchProfile(uid, profile))
     },

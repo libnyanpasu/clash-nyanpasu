@@ -1,8 +1,6 @@
 use super::{
-    item::{
-        prelude::*, LocalProfileBuilder, MergeProfileBuilder, Profile, RemoteProfileBuilder,
-        ScriptProfileBuilder,
-    },
+    builder::ProfileBuilder,
+    item::{prelude::*, Profile},
     item_type::ProfileUid,
 };
 use crate::utils::{dirs, help};
@@ -15,14 +13,6 @@ use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 use std::borrow::Borrow;
 use tracing_attributes::instrument;
-
-#[derive(Debug, Serialize, Deserialize, specta::Type)]
-pub enum ProfileKind {
-    Remote(RemoteProfileBuilder),
-    Local(LocalProfileBuilder),
-    Merge(MergeProfileBuilder),
-    Script(ScriptProfileBuilder),
-}
 
 /// Define the `profiles.yaml` schema
 #[derive(Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate, specta::Type)]
@@ -140,7 +130,7 @@ impl Profiles {
 
     /// update the item value
     #[instrument]
-    pub fn patch_item(&mut self, uid: String, patch: ProfileKind) -> Result<()> {
+    pub fn patch_item(&mut self, uid: String, patch: ProfileBuilder) -> Result<()> {
         tracing::debug!("patch item: {uid} with {patch:?}");
 
         let item = self
@@ -154,10 +144,10 @@ impl Profiles {
         tracing::debug!("patch item: {item:?}");
 
         match (item, patch) {
-            (Profile::Remote(item), ProfileKind::Remote(builder)) => item.apply(builder),
-            (Profile::Local(item), ProfileKind::Local(builder)) => item.apply(builder),
-            (Profile::Merge(item), ProfileKind::Merge(builder)) => item.apply(builder),
-            (Profile::Script(item), ProfileKind::Script(builder)) => item.apply(builder),
+            (Profile::Remote(item), ProfileBuilder::Remote(builder)) => item.apply(builder),
+            (Profile::Local(item), ProfileBuilder::Local(builder)) => item.apply(builder),
+            (Profile::Merge(item), ProfileBuilder::Merge(builder)) => item.apply(builder),
+            (Profile::Script(item), ProfileBuilder::Script(builder)) => item.apply(builder),
             _ => bail!("profile type mismatch when patching"),
         };
 

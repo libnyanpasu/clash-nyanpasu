@@ -1,5 +1,5 @@
 use crate::{
-    config::*,
+    config::{profile::ProfileBuilder, *},
     core::{storage::Storage, tasks::jobs::ProfilesJobGuard, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
     feat,
@@ -147,26 +147,26 @@ pub async fn import_profile(url: String, option: Option<RemoteProfileOptionsBuil
 /// create a new profile
 #[tauri::command]
 #[specta::specta]
-pub async fn create_profile(item: ProfileKind, file_data: Option<String>) -> Result {
+pub async fn create_profile(item: ProfileBuilder, file_data: Option<String>) -> Result {
     tracing::trace!("create profile: {item:?}");
 
-    let is_remote = matches!(&item, ProfileKind::Remote(_));
+    let is_remote = matches!(&item, ProfileBuilder::Remote(_));
 
     let profile: Profile = match item {
-        ProfileKind::Local(builder) => builder
+        ProfileBuilder::Local(builder) => builder
             .build()
             .context("failed to build local profile")?
             .into(),
-        ProfileKind::Remote(mut builder) => builder
+        ProfileBuilder::Remote(mut builder) => builder
             .build_no_blocking()
             .await
             .context("failed to build remote profile")?
             .into(),
-        ProfileKind::Merge(builder) => builder
+        ProfileBuilder::Merge(builder) => builder
             .build()
             .context("failed to build merge profile")?
             .into(),
-        ProfileKind::Script(builder) => builder
+        ProfileBuilder::Script(builder) => builder
             .build()
             .context("failed to build script profile")?
             .into(),
@@ -277,7 +277,7 @@ pub async fn patch_profiles_config(profiles: ProfilesBuilder) -> Result {
 /// update profile by uid
 #[tauri::command]
 #[specta::specta]
-pub async fn patch_profile(app_handle: AppHandle, uid: String, profile: ProfileKind) -> Result {
+pub async fn patch_profile(app_handle: AppHandle, uid: String, profile: ProfileBuilder) -> Result {
     tracing::debug!("patch profile: {uid} with {profile:?}");
     {
         let committer = Config::profiles().auto_commit();

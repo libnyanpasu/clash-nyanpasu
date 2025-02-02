@@ -4,9 +4,11 @@ import AutoImport from 'unplugin-auto-import/vite'
 import IconsResolver from 'unplugin-icons/resolver'
 import Icons from 'unplugin-icons/vite'
 import { defineConfig, UserConfig } from 'vite'
+import { createHtmlPlugin } from 'vite-plugin-html'
 import sassDts from 'vite-plugin-sass-dts'
 import svgr from 'vite-plugin-svgr'
 import tsconfigPaths from 'vite-tsconfig-paths'
+import tailwindPlugin from '@tailwindcss/vite'
 // import react from "@vitejs/plugin-react";
 import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
 import legacy from '@vitejs/plugin-legacy'
@@ -27,7 +29,7 @@ const devtools = () => {
 const IS_NIGHTLY = process.env.NIGHTLY?.toLowerCase() === 'true'
 
 // https://vitejs.dev/config/
-export default defineConfig(({ command }) => {
+export default defineConfig(({ command, mode }) => {
   const isDev = command === 'serve'
 
   const config = {
@@ -55,6 +57,7 @@ export default defineConfig(({ command }) => {
       },
     },
     plugins: [
+      tailwindPlugin(),
       tsconfigPaths(),
       legacy({
         renderLegacyChunks: false,
@@ -65,6 +68,17 @@ export default defineConfig(({ command }) => {
           'core-js/modules/web.structured-clone.js',
           'core-js/modules/es.array.at.js',
         ],
+      }),
+      createHtmlPlugin({
+        inject: {
+          data: {
+            title: 'Clash Nyanpasu',
+            injectScript:
+              mode === 'development'
+                ? '<script src="https://unpkg.com/react-scan/dist/auto.global.js"></script>'
+                : '',
+          },
+        },
       }),
       TanStackRouterVite(),
       svgr(),

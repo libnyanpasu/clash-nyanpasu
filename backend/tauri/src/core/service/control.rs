@@ -21,6 +21,21 @@ pub async fn get_service_install_args() -> Result<Vec<OsString>, anyhow::Error> 
     let data_dir = app_data_dir()?;
     let config_dir = app_config_dir()?;
     let app_dir = app_install_dir()?;
+
+    #[cfg(not(windows))]
+    let args: Vec<OsString> = vec![
+        "install".into(),
+        "--user".into(),
+        user.into(),
+        "--nyanpasu-data-dir".into(),
+        format!("\"{}\"", data_dir.to_string_lossy()).into(),
+        "--nyanpasu-config-dir".into(),
+        format!("\"{}\"", config_dir.to_string_lossy()).into(),
+        "--nyanpasu-app-dir".into(),
+        format!("\"{}\"", app_dir.to_string_lossy()).into(),
+    ];
+
+    #[cfg(windows)]
     let args: Vec<OsString> = vec![
         "install".into(),
         "--user".into(),
@@ -32,6 +47,7 @@ pub async fn get_service_install_args() -> Result<Vec<OsString>, anyhow::Error> 
         "--nyanpasu-app-dir".into(),
         app_dir.into(),
     ];
+
     Ok(args)
 }
 
@@ -331,5 +347,5 @@ pub async fn status<'a>() -> anyhow::Result<nyanpasu_ipc::types::StatusInfo<'a>>
     }
     let mut status = String::from_utf8(output.stdout)?;
     tracing::trace!("service status: {}", status);
-    Ok(unsafe { simd_json::serde::from_str(&mut status)? })
+    Ok(serde_json::from_str(&mut status)?)
 }

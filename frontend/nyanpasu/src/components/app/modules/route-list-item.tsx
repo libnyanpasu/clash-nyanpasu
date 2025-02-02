@@ -73,7 +73,7 @@ export const RouteListItem = ({
       {!onlyIcon && (
         <div
           className={cn(
-            'w-full text-nowrap pb-1 pt-1',
+            'w-full pt-1 pb-1 text-nowrap',
             nyanpasuConfig?.language &&
               languageQuirks[nyanpasuConfig?.language].drawer.itemClassNames,
           )}

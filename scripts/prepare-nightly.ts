@@ -29,6 +29,7 @@ const NYANPASU_PACKAGE_JSON_PATH = path.join(
 const isNSIS = process.argv.includes('--nsis') // only build nsis
 const isMSI = process.argv.includes('--msi') // only build msi
 const fixedWebview = process.argv.includes('--fixed-webview')
+const disableUpdater = process.argv.includes('--disable-updater')
 
 async function main() {
   consola.debug('Read config...')
@@ -59,6 +60,10 @@ async function main() {
 
   if (isNSIS) {
     tauriConf.bundle.targets = ['nsis']
+  }
+
+  if (disableUpdater) {
+    tauriConf.bundle.createUpdaterArtifacts = false
   }
 
   consola.debug('Get current git short hash')

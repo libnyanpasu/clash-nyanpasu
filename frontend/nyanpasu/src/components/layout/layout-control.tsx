@@ -1,7 +1,5 @@
 import { useMemoizedFn } from 'ahooks'
-import { debounce } from 'lodash-es'
-import { useEffect, useRef, useState } from 'react'
-import { notification, NotificationType } from '@/utils/notification'
+import { useEffect, useRef } from 'react'
 import {
   CloseRounded,
   CropSquareRounded,
@@ -13,6 +11,8 @@ import {
 import { alpha, Button, ButtonProps, useTheme } from '@mui/material'
 import { saveWindowSizeState, useNyanpasu } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
+import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
+import { listen, TauriEvent, UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { platform as getPlatform } from '@tauri-apps/plugin-os'
 
@@ -35,42 +35,31 @@ const CtrlButton = (props: ButtonProps) => {
 
 export const LayoutControl = ({ className }: { className?: string }) => {
   const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu()
-  const [isMaximized, setIsMaximized] = useState(false)
-
+  const { data: isMaximized } = useSuspenseQuery({
+    queryKey: ['isMaximized'],
+    queryFn: () => appWindow.isMaximized(),
+  })
+  const queryClient = useQueryClient()
+  const unlistenRef = useRef<UnlistenFn | null>(null)
   const platform = useRef(getPlatform())
 
-  const updateMaximized = async () => {
-    try {
-      const isMaximized = await appWindow.isMaximized()
-      setIsMaximized(() => isMaximized)
-    } catch (error) {
-      notification({
-        type: NotificationType.Error,
-        title: 'Error',
-        body: typeof error === 'string' ? error : (error as Error).message,
+  useEffect(() => {
+    listen(TauriEvent.WINDOW_RESIZED, () => {
+      queryClient.invalidateQueries({ queryKey: ['isMaximized'] })
+    })
+      .then((unlisten) => {
+        unlistenRef.current = unlisten
       })
-    }
-  }
+      .catch((error) => {
+        console.error(error)
+      })
+  }, [queryClient])
 
   const toggleAlwaysOnTop = useMemoizedFn(async () => {
     const isAlwaysOnTop = !!nyanpasuConfig?.always_on_top
     await setNyanpasuConfig({ always_on_top: !isAlwaysOnTop })
     await appWindow.setAlwaysOnTop(!isAlwaysOnTop)
   })
-
-  useEffect(() => {
-    // Update the maximized state
-    updateMaximized()
-
-    // Add a resize handler to update the maximized state
-    const resizeHandler = debounce(updateMaximized, 1000)
-
-    window.addEventListener('resize', resizeHandler)
-
-    return () => {
-      window.removeEventListener('resize', resizeHandler)
-    }
-  }, [])
 
   return (
     <div className={cn('flex gap-1', className)} data-tauri-drag-region>
@@ -91,8 +80,9 @@ export const LayoutControl = ({ className }: { className?: string }) => {
 
       <CtrlButton
         onClick={() => {
-          setIsMaximized((isMaximized) => !isMaximized)
-          appWindow.toggleMaximize()
+          appWindow.toggleMaximize().then((isMaximized) => {
+            queryClient.invalidateQueries({ queryKey: ['isMaximized'] })
+          })
         }}
       >
         {isMaximized ? (

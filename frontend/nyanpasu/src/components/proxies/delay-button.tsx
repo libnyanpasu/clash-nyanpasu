@@ -47,7 +47,7 @@ export const DelayButton = memo(function DelayButton({
   return (
     <Tooltip title={t('Delay check')}>
       <Button
-        className="!fixed bottom-8 right-8 z-10 size-16 !rounded-2xl backdrop-blur"
+        className="!fixed right-8 bottom-8 z-10 size-16 !rounded-2xl backdrop-blur"
         sx={{
           boxShadow: 8,
           backgroundColor: alpha(

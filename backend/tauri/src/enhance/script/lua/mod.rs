@@ -11,7 +11,7 @@ use super::runner::{ProcessOutput, Runner};
 
 pub fn create_lua_context() -> Result<Lua, anyhow::Error> {
     let lua = Lua::new();
-    lua.load_from_std_lib(LuaStdLib::ALL_SAFE)?;
+    lua.load_std_libs(LuaStdLib::ALL_SAFE)?;
     Ok(lua)
 }
 
@@ -194,7 +194,6 @@ mod tests {
     #[test]
     fn test_correct_original_mapping_order() {
         use super::*;
-        use serde_yaml::Mapping;
 
         let mut target = serde_yaml::from_str::<Value>(
             r#"            ######### 锚点 start #######

@@ -18,6 +18,7 @@ use itertools::Itertools;
 use nyanpasu_macro::BuilderUpdate;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
+use specta::Type;
 use std::time::Duration;
 use sysproxy::Sysproxy;
 use url::Url;
@@ -26,8 +27,8 @@ pub trait RemoteProfileSubscription {
     async fn subscribe(&mut self, opts: Option<RemoteProfileOptionsBuilder>) -> anyhow::Result<()>;
 }
 
-#[derive(Delegate, Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate)]
-#[builder(derive(Serialize, Deserialize))]
+#[derive(Delegate, Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate, specta::Type)]
+#[builder(derive(Serialize, Deserialize, Debug, specta::Type))]
 #[builder(build_fn(skip, error = "RemoteProfileBuilderError"))]
 #[builder_update(patch_fn = "apply")]
 #[delegate(ProfileSharedSetter, target = "shared")]
@@ -410,7 +411,7 @@ impl RemoteProfileBuilder {
     }
 }
 
-#[derive(Default, Debug, Clone, Copy, Deserialize, Serialize)]
+#[derive(Default, Debug, Clone, Copy, Deserialize, Serialize, Type)]
 pub struct SubscriptionInfo {
     pub upload: usize,
     pub download: usize,
@@ -418,8 +419,8 @@ pub struct SubscriptionInfo {
     pub expire: usize,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Builder, BuilderUpdate)]
-#[builder(derive(Serialize, Deserialize, Debug))]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Builder, BuilderUpdate, Type)]
+#[builder(derive(Serialize, Deserialize, Debug, Type))]
 #[builder_update(patch_fn = "apply", getter)]
 pub struct RemoteProfileOptions {
     /// see issue #13

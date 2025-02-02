@@ -192,8 +192,8 @@ export const ScriptDialog = ({
       {...props}
     >
       <div className="flex h-full">
-        <div className="overflow-auto pb-4 pt-4">
-          <div className="flex flex-col gap-4 pb-4 pl-4 pr-4">
+        <div className="overflow-auto pt-4 pb-4">
+          <div className="flex flex-col gap-4 pr-4 pb-4 pl-4">
             {!isEdit && (
               <SelectElement
                 label={t('Type')}

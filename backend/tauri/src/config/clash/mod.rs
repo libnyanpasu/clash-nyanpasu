@@ -97,7 +97,7 @@ impl IClashTemp {
     #[allow(dead_code)]
     pub fn get_external_controller_port(&self) -> u16 {
         let server = self.get_client_info().server;
-        let port = server.split(':').last().unwrap_or("9090");
+        let port = server.split(':').next_back().unwrap_or("9090");
         port.parse().unwrap_or(9090)
     }
 
@@ -194,7 +194,7 @@ impl IClashTemp {
     }
 }
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Deserialize, Serialize, PartialEq, Eq, specta::Type)]
 pub struct ClashInfo {
     /// clash core port
     pub port: u16,

@@ -53,7 +53,7 @@
     },
     "linux": {
       "deb": {
-        "depends": ["openssl"]
+        "depends": []
       }
     },
     "licenseFile": "../../LICENSE",

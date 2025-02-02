@@ -9,7 +9,12 @@ use crate::{
     utils::dirs,
 };
 
-pub static UNITS: Lazy<Vec<DynMigration>> = Lazy::new(|| vec![MigrateProfilesNullValue.into()]);
+pub static UNITS: Lazy<Vec<DynMigration>> = Lazy::new(|| {
+    vec![
+        MigrateProfilesNullValue.into(),
+        MigrateLanguageOption.into(),
+    ]
+});
 
 pub static VERSION: Lazy<semver::Version> = Lazy::new(|| semver::Version::parse("2.0.0").unwrap());
 
@@ -93,6 +98,52 @@ impl Migration<'_> for MigrateProfilesNullValue {
             .open(profiles_path)?;
         serde_yaml::to_writer(file, &profiles)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MigrateLanguageOption;
+impl<'a> Migration<'a> for MigrateLanguageOption {
+    fn version(&self) -> &'a semver::Version {
+        &VERSION
+    }
+
+    fn name(&self) -> std::borrow::Cow<'a, str> {
+        Cow::Borrowed("Migrate Language Option")
+    }
+
+    fn migrate(&self) -> std::io::Result<()> {
+        let config_path = crate::utils::dirs::nyanpasu_config_path().unwrap();
+        if !config_path.exists() {
+            println!("Config file not found, skipping migration");
+            return Ok(());
+        }
+        println!("parse config file...");
+        let config = std::fs::read_to_string(&config_path)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+        let mut config: Mapping = serde_yaml::from_str(&config)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+        let lang = config.get_mut("language");
+        match lang {
+            None => {
+                println!("language not found, skipping migration");
+                return Ok(());
+            }
+            Some(lang) => {
+                if lang == "zh" {
+                    println!("detected old language option, migrating...");
+                    let value = lang.as_str().unwrap();
+                    let value = "zh-CN";
+                    *lang = serde_yaml::Value::from(value);
+                    println!("write config file...");
+                    let config = serde_yaml::to_string(&config)
+                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+                    std::fs::write(&config_path, config)?;
+                }
+                println!("Migration completed");
+            }
+        }
         Ok(())
     }
 }

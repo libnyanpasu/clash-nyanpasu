@@ -1,12 +1,13 @@
 use crate::utils::dirs::tray_icons_path;
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use std::{
     borrow::Cow,
     fmt::{Display, Formatter},
     path::PathBuf,
 };
 
-#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum TrayIcon {
     #[default]

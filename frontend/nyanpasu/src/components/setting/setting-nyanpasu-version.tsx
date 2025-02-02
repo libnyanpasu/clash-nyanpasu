@@ -112,7 +112,7 @@ export const SettingNyanpasuVersion = () => {
 
         {isPlatformSupported && (
           <>
-            <div className="mb-1 mt-1">
+            <div className="mt-1 mb-1">
               <AutoCheckUpdate />
             </div>
             <ListItem sx={{ pl: 0, pr: 0 }}>

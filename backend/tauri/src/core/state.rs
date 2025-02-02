@@ -101,7 +101,7 @@ where
 
     /// get the current state, it will return the ManagedStateLocker for the state
     pub fn latest(&self) -> MappedRwLockReadGuard<'_, T> {
-        if self.is_dirty.load(std::sync::atomic::Ordering::Relaxed) {
+        if self.is_dirty() {
             let draft = self.draft.read();
             RwLockReadGuard::map(draft, |guard| guard.as_ref().unwrap())
         } else {
@@ -112,28 +112,28 @@ where
 
     /// whether the state is dirty, i.e. a draft is present, and not yet committed or discarded
     pub fn is_dirty(&self) -> bool {
-        self.is_dirty.load(std::sync::atomic::Ordering::Relaxed)
+        self.is_dirty.load(std::sync::atomic::Ordering::Acquire)
     }
 
     /// You can modify the draft state, and then commit it
     pub fn draft(&self) -> MappedRwLockWriteGuard<'_, T> {
-        if self.is_dirty.load(std::sync::atomic::Ordering::Relaxed) {
+        if self.is_dirty() {
             return RwLockWriteGuard::map(self.draft.write(), |guard| guard.as_mut().unwrap());
         }
 
         let state = self.inner.read().clone();
         self.is_dirty
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+            .store(true, std::sync::atomic::Ordering::Release);
 
-        RwLockWriteGuard::map(self.draft.write(), |guard| {
-            *guard = Some(state.clone());
+        RwLockWriteGuard::map(self.draft.write(), move |guard| {
+            *guard = Some(state);
             guard.as_mut().unwrap()
         })
     }
 
     /// commit the draft state, and make it the new state
     pub fn apply(&self) -> Option<T> {
-        if !self.is_dirty.load(std::sync::atomic::Ordering::Relaxed) {
+        if !self.is_dirty() {
             return None;
         }
 
@@ -142,7 +142,7 @@ where
         let old_value = inner.to_owned();
         *inner = draft.take().unwrap();
         self.is_dirty
-            .store(false, std::sync::atomic::Ordering::Relaxed);
+            .store(false, std::sync::atomic::Ordering::Release);
         Some(old_value)
     }
 
@@ -150,7 +150,7 @@ where
     pub fn discard(&self) -> Option<T> {
         let v = self.draft.write().take();
         self.is_dirty
-            .store(false, std::sync::atomic::Ordering::Relaxed);
+            .store(false, std::sync::atomic::Ordering::Release);
         v
     }
 }

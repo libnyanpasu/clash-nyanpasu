@@ -57,7 +57,7 @@ export const notification = async ({
     return
   }
   const options: Options = {
-    title: title,
+    title,
   }
   if (body) options.body = body
   sendNotification(options)

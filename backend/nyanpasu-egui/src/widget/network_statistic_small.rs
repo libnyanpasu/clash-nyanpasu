@@ -1,10 +1,9 @@
 use std::sync::Arc;
 use std::sync::LazyLock;
 
-use crate::utils::svg::{render_svg_with_current_color_replace, SvgExt};
 use eframe::egui::{
     self, include_image, style::Selection, Color32, Id, Image, Layout, Margin, RichText, Rounding,
-    Sense, Stroke, Style, TextureOptions, Theme, Vec2, ViewportCommand, Visuals, WidgetText,
+    Sense, Stroke, Style, Theme, Vec2, ViewportCommand, Visuals, WidgetText,
 };
 
 // Presets

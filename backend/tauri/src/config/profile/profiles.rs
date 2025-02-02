@@ -1,12 +1,10 @@
 use super::{
-    item::{
-        prelude::*, LocalProfileBuilder, MergeProfileBuilder, Profile, RemoteProfileBuilder,
-        ScriptProfileBuilder,
-    },
+    builder::ProfileBuilder,
+    item::{prelude::*, Profile},
     item_type::ProfileUid,
 };
 use crate::utils::{dirs, help};
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use derive_builder::Builder;
 use indexmap::IndexMap;
 use nyanpasu_macro::BuilderUpdate;
@@ -17,8 +15,8 @@ use std::borrow::Borrow;
 use tracing_attributes::instrument;
 
 /// Define the `profiles.yaml` schema
-#[derive(Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate)]
-#[builder(derive(Serialize, Deserialize))]
+#[derive(Debug, Clone, Deserialize, Serialize, Builder, BuilderUpdate, specta::Type)]
+#[builder(derive(Serialize, Deserialize, specta::Type))]
 #[builder_update(patch_fn = "apply")]
 pub struct Profiles {
     /// same as PrfConfig.current
@@ -132,8 +130,8 @@ impl Profiles {
 
     /// update the item value
     #[instrument]
-    pub fn patch_item(&mut self, uid: String, partial: Mapping) -> Result<()> {
-        tracing::debug!("patch item: {uid} with {partial:?}");
+    pub fn patch_item(&mut self, uid: String, patch: ProfileBuilder) -> Result<()> {
+        tracing::debug!("patch item: {uid} with {patch:?}");
 
         let item = self
             .items
@@ -143,34 +141,15 @@ impl Profiles {
                 "failed to find the profile item \"uid:{uid}\""
             ))?;
 
-        match item {
-            Profile::Remote(item) => {
-                let builder: RemoteProfileBuilder = serde_yaml::from_value(
-                    serde_yaml::to_value(partial).context("failed to convert to value")?,
-                )?;
-                item.apply(builder);
-            }
-            Profile::Local(item) => {
-                let builder: LocalProfileBuilder = serde_yaml::from_value(
-                    serde_yaml::to_value(partial).context("failed to convert to value")?,
-                )?;
-                item.apply(builder);
-            }
-            Profile::Merge(item) => {
-                let builder: MergeProfileBuilder = serde_yaml::from_value(
-                    serde_yaml::to_value(partial).context("failed to convert to value")?,
-                )?;
-                item.apply(builder);
-            }
-            Profile::Script(item) => {
-                let builder: ScriptProfileBuilder = serde_yaml::from_value(
-                    serde_yaml::to_value(partial).context("failed to convert to value")?,
-                )?;
-                item.apply(builder);
-            }
-        };
-
         tracing::debug!("patch item: {item:?}");
+
+        match (item, patch) {
+            (Profile::Remote(item), ProfileBuilder::Remote(builder)) => item.apply(builder),
+            (Profile::Local(item), ProfileBuilder::Local(builder)) => item.apply(builder),
+            (Profile::Merge(item), ProfileBuilder::Merge(builder)) => item.apply(builder),
+            (Profile::Script(item), ProfileBuilder::Script(builder)) => item.apply(builder),
+            _ => bail!("profile type mismatch when patching"),
+        };
 
         self.save_file()
     }

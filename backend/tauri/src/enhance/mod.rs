@@ -160,10 +160,42 @@ pub async fn enhance() -> (Mapping, Vec<String>, PostProcessingOutput) {
 
 fn use_cache(mut config: Mapping) -> Mapping {
     if !config.contains_key("profile") {
+        tracing::debug!("Don't detect profile, set default profile for memorized profile");
         let mut profile = Mapping::new();
         profile.insert("store-selected".into(), true.into());
-        profile.insert("store-fake-ip".into(), true.into());
+        // Disable fake-ip store, due to the slow speed.
+        // each dns query should indirect to the file io, which is very very slow.
+        profile.insert("store-fake-ip".into(), false.into());
         config.insert("profile".into(), profile.into());
     }
     config
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_use_cache() {
+        let config = Mapping::new();
+        dbg!(&config);
+        let config = use_cache(config);
+        dbg!(&config);
+        assert!(config.contains_key("profile"));
+
+        let mut config = Mapping::new();
+        let mut profile = Mapping::new();
+        profile.insert("do-not-override".into(), true.into());
+        config.insert("profile".into(), profile.into());
+        dbg!(&config);
+        let config = use_cache(config);
+        dbg!(&config);
+        assert!(config.contains_key("profile"));
+        assert!(config
+            .get("profile")
+            .unwrap()
+            .as_mapping()
+            .unwrap()
+            .contains_key("do-not-override"));
+    }
 }

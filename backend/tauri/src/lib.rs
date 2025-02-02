@@ -10,18 +10,24 @@ mod config;
 mod consts;
 mod core;
 mod enhance;
+mod event_handler;
 mod feat;
 mod ipc;
 mod server;
+mod setup;
 mod utils;
-mod event_handler;
+mod window;
+
+use std::io;
 
 use crate::{
     config::Config,
     core::handle::Handle,
     utils::{init, resolve},
 };
-use tauri::Emitter;
+use specta_typescript::{BigIntExportBehavior, Typescript};
+use tauri::{Emitter, Manager};
+use tauri_specta::collect_commands;
 use utils::resolve::{is_window_opened, reset_window_open_counter};
 
 rust_i18n::i18n!("../../locales");
@@ -170,6 +176,124 @@ pub fn run() -> std::io::Result<()> {
         }
     }));
 
+    // setup specta
+    let specta_builder = tauri_specta::Builder::<tauri::Wry>::new().commands(collect_commands![
+        // common
+        ipc::get_sys_proxy,
+        ipc::open_app_config_dir,
+        ipc::open_app_data_dir,
+        ipc::open_logs_dir,
+        ipc::open_web_url,
+        ipc::open_core_dir,
+        // cmds::kill_sidecar,
+        ipc::restart_sidecar,
+        // clash
+        ipc::get_clash_info,
+        ipc::get_clash_logs,
+        ipc::patch_clash_config,
+        ipc::change_clash_core,
+        ipc::get_runtime_config,
+        ipc::get_runtime_yaml,
+        ipc::get_runtime_exists,
+        ipc::get_postprocessing_output,
+        ipc::clash_api_get_proxy_delay,
+        ipc::uwp::invoke_uwp_tool,
+        // updater
+        ipc::fetch_latest_core_versions,
+        ipc::update_core,
+        ipc::inspect_updater,
+        ipc::get_core_version,
+        // utils
+        ipc::collect_logs,
+        // verge
+        ipc::get_verge_config,
+        ipc::patch_verge_config,
+        // cmds::update_hotkeys,
+        // profile
+        ipc::get_profiles,
+        ipc::enhance_profiles,
+        ipc::patch_profiles_config,
+        ipc::view_profile,
+        ipc::patch_profile,
+        ipc::create_profile,
+        ipc::import_profile,
+        ipc::reorder_profile,
+        ipc::reorder_profiles_by_list,
+        ipc::update_profile,
+        ipc::delete_profile,
+        ipc::read_profile_file,
+        ipc::save_profile_file,
+        ipc::save_window_size_state,
+        ipc::get_custom_app_dir,
+        ipc::set_custom_app_dir,
+        // service mode
+        ipc::service::status_service,
+        ipc::service::install_service,
+        ipc::service::uninstall_service,
+        ipc::service::start_service,
+        ipc::service::stop_service,
+        ipc::service::restart_service,
+        ipc::is_portable,
+        ipc::get_proxies,
+        ipc::select_proxy,
+        ipc::update_proxy_provider,
+        ipc::restart_application,
+        ipc::collect_envs,
+        ipc::get_server_port,
+        ipc::set_tray_icon,
+        ipc::is_tray_icon_set,
+        ipc::get_core_status,
+        ipc::url_delay_test,
+        ipc::get_ipsb_asn,
+        ipc::open_that,
+        ipc::is_appimage,
+        ipc::get_service_install_prompt,
+        ipc::cleanup_processes,
+        ipc::get_storage_item,
+        ipc::set_storage_item,
+        ipc::remove_storage_item,
+        ipc::mutate_proxies,
+        ipc::get_core_dir,
+    ]);
+
+    #[cfg(debug_assertions)]
+    {
+        const SPECTA_BINDINGS_PATH: &str = "../../frontend/interface/src/ipc/bindings.ts";
+
+        match specta_builder.export(
+            Typescript::default()
+                .formatter(specta_typescript::formatter::prettier)
+                .formatter(|file| {
+                    let npx_command = if cfg!(target_os = "windows") {
+                        "npx.cmd"
+                    } else {
+                        "npx"
+                    };
+
+                    std::process::Command::new(npx_command)
+                        .arg("prettier")
+                        .arg("--write")
+                        .arg(file)
+                        .output()
+                        .map(|_| ())
+                        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+                })
+                .bigint(BigIntExportBehavior::Number)
+                .header("/* eslint-disable */\n// @ts-nocheck"),
+            SPECTA_BINDINGS_PATH,
+        ) {
+            Ok(_) => {
+                log::debug!(
+                    "Exported typescript bindings, path: {}",
+                    SPECTA_BINDINGS_PATH
+                );
+            }
+            Err(e) => {
+                panic!("Failed to export typescript bindings: {}", e);
+            }
+        };
+    }
+
     let verge = { Config::verge().latest().language.clone().unwrap() };
     rust_i18n::set_locale(verge.as_str());
 
@@ -178,6 +302,7 @@ pub fn run() -> std::io::Result<()> {
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
+        .invoke_handler(specta_builder.invoke_handler())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
@@ -247,85 +372,7 @@ pub fn run() -> std::io::Result<()> {
                 });
             });
             Ok(())
-        })
-        .invoke_handler(tauri::generate_handler![
-            // common
-            ipc::get_sys_proxy,
-            ipc::open_app_config_dir,
-            ipc::open_app_data_dir,
-            ipc::open_logs_dir,
-            ipc::open_web_url,
-            ipc::open_core_dir,
-            // cmds::kill_sidecar,
-            ipc::restart_sidecar,
-            // clash
-            ipc::get_clash_info,
-            ipc::get_clash_logs,
-            ipc::patch_clash_config,
-            ipc::change_clash_core,
-            ipc::get_runtime_config,
-            ipc::get_runtime_yaml,
-            ipc::get_runtime_exists,
-            ipc::get_postprocessing_output,
-            ipc::clash_api_get_proxy_delay,
-            ipc::uwp::invoke_uwp_tool,
-            // updater
-            ipc::fetch_latest_core_versions,
-            ipc::update_core,
-            ipc::inspect_updater,
-            ipc::get_core_version,
-            // utils
-            ipc::collect_logs,
-            // verge
-            ipc::get_verge_config,
-            ipc::patch_verge_config,
-            // cmds::update_hotkeys,
-            // profile
-            ipc::get_profiles,
-            ipc::enhance_profiles,
-            ipc::patch_profiles_config,
-            ipc::view_profile,
-            ipc::patch_profile,
-            ipc::create_profile,
-            ipc::import_profile,
-            ipc::reorder_profile,
-            ipc::reorder_profiles_by_list,
-            ipc::update_profile,
-            ipc::delete_profile,
-            ipc::read_profile_file,
-            ipc::save_profile_file,
-            ipc::save_window_size_state,
-            ipc::get_custom_app_dir,
-            ipc::set_custom_app_dir,
-            // service mode
-            ipc::service::status_service,
-            ipc::service::install_service,
-            ipc::service::uninstall_service,
-            ipc::service::start_service,
-            ipc::service::stop_service,
-            ipc::service::restart_service,
-            ipc::is_portable,
-            ipc::get_proxies,
-            ipc::select_proxy,
-            ipc::update_proxy_provider,
-            ipc::restart_application,
-            ipc::collect_envs,
-            ipc::get_server_port,
-            ipc::set_tray_icon,
-            ipc::is_tray_icon_set,
-            ipc::get_core_status,
-            ipc::url_delay_test,
-            ipc::get_ipsb_asn,
-            ipc::open_that,
-            ipc::is_appimage,
-            ipc::get_service_install_prompt,
-            ipc::cleanup_processes,
-            ipc::get_storage_item,
-            ipc::set_storage_item,
-            ipc::remove_storage_item,
-            ipc::mutate_proxies,
-            ipc::get_core_dir,
-        ]);
+        });
 
     let app = builder
         .build(tauri::generate_context!())
@@ -345,9 +392,7 @@ pub fn run() -> std::io::Result<()> {
                 log::debug!(target: "app", "window close requested");
                 let _ = resolve::save_window_state(app_handle, true);
                 #[cfg(target_os = "macos")]
-                log_err!(app_handle.run_on_main_thread(|| {
-                    crate::utils::dock::macos::hide_dock_icon();
-                }));
+                crate::utils::dock::macos::hide_dock_icon();
             }
             tauri::WindowEvent::Destroyed => {
                 log::debug!(target: "app", "window destroyed");
@@ -360,6 +405,10 @@ pub fn run() -> std::io::Result<()> {
             }
             _ => {}
         },
+        #[cfg(target_os = "macos")]
+        tauri::RunEvent::Reopen { .. } => {
+            resolve::create_window(app_handle);
+        }
         _ => {}
     });
 

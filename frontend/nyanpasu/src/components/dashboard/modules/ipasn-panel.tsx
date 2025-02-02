@@ -49,7 +49,7 @@ export const IPASNPanel = ({ refreshCount }: { refreshCount: number }) => {
         xl: 3,
       }}
     >
-      <Paper className="relative flex !h-full select-text gap-4 !rounded-3xl px-4 py-3">
+      <Paper className="relative flex !h-full gap-4 !rounded-3xl px-4 py-3 select-text">
         {data ? (
           <>
             {data.country_code && (
@@ -102,7 +102,7 @@ export const IPASNPanel = ({ refreshCount }: { refreshCount: number }) => {
 
                   <span
                     className={cn(
-                      'absolute left-0 top-0 block h-full w-full rounded-lg bg-slate-300 transition-opacity',
+                      'absolute top-0 left-0 block h-full w-full rounded-lg bg-slate-300 transition-opacity',
                       showIPAddress ? 'opacity-0' : 'animate-pulse opacity-100',
                     )}
                   />
@@ -120,7 +120,7 @@ export const IPASNPanel = ({ refreshCount }: { refreshCount: number }) => {
           </>
         ) : (
           <>
-            <div className="mb-2 mt-1.5 h-9 w-12 animate-pulse rounded-lg bg-slate-700" />
+            <div className="mt-1.5 mb-2 h-9 w-12 animate-pulse rounded-lg bg-slate-700" />
 
             <div className="flex flex-1 animate-pulse flex-col gap-1">
               <div className="mt-1.5 h-6 w-20 rounded-full bg-slate-700" />

@@ -37,13 +37,6 @@ pub fn chain_advice(config: &Mapping) -> ProcessOutput {
         // If the core file is not granted the necessary permissions, grant it
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         {
-            #[cfg(target_os = "macos")]
-            const ROOT_GROUP: &str = "admin";
-            #[cfg(target_os = "linux")]
-            const ROOT_GROUP: &str = "root";
-
-            use nix::unistd::{Gid, Group as NixGroup, Uid, User};
-            use std::os::unix::fs::MetadataExt;
             if !service_state.is_connected() {
                 let core: nyanpasu_utils::core::CoreType = {
                     crate::config::Config::verge()
@@ -53,33 +46,24 @@ pub fn chain_advice(config: &Mapping) -> ProcessOutput {
                         .unwrap_or(&crate::config::nyanpasu::ClashCore::default())
                         .into()
                 };
-                let core_path = crate::core::clash::core::find_binary_path(&core);
-                if let Ok(core_path) = core_path {
-                    if let Ok(metadata) = std::fs::metadata(&core_path) {
-                        let uid = metadata.uid();
-                        let gid = metadata.gid();
-                        let user = User::from_uid(Uid::from_raw(uid)).ok().flatten();
-                        let group = NixGroup::from_gid(Gid::from_raw(gid)).ok().flatten();
-                        if let (Some(user), Some(group)) = (user, group) {
-                            if !*crate::consts::IS_APPIMAGE
-                                && (user.name != "root" || group.name != ROOT_GROUP)
-                            {
-                                tracing::warn!("The core file is not granted the necessary permissions, grant it");
-                                let msg = t!("dialog.info.grant_core_permission");
-                                if crate::utils::dialog::ask_dialog(msg.as_ref()) {
-                                    if let Err(err) = crate::core::manager::grant_permission(&core)
-                                    {
-                                        tracing::error!(
-                                            "Failed to grant permission to the core file: {}",
-                                            err
-                                        );
-                                        crate::utils::dialog::error_dialog(format!(
-                                            "failed to grant core permission:\n{:#?}",
-                                            err
-                                        ));
-                                    }
-                                }
-                            }
+                if crate::utils::dirs::check_core_permission(&core)
+                    .inspect_err(|v| {
+                        log::error!(target: "app", "clash core is not granted the necessary permissions, grant it: {v:?}");
+                    })
+                    .is_ok_and(|v| !v && *crate::consts::IS_APPIMAGE)
+                {
+                    tracing::warn!("The core file is not granted the necessary permissions, grant it");
+                    let msg = t!("dialog.info.grant_core_permission");
+                    if crate::utils::dialog::ask_dialog(msg.as_ref()) {
+                        if let Err(err) = crate::core::manager::grant_permission(&core) {
+                            tracing::error!(
+                                "Failed to grant permission to the core file: {}",
+                                err
+                            );
+                            crate::utils::dialog::error_dialog(format!(
+                                "failed to grant core permission:\n{:#?}",
+                                err
+                            ));
                         }
                     }
                 }

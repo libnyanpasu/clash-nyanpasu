@@ -1,15 +1,50 @@
 import { useAsyncEffect } from 'ahooks'
 import { useAtom, useSetAtom } from 'jotai'
-import { useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import useSWR from 'swr'
 import { OS } from '@/consts'
 import { serviceManualPromptDialogAtom } from '@/store/service'
+import { notification } from '@/utils/notification'
 import { getShikiSingleton } from '@/utils/shiki'
-import { useTheme } from '@mui/material'
+import ContentPasteIcon from '@mui/icons-material/ContentPaste'
+import { IconButton, Tooltip, useTheme } from '@mui/material'
 import { getCoreDir, getServiceInstallPrompt } from '@nyanpasu/interface'
 import { BaseDialog, BaseDialogProps, cn } from '@nyanpasu/ui'
 import styles from './service-manual-prompt-dialog.module.scss'
+
+type CopyToClipboardButtonProps = {
+  onClick: () => void
+}
+
+function CopyToClipboardButton({ onClick }: CopyToClipboardButtonProps) {
+  return (
+    <Tooltip
+      title="Copy to clipboard"
+      placement="top"
+      slotProps={{
+        popper: {
+          modifiers: [
+            {
+              name: 'offset',
+              options: {
+                offset: [0, -8],
+              },
+            },
+          ],
+        },
+      }}
+    >
+      <IconButton
+        size="small"
+        className="absolute top-1 right-1"
+        onClick={onClick}
+      >
+        <ContentPasteIcon fontSize="small" color="primary" />
+      </IconButton>
+    </Tooltip>
+  )
+}
 
 export type ServerManualPromptDialogProps = Omit<BaseDialogProps, 'title'> & {
   operation: 'uninstall' | 'install' | 'start' | 'stop' | null
@@ -29,36 +64,51 @@ export default function ServerManualPromptDialog({
     getServiceInstallPrompt,
   )
   const { data: coreDir } = useSWR('/core_dir', () => getCoreDir())
-  const [codes, setCodes] = useState<string | null>(null)
-  useAsyncEffect(async () => {
+  const commands = useMemo(() => {
     if (operation === 'install' && serviceInstallPrompt) {
-      const shiki = await getShikiSingleton()
-      const code = await shiki.codeToHtml(
-        `cd "${coreDir}\n${serviceInstallPrompt}"`,
-        {
-          lang: 'shell',
-          themes: {
-            dark: 'nord',
-            light: 'min-light',
-          },
-        },
-      )
-      setCodes(code)
+      return `cd "${coreDir}"\n${serviceInstallPrompt}`
     } else if (operation) {
-      const shiki = await getShikiSingleton()
-      const code = await shiki.codeToHtml(
-        `cd "${coreDir}"\n${OS !== 'windows' ? 'sudo ' : ''}./nyanpasu-service ${operation}`,
-        {
-          lang: 'shell',
-          themes: {
-            dark: 'nord',
-            light: 'min-light',
-          },
-        },
-      )
-      setCodes(code)
+      return `cd "${coreDir}"\n${OS !== 'windows' ? 'sudo ' : ''}./nyanpasu-service ${operation}`
     }
-  }, [serviceInstallPrompt, operation, coreDir])
+    return ''
+  }, [operation, serviceInstallPrompt, coreDir])
+  const [codes, setCodes] = useState<string | null>(null)
+
+  useAsyncEffect(async () => {
+    const shiki = await getShikiSingleton()
+    const code = await shiki.codeToHtml(commands, {
+      lang: 'shell',
+      themes: {
+        dark: 'nord',
+        light: 'min-light',
+      },
+    })
+    setCodes(code)
+  }, [serviceInstallPrompt, operation, coreDir, commands])
+
+  const handleCopyToClipboard = useCallback(() => {
+    if (commands) {
+      const item = new ClipboardItem({
+        'text/plain': new Blob([commands], { type: 'text/plain' }),
+      })
+      navigator.clipboard
+        .write([item])
+        .then(() => {
+          console.log('copied')
+          notification({
+            title: t('Copy to clipboard'),
+            body: t('Copied to clipboard'),
+          })
+        })
+        .catch((error) => {
+          console.error(error)
+          notification({
+            title: t('Copy to clipboard'),
+            body: t('Failed to copy to clipboard'),
+          })
+        })
+    }
+  }, [commands, t])
 
   return (
     <BaseDialog
@@ -75,15 +125,19 @@ export default function ServerManualPromptDialog({
         </p>
         {error && <p className="text-red-500">{error.message}</p>}
         {!!codes && (
-          <div
-            className={cn(
-              'rounded-sm',
-              theme.palette.mode === 'dark' && styles.dark,
-            )}
-            dangerouslySetInnerHTML={{
-              __html: codes,
-            }}
-          />
+          <div className="relative">
+            <div
+              className={cn(
+                'rounded-sm md:max-w-[80vw] lg:max-w-[60vw] xl:max-w-[50vw]',
+                theme.palette.mode === 'dark' && styles.dark,
+                styles.prompt,
+              )}
+              dangerouslySetInnerHTML={{
+                __html: codes,
+              }}
+            />
+            <CopyToClipboardButton onClick={handleCopyToClipboard} />
+          </div>
         )}
       </div>
     </BaseDialog>

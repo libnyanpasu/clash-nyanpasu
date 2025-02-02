@@ -9,7 +9,7 @@ export const Header: FC<{ title?: ReactNode; header?: ReactNode }> = memo(
     header?: ReactNode
   }) {
     return (
-      <header className="select-none pl-2" data-tauri-drag-region>
+      <header className="pl-2 select-none" data-tauri-drag-region>
         <h1 className="mb-1 text-4xl font-medium" data-tauri-drag-region>
           {title}
         </h1>

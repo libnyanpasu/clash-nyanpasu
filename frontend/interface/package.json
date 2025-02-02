@@ -11,13 +11,14 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@tauri-apps/api": "2.1.1",
+    "@tanstack/react-query": "5.66.0",
+    "@tauri-apps/api": "2.2.0",
     "ahooks": "3.8.4",
     "ofetch": "1.4.1",
     "react": "19.0.0",
-    "swr": "2.2.5"
+    "swr": "2.3.0"
   },
   "devDependencies": {
-    "@types/react": "19.0.2"
+    "@types/react": "19.0.8"
   }
 }

@@ -120,7 +120,7 @@ impl<F: Fn(DownloaderState)> DownloaderBuilder<F> {
     }
 }
 
-#[derive(Debug, Serialize, Default, Clone)]
+#[derive(Debug, Serialize, Default, Clone, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum DownloaderState {
     #[default]
@@ -139,7 +139,7 @@ pub enum DownloadMode {
     MultiThread,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 pub struct DownloadStatus {
     pub state: DownloaderState,
     pub downloaded: u64,
@@ -149,7 +149,7 @@ pub struct DownloadStatus {
     pub now: u64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 #[allow(private_interfaces)]
 pub struct ChunkStatus {
     pub state: ChunkThreadState,
@@ -169,7 +169,7 @@ enum DecreaseSemaphoreReason {
     Cause(anyhow::Error),
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 enum ChunkThreadState {
     Idle,
     Downloading,
@@ -279,12 +279,12 @@ impl<F: Fn(DownloaderState)> Downloader<F> {
                     .map(|part| {
                         part.trim()
                             .split('=')
-                            .last()
+                            .next_back()
                             .unwrap()
                             .trim_matches(['"', ';', '\''])
                     })
             })
-            .unwrap_or(self.url.path_segments().unwrap().last().unwrap());
+            .unwrap_or(self.url.path_segments().unwrap().next_back().unwrap());
         Ok((filename.to_string(), total_size))
     }
 

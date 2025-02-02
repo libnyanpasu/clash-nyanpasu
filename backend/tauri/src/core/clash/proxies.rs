@@ -9,11 +9,12 @@ use indexmap::IndexMap;
 use log::warn;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use std::sync::{Arc, OnceLock};
 use tokio::{sync::broadcast, try_join};
 use tracing_attributes::instrument;
 
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxyGroupItem {
     pub name: String,
@@ -55,7 +56,7 @@ impl From<api::ProxyItem> for ProxyGroupItem {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct Proxies {
     pub global: ProxyGroupItem,
@@ -260,7 +261,7 @@ type ProxiesGuardSingleton = &'static Arc<RwLock<ProxiesGuard>>;
 impl ProxiesGuardExt for ProxiesGuardSingleton {
     async fn update(&self) -> Result<()> {
         let proxies = Proxies::fetch().await?;
-        let buf = simd_json::to_string(&proxies)?;
+        let buf = serde_json::to_string(&proxies)?;
         let checksum = adler32(buf.as_bytes())?;
         {
             let reader = self.read();

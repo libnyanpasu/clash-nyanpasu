@@ -11,6 +11,7 @@ use anyhow::{anyhow, Result};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use shared::{get_arch, CoreTypeMeta};
+use specta::Type;
 use tokio::{join, sync::RwLock};
 
 mod instance;
@@ -44,7 +45,7 @@ pub struct ManifestVersion {
     updated_at: String,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Type)]
 pub struct ManifestVersionLatest {
     mihomo: String,
     mihomo_alpha: String,
@@ -251,7 +252,7 @@ impl UpdaterManager {
         let version = res
             .trim()
             .split(' ')
-            .last()
+            .next_back()
             .ok_or(anyhow!("no version found"))?;
         Ok(version.to_string())
     }

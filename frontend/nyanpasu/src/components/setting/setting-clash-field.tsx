@@ -91,14 +91,17 @@ const ClashFieldSwitch = () => {
 export const SettingClashField = () => {
   const { t } = useTranslation()
 
-  const { getRuntimeExists, getProfiles, setProfilesConfig } = useClash()
+  const { getProfiles, setProfilesConfig } = useClash()
 
   const mergeFields = useMemo(
     () => [
-      ...(getRuntimeExists.data ?? []),
+      ...[
+        ...Object.keys(CLASH_FIELD.default),
+        ...Object.keys(CLASH_FIELD.handle),
+      ],
       ...(getProfiles.data?.valid ?? []),
     ],
-    [getRuntimeExists.data, getProfiles.data],
+    [getProfiles.data],
   )
 
   const filteredField = (fields: { [key: string]: string }): string[] => {

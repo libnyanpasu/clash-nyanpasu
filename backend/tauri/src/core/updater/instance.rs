@@ -7,13 +7,14 @@ use crate::{
 use anyhow::anyhow;
 use runas::Command as RunasCommand;
 use serde::Serialize;
+use specta::Type;
 #[cfg(target_family = "unix")]
 use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 use tempfile::TempDir;
 use tokio::sync::Mutex;
 
-#[derive(Debug, Clone, Serialize, Default)]
+#[derive(Debug, Clone, Serialize, Default, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum UpdaterState {
     #[default]
@@ -42,7 +43,7 @@ struct UpdaterInner {
     state: UpdaterState,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Type)]
 pub struct UpdaterSummary {
     pub id: usize,
     pub state: UpdaterState,

@@ -235,9 +235,9 @@ function ProfilePage() {
       </AnimatePresence>
 
       <AddProfileContext.Provider value={addProfileCtxValue}>
-        <div className="fixed bottom-8 right-8">
+        <div className="fixed right-8 bottom-8">
           <FloatingButton
-            className="relative -right-2.5 -top-3 flex size-11 min-w-fit"
+            className="relative -top-3 -right-2.5 flex size-11 min-w-fit"
             sx={[
               (theme) => ({
                 backgroundColor: theme.palette.grey[200],

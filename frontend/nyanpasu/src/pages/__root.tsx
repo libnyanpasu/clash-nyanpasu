@@ -28,11 +28,13 @@ import { emit } from '@tauri-apps/api/event'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import 'dayjs/locale/ru'
 import 'dayjs/locale/zh-cn'
+import 'dayjs/locale/zh-tw'
 import customParseFormat from 'dayjs/plugin/customParseFormat'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { useAtom, useSetAtom } from 'jotai'
 import { lazy, useEffect } from 'react'
 import { SWRConfig } from 'swr'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import styles from './-__root.module.scss'
 
 dayjs.extend(relativeTime)
@@ -74,6 +76,8 @@ export const Route = createRootRoute({
   pendingComponent: Pending,
 })
 
+const queryClient = new QueryClient()
+
 export default function App() {
   const { theme } = useCustomTheme()
 
@@ -109,33 +113,35 @@ export default function App() {
   })
 
   return (
-    <SWRConfig
-      value={{
-        errorRetryCount: 5,
-        revalidateOnMount: true,
-        revalidateOnFocus: true,
-        refreshInterval: 5000,
-      }}
-    >
-      <StyledEngineProvider injectFirst>
-        <ThemeProvider theme={theme}>
-          <CssBaseline />
-          <ThemeModeProvider />
-          <LogProvider />
-          <LocalesProvider />
-          <MutationProvider />
-          <NoticeProvider />
-          <SchemeProvider />
-          <UpdaterDialog />
+    <QueryClientProvider client={queryClient}>
+      <SWRConfig
+        value={{
+          errorRetryCount: 5,
+          revalidateOnMount: true,
+          revalidateOnFocus: true,
+          refreshInterval: 5000,
+        }}
+      >
+        <StyledEngineProvider injectFirst>
+          <ThemeProvider theme={theme}>
+            <CssBaseline />
+            <ThemeModeProvider />
+            <LogProvider />
+            <LocalesProvider />
+            <MutationProvider />
+            <NoticeProvider />
+            <SchemeProvider />
+            <UpdaterDialog />
 
-          <AppContainer isDrawer={isDrawer}>
-            <PageTransition
-              className={cn('absolute inset-4 top-10', !isDrawer && 'left-0')}
-            />
-            <TanStackRouterDevtools />
-          </AppContainer>
-        </ThemeProvider>
-      </StyledEngineProvider>
-    </SWRConfig>
+            <AppContainer isDrawer={isDrawer}>
+              <PageTransition
+                className={cn('absolute inset-4 top-10', !isDrawer && 'left-0')}
+              />
+              <TanStackRouterDevtools />
+            </AppContainer>
+          </ThemeProvider>
+        </StyledEngineProvider>
+      </SWRConfig>
+    </QueryClientProvider>
   )
 }

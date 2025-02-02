@@ -4,6 +4,8 @@ use anyhow::Result;
 use enumflags2::bitflags;
 use nyanpasu_macro::VergePatch;
 use serde::{Deserialize, Serialize};
+use specta::Type;
+
 mod clash_strategy;
 pub mod logging;
 mod widget;
@@ -15,7 +17,7 @@ pub use widget::NetworkStatisticWidgetConfig;
 // TODO: when support sing-box, remove this struct
 #[bitflags]
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Type)]
 pub enum ClashCore {
     #[serde(rename = "clash", alias = "clash-premium")]
     ClashPremium = 0b0001,
@@ -101,7 +103,7 @@ impl TryFrom<&nyanpasu_utils::core::CoreType> for ClashCore {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum ProxiesSelectorMode {
     Hidden,
@@ -110,7 +112,7 @@ pub enum ProxiesSelectorMode {
     Submenu,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum TunStack {
     System,
@@ -130,7 +132,7 @@ impl AsRef<str> for TunStack {
 }
 
 /// ### `verge.yaml` schema
-#[derive(Default, Debug, Clone, Deserialize, Serialize, VergePatch)]
+#[derive(Default, Debug, Clone, Deserialize, Serialize, VergePatch, specta::Type)]
 #[verge(patch_fn = "patch_config")]
 // TODO: use new managedState and builder pattern instead
 pub struct IVerge {
@@ -255,7 +257,7 @@ pub struct IVerge {
     pub network_statistic_widget: Option<NetworkStatisticWidgetConfig>,
 }
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize)]
+#[derive(Default, Debug, Clone, Deserialize, Serialize, Type)]
 pub struct WindowState {
     pub width: u32,
     pub height: u32,
@@ -265,7 +267,7 @@ pub struct WindowState {
     pub fullscreen: bool,
 }
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize)]
+#[derive(Default, Debug, Clone, Deserialize, Serialize, specta::Type)]
 pub struct IVergeTheme {
     pub primary_color: Option<String>,
     pub secondary_color: Option<String>,

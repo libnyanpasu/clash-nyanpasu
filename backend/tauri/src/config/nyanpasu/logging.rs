@@ -1,7 +1,7 @@
 use super::IVerge;
 use serde::{Deserialize, Serialize};
 use tracing_subscriber::filter;
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, specta::Type)]
 pub enum LoggingLevel {
     #[serde(rename = "silent", alias = "off")]
     Silent,

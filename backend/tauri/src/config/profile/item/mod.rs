@@ -90,10 +90,11 @@ pub trait ProfileCleanup: ProfileHelper {
     }
 }
 
-#[derive(Debug, Delegate, Clone, EnumWrapperCombined)]
+#[derive(Debug, Delegate, Clone, EnumWrapperCombined, specta::Type)]
 #[delegate(ProfileSharedSetter)]
 #[delegate(ProfileSharedGetter)]
 #[delegate(ProfileFileIo)]
+#[specta(untagged)]
 pub enum Profile {
     Remote(RemoteProfile),
     Local(LocalProfile),

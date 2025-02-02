@@ -1,51 +1,45 @@
 use chrono::Utc;
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    storage::EventsGuard,
+    storage::TaskStorage,
     task::{TaskEventID, TaskID, TaskRunResult, Timestamp},
     utils::Result,
 };
-use std::{
-    collections::HashMap,
-    sync::{Arc, OnceLock},
-};
-pub struct TaskEvents;
+use std::{collections::HashMap, sync::Arc};
+pub struct TaskEvents {
+    storage: Arc<Mutex<TaskStorage>>,
+}
 
 pub trait TaskEventsDispatcher {
-    fn new() -> Self;
+    fn new(storage: Arc<Mutex<TaskStorage>>) -> Self;
     fn new_event(&self, task_id: TaskID, event_id: TaskEventID) -> Result<TaskEventID>;
     fn dispatch(&self, event_id: TaskEventID, state: TaskEventState) -> Result<()>;
 }
 
-impl TaskEvents {
-    pub fn global() -> &'static Arc<Self> {
-        static EVENTS: OnceLock<Arc<TaskEvents>> = OnceLock::new();
-
-        EVENTS.get_or_init(|| Arc::new(Self::new()))
-    }
-}
-
 impl TaskEventsDispatcher for TaskEvents {
-    fn new() -> Self {
-        TaskEvents {}
+    fn new(storage: Arc<Mutex<TaskStorage>>) -> Self {
+        TaskEvents { storage }
     }
 
     fn new_event(&self, task_id: TaskID, event_id: TaskEventID) -> Result<TaskEventID> {
+        let storage = self.storage.lock();
         let mut event = TaskEvent {
             id: event_id,
             task_id,
             ..TaskEvent::default()
         };
         event.dispatch(TaskEventState::Pending);
-        EventsGuard::global().add_event(&event)?;
+        storage.add_event(&event)?;
         Ok(event_id)
     }
 
     fn dispatch(&self, event_id: TaskEventID, state: TaskEventState) -> Result<()> {
-        let mut event = EventsGuard::global().get_event(event_id).unwrap().unwrap(); // unwrap because it should be exist here, if not, it's a bug
+        let storage = self.storage.lock();
+        let mut event = storage.get_event(event_id).unwrap().unwrap(); // unwrap because it should be exist here, if not, it's a bug
         event.dispatch(state);
-        EventsGuard::global().update_event(&event)?;
+        storage.update_event(&event)?;
         Ok(())
     }
 }
@@ -56,6 +50,7 @@ pub struct TaskEvent {
     pub task_id: TaskID,
     pub state: TaskEventState,
     pub timeline: HashMap<String, Timestamp>,
+    pub updated_at: Timestamp,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -84,14 +79,16 @@ impl Default for TaskEvent {
             task_id: 0,
             state: TaskEventState::Pending,
             timeline: HashMap::with_capacity(4), // 4 states
+            updated_at: Utc::now().timestamp_millis(),
         }
     }
 }
 
 impl TaskEvent {
     fn dispatch(&mut self, state: TaskEventState) {
+        let now = Utc::now().timestamp_millis();
         self.state = state;
-        self.timeline
-            .insert(self.state.fmt().into(), Utc::now().timestamp_millis());
+        self.timeline.insert(self.state.fmt().into(), now);
+        self.updated_at = now;
     }
 }

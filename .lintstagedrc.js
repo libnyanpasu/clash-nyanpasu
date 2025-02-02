@@ -26,6 +26,7 @@ export default {
     () => 'cargo fmt --manifest-path ./backend/Cargo.toml --all',
     // () => 'cargo test --manifest-path=./backend/Cargo.toml',
     // () => "cargo fmt --manifest-path=./backend/Cargo.toml --all",
+    () => 'git add -u',
   ],
   '*.{html,sass,scss,less}': ['prettier --write', 'stylelint --fix'],
   'package.json': ['prettier --write'],

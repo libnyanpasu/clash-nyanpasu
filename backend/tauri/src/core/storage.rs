@@ -1,13 +1,9 @@
 use crate::{log_err, utils::dirs};
+use anyhow::Context;
 use redb::TableDefinition;
 use serde::{de::DeserializeOwned, Serialize};
-use std::{
-    fs,
-    path::PathBuf,
-    result::Result as StdResult,
-    sync::{Arc, OnceLock},
-};
-use tauri::Emitter;
+use std::{fs, ops::Deref, result::Result as StdResult, sync::Arc};
+use tauri::{Emitter, Manager};
 
 #[derive(Debug, thiserror::Error)]
 pub enum StorageOperationError {
@@ -31,7 +27,29 @@ type Result<T> = StdResult<T, StorageOperationError>;
 
 /// storage is a wrapper or called a facade for the rocksdb
 /// Maybe provide a facade for a kv storage is a good idea?
+#[derive(Clone)]
 pub struct Storage {
+    inner: Arc<StorageInner>,
+}
+
+impl Storage {
+    pub fn try_new(path: &std::path::Path) -> Result<Self> {
+        let inner = StorageInner::try_new(path)?;
+        Ok(Self {
+            inner: Arc::new(inner),
+        })
+    }
+}
+
+impl Deref for Storage {
+    type Target = Arc<StorageInner>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+pub struct StorageInner {
     instance: redb::Database,
     tx: tokio::sync::broadcast::Sender<(String, Option<Vec<u8>>)>,
 }
@@ -42,30 +60,24 @@ pub trait WebStorage {
     fn remove_item(&self, key: impl AsRef<str>) -> Result<()>;
 }
 
-impl Storage {
-    pub fn global() -> &'static Self {
-        static STORAGE: OnceLock<Arc<Storage>> = OnceLock::new();
-
-        STORAGE.get_or_init(|| {
-            let path = dirs::storage_path().unwrap().to_str().unwrap().to_string();
-            let path = PathBuf::from(&path);
-            let instance: redb::Database = if path.exists() && !path.is_dir() {
-                redb::Database::open(&path).unwrap()
-            } else {
-                if path.exists() && path.is_dir() {
-                    fs::remove_dir_all(&path).unwrap();
-                }
-                let db = redb::Database::create(&path).unwrap();
-                // Create table
-                let write_txn = db.begin_write().unwrap();
-                write_txn.open_table(NYANPASU_TABLE).unwrap();
-                write_txn.commit().unwrap();
-                db
-            };
-            Arc::new(Storage {
-                instance,
-                tx: tokio::sync::broadcast::channel(16).0,
-            })
+impl StorageInner {
+    pub fn try_new(path: &std::path::Path) -> Result<Self> {
+        let instance: redb::Database = if path.exists() && !path.is_dir() {
+            redb::Database::open(path).unwrap()
+        } else {
+            if path.exists() && path.is_dir() {
+                fs::remove_dir_all(path).unwrap();
+            }
+            let db = redb::Database::create(path).unwrap();
+            // Create table
+            let write_txn = db.begin_write().unwrap();
+            write_txn.open_table(NYANPASU_TABLE).unwrap();
+            write_txn.commit().unwrap();
+            db
+        };
+        Ok(Self {
+            instance,
+            tx: tokio::sync::broadcast::channel(16).0,
         })
     }
 
@@ -76,8 +88,9 @@ impl Storage {
     fn notify_subscribers(&self, key: impl AsRef<str>, value: Option<&[u8]>) {
         let key = key.as_ref().to_string();
         let value = value.map(|v| v.to_vec());
+        let tx = self.tx.clone();
         std::thread::spawn(move || {
-            let _ = Self::global().tx.send((key, value));
+            let _ = tx.send((key, value));
         });
     }
 
@@ -86,7 +99,7 @@ impl Storage {
     }
 }
 
-impl WebStorage for Storage {
+impl WebStorage for StorageInner {
     fn get_item<T: DeserializeOwned>(&self, key: impl AsRef<str>) -> Result<Option<T>> {
         let key = key.as_ref().as_bytes();
         let db = self.get_instance();
@@ -134,7 +147,8 @@ impl WebStorage for Storage {
 }
 
 pub fn register_web_storage_listener(app_handle: &tauri::AppHandle) {
-    let rx = Storage::global().get_rx();
+    let storage = app_handle.state::<Storage>();
+    let rx = storage.get_rx();
     let app_handle = app_handle.clone();
     std::thread::spawn(move || {
         nyanpasu_utils::runtime::block_on(async {
@@ -151,4 +165,11 @@ pub fn register_web_storage_listener(app_handle: &tauri::AppHandle) {
             }
         });
     });
+}
+
+pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> anyhow::Result<()> {
+    let storage_path = dirs::storage_path().context("failed to get storage path")?;
+    let storage = Storage::try_new(&storage_path)?;
+    app.manage(storage);
+    Ok(())
 }

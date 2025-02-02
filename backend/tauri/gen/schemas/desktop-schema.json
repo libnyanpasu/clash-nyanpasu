@@ -37,7 +37,7 @@
   ],
   "definitions": {
     "Capability": {
-      "description": "A grouping and boundary mechanism developers can use to isolate access to the IPC layer.\n\nIt controls application windows fine grained access to the Tauri core, application, or plugin commands. If a window is not matching any capability then it has no access to the IPC layer at all.\n\nThis can be done to create groups of windows, based on their required system access, which can reduce impact of frontend vulnerabilities in less privileged windows. Windows can be added to a capability by exact name (e.g. `main-window`) or glob patterns like `*` or `admin-*`. A Window can have none, one, or multiple associated capabilities.\n\n## Example\n\n```json { \"identifier\": \"main-user-files-write\", \"description\": \"This capability allows the `main` window on macOS and Windows access to `filesystem` write related commands and `dialog` commands to enable programatic access to files selected by the user.\", \"windows\": [ \"main\" ], \"permissions\": [ \"core:default\", \"dialog:open\", { \"identifier\": \"fs:allow-write-text-file\", \"allow\": [{ \"path\": \"$HOME/test.txt\" }] }, \"platforms\": [\"macOS\",\"windows\"] } ```",
+      "description": "A grouping and boundary mechanism developers can use to isolate access to the IPC layer.\n\nIt controls application windows fine grained access to the Tauri core, application, or plugin commands. If a window is not matching any capability then it has no access to the IPC layer at all.\n\nThis can be done to create groups of windows, based on their required system access, which can reduce impact of frontend vulnerabilities in less privileged windows. Windows can be added to a capability by exact name (e.g. `main-window`) or glob patterns like `*` or `admin-*`. A Window can have none, one, or multiple associated capabilities.\n\n## Example\n\n```json { \"identifier\": \"main-user-files-write\", \"description\": \"This capability allows the `main` window on macOS and Windows access to `filesystem` write related commands and `dialog` commands to enable programatic access to files selected by the user.\", \"windows\": [ \"main\" ], \"permissions\": [ \"core:default\", \"dialog:open\", { \"identifier\": \"fs:allow-write-text-file\", \"allow\": [{ \"path\": \"$HOME/test.txt\" }] }, ], \"platforms\": [\"macOS\",\"windows\"] } ```",
       "type": "object",
       "required": [
         "identifier",
@@ -84,7 +84,7 @@
           }
         },
         "permissions": {
-          "description": "List of permissions attached to this capability.\n\nMust include the plugin name as prefix in the form of `${plugin-name}:${permission-name}`. For commands directly implemented in the application itself only `${permission-name}` is required.\n\n## Example\n\n```json [ \"core:default\", \"shell:allow-open\", \"dialog:open\", { \"identifier\": \"fs:allow-write-text-file\", \"allow\": [{ \"path\": \"$HOME/test.txt\" }] } ```",
+          "description": "List of permissions attached to this capability.\n\nMust include the plugin name as prefix in the form of `${plugin-name}:${permission-name}`. For commands directly implemented in the application itself only `${permission-name}` is required.\n\n## Example\n\n```json [ \"core:default\", \"shell:allow-open\", \"dialog:open\", { \"identifier\": \"fs:allow-write-text-file\", \"allow\": [{ \"path\": \"$HOME/test.txt\" }] } ] ```",
           "type": "array",
           "items": {
             "$ref": "#/definitions/PermissionEntry"
@@ -140,7 +140,7 @@
                   "identifier": {
                     "anyOf": [
                       {
-                        "description": "This set of permissions describes the what kind of\nfile system access the `fs` plugin has enabled or denied by default.\n\n#### Granted Permissions\n\nThis default permission set enables read access to the\napplication specific directories (AppConfig, AppData, AppLocalData, AppCache,\nAppLog) and all files and sub directories created in it.\nThe location of these directories depends on the operating system,\nwhere the application is run.\n\nIn general these directories need to be manually created\nby the application at runtime, before accessing files or folders\nin it is possible.\n\nTherefore, it is also allowed to create all of these folders via\nthe `mkdir` command.\n\n#### Denied Permissions\n\nThis default permission set prevents access to critical components\nof the Tauri application by default.\nOn Windows the webview data folder access is denied.\n\n",
+                        "description": "This set of permissions describes the what kind of\nfile system access the `fs` plugin has enabled or denied by default.\n\n#### Granted Permissions\n\nThis default permission set enables read access to the\napplication specific directories (AppConfig, AppData, AppLocalData, AppCache,\nAppLog) and all files and sub directories created in it.\nThe location of these directories depends on the operating system,\nwhere the application is run.\n\nIn general these directories need to be manually created\nby the application at runtime, before accessing files or folders\nin it is possible.\n\nTherefore, it is also allowed to create all of these folders via\nthe `mkdir` command.\n\n#### Denied Permissions\n\nThis default permission set prevents access to critical components\nof the Tauri application by default.\nOn Windows the webview data folder access is denied.\n\n#### Included permissions within this default permission set:\n",
                         "type": "string",
                         "const": "fs:default"
                       },
@@ -985,6 +985,11 @@
                         "const": "fs:allow-seek"
                       },
                       {
+                        "description": "Enables the size command without any pre-configured scope.",
+                        "type": "string",
+                        "const": "fs:allow-size"
+                      },
+                      {
                         "description": "Enables the stat command without any pre-configured scope.",
                         "type": "string",
                         "const": "fs:allow-stat"
@@ -1108,6 +1113,11 @@
                         "description": "Denies the seek command without any pre-configured scope.",
                         "type": "string",
                         "const": "fs:deny-seek"
+                      },
+                      {
+                        "description": "Denies the size command without any pre-configured scope.",
+                        "type": "string",
+                        "const": "fs:deny-size"
                       },
                       {
                         "description": "Denies the stat command without any pre-configured scope.",
@@ -1581,7 +1591,7 @@
                       "description": "FS scope entry.",
                       "anyOf": [
                         {
-                          "description": "FS scope path.",
+                          "description": "A path that can be accessed by the webview when using the fs APIs. FS scope path pattern.\n\nThe pattern can start with a variable that resolves to a system base directory. The variables are: `$AUDIO`, `$CACHE`, `$CONFIG`, `$DATA`, `$LOCALDATA`, `$DESKTOP`, `$DOCUMENT`, `$DOWNLOAD`, `$EXE`, `$FONT`, `$HOME`, `$PICTURE`, `$PUBLIC`, `$RUNTIME`, `$TEMPLATE`, `$VIDEO`, `$RESOURCE`, `$APP`, `$LOG`, `$TEMP`, `$APPCONFIG`, `$APPDATA`, `$APPLOCALDATA`, `$APPCACHE`, `$APPLOG`.",
                           "type": "string"
                         },
                         {
@@ -1591,7 +1601,7 @@
                           ],
                           "properties": {
                             "path": {
-                              "description": "FS scope path.",
+                              "description": "A path that can be accessed by the webview when using the fs APIs.\n\nThe pattern can start with a variable that resolves to a system base directory. The variables are: `$AUDIO`, `$CACHE`, `$CONFIG`, `$DATA`, `$LOCALDATA`, `$DESKTOP`, `$DOCUMENT`, `$DOWNLOAD`, `$EXE`, `$FONT`, `$HOME`, `$PICTURE`, `$PUBLIC`, `$RUNTIME`, `$TEMPLATE`, `$VIDEO`, `$RESOURCE`, `$APP`, `$LOG`, `$TEMP`, `$APPCONFIG`, `$APPDATA`, `$APPLOCALDATA`, `$APPCACHE`, `$APPLOG`.",
                               "type": "string"
                             }
                           }
@@ -1605,7 +1615,7 @@
                       "description": "FS scope entry.",
                       "anyOf": [
                         {
-                          "description": "FS scope path.",
+                          "description": "A path that can be accessed by the webview when using the fs APIs. FS scope path pattern.\n\nThe pattern can start with a variable that resolves to a system base directory. The variables are: `$AUDIO`, `$CACHE`, `$CONFIG`, `$DATA`, `$LOCALDATA`, `$DESKTOP`, `$DOCUMENT`, `$DOWNLOAD`, `$EXE`, `$FONT`, `$HOME`, `$PICTURE`, `$PUBLIC`, `$RUNTIME`, `$TEMPLATE`, `$VIDEO`, `$RESOURCE`, `$APP`, `$LOG`, `$TEMP`, `$APPCONFIG`, `$APPDATA`, `$APPLOCALDATA`, `$APPCACHE`, `$APPLOG`.",
                           "type": "string"
                         },
                         {
@@ -1615,7 +1625,7 @@
                           ],
                           "properties": {
                             "path": {
-                              "description": "FS scope path.",
+                              "description": "A path that can be accessed by the webview when using the fs APIs.\n\nThe pattern can start with a variable that resolves to a system base directory. The variables are: `$AUDIO`, `$CACHE`, `$CONFIG`, `$DATA`, `$LOCALDATA`, `$DESKTOP`, `$DOCUMENT`, `$DOWNLOAD`, `$EXE`, `$FONT`, `$HOME`, `$PICTURE`, `$PUBLIC`, `$RUNTIME`, `$TEMPLATE`, `$VIDEO`, `$RESOURCE`, `$APP`, `$LOG`, `$TEMP`, `$APPCONFIG`, `$APPDATA`, `$APPLOCALDATA`, `$APPCACHE`, `$APPLOG`.",
                               "type": "string"
                             }
                           }
@@ -1714,6 +1724,14 @@
                             "name"
                           ],
                           "properties": {
+                            "name": {
+                              "description": "The name for this allowed shell command configuration.\n\nThis name will be used inside of the webview API to call this command along with any specified arguments.",
+                              "type": "string"
+                            },
+                            "cmd": {
+                              "description": "The command name. It can start with a variable that resolves to a system base directory. The variables are: `$AUDIO`, `$CACHE`, `$CONFIG`, `$DATA`, `$LOCALDATA`, `$DESKTOP`, `$DOCUMENT`, `$DOWNLOAD`, `$EXE`, `$FONT`, `$HOME`, `$PICTURE`, `$PUBLIC`, `$RUNTIME`, `$TEMPLATE`, `$VIDEO`, `$RESOURCE`, `$LOG`, `$TEMP`, `$APPCONFIG`, `$APPDATA`, `$APPLOCALDATA`, `$APPCACHE`, `$APPLOG`.",
+                              "type": "string"
+                            },
                             "args": {
                               "description": "The allowed arguments for the command execution.",
                               "allOf": [
@@ -1721,14 +1739,6 @@
                                   "$ref": "#/definitions/ShellScopeEntryAllowedArgs"
                                 }
                               ]
-                            },
-                            "cmd": {
-                              "description": "The command name. It can start with a variable that resolves to a system base directory. The variables are: `$AUDIO`, `$CACHE`, `$CONFIG`, `$DATA`, `$LOCALDATA`, `$DESKTOP`, `$DOCUMENT`, `$DOWNLOAD`, `$EXE`, `$FONT`, `$HOME`, `$PICTURE`, `$PUBLIC`, `$RUNTIME`, `$TEMPLATE`, `$VIDEO`, `$RESOURCE`, `$LOG`, `$TEMP`, `$APPCONFIG`, `$APPDATA`, `$APPLOCALDATA`, `$APPCACHE`, `$APPLOG`.",
-                              "type": "string"
-                            },
-                            "name": {
-                              "description": "The name for this allowed shell command configuration.\n\nThis name will be used inside of the webview API to call this command along with any specified arguments.",
-                              "type": "string"
                             }
                           },
                           "additionalProperties": false
@@ -1740,6 +1750,10 @@
                             "sidecar"
                           ],
                           "properties": {
+                            "name": {
+                              "description": "The name for this allowed shell command configuration.\n\nThis name will be used inside of the webview API to call this command along with any specified arguments.",
+                              "type": "string"
+                            },
                             "args": {
                               "description": "The allowed arguments for the command execution.",
                               "allOf": [
@@ -1747,10 +1761,6 @@
                                   "$ref": "#/definitions/ShellScopeEntryAllowedArgs"
                                 }
                               ]
-                            },
-                            "name": {
-                              "description": "The name for this allowed shell command configuration.\n\nThis name will be used inside of the webview API to call this command along with any specified arguments.",
-                              "type": "string"
                             },
                             "sidecar": {
                               "description": "If this command is a sidecar command.",
@@ -1774,6 +1784,14 @@
                             "name"
                           ],
                           "properties": {
+                            "name": {
+                              "description": "The name for this allowed shell command configuration.\n\nThis name will be used inside of the webview API to call this command along with any specified arguments.",
+                              "type": "string"
+                            },
+                            "cmd": {
+                              "description": "The command name. It can start with a variable that resolves to a system base directory. The variables are: `$AUDIO`, `$CACHE`, `$CONFIG`, `$DATA`, `$LOCALDATA`, `$DESKTOP`, `$DOCUMENT`, `$DOWNLOAD`, `$EXE`, `$FONT`, `$HOME`, `$PICTURE`, `$PUBLIC`, `$RUNTIME`, `$TEMPLATE`, `$VIDEO`, `$RESOURCE`, `$LOG`, `$TEMP`, `$APPCONFIG`, `$APPDATA`, `$APPLOCALDATA`, `$APPCACHE`, `$APPLOG`.",
+                              "type": "string"
+                            },
                             "args": {
                               "description": "The allowed arguments for the command execution.",
                               "allOf": [
@@ -1781,14 +1799,6 @@
                                   "$ref": "#/definitions/ShellScopeEntryAllowedArgs"
                                 }
                               ]
-                            },
-                            "cmd": {
-                              "description": "The command name. It can start with a variable that resolves to a system base directory. The variables are: `$AUDIO`, `$CACHE`, `$CONFIG`, `$DATA`, `$LOCALDATA`, `$DESKTOP`, `$DOCUMENT`, `$DOWNLOAD`, `$EXE`, `$FONT`, `$HOME`, `$PICTURE`, `$PUBLIC`, `$RUNTIME`, `$TEMPLATE`, `$VIDEO`, `$RESOURCE`, `$LOG`, `$TEMP`, `$APPCONFIG`, `$APPDATA`, `$APPLOCALDATA`, `$APPCACHE`, `$APPLOG`.",
-                              "type": "string"
-                            },
-                            "name": {
-                              "description": "The name for this allowed shell command configuration.\n\nThis name will be used inside of the webview API to call this command along with any specified arguments.",
-                              "type": "string"
                             }
                           },
                           "additionalProperties": false
@@ -1800,6 +1810,10 @@
                             "sidecar"
                           ],
                           "properties": {
+                            "name": {
+                              "description": "The name for this allowed shell command configuration.\n\nThis name will be used inside of the webview API to call this command along with any specified arguments.",
+                              "type": "string"
+                            },
                             "args": {
                               "description": "The allowed arguments for the command execution.",
                               "allOf": [
@@ -1807,10 +1821,6 @@
                                   "$ref": "#/definitions/ShellScopeEntryAllowedArgs"
                                 }
                               ]
-                            },
-                            "name": {
-                              "description": "The name for this allowed shell command configuration.\n\nThis name will be used inside of the webview API to call this command along with any specified arguments.",
-                              "type": "string"
                             },
                             "sidecar": {
                               "description": "If this command is a sidecar command.",
@@ -2603,6 +2613,11 @@
           "const": "core:webview:allow-reparent"
         },
         {
+          "description": "Enables the set_webview_background_color command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:webview:allow-set-webview-background-color"
+        },
+        {
           "description": "Enables the set_webview_focus command without any pre-configured scope.",
           "type": "string",
           "const": "core:webview:allow-set-webview-focus"
@@ -2681,6 +2696,11 @@
           "description": "Denies the reparent command without any pre-configured scope.",
           "type": "string",
           "const": "core:webview:deny-reparent"
+        },
+        {
+          "description": "Denies the set_webview_background_color command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:webview:deny-set-webview-background-color"
         },
         {
           "description": "Denies the set_webview_focus command without any pre-configured scope.",
@@ -2898,6 +2918,21 @@
           "const": "core:window:allow-set-always-on-top"
         },
         {
+          "description": "Enables the set_background_color command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:window:allow-set-background-color"
+        },
+        {
+          "description": "Enables the set_badge_count command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:window:allow-set-badge-count"
+        },
+        {
+          "description": "Enables the set_badge_label command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:window:allow-set-badge-label"
+        },
+        {
           "description": "Enables the set_closable command without any pre-configured scope.",
           "type": "string",
           "const": "core:window:allow-set-closable"
@@ -2981,6 +3016,11 @@
           "description": "Enables the set_minimizable command without any pre-configured scope.",
           "type": "string",
           "const": "core:window:allow-set-minimizable"
+        },
+        {
+          "description": "Enables the set_overlay_icon command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:window:allow-set-overlay-icon"
         },
         {
           "description": "Enables the set_position command without any pre-configured scope.",
@@ -3243,6 +3283,21 @@
           "const": "core:window:deny-set-always-on-top"
         },
         {
+          "description": "Denies the set_background_color command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:window:deny-set-background-color"
+        },
+        {
+          "description": "Denies the set_badge_count command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:window:deny-set-badge-count"
+        },
+        {
+          "description": "Denies the set_badge_label command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:window:deny-set-badge-label"
+        },
+        {
           "description": "Denies the set_closable command without any pre-configured scope.",
           "type": "string",
           "const": "core:window:deny-set-closable"
@@ -3326,6 +3381,11 @@
           "description": "Denies the set_minimizable command without any pre-configured scope.",
           "type": "string",
           "const": "core:window:deny-set-minimizable"
+        },
+        {
+          "description": "Denies the set_overlay_icon command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:window:deny-set-overlay-icon"
         },
         {
           "description": "Denies the set_position command without any pre-configured scope.",
@@ -3478,7 +3538,7 @@
           "const": "dialog:deny-save"
         },
         {
-          "description": "This set of permissions describes the what kind of\nfile system access the `fs` plugin has enabled or denied by default.\n\n#### Granted Permissions\n\nThis default permission set enables read access to the\napplication specific directories (AppConfig, AppData, AppLocalData, AppCache,\nAppLog) and all files and sub directories created in it.\nThe location of these directories depends on the operating system,\nwhere the application is run.\n\nIn general these directories need to be manually created\nby the application at runtime, before accessing files or folders\nin it is possible.\n\nTherefore, it is also allowed to create all of these folders via\nthe `mkdir` command.\n\n#### Denied Permissions\n\nThis default permission set prevents access to critical components\nof the Tauri application by default.\nOn Windows the webview data folder access is denied.\n\n",
+          "description": "This set of permissions describes the what kind of\nfile system access the `fs` plugin has enabled or denied by default.\n\n#### Granted Permissions\n\nThis default permission set enables read access to the\napplication specific directories (AppConfig, AppData, AppLocalData, AppCache,\nAppLog) and all files and sub directories created in it.\nThe location of these directories depends on the operating system,\nwhere the application is run.\n\nIn general these directories need to be manually created\nby the application at runtime, before accessing files or folders\nin it is possible.\n\nTherefore, it is also allowed to create all of these folders via\nthe `mkdir` command.\n\n#### Denied Permissions\n\nThis default permission set prevents access to critical components\nof the Tauri application by default.\nOn Windows the webview data folder access is denied.\n\n#### Included permissions within this default permission set:\n",
           "type": "string",
           "const": "fs:default"
         },
@@ -4323,6 +4383,11 @@
           "const": "fs:allow-seek"
         },
         {
+          "description": "Enables the size command without any pre-configured scope.",
+          "type": "string",
+          "const": "fs:allow-size"
+        },
+        {
           "description": "Enables the stat command without any pre-configured scope.",
           "type": "string",
           "const": "fs:allow-stat"
@@ -4446,6 +4511,11 @@
           "description": "Denies the seek command without any pre-configured scope.",
           "type": "string",
           "const": "fs:deny-seek"
+        },
+        {
+          "description": "Denies the size command without any pre-configured scope.",
+          "type": "string",
+          "const": "fs:deny-size"
         },
         {
           "description": "Denies the stat command without any pre-configured scope.",
@@ -5433,6 +5503,22 @@
         }
       ]
     },
+    "ShellScopeEntryAllowedArgs": {
+      "description": "A set of command arguments allowed to be executed by the webview API.\n\nA value of `true` will allow any arguments to be passed to the command. `false` will disable all arguments. A list of [`ShellScopeEntryAllowedArg`] will set those arguments as the only valid arguments to be passed to the attached command configuration.",
+      "anyOf": [
+        {
+          "description": "Use a simple boolean to allow all or disable all arguments to this command configuration.",
+          "type": "boolean"
+        },
+        {
+          "description": "A specific set of [`ShellScopeEntryAllowedArg`] that are valid to call for the command configuration.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ShellScopeEntryAllowedArg"
+          }
+        }
+      ]
+    },
     "ShellScopeEntryAllowedArg": {
       "description": "A command argument allowed to be executed by the webview API.",
       "anyOf": [
@@ -5447,33 +5533,17 @@
             "validator"
           ],
           "properties": {
+            "validator": {
+              "description": "[regex] validator to require passed values to conform to an expected input.\n\nThis will require the argument value passed to this variable to match the `validator` regex before it will be executed.\n\nThe regex string is by default surrounded by `^...$` to match the full string. For example the `https?://\\w+` regex would be registered as `^https?://\\w+$`.\n\n[regex]: <https://docs.rs/regex/latest/regex/#syntax>",
+              "type": "string"
+            },
             "raw": {
               "description": "Marks the validator as a raw regex, meaning the plugin should not make any modification at runtime.\n\nThis means the regex will not match on the entire string by default, which might be exploited if your regex allow unexpected input to be considered valid. When using this option, make sure your regex is correct.",
               "default": false,
               "type": "boolean"
-            },
-            "validator": {
-              "description": "[regex] validator to require passed values to conform to an expected input.\n\nThis will require the argument value passed to this variable to match the `validator` regex before it will be executed.\n\nThe regex string is by default surrounded by `^...$` to match the full string. For example the `https?://\\w+` regex would be registered as `^https?://\\w+$`.\n\n[regex]: <https://docs.rs/regex/latest/regex/#syntax>",
-              "type": "string"
             }
           },
           "additionalProperties": false
-        }
-      ]
-    },
-    "ShellScopeEntryAllowedArgs": {
-      "description": "A set of command arguments allowed to be executed by the webview API.\n\nA value of `true` will allow any arguments to be passed to the command. `false` will disable all arguments. A list of [`ShellScopeEntryAllowedArg`] will set those arguments as the only valid arguments to be passed to the attached command configuration.",
-      "anyOf": [
-        {
-          "description": "Use a simple boolean to allow all or disable all arguments to this command configuration.",
-          "type": "boolean"
-        },
-        {
-          "description": "A specific set of [`ShellScopeEntryAllowedArg`] that are valid to call for the command configuration.",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/ShellScopeEntryAllowedArg"
-          }
         }
       ]
     }

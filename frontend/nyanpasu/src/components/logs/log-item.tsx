@@ -22,7 +22,7 @@ export const LogItem = ({ value }: { value: LogMessage }) => {
   }, [value.payload])
 
   return (
-    <div className="w-full select-text p-4 pb-0 pt-2 font-mono">
+    <div className="w-full p-4 pt-2 pb-0 font-mono select-text">
       <div className="flex gap-2">
         <span className="font-thin">{value.time}</span>
 
@@ -36,7 +36,7 @@ export const LogItem = ({ value }: { value: LogMessage }) => {
         </span>
       </div>
 
-      <div className="text-wrap border-b border-slate-200 pb-2">
+      <div className="border-b border-slate-200 pb-2 text-wrap">
         <p
           className={cn(
             styles.item,

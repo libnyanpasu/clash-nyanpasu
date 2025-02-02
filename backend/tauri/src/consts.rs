@@ -1,6 +1,7 @@
-use once_cell::sync::Lazy;
+use once_cell::sync::{Lazy, OnceCell};
+use tauri::AppHandle;
 
-#[derive(Debug, serde::Serialize, Clone)]
+#[derive(Debug, serde::Serialize, Clone, specta::Type)]
 pub struct BuildInfo {
     pub app_name: &'static str,
     pub app_version: &'static str,
@@ -41,3 +42,10 @@ pub static IS_PORTABLE: Lazy<bool> = Lazy::new(|| {
         false
     }
 });
+
+/// A Tauri AppHandle copy for access from global context,
+/// maybe only access it from panic handler
+static APP_HANDLE: OnceCell<AppHandle> = OnceCell::new();
+pub fn app_handle() -> &'static AppHandle {
+    APP_HANDLE.get().expect("app handle not initialized")
+}

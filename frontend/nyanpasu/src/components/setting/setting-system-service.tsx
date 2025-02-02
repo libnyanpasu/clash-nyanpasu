@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { LoadingButton } from '@mui/lab'
-import { List, ListItem, ListItemText, Typography } from '@mui/material'
+import { Button, List, ListItem, ListItemText, Typography } from '@mui/material'
 import { restartSidecar, useNyanpasu } from '@nyanpasu/interface'
 import { BaseCard, SwitchItem } from '@nyanpasu/ui'
 import { nyanpasu } from './modules/create-props'
@@ -175,6 +175,15 @@ export const SettingSystemService = () => {
             >
               {getInstallButtonString()}
             </LoadingButton>
+
+            {import.meta.env.DEV && (
+              <Button
+                variant="contained"
+                onClick={() => promptDialog.show('install')}
+              >
+                {t('Prompt')}
+              </Button>
+            )}
           </div>
         </ListItem>
       </List>

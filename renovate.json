@@ -43,6 +43,22 @@
       ]
     },
     {
+      "groupName": "Tauri packages",
+      "matchPackageNames": ["/tauri/"]
+    },
+    {
+      "groupName": "Windows packages",
+      "matchPackageNames": ["/windows/", "/webview2-com/", "winreg"]
+    },
+    {
+      "groupName": "Object-C packages",
+      "matchPackageNames": ["/objc2/"]
+    },
+    {
+      "groupName": "egui packages",
+      "matchPackageNames": ["/egui/", "/eframe/"]
+    },
+    {
       "groupName": "Testing packages",
       "matchPackageNames": ["/vitest/", "/cypress/", "/wdio/"]
     }

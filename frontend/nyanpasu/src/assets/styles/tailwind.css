@@ -1,3 +1,5 @@
-@tailwind base;
-@tailwind components;
+/* stylelint-disable import-notation */
+
+@import 'tailwindcss';
+
 @tailwind utilities;

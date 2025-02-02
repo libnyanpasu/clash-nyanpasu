@@ -4,6 +4,5 @@ export default {
     'postcss-import': {},
     'postcss-html': {},
     autoprefixer: {},
-    tailwindcss: {},
   },
 }

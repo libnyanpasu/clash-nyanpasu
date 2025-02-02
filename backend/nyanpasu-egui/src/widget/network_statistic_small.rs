@@ -1,9 +1,14 @@
+use std::sync::Arc;
 use std::sync::LazyLock;
+use std::sync::OnceLock;
 
 use eframe::egui::{
     self, include_image, style::Selection, Color32, Id, Image, Layout, Margin, RichText, Rounding,
     Sense, Stroke, Style, Theme, Vec2, ViewportCommand, Visuals, WidgetText,
 };
+use parking_lot::RwLock;
+
+use crate::ipc::Message;
 
 // Presets
 const STATUS_ICON_CONTAINER_WIDTH: f32 = 20.0;
@@ -36,7 +41,9 @@ fn setup_fonts(ctx: &egui::Context) {
 
     fonts.font_data.insert(
         "Inter".to_owned(),
-        egui::FontData::from_static(include_bytes!("../../assets/Inter-Regular.ttf")),
+        Arc::new(egui::FontData::from_static(include_bytes!(
+            "../../assets/Inter-Regular.ttf"
+        ))),
     );
 
     fonts
@@ -79,19 +86,105 @@ fn use_dark_purple_accent(style: &mut Style) {
     };
 }
 
+#[derive(Clone)]
 pub struct NyanpasuNetworkStatisticSmallWidget {
-    demo_size: u64,
+    state: Arc<RwLock<NyanpasuNetworkStatisticSmallWidgetState>>,
+}
+
+impl Default for NyanpasuNetworkStatisticSmallWidget {
+    fn default() -> Self {
+        Self {
+            state: Arc::new(RwLock::new(
+                NyanpasuNetworkStatisticSmallWidgetState::default(),
+            )),
+        }
+    }
+}
+
+#[derive(Default)]
+struct NyanpasuNetworkStatisticSmallWidgetState {
+    // data fields
+    // download_total: u64,
+    // upload_total: u64,
+    download_speed: u64,
+    upload_speed: u64,
+
+    // eframe ctx
+    egui_ctx: OnceLock<egui::Context>,
 }
 
 impl NyanpasuNetworkStatisticSmallWidget {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        cc.egui_ctx.set_visuals(Visuals::light());
+        cc.egui_ctx.set_visuals(Visuals::dark());
         setup_fonts(&cc.egui_ctx);
         setup_custom_style(&cc.egui_ctx);
         egui_extras::install_image_loaders(&cc.egui_ctx);
-        Self {
-            demo_size: 100_000_000,
+        let rx = crate::ipc::setup_ipc_receiver_with_env().unwrap();
+        let widget = Self::default();
+        let this = widget.clone();
+        std::thread::spawn(move || loop {
+            match rx.recv() {
+                Ok(msg) => {
+                    let _ = this.handle_message(msg);
+                }
+                Err(e) => {
+                    eprintln!("Failed to receive message: {}", e);
+                    if matches!(
+                        e,
+                        ipc_channel::ipc::IpcError::Disconnected
+                            | ipc_channel::ipc::IpcError::Io(_)
+                    ) {
+                        let _ = this.handle_message(Message::Stop);
+                        break;
+                    }
+                }
+            }
+        });
+        widget
+    }
+
+    pub fn run() -> eframe::Result {
+        let options = eframe::NativeOptions {
+            viewport: egui::ViewportBuilder::default()
+                .with_inner_size([206.0, 60.0])
+                .with_decorations(false)
+                .with_transparent(true)
+                .with_always_on_top()
+                .with_drag_and_drop(true)
+                .with_resizable(false)
+                .with_taskbar(false),
+            ..Default::default()
+        };
+        eframe::run_native(
+            "Nyanpasu Network Statistic Widget",
+            options,
+            Box::new(|cc| Ok(Box::new(NyanpasuNetworkStatisticSmallWidget::new(cc)))),
+        )
+    }
+
+    pub fn handle_message(&self, msg: Message) -> anyhow::Result<()> {
+        let mut this = self.state.write();
+        match msg {
+            Message::UpdateStatistic(statistic) => {
+                // this.download_total = statistic.download_total;
+                // this.upload_total = statistic.upload_total;
+                this.download_speed = statistic.download_speed;
+                this.upload_speed = statistic.upload_speed;
+            }
+            Message::Stop => match this.egui_ctx.get() {
+                Some(ctx) => {
+                    ctx.send_viewport_cmd(ViewportCommand::Close);
+                }
+                None => {
+                    eprintln!("Failed to close the widget: eframe context is not initialized");
+                    std::process::exit(1);
+                }
+            },
+            _ => {
+                eprintln!("Unsupported message: {:?}", msg);
+            }
         }
+        Ok(())
     }
 }
 
@@ -102,6 +195,9 @@ impl eframe::App for NyanpasuNetworkStatisticSmallWidget {
 
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         let visuals = &ctx.style().visuals;
+        let egui_ctx = ctx.clone();
+        let this = self.state.read();
+        let _ = this.egui_ctx.get_or_init(move || egui_ctx);
 
         egui::CentralPanel::default()
             .frame(
@@ -153,7 +249,10 @@ impl eframe::App for NyanpasuNetworkStatisticSmallWidget {
                                 ui.label(
                                     WidgetText::from(RichText::new(format!(
                                         "{}/s",
-                                        humansize::format_size(self.demo_size, humansize::DECIMAL)
+                                        humansize::format_size(
+                                            this.upload_speed,
+                                            humansize::DECIMAL
+                                        )
                                     )))
                                     .color(LIGHT_MODE_TEXT_COLOR),
                                 );
@@ -166,7 +265,10 @@ impl eframe::App for NyanpasuNetworkStatisticSmallWidget {
                                 ui.label(
                                     WidgetText::from(RichText::new(format!(
                                         "{}/s",
-                                        humansize::format_size(self.demo_size, humansize::DECIMAL)
+                                        humansize::format_size(
+                                            this.download_speed,
+                                            humansize::DECIMAL
+                                        )
                                     )))
                                     .color(LIGHT_MODE_TEXT_COLOR),
                                 );

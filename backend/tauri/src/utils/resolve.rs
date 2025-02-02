@@ -108,6 +108,7 @@ pub fn resolve_setup(app: &mut App) {
     });
 
     handle::Handle::global().init(app.app_handle().clone());
+    crate::consts::setup_app_handle(app.app_handle().clone());
 
     log_err!(init::init_resources());
     log_err!(init::init_service());
@@ -150,6 +151,19 @@ pub fn resolve_setup(app: &mut App) {
     log::trace!("launch core");
     log_err!(CoreManager::global().init());
 
+    log::trace!("init clash connection connector");
+    log_err!(crate::core::clash::setup(app));
+
+    log::trace!("init widget manager");
+    log_err!(tauri::async_runtime::block_on(async {
+        crate::widget::setup(app, {
+            let manager = app.state::<crate::core::clash::ws::ClashConnectionsConnector>();
+            manager.subscribe()
+        })
+        .await
+    }));
+
+    #[cfg(any(windows, target_os = "linux"))]
     log::trace!("init system tray");
     #[cfg(any(windows, target_os = "linux"))]
     tray::icon::resize_images(crate::utils::help::get_max_scale_factor()); // generate latest cache icon by current scale factor

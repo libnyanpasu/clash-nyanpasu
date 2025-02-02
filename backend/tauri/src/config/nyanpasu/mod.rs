@@ -8,9 +8,11 @@ use specta::Type;
 
 mod clash_strategy;
 pub mod logging;
+mod widget;
 
 pub use self::clash_strategy::{ClashStrategy, ExternalControllerPortStrategy};
 pub use logging::LoggingLevel;
+pub use widget::NetworkStatisticWidgetConfig;
 
 // TODO: when support sing-box, remove this struct
 #[bitflags]
@@ -132,6 +134,7 @@ impl AsRef<str> for TunStack {
 /// ### `verge.yaml` schema
 #[derive(Default, Debug, Clone, Deserialize, Serialize, VergePatch, specta::Type)]
 #[verge(patch_fn = "patch_config")]
+// TODO: use new managedState and builder pattern instead
 pub struct IVerge {
     /// app listening port for app singleton
     pub app_singleton_port: Option<u16>,
@@ -248,6 +251,10 @@ pub struct IVerge {
     /// Tun 堆栈选择
     /// TODO: 弃用此字段，转移到 clash config 里
     pub tun_stack: Option<TunStack>,
+
+    /// 是否启用网络统计信息浮窗
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub network_statistic_widget: Option<NetworkStatisticWidgetConfig>,
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize, Type)]

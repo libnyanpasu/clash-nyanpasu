@@ -419,9 +419,6 @@ pub fn get_postprocessing_output() -> Result<PostProcessingOutput> {
     Ok(Config::runtime().latest().postprocessing_output.clone())
 }
 
-#[derive(specta::Type)]
-pub struct Test<'n>(Cow<'n, CoreState>, i64, RunType);
-
 #[tauri::command]
 #[specta::specta]
 pub async fn get_core_status<'n>() -> Result<(Cow<'n, CoreState>, i64, RunType)> {
@@ -970,4 +967,13 @@ pub fn remove_storage_item(app_handle: AppHandle, key: String) -> Result {
     let storage = app_handle.state::<Storage>();
     (storage.remove_item(&key))?;
     Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_clash_ws_connections_state(
+    app_handle: AppHandle,
+) -> Result<crate::core::clash::ws::ClashConnectionsConnectorState> {
+    let ws_connector = app_handle.state::<crate::core::clash::ws::ClashConnectionsConnector>();
+    Ok(ws_connector.state())
 }

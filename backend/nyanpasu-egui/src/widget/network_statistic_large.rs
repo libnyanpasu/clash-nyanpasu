@@ -1,10 +1,14 @@
+use std::sync::Arc;
 use std::sync::LazyLock;
+use std::sync::OnceLock;
 
+use crate::ipc::Message;
 use crate::utils::svg::{render_svg_with_current_color_replace, SvgExt};
 use eframe::egui::{
     self, style::Selection, Color32, Id, Image, Layout, Margin, Rounding, Sense, Stroke, Style,
     TextureOptions, Theme, Vec2, ViewportCommand, Visuals,
 };
+use parking_lot::RwLock;
 
 // Presets
 const STATUS_ICON_CONTAINER_WIDTH: f32 = 20.0;
@@ -42,7 +46,9 @@ fn setup_fonts(ctx: &egui::Context) {
 
     fonts.font_data.insert(
         "Inter".to_owned(),
-        egui::FontData::from_static(include_bytes!("../../assets/Inter-Regular.ttf")),
+        Arc::new(egui::FontData::from_static(include_bytes!(
+            "../../assets/Inter-Regular.ttf"
+        ))),
     );
 
     fonts
@@ -85,7 +91,8 @@ fn use_dark_purple_accent(style: &mut Style) {
     };
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum LogoPreset {
     #[default]
     Default,
@@ -93,30 +100,20 @@ pub enum LogoPreset {
     Tun,
 }
 
-#[derive(Debug, Default)]
-pub struct StatisticMessage {
-    download_total: u64,
-    upload_total: u64,
-    download_speed: u64,
-    upload_speed: u64,
-}
-
 #[derive(Debug)]
-pub enum Message {
-    UpdateStatistic(StatisticMessage),
-    UpdateLogo(LogoPreset),
-}
-
-#[derive(Debug)]
-pub struct NyanpasuNetworkStatisticLargeWidget {
+pub struct NyanpasuNetworkStatisticLargeWidgetInner {
+    // data fields
     logo_preset: LogoPreset,
     download_total: u64,
     upload_total: u64,
     download_speed: u64,
     upload_speed: u64,
+
+    // eframe ctx
+    egui_ctx: OnceLock<egui::Context>,
 }
 
-impl Default for NyanpasuNetworkStatisticLargeWidget {
+impl Default for NyanpasuNetworkStatisticLargeWidgetInner {
     fn default() -> Self {
         Self {
             logo_preset: LogoPreset::Default,
@@ -124,6 +121,22 @@ impl Default for NyanpasuNetworkStatisticLargeWidget {
             upload_total: 0,
             download_speed: 0,
             upload_speed: 0,
+            egui_ctx: OnceLock::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct NyanpasuNetworkStatisticLargeWidget {
+    inner: Arc<RwLock<NyanpasuNetworkStatisticLargeWidgetInner>>,
+}
+
+impl Default for NyanpasuNetworkStatisticLargeWidget {
+    fn default() -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(
+                NyanpasuNetworkStatisticLargeWidgetInner::default(),
+            )),
         }
     }
 }
@@ -134,23 +147,72 @@ impl NyanpasuNetworkStatisticLargeWidget {
         setup_fonts(&cc.egui_ctx);
         setup_custom_style(&cc.egui_ctx);
         egui_extras::install_image_loaders(&cc.egui_ctx);
-        Self::default()
+        let rx = crate::ipc::setup_ipc_receiver_with_env().unwrap();
+        let widget = Self::default();
+        let this = widget.clone();
+        std::thread::spawn(move || loop {
+            match rx.recv() {
+                Ok(msg) => {
+                    let _ = this.handle_message(msg);
+                }
+                Err(e) => {
+                    eprintln!("Failed to receive message: {}", e);
+                    if matches!(
+                        e,
+                        ipc_channel::ipc::IpcError::Disconnected
+                            | ipc_channel::ipc::IpcError::Io(_)
+                    ) {
+                        let _ = this.handle_message(Message::Stop);
+                        break;
+                    }
+                }
+            }
+        });
+        widget
     }
 
-    pub fn handle_message(&mut self, msg: Message) -> bool {
+    pub fn run() -> eframe::Result {
+        let options = eframe::NativeOptions {
+            viewport: egui::ViewportBuilder::default()
+                .with_inner_size([206.0, 60.0])
+                .with_decorations(false)
+                .with_transparent(true)
+                .with_always_on_top()
+                .with_drag_and_drop(true)
+                .with_resizable(false)
+                .with_taskbar(false),
+            ..Default::default()
+        };
+        eframe::run_native(
+            "Nyanpasu Network Statistic Widget",
+            options,
+            Box::new(|cc| Ok(Box::new(NyanpasuNetworkStatisticLargeWidget::new(cc)))),
+        )
+    }
+
+    pub fn handle_message(&self, msg: Message) -> anyhow::Result<()> {
+        let mut this = self.inner.write();
         match msg {
             Message::UpdateStatistic(statistic) => {
-                self.download_total = statistic.download_total;
-                self.upload_total = statistic.upload_total;
-                self.download_speed = statistic.download_speed;
-                self.upload_speed = statistic.upload_speed;
-                true
+                this.download_total = statistic.download_total;
+                this.upload_total = statistic.upload_total;
+                this.download_speed = statistic.download_speed;
+                this.upload_speed = statistic.upload_speed;
             }
             Message::UpdateLogo(logo_preset) => {
-                self.logo_preset = logo_preset;
-                true
+                this.logo_preset = logo_preset;
             }
+            Message::Stop => match this.egui_ctx.get() {
+                Some(ctx) => {
+                    ctx.send_viewport_cmd(ViewportCommand::Close);
+                }
+                None => {
+                    eprintln!("Failed to close the widget: eframe context is not initialized");
+                    std::process::exit(1);
+                }
+            },
         }
+        Ok(())
     }
 }
 
@@ -160,6 +222,11 @@ impl eframe::App for NyanpasuNetworkStatisticLargeWidget {
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // setup ctx
+        let egui_ctx = ctx.clone();
+        let this = self.inner.read();
+        let _ = this.egui_ctx.get_or_init(move || egui_ctx);
+
         let visuals = &ctx.style().visuals;
 
         egui::CentralPanel::default()
@@ -229,7 +296,7 @@ impl eframe::App for NyanpasuNetworkStatisticLargeWidget {
                                 let width = ui.available_width();
                                 let height = ui.available_height();
                                 ui.allocate_ui_with_layout(egui::Vec2::new(width, height), Layout::centered_and_justified(egui::Direction::TopDown), |ui| {
-                                    ui.label(humansize::format_size(self.download_total, humansize::DECIMAL));
+                                    ui.label(humansize::format_size(this.download_total, humansize::DECIMAL));
                                 });
                             });
                         });
@@ -262,7 +329,7 @@ impl eframe::App for NyanpasuNetworkStatisticLargeWidget {
                                 let width = ui.available_width();
                                 let height = ui.available_height();
                                 ui.allocate_ui_with_layout(egui::Vec2::new(width, height), Layout::centered_and_justified(egui::Direction::TopDown), |ui| {
-                                    ui.label(format!("{}/s", humansize::format_size(self.download_speed, humansize::DECIMAL)));
+                                    ui.label(format!("{}/s", humansize::format_size(this.download_speed, humansize::DECIMAL)));
                                 });
                             });
                         })
@@ -300,7 +367,7 @@ impl eframe::App for NyanpasuNetworkStatisticLargeWidget {
                                 let width = ui.available_width();
                                 let height = ui.available_height();
                                 ui.allocate_ui_with_layout(egui::Vec2::new(width, height), Layout::centered_and_justified(egui::Direction::TopDown), |ui| {
-                                    ui.label(humansize::format_size(self.upload_total, humansize::DECIMAL));
+                                    ui.label(humansize::format_size(this.upload_total, humansize::DECIMAL));
                                 });
                             });
                         });
@@ -333,7 +400,7 @@ impl eframe::App for NyanpasuNetworkStatisticLargeWidget {
                                 let width = ui.available_width();
                                 let height = ui.available_height();
                                 ui.allocate_ui_with_layout(egui::Vec2::new(width, height), Layout::centered_and_justified(egui::Direction::TopDown), |ui| {
-                                    ui.label(format!("{}/s", humansize::format_size(self.upload_speed, humansize::DECIMAL)));
+                                    ui.label(format!("{}/s", humansize::format_size(this.upload_speed, humansize::DECIMAL)));
                                 });
                             });
                         })

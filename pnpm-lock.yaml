@@ -136,8 +136,8 @@ importers:
         specifier: 2.0.1
         version: 2.0.1(prettier@3.4.2)
       react-devtools:
-        specifier: 6.0.1
-        version: 6.0.1(bufferutil@4.0.8)(utf-8-validate@5.0.10)
+        specifier: 6.1.0
+        version: 6.1.0(bufferutil@4.0.8)(utf-8-validate@5.0.10)
       stylelint:
         specifier: 16.14.1
         version: 16.14.1(typescript@5.7.3)
@@ -6740,11 +6740,11 @@ packages:
     resolution: {integrity: sha512-y3bGgqKj3QBdxLbLkomlohkvsA8gdAiUQlSBJnBhfn+BPxg4bc62d8TcBW15wavDfgexCgccckhcZvywyQYPOw==}
     hasBin: true
 
-  react-devtools-core@6.0.1:
-    resolution: {integrity: sha512-II3iSJhnR5nAscYDa9FCgPLq8mO5aEx/EKKtdXYTDnvdFEa3K7gs3jn1SKRXwQf9maOmIilmjnnx7Qy+3annPA==}
+  react-devtools-core@6.1.0:
+    resolution: {integrity: sha512-sA8gF/pUhjoGAN3s1Ya43h+F4Q0z7cv9RgqbUfhP7bJI0MbqeshLYFb6hiHgZorovGr8AXqhLi22eQ7V3pru/Q==}
 
-  react-devtools@6.0.1:
-    resolution: {integrity: sha512-B5XGOnOfwH4B7m0chzE1Cv5jlnfbbxF0LoBI+lacQuNj9PMvZ6JS5NCFnDw3zzy7zpOo6leyJNAED8sN3CgLVA==}
+  react-devtools@6.1.0:
+    resolution: {integrity: sha512-/8QmjaGq+z/cLbFH0GwpzXgkFsxtF0So2JrQf6N4IM3ehUT4g1a59HCyI6NpFFka+FYW3l5RsUgOVXP/XYXaaQ==}
     hasBin: true
 
   react-dom@19.0.0:
@@ -15099,7 +15099,7 @@ snapshots:
       minimist: 1.2.8
       strip-json-comments: 2.0.1
 
-  react-devtools-core@6.0.1(bufferutil@4.0.8)(utf-8-validate@5.0.10):
+  react-devtools-core@6.1.0(bufferutil@4.0.8)(utf-8-validate@5.0.10):
     dependencies:
       shell-quote: 1.8.1
       ws: 7.5.10(bufferutil@4.0.8)(utf-8-validate@5.0.10)
@@ -15107,13 +15107,13 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  react-devtools@6.0.1(bufferutil@4.0.8)(utf-8-validate@5.0.10):
+  react-devtools@6.1.0(bufferutil@4.0.8)(utf-8-validate@5.0.10):
     dependencies:
       cross-spawn: 5.1.0
       electron: 23.3.13
       internal-ip: 6.2.0
       minimist: 1.2.8
-      react-devtools-core: 6.0.1(bufferutil@4.0.8)(utf-8-validate@5.0.10)
+      react-devtools-core: 6.1.0(bufferutil@4.0.8)(utf-8-validate@5.0.10)
       update-notifier: 2.5.0
     transitivePeerDependencies:
       - bufferutil

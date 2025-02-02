@@ -46,6 +46,12 @@ export default {
         ],
       },
     ],
+    'at-rule-no-deprecated': [
+      true,
+      {
+        ignoreAtRules: ['apply'],
+      },
+    ],
   },
   overrides: [
     {

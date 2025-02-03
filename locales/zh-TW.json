@@ -6,6 +6,7 @@
       "ps": "複製環境變數 (PS)",
       "sh": "複製環境變數 (SH)"
     },
+    "no_proxies": "無代理",
     "select_proxies": "選取代理",
     "dashboard": "開啟儀表盤",
     "direct_mode": "直連模式",

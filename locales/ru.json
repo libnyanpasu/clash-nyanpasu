@@ -6,6 +6,7 @@
       "ps": "Копировать Env (PS)",
       "sh": "Копировать Env (sh)"
     },
+    "no_proxies": "Без прокси",
     "select_proxies": "Выбрать прокси",
     "dashboard": "Панель управления",
     "direct_mode": "Прямой режим",

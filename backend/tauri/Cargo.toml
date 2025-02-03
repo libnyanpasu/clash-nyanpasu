@@ -10,7 +10,7 @@ edition = { workspace = true }
 build = "build.rs"
 
 [lib]
-name = "app_lib"
+name = "clash_nyanpasu_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

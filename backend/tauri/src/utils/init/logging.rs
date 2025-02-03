@@ -62,9 +62,11 @@ pub fn init() -> Result<()> {
     let (filter, filter_handle) = reload::Layer::new(
         EnvFilter::builder()
             .with_default_directive(
-                std::convert::Into::<filter::LevelFilter>::into(log_level).into(),
+                std::convert::Into::<filter::LevelFilter>::into(LoggingLevel::Warn).into(),
             )
-            .from_env_lossy(),
+            .from_env_lossy()
+            .add_directive(format!("nyanpasu={}", log_level).parse().unwrap())
+            .add_directive(format!("clash_nyanpasu={}", log_level).parse().unwrap()),
     );
 
     // register the logger
@@ -92,9 +94,12 @@ pub fn init() -> Result<()> {
                     .reload(
                         EnvFilter::builder()
                             .with_default_directive(
-                                std::convert::Into::<filter::LevelFilter>::into(level).into(),
+                                std::convert::Into::<filter::LevelFilter>::into(LoggingLevel::Warn)
+                                    .into(),
                             )
-                            .from_env_lossy(),
+                            .from_env_lossy()
+                            .add_directive(format!("nyanpasu={}", level).parse().unwrap())
+                            .add_directive(format!("clash_nyanpasu={}", level).parse().unwrap()),
                     )
                     .unwrap(); // panic if error
             }

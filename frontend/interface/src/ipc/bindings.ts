@@ -870,11 +870,6 @@ export type IVerge = {
    */
   theme_mode: string | null
   /**
-   * enable blur mode
-   * maybe be able to set the alpha
-   */
-  theme_blur: boolean | null
-  /**
    * enable traffic graph default is true
    */
   traffic_graph: boolean | null

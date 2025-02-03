@@ -149,10 +149,6 @@ pub struct IVerge {
     /// `light` or `dark` or `system`
     pub theme_mode: Option<String>,
 
-    /// enable blur mode
-    /// maybe be able to set the alpha
-    pub theme_blur: Option<bool>,
-
     /// enable traffic graph default is true
     pub traffic_graph: Option<bool>,
 
@@ -313,7 +309,6 @@ impl IVerge {
             },
             app_log_level: Some(logging::LoggingLevel::default()),
             theme_mode: Some("system".into()),
-            theme_blur: Some(false),
             traffic_graph: Some(true),
             enable_memory_usage: Some(true),
             enable_auto_launch: Some(false),

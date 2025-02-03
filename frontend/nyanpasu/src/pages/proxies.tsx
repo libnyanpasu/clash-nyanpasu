@@ -22,7 +22,12 @@ import {
   TextField,
   useTheme,
 } from '@mui/material'
-import { Clash, useClashCore, useNyanpasu } from '@nyanpasu/interface'
+import {
+  Clash,
+  ProxyGroupItem,
+  useClashCore,
+  useNyanpasu,
+} from '@nyanpasu/interface'
 import { cn, SidePage } from '@nyanpasu/ui'
 import { createFileRoute } from '@tanstack/react-router'
 
@@ -71,14 +76,13 @@ function ProxyPage() {
 
   const [proxyGroup] = useAtom(proxyGroupAtom)
 
-  const [group, setGroup] =
-    useState<Clash.Proxy<Clash.Proxy<string> | string>>()
+  const [group, setGroup] = useState<ProxyGroupItem>()
 
   useEffect(() => {
     if (getCurrentMode.global) {
       setGroup(data?.global)
     } else if (getCurrentMode.direct) {
-      setGroup(data?.direct)
+      setGroup(data?.direct ? { ...data.direct, all: [] } : undefined)
     } else {
       if (proxyGroup.selector !== null) {
         setGroup(data?.groups[proxyGroup.selector])

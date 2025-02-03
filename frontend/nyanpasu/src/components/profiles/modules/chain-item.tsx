@@ -12,7 +12,7 @@ import { useTranslation } from 'react-i18next'
 import { Menu as MenuIcon } from '@mui/icons-material'
 import { LoadingButton } from '@mui/lab'
 import { alpha, ListItemButton, Menu, MenuItem, useTheme } from '@mui/material'
-import { Profile, useClash } from '@nyanpasu/interface'
+import { ProfileQueryResultItem } from '@nyanpasu/interface'
 import { cleanDeepClickEvent } from '@nyanpasu/ui'
 
 const longPressDelay = 200
@@ -23,7 +23,7 @@ export const ChainItem = memo(function ChainItem({
   onClick,
   onChainEdit,
 }: {
-  item: Profile.Item
+  item: ProfileQueryResultItem
   selected?: boolean
   onClick: () => Promise<void>
   onChainEdit: () => void
@@ -32,7 +32,7 @@ export const ChainItem = memo(function ChainItem({
 
   const { palette } = useTheme()
 
-  const { deleteProfile, viewProfile } = useClash()
+  // const { deleteProfile, viewProfile } = useClash()
 
   const [isPending, startTransition] = useTransition()
 
@@ -45,8 +45,8 @@ export const ChainItem = memo(function ChainItem({
   const menuMapping = {
     Apply: () => handleClick(),
     'Edit Info': () => onChainEdit(),
-    'Open File': () => viewProfile(item.uid),
-    Delete: () => deleteProfile(item.uid),
+    'Open File': () => item.view && item.view(),
+    Delete: () => item.drop && item.drop(),
   }
 
   const handleMenuClick = (func: () => void) => {

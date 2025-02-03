@@ -1,7 +1,7 @@
 import { CSSProperties, memo, useMemo } from 'react'
 import { alpha, useTheme } from '@mui/material'
 import Box from '@mui/material/Box'
-import { Clash } from '@nyanpasu/interface'
+import { ProxyItem } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 import { PaperSwitchButton } from '../setting/modules/system-proxy'
 import DelayChip from './delay-chip'
@@ -17,8 +17,8 @@ export const NodeCard = memo(function NodeCard({
   onClickDelay,
   style,
 }: {
-  node: Clash.Proxy<string>
-  now?: string
+  node: ProxyItem
+  now?: string | null
   disabled?: boolean
   onClick: () => void
   onClickDelay: () => Promise<void>

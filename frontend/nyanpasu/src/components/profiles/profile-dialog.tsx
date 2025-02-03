@@ -22,7 +22,14 @@ import { useLatest } from 'react-use'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { Divider, InputAdornment } from '@mui/material'
-import { Profile, useClash } from '@nyanpasu/interface'
+import {
+  LocalProfile,
+  ProfileQueryResultItem,
+  ProfileTemplate,
+  RemoteProfile,
+  useProfile,
+  useProfileContent,
+} from '@nyanpasu/interface'
 import { BaseDialog } from '@nyanpasu/ui'
 import { LabelSwitch } from '../setting/modules/clash-field'
 import { ReadProfile } from './read-profile'
@@ -30,7 +37,7 @@ import { ReadProfile } from './read-profile'
 const ProfileMonacoViewer = lazy(() => import('./profile-monaco-viewer'))
 
 export interface ProfileDialogProps {
-  profile?: Profile.Item
+  profile?: ProfileQueryResultItem
   open: boolean
   onClose: () => void
 }
@@ -52,27 +59,29 @@ export const ProfileDialog = ({
 }: ProfileDialogProps) => {
   const { t } = useTranslation()
 
-  const { createProfile, setProfiles, getProfileFile, setProfileFile } =
-    useClash()
+  const { create, update } = useProfile()
+
+  const contentFn = useProfileContent(profile?.uid ?? '')
 
   const localProfile = useRef('')
   const addProfileCtx = use(AddProfileContext)
   const [localProfileMessage, setLocalProfileMessage] = useState('')
 
-  const { control, watch, handleSubmit, reset, setValue } =
-    useForm<Profile.Item>({
-      defaultValues: profile || {
-        type: 'remote',
-        name: addProfileCtx?.name || t(`New Profile`),
-        desc: addProfileCtx?.desc || '',
-        url: addProfileCtx?.url || '',
-        option: {
-          // user_agent: "",
-          with_proxy: false,
-          self_proxy: false,
-        },
+  const { control, watch, handleSubmit, reset, setValue } = useForm<
+    RemoteProfile | LocalProfile
+  >({
+    defaultValues: profile || {
+      type: 'remote',
+      name: addProfileCtx?.name || t(`New Profile`),
+      desc: addProfileCtx?.desc || '',
+      url: addProfileCtx?.url || '',
+      option: {
+        // user_agent: "",
+        with_proxy: false,
+        self_proxy: false,
       },
-    })
+    },
+  })
 
   useEffect(() => {
     if (addProfileCtx) {
@@ -112,10 +121,12 @@ export const ProfileDialog = ({
   const latestEditor = useLatest(editor)
 
   const editorMarks = useRef<editor.IMarker[]>([])
+
   const editorHasError = () =>
     editorMarks.current.length > 0 &&
     editorMarks.current.some((m) => m.severity === 8)
 
+  // eslint-disable-next-line react-compiler/react-compiler
   const onSubmit = handleSubmit(async (form) => {
     if (editorHasError()) {
       message('Please fix the error before saving', {
@@ -123,23 +134,55 @@ export const ProfileDialog = ({
       })
       return
     }
+
     const toCreate = async () => {
       if (isRemote) {
-        await createProfile(form)
+        const data = form as RemoteProfile
+
+        await create.mutateAsync({
+          type: 'url',
+          data: {
+            url: data.url,
+            // TODO: define backend serde(option) to move null
+            option: data.option
+              ? {
+                  ...data.option,
+                  user_agent: data.option.user_agent ?? null,
+                  with_proxy: data.option.with_proxy ?? null,
+                  self_proxy: data.option.self_proxy ?? null,
+                }
+              : null,
+          },
+        })
       } else {
         if (localProfile.current) {
-          await createProfile(form, localProfile.current)
+          await create.mutateAsync({
+            type: 'manual',
+            data: {
+              item: form,
+              fileData: localProfile.current,
+            },
+          })
         } else {
-          // setLocalProfileMessage("Not selected profile");
-          await createProfile(form, 'rules: []')
+          await create.mutateAsync({
+            type: 'manual',
+            data: {
+              item: form,
+              fileData: ProfileTemplate.profile,
+            },
+          })
         }
       }
     }
 
     const toUpdate = async () => {
       const value = latestEditor.current.value
-      await setProfileFile(form.uid, value)
-      await setProfiles(form.uid, form)
+      await contentFn.upsert.mutateAsync(value)
+
+      await update.mutateAsync({
+        uid: form.uid,
+        profile: form,
+      })
     }
 
     try {
@@ -252,7 +295,7 @@ export const ProfileDialog = ({
               render={({ field }) => (
                 <LabelSwitch
                   label={t('Use System Proxy')}
-                  checked={field.value}
+                  checked={Boolean(field.value)}
                   {...field}
                 />
               )}
@@ -264,7 +307,7 @@ export const ProfileDialog = ({
               render={({ field }) => (
                 <LabelSwitch
                   label={t('Use Clash Proxy')}
-                  checked={field.value}
+                  checked={Boolean(field.value)}
                   {...field}
                 />
               )}
@@ -298,7 +341,7 @@ export const ProfileDialog = ({
 
     if (isEdit) {
       try {
-        const value = await getProfileFile(profile?.uid)
+        const value = contentFn.query.data ?? ''
         setEditor((editor) => ({ ...editor, value }))
       } catch (error) {
         console.error(error)

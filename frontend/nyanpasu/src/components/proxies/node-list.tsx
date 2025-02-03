@@ -13,12 +13,17 @@ import {
 import { Virtualizer, VListHandle } from 'virtua'
 import { proxyGroupAtom, proxyGroupSortAtom } from '@/store'
 import { proxiesFilterAtom } from '@/store/proxies'
-import { Clash, useClashCore, useNyanpasu } from '@nyanpasu/interface'
+import {
+  ProxyGroupItem,
+  ProxyItem,
+  useClashCore,
+  useNyanpasu,
+} from '@nyanpasu/interface'
 import { cn, useBreakpointValue } from '@nyanpasu/ui'
 import NodeCard from './node-card'
 import { nodeSortingFn } from './utils'
 
-type RenderClashProxy = Clash.Proxy<string> & { renderLayoutKey: string }
+type RenderClashProxy = ProxyItem & { renderLayoutKey: string }
 
 export interface NodeListRef {
   scrollToCurrent: () => void
@@ -44,12 +49,13 @@ export const NodeList = forwardRef(function NodeList(
 
   const proxyGroupSort = useAtomValue(proxyGroupSortAtom)
 
-  const [group, setGroup] = useState<Clash.Proxy<Clash.Proxy<string>>>()
+  const [group, setGroup] = useState<ProxyGroupItem>()
 
   const sortGroup = useCallback(() => {
     if (!getCurrentMode.global) {
       if (proxyGroup.selector !== null) {
-        const selectedGroup = data?.groups[proxyGroup.selector]
+        // eslint-disable-next-line @typescript-eslint/no-non-null-asserted-optional-chain
+        const selectedGroup = data?.groups[proxyGroup.selector]!
 
         if (selectedGroup) {
           setGroup(nodeSortingFn(selectedGroup, proxyGroupSort))

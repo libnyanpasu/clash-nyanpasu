@@ -26,19 +26,26 @@ import {
   Tooltip,
   useTheme,
 } from '@mui/material'
-import { Profile, useClash } from '@nyanpasu/interface'
+import {
+  Profile,
+  ProfileQueryResultItem,
+  RemoteProfile,
+  RemoteProfileOptions,
+  useClash,
+  useProfile,
+} from '@nyanpasu/interface'
 import { cleanDeepClickEvent, cn } from '@nyanpasu/ui'
 import { ProfileDialog } from './profile-dialog'
 import { GlobalUpdatePendingContext } from './provider'
 
 export interface ProfileItemProps {
-  item: Profile.Item
+  item: ProfileQueryResultItem
   selected?: boolean
   maxLogLevelTriggered?: {
     global: undefined | 'info' | 'error' | 'warn'
     current: undefined | 'info' | 'error' | 'warn'
   }
-  onClickChains: (item: Profile.Item) => void
+  onClickChains: (item: Profile) => void
   chainsSelected?: boolean
 }
 
@@ -53,13 +60,9 @@ export const ProfileItem = memo(function ProfileItem({
 
   const { palette } = useTheme()
 
-  const {
-    setProfilesConfig,
-    deleteConnections,
-    updateProfile,
-    deleteProfile,
-    viewProfile,
-  } = useClash()
+  const { deleteConnections } = useClash()
+
+  const { upsert } = useProfile()
 
   const globalUpdatePending = use(GlobalUpdatePendingContext)
 
@@ -73,7 +76,7 @@ export const ProfileItem = memo(function ProfileItem({
     let total = 0
     let used = 0
 
-    if (item.extra) {
+    if ('extra' in item && item.extra) {
       const { download, upload, total: t } = item.extra
 
       total = t
@@ -102,7 +105,7 @@ export const ProfileItem = memo(function ProfileItem({
     try {
       setLoading({ card: true })
 
-      await setProfilesConfig({ current: [item.uid] })
+      await upsert.mutateAsync({ current: [item.uid] })
 
       await deleteConnections()
     } catch (err) {
@@ -124,13 +127,18 @@ export const ProfileItem = memo(function ProfileItem({
   })
 
   const handleUpdate = useLockFn(async (proxy?: boolean) => {
-    const options: Profile.Option = item.option || {
+    // TODO: define backend serde(option) to move null
+    const selfOption = 'option' in item ? item.option : undefined
+
+    const options: RemoteProfileOptions = {
       with_proxy: false,
       self_proxy: false,
+      update_interval: 0,
+      ...selfOption,
     }
 
     if (proxy) {
-      if (item.option?.self_proxy) {
+      if (selfOption?.self_proxy) {
         options.with_proxy = false
         options.self_proxy = true
       } else {
@@ -142,7 +150,7 @@ export const ProfileItem = memo(function ProfileItem({
     try {
       setLoading({ update: true })
 
-      await updateProfile(item.uid, options)
+      await item?.update?.(item)
     } finally {
       setLoading({ update: false })
     }
@@ -150,7 +158,8 @@ export const ProfileItem = memo(function ProfileItem({
 
   const handleDelete = useLockFn(async () => {
     try {
-      await deleteProfile(item.uid)
+      // await deleteProfile(item.uid)
+      await item?.drop?.()
     } catch (err) {
       message(`Delete failed: \n ${JSON.stringify(err)}`, {
         title: t('Error'),
@@ -164,19 +173,12 @@ export const ProfileItem = memo(function ProfileItem({
       Select: () => handleSelect(),
       'Edit Info': () => setOpen(true),
       'Proxy Chains': () => onClickChains(item),
-      'Open File': () => viewProfile(item.uid),
+      'Open File': () => item?.view?.(),
       Update: () => handleUpdate(),
       'Update(Proxy)': () => handleUpdate(true),
       Delete: () => handleDelete(),
     }),
-    [
-      handleDelete,
-      handleSelect,
-      handleUpdate,
-      item,
-      onClickChains,
-      viewProfile,
-    ],
+    [handleDelete, handleSelect, handleUpdate, item, onClickChains],
   )
 
   const MenuComp = useMemo(() => {
@@ -232,7 +234,7 @@ export const ProfileItem = memo(function ProfileItem({
           onClick={handleSelect}
         >
           <div className="flex items-center justify-between gap-2">
-            <Tooltip title={item.url}>
+            <Tooltip title={(item as RemoteProfile).url}>
               <Chip
                 className="!pr-2 !pl-2 font-bold"
                 avatar={<IconComponent className="!size-5" color="primary" />}
@@ -255,9 +257,9 @@ export const ProfileItem = memo(function ProfileItem({
                 !!item.updated && (
                   <TimeSpan ts={item.updated!} k="Subscription Updated At" />
                 ),
-                !!item.extra?.expire && (
+                !!(item as RemoteProfile).extra?.expire && (
                   <TimeSpan
-                    ts={item.extra!.expire!}
+                    ts={(item as RemoteProfile).extra!.expire!}
                     k="Subscription Expires In"
                   />
                 ),

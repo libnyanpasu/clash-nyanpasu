@@ -1,8 +1,7 @@
 import { alpha, useTheme } from '@mui/material'
-import { Profile } from '@nyanpasu/interface'
-import { getLanguage } from '../utils'
+import { getLanguage, ProfileType } from '../utils'
 
-export const LanguageChip = ({ type }: { type: Profile.Item['type'] }) => {
+export const LanguageChip = ({ type }: { type: ProfileType }) => {
   const { palette } = useTheme()
 
   const lang = getLanguage(type, true)

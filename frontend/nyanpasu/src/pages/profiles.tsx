@@ -20,13 +20,18 @@ import ProfileSide from '@/components/profiles/profile-side'
 import { GlobalUpdatePendingContext } from '@/components/profiles/provider'
 import { QuickImport } from '@/components/profiles/quick-import'
 import RuntimeConfigDiffDialog from '@/components/profiles/runtime-config-diff-dialog'
-import { filterProfiles } from '@/components/profiles/utils'
+import { ClashProfile, filterProfiles } from '@/components/profiles/utils'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { Public, Update } from '@mui/icons-material'
 import { Badge, Button, CircularProgress, IconButton } from '@mui/material'
 import Grid from '@mui/material/Grid2'
-import { Profile, updateProfile, useClash } from '@nyanpasu/interface'
+import {
+  RemoteProfileOptionsBuilder,
+  useClash,
+  useProfile,
+  type RemoteProfile,
+} from '@nyanpasu/interface'
 import { FloatingButton, SidePage } from '@nyanpasu/ui'
 import { createFileRoute, useLocation } from '@tanstack/react-router'
 import { zodSearchValidator } from '@tanstack/router-zod-adapter'
@@ -44,12 +49,23 @@ export const Route = createFileRoute('/profiles')({
 
 function ProfilePage() {
   const { t } = useTranslation()
-  const { getProfiles, getRuntimeLogs } = useClash()
+
+  const { getRuntimeLogs } = useClash()
+
+  const { query, update } = useProfile()
+
+  const profiles = useMemo(() => {
+    return filterProfiles(query.data?.items)
+  }, [query.data?.items])
+
   const maxLogLevelTriggered = useMemo(() => {
     const currentProfileChains =
-      getProfiles.data?.items?.find(
-        // TODO: 支持多 Profile
-        (item) => getProfiles.data?.current[0] === item.uid,
+      (
+        query.data?.items?.find(
+          // TODO: 支持多 Profile
+          (item) => query.data?.current?.[0] === item.uid,
+          // TODO: fix any type
+        ) as any
       )?.chain || []
     return Object.entries(getRuntimeLogs.data || {}).reduce(
       (acc, [key, value]) => {
@@ -78,8 +94,7 @@ function ProfilePage() {
         current: undefined | 'info' | 'error' | 'warn'
       },
     )
-  }, [getRuntimeLogs.data, getProfiles.data])
-  const { profiles } = filterProfiles(getProfiles.data?.items)
+  }, [query.data, getRuntimeLogs.data])
 
   const [globalChain, setGlobalChain] = useAtom(atomGlobalChainCurrent)
 
@@ -90,7 +105,7 @@ function ProfilePage() {
     setGlobalChain(!globalChain)
   }
 
-  const onClickChains = (profile: Profile.Item) => {
+  const onClickChains = (profile: ClashProfile) => {
     setGlobalChain(false)
 
     if (chainsSelected === profile.uid) {
@@ -124,17 +139,31 @@ function ProfilePage() {
 
   const [globalUpdatePending, startGlobalUpdate] = useTransition()
   const handleGlobalProfileUpdate = useLockFn(async () => {
-    await startGlobalUpdate(async () => {
+    startGlobalUpdate(async () => {
       const remoteProfiles =
-        profiles?.filter((item) => item.type === 'remote') || []
+        (profiles.clash?.filter(
+          (item) => item.type === 'remote',
+        ) as RemoteProfile[]) || []
+
       const updates: Array<Promise<void>> = []
+
       for (const profile of remoteProfiles) {
-        const options: Profile.Option = profile.option || {
+        const option = {
           with_proxy: false,
           self_proxy: false,
-        }
+          update_interval: 0,
+          user_agent: profile.option?.user_agent ?? null,
+          ...profile.option,
+        } satisfies RemoteProfileOptionsBuilder
 
-        updates.push(updateProfile(profile.uid, options))
+        const result = await update.mutateAsync({
+          uid: profile.uid,
+          profile: {
+            ...profile,
+            option,
+          },
+        })
+        updates.push(Promise.resolve(result || undefined))
       }
       try {
         await Promise.all(updates)
@@ -201,7 +230,7 @@ function ProfilePage() {
 
             {profiles && (
               <Grid container spacing={2}>
-                {profiles.map((item) => (
+                {profiles.clash?.map((item) => (
                   <Grid
                     key={item.uid}
                     size={{
@@ -221,7 +250,7 @@ function ProfilePage() {
                       <ProfileItem
                         item={item}
                         onClickChains={onClickChains}
-                        selected={getProfiles.data?.current.includes(item.uid)}
+                        selected={query.data?.current?.includes(item.uid)}
                         maxLogLevelTriggered={maxLogLevelTriggered}
                         chainsSelected={chainsSelected === item.uid}
                       />

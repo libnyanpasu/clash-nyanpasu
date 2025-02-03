@@ -5,10 +5,16 @@ import { SelectElement, TextFieldElement, useForm } from 'react-hook-form-mui'
 import { useTranslation } from 'react-i18next'
 import { message } from '@/utils/notification'
 import { Divider } from '@mui/material'
-import { Profile, useClash } from '@nyanpasu/interface'
+import {
+  Profile,
+  ProfileTemplate,
+  useClash,
+  useProfile,
+  useProfileContent,
+} from '@nyanpasu/interface'
 import { BaseDialog, BaseDialogProps } from '@nyanpasu/ui'
 import LanguageChip from './modules/language-chip'
-import { getLanguage } from './utils'
+import { getLanguage, ProfileType, ProfileTypes } from './utils'
 
 const ProfileMonacoViewer = lazy(() => import('./profile-monaco-viewer'))
 
@@ -21,25 +27,25 @@ const formCommonProps = {
 const optionTypeMapping = [
   {
     id: 'js',
-    value: Profile.Type.JavaScript,
+    value: ProfileTypes.JavaScript,
     language: 'javascript',
     label: 'JavaScript',
   },
   {
     id: 'lua',
-    value: Profile.Type.LuaScript,
+    value: ProfileTypes.LuaScript,
     language: 'lua',
     label: 'LuaScript',
   },
   {
     id: 'merge',
-    value: Profile.Type.Merge,
+    value: ProfileTypes.Merge,
     language: 'yaml',
     label: 'Merge',
   },
 ]
 
-const convertTypeMapping = (data: Profile.Item) => {
+const convertTypeMapping = (data: Profile) => {
   optionTypeMapping.forEach((option) => {
     if (option.id === data.type) {
       data.type = option.value
@@ -52,7 +58,7 @@ const convertTypeMapping = (data: Profile.Item) => {
 export interface ScriptDialogProps extends Omit<BaseDialogProps, 'title'> {
   open: boolean
   onClose: () => void
-  profile?: Profile.Item
+  profile?: Profile
 }
 
 export const ScriptDialog = ({
@@ -63,10 +69,14 @@ export const ScriptDialog = ({
 }: ScriptDialogProps) => {
   const { t } = useTranslation()
 
-  const { getProfileFile, setProfileFile, createProfile, setProfiles } =
-    useClash()
+  // const { getProfileFile, setProfileFile, createProfile, setProfiles } =
+  //   useClash()
 
-  const form = useForm<Profile.Item>()
+  const { create, update } = useProfile()
+
+  const contentFn = useProfileContent(profile?.uid ?? '')
+
+  const form = useForm<Profile>()
 
   const isEdit = Boolean(profile)
 
@@ -81,16 +91,16 @@ export const ScriptDialog = ({
         desc: '',
       })
     }
-  }, [form, isEdit, profile])
+  }, [form, isEdit, profile, t])
 
   const [openMonaco, setOpenMonaco] = useState(false)
 
   const editor = useReactive<{
     value: string
     language: string
-    rawType: Profile.Item['type']
+    rawType: ProfileType
   }>({
-    value: Profile.Template.merge,
+    value: ProfileTemplate.merge,
     language: 'yaml',
     rawType: 'merge',
   })
@@ -118,10 +128,19 @@ export const ScriptDialog = ({
 
     try {
       if (isEdit) {
-        await setProfileFile(data.uid, editorValue)
-        await setProfiles(data.uid, data)
+        await contentFn.upsert.mutateAsync(editorValue)
+        await update.mutateAsync({
+          uid: data.uid,
+          profile: data,
+        })
       } else {
-        await createProfile(data, editorValue)
+        await create.mutateAsync({
+          type: 'manual',
+          data: {
+            item: data,
+            fileData: editorValue,
+          },
+        })
       }
     } finally {
       onClose()
@@ -130,10 +149,12 @@ export const ScriptDialog = ({
 
   useAsyncEffect(async () => {
     if (isEdit) {
-      editor.value = await getProfileFile(profile?.uid)
-      editor.language = getLanguage(profile?.type)!
+      await contentFn.query.refetch()
+
+      editor.value = contentFn.query.data ?? ''
+      editor.language = getLanguage(profile!.type)!
     } else {
-      editor.value = Profile.Template.merge
+      editor.value = ProfileTemplate.merge
       editor.language = 'yaml'
     }
 
@@ -155,17 +176,17 @@ export const ScriptDialog = ({
 
     switch (lang) {
       case 'yaml': {
-        editor.value = Profile.Template.merge
+        editor.value = ProfileTemplate.merge
         break
       }
 
       case 'lua': {
-        editor.value = Profile.Template.luascript
+        editor.value = ProfileTemplate.luascript
         break
       }
 
       case 'javascript': {
-        editor.value = Profile.Template.javascript
+        editor.value = ProfileTemplate.javascript
         break
       }
     }
@@ -177,7 +198,9 @@ export const ScriptDialog = ({
         <div className="flex gap-2">
           <span>{isEdit ? t('Edit Script') : t('New Script')}</span>
 
-          <LanguageChip type={isEdit ? profile?.type : editor.rawType} />
+          <LanguageChip
+            type={isEdit ? (profile?.type ?? editor.rawType) : editor.rawType}
+          />
         </div>
       }
       open={open}
@@ -242,7 +265,7 @@ export const ScriptDialog = ({
                 editorMarks.current = marks
               }}
               schemaType={
-                editor.rawType === Profile.Type.Merge ? 'merge' : undefined
+                editor.rawType === ProfileTypes.Merge ? 'merge' : undefined
               }
             />
           )}

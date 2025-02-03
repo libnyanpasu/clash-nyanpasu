@@ -1,10 +1,14 @@
+import { useCreation } from 'ahooks'
 import { useAtomValue } from 'jotai'
 import { nanoid } from 'nanoid'
-import { lazy, Suspense, useMemo } from 'react'
+import { lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
-import useSWR from 'swr'
 import { themeMode } from '@/store'
-import { getRuntimeYaml, useClash } from '@nyanpasu/interface'
+import {
+  useProfile,
+  useProfileContent,
+  useRuntimeProfile,
+} from '@nyanpasu/interface'
 import { BaseDialog, cn } from '@nyanpasu/ui'
 
 const MonacoDiffEditor = lazy(() => import('./profile-monaco-diff-viewer'))
@@ -19,30 +23,24 @@ export default function RuntimeConfigDiffDialog({
   onClose,
 }: RuntimeConfigDiffDialogProps) {
   const { t } = useTranslation()
-  const { getProfiles, getProfileFile } = useClash()
-  const currentProfileUid = getProfiles.data?.current
+
+  const { query } = useProfile()
+
+  const currentProfileUid = query.data?.current?.[0]
+
+  const contentFn = useProfileContent(currentProfileUid || '')
+
+  // need manual refetch
+  contentFn.query.refetch()
+
+  const runtimeProfile = useRuntimeProfile()
+
+  const loaded = !contentFn.query.isLoading && !query.isLoading
+
   const mode = useAtomValue(themeMode)
-  const { data: runtimeConfig, isLoading: isLoadingRuntimeConfig } = useSWR(
-    open ? '/getRuntimeConfigYaml' : null,
-    getRuntimeYaml,
-    {},
-  )
-  const { data: profileConfig, isLoading: isLoadingProfileConfig } = useSWR(
-    open ? `/readProfileFile?uid=${currentProfileUid}` : null,
-    async (key) => {
-      const url = new URL(key, window.location.origin)
-      return await getProfileFile(url.searchParams.get('uid')!)
-    },
-    {
-      revalidateOnFocus: true,
-      refreshInterval: 0,
-    },
-  )
 
-  const loaded = !isLoadingRuntimeConfig && !isLoadingProfileConfig
-
-  const originalModelPath = useMemo(() => `${nanoid()}.clash.yaml`, [])
-  const modifiedModelPath = useMemo(() => `${nanoid()}.runtime.yaml`, [])
+  const originalModelPath = useCreation(() => `${nanoid()}.clash.yaml`, [])
+  const modifiedModelPath = useCreation(() => `${nanoid()}.runtime.yaml`, [])
 
   if (!currentProfileUid) {
     return null
@@ -68,9 +66,9 @@ export default function RuntimeConfigDiffDialog({
               <MonacoDiffEditor
                 language="yaml"
                 theme={mode === 'light' ? 'vs' : 'vs-dark'}
-                original={profileConfig}
+                original={contentFn.query.data}
                 originalModelPath={originalModelPath}
-                modified={runtimeConfig}
+                modified={runtimeProfile.data}
                 modifiedModelPath={modifiedModelPath}
                 options={{
                   minimap: { enabled: false },

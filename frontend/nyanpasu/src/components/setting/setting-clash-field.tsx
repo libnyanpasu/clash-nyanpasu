@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import CLASH_FIELD from '@/assets/json/clash-field.json'
 import { Box, Typography } from '@mui/material'
 import Grid from '@mui/material/Grid2'
-import { useClash, useNyanpasu } from '@nyanpasu/interface'
+import { useClash, useNyanpasu, useProfile } from '@nyanpasu/interface'
 import { BaseCard, BaseDialog } from '@nyanpasu/ui'
 import { ClashFieldItem, LabelSwitch } from './modules/clash-field'
 
@@ -91,7 +91,7 @@ const ClashFieldSwitch = () => {
 export const SettingClashField = () => {
   const { t } = useTranslation()
 
-  const { getProfiles, setProfilesConfig } = useClash()
+  const { query, upsert } = useProfile()
 
   const mergeFields = useMemo(
     () => [
@@ -99,9 +99,9 @@ export const SettingClashField = () => {
         ...Object.keys(CLASH_FIELD.default),
         ...Object.keys(CLASH_FIELD.handle),
       ],
-      ...(getProfiles.data?.valid ?? []),
+      ...(query.data?.valid ?? []),
     ],
-    [getProfiles.data],
+    [query.data],
   )
 
   const filteredField = (fields: { [key: string]: string }): string[] => {
@@ -121,7 +121,7 @@ export const SettingClashField = () => {
 
   const updateFiled = async (key: string) => {
     const getFields = (): string[] => {
-      const valid = getProfiles.data?.valid ?? []
+      const valid = query.data?.valid ?? []
 
       if (valid.includes(key)) {
         return valid.filter((item) => item !== key)
@@ -132,7 +132,7 @@ export const SettingClashField = () => {
       }
     }
 
-    await setProfilesConfig({ valid: getFields() })
+    await upsert.mutateAsync({ valid: getFields() })
   }
 
   return (

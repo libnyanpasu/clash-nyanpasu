@@ -1,4 +1,4 @@
-import type { Clash } from '@nyanpasu/interface'
+import type { Clash, ProxyGroupItem } from '@nyanpasu/interface'
 
 export type History = Clash.Proxy['history']
 
@@ -17,7 +17,7 @@ export enum SortType {
 }
 
 export const nodeSortingFn = (
-  selectedGroup: Clash.Proxy<Clash.Proxy<string>>,
+  selectedGroup: ProxyGroupItem,
   type: SortType,
 ) => {
   let sortedList = selectedGroup.all?.slice()

@@ -1,6 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
-import { commands, type ProfileBuilder, type ProfilesBuilder } from './bindings'
+import {
+  commands,
+  Profile,
+  type ProfileBuilder,
+  type ProfilesBuilder,
+} from './bindings'
 
 type URLImportParams = Parameters<typeof commands.importProfile>
 
@@ -22,15 +27,17 @@ type CreateParams =
       }
     }
 
+type ProfileHelperFn = {
+  view: () => Promise<null | undefined>
+  update: (profile: ProfileBuilder) => Promise<null | undefined>
+  drop: () => Promise<null | undefined>
+}
+
 export type ProfileQueryResult = NonNullable<
   ReturnType<typeof useProfile>['query']['data']
 >
 
-export type ProfileQueryResultItem =
-  NonNullable<NonNullable<ProfileQueryResult>['items']> extends Array<infer U>
-    ? U
-    : never
-
+export type ProfileQueryResultItem = Profile & Partial<ProfileHelperFn>
 /**
  * A custom hook for managing profiles with various operations including creation, updating, sorting, and deletion.
  *
@@ -73,6 +80,16 @@ export type ProfileQueryResultItem =
 export const useProfile = (options?: { without_helper_fn?: boolean }) => {
   const queryClient = useQueryClient()
 
+  function addHelperFn(item: Profile): Profile & ProfileHelperFn {
+    return {
+      ...item,
+      view: async () => unwrapResult(await commands.viewProfile(item.uid)),
+      update: async (profile: ProfileBuilder) =>
+        await update.mutateAsync({ uid: item.uid, profile }),
+      drop: async () => await drop.mutateAsync(item.uid),
+    }
+  }
+
   /**
    * Retrieves and processes a list of profiles.
    *
@@ -91,21 +108,15 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
     queryFn: async () => {
       const result = unwrapResult(await commands.getProfiles())
 
+      // Skip helper functions if without_helper_fn is set
+      if (options?.without_helper_fn) {
+        return result
+      }
+
       return {
         ...result,
         items: result?.items?.map((item) => {
-          // Skip helper functions if without_helper_fn is set
-          if (options?.without_helper_fn) {
-            return item
-          }
-
-          return {
-            ...item,
-            view: async () => await commands.viewProfile(item.uid),
-            update: async (profile: ProfileBuilder) =>
-              await update.mutateAsync({ uid: item.uid, profile }),
-            drop: async () => await drop.mutateAsync(item.uid),
-          }
+          return addHelperFn(item)
         }),
       }
     },

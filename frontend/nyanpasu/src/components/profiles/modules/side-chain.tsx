@@ -7,13 +7,17 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { Add } from '@mui/icons-material'
 import { alpha, ListItemButton, useTheme } from '@mui/material'
-import { Profile, useClash } from '@nyanpasu/interface'
-import { filterProfiles } from '../utils'
+import {
+  ProfileQueryResultItem,
+  useClash,
+  useProfile,
+} from '@nyanpasu/interface'
+import { ClashProfile, filterProfiles } from '../utils'
 import ChainItem from './chain-item'
 import { atomChainsSelected, atomGlobalChainCurrent } from './store'
 
 export interface SideChainProps {
-  onChainEdit: (item?: Profile.Item) => void | Promise<void>
+  onChainEdit: (item?: ProfileQueryResultItem) => void | Promise<void>
 }
 
 export const SideChain = ({ onChainEdit }: SideChainProps) => {
@@ -25,20 +29,19 @@ export const SideChain = ({ onChainEdit }: SideChainProps) => {
 
   const currentProfileUid = useAtomValue(atomChainsSelected)
 
-  const { getProfiles, setProfilesConfig, setProfiles, reorderProfilesByList } =
-    useClash()
+  const { setProfiles, reorderProfilesByList } = useClash()
 
-  const { scripts, profiles } = filterProfiles(getProfiles.data?.items)
+  const { query, upsert } = useProfile()
+
+  const { clash, chain } = filterProfiles(query.data?.items)
 
   const currentProfile = useMemo(() => {
-    return getProfiles.data?.items?.find(
-      (item) => item.uid === currentProfileUid,
-    )
-  }, [getProfiles.data?.items, currentProfileUid])
+    return clash?.find((item) => item.uid === currentProfileUid) as ClashProfile
+  }, [clash, currentProfileUid])
 
   const handleChainClick = useLockFn(async (uid: string) => {
     const chains = isGlobalChainCurrent
-      ? (getProfiles.data?.chain ?? [])
+      ? (query.data?.chain ?? [])
       : (currentProfile?.chain ?? [])
 
     const updatedChains = chains.includes(uid)
@@ -47,7 +50,7 @@ export const SideChain = ({ onChainEdit }: SideChainProps) => {
 
     try {
       if (isGlobalChainCurrent) {
-        await setProfilesConfig({ chain: updatedChains })
+        await upsert.mutateAsync({ chain: updatedChains })
       } else {
         if (!currentProfile?.uid) {
           return
@@ -63,8 +66,8 @@ export const SideChain = ({ onChainEdit }: SideChainProps) => {
   })
 
   const reorderValues = useMemo(
-    () => scripts?.map((item) => item.uid) || [],
-    [scripts],
+    () => chain?.map((item) => item.uid) || [],
+    [chain],
   )
 
   return (
@@ -73,15 +76,15 @@ export const SideChain = ({ onChainEdit }: SideChainProps) => {
         axis="y"
         values={reorderValues}
         onReorder={(values) => {
-          const profileUids = profiles?.map((item) => item.uid) || []
+          const profileUids = clash?.map((item) => item.uid) || []
           reorderProfilesByList([...profileUids, ...values])
         }}
         layoutScroll
         style={{ overflowY: 'scroll' }}
       >
-        {scripts?.map((item, index) => {
+        {chain?.map((item, index) => {
           const selected = isGlobalChainCurrent
-            ? getProfiles.data?.chain?.includes(item.uid)
+            ? query.data?.chain?.includes(item.uid)
             : currentProfile?.chain?.includes(item.uid)
 
           return (

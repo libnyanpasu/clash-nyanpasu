@@ -113,12 +113,12 @@ export const useSetting = <K extends keyof IVerge>(key: K) => {
    * @returns void
    * @remarks This function will not execute if the data is not available
    */
-  const upsert = (value: IVerge[K]) => {
+  const upsert = async (value: IVerge[K]) => {
     if (!data) {
       return
     }
 
-    update.mutate({ [key]: value })
+    await update.mutateAsync({ [key]: value })
   }
 
   return {

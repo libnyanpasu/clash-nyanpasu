@@ -14,6 +14,7 @@ import SettingNyanpasuPath from './setting-nyanpasu-path'
 import SettingNyanpasuTasks from './setting-nyanpasu-tasks'
 import SettingNyanpasuUI from './setting-nyanpasu-ui'
 import SettingNyanpasuVersion from './setting-nyanpasu-version'
+import SettingNyanpasuWidget from './setting-nyanpasu-widget'
 import SettingSystemBehavior from './setting-system-behavior'
 import SettingSystemProxy from './setting-system-proxy'
 import SettingSystemService from './setting-system-service'
@@ -41,6 +42,8 @@ export const SettingPage = () => {
       <SettingSystemProxy />
 
       <SettingNyanpasuUI />
+
+      <SettingNyanpasuWidget />
 
       <SettingClashBase />
 

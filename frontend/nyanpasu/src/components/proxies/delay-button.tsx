@@ -45,7 +45,7 @@ export const DelayButton = memo(function DelayButton({
   const isSuccess = mounted && !loading
 
   return (
-    <Tooltip title={t('Delay check')}>
+    <Tooltip title={t('Latency check')}>
       <Button
         className="!fixed right-8 bottom-8 z-10 size-16 !rounded-2xl backdrop-blur"
         sx={{

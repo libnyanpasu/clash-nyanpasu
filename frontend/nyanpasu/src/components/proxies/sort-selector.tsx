@@ -22,7 +22,7 @@ export const SortSelector = memo(function SortSelector() {
 
   const tmaps: { [key: string]: string } = {
     default: 'Sort by default',
-    delay: 'Sort by delay',
+    delay: 'Sort by latency',
     name: 'Sort by name',
   }
 

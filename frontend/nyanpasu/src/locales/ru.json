@@ -1,4 +1,8 @@
 {
+  "seconds": "секунды",
+  "minutes": "минуты",
+  "Ok": "OK",
+  "Close": "Закрыть",
   "label_dashboard": "Панель управления",
   "label_proxies": "Прокси",
   "label_profiles": "Профили",

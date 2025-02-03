@@ -1,4 +1,8 @@
 {
+  "seconds": "秒",
+  "minutes": "分鐘",
+  "Ok": "確定",
+  "Close": "關閉",
   "label_dashboard": "儀表盤",
   "label_proxies": "代理組",
   "label_profiles": "代理設定檔",

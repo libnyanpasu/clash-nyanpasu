@@ -284,7 +284,7 @@ export const ProfileDialog = ({
               InputProps={{
                 inputProps: { min: 0 },
                 endAdornment: (
-                  <InputAdornment position="end">mins</InputAdornment>
+                  <InputAdornment position="end">{t('minutes')}</InputAdornment>
                 ),
               }}
             />

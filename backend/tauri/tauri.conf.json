@@ -12,14 +12,14 @@
         "type": "embedBootstrapper"
       },
       "wix": {
-        "language": ["zh-CN", "en-US", "ru-RU"],
+        "language": ["en-US", "ru-RU", "zh-CN", "zh-TW"],
         "template": "./templates/installer.wxs",
         "fragmentPaths": ["./templates/cleanup.wxs"]
       },
       "nsis": {
         "displayLanguageSelector": true,
         "installerIcon": "icons/icon.ico",
-        "languages": ["SimpChinese", "English", "Russian"],
+        "languages": ["English", "Russian", "SimpChinese", "TradChinese"],
         "template": "./templates/installer.nsi",
         "installMode": "both"
       }

@@ -1,62 +1,166 @@
-import { useLockFn, useReactive } from 'ahooks'
+import { useLockFn } from 'ahooks'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { message } from '@/utils/notification'
-import { Done } from '@mui/icons-material'
-import {
-  Box,
-  Button,
-  InputAdornment,
-  List,
-  ListItem,
-  TextField,
-  Typography,
-} from '@mui/material'
+import { InputAdornment, List, ListItem } from '@mui/material'
 import Grid from '@mui/material/Grid2'
-import { useNyanpasu } from '@nyanpasu/interface'
+import { useNyanpasu, useSetting } from '@nyanpasu/interface'
 import {
   BaseCard,
   Expand,
   ExpandMore,
   NumberItem,
   SwitchItem,
+  TextItem,
 } from '@nyanpasu/ui'
 import { PaperSwitchButton } from './modules/system-proxy'
+
+const TunModeButton = () => {
+  const { t } = useTranslation()
+
+  const tunMode = useSetting('enable_tun_mode')
+
+  const handleTunMode = useLockFn(async () => {
+    try {
+      await tunMode.upsert(!tunMode.value)
+    } catch (error) {
+      message(`Activation TUN Mode failed!`, {
+        title: t('Error'),
+        kind: 'error',
+      })
+    }
+  })
+
+  return (
+    <PaperSwitchButton
+      label={t('TUN Mode')}
+      checked={Boolean(tunMode.value)}
+      onClick={handleTunMode}
+    />
+  )
+}
+
+const SystemProxyButton = () => {
+  const { t } = useTranslation()
+
+  const systemProxy = useSetting('enable_system_proxy')
+
+  const handleSystemProxy = useLockFn(async () => {
+    try {
+      await systemProxy.upsert(!systemProxy.value)
+    } catch (error) {
+      message(`Activation System Proxy failed!`, {
+        title: t('Error'),
+        kind: 'error',
+      })
+    }
+  })
+
+  return (
+    <PaperSwitchButton
+      label={t('System Proxy')}
+      checked={Boolean(systemProxy.value)}
+      onClick={handleSystemProxy}
+    />
+  )
+}
+
+const ProxyGuardSwitch = () => {
+  const { t } = useTranslation()
+
+  const proxyGuard = useSetting('enable_proxy_guard')
+
+  const handleProxyGuard = useLockFn(async () => {
+    try {
+      await proxyGuard.upsert(!proxyGuard.value)
+    } catch (error) {
+      message(`Activation Proxy Guard failed!`, {
+        title: t('Error'),
+        kind: 'error',
+      })
+    }
+  })
+
+  return (
+    <SwitchItem
+      label={t('Proxy Guard')}
+      checked={Boolean(proxyGuard.value)}
+      onClick={handleProxyGuard}
+    />
+  )
+}
+
+const ProxyGuardInterval = () => {
+  const { t } = useTranslation()
+
+  const proxyGuardInterval = useSetting('proxy_guard_interval')
+
+  return (
+    <NumberItem
+      label={t('Guard Interval')}
+      value={proxyGuardInterval.value || 0}
+      checkEvent={(input) => input <= 0}
+      checkLabel={t('The interval must be greater than 0 second')}
+      onApply={(value) => {
+        proxyGuardInterval.upsert(value)
+      }}
+      textFieldProps={{
+        inputProps: {
+          'aria-autocomplete': 'none',
+        },
+        InputProps: {
+          endAdornment: <InputAdornment position="end">s</InputAdornment>,
+        },
+      }}
+    />
+  )
+}
+
+const SystemProxyBypass = () => {
+  const { t } = useTranslation()
+
+  const systemProxyBypass = useSetting('system_proxy_bypass')
+
+  return (
+    <TextItem
+      label={t('Proxy Bypass')}
+      value={systemProxyBypass.data || ''}
+      onApply={(value) => {
+        systemProxyBypass.upsert(value)
+      }}
+    />
+  )
+}
+
+const CurrentSystemProxy = () => {
+  const { t } = useTranslation()
+
+  const { getSystemProxy } = useNyanpasu()
+
+  return (
+    <ListItem
+      className="!w-full !flex-col !items-start select-text"
+      sx={{ pl: 0, pr: 0 }}
+    >
+      <div className="text-base leading-10">{t('Current System Proxy')}</div>
+
+      {Object.entries(getSystemProxy?.data ?? []).map(([key, value], index) => {
+        return (
+          <div key={index} className="flex w-full leading-8">
+            <div className="w-28 capitalize">{key}:</div>
+
+            <div className="text-warp flex-1 break-all">{String(value)}</div>
+          </div>
+        )
+      })}
+    </ListItem>
+  )
+}
 
 export const SettingSystemProxy = () => {
   const { t } = useTranslation()
 
-  const { nyanpasuConfig, setNyanpasuConfig, getSystemProxy } = useNyanpasu()
-
-  const loading = useReactive({
-    enable_tun_mode: false,
-    enable_system_proxy: false,
-  })
-
-  const handleClick = useLockFn(
-    async (key: 'enable_system_proxy' | 'enable_tun_mode') => {
-      try {
-        loading[key] = true
-
-        await setNyanpasuConfig({
-          [key]: !nyanpasuConfig?.[key],
-        })
-      } catch (e) {
-        message(`Activation failed!`, {
-          title: t('Error'),
-          kind: 'error',
-        })
-      } finally {
-        loading[key] = false
-      }
-    },
-  )
-
   const [expand, setExpand] = useState(false)
-
-  const [proxyBypass, setProxyBypass] = useState(
-    nyanpasuConfig?.system_proxy_bypass || '',
-  )
 
   return (
     <BaseCard
@@ -66,107 +170,24 @@ export const SettingSystemProxy = () => {
       }
     >
       <Grid container spacing={2}>
-        <Grid
-          size={{
-            xs: 6,
-          }}
-        >
-          <PaperSwitchButton
-            label={t('TUN Mode')}
-            checked={nyanpasuConfig?.enable_tun_mode || false}
-            loading={loading.enable_tun_mode}
-            onClick={() => handleClick('enable_tun_mode')}
-          />
+        <Grid size={{ xs: 6 }}>
+          <TunModeButton />
         </Grid>
 
         <Grid size={{ xs: 6 }}>
-          <PaperSwitchButton
-            label={t('System Proxy')}
-            checked={nyanpasuConfig?.enable_system_proxy || false}
-            loading={loading.enable_system_proxy}
-            onClick={() => handleClick('enable_system_proxy')}
-          />
+          <SystemProxyButton />
         </Grid>
       </Grid>
 
       <Expand open={expand}>
         <List disablePadding sx={{ pt: 1 }}>
-          <SwitchItem
-            label={t('Proxy Guard')}
-            checked={nyanpasuConfig?.enable_proxy_guard || false}
-            onChange={() =>
-              setNyanpasuConfig({
-                enable_proxy_guard: !nyanpasuConfig?.enable_proxy_guard,
-              })
-            }
-          />
+          <ProxyGuardSwitch />
 
-          <NumberItem
-            label={t('Guard Interval')}
-            value={nyanpasuConfig?.proxy_guard_interval || 0}
-            checkEvent={(input) => input <= 0}
-            checkLabel={t('The interval must be greater than 0 second')}
-            onApply={(value) => {
-              setNyanpasuConfig({ proxy_guard_interval: value })
-            }}
-            textFieldProps={{
-              inputProps: {
-                'aria-autocomplete': 'none',
-              },
-              InputProps: {
-                endAdornment: <InputAdornment position="end">s</InputAdornment>,
-              },
-            }}
-          />
+          <ProxyGuardInterval />
 
-          <ListItem sx={{ pl: 0, pr: 0 }}>
-            <TextField
-              value={proxyBypass}
-              label={t('Proxy Bypass')}
-              variant="outlined"
-              sx={{ width: '100%' }}
-              multiline
-              onChange={(e) => setProxyBypass(e.target.value)}
-            />
-          </ListItem>
+          <SystemProxyBypass />
 
-          <Expand open={proxyBypass !== nyanpasuConfig?.system_proxy_bypass}>
-            <Box sx={{ pb: 1 }} display="flex" justifyContent="end">
-              <Button
-                variant="contained"
-                startIcon={<Done />}
-                onClick={() => {
-                  setNyanpasuConfig({ system_proxy_bypass: proxyBypass })
-                }}
-              >
-                {t('Apply')}
-              </Button>
-            </Box>
-          </Expand>
-
-          <ListItem sx={{ pl: 0, pr: 0 }}>
-            <Box>
-              <Typography variant="body1" sx={{ fontSize: '18px', mb: 1 }}>
-                {t('Current System Proxy')}
-              </Typography>
-
-              {Object.entries(getSystemProxy?.data ?? []).map(
-                ([key, value], index) => {
-                  return (
-                    <Box key={index} display="flex" sx={{ pt: 1 }}>
-                      <Typography
-                        sx={{ width: 80, textTransform: 'capitalize' }}
-                      >
-                        {key}:
-                      </Typography>
-
-                      <Typography>{String(value)}</Typography>
-                    </Box>
-                  )
-                },
-              )}
-            </Box>
-          </ListItem>
+          <CurrentSystemProxy />
         </List>
       </Expand>
     </BaseCard>

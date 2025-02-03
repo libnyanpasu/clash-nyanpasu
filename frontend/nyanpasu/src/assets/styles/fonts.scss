@@ -6,11 +6,10 @@
   unicode-range: U+1F1E6-1F1FF;
 }
 
+// use local emoji font for better backward compatibility
 @font-face {
   font-family: 'Color Emoji';
   src: local('Apple Color Emoji'), local('Segoe UI Emoji'),
     local('Segoe UI Symbol'), local('Noto Color Emoji'),
     url('../fonts/Twemoji.Mozilla.ttf');
-
-  // use local emoji font for better backward compatibility
 }

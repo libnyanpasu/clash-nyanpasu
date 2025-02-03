@@ -280,7 +280,7 @@ mod platform_impl {
         let mut items = Vec::new();
         if proxies.is_empty() {
             items.push(MenuItemKind::MenuItem(
-                MenuItemBuilder::new("No Proxies")
+                MenuItemBuilder::new(t!("tray.no_proxies"))
                     .id("no_proxies")
                     .enabled(false)
                     .build(app_handle)?,

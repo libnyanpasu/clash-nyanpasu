@@ -191,8 +191,10 @@ export const useProfile = () => {
    * - Automatically invalidates the 'profiles' query cache on successful mutation
    */
   const upsert = useMutation({
-    mutationFn: async (options: ProfilesBuilder) => {
-      return unwrapResult(await commands.patchProfilesConfig(options))
+    mutationFn: async (options: Partial<ProfilesBuilder>) => {
+      return unwrapResult(
+        await commands.patchProfilesConfig(options as ProfilesBuilder),
+      )
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] })

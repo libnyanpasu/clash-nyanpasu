@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { message } from '@/utils/notification'
 import { InputAdornment, List, ListItem } from '@mui/material'
 import Grid from '@mui/material/Grid2'
-import { useNyanpasu, useSetting } from '@nyanpasu/interface'
+import { useSetting, useSystemProxy } from '@nyanpasu/interface'
 import {
   BaseCard,
   Expand,
@@ -135,7 +135,7 @@ const SystemProxyBypass = () => {
 const CurrentSystemProxy = () => {
   const { t } = useTranslation()
 
-  const { getSystemProxy } = useNyanpasu()
+  const { data } = useSystemProxy()
 
   return (
     <ListItem
@@ -144,7 +144,7 @@ const CurrentSystemProxy = () => {
     >
       <div className="text-base leading-10">{t('Current System Proxy')}</div>
 
-      {Object.entries(getSystemProxy?.data ?? []).map(([key, value], index) => {
+      {Object.entries(data ?? []).map(([key, value], index) => {
         return (
           <div key={index} className="flex w-full leading-8">
             <div className="w-28 capitalize">{key}:</div>

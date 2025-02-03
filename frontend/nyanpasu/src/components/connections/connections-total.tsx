@@ -51,7 +51,10 @@ export default function ConnectionTotal() {
     <div className="flex gap-2">
       <Paper
         elevation={0}
-        className="flex min-h-8 items-center justify-center gap-1 rounded-2xl px-2"
+        className="flex min-h-8 items-center justify-center gap-1 px-2"
+        sx={{
+          borderRadius: '1em',
+        }}
       >
         <Download
           className="scale-75"
@@ -76,7 +79,10 @@ export default function ConnectionTotal() {
       </Paper>
       <Paper
         elevation={0}
-        className="flex min-h-8 items-center justify-center gap-1 rounded-2xl px-2"
+        className="flex min-h-8 items-center justify-center gap-1 px-2"
+        sx={{
+          borderRadius: '1em',
+        }}
       >
         <Upload
           className="scale-75"

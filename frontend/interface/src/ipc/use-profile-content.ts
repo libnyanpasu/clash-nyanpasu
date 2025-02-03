@@ -44,10 +44,11 @@ export const useProfileContent = (uid: string) => {
    * ```
    */
   const query = useQuery({
-    queryKey: ['profileContent', uid],
+    queryKey: ['profile-content', uid],
     queryFn: async () => {
       return unwrapResult(await commands.readProfileFile(uid))
     },
+    enabled: !!uid,
   })
 
   /**

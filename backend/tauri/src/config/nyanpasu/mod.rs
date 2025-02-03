@@ -189,7 +189,7 @@ pub struct IVerge {
     pub proxy_guard_interval: Option<u64>,
 
     /// theme setting
-    pub theme_setting: Option<IVergeTheme>,
+    pub theme_color: Option<String>,
 
     /// web ui list
     pub web_ui_list: Option<Vec<String>>,
@@ -265,24 +265,6 @@ pub struct WindowState {
     pub y: i32,
     pub maximized: bool,
     pub fullscreen: bool,
-}
-
-#[derive(Default, Debug, Clone, Deserialize, Serialize, specta::Type)]
-pub struct IVergeTheme {
-    pub primary_color: Option<String>,
-    pub secondary_color: Option<String>,
-    pub primary_text: Option<String>,
-    pub secondary_text: Option<String>,
-
-    pub info_color: Option<String>,
-    pub error_color: Option<String>,
-    pub warning_color: Option<String>,
-    pub success_color: Option<String>,
-
-    pub font_family: Option<String>,
-    pub css_injection: Option<String>,
-
-    pub page_transition_duration: Option<f64>,
 }
 
 impl IVerge {

@@ -921,7 +921,7 @@ export type IVerge = {
   /**
    * theme setting
    */
-  theme_setting: IVergeTheme | null
+  theme_color: string | null
   /**
    * web ui list
    */
@@ -1001,19 +1001,6 @@ export type IVerge = {
    * 是否启用网络统计信息浮窗
    */
   network_statistic_widget?: NetworkStatisticWidgetConfig | null
-}
-export type IVergeTheme = {
-  primary_color: string | null
-  secondary_color: string | null
-  primary_text: string | null
-  secondary_text: string | null
-  info_color: string | null
-  error_color: string | null
-  warning_color: string | null
-  success_color: string | null
-  font_family: string | null
-  css_injection: string | null
-  page_transition_duration: number | null
 }
 export type JsonValue =
   | null

@@ -13,6 +13,7 @@ pub static UNITS: Lazy<Vec<DynMigration>> = Lazy::new(|| {
     vec![
         MigrateProfilesNullValue.into(),
         MigrateLanguageOption.into(),
+        MigrateThemeSetting.into(),
     ]
 });
 
@@ -144,6 +145,66 @@ impl<'a> Migration<'a> for MigrateLanguageOption {
                 println!("Migration completed");
             }
         }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MigrateThemeSetting;
+impl<'a> Migration<'a> for MigrateThemeSetting {
+    fn version(&self) -> &'a semver::Version {
+        &VERSION
+    }
+
+    fn name(&self) -> std::borrow::Cow<'a, str> {
+        Cow::Borrowed("Migrate Theme Setting")
+    }
+
+    fn migrate(&self) -> std::io::Result<()> {
+        let config_path = crate::utils::dirs::nyanpasu_config_path().unwrap();
+        if !config_path.exists() {
+            return Ok(());
+        }
+        let raw_config = std::fs::read_to_string(&config_path)?;
+        let mut config: Mapping = serde_yaml::from_str(&raw_config)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        if let Some(theme) = config.get("theme_setting") {
+            if !theme.is_null() {
+                if let Some(theme_obj) = theme.as_mapping() {
+                    if let Some(color) = theme_obj.get("primary_color") {
+                        println!("color: {:?}", color);
+                        config.insert("theme_color".into(), color.clone());
+                    }
+                }
+            }
+        }
+        config.remove("theme_setting");
+        let new_config = serde_yaml::to_string(&config)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        std::fs::write(&config_path, new_config)?;
+        Ok(())
+    }
+
+    fn discard(&self) -> std::io::Result<()> {
+        let config_path = crate::utils::dirs::nyanpasu_config_path().unwrap();
+        if !config_path.exists() {
+            return Ok(());
+        }
+        let raw_config = std::fs::read_to_string(&config_path)?;
+        let mut config: Mapping = serde_yaml::from_str(&raw_config)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        if let Some(color) = config.get("theme_color") {
+            let mut theme_obj = Mapping::new();
+            theme_obj.insert("primary_color".into(), color.clone());
+            config.insert(
+                "theme_setting".into(),
+                serde_yaml::Value::Mapping(theme_obj),
+            );
+            config.remove("theme_color");
+        }
+        let new_config = serde_yaml::to_string(&config)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        std::fs::write(&config_path, new_config)?;
         Ok(())
     }
 }

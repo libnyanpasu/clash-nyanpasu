@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
-import { commands, ProfileBuilder, ProfilesBuilder } from './bindings'
+import { commands, type ProfileBuilder, type ProfilesBuilder } from './bindings'
 
 type URLImportParams = Parameters<typeof commands.importProfile>
 
@@ -22,68 +22,49 @@ type CreateParams =
       }
     }
 
+export type ProfileQueryResult = NonNullable<
+  ReturnType<typeof useProfile>['query']['data']
+>
+
+export type ProfileQueryResultItem =
+  NonNullable<NonNullable<ProfileQueryResult>['items']> extends Array<infer U>
+    ? U
+    : never
+
 /**
- * A custom hook for managing profile operations using React Query.
- * Provides functionality for CRUD operations on profiles including creation,
- * updating, reordering, and deletion.
- *
- * @returns An object containing:
- * - query: {@link UseQueryResult} Hook result for fetching profiles data
- * - create: {@link UseMutationResult} Mutation for creating/importing profiles
- * - update: {@link UseMutationResult} Mutation for updating existing profiles
- * - sort: {@link UseMutationResult} Mutation for reordering profiles
- * - upsert: {@link UseMutationResult} Mutation for upserting profile configurations
- * - drop: {@link UseMutationResult} Mutation for deleting profiles
- *
- * @example
- * ```typescript
- * const { query, create, update, sort, upsert, drop } = useProfile();
- *
- * // Fetch profiles
- * const { data, isLoading } = query;
- *
- * // Create a new profile
- * create.mutate({
- *   type: 'file',
- *   data: { item: profileData, fileData: 'config' }
- * });
- *
- * // Update a profile
- * update.mutate({ uid: 'profile-id', profile: updatedProfile });
- *
- * // Reorder profiles
- * sort.mutate(['uid1', 'uid2', 'uid3']);
- *
- * // Upsert profile config
- * upsert.mutate(profilesConfig);
- *
- * // Delete a profile
- * drop.mutate('profile-id');
- * ```
+ * useProfile hook via TanStack Query.
  */
 export const useProfile = () => {
   const queryClient = useQueryClient()
 
   /**
-   * A React Query hook that fetches profiles data.
-   * data is the full Profile configuration, including current, chain, valid, and items fields
-   * Uses the `getProfiles` command to retrieve profile information.
+   * Retrieves and processes a list of profiles.
    *
-   * @returns {UseQueryResult} A query result object containing:
-   * - data: {
-   *     current: string | null     - Currently selected profile UID
-   *     chain: string[]            - Global chain of profile UIDs
-   *     valid: boolean             - Whether the profile configuration is valid
-   *     items: Profile[]           - Array of profile configurations
-   *   }
-   * - `isLoading`: Boolean indicating if the query is in loading state
-   * - `error`: Error object if the query failed
-   * - Other standard React Query result properties
+   * This query uses the `useQuery` hook to fetch profile data by invoking the `commands.getProfiles()` command.
+   * The raw result is first unwrapped using `unwrapResult`, and then each profile item is augmented with additional
+   * helper functions:
+   *
+   * - view: Invokes `commands.viewProfile` with the profile's UID.
+   * - update: Executes the update mutation by passing an object containing the UID and the new profile data.
+   * - drop: Executes the drop mutation using the profile's UID.
+   *
+   * @returns A promise resolving to an object containing the profile list along with the extended helper functions.
    */
   const query = useQuery({
     queryKey: ['profiles'],
     queryFn: async () => {
-      return unwrapResult(await commands.getProfiles())
+      const result = unwrapResult(await commands.getProfiles())
+
+      return {
+        ...result,
+        items: result?.items?.map((item) => ({
+          ...item,
+          view: async () => await commands.viewProfile(item.uid),
+          update: async (profile: ProfileBuilder) =>
+            await update.mutateAsync({ uid: item.uid, profile }),
+          drop: async () => await drop.mutateAsync(item.uid),
+        })),
+      }
     },
   })
 

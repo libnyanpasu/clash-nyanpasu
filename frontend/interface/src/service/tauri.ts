@@ -1,13 +1,18 @@
 import { IPSBResponse } from '@/openapi'
 import { invoke } from '@tauri-apps/api/core'
+import type {
+  ClashInfo,
+  Profile,
+  Profiles,
+  ProfilesBuilder,
+  Proxies,
+  RemoteProfileOptionsBuilder,
+} from '../ipc/bindings'
 import { ManifestVersion } from './core'
 import {
   ClashConfig,
-  ClashInfo,
   EnvInfos,
   InspectUpdater,
-  Profile,
-  Proxies,
   SystemProxy,
   VergeConfig,
 } from './types'
@@ -37,13 +42,16 @@ export const getRuntimeLogs = async () => {
 }
 
 export const createProfile = async (
-  item: Partial<Profile.Item>,
+  item: Partial<Profile>,
   fileData?: string | null,
 ) => {
   return await invoke<void>('create_profile', { item, fileData })
 }
 
-export const updateProfile = async (uid: string, option?: Profile.Option) => {
+export const updateProfile = async (
+  uid: string,
+  option?: RemoteProfileOptionsBuilder,
+) => {
   return await invoke<void>('update_profile', { uid, option })
 }
 
@@ -56,17 +64,17 @@ export const viewProfile = async (uid: string) => {
 }
 
 export const getProfiles = async () => {
-  return await invoke<Profile.Config>('get_profiles')
+  return await invoke<Profiles>('get_profiles')
 }
 
 export const setProfiles = async (payload: {
   uid: string
-  profile: Partial<Profile.Item>
+  profile: Partial<Profile>
 }) => {
   return await invoke<void>('patch_profile', payload)
 }
 
-export const setProfilesConfig = async (profiles: Partial<Profile.Config>) => {
+export const setProfilesConfig = async (profiles: ProfilesBuilder) => {
   return await invoke<void>('patch_profiles_config', { profiles })
 }
 
@@ -80,7 +88,7 @@ export const saveProfileFile = async (uid: string, fileData: string) => {
 
 export const importProfile = async (
   url: string,
-  option: Profile.Option = { with_proxy: true },
+  option: RemoteProfileOptionsBuilder,
 ) => {
   return await invoke<void>('import_profile', {
     url,

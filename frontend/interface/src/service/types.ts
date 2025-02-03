@@ -54,11 +54,6 @@ export interface VergeConfig {
   always_on_top?: boolean
 }
 
-export interface ClashInfo {
-  port?: number
-  server?: string
-  secret?: string
-}
 export interface ClashConfig {
   port: number
   mode: string
@@ -74,71 +69,10 @@ export interface ClashConfig {
   secret: string
 }
 
-// eslint-disable-next-line @typescript-eslint/no-namespace
-export namespace Profile {
-  export interface Config {
-    current: string[]
-    chain: string[]
-    valid: string[]
-    items: Item[]
-  }
-
-  export const Type = {
-    Local: 'local',
-    Remote: 'remote',
-    Merge: 'merge',
-    JavaScript: {
-      script: 'javascript',
-    },
-    LuaScript: {
-      script: 'lua',
-    },
-  } as const
-
-  export interface Item {
-    uid: string
-    type?: (typeof Type)[keyof typeof Type]
-    name?: string
-    desc?: string
-    file?: string
-    url?: string
-    updated?: number
-    selected?: {
-      name?: string
-      now?: string
-    }[]
-    extra?: {
-      upload: number
-      download: number
-      total: number
-      expire: number
-    }
-    option?: Option
-    chain?: string[]
-  }
-
-  export interface Option {
-    user_agent?: string
-    with_proxy?: boolean
-    self_proxy?: boolean
-    update_interval?: number
-  }
-}
-
 export interface SystemProxy {
   enable: boolean
   server: string
   bypass: string
-}
-
-export interface Proxies {
-  direct: Clash.Proxy
-  global: Clash.Proxy<Clash.Proxy>
-  groups: Clash.Proxy<Clash.Proxy>[]
-  proxies: Clash.Proxy[]
-  records: {
-    [key: string]: Clash.Proxy
-  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-namespace

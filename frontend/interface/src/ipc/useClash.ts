@@ -1,5 +1,10 @@
 import useSWR from 'swr'
-import { ClashConfig, Profile } from '@/index'
+import {
+  ClashConfig,
+  Profile,
+  ProfilesBuilder,
+  RemoteProfileOptionsBuilder,
+} from '@/index'
 import * as tauri from '@/service/tauri'
 import { clash } from '../service/clash'
 
@@ -33,7 +38,7 @@ export const useClash = () => {
 
   const getProfiles = useSWR('getProfiles', tauri.getProfiles)
 
-  const setProfiles = async (uid: string, profile: Partial<Profile.Item>) => {
+  const setProfiles = async (uid: string, profile: Partial<Profile>) => {
     await tauri.setProfiles({ uid, profile })
 
     await getProfiles.mutate()
@@ -41,7 +46,7 @@ export const useClash = () => {
     await getRuntimeLogs.mutate()
   }
 
-  const setProfilesConfig = async (profiles: Partial<Profile.Config>) => {
+  const setProfilesConfig = async (profiles: ProfilesBuilder) => {
     await tauri.setProfilesConfig(profiles)
 
     await getProfiles.mutate()
@@ -49,13 +54,16 @@ export const useClash = () => {
     await getRuntimeLogs.mutate()
   }
 
-  const createProfile = async (item: Partial<Profile.Item>, data?: string) => {
+  const createProfile = async (item: Partial<Profile>, data?: string) => {
     await tauri.createProfile(item, data)
 
     await getProfiles.mutate()
   }
 
-  const updateProfile = async (uid: string, option?: Profile.Option) => {
+  const updateProfile = async (
+    uid: string,
+    option?: RemoteProfileOptionsBuilder,
+  ) => {
     await tauri.updateProfile(uid, option)
 
     await getProfiles.mutate()
@@ -81,7 +89,10 @@ export const useClash = () => {
     }
   }
 
-  const importProfile = async (url: string, option?: Profile.Option) => {
+  const importProfile = async (
+    url: string,
+    option: RemoteProfileOptionsBuilder,
+  ) => {
     await tauri.importProfile(url, option)
 
     await getProfiles.mutate()

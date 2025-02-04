@@ -70,7 +70,7 @@ export const useProfileContent = (uid: string) => {
       return unwrapResult(await commands.saveProfileFile(uid, fileData))
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['profileContent', uid] })
+      queryClient.invalidateQueries({ queryKey: ['profile-content', uid] })
     },
   })
 

@@ -93,7 +93,7 @@ const ThemeColor = () => {
               theme.upsert(value)
             }}
           >
-            Apply
+            {t('Apply')}
           </Button>
         </div>
       </Expand>

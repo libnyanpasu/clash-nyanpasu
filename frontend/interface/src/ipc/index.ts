@@ -1,3 +1,4 @@
+export * from './use-clash-config'
 export * from './use-profile-content'
 export * from './use-profile'
 export * from './use-runtime-profile'

@@ -1,4 +1,8 @@
 {
+  "seconds": "秒",
+  "minutes": "分钟",
+  "Ok": "确定",
+  "Close": "关闭",
   "label_dashboard": "概 览",
   "label_proxies": "代 理",
   "label_profiles": "配 置",

@@ -117,8 +117,8 @@ export const SettingClashWeb = () => {
           setEditIndex(null)
           setEditString('')
         }}
-        ok="Submit"
-        close="Close"
+        ok={t('Ok')}
+        close={t('Close')}
         contentStyle={{ overflow: editString ? 'auto' : 'hidden' }}
         divider
       >

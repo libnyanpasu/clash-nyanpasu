@@ -1,4 +1,8 @@
 {
+  "seconds": "s",
+  "minutes": "min(s)",
+  "Ok": "OK",
+  "Close": "Close",
   "label_dashboard": "Dashboard",
   "label_proxies": "Proxies",
   "label_profiles": "Profiles",

@@ -55,7 +55,7 @@ export const SettingNyanpasuMisc = () => {
         />
 
         <SwitchItem
-          label={t('Enable Builtin Enhanced')}
+          label={t('Enable Built-in Enhanced')}
           {...createBooleanProps('enable_builtin_enhanced')}
         />
 

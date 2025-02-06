@@ -29,6 +29,15 @@ pub enum StatisticWidgetVariant {
     Small,
 }
 
+impl std::fmt::Display for StatisticWidgetVariant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StatisticWidgetVariant::Large => write!(f, "large"),
+            StatisticWidgetVariant::Small => write!(f, "small"),
+        }
+    }
+}
+
 pub fn start_statistic_widget(size: StatisticWidgetVariant) -> eframe::Result {
     match size {
         StatisticWidgetVariant::Large => NyanpasuNetworkStatisticLargeWidget::run(),

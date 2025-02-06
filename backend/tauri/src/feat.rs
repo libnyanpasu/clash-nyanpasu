@@ -364,8 +364,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
         }
 
         // TODO: refactor config with changed notify
-        if network_statistic_widget.is_some() {
-            let network_statistic_widget = network_statistic_widget.unwrap();
+        if let Some(network_statistic_widget) = network_statistic_widget {
             let widget_manager =
                 crate::consts::app_handle().state::<crate::widget::WidgetManager>();
             let is_running = widget_manager.is_running().await;

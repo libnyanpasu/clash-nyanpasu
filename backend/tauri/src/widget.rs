@@ -105,22 +105,36 @@ impl WidgetManager {
         // This operation is blocking, but it internal just a system call, so I think it's okay
         let (mut ipc_server, server_name) = create_ipc_server()?;
         // spawn a process to run the widget
-        let child = tokio::process::Command::new(current_exe)
+        let variant = format!("{}", widget);
+        tracing::debug!("Spawning widget process for {}...", variant);
+        let mut child = tokio::process::Command::new(current_exe)
             .arg("statistic-widget")
-            .arg(serde_json::to_string(&widget).context("Failed to serialize widget")?)
+            .arg(variant)
             .env("NYANPASU_EGUI_IPC_SERVER", server_name)
+            .stdin(std::process::Stdio::inherit())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
             .context("Failed to spawn widget process")?;
-        let tx = tokio::task::spawn_blocking(move || {
-            ipc_server
-                .connect()
-                .context("Failed to connect to widget")?;
-            ipc_server.into_tx().context("Failed to get ipc sender")
-        })
-        .await
-        .context("Failed to read widget output")??;
+        tracing::debug!("Waiting for widget process to start...");
+        let tx = tokio::select! {
+            res = tokio::task::spawn_blocking(move || {
+                ipc_server
+                    .connect()
+                    .context("Failed to connect to widget")?;
+                ipc_server.into_tx().context("Failed to get ipc sender")
+            }) => res.context("Failed to get ipc sender")??,
+            res = child.wait() => {
+                match res {
+                    Ok(status) => {
+                        return Err(anyhow::anyhow!("Widget process exited: {}", status));
+                    }
+                    Err(e) => {
+                        return Err(anyhow::anyhow!("Failed to wait for widget process: {}", e));
+                    }
+                }
+            }
+        };
         instance.replace(WidgetManagerInstance { tx, process: child });
         Ok(())
     }

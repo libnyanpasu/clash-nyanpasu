@@ -720,6 +720,14 @@ export const commands = {
       else return { status: 'error', error: e as any }
     }
   },
+  async checkUpdate(): Promise<Result<UpdateWrapper | null, string>> {
+    try {
+      return { status: 'ok', data: await TAURI_INVOKE('check_update') }
+    } catch (e) {
+      if (e instanceof Error) throw e
+      else return { status: 'error', error: e as any }
+    }
+  },
 }
 
 /** user-defined events **/
@@ -1485,6 +1493,15 @@ export type SubscriptionInfo = {
 }
 export type TrayIcon = 'normal' | 'tun' | 'system_proxy'
 export type TunStack = 'system' | 'gvisor' | 'mixed'
+export type UpdateWrapper = {
+  rid: number
+  available: boolean
+  current_version: string
+  version: string
+  date: string | null
+  body: string | null
+  raw_json: JsonValue
+}
 export type UpdaterState =
   | 'idle'
   | 'downloading'

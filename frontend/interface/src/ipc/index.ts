@@ -8,4 +8,5 @@ export * from './useClash'
 export * from './useClashCore'
 export * from './useClashWS'
 
+export { commands } from './bindings'
 export type * from './bindings'

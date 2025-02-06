@@ -977,3 +977,51 @@ pub async fn get_clash_ws_connections_state(
     let ws_connector = app_handle.state::<crate::core::clash::ws::ClashConnectionsConnector>();
     Ok(ws_connector.state())
 }
+
+// Updater block
+
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
+// TODO: a copied from updater metadata, and should be moved a separate updater module
+pub struct UpdateWrapper {
+    rid: tauri::ResourceId,
+    available: bool,
+    current_version: String,
+    version: String,
+    date: Option<String>,
+    body: Option<String>,
+    raw_json: serde_json::Value,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn check_update(webview: tauri::Webview) -> Result<Option<UpdateWrapper>> {
+    use crate::utils::config::{get_self_proxy, get_system_proxy};
+    use tauri_plugin_updater::UpdaterExt;
+    let mut builder = webview.updater_builder().version_comparator(|_, remote| {
+        use semver::Version;
+        let local = Version::parse(crate::consts::BUILD_INFO.pkg_version).ok();
+        local.map(|l| l < remote.version).unwrap_or(false)
+    });
+    // apply proxy
+    if let Ok(proxy) = get_self_proxy() {
+        builder = builder.proxy(proxy.parse().context("failed to parse proxy")?);
+    }
+    if let Ok(Some(proxy)) = get_system_proxy() {
+        builder = builder.proxy(proxy.parse().context("failed to parse system proxy")?);
+    }
+    let updater = builder.build().context("failed to build updater")?;
+    let update = updater.check().await.context("failed to check update")?;
+    Ok(update.map(|u| {
+        let mut wrapper = UpdateWrapper {
+            available: true,
+            current_version: u.current_version.clone(),
+            version: u.version.clone(),
+            date: u.date.map(|d| d.to_string()),
+            body: u.body.clone(),
+            raw_json: u.raw_json.clone(),
+            ..Default::default()
+        };
+        wrapper.rid = webview.resources_table().add(u);
+        wrapper
+    }))
+}

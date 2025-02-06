@@ -258,6 +258,8 @@ pub fn run() -> std::io::Result<()> {
             ipc::get_core_dir,
             // clash layer
             ipc::get_clash_ws_connections_state,
+            // updater layer
+            ipc::check_update,
         ])
         .events(collect_events![core::clash::ClashConnectionsEvent]);
 
@@ -310,6 +312,7 @@ pub fn run() -> std::io::Result<()> {
         .invoke_handler(specta_builder.invoke_handler())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())

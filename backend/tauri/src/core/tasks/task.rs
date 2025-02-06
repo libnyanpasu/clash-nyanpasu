@@ -1,5 +1,5 @@
 use super::{
-    events::{TaskEventState, TaskEvents, TaskEventsDispatcher},
+    events::{TaskEventState, TaskEvents},
     executor::{Job, TaskExecutor},
     storage::TaskStorage,
     utils::{Error, Result, TaskCreationError},
@@ -175,10 +175,8 @@ macro_rules! wrap_job {
         let event_id = $id_generator.generate();
 
         let _ = $list.set_task_state($task_id, TaskState::Running(event_id), None);
-        $task_events.new_event($task_id, event_id).unwrap();
-        $task_events
-            .dispatch(event_id, TaskEventState::Running)
-            .unwrap();
+        let dispatcher = $task_events.new_event($task_id, event_id).unwrap();
+        dispatcher.dispatch(TaskEventState::Running).unwrap();
 
         let res = $exec;
 
@@ -195,9 +193,7 @@ macro_rules! wrap_job {
                 let _ = $list.set_task_state($task_id, TaskState::Idle, Some(res.clone()));
             }
         }
-        $task_events
-            .dispatch(event_id, TaskEventState::Finished(res))
-            .unwrap();
+        dispatcher.dispatch(TaskEventState::Finished(res)).unwrap();
     }};
 }
 

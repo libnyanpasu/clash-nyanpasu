@@ -559,6 +559,9 @@ importers:
       '@types/adm-zip':
         specifier: 0.5.7
         version: 0.5.7
+      '@types/yargs':
+        specifier: ^17.0.33
+        version: 17.0.33
       adm-zip:
         specifier: 0.5.16
         version: 0.5.16
@@ -592,6 +595,9 @@ importers:
       undici:
         specifier: 7.3.0
         version: 7.3.0
+      yargs:
+        specifier: ^17.7.2
+        version: 17.7.2
 
 packages:
 
@@ -3280,6 +3286,12 @@ packages:
 
   '@types/validator@13.12.2':
     resolution: {integrity: sha512-6SlHBzUW8Jhf3liqrGGXyTJSIFe4nqlJ5A5KaMZ2l/vbM3Wh3KSybots/wfWVzNLK4D1NZluDlSQIbIEPx6oyA==}
+
+  '@types/yargs-parser@21.0.3':
+    resolution: {integrity: sha512-I4q9QU9MQv4oEOz4tAHJtNz1cwuLxn2F3xcc2iV5WdqLPpUnj30aUuxt1mAxYTG+oe8CZMV/+6rU4S4gRDzqtQ==}
+
+  '@types/yargs@17.0.33':
+    resolution: {integrity: sha512-WpxBCKWPLr4xSsHgz511rFJAM+wS28w2zEO1QDNY5zM/S8ok70NNfztH0xwhqKyaK0OHCbN98LDAZuy1ctxDkA==}
 
   '@types/yauzl@2.10.3':
     resolution: {integrity: sha512-oJoftv0LSuaDZE3Le4DbKX+KS9G36NzOeSap90UIK0yMA/NhKJhqlSGtNDORNRaIbQfzjXDrQa0ytJ6mNRGz/Q==}
@@ -11177,6 +11189,12 @@ snapshots:
   '@types/unist@3.0.2': {}
 
   '@types/validator@13.12.2': {}
+
+  '@types/yargs-parser@21.0.3': {}
+
+  '@types/yargs@17.0.33':
+    dependencies:
+      '@types/yargs-parser': 21.0.3
 
   '@types/yauzl@2.10.3':
     dependencies:

@@ -146,13 +146,14 @@ impl NyanpasuNetworkStatisticSmallWidget {
     pub fn run() -> eframe::Result {
         let options = eframe::NativeOptions {
             viewport: egui::ViewportBuilder::default()
-                .with_inner_size([206.0, 60.0])
+                .with_inner_size([80.0, 32.0])
                 .with_decorations(false)
                 .with_transparent(true)
                 .with_always_on_top()
                 .with_drag_and_drop(true)
                 .with_resizable(false)
                 .with_taskbar(false),
+            run_and_return: false,
             ..Default::default()
         };
         eframe::run_native(

@@ -175,7 +175,7 @@ macro_rules! wrap_job {
         let event_id = $id_generator.generate();
 
         let _ = $list.set_task_state($task_id, TaskState::Running(event_id), None);
-        let dispatcher = $task_events.new_event($task_id, event_id).unwrap();
+        let mut dispatcher = $task_events.new_event($task_id, event_id).unwrap();
         dispatcher.dispatch(TaskEventState::Running).unwrap();
 
         let res = $exec;

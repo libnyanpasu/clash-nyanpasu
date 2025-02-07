@@ -13,10 +13,11 @@ pub struct TaskEvents {
     storage: Arc<Mutex<TaskStorage>>,
 }
 
+/// TaskEventDispatcher is a dispatcher for a task event,
+/// currently, it's designed for a single thread task to dispatch event.
 pub struct TaskEventDispatcher {
     storage: Arc<Mutex<TaskStorage>>,
-    task_id: TaskID,
-    event_id: TaskEventID,
+    event: TaskEvent,
 }
 
 impl TaskEvents {
@@ -26,7 +27,7 @@ impl TaskEvents {
 
     pub fn new_event(&self, task_id: TaskID, event_id: TaskEventID) -> Result<TaskEventDispatcher> {
         tracing::debug!("create new event: {:?} for task: {:?}", event_id, task_id);
-        let dispatcher = {
+        let mut dispatcher = {
             let storage = self.storage.lock();
             let event = TaskEvent {
                 id: event_id,
@@ -34,11 +35,7 @@ impl TaskEvents {
                 ..TaskEvent::default()
             };
             storage.add_event(&event).context("failed to add event")?;
-            TaskEventDispatcher {
-                storage: self.storage.clone(),
-                task_id,
-                event_id,
-            }
+            TaskEventDispatcher::new(self.storage.clone(), event)
         };
         dispatcher
             .dispatch(TaskEventState::Pending)
@@ -48,17 +45,19 @@ impl TaskEvents {
 }
 
 impl TaskEventDispatcher {
-    pub fn dispatch(&self, state: TaskEventState) -> Result<()> {
+    pub fn new(storage: Arc<Mutex<TaskStorage>>, event: TaskEvent) -> Self {
+        TaskEventDispatcher { storage, event }
+    }
+    pub fn dispatch(&mut self, state: TaskEventState) -> Result<()> {
         tracing::debug!(
             "dispatch state: {:?} for event: {:?} of task: {:?}",
             state,
-            self.event_id,
-            self.task_id
+            self.event.id,
+            self.event.task_id
         );
+        self.event.dispatch(state);
         let storage = self.storage.lock();
-        let mut event = storage.get_event(self.event_id).unwrap().unwrap(); // unwrap because it should be exist here, if not, it's a bug
-        event.dispatch(state);
-        storage.update_event(&event)?;
+        storage.update_event(&self.event)?;
         Ok(())
     }
 }

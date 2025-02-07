@@ -560,7 +560,7 @@ importers:
         specifier: 0.5.7
         version: 0.5.7
       '@types/yargs':
-        specifier: ^17.0.33
+        specifier: 17.0.33
         version: 17.0.33
       adm-zip:
         specifier: 0.5.16

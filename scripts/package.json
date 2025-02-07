@@ -12,7 +12,7 @@
   "devDependencies": {
     "@octokit/types": "13.8.0",
     "@types/adm-zip": "0.5.7",
-    "@types/yargs": "^17.0.33",
+    "@types/yargs": "17.0.33",
     "adm-zip": "0.5.16",
     "colorize-template": "1.0.0",
     "consola": "3.4.0",

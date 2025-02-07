@@ -23,6 +23,20 @@ export function useUpdaterPlatformSupported() {
   return supported
 }
 
+export async function checkUpdate() {
+  const metadata = unwrapResult(await commands.checkUpdate())
+  if (metadata) {
+    return new Update({
+      rid: metadata.rid,
+      available: metadata.available,
+      currentVersion: metadata.current_version,
+      version: metadata.version,
+      rawJson: metadata.raw_json as Record<string, unknown>,
+    })
+  }
+  return null
+}
+
 export default function useUpdater() {
   const { nyanpasuConfig } = useNyanpasu()
   const updaterIgnored = useAtomValue(UpdaterIgnoredAtom)
@@ -32,18 +46,9 @@ export default function useUpdater() {
   useEffect(() => {
     const run = async () => {
       if (nyanpasuConfig?.enable_auto_check_update && isPlatformSupported) {
-        const metadata = unwrapResult(await commands.checkUpdate())
-        if (metadata) {
-          const updater = new Update({
-            rid: metadata.rid,
-            available: metadata.available,
-            currentVersion: metadata.current_version,
-            version: metadata.version,
-            rawJson: metadata.raw_json as Record<string, unknown>,
-          })
-          if (updaterIgnored !== updater.version) {
-            setUpdaterInstance(updater || null)
-          }
+        const updater = await checkUpdate()
+        if (updater && updaterIgnored !== updater.version) {
+          setUpdaterInstance(updater)
         }
       }
     }

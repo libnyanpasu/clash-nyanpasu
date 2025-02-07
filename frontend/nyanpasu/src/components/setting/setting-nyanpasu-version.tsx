@@ -3,7 +3,7 @@ import { useSetAtom } from 'jotai'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import LogoSvg from '@/assets/image/logo.svg?react'
-import { useUpdaterPlatformSupported } from '@/hooks/use-updater'
+import { checkUpdate, useUpdaterPlatformSupported } from '@/hooks/use-updater'
 import { UpdaterInstanceAtom } from '@/store/updater'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
@@ -20,7 +20,6 @@ import {
 import { useNyanpasu } from '@nyanpasu/interface'
 import { BaseCard } from '@nyanpasu/ui'
 import { version } from '@root/package.json'
-import { check as checkUpdate } from '@tauri-apps/plugin-updater'
 import { LabelSwitch } from './modules/clash-field'
 
 const AutoCheckUpdate = () => {

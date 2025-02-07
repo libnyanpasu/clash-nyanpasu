@@ -405,8 +405,8 @@ importers:
         specifier: 1.19.1
         version: 1.19.1
       monaco-yaml:
-        specifier: 5.2.3
-        version: 5.2.3(monaco-editor@0.52.2)
+        specifier: 5.3.0
+        version: 5.3.0(monaco-editor@0.52.2)
       nanoid:
         specifier: 5.0.9
         version: 5.0.9
@@ -6162,8 +6162,8 @@ packages:
     peerDependencies:
       monaco-editor: '>=0.30.0'
 
-  monaco-yaml@5.2.3:
-    resolution: {integrity: sha512-GEplKC+YYmS0TOlJdv0FzbqkDN/IG2FSwEw+95myECVxTlhty2amwERYjzvorvJXmIagP1grd3Lleq7aQEJpPg==}
+  monaco-yaml@5.3.0:
+    resolution: {integrity: sha512-BxRgK21kBMx5JpP+LAXsME4TTCtkIDiOJkvuCH2XOdxwKYIYahDWA29OoavbmzsuYDFbEeSTnqsYjLQtdis2CQ==}
     peerDependencies:
       monaco-editor: '>=0.36'
 
@@ -6754,11 +6754,6 @@ packages:
     engines: {node: '>=16.0.0'}
     peerDependencies:
       prettier: ^3.0.3
-
-  prettier@2.8.8:
-    resolution: {integrity: sha512-tdN8qQGvNjw4CHbY+XXk0JgCXn9QiF21a55rBe5LJAU+kDyC4WQn4+awm2Xfk2lQMk5fKup9XgzTZtGkjBdP9Q==}
-    engines: {node: '>=10.13.0'}
-    hasBin: true
 
   prettier@3.4.2:
     resolution: {integrity: sha512-e9MewbtFo+Fevyuxn/4rrcDAaq0IYxPGLvObpQjiZBMAzB9IGmzlnG9RZy3FFas+eBMu2vA0CszMeduow5dIuQ==}
@@ -8289,11 +8284,6 @@ packages:
   yaml@1.10.2:
     resolution: {integrity: sha512-r3vXyErRCYJ7wg28yvBY5VSoAF8ZvlcW9/BwUzEtUsjvX/DKs24dIkuwjtuprwJJHsbyUbLApepYTR1BN4uHrg==}
     engines: {node: '>= 6'}
-
-  yaml@2.5.1:
-    resolution: {integrity: sha512-bLQOjaX/ADgQ20isPJRvF0iRUHIxVhYvr53Of7wGcWlO2jvtUlH5m87DsmulFVxRpNLOnI4tB6p/oh8D7kpn9Q==}
-    engines: {node: '>= 14'}
-    hasBin: true
 
   yaml@2.7.0:
     resolution: {integrity: sha512-+hSoy/QHluxmC9kCIJyL/uyFmLmc+e5CFR5Wa+bpIhIj85LVb9ZH2nVnqrHoSvKogwODv0ClqZkmiSSaIH5LTA==}
@@ -14566,7 +14556,7 @@ snapshots:
     dependencies:
       monaco-editor: 0.52.2
 
-  monaco-yaml@5.2.3(monaco-editor@0.52.2):
+  monaco-yaml@5.3.0(monaco-editor@0.52.2):
     dependencies:
       jsonc-parser: 3.3.1
       monaco-editor: 0.52.2
@@ -14575,11 +14565,11 @@ snapshots:
       monaco-types: 0.1.0
       monaco-worker-manager: 2.0.1(monaco-editor@0.52.2)
       path-browserify: 1.0.1
-      prettier: 2.8.8
+      prettier: 3.4.2
       vscode-languageserver-textdocument: 1.0.12
       vscode-languageserver-types: 3.17.5
       vscode-uri: 3.0.8
-      yaml: 2.5.1
+      yaml: 2.7.0
 
   motion-dom@12.0.0:
     dependencies:
@@ -15128,8 +15118,6 @@ snapshots:
     dependencies:
       '@taplo/lib': 0.4.0-alpha.2
       prettier: 3.4.2
-
-  prettier@2.8.8: {}
 
   prettier@3.4.2: {}
 
@@ -16876,8 +16864,6 @@ snapshots:
   yallist@5.0.0: {}
 
   yaml@1.10.2: {}
-
-  yaml@2.5.1: {}
 
   yaml@2.7.0: {}
 

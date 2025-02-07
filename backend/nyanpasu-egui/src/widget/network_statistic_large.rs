@@ -110,35 +110,18 @@ pub struct NyanpasuNetworkStatisticLargeWidgetInner {
     upload_speed: u64,
 
     // eframe ctx
-    egui_ctx: OnceLock<egui::Context>,
+    egui_ctx: egui::Context,
 }
 
-impl Default for NyanpasuNetworkStatisticLargeWidgetInner {
-    fn default() -> Self {
-        Self {
-            logo_preset: LogoPreset::Default,
-            download_total: 0,
-            upload_total: 0,
-            download_speed: 0,
-            upload_speed: 0,
-            egui_ctx: OnceLock::new(),
-        }
+impl NyanpasuNetworkStatisticLargeWidgetInner {
+    fn request_repaint(&self) {
+        self.egui_ctx.request_repaint();
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct NyanpasuNetworkStatisticLargeWidget {
     inner: Arc<RwLock<NyanpasuNetworkStatisticLargeWidgetInner>>,
-}
-
-impl Default for NyanpasuNetworkStatisticLargeWidget {
-    fn default() -> Self {
-        Self {
-            inner: Arc::new(RwLock::new(
-                NyanpasuNetworkStatisticLargeWidgetInner::default(),
-            )),
-        }
-    }
 }
 
 impl NyanpasuNetworkStatisticLargeWidget {
@@ -148,7 +131,16 @@ impl NyanpasuNetworkStatisticLargeWidget {
         setup_custom_style(&cc.egui_ctx);
         egui_extras::install_image_loaders(&cc.egui_ctx);
         let rx = crate::ipc::setup_ipc_receiver_with_env().unwrap();
-        let widget = Self::default();
+        let widget = NyanpasuNetworkStatisticLargeWidget {
+            inner: Arc::new(RwLock::new(NyanpasuNetworkStatisticLargeWidgetInner {
+                egui_ctx: cc.egui_ctx.clone(),
+                logo_preset: LogoPreset::default(),
+                download_total: 0,
+                upload_total: 0,
+                download_speed: 0,
+                upload_speed: 0,
+            })),
+        };
         let this = widget.clone();
         std::thread::spawn(move || loop {
             match rx.recv() {
@@ -181,6 +173,7 @@ impl NyanpasuNetworkStatisticLargeWidget {
                 .with_drag_and_drop(true)
                 .with_resizable(false)
                 .with_taskbar(false),
+            run_and_return: false,
             ..Default::default()
         };
         eframe::run_native(
@@ -198,19 +191,19 @@ impl NyanpasuNetworkStatisticLargeWidget {
                 this.upload_total = statistic.upload_total;
                 this.download_speed = statistic.download_speed;
                 this.upload_speed = statistic.upload_speed;
+                this.request_repaint();
             }
             Message::UpdateLogo(logo_preset) => {
                 this.logo_preset = logo_preset;
+                this.request_repaint();
             }
-            Message::Stop => match this.egui_ctx.get() {
-                Some(ctx) => {
-                    ctx.send_viewport_cmd(ViewportCommand::Close);
-                }
-                None => {
-                    eprintln!("Failed to close the widget: eframe context is not initialized");
-                    std::process::exit(1);
-                }
-            },
+            Message::Stop => {
+                this.egui_ctx.send_viewport_cmd(ViewportCommand::Close);
+                this.request_repaint();
+                // wait for 5 seconds to ensure the widget is closed, or the app will be terminated
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                std::process::exit(0);
+            }
         }
         Ok(())
     }
@@ -222,11 +215,7 @@ impl eframe::App for NyanpasuNetworkStatisticLargeWidget {
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // setup ctx
-        let egui_ctx = ctx.clone();
         let this = self.inner.read();
-        let _ = this.egui_ctx.get_or_init(move || egui_ctx);
-
         let visuals = &ctx.style().visuals;
 
         egui::CentralPanel::default()

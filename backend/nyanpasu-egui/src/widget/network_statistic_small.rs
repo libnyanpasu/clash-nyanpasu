@@ -91,17 +91,6 @@ pub struct NyanpasuNetworkStatisticSmallWidget {
     state: Arc<RwLock<NyanpasuNetworkStatisticSmallWidgetState>>,
 }
 
-impl Default for NyanpasuNetworkStatisticSmallWidget {
-    fn default() -> Self {
-        Self {
-            state: Arc::new(RwLock::new(
-                NyanpasuNetworkStatisticSmallWidgetState::default(),
-            )),
-        }
-    }
-}
-
-#[derive(Default)]
 struct NyanpasuNetworkStatisticSmallWidgetState {
     // data fields
     // download_total: u64,
@@ -110,7 +99,13 @@ struct NyanpasuNetworkStatisticSmallWidgetState {
     upload_speed: u64,
 
     // eframe ctx
-    egui_ctx: OnceLock<egui::Context>,
+    egui_ctx: egui::Context,
+}
+
+impl NyanpasuNetworkStatisticSmallWidgetState {
+    fn request_repaint(&self) {
+        self.egui_ctx.request_repaint();
+    }
 }
 
 impl NyanpasuNetworkStatisticSmallWidget {
@@ -120,7 +115,13 @@ impl NyanpasuNetworkStatisticSmallWidget {
         setup_custom_style(&cc.egui_ctx);
         egui_extras::install_image_loaders(&cc.egui_ctx);
         let rx = crate::ipc::setup_ipc_receiver_with_env().unwrap();
-        let widget = Self::default();
+        let widget = Self {
+            state: Arc::new(RwLock::new(NyanpasuNetworkStatisticSmallWidgetState {
+                egui_ctx: cc.egui_ctx.clone(),
+                download_speed: 0,
+                upload_speed: 0,
+            })),
+        };
         let this = widget.clone();
         std::thread::spawn(move || loop {
             match rx.recv() {
@@ -171,16 +172,14 @@ impl NyanpasuNetworkStatisticSmallWidget {
                 // this.upload_total = statistic.upload_total;
                 this.download_speed = statistic.download_speed;
                 this.upload_speed = statistic.upload_speed;
+                this.request_repaint();
             }
-            Message::Stop => match this.egui_ctx.get() {
-                Some(ctx) => {
-                    ctx.send_viewport_cmd(ViewportCommand::Close);
-                }
-                None => {
-                    eprintln!("Failed to close the widget: eframe context is not initialized");
-                    std::process::exit(1);
-                }
-            },
+            Message::Stop => {
+                this.egui_ctx.send_viewport_cmd(ViewportCommand::Close);
+                this.request_repaint();
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                std::process::exit(0);
+            }
             _ => {
                 eprintln!("Unsupported message: {:?}", msg);
             }
@@ -196,9 +195,7 @@ impl eframe::App for NyanpasuNetworkStatisticSmallWidget {
 
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         let visuals = &ctx.style().visuals;
-        let egui_ctx = ctx.clone();
         let this = self.state.read();
-        let _ = this.egui_ctx.get_or_init(move || egui_ctx);
 
         egui::CentralPanel::default()
             .frame(

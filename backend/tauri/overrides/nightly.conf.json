@@ -6,7 +6,7 @@
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlBMUM0NjMxREZCNDRGMjYKUldRbVQ3VGZNVVljbW43N0FlWjA4UkNrbTgxSWxSSXJQcExXNkZjUTlTQkIyYkJzL0tsSWF2d0cK",
       "endpoints": [
         "https://deno.elaina.moe/updater/update-nightly-proxy.json",
-        "http://surge.elaina.moe/updater/update-nightly-proxy.json",
+        "https://nyanpasu.surge.sh/updater/update-nightly-proxy.json",
         "https://gh-proxy.com/https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update-nightly-proxy.json",
         "https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update-nightly.json"
       ]

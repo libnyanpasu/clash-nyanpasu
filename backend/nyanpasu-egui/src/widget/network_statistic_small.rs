@@ -126,6 +126,7 @@ impl NyanpasuNetworkStatisticSmallWidget {
         std::thread::spawn(move || loop {
             match rx.recv() {
                 Ok(msg) => {
+                    println!("Received message: {:?}", msg);
                     let _ = this.handle_message(msg);
                 }
                 Err(e) => {
@@ -157,6 +158,7 @@ impl NyanpasuNetworkStatisticSmallWidget {
             run_and_return: false,
             ..Default::default()
         };
+        println!("Running widget...");
         eframe::run_native(
             "Nyanpasu Network Statistic Widget",
             options,
@@ -175,10 +177,12 @@ impl NyanpasuNetworkStatisticSmallWidget {
                 this.request_repaint();
             }
             Message::Stop => {
+                std::thread::spawn(move || {
+                    // wait for 5 seconds to ensure the widget is closed, or the app will be terminated
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                    std::process::exit(0);
+                });
                 this.egui_ctx.send_viewport_cmd(ViewportCommand::Close);
-                this.request_repaint();
-                std::thread::sleep(std::time::Duration::from_secs(5));
-                std::process::exit(0);
             }
             _ => {
                 eprintln!("Unsupported message: {:?}", msg);

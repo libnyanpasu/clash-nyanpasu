@@ -28,6 +28,9 @@ jobs:
   updater:
     name: Update Updater
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write # This is required to allow the GitHub Action to authenticate with Deno Deploy.
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -51,25 +54,25 @@ jobs:
 
       - name: Update Nightly Updater
         if: ${{ inputs.nightly == true }}
-        run: pnpm updater:nightly --cache-path .cache/updater
+        run: pnpm updater:nightly --cache-path manifest/site/updater
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Update Nightly Fixed Webview Updater
         if: ${{ inputs.nightly == true }}
-        run: pnpm updater:nightly --cache-path .cache/updater --fixed-webview
+        run: pnpm updater:nightly --cache-path manifest/site/updater --fixed-webview
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update Stable Updater
         if: ${{ inputs.nightly == false }}
-        run: pnpm updater --cache-path .cache/updater
+        run: pnpm updater --cache-path manifest/site/updater
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_BODY: ${{ inputs.release_body || github.event.release.body }}
 
       - name: Update Stable Fixed Webview Updater
         if: ${{ inputs.nightly == false }}
-        run: pnpm updater --cache-path .cache/updater --fixed-webview
+        run: pnpm updater --cache-path manifest/site/updater --fixed-webview
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_BODY: ${{ inputs.release_body || github.event.release.body }}
@@ -77,5 +80,11 @@ jobs:
       - name: Upload updater to surge.sh
         run: |
           pnpm i -g surge
-          surge .cache/updater surge.elaina.moe --token ${{ secrets.SURGE_TOKEN }}
-          surge .cache/updater nyanpasu.surge.sh --token ${{ secrets.SURGE_TOKEN }}
+          surge manifest/site/updater surge.elaina.moe --token ${{ secrets.SURGE_TOKEN }}
+          surge manifest/site/updater nyanpasu.surge.sh --token ${{ secrets.SURGE_TOKEN }}
+      - name: Deploy to Deno Deploy
+        uses: denoland/deployctl@v1
+        with:
+          project: clash-nyanpasu-manifest
+          entrypoint: jsr:@std/http/file-server
+          root: manifest/site/updater

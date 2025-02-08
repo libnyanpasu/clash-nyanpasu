@@ -1,10 +1,9 @@
-use std::sync::Arc;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
-use eframe::egui::CornerRadius;
 use eframe::egui::{
-    self, include_image, style::Selection, Color32, Id, Image, Layout, Margin, RichText, Sense,
-    Stroke, Style, Theme, Vec2, ViewportCommand, Visuals, WidgetText,
+    self, include_image, style::Selection, Color32, CornerRadius, Id, Image, Label, Layout, Margin,
+    RichText, Sense, Stroke, Style, TextWrapMode, Theme, Vec2, ViewportCommand, Visuals,
+    WidgetText,
 };
 use parking_lot::RwLock;
 
@@ -31,7 +30,6 @@ const UP_ICON: &[u8] = include_bytes!("../../assets/up.svg");
 const DOWN_ICON: &[u8] = include_bytes!("../../assets/down.svg");
 
 fn setup_custom_style(ctx: &egui::Context) {
-    ctx.style_mut(use_global_styles);
     ctx.style_mut_of(Theme::Light, use_light_green_accent);
     ctx.style_mut_of(Theme::Dark, use_dark_purple_accent);
 }
@@ -56,17 +54,13 @@ fn setup_fonts(ctx: &egui::Context) {
 }
 
 fn use_global_styles(styles: &mut Style) {
-    for (text_style, font_id) in styles.text_styles.iter_mut() {
-        if matches!(text_style, egui::TextStyle::Body) {
-            font_id.size = 8.0;
-        }
-    }
     styles.spacing.window_margin = Margin::same(0);
     styles.spacing.item_spacing = Vec2::new(0.0, 0.0);
     styles.interaction.selectable_labels = false;
 }
 
 fn use_light_green_accent(style: &mut Style) {
+    use_global_styles(style);
     style.visuals.override_text_color = Some(LIGHT_MODE_TEXT_COLOR);
     style.visuals.hyperlink_color = Color32::from_rgb(18, 180, 85);
     style.visuals.text_cursor.stroke.color = Color32::from_rgb(28, 92, 48);
@@ -77,6 +71,7 @@ fn use_light_green_accent(style: &mut Style) {
 }
 
 fn use_dark_purple_accent(style: &mut Style) {
+    use_global_styles(style);
     style.visuals.override_text_color = Some(DARK_MODE_TEXT_COLOR);
     style.visuals.hyperlink_color = Color32::from_rgb(202, 135, 227);
     style.visuals.text_cursor.stroke.color = Color32::from_rgb(234, 208, 244);
@@ -110,7 +105,6 @@ impl NyanpasuNetworkStatisticSmallWidgetState {
 
 impl NyanpasuNetworkStatisticSmallWidget {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        cc.egui_ctx.set_visuals(Visuals::dark());
         setup_fonts(&cc.egui_ctx);
         setup_custom_style(&cc.egui_ctx);
         egui_extras::install_image_loaders(&cc.egui_ctx);
@@ -246,33 +240,35 @@ impl eframe::App for NyanpasuNetworkStatisticSmallWidget {
                         let height = ui.available_height() / 2.0;
                         ui.allocate_ui_with_layout(
                             Vec2::new(width, height),
-                            Layout::left_to_right(egui::Align::Center),
+                            Layout::centered_and_justified(egui::Direction::LeftToRight),
                             |ui| {
-                                ui.label(
-                                    WidgetText::from(RichText::new(format!(
-                                        "{}/s",
-                                        humansize::format_size(
+                                ui.add(
+                                    Label::new(
+                                        RichText::new(humansize::format_size(
                                             this.upload_speed,
-                                            humansize::DECIMAL
-                                        )
-                                    )))
-                                    .color(LIGHT_MODE_TEXT_COLOR),
+                                            humansize::DECIMAL.suffix("/s"),
+                                        ))
+                                        .size(8.0),
+                                    )
+                                    .selectable(false)
+                                    .wrap_mode(TextWrapMode::Extend),
                                 );
                             },
                         );
                         ui.allocate_ui_with_layout(
                             Vec2::new(width, height),
-                            Layout::left_to_right(egui::Align::Center),
+                            Layout::centered_and_justified(egui::Direction::LeftToRight),
                             |ui| {
-                                ui.label(
-                                    WidgetText::from(RichText::new(format!(
-                                        "{}/s",
-                                        humansize::format_size(
+                                ui.add(
+                                    Label::new(WidgetText::from(
+                                        RichText::new(humansize::format_size(
                                             this.download_speed,
-                                            humansize::DECIMAL
-                                        )
-                                    )))
-                                    .color(LIGHT_MODE_TEXT_COLOR),
+                                            humansize::DECIMAL.suffix("/s"),
+                                        ))
+                                        .size(8.0),
+                                    ))
+                                    .selectable(false)
+                                    .wrap_mode(TextWrapMode::Extend),
                                 );
                             },
                         );

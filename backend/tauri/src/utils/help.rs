@@ -240,7 +240,11 @@ pub fn get_max_scale_factor() -> f64 {
 pub fn cleanup_processes(app_handle: &AppHandle) {
     let _ = super::resolve::save_window_state(app_handle, true);
     super::resolve::resolve_reset();
-    let _ = nyanpasu_utils::runtime::block_on(async move {
+    let widget_manager = app_handle.state::<crate::widget::WidgetManager>();
+    let _ = nyanpasu_utils::runtime::block_on(async {
+        if let Err(e) = widget_manager.stop().await {
+            log::error!("failed to stop widget manager: {:?}", e);
+        };
         crate::core::CoreManager::global().stop_core().await
     });
 }

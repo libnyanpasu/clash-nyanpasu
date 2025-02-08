@@ -3,6 +3,7 @@ use std::sync::{Arc, LazyLock};
 use crate::{
     ipc::Message,
     utils::svg::{render_svg_with_current_color_replace, SvgExt},
+    widget::get_window_state_path,
 };
 use eframe::{
     egui::{
@@ -184,6 +185,8 @@ impl NyanpasuNetworkStatisticLargeWidget {
                 .with_resizable(false)
                 .with_taskbar(false),
             run_and_return: false,
+            // persist_window: true,
+            // persistence_path: get_window_state_path().ok(),
             ..Default::default()
         };
         println!("Running widget...");

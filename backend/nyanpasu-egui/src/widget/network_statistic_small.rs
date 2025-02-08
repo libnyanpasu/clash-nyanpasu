@@ -7,7 +7,7 @@ use eframe::egui::{
 };
 use parking_lot::RwLock;
 
-use crate::ipc::Message;
+use crate::{ipc::Message, widget::get_window_state_path};
 
 // Presets
 const STATUS_ICON_CONTAINER_WIDTH: f32 = 20.0;
@@ -150,6 +150,9 @@ impl NyanpasuNetworkStatisticSmallWidget {
                 .with_resizable(false)
                 .with_taskbar(false),
             run_and_return: false,
+            // TODO: buggy feature, and should we manually save the window state
+            // persist_window: true,
+            // persistence_path: get_window_state_path().ok(),
             ..Default::default()
         };
         println!("Running widget...");

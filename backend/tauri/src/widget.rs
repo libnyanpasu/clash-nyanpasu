@@ -109,10 +109,14 @@ impl WidgetManager {
         // spawn a process to run the widget
         let variant = format!("{}", widget);
         tracing::debug!("Spawning widget process for {}...", variant);
+        let widget_win_state_path = crate::utils::dirs::app_data_dir()
+            .context("Failed to get app data dir")?
+            .join(format!("widget_{}.state", variant));
         let mut child = tokio::process::Command::new(current_exe)
             .arg("statistic-widget")
             .arg(variant)
             .env("NYANPASU_EGUI_IPC_SERVER", server_name)
+            .env("NYANPASU_EGUI_WINDOW_STATE_PATH", widget_win_state_path)
             .stdin(std::process::Stdio::inherit())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

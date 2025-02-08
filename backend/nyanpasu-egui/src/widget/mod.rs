@@ -1,8 +1,22 @@
 pub mod network_statistic_large;
 pub mod network_statistic_small;
 
+use std::path::PathBuf;
+
 pub use network_statistic_large::NyanpasuNetworkStatisticLargeWidget;
 pub use network_statistic_small::NyanpasuNetworkStatisticSmallWidget;
+
+fn get_window_state_path() -> std::io::Result<PathBuf> {
+    let env = std::env::var("NYANPASU_EGUI_WINDOW_STATE_PATH").map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "NYANPASU_EGUI_WINDOW_STATE_PATH is not set",
+        )
+    })?;
+
+    let path = PathBuf::from(env);
+    Ok(path)
+}
 
 // pub fn launch_widget<'app, T: Send + Sync + Sized, A: EframeAppCreator<'app, T>>(
 //     name: &str,

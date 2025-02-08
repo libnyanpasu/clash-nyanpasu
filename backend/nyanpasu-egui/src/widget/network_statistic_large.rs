@@ -1,13 +1,14 @@
 use std::sync::Arc;
 use std::sync::LazyLock;
-use std::sync::OnceLock;
 
 use crate::ipc::Message;
 use crate::utils::svg::{render_svg_with_current_color_replace, SvgExt};
+use eframe::egui::CornerRadius;
 use eframe::egui::{
-    self, style::Selection, Color32, Id, Image, Layout, Margin, Rounding, Sense, Stroke, Style,
+    self, style::Selection, Color32, Id, Image, Layout, Margin, Sense, Stroke, Style,
     TextureOptions, Theme, Vec2, ViewportCommand, Visuals,
 };
+use eframe::epaint::CornerRadiusF32;
 use parking_lot::RwLock;
 
 // Presets
@@ -66,7 +67,7 @@ fn use_global_styles(styles: &mut Style) {
             font_id.size = 10.0;
         }
     }
-    styles.spacing.window_margin = Margin::same(0.0);
+    styles.spacing.window_margin = Margin::same(0);
     styles.spacing.item_spacing = Vec2::new(0.0, 0.0);
     styles.interaction.selectable_labels = false; // disable text selection
 }
@@ -220,10 +221,10 @@ impl eframe::App for NyanpasuNetworkStatisticLargeWidget {
 
         egui::CentralPanel::default()
             .frame(
-                egui::Frame::none()
-                    .rounding(Rounding::same(12.0))
+                egui::Frame::NONE
+                    .corner_radius(CornerRadius::same(12))
                     .fill(if visuals.dark_mode { DARK_MODE_BACKGROUND_COLOR } else { LIGHT_MODE_BACKGROUND_COLOR })
-                    .inner_margin(Margin::symmetric(9.0, 6.0)),
+                    .inner_margin(Margin::symmetric(9, 6)),
             )
             .show(ctx, |ui| {
                 if ui.interact(ui.max_rect(), Id::new("window-drag"), Sense::drag()).dragged() {
@@ -239,7 +240,7 @@ impl eframe::App for NyanpasuNetworkStatisticLargeWidget {
                         egui::Vec2::new(LOGO_CONTAINER_WIDTH, LOGO_CONTAINER_WIDTH),
                         egui::Layout::centered_and_justified(egui::Direction::TopDown),
                         |ui| {
-                            egui::Frame::none().fill(*LOGO_CONTAINER_COLOR).rounding(Rounding::same(LOGO_CONTAINER_WIDTH / 2.0)).show(ui, |ui| {
+                            egui::Frame::NONE.fill(*LOGO_CONTAINER_COLOR).corner_radius(CornerRadiusF32::same(LOGO_CONTAINER_WIDTH / 2.0)).show(ui, |ui| {
                                 ui.centered_and_justified(|ui| {
                                     ui.add(Image::new(eframe::egui::include_image!("../../assets/tray-icon.png")).max_size(LOGO_SIZE));
                                 });
@@ -261,11 +262,11 @@ impl eframe::App for NyanpasuNetworkStatisticLargeWidget {
                         ui.add_space(top_gap);
                         // Download Total
                         ui.allocate_ui_with_layout(egui::Vec2::new(col_width, row_height), Layout::left_to_right(egui::Align::Center), |ui| {
-                            egui::Frame::none().rounding(Rounding::same(14.0)).fill(DARK_MODE_STATUS_SHEET_COLOR).show(ui, |ui| {
+                            egui::Frame::NONE.corner_radius(CornerRadius::same(14)).fill(DARK_MODE_STATUS_SHEET_COLOR).show(ui, |ui| {
                                 ui.allocate_ui(egui::Vec2::new(STATUS_ICON_CONTAINER_WIDTH, STATUS_ICON_CONTAINER_WIDTH), |ui| {
-                                    egui::Frame::none()
+                                    egui::Frame::NONE
                                         .fill(STATUS_ICON_CONTAINER_COLOR)
-                                        .rounding(Rounding::same(STATUS_ICON_WIDTH))
+                                        .corner_radius(CornerRadius::same(STATUS_ICON_WIDTH as u8))
                                         .show(ui, |ui| {
                                             let image = render_svg_with_current_color_replace(
                                                 unsafe { String::from_utf8_unchecked(DOWNLOAD_ICON.to_vec()) }.as_str(),
@@ -294,11 +295,11 @@ impl eframe::App for NyanpasuNetworkStatisticLargeWidget {
 
                         // Download Speed
                         ui.allocate_ui_with_layout(egui::Vec2::new(col_width, row_height), Layout::left_to_right(egui::Align::Center), |ui| {
-                            egui::Frame::none().rounding(Rounding::same(14.0)).fill(DARK_MODE_STATUS_SHEET_COLOR).show(ui, |ui| {
+                            egui::Frame::NONE.corner_radius(CornerRadius::same(14)).fill(DARK_MODE_STATUS_SHEET_COLOR).show(ui, |ui| {
                                 ui.allocate_ui(egui::Vec2::new(STATUS_ICON_CONTAINER_WIDTH, STATUS_ICON_CONTAINER_WIDTH), |ui| {
-                                    egui::Frame::none()
+                                    egui::Frame::NONE
                                         .fill(STATUS_ICON_CONTAINER_COLOR)
-                                        .rounding(Rounding::same(STATUS_ICON_WIDTH))
+                                        .corner_radius(CornerRadius::same(STATUS_ICON_WIDTH as u8))
                                         .show(ui, |ui| {
                                             let image = render_svg_with_current_color_replace(
                                                 unsafe { String::from_utf8_unchecked(DOWN_ICON.to_vec()) }.as_str(),
@@ -332,11 +333,11 @@ impl eframe::App for NyanpasuNetworkStatisticLargeWidget {
 
                         // Upload Total
                         ui.allocate_ui_with_layout(egui::Vec2::new(col_width, row_height), Layout::left_to_right(egui::Align::Center), |ui| {
-                            egui::Frame::none().rounding(Rounding::same(14.0)).fill(DARK_MODE_STATUS_SHEET_COLOR).show(ui, |ui| {
+                            egui::Frame::NONE.corner_radius(CornerRadius::same(14)).fill(DARK_MODE_STATUS_SHEET_COLOR).show(ui, |ui| {
                                 ui.allocate_ui(egui::Vec2::new(STATUS_ICON_CONTAINER_WIDTH, STATUS_ICON_CONTAINER_WIDTH), |ui| {
-                                    egui::Frame::none()
+                                    egui::Frame::NONE
                                         .fill(STATUS_ICON_CONTAINER_COLOR)
-                                        .rounding(Rounding::same(STATUS_ICON_WIDTH))
+                                        .corner_radius(CornerRadius::same(STATUS_ICON_WIDTH as u8))
                                         .show(ui, |ui| {
                                             let image = render_svg_with_current_color_replace(
                                                 unsafe { String::from_utf8_unchecked(UPLOAD_ICON.to_vec()) }.as_str(),
@@ -365,11 +366,11 @@ impl eframe::App for NyanpasuNetworkStatisticLargeWidget {
 
                         // Upload Speed
                         ui.allocate_ui_with_layout(egui::Vec2::new(col_width, row_height), Layout::left_to_right(egui::Align::Center), |ui| {
-                            egui::Frame::none().rounding(Rounding::same(14.0)).fill(DARK_MODE_STATUS_SHEET_COLOR).show(ui, |ui| {
+                            egui::Frame::NONE.corner_radius(CornerRadius::same(14)).fill(DARK_MODE_STATUS_SHEET_COLOR).show(ui, |ui| {
                                 ui.allocate_ui(egui::Vec2::new(STATUS_ICON_CONTAINER_WIDTH, STATUS_ICON_CONTAINER_WIDTH), |ui| {
-                                    egui::Frame::none()
+                                    egui::Frame::NONE
                                         .fill(STATUS_ICON_CONTAINER_COLOR)
-                                        .rounding(Rounding::same(STATUS_ICON_WIDTH))
+                                        .corner_radius(CornerRadius::same(STATUS_ICON_WIDTH as u8))
                                         .show(ui, |ui| {
                                             let image = render_svg_with_current_color_replace(
                                                 unsafe { String::from_utf8_unchecked(UP_ICON.to_vec()) }.as_str(),

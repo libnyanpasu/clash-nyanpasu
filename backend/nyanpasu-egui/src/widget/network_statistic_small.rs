@@ -1,10 +1,10 @@
 use std::sync::Arc;
 use std::sync::LazyLock;
-use std::sync::OnceLock;
 
+use eframe::egui::CornerRadius;
 use eframe::egui::{
-    self, include_image, style::Selection, Color32, Id, Image, Layout, Margin, RichText, Rounding,
-    Sense, Stroke, Style, Theme, Vec2, ViewportCommand, Visuals, WidgetText,
+    self, include_image, style::Selection, Color32, Id, Image, Layout, Margin, RichText, Sense,
+    Stroke, Style, Theme, Vec2, ViewportCommand, Visuals, WidgetText,
 };
 use parking_lot::RwLock;
 
@@ -61,7 +61,7 @@ fn use_global_styles(styles: &mut Style) {
             font_id.size = 8.0;
         }
     }
-    styles.spacing.window_margin = Margin::same(0.0);
+    styles.spacing.window_margin = Margin::same(0);
     styles.spacing.item_spacing = Vec2::new(0.0, 0.0);
     styles.interaction.selectable_labels = false;
 }
@@ -199,14 +199,14 @@ impl eframe::App for NyanpasuNetworkStatisticSmallWidget {
 
         egui::CentralPanel::default()
             .frame(
-                egui::Frame::none()
-                    .rounding(Rounding::same(40.0))
+                egui::Frame::NONE
+                    .corner_radius(CornerRadius::same(40))
                     .fill(if visuals.dark_mode {
                         DARK_MODE_BACKGROUND_COLOR
                     } else {
                         LIGHT_MODE_BACKGROUND_COLOR
                     })
-                    .inner_margin(Margin::same(4.0)),
+                    .inner_margin(Margin::same(4)),
             )
             .show(ctx, |ui| {
                 if ui
@@ -217,8 +217,8 @@ impl eframe::App for NyanpasuNetworkStatisticSmallWidget {
                 }
                 ui.horizontal(|ui| {
                     ui.allocate_ui(Vec2::new(24.0, 24.0), |ui| {
-                        egui::Frame::none()
-                            .rounding(Rounding::same(12.0))
+                        egui::Frame::NONE
+                            .corner_radius(CornerRadius::same(12))
                             .fill(*LOGO_CONTAINER_COLOR)
                             .show(ui, |ui| {
                                 ui.allocate_ui_with_layout(

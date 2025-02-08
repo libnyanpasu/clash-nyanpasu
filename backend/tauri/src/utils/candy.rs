@@ -43,8 +43,6 @@ pub fn get_reqwest_client() -> Result<reqwest::Client> {
 pub const INTERNAL_MIRRORS: &[&str] = &[
     "https://github.com/",
     "https://gh-proxy.com/",
-    "https://ghproxy.org/",
-    "https://mirror.ghproxy.com/",
     "https://gh.idayer.com/",
 ];
 

@@ -239,7 +239,7 @@ importers:
         specifier: workspace:^
         version: link:../ui
       '@tailwindcss/postcss':
-        specifier: ^4.0.5
+        specifier: 4.0.5
         version: 4.0.5
       '@tanstack/router-zod-adapter':
         specifier: 1.81.5
@@ -276,7 +276,7 @@ importers:
         version: 0.4.0
       material-react-table:
         specifier: 3.1.0
-        version: 3.1.0(rbnos67d2eyez2tpmxoa272vsq)
+        version: 3.1.0(3cc8d11021cb92f2cb0b3e5699941a07)
       monaco-editor:
         specifier: 0.52.2
         version: 0.52.2
@@ -297,7 +297,7 @@ importers:
         version: 1.6.5(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       react-hook-form-mui:
         specifier: 7.5.0
-        version: 7.5.0(cefoyhza27pzxy3hfpzgfxtetq)
+        version: 7.5.0(01b0d2616225635f6e192326268e3c7c)
       react-i18next:
         specifier: 15.4.0
         version: 15.4.0(i18next@24.2.2(typescript@5.7.3))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
@@ -14089,7 +14089,7 @@ snapshots:
       escape-string-regexp: 4.0.0
     optional: true
 
-  material-react-table@3.1.0(rbnos67d2eyez2tpmxoa272vsq):
+  material-react-table@3.1.0(3cc8d11021cb92f2cb0b3e5699941a07):
     dependencies:
       '@emotion/react': 11.14.0(@types/react@19.0.8)(react@19.0.0)
       '@emotion/styled': 11.14.0(@emotion/react@11.14.0(@types/react@19.0.8)(react@19.0.0))(@types/react@19.0.8)(react@19.0.0)
@@ -15011,7 +15011,7 @@ snapshots:
       react: 19.0.0
       react-dom: 19.0.0(react@19.0.0)
 
-  react-hook-form-mui@7.5.0(cefoyhza27pzxy3hfpzgfxtetq):
+  react-hook-form-mui@7.5.0(01b0d2616225635f6e192326268e3c7c):
     dependencies:
       '@mui/material': 6.4.3(@emotion/react@11.14.0(@types/react@19.0.8)(react@19.0.0))(@emotion/styled@11.14.0(@emotion/react@11.14.0(@types/react@19.0.8)(react@19.0.0))(@types/react@19.0.8)(react@19.0.0))(@types/react@19.0.8)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       react: 19.0.0

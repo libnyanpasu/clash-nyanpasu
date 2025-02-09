@@ -10,16 +10,23 @@
 @tailwind utilities;
 
 @theme {
-  --font-mono: 'Cascadia Mono', 'Fira Code', ui-monospace, SFMono-Regular,
-    Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-  --custom-text-shadow: '0px 0px 1px rgb(0 0 0 / 20%), 0px 0px 1px rgb(1 0 5 / 10%)';
-  --custom-text-shadow-sm: '1px 1px 3px rgb(36 37 47 / 25%)';
-  --custom-text-shadow-md: '0px 1px 2px rgb(30 29 39 / 19%), 1px 2px 4px rgb(54 64 147 / 18%)';
-  --custom-text-shadow-lg: '3px 3px 6px rgb(0 0 0 / 26%), 0 0 5px rgb(15 3 86 / 22%)';
-  --custom-text-shadow-xl: '1px 1px 3px rgb(0 0 0 / 29%), 2px 4px 7px rgb(73 64 125 / 35%)';
-  --custom-text-shadow-none: 'none';
+  --font-mono:
+    'Cascadia Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, 'Liberation Mono', 'Courier New', '等距更纱黑体 SC', monospace,
+    'Color Emoji Flags', 'Color Emoji';
+  --custom-text-shadow:
+    0px 0px 1px rgb(0 0 0 / 20%), 0px 0px 1px rgb(1 0 5 / 10%);
+  --custom-text-shadow-sm: 1px 1px 3px rgb(36 37 47 / 25%);
+  --custom-text-shadow-md:
+    0px 1px 2px rgb(30 29 39 / 19%), 1px 2px 4px rgb(54 64 147 / 18%);
+  --custom-text-shadow-lg:
+    3px 3px 6px rgb(0 0 0 / 26%), 0 0 5px rgb(15 3 86 / 22%);
+  --custom-text-shadow-xl:
+    1px 1px 3px rgb(0 0 0 / 29%), 2px 4px 7px rgb(73 64 125 / 35%);
+  --custom-text-shadow-none: none;
 }
 
 @utility text-shadow-* {
-  text-shadow: --value(--custom-text-shadow- *);
+  /* prettier-ignore */
+  text-shadow: --value(--custom-text-shadow-*);
 }

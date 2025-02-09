@@ -88,8 +88,10 @@ jobs:
       - name: Upload updater to surge.sh
         run: |
           pnpm i -g surge
-          surge manifest/site surge.elaina.moe --token ${{ secrets.SURGE_TOKEN }}
-          surge manifest/site nyanpasu.surge.sh --token ${{ secrets.SURGE_TOKEN }}
+          surge manifest/site surge.elaina.moe
+          surge manifest/site nyanpasu.surge.sh
+        env:
+          SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}
       - name: Deploy to Deno Deploy
         uses: denoland/deployctl@v1
         with:

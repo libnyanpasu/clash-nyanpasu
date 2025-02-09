@@ -1,5 +1,5 @@
 import { useAsyncEffect } from 'ahooks'
-import { useState } from 'react'
+import { CSSProperties, useState } from 'react'
 import { formatAnsi } from '@/utils/shiki'
 import { useTheme } from '@mui/material'
 import { LogMessage } from '@nyanpasu/interface'
@@ -37,12 +37,13 @@ export const LogItem = ({ value }: { value: LogMessage }) => {
       </div>
 
       <div className="border-b border-slate-200 pb-2 text-wrap">
-        <p
-          className={cn(
-            styles.item,
-            palette.mode === 'dark' && styles.dark,
-            'data',
-          )}
+        <div
+          className={cn(styles.item, palette.mode === 'dark' && styles.dark)}
+          style={
+            {
+              '--item-font': 'var(--font-mono)',
+            } as CSSProperties
+          }
           dangerouslySetInnerHTML={{
             __html: payload,
           }}

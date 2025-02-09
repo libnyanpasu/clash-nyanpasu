@@ -264,9 +264,9 @@ function ProfilePage() {
       </AnimatePresence>
 
       <AddProfileContext.Provider value={addProfileCtxValue}>
-        <div className="fixed right-8 bottom-8">
+        <div className="!fixed right-8 bottom-8">
           <FloatingButton
-            className="relative -top-3 -right-2.5 flex size-11 min-w-fit"
+            className="!relative -top-15 -right-13.5 flex size-11 !min-w-fit"
             sx={[
               (theme) => ({
                 backgroundColor: theme.palette.grey[200],
@@ -286,7 +286,7 @@ function ProfilePage() {
           >
             {globalUpdatePending ? <CircularProgress size={22} /> : <Update />}
           </FloatingButton>
-          <NewProfileButton className="static" />
+          <NewProfileButton className="!static" />
         </div>
       </AddProfileContext.Provider>
     </SidePage>

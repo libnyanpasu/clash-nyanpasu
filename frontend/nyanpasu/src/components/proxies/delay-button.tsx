@@ -69,7 +69,7 @@ export const DelayButton = memo(function DelayButton({
           className={cn(
             '!size-8',
             '!transition-opacity',
-            mounted ? 'opacity-0' : 'opacity-1',
+            mounted ? 'opacity-0' : 'opacity-100',
           )}
         />
 
@@ -79,7 +79,7 @@ export const DelayButton = memo(function DelayButton({
             className={cn(
               'transition-opacity',
               'absolute',
-              loading ? 'opacity-1' : 'opacity-0',
+              loading ? 'opacity-100' : 'opacity-0',
             )}
           />
         )}
@@ -90,7 +90,7 @@ export const DelayButton = memo(function DelayButton({
             '!size-8',
             'absolute',
             '!transition-opacity',
-            isSuccess ? 'opacity-1' : 'opacity-0',
+            isSuccess ? 'opacity-100' : 'opacity-0',
           )}
         />
       </Button>

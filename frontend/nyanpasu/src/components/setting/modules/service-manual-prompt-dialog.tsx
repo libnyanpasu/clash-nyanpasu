@@ -38,7 +38,7 @@ function CopyToClipboardButton({ onClick }: CopyToClipboardButtonProps) {
     >
       <IconButton
         size="small"
-        className="absolute top-1 right-1"
+        className="!absolute top-1 right-1"
         onClick={onClick}
       >
         <ContentPasteIcon fontSize="small" color="primary" />

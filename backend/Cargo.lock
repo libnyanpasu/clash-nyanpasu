@@ -5489,6 +5489,8 @@ dependencies = [
  "image",
  "ipc-channel",
  "objc2 0.5.2",
+ "objc2-app-kit 0.2.2",
+ "objc2-foundation 0.2.2",
  "parking_lot",
  "resvg 0.44.0",
  "serde",

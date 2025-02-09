@@ -33,3 +33,5 @@ clap = { version = "4", features = ["derive"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.5.2"
+objc2-foundation = "0.2.2"
+objc2-app-kit = "0.2.2"

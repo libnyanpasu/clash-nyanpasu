@@ -16,7 +16,7 @@ name = "nyanpasu-network-statistic-widget-small"
 path = "./src/small.rs"
 
 [dependencies]
-eframe = { version = "0.31", features = ["persistence"] }
+eframe = { version = "0.31" }
 egui_extras = { version = "0.31", features = ["all_loaders"] }
 parking_lot = "0.12"
 image = { version = "0.25", features = ["jpeg", "png"] }
@@ -30,3 +30,6 @@ serde = { version = "1", features = ["derive"] }
 anyhow = "1"
 specta = { version = "=2.0.0-rc.22", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.5.2"

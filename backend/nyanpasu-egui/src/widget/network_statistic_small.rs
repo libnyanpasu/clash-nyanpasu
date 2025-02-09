@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::sync::{Arc, LazyLock};
 
 use eframe::egui::{
@@ -140,6 +141,9 @@ impl NyanpasuNetworkStatisticSmallWidget {
     }
 
     pub fn run() -> eframe::Result {
+        #[cfg(target_os = "macos")]
+        super::set_application_activation_policy();
+
         let options = eframe::NativeOptions {
             viewport: egui::ViewportBuilder::default()
                 .with_inner_size([80.0, 32.0])
@@ -194,7 +198,7 @@ impl eframe::App for NyanpasuNetworkStatisticSmallWidget {
         egui::Rgba::TRANSPARENT.to_array()
     }
 
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let visuals = &ctx.style().visuals;
         let this = self.state.read();
 

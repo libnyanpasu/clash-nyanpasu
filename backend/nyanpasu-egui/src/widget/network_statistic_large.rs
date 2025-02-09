@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::sync::{Arc, LazyLock};
 
 use crate::{
@@ -175,6 +176,9 @@ impl NyanpasuNetworkStatisticLargeWidget {
     }
 
     pub fn run() -> eframe::Result {
+        #[cfg(target_os = "macos")]
+        super::set_application_activation_policy();
+
         let options = eframe::NativeOptions {
             viewport: egui::ViewportBuilder::default()
                 .with_inner_size([206.0, 60.0])

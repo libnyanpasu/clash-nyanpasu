@@ -32,7 +32,7 @@ importers:
         version: 3.2.0
       '@ianvs/prettier-plugin-sort-imports':
         specifier: 4.4.1
-        version: 4.4.1(prettier@3.4.2)
+        version: 4.4.1(prettier@3.5.0)
       '@tauri-apps/cli':
         specifier: 2.2.7
         version: 2.2.7
@@ -86,7 +86,7 @@ importers:
         version: 17.15.1(eslint@9.20.0(jiti@2.4.2))
       eslint-plugin-prettier:
         specifier: 5.2.3
-        version: 5.2.3(eslint-config-prettier@10.0.1(eslint@9.20.0(jiti@2.4.2)))(eslint@9.20.0(jiti@2.4.2))(prettier@3.4.2)
+        version: 5.2.3(eslint-config-prettier@10.0.1(eslint@9.20.0(jiti@2.4.2)))(eslint@9.20.0(jiti@2.4.2))(prettier@3.5.0)
       eslint-plugin-promise:
         specifier: 7.2.1
         version: 7.2.1(eslint@9.20.0(jiti@2.4.2))
@@ -127,14 +127,14 @@ importers:
         specifier: 4.0.9
         version: 4.0.9(postcss@8.5.1)
       prettier:
-        specifier: 3.4.2
-        version: 3.4.2
+        specifier: 3.5.0
+        version: 3.5.0
       prettier-plugin-tailwindcss:
         specifier: 0.6.11
-        version: 0.6.11(@ianvs/prettier-plugin-sort-imports@4.4.1(prettier@3.4.2))(@trivago/prettier-plugin-sort-imports@4.3.0(prettier@3.4.2))(prettier@3.4.2)
+        version: 0.6.11(@ianvs/prettier-plugin-sort-imports@4.4.1(prettier@3.5.0))(@trivago/prettier-plugin-sort-imports@4.3.0(prettier@3.5.0))(prettier@3.5.0)
       prettier-plugin-toml:
         specifier: 2.0.1
-        version: 2.0.1(prettier@3.4.2)
+        version: 2.0.1(prettier@3.5.0)
       react-devtools:
         specifier: 6.1.1
         version: 6.1.1(bufferutil@4.0.8)(utf-8-validate@5.0.10)
@@ -433,7 +433,7 @@ importers:
         version: 3.2.2(vite@6.1.0(@types/node@22.13.1)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.83.4)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.7.0))
       vite-plugin-sass-dts:
         specifier: 1.3.30
-        version: 1.3.30(postcss@8.5.1)(prettier@3.4.2)(sass-embedded@1.83.4)(vite@6.1.0(@types/node@22.13.1)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.83.4)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.7.0))
+        version: 1.3.30(postcss@8.5.1)(prettier@3.5.0)(sass-embedded@1.83.4)(vite@6.1.0(@types/node@22.13.1)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.83.4)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.7.0))
       vite-plugin-svgr:
         specifier: 4.3.0
         version: 4.3.0(rollup@4.34.3)(typescript@5.7.3)(vite@6.1.0(@types/node@22.13.1)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.83.4)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.7.0))
@@ -6691,6 +6691,11 @@ packages:
     engines: {node: '>=14'}
     hasBin: true
 
+  prettier@3.5.0:
+    resolution: {integrity: sha512-quyMrVt6svPS7CjQ9gKb3GLEX/rl3BCL2oa/QkNcXv4YNVBC9olt3s+H7ukto06q7B1Qz46PbrKLO34PR6vXcA==}
+    engines: {node: '>=14'}
+    hasBin: true
+
   pretty-ms@9.1.0:
     resolution: {integrity: sha512-o1piW0n3tgKIKCwk2vpM/vOV13zjJzvP37Ioze54YlTHE06m4tjEbzg9WsKkvTuyYln2DHjo5pY4qrZGI0otpw==}
     engines: {node: '>=18'}
@@ -9580,13 +9585,13 @@ snapshots:
 
   '@humanwhocodes/retry@0.4.1': {}
 
-  '@ianvs/prettier-plugin-sort-imports@4.4.1(prettier@3.4.2)':
+  '@ianvs/prettier-plugin-sort-imports@4.4.1(prettier@3.5.0)':
     dependencies:
       '@babel/generator': 7.26.3
       '@babel/parser': 7.26.3
       '@babel/traverse': 7.26.4
       '@babel/types': 7.26.3
-      prettier: 3.4.2
+      prettier: 3.5.0
       semver: 7.6.3
     transitivePeerDependencies:
       - supports-color
@@ -10679,7 +10684,7 @@ snapshots:
   '@tanstack/router-generator@1.101.0(@tanstack/react-router@1.101.0(react-dom@19.0.0(react@19.0.0))(react@19.0.0))':
     dependencies:
       '@tanstack/virtual-file-routes': 1.99.0
-      prettier: 3.4.2
+      prettier: 3.5.0
       tsx: 4.19.2
       zod: 3.24.1
     optionalDependencies:
@@ -10812,7 +10817,7 @@ snapshots:
     dependencies:
       '@tauri-apps/api': 2.2.0
 
-  '@trivago/prettier-plugin-sort-imports@4.3.0(prettier@3.4.2)':
+  '@trivago/prettier-plugin-sort-imports@4.3.0(prettier@3.5.0)':
     dependencies:
       '@babel/generator': 7.17.7
       '@babel/parser': 7.26.7
@@ -10820,7 +10825,7 @@ snapshots:
       '@babel/types': 7.17.0
       javascript-natural-sort: 0.7.1
       lodash: 4.17.21
-      prettier: 3.4.2
+      prettier: 3.5.0
     transitivePeerDependencies:
       - supports-color
     optional: true
@@ -12732,10 +12737,10 @@ snapshots:
       minimatch: 9.0.5
       semver: 7.6.3
 
-  eslint-plugin-prettier@5.2.3(eslint-config-prettier@10.0.1(eslint@9.20.0(jiti@2.4.2)))(eslint@9.20.0(jiti@2.4.2))(prettier@3.4.2):
+  eslint-plugin-prettier@5.2.3(eslint-config-prettier@10.0.1(eslint@9.20.0(jiti@2.4.2)))(eslint@9.20.0(jiti@2.4.2))(prettier@3.5.0):
     dependencies:
       eslint: 9.20.0(jiti@2.4.2)
-      prettier: 3.4.2
+      prettier: 3.5.0
       prettier-linter-helpers: 1.0.0
       synckit: 0.9.1
     optionalDependencies:
@@ -14922,19 +14927,21 @@ snapshots:
     dependencies:
       fast-diff: 1.3.0
 
-  prettier-plugin-tailwindcss@0.6.11(@ianvs/prettier-plugin-sort-imports@4.4.1(prettier@3.4.2))(@trivago/prettier-plugin-sort-imports@4.3.0(prettier@3.4.2))(prettier@3.4.2):
+  prettier-plugin-tailwindcss@0.6.11(@ianvs/prettier-plugin-sort-imports@4.4.1(prettier@3.5.0))(@trivago/prettier-plugin-sort-imports@4.3.0(prettier@3.5.0))(prettier@3.5.0):
     dependencies:
-      prettier: 3.4.2
+      prettier: 3.5.0
     optionalDependencies:
-      '@ianvs/prettier-plugin-sort-imports': 4.4.1(prettier@3.4.2)
-      '@trivago/prettier-plugin-sort-imports': 4.3.0(prettier@3.4.2)
+      '@ianvs/prettier-plugin-sort-imports': 4.4.1(prettier@3.5.0)
+      '@trivago/prettier-plugin-sort-imports': 4.3.0(prettier@3.5.0)
 
-  prettier-plugin-toml@2.0.1(prettier@3.4.2):
+  prettier-plugin-toml@2.0.1(prettier@3.5.0):
     dependencies:
       '@taplo/lib': 0.4.0-alpha.2
-      prettier: 3.4.2
+      prettier: 3.5.0
 
   prettier@3.4.2: {}
+
+  prettier@3.5.0: {}
 
   pretty-ms@9.1.0:
     dependencies:
@@ -16412,11 +16419,11 @@ snapshots:
       pathe: 0.2.0
       vite: 6.1.0(@types/node@22.13.1)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.83.4)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.7.0)
 
-  vite-plugin-sass-dts@1.3.30(postcss@8.5.1)(prettier@3.4.2)(sass-embedded@1.83.4)(vite@6.1.0(@types/node@22.13.1)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.83.4)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.7.0)):
+  vite-plugin-sass-dts@1.3.30(postcss@8.5.1)(prettier@3.5.0)(sass-embedded@1.83.4)(vite@6.1.0(@types/node@22.13.1)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.83.4)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.7.0)):
     dependencies:
       postcss: 8.5.1
       postcss-js: 4.0.1(postcss@8.5.1)
-      prettier: 3.4.2
+      prettier: 3.5.0
       sass-embedded: 1.83.4
       vite: 6.1.0(@types/node@22.13.1)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.83.4)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.7.0)
 

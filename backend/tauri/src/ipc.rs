@@ -997,11 +997,22 @@ pub struct UpdateWrapper {
 pub async fn check_update(webview: tauri::Webview) -> Result<Option<UpdateWrapper>> {
     use crate::utils::config::{get_self_proxy, get_system_proxy};
     use tauri_plugin_updater::UpdaterExt;
-    let mut builder = webview.updater_builder().version_comparator(|_, remote| {
-        use semver::Version;
-        let local = Version::parse(crate::consts::BUILD_INFO.pkg_version).ok();
-        local.map(|l| l < remote.version).unwrap_or(false)
-    });
+    let build_time = time::OffsetDateTime::parse(
+        crate::consts::BUILD_INFO.build_date,
+        &time::format_description::well_known::Rfc3339,
+    )
+    .context("failed to parse build time")?;
+    let mut builder = webview
+        .updater_builder()
+        .version_comparator(move |_, remote| {
+            use semver::Version;
+            let local = Version::parse(crate::consts::BUILD_INFO.pkg_version).ok();
+            local
+                .map(|l| {
+                    l < remote.version && remote.pub_date.map(|d| d > build_time).unwrap_or(true)
+                })
+                .unwrap_or(false)
+        });
     // apply proxy
     if let Ok(proxy) = get_self_proxy() {
         builder = builder.proxy(proxy.parse().context("failed to parse proxy")?);
@@ -1016,7 +1027,10 @@ pub async fn check_update(webview: tauri::Webview) -> Result<Option<UpdateWrappe
             available: true,
             current_version: u.current_version.clone(),
             version: u.version.clone(),
-            date: u.date.map(|d| d.to_string()),
+            date: u.date.and_then(|d| {
+                d.format(&time::format_description::well_known::Rfc3339)
+                    .ok()
+            }),
             body: u.body.clone(),
             raw_json: u.raw_json.clone(),
             ..Default::default()

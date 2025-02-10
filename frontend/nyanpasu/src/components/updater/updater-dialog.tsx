@@ -83,10 +83,8 @@ export default function UpdaterDialog({
         <div className="flex items-center justify-between px-2 py-2">
           <div className="flex gap-3">
             <span className="text-xl font-bold">{update.version}</span>
-            <span className="text-xs text-slate-500">
-              {dayjs(update.date, 'YYYY-MM-DD H:mm:ss Z').format(
-                'YYYY-MM-DD HH:mm:ss',
-              )}
+            <span className="contents text-xs text-slate-500">
+              {dayjs(update.date).format('YYYY-MM-DD HH:mm:ss')}
             </span>
           </div>
           <Button
@@ -130,7 +128,7 @@ export default function UpdaterDialog({
             </Markdown>
           </Suspense>
         </div>
-        {contentLength && (
+        {!!contentLength && (
           <div className="mt-2 flex items-center gap-2">
             <LinearProgress
               className="flex-1"

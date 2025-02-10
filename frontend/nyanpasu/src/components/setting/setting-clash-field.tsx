@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import CLASH_FIELD from '@/assets/json/clash-field.json'
 import { Box, Typography } from '@mui/material'
 import Grid from '@mui/material/Grid2'
-import { useClash, useNyanpasu, useProfile } from '@nyanpasu/interface'
+import { useProfile, useSetting } from '@nyanpasu/interface'
 import { BaseCard, BaseDialog } from '@nyanpasu/ui'
 import { ClashFieldItem, LabelSwitch } from './modules/clash-field'
 
@@ -73,17 +73,13 @@ const FieldsControl = ({
 const ClashFieldSwitch = () => {
   const { t } = useTranslation()
 
-  const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu()
+  const { value, upsert } = useSetting('enable_clash_fields')
 
   return (
     <LabelSwitch
       label={t('Enable Clash Fields Filter')}
-      checked={nyanpasuConfig?.enable_clash_fields}
-      onChange={() =>
-        setNyanpasuConfig({
-          enable_clash_fields: !nyanpasuConfig?.enable_clash_fields,
-        })
-      }
+      checked={Boolean(value)}
+      onChange={() => upsert(!value)}
     />
   )
 }

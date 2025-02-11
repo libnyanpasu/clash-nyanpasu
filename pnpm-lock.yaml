@@ -53,7 +53,7 @@ importers:
         version: 8.23.0(eslint@9.20.0(jiti@2.4.2))(typescript@5.7.3)
       autoprefixer:
         specifier: 10.4.20
-        version: 10.4.20(postcss@8.5.1)
+        version: 10.4.20(postcss@8.5.2)
       conventional-changelog-conventionalcommits:
         specifier: 8.0.0
         version: 8.0.0
@@ -115,17 +115,17 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
       postcss:
-        specifier: 8.5.1
-        version: 8.5.1
+        specifier: 8.5.2
+        version: 8.5.2
       postcss-html:
         specifier: 1.8.0
         version: 1.8.0
       postcss-import:
         specifier: 16.1.0
-        version: 16.1.0(postcss@8.5.1)
+        version: 16.1.0(postcss@8.5.2)
       postcss-scss:
         specifier: 4.0.9
-        version: 4.0.9(postcss@8.5.1)
+        version: 4.0.9(postcss@8.5.2)
       prettier:
         specifier: 3.5.0
         version: 3.5.0
@@ -433,7 +433,7 @@ importers:
         version: 3.2.2(vite@6.1.0(@types/node@22.13.1)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.83.4)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.7.0))
       vite-plugin-sass-dts:
         specifier: 1.3.30
-        version: 1.3.30(postcss@8.5.1)(prettier@3.5.0)(sass-embedded@1.83.4)(vite@6.1.0(@types/node@22.13.1)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.83.4)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.7.0))
+        version: 1.3.30(postcss@8.5.2)(prettier@3.5.0)(sass-embedded@1.83.4)(vite@6.1.0(@types/node@22.13.1)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.83.4)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.7.0))
       vite-plugin-svgr:
         specifier: 4.3.0
         version: 4.3.0(rollup@4.34.3)(typescript@5.7.3)(vite@6.1.0(@types/node@22.13.1)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.83.4)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.7.0))
@@ -6641,6 +6641,10 @@ packages:
     resolution: {integrity: sha512-6oz2beyjc5VMn/KV1pPw8fliQkhBXrVn1Z3TVyqZxU8kZpzEKhBdmCFqI6ZbmGtamQvQGuU1sgPTk8ZrXDD7jQ==}
     engines: {node: ^10 || ^12 || >=14}
 
+  postcss@8.5.2:
+    resolution: {integrity: sha512-MjOadfU3Ys9KYoX0AdkBlFEF1Vx37uCCeN4ZHnmwm9FfpbsGWMZeBLMmmpY+6Ocqod7mkdZ0DT31OlbsFrLlkA==}
+    engines: {node: ^10 || ^12 || >=14}
+
   prelude-ls@1.2.1:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
     engines: {node: '>= 0.8.0'}
@@ -8367,7 +8371,7 @@ snapshots:
 
   '@babel/generator@7.17.7':
     dependencies:
-      '@babel/types': 7.26.7
+      '@babel/types': 7.26.8
       jsesc: 2.5.2
       source-map: 0.5.7
     optional: true
@@ -8462,18 +8466,18 @@ snapshots:
 
   '@babel/helper-environment-visitor@7.24.7':
     dependencies:
-      '@babel/types': 7.26.7
+      '@babel/types': 7.26.8
     optional: true
 
   '@babel/helper-function-name@7.24.7':
     dependencies:
-      '@babel/template': 7.25.9
-      '@babel/types': 7.26.7
+      '@babel/template': 7.26.8
+      '@babel/types': 7.26.8
     optional: true
 
   '@babel/helper-hoist-variables@7.24.7':
     dependencies:
-      '@babel/types': 7.26.7
+      '@babel/types': 7.26.8
     optional: true
 
   '@babel/helper-member-expression-to-functions@7.25.9':
@@ -8561,7 +8565,7 @@ snapshots:
 
   '@babel/helper-split-export-declaration@7.24.7':
     dependencies:
-      '@babel/types': 7.26.7
+      '@babel/types': 7.26.8
     optional: true
 
   '@babel/helper-string-parser@7.25.9': {}
@@ -9103,13 +9107,13 @@ snapshots:
   '@babel/traverse@7.23.2':
     dependencies:
       '@babel/code-frame': 7.26.2
-      '@babel/generator': 7.26.5
+      '@babel/generator': 7.26.8
       '@babel/helper-environment-visitor': 7.24.7
       '@babel/helper-function-name': 7.24.7
       '@babel/helper-hoist-variables': 7.24.7
       '@babel/helper-split-export-declaration': 7.24.7
-      '@babel/parser': 7.26.7
-      '@babel/types': 7.26.7
+      '@babel/parser': 7.26.8
+      '@babel/types': 7.26.8
       debug: 4.4.0
       globals: 11.12.0
     transitivePeerDependencies:
@@ -10913,7 +10917,7 @@ snapshots:
   '@trivago/prettier-plugin-sort-imports@4.3.0(prettier@3.5.0)':
     dependencies:
       '@babel/generator': 7.17.7
-      '@babel/parser': 7.26.7
+      '@babel/parser': 7.26.8
       '@babel/traverse': 7.23.2
       '@babel/types': 7.17.0
       javascript-natural-sort: 0.7.1
@@ -11149,11 +11153,11 @@ snapshots:
 
   '@types/postcss-modules-local-by-default@4.0.2':
     dependencies:
-      postcss: 8.5.1
+      postcss: 8.5.2
 
   '@types/postcss-modules-scope@3.0.4':
     dependencies:
-      postcss: 8.5.1
+      postcss: 8.5.2
 
   '@types/prop-types@15.7.14': {}
 
@@ -11573,14 +11577,14 @@ snapshots:
 
   async@3.2.6: {}
 
-  autoprefixer@10.4.20(postcss@8.5.1):
+  autoprefixer@10.4.20(postcss@8.5.2):
     dependencies:
       browserslist: 4.23.3
       caniuse-lite: 1.0.30001658
       fraction.js: 4.3.7
       normalize-range: 0.1.2
       picocolors: 1.1.1
-      postcss: 8.5.1
+      postcss: 8.5.2
       postcss-value-parser: 4.2.0
 
   available-typed-arrays@1.0.7:
@@ -14932,20 +14936,20 @@ snapshots:
     dependencies:
       htmlparser2: 8.0.2
       js-tokens: 9.0.1
-      postcss: 8.5.1
-      postcss-safe-parser: 6.0.0(postcss@8.5.1)
+      postcss: 8.5.2
+      postcss-safe-parser: 6.0.0(postcss@8.5.2)
 
-  postcss-import@16.1.0(postcss@8.5.1):
+  postcss-import@16.1.0(postcss@8.5.2):
     dependencies:
-      postcss: 8.5.1
+      postcss: 8.5.2
       postcss-value-parser: 4.2.0
       read-cache: 1.0.0
       resolve: 1.22.8
 
-  postcss-js@4.0.1(postcss@8.5.1):
+  postcss-js@4.0.1(postcss@8.5.2):
     dependencies:
       camelcase-css: 2.0.1
-      postcss: 8.5.1
+      postcss: 8.5.2
 
   postcss-load-config@3.1.4(postcss@8.4.47):
     dependencies:
@@ -14974,17 +14978,17 @@ snapshots:
 
   postcss-resolve-nested-selector@0.1.6: {}
 
-  postcss-safe-parser@6.0.0(postcss@8.5.1):
+  postcss-safe-parser@6.0.0(postcss@8.5.2):
     dependencies:
-      postcss: 8.5.1
+      postcss: 8.5.2
 
-  postcss-safe-parser@7.0.1(postcss@8.5.1):
+  postcss-safe-parser@7.0.1(postcss@8.5.2):
     dependencies:
-      postcss: 8.5.1
+      postcss: 8.5.2
 
-  postcss-scss@4.0.9(postcss@8.5.1):
+  postcss-scss@4.0.9(postcss@8.5.2):
     dependencies:
-      postcss: 8.5.1
+      postcss: 8.5.2
 
   postcss-selector-parser@6.1.2:
     dependencies:
@@ -14996,9 +15000,9 @@ snapshots:
       cssesc: 3.0.0
       util-deprecate: 1.0.2
 
-  postcss-sorting@8.0.2(postcss@8.5.1):
+  postcss-sorting@8.0.2(postcss@8.5.2):
     dependencies:
-      postcss: 8.5.1
+      postcss: 8.5.2
 
   postcss-value-parser@4.2.0: {}
 
@@ -15009,6 +15013,12 @@ snapshots:
       source-map-js: 1.2.1
 
   postcss@8.5.1:
+    dependencies:
+      nanoid: 3.3.8
+      picocolors: 1.1.1
+      source-map-js: 1.2.1
+
+  postcss@8.5.2:
     dependencies:
       nanoid: 3.3.8
       picocolors: 1.1.1
@@ -15881,8 +15891,8 @@ snapshots:
 
   stylelint-order@6.0.4(stylelint@16.14.1(typescript@5.7.3)):
     dependencies:
-      postcss: 8.5.1
-      postcss-sorting: 8.0.2(postcss@8.5.1)
+      postcss: 8.5.2
+      postcss-sorting: 8.0.2(postcss@8.5.2)
       stylelint: 16.14.1(typescript@5.7.3)
 
   stylelint-scss@6.11.0(stylelint@16.14.1(typescript@5.7.3)):
@@ -15926,9 +15936,9 @@ snapshots:
       micromatch: 4.0.8
       normalize-path: 3.0.0
       picocolors: 1.1.1
-      postcss: 8.5.1
+      postcss: 8.5.2
       postcss-resolve-nested-selector: 0.1.6
-      postcss-safe-parser: 7.0.1(postcss@8.5.1)
+      postcss-safe-parser: 7.0.1(postcss@8.5.2)
       postcss-selector-parser: 7.0.0
       postcss-value-parser: 4.2.0
       resolve-from: 5.0.0
@@ -16514,10 +16524,10 @@ snapshots:
       pathe: 0.2.0
       vite: 6.1.0(@types/node@22.13.1)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.83.4)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.7.0)
 
-  vite-plugin-sass-dts@1.3.30(postcss@8.5.1)(prettier@3.5.0)(sass-embedded@1.83.4)(vite@6.1.0(@types/node@22.13.1)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.83.4)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.7.0)):
+  vite-plugin-sass-dts@1.3.30(postcss@8.5.2)(prettier@3.5.0)(sass-embedded@1.83.4)(vite@6.1.0(@types/node@22.13.1)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.83.4)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.7.0)):
     dependencies:
-      postcss: 8.5.1
-      postcss-js: 4.0.1(postcss@8.5.1)
+      postcss: 8.5.2
+      postcss-js: 4.0.1(postcss@8.5.2)
       prettier: 3.5.0
       sass-embedded: 1.83.4
       vite: 6.1.0(@types/node@22.13.1)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.83.4)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.2)(yaml@2.7.0)

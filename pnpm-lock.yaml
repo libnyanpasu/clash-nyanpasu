@@ -254,8 +254,8 @@ importers:
         specifier: 3.8.4
         version: 3.8.4(react@19.0.0)
       allotment:
-        specifier: 1.20.2
-        version: 1.20.2(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+        specifier: 1.20.3
+        version: 1.20.3(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       country-code-emoji:
         specifier: 2.3.0
         version: 2.3.0
@@ -3490,11 +3490,11 @@ packages:
   alien-signals@0.4.14:
     resolution: {integrity: sha512-itUAVzhczTmP2U5yX67xVpsbbOiquusbWVyA9N+sy6+r6YVbFkahXvNCeEPWEOMhwDYwbVbGHFkVL03N9I5g+Q==}
 
-  allotment@1.20.2:
-    resolution: {integrity: sha512-TaCuHfYNcsJS9EPk04M7TlG5Rl3vbAdHeAyrTE9D5vbpzV+wxnRoUrulDbfnzaQcPIZKpHJNixDOoZNuzliKEA==}
+  allotment@1.20.3:
+    resolution: {integrity: sha512-JCnklt7j0OsyDjD7A9AdT6wqJ3FSoo1ASV6w02Am02lo6NwO25yhG1DcWW8ueBV38ppXQmvrXBXuzX7iVkq6Tw==}
     peerDependencies:
-      react: ^17.0.0 || ^18.0.0
-      react-dom: ^17.0.0 || ^18.0.0
+      react: ^17.0.0 || ^18.0.0 || ^19.0.0
+      react-dom: ^17.0.0 || ^18.0.0 || ^19.0.0
 
   ansi-align@2.0.0:
     resolution: {integrity: sha512-TdlOggdA/zURfMYa7ABC66j+oqfMew58KpJMbUlH3bcZP1b+cBHIHDDn5uH9INsxrHBPjsqM0tDB4jPTF/vgJA==}
@@ -11430,7 +11430,7 @@ snapshots:
 
   alien-signals@0.4.14: {}
 
-  allotment@1.20.2(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
+  allotment@1.20.3(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
     dependencies:
       classnames: 2.5.1
       eventemitter3: 5.0.1

@@ -996,7 +996,9 @@ pub struct UpdateWrapper {
 #[specta::specta]
 pub async fn check_update(webview: tauri::Webview) -> Result<Option<UpdateWrapper>> {
     use crate::utils::config::{get_self_proxy, get_system_proxy};
+    use std::cmp::Ordering;
     use tauri_plugin_updater::UpdaterExt;
+
     let build_time = time::OffsetDateTime::parse(
         crate::consts::BUILD_INFO.build_date,
         &time::format_description::well_known::Rfc3339,
@@ -1007,11 +1009,28 @@ pub async fn check_update(webview: tauri::Webview) -> Result<Option<UpdateWrappe
         .version_comparator(move |_, remote| {
             use semver::Version;
             let local = Version::parse(crate::consts::BUILD_INFO.pkg_version).ok();
-            local
-                .map(|l| {
-                    l < remote.version && remote.pub_date.map(|d| d > build_time).unwrap_or(true)
-                })
-                .unwrap_or(false)
+            log::trace!("[check] local: {:?}, remote: {:?}", local, remote.version);
+            match local {
+                Some(local) => {
+                    if !local.build.is_empty() && !remote.version.build.is_empty() {
+                        // ignore build info to compare the version directly
+                        match local.cmp_precedence(&remote.version) {
+                            Ordering::Less => true,
+                            Ordering::Equal => match remote.pub_date {
+                                // prefer newer build if pub_date is available
+                                Some(pub_date) => {
+                                    local.build != remote.version.build && pub_date > build_time
+                                }
+                                None => local.build != remote.version.build,
+                            },
+                            Ordering::Greater => false,
+                        }
+                    } else {
+                        local < remote.version
+                    }
+                }
+                None => false,
+            }
         });
     // apply proxy
     if let Ok(proxy) = get_self_proxy() {

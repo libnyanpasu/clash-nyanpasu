@@ -1,7 +1,7 @@
 import { useLockFn } from 'ahooks'
 import dayjs from 'dayjs'
 import { useSetAtom } from 'jotai'
-import { lazy, Suspense, useCallback, useState } from 'react'
+import { lazy, Suspense, useCallback, useState, useTransition } from 'react'
 import { useTranslation } from 'react-i18next'
 import { UpdaterIgnoredAtom } from '@/store/updater'
 import { formatError } from '@/utils'
@@ -29,6 +29,7 @@ export default function UpdaterDialog({
   const setUpdaterIgnore = useSetAtom(UpdaterIgnoredAtom)
   const [contentLength, setContentLength] = useState(0)
   const [contentDownloaded, setContentDownloaded] = useState(0)
+  const [pending, startPending] = useTransition()
   const progress =
     contentDownloaded && contentLength
       ? (contentDownloaded / contentLength) * 100
@@ -45,19 +46,21 @@ export default function UpdaterDialog({
   }, [])
 
   const handleUpdate = useLockFn(async () => {
-    try {
-      // Install the update. This will also restart the app on Windows!
-      await update.download(onDownloadEvent)
-      await cleanupProcesses()
-      // cleanup and stop core
-      await update.install()
-      // On macOS and Linux you will need to restart the app manually.
-      // You could use this step to display another confirmation dialog.
-      await relaunch()
-    } catch (e) {
-      console.error(e)
-      message(formatError(e), { kind: 'error', title: t('Error') })
-    }
+    startPending(async () => {
+      try {
+        // Install the update. This will also restart the app on Windows!
+        await update.download(onDownloadEvent)
+        await cleanupProcesses()
+        // cleanup and stop core
+        await update.install()
+        // On macOS and Linux you will need to restart the app manually.
+        // You could use this step to display another confirmation dialog.
+        await relaunch()
+      } catch (e) {
+        console.error(e)
+        message(formatError(e), { kind: 'error', title: t('Error') })
+      }
+    })
   })
 
   return (
@@ -70,13 +73,14 @@ export default function UpdaterDialog({
         onClose?.()
       }}
       onOk={handleUpdate}
+      loading={pending}
       close={t('updater.close')}
       ok={t('updater.update')}
       divider
     >
       <div
         className={cn(
-          'xs:min-w-[90vw] sm:min-w-[50vw] md:min-w-[33.3vw]',
+          'xs:min-w-[90vw] sm:min-w-[55vw] md:min-w-[33.3vw]',
           styles.UpdaterDialog,
         )}
       >
@@ -128,7 +132,7 @@ export default function UpdaterDialog({
             </Markdown>
           </Suspense>
         </div>
-        {!!contentLength && (
+        {pending && (
           <div className="mt-2 flex items-center gap-2">
             <LinearProgress
               className="flex-1"

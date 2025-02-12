@@ -599,8 +599,8 @@ importers:
         specifier: 7.4.3
         version: 7.4.3
       telegram:
-        specifier: 2.26.16
-        version: 2.26.16
+        specifier: 2.26.22
+        version: 2.26.22
       undici:
         specifier: 7.3.0
         version: 7.3.0
@@ -7640,8 +7640,8 @@ packages:
     resolution: {integrity: sha512-5S7Va8hKfV7W5U6g3aYxXmlPoZVAwUMy9AOKyF2fVuZa2UD3qZjg578OrLRt8PcNN1PleVaL/5/yYATNL0ICUw==}
     engines: {node: '>=18'}
 
-  telegram@2.26.16:
-    resolution: {integrity: sha512-5tqL9HicCxRqEi+9JjXBteVDnoZ+1ggsBFxLQTO49aXwTI2d7To7xb2vOU/ahLwgKuE+Db9ra5xDJZ76Kk0NEA==}
+  telegram@2.26.22:
+    resolution: {integrity: sha512-EIj7Yrjiu0Yosa3FZ/7EyPg9s6UiTi/zDQrFmR/2Mg7pIUU+XjAit1n1u9OU9h2oRnRM5M+67/fxzQluZpaJJg==}
 
   term-size@1.2.0:
     resolution: {integrity: sha512-7dPUZQGy/+m3/wjVz3ZW5dobSoD/02NxJpoXUX0WIyjfVS3l0c+b/+9phIDFA7FHzkYtwtMFgeGZ/Y8jVTeqQQ==}
@@ -16079,7 +16079,7 @@ snapshots:
       mkdirp: 3.0.1
       yallist: 5.0.0
 
-  telegram@2.26.16:
+  telegram@2.26.22:
     dependencies:
       '@cryptography/aes': 0.1.1
       async-mutex: 0.3.2

@@ -5,7 +5,7 @@
   "dependencies": {
     "@actions/github": "6.0.0",
     "@types/figlet": "1.7.0",
-    "@types/semver": "^7.5.8",
+    "@types/semver": "7.5.8",
     "figlet": "1.8.0",
     "filesize": "10.1.6",
     "p-retry": "6.2.1",

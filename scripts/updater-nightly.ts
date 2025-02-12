@@ -3,8 +3,10 @@ import fs from 'fs/promises'
 import path from 'path'
 import { camelCase, upperFirst } from 'lodash-es'
 import fetch from 'node-fetch'
+import semver from 'semver'
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
+import { z } from 'zod'
 import { context, getOctokit } from '@actions/github'
 import tauriNightly from '../backend/tauri/overrides/nightly.conf.json'
 import { getGithubUrl } from './utils'
@@ -47,10 +49,34 @@ async function resolveUpdater() {
     ...options,
     tag: 'pre-release',
   })
-  const shortHash = await execSync(`git rev-parse --short pre-release`)
-    .toString()
-    .replace('\n', '')
-    .replace('\r', '')
+  let shortHash = ''
+  const latestContent = latestPreRelease.assets.find(
+    (o) => o.name === 'latest.json',
+  )
+  // trying to get the short hash from the latest.json
+  if (latestContent) {
+    const schema = z.object({
+      version: z.string().min(1),
+    })
+    const latest = schema.parse(
+      await fetch(latestContent.browser_download_url).then((res) => res.json()),
+    )
+
+    const version = semver.parse(latest.version)
+    if (version && version.build.length > 0) {
+      console.log(version)
+      shortHash = version.build[0]
+    }
+  }
+
+  if (!shortHash) {
+    shortHash = await execSync(`git rev-parse --short pre-release`)
+      .toString()
+      .replace('\n', '')
+      .replace('\r', '')
+      .slice(0, 7)
+  }
+
   consola.info(`latest pre-release short hash: ${shortHash}`)
   const updateData = {
     name: `v${tauriNightly.version}-alpha+${shortHash}`,
@@ -162,8 +188,7 @@ async function resolveUpdater() {
   // delete the null field
   Object.entries(updateData.platforms).forEach(([key, value]) => {
     if (!value.url) {
-      consola.error(`failed to parse release for "${key}"`)
-      delete updateData.platforms[key as keyof typeof updateData.platforms]
+      throw new Error(`failed to parse release for "${key}"`)
     }
   })
 
@@ -268,7 +293,7 @@ async function saveToCache(fileName: string, content: string) {
     await fs.writeFile(filePath, content, 'utf-8')
     consola.success(colorize`cached file saved to: {gray.bold ${filePath}}`)
   } catch (err) {
-    consola.error(`Failed to save cache file: ${err}`)
+    throw new Error(`Failed to save cache file: ${err}`)
   }
 }
 

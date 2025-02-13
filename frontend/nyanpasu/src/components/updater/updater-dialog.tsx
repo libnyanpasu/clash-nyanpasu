@@ -34,6 +34,14 @@ export default function UpdaterDialog({
     contentDownloaded && contentLength
       ? (contentDownloaded / contentLength) * 100
       : 0
+  const date =
+    update.date ||
+    (typeof update.rawJson.pub_date === 'string'
+      ? update.rawJson.pub_date
+      : undefined)
+
+  console.info(date)
+
   const onDownloadEvent = useCallback((e: DownloadEvent) => {
     switch (e.event) {
       case 'Started':
@@ -88,7 +96,9 @@ export default function UpdaterDialog({
           <div className="flex gap-3">
             <span className="text-xl font-bold">{update.version}</span>
             <span className="contents text-xs text-slate-500">
-              {dayjs(update.date).format('YYYY-MM-DD HH:mm:ss')}
+              {date
+                ? dayjs(date).format('YYYY-MM-DD HH:mm:ss')
+                : 'Invalid date'}
             </span>
           </div>
           <Button

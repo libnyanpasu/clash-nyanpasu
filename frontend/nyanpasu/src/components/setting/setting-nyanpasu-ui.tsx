@@ -3,13 +3,13 @@ import { MuiColorInput } from 'mui-color-input'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { isHexColor } from 'validator'
-import { defaultTheme } from '@/pages/-theme'
 import { atomIsDrawerOnlyIcon } from '@/store'
 import { languageOptions } from '@/utils/language'
 import Done from '@mui/icons-material/Done'
 import { Button, List, ListItem, ListItemText } from '@mui/material'
 import { useSetting } from '@nyanpasu/interface'
 import { BaseCard, Expand, MenuItem, SwitchItem } from '@nyanpasu/ui'
+import { DEFAULT_COLOR } from '../layout/use-custom-theme'
 
 const commonSx = {
   width: 128,
@@ -58,10 +58,10 @@ const ThemeColor = () => {
 
   const theme = useSetting('theme_color')
 
-  const [value, setValue] = useState(theme.value ?? defaultTheme.primary_color)
+  const [value, setValue] = useState(theme.value ?? DEFAULT_COLOR)
 
   useEffect(() => {
-    setValue(theme.value ?? defaultTheme.primary_color)
+    setValue(theme.value ?? DEFAULT_COLOR)
   }, [theme.value])
 
   return (
@@ -72,11 +72,11 @@ const ThemeColor = () => {
         <MuiColorInput
           size="small"
           sx={commonSx}
-          value={theme.value ?? '#1867c0'}
+          value={value ?? DEFAULT_COLOR}
           isAlphaHidden
           format="hex"
           onBlur={() => {
-            if (!isHexColor(value ?? defaultTheme.primary_color)) {
+            if (!isHexColor(value ?? DEFAULT_COLOR)) {
               setValue(value)
             }
           }}

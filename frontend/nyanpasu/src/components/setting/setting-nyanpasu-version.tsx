@@ -17,7 +17,7 @@ import {
   Typography,
   useTheme,
 } from '@mui/material'
-import { useNyanpasu } from '@nyanpasu/interface'
+import { useSetting } from '@nyanpasu/interface'
 import { BaseCard } from '@nyanpasu/ui'
 import { version } from '@root/package.json'
 import { LabelSwitch } from './modules/clash-field'
@@ -25,17 +25,13 @@ import { LabelSwitch } from './modules/clash-field'
 const AutoCheckUpdate = () => {
   const { t } = useTranslation()
 
-  const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu()
+  const { value, upsert } = useSetting('enable_auto_check_update')
 
   return (
     <LabelSwitch
       label={t('Auto Check Updates')}
-      checked={nyanpasuConfig?.enable_auto_check_update}
-      onChange={() =>
-        setNyanpasuConfig({
-          enable_auto_check_update: !nyanpasuConfig?.enable_auto_check_update,
-        })
-      }
+      checked={value || true}
+      onChange={() => upsert(!value)}
     />
   )
 }

@@ -16,7 +16,7 @@ import {
   Memory,
   Traffic,
   useClashWS,
-  useNyanpasu,
+  useSetting,
 } from '@nyanpasu/interface'
 
 export const DataPanel = () => {
@@ -80,11 +80,9 @@ export const DataPanel = () => {
     ])
   }, 1000)
 
-  const { nyanpasuConfig } = useNyanpasu()
+  const { value } = useSetting('clash_core')
 
-  const supportMemory =
-    nyanpasuConfig?.clash_core &&
-    ['mihomo', 'mihomo-alpha'].includes(nyanpasuConfig?.clash_core)
+  const supportMemory = value && ['mihomo', 'mihomo-alpha'].includes(value)
 
   const Datalines: DatalineProps[] = [
     {

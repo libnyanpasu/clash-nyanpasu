@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { languageQuirks } from '@/utils/language'
 import { SvgIconComponent } from '@mui/icons-material'
 import { alpha, ListItemButton, ListItemIcon, useTheme } from '@mui/material'
-import { useNyanpasu } from '@nyanpasu/interface'
+import { useSetting } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 import { useMatch, useNavigate } from '@tanstack/react-router'
 
@@ -29,7 +29,7 @@ export const RouteListItem = ({
 
   const navigate = useNavigate()
 
-  const { nyanpasuConfig } = useNyanpasu()
+  const { value: language } = useSetting('language')
 
   return (
     <ListItemButton
@@ -74,8 +74,7 @@ export const RouteListItem = ({
         <div
           className={cn(
             'w-full pt-1 pb-1 text-nowrap',
-            nyanpasuConfig?.language &&
-              languageQuirks[nyanpasuConfig?.language].drawer.itemClassNames,
+            language && languageQuirks[language].drawer.itemClassNames,
           )}
           style={{ color: match ? palette.primary.main : undefined }}
         >

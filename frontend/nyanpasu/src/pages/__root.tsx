@@ -6,18 +6,15 @@ import MutationProvider from '@/components/layout/mutation-provider'
 import NoticeProvider from '@/components/layout/notice-provider'
 import PageTransition from '@/components/layout/page-transition'
 import SchemeProvider from '@/components/layout/scheme-provider'
-import {
-  ThemeModeProvider,
-  useCustomTheme,
-} from '@/components/layout/use-custom-theme'
+import { ThemeModeProvider } from '@/components/layout/use-custom-theme'
 import LogProvider from '@/components/logs/log-provider'
 import UpdaterDialog from '@/components/updater/updater-dialog-wrapper'
 import { useNyanpasuStorageSubscribers } from '@/hooks/use-store'
-import useUpdater from '@/hooks/use-updater'
+import { UpdaterProvider } from '@/hooks/use-updater'
 import { FileRouteTypes } from '@/routeTree.gen'
 import { atomIsDrawer, memorizedRoutePathAtom } from '@/store'
 import { CssBaseline, useTheme } from '@mui/material'
-import { StyledEngineProvider, ThemeProvider } from '@mui/material/styles'
+import { StyledEngineProvider } from '@mui/material/styles'
 import { cn, useBreakpoint } from '@nyanpasu/ui'
 import {
   createRootRoute,
@@ -79,8 +76,6 @@ export const Route = createRootRoute({
 const queryClient = new QueryClient()
 
 export default function App() {
-  const { theme } = useCustomTheme()
-
   const breakpoint = useBreakpoint()
 
   const setMemorizedPath = useSetAtom(memorizedRoutePathAtom)
@@ -96,7 +91,6 @@ export default function App() {
 
   const [isDrawer, setIsDrawer] = useAtom(atomIsDrawer)
 
-  useUpdater()
   useNyanpasuStorageSubscribers()
 
   useEffect(() => {
@@ -123,15 +117,15 @@ export default function App() {
         }}
       >
         <StyledEngineProvider injectFirst>
-          <ThemeProvider theme={theme}>
+          <ThemeModeProvider>
             <CssBaseline />
-            <ThemeModeProvider />
             <LogProvider />
             <LocalesProvider />
             <MutationProvider />
             <NoticeProvider />
             <SchemeProvider />
             <UpdaterDialog />
+            <UpdaterProvider />
 
             <AppContainer isDrawer={isDrawer}>
               <PageTransition
@@ -139,7 +133,7 @@ export default function App() {
               />
               <TanStackRouterDevtools />
             </AppContainer>
-          </ThemeProvider>
+          </ThemeModeProvider>
         </StyledEngineProvider>
       </SWRConfig>
     </QueryClientProvider>

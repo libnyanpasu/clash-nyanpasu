@@ -1,20 +1,18 @@
 import { locale } from 'dayjs'
 import { changeLanguage } from 'i18next'
 import { useEffect } from 'react'
-import { useNyanpasu } from '@nyanpasu/interface'
+import { useSetting } from '@nyanpasu/interface'
 
 export const LocalesProvider = () => {
-  const { nyanpasuConfig } = useNyanpasu()
+  const { value } = useSetting('language')
 
   useEffect(() => {
-    if (nyanpasuConfig?.language) {
-      locale(
-        nyanpasuConfig?.language === 'zh' ? 'zh-cn' : nyanpasuConfig?.language,
-      )
+    if (value) {
+      locale(value === 'zh' ? 'zh-cn' : value)
 
-      changeLanguage(nyanpasuConfig?.language)
+      changeLanguage(value)
     }
-  }, [nyanpasuConfig?.language])
+  }, [value])
 
   return null
 }

@@ -2,7 +2,7 @@ import { useAtomValue, useSetAtom } from 'jotai'
 import { useEffect, useState } from 'react'
 import { OS } from '@/consts'
 import { UpdaterIgnoredAtom, UpdaterInstanceAtom } from '@/store/updater'
-import { commands, unwrapResult, useNyanpasu } from '@nyanpasu/interface'
+import { commands, unwrapResult, useSetting } from '@nyanpasu/interface'
 import { Update } from '@tauri-apps/plugin-updater'
 import { useIsAppImage } from './use-consts'
 
@@ -37,15 +37,17 @@ export async function checkUpdate() {
   return null
 }
 
-export default function useUpdater() {
-  const { nyanpasuConfig } = useNyanpasu()
+export function useUpdater() {
+  const { value: enableAutoCheckUpdate } = useSetting(
+    'enable_auto_check_update',
+  )
   const updaterIgnored = useAtomValue(UpdaterIgnoredAtom)
   const setUpdaterInstance = useSetAtom(UpdaterInstanceAtom)
   const isPlatformSupported = useUpdaterPlatformSupported()
 
   useEffect(() => {
     const run = async () => {
-      if (nyanpasuConfig?.enable_auto_check_update && isPlatformSupported) {
+      if (enableAutoCheckUpdate && isPlatformSupported) {
         const updater = await checkUpdate()
         if (updater && updaterIgnored !== updater.version) {
           setUpdaterInstance(updater)
@@ -55,8 +57,14 @@ export default function useUpdater() {
     run().catch(console.error)
   }, [
     isPlatformSupported,
-    nyanpasuConfig?.enable_auto_check_update,
+    enableAutoCheckUpdate,
     setUpdaterInstance,
     updaterIgnored,
   ])
+}
+
+export const UpdaterProvider = () => {
+  useUpdater()
+
+  return null
 }

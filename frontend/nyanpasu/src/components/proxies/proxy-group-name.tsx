@@ -1,15 +1,13 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { memo } from 'react'
-import { useNyanpasu } from '@nyanpasu/interface'
+import { useSetting } from '@nyanpasu/interface'
 
 export const ProxyGroupName = memo(function ProxyGroupName({
   name,
 }: {
   name: string
 }) {
-  const { nyanpasuConfig } = useNyanpasu()
-
-  const disbaleMotion = nyanpasuConfig?.lighten_animation_effects
+  const { value: disbaleMotion } = useSetting('lighten_animation_effects')
 
   return disbaleMotion ? (
     <>{name}</>

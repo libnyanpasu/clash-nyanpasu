@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { Typography } from '@mui/material'
-import { useNyanpasu } from '@nyanpasu/interface'
+import { useSetting } from '@nyanpasu/interface'
 import { BaseDialog, BaseDialogProps } from '@nyanpasu/ui'
 import HotkeyInput from './hotkey-input'
 
@@ -48,14 +48,15 @@ export default function HotkeyDialog({
 
   // 检查是否有快捷键重复
   const [duplicateItems, setDuplicateItems] = useState<string[]>([])
-  const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu()
+
+  const { value, upsert } = useSetting('hotkeys')
 
   const [hotkeyMap, setHotkeyMap] = useState<HotkeyMap>({} as HotkeyMap)
 
   useEffect(() => {
     if (open && Object.keys(hotkeyMap).length === 0) {
       const map = {} as typeof hotkeyMap
-      nyanpasuConfig?.hotkeys?.forEach((text) => {
+      value?.forEach((text) => {
         const [func, key] = text.split(',').map((i) => i.trim())
         if (!func || !key) return
         map[func as AllowedHotkeyFunc] = key
@@ -66,7 +67,7 @@ export default function HotkeyDialog({
       setHotkeyMap(map)
       setDuplicateItems([])
     }
-  }, [hotkeyMap, nyanpasuConfig?.hotkeys, open])
+  }, [hotkeyMap, open, value])
 
   const [errorMessages, setErrorMessages] = useState<HotKeyErrorMessages>(
     HOTKEY_FUNC.reduce(
@@ -100,7 +101,7 @@ export default function HotkeyDialog({
         .filter(Boolean)
 
       try {
-        await setNyanpasuConfig({ hotkeys })
+        await upsert(hotkeys)
       } catch (err: unknown) {
         setErrorMessages((prev) => ({
           ...prev,

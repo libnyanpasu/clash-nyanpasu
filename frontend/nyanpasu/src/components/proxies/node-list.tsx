@@ -18,6 +18,7 @@ import {
   ProxyItem,
   useClashCore,
   useNyanpasu,
+  useSetting,
 } from '@nyanpasu/interface'
 import { cn, useBreakpointValue } from '@nyanpasu/ui'
 import NodeCard from './node-card'
@@ -139,9 +140,7 @@ export const NodeList = forwardRef(function NodeList(
     }
   }
 
-  const { nyanpasuConfig } = useNyanpasu()
-
-  const disableMotion = nyanpasuConfig?.lighten_animation_effects
+  const { value: disableMotion } = useSetting('lighten_animation_effects')
 
   const vListRef = useRef<VListHandle>(null)
 

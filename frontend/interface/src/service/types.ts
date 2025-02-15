@@ -54,21 +54,6 @@ export interface VergeConfig {
   always_on_top?: boolean
 }
 
-export interface ClashConfig {
-  port: number
-  mode: string
-  ipv6: boolean
-  'socket-port': number
-  'allow-lan': boolean
-  'log-level': string
-  'mixed-port': number
-  'redir-port': number
-  'socks-port': number
-  'tproxy-port': number
-  'external-controller': string
-  secret: string
-}
-
 export interface SystemProxy {
   enable: boolean
   server: string

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Clash, clash } from '../service/clash'
+import { ClashConfig, useClashAPI } from '../service/clash-api'
 import { unwrapResult } from '../utils'
 import { commands, PatchRuntimeConfig } from './bindings'
 
@@ -21,7 +21,7 @@ import { commands, PatchRuntimeConfig } from './bindings'
  * const { query, upsert } = useClashConfig();
  */
 export const useClashConfig = () => {
-  const { getConfigs, setConfigs } = clash()
+  const { configs, patchConfigs } = useClashAPI()
 
   const queryClient = useQueryClient()
 
@@ -39,7 +39,7 @@ export const useClashConfig = () => {
    */
   const query = useQuery({
     queryKey: ['clash-config'],
-    queryFn: getConfigs,
+    queryFn: configs,
   })
 
   /**
@@ -58,8 +58,8 @@ export const useClashConfig = () => {
    *          commands.patchClashConfig call.
    */
   const upsert = useMutation({
-    mutationFn: async (payload: PatchRuntimeConfig & Partial<Clash.Config>) => {
-      await setConfigs(payload)
+    mutationFn: async (payload: PatchRuntimeConfig & Partial<ClashConfig>) => {
+      await patchConfigs(payload)
 
       return unwrapResult(await commands.patchClashConfig(payload))
     },

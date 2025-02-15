@@ -9,13 +9,7 @@ import type {
   RemoteProfileOptionsBuilder,
 } from '../ipc/bindings'
 import { ManifestVersion } from './core'
-import {
-  ClashConfig,
-  EnvInfos,
-  InspectUpdater,
-  SystemProxy,
-  VergeConfig,
-} from './types'
+import { EnvInfos, InspectUpdater, SystemProxy, VergeConfig } from './types'
 
 export const getNyanpasuConfig = async () => {
   return await invoke<VergeConfig>('get_verge_config')
@@ -29,7 +23,7 @@ export const getClashInfo = async () => {
   return await invoke<ClashInfo | null>('get_clash_info')
 }
 
-export const patchClashConfig = async (payload: Partial<ClashConfig>) => {
+export const patchClashConfig = async (payload: Partial<any>) => {
   return await invoke<void>('patch_clash_config', { payload })
 }
 

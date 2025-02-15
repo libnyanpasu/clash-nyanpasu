@@ -13,7 +13,7 @@ import {
   useTheme,
 } from '@mui/material'
 import Grid from '@mui/material/Grid2'
-import { getCoreStatus, useNyanpasu } from '@nyanpasu/interface'
+import { getCoreStatus, useSystemService } from '@nyanpasu/interface'
 
 export const ServiceShortcuts = () => {
   const { t } = useTranslation()
@@ -23,16 +23,17 @@ export const ServiceShortcuts = () => {
   const isDrawer = useAtomValue(atomIsDrawer)
 
   const {
-    getServiceStatus: { data: serviceStatus },
-  } = useNyanpasu()
+    query: { data: serviceStatus },
+  } = useSystemService()
 
+  // TODO: refactor to use tanstack query
   const coreStatusSWR = useSWR('/coreStatus', getCoreStatus, {
     refreshInterval: 2000,
     revalidateOnFocus: false,
   })
 
   const status = useMemo(() => {
-    switch (serviceStatus) {
+    switch (serviceStatus?.status) {
       case 'running': {
         return {
           label: t('running'),

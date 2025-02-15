@@ -1,3 +1,4 @@
+import { kebabCase } from 'lodash-es'
 import { unwrapResult } from '@/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { commands, type ClashCore } from './bindings'
@@ -58,18 +59,20 @@ export const useClashCores = () => {
         return
       }
 
-      // Update query data with latest versions
       const currentData = queryClient.getQueryData([
         'clash-core',
       ]) as ClashCoresInfo
+
       if (currentData && results) {
         const updatedData = { ...currentData }
 
-        Object.keys(results).forEach((key) => {
+        Object.entries(results).forEach(([_key, latestVersion]) => {
+          const key = kebabCase(_key)
+
           if (updatedData[key as ClashCore]) {
             updatedData[key as ClashCore] = {
               ...updatedData[key as ClashCore],
-              latestVersion: results[key as ClashCore as keyof typeof results],
+              latestVersion,
             }
           }
         })
@@ -77,9 +80,6 @@ export const useClashCores = () => {
         queryClient.setQueryData(['clash-core'], updatedData)
       }
       return results
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clash-core'] })
     },
   })
 

@@ -102,10 +102,15 @@ export const SettingClashCore = () => {
     try {
       await fetchRemote.mutateAsync()
     } catch (e) {
-      message(t('Failed to fetch. Please check your network connection'), {
-        kind: 'error',
-        title: t('Error'),
-      })
+      message(
+        t('Failed to fetch. Please check your network connection') +
+          '\n' +
+          formatError(e),
+        {
+          kind: 'error',
+          title: t('Error'),
+        },
+      )
     }
   }
 

@@ -578,6 +578,7 @@ pub fn save_window_size_state() -> Result<()> {
 pub async fn fetch_latest_core_versions() -> Result<ManifestVersionLatest> {
     let mut updater = updater::UpdaterManager::global().write().await; // It is intended to block here
     (updater.fetch_latest().await)?;
+    // TODO: result key should be kebab-case
     Ok(updater.get_latest_versions())
 }
 

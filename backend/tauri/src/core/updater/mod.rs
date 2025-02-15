@@ -46,7 +46,7 @@ pub struct ManifestVersion {
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, Type)]
-#[serde(rename_all ="kebab-case")]
+#[serde(rename_all = "kebab-case")]
 pub struct ManifestVersionLatest {
     mihomo: String,
     mihomo_alpha: String,

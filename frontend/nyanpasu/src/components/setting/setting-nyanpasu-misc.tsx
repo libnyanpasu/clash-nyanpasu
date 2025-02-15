@@ -1,6 +1,10 @@
 import { useTranslation } from 'react-i18next'
 import { List } from '@mui/material'
-import { useNyanpasu, useSetting } from '@nyanpasu/interface'
+import {
+  LoggingLevel,
+  ProxiesSelectorMode,
+  useSetting,
+} from '@nyanpasu/interface'
 import { BaseCard, MenuItem, SwitchItem, TextItem } from '@nyanpasu/ui'
 
 const AutoCloseConnection = () => {
@@ -45,10 +49,10 @@ const LightenAnimationEffects = () => {
   )
 }
 
-export const SettingNyanpasuMisc = () => {
+const AppLogLevel = () => {
   const { t } = useTranslation()
 
-  const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu()
+  const { value, upsert } = useSetting('app_log_level')
 
   const logOptions = {
     trace: 'Trace',
@@ -59,6 +63,21 @@ export const SettingNyanpasuMisc = () => {
     silent: 'Silent',
   }
 
+  return (
+    <MenuItem
+      label={t('App Log Level')}
+      options={logOptions}
+      selected={value || 'info'}
+      onSelected={(value) => upsert(value as LoggingLevel)}
+    />
+  )
+}
+
+const TrayProxiesSelector = () => {
+  const { t } = useTranslation()
+
+  const { value, upsert } = useSetting('clash_tray_selector')
+
   const trayProxiesSelectorMode = {
     normal: t('Normal'),
     hidden: t('Hidden'),
@@ -66,27 +85,39 @@ export const SettingNyanpasuMisc = () => {
   }
 
   return (
+    <MenuItem
+      label={t('Tray Proxies Selector')}
+      options={trayProxiesSelectorMode}
+      selected={value || 'normal'}
+      onSelected={(value) => upsert(value as ProxiesSelectorMode)}
+    />
+  )
+}
+
+const DefaultLatencyTest = () => {
+  const { t } = useTranslation()
+
+  const { value, upsert } = useSetting('default_latency_test')
+
+  return (
+    <TextItem
+      label={t('Default Latency Test')}
+      placeholder="http://www.gstatic.com/generate_204"
+      value={value || ''}
+      onApply={(value) => upsert(value)}
+    />
+  )
+}
+
+export const SettingNyanpasuMisc = () => {
+  const { t } = useTranslation()
+
+  return (
     <BaseCard label={t('Nyanpasu Setting')}>
       <List disablePadding>
-        <MenuItem
-          label={t('App Log Level')}
-          options={logOptions}
-          selected={nyanpasuConfig?.app_log_level || 'info'}
-          onSelected={(value) =>
-            setNyanpasuConfig({ app_log_level: value as string })
-          }
-        />
+        <AppLogLevel />
 
-        <MenuItem
-          label={t('Tray Proxies Selector')}
-          options={trayProxiesSelectorMode}
-          selected={nyanpasuConfig?.clash_tray_selector || 'normal'}
-          onSelected={(value) =>
-            setNyanpasuConfig({
-              clash_tray_selector: value as 'normal' | 'hidden' | 'submenu',
-            })
-          }
-        />
+        <TrayProxiesSelector />
 
         <AutoCloseConnection />
 
@@ -94,14 +125,7 @@ export const SettingNyanpasuMisc = () => {
 
         <LightenAnimationEffects />
 
-        <TextItem
-          label={t('Default Latency Test')}
-          placeholder="http://www.gstatic.com/generate_204"
-          value={nyanpasuConfig?.default_latency_test || ''}
-          onApply={(value) =>
-            setNyanpasuConfig({ default_latency_test: value })
-          }
-        />
+        <DefaultLatencyTest />
       </List>
     </BaseCard>
   )

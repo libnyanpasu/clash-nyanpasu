@@ -29,8 +29,9 @@ import 'dayjs/locale/zh-tw'
 import customParseFormat from 'dayjs/plugin/customParseFormat'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { useAtom, useSetAtom } from 'jotai'
-import { lazy, useEffect } from 'react'
+import { lazy, PropsWithChildren, useEffect } from 'react'
 import { SWRConfig } from 'swr'
+import { useSettings } from '@nyanpasu/interface'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import styles from './-__root.module.scss'
 
@@ -75,6 +76,14 @@ export const Route = createRootRoute({
 
 const queryClient = new QueryClient()
 
+const QueryLoaderProvider = ({ children }: PropsWithChildren) => {
+  const {
+    query: { isLoading },
+  } = useSettings()
+
+  return isLoading ? null : children
+}
+
 export default function App() {
   const breakpoint = useBreakpoint()
 
@@ -117,23 +126,28 @@ export default function App() {
         }}
       >
         <StyledEngineProvider injectFirst>
-          <ThemeModeProvider>
-            <CssBaseline />
-            <LogProvider />
-            <LocalesProvider />
-            <MutationProvider />
-            <NoticeProvider />
-            <SchemeProvider />
-            <UpdaterDialog />
-            <UpdaterProvider />
+          <QueryLoaderProvider>
+            <ThemeModeProvider>
+              <CssBaseline />
+              <LogProvider />
+              <LocalesProvider />
+              <MutationProvider />
+              <NoticeProvider />
+              <SchemeProvider />
+              <UpdaterDialog />
+              <UpdaterProvider />
 
-            <AppContainer isDrawer={isDrawer}>
-              <PageTransition
-                className={cn('absolute inset-4 top-10', !isDrawer && 'left-0')}
-              />
-              <TanStackRouterDevtools />
-            </AppContainer>
-          </ThemeModeProvider>
+              <AppContainer isDrawer={isDrawer}>
+                <PageTransition
+                  className={cn(
+                    'absolute inset-4 top-10',
+                    !isDrawer && 'left-0',
+                  )}
+                />
+                <TanStackRouterDevtools />
+              </AppContainer>
+            </ThemeModeProvider>
+          </QueryLoaderProvider>
         </StyledEngineProvider>
       </SWRConfig>
     </QueryClientProvider>

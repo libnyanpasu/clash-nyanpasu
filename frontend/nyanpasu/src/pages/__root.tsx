@@ -125,8 +125,8 @@ export default function App() {
           refreshInterval: 5000,
         }}
       >
-        <StyledEngineProvider injectFirst>
-          <QueryLoaderProvider>
+        <QueryLoaderProvider>
+          <StyledEngineProvider injectFirst>
             <ThemeModeProvider>
               <CssBaseline />
               <LogProvider />
@@ -147,8 +147,8 @@ export default function App() {
                 <TanStackRouterDevtools />
               </AppContainer>
             </ThemeModeProvider>
-          </QueryLoaderProvider>
-        </StyledEngineProvider>
+          </StyledEngineProvider>
+        </QueryLoaderProvider>
       </SWRConfig>
     </QueryClientProvider>
   )

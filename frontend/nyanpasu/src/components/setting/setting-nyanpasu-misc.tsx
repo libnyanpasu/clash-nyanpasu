@@ -1,10 +1,49 @@
 import { useTranslation } from 'react-i18next'
 import { List } from '@mui/material'
-import { useNyanpasu } from '@nyanpasu/interface'
+import { useNyanpasu, useSetting } from '@nyanpasu/interface'
 import { BaseCard, MenuItem, SwitchItem, TextItem } from '@nyanpasu/ui'
-import { nyanpasu } from './modules/create-props'
 
-const { useBooleanProps: createBooleanProps } = nyanpasu
+const AutoCloseConnection = () => {
+  const { t } = useTranslation()
+
+  const { value, upsert } = useSetting('auto_close_connection')
+
+  return (
+    <SwitchItem
+      label={t('Auto Close Connections')}
+      checked={Boolean(value)}
+      onChange={() => upsert(!value)}
+    />
+  )
+}
+
+const EnableBuiltinEnhanced = () => {
+  const { t } = useTranslation()
+
+  const { value, upsert } = useSetting('enable_builtin_enhanced')
+
+  return (
+    <SwitchItem
+      label={t('Enable Built-in Enhanced')}
+      checked={Boolean(value)}
+      onChange={() => upsert(!value)}
+    />
+  )
+}
+
+const LightenAnimationEffects = () => {
+  const { t } = useTranslation()
+
+  const { value, upsert } = useSetting('lighten_animation_effects')
+
+  return (
+    <SwitchItem
+      label={t('Lighten Up Animation Effects')}
+      checked={Boolean(value)}
+      onChange={() => upsert(!value)}
+    />
+  )
+}
 
 export const SettingNyanpasuMisc = () => {
   const { t } = useTranslation()
@@ -49,20 +88,11 @@ export const SettingNyanpasuMisc = () => {
           }
         />
 
-        <SwitchItem
-          label={t('Auto Close Connections')}
-          {...createBooleanProps('auto_close_connection')}
-        />
+        <AutoCloseConnection />
 
-        <SwitchItem
-          label={t('Enable Built-in Enhanced')}
-          {...createBooleanProps('enable_builtin_enhanced')}
-        />
+        <EnableBuiltinEnhanced />
 
-        <SwitchItem
-          label={t('Lighten Up Animation Effects')}
-          {...createBooleanProps('lighten_animation_effects')}
-        />
+        <LightenAnimationEffects />
 
         <TextItem
           label={t('Default Latency Test')}

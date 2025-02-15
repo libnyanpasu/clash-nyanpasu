@@ -1,3 +1,4 @@
+import { useLockFn } from 'ahooks'
 import { useAtom } from 'jotai'
 import { RefObject, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -22,12 +23,7 @@ import {
   TextField,
   useTheme,
 } from '@mui/material'
-import {
-  Clash,
-  ProxyGroupItem,
-  useClashCore,
-  useNyanpasu,
-} from '@nyanpasu/interface'
+import { ProxyGroupItem, useClashCore, useProxyMode } from '@nyanpasu/interface'
 import { cn, SidePage } from '@nyanpasu/ui'
 import { createFileRoute } from '@tanstack/react-router'
 
@@ -70,7 +66,7 @@ function SideBar() {
 function ProxyPage() {
   const { t } = useTranslation()
 
-  const { getCurrentMode, setCurrentMode } = useNyanpasu()
+  const { value: proxyMode, upsert } = useProxyMode()
 
   const { data, updateGroupDelay } = useClashCore()
 
@@ -79,9 +75,9 @@ function ProxyPage() {
   const [group, setGroup] = useState<ProxyGroupItem>()
 
   useEffect(() => {
-    if (getCurrentMode.global) {
+    if (proxyMode.global) {
       setGroup(data?.global)
-    } else if (getCurrentMode.direct) {
+    } else if (proxyMode.direct) {
       setGroup(data?.direct ? { ...data.direct, all: [] } : undefined)
     } else {
       if (proxyGroup.selector !== null) {
@@ -91,8 +87,9 @@ function ProxyPage() {
   }, [
     proxyGroup.selector,
     data?.groups,
-    getCurrentMode,
     data?.global,
+    proxyMode.global,
+    proxyMode.direct,
     data?.direct,
   ])
 
@@ -104,14 +101,15 @@ function ProxyPage() {
 
   const nodeListRef = useRef<NodeListRef>(null)
 
+  const handleSwitch = useLockFn(async (key: string) => {
+    await upsert(key)
+  })
+
   const Header = useMemo(() => {
-    const handleSwitch = (key: string) => {
-      setCurrentMode(key)
-    }
     return (
       <Box display="flex" alignItems="center" gap={1}>
         <ButtonGroup size="small">
-          {Object.entries(getCurrentMode).map(([key, enabled]) => (
+          {Object.entries(proxyMode).map(([key, enabled]) => (
             <Button
               key={key}
               variant={enabled ? 'contained' : 'outlined'}
@@ -125,7 +123,7 @@ function ProxyPage() {
         </ButtonGroup>
       </Box>
     )
-  }, [getCurrentMode, setCurrentMode, t])
+  }, [handleSwitch, proxyMode, t])
 
   const leftViewportRef = useRef<HTMLDivElement>(null)
 
@@ -140,13 +138,13 @@ function ProxyPage() {
       rightViewportRef={rightViewportRef}
       side={
         hasProxies &&
-        getCurrentMode.rule && (
+        proxyMode.rule && (
           <GroupList scrollRef={leftViewportRef as RefObject<HTMLElement>} />
         )
       }
       portalRightRoot={
         hasProxies &&
-        !getCurrentMode.direct && (
+        !proxyMode.direct && (
           <div
             className={cn(
               'absolute z-10 flex w-full items-center justify-between px-4 py-2 backdrop-blur',
@@ -171,7 +169,7 @@ function ProxyPage() {
         )
       }
     >
-      {!getCurrentMode.direct ? (
+      {!proxyMode.direct ? (
         hasProxies ? (
           <>
             <NodeList

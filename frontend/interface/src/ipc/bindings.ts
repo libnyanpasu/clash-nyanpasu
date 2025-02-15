@@ -1092,10 +1092,10 @@ export type LoggingLevel =
   | 'error'
 export type ManifestVersionLatest = {
   mihomo: string
-  mihomo_alpha: string
-  clash_rs: string
-  clash_rs_alpha: string
-  clash_premium: string
+  'mihomo-alpha': string
+  'clash-rs': string
+  'clash-rs-alpha': string
+  'clash-premium': string
 }
 export type MergeProfile = {
   uid: string

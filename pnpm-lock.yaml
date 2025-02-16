@@ -275,8 +275,8 @@ importers:
         specifier: 0.4.0
         version: 0.4.0
       material-react-table:
-        specifier: 3.1.0
-        version: 3.1.0(19f3916c459f316275e4faf2ffb5250a)
+        specifier: 3.2.0
+        version: 3.2.0(19f3916c459f316275e4faf2ffb5250a)
       monaco-editor:
         specifier: 0.52.2
         version: 0.52.2
@@ -5970,8 +5970,8 @@ packages:
     resolution: {integrity: sha512-OkeDaAZ/bQCxeFAozM55PKcKU0yJMPGifLwV4Qgjitu+5MoAfSQN4lsLJeXZ1b8w0x+/Emda6MZgXS1jvsapng==}
     engines: {node: '>=10'}
 
-  material-react-table@3.1.0:
-    resolution: {integrity: sha512-/zPn38QhxQE7mkwLex4CojX3UP2+/+/u7NVq7CHS5d6P8LdTteJPVYXVzym/uhaXzAzFB1ojsbP7zI/y6iUdtQ==}
+  material-react-table@3.2.0:
+    resolution: {integrity: sha512-q2xWG1CQ30ji+aCLKX1XrIg3zrfHT/zZ4aR49Vk/oP4+ospCgjlIVcWLapjrPoqAIDNgB9/fRRG7d1se1Z3nUg==}
     engines: {node: '>=16'}
     peerDependencies:
       '@emotion/react': '>=11.13'
@@ -14253,7 +14253,7 @@ snapshots:
       escape-string-regexp: 4.0.0
     optional: true
 
-  material-react-table@3.1.0(19f3916c459f316275e4faf2ffb5250a):
+  material-react-table@3.2.0(19f3916c459f316275e4faf2ffb5250a):
     dependencies:
       '@emotion/react': 11.14.0(@types/react@19.0.8)(react@19.0.0)
       '@emotion/styled': 11.14.0(@emotion/react@11.14.0(@types/react@19.0.8)(react@19.0.0))(@types/react@19.0.8)(react@19.0.0)

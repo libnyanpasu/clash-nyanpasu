@@ -1,6 +1,7 @@
 //! a shutdown handler for Windows
 
 use once_cell::sync::OnceCell;
+use std::sync::mpsc;
 use windows_core::w;
 use windows_sys::Win32::{
     Foundation::{HINSTANCE, HWND, LPARAM, WPARAM},
@@ -8,7 +9,7 @@ use windows_sys::Win32::{
     UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, MSG, PostMessageW,
         RegisterClassExW, TranslateMessage, WM_CLOSE, WM_QUERYENDSESSION, WNDCLASSEXW,
-        WS_OVERLAPPEDWINDOW,
+        WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_OVERLAPPEDWINDOW,
     },
 };
 
@@ -18,9 +19,11 @@ pub fn setup_shutdown_hook(f: impl Fn() + Send + Sync + 'static) -> anyhow::Resu
     if SHUTDOWN_HOOK_INSTANCE.get().is_some() {
         anyhow::bail!("Shutdown hook already set");
     }
-    let (initd_tx, initd_rx) = oneshot::channel();
+    let (initd_tx, initd_rx) = mpsc::channel();
     setup_shutdown_hook_inner(f, initd_tx)?;
-    initd_rx.recv()?;
+    initd_rx
+        .recv()
+        .map_err(|e| anyhow::anyhow!("Failed to receive initd signal: {e}"))?;
     Ok(())
 }
 
@@ -53,7 +56,7 @@ unsafe extern "system" fn callback(hwnd: HWND, msg: u32, wparam: WPARAM, lparam:
 
 fn setup_shutdown_hook_inner(
     f: impl Fn() + Send + Sync + 'static,
-    initd_tx: oneshot::Sender<()>,
+    initd_tx: mpsc::Sender<()>,
 ) -> anyhow::Result<()> {
     let class_name = w!("TAURI_SHUTDOWN_HOOK");
 
@@ -73,6 +76,11 @@ fn setup_shutdown_hook_inner(
     window_class_ex.lpszClassName = class_name.as_ptr();
     window_class_ex.lpfnWndProc = Some(callback);
     window_class_ex.hInstance = h_instance;
+    window_class_ex.style = 0;
+    window_class_ex.hIcon = std::ptr::null_mut();
+    window_class_ex.hIconSm = std::ptr::null_mut();
+    window_class_ex.hCursor = std::ptr::null_mut();
+    window_class_ex.hbrBackground = std::ptr::null_mut();
 
     unsafe {
         if RegisterClassExW(&window_class_ex) == 0 {
@@ -83,10 +91,10 @@ fn setup_shutdown_hook_inner(
     let window_name = w!("TAURI_SHUTDOWN_HOOK_WINDOW");
     let hidden_window = unsafe {
         CreateWindowExW(
-            WS_OVERLAPPEDWINDOW,
+            WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
             class_name.as_ptr(),
             window_name.as_ptr(),
-            WS_OVERLAPPEDWINDOW,
+            0,
             0,
             0,
             0,
@@ -107,7 +115,7 @@ fn setup_shutdown_hook_inner(
     };
 
     if let Err(e) = initd_tx.send(()) {
-        return Err(e.into());
+        anyhow::bail!("Failed to send initd signal: {e}");
     }
 
     let mut msg = unsafe { std::mem::zeroed::<MSG>() };

@@ -31,7 +31,7 @@ import {
   ProfileQueryResultItem,
   RemoteProfile,
   RemoteProfileOptions,
-  useClash,
+  useClashConnections,
   useProfile,
 } from '@nyanpasu/interface'
 import { cleanDeepClickEvent, cn } from '@nyanpasu/ui'
@@ -60,7 +60,7 @@ export const ProfileItem = memo(function ProfileItem({
 
   const { palette } = useTheme()
 
-  const { deleteConnections } = useClash()
+  const { deleteConnections } = useClashConnections()
 
   const { upsert } = useProfile()
 
@@ -107,7 +107,7 @@ export const ProfileItem = memo(function ProfileItem({
 
       await upsert.mutateAsync({ current: [item.uid] })
 
-      await deleteConnections()
+      await deleteConnections.mutateAsync(undefined)
     } catch (err) {
       const isFetchError = err instanceof Error && err.name === 'FetchError'
       message(

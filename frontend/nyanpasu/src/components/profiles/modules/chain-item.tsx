@@ -32,8 +32,6 @@ export const ChainItem = memo(function ChainItem({
 
   const { palette } = useTheme()
 
-  // const { deleteProfile, viewProfile } = useClash()
-
   const [isPending, startTransition] = useTransition()
 
   const handleClick = () => {

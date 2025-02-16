@@ -144,8 +144,10 @@ pub fn get_system_locale() -> String {
 }
 
 pub fn mapping_to_i18n_key(locale_key: &str) -> &'static str {
-    if locale_key.starts_with("zh-") {
-        "zh"
+    if locale_key.starts_with("zh-TW") {
+        "zh-TW"
+    } else if locale_key.starts_with("zh-") {
+        "zh-CN"
     } else {
         "en"
     }

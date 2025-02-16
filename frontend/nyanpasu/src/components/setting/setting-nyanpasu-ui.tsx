@@ -84,7 +84,7 @@ const ThemeColor = () => {
         />
       </ListItem>
 
-      <Expand open={theme.value !== value}>
+      <Expand open={(theme.value || DEFAULT_COLOR) !== value}>
         <div className="flex justify-end">
           <Button
             variant="contained"

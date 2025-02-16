@@ -12,70 +12,67 @@ import {
 } from '@mui/icons-material'
 import Grid from '@mui/material/Grid2'
 import {
-  Connection,
-  Memory,
-  Traffic,
-  useClashWS,
+  ClashMemory,
+  ClashTraffic,
+  useClashConnections,
+  useClashMemory,
+  useClashTraffic,
   useSetting,
 } from '@nyanpasu/interface'
 
 export const DataPanel = () => {
   const { t } = useTranslation()
 
-  const [traffic, setTraffice] = useState<Traffic[]>(
+  const [traffic, setTraffice] = useState<ClashTraffic[]>(
     new Array(20).fill({ up: 0, down: 0 }),
   )
 
-  const [memory, setMemory] = useState<Memory[]>(
-    new Array(20).fill({ inuse: 0 }),
+  const [memory, setMemory] = useState<ClashMemory[]>(
+    new Array(20).fill({ inuse: 0, oslimit: 0 }),
   )
 
   const [connection, setConnection] = useState<
     {
       downloadTotal: number
       uploadTotal: number
-      connections: number
+      connections_length: number
     }[]
   >(
     new Array(20).fill({
       downloadTotal: 0,
       uploadTotal: 0,
-      connections: 0,
+      connections_length: 0,
     }),
   )
 
-  const {
-    traffic: { latestMessage: latestTraffic },
-    memory: { latestMessage: latestMemory },
-    connections: { latestMessage: latestConnections },
-  } = useClashWS()
+  const { data: clashTraffic } = useClashTraffic()
+
+  const { data: clashMemory } = useClashMemory()
+
+  const { data: clashConnections } = useClashConnections()
 
   useInterval(() => {
-    const trafficData = latestTraffic?.data
-      ? (JSON.parse(latestTraffic.data) as Traffic)
-      : { up: 0, down: 0 }
+    setTraffice((prevData) => [
+      ...prevData.slice(1),
+      clashTraffic?.at(-1) ?? { up: 0, down: 0 },
+    ])
 
-    setTraffice((prevData) => [...prevData.slice(1), trafficData])
+    setMemory((prevData) => [
+      ...prevData.slice(1),
+      clashMemory?.at(-1) ?? { inuse: 0, oslimit: 0 },
+    ])
 
-    const meomryData = latestMemory?.data
-      ? (JSON.parse(latestMemory.data) as Memory)
-      : { inuse: 0, oslimit: 0 }
-
-    setMemory((prevData) => [...prevData.slice(1), meomryData])
-
-    const connectionsData = latestConnections?.data
-      ? (JSON.parse(latestConnections.data) as Connection.Response)
-      : {
-          downloadTotal: 0,
-          uploadTotal: 0,
-        }
+    const connectionsData = clashConnections?.at(-1) ?? {
+      downloadTotal: 0,
+      uploadTotal: 0,
+    }
 
     setConnection((prevData) => [
       ...prevData.slice(1),
       {
         downloadTotal: connectionsData.downloadTotal,
         uploadTotal: connectionsData.uploadTotal,
-        connections: connectionsData.connections?.length ?? 0,
+        connections_length: connectionsData.connections?.length ?? 0,
       },
     ])
   }, 1000)
@@ -100,7 +97,7 @@ export const DataPanel = () => {
       type: 'speed',
     },
     {
-      data: connection.map((item) => item.connections),
+      data: connection.map((item) => item.connections_length),
       icon: SettingsEthernet,
       title: t('Active Connections'),
       type: 'raw',

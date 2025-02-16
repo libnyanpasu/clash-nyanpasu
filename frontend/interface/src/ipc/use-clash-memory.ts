@@ -10,12 +10,12 @@ export type ClashMemory = {
 }
 
 export const useClashMemory = () => {
-  const { trafficWS } = useClashWebSocket()
+  const { memoryWS } = useClashWebSocket()
 
   const queryClient = useQueryClient()
 
   useUpdateEffect(() => {
-    const data = JSON.parse(trafficWS.latestMessage?.data) as ClashMemory
+    const data = JSON.parse(memoryWS.latestMessage?.data) as ClashMemory
 
     const currentData = queryClient.getQueryData([
       'clash-memory',
@@ -28,7 +28,7 @@ export const useClashMemory = () => {
     }
 
     queryClient.setQueryData(['clash-memory'], newData)
-  }, [trafficWS.latestMessage])
+  }, [memoryWS.latestMessage])
 
   const query = useQuery<ClashMemory[]>({
     queryKey: ['clash-memory'],

@@ -7,7 +7,7 @@ import { message } from '@/utils/notification'
 import { NetworkPing, SettingsEthernet } from '@mui/icons-material'
 import { Chip, Paper, type ChipProps } from '@mui/material'
 import Grid from '@mui/material/Grid2'
-import { useClash, useSetting, useSystemProxy } from '@nyanpasu/interface'
+import { useClashConfig, useSetting, useSystemProxy } from '@nyanpasu/interface'
 import { PaperSwitchButton } from '../setting/modules/system-proxy'
 
 const TitleComp = () => {
@@ -16,8 +16,8 @@ const TitleComp = () => {
   const { data } = useSystemProxy()
 
   const {
-    getConfigs: { data: clashConfigs },
-  } = useClash()
+    query: { data: clashConfigs },
+  } = useClashConfig()
 
   const status = useMemo<{
     label: string

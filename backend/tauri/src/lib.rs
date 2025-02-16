@@ -324,7 +324,11 @@ pub fn run() -> std::io::Result<()> {
         .plugin(tauri_plugin_global_shortcut::Builder::default().build())
         .setup(move |app| {
             specta_builder.mount_events(app);
-            setup::setup(app).context("Failed to setup the app")?;
+            setup::setup(app)
+                .context("Failed to setup the app")
+                .inspect_err(|e| {
+                    tracing::error!("Failed to setup the app: {:#?}", e);
+                })?;
 
             #[cfg(target_os = "macos")]
             {

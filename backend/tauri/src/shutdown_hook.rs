@@ -1,7 +1,7 @@
 //! a shutdown handler for Windows
 
 use once_cell::sync::OnceCell;
-use windows_core::w;
+use windows_core::{Error, w};
 use windows_sys::Win32::{
     Foundation::{GetLastError, HINSTANCE, HWND, LPARAM, WPARAM},
     System::LibraryLoader::GetModuleHandleW,
@@ -72,7 +72,7 @@ fn setup_shutdown_hook_inner(
 
     let h_instance = unsafe { GetModuleHandleW(std::ptr::null()) };
     if h_instance.is_null() {
-        let err = unsafe { GetLastError() };
+        let err = Error::from_win32();
         anyhow::bail!("Failed to get module handle: {err}");
     }
 
@@ -84,7 +84,7 @@ fn setup_shutdown_hook_inner(
 
     unsafe {
         if RegisterClassExW(&window_class_ex) == 0 {
-            let err = GetLastError();
+            let err = Error::from_win32();
             anyhow::bail!("Failed to register window class: {err}");
         }
     }
@@ -107,7 +107,7 @@ fn setup_shutdown_hook_inner(
         )
     };
     if hidden_window.is_null() {
-        let err = unsafe { GetLastError() };
+        let err = Error::from_win32();
         anyhow::bail!("Failed to create hidden window: {err}");
     }
 
@@ -128,7 +128,10 @@ fn setup_shutdown_hook_inner(
                 TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             } else {
-                tracing::error!("GetMessageW failed with {result}, shutdown hook thread exiting.");
+                let err = Error::from_win32();
+                tracing::error!(
+                    "GetMessageW failed with {result}, shutdown hook thread exiting: {err}"
+                );
                 break;
             }
         }

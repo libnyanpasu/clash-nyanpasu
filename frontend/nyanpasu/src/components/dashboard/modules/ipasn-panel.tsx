@@ -8,7 +8,7 @@ import { Visibility, VisibilityOff } from '@mui/icons-material'
 import { LoadingButton } from '@mui/lab'
 import { CircularProgress, IconButton, Paper, Tooltip } from '@mui/material'
 import Grid from '@mui/material/Grid2'
-import { useIPSB } from '@nyanpasu/interface'
+import { useIPSB, useSetting } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 
 const IP_REFRESH_SECONDS = 180
@@ -40,12 +40,16 @@ export const IPASNPanel = ({ refreshCount }: { refreshCount: number }) => {
 
   const isDrawer = useAtomValue(atomIsDrawer)
 
+  const { value } = useSetting('clash_core')
+
+  const supportMemory = value && ['mihomo', 'mihomo-alpha'].includes(value)
+
   return (
     <Grid
       size={{
-        sm: isDrawer ? 7 : 12,
-        md: 8,
-        lg: 5,
+        sm: isDrawer ? (supportMemory ? 6 : 12) : 12,
+        md: supportMemory ? 8 : 12,
+        lg: supportMemory ? 5 : 8,
         xl: 3,
       }}
     >

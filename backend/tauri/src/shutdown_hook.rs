@@ -9,7 +9,7 @@ use windows_sys::Win32::{
     UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, MSG, PostMessageW,
         RegisterClassExW, TranslateMessage, WM_CLOSE, WM_QUERYENDSESSION, WNDCLASSEXW,
-        WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_OVERLAPPEDWINDOW,
+        WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
     },
 };
 
@@ -19,11 +19,20 @@ pub fn setup_shutdown_hook(f: impl Fn() + Send + Sync + 'static) -> anyhow::Resu
     if SHUTDOWN_HOOK_INSTANCE.get().is_some() {
         anyhow::bail!("Shutdown hook already set");
     }
-    let (initd_tx, initd_rx) = mpsc::channel();
-    setup_shutdown_hook_inner(f, initd_tx)?;
-    initd_rx
-        .recv()
-        .map_err(|e| anyhow::anyhow!("Failed to receive initd signal: {e}"))?;
+
+    let (initd_tx, initd_rx) = std::sync::mpsc::channel();
+    let handle = std::thread::spawn(move || {
+        if let Err(err) = setup_shutdown_hook_inner(f, initd_tx) {
+            tracing::error!("Failed to setup shutdown hook inner: {err}");
+        }
+    });
+
+    // when recv fails, it means the child thread may have exited early
+    if let Err(e) = initd_rx.recv() {
+        let _ = handle.join();
+        anyhow::bail!("Failed to receive init signal: {e}");
+    }
+
     Ok(())
 }
 

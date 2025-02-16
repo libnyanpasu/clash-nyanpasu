@@ -1,7 +1,7 @@
 use crate::config::Config;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use indexmap::IndexMap;
-use reqwest::{header::HeaderMap, StatusCode};
+use reqwest::{StatusCode, header::HeaderMap};
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 use specta::Type;

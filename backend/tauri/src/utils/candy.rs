@@ -4,7 +4,7 @@ use chrono::Local;
 use glob::glob;
 use std::{path::Path, time::Duration};
 use url::Url;
-use zip::{write::SimpleFileOptions, ZipWriter};
+use zip::{ZipWriter, write::SimpleFileOptions};
 
 pub fn collect_logs(target_path: &Path) -> Result<()> {
     let logs_dir = app_logs_dir()?;

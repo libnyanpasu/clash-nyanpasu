@@ -3,7 +3,7 @@ use anyhow::Result;
 use nyanpasu_utils::dirs::{suggest_config_dir, suggest_data_dir};
 use once_cell::sync::Lazy;
 use std::{borrow::Cow, fs, path::PathBuf};
-use tauri::{utils::platform::resource_dir, Env};
+use tauri::{Env, utils::platform::resource_dir};
 
 #[cfg(not(feature = "verge-dev"))]
 #[allow(unused)]

@@ -1,7 +1,7 @@
 use crate::{
     config::{
-        nyanpasu::{ClashCore, WindowState},
         Config, IVerge,
+        nyanpasu::{ClashCore, WindowState},
     },
     core::{storage::Storage, tray::proxies, *},
     log_err, trace_err,
@@ -14,7 +14,7 @@ use std::{
     net::TcpListener,
     sync::atomic::{AtomicU16, Ordering},
 };
-use tauri::{async_runtime::block_on, App, AppHandle, Emitter, Listener, Manager};
+use tauri::{App, AppHandle, Emitter, Listener, Manager, async_runtime::block_on};
 use tauri_plugin_shell::ShellExt;
 static OPEN_WINDOWS_COUNTER: AtomicU16 = AtomicU16::new(0);
 

@@ -3,7 +3,7 @@ use crate::config::profile::item_type::ProfileItemType;
 use super::item::{
     LocalProfileBuilder, MergeProfileBuilder, RemoteProfileBuilder, ScriptProfileBuilder,
 };
-use serde::{de::Visitor, Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Visitor};
 
 #[derive(Debug, Serialize, specta::Type)]
 #[serde(untagged)]

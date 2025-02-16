@@ -1,10 +1,10 @@
 use super::{
     builder::ProfileBuilder,
-    item::{prelude::*, Profile},
+    item::{Profile, prelude::*},
     item_type::ProfileUid,
 };
 use crate::utils::{dirs, help};
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use derive_builder::Builder;
 use indexmap::IndexMap;
 use nyanpasu_macro::BuilderUpdate;

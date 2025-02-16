@@ -6,7 +6,7 @@ use std::{
 use super::dirs::APP_DIR_PLACEHOLDER;
 use anyhow::Result;
 use once_cell::sync::Lazy;
-use winreg::{enums::*, RegKey};
+use winreg::{RegKey, enums::*};
 
 static SOFTWARE_KEY: Lazy<&'static str> = Lazy::new(|| {
     let key = format!("Software\\{}", *APP_DIR_PLACEHOLDER);

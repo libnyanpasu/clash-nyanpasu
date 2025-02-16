@@ -2,9 +2,9 @@
 use std::sync::{Arc, LazyLock};
 
 use eframe::egui::{
-    self, include_image, style::Selection, Color32, CornerRadius, Id, Image, Label, Layout, Margin,
-    RichText, Sense, Stroke, Style, TextWrapMode, Theme, Vec2, ViewportCommand, Visuals,
-    WidgetText,
+    self, Color32, CornerRadius, Id, Image, Label, Layout, Margin, RichText, Sense, Stroke, Style,
+    TextWrapMode, Theme, Vec2, ViewportCommand, Visuals, WidgetText, include_image,
+    style::Selection,
 };
 use parking_lot::RwLock;
 
@@ -118,21 +118,23 @@ impl NyanpasuNetworkStatisticSmallWidget {
             })),
         };
         let this = widget.clone();
-        std::thread::spawn(move || loop {
-            match rx.recv() {
-                Ok(msg) => {
-                    println!("Received message: {:?}", msg);
-                    let _ = this.handle_message(msg);
-                }
-                Err(e) => {
-                    eprintln!("Failed to receive message: {}", e);
-                    if matches!(
-                        e,
-                        ipc_channel::ipc::IpcError::Disconnected
-                            | ipc_channel::ipc::IpcError::Io(_)
-                    ) {
-                        let _ = this.handle_message(Message::Stop);
-                        break;
+        std::thread::spawn(move || {
+            loop {
+                match rx.recv() {
+                    Ok(msg) => {
+                        println!("Received message: {:?}", msg);
+                        let _ = this.handle_message(msg);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to receive message: {}", e);
+                        if matches!(
+                            e,
+                            ipc_channel::ipc::IpcError::Disconnected
+                                | ipc_channel::ipc::IpcError::Io(_)
+                        ) {
+                            let _ = this.handle_message(Message::Stop);
+                            break;
+                        }
                     }
                 }
             }

@@ -1,13 +1,13 @@
 use crate::config::nyanpasu::ExternalControllerPortStrategy;
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use display_info::DisplayInfo;
 use fast_image_resize::{
-    images::{Image, ImageRef},
     FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer,
+    images::{Image, ImageRef},
 };
-use image::{codecs::png::PngEncoder, ColorType, ImageEncoder, ImageReader};
+use image::{ColorType, ImageEncoder, ImageReader, codecs::png::PngEncoder};
 use nanoid::nanoid;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use serde_yaml::{Mapping, Value};
 use std::{
     fs,
@@ -15,7 +15,7 @@ use std::{
     path::PathBuf,
     str::FromStr,
 };
-use tauri::{process::current_binary, AppHandle, Manager};
+use tauri::{AppHandle, Manager, process::current_binary};
 use tauri_plugin_shell::ShellExt;
 use tracing::{debug, warn};
 use tracing_attributes::instrument;

@@ -7,8 +7,8 @@ pub mod macos {
     use std::{borrow::BorrowMut, cell::RefCell};
 
     use objc2::{
-        declare_class, msg_send_id, mutability, rc::Retained, runtime::ProtocolObject, ClassType,
-        DeclaredClass,
+        ClassType, DeclaredClass, declare_class, msg_send_id, mutability, rc::Retained,
+        runtime::ProtocolObject,
     };
     use objc2_app_kit::{NSApplicationPresentationOptions, NSWindow, NSWindowDelegate};
     use objc2_foundation::{MainThreadMarker, NSNotification, NSObject, NSObjectProtocol};

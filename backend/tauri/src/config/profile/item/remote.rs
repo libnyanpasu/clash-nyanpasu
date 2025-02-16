@@ -1,12 +1,12 @@
 use super::{
-    ambassador_impl_ProfileFileIo, ambassador_impl_ProfileSharedGetter,
-    ambassador_impl_ProfileSharedSetter, ProfileCleanup, ProfileFileIo, ProfileHelper,
-    ProfileShared, ProfileSharedBuilder, ProfileSharedGetter, ProfileSharedSetter,
+    ProfileCleanup, ProfileFileIo, ProfileHelper, ProfileShared, ProfileSharedBuilder,
+    ProfileSharedGetter, ProfileSharedSetter, ambassador_impl_ProfileFileIo,
+    ambassador_impl_ProfileSharedGetter, ambassador_impl_ProfileSharedSetter,
 };
 use crate::{
     config::{
-        profile::item_type::{ProfileItemType, ProfileUid},
         Config,
+        profile::item_type::{ProfileItemType, ProfileUid},
     },
     utils::{config::NyanpasuReqwestProxyExt, dirs::APP_VERSION, help},
 };

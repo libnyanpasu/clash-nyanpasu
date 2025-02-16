@@ -1,7 +1,7 @@
 use std::{
     future::Future,
     ops::Deref,
-    sync::{atomic::Ordering, Arc},
+    sync::{Arc, atomic::Ordering},
 };
 
 use anyhow::Context;
@@ -167,11 +167,13 @@ impl ClashConnectionsConnector {
                             );
                             tokio::spawn(async move {
                                 let restart = async || this.restart().await;
-                                log_err!(restart
-                                    .retry(backon::ExponentialBuilder::default())
-                                    .sleep(tokio::time::sleep)
-                                    .await
-                                    .context("failed to restart clash connections"));
+                                log_err!(
+                                    restart
+                                        .retry(backon::ExponentialBuilder::default())
+                                        .sleep(tokio::time::sleep)
+                                        .await
+                                        .context("failed to restart clash connections")
+                                );
                             });
                             break;
                         }

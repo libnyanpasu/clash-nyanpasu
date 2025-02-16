@@ -1,7 +1,7 @@
 use super::{
-    ambassador_impl_ProfileFileIo, ambassador_impl_ProfileSharedGetter,
-    ambassador_impl_ProfileSharedSetter, ProfileCleanup, ProfileFileIo, ProfileHelper,
-    ProfileShared, ProfileSharedBuilder, ProfileSharedGetter, ProfileSharedSetter,
+    ProfileCleanup, ProfileFileIo, ProfileHelper, ProfileShared, ProfileSharedBuilder,
+    ProfileSharedGetter, ProfileSharedSetter, ambassador_impl_ProfileFileIo,
+    ambassador_impl_ProfileSharedGetter, ambassador_impl_ProfileSharedSetter,
 };
 use ambassador::Delegate;
 use derive_builder::Builder;

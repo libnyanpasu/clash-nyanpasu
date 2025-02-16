@@ -15,8 +15,8 @@ use tokio::{
     fs::File,
     io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
     sync::{
-        mpsc::{self, Sender},
         Semaphore,
+        mpsc::{self, Sender},
     },
     time::sleep,
 };

@@ -1,13 +1,13 @@
 pub(crate) use crate::utils::candy::get_reqwest_client;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use axum::{
+    Router,
     body::Body,
     extract::Query,
     http::{Response, StatusCode},
     routing::get,
-    Router,
 };
-use base64::{prelude::BASE64_STANDARD, Engine};
+use base64::{Engine, prelude::BASE64_STANDARD};
 use bytes::Bytes;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};

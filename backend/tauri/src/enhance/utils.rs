@@ -4,7 +4,7 @@ use serde_yaml::Mapping;
 
 use crate::config::profile::{item_type::ProfileUid, profiles::Profiles};
 
-use super::{use_merge, ChainItem, ChainTypeWrapper, RunnerManager};
+use super::{ChainItem, ChainTypeWrapper, RunnerManager, use_merge};
 use parking_lot::Mutex;
 use std::{borrow::Borrow, sync::Arc};
 

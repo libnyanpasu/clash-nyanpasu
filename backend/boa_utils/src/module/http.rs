@@ -6,19 +6,19 @@ use std::{
 };
 
 use boa_engine::{
+    Context, JsNativeError, JsResult, JsString, JsValue, Module,
     builtins::promise::PromiseState,
     job::{FutureJob, JobQueue, NativeJob},
     js_string,
     module::ModuleLoader,
-    Context, JsNativeError, JsResult, JsString, JsValue, Module,
 };
 use boa_parser::Source;
-use futures_util::{stream::FuturesUnordered, StreamExt};
+use futures_util::{StreamExt, stream::FuturesUnordered};
 use isahc::{
-    config::{Configurable, RedirectPolicy},
     AsyncReadResponseExt, Request, RequestExt,
+    config::{Configurable, RedirectPolicy},
 };
-use smol::{future, LocalExecutor};
+use smol::{LocalExecutor, future};
 
 // Most of the boilerplate is taken from the `futures.rs` example.
 // This file only explains what is exclusive of async module loading.

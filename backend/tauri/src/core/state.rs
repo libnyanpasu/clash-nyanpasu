@@ -1,11 +1,11 @@
 #[allow(dead_code)]
 use parking_lot::{
-    lock_api::{RwLockReadGuard, RwLockWriteGuard},
     MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock,
+    lock_api::{RwLockReadGuard, RwLockWriteGuard},
 };
 use std::{
     ops::Deref,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 /// State manager for the application

@@ -10,7 +10,7 @@ use crate::{
         resolve::{self, save_window_state},
     },
 };
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use chrono::Local;
 use log::debug;
 use nyanpasu_ipc::api::status::CoreState;

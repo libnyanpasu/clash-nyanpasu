@@ -5,12 +5,12 @@ use std::{
 
 use crate::{
     config::nyanpasu::ClashCore,
-    utils::candy::{parse_gh_url, ReqwestSpeedTestExt},
+    utils::candy::{ReqwestSpeedTestExt, parse_gh_url},
 };
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
-use shared::{get_arch, CoreTypeMeta};
+use shared::{CoreTypeMeta, get_arch};
 use specta::Type;
 use tokio::{join, sync::RwLock};
 

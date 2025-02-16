@@ -1,6 +1,6 @@
 use super::tray::Tray;
 use crate::log_err;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};

@@ -58,11 +58,11 @@ mod console;
 pub mod module;
 #[doc(inline)]
 pub use console::Console;
-pub use console::{set_logger, LogMessage, Logger};
+pub use console::{LogMessage, Logger, set_logger};
 
 #[cfg(test)]
 pub(crate) mod test {
-    use boa_engine::{builtins, Context, JsResult, JsValue, Source};
+    use boa_engine::{Context, JsResult, JsValue, Source, builtins};
     use std::borrow::Cow;
 
     /// A test action executed in a test function.

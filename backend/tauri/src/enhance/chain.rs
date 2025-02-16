@@ -1,11 +1,11 @@
 use crate::{
     config::{
+        Profile,
         nyanpasu::ClashCore,
         profile::{
             item::prelude::*,
             item_type::{ProfileItemType, ProfileUid},
         },
-        Profile,
     },
     utils::{dirs, help},
 };

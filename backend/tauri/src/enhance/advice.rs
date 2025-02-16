@@ -1,5 +1,5 @@
 #[allow(unused_imports)]
-use crate::enhance::{script::runner::ProcessOutput, Logs, LogsExt};
+use crate::enhance::{Logs, LogsExt, script::runner::ProcessOutput};
 use rust_i18n::t;
 use serde_yaml::Mapping;
 

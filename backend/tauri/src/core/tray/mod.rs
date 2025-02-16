@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use crate::{
-    config::{nyanpasu::ClashCore, Config},
+    config::{Config, nyanpasu::ClashCore},
     feat, ipc, log_err,
     utils::{help, resolve},
 };
@@ -10,9 +10,9 @@ use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use rust_i18n::t;
 use tauri::{
+    AppHandle, Manager, Runtime,
     menu::{Menu, MenuBuilder, MenuEvent, MenuItemBuilder, SubmenuBuilder},
     tray::{MouseButton, TrayIcon, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, Runtime,
 };
 use tracing_attributes::instrument;
 

@@ -1,20 +1,20 @@
-use super::runner::{wrap_result, ProcessOutput, Runner};
-use crate::enhance::utils::{take_logs, Logs, LogsExt};
+use super::runner::{ProcessOutput, Runner, wrap_result};
+use crate::enhance::utils::{Logs, LogsExt, take_logs};
 use anyhow::Context as _;
 use async_trait::async_trait;
 use boa_engine::{
+    Context, JsError, JsNativeError, JsValue, Source,
     builtins::promise::PromiseState,
     js_string,
     module::{Module, ModuleLoader as BoaModuleLoader, SimpleModuleLoader},
     property::Attribute,
-    Context, JsError, JsNativeError, JsValue, Source,
 };
 use boa_utils::{
-    module::{
-        http::{HttpModuleLoader, Queue},
-        ModuleLoader,
-    },
     Console,
+    module::{
+        ModuleLoader,
+        http::{HttpModuleLoader, Queue},
+    },
 };
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
@@ -144,7 +144,7 @@ impl BoaRunner {
                     break;
                 }
                 PromiseState::Rejected(err) => {
-                    return Err(JsError::from_opaque(err).try_native(ctx)?.into())
+                    return Err(JsError::from_opaque(err).try_native(ctx)?.into());
                 }
             }
             std::thread::sleep(std::time::Duration::from_millis(100));
@@ -161,9 +161,11 @@ impl Runner for JSRunner {
     }
 
     async fn process(&self, mapping: Mapping, path: &str) -> ProcessOutput {
-        let content = wrap_result!(tokio::fs::read_to_string(path)
-            .await
-            .context("failed to read the script file"));
+        let content = wrap_result!(
+            tokio::fs::read_to_string(path)
+                .await
+                .context("failed to read the script file")
+        );
         self.process_honey(mapping, &content).await
     }
 
@@ -171,9 +173,11 @@ impl Runner for JSRunner {
         let script = wrap_result!(wrap_script_if_not_esm(script));
         let hash = crate::utils::help::get_uid("script");
         let path = CUSTOM_SCRIPTS_DIR.join(format!("{}.mjs", hash));
-        wrap_result!(tokio::fs::write(&path, script.as_bytes())
-            .await
-            .context("failed to write the script file"));
+        wrap_result!(
+            tokio::fs::write(&path, script.as_bytes())
+                .await
+                .context("failed to write the script file")
+        );
         // boa engine is single-thread runner so that we can use it in tokio::task::spawn_blocking
         let res = tokio::task::spawn_blocking(move || {
             let wrapped_fn = move || {
@@ -247,8 +251,8 @@ impl Runner for JSRunner {
 mod utils {
     use oxc_allocator::Allocator;
     use oxc_ast::{
-        visit::walk::{walk_function, walk_module_export_name},
         Visit,
+        visit::walk::{walk_function, walk_module_export_name},
     };
     use oxc_parser::Parser;
     use oxc_span::{SourceType, Span};

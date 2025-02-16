@@ -1,22 +1,22 @@
-use crate::config::{nyanpasu::NetworkStatisticWidgetConfig, Config};
+use crate::config::{Config, nyanpasu::NetworkStatisticWidgetConfig};
 
 use super::core::clash::ws::ClashConnectionsConnectorEvent;
 
 use anyhow::Context;
 use nyanpasu_egui::{
-    ipc::{create_ipc_server, IpcSender, Message, StatisticMessage},
+    ipc::{IpcSender, Message, StatisticMessage, create_ipc_server},
     widget::StatisticWidgetVariant,
 };
 use std::{
     process::Stdio,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
-use tauri::{utils::platform::current_exe, Manager, Runtime};
+use tauri::{Manager, Runtime, utils::platform::current_exe};
 use tokio::{
     process::Child,
     sync::{
-        broadcast::{error::RecvError as BroadcastRecvError, Receiver as BroadcastReceiver},
         Mutex,
+        broadcast::{Receiver as BroadcastReceiver, error::RecvError as BroadcastRecvError},
     },
 };
 

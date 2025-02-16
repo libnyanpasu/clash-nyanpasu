@@ -1,5 +1,5 @@
 use crate::{
-    config::{nyanpasu::ProxiesSelectorMode, Config},
+    config::{Config, nyanpasu::ProxiesSelectorMode},
     core::{
         clash::proxies::{Proxies, ProxiesGuard, ProxiesGuardExt},
         handle::Handle,
@@ -7,7 +7,7 @@ use crate::{
 };
 use anyhow::Context;
 use indexmap::IndexMap;
-use tauri::{menu::MenuBuilder, AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Manager, Runtime, menu::MenuBuilder};
 use tracing::{debug, error, warn};
 use tracing_attributes::instrument;
 
@@ -223,11 +223,11 @@ mod platform_impl {
     use rust_i18n::t;
     use std::sync::atomic::AtomicBool;
     use tauri::{
+        AppHandle, Manager, Runtime,
         menu::{
             CheckMenuItemBuilder, Menu, MenuBuilder, MenuItemBuilder, MenuItemKind, Submenu,
             SubmenuBuilder,
         },
-        AppHandle, Manager, Runtime,
     };
     use tracing::warn;
 

@@ -1,7 +1,7 @@
 /// This module is used to manage the proxies for the Tauri application.
 /// It is used to provide the unite interface between tray and frontend.
 /// TODO: add a diff algorithm to reduce the data transfer, and the rerendering of the tray menu.
-use super::{api, CLASH_API_DEFAULT_BACKOFF_STRATEGY};
+use super::{CLASH_API_DEFAULT_BACKOFF_STRATEGY, api};
 use adler::adler32;
 use anyhow::Result;
 use backon::Retryable;

@@ -1,12 +1,12 @@
-use crate::{config, utils::dirs, Config};
-use anyhow::{anyhow, bail, Result};
+use crate::{Config, config, utils::dirs};
+use anyhow::{Result, anyhow, bail};
 use parking_lot::Mutex;
 use std::{
     fs,
     io::IsTerminal,
     sync::{
-        mpsc::{self, Sender},
         OnceLock,
+        mpsc::{self, Sender},
     },
     thread,
 };
@@ -16,7 +16,7 @@ use tracing_appender::{
     rolling::Rotation,
 };
 use tracing_log::log_tracer;
-use tracing_subscriber::{filter, fmt, layer::SubscriberExt, reload, EnvFilter};
+use tracing_subscriber::{EnvFilter, filter, fmt, layer::SubscriberExt, reload};
 
 use super::nyanpasu::LoggingLevel;
 

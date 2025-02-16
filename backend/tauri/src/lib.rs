@@ -1,4 +1,4 @@
-#![feature(auto_traits, negative_impls, let_chains)]
+#![feature(auto_traits, negative_impls, let_chains, trait_alias)]
 #![cfg_attr(
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
@@ -15,6 +15,8 @@ mod feat;
 mod ipc;
 mod server;
 mod setup;
+#[cfg(windows)]
+mod shutdown_hook;
 mod utils;
 mod widget;
 mod window;
@@ -26,6 +28,7 @@ use crate::{
     core::handle::Handle,
     utils::{init, resolve},
 };
+use anyhow::Context;
 use specta_typescript::{BigIntExportBehavior, Typescript};
 use tauri::{Emitter, Manager};
 use tauri_specta::{collect_commands, collect_events};
@@ -38,19 +41,21 @@ fn deadlock_detection() {
     use parking_lot::deadlock;
     use std::{thread, time::Duration};
     use tracing::error;
-    thread::spawn(move || loop {
-        thread::sleep(Duration::from_secs(10));
-        let deadlocks = deadlock::check_deadlock();
-        if deadlocks.is_empty() {
-            continue;
-        }
+    thread::spawn(move || {
+        loop {
+            thread::sleep(Duration::from_secs(10));
+            let deadlocks = deadlock::check_deadlock();
+            if deadlocks.is_empty() {
+                continue;
+            }
 
-        error!("{} deadlocks detected", deadlocks.len());
-        for (i, threads) in deadlocks.iter().enumerate() {
-            error!("Deadlock #{}", i);
-            for t in threads {
-                error!("Thread Id {:#?}", t.thread_id());
-                error!("{:#?}", t.backtrace());
+            error!("{} deadlocks detected", deadlocks.len());
+            for (i, threads) in deadlocks.iter().enumerate() {
+                error!("Deadlock #{}", i);
+                for t in threads {
+                    error!("Thread Id {:#?}", t.thread_id());
+                    error!("{:#?}", t.backtrace());
+                }
             }
         }
     });
@@ -103,12 +108,10 @@ pub fn run() -> std::io::Result<()> {
         .is_ok_and(|instance| instance.is_some())
     {
         if let Err(e) = init::run_pending_migrations() {
-            utils::dialog::panic_dialog(
-                &format!(
-                    "Failed to finish migration event: {}\nYou can see the detailed information at migration.log in your local data dir.\nYou're supposed to submit it as the attachment of new issue.", 
-                    e,
-                )
-            );
+            utils::dialog::panic_dialog(&format!(
+                "Failed to finish migration event: {}\nYou can see the detailed information at migration.log in your local data dir.\nYou're supposed to submit it as the attachment of new issue.",
+                e,
+            ));
             std::process::exit(1);
         }
     }
@@ -321,6 +324,7 @@ pub fn run() -> std::io::Result<()> {
         .plugin(tauri_plugin_global_shortcut::Builder::default().build())
         .setup(move |app| {
             specta_builder.mount_events(app);
+            setup::setup(app).context("Failed to setup the app")?;
 
             #[cfg(target_os = "macos")]
             {

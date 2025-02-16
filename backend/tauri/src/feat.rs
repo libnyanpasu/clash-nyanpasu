@@ -12,7 +12,7 @@ use crate::{
     log_err,
     utils::{self, help::get_clash_external_port, resolve},
 };
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use handle::Message;
 use nyanpasu_egui::widget::network_statistic_large;
 use nyanpasu_ipc::api::status::CoreState;

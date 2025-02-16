@@ -5,7 +5,7 @@ use super::{
     utils::Result,
 };
 use crate::core::{
-    storage::{Storage, NYANPASU_TABLE},
+    storage::{NYANPASU_TABLE, Storage},
     tasks::task::Task,
 };
 use log::debug;

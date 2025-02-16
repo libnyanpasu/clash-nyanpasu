@@ -15,11 +15,10 @@
 mod tests;
 
 use boa_engine::{
-    js_str, js_string,
+    Context, JsArgs, JsData, JsResult, JsStr, JsString, js_str, js_string,
     native_function::NativeFunction,
     object::{JsObject, ObjectInitializer},
     value::{JsValue, Numeric},
-    Context, JsArgs, JsData, JsResult, JsStr, JsString,
 };
 use boa_gc::{Finalize, Trace};
 use rustc_hash::FxHashMap;

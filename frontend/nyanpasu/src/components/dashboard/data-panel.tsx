@@ -49,7 +49,9 @@ export const DataPanel = () => {
 
   const { data: clashMemory } = useClashMemory()
 
-  const { data: clashConnections } = useClashConnections()
+  const {
+    query: { data: clashConnections },
+  } = useClashConnections()
 
   useInterval(() => {
     setTraffice((prevData) => [

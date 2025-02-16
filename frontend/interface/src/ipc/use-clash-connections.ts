@@ -1,5 +1,6 @@
 import { useUpdateEffect } from 'ahooks'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useClashAPI } from '../service/clash-api'
 import { useClashWebSocket } from './use-clash-web-socket'
 
 const MAX_CONNECTIONS_HISTORY = 32
@@ -50,6 +51,8 @@ export const useClashConnections = () => {
 
   const queryClient = useQueryClient()
 
+  const clashApi = useClashAPI()
+
   useUpdateEffect(() => {
     const data = JSON.parse(
       connectionsWS.latestMessage?.data,
@@ -73,5 +76,55 @@ export const useClashConnections = () => {
     queryFn: () => [],
   })
 
-  return query
+  const deleteConnections = useMutation({
+    mutationFn: async (id?: string) => {
+      await clashApi.deleteConnections(id)
+
+      const currentData = queryClient.getQueryData([
+        'clash-connections',
+      ]) as ClashConnection[]
+
+      if (id) {
+        const lastConnections = currentData.at(-1)?.connections
+
+        if (lastConnections) {
+          const filteredConnections = lastConnections.filter(
+            (conn) => conn.id !== id,
+          )
+
+          const lastData = {
+            ...currentData.at(-1)!,
+            connections: filteredConnections,
+          }
+
+          queryClient.setQueryData(
+            ['clash-connections'],
+            [...currentData.slice(0, -1), lastData],
+          )
+        }
+      } else {
+        const lastData = currentData.at(-1)
+
+        if (lastData) {
+          const { downloadTotal, uploadTotal } = lastData
+
+          queryClient.setQueryData(
+            ['clash-connections'],
+            [
+              ...currentData.slice(0, -1),
+              {
+                downloadTotal,
+                uploadTotal,
+              },
+            ],
+          )
+        }
+      }
+    },
+  })
+
+  return {
+    query,
+    deleteConnections,
+  }
 }

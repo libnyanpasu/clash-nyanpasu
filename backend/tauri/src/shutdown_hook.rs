@@ -1,10 +1,9 @@
 //! a shutdown handler for Windows
 
 use once_cell::sync::OnceCell;
-use std::sync::mpsc;
 use windows_core::w;
 use windows_sys::Win32::{
-    Foundation::{HINSTANCE, HWND, LPARAM, WPARAM},
+    Foundation::{GetLastError, HINSTANCE, HWND, LPARAM, WPARAM},
     System::LibraryLoader::GetModuleHandleW,
     UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, MSG, PostMessageW,
@@ -19,20 +18,13 @@ pub fn setup_shutdown_hook(f: impl Fn() + Send + Sync + 'static) -> anyhow::Resu
     if SHUTDOWN_HOOK_INSTANCE.get().is_some() {
         anyhow::bail!("Shutdown hook already set");
     }
-
-    let (initd_tx, initd_rx) = std::sync::mpsc::channel();
-    let handle = std::thread::spawn(move || {
-        if let Err(err) = setup_shutdown_hook_inner(f, initd_tx) {
-            tracing::error!("Failed to setup shutdown hook inner: {err}");
-        }
-    });
-
-    // when recv fails, it means the child thread may have exited early
-    if let Err(e) = initd_rx.recv() {
-        let _ = handle.join();
-        anyhow::bail!("Failed to receive init signal: {e}");
+    let (initd_tx, initd_rx) = oneshot::channel();
+    let handle = std::thread::spawn(move || setup_shutdown_hook_inner(f, initd_tx));
+    if let Err(oneshot::RecvError) = initd_rx.recv() {
+        handle
+            .join()
+            .map_err(|_| anyhow::anyhow!("Failed to join the shutdown hook thread"))??;
     }
-
     Ok(())
 }
 
@@ -65,11 +57,10 @@ unsafe extern "system" fn callback(hwnd: HWND, msg: u32, wparam: WPARAM, lparam:
 
 fn setup_shutdown_hook_inner(
     f: impl Fn() + Send + Sync + 'static,
-    initd_tx: mpsc::Sender<()>,
+    initd_tx: oneshot::Sender<()>,
 ) -> anyhow::Result<()> {
     let class_name = w!("TAURI_SHUTDOWN_HOOK");
 
-    let module_name = w!("");
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         while rx.recv().is_ok() {
@@ -79,21 +70,22 @@ fn setup_shutdown_hook_inner(
 
     SHUTDOWN_HOOK_INSTANCE.set(tx).unwrap();
 
-    let h_instance = unsafe { GetModuleHandleW(module_name.0) };
+    let h_instance = unsafe { GetModuleHandleW(std::ptr::null()) };
+    if h_instance.is_null() {
+        let err = unsafe { GetLastError() };
+        anyhow::bail!("Failed to get module handle: {err}");
+    }
+
     let mut window_class_ex = unsafe { std::mem::zeroed::<WNDCLASSEXW>() };
     window_class_ex.cbSize = std::mem::size_of::<WNDCLASSEXW>() as u32;
     window_class_ex.lpszClassName = class_name.as_ptr();
     window_class_ex.lpfnWndProc = Some(callback);
     window_class_ex.hInstance = h_instance;
-    window_class_ex.style = 0;
-    window_class_ex.hIcon = std::ptr::null_mut();
-    window_class_ex.hIconSm = std::ptr::null_mut();
-    window_class_ex.hCursor = std::ptr::null_mut();
-    window_class_ex.hbrBackground = std::ptr::null_mut();
 
     unsafe {
         if RegisterClassExW(&window_class_ex) == 0 {
-            anyhow::bail!("Failed to register window class");
+            let err = GetLastError();
+            anyhow::bail!("Failed to register window class: {err}");
         }
     }
 
@@ -115,7 +107,8 @@ fn setup_shutdown_hook_inner(
         )
     };
     if hidden_window.is_null() {
-        anyhow::bail!("Failed to create hidden window");
+        let err = unsafe { GetLastError() };
+        anyhow::bail!("Failed to create hidden window: {err}");
     }
 
     let window_handle = WindowHandle {
@@ -128,9 +121,17 @@ fn setup_shutdown_hook_inner(
     }
 
     let mut msg = unsafe { std::mem::zeroed::<MSG>() };
-    while unsafe { GetMessageW(&mut msg, window_handle.hwnd, 0, 0) } > 0 {
-        unsafe { TranslateMessage(&msg) };
-        unsafe { DispatchMessageW(&msg) };
+    unsafe {
+        loop {
+            let result = GetMessageW(&mut msg, window_handle.hwnd, 0, 0);
+            if result > 0 {
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            } else {
+                tracing::error!("GetMessageW failed with {result}, shutdown hook thread exiting.");
+                break;
+            }
+        }
     }
 
     Ok(())

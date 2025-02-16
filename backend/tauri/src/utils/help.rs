@@ -249,6 +249,8 @@ pub fn cleanup_processes(app_handle: &AppHandle) {
         };
         crate::core::CoreManager::global().stop_core().await
     });
+    #[cfg(windows)]
+    crate::shutdown_hook::set_ready_for_shutdown();
 }
 
 #[instrument(skip(app_handle))]

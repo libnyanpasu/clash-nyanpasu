@@ -1,18 +1,25 @@
 //! a shutdown handler for Windows
 
+use std::sync::atomic::AtomicBool;
+
 use once_cell::sync::OnceCell;
 use windows_core::{Error, w};
 use windows_sys::Win32::{
-    Foundation::{GetLastError, HINSTANCE, HWND, LPARAM, WPARAM},
-    System::LibraryLoader::GetModuleHandleW,
+    Foundation::{HINSTANCE, HWND, LPARAM, WPARAM},
+    System::{
+        LibraryLoader::GetModuleHandleW,
+        Shutdown::{ShutdownBlockReasonCreate, ShutdownBlockReasonDestroy},
+    },
     UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, MSG, PostMessageW,
-        RegisterClassExW, TranslateMessage, WM_CLOSE, WM_QUERYENDSESSION, WNDCLASSEXW,
-        WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        RegisterClassExW, TranslateMessage, WM_CLOSE, WM_ENDSESSION, WM_QUERYENDSESSION,
+        WNDCLASSEXW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
     },
 };
 
 static SHUTDOWN_HOOK_INSTANCE: OnceCell<std::sync::mpsc::Sender<()>> = OnceCell::new();
+
+static READY_FOR_SHUTDOWN: AtomicBool = AtomicBool::new(false);
 
 pub fn setup_shutdown_hook(f: impl Fn() + Send + Sync + 'static) -> anyhow::Result<()> {
     if SHUTDOWN_HOOK_INSTANCE.get().is_some() {
@@ -36,6 +43,7 @@ struct WindowHandle {
 impl Drop for WindowHandle {
     fn drop(&mut self) {
         unsafe {
+            tracing::debug!("Destroying window handle...");
             // Post a message to the window to tell it to exit
             PostMessageW(self.hwnd, WM_CLOSE, 0, 0);
         }
@@ -43,16 +51,36 @@ impl Drop for WindowHandle {
 }
 
 unsafe extern "system" fn callback(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> isize {
+    let is_ready = READY_FOR_SHUTDOWN.load(std::sync::atomic::Ordering::Relaxed);
     match msg {
-        WM_QUERYENDSESSION => {
+        WM_QUERYENDSESSION | WM_ENDSESSION if !is_ready => {
             tracing::info!("Shutdown hook triggered, received WM_QUERYENDSESSION");
             if let Some(tx) = SHUTDOWN_HOOK_INSTANCE.get() {
+                tracing::info!("Blocking shutdown for cleanup...");
+                let reason = w!("Clash Nyanpasu is cleaning up...");
+                if unsafe { ShutdownBlockReasonCreate(hwnd, reason.as_ptr()) } == 0 {
+                    let err = Error::from_win32();
+                    tracing::error!("Failed to create shutdown block reason: {err}");
+                }
                 tx.send(()).unwrap();
+                while !READY_FOR_SHUTDOWN.load(std::sync::atomic::Ordering::Relaxed) {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                tracing::info!("Shutdown hook is ready for shutdown");
+                if unsafe { ShutdownBlockReasonDestroy(hwnd) } == 0 {
+                    let err = Error::from_win32();
+                    tracing::error!("Failed to destroy shutdown block reason: {err}");
+                }
             }
             0
         }
         _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
     }
+}
+
+/// Only called on tauri cleanup thread finished
+pub fn set_ready_for_shutdown() {
+    READY_FOR_SHUTDOWN.store(true, std::sync::atomic::Ordering::Relaxed);
 }
 
 fn setup_shutdown_hook_inner(
@@ -61,9 +89,9 @@ fn setup_shutdown_hook_inner(
 ) -> anyhow::Result<()> {
     let class_name = w!("TAURI_SHUTDOWN_HOOK");
 
-    let (tx, rx) = std::sync::mpsc::channel();
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
     std::thread::spawn(move || {
-        while rx.recv().is_ok() {
+        while let Ok(()) = rx.recv() {
             f();
         }
     });

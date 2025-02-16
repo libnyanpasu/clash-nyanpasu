@@ -55,7 +55,7 @@ itertools = "0.14"                                                        # swee
 rayon = "1.10"                                                            # for iterator parallel processing
 ambassador = "0.4.1"                                                      # for trait delegation
 derive_builder = "0.20"                                                   # for builder pattern
-strum = { version = "0.26", features = ["derive"] }                       # for enum string conversion
+strum = { version = "0.27", features = ["derive"] }                       # for enum string conversion
 atomic_enum = "0.3.0"                                                     # for atomic enum
 enumflags2 = "0.7"                                                        # for enum flags
 backon = { version = "1.0.1", features = ["tokio-sleep"] }                # for backoff retry
@@ -160,11 +160,11 @@ display-info = "0.5.0"  # should be removed after upgrading to tauri v2
 
 # OXC (The Oxidation Compiler)
 # We use it to parse and transpile the old script profile to esm based script profile
-oxc_parser = "0.49"
-oxc_allocator = "0.49"
-oxc_span = "0.49"
-oxc_ast = "0.49"
-oxc_syntax = "0.49"
+oxc_parser = "0.51"
+oxc_allocator = "0.51"
+oxc_span = "0.51"
+oxc_ast = "0.51"
+oxc_syntax = "0.51"
 
 # Lua Integration
 mlua = { version = "0.10", features = [

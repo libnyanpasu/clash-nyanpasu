@@ -49,7 +49,7 @@ export const CustomTheme = ({ children }: PropsWithChildren) => {
   const theme = useMemo(() => {
     const color = themeColor || DEFAULT_COLOR
 
-    const mergedTheme = createMDYTheme(color)
+    const mergedTheme = createMDYTheme(color, DEFAULT_FONT_FAMILY)
 
     applyRootStyleVar(themeMode, mergedTheme)
 

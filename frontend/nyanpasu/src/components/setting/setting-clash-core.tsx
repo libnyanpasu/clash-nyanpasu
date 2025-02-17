@@ -9,7 +9,9 @@ import { Box, List, ListItem } from '@mui/material'
 import {
   ClashCore,
   useClash,
+  useClashConnections,
   useClashCores,
+  useClashVersion,
   useSetting,
 } from '@nyanpasu/interface'
 import { BaseCard, ExpandMore, LoadingButton } from '@nyanpasu/ui'
@@ -33,23 +35,23 @@ export const SettingClashCore = () => {
     fetchRemote,
   } = useClashCores()
 
-  const { getVersion, deleteConnections } = useClash()
+  const { data: clashVersion } = useClashVersion()
+
+  const { deleteConnections } = useClashConnections()
 
   const version = useMemo(() => {
-    const data = getVersion.data
-
-    return data?.premium
-      ? `${data.version} Premium`
-      : data?.meta
-        ? `${data.version} Meta`
-        : data?.version || '-'
-  }, [getVersion.data])
+    return clashVersion?.premium
+      ? `${clashVersion.version} Premium`
+      : clashVersion?.meta
+        ? `${clashVersion.version} Meta`
+        : clashVersion?.version || '-'
+  }, [clashVersion])
 
   const changeClashCore = useLockFn(async (core: ClashCore) => {
     try {
       loading.mask = true
       try {
-        await deleteConnections()
+        await deleteConnections.mutateAsync(undefined)
       } catch (e) {
         console.error(e)
       }

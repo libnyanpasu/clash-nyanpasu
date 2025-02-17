@@ -2,6 +2,7 @@ import { kebabCase } from 'lodash-es'
 import { unwrapResult } from '@/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { commands, type ClashCore } from './bindings'
+import { CLASH_VERSION_QUERY_KEY } from './consts'
 
 export const ClashCores = {
   clash: 'Clash Premium',
@@ -99,6 +100,7 @@ export const useClashCores = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clash-core'] })
       queryClient.invalidateQueries({ queryKey: ['settings'] })
+      queryClient.invalidateQueries({ queryKey: [CLASH_VERSION_QUERY_KEY] })
     },
   })
 

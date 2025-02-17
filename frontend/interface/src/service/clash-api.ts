@@ -27,6 +27,12 @@ export interface ClashConfig {
   secret: string
 }
 
+export type ClashVersion = {
+  premium?: boolean
+  meta?: boolean
+  version: string
+}
+
 export const useClashAPI = () => {
   const { data } = useClashInfo()
 
@@ -77,10 +83,15 @@ export const useClashAPI = () => {
     })
   }
 
+  const version = async () => {
+    return await request<ClashVersion>('/version')
+  }
+
   return {
     configs,
     patchConfigs,
     putConfigs,
     deleteConnections,
+    version,
   }
 }

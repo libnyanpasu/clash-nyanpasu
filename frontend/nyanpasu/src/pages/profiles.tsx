@@ -158,10 +158,7 @@ function ProfilePage() {
 
         const result = await update.mutateAsync({
           uid: profile.uid,
-          profile: {
-            ...profile,
-            option,
-          },
+          option,
         })
         updates.push(Promise.resolve(result || undefined))
       }

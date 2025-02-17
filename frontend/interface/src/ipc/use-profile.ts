@@ -5,7 +5,9 @@ import {
   Profile,
   type ProfileBuilder,
   type ProfilesBuilder,
+  type RemoteProfileOptionsBuilder,
 } from './bindings'
+import { ROFILES_QUERY_KEY } from './consts'
 
 type URLImportParams = Parameters<typeof commands.importProfile>
 
@@ -29,7 +31,7 @@ type CreateParams =
 
 type ProfileHelperFn = {
   view: () => Promise<null | undefined>
-  update: (profile: ProfileBuilder) => Promise<null | undefined>
+  update: (option: RemoteProfileOptionsBuilder) => Promise<null | undefined>
   drop: () => Promise<null | undefined>
 }
 
@@ -84,8 +86,8 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
     return {
       ...item,
       view: async () => unwrapResult(await commands.viewProfile(item.uid)),
-      update: async (profile: ProfileBuilder) =>
-        await update.mutateAsync({ uid: item.uid, profile }),
+      update: async (option: RemoteProfileOptionsBuilder) =>
+        await update.mutateAsync({ uid: item.uid, option }),
       drop: async () => await drop.mutateAsync(item.uid),
     }
   }
@@ -104,7 +106,7 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
    * @returns A promise resolving to an object containing the profile list along with the extended helper functions.
    */
   const query = useQuery({
-    queryKey: ['profiles'],
+    queryKey: [ROFILES_QUERY_KEY],
     queryFn: async () => {
       const result = unwrapResult(await commands.getProfiles())
 
@@ -155,25 +157,54 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
     },
     onSuccess: () => {
       // Invalidate and refetch
-      queryClient.invalidateQueries({ queryKey: ['profiles'] })
+      queryClient.invalidateQueries({ queryKey: [ROFILES_QUERY_KEY] })
     },
   })
 
   /**
    * Mutation hook for updating a profile.
-   * Uses React Query's useMutation to handle profile updates.
+   * Uses React Query's useMutation to handle the update operation.
+   *
+   * @param {Object} params - The parameters for the update operation
+   * @param {string} params.uid - The unique identifier of the profile to update
+   * @param {RemoteProfileOptionsBuilder} params.profile - The profile data to update
+   *
+   * @returns {UseMutationResult} A mutation result object containing the update operation status and methods
    *
    * @remarks
-   * This mutation will automatically invalidate and refetch the 'profiles' query on success
-   *
-   * @param uid - The unique identifier of the profile to update
-   * @param profile - The profile data of type ProfileBuilder to update with
-   *
-   * @returns A mutation object containing mutate function and mutation state
-   *
-   * @throws Will throw an error if the profile update fails
+   * On successful update, it invalidates the profiles query cache
    */
   const update = useMutation({
+    mutationFn: async ({
+      uid,
+      option,
+    }: {
+      uid: string
+      option: RemoteProfileOptionsBuilder
+    }) => {
+      return unwrapResult(await commands.updateProfile(uid, option))
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [ROFILES_QUERY_KEY] })
+    },
+  })
+
+  /**
+   * A mutation hook for updating a profile.
+   * Uses React Query's useMutation to handle the profile update operation.
+   *
+   * @property {Function} mutationFn - Async function that patches the profile
+   * @param {Object} params - The parameters for the mutation
+   * @param {string} params.uid - The unique identifier of the profile
+   * @param {ProfileBuilder} params.profile - The profile data to update
+   *
+   * @returns {UseMutationResult} A mutation result object containing the mutation state and functions
+   *
+   * @remarks
+   * On successful mutation, it invalidates the profiles query cache,
+   * triggering a refetch of the profiles data.
+   */
+  const patch = useMutation({
     mutationFn: async ({
       uid,
       profile,
@@ -185,7 +216,7 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
     },
     onSuccess: () => {
       // Invalidate and refetch
-      queryClient.invalidateQueries({ queryKey: ['profiles'] })
+      queryClient.invalidateQueries({ queryKey: [ROFILES_QUERY_KEY] })
     },
   })
 
@@ -209,7 +240,7 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
     },
     onSuccess: () => {
       // Invalidate and refetch
-      queryClient.invalidateQueries({ queryKey: ['profiles'] })
+      queryClient.invalidateQueries({ queryKey: [ROFILES_QUERY_KEY] })
     },
   })
 
@@ -232,7 +263,7 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
       )
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['profiles'] })
+      queryClient.invalidateQueries({ queryKey: [ROFILES_QUERY_KEY] })
     },
   })
 
@@ -249,7 +280,7 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
       return unwrapResult(await commands.deleteProfile(uid))
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['profiles'] })
+      queryClient.invalidateQueries({ queryKey: [ROFILES_QUERY_KEY] })
     },
   })
 
@@ -257,6 +288,7 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
     query,
     create,
     update,
+    patch,
     sort,
     upsert,
     drop,

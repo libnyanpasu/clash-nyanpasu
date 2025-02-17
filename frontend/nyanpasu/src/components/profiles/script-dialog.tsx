@@ -72,7 +72,7 @@ export const ScriptDialog = ({
   // const { getProfileFile, setProfileFile, createProfile, setProfiles } =
   //   useClash()
 
-  const { create, update } = useProfile()
+  const { create, patch } = useProfile()
 
   const contentFn = useProfileContent(profile?.uid ?? '')
 
@@ -129,7 +129,7 @@ export const ScriptDialog = ({
     try {
       if (isEdit) {
         await contentFn.upsert.mutateAsync(editorValue)
-        await update.mutateAsync({
+        await patch.mutateAsync({
           uid: data.uid,
           profile: data,
         })

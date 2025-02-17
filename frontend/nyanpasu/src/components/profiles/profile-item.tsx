@@ -3,6 +3,7 @@ import dayjs from 'dayjs'
 import { AnimatePresence, motion } from 'framer-motion'
 import { memo, use, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import parseTraffic from '@/utils/parse-traffic'
 import {
@@ -31,6 +32,7 @@ import {
   ProfileQueryResultItem,
   RemoteProfile,
   RemoteProfileOptions,
+  RemoteProfileOptionsBuilder,
   useClashConnections,
   useProfile,
 } from '@nyanpasu/interface'
@@ -130,10 +132,11 @@ export const ProfileItem = memo(function ProfileItem({
     // TODO: define backend serde(option) to move null
     const selfOption = 'option' in item ? item.option : undefined
 
-    const options: RemoteProfileOptions = {
+    const options: RemoteProfileOptionsBuilder = {
       with_proxy: false,
       self_proxy: false,
       update_interval: 0,
+      user_agent: null,
       ...selfOption,
     }
 
@@ -150,7 +153,12 @@ export const ProfileItem = memo(function ProfileItem({
     try {
       setLoading({ update: true })
 
-      await item?.update?.(item)
+      await item?.update?.(options)
+    } catch (e) {
+      message(`Update failed: \n ${formatError(e)}`, {
+        title: t('Error'),
+        kind: 'error',
+      })
     } finally {
       setLoading({ update: false })
     }

@@ -59,7 +59,7 @@ export const ProfileDialog = ({
 }: ProfileDialogProps) => {
   const { t } = useTranslation()
 
-  const { create, update } = useProfile()
+  const { create, patch } = useProfile()
 
   const contentFn = useProfileContent(profile?.uid ?? '')
 
@@ -179,7 +179,7 @@ export const ProfileDialog = ({
       const value = latestEditor.current.value
       await contentFn.upsert.mutateAsync(value)
 
-      await update.mutateAsync({
+      await patch.mutateAsync({
         uid: form.uid,
         profile: form,
       })

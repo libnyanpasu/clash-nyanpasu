@@ -41,10 +41,7 @@ const applyRootStyleVar = (mode: 'light' | 'dark', theme: Theme) => {
   }
 }
 
-/**
- * custom theme
- */
-export const useCustomTheme = () => {
+export const CustomTheme = ({ children }: PropsWithChildren) => {
   const themeMode = useAtomValue(themeModeAtom)
 
   const { value: themeColor } = useSetting('theme_color')
@@ -59,17 +56,15 @@ export const useCustomTheme = () => {
     return mergedTheme
   }, [themeColor, themeMode])
 
-  return { theme }
+  return <ThemeProvider theme={theme}>{children}</ThemeProvider>
 }
 
-export const ThemeModeProvider = ({ children }: PropsWithChildren) => {
+const ThemeInner = ({ children }: PropsWithChildren) => {
   const { value: themeMode } = useSetting('theme_mode')
-
-  const { theme } = useCustomTheme()
 
   const setThemeMode = useSetAtom(themeModeAtom)
 
-  const { setMode } = useColorScheme()
+  const { mode, setMode } = useColorScheme()
 
   useEffect(() => {
     if (themeMode === 'system') {
@@ -97,5 +92,13 @@ export const ThemeModeProvider = ({ children }: PropsWithChildren) => {
     }
   }, [setMode, setThemeMode, themeMode])
 
-  return <ThemeProvider theme={theme}>{children}</ThemeProvider>
+  return children
+}
+
+export const ThemeModeProvider = ({ children }: PropsWithChildren) => {
+  return (
+    <CustomTheme>
+      <ThemeInner>{children}</ThemeInner>
+    </CustomTheme>
+  )
 }

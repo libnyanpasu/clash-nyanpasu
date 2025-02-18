@@ -30,7 +30,7 @@ const AutoCheckUpdate = () => {
   return (
     <LabelSwitch
       label={t('Auto Check Updates')}
-      checked={value || true}
+      checked={value ?? true}
       onChange={() => upsert(!value)}
     />
   )

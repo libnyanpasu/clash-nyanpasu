@@ -128,7 +128,7 @@ export const SettingSystemService = () => {
         <SwitchItem
           label={t('Service Mode')}
           disabled={isDisabled}
-          value={serviceMode.value}
+          checked={serviceMode.value || false}
           onChange={() => serviceMode.upsert(!serviceMode.value)}
         />
 

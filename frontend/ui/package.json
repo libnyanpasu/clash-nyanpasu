@@ -32,7 +32,7 @@
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-error-boundary": "5.0.0",
-    "react-i18next": "15.4.0",
+    "react-i18next": "15.4.1",
     "react-use": "17.6.0",
     "tailwindcss": "4.0.6",
     "vite": "6.1.0",

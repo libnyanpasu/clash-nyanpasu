@@ -89,7 +89,7 @@
     "lint-staged": "15.4.3",
     "neostandard": "0.12.1",
     "npm-run-all2": "7.0.2",
-    "postcss": "8.5.2",
+    "postcss": "8.5.3",
     "postcss-html": "1.8.0",
     "postcss-import": "16.1.0",
     "postcss-scss": "4.0.9",

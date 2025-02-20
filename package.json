@@ -95,7 +95,7 @@
     "postcss-scss": "4.0.9",
     "prettier": "3.5.1",
     "prettier-plugin-tailwindcss": "0.6.11",
-    "prettier-plugin-toml": "2.0.1",
+    "prettier-plugin-toml": "2.0.2",
     "react-devtools": "6.1.1",
     "stylelint": "16.14.1",
     "stylelint-config-html": "1.1.0",

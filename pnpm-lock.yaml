@@ -133,8 +133,8 @@ importers:
         specifier: 0.6.11
         version: 0.6.11(@ianvs/prettier-plugin-sort-imports@4.4.1(prettier@3.5.1))(@trivago/prettier-plugin-sort-imports@4.3.0(prettier@3.5.1))(prettier@3.5.1)
       prettier-plugin-toml:
-        specifier: 2.0.1
-        version: 2.0.1(prettier@3.5.1)
+        specifier: 2.0.2
+        version: 2.0.2(prettier@3.5.1)
       react-devtools:
         specifier: 6.1.1
         version: 6.1.1(bufferutil@4.0.8)(utf-8-validate@5.0.10)
@@ -6747,8 +6747,8 @@ packages:
       prettier-plugin-svelte:
         optional: true
 
-  prettier-plugin-toml@2.0.1:
-    resolution: {integrity: sha512-99z1YOkViECHtXQjGIigd3talI/ybUI1zB3yniAwUrlWBXupNXThB1hM6bwSMUEj2/+tomTlMtT98F5t4s8IWA==}
+  prettier-plugin-toml@2.0.2:
+    resolution: {integrity: sha512-tUIIhyfdVX5DMsLGKX/2qaEwi3W48OkUSR7XC91PRI5jFzhexmaYWkrSP1Xh/eWUcEc0TVMQenM3lB09xLQstQ==}
     engines: {node: '>=16.0.0'}
     peerDependencies:
       prettier: ^3.0.3
@@ -15106,7 +15106,7 @@ snapshots:
       '@ianvs/prettier-plugin-sort-imports': 4.4.1(prettier@3.5.1)
       '@trivago/prettier-plugin-sort-imports': 4.3.0(prettier@3.5.1)
 
-  prettier-plugin-toml@2.0.1(prettier@3.5.1):
+  prettier-plugin-toml@2.0.2(prettier@3.5.1):
     dependencies:
       '@taplo/lib': 0.4.0-alpha.2
       prettier: 3.5.1

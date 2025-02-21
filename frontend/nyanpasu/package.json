@@ -81,7 +81,7 @@
     "monaco-yaml": "5.3.1",
     "nanoid": "5.1.0",
     "sass-embedded": "1.85.0",
-    "shiki": "2.4.2",
+    "shiki": "2.5.0",
     "unplugin-auto-import": "19.1.0",
     "unplugin-icons": "22.1.0",
     "validator": "13.12.0",

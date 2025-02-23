@@ -1,8 +1,7 @@
-import { useUpdateEffect } from 'ahooks'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useClashWebSocket } from './use-clash-web-socket'
-
-const MAX_LOGS_HISTORY = 1024
+import { useMemoizedFn } from 'ahooks'
+import { useClashWSContext } from '@/provider/clash-ws-provider'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { CLASH_LOGS_QUERY_KEY } from './consts'
 
 export type ClashLog = {
   type: string
@@ -11,28 +10,36 @@ export type ClashLog = {
 }
 
 export const useClashLogs = () => {
-  const { logsWS } = useClashWebSocket()
+  const { recordLogs, setRecordLogs } = useClashWSContext()
 
   const queryClient = useQueryClient()
 
-  useUpdateEffect(() => {
-    const data = JSON.parse(logsWS.latestMessage?.data) as ClashLog
-
-    const currentData = queryClient.getQueryData(['clash-logs']) as ClashLog[]
-
-    const newData = [...(currentData || []), data]
-
-    if (newData.length > MAX_LOGS_HISTORY) {
-      newData.shift()
-    }
-
-    queryClient.setQueryData(['clash-logs'], newData)
-  }, [logsWS.latestMessage])
-
   const query = useQuery<ClashLog[]>({
-    queryKey: ['clash-logs'],
+    queryKey: [CLASH_LOGS_QUERY_KEY],
     queryFn: () => [],
   })
 
-  return query
+  const clean = useMutation({
+    mutationFn: async () => {
+      await queryClient.setQueryData([CLASH_LOGS_QUERY_KEY], [])
+    },
+  })
+
+  const status = recordLogs
+
+  const enable = useMemoizedFn(() => {
+    setRecordLogs(true)
+  })
+
+  const disable = useMemoizedFn(() => {
+    setRecordLogs(false)
+  })
+
+  return {
+    query,
+    clean,
+    status,
+    enable,
+    disable,
+  }
 }

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useClashAPI } from '../service/clash-api'
+import { CLASH_CONNECTIONS_QUERY_KEY } from './consts'
 
 export type ClashConnection = {
   downloadTotal: number
@@ -48,7 +49,7 @@ export const useClashConnections = () => {
   const clashApi = useClashAPI()
 
   const query = useQuery<ClashConnection[]>({
-    queryKey: ['clash-connections'],
+    queryKey: [CLASH_CONNECTIONS_QUERY_KEY],
     queryFn: () => [],
   })
 
@@ -57,7 +58,7 @@ export const useClashConnections = () => {
       await clashApi.deleteConnections(id)
 
       const currentData = queryClient.getQueryData([
-        'clash-connections',
+        CLASH_CONNECTIONS_QUERY_KEY,
       ]) as ClashConnection[]
 
       if (id) {
@@ -74,7 +75,7 @@ export const useClashConnections = () => {
           }
 
           queryClient.setQueryData(
-            ['clash-connections'],
+            [CLASH_CONNECTIONS_QUERY_KEY],
             [...currentData.slice(0, -1), lastData],
           )
         }
@@ -85,7 +86,7 @@ export const useClashConnections = () => {
           const { downloadTotal, uploadTotal } = lastData
 
           queryClient.setQueryData(
-            ['clash-connections'],
+            [CLASH_CONNECTIONS_QUERY_KEY],
             [
               ...currentData.slice(0, -1),
               {

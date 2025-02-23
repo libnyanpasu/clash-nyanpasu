@@ -18,7 +18,6 @@ export * from './use-system-proxy'
 export * from './use-system-service'
 export * from './useClash'
 export * from './useClashCore'
-export * from './useClashWS'
 
 export { commands } from './bindings'
 export type * from './bindings'

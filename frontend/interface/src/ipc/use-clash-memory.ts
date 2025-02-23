@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { CLASH_MEMORY_QUERY_KEY } from './consts'
 
 export type ClashMemory = {
   inuse: number
@@ -7,7 +8,7 @@ export type ClashMemory = {
 
 export const useClashMemory = () => {
   const query = useQuery<ClashMemory[]>({
-    queryKey: ['clash-memory'],
+    queryKey: [CLASH_MEMORY_QUERY_KEY],
     queryFn: () => [],
   })
 

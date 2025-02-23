@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { CLASH_TRAAFFIC_QUERY_KEY } from './consts'
 
 export type ClashTraffic = {
   up: number
@@ -7,7 +8,7 @@ export type ClashTraffic = {
 
 export const useClashTraffic = () => {
   const query = useQuery<ClashTraffic[]>({
-    queryKey: ['clash-traffic'],
+    queryKey: [CLASH_TRAAFFIC_QUERY_KEY],
     queryFn: () => [],
   })
 

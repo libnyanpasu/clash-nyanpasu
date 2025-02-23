@@ -183,6 +183,9 @@ importers:
       ahooks:
         specifier: 3.8.4
         version: 3.8.4(react@19.0.0)
+      dayjs:
+        specifier: 1.11.13
+        version: 1.11.13
       lodash-es:
         specifier: 4.17.21
         version: 4.17.21

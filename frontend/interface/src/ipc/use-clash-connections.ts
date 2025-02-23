@@ -1,9 +1,5 @@
-import { useUpdateEffect } from 'ahooks'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useClashAPI } from '../service/clash-api'
-import { useClashWebSocket } from './use-clash-web-socket'
-
-const MAX_CONNECTIONS_HISTORY = 32
 
 export type ClashConnection = {
   downloadTotal: number
@@ -47,29 +43,9 @@ export type ClashConnectionMetadata = {
 }
 
 export const useClashConnections = () => {
-  const { connectionsWS } = useClashWebSocket()
-
   const queryClient = useQueryClient()
 
   const clashApi = useClashAPI()
-
-  useUpdateEffect(() => {
-    const data = JSON.parse(
-      connectionsWS.latestMessage?.data,
-    ) as ClashConnection
-
-    const currentData = queryClient.getQueryData([
-      'clash-connections',
-    ]) as ClashConnection[]
-
-    const newData = [...(currentData || []), data]
-
-    if (newData.length > MAX_CONNECTIONS_HISTORY) {
-      newData.shift()
-    }
-
-    queryClient.setQueryData(['clash-connections'], newData)
-  }, [connectionsWS.latestMessage])
 
   const query = useQuery<ClashConnection[]>({
     queryKey: ['clash-connections'],

@@ -1,8 +1,4 @@
-import { useUpdateEffect } from 'ahooks'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useClashWebSocket } from './use-clash-web-socket'
-
-const MAX_MEMORY_HISTORY = 32
+import { useQuery } from '@tanstack/react-query'
 
 export type ClashMemory = {
   inuse: number
@@ -10,26 +6,6 @@ export type ClashMemory = {
 }
 
 export const useClashMemory = () => {
-  const { memoryWS } = useClashWebSocket()
-
-  const queryClient = useQueryClient()
-
-  useUpdateEffect(() => {
-    const data = JSON.parse(memoryWS.latestMessage?.data) as ClashMemory
-
-    const currentData = queryClient.getQueryData([
-      'clash-memory',
-    ]) as ClashMemory[]
-
-    const newData = [...(currentData || []), data]
-
-    if (newData.length > MAX_MEMORY_HISTORY) {
-      newData.shift()
-    }
-
-    queryClient.setQueryData(['clash-memory'], newData)
-  }, [memoryWS.latestMessage])
-
   const query = useQuery<ClashMemory[]>({
     queryKey: ['clash-memory'],
     queryFn: () => [],

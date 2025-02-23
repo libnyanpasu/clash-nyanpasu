@@ -31,8 +31,7 @@ import relativeTime from 'dayjs/plugin/relativeTime'
 import { useAtom, useSetAtom } from 'jotai'
 import { lazy, PropsWithChildren, useEffect } from 'react'
 import { SWRConfig } from 'swr'
-import { useSettings } from '@nyanpasu/interface'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { NyanpasuProvider, useSettings } from '@nyanpasu/interface'
 import styles from './-__root.module.scss'
 
 dayjs.extend(relativeTime)
@@ -74,8 +73,6 @@ export const Route = createRootRoute({
   pendingComponent: Pending,
 })
 
-const queryClient = new QueryClient()
-
 const QueryLoaderProvider = ({ children }: PropsWithChildren) => {
   const {
     query: { isLoading },
@@ -116,7 +113,7 @@ export default function App() {
   })
 
   return (
-    <QueryClientProvider client={queryClient}>
+    <NyanpasuProvider>
       <SWRConfig
         value={{
           errorRetryCount: 5,
@@ -150,6 +147,6 @@ export default function App() {
           </StyledEngineProvider>
         </QueryLoaderProvider>
       </SWRConfig>
-    </QueryClientProvider>
+    </NyanpasuProvider>
   )
 }

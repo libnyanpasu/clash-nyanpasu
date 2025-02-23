@@ -118,8 +118,8 @@ impl WidgetManager {
             .env("NYANPASU_EGUI_IPC_SERVER", server_name)
             .env("NYANPASU_EGUI_WINDOW_STATE_PATH", widget_win_state_path)
             .stdin(std::process::Stdio::inherit())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stdout(os_pipe::dup_stdout()?)
+            .stderr(os_pipe::dup_stderr()?)
             .spawn()
             .context("Failed to spawn widget process")?;
         tracing::debug!("Waiting for widget process to start...");

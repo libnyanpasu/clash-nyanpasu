@@ -51,13 +51,6 @@ export const themeMode = atomWithLocalStorage<'light' | 'dark'>(
   'light',
 )
 
-export const atomLogData = atomWithLocalStorage<LogMessage[]>('atomLogData', [])
-
-export const atomEnableLog = atomWithLocalStorage<boolean>(
-  'atomEnableLog',
-  true,
-)
-
 export const atomIsDrawer = atom<boolean>()
 
 export const atomIsDrawerOnlyIcon = atomWithStorage<boolean>(

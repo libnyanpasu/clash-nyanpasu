@@ -7,7 +7,6 @@ import NoticeProvider from '@/components/layout/notice-provider'
 import PageTransition from '@/components/layout/page-transition'
 import SchemeProvider from '@/components/layout/scheme-provider'
 import { ThemeModeProvider } from '@/components/layout/use-custom-theme'
-import LogProvider from '@/components/logs/log-provider'
 import UpdaterDialog from '@/components/updater/updater-dialog-wrapper'
 import { useNyanpasuStorageSubscribers } from '@/hooks/use-store'
 import { UpdaterProvider } from '@/hooks/use-updater'
@@ -126,7 +125,6 @@ export default function App() {
           <StyledEngineProvider injectFirst>
             <ThemeModeProvider>
               <CssBaseline />
-              <LogProvider />
               <LocalesProvider />
               <MutationProvider />
               <NoticeProvider />

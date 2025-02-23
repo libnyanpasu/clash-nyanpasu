@@ -1,11 +1,11 @@
 import { useDebounceEffect } from 'ahooks'
-import { useAtomValue } from 'jotai'
-import { RefObject, useEffect, useRef } from 'react'
+import { RefObject, useDeferredValue, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Virtualizer, VirtualizerHandle } from 'virtua'
+import { cn } from '@nyanpasu/ui'
 import ContentDisplay from '../base/content-display'
 import LogItem from './log-item'
-import { atomLogLevel, atomLogList } from './modules/store'
+import { useLogContext } from './log-provider'
 
 export const LogList = ({
   scrollRef,
@@ -14,7 +14,7 @@ export const LogList = ({
 }) => {
   const { t } = useTranslation()
 
-  const logData = useAtomValue(atomLogList)
+  const { logs, logLevel } = useLogContext()
 
   const virtualizerRef = useRef<VirtualizerHandle>(null)
 
@@ -24,8 +24,8 @@ export const LogList = ({
 
   useDebounceEffect(
     () => {
-      if (shouldStickToBottom && logData.length) {
-        virtualizerRef.current?.scrollToIndex(logData.length - 1, {
+      if (shouldStickToBottom && logs?.length) {
+        virtualizerRef.current?.scrollToIndex(logs?.length - 1, {
           align: 'end',
           smooth: !isFirstScroll.current,
         })
@@ -33,11 +33,9 @@ export const LogList = ({
         isFirstScroll.current = false
       }
     },
-    [logData],
+    [logs],
     { wait: 100 },
   )
-
-  const logLevel = useAtomValue(atomLogLevel)
 
   useEffect(() => {
     isFirstScroll.current = true
@@ -45,21 +43,29 @@ export const LogList = ({
 
   const handleScroll = (_offset: number) => {
     const end = virtualizerRef.current?.findEndIndex() || 0
-    if (end + 1 === logData.length) {
+    if (end + 1 === logs?.length) {
       shouldStickToBottom.current = true
     } else {
       shouldStickToBottom.current = false
     }
   }
 
-  return logData.length ? (
+  const deferredLogs = useDeferredValue(logs)
+
+  return deferredLogs?.length ? (
     <Virtualizer
       ref={virtualizerRef}
       scrollRef={scrollRef}
       onScroll={handleScroll}
     >
-      {logData.map((item, index) => {
-        return <LogItem key={index} value={item} />
+      {deferredLogs?.map((item, index) => {
+        return (
+          <LogItem
+            key={index}
+            className={cn(index !== 0 && 'border-t border-zinc-500')}
+            value={item}
+          />
+        )
       })}
     </Virtualizer>
   ) : (

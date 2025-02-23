@@ -6,7 +6,13 @@ import { LogMessage } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 import styles from './log-item.module.scss'
 
-export const LogItem = ({ value }: { value: LogMessage }) => {
+export const LogItem = ({
+  value,
+  className,
+}: {
+  value: LogMessage
+  className?: string
+}) => {
   const { palette } = useTheme()
 
   const [payload, setPayload] = useState(value.payload)
@@ -22,7 +28,9 @@ export const LogItem = ({ value }: { value: LogMessage }) => {
   }, [value.payload])
 
   return (
-    <div className="w-full p-4 pt-2 pb-0 font-mono select-text">
+    <div
+      className={cn('w-full p-4 pt-2 pb-0 font-mono select-text', className)}
+    >
       <div className="flex gap-2">
         <span className="font-thin">{value.time}</span>
 
@@ -36,7 +44,7 @@ export const LogItem = ({ value }: { value: LogMessage }) => {
         </span>
       </div>
 
-      <div className="border-b border-slate-200 pb-2 text-wrap">
+      <div className="pb-2 text-wrap">
         <div
           className={cn(styles.item, palette.mode === 'dark' && styles.dark)}
           style={

@@ -1,21 +1,24 @@
-import { useAtom } from 'jotai'
-import { atomEnableLog } from '@/store'
 import {
   PauseCircleOutlineRounded,
   PlayCircleOutlineRounded,
 } from '@mui/icons-material'
 import { IconButton } from '@mui/material'
+import { useClashLogs } from '@nyanpasu/interface'
 
 export const LogToggle = () => {
-  const [enableLog, setEnableLog] = useAtom(atomEnableLog)
+  const { status, disable, enable } = useClashLogs()
+
+  const handleClick = () => {
+    if (status) {
+      disable()
+    } else {
+      enable()
+    }
+  }
 
   return (
-    <IconButton
-      size="small"
-      color="inherit"
-      onClick={() => setEnableLog((e) => !e)}
-    >
-      {enableLog ? <PauseCircleOutlineRounded /> : <PlayCircleOutlineRounded />}
+    <IconButton size="small" color="inherit" onClick={handleClick}>
+      {status ? <PauseCircleOutlineRounded /> : <PlayCircleOutlineRounded />}
     </IconButton>
   )
 }

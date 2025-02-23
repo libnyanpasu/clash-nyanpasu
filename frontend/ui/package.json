@@ -34,7 +34,7 @@
     "react-error-boundary": "5.0.0",
     "react-i18next": "15.4.1",
     "react-use": "17.6.0",
-    "tailwindcss": "4.0.7",
+    "tailwindcss": "4.0.8",
     "vite": "6.1.1",
     "vite-tsconfig-paths": "5.1.4"
   },

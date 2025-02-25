@@ -12,20 +12,16 @@ import {
   CLASH_LOGS_QUERY_KEY,
   CLASH_MEMORY_QUERY_KEY,
   CLASH_TRAAFFIC_QUERY_KEY,
+  MAX_CONNECTIONS_HISTORY,
+  MAX_LOGS_HISTORY,
+  MAX_MEMORY_HISTORY,
+  MAX_TRAFFIC_HISTORY,
 } from '../ipc/consts'
 import type { ClashConnection } from '../ipc/use-clash-connections'
 import type { ClashLog } from '../ipc/use-clash-logs'
 import type { ClashMemory } from '../ipc/use-clash-memory'
 import type { ClashTraffic } from '../ipc/use-clash-traffic'
 import { useClashWebSocket } from '../ipc/use-clash-web-socket'
-
-const MAX_CONNECTIONS_HISTORY = 32
-
-const MAX_MEMORY_HISTORY = 32
-
-const MAX_TRAFFIC_HISTORY = 32
-
-const MAX_LOGS_HISTORY = 1024
 
 const ClashWSContext = createContext<{
   recordLogs: boolean

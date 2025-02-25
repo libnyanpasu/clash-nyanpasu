@@ -4,6 +4,7 @@ import {
   LoggingLevel,
   ProxiesSelectorMode,
   useSetting,
+  type NetworkStatisticWidgetConfig,
 } from '@nyanpasu/interface'
 import { BaseCard, MenuItem, SwitchItem, TextItem } from '@nyanpasu/ui'
 
@@ -94,6 +95,47 @@ const TrayProxiesSelector = () => {
   )
 }
 
+const NetworkWidgetVariant = () => {
+  const { t } = useTranslation()
+
+  const { value, upsert } = useSetting('network_statistic_widget')
+
+  const options = {
+    disabled: t('Disabled'),
+    small: 'Small',
+    large: 'Large',
+  }
+
+  const mapping: { [key: string]: NetworkStatisticWidgetConfig } = {
+    disabled: {
+      kind: 'disabled',
+    },
+    small: {
+      kind: 'enabled',
+      value: 'small',
+    },
+    large: {
+      kind: 'enabled',
+      value: 'large',
+    },
+  }
+
+  return (
+    <MenuItem
+      label={t('Network Statistic Widget')}
+      options={options}
+      selected={
+        Object.entries(mapping).find(([_, config]) =>
+          config.kind === 'disabled'
+            ? value?.kind === 'disabled'
+            : value?.kind === 'enabled' && config.value === value.value,
+        )?.[0] || 'disabled'
+      }
+      onSelected={(val) => upsert(mapping[val as string])}
+    />
+  )
+}
+
 const DefaultLatencyTest = () => {
   const { t } = useTranslation()
 
@@ -118,6 +160,8 @@ export const SettingNyanpasuMisc = () => {
         <AppLogLevel />
 
         <TrayProxiesSelector />
+
+        <NetworkWidgetVariant />
 
         <AutoCloseConnection />
 

@@ -16,7 +16,6 @@ export const useClashLogs = () => {
 
   const query = useQuery<ClashLog[]>({
     queryKey: [CLASH_LOGS_QUERY_KEY],
-    queryFn: () => [],
   })
 
   const clean = useMutation({

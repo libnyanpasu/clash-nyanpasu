@@ -9,7 +9,6 @@ export type ClashTraffic = {
 export const useClashTraffic = () => {
   const query = useQuery<ClashTraffic[]>({
     queryKey: [CLASH_TRAAFFIC_QUERY_KEY],
-    queryFn: () => [],
   })
 
   return query

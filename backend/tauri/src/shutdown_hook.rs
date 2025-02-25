@@ -2,6 +2,7 @@
 
 use std::sync::atomic::AtomicBool;
 
+use atomic_enum::atomic_enum;
 use once_cell::sync::OnceCell;
 use windows_core::{Error, w};
 use windows_sys::Win32::{
@@ -19,7 +20,15 @@ use windows_sys::Win32::{
 
 static SHUTDOWN_HOOK_INSTANCE: OnceCell<std::sync::mpsc::Sender<()>> = OnceCell::new();
 
-static READY_FOR_SHUTDOWN: AtomicBool = AtomicBool::new(false);
+#[atomic_enum]
+#[derive(PartialEq, Eq)]
+pub enum ShutdownState {
+    Idle,
+    CleaningUp,
+    ReadyForShutdown,
+}
+
+static SHUTDOWN_STATE: AtomicShutdownState = AtomicShutdownState::new(ShutdownState::Idle);
 
 pub fn setup_shutdown_hook(f: impl Fn() + Send + Sync + 'static) -> anyhow::Result<()> {
     if SHUTDOWN_HOOK_INSTANCE.get().is_some() {
@@ -51,9 +60,9 @@ impl Drop for WindowHandle {
 }
 
 unsafe extern "system" fn callback(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> isize {
-    let is_ready = READY_FOR_SHUTDOWN.load(std::sync::atomic::Ordering::Relaxed);
+    let is_ready = SHUTDOWN_STATE.load(std::sync::atomic::Ordering::Relaxed);
     match msg {
-        WM_QUERYENDSESSION | WM_ENDSESSION if !is_ready => {
+        WM_QUERYENDSESSION | WM_ENDSESSION if is_ready == ShutdownState::Idle => {
             tracing::info!("Shutdown hook triggered, received WM_QUERYENDSESSION");
             if let Some(tx) = SHUTDOWN_HOOK_INSTANCE.get() {
                 tracing::info!("Blocking shutdown for cleanup...");
@@ -63,7 +72,9 @@ unsafe extern "system" fn callback(hwnd: HWND, msg: u32, wparam: WPARAM, lparam:
                     tracing::error!("Failed to create shutdown block reason: {err}");
                 }
                 tx.send(()).unwrap();
-                while !READY_FOR_SHUTDOWN.load(std::sync::atomic::Ordering::Relaxed) {
+                while SHUTDOWN_STATE.load(std::sync::atomic::Ordering::Relaxed)
+                    != ShutdownState::ReadyForShutdown
+                {
                     std::thread::sleep(std::time::Duration::from_millis(10));
                 }
                 tracing::info!("Shutdown hook is ready for shutdown");
@@ -74,13 +85,27 @@ unsafe extern "system" fn callback(hwnd: HWND, msg: u32, wparam: WPARAM, lparam:
             }
             0
         }
+        WM_QUERYENDSESSION | WM_ENDSESSION if is_ready == ShutdownState::CleaningUp => {
+            loop {
+                if SHUTDOWN_STATE.load(std::sync::atomic::Ordering::Relaxed)
+                    == ShutdownState::ReadyForShutdown
+                {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            0
+        }
         _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
     }
 }
 
 /// Only called on tauri cleanup thread finished
 pub fn set_ready_for_shutdown() {
-    READY_FOR_SHUTDOWN.store(true, std::sync::atomic::Ordering::Relaxed);
+    SHUTDOWN_STATE.store(
+        ShutdownState::ReadyForShutdown,
+        std::sync::atomic::Ordering::Relaxed,
+    );
 }
 
 fn setup_shutdown_hook_inner(

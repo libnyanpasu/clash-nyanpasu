@@ -15,6 +15,7 @@ mod feat;
 mod ipc;
 mod server;
 mod setup;
+
 #[cfg(windows)]
 mod shutdown_hook;
 mod utils;

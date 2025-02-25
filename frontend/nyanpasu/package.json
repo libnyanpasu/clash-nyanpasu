@@ -21,7 +21,7 @@
     "@mui/material": "6.4.5",
     "@nyanpasu/interface": "workspace:^",
     "@nyanpasu/ui": "workspace:^",
-    "@tailwindcss/postcss": "4.0.8",
+    "@tailwindcss/postcss": "4.0.9",
     "@tanstack/router-zod-adapter": "1.81.5",
     "@tauri-apps/api": "2.2.0",
     "@types/json-schema": "7.0.15",

@@ -63,7 +63,7 @@ export const DataPanel = () => {
     },
     {
       data: padData(
-        clashConnections?.map((item) => item.connections?.length),
+        clashConnections?.map((item) => item.connections?.length ?? 0),
         MAX_CONNECTIONS_HISTORY,
       ),
       icon: SettingsEthernet,

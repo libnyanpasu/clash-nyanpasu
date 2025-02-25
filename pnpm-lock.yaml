@@ -103,8 +103,8 @@ importers:
         specifier: 16.0.0
         version: 16.0.0
       knip:
-        specifier: 5.44.5
-        version: 5.44.5(@types/node@22.13.5)(typescript@5.7.3)
+        specifier: 5.45.0
+        version: 5.45.0(@types/node@22.13.5)(typescript@5.7.3)
       lint-staged:
         specifier: 15.4.3
         version: 15.4.3
@@ -5612,8 +5612,8 @@ packages:
     resolution: {integrity: sha512-dcS1ul+9tmeD95T+x28/ehLgd9mENa3LsvDTtzm3vyBEO7RPptvAD+t44WVXaUjTBRcrpFeFlC8WCruUR456hw==}
     engines: {node: '>=0.10.0'}
 
-  knip@5.44.5:
-    resolution: {integrity: sha512-qXHVRsipmxZNKVb5IWUVHwQtr96Dfo3vnWszRgwMI2VhsW9EBi7b/2YlELrrqfPr0lwVnwhUUuNgYwvke+PdGA==}
+  knip@5.45.0:
+    resolution: {integrity: sha512-OUyO9FUEVCM6/j0gl+PP/LDeJEs4hIdE8n4vK4xrtjN1g3Qu4Ws1oexbWTCJ+8xt8Tgse4Yvhx96OqF/UVl3Ug==}
     engines: {node: '>=18.18.0'}
     hasBin: true
     peerDependencies:
@@ -8268,7 +8268,7 @@ snapshots:
 
   '@babel/generator@7.17.7':
     dependencies:
-      '@babel/types': 7.26.8
+      '@babel/types': 7.26.9
       jsesc: 2.5.2
       source-map: 0.5.7
     optional: true
@@ -8374,18 +8374,18 @@ snapshots:
 
   '@babel/helper-environment-visitor@7.24.7':
     dependencies:
-      '@babel/types': 7.26.8
+      '@babel/types': 7.26.9
     optional: true
 
   '@babel/helper-function-name@7.24.7':
     dependencies:
-      '@babel/template': 7.26.8
-      '@babel/types': 7.26.8
+      '@babel/template': 7.26.9
+      '@babel/types': 7.26.9
     optional: true
 
   '@babel/helper-hoist-variables@7.24.7':
     dependencies:
-      '@babel/types': 7.26.8
+      '@babel/types': 7.26.9
     optional: true
 
   '@babel/helper-member-expression-to-functions@7.25.9':
@@ -8473,7 +8473,7 @@ snapshots:
 
   '@babel/helper-split-export-declaration@7.24.7':
     dependencies:
-      '@babel/types': 7.26.8
+      '@babel/types': 7.26.9
     optional: true
 
   '@babel/helper-string-parser@7.25.9': {}
@@ -9020,13 +9020,13 @@ snapshots:
   '@babel/traverse@7.23.2':
     dependencies:
       '@babel/code-frame': 7.26.2
-      '@babel/generator': 7.26.8
+      '@babel/generator': 7.26.9
       '@babel/helper-environment-visitor': 7.24.7
       '@babel/helper-function-name': 7.24.7
       '@babel/helper-hoist-variables': 7.24.7
       '@babel/helper-split-export-declaration': 7.24.7
-      '@babel/parser': 7.26.8
-      '@babel/types': 7.26.8
+      '@babel/parser': 7.26.9
+      '@babel/types': 7.26.9
       debug: 4.4.0
       globals: 11.12.0
     transitivePeerDependencies:
@@ -10754,7 +10754,7 @@ snapshots:
   '@trivago/prettier-plugin-sort-imports@4.3.0(prettier@3.5.2)':
     dependencies:
       '@babel/generator': 7.17.7
-      '@babel/parser': 7.26.8
+      '@babel/parser': 7.26.9
       '@babel/traverse': 7.23.2
       '@babel/types': 7.17.0
       javascript-natural-sort: 0.7.1
@@ -13807,7 +13807,7 @@ snapshots:
 
   kind-of@6.0.3: {}
 
-  knip@5.44.5(@types/node@22.13.5)(typescript@5.7.3):
+  knip@5.45.0(@types/node@22.13.5)(typescript@5.7.3):
     dependencies:
       '@nodelib/fs.walk': 3.0.1
       '@snyk/github-codeowners': 1.1.0

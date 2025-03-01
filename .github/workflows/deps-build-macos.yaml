@@ -41,7 +41,7 @@ on:
 
 jobs:
   build:
-    runs-on: 'macos-latest'
+    runs-on: 'macos-13'
 
     steps:
       - name: Checkout repository
@@ -49,7 +49,7 @@ jobs:
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          xcode-version: 14
 
       - name: install Rust stable
         run: |
@@ -63,10 +63,14 @@ jobs:
           key: 'macos-latest'
           shared-key: 'release'
 
-      - name: Install the missing rust target (intel Only)
+      - name: Install Rust intel target
         if: ${{ inputs.aarch64 == false }}
         run: |
           rustup target add x86_64-apple-darwin
+      - name: Install Rust aarch64 target
+        if: ${{ inputs.aarch64 == true }}
+        run: |
+          rustup target add aarch64-apple-darwin
 
       - name: Install Node latest
         uses: actions/setup-node@v4
@@ -98,7 +102,7 @@ jobs:
       - name: Build Clash Nyanpasu (Stable)
         if: ${{ inputs.nightly == false }}
         run: |
-          link-args=-v" pnpm tauri build --verbose -f default-meta ${{ inputs.aarch64 == true && '--target aarch64-apple-darwin' || '--target x86_64-apple-darwin' }}
+          pnpm tauri build --verbose -f default-meta ${{ inputs.aarch64 == true && '--target aarch64-apple-darwin' || '--target x86_64-apple-darwin' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}

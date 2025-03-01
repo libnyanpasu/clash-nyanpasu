@@ -32,6 +32,11 @@ export const downloadFile = async (url: string, path: string) => {
     },
   })
 
+  // check status code
+  if (response.status !== 200) {
+    throw new Error(`download failed: ${response.statusText}`)
+  }
+
   const buffer = await response.arrayBuffer()
 
   await fs.writeFile(path, new Uint8Array(buffer))

@@ -1,0 +1,2 @@
+[target.'cfg(target_os = "macos")']
+rustflags = ["-C", "link-args=-v -ld64"]

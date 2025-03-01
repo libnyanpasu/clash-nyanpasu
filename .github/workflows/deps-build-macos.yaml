@@ -41,7 +41,7 @@ on:
 
 jobs:
   build:
-    runs-on: ${{ inputs.aarch64 && 'macos-14' || 'macos-13' }}
+    runs-on: 'macos-latest'
 
     steps:
       - name: Checkout repository
@@ -56,13 +56,13 @@ jobs:
         with:
           workspaces: './backend/'
           prefix-key: 'rust-stable'
-          key: ${{ inputs.aarch64 && 'macos-14' || 'macos-13' }}
+          key: 'macos-latest'
           shared-key: 'release'
 
-      - name: Install the missing rust target (aarch64 Only)
-        if: ${{ inputs.aarch64 == 'macos-14' }}
+      - name: Install the missing rust target (intel Only)
+        if: ${{ inputs.aarch64 == false }}
         run: |
-          rustup target add aarch64-apple-darwin
+          rustup target add x86_64-apple-darwin
 
       - name: Install Node latest
         uses: actions/setup-node@v4
@@ -74,27 +74,16 @@ jobs:
         with:
           run_install: false
 
-      - name: Set xcode version (amd64 Only)
-        uses: maxim-lobanov/setup-xcode@v1
-        if: ${{ inputs.aarch64 == false }}
-        with:
-          xcode-version: '15.0'
-
       - name: Pnpm install
+        shell: bash
         run: |
           pnpm i
-          pnpm check
-
-      - name: Pnpm check (macOS amd64)
-        if: ${{ inputs.aarch64 == false }}
-        run: |
-          pnpm check
-
-      - name: Pnpm check (macOS aarch64)
+      - name: Download Sidecars aarch64
         if: ${{ inputs.aarch64 == true }}
-        run: |
-          pnpm check --arch arm64 --sidecar-host aarch64-apple-darwin
-
+        run: pnpm check --arch arm64 --sidecar-host aarch64-apple-darwin
+      - name: Download Sidecars x64
+        if: ${{ inputs.aarch64 == false }}
+        run: pnpm check --arch x64 --sidecar-host x86_64-apple-darwin
       - name: Nightly Prepare
         if: ${{ inputs.nightly == true }}
         run: |
@@ -102,36 +91,34 @@ jobs:
       - name: Build UI
         run: |
           pnpm -F ui build
-      - name: Tauri build
-        if: ${{ inputs.aarch64 == false }}
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-          NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
-          NODE_OPTIONS: '--max_old_space_size=4096'
-        with:
-          tagName: ${{ inputs.tag }}
-          releaseName: 'Clash Nyanpasu Dev'
-          releaseBody: 'More new features are now supported.'
-          releaseDraft: false
-          prerelease: true
-          tauriScript: pnpm tauri
-          args: ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json' || '-f default-meta' }}
-
-      - name: Tauri build with Upload (macOS aarch64)
-        if: ${{ inputs.aarch64 == true }}
-        env:
-          TAG_NAME: ${{ inputs.tag }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-          NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
-          NODE_OPTIONS: '--max_old_space_size=4096'
+      - name: Build Clash Nyanpasu (Stable)
+        if: ${{ inputs.nightly == false }}
         run: |
-          ${{ inputs.nightly == true && 'pnpm build:nightly --target aarch64-apple-darwin' || 'pnpm build --target aarch64-apple-darwin' }}
-          pnpm upload:osx-aarch64
+          pnpm tauri build -f default-meta ${{ inputs.aarch64 == true && '--target aarch64-apple-darwin' || '--target x86_64-apple-darwin' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
+          NODE_OPTIONS: '--max_old_space_size=4096'
+      - name: Build Clash Nyanpasu (Nightly)
+        if: ${{ inputs.nightly == true }}
+        run: |
+          pnpm build:nightly ${{ inputs.aarch64 == true && '--target aarch64-apple-darwin' || '--target x86_64-apple-darwin' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
+          NODE_OPTIONS: '--max_old_space_size=4096'
+
+      - name: Upload to release
+        shell: bash
+        run: |
+          find ./backend/target \( -name "*.dmg" -o -name "*.sig" -o -name "*.tar.gz" \) | while read file; do
+            echo "Uploading $file to release"
+            gh release upload ${{ inputs.tag }} "$file" --clobber
+          done
 
       - name: Upload to Github Artifact
         uses: actions/upload-artifact@v4

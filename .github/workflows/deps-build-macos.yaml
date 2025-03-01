@@ -47,6 +47,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
       - name: install Rust stable
         run: |
           rustup install stable --profile minimal --no-self-update
@@ -94,7 +98,7 @@ jobs:
       - name: Build Clash Nyanpasu (Stable)
         if: ${{ inputs.nightly == false }}
         run: |
-          pnpm tauri build -f default-meta ${{ inputs.aarch64 == true && '--target aarch64-apple-darwin' || '--target x86_64-apple-darwin' }}
+          pnpm tauri build --verbose -f default-meta ${{ inputs.aarch64 == true && '--target aarch64-apple-darwin' || '--target x86_64-apple-darwin' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
@@ -104,7 +108,7 @@ jobs:
       - name: Build Clash Nyanpasu (Nightly)
         if: ${{ inputs.nightly == true }}
         run: |
-          pnpm build:nightly ${{ inputs.aarch64 == true && '--target aarch64-apple-darwin' || '--target x86_64-apple-darwin' }}
+          pnpm build:nightly --verbose ${{ inputs.aarch64 == true && '--target aarch64-apple-darwin' || '--target x86_64-apple-darwin' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}

@@ -2011,12 +2011,12 @@ dependencies = [
  "url",
  "urlencoding",
  "uuid",
- "webview2-com 0.34.0",
+ "webview2-com",
  "which 7.0.2",
  "whoami",
  "window-vibrancy 0.5.3",
- "windows-core 0.58.0",
- "windows-registry 0.4.0",
+ "windows-core 0.60.1",
+ "windows-registry 0.5.0",
  "windows-sys 0.59.0",
  "winreg 0.55.0",
  "zip",
@@ -10241,7 +10241,7 @@ dependencies = [
  "url",
  "urlpattern",
  "webkit2gtk",
- "webview2-com 0.36.0",
+ "webview2-com",
  "window-vibrancy 0.6.0",
  "windows 0.60.0",
 ]
@@ -10552,7 +10552,7 @@ dependencies = [
  "tauri-utils",
  "url",
  "webkit2gtk",
- "webview2-com 0.36.0",
+ "webview2-com",
  "windows 0.60.0",
  "wry",
 ]
@@ -12160,26 +12160,12 @@ dependencies = [
 
 [[package]]
 name = "webview2-com"
-version = "0.34.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "823e7ebcfaea51e78f72c87fc3b65a1e602c321f407a0b36dbb327d7bb7cd921"
-dependencies = [
- "webview2-com-macros",
- "webview2-com-sys 0.34.0",
- "windows 0.58.0",
- "windows-core 0.58.0",
- "windows-implement 0.58.0",
- "windows-interface 0.58.0",
-]
-
-[[package]]
-name = "webview2-com"
 version = "0.36.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0d606f600e5272b514dbb66539dd068211cc20155be8d3958201b4b5bd79ed3"
 dependencies = [
  "webview2-com-macros",
- "webview2-com-sys 0.36.0",
+ "webview2-com-sys",
  "windows 0.60.0",
  "windows-core 0.60.1",
  "windows-implement 0.59.0",
@@ -12195,17 +12181,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.98",
-]
-
-[[package]]
-name = "webview2-com-sys"
-version = "0.34.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a82bce72db6e5ee83c68b5de1e2cd6ea195b9fbff91cb37df5884cbe3222df4"
-dependencies = [
- "thiserror 1.0.69",
- "windows 0.58.0",
- "windows-core 0.58.0",
 ]
 
 [[package]]
@@ -12717,13 +12692,13 @@ dependencies = [
 
 [[package]]
 name = "windows-registry"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4286ad90ddb45071efd1a66dfa43eb02dd0dfbae1545ad6cc3c51cf34d7e8ba3"
+checksum = "6c44a98275e31bfd112bb06ba96c8ab13c03383a3753fdddd715406a1824c7e0"
 dependencies = [
+ "windows-link",
  "windows-result 0.3.1",
  "windows-strings 0.3.1",
- "windows-targets 0.53.0",
 ]
 
 [[package]]
@@ -13222,7 +13197,7 @@ dependencies = [
  "url",
  "webkit2gtk",
  "webkit2gtk-sys",
- "webview2-com 0.36.0",
+ "webview2-com",
  "windows 0.60.0",
  "windows-core 0.60.1",
  "windows-version",

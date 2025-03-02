@@ -14,6 +14,8 @@ import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
 import legacy from '@vitejs/plugin-legacy'
 import react from '@vitejs/plugin-react-swc'
 
+const IS_NIGHTLY = process.env.NIGHTLY?.toLowerCase() === 'true'
+
 const devtools = () => {
   return {
     name: 'react-devtools',
@@ -26,7 +28,17 @@ const devtools = () => {
   }
 }
 
-const IS_NIGHTLY = process.env.NIGHTLY?.toLowerCase() === 'true'
+const builtinVars = () => {
+  return {
+    name: 'built-in-vars',
+    transformIndexHtml(html: string) {
+      return html.replace(
+        /<\/head>/,
+        `<script>window.__IS_NIGHTLY__ = true</script></head>`,
+      )
+    },
+  }
+}
 
 // https://vitejs.dev/config/
 export default defineConfig(({ command, mode }) => {
@@ -80,6 +92,7 @@ export default defineConfig(({ command, mode }) => {
           },
         },
       }),
+      builtinVars(),
       TanStackRouterVite(),
       svgr(),
       react({

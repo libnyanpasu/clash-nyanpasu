@@ -3,6 +3,7 @@ import dayjs from 'dayjs'
 import { useSetAtom } from 'jotai'
 import { lazy, Suspense, useCallback, useState, useTransition } from 'react'
 import { useTranslation } from 'react-i18next'
+import { IS_NIGHTLY } from '@/consts'
 import { UpdaterIgnoredAtom } from '@/store/updater'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
@@ -71,6 +72,10 @@ export default function UpdaterDialog({
     })
   })
 
+  const releasesPageUrl = IS_NIGHTLY
+    ? `https://github.com/libnyanpasu/clash-nyanpasu/releases/tag/pre-releases`
+    : `https://github.com/libnyanpasu/clash-nyanpasu/releases/tag/v${update.version}`
+
   return (
     <BaseDialog
       {...others}
@@ -105,9 +110,7 @@ export default function UpdaterDialog({
             variant="contained"
             size="small"
             onClick={() => {
-              openThat(
-                `https://github.com/libnyanpasu/clash-nyanpasu/releases/tag/v${update.version}`,
-              )
+              openThat(releasesPageUrl)
             }}
           >
             {t('updater.go')}

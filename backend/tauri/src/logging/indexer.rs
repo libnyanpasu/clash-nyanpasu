@@ -207,6 +207,7 @@ impl Indexer {
                 .unwrap()
                 .replace(".", "_")
                 .replace(" ", "_")
+                .replace("-", "__")
         ))
         .await
         .context("failed to create index")?;

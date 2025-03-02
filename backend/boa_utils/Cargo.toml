@@ -8,9 +8,9 @@ authors.workspace = true
 
 [dependencies]
 rustc-hash = { version = "2", features = ["std"] }
-boa_engine.workspace = true
+boa_engine = { workspace = true, features = ["annex-b"] }
 boa_gc = { version = "0.20" }
-boa_parser = { version = "0.20" }
+boa_parser = { version = "0.20", features = ["annex-b"] }
 isahc = "1.7"
 futures-util = "0.3"
 futures-concurrency = "7"

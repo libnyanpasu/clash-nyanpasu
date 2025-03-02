@@ -182,8 +182,8 @@ mlua = { version = "0.10", features = [
 ] }
 
 # JavaScript Integration
-boa_utils = { path = "../boa_utils" } # should be removed when boa support console customize
-boa_engine.workspace = true
+boa_utils = { path = "../boa_utils" }                     # should be removed when boa support console customize
+boa_engine = { workspace = true, features = ["annex-b"] }
 
 # Tauri Dependencies
 tauri = { version = "2.2", features = ["tray-icon", "image-png", "image-ico"] }

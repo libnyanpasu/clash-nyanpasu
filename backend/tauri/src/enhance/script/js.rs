@@ -517,7 +517,9 @@ const foreignNameservers = [
                     serde_yaml::Value::Sequence(vec![
                         serde_yaml::Value::String("RULE-SET,custom-reject,REJECT".to_string()),
                         serde_yaml::Value::String("RULE-SET,custom-direct,DIRECT".to_string()),
-                        serde_yaml::Value::String("RULE-SET,custom-proxy,🚀".to_string())
+                        serde_yaml::Value::String("RULE-SET,custom-proxy,🚀".to_string()),
+                        serde_yaml::Value::String("aGVsbG8=".to_string()),
+                        serde_yaml::Value::String("d29ybGQ=".to_string()),
                     ])
                 );
                 let outs = serde_json::to_string(&logs).unwrap();

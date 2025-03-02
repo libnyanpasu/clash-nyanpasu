@@ -1,4 +1,3 @@
-// Most code is taken from https://github.com/boa-dev/boa/blob/main/examples/src/bin/module_fetch.rs
 use std::{
     cell::{Cell, RefCell},
     collections::VecDeque,
@@ -40,7 +39,7 @@ impl ModuleLoader for HttpModuleLoader {
             // Adding some prints to show the non-deterministic nature of the async fetches.
             // Try to run the example several times to see how sometimes the fetches start in order
             // but finish in disorder.
-            tracing::debug!("Fetching `{url}`...");
+            log::debug!("fetching `{url}`...");
             // This could also retry fetching in case there's an error while requesting the module.
             let body: Result<_, isahc::Error> = async {
                 let mut response = Request::get(&url)
@@ -52,7 +51,7 @@ impl ModuleLoader for HttpModuleLoader {
                 Ok(response.text().await?)
             }
             .await;
-            tracing::debug!("Finished fetching `{url}`");
+            log::debug!("finished fetching `{url}`");
 
             // Since the async context cannot take the `context` by ref, we have to continue
             // parsing inside a new `NativeJob` that will be enqueued into the promise job queue.
@@ -93,8 +92,8 @@ impl ModuleLoader for HttpModuleLoader {
     }
 }
 
-#[allow(dead_code)]
-fn main() -> JsResult<()> {
+#[test]
+fn test_http_module_loader() -> JsResult<()> {
     // A simple snippet that imports modules from the web instead of the file system.
     const SRC: &str = r#"
         import YAML from 'https://esm.run/yaml@2.3.4';
@@ -184,6 +183,12 @@ pub struct Queue<'a> {
     jobs: RefCell<VecDeque<NativeJob>>,
 }
 
+impl Default for Queue<'_> {
+    fn default() -> Self {
+        Self::new(LocalExecutor::new())
+    }
+}
+
 impl<'a> Queue<'a> {
     fn new(executor: LocalExecutor<'a>) -> Self {
         Self {
@@ -191,12 +196,6 @@ impl<'a> Queue<'a> {
             futures: RefCell::default(),
             jobs: RefCell::default(),
         }
-    }
-}
-
-impl Default for Queue<'_> {
-    fn default() -> Self {
-        Self::new(LocalExecutor::new())
     }
 }
 

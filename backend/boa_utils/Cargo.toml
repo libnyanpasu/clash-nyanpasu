@@ -13,9 +13,13 @@ boa_gc = { version = "0.20" }
 boa_parser = { version = "0.20" }
 isahc = "1.7"
 futures-util = "0.3"
+futures-concurrency = "7"
 smol = "2"
 tracing = "0.1"
+url = "2"
+log = "0.4"
 
 [dev-dependencies]
 indoc = "2"
 textwrap = "0.16"
+test-log = "0.2"

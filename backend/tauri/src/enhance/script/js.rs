@@ -12,7 +12,7 @@ use boa_engine::{
 use boa_utils::{
     Console,
     module::{
-        ModuleLoader,
+        combine::CombineModuleLoader,
         http::{HttpModuleLoader, Queue},
     },
 };
@@ -77,12 +77,11 @@ pub struct BoaRunner {
 
 impl BoaRunner {
     pub fn try_new() -> Result<Self> {
-        let simple_loader = Rc::new(SimpleModuleLoader::new(CUSTOM_SCRIPTS_DIR.as_path())?);
-        let http_loader: Rc<dyn BoaModuleLoader> = Rc::new(HttpModuleLoader);
-        let loader = Rc::new(ModuleLoader::from(vec![
-            simple_loader.clone() as Rc<dyn BoaModuleLoader>,
-            http_loader,
-        ]));
+        let loader = Rc::new(CombineModuleLoader::new(
+            SimpleModuleLoader::new(CUSTOM_SCRIPTS_DIR.as_path())?,
+            HttpModuleLoader::default(),
+        ));
+        let simple_loader = loader.clone_simple();
         let queue = Rc::new(Queue::default());
         let context = Context::builder()
             .job_queue(queue)
@@ -333,6 +332,7 @@ mod utils {
     }
 }
 
+#[cfg(test)]
 mod test {
     #[test]
     fn test_wrap_script_if_not_esm() {
@@ -463,7 +463,7 @@ const foreignNameservers = [
             });
     }
 
-    #[test]
+    #[test_log::test]
     fn test_process_honey_with_fetch() {
         use super::{super::runner::Runner, JSRunner};
         let runner = JSRunner::try_new().unwrap();

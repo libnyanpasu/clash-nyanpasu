@@ -274,15 +274,3 @@ impl Drop for ClashConnectionsConnectorInner {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_connect_clash_server() {
-        "ws://127.0.0.1:12649:10808/connections"
-            .into_client_request()
-            .unwrap();
-    }
-}

@@ -50,6 +50,13 @@ export const useClashConnections = () => {
 
   const query = useQuery<ClashConnection[]>({
     queryKey: [CLASH_CONNECTIONS_QUERY_KEY],
+    queryFn: () => {
+      return (
+        queryClient.getQueryData<ClashConnection[]>([
+          CLASH_CONNECTIONS_QUERY_KEY,
+        ]) || []
+      )
+    },
   })
 
   const deleteConnections = useMutation({

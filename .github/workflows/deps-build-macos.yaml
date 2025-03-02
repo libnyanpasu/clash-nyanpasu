@@ -56,13 +56,6 @@ jobs:
           rustup install stable --profile minimal --no-self-update
           rustup default stable
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: './backend/'
-          prefix-key: 'rust-stable'
-          key: 'macos-latest'
-          shared-key: 'release'
-
       - name: Install Rust intel target
         if: ${{ inputs.aarch64 == false }}
         run: |

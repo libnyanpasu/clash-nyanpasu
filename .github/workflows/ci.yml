@@ -55,7 +55,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - uses: actions/cache@v4
         name: Cache Rust dependencies
@@ -113,6 +113,7 @@ jobs:
           - os: ubuntu-latest
           - os: macos-latest
           - os: windows-latest
+      fail-fast: false
     runs-on: ${{ matrix.targets.os }}
     needs: lint
     steps:
@@ -121,13 +122,14 @@ jobs:
         if: startsWith(matrix.targets.os, 'ubuntu-')
         run: >-
           sudo apt-get update &&
-          sudo apt-get install -y \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            libwebkit2gtk-4.1-dev \
-            librsvg2-dev \
-            libxdo-dev \
-            webkit2gtk
+          sudo apt-get install -y
+          libgtk-3-dev
+          libayatana-appindicator3-dev
+          libwebkit2gtk-4.1-dev
+          librsvg2-dev
+          libxdo-dev
+          webkit2gtk-driver
+          xvfb
       - uses: maxim-lobanov/setup-xcode@v1
         if: startsWith(matrix.targets.os, 'macos-')
         with:
@@ -136,7 +138,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - uses: actions/cache@v4
         name: Cache Rust dependencies
@@ -170,8 +172,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Prepare sidecar and resources
+        run: pnpm check
+
       - name: Build Tauri
         run: pnpm tauri build
+        env:
+          NODE_OPTIONS: '--max_old_space_size=4096'
   # 以后完善了新的测试套件后再添加
   # test_unit:
   #   name: Unit Test

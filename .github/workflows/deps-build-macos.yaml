@@ -116,10 +116,13 @@ jobs:
       - name: Upload to release
         shell: bash
         run: |
-          find ./backend/target \( -name "*.dmg" -o -name "*.sig" -o -name "*.tar.gz" \) | while read file; do
+          find ./backend/target \( -name "*.dmg" -o -name "*.sig" -o -name "*.tar.gz" -o -name "*.app" \) | while read file; do
             echo "Uploading $file to release"
             gh release upload ${{ inputs.tag }} "$file" --clobber
           done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload to Github Artifact
         uses: actions/upload-artifact@v4

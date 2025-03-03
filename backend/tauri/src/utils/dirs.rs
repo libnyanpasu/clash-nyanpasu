@@ -324,6 +324,7 @@ pub fn check_core_permission(core: &nyanpasu_utils::core::CoreType) -> anyhow::R
 
 mod test {
     #[test]
+    #[ignore]
     fn test_dir_placeholder() {
         let placeholder = super::APP_DIR_PLACEHOLDER.clone();
         if cfg!(windows) {

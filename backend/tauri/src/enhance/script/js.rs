@@ -22,6 +22,7 @@ use std::{
     cell::RefCell,
     path::{Path, PathBuf},
     rc::Rc,
+    time::Duration,
 };
 use tracing_attributes::instrument;
 use utils::wrap_script_if_not_esm;
@@ -108,9 +109,10 @@ pub struct BoaRunner {
 
 impl BoaRunner {
     pub fn try_new() -> Result<Self> {
+        let cache_dir = crate::utils::dirs::cache_dir().unwrap();
         let loader = Rc::new(CombineModuleLoader::new(
             SimpleModuleLoader::new(CUSTOM_SCRIPTS_DIR.as_path())?,
-            HttpModuleLoader::default(),
+            HttpModuleLoader::new(cache_dir, Duration::from_secs(60 * 60 * 24 * 30)),
         ));
         let simple_loader = loader.clone_simple();
         let queue = Rc::new(Queue::default());

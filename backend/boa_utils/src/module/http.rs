@@ -1,14 +1,15 @@
 use std::{
     cell::{Cell, RefCell},
     collections::VecDeque,
-    rc::Rc,
+    path::PathBuf,
+    str::FromStr,
+    time::{Duration, SystemTime},
 };
 
+use async_fs::create_dir_all;
 use boa_engine::{
     Context, JsNativeError, JsResult, JsString, JsValue, Module,
-    builtins::promise::PromiseState,
     job::{FutureJob, JobQueue, NativeJob},
-    js_string,
     module::ModuleLoader,
 };
 use boa_parser::Source;
@@ -17,13 +18,94 @@ use isahc::{
     AsyncReadResponseExt, Request, RequestExt,
     config::{Configurable, RedirectPolicy},
 };
+use mime::Mime;
 use smol::{LocalExecutor, future};
+use url::Url;
 
 // Most of the boilerplate is taken from the `futures.rs` example.
 // This file only explains what is exclusive of async module loading.
 
 #[derive(Debug, Default)]
-pub struct HttpModuleLoader;
+pub struct HttpModuleLoader {
+    cache_dir: PathBuf,
+    max_age: Duration,
+}
+
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CachedItem {
+    pub mime: String,
+    /// raw string content
+    /// We have no plan for now to support binary content,
+    /// so we just use `String` to store the content.
+    pub content: String,
+}
+
+impl HttpModuleLoader {
+    pub fn new(cache_dir: PathBuf, max_age: Duration) -> Self {
+        Self { cache_dir, max_age }
+    }
+
+    fn mapping_cache_dir(&self, url: &url::Url) -> PathBuf {
+        let mut buf = self.cache_dir.clone();
+        let host = match url.host() {
+            Some(host) => host.to_string().replace('.', "--"),
+            None => "unknown".to_string(),
+        };
+        let port = match url.port() {
+            Some(port) => format!("__{port}"),
+            None => "".to_string(),
+        };
+        buf.push(format!("{}_{}{}", url.scheme(), host, port));
+        buf.push(url.path().replace('/', "_").replace(".", "--"));
+        buf
+    }
+
+    #[tracing::instrument(skip(finish_load, context))]
+    fn handle_cached_item(
+        item: CachedItem,
+        finish_load: Box<dyn FnOnce(JsResult<Module>, &mut Context)>,
+        context: &mut Context,
+    ) {
+        let Ok(mime) = Mime::from_str(item.mime.as_str()) else {
+            log::error!("failed to parse mime type `{}`", item.mime);
+            finish_load(
+                Err(JsNativeError::typ()
+                    .with_message("failed to parse mime type")
+                    .into()),
+                context,
+            );
+            return;
+        };
+        let source_str = match (mime.type_(), mime.subtype()) {
+            (mime::APPLICATION, mime::JAVASCRIPT) => item.content.clone(),
+            (mime::APPLICATION, mime::JSON) => {
+                format!("export default {};", item.content)
+            }
+            _ => {
+                let Ok(escaped_str) = serde_json::to_string(&item.content) else {
+                    log::error!("failed to serialize content.");
+                    finish_load(
+                        Err(JsNativeError::typ()
+                            .with_message("failed to serialize content")
+                            .into()),
+                        context,
+                    );
+                    return;
+                };
+                format!("export const text = {escaped_str};")
+            }
+        };
+
+        // Could also add a path if needed.
+        let source = Source::from_bytes(source_str.as_bytes());
+
+        let module = Module::parse(source, None, context);
+        // TODO: rm cache or create cache after judge module is ok
+
+        // We don't do any error handling, `finish_load` takes care of that for us.
+        finish_load(module, context);
+    }
+}
 
 impl ModuleLoader for HttpModuleLoader {
     fn load_imported_module(
@@ -34,30 +116,119 @@ impl ModuleLoader for HttpModuleLoader {
         context: &mut Context,
     ) {
         let url = specifier.to_std_string_escaped();
+        let url = Url::from_str(&url).expect("invalid url"); // SAFETY: `url` is a valid URL, if it's not, its caller side issue
+        let cache_path = self.mapping_cache_dir(&url);
+        let parent_dir = match cache_path.parent() {
+            Some(parent) => parent.to_path_buf(),
+            None => {
+                log::error!("failed to get parent directory for `{url}`");
+                finish_load(
+                    Err(JsNativeError::typ()
+                        .with_message(format!(
+                            "failed to get cache parent directory for `{url}`; path: `{}`",
+                            cache_path.display()
+                        ))
+                        .into()),
+                    context,
+                );
+                return;
+            }
+        };
+        let max_age = self.max_age;
 
         let fetch = async move {
+            log::debug!("checking cache for `{url}`...");
+
+            let now = SystemTime::now();
+            let should_use_cached_content = match async_fs::metadata(&cache_path).await {
+                Ok(metadata)
+                    if metadata
+                        .modified()
+                        .is_ok_and(|modified| modified > now - max_age) =>
+                {
+                    true
+                }
+                Err(err) => {
+                    // create dir if not exists
+                    if err.kind() == std::io::ErrorKind::NotFound
+                        && let Err(e) = async_fs::metadata(&parent_dir).await
+                        && e.kind() == std::io::ErrorKind::NotFound
+                    {
+                        if let Err(err) = create_dir_all(parent_dir).await {
+                            log::error!(
+                                "failed to create cache directory for `{url}`; path: `{}`. error: `{}`",
+                                cache_path.display(),
+                                err
+                            );
+                        }
+                    }
+                    false
+                }
+                _ => false,
+            };
+
             // Adding some prints to show the non-deterministic nature of the async fetches.
             // Try to run the example several times to see how sometimes the fetches start in order
             // but finish in disorder.
-            log::debug!("fetching `{url}`...");
-            // This could also retry fetching in case there's an error while requesting the module.
-            let body: Result<_, isahc::Error> = async {
-                let mut response = Request::get(&url)
-                    .redirect_policy(RedirectPolicy::Limit(5))
-                    .body(())?
-                    .send_async()
-                    .await?;
 
-                Ok(response.text().await?)
+            // This could also retry fetching in case there's an error while requesting the module.
+            let item: anyhow::Result<CachedItem> = if should_use_cached_content {
+                async {
+                    log::debug!("fetching `{url}` from cache...");
+                    let item = async_fs::read(&cache_path).await?;
+                    let item = postcard::from_bytes(&item)?;
+                    log::debug!("finished fetching `{url}` from cache");
+                    Ok(item)
+                }
+                .await
+            } else {
+                async {
+                    log::debug!("fetching `{url}`...");
+                    let mut response = Request::get(url.as_str())
+                        .redirect_policy(RedirectPolicy::Limit(5))
+                        .body(())?
+                        .send_async()
+                        .await?;
+
+                    let mime = response
+                        .headers()
+                        .get("content-type")
+                        .and_then(|v| v.to_str().ok())
+                        .map(|v| v.to_string())
+                        .unwrap_or(mime::TEXT_PLAIN.to_string());
+                    let body = response.text().await?;
+
+                    log::debug!("finished fetching `{url}`");
+                    Ok(CachedItem {
+                        mime,
+                        content: body,
+                    })
+                }
+                .await
+            };
+
+            if let Ok(item) = &item {
+                match postcard::to_stdvec(&item) {
+                    Ok(item) => {
+                        if let Err(err) = async_fs::write(&cache_path, &item).await {
+                            log::error!(
+                                "failed to write cache for `{url}`; path: `{}`. error: `{}`",
+                                cache_path.display(),
+                                err
+                            );
+                        }
+                    }
+                    Err(err) => {
+                        log::error!("failed to serialize content: {err}");
+                    }
+                }
             }
-            .await;
-            log::debug!("finished fetching `{url}`");
 
             // Since the async context cannot take the `context` by ref, we have to continue
             // parsing inside a new `NativeJob` that will be enqueued into the promise job queue.
             NativeJob::new(move |context| -> JsResult<JsValue> {
-                let body = match body {
-                    Ok(body) => body,
+                let item = match item {
+                    Ok(item) => item,
                     Err(err) => {
                         // On error we always call `finish_load` to notify the load promise about the
                         // error.
@@ -70,15 +241,7 @@ impl ModuleLoader for HttpModuleLoader {
                         return Ok(JsValue::undefined());
                     }
                 };
-
-                // Could also add a path if needed.
-                let source = Source::from_bytes(body.as_bytes());
-
-                let module = Module::parse(source, None, context);
-
-                // We don't do any error handling, `finish_load` takes care of that for us.
-                finish_load(module, context);
-
+                Self::handle_cached_item(item, finish_load, context);
                 // Also needed to match `NativeJob::new`.
                 Ok(JsValue::undefined())
             })
@@ -94,6 +257,9 @@ impl ModuleLoader for HttpModuleLoader {
 
 #[test]
 fn test_http_module_loader() -> JsResult<()> {
+    use boa_engine::{builtins::promise::PromiseState, js_string};
+    use std::rc::Rc;
+    let temp_dir = tempfile::tempdir().unwrap();
     // A simple snippet that imports modules from the web instead of the file system.
     const SRC: &str = r#"
         import YAML from 'https://esm.run/yaml@2.3.4';
@@ -120,7 +286,10 @@ fn test_http_module_loader() -> JsResult<()> {
     let context = &mut Context::builder()
         .job_queue(queue)
         // NEW: sets the context module loader to our custom loader
-        .module_loader(Rc::new(HttpModuleLoader))
+        .module_loader(Rc::new(HttpModuleLoader::new(
+            temp_dir.path().to_path_buf(),
+            Duration::from_secs(10),
+        )))
         .build()?;
 
     let module = Module::parse(Source::from_bytes(SRC.as_bytes()), None, context)?;

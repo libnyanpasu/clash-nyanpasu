@@ -18,8 +18,19 @@ smol = "2"
 tracing = "0.1"
 url = "2"
 log = "0.4"
+anyhow = "1.0"
+
+# for cacheing
+mime = "0.3.17"
+async-fs = "2.1.2"
+
+# for encoding/decoding
+serde = { version = "1.0", features = ["derive"] }
+postcard = { version = "1.1.1", features = ["use-std"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
 
 [dev-dependencies]
 indoc = "2"
 textwrap = "0.16"
 test-log = "0.2"
+tempfile = "3.17"

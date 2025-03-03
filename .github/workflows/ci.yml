@@ -175,10 +175,13 @@ jobs:
       - name: Prepare sidecar and resources
         run: pnpm check
 
-      - name: Build Backend
-        run: cargo build --release --manifest-path backend/Cargo.toml
+      - name: Prepare frontend
+        run: pnpm -r build
         env:
           NODE_OPTIONS: '--max_old_space_size=4096'
+
+      - name: Build Backend
+        run: cargo build --release --manifest-path backend/Cargo.toml
 
   test_unit:
     name: Unit Test
@@ -190,6 +193,7 @@ jobs:
           - ubuntu-latest
           - macos-latest
           - windows-latest
+      fail-fast: false
     runs-on: ${{ matrix.os }}
 
     # the steps our job runs **in order**
@@ -256,6 +260,11 @@ jobs:
 
       - name: Prepare sidecar and resources
         run: pnpm check
+
+      - name: Prepare frontend
+        run: pnpm -r build
+        env:
+          NODE_OPTIONS: '--max_old_space_size=4096'
 
       - name: Test
         run: pnpm test

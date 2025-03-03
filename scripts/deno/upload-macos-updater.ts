@@ -7,6 +7,7 @@ consola.info(`WORKSPACE_ROOT: ${WORKSPACE_ROOT}`)
 
 const GITHUB_TOKEN = Deno.env.get('GITHUB_TOKEN') || Deno.env.get('GH_TOKEN')
 const GITHUB_TAG = Deno.env.get('GITHUB_TAG')
+const TARGET_ARCH = Deno.env.get('TARGET_ARCH') || Deno.build.arch
 
 if (!GITHUB_TOKEN) {
   consola.fatal('GITHUB_TOKEN is not set')
@@ -18,22 +19,18 @@ if (!GITHUB_TAG) {
   Deno.exit(1)
 }
 
-const files = await globby(
-  [
-    'target/backend/**/*.tar.gz',
-    'target/backend/**/*.sig',
-    'target/backend/**/*.dmg',
-  ],
-  {
-    cwd: WORKSPACE_ROOT,
-  },
-)
+const BACKEND_BUILD_DIR = path.join(WORKSPACE_ROOT, 'backend/target')
+
+const files = await globby(['**/*.tar.gz', '**/*.sig', '**/*.dmg'], {
+  cwd: BACKEND_BUILD_DIR,
+})
 
 for (let file of files) {
+  file = path.join(BACKEND_BUILD_DIR, file)
   const p = path.parse(file)
-  if (p.name.endsWith('.app.tar.gz')) {
-    const arch = Deno.build.arch
-    const newName = name.split('.')[0] + `.${arch}.app.tar.gz`
+  consola.info(`Found file: ${p.base}`)
+  if (p.base.endsWith('.app.tar.gz')) {
+    const newName = p.name.split('.')[0] + `.${TARGET_ARCH}.app.tar.gz`
     const newPath = path.join(p.dir, newName)
     consola.info(`Renaming ${file} to ${newPath}`)
     await Deno.rename(file, newPath)

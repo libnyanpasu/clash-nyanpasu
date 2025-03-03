@@ -122,6 +122,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TAG: ${{ inputs.tag }}
+          TARGET_ARCH: ${{ inputs.aarch64 == true && 'aarch64' || 'x86_64' }}
 
       - name: Upload to Github Artifact
         uses: actions/upload-artifact@v4

@@ -6,6 +6,9 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
+[lib]
+doctest = false
+
 [dependencies]
 rustc-hash = { version = "2", features = ["std"] }
 boa_engine = { workspace = true, features = ["annex-b"] }

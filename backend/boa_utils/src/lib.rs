@@ -9,7 +9,7 @@
 //!
 //! 1. Add **boa_runtime** as a dependency to your project along with **boa_engine**.
 //!
-//! ```
+//! ```no_run
 //! use boa_engine::{js_string, property::Attribute, Context, Source};
 //! use boa_runtime::Console;
 //!
@@ -58,7 +58,7 @@ mod console;
 pub mod module;
 #[doc(inline)]
 pub use console::Console;
-pub use console::{LogMessage, Logger, set_logger};
+pub use console::{LogMessage, Logger, LoggerBox, inspect_logger, set_logger};
 
 #[cfg(test)]
 pub(crate) mod test {

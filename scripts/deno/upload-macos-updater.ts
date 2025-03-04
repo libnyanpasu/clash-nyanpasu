@@ -2,7 +2,7 @@ import * as path from 'jsr:@std/path'
 import { globby } from 'npm:globby'
 import { consola } from './utils/logger.ts'
 
-const WORKSPACE_ROOT = path.join(Deno.cwd(), '../..')
+const WORKSPACE_ROOT = path.join(import.meta.dirname!, '../..')
 consola.info(`WORKSPACE_ROOT: ${WORKSPACE_ROOT}`)
 
 const GITHUB_TOKEN = Deno.env.get('GITHUB_TOKEN') || Deno.env.get('GH_TOKEN')
@@ -29,8 +29,10 @@ for (let file of files) {
   file = path.join(BACKEND_BUILD_DIR, file)
   const p = path.parse(file)
   consola.info(`Found file: ${p.base}`)
-  if (p.base.endsWith('.app.tar.gz')) {
-    const newName = p.name.split('.')[0] + `.${TARGET_ARCH}.app.tar.gz`
+  if (p.base.includes('.app')) {
+    const components = p.base.split('.')
+    const newName =
+      components[0] + `.${TARGET_ARCH}.${components.slice(1).join('.')}`
     const newPath = path.join(p.dir, newName)
     consola.info(`Renaming ${file} to ${newPath}`)
     await Deno.rename(file, newPath)

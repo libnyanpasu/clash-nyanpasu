@@ -435,8 +435,8 @@ importers:
         specifier: 3.2.2
         version: 3.2.2(vite@6.2.0(@types/node@22.13.9)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.85.1)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.3)(yaml@2.7.0))
       vite-plugin-sass-dts:
-        specifier: 1.3.30
-        version: 1.3.30(postcss@8.5.3)(prettier@3.5.2)(sass-embedded@1.85.1)(vite@6.2.0(@types/node@22.13.9)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.85.1)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.3)(yaml@2.7.0))
+        specifier: 1.3.31
+        version: 1.3.31(postcss@8.5.3)(prettier@3.5.2)(sass-embedded@1.85.1)(vite@6.2.0(@types/node@22.13.9)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.85.1)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.3)(yaml@2.7.0))
       vite-plugin-svgr:
         specifier: 4.3.0
         version: 4.3.0(rollup@4.34.3)(typescript@5.8.2)(vite@6.2.0(@types/node@22.13.9)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.85.1)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.3)(yaml@2.7.0))
@@ -7882,8 +7882,8 @@ packages:
     peerDependencies:
       vite: '>=2.0.0'
 
-  vite-plugin-sass-dts@1.3.30:
-    resolution: {integrity: sha512-hqhQRPESqbibtiyg89C5geK3p/HJ85jLk1bspgQsVnk0WOps5UkoUyEWYBETciP6w+IA7R0i/T85TuB7eEYg3w==}
+  vite-plugin-sass-dts@1.3.31:
+    resolution: {integrity: sha512-9egcHbUZdnCr2l1g9X2bHl6LjXv2mXb9xWRX3CVXHt/t4Io+HL5dYsBimlY4QImzbSeH26d7Bw6v0NUrQfwEDA==}
     engines: {node: '>=20'}
     peerDependencies:
       postcss: ^8
@@ -16241,7 +16241,7 @@ snapshots:
       pathe: 0.2.0
       vite: 6.2.0(@types/node@22.13.9)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.85.1)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.3)(yaml@2.7.0)
 
-  vite-plugin-sass-dts@1.3.30(postcss@8.5.3)(prettier@3.5.2)(sass-embedded@1.85.1)(vite@6.2.0(@types/node@22.13.9)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.85.1)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.3)(yaml@2.7.0)):
+  vite-plugin-sass-dts@1.3.31(postcss@8.5.3)(prettier@3.5.2)(sass-embedded@1.85.1)(vite@6.2.0(@types/node@22.13.9)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.85.1)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.3)(yaml@2.7.0)):
     dependencies:
       postcss: 8.5.3
       postcss-js: 4.0.1(postcss@8.5.3)

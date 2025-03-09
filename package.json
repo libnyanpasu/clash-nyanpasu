@@ -68,7 +68,7 @@
     "@types/node": "22.13.10",
     "@typescript-eslint/eslint-plugin": "8.26.0",
     "@typescript-eslint/parser": "8.26.0",
-    "autoprefixer": "10.4.20",
+    "autoprefixer": "10.4.21",
     "conventional-changelog-conventionalcommits": "8.0.0",
     "cross-env": "7.0.3",
     "dedent": "1.5.3",

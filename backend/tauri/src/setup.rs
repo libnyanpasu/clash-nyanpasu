@@ -1,8 +1,6 @@
 //! Setup logic for the app
 use anyhow::Context;
 
-use crate::logging;
-
 pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), anyhow::Error> {
     let app_handle = app.app_handle().clone();
     #[cfg(target_os = "windows")]
@@ -12,6 +10,7 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
     })
     .context("Failed to setup the shutdown hook")?;
 
-    logging::setup(app).context("Failed to setup logging")?;
+    // FIXME: this is a background setup, so be careful use this state in ipc.
+    // crate::logging::setup(app).context("Failed to setup logging")?;
     Ok(())
 }

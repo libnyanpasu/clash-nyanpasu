@@ -28,7 +28,14 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(manager: &M) -> anyhow::Re
         // TODO: refactor it while clash core manager use tauri event dispatcher to notify the core state changed
         {
             tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-            ws_connector.start().await.unwrap();
+            match ws_connector.start().await {
+                Ok(_) => {
+                    tracing::info!("ws_connector started successfully clash-rs may be errored here.");
+                }
+                Err(e) => {
+                    tracing::error!("todo: wait for clash-rs to fix, {:?},", e);
+                }
+            }
         }
         let mut rx = ws_connector.subscribe();
         while let Ok(event) = rx.recv().await {

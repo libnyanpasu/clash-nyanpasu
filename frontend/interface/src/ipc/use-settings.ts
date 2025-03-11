@@ -2,6 +2,7 @@ import { merge } from 'lodash-es'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
 import { commands, type IVerge } from './bindings'
+import { NYANPASU_SETTING_QUERY_KEY } from './consts'
 
 /**
  * Custom hook for managing Verge configuration settings using React Query.
@@ -41,7 +42,7 @@ export const useSettings = () => {
    * - other standard React Query properties
    */
   const query = useQuery({
-    queryKey: ['settings'],
+    queryKey: [NYANPASU_SETTING_QUERY_KEY],
     queryFn: async () => {
       return unwrapResult(await commands.getVergeConfig())
     },
@@ -68,7 +69,9 @@ export const useSettings = () => {
       return unwrapResult(await commands.patchVergeConfig(options as IVerge))
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
+      queryClient.invalidateQueries({
+        queryKey: [NYANPASU_SETTING_QUERY_KEY],
+      })
     },
   })
 

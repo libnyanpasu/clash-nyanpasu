@@ -2,7 +2,11 @@ import { kebabCase } from 'lodash-es'
 import { unwrapResult } from '@/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { commands, type ClashCore } from './bindings'
-import { CLASH_VERSION_QUERY_KEY } from './consts'
+import {
+  CLASH_CORE_QUERY_KEY,
+  CLASH_VERSION_QUERY_KEY,
+  NYANPASU_SETTING_QUERY_KEY,
+} from './consts'
 
 export const ClashCores = {
   clash: 'Clash Premium',
@@ -24,7 +28,7 @@ export const useClashCores = () => {
   const queryClient = useQueryClient()
 
   const query = useQuery({
-    queryKey: ['clash-core'],
+    queryKey: [CLASH_CORE_QUERY_KEY],
     queryFn: async () => {
       return await Object.keys(ClashCores).reduce(
         async (acc, key) => {
@@ -61,7 +65,7 @@ export const useClashCores = () => {
       }
 
       const currentData = queryClient.getQueryData([
-        'clash-core',
+        CLASH_CORE_QUERY_KEY,
       ]) as ClashCoresInfo
 
       if (currentData && results) {
@@ -78,7 +82,7 @@ export const useClashCores = () => {
           }
         })
 
-        queryClient.setQueryData(['clash-core'], updatedData)
+        queryClient.setQueryData([CLASH_CORE_QUERY_KEY], updatedData)
       }
       return results
     },
@@ -89,7 +93,7 @@ export const useClashCores = () => {
       return unwrapResult(await commands.updateCore(core))
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clash-core'] })
+      queryClient.invalidateQueries({ queryKey: [CLASH_CORE_QUERY_KEY] })
     },
   })
 
@@ -98,8 +102,8 @@ export const useClashCores = () => {
       return unwrapResult(await commands.changeClashCore(core))
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clash-core'] })
-      queryClient.invalidateQueries({ queryKey: ['settings'] })
+      queryClient.invalidateQueries({ queryKey: [CLASH_CORE_QUERY_KEY] })
+      queryClient.invalidateQueries({ queryKey: [NYANPASU_SETTING_QUERY_KEY] })
       queryClient.invalidateQueries({ queryKey: [CLASH_VERSION_QUERY_KEY] })
     },
   })

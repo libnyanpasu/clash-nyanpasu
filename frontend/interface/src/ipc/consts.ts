@@ -44,6 +44,21 @@ export const CLASH_MEMORY_QUERY_KEY = 'clash-memory'
 export const CLASH_CONNECTIONS_QUERY_KEY = 'clash-connections'
 
 /**
+ * Clash config query key, used by useClashConfig hook
+ */
+export const CLASH_CONFIG_QUERY_KEY = 'clash-config'
+
+/**
+ * Clash core query key, used by useClashCores hook
+ */
+export const CLASH_CORE_QUERY_KEY = 'clash-core'
+
+/**
+ * Clash info query key, used by useClashInfo hook
+ */
+export const CLASH_INFO_QUERY_KEY = 'clash-info'
+
+/**
  * Maximum connections history length, used by clash ws provider to limit connections history length
  */
 export const MAX_CONNECTIONS_HISTORY = 32

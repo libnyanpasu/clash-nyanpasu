@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ClashConfig, useClashAPI } from '../service/clash-api'
 import { unwrapResult } from '../utils'
 import { commands, PatchRuntimeConfig } from './bindings'
+import { CLASH_CONFIG_QUERY_KEY } from './consts'
 
 /**
  * A hook that manages fetching and updating the Clash configuration.
@@ -38,7 +39,7 @@ export const useClashConfig = () => {
    * @see useQuery - For additional configuration options and usage details.
    */
   const query = useQuery({
-    queryKey: ['clash-config'],
+    queryKey: [CLASH_CONFIG_QUERY_KEY],
     queryFn: configs,
   })
 
@@ -64,7 +65,7 @@ export const useClashConfig = () => {
       return unwrapResult(await commands.patchClashConfig(payload))
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clash-config'] })
+      queryClient.invalidateQueries({ queryKey: [CLASH_CONFIG_QUERY_KEY] })
     },
   })
 

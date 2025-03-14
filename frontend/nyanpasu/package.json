@@ -30,7 +30,7 @@
     "country-code-emoji": "2.3.0",
     "dayjs": "1.11.13",
     "framer-motion": "12.4.10",
-    "i18next": "24.2.2",
+    "i18next": "24.2.3",
     "jotai": "2.12.2",
     "json-schema": "0.4.0",
     "material-react-table": "3.2.1",

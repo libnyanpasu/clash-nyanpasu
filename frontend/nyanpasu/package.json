@@ -79,7 +79,7 @@
     "filesize": "10.1.6",
     "meta-json-schema": "1.19.3",
     "monaco-yaml": "5.3.1",
-    "nanoid": "5.1.3",
+    "nanoid": "5.1.4",
     "sass-embedded": "1.85.1",
     "shiki": "2.5.0",
     "unplugin-auto-import": "19.1.1",

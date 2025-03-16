@@ -26,7 +26,7 @@
     "picocolors": "1.1.1",
     "tar": "7.4.3",
     "telegram": "2.26.22",
-    "undici": "7.4.0",
+    "undici": "7.5.0",
     "yargs": "17.7.2"
   }
 }

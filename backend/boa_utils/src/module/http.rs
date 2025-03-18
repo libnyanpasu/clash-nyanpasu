@@ -265,6 +265,7 @@ fn test_http_module_loader() -> JsResult<()> {
         import YAML from 'https://esm.run/yaml@2.3.4';
         import fromAsync from 'https://esm.run/array-from-async@3.0.0';
         import { Base64 } from 'https://esm.run/js-base64@3.7.6';
+        import { text } from 'https://github.com/libnyanpasu/clash-nyanpasu/raw/refs/heads/main/pnpm-workspace.yaml';
 
         const data = `
             object:
@@ -278,6 +279,9 @@ fn test_http_module_loader() -> JsResult<()> {
             Promise.resolve(Base64.encode(object.array[0])),
             Promise.resolve(Base64.encode(object.array[1])),
         ]);
+
+        const parsed = YAML.parse(text);
+        result.push(JSON.stringify(parsed));
 
         export default result;
     "#;
@@ -340,6 +344,15 @@ fn test_http_module_loader() -> JsResult<()> {
             .as_string()
             .ok_or_else(|| JsNativeError::typ().with_message("array element was not a string"))?,
         &js_string!("d29ybGQ=")
+    );
+    assert!(
+        default
+            .get(2, context)?
+            .as_string()
+            .ok_or_else(|| JsNativeError::typ().with_message("array element was not a string"))?
+            .to_std_string_escaped()
+            .contains("packages"),
+        "YAML content should contain 'packages' field"
     );
 
     Ok(())

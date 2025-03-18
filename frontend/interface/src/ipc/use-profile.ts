@@ -7,7 +7,7 @@ import {
   type ProfilesBuilder,
   type RemoteProfileOptionsBuilder,
 } from './bindings'
-import { ROFILES_QUERY_KEY } from './consts'
+import { RROFILES_QUERY_KEY } from './consts'
 
 type URLImportParams = Parameters<typeof commands.importProfile>
 
@@ -106,7 +106,7 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
    * @returns A promise resolving to an object containing the profile list along with the extended helper functions.
    */
   const query = useQuery({
-    queryKey: [ROFILES_QUERY_KEY],
+    queryKey: [RROFILES_QUERY_KEY],
     queryFn: async () => {
       const result = unwrapResult(await commands.getProfiles())
 
@@ -157,7 +157,7 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
     },
     onSuccess: () => {
       // Invalidate and refetch
-      queryClient.invalidateQueries({ queryKey: [ROFILES_QUERY_KEY] })
+      queryClient.invalidateQueries({ queryKey: [RROFILES_QUERY_KEY] })
     },
   })
 
@@ -185,7 +185,7 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
       return unwrapResult(await commands.updateProfile(uid, option))
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [ROFILES_QUERY_KEY] })
+      queryClient.invalidateQueries({ queryKey: [RROFILES_QUERY_KEY] })
     },
   })
 
@@ -216,7 +216,7 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
     },
     onSuccess: () => {
       // Invalidate and refetch
-      queryClient.invalidateQueries({ queryKey: [ROFILES_QUERY_KEY] })
+      queryClient.invalidateQueries({ queryKey: [RROFILES_QUERY_KEY] })
     },
   })
 
@@ -240,7 +240,7 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
     },
     onSuccess: () => {
       // Invalidate and refetch
-      queryClient.invalidateQueries({ queryKey: [ROFILES_QUERY_KEY] })
+      queryClient.invalidateQueries({ queryKey: [RROFILES_QUERY_KEY] })
     },
   })
 
@@ -263,7 +263,7 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
       )
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [ROFILES_QUERY_KEY] })
+      queryClient.invalidateQueries({ queryKey: [RROFILES_QUERY_KEY] })
     },
   })
 
@@ -280,7 +280,7 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
       return unwrapResult(await commands.deleteProfile(uid))
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [ROFILES_QUERY_KEY] })
+      queryClient.invalidateQueries({ queryKey: [RROFILES_QUERY_KEY] })
     },
   })
 

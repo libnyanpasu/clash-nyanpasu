@@ -28,7 +28,6 @@ import { Badge, Button, CircularProgress, IconButton } from '@mui/material'
 import Grid from '@mui/material/Grid2'
 import {
   RemoteProfileOptionsBuilder,
-  useClash,
   useProfile,
   type RemoteProfile,
 } from '@nyanpasu/interface'
@@ -50,51 +49,50 @@ export const Route = createFileRoute('/profiles')({
 function ProfilePage() {
   const { t } = useTranslation()
 
-  const { getRuntimeLogs } = useClash()
-
   const { query, update } = useProfile()
 
   const profiles = useMemo(() => {
     return filterProfiles(query.data?.items)
   }, [query.data?.items])
 
-  const maxLogLevelTriggered = useMemo(() => {
-    const currentProfileChains =
-      (
-        query.data?.items?.find(
-          // TODO: 支持多 Profile
-          (item) => query.data?.current?.[0] === item.uid,
-          // TODO: fix any type
-        ) as any
-      )?.chain || []
-    return Object.entries(getRuntimeLogs.data || {}).reduce(
-      (acc, [key, value]) => {
-        const accKey = currentProfileChains.includes(key) ? 'current' : 'global'
-        if (acc[accKey] === 'error') {
-          return acc
-        }
-        for (const log of value) {
-          switch (log[0]) {
-            case 'error':
-              return { ...acc, [accKey]: 'error' }
-            case 'warn':
-              acc = { ...acc, [accKey]: 'warn' }
-              break
-            case 'info':
-              if (acc[accKey] !== 'warn') {
-                acc = { ...acc, [accKey]: 'info' }
-              }
-              break
-          }
-        }
-        return acc
-      },
-      {} as {
-        global: undefined | 'info' | 'error' | 'warn'
-        current: undefined | 'info' | 'error' | 'warn'
-      },
-    )
-  }, [query.data, getRuntimeLogs.data])
+  // TODO: fix me
+  // const maxLogLevelTriggered = useMemo(() => {
+  //   const currentProfileChains =
+  //     (
+  //       query.data?.items?.find(
+  //         // TODO: 支持多 Profile
+  //         (item) => query.data?.current?.[0] === item.uid,
+  //         // TODO: fix any type
+  //       ) as any
+  //     )?.chain || []
+  //   return Object.entries(getRuntimeLogs.data || {}).reduce(
+  //     (acc, [key, value]) => {
+  //       const accKey = currentProfileChains.includes(key) ? 'current' : 'global'
+  //       if (acc[accKey] === 'error') {
+  //         return acc
+  //       }
+  //       for (const log of value) {
+  //         switch (log[0]) {
+  //           case 'error':
+  //             return { ...acc, [accKey]: 'error' }
+  //           case 'warn':
+  //             acc = { ...acc, [accKey]: 'warn' }
+  //             break
+  //           case 'info':
+  //             if (acc[accKey] !== 'warn') {
+  //               acc = { ...acc, [accKey]: 'info' }
+  //             }
+  //             break
+  //         }
+  //       }
+  //       return acc
+  //     },
+  //     {} as {
+  //       global: undefined | 'info' | 'error' | 'warn'
+  //       current: undefined | 'info' | 'error' | 'warn'
+  //     },
+  //   )
+  // }, [query.data, getRuntimeLogs.data])
 
   const [globalChain, setGlobalChain] = useAtom(atomGlobalChainCurrent)
 
@@ -198,14 +196,14 @@ function ProfilePage() {
           </IconButton>
           <Badge
             variant="dot"
-            color={
-              maxLogLevelTriggered.global === 'error'
-                ? 'error'
-                : maxLogLevelTriggered.global === 'warn'
-                  ? 'warning'
-                  : 'primary'
-            }
-            invisible={!maxLogLevelTriggered.global}
+            // color={
+            //   maxLogLevelTriggered.global === 'error'
+            //     ? 'error'
+            //     : maxLogLevelTriggered.global === 'warn'
+            //       ? 'warning'
+            //       : 'primary'
+            // }
+            // invisible={!maxLogLevelTriggered.global}
           >
             <Button
               size="small"
@@ -248,7 +246,7 @@ function ProfilePage() {
                         item={item}
                         onClickChains={onClickChains}
                         selected={query.data?.current?.includes(item.uid)}
-                        maxLogLevelTriggered={maxLogLevelTriggered}
+                        // maxLogLevelTriggered={maxLogLevelTriggered}
                         chainsSelected={chainsSelected === item.uid}
                       />
                     </motion.div>

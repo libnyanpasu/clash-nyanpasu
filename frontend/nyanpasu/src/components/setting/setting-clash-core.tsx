@@ -8,7 +8,6 @@ import { message } from '@/utils/notification'
 import { Box, List, ListItem } from '@mui/material'
 import {
   ClashCore,
-  useClash,
   useClashConnections,
   useClashCores,
   useClashVersion,

@@ -1,12 +1,12 @@
-import { isEmpty } from 'lodash-es'
-import { memo } from 'react'
+import { useAtomValue } from 'jotai'
+import { memo, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { VList } from 'virtua'
 import { RamenDining, Terminal } from '@mui/icons-material'
 import { Divider } from '@mui/material'
-import { useClash, useProfile } from '@nyanpasu/interface'
+import { usePostProcessingOutput, useProfile } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
-import { filterProfiles } from '../utils'
+import { atomChainsSelected, atomGlobalChainCurrent } from './store'
 
 const LogListItem = memo(function LogListItem({
   name,
@@ -37,11 +37,25 @@ export interface SideLogProps {
 export const SideLog = ({ className }: SideLogProps) => {
   const { t } = useTranslation()
 
-  // const { getRuntimeLogs, getProfiles } = useClash()
-
   const { query } = useProfile()
 
-  const { chain } = filterProfiles(query.data?.items)
+  const profiles = query.data?.items
+
+  const { data } = usePostProcessingOutput()
+
+  const isGlobalChainCurrent = useAtomValue(atomGlobalChainCurrent)
+
+  const currentProfileUid = useAtomValue(atomChainsSelected)
+
+  const currentLogs = useMemo(() => {
+    if (currentProfileUid) {
+      return data?.scopes[currentProfileUid]
+    }
+
+    if (isGlobalChainCurrent) {
+      return data?.scopes.global
+    }
+  }, [currentProfileUid, data, isGlobalChainCurrent])
 
   return (
     <div className={cn('w-full', className)}>
@@ -56,10 +70,10 @@ export const SideLog = ({ className }: SideLogProps) => {
       <Divider />
 
       <VList className="flex flex-col gap-2 overflow-auto p-2 select-text">
-        {/* {!isEmpty(getRuntimeLogs.data) ? (
-          Object.entries(getRuntimeLogs.data).map(([uid, content]) => {
-            return content.map((item, index) => {
-              const name = scripts?.find((script) => script.uid === uid)?.name
+        {currentLogs ? (
+          Object.entries(currentLogs).map(([uid, content]) => {
+            return content?.map((item, index) => {
+              const name = profiles?.find((script) => script.uid === uid)?.name
 
               return (
                 <LogListItem
@@ -71,12 +85,12 @@ export const SideLog = ({ className }: SideLogProps) => {
               )
             })
           })
-        ) : ( */}
-        <div className="flex h-full min-h-48 w-full flex-col items-center justify-center">
-          <RamenDining className="!size-10" />
-          <p>{t('No Logs')}</p>
-        </div>
-        {/* )} */}
+        ) : (
+          <div className="flex h-full min-h-48 w-full flex-col items-center justify-center">
+            <RamenDining className="!size-10" />
+            <p>{t('No Logs')}</p>
+          </div>
+        )}
       </VList>
     </div>
   )

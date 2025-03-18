@@ -9,6 +9,7 @@ import {
   NYANPASU_BACKEND_EVENT_NAME,
   NYANPASU_SETTING_QUERY_KEY,
   NYANPASU_SYSTEM_PROXY_QUERY_KEY,
+  RROFILES_QUERY_KEY,
 } from '../ipc/consts'
 
 type EventPayload = 'nyanpasu_config' | 'clash_config' | 'proxies' | 'profiles'
@@ -24,6 +25,7 @@ const CLASH_CONFIG_MUTATION_KEYS = [
   CLASH_VERSION_QUERY_KEY,
   CLASH_INFO_QUERY_KEY,
   CLASH_CONFIG_QUERY_KEY,
+  RROFILES_QUERY_KEY,
   // TODO: clash rules hook refetch
   // TODO: clash rules providers hook refetch
   // TODO: proxies hook refetch

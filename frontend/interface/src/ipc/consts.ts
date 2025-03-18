@@ -14,6 +14,11 @@ export const NYANPASU_SETTING_QUERY_KEY = 'settings'
 export const NYANPASU_SYSTEM_PROXY_QUERY_KEY = 'system-proxy'
 
 /**
+ * Nyanpasu chains log query key, fn: getPostProcessingOutput
+ */
+export const NYANPASU_POST_PROCESSING_QUERY_KEY = 'post-processing'
+
+/**
  * Clash version query key, used to fetch clash version from query
  */
 export const CLASH_VERSION_QUERY_KEY = 'clash-version'
@@ -21,7 +26,7 @@ export const CLASH_VERSION_QUERY_KEY = 'clash-version'
 /**
  * Nyanpasu profile query key, used to fetch profiles from query
  */
-export const ROFILES_QUERY_KEY = 'profiles'
+export const RROFILES_QUERY_KEY = 'profiles'
 
 /**
  * Clash log query key, used by clash ws provider to mutate logs via clash logs ws api

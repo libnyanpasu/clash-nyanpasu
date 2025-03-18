@@ -8,7 +8,6 @@ import { Divider } from '@mui/material'
 import {
   Profile,
   ProfileTemplate,
-  useClash,
   useProfile,
   useProfileContent,
 } from '@nyanpasu/interface'
@@ -68,9 +67,6 @@ export const ScriptDialog = ({
   ...props
 }: ScriptDialogProps) => {
   const { t } = useTranslation()
-
-  // const { getProfileFile, setProfileFile, createProfile, setProfiles } =
-  //   useClash()
 
   const { create, patch } = useProfile()
 

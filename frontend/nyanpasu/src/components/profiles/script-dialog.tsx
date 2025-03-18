@@ -145,9 +145,9 @@ export const ScriptDialog = ({
 
   useAsyncEffect(async () => {
     if (isEdit) {
-      await contentFn.query.refetch()
+      const result = await contentFn.query.refetch()
 
-      editor.value = contentFn.query.data ?? ''
+      editor.value = result.data ?? ''
       editor.language = getLanguage(profile!.type)!
     } else {
       editor.value = ProfileTemplate.merge
@@ -249,7 +249,7 @@ export const ScriptDialog = ({
         <Divider orientation="vertical" />
 
         <Suspense fallback={null}>
-          {openMonaco && (
+          {openMonaco && !contentFn.query.isPending && (
             <ProfileMonacoViewer
               className="w-full"
               value={editor.value}

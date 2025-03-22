@@ -1,7 +1,9 @@
+import { useUpdateEffect } from 'ahooks'
 import { useQuery } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
 import { commands } from './bindings'
 import { NYANPASU_SYSTEM_PROXY_QUERY_KEY } from './consts'
+import { useSetting } from './use-settings'
 
 /**
  * Custom hook to fetch and manage the system proxy settings.
@@ -19,7 +21,15 @@ export const useSystemProxy = () => {
     queryFn: async () => {
       return unwrapResult(await commands.getSysProxy())
     },
+    refetchInterval: 5000,
+    refetchIntervalInBackground: true,
   })
+
+  const { value } = useSetting('enable_system_proxy')
+
+  useUpdateEffect(() => {
+    query.refetch()
+  }, [value])
 
   return {
     ...query,

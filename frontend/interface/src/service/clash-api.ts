@@ -177,7 +177,7 @@ export const useClashAPI = () => {
   }
 
   const putProvidersRules = async (name: string) => {
-    return await request(`/providers/rules/${name}`, {
+    return await request(`/providers/rules/${encodeURIComponent(name)}`, {
       method: 'PUT',
     })
   }

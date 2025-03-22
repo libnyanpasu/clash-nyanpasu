@@ -6,10 +6,10 @@ import { message } from '@/utils/notification'
 import { Refresh } from '@mui/icons-material'
 import LoadingButton from '@mui/lab/LoadingButton/LoadingButton'
 import { Chip, Paper } from '@mui/material'
-import { ProviderRules, useClashCore } from '@nyanpasu/interface'
+import { ClashRulesProviderQueryItem } from '@nyanpasu/interface'
 
 export interface RulesProviderProps {
-  provider: ProviderRules
+  provider: ClashRulesProviderQueryItem
 }
 
 export default function RulesProvider({ provider }: RulesProviderProps) {
@@ -17,13 +17,11 @@ export default function RulesProvider({ provider }: RulesProviderProps) {
 
   const [loading, setLoading] = useState(false)
 
-  const { updateRulesProviders } = useClashCore()
-
   const handleClick = useLockFn(async () => {
     try {
       setLoading(true)
 
-      await updateRulesProviders(provider.name)
+      await provider.mutate()
     } catch (e) {
       message(`Update ${provider.name} failed.\n${String(e)}`, {
         kind: 'error',

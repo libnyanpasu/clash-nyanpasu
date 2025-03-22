@@ -74,6 +74,11 @@ export const CLASH_PROXIES_QUERY_KEY = 'clash-proxies'
 export const CLASH_RULES_QUERY_KEY = 'clash-rules'
 
 /**
+ * Clash rules provider query key, used by useClashRulesProvider hook
+ */
+export const CLASH_RULES_PROVIDER_QUERY_KEY = 'clash-rules-provider'
+
+/**
  * Maximum connections history length, used by clash ws provider to limit connections history length
  */
 export const MAX_CONNECTIONS_HISTORY = 32

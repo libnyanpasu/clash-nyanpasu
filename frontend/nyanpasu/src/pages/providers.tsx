@@ -5,7 +5,7 @@ import UpdateProviders from '@/components/providers/update-providers'
 import UpdateProxiesProviders from '@/components/providers/update-proxies-providers'
 import { Chip } from '@mui/material'
 import Grid from '@mui/material/Grid2'
-import { useClashCore } from '@nyanpasu/interface'
+import { useClashCore, useClashRulesProvider } from '@nyanpasu/interface'
 import { BasePage } from '@nyanpasu/ui'
 import { createFileRoute } from '@tanstack/react-router'
 
@@ -16,7 +16,9 @@ export const Route = createFileRoute('/providers')({
 function ProvidersPage() {
   const { t } = useTranslation()
 
-  const { getRulesProviders, getProxiesProviders } = useClashCore()
+  const { getProxiesProviders } = useClashCore()
+
+  const rulesProvider = useClashRulesProvider()
 
   return (
     <BasePage title={t('Providers')}>
@@ -54,15 +56,15 @@ function ProvidersPage() {
         <div className="flex items-center justify-between">
           <Chip
             className="!h-10 truncate !rounded-full !p-2 !text-lg font-bold"
-            label={`${t('Rules Providers')} (${Object.entries(getRulesProviders.data ?? {}).length})`}
+            label={`${t('Rules Providers')} (${Object.entries(rulesProvider.data ?? {}).length})`}
           />
 
           <UpdateProviders />
         </div>
 
-        {getRulesProviders.data && (
+        {rulesProvider.data && (
           <Grid container spacing={2}>
-            {Object.entries(getRulesProviders.data).map(([name, provider]) => (
+            {Object.entries(rulesProvider.data).map(([name, provider]) => (
               <Grid
                 key={name}
                 size={{

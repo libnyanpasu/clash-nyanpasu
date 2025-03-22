@@ -21,7 +21,6 @@ export * from './use-runtime-profile'
 export * from './use-settings'
 export * from './use-system-proxy'
 export * from './use-system-service'
-export * from './useClashCore'
 
 export { commands } from './bindings'
 export type * from './bindings'

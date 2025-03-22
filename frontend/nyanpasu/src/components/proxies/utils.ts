@@ -1,8 +1,6 @@
-import type { Clash, ProxyGroupItem } from '@nyanpasu/interface'
+import type { ProxyGroupItem, ProxyItemHistory } from '@nyanpasu/interface'
 
-export type History = Clash.Proxy['history']
-
-export const filterDelay = (history?: History): number => {
+export const filterDelay = (history?: ProxyItemHistory[]): number => {
   if (!history || history.length === 0) {
     return -1
   } else {

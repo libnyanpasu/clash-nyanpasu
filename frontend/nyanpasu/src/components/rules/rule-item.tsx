@@ -1,9 +1,9 @@
 import { useTheme } from '@mui/material'
-import { Clash } from '@nyanpasu/interface'
+import { ClashRule } from '@nyanpasu/interface'
 
 interface Props {
   index: number
-  value: Clash.Rule
+  value: ClashRule
 }
 
 const RuleItem = ({ index, value }: Props) => {

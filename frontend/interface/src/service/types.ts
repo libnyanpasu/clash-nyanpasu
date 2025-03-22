@@ -1,5 +1,3 @@
-import { Clash } from './clash'
-
 export interface VergeConfig {
   app_log_level?: 'trace' | 'debug' | 'info' | 'warn' | 'error' | string
   language?: string
@@ -118,21 +116,6 @@ export interface ProviderRules {
   type: string
   updatedAt: string
   vehicleType: string
-}
-
-export interface ProviderItem {
-  name: string
-  type: string
-  proxies: Clash.Proxy[]
-  updatedAt?: string
-  vehicleType: string
-  subscriptionInfo?: {
-    Upload?: number
-    Download?: number
-    Total?: number
-    Expire?: number
-  }
-  testUrl?: string
 }
 
 export interface Traffic {

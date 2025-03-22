@@ -61,6 +61,12 @@ export type ClashProviderProxies = {
   testUrl?: string
 }
 
+export type ClashRule = {
+  type: string
+  payload: string
+  proxy: string
+}
+
 export const useClashAPI = () => {
   const { data } = useClashInfo()
 
@@ -158,6 +164,12 @@ export const useClashAPI = () => {
     })
   }
 
+  const rules = async () => {
+    return await request<{
+      rules: ClashRule[]
+    }>('/rules')
+  }
+
   const providersRules = async () => {
     return await request<{ providers: Record<string, ClashProviderRule> }>(
       '/providers/rules',
@@ -198,6 +210,7 @@ export const useClashAPI = () => {
     groupDelay,
     proxies,
     putProxies,
+    rules,
     providersRules,
     putProvidersRules,
     providersProxies,

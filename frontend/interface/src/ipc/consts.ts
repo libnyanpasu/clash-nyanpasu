@@ -64,6 +64,11 @@ export const CLASH_CORE_QUERY_KEY = 'clash-core'
 export const CLASH_INFO_QUERY_KEY = 'clash-info'
 
 /**
+ * Clash proxies query key, used by useClashProxies hook
+ */
+export const CLASH_PROXIES_QUERY_KEY = 'clash-proxies'
+
+/**
  * Maximum connections history length, used by clash ws provider to limit connections history length
  */
 export const MAX_CONNECTIONS_HISTORY = 32

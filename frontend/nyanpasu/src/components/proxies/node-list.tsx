@@ -14,9 +14,9 @@ import { Virtualizer, VListHandle } from 'virtua'
 import { proxyGroupAtom, proxyGroupSortAtom } from '@/store'
 import { proxiesFilterAtom } from '@/store/proxies'
 import {
+  ClashProxiesQueryProxyItem,
   ProxyGroupItem,
-  ProxyItem,
-  useClashCore,
+  useClashProxies,
   useProxyMode,
   useSetting,
 } from '@nyanpasu/interface'
@@ -24,7 +24,7 @@ import { cn, useBreakpointValue } from '@nyanpasu/ui'
 import NodeCard from './node-card'
 import { nodeSortingFn } from './utils'
 
-type RenderClashProxy = ProxyItem & { renderLayoutKey: string }
+type RenderClashProxy = ClashProxiesQueryProxyItem & { renderLayoutKey: string }
 
 export interface NodeListRef {
   scrollToCurrent: () => void
@@ -34,13 +34,7 @@ export const NodeList = forwardRef(function NodeList(
   { scrollRef }: { scrollRef: RefObject<HTMLElement> },
   ref,
 ) {
-  const {
-    data,
-    setGroupProxy,
-    setGlobalProxy,
-    updateProxiesDelay,
-    getAllProxiesProviders,
-  } = useClashCore()
+  const { data } = useClashProxies()
 
   const { value: proxyMode } = useProxyMode()
 
@@ -119,7 +113,7 @@ export const NodeList = forwardRef(function NodeList(
       }
 
       result[Math.floor(index / column)].push({
-        ...value,
+        ...(value as ClashProxiesQueryProxyItem),
         renderLayoutKey: getKey(),
       })
 
@@ -130,14 +124,6 @@ export const NodeList = forwardRef(function NodeList(
 
     setRenderList(list)
   }, [group?.all, group?.name, column, deferredProxiesFilter])
-
-  const handleClick = (node: string) => {
-    if (!proxyMode.global) {
-      setGroupProxy(proxyGroup.selector as number, node)
-    } else {
-      setGlobalProxy(node)
-    }
-  }
 
   const { value: disableMotion } = useSetting('lighten_animation_effects')
 
@@ -156,18 +142,6 @@ export const NodeList = forwardRef(function NodeList(
     },
   }))
 
-  const handleClickDelay = async (name: string) => {
-    const getGroupTestUrl = () => {
-      if (group?.name) {
-        return getAllProxiesProviders.data?.[group?.name].testUrl
-      }
-    }
-
-    await updateProxiesDelay(name, {
-      url: getGroupTestUrl(),
-    })
-  }
-
   return (
     <AnimatePresence initial={false} mode="sync">
       <Virtualizer ref={vListRef} scrollRef={scrollRef}>
@@ -184,10 +158,6 @@ export const NodeList = forwardRef(function NodeList(
                     node={render}
                     now={group?.now}
                     disabled={group?.type !== 'Selector'}
-                    onClick={() => handleClick(render.name)}
-                    onClickDelay={async () =>
-                      await handleClickDelay(render.name)
-                    }
                   />
                 )
 

@@ -1,5 +1,6 @@
 import { ofetch } from 'ofetch'
 import { useMemo } from 'react'
+import type { ProxyGroupItem, SubscriptionInfo } from '../ipc/bindings'
 import { useClashInfo } from '../ipc/use-clash-info'
 
 const prepareServer = (server?: string) => {
@@ -31,6 +32,33 @@ export type ClashVersion = {
   premium?: boolean
   meta?: boolean
   version: string
+}
+
+export type ClashDelayOptions = {
+  url?: string
+  timeout?: number
+}
+
+export type ClashProxyGroupItem = ProxyGroupItem
+
+export type ClashProviderRule = {
+  behavior: string
+  format: string
+  name: string
+  ruleCount: number
+  type: string
+  updatedAt: string
+  vehicleType: string
+}
+
+export type ClashProviderProxies = {
+  name: string
+  type: string
+  proxies: ClashProxyGroupItem[]
+  updatedAt?: string
+  vehicleType: string
+  subscriptionInfo?: SubscriptionInfo
+  testUrl?: string
 }
 
 export const useClashAPI = () => {
@@ -87,11 +115,91 @@ export const useClashAPI = () => {
     return await request<ClashVersion>('/version')
   }
 
+  const proxiesDelay = async (name: string, options?: ClashDelayOptions) => {
+    return await request<{ delay: number }>(
+      `/proxies/${encodeURIComponent(name)}/delay`,
+      {
+        params: {
+          timeout: options?.timeout || 10000,
+          url: options?.url || 'http://www.gstatic.com/generate_204',
+        },
+      },
+    )
+  }
+
+  const groupDelay = async (group: string, options?: ClashDelayOptions) => {
+    return await request<Record<string, number>>(
+      `/group/${encodeURIComponent(group)}/delay`,
+      {
+        params: {
+          timeout: options?.timeout || 10000,
+          url: options?.url || 'http://www.gstatic.com/generate_204',
+        },
+      },
+    )
+  }
+
+  const proxies = async () => {
+    return await request<{
+      proxies: ClashProxyGroupItem[]
+    }>('/proxies')
+  }
+
+  const putProxies = async ({
+    group,
+    proxy,
+  }: {
+    group: string
+    proxy: string
+  }) => {
+    return await request(`/proxies/${encodeURIComponent(group)}`, {
+      method: 'PUT',
+      body: { name: proxy },
+    })
+  }
+
+  const providersRules = async () => {
+    return await request<{ providers: Record<string, ClashProviderRule> }>(
+      '/providers/rules',
+    )
+  }
+
+  const putProvidersRules = async (name: string) => {
+    return await request(`/providers/rules/${name}`, {
+      method: 'PUT',
+    })
+  }
+
+  const providersProxies = async (all?: string) => {
+    const result = await request<{
+      providers: Record<string, ClashProviderProxies>
+    }>('/providers/proxies')
+
+    if (all) {
+      return result
+    }
+
+    return {
+      providers: Object.fromEntries(
+        Object.entries(result.providers).filter(([, value]) =>
+          ['http', 'file'].includes(value.vehicleType.toLowerCase()),
+        ),
+      ),
+    }
+  }
+
   return {
     configs,
     patchConfigs,
     putConfigs,
     deleteConnections,
     version,
+    proxiesDelay,
+    groupDelay,
+    proxies,
+    putProxies,
+    providersRules,
+    putProvidersRules,
+    providersProxies,
   }
 }

@@ -23,7 +23,11 @@ import {
   TextField,
   useTheme,
 } from '@mui/material'
-import { ProxyGroupItem, useClashCore, useProxyMode } from '@nyanpasu/interface'
+import {
+  ProxyGroupItem,
+  useClashProxies,
+  useProxyMode,
+} from '@nyanpasu/interface'
 import { cn, SidePage } from '@nyanpasu/ui'
 import { createFileRoute } from '@tanstack/react-router'
 
@@ -68,7 +72,7 @@ function ProxyPage() {
 
   const { value: proxyMode, upsert } = useProxyMode()
 
-  const { data, updateGroupDelay } = useClashCore()
+  const { data } = useClashProxies()
 
   const [proxyGroup] = useAtom(proxyGroupAtom)
 
@@ -94,7 +98,13 @@ function ProxyPage() {
   ])
 
   const handleDelayClick = async () => {
-    await updateGroupDelay(proxyGroup.selector as number)
+    if (proxyMode.global) {
+      await data?.global.mutateDelay()
+    } else {
+      if (proxyGroup.selector !== null) {
+        await data?.groups[proxyGroup.selector].mutateDelay()
+      }
+    }
   }
 
   const hasProxies = Boolean(data?.groups.length)

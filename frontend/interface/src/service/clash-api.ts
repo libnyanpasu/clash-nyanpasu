@@ -200,6 +200,12 @@ export const useClashAPI = () => {
     }
   }
 
+  const putProvidersProxies = async (name: string) => {
+    return await request(`/providers/proxies/${encodeURIComponent(name)}`, {
+      method: 'PUT',
+    })
+  }
+
   return {
     configs,
     patchConfigs,
@@ -214,5 +220,6 @@ export const useClashAPI = () => {
     providersRules,
     putProvidersRules,
     providersProxies,
+    putProvidersProxies,
   }
 }

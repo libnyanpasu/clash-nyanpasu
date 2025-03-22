@@ -9,11 +9,7 @@ export const ProxiesProviderTraffic = ({ provider }: ProxiesProviderProps) => {
     let used = 0
 
     if (provider.subscriptionInfo) {
-      const {
-        Download: download,
-        Upload: upload,
-        Total: t,
-      } = provider.subscriptionInfo
+      const { download, upload, total: t } = provider.subscriptionInfo
 
       total = t ?? 0
 

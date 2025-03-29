@@ -23,7 +23,7 @@ image = { version = "0.25", features = ["jpeg", "png"] }
 humansize = "2"
 # for svg currentColor replacement
 resvg = "0.44"                                              # for svg rendering
-usvg = "0.44"                                               # for svg parsing
+usvg = "0.45"                                               # for svg parsing
 csscolorparser = "0.7"                                      # for color conversion
 ipc-channel = "0.19"                                        # for IPC between the Widget process and the GUI process
 serde = { version = "1", features = ["derive"] }

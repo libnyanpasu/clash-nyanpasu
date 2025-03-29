@@ -22,7 +22,7 @@ parking_lot = "0.12"
 image = { version = "0.25", features = ["jpeg", "png"] }
 humansize = "2"
 # for svg currentColor replacement
-resvg = "0.44"                                              # for svg rendering
+resvg = "0.45"                                              # for svg rendering
 usvg = "0.44"                                               # for svg parsing
 csscolorparser = "0.7"                                      # for color conversion
 ipc-channel = "0.19"                                        # for IPC between the Widget process and the GUI process

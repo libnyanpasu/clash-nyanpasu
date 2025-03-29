@@ -281,9 +281,9 @@ impl Runner for JSRunner {
 
 mod utils {
     use oxc_allocator::Allocator;
-    use oxc_ast::{
+    use oxc_ast_visit::{
         Visit,
-        visit::walk::{walk_function, walk_module_export_name},
+        walk::{walk_function, walk_module_export_name},
     };
     use oxc_parser::Parser;
     use oxc_span::{SourceType, Span};

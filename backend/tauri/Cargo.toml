@@ -15,7 +15,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 doctest = false
 
 [build-dependencies]
-tauri-build = { version = "2.0.1", features = [] }
+tauri-build = { version = "2.1", features = [] }
 serde = "1"
 serde_json = { version = "1.0", features = ["preserve_order"] }
 chrono = "0.4"
@@ -167,11 +167,12 @@ display-info = "0.5.0"  # should be removed after upgrading to tauri v2
 
 # OXC (The Oxidation Compiler)
 # We use it to parse and transpile the old script profile to esm based script profile
-oxc_parser = "0.53"
-oxc_allocator = "0.53"
-oxc_span = "0.53"
-oxc_ast = "0.53"
-oxc_syntax = "0.53"
+oxc_parser = "0.61"
+oxc_allocator = "0.61"
+oxc_span = "0.61"
+oxc_ast = "0.61"
+oxc_syntax = "0.61"
+oxc_ast_visit = "0.61"
 
 # Lua Integration
 mlua = { version = "0.10", features = [
@@ -187,7 +188,7 @@ boa_utils = { path = "../boa_utils" }                     # should be removed wh
 boa_engine = { workspace = true, features = ["annex-b"] }
 
 # Tauri Dependencies
-tauri = { version = "2.2", features = ["tray-icon", "image-png", "image-ico"] }
+tauri = { version = "2.4", features = ["tray-icon", "image-png", "image-ico"] }
 tauri-plugin-deep-link = { path = "../tauri-plugin-deep-link", version = "0.1.2" } # This should be migrated to official tauri plugin
 tauri-plugin-os = "2.2"
 tauri-plugin-clipboard-manager = "2.2"
@@ -236,14 +237,14 @@ nix = { version = "0.29.0", features = ["user", "fs"] }
 [target.'cfg(windows)'.dependencies]
 deelevate = "0.2.0"
 winreg = { version = "0.55", features = ["transactions"] }
-windows-registry = "0.5"
+windows-registry = "0.5.1"
 windows-sys = { version = "0.59", features = [
   "Win32_System_LibraryLoader",
   "Win32_System_SystemInformation",
   "Win32_UI_WindowsAndMessaging",
   "Win32_System_Shutdown",
 ] }
-windows-core = "0.60.0"
+windows-core = "0.60"
 webview2-com = "0.36"
 
 [features]

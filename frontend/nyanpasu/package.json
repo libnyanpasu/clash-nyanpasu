@@ -69,7 +69,7 @@
     "@tauri-apps/plugin-updater": "2.6.1",
     "@types/react": "19.0.12",
     "@types/react-dom": "19.0.4",
-    "@types/validator": "13.12.2",
+    "@types/validator": "13.12.3",
     "@vitejs/plugin-legacy": "6.0.2",
     "@vitejs/plugin-react": "4.3.4",
     "@vitejs/plugin-react-swc": "3.8.1",

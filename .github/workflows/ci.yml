@@ -116,7 +116,8 @@ jobs:
       fail-fast: false
     if: >
       github.event_name != 'pull_request' || 
-      contains(github.event.pull_request.title, 'crate')
+      contains(github.event.pull_request.title, 'crate') || 
+      github.event.pull_request.user.login != 'renovate[bot]'
     runs-on: ${{ matrix.targets.os }}
     needs: lint
     steps:
@@ -191,7 +192,8 @@ jobs:
     needs: lint
     if: >
       github.event_name != 'pull_request' || 
-      contains(github.event.pull_request.title, 'crate')
+      contains(github.event.pull_request.title, 'crate') || 
+      github.event.pull_request.user.login != 'renovate[bot]'
 
     # we want to run on the latest linux environment
     strategy:

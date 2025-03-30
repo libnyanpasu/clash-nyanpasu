@@ -17,7 +17,7 @@
     "dayjs": "1.11.13",
     "lodash-es": "4.17.21",
     "ofetch": "1.4.1",
-    "react": "19.0.0",
+    "react": "19.1.0",
     "swr": "2.3.3"
   },
   "devDependencies": {

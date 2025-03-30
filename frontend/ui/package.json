@@ -7,13 +7,13 @@
     "./src/materialYou/themeConsts.mjs": "./src/materialYou/themeConsts.mjs"
   },
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./dist/src/index.d.ts",
   "files": [
     "dist",
     "src"
   ],
   "scripts": {
-    "build": "vite build"
+    "build": "vite build --sourcemap"
   },
   "dependencies": {
     "@material/material-color-utilities": "0.3.0",

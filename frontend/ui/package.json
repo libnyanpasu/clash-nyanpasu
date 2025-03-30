@@ -6,14 +6,14 @@
     ".": "./dist/index.js",
     "./src/materialYou/themeConsts.mjs": "./src/materialYou/themeConsts.mjs"
   },
-  "main": "./dist/src/index.js",
+  "main": "./dist/index.js",
   "types": "./dist/src/index.d.ts",
   "files": [
     "dist",
     "src"
   ],
   "scripts": {
-    "build": "vite build"
+    "build": "vite build --sourcemap"
   },
   "dependencies": {
     "@material/material-color-utilities": "0.3.0",

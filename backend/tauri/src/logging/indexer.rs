@@ -1,17 +1,23 @@
-use std::{io::SeekFrom, ops::Range};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    io::SeekFrom,
+    ops::Range,
+};
 
 use anyhow::Context;
+use bumpalo::Bump;
 use camino::Utf8PathBuf;
 use chrono::{DateTime, Local};
 use derive_builder::Builder;
+use itertools::Itertools;
+use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use surrealdb::{RecordId, Surreal, engine::local::Db};
-
-use surrealdb::engine::local::Mem;
 use tokio::io::{AsyncBufReadExt, AsyncSeekExt, BufReader};
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Type, Hash, Eq, PartialEq)]
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, Type, Hash, Eq, PartialEq, Ord, PartialOrd,
+)]
 #[serde(rename_all = "UPPERCASE")]
 #[allow(clippy::upper_case_acronyms)]
 pub enum LoggingLevel {
@@ -61,130 +67,230 @@ pub struct Query {
     timestamp: Option<Range<u64>>,
 }
 
+pub type LineNumber = u64;
+pub type Timestamp = u64;
+
 struct LogIndex {
-    connection: Surreal<Db>,
-    table_name: String,
+    /// a bump allocator for heap allocation
+    arena: Bump,
+
+    /// index by line number
+    line_index: BTreeMap<LineNumber, *mut LogEntry>,
+    /// index by timestamp
+    /// in our case, the timestamp is nanoseconds, so only one item per timestamp
+    timestamp_index: BTreeMap<Timestamp, LineNumber>,
+    /// index by level
+    level_index: FxHashMap<LoggingLevel, *mut Vec<LineNumber>>,
+    /// index by target
+    target_index: FxHashMap<String, *mut Vec<LineNumber>>,
+
+    last_line_number: Option<LineNumber>,
+}
+
+impl core::fmt::Debug for LogIndex {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let lines = self
+            .line_index
+            .values()
+            .map(|v| unsafe {
+                let v = &**v;
+                v.clone()
+            })
+            .collect_vec();
+        let levels = BTreeMap::from_iter(self.level_index.iter().map(|(k, v)| {
+            (k, unsafe {
+                let v = &**v;
+                v.clone()
+            })
+        }));
+        let targets = BTreeMap::from_iter(self.target_index.iter().map(|(k, v)| {
+            (k, unsafe {
+                let v = &**v;
+                v.clone()
+            })
+        }));
+        write!(
+            f,
+            "LogIndex {{ 
+                lines: {:?}; 
+                timestamp_index: {:?};
+                level_index: {:?};
+                target_index: {:?};
+                last_line_number: {:?} 
+            }}",
+            lines, self.timestamp_index, levels, targets, self.last_line_number
+        )
+    }
 }
 
 impl LogIndex {
-    pub async fn try_new(table_name: String) -> anyhow::Result<Self> {
-        let connection = Surreal::new::<Mem>(())
-            .await
-            .context("failed to create connection")?;
-        connection
-            .use_ns(super::LOGGING_NS)
-            .use_db(super::LOGGING_NS)
-            .await
-            .context("failed to use namespace and database")?;
+    pub fn new() -> Self {
+        Self {
+            arena: Bump::new(),
+            line_index: BTreeMap::new(),
+            timestamp_index: BTreeMap::new(),
+            level_index: FxHashMap::default(),
+            target_index: FxHashMap::default(),
+            last_line_number: None,
+        }
+    }
 
-        let index = Self {
-            connection,
-            table_name,
+    #[inline]
+    /// add an entry to the index
+    pub fn add_entry(&mut self, entry: LogEntry) {
+        let line_number = entry.line_number;
+        let timestamp = entry.timestamp;
+        let level = entry.level;
+        let target = entry.target.clone();
+
+        let entry_ptr = self.arena.alloc(entry) as *mut LogEntry;
+        // update level index
+        {
+            let entry = self.level_index.entry(level);
+            entry
+                .and_modify(|v| {
+                    // SAFETY: we are sure that the vec_ptr is valid
+                    unsafe {
+                        let v = &mut **v;
+                        v.push(line_number);
+                    }
+                })
+                .or_insert_with(|| {
+                    let vec = self.arena.alloc(vec![line_number]);
+                    vec as *mut Vec<u64>
+                });
+        }
+        // update timestamp index
+        {
+            let entry = self.timestamp_index.entry(timestamp);
+            entry
+                .and_modify(|v| {
+                    tracing::warn!(
+                        "duplicate timestamp: {}; previous: {}, new: {}",
+                        timestamp,
+                        v,
+                        line_number
+                    );
+                    *v = line_number;
+                })
+                .or_insert(line_number);
+        }
+        // update target index
+        {
+            let entry = self.target_index.entry(target);
+            entry
+                .and_modify(|v| {
+                    // SAFETY: we are sure that the vec_ptr is valid
+                    unsafe {
+                        let v = &mut **v;
+                        v.push(line_number);
+                    }
+                })
+                .or_insert_with(|| {
+                    let vec = self.arena.alloc(vec![line_number]);
+                    vec as *mut Vec<u64>
+                });
+        }
+        // update line index
+        {
+            self.line_index.insert(line_number, entry_ptr);
+        }
+
+        self.last_line_number = Some(line_number);
+    }
+
+    // TODO: optimize query performance
+    pub fn query(&self, query: Query) -> Option<Vec<LogEntry>> {
+        // query by timestamp
+        let mut matching_lines: Option<Vec<LineNumber>> = None;
+        if let Some(range) = query.timestamp {
+            let mut range = self.timestamp_index.range(range);
+            let (_, start) = range.next()?;
+            let end = match range.last() {
+                Some((_, end_line)) => *end_line,
+                None => *start,
+            };
+            matching_lines = Some(Vec::from_iter(*start..=end));
+        }
+
+        // query by level
+        if let Some(levels) = query.level {
+            let mut matched_lines = BTreeSet::new();
+            for level in levels {
+                if let Some(lines) = self.level_index.get(&level) {
+                    // SAFETY: we have allocated the vec on the heap by bumpalo
+                    unsafe {
+                        let lines = &**lines;
+                        matched_lines.extend(lines.iter());
+                    }
+                }
+            }
+            matching_lines = match matching_lines {
+                Some(lines) => Some(
+                    lines
+                        .into_iter()
+                        .filter(|line| matched_lines.contains(line))
+                        .collect_vec(),
+                ),
+                None => Some(matched_lines.into_iter().collect_vec()),
+            }
+        }
+
+        // query by target
+        if let Some(targets) = query.target {
+            let mut matched_lines = BTreeSet::new();
+            for target in targets {
+                if let Some(lines) = self.target_index.get(&target) {
+                    // SAFETY: we have allocated the vec on the heap by bumpalo
+                    unsafe {
+                        let lines = &**lines;
+                        matched_lines.extend(lines.iter());
+                    }
+                }
+            }
+            matching_lines = match matching_lines {
+                Some(lines) => Some(
+                    lines
+                        .into_iter()
+                        .filter(|line| matched_lines.contains(line))
+                        .collect_vec(),
+                ),
+                None => Some(matched_lines.into_iter().collect_vec()),
+            }
+        }
+
+        let matching_lines = match matching_lines {
+            Some(lines) if lines.is_empty() => return None,
+            None => {
+                let last_line = self.last_line_number.as_ref()?;
+                Vec::from_iter(0..=*last_line)
+            }
+            Some(lines) => lines,
         };
 
-        index.create_table().await?;
+        #[cfg(test)]
+        dbg!(&matching_lines);
 
-        Ok(index)
-    }
+        let results = matching_lines
+            .into_iter()
+            .skip(query.offset)
+            .take(query.limit)
+            // SAFETY: we are sure that the line_index is valid, which is allocated by bumpalo,
+            // and the pool only be dropped when this index is dropped
+            .map(|line_number| unsafe {
+                let entry = &**self.line_index.get(&line_number).unwrap();
+                entry.clone()
+            })
+            .collect_vec();
 
-    async fn create_table(&self) -> anyhow::Result<()> {
-        let table_name = self.table_name.as_str();
-        let sql = format!(
-            r#"DEFINE TABLE {table_name} TYPE NORMAL SCHEMAFULL PERMISSIONS NONE;
-
--- ------------------------------
--- FIELDS
--- ------------------------------ 
-
-DEFINE FIELD end_pos ON {table_name} TYPE int PERMISSIONS FULL;
-DEFINE FIELD level ON {table_name} TYPE string PERMISSIONS FULL;
-DEFINE FIELD line_number ON {table_name} TYPE int PERMISSIONS FULL;
-DEFINE FIELD start_pos ON {table_name} TYPE int PERMISSIONS FULL;
-DEFINE FIELD target ON {table_name} TYPE string PERMISSIONS FULL;
-DEFINE FIELD timestamp ON {table_name} TYPE int PERMISSIONS FULL;
-
--- ------------------------------
--- INDEXES
--- ------------------------------
-DEFINE INDEX line_numberIndex ON TABLE {table_name} FIELDS line_number UNIQUE;
-DEFINE INDEX levelIndex ON TABLE {table_name} FIELDS level;
-DEFINE INDEX timestampIndex ON TABLE {table_name} FIELDS timestamp;
-DEFINE INDEX targetIndex ON TABLE {table_name} FIELDS target;
-DEFINE INDEX timestampAndLevel ON {table_name} FIELDS timestamp, level;
-            "#,
-        );
-        self.connection
-            .query(sql)
-            .await
-            .context("failed to create table")?;
-        Ok(())
-    }
-
-    pub async fn add_entry(&self, entry: LogEntry) -> anyhow::Result<()> {
-        #[derive(Debug, Serialize, Deserialize)]
-        struct Record {
-            id: RecordId,
+        if results.is_empty() {
+            None
+        } else {
+            Some(results)
         }
-
-        let _: Option<Record> = self
-            .connection
-            .create(&self.table_name)
-            .content(entry)
-            .await
-            .context("failed to add entry")?;
-        Ok(())
-    }
-
-    fn build_query(&self, query: Query) -> String {
-        let table_name = self.table_name.as_str();
-        let offset = query.offset;
-        let limit = query.limit;
-        let mut sql = format!("SELECT * FROM {table_name} WHERE line_number >= {offset}");
-        if let Some(level) = query.level {
-            let level = level
-                .iter()
-                .map(|l| format!("level = {}", serde_json::to_string(l).unwrap()))
-                .collect::<Vec<_>>()
-                .join(" OR ");
-            sql = format!("{sql} AND ({level})");
-        }
-        if let Some(target) = query.target {
-            let target = target
-                .iter()
-                .map(|t| format!("target = {}", serde_json::to_string(t).unwrap()))
-                .collect::<Vec<_>>()
-                .join(" OR ");
-            sql = format!("{sql} AND ({target})");
-        }
-        if let Some(timestamp) = query.timestamp {
-            let start = timestamp.start;
-            let end = timestamp.end;
-            let timestamp = format!("{}..{}", start, end);
-            sql = format!("{sql} AND timestamp IN {timestamp}");
-        }
-
-        format!("{sql} ORDER BY line_number ASC LIMIT {limit}")
-    }
-
-    fn explain_query(&self, sql: String) -> String {
-        format!("{sql} EXPLAIN FULL")
-    }
-
-    pub async fn query(&self, query: Query) -> anyhow::Result<Vec<LogEntry>> {
-        let sql = self.build_query(query);
-
-        #[cfg(debug_assertions)]
-        dbg!(&sql);
-
-        let mut res = self
-            .connection
-            .query(sql)
-            .await
-            .context("failed to query")?;
-        let results: Vec<LogEntry> = res.take(0).context("failed to take results")?;
-        Ok(results)
     }
 }
+
 pub struct Indexer {
     index: LogIndex,
     path: Utf8PathBuf,
@@ -199,33 +305,22 @@ struct TracingJson {
 }
 
 impl Indexer {
-    pub async fn try_new(path: Utf8PathBuf) -> anyhow::Result<Self> {
-        let index = LogIndex::try_new(format!(
-            "{}_{}",
-            super::LOGGING_DB_PREFIX,
-            path.file_name()
-                .unwrap()
-                .replace(".", "_")
-                .replace(" ", "_")
-                .replace("-", "__")
-        ))
-        .await
-        .context("failed to create index")?;
-
-        Ok(Self {
-            index,
+    pub fn new(path: Utf8PathBuf) -> Self {
+        Self {
+            index: LogIndex::new(),
             path,
             current: CurrentPos::default(),
-        })
+        }
     }
 
-    async fn handle_line(
+    fn handle_line(
         &mut self,
         line: &str,
         current: &mut CurrentPos,
         bytes_read: usize,
     ) -> anyhow::Result<()> {
-        let tracing_json: TracingJson = serde_json::from_str(line)?;
+        let tracing_json: TracingJson =
+            serde_json::from_str(line).context("failed to parse log line")?;
         let end_pos = current.end_pos + bytes_read;
         let entry = LogEntry {
             line_number: current.line,
@@ -235,7 +330,7 @@ impl Indexer {
             start_pos: current.end_pos,
             end_pos,
         };
-        self.index.add_entry(entry).await?;
+        self.index.add_entry(entry);
         current.line += 1;
         current.end_pos = end_pos;
         Ok(())
@@ -253,7 +348,7 @@ impl Indexer {
             if bytes_read == 0 {
                 break;
             }
-            self.handle_line(&line, &mut current, bytes_read).await?;
+            self.handle_line(&line, &mut current, bytes_read)?;
             line.clear();
         }
         #[cfg(test)]
@@ -263,6 +358,10 @@ impl Indexer {
         }
         self.current = current;
         Ok(())
+    }
+
+    pub fn query(&self, query: Query) -> Option<Vec<LogEntry>> {
+        self.index.query(query)
     }
 
     pub async fn on_file_change(&mut self) -> anyhow::Result<()> {
@@ -277,7 +376,7 @@ impl Indexer {
             if bytes_read == 0 {
                 break;
             }
-            self.handle_line(&line, &mut current, bytes_read).await?;
+            self.handle_line(&line, &mut current, bytes_read)?;
             line.clear();
         }
         self.current = current;
@@ -291,14 +390,13 @@ mod tests {
     use camino::Utf8PathBuf;
     use std::io::Write;
     use tempfile::NamedTempFile;
-    use tokio::fs;
 
-    #[tokio::test]
-    async fn test_log_index() {
-        let index = LogIndex::try_new("test".to_string()).await.unwrap();
+    #[test]
+    fn test_log_index() {
+        let mut index = LogIndex::new();
         let query = QueryBuilder::default().build().unwrap();
-        let results = index.query(query).await.unwrap();
-        assert!(results.is_empty(), "results should be empty");
+        let results = index.query(query);
+        assert!(results.is_none(), "results should be empty");
 
         let entry = LogEntry {
             line_number: 1,
@@ -308,7 +406,7 @@ mod tests {
             start_pos: 0,
             end_pos: 0,
         };
-        index.add_entry(entry).await.unwrap();
+        index.add_entry(entry);
 
         let entry = LogEntry {
             line_number: 2,
@@ -318,17 +416,17 @@ mod tests {
             start_pos: 0,
             end_pos: 0,
         };
-        index.add_entry(entry).await.unwrap();
+        index.add_entry(entry);
 
         let entry = LogEntry {
             line_number: 3,
             level: LoggingLevel::ERROR,
-            timestamp: 1740417699000,
+            timestamp: 1740417699001,
             target: "test".to_string(),
             start_pos: 0,
             end_pos: 0,
         };
-        index.add_entry(entry).await.unwrap();
+        index.add_entry(entry);
 
         let entry = LogEntry {
             line_number: 4,
@@ -338,11 +436,13 @@ mod tests {
             start_pos: 0,
             end_pos: 0,
         };
-        index.add_entry(entry).await.unwrap();
+        index.add_entry(entry);
+
+        dbg!(&index);
 
         // Test offset limit
         let query = QueryBuilder::default().offset(1).limit(1).build().unwrap();
-        let results = index.query(query).await.unwrap();
+        let results = index.query(query).unwrap();
         dbg!(&results);
         assert_eq!(results.len(), 1, "results should have 1 entries");
         assert_eq!(results[0].line_number, 1);
@@ -352,7 +452,7 @@ mod tests {
             .level(vec![LoggingLevel::INFO])
             .build()
             .unwrap();
-        let results = index.query(query).await.unwrap();
+        let results = index.query(query).unwrap();
         dbg!(&results);
         assert_eq!(results.len(), 2, "results should have 2 entries");
         assert_eq!(results[0].line_number, 1);
@@ -362,7 +462,7 @@ mod tests {
             .level(vec![LoggingLevel::INFO, LoggingLevel::WARN])
             .build()
             .unwrap();
-        let results = index.query(query).await.unwrap();
+        let results = index.query(query).unwrap();
         dbg!(&results);
         assert_eq!(results.len(), 3, "results should have 3 entries");
         assert_eq!(results[0].line_number, 1);
@@ -374,9 +474,9 @@ mod tests {
             .target(vec!["test".to_string()])
             .build()
             .unwrap();
-        let results = index.query(query).await.unwrap();
+        let results = index.query(query).unwrap();
         dbg!(&results);
-        assert_eq!(results.len(), 3, "results should have 2 entries");
+        assert_eq!(results.len(), 3, "results should have 3 entries");
         assert_eq!(results[0].line_number, 1);
         assert_eq!(results[1].line_number, 2);
         assert_eq!(results[2].line_number, 3);
@@ -386,7 +486,7 @@ mod tests {
             .timestamp(1740417699000..1740504078324)
             .build()
             .unwrap();
-        let results = index.query(query).await.unwrap();
+        let results = index.query(query).unwrap();
         dbg!(&results);
         assert_eq!(results.len(), 2, "results should have 2 entries");
         assert_eq!(results[0].line_number, 2);
@@ -399,15 +499,13 @@ mod tests {
             .timestamp(1740417699000..1740504078324)
             .build()
             .unwrap();
-        let results = index.query(query).await.unwrap();
+        let results = index.query(query).unwrap();
         dbg!(&results);
         assert_eq!(results.len(), 1, "results should have 1 entries");
         assert_eq!(results[0].line_number, 2);
     }
 
-    async fn create_test_log_file(
-        entries: Vec<&str>,
-    ) -> anyhow::Result<(NamedTempFile, Utf8PathBuf)> {
+    fn create_test_log_file(entries: Vec<&str>) -> anyhow::Result<(NamedTempFile, Utf8PathBuf)> {
         let mut file = NamedTempFile::new()?;
         for entry in entries {
             writeln!(file, "{}", entry)?;
@@ -420,10 +518,7 @@ mod tests {
         Ok((file, utf8_path))
     }
 
-    async fn append_to_log_file(
-        file: &mut NamedTempFile,
-        entries: Vec<&str>,
-    ) -> anyhow::Result<()> {
+    fn append_to_log_file(file: &mut NamedTempFile, entries: Vec<&str>) -> anyhow::Result<()> {
         for entry in entries {
             writeln!(file, "{}", entry)?;
         }
@@ -431,7 +526,7 @@ mod tests {
         Ok(())
     }
 
-    async fn get_sample_log_entries() -> Vec<&'static str> {
+    fn get_sample_log_entries() -> Vec<&'static str> {
         vec![
             r#"{"level":"INFO","target":"app::module1","timestamp":"2023-02-25T10:15:30+00:00"}"#,
             r#"{"level":"WARN","target":"app::module2","timestamp":"2023-02-25T10:16:30+00:00"}"#,
@@ -440,35 +535,33 @@ mod tests {
         ]
     }
 
-    async fn get_additional_log_entries() -> Vec<&'static str> {
+    fn get_additional_log_entries() -> Vec<&'static str> {
         vec![
             r#"{"level":"INFO","target":"app::module2","timestamp":"2023-02-25T10:19:30+00:00"}"#,
             r#"{"level":"FATAL","target":"app::module1","timestamp":"2023-02-25T10:20:30+00:00"}"#,
         ]
     }
 
-    #[tokio::test]
-    async fn test_indexer_creation() -> anyhow::Result<()> {
-        let entries = get_sample_log_entries().await;
-        let (_guard, path) = create_test_log_file(entries).await?;
+    #[test]
+    fn test_indexer_creation() {
+        let entries = get_sample_log_entries();
+        let (_guard, path) = create_test_log_file(entries).unwrap();
 
-        let indexer = Indexer::try_new(path).await?;
+        let indexer = Indexer::new(path);
         assert!(indexer.current.line == 0, "Initial line count should be 0");
         assert!(
             indexer.current.end_pos == 0,
             "Initial end position should be 0"
         );
-
-        Ok(())
     }
 
     #[tokio::test]
     async fn test_build_index() -> anyhow::Result<()> {
-        let entries = get_sample_log_entries().await;
-        let (_guard, path) = create_test_log_file(entries.clone()).await?;
+        let entries = get_sample_log_entries();
+        let (_guard, path) = create_test_log_file(entries.clone()).unwrap();
 
-        let mut indexer = Indexer::try_new(path.clone()).await?;
-        indexer.build_index().await?;
+        let mut indexer = Indexer::new(path);
+        indexer.build_index().await.unwrap();
 
         // Verify that all entries were indexed
         assert_eq!(
@@ -478,8 +571,8 @@ mod tests {
         );
 
         // Query the index to verify entries
-        let query = QueryBuilder::default().build()?;
-        let results = indexer.index.query(query).await?;
+        let query = QueryBuilder::default().build().unwrap();
+        let results = indexer.index.query(query).unwrap();
 
         assert_eq!(
             results.len(),
@@ -491,25 +584,25 @@ mod tests {
         let info_query = QueryBuilder::default()
             .level(vec![LoggingLevel::INFO])
             .build()?;
-        let info_results = indexer.index.query(info_query).await?;
+        let info_results = indexer.index.query(info_query).unwrap();
         assert_eq!(info_results.len(), 1, "Should have 1 INFO entry");
 
         let warn_query = QueryBuilder::default()
             .level(vec![LoggingLevel::WARN])
             .build()?;
-        let warn_results = indexer.index.query(warn_query).await?;
+        let warn_results = indexer.index.query(warn_query).unwrap();
         assert_eq!(warn_results.len(), 1, "Should have 1 WARN entry");
 
         let error_query = QueryBuilder::default()
             .level(vec![LoggingLevel::ERROR])
             .build()?;
-        let error_results = indexer.index.query(error_query).await?;
+        let error_results = indexer.index.query(error_query).unwrap();
         assert_eq!(error_results.len(), 1, "Should have 1 ERROR entry");
 
         let debug_query = QueryBuilder::default()
             .level(vec![LoggingLevel::DEBUG])
             .build()?;
-        let debug_results = indexer.index.query(debug_query).await?;
+        let debug_results = indexer.index.query(debug_query).unwrap();
         assert_eq!(debug_results.len(), 1, "Should have 1 DEBUG entry");
 
         Ok(())
@@ -517,12 +610,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_on_file_change() -> anyhow::Result<()> {
-        let initial_entries = get_sample_log_entries().await;
-        let (mut file, path) = create_test_log_file(initial_entries.clone()).await?;
+        let initial_entries = get_sample_log_entries();
+        let (mut file, path) = create_test_log_file(initial_entries.clone()).unwrap();
 
         // Initialize and build the initial index
-        let mut indexer = Indexer::try_new(path.clone()).await?;
-        indexer.build_index().await?;
+        let mut indexer = Indexer::new(path);
+        indexer.build_index().await.unwrap();
 
         // Verify initial indexing
         assert_eq!(
@@ -532,8 +625,8 @@ mod tests {
         );
 
         // Add more entries to the file
-        let additional_entries = get_additional_log_entries().await;
-        append_to_log_file(&mut file, additional_entries.clone()).await?;
+        let additional_entries = get_additional_log_entries();
+        append_to_log_file(&mut file, additional_entries.clone()).unwrap();
 
         // Process file changes
         indexer.on_file_change().await?;
@@ -546,8 +639,8 @@ mod tests {
         );
 
         // Query all entries
-        let query = QueryBuilder::default().build()?;
-        let results = indexer.index.query(query).await?;
+        let query = QueryBuilder::default().build().unwrap();
+        let results = indexer.index.query(query).unwrap();
         assert_eq!(
             results.len(),
             total_entries,
@@ -558,7 +651,7 @@ mod tests {
         let fatal_query = QueryBuilder::default()
             .level(vec![LoggingLevel::FATAL])
             .build()?;
-        let fatal_results = indexer.index.query(fatal_query).await?;
+        let fatal_results = indexer.index.query(fatal_query).unwrap();
         assert_eq!(
             fatal_results.len(),
             1,
@@ -570,17 +663,17 @@ mod tests {
 
     #[tokio::test]
     async fn test_indexer_with_target_filter() -> anyhow::Result<()> {
-        let entries = get_sample_log_entries().await;
-        let (_guard, path) = create_test_log_file(entries).await?;
+        let entries = get_sample_log_entries();
+        let (_guard, path) = create_test_log_file(entries).unwrap();
 
-        let mut indexer = Indexer::try_new(path).await?;
-        indexer.build_index().await?;
+        let mut indexer = Indexer::new(path);
+        indexer.build_index().await.unwrap();
 
         // Query by target
         let target_query = QueryBuilder::default()
             .target(vec!["app::module1".to_string()])
             .build()?;
-        let target_results = indexer.index.query(target_query).await?;
+        let target_results = indexer.index.query(target_query).unwrap();
 
         assert_eq!(
             target_results.len(),
@@ -602,15 +695,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_indexer_complex_query() -> anyhow::Result<()> {
-        let entries = get_sample_log_entries().await;
-        let additional_entries = get_additional_log_entries().await;
+        let entries = get_sample_log_entries();
+        let additional_entries = get_additional_log_entries();
         let mut all_entries = entries.clone();
         all_entries.extend(additional_entries.clone());
 
-        let (_guard, path) = create_test_log_file(all_entries).await?;
+        let (_guard, path) = create_test_log_file(all_entries).unwrap();
 
-        let mut indexer = Indexer::try_new(path).await?;
-        indexer.build_index().await?;
+        let mut indexer = Indexer::new(path);
+        indexer.build_index().await.unwrap();
 
         // Complex query with multiple filters
         let complex_query = QueryBuilder::default()
@@ -618,7 +711,7 @@ mod tests {
             .target(vec!["app::module2".to_string()])
             .build()?;
 
-        let complex_results = indexer.index.query(complex_query).await?;
+        let complex_results = indexer.index.query(complex_query).unwrap();
         assert_eq!(
             complex_results.len(),
             2,

@@ -35,7 +35,7 @@
     "json-schema": "0.4.0",
     "material-react-table": "3.2.1",
     "monaco-editor": "0.52.2",
-    "mui-color-input": "5.0.1",
+    "mui-color-input": "6.0.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-error-boundary": "5.0.0",

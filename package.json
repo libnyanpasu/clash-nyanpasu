@@ -85,7 +85,7 @@
     "eslint-plugin-react-compiler": "19.0.0-beta-ebf51a3-20250411",
     "eslint-plugin-react-hooks": "5.2.0",
     "globals": "16.0.0",
-    "knip": "5.46.5",
+    "knip": "5.50.4",
     "lint-staged": "15.5.1",
     "neostandard": "0.12.1",
     "npm-run-all2": "7.0.2",

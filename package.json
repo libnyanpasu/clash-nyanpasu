@@ -109,7 +109,7 @@
     "typescript": "5.8.2",
     "typescript-eslint": "8.30.1"
   },
-  "packageManager": "pnpm@10.7.1",
+  "packageManager": "pnpm@10.8.1",
   "engines": {
     "node": "22.14.0"
   },

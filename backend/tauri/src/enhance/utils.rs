@@ -100,16 +100,15 @@ pub async fn process_chain(
         match &item.data {
             ChainTypeWrapper::Merge(merge) => {
                 let mut logs = vec![];
-                let (res, process_logs) = use_merge(merge, config.to_owned());
+                let (res, process_logs) = use_merge(merge, config.clone());
                 config = res.unwrap();
                 logs.extend(process_logs);
                 result_map.insert(item.uid.to_string(), logs);
             }
             ChainTypeWrapper::Script(script) => {
                 let mut logs = vec![];
-                let (res, process_logs) = script_runner
-                    .process_script(script, config.to_owned())
-                    .await;
+                let (res, process_logs) =
+                    script_runner.process_script(script, config.clone()).await;
                 logs.extend(process_logs);
                 // TODO: 修改日记 level 格式？
                 match res {
@@ -125,4 +124,53 @@ pub async fn process_chain(
     }
 
     (config, result_map)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::enhance::chain::ChainTypeWrapper;
+
+    use super::*;
+    use serde_yaml::Value;
+
+    #[tokio::test]
+    async fn test_process_chain_order() {
+        // 准备初始配置
+        let mut initial_config = Mapping::new();
+        initial_config.insert(
+            Value::String("value".to_string()),
+            Value::String("initial".to_string()),
+        );
+
+        // 创建两个 ChainItem
+        let item_a = ChainItem {
+            uid: "a".to_string(),
+            data: ChainTypeWrapper::new_js(
+                "function main(cfg) { cfg.value = 'a'; return cfg; }".to_string(),
+            ),
+        };
+
+        let item_b = ChainItem {
+            uid: "b".to_string(),
+            data: ChainTypeWrapper::new_js(
+                "function main(cfg) { cfg.value = cfg.value + '_b'; return cfg; }".to_string(),
+            ),
+        };
+
+        let chain = vec![item_a, item_b];
+
+        // 执行处理链
+        let (final_config, logs) = process_chain(initial_config, &chain).await;
+
+        // 验证最终结果
+        assert_eq!(
+            final_config.get("value").unwrap().as_str().unwrap(),
+            "a_b",
+            "链式处理应该按顺序执行：A 将值设为 'a'，然后 B 将 'a' 修改为 'a_b'"
+        );
+
+        // 验证日志存在
+        assert!(logs.contains_key("a"), "应该包含 A 的处理日志");
+        assert!(logs.contains_key("b"), "应该包含 B 的处理日志");
+    }
 }

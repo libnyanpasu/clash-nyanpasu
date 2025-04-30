@@ -245,8 +245,8 @@ windows-sys = { version = "0.59", features = [
   "Win32_UI_WindowsAndMessaging",
   "Win32_System_Shutdown",
 ] }
-windows-core = "0.60"
-webview2-com = "0.36"
+windows-core = "0.61"
+webview2-com = "0.37"
 
 [features]
 default = ["custom-protocol", "default-meta"]

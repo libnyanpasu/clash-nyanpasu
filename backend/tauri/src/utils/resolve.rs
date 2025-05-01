@@ -35,13 +35,13 @@ fn set_window_controls_pos(
     use objc2_app_kit::NSWindowButton;
     use objc2_foundation::NSRect;
     let close = window
-        .standardWindowButton(NSWindowButton::NSWindowCloseButton)
+        .standardWindowButton(NSWindowButton::CloseButton)
         .ok_or(anyhow::anyhow!("failed to get close button"))?;
     let miniaturize = window
-        .standardWindowButton(NSWindowButton::NSWindowMiniaturizeButton)
+        .standardWindowButton(NSWindowButton::MiniaturizeButton)
         .ok_or(anyhow::anyhow!("failed to get miniaturize button"))?;
     let zoom = window
-        .standardWindowButton(NSWindowButton::NSWindowZoomButton)
+        .standardWindowButton(NSWindowButton::ZoomButton)
         .ok_or(anyhow::anyhow!("failed to get zoom button"))?;
 
     let title_bar_container_view = unsafe {

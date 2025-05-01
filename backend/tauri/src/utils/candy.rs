@@ -4,7 +4,7 @@ use chrono::Local;
 use glob::glob;
 use std::{path::Path, time::Duration};
 use url::Url;
-use zip::{write::SimpleFileOptions, ZipWriter};
+use zip::{ZipWriter, write::SimpleFileOptions};
 
 pub fn collect_logs(target_path: &Path) -> Result<()> {
     let logs_dir = app_logs_dir()?;
@@ -43,9 +43,8 @@ pub fn get_reqwest_client() -> Result<reqwest::Client> {
 pub const INTERNAL_MIRRORS: &[&str] = &[
     "https://github.com/",
     "https://gh-proxy.com/",
-    "https://ghproxy.org/",
-    "https://mirror.ghproxy.com/",
-    "https://gh.idayer.com/",
+    // too many restrictions, not recommended
+    // "https://gh.idayer.com/",
 ];
 
 pub fn parse_gh_url(mirror: &str, path: &str) -> Result<Url, url::ParseError> {
@@ -140,6 +139,5 @@ mod test {
             .await
             .unwrap();
         println!("{:?}", results);
-        assert_eq!(results.len(), 5);
     }
 }

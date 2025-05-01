@@ -18,9 +18,10 @@ type CopyToClipboardButtonProps = {
 }
 
 function CopyToClipboardButton({ onClick }: CopyToClipboardButtonProps) {
+  const { t } = useTranslation()
   return (
     <Tooltip
-      title="Copy to clipboard"
+      title={t('Copy to clipboard')}
       placement="top"
       slotProps={{
         popper: {
@@ -37,7 +38,7 @@ function CopyToClipboardButton({ onClick }: CopyToClipboardButtonProps) {
     >
       <IconButton
         size="small"
-        className="absolute right-1 top-1"
+        className="!absolute top-1 right-1"
         onClick={onClick}
       >
         <ContentPasteIcon fontSize="small" color="primary" />
@@ -96,14 +97,14 @@ export default function ServerManualPromptDialog({
         .then(() => {
           console.log('copied')
           notification({
-            title: t('Copy to clipboard'),
+            title: `Clash Nyanpasu - ${t('Service Manual Tips')}`,
             body: t('Copied to clipboard'),
           })
         })
         .catch((error) => {
           console.error(error)
           notification({
-            title: t('Copy to clipboard'),
+            title: `Clash Nyanpasu - ${t('Service Manual Tips')}`,
             body: t('Failed to copy to clipboard'),
           })
         })

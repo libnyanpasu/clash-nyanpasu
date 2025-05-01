@@ -15,8 +15,8 @@ use tokio::{
     fs::File,
     io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
     sync::{
-        mpsc::{self, Sender},
         Semaphore,
+        mpsc::{self, Sender},
     },
     time::sleep,
 };
@@ -279,12 +279,12 @@ impl<F: Fn(DownloaderState)> Downloader<F> {
                     .map(|part| {
                         part.trim()
                             .split('=')
-                            .last()
+                            .next_back()
                             .unwrap()
                             .trim_matches(['"', ';', '\''])
                     })
             })
-            .unwrap_or(self.url.path_segments().unwrap().last().unwrap());
+            .unwrap_or(self.url.path_segments().unwrap().next_back().unwrap());
         Ok((filename.to_string(), total_size))
     }
 

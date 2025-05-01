@@ -1,4 +1,4 @@
-use super::{runner::ProcessOutput, Logs, LogsExt};
+use super::{Logs, LogsExt, runner::ProcessOutput};
 use mlua::LuaSerdeExt;
 use serde::de::DeserializeOwned;
 use serde_yaml::{Mapping, Value};

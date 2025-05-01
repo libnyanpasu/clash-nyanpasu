@@ -1,13 +1,13 @@
 use crate::config::nyanpasu::ExternalControllerPortStrategy;
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use display_info::DisplayInfo;
 use fast_image_resize::{
-    images::{Image, ImageRef},
     FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer,
+    images::{Image, ImageRef},
 };
-use image::{codecs::png::PngEncoder, ColorType, ImageEncoder, ImageReader};
+use image::{ColorType, ImageEncoder, ImageReader, codecs::png::PngEncoder};
 use nanoid::nanoid;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use serde_yaml::{Mapping, Value};
 use std::{
     fs,
@@ -15,7 +15,7 @@ use std::{
     path::PathBuf,
     str::FromStr,
 };
-use tauri::{process::current_binary, AppHandle, Manager};
+use tauri::{AppHandle, Manager, process::current_binary};
 use tauri_plugin_shell::ShellExt;
 use tracing::{debug, warn};
 use tracing_attributes::instrument;
@@ -144,8 +144,10 @@ pub fn get_system_locale() -> String {
 }
 
 pub fn mapping_to_i18n_key(locale_key: &str) -> &'static str {
-    if locale_key.starts_with("zh-") {
-        "zh"
+    if locale_key.starts_with("zh-TW") {
+        "zh-TW"
+    } else if locale_key.starts_with("zh-") {
+        "zh-CN"
     } else {
         "en"
     }
@@ -240,9 +242,15 @@ pub fn get_max_scale_factor() -> f64 {
 pub fn cleanup_processes(app_handle: &AppHandle) {
     let _ = super::resolve::save_window_state(app_handle, true);
     super::resolve::resolve_reset();
-    let _ = nyanpasu_utils::runtime::block_on(async move {
+    let widget_manager = app_handle.state::<crate::widget::WidgetManager>();
+    let _ = nyanpasu_utils::runtime::block_on(async {
+        if let Err(e) = widget_manager.stop().await {
+            log::error!("failed to stop widget manager: {:?}", e);
+        };
         crate::core::CoreManager::global().stop_core().await
     });
+    #[cfg(windows)]
+    crate::shutdown_hook::set_ready_for_shutdown();
 }
 
 #[instrument(skip(app_handle))]

@@ -11,7 +11,8 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://mirror.ghproxy.com/https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update-fixed-webview-proxy.json",
+        "https://deno.elaina.moe/updater/update-fixed-webview-proxy.json",
+        "https://nyanpasu.surge.sh/updater/update-fixed-webview-proxy.json",
         "https://gh-proxy.com/https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update-fixed-webview-proxy.json",
         "https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update-fixed-webview.json"
       ]

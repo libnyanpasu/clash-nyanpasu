@@ -1,6 +1,6 @@
 use crate::{
-    config::*,
-    core::{tasks::jobs::ProfilesJobGuard, updater::ManifestVersionLatest, *},
+    config::{profile::ProfileBuilder, *},
+    core::{storage::Storage, tasks::jobs::ProfilesJobGuard, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
     feat,
     utils::{
@@ -10,17 +10,16 @@ use crate::{
         resolve::{self, save_window_state},
     },
 };
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use chrono::Local;
 use log::debug;
 use nyanpasu_ipc::api::status::CoreState;
 use profile::item_type::ProfileItemType;
-use serde::Deserialize;
-use serde_yaml::{value::TaggedValue, Mapping};
+use serde_yaml::Mapping;
 use std::{borrow::Cow, collections::VecDeque, path::PathBuf, result::Result as StdResult};
 use storage::{StorageOperationError, WebStorage};
 use sysproxy::Sysproxy;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tray::icon::TrayIcon;
 
 use tauri_plugin_dialog::{DialogExt, FileDialogBuilder};
@@ -148,26 +147,26 @@ pub async fn import_profile(url: String, option: Option<RemoteProfileOptionsBuil
 /// create a new profile
 #[tauri::command]
 #[specta::specta]
-pub async fn create_profile(item: ProfileKind, file_data: Option<String>) -> Result {
+pub async fn create_profile(item: ProfileBuilder, file_data: Option<String>) -> Result {
     tracing::trace!("create profile: {item:?}");
 
-    let is_remote = matches!(&item, ProfileKind::Remote(_));
+    let is_remote = matches!(&item, ProfileBuilder::Remote(_));
 
     let profile: Profile = match item {
-        ProfileKind::Local(builder) => builder
+        ProfileBuilder::Local(builder) => builder
             .build()
             .context("failed to build local profile")?
             .into(),
-        ProfileKind::Remote(mut builder) => builder
+        ProfileBuilder::Remote(mut builder) => builder
             .build_no_blocking()
             .await
             .context("failed to build remote profile")?
             .into(),
-        ProfileKind::Merge(builder) => builder
+        ProfileBuilder::Merge(builder) => builder
             .build()
             .context("failed to build merge profile")?
             .into(),
-        ProfileKind::Script(builder) => builder
+        ProfileBuilder::Script(builder) => builder
             .build()
             .context("failed to build script profile")?
             .into(),
@@ -278,13 +277,16 @@ pub async fn patch_profiles_config(profiles: ProfilesBuilder) -> Result {
 /// update profile by uid
 #[tauri::command]
 #[specta::specta]
-pub async fn patch_profile(uid: String, profile: ProfileKind) -> Result {
+pub async fn patch_profile(app_handle: AppHandle, uid: String, profile: ProfileBuilder) -> Result {
     tracing::debug!("patch profile: {uid} with {profile:?}");
     {
         let committer = Config::profiles().auto_commit();
         (committer.draft().patch_item(uid.clone(), profile))?;
     }
-    ProfilesJobGuard::global().lock().refresh();
+    {
+        let profiles_jobs = app_handle.state::<ProfilesJobGuard>();
+        profiles_jobs.write().refresh();
+    }
     let need_update = {
         let profiles = Config::profiles();
         let profiles = profiles.latest();
@@ -416,9 +418,6 @@ pub fn get_runtime_exists() -> Result<Vec<String>> {
 pub fn get_postprocessing_output() -> Result<PostProcessingOutput> {
     Ok(Config::runtime().latest().postprocessing_output.clone())
 }
-
-#[derive(specta::Type)]
-pub struct Test<'n>(Cow<'n, CoreState>, i64, RunType);
 
 #[tauri::command]
 #[specta::specta]
@@ -579,6 +578,7 @@ pub fn save_window_size_state() -> Result<()> {
 pub async fn fetch_latest_core_versions() -> Result<ManifestVersionLatest> {
     let mut updater = updater::UpdaterManager::global().write().await; // It is intended to block here
     (updater.fetch_latest().await)?;
+    // TODO: result key should be kebab-case
     Ok(updater.get_latest_versions())
 }
 
@@ -948,21 +948,114 @@ pub fn cleanup_processes(app_handle: AppHandle) -> Result {
 
 #[tauri::command]
 #[specta::specta]
-pub fn get_storage_item(key: String) -> Result<Option<String>> {
-    let value = (crate::core::storage::Storage::global().get_item(&key))?;
+pub fn get_storage_item(app_handle: AppHandle, key: String) -> Result<Option<String>> {
+    let storage = app_handle.state::<Storage>();
+    let value = (storage.get_item(&key))?;
     Ok(value)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn set_storage_item(key: String, value: String) -> Result {
-    (crate::core::storage::Storage::global().set_item(&key, &value))?;
+pub fn set_storage_item(app_handle: AppHandle, key: String, value: String) -> Result {
+    let storage = app_handle.state::<Storage>();
+    (storage.set_item(&key, &value))?;
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn remove_storage_item(key: String) -> Result {
-    (crate::core::storage::Storage::global().remove_item(&key))?;
+pub fn remove_storage_item(app_handle: AppHandle, key: String) -> Result {
+    let storage = app_handle.state::<Storage>();
+    (storage.remove_item(&key))?;
     Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_clash_ws_connections_state(
+    app_handle: AppHandle,
+) -> Result<crate::core::clash::ws::ClashConnectionsConnectorState> {
+    let ws_connector = app_handle.state::<crate::core::clash::ws::ClashConnectionsConnector>();
+    Ok(ws_connector.state())
+}
+
+// Updater block
+
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
+// TODO: a copied from updater metadata, and should be moved a separate updater module
+pub struct UpdateWrapper {
+    rid: tauri::ResourceId,
+    available: bool,
+    current_version: String,
+    version: String,
+    date: Option<String>,
+    body: Option<String>,
+    raw_json: serde_json::Value,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn check_update(webview: tauri::Webview) -> Result<Option<UpdateWrapper>> {
+    use crate::utils::config::{get_self_proxy, get_system_proxy};
+    use std::cmp::Ordering;
+    use tauri_plugin_updater::UpdaterExt;
+
+    let build_time = time::OffsetDateTime::parse(
+        crate::consts::BUILD_INFO.build_date,
+        &time::format_description::well_known::Rfc3339,
+    )
+    .context("failed to parse build time")?;
+    let mut builder = webview
+        .updater_builder()
+        .version_comparator(move |_, remote| {
+            use semver::Version;
+            let local = Version::parse(crate::consts::BUILD_INFO.pkg_version).ok();
+            log::trace!("[check] local: {:?}, remote: {:?}", local, remote.version);
+            match local {
+                Some(local) => {
+                    if !local.build.is_empty() && !remote.version.build.is_empty() {
+                        // ignore build info to compare the version directly
+                        match local.cmp_precedence(&remote.version) {
+                            Ordering::Less => true,
+                            Ordering::Equal => match remote.pub_date {
+                                // prefer newer build if pub_date is available
+                                Some(pub_date) => {
+                                    local.build != remote.version.build && pub_date > build_time
+                                }
+                                None => local.build != remote.version.build,
+                            },
+                            Ordering::Greater => false,
+                        }
+                    } else {
+                        local < remote.version
+                    }
+                }
+                None => false,
+            }
+        });
+    // apply proxy
+    if let Ok(proxy) = get_self_proxy() {
+        builder = builder.proxy(proxy.parse().context("failed to parse proxy")?);
+    }
+    if let Ok(Some(proxy)) = get_system_proxy() {
+        builder = builder.proxy(proxy.parse().context("failed to parse system proxy")?);
+    }
+    let updater = builder.build().context("failed to build updater")?;
+    let update = updater.check().await.context("failed to check update")?;
+    Ok(update.map(|u| {
+        let mut wrapper = UpdateWrapper {
+            available: true,
+            current_version: u.current_version.clone(),
+            version: u.version.clone(),
+            date: u.date.and_then(|d| {
+                d.format(&time::format_description::well_known::Rfc3339)
+                    .ok()
+            }),
+            body: u.body.clone(),
+            raw_json: u.raw_json.clone(),
+            ..Default::default()
+        };
+        wrapper.rid = webview.resources_table().add(u);
+        wrapper
+    }))
 }

@@ -1,7 +1,5 @@
+import type { ClashCore } from '../ipc/bindings'
 import { fetchLatestCoreVersions, getCoreVersion } from './tauri'
-import { VergeConfig } from './types'
-
-export type ClashCore = Required<VergeConfig>['clash_core']
 
 export interface Core {
   name: string
@@ -56,7 +54,7 @@ export const fetchLatestCore = async () => {
 
     return {
       ...item,
-      latest: latest,
+      latest,
     }
   })
 

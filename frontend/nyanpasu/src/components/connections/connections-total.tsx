@@ -1,26 +1,27 @@
 import { filesize } from 'filesize'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Download, Upload } from '@mui/icons-material'
 import { darken, lighten, Paper } from '@mui/material'
-import { Connection, useClashWS } from '@nyanpasu/interface'
+import { useClashConnections } from '@nyanpasu/interface'
 
 export default function ConnectionTotal() {
   const {
-    connections: { latestMessage },
-  } = useClashWS()
+    query: { data: clashConnections },
+  } = useClashConnections()
+
+  const latestClashConnections = clashConnections?.at(-1)
+
   const [downloadHighlight, setDownloadHighlight] = useState(false)
   const [uploadHighlight, setUploadHighlight] = useState(false)
 
   const downloadHighlightTimerRef = useRef<number | null>(null)
   const uploadHighlightTimerRef = useRef<number | null>(null)
 
-  const result = useMemo(() => {
-    if (!latestMessage?.data) return null
-    return JSON.parse(latestMessage.data) as Connection.Response
-  }, [latestMessage])
-
   useEffect(() => {
-    if (result?.downloadTotal && result?.downloadTotal > 0) {
+    if (
+      latestClashConnections?.downloadTotal &&
+      latestClashConnections?.downloadTotal > 0
+    ) {
       setDownloadHighlight(true)
       if (downloadHighlightTimerRef.current) {
         clearTimeout(downloadHighlightTimerRef.current)
@@ -29,10 +30,13 @@ export default function ConnectionTotal() {
         setDownloadHighlight(false)
       }, 300)
     }
-  }, [result?.downloadTotal])
+  }, [latestClashConnections?.downloadTotal])
 
   useEffect(() => {
-    if (result?.uploadTotal && result?.uploadTotal > 0) {
+    if (
+      latestClashConnections?.uploadTotal &&
+      latestClashConnections?.uploadTotal > 0
+    ) {
       setUploadHighlight(true)
       if (uploadHighlightTimerRef.current) {
         clearTimeout(uploadHighlightTimerRef.current)
@@ -41,9 +45,9 @@ export default function ConnectionTotal() {
         setUploadHighlight(false)
       }, 300)
     }
-  }, [result?.uploadTotal])
+  }, [latestClashConnections?.uploadTotal])
 
-  if (!result) {
+  if (!latestClashConnections) {
     return null
   }
 
@@ -51,7 +55,10 @@ export default function ConnectionTotal() {
     <div className="flex gap-2">
       <Paper
         elevation={0}
-        className="flex min-h-8 items-center justify-center gap-1 rounded-2xl px-2"
+        className="flex min-h-8 items-center justify-center gap-1 px-2"
+        sx={{
+          borderRadius: '1em',
+        }}
       >
         <Download
           className="scale-75"
@@ -71,12 +78,15 @@ export default function ConnectionTotal() {
           ]}
         />{' '}
         <span className="font-mono text-xs">
-          {filesize(result.downloadTotal, { pad: true })}
+          {filesize(latestClashConnections.downloadTotal, { pad: true })}
         </span>
       </Paper>
       <Paper
         elevation={0}
-        className="flex min-h-8 items-center justify-center gap-1 rounded-2xl px-2"
+        className="flex min-h-8 items-center justify-center gap-1 px-2"
+        sx={{
+          borderRadius: '1em',
+        }}
       >
         <Upload
           className="scale-75"
@@ -96,7 +106,7 @@ export default function ConnectionTotal() {
           ]}
         />{' '}
         <span className="font-mono text-xs">
-          {filesize(result.uploadTotal, { pad: true })}
+          {filesize(latestClashConnections.uploadTotal, { pad: true })}
         </span>
       </Paper>
     </div>

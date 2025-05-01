@@ -8,7 +8,7 @@ import { Visibility, VisibilityOff } from '@mui/icons-material'
 import { LoadingButton } from '@mui/lab'
 import { CircularProgress, IconButton, Paper, Tooltip } from '@mui/material'
 import Grid from '@mui/material/Grid2'
-import { useIPSB } from '@nyanpasu/interface'
+import { useIPSB, useSetting } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 
 const IP_REFRESH_SECONDS = 180
@@ -40,16 +40,20 @@ export const IPASNPanel = ({ refreshCount }: { refreshCount: number }) => {
 
   const isDrawer = useAtomValue(atomIsDrawer)
 
+  const { value } = useSetting('clash_core')
+
+  const supportMemory = value && ['mihomo', 'mihomo-alpha'].includes(value)
+
   return (
     <Grid
       size={{
-        sm: isDrawer ? 7 : 12,
-        md: 8,
-        lg: 5,
+        sm: isDrawer ? (supportMemory ? 6 : 12) : 12,
+        md: supportMemory ? 8 : 12,
+        lg: supportMemory ? 5 : 8,
         xl: 3,
       }}
     >
-      <Paper className="relative flex !h-full select-text gap-4 !rounded-3xl px-4 py-3">
+      <Paper className="relative flex !h-full gap-4 !rounded-3xl px-4 py-3 select-text">
         {data ? (
           <>
             {data.country_code && (
@@ -102,7 +106,7 @@ export const IPASNPanel = ({ refreshCount }: { refreshCount: number }) => {
 
                   <span
                     className={cn(
-                      'absolute left-0 top-0 block h-full w-full rounded-lg bg-slate-300 transition-opacity',
+                      'absolute top-0 left-0 block h-full w-full rounded-lg bg-slate-300 transition-opacity',
                       showIPAddress ? 'opacity-0' : 'animate-pulse opacity-100',
                     )}
                   />
@@ -120,7 +124,7 @@ export const IPASNPanel = ({ refreshCount }: { refreshCount: number }) => {
           </>
         ) : (
           <>
-            <div className="mb-2 mt-1.5 h-9 w-12 animate-pulse rounded-lg bg-slate-700" />
+            <div className="mt-1.5 mb-2 h-9 w-12 animate-pulse rounded-lg bg-slate-700" />
 
             <div className="flex flex-1 animate-pulse flex-col gap-1">
               <div className="mt-1.5 h-6 w-20 rounded-full bg-slate-700" />

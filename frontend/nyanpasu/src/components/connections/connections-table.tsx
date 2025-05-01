@@ -10,18 +10,22 @@ import { lazy, useDeferredValue, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { connectionTableColumnsAtom } from '@/store'
 import { containsSearchTerm } from '@/utils'
-import { Connection, useClashWS } from '@nyanpasu/interface'
+import {
+  useClashConnections,
+  type ClashConnection,
+  type ClashConnectionItem,
+} from '@nyanpasu/interface'
 import ContentDisplay from '../base/content-display'
 import { useColumns } from './connections-column-filter'
 
 const ConnectionDetailDialog = lazy(() => import('./connection-detail-dialog'))
 
-export type TableConnection = Connection.Item & {
+export type TableConnection = ClashConnectionItem & {
   downloadSpeed?: number
   uploadSpeed?: number
 }
 
-export interface TableMessage extends Omit<Connection.Response, 'connections'> {
+export interface TableMessage extends Omit<ClashConnection, 'connections'> {
   connections: TableConnection[]
 }
 
@@ -29,14 +33,18 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
   const { t, i18n } = useTranslation()
 
   const {
-    connections: { latestMessage },
-  } = useClashWS()
+    query: { data: clashConnections },
+  } = useClashConnections()
 
   const historyMessage = useRef<TableMessage | null>(null)
 
   const connectionsMessage = useMemo(() => {
-    if (!latestMessage?.data) return
-    const result = JSON.parse(latestMessage.data) as Connection.Response
+    const result = clashConnections?.at(-1)
+
+    if (!result) {
+      return historyMessage.current
+    }
+
     const updatedConnections: TableConnection[] = []
 
     const filteredConnections = searchTerm
@@ -70,7 +78,8 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
     historyMessage.current = data
 
     return data
-  }, [latestMessage?.data, searchTerm])
+  }, [clashConnections, searchTerm])
+
   const deferredTableData = useDeferredValue(connectionsMessage?.connections)
 
   const locale = useMemo(() => {
@@ -131,7 +140,7 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
   const [connectionDetailDialogOpen, setConnectionDetailDialogOpen] =
     useState(false)
   const [connectioNDetailDialogItem, setConnectionDetailDialogItem] = useState<
-    Connection.Item | undefined
+    ClashConnectionItem | undefined
   >(undefined)
 
   const table = useMaterialReactTable({
@@ -187,6 +196,7 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
         open={connectionDetailDialogOpen}
         onClose={() => setConnectionDetailDialogOpen(false)}
       />
+
       <MaterialReactTable table={table} />
     </>
   ) : (

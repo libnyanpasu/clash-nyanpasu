@@ -16,6 +16,10 @@ if (!window.ResizeObserver) {
   window.ResizeObserver = ResizeObserver
 }
 
+window.addEventListener('error', (event) => {
+  console.error(event)
+})
+
 // Set up a Router instance
 const router = createRouter({
   routeTree,

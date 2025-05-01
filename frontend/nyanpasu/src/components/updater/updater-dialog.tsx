@@ -1,8 +1,9 @@
 import { useLockFn } from 'ahooks'
 import dayjs from 'dayjs'
 import { useSetAtom } from 'jotai'
-import { lazy, Suspense, useCallback, useState } from 'react'
+import { lazy, Suspense, useCallback, useState, useTransition } from 'react'
 import { useTranslation } from 'react-i18next'
+import { IS_NIGHTLY } from '@/consts'
 import { UpdaterIgnoredAtom } from '@/store/updater'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
@@ -29,10 +30,19 @@ export default function UpdaterDialog({
   const setUpdaterIgnore = useSetAtom(UpdaterIgnoredAtom)
   const [contentLength, setContentLength] = useState(0)
   const [contentDownloaded, setContentDownloaded] = useState(0)
+  const [pending, startPending] = useTransition()
   const progress =
     contentDownloaded && contentLength
       ? (contentDownloaded / contentLength) * 100
       : 0
+  const date =
+    update.date ||
+    (typeof update.rawJson.pub_date === 'string'
+      ? update.rawJson.pub_date
+      : undefined)
+
+  console.info(date)
+
   const onDownloadEvent = useCallback((e: DownloadEvent) => {
     switch (e.event) {
       case 'Started':
@@ -45,20 +55,26 @@ export default function UpdaterDialog({
   }, [])
 
   const handleUpdate = useLockFn(async () => {
-    try {
-      // Install the update. This will also restart the app on Windows!
-      await update.download(onDownloadEvent)
-      await cleanupProcesses()
-      // cleanup and stop core
-      await update.install()
-      // On macOS and Linux you will need to restart the app manually.
-      // You could use this step to display another confirmation dialog.
-      await relaunch()
-    } catch (e) {
-      console.error(e)
-      message(formatError(e), { kind: 'error', title: t('Error') })
-    }
+    startPending(async () => {
+      try {
+        // Install the update. This will also restart the app on Windows!
+        await update.download(onDownloadEvent)
+        await cleanupProcesses()
+        // cleanup and stop core
+        await update.install()
+        // On macOS and Linux you will need to restart the app manually.
+        // You could use this step to display another confirmation dialog.
+        await relaunch()
+      } catch (e) {
+        console.error(e)
+        message(formatError(e), { kind: 'error', title: t('Error') })
+      }
+    })
   })
+
+  const releasesPageUrl = IS_NIGHTLY
+    ? `https://github.com/libnyanpasu/clash-nyanpasu/releases/tag/pre-release`
+    : `https://github.com/libnyanpasu/clash-nyanpasu/releases/tag/v${update.version}`
 
   return (
     <BaseDialog
@@ -70,32 +86,31 @@ export default function UpdaterDialog({
         onClose?.()
       }}
       onOk={handleUpdate}
+      loading={pending}
       close={t('updater.close')}
       ok={t('updater.update')}
       divider
     >
       <div
         className={cn(
-          'xs:min-w-[90vw] sm:min-w-[50vw] md:min-w-[33.3vw]',
+          'xs:min-w-[90vw] sm:min-w-[55vw] md:min-w-[33.3vw]',
           styles.UpdaterDialog,
         )}
       >
         <div className="flex items-center justify-between px-2 py-2">
           <div className="flex gap-3">
             <span className="text-xl font-bold">{update.version}</span>
-            <span className="text-xs text-slate-500">
-              {dayjs(update.date, 'YYYY-MM-DD H:mm:ss Z').format(
-                'YYYY-MM-DD HH:mm:ss',
-              )}
+            <span className="contents text-xs text-slate-500">
+              {date
+                ? dayjs(date).format('YYYY-MM-DD HH:mm:ss')
+                : 'Invalid date'}
             </span>
           </div>
           <Button
             variant="contained"
             size="small"
             onClick={() => {
-              openThat(
-                `https://github.com/libnyanpasu/clash-nyanpasu/releases/tag/v${update.version}`,
-              )
+              openThat(releasesPageUrl)
             }}
           >
             {t('updater.go')}
@@ -130,7 +145,7 @@ export default function UpdaterDialog({
             </Markdown>
           </Suspense>
         </div>
-        {contentLength && (
+        {pending && (
           <div className="mt-2 flex items-center gap-2">
             <LinearProgress
               className="flex-1"

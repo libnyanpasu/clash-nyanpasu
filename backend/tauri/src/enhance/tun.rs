@@ -1,8 +1,8 @@
 use serde_yaml::{Mapping, Value};
 
 use crate::config::{
-    nyanpasu::{ClashCore, TunStack},
     Config,
+    nyanpasu::{ClashCore, TunStack},
 };
 
 macro_rules! revise {

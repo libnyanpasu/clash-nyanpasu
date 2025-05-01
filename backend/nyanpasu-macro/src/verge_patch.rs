@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{spanned::Spanned, Data, DeriveInput, Error, Ident, LitStr, Meta, Result};
+use syn::{Data, DeriveInput, Error, Ident, LitStr, Meta, Result, spanned::Spanned};
 
 pub fn verge_patch(input: DeriveInput) -> Result<TokenStream> {
     let name = &input.ident;
@@ -10,7 +10,7 @@ pub fn verge_patch(input: DeriveInput) -> Result<TokenStream> {
     for attr in &input.attrs {
         if attr.path().is_ident("verge") {
             match &attr.meta {
-                Meta::List(ref list) => {
+                Meta::List(list) => {
                     list.parse_nested_meta(|meta| {
                         match &meta.path {
                             path if path.is_ident("patch_fn") => {

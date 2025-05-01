@@ -5,12 +5,12 @@ use std::{
 
 use crate::{
     config::nyanpasu::ClashCore,
-    utils::candy::{parse_gh_url, ReqwestSpeedTestExt},
+    utils::candy::{ReqwestSpeedTestExt, parse_gh_url},
 };
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
-use shared::{get_arch, CoreTypeMeta};
+use shared::{CoreTypeMeta, get_arch};
 use specta::Type;
 use tokio::{join, sync::RwLock};
 
@@ -45,6 +45,7 @@ pub struct ManifestVersion {
     updated_at: String,
 }
 
+// TODO: manifest v2 should be kebad-case
 #[derive(Deserialize, Serialize, Clone, Debug, Type)]
 pub struct ManifestVersionLatest {
     mihomo: String,
@@ -252,7 +253,7 @@ impl UpdaterManager {
         let version = res
             .trim()
             .split(' ')
-            .last()
+            .next_back()
             .ok_or(anyhow!("no version found"))?;
         Ok(version.to_string())
     }

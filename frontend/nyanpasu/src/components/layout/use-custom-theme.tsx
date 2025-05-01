@@ -1,13 +1,15 @@
-import { useWhyDidYouUpdate } from 'ahooks'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { mergeWith } from 'lodash-es'
-import { useEffect, useMemo } from 'react'
-import { defaultTheme } from '@/pages/-theme'
+import { PropsWithChildren, useEffect, useMemo } from 'react'
 import { themeMode as themeModeAtom } from '@/store'
 import { alpha, darken, lighten, Theme, useColorScheme } from '@mui/material'
-import { useNyanpasu } from '@nyanpasu/interface'
+import { ThemeProvider } from '@mui/material/styles'
+import { useSetting } from '@nyanpasu/interface'
 import { cn, createMDYTheme } from '@nyanpasu/ui'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+
+export const DEFAULT_COLOR = '#1867c0'
+
+export const DEFAULT_FONT_FAMILY = `"Roboto", "Helvetica", "Arial", sans-serif, "Color Emoji Flags"," Color Emoji"`
 
 const appWindow = getCurrentWebviewWindow()
 
@@ -39,44 +41,33 @@ const applyRootStyleVar = (mode: 'light' | 'dark', theme: Theme) => {
   }
 }
 
-/**
- * custom theme
- */
-export const useCustomTheme = () => {
-  const { nyanpasuConfig } = useNyanpasu()
+export const CustomTheme = ({ children }: PropsWithChildren) => {
   const themeMode = useAtomValue(themeModeAtom)
 
-  useWhyDidYouUpdate('useCustomTheme', { nyanpasuConfig, themeMode })
+  const { value: themeColor } = useSetting('theme_color')
 
   const theme = useMemo(() => {
-    const config = mergeWith(
-      {},
-      defaultTheme,
-      nyanpasuConfig?.theme_setting || {},
-      (objValue, srcValue) => {
-        return !srcValue ? objValue : srcValue
-      },
-    )
-    console.log('merged theme config: ', config)
-    const mergedTheme = createMDYTheme(config)
+    const color = themeColor || DEFAULT_COLOR
+
+    const mergedTheme = createMDYTheme(color, DEFAULT_FONT_FAMILY)
 
     applyRootStyleVar(themeMode, mergedTheme)
 
     return mergedTheme
-  }, [nyanpasuConfig?.theme_setting, themeMode])
+  }, [themeColor, themeMode])
 
-  return { theme }
+  return <ThemeProvider theme={theme}>{children}</ThemeProvider>
 }
 
-export const ThemeModeProvider = () => {
-  const { nyanpasuConfig } = useNyanpasu()
+const ThemeInner = ({ children }: PropsWithChildren) => {
+  const { value: themeMode } = useSetting('theme_mode')
 
   const setThemeMode = useSetAtom(themeModeAtom)
 
-  const { setMode } = useColorScheme()
+  const { mode, setMode } = useColorScheme()
 
   useEffect(() => {
-    if (nyanpasuConfig?.theme_mode === 'system') {
+    if (themeMode === 'system') {
       appWindow.theme().then((m) => {
         if (m) {
           setThemeMode(m)
@@ -84,13 +75,13 @@ export const ThemeModeProvider = () => {
         }
       })
     } else {
-      const chosenThemeMode = nyanpasuConfig?.theme_mode || 'light'
+      const chosenThemeMode = (themeMode as 'light' | 'dark') || 'light'
       setThemeMode(chosenThemeMode)
       setMode(chosenThemeMode)
     }
 
     const unlisten = appWindow.onThemeChanged((e) => {
-      if (nyanpasuConfig?.theme_mode === 'system') {
+      if (themeMode === 'system') {
         setThemeMode(e.payload)
         setMode(e.payload)
       }
@@ -99,7 +90,15 @@ export const ThemeModeProvider = () => {
     return () => {
       unlisten.then((fn) => fn())
     }
-  }, [nyanpasuConfig?.theme_mode, setMode, setThemeMode])
+  }, [setMode, setThemeMode, themeMode])
 
-  return null
+  return children
+}
+
+export const ThemeModeProvider = ({ children }: PropsWithChildren) => {
+  return (
+    <CustomTheme>
+      <ThemeInner>{children}</ThemeInner>
+    </CustomTheme>
+  )
 }

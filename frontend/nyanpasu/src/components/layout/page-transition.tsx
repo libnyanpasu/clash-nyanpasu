@@ -1,7 +1,7 @@
 import { AnimatePresence, motion, useIsPresent, Variant } from 'framer-motion'
 import { cloneDeep } from 'lodash-es'
 import { useContext, useRef } from 'react'
-import { useNyanpasu } from '@nyanpasu/interface'
+import { useSetting } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 import {
   getRouterContext,
@@ -91,14 +91,16 @@ function AnimatedOutlet({
 }
 
 export default function PageTransition({ className }: { className?: string }) {
-  const { nyanpasuConfig } = useNyanpasu()
+  const { value: lightenAnimationEffects } = useSetting(
+    'lighten_animation_effects',
+  )
 
   const matches = useMatches()
   const match = useMatch({ strict: false })
   const nextMatchIndex = matches.findIndex((d) => d.id === match.id) + 1
   const nextMatch = matches[nextMatchIndex]
 
-  const variants = nyanpasuConfig?.lighten_animation_effects
+  const variants = lightenAnimationEffects
     ? pageTransitionVariants.transparent
     : pageTransitionVariants.slide
 

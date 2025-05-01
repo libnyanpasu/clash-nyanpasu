@@ -16,3 +16,7 @@ tauri.preview.conf.json
 .idea
 
 *.tsbuildinfo
+
+
+manifest/site/updater/*
+!manifest/site/updater/.gitkeep

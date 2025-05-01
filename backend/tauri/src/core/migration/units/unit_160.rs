@@ -2,8 +2,8 @@ use std::borrow::Cow;
 
 use once_cell::sync::Lazy;
 use serde_yaml::{
-    value::{Tag, TaggedValue},
     Mapping,
+    value::{Tag, TaggedValue},
 };
 
 use crate::{

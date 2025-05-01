@@ -9,7 +9,7 @@ import {
   PushPinOutlined,
 } from '@mui/icons-material'
 import { alpha, Button, ButtonProps, useTheme } from '@mui/material'
-import { saveWindowSizeState, useNyanpasu } from '@nyanpasu/interface'
+import { saveWindowSizeState, useSetting } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { listen, TauriEvent, UnlistenFn } from '@tauri-apps/api/event'
@@ -34,7 +34,8 @@ const CtrlButton = (props: ButtonProps) => {
 }
 
 export const LayoutControl = ({ className }: { className?: string }) => {
-  const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu()
+  const { value: alwaysOnTop, upsert } = useSetting('always_on_top')
+
   const { data: isMaximized } = useSuspenseQuery({
     queryKey: ['isMaximized'],
     queryFn: () => appWindow.isMaximized(),
@@ -56,15 +57,14 @@ export const LayoutControl = ({ className }: { className?: string }) => {
   }, [queryClient])
 
   const toggleAlwaysOnTop = useMemoizedFn(async () => {
-    const isAlwaysOnTop = !!nyanpasuConfig?.always_on_top
-    await setNyanpasuConfig({ always_on_top: !isAlwaysOnTop })
-    await appWindow.setAlwaysOnTop(!isAlwaysOnTop)
+    await upsert(!alwaysOnTop)
+    await appWindow.setAlwaysOnTop(!alwaysOnTop)
   })
 
   return (
     <div className={cn('flex gap-1', className)} data-tauri-drag-region>
       <CtrlButton onClick={toggleAlwaysOnTop}>
-        {nyanpasuConfig?.always_on_top ? (
+        {alwaysOnTop ? (
           <PushPin fontSize="small" style={{ transform: 'rotate(15deg)' }} />
         ) : (
           <PushPinOutlined

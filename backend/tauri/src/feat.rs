@@ -7,16 +7,17 @@
 use std::borrow::Borrow;
 
 use crate::{
-    config::*,
+    config::{nyanpasu::NetworkStatisticWidgetConfig, *},
     core::{service::ipc::get_ipc_state, *},
     log_err,
     utils::{self, help::get_clash_external_port, resolve},
 };
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use handle::Message;
+use nyanpasu_egui::widget::network_statistic_large;
 use nyanpasu_ipc::api::status::CoreState;
 use serde_yaml::{Mapping, Value};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
 // 打开面板
@@ -285,7 +286,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
     let log_level = patch.app_log_level;
     let log_max_files = patch.max_log_files;
     let enable_tray_selector = patch.clash_tray_selector;
-
+    let network_statistic_widget = patch.network_statistic_widget;
     let res = || async move {
         let service_mode = patch.enable_service_mode;
         let ipc_state = get_ipc_state();
@@ -298,6 +299,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
 
         if tun_mode.is_some() {
             log::debug!(target: "app", "toggle tun mode");
+            #[allow(unused_mut)]
             let mut flag = false;
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             {
@@ -359,6 +361,23 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
 
         if enable_tray_selector.is_some() {
             handle::Handle::update_systray()?;
+        }
+
+        // TODO: refactor config with changed notify
+        if let Some(network_statistic_widget) = network_statistic_widget {
+            let widget_manager =
+                crate::consts::app_handle().state::<crate::widget::WidgetManager>();
+            let is_running = widget_manager.is_running().await;
+            match network_statistic_widget {
+                NetworkStatisticWidgetConfig::Disabled => {
+                    if is_running {
+                        widget_manager.stop().await?;
+                    }
+                }
+                NetworkStatisticWidgetConfig::Enabled(variant) => {
+                    widget_manager.start(variant).await?;
+                }
+            }
         }
 
         <Result<()>>::Ok(())

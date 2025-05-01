@@ -4,7 +4,7 @@ use crate::{
     enhance,
     utils::{dirs, help},
 };
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use nyanpasu_utils::runtime::block_on;
 use once_cell::sync::OnceCell;
 use std::{env::temp_dir, path::PathBuf};

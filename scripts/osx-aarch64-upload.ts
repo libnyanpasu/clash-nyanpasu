@@ -100,9 +100,8 @@ async function uploadAssets(releaseId: number, assets: string[]) {
       })
       consola.success(`Uploaded ${assetName}`)
     } catch (error) {
-      consola.error(
-        'Failed to upload release asset',
-        error instanceof Error ? error.message : error,
+      throw new Error(
+        `Failed to upload release asset: ${error instanceof Error ? error.message : error}`,
       )
     }
   }

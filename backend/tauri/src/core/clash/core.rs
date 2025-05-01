@@ -1,11 +1,11 @@
 use super::api;
 use crate::{
-    config::{nyanpasu::ClashCore, Config, ConfigType},
+    config::{Config, ConfigType, nyanpasu::ClashCore},
     core::logger::Logger,
     log_err,
     utils::dirs,
 };
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 #[cfg(target_os = "macos")]
 use nyanpasu_ipc::api::network::set_dns::NetworkSetDnsReq;
 use nyanpasu_ipc::{
@@ -14,8 +14,8 @@ use nyanpasu_ipc::{
 };
 use nyanpasu_utils::{
     core::{
-        instance::{CoreInstance, CoreInstanceBuilder},
         CommandEvent,
+        instance::{CoreInstance, CoreInstanceBuilder},
     },
     runtime::{block_on, spawn},
 };
@@ -27,8 +27,8 @@ use std::{
     borrow::Cow,
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, AtomicI64, Ordering},
         Arc,
+        atomic::{AtomicBool, AtomicI64, Ordering},
     },
     time::Duration,
 };

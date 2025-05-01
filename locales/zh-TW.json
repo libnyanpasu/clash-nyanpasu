@@ -6,7 +6,8 @@
       "ps": "複製環境變數 (PS)",
       "sh": "複製環境變數 (SH)"
     },
-    "select_proxies": "選擇代理",
+    "no_proxies": "無代理",
+    "select_proxies": "選取代理",
     "dashboard": "開啟儀表盤",
     "direct_mode": "直連模式",
     "global_mode": "全域模式",
@@ -35,9 +36,9 @@
   "dialog": {
     "panic": "請將此問題回報至 GitHub Issues。",
     "migrate": "檢測到舊版本設定檔，是否遷移到新版本？\n警告：此操作會覆蓋掉現有設定檔。",
-    "custom_app_dir_migrate": "你將要更改應用目錄至 %{path}。\n需要將現有資料遷移到新目錄嗎？",
+    "custom_app_dir_migrate": "你將要更改 App 目錄至 %{path}。\n需要將現有資料遷移到新目錄嗎？",
     "warning": {
-      "enable_tun_with_no_permission": "開啟 TUN 模式需要系統管理員權限或服務模式，目前都未開啟，因此 TUN 模式將無法正常工作。"
+      "enable_tun_with_no_permission": "開啟 TUN 模式需要系統管理員權限或服務模式，目前都未啟用，因此 TUN 模式將無法正常工作。"
     },
     "info": {
       "grant_core_permission": "Clash 核心需要系統管理員權限才能使 TUN 模式正常工作，是否授予？\n請注意：此操作需要輸入密碼。"

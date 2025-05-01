@@ -21,22 +21,8 @@ import {
 } from './themeComponents'
 import { MUI_BREAKPOINTS } from './themeConsts.mjs'
 
-interface ThemeSchema {
-  primary_color: string
-  secondary_color: string
-  primary_text: string
-  secondary_text: string
-  info_color: string
-  error_color: string
-  warning_color: string
-  success_color: string
-  font_family?: string
-}
-
-export const createMDYTheme = (themeSchema: ThemeSchema) => {
-  const materialColor = themeFromSourceColor(
-    argbFromHex(themeSchema.primary_color),
-  )
+export const createMDYTheme = (color: string, fontFamily?: string) => {
+  const materialColor = themeFromSourceColor(argbFromHex(color))
 
   const generatePalette = (mode: 'light' | 'dark') => {
     return createPalette({
@@ -77,7 +63,7 @@ export const createMDYTheme = (themeSchema: ThemeSchema) => {
         dark: true,
       },
       typography: {
-        fontFamily: themeSchema?.font_family,
+        fontFamily,
       },
       components: {
         MuiButton,

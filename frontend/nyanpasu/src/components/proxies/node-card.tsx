@@ -1,7 +1,8 @@
+import { useLockFn } from 'ahooks'
 import { CSSProperties, memo, useMemo } from 'react'
 import { alpha, useTheme } from '@mui/material'
 import Box from '@mui/material/Box'
-import { Clash } from '@nyanpasu/interface'
+import { ClashProxiesQueryProxyItem } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 import { PaperSwitchButton } from '../setting/modules/system-proxy'
 import DelayChip from './delay-chip'
@@ -13,15 +14,11 @@ export const NodeCard = memo(function NodeCard({
   node,
   now,
   disabled,
-  onClick,
-  onClickDelay,
   style,
 }: {
-  node: Clash.Proxy<string>
-  now?: string
+  node: ClashProxiesQueryProxyItem
+  now?: string | null
   disabled?: boolean
-  onClick: () => void
-  onClickDelay: () => Promise<void>
   style?: CSSProperties
 }) {
   const { palette } = useTheme()
@@ -30,11 +27,20 @@ export const NodeCard = memo(function NodeCard({
 
   const checked = node.name === now
 
+  const handleDelayClick = useLockFn(async () => {
+    await node.mutateDelay()
+  })
+
+  const handleClick = useLockFn(async () => {
+    await node.mutateSelect()
+  })
+
   return (
     <PaperSwitchButton
       label={node.name}
       checked={checked}
-      onClick={onClick}
+      disableLoading
+      onClick={handleClick}
       disabled={disabled}
       style={style}
       className={cn(styles.Card, delay === -1 && styles.NoDelay)}
@@ -54,7 +60,7 @@ export const NodeCard = memo(function NodeCard({
         <DelayChip
           className={styles.DelayChip}
           delay={delay}
-          onClick={onClickDelay}
+          onClick={handleDelayClick}
         />
       </Box>
     </PaperSwitchButton>

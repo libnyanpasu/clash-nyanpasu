@@ -31,7 +31,7 @@ pub enum Error {
     DatabaseCommitOperationFailed(#[from] redb::CommitError),
 
     #[error("json parse failed: {0:?}")]
-    JsonParseFailed(#[from] simd_json::Error),
+    JsonParseFailed(#[from] serde_json::Error),
 
     #[error("task issue failed: {message:?}")]
     InnerTask {

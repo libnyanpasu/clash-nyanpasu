@@ -40,7 +40,7 @@ export const DrawerContent = ({
 
         {!onlyIcon && (
           <div
-            className="mt-1 flex-1 whitespace-pre-wrap text-lg font-bold"
+            className="mt-1 flex-1 text-lg font-bold whitespace-pre-wrap"
             data-tauri-drag-region
           >
             {'Clash\nNyanpasu'}
@@ -48,7 +48,7 @@ export const DrawerContent = ({
         )}
       </div>
 
-      <div className="scrollbar-hidden flex flex-col gap-2 overflow-y-auto !overflow-x-hidden">
+      <div className="scrollbar-hidden flex flex-col gap-2 !overflow-x-hidden overflow-y-auto">
         {Object.entries(routes).map(([name, { path, icon }]) => {
           return (
             <RouteListItem

@@ -3,7 +3,7 @@
 /// Because this runner run at the start of the app, it will use eprintln or println to print the migration log.
 ///
 ///
-use dyn_clone::{clone_trait_object, DynClone};
+use dyn_clone::{DynClone, clone_trait_object};
 use semver::Version;
 use std::{borrow::Cow, cell::RefCell};
 
@@ -321,7 +321,9 @@ impl Runner<'_> {
         Ok(())
     }
     pub fn run_upcoming_units(&self) -> std::io::Result<()> {
-        println!("Running all upcoming units. It is supposed to run in Nightly build. If you see this message in Stable channel, report it in Github Issues Tracker please.");
+        println!(
+            "Running all upcoming units. It is supposed to run in Nightly build. If you see this message in Stable channel, report it in Github Issues Tracker please."
+        );
         let version = {
             let store = self.store.borrow();
             store.version.clone()

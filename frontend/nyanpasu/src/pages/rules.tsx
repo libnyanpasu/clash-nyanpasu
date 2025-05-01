@@ -4,7 +4,7 @@ import { lazy, RefObject, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { atomRulePage } from '@/components/rules/modules/store'
 import { alpha, FilledInputProps, TextField, useTheme } from '@mui/material'
-import { useClashCore } from '@nyanpasu/interface'
+import { useClashRules } from '@nyanpasu/interface'
 import { BasePage } from '@nyanpasu/ui'
 import { createFileRoute } from '@tanstack/react-router'
 
@@ -17,7 +17,7 @@ function RulesPage() {
 
   const { palette } = useTheme()
 
-  const { getRules } = useClashCore()
+  const { data } = useClashRules()
 
   const [filterText, setFilterText] = useState('')
 
@@ -28,13 +28,11 @@ function RulesPage() {
   useDebounceEffect(
     () => {
       setRule({
-        data: getRules.data?.rules.filter((each) =>
-          each.payload.includes(filterText),
-        ),
+        data: data?.rules.filter((each) => each.payload.includes(filterText)),
         scrollRef: viewportRef as RefObject<HTMLElement>,
       })
     },
-    [getRules.data, viewportRef.current, filterText],
+    [data, viewportRef.current, filterText],
     { wait: 150 },
   )
 

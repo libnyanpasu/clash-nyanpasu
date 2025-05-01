@@ -11,13 +11,17 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@tauri-apps/api": "2.2.0",
+    "@tanstack/react-query": "5.74.4",
+    "@tauri-apps/api": "2.4.0",
     "ahooks": "3.8.4",
+    "dayjs": "1.11.13",
+    "lodash-es": "4.17.21",
     "ofetch": "1.4.1",
-    "react": "19.0.0",
-    "swr": "2.3.0"
+    "react": "19.1.0",
+    "swr": "2.3.3"
   },
   "devDependencies": {
-    "@types/react": "19.0.8"
+    "@types/lodash-es": "4.17.12",
+    "@types/react": "19.0.12"
   }
 }

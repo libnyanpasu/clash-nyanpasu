@@ -10,7 +10,7 @@ import {
   Tooltip,
   useTheme,
 } from '@mui/material'
-import { useClash } from '@nyanpasu/interface'
+import { useProfile } from '@nyanpasu/interface'
 import { readText } from '@tauri-apps/plugin-clipboard-manager'
 
 export const QuickImport = () => {
@@ -22,7 +22,7 @@ export const QuickImport = () => {
 
   const [loading, setLoading] = useState(false)
 
-  const { importProfile } = useClash()
+  const { create } = useProfile()
 
   const onCopyLink = async () => {
     const text = await readText()
@@ -68,7 +68,13 @@ export const QuickImport = () => {
     try {
       setLoading(true)
 
-      await importProfile(url)
+      await create.mutateAsync({
+        type: 'url',
+        data: {
+          url,
+          option: null,
+        },
+      })
     } finally {
       setUrl('')
       setLoading(false)

@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Close } from '@mui/icons-material'
 import { IconButton } from '@mui/material'
-import { Profile, useClash } from '@nyanpasu/interface'
+import { Profile, useProfile } from '@nyanpasu/interface'
 import { SideChain } from './modules/side-chain'
 import { SideLog } from './modules/side-log'
 import { atomChainsSelected, atomGlobalChainCurrent } from './modules/store'
@@ -21,21 +21,19 @@ export const ProfileSide = ({ onClose }: ProfileSideProps) => {
 
   const [open, setOpen] = useState(false)
 
-  const [item, setItem] = useState<Profile.Item>()
+  const [item, setItem] = useState<Profile>()
 
   const isGlobalChainCurrent = useAtomValue(atomGlobalChainCurrent)
 
   const currentProfileUid = useAtomValue(atomChainsSelected)
 
-  const { getProfiles } = useClash()
+  const { query } = useProfile()
 
   const currentProfile = useMemo(() => {
-    return getProfiles.data?.items?.find(
-      (item) => item.uid === currentProfileUid,
-    )
-  }, [getProfiles.data?.items, currentProfileUid])
+    return query.data?.items?.find((item) => item.uid === currentProfileUid)
+  }, [query.data?.items, currentProfileUid])
 
-  const handleEditChain = async (_item?: Profile.Item) => {
+  const handleEditChain = async (_item?: Profile) => {
     setItem(_item)
     setOpen(true)
   }

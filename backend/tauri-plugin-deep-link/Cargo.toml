@@ -10,6 +10,9 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 include = ["src/**", "Cargo.toml", "LICENSE_*"]
 
+[lib]
+doctest = false
+
 [dependencies]
 dirs = "6"
 log = "0.4"

@@ -1,12 +1,12 @@
-use crate::{config, utils::dirs, Config};
-use anyhow::{anyhow, bail, Result};
+use crate::{Config, config, utils::dirs};
+use anyhow::{Result, anyhow, bail};
 use parking_lot::Mutex;
 use std::{
     fs,
     io::IsTerminal,
     sync::{
-        mpsc::{self, Sender},
         OnceLock,
+        mpsc::{self, Sender},
     },
     thread,
 };
@@ -16,7 +16,7 @@ use tracing_appender::{
     rolling::Rotation,
 };
 use tracing_log::log_tracer;
-use tracing_subscriber::{filter, fmt, layer::SubscriberExt, reload, EnvFilter};
+use tracing_subscriber::{EnvFilter, filter, fmt, layer::SubscriberExt, reload};
 
 use super::nyanpasu::LoggingLevel;
 
@@ -62,9 +62,11 @@ pub fn init() -> Result<()> {
     let (filter, filter_handle) = reload::Layer::new(
         EnvFilter::builder()
             .with_default_directive(
-                std::convert::Into::<filter::LevelFilter>::into(log_level).into(),
+                std::convert::Into::<filter::LevelFilter>::into(LoggingLevel::Warn).into(),
             )
-            .from_env_lossy(),
+            .from_env_lossy()
+            .add_directive(format!("nyanpasu={}", log_level).parse().unwrap())
+            .add_directive(format!("clash_nyanpasu={}", log_level).parse().unwrap()),
     );
 
     // register the logger
@@ -92,9 +94,12 @@ pub fn init() -> Result<()> {
                     .reload(
                         EnvFilter::builder()
                             .with_default_directive(
-                                std::convert::Into::<filter::LevelFilter>::into(level).into(),
+                                std::convert::Into::<filter::LevelFilter>::into(LoggingLevel::Warn)
+                                    .into(),
                             )
-                            .from_env_lossy(),
+                            .from_env_lossy()
+                            .add_directive(format!("nyanpasu={}", level).parse().unwrap())
+                            .add_directive(format!("clash_nyanpasu={}", level).parse().unwrap()),
                     )
                     .unwrap(); // panic if error
             }

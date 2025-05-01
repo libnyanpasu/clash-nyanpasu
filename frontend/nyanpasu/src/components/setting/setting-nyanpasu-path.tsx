@@ -68,7 +68,7 @@ export const SettingNyanpasuPath = () => {
       onClick: migrateAppPath,
     },
     { label: t('Open Core Dir'), onClick: openCoreDir },
-    { label: t('Open Logs Dir'), onClick: openLogsDir },
+    { label: t('Open Log Dir'), onClick: openLogsDir },
     { label: t('Collect Logs'), onClick: collectLogs },
   ].filter((x) => !!x)
 

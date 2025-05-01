@@ -17,4 +17,5 @@
     "composite": true,
   },
   "include": ["./"],
+  "exclude": ["deno"],
 }

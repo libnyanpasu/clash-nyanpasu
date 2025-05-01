@@ -8,6 +8,7 @@ export interface PaperSwitchButtonProps extends PaperButtonProps {
   label?: string
   checked: boolean
   loading?: boolean
+  disableLoading?: boolean
   children?: ReactNode
   onClick?: () => Promise<void> | void
   sxPaper?: SxProps
@@ -17,6 +18,7 @@ export const PaperSwitchButton = memo(function PaperSwitchButton({
   label,
   checked,
   loading,
+  disableLoading,
   children,
   onClick,
   sxPaper,
@@ -33,6 +35,10 @@ export const PaperSwitchButton = memo(function PaperSwitchButton({
 
   const handleClick = async () => {
     if (onClick) {
+      if (disableLoading) {
+        return onClick()
+      }
+
       setPending(true)
       await onClick()
       setPending(false)

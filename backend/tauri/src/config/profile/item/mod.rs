@@ -1,10 +1,10 @@
 #![allow(clippy::crate_in_macro_def, dead_code)]
 use super::item_type::ProfileItemType;
 use crate::{enhance::ScriptType, utils::dirs};
-use ambassador::{delegatable_trait, Delegate};
-use anyhow::{bail, Context, Result};
+use ambassador::{Delegate, delegatable_trait};
+use anyhow::{Context, Result, bail};
 use nyanpasu_macro::EnumWrapperCombined;
-use serde::{de::Visitor, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::Visitor};
 use serde_yaml::{Mapping, Value};
 use std::{borrow::Borrow, fmt::Debug, fs, io::Write};
 
@@ -94,6 +94,7 @@ pub trait ProfileCleanup: ProfileHelper {
 #[delegate(ProfileSharedSetter)]
 #[delegate(ProfileSharedGetter)]
 #[delegate(ProfileFileIo)]
+#[specta(untagged)]
 pub enum Profile {
     Remote(RemoteProfile),
     Local(LocalProfile),

@@ -11,15 +11,17 @@ import { connectionTableColumnsAtom } from '@/store'
 import parseTraffic from '@/utils/parse-traffic'
 import { Cancel, Menu } from '@mui/icons-material'
 import { Checkbox, CircularProgress, IconButton } from '@mui/material'
-import { useClash } from '@nyanpasu/interface'
+import { useClashConnections } from '@nyanpasu/interface'
 import { BaseDialog, BaseDialogProps } from '@nyanpasu/ui'
 import { TableConnection } from './connections-table'
 
 function CloseConnectionButton({ id }: { id: string }) {
-  const { deleteConnections } = useClash()
+  const { deleteConnections } = useClashConnections()
+
   const closeConnect = useLockFn(async (id?: string) => {
-    await deleteConnections(id)
+    await deleteConnections.mutateAsync(id)
   })
+
   const [loading, setLoading] = useState(false)
 
   const onClick: MouseEventHandler<HTMLButtonElement> = useCallback(

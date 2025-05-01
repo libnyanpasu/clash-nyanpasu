@@ -1,29 +1,92 @@
-import { ChangeEvent, useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useGlobalMutation } from '@/utils/mutation'
-import { message } from '@/utils/notification'
+import { sleep } from '@/utils'
 import Done from '@mui/icons-material/Done'
-import LoadingButton from '@mui/lab/LoadingButton'
+import { Button, List, ListItem, ListItemText, TextField } from '@mui/material'
 import {
-  Box,
-  List,
-  ListItem,
-  ListItemText,
-  TextField,
-  TextFieldProps,
-} from '@mui/material'
-import { useClash, useNyanpasu } from '@nyanpasu/interface'
-import { BaseCard, Expand, MenuItem } from '@nyanpasu/ui'
+  ExternalControllerPortStrategy,
+  useClashConfig,
+  useClashInfo,
+  useRuntimeProfile,
+  useSetting,
+} from '@nyanpasu/interface'
+import { BaseCard, Expand, MenuItem, TextItemProps } from '@nyanpasu/ui'
 
-export const SettingClashExternal = () => {
+const TextItem = ({
+  value,
+  label,
+  onApply,
+  applyLabel,
+  placeholder,
+}: TextItemProps) => {
   const { t } = useTranslation()
 
-  const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu()
+  const [textString, setTextString] = useState(value)
 
-  const { getClashInfo, setConfigs } = useClash()
-  const mutate = useGlobalMutation()
+  useEffect(() => {
+    setTextString(value)
+  }, [value])
 
-  type PortStrategy = 'fixed' | 'random' | 'allow_fallback'
+  return (
+    <>
+      <ListItem sx={{ pl: 0, pr: 0 }}>
+        <ListItemText primary={label} />
+
+        <TextField
+          value={textString}
+          onChange={(e) => setTextString(e.target.value)}
+          placeholder={placeholder}
+          size="small"
+          variant="outlined"
+          sx={{ width: 160 }}
+          inputProps={{
+            'aria-autocomplete': 'none',
+          }}
+        />
+      </ListItem>
+
+      <Expand open={textString !== value}>
+        <div className="flex justify-end">
+          <Button
+            variant="contained"
+            startIcon={<Done />}
+            onClick={() => onApply(textString)}
+          >
+            {applyLabel ?? t('Apply')}
+          </Button>
+        </div>
+      </Expand>
+    </>
+  )
+}
+
+const ExternalController = () => {
+  const { t } = useTranslation()
+
+  const { data, refetch } = useClashInfo()
+
+  const { upsert } = useClashConfig()
+
+  const runtimeProfile = useRuntimeProfile()
+
+  return (
+    <TextItem
+      label={t('External Controller')}
+      value={data?.server || ''}
+      onApply={async (value) => {
+        await upsert.mutateAsync({ 'external-controller': value })
+        await refetch()
+
+        // Wait for the server to apply
+        await sleep(300)
+        await runtimeProfile.refetch()
+      }}
+    />
+  )
+}
+
+const PortStrategy = () => {
+  const { t } = useTranslation()
 
   const portStrategyOptions = {
     allow_fallback: t('Allow Fallback'),
@@ -31,131 +94,59 @@ export const SettingClashExternal = () => {
     random: t('Random'),
   }
 
-  const textFieldProps: TextFieldProps = {
-    size: 'small',
-    variant: 'outlined',
-    sx: { width: 160 },
-    inputProps: {
-      'aria-autocomplete': 'none',
-    },
-  }
+  const { value, upsert } = useSetting('clash_strategy')
 
-  // What even are these fields?????
-  // I had to write the shit code to make it run like a pile of crap.
-  const [config, setConfig] = useState({
-    portStrategy:
-      nyanpasuConfig?.clash_strategy?.external_controller_port_strategy ||
-      'allow_fallback',
-    controller: getClashInfo.data?.server || '',
-    secret: getClashInfo.data?.secret || '',
-  })
+  const selected = useMemo(
+    () => value?.external_controller_port_strategy || 'allow_fallback',
+    [value],
+  )
 
-  useEffect(() => {
-    setConfig({
-      portStrategy:
-        nyanpasuConfig?.clash_strategy?.external_controller_port_strategy ||
-        'allow_fallback',
-      controller: getClashInfo.data?.server || '',
-      secret: getClashInfo.data?.secret || '',
-    })
-  }, [nyanpasuConfig, getClashInfo.data])
+  return (
+    <MenuItem
+      label={t('Port Strategy')}
+      options={portStrategyOptions}
+      selected={selected}
+      onSelected={async (value) => {
+        await upsert({
+          external_controller_port_strategy:
+            value as ExternalControllerPortStrategy,
+        })
+      }}
+      selectSx={{ width: 160 }}
+    />
+  )
+}
 
-  const [expand, setExpand] = useState(false)
+const CoreSecret = () => {
+  const { t } = useTranslation()
 
-  const [loading, setLoading] = useState(false)
+  const { data, refetch } = useClashInfo()
 
-  const apply = async () => {
-    setLoading(true)
+  const { upsert } = useClashConfig()
 
-    try {
-      await Promise.all([
-        setNyanpasuConfig({
-          clash_strategy: {
-            external_controller_port_strategy: config.portStrategy,
-          },
-        }),
+  return (
+    <TextItem
+      label={t('Core Secret')}
+      value={data?.secret || ''}
+      onApply={async (value) => {
+        await upsert.mutateAsync({ secret: value })
+        await refetch()
+      }}
+    />
+  )
+}
 
-        setConfigs({
-          'external-controller': config.controller,
-          secret: config.secret,
-        }),
-      ])
-    } catch (e) {
-      message(JSON.stringify(e), {
-        title: t('Error'),
-        kind: 'error',
-      })
-    } finally {
-      setExpand(false)
-
-      setTimeout(() => {
-        setLoading(false)
-        mutate(
-          (key) =>
-            typeof key === 'string' && key.includes('/getRuntimeConfigYaml'),
-        )
-      }, 300)
-    }
-  }
+export const SettingClashExternal = () => {
+  const { t } = useTranslation()
 
   return (
     <BaseCard label={t('Clash External Controll')}>
       <List disablePadding>
-        <ListItem sx={{ pl: 0, pr: 0 }}>
-          <ListItemText primary={t('External Controller')} />
+        <ExternalController />
 
-          <TextField
-            value={config.controller}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => {
-              setConfig((v) => ({ ...v, controller: e.target.value }))
-              setExpand(true)
-            }}
-            {...textFieldProps}
-            disabled={loading}
-          />
-        </ListItem>
+        <PortStrategy />
 
-        <MenuItem
-          label={t('Port Strategy')}
-          options={portStrategyOptions}
-          selected={config.portStrategy}
-          onSelected={(value) => {
-            setConfig((v) => ({
-              ...v,
-              portStrategy: value as PortStrategy,
-            }))
-            setExpand(true)
-          }}
-          selectSx={{ width: 160 }}
-          disabled={loading}
-        />
-
-        <ListItem sx={{ pl: 0, pr: 0 }}>
-          <ListItemText primary={t('Core Secret')} />
-
-          <TextField
-            value={config.secret}
-            disabled={loading}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => {
-              setConfig((v) => ({ ...v, secret: e.target.value }))
-              setExpand(true)
-            }}
-            {...textFieldProps}
-          />
-        </ListItem>
-
-        <Expand open={expand}>
-          <Box display="flex" justifyContent="end" alignItems="center" gap={8}>
-            <LoadingButton
-              loading={loading}
-              variant="contained"
-              startIcon={<Done />}
-              onClick={apply}
-            >
-              {t('Apply')}
-            </LoadingButton>
-          </Box>
-        </Expand>
+        <CoreSecret />
       </List>
     </BaseCard>
   )

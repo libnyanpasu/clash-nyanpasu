@@ -1,7 +1,10 @@
 use super::IVerge;
 use serde::{Deserialize, Serialize};
+use strum::{Display, EnumString};
 use tracing_subscriber::filter;
-#[derive(Deserialize, Serialize, Debug, Clone, specta::Type)]
+
+#[derive(Deserialize, Serialize, Debug, Clone, specta::Type, EnumString, Display)]
+#[strum(serialize_all = "kebab-case")]
 pub enum LoggingLevel {
     #[serde(rename = "silent", alias = "off")]
     Silent,

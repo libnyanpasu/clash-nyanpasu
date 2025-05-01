@@ -15,21 +15,14 @@
 mod tests;
 
 use boa_engine::{
-    js_str, js_string,
+    Context, JsArgs, JsData, JsError, JsResult, JsStr, JsString, js_str, js_string,
     native_function::NativeFunction,
     object::{JsObject, ObjectInitializer},
     value::{JsValue, Numeric},
-    Context, JsArgs, JsData, JsResult, JsStr, JsString,
 };
 use boa_gc::{Finalize, Trace};
 use rustc_hash::FxHashMap;
-use std::{
-    cell::RefCell,
-    collections::hash_map::Entry,
-    rc::Rc,
-    sync::{Arc, Mutex, OnceLock},
-    time::SystemTime,
-};
+use std::{cell::RefCell, collections::hash_map::Entry, rc::Rc, sync::Arc, time::SystemTime};
 
 /// This represents the different types of log messages.
 #[derive(Debug)]
@@ -55,38 +48,37 @@ fn logger(msg: LogMessage, console_state: &Console) {
 }
 
 pub trait Logger {
-    fn log(&self, msg: LogMessage, console_state: &Console);
+    type Item;
+    fn log(&mut self, msg: LogMessage, console_state: &Console);
+    fn take(&mut self) -> Vec<Self::Item>;
 }
 
-trait LoggerBox = Logger + Sync + Send + 'static;
+pub trait LoggerBox = Logger<Item = LogMessage> + Sync + Send + 'static;
 
 struct ConsoleLogger;
 
 impl Logger for ConsoleLogger {
-    fn log(&self, msg: LogMessage, console_state: &Console) {
+    type Item = LogMessage;
+    fn log(&mut self, msg: LogMessage, console_state: &Console) {
         logger(msg, console_state);
     }
-}
-
-pub static LOGGER: OnceLock<Mutex<Arc<dyn LoggerBox>>> = OnceLock::new();
-
-fn default_logger() -> Mutex<Arc<dyn LoggerBox>> {
-    Mutex::new(Arc::new(ConsoleLogger))
-}
-
-impl Logger for OnceLock<Mutex<Arc<dyn LoggerBox>>> {
-    fn log(&self, msg: LogMessage, console_state: &Console) {
-        let guard = self.get_or_init(default_logger);
-        guard
-            .lock()
-            .expect("failed to lock")
-            .log(msg, console_state);
+    fn take(&mut self) -> Vec<Self::Item> {
+        vec![]
     }
 }
 
-pub fn set_logger(logger: Arc<dyn LoggerBox>) {
-    let guard = LOGGER.get_or_init(default_logger);
-    *guard.lock().expect("failed to lock") = logger;
+thread_local! {
+    static LOGGER: RefCell<Box<dyn LoggerBox>> = RefCell::new(Box::new(ConsoleLogger));
+}
+
+pub fn inspect_logger<R>(f: impl FnOnce(&mut dyn LoggerBox) -> R) -> R {
+    LOGGER.with(|cell| f(cell.borrow_mut().as_mut()))
+}
+
+pub fn set_logger(logger: Box<dyn LoggerBox>) {
+    LOGGER.with(|cell| {
+        *cell.borrow_mut() = logger;
+    });
 }
 
 /// This represents the `console` formatter.
@@ -309,7 +301,7 @@ impl Console {
         console: &Self,
         context: &mut Context,
     ) -> JsResult<JsValue> {
-        let assertion = args.first().map_or(false, JsValue::to_boolean);
+        let assertion = args.first().is_some_and(JsValue::to_boolean);
 
         if !assertion {
             let mut args: Vec<JsValue> = args.iter().skip(1).cloned().collect();
@@ -324,7 +316,12 @@ impl Console {
                 args[0] = JsValue::new(concat);
             }
 
-            LOGGER.log(LogMessage::Error(formatter(&args, context)?), console);
+            LOGGER.with(|logger| {
+                logger
+                    .borrow_mut()
+                    .log(LogMessage::Error(formatter(&args, context)?), console);
+                Ok::<_, JsError>(())
+            })?;
         }
 
         Ok(JsValue::undefined())
@@ -362,7 +359,12 @@ impl Console {
         console: &Self,
         context: &mut Context,
     ) -> JsResult<JsValue> {
-        LOGGER.log(LogMessage::Log(formatter(args, context)?), console);
+        LOGGER.with(|logger| {
+            logger
+                .borrow_mut()
+                .log(LogMessage::Log(formatter(args, context)?), console);
+            Ok::<_, JsError>(())
+        })?;
         Ok(JsValue::undefined())
     }
 
@@ -382,7 +384,12 @@ impl Console {
         console: &Self,
         context: &mut Context,
     ) -> JsResult<JsValue> {
-        LOGGER.log(LogMessage::Error(formatter(args, context)?), console);
+        LOGGER.with(|logger| {
+            logger
+                .borrow_mut()
+                .log(LogMessage::Error(formatter(args, context)?), console);
+            Ok::<_, JsError>(())
+        })?;
         Ok(JsValue::undefined())
     }
 
@@ -402,7 +409,12 @@ impl Console {
         console: &Self,
         context: &mut Context,
     ) -> JsResult<JsValue> {
-        LOGGER.log(LogMessage::Info(formatter(args, context)?), console);
+        LOGGER.with(|logger| {
+            logger
+                .borrow_mut()
+                .log(LogMessage::Info(formatter(args, context)?), console);
+            Ok::<_, JsError>(())
+        })?;
         Ok(JsValue::undefined())
     }
 
@@ -422,7 +434,12 @@ impl Console {
         console: &Self,
         context: &mut Context,
     ) -> JsResult<JsValue> {
-        LOGGER.log(LogMessage::Log(formatter(args, context)?), console);
+        LOGGER.with(|logger| {
+            logger
+                .borrow_mut()
+                .log(LogMessage::Log(formatter(args, context)?), console);
+            Ok::<_, JsError>(())
+        })?;
         Ok(JsValue::undefined())
     }
 
@@ -443,7 +460,12 @@ impl Console {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         if !args.is_empty() {
-            LOGGER.log(LogMessage::Log(formatter(args, context)?), console);
+            LOGGER.with(|logger| {
+                logger
+                    .borrow_mut()
+                    .log(LogMessage::Log(formatter(args, context)?), console);
+                Ok::<_, JsError>(())
+            })?;
         }
 
         let stack_trace_dump = context
@@ -454,7 +476,12 @@ impl Console {
             .map(JsString::to_std_string_escaped)
             .collect::<Vec<_>>()
             .join("\n");
-        LOGGER.log(LogMessage::Log(stack_trace_dump), console);
+        LOGGER.with(|logger| {
+            logger
+                .borrow_mut()
+                .log(LogMessage::Log(stack_trace_dump), console);
+            Ok::<_, JsError>(())
+        })?;
 
         Ok(JsValue::undefined())
     }
@@ -475,7 +502,12 @@ impl Console {
         console: &Self,
         context: &mut Context,
     ) -> JsResult<JsValue> {
-        LOGGER.log(LogMessage::Warn(formatter(args, context)?), console);
+        LOGGER.with(|logger| {
+            logger
+                .borrow_mut()
+                .log(LogMessage::Warn(formatter(args, context)?), console);
+            Ok::<_, JsError>(())
+        })?;
         Ok(JsValue::undefined())
     }
 
@@ -504,7 +536,12 @@ impl Console {
         let c = console.count_map.entry(label).or_insert(0);
         *c += 1;
 
-        LOGGER.log(LogMessage::Info(format!("{msg} {c}")), console);
+        let msg = format!("{msg} {c}");
+
+        LOGGER.with(|logger| {
+            logger.borrow_mut().log(LogMessage::Info(msg), console);
+            Ok::<_, JsError>(())
+        })?;
         Ok(JsValue::undefined())
     }
 
@@ -621,7 +658,9 @@ impl Console {
                 for msg in args.iter().skip(1) {
                     concat = concat + " " + &msg.display().to_string();
                 }
-                LOGGER.log(LogMessage::Log(concat), console);
+                LOGGER.with(|logger| {
+                    logger.borrow_mut().log(LogMessage::Log(concat), console);
+                });
             },
         );
 
@@ -693,7 +732,12 @@ impl Console {
     ) -> JsResult<JsValue> {
         let group_label = formatter(args, context)?;
 
-        LOGGER.log(LogMessage::Info(format!("group: {group_label}")), console);
+        LOGGER.with(|logger| {
+            logger
+                .borrow_mut()
+                .log(LogMessage::Info(format!("group: {group_label}")), console);
+            Ok::<_, JsError>(())
+        })?;
         console.groups.push(group_label);
 
         Ok(JsValue::undefined())

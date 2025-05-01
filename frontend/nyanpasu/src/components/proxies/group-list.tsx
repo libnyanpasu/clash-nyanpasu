@@ -13,7 +13,7 @@ import {
   ListItemText,
   useTheme,
 } from '@mui/material'
-import { getServerPort, useClashCore } from '@nyanpasu/interface'
+import { getServerPort, useClashProxies } from '@nyanpasu/interface'
 import { LazyImage } from '@nyanpasu/ui'
 
 const IconRender = memo(function IconRender({ icon }: { icon: string }) {
@@ -53,7 +53,7 @@ export const GroupList = ({
   scrollRef,
   ...listItemButtonProps
 }: GroupListProps) => {
-  const { data } = useClashCore()
+  const { data } = useClashProxies()
 
   const { palette } = useTheme()
 

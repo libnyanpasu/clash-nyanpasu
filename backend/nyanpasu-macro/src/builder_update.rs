@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{spanned::Spanned, DeriveInput, Error, Ident, LitStr, Meta, Type};
+use syn::{DeriveInput, Error, Ident, LitStr, Meta, Type, spanned::Spanned};
 
 pub fn builder_update(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = format_ident!("{}", input.ident);
@@ -43,7 +43,7 @@ pub fn builder_update(input: DeriveInput) -> syn::Result<TokenStream> {
                                 }
                                 _ => {
                                     return Err(meta
-                                        .error("Only #[builder_update(ty = \"T\")] is supported"))
+                                        .error("Only #[builder_update(ty = \"T\")] is supported"));
                                 }
                             }
                             Ok(())

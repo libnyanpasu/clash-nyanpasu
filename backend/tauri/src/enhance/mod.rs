@@ -8,14 +8,14 @@ mod utils;
 
 pub use self::chain::ScriptType;
 use self::{chain::*, field::*, merge::*, script::*, tun::*};
-use crate::config::{nyanpasu::ClashCore, Config, ProfileSharedGetter};
+use crate::config::{Config, ProfileSharedGetter, nyanpasu::ClashCore};
 pub use chain::PostProcessingOutput;
 use futures::future::join_all;
 use indexmap::IndexMap;
 use serde_yaml::Mapping;
 use std::collections::HashSet;
-use utils::{merge_profiles, process_chain};
 pub use utils::{Logs, LogsExt};
+use utils::{merge_profiles, process_chain};
 
 /// Enhance mode
 /// 返回最终配置、该配置包含的键、和script执行的结果
@@ -191,11 +191,13 @@ mod tests {
         let config = use_cache(config);
         dbg!(&config);
         assert!(config.contains_key("profile"));
-        assert!(config
-            .get("profile")
-            .unwrap()
-            .as_mapping()
-            .unwrap()
-            .contains_key("do-not-override"));
+        assert!(
+            config
+                .get("profile")
+                .unwrap()
+                .as_mapping()
+                .unwrap()
+                .contains_key("do-not-override")
+        );
     }
 }

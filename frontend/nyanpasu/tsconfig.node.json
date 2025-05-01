@@ -1,6 +1,7 @@
 {
-  "include": ["vite.config.*"],
+  "include": ["vite.config.*", "tailwind.config.ts"],
   "compilerOptions": {
+    "allowJs": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "strict": true,

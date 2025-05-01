@@ -8,7 +8,7 @@ export const ScrollCurrentNode = ({ onClick }: { onClick?: () => void }) => {
   const { palette } = useTheme()
 
   return (
-    <Tooltip title={t('Location')}>
+    <Tooltip title={t('Locate')}>
       <Button
         size="small"
         className="!size-8 !min-w-0"

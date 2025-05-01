@@ -1,10 +1,14 @@
-use std::sync::LazyLock;
+#![allow(dead_code)]
+use std::sync::{Arc, LazyLock};
 
-use crate::utils::svg::{render_svg_with_current_color_replace, SvgExt};
 use eframe::egui::{
-    self, include_image, style::Selection, Color32, Id, Image, Layout, Margin, RichText, Rounding,
-    Sense, Stroke, Style, TextureOptions, Theme, Vec2, ViewportCommand, Visuals, WidgetText,
+    self, Color32, CornerRadius, Id, Image, Label, Layout, Margin, RichText, Sense, Stroke, Style,
+    TextWrapMode, Theme, Vec2, ViewportCommand, Visuals, WidgetText, include_image,
+    style::Selection,
 };
+use parking_lot::RwLock;
+
+use crate::{ipc::Message, widget::get_window_state_path};
 
 // Presets
 const STATUS_ICON_CONTAINER_WIDTH: f32 = 20.0;
@@ -27,7 +31,6 @@ const UP_ICON: &[u8] = include_bytes!("../../assets/up.svg");
 const DOWN_ICON: &[u8] = include_bytes!("../../assets/down.svg");
 
 fn setup_custom_style(ctx: &egui::Context) {
-    ctx.style_mut(use_global_styles);
     ctx.style_mut_of(Theme::Light, use_light_green_accent);
     ctx.style_mut_of(Theme::Dark, use_dark_purple_accent);
 }
@@ -37,7 +40,9 @@ fn setup_fonts(ctx: &egui::Context) {
 
     fonts.font_data.insert(
         "Inter".to_owned(),
-        egui::FontData::from_static(include_bytes!("../../assets/Inter-Regular.ttf")),
+        Arc::new(egui::FontData::from_static(include_bytes!(
+            "../../assets/Inter-Regular.ttf"
+        ))),
     );
 
     fonts
@@ -50,17 +55,13 @@ fn setup_fonts(ctx: &egui::Context) {
 }
 
 fn use_global_styles(styles: &mut Style) {
-    for (text_style, font_id) in styles.text_styles.iter_mut() {
-        if matches!(text_style, egui::TextStyle::Body) {
-            font_id.size = 8.0;
-        }
-    }
-    styles.spacing.window_margin = Margin::same(0.0);
+    styles.spacing.window_margin = Margin::same(0);
     styles.spacing.item_spacing = Vec2::new(0.0, 0.0);
     styles.interaction.selectable_labels = false;
 }
 
 fn use_light_green_accent(style: &mut Style) {
+    use_global_styles(style);
     style.visuals.override_text_color = Some(LIGHT_MODE_TEXT_COLOR);
     style.visuals.hyperlink_color = Color32::from_rgb(18, 180, 85);
     style.visuals.text_cursor.stroke.color = Color32::from_rgb(28, 92, 48);
@@ -71,6 +72,7 @@ fn use_light_green_accent(style: &mut Style) {
 }
 
 fn use_dark_purple_accent(style: &mut Style) {
+    use_global_styles(style);
     style.visuals.override_text_color = Some(DARK_MODE_TEXT_COLOR);
     style.visuals.hyperlink_color = Color32::from_rgb(202, 135, 227);
     style.visuals.text_cursor.stroke.color = Color32::from_rgb(234, 208, 244);
@@ -80,19 +82,116 @@ fn use_dark_purple_accent(style: &mut Style) {
     };
 }
 
+#[derive(Clone)]
 pub struct NyanpasuNetworkStatisticSmallWidget {
-    demo_size: u64,
+    state: Arc<RwLock<NyanpasuNetworkStatisticSmallWidgetState>>,
+}
+
+struct NyanpasuNetworkStatisticSmallWidgetState {
+    // data fields
+    // download_total: u64,
+    // upload_total: u64,
+    download_speed: u64,
+    upload_speed: u64,
+
+    // eframe ctx
+    egui_ctx: egui::Context,
+}
+
+impl NyanpasuNetworkStatisticSmallWidgetState {
+    fn request_repaint(&self) {
+        self.egui_ctx.request_repaint();
+    }
 }
 
 impl NyanpasuNetworkStatisticSmallWidget {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        cc.egui_ctx.set_visuals(Visuals::light());
         setup_fonts(&cc.egui_ctx);
         setup_custom_style(&cc.egui_ctx);
         egui_extras::install_image_loaders(&cc.egui_ctx);
-        Self {
-            demo_size: 100_000_000,
+        let rx = crate::ipc::setup_ipc_receiver_with_env().unwrap();
+        let widget = Self {
+            state: Arc::new(RwLock::new(NyanpasuNetworkStatisticSmallWidgetState {
+                egui_ctx: cc.egui_ctx.clone(),
+                download_speed: 0,
+                upload_speed: 0,
+            })),
+        };
+        let this = widget.clone();
+        std::thread::spawn(move || {
+            loop {
+                match rx.recv() {
+                    Ok(msg) => {
+                        println!("Received message: {:?}", msg);
+                        let _ = this.handle_message(msg);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to receive message: {}", e);
+                        if matches!(
+                            e,
+                            ipc_channel::ipc::IpcError::Disconnected
+                                | ipc_channel::ipc::IpcError::Io(_)
+                        ) {
+                            let _ = this.handle_message(Message::Stop);
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+        widget
+    }
+
+    pub fn run() -> eframe::Result {
+        #[cfg(target_os = "macos")]
+        super::set_application_activation_policy();
+
+        let options = eframe::NativeOptions {
+            viewport: egui::ViewportBuilder::default()
+                .with_inner_size([80.0, 32.0])
+                .with_decorations(false)
+                .with_transparent(true)
+                .with_always_on_top()
+                .with_drag_and_drop(true)
+                .with_resizable(false)
+                .with_taskbar(false),
+            run_and_return: false,
+            // TODO: buggy feature, and should we manually save the window state
+            // persist_window: true,
+            // persistence_path: get_window_state_path().ok(),
+            ..Default::default()
+        };
+        println!("Running widget...");
+        eframe::run_native(
+            "Nyanpasu Network Statistic Widget",
+            options,
+            Box::new(|cc| Ok(Box::new(NyanpasuNetworkStatisticSmallWidget::new(cc)))),
+        )
+    }
+
+    pub fn handle_message(&self, msg: Message) -> anyhow::Result<()> {
+        let mut this = self.state.write();
+        match msg {
+            Message::UpdateStatistic(statistic) => {
+                // this.download_total = statistic.download_total;
+                // this.upload_total = statistic.upload_total;
+                this.download_speed = statistic.download_speed;
+                this.upload_speed = statistic.upload_speed;
+                this.request_repaint();
+            }
+            Message::Stop => {
+                std::thread::spawn(move || {
+                    // wait for 5 seconds to ensure the widget is closed, or the app will be terminated
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                    std::process::exit(0);
+                });
+                this.egui_ctx.send_viewport_cmd(ViewportCommand::Close);
+            }
+            _ => {
+                eprintln!("Unsupported message: {:?}", msg);
+            }
         }
+        Ok(())
     }
 }
 
@@ -101,19 +200,20 @@ impl eframe::App for NyanpasuNetworkStatisticSmallWidget {
         egui::Rgba::TRANSPARENT.to_array()
     }
 
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let visuals = &ctx.style().visuals;
+        let this = self.state.read();
 
         egui::CentralPanel::default()
             .frame(
-                egui::Frame::none()
-                    .rounding(Rounding::same(40.0))
+                egui::Frame::NONE
+                    .corner_radius(CornerRadius::same(40))
                     .fill(if visuals.dark_mode {
                         DARK_MODE_BACKGROUND_COLOR
                     } else {
                         LIGHT_MODE_BACKGROUND_COLOR
                     })
-                    .inner_margin(Margin::same(4.0)),
+                    .inner_margin(Margin::same(4)),
             )
             .show(ctx, |ui| {
                 if ui
@@ -124,8 +224,8 @@ impl eframe::App for NyanpasuNetworkStatisticSmallWidget {
                 }
                 ui.horizontal(|ui| {
                     ui.allocate_ui(Vec2::new(24.0, 24.0), |ui| {
-                        egui::Frame::none()
-                            .rounding(Rounding::same(12.0))
+                        egui::Frame::NONE
+                            .corner_radius(CornerRadius::same(12))
                             .fill(*LOGO_CONTAINER_COLOR)
                             .show(ui, |ui| {
                                 ui.allocate_ui_with_layout(
@@ -149,27 +249,35 @@ impl eframe::App for NyanpasuNetworkStatisticSmallWidget {
                         let height = ui.available_height() / 2.0;
                         ui.allocate_ui_with_layout(
                             Vec2::new(width, height),
-                            Layout::left_to_right(egui::Align::Center),
+                            Layout::centered_and_justified(egui::Direction::LeftToRight),
                             |ui| {
-                                ui.label(
-                                    WidgetText::from(RichText::new(format!(
-                                        "{}/s",
-                                        humansize::format_size(self.demo_size, humansize::DECIMAL)
-                                    )))
-                                    .color(LIGHT_MODE_TEXT_COLOR),
+                                ui.add(
+                                    Label::new(
+                                        RichText::new(humansize::format_size(
+                                            this.upload_speed,
+                                            humansize::DECIMAL.suffix("/s"),
+                                        ))
+                                        .size(8.0),
+                                    )
+                                    .selectable(false)
+                                    .wrap_mode(TextWrapMode::Extend),
                                 );
                             },
                         );
                         ui.allocate_ui_with_layout(
                             Vec2::new(width, height),
-                            Layout::left_to_right(egui::Align::Center),
+                            Layout::centered_and_justified(egui::Direction::LeftToRight),
                             |ui| {
-                                ui.label(
-                                    WidgetText::from(RichText::new(format!(
-                                        "{}/s",
-                                        humansize::format_size(self.demo_size, humansize::DECIMAL)
-                                    )))
-                                    .color(LIGHT_MODE_TEXT_COLOR),
+                                ui.add(
+                                    Label::new(WidgetText::from(
+                                        RichText::new(humansize::format_size(
+                                            this.download_speed,
+                                            humansize::DECIMAL.suffix("/s"),
+                                        ))
+                                        .size(8.0),
+                                    ))
+                                    .selectable(false)
+                                    .wrap_mode(TextWrapMode::Extend),
                                 );
                             },
                         );

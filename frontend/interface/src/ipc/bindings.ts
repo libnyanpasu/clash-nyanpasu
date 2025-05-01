@@ -304,7 +304,7 @@ export const commands = {
    */
   async patchProfile(
     uid: string,
-    profile: ProfileKind,
+    profile: ProfileBuilder,
   ): Promise<Result<null, string>> {
     try {
       return {
@@ -320,7 +320,7 @@ export const commands = {
    * create a new profile
    */
   async createProfile(
-    item: ProfileKind,
+    item: ProfileBuilder,
     fileData: string | null,
   ): Promise<Result<null, string>> {
     try {
@@ -707,9 +707,36 @@ export const commands = {
       else return { status: 'error', error: e as any }
     }
   },
+  async getClashWsConnectionsState(): Promise<
+    Result<ClashConnectionsConnectorState, string>
+  > {
+    try {
+      return {
+        status: 'ok',
+        data: await TAURI_INVOKE('get_clash_ws_connections_state'),
+      }
+    } catch (e) {
+      if (e instanceof Error) throw e
+      else return { status: 'error', error: e as any }
+    }
+  },
+  async checkUpdate(): Promise<Result<UpdateWrapper | null, string>> {
+    try {
+      return { status: 'ok', data: await TAURI_INVOKE('check_update') }
+    } catch (e) {
+      if (e instanceof Error) throw e
+      else return { status: 'error', error: e as any }
+    }
+  },
 }
 
 /** user-defined events **/
+
+export const events = __makeEvents__<{
+  clashConnectionsEvent: ClashConnectionsEvent
+}>({
+  clashConnectionsEvent: 'clash-connections-event',
+})
 
 /** user-defined constants **/
 
@@ -736,6 +763,20 @@ export type ChunkStatus = {
   speed: number
 }
 export type ChunkThreadState = 'Idle' | 'Downloading' | 'Finished'
+export type ClashConnectionsConnectorEvent =
+  | { kind: 'state_changed'; data: ClashConnectionsConnectorState }
+  | { kind: 'update'; data: ClashConnectionsInfo }
+export type ClashConnectionsConnectorState =
+  | 'disconnected'
+  | 'connecting'
+  | 'connected'
+export type ClashConnectionsEvent = ClashConnectionsConnectorEvent
+export type ClashConnectionsInfo = {
+  downloadTotal: number
+  uploadTotal: number
+  downloadSpeed: number
+  uploadSpeed: number
+}
 export type ClashCore =
   | 'clash'
   | 'clash-rs'
@@ -837,11 +878,6 @@ export type IVerge = {
    */
   theme_mode: string | null
   /**
-   * enable blur mode
-   * maybe be able to set the alpha
-   */
-  theme_blur: boolean | null
-  /**
    * enable traffic graph default is true
    */
   traffic_graph: boolean | null
@@ -888,7 +924,7 @@ export type IVerge = {
   /**
    * theme setting
    */
-  theme_setting: IVergeTheme | null
+  theme_color: string | null
   /**
    * web ui list
    */
@@ -964,19 +1000,10 @@ export type IVerge = {
    * TODO: 弃用此字段，转移到 clash config 里
    */
   tun_stack: TunStack | null
-}
-export type IVergeTheme = {
-  primary_color: string | null
-  secondary_color: string | null
-  primary_text: string | null
-  secondary_text: string | null
-  info_color: string | null
-  error_color: string | null
-  warning_color: string | null
-  success_color: string | null
-  font_family: string | null
-  css_injection: string | null
-  page_transition_duration: number | null
+  /**
+   * 是否启用网络统计信息浮窗
+   */
+  network_statistic_widget?: NetworkStatisticWidgetConfig | null
 }
 export type JsonValue =
   | null
@@ -1122,6 +1149,9 @@ export type MergeProfileBuilder = {
    */
   updated: number | null
 }
+export type NetworkStatisticWidgetConfig =
+  | { kind: 'disabled' }
+  | { kind: 'enabled'; value: StatisticWidgetVariant }
 export type PatchRuntimeConfig = {
   allow_lan?: boolean | null
   ipv6?: boolean | null
@@ -1148,20 +1178,20 @@ export type PostProcessingOutput = {
   advice: [LogSpan, string][]
 }
 export type Profile =
-  | { Remote: RemoteProfile }
-  | { Local: LocalProfile }
-  | { Merge: MergeProfile }
-  | { Script: ScriptProfile }
+  | RemoteProfile
+  | LocalProfile
+  | MergeProfile
+  | ScriptProfile
+export type ProfileBuilder =
+  | RemoteProfileBuilder
+  | LocalProfileBuilder
+  | MergeProfileBuilder
+  | ScriptProfileBuilder
 export type ProfileItemType =
   | 'remote'
   | 'local'
   | { script: ScriptType }
   | 'merge'
-export type ProfileKind =
-  | { Remote: RemoteProfileBuilder }
-  | { Local: LocalProfileBuilder }
-  | { Merge: MergeProfileBuilder }
-  | { Script: ScriptProfileBuilder }
 /**
  * Define the `profiles.yaml` schema
  */
@@ -1443,6 +1473,7 @@ export type ScriptProfileBuilder = {
 }
 export type ScriptType = 'javascript' | 'lua'
 export type ServiceStatus = 'not_installed' | 'stopped' | 'running'
+export type StatisticWidgetVariant = 'large' | 'small'
 export type StatusInfo = {
   name: string
   version: string
@@ -1462,6 +1493,15 @@ export type SubscriptionInfo = {
 }
 export type TrayIcon = 'normal' | 'tun' | 'system_proxy'
 export type TunStack = 'system' | 'gvisor' | 'mixed'
+export type UpdateWrapper = {
+  rid: number
+  available: boolean
+  current_version: string
+  version: string
+  date: string | null
+  body: string | null
+  raw_json: JsonValue
+}
 export type UpdaterState =
   | 'idle'
   | 'downloading'

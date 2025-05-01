@@ -2,7 +2,7 @@ use crate::{
     config::*,
     utils::{dirs, help},
 };
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use fs_extra::dir::CopyOptions;
 #[cfg(windows)]
 use runas::Command as RunasCommand;

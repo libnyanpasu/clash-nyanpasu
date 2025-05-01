@@ -3,8 +3,8 @@ use std::{borrow::Cow, collections::HashMap};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
-use crate::consts::{BuildInfo, BUILD_INFO};
-use humansize::{SizeFormatter, BINARY};
+use crate::consts::{BUILD_INFO, BuildInfo};
+use humansize::{BINARY, SizeFormatter};
 use nyanpasu_utils::core::{ClashCoreType, CoreType};
 use serde::Serialize;
 use sysinfo::System;

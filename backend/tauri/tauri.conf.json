@@ -12,14 +12,14 @@
         "type": "embedBootstrapper"
       },
       "wix": {
-        "language": ["zh-CN", "en-US", "ru-RU"],
+        "language": ["en-US", "ru-RU", "zh-CN", "zh-TW"],
         "template": "./templates/installer.wxs",
         "fragmentPaths": ["./templates/cleanup.wxs"]
       },
       "nsis": {
         "displayLanguageSelector": true,
         "installerIcon": "icons/icon.ico",
-        "languages": ["SimpChinese", "English", "Russian"],
+        "languages": ["English", "Russian", "SimpChinese", "TradChinese"],
         "template": "./templates/installer.nsi",
         "installMode": "both"
       }
@@ -53,7 +53,7 @@
     },
     "linux": {
       "deb": {
-        "depends": ["openssl"]
+        "depends": []
       }
     },
     "licenseFile": "../../LICENSE",
@@ -72,7 +72,8 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlBMUM0NjMxREZCNDRGMjYKUldRbVQ3VGZNVVljbW43N0FlWjA4UkNrbTgxSWxSSXJQcExXNkZjUTlTQkIyYkJzL0tsSWF2d0cK",
       "endpoints": [
-        "https://mirror.ghproxy.com/https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update-proxy.json",
+        "https://deno.elaina.moe/updater/update-proxy.json",
+        "https://nyanpasu.surge.sh/updater/update-proxy.json",
         "https://gh-proxy.com/https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update-proxy.json",
         "https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update.json"
       ]

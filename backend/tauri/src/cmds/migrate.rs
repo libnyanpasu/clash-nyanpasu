@@ -1,8 +1,8 @@
 use clap::Args;
 
 use crate::core::migration::{
-    units::{find_migration, get_migrations},
     MigrationAdvice, Runner,
+    units::{find_migration, get_migrations},
 };
 use colored::Colorize;
 

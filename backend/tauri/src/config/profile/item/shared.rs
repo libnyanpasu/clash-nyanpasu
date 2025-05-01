@@ -3,7 +3,7 @@ use std::{fmt, str::FromStr};
 use ambassador::delegatable_trait;
 use derive_builder::Builder;
 use nyanpasu_macro::BuilderUpdate;
-use serde::{de::Visitor, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::Visitor};
 
 use crate::{
     config::profile::item_type::ProfileItemType, enhance::ScriptType, utils::dirs::app_profiles_dir,
@@ -127,7 +127,7 @@ impl ProfileSharedBuilder {
                 None => {
                     return Err(ProfileSharedBuilderError::UninitializedField(
                         "type is required",
-                    ))
+                    ));
                 }
             },
             name: builder.name.unwrap(),

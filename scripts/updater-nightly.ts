@@ -1,10 +1,16 @@
 import { execSync } from 'child_process'
+import fs from 'fs/promises'
+import path from 'path'
 import { camelCase, upperFirst } from 'lodash-es'
 import fetch from 'node-fetch'
+import semver from 'semver'
+import yargs from 'yargs'
+import { hideBin } from 'yargs/helpers'
+import { z } from 'zod'
 import { context, getOctokit } from '@actions/github'
 import tauriNightly from '../backend/tauri/overrides/nightly.conf.json'
 import { getGithubUrl } from './utils'
-import { consola } from './utils/logger'
+import { colorize, consola } from './utils/logger'
 
 const UPDATE_TAG_NAME = 'updater'
 const UPDATE_JSON_FILE = 'update-nightly.json'
@@ -12,7 +18,17 @@ const UPDATE_JSON_PROXY = 'update-nightly-proxy.json'
 const UPDATE_FIXED_WEBVIEW_FILE = 'update-nightly-fixed-webview.json'
 const UPDATE_FIXED_WEBVIEW_PROXY = 'update-nightly-fixed-webview-proxy.json'
 
-const isFixedWebview = process.argv.includes('--fixed-webview')
+const argv = yargs(hideBin(process.argv))
+  .option('fixed-webview', {
+    type: 'boolean',
+    default: false,
+  })
+  .option('cache-path', {
+    type: 'string',
+    requiresArg: false,
+  })
+  .help()
+  .parseSync()
 
 /// generate update.json
 /// upload to update tag's release asset
@@ -33,10 +49,34 @@ async function resolveUpdater() {
     ...options,
     tag: 'pre-release',
   })
-  const shortHash = await execSync(`git rev-parse --short pre-release`)
-    .toString()
-    .replace('\n', '')
-    .replace('\r', '')
+  let shortHash = ''
+  const latestContent = latestPreRelease.assets.find(
+    (o) => o.name === 'latest.json',
+  )
+  // trying to get the short hash from the latest.json
+  if (latestContent) {
+    const schema = z.object({
+      version: z.string().min(1),
+    })
+    const latest = schema.parse(
+      await fetch(latestContent.browser_download_url).then((res) => res.json()),
+    )
+
+    const version = semver.parse(latest.version)
+    if (version && version.build.length > 0) {
+      console.log(version)
+      shortHash = version.build[0]
+    }
+  }
+
+  if (!shortHash) {
+    shortHash = await execSync(`git rev-parse --short pre-release`)
+      .toString()
+      .replace('\n', '')
+      .replace('\r', '')
+      .slice(0, 7)
+  }
+
   consola.info(`latest pre-release short hash: ${shortHash}`)
   const updateData = {
     name: `v${tauriNightly.version}-alpha+${shortHash}`,
@@ -65,7 +105,7 @@ async function resolveUpdater() {
       return (
         name.endsWith(extension) &&
         name.includes(arch) &&
-        (isFixedWebview
+        (argv.fixedWebview
           ? name.includes('fixed-webview')
           : !name.includes('fixed-webview'))
       )
@@ -148,8 +188,7 @@ async function resolveUpdater() {
   // delete the null field
   Object.entries(updateData.platforms).forEach(([key, value]) => {
     if (!value.url) {
-      consola.error(`failed to parse release for "${key}"`)
-      delete updateData.platforms[key as keyof typeof updateData.platforms]
+      throw new Error(`failed to parse release for "${key}"`)
     }
   })
 
@@ -193,7 +232,7 @@ async function resolveUpdater() {
   // delete the old assets
   for (const asset of updateRelease.assets) {
     if (
-      isFixedWebview
+      argv.fixedWebview
         ? asset.name === UPDATE_FIXED_WEBVIEW_FILE
         : asset.name === UPDATE_JSON_FILE
     ) {
@@ -204,7 +243,7 @@ async function resolveUpdater() {
     }
 
     if (
-      isFixedWebview
+      argv.fixedWebview
         ? asset.name === UPDATE_FIXED_WEBVIEW_PROXY
         : asset.name === UPDATE_JSON_PROXY
     ) {
@@ -220,17 +259,42 @@ async function resolveUpdater() {
   await github.rest.repos.uploadReleaseAsset({
     ...options,
     release_id: updateRelease.id,
-    name: isFixedWebview ? UPDATE_FIXED_WEBVIEW_FILE : UPDATE_JSON_FILE,
+    name: argv.fixedWebview ? UPDATE_FIXED_WEBVIEW_FILE : UPDATE_JSON_FILE,
     data: JSON.stringify(updateData, null, 2),
   })
+
+  // cache the files if cache path is provided
+  await saveToCache(
+    argv.fixedWebview ? UPDATE_FIXED_WEBVIEW_FILE : UPDATE_JSON_FILE,
+    JSON.stringify(updateData, null, 2),
+  )
 
   await github.rest.repos.uploadReleaseAsset({
     ...options,
     release_id: updateRelease.id,
-    name: isFixedWebview ? UPDATE_FIXED_WEBVIEW_PROXY : UPDATE_JSON_PROXY,
+    name: argv.fixedWebview ? UPDATE_FIXED_WEBVIEW_PROXY : UPDATE_JSON_PROXY,
     data: JSON.stringify(updateDataNew, null, 2),
   })
+
+  // cache the proxy file if cache path is provided
+  await saveToCache(
+    argv.fixedWebview ? UPDATE_FIXED_WEBVIEW_PROXY : UPDATE_JSON_PROXY,
+    JSON.stringify(updateDataNew, null, 2),
+  )
+
   consola.success('updater files updated')
+}
+
+async function saveToCache(fileName: string, content: string) {
+  if (!argv.cachePath) return
+  try {
+    await fs.mkdir(argv.cachePath, { recursive: true })
+    const filePath = path.join(argv.cachePath, fileName)
+    await fs.writeFile(filePath, content, 'utf-8')
+    consola.success(colorize`cached file saved to: {gray.bold ${filePath}}`)
+  } catch (err) {
+    throw new Error(`Failed to save cache file: ${err}`)
+  }
 }
 
 // get the signature file content

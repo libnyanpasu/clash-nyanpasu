@@ -1,5 +1,5 @@
 use crate::{
-    config::{nyanpasu::ProxiesSelectorMode, Config},
+    config::{Config, nyanpasu::ProxiesSelectorMode},
     core::{
         clash::proxies::{Proxies, ProxiesGuard, ProxiesGuardExt},
         handle::Handle,
@@ -7,7 +7,7 @@ use crate::{
 };
 use anyhow::Context;
 use indexmap::IndexMap;
-use tauri::{menu::MenuBuilder, AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Manager, Runtime, menu::MenuBuilder};
 use tracing::{debug, error, warn};
 use tracing_attributes::instrument;
 
@@ -193,8 +193,9 @@ pub async fn proxies_updated_receiver() {
                     TrayUpdateType::Part(action_list) => {
                         debug!("should do partial update, op list: {:?}", action_list);
                         tray_proxies_holder = current_tray_proxies;
-                        platform_impl::update_selected_proxies(&action_list);
-                        debug!("update selected proxies success");
+                        debug!("todo: platform_impl::update_selected_proxies(&action_list)");
+                        // platform_impl::update_selected_proxies(&action_list);
+                        // debug!("update selected proxies success");
                     }
                     _ => {}
                 }
@@ -223,11 +224,11 @@ mod platform_impl {
     use rust_i18n::t;
     use std::sync::atomic::AtomicBool;
     use tauri::{
+        AppHandle, Manager, Runtime,
         menu::{
             CheckMenuItemBuilder, Menu, MenuBuilder, MenuItemBuilder, MenuItemKind, Submenu,
             SubmenuBuilder,
         },
-        AppHandle, Manager, Runtime,
     };
     use tracing::warn;
 
@@ -280,7 +281,7 @@ mod platform_impl {
         let mut items = Vec::new();
         if proxies.is_empty() {
             items.push(MenuItemKind::MenuItem(
-                MenuItemBuilder::new("No Proxies")
+                MenuItemBuilder::new(t!("tray.no_proxies"))
                     .id("no_proxies")
                     .enabled(false)
                     .build(app_handle)?,
@@ -493,7 +494,7 @@ pub fn on_system_tray_event(event: &str) {
     if !event.starts_with("proxy_node_") {
         return; // bypass non-select event
     }
-    let node_id = event.split('_').last().unwrap(); // safe to unwrap
+    let node_id = event.split('_').next_back().unwrap(); // safe to unwrap
     let node_id = match node_id.parse::<usize>() {
         Ok(id) => id,
         Err(e) => {

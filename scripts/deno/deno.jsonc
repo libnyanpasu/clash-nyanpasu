@@ -1,0 +1,8 @@
+{
+  "tasks": {
+    "upload-macos-updater": {
+      "description": "Upload macOS updater to GitHub Releases",
+      "command": "deno run -A upload-macos-updater.ts",
+    },
+  },
+}

@@ -13,12 +13,18 @@ import {
 import { Virtualizer, VListHandle } from 'virtua'
 import { proxyGroupAtom, proxyGroupSortAtom } from '@/store'
 import { proxiesFilterAtom } from '@/store/proxies'
-import { Clash, useClashCore, useNyanpasu } from '@nyanpasu/interface'
+import {
+  ClashProxiesQueryProxyItem,
+  ProxyGroupItem,
+  useClashProxies,
+  useProxyMode,
+  useSetting,
+} from '@nyanpasu/interface'
 import { cn, useBreakpointValue } from '@nyanpasu/ui'
 import NodeCard from './node-card'
 import { nodeSortingFn } from './utils'
 
-type RenderClashProxy = Clash.Proxy<string> & { renderLayoutKey: string }
+type RenderClashProxy = ClashProxiesQueryProxyItem & { renderLayoutKey: string }
 
 export interface NodeListRef {
   scrollToCurrent: () => void
@@ -28,15 +34,9 @@ export const NodeList = forwardRef(function NodeList(
   { scrollRef }: { scrollRef: RefObject<HTMLElement> },
   ref,
 ) {
-  const {
-    data,
-    setGroupProxy,
-    setGlobalProxy,
-    updateProxiesDelay,
-    getAllProxiesProviders,
-  } = useClashCore()
+  const { data } = useClashProxies()
 
-  const { getCurrentMode } = useNyanpasu()
+  const { value: proxyMode } = useProxyMode()
 
   const proxyGroup = useAtomValue(proxyGroupAtom)
   const proxiesFilter = useAtomValue(proxiesFilterAtom)
@@ -44,12 +44,13 @@ export const NodeList = forwardRef(function NodeList(
 
   const proxyGroupSort = useAtomValue(proxyGroupSortAtom)
 
-  const [group, setGroup] = useState<Clash.Proxy<Clash.Proxy<string>>>()
+  const [group, setGroup] = useState<ProxyGroupItem>()
 
   const sortGroup = useCallback(() => {
-    if (!getCurrentMode.global) {
+    if (!proxyMode.global) {
       if (proxyGroup.selector !== null) {
-        const selectedGroup = data?.groups[proxyGroup.selector]
+        // eslint-disable-next-line @typescript-eslint/no-non-null-asserted-optional-chain
+        const selectedGroup = data?.groups[proxyGroup.selector]!
 
         if (selectedGroup) {
           setGroup(nodeSortingFn(selectedGroup, proxyGroupSort))
@@ -63,12 +64,11 @@ export const NodeList = forwardRef(function NodeList(
       }
     }
   }, [
-    data?.global,
-    data?.groups,
+    proxyMode.global,
     proxyGroup.selector,
-    getCurrentMode,
+    data?.groups,
+    data?.global,
     proxyGroupSort,
-    setGroup,
   ])
 
   useEffect(() => {
@@ -113,7 +113,7 @@ export const NodeList = forwardRef(function NodeList(
       }
 
       result[Math.floor(index / column)].push({
-        ...value,
+        ...(value as ClashProxiesQueryProxyItem),
         renderLayoutKey: getKey(),
       })
 
@@ -125,17 +125,7 @@ export const NodeList = forwardRef(function NodeList(
     setRenderList(list)
   }, [group?.all, group?.name, column, deferredProxiesFilter])
 
-  const handleClick = (node: string) => {
-    if (!getCurrentMode.global) {
-      setGroupProxy(proxyGroup.selector as number, node)
-    } else {
-      setGlobalProxy(node)
-    }
-  }
-
-  const { nyanpasuConfig } = useNyanpasu()
-
-  const disableMotion = nyanpasuConfig?.lighten_animation_effects
+  const { value: disableMotion } = useSetting('lighten_animation_effects')
 
   const vListRef = useRef<VListHandle>(null)
 
@@ -151,18 +141,6 @@ export const NodeList = forwardRef(function NodeList(
       })
     },
   }))
-
-  const handleClickDelay = async (name: string) => {
-    const getGroupTestUrl = () => {
-      if (group?.name) {
-        return getAllProxiesProviders.data?.[group?.name].testUrl
-      }
-    }
-
-    await updateProxiesDelay(name, {
-      url: getGroupTestUrl(),
-    })
-  }
 
   return (
     <AnimatePresence initial={false} mode="sync">
@@ -180,10 +158,6 @@ export const NodeList = forwardRef(function NodeList(
                     node={render}
                     now={group?.now}
                     disabled={group?.type !== 'Selector'}
-                    onClick={() => handleClick(render.name)}
-                    onClickDelay={async () =>
-                      await handleClickDelay(render.name)
-                    }
                   />
                 )
 

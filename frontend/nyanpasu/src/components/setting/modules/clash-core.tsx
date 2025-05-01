@@ -17,10 +17,10 @@ import { alpha, useTheme } from '@mui/material/styles'
 import Tooltip from '@mui/material/Tooltip'
 import {
   ClashCore,
-  Core,
+  ClashCoresDetail,
   InspectUpdater,
   inspectUpdater,
-  useNyanpasu,
+  useClashCores,
 } from '@nyanpasu/interface'
 import { cleanDeepClickEvent, cn } from '@nyanpasu/ui'
 
@@ -71,7 +71,7 @@ const CardProgress = ({
   return (
     <motion.div
       className={cn(
-        'absolute left-0 top-0 z-10 h-full w-full rounded-2xl backdrop-blur',
+        'absolute top-0 left-0 z-10 h-full w-full rounded-2xl backdrop-blur',
         'flex flex-col items-center justify-center gap-2',
       )}
       style={{
@@ -112,7 +112,8 @@ const CardProgress = ({
 
 export interface ClashCoreItemProps {
   selected: boolean
-  data: Core
+  data: ClashCoresDetail
+  core: ClashCore
   onClick: (core: ClashCore) => void
 }
 
@@ -132,15 +133,18 @@ export interface ClashCoreItemProps {
 export const ClashCoreItem = ({
   selected,
   data,
+  core,
   onClick,
 }: ClashCoreItemProps) => {
   const { t } = useTranslation()
 
   const { palette } = useTheme()
 
-  const { updateCore, getClashCore } = useNyanpasu()
+  const { query, updateCore } = useClashCores()
 
-  const haveNewVersion = data.latest ? data.latest !== data.version : false
+  const haveNewVersion = data.latestVersion
+    ? data.latestVersion !== data.currentVersion
+    : false
 
   const [downloadState, setDownloadState] = useState(false)
 
@@ -150,7 +154,11 @@ export const ClashCoreItem = ({
     try {
       setDownloadState(true)
 
-      const updaterId = await updateCore(data.core)
+      const updaterId = await updateCore.mutateAsync(core)
+
+      if (!updaterId) {
+        throw new Error('Failed to update')
+      }
 
       await new Promise<void>((resolve, reject) => {
         const interval = setInterval(async () => {
@@ -176,7 +184,7 @@ export const ClashCoreItem = ({
         }, 100)
       })
 
-      getClashCore.mutate()
+      await query.refetch()
 
       message(t('Successfully updated the core', { core: `${data.name}` }), {
         kind: 'info',
@@ -207,14 +215,14 @@ export const ClashCoreItem = ({
         selected={selected}
         onClick={() => {
           if (!downloadState) {
-            onClick(data.core)
+            onClick(core)
           }
         }}
       >
         <CardProgress data={updater} show={downloadState} />
 
         <div className="flex w-full items-center gap-2 p-4">
-          <img style={{ width: '64px' }} src={getImage(data.core)} />
+          <img style={{ width: '64px' }} src={getImage(core)} />
 
           <div className="flex-1">
             <div className="truncate font-bold">
@@ -227,10 +235,10 @@ export const ClashCoreItem = ({
               )}
             </div>
 
-            <div className="truncate text-sm">{data.version}</div>
+            <div className="truncate text-sm">{data.currentVersion}</div>
 
             {haveNewVersion && (
-              <div className="truncate text-sm">New: {data.latest}</div>
+              <div className="truncate text-sm">New: {data.latestVersion}</div>
             )}
           </div>
 

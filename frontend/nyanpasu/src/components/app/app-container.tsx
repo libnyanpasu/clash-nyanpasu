@@ -74,12 +74,12 @@ export const AppContainer = ({
 
       <div className={styles.container}>
         {OS === 'windows' && (
-          <LayoutControl className="!z-top fixed right-4 top-2" />
+          <LayoutControl className="!z-top fixed top-2 right-4" />
         )}
         {/* TODO: add a framer motion animation to toggle the maximized state */}
         {OS === 'macos' && !isMaximized && (
           <div
-            className="z-top fixed left-4 top-3 h-8 w-[4.5rem] rounded-full"
+            className="z-top fixed top-3 left-4 h-8 w-[4.5rem] rounded-full"
             style={{ backgroundColor: alpha(palette.primary.main, 0.1) }}
           />
         )}

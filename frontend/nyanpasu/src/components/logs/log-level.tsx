@@ -1,19 +1,17 @@
 import { useState } from 'react'
 import { alpha, Button, Menu, MenuItem, useTheme } from '@mui/material'
+import { useLogContext } from './log-provider'
 
-export interface LogLevelProps {
-  value: string
-  onChange: (value: string) => void
-}
+export const LogLevel = () => {
+  const { logLevel, setLogLevel } = useLogContext()
 
-export const LogLevel = ({ value, onChange }: LogLevelProps) => {
   const { palette } = useTheme()
 
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
 
   const handleClick = (value: string) => {
     setAnchorEl(null)
-    onChange(value)
+    setLogLevel(value)
   }
 
   const mapping: { [key: string]: string } = {
@@ -33,7 +31,7 @@ export const LogLevel = ({ value, onChange }: LogLevelProps) => {
         }}
         onClick={(e) => setAnchorEl(e.currentTarget)}
       >
-        {mapping[value]}
+        {mapping[logLevel]}
       </Button>
 
       <Menu

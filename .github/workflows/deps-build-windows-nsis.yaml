@@ -85,13 +85,6 @@ jobs:
         run: |
           rustup target add ${{ inputs.arch }}-pc-windows-msvc
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: './backend/'
-          prefix-key: 'rust-stable'
-          key: windows-latest
-          shared-key: 'release'
-
       - name: Install Node latest
         uses: actions/setup-node@v4
         with:

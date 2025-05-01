@@ -1,13 +1,9 @@
 use crate::{
     config::{
-        nyanpasu::{ClashCore, WindowState},
         Config, IVerge,
+        nyanpasu::{ClashCore, WindowState},
     },
-    core::{
-        tasks::{jobs::ProfilesJobGuard, JobsManager},
-        tray::proxies,
-        *,
-    },
+    core::{storage::Storage, tray::proxies, *},
     log_err, trace_err,
     utils::init,
 };
@@ -18,7 +14,7 @@ use std::{
     net::TcpListener,
     sync::atomic::{AtomicU16, Ordering},
 };
-use tauri::{async_runtime::block_on, App, AppHandle, Emitter, Listener, Manager};
+use tauri::{App, AppHandle, Emitter, Listener, Manager, async_runtime::block_on};
 use tauri_plugin_shell::ShellExt;
 static OPEN_WINDOWS_COUNTER: AtomicU16 = AtomicU16::new(0);
 
@@ -112,6 +108,7 @@ pub fn resolve_setup(app: &mut App) {
     });
 
     handle::Handle::global().init(app.app_handle().clone());
+    crate::consts::setup_app_handle(app.app_handle().clone());
 
     log_err!(init::init_resources());
     log_err!(init::init_service());
@@ -148,9 +145,25 @@ pub fn resolve_setup(app: &mut App) {
     log::trace!("init config");
     log_err!(Config::init_config());
 
+    log::trace!("init storage");
+    log_err!(crate::core::storage::setup(app));
+
     log::trace!("launch core");
     log_err!(CoreManager::global().init());
 
+    log::trace!("init clash connection connector");
+    log_err!(crate::core::clash::setup(app));
+
+    log::trace!("init widget manager");
+    log_err!(tauri::async_runtime::block_on(async {
+        crate::widget::setup(app, {
+            let manager = app.state::<crate::core::clash::ws::ClashConnectionsConnector>();
+            manager.subscribe()
+        })
+        .await
+    }));
+
+    #[cfg(any(windows, target_os = "linux"))]
     log::trace!("init system tray");
     #[cfg(any(windows, target_os = "linux"))]
     tray::icon::resize_images(crate::utils::help::get_max_scale_factor()); // generate latest cache icon by current scale factor
@@ -179,9 +192,12 @@ pub fn resolve_setup(app: &mut App) {
     log_err!(hotkey::Hotkey::global().init(app.app_handle().clone()));
 
     // setup jobs
-    log_err!(JobsManager::global_register());
-    // init task manager
-    log_err!(ProfilesJobGuard::global().lock().init());
+    log::trace!("setup jobs");
+    {
+        let storage = app.state::<Storage>();
+        let storage = (*storage).clone();
+        log_err!(crate::core::tasks::setup(app, storage));
+    }
 
     // test job
     proxies::setup_proxies();

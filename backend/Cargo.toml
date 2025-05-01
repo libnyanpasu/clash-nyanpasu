@@ -4,14 +4,14 @@ members = ["tauri", "boa_utils", "nyanpasu-macro", "nyanpasu-egui"]
 
 [workspace.package]
 repository = "https://github.com/keiko233/clash-nyanpasu.git"
-edition = "2021"
+edition = "2024"
 license = "GPL-3.0"
 authors = ["zzzgydi", "keiko233"]
 
 [workspace.dependencies]
 thiserror = "2"
 tracing = "0.1"
-boa_engine = { version = "0.20" }
+boa_engine = { version = "0.20", features = ["annex-b"] }
 
 [profile.release]
 panic = "unwind"

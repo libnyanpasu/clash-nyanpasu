@@ -1,14 +1,15 @@
+mod events_rotate;
 mod logger;
 mod profiles;
 
 use super::{
-    task::Task,
+    task::{Task, TaskManager},
     utils::{ConfigChangedNotifier, Result},
 };
 use anyhow::anyhow;
-use parking_lot::Mutex;
+use parking_lot::RwLock;
 pub use profiles::ProfilesJobGuard;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 pub trait JobExt {
     fn name(&self) -> &'static str;
     fn setup(&self) -> Option<Task>; // called when the app starts or the config changed
@@ -16,24 +17,27 @@ pub trait JobExt {
 
 pub struct JobsManager {
     jobs: Vec<Box<dyn JobExt + Send + Sync>>,
+    task_manager: Arc<RwLock<TaskManager>>,
 }
 
 impl JobsManager {
-    pub fn global() -> &'static Arc<Mutex<Self>> {
-        static JOBS: OnceLock<Arc<Mutex<JobsManager>>> = OnceLock::new();
-        JOBS.get_or_init(|| Arc::new(Mutex::new(Self { jobs: Vec::new() })))
+    pub fn new(task_manager: Arc<RwLock<TaskManager>>) -> Self {
+        Self {
+            jobs: Vec::new(),
+            task_manager,
+        }
     }
 
-    pub fn global_register() -> Result<()> {
-        let jobs: Vec<Box<dyn JobExt + Send + Sync>> = vec![
-        // Box::<logger::ClearLogsJob>::default() as Box<dyn JobExt + Send + Sync>
-        ];
+    pub fn setup(&mut self) -> anyhow::Result<()> {
+        let jobs: Vec<Box<dyn JobExt + Send + Sync>> = vec![Box::new(
+            events_rotate::EventsRotateJob::new(self.task_manager.read().get_inner_task_storage()),
+        )];
         for job in jobs {
             let task = job.setup();
             if let Some(task) = task {
-                super::task::TaskManager::global().write().add_task(task)?;
+                self.task_manager.write().add_task(task)?;
             }
-            JobsManager::global().lock().jobs.push(job);
+            self.jobs.push(job);
         }
         Ok(())
     }
@@ -48,7 +52,7 @@ impl ConfigChangedNotifier for JobsManager {
             .ok_or(anyhow!("job not exist"))?;
         let task = job.setup();
         if let Some(task) = task {
-            let mut task_manager = super::task::TaskManager::global().write();
+            let mut task_manager = self.task_manager.write();
             task_manager.remove_task(task.id)?;
             task_manager.add_task(task)?;
         }

@@ -1,6 +1,7 @@
 #![feature(trait_alias)]
 #![feature(auto_traits)]
 #![feature(negative_impls)]
+#![feature(let_chains)]
 
 //! Boa's **boa_runtime** crate contains an example runtime and basic runtime features and
 //! functionality for the `boa_engine` crate for runtime implementors.
@@ -9,7 +10,7 @@
 //!
 //! 1. Add **boa_runtime** as a dependency to your project along with **boa_engine**.
 //!
-//! ```
+//! ```no_run
 //! use boa_engine::{js_string, property::Attribute, Context, Source};
 //! use boa_runtime::Console;
 //!
@@ -58,11 +59,11 @@ mod console;
 pub mod module;
 #[doc(inline)]
 pub use console::Console;
-pub use console::{set_logger, LogMessage, Logger};
+pub use console::{LogMessage, Logger, LoggerBox, inspect_logger, set_logger};
 
 #[cfg(test)]
 pub(crate) mod test {
-    use boa_engine::{builtins, Context, JsResult, JsValue, Source};
+    use boa_engine::{Context, JsResult, JsValue, Source, builtins};
     use std::borrow::Cow;
 
     /// A test action executed in a test function.

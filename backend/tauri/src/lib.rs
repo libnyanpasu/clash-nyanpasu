@@ -1,4 +1,4 @@
-#![feature(auto_traits, negative_impls, let_chains)]
+#![feature(auto_traits, negative_impls, let_chains, trait_alias)]
 #![cfg_attr(
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
@@ -10,11 +10,17 @@ mod config;
 mod consts;
 mod core;
 mod enhance;
+mod event_handler;
 mod feat;
 mod ipc;
+mod logging;
 mod server;
 mod setup;
+
+#[cfg(windows)]
+mod shutdown_hook;
 mod utils;
+mod widget;
 mod window;
 
 use std::io;
@@ -24,9 +30,10 @@ use crate::{
     core::handle::Handle,
     utils::{init, resolve},
 };
+use anyhow::Context;
 use specta_typescript::{BigIntExportBehavior, Typescript};
 use tauri::{Emitter, Manager};
-use tauri_specta::{collect_commands, Builder};
+use tauri_specta::{collect_commands, collect_events};
 use utils::resolve::{is_window_opened, reset_window_open_counter};
 
 rust_i18n::i18n!("../../locales");
@@ -36,19 +43,21 @@ fn deadlock_detection() {
     use parking_lot::deadlock;
     use std::{thread, time::Duration};
     use tracing::error;
-    thread::spawn(move || loop {
-        thread::sleep(Duration::from_secs(10));
-        let deadlocks = deadlock::check_deadlock();
-        if deadlocks.is_empty() {
-            continue;
-        }
+    thread::spawn(move || {
+        loop {
+            thread::sleep(Duration::from_secs(10));
+            let deadlocks = deadlock::check_deadlock();
+            if deadlocks.is_empty() {
+                continue;
+            }
 
-        error!("{} deadlocks detected", deadlocks.len());
-        for (i, threads) in deadlocks.iter().enumerate() {
-            error!("Deadlock #{}", i);
-            for t in threads {
-                error!("Thread Id {:#?}", t.thread_id());
-                error!("{:#?}", t.backtrace());
+            error!("{} deadlocks detected", deadlocks.len());
+            for (i, threads) in deadlocks.iter().enumerate() {
+                error!("Deadlock #{}", i);
+                for t in threads {
+                    error!("Thread Id {:#?}", t.thread_id());
+                    error!("{:#?}", t.backtrace());
+                }
             }
         }
     });
@@ -101,12 +110,10 @@ pub fn run() -> std::io::Result<()> {
         .is_ok_and(|instance| instance.is_some())
     {
         if let Err(e) = init::run_pending_migrations() {
-            utils::dialog::panic_dialog(
-                &format!(
-                    "Failed to finish migration event: {}\nYou can see the detailed information at migration.log in your local data dir.\nYou're supposed to submit it as the attachment of new issue.", 
-                    e,
-                )
-            );
+            utils::dialog::panic_dialog(&format!(
+                "Failed to finish migration event: {}\nYou can see the detailed information at migration.log in your local data dir.\nYou're supposed to submit it as the attachment of new issue.",
+                e,
+            ));
             std::process::exit(1);
         }
     }
@@ -176,84 +183,90 @@ pub fn run() -> std::io::Result<()> {
     }));
 
     // setup specta
-    let specta_builder = tauri_specta::Builder::<tauri::Wry>::new().commands(collect_commands![
-        // common
-        ipc::get_sys_proxy,
-        ipc::open_app_config_dir,
-        ipc::open_app_data_dir,
-        ipc::open_logs_dir,
-        ipc::open_web_url,
-        ipc::open_core_dir,
-        // cmds::kill_sidecar,
-        ipc::restart_sidecar,
-        // clash
-        ipc::get_clash_info,
-        ipc::get_clash_logs,
-        ipc::patch_clash_config,
-        ipc::change_clash_core,
-        ipc::get_runtime_config,
-        ipc::get_runtime_yaml,
-        ipc::get_runtime_exists,
-        ipc::get_postprocessing_output,
-        ipc::clash_api_get_proxy_delay,
-        ipc::uwp::invoke_uwp_tool,
-        // updater
-        ipc::fetch_latest_core_versions,
-        ipc::update_core,
-        ipc::inspect_updater,
-        ipc::get_core_version,
-        // utils
-        ipc::collect_logs,
-        // verge
-        ipc::get_verge_config,
-        ipc::patch_verge_config,
-        // cmds::update_hotkeys,
-        // profile
-        ipc::get_profiles,
-        ipc::enhance_profiles,
-        ipc::patch_profiles_config,
-        ipc::view_profile,
-        ipc::patch_profile,
-        ipc::create_profile,
-        ipc::import_profile,
-        ipc::reorder_profile,
-        ipc::reorder_profiles_by_list,
-        ipc::update_profile,
-        ipc::delete_profile,
-        ipc::read_profile_file,
-        ipc::save_profile_file,
-        ipc::save_window_size_state,
-        ipc::get_custom_app_dir,
-        ipc::set_custom_app_dir,
-        // service mode
-        ipc::service::status_service,
-        ipc::service::install_service,
-        ipc::service::uninstall_service,
-        ipc::service::start_service,
-        ipc::service::stop_service,
-        ipc::service::restart_service,
-        ipc::is_portable,
-        ipc::get_proxies,
-        ipc::select_proxy,
-        ipc::update_proxy_provider,
-        ipc::restart_application,
-        ipc::collect_envs,
-        ipc::get_server_port,
-        ipc::set_tray_icon,
-        ipc::is_tray_icon_set,
-        ipc::get_core_status,
-        ipc::url_delay_test,
-        ipc::get_ipsb_asn,
-        ipc::open_that,
-        ipc::is_appimage,
-        ipc::get_service_install_prompt,
-        ipc::cleanup_processes,
-        ipc::get_storage_item,
-        ipc::set_storage_item,
-        ipc::remove_storage_item,
-        ipc::mutate_proxies,
-        ipc::get_core_dir,
-    ]);
+    let specta_builder = tauri_specta::Builder::<tauri::Wry>::new()
+        .commands(collect_commands![
+            // common
+            ipc::get_sys_proxy,
+            ipc::open_app_config_dir,
+            ipc::open_app_data_dir,
+            ipc::open_logs_dir,
+            ipc::open_web_url,
+            ipc::open_core_dir,
+            // cmds::kill_sidecar,
+            ipc::restart_sidecar,
+            // clash
+            ipc::get_clash_info,
+            ipc::get_clash_logs,
+            ipc::patch_clash_config,
+            ipc::change_clash_core,
+            ipc::get_runtime_config,
+            ipc::get_runtime_yaml,
+            ipc::get_runtime_exists,
+            ipc::get_postprocessing_output,
+            ipc::clash_api_get_proxy_delay,
+            ipc::uwp::invoke_uwp_tool,
+            // updater
+            ipc::fetch_latest_core_versions,
+            ipc::update_core,
+            ipc::inspect_updater,
+            ipc::get_core_version,
+            // utils
+            ipc::collect_logs,
+            // verge
+            ipc::get_verge_config,
+            ipc::patch_verge_config,
+            // cmds::update_hotkeys,
+            // profile
+            ipc::get_profiles,
+            ipc::enhance_profiles,
+            ipc::patch_profiles_config,
+            ipc::view_profile,
+            ipc::patch_profile,
+            ipc::create_profile,
+            ipc::import_profile,
+            ipc::reorder_profile,
+            ipc::reorder_profiles_by_list,
+            ipc::update_profile,
+            ipc::delete_profile,
+            ipc::read_profile_file,
+            ipc::save_profile_file,
+            ipc::save_window_size_state,
+            ipc::get_custom_app_dir,
+            ipc::set_custom_app_dir,
+            // service mode
+            ipc::service::status_service,
+            ipc::service::install_service,
+            ipc::service::uninstall_service,
+            ipc::service::start_service,
+            ipc::service::stop_service,
+            ipc::service::restart_service,
+            ipc::is_portable,
+            ipc::get_proxies,
+            ipc::select_proxy,
+            ipc::update_proxy_provider,
+            ipc::restart_application,
+            ipc::collect_envs,
+            ipc::get_server_port,
+            ipc::set_tray_icon,
+            ipc::is_tray_icon_set,
+            ipc::get_core_status,
+            ipc::url_delay_test,
+            ipc::get_ipsb_asn,
+            ipc::open_that,
+            ipc::is_appimage,
+            ipc::get_service_install_prompt,
+            ipc::cleanup_processes,
+            ipc::get_storage_item,
+            ipc::set_storage_item,
+            ipc::remove_storage_item,
+            ipc::mutate_proxies,
+            ipc::get_core_dir,
+            // clash layer
+            ipc::get_clash_ws_connections_state,
+            // updater layer
+            ipc::check_update,
+        ])
+        .events(collect_events![core::clash::ClashConnectionsEvent]);
 
     #[cfg(debug_assertions)]
     {
@@ -304,13 +317,21 @@ pub fn run() -> std::io::Result<()> {
         .invoke_handler(specta_builder.invoke_handler())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::default().build())
-        .setup(|app| {
+        .setup(move |app| {
+            specta_builder.mount_events(app);
+            setup::setup(app)
+                .context("Failed to setup the app")
+                .inspect_err(|e| {
+                    tracing::error!("Failed to setup the app: {:#?}", e);
+                })?;
+
             #[cfg(target_os = "macos")]
             {
                 use tauri::menu::{MenuBuilder, SubmenuBuilder};

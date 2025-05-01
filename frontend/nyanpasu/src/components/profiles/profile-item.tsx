@@ -3,6 +3,7 @@ import dayjs from 'dayjs'
 import { AnimatePresence, motion } from 'framer-motion'
 import { memo, use, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import parseTraffic from '@/utils/parse-traffic'
 import {
@@ -26,19 +27,27 @@ import {
   Tooltip,
   useTheme,
 } from '@mui/material'
-import { Profile, useClash } from '@nyanpasu/interface'
+import {
+  Profile,
+  ProfileQueryResultItem,
+  RemoteProfile,
+  RemoteProfileOptions,
+  RemoteProfileOptionsBuilder,
+  useClashConnections,
+  useProfile,
+} from '@nyanpasu/interface'
 import { cleanDeepClickEvent, cn } from '@nyanpasu/ui'
 import { ProfileDialog } from './profile-dialog'
 import { GlobalUpdatePendingContext } from './provider'
 
 export interface ProfileItemProps {
-  item: Profile.Item
+  item: ProfileQueryResultItem
   selected?: boolean
   maxLogLevelTriggered?: {
     global: undefined | 'info' | 'error' | 'warn'
     current: undefined | 'info' | 'error' | 'warn'
   }
-  onClickChains: (item: Profile.Item) => void
+  onClickChains: (item: Profile) => void
   chainsSelected?: boolean
 }
 
@@ -53,13 +62,9 @@ export const ProfileItem = memo(function ProfileItem({
 
   const { palette } = useTheme()
 
-  const {
-    setProfilesConfig,
-    deleteConnections,
-    updateProfile,
-    deleteProfile,
-    viewProfile,
-  } = useClash()
+  const { deleteConnections } = useClashConnections()
+
+  const { upsert } = useProfile()
 
   const globalUpdatePending = use(GlobalUpdatePendingContext)
 
@@ -73,7 +78,7 @@ export const ProfileItem = memo(function ProfileItem({
     let total = 0
     let used = 0
 
-    if (item.extra) {
+    if ('extra' in item && item.extra) {
       const { download, upload, total: t } = item.extra
 
       total = t
@@ -102,9 +107,9 @@ export const ProfileItem = memo(function ProfileItem({
     try {
       setLoading({ card: true })
 
-      await setProfilesConfig({ current: [item.uid] })
+      await upsert.mutateAsync({ current: [item.uid] })
 
-      await deleteConnections()
+      await deleteConnections.mutateAsync(undefined)
     } catch (err) {
       const isFetchError = err instanceof Error && err.name === 'FetchError'
       message(
@@ -124,13 +129,19 @@ export const ProfileItem = memo(function ProfileItem({
   })
 
   const handleUpdate = useLockFn(async (proxy?: boolean) => {
-    const options: Profile.Option = item.option || {
+    // TODO: define backend serde(option) to move null
+    const selfOption = 'option' in item ? item.option : undefined
+
+    const options: RemoteProfileOptionsBuilder = {
       with_proxy: false,
       self_proxy: false,
+      update_interval: 0,
+      user_agent: null,
+      ...selfOption,
     }
 
     if (proxy) {
-      if (item.option?.self_proxy) {
+      if (selfOption?.self_proxy) {
         options.with_proxy = false
         options.self_proxy = true
       } else {
@@ -142,7 +153,12 @@ export const ProfileItem = memo(function ProfileItem({
     try {
       setLoading({ update: true })
 
-      await updateProfile(item.uid, options)
+      await item?.update?.(options)
+    } catch (e) {
+      message(`Update failed: \n ${formatError(e)}`, {
+        title: t('Error'),
+        kind: 'error',
+      })
     } finally {
       setLoading({ update: false })
     }
@@ -150,7 +166,8 @@ export const ProfileItem = memo(function ProfileItem({
 
   const handleDelete = useLockFn(async () => {
     try {
-      await deleteProfile(item.uid)
+      // await deleteProfile(item.uid)
+      await item?.drop?.()
     } catch (err) {
       message(`Delete failed: \n ${JSON.stringify(err)}`, {
         title: t('Error'),
@@ -164,19 +181,12 @@ export const ProfileItem = memo(function ProfileItem({
       Select: () => handleSelect(),
       'Edit Info': () => setOpen(true),
       'Proxy Chains': () => onClickChains(item),
-      'Open File': () => viewProfile(item.uid),
+      'Open File': () => item?.view?.(),
       Update: () => handleUpdate(),
       'Update(Proxy)': () => handleUpdate(true),
       Delete: () => handleDelete(),
     }),
-    [
-      handleDelete,
-      handleSelect,
-      handleUpdate,
-      item,
-      onClickChains,
-      viewProfile,
-    ],
+    [handleDelete, handleSelect, handleUpdate, item, onClickChains],
   )
 
   const MenuComp = useMemo(() => {
@@ -232,9 +242,9 @@ export const ProfileItem = memo(function ProfileItem({
           onClick={handleSelect}
         >
           <div className="flex items-center justify-between gap-2">
-            <Tooltip title={item.url}>
+            <Tooltip title={(item as RemoteProfile).url}>
               <Chip
-                className="!pl-2 !pr-2 font-bold"
+                className="!pr-2 !pl-2 font-bold"
                 avatar={<IconComponent className="!size-5" color="primary" />}
                 label={isRemote ? t('Remote') : t('Local')}
               />
@@ -250,14 +260,14 @@ export const ProfileItem = memo(function ProfileItem({
             )}
 
             <TextCarousel
-              className="w-30 flex h-6 items-center"
+              className="flex h-6 w-30 items-center"
               nodes={[
                 !!item.updated && (
                   <TimeSpan ts={item.updated!} k="Subscription Updated At" />
                 ),
-                !!item.extra?.expire && (
+                !!(item as RemoteProfile).extra?.expire && (
                   <TimeSpan
-                    ts={item.extra!.expire!}
+                    ts={(item as RemoteProfile).extra!.expire!}
                     k="Subscription Expires In"
                   />
                 ),
@@ -348,7 +358,7 @@ export const ProfileItem = memo(function ProfileItem({
 
         <motion.div
           className={cn(
-            'absolute left-0 top-0 h-full w-full',
+            'absolute top-0 left-0 h-full w-full',
             'flex-col items-center justify-center gap-4',
             'text-shadow-xl rounded-3xl font-bold backdrop-blur',
           )}
@@ -379,7 +389,7 @@ function TimeSpan({ ts, k }: { ts: number; k: string }) {
   const { t } = useTranslation()
   return (
     <Tooltip title={time.format('YYYY/MM/DD HH:mm:ss')}>
-      <div className="animate-marquee h-fit whitespace-nowrap text-right text-sm font-medium">
+      <div className="animate-marquee h-fit text-right text-sm font-medium whitespace-nowrap">
         {t(k, {
           time: time.fromNow(),
         })}

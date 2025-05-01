@@ -1,6 +1,6 @@
-use super::{formatter, Console};
-use crate::test::{run_test_actions, run_test_actions_with, TestAction};
-use boa_engine::{js_string, property::Attribute, Context, JsValue};
+use super::{Console, formatter};
+use crate::test::{TestAction, run_test_actions, run_test_actions_with};
+use boa_engine::{Context, JsValue, js_string, property::Attribute};
 use indoc::indoc;
 
 #[test]

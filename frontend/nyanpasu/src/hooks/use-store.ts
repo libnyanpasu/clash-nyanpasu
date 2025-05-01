@@ -2,19 +2,17 @@ import { useAtom } from 'jotai'
 import { useEffect } from 'react'
 import { dispatchStorageValueChanged } from '@/services/storage'
 import { coreTypeAtom } from '@/store/clash'
-import { useNyanpasu } from '@nyanpasu/interface'
+import { useSetting } from '@nyanpasu/interface'
 import { listen, UnlistenFn } from '@tauri-apps/api/event'
 
 export function useCoreType() {
   const [coreType, setCoreType] = useAtom(coreTypeAtom)
-  const { setNyanpasuConfig } = useNyanpasu({
-    onSuccess(data) {
-      setCoreType(data?.clash_core || 'mihomo')
-    },
-  })
+
+  const { upsert } = useSetting('clash_core')
+
   const setter = (value: typeof coreType) => {
     setCoreType(value)
-    setNyanpasuConfig({ clash_core: value })
+    upsert(value)
   }
   return [coreType, setter] as const
 }

@@ -3,7 +3,7 @@ import { useSetAtom } from 'jotai'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import LogoSvg from '@/assets/image/logo.svg?react'
-import { useUpdaterPlatformSupported } from '@/hooks/use-updater'
+import { checkUpdate, useUpdaterPlatformSupported } from '@/hooks/use-updater'
 import { UpdaterInstanceAtom } from '@/store/updater'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
@@ -17,26 +17,21 @@ import {
   Typography,
   useTheme,
 } from '@mui/material'
-import { useNyanpasu } from '@nyanpasu/interface'
+import { useSetting } from '@nyanpasu/interface'
 import { BaseCard } from '@nyanpasu/ui'
 import { version } from '@root/package.json'
-import { check as checkUpdate } from '@tauri-apps/plugin-updater'
 import { LabelSwitch } from './modules/clash-field'
 
 const AutoCheckUpdate = () => {
   const { t } = useTranslation()
 
-  const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu()
+  const { value, upsert } = useSetting('enable_auto_check_update')
 
   return (
     <LabelSwitch
       label={t('Auto Check Updates')}
-      checked={nyanpasuConfig?.enable_auto_check_update}
-      onChange={() =>
-        setNyanpasuConfig({
-          enable_auto_check_update: !nyanpasuConfig?.enable_auto_check_update,
-        })
-      }
+      checked={value ?? true}
+      onChange={() => upsert(!value)}
     />
   )
 }
@@ -112,7 +107,7 @@ export const SettingNyanpasuVersion = () => {
 
         {isPlatformSupported && (
           <>
-            <div className="mb-1 mt-1">
+            <div className="mt-1 mb-1">
               <AutoCheckUpdate />
             </div>
             <ListItem sx={{ pl: 0, pr: 0 }}>

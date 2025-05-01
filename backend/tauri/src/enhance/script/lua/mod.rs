@@ -5,7 +5,7 @@ use mlua::prelude::*;
 use parking_lot::Mutex;
 use serde_yaml::{Mapping, Value};
 
-use crate::enhance::{runner::wrap_result, utils::take_logs, Logs, LogsExt};
+use crate::enhance::{Logs, LogsExt, runner::wrap_result, utils::take_logs};
 
 use super::runner::{ProcessOutput, Runner};
 
@@ -194,7 +194,6 @@ mod tests {
     #[test]
     fn test_correct_original_mapping_order() {
         use super::*;
-        use serde_yaml::Mapping;
 
         let mut target = serde_yaml::from_str::<Value>(
             r#"            ######### 锚点 start #######

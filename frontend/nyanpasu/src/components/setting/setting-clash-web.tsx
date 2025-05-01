@@ -1,3 +1,4 @@
+import { useLockFn } from 'ahooks'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import AddIcon from '@mui/icons-material/Add'
@@ -11,26 +12,38 @@ import {
   Typography,
 } from '@mui/material'
 import Grid from '@mui/material/Grid2'
-import { useClash, useNyanpasu } from '@nyanpasu/interface'
+import { useClashInfo, useSetting } from '@nyanpasu/interface'
 import { BaseCard, BaseDialog, Expand } from '@nyanpasu/ui'
 import { ClashWebItem, extractServer, openWebUrl, renderChip } from './modules'
+
+const AddRecordButton = ({ onClick }: { onClick: () => void }) => {
+  const { t } = useTranslation()
+
+  return (
+    <Tooltip title={t('New Item')}>
+      <IconButton onClick={onClick}>
+        <AddIcon />
+      </IconButton>
+    </Tooltip>
+  )
+}
 
 export const SettingClashWeb = () => {
   const { t } = useTranslation()
 
-  const { nyanpasuConfig, setNyanpasuConfig } = useNyanpasu()
+  const { value, upsert } = useSetting('web_ui_list')
 
-  const { getClashInfo } = useClash()
+  const { data } = useClashInfo()
 
   const labels = useMemo(() => {
-    const { host, port } = extractServer(getClashInfo.data?.server)
+    const { host, port } = extractServer(data?.server)
 
     return {
       host,
       port,
-      secret: getClashInfo.data?.secret,
+      secret: data?.secret,
     }
-  }, [getClashInfo.data])
+  }, [data])
 
   const [open, setOpen] = useState(false)
 
@@ -38,16 +51,14 @@ export const SettingClashWeb = () => {
 
   const [editIndex, setEditIndex] = useState<number | null>(null)
 
-  const deleteItem = (index: number) => {
-    setNyanpasuConfig({
-      web_ui_list: nyanpasuConfig?.web_ui_list
-        ?.slice(0, index)
-        .concat(nyanpasuConfig?.web_ui_list?.slice(index + 1)),
-    })
-  }
+  const deleteItem = useLockFn(async (index: number) => {
+    await upsert(
+      value ? value.slice(0, index).concat(value.slice(index + 1)) : null,
+    )
+  })
 
-  const updateItem = () => {
-    const list = [...(nyanpasuConfig?.web_ui_list || [])]
+  const updateItem = useLockFn(async () => {
+    const list = [...(value || [])]
 
     if (!list) return
 
@@ -57,51 +68,49 @@ export const SettingClashWeb = () => {
       list.push(editString)
     }
 
-    setNyanpasuConfig({ web_ui_list: list })
-  }
+    await upsert(list)
+  })
 
   return (
     <>
       <BaseCard
         label={t('Web UI')}
         labelChildren={
-          <Tooltip title={t('New Item')}>
-            <IconButton
-              onClick={() => {
-                setEditString('')
-                setEditIndex(null)
-                setOpen(true)
-              }}
-            >
-              <AddIcon />
-            </IconButton>
-          </Tooltip>
+          <AddRecordButton
+            onClick={() => {
+              setEditString('')
+              setEditIndex(null)
+              setOpen(true)
+            }}
+          />
         }
       >
-        <Grid container sx={{ mt: 1 }} spacing={2}>
-          {nyanpasuConfig?.web_ui_list?.map((item, index) => {
-            return (
-              <Grid
-                key={index}
-                size={{
-                  xs: 12,
-                  xl: 6,
-                }}
-              >
-                <ClashWebItem
-                  label={renderChip(item, labels)}
-                  onOpen={() => openWebUrl(item, labels)}
-                  onEdit={() => {
-                    setEditIndex(index)
-                    setEditString(item)
-                    setOpen(true)
+        {value && (
+          <Grid container sx={{ mt: 1 }} spacing={2}>
+            {value.map((item, index) => {
+              return (
+                <Grid
+                  key={index}
+                  size={{
+                    xs: 12,
+                    xl: 6,
                   }}
-                  onDelete={() => deleteItem(index)}
-                />
-              </Grid>
-            )
-          })}
-        </Grid>
+                >
+                  <ClashWebItem
+                    label={renderChip(item, labels)}
+                    onOpen={() => openWebUrl(item, labels)}
+                    onEdit={() => {
+                      setEditIndex(index)
+                      setEditString(item)
+                      setOpen(true)
+                    }}
+                    onDelete={() => deleteItem(index)}
+                  />
+                </Grid>
+              )
+            })}
+          </Grid>
+        )}
       </BaseCard>
 
       <BaseDialog
@@ -117,8 +126,8 @@ export const SettingClashWeb = () => {
           setEditIndex(null)
           setEditString('')
         }}
-        ok="Submit"
-        close="Close"
+        ok={t('Ok')}
+        close={t('Close')}
         contentStyle={{ overflow: editString ? 'auto' : 'hidden' }}
         divider
       >

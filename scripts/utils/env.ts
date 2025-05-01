@@ -7,7 +7,7 @@ export const TAURI_FIXED_WEBVIEW2_CONFIG_OVERRIDE_PATH = path.join(
   'overrides/fixed-webview2.conf.json',
 )
 export const MANIFEST_DIR = path.join(cwd, 'manifest')
-export const GITHUB_PROXY = 'https://mirror.ghproxy.com/'
+export const GITHUB_PROXY = 'https://gh-proxy.com/'
 export const GITHUB_TOKEN = process.env.GITHUB_TOKEN
 export const TEMP_DIR = path.join(cwd, 'node_modules/.verge')
 export const MANIFEST_VERSION_PATH = path.join(MANIFEST_DIR, 'version.json')

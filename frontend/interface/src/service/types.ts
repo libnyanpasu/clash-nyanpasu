@@ -1,5 +1,3 @@
-import { Clash } from './clash'
-
 export interface VergeConfig {
   app_log_level?: 'trace' | 'debug' | 'info' | 'warn' | 'error' | string
   language?: string
@@ -54,123 +52,10 @@ export interface VergeConfig {
   always_on_top?: boolean
 }
 
-export interface ClashInfo {
-  port?: number
-  server?: string
-  secret?: string
-}
-export interface ClashConfig {
-  port: number
-  mode: string
-  ipv6: boolean
-  'socket-port': number
-  'allow-lan': boolean
-  'log-level': string
-  'mixed-port': number
-  'redir-port': number
-  'socks-port': number
-  'tproxy-port': number
-  'external-controller': string
-  secret: string
-}
-
-// eslint-disable-next-line @typescript-eslint/no-namespace
-export namespace Profile {
-  export interface Config {
-    current: string[]
-    chain: string[]
-    valid: string[]
-    items: Item[]
-  }
-
-  export const Template = {
-    merge: `# Clash Nyanpasu Merge Template (YAML)
-# Documentation on https://nyanpasu.elaina.moe/
-# Set the default merge strategy to recursive merge. 
-# Enable the old mode with the override__ prefix. 
-# Use the filter__ prefix to filter lists (removing unwanted content). 
-# All prefixes should support accessing maps or lists with a.b.c syntax.
-`,
-    javascript: `// Clash Nyanpasu JavaScript Template
-// Documentation on https://nyanpasu.elaina.moe/
-
-/** @type {config} */
-export default function (profile) {
-  return profile;
-}
-`,
-    luascript: `-- Clash Nyanpasu Lua Script Template
--- Documentation on https://nyanpasu.elaina.moe/
-
-return config;
-`,
-    profile: `# Clash Nyanpasu Profile Template
-# Documentation on https://nyanpasu.elaina.moe/
-
-proxies:
-
-proxy-groups:
-
-rules:
-`,
-  }
-
-  export const Type = {
-    Local: 'local',
-    Remote: 'remote',
-    Merge: 'merge',
-    JavaScript: {
-      script: 'javascript',
-    },
-    LuaScript: {
-      script: 'lua',
-    },
-  } as const
-
-  export interface Item {
-    uid: string
-    type?: (typeof Type)[keyof typeof Type]
-    name?: string
-    desc?: string
-    file?: string
-    url?: string
-    updated?: number
-    selected?: {
-      name?: string
-      now?: string
-    }[]
-    extra?: {
-      upload: number
-      download: number
-      total: number
-      expire: number
-    }
-    option?: Option
-    chain?: string[]
-  }
-
-  export interface Option {
-    user_agent?: string
-    with_proxy?: boolean
-    self_proxy?: boolean
-    update_interval?: number
-  }
-}
-
 export interface SystemProxy {
   enable: boolean
   server: string
   bypass: string
-}
-
-export interface Proxies {
-  direct: Clash.Proxy
-  global: Clash.Proxy<Clash.Proxy>
-  groups: Clash.Proxy<Clash.Proxy>[]
-  proxies: Clash.Proxy[]
-  records: {
-    [key: string]: Clash.Proxy
-  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -231,21 +116,6 @@ export interface ProviderRules {
   type: string
   updatedAt: string
   vehicleType: string
-}
-
-export interface ProviderItem {
-  name: string
-  type: string
-  proxies: Clash.Proxy[]
-  updatedAt?: string
-  vehicleType: string
-  subscriptionInfo?: {
-    Upload?: number
-    Download?: number
-    Total?: number
-    Expire?: number
-  }
-  testUrl?: string
 }
 
 export interface Traffic {

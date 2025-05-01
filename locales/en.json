@@ -6,6 +6,7 @@
       "ps": "Copy Env (PS)",
       "sh": "Copy Env (sh)"
     },
+    "no_proxies": "No Proxies",
     "select_proxies": "Select Proxies",
     "dashboard": "Dashboard",
     "direct_mode": "Direct Mode",
@@ -34,13 +35,13 @@
   },
   "dialog": {
     "panic": "Please report this issue to Github issue tracker.",
-    "migrate": "Old version config file detected\nMigrate to new version or not?\n WARNING: This will override your current config if exists",
-    "custom_app_dir_migrate": "You will set custom app dir to %{path}\n Shall we move the current app dir to the new one?",
+    "migrate": "Old version config file detected. Migrate to new version or not?\nWARNING: This will override your current config if exists",
+    "custom_app_dir_migrate": "You will set custom app dir to %{path}\nShall we move the current app dir to the new one?",
     "warning": {
       "enable_tun_with_no_permission": "TUN mode requires admin permission or service mode, neither is enabled, TUN mode will not work properly."
     },
     "info": {
-      "grant_core_permission": "Clash core needs admin permission to make TUN mode work properly, grant it?\n\nPlease note: This operation requires password input."
+      "grant_core_permission": "Clash core needs admin permission to make TUN mode work properly, grant it?\nPlease note that this operation requires password input."
     }
   }
 }

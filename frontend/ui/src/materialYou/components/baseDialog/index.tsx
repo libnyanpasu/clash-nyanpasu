@@ -125,7 +125,7 @@ export const BaseDialog = ({
   return (
     <AnimatePresence initial={false}>
       {mounted && (
-        <Portal.Root className="fixed left-0 top-0 z-50 h-dvh w-full">
+        <Portal.Root className="fixed top-0 left-0 z-50 h-dvh w-full">
           {!full && (
             <motion.div
               className={cn(
@@ -150,7 +150,7 @@ export const BaseDialog = ({
 
           <motion.div
             className={cn(
-              'fixed left-[50%] top-[50%] z-50',
+              'fixed top-[50%] left-[50%] z-50',
               full ? 'h-dvh w-full' : 'min-w-96 rounded-3xl shadow',
               palette.mode === 'dark'
                 ? 'text-white shadow-zinc-900'
@@ -202,7 +202,7 @@ export const BaseDialog = ({
 
             <div
               className={cn(
-                'relative overflow-y-auto overflow-x-hidden p-4',
+                'relative overflow-x-hidden overflow-y-auto p-4',
                 full && 'h-full px-6',
               )}
               style={{

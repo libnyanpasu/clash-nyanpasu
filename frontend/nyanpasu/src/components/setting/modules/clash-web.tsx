@@ -26,7 +26,7 @@ import { openThat } from '@nyanpasu/interface'
 export const renderChip = (
   string: string,
   labels: {
-    [label: string]: string | number | undefined
+    [label: string]: string | number | undefined | null
   },
 ): (string | ReactElement)[] => {
   return string.split(/(%[^&?]+)/).map((part, index) => {
@@ -95,7 +95,7 @@ export const extractServer = (
 export const openWebUrl = (
   string: string,
   labels: {
-    [label: string]: string | number | undefined
+    [label: string]: string | number | undefined | null
   },
 ): void => {
   let url = ''

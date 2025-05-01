@@ -2,7 +2,7 @@ use std::fmt::{self, Formatter};
 
 use anyhow::Result;
 use async_trait::async_trait;
-use dyn_clone::{clone_trait_object, DynClone};
+use dyn_clone::{DynClone, clone_trait_object};
 
 /// JobExecutor is a trait for job executor
 /// It is used to define a sync job

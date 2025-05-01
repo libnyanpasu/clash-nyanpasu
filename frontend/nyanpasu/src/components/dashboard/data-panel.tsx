@@ -1,6 +1,5 @@
-import { useInterval } from 'ahooks'
 import { useAtomValue } from 'jotai'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import Dataline, { DatalineProps } from '@/components/dashboard/dataline'
 import { atomIsDrawer } from '@/store'
@@ -12,97 +11,61 @@ import {
 } from '@mui/icons-material'
 import Grid from '@mui/material/Grid2'
 import {
-  Connection,
-  Memory,
-  Traffic,
-  useClashWS,
-  useNyanpasu,
+  MAX_CONNECTIONS_HISTORY,
+  MAX_MEMORY_HISTORY,
+  MAX_TRAFFIC_HISTORY,
+  useClashConnections,
+  useClashMemory,
+  useClashTraffic,
+  useSetting,
 } from '@nyanpasu/interface'
 
 export const DataPanel = () => {
   const { t } = useTranslation()
 
-  const [traffic, setTraffice] = useState<Traffic[]>(
-    new Array(20).fill({ up: 0, down: 0 }),
-  )
+  const { data: clashTraffic } = useClashTraffic()
 
-  const [memory, setMemory] = useState<Memory[]>(
-    new Array(20).fill({ inuse: 0 }),
-  )
-
-  const [connection, setConnection] = useState<
-    {
-      downloadTotal: number
-      uploadTotal: number
-      connections: number
-    }[]
-  >(
-    new Array(20).fill({
-      downloadTotal: 0,
-      uploadTotal: 0,
-      connections: 0,
-    }),
-  )
+  const { data: clashMemory } = useClashMemory()
 
   const {
-    traffic: { latestMessage: latestTraffic },
-    memory: { latestMessage: latestMemory },
-    connections: { latestMessage: latestConnections },
-  } = useClashWS()
+    query: { data: clashConnections },
+  } = useClashConnections()
 
-  useInterval(() => {
-    const trafficData = latestTraffic?.data
-      ? (JSON.parse(latestTraffic.data) as Traffic)
-      : { up: 0, down: 0 }
+  const { value } = useSetting('clash_core')
 
-    setTraffice((prevData) => [...prevData.slice(1), trafficData])
+  const supportMemory = value && ['mihomo', 'mihomo-alpha'].includes(value)
 
-    const meomryData = latestMemory?.data
-      ? (JSON.parse(latestMemory.data) as Memory)
-      : { inuse: 0, oslimit: 0 }
-
-    setMemory((prevData) => [...prevData.slice(1), meomryData])
-
-    const connectionsData = latestConnections?.data
-      ? (JSON.parse(latestConnections.data) as Connection.Response)
-      : {
-          downloadTotal: 0,
-          uploadTotal: 0,
-        }
-
-    setConnection((prevData) => [
-      ...prevData.slice(1),
-      {
-        downloadTotal: connectionsData.downloadTotal,
-        uploadTotal: connectionsData.uploadTotal,
-        connections: connectionsData.connections?.length ?? 0,
-      },
-    ])
-  }, 1000)
-
-  const { nyanpasuConfig } = useNyanpasu()
-
-  const supportMemory =
-    nyanpasuConfig?.clash_core &&
-    ['mihomo', 'mihomo-alpha'].includes(nyanpasuConfig?.clash_core)
+  const padData = (data: (number | undefined)[] = [], max: number) =>
+    Array(Math.max(0, max - data.length))
+      .fill(0)
+      .concat(data.slice(-max))
 
   const Datalines: DatalineProps[] = [
     {
-      data: traffic.map((item) => item.up),
-      icon: ArrowUpward,
-      title: t('Upload Traffic'),
-      total: connection.at(-1)?.uploadTotal,
-      type: 'speed',
-    },
-    {
-      data: traffic.map((item) => item.down),
+      data: padData(
+        clashTraffic?.map((item) => item.down),
+        MAX_TRAFFIC_HISTORY,
+      ),
       icon: ArrowDownward,
       title: t('Download Traffic'),
-      total: connection.at(-1)?.downloadTotal,
+      total: clashConnections?.at(-1)?.downloadTotal,
       type: 'speed',
     },
     {
-      data: connection.map((item) => item.connections),
+      data: padData(
+        clashTraffic?.map((item) => item.up),
+        MAX_TRAFFIC_HISTORY,
+      ),
+      icon: ArrowUpward,
+      title: t('Upload Traffic'),
+      total: clashConnections?.at(-1)?.uploadTotal,
+      type: 'speed',
+    },
+    {
+      data: padData(
+        clashConnections?.map((item) => item.connections?.length ?? 0),
+        MAX_CONNECTIONS_HISTORY,
+      ),
       icon: SettingsEthernet,
       title: t('Active Connections'),
       type: 'raw',
@@ -111,7 +74,10 @@ export const DataPanel = () => {
 
   if (supportMemory) {
     Datalines.splice(2, 0, {
-      data: memory.map((item) => item.inuse),
+      data: padData(
+        clashMemory?.map((item) => item.inuse),
+        MAX_MEMORY_HISTORY,
+      ),
       icon: MemoryOutlined,
       title: t('Memory'),
     })

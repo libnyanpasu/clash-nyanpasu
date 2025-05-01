@@ -20,13 +20,17 @@ import ProfileSide from '@/components/profiles/profile-side'
 import { GlobalUpdatePendingContext } from '@/components/profiles/provider'
 import { QuickImport } from '@/components/profiles/quick-import'
 import RuntimeConfigDiffDialog from '@/components/profiles/runtime-config-diff-dialog'
-import { filterProfiles } from '@/components/profiles/utils'
+import { ClashProfile, filterProfiles } from '@/components/profiles/utils'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { Public, Update } from '@mui/icons-material'
 import { Badge, Button, CircularProgress, IconButton } from '@mui/material'
 import Grid from '@mui/material/Grid2'
-import { Profile, updateProfile, useClash } from '@nyanpasu/interface'
+import {
+  RemoteProfileOptionsBuilder,
+  useProfile,
+  type RemoteProfile,
+} from '@nyanpasu/interface'
 import { FloatingButton, SidePage } from '@nyanpasu/ui'
 import { createFileRoute, useLocation } from '@tanstack/react-router'
 import { zodSearchValidator } from '@tanstack/router-zod-adapter'
@@ -44,42 +48,51 @@ export const Route = createFileRoute('/profiles')({
 
 function ProfilePage() {
   const { t } = useTranslation()
-  const { getProfiles, getRuntimeLogs } = useClash()
-  const maxLogLevelTriggered = useMemo(() => {
-    const currentProfileChains =
-      getProfiles.data?.items?.find(
-        // TODO: 支持多 Profile
-        (item) => getProfiles.data?.current[0] === item.uid,
-      )?.chain || []
-    return Object.entries(getRuntimeLogs.data || {}).reduce(
-      (acc, [key, value]) => {
-        const accKey = currentProfileChains.includes(key) ? 'current' : 'global'
-        if (acc[accKey] === 'error') {
-          return acc
-        }
-        for (const log of value) {
-          switch (log[0]) {
-            case 'error':
-              return { ...acc, [accKey]: 'error' }
-            case 'warn':
-              acc = { ...acc, [accKey]: 'warn' }
-              break
-            case 'info':
-              if (acc[accKey] !== 'warn') {
-                acc = { ...acc, [accKey]: 'info' }
-              }
-              break
-          }
-        }
-        return acc
-      },
-      {} as {
-        global: undefined | 'info' | 'error' | 'warn'
-        current: undefined | 'info' | 'error' | 'warn'
-      },
-    )
-  }, [getRuntimeLogs.data, getProfiles.data])
-  const { profiles } = filterProfiles(getProfiles.data?.items)
+
+  const { query, update } = useProfile()
+
+  const profiles = useMemo(() => {
+    return filterProfiles(query.data?.items)
+  }, [query.data?.items])
+
+  // TODO: fix me
+  // const maxLogLevelTriggered = useMemo(() => {
+  //   const currentProfileChains =
+  //     (
+  //       query.data?.items?.find(
+  //         // TODO: 支持多 Profile
+  //         (item) => query.data?.current?.[0] === item.uid,
+  //         // TODO: fix any type
+  //       ) as any
+  //     )?.chain || []
+  //   return Object.entries(getRuntimeLogs.data || {}).reduce(
+  //     (acc, [key, value]) => {
+  //       const accKey = currentProfileChains.includes(key) ? 'current' : 'global'
+  //       if (acc[accKey] === 'error') {
+  //         return acc
+  //       }
+  //       for (const log of value) {
+  //         switch (log[0]) {
+  //           case 'error':
+  //             return { ...acc, [accKey]: 'error' }
+  //           case 'warn':
+  //             acc = { ...acc, [accKey]: 'warn' }
+  //             break
+  //           case 'info':
+  //             if (acc[accKey] !== 'warn') {
+  //               acc = { ...acc, [accKey]: 'info' }
+  //             }
+  //             break
+  //         }
+  //       }
+  //       return acc
+  //     },
+  //     {} as {
+  //       global: undefined | 'info' | 'error' | 'warn'
+  //       current: undefined | 'info' | 'error' | 'warn'
+  //     },
+  //   )
+  // }, [query.data, getRuntimeLogs.data])
 
   const [globalChain, setGlobalChain] = useAtom(atomGlobalChainCurrent)
 
@@ -90,7 +103,7 @@ function ProfilePage() {
     setGlobalChain(!globalChain)
   }
 
-  const onClickChains = (profile: Profile.Item) => {
+  const onClickChains = (profile: ClashProfile) => {
     setGlobalChain(false)
 
     if (chainsSelected === profile.uid) {
@@ -124,17 +137,28 @@ function ProfilePage() {
 
   const [globalUpdatePending, startGlobalUpdate] = useTransition()
   const handleGlobalProfileUpdate = useLockFn(async () => {
-    await startGlobalUpdate(async () => {
+    startGlobalUpdate(async () => {
       const remoteProfiles =
-        profiles?.filter((item) => item.type === 'remote') || []
+        (profiles.clash?.filter(
+          (item) => item.type === 'remote',
+        ) as RemoteProfile[]) || []
+
       const updates: Array<Promise<void>> = []
+
       for (const profile of remoteProfiles) {
-        const options: Profile.Option = profile.option || {
+        const option = {
           with_proxy: false,
           self_proxy: false,
-        }
+          update_interval: 0,
+          user_agent: profile.option?.user_agent ?? null,
+          ...profile.option,
+        } satisfies RemoteProfileOptionsBuilder
 
-        updates.push(updateProfile(profile.uid, options))
+        const result = await update.mutateAsync({
+          uid: profile.uid,
+          option,
+        })
+        updates.push(Promise.resolve(result || undefined))
       }
       try {
         await Promise.all(updates)
@@ -172,14 +196,14 @@ function ProfilePage() {
           </IconButton>
           <Badge
             variant="dot"
-            color={
-              maxLogLevelTriggered.global === 'error'
-                ? 'error'
-                : maxLogLevelTriggered.global === 'warn'
-                  ? 'warning'
-                  : 'primary'
-            }
-            invisible={!maxLogLevelTriggered.global}
+            // color={
+            //   maxLogLevelTriggered.global === 'error'
+            //     ? 'error'
+            //     : maxLogLevelTriggered.global === 'warn'
+            //       ? 'warning'
+            //       : 'primary'
+            // }
+            // invisible={!maxLogLevelTriggered.global}
           >
             <Button
               size="small"
@@ -201,7 +225,7 @@ function ProfilePage() {
 
             {profiles && (
               <Grid container spacing={2}>
-                {profiles.map((item) => (
+                {profiles.clash?.map((item) => (
                   <Grid
                     key={item.uid}
                     size={{
@@ -221,8 +245,8 @@ function ProfilePage() {
                       <ProfileItem
                         item={item}
                         onClickChains={onClickChains}
-                        selected={getProfiles.data?.current.includes(item.uid)}
-                        maxLogLevelTriggered={maxLogLevelTriggered}
+                        selected={query.data?.current?.includes(item.uid)}
+                        // maxLogLevelTriggered={maxLogLevelTriggered}
                         chainsSelected={chainsSelected === item.uid}
                       />
                     </motion.div>
@@ -235,9 +259,9 @@ function ProfilePage() {
       </AnimatePresence>
 
       <AddProfileContext.Provider value={addProfileCtxValue}>
-        <div className="fixed bottom-8 right-8">
+        <div className="!fixed right-8 bottom-8">
           <FloatingButton
-            className="relative -right-2.5 -top-3 flex size-11 min-w-fit"
+            className="!relative -top-15 -right-13.5 flex size-11 !min-w-fit"
             sx={[
               (theme) => ({
                 backgroundColor: theme.palette.grey[200],
@@ -257,7 +281,7 @@ function ProfilePage() {
           >
             {globalUpdatePending ? <CircularProgress size={22} /> : <Update />}
           </FloatingButton>
-          <NewProfileButton className="static" />
+          <NewProfileButton className="!static" />
         </div>
       </AddProfileContext.Provider>
     </SidePage>

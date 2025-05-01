@@ -1,54 +1,80 @@
 import { isEqual } from 'lodash-es'
-import { Profile } from '@nyanpasu/interface'
+import type {
+  LocalProfile,
+  MergeProfile,
+  Profile,
+  RemoteProfile,
+  ScriptProfile,
+} from '@nyanpasu/interface'
 
-export const filterProfiles = (items?: Profile.Item[]) => {
-  const getItems = (types: (string | { script: string })[]) => {
-    return items?.filter((i) => {
-      if (!i) return false
+/**
+ * Represents a Clash configuration profile, which can be either locally stored or fetched from a remote source.
+ */
+export type ClashProfile = LocalProfile | RemoteProfile
 
-      if (typeof i.type === 'string') {
-        return types.includes(i.type)
-      }
+/**
+ * Represents a Clash configuration profile that is a chain of multiple profiles.
+ */
+export type ChainProfile = MergeProfile | ScriptProfile
 
-      if (typeof i.type === 'object' && i.type !== null) {
-        return types.some(
-          (type) =>
-            typeof type === 'object' &&
-            (i.type as { script: string }).script === type.script,
-        )
-      }
+/**
+ * Filters an array of profiles into two categories: clash and chain profiles.
+ *
+ * @param items - Array of Profile objects to be filtered
+ * @returns An object containing two arrays:
+ *          - clash: Array of profiles where type is 'remote' or 'local'
+ *          - chain: Array of profiles where type is 'merge' or has a script property
+ */
+export function filterProfiles<T extends Profile>(items?: T[]) {
+  /**
+   * Filters the input array to include only items of type 'remote' or 'local'
+   * @param items - Array of items to filter
+   * @returns {Array} Filtered array containing only remote and local items
+   */
+  const clash = items?.filter(
+    (item) => item.type === 'remote' || item.type === 'local',
+  )
 
-      return false
-    })
-  }
-
-  const profiles = getItems([Profile.Type.Local, Profile.Type.Remote])
-
-  const scripts = getItems([
-    Profile.Type.Merge,
-    Profile.Type.JavaScript,
-    Profile.Type.LuaScript,
-  ])
+  /**
+   * Filters an array of items to get a chain of either 'merge' type items
+   * or items with a script property in their type object.
+   *
+   * @param {Array<{ type: string | { script: 'javascript' | 'lua' } }>} items - The array of items to filter
+   * @returns {Array<{ type: string | { script: 'javascript' | 'lua' } }>} A filtered array containing only merge items or items with scripts
+   */
+  const chain = items?.filter(
+    (item) =>
+      item.type === 'merge' ||
+      (typeof item.type === 'object' && item.type.script),
+  )
 
   return {
-    profiles,
-    scripts,
+    clash,
+    chain,
   }
 }
 
-export const getLanguage = (type: Profile.Item['type'], snake?: boolean) => {
+export type ProfileType = Profile['type']
+
+export const ProfileTypes = {
+  JavaScript: { script: 'javascript' },
+  LuaScript: { script: 'lua' },
+  Merge: 'merge',
+} as const
+
+export const getLanguage = (type: ProfileType, snake?: boolean) => {
   switch (true) {
-    case isEqual(type, Profile.Type.JavaScript):
-    case isEqual(type, Profile.Type.JavaScript.script): {
+    case isEqual(type, ProfileTypes.JavaScript):
+    case isEqual(type, ProfileTypes.JavaScript.script): {
       return snake ? 'JavaScript' : 'javascript'
     }
 
-    case isEqual(type, Profile.Type.LuaScript):
-    case isEqual(type, Profile.Type.LuaScript.script): {
+    case isEqual(type, ProfileTypes.LuaScript):
+    case isEqual(type, ProfileTypes.LuaScript.script): {
       return snake ? 'Lua' : 'lua'
     }
 
-    case isEqual(type, Profile.Type.Merge): {
+    case isEqual(type, ProfileTypes.Merge): {
       return snake ? 'YAML' : 'yaml'
     }
   }

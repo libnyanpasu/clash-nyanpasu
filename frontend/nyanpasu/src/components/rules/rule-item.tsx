@@ -1,9 +1,9 @@
 import { useTheme } from '@mui/material'
-import { Clash } from '@nyanpasu/interface'
+import { ClashRule } from '@nyanpasu/interface'
 
 interface Props {
   index: number
-  value: Clash.Rule
+  value: ClashRule
 }
 
 const RuleItem = ({ index, value }: Props) => {
@@ -37,7 +37,7 @@ const RuleItem = ({ index, value }: Props) => {
   }
 
   return (
-    <div className="flex select-text p-2 pl-7 pr-7">
+    <div className="flex p-2 pr-7 pl-7 select-text">
       <div style={{ color: palette.text.secondary }} className="min-w-14">
         {index + 1}
       </div>

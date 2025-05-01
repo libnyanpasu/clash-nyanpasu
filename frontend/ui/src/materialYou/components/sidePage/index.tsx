@@ -89,7 +89,7 @@ export const SidePage: FC<Props> = ({
 
                 <ScrollArea.Scrollbar
                   className={cn(
-                    'flex touch-none select-none py-6 pr-1.5',
+                    'flex touch-none py-6 pr-1.5 select-none',
                     sideBar && '!top-14',
                   )}
                   orientation="vertical"
@@ -120,7 +120,7 @@ export const SidePage: FC<Props> = ({
               </ScrollArea.Viewport>
 
               <ScrollArea.Scrollbar
-                className="flex touch-none select-none py-6 pr-1.5"
+                className="flex touch-none py-6 pr-1.5 select-none"
                 orientation="vertical"
               >
                 <ScrollArea.Thumb className="!bg-scroller relative flex !w-1.5 flex-1 rounded-full" />

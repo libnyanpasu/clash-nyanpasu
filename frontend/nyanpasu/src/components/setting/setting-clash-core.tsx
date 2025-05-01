@@ -6,7 +6,13 @@ import { OS } from '@/consts'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { Box, List, ListItem } from '@mui/material'
-import { ClashCore, useClash, useNyanpasu } from '@nyanpasu/interface'
+import {
+  ClashCore,
+  useClashConnections,
+  useClashCores,
+  useClashVersion,
+  useSetting,
+} from '@nyanpasu/interface'
 import { BaseCard, ExpandMore, LoadingButton } from '@nyanpasu/ui'
 import { ClashCoreItem } from './modules/clash-core'
 
@@ -18,43 +24,38 @@ export const SettingClashCore = () => {
   })
 
   const [expand, setExpand] = useState(false)
-  const {
-    nyanpasuConfig,
-    setClashCore,
-    getClashCore,
-    restartSidecar,
-    getLatestCore,
-  } = useNyanpasu({
-    onLatestCoreError: (error) => {
-      message(`Fetch latest core failed: ${formatError(error)}`, {
-        kind: 'error',
-        title: t('Error'),
-      })
-    },
-  })
 
-  const { getVersion, deleteConnections } = useClash()
+  const { value: currentCore } = useSetting('clash_core')
+
+  const {
+    query: clashCores,
+    upsert: switchCore,
+    restartSidecar,
+    fetchRemote,
+  } = useClashCores()
+
+  const { data: clashVersion } = useClashVersion()
+
+  const { deleteConnections } = useClashConnections()
 
   const version = useMemo(() => {
-    const data = getVersion.data
-
-    return data?.premium
-      ? `${data.version} Premium`
-      : data?.meta
-        ? `${data.version} Meta`
-        : data?.version || '-'
-  }, [getVersion.data])
+    return clashVersion?.premium
+      ? `${clashVersion.version} Premium`
+      : clashVersion?.meta
+        ? `${clashVersion.version} Meta`
+        : clashVersion?.version || '-'
+  }, [clashVersion])
 
   const changeClashCore = useLockFn(async (core: ClashCore) => {
     try {
       loading.mask = true
       try {
-        await deleteConnections()
+        await deleteConnections.mutateAsync(undefined)
       } catch (e) {
         console.error(e)
       }
 
-      await setClashCore(core)
+      await switchCore.mutateAsync(core)
 
       message(
         t('Successfully switched to the clash core', { core: `${core}` }),
@@ -100,27 +101,19 @@ export const SettingClashCore = () => {
 
   const handleCheckUpdates = async () => {
     try {
-      await getLatestCore.mutate()
+      await fetchRemote.mutateAsync()
     } catch (e) {
-      message(t('Failed to fetch. Please check your network connection'), {
-        kind: 'error',
-        title: t('Error'),
-      })
+      message(
+        t('Failed to fetch. Please check your network connection') +
+          '\n' +
+          formatError(e),
+        {
+          kind: 'error',
+          title: t('Error'),
+        },
+      )
     }
   }
-
-  const mergeCores = useMemo(() => {
-    return getClashCore.data?.map((item) => {
-      const latest = getLatestCore.data?.find(
-        (i) => i.core === item.core,
-      )?.latest
-
-      return {
-        ...item,
-        latest,
-      }
-    })
-  }, [getClashCore.data, getLatestCore.data])
 
   return (
     <BaseCard
@@ -129,39 +122,41 @@ export const SettingClashCore = () => {
       labelChildren={<span>{version}</span>}
     >
       <List disablePadding>
-        {mergeCores?.map((item) => {
-          const show = expand || item.core === nyanpasuConfig?.clash_core
+        {clashCores.data &&
+          Object.entries(clashCores.data).map(([core, item]) => {
+            const show = expand || core === currentCore
 
-          return (
-            <motion.div
-              key={item.name}
-              animate={show ? 'open' : 'closed'}
-              variants={{
-                open: {
-                  height: 'auto',
-                  opacity: 1,
-                  scale: 1,
-                },
-                closed: {
-                  height: 0,
-                  opacity: 0,
-                  scale: 0.7,
-                },
-              }}
-              transition={{
-                type: 'spring',
-                bounce: 0,
-                duration: 0.35,
-              }}
-            >
-              <ClashCoreItem
-                data={item}
-                selected={item.core === nyanpasuConfig?.clash_core}
-                onClick={() => changeClashCore(item.core)}
-              />
-            </motion.div>
-          )
-        })}
+            return (
+              <motion.div
+                key={item.name}
+                animate={show ? 'open' : 'closed'}
+                variants={{
+                  open: {
+                    height: 'auto',
+                    opacity: 1,
+                    scale: 1,
+                  },
+                  closed: {
+                    height: 0,
+                    opacity: 0,
+                    scale: 0.7,
+                  },
+                }}
+                transition={{
+                  type: 'spring',
+                  bounce: 0,
+                  duration: 0.35,
+                }}
+              >
+                <ClashCoreItem
+                  data={item}
+                  core={core as ClashCore}
+                  selected={core === currentCore}
+                  onClick={() => changeClashCore(core as ClashCore)}
+                />
+              </motion.div>
+            )
+          })}
 
         <ListItem
           sx={{
@@ -180,7 +175,7 @@ export const SettingClashCore = () => {
             {OS !== 'linux' && (
               <LoadingButton
                 variant="contained"
-                loading={getLatestCore.isLoading}
+                loading={fetchRemote.isPending}
                 onClick={handleCheckUpdates}
               >
                 {t('Check Updates')}

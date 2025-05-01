@@ -1,36 +1,62 @@
-import dayjs from 'dayjs'
-import { useAtomValue, useSetAtom } from 'jotai'
-import { useEffect } from 'react'
-import { atomEnableLog, atomLogData } from '@/store'
-import { LogMessage, useClashWS } from '@nyanpasu/interface'
+import {
+  createContext,
+  PropsWithChildren,
+  useContext,
+  useMemo,
+  useState,
+} from 'react'
+import { useClashLogs, type ClashLog } from '@nyanpasu/interface'
 
-const MAX_LOG_NUM = 1000
+const LogContext = createContext<{
+  logs?: ClashLog[]
+  filterText: string
+  setFilterText: (text: string) => void
+  logLevel: string
+  setLogLevel: (level: string) => void
+} | null>(null)
 
-export const LogProvider = () => {
-  const {
-    logs: { latestMessage },
-  } = useClashWS()
+export const useLogContext = () => {
+  const context = useContext(LogContext)
 
-  const setLogData = useSetAtom(atomLogData)
+  if (!context) {
+    throw new Error('useLogContext must be used within LogProvider')
+  }
 
-  const enableLog = useAtomValue(atomEnableLog)
-
-  useEffect(() => {
-    if (!latestMessage?.data || !enableLog) {
-      return
-    }
-
-    const data = JSON.parse(latestMessage?.data) as LogMessage
-    const time = dayjs(data.time).format('MM-DD HH:mm:ss')
-    setLogData((prev) => {
-      if (prev.length >= MAX_LOG_NUM) {
-        prev.shift()
-      }
-      return [...prev, { ...data, time }]
-    })
-  }, [enableLog, latestMessage?.data, setLogData])
-
-  return null
+  return context
 }
 
-export default LogProvider
+export const LogProvider = ({ children }: PropsWithChildren) => {
+  const [filterText, setFilterText] = useState('')
+
+  const [logLevel, setLogLevel] = useState('all')
+
+  const {
+    query: { data },
+  } = useClashLogs()
+
+  const logs = useMemo(() => {
+    return data?.filter((log) => {
+      const matchesFilter =
+        !filterText ||
+        log.payload.toLowerCase().includes(filterText.toLowerCase())
+
+      const matchesLevel = logLevel === 'all' ? true : log.type === logLevel
+
+      return matchesFilter && matchesLevel
+    })
+  }, [data, filterText, logLevel])
+
+  return (
+    <LogContext.Provider
+      value={{
+        logs,
+        filterText,
+        setFilterText,
+        logLevel,
+        setLogLevel,
+      }}
+    >
+      {children}
+    </LogContext.Provider>
+  )
+}

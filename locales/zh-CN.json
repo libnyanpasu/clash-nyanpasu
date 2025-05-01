@@ -2,17 +2,18 @@
   "_version": 1,
   "tray": {
     "copy_env": {
-      "cmd": "复制环境变量(CMD)",
-      "ps": "复制环境变量(PS)",
-      "sh": "复制环境变量(sh)"
+      "cmd": "复制环境变量 (CMD)",
+      "ps": "复制环境变量 (PS)",
+      "sh": "复制环境变量 (SH)"
     },
+    "no_proxies": "无代理",
     "select_proxies": "选择代理",
     "dashboard": "打开面板",
     "direct_mode": "直连模式",
     "global_mode": "全局模式",
     "more": {
       "menu": "更多",
-      "restart_app": "重启应用",
+      "restart_app": "重启应用程序",
       "restart_clash": "重启 Clash"
     },
     "open_dir": {
@@ -33,11 +34,11 @@
     "tun_mode": "TUN 模式"
   },
   "dialog": {
-    "panic": "请将此问题汇报到 GitHub 问题追踪器",
-    "migrate": "检测到旧版本配置文件\n是否迁移到新版本?\n警告：此操作会覆盖掉现有配置文件",
+    "panic": "请将此问题汇报到 GitHub Issues。",
+    "migrate": "检测到旧版本配置文件，是否迁移到新版本?\n警告：此操作会覆盖掉现有配置文件！",
     "custom_app_dir_migrate": "你将要更改应用目录至 %{path}。\n需要将现有数据迁移到新目录吗？",
     "warning": {
-      "enable_tun_with_no_permission": "TUN 模式需要管理员权限，或服务模式，当前都未开启，因此 TUN 模式将无法正常工作"
+      "enable_tun_with_no_permission": "TUN 模式需要授予管理员权限或启用服务模式，当前都未开启，因此 TUN 模式将无法正常工作。"
     },
     "info": {
       "grant_core_permission": "Clash 内核需要管理员权限才能使得 TUN 模式正常工作，是否授予？\n\n请注意：此操作需要输入密码。"

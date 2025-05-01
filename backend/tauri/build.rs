@@ -20,12 +20,12 @@ struct GitInfo {
 
 fn main() {
     let version: String = if let Ok(true) = exists("../../package.json") {
-        let mut raw = read("../../package.json").unwrap();
-        let pkg_json: PackageJson = simd_json::from_slice(&mut raw).unwrap();
+        let raw = read("../../package.json").unwrap();
+        let pkg_json: PackageJson = serde_json::from_slice(&raw).unwrap();
         pkg_json.version
     } else {
-        let mut raw = read("./tauri.conf.json").unwrap(); // TODO: fix it when windows arm64 need it
-        let tauri_json: PackageJson = simd_json::from_slice(&mut raw).unwrap();
+        let raw = read("./tauri.conf.json").unwrap(); // TODO: fix it when windows arm64 need it
+        let tauri_json: PackageJson = serde_json::from_slice(&raw).unwrap();
         tauri_json.version
     };
     let version = semver::Version::parse(&version).unwrap();
@@ -34,8 +34,8 @@ fn main() {
     // Git Information
     let (commit_hash, commit_author, commit_date) = if let Ok(true) = exists("./tmp/git-info.json")
     {
-        let mut git_info = read("./tmp/git-info.json").unwrap();
-        let git_info: GitInfo = simd_json::from_slice(&mut git_info).unwrap();
+        let git_info = read("./tmp/git-info.json").unwrap();
+        let git_info: GitInfo = serde_json::from_slice(&git_info).unwrap();
         (git_info.hash, git_info.author, git_info.time)
     } else {
         let output = Command::new("git")

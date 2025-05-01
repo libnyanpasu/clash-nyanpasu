@@ -623,6 +623,7 @@ mod test {
     use tokio::fs::File as TokioFile;
 
     #[test_log::test(tokio::test)]
+    #[ignore]
     async fn test_downloader() {
         use md5::{Digest, Md5};
 

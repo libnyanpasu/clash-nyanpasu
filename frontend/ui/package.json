@@ -21,7 +21,7 @@
     "@mui/lab": "6.0.0-dev.240424162023-9968b4889d",
     "@mui/material": "6.4.11",
     "@radix-ui/react-portal": "1.1.6",
-    "@radix-ui/react-scroll-area": "1.2.5",
+    "@radix-ui/react-scroll-area": "1.2.6",
     "@tauri-apps/api": "2.4.0",
     "@types/d3": "7.4.3",
     "@types/react": "19.0.12",

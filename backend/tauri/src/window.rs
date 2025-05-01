@@ -7,8 +7,8 @@ pub mod macos {
     use std::cell::RefCell;
 
     use objc2::{
-        define_class, msg_send, rc::Retained, runtime::ProtocolObject,
-        DeclaredClass, MainThreadOnly,
+        DeclaredClass, MainThreadOnly, define_class, msg_send, rc::Retained,
+        runtime::ProtocolObject,
     };
     use objc2_app_kit::{NSApplicationPresentationOptions, NSWindow, NSWindowDelegate};
     use objc2_foundation::{MainThreadMarker, NSNotification, NSObject, NSObjectProtocol};
@@ -135,51 +135,51 @@ pub mod macos {
             #[unsafe(method(windowShouldClose:))]
             unsafe fn windowShouldClose(&self, sender: &NSWindow) -> bool {
                 tracing::trace!("passthrough `windowShouldClose` to TAO layer");
-                self.ivars().super_class.windowShouldClose(sender)
+                unsafe { self.ivars().super_class.windowShouldClose(sender) }
             }
 
             #[unsafe(method(windowWillClose:))]
             unsafe fn windowWillClose(&self, notification: &NSNotification) {
                 tracing::trace!("passthrough `windowWillClose` to TAO layer");
-                self.ivars().super_class.windowWillClose(notification)
+                unsafe { self.ivars().super_class.windowWillClose(notification) }
             }
 
             #[unsafe(method(windowDidResize:))]
             unsafe fn windowDidResize(&self, notification: &NSNotification) {
                 self.ivars().app_box.apply_traffic_lights_pos();
                 tracing::trace!("passthrough `windowDidResize` to TAO layer");
-                self.ivars().super_class.windowDidResize(notification)
+                unsafe { self.ivars().super_class.windowDidResize(notification) }
             }
 
             #[unsafe(method(windowDidMove:))]
             unsafe fn windowDidMove(&self, notification: &NSNotification) {
                 tracing::trace!("passthrough `windowDidMove` to TAO layer");
-                self.ivars().super_class.windowDidMove(notification)
+                unsafe { self.ivars().super_class.windowDidMove(notification) }
             }
 
             #[unsafe(method(windowDidChangeBackingProperties:))]
             unsafe fn windowDidChangeBackingProperties(&self, notification: &NSNotification) {
                 self.ivars().app_box.apply_traffic_lights_pos();
                 tracing::trace!("passthrough `windowDidChangeBackingProperties` to TAO layer");
-                self.ivars().super_class.windowDidChangeBackingProperties(notification)
+                unsafe { self.ivars().super_class.windowDidChangeBackingProperties(notification) }
             }
 
             #[unsafe(method(windowDidBecomeKey:))]
             unsafe fn windowDidBecomeKey(&self, notification: &NSNotification) {
                 tracing::trace!("passthrough `windowDidBecomeKey` to TAO layer");
-                self.ivars().super_class.windowDidBecomeKey(notification)
+                unsafe { self.ivars().super_class.windowDidBecomeKey(notification) }
             }
 
             #[unsafe(method(windowDidResignKey:))]
             unsafe fn windowDidResignKey(&self, notification: &NSNotification) {
                 tracing::trace!("passthrough `windowDidResignKey` to TAO layer");
-                self.ivars().super_class.windowDidResignKey(notification)
+                unsafe { self.ivars().super_class.windowDidResignKey(notification) }
             }
 
             #[unsafe(method(window:willUseFullScreenPresentationOptions:))]
             unsafe fn window_willUseFullScreenPresentationOptions(&self, window: &NSWindow, options: NSApplicationPresentationOptions) -> NSApplicationPresentationOptions {
                 tracing::trace!("passthrough `window_willUseFullScreenPresentationOptions` to TAO layer");
-                self.ivars().super_class.window_willUseFullScreenPresentationOptions(window, options)
+                unsafe { self.ivars().super_class.window_willUseFullScreenPresentationOptions(window, options) }
             }
 
             #[unsafe(method(windowDidEnterFullScreen:))]
@@ -188,7 +188,7 @@ pub mod macos {
                     log::error!("failed to emit window-did-enter-full-screen event: {}", e);
                 }
                 tracing::trace!("passthrough `windowDidEnterFullScreen` to TAO layer");
-                self.ivars().super_class.windowDidEnterFullScreen(notification)
+                unsafe { self.ivars().super_class.windowDidEnterFullScreen(notification) }
             }
 
             #[unsafe(method(windowWillEnterFullScreen:))]
@@ -196,7 +196,7 @@ pub mod macos {
                 if let Err(e) = self.ivars().app_box.window.emit(WINDOW_WILL_ENTER_FULL_SCREEN, ()) {
                     log::error!("failed to emit window-will-enter-full-screen event: {}", e);
                 }
-                self.ivars().super_class.windowWillEnterFullScreen(notification)
+                unsafe { self.ivars().super_class.windowWillEnterFullScreen(notification) }
             }
 
             #[unsafe(method(windowWillExitFullScreen:))]
@@ -205,7 +205,7 @@ pub mod macos {
                     log::error!("failed to emit window-will-exit-full-screen event: {}", e);
                 }
                 tracing::trace!("passthrough `windowWillExitFullScreen` to TAO layer");
-                self.ivars().super_class.windowWillExitFullScreen(notification)
+                unsafe { self.ivars().super_class.windowWillExitFullScreen(notification) }
             }
 
             #[unsafe(method(windowDidExitFullScreen:))]
@@ -215,13 +215,13 @@ pub mod macos {
                 }
                 self.ivars().app_box.apply_traffic_lights_pos();
                 tracing::trace!("passthrough `windowDidExitFullScreen` to TAO layer");
-                self.ivars().super_class.windowDidExitFullScreen(notification)
+                unsafe { self.ivars().super_class.windowDidExitFullScreen(notification) }
             }
 
             #[unsafe(method(windowDidFailToEnterFullScreen:))]
             unsafe fn windowDidFailToEnterFullScreen(&self,window: &NSWindow) {
                 tracing::trace!("passthrough `windowDidFailToEnterFullScreen` to TAO layer");
-                self.ivars().super_class.windowDidFailToEnterFullScreen(window)
+                unsafe { self.ivars().super_class.windowDidFailToEnterFullScreen(window) }
             }
 
         }
@@ -266,7 +266,7 @@ pub mod macos {
         // first apply the traffic lights pos
         window_state.apply_traffic_lights_pos();
         let delegate = WindowDelegate::new(window_state, mtm);
-        let object = ProtocolObject::from_ref(delegate.as_ref());
+        let object: &ProtocolObject<dyn NSWindowDelegate> = ProtocolObject::from_ref(&*delegate);
         ns_window.setDelegate(Some(object));
         TRAFFIC_LIGHTS_WINDOW_DELEGATE_GUARD.replace(Some(TrafficLightsWindowDelegateGuard {
             _delegate: delegate,

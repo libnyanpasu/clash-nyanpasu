@@ -1,4 +1,3 @@
-pub(crate) use crate::utils::candy::get_reqwest_client;
 use anyhow::{Result, anyhow};
 use axum::{
     Router,
@@ -12,9 +11,14 @@ use bytes::Bytes;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::borrow::Cow;
+use tokio::io::AsyncWriteExt;
 use tracing_attributes::instrument;
 use url::Url;
+
+use std::{borrow::Cow, path::Path};
+
+pub(crate) use crate::utils::candy::get_reqwest_client;
+
 pub static SERVER_PORT: Lazy<u16> = Lazy::new(|| port_scanner::request_open_port().unwrap());
 
 #[derive(Debug, Deserialize)]
@@ -29,6 +33,22 @@ struct CacheFile<'n> {
     bytes: Bytes,
 }
 
+// TODO: use Reader instead of Vec
+async fn read_cache_file(path: &Path) -> Result<CacheFile<'static>> {
+    let cache_file = tokio::fs::read(path).await?;
+    let (cache_file, _): (CacheFile<'static>, _) =
+        bincode::serde::decode_from_slice(&cache_file, bincode::config::standard())?;
+    Ok(cache_file)
+}
+
+// TODO: use Writer instead of Vec
+async fn write_cache_file(path: &Path, cache_file: &CacheFile<'_>) -> Result<()> {
+    let mut file = tokio::fs::File::create(path).await?;
+    let cache_file = bincode::serde::encode_to_vec(cache_file, bincode::config::standard())?;
+    file.write_all(&cache_file).await?;
+    Ok(())
+}
+
 async fn cache_icon_inner<'n>(url: &str) -> Result<CacheFile<'n>> {
     let url = BASE64_STANDARD.decode(url)?;
     let url = String::from_utf8_lossy(&url);
@@ -41,9 +61,17 @@ async fn cache_icon_inner<'n>(url: &str) -> Result<CacheFile<'n>> {
     }
     let cache_file = cache_dir.join(format!("{:x}.bin", hash));
     if cache_file.exists() {
-        let cache_file = tokio::fs::read(cache_file).await?;
-        let cache_file: CacheFile = bincode::deserialize(&cache_file)?;
-        return Ok(cache_file);
+        let span = tracing::span!(tracing::Level::DEBUG, "read_cache_file", path = ?cache_file);
+        let _enter = span.enter();
+        match read_cache_file(&cache_file).await {
+            Ok(cache_file) => return Ok(cache_file),
+            Err(e) => {
+                tracing::error!("failed to read cache file: {}", e);
+                if let Err(e) = tokio::fs::remove_file(&cache_file).await {
+                    tracing::error!("failed to remove cache file: {}", e);
+                }
+            }
+        }
     }
     let client = get_reqwest_client()?;
     let response = client.get(url).send().await?.error_for_status()?;
@@ -59,7 +87,9 @@ async fn cache_icon_inner<'n>(url: &str) -> Result<CacheFile<'n>> {
         mime: Cow::Owned(mime),
         bytes,
     };
-    tokio::fs::write(cache_file, bincode::serialize(&data)?).await?;
+    if let Err(e) = write_cache_file(&cache_file, &data).await {
+        tracing::error!("failed to write cache file: {}", e);
+    }
     Ok(data)
 }
 

@@ -51,7 +51,7 @@ export const SettingNyanpasuVersion = () => {
 
       const update = await checkUpdate()
 
-      if (!update?.available) {
+      if (!update) {
         message(t('No update available.'), {
           title: t('Info'),
           kind: 'info',

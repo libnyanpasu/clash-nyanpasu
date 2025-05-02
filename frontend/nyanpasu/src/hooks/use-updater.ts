@@ -28,7 +28,6 @@ export async function checkUpdate() {
   if (metadata) {
     return new Update({
       rid: metadata.rid,
-      available: metadata.available,
       currentVersion: metadata.current_version,
       version: metadata.version,
       rawJson: metadata.raw_json as Record<string, unknown>,

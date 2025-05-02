@@ -36,7 +36,7 @@ export const Dataline: FC<DatalineProps> = ({
           <div className="font-bold">{title}</div>
         </div>
 
-        <div className="text-shadow-md text-2xl font-bold">
+        <div className="text-2xl font-bold text-shadow-md">
           {type === 'raw' ? data.at(-1) : parseTraffic(data.at(-1)).join(' ')}
           {type === 'speed' && '/s'}
         </div>

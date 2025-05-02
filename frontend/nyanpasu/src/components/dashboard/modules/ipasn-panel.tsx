@@ -61,7 +61,7 @@ export const IPASNPanel = ({ refreshCount }: { refreshCount: number }) => {
             )}
 
             <div className="flex flex-col gap-1" style={{ width: MAX_WIDTH }}>
-              <div className="text-shadow-md flex items-end justify-between text-xl font-bold">
+              <div className="flex items-end justify-between text-xl font-bold text-shadow-md">
                 <div className="truncate">{data.country}</div>
 
                 <Tooltip title={t('Click to Refresh Now')}>

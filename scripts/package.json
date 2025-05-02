@@ -13,7 +13,7 @@
     "zod": "3.24.3"
   },
   "devDependencies": {
-    "@octokit/types": "13.10.0",
+    "@octokit/types": "14.0.0",
     "@types/adm-zip": "0.5.7",
     "@types/yargs": "17.0.33",
     "adm-zip": "0.5.16",

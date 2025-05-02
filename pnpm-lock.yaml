@@ -566,8 +566,8 @@ importers:
         version: 3.24.3
     devDependencies:
       '@octokit/types':
-        specifier: 13.10.0
-        version: 13.10.0
+        specifier: 14.0.0
+        version: 14.0.0
       '@types/adm-zip':
         specifier: 0.5.7
         version: 0.5.7

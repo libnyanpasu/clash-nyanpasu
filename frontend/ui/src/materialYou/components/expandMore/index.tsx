@@ -1,6 +1,6 @@
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import IconButton, { IconButtonProps } from '@mui/material/IconButton'
-import useTheme from '@mui/material/styles/useTheme'
+import { useTheme } from '@mui/material/styles'
 
 interface ExpandMoreProps extends IconButtonProps {
   expand: boolean

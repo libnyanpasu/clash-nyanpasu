@@ -1,4 +1,4 @@
-import countryCodeEmoji from 'country-code-emoji'
+import { flag as countryCodeEmoji } from 'country-emoji'
 import { useAtomValue } from 'jotai'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -14,7 +14,11 @@ import { cn } from '@nyanpasu/ui'
 const IP_REFRESH_SECONDS = 180
 
 const EmojiCounty = ({ countryCode }: { countryCode: string }) => {
-  const emoji = countryCodeEmoji(countryCode)
+  let emoji = countryCodeEmoji(countryCode)
+
+  if (!emoji) {
+    emoji = '🇺🇳'
+  }
 
   return (
     <div className="relative text-5xl">

@@ -1,5 +1,5 @@
 import { Theme } from '@mui/material'
-import { Components } from '@mui/material/styles/components'
+import { Components } from '@mui/material/styles'
 
 export const MuiMenu: Components<Theme>['MuiMenu'] = {
   styleOverrides: {

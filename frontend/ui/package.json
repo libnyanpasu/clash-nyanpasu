@@ -2,12 +2,7 @@
   "name": "@nyanpasu/ui",
   "version": "2.0.0",
   "type": "module",
-  "exports": {
-    ".": "./dist/index.js",
-    "./src/materialYou/themeConsts.mjs": "./src/materialYou/themeConsts.mjs"
-  },
-  "main": "./dist/index.js",
-  "types": "./dist/src/index.d.ts",
+  "main": "./src/index.ts",
   "files": [
     "dist",
     "src"

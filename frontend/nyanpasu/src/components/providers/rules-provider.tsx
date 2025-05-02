@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { message } from '@/utils/notification'
 import { Refresh } from '@mui/icons-material'
-import LoadingButton from '@mui/lab/LoadingButton/LoadingButton'
+import LoadingButton from '@mui/lab/LoadingButton'
 import { Chip, Paper } from '@mui/material'
 import { ClashRulesProviderQueryItem } from '@nyanpasu/interface'
 

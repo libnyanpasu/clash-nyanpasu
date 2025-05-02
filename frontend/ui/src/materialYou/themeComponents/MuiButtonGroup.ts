@@ -1,5 +1,5 @@
 import { alpha, darken, Theme } from '@mui/material'
-import { Components } from '@mui/material/styles/components'
+import { Components } from '@mui/material/styles'
 
 export const MuiButtonGroup: Components<Theme>['MuiButtonGroup'] = {
   styleOverrides: {

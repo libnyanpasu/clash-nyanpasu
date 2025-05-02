@@ -1,10 +1,10 @@
+import createPalette from 'node_modules/@mui/material/esm/styles/createPalette'
 import {
   argbFromHex,
   hexFromArgb,
   themeFromSourceColor,
 } from '@material/material-color-utilities'
 import { createTheme } from '@mui/material/styles'
-import createPalette from '@mui/material/styles/createPalette'
 import {
   MuiButton,
   MuiButtonGroup,

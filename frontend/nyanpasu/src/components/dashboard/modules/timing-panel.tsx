@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useColorForDelay } from '@/hooks/theme'
 import { atomIsDrawer } from '@/store'
 import { Paper } from '@mui/material'
-import Grid from '@mui/material/Grid2'
+import Grid from '@mui/material/Grid'
 import { useSetting } from '@nyanpasu/interface'
 
 function LatencyTag({ name, value }: { name: string; value: number }) {

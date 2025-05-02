@@ -78,10 +78,10 @@ export default function HotkeyInput({
           style={
             {
               '--border-color': isDuplicate
-                ? theme.palette.error.main
-                : alpha(theme.palette.text.secondary, 0.15),
+                ? theme.vars.palette.error.main
+                : alpha(theme.vars.palette.text.secondary, 0.15),
               '--input-focus-border-color': alpha(
-                theme.palette.primary.main,
+                theme.vars.palette.primary.main,
                 0.75,
               ),
               '--input-hover-border-color': `rgba(${theme.vars.palette.common.background} / 0.23)`,
@@ -101,7 +101,7 @@ export default function HotkeyInput({
               className="absolute right-2 text-base"
               sx={[
                 (theme) => ({
-                  color: theme.palette.error.main,
+                  color: theme.vars.palette.error.main,
                 }),
               ]}
             />

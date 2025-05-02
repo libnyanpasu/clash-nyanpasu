@@ -59,7 +59,7 @@ export const BaseCard = ({
           className={style.LoadingMask}
           sx={[
             (theme) => ({
-              backgroundColor: alpha(theme.palette.grey[100], 0.1),
+              backgroundColor: alpha(theme.vars.palette.grey[100], 0.1),
             }),
           ]}
         >

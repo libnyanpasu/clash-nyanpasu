@@ -121,7 +121,7 @@ export const openWebUrl = (
  * @copyright LibNyanpasu org. 2024
  */
 export const Item = styled(Paper)<PaperProps>(({ theme }) => ({
-  backgroundColor: alpha(theme.palette.primary.main, 0.1),
+  backgroundColor: alpha(theme.vars.palette.primary.main, 0.1),
   padding: 16,
   borderRadius: 16,
   display: 'flex',

@@ -9,7 +9,7 @@ import {
   MemoryOutlined,
   SettingsEthernet,
 } from '@mui/icons-material'
-import Grid from '@mui/material/Grid2'
+import Grid from '@mui/material/Grid'
 import {
   MAX_CONNECTIONS_HISTORY,
   MAX_MEMORY_HISTORY,

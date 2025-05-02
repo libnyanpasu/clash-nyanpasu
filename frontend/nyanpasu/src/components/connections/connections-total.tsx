@@ -65,12 +65,12 @@ export default function ConnectionTotal() {
           sx={[
             (theme) => ({
               color: darken(
-                theme.palette.primary.main,
+                theme.vars.palette.primary.main,
                 downloadHighlight ? 0.9 : 0.3,
               ),
               ...theme.applyStyles('dark', {
                 color: lighten(
-                  theme.palette.primary.main,
+                  theme.vars.palette.primary.main,
                   downloadHighlight ? 0.2 : 0.9,
                 ),
               }),
@@ -93,12 +93,12 @@ export default function ConnectionTotal() {
           sx={[
             (theme) => ({
               color: darken(
-                theme.palette.primary.main,
+                theme.vars.palette.primary.main,
                 uploadHighlight ? 0.9 : 0.3,
               ),
               ...theme.applyStyles('dark', {
                 color: lighten(
-                  theme.palette.primary.main,
+                  theme.vars.palette.primary.main,
                   downloadHighlight ? 0.2 : 0.9,
                 ),
               }),

@@ -25,7 +25,7 @@ export const AppDrawer = () => {
           className="!size-8 !min-w-0"
           sx={[
             (theme) => ({
-              backgroundColor: alpha(theme.palette.primary.main, 0.1),
+              backgroundColor: alpha(theme.vars.palette.primary.main, 0.1),
               svg: { transform: 'scale(0.9)' },
             }),
           ]}
@@ -57,9 +57,12 @@ export const AppDrawer = () => {
                   backgroundColor: null,
                 }
               : {
-                  backgroundColor: alpha(theme.palette.primary.light, 0.1),
+                  backgroundColor: alpha(theme.vars.palette.primary.light, 0.1),
                   ...theme.applyStyles('dark', {
-                    backgroundColor: alpha(theme.palette.primary.dark, 0.1),
+                    backgroundColor: alpha(
+                      theme.vars.palette.primary.dark,
+                      0.1,
+                    ),
                   }),
                 },
         ]}

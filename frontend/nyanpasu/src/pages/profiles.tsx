@@ -25,7 +25,7 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { Public, Update } from '@mui/icons-material'
 import { Badge, Button, CircularProgress, IconButton } from '@mui/material'
-import Grid from '@mui/material/Grid2'
+import Grid from '@mui/material/Grid'
 import {
   RemoteProfileOptionsBuilder,
   useProfile,
@@ -190,7 +190,7 @@ function ProfilePage() {
           >
             <MdiTextBoxCheckOutline
             // style={{
-            //   color: theme.palette.text.primary,
+            //   color: theme.vars.palette.text.primary,
             // }}
             />
           </IconButton>
@@ -264,15 +264,15 @@ function ProfilePage() {
             className="!relative -top-15 -right-13.5 flex size-11 !min-w-fit"
             sx={[
               (theme) => ({
-                backgroundColor: theme.palette.grey[200],
+                backgroundColor: theme.vars.palette.grey[200],
                 boxShadow: 4,
                 '&:hover': {
-                  backgroundColor: theme.palette.grey[300],
+                  backgroundColor: theme.vars.palette.grey[300],
                 },
                 ...theme.applyStyles('dark', {
-                  backgroundColor: theme.palette.grey[800],
+                  backgroundColor: theme.vars.palette.grey[800],
                   '&:hover': {
-                    backgroundColor: theme.palette.grey[700],
+                    backgroundColor: theme.vars.palette.grey[700],
                   },
                 }),
               }),

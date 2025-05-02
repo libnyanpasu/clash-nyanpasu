@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import Grid from '@mui/material/Grid2'
+import Grid from '@mui/material/Grid'
 import { useSetting } from '@nyanpasu/interface'
 import { BaseCard } from '@nyanpasu/ui'
 import { PaperSwitchButton } from './modules/system-proxy'

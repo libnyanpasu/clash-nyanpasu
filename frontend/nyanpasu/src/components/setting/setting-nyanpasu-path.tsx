@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { OS } from '@/consts'
 import { sleep } from '@/utils'
 import { message } from '@/utils/notification'
-import Grid from '@mui/material/Grid2'
+import Grid from '@mui/material/Grid'
 import {
   collectLogs,
   openAppConfigDir,

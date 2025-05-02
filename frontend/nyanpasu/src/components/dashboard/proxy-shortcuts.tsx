@@ -6,7 +6,7 @@ import { atomIsDrawer } from '@/store'
 import { message } from '@/utils/notification'
 import { NetworkPing, SettingsEthernet } from '@mui/icons-material'
 import { Chip, Paper, type ChipProps } from '@mui/material'
-import Grid from '@mui/material/Grid2'
+import Grid from '@mui/material/Grid'
 import { useClashConfig, useSetting, useSystemProxy } from '@nyanpasu/interface'
 import { PaperSwitchButton } from '../setting/modules/system-proxy'
 

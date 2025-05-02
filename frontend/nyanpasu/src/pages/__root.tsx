@@ -13,7 +13,7 @@ import { UpdaterProvider } from '@/hooks/use-updater'
 import { FileRouteTypes } from '@/routeTree.gen'
 import { atomIsDrawer, memorizedRoutePathAtom } from '@/store'
 import { CssBaseline, useTheme } from '@mui/material'
-import { StyledEngineProvider } from '@mui/material/styles'
+import { StyledEngineProvider, useColorScheme } from '@mui/material/styles'
 import { cn, useBreakpoint } from '@nyanpasu/ui'
 import {
   createRootRoute,
@@ -37,12 +37,9 @@ dayjs.extend(relativeTime)
 dayjs.extend(customParseFormat)
 
 export const Catch = ({ error }: ErrorComponentProps) => {
-  const theme = useTheme()
-
+  const { mode } = useColorScheme()
   return (
-    <div
-      className={cn(styles.oops, theme.palette.mode === 'dark' && styles.dark)}
-    >
+    <div className={cn(styles.oops, mode === 'dark' && styles.dark)}>
       <h1>Oops!</h1>
       <p>Something went wrong... Caught at _root error boundary.</p>
       <pre>

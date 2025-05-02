@@ -10,7 +10,7 @@ export const MuiSwitch: Components<Theme>['MuiSwitch'] = {
 
       '& .Mui-checked': {
         '& .MuiSwitch-thumb': {
-          color: theme.palette.grey.A100,
+          color: theme.vars.palette.grey.A100,
         },
       },
 
@@ -89,17 +89,17 @@ export const MuiSwitch: Components<Theme>['MuiSwitch'] = {
 
     track: ({ theme }) => ({
       borderRadius: '48px',
-      backgroundColor: theme.palette.grey.A200,
+      backgroundColor: theme.vars.palette.grey.A200,
       opacity: `1 !important`,
 
       ...theme.applyStyles('dark', {
-        backgroundColor: theme.palette.grey.A700,
+        backgroundColor: theme.vars.palette.grey.A700,
         opacity: `0.7 !important`,
       }),
 
       '&::before': {
         content: '""',
-        border: `solid 2px ${theme.palette.grey.A700}`,
+        border: `solid 2px ${theme.vars.palette.grey.A700}`,
         width: '100%',
         height: '100%',
         opacity: 1,
@@ -114,10 +114,10 @@ export const MuiSwitch: Components<Theme>['MuiSwitch'] = {
 
     thumb: ({ theme }) => ({
       boxShadow: 'none',
-      color: theme.palette.grey.A700,
+      color: theme.vars.palette.grey.A700,
 
       ...theme.applyStyles('dark', {
-        backgroundColor: theme.palette.grey.A200,
+        backgroundColor: theme.vars.palette.grey.A200,
       }),
     }),
   },

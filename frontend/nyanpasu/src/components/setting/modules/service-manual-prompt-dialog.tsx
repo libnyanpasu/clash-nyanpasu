@@ -9,6 +9,7 @@ import { notification } from '@/utils/notification'
 import { getShikiSingleton } from '@/utils/shiki'
 import ContentPasteIcon from '@mui/icons-material/ContentPaste'
 import { IconButton, Tooltip, useTheme } from '@mui/material'
+import { useColorScheme } from '@mui/material/styles'
 import { getCoreDir, getServiceInstallPrompt } from '@nyanpasu/interface'
 import { BaseDialog, BaseDialogProps, cn } from '@nyanpasu/ui'
 import styles from './service-manual-prompt-dialog.module.scss'
@@ -59,7 +60,7 @@ export default function ServerManualPromptDialog({
   ...props
 }: ServerManualPromptDialogProps) {
   const { t } = useTranslation()
-  const theme = useTheme()
+  const { mode } = useColorScheme()
   const { data: serviceInstallPrompt, error } = useSWR(
     operation === 'install' ? '/service_install_prompt' : null,
     getServiceInstallPrompt,
@@ -130,7 +131,7 @@ export default function ServerManualPromptDialog({
             <div
               className={cn(
                 'rounded-sm md:max-w-[80vw] lg:max-w-[60vw] xl:max-w-[50vw]',
-                theme.palette.mode === 'dark' && styles.dark,
+                mode === 'dark' && styles.dark,
                 styles.prompt,
               )}
               dangerouslySetInnerHTML={{

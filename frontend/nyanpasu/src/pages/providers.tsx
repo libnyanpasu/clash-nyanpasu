@@ -4,7 +4,7 @@ import RulesProvider from '@/components/providers/rules-provider'
 import UpdateProviders from '@/components/providers/update-providers'
 import UpdateProxiesProviders from '@/components/providers/update-proxies-providers'
 import { Chip } from '@mui/material'
-import Grid from '@mui/material/Grid2'
+import Grid from '@mui/material/Grid'
 import {
   useClashProxiesProvider,
   useClashRulesProvider,

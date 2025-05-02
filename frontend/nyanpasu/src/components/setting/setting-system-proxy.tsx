@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { message } from '@/utils/notification'
 import { InputAdornment, List, ListItem } from '@mui/material'
-import Grid from '@mui/material/Grid2'
+import Grid from '@mui/material/Grid'
 import { useSetting, useSystemProxy } from '@nyanpasu/interface'
 import {
   BaseCard,

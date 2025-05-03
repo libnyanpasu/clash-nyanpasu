@@ -5,6 +5,8 @@
 
 @import 'tailwindcss';
 
+@plugin '@libnyanpasu/material-design-tailwind';
+
 @config '../../../tailwind.config.ts';
 
 @tailwind utilities;

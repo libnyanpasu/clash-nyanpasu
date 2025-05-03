@@ -27,7 +27,7 @@ export const BasePage: FC<BasePageProps> = ({
 }) => {
   return (
     <BaseErrorBoundary>
-      <div className="MDYBasePage" data-tauri-drag-region>
+      <div className="MDYBasePage @container" data-tauri-drag-region>
         <Header title={title} header={header} />
 
         <ScrollArea.Root

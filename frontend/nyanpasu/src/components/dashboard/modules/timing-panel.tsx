@@ -2,9 +2,8 @@ import { useAtomValue } from 'jotai'
 import { useTranslation } from 'react-i18next'
 import { useColorForDelay } from '@/hooks/theme'
 import { atomIsDrawer } from '@/store'
-import { Paper } from '@mui/material'
-import Grid from '@mui/material/Grid2'
 import { useSetting } from '@nyanpasu/interface'
+import { cn } from '@nyanpasu/ui'
 
 function LatencyTag({ name, value }: { name: string; value: number }) {
   const { t } = useTranslation()
@@ -27,25 +26,31 @@ export const TimingPanel = ({ data }: { data: { [key: string]: number } }) => {
 
   const { value } = useSetting('clash_core')
 
-  const supportMemory = value && ['mihomo', 'mihomo-alpha'].includes(value)
+  const isSupportMemory = value && !['mihomo', 'mihomo-alpha'].includes(value)
 
   return (
-    <Grid
-      size={{
-        sm: isDrawer ? 6 : 12,
-        md: supportMemory ? 4 : 6,
-        lg: supportMemory ? 3 : 4,
-        xl: 3,
-      }}
+    <div
+      className={cn(
+        'bg-surface dark:bg-on-surface-variant/30',
+        'h-full rounded-3xl p-4',
+        // TODO: use tailwind container queries
+        // Apply responsive grid classes directly
+        'col-span-6',
+        isDrawer
+          ? isSupportMemory
+            ? 'sm:col-span-4'
+            : 'sm:col-span-6'
+          : isSupportMemory
+            ? 'md:col-span-4 lg:col-span-3'
+            : 'md:col-span-6 lg:col-span-4',
+      )}
     >
-      <Paper className="!h-full !rounded-3xl p-4">
-        <div className="flex h-full flex-col justify-between">
-          {Object.entries(data).map(([name, value]) => (
-            <LatencyTag key={name} name={name} value={value} />
-          ))}
-        </div>
-      </Paper>
-    </Grid>
+      <div className="flex h-full flex-col justify-between">
+        {Object.entries(data).map(([name, value]) => (
+          <LatencyTag key={name} name={name} value={value} />
+        ))}
+      </div>
+    </div>
   )
 }
 

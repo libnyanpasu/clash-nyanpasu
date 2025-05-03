@@ -53,6 +53,9 @@
     "prepare:preview": "tsx scripts/prepare-preview.ts"
   },
   "dependencies": {
+    "@libnyanpasu/material-design-libs": "^0.2.4",
+    "@libnyanpasu/material-design-react": "^0.2.4",
+    "@libnyanpasu/material-design-tailwind": "^0.2.4",
     "husky": "9.1.7",
     "lodash-es": "4.17.21"
   },

@@ -32,6 +32,7 @@ import { lazy, PropsWithChildren, useEffect } from 'react'
 import { SWRConfig } from 'swr'
 import { NyanpasuProvider, useSettings } from '@nyanpasu/interface'
 import styles from './-__root.module.scss'
+import { ThemeMDProvider } from '@/providers/theme-md-provider'
 
 dayjs.extend(relativeTime)
 dayjs.extend(customParseFormat)
@@ -122,27 +123,29 @@ export default function App() {
         }}
       >
         <QueryLoaderProvider>
-          <StyledEngineProvider injectFirst>
-            <ThemeModeProvider>
-              <CssBaseline />
-              <LocalesProvider />
-              <MutationProvider />
-              <NoticeProvider />
-              <SchemeProvider />
-              <UpdaterDialog />
-              <UpdaterProvider />
+          <ThemeMDProvider>
+            <StyledEngineProvider injectFirst>
+              <ThemeModeProvider>
+                <CssBaseline />
+                <LocalesProvider />
+                <MutationProvider />
+                <NoticeProvider />
+                <SchemeProvider />
+                <UpdaterDialog />
+                <UpdaterProvider />
 
-              <AppContainer isDrawer={isDrawer}>
-                <PageTransition
-                  className={cn(
-                    'absolute inset-4 top-10',
-                    !isDrawer && 'left-0',
-                  )}
-                />
-                <TanStackRouterDevtools />
-              </AppContainer>
-            </ThemeModeProvider>
-          </StyledEngineProvider>
+                <AppContainer isDrawer={isDrawer}>
+                  <PageTransition
+                    className={cn(
+                      'absolute inset-4 top-10',
+                      !isDrawer && 'left-0',
+                    )}
+                  />
+                  <TanStackRouterDevtools />
+                </AppContainer>
+              </ThemeModeProvider>
+            </StyledEngineProvider>
+          </ThemeMDProvider>
         </QueryLoaderProvider>
       </SWRConfig>
     </NyanpasuProvider>

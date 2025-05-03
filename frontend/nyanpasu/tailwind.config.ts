@@ -1,6 +1,7 @@
 import type { Config } from 'tailwindcss'
 import createPlugin from 'tailwindcss/plugin'
 import { MUI_BREAKPOINTS } from '@nyanpasu/ui/src/materialYou/themeConsts.mjs'
+import mdplugin from '@libnyanpasu/material-design-tailwind'
 
 const getMUIScreen = () => {
   const breakpoints = MUI_BREAKPOINTS.values as Record<string, number>
@@ -16,10 +17,13 @@ const getMUIScreen = () => {
   return result
 }
 
-/** @type {import('tailwindcss').Config} */
-module.exports = {
-  content: ['./src/**/*.{tsx,ts}', '../ui/**/*.{tsx,ts}'],
-  darkMode: 'selector',
+const tailwindConfig: Config = {
+  content: [
+    './node_modules/@libnyanpasu/material-design-react/**/*',
+    './src/**/*.{tsx,ts}',
+    '../ui/**/*.{tsx,ts}',
+  ],
+  darkMode: 'class',
   theme: {
     extend: {
       maxHeight: {
@@ -45,6 +49,7 @@ module.exports = {
     screen: getMUIScreen(),
   },
   plugins: [
+    mdplugin,
     createPlugin(({ addBase }) => {
       addBase({
         '.scrollbar-hidden::-webkit-scrollbar': {
@@ -53,4 +58,6 @@ module.exports = {
       })
     }),
   ],
-} satisfies Config
+}
+
+export default tailwindConfig

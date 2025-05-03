@@ -1,15 +1,11 @@
+import MaterialSymbolsArrowDownwardRounded from '~icons/material-symbols/arrow-downward-rounded'
+import MaterialSymbolsArrowUpwardRounded from '~icons/material-symbols/arrow-upward-rounded'
+import MaterialSymbolsMemoryRounded from '~icons/material-symbols/memory-rounded'
+import MaterialSymbolsSettingsEthernetRounded from '~icons/material-symbols/settings-ethernet-rounded'
 import { useAtomValue } from 'jotai'
-import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import Dataline, { DatalineProps } from '@/components/dashboard/dataline'
 import { atomIsDrawer } from '@/store'
-import {
-  ArrowDownward,
-  ArrowUpward,
-  MemoryOutlined,
-  SettingsEthernet,
-} from '@mui/icons-material'
-import Grid from '@mui/material/Grid2'
 import {
   MAX_CONNECTIONS_HISTORY,
   MAX_MEMORY_HISTORY,
@@ -19,6 +15,7 @@ import {
   useClashTraffic,
   useSetting,
 } from '@nyanpasu/interface'
+import { cn } from '@nyanpasu/ui'
 
 export const DataPanel = () => {
   const { t } = useTranslation()
@@ -33,7 +30,7 @@ export const DataPanel = () => {
 
   const { value } = useSetting('clash_core')
 
-  const supportMemory = value && ['mihomo', 'mihomo-alpha'].includes(value)
+  const isSupportMemory = value && !['mihomo', 'mihomo-alpha'].includes(value)
 
   const padData = (data: (number | undefined)[] = [], max: number) =>
     Array(Math.max(0, max - data.length))
@@ -46,7 +43,7 @@ export const DataPanel = () => {
         clashTraffic?.map((item) => item.down),
         MAX_TRAFFIC_HISTORY,
       ),
-      icon: ArrowDownward,
+      icon: <MaterialSymbolsArrowDownwardRounded />,
       title: t('Download Traffic'),
       total: clashConnections?.at(-1)?.downloadTotal,
       type: 'speed',
@@ -56,7 +53,7 @@ export const DataPanel = () => {
         clashTraffic?.map((item) => item.up),
         MAX_TRAFFIC_HISTORY,
       ),
-      icon: ArrowUpward,
+      icon: <MaterialSymbolsArrowUpwardRounded />,
       title: t('Upload Traffic'),
       total: clashConnections?.at(-1)?.uploadTotal,
       type: 'speed',
@@ -66,40 +63,40 @@ export const DataPanel = () => {
         clashConnections?.map((item) => item.connections?.length ?? 0),
         MAX_CONNECTIONS_HISTORY,
       ),
-      icon: SettingsEthernet,
+      icon: <MaterialSymbolsSettingsEthernetRounded />,
       title: t('Active Connections'),
       type: 'raw',
     },
   ]
 
-  if (supportMemory) {
+  if (isSupportMemory) {
     Datalines.splice(2, 0, {
       data: padData(
         clashMemory?.map((item) => item.inuse),
         MAX_MEMORY_HISTORY,
       ),
-      icon: MemoryOutlined,
+      icon: <MaterialSymbolsMemoryRounded />,
       title: t('Memory'),
     })
   }
 
   const isDrawer = useAtomValue(atomIsDrawer)
 
-  const gridLayout = useMemo(
-    () => ({
-      sm: isDrawer ? 6 : 12,
-      md: 6,
-      lg: supportMemory ? 3 : 4,
-      xl: supportMemory ? 3 : 4,
-    }),
-    [isDrawer, supportMemory],
-  )
-
   return Datalines.map((props, index) => {
     return (
-      <Grid key={`data-${index}`} size={gridLayout}>
-        <Dataline {...props} className="max-h-1/8 min-h-40" />
-      </Grid>
+      <Dataline
+        {...props}
+        className={cn(
+          'max-h-1/8 min-h-40',
+          // TODO: use tailwind container queries
+          // Apply responsive grid classes directly
+          'col-span-6 sm:col-span-12 md:col-span-6',
+          isDrawer ? 'sm:col-span-6' : 'sm:col-span-12',
+          isSupportMemory
+            ? 'lg:col-span-3 xl:col-span-3'
+            : 'lg:col-span-4 xl:col-span-4',
+        )}
+      />
     )
   })
 }

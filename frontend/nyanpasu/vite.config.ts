@@ -34,7 +34,7 @@ const builtinVars = () => {
     transformIndexHtml(html: string) {
       return html.replace(
         /<\/head>/,
-        `<script>window.__IS_NIGHTLY__ = true</script></head>`,
+        `<script>window.__IS_NIGHTLY__ = ${IS_NIGHTLY}</script></head>`,
       )
     },
   }

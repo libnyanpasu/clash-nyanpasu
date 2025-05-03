@@ -23,7 +23,7 @@
     "@vitejs/plugin-react": "4.4.1",
     "ahooks": "3.8.4",
     "d3": "7.9.0",
-    "framer-motion": "12.9.2",
+    "framer-motion": "12.9.4",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-error-boundary": "5.0.0",

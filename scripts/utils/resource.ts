@@ -1,5 +1,4 @@
 // import { ArchMapping } from 'utils/manifest';
-import consola from 'consola'
 import fetch, { type RequestInit } from 'node-fetch'
 import {
   CLASH_META_ALPHA_MANIFEST,
@@ -13,6 +12,7 @@ import {
 import { BinInfo, SupportedArch } from '../types'
 import { getProxyAgent } from './'
 import { SIDECAR_HOST } from './consts'
+import { consola } from './logger'
 
 const SERVICE_REPO = 'libnyanpasu/nyanpasu-service'
 

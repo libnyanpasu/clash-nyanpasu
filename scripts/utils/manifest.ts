@@ -1,5 +1,5 @@
-import consola from 'consola'
 import { SupportedArch } from '../types/index'
+import { consola } from './logger'
 import { applyProxy, octokit } from './octokit'
 
 export type ArchMapping = { [key in SupportedArch]: string }

@@ -34,7 +34,7 @@ const builtinVars = () => {
     transformIndexHtml(html: string) {
       return html.replace(
         /<\/head>/,
-        `<script>window.__IS_NIGHTLY__ = true</script></head>`,
+        `<script>window.__IS_NIGHTLY__ = ${IS_NIGHTLY ? 'true' : 'false'}</script></head>`,
       )
     },
   }
@@ -46,7 +46,12 @@ export default defineConfig(({ command, mode }) => {
 
   const config = {
     // root: "/",
-    server: { port: 3000 },
+    server: {
+      port: 3000,
+      watch: {
+        ignored: ['**/*.scss.d.ts'],
+      },
+    },
     css: {
       preprocessorOptions: {
         scss: {

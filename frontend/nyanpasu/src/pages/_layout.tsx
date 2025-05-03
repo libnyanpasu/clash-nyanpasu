@@ -6,7 +6,11 @@ import {
 
 const Catch = ({ error }: ErrorComponentProps) => {
   return (
-    <div style={{ backgroundColor: '#fff' }}>
+    <div
+      style={{
+        backgroundColor: '#fff',
+      }}
+    >
       <h1>Oops!</h1>
       <p>Something went wrong... Caught at _layout error boundary.</p>
       <pre>{error.message}</pre>

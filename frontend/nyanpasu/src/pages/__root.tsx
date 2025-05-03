@@ -12,7 +12,7 @@ import { useNyanpasuStorageSubscribers } from '@/hooks/use-store'
 import { UpdaterProvider } from '@/hooks/use-updater'
 import { FileRouteTypes } from '@/routeTree.gen'
 import { atomIsDrawer, memorizedRoutePathAtom } from '@/store'
-import { CssBaseline, useTheme } from '@mui/material'
+import { CssBaseline } from '@mui/material'
 import { StyledEngineProvider, useColorScheme } from '@mui/material/styles'
 import { cn, useBreakpoint } from '@nyanpasu/ui'
 import {

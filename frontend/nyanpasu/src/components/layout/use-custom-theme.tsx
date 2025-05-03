@@ -15,7 +15,7 @@ const appWindow = getCurrentWebviewWindow()
 
 const applyRootStyleVar = (mode: 'light' | 'dark', theme: Theme) => {
   const root = document.documentElement
-  const palette = theme.vars.palette
+  const palette = theme.palette
 
   const isLightMode = mode !== 'light'
   root.className = cn(mode === 'dark' ? 'dark' : 'light')
@@ -50,7 +50,6 @@ export const CustomTheme = ({ children }: PropsWithChildren) => {
     const color = themeColor || DEFAULT_COLOR
 
     const mergedTheme = createMDYTheme(color, DEFAULT_FONT_FAMILY)
-
     applyRootStyleVar(themeMode, mergedTheme)
 
     return mergedTheme

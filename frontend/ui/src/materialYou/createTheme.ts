@@ -1,10 +1,10 @@
-import createPalette from 'node_modules/@mui/material/esm/styles/createPalette'
+import { RecursivePartial } from '@/utils'
 import {
   argbFromHex,
   hexFromArgb,
   themeFromSourceColor,
 } from '@material/material-color-utilities'
-import { createTheme } from '@mui/material/styles'
+import { createTheme, Palette } from '@mui/material/styles'
 import {
   MuiButton,
   MuiButtonGroup,
@@ -25,8 +25,7 @@ export const createMDYTheme = (color: string, fontFamily?: string) => {
   const materialColor = themeFromSourceColor(argbFromHex(color))
 
   const generatePalette = (mode: 'light' | 'dark') => {
-    return createPalette({
-      mode,
+    return {
       primary: {
         main: hexFromArgb(materialColor.schemes[mode].primary),
       },
@@ -42,7 +41,7 @@ export const createMDYTheme = (color: string, fontFamily?: string) => {
           materialColor.schemes[mode].onSecondaryContainer,
         ),
       },
-    })
+    } satisfies RecursivePartial<Palette>
   }
   const colorSchemes = {
     light: {

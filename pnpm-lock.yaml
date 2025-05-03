@@ -260,14 +260,14 @@ importers:
         specifier: 2.3.0
         version: 2.3.0
       country-emoji:
-        specifier: 2.0.0-beta.1
-        version: 2.0.0-beta.1
+        specifier: 1.5.6
+        version: 1.5.6
       dayjs:
         specifier: 1.11.13
         version: 1.11.13
       framer-motion:
-        specifier: 12.9.4
-        version: 12.9.4(@emotion/is-prop-valid@1.3.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 12.9.2
+        version: 12.9.2(@emotion/is-prop-valid@1.3.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       i18next:
         specifier: 25.0.2
         version: 25.0.2(typescript@5.8.3)
@@ -486,8 +486,8 @@ importers:
         specifier: 7.9.0
         version: 7.9.0
       framer-motion:
-        specifier: 12.9.4
-        version: 12.9.4(@emotion/is-prop-valid@1.3.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 12.9.2
+        version: 12.9.2(@emotion/is-prop-valid@1.3.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       react:
         specifier: 19.1.0
         version: 19.1.0
@@ -4006,8 +4006,8 @@ packages:
   country-code-emoji@2.3.0:
     resolution: {integrity: sha512-MqmIWr3aucoU/3XZU44e0sz6izAlErqaUYp9/NFzdnzb9TrwwornyW3ws2da5TSnpTUr2qP2840oJW9oNKXCoQ==}
 
-  country-emoji@2.0.0-beta.1:
-    resolution: {integrity: sha512-mrESqRwdKYbIviz1Y7yGW3RaMuPjkJzS4zhblG8cqQzPtZec0nfdR43/tRwvgJjV5UVAWQ2RdECydtwh4mzy2A==}
+  country-emoji@1.5.6:
+    resolution: {integrity: sha512-pSB8OOROfimFc2bcN+H41DuzXYIod/JQ6SgF4pYXkRCm9f8uF1JAJ0vXPhenug6xkpt3Gv33mdypMXB49CJWRA==}
 
   create-error-class@3.0.2:
     resolution: {integrity: sha512-gYTKKexFO3kh200H1Nit76sRwRtOY32vQd3jpAQKpLtZqyNsSQNfI4N7o3eP2wUjV35pTWKRYqFUDBvUha/Pkw==}
@@ -4925,8 +4925,8 @@ packages:
   fraction.js@4.3.7:
     resolution: {integrity: sha512-ZsDfxO51wGAXREY55a7la9LScWpwv9RxIrYABrlvOFBlH/ShPnrtsXeuUIfXKKOVicNxQ+o8JTbJvjS4M89yew==}
 
-  framer-motion@12.9.4:
-    resolution: {integrity: sha512-yaeGDmGQ3eCQEwZ95/pRQMaSh/Q4E2CK6JYOclG/PdjyQad0MULJ+JFVV8911Fl5a6tF6o0wgW8Dpl5Qx4Adjg==}
+  framer-motion@12.9.2:
+    resolution: {integrity: sha512-R0O3Jdqbfwywpm45obP+8sTgafmdEcUoShQTAV+rB5pi+Y1Px/FYL5qLLRe5tPtBdN1J4jos7M+xN2VV2oEAbQ==}
     peerDependencies:
       '@emotion/is-prop-valid': '*'
       react: ^18.0.0 || ^19.0.0
@@ -12198,7 +12198,7 @@ snapshots:
 
   country-code-emoji@2.3.0: {}
 
-  country-emoji@2.0.0-beta.1: {}
+  country-emoji@1.5.6: {}
 
   create-error-class@3.0.2:
     dependencies:
@@ -13376,7 +13376,7 @@ snapshots:
 
   fraction.js@4.3.7: {}
 
-  framer-motion@12.9.4(@emotion/is-prop-valid@1.3.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0):
+  framer-motion@12.9.2(@emotion/is-prop-valid@1.3.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0):
     dependencies:
       motion-dom: 12.9.4
       motion-utils: 12.9.4

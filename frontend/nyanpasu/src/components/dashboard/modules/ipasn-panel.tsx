@@ -21,7 +21,7 @@ const EmojiCounty = ({ countryCode }: { countryCode: string }) => {
   }
 
   return (
-    <div className="relative text-5xl">
+    <div className="relative text-5xl select-none">
       <span className="opacity-50 blur">{emoji}</span>
 
       <span className="absolute left-0">{emoji}</span>

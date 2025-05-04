@@ -1,17 +1,15 @@
-import { useLongPress } from 'ahooks'
-import { Reorder, useDragControls } from 'framer-motion'
-import {
-  memo,
-  PointerEvent,
-  useCallback,
-  useRef,
-  useState,
-  useTransition,
-} from 'react'
+import { Reorder } from 'framer-motion'
+import { memo, PointerEvent, useRef, useState, useTransition } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Menu as MenuIcon } from '@mui/icons-material'
-import { LoadingButton } from '@mui/lab'
-import { alpha, ListItemButton, Menu, MenuItem, useTheme } from '@mui/material'
+import {
+  alpha,
+  Button,
+  ListItemButton,
+  Menu,
+  MenuItem,
+  useTheme,
+} from '@mui/material'
 import { ProfileQueryResultItem } from '@nyanpasu/interface'
 import { cleanDeepClickEvent } from '@nyanpasu/ui'
 
@@ -117,7 +115,7 @@ export const ChainItem = memo(function ChainItem({
             <span>{item.name}</span>
           </div>
 
-          <LoadingButton
+          <Button
             size="small"
             color="primary"
             className="!size-8 !min-w-0"
@@ -128,7 +126,7 @@ export const ChainItem = memo(function ChainItem({
             }}
           >
             <MenuIcon />
-          </LoadingButton>
+          </Button>
         </ListItemButton>
       </Reorder.Item>
       <Menu

@@ -65,12 +65,12 @@ export default function ConnectionTotal() {
           sx={[
             (theme) => ({
               color: darken(
-                theme.vars.palette.primary.main,
+                theme.palette.primary.main,
                 downloadHighlight ? 0.9 : 0.3,
               ),
               ...theme.applyStyles('dark', {
                 color: lighten(
-                  theme.vars.palette.primary.main,
+                  theme.palette.primary.main,
                   downloadHighlight ? 0.2 : 0.9,
                 ),
               }),
@@ -81,6 +81,7 @@ export default function ConnectionTotal() {
           {filesize(latestClashConnections.downloadTotal, { pad: true })}
         </span>
       </Paper>
+
       <Paper
         elevation={0}
         className="flex min-h-8 items-center justify-center gap-1 px-2"
@@ -93,12 +94,12 @@ export default function ConnectionTotal() {
           sx={[
             (theme) => ({
               color: darken(
-                theme.vars.palette.primary.main,
+                theme.palette.primary.main,
                 uploadHighlight ? 0.9 : 0.3,
               ),
               ...theme.applyStyles('dark', {
                 color: lighten(
-                  theme.vars.palette.primary.main,
+                  theme.palette.primary.main,
                   downloadHighlight ? 0.2 : 0.9,
                 ),
               }),

@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { OS } from '@/consts'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { Box, List, ListItem } from '@mui/material'
+import { Box, Button, List, ListItem } from '@mui/material'
 import {
   ClashCore,
   useClashConnections,
@@ -167,9 +167,9 @@ export const SettingClashCore = () => {
           }}
         >
           <Box display="flex" gap={1}>
-            <LoadingButton variant="outlined" onClick={handleRestart}>
+            <Button variant="outlined" onClick={handleRestart}>
               {t('Restart')}
-            </LoadingButton>
+            </Button>
 
             {/** TODO: Support Linux when Manifest v2 released */}
             {OS !== 'linux' && (

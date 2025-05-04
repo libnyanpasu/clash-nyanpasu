@@ -59,7 +59,7 @@ export const DelayButton = memo(function DelayButton({
             backgroundColor: alpha(palette.primary.main, 0.45),
           },
 
-          '&.MuiLoadingButton-loading': {
+          '&.MuiButton-loading': {
             backgroundColor: alpha(palette.primary.main, 0.15),
           },
         }}

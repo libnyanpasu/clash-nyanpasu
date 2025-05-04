@@ -1,7 +1,7 @@
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { ReactNode } from 'react'
+import { cn } from '@/utils'
 import {
-  alpha,
   Box,
   Card,
   CardContent,
@@ -42,30 +42,24 @@ export const BaseCard = ({
         {children}
       </CardContent>
 
-      <motion.div
-        initial={false}
-        animate={loading ? 'loading' : 'none'}
-        variants={{
-          loading: { opacity: 1, visibility: 'visible' },
-          none: {
-            opacity: 0,
-            transitionEnd: {
-              visibility: 'hidden',
-            },
-          },
-        }}
-      >
-        <Box
-          className={style.LoadingMask}
-          sx={[
-            (theme) => ({
-              backgroundColor: alpha(theme.vars.palette.grey[100], 0.1),
-            }),
-          ]}
-        >
-          <CircularProgress />
-        </Box>
-      </motion.div>
+      <AnimatePresence initial={false}>
+        {loading && (
+          <motion.div
+            className={cn(style.LoadingMask, 'bg-zinc-100/10')}
+            initial={{
+              opacity: 0,
+            }}
+            animate={{
+              opacity: 1,
+            }}
+            exit={{
+              opacity: 0,
+            }}
+          >
+            <CircularProgress />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </Card>
   )
 }

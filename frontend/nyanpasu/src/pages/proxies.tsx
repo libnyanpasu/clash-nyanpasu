@@ -17,10 +17,9 @@ import { proxiesFilterAtom } from '@/store/proxies'
 import { Check } from '@mui/icons-material'
 import {
   alpha,
-  Box,
-  Button,
-  ButtonGroup,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   useTheme,
 } from '@mui/material'
 import {
@@ -117,21 +116,31 @@ function ProxyPage() {
 
   const Header = useMemo(() => {
     return (
-      <Box display="flex" alignItems="center" gap={1}>
-        <ButtonGroup size="small">
-          {Object.entries(proxyMode).map(([key, enabled]) => (
-            <Button
+      <div className="flex items-center gap-1">
+        <ToggleButtonGroup
+          color="primary"
+          size="small"
+          exclusive
+          onChange={(_, newValue) => handleSwitch(newValue)}
+        >
+          {Object.entries(proxyMode).map(([key, enabled], index) => (
+            <ToggleButton
               key={key}
-              variant={enabled ? 'contained' : 'outlined'}
-              onClick={() => handleSwitch(key)}
-              sx={{ textTransform: 'capitalize' }}
+              className={cn(
+                'flex justify-center gap-0.5 !px-3',
+                index === 0 && '!rounded-l-full',
+                index === Object.entries(proxyMode).length - 1 &&
+                  '!rounded-r-full',
+              )}
+              value={key}
+              selected={enabled}
             >
               {enabled && <Check className="mr-[0.1rem] -ml-2 scale-75" />}
               {t(key)}
-            </Button>
+            </ToggleButton>
           ))}
-        </ButtonGroup>
-      </Box>
+        </ToggleButtonGroup>
+      </div>
     )
   }, [handleSwitch, proxyMode, t])
 
@@ -142,10 +151,10 @@ function ProxyPage() {
   return (
     <SidePage
       title={t('Proxy Groups')}
-      header={Header}
-      sideBar={<SideBar />}
       leftViewportRef={leftViewportRef}
       rightViewportRef={rightViewportRef}
+      header={Header}
+      sideBar={<SideBar />}
       side={
         hasProxies &&
         proxyMode.rule && (

@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { message } from '@/utils/notification'
 import { Refresh } from '@mui/icons-material'
-import LoadingButton from '@mui/lab/LoadingButton'
+import { Button } from '@mui/material'
 import { useClashProxiesProvider } from '@nyanpasu/interface'
 
 export const UpdateProxiesProviders = () => {
@@ -42,14 +42,14 @@ export const UpdateProxiesProviders = () => {
   })
 
   return (
-    <LoadingButton
+    <Button
       variant="contained"
       loading={loading}
       startIcon={<Refresh />}
       onClick={handleProviderUpdate}
     >
       {t('Update All Proxies Providers')}
-    </LoadingButton>
+    </Button>
   )
 }
 

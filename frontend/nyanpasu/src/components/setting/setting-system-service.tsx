@@ -3,7 +3,6 @@ import { useTransition } from 'react'
 import { useTranslation } from 'react-i18next'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { LoadingButton } from '@mui/lab'
 import { Button, List, ListItem, ListItemText, Typography } from '@mui/material'
 import {
   restartSidecar,
@@ -150,24 +149,24 @@ export const SettingSystemService = () => {
           />
           <div className="flex gap-2">
             {!isDisabled && (
-              <LoadingButton
+              <Button
                 variant="contained"
                 onClick={handleControlClick}
                 loading={serviceControlPending}
                 disabled={installOrUninstallPending || serviceControlPending}
               >
                 {getControlButtonString()}
-              </LoadingButton>
+              </Button>
             )}
 
-            <LoadingButton
+            <Button
               variant="contained"
               onClick={handleInstallClick}
               loading={installOrUninstallPending}
               disabled={installOrUninstallPending || serviceControlPending}
             >
               {getInstallButtonString()}
-            </LoadingButton>
+            </Button>
 
             {import.meta.env.DEV && (
               <Button

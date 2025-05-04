@@ -4,7 +4,6 @@ import { AnimatePresence, motion } from 'framer-motion'
 import {
   CSSProperties,
   ReactNode,
-  useCallback,
   useEffect,
   useLayoutEffect,
   useState,
@@ -12,7 +11,6 @@ import {
 import { useTranslation } from 'react-i18next'
 import { getSystem, useClickPosition } from '@/hooks'
 import { cn } from '@/utils'
-import LoadingButton from '@mui/lab/LoadingButton'
 import { Button, Divider } from '@mui/material'
 import { alpha, useTheme } from '@mui/material/styles'
 import * as Portal from '@radix-ui/react-portal'
@@ -219,25 +217,25 @@ export const BaseDialog = ({
 
             <div className={cn('m-2 flex justify-end gap-2', full && 'mx-6')}>
               {onClose && (
-                <LoadingButton
+                <Button
                   disabled={loading || closeLoading}
                   loading={closeLoading || loading}
                   variant="outlined"
                   onClick={handleClose}
                 >
                   {close || t('Close')}
-                </LoadingButton>
+                </Button>
               )}
 
               {onOk && (
-                <LoadingButton
+                <Button
                   disabled={loading || disabledOk}
                   loading={okLoading || loading}
                   variant="contained"
                   onClick={handleOk}
                 >
                   {ok || t('Ok')}
-                </LoadingButton>
+                </Button>
               )}
             </div>
           </motion.div>

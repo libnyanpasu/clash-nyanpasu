@@ -10,7 +10,7 @@ import { message } from '@/utils/notification'
 import parseTraffic from '@/utils/parse-traffic'
 import FiberManualRecord from '@mui/icons-material/FiberManualRecord'
 import Update from '@mui/icons-material/Update'
-import LoadingButton from '@mui/lab/LoadingButton'
+import { Button } from '@mui/material'
 import ListItem from '@mui/material/ListItem'
 import ListItemButton from '@mui/material/ListItemButton'
 import { alpha, useTheme } from '@mui/material/styles'
@@ -244,7 +244,7 @@ export const ClashCoreItem = ({
 
           {haveNewVersion && (
             <Tooltip title={t('Update Core')}>
-              <LoadingButton
+              <Button
                 variant="text"
                 className="!size-8 !min-w-0"
                 loading={downloadState}
@@ -254,7 +254,7 @@ export const ClashCoreItem = ({
                 }}
               >
                 <Update />
-              </LoadingButton>
+              </Button>
             </Tooltip>
           )}
         </div>

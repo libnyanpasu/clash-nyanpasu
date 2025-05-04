@@ -1554,7 +1554,7 @@ dependencies = [
  "mime",
  "mlua",
  "nanoid",
- "nix 0.30.0",
+ "nix 0.30.1",
  "notify",
  "notify-debouncer-full",
  "num_cpus",
@@ -5442,9 +5442,9 @@ dependencies = [
 
 [[package]]
 name = "nix"
-version = "0.30.0"
+version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "537bc3c4a347b87fd52ac6c03a02ab1302962cfd93373c5d7a112cdc337854cc"
+checksum = "74523f3a35e05aba87a1d978330aef40f67b0304ac79c1c00b294c9830543db6"
 dependencies = [
  "bitflags 2.9.0",
  "cfg-if",

@@ -15,11 +15,13 @@ use tokio::io::AsyncWriteExt;
 use tracing_attributes::instrument;
 use url::Url;
 
-use std::{borrow::Cow, path::Path};
+use std::{borrow::Cow, path::Path, time::Duration};
 
 pub(crate) use crate::utils::candy::get_reqwest_client;
 
 pub static SERVER_PORT: Lazy<u16> = Lazy::new(|| port_scanner::request_open_port().unwrap());
+
+const CACHE_TIMEOUT: Duration = Duration::from_secs(60 * 60 * 24 * 7); // 7 days
 
 #[derive(Debug, Deserialize)]
 struct CacheIcon {
@@ -63,6 +65,12 @@ async fn write_cache_file(path: &Path, cache_file: &CacheFile<'_>) -> Result<()>
     Ok(())
 }
 
+async fn remove_cache_file(cache_file: &Path) {
+    if let Err(e) = tokio::fs::remove_file(&cache_file).await {
+        tracing::error!("failed to remove cache file: {}", e);
+    }
+}
+
 async fn cache_icon_inner(url: &str) -> Result<(HeaderValue, Bytes)> {
     let url = BASE64_STANDARD.decode(url)?;
     let url = String::from_utf8_lossy(&url);
@@ -73,19 +81,30 @@ async fn cache_icon_inner(url: &str) -> Result<(HeaderValue, Bytes)> {
     if !cache_dir.exists() {
         std::fs::create_dir_all(&cache_dir)?;
     }
+    // TODO: if face performance issue, abstract a task to schedule cache file removal
+    let now = std::time::SystemTime::now();
+    let outdated_time = now
+        .checked_sub(CACHE_TIMEOUT)
+        .expect("cache timeout is too long");
     let cache_file = cache_dir.join(format!("{:x}.bin", hash));
-    if cache_file.exists() {
-        let span = tracing::span!(tracing::Level::DEBUG, "read_cache_file", path = ?cache_file);
-        let _enter = span.enter();
-        match read_cache_file(&cache_file).await {
-            Ok((mime, bytes)) => return Ok((mime, bytes)),
-            Err(e) => {
-                tracing::error!("failed to read cache file: {}", e);
-                if let Err(e) = tokio::fs::remove_file(&cache_file).await {
-                    tracing::error!("failed to remove cache file: {}", e);
+    let meta = tokio::fs::metadata(&cache_file).await.ok();
+    match meta {
+        Some(meta) if meta.modified().is_ok_and(|t| t < outdated_time) => {
+            tracing::debug!("cache file is outdate, removing it");
+            remove_cache_file(&cache_file).await;
+        }
+        Some(_) => {
+            let span = tracing::span!(tracing::Level::DEBUG, "read_cache_file", path = ?cache_file);
+            let _enter = span.enter();
+            match read_cache_file(&cache_file).await {
+                Ok((mime, bytes)) => return Ok((mime, bytes)),
+                Err(e) => {
+                    tracing::error!("failed to read cache file: {}", e);
+                    remove_cache_file(&cache_file).await;
                 }
             }
         }
+        _ => (),
     }
     let client = get_reqwest_client()?;
     let response = client.get(url).send().await?.error_for_status()?;

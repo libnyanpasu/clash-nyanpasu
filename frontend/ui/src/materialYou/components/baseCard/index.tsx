@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion'
 import { ReactNode } from 'react'
+import { cn } from '@/utils'
 import {
-  alpha,
   Box,
   Card,
   CardContent,
@@ -55,14 +55,7 @@ export const BaseCard = ({
           },
         }}
       >
-        <Box
-          className={style.LoadingMask}
-          sx={[
-            (theme) => ({
-              backgroundColor: alpha(theme.vars.palette.grey[100], 0.1),
-            }),
-          ]}
-        >
+        <Box className={cn(style.LoadingMask, 'bg-gray-100/10')}>
           <CircularProgress />
         </Box>
       </motion.div>

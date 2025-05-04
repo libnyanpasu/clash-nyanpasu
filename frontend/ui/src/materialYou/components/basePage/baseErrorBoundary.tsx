@@ -2,6 +2,8 @@ import { ReactNode } from 'react'
 import { ErrorBoundary, FallbackProps } from 'react-error-boundary'
 
 function ErrorFallback({ error }: FallbackProps) {
+  console.log(error)
+
   return (
     <div role="alert" style={{ padding: 16 }}>
       <h4>Something went wrong:(</h4>

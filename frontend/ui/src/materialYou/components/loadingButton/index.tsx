@@ -1,11 +1,11 @@
 import { useControllableValue } from 'ahooks'
 import { MouseEventHandler } from 'react'
-import MuiLoadingButton, {
-  LoadingButtonProps as MuiLoadingButtonProps,
-} from '@mui/lab/LoadingButton'
+import {
+  Button as MuiButton,
+  ButtonProps as MuiButtonProps,
+} from '@mui/material'
 
-export interface LoadingButtonProps
-  extends Omit<MuiLoadingButtonProps, 'onClick'> {
+export interface LoadingButtonProps extends Omit<MuiButtonProps, 'onClick'> {
   onClick?: MouseEventHandler<HTMLButtonElement>
 }
 
@@ -34,5 +34,5 @@ export const LoadingButton = ({
     }
   }
 
-  return <MuiLoadingButton {...props} onClick={handleClick} loading={pending} />
+  return <MuiButton {...props} onClick={handleClick} loading={pending} />
 }

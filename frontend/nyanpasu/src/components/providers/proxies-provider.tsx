@@ -4,8 +4,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { message } from '@/utils/notification'
 import { Refresh } from '@mui/icons-material'
-import LoadingButton from '@mui/lab/LoadingButton'
-import { Chip, Paper } from '@mui/material'
+import { Button, Chip, Paper } from '@mui/material'
 import { ClashProxiesProviderQueryItem } from '@nyanpasu/interface'
 import ProxiesProviderTraffic from './proxies-provider-traffic'
 
@@ -68,7 +67,7 @@ export const ProxiesProvider = ({ provider }: ProxiesProviderProps) => {
           })}
         />
 
-        <LoadingButton
+        <Button
           loading={loading}
           size="small"
           variant="contained"
@@ -76,7 +75,7 @@ export const ProxiesProvider = ({ provider }: ProxiesProviderProps) => {
           onClick={handleClick}
         >
           <Refresh />
-        </LoadingButton>
+        </Button>
       </div>
     </Paper>
   )

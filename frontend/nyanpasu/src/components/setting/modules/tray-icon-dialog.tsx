@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import useSWR from 'swr'
 import { formatError, sleep } from '@/utils'
 import { message } from '@/utils/notification'
-import { LoadingButton } from '@mui/lab'
+import { Button } from '@mui/material'
 import {
   getServerPort,
   isTrayIconSet,
@@ -72,32 +72,32 @@ function TrayIconItem({ mode }: { mode: 'system_proxy' | 'tun' | 'normal' }) {
       <span>
         {isSetTrayIcon ? (
           <div className="flex gap-3">
-            <LoadingButton
+            <Button
               variant="contained"
               loading={isLoading || loading}
               disabled={loading || isLoading}
               onClick={() => setTrayIcon()}
             >
               {t('Edit')}
-            </LoadingButton>
-            <LoadingButton
+            </Button>
+            <Button
               variant="contained"
               loading={isLoading || loading}
               disabled={loading || isLoading}
               onClick={() => setTrayIcon(true)}
             >
               {t('Reset')}
-            </LoadingButton>
+            </Button>
           </div>
         ) : (
-          <LoadingButton
+          <Button
             variant="contained"
             loading={isLoading || loading}
             disabled={loading || isLoading}
             onClick={() => setTrayIcon()}
           >
             {t('Set')}
-          </LoadingButton>
+          </Button>
         )}
       </span>
     </div>

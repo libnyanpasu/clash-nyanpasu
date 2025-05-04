@@ -14,7 +14,6 @@ import {
   Terminal,
   Update,
 } from '@mui/icons-material'
-import LoadingButton from '@mui/lab/LoadingButton'
 import {
   alpha,
   Badge,
@@ -325,7 +324,7 @@ export const ProfileItem = memo(function ProfileItem({
 
             {isRemote && (
               <Tooltip title={t('Update')}>
-                <LoadingButton
+                <Button
                   size="small"
                   variant="outlined"
                   className="!size-8 !min-w-0"
@@ -336,7 +335,7 @@ export const ProfileItem = memo(function ProfileItem({
                   loading={globalUpdatePending || loading.update}
                 >
                   <Update />
-                </LoadingButton>
+                </Button>
               </Tooltip>
             )}
 

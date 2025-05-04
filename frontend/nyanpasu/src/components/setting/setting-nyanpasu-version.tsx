@@ -7,10 +7,10 @@ import { checkUpdate, useUpdaterPlatformSupported } from '@/hooks/use-updater'
 import { UpdaterInstanceAtom } from '@/store/updater'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import LoadingButton from '@mui/lab/LoadingButton'
 import {
   alpha,
   Box,
+  Button,
   List,
   ListItem,
   Paper,
@@ -111,7 +111,7 @@ export const SettingNyanpasuVersion = () => {
               <AutoCheckUpdate />
             </div>
             <ListItem sx={{ pl: 0, pr: 0 }}>
-              <LoadingButton
+              <Button
                 variant="contained"
                 size="large"
                 loading={loading}
@@ -119,7 +119,7 @@ export const SettingNyanpasuVersion = () => {
                 sx={{ width: '100%' }}
               >
                 {t('Check for Updates')}
-              </LoadingButton>
+              </Button>
             </ListItem>
           </>
         )}

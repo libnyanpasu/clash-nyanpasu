@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import getSystem from '@/utils/get-system'
-import LoadingButton from '@mui/lab/LoadingButton'
+import { Button } from '@mui/material'
 import { open } from '@tauri-apps/plugin-dialog'
 import { readTextFile } from '@tauri-apps/plugin-fs'
 
@@ -53,7 +53,7 @@ export const ReadProfile = ({ onSelected }: ReadProfileProps) => {
   }
 
   return (
-    <LoadingButton
+    <Button
       variant="contained"
       loading={loading}
       disabled={loading}
@@ -61,6 +61,6 @@ export const ReadProfile = ({ onSelected }: ReadProfileProps) => {
       color={label ? 'success' : 'primary'}
     >
       {label || t('Choose File')}
-    </LoadingButton>
+    </Button>
   )
 }

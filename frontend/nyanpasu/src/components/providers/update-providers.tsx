@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { message } from '@/utils/notification'
 import { Refresh } from '@mui/icons-material'
-import LoadingButton from '@mui/lab/LoadingButton'
+import { Button } from '@mui/material'
 import { useClashRulesProvider } from '@nyanpasu/interface'
 
 export const UpdateProviders = () => {
@@ -42,14 +42,14 @@ export const UpdateProviders = () => {
   })
 
   return (
-    <LoadingButton
+    <Button
       variant="contained"
       loading={loading}
       startIcon={<Refresh />}
       onClick={handleProviderUpdate}
     >
       {t('Update All Rules Providers')}
-    </LoadingButton>
+    </Button>
   )
 }
 

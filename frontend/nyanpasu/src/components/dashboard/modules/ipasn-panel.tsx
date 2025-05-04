@@ -2,11 +2,15 @@ import { flag as countryCodeEmoji } from 'country-emoji'
 import { useAtomValue } from 'jotai'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { mutate } from 'swr'
 import { atomIsDrawer } from '@/store'
 import { Visibility, VisibilityOff } from '@mui/icons-material'
-import { LoadingButton } from '@mui/lab'
-import { CircularProgress, IconButton, Paper, Tooltip } from '@mui/material'
+import {
+  Button,
+  CircularProgress,
+  IconButton,
+  Paper,
+  Tooltip,
+} from '@mui/material'
 import Grid from '@mui/material/Grid'
 import { useIPSB, useSetting } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
@@ -69,7 +73,7 @@ export const IPASNPanel = ({ refreshCount }: { refreshCount: number }) => {
                 <div className="truncate">{data.country}</div>
 
                 <Tooltip title={t('Click to Refresh Now')}>
-                  <LoadingButton
+                  <Button
                     className="!size-8 !min-w-0"
                     onClick={handleRefreshIP}
                     loading={isValidating}
@@ -86,7 +90,7 @@ export const IPASNPanel = ({ refreshCount }: { refreshCount: number }) => {
                         }
                       />
                     )}
-                  </LoadingButton>
+                  </Button>
                 </Tooltip>
               </div>
 

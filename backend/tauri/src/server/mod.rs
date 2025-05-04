@@ -1,9 +1,9 @@
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use axum::{
     Router,
     body::Body,
     extract::Query,
-    http::{Response, StatusCode},
+    http::{HeaderValue, Response, StatusCode},
     routing::get,
 };
 use base64::{Engine, prelude::BASE64_STANDARD};
@@ -33,12 +33,26 @@ struct CacheFile<'n> {
     bytes: Bytes,
 }
 
+impl TryFrom<CacheFile<'static>> for (HeaderValue, Bytes) {
+    type Error = anyhow::Error;
+
+    fn try_from(value: CacheFile<'static>) -> Result<Self, Self::Error> {
+        Ok((
+            value
+                .mime
+                .parse::<HeaderValue>()
+                .context("failed to parse mime")?,
+            value.bytes,
+        ))
+    }
+}
+
 // TODO: use Reader instead of Vec
-async fn read_cache_file(path: &Path) -> Result<CacheFile<'static>> {
+async fn read_cache_file(path: &Path) -> Result<(HeaderValue, Bytes)> {
     let cache_file = tokio::fs::read(path).await?;
     let (cache_file, _): (CacheFile<'static>, _) =
         bincode::serde::decode_from_slice(&cache_file, bincode::config::standard())?;
-    Ok(cache_file)
+    cache_file.try_into()
 }
 
 // TODO: use Writer instead of Vec
@@ -49,7 +63,7 @@ async fn write_cache_file(path: &Path, cache_file: &CacheFile<'_>) -> Result<()>
     Ok(())
 }
 
-async fn cache_icon_inner<'n>(url: &str) -> Result<CacheFile<'n>> {
+async fn cache_icon_inner(url: &str) -> Result<(HeaderValue, Bytes)> {
     let url = BASE64_STANDARD.decode(url)?;
     let url = String::from_utf8_lossy(&url);
     let url = Url::parse(&url)?;
@@ -64,7 +78,7 @@ async fn cache_icon_inner<'n>(url: &str) -> Result<CacheFile<'n>> {
         let span = tracing::span!(tracing::Level::DEBUG, "read_cache_file", path = ?cache_file);
         let _enter = span.enter();
         match read_cache_file(&cache_file).await {
-            Ok(cache_file) => return Ok(cache_file),
+            Ok((mime, bytes)) => return Ok((mime, bytes)),
             Err(e) => {
                 tracing::error!("failed to read cache file: {}", e);
                 if let Err(e) = tokio::fs::remove_file(&cache_file).await {
@@ -90,17 +104,17 @@ async fn cache_icon_inner<'n>(url: &str) -> Result<CacheFile<'n>> {
     if let Err(e) = write_cache_file(&cache_file, &data).await {
         tracing::error!("failed to write cache file: {}", e);
     }
-    Ok(data)
+    Ok(data
+        .try_into()
+        .expect("It's impossible to fail, if failed, it must a bug, or memory corruption"))
 }
 
 #[tracing_attributes::instrument]
 async fn cache_icon(query: Query<CacheIcon>) -> Response<Body> {
     match cache_icon_inner(&query.url).await {
-        Ok(data) => {
-            let mut response = Response::new(Body::from(data.bytes));
-            response
-                .headers_mut()
-                .insert("content-type", data.mime.parse().unwrap());
+        Ok((mime, bytes)) => {
+            let mut response = Response::new(Body::from(bytes));
+            response.headers_mut().insert("content-type", mime);
             response
         }
         Err(e) => {

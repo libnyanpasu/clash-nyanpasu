@@ -56,11 +56,11 @@ export const RouteListItem = ({
               },
             },
       ]}
-      onClick={() =>
+      onClick={() => {
         navigate({
           to: path,
         })
-      }
+      }}
     >
       <ListItemIcon>
         {createElement(icon, {

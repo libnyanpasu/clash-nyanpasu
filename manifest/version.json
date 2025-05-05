@@ -5,7 +5,7 @@
     "mihomo_alpha": "alpha-50d7834",
     "clash_rs": "v0.7.7",
     "clash_premium": "2023-09-05-gdcc8d87",
-    "clash_rs_alpha": "0.7.7-alpha+sha.a1e13ce"
+    "clash_rs_alpha": "0.7.7-alpha+sha.f795bf6"
   },
   "arch_template": {
     "mihomo": {
@@ -69,5 +69,5 @@
       "linux-armv7hf": "clash-armv7-unknown-linux-gnueabihf"
     }
   },
-  "updated_at": "2025-05-04T22:20:50.432Z"
+  "updated_at": "2025-05-05T22:21:11.764Z"
 }

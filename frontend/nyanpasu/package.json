@@ -32,7 +32,7 @@
     "dayjs": "1.11.13",
     "framer-motion": "12.9.7",
     "i18next": "25.0.2",
-    "jotai": "2.12.3",
+    "jotai": "2.12.4",
     "json-schema": "0.4.0",
     "material-react-table": "3.2.1",
     "monaco-editor": "0.52.2",

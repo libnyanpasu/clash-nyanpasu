@@ -3,7 +3,7 @@
   "type": "module",
   "version": "2.0.0",
   "dependencies": {
-    "@actions/github": "6.0.0",
+    "@actions/github": "6.0.1",
     "@types/figlet": "1.7.0",
     "@types/semver": "7.7.0",
     "figlet": "1.8.1",

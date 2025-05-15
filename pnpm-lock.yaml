@@ -535,8 +535,8 @@ importers:
         specifier: 5.1.0
         version: 5.1.0(typescript@5.8.3)
       vite-plugin-dts:
-        specifier: 4.5.3
-        version: 4.5.3(@types/node@22.15.18)(rollup@4.40.0)(typescript@5.8.3)(vite@6.3.5(@types/node@22.15.18)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.2)(sass-embedded@1.88.0)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.4)(yaml@2.7.0))
+        specifier: 4.5.4
+        version: 4.5.4(@types/node@22.15.18)(rollup@4.40.0)(typescript@5.8.3)(vite@6.3.5(@types/node@22.15.18)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.2)(sass-embedded@1.88.0)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.4)(yaml@2.7.0))
 
   scripts:
     dependencies:
@@ -8122,8 +8122,8 @@ packages:
     engines: {node: ^18.19.0 || >=20.6.0}
     hasBin: true
 
-  vite-plugin-dts@4.5.3:
-    resolution: {integrity: sha512-P64VnD00dR+e8S26ESoFELqc17+w7pKkwlBpgXteOljFyT0zDwD8hH4zXp49M/kciy//7ZbVXIwQCekBJjfWzA==}
+  vite-plugin-dts@4.5.4:
+    resolution: {integrity: sha512-d4sOM8M/8z7vRXHHq/ebbblfaxENjogAAekcfcDCCwAyvGqnPrc7f4NZbvItS+g4WTgerW0xDwSz5qz11JT3vg==}
     peerDependencies:
       typescript: '*'
       vite: '*'
@@ -10373,7 +10373,7 @@ snapshots:
 
   '@rollup/pluginutils@5.1.4(rollup@4.40.0)':
     dependencies:
-      '@types/estree': 1.0.6
+      '@types/estree': 1.0.7
       estree-walker: 2.0.2
       picomatch: 4.0.2
     optionalDependencies:
@@ -16729,7 +16729,7 @@ snapshots:
       - rollup
       - supports-color
 
-  vite-plugin-dts@4.5.3(@types/node@22.15.18)(rollup@4.40.0)(typescript@5.8.3)(vite@6.3.5(@types/node@22.15.18)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.2)(sass-embedded@1.88.0)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.4)(yaml@2.7.0)):
+  vite-plugin-dts@4.5.4(@types/node@22.15.18)(rollup@4.40.0)(typescript@5.8.3)(vite@6.3.5(@types/node@22.15.18)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.2)(sass-embedded@1.88.0)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.4)(yaml@2.7.0)):
     dependencies:
       '@microsoft/api-extractor': 7.51.0(@types/node@22.15.18)
       '@rollup/pluginutils': 5.1.4(rollup@4.40.0)
@@ -16738,7 +16738,7 @@ snapshots:
       compare-versions: 6.1.1
       debug: 4.4.0
       kolorist: 1.8.0
-      local-pkg: 1.0.0
+      local-pkg: 1.1.1
       magic-string: 0.30.17
       typescript: 5.8.3
     optionalDependencies:

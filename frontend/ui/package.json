@@ -3,12 +3,18 @@
   "version": "2.0.0",
   "type": "module",
   "main": "./src/index.ts",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts"
+    },
+    "./src/materialYou/themeConsts.mjs": "./src/materialYou/themeConsts.mjs"
+  },
   "files": [
     "dist",
     "src"
   ],
   "scripts": {
-    "build": "vite build --sourcemap"
+    "build": "vite build"
   },
   "dependencies": {
     "@material/material-color-utilities": "0.3.0",

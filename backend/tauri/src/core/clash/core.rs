@@ -92,10 +92,16 @@ impl Instance {
                 .unwrap_or(&ClashCore::ClashPremium))
             .into()
         };
-        let data_dir = dirs::app_data_dir()?;
-        let binary = find_binary_path(&core_type)?;
-        let config_path = Config::generate_file(ConfigType::Run)?;
-        let pid_path = dirs::clash_pid_path()?;
+        let data_dir = camino::Utf8PathBuf::from_path_buf(dirs::app_data_dir()?)
+            .map_err(|e| anyhow::anyhow!("failed to convert data dir to utf8 path: {:?}", e))?;
+        let binary = camino::Utf8PathBuf::from_path_buf(find_binary_path(&core_type)?)
+            .map_err(|e| anyhow::anyhow!("failed to convert binary path to utf8 path: {:?}", e))?;
+        let config_path = camino::Utf8PathBuf::from_path_buf(Config::generate_file(
+            ConfigType::Run,
+        )?)
+        .map_err(|e| anyhow::anyhow!("failed to convert config path to utf8 path: {:?}", e))?;
+        let pid_path = camino::Utf8PathBuf::from_path_buf(dirs::clash_pid_path()?)
+            .map_err(|e| anyhow::anyhow!("failed to convert pid path to utf8 path: {:?}", e))?;
         match run_type {
             RunType::Normal => {
                 let instance = Arc::new(
@@ -114,7 +120,7 @@ impl Instance {
                 })
             }
             RunType::Service => Ok(Instance::Service {
-                config_path,
+                config_path: config_path.into(),
                 core_type,
             }),
             RunType::Elevated => {

@@ -1,6 +1,5 @@
-import { mode } from 'd3'
 import { cn } from '@/utils'
-import { useColorScheme, useTheme } from '@mui/material'
+import { useColorScheme } from '@mui/material'
 import styles from './index.module.scss'
 
 export type Props = React.DetailedHTMLProps<

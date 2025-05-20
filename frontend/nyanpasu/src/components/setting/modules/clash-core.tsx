@@ -10,10 +10,9 @@ import { message } from '@/utils/notification'
 import parseTraffic from '@/utils/parse-traffic'
 import FiberManualRecord from '@mui/icons-material/FiberManualRecord'
 import Update from '@mui/icons-material/Update'
-import { Button } from '@mui/material'
+import { Box, Button } from '@mui/material'
 import ListItem from '@mui/material/ListItem'
 import ListItemButton from '@mui/material/ListItemButton'
-import { alpha, useTheme } from '@mui/material/styles'
 import Tooltip from '@mui/material/Tooltip'
 import {
   ClashCore,
@@ -22,7 +21,7 @@ import {
   inspectUpdater,
   useClashCores,
 } from '@nyanpasu/interface'
-import { cleanDeepClickEvent, cn } from '@nyanpasu/ui'
+import { alpha, cleanDeepClickEvent, cn } from '@nyanpasu/ui'
 
 export const getImage = (core: ClashCore) => {
   switch (core) {
@@ -56,8 +55,6 @@ const CardProgress = ({
   data?: InspectUpdater
   show?: boolean
 }) => {
-  const { palette } = useTheme()
-
   const parsedState = () => {
     if (data?.downloader?.state) {
       return 'waiting'
@@ -69,14 +66,15 @@ const CardProgress = ({
   }
 
   return (
-    <motion.div
+    <Box
+      component={motion.div}
       className={cn(
         'absolute top-0 left-0 z-10 h-full w-full rounded-2xl backdrop-blur',
         'flex flex-col items-center justify-center gap-2',
       )}
-      style={{
-        backgroundColor: alpha(palette.primary.main, 0.3),
-      }}
+      sx={(theme) => ({
+        backgroundColor: alpha(theme.vars.palette.primary.main, 0.3),
+      })}
       animate={show ? 'open' : 'closed'}
       initial={{ opacity: 0 }}
       variants={{
@@ -92,12 +90,12 @@ const CardProgress = ({
         },
       }}
     >
-      <div
+      <Box
         className="absolute left-0 h-full rounded-2xl transition-all"
-        style={{
-          backgroundColor: alpha(palette.primary.main, 0.3),
+        sx={(theme) => ({
+          backgroundColor: alpha(theme.vars.palette.primary.main, 0.3),
           width: `${calcProgress(data) < 10 ? 10 : calcProgress(data)}%`,
-        }}
+        })}
       />
 
       <div className="truncate capitalize">{parsedState()}</div>
@@ -106,7 +104,7 @@ const CardProgress = ({
         {calcProgress(data).toFixed(0)}%{''}
         <span>({parseTraffic(data?.downloader.speed || 0)}/s)</span>
       </div>
-    </motion.div>
+    </Box>
   )
 }
 
@@ -137,8 +135,6 @@ export const ClashCoreItem = ({
   onClick,
 }: ClashCoreItemProps) => {
   const { t } = useTranslation()
-
-  const { palette } = useTheme()
 
   const { query, updateCore } = useClashCores()
 
@@ -204,14 +200,14 @@ export const ClashCoreItem = ({
     <ListItem sx={{ pl: 0, pr: 0 }}>
       <ListItemButton
         className="!relative !p-0"
-        sx={{
+        sx={(theme) => ({
           borderRadius: '16px',
-          backgroundColor: alpha(palette.background.paper, 0.3),
+          backgroundColor: alpha(theme.vars.palette.background.paper, 0.3),
 
           '&.Mui-selected': {
-            backgroundColor: alpha(palette.primary.main, 0.3),
+            backgroundColor: alpha(theme.vars.palette.primary.main, 0.3),
           },
-        }}
+        })}
         selected={selected}
         onClick={() => {
           if (!downloadState) {
@@ -230,7 +226,10 @@ export const ClashCoreItem = ({
 
               {haveNewVersion && (
                 <FiberManualRecord
-                  sx={{ height: 10, fill: palette.success.main }}
+                  sx={(theme) => ({
+                    height: 10,
+                    fill: theme.vars.palette.success.main,
+                  })}
                 />
               )}
             </div>

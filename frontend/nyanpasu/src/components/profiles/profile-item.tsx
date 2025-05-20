@@ -15,7 +15,6 @@ import {
   Update,
 } from '@mui/icons-material'
 import {
-  alpha,
   Badge,
   Button,
   Chip,
@@ -24,18 +23,16 @@ import {
   MenuItem,
   Paper,
   Tooltip,
-  useTheme,
 } from '@mui/material'
 import {
   Profile,
   ProfileQueryResultItem,
   RemoteProfile,
-  RemoteProfileOptions,
   RemoteProfileOptionsBuilder,
   useClashConnections,
   useProfile,
 } from '@nyanpasu/interface'
-import { cleanDeepClickEvent, cn } from '@nyanpasu/ui'
+import { alpha, cleanDeepClickEvent, cn } from '@nyanpasu/ui'
 import { ProfileDialog } from './profile-dialog'
 import { GlobalUpdatePendingContext } from './provider'
 
@@ -58,8 +55,6 @@ export const ProfileItem = memo(function ProfileItem({
   maxLogLevelTriggered,
 }: ProfileItemProps) {
   const { t } = useTranslation()
-
-  const { palette } = useTheme()
 
   const { deleteConnections } = useClashConnections()
 
@@ -227,13 +222,11 @@ export const ProfileItem = memo(function ProfileItem({
           {
             borderRadius: 6,
           },
-          selected
-            ? {
-                backgroundColor: alpha(palette.primary.main, 0.2),
-              }
-            : {
-                backgroundColor: null,
-              },
+          (theme) => ({
+            backgroundColor: selected
+              ? alpha(theme.vars.palette.primary.main, 0.2)
+              : null,
+          }),
         ]}
       >
         <div
@@ -252,9 +245,9 @@ export const ProfileItem = memo(function ProfileItem({
             {selected && (
               <FiberManualRecord
                 className="top-0 mr-auto !size-3 animate-bounce"
-                sx={{
-                  fill: palette.success.main,
-                }}
+                sx={(theme) => ({
+                  fill: theme.vars.palette.success.main,
+                })}
               />
             )}
 

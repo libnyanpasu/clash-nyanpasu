@@ -1,11 +1,10 @@
 import { useState } from 'react'
-import { alpha, Button, Menu, MenuItem, useTheme } from '@mui/material'
+import { Button, Menu, MenuItem } from '@mui/material'
+import { alpha } from '@nyanpasu/ui'
 import { useLogContext } from './log-provider'
 
 export const LogLevel = () => {
   const { logLevel, setLogLevel } = useLogContext()
-
-  const { palette } = useTheme()
 
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
 
@@ -25,10 +24,10 @@ export const LogLevel = () => {
     <>
       <Button
         size="small"
-        sx={{
+        sx={(theme) => ({
           textTransform: 'none',
-          backgroundColor: alpha(palette.primary.main, 0.1),
-        }}
+          backgroundColor: alpha(theme.vars.palette.primary.main, 0.1),
+        })}
         onClick={(e) => setAnchorEl(e.currentTarget)}
       >
         {mapping[logLevel]}

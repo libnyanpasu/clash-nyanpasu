@@ -5,16 +5,14 @@ import { Virtualizer } from 'virtua'
 import { proxyGroupAtom } from '@/store'
 import { proxiesFilterAtom } from '@/store/proxies'
 import {
-  alpha,
   ListItem,
   ListItemButton,
   ListItemButtonProps,
   ListItemIcon,
   ListItemText,
-  useTheme,
 } from '@mui/material'
 import { getServerPort, useClashProxies } from '@nyanpasu/interface'
-import { LazyImage } from '@nyanpasu/ui'
+import { alpha, LazyImage } from '@nyanpasu/ui'
 
 const IconRender = memo(function IconRender({ icon }: { icon: string }) {
   const {
@@ -54,8 +52,6 @@ export const GroupList = ({
   ...listItemButtonProps
 }: GroupListProps) => {
   const { data } = useClashProxies()
-
-  const { palette } = useTheme()
 
   const [proxyGroup, setProxyGroup] = useAtom(proxyGroupAtom)
   const proxiesFilter = useAtomValue(proxiesFilterAtom)
@@ -97,13 +93,11 @@ export const GroupList = ({
               selected={selected}
               onClick={() => handleSelect(index)}
               sx={[
-                selected
-                  ? {
-                      backgroundColor: `${alpha(palette.primary.main, 0.3)} !important`,
-                    }
-                  : {
-                      backgroundColor: null,
-                    },
+                (theme) => ({
+                  backgroundColor: selected
+                    ? `${alpha(theme.vars.palette.primary.main, 0.3)} !important`
+                    : null,
+                }),
               ]}
               {...listItemButtonProps}
             >

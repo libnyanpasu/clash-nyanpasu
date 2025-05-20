@@ -1,23 +1,23 @@
 import { useAtomValue } from 'jotai'
 import { useTranslation } from 'react-i18next'
-import { useColorForDelay } from '@/hooks/theme'
+import { useColorSxForDelay } from '@/hooks/theme'
 import { atomIsDrawer } from '@/store'
-import { Paper } from '@mui/material'
+import { Box, Paper } from '@mui/material'
 import Grid from '@mui/material/Grid'
 import { useSetting } from '@nyanpasu/interface'
 
 function LatencyTag({ name, value }: { name: string; value: number }) {
   const { t } = useTranslation()
 
-  const color = useColorForDelay(value)
+  const sx = useColorSxForDelay(value)
 
   return (
     <div className="flex justify-between gap-1">
       <div className="font-bold">{name}:</div>
 
-      <div className="truncate" style={{ color }}>
+      <Box className="truncate" sx={sx}>
         {value ? `${value.toFixed(0)} ms` : t('Timeout')}
-      </div>
+      </Box>
     </div>
   )
 }

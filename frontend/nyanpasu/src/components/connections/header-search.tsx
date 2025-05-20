@@ -1,21 +1,14 @@
 import { useTranslation } from 'react-i18next'
-import {
-  alpha,
-  FilledInputProps,
-  TextField,
-  TextFieldProps,
-  useTheme,
-} from '@mui/material'
+import { FilledInputProps, TextField, TextFieldProps } from '@mui/material'
+import { alpha } from '@nyanpasu/ui'
 
 export const HeaderSearch = (props: TextFieldProps) => {
   const { t } = useTranslation()
 
-  const { palette } = useTheme()
-
   const inputProps: Partial<FilledInputProps> = {
-    sx: {
+    sx: (theme) => ({
       borderRadius: 7,
-      backgroundColor: alpha(palette.primary.main, 0.1),
+      backgroundColor: alpha(theme.vars.palette.primary.main, 0.1),
 
       '&::before': {
         display: 'none',
@@ -24,7 +17,7 @@ export const HeaderSearch = (props: TextFieldProps) => {
       '&::after': {
         display: 'none',
       },
-    },
+    }),
   }
 
   return (
@@ -36,7 +29,9 @@ export const HeaderSearch = (props: TextFieldProps) => {
       variant="filled"
       className="!pb-0"
       sx={{ input: { py: 1, fontSize: 14 } }}
-      InputProps={inputProps}
+      slotProps={{
+        input: inputProps,
+      }}
       {...props}
     />
   )

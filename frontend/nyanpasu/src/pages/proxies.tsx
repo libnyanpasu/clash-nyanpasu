@@ -15,19 +15,13 @@ import SortSelector from '@/components/proxies/sort-selector'
 import { proxyGroupAtom } from '@/store'
 import { proxiesFilterAtom } from '@/store/proxies'
 import { Check } from '@mui/icons-material'
-import {
-  alpha,
-  TextField,
-  ToggleButton,
-  ToggleButtonGroup,
-  useTheme,
-} from '@mui/material'
+import { TextField, ToggleButton, ToggleButtonGroup } from '@mui/material'
 import {
   ProxyGroupItem,
   useClashProxies,
   useProxyMode,
 } from '@nyanpasu/interface'
-import { cn, SidePage } from '@nyanpasu/ui'
+import { alpha, cn, SidePage } from '@nyanpasu/ui'
 import { createFileRoute } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/proxies')({
@@ -35,7 +29,6 @@ export const Route = createFileRoute('/proxies')({
 })
 
 function SideBar() {
-  const { palette } = useTheme()
   const [proxiesFilter, setProxiesFilter] = useAtom(proxiesFilterAtom)
   const { t } = useTranslation()
 
@@ -52,14 +45,16 @@ function SideBar() {
       onChange={(e) =>
         setProxiesFilter(!e.target.value.trim().length ? null : e.target.value)
       }
-      InputProps={{
-        sx: {
-          borderRadius: 7,
-          backgroundColor: alpha(palette.primary.main, 0.1),
+      slotProps={{
+        input: {
+          sx: (theme) => ({
+            borderRadius: 7,
+            backgroundColor: alpha(theme.vars.palette.primary.main, 0.1),
 
-          fieldset: {
-            border: 'none',
-          },
+            fieldset: {
+              border: 'none',
+            },
+          }),
         },
       }}
     />

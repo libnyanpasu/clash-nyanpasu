@@ -7,18 +7,9 @@ import { checkUpdate, useUpdaterPlatformSupported } from '@/hooks/use-updater'
 import { UpdaterInstanceAtom } from '@/store/updater'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import {
-  alpha,
-  Box,
-  Button,
-  List,
-  ListItem,
-  Paper,
-  Typography,
-  useTheme,
-} from '@mui/material'
+import { Box, Button, List, ListItem, Paper, Typography } from '@mui/material'
 import { useSetting } from '@nyanpasu/interface'
-import { BaseCard } from '@nyanpasu/ui'
+import { alpha, BaseCard } from '@nyanpasu/ui'
 import { version } from '@root/package.json'
 import { LabelSwitch } from './modules/clash-field'
 
@@ -38,8 +29,6 @@ const AutoCheckUpdate = () => {
 
 export const SettingNyanpasuVersion = () => {
   const { t } = useTranslation()
-
-  const { palette } = useTheme()
 
   const [loading, setLoading] = useState(false)
 
@@ -78,13 +67,13 @@ export const SettingNyanpasuVersion = () => {
         <ListItem sx={{ pl: 0, pr: 0 }}>
           <Paper
             elevation={0}
-            sx={{
+            sx={(theme) => ({
               mt: 1,
               padding: 2,
-              backgroundColor: alpha(palette.primary.main, 0.1),
+              backgroundColor: alpha(theme.vars.palette.primary.main, 0.1),
               borderRadius: 6,
               width: '100%',
-            }}
+            })}
           >
             <Box
               display="flex"

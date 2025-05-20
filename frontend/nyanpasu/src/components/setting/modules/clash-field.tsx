@@ -2,7 +2,6 @@ import { ChangeEvent, useState } from 'react'
 import Marquee from 'react-fast-marquee'
 import ArrowForwardIos from '@mui/icons-material/ArrowForwardIos'
 import OpenInNewRounded from '@mui/icons-material/OpenInNewRounded'
-import { alpha, useTheme } from '@mui/material'
 import Box from '@mui/material/Box'
 import ButtonBase, { ButtonBaseProps } from '@mui/material/ButtonBase'
 import Grid from '@mui/material/Grid'
@@ -12,7 +11,7 @@ import { SwitchProps } from '@mui/material/Switch'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import { openThat } from '@nyanpasu/interface'
-import { LoadingSwitch } from '@nyanpasu/ui'
+import { alpha, LoadingSwitch } from '@nyanpasu/ui'
 
 export interface LabelSwitchProps extends SwitchProps {
   label: string
@@ -42,8 +41,6 @@ export const LabelSwitch = ({
   onChange,
   ...props
 }: LabelSwitchProps) => {
-  const { palette } = useTheme()
-
   const [loading, setLoading] = useState(false)
 
   const handleChange = async (
@@ -63,14 +60,14 @@ export const LabelSwitch = ({
 
   return (
     <Paper
-      sx={{
+      sx={(theme) => ({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: 2,
         borderRadius: 6,
-        backgroundColor: alpha(palette.primary.light, 0.1),
-      }}
+        backgroundColor: alpha(theme.vars.palette.primary.light, 0.1),
+      })}
       elevation={0}
     >
       <Box display="flex" alignItems="center" gap={1}>
@@ -114,8 +111,6 @@ export const ClashFieldItem = ({
   fields,
   ...props
 }: ClashFieldItemProps) => {
-  const { palette } = useTheme()
-
   return (
     <Grid
       size={{
@@ -125,10 +120,10 @@ export const ClashFieldItem = ({
     >
       <Paper
         elevation={0}
-        sx={{
+        sx={(theme) => ({
           borderRadius: 6,
-          backgroundColor: alpha(palette.primary.light, 0.1),
-        }}
+          backgroundColor: alpha(theme.vars.palette.primary.light, 0.1),
+        })}
       >
         <ButtonBase
           sx={{

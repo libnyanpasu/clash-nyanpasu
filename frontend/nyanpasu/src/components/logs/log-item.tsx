@@ -1,10 +1,22 @@
 import { useAsyncEffect } from 'ahooks'
 import { CSSProperties, useState } from 'react'
 import { formatAnsi } from '@/utils/shiki'
-import { useTheme } from '@mui/material'
+import { Box, SxProps, Theme, useColorScheme } from '@mui/material'
 import { LogMessage } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 import styles from './log-item.module.scss'
+
+const colorMapping: { [key: string]: SxProps<Theme> } = {
+  error: (theme) => ({
+    color: theme.vars.palette.error.main,
+  }),
+  warning: (theme) => ({
+    color: theme.vars.palette.warning.main,
+  }),
+  info: (theme) => ({
+    color: theme.vars.palette.info.main,
+  }),
+}
 
 export const LogItem = ({
   value,
@@ -13,15 +25,9 @@ export const LogItem = ({
   value: LogMessage
   className?: string
 }) => {
-  const { palette } = useTheme()
-
   const [payload, setPayload] = useState(value.payload)
 
-  const colorMapping: { [key: string]: string } = {
-    error: palette.error.main,
-    warning: palette.warning.main,
-    info: palette.info.main,
-  }
+  const { mode } = useColorScheme()
 
   useAsyncEffect(async () => {
     setPayload(await formatAnsi(value.payload))
@@ -34,19 +40,18 @@ export const LogItem = ({
       <div className="flex gap-2">
         <span className="font-thin">{value.time}</span>
 
-        <span
+        <Box
+          component="span"
           className="inline-block font-semibold uppercase"
-          style={{
-            color: colorMapping[value.type],
-          }}
+          sx={colorMapping[value.type]}
         >
           {value.type}
-        </span>
+        </Box>
       </div>
 
       <div className="pb-2 text-wrap">
         <div
-          className={cn(styles.item, palette.mode === 'dark' && styles.dark)}
+          className={cn(styles.item, mode === 'dark' && styles.dark)}
           style={
             {
               '--item-font': 'var(--font-mono)',

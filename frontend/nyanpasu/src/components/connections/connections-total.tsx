@@ -1,8 +1,9 @@
 import { filesize } from 'filesize'
 import { useEffect, useRef, useState } from 'react'
 import { Download, Upload } from '@mui/icons-material'
-import { darken, lighten, Paper } from '@mui/material'
+import { Paper } from '@mui/material'
 import { useClashConnections } from '@nyanpasu/interface'
+import { darken, lighten } from '@nyanpasu/ui'
 
 export default function ConnectionTotal() {
   const {
@@ -65,12 +66,12 @@ export default function ConnectionTotal() {
           sx={[
             (theme) => ({
               color: darken(
-                theme.palette.primary.main,
+                theme.vars.palette.primary.main,
                 downloadHighlight ? 0.9 : 0.3,
               ),
               ...theme.applyStyles('dark', {
                 color: lighten(
-                  theme.palette.primary.main,
+                  theme.vars.palette.primary.main,
                   downloadHighlight ? 0.2 : 0.9,
                 ),
               }),
@@ -94,12 +95,12 @@ export default function ConnectionTotal() {
           sx={[
             (theme) => ({
               color: darken(
-                theme.palette.primary.main,
+                theme.vars.palette.primary.main,
                 uploadHighlight ? 0.9 : 0.3,
               ),
               ...theme.applyStyles('dark', {
                 color: lighten(
-                  theme.palette.primary.main,
+                  theme.vars.palette.primary.main,
                   downloadHighlight ? 0.2 : 0.9,
                 ),
               }),

@@ -2,21 +2,18 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ClearRounded, ContentCopyRounded, Download } from '@mui/icons-material'
 import {
-  alpha,
   CircularProgress,
   FilledInputProps,
   IconButton,
   TextField,
   Tooltip,
-  useTheme,
 } from '@mui/material'
 import { useProfile } from '@nyanpasu/interface'
+import { alpha } from '@nyanpasu/ui'
 import { readText } from '@tauri-apps/plugin-clipboard-manager'
 
 export const QuickImport = () => {
   const { t } = useTranslation()
-
-  const { palette } = useTheme()
 
   const [url, setUrl] = useState('')
 
@@ -82,14 +79,14 @@ export const QuickImport = () => {
   }
 
   const inputProps: Partial<FilledInputProps> = {
-    sx: {
+    sx: (theme) => ({
       borderRadius: 7,
-      backgroundColor: alpha(palette.primary.main, 0.1),
+      backgroundColor: alpha(theme.vars.palette.primary.main, 0.1),
 
       fieldset: {
         border: 'none',
       },
-    },
+    }),
     endAdornment: endAdornment(),
   }
 
@@ -104,7 +101,9 @@ export const QuickImport = () => {
       onChange={(e) => setUrl(e.target.value)}
       onKeyDown={(e) => url !== '' && e.key === 'Enter' && handleImport()}
       sx={{ input: { py: 1, px: 2 } }}
-      InputProps={inputProps}
+      slotProps={{
+        input: inputProps,
+      }}
     />
   )
 }

@@ -8,9 +8,9 @@ import {
   PushPin,
   PushPinOutlined,
 } from '@mui/icons-material'
-import { alpha, Button, ButtonProps, useTheme } from '@mui/material'
+import { Button, ButtonProps } from '@mui/material'
 import { saveWindowSizeState, useSetting } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { alpha, cn } from '@nyanpasu/ui'
 import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { listen, TauriEvent, UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
@@ -19,15 +19,13 @@ import { platform as getPlatform } from '@tauri-apps/plugin-os'
 const appWindow = getCurrentWebviewWindow()
 
 const CtrlButton = (props: ButtonProps) => {
-  const { palette } = useTheme()
-
   return (
     <Button
       className="!size-8 !min-w-0"
-      sx={{
-        backgroundColor: alpha(palette.primary.main, 0.1),
+      sx={(theme) => ({
+        backgroundColor: alpha(theme.vars.palette.primary.main, 0.1),
         svg: { transform: 'scale(0.9)' },
-      }}
+      })}
       {...props}
     />
   )

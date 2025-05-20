@@ -6,8 +6,9 @@ import { useTranslation } from 'react-i18next'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { Add } from '@mui/icons-material'
-import { alpha, ListItemButton, useTheme } from '@mui/material'
+import { ListItemButton } from '@mui/material'
 import { ProfileQueryResultItem, useProfile } from '@nyanpasu/interface'
+import { alpha } from '@nyanpasu/ui'
 import { ClashProfile, filterProfiles } from '../utils'
 import ChainItem from './chain-item'
 import { atomChainsSelected, atomGlobalChainCurrent } from './store'
@@ -18,8 +19,6 @@ export interface SideChainProps {
 
 export const SideChain = ({ onChainEdit }: SideChainProps) => {
   const { t } = useTranslation()
-
-  const { palette } = useTheme()
 
   const isGlobalChainCurrent = useAtomValue(atomGlobalChainCurrent)
 
@@ -103,10 +102,10 @@ export const SideChain = ({ onChainEdit }: SideChainProps) => {
 
       <ListItemButton
         className="!mt-2 !mb-2 flex justify-center gap-2"
-        sx={{
-          backgroundColor: alpha(palette.secondary.main, 0.1),
+        sx={(theme) => ({
+          backgroundColor: alpha(theme.vars.palette.secondary.main, 0.1),
           borderRadius: 4,
-        }}
+        })}
         onClick={() => onChainEdit()}
       >
         <Add color="primary" />

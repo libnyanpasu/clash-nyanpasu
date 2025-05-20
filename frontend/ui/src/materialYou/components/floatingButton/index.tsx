@@ -1,6 +1,6 @@
 import { ReactNode } from 'react'
-import { cn } from '@/utils'
-import { alpha, Button, ButtonProps, useTheme } from '@mui/material'
+import { alpha, cn } from '@/utils'
+import { Button, ButtonProps } from '@mui/material'
 
 export interface FloatingButtonProps extends ButtonProps {
   children: ReactNode
@@ -12,23 +12,21 @@ export const FloatingButton = ({
   className,
   ...props
 }: FloatingButtonProps) => {
-  const { palette } = useTheme()
-
   return (
     <Button
       className={cn(
         `right-8 bottom-8 z-10 size-16 !rounded-2xl backdrop-blur`,
         className,
       )}
-      sx={{
+      sx={(theme) => ({
         position: 'fixed',
         boxShadow: 8,
-        backgroundColor: alpha(palette.primary.main, 0.3),
+        backgroundColor: alpha(theme.vars.palette.primary.main, 0.3),
 
         '&:hover': {
-          backgroundColor: alpha(palette.primary.main, 0.45),
+          backgroundColor: alpha(theme.vars.palette.primary.main, 0.45),
         },
-      }}
+      })}
       {...props}
     >
       {children}

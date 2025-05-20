@@ -1,7 +1,7 @@
 import * as d3 from 'd3'
 import { interpolatePath } from 'd3-interpolate-path'
-import { CSSProperties, FC, useEffect, useRef } from 'react'
-import { alpha, useTheme } from '@mui/material'
+import { CSSProperties, FC, useEffect, useMemo, useRef } from 'react'
+import { alpha, useColorScheme, useTheme } from '@mui/material'
 
 interface SparklineProps {
   data: number[]
@@ -10,7 +10,24 @@ interface SparklineProps {
 }
 
 export const Sparkline: FC<SparklineProps> = ({ data, className, style }) => {
-  const { palette } = useTheme()
+  const theme = useTheme()
+  const { mode } = useColorScheme()
+
+  const lineColor = useMemo(
+    () =>
+      mode === 'dark'
+        ? alpha(theme.colorSchemes.light!.palette.primary.main, 0.7)
+        : alpha(theme.colorSchemes.dark!.palette.primary.main, 0.7),
+    [mode, theme],
+  )
+
+  const areaColor = useMemo(
+    () =>
+      mode === 'dark'
+        ? alpha(theme.colorSchemes.light!.palette.primary.main, 0.1)
+        : alpha(theme.colorSchemes.dark!.palette.primary.main, 0.1),
+    [mode, theme],
+  )
 
   const svgRef = useRef<SVGSVGElement | null>(null)
 
@@ -67,7 +84,7 @@ export const Sparkline: FC<SparklineProps> = ({ data, className, style }) => {
       .append('path')
       .datum(data)
       .attr('class', 'area')
-      .attr('fill', alpha(palette.primary.main, 0.1))
+      .attr('fill', areaColor)
       .attr('d', area)
 
     svg
@@ -75,7 +92,7 @@ export const Sparkline: FC<SparklineProps> = ({ data, className, style }) => {
       .datum(data)
       .attr('class', 'line')
       .attr('fill', 'none')
-      .attr('stroke', alpha(palette.primary.main, 0.7))
+      .attr('stroke', lineColor)
       .attr('stroke-width', 2)
       .attr('d', line)
 
@@ -106,7 +123,7 @@ export const Sparkline: FC<SparklineProps> = ({ data, className, style }) => {
     }
 
     updateChart()
-  }, [data, palette.primary.main])
+  }, [data, lineColor, areaColor])
 
   return (
     <svg

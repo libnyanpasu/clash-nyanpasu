@@ -10,9 +10,9 @@ import {
 } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getSystem, useClickPosition } from '@/hooks'
-import { cn } from '@/utils'
-import { Button, Divider } from '@mui/material'
-import { alpha, useTheme } from '@mui/material/styles'
+import { alpha, cn } from '@/utils'
+import { Box, Button, Divider } from '@mui/material'
+import { useColorScheme } from '@mui/material/styles'
 import * as Portal from '@radix-ui/react-portal'
 
 const OS = getSystem()
@@ -48,7 +48,7 @@ export const BaseDialog = ({
 }: BaseDialogProps) => {
   const { t } = useTranslation()
 
-  const { palette } = useTheme()
+  const { mode } = useColorScheme()
 
   const [mounted, setMounted] = useState(false)
 
@@ -76,6 +76,7 @@ export const BaseDialog = ({
         y: getClickPosition()?.y ?? 0,
       })
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   const handleClose = useLockFn(async () => {
@@ -125,17 +126,21 @@ export const BaseDialog = ({
       {mounted && (
         <Portal.Root className="fixed top-0 left-0 z-50 h-dvh w-full">
           {!full && (
-            <motion.div
+            <Box
+              component={motion.div}
               className={cn(
                 'fixed inset-0 z-50',
                 OS === 'linux' ? 'bg-black/50' : 'backdrop-blur-xl',
               )}
-              style={{
-                backgroundColor:
-                  OS === 'linux'
-                    ? undefined
-                    : alpha(palette.primary[palette.mode], 0.1),
-              }}
+              sx={[
+                OS === 'linux' ||
+                  ((theme) => ({
+                    backgroundColor: alpha(
+                      theme.vars.palette.primary.main,
+                      0.1,
+                    ),
+                  })),
+              ]}
               animate={open ? 'open' : 'closed'}
               initial={{ opacity: 0 }}
               variants={{
@@ -146,17 +151,16 @@ export const BaseDialog = ({
             />
           )}
 
-          <motion.div
+          <Box
+            component={motion.div}
             className={cn(
               'fixed top-[50%] left-[50%] z-50',
               full ? 'h-dvh w-full' : 'min-w-96 rounded-3xl shadow',
-              palette.mode === 'dark'
-                ? 'text-white shadow-zinc-900'
-                : 'text-black',
+              mode === 'dark' ? 'text-white shadow-zinc-900' : 'text-black',
             )}
-            style={{
-              backgroundColor: palette.background.default,
-            }}
+            sx={(theme) => ({
+              backgroundColor: theme.vars.palette.background.default,
+            })}
             animate={open ? 'open' : 'closed'}
             initial={{
               opacity: 0.3,
@@ -238,7 +242,7 @@ export const BaseDialog = ({
                 </Button>
               )}
             </div>
-          </motion.div>
+          </Box>
         </Portal.Root>
       )}
     </AnimatePresence>

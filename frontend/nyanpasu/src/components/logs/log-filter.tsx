@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
-import { alpha, FilledInputProps, TextField, useTheme } from '@mui/material'
+import { FilledInputProps, TextField } from '@mui/material'
+import { alpha } from '@nyanpasu/ui'
 import { useLogContext } from './log-provider'
 
 export const LogFilter = () => {
@@ -7,17 +8,15 @@ export const LogFilter = () => {
 
   const { filterText, setFilterText } = useLogContext()
 
-  const { palette } = useTheme()
-
   const inputProps: Partial<FilledInputProps> = {
-    sx: {
+    sx: (theme) => ({
       borderRadius: 7,
-      backgroundColor: alpha(palette.primary.main, 0.1),
+      backgroundColor: alpha(theme.vars.palette.primary.main, 0.1),
 
       fieldset: {
         border: 'none',
       },
-    },
+    }),
   }
 
   return (
@@ -30,7 +29,9 @@ export const LogFilter = () => {
       onChange={(e) => setFilterText(e.target.value)}
       className="!pb-0"
       sx={{ input: { py: 1, fontSize: 14 } }}
-      InputProps={inputProps}
+      slotProps={{
+        input: inputProps,
+      }}
     />
   )
 }

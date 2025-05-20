@@ -6,19 +6,24 @@ import { useTranslation } from 'react-i18next'
 import useSWR from 'swr'
 import { atomIsDrawer } from '@/store'
 import {
-  alpha,
+  Box,
   CircularProgress,
   Paper,
+  SxProps,
+  Theme,
   Tooltip,
-  useTheme,
 } from '@mui/material'
 import Grid from '@mui/material/Grid'
 import { getCoreStatus, useSystemService } from '@nyanpasu/interface'
+import { alpha } from '@nyanpasu/ui'
+
+type Status = {
+  label: string
+  sx: SxProps<Theme>
+}
 
 export const ServiceShortcuts = () => {
   const { t } = useTranslation()
-
-  const { palette } = useTheme()
 
   const isDrawer = useAtomValue(atomIsDrawer)
 
@@ -32,19 +37,29 @@ export const ServiceShortcuts = () => {
     revalidateOnFocus: false,
   })
 
-  const status = useMemo(() => {
+  const status: Status = useMemo(() => {
     switch (serviceStatus?.status) {
       case 'running': {
         return {
           label: t('running'),
-          color: alpha(palette.success[palette.mode], 0.3),
+          sx: (theme) => ({
+            backgroundColor: alpha(theme.vars.palette.success.light, 0.3),
+            ...theme.applyStyles('dark', {
+              backgroundColor: alpha(theme.vars.palette.success.dark, 0.3),
+            }),
+          }),
         }
       }
 
       case 'stopped': {
         return {
           label: t('stopped'),
-          color: alpha(palette.error[palette.mode], 0.3),
+          sx: (theme) => ({
+            backgroundColor: alpha(theme.vars.palette.error.light, 0.3),
+            ...theme.applyStyles('dark', {
+              backgroundColor: alpha(theme.vars.palette.error.dark, 0.3),
+            }),
+          }),
         }
       }
 
@@ -52,24 +67,18 @@ export const ServiceShortcuts = () => {
       default: {
         return {
           label: t('not_installed'),
-          color:
-            palette.mode === 'light'
-              ? palette.grey[100]
-              : palette.background.paper,
+          sx: (theme) => ({
+            backgroundColor: theme.vars.palette.grey[100],
+            ...theme.applyStyles('dark', {
+              backgroundColor: theme.vars.palette.background.paper,
+            }),
+          }),
         }
       }
     }
-  }, [
-    serviceStatus,
-    t,
-    palette.success,
-    palette.mode,
-    palette.error,
-    palette.grey,
-    palette.background.paper,
-  ])
+  }, [serviceStatus, t])
 
-  const coreStatus = useMemo(() => {
+  const coreStatus: Status = useMemo(() => {
     const status = coreStatusSWR.data || [{ Stopped: null }, 0, 'normal']
     if (
       isObject(status[0]) &&
@@ -81,16 +90,26 @@ export const ServiceShortcuts = () => {
           !!Stopped && Stopped.trim()
             ? t('stopped_reason', { reason: Stopped })
             : t('stopped'),
-        color: alpha(palette.success[palette.mode], 0.3),
+        sx: (theme) => ({
+          backgroundColor: alpha(theme.vars.palette.success.light, 0.3),
+          ...theme.applyStyles('dark', {
+            backgroundColor: alpha(theme.vars.palette.success.dark, 0.3),
+          }),
+        }),
       }
     }
     return {
       label: t('service_shortcuts.core_started_by', {
         by: t(status[2] === 'normal' ? 'UI' : 'service'),
       }),
-      color: alpha(palette.success[palette.mode], 0.3),
+      sx: (theme) => ({
+        backgroundColor: alpha(theme.vars.palette.success.light, 0.3),
+        ...theme.applyStyles('dark', {
+          backgroundColor: alpha(theme.vars.palette.success.dark, 0.3),
+        }),
+      }),
     }
-  }, [coreStatusSWR.data, palette.mode, palette.success, t])
+  }, [coreStatusSWR.data, t])
 
   return (
     <Grid
@@ -109,17 +128,17 @@ export const ServiceShortcuts = () => {
             </div>
 
             <div className="flex w-full flex-col gap-2">
-              <div
+              <Box
                 className="flex w-full justify-center gap-[2px] rounded-2xl py-2"
-                style={{ backgroundColor: status.color }}
+                sx={status.sx}
               >
                 <div>{t('service_shortcuts.service_status')}</div>
                 <div>{t(status.label)}</div>
-              </div>
+              </Box>
 
-              <div
+              <Box
                 className="flex w-full justify-center gap-[2px] rounded-2xl py-2"
-                style={{ backgroundColor: coreStatus.color }}
+                sx={coreStatus.sx}
               >
                 <div>{t('service_shortcuts.core_status')}</div>
                 <Tooltip
@@ -132,7 +151,7 @@ export const ServiceShortcuts = () => {
                 >
                   <div>{coreStatus.label}</div>
                 </Tooltip>
-              </div>
+              </Box>
             </div>
           </>
         ) : (

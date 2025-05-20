@@ -1,19 +1,20 @@
 import { memo, ReactNode } from 'react'
+import { mergeSxProps } from '@/utils/mui-theme'
 import {
-  alpha,
   ButtonBase,
   ButtonBaseProps,
   Paper,
   SxProps,
+  Theme,
   Typography,
-  useTheme,
 } from '@mui/material'
+import { alpha } from '@nyanpasu/ui'
 
 export interface PaperButtonProps extends ButtonBaseProps {
   label?: string
   children?: ReactNode
-  sxPaper?: SxProps
-  sxButton?: SxProps
+  sxPaper?: SxProps<Theme>
+  sxButton?: SxProps<Theme>
 }
 
 export const PaperButton = memo(function PaperButton({
@@ -23,33 +24,35 @@ export const PaperButton = memo(function PaperButton({
   sxButton,
   ...props
 }: PaperButtonProps) {
-  const { palette } = useTheme()
-
   return (
     <Paper
       elevation={0}
-      sx={{
-        borderRadius: 6,
-        backgroundColor: alpha(palette.primary.main, 0.1),
-        ...sxPaper,
-      }}
+      sx={mergeSxProps(
+        (theme) => ({
+          borderRadius: 6,
+          backgroundColor: alpha(theme.vars.palette.primary.main, 0.1),
+        }),
+        sxPaper,
+      )}
     >
       <ButtonBase
-        sx={{
-          borderRadius: 6,
-          width: '100%',
-          textAlign: 'start',
-          padding: 2,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
+        sx={mergeSxProps(
+          {
+            borderRadius: 6,
+            width: '100%',
+            textAlign: 'start',
+            padding: 2,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
 
-          '&.Mui-disabled': {
-            pointerEvents: 'auto',
-            cursor: 'not-allowed',
+            '&.Mui-disabled': {
+              pointerEvents: 'auto',
+              cursor: 'not-allowed',
+            },
           },
-          ...sxButton,
-        }}
+          sxButton,
+        )}
         {...props}
       >
         {label && (

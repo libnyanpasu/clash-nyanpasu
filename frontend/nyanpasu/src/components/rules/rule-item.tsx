@@ -1,4 +1,4 @@
-import { useTheme } from '@mui/material'
+import { Box, SxProps, Theme } from '@mui/material'
 import { ClashRule } from '@nyanpasu/interface'
 
 interface Props {
@@ -6,26 +6,36 @@ interface Props {
   value: ClashRule
 }
 
+const COLOR = [
+  (theme) => ({
+    color: theme.vars.palette.primary.main,
+  }),
+  (theme) => ({
+    color: theme.vars.palette.secondary.main,
+  }),
+  (theme) => ({
+    color: theme.vars.palette.info.main,
+  }),
+  (theme) => ({
+    color: theme.vars.palette.warning.main,
+  }),
+  (theme) => ({
+    color: theme.vars.palette.success.main,
+  }),
+] satisfies SxProps<Theme>[]
+
 const RuleItem = ({ index, value }: Props) => {
-  const { palette } = useTheme()
-
-  const COLOR = [
-    palette.primary.main,
-    palette.secondary.main,
-    palette.info.main,
-    palette.warning.main,
-    palette.success.main,
-  ]
-
-  const parseColor = (text: string) => {
+  const parseColorSx: (text: string) => SxProps<Theme> = (text) => {
     const TYPE = {
       reject: ['REJECT', 'REJECT-DROP'],
       direct: ['DIRECT'],
     }
 
-    if (TYPE.reject.includes(text)) return palette.error.main
+    if (TYPE.reject.includes(text))
+      return (theme) => ({ color: theme.vars.palette.error.main })
 
-    if (TYPE.direct.includes(text)) return palette.text.primary
+    if (TYPE.direct.includes(text))
+      return (theme) => ({ color: theme.vars.palette.text.primary })
 
     let sum = 0
 
@@ -38,24 +48,24 @@ const RuleItem = ({ index, value }: Props) => {
 
   return (
     <div className="flex p-2 pr-7 pl-7 select-text">
-      <div style={{ color: palette.text.secondary }} className="min-w-14">
+      <Box
+        sx={(theme) => ({ color: theme.vars.palette.text.secondary })}
+        className="min-w-14"
+      >
         {index + 1}
-      </div>
+      </Box>
 
       <div className="flex flex-col gap-1">
-        <div style={{ color: palette.text.primary }}>
+        <Box sx={(theme) => ({ color: theme.vars.palette.text.primary })}>
           {value.payload || '-'}
-        </div>
+        </Box>
 
         <div className="flex gap-8">
           <div className="min-w-40 text-sm">{value.type}</div>
 
-          <div
-            className="text-s text-sm"
-            style={{ color: parseColor(value.proxy) }}
-          >
+          <Box className="text-s text-sm" sx={parseColorSx(value.proxy)}>
             {value.proxy}
-          </div>
+          </Box>
         </div>
       </div>
     </div>

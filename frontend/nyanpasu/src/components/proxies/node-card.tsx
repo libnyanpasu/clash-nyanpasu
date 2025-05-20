@@ -1,9 +1,8 @@
 import { useLockFn } from 'ahooks'
 import { CSSProperties, memo, useMemo } from 'react'
-import { alpha, useTheme } from '@mui/material'
 import Box from '@mui/material/Box'
 import { ClashProxiesQueryProxyItem } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { alpha, cn } from '@nyanpasu/ui'
 import { PaperSwitchButton } from '../setting/modules/system-proxy'
 import DelayChip from './delay-chip'
 import FeatureChip from './feature-chip'
@@ -21,8 +20,6 @@ export const NodeCard = memo(function NodeCard({
   disabled?: boolean
   style?: CSSProperties
 }) {
-  const { palette } = useTheme()
-
   const delay = useMemo(() => filterDelay(node.history), [node.history])
 
   const checked = node.name === now
@@ -44,13 +41,16 @@ export const NodeCard = memo(function NodeCard({
       disabled={disabled}
       style={style}
       className={cn(styles.Card, delay === -1 && styles.NoDelay)}
-      sxPaper={{
+      sxPaper={(theme) => ({
         backgroundColor: checked
-          ? alpha(palette.primary.main, 0.3)
-          : palette.mode === 'dark'
-            ? alpha(palette.grey[900], 0.3)
-            : palette.grey[100],
-      }}
+          ? alpha(theme.vars.palette.primary.main, 0.3)
+          : theme.vars.palette.grey[100],
+        ...theme.applyStyles('dark', {
+          backgroundColor: checked
+            ? alpha(theme.vars.palette.primary.main, 0.3)
+            : theme.vars.palette.grey[900],
+        }),
+      })}
     >
       <Box width="100%" display="flex" gap={0.5}>
         <FeatureChip label={node.type} />

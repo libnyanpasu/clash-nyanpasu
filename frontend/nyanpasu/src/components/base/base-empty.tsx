@@ -1,5 +1,6 @@
 import { InboxRounded } from '@mui/icons-material'
-import { alpha, Box, Typography } from '@mui/material'
+import { Box, Typography } from '@mui/material'
+import { alpha } from '@nyanpasu/ui'
 
 interface Props {
   text?: React.ReactNode
@@ -11,14 +12,14 @@ export const BaseEmpty = (props: Props) => {
 
   return (
     <Box
-      sx={({ palette }) => ({
+      sx={(theme) => ({
         width: '100%',
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        color: alpha(palette.text.secondary, 0.75),
+        color: alpha(theme.vars.palette.text.secondary, 0.75),
       })}
     >
       <InboxRounded sx={{ fontSize: '4em' }} />

@@ -1,9 +1,9 @@
 import { parseHotkey } from '@/utils/parse-hotkey'
 import { Dangerous, DeleteRounded } from '@mui/icons-material'
-import { alpha, CircularProgress, IconButton, useTheme } from '@mui/material'
+import { CircularProgress, IconButton, useTheme } from '@mui/material'
 import type {} from '@mui/material/themeCssVarsAugmentation'
 import { CSSProperties, useEffect, useRef, useState } from 'react'
-import { cn, Kbd } from '@nyanpasu/ui'
+import { alpha, cn, Kbd } from '@nyanpasu/ui'
 import styles from './hotkey-input.module.scss'
 
 export interface Props extends React.HTMLAttributes<HTMLInputElement> {

@@ -307,7 +307,9 @@ impl Tray {
         };
         let tray_id = get_tray_id();
         tracing::debug!("updating tray part: {}", tray_id);
-        let tray = app_handle.tray_by_id(tray_id.as_ref()).unwrap();
+        let tray = app_handle
+            .tray_by_id(tray_id.as_ref())
+            .expect("tray not found");
         let state = app_handle.state::<TrayState<R>>();
         let menu = state.menu.lock();
 

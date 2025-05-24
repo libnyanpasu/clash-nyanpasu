@@ -23,6 +23,7 @@
     },
     "jsxImportSource": "@emotion/react",
     "types": ["unplugin-icons/types/react"],
+    "customConditions": ["source"],
   },
   "include": ["src", "./auto-imports.d.ts"],
   "references": [

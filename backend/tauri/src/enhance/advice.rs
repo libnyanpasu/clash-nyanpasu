@@ -9,7 +9,7 @@ pub fn chain_advice(config: &Mapping) -> ProcessOutput {
     let mut logs = Logs::default();
     if config.get("tun").is_some_and(|val| {
         val.is_mapping()
-            && !val
+            && val
                 .as_mapping()
                 .unwrap()
                 .get("enable")

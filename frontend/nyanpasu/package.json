@@ -57,7 +57,7 @@
     "@emotion/react": "11.14.0",
     "@iconify/json": "2.2.345",
     "@monaco-editor/react": "4.7.0",
-    "@tanstack/react-query": "5.79.0",
+    "@tanstack/react-query": "5.80.5",
     "@tanstack/react-router": "1.120.15",
     "@tanstack/react-router-devtools": "1.120.15",
     "@tanstack/router-plugin": "1.120.15",

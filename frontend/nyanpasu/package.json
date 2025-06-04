@@ -70,7 +70,7 @@
     "@tauri-apps/plugin-shell": "2.2.1",
     "@tauri-apps/plugin-updater": "2.7.1",
     "@types/react": "19.1.6",
-    "@types/react-dom": "19.1.5",
+    "@types/react-dom": "19.1.6",
     "@types/validator": "13.15.1",
     "@vitejs/plugin-legacy": "6.1.1",
     "@vitejs/plugin-react": "4.5.1",

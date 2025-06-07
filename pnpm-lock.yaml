@@ -101,8 +101,8 @@ importers:
         specifier: 16.2.0
         version: 16.2.0
       knip:
-        specifier: 5.60.0
-        version: 5.60.0(@types/node@22.15.29)(typescript@5.8.3)
+        specifier: 5.60.2
+        version: 5.60.2(@types/node@22.15.29)(typescript@5.8.3)
       lint-staged:
         specifier: 16.1.0
         version: 16.1.0
@@ -5658,8 +5658,8 @@ packages:
     resolution: {integrity: sha512-dcS1ul+9tmeD95T+x28/ehLgd9mENa3LsvDTtzm3vyBEO7RPptvAD+t44WVXaUjTBRcrpFeFlC8WCruUR456hw==}
     engines: {node: '>=0.10.0'}
 
-  knip@5.60.0:
-    resolution: {integrity: sha512-r6oIbaV0Ztz/7DKe1voxg2O5IRhLi9Q0GjhplfRqUZ1gvTChew6ywmLzehuaXIHVKkPs8LF5UKOxFlc93RKzow==}
+  knip@5.60.2:
+    resolution: {integrity: sha512-TsYqEsoL3802RmhGL5MN7RLI6/03kocMYx/4BpMmwo3dSwEJxmzV7HqRxMVZr6c1llbd25+MqjgA86bv1IwsPA==}
     engines: {node: '>=18.18.0'}
     hasBin: true
     peerDependencies:
@@ -13786,7 +13786,7 @@ snapshots:
 
   kind-of@6.0.3: {}
 
-  knip@5.60.0(@types/node@22.15.29)(typescript@5.8.3):
+  knip@5.60.2(@types/node@22.15.29)(typescript@5.8.3):
     dependencies:
       '@nodelib/fs.walk': 1.2.8
       '@types/node': 22.15.29
@@ -13801,8 +13801,8 @@ snapshots:
       smol-toml: 1.3.4
       strip-json-comments: 5.0.2
       typescript: 5.8.3
-      zod: 3.24.4
-      zod-validation-error: 3.3.1(zod@3.24.4)
+      zod: 3.25.51
+      zod-validation-error: 3.3.1(zod@3.25.51)
 
   known-css-properties@0.36.0: {}
 
@@ -16590,6 +16590,10 @@ snapshots:
   zod-validation-error@3.3.1(zod@3.24.4):
     dependencies:
       zod: 3.24.4
+
+  zod-validation-error@3.3.1(zod@3.25.51):
+    dependencies:
+      zod: 3.25.51
 
   zod@3.24.4: {}
 

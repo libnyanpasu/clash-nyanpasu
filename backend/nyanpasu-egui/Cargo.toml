@@ -25,7 +25,7 @@ humansize = "2"
 resvg = "0.45.1"                                            # for svg rendering
 usvg = "0.45.1"                                             # for svg parsing
 csscolorparser = "0.7"                                      # for color conversion
-ipc-channel = "0.19"                                        # for IPC between the Widget process and the GUI process
+ipc-channel = "0.20"                                        # for IPC between the Widget process and the GUI process
 serde = { version = "1", features = ["derive"] }
 anyhow = "1"
 specta = { version = "=2.0.0-rc.22", features = ["serde"] }

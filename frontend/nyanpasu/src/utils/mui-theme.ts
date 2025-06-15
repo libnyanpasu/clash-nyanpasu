@@ -1,15 +1,24 @@
-import { SxProps, Theme } from '@mui/material'
+// From https://github.com/RobinTail/merge-sx
 
-export const mergeSxProps = (...props: Array<SxProps<Theme> | undefined>) => {
-  return props.reduce((acc, curr) => {
-    if (!curr) {
-      return acc
+import type { SxProps } from '@mui/material'
+
+type PureSx<T extends object> = Exclude<SxProps<T>, ReadonlyArray<unknown>>
+type SxAsArray<T extends object> = Array<PureSx<T>>
+
+export const mergeSxProps = <T extends object>(
+  ...styles: (SxProps<T> | false | undefined)[]
+): SxProps<T> => {
+  const capacitor: SxAsArray<T> = []
+  for (const sx of styles) {
+    if (sx) {
+      if (Array.isArray(sx)) {
+        for (const sub of sx as SxAsArray<T>) {
+          capacitor.push(sub)
+        }
+      } else {
+        capacitor.push(sx as PureSx<T>)
+      }
     }
-
-    if (Array.isArray(curr)) {
-      return [...acc, ...curr]
-    }
-
-    return [...acc, curr]
-  }, [] as SxProps<Theme>[])
+  }
+  return capacitor
 }

@@ -11,7 +11,7 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@tanstack/react-query": "5.80.6",
+    "@tanstack/react-query": "5.80.7",
     "@tauri-apps/api": "2.5.0",
     "ahooks": "3.8.5",
     "dayjs": "1.11.13",

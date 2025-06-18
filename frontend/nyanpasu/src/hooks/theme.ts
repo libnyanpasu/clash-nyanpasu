@@ -1,25 +1,39 @@
 import { SxProps, Theme } from '@mui/material'
 
-const delayColorMapping: { [key: string]: SxProps<Theme> } = {
-  '-1': (theme) => ({ color: theme.vars.palette.text.primary }),
-  '0': (theme) => ({ color: theme.vars.palette.text.secondary }),
-  '1': (theme) => ({ color: theme.vars.palette.text.secondary }),
-  '500': (theme) => ({ color: theme.vars.palette.success.main }),
-  '2000': (theme) => ({ color: theme.vars.palette.warning.main }),
-  '10000': (theme) => ({ color: theme.vars.palette.error.main }),
-}
+const delayThresholds = [
+  {
+    max: -1,
+    sx: (theme: Theme) => ({ color: theme.vars.palette.text.primary }),
+  },
+  {
+    max: 0,
+    sx: (theme: Theme) => ({ color: theme.vars.palette.text.secondary }),
+  },
+  {
+    max: 1,
+    sx: (theme: Theme) => ({ color: theme.vars.palette.text.secondary }),
+  },
+  {
+    max: 500,
+    sx: (theme: Theme) => ({ color: theme.vars.palette.success.main }),
+  },
+  {
+    max: 2000,
+    sx: (theme: Theme) => ({ color: theme.vars.palette.warning.main }),
+  },
+  {
+    max: Infinity,
+    sx: (theme: Theme) => ({ color: theme.vars.palette.error.main }),
+  },
+]
 
 export const useColorSxForDelay = (delay: number): SxProps<Theme> => {
-  let sx: SxProps<Theme> = (theme: Theme) => ({
-    color: theme.vars.palette.text.secondary,
-  })
-
-  for (const key in delayColorMapping) {
-    if (delay <= parseInt(key)) {
-      sx = delayColorMapping[key]
-      break
-    }
+  if (delay === -1) {
+    return delayThresholds[0].sx
   }
 
-  return sx
+  return (
+    delayThresholds.find((threshold) => delay <= threshold.max)?.sx ||
+    delayThresholds[delayThresholds.length - 1].sx
+  )
 }

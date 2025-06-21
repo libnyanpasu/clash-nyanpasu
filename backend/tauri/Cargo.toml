@@ -90,7 +90,7 @@ axum = "0.8"
 url = "2"
 mime = "0.3"
 reqwest = { version = "0.12", features = ["json", "stream"] }
-tokio-tungstenite = "0.26.1"
+tokio-tungstenite = "0.27.0"
 urlencoding = "2.1"
 port_scanner = "0.1.5"
 sysproxy = { git = "https://github.com/libnyanpasu/sysproxy-rs.git", version = "0.3" }

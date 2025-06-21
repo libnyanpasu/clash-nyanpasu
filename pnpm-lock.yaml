@@ -101,8 +101,8 @@ importers:
         specifier: 16.2.0
         version: 16.2.0
       knip:
-        specifier: 5.60.2
-        version: 5.60.2(@types/node@22.15.32)(typescript@5.8.3)
+        specifier: 5.61.2
+        version: 5.61.2(@types/node@22.15.32)(typescript@5.8.3)
       lint-staged:
         specifier: 16.1.0
         version: 16.1.0
@@ -5762,8 +5762,8 @@ packages:
     resolution: {integrity: sha512-dcS1ul+9tmeD95T+x28/ehLgd9mENa3LsvDTtzm3vyBEO7RPptvAD+t44WVXaUjTBRcrpFeFlC8WCruUR456hw==}
     engines: {node: '>=0.10.0'}
 
-  knip@5.60.2:
-    resolution: {integrity: sha512-TsYqEsoL3802RmhGL5MN7RLI6/03kocMYx/4BpMmwo3dSwEJxmzV7HqRxMVZr6c1llbd25+MqjgA86bv1IwsPA==}
+  knip@5.61.2:
+    resolution: {integrity: sha512-ZBv37zDvZj0/Xwk0e93xSjM3+5bjxgqJ0PH2GlB5tnWV0ktXtmatWLm+dLRUCT/vpO3SdGz2nNAfvVhuItUNcQ==}
     engines: {node: '>=18.18.0'}
     hasBin: true
     peerDependencies:
@@ -8306,9 +8306,6 @@ packages:
 
   zod@3.24.4:
     resolution: {integrity: sha512-OdqJE9UDRPwWsrHjLN2F8bPxvwJBK22EHLWtanu0LSYr5YqzsaaW3RMgmjwr8Rypg5k+meEJdSPXJZXE/yqOMg==}
-
-  zod@3.25.51:
-    resolution: {integrity: sha512-TQSnBldh+XSGL+opiSIq0575wvDPqu09AqWe1F7JhUMKY+M91/aGlK4MhpVNO7MgYfHcVCB1ffwAUTJzllKJqg==}
 
   zod@3.25.67:
     resolution: {integrity: sha512-idA2YXwpCdqUSKRCACDE6ItZD9TZzy3OZMtpfLoh6oPR47lipysRrJfjzMqFxQ3uJuUPyUeWe1r9vLH33xO/Qw==}
@@ -14076,7 +14073,7 @@ snapshots:
 
   kind-of@6.0.3: {}
 
-  knip@5.60.2(@types/node@22.15.32)(typescript@5.8.3):
+  knip@5.61.2(@types/node@22.15.32)(typescript@5.8.3):
     dependencies:
       '@nodelib/fs.walk': 1.2.8
       '@types/node': 22.15.32
@@ -14091,8 +14088,8 @@ snapshots:
       smol-toml: 1.3.4
       strip-json-comments: 5.0.2
       typescript: 5.8.3
-      zod: 3.25.51
-      zod-validation-error: 3.3.1(zod@3.25.51)
+      zod: 3.25.67
+      zod-validation-error: 3.3.1(zod@3.25.67)
 
   known-css-properties@0.36.0: {}
 
@@ -16888,13 +16885,11 @@ snapshots:
     dependencies:
       zod: 3.24.4
 
-  zod-validation-error@3.3.1(zod@3.25.51):
+  zod-validation-error@3.3.1(zod@3.25.67):
     dependencies:
-      zod: 3.25.51
+      zod: 3.25.67
 
   zod@3.24.4: {}
-
-  zod@3.25.51: {}
 
   zod@3.25.67: {}
 

@@ -81,7 +81,7 @@ jobs:
           GITHUB_REPO: ${{ github.repository }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Commit changes
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@v6
         with:
           commit_message: 'chore: bump version to v${{ steps.update-version.outputs.version }}'
           commit_user_name: 'github-actions[bot]'

@@ -92,7 +92,7 @@
     "postcss-html": "1.8.0",
     "postcss-import": "16.1.1",
     "postcss-scss": "4.0.9",
-    "prettier": "3.6.1",
+    "prettier": "3.6.2",
     "prettier-plugin-tailwindcss": "0.6.13",
     "prettier-plugin-toml": "2.0.5",
     "react-devtools": "6.1.2",

@@ -47,7 +47,7 @@
     "react-markdown": "10.1.0",
     "react-split-grid": "1.0.4",
     "react-use": "17.6.0",
-    "swr": "2.3.3",
+    "swr": "2.3.4",
     "virtua": "0.41.5",
     "vite-bundle-visualizer": "1.2.1"
   },

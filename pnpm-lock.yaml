@@ -194,8 +194,8 @@ importers:
         specifier: 19.1.0
         version: 19.1.0
       swr:
-        specifier: 2.3.3
-        version: 2.3.3(react@19.1.0)
+        specifier: 2.3.4
+        version: 2.3.4(react@19.1.0)
     devDependencies:
       '@types/lodash-es':
         specifier: 4.17.12
@@ -318,8 +318,8 @@ importers:
         specifier: 17.6.0
         version: 17.6.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       swr:
-        specifier: 2.3.3
-        version: 2.3.3(react@19.1.0)
+        specifier: 2.3.4
+        version: 2.3.4(react@19.1.0)
       virtua:
         specifier: 0.41.5
         version: 0.41.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(solid-js@1.9.5)
@@ -7767,8 +7767,8 @@ packages:
   svg-tags@1.0.0:
     resolution: {integrity: sha512-ovssysQTa+luh7A5Weu3Rta6FJlFBBbInjOh722LIt6klpU2/HtdUbszju/G4devcvk8PGt7FCLv5wftu3THUA==}
 
-  swr@2.3.3:
-    resolution: {integrity: sha512-dshNvs3ExOqtZ6kJBaAsabhPdHyeY4P2cKwRCniDVifBMoG/SVI7tfLWqPXriVspf2Rg4tPzXJTnwaihIeFw2A==}
+  swr@2.3.4:
+    resolution: {integrity: sha512-bYd2lrhc+VarcpkgWclcUi92wYCpOgMws9Sd1hG1ntAu0NEy+14CbotuFjshBU2kt9rYj9TSmDcybpxpeTU1fg==}
     peerDependencies:
       react: ^16.11.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
@@ -16588,7 +16588,7 @@ snapshots:
 
   svg-tags@1.0.0: {}
 
-  swr@2.3.3(react@19.1.0):
+  swr@2.3.4(react@19.1.0):
     dependencies:
       dequal: 2.0.3
       react: 19.1.0

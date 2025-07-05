@@ -247,7 +247,7 @@ importers:
         version: 4.1.11
       '@tanstack/router-zod-adapter':
         specifier: 1.81.5
-        version: 1.81.5(@tanstack/react-router@1.124.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(zod@3.25.71)
+        version: 1.81.5(@tanstack/react-router@1.124.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(zod@3.25.74)
       '@tauri-apps/api':
         specifier: 2.5.0
         version: 2.5.0
@@ -448,8 +448,8 @@ importers:
         specifier: 5.1.4
         version: 5.1.4(typescript@5.8.3)(vite@7.0.2(@types/node@22.15.33)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.30.1)(sass-embedded@1.89.2)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.20.3)(yaml@2.8.0))
       zod:
-        specifier: 3.25.71
-        version: 3.25.71
+        specifier: 3.25.74
+        version: 3.25.74
 
   frontend/ui:
     dependencies:
@@ -566,8 +566,8 @@ importers:
         specifier: 7.7.2
         version: 7.7.2
       zod:
-        specifier: 3.25.71
-        version: 3.25.71
+        specifier: 3.25.74
+        version: 3.25.74
     devDependencies:
       '@octokit/types':
         specifier: 14.1.0
@@ -8535,8 +8535,8 @@ packages:
   zod@3.25.67:
     resolution: {integrity: sha512-idA2YXwpCdqUSKRCACDE6ItZD9TZzy3OZMtpfLoh6oPR47lipysRrJfjzMqFxQ3uJuUPyUeWe1r9vLH33xO/Qw==}
 
-  zod@3.25.71:
-    resolution: {integrity: sha512-BsBc/NPk7h8WsUWYWYL+BajcJPY8YhjelaWu2NMLuzgraKAz4Lb4/6K11g9jpuDetjMiqhZ6YaexFLOC0Ogi3Q==}
+  zod@3.25.74:
+    resolution: {integrity: sha512-J8poo92VuhKjNknViHRAIuuN6li/EwFbAC8OedzI8uxpEPGiXHGQu9wemIAioIpqgfB4SySaJhdk0mH5Y4ICBg==}
 
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
@@ -11189,7 +11189,7 @@ snapshots:
       recast: 0.23.11
       source-map: 0.7.4
       tsx: 4.20.3
-      zod: 3.25.71
+      zod: 3.25.74
     transitivePeerDependencies:
       - supports-color
 
@@ -11208,7 +11208,7 @@ snapshots:
       babel-dead-code-elimination: 1.0.10
       chokidar: 3.6.0
       unplugin: 2.3.5
-      zod: 3.25.71
+      zod: 3.25.74
     optionalDependencies:
       '@tanstack/react-router': 1.124.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       vite: 7.0.2(@types/node@22.15.33)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.30.1)(sass-embedded@1.89.2)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.20.3)(yaml@2.8.0)
@@ -11226,10 +11226,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@tanstack/router-zod-adapter@1.81.5(@tanstack/react-router@1.124.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(zod@3.25.71)':
+  '@tanstack/router-zod-adapter@1.81.5(@tanstack/react-router@1.124.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(zod@3.25.74)':
     dependencies:
       '@tanstack/react-router': 1.124.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      zod: 3.25.71
+      zod: 3.25.74
 
   '@tanstack/store@0.7.0': {}
 
@@ -17440,6 +17440,6 @@ snapshots:
 
   zod@3.25.67: {}
 
-  zod@3.25.71: {}
+  zod@3.25.74: {}
 
   zwitch@2.0.4: {}

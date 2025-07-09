@@ -128,8 +128,8 @@ importers:
         specifier: 3.6.2
         version: 3.6.2
       prettier-plugin-tailwindcss:
-        specifier: 0.6.13
-        version: 0.6.13(@ianvs/prettier-plugin-sort-imports@4.4.2(prettier@3.6.2))(@trivago/prettier-plugin-sort-imports@4.3.0(prettier@3.6.2))(prettier@3.6.2)
+        specifier: 0.6.14
+        version: 0.6.14(@ianvs/prettier-plugin-sort-imports@4.4.2(prettier@3.6.2))(@trivago/prettier-plugin-sort-imports@4.3.0(prettier@3.6.2))(prettier@3.6.2)
       prettier-plugin-toml:
         specifier: 2.0.5
         version: 2.0.5(prettier@3.6.2)
@@ -6913,11 +6913,13 @@ packages:
     resolution: {integrity: sha512-GbK2cP9nraSSUF9N2XwUwqfzlAFlMNYYl+ShE/V+H8a9uNl/oUqB1w2EL54Jh0OlyRSd8RfWYJ3coVS4TROP2w==}
     engines: {node: '>=6.0.0'}
 
-  prettier-plugin-tailwindcss@0.6.13:
-    resolution: {integrity: sha512-uQ0asli1+ic8xrrSmIOaElDu0FacR4x69GynTh2oZjFY10JUt6EEumTQl5tB4fMeD6I1naKd+4rXQQ7esT2i1g==}
+  prettier-plugin-tailwindcss@0.6.14:
+    resolution: {integrity: sha512-pi2e/+ZygeIqntN+vC573BcW5Cve8zUB0SSAGxqpB4f96boZF4M3phPVoOFCeypwkpRYdi7+jQ5YJJUwrkGUAg==}
     engines: {node: '>=14.21.3'}
     peerDependencies:
       '@ianvs/prettier-plugin-sort-imports': '*'
+      '@prettier/plugin-hermes': '*'
+      '@prettier/plugin-oxc': '*'
       '@prettier/plugin-pug': '*'
       '@shopify/prettier-plugin-liquid': '*'
       '@trivago/prettier-plugin-sort-imports': '*'
@@ -6936,6 +6938,10 @@ packages:
       prettier-plugin-svelte: '*'
     peerDependenciesMeta:
       '@ianvs/prettier-plugin-sort-imports':
+        optional: true
+      '@prettier/plugin-hermes':
+        optional: true
+      '@prettier/plugin-oxc':
         optional: true
       '@prettier/plugin-pug':
         optional: true
@@ -15679,7 +15685,7 @@ snapshots:
     dependencies:
       fast-diff: 1.3.0
 
-  prettier-plugin-tailwindcss@0.6.13(@ianvs/prettier-plugin-sort-imports@4.4.2(prettier@3.6.2))(@trivago/prettier-plugin-sort-imports@4.3.0(prettier@3.6.2))(prettier@3.6.2):
+  prettier-plugin-tailwindcss@0.6.14(@ianvs/prettier-plugin-sort-imports@4.4.2(prettier@3.6.2))(@trivago/prettier-plugin-sort-imports@4.3.0(prettier@3.6.2))(prettier@3.6.2):
     dependencies:
       prettier: 3.6.2
     optionalDependencies:

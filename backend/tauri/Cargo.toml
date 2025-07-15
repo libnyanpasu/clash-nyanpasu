@@ -180,7 +180,7 @@ oxc_syntax = "0.77"
 oxc_ast_visit = "0.77"
 
 # Lua Integration
-mlua = { version = "0.10", features = [
+mlua = { version = "0.11", features = [
   "lua54",
   "async",
   "serialize",

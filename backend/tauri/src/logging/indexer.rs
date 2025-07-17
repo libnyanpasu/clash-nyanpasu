@@ -508,7 +508,7 @@ mod tests {
     fn create_test_log_file(entries: Vec<&str>) -> anyhow::Result<(NamedTempFile, Utf8PathBuf)> {
         let mut file = NamedTempFile::new()?;
         for entry in entries {
-            writeln!(file, "{}", entry)?;
+            writeln!(file, "{entry}")?;
         }
         file.flush()?;
 
@@ -520,7 +520,7 @@ mod tests {
 
     fn append_to_log_file(file: &mut NamedTempFile, entries: Vec<&str>) -> anyhow::Result<()> {
         for entry in entries {
-            writeln!(file, "{}", entry)?;
+            writeln!(file, "{entry}")?;
         }
         file.flush()?;
         Ok(())

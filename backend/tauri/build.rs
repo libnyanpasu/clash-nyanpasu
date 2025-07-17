@@ -30,7 +30,7 @@ fn main() {
     };
     let version = semver::Version::parse(&version).unwrap();
     let is_prerelase = !version.pre.is_empty();
-    println!("cargo:rustc-env=NYANPASU_VERSION={}", version);
+    println!("cargo:rustc-env=NYANPASU_VERSION={version}");
     // Git Information
     let (commit_hash, commit_author, commit_date) = if let Ok(true) = exists("./tmp/git-info.json")
     {
@@ -60,17 +60,17 @@ fn main() {
             command_args[2].clone(),
         )
     };
-    println!("cargo:rustc-env=COMMIT_HASH={}", commit_hash);
-    println!("cargo:rustc-env=COMMIT_AUTHOR={}", commit_author);
+    println!("cargo:rustc-env=COMMIT_HASH={commit_hash}");
+    println!("cargo:rustc-env=COMMIT_AUTHOR={commit_author}");
     let commit_date = DateTime::parse_from_rfc3339(&commit_date)
         .unwrap()
         .with_timezone(&Utc)
         .to_rfc3339_opts(SecondsFormat::Millis, true);
-    println!("cargo:rustc-env=COMMIT_DATE={}", commit_date);
+    println!("cargo:rustc-env=COMMIT_DATE={commit_date}");
 
     // Build Date
     let build_date = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
-    println!("cargo:rustc-env=BUILD_DATE={}", build_date);
+    println!("cargo:rustc-env=BUILD_DATE={build_date}");
 
     // Build Profile
     println!(

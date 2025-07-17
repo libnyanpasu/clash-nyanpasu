@@ -130,7 +130,7 @@ pub fn open_file(app: tauri::AppHandle, path: PathBuf) -> Result<()> {
                 // default open
                 shell
                     .open(path.to_string_lossy().to_string(), None)
-                    .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
+                    .map_err(std::io::Error::other)
             }
         },
         "Can't open file"
@@ -245,7 +245,7 @@ pub fn cleanup_processes(app_handle: &AppHandle) {
     let widget_manager = app_handle.state::<crate::widget::WidgetManager>();
     let _ = nyanpasu_utils::runtime::block_on(async {
         if let Err(e) = widget_manager.stop().await {
-            log::error!("failed to stop widget manager: {:?}", e);
+            log::error!("failed to stop widget manager: {e:?}");
         };
         crate::core::CoreManager::global().stop_core().await
     });

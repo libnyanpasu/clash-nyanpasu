@@ -65,8 +65,8 @@ pub fn init() -> Result<()> {
                 std::convert::Into::<filter::LevelFilter>::into(LoggingLevel::Warn).into(),
             )
             .from_env_lossy()
-            .add_directive(format!("nyanpasu={}", log_level).parse().unwrap())
-            .add_directive(format!("clash_nyanpasu={}", log_level).parse().unwrap()),
+            .add_directive(format!("nyanpasu={log_level}").parse().unwrap())
+            .add_directive(format!("clash_nyanpasu={log_level}").parse().unwrap()),
     );
 
     // register the logger
@@ -98,8 +98,8 @@ pub fn init() -> Result<()> {
                                     .into(),
                             )
                             .from_env_lossy()
-                            .add_directive(format!("nyanpasu={}", level).parse().unwrap())
-                            .add_directive(format!("clash_nyanpasu={}", level).parse().unwrap()),
+                            .add_directive(format!("nyanpasu={level}").parse().unwrap())
+                            .add_directive(format!("clash_nyanpasu={level}").parse().unwrap()),
                     )
                     .unwrap(); // panic if error
             }

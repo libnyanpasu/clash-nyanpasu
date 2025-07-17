@@ -26,12 +26,11 @@ pub async fn init_service() {
         status: nyanpasu_ipc::types::ServiceStatus::Running,
         ..
     }) = control::status().await
+        && enable_service
     {
-        if enable_service {
-            ipc::spawn_health_check();
-            while !ipc::HEALTH_CHECK_RUNNING.load(std::sync::atomic::Ordering::Acquire) {
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            }
+        ipc::spawn_health_check();
+        while !ipc::HEALTH_CHECK_RUNNING.load(std::sync::atomic::Ordering::Acquire) {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
     }
 }

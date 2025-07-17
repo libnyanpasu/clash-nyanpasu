@@ -52,8 +52,8 @@ impl<'a> MigrationFile<'a> {
     /// Create or Truncate the lock file and write the content.
     pub fn write_file(&self) -> Result<(), std::io::Error> {
         let content = serde_yaml::to_string(self).map_err(|e| {
-            log::error!("Failed to serialize the migration file: {}", e);
-            std::io::Error::new(std::io::ErrorKind::Other, e)
+            log::error!("Failed to serialize the migration file: {e}");
+            std::io::Error::other(e)
         })?;
         let mut file = std::fs::OpenOptions::new()
             .write(true)
@@ -65,7 +65,7 @@ impl<'a> MigrationFile<'a> {
                 .as_bytes(),
         )
         .map_err(|e| {
-            log::error!("Failed to write the migration file: {}", e);
+            log::error!("Failed to write the migration file: {e}");
             e
         })?;
         file.write_all(content.as_bytes())

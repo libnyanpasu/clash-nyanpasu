@@ -126,14 +126,14 @@ impl ClashConnectionsConnector {
             let info = crate::Config::clash().data().get_client_info();
             (info.server, info.secret)
         };
-        let url = format!("ws://{}/connections", server);
+        let url = format!("ws://{server}/connections");
         let mut request = url
             .into_client_request()
             .context("failed to create client request")?;
         if let Some(secret) = secret {
             request.headers_mut().insert(
                 "Authorization",
-                format!("Bearer {}", secret)
+                format!("Bearer {secret}")
                     .parse()
                     .context("failed to create header value")?,
             );
@@ -148,7 +148,7 @@ impl ClashConnectionsConnector {
         async {
             self.dispatch_state_changed(ClashConnectionsConnectorState::Connecting);
             let endpoint = Self::endpoint().context("failed to create endpoint")?;
-            log::debug!("connecting to clash connections ws server: {:?}", endpoint);
+            log::debug!("connecting to clash connections ws server: {endpoint:?}");
             let mut rx = connect_clash_server::<ClashConnectionsMessage>(endpoint).await?;
             self.dispatch_state_changed(ClashConnectionsConnectorState::Connected);
             let this = self.clone();

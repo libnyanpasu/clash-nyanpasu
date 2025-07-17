@@ -227,7 +227,7 @@ impl ProxiesGuard {
         if let Err(e) = self.sender.send(()) {
             warn!(
                 target: "clash::proxies",
-                "send update signal failed: {:?}", e
+                "send update signal failed: {e:?}"
             );
         }
     }

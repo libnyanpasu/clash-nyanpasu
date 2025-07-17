@@ -70,7 +70,7 @@ fn run_expr<T: DeserializeOwned>(logs: &mut Logs, item: &Value, expr: &str) -> O
     let item = match lua_runtime.to_value(item) {
         Ok(v) => v,
         Err(e) => {
-            logs.error(format!("failed to convert item to lua value: {:#?}", e));
+            logs.error(format!("failed to convert item to lua value: {e:#?}"));
             return None;
         }
     };
@@ -90,7 +90,7 @@ fn run_expr<T: DeserializeOwned>(logs: &mut Logs, item: &Value, expr: &str) -> O
             }
         }
         Err(e) => {
-            logs.error(format!("failed to run expr: {:#?}", e));
+            logs.error(format!("failed to run expr: {e:#?}"));
             None
         }
     }
@@ -99,12 +99,12 @@ fn run_expr<T: DeserializeOwned>(logs: &mut Logs, item: &Value, expr: &str) -> O
 fn do_filter(logs: &mut Logs, config: &mut Value, field_str: &str, filter: &Value) {
     let field = match find_field(config, field_str) {
         Some(field) if !field.is_sequence() => {
-            logs.warn(format!("field is not sequence: {:#?}", field_str));
+            logs.warn(format!("field is not sequence: {field_str:#?}"));
             return;
         }
         Some(field) => field,
         None => {
-            logs.warn(format!("field not found: {:#?}", field_str));
+            logs.warn(format!("field not found: {field_str:#?}"));
             return;
         }
     };
@@ -208,7 +208,7 @@ fn do_filter(logs: &mut Logs, config: &mut Value, field_str: &str, filter: &Valu
                                                 }
                                             }
                                             _ => {
-                                                logs.info(format!("invalid key: {:#?}", last_key));
+                                                logs.info(format!("invalid key: {last_key:#?}"));
                                             }
                                         }
                                     }
@@ -223,7 +223,7 @@ fn do_filter(logs: &mut Logs, config: &mut Value, field_str: &str, filter: &Valu
                                     }
                                 }
                                 _ => {
-                                    logs.info(format!("invalid key: {:#?}", key));
+                                    logs.info(format!("invalid key: {key:#?}"));
                                 }
                             }
                         }
@@ -233,7 +233,7 @@ fn do_filter(logs: &mut Logs, config: &mut Value, field_str: &str, filter: &Valu
         }
 
         _ => {
-            logs.warn(format!("invalid filter: {:#?}", filter));
+            logs.warn(format!("invalid filter: {filter:#?}"));
         }
     }
 }
@@ -249,7 +249,7 @@ pub fn use_merge(merge: &Mapping, mut config: Mapping) -> ProcessOutput {
         match key_str {
             key_str if key_str.starts_with("prepend__") || key_str.starts_with("prepend-") => {
                 if !value.is_sequence() {
-                    logs.warn(format!("prepend value is not sequence: {:#?}", key_str));
+                    logs.warn(format!("prepend value is not sequence: {key_str:#?}"));
                     continue;
                 }
                 let key_str = key_str.replace("prepend__", "").replace("prepend-", "");
@@ -259,18 +259,18 @@ pub fn use_merge(merge: &Mapping, mut config: Mapping) -> ProcessOutput {
                         if field.is_sequence() {
                             merge_sequence(field, value, false);
                         } else {
-                            logs.warn(format!("field is not sequence: {:#?}", key_str));
+                            logs.warn(format!("field is not sequence: {key_str:#?}"));
                         }
                     }
                     None => {
-                        logs.warn(format!("field not found: {:#?}", key_str));
+                        logs.warn(format!("field not found: {key_str:#?}"));
                     }
                 }
                 continue;
             }
             key_str if key_str.starts_with("append__") || key_str.starts_with("append-") => {
                 if !value.is_sequence() {
-                    logs.warn(format!("append value is not sequence: {:#?}", key_str));
+                    logs.warn(format!("append value is not sequence: {key_str:#?}"));
                     continue;
                 }
                 let key_str = key_str.replace("append__", "").replace("append-", "");
@@ -280,11 +280,11 @@ pub fn use_merge(merge: &Mapping, mut config: Mapping) -> ProcessOutput {
                         if field.is_sequence() {
                             merge_sequence(field, value, true);
                         } else {
-                            logs.warn(format!("field is not sequence: {:#?}", key_str));
+                            logs.warn(format!("field is not sequence: {key_str:#?}"));
                         }
                     }
                     None => {
-                        logs.warn(format!("field not found: {:#?}", key_str));
+                        logs.warn(format!("field not found: {key_str:#?}"));
                     }
                 }
                 continue;
@@ -297,7 +297,7 @@ pub fn use_merge(merge: &Mapping, mut config: Mapping) -> ProcessOutput {
                         *field = value.clone();
                     }
                     None => {
-                        logs.warn(format!("field not found: {:#?}", key_str));
+                        logs.warn(format!("field not found: {key_str:#?}"));
                     }
                 }
                 continue;
@@ -331,7 +331,7 @@ mod tests {
             - 222
         ";
         let mut config = serde_yaml::from_str::<super::Value>(config).unwrap();
-        eprintln!("{:#?}", config);
+        eprintln!("{config:#?}");
         let field = super::find_field(&mut config, "a.b.c");
         assert!(field.is_some(), "a.b.c should be found");
         let field = super::find_field(&mut config, "a.b");
@@ -382,7 +382,7 @@ mod tests {
         let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
         let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
         let (result, logs) = super::use_merge(&merge, config);
-        eprintln!("{:#?}\n\n{:#?}", logs, result);
+        eprintln!("{logs:#?}\n\n{result:#?}");
         let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
         assert_eq!(logs.len(), 1); // field not found: nothing
         assert_eq!(result.unwrap(), expected);
@@ -426,7 +426,7 @@ mod tests {
         let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
         let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
         let (result, logs) = super::use_merge(&merge, config);
-        eprintln!("{:#?}\n\n{:#?}", logs, result);
+        eprintln!("{logs:#?}\n\n{result:#?}");
         let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
         assert_eq!(logs.len(), 1); // field not found: nothing
         assert_eq!(result.unwrap(), expected);
@@ -469,7 +469,7 @@ mod tests {
         let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
         let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
         let (result, logs) = super::use_merge(&merge, config);
-        eprintln!("{:#?}\n\n{:#?}", logs, result);
+        eprintln!("{logs:#?}\n\n{result:#?}");
         let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
         assert_eq!(logs.len(), 1); // field not found: nothing
         assert_eq!(result.unwrap(), expected);
@@ -566,7 +566,7 @@ mod tests {
         let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
         let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
         let (result, logs) = super::use_merge(&merge, config);
-        eprintln!("{:#?}\n\n{:#?}", logs, result);
+        eprintln!("{logs:#?}\n\n{result:#?}");
         assert!(logs.len() == 1, "filter_wow should not work");
         let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
         assert_eq!(result.unwrap(), expected);
@@ -651,7 +651,7 @@ mod tests {
         let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
         let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
         let (result, logs) = super::use_merge(&merge, config);
-        eprintln!("{:#?}\n\n{:#?}", logs, result);
+        eprintln!("{logs:#?}\n\n{result:#?}");
         assert_eq!(logs.len(), 1);
         let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
         assert_eq!(result.unwrap(), expected);
@@ -716,7 +716,7 @@ mod tests {
         let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
         let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
         let (result, logs) = super::use_merge(&merge, config);
-        eprintln!("{:#?}\n\n{:#?}", logs, result);
+        eprintln!("{logs:#?}\n\n{result:#?}");
         assert_eq!(logs.len(), 0);
         let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
         assert_eq!(result.unwrap(), expected);
@@ -799,7 +799,7 @@ mod tests {
         let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
         let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
         let (result, logs) = super::use_merge(&merge, config);
-        eprintln!("{:#?}\n\n{:#?}", logs, result);
+        eprintln!("{logs:#?}\n\n{result:#?}");
         assert_eq!(logs.len(), 1);
         let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
         assert_eq!(result.unwrap(), expected);
@@ -933,7 +933,7 @@ mod tests {
         let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
         let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
         let (result, logs) = super::use_merge(&merge, config);
-        eprintln!("{:#?}\n\n{:#?}", logs, result);
+        eprintln!("{logs:#?}\n\n{result:#?}");
         assert_eq!(logs.len(), 0);
         let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
         assert_eq!(result.unwrap(), expected);
@@ -1022,7 +1022,7 @@ mod tests {
         let merge = serde_yaml::from_str::<super::Mapping>(merge).unwrap();
         let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
         let (result, logs) = super::use_merge(&merge, config);
-        eprintln!("{:#?}\n\n{:#?}", logs, result);
+        eprintln!("{logs:#?}\n\n{result:#?}");
         assert_eq!(logs.len(), 0);
         let expected = serde_yaml::from_str::<super::Mapping>(expected).unwrap();
         assert_eq!(result.unwrap(), expected);
@@ -1054,7 +1054,7 @@ mod tests {
         let config = serde_yaml::from_str::<super::Mapping>(config).unwrap();
 
         let (result, logs) = super::use_merge(&merge, config);
-        eprintln!("{:#?}\n\n{:#?}", logs, result);
+        eprintln!("{logs:#?}\n\n{result:#?}");
         assert_eq!(logs.len(), 0);
         let expected = r#"
         a:

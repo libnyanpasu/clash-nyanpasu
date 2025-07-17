@@ -4,7 +4,6 @@ use std::sync::{Arc, LazyLock};
 use crate::{
     ipc::Message,
     utils::svg::{SvgExt, render_svg_with_current_color_replace},
-    widget::get_window_state_path,
 };
 use eframe::{
     egui::{
@@ -157,11 +156,11 @@ impl NyanpasuNetworkStatisticLargeWidget {
             loop {
                 match rx.recv() {
                     Ok(msg) => {
-                        println!("Received message: {:?}", msg);
+                        println!("Received message: {msg:?}");
                         let _ = this.handle_message(msg);
                     }
                     Err(e) => {
-                        eprintln!("Failed to receive message: {}", e);
+                        eprintln!("Failed to receive message: {e}");
                         if matches!(
                             e,
                             ipc_channel::ipc::IpcError::Disconnected

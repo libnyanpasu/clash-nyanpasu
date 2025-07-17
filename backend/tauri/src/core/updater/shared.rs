@@ -35,21 +35,19 @@ pub(super) enum CoreTypeMeta {
 pub(super) fn get_download_path(core_type: CoreTypeMeta, artifact: &str) -> String {
     match core_type {
         CoreTypeMeta::Mihomo(tag) => {
-            format!("MetaCubeX/mihomo/releases/download/{}/{}", tag, artifact)
+            format!("MetaCubeX/mihomo/releases/download/{tag}/{artifact}")
         }
-        CoreTypeMeta::MihomoAlpha => format!(
-            "MetaCubeX/mihomo/releases/download/Prerelease-Alpha/{}",
-            artifact
-        ),
+        CoreTypeMeta::MihomoAlpha => {
+            format!("MetaCubeX/mihomo/releases/download/Prerelease-Alpha/{artifact}")
+        }
         CoreTypeMeta::ClashRs(tag) => {
-            format!("Watfaq/clash-rs/releases/download/{}/{}", tag, artifact)
+            format!("Watfaq/clash-rs/releases/download/{tag}/{artifact}")
         }
         CoreTypeMeta::ClashRsAlpha => {
-            format!("Watfaq/clash-rs/releases/download/latest/{}", artifact)
+            format!("Watfaq/clash-rs/releases/download/latest/{artifact}")
         }
-        CoreTypeMeta::ClashPremium(tag) => format!(
-            "zhongfly/Clash-premium-backup/releases/download/{}/{}",
-            tag, artifact
-        ),
+        CoreTypeMeta::ClashPremium(tag) => {
+            format!("zhongfly/Clash-premium-backup/releases/download/{tag}/{artifact}")
+        }
     }
 }

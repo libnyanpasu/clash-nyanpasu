@@ -52,15 +52,13 @@ pub struct ProfileShared {
 
 impl ProfileFileIo for ProfileShared {
     async fn read_file(&self) -> std::io::Result<String> {
-        let path =
-            app_profiles_dir().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let path = app_profiles_dir().map_err(std::io::Error::other)?;
         let file = path.join(&self.file);
         tokio::fs::read_to_string(file).await
     }
 
     async fn write_file(&self, content: String) -> std::io::Result<()> {
-        let path =
-            app_profiles_dir().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let path = app_profiles_dir().map_err(std::io::Error::other)?;
         let file = path.join(&self.file);
         let mut file = tokio::fs::OpenOptions::new()
             .write(true)

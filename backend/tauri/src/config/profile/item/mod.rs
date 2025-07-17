@@ -142,8 +142,7 @@ impl<'de> Deserialize<'de> for Profile {
                         type_field =
                             Some(ProfileItemType::deserialize(value.clone()).map_err(|err| {
                                 serde::de::Error::custom(format!(
-                                    "failed to deserialize type: {}",
-                                    err
+                                    "failed to deserialize type: {err}"
                                 ))
                             })?);
                     }

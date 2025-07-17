@@ -27,7 +27,6 @@ use specta::Type;
 use std::{
     borrow::Cow,
     path::PathBuf,
-    str::FromStr,
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicI64, Ordering},
@@ -36,9 +35,6 @@ use std::{
 };
 use tokio::time::sleep;
 use tracing_attributes::instrument;
-
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type)]
 #[serde(rename_all = "snake_case")]
@@ -176,19 +172,19 @@ impl Instance {
                                         CommandEvent::Stdout(line) => {
                                             if is_premium {
                                                 let log = api::parse_log(line.clone());
-                                                log::info!(target: "app", "[{}]: {}", core_type, log);
+                                                log::info!(target: "app", "[{core_type}]: {log}");
                                             } else {
-                                                log::info!(target: "app", "[{}]: {}", core_type, line);
+                                                log::info!(target: "app", "[{core_type}]: {line}");
                                             }
                                             Logger::global().set_log(line);
                                         }
                                         CommandEvent::Stderr(line) => {
-                                            log::error!(target: "app", "[{}]: {}", core_type, line);
+                                            log::error!(target: "app", "[{core_type}]: {line}");
                                             err_buf.push(line.clone());
                                             Logger::global().set_log(line);
                                         }
                                         CommandEvent::Error(e) => {
-                                            log::error!(target: "app", "[{}]: {}", core_type, e);
+                                            log::error!(target: "app", "[{core_type}]: {e}");
                                             let err = anyhow::anyhow!(format!(
                                                 "{}\n{}",
                                                 e,
@@ -203,8 +199,7 @@ impl Instance {
                                         CommandEvent::Terminated(status) => {
                                             log::error!(
                                                 target: "app",
-                                                "core terminated with status: {:?}",
-                                                status
+                                                "core terminated with status: {status:?}"
                                             );
                                             stated_changed_at
                                                 .store(get_current_ts(), Ordering::Relaxed);
@@ -442,7 +437,7 @@ impl CoreManager {
         CoreInstance::check_config_(&clash_core, &config_path, &binary_path, &app_dir)
             .await
             .context("failed to check config")
-            .inspect_err(|e| log::error!(target: "app", "failed to check config: {:?}", e))?;
+            .inspect_err(|e| log::error!(target: "app", "failed to check config: {e:?}"))?;
 
         Ok(())
     }
@@ -454,11 +449,11 @@ impl CoreManager {
                 let instance = self.instance.lock();
                 instance.as_ref().cloned()
             };
-            if let Some(instance) = instance.as_ref() {
-                if matches!(instance.state().await.as_ref(), CoreState::Running) {
-                    log::debug!(target: "app", "core is already running, stop it first...");
-                    instance.stop().await?;
-                }
+            if let Some(instance) = instance.as_ref()
+                && matches!(instance.state().await.as_ref(), CoreState::Running)
+            {
+                log::debug!(target: "app", "core is already running, stop it first...");
+                instance.stop().await?;
             }
         }
 
@@ -493,11 +488,11 @@ impl CoreManager {
                 let mut this = self.instance.lock();
                 this.take()
             };
-            if let Some(instance) = instance {
-                if matches!(instance.state().await.as_ref(), CoreState::Running) {
-                    log::debug!(target: "app", "core is running, stop it first...");
-                    instance.stop().await?;
-                }
+            if let Some(instance) = instance
+                && matches!(instance.state().await.as_ref(), CoreState::Running)
+            {
+                log::debug!(target: "app", "core is running, stop it first...");
+                instance.stop().await?;
             }
         }
 

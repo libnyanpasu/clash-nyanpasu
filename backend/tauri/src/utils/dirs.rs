@@ -226,7 +226,7 @@ pub fn service_log_file() -> Result<PathBuf> {
     let log_dir = app_logs_dir()?.join("service");
 
     let local_time = Local::now().format("%Y-%m-%d-%H%M").to_string();
-    let log_file = format!("{}.log", local_time);
+    let log_file = format!("{local_time}.log");
     let log_file = log_dir.join(log_file);
 
     let _ = std::fs::create_dir_all(&log_dir);
@@ -260,16 +260,13 @@ pub fn get_single_instance_placeholder() -> String {
 
 fn create_dir_all(dir: &PathBuf) -> Result<(), std::io::Error> {
     let meta = fs::metadata(dir);
-    if let Ok(meta) = meta {
-        if !meta.is_dir() {
-            fs::remove_file(dir)?;
-        }
+    if let Ok(meta) = meta
+        && !meta.is_dir()
+    {
+        fs::remove_file(dir)?;
     }
     fs_extra::dir::create_all(dir, false).map_err(|e| {
-        std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("failed to create dir: {:?}, kind: {:?}", e, e.kind),
-        )
+        std::io::Error::other(format!("failed to create dir: {:?}, kind: {:?}", e, e.kind))
     })?;
     Ok(())
 }
@@ -278,7 +275,7 @@ pub fn get_data_or_sidecar_path(binary_name: impl AsRef<str>) -> Result<PathBuf>
     let binary_name = binary_name.as_ref();
     let data_dir = app_data_dir()?;
     let path = data_dir.join(if cfg!(windows) && !binary_name.ends_with(".exe") {
-        format!("{}.exe", binary_name)
+        format!("{binary_name}.exe")
     } else {
         binary_name.to_string()
     });
@@ -288,7 +285,7 @@ pub fn get_data_or_sidecar_path(binary_name: impl AsRef<str>) -> Result<PathBuf>
 
     let install_dir = app_install_dir()?;
     let path = install_dir.join(if cfg!(windows) && !binary_name.ends_with(".exe") {
-        format!("{}.exe", binary_name)
+        format!("{binary_name}.exe")
     } else {
         binary_name.to_string()
     });

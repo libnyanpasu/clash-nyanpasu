@@ -86,7 +86,7 @@ pub fn find_unused_port() -> Result<u16> {
                 .latest()
                 .verge_mixed_port
                 .unwrap_or(Config::clash().data().get_mixed_port());
-            log::warn!(target: "app", "use default port: {}", port);
+            log::warn!(target: "app", "use default port: {port}");
             Ok(port)
         }
     }
@@ -465,10 +465,10 @@ pub async fn resolve_core_version(app_handle: &AppHandle, core_type: &ClashCore)
         return Err(anyhow::anyhow!("failed to get core version"));
     }
     let out = String::from_utf8_lossy(&out.stdout);
-    log::trace!(target: "app", "get core version: {:?}", out);
+    log::trace!(target: "app", "get core version: {out:?}");
     let out = out.trim().split(' ').collect::<Vec<&str>>();
     for item in out {
-        log::debug!(target: "app", "check item: {}", item);
+        log::debug!(target: "app", "check item: {item}");
         if item.starts_with('v')
             || item.starts_with('n')
             || item.starts_with("alpha")

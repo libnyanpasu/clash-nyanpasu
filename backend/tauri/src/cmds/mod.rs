@@ -89,7 +89,7 @@ pub fn parse() -> anyhow::Result<()> {
             }
             Commands::Collect => {
                 let envs = crate::utils::collect::collect_envs().unwrap();
-                println!("{:#?}", envs);
+                println!("{envs:#?}");
             }
             Commands::PanicDialog { message } => {
                 crate::utils::dialog::panic_dialog(message);

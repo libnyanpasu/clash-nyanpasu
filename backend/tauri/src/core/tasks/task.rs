@@ -310,11 +310,11 @@ impl TaskManager {
             build_task(task, list.len())
         };
         let restored_task = self.get_task_from_restored(task.id);
-        if let Some(restored_task) = restored_task {
-            if restored_task.name == task.name {
-                task.last_run = restored_task.last_run;
-                task.created_at = restored_task.created_at;
-            }
+        if let Some(restored_task) = restored_task
+            && restored_task.name == task.name
+        {
+            task.last_run = restored_task.last_run;
+            task.created_at = restored_task.created_at;
         }
 
         let task_id = task.id;

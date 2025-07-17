@@ -7,10 +7,7 @@ use nyanpasu_egui::{
     ipc::{IpcSender, Message, StatisticMessage, create_ipc_server},
     widget::StatisticWidgetVariant,
 };
-use std::{
-    process::Stdio,
-    sync::{Arc, atomic::AtomicBool},
-};
+use std::sync::{Arc, atomic::AtomicBool};
 use tauri::{Manager, Runtime, utils::platform::current_exe};
 use tokio::{
     process::Child,
@@ -53,11 +50,11 @@ impl WidgetManager {
                 match receiver.recv().await {
                     Ok(event) => {
                         if let Err(e) = this.handle_event(event).await {
-                            log::error!("Failed to handle event: {}", e);
+                            log::error!("Failed to handle event: {e}");
                         }
                     }
                     Err(e) => {
-                        log::error!("Error receiving event: {}", e);
+                        log::error!("Error receiving event: {e}");
                         if BroadcastRecvError::Closed == e {
                             signal.store(false, std::sync::atomic::Ordering::Release);
                             break;
@@ -72,27 +69,26 @@ impl WidgetManager {
 
     async fn handle_event(&self, event: ClashConnectionsConnectorEvent) -> anyhow::Result<()> {
         let mut instance = self.instance.clone().lock_owned().await;
-        if let ClashConnectionsConnectorEvent::Update(info) = event {
-            if instance
+        if let ClashConnectionsConnectorEvent::Update(info) = event
+            && instance
                 .as_mut()
                 .is_some_and(|instance| instance.is_alive())
-            {
-                tokio::task::spawn_blocking(move || {
-                    let instance = instance.as_ref().unwrap();
-                    // we only care about the update event now
-                    instance
-                        .send_message(Message::UpdateStatistic(StatisticMessage {
-                            download_total: info.download_total,
-                            upload_total: info.upload_total,
-                            download_speed: info.download_speed,
-                            upload_speed: info.upload_speed,
-                        }))
-                        .context("Failed to send event to widget")?;
-                    Ok::<(), anyhow::Error>(())
-                })
-                .await
-                .context("Failed to send event to widget")??;
-            }
+        {
+            tokio::task::spawn_blocking(move || {
+                let instance = instance.as_ref().unwrap();
+                // we only care about the update event now
+                instance
+                    .send_message(Message::UpdateStatistic(StatisticMessage {
+                        download_total: info.download_total,
+                        upload_total: info.upload_total,
+                        download_speed: info.download_speed,
+                        upload_speed: info.upload_speed,
+                    }))
+                    .context("Failed to send event to widget")?;
+                Ok::<(), anyhow::Error>(())
+            })
+            .await
+            .context("Failed to send event to widget")??;
         }
         Ok(())
     }
@@ -107,11 +103,11 @@ impl WidgetManager {
         // This operation is blocking, but it internal just a system call, so I think it's okay
         let (mut ipc_server, server_name) = create_ipc_server()?;
         // spawn a process to run the widget
-        let variant = format!("{}", widget);
+        let variant = format!("{widget}");
         tracing::debug!("Spawning widget process for {}...", variant);
         let widget_win_state_path = crate::utils::dirs::app_data_dir()
             .context("Failed to get app data dir")?
-            .join(format!("widget_{}.state", variant));
+            .join(format!("widget_{variant}.state"));
         let mut child = tokio::process::Command::new(current_exe)
             .arg("statistic-widget")
             .arg(variant)

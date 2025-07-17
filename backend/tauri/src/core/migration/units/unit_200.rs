@@ -32,25 +32,17 @@ impl Migration<'_> for MigrateProfilesNullValue {
     }
 
     fn migrate(&self) -> std::io::Result<()> {
-        let profiles_path =
-            dirs::profiles_path().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let profiles_path = dirs::profiles_path().map_err(std::io::Error::other)?;
         if !profiles_path.exists() {
             return Ok(());
         }
         let profiles = std::fs::read_to_string(profiles_path.clone())?;
-        let mut profiles: Mapping = serde_yaml::from_str(&profiles).map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("failed to parse profiles: {}", e),
-            )
-        })?;
+        let mut profiles: Mapping = serde_yaml::from_str(&profiles)
+            .map_err(|e| std::io::Error::other(format!("failed to parse profiles: {e}")))?;
 
         profiles.iter_mut().for_each(|(key, value)| {
             if value.is_null() {
-                println!(
-                    "detected null value in profiles {:?} should be migrated",
-                    key
-                );
+                println!("detected null value in profiles {key:?} should be migrated");
                 *value = serde_yaml::Value::Sequence(Vec::new());
             }
         });
@@ -58,38 +50,26 @@ impl Migration<'_> for MigrateProfilesNullValue {
             .write(true)
             .truncate(true)
             .open(profiles_path)?;
-        serde_yaml::to_writer(file, &profiles)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        serde_yaml::to_writer(file, &profiles).map_err(std::io::Error::other)?;
         Ok(())
     }
 
     fn discard(&self) -> std::io::Result<()> {
-        let profiles_path =
-            dirs::profiles_path().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let profiles_path = dirs::profiles_path().map_err(std::io::Error::other)?;
         if !profiles_path.exists() {
             return Ok(());
         }
         let profiles = std::fs::read_to_string(profiles_path.clone())?;
-        let mut profiles: Mapping = serde_yaml::from_str(&profiles).map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("failed to parse profiles: {}", e),
-            )
-        })?;
+        let mut profiles: Mapping = serde_yaml::from_str(&profiles)
+            .map_err(|e| std::io::Error::other(format!("failed to parse profiles: {e}")))?;
 
         profiles.iter_mut().for_each(|(key, value)| {
             if key.is_string() && key.as_str().unwrap() == "chain" && value.is_sequence() {
-                println!(
-                    "detected sequence value in profiles {:?} should be migrated",
-                    key
-                );
+                println!("detected sequence value in profiles {key:?} should be migrated");
                 *value = serde_yaml::Value::Null;
             }
             if key.is_string() && key.as_str().unwrap() == "current" && value.is_sequence() {
-                println!(
-                    "detected sequence value in profiles {:?} should be migrated",
-                    key
-                );
+                println!("detected sequence value in profiles {key:?} should be migrated");
                 *value = serde_yaml::Value::Null;
             }
         });
@@ -97,8 +77,7 @@ impl Migration<'_> for MigrateProfilesNullValue {
             .write(true)
             .truncate(true)
             .open(profiles_path)?;
-        serde_yaml::to_writer(file, &profiles)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        serde_yaml::to_writer(file, &profiles).map_err(std::io::Error::other)?;
         Ok(())
     }
 }
@@ -166,21 +145,18 @@ impl<'a> Migration<'a> for MigrateThemeSetting {
             return Ok(());
         }
         let raw_config = std::fs::read_to_string(&config_path)?;
-        let mut config: Mapping = serde_yaml::from_str(&raw_config)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-        if let Some(theme) = config.get("theme_setting") {
-            if !theme.is_null() {
-                if let Some(theme_obj) = theme.as_mapping() {
-                    if let Some(color) = theme_obj.get("primary_color") {
-                        println!("color: {:?}", color);
-                        config.insert("theme_color".into(), color.clone());
-                    }
-                }
-            }
+        let mut config: Mapping =
+            serde_yaml::from_str(&raw_config).map_err(std::io::Error::other)?;
+        if let Some(theme) = config.get("theme_setting")
+            && !theme.is_null()
+            && let Some(theme_obj) = theme.as_mapping()
+            && let Some(color) = theme_obj.get("primary_color")
+        {
+            println!("color: {color:?}");
+            config.insert("theme_color".into(), color.clone());
         }
         config.remove("theme_setting");
-        let new_config = serde_yaml::to_string(&config)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let new_config = serde_yaml::to_string(&config).map_err(std::io::Error::other)?;
         std::fs::write(&config_path, new_config)?;
         Ok(())
     }
@@ -191,8 +167,8 @@ impl<'a> Migration<'a> for MigrateThemeSetting {
             return Ok(());
         }
         let raw_config = std::fs::read_to_string(&config_path)?;
-        let mut config: Mapping = serde_yaml::from_str(&raw_config)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let mut config: Mapping =
+            serde_yaml::from_str(&raw_config).map_err(std::io::Error::other)?;
         if let Some(color) = config.get("theme_color") {
             let mut theme_obj = Mapping::new();
             theme_obj.insert("primary_color".into(), color.clone());
@@ -202,8 +178,7 @@ impl<'a> Migration<'a> for MigrateThemeSetting {
             );
             config.remove("theme_color");
         }
-        let new_config = serde_yaml::to_string(&config)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let new_config = serde_yaml::to_string(&config).map_err(std::io::Error::other)?;
         std::fs::write(&config_path, new_config)?;
         Ok(())
     }

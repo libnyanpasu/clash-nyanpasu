@@ -22,7 +22,7 @@ use boa_engine::{
 };
 use boa_gc::{Finalize, Trace};
 use rustc_hash::FxHashMap;
-use std::{cell::RefCell, collections::hash_map::Entry, rc::Rc, sync::Arc, time::SystemTime};
+use std::{cell::RefCell, collections::hash_map::Entry, rc::Rc, time::SystemTime};
 
 /// This represents the different types of log messages.
 #[derive(Debug)]

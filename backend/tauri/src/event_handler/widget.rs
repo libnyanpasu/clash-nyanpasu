@@ -1,5 +1,3 @@
-use crate::config::nyanpasu::NetworkStatisticWidgetConfig;
-use anyhow::Context;
 use tauri::{AppHandle, Event, Runtime};
 
 pub enum WidgetInstance {

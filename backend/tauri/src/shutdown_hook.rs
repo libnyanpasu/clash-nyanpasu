@@ -1,7 +1,5 @@
 //! a shutdown handler for Windows
 
-use std::sync::atomic::AtomicBool;
-
 use atomic_enum::atomic_enum;
 use once_cell::sync::OnceCell;
 use windows_core::{Error, w};

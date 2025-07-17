@@ -184,7 +184,7 @@ mod tests {
         let (result, logs) = tokio::runtime::Runtime::new()
             .unwrap()
             .block_on(runner.process_honey(mapping, script));
-        eprintln!("{:?}\n{:?}", logs, result);
+        eprintln!("{logs:?}\n{result:?}");
         assert!(result.is_ok());
         assert_eq!(logs.len(), 3);
         let expected = serde_yaml::from_str::<Mapping>(expected).unwrap();

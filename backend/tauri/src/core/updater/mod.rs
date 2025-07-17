@@ -158,7 +158,7 @@ impl UpdaterManager {
             mirror,
             "/libnyanpasu/clash-nyanpasu/raw/main/manifest/version.json",
         )?;
-        log::debug!("{}", url);
+        log::debug!("{url}");
         let res = self.client.get(url).send().await?;
         let status_code = res.status();
         if !status_code.is_success() {
@@ -178,11 +178,11 @@ impl UpdaterManager {
         let clash_rs_alpha_version = self.get_clash_rs_alpha_version();
         let (latest, mihomo_alpha_version, clash_rs_alpha_version) =
             join!(latest, mihomo_alpha_version, clash_rs_alpha_version);
-        log::debug!("latest version: {:?}", latest);
+        log::debug!("latest version: {latest:?}");
         self.manifest_version = latest?;
-        log::debug!("mihomo alpha version: {:?}", mihomo_alpha_version);
+        log::debug!("mihomo alpha version: {mihomo_alpha_version:?}");
         self.manifest_version.latest.mihomo_alpha = mihomo_alpha_version?;
-        log::debug!("clash rs alpha version: {:?}", clash_rs_alpha_version);
+        log::debug!("clash rs alpha version: {clash_rs_alpha_version:?}");
         self.manifest_version.latest.clash_rs_alpha = clash_rs_alpha_version?;
         Ok(())
     }
@@ -191,10 +191,10 @@ impl UpdaterManager {
     pub async fn mirror_speed_test(&self) -> Result<()> {
         {
             let mirror = self.mirror.read();
-            if let Some((_, timestamp)) = mirror.as_ref() {
-                if chrono::Utc::now().timestamp() - (*timestamp as i64) < 3600 {
-                    return Ok(());
-                }
+            if let Some((_, timestamp)) = mirror.as_ref()
+                && chrono::Utc::now().timestamp() - (*timestamp as i64) < 3600
+            {
+                return Ok(());
             }
         }
         let mirrors = crate::utils::candy::INTERNAL_MIRRORS;

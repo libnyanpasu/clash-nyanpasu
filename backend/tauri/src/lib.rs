@@ -108,14 +108,12 @@ pub fn run() -> std::io::Result<()> {
     if single_instance_result
         .as_ref()
         .is_ok_and(|instance| instance.is_some())
+        && let Err(e) = init::run_pending_migrations()
     {
-        if let Err(e) = init::run_pending_migrations() {
-            utils::dialog::panic_dialog(&format!(
-                "Failed to finish migration event: {}\nYou can see the detailed information at migration.log in your local data dir.\nYou're supposed to submit it as the attachment of new issue.",
-                e,
-            ));
-            std::process::exit(1);
-        }
+        utils::dialog::panic_dialog(&format!(
+            "Failed to finish migration event: {e}\nYou can see the detailed information at migration.log in your local data dir.\nYou're supposed to submit it as the attachment of new issue.",
+        ));
+        std::process::exit(1);
     }
 
     crate::log_err!(init::init_config());
@@ -159,8 +157,7 @@ pub fn run() -> std::io::Result<()> {
 
         // FIXME: maybe move this logic to a util function?
         let msg = format!(
-            "Oops, we encountered some issues and program will exit immediately.\n\npayload: {:#?}\nlocation: {:?}\nbacktrace: {:#?}\n\n",
-            payload, location, backtrace,
+            "Oops, we encountered some issues and program will exit immediately.\n\npayload: {payload:#?}\nlocation: {location:?}\nbacktrace: {backtrace:#?}\n\n",
         );
         let child = std::process::Command::new(tauri::utils::platform::current_exe().unwrap())
             .arg("panic-dialog")
@@ -288,20 +285,17 @@ pub fn run() -> std::io::Result<()> {
                         .arg(file)
                         .output()
                         .map(|_| ())
-                        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+                        .map_err(io::Error::other)
                 })
                 .bigint(BigIntExportBehavior::Number)
                 .header("/* eslint-disable */\n// @ts-nocheck"),
             SPECTA_BINDINGS_PATH,
         ) {
             Ok(_) => {
-                log::debug!(
-                    "Exported typescript bindings, path: {}",
-                    SPECTA_BINDINGS_PATH
-                );
+                log::debug!("Exported typescript bindings, path: {SPECTA_BINDINGS_PATH}");
             }
             Err(e) => {
-                panic!("Failed to export typescript bindings: {}", e);
+                panic!("Failed to export typescript bindings: {e}");
             }
         };
     }

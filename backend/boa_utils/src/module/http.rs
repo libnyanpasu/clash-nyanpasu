@@ -153,14 +153,13 @@ impl ModuleLoader for HttpModuleLoader {
                     if err.kind() == std::io::ErrorKind::NotFound
                         && let Err(e) = async_fs::metadata(&parent_dir).await
                         && e.kind() == std::io::ErrorKind::NotFound
+                        && let Err(err) = create_dir_all(parent_dir).await
                     {
-                        if let Err(err) = create_dir_all(parent_dir).await {
-                            log::error!(
-                                "failed to create cache directory for `{url}`; path: `{}`. error: `{}`",
-                                cache_path.display(),
-                                err
-                            );
-                        }
+                        log::error!(
+                            "failed to create cache directory for `{url}`; path: `{}`. error: `{}`",
+                            cache_path.display(),
+                            err
+                        );
                     }
                     false
                 }

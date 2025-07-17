@@ -76,7 +76,7 @@ impl TaskStorage {
     /// get_event get a task event by event id
     pub fn get_event(&self, event_id: TaskEventID) -> Result<Option<TaskEvent>> {
         let db = self.storage.get_instance();
-        let key = format!("task:event:id:{}", event_id);
+        let key = format!("task:event:id:{event_id}");
         let read_txn = db.begin_read()?;
         let table = read_txn.open_table(NYANPASU_TABLE)?;
         let value = table.get(key.as_bytes())?;
@@ -107,7 +107,7 @@ impl TaskStorage {
 
     pub fn get_event_ids(&self, task_id: TaskID) -> Result<Option<Vec<TaskEventID>>> {
         let db = self.storage.get_instance();
-        let key = format!("task:events:task_id:{}", task_id);
+        let key = format!("task:events:task_id:{task_id}");
         let read_txn = db.begin_read()?;
         let table = read_txn.open_table(NYANPASU_TABLE)?;
         let value = table.get(key.as_bytes())?;
@@ -160,8 +160,8 @@ impl TaskStorage {
             None => return Ok(()),
         };
         let db = self.storage.get_instance();
-        let event_key = format!("task:event:id:{}", event_id);
-        let event_ids_key = format!("task:events:task_id:{}", event_id);
+        let event_key = format!("task:event:id:{event_id}");
+        let event_ids_key = format!("task:events:task_id:{event_id}");
         let write_txn = db.begin_write()?;
         {
             let mut table = write_txn.open_table(NYANPASU_TABLE)?;
@@ -247,6 +247,6 @@ mod tests {
         .trim();
         let hashset: HashSet<i32> = serde_json::from_str(json).unwrap();
         let new_json = serde_json::to_string(&hashset).unwrap();
-        println!("{}", new_json);
+        println!("{new_json}");
     }
 }

@@ -52,9 +52,9 @@ pub fn run_pending_migrations() -> Result<()> {
                     let _ = file.write_all(&buf);
                 }
                 Err(e) => {
-                    eprintln!("failed to read stdout: {:?}", e);
+                    eprintln!("failed to read stdout: {e:?}");
                     let mut errs = errs_.lock();
-                    errs.push_str(&format!("failed to read stdout: {:?}\n", e));
+                    errs.push_str(&format!("failed to read stdout: {e:?}\n"));
                     break;
                 }
             }
@@ -77,9 +77,9 @@ pub fn run_pending_migrations() -> Result<()> {
                     errs.push_str(unsafe { std::str::from_utf8_unchecked(&buf) });
                 }
                 Err(e) => {
-                    eprintln!("failed to read stderr: {:?}", e);
+                    eprintln!("failed to read stderr: {e:?}");
                     let mut errs = errs_.lock();
-                    errs.push_str(&format!("failed to read stderr: {:?}\n", e));
+                    errs.push_str(&format!("failed to read stderr: {e:?}\n"));
                     break;
                 }
             }
@@ -249,13 +249,13 @@ pub fn init_service() -> Result<()> {
                                 "client service ver is newer than exist one, do service update"
                             );
                             if let Err(e) = crate::core::service::control::update_service().await {
-                                log::error!(target: "app", "failed to update service: {:?}", e);
+                                log::error!(target: "app", "failed to update service: {e:?}");
                             }
                         }
                     }
                 }
                 Err(e) => {
-                    log::error!(target: "app", "failed to get service status: {:?}", e);
+                    log::error!(target: "app", "failed to get service status: {e:?}");
                 }
             }
         }

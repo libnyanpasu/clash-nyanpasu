@@ -257,7 +257,7 @@ impl Runner<'_> {
     {
         println!("Running migration: {}", migration.name());
         let advice = self.advice_migration(migration);
-        println!("Advice: {:?}", advice);
+        println!("Advice: {advice:?}");
         if matches!(advice, MigrationAdvice::Ignored | MigrationAdvice::Done) {
             return Ok(());
         }
@@ -265,21 +265,18 @@ impl Runner<'_> {
         let mut store = self.store.borrow_mut();
         match migration.migrate() {
             Ok(_) => {
-                println!("Migration {} completed.", name);
+                println!("Migration {name} completed.");
                 store.set_state(Cow::Owned(name.to_string()), MigrationState::Completed);
                 Ok(())
             }
             Err(e) => {
-                eprintln!(
-                    "Migration {} failed: {}; trying to discard changes",
-                    name, e
-                );
+                eprintln!("Migration {name} failed: {e}; trying to discard changes");
                 match migration.discard() {
                     Ok(_) => {
-                        eprintln!("Migration {} discarded.", name);
+                        eprintln!("Migration {name} discarded.");
                     }
                     Err(e) => {
-                        eprintln!("Migration {} discard failed: {}", name, e);
+                        eprintln!("Migration {name} discard failed: {e}");
                     }
                 }
                 store.set_state(Cow::Owned(name.to_string()), MigrationState::Failed);
@@ -305,7 +302,7 @@ impl Runner<'_> {
     }
 
     pub fn run_units_up_to_version(&self, to_ver: &Version) -> std::io::Result<()> {
-        println!("Running units up to version: {}", to_ver);
+        println!("Running units up to version: {to_ver}");
         let version = {
             let store = self.store.borrow();
             store.version.clone()

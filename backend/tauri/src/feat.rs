@@ -14,7 +14,6 @@ use crate::{
 };
 use anyhow::{Result, bail};
 use handle::Message;
-use nyanpasu_egui::widget::network_statistic_large;
 use nyanpasu_ipc::api::status::CoreState;
 use serde_yaml::{Mapping, Value};
 use tauri::{AppHandle, Manager};
@@ -207,13 +206,12 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
                     .verge_mixed_port
                     .unwrap_or(Config::clash().data().get_mixed_port());
             // 检查端口占用
-            if changed {
-                if let Some(port) = mixed_port.unwrap().as_u64() {
-                    if !port_scanner::local_port_available(port as u16) {
-                        Config::clash().discard();
-                        bail!("port already in use");
-                    }
-                }
+            if changed
+                && let Some(port) = mixed_port.unwrap().as_u64()
+                && !port_scanner::local_port_available(port as u16)
+            {
+                Config::clash().discard();
+                bail!("port already in use");
             }
         };
 
@@ -447,8 +445,8 @@ async fn update_core_config() -> Result<()> {
 /// copy env variable
 pub fn copy_clash_env(app_handle: &AppHandle, option: &str) {
     let port = { Config::verge().latest().verge_mixed_port.unwrap_or(7890) };
-    let http_proxy = format!("http://127.0.0.1:{}", port);
-    let socks5_proxy = format!("socks5://127.0.0.1:{}", port);
+    let http_proxy = format!("http://127.0.0.1:{port}");
+    let socks5_proxy = format!("socks5://127.0.0.1:{port}");
 
     let sh =
         format!("export https_proxy={http_proxy} http_proxy={http_proxy} all_proxy={socks5_proxy}");
@@ -481,10 +479,10 @@ pub fn update_proxies_buff(rx: Option<tokio::sync::oneshot::Receiver<()>>) {
     use crate::core::clash::proxies::{ProxiesGuard, ProxiesGuardExt};
 
     tauri::async_runtime::spawn(async move {
-        if let Some(rx) = rx {
-            if let Err(e) = rx.await {
-                log::error!(target: "app::clash::proxies", "update proxies buff by rx failed: {e}");
-            }
+        if let Some(rx) = rx
+            && let Err(e) = rx.await
+        {
+            log::error!(target: "app::clash::proxies", "update proxies buff by rx failed: {e}");
         }
         match ProxiesGuard::global().update().await {
             Ok(_) => {

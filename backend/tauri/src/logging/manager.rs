@@ -10,7 +10,6 @@ use notify_debouncer_full::{
 };
 use tokio::{
     sync::{
-        RwLock,
         mpsc::{Receiver, UnboundedSender},
         oneshot,
     },

@@ -31,7 +31,7 @@ impl AsyncJobExecutor for EventsRotateJob {
         for task_id in task_ids {
             let event_ids = storage
                 .get_event_ids(task_id)
-                .context(format!("failed to get event ids for task {}", task_id))?
+                .context(format!("failed to get event ids for task {task_id}"))?
                 .unwrap_or_default();
             let mut events_to_remove = Vec::new();
             let mut events = event_ids
@@ -55,10 +55,10 @@ impl AsyncJobExecutor for EventsRotateJob {
             events_to_remove.extend(events);
             // remove events
             for event_id in events_to_remove {
-                log::debug!("removing event {} for task {}", event_id, task_id);
+                log::debug!("removing event {event_id} for task {task_id}");
                 storage
                     .remove_event(event_id, task_id)
-                    .context(format!("failed to remove event {}", event_id))?;
+                    .context(format!("failed to remove event {event_id}"))?;
             }
         }
         Ok(())

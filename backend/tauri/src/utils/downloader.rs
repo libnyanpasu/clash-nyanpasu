@@ -211,7 +211,7 @@ impl Serialize for DownloaderError {
     where
         S: serde::Serializer,
     {
-        format!("{}", self).serialize(serializer)
+        format!("{self}").serialize(serializer)
     }
 }
 
@@ -432,7 +432,7 @@ impl<F: Fn(DownloaderState)> Downloader<F> {
         match result {
             Ok(_) => Ok(()),
             Err(e) => {
-                self.dispatch_event(DownloaderState::Failed(format!("{}", e)));
+                self.dispatch_event(DownloaderState::Failed(format!("{e}")));
                 Err(e)
             }
         }
@@ -533,7 +533,7 @@ impl SafeChunkThread for RwLock<ChunkThread> {
             };
             client
                 .get(url.as_str())
-                .header(reqwest::header::RANGE, format!("bytes={}-{}", start, end))
+                .header(reqwest::header::RANGE, format!("bytes={start}-{end}"))
                 .send()
                 .await?
                 .error_for_status()?
@@ -630,7 +630,7 @@ mod test {
         let file = TokioFile::create("QQ9.7.17.29225.exe").await.unwrap();
         let tick = time::Instant::now();
         let on_event = |state: DownloaderState| {
-            println!("{:?}", state);
+            println!("{state:?}");
             match state {
                 DownloaderState::Failed(e) => {
                     panic!("{}", e);
@@ -673,7 +673,7 @@ mod test {
             std::thread::sleep(std::time::Duration::from_millis(10));
             loop {
                 let status = downloader_clone.get_current_status();
-                println!("{:#?}", status);
+                println!("{status:#?}");
                 if matches!(
                     status.state,
                     DownloaderState::Finished | DownloaderState::Failed(_)

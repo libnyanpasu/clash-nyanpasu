@@ -257,12 +257,12 @@ mod platform_impl {
             let id = item_ids.len();
             item_ids.insert(key, id);
             let mut sub_item_builder = CheckMenuItemBuilder::new(item.clone())
-                .id(format!("proxy_node_{}", id))
+                .id(format!("proxy_node_{id}"))
                 .checked(false);
-            if let Some(now) = group.current.clone() {
-                if now == item.as_str() {
-                    sub_item_builder = sub_item_builder.checked(true);
-                }
+            if let Some(now) = group.current.clone()
+                && now == item.as_str()
+            {
+                sub_item_builder = sub_item_builder.checked(true);
             }
 
             if !matches!(group.r#type.as_str(), "Selector" | "Fallback") {
@@ -521,7 +521,7 @@ pub fn on_system_tray_event(event: &str) {
             ProxiesGuard::global()
                 .select_proxy(&group, &name)
                 .await
-                .with_context(|| format!("select proxy failed, {} {}, cause: ", group, name))?;
+                .with_context(|| format!("select proxy failed, {group} {name}, cause: "))?;
 
             debug!("select proxy success: {} {}", group, name);
             Ok::<(), anyhow::Error>(())

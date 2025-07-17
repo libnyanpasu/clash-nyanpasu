@@ -1,5 +1,5 @@
 use super::runner::{ProcessOutput, Runner, wrap_result};
-use crate::enhance::utils::{LogSpan, Logs, LogsExt, take_logs};
+use crate::enhance::utils::{LogSpan, Logs, LogsExt};
 use anyhow::Context as _;
 use async_trait::async_trait;
 use boa_engine::{
@@ -204,7 +204,7 @@ impl Runner for JSRunner {
     async fn process_honey(&self, mapping: Mapping, script: &str) -> ProcessOutput {
         let script = wrap_result!(wrap_script_if_not_esm(script));
         let hash = crate::utils::help::get_uid("script");
-        let path = CUSTOM_SCRIPTS_DIR.join(format!("{}.mjs", hash));
+        let path = CUSTOM_SCRIPTS_DIR.join(format!("{hash}.mjs"));
         wrap_result!(
             tokio::fs::write(&path, script.as_bytes())
                 .await
@@ -470,7 +470,7 @@ const foreignNameservers = [
             .unwrap()
             .block_on(async move {
                 let (res, logs) = runner.process_honey(mapping, script).await;
-                eprintln!("logs: {:?}", logs);
+                eprintln!("logs: {logs:?}");
                 let mapping = res.unwrap();
                 assert_eq!(
                     mapping["rules"],
@@ -542,7 +542,7 @@ const foreignNameservers = [
             .unwrap()
             .block_on(async move {
                 let (res, logs) = runner.process_honey(mapping, script).await;
-                eprintln!("logs: {:?}", logs);
+                eprintln!("logs: {logs:?}");
                 let mapping = res.unwrap();
                 assert_eq!(
                     mapping["rules"],

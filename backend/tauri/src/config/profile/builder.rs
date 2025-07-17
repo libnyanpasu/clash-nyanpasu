@@ -41,8 +41,7 @@ impl<'de> Deserialize<'de> for ProfileBuilder {
                         type_field =
                             Some(ProfileItemType::deserialize(value.clone()).map_err(|err| {
                                 serde::de::Error::custom(format!(
-                                    "failed to deserialize profile builder type: {}",
-                                    err
+                                    "failed to deserialize profile builder type: {err}"
                                 ))
                             })?);
                     }
@@ -55,32 +54,28 @@ impl<'de> Deserialize<'de> for ProfileBuilder {
                         .map(ProfileBuilder::Remote)
                         .map_err(|err| {
                             serde::de::Error::custom(format!(
-                                "failed to deserialize remote profile builder: {}",
-                                err
+                                "failed to deserialize remote profile builder: {err}"
                             ))
                         }),
                     ProfileItemType::Local => LocalProfileBuilder::deserialize(mapping)
                         .map(ProfileBuilder::Local)
                         .map_err(|err| {
                             serde::de::Error::custom(format!(
-                                "failed to deserialize local profile builder: {}",
-                                err
+                                "failed to deserialize local profile builder: {err}"
                             ))
                         }),
                     ProfileItemType::Merge => MergeProfileBuilder::deserialize(mapping)
                         .map(ProfileBuilder::Merge)
                         .map_err(|err| {
                             serde::de::Error::custom(format!(
-                                "failed to deserialize merge profile builder: {}",
-                                err
+                                "failed to deserialize merge profile builder: {err}"
                             ))
                         }),
                     ProfileItemType::Script(_) => ScriptProfileBuilder::deserialize(mapping)
                         .map(ProfileBuilder::Script)
                         .map_err(|err| {
                             serde::de::Error::custom(format!(
-                                "failed to deserialize script profile builder: {}",
-                                err
+                                "failed to deserialize script profile builder: {err}"
                             ))
                         }),
                 }

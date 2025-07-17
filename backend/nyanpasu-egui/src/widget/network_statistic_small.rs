@@ -3,12 +3,11 @@ use std::sync::{Arc, LazyLock};
 
 use eframe::egui::{
     self, Color32, CornerRadius, Id, Image, Label, Layout, Margin, RichText, Sense, Stroke, Style,
-    TextWrapMode, Theme, Vec2, ViewportCommand, Visuals, WidgetText, include_image,
-    style::Selection,
+    TextWrapMode, Theme, Vec2, ViewportCommand, WidgetText, include_image, style::Selection,
 };
 use parking_lot::RwLock;
 
-use crate::{ipc::Message, widget::get_window_state_path};
+use crate::ipc::Message;
 
 // Presets
 const STATUS_ICON_CONTAINER_WIDTH: f32 = 20.0;
@@ -122,11 +121,11 @@ impl NyanpasuNetworkStatisticSmallWidget {
             loop {
                 match rx.recv() {
                     Ok(msg) => {
-                        println!("Received message: {:?}", msg);
+                        println!("Received message: {msg:?}");
                         let _ = this.handle_message(msg);
                     }
                     Err(e) => {
-                        eprintln!("Failed to receive message: {}", e);
+                        eprintln!("Failed to receive message: {e}");
                         if matches!(
                             e,
                             ipc_channel::ipc::IpcError::Disconnected
@@ -188,7 +187,7 @@ impl NyanpasuNetworkStatisticSmallWidget {
                 this.egui_ctx.send_viewport_cmd(ViewportCommand::Close);
             }
             _ => {
-                eprintln!("Unsupported message: {:?}", msg);
+                eprintln!("Unsupported message: {msg:?}");
             }
         }
         Ok(())

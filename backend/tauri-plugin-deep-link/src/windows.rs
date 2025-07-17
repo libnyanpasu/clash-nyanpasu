@@ -104,14 +104,14 @@ pub fn listen<F: FnMut(String) + Send + 'static>(mut handler: F) -> Result<()> {
                             let mut reader = BufReader::new(rx);
                             let mut buf = String::new();
                             if let Err(e) = reader.read_line(&mut buf).await {
-                                log::error!("Error reading from connection: {}", e);
+                                log::error!("Error reading from connection: {e}");
                                 continue;
                             }
                             buf.pop();
                             let current_pid = std::process::id();
                             let response = format!("{current_pid}\n");
                             if let Err(e) = tx.write_all(response.as_bytes()).await {
-                                log::error!("Error writing to connection: {}", e);
+                                log::error!("Error writing to connection: {e}");
                                 continue;
                             }
                             handler(buf);
@@ -121,7 +121,7 @@ pub fn listen<F: FnMut(String) + Send + 'static>(mut handler: F) -> Result<()> {
                             break;
                         }
                         Err(e) => {
-                            log::error!("Error accepting connection: {}", e);
+                            log::error!("Error accepting connection: {e}");
                         }
                     }
                 }
@@ -177,7 +177,7 @@ pub fn prepare(identifier: &str) {
                         let mut reader = BufReader::new(&mut socket_rx);
                         let mut buf = String::new();
                         if let Err(e) = reader.read_line(&mut buf).await {
-                            eprintln!("Error reading from connection: {}", e);
+                            eprintln!("Error reading from connection: {e}");
                         }
                         buf.pop();
                         dummy_keypress();
@@ -191,7 +191,7 @@ pub fn prepare(identifier: &str) {
                         std::process::exit(0);
                     }
                     Err(e) => {
-                        eprintln!("Failed to connect to local socket: {}", e);
+                        eprintln!("Failed to connect to local socket: {e}");
                         std::thread::sleep(std::time::Duration::from_millis(1));
                     }
                 };

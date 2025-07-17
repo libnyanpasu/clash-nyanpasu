@@ -36,9 +36,9 @@ pub fn parse(args: &MigrateOpts) {
             println!(
                 "[{}] {} - {}",
                 match &advice {
-                    MigrationAdvice::Pending => format!("{}", advice).yellow(),
-                    MigrationAdvice::Ignored => format!("{}", advice).cyan(),
-                    MigrationAdvice::Done => format!("{}", advice).green(),
+                    MigrationAdvice::Pending => format!("{advice}").yellow(),
+                    MigrationAdvice::Ignored => format!("{advice}").cyan(),
+                    MigrationAdvice::Done => format!("{advice}").green(),
                 },
                 migration.version(),
                 migration.name()
@@ -94,7 +94,7 @@ pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
     use std::{borrow::Cow, path::PathBuf, process::Command, str::FromStr, thread, time::Duration};
     use sysinfo::System;
     use tauri::utils::platform::current_exe;
-    println!("target path {}", target_path);
+    println!("target path {target_path}");
 
     let token = Token::with_current_process()?;
     if let PrivilegeLevel::NotPrivileged = token.privilege_level()? {
@@ -137,12 +137,9 @@ pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
         };
         for name in related_names.iter() {
             if process_name.ends_with(name) {
-                println!(
-                    "Process found: {} should be killed. killing...",
-                    process_name
-                );
+                println!("Process found: {process_name} should be killed. killing...");
                 if !process.kill() {
-                    eprintln!("failed to kill {}.", process_name)
+                    eprintln!("failed to kill {process_name}.")
                 }
                 continue 'outer;
             }

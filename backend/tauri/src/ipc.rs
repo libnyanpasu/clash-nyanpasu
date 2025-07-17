@@ -53,7 +53,7 @@ impl serde::Serialize for IpcError {
     where
         S: serde::ser::Serializer,
     {
-        serializer.serialize_str(format!("{:#?}", self).as_str())
+        serializer.serialize_str(format!("{self:#?}").as_str())
     }
 }
 
@@ -598,7 +598,7 @@ pub async fn get_core_version(
 #[specta::specta]
 pub async fn collect_logs(app_handle: AppHandle) -> Result {
     let now = Local::now().format("%Y-%m-%d");
-    let fname = format!("{}-log", now);
+    let fname = format!("{now}-log");
     let builder = FileDialogBuilder::new(app_handle.dialog().clone());
     builder
         .add_filter("archive files", &["zip"])
@@ -606,7 +606,7 @@ pub async fn collect_logs(app_handle: AppHandle) -> Result {
         .set_title("Save log archive")
         .save_file(|file_path| match file_path {
             Some(path) if path.as_path().is_some() => {
-                debug!("{:#?}", path);
+                debug!("{path:#?}");
                 match candy::collect_logs(path.as_path().unwrap()) {
                     Ok(_) => (),
                     Err(err) => {
@@ -866,10 +866,8 @@ pub mod service {
                 .as_ref()
                 .unwrap_or(&false)
         };
-        if enabled_service {
-            if let Err(e) = crate::core::CoreManager::global().run_core().await {
-                log::error!(target: "app", "{e}");
-            }
+        if enabled_service && let Err(e) = crate::core::CoreManager::global().run_core().await {
+            log::error!(target: "app", "{e}");
         }
         Ok(res?)
     }
@@ -885,10 +883,8 @@ pub mod service {
                 .as_ref()
                 .unwrap_or(&false)
         };
-        if enabled_service {
-            if let Err(e) = crate::core::CoreManager::global().run_core().await {
-                log::error!(target: "app", "{e}");
-            }
+        if enabled_service && let Err(e) = crate::core::CoreManager::global().run_core().await {
+            log::error!(target: "app", "{e}");
         }
         Ok(res?)
     }
@@ -904,10 +900,8 @@ pub mod service {
                 .as_ref()
                 .unwrap_or(&false)
         };
-        if enabled_service {
-            if let Err(e) = crate::core::CoreManager::global().run_core().await {
-                log::error!(target: "app", "{e}");
-            }
+        if enabled_service && let Err(e) = crate::core::CoreManager::global().run_core().await {
+            log::error!(target: "app", "{e}");
         }
         Ok(res?)
     }
@@ -932,9 +926,9 @@ pub async fn get_service_install_prompt() -> Result<String> {
         .map(|arg| arg.to_string_lossy().to_string())
         .collect::<Vec<_>>()
         .join(" ");
-    let mut prompt = format!("./nyanpasu-service {}", args);
+    let mut prompt = format!("./nyanpasu-service {args}");
     if cfg!(not(windows)) {
-        prompt = format!("sudo {}", prompt);
+        prompt = format!("sudo {prompt}");
     }
     Ok(prompt)
 }

@@ -35,7 +35,7 @@ pub fn get_reqwest_client() -> Result<reqwest::Client> {
     let app_version = super::dirs::get_app_version();
     let client = builder
         .swift_set_nyanpasu_proxy()
-        .user_agent(format!("clash-nyanpasu/{}", app_version))
+        .user_agent(format!("clash-nyanpasu/{app_version}"))
         .build()?;
     Ok(client)
 }
@@ -138,6 +138,6 @@ mod test {
             )
             .await
             .unwrap();
-        println!("{:?}", results);
+        println!("{results:?}");
     }
 }

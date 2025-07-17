@@ -204,7 +204,7 @@ fn get_task_id(uid: &str) -> TaskID {
 fn new_task(task_id: TaskID, profile_uid: &str, interval: Minutes) -> Task {
     Task {
         id: task_id,
-        name: format!("profile-updater-{}", profile_uid),
+        name: format!("profile-updater-{profile_uid}"),
         executor: TaskExecutor::Async(Box::new(ProfileUpdater(profile_uid.to_owned().to_string()))),
         schedule: TaskSchedule::Interval(Duration::from_secs(interval * 60)),
         ..Task::default()

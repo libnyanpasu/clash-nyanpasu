@@ -322,7 +322,7 @@ fn clash_client_info() -> Result<(String, HeaderMap)> {
     headers.insert("Content-Type", "application/json".parse()?);
 
     if let Some(secret) = client.secret {
-        let secret = format!("Bearer {}", secret).parse()?;
+        let secret = format!("Bearer {secret}").parse()?;
         headers.insert("Authorization", secret);
     }
 

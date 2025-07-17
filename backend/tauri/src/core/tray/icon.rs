@@ -93,10 +93,10 @@ fn resize_image(mode: TrayIcon, scale_factor: f64) {
         }
     };
     let cache_dir = crate::utils::dirs::cache_dir().unwrap().join("icons");
-    if !cache_dir.exists() {
-        if let Err(e) = std::fs::create_dir_all(&cache_dir) {
-            tracing::error!("failed to create cache dir: {:?}", e);
-        }
+    if !cache_dir.exists()
+        && let Err(e) = std::fs::create_dir_all(&cache_dir)
+    {
+        tracing::error!("failed to create cache dir: {:?}", e);
     }
     if let Err(e) = std::fs::write(cache_dir.join(format!("tray_{mode}.png")), icon) {
         tracing::error!("failed to write icon file: {:?}", e);

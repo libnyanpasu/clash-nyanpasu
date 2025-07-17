@@ -66,7 +66,7 @@ pub fn collect_envs<'a>() -> Result<EnvInfo<'a>, std::io::Error> {
 
         let mut command = std::process::Command::new(
             super::dirs::get_data_or_sidecar_path(name)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?,
+                .map_err(|e| std::io::Error::other(e.to_string()))?,
         );
         command.args(if matches!(c, CoreType::Clash(ClashCoreType::ClashRust)) {
             ["-V"]

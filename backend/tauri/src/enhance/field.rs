@@ -85,10 +85,10 @@ pub fn use_whitelist_fields_filter(config: Mapping, filter: &[String], enable: b
     let mut ret = Mapping::new();
 
     for (key, value) in config.into_iter() {
-        if let Some(key) = key.as_str() {
-            if filter.contains(&key.to_string()) {
-                ret.insert(Value::from(key), value);
-            }
+        if let Some(key) = key.as_str()
+            && filter.contains(&key.to_string())
+        {
+            ret.insert(Value::from(key), value);
         }
     }
     ret

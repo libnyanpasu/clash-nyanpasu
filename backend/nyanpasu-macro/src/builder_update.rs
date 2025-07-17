@@ -11,50 +11,51 @@ pub fn builder_update(input: DeriveInput) -> syn::Result<TokenStream> {
     // search #[builder_update(getter)] or #[builder_update(getter = "get_{}")]
     let mut generate_getter: Option<String> = None;
     for attr in &input.attrs {
-        if let Some(attr_meta_name) = attr.path().get_ident() {
-            if attr_meta_name == "builder_update" {
-                let meta = &attr.meta;
-                match meta {
-                    Meta::List(list) => {
-                        list.parse_nested_meta(|meta| {
-                            let path = &meta.path;
-                            match path {
-                                path if path.is_ident("ty") => {
-                                    let value = meta.value()?;
-                                    let lit_str: LitStr = value.parse()?;
-                                    partial_ty = Some(lit_str.parse()?);
-                                }
-                                path if path.is_ident("patch_fn") => {
-                                    let value = meta.value()?;
-                                    let lit_str: LitStr = value.parse()?;
-                                    patch_fn = Some(lit_str.parse()?);
-                                }
-                                path if path.is_ident("getter") => {
-                                    match meta.value() {
-                                        Ok(value) => {
-                                            let lit_str: LitStr = value.parse()?;
-                                            generate_getter = Some(lit_str.value());
-                                        }
-                                        Err(_) => {
-                                            // it should be default getter
-                                            generate_getter = Some("get_{}".to_string());
-                                        }
+        if let Some(attr_meta_name) = attr.path().get_ident()
+            && attr_meta_name == "builder_update"
+        {
+            let meta = &attr.meta;
+            match meta {
+                Meta::List(list) => {
+                    list.parse_nested_meta(|meta| {
+                        let path = &meta.path;
+                        match path {
+                            path if path.is_ident("ty") => {
+                                let value = meta.value()?;
+                                let lit_str: LitStr = value.parse()?;
+                                partial_ty = Some(lit_str.parse()?);
+                            }
+                            path if path.is_ident("patch_fn") => {
+                                let value = meta.value()?;
+                                let lit_str: LitStr = value.parse()?;
+                                patch_fn = Some(lit_str.parse()?);
+                            }
+                            path if path.is_ident("getter") => {
+                                match meta.value() {
+                                    Ok(value) => {
+                                        let lit_str: LitStr = value.parse()?;
+                                        generate_getter = Some(lit_str.value());
+                                    }
+                                    Err(_) => {
+                                        // it should be default getter
+                                        generate_getter = Some("get_{}".to_string());
                                     }
                                 }
-                                _ => {
-                                    return Err(meta
-                                        .error("Only #[builder_update(ty = \"T\")] is supported"));
-                                }
                             }
-                            Ok(())
-                        })?;
-                    }
-                    _ => {
-                        return Err(Error::new(
-                            attr.span(),
-                            "Only #[builder_update(ty = \"T\")] is supported",
-                        ));
-                    }
+                            _ => {
+                                return Err(
+                                    meta.error("Only #[builder_update(ty = \"T\")] is supported")
+                                );
+                            }
+                        }
+                        Ok(())
+                    })?;
+                }
+                _ => {
+                    return Err(Error::new(
+                        attr.span(),
+                        "Only #[builder_update(ty = \"T\")] is supported",
+                    ));
                 }
             }
         }
@@ -82,28 +83,27 @@ pub fn builder_update(input: DeriveInput) -> syn::Result<TokenStream> {
                     // check whether the field has #[update(nest)]
                     let mut nested = false;
                     for attr in &field.attrs {
-                        if attr.path().is_ident("builder_update") {
-                            if let Meta::List(ref list) = attr.meta {
-                                list.parse_nested_meta(|meta| {
-                                    let path = &meta.path;
-                                    match path {
-                                        path if path.is_ident("nested") => {
-                                            nested = true;
-                                        }
-                                        path if path.is_ident("getter_ty") => {
-                                            let value = meta.value()?;
-                                            let lit_str: LitStr = value.parse()?;
-                                            getter_type = syn::parse_str(&lit_str.value())?;
-                                        }
-                                        _ => {
-                                            return Err(meta.error(
-                                                "Only #[builder_update(nested)] is supported",
-                                            ));
-                                        }
+                        if attr.path().is_ident("builder_update")
+                            && let Meta::List(ref list) = attr.meta
+                        {
+                            list.parse_nested_meta(|meta| {
+                                let path = &meta.path;
+                                match path {
+                                    path if path.is_ident("nested") => {
+                                        nested = true;
                                     }
-                                    Ok(())
-                                })?;
-                            }
+                                    path if path.is_ident("getter_ty") => {
+                                        let value = meta.value()?;
+                                        let lit_str: LitStr = value.parse()?;
+                                        getter_type = syn::parse_str(&lit_str.value())?;
+                                    }
+                                    _ => {
+                                        return Err(meta
+                                            .error("Only #[builder_update(nested)] is supported"));
+                                    }
+                                }
+                                Ok(())
+                            })?;
                         }
                     }
 

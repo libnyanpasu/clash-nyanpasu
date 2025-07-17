@@ -406,8 +406,8 @@ importers:
         specifier: 3.44.0
         version: 3.44.0
       filesize:
-        specifier: 11.0.1
-        version: 11.0.1
+        specifier: 11.0.2
+        version: 11.0.2
       meta-json-schema:
         specifier: 1.19.11
         version: 1.19.11
@@ -557,8 +557,8 @@ importers:
         specifier: 1.8.2
         version: 1.8.2
       filesize:
-        specifier: 11.0.1
-        version: 11.0.1
+        specifier: 11.0.2
+        version: 11.0.2
       p-retry:
         specifier: 6.2.1
         version: 6.2.1
@@ -5143,8 +5143,8 @@ packages:
   filelist@1.0.4:
     resolution: {integrity: sha512-w1cEuf3S+DrLCQL7ET6kz+gmlJdbq9J7yXCSjK/OZCPA+qEN1WyF4ZAf0YYJa4/shHJra2t/d/r8SV4Ji+x+8Q==}
 
-  filesize@11.0.1:
-    resolution: {integrity: sha512-ua1SLPcFgqf1lICRVqTA5d8T6kqg2ZTIm0BImnUk4pZzfAlwhqO9zKv7GCE5FGl3zIbBZZSmq7yLikFNsi5eXw==}
+  filesize@11.0.2:
+    resolution: {integrity: sha512-s/iAeeWLk5BschUIpmdrF8RA8lhFZ/xDZgKw1Tan72oGws1/dFGB06nYEiyyssWUfjKNQTNRlrwMVjO9/hvXDw==}
     engines: {node: '>= 10.4.0'}
 
   fill-range@7.1.1:
@@ -8747,7 +8747,7 @@ snapshots:
 
   '@babel/generator@7.17.7':
     dependencies:
-      '@babel/types': 7.27.7
+      '@babel/types': 7.28.1
       jsesc: 2.5.2
       source-map: 0.5.7
     optional: true
@@ -8859,20 +8859,20 @@ snapshots:
 
   '@babel/helper-environment-visitor@7.24.7':
     dependencies:
-      '@babel/types': 7.27.7
+      '@babel/types': 7.28.1
     optional: true
 
   '@babel/helper-function-name@7.24.7':
     dependencies:
       '@babel/template': 7.27.2
-      '@babel/types': 7.27.7
+      '@babel/types': 7.28.1
     optional: true
 
   '@babel/helper-globals@7.28.0': {}
 
   '@babel/helper-hoist-variables@7.24.7':
     dependencies:
-      '@babel/types': 7.27.7
+      '@babel/types': 7.28.1
     optional: true
 
   '@babel/helper-member-expression-to-functions@7.25.9':
@@ -9003,7 +9003,7 @@ snapshots:
 
   '@babel/helper-split-export-declaration@7.24.7':
     dependencies:
-      '@babel/types': 7.27.7
+      '@babel/types': 7.28.1
     optional: true
 
   '@babel/helper-string-parser@7.25.9': {}
@@ -9604,13 +9604,13 @@ snapshots:
   '@babel/traverse@7.23.2':
     dependencies:
       '@babel/code-frame': 7.27.1
-      '@babel/generator': 7.27.5
+      '@babel/generator': 7.28.0
       '@babel/helper-environment-visitor': 7.24.7
       '@babel/helper-function-name': 7.24.7
       '@babel/helper-hoist-variables': 7.24.7
       '@babel/helper-split-export-declaration': 7.24.7
-      '@babel/parser': 7.27.7
-      '@babel/types': 7.27.7
+      '@babel/parser': 7.28.0
+      '@babel/types': 7.28.1
       debug: 4.4.1
       globals: 11.12.0
     transitivePeerDependencies:
@@ -11459,7 +11459,7 @@ snapshots:
   '@trivago/prettier-plugin-sort-imports@4.3.0(prettier@3.6.2)':
     dependencies:
       '@babel/generator': 7.17.7
-      '@babel/parser': 7.27.7
+      '@babel/parser': 7.28.0
       '@babel/traverse': 7.23.2
       '@babel/types': 7.17.0
       javascript-natural-sort: 0.7.1
@@ -13841,7 +13841,7 @@ snapshots:
     dependencies:
       minimatch: 5.1.6
 
-  filesize@11.0.1: {}
+  filesize@11.0.2: {}
 
   fill-range@7.1.1:
     dependencies:

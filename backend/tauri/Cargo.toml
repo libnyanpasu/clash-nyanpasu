@@ -134,7 +134,7 @@ runas = { git = "https://github.com/libnyanpasu/rust-runas.git" }
 single-instance = "0.3.3"
 which = "7"
 open = "5.0.1"
-sysinfo = "0.35"
+sysinfo = "0.36"
 num_cpus = "1"
 os_pipe = "1.2.1"
 whoami = "1.5.1"

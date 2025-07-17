@@ -111,18 +111,16 @@ pub trait Migration<'a>: DynClone {
 
 clone_trait_object!(Migration<'_>);
 
-auto trait NotDynMigration {}
-impl !NotDynMigration for DynMigration<'_> {}
-
-/// Impl From T for DynMigration excludes itself.
-impl<'a, T> From<T> for DynMigration<'a>
+pub trait MigrationExt<'a>: Migration<'a>
 where
-    T: Clone + Migration<'a> + Send + Sync + NotDynMigration + 'a,
+    Self: Sized + 'static + Send + Sync,
 {
-    fn from(item: T) -> Self {
-        Box::new(item)
+    fn boxed(self) -> DynMigration<'a> {
+        Box::new(self) as DynMigration
     }
 }
+
+impl<'a, T> MigrationExt<'a> for T where T: Sized + 'static + Migration<'a> + Send + Sync {}
 
 impl<'a, T> Migration<'a> for Unit<'a, T>
 where

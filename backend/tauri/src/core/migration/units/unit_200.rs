@@ -5,15 +5,15 @@ use semver::Version;
 use serde_yaml::Mapping;
 
 use crate::{
-    core::migration::{DynMigration, Migration},
+    core::migration::{DynMigration, Migration, MigrationExt},
     utils::dirs,
 };
 
 pub static UNITS: Lazy<Vec<DynMigration>> = Lazy::new(|| {
     vec![
-        MigrateProfilesNullValue.into(),
-        MigrateLanguageOption.into(),
-        MigrateThemeSetting.into(),
+        MigrateProfilesNullValue.boxed(),
+        MigrateLanguageOption.boxed(),
+        MigrateThemeSetting.boxed(),
     ]
 });
 

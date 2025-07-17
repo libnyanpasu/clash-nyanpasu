@@ -8,14 +8,14 @@ use serde_yaml::{
 
 use crate::{
     config::RUNTIME_CONFIG,
-    core::migration::{DynMigration, Migration},
+    core::migration::{DynMigration, Migration, MigrationExt},
 };
 
 pub static UNITS: Lazy<Vec<DynMigration>> = Lazy::new(|| {
     vec![
-        MigrateAppHomeDir.into(),
-        MigrateProxiesSelectorMode.into(),
-        MigrateScriptProfileType.into(),
+        MigrateAppHomeDir.boxed(),
+        MigrateProxiesSelectorMode.boxed(),
+        MigrateScriptProfileType.boxed(),
     ]
 });
 

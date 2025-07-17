@@ -748,7 +748,7 @@ dependencies = [
  "sha1",
  "sync_wrapper",
  "tokio",
- "tokio-tungstenite",
+ "tokio-tungstenite 0.26.2",
  "tower",
  "tower-layer",
  "tower-service",
@@ -1588,7 +1588,7 @@ dependencies = [
  "specta",
  "specta-typescript",
  "strum 0.27.1",
- "sysinfo 0.35.2",
+ "sysinfo",
  "sysproxy",
  "tauri",
  "tauri-build",
@@ -1609,7 +1609,7 @@ dependencies = [
  "time",
  "timeago",
  "tokio",
- "tokio-tungstenite",
+ "tokio-tungstenite 0.27.0",
  "tokio-util",
  "tracing",
  "tracing-appender",
@@ -1621,13 +1621,13 @@ dependencies = [
  "url",
  "urlencoding",
  "uuid",
- "webview2-com 0.37.0",
- "which 7.0.3",
+ "webview2-com",
+ "which 8.0.0",
  "whoami",
  "window-vibrancy",
  "windows-core 0.61.2",
  "windows-registry 0.5.3",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
  "winreg 0.55.0",
  "zip 3.0.0",
  "zip-extensions",
@@ -5779,7 +5779,7 @@ dependencies = [
  "serde",
  "shared_child",
  "specta",
- "sysinfo 0.36.0",
+ "sysinfo",
  "thiserror 2.0.12",
  "tokio",
  "tracing",
@@ -6409,9 +6409,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_allocator"
-version = "0.77.1"
+version = "0.77.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "993101d424ea517a299b312786e6feeaeaa64a0f130cf7cc45e1c6a6e8847ac5"
+checksum = "dfb26c85f75534d78b8df75f4fc5cae640eab5f7390138533f9875ea77675c32"
 dependencies = [
  "allocator-api2",
  "bumpalo",
@@ -6422,9 +6422,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_ast"
-version = "0.77.1"
+version = "0.77.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a651de56b9e2a0273b7b2291fcb35ad52142b59582ac7a44dff3899a9b73bdbc"
+checksum = "b60080112103b0620b4df671cc6cb5e2d15da0acdde576339fc1883944649e50"
 dependencies = [
  "bitflags 2.9.1",
  "oxc_allocator",
@@ -6438,9 +6438,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_ast_macros"
-version = "0.77.1"
+version = "0.77.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "215515d242db3a88c93928446b62265a63f5a54d14d691f9d763f5fb61df3c25"
+checksum = "86846e9f2b68e12a3579ade0e5504307238d9ca3214b6ac71f7f2aaf455854f4"
 dependencies = [
  "phf 0.12.1",
  "proc-macro2",
@@ -6450,9 +6450,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_ast_visit"
-version = "0.77.1"
+version = "0.77.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0de629999113e65cbf28c65f0b1a85edb041264544a01ebd8b90fb572ed4104a"
+checksum = "c349ec8e729a1756b99cdb3b3908680ba683967956a8c6e4cdb913f965812cdf"
 dependencies = [
  "oxc_allocator",
  "oxc_ast",
@@ -6462,18 +6462,18 @@ dependencies = [
 
 [[package]]
 name = "oxc_data_structures"
-version = "0.77.1"
+version = "0.77.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ccdbefc90ed80b5bebddefde04c29a1e97c0ef7965dc8333aee577862dd0d099"
+checksum = "885299e00807d2b0d7b3202417eeed7a31da4d0e8444da8d0d7cb2918fdcd9ff"
 dependencies = [
  "rustversion",
 ]
 
 [[package]]
 name = "oxc_diagnostics"
-version = "0.77.1"
+version = "0.77.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dbd1cf40a3b5a93083fb038c8eb52e10ab003a7ad5cef8026dd640b1bea5e6b0"
+checksum = "0aeede4e14e19c6ecd6d07b0ffa6ee06fa8154a3ac28e9286a70eed3c459ffef"
 dependencies = [
  "cow-utils",
  "oxc-miette",
@@ -6482,9 +6482,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_ecmascript"
-version = "0.77.1"
+version = "0.77.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a96f5cb2cafa3c3bc0b14799d8dfe242be2be48b92ba77293db094d72b4a9c10"
+checksum = "9561e986b4b73093c0ef263fb827cf3e1ff39f9888d9fc28ba87a895a12b2002"
 dependencies = [
  "num-bigint",
  "num-traits",
@@ -6495,9 +6495,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_estree"
-version = "0.77.1"
+version = "0.77.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7de1227584df59c254a51465254f9e75a407e2329c59686fd2ff5b1659816568"
+checksum = "371761605f9a865c60b2f122745e4938c7d626151806a29ee37faa402351ffa4"
 
 [[package]]
 name = "oxc_index"
@@ -6507,9 +6507,9 @@ checksum = "2fa07b0cfa997730afed43705766ef27792873fdf5215b1391949fec678d2392"
 
 [[package]]
 name = "oxc_parser"
-version = "0.77.1"
+version = "0.77.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81476a01b11f87ebfb63c3a462333000a2a3fa40a29ec8699e8215f5ef7439ec"
+checksum = "47dddf9d1b84967778895d456199da6bec068d4df333736bc044566741770e02"
 dependencies = [
  "bitflags 2.9.1",
  "cow-utils",
@@ -6530,9 +6530,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_regular_expression"
-version = "0.77.1"
+version = "0.77.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30b692c86bb96fae9d12869403b670c2a76c3aaae220f428281370e7e66dc96e"
+checksum = "fc5e8f0ebe3a5ccf4ccf46584ff2b3cd99ffb7775cfcf4eb0d198a2cb61cf5e1"
 dependencies = [
  "bitflags 2.9.1",
  "oxc_allocator",
@@ -6546,9 +6546,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_span"
-version = "0.77.1"
+version = "0.77.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d379518d49fb763cb07f38d86eaad471d6ca71547c48c0c4fcae28d733e99b6e"
+checksum = "76c222febafebcf7efb6b57bc326f2b22ef941530f7520fa085e2b9f1bf3c8ef"
 dependencies = [
  "compact_str",
  "oxc-miette",
@@ -6559,9 +6559,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_syntax"
-version = "0.77.1"
+version = "0.77.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b96724d9883c251e889825640fa409518d8a614b1832764861b964e58f8eac5"
+checksum = "4edbfffc422a4b5579ef51f7b562b098bf087022fa4a8d92d1afe3d7c7abc738"
 dependencies = [
  "bitflags 2.9.1",
  "cow-utils",
@@ -8902,20 +8902,6 @@ dependencies = [
 
 [[package]]
 name = "sysinfo"
-version = "0.35.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c3ffa3e4ff2b324a57f7aeb3c349656c7b127c3c189520251a648102a92496e"
-dependencies = [
- "libc",
- "memchr",
- "ntapi",
- "objc2-core-foundation",
- "objc2-io-kit",
- "windows 0.61.3",
-]
-
-[[package]]
-name = "sysinfo"
 version = "0.36.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aab138f5c1bb35231de19049060a87977ad23e04f2303e953bc5c2947ac7dec4"
@@ -9096,7 +9082,7 @@ dependencies = [
  "url",
  "urlpattern",
  "webkit2gtk",
- "webview2-com 0.38.0",
+ "webview2-com",
  "window-vibrancy",
  "windows 0.61.3",
 ]
@@ -9207,7 +9193,7 @@ dependencies = [
  "once_cell",
  "tauri-utils",
  "tokio",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
  "winreg 0.55.0",
 ]
 
@@ -9410,7 +9396,7 @@ dependencies = [
  "tauri-utils",
  "url",
  "webkit2gtk",
- "webview2-com 0.38.0",
+ "webview2-com",
  "windows 0.61.3",
  "wry",
 ]
@@ -9866,7 +9852,19 @@ dependencies = [
  "futures-util",
  "log",
  "tokio",
- "tungstenite",
+ "tungstenite 0.26.2",
+]
+
+[[package]]
+name = "tokio-tungstenite"
+version = "0.27.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "489a59b6730eda1b0171fcfda8b121f4bee2b35cba8645ca35c5f7ba3eb736c1"
+dependencies = [
+ "futures-util",
+ "log",
+ "tokio",
+ "tungstenite 0.27.0",
 ]
 
 [[package]]
@@ -10209,6 +10207,23 @@ name = "tungstenite"
 version = "0.26.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4793cb5e56680ecbb1d843515b23b6de9a75eb04b66643e256a396d43be33c13"
+dependencies = [
+ "bytes",
+ "data-encoding",
+ "http 1.3.1",
+ "httparse",
+ "log",
+ "rand 0.9.1",
+ "sha1",
+ "thiserror 2.0.12",
+ "utf-8",
+]
+
+[[package]]
+name = "tungstenite"
+version = "0.27.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eadc29d668c91fcc564941132e17b28a7ceb2f3ebf0b9dae3e03fd7a6748eb0d"
 dependencies = [
  "bytes",
  "data-encoding",
@@ -10930,26 +10945,12 @@ dependencies = [
 
 [[package]]
 name = "webview2-com"
-version = "0.37.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b542b5cfbd9618c46c2784e4d41ba218c336ac70d44c55e47b251033e7d85601"
-dependencies = [
- "webview2-com-macros",
- "webview2-com-sys 0.37.0",
- "windows 0.61.3",
- "windows-core 0.61.2",
- "windows-implement 0.60.0",
- "windows-interface 0.59.1",
-]
-
-[[package]]
-name = "webview2-com"
 version = "0.38.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4ba622a989277ef3886dd5afb3e280e3dd6d974b766118950a08f8f678ad6a4"
 dependencies = [
  "webview2-com-macros",
- "webview2-com-sys 0.38.0",
+ "webview2-com-sys",
  "windows 0.61.3",
  "windows-core 0.61.2",
  "windows-implement 0.60.0",
@@ -10965,17 +10966,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.104",
-]
-
-[[package]]
-name = "webview2-com-sys"
-version = "0.37.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ae2d11c4a686e4409659d7891791254cf9286d3cfe0eef54df1523533d22295"
-dependencies = [
- "thiserror 2.0.12",
- "windows 0.61.3",
- "windows-core 0.61.2",
 ]
 
 [[package]]
@@ -11111,6 +11101,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "24d643ce3fd3e5b54854602a080f34fb10ab75e0b813ee32d00ca2b44fa74762"
 dependencies = [
  "either",
+ "env_home",
+ "rustix 1.0.8",
+ "winsafe",
+]
+
+[[package]]
+name = "which"
+version = "8.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3fabb953106c3c8eea8306e4393700d7657561cb43122571b172bbfb7c7ba1d"
+dependencies = [
  "env_home",
  "rustix 1.0.8",
  "winsafe",
@@ -11928,7 +11929,7 @@ dependencies = [
  "url",
  "webkit2gtk",
  "webkit2gtk-sys",
- "webview2-com 0.38.0",
+ "webview2-com",
  "windows 0.61.3",
  "windows-core 0.61.2",
  "windows-version",

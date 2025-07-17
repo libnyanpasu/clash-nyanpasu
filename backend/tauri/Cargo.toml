@@ -90,7 +90,7 @@ axum = "0.8"
 url = "2"
 mime = "0.3"
 reqwest = { version = "0.12", features = ["json", "stream"] }
-tokio-tungstenite = "0.26.1"
+tokio-tungstenite = "0.27"
 urlencoding = "2.1"
 port_scanner = "0.1.5"
 sysproxy = { git = "https://github.com/libnyanpasu/sysproxy-rs.git", version = "0.3" }
@@ -132,9 +132,9 @@ delay_timer = { version = "0.11", git = "https://github.com/libnyanpasu/delay-ti
 dunce = "1.0.4"                                                                            # for cross platform path normalization
 runas = { git = "https://github.com/libnyanpasu/rust-runas.git" }
 single-instance = "0.3.3"
-which = "7"
+which = "8"
 open = "5.0.1"
-sysinfo = "0.35"
+sysinfo = "0.36"
 num_cpus = "1"
 os_pipe = "1.2.1"
 whoami = "1.5.1"
@@ -242,14 +242,15 @@ nix = { version = "0.30.0", features = ["user", "fs"] }
 deelevate = "0.2.0"
 winreg = { version = "0.55", features = ["transactions"] }
 windows-registry = "0.5.1"
-windows-sys = { version = "0.59", features = [
+windows-sys = { version = "0.60", features = [
   "Win32_System_LibraryLoader",
   "Win32_System_SystemInformation",
   "Win32_UI_WindowsAndMessaging",
   "Win32_System_Shutdown",
+  "Win32_Graphics_Gdi",
 ] }
 windows-core = "0.61"
-webview2-com = "0.37"
+webview2-com = "0.38"
 
 [features]
 default = ["custom-protocol", "default-meta"]

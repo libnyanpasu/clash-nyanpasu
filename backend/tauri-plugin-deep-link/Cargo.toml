@@ -21,7 +21,7 @@ tauri-utils = { version = "2" }
 
 [target.'cfg(windows)'.dependencies]
 interprocess = { version = "2" }
-windows-sys = { version = "0.59.0", features = [
+windows-sys = { version = "0.60", features = [
   "Win32_Foundation",
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_WindowsAndMessaging",

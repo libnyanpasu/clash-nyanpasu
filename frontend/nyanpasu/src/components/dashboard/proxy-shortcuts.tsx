@@ -3,6 +3,7 @@ import { useAtomValue } from 'jotai'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { atomIsDrawer } from '@/store'
+import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { NetworkPing, SettingsEthernet } from '@mui/icons-material'
 import { Chip, Paper, type ChipProps } from '@mui/material'
@@ -87,7 +88,7 @@ export const ProxyShortcuts = () => {
     try {
       await tunMode.upsert(!tunMode.value)
     } catch (error) {
-      message(`Activation TUN Mode failed!`, {
+      message(`Activation TUN Mode failed! \n Error: ${formatError(error)}`, {
         title: t('Error'),
         kind: 'error',
       })

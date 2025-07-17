@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useCoreType } from '@/hooks/use-store'
+import { formatError } from '@/utils'
 import getSystem from '@/utils/get-system'
 import { message } from '@/utils/notification'
 import { Button, List, ListItem, ListItemText } from '@mui/material'
@@ -93,15 +94,22 @@ const TunStack = () => {
       options={tunStackOptions}
       selected={selected}
       onSelected={async (value) => {
-        await upsertTunStack(value as TunStackType)
+        try {
+          await upsertTunStack(value as TunStackType)
 
-        if (enableTun) {
-          // just to reload clash config
-          await upsertTun(true)
+          if (enableTun) {
+            // just to reload clash config
+            await upsertTun(true)
+          }
+
+          // need manual mutate to refetch runtime profile
+          await runtimeProfile.refetch()
+        } catch (error) {
+          message(`Change Tun Stack failed ! \n Error: ${formatError(error)}`, {
+            title: t('Error'),
+            kind: 'error',
+          })
         }
-
-        // need manual mutate to refetch runtime profile
-        await runtimeProfile.refetch()
       }}
     />
   )

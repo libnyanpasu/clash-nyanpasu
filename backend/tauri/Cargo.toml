@@ -132,7 +132,7 @@ delay_timer = { version = "0.11", git = "https://github.com/libnyanpasu/delay-ti
 dunce = "1.0.4"                                                                            # for cross platform path normalization
 runas = { git = "https://github.com/libnyanpasu/rust-runas.git" }
 single-instance = "0.3.3"
-which = "7"
+which = "8"
 open = "5.0.1"
 sysinfo = "0.35"
 num_cpus = "1"

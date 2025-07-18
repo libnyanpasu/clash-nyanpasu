@@ -75,6 +75,7 @@ pub fn init() -> Result<()> {
         fmt::layer()
             .json()
             .with_writer(appender)
+            .with_current_span(true)
             .with_line_number(true)
             .with_file(true),
     );

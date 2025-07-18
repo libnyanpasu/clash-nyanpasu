@@ -1,7 +1,7 @@
 use crate::config::Config;
-use anyhow::{Result, bail};
+use anyhow::{Context, Result};
 use indexmap::IndexMap;
-use reqwest::{StatusCode, header::HeaderMap};
+use reqwest::{Method, StatusCode, header::HeaderMap};
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 use specta::Type;
@@ -10,38 +10,27 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 use tracing_attributes::instrument;
+use url::Url;
 
 /// PUT /configs
 /// path 是绝对路径
 #[instrument]
-pub async fn put_configs(path: &str) -> Result<()> {
-    let (url, headers) = clash_client_info()?;
-    let url = format!("{url}/configs");
+pub async fn put_configs(config_path: &str) -> Result<()> {
+    let path = "/configs";
 
     let mut data = HashMap::new();
-    data.insert("path", path);
+    data.insert("path", config_path);
 
-    let client = reqwest::ClientBuilder::new().no_proxy().build()?;
-    let builder = client.put(&url).headers(headers).json(&data);
-    let response = builder.send().await?.error_for_status()?;
+    let _ = perform_request((Method::PUT, path, Data(data))).await?;
 
-    match response.status() {
-        StatusCode::NO_CONTENT | StatusCode::ACCEPTED => Ok(()),
-        _ => {
-            bail!("failed to put configs")
-        }
-    }
+    Ok(())
 }
 
 /// PATCH /configs
 #[instrument]
 pub async fn patch_configs(config: &Mapping) -> Result<()> {
-    let (url, headers) = clash_client_info()?;
-    let url = format!("{url}/configs");
-
-    let client = reqwest::ClientBuilder::new().no_proxy().build()?;
-    let builder = client.patch(&url).headers(headers.clone()).json(config);
-    builder.send().await?.error_for_status()?;
+    let path = "/configs";
+    let _ = perform_request((Method::PATCH, path, Data(config))).await?;
     Ok(())
 }
 
@@ -121,14 +110,9 @@ impl From<ProxyProviderItem> for ProxyItem {
 /// 获取代理列表
 #[instrument]
 pub async fn get_proxies() -> Result<ProxiesRes> {
-    let (url, headers) = clash_client_info()?;
-    let url = format!("{url}/proxies");
-
-    let client = reqwest::ClientBuilder::new().no_proxy().build()?;
-    let builder = client.get(&url).headers(headers);
-    let response = builder.send().await?.error_for_status()?;
-
-    Ok(response.json::<ProxiesRes>().await?)
+    let path = "/proxies";
+    let resp: ProxiesRes = perform_request((Method::GET, path)).await?.json().await?;
+    Ok(resp)
 }
 
 /// GET /proxies/{name}
@@ -139,14 +123,12 @@ pub async fn get_proxies() -> Result<ProxiesRes> {
 #[allow(dead_code)]
 #[instrument]
 pub async fn get_proxy(name: String) -> Result<ProxyItem> {
-    let (url, headers) = clash_client_info()?;
-    let url = format!("{url}/proxies/{name}");
-
-    let client = reqwest::ClientBuilder::new().no_proxy().build()?;
-    let builder = client.get(&url).headers(headers);
-    let response = builder.send().await?.error_for_status()?;
-
-    Ok(response.json::<ProxyItem>().await?)
+    let path = format!("/proxies/{name}");
+    let resp: ProxyItem = perform_request((Method::GET, path.as_str()))
+        .await?
+        .json()
+        .await?;
+    Ok(resp)
 }
 
 /// PUT /proxies/{group}
@@ -155,22 +137,13 @@ pub async fn get_proxy(name: String) -> Result<ProxyItem> {
 /// name: 代理名称
 #[instrument]
 pub async fn update_proxy(group: &str, name: &str) -> Result<()> {
-    let (url, headers) = clash_client_info()?;
-    let url = format!("{url}/proxies/{group}");
+    let path = format!("/proxies/{group}");
 
     let mut data = HashMap::new();
     data.insert("name", name);
 
-    let client = reqwest::ClientBuilder::new().no_proxy().build()?;
-    let builder = client.put(&url).headers(headers).json(&data);
-    let response = builder.send().await?.error_for_status()?;
-
-    match response.status() {
-        StatusCode::ACCEPTED | StatusCode::NO_CONTENT => Ok(()),
-        status => {
-            bail!("failed to put proxy with status \"{status}\"")
-        }
-    }
+    let _ = perform_request((Method::PUT, path.as_str(), Data(data))).await?;
+    Ok(())
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Type)]
@@ -223,14 +196,9 @@ pub struct ProvidersProxiesRes {
 /// 获取所有代理集合的所有代理信息
 #[instrument]
 pub async fn get_providers_proxies() -> Result<ProvidersProxiesRes> {
-    let (url, headers) = clash_client_info()?;
-    let url = format!("{url}/providers/proxies");
-
-    let client = reqwest::ClientBuilder::new().no_proxy().build()?;
-    let builder = client.get(&url).headers(headers);
-    let response = builder.send().await?.error_for_status()?;
-
-    Ok(response.json::<ProvidersProxiesRes>().await?)
+    let path = "/providers/proxies";
+    let resp: ProvidersProxiesRes = perform_request((Method::GET, path)).await?.json().await?;
+    Ok(resp)
 }
 
 /// GET /providers/proxies/:name
@@ -239,14 +207,12 @@ pub async fn get_providers_proxies() -> Result<ProvidersProxiesRes> {
 #[allow(dead_code)]
 #[instrument]
 pub async fn get_providers_proxies_group(group: String) -> Result<ProxyProviderItem> {
-    let (url, headers) = clash_client_info()?;
-    let url = format!("{url}/providers/proxies/{group}");
-
-    let client = reqwest::ClientBuilder::new().no_proxy().build()?;
-    let builder = client.get(&url).headers(headers);
-    let response = builder.send().await?.error_for_status()?;
-
-    Ok(response.json::<ProxyProviderItem>().await?)
+    let path = format!("/providers/proxies/{group}");
+    let resp: ProxyProviderItem = perform_request((Method::GET, path.as_str()))
+        .await?
+        .json()
+        .await?;
+    Ok(resp)
 }
 
 /// PUT /providers/proxies/:name
@@ -254,19 +220,9 @@ pub async fn get_providers_proxies_group(group: String) -> Result<ProxyProviderI
 /// name: 代理集合名称
 #[instrument]
 pub async fn update_providers_proxies_group(name: &str) -> Result<()> {
-    let (url, headers) = clash_client_info()?;
-    let url = format!("{url}/providers/proxies/{name}");
-
-    let client = reqwest::ClientBuilder::new().no_proxy().build()?;
-    let builder = client.put(&url).headers(headers);
-    let response = builder.send().await?.error_for_status()?;
-
-    match response.status() {
-        StatusCode::NO_CONTENT | StatusCode::ACCEPTED => Ok(()),
-        status => {
-            bail!("failed to put providers proxies name with status \"{status}\"")
-        }
-    }
+    let path = format!("/providers/proxies/{name}");
+    let _ = perform_request((Method::PUT, path.as_str())).await?;
+    Ok(())
 }
 
 /// GET /providers/proxies/:name/healthcheck
@@ -275,14 +231,12 @@ pub async fn update_providers_proxies_group(name: &str) -> Result<()> {
 #[allow(dead_code)]
 #[instrument]
 pub async fn get_providers_proxies_healthcheck(name: String) -> Result<Mapping> {
-    let (url, headers) = clash_client_info()?;
-    let url = format!("{url}/providers/proxies/{name}/healthcheck");
-
-    let client = reqwest::ClientBuilder::new().no_proxy().build()?;
-    let builder = client.get(&url).headers(headers);
-    let response = builder.send().await?.error_for_status()?;
-
-    Ok(response.json::<Mapping>().await?)
+    let path = format!("/providers/proxies/{name}/healthcheck");
+    let resp: Mapping = perform_request((Method::GET, path.as_str()))
+        .await?
+        .json()
+        .await?;
+    Ok(resp)
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize, Type)]
@@ -294,21 +248,18 @@ pub struct DelayRes {
 /// 获取代理延迟
 #[instrument]
 pub async fn get_proxy_delay(name: String, test_url: Option<String>) -> Result<DelayRes> {
-    let (url, headers) = clash_client_info()?;
-    let url = format!("{url}/proxies/{name}/delay");
+    let path = format!("/proxies/{name}/delay");
     let default_url = "http://www.gstatic.com/generate_204";
     let test_url = test_url
         .map(|s| if s.is_empty() { default_url.into() } else { s })
         .unwrap_or(default_url.into());
 
-    let client = reqwest::ClientBuilder::new().no_proxy().build()?;
-    let builder = client
-        .get(&url)
-        .headers(headers)
-        .query(&[("timeout", "10000"), ("url", &test_url)]);
-    let response = builder.send().await?.error_for_status()?;
-
-    Ok(response.json::<DelayRes>().await?)
+    let query = Query([("timeout", "10000"), ("url", &test_url)]);
+    let resp: DelayRes = perform_request((Method::GET, path.as_str(), query))
+        .await?
+        .json()
+        .await?;
+    Ok(resp)
 }
 
 /// 根据clash info获取clash服务地址和请求头
@@ -327,6 +278,142 @@ fn clash_client_info() -> Result<(String, HeaderMap)> {
     }
 
     Ok((server, headers))
+}
+
+/// The Request Parameters
+struct PerformRequest<D = (), Q = ()> {
+    method: reqwest::Method,
+    path: String,
+    query: Option<Q>,
+    data: Option<D>,
+}
+/// A newtype wrapper for query parameters
+struct Query<T>(T);
+/// A newtype wrapper for request body
+struct Data<T>(T);
+
+impl From<(reqwest::Method, &str)> for PerformRequest<(), ()> {
+    fn from((method, path): (reqwest::Method, &str)) -> Self {
+        Self {
+            method,
+            path: path.to_string(),
+            data: None,
+            query: None,
+        }
+    }
+}
+
+impl<T> From<(reqwest::Method, &str, Data<T>)> for PerformRequest<T, ()>
+where
+    T: Serialize,
+{
+    fn from((method, path, Data(data)): (reqwest::Method, &str, Data<T>)) -> Self {
+        Self {
+            method,
+            path: path.to_string(),
+            data: Some(data),
+            query: None,
+        }
+    }
+}
+
+impl<T> From<(reqwest::Method, &str, Query<T>)> for PerformRequest<(), T>
+where
+    T: Serialize,
+{
+    fn from((method, path, Query(query)): (reqwest::Method, &str, Query<T>)) -> Self {
+        Self {
+            method,
+            path: path.to_string(),
+            data: None,
+            query: Some(query),
+        }
+    }
+}
+
+impl<D, Q> From<(reqwest::Method, &str, Query<Q>, Data<D>)> for PerformRequest<D, Q>
+where
+    D: Serialize,
+    Q: Serialize,
+{
+    fn from(
+        (method, path, Query(query), Data(data)): (reqwest::Method, &str, Query<Q>, Data<D>),
+    ) -> Self {
+        Self {
+            method,
+            path: path.to_string(),
+            data: Some(data),
+            query: Some(query),
+        }
+    }
+}
+
+#[instrument(skip_all, fields(
+    method = tracing::field::Empty,
+    url = tracing::field::Empty,
+    query = tracing::field::Empty,
+    data = tracing::field::Empty,
+))]
+async fn perform_request<D, Q>(param: impl Into<PerformRequest<D, Q>>) -> Result<reqwest::Response>
+where
+    Q: Serialize + core::fmt::Debug,
+    D: Serialize + core::fmt::Debug,
+{
+    let PerformRequest {
+        method,
+        path,
+        data,
+        query,
+    } = param.into();
+    let (host, headers) = clash_client_info().context("failed to get clash client info")?;
+    let base_url = Url::parse(&host).context("failed to parse host")?;
+    let opts = url::Url::options().base_url(Some(&base_url));
+    let url = opts.parse(&path).context("failed to parse path")?;
+
+    let span = tracing::Span::current();
+    span.record("method", tracing::field::display(&method));
+    span.record("url", tracing::field::display(&url));
+    span.record("query", tracing::field::debug(&query));
+    span.record("data", tracing::field::debug(&data));
+
+    async {
+        let client = reqwest::ClientBuilder::new().no_proxy().build()?;
+        let mut builder = client.request(method.clone(), url.clone()).headers(headers);
+
+        if let Some(query) = &query {
+            builder = builder.query(query);
+        }
+        if let Some(data) = &data {
+            builder = builder.json(data);
+        }
+
+        let resp = builder.send().await?;
+
+        if let Err(err) = resp.error_for_status_ref() {
+            match err.status() {
+                // Try To parse error message
+                Some(StatusCode::BAD_REQUEST) => {
+                    let Ok(bytes) = resp.bytes().await else {
+                        return Err(err.into());
+                    };
+
+                    let message: serde_json::Value = match serde_json::from_slice(&bytes) {
+                        Ok(v) => v,
+                        Err(_) => {
+                            let s = String::from_utf8_lossy(&bytes);
+                            serde_json::Value::String(s.to_string())
+                        }
+                    };
+
+                    return Err(err).context(format!("message: {message}"));
+                }
+                _ => return Err(err).context("clash api error"),
+            }
+        }
+        Ok(resp)
+    }
+    .await
+    .inspect_err(|e| tracing::error!(method = %method, url = %url, query = ?query, data = ?data, "failed to perform request: {:?}", e))
 }
 
 /// 缩短clash的日志
@@ -389,4 +476,25 @@ fn test_parse_check_output() {
     println!("res3: {res3}");
 
     assert_eq!(res1, res3);
+}
+
+#[test]
+fn test_path() {
+    let host = "http://127.0.0.1:9090";
+    let path_with_prefix = "/configs";
+
+    let base_url = Url::parse(host).context("failed to parse host").unwrap();
+    let opts = url::Url::options().base_url(Some(&base_url));
+    let url = opts
+        .parse(path_with_prefix)
+        .context("failed to parse path")
+        .unwrap();
+    assert_eq!(url.to_string(), "http://127.0.0.1:9090/configs");
+
+    let path_without_prefix = "configs";
+    let url = opts
+        .parse(path_without_prefix)
+        .context("failed to parse path")
+        .unwrap();
+    assert_eq!(url.to_string(), "http://127.0.0.1:9090/configs");
 }

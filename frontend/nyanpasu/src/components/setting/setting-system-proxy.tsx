@@ -1,6 +1,7 @@
 import { useLockFn } from 'ahooks'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { InputAdornment, List, ListItem } from '@mui/material'
 import Grid from '@mui/material/Grid'
@@ -24,7 +25,7 @@ const TunModeButton = () => {
     try {
       await tunMode.upsert(!tunMode.value)
     } catch (error) {
-      message(`Activation TUN Mode failed!`, {
+      message(`Activation TUN Mode failed! \n Error: ${formatError(error)}`, {
         title: t('Error'),
         kind: 'error',
       })

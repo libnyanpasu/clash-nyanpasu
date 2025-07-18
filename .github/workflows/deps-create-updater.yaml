@@ -45,7 +45,7 @@ jobs:
       - name: Install Node latest
         uses: actions/setup-node@v4
         with:
-          node-version: latest
+          node-version: 22
 
       - uses: pnpm/action-setup@v4
         name: Install pnpm

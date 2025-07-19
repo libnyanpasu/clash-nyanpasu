@@ -464,9 +464,9 @@ dependencies = [
 
 [[package]]
 name = "async-fs"
-version = "2.1.2"
+version = "2.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebcd09b382f40fcd159c2d695175b2ae620ffa5f3bd6f664131efff4e8b9e04a"
+checksum = "09f7e37c0ed80b2a977691c47dae8625cfb21e205827106c64f7c588766b2e50"
 dependencies = [
  "async-lock",
  "blocking",

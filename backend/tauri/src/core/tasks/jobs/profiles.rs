@@ -3,7 +3,7 @@ use super::super::{
     task::{Task, TaskID, TaskManager, TaskSchedule},
 };
 use crate::{
-    config::{Config, ProfileSharedGetter},
+    config::{Config, ProfileMetaGetter},
     feat,
 };
 use anyhow::Result;

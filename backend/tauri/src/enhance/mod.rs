@@ -8,7 +8,7 @@ mod utils;
 
 pub use self::chain::ScriptType;
 use self::{chain::*, field::*, merge::*, script::*, tun::*};
-use crate::config::{Config, ProfileSharedGetter, nyanpasu::ClashCore};
+use crate::config::{Config, ProfileMetaGetter, nyanpasu::ClashCore};
 pub use chain::PostProcessingOutput;
 use futures::future::join_all;
 use indexmap::IndexMap;

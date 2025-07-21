@@ -1,11 +1,11 @@
 use super::{
-    ProfileCleanup, ProfileFileIo, ProfileHelper, ProfileShared, ProfileSharedBuilder,
-    ProfileSharedGetter, ProfileSharedSetter, ambassador_impl_ProfileFileIo,
-    ambassador_impl_ProfileSharedGetter, ambassador_impl_ProfileSharedSetter,
+    ProfileCleanup, ProfileFileIo, ProfileHelper, ProfileMetaGetter, ProfileMetaSetter,
+    ProfileShared, ProfileSharedBuilder, ambassador_impl_ProfileFileIo,
+    ambassador_impl_ProfileMetaGetter, ambassador_impl_ProfileMetaSetter,
 };
 use crate::{
     config::{
-        Config,
+        Config, ProfileKindGetter,
         profile::item_type::{ProfileItemType, ProfileUid},
     },
     utils::{config::NyanpasuReqwestProxyExt, dirs::APP_VERSION, help},
@@ -23,6 +23,8 @@ use std::time::Duration;
 use sysproxy::Sysproxy;
 use url::Url;
 
+const PROFILE_TYPE: ProfileItemType = ProfileItemType::Remote;
+
 pub trait RemoteProfileSubscription {
     async fn subscribe(&mut self, opts: Option<RemoteProfileOptionsBuilder>) -> anyhow::Result<()>;
 }
@@ -31,8 +33,8 @@ pub trait RemoteProfileSubscription {
 #[builder(derive(Serialize, Deserialize, Debug, specta::Type))]
 #[builder(build_fn(skip, error = "RemoteProfileBuilderError"))]
 #[builder_update(patch_fn = "apply")]
-#[delegate(ProfileSharedSetter, target = "shared")]
-#[delegate(ProfileSharedGetter, target = "shared")]
+#[delegate(ProfileMetaSetter, target = "shared")]
+#[delegate(ProfileMetaGetter, target = "shared")]
 #[delegate(ProfileFileIo, target = "shared")]
 pub struct RemoteProfile {
     #[serde(flatten)]
@@ -65,6 +67,20 @@ pub struct RemoteProfile {
     pub chain: Vec<ProfileUid>,
 }
 
+impl RemoteProfile {
+    pub fn builder() -> RemoteProfileBuilder {
+        let mut builder = RemoteProfileBuilder::default();
+        let shared = ProfileShared::get_default_builder(&PROFILE_TYPE);
+        builder.shared(shared);
+        builder
+    }
+}
+
+impl ProfileKindGetter for RemoteProfile {
+    fn kind(&self) -> ProfileItemType {
+        PROFILE_TYPE
+    }
+}
 impl ProfileHelper for RemoteProfile {}
 impl ProfileCleanup for RemoteProfile {}
 
@@ -346,9 +362,7 @@ pub enum RemoteProfileBuilderError {
 
 impl RemoteProfileBuilder {
     fn default_shared(&self) -> ProfileSharedBuilder {
-        let mut builder = ProfileShared::builder();
-        builder.r#type(ProfileItemType::Remote);
-        builder
+        ProfileShared::get_default_builder(&PROFILE_TYPE)
     }
 
     fn validate(&self) -> Result<(), RemoteProfileBuilderError> {
@@ -367,7 +381,6 @@ impl RemoteProfileBuilder {
             self.shared
                 .uid(super::utils::generate_uid(&ProfileItemType::Remote));
         }
-        self.shared.r#type(ProfileItemType::Remote);
         let url = self.url.take().unwrap();
         let options = self
             .option
@@ -387,7 +400,7 @@ impl RemoteProfileBuilder {
         let profile = RemoteProfile {
             shared: self
                 .shared
-                .build()
+                .build(&PROFILE_TYPE)
                 .map_err(|e| RemoteProfileBuilderError::Validation(e.to_string()))?,
             url,
             extra,

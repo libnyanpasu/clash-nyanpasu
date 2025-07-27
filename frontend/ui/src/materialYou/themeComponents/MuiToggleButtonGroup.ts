@@ -1,8 +1,8 @@
-import { alpha } from '@/utils/color-mix'
-import { darken, Theme } from '@mui/material'
+import { alpha, darken } from '@/utils/color-mix'
+import { Theme } from '@mui/material'
 import { Components } from '@mui/material/styles'
 
-export const MuiButtonGroup: Components<Theme>['MuiButtonGroup'] = {
+export const MuiToggleButtonGroup: Components<Theme>['MuiToggleButtonGroup'] = {
   styleOverrides: {
     grouped: ({ theme }) =>
       theme.unstable_sx({
@@ -60,4 +60,4 @@ export const MuiButtonGroup: Components<Theme>['MuiButtonGroup'] = {
         },
       }),
   },
-} satisfies Components<Theme>['MuiButtonGroup']
+} satisfies Components<Theme>['MuiToggleButtonGroup']

@@ -7,7 +7,6 @@ import {
 import { createTheme, Palette } from '@mui/material/styles'
 import {
   MuiButton,
-  MuiButtonGroup,
   MuiCard,
   MuiCardContent,
   MuiDialog,
@@ -18,6 +17,7 @@ import {
   MuiMenu,
   MuiPaper,
   MuiSwitch,
+  MuiToggleButtonGroup,
 } from './themeComponents'
 import { MUI_BREAKPOINTS } from './themeConsts.mjs'
 
@@ -66,7 +66,7 @@ export const createMDYTheme = (color: string, fontFamily?: string) => {
       },
       components: {
         MuiButton,
-        MuiButtonGroup,
+        MuiToggleButtonGroup,
         MuiCard,
         MuiCardContent,
         MuiDialog,

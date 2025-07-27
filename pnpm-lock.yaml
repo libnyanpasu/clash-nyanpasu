@@ -13,7 +13,7 @@ importers:
   .:
     dependencies:
       '@prettier/plugin-oxc':
-        specifier: ^0.0.4
+        specifier: 0.0.4
         version: 0.0.4
       husky:
         specifier: 9.1.7
@@ -286,7 +286,7 @@ importers:
         version: 0.4.0
       material-react-table:
         specifier: npm:@greenhat616/material-react-table@4.0.0
-        version: '@greenhat616/material-react-table@4.0.0(2lx3fpzs2embkuag2iwooeirpi)'
+        version: '@greenhat616/material-react-table@4.0.0(1b53b3977e16cedde9f0804ffa3f4e52)'
       monaco-editor:
         specifier: 0.52.2
         version: 0.52.2
@@ -307,7 +307,7 @@ importers:
         version: 1.6.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       react-hook-form-mui:
         specifier: 7.6.2
-        version: 7.6.2(gbhotonpysfk4ivkncsgk6mbhe)
+        version: 7.6.2(fce7d13f420979abe87f1a8a8511d4d7)
       react-i18next:
         specifier: 15.6.1
         version: 15.6.1(i18next@25.3.2(typescript@5.8.3))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.8.3)
@@ -9975,7 +9975,7 @@ snapshots:
 
   '@fastify/busboy@2.1.1': {}
 
-  '@greenhat616/material-react-table@4.0.0(2lx3fpzs2embkuag2iwooeirpi)':
+  '@greenhat616/material-react-table@4.0.0(1b53b3977e16cedde9f0804ffa3f4e52)':
     dependencies:
       '@emotion/react': 11.14.0(@types/react@19.1.8)(react@19.1.0)
       '@emotion/styled': 11.14.1(@emotion/react@11.14.0(@types/react@19.1.8)(react@19.1.0))(@types/react@19.1.8)(react@19.1.0)
@@ -15846,7 +15846,7 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  react-hook-form-mui@7.6.2(gbhotonpysfk4ivkncsgk6mbhe):
+  react-hook-form-mui@7.6.2(fce7d13f420979abe87f1a8a8511d4d7):
     dependencies:
       '@mui/material': 7.2.0(@emotion/react@11.14.0(@types/react@19.1.8)(react@19.1.0))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.1.8)(react@19.1.0))(@types/react@19.1.8)(react@19.1.0))(@types/react@19.1.8)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       react: 19.1.0

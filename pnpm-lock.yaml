@@ -321,7 +321,7 @@ importers:
         specifier: 17.6.0
         version: 17.6.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       rxjs:
-        specifier: ^7.8.2
+        specifier: 7.8.2
         version: 7.8.2
       swr:
         specifier: 2.3.4

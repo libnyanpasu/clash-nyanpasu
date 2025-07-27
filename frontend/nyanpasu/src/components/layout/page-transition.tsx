@@ -1,4 +1,10 @@
-import { AnimatePresence, motion, useIsPresent, Variant } from 'framer-motion'
+import {
+  AnimatePresence,
+  motion,
+  useIsPresent,
+  type Transition,
+  type Variant,
+} from 'framer-motion'
 import { cloneDeep } from 'lodash-es'
 import { useContext, useRef } from 'react'
 import { useSetting } from '@nyanpasu/interface'
@@ -20,7 +26,7 @@ const commonTransition = {
   type: 'spring',
   bounce: 0,
   duration: 0.35,
-}
+} satisfies Transition
 
 export const pageTransitionVariants: { [name: string]: PageVariant } = {
   blur: {

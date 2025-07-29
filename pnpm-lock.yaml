@@ -250,7 +250,7 @@ importers:
         version: 4.1.11
       '@tanstack/router-zod-adapter':
         specifier: 1.81.5
-        version: 1.81.5(@tanstack/react-router@1.130.2(react-dom@19.1.1(react@19.1.1))(react@19.1.1))(zod@4.0.10)
+        version: 1.81.5(@tanstack/react-router@1.130.2(react-dom@19.1.1(react@19.1.1))(react@19.1.1))(zod@4.0.13)
       '@tauri-apps/api':
         specifier: 2.6.0
         version: 2.6.0
@@ -454,8 +454,8 @@ importers:
         specifier: 5.1.4
         version: 5.1.4(typescript@5.8.3)(vite@7.0.6(@types/node@22.16.5)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.30.1)(sass-embedded@1.89.2)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.20.3)(yaml@2.8.0))
       zod:
-        specifier: 4.0.10
-        version: 4.0.10
+        specifier: 4.0.13
+        version: 4.0.13
 
   frontend/ui:
     dependencies:
@@ -572,8 +572,8 @@ importers:
         specifier: 7.7.2
         version: 7.7.2
       zod:
-        specifier: 4.0.10
-        version: 4.0.10
+        specifier: 4.0.13
+        version: 4.0.13
     devDependencies:
       '@octokit/types':
         specifier: 14.1.0
@@ -8635,8 +8635,8 @@ packages:
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
-  zod@4.0.10:
-    resolution: {integrity: sha512-3vB+UU3/VmLL2lvwcY/4RV2i9z/YU0DTV/tDuYjrwmx5WeJ7hwy+rGEEx8glHp6Yxw7ibRbKSaIFBgReRPe5KA==}
+  zod@4.0.13:
+    resolution: {integrity: sha512-jv+zRxuZQxTrFHzxZ46ezL2FtnE+M4HIJHJEwLsZ7UjrXHltdG6HrxvqM0twoVCWxJiYf8WqKjAcjztegpkB+Q==}
 
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
@@ -11250,10 +11250,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@tanstack/router-zod-adapter@1.81.5(@tanstack/react-router@1.130.2(react-dom@19.1.1(react@19.1.1))(react@19.1.1))(zod@4.0.10)':
+  '@tanstack/router-zod-adapter@1.81.5(@tanstack/react-router@1.130.2(react-dom@19.1.1(react@19.1.1))(react@19.1.1))(zod@4.0.13)':
     dependencies:
       '@tanstack/react-router': 1.130.2(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
-      zod: 4.0.10
+      zod: 4.0.13
 
   '@tanstack/store@0.7.0': {}
 
@@ -17544,6 +17544,6 @@ snapshots:
 
   zod@3.25.76: {}
 
-  zod@4.0.10: {}
+  zod@4.0.13: {}
 
   zwitch@2.0.4: {}

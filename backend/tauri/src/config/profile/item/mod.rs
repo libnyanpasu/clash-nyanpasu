@@ -1,11 +1,9 @@
 #![allow(clippy::crate_in_macro_def, dead_code)]
 use super::item_type::ProfileItemType;
-use crate::{enhance::ScriptType, utils::dirs};
+use crate::utils::dirs;
 use ambassador::{Delegate, delegatable_trait};
 use anyhow::{Context, Result, bail};
 use nyanpasu_macro::EnumWrapperCombined;
-use serde::{Deserialize, Serialize, de::Visitor};
-use serde_yaml::{Mapping, Value};
 use std::{borrow::Borrow, fmt::Debug, fs, io::Write};
 
 mod local;
@@ -26,7 +24,7 @@ pub use shared::*;
 /// It is intended to be used in the default trait implementation, so it is PRIVATE.
 /// NOTE: this just a setter for fields, NOT do any file operation.
 #[delegatable_trait]
-trait ProfileSharedSetter {
+trait ProfileMetaSetter {
     fn set_uid(&mut self, uid: String);
     fn set_name(&mut self, name: String);
     fn set_desc(&mut self, desc: Option<String>);
@@ -38,32 +36,29 @@ trait ProfileSharedSetter {
 /// If access to inner data is needed, you should use the `as_xxx` or `as_mut_xxx` method to get the inner specific profile item.
 #[delegatable_trait]
 
-pub trait ProfileSharedGetter {
+pub trait ProfileMetaGetter {
     fn name(&self) -> &str;
     fn desc(&self) -> Option<&str>;
-    fn kind(&self) -> &crate::config::profile::item_type::ProfileItemType;
     fn uid(&self) -> &str;
     fn updated(&self) -> usize;
     fn file(&self) -> &str;
 }
 
+#[delegatable_trait]
+pub trait ProfileKindGetter {
+    fn kind(&self) -> ProfileItemType;
+}
+
 /// A trait that provides some common methods for profile items
 #[allow(private_bounds)]
-pub trait ProfileHelper: Sized + ProfileSharedSetter + ProfileSharedGetter + Clone {
+pub trait ProfileHelper:
+    Sized + ProfileMetaSetter + ProfileMetaGetter + ProfileKindGetter + Clone
+{
     async fn duplicate(&self) -> Result<Self> {
         let mut duplicate_profile = self.clone();
-        let new_uid = utils::generate_uid(duplicate_profile.kind());
-        let new_file = format!(
-            "{}.{}",
-            new_uid,
-            match duplicate_profile.kind() {
-                ProfileItemType::Script(script_type) => match script_type {
-                    ScriptType::JavaScript => "js",
-                    ScriptType::Lua => "lua",
-                },
-                _ => "yaml",
-            }
-        );
+        let kind = duplicate_profile.kind();
+        let new_uid = utils::generate_uid(&kind);
+        let new_file = ProfileSharedBuilder::default_file_name(&kind, &new_uid);
         let new_name = format!("{}-copy", duplicate_profile.name());
         // copy file
         let path = dirs::profiles_path()?;
@@ -90,89 +85,20 @@ pub trait ProfileCleanup: ProfileHelper {
     }
 }
 
-#[derive(Debug, Delegate, Clone, EnumWrapperCombined, specta::Type)]
-#[delegate(ProfileSharedSetter)]
-#[delegate(ProfileSharedGetter)]
+#[derive(
+    serde::Deserialize, serde::Serialize, Debug, Delegate, Clone, EnumWrapperCombined, specta::Type,
+)]
+#[delegate(ProfileMetaSetter)]
+#[delegate(ProfileMetaGetter)]
+#[delegate(ProfileKindGetter)]
 #[delegate(ProfileFileIo)]
-#[specta(untagged)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum Profile {
     Remote(RemoteProfile),
     Local(LocalProfile),
     Merge(MergeProfile),
     Script(ScriptProfile),
 }
-
-impl Serialize for Profile {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::ser::Serializer,
-    {
-        match self {
-            Profile::Remote(profile) => profile.serialize(serializer),
-            Profile::Local(profile) => profile.serialize(serializer),
-            Profile::Merge(profile) => profile.serialize(serializer),
-            Profile::Script(profile) => profile.serialize(serializer),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for Profile {
-    fn deserialize<D>(deserializer: D) -> Result<Profile, D::Error>
-    where
-        D: serde::de::Deserializer<'de>,
-    {
-        struct ProfileVisitor;
-
-        impl<'de> Visitor<'de> for ProfileVisitor {
-            type Value = Profile;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("a profile")
-            }
-
-            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-            where
-                A: serde::de::MapAccess<'de>,
-            {
-                let mut type_field = None;
-                let mut mapping = Mapping::new();
-                while let Some((key, value)) = map.next_entry::<String, Value>()? {
-                    if "type" == key.as_str() {
-                        tracing::debug!("type field: {:#?}", value);
-                        type_field =
-                            Some(ProfileItemType::deserialize(value.clone()).map_err(|err| {
-                                serde::de::Error::custom(format!(
-                                    "failed to deserialize type: {err}"
-                                ))
-                            })?);
-                    }
-                    mapping.insert(key.into(), value);
-                }
-
-                let type_field =
-                    type_field.ok_or_else(|| serde::de::Error::missing_field("type"))?;
-                let other_fields = Value::Mapping(mapping);
-                match type_field {
-                    ProfileItemType::Remote => RemoteProfile::deserialize(other_fields)
-                        .map(Profile::Remote)
-                        .map_err(serde::de::Error::custom),
-                    ProfileItemType::Local => LocalProfile::deserialize(other_fields)
-                        .map(Profile::Local)
-                        .map_err(serde::de::Error::custom),
-                    ProfileItemType::Merge => MergeProfile::deserialize(other_fields)
-                        .map(Profile::Merge)
-                        .map_err(serde::de::Error::custom),
-                    ProfileItemType::Script(_) => ScriptProfile::deserialize(other_fields)
-                        .map(Profile::Script)
-                        .map_err(serde::de::Error::custom),
-                }
-            }
-        }
-
-        deserializer.deserialize_map(ProfileVisitor)
-    }
-}
-
 // what it actually did
 // #[derive(Default, Debug, Clone, Deserialize, Serialize)]
 // pub struct PrfSelected {

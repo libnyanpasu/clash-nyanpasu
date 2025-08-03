@@ -86,7 +86,7 @@
     "eslint-plugin-react-hooks": "5.2.0",
     "globals": "16.3.0",
     "knip": "5.62.0",
-    "lint-staged": "16.1.2",
+    "lint-staged": "16.1.4",
     "neostandard": "0.12.2",
     "npm-run-all2": "8.0.4",
     "postcss": "8.5.6",

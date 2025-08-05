@@ -21,6 +21,8 @@ use tracing::{debug, warn};
 use tracing_attributes::instrument;
 
 use crate::trace_err;
+use base64::{engine::general_purpose, Engine};
+use reqwest::header::HeaderMap;
 
 /// read data from yaml as struct T
 pub fn read_yaml<T: DeserializeOwned>(path: &PathBuf) -> Result<T> {
@@ -82,8 +84,28 @@ pub fn get_uid(prefix: &str) -> String {
     format!("{prefix}{id}")
 }
 
+/// get profile title from headers
+pub fn get_profile_title_from_headers(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get("profile-title")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| {
+            if v.starts_with("base64:") {
+                let encoded = v.trim_start_matches("base64:");
+                general_purpose::STANDARD
+                    .decode(encoded)
+                    .ok()
+                    .and_then(|bytes| String::from_utf8(bytes).ok())
+            } else {
+                Some(v.to_string())
+            }
+        })
+}
+
 /// parse the string
 /// xxx=123123; => 123123
+
+
 pub fn parse_str<T: FromStr>(target: &str, key: &str) -> Option<T> {
     target.split(';').map(str::trim).find_map(|s| {
         let mut parts = s.splitn(2, '=');

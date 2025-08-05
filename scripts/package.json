@@ -19,7 +19,7 @@
     "adm-zip": "0.5.16",
     "colorize-template": "1.0.0",
     "consola": "3.4.2",
-    "fs-extra": "11.3.0",
+    "fs-extra": "11.3.1",
     "https-proxy-agent": "7.0.6",
     "node-fetch": "3.3.2",
     "octokit": "5.0.3",

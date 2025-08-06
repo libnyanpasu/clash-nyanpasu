@@ -12,9 +12,9 @@
   },
   "dependencies": {
     "@material/material-color-utilities": "0.3.0",
-    "@mui/icons-material": "7.3.0",
-    "@mui/lab": "7.0.0-beta.15",
-    "@mui/material": "7.3.0",
+    "@mui/icons-material": "7.3.1",
+    "@mui/lab": "7.0.0-beta.16",
+    "@mui/material": "7.3.1",
     "@radix-ui/react-portal": "1.1.9",
     "@radix-ui/react-scroll-area": "1.2.9",
     "@tauri-apps/api": "2.6.0",

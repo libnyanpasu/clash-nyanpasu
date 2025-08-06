@@ -9,7 +9,7 @@ use crate::{
     config::profile::item_type::ProfileItemType, enhance::ScriptType, utils::dirs::app_profiles_dir,
 };
 
-use super::{ProfileSharedGetter, ProfileSharedSetter};
+use super::{ProfileMetaGetter, ProfileMetaSetter};
 
 #[delegatable_trait]
 pub trait ProfileFileIo {
@@ -24,16 +24,10 @@ pub trait ProfileFileIo {
 )]
 #[builder_update(patch_fn = "apply", getter)]
 pub struct ProfileShared {
-    #[builder(default = "self.default_uid()?")]
+    /// Profile ID
     pub uid: String,
 
-    /// profile item type
-    /// enum value: remote | local | script | merge
-    #[serde(rename = "type")]
-    pub r#type: ProfileItemType,
-
     /// profile name
-    #[builder(default = "self.default_name()?")]
     pub name: String,
 
     /// profile holds the file
@@ -48,6 +42,17 @@ pub struct ProfileShared {
     #[builder(default = "chrono::Local::now().timestamp() as usize")]
     /// update time
     pub updated: usize,
+}
+
+impl ProfileShared {
+    pub fn get_default_builder(kind: &ProfileItemType) -> ProfileSharedBuilder {
+        let mut builder = ProfileShared::builder();
+        builder
+            .name(ProfileSharedBuilder::default_name(kind).to_string())
+            .uid(ProfileSharedBuilder::default_uid(kind));
+        builder = builder.apply_default_file(kind).unwrap();
+        builder
+    }
 }
 
 impl ProfileFileIo for ProfileShared {
@@ -71,63 +76,62 @@ impl ProfileFileIo for ProfileShared {
 }
 
 impl ProfileSharedBuilder {
-    fn default_uid(&self) -> Result<String, String> {
-        match self.r#type {
-            Some(ref kind) => Ok(super::utils::generate_uid(kind)),
-            None => Err("type should not be null".to_string()),
+    fn default_uid(kind: &ProfileItemType) -> String {
+        super::utils::generate_uid(kind)
+    }
+
+    pub fn default_name(kind: &ProfileItemType) -> &'static str {
+        match kind {
+            ProfileItemType::Remote => "Remote Profile",
+            ProfileItemType::Local => "Local Profile",
+            ProfileItemType::Merge => "Merge Profile",
+            ProfileItemType::Script(_) => "Script Profile",
         }
     }
 
-    fn default_name(&self) -> Result<String, String> {
-        match self.r#type {
-            Some(ProfileItemType::Remote) => Ok("Remote Profile".to_string()),
-            Some(ProfileItemType::Local) => Ok("Local Profile".to_string()),
-            Some(ProfileItemType::Merge) => Ok("Merge Profile".to_string()),
-            Some(ProfileItemType::Script(_)) => Ok("Script Profile".to_string()),
-            None => Err("type should not be null".to_string()),
+    pub fn default_file_name(kind: &ProfileItemType, uid: &str) -> String {
+        match kind {
+            ProfileItemType::Remote => format!("{uid}.yaml"),
+            ProfileItemType::Local => format!("{uid}.yaml"),
+            ProfileItemType::Merge => format!("{uid}.yaml"),
+            ProfileItemType::Script(ScriptType::JavaScript) => format!("{uid}.js"),
+            ProfileItemType::Script(ScriptType::Lua) => format!("{uid}.lua"),
         }
     }
 
-    fn default_files(&self) -> Result<String, String> {
-        match self.uid {
-            Some(ref uid) => match self.r#type {
-                Some(ProfileItemType::Remote) => Ok(format!("{uid}.yaml")),
-                Some(ProfileItemType::Local) => Ok(format!("{uid}.yaml")),
-                Some(ProfileItemType::Merge) => Ok(format!("{uid}.yaml")),
-                Some(ProfileItemType::Script(ScriptType::JavaScript)) => Ok(format!("{uid}.js")),
-                Some(ProfileItemType::Script(ScriptType::Lua)) => Ok(format!("{uid}.lua")),
-                None => Err("type should not be null".to_string()),
-            },
+    pub fn apply_default_file(
+        mut self,
+        kind: &ProfileItemType,
+    ) -> Result<ProfileSharedBuilder, String> {
+        let file = match &self.uid {
+            Some(uid) => Ok(Self::default_file_name(kind, uid)),
             None => Err("uid should not be null".to_string()),
-        }
+        }?;
+        self.file = Some(file);
+        Ok(self)
     }
 
     pub fn is_file_none(&self) -> bool {
         self.file.is_none()
     }
 
-    pub fn build(&self) -> Result<ProfileShared, ProfileSharedBuilderError> {
+    pub fn build(
+        &self,
+        kind: &ProfileItemType,
+    ) -> Result<ProfileShared, ProfileSharedBuilderError> {
         let mut builder = self.clone();
-        if builder.uid.is_none() {
-            builder.uid = Some(builder.default_uid()?);
+        if self.uid.is_none() {
+            builder.uid = Some(Self::default_uid(kind));
         }
-        if builder.name.is_none() {
-            builder.name = Some(builder.default_name()?);
+        if self.name.is_none() {
+            builder.name = Some(Self::default_name(kind).to_string());
         }
-        if builder.file.is_none() {
-            builder.file = Some(builder.default_files()?);
+        if self.file.is_none() {
+            builder.file = Some(Self::default_file_name(kind, self.uid.as_ref().unwrap()));
         }
 
         Ok(ProfileShared {
             uid: builder.uid.unwrap(),
-            r#type: match builder.r#type {
-                Some(ref kind) => kind.clone(),
-                None => {
-                    return Err(ProfileSharedBuilderError::UninitializedField(
-                        "type is required",
-                    ));
-                }
-            },
             name: builder.name.unwrap(),
             file: builder.file.unwrap(),
             desc: builder.desc.clone().unwrap_or_default(),
@@ -144,17 +148,13 @@ impl ProfileShared {
     }
 }
 
-impl ProfileSharedGetter for ProfileShared {
+impl ProfileMetaGetter for ProfileShared {
     fn name(&self) -> &str {
         &self.name
     }
 
     fn desc(&self) -> Option<&str> {
         self.desc.as_deref()
-    }
-
-    fn kind(&self) -> &ProfileItemType {
-        &self.r#type
     }
 
     fn uid(&self) -> &str {
@@ -170,7 +170,7 @@ impl ProfileSharedGetter for ProfileShared {
     }
 }
 
-impl ProfileSharedSetter for ProfileShared {
+impl ProfileMetaSetter for ProfileShared {
     fn set_name(&mut self, name: String) {
         self.name = name;
     }

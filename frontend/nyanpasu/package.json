@@ -19,7 +19,7 @@
     "@mui/icons-material": "7.3.1",
     "@mui/lab": "7.0.0-beta.16",
     "@mui/material": "7.3.1",
-    "@mui/x-date-pickers": "8.9.2",
+    "@mui/x-date-pickers": "8.10.0",
     "@nyanpasu/interface": "workspace:^",
     "@nyanpasu/ui": "workspace:^",
     "@tailwindcss/postcss": "4.1.11",

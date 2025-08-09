@@ -93,6 +93,6 @@
     "vite-plugin-sass-dts": "1.3.31",
     "vite-plugin-svgr": "4.3.0",
     "vite-tsconfig-paths": "5.1.4",
-    "zod": "4.0.15"
+    "zod": "4.0.16"
   }
 }

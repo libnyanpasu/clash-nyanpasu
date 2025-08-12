@@ -6,5 +6,5 @@
 // biome-ignore lint: disable
 export {}
 declare global {
-  const IconMdiTextBoxCheckOutline: typeof import('~icons/mdi/text-box-check-outline.jsx')['default']
+
 }

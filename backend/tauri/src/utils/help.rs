@@ -84,24 +84,6 @@ pub fn get_uid(prefix: &str) -> String {
     format!("{prefix}{id}")
 }
 
-/// get profile title from headers
-pub fn get_profile_title_from_headers(headers: &HeaderMap) -> Option<String> {
-    headers
-        .get("profile-title")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| {
-            if v.starts_with("base64:") {
-                let encoded = v.trim_start_matches("base64:");
-                general_purpose::STANDARD
-                    .decode(encoded)
-                    .ok()
-                    .and_then(|bytes| String::from_utf8(bytes).ok())
-            } else {
-                Some(v.to_string())
-            }
-        })
-}
-
 /// parse the string
 /// xxx=123123; => 123123
 

@@ -92,7 +92,6 @@ impl RemoteProfileSubscription for RemoteProfile {
 struct Subscription {
     pub url: Url,
     pub filename: Option<String>,
-    pub profile_title: Option<String>,
     pub data: Mapping,
     pub info: SubscriptionInfo,
     pub opts: Option<RemoteProfileOptions>,
@@ -181,16 +180,10 @@ async fn subscribe_url(
         None => None,
     };
 
-    // parse the Content-Disposition
-    let headers = resp.headers();
-    let filename = help::parse_str::<String>(
-        headers
-            .get("content-disposition")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or(""),
-        "filename",
-    );
-    let profile_title = help::get_profile_title_from_headers(headers);
+    // Try to parse filename from headers
+    // `Profile-Title` -> `Content-Disposition`
+    let filename = utils::parse_profile_title_header(resp.headers())
+        .or_else(|| utils::parse_filename_from_content_disposition(resp.headers()));
 
     // parse the profile-update-interval
     let opts = match header
@@ -237,7 +230,6 @@ async fn subscribe_url(
     Ok(Subscription {
         url: url.clone(),
         filename,
-        profile_title,
         data: yaml,
         info: extra.unwrap_or_default(),
         opts,
@@ -359,9 +351,7 @@ impl RemoteProfileBuilder {
         let extra = subscription.info;
 
         if self.shared.get_name().is_none() {
-            if let Some(profile_title) = subscription.profile_title.take() {
-                self.shared.name(profile_title);
-            } else if let Some(filename) = subscription.filename.take() {
+            if let Some(filename) = subscription.filename.take() {
                 self.shared.name(filename);
             }
         }
@@ -454,5 +444,59 @@ impl RemoteProfileOptions {
             options.self_proxy = Some(false);
         }
         options
+    }
+}
+
+mod utils {
+    use base64::{Engine, engine::general_purpose};
+    use reqwest::header::{self, HeaderMap};
+
+    /// parse profile title from headers
+    pub fn parse_profile_title_header(headers: &HeaderMap) -> Option<String> {
+        headers
+            .get("profile-title")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| {
+                if v.starts_with("base64:") {
+                    let encoded = v.trim_start_matches("base64:");
+                    general_purpose::STANDARD
+                        .decode(encoded)
+                        .ok()
+                        .and_then(|bytes| String::from_utf8(bytes).ok())
+                } else {
+                    Some(v.to_string())
+                }
+            })
+    }
+
+    pub fn parse_filename_from_content_disposition(headers: &HeaderMap) -> Option<String> {
+        let filename = crate::utils::help::parse_str::<String>(
+            headers
+                .get(header::CONTENT_DISPOSITION)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or(""),
+            "filename",
+        )?;
+        tracing::debug!("Content-Disposition: {:?}", filename);
+
+        let filename = format!("{filename:?}");
+        let filename = filename.trim_matches('"');
+        match crate::utils::help::parse_str::<String>(filename, "filename*") {
+            Some(filename) => {
+                let iter = percent_encoding::percent_decode(filename.as_bytes());
+                let filename = iter.decode_utf8().unwrap_or_default();
+                filename
+                    .split("''")
+                    .last()
+                    .map(|s| s.trim_matches('"').to_string())
+            }
+            None => match crate::utils::help::parse_str::<String>(filename, "filename") {
+                Some(filename) => {
+                    let filename = filename.trim_matches('"');
+                    Some(filename.to_string())
+                }
+                None => None,
+            },
+        }
     }
 }

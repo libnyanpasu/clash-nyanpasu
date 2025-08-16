@@ -9,7 +9,7 @@ use crate::core::{
     tasks::task::Task,
 };
 use log::debug;
-use redb::ReadableTable;
+use redb::{ReadableDatabase, ReadableTable};
 use std::{collections::HashSet, str};
 
 pub struct TaskStorage {

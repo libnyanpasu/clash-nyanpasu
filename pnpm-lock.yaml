@@ -67,6 +67,9 @@ importers:
       dedent:
         specifier: 1.6.0
         version: 1.6.0(babel-plugin-macros@3.1.0)
+      electron:
+        specifier: 23.3.13
+        version: 23.3.13
       eslint:
         specifier: 9.32.0
         version: 9.32.0(jiti@2.4.2)

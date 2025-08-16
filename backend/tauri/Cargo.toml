@@ -148,7 +148,7 @@ notify-debouncer-full = "0.6.0"
 notify = "8.0.0"
 
 # Database
-redb = "2.0.0"
+redb = "3.0.0"
 
 # Logging & Tracing
 log = "0.4.20"

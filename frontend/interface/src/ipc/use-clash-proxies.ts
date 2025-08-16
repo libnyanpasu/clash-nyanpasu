@@ -88,7 +88,9 @@ export const useClashProxies = () => {
       })
 
       // Apply helper functions to groups and global
-      const groups = result.groups.map(createGroupWithHelpers)
+      const groups = result.groups
+        .filter((g) => !g.hidden)
+        .map(createGroupWithHelpers)
       const global = createGroupWithHelpers(result.global)
 
       // merge the results & type validation

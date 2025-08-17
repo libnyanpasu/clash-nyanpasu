@@ -24,7 +24,7 @@ jobs:
           - os: windows-latest
     runs-on: ${{ matrix.targets.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Rust
         run: |
           rustup toolchain install stable --profile minimal --no-self-update
@@ -121,7 +121,7 @@ jobs:
     runs-on: ${{ matrix.targets.os }}
     needs: lint
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Tauri dependencies
         if: startsWith(matrix.targets.os, 'ubuntu-')
         run: >-
@@ -208,7 +208,7 @@ jobs:
     # the steps our job runs **in order**
     steps:
       # checkout the code on the workflow runner
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # install system dependencies that Tauri needs to compile on Linux.
       # note the extra dependencies for `tauri-driver` to run which are: `webkit2gtk-driver` and `xvfb`

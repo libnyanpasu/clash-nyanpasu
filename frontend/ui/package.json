@@ -21,7 +21,7 @@
     "@types/d3": "7.4.3",
     "@types/react": "19.1.10",
     "@vitejs/plugin-react": "5.0.0",
-    "ahooks": "3.9.0",
+    "ahooks": "3.9.1",
     "d3": "7.9.0",
     "framer-motion": "12.23.12",
     "react": "19.1.1",

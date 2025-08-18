@@ -1601,7 +1601,7 @@ dependencies = [
  "specta",
  "specta-typescript",
  "strum 0.27.2",
- "sysinfo 0.36.1",
+ "sysinfo",
  "sysproxy",
  "tauri",
  "tauri-build",
@@ -5904,7 +5904,7 @@ dependencies = [
  "serde",
  "shared_child",
  "specta",
- "sysinfo 0.37.0",
+ "sysinfo",
  "thiserror 2.0.15",
  "tokio",
  "tracing",
@@ -9075,20 +9075,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8eab9a99a024a169fe8a903cf9d4a3b3601109bcc13bd9e3c6fff259138626c4"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "sysinfo"
-version = "0.36.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "252800745060e7b9ffb7b2badbd8b31cfa4aa2e61af879d0a3bf2a317c20217d"
-dependencies = [
- "libc",
- "memchr",
- "ntapi",
- "objc2-core-foundation",
- "objc2-io-kit",
- "windows 0.61.3",
 ]
 
 [[package]]

@@ -182,8 +182,8 @@ importers:
         specifier: 2.6.0
         version: 2.6.0
       ahooks:
-        specifier: 3.9.2
-        version: 3.9.2(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
+        specifier: 3.9.3
+        version: 3.9.3(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
       dayjs:
         specifier: 1.11.13
         version: 1.11.13
@@ -258,8 +258,8 @@ importers:
         specifier: 7.0.15
         version: 7.0.15
       ahooks:
-        specifier: 3.9.2
-        version: 3.9.2(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
+        specifier: 3.9.3
+        version: 3.9.3(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
       allotment:
         specifier: 1.20.4
         version: 1.20.4(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
@@ -490,8 +490,8 @@ importers:
         specifier: 5.0.0
         version: 5.0.0(vite@7.1.2(@types/node@22.17.2)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.30.1)(sass-embedded@1.90.0)(sass@1.90.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.20.4)(yaml@2.8.1))
       ahooks:
-        specifier: 3.9.2
-        version: 3.9.2(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
+        specifier: 3.9.3
+        version: 3.9.3(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
       d3:
         specifier: 7.9.0
         version: 7.9.0
@@ -3679,8 +3679,8 @@ packages:
     resolution: {integrity: sha512-JVzqkCNRT+VfqzzgPWDPnwvDheSAUdiMUn3NoLXpDJF5lRqeJqyC9iGsAxIOAW+mzIdq+uP1TvcX6bMtrH0agg==}
     engines: {node: '>= 14'}
 
-  ahooks@3.9.2:
-    resolution: {integrity: sha512-Kxo1fsX9BHNYq59qdCgMnB58Vd6SYaVBv8MrNmlzo1kLMscxfzlkoticH8b9azZ/x49cR4LZrrtqDEjeqN2sMw==}
+  ahooks@3.9.3:
+    resolution: {integrity: sha512-pw4oNW9at8c/EDpZEQY/2rcU1NQw1GOzw6CUlDPMKUp1hh79NZVfPxgUUhUVKs8Dr48GWYC5ILovuQSO5CeH0A==}
     engines: {node: '>=18'}
     peerDependencies:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
@@ -11871,7 +11871,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  ahooks@3.9.2(react-dom@19.1.1(react@19.1.1))(react@19.1.1):
+  ahooks@3.9.3(react-dom@19.1.1(react@19.1.1))(react@19.1.1):
     dependencies:
       '@babel/runtime': 7.28.2
       dayjs: 1.11.13

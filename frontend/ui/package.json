@@ -20,7 +20,7 @@
     "@tauri-apps/api": "2.6.0",
     "@types/d3": "7.4.3",
     "@types/react": "19.1.12",
-    "@vitejs/plugin-react": "5.0.1",
+    "@vitejs/plugin-react": "5.0.2",
     "ahooks": "3.9.4",
     "d3": "7.9.0",
     "framer-motion": "12.23.12",

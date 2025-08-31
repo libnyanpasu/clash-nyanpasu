@@ -291,10 +291,18 @@ mod utils {
 
     use std::borrow::Cow;
 
+    #[derive(Debug)]
+    // TODO: support fn params check and support typescript type erase
+    struct DefaultExport {
+        span: Span,
+        is_function: bool,
+    }
+
     #[derive(Debug, Default)]
     struct FunctionVisitor<'n> {
         exported_name: Vec<Cow<'n, str>>,
         declared_functions: Vec<(Cow<'n, str>, Cow<'n, Span>)>,
+        default_export: Option<DefaultExport>,
     }
 
     impl<'n> Visit<'n> for FunctionVisitor<'n> {
@@ -323,8 +331,23 @@ mod utils {
             }
             walk_function(self, it, flags);
         }
+
+        // Visit export default declaration to save the default export
+        fn visit_export_default_declaration(
+            &mut self,
+            it: &oxc_ast::ast::ExportDefaultDeclaration<'n>,
+        ) {
+            self.default_export = Some(DefaultExport {
+                is_function: matches!(
+                    it.declaration,
+                    oxc_ast::ast::ExportDefaultDeclarationKind::FunctionDeclaration(_)
+                ),
+                span: it.span,
+            });
+        }
     }
 
+    /// This is a tool function to wrap the script if it is not a ESM script.
     pub fn wrap_script_if_not_esm(script: &str) -> Result<Cow<'_, str>, anyhow::Error> {
         let allocator = Allocator::default();
         let source_type = SourceType::default().with_module(true);
@@ -341,10 +364,13 @@ mod utils {
             }
             return Err(anyhow::anyhow!("parse error: {}", errors));
         }
-        // eprintln!("result: {:#?}", result.program);
+        #[cfg(test)]
+        eprintln!("result: {:#?}", result.program);
         let mut visitor = FunctionVisitor::default();
         visitor.visit_program(&result.program);
-        if visitor.exported_name.iter().any(|s| s.contains("default")) {
+        #[cfg(test)]
+        eprintln!("visitor: {:#?}", visitor);
+        if visitor.default_export.is_some() {
             return Ok(Cow::Borrowed(script));
         }
         // check whether `function main` exists

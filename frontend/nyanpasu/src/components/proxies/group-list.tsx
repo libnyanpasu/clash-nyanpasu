@@ -67,7 +67,7 @@ export const GroupList = ({
     }
 
     return data.groups.filter((group) => {
-      const filterMatches =
+      return (
         !deferredProxiesFilter ||
         group.name
           .toLowerCase()
@@ -78,7 +78,7 @@ export const GroupList = ({
             .includes(deferredProxiesFilter.toLowerCase())
         }) ||
         false
-      return !(group.hidden ?? false) && filterMatches
+      )
     })
   }, [data?.groups, deferredProxiesFilter])
 

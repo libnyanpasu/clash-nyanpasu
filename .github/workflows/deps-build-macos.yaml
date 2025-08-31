@@ -45,11 +45,11 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: 15
+          xcode-version: 16
 
       - name: install Rust stable
         run: |

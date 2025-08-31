@@ -1,12 +1,14 @@
 use crate::{log_err, utils::dirs};
 use anyhow::Context;
-use redb::TableDefinition;
+use redb::{ReadableDatabase, TableDefinition};
 use serde::{Serialize, de::DeserializeOwned};
 use std::{fs, ops::Deref, result::Result as StdResult, sync::Arc};
 use tauri::{Emitter, Manager};
 
 #[derive(Debug, thiserror::Error)]
 pub enum StorageOperationError {
+    #[error("failed to open database: {0}")]
+    OpenDatabase(#[from] redb::DatabaseError),
     #[error("internal redb error: {0}")]
     Redb(#[from] redb::Error),
     #[error("internal redb table error: {0}")]
@@ -61,19 +63,36 @@ pub trait WebStorage {
 }
 
 impl StorageInner {
+    fn create_and_init_database(path: &std::path::Path) -> Result<redb::Database> {
+        let db = redb::Database::create(path)?;
+        // Create table
+        let write_txn = db.begin_write()?;
+        write_txn.open_table(NYANPASU_TABLE)?;
+        write_txn.commit()?;
+        Ok(db)
+    }
+
     pub fn try_new(path: &std::path::Path) -> Result<Self> {
-        let instance: redb::Database = if path.exists() && !path.is_dir() {
-            redb::Database::open(path).unwrap()
+        let metadata = fs::metadata(path).ok();
+        let instance: redb::Database = if metadata.as_ref().is_some_and(|m| m.is_file()) {
+            match redb::Database::open(path) {
+                Ok(db) => db,
+                // In redb v3 upgrading point, we only store the task history, and frontend persist state,
+                // such as memorized router, which is NOT very valuable to make us keep two redb versions,
+                // intended to support upgrade database formats.
+                Err(redb::DatabaseError::UpgradeRequired(ver)) => {
+                    tracing::error!("database upgrade required {ver:?}, removing...");
+                    fs::remove_file(path).unwrap();
+                    Self::create_and_init_database(path)?
+                }
+                Err(e) => return Err(e.into()),
+            }
         } else {
-            if path.exists() && path.is_dir() {
+            // Remove previous rocksdb files
+            if metadata.is_some_and(|m| m.is_dir()) {
                 fs::remove_dir_all(path).unwrap();
             }
-            let db = redb::Database::create(path).unwrap();
-            // Create table
-            let write_txn = db.begin_write().unwrap();
-            write_txn.open_table(NYANPASU_TABLE).unwrap();
-            write_txn.commit().unwrap();
-            db
+            Self::create_and_init_database(path)?
         };
         Ok(Self {
             instance,

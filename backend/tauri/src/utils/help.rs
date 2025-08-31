@@ -21,6 +21,8 @@ use tracing::{debug, warn};
 use tracing_attributes::instrument;
 
 use crate::trace_err;
+use base64::{Engine, engine::general_purpose};
+use reqwest::header::HeaderMap;
 
 /// read data from yaml as struct T
 pub fn read_yaml<T: DeserializeOwned>(path: &PathBuf) -> Result<T> {
@@ -84,6 +86,7 @@ pub fn get_uid(prefix: &str) -> String {
 
 /// parse the string
 /// xxx=123123; => 123123
+
 pub fn parse_str<T: FromStr>(target: &str, key: &str) -> Option<T> {
     target.split(';').map(str::trim).find_map(|s| {
         let mut parts = s.splitn(2, '=');

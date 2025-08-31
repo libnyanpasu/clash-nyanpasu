@@ -49,7 +49,7 @@ jobs:
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: 15
+          xcode-version: 16
 
       - name: install Rust stable
         run: |

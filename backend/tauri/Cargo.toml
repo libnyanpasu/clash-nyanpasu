@@ -89,7 +89,14 @@ rust-i18n = "3"
 axum = "0.8"
 url = "2"
 mime = "0.3"
-reqwest = { version = "0.12", features = ["json", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = [
+  "charset",
+  "http2",
+  "system-proxy",
+  "json",
+  "stream",
+  "rustls-tls",
+] }
 tokio-tungstenite = "0.27"
 urlencoding = "2.1"
 port_scanner = "0.1.5"
@@ -193,7 +200,13 @@ boa_utils = { path = "../boa_utils" }                     # should be removed wh
 boa_engine = { workspace = true, features = ["annex-b"] }
 
 # Tauri Dependencies
-tauri = { version = "2.4", features = ["tray-icon", "image-png", "image-ico"] }
+tauri = { version = "2.4", features = [
+  "tray-icon",
+  "image-png",
+  "image-ico",
+  "rustls-tls",
+  "specta",
+] }
 tauri-plugin-deep-link = { path = "../tauri-plugin-deep-link", version = "0.1.2" } # This should be migrated to official tauri plugin
 tauri-plugin-os = "2.2"
 tauri-plugin-clipboard-manager = "2.2"
@@ -220,9 +233,6 @@ specta = { version = "=2.0.0-rc.22", features = [
 
 [target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
 tauri-plugin-global-shortcut = "2.2.0"
-
-[target.'cfg(target_os = "linux")'.dependencies]
-openssl = { version = "0.10", features = ["vendored"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.1"
@@ -260,4 +270,3 @@ verge-dev = []
 default-meta = []
 devtools = ["tauri/devtools"]
 deadlock-detection = ["parking_lot/deadlock_detection"]
-openssl_vendored = ["openssl/vendored"]

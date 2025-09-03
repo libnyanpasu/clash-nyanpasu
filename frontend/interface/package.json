@@ -13,7 +13,7 @@
   "dependencies": {
     "@tanstack/react-query": "5.85.9",
     "@tauri-apps/api": "2.6.0",
-    "ahooks": "3.9.4",
+    "ahooks": "3.9.5",
     "dayjs": "1.11.18",
     "lodash-es": "4.17.21",
     "ofetch": "1.4.1",

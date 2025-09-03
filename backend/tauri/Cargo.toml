@@ -29,13 +29,11 @@ nyanpasu-ipc = { git = "https://github.com/libnyanpasu/nyanpasu-service.git", fe
   "specta",
 ] } # IPC bridge between the UI process and service process
 nyanpasu-macro = { path = "../nyanpasu-macro" }
-nyanpasu-utils = { git = "https://github.com/libnyanpasu/nyanpasu-utils.git", features = [
-  "specta",
-] }
+nyanpasu-utils = { workspace = true }
 nyanpasu-egui = { path = "../nyanpasu-egui" }
 
 # Common Utilities
-tokio = { version = "1", features = ["full"] }
+tokio = { workspace = true }
 tokio-util = { version = "0.7", features = ["full"] }
 oneshot = "0.1"
 futures = "0.3"
@@ -89,14 +87,7 @@ rust-i18n = "3"
 axum = "0.8"
 url = "2"
 mime = "0.3"
-reqwest = { version = "0.12", default-features = false, features = [
-  "charset",
-  "http2",
-  "system-proxy",
-  "json",
-  "stream",
-  "rustls-tls",
-] }
+reqwest = { workspace = true }
 tokio-tungstenite = "0.27"
 urlencoding = "2.1"
 port_scanner = "0.1.5"

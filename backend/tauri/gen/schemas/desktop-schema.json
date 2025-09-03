@@ -3579,6 +3579,12 @@
           "markdownDescription": "Enables the set_focus command without any pre-configured scope."
         },
         {
+          "description": "Enables the set_focusable command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:window:allow-set-focusable",
+          "markdownDescription": "Enables the set_focusable command without any pre-configured scope."
+        },
+        {
           "description": "Enables the set_fullscreen command without any pre-configured scope.",
           "type": "string",
           "const": "core:window:allow-set-fullscreen",
@@ -3649,6 +3655,12 @@
           "type": "string",
           "const": "core:window:allow-set-shadow",
           "markdownDescription": "Enables the set_shadow command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_simple_fullscreen command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:window:allow-set-simple-fullscreen",
+          "markdownDescription": "Enables the set_simple_fullscreen command without any pre-configured scope."
         },
         {
           "description": "Enables the set_size command without any pre-configured scope.",
@@ -4023,6 +4035,12 @@
           "markdownDescription": "Denies the set_focus command without any pre-configured scope."
         },
         {
+          "description": "Denies the set_focusable command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:window:deny-set-focusable",
+          "markdownDescription": "Denies the set_focusable command without any pre-configured scope."
+        },
+        {
           "description": "Denies the set_fullscreen command without any pre-configured scope.",
           "type": "string",
           "const": "core:window:deny-set-fullscreen",
@@ -4093,6 +4111,12 @@
           "type": "string",
           "const": "core:window:deny-set-shadow",
           "markdownDescription": "Denies the set_shadow command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_simple_fullscreen command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:window:deny-set-simple-fullscreen",
+          "markdownDescription": "Denies the set_simple_fullscreen command without any pre-configured scope."
         },
         {
           "description": "Denies the set_size command without any pre-configured scope.",

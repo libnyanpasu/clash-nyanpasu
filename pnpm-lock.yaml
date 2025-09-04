@@ -131,7 +131,7 @@ importers:
         specifier: 3.6.2
         version: 3.6.2
       prettier-plugin-ember-template-tag:
-        specifier: ^2.1.0
+        specifier: 2.1.0
         version: 2.1.0(prettier@3.6.2)
       prettier-plugin-tailwindcss:
         specifier: 0.6.14

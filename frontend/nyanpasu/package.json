@@ -22,7 +22,7 @@
     "@mui/x-date-pickers": "8.11.1",
     "@nyanpasu/interface": "workspace:^",
     "@nyanpasu/ui": "workspace:^",
-    "@tailwindcss/postcss": "4.1.12",
+    "@tailwindcss/postcss": "4.1.13",
     "@tanstack/router-zod-adapter": "1.81.5",
     "@tauri-apps/api": "2.8.0",
     "@types/json-schema": "7.0.15",

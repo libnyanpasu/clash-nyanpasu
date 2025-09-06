@@ -112,7 +112,7 @@
   },
   "packageManager": "pnpm@10.15.1",
   "engines": {
-    "node": "22.18.0"
+    "node": "22.19.0"
   },
   "pnpm": {
     "overrides": {

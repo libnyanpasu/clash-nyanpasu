@@ -2,14 +2,14 @@ import { execSync } from 'child_process'
 import fs from 'fs/promises'
 import path from 'path'
 import { camelCase, upperFirst } from 'lodash-es'
-import fetch from 'node-fetch'
 import semver from 'semver'
+import { fetch } from 'undici'
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
 import { z } from 'zod'
 import { context, getOctokit } from '@actions/github'
 import tauriNightly from '../backend/tauri/overrides/nightly.conf.json'
-import { getGithubUrl } from './utils'
+import { getGithubUrl, getProxyAgent } from './utils'
 import { colorize, consola } from './utils/logger'
 
 const UPDATE_TAG_NAME = 'updater'
@@ -59,7 +59,9 @@ async function resolveUpdater() {
       version: z.string().min(1),
     })
     const latest = schema.parse(
-      await fetch(latestContent.browser_download_url).then((res) => res.json()),
+      await fetch(latestContent.browser_download_url, {
+        dispatcher: getProxyAgent(),
+      }).then((res) => res.json()),
     )
 
     const version = semver.parse(latest.version)
@@ -302,6 +304,7 @@ async function getSignature(url: string) {
   const response = await fetch(url, {
     method: 'GET',
     headers: { 'Content-Type': 'application/octet-stream' },
+    dispatcher: getProxyAgent(),
   })
 
   return response.text()

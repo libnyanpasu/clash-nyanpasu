@@ -3,9 +3,9 @@ import path from 'path'
 import zlib from 'zlib'
 import AdmZip from 'adm-zip'
 import fs from 'fs-extra'
-import fetch, { type RequestInit } from 'node-fetch'
 import * as tar from 'tar'
 import { BinInfo } from 'types'
+import { fetch, type RequestInit } from 'undici'
 import { getProxyAgent } from './'
 import { TAURI_APP_DIR, TEMP_DIR } from './env'
 import { colorize, consola } from './logger'
@@ -19,8 +19,10 @@ export const downloadFile = async (url: string, path: string) => {
   const httpProxy = getProxyAgent()
 
   if (httpProxy) {
-    options.agent = httpProxy
+    options.dispatcher = httpProxy
   }
+
+  consola.debug(colorize`download {gray "${url}"} to {gray "${path}"}`)
 
   const response = await fetch(url, {
     ...options,
@@ -120,7 +122,7 @@ export const resolveSidecar = async (
       const writeStream = fs.createWriteStream(sidecarPath)
 
       await new Promise<void>((resolve, reject) => {
-        const onError = (error: any) => {
+        const onError = (error: Error) => {
           consola.error(colorize`"${name}" gz failed:`, error)
           reject(error)
         }

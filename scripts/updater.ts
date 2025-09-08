@@ -1,11 +1,11 @@
 import fs from 'fs/promises'
 import path from 'path'
-import fetch from 'node-fetch'
+import { fetch } from 'undici'
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
 import { context, getOctokit } from '@actions/github'
 import { resolveUpdateLog } from './updatelog'
-import { getGithubUrl } from './utils'
+import { getGithubUrl, getProxyAgent } from './utils'
 import { colorize, consola } from './utils/logger'
 
 const UPDATE_TAG_NAME = 'updater'
@@ -267,6 +267,7 @@ async function getSignature(url: string) {
   const response = await fetch(url, {
     method: 'GET',
     headers: { 'Content-Type': 'application/octet-stream' },
+    dispatcher: getProxyAgent(),
   })
 
   return response.text()

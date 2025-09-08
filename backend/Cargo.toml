@@ -2,6 +2,9 @@
 resolver = "2"
 members = ["tauri", "boa_utils", "nyanpasu-macro", "nyanpasu-egui"]
 
+[patch.crates-io]
+tray-icon = { git = "https://github.com/tauri-apps/tray-icon.git", rev = "34a3442" }
+
 [workspace.package]
 repository = "https://github.com/keiko233/clash-nyanpasu.git"
 edition = "2024"

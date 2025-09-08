@@ -86,12 +86,12 @@ export const resolveClashRs = async (): LatestVersionResolver => {
     [SupportedArch.WindowsX86_32]: 'clash-i686-pc-windows-msvc-static-crt.exe',
     [SupportedArch.WindowsX86_64]: 'clash-x86_64-pc-windows-msvc.exe',
     [SupportedArch.WindowsArm64]: 'clash-aarch64-pc-windows-msvc.exe',
-    [SupportedArch.LinuxAarch64]: 'clash-aarch64-unknown-linux-gnu-static-crt',
+    [SupportedArch.LinuxAarch64]: 'clash-aarch64-unknown-linux-gnu',
     [SupportedArch.LinuxAmd64]: 'clash-x86_64-unknown-linux-gnu-static-crt',
-    [SupportedArch.LinuxI386]: 'clash-i686-unknown-linux-gnu-static-crt',
+    [SupportedArch.LinuxI386]: 'clash-i686-unknown-linux-gnu',
     [SupportedArch.DarwinArm64]: 'clash-aarch64-apple-darwin',
     [SupportedArch.DarwinX64]: 'clash-x86_64-apple-darwin',
-    [SupportedArch.LinuxArmv7]: 'clash-armv7-unknown-linux-gnueabi-static-crt',
+    [SupportedArch.LinuxArmv7]: 'clash-armv7-unknown-linux-gnueabi',
     [SupportedArch.LinuxArmv7hf]: 'clash-armv7-unknown-linux-gnueabihf',
   } satisfies ArchMapping
 

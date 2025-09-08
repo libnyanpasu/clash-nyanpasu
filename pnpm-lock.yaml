@@ -563,8 +563,8 @@ importers:
         specifier: 7.7.1
         version: 7.7.1
       figlet:
-        specifier: 1.8.2
-        version: 1.8.2
+        specifier: 1.9.0
+        version: 1.9.0
       filesize:
         specifier: 11.0.2
         version: 11.0.2
@@ -5210,9 +5210,9 @@ packages:
     resolution: {integrity: sha512-7yAQpD2UMJzLi1Dqv7qFYnPbaPx7ZfFK6PiIxQ4PfkGPyNyl2Ugx+a/umUonmKqjhM4DnfbMvdX6otXq83soQQ==}
     engines: {node: ^12.20 || >= 14.13}
 
-  figlet@1.8.2:
-    resolution: {integrity: sha512-iPCpE9B/rOcjewIzDnagP9F2eySzGeHReX8WlrZQJkqFBk2wvq8gY0c6U6Hd2y9HnX1LQcYSeP7aEHoPt6sVKQ==}
-    engines: {node: '>= 0.4.0'}
+  figlet@1.9.0:
+    resolution: {integrity: sha512-S+WN3ZIGYgiZUlQD0s3qlAPSOdCdYth0G7PK6DbubfixgorA7jzNl4eae2Hc/rEjQ5UYnf0YkcpCFc/IMklZhg==}
+    engines: {node: '>= 17.0.0'}
     hasBin: true
 
   file-entry-cache@10.1.4:
@@ -13923,7 +13923,9 @@ snapshots:
       node-domexception: 1.0.0
       web-streams-polyfill: 3.3.3
 
-  figlet@1.8.2: {}
+  figlet@1.9.0:
+    dependencies:
+      commander: 14.0.0
 
   file-entry-cache@10.1.4:
     dependencies:

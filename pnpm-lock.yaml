@@ -563,8 +563,8 @@ importers:
         specifier: 7.7.1
         version: 7.7.1
       figlet:
-        specifier: 1.9.0
-        version: 1.9.0
+        specifier: 1.9.1
+        version: 1.9.1
       filesize:
         specifier: 11.0.2
         version: 11.0.2
@@ -5202,8 +5202,8 @@ packages:
       picomatch:
         optional: true
 
-  figlet@1.9.0:
-    resolution: {integrity: sha512-S+WN3ZIGYgiZUlQD0s3qlAPSOdCdYth0G7PK6DbubfixgorA7jzNl4eae2Hc/rEjQ5UYnf0YkcpCFc/IMklZhg==}
+  figlet@1.9.1:
+    resolution: {integrity: sha512-DpKC89iXFjq6NCaIQ1O91R+ofpfyvkwuBfoVd8LpP/JZGZQpelMXgiTStGOfksuMYaDoBAwFlvx7mk+wX+3rrA==}
     engines: {node: '>= 17.0.0'}
     hasBin: true
 
@@ -13891,7 +13891,7 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.3
 
-  figlet@1.9.0:
+  figlet@1.9.1:
     dependencies:
       commander: 14.0.0
 

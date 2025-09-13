@@ -86,7 +86,7 @@
     "sass-embedded": "1.92.1",
     "shiki": "2.5.0",
     "unplugin-auto-import": "20.1.0",
-    "unplugin-icons": "22.2.0",
+    "unplugin-icons": "22.3.0",
     "validator": "13.15.15",
     "vite": "7.1.5",
     "vite-plugin-html": "3.2.2",

@@ -118,7 +118,17 @@ pub enum ChainType {
 }
 
 #[derive(
-    Debug, EnumString, Clone, Serialize, Deserialize, Default, Eq, PartialEq, Hash, specta::Type,
+    Debug,
+    EnumString,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    Default,
+    Eq,
+    PartialEq,
+    Hash,
+    specta::Type,
 )]
 #[strum(serialize_all = "snake_case")]
 pub enum ScriptType {

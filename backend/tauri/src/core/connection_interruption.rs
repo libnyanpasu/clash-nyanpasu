@@ -1,7 +1,4 @@
-use crate::{
-    config::Config,
-    core::clash::api,
-};
+use crate::{config::Config, core::clash::api};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -20,7 +17,7 @@ impl ConnectionInterruptionService {
     pub async fn on_proxy_change() -> Result<()> {
         let config = Config::verge().data().clone();
         let break_when = config.break_when_proxy_change.unwrap_or_default();
-        
+
         match break_when {
             crate::config::nyanpasu::BreakWhenProxyChange::None => {
                 // Do nothing
@@ -42,7 +39,7 @@ impl ConnectionInterruptionService {
     pub async fn on_profile_change() -> Result<()> {
         let config = Config::verge().data().clone();
         let break_when = config.break_when_profile_change.unwrap_or_default();
-        
+
         match break_when {
             crate::config::nyanpasu::BreakWhenProfileChange::Off => {
                 // Do nothing
@@ -58,23 +55,21 @@ impl ConnectionInterruptionService {
     pub async fn on_mode_change() -> Result<()> {
         let config = Config::verge().data().clone();
         let break_when = config.break_when_mode_change.unwrap_or_default();
-        
+
         match break_when {
             crate::config::nyanpasu::BreakWhenModeChange::Off => {
                 // Do nothing
                 Ok(())
             }
-            crate::config::nyanpasu::BreakWhenModeChange::On => {
-                api::delete_connections(None).await
-            }
+            crate::config::nyanpasu::BreakWhenModeChange::On => api::delete_connections(None).await,
         }
     }
-    
+
     /// Interrupt all connections
     pub async fn interrupt_all() -> Result<()> {
         api::delete_connections(None).await
     }
-    
+
     /// Interrupt connections based on proxy chain (not yet implemented)
     pub async fn interrupt_by_chain(_chain: &[String]) -> Result<()> {
         // TODO: Implement chain-based connection interruption

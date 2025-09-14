@@ -22,6 +22,67 @@ const AutoCloseConnection = () => {
   )
 }
 
+const BreakWhenProxyChange = () => {
+  const { t } = useTranslation()
+
+  const { value, upsert } = useSetting('break_when_proxy_change')
+
+  const options = {
+    none: t('None'),
+    chain: t('Chain'),
+    all: t('All'),
+  }
+
+  return (
+    <MenuItem
+      label={t('Break When Proxy Change')}
+      options={options}
+      selected={value || 'all'}
+      onSelected={(value) => upsert(value)}
+    />
+  )
+}
+
+const BreakWhenProfileChange = () => {
+  const { t } = useTranslation()
+
+  const { value, upsert } = useSetting('break_when_profile_change')
+
+  const options = {
+    off: t('Off'),
+    on: t('On'),
+  }
+
+  return (
+    <MenuItem
+      label={t('Break When Profile Change')}
+      options={options}
+      selected={value || 'on'}
+      onSelected={(value) => upsert(value)}
+    />
+  )
+}
+
+const BreakWhenModeChange = () => {
+  const { t } = useTranslation()
+
+  const { value, upsert } = useSetting('break_when_mode_change')
+
+  const options = {
+    off: t('Off'),
+    on: t('On'),
+  }
+
+  return (
+    <MenuItem
+      label={t('Break When Mode Change')}
+      options={options}
+      selected={value || 'on'}
+      onSelected={(value) => upsert(value)}
+    />
+  )
+}
+
 const EnableBuiltinEnhanced = () => {
   const { t } = useTranslation()
 
@@ -164,6 +225,12 @@ export const SettingNyanpasuMisc = () => {
         <NetworkWidgetVariant />
 
         <AutoCloseConnection />
+        
+        <BreakWhenProxyChange />
+        
+        <BreakWhenProfileChange />
+        
+        <BreakWhenModeChange />
 
         <EnableBuiltinEnhanced />
 

@@ -1,6 +1,6 @@
 use crate::{
     config::{profile::ProfileBuilder, *},
-    core::{storage::Storage, tasks::jobs::ProfilesJobGuard, updater::ManifestVersionLatest, *},
+    core::{storage::Storage, tasks::jobs::ProfilesJobGuard, updater::ManifestVersionLatest, logger::Logger, *},
     enhance::PostProcessingOutput,
     feat,
     utils::{
@@ -264,6 +264,10 @@ pub async fn patch_profiles_config(profiles: ProfilesBuilder) -> Result {
             handle::Handle::refresh_clash();
             Config::profiles().apply();
             (Config::profiles().data().save_file())?;
+            
+            // Interrupt connections based on configuration
+            let _ = crate::core::connection_interruption::ConnectionInterruptionService::on_profile_change().await;
+            
             Ok(())
         }
         Err(err) => {
@@ -509,7 +513,7 @@ pub fn get_sys_proxy() -> Result<GetSysProxyResponse> {
 #[tauri::command]
 #[specta::specta]
 pub fn get_clash_logs() -> Result<VecDeque<String>> {
-    Ok(logger::Logger::global().get_log())
+    Ok(Logger::global().get_log())
 }
 
 #[tauri::command]
@@ -685,6 +689,10 @@ pub async fn mutate_proxies() -> Result<crate::core::clash::proxies::Proxies> {
 pub async fn select_proxy(group: String, name: String) -> Result<()> {
     use crate::core::clash::proxies::{ProxiesGuard, ProxiesGuardExt};
     (ProxiesGuard::global().select_proxy(&group, &name).await)?;
+    
+    // Interrupt connections based on configuration
+    let _ = crate::core::connection_interruption::ConnectionInterruptionService::on_proxy_change().await;
+    
     Ok(())
 }
 

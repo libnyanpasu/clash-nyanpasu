@@ -22,7 +22,7 @@
       "~/*": ["./*"],
     },
     "jsxImportSource": "@emotion/react",
-    "types": ["unplugin-icons/types/react"],
+    "types": ["unplugin-icons/types/react", "node"],
   },
   "include": ["src", "./auto-imports.d.ts"],
   "references": [

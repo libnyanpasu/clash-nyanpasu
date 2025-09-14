@@ -5,6 +5,9 @@ import { FileRouteTypes } from '@/routeTree.gen'
 import { NyanpasuStorage } from '@/services/storage'
 import { LogMessage } from '@nyanpasu/interface'
 
+// Config store exports
+export * from './config'
+
 const atomWithLocalStorage = <T>(key: string, initialValue: T) => {
   const getInitialValue = (): T => {
     const item = localStorage.getItem(key)

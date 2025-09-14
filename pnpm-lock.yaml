@@ -387,6 +387,9 @@ importers:
       '@tauri-apps/plugin-updater':
         specifier: 2.9.0
         version: 2.9.0
+      '@types/node':
+        specifier: 24.3.1
+        version: 24.3.1
       '@types/react':
         specifier: 19.1.12
         version: 19.1.12

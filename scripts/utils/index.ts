@@ -1,7 +1,7 @@
 import figlet from 'figlet'
 import { filesize } from 'filesize'
 import fs from 'fs-extra'
-import { HttpsProxyAgent } from 'https-proxy-agent'
+import { ProxyAgent } from 'undici'
 import { GITHUB_PROXY } from './env'
 
 export const getGithubUrl = (url: string) => {
@@ -54,7 +54,7 @@ export const HTTP_PROXY =
 
 export function getProxyAgent() {
   if (HTTP_PROXY) {
-    return new HttpsProxyAgent(HTTP_PROXY)
+    return new ProxyAgent(HTTP_PROXY)
   }
 
   return undefined

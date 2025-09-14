@@ -2,6 +2,9 @@
 resolver = "2"
 members = ["tauri", "boa_utils", "nyanpasu-macro", "nyanpasu-egui"]
 
+[patch.crates-io]
+tray-icon = { git = "https://github.com/tauri-apps/tray-icon.git", rev = "34a3442" }
+
 [workspace.package]
 repository = "https://github.com/keiko233/clash-nyanpasu.git"
 edition = "2024"
@@ -12,6 +15,18 @@ authors = ["zzzgydi", "keiko233"]
 thiserror = "2"
 tracing = "0.1"
 boa_engine = { version = "0.20", features = ["annex-b"] }
+reqwest = { version = "0.12", default-features = false, features = [
+  "charset",
+  "http2",
+  "system-proxy",
+  "json",
+  "stream",
+  "rustls-tls",
+] }
+tokio = { version = "1", features = ["full"] }
+nyanpasu-utils = { git = "https://github.com/libnyanpasu/nyanpasu-utils.git", features = [
+  "specta",
+] }
 
 [profile.release]
 panic = "unwind"

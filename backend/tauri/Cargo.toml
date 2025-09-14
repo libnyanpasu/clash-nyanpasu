@@ -29,13 +29,11 @@ nyanpasu-ipc = { git = "https://github.com/libnyanpasu/nyanpasu-service.git", fe
   "specta",
 ] } # IPC bridge between the UI process and service process
 nyanpasu-macro = { path = "../nyanpasu-macro" }
-nyanpasu-utils = { git = "https://github.com/libnyanpasu/nyanpasu-utils.git", features = [
-  "specta",
-] }
+nyanpasu-utils = { workspace = true }
 nyanpasu-egui = { path = "../nyanpasu-egui" }
 
 # Common Utilities
-tokio = { version = "1", features = ["full"] }
+tokio = { workspace = true }
 tokio-util = { version = "0.7", features = ["full"] }
 oneshot = "0.1"
 futures = "0.3"
@@ -89,14 +87,7 @@ rust-i18n = "3"
 axum = "0.8"
 url = "2"
 mime = "0.3"
-reqwest = { version = "0.12", default-features = false, features = [
-  "charset",
-  "http2",
-  "system-proxy",
-  "json",
-  "stream",
-  "rustls-tls",
-] }
+reqwest = { workspace = true }
 tokio-tungstenite = "0.27"
 urlencoding = "2.1"
 port_scanner = "0.1.5"
@@ -179,12 +170,12 @@ display-info = "0.5.0"  # should be removed after upgrading to tauri v2
 
 # OXC (The Oxidation Compiler)
 # We use it to parse and transpile the old script profile to esm based script profile
-oxc_parser = "0.82"
-oxc_allocator = "0.82"
-oxc_span = "0.82"
-oxc_ast = "0.82"
-oxc_syntax = "0.82"
-oxc_ast_visit = "0.82"
+oxc_parser = "0.87"
+oxc_allocator = "0.87"
+oxc_span = "0.87"
+oxc_ast = "0.87"
+oxc_syntax = "0.87"
+oxc_ast_visit = "0.87"
 
 # Lua Integration
 mlua = { version = "0.11", features = [

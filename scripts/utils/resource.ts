@@ -1,5 +1,5 @@
 // import { ArchMapping } from 'utils/manifest';
-import fetch, { type RequestInit } from 'node-fetch'
+import { fetch, type RequestInit } from 'undici'
 import {
   CLASH_META_ALPHA_MANIFEST,
   CLASH_META_MANIFEST,
@@ -219,7 +219,7 @@ export const getClashRsAlphaLatestVersion = async () => {
     const httpProxy = getProxyAgent()
 
     if (httpProxy) {
-      opts.agent = httpProxy
+      opts.dispatcher = httpProxy
     }
 
     const response = await fetch(VERSION_URL!, {
@@ -281,7 +281,7 @@ export const getMetaAlphaLatestVersion = async () => {
     const httpProxy = getProxyAgent()
 
     if (httpProxy) {
-      opts.agent = httpProxy
+      opts.dispatcher = httpProxy
     }
 
     const response = await fetch(VERSION_URL!, {
@@ -307,7 +307,7 @@ export const getNyanpasuServiceLatestVersion = async () => {
 
     const httpProxy = getProxyAgent()
     if (httpProxy) {
-      opts.agent = httpProxy
+      opts.dispatcher = httpProxy
     }
 
     const url = new URL('https://github.com')

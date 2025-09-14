@@ -14,12 +14,10 @@ use boa_engine::{
 };
 use boa_parser::Source;
 use futures_util::{StreamExt, stream::FuturesUnordered};
-use isahc::{
-    AsyncReadResponseExt, Request, RequestExt,
-    config::{Configurable, RedirectPolicy},
-};
 use mime::Mime;
 use smol::{LocalExecutor, future};
+// Tokio sync is not runtime related
+use tokio::sync::oneshot::channel as oneshot_channel;
 use url::Url;
 
 // Most of the boilerplate is taken from the `futures.rs` example.
@@ -181,29 +179,36 @@ impl ModuleLoader for HttpModuleLoader {
                 }
                 .await
             } else {
-                async {
-                    log::debug!("fetching `{url}`...");
-                    let mut response = Request::get(url.as_str())
-                        .redirect_policy(RedirectPolicy::Limit(5))
-                        .body(())?
-                        .send_async()
-                        .await?;
+                log::debug!("fetching `{url}`...");
+                let (tx, rx) = oneshot_channel();
+                let fetcher_url = url.clone();
+                nyanpasu_utils::runtime::spawn(async move {
+                    let result = async {
+                        let response = reqwest::Client::builder()
+                            .redirect(reqwest::redirect::Policy::limited(5))
+                            .build()?
+                            .get(fetcher_url.as_str())
+                            .send()
+                            .await?;
 
-                    let mime = response
-                        .headers()
-                        .get("content-type")
-                        .and_then(|v| v.to_str().ok())
-                        .map(|v| v.to_string())
-                        .unwrap_or(mime::TEXT_PLAIN.to_string());
-                    let body = response.text().await?;
+                        let mime = response
+                            .headers()
+                            .get(reqwest::header::CONTENT_TYPE)
+                            .and_then(|v| v.to_str().ok())
+                            .map(|v| v.to_string())
+                            .unwrap_or(mime::TEXT_PLAIN.to_string());
+                        let body = response.text().await?;
 
-                    log::debug!("finished fetching `{url}`");
-                    Ok(CachedItem {
-                        mime,
-                        content: body,
-                    })
-                }
-                .await
+                        log::debug!("finished fetching `{fetcher_url}`");
+                        Ok(CachedItem {
+                            mime,
+                            content: body,
+                        })
+                    }
+                    .await;
+                    let _ = tx.send(result);
+                });
+                rx.await.expect("should never drop oneshot tx")
             };
 
             if let Ok(item) = &item {

@@ -14,7 +14,9 @@ rustc-hash = { version = "2", features = ["std"] }
 boa_engine = { workspace = true, features = ["annex-b"] }
 boa_gc = { version = "0.20" }
 boa_parser = { version = "0.20", features = ["annex-b"] }
-isahc = "1.7"
+tokio = { workspace = true }
+nyanpasu-utils = { workspace = true }
+reqwest = { workspace = true }
 futures-util = "0.3"
 futures-concurrency = "7"
 smol = "2"

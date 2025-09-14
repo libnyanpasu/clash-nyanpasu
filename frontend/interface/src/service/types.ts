@@ -52,6 +52,13 @@ export interface VergeConfig {
   always_on_top?: boolean
 }
 
+export interface AutoReloadConfig {
+  enabled: boolean
+  onProxyChange: boolean
+  onProfileChange: boolean
+  onModeChange: boolean
+}
+
 export interface SystemProxy {
   enable: boolean
   server: string

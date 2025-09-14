@@ -4,87 +4,14 @@ import {
   LoggingLevel,
   ProxiesSelectorMode,
   useSetting,
-  type BreakWhenModeChange,
-  type BreakWhenProfileChange,
-  type BreakWhenProxyChange,
   type NetworkStatisticWidgetConfig,
 } from '@nyanpasu/interface'
 import { BaseCard, MenuItem, SwitchItem, TextItem } from '@nyanpasu/ui'
-
-const AutoCloseConnection = () => {
-  const { t } = useTranslation()
-
-  const { value, upsert } = useSetting('auto_close_connection')
-
-  return (
-    <SwitchItem
-      label={t('Auto Close Connections')}
-      checked={Boolean(value)}
-      onChange={() => upsert(!value)}
-    />
-  )
-}
-
-const BreakWhenProxyChangeSetting = () => {
-  const { t } = useTranslation()
-
-  const { value, upsert } = useSetting('break_when_proxy_change')
-
-  const options = {
-    none: t('None'),
-    chain: t('Chain'),
-    all: t('All'),
-  }
-
-  return (
-    <MenuItem
-      label={t('Break When Proxy Change')}
-      options={options}
-      selected={value || 'all'}
-      onSelected={(value) => upsert(value as BreakWhenProxyChange | null)}
-    />
-  )
-}
-
-const BreakWhenProfileChangeSetting = () => {
-  const { t } = useTranslation()
-
-  const { value, upsert } = useSetting('break_when_profile_change')
-
-  const options = {
-    off: t('Off'),
-    on: t('On'),
-  }
-
-  return (
-    <MenuItem
-      label={t('Break When Profile Change')}
-      options={options}
-      selected={value || 'on'}
-      onSelected={(value) => upsert(value as BreakWhenProfileChange | null)}
-    />
-  )
-}
-
-const BreakWhenModeChangeSetting = () => {
-  const { t } = useTranslation()
-
-  const { value, upsert } = useSetting('break_when_mode_change')
-
-  const options = {
-    off: t('Off'),
-    on: t('On'),
-  }
-
-  return (
-    <MenuItem
-      label={t('Break When Mode Change')}
-      options={options}
-      selected={value || 'on'}
-      onSelected={(value) => upsert(value as BreakWhenModeChange | null)}
-    />
-  )
-}
+import {
+  BreakWhenModeChangeSetting,
+  BreakWhenProfileChangeSetting,
+  BreakWhenProxyChangeSetting,
+} from './setting-nyanpasu-auto-reload'
 
 const EnableBuiltinEnhanced = () => {
   const { t } = useTranslation()
@@ -226,8 +153,6 @@ export const SettingNyanpasuMisc = () => {
         <TrayProxiesSelector />
 
         <NetworkWidgetVariant />
-
-        <AutoCloseConnection />
 
         <BreakWhenProxyChangeSetting />
 

@@ -1,6 +1,9 @@
 use crate::{
     config::{profile::ProfileBuilder, *},
-    core::{storage::Storage, tasks::jobs::ProfilesJobGuard, updater::ManifestVersionLatest, logger::Logger, *},
+    core::{
+        logger::Logger, storage::Storage, tasks::jobs::ProfilesJobGuard,
+        updater::ManifestVersionLatest, *,
+    },
     enhance::PostProcessingOutput,
     feat,
     utils::{
@@ -264,10 +267,10 @@ pub async fn patch_profiles_config(profiles: ProfilesBuilder) -> Result {
             handle::Handle::refresh_clash();
             Config::profiles().apply();
             (Config::profiles().data().save_file())?;
-            
+
             // Interrupt connections based on configuration
             let _ = crate::core::connection_interruption::ConnectionInterruptionService::on_profile_change().await;
-            
+
             Ok(())
         }
         Err(err) => {
@@ -689,10 +692,11 @@ pub async fn mutate_proxies() -> Result<crate::core::clash::proxies::Proxies> {
 pub async fn select_proxy(group: String, name: String) -> Result<()> {
     use crate::core::clash::proxies::{ProxiesGuard, ProxiesGuardExt};
     (ProxiesGuard::global().select_proxy(&group, &name).await)?;
-    
+
     // Interrupt connections based on configuration
-    let _ = crate::core::connection_interruption::ConnectionInterruptionService::on_proxy_change().await;
-    
+    let _ = crate::core::connection_interruption::ConnectionInterruptionService::on_proxy_change()
+        .await;
+
     Ok(())
 }
 

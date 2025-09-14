@@ -94,10 +94,12 @@ pub fn change_clash_mode(mode: String) {
 
     // refresh proxies
     update_proxies_buff(Some(rx));
-    
+
     // Interrupt connections based on configuration
     tauri::async_runtime::spawn(async move {
-        let _ = crate::core::connection_interruption::ConnectionInterruptionService::on_mode_change().await;
+        let _ =
+            crate::core::connection_interruption::ConnectionInterruptionService::on_mode_change()
+                .await;
     });
 }
 

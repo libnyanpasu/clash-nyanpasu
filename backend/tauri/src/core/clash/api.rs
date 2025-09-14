@@ -465,7 +465,7 @@ pub async fn delete_connections(id: Option<&str>) -> Result<()> {
         Some(id) => format!("/connections/{}", id),
         None => "/connections".to_string(),
     };
-    
+
     let _ = perform_request((Method::DELETE, path.as_str())).await?;
     Ok(())
 }

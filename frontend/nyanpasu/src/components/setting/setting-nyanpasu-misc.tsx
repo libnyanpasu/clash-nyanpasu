@@ -225,11 +225,11 @@ export const SettingNyanpasuMisc = () => {
         <NetworkWidgetVariant />
 
         <AutoCloseConnection />
-        
+
         <BreakWhenProxyChange />
-        
+
         <BreakWhenProfileChange />
-        
+
         <BreakWhenModeChange />
 
         <EnableBuiltinEnhanced />

@@ -8,12 +8,10 @@ on:
         required: true
         type: boolean
         default: false
-
       tag:
         description: 'Release Tag'
         required: true
         type: string
-
       arch:
         type: choice
         description: 'build arch target'
@@ -33,12 +31,10 @@ on:
         required: true
         type: boolean
         default: false
-
       tag:
         description: 'Release Tag'
         required: true
         type: string
-
       arch:
         type: string
         description: 'build arch target'
@@ -47,7 +43,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04 # 需要手动升级到 24.04
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
@@ -57,29 +53,27 @@ jobs:
         run: |
           rustup install stable --profile minimal --no-self-update
           rustup default stable
+
       - name: Setup Cargo binstall
         if: ${{ inputs.arch != 'x86_64' }}
         uses: cargo-bins/cargo-binstall@main
+
       - name: Setup Cross Toolchain
         if: ${{ inputs.arch != 'x86_64' }}
         shell: bash
         run: |
           case "${{ inputs.arch }}" in
             "i686")
-              rustup target add i686-unknown-linux-gnu
-              ;;
+              rustup target add i686-unknown-linux-gnu ;;
             "aarch64")
-              rustup target add aarch64-unknown-linux-gnu
-              ;;
+              rustup target add aarch64-unknown-linux-gnu ;;
             "armel")
-              rustup target add armv7-unknown-linux-gnueabi
-              ;;
+              rustup target add armv7-unknown-linux-gnueabi ;;
             "armhf")
-              rustup target add armv7-unknown-linux-gnueabihf
-              ;;
-          esac  
-
+              rustup target add armv7-unknown-linux-gnueabihf ;;
+          esac
           cargo binstall -y cross
+
       - name: Setup Toolchain
         run: |
           sudo apt-get update
@@ -96,36 +90,77 @@ jobs:
           run_install: false
 
       - name: Install Node.js dependencies
-        run: |
-          pnpm i
+        run: pnpm i
+
       - name: Prepare sidecars and resources
         shell: bash
         run: |
           case "${{ inputs.arch }}" in
             "x86_64")
-              pnpm check
-              ;;
+              pnpm check ;;
             "i686")
-              pnpm check --arch ia32 --sidecar-host i686-unknown-linux-gnu
-              ;;
+              pnpm check --arch ia32 --sidecar-host i686-unknown-linux-gnu ;;
             "aarch64")
-              pnpm check --arch arm64 --sidecar-host aarch64-unknown-linux-gnu
-              ;;
+              pnpm check --arch arm64 --sidecar-host aarch64-unknown-linux-gnu ;;
             "armel")
-              pnpm check --arch armel --sidecar-host armv7-unknown-linux-gnueabi
-              ;;
+              pnpm check --arch armel --sidecar-host armv7-unknown-linux-gnueabi ;;
             "armhf")
-              pnpm check --arch arm --sidecar-host armv7-unknown-linux-gnueabihf
-              ;;
+              pnpm check --arch arm --sidecar-host armv7-unknown-linux-gnueabihf ;;
           esac
 
       - name: Nightly Prepare
         if: ${{ inputs.nightly == true }}
         run: |
           pnpm prepare:nightly ${{ inputs.arch != 'x86_64' && '--disable-updater'}}
+
       - name: Build UI
+        run: pnpm -F ui build
+
+      # ===========================
+      # GTK 图标修复步骤（适用于所有架构）
+      # ===========================
+      - name: Fix GTK Icon Names
         run: |
-          pnpm -F ui build
+          ORIGINAL_NAME="Clash Nyanpasu"
+          FIXED_NAME="clash_nyanpasu"
+          ICON_SIZES=("32x32" "128x128" "256x256@2")
+
+          case "${{ inputs.arch }}" in
+            "x86_64")
+              TARGET_DIR="backend/target/release" ;;
+            "i686")
+              TARGET_DIR="backend/target/i686-unknown-linux-gnu/release" ;;
+            "aarch64")
+              TARGET_DIR="backend/target/aarch64-unknown-linux-gnu/release" ;;
+            "armel")
+              TARGET_DIR="backend/target/armv7-unknown-linux-gnueabi/release" ;;
+            "armhf")
+              TARGET_DIR="backend/target/armv7-unknown-linux-gnueabihf/release" ;;
+            *)
+              TARGET_DIR="backend/target/release" ;;
+          esac
+
+          for size in "${ICON_SIZES[@]}"; do
+            ICON_PATH="$TARGET_DIR/icons/hicolor/${size}/apps/${ORIGINAL_NAME}.png"
+            FIXED_ICON_PATH="$TARGET_DIR/icons/hicolor/${size}/apps/${FIXED_NAME}.png"
+            if [ -f "$ICON_PATH" ]; then
+              mv "$ICON_PATH" "$FIXED_ICON_PATH"
+              echo "Renamed $ICON_PATH -> $FIXED_ICON_PATH"
+            fi
+          done
+
+          DESKTOP_FILE="$TARGET_DIR/share/applications/${ORIGINAL_NAME}.desktop"
+          if [ -f "$DESKTOP_FILE" ]; then
+            sed -i "s/Icon=${ORIGINAL_NAME}/Icon=${FIXED_NAME}/g" "$DESKTOP_FILE"
+            echo "Updated desktop file Icon field"
+          fi
+
+          ICON_CACHE_DIR="$TARGET_DIR/icons/hicolor"
+          if [ -d "$ICON_CACHE_DIR" ]; then
+            gtk-update-icon-cache -f -t "$ICON_CACHE_DIR"
+            echo "GTK icon cache updated"
+          fi
+      # ===========================
       - name: Tauri build (x86_64)
         uses: tauri-apps/tauri-action@v0
         if: ${{ inputs.arch == 'x86_64' }}
@@ -133,7 +168,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-          NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
+          NIGHTLY: ${{ inputs.nightly == true && 'true' || 'false' }}
         with:
           tagName: ${{ inputs.tag }}
           releaseName: 'Clash Nyanpasu Dev'
@@ -142,6 +177,7 @@ jobs:
           prerelease: true
           tauriScript: pnpm tauri
           args: ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json' || '-f default-meta' }}
+
       - name: Tauri build and upload (cross)
         if: ${{ inputs.arch != 'x86_64' }}
         shell: bash
@@ -149,21 +185,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-          NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
+          NIGHTLY: ${{ inputs.nightly == true && 'true' || 'false' }}
         run: |
           case "${{ inputs.arch }}" in
             "i686")
-              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target i686-unknown-linux-gnu -b "rpm,deb"' || 'pnpm build -r cross --target i686-unknown-linux-gnu -b "rpm,deb" -c "{ "bundle": { "createUpdaterArtifacts": false } }"' }}
-              ;;
+              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target i686-unknown-linux-gnu -b "rpm,deb"' || 'pnpm build -r cross --target i686-unknown-linux-gnu -b "rpm,deb" -c "{ "bundle": { "createUpdaterArtifacts": false } }"' }} ;;
             "aarch64")
-              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target aarch64-unknown-linux-gnu -b "rpm,deb"' || 'pnpm build -r cross --target aarch64-unknown-linux-gnu -b "rpm,deb" -c "{ "bundle": { "createUpdaterArtifacts": false } }"' }}
-              ;;
+              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target aarch64-unknown-linux-gnu -b "rpm,deb"' || 'pnpm build -r cross --target aarch64-unknown-linux-gnu -b "rpm,deb" -c "{ "bundle": { "createUpdaterArtifacts": false } }"' }} ;;
             "armel")
-              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target armv7-unknown-linux-gnueabi -b "rpm,deb"' || 'pnpm build -r cross --target armv7-unknown-linux-gnueabi -b "rpm,deb" -c "{ "bundle": { "createUpdaterArtifacts": false } }"' }}
-              ;;
+              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target armv7-unknown-linux-gnueabi -b "rpm,deb"' || 'pnpm build -r cross --target armv7-unknown-linux-gnueabi -b "rpm,deb" -c "{ "bundle": { "createUpdaterArtifacts": false } }"' }} ;;
             "armhf")
-              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target armv7-unknown-linux-gnueabihf -b "rpm,deb"' || 'pnpm build -r cross --target armv7-unknown-linux-gnueabihf -b "rpm,deb" -c "{ "bundle": { "createUpdaterArtifacts": false } }"' }}
-              ;;
+              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target armv7-unknown-linux-gnueabihf -b "rpm,deb"' || 'pnpm build -r cross --target armv7-unknown-linux-gnueabihf -b "rpm,deb" -c "{ "bundle": { "createUpdaterArtifacts": false } }"' }} ;;
           esac
 
           find ./backend/target \( -name "*.deb" -o -name "*.rpm" \) | while read file; do
@@ -177,21 +209,21 @@ jobs:
           TAG_NAME=${{ inputs.tag }}
           find ./backend/target \( -name "*.deb" -o -name "*.rpm" \) | while read file; do
             sha_file="$file.sha256"
-
             if [[ ! -f "$sha_file" ]]; then
               sha256sum "$file" > "$sha_file"
               echo "Created checksum file for: $file"
             fi
-
             gh release upload $TAG_NAME "$sha_file" --clobber
             echo "Uploaded $sha_file to release $TAG_NAME"
           done
+
       - name: Upload AppImage to Github Artifact
         if: ${{ inputs.arch == 'x86_64' }}
         uses: actions/upload-artifact@v4
         with:
           name: Clash.Nyanpasu-linux-${{ inputs.arch }}-appimage
           path: ./backend/target/**/*.AppImage
+
       - name: Upload deb to Github Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -199,6 +231,7 @@ jobs:
           path: |
             ./backend/target/**/*.deb
             ./backend/target/**/*.deb.sha256
+
       - name: Upload rpm to Github Artifact
         uses: actions/upload-artifact@v4
         with:

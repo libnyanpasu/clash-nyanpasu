@@ -49,7 +49,7 @@ fn get_autostart_requirements() -> (bool, Vec<String>) {
             // KDE 可能需要特殊的桌面文件格式或权限
             (true, vec!["X-KDE-autostart-after=panel".to_string()])
         }
-        _ => (false, vec![])
+        _ => (false, vec![]),
     }
 }
 
@@ -167,13 +167,13 @@ impl Sysopt {
     pub fn init_launch(&self) -> Result<()> {
         let enable = { Config::verge().latest().enable_auto_launch };
         let enable = enable.unwrap_or(false);
-        
+
         log::info!(target: "app", "Initializing auto-launch with enable={}", enable);
-        
+
         let app_exe = current_exe()?;
         let app_exe = dunce::canonicalize(app_exe)?;
         log::debug!(target: "app", "Resolved app executable path: {:?}", app_exe);
-        
+
         let app_name = app_exe
             .file_stem()
             .and_then(|f| f.to_str())
@@ -184,7 +184,7 @@ impl Sysopt {
             .to_str()
             .ok_or(anyhow!("failed to get app_path"))?
             .to_string();
-        
+
         log::debug!(target: "app", "Initial app path: {}", app_path);
 
         // fix issue #26
@@ -223,14 +223,12 @@ impl Sysopt {
                 }
                 None => None,
             };
-            
+
             // 备用方法：检查环境变量
             let fallback_appimage = std::env::var("APPIMAGE").ok();
-            
-            let final_path = appimage_path
-                .or(fallback_appimage)
-                .unwrap_or(app_path);
-                
+
+            let final_path = appimage_path.or(fallback_appimage).unwrap_or(app_path);
+
             log::info!(target: "app", "Using executable path for auto-launch: {}", final_path);
             final_path
         };
@@ -241,7 +239,7 @@ impl Sysopt {
             .set_app_name(app_name)
             .set_app_path(&app_path)
             .build()?;
-        
+
         log::debug!(target: "app", "AutoLaunch builder created with app_name: {}", app_name);
 
         // 避免在开发时将自启动关了
@@ -270,20 +268,20 @@ impl Sysopt {
             if enable {
                 log::debug!(target: "app", "Enabling auto-launch for non-macOS platform");
                 auto.enable()?;
-                
+
                 // 验证桌面文件是否正确创建
                 #[cfg(target_os = "linux")]
                 {
                     let autostart_dir = dirs::config_dir()
                         .map(|d| d.join("autostart"))
                         .unwrap_or_else(|| std::path::PathBuf::from("~/.config/autostart"));
-                    
+
                     let desktop_file = autostart_dir.join(format!("{}.desktop", app_name));
-                    
+
                     // 验证文件是否存在
                     if desktop_file.exists() {
                         log::info!(target: "app", "Desktop file created successfully: {:?}", desktop_file);
-                        
+
                         // 可选：验证文件内容
                         if let Ok(content) = std::fs::read_to_string(&desktop_file) {
                             log::debug!(target: "app", "Desktop file content: {}", content);
@@ -291,11 +289,11 @@ impl Sysopt {
                     } else {
                         log::warn!(target: "app", "Desktop file not found after enable: {:?}", desktop_file);
                     }
-                    
+
                     // 检测桌面环境并记录
                     let desktop_env = detect_desktop_environment();
                     log::info!(target: "app", "Detected desktop environment: {}", desktop_env);
-                    
+
                     // 检查是否需要特殊处理
                     let (needs_special_handling, requirements) = get_autostart_requirements();
                     if needs_special_handling {

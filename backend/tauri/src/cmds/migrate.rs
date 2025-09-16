@@ -22,6 +22,19 @@ pub struct MigrateOpts {
     list: bool,
 }
 
+/// A fresh install instance should have a empty config dir,
+///
+/// The `app_config_dir` would create a new dir while access it.
+fn is_fresh_install_instance() -> bool {
+    crate::utils::dirs::app_config_dir()
+        .ok()
+        .and_then(|dir| std::fs::read_dir(dir).ok())
+        .is_some_and(|entry| {
+            let dirs = entry.collect::<Vec<Result<_, _>>>();
+            dirs.is_empty()
+        })
+}
+
 pub fn parse(args: &MigrateOpts) {
     let runner = if args.skip_advice {
         Runner::new_with_skip_advice()
@@ -50,6 +63,14 @@ pub fn parse(args: &MigrateOpts) {
     if args.migration.is_some() && args.version.is_some() {
         eprintln!("Please specify only one of migration or version.");
         std::process::exit(1);
+    }
+
+    // When `Drop`, commit the changes to the migration file.
+    let runner = runner.drop_guard();
+
+    if is_fresh_install_instance() {
+        eprintln!("Fresh install detected, skip all migrations");
+        return;
     }
 
     if args.migration.is_none() && args.version.is_none() {

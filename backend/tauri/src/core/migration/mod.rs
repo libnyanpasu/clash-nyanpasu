@@ -170,6 +170,22 @@ pub struct Runner<'a> {
     store: RefCell<db::MigrationFile<'a>>,
 }
 
+pub struct DropGuard<'a>(Runner<'a>);
+
+impl<'a> std::ops::Deref for DropGuard<'a> {
+    type Target = Runner<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'a> std::ops::DerefMut for DropGuard<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 impl Default for Runner<'_> {
     fn default() -> Self {
         let ver = Version::parse(crate::consts::BUILD_INFO.pkg_version).unwrap();
@@ -185,10 +201,10 @@ impl Default for Runner<'_> {
     }
 }
 
-impl Drop for Runner<'_> {
+impl Drop for DropGuard<'_> {
     fn drop(&mut self) {
         let mut store = self.store.take();
-        store.version = Cow::Borrowed(&self.current_version);
+        store.version = Cow::Borrowed(&self.0.current_version);
         store.write_file().unwrap();
     }
 }
@@ -315,6 +331,7 @@ impl Runner<'_> {
         }
         Ok(())
     }
+
     pub fn run_upcoming_units(&self) -> std::io::Result<()> {
         println!(
             "Running all upcoming units. It is supposed to run in Nightly build. If you see this message in Stable channel, report it in Github Issues Tracker please."
@@ -329,5 +346,11 @@ impl Runner<'_> {
             self.run_unit(unit)?;
         }
         Ok(())
+    }
+}
+
+impl<'a> Runner<'a> {
+    pub fn drop_guard(self) -> DropGuard<'a> {
+        DropGuard(self)
     }
 }

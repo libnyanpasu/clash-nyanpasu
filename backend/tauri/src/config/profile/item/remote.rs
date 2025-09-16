@@ -394,8 +394,9 @@ impl RemoteProfileBuilder {
         Ok(profile)
     }
 
+    /// NOTE: this call will block current async runtime, so it should be called in a blocking context
     pub fn build(&mut self) -> Result<RemoteProfile, RemoteProfileBuilderError> {
-        nyanpasu_utils::runtime::block_on_current_thread(self.build_no_blocking())
+        nyanpasu_utils::runtime::block_on_anywhere(self.build_no_blocking())
             .map_err(|e| RemoteProfileBuilderError::Validation(e.to_string()))
     }
 }

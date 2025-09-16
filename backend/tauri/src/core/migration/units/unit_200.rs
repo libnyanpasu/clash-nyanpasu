@@ -9,11 +9,14 @@ use crate::{
     utils::dirs,
 };
 
+mod profile_script_newtype;
+
 pub static UNITS: Lazy<Vec<DynMigration>> = Lazy::new(|| {
     vec![
         MigrateProfilesNullValue.boxed(),
         MigrateLanguageOption.boxed(),
         MigrateThemeSetting.boxed(),
+        profile_script_newtype::MigrateProfileScriptNewtype.boxed(),
     ]
 });
 

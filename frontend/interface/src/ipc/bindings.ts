@@ -1034,12 +1034,10 @@ export type JsonValue =
   | JsonValue[]
   | Partial<{ [key in string]: JsonValue }>
 export type LocalProfile = {
-  uid: string
   /**
-   * profile item type
-   * enum value: remote | local | script | merge
+   * Profile ID
    */
-  type: ProfileItemType
+  uid: string
   /**
    * profile name
    */
@@ -1071,12 +1069,10 @@ export type LocalProfile = {
  *
  */
 export type LocalProfileBuilder = {
-  uid: string | null
   /**
-   * profile item type
-   * enum value: remote | local | script | merge
+   * Profile ID
    */
-  type: ProfileItemType | null
+  uid: string | null
   /**
    * profile name
    */
@@ -1119,12 +1115,10 @@ export type ManifestVersionLatest = {
   clash_premium: string
 }
 export type MergeProfile = {
-  uid: string
   /**
-   * profile item type
-   * enum value: remote | local | script | merge
+   * Profile ID
    */
-  type: ProfileItemType
+  uid: string
   /**
    * profile name
    */
@@ -1147,12 +1141,10 @@ export type MergeProfile = {
  *
  */
 export type MergeProfileBuilder = {
-  uid: string | null
   /**
-   * profile item type
-   * enum value: remote | local | script | merge
+   * Profile ID
    */
-  type: ProfileItemType | null
+  uid: string | null
   /**
    * profile name
    */
@@ -1199,20 +1191,15 @@ export type PostProcessingOutput = {
   advice: [LogSpan, string][]
 }
 export type Profile =
-  | RemoteProfile
-  | LocalProfile
-  | MergeProfile
-  | ScriptProfile
+  | ({ type: 'remote' } & RemoteProfile)
+  | ({ type: 'local' } & LocalProfile)
+  | ({ type: 'merge' } & MergeProfile)
+  | ({ type: 'script' } & ScriptProfile)
 export type ProfileBuilder =
-  | RemoteProfileBuilder
-  | LocalProfileBuilder
-  | MergeProfileBuilder
-  | ScriptProfileBuilder
-export type ProfileItemType =
-  | 'remote'
-  | 'local'
-  | { script: ScriptType }
-  | 'merge'
+  | ({ type: 'remote' } & RemoteProfileBuilder)
+  | ({ type: 'local' } & LocalProfileBuilder)
+  | ({ type: 'merge' } & MergeProfileBuilder)
+  | ({ type: 'script' } & ScriptProfileBuilder)
 /**
  * Define the `profiles.yaml` schema
  */
@@ -1294,12 +1281,10 @@ export type ProxyItem = {
 }
 export type ProxyItemHistory = { time: string; delay: number }
 export type RemoteProfile = {
-  uid: string
   /**
-   * profile item type
-   * enum value: remote | local | script | merge
+   * Profile ID
    */
-  type: ProfileItemType
+  uid: string
   /**
    * profile name
    */
@@ -1339,12 +1324,10 @@ export type RemoteProfile = {
  *
  */
 export type RemoteProfileBuilder = {
-  uid: string | null
   /**
-   * profile item type
-   * enum value: remote | local | script | merge
+   * Profile ID
    */
-  type: ProfileItemType | null
+  uid: string | null
   /**
    * profile name
    */
@@ -1441,12 +1424,10 @@ export type RuntimeInfos = {
   nyanpasu_data_dir: string
 }
 export type ScriptProfile = {
-  uid: string
   /**
-   * profile item type
-   * enum value: remote | local | script | merge
+   * Profile ID
    */
-  type: ProfileItemType
+  uid: string
   /**
    * profile name
    */
@@ -1463,18 +1444,16 @@ export type ScriptProfile = {
    * update time
    */
   updated: number
-}
+} & { script_type: ScriptType }
 /**
  * Builder for [`ScriptProfile`](struct.ScriptProfile.html).
  *
  */
 export type ScriptProfileBuilder = {
-  uid: string | null
   /**
-   * profile item type
-   * enum value: remote | local | script | merge
+   * Profile ID
    */
-  type: ProfileItemType | null
+  uid: string | null
   /**
    * profile name
    */
@@ -1491,7 +1470,7 @@ export type ScriptProfileBuilder = {
    * update time
    */
   updated: number | null
-}
+} & { script_type: ScriptType | null }
 export type ScriptType = 'javascript' | 'lua'
 export type ServiceStatus = 'not_installed' | 'stopped' | 'running'
 export type StatisticWidgetVariant = 'large' | 'small'

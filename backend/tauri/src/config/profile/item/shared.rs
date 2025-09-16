@@ -127,7 +127,7 @@ impl ProfileSharedBuilder {
             builder.name = Some(Self::default_name(kind).to_string());
         }
         if self.file.is_none() {
-            builder.file = Some(Self::default_file_name(kind, self.uid.as_ref().unwrap()));
+            builder.file = Some(Self::default_file_name(kind, builder.uid.as_ref().unwrap()));
         }
 
         Ok(ProfileShared {

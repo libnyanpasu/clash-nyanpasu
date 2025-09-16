@@ -26,23 +26,6 @@ pub enum ProfileBuilderError {
 }
 
 impl ProfileBuilder {
-    pub fn fill_auto_generated_meta(&mut self) {
-        // match self {
-        //     ProfileBuilder::Remote(builder) => {
-        //         builder.shared.name(builder.shared.name());
-        //     }
-        //     ProfileBuilder::Local(builder) => {
-        //         builder.shared.name(builder.shared.name());
-        //     }
-        //     ProfileBuilder::Merge(builder) => {
-        //         builder.shared.name(builder.shared.name());
-        //     }
-        //     ProfileBuilder::Script(builder) => {
-        //         builder.shared.name(builder.shared.name());
-        //     }
-        // }
-    }
-
     pub fn build(self) -> Result<Profile, ProfileBuilderError> {
         let profile = match self {
             ProfileBuilder::Remote(mut builder) => builder.build()?.into(),

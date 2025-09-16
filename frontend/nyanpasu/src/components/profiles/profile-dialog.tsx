@@ -24,6 +24,7 @@ import { message } from '@/utils/notification'
 import { Divider, InputAdornment } from '@mui/material'
 import {
   LocalProfile,
+  ProfileBuilder,
   ProfileQueryResultItem,
   ProfileTemplate,
   RemoteProfile,
@@ -35,6 +36,11 @@ import { LabelSwitch } from '../setting/modules/clash-field'
 import { ReadProfile } from './read-profile'
 
 const ProfileMonacoViewer = lazy(() => import('./profile-monaco-viewer'))
+
+type RemoteOrLocalProfileBuilder = Extract<
+  ProfileBuilder,
+  { type: 'remote' | 'local' }
+>
 
 export interface ProfileDialogProps {
   profile?: ProfileQueryResultItem
@@ -67,21 +73,20 @@ export const ProfileDialog = ({
   const addProfileCtx = use(AddProfileContext)
   const [localProfileMessage, setLocalProfileMessage] = useState('')
 
-  const { control, watch, handleSubmit, reset, setValue } = useForm<
-    RemoteProfile | LocalProfile
-  >({
-    defaultValues: profile || {
-      type: 'remote',
-      name: addProfileCtx?.name || t(`New Profile`),
-      desc: addProfileCtx?.desc || '',
-      url: addProfileCtx?.url || '',
-      option: {
-        // user_agent: "",
-        with_proxy: false,
-        self_proxy: false,
+  const { control, watch, handleSubmit, reset, setValue } =
+    useForm<RemoteOrLocalProfileBuilder>({
+      defaultValues: (profile as RemoteOrLocalProfileBuilder) || {
+        type: 'remote',
+        name: addProfileCtx?.name || t(`New Profile`),
+        desc: addProfileCtx?.desc || '',
+        url: addProfileCtx?.url || '',
+        option: {
+          // user_agent: "",
+          with_proxy: false,
+          self_proxy: false,
+        },
       },
-    },
-  })
+    })
 
   useEffect(() => {
     if (addProfileCtx) {
@@ -180,7 +185,7 @@ export const ProfileDialog = ({
       await contentFn.upsert.mutateAsync(value)
 
       await patch.mutateAsync({
-        uid: form.uid,
+        uid: form.uid!,
         profile: form,
       })
     }

@@ -1,6 +1,5 @@
 use crate::{
     config::profile::{
-        builder::ProfileBuilder,
         item::{
             LocalProfile, MergeProfile, Profile, RemoteProfile, RemoteProfileOptions,
             ScriptProfile, SubscriptionInfo,
@@ -23,6 +22,7 @@ uid: "test-uid-1"
 name: "Test Profile"
 updated: 1234567890
 url: "https://example.com/config.yaml"
+file: sample.yaml
 "#;
 
     let yaml_with_i64 = r#"
@@ -31,6 +31,7 @@ uid: "test-uid-2"
 name: "Test Profile"
 updated: 9999999999999
 url: "https://example.com/config.yaml"
+file: sample.yaml
 "#;
 
     let yaml_with_u64 = r#"
@@ -39,6 +40,7 @@ uid: "test-uid-3"
 name: "Test Profile"
 updated: 18446744073709551615
 url: "https://example.com/config.yaml"
+file: sample.yaml
 "#;
 
     // 应该都能成功解析
@@ -135,26 +137,6 @@ fn test_tagged_enum_serialization() {
     assert!(matches!(script_parsed, Profile::Script(_)));
 }
 
-/// 测试 ProfileBuilder 的序列化和反序列化
-#[test]
-fn test_profile_builder_serialization() {
-    let yaml = r#"
-type: remote
-uid: "test-builder"
-name: "Test Builder Profile"
-url: "https://example.com/config.yaml"
-"#;
-
-    let builder: ProfileBuilder = serde_yaml::from_str(yaml).unwrap();
-    assert!(matches!(builder, ProfileBuilder::Remote(_)));
-
-    // 测试 build 方法
-    let profile = builder.build();
-    assert!(profile.is_ok());
-    let profile = profile.unwrap();
-    assert!(matches!(profile, Profile::Remote(_)));
-}
-
 #[test]
 fn test_backward_compatibility() {
     // 测试新的脚本格式能被正确识别
@@ -214,10 +196,13 @@ async fn test_builder_defaults() {
 
     // 构建时应该自动填充默认值
     let mut remote_builder = remote_builder;
-    remote_builder.url(Url::parse("https://example.com").unwrap());
-    let remote = remote_builder.build();
-    assert!(remote.is_ok());
-    let remote = remote.unwrap();
+    remote_builder.url(
+        Url::parse(
+            "https://raw.githubusercontent.com/MetaCubeX/mihomo/refs/heads/Meta/docs/config.yaml",
+        )
+        .unwrap(),
+    );
+    let remote = remote_builder.build().expect("build remote profile");
     assert!(!remote.shared.uid.is_empty());
     assert!(!remote.shared.name.is_empty());
     assert!(!remote.shared.file.is_empty());

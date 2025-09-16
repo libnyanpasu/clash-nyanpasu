@@ -72,12 +72,12 @@ const BreakWhenProfileChangeSetting = () => {
   return (
     <SwitchItem
       label={currentTranslations.profile}
-      checked={value !== 'off'}
+      checked={value === true}
       onChange={() => {
-        if (value === 'off') {
-          upsert('on' as any)
+        if (value === true) {
+          upsert(false as any)
         } else {
-          upsert('off' as any)
+          upsert(true as any)
         }
       }}
     />
@@ -98,12 +98,12 @@ const BreakWhenModeChangeSetting = () => {
   return (
     <SwitchItem
       label={currentTranslations.mode}
-      checked={value !== 'off'}
+      checked={value === true}
       onChange={() => {
-        if (value === 'off') {
-          upsert('on' as any)
+        if (value === true) {
+          upsert(false as any)
         } else {
-          upsert('off' as any)
+          upsert(true as any)
         }
       }}
     />

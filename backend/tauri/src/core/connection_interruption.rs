@@ -40,14 +40,11 @@ impl ConnectionInterruptionService {
         let config = Config::verge().data().clone();
         let break_when = config.break_when_profile_change.unwrap_or_default();
 
-        match break_when {
-            crate::config::nyanpasu::BreakWhenProfileChange::Off => {
-                // Do nothing
-                Ok(())
-            }
-            crate::config::nyanpasu::BreakWhenProfileChange::On => {
-                api::delete_connections(None).await
-            }
+        if break_when {
+            api::delete_connections(None).await
+        } else {
+            // Do nothing
+            Ok(())
         }
     }
 
@@ -56,12 +53,11 @@ impl ConnectionInterruptionService {
         let config = Config::verge().data().clone();
         let break_when = config.break_when_mode_change.unwrap_or_default();
 
-        match break_when {
-            crate::config::nyanpasu::BreakWhenModeChange::Off => {
-                // Do nothing
-                Ok(())
-            }
-            crate::config::nyanpasu::BreakWhenModeChange::On => api::delete_connections(None).await,
+        if break_when {
+            api::delete_connections(None).await
+        } else {
+            // Do nothing
+            Ok(())
         }
     }
 

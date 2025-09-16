@@ -742,8 +742,6 @@ export const events = __makeEvents__<{
 
 /** user-defined types **/
 
-export type BreakWhenModeChange = 'off' | 'on'
-export type BreakWhenProfileChange = 'off' | 'on'
 export type BreakWhenProxyChange = 'none' | 'chain' | 'all'
 export type BuildInfo = {
   app_name: string
@@ -955,16 +953,16 @@ export type IVerge = {
   break_when_proxy_change: BreakWhenProxyChange | null
   /**
    * 切换配置时中断连接
-   * On: 中断所有连接
-   * Off: 不中断连接
+   * true: 中断所有连接
+   * false: 不中断连接
    */
-  break_when_profile_change: BreakWhenProfileChange | null
+  break_when_profile_change: boolean | null
   /**
    * 切换模式时中断连接
-   * On: 中断所有连接
-   * Off: 不中断连接
+   * true: 中断所有连接
+   * false: 不中断连接
    */
-  break_when_mode_change: BreakWhenModeChange | null
+  break_when_mode_change: boolean | null
   /**
    * 默认的延迟测试连接
    */

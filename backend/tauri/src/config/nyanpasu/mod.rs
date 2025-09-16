@@ -140,22 +140,6 @@ pub enum BreakWhenProxyChange {
     All,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
-#[serde(rename_all = "snake_case")]
-pub enum BreakWhenProfileChange {
-    #[default]
-    Off,
-    On,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
-#[serde(rename_all = "snake_case")]
-pub enum BreakWhenModeChange {
-    #[default]
-    Off,
-    On,
-}
-
 /// ### `verge.yaml` schema
 #[derive(Default, Debug, Clone, Deserialize, Serialize, VergePatch, specta::Type)]
 #[verge(patch_fn = "patch_config")]
@@ -234,14 +218,14 @@ pub struct IVerge {
     pub break_when_proxy_change: Option<BreakWhenProxyChange>,
 
     /// 切换配置时中断连接
-    /// On: 中断所有连接
-    /// Off: 不中断连接
-    pub break_when_profile_change: Option<BreakWhenProfileChange>,
+    /// true: 中断所有连接
+    /// false: 不中断连接
+    pub break_when_profile_change: Option<bool>,
 
     /// 切换模式时中断连接
-    /// On: 中断所有连接
-    /// Off: 不中断连接
-    pub break_when_mode_change: Option<BreakWhenModeChange>,
+    /// true: 中断所有连接
+    /// false: 不中断连接
+    pub break_when_mode_change: Option<bool>,
 
     /// 默认的延迟测试连接
     pub default_latency_test: Option<String>,
@@ -384,8 +368,8 @@ impl IVerge {
             proxy_guard_interval: Some(30),
             auto_close_connection: Some(true),
             break_when_proxy_change: Some(BreakWhenProxyChange::All),
-            break_when_profile_change: Some(BreakWhenProfileChange::On),
-            break_when_mode_change: Some(BreakWhenModeChange::On),
+            break_when_profile_change: Some(true),
+            break_when_mode_change: Some(true),
             enable_builtin_enhanced: Some(true),
             enable_clash_fields: Some(true),
             lighten_animation_effects: Some(false),

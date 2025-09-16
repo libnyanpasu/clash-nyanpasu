@@ -49,19 +49,19 @@
     "react-use": "17.6.0",
     "rxjs": "7.8.2",
     "swr": "2.3.6",
-    "virtua": "0.43.0",
+    "virtua": "0.43.1",
     "vite-bundle-visualizer": "1.2.1"
   },
   "devDependencies": {
     "@csstools/normalize.css": "12.1.1",
     "@emotion/babel-plugin": "11.13.5",
     "@emotion/react": "11.14.0",
-    "@iconify/json": "2.2.383",
+    "@iconify/json": "2.2.384",
     "@monaco-editor/react": "4.7.0",
     "@tanstack/react-query": "5.87.4",
-    "@tanstack/react-router": "1.131.41",
-    "@tanstack/react-router-devtools": "1.131.42",
-    "@tanstack/router-plugin": "1.131.43",
+    "@tanstack/react-router": "1.131.44",
+    "@tanstack/react-router-devtools": "1.131.44",
+    "@tanstack/router-plugin": "1.131.44",
     "@tauri-apps/plugin-clipboard-manager": "2.3.0",
     "@tauri-apps/plugin-dialog": "2.4.0",
     "@tauri-apps/plugin-fs": "2.4.2",
@@ -93,6 +93,6 @@
     "vite-plugin-sass-dts": "1.3.31",
     "vite-plugin-svgr": "4.5.0",
     "vite-tsconfig-paths": "5.1.4",
-    "zod": "4.1.5"
+    "zod": "4.1.8"
   }
 }

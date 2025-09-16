@@ -742,6 +742,7 @@ export const events = __makeEvents__<{
 
 /** user-defined types **/
 
+export type BreakWhenProxyChange = 'none' | 'chain' | 'all'
 export type BuildInfo = {
   app_name: string
   app_version: string
@@ -939,9 +940,29 @@ export type IVerge = {
    */
   hotkeys: string[] | null
   /**
-   * 切换代理时自动关闭连接
+   * 切换代理时自动关闭连接 (已弃用)
+   * @deprecated use `break_when_proxy_change` instead
    */
   auto_close_connection: boolean | null
+  /**
+   * 切换代理时中断连接
+   * None: 不中断
+   * Chain: 仅中断使用该代理链的连接
+   * All: 中断所有连接
+   */
+  break_when_proxy_change: BreakWhenProxyChange | null
+  /**
+   * 切换配置时中断连接
+   * true: 中断所有连接
+   * false: 不中断连接
+   */
+  break_when_profile_change: boolean | null
+  /**
+   * 切换模式时中断连接
+   * true: 中断所有连接
+   * false: 不中断连接
+   */
+  break_when_mode_change: boolean | null
   /**
    * 默认的延迟测试连接
    */

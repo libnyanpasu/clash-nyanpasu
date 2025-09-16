@@ -7,6 +7,9 @@ use std::sync::Arc;
 use sysproxy::Sysproxy;
 use tauri::{async_runtime::Mutex as TokioMutex, utils::platform::current_exe};
 
+#[cfg(target_os = "linux")]
+use std::process::Command;
+
 pub struct Sysopt {
     /// current system proxy setting
     cur_sysproxy: Arc<Mutex<Option<Sysproxy>>>,
@@ -29,6 +32,25 @@ static DEFAULT_BYPASS: &str = "localhost,127.0.0.1,192.168.0.0/16,10.0.0.0/8,172
 #[cfg(target_os = "macos")]
 static DEFAULT_BYPASS: &str =
     "127.0.0.1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,localhost,*.local,*.crashlytics.com,<local>";
+
+#[cfg(target_os = "linux")]
+fn detect_desktop_environment() -> String {
+    std::env::var("XDG_CURRENT_DESKTOP")
+        .or_else(|_| std::env::var("DESKTOP_SESSION"))
+        .unwrap_or_else(|_| "unknown".to_string())
+        .to_lowercase()
+}
+
+#[cfg(target_os = "linux")]
+fn get_autostart_requirements(desktop_env: &str) -> (bool, Vec<String>) {
+    match desktop_env {
+        "kde" | "plasma" => {
+            // KDE 可能需要特殊的桌面文件格式或权限
+            (true, vec!["X-KDE-autostart-after=panel".to_string()])
+        }
+        _ => (false, vec![]),
+    }
+}
 
 impl Sysopt {
     pub fn global() -> &'static Sysopt {
@@ -145,8 +167,12 @@ impl Sysopt {
         let enable = { Config::verge().latest().enable_auto_launch };
         let enable = enable.unwrap_or(false);
 
+        log::info!(target: "app", "Initializing auto-launch with enable={}", enable);
+
         let app_exe = current_exe()?;
         let app_exe = dunce::canonicalize(app_exe)?;
+        log::debug!(target: "app", "Resolved app executable path: {:?}", app_exe);
+
         let app_name = app_exe
             .file_stem()
             .and_then(|f| f.to_str())
@@ -158,9 +184,13 @@ impl Sysopt {
             .ok_or(anyhow!("failed to get app_path"))?
             .to_string();
 
+        log::debug!(target: "app", "Initial app path: {}", app_path);
+
         // fix issue #26
         #[cfg(target_os = "windows")]
         let app_path = format!("\"{app_path}\"");
+        #[cfg(target_os = "windows")]
+        log::debug!(target: "app", "Windows formatted app path: {}", app_path);
 
         // use the /Applications/Clash Nyanpasu.app path
         #[cfg(target_os = "macos")]
@@ -174,6 +204,8 @@ impl Sysopt {
             }
         })()
         .unwrap_or(app_path);
+        #[cfg(target_os = "macos")]
+        log::debug!(target: "app", "macOS app path: {}", app_path);
 
         // fix #403
         #[cfg(target_os = "linux")]
@@ -182,25 +214,37 @@ impl Sysopt {
             use tauri::Manager;
 
             let handle = Handle::global();
-            match handle.app_handle.lock().as_ref() {
+            let appimage_path = match handle.app_handle.lock().as_ref() {
                 Some(app_handle) => {
+                    // 优先使用 Tauri 环境变量
                     let appimage = app_handle.env().appimage;
-                    appimage
-                        .and_then(|p| p.to_str().map(|s| s.to_string()))
-                        .unwrap_or(app_path)
+                    appimage.and_then(|p| p.to_str().map(|s| s.to_string()))
                 }
-                None => app_path,
-            }
+                None => None,
+            };
+
+            // 备用方法：检查环境变量
+            let fallback_appimage = std::env::var("APPIMAGE").ok();
+
+            let final_path = appimage_path.or(fallback_appimage).unwrap_or(app_path);
+
+            log::info!(target: "app", "Using executable path for auto-launch: {}", final_path);
+            final_path
         };
+
+        log::info!(target: "app", "Using executable path for auto-launch: {}", app_path);
 
         let auto = AutoLaunchBuilder::new()
             .set_app_name(app_name)
             .set_app_path(&app_path)
             .build()?;
 
+        log::debug!(target: "app", "AutoLaunch builder created with app_name: {}", app_name);
+
         // 避免在开发时将自启动关了
         #[cfg(feature = "verge-dev")]
         if !enable {
+            log::info!(target: "app", "Skipping auto-launch setup in development mode");
             return Ok(());
         }
 
@@ -208,16 +252,25 @@ impl Sysopt {
         {
             if enable && !auto.is_enabled().unwrap_or(false) {
                 // 避免重复设置登录项
+                log::debug!(target: "app", "macOS: Disabling existing auto-launch");
                 let _ = auto.disable();
+                log::debug!(target: "app", "macOS: Enabling auto-launch");
                 auto.enable()?;
             } else if !enable {
+                log::debug!(target: "app", "macOS: Disabling auto-launch");
                 let _ = auto.disable();
             }
         }
 
         #[cfg(not(target_os = "macos"))]
-        if enable {
-            auto.enable()?;
+        {
+            if enable {
+                log::debug!(target: "app", "Enabling auto-launch for non-macOS platform");
+                auto.enable()?;
+            } else {
+                log::debug!(target: "app", "Disabling auto-launch for non-macOS platform");
+                let _ = auto.disable();
+            }
         }
 
         *self.auto_launch.lock() = Some(auto);

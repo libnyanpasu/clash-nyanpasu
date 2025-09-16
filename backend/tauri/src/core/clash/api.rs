@@ -457,6 +457,19 @@ pub fn parse_check_output(log: String) -> String {
     log
 }
 
+/// DELETE /connections
+/// Close all connections or a specific connection by ID
+#[instrument]
+pub async fn delete_connections(id: Option<&str>) -> Result<()> {
+    let path = match id {
+        Some(id) => format!("/connections/{}", id),
+        None => "/connections".to_string(),
+    };
+
+    let _ = perform_request((Method::DELETE, path.as_str())).await?;
+    Ok(())
+}
+
 #[test]
 fn test_parse_check_output() {
     let str1 = r#"xxxx\n time="2022-11-18T20:42:58+08:00" level=error msg="proxy 0: 'alpn' expected type 'string', got unconvertible type '[]interface {}'""#;

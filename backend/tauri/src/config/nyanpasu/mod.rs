@@ -131,6 +131,15 @@ impl AsRef<str> for TunStack {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum BreakWhenProxyChange {
+    #[default]
+    None,
+    Chain,
+    All,
+}
+
 /// ### `verge.yaml` schema
 #[derive(Default, Debug, Clone, Deserialize, Serialize, VergePatch, specta::Type)]
 #[verge(patch_fn = "patch_config")]
@@ -198,8 +207,25 @@ pub struct IVerge {
     /// format: {func},{key}
     pub hotkeys: Option<Vec<String>>,
 
-    /// 切换代理时自动关闭连接
+    /// 切换代理时自动关闭连接 (已弃用)
+    #[deprecated(note = "use `break_when_proxy_change` instead")]
     pub auto_close_connection: Option<bool>,
+
+    /// 切换代理时中断连接
+    /// None: 不中断
+    /// Chain: 仅中断使用该代理链的连接
+    /// All: 中断所有连接
+    pub break_when_proxy_change: Option<BreakWhenProxyChange>,
+
+    /// 切换配置时中断连接
+    /// true: 中断所有连接
+    /// false: 不中断连接
+    pub break_when_profile_change: Option<bool>,
+
+    /// 切换模式时中断连接
+    /// true: 中断所有连接
+    /// false: 不中断连接
+    pub break_when_mode_change: Option<bool>,
 
     /// 默认的延迟测试连接
     pub default_latency_test: Option<String>,
@@ -297,6 +323,28 @@ impl IVerge {
             config.enable_service_mode = template.enable_service_mode;
         }
 
+        // Handle deprecated auto_close_connection by migrating to break_when_proxy_change
+        if config.auto_close_connection.is_some() && config.break_when_proxy_change.is_none() {
+            config.break_when_proxy_change = if config.auto_close_connection.unwrap() {
+                Some(BreakWhenProxyChange::All)
+            } else {
+                Some(BreakWhenProxyChange::None)
+            };
+        }
+
+        // Set defaults for new options if not present
+        if config.break_when_proxy_change.is_none() {
+            config.break_when_proxy_change = template.break_when_proxy_change;
+        }
+
+        if config.break_when_profile_change.is_none() {
+            config.break_when_profile_change = template.break_when_profile_change;
+        }
+
+        if config.break_when_mode_change.is_none() {
+            config.break_when_mode_change = template.break_when_mode_change;
+        }
+
         config
     }
 
@@ -319,6 +367,9 @@ impl IVerge {
             enable_proxy_guard: Some(false),
             proxy_guard_interval: Some(30),
             auto_close_connection: Some(true),
+            break_when_proxy_change: Some(BreakWhenProxyChange::All),
+            break_when_profile_change: Some(true),
+            break_when_mode_change: Some(true),
             enable_builtin_enhanced: Some(true),
             enable_clash_fields: Some(true),
             lighten_animation_effects: Some(false),

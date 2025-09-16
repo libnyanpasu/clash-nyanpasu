@@ -191,7 +191,7 @@ export const ScriptDialog = ({
   return (
     <BaseDialog
       title={
-        <div className="flex gap-2">
+        <div className="flex gap-2" data-tauri-drag-region>
           <span>{isEdit ? t('Edit Script') : t('New Script')}</span>
 
           <LanguageChip

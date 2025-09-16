@@ -37,7 +37,7 @@ import { zodSearchValidator } from '@tanstack/router-zod-adapter'
 
 const profileSearchParams = z.object({
   subscribeName: z.string().optional(),
-  subscribeUrl: z.string().url().optional(),
+  subscribeUrl: z.url().optional(),
   subscribeDesc: z.string().optional(),
 })
 

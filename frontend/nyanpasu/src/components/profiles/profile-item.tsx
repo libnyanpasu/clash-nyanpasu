@@ -35,6 +35,7 @@ import {
 import { alpha, cleanDeepClickEvent, cn } from '@nyanpasu/ui'
 import { ProfileDialog } from './profile-dialog'
 import { GlobalUpdatePendingContext } from './provider'
+import { ClashProfile } from './utils'
 
 export interface ProfileItemProps {
   item: ProfileQueryResultItem
@@ -43,7 +44,7 @@ export interface ProfileItemProps {
     global: undefined | 'info' | 'error' | 'warn'
     current: undefined | 'info' | 'error' | 'warn'
   }
-  onClickChains: (item: Profile) => void
+  onClickChains: (item: ClashProfile) => void
   chainsSelected?: boolean
 }
 
@@ -174,7 +175,7 @@ export const ProfileItem = memo(function ProfileItem({
     () => ({
       Select: () => handleSelect(),
       'Edit Info': () => setOpen(true),
-      'Proxy Chains': () => onClickChains(item),
+      'Proxy Chains': () => onClickChains(item as ClashProfile),
       'Open File': () => item?.view?.(),
       Update: () => handleUpdate(),
       'Update(Proxy)': () => handleUpdate(true),
@@ -308,7 +309,7 @@ export const ProfileItem = memo(function ProfileItem({
                 startIcon={<Terminal />}
                 onClick={(e) => {
                   cleanDeepClickEvent(e)
-                  onClickChains(item)
+                  onClickChains(item as ClashProfile)
                 }}
               >
                 {t('Proxy Chains')}

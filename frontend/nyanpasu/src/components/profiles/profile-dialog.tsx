@@ -24,6 +24,7 @@ import { message } from '@/utils/notification'
 import { Divider, InputAdornment } from '@mui/material'
 import {
   LocalProfile,
+  ProfileBuilder,
   ProfileQueryResultItem,
   ProfileTemplate,
   RemoteProfile,
@@ -33,6 +34,7 @@ import {
 import { BaseDialog } from '@nyanpasu/ui'
 import { LabelSwitch } from '../setting/modules/clash-field'
 import { ReadProfile } from './read-profile'
+import { ClashProfile, ClashProfileBuilder } from './utils'
 
 const ProfileMonacoViewer = lazy(() => import('./profile-monaco-viewer'))
 
@@ -67,21 +69,20 @@ export const ProfileDialog = ({
   const addProfileCtx = use(AddProfileContext)
   const [localProfileMessage, setLocalProfileMessage] = useState('')
 
-  const { control, watch, handleSubmit, reset, setValue } = useForm<
-    RemoteProfile | LocalProfile
-  >({
-    defaultValues: profile || {
-      type: 'remote',
-      name: addProfileCtx?.name || t(`New Profile`),
-      desc: addProfileCtx?.desc || '',
-      url: addProfileCtx?.url || '',
-      option: {
-        // user_agent: "",
-        with_proxy: false,
-        self_proxy: false,
+  const { control, watch, handleSubmit, reset, setValue } =
+    useForm<ClashProfileBuilder>({
+      defaultValues: (profile as ClashProfile) || {
+        type: 'remote',
+        name: addProfileCtx?.name || t(`New Profile`),
+        desc: addProfileCtx?.desc || '',
+        url: addProfileCtx?.url || '',
+        option: {
+          // user_agent: "",
+          with_proxy: false,
+          self_proxy: false,
+        },
       },
-    },
-  })
+    })
 
   useEffect(() => {
     if (addProfileCtx) {
@@ -126,7 +127,6 @@ export const ProfileDialog = ({
     editorMarks.current.length > 0 &&
     editorMarks.current.some((m) => m.severity === 8)
 
-  // eslint-disable-next-line react-compiler/react-compiler
   const onSubmit = handleSubmit(async (form) => {
     if (editorHasError()) {
       message('Please fix the error before saving', {
@@ -180,7 +180,7 @@ export const ProfileDialog = ({
       await contentFn.upsert.mutateAsync(value)
 
       await patch.mutateAsync({
-        uid: form.uid,
+        uid: form.uid!,
         profile: form,
       })
     }
@@ -336,7 +336,7 @@ export const ProfileDialog = ({
 
   useAsyncEffect(async () => {
     if (profile) {
-      reset(profile)
+      reset(profile as ClashProfileBuilder)
     }
 
     if (isEdit) {

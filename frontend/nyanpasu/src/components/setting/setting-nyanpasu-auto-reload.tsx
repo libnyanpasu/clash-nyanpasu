@@ -1,32 +1,57 @@
 import { useTranslation } from 'react-i18next'
-import {
-  useSetting,
-  type BreakWhenModeChange,
-  type BreakWhenProfileChange,
-  type BreakWhenProxyChange,
-} from '@nyanpasu/interface'
+import { useSetting } from '@nyanpasu/interface'
 import { SwitchItem } from '@nyanpasu/ui'
 
+// 定义各语言的翻译文本
+const translations = {
+  'zh-CN': {
+    proxy: '当代理切换时打断连接',
+    profile: '当配置文件切换时打断连接',
+    mode: '当模式切换时打断连接',
+  },
+  'zh-TW': {
+    proxy: '當代理切換時打斷連線',
+    profile: '當設定檔切換時打斷連線',
+    mode: '當模式切換時打斷連線',
+  },
+  ru: {
+    proxy: 'Прерывать соединения при смене прокси',
+    profile: 'Прерывать соединения при смене профиля',
+    mode: 'Прерывать соединения при смене режима',
+  },
+  en: {
+    proxy: 'Interrupt connections when proxy changes',
+    profile: 'Interrupt connections when profile changes',
+    mode: 'Interrupt connections when mode changes',
+  },
+  // 默认使用英文
+  default: {
+    proxy: 'Interrupt connections when proxy changes',
+    profile: 'Interrupt connections when profile changes',
+    mode: 'Interrupt connections when mode changes',
+  },
+}
+
 const BreakWhenProxyChangeSetting = () => {
-  const { t } = useTranslation()
+  const { i18n } = useTranslation()
+  const currentLang = i18n.language
 
-  const { value, upsert } = useSetting('break_when_proxy_change')
+  // 获取当前语言的翻译，如果找不到则使用默认英文
+  const currentTranslations =
+    translations[currentLang as keyof typeof translations] ||
+    translations.default
 
-  const options = {
-    none: t('None'),
-    chain: t('Chain'),
-    all: t('All'),
-  }
+  const { value, upsert } = useSetting('break_when_proxy_change' as any)
 
   return (
     <SwitchItem
-      label={t('当代理切换时重载配置')}
+      label={currentTranslations.proxy}
       checked={value !== 'none'}
       onChange={() => {
         if (value === 'none') {
-          upsert('all' as BreakWhenProxyChange)
+          upsert('all' as any)
         } else {
-          upsert('none' as BreakWhenProxyChange)
+          upsert('none' as any)
         }
       }}
     />
@@ -34,19 +59,25 @@ const BreakWhenProxyChangeSetting = () => {
 }
 
 const BreakWhenProfileChangeSetting = () => {
-  const { t } = useTranslation()
+  const { i18n } = useTranslation()
+  const currentLang = i18n.language
 
-  const { value, upsert } = useSetting('break_when_profile_change')
+  // 获取当前语言的翻译，如果找不到则使用默认英文
+  const currentTranslations =
+    translations[currentLang as keyof typeof translations] ||
+    translations.default
+
+  const { value, upsert } = useSetting('break_when_profile_change' as any)
 
   return (
     <SwitchItem
-      label={t('当配置文件切换时重载配置')}
+      label={currentTranslations.profile}
       checked={value !== 'off'}
       onChange={() => {
         if (value === 'off') {
-          upsert('on' as BreakWhenProfileChange)
+          upsert('on' as any)
         } else {
-          upsert('off' as BreakWhenProfileChange)
+          upsert('off' as any)
         }
       }}
     />
@@ -54,19 +85,25 @@ const BreakWhenProfileChangeSetting = () => {
 }
 
 const BreakWhenModeChangeSetting = () => {
-  const { t } = useTranslation()
+  const { i18n } = useTranslation()
+  const currentLang = i18n.language
 
-  const { value, upsert } = useSetting('break_when_mode_change')
+  // 获取当前语言的翻译，如果找不到则使用默认英文
+  const currentTranslations =
+    translations[currentLang as keyof typeof translations] ||
+    translations.default
+
+  const { value, upsert } = useSetting('break_when_mode_change' as any)
 
   return (
     <SwitchItem
-      label={t('当模式切换时重载配置')}
+      label={currentTranslations.mode}
       checked={value !== 'off'}
       onChange={() => {
         if (value === 'off') {
-          upsert('on' as BreakWhenModeChange)
+          upsert('on' as any)
         } else {
-          upsert('off' as BreakWhenModeChange)
+          upsert('off' as any)
         }
       }}
     />

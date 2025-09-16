@@ -267,40 +267,9 @@ impl Sysopt {
             if enable {
                 log::debug!(target: "app", "Enabling auto-launch for non-macOS platform");
                 auto.enable()?;
-
-                // 验证桌面文件是否正确创建
-                #[cfg(target_os = "linux")]
-                {
-                    let autostart_dir = dirs::config_dir()
-                        .map(|d| d.join("autostart"))
-                        .unwrap_or_else(|| std::path::PathBuf::from("~/.config/autostart"));
-
-                    let desktop_file = autostart_dir.join(format!("{}.desktop", app_name));
-
-                    // 验证文件是否存在
-                    if desktop_file.exists() {
-                        log::info!(target: "app", "Desktop file created successfully: {:?}", desktop_file);
-
-                        // 可选：验证文件内容
-                        if let Ok(content) = std::fs::read_to_string(&desktop_file) {
-                            log::debug!(target: "app", "Desktop file content: {}", content);
-                        }
-                    } else {
-                        log::warn!(target: "app", "Desktop file not found after enable: {:?}", desktop_file);
-                    }
-
-                    // 检测桌面环境并记录
-                    let desktop_env = detect_desktop_environment();
-                    log::info!(target: "app", "Detected desktop environment: {}", desktop_env);
-
-                    // 检查是否需要特殊处理
-                    let (needs_special_handling, requirements) = get_autostart_requirements(&desktop_env);
-                    if needs_special_handling {
-                        log::info!(target: "app", "Special handling required for desktop environment: {:?}", requirements);
-                    }
-                }
             } else {
                 log::debug!(target: "app", "Disabling auto-launch for non-macOS platform");
+                let _ = auto.disable();
             }
         }
 

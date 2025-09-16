@@ -42,9 +42,8 @@ fn detect_desktop_environment() -> String {
 }
 
 #[cfg(target_os = "linux")]
-fn get_autostart_requirements() -> (bool, Vec<String>) {
-    let desktop_env = detect_desktop_environment();
-    match desktop_env.as_str() {
+fn get_autostart_requirements(desktop_env: &str) -> (bool, Vec<String>) {
+    match desktop_env {
         "kde" | "plasma" => {
             // KDE 可能需要特殊的桌面文件格式或权限
             (true, vec!["X-KDE-autostart-after=panel".to_string()])
@@ -295,7 +294,7 @@ impl Sysopt {
                     log::info!(target: "app", "Detected desktop environment: {}", desktop_env);
 
                     // 检查是否需要特殊处理
-                    let (needs_special_handling, requirements) = get_autostart_requirements();
+                    let (needs_special_handling, requirements) = get_autostart_requirements(&desktop_env);
                     if needs_special_handling {
                         log::info!(target: "app", "Special handling required for desktop environment: {:?}", requirements);
                     }

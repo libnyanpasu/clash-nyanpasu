@@ -1,4 +1,4 @@
-#![feature(auto_traits, negative_impls, let_chains, trait_alias)]
+#![feature(auto_traits, negative_impls, trait_alias)]
 #![cfg_attr(
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
@@ -110,6 +110,11 @@ pub fn run() -> std::io::Result<()> {
         .is_ok_and(|instance| instance.is_some())
         && let Err(e) = init::run_pending_migrations()
     {
+        // Try to open migration log files
+        if let Ok(data_dir) = crate::utils::dirs::app_data_dir() {
+            let _ = crate::utils::open::that(data_dir.join("migration.log"));
+        }
+
         utils::dialog::panic_dialog(&format!(
             "Failed to finish migration event: {e}\nYou can see the detailed information at migration.log in your local data dir.\nYou're supposed to submit it as the attachment of new issue.",
         ));

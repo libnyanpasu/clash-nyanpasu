@@ -43,5 +43,23 @@
     "info": {
       "grant_core_permission": "Clash 核心需要系統管理員權限才能使 TUN 模式正常工作，是否授予？\n請注意：此操作需要輸入密碼。"
     }
-  }
+  },
+  "setting": {
+    "connection": {
+      "interrupt": {
+        "proxy": {
+          "label": "當代理切換時打斷連線"
+        },
+        "profile": {
+          "label": "當設定檔切換時打斷連線"
+        },
+        "mode": {
+          "label": "當模式切換時打斷連線"
+        }
+      }
+    }
+  },
+  "break_when_proxy_change": "當代理切換時打斷連線",
+  "break_when_profile_change": "當設定檔切換時打斷連線",
+  "break_when_mode_change": "當模式切換時打斷連線"
 }

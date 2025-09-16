@@ -43,5 +43,23 @@
     "info": {
       "grant_core_permission": "Clash 内核需要管理员权限才能使得 TUN 模式正常工作，是否授予？\n\n请注意：此操作需要输入密码。"
     }
-  }
+  },
+  "setting": {
+    "connection": {
+      "interrupt": {
+        "proxy": {
+          "label": "当代理切换时打断连接"
+        },
+        "profile": {
+          "label": "当配置文件切换时打断连接"
+        },
+        "mode": {
+          "label": "当模式切换时打断连接"
+        }
+      }
+    }
+  },
+  "break_when_proxy_change": "当代理切换时打断连接",
+  "break_when_profile_change": "当配置文件切换时打断连接",
+  "break_when_mode_change": "当模式切换时打断连接"
 }

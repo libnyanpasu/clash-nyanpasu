@@ -7,20 +7,11 @@ import {
   type NetworkStatisticWidgetConfig,
 } from '@nyanpasu/interface'
 import { BaseCard, MenuItem, SwitchItem, TextItem } from '@nyanpasu/ui'
-
-const AutoCloseConnection = () => {
-  const { t } = useTranslation()
-
-  const { value, upsert } = useSetting('auto_close_connection')
-
-  return (
-    <SwitchItem
-      label={t('Auto Close Connections')}
-      checked={Boolean(value)}
-      onChange={() => upsert(!value)}
-    />
-  )
-}
+import {
+  BreakWhenModeChangeSetting,
+  BreakWhenProfileChangeSetting,
+  BreakWhenProxyChangeSetting,
+} from './setting-nyanpasu-auto-reload'
 
 const EnableBuiltinEnhanced = () => {
   const { t } = useTranslation()
@@ -163,7 +154,11 @@ export const SettingNyanpasuMisc = () => {
 
         <NetworkWidgetVariant />
 
-        <AutoCloseConnection />
+        <BreakWhenProxyChangeSetting />
+
+        <BreakWhenProfileChangeSetting />
+
+        <BreakWhenModeChangeSetting />
 
         <EnableBuiltinEnhanced />
 

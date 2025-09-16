@@ -43,5 +43,23 @@
     "info": {
       "grant_core_permission": "Clash core needs admin permission to make TUN mode work properly, grant it?\nPlease note that this operation requires password input."
     }
-  }
+  },
+  "setting": {
+    "connection": {
+      "interrupt": {
+        "proxy": {
+          "label": "Interrupt connections when proxy changes"
+        },
+        "profile": {
+          "label": "Interrupt connections when profile changes"
+        },
+        "mode": {
+          "label": "Interrupt connections when mode changes"
+        }
+      }
+    }
+  },
+  "break_when_proxy_change": "Interrupt connections when proxy changes",
+  "break_when_profile_change": "Interrupt connections when profile changes",
+  "break_when_mode_change": "Interrupt connections when mode changes"
 }

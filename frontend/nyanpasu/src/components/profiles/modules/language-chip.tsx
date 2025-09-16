@@ -1,10 +1,7 @@
 import { Box } from '@mui/material'
 import { alpha } from '@nyanpasu/ui'
-import { getLanguage, ProfileType } from '../utils'
 
-export const LanguageChip = ({ type }: { type: ProfileType }) => {
-  const lang = getLanguage(type, true)
-
+export const LanguageChip = ({ lang }: { lang: string }) => {
   return (
     lang && (
       <Box

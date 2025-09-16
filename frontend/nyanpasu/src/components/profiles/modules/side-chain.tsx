@@ -9,7 +9,7 @@ import { Add } from '@mui/icons-material'
 import { ListItemButton } from '@mui/material'
 import { ProfileQueryResultItem, useProfile } from '@nyanpasu/interface'
 import { alpha } from '@nyanpasu/ui'
-import { ClashProfile, filterProfiles } from '../utils'
+import { ClashProfile, ClashProfileBuilder, filterProfiles } from '../utils'
 import ChainItem from './chain-item'
 import { atomChainsSelected, atomGlobalChainCurrent } from './store'
 
@@ -53,7 +53,7 @@ export const SideChain = ({ onChainEdit }: SideChainProps) => {
         await patch.mutateAsync({
           uid: currentProfile.uid,
           profile: {
-            ...currentProfile,
+            ...(currentProfile as ClashProfileBuilder),
             chain: updatedChains,
           },
         })

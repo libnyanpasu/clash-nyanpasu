@@ -1,21 +1,23 @@
 import { isEqual } from 'lodash-es'
-import type {
-  LocalProfile,
-  MergeProfile,
-  Profile,
-  RemoteProfile,
-  ScriptProfile,
-} from '@nyanpasu/interface'
+import type { Profile, ProfileBuilder } from '@nyanpasu/interface'
 
 /**
  * Represents a Clash configuration profile, which can be either locally stored or fetched from a remote source.
  */
-export type ClashProfile = LocalProfile | RemoteProfile
+export type ClashProfile = Extract<Profile, { type: 'remote' | 'local' }>
+export type ClashProfileBuilder = Extract<
+  ProfileBuilder,
+  { type: 'remote' | 'local' }
+>
 
 /**
  * Represents a Clash configuration profile that is a chain of multiple profiles.
  */
-export type ChainProfile = MergeProfile | ScriptProfile
+export type ChainProfile = Extract<Profile, { type: 'merge' | 'script' }>
+export type ChainProfileBuilder = Extract<
+  ProfileBuilder,
+  { type: 'merge' | 'script' }
+>
 
 /**
  * Filters an array of profiles into two categories: clash and chain profiles.
@@ -43,9 +45,7 @@ export function filterProfiles<T extends Profile>(items?: T[]) {
    * @returns {Array<{ type: string | { script: 'javascript' | 'lua' } }>} A filtered array containing only merge items or items with scripts
    */
   const chain = items?.filter(
-    (item) =>
-      item.type === 'merge' ||
-      (typeof item.type === 'object' && item.type.script),
+    (item) => item.type === 'merge' || item.type === 'script',
   )
 
   return {
@@ -57,25 +57,24 @@ export function filterProfiles<T extends Profile>(items?: T[]) {
 export type ProfileType = Profile['type']
 
 export const ProfileTypes = {
-  JavaScript: { script: 'javascript' },
-  LuaScript: { script: 'lua' },
-  Merge: 'merge',
+  JavaScript: { type: 'script', script_type: 'javascript' },
+  LuaScript: { type: 'script', script_type: 'lua' },
+  Merge: { type: 'merge' },
 } as const
 
-export const getLanguage = (type: ProfileType, snake?: boolean) => {
-  switch (true) {
-    case isEqual(type, ProfileTypes.JavaScript):
-    case isEqual(type, ProfileTypes.JavaScript.script): {
-      return snake ? 'JavaScript' : 'javascript'
-    }
-
-    case isEqual(type, ProfileTypes.LuaScript):
-    case isEqual(type, ProfileTypes.LuaScript.script): {
-      return snake ? 'Lua' : 'lua'
-    }
-
-    case isEqual(type, ProfileTypes.Merge): {
-      return snake ? 'YAML' : 'yaml'
-    }
+export const getLanguage = (profile: Profile) => {
+  switch (profile.type) {
+    case 'script':
+      switch (profile.script_type) {
+        case 'javascript':
+          return 'JavaScript'
+        case 'lua':
+          return 'Lua'
+      }
+      break
+    case 'merge':
+    case 'local':
+    case 'remote':
+      return 'YAML'
   }
 }

@@ -13,7 +13,12 @@ import {
 } from '@nyanpasu/interface'
 import { BaseDialog, BaseDialogProps } from '@nyanpasu/ui'
 import LanguageChip from './modules/language-chip'
-import { getLanguage, ProfileType, ProfileTypes } from './utils'
+import {
+  ChainProfileBuilder,
+  getLanguage,
+  ProfileType,
+  ProfileTypes,
+} from './utils'
 
 const ProfileMonacoViewer = lazy(() => import('./profile-monaco-viewer'))
 
@@ -47,7 +52,10 @@ const optionTypeMapping = [
 const convertTypeMapping = (data: Profile) => {
   optionTypeMapping.forEach((option) => {
     if (option.id === data.type) {
-      data.type = option.value
+      data = {
+        ...data,
+        ...option,
+      }
     }
   })
 
@@ -82,7 +90,6 @@ export const ScriptDialog = ({
     } else {
       form.reset({
         type: 'merge',
-        chain: [],
         name: t('New Script'),
         desc: '',
       })
@@ -93,10 +100,12 @@ export const ScriptDialog = ({
 
   const editor = useReactive<{
     value: string
+    displayLanguage: string
     language: string
     rawType: ProfileType
   }>({
     value: ProfileTemplate.merge,
+    displayLanguage: 'YAML',
     language: 'yaml',
     rawType: 'merge',
   })
@@ -127,13 +136,13 @@ export const ScriptDialog = ({
         await contentFn.upsert.mutateAsync(editorValue)
         await patch.mutateAsync({
           uid: data.uid,
-          profile: data,
+          profile: data as ChainProfileBuilder,
         })
       } else {
         await create.mutateAsync({
           type: 'manual',
           data: {
-            item: data,
+            item: data as ChainProfileBuilder,
             fileData: editorValue,
           },
         })
@@ -148,10 +157,12 @@ export const ScriptDialog = ({
       const result = await contentFn.query.refetch()
 
       editor.value = result.data ?? ''
-      editor.language = getLanguage(profile!.type)!
+      editor.displayLanguage = getLanguage(profile!)
+      editor.language = editor.displayLanguage.toLowerCase()
     } else {
       editor.value = ProfileTemplate.merge
-      editor.language = 'yaml'
+      editor.displayLanguage = 'YAML'
+      editor.language = editor.displayLanguage.toLowerCase()
     }
 
     setOpenMonaco(open)
@@ -162,15 +173,16 @@ export const ScriptDialog = ({
 
     editor.rawType = convertTypeMapping(data).type
 
-    const lang = getLanguage(editor.rawType)
+    const lang = getLanguage(data)
 
     if (!lang) {
       return
     }
 
-    editor.language = lang
+    editor.displayLanguage = lang
+    editor.language = editor.displayLanguage.toLowerCase()
 
-    switch (lang) {
+    switch (editor.language) {
       case 'yaml': {
         editor.value = ProfileTemplate.merge
         break
@@ -195,7 +207,9 @@ export const ScriptDialog = ({
           <span>{isEdit ? t('Edit Script') : t('New Script')}</span>
 
           <LanguageChip
-            type={isEdit ? (profile?.type ?? editor.rawType) : editor.rawType}
+            lang={
+              isEdit && profile ? getLanguage(profile) : editor.displayLanguage
+            }
           />
         </div>
       }
@@ -260,9 +274,7 @@ export const ScriptDialog = ({
               onValidate={(marks) => {
                 editorMarks.current = marks
               }}
-              schemaType={
-                editor.rawType === ProfileTypes.Merge ? 'merge' : undefined
-              }
+              schemaType={editor.rawType === 'merge' ? 'merge' : undefined}
             />
           )}
         </Suspense>

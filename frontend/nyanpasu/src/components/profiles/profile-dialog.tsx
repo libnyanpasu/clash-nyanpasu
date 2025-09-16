@@ -34,13 +34,9 @@ import {
 import { BaseDialog } from '@nyanpasu/ui'
 import { LabelSwitch } from '../setting/modules/clash-field'
 import { ReadProfile } from './read-profile'
+import { ClashProfile, ClashProfileBuilder } from './utils'
 
 const ProfileMonacoViewer = lazy(() => import('./profile-monaco-viewer'))
-
-type RemoteOrLocalProfileBuilder = Extract<
-  ProfileBuilder,
-  { type: 'remote' | 'local' }
->
 
 export interface ProfileDialogProps {
   profile?: ProfileQueryResultItem
@@ -74,8 +70,8 @@ export const ProfileDialog = ({
   const [localProfileMessage, setLocalProfileMessage] = useState('')
 
   const { control, watch, handleSubmit, reset, setValue } =
-    useForm<RemoteOrLocalProfileBuilder>({
-      defaultValues: (profile as RemoteOrLocalProfileBuilder) || {
+    useForm<ClashProfileBuilder>({
+      defaultValues: (profile as ClashProfile) || {
         type: 'remote',
         name: addProfileCtx?.name || t(`New Profile`),
         desc: addProfileCtx?.desc || '',
@@ -131,7 +127,6 @@ export const ProfileDialog = ({
     editorMarks.current.length > 0 &&
     editorMarks.current.some((m) => m.severity === 8)
 
-  // eslint-disable-next-line react-compiler/react-compiler
   const onSubmit = handleSubmit(async (form) => {
     if (editorHasError()) {
       message('Please fix the error before saving', {
@@ -341,7 +336,7 @@ export const ProfileDialog = ({
 
   useAsyncEffect(async () => {
     if (profile) {
-      reset(profile)
+      reset(profile as ClashProfileBuilder)
     }
 
     if (isEdit) {

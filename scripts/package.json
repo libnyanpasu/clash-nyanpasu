@@ -19,7 +19,7 @@
     "adm-zip": "0.5.16",
     "colorize-template": "1.0.0",
     "consola": "3.4.2",
-    "fs-extra": "11.3.1",
+    "fs-extra": "11.3.2",
     "octokit": "5.0.3",
     "picocolors": "1.1.1",
     "tar": "7.4.3",

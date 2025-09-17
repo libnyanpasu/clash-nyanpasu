@@ -246,15 +246,24 @@ pub fn get_single_instance_placeholder() -> Result<String> {
     let cfg_dir = crate::utils::dirs::app_config_dir()?;
     #[cfg(windows)]
     {
-        use std::{
-            collections::hash_map::DefaultHasher,
-            hash::{Hash, Hasher},
-        };
-        let mut hasher = DefaultHasher::new();
-        cfg_dir.to_string_lossy().hash(&mut hasher);
-        let hash = hasher.finish();
-        // Use session-local namespace and include app name + config-dir hash to avoid invalid chars and ensure per-user/per-config uniqueness
-        return Ok(format!("Local\\{}-{:x}", APP_NAME, hash));
+        // Try to get user SID for better user isolation
+        match crate::utils::winreg::get_current_user_sid() {
+            Ok(sid) => {
+                // Use session-local namespace and include app name + user SID to ensure per-user uniqueness
+                return Ok(format!("Local\\{}-{}", APP_NAME, sid));
+            }
+            Err(_) => {
+                // Fallback to config dir hashing if SID retrieval fails
+                use std::{
+                    collections::hash_map::DefaultHasher,
+                    hash::{Hash, Hasher},
+                };
+                let mut hasher = DefaultHasher::new();
+                cfg_dir.to_string_lossy().hash(&mut hasher);
+                let hash = hasher.finish();
+                return Ok(format!("Local\\{}-{:x}", APP_NAME, hash));
+            }
+        }
     }
     #[cfg(not(windows))]
     {

@@ -193,9 +193,8 @@ pub async fn proxies_updated_receiver() {
                     TrayUpdateType::Part(action_list) => {
                         debug!("should do partial update, op list: {:?}", action_list);
                         tray_proxies_holder = current_tray_proxies;
-                        debug!("todo: platform_impl::update_selected_proxies(&action_list)");
-                        // platform_impl::update_selected_proxies(&action_list);
-                        // debug!("update selected proxies success");
+                        platform_impl::update_selected_proxies(&action_list);
+                        debug!("update selected proxies success");
                     }
                     _ => {}
                 }

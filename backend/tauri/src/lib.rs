@@ -90,13 +90,20 @@ pub fn run() -> std::io::Result<()> {
     #[cfg(not(feature = "verge-dev"))]
     tauri_plugin_deep_link::prepare("moe.elaina.clash.nyanpasu");
 
-    // 单例检测
+    // 单例检测 with robust logging
     let single_instance_result = utils::init::check_singleton();
-    if single_instance_result
-        .as_ref()
-        .is_ok_and(|instance| instance.is_none())
-    {
-        std::process::exit(0);
+    match &single_instance_result {
+        Ok(Some(_)) => {
+            tracing::info!(target: "app", "Acquired single-instance lock");
+        }
+        Ok(None) => {
+            tracing::warn!(target: "app", "Another instance is running; exiting");
+            std::process::exit(0);
+        }
+        Err(e) => {
+            tracing::error!(target: "app", "Failed to check single-instance lock: {e:?}");
+            // Policy: continue startup in best-effort mode
+        }
     }
     // Use system locale as default
     let locale = {
@@ -309,7 +316,11 @@ pub fn run() -> std::io::Result<()> {
     rust_i18n::set_locale(verge.as_str());
 
     // show a dialog to print the single instance error
-    let _singleton = single_instance_result.unwrap().unwrap(); // hold the guard until the end of the program
+    // Hold the guard until the end of the program if acquired
+    let _singleton = match single_instance_result {
+        Ok(Some(guard)) => Some(guard),
+        _ => None,
+    };
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()

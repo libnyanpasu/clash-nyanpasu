@@ -265,7 +265,7 @@ pub fn init_service() -> Result<()> {
 }
 
 pub fn check_singleton() -> Result<Option<single_instance::SingleInstance>> {
-    let placeholder = super::dirs::get_single_instance_placeholder();
+    let placeholder = super::dirs::get_single_instance_placeholder()?;
     for i in 0..5 {
         let instance = single_instance::SingleInstance::new(&placeholder)
             .context("failed to create single instance")?;

@@ -28,7 +28,12 @@ pub fn get_app_dir() -> Result<Option<PathBuf>> {
     if path.is_empty() {
         return Ok(None);
     }
-    Ok(Some(PathBuf::from(path)))
+    let path = PathBuf::from(path);
+    // Basic validation: ensure absolute path
+    if !path.is_absolute() {
+        return Ok(None);
+    }
+    Ok(Some(path))
 }
 
 pub fn set_app_dir(path: &Path) -> Result<()> {

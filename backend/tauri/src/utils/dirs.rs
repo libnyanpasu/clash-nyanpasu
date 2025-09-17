@@ -242,19 +242,23 @@ pub fn path_to_str(path: &PathBuf) -> Result<&str> {
     Ok(path_str)
 }
 
-pub fn get_single_instance_placeholder() -> String {
+pub fn get_single_instance_placeholder() -> Result<String> {
+    let cfg_dir = crate::utils::dirs::app_config_dir()?;
     #[cfg(windows)]
     {
-        APP_NAME.to_string()
+        use std::{
+            collections::hash_map::DefaultHasher,
+            hash::{Hash, Hasher},
+        };
+        let mut hasher = DefaultHasher::new();
+        cfg_dir.to_string_lossy().hash(&mut hasher);
+        let hash = hasher.finish();
+        // Use session-local namespace and include app name + config-dir hash to avoid invalid chars and ensure per-user/per-config uniqueness
+        return Ok(format!("Local\\{}-{:x}", APP_NAME, hash));
     }
-
     #[cfg(not(windows))]
     {
-        crate::utils::dirs::app_data_dir()
-            .unwrap()
-            .join("instance.lock")
-            .to_string_lossy()
-            .to_string()
+        return Ok(cfg_dir.join("instance.lock").to_string_lossy().to_string());
     }
 }
 

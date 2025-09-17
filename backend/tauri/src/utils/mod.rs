@@ -17,3 +17,7 @@ pub mod open;
 
 pub mod dock;
 pub mod sudo;
+
+#[cfg(test)]
+#[cfg(windows)]
+mod winreg_test;

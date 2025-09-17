@@ -128,7 +128,7 @@ pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
 
     // 1. waiting for app exited
     println!("waiting for app exited.");
-    let placeholder = dirs::get_single_instance_placeholder();
+    let placeholder = dirs::get_single_instance_placeholder()?;
     let mut single_instance: single_instance::SingleInstance;
     loop {
         single_instance = single_instance::SingleInstance::new(&placeholder)

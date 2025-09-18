@@ -9,7 +9,46 @@ use crate::{
     enhance::ScriptType,
 };
 use serde_yaml;
+use tokio_util::sync::CancellationToken;
 use url::Url;
+
+const REMOTE_SAMPLE_DATA: &str = include_str!("../../../tests/sample_clash_config.yaml");
+
+struct Guard(CancellationToken, Option<tokio::task::JoinHandle<()>>);
+
+impl Drop for Guard {
+    fn drop(&mut self) {
+        self.0.cancel();
+        if let Some(handle) = self.1.take() {
+            nyanpasu_utils::runtime::block_on_anywhere(handle).unwrap();
+        }
+    }
+}
+
+async fn create_test_server() -> (Guard, url::Url) {
+    let port = port_scanner::request_open_port().unwrap();
+    let url = Url::parse(&format!("http://127.0.0.1:{port}")).unwrap();
+    let token = CancellationToken::new();
+    let token_clone = token.clone();
+    let (is_ready_tx, is_ready_rx) = tokio::sync::oneshot::channel();
+    let handle = tokio::spawn(async move {
+        let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
+            .await
+            .unwrap();
+        let _ = is_ready_tx.send(());
+        let app = axum::Router::new().route(
+            "/sample_clash_config",
+            axum::routing::get(|| async { REMOTE_SAMPLE_DATA }),
+        );
+        axum::serve(listener, app.into_make_service())
+            .with_graceful_shutdown(async move { token.cancelled().await })
+            .await
+            .unwrap();
+    });
+    let _ = is_ready_rx.await;
+    let guard = Guard(token_clone, Some(handle));
+    (guard, url)
+}
 
 /// 测试整数类型不匹配问题
 /// 这是原始问题的核心：YAML 解析时整数类型可能不一致
@@ -187,8 +226,9 @@ fn test_profile_kind_getter() {
 }
 
 /// 测试 builder 的默认值设置
-#[tokio::test(flavor = "multi_thread")]
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn test_builder_defaults() {
+    let (_guard, mut url) = create_test_server().await;
     let remote_builder = RemoteProfile::builder();
     let local_builder = LocalProfile::builder();
     let merge_builder = MergeProfile::builder();
@@ -196,12 +236,8 @@ async fn test_builder_defaults() {
 
     // 构建时应该自动填充默认值
     let mut remote_builder = remote_builder;
-    remote_builder.url(
-        Url::parse(
-            "https://raw.githubusercontent.com/MetaCubeX/mihomo/refs/heads/Meta/docs/config.yaml",
-        )
-        .unwrap(),
-    );
+    url.set_path("sample_clash_config");
+    remote_builder.url(url.clone());
     let remote = remote_builder.build().expect("build remote profile");
     assert!(!remote.shared.uid.is_empty());
     assert!(!remote.shared.name.is_empty());

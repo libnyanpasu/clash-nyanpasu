@@ -161,7 +161,8 @@ tracing-subscriber = { version = "0.3", features = [
 tracing-error = "0.2"
 tracing-log = { version = "0.2" }
 tracing-appender = { version = "0.2", features = ["parking_lot"] }
-test-log = { version = "0.2.16", features = ["trace"] }
+test-log = { workspace = true }
+tracing-test = { workspace = true }
 
 # Image & Graphics
 image = "0.25.5"

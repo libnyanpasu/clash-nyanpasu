@@ -1609,6 +1609,7 @@ dependencies = [
  "tracing-futures",
  "tracing-log",
  "tracing-subscriber",
+ "tracing-test",
  "url",
  "urlencoding",
  "uuid",
@@ -10066,6 +10067,25 @@ dependencies = [
  "tracing-core",
  "tracing-log",
  "tracing-serde",
+]
+
+[[package]]
+name = "tracing-test"
+version = "0.2.5"
+source = "git+https://github.com/Frando/tracing-test.git?rev=e81ec65#e81ec655a5ec5c4351104628b1b1ba694f80a1dc"
+dependencies = [
+ "tracing-core",
+ "tracing-subscriber",
+ "tracing-test-macro",
+]
+
+[[package]]
+name = "tracing-test-macro"
+version = "0.2.5"
+source = "git+https://github.com/Frando/tracing-test.git?rev=e81ec65#e81ec655a5ec5c4351104628b1b1ba694f80a1dc"
+dependencies = [
+ "quote",
+ "syn 2.0.106",
 ]
 
 [[package]]

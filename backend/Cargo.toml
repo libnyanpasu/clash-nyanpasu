@@ -27,6 +27,11 @@ tokio = { version = "1", features = ["full"] }
 nyanpasu-utils = { git = "https://github.com/libnyanpasu/nyanpasu-utils.git", features = [
   "specta",
 ] }
+test-log = { version = "0.2.16", features = ["trace"] }
+tracing-test = { git = "https://github.com/Frando/tracing-test.git", rev = "e81ec65", features = [
+  "no-env-filter",
+  "pretty-log-printing",
+] }
 
 [profile.release]
 panic = "unwind"

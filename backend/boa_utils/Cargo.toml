@@ -37,5 +37,5 @@ serde_json = { version = "1.0", features = ["preserve_order"] }
 [dev-dependencies]
 indoc = "2"
 textwrap = "0.16"
-test-log = "0.2"
+test-log = { workspace = true }
 tempfile = "3.17"

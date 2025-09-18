@@ -23,6 +23,28 @@ import type { ClashMemory } from '../ipc/use-clash-memory'
 import type { ClashTraffic } from '../ipc/use-clash-traffic'
 import { useClashWebSocket } from '../ipc/use-clash-web-socket'
 
+// Utility functions for localStorage persistence
+const createPersistedState = (key: string, defaultValue: boolean) => {
+  const getStoredValue = (): boolean => {
+    try {
+      const item = localStorage.getItem(key)
+      return item ? JSON.parse(item) : defaultValue
+    } catch {
+      return defaultValue
+    }
+  }
+
+  const setStoredValue = (value: boolean) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value))
+    } catch {
+      // Ignore storage errors
+    }
+  }
+
+  return { getStoredValue, setStoredValue }
+}
+
 const ClashWSContext = createContext<{
   recordLogs: boolean
   setRecordLogs: (value: boolean) => void
@@ -45,13 +67,47 @@ export const useClashWSContext = () => {
 }
 
 export const ClashWSProvider = ({ children }: PropsWithChildren) => {
-  const [recordLogs, setRecordLogs] = useState(true)
+  // Create persisted state handlers
+  const logsStorage = createPersistedState('clash-ws-record-logs', true)
+  const trafficStorage = createPersistedState('clash-ws-record-traffic', true)
+  const memoryStorage = createPersistedState('clash-ws-record-memory', true)
+  const connectionsStorage = createPersistedState(
+    'clash-ws-record-connections',
+    true,
+  )
 
-  const [recordTraffic, setRecordTraffic] = useState(true)
+  // Initialize states with persisted values
+  const [recordLogs, setRecordLogsState] = useState(logsStorage.getStoredValue)
+  const [recordTraffic, setRecordTrafficState] = useState(
+    trafficStorage.getStoredValue,
+  )
+  const [recordMemory, setRecordMemoryState] = useState(
+    memoryStorage.getStoredValue,
+  )
+  const [recordConnections, setRecordConnectionsState] = useState(
+    connectionsStorage.getStoredValue,
+  )
 
-  const [recordMemory, setRecordMemory] = useState(true)
+  // Wrapped setters that also persist to localStorage
+  const setRecordLogs = (value: boolean) => {
+    setRecordLogsState(value)
+    logsStorage.setStoredValue(value)
+  }
 
-  const [recordConnections, setRecordConnections] = useState(true)
+  const setRecordTraffic = (value: boolean) => {
+    setRecordTrafficState(value)
+    trafficStorage.setStoredValue(value)
+  }
+
+  const setRecordMemory = (value: boolean) => {
+    setRecordMemoryState(value)
+    memoryStorage.setStoredValue(value)
+  }
+
+  const setRecordConnections = (value: boolean) => {
+    setRecordConnectionsState(value)
+    connectionsStorage.setStoredValue(value)
+  }
 
   const { connectionsWS, memoryWS, trafficWS, logsWS } = useClashWebSocket()
 

@@ -208,6 +208,7 @@ tauri-plugin-process = "2.2"
 tauri-plugin-updater = "2.2"
 tauri-plugin-shell = "2.2"
 tauri-plugin-notification = "2.2"
+tauri-plugin-opener = "2.5"
 window-vibrancy = { version = "0.6.0" }
 
 # Strong typed api binding between typescript and rust

@@ -366,7 +366,7 @@ impl IVerge {
             verge_mixed_port: Some(7890),
             enable_proxy_guard: Some(false),
             proxy_guard_interval: Some(30),
-            auto_close_connection: Some(true),
+            // auto_close_connection: Some(true), // Deprecated, replaced by break_when_proxy_change
             break_when_proxy_change: Some(BreakWhenProxyChange::All),
             break_when_profile_change: Some(true),
             break_when_mode_change: Some(true),

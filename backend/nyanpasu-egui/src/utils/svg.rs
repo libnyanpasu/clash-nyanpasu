@@ -9,10 +9,7 @@ pub fn parse_svg_with_current_color_replace<T: Into<CssColor>>(
     color: T,
 ) -> Result<Tree, Error> {
     let color: CssColor = color.into();
-    let svg = svg.replace(
-        r#""currentColor""#,
-        &format!(r#""{}""#, color.to_hex_string()),
-    );
+    let svg = svg.replace(r#""currentColor""#, &format!(r#""{}""#, color.to_css_hex()));
     Tree::from_str(svg.as_str(), &Options::default())
 }
 
@@ -47,11 +44,11 @@ impl<'a> From<&'a Pixmap> for SvgWrapper<'a> {
 
 #[allow(clippy::wrong_self_convention)]
 pub trait SvgExt {
-    fn into_wrapper(&self) -> SvgWrapper;
+    fn into_wrapper(&self) -> SvgWrapper<'_>;
 }
 
 impl SvgExt for Pixmap {
-    fn into_wrapper(&self) -> SvgWrapper {
+    fn into_wrapper(&self) -> SvgWrapper<'_> {
         SvgWrapper(self)
     }
 }

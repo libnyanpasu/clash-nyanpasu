@@ -116,7 +116,7 @@ impl<'a> Migration<'a> for MigrateLanguageOption {
             Some(lang) => {
                 if lang == "zh" {
                     println!("detected old language option, migrating...");
-                    let value = lang.as_str().unwrap();
+                    let _value = lang.as_str().unwrap();
                     let value = "zh-CN";
                     *lang = serde_yaml::Value::from(value);
                     println!("write config file...");

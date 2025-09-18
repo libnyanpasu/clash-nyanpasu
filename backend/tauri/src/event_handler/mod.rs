@@ -4,7 +4,7 @@ use tauri::{Emitter, Listener, Manager, Runtime};
 
 mod widget;
 
-pub fn mount_handlers<M, R>(app: &mut M)
+pub fn mount_handlers<M, R>(_app: &mut M)
 where
     M: Manager<R> + Listener<R> + Emitter<R>,
     R: Runtime,

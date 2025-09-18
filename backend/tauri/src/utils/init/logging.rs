@@ -89,20 +89,42 @@ pub fn init() -> Result<()> {
             channel.0 = Some(sender);
         }
         loop {
-            let signal = receiver.recv().unwrap();
+            let signal = match receiver.recv() {
+                Ok(signal) => signal,
+                Err(e) => {
+                    error!("failed to receive logger reload signal: {}", e);
+                    break;
+                }
+            };
+
             if let Some(level) = signal.0 {
-                filter_handle
-                    .reload(
-                        EnvFilter::builder()
-                            .with_default_directive(
-                                std::convert::Into::<filter::LevelFilter>::into(LoggingLevel::Warn)
-                                    .into(),
-                            )
-                            .from_env_lossy()
-                            .add_directive(format!("nyanpasu={level}").parse().unwrap())
-                            .add_directive(format!("clash_nyanpasu={level}").parse().unwrap()),
+                let nyanpasu_directive = match format!("nyanpasu={level}").parse() {
+                    Ok(directive) => directive,
+                    Err(e) => {
+                        error!("failed to parse nyanpasu log directive: {}", e);
+                        continue;
+                    }
+                };
+
+                let clash_nyanpasu_directive = match format!("clash_nyanpasu={level}").parse() {
+                    Ok(directive) => directive,
+                    Err(e) => {
+                        error!("failed to parse clash_nyanpasu log directive: {}", e);
+                        continue;
+                    }
+                };
+
+                let filter = EnvFilter::builder()
+                    .with_default_directive(
+                        std::convert::Into::<filter::LevelFilter>::into(LoggingLevel::Warn).into(),
                     )
-                    .unwrap(); // panic if error
+                    .from_env_lossy()
+                    .add_directive(nyanpasu_directive)
+                    .add_directive(clash_nyanpasu_directive);
+
+                if let Err(e) = filter_handle.reload(filter) {
+                    error!("failed to reload logger filter: {}", e);
+                }
             }
 
             if let Some(max_files) = signal.1 {

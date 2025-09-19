@@ -30,7 +30,7 @@
     "react-i18next": "15.7.3",
     "react-use": "17.6.0",
     "tailwindcss": "4.1.13",
-    "vite": "7.1.5",
+    "vite": "7.1.6",
     "vite-tsconfig-paths": "5.1.4"
   },
   "devDependencies": {

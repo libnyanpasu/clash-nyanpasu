@@ -584,4 +584,67 @@ const foreignNameservers = [
                 assert_eq!(outs, r#"[]"#);
             });
     }
+
+    #[test_log::test]
+    fn test_process_honey_with_builtin_modules() {
+        use super::{super::runner::Runner, JSRunner};
+        let runner = JSRunner::try_new().unwrap();
+        let mapping = serde_yaml::from_str(
+            r#"
+        rules:
+                - RULE-SET,custom-reject,REJECT
+                - RULE-SET,custom-direct,DIRECT
+                - RULE-SET,custom-proxy,🚀
+        tun:
+            enable: false
+        dns:
+            enable: false
+        "#,
+        )
+        .unwrap();
+        let script = r#"
+        import { yaml } from "nyan:utils";
+        import { Base64 } from "nyan:js-base64";
+
+
+        export default async function main(config) {
+            const data = yaml`
+            object:
+                array: ["hello", "world"]
+                key: "value"
+            `;
+
+            const object = data.object;
+
+            let result = [
+                Base64.encode(object.array[0]),
+                Base64.encode(object.array[1]),
+            ];
+            // add result to config.rules
+            config.rules.push(`${result[0]}`);
+            config.rules.push(`${result[1]}`);
+            return config;
+        }"#;
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async move {
+                let (res, logs) = runner.process_honey(mapping, script).await;
+                eprintln!("logs: {logs:?}");
+                let mapping = res.unwrap();
+                assert_eq!(
+                    mapping["rules"],
+                    serde_yaml::Value::Sequence(vec![
+                        serde_yaml::Value::String("RULE-SET,custom-reject,REJECT".to_string()),
+                        serde_yaml::Value::String("RULE-SET,custom-direct,DIRECT".to_string()),
+                        serde_yaml::Value::String("RULE-SET,custom-proxy,🚀".to_string()),
+                        serde_yaml::Value::String("aGVsbG8=".to_string()),
+                        serde_yaml::Value::String("d29ybGQ=".to_string()),
+                    ])
+                );
+                let outs = serde_json::to_string(&logs).unwrap();
+                assert_eq!(outs, r#"[]"#);
+            });
+    }
 }

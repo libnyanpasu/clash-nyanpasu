@@ -3,6 +3,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use boa_engine::module::ModuleLoader as BoaModuleLoader;
 use std::sync::Mutex;
+pub mod builtin;
 pub mod combine;
 pub mod http;
 

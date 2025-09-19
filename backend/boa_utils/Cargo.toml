@@ -24,6 +24,9 @@ tracing = "0.1"
 url = "2"
 log = "0.4"
 anyhow = "1.0"
+include_url_macro = { git = "https://github.com/libnyanpasu/include_url_macro", rev = "855110b" }
+include-compress-bytes = { git = "https://github.com/libnyanpasu/include-compress-bytes", rev = "250a12c" }
+phf = { version = "0.13.1", features = ["macros"] }
 
 # for cacheing
 mime = "0.3.17"
@@ -33,6 +36,7 @@ async-fs = "2.1.2"
 serde = { version = "1.0", features = ["derive"] }
 postcard = { version = "1.1.1", features = ["use-std"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
+brotli = "8.0.2"
 
 [dev-dependencies]
 indoc = "2"

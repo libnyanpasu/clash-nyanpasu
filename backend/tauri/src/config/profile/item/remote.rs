@@ -126,23 +126,25 @@ async fn subscribe_url(
         .timeout(Duration::from_secs(30));
 
     // TODO: 添加一个代理测试环节？
-    let proxy_url: Option<String> = if options.self_proxy.unwrap() {
-        // 使用软件自己的代理
-        let port = Config::verge()
-            .latest()
-            .verge_mixed_port
-            .unwrap_or(Config::clash().data().get_mixed_port());
-        Some(format!("http://127.0.0.1:{port}"))
-    } else if options.with_proxy.unwrap() {
-        // 使用系统代理
-        if let Ok(p @ Sysproxy { enable: true, .. }) = Sysproxy::get_system_proxy() {
-            Some(format!("http://{}:{}", p.host, p.port))
+    let proxy_url: Option<String> =
+        // FIXME: 解耦此部分代理地址读取
+        if options.self_proxy.unwrap_or_default() && !cfg!(test) {
+            // 使用软件自己的代理
+            let port = Config::verge()
+                .latest()
+                .verge_mixed_port
+                .unwrap_or(Config::clash().data().get_mixed_port());
+            Some(format!("http://127.0.0.1:{port}"))
+        } else if options.with_proxy.unwrap() {
+            // 使用系统代理
+            if let Ok(p @ Sysproxy { enable: true, .. }) = Sysproxy::get_system_proxy() {
+                Some(format!("http://{}:{}", p.host, p.port))
+            } else {
+                None
+            }
         } else {
             None
-        }
-    } else {
-        None
-    };
+        };
     if let Some(proxy_url) = proxy_url {
         builder = builder.swift_set_proxy(&proxy_url);
     }

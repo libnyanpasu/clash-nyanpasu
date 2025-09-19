@@ -269,7 +269,13 @@ fn test_http_module_loader() -> JsResult<()> {
         import YAML from 'https://esm.run/yaml@2.3.4';
         import fromAsync from 'https://esm.run/array-from-async@3.0.0';
         import { Base64 } from 'https://esm.run/js-base64@3.7.6';
+        // Test toolkit
+        import { isEqual } from 'https://esm.run/es-toolkit@1.39.10';
         import { text } from 'https://github.com/libnyanpasu/clash-nyanpasu/raw/refs/heads/main/pnpm-workspace.yaml';
+
+        if (isEqual(1, 2)) {
+            throw new Error('Wrong isEqual implementation');
+        }
 
         const data = `
             object:
@@ -376,7 +382,7 @@ impl Default for Queue<'_> {
 }
 
 impl<'a> Queue<'a> {
-    fn new(executor: LocalExecutor<'a>) -> Self {
+    pub(crate) fn new(executor: LocalExecutor<'a>) -> Self {
         Self {
             executor,
             futures: RefCell::default(),

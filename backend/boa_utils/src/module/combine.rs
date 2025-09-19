@@ -3,9 +3,12 @@ use std::rc::Rc;
 use boa_engine::module::ModuleLoader;
 use url::Url;
 
+use crate::module::builtin::{BUILTIN_MODULE_PREFIX, BuiltinModuleLoader};
+
 pub struct CombineModuleLoader {
     simple: Rc<boa_engine::module::SimpleModuleLoader>,
     http: Rc<super::http::HttpModuleLoader>,
+    builtin: Rc<super::builtin::BuiltinModuleLoader>,
 }
 
 impl CombineModuleLoader {
@@ -16,6 +19,7 @@ impl CombineModuleLoader {
         Self {
             simple: Rc::new(simple),
             http: Rc::new(http),
+            builtin: Rc::new(BuiltinModuleLoader),
         }
     }
 
@@ -45,8 +49,13 @@ impl ModuleLoader for CombineModuleLoader {
                     .load_imported_module(referrer, specifier, finish_load, context);
             }
             _ => {
-                self.simple
-                    .load_imported_module(referrer, specifier, finish_load, context);
+                if specifier_str.starts_with(BUILTIN_MODULE_PREFIX) {
+                    self.builtin
+                        .load_imported_module(referrer, specifier, finish_load, context);
+                } else {
+                    self.simple
+                        .load_imported_module(referrer, specifier, finish_load, context);
+                }
             }
         }
     }
@@ -57,7 +66,13 @@ impl ModuleLoader for CombineModuleLoader {
             Ok(url) if url.scheme() == "http" || url.scheme() == "https" => {
                 self.http.get_module(_specifier)
             }
-            _ => self.simple.get_module(_specifier),
+            _ => {
+                if specifier_str.starts_with(BUILTIN_MODULE_PREFIX) {
+                    self.builtin.get_module(_specifier)
+                } else {
+                    self.simple.get_module(_specifier)
+                }
+            }
         }
     }
 
@@ -67,7 +82,13 @@ impl ModuleLoader for CombineModuleLoader {
             Ok(url) if url.scheme() == "http" || url.scheme() == "https" => {
                 self.http.register_module(_specifier, _module);
             }
-            _ => self.simple.register_module(_specifier, _module),
+            _ => {
+                if specifier_str.starts_with(BUILTIN_MODULE_PREFIX) {
+                    self.builtin.register_module(_specifier, _module);
+                } else {
+                    self.simple.register_module(_specifier, _module);
+                }
+            }
         }
     }
 }

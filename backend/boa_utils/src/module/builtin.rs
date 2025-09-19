@@ -7,7 +7,7 @@ use include_compress_bytes::include_bytes_brotli;
 use include_url_macro::include_url_bytes_with_brotli;
 use phf::phf_map;
 
-const BUILTIN_MODULE_PREFIX: &str = "nyan:";
+pub(crate) const BUILTIN_MODULE_PREFIX: &str = "nyan:";
 
 static BUILTIN_MODULES: phf::Map<&str, &[u8]> = phf_map! {
     // Remote resources

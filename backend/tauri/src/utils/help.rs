@@ -21,8 +21,7 @@ use tracing::{debug, warn};
 use tracing_attributes::instrument;
 
 use crate::trace_err;
-use base64::{Engine, engine::general_purpose};
-use reqwest::header::HeaderMap;
+use tauri_plugin_opener::OpenerExt;
 
 /// read data from yaml as struct T
 pub fn read_yaml<T: DeserializeOwned>(path: &PathBuf) -> Result<T> {
@@ -86,7 +85,6 @@ pub fn get_uid(prefix: &str) -> String {
 
 /// parse the string
 /// xxx=123123; => 123123
-
 pub fn parse_str<T: FromStr>(target: &str, key: &str) -> Option<T> {
     target.split(';').map(str::trim).find_map(|s| {
         let mut parts = s.splitn(2, '=');
@@ -131,8 +129,8 @@ pub fn open_file(app: tauri::AppHandle, path: PathBuf) -> Result<()> {
             Err(err) => {
                 log::error!(target: "app", "Can't find VScode `{err:?}`");
                 // default open
-                shell
-                    .open(path.to_string_lossy().to_string(), None)
+                app.opener()
+                    .open_url(path.to_string_lossy().to_string(), None::<String>)
                     .map_err(std::io::Error::other)
             }
         },

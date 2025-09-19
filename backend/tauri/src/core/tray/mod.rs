@@ -245,7 +245,7 @@ impl Tray {
                     .on_tray_icon_event(|tray_icon, event| {
                         Tray::on_system_tray_event(tray_icon, event);
                     })
-                    .menu_on_left_click(false)
+                    .show_menu_on_left_click(false)
                     .build(app_handle)?
             }
             Some(tray) => {

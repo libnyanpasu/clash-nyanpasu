@@ -20,6 +20,9 @@ use smol::{LocalExecutor, future};
 use tokio::sync::oneshot::channel as oneshot_channel;
 use url::Url;
 
+// Type alias to simplify the complex type
+type ModuleLoadCallback = Box<dyn FnOnce(JsResult<Module>, &mut Context)>;
+
 // Most of the boilerplate is taken from the `futures.rs` example.
 // This file only explains what is exclusive of async module loading.
 
@@ -61,7 +64,7 @@ impl HttpModuleLoader {
     #[tracing::instrument(skip(finish_load, context))]
     fn handle_cached_item(
         item: CachedItem,
-        finish_load: Box<dyn FnOnce(JsResult<Module>, &mut Context)>,
+        finish_load: ModuleLoadCallback,
         context: &mut Context,
     ) {
         let Ok(mime) = Mime::from_str(item.mime.as_str()) else {
@@ -110,7 +113,7 @@ impl ModuleLoader for HttpModuleLoader {
         &self,
         _referrer: boa_engine::module::Referrer,
         specifier: JsString,
-        finish_load: Box<dyn FnOnce(JsResult<Module>, &mut Context)>,
+        finish_load: ModuleLoadCallback,
         context: &mut Context,
     ) {
         let url = specifier.to_std_string_escaped();

@@ -20,3 +20,4 @@ tauri.preview.conf.json
 
 manifest/site/updater/*
 !manifest/site/updater/.gitkeep
+/backend/tauri/gen/

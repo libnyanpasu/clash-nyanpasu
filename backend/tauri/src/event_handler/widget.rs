@@ -5,9 +5,9 @@ pub enum WidgetInstance {
     Large(nyanpasu_egui::widget::NyanpasuNetworkStatisticLargeWidget),
 }
 
-#[tracing::instrument(skip(app_handle))]
+#[tracing::instrument(skip(_app_handle))]
 pub(super) fn on_network_statistic_config_changed<R: Runtime>(
-    app_handle: &AppHandle<R>,
+    _app_handle: &AppHandle<R>,
     event: Event,
 ) -> anyhow::Result<()> {
     // let config: NetworkStatisticWidgetConfig =

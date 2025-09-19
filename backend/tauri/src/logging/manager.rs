@@ -185,7 +185,7 @@ impl IndexerManagerRunner {
                                 Ok(_) => {
                                     tracing::debug!("indexer for {} created", path);
                                 }
-                                Err(err) => {
+                                Err(_err) => {
                                     tracing::error!("failed to create indexer for {}", path);
                                 }
                             }
@@ -200,7 +200,7 @@ impl IndexerManagerRunner {
                             Ok(_) => {
                                 tracing::debug!("indexer for {} removed", path);
                             }
-                            Err(err) => {
+                            Err(_err) => {
                                 tracing::error!("failed to remove indexer for {}", path);
                             }
                         }
@@ -215,7 +215,7 @@ impl IndexerManagerRunner {
                                 Ok(_) => {
                                     tracing::debug!("indexer for {} updated", path);
                                 }
-                                Err(err) => {
+                                Err(_err) => {
                                     tracing::error!("failed to update indexer for {}", path);
                                 }
                             }

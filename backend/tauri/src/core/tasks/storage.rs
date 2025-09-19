@@ -62,7 +62,7 @@ impl TaskStorage {
     }
 
     /// remove_task remove a task id from the storage
-    pub fn remove_task(&self, task_id: TaskID) -> Result<()> {
+    pub fn remove_task(&self, _task_id: TaskID) -> Result<()> {
         let db = self.storage.get_instance();
         let write_txn = db.begin_write()?;
         {

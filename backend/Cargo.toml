@@ -32,6 +32,8 @@ tracing-test = { git = "https://github.com/Frando/tracing-test.git", rev = "e81e
   "no-env-filter",
   "pretty-log-printing",
 ] }
+fs4 = { version = "0.13.1", features = ["fs-err3-tokio", "fs-err3"] }
+fs-err = { version = "3.1.2", features = ["tokio"] }
 
 [profile.release]
 panic = "unwind"

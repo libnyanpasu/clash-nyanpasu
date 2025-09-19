@@ -1,8 +1,9 @@
-use crate::core::handle;
+use crate::{core::handle, log_err};
 use anyhow::Result;
+use fs_err as fs;
 use nyanpasu_utils::dirs::{suggest_config_dir, suggest_data_dir};
 use once_cell::sync::Lazy;
-use std::{borrow::Cow, fs, path::PathBuf};
+use std::{borrow::Cow, path::PathBuf};
 use tauri::{Env, utils::platform::resource_dir};
 
 #[cfg(not(feature = "verge-dev"))]
@@ -178,12 +179,22 @@ pub fn app_install_dir() -> Result<PathBuf> {
 
 /// profiles dir
 pub fn app_profiles_dir() -> Result<PathBuf> {
-    Ok(app_config_dir()?.join("profiles"))
+    let path = app_config_dir()?.join("profiles");
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        log_err!(create_dir_all(&path));
+    });
+    Ok(path)
 }
 
 /// logs dir
 pub fn app_logs_dir() -> Result<PathBuf> {
-    Ok(app_data_dir()?.join("logs"))
+    let path = app_data_dir()?.join("logs");
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        log_err!(create_dir_all(&path));
+    });
+    Ok(path)
 }
 
 pub fn clash_guard_overrides_path() -> Result<PathBuf> {
@@ -207,14 +218,20 @@ pub fn clash_pid_path() -> Result<PathBuf> {
 }
 
 pub fn cache_dir() -> Result<PathBuf> {
-    Ok(app_data_dir()?.join("cache"))
+    let path = app_data_dir()?.join("cache");
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        log_err!(create_dir_all(&path));
+    });
+    Ok(path)
 }
 
 pub fn tray_icons_path(mode: &str) -> Result<PathBuf> {
     let icons_dir = app_config_dir()?.join("icons");
-    if !icons_dir.exists() {
-        fs::create_dir_all(&icons_dir)?;
-    }
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        log_err!(create_dir_all(&icons_dir));
+    });
     Ok(icons_dir.join(format!("{mode}.png")))
 }
 
@@ -273,10 +290,12 @@ pub fn get_single_instance_placeholder() -> Result<String> {
 
 fn create_dir_all(dir: &PathBuf) -> Result<(), std::io::Error> {
     let meta = fs::metadata(dir);
-    if let Ok(meta) = meta
-        && !meta.is_dir()
-    {
-        fs::remove_file(dir)?;
+    if let Ok(meta) = meta {
+        if !meta.is_dir() {
+            fs_err::remove_file(dir)?;
+        } else {
+            return Ok(());
+        }
     }
     fs_extra::dir::create_all(dir, false).map_err(|e| {
         std::io::Error::other(format!("failed to create dir: {:?}, kind: {:?}", e, e.kind))

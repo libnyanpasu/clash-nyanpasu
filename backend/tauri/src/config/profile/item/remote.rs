@@ -365,10 +365,10 @@ impl RemoteProfileBuilder {
         let mut subscription = subscribe_url(&url, &options).await?;
         let extra = subscription.info;
 
-        if self.shared.get_name().is_none() {
-            if let Some(filename) = subscription.filename.take() {
-                self.shared.name(filename);
-            }
+        if self.shared.get_name().is_none()
+            && let Some(filename) = subscription.filename.take()
+        {
+            self.shared.name(filename);
         }
         if self.option.get_update_interval().is_none() && subscription.opts.is_some() {
             self.option

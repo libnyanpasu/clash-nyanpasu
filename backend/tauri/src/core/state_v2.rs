@@ -26,26 +26,35 @@ pub struct RollbackError {
 }
 
 #[async_trait::async_trait]
-pub(crate) trait StateChangedSubscriber<T: Clone + Send + Sync> {
+#[allow(unused_variables)]
+pub(crate) trait StateChangedSubscriber<T: Clone + Send + Sync + 'static> {
     /// The name of the subscriber.
     fn name(&self) -> &str;
 
     /// Called when the state is changed, return a Error if the state change is failed.
     ///
     /// While state migrate is failed, the rollback will be called.
-    async fn migrate(&self, prev_state: T, new_state: T) -> Result<(), anyhow::Error>;
+    ///
+    /// When the prev_state is None, it means the state is not initialized.
+    async fn migrate(&self, prev_state: Option<T>, new_state: T) -> Result<(), anyhow::Error>;
+
     /// Called when the state migrate is failed, return a Error if the state rollback is failed.
-    async fn rollback(&self, prev_state: T, new_state: T) -> Result<(), anyhow::Error>;
+    ///
+    /// If the migration do not affect the real system/service, you can use the default implementation,
+    /// OR you MUST implement the rollback method.
+    async fn rollback(&self, prev_state: Option<T>, new_state: T) -> Result<(), anyhow::Error> {
+        Ok(())
+    }
 }
 
 pub trait StateSyncBuilder {
-    type State: Clone + Send + Sync;
+    type State: Clone + Send + Sync + 'static;
 
     fn build(&self) -> anyhow::Result<Self::State>;
 }
 
 pub trait StateAsyncBuilder {
-    type State: Clone + Send + Sync;
+    type State: Clone + Send + Sync + 'static;
 
     async fn build(&self) -> anyhow::Result<Self::State>;
 }
@@ -53,7 +62,7 @@ pub trait StateAsyncBuilder {
 impl<T, S> StateAsyncBuilder for S
 where
     S: StateSyncBuilder<State = T>,
-    T: Clone + Send + Sync,
+    T: Clone + Send + Sync + 'static,
 {
     type State = T;
     async fn build(&self) -> anyhow::Result<Self::State> {
@@ -69,30 +78,30 @@ pub enum ConcurrencyStrategy {
     Limited(usize),
 }
 
-pub struct ServiceCoordinator<T: Clone + Send + Sync> {
-    current_state: RwLock<T>,
+pub struct StateCoordinator<T: Clone + Send + Sync + 'static> {
+    current_state: RwLock<Option<T>>,
     subscribers: Vec<Box<dyn StateChangedSubscriber<T> + Send + Sync>>,
     // strategy: ConcurrencyStrategy,
 }
 
-impl<T: Clone + Send + Sync> ServiceCoordinator<T> {
-    pub fn new(state: T) -> Self {
+impl<T: Clone + Send + Sync> StateCoordinator<T> {
+    pub fn new() -> Self {
         Self {
-            current_state: RwLock::new(state),
+            current_state: RwLock::new(None),
             subscribers: Vec::new(),
         }
     }
 
     async fn run_migration<S>(
         subscriber: &S,
-        current_state: &T,
+        current_state: Option<&T>,
         new_state: &T,
     ) -> Result<(), StateChangedError>
     where
         S: StateChangedSubscriber<T> + Send + Sync + ?Sized,
     {
         if let Err(e) = subscriber
-            .migrate(current_state.clone(), new_state.clone())
+            .migrate(current_state.cloned(), new_state.clone())
             .await
         {
             let migrate_error = MigrateError {
@@ -101,7 +110,7 @@ impl<T: Clone + Send + Sync> ServiceCoordinator<T> {
             };
             tracing::error!("migrate error: {migrate_error:#?}");
             if let Err(e) = subscriber
-                .rollback(current_state.clone(), new_state.clone())
+                .rollback(current_state.cloned(), new_state.clone())
                 .await
             {
                 tracing::error!("rollback error: {e:#?}");
@@ -129,10 +138,10 @@ impl<T: Clone + Send + Sync> ServiceCoordinator<T> {
             .map_err(StateChangedError::Validation)?;
 
         for subscriber in self.subscribers.iter() {
-            Self::run_migration(subscriber.as_ref(), &current_state, &new_state).await?;
+            Self::run_migration(subscriber.as_ref(), current_state.as_ref(), &new_state).await?;
         }
 
-        *current_state = new_state;
+        *current_state = Some(new_state);
         Ok(())
     }
 }

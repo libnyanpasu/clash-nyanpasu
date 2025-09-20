@@ -20,7 +20,7 @@ import {
   useSetting,
 } from '@nyanpasu/interface'
 
-export const DataPanel = () => {
+export const DataPanel = ({ visible = true }: { visible?: boolean }) => {
   const { t } = useTranslation()
 
   const { data: clashTraffic } = useClashTraffic()
@@ -40,7 +40,7 @@ export const DataPanel = () => {
       .fill(0)
       .concat(data.slice(-max))
 
-  const Datalines: DatalineProps[] = [
+  const Datalines: (DatalineProps & { visible?: boolean })[] = [
     {
       data: padData(
         clashTraffic?.map((item) => item.down),
@@ -50,6 +50,7 @@ export const DataPanel = () => {
       title: t('Download Traffic'),
       total: clashConnections?.at(-1)?.downloadTotal,
       type: 'speed',
+      visible,
     },
     {
       data: padData(
@@ -60,6 +61,7 @@ export const DataPanel = () => {
       title: t('Upload Traffic'),
       total: clashConnections?.at(-1)?.uploadTotal,
       type: 'speed',
+      visible,
     },
     {
       data: padData(
@@ -69,6 +71,7 @@ export const DataPanel = () => {
       icon: SettingsEthernet,
       title: t('Active Connections'),
       type: 'raw',
+      visible,
     },
   ]
 
@@ -80,6 +83,7 @@ export const DataPanel = () => {
       ),
       icon: MemoryOutlined,
       title: t('Memory'),
+      visible,
     })
   }
 

@@ -7,9 +7,15 @@ interface SparklineProps {
   data: number[]
   className?: string
   style?: CSSProperties
+  visible?: boolean
 }
 
-export const Sparkline: FC<SparklineProps> = ({ data, className, style }) => {
+export const Sparkline: FC<SparklineProps> = ({
+  data,
+  className,
+  style,
+  visible = true,
+}) => {
   const theme = useTheme()
   const { mode } = useColorScheme()
 
@@ -97,6 +103,14 @@ export const Sparkline: FC<SparklineProps> = ({ data, className, style }) => {
       .attr('d', line)
 
     const updateChart = () => {
+      // Skip animation if component is not visible to prevent performance issues
+      if (!visible) {
+        // Update without animation
+        svg.select('.area').datum(data).attr('d', area)
+        svg.select('.line').datum(data).attr('d', line)
+        return
+      }
+
       xScale.domain([0, data.length - 1])
       yScale.domain([0, d3.max(data) ?? 0])
 
@@ -123,7 +137,7 @@ export const Sparkline: FC<SparklineProps> = ({ data, className, style }) => {
     }
 
     updateChart()
-  }, [data, lineColor, areaColor])
+  }, [data, lineColor, areaColor, visible])
 
   return (
     <svg

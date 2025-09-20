@@ -30,9 +30,7 @@ export const ProxiesProviderTraffic = ({ provider }: ProxiesProviderProps) => {
       </div>
 
       <Tooltip title={`${parseTraffic(used)} / ${parseTraffic(total)}`}>
-        <div className="text-sm font-bold">
-          {((used / total) * 100).toFixed(2)}%
-        </div>
+        <div className="text-sm font-bold">{progress.toFixed(2)}%</div>
       </Tooltip>
     </div>
   )

@@ -80,7 +80,7 @@ export const ProfileItem = memo(function ProfileItem({
 
       used = download + upload
 
-      progress = (used / total) * 100
+      progress = (used / (total || 1)) * 100
     }
 
     return { progress, total, used }
@@ -284,9 +284,7 @@ export const ProfileItem = memo(function ProfileItem({
             </div>
 
             <Tooltip title={`${parseTraffic(used)} / ${parseTraffic(total)}`}>
-              <div className="text-sm font-bold">
-                {((used / total) * 100).toFixed(2)}%
-              </div>
+              <div className="text-sm font-bold">{progress.toFixed(2)}%</div>
             </Tooltip>
           </div>
 

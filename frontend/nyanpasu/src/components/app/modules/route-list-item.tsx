@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { languageQuirks } from '@/utils/language'
 import { SvgIconComponent } from '@mui/icons-material'
-import { Box, ListItemButton, ListItemIcon } from '@mui/material'
+import { Box, ListItemButton, ListItemIcon, Tooltip } from '@mui/material'
 import { useSetting } from '@nyanpasu/interface'
 import { alpha, cn } from '@nyanpasu/ui'
 import { useMatch, useNavigate } from '@tanstack/react-router'
@@ -29,7 +29,7 @@ export const RouteListItem = ({
 
   const { value: language } = useSetting('language')
 
-  return (
+  const listItemButton = (
     <ListItemButton
       className={cn(
         onlyIcon ? '!mx-auto !size-16 !rounded-3xl' : '!rounded-full !pr-14',
@@ -76,6 +76,12 @@ export const RouteListItem = ({
         </Box>
       )}
     </ListItemButton>
+  )
+
+  return onlyIcon ? (
+    <Tooltip title={t(`label_${name}`)}>{listItemButton}</Tooltip>
+  ) : (
+    listItemButton
   )
 }
 

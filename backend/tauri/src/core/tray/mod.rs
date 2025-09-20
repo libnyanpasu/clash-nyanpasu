@@ -389,7 +389,7 @@ impl Tray {
                     switch_map[&tun_mode]
                 )));
             } else {
-                let _ = tray.set_title(None);
+                let _ = tray.set_title::<&str>(None);
             }
         }
 

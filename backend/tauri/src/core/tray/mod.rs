@@ -2,6 +2,9 @@ use std::borrow::Cow;
 
 use crate::{
     config::{Config, nyanpasu::ClashCore},
+    core::clash::ws::{
+        ClashConnectionsConnector, ClashConnectionsConnectorEvent, ClashConnectionsInfo,
+    },
     feat, ipc, log_err,
     utils::{help, resolve},
 };
@@ -26,6 +29,7 @@ use std::sync::atomic::AtomicU16;
 
 struct TrayState<R: Runtime> {
     menu: Mutex<Menu<R>>,
+    traffic_info: Mutex<ClashConnectionsInfo>,
 }
 
 pub struct Tray {}
@@ -231,11 +235,27 @@ impl Tray {
                 }
                 #[cfg(target_os = "macos")]
                 {
-                    builder = builder
-                        .icon(tauri::image::Image::from_bytes(include_bytes!(
-                            "../../../icons/tray-icon.png"
-                        ))?)
-                        .icon_as_template(true);
+                    let verge = Config::verge();
+                    let verge = verge.latest();
+                    let enable_colored_icons =
+                        *verge.enable_macos_colored_icons.as_ref().unwrap_or(&false);
+
+                    if enable_colored_icons {
+                        builder = builder
+                            .icon(tauri::image::Image::from_bytes(
+                                &icon::get_icon_for_platform(
+                                    &icon::TrayIcon::Normal,
+                                    Some("macos"),
+                                ),
+                            )?)
+                            .icon_as_template(false);
+                    } else {
+                        builder = builder
+                            .icon(tauri::image::Image::from_bytes(include_bytes!(
+                                "../../../icons/tray-icon.png"
+                            ))?)
+                            .icon_as_template(true);
+                    }
                 }
                 builder
                     .menu(&menu)
@@ -282,10 +302,39 @@ impl Tray {
                     *state.menu.lock() = menu;
                 }
                 None => {
-                    tracing::debug!("creating new tray menu");
+                    tracing::debug!("creating new tray menu and traffic state");
                     app_handle.manage(TrayState {
                         menu: Mutex::new(menu),
+                        traffic_info: Mutex::new(ClashConnectionsInfo::default()),
                     });
+
+                    // Subscribe to traffic updates with throttling
+                    let app_handle_clone = app_handle.clone();
+                    let mut last_update = std::time::Instant::now();
+                    const MIN_UPDATE_INTERVAL: std::time::Duration =
+                        std::time::Duration::from_millis(500); // 500ms
+                    if let Some(ws_connector) = app_handle.try_state::<ClashConnectionsConnector>()
+                    {
+                        let mut rx = ws_connector.subscribe();
+                        tauri::async_runtime::spawn(async move {
+                            while let Ok(event) = rx.recv().await {
+                                if last_update.elapsed() >= MIN_UPDATE_INTERVAL {
+                                    if let ClashConnectionsConnectorEvent::Update(info) = event {
+                                        if let Some(tray_state) =
+                                            app_handle_clone.try_state::<TrayState<tauri::Wry>>()
+                                        {
+                                            *tray_state.traffic_info.lock() = info;
+                                            // Update tray display
+                                            if let Err(e) = Tray::update_part(&app_handle_clone) {
+                                                tracing::error!("Failed to update tray: {}", e);
+                                            }
+                                            last_update = std::time::Instant::now();
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
                 }
                 _ => {}
             }
@@ -312,6 +361,26 @@ impl Tray {
             .expect("tray not found");
         let state = app_handle.state::<TrayState<R>>();
         let menu = state.menu.lock();
+        let traffic_info = *state.traffic_info.lock();
+
+        #[allow(unused_variables)]
+        let (system_proxy, tun_mode, enable_tray_text, enable_tray_traffic) = {
+            let verge = Config::verge();
+            let verge = verge.latest();
+            (
+                *verge.enable_system_proxy.as_ref().unwrap_or(&false),
+                *verge.enable_tun_mode.as_ref().unwrap_or(&false),
+                *verge.enable_tray_text.as_ref().unwrap_or(&false),
+                *verge.enable_tray_traffic.as_ref().unwrap_or(&false),
+            )
+        };
+
+        #[cfg(target_os = "macos")]
+        let enable_macos_colored_icons = {
+            let verge = Config::verge();
+            let verge = verge.latest();
+            *verge.enable_macos_colored_icons.as_ref().unwrap_or(&false)
+        };
 
         let _ = menu
             .get("rule_mode")
@@ -328,17 +397,6 @@ impl Tray {
                 .and_then(|item| item.as_check_menuitem()?.set_checked(mode == "script").ok());
         }
 
-        #[allow(unused_variables)]
-        let (system_proxy, tun_mode, enable_tray_text) = {
-            let verge = Config::verge();
-            let verge = verge.latest();
-            (
-                *verge.enable_system_proxy.as_ref().unwrap_or(&false),
-                *verge.enable_tun_mode.as_ref().unwrap_or(&false),
-                *verge.enable_tray_text.as_ref().unwrap_or(&false),
-            )
-        };
-
         #[cfg(any(target_os = "windows", target_os = "linux"))]
         {
             use icon::TrayIcon;
@@ -352,6 +410,25 @@ impl Tray {
             };
             let icon = icon::get_icon(&mode);
             let _ = tray.set_icon(Some(tauri::image::Image::from_bytes(&icon)?));
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            use icon::TrayIcon;
+
+            if enable_macos_colored_icons {
+                let mode = if tun_mode {
+                    TrayIcon::Tun
+                } else if system_proxy {
+                    TrayIcon::SystemProxy
+                } else {
+                    TrayIcon::Normal
+                };
+
+                let icon = icon::get_icon_for_platform(&mode, Some("macos"));
+                let _ = tray.set_icon(Some(tauri::image::Image::from_bytes(&icon)?));
+                let _ = tray.set_icon_as_template(false);
+            }
         }
 
         let _ = menu
@@ -370,24 +447,51 @@ impl Tray {
 
         #[cfg(not(target_os = "linux"))]
         {
-            let _ = tray.set_tooltip(Some(&format!(
+            let mut tooltip = format!(
                 "{}: {}\n{}: {}",
                 t!("tray.system_proxy"),
                 switch_map[&system_proxy],
                 t!("tray.tun_mode"),
                 switch_map[&tun_mode]
-            )));
+            );
+
+            if enable_tray_traffic {
+                tooltip.push_str(&format!(
+                    "\n↑ {} ↓ {}",
+                    help::format_traffic_speed(traffic_info.upload_speed),
+                    help::format_traffic_speed(traffic_info.download_speed)
+                ));
+            }
+
+            let _ = tray.set_tooltip(Some(&tooltip));
         }
         #[cfg(target_os = "linux")]
         {
-            if enable_tray_text {
-                let _ = tray.set_title(Some(&format!(
-                    "{}: {}\n{}: {}",
-                    t!("tray.system_proxy"),
-                    switch_map[&system_proxy],
-                    t!("tray.tun_mode"),
-                    switch_map[&tun_mode]
-                )));
+            if enable_tray_text || enable_tray_traffic {
+                let mut title = if enable_tray_text {
+                    format!(
+                        "{}: {}\n{}: {}",
+                        t!("tray.system_proxy"),
+                        switch_map[&system_proxy],
+                        t!("tray.tun_mode"),
+                        switch_map[&tun_mode]
+                    )
+                } else {
+                    String::new()
+                };
+
+                if enable_tray_traffic {
+                    if !title.is_empty() {
+                        title.push('\n');
+                    }
+                    title.push_str(&format!(
+                        "↑ {} ↓ {}",
+                        help::format_traffic_speed(traffic_info.upload_speed),
+                        help::format_traffic_speed(traffic_info.download_speed)
+                    ));
+                }
+
+                let _ = tray.set_title(Some(&title));
             } else {
                 let _ = tray.set_title::<&str>(None);
             }

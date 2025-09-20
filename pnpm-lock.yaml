@@ -415,8 +415,8 @@ importers:
         specifier: 3.45.1
         version: 3.45.1
       filesize:
-        specifier: 11.0.7
-        version: 11.0.7
+        specifier: 11.0.10
+        version: 11.0.10
       meta-json-schema:
         specifier: 1.19.13
         version: 1.19.13
@@ -566,8 +566,8 @@ importers:
         specifier: 1.9.3
         version: 1.9.3
       filesize:
-        specifier: 11.0.7
-        version: 11.0.7
+        specifier: 11.0.10
+        version: 11.0.10
       p-retry:
         specifier: 7.0.0
         version: 7.0.0
@@ -5225,8 +5225,8 @@ packages:
   filelist@1.0.4:
     resolution: {integrity: sha512-w1cEuf3S+DrLCQL7ET6kz+gmlJdbq9J7yXCSjK/OZCPA+qEN1WyF4ZAf0YYJa4/shHJra2t/d/r8SV4Ji+x+8Q==}
 
-  filesize@11.0.7:
-    resolution: {integrity: sha512-HozRSaD6ZrUdUVdSI9kJPsI9TzDZb+OZNL0xOWlxkQGfOsjh5Fp1AAI7GObJutOpclSBycHBDEREzwYcXPo8Ew==}
+  filesize@11.0.10:
+    resolution: {integrity: sha512-uasnz3C/UdPRVlmtkDz4SfaIm7IOT+UYpH8xbmn6EaXRBQ22hGoc64UtflHOqV+BlVDsTcz2pI94P/Zzzm5Rpw==}
     engines: {node: '>= 10.4.0'}
 
   fill-range@7.1.1:
@@ -13958,7 +13958,7 @@ snapshots:
     dependencies:
       minimatch: 5.1.6
 
-  filesize@11.0.7: {}
+  filesize@11.0.10: {}
 
   fill-range@7.1.1:
     dependencies:

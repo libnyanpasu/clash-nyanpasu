@@ -1,4 +1,4 @@
-#![feature(auto_traits, negative_impls, trait_alias)]
+#![feature(auto_traits, negative_impls, trait_alias, impl_trait_in_assoc_type)]
 #![cfg_attr(
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"

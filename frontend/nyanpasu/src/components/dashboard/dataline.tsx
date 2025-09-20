@@ -12,6 +12,7 @@ export interface DatalineProps {
   title: string
   total?: number
   type?: 'speed' | 'raw'
+  visible?: boolean
 }
 
 export const Dataline: FC<DatalineProps> = ({
@@ -21,12 +22,17 @@ export const Dataline: FC<DatalineProps> = ({
   total,
   type,
   className,
+  visible = true,
 }) => {
   const { t } = useTranslation()
 
   return (
     <Paper className={cn('relative !rounded-3xl', className)}>
-      <Sparkline data={data} className="absolute rounded-3xl" />
+      <Sparkline
+        data={data}
+        className="absolute rounded-3xl"
+        {...(visible !== undefined ? { visible } : {})}
+      />
 
       <div className="absolute top-0 flex h-full flex-col justify-between gap-4 p-4">
         <div className="flex items-center gap-2">

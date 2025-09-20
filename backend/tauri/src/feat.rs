@@ -291,6 +291,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
     let log_level = patch.app_log_level;
     let log_max_files = patch.max_log_files;
     let enable_tray_selector = patch.clash_tray_selector;
+    let enable_tray_text = patch.enable_tray_text;
     let network_statistic_widget = patch.network_statistic_widget;
     let res = || async move {
         let service_mode = patch.enable_service_mode;
@@ -356,7 +357,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
         if language.is_some() {
             rust_i18n::set_locale(language.unwrap().as_str());
             handle::Handle::update_systray()?;
-        } else if system_proxy.or(tun_mode).is_some() {
+        } else if system_proxy.or(tun_mode).or(enable_tray_text).is_some() {
             handle::Handle::update_systray_part()?;
         }
 

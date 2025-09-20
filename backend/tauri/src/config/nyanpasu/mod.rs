@@ -6,6 +6,15 @@ use nyanpasu_macro::VergePatch;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+/// Validates if a string is a valid hex color code
+pub fn is_hex_color(color: &str) -> bool {
+    if color.len() != 7 || !color.starts_with('#') {
+        return false;
+    }
+
+    color[1..].chars().all(|c| c.is_ascii_hexdigit())
+}
+
 mod clash_strategy;
 pub mod logging;
 mod widget;
@@ -297,7 +306,17 @@ pub struct WindowState {
 impl IVerge {
     pub fn new() -> Self {
         match dirs::nyanpasu_config_path().and_then(|path| help::read_yaml::<IVerge>(&path)) {
-            Ok(config) => Self::merge_with_template(config),
+            Ok(mut config) => {
+                // Validate and fix theme_color if it's invalid
+                if let Some(ref theme_color) = config.theme_color {
+                    if !theme_color.is_empty() && !is_hex_color(theme_color) {
+                        log::warn!(target: "app", "Invalid theme color detected: {}, resetting to default", theme_color);
+                        config.theme_color = None;
+                    }
+                }
+
+                Self::merge_with_template(config)
+            }
             Err(err) => {
                 log::error!(target: "app", "{err:?}");
                 Self::template()

@@ -328,14 +328,12 @@ impl Tray {
                 .and_then(|item| item.as_check_menuitem()?.set_checked(mode == "script").ok());
         }
 
-        #[allow(unused_variables)]
-        let (system_proxy, tun_mode, enable_tray_text) = {
+        let (system_proxy, tun_mode) = {
             let verge = Config::verge();
             let verge = verge.latest();
             (
                 *verge.enable_system_proxy.as_ref().unwrap_or(&false),
                 *verge.enable_tun_mode.as_ref().unwrap_or(&false),
-                *verge.enable_tray_text.as_ref().unwrap_or(&false),
             )
         };
 
@@ -380,17 +378,13 @@ impl Tray {
         }
         #[cfg(target_os = "linux")]
         {
-            if enable_tray_text {
-                let _ = tray.set_title(Some(&format!(
-                    "{}: {}\n{}: {}",
-                    t!("tray.system_proxy"),
-                    switch_map[&system_proxy],
-                    t!("tray.tun_mode"),
-                    switch_map[&tun_mode]
-                )));
-            } else {
-                let _ = tray.set_title(None);
-            }
+            let _ = tray.set_title(Some(&format!(
+                "{}: {}\n{}: {}",
+                t!("tray.system_proxy"),
+                switch_map[&system_proxy],
+                t!("tray.tun_mode"),
+                switch_map[&tun_mode]
+            )));
         }
 
         Ok(())

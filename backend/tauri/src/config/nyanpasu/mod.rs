@@ -277,11 +277,6 @@ pub struct IVerge {
     /// 是否启用网络统计信息浮窗
     #[serde(skip_serializing_if = "Option::is_none")]
     pub network_statistic_widget: Option<NetworkStatisticWidgetConfig>,
-
-    /// enable tray text display on Linux systems
-    /// When enabled, shows proxy and TUN mode status as text next to the tray icon
-    /// When disabled, only shows status via icon changes (prevents text display issues on Wayland)
-    pub enable_tray_text: Option<bool>,
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize, Type)]
@@ -350,10 +345,6 @@ impl IVerge {
             config.break_when_mode_change = template.break_when_mode_change;
         }
 
-        if config.enable_tray_text.is_none() {
-            config.enable_tray_text = template.enable_tray_text;
-        }
-
         config
     }
 
@@ -388,7 +379,6 @@ impl IVerge {
             clash_tray_selector: Some(ProxiesSelectorMode::default()),
             enable_service_mode: Some(false),
             always_on_top: Some(false),
-            enable_tray_text: Some(false),
             ..Self::default()
         }
     }

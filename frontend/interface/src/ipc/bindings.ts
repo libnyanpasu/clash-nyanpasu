@@ -1025,12 +1025,6 @@ export type IVerge = {
    * 是否启用网络统计信息浮窗
    */
   network_statistic_widget?: NetworkStatisticWidgetConfig | null
-  /**
-   * enable tray text display on Linux systems
-   * When enabled, shows proxy and TUN mode status as text next to the tray icon
-   * When disabled, only shows status via icon changes (prevents text display issues on Wayland)
-   */
-  enable_tray_text: boolean | null
 }
 export type JsonValue =
   | null

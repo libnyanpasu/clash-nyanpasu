@@ -1,9 +1,6 @@
 /** tauri-specta globals **/
 
-import {
-  Channel as TAURI_CHANNEL,
-  invoke as TAURI_INVOKE,
-} from '@tauri-apps/api/core'
+import { invoke as TAURI_INVOKE } from '@tauri-apps/api/core'
 import * as TAURI_API_EVENT from '@tauri-apps/api/event'
 import { type WebviewWindow as __WebviewWindow__ } from '@tauri-apps/api/webviewWindow'
 
@@ -720,6 +717,49 @@ export const commands = {
       else return { status: 'error', error: e as any }
     }
   },
+  /**
+   * Move window to another monitor
+   */
+  async moveWindowToOtherMonitor(
+    targetMonitorIndex: number,
+  ): Promise<Result<null, string>> {
+    try {
+      return {
+        status: 'ok',
+        data: await TAURI_INVOKE('move_window_to_other_monitor', {
+          targetMonitorIndex,
+        }),
+      }
+    } catch (e) {
+      if (e instanceof Error) throw e
+      else return { status: 'error', error: e as any }
+    }
+  },
+  /**
+   * Center window on current monitor
+   */
+  async centerWindow(): Promise<Result<null, string>> {
+    try {
+      return { status: 'ok', data: await TAURI_INVOKE('center_window') }
+    } catch (e) {
+      if (e instanceof Error) throw e
+      else return { status: 'error', error: e as any }
+    }
+  },
+  /**
+   * Get available monitors
+   */
+  async getAvailableMonitors(): Promise<Result<MonitorInfo[], string>> {
+    try {
+      return {
+        status: 'ok',
+        data: await TAURI_INVOKE('get_available_monitors'),
+      }
+    } catch (e) {
+      if (e instanceof Error) throw e
+      else return { status: 'error', error: e as any }
+    }
+  },
   async checkUpdate(): Promise<Result<UpdateWrapper | null, string>> {
     try {
       return { status: 'ok', data: await TAURI_INVOKE('check_update') }
@@ -1167,6 +1207,16 @@ export type MergeProfileBuilder = {
    * update time
    */
   updated: number | null
+}
+/**
+ * Simplified monitor information for IPC
+ */
+export type MonitorInfo = {
+  id: number
+  name: string
+  position: [number, number]
+  size: [number, number]
+  scale_factor: number
 }
 export type NetworkStatisticWidgetConfig =
   | { kind: 'disabled' }

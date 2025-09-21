@@ -11,11 +11,15 @@ const longPressDelay = 200
 export const ChainItem = memo(function ChainItem({
   item,
   selected,
+  usedInGlobal,
+  usedInCurrentProfile,
   onClick,
   onChainEdit,
 }: {
   item: ProfileQueryResultItem
   selected?: boolean
+  usedInGlobal?: boolean
+  usedInCurrentProfile?: boolean
   onClick: () => Promise<void>
   onChainEdit: () => void
 }) {
@@ -98,6 +102,18 @@ export const ChainItem = memo(function ChainItem({
         >
           <div className="truncate py-1">
             <span>{item.name}</span>
+            <div className="mt-1 flex gap-1">
+              {usedInGlobal && (
+                <span className="rounded bg-blue-500 px-1 py-0.5 text-xs text-white">
+                  G
+                </span>
+              )}
+              {usedInCurrentProfile && (
+                <span className="rounded bg-green-500 px-1 py-0.5 text-xs text-white">
+                  L
+                </span>
+              )}
+            </div>
           </div>
 
           <Button

@@ -10,7 +10,6 @@ import { SideChain } from './modules/side-chain'
 import { SideLog } from './modules/side-log'
 import { atomChainsSelected, atomGlobalChainCurrent } from './modules/store'
 import { ScriptDialog } from './script-dialog'
-import { filterProfiles } from './utils'
 
 export interface ProfileSideProps {
   onClose: () => void
@@ -42,12 +41,14 @@ export const ProfileSide = ({ onClose }: ProfileSideProps) => {
     <div className="absolute h-full w-full">
       <div className="flex items-start justify-between p-4 pr-2">
         <div>
-          <div className="text-xl font-bold">{t('Proxy Chains')}</div>
-
-          <div className="truncate">
+          <div className="text-xl font-bold">
             {isGlobalChainCurrent
               ? t('Global Proxy Chains')
-              : currentProfile?.name}
+              : t('Proxy Chains')}
+          </div>
+
+          <div className="truncate">
+            {isGlobalChainCurrent ? t('All Profiles') : currentProfile?.name}
           </div>
         </div>
 

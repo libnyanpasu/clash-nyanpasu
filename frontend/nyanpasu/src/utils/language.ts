@@ -26,7 +26,6 @@ export const languageQuirks: {
   'zh-CN': {
     drawer: {
       minWidth: 180,
-      itemClassNames: 'text-center',
     },
   },
   'zh-TW': {

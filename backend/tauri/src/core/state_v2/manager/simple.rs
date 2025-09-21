@@ -1,5 +1,6 @@
 use super::*;
 
+#[repr(transparent)]
 pub struct SimpleStateManager<State: Clone + Send + Sync + 'static> {
     state_coordinator: StateCoordinator<State>,
 }

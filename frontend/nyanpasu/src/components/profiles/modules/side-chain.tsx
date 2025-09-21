@@ -111,8 +111,13 @@ export const SideChain = ({ onChainEdit }: SideChainProps) => {
               key={index}
               item={item}
               selected={selected}
-              usedInGlobal={usedInGlobal}
-              usedInCurrentProfile={usedInCurrentProfile}
+              context={{
+                scope: usedInGlobal
+                  ? 'global'
+                  : usedInCurrentProfile
+                    ? 'scoped'
+                    : 'global',
+              }}
               onClick={async () => await handleChainClick(item.uid)}
               onChainEdit={() => onChainEdit(item)}
             />

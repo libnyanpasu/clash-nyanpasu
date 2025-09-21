@@ -8,18 +8,20 @@ import { alpha, cleanDeepClickEvent } from '@nyanpasu/ui'
 
 const longPressDelay = 200
 
+interface Context {
+  scope: 'global' | 'scoped'
+}
+
 export const ChainItem = memo(function ChainItem({
   item,
   selected,
-  usedInGlobal,
-  usedInCurrentProfile,
+  context,
   onClick,
   onChainEdit,
 }: {
   item: ProfileQueryResultItem
   selected?: boolean
-  usedInGlobal?: boolean
-  usedInCurrentProfile?: boolean
+  context?: Context
   onClick: () => Promise<void>
   onChainEdit: () => void
 }) {
@@ -103,12 +105,12 @@ export const ChainItem = memo(function ChainItem({
           <div className="truncate py-1">
             <span>{item.name}</span>
             <div className="mt-1 flex gap-1">
-              {usedInGlobal && (
+              {context?.scope === 'global' && (
                 <span className="rounded bg-blue-500 px-1 py-0.5 text-xs text-white">
                   G
                 </span>
               )}
-              {usedInCurrentProfile && (
+              {context?.scope === 'scoped' && (
                 <span className="rounded bg-green-500 px-1 py-0.5 text-xs text-white">
                   L
                 </span>

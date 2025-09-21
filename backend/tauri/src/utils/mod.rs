@@ -17,6 +17,7 @@ pub mod open;
 
 pub mod dock;
 pub mod sudo;
+pub mod window_manager;
 
 #[cfg(test)]
 #[cfg(windows)]

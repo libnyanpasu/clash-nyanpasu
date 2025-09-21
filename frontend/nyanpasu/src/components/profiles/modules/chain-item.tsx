@@ -112,7 +112,7 @@ export const ChainItem = memo(function ChainItem({
               )}
               {context?.scope === 'scoped' && (
                 <span className="rounded bg-green-500 px-1 py-0.5 text-xs text-white">
-                  L
+                  S
                 </span>
               )}
             </div>

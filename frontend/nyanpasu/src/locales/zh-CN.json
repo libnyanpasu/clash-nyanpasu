@@ -167,7 +167,7 @@
   "Page Transition Animation None": "无",
   "Language": "语言设置",
   "Path Config": "目录配置",
-  "Migrate App Path": "迁移应用程序路径",
+  "Migrate Config Dir": "迁移配置目录",
   "Open Config Dir": "配置目录",
   "Open Data Dir": "数据目录",
   "Open Core Dir": "内核目录",

@@ -167,7 +167,7 @@
   "Page Transition Animation None": "Без анимации",
   "Language": "Язык",
   "Path Config": "Конфигурация пути",
-  "Migrate App Path": "Перенести путь приложения",
+  "Migrate Config Dir": "Перенести каталог конфигурации",
   "Open Config Dir": "Открыть каталог конфигурации",
   "Open Data Dir": "Открыть каталог данных",
   "Open Core Dir": "Открыть каталог ядра",

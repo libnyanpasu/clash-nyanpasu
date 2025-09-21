@@ -15,3 +15,4 @@ pub mod win_uwp;
 pub use self::clash::core::*;
 pub mod migration;
 pub mod state;
+pub mod state_v2;

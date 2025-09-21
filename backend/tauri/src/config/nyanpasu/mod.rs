@@ -306,7 +306,7 @@ pub struct WindowState {
 
 impl IVerge {
     pub fn new() -> Self {
-        match dirs::nyanpasu_config_path().and_then(|path| help::read_yaml::<IVerge>(&path)) {
+        match dirs::nyanpasu_config_path().and_then(|path| help::read_yaml::<IVerge, _>(&path)) {
             Ok(config) => Self::merge_with_template(config),
             Err(err) => {
                 log::error!(target: "app", "{err:?}");

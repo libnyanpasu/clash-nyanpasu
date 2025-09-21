@@ -25,7 +25,6 @@ import {
   Tooltip,
 } from '@mui/material'
 import {
-  Profile,
   ProfileQueryResultItem,
   RemoteProfile,
   RemoteProfileOptionsBuilder,
@@ -314,22 +313,20 @@ export const ProfileItem = memo(function ProfileItem({
               </Button>
             </Badge>
 
-            {isRemote && (
-              <Tooltip title={t('Update')}>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  className="!size-8 !min-w-0"
-                  onClick={(e) => {
-                    cleanDeepClickEvent(e)
-                    menuMapping.Update()
-                  }}
-                  loading={globalUpdatePending || loading.update}
-                >
-                  <Update />
-                </Button>
-              </Tooltip>
-            )}
+            <Tooltip title={t('Update')}>
+              <Button
+                size="small"
+                variant="outlined"
+                className="!size-8 !min-w-0"
+                onClick={(e) => {
+                  cleanDeepClickEvent(e)
+                  menuMapping.Update()
+                }}
+                loading={globalUpdatePending || loading.update}
+              >
+                <Update />
+              </Button>
+            </Tooltip>
 
             <Tooltip title={t('Menu')}>
               <Button

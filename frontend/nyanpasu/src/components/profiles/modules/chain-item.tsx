@@ -29,8 +29,10 @@ export const ChainItem = memo(function ChainItem({
 
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
 
+  const isChainIncluded = selected // Based on the 'selected' prop which indicates if the chain is active
+
   const menuMapping = {
-    Apply: () => handleClick(),
+    [isChainIncluded ? 'Disable' : 'Enable']: () => handleClick(),
     'Edit Info': () => onChainEdit(),
     'Open File': () => item.view && item.view(),
     Delete: () => item.drop && item.drop(),

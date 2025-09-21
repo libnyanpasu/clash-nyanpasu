@@ -146,7 +146,7 @@
   "Guard Interval": "代理守卫间隔",
   "The interval must be greater than 0 second": "间隔时间必须大于 0 秒。",
   "Proxy Bypass": "代理绕过",
-  "Apply": "应用",
+  "Toggle": "切换",
   "Current System Proxy": "当前系统代理",
   "User Interface": "用户界面",
   "Theme Mode": "主题模式",

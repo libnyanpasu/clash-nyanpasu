@@ -146,7 +146,7 @@
   "Guard Interval": "Интервал охраны",
   "The interval must be greater than 0 second": "Интервал должен быть больше 0 секунд.",
   "Proxy Bypass": "Обход прокси",
-  "Apply": "Применить",
+  "Toggle": "Переключить",
   "Current System Proxy": "Текущий системный прокси",
   "User Interface": "Пользовательский интерфейс",
   "Theme Mode": "Тематический режим",

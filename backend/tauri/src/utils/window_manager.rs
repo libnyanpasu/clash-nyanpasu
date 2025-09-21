@@ -172,6 +172,12 @@ pub fn center_window(window: &Window) -> tauri::Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+pub fn center_window(window: &Window) -> tauri::Result<()> {
+    window.center();
+    Ok(())
+}
+
 /// Get available monitors sorted by position
 pub fn get_available_monitors(
     window: tauri::Window,

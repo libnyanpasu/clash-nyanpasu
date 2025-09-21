@@ -101,10 +101,11 @@ export const SideChain = ({ onChainEdit }: SideChainProps) => {
             : currentProfile?.chain?.includes(item.uid)
 
           // Check if chain is used in global context
-          const usedInGlobal = profiles?.chain?.includes(item.uid)
+          const usedInGlobal = profiles?.chain?.includes(item.uid) ?? false
 
           // Check if chain is used in current profile context
-          const usedInCurrentProfile = currentProfile?.chain?.includes(item.uid)
+          const usedInCurrentProfile =
+            currentProfile?.chain?.includes(item.uid) ?? false
 
           return (
             <ChainItem
@@ -112,11 +113,8 @@ export const SideChain = ({ onChainEdit }: SideChainProps) => {
               item={item}
               selected={selected}
               context={{
-                scope: usedInGlobal
-                  ? 'global'
-                  : usedInCurrentProfile
-                    ? 'scoped'
-                    : 'global',
+                global: usedInGlobal,
+                scoped: usedInCurrentProfile,
               }}
               onClick={async () => await handleChainClick(item.uid)}
               onChainEdit={() => onChainEdit(item)}

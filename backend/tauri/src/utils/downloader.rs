@@ -544,7 +544,13 @@ impl SafeChunkThread for RwLock<ChunkThread> {
             let chunk = chunk?;
             {
                 let mut thread = self.write();
-                thread.speed = chunk.len() as f64 / tick.elapsed().as_secs_f64();
+                let elapsed = tick.elapsed().as_secs_f64();
+                // 防止除零错误和异常大的速度值
+                if elapsed > 0.0 {
+                    thread.speed = chunk.len() as f64 / elapsed;
+                } else {
+                    thread.speed = 0.0;
+                }
                 thread.file.write_all(&chunk)?;
                 thread.downloaded += chunk.len();
                 tracing::debug!(

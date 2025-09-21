@@ -8,6 +8,7 @@ import { message } from '@/utils/notification'
 import { Box, Button, List, ListItem } from '@mui/material'
 import {
   ClashCore,
+  ClashCores,
   useClashConnections,
   useClashCores,
   useClashVersion,
@@ -58,7 +59,9 @@ export const SettingClashCore = () => {
       await switchCore.mutateAsync(core)
 
       message(
-        t('Successfully switched to the clash core', { core: `${core}` }),
+        t('Successfully switched to the clash core', {
+          core: ClashCores[core],
+        }),
         {
           kind: 'info',
           title: t('Successful'),

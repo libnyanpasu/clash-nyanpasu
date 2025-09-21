@@ -1,3 +1,6 @@
-import { atom } from 'jotai'
+import { atomWithStorage } from 'jotai/utils'
 
-export const proxiesFilterAtom = atom<string | null>(null)
+export const proxiesFilterAtom = atomWithStorage<string | null>(
+  'proxiesFilterAtom',
+  null,
+)

@@ -8,14 +8,21 @@ import { alpha, cleanDeepClickEvent } from '@nyanpasu/ui'
 
 const longPressDelay = 200
 
+interface Context {
+  global: boolean
+  scoped: boolean
+}
+
 export const ChainItem = memo(function ChainItem({
   item,
   selected,
+  context,
   onClick,
   onChainEdit,
 }: {
   item: ProfileQueryResultItem
   selected?: boolean
+  context?: Context
   onClick: () => Promise<void>
   onChainEdit: () => void
 }) {
@@ -29,8 +36,10 @@ export const ChainItem = memo(function ChainItem({
 
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
 
+  const isChainIncluded = selected // Based on the 'selected' prop which indicates if the chain is active
+
   const menuMapping = {
-    Apply: () => handleClick(),
+    [isChainIncluded ? 'Disable' : 'Enable']: () => handleClick(),
     'Edit Info': () => onChainEdit(),
     'Open File': () => item.view && item.view(),
     Delete: () => item.drop && item.drop(),
@@ -98,6 +107,18 @@ export const ChainItem = memo(function ChainItem({
         >
           <div className="truncate py-1">
             <span>{item.name}</span>
+            <div className="mt-1 flex gap-1">
+              {context?.global && (
+                <span className="rounded bg-blue-500 px-1 py-0.5 text-xs text-white">
+                  G
+                </span>
+              )}
+              {context?.scoped && (
+                <span className="rounded bg-green-500 px-1 py-0.5 text-xs text-white">
+                  S
+                </span>
+              )}
+            </div>
           </div>
 
           <Button

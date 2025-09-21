@@ -291,6 +291,16 @@ pub struct IVerge {
     /// When enabled, shows proxy and TUN mode status as text next to the tray icon
     /// When disabled, only shows status via icon changes (prevents text display issues on Wayland)
     pub enable_tray_text: Option<bool>,
+
+    /// enable traffic information display in system tray
+    /// When enabled, shows upload/download speeds in the tray tooltip (macOS/Windows) or title (Linux)
+    pub enable_tray_traffic: Option<bool>,
+
+    /// enable colored tray icons on macOS
+    /// When enabled, uses colored icons instead of template icons to show proxy status
+    /// When disabled, uses system template icons that adapt to light/dark mode
+    #[cfg(target_os = "macos")]
+    pub enable_macos_colored_icons: Option<bool>,
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize, Type)]
@@ -305,7 +315,7 @@ pub struct WindowState {
 
 impl IVerge {
     pub fn new() -> Self {
-        match dirs::nyanpasu_config_path().and_then(|path| help::read_yaml::<IVerge>(&path)) {
+        match dirs::nyanpasu_config_path().and_then(|path| help::read_yaml::<IVerge, _>(&path)) {
             Ok(mut config) => {
                 // Validate and fix theme_color if it's invalid
                 if let Some(ref theme_color) = config.theme_color {
@@ -373,6 +383,15 @@ impl IVerge {
             config.enable_tray_text = template.enable_tray_text;
         }
 
+        if config.enable_tray_traffic.is_none() {
+            config.enable_tray_traffic = template.enable_tray_traffic;
+        }
+
+        #[cfg(target_os = "macos")]
+        if config.enable_macos_colored_icons.is_none() {
+            config.enable_macos_colored_icons = template.enable_macos_colored_icons;
+        }
+
         config
     }
 
@@ -408,6 +427,9 @@ impl IVerge {
             enable_service_mode: Some(false),
             always_on_top: Some(false),
             enable_tray_text: Some(false),
+            enable_tray_traffic: Some(false),
+            #[cfg(target_os = "macos")]
+            enable_macos_colored_icons: Some(false),
             ..Self::default()
         }
     }

@@ -51,7 +51,7 @@ impl Default for Profiles {
 
 impl Profiles {
     pub fn new() -> Self {
-        match dirs::profiles_path().and_then(|path| help::read_yaml::<Self>(&path)) {
+        match dirs::profiles_path().and_then(|path| help::read_yaml::<Self, _>(&path)) {
             Ok(profiles) => profiles,
             Err(err) => {
                 log::error!(target: "app", "{err:?}\n - use the default profiles");

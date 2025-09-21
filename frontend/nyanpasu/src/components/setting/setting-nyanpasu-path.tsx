@@ -64,7 +64,7 @@ export const SettingNyanpasuPath = () => {
     { label: t('Open Config Dir'), onClick: openAppConfigDir },
     { label: t('Open Data Dir'), onClick: openAppDataDir },
     OS === 'windows' && {
-      label: t('Migrate App Path'),
+      label: t('Migrate Config Dir'),
       onClick: migrateAppPath,
     },
     { label: t('Open Core Dir'), onClick: openCoreDir },

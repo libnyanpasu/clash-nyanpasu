@@ -5,14 +5,14 @@ use fast_image_resize::{
     FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer,
     images::{Image, ImageRef},
 };
+use fs_err as fs;
 use image::{ColorType, ImageEncoder, ImageReader, codecs::png::PngEncoder};
 use nanoid::nanoid;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_yaml::{Mapping, Value};
 use std::{
-    fs,
     io::{BufWriter, Cursor},
-    path::PathBuf,
+    path::{Path, PathBuf},
     str::FromStr,
 };
 use tauri::{AppHandle, Manager, process::current_binary};
@@ -24,7 +24,8 @@ use crate::trace_err;
 use tauri_plugin_opener::OpenerExt;
 
 /// read data from yaml as struct T
-pub fn read_yaml<T: DeserializeOwned>(path: &PathBuf) -> Result<T> {
+pub fn read_yaml<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T> {
+    let path = path.as_ref();
     if !path.exists() {
         bail!("file not found \"{}\"", path.display());
     }
@@ -57,7 +58,12 @@ pub fn read_merge_mapping(path: &PathBuf) -> Result<Mapping> {
 
 /// save the data to the file
 /// can set `prefix` string to add some comments
-pub fn save_yaml<T: Serialize>(path: &PathBuf, data: &T, prefix: Option<&str>) -> Result<()> {
+pub fn save_yaml<T: Serialize, P: AsRef<Path>>(
+    path: P,
+    data: &T,
+    prefix: Option<&str>,
+) -> Result<()> {
+    let path = path.as_ref();
     let data_str = serde_yaml::to_string(data)?;
 
     let yaml_str = match prefix {
@@ -343,4 +349,22 @@ fn test_parse_value() {
     assert_eq!(parse_str::<usize>(test_1, "upload1"), None);
     assert_eq!(parse_str::<usize>(test_1, "expire1"), None);
     assert_eq!(parse_str::<usize>(test_2, "attachment"), None);
+}
+
+/// Format traffic bytes to human readable string with /s suffix for speed
+/// Uses humansize library with decimal units (1000-based)
+pub fn format_traffic_speed(bytes: u64) -> String {
+    if bytes == 0 {
+        return "0 B/s".to_string();
+    }
+    humansize::format_size(bytes, humansize::DECIMAL.suffix("/s"))
+}
+
+/// Format traffic bytes to human readable string without /s suffix for totals
+/// Uses humansize library with decimal units (1000-based)
+pub fn format_traffic_total(bytes: u64) -> String {
+    if bytes == 0 {
+        return "0 B".to_string();
+    }
+    humansize::format_size(bytes, humansize::DECIMAL)
 }

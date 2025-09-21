@@ -146,7 +146,7 @@
   "Guard Interval": "Guard Interval",
   "The interval must be greater than 0 second": "The interval must be greater than 0 second.",
   "Proxy Bypass": "Proxy Bypass",
-  "Apply": "Apply",
+  "Toggle": "Toggle",
   "Current System Proxy": "Current System Proxy",
   "User Interface": "User Interface",
   "Theme Mode": "Theme Mode",

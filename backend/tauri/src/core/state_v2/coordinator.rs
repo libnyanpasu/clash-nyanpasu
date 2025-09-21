@@ -1,5 +1,4 @@
 use super::builder::*;
-use tokio::sync::RwLock;
 
 #[derive(thiserror::Error, Debug)]
 pub enum StateChangedError {
@@ -56,16 +55,17 @@ pub enum ConcurrencyStrategy {
     Limited(usize),
 }
 
+#[non_exhaustive]
 pub struct StateCoordinator<T: Clone + Send + Sync + 'static> {
-    current_state: RwLock<Option<T>>,
+    current_state: Option<T>,
     subscribers: Vec<Box<dyn StateChangedSubscriber<T> + Send + Sync>>,
     // strategy: ConcurrencyStrategy,
 }
 
 impl<T: Clone + Send + Sync> StateCoordinator<T> {
-    pub fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
-            current_state: RwLock::new(None),
+            current_state: None,
             subscribers: Vec::new(),
         }
     }
@@ -76,8 +76,8 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
     }
 
     /// Get the current state.
-    pub async fn current_state(&self) -> Option<T> {
-        self.current_state.read().await.clone()
+    pub fn current_state(&self) -> Option<T> {
+        self.current_state.clone()
     }
 
     async fn run_migration<S>(
@@ -117,30 +117,29 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
 
     /// Upsert the state by a builder, it was used for a builder was patched for upsert.
     pub async fn upsert(
-        &self,
+        &mut self,
         builder: impl StateAsyncBuilder<State = T>,
     ) -> Result<(), StateChangedError> {
-        let mut current_state = self.current_state.write().await;
         let new_state = builder
             .build()
             .await
             .map_err(StateChangedError::Validation)?;
 
         for subscriber in self.subscribers.iter() {
-            Self::run_migration(subscriber.as_ref(), current_state.as_ref(), &new_state).await?;
+            Self::run_migration(subscriber.as_ref(), self.current_state.as_ref(), &new_state)
+                .await?;
         }
 
-        *current_state = Some(new_state);
+        self.current_state = Some(new_state);
         Ok(())
     }
 
     /// Upsert the state directly, it used for a small StateObject, a bool value, etc.
-    pub async fn upsert_state(&self, state: T) -> Result<(), StateChangedError> {
-        let mut current_state = self.current_state.write().await;
+    pub async fn upsert_state(&mut self, state: T) -> Result<(), StateChangedError> {
         for subscriber in self.subscribers.iter() {
-            Self::run_migration(subscriber.as_ref(), current_state.as_ref(), &state).await?;
+            Self::run_migration(subscriber.as_ref(), self.current_state.as_ref(), &state).await?;
         }
-        *current_state = Some(state);
+        self.current_state = Some(state);
         Ok(())
     }
 }
@@ -310,7 +309,7 @@ mod test {
     #[tokio::test]
     async fn test_new_coordinator() {
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let current_state = coordinator.current_state.read().await;
+        let current_state = coordinator.current_state.clone();
         assert!(current_state.is_none());
         assert_eq!(coordinator.subscribers.len(), 0);
     }
@@ -331,8 +330,8 @@ mod test {
         assert!(result.is_ok());
 
         // 检查状态是否更新
-        let current_state = coordinator.current_state.read().await;
-        assert_eq!(*current_state, Some(test_state.clone()));
+        let current_state = coordinator.current_state.clone();
+        assert_eq!(current_state, Some(test_state.clone()));
 
         // 检查订阅者是否被调用
         assert_eq!(subscriber.get_migrate_calls(), 1);
@@ -360,8 +359,8 @@ mod test {
         assert!(result.is_ok());
 
         // 检查状态是否更新
-        let current_state = coordinator.current_state.read().await;
-        assert_eq!(*current_state, Some(test_state.clone()));
+        let current_state = coordinator.current_state.clone();
+        assert_eq!(current_state, Some(test_state.clone()));
 
         // 检查订阅者是否被调用
         assert_eq!(subscriber.get_migrate_calls(), 1);
@@ -370,7 +369,7 @@ mod test {
 
     #[tokio::test]
     async fn test_upsert_builder_validation_failure() {
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
         let builder = TestStateBuilder::failing();
 
         let result = coordinator.upsert(builder).await;
@@ -382,7 +381,7 @@ mod test {
         }
 
         // 确保状态没有改变
-        let current_state = coordinator.current_state.read().await;
+        let current_state = coordinator.current_state.clone();
         assert!(current_state.is_none());
     }
 
@@ -414,7 +413,7 @@ mod test {
         assert_eq!(subscriber.get_rollback_calls(), 1);
 
         // 确保状态没有改变
-        let current_state = coordinator.current_state.read().await;
+        let current_state = coordinator.current_state.clone();
         assert!(current_state.is_none());
     }
 
@@ -448,7 +447,7 @@ mod test {
         assert_eq!(subscriber.get_rollback_calls(), 1);
 
         // 确保状态没有改变
-        let current_state = coordinator.current_state.read().await;
+        let current_state = coordinator.current_state.clone();
         assert!(current_state.is_none());
     }
 
@@ -485,8 +484,8 @@ mod test {
         assert_eq!(subscriber3.get_rollback_calls(), 0);
 
         // 检查状态更新
-        let current_state = coordinator.current_state.read().await;
-        assert_eq!(*current_state, Some(test_state));
+        let current_state = coordinator.current_state.clone();
+        assert_eq!(current_state, Some(test_state));
     }
 
     #[tokio::test]
@@ -524,7 +523,7 @@ mod test {
         assert_eq!(subscriber3.get_rollback_calls(), 0);
 
         // 确保状态没有改变
-        let current_state = coordinator.current_state.read().await;
+        let current_state = coordinator.current_state.clone();
         assert!(current_state.is_none());
     }
 
@@ -556,8 +555,8 @@ mod test {
         assert_eq!(history[1], (Some(state1), state2.clone()));
 
         // 检查当前状态
-        let current_state = coordinator.current_state.read().await;
-        assert_eq!(*current_state, Some(state2));
+        let current_state = coordinator.current_state.clone();
+        assert_eq!(current_state, Some(state2));
     }
 
     #[tokio::test]
@@ -583,7 +582,7 @@ mod test {
 
     #[tokio::test]
     async fn test_sync_builder_to_async_conversion() {
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
         let test_state = TestState {
             value: 123,
             name: "sync_to_async".to_string(),
@@ -594,8 +593,8 @@ mod test {
         let result = coordinator.upsert(sync_builder).await;
         assert!(result.is_ok());
 
-        let current_state = coordinator.current_state.read().await;
-        assert_eq!(*current_state, Some(test_state));
+        let current_state = coordinator.current_state.clone();
+        assert_eq!(current_state, Some(test_state));
     }
 
     #[tokio::test]
@@ -628,10 +627,10 @@ mod test {
 
     #[tokio::test]
     async fn test_get_state() {
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
 
         // 初始状态应该是 None
-        let initial_state = coordinator.current_state().await;
+        let initial_state = coordinator.current_state();
         assert!(initial_state.is_none());
 
         // 设置状态后应该能获取到
@@ -641,7 +640,7 @@ mod test {
         };
 
         coordinator.upsert_state(test_state.clone()).await.unwrap();
-        let retrieved_state = coordinator.current_state().await;
+        let retrieved_state = coordinator.current_state();
         assert_eq!(retrieved_state, Some(test_state.clone()));
 
         // 更新状态后应该获取到新状态
@@ -651,45 +650,13 @@ mod test {
         };
 
         coordinator.upsert_state(new_state.clone()).await.unwrap();
-        let updated_retrieved_state = coordinator.current_state().await;
+        let updated_retrieved_state = coordinator.current_state();
         assert_eq!(updated_retrieved_state, Some(new_state));
     }
 
     #[tokio::test]
-    async fn test_concurrent_state_access() {
-        use tokio::task;
-
-        let coordinator = Arc::new(StateCoordinator::new());
-        let test_state = TestState {
-            value: 42,
-            name: "concurrent_test".to_string(),
-        };
-
-        // 设置初始状态
-        coordinator.upsert_state(test_state.clone()).await.unwrap();
-
-        // 创建多个并发任务来读取状态
-        let mut handles = vec![];
-        for i in 0..10 {
-            let coord = Arc::clone(&coordinator);
-            let expected_state = test_state.clone();
-            let handle = task::spawn(async move {
-                let state = coord.current_state().await;
-                assert_eq!(state, Some(expected_state));
-                i
-            });
-            handles.push(handle);
-        }
-
-        // 等待所有任务完成
-        for handle in handles {
-            handle.await.unwrap();
-        }
-    }
-
-    #[tokio::test]
     async fn test_empty_subscribers_list() {
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
         let test_state = TestState {
             value: 42,
             name: "no_subscribers".to_string(),
@@ -699,7 +666,7 @@ mod test {
         let result = coordinator.upsert_state(test_state.clone()).await;
         assert!(result.is_ok());
 
-        let current_state = coordinator.current_state().await;
+        let current_state = coordinator.current_state();
         assert_eq!(current_state, Some(test_state));
     }
 }

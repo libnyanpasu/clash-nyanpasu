@@ -9,11 +9,11 @@ impl<State: Clone + Send + Sync + 'static> SimpleStateManager<State> {
         Self { state_coordinator }
     }
 
-    pub async fn current_state(&self) -> Option<State> {
-        self.state_coordinator.current_state().await
+    pub fn current_state(&self) -> Option<State> {
+        self.state_coordinator.current_state()
     }
 
-    pub async fn upsert(&self, state: State) -> Result<(), StateChangedError> {
+    pub async fn upsert(&mut self, state: State) -> Result<(), StateChangedError> {
         self.state_coordinator.upsert_state(state).await
     }
 }

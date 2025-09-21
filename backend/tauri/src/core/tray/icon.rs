@@ -48,10 +48,34 @@ impl From<&TrayIcon> for &'static str {
 
 impl TrayIcon {
     pub fn raw_bytes(&self) -> &'static [u8] {
-        match self {
-            TrayIcon::Normal => include_bytes!("../../../icons/win-tray-icon.png"),
-            TrayIcon::Tun => include_bytes!("../../../icons/win-tray-icon-blue.png"),
-            TrayIcon::SystemProxy => include_bytes!("../../../icons/win-tray-icon-pink.png"),
+        // 获取当前平台
+        let platform = if cfg!(target_os = "macos") {
+            "macos"
+        } else if cfg!(target_os = "windows") {
+            "windows"
+        } else {
+            "linux"
+        };
+        self.raw_bytes_for_platform(platform)
+    }
+
+    pub fn raw_bytes_for_platform(&self, platform: &str) -> &'static [u8] {
+        match platform {
+            "windows" | "linux" => match self {
+                TrayIcon::Normal => include_bytes!("../../../icons/win-tray-icon.png"),
+                TrayIcon::Tun => include_bytes!("../../../icons/win-tray-icon-blue.png"),
+                TrayIcon::SystemProxy => include_bytes!("../../../icons/win-tray-icon-pink.png"),
+            },
+            "macos" => match self {
+                TrayIcon::Normal => include_bytes!("../../../icons/mac-tray-icon.png"),
+                TrayIcon::Tun => include_bytes!("../../../icons/mac-tray-icon-blue.png"),
+                TrayIcon::SystemProxy => include_bytes!("../../../icons/mac-tray-icon-pink.png"),
+            },
+            _ => match self {
+                TrayIcon::Normal => include_bytes!("../../../icons/win-tray-icon.png"),
+                TrayIcon::Tun => include_bytes!("../../../icons/win-tray-icon-blue.png"),
+                TrayIcon::SystemProxy => include_bytes!("../../../icons/win-tray-icon-pink.png"),
+            },
         }
     }
 
@@ -70,15 +94,30 @@ impl TrayIcon {
 
 #[tracing_attributes::instrument]
 pub fn get_raw_icon<'n>(mode: TrayIcon) -> Cow<'n, [u8]> {
+    get_raw_icon_for_platform(mode, None)
+}
+
+#[tracing_attributes::instrument]
+pub fn get_raw_icon_for_platform<'n>(mode: TrayIcon, platform: Option<&str>) -> Cow<'n, [u8]> {
+    let platform = platform.unwrap_or_else(|| {
+        if cfg!(target_os = "macos") {
+            "macos"
+        } else if cfg!(target_os = "windows") {
+            "windows"
+        } else {
+            "linux"
+        }
+    });
+
     match tray_icons_path(mode.as_str()) {
         Ok(path) if path.exists() => match std::fs::read(path) {
             Ok(bytes) => Cow::Owned(bytes),
             Err(e) => {
                 tracing::error!("failed to read icon file: {:?}", e);
-                Cow::Borrowed(mode.raw_bytes())
+                Cow::Borrowed(mode.raw_bytes_for_platform(platform))
             }
         },
-        _ => Cow::Borrowed(mode.raw_bytes()),
+        _ => Cow::Borrowed(mode.raw_bytes_for_platform(platform)),
     }
 }
 
@@ -134,10 +173,25 @@ pub fn on_scale_factor_changed(scale_factor: f64) {
 
 #[allow(dead_code)]
 pub fn get_icon(mode: &TrayIcon) -> Vec<u8> {
+    get_icon_for_platform(mode, None)
+}
+
+#[allow(dead_code)]
+pub fn get_icon_for_platform(mode: &TrayIcon, platform: Option<&str>) -> Vec<u8> {
+    let platform = platform.unwrap_or_else(|| {
+        if cfg!(target_os = "macos") {
+            "macos"
+        } else if cfg!(target_os = "windows") {
+            "windows"
+        } else {
+            "linux"
+        }
+    });
+
     let cache_file = crate::utils::dirs::cache_dir()
         .unwrap()
         .join("icons")
-        .join(format!("tray_{mode}.png"));
+        .join(format!("tray_{mode}_{platform}.png"));
     match std::fs::read(&cache_file) {
         Ok(bytes) if bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47]) => {
             tracing::info!("use cached icon: {:?}", cache_file);
@@ -145,11 +199,11 @@ pub fn get_icon(mode: &TrayIcon) -> Vec<u8> {
         }
         Err(e) => {
             tracing::error!("failed to read icon file: {:?}", e);
-            mode.raw_bytes().to_vec()
+            mode.raw_bytes_for_platform(platform).to_vec()
         }
         _ => {
             tracing::error!("invalid icon file: {:?}", cache_file);
-            mode.raw_bytes().to_vec()
+            mode.raw_bytes_for_platform(platform).to_vec()
         }
     }
 }

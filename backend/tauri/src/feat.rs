@@ -299,9 +299,6 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
     let log_max_files = patch.max_log_files;
     let enable_tray_selector = patch.clash_tray_selector;
     let enable_tray_text = patch.enable_tray_text;
-    let enable_tray_traffic = patch.enable_tray_traffic;
-    #[cfg(target_os = "macos")]
-    let enable_macos_colored_icons = patch.enable_macos_colored_icons;
     let network_statistic_widget = patch.network_statistic_widget;
     let res = || async move {
         let service_mode = patch.enable_service_mode;
@@ -367,17 +364,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
         if language.is_some() {
             rust_i18n::set_locale(language.unwrap().as_str());
             handle::Handle::update_systray()?;
-        } else if system_proxy
-            .or(tun_mode)
-            .or(enable_tray_text)
-            .or(enable_tray_traffic)
-            .is_some()
-        {
-            handle::Handle::update_systray_part()?;
-        }
-
-        #[cfg(target_os = "macos")]
-        if enable_macos_colored_icons.is_some() {
+        } else if system_proxy.or(tun_mode).or(enable_tray_text).is_some() {
             handle::Handle::update_systray_part()?;
         }
 

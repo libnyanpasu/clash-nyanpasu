@@ -469,13 +469,13 @@ pub async fn patch_clash_config(payload: PatchRuntimeConfig) -> Result {
 
 #[tauri::command]
 #[specta::specta]
-pub fn get_verge_config() -> Result<IVerge> {
+pub fn get_verge_config() -> Result<NyanpasuAppConfig> {
     Ok(Config::verge().data().clone())
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn patch_verge_config(payload: IVerge) -> Result {
+pub async fn patch_verge_config(payload: NyanpasuAppConfig) -> Result {
     (feat::patch_verge(payload).await)?;
     Ok(())
 }

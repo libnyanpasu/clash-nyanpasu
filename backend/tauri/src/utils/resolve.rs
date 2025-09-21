@@ -1,6 +1,6 @@
 use crate::{
     config::{
-        Config, IVerge,
+        Config, NyanpasuAppConfig,
         nyanpasu::{ClashCore, WindowState},
     },
     core::{storage::Storage, tray::proxies, *},
@@ -130,9 +130,9 @@ pub fn resolve_setup(app: &mut App) {
         );
     }
 
-    Config::verge().data().patch_config(IVerge {
+    Config::verge().data().patch_config(NyanpasuAppConfig {
         verge_mixed_port: Some(port),
-        ..IVerge::default()
+        ..NyanpasuAppConfig::default()
     });
     let _ = Config::verge().data().save_file();
     let mut mapping = Mapping::new();

@@ -1,4 +1,4 @@
-use super::{IClashTemp, IRuntime, IVerge};
+use super::{IClashTemp, IRuntime, NyanpasuAppConfig};
 use parking_lot::{MappedMutexGuard, Mutex, MutexGuard};
 use std::sync::Arc;
 
@@ -67,14 +67,14 @@ macro_rules! draft_define {
 // draft_define!(IClash);
 draft_define!(IClashTemp);
 draft_define!(IRuntime);
-draft_define!(IVerge);
+draft_define!(NyanpasuAppConfig);
 
 #[test]
 fn test_draft() {
-    let verge = IVerge {
+    let verge = NyanpasuAppConfig {
         enable_auto_launch: Some(true),
         enable_tun_mode: Some(false),
-        ..IVerge::default()
+        ..NyanpasuAppConfig::default()
     };
 
     let draft = Draft::from(verge);

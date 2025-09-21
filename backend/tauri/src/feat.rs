@@ -109,9 +109,9 @@ pub fn toggle_system_proxy() {
     let enable = enable.unwrap_or(false);
 
     tauri::async_runtime::spawn(async move {
-        match patch_verge(IVerge {
+        match patch_verge(NyanpasuAppConfig {
             enable_system_proxy: Some(!enable),
-            ..IVerge::default()
+            ..NyanpasuAppConfig::default()
         })
         .await
         {
@@ -124,9 +124,9 @@ pub fn toggle_system_proxy() {
 // 打开系统代理
 pub fn enable_system_proxy() {
     tauri::async_runtime::spawn(async {
-        match patch_verge(IVerge {
+        match patch_verge(NyanpasuAppConfig {
             enable_system_proxy: Some(true),
-            ..IVerge::default()
+            ..NyanpasuAppConfig::default()
         })
         .await
         {
@@ -139,9 +139,9 @@ pub fn enable_system_proxy() {
 // 关闭系统代理
 pub fn disable_system_proxy() {
     tauri::async_runtime::spawn(async {
-        match patch_verge(IVerge {
+        match patch_verge(NyanpasuAppConfig {
             enable_system_proxy: Some(false),
-            ..IVerge::default()
+            ..NyanpasuAppConfig::default()
         })
         .await
         {
@@ -157,9 +157,9 @@ pub fn toggle_tun_mode() {
     let enable = enable.unwrap_or(false);
 
     tauri::async_runtime::spawn(async move {
-        match patch_verge(IVerge {
+        match patch_verge(NyanpasuAppConfig {
             enable_tun_mode: Some(!enable),
-            ..IVerge::default()
+            ..NyanpasuAppConfig::default()
         })
         .await
         {
@@ -172,9 +172,9 @@ pub fn toggle_tun_mode() {
 // 打开tun模式
 pub fn enable_tun_mode() {
     tauri::async_runtime::spawn(async {
-        match patch_verge(IVerge {
+        match patch_verge(NyanpasuAppConfig {
             enable_tun_mode: Some(true),
-            ..IVerge::default()
+            ..NyanpasuAppConfig::default()
         })
         .await
         {
@@ -187,9 +187,9 @@ pub fn enable_tun_mode() {
 // 关闭tun模式
 pub fn disable_tun_mode() {
     tauri::async_runtime::spawn(async {
-        match patch_verge(IVerge {
+        match patch_verge(NyanpasuAppConfig {
             enable_tun_mode: Some(false),
-            ..IVerge::default()
+            ..NyanpasuAppConfig::default()
         })
         .await
         {
@@ -281,7 +281,7 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
 
 /// 修改verge的配置
 /// 一般都是一个个的修改
-pub async fn patch_verge(patch: IVerge) -> Result<()> {
+pub async fn patch_verge(patch: NyanpasuAppConfig) -> Result<()> {
     Config::verge().draft().patch_config(patch.clone());
     let tun_mode = patch.enable_tun_mode;
     let auto_launch = patch.enable_auto_launch;

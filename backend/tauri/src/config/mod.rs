@@ -12,4 +12,4 @@ pub use self::{
     runtime::*,
 };
 
-pub use self::nyanpasu::IVerge;
+pub use self::nyanpasu::NyanpasuAppConfig;

@@ -147,7 +147,7 @@ pub fn init_config() -> Result<()> {
 
     crate::log_err!(dirs::nyanpasu_config_path().map(|path| {
         if !path.exists() {
-            help::save_yaml(&path, &IVerge::template(), Some("# Clash Nyanpasu"))?;
+            help::save_yaml(&path, &NyanpasuAppConfig::template(), Some("# Clash Nyanpasu"))?;
         }
         <Result<()>>::Ok(())
     }));

@@ -1,4 +1,4 @@
-use super::{Draft, IClashTemp, IRuntime, IVerge, Profiles};
+use super::{Draft, IClashTemp, IRuntime, NyanpasuAppConfig, Profiles};
 use crate::{
     core::state::ManagedState,
     enhance,
@@ -14,7 +14,7 @@ pub const CHECK_CONFIG: &str = "clash-config-check.yaml";
 
 pub struct Config {
     clash_config: Draft<IClashTemp>,
-    verge_config: Draft<IVerge>,
+    verge_config: Draft<NyanpasuAppConfig>,
     profiles_config: ManagedState<Profiles>,
     runtime_config: Draft<IRuntime>,
 }
@@ -25,7 +25,7 @@ impl Config {
 
         CONFIG.get_or_init(|| Config {
             clash_config: Draft::from(IClashTemp::new()),
-            verge_config: Draft::from(IVerge::new()),
+            verge_config: Draft::from(NyanpasuAppConfig::new()),
             profiles_config: ManagedState::from(Profiles::new()),
             runtime_config: Draft::from(IRuntime::new()),
         })
@@ -35,7 +35,7 @@ impl Config {
         Self::global().clash_config.clone()
     }
 
-    pub fn verge() -> Draft<IVerge> {
+    pub fn verge() -> Draft<NyanpasuAppConfig> {
         Self::global().verge_config.clone()
     }
 

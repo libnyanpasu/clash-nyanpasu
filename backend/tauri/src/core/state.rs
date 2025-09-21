@@ -158,14 +158,14 @@ where
 mod test {
     #![allow(unused)]
     use super::ManagedState;
-    use crate::config::IVerge;
+    use crate::config::NyanpasuAppConfig;
 
     #[test]
     fn test_managed_state() {
-        let verge = IVerge {
+        let verge = NyanpasuAppConfig {
             enable_auto_launch: Some(true),
             enable_tun_mode: Some(false),
-            ..IVerge::default()
+            ..NyanpasuAppConfig::default()
         };
 
         let draft = ManagedState::from(verge);

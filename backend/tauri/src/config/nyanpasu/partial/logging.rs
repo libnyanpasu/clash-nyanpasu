@@ -1,4 +1,3 @@
-use super::IVerge;
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 use tracing_subscriber::filter;
@@ -42,11 +41,5 @@ impl From<LoggingLevel> for filter::LevelFilter {
             LoggingLevel::Warn => filter::LevelFilter::WARN,
             LoggingLevel::Error => filter::LevelFilter::ERROR,
         }
-    }
-}
-
-impl IVerge {
-    pub fn get_log_level(&self) -> LoggingLevel {
-        self.app_log_level.clone().unwrap_or_default()
     }
 }

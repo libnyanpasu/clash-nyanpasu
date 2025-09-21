@@ -63,7 +63,7 @@ pub struct StateCoordinator<T: Clone + Send + Sync + 'static> {
 }
 
 impl<T: Clone + Send + Sync> StateCoordinator<T> {
-    pub(super) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             current_state: None,
             subscribers: Vec::new(),
@@ -71,7 +71,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
     }
 
     /// Add a subscriber to the state coordinator.
-    fn add_subscriber(&mut self, subscriber: Box<dyn StateChangedSubscriber<T> + Send + Sync>) {
+    pub fn add_subscriber(&mut self, subscriber: Box<dyn StateChangedSubscriber<T> + Send + Sync>) {
         self.subscribers.push(subscriber);
     }
 

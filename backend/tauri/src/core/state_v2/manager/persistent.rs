@@ -73,6 +73,10 @@ where
         Ok(())
     }
 
+    pub async fn current_state(&self) -> Option<State> {
+        self.state_coordinator.current_state().await
+    }
+
     pub async fn upsert(&self, builder: Builder) -> Result<(), UpsertError> {
         let mut current_builder = self.current_builder.write().await;
         self.state_coordinator

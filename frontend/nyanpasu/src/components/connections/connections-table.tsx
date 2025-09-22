@@ -33,7 +33,7 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
   const { t, i18n } = useTranslation()
 
   const {
-    query: { data: clashConnections },
+    query: { data: clashConnections, isLoading },
   } = useClashConnections()
 
   const historyMessage = useRef<TableMessage | null>(null)
@@ -188,6 +188,12 @@ export const ConnectionsTable = ({ searchTerm }: { searchTerm?: string }) => {
     rowVirtualizerOptions: { overscan: 5 },
     columnVirtualizerOptions: { overscan: 2 },
   })
+
+  // Show loading state while data is being fetched
+  if (isLoading && !connectionsMessage) {
+    // Don't show a separate loading indicator here since the parent component already handles it
+    return null
+  }
 
   return connectionsMessage?.connections.length ? (
     <>

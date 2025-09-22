@@ -57,6 +57,9 @@ export const useClashConnections = () => {
         ]) || []
       )
     },
+    // Ensure the query is enabled and properly initialized
+    enabled: true,
+    staleTime: 0, // Data is always fresh as it comes from WebSocket
   })
 
   const deleteConnections = useMutation({

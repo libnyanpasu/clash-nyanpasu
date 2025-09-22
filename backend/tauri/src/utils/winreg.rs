@@ -47,7 +47,7 @@ pub fn set_app_dir(path: &Path) -> Result<()> {
 /// Get current Windows user SID
 #[cfg(windows)]
 pub fn get_current_user_sid() -> Result<String> {
-    use std::process::Command;
+    use std::{os::windows::process::CommandExt, process::Command};
 
     // Try PowerShell method first (more reliable)
     let output = Command::new("powershell")
@@ -55,6 +55,7 @@ pub fn get_current_user_sid() -> Result<String> {
             "-Command",
             "[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
         ])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .output();
 
     if let Ok(output) = output {
@@ -76,6 +77,7 @@ pub fn get_current_user_sid() -> Result<String> {
             "sid",
             "/value",
         ])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .output();
 
     if let Ok(output) = output {

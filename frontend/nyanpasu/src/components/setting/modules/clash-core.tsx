@@ -10,7 +10,7 @@ import { message } from '@/utils/notification'
 import parseTraffic from '@/utils/parse-traffic'
 import FiberManualRecord from '@mui/icons-material/FiberManualRecord'
 import Update from '@mui/icons-material/Update'
-import { Box, Button } from '@mui/material'
+import { Box } from '@mui/material'
 import ListItem from '@mui/material/ListItem'
 import ListItemButton from '@mui/material/ListItemButton'
 import Tooltip from '@mui/material/Tooltip'
@@ -21,7 +21,12 @@ import {
   inspectUpdater,
   useClashCores,
 } from '@nyanpasu/interface'
-import { alpha, cleanDeepClickEvent, cn } from '@nyanpasu/ui'
+import {
+  alpha,
+  MUIButton as Button,
+  cleanDeepClickEvent,
+  cn,
+} from '@nyanpasu/ui'
 
 export const getImage = (core: ClashCore) => {
   switch (core) {

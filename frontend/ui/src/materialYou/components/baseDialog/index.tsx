@@ -1,21 +1,6 @@
-import { useLockFn } from 'ahooks'
-import useDebounceFn from 'ahooks/lib/useDebounceFn'
-import { AnimatePresence, motion } from 'framer-motion'
-import {
-  CSSProperties,
-  ReactNode,
-  useEffect,
-  useLayoutEffect,
-  useState,
-} from 'react'
+import { CSSProperties, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { getSystem, useClickPosition } from '@/hooks'
-import { alpha, cn } from '@/utils'
-import { Box, Button, Divider } from '@mui/material'
-import { useColorScheme } from '@mui/material/styles'
-import * as Portal from '@radix-ui/react-portal'
-
-const OS = getSystem()
+import { RadixBaseDialog } from '../../../components/radix'
 
 export interface BaseDialogProps {
   title: ReactNode
@@ -48,203 +33,22 @@ export const BaseDialog = ({
 }: BaseDialogProps) => {
   const { t } = useTranslation()
 
-  const { mode } = useColorScheme()
-
-  const [mounted, setMounted] = useState(false)
-
-  const [offset, setOffset] = useState({
-    x: 0,
-    y: 0,
-  })
-
-  const [okLoading, setOkLoading] = useState(false)
-  const [closeLoading, setCloseLoading] = useState(false)
-
-  const { run: runMounted, cancel: cancelMounted } = useDebounceFn(
-    () => setMounted(false),
-    { wait: 300 },
-  )
-
-  const clickPosition = useClickPosition()
-
-  const getClickPosition = () => clickPosition
-
-  useLayoutEffect(() => {
-    if (open) {
-      setOffset({
-        x: getClickPosition()?.x ?? 0,
-        y: getClickPosition()?.y ?? 0,
-      })
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
-
-  const handleClose = useLockFn(async () => {
-    if (onClose) {
-      if (onClose.constructor.name === 'AsyncFunction') {
-        try {
-          setCloseLoading(true)
-
-          await onClose()
-        } finally {
-          setCloseLoading(false)
-        }
-      } else {
-        onClose()
-      }
-    }
-    runMounted()
-  })
-
-  const handleOk = useLockFn(async () => {
-    if (!onOk) return
-
-    if (onOk.constructor.name === 'AsyncFunction') {
-      try {
-        setOkLoading(true)
-
-        await onOk()
-      } finally {
-        setOkLoading(false)
-      }
-    } else {
-      onOk()
-    }
-  })
-
-  useEffect(() => {
-    if (open) {
-      setMounted(true)
-      cancelMounted()
-    } else {
-      handleClose()
-    }
-  }, [cancelMounted, handleClose, open])
-
+  // Adapter: delegate rendering to the new Radix-based dialog while preserving API
   return (
-    <AnimatePresence initial={false}>
-      {mounted && (
-        <Portal.Root className="fixed top-0 left-0 z-50 h-dvh w-full">
-          {!full && (
-            <Box
-              component={motion.div}
-              className={cn(
-                'fixed inset-0 z-50',
-                OS === 'linux' ? 'bg-black/50' : 'backdrop-blur-xl',
-              )}
-              sx={[
-                OS === 'linux' ||
-                  ((theme) => ({
-                    backgroundColor: alpha(
-                      theme.vars.palette.primary.main,
-                      0.1,
-                    ),
-                  })),
-              ]}
-              animate={open ? 'open' : 'closed'}
-              initial={{ opacity: 0 }}
-              variants={{
-                open: { opacity: 1 },
-                closed: { opacity: 0 },
-              }}
-              onClick={handleClose}
-            />
-          )}
-
-          <Box
-            component={motion.div}
-            className={cn(
-              'fixed top-[50%] left-[50%] z-50',
-              full ? 'h-dvh w-full' : 'min-w-96 rounded-3xl shadow',
-              mode === 'dark' ? 'text-white shadow-zinc-900' : 'text-black',
-            )}
-            sx={(theme) => ({
-              backgroundColor: theme.vars.palette.background.default,
-            })}
-            animate={open ? 'open' : 'closed'}
-            initial={{
-              opacity: 0.3,
-              scale: 0,
-              x: offset.x - window.innerWidth / 2,
-              y: offset.y - window.innerHeight / 2,
-              translateX: '-50%',
-              translateY: '-50%',
-            }}
-            variants={{
-              open: {
-                opacity: 1,
-                scale: 1,
-                x: 0,
-                y: 0,
-              },
-              closed: {
-                opacity: 0.3,
-                scale: 0,
-                x: offset.x - window.innerWidth / 2,
-                y: offset.y - window.innerHeight / 2,
-              },
-            }}
-            transition={{
-              type: 'spring',
-              bounce: 0,
-              duration: 0.35,
-            }}
-          >
-            <div
-              className={cn(
-                'text-xl',
-                !full ? 'm-4' : OS === 'macos' ? 'ml-20 p-3.5' : 'm-2 ml-6',
-              )}
-              data-tauri-drag-region={full}
-            >
-              {title}
-            </div>
-
-            {divider && <Divider />}
-
-            <div
-              className={cn(
-                'relative overflow-x-hidden overflow-y-auto p-4',
-                full && 'h-full px-6',
-              )}
-              style={{
-                maxHeight: full
-                  ? `calc(100vh - ${OS === 'macos' ? 114 : 100}px)`
-                  : 'calc(100vh - 200px)',
-                ...contentStyle,
-              }}
-            >
-              {children}
-            </div>
-
-            {divider && <Divider />}
-
-            <div className={cn('m-2 flex justify-end gap-2', full && 'mx-6')}>
-              {onClose && (
-                <Button
-                  disabled={loading || closeLoading}
-                  loading={closeLoading || loading}
-                  variant="outlined"
-                  onClick={handleClose}
-                >
-                  {close || t('Close')}
-                </Button>
-              )}
-
-              {onOk && (
-                <Button
-                  disabled={loading || disabledOk}
-                  loading={okLoading || loading}
-                  variant="contained"
-                  onClick={handleOk}
-                >
-                  {ok || t('Ok')}
-                </Button>
-              )}
-            </div>
-          </Box>
-        </Portal.Root>
-      )}
-    </AnimatePresence>
+    <RadixBaseDialog
+      title={title}
+      open={open}
+      close={close ?? t('Close')}
+      ok={ok ?? t('Ok')}
+      disabledOk={disabledOk}
+      contentStyle={contentStyle}
+      loading={loading}
+      full={full}
+      onOk={onOk}
+      onClose={onClose}
+      divider={divider}
+    >
+      {children}
+    </RadixBaseDialog>
   )
 }

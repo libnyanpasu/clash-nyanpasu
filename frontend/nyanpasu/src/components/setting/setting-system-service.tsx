@@ -3,13 +3,13 @@ import { useTransition } from 'react'
 import { useTranslation } from 'react-i18next'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { Button, List, ListItem, ListItemText, Typography } from '@mui/material'
+import { List, ListItem, ListItemText, Typography } from '@mui/material'
 import {
   restartSidecar,
   useSetting,
   useSystemService,
 } from '@nyanpasu/interface'
-import { BaseCard, SwitchItem } from '@nyanpasu/ui'
+import { BaseCard, MUIButton as Button, SwitchItem } from '@nyanpasu/ui'
 import {
   ServerManualPromptDialogWrapper,
   useServerManualPromptDialog,

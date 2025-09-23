@@ -6,9 +6,15 @@ import { isHexColor } from 'validator'
 import { atomIsDrawerOnlyIcon } from '@/store'
 import { languageOptions } from '@/utils/language'
 import Done from '@mui/icons-material/Done'
-import { Button, List, ListItem, ListItemText } from '@mui/material'
+import { List, ListItem, ListItemText } from '@mui/material'
 import { useSetting } from '@nyanpasu/interface'
-import { BaseCard, Expand, MenuItem, SwitchItem } from '@nyanpasu/ui'
+import {
+  BaseCard,
+  MUIButton as Button,
+  Expand,
+  MenuItem,
+  SwitchItem,
+} from '@nyanpasu/ui'
 import { DEFAULT_COLOR } from '../layout/use-custom-theme'
 
 const commonSx = {

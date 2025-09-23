@@ -7,9 +7,9 @@ import { checkUpdate, useUpdaterPlatformSupported } from '@/hooks/use-updater'
 import { UpdaterInstanceAtom } from '@/store/updater'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { Box, Button, List, ListItem, Paper, Typography } from '@mui/material'
+import { Box, List, ListItem, Paper, Typography } from '@mui/material'
 import { useSetting } from '@nyanpasu/interface'
-import { alpha, BaseCard } from '@nyanpasu/ui'
+import { alpha, BaseCard, MUIButton as Button } from '@nyanpasu/ui'
 import { version } from '@root/package.json'
 import { LabelSwitch } from './modules/clash-field'
 
@@ -105,7 +105,7 @@ export const SettingNyanpasuVersion = () => {
                 size="large"
                 loading={loading}
                 onClick={onCheckUpdate}
-                sx={{ width: '100%' }}
+                className="w-full"
               >
                 {t('Check for Updates')}
               </Button>

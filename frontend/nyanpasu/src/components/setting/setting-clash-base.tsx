@@ -4,7 +4,7 @@ import { useCoreType } from '@/hooks/use-store'
 import { formatError } from '@/utils'
 import getSystem from '@/utils/get-system'
 import { message } from '@/utils/notification'
-import { Button, List, ListItem, ListItemText } from '@mui/material'
+import { List, ListItem, ListItemText } from '@mui/material'
 import {
   openUWPTool,
   useClashConfig,
@@ -12,7 +12,12 @@ import {
   useSetting,
   type TunStack as TunStackType,
 } from '@nyanpasu/interface'
-import { BaseCard, MenuItem, SwitchItem } from '@nyanpasu/ui'
+import {
+  BaseCard,
+  MUIButton as Button,
+  MenuItem,
+  SwitchItem,
+} from '@nyanpasu/ui'
 
 const isWIN = getSystem() === 'windows'
 

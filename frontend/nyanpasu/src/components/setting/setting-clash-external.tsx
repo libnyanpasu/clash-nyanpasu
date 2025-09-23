@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { sleep } from '@/utils'
 import Done from '@mui/icons-material/Done'
-import { Button, List, ListItem, ListItemText, TextField } from '@mui/material'
+import { List, ListItem, ListItemText, TextField } from '@mui/material'
 import {
   ExternalControllerPortStrategy,
   useClashConfig,
@@ -10,7 +10,13 @@ import {
   useRuntimeProfile,
   useSetting,
 } from '@nyanpasu/interface'
-import { BaseCard, Expand, MenuItem, TextItemProps } from '@nyanpasu/ui'
+import {
+  BaseCard,
+  MUIButton as Button,
+  Expand,
+  MenuItem,
+  TextItemProps,
+} from '@nyanpasu/ui'
 
 const TextItem = ({
   value,

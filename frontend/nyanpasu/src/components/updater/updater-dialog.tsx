@@ -7,9 +7,14 @@ import { IS_NIGHTLY } from '@/consts'
 import { UpdaterIgnoredAtom } from '@/store/updater'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { Button, LinearProgress } from '@mui/material'
+import { LinearProgress } from '@mui/material'
 import { cleanupProcesses, openThat } from '@nyanpasu/interface'
-import { BaseDialog, BaseDialogProps, cn } from '@nyanpasu/ui'
+import {
+  BaseDialog,
+  BaseDialogProps,
+  MUIButton as Button,
+  cn,
+} from '@nyanpasu/ui'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { DownloadEvent, type Update } from '@tauri-apps/plugin-updater'
 import styles from './updater-dialog.module.scss'

@@ -16,7 +16,6 @@ import {
 } from '@mui/icons-material'
 import {
   Badge,
-  Button,
   Chip,
   LinearProgress,
   Menu,
@@ -31,7 +30,12 @@ import {
   useClashConnections,
   useProfile,
 } from '@nyanpasu/interface'
-import { alpha, cleanDeepClickEvent, cn } from '@nyanpasu/ui'
+import {
+  alpha,
+  MUIButton as Button,
+  cleanDeepClickEvent,
+  cn,
+} from '@nyanpasu/ui'
 import { ProfileDialog } from './profile-dialog'
 import { GlobalUpdatePendingContext } from './provider'
 import { ClashProfile } from './utils'

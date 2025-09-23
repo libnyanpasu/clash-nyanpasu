@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Button, Menu, MenuItem } from '@mui/material'
-import { alpha } from '@nyanpasu/ui'
+import { Menu, MenuItem } from '@mui/material'
+import { MUIButton as Button } from '@nyanpasu/ui'
 import { useLogContext } from './log-provider'
 
 export const LogLevel = () => {
@@ -24,10 +24,11 @@ export const LogLevel = () => {
     <>
       <Button
         size="small"
-        sx={(theme) => ({
-          textTransform: 'none',
-          backgroundColor: alpha(theme.vars.palette.primary.main, 0.1),
-        })}
+        className="normal-case"
+        style={{
+          backgroundColor:
+            'color-mix(in oklab, var(--md3-color-primary) 10%, transparent)',
+        }}
         onClick={(e) => setAnchorEl(e.currentTarget)}
       >
         {mapping[logLevel]}

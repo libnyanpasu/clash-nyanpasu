@@ -24,14 +24,14 @@ import { ClashProfile, filterProfiles } from '@/components/profiles/utils'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { Public, Update } from '@mui/icons-material'
-import { Badge, Button, CircularProgress, IconButton } from '@mui/material'
+import { Badge, CircularProgress, IconButton } from '@mui/material'
 import Grid from '@mui/material/Grid'
 import {
   RemoteProfileOptionsBuilder,
   useProfile,
   type RemoteProfile,
 } from '@nyanpasu/interface'
-import { FloatingButton, SidePage } from '@nyanpasu/ui'
+import { MUIButton as Button, FloatingButton, SidePage } from '@nyanpasu/ui'
 import { createFileRoute, useLocation } from '@tanstack/react-router'
 import { zodSearchValidator } from '@tanstack/router-zod-adapter'
 

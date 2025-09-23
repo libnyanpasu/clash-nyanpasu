@@ -4,13 +4,12 @@ import { useTranslation } from 'react-i18next'
 import useSWR from 'swr'
 import { formatError, sleep } from '@/utils'
 import { message } from '@/utils/notification'
-import { Button } from '@mui/material'
 import {
   getServerPort,
   isTrayIconSet,
   setTrayIcon as setTrayIconCall,
 } from '@nyanpasu/interface'
-import { BaseDialog, BaseDialogProps } from '@nyanpasu/ui'
+import { BaseDialog, BaseDialogProps, MUIButton as Button } from '@nyanpasu/ui'
 import { open } from '@tauri-apps/plugin-dialog'
 
 function TrayIconItem({ mode }: { mode: 'system_proxy' | 'tun' | 'normal' }) {

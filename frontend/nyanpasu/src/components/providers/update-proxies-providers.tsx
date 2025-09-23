@@ -3,8 +3,8 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { message } from '@/utils/notification'
 import { Refresh } from '@mui/icons-material'
-import { Button } from '@mui/material'
 import { useClashProxiesProvider } from '@nyanpasu/interface'
+import { MUIButton as Button } from '@nyanpasu/ui'
 
 export const UpdateProxiesProviders = () => {
   const { t } = useTranslation()

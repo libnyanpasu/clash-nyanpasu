@@ -1,5 +1,9 @@
 import type { Config } from 'tailwindcss'
 import createPlugin from 'tailwindcss/plugin'
+import {
+  md3TailwindConfig,
+  md3UtilityClasses,
+} from '@nyanpasu/ui/src/designTokens/tailwind-md3-config'
 import { MUI_BREAKPOINTS } from '@nyanpasu/ui/src/materialYou/themeConsts.mjs'
 
 const getMUIScreen = () => {
@@ -22,35 +26,49 @@ module.exports = {
   darkMode: 'selector',
   theme: {
     extend: {
+      // Merge MD3 configuration
+      ...md3TailwindConfig.theme?.extend,
+
+      // Keep existing custom utilities
       maxHeight: {
         '1/8': 'calc(100vh / 8)',
+        ...md3TailwindConfig.theme?.extend?.maxHeight,
       },
       zIndex: {
         top: 100000,
+        ...md3TailwindConfig.theme?.extend?.zIndex,
       },
       animation: {
         marquee: 'marquee 4s linear infinite',
+        ...md3TailwindConfig.theme?.extend?.animation,
       },
       keyframes: {
         marquee: {
           '0%': { transform: 'translateX(100%)' },
           '100%': { transform: 'translateX(-100%)' },
         },
+        ...md3TailwindConfig.theme?.extend?.keyframes,
       },
       colors: {
+        // Legacy colors for backward compatibility
         scroller: 'var(--scroller-color)',
         container: 'var(--background-color)',
+        // MD3 colors are included via md3TailwindConfig
+        ...md3TailwindConfig.theme?.extend?.colors,
       },
     },
-    screen: getMUIScreen(),
+    screens: getMUIScreen(),
   },
   plugins: [
-    createPlugin(({ addBase }) => {
+    createPlugin(({ addBase, addUtilities }) => {
       addBase({
         '.scrollbar-hidden::-webkit-scrollbar': {
           width: '0px',
         },
       })
+
+      // Add MD3 utility classes
+      addUtilities(md3UtilityClasses)
     }),
   ],
 } satisfies Config

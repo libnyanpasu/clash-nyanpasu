@@ -2,9 +2,9 @@ import { Reorder } from 'framer-motion'
 import { memo, PointerEvent, useRef, useState, useTransition } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Menu as MenuIcon } from '@mui/icons-material'
-import { Button, ListItemButton, Menu, MenuItem } from '@mui/material'
+import { ListItemButton, Menu, MenuItem } from '@mui/material'
 import { ProfileQueryResultItem } from '@nyanpasu/interface'
-import { alpha, cleanDeepClickEvent } from '@nyanpasu/ui'
+import { alpha, MUIButton as Button, cleanDeepClickEvent } from '@nyanpasu/ui'
 
 const longPressDelay = 200
 

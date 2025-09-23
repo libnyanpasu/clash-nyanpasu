@@ -4,8 +4,9 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { message } from '@/utils/notification'
 import { Refresh } from '@mui/icons-material'
-import { Button, Chip, Paper } from '@mui/material'
+import { Chip, Paper } from '@mui/material'
 import { ClashProxiesProviderQueryItem } from '@nyanpasu/interface'
+import { MUIButton as Button } from '@nyanpasu/ui'
 import ProxiesProviderTraffic from './proxies-provider-traffic'
 
 export interface ProxiesProviderProps {

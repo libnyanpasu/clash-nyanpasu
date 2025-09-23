@@ -11,7 +11,7 @@ import { SwitchProps } from '@mui/material/Switch'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import { openThat } from '@nyanpasu/interface'
-import { alpha, LoadingSwitch } from '@nyanpasu/ui'
+import { alpha, RadixLoadingSwitch as LoadingSwitch } from '@nyanpasu/ui'
 
 export interface LabelSwitchProps extends SwitchProps {
   label: string
@@ -83,7 +83,13 @@ export const LabelSwitch = ({
       </Box>
 
       {/* <Switch {...props} /> */}
-      <LoadingSwitch loading={loading} onChange={handleChange} {...props} />
+      <LoadingSwitch
+        loading={loading}
+        onCheckedChange={(checked) =>
+          handleChange({} as ChangeEvent<HTMLInputElement>, checked)
+        }
+        {...(props as unknown as Record<string, unknown>)}
+      />
     </Paper>
   )
 }

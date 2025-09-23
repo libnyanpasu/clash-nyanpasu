@@ -2,8 +2,8 @@ import { useAtom } from 'jotai'
 import { memo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { proxyGroupSortAtom } from '@/store'
-import { Button, Menu, MenuItem } from '@mui/material'
-import { alpha } from '@nyanpasu/ui'
+import { Menu, MenuItem } from '@mui/material'
+import { MUIButton as Button } from '@nyanpasu/ui'
 
 export const SortSelector = memo(function SortSelector() {
   const { t } = useTranslation()
@@ -29,11 +29,11 @@ export const SortSelector = memo(function SortSelector() {
     <>
       <Button
         size="small"
-        className="!px-2"
-        sx={(theme) => ({
-          textTransform: 'none',
-          backgroundColor: alpha(theme.vars.palette.primary.main, 0.1),
-        })}
+        className="!px-2 normal-case"
+        style={{
+          backgroundColor:
+            'color-mix(in oklab, var(--md3-color-primary) 10%, transparent)',
+        }}
         onClick={(e) => setAnchorEl(e.currentTarget)}
       >
         {t(tmaps[proxyGroupSort])}

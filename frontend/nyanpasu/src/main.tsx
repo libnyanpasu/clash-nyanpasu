@@ -11,6 +11,7 @@ import './assets/styles/index.scss'
 import './assets/styles/tailwind.css'
 import { routeTree } from './routeTree.gen'
 import './services/i18n'
+import { MD3ThemeProvider } from '@nyanpasu/ui'
 
 if (!window.ResizeObserver) {
   window.ResizeObserver = ResizeObserver
@@ -37,6 +38,8 @@ const container = document.getElementById('root')!
 
 createRoot(container).render(
   <React.StrictMode>
-    <RouterProvider router={router} />
+    <MD3ThemeProvider>
+      <RouterProvider router={router} />
+    </MD3ThemeProvider>
   </React.StrictMode>,
 )

@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { Radar } from '@mui/icons-material'
-import { Button, Tooltip } from '@mui/material'
-import { alpha } from '@nyanpasu/ui'
+import { Tooltip } from '@mui/material'
+import { MUIButton as Button } from '@nyanpasu/ui'
 
 export const ScrollCurrentNode = ({ onClick }: { onClick?: () => void }) => {
   const { t } = useTranslation()
@@ -11,9 +11,10 @@ export const ScrollCurrentNode = ({ onClick }: { onClick?: () => void }) => {
       <Button
         size="small"
         className="!size-8 !min-w-0"
-        sx={(theme) => ({
-          backgroundColor: alpha(theme.vars.palette.primary.main, 0.1),
-        })}
+        style={{
+          backgroundColor:
+            'color-mix(in oklab, var(--md3-color-primary) 10%, transparent)',
+        }}
         onClick={onClick}
       >
         <Radar />

@@ -1,6 +1,6 @@
 use crate::{
     config::{
-        Config, NyanpasuAppConfig,
+        ConfigService, NyanpasuAppConfig,
         nyanpasu::{ClashCore, WindowState},
     },
     core::{storage::Storage, tray::proxies, *},
@@ -82,10 +82,10 @@ pub fn find_unused_port() -> Result<u16> {
             Ok(port)
         }
         Err(_) => {
-            let port = Config::verge()
+            let port = ConfigService::verge()
                 .latest()
                 .verge_mixed_port
-                .unwrap_or(Config::clash().data().get_mixed_port());
+                .unwrap_or(ConfigService::clash().data().get_mixed_port());
             log::warn!(target: "app", "use default port: {port}");
             Ok(port)
         }
@@ -114,36 +114,36 @@ pub fn resolve_setup(app: &mut App) {
     log_err!(init::init_service());
 
     // 处理随机端口
-    let enable_random_port = Config::verge().latest().enable_random_port.unwrap_or(false);
+    let enable_random_port = ConfigService::verge().latest().enable_random_port.unwrap_or(false);
 
-    let mut port = Config::verge()
+    let mut port = ConfigService::verge()
         .latest()
         .verge_mixed_port
-        .unwrap_or(Config::clash().data().get_mixed_port());
+        .unwrap_or(ConfigService::clash().data().get_mixed_port());
 
     if enable_random_port {
         port = find_unused_port().unwrap_or(
-            Config::verge()
+            ConfigService::verge()
                 .latest()
                 .verge_mixed_port
-                .unwrap_or(Config::clash().data().get_mixed_port()),
+                .unwrap_or(ConfigService::clash().data().get_mixed_port()),
         );
     }
 
-    Config::verge().data().patch_config(NyanpasuAppConfig {
+    ConfigService::verge().data().patch_config(NyanpasuAppConfig {
         verge_mixed_port: Some(port),
         ..NyanpasuAppConfig::default()
     });
-    let _ = Config::verge().data().save_file();
+    let _ = ConfigService::verge().data().save_file();
     let mut mapping = Mapping::new();
     mapping.insert("mixed-port".into(), port.into());
-    Config::clash().data().patch_config(mapping);
-    let _ = Config::clash().latest().prepare_external_controller_port();
-    let _ = Config::clash().data().save_config();
+    ConfigService::clash().data().patch_config(mapping);
+    let _ = ConfigService::clash().latest().prepare_external_controller_port();
+    let _ = ConfigService::clash().data().save_config();
 
     // 启动核心
     log::trace!("init config");
-    log_err!(Config::init_config());
+    log_err!(ConfigService::init_config());
 
     log::trace!("init storage");
     log_err!(crate::core::storage::setup(app));
@@ -180,7 +180,7 @@ pub fn resolve_setup(app: &mut App) {
     });
     log_err!(app.emit("update_systray", ()));
 
-    let silent_start = { Config::verge().data().enable_silent_start };
+    let silent_start = { ConfigService::verge().data().enable_silent_start };
     if !silent_start.unwrap_or(false) {
         create_window(app.app_handle());
     }
@@ -224,7 +224,7 @@ pub fn create_window(app_handle: &AppHandle) {
     }
 
     let always_on_top = {
-        *Config::verge()
+        *ConfigService::verge()
             .latest()
             .always_on_top
             .as_ref()
@@ -242,7 +242,7 @@ pub fn create_window(app_handle: &AppHandle) {
     .always_on_top(always_on_top)
     .min_inner_size(600.0, 520.0);
 
-    let win_state = &Config::verge().latest().window_size_state.clone();
+    let win_state = &ConfigService::verge().latest().window_size_state.clone();
     match win_state {
         Some(_) => {
             builder = builder.inner_size(800., 800.).position(0., 0.);
@@ -412,7 +412,7 @@ pub fn save_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<(
         .get_webview_window("main")
         .ok_or(anyhow::anyhow!("failed to get window"))?;
     let current_monitor = win.current_monitor()?;
-    let verge = Config::verge();
+    let verge = ConfigService::verge();
     let mut verge = verge.latest();
     match current_monitor {
         Some(_) => {

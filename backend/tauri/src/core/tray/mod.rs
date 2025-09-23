@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use crate::{
-    config::{Config, nyanpasu::ClashCore},
+    config::{ConfigService, nyanpasu::ClashCore},
     core::clash::ws::{
         ClashConnectionsConnector, ClashConnectionsConnectorEvent, ClashConnectionsInfo,
     },
@@ -153,7 +153,7 @@ impl Tray {
     pub fn tray_menu<R: Runtime>(app_handle: &AppHandle<R>) -> Result<Menu<R>> {
         let version = env!("NYANPASU_VERSION");
         let core = {
-            *Config::verge()
+            *ConfigService::verge()
                 .latest()
                 .clash_core
                 .as_ref()
@@ -235,7 +235,7 @@ impl Tray {
                 }
                 #[cfg(target_os = "macos")]
                 {
-                    let verge = Config::verge();
+                    let verge = ConfigService::verge();
                     let verge = verge.latest();
                     let enable_colored_icons =
                         *verge.enable_macos_colored_icons.as_ref().unwrap_or(&false);
@@ -348,7 +348,7 @@ impl Tray {
     pub fn update_part<R: Runtime>(app_handle: &AppHandle<R>) -> Result<()> {
         let mode = crate::utils::config::get_current_clash_mode();
         let core = {
-            *Config::verge()
+            *ConfigService::verge()
                 .latest()
                 .clash_core
                 .as_ref()
@@ -365,7 +365,7 @@ impl Tray {
 
         #[allow(unused_variables)]
         let (system_proxy, tun_mode, enable_tray_text, enable_tray_traffic) = {
-            let verge = Config::verge();
+            let verge = ConfigService::verge();
             let verge = verge.latest();
             (
                 *verge.enable_system_proxy.as_ref().unwrap_or(&false),
@@ -377,7 +377,7 @@ impl Tray {
 
         #[cfg(target_os = "macos")]
         let enable_macos_colored_icons = {
-            let verge = Config::verge();
+            let verge = ConfigService::verge();
             let verge = verge.latest();
             *verge.enable_macos_colored_icons.as_ref().unwrap_or(&false)
         };

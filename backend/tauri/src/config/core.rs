@@ -1,5 +1,6 @@
-use super::{Draft, IClashTemp, IRuntime, NyanpasuAppConfig, Profiles};
+use super::{ClashRuntimeConfig, Draft, ClashGuard, NyanpasuAppConfig, Profiles};
 use crate::{
+    config::{ClashRuntimeConfigService, nyanpasu::NyanpasuAppConfigService},
     core::state::ManagedState,
     enhance,
     utils::{dirs, help},
@@ -12,26 +13,16 @@ use std::{env::temp_dir, path::PathBuf};
 pub const RUNTIME_CONFIG: &str = "clash-config.yaml";
 pub const CHECK_CONFIG: &str = "clash-config-check.yaml";
 
-pub struct Config {
-    clash_config: Draft<IClashTemp>,
-    verge_config: Draft<NyanpasuAppConfig>,
+#[derive(Clone)]
+pub struct ConfigService {
+    clash_config: Draft<ClashGuard>,
     profiles_config: ManagedState<Profiles>,
-    runtime_config: Draft<IRuntime>,
+    clash_runtime_config_service: ClashRuntimeConfigService,
+    nyanpasu_config_service: NyanpasuAppConfigService,
 }
 
-impl Config {
-    pub fn global() -> &'static Config {
-        static CONFIG: OnceCell<Config> = OnceCell::new();
-
-        CONFIG.get_or_init(|| Config {
-            clash_config: Draft::from(IClashTemp::new()),
-            verge_config: Draft::from(NyanpasuAppConfig::new()),
-            profiles_config: ManagedState::from(Profiles::new()),
-            runtime_config: Draft::from(IRuntime::new()),
-        })
-    }
-
-    pub fn clash() -> Draft<IClashTemp> {
+impl ConfigService {
+    pub fn clash() -> Draft<ClashGuard> {
         Self::global().clash_config.clone()
     }
 
@@ -43,7 +34,7 @@ impl Config {
         &Self::global().profiles_config
     }
 
-    pub fn runtime() -> Draft<IRuntime> {
+    pub fn runtime() -> Draft<ClashRuntimeConfig> {
         Self::global().runtime_config.clone()
     }
 
@@ -58,7 +49,7 @@ impl Config {
             if !runtime_path.exists() {
                 help::save_yaml(
                     &runtime_path,
-                    &Config::clash().latest().0,
+                    &ConfigService::clash().latest().0,
                     Some("# Clash Nyanpasu Runtime"),
                 )?;
             }
@@ -73,7 +64,7 @@ impl Config {
             ConfigType::Check => temp_dir().join(CHECK_CONFIG),
         };
 
-        let runtime = Config::runtime();
+        let runtime = ConfigService::runtime();
         let runtime = runtime.latest();
         let config = runtime
             .config
@@ -88,7 +79,7 @@ impl Config {
     pub async fn generate() -> Result<()> {
         let (config, exists_keys, postprocessing_outputs) = enhance::enhance().await;
 
-        *Config::runtime().draft() = IRuntime {
+        *ConfigService::runtime().draft() = ClashRuntimeConfig {
             config: Some(config),
             exists_keys,
             postprocessing_output: postprocessing_outputs,

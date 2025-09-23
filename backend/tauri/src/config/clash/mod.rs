@@ -3,21 +3,50 @@ use crate::utils::{
     help::{self, get_clash_external_port},
 };
 use anyhow::Result;
-use log::warn;
 use serde::{Deserialize, Serialize};
 use serde_yaml::{Mapping, Value};
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     str::FromStr,
 };
+use tracing::warn;
 use tracing_attributes::instrument;
 
-use super::Config;
+use super::ConfigService;
 
-#[derive(Default, Debug, Clone)]
-pub struct IClashTemp(pub Mapping);
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, strum::EnumString, strum::Display)]
+#[repr(u8)]
+#[strum(serialize_all = "kebab-case")]
+#[serde(rename_all = "kebab-case")]
+pub enum LogLevel {
+    Silent,
+    Error,
+    Warning,
+    Info,
+    Debug,
+}
 
-impl IClashTemp {
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, strum::EnumString, strum::Display)]
+#[repr(u8)]
+#[strum(serialize_all = "kebab-case")]
+#[serde(rename_all = "kebab-case")]
+pub enum Mode {
+    Rule,
+    Global,
+    Direct,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct ClashGuardOverrides {
+    mixed_port: u16,
+    log_level: LogLevel,
+    allow_lan: bool,
+    mode: Mode,
+    external_controller: String,
+}
+
+impl ClashGuard {
     pub fn new() -> Self {
         match dirs::clash_guard_overrides_path().and_then(|path| help::read_merge_mapping(&path)) {
             Ok(map) => Self(Self::guard(map)),
@@ -103,7 +132,7 @@ impl IClashTemp {
 
     #[instrument]
     pub fn prepare_external_controller_port(&mut self) -> Result<()> {
-        let strategy = Config::verge()
+        let strategy = ConfigService::verge()
             .latest()
             .get_external_controller_port_strategy();
         let server = self.get_client_info().server;
@@ -208,7 +237,7 @@ fn test_clash_info() {
         map.insert("mixed-port".into(), mp.into());
         map.insert("external-controller".into(), ec.into());
 
-        IClashTemp(IClashTemp::guard(map)).get_client_info()
+        ClashGuard(ClashGuard::guard(map)).get_client_info()
     }
 
     fn get_result<S: Into<String>>(port: u16, server: S) -> ClashInfo {
@@ -220,7 +249,7 @@ fn test_clash_info() {
     }
 
     assert_eq!(
-        IClashTemp(IClashTemp::guard(Mapping::new())).get_client_info(),
+        ClashGuard(ClashGuard::guard(Mapping::new())).get_client_info(),
         get_result(7890, "127.0.0.1:9090")
     );
 

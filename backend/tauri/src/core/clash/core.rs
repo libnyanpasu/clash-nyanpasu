@@ -1,6 +1,6 @@
 use super::api;
 use crate::{
-    config::{Config, ConfigType, nyanpasu::ClashCore},
+    config::{ConfigService, ConfigType, nyanpasu::ClashCore},
     core::logger::Logger,
     log_err,
     utils::dirs,
@@ -51,7 +51,7 @@ pub enum RunType {
 impl Default for RunType {
     fn default() -> Self {
         let enable_service = {
-            *Config::verge()
+            *ConfigService::verge()
                 .latest()
                 .enable_service_mode
                 .as_ref()
@@ -83,7 +83,7 @@ enum Instance {
 impl Instance {
     pub fn try_new(run_type: RunType) -> Result<Self> {
         let core_type: nyanpasu_utils::core::CoreType = {
-            (Config::verge()
+            (ConfigService::verge()
                 .latest()
                 .clash_core
                 .as_ref()
@@ -94,7 +94,7 @@ impl Instance {
             .map_err(|e| anyhow::anyhow!("failed to convert data dir to utf8 path: {:?}", e))?;
         let binary = camino::Utf8PathBuf::from_path_buf(find_binary_path(&core_type)?)
             .map_err(|e| anyhow::anyhow!("failed to convert binary path to utf8 path: {:?}", e))?;
-        let config_path = camino::Utf8PathBuf::from_path_buf(Config::generate_file(
+        let config_path = camino::Utf8PathBuf::from_path_buf(ConfigService::generate_file(
             ConfigType::Run,
         )?)
         .map_err(|e| anyhow::anyhow!("failed to convert config path to utf8 path: {:?}", e))?;
@@ -419,11 +419,11 @@ impl CoreManager {
     /// 检查配置是否正确
     pub async fn check_config(&self) -> Result<()> {
         use nyanpasu_utils::core::instance::CoreInstance;
-        let config_path = Config::generate_file(ConfigType::Check)?;
+        let config_path = ConfigService::generate_file(ConfigType::Check)?;
         let config_path = Utf8PathBuf::from_path_buf(config_path)
             .map_err(|_| anyhow::anyhow!("failed to convert config path to utf8 path"))?;
 
-        let clash_core = { Config::verge().latest().clash_core };
+        let clash_core = { ConfigService::verge().latest().clash_core };
         let clash_core = clash_core.unwrap_or(ClashCore::ClashPremium);
         let clash_core: nyanpasu_utils::core::CoreType = (&clash_core).into();
 
@@ -458,7 +458,7 @@ impl CoreManager {
         }
 
         // 检查端口是否可用
-        Config::clash()
+        ConfigService::clash()
             .latest()
             .prepare_external_controller_port()?;
         let run_type = RunType::default();
@@ -466,7 +466,7 @@ impl CoreManager {
 
         #[cfg(target_os = "macos")]
         {
-            let enable_tun = Config::verge().latest().enable_tun_mode.unwrap_or(false);
+            let enable_tun = ConfigService::verge().latest().enable_tun_mode.unwrap_or(false);
             let _ = self
                 .change_default_network_dns(enable_tun)
                 .await
@@ -534,10 +534,10 @@ impl CoreManager {
 
         log::debug!(target: "app", "change core to `{clash_core}`");
 
-        Config::verge().draft().clash_core = Some(clash_core);
+        ConfigService::verge().draft().clash_core = Some(clash_core);
 
         // 更新配置
-        Config::generate().await?;
+        ConfigService::generate().await?;
 
         self.check_config().await?;
 
@@ -547,15 +547,15 @@ impl CoreManager {
         match self.run_core().await {
             Ok(_) => {
                 tracing::info!("change core success");
-                Config::verge().apply();
-                Config::runtime().apply();
-                log_err!(Config::verge().latest().save_file());
+                ConfigService::verge().apply();
+                ConfigService::runtime().apply();
+                log_err!(ConfigService::verge().latest().save_file());
                 Ok(())
             }
             Err(err) => {
                 tracing::error!("failed to change core: {err:?}");
-                Config::verge().discard();
-                Config::runtime().discard();
+                ConfigService::verge().discard();
+                ConfigService::runtime().discard();
                 self.run_core().await?;
                 Err(err)
             }
@@ -568,13 +568,13 @@ impl CoreManager {
         log::debug!(target: "app", "try to update clash config");
 
         // 更新配置
-        Config::generate().await?;
+        ConfigService::generate().await?;
 
         // 检查配置是否正常
         self.check_config().await?;
 
         // 更新运行时配置
-        let path = Config::generate_file(ConfigType::Run)?;
+        let path = ConfigService::generate_file(ConfigType::Run)?;
         let path = dirs::path_to_str(&path)?;
 
         // 发送请求 发送5次
@@ -606,7 +606,7 @@ impl CoreManager {
         let default_device =
             get_default_network_hardware_port().context("failed to get default network device")?;
         log::debug!(target: "app", "current default network device: {:?}", default_device);
-        let tun_device_ip = Config::clash()
+        let tun_device_ip = ConfigService::clash()
             .clone()
             .latest()
             .get_tun_device_ip()

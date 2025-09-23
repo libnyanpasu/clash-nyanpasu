@@ -1,4 +1,4 @@
-use crate::config::{Config, nyanpasu::NetworkStatisticWidgetConfig};
+use crate::config::{ConfigService, nyanpasu::NetworkStatisticWidgetConfig};
 
 use super::core::clash::ws::ClashConnectionsConnectorEvent;
 
@@ -222,7 +222,7 @@ pub async fn setup<R: Runtime, M: Manager<R>>(
 ) -> anyhow::Result<()> {
     let widget_manager = WidgetManager::new();
     // TODO: use the app_handle to read initial config.
-    let option = Config::verge()
+    let option = ConfigService::verge()
         .data()
         .network_statistic_widget
         .unwrap_or_default();

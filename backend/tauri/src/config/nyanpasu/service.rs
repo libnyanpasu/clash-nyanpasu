@@ -21,17 +21,18 @@ struct NyanpasuConfigManager {
     state_manager: PersistentStateManager<NyanpasuAppConfig, NyanpasuAppConfigBuilder>,
 }
 
-pub struct NyanpasuConfigService {
+#[derive(Clone)]
+pub struct NyanpasuAppConfigService {
     config_manager: Arc<RwLock<NyanpasuConfigManager>>,
 }
 
-impl NyanpasuConfigService {
+impl NyanpasuAppConfigService {
     pub fn new(
         config_path: impl AsRef<Utf8Path>,
-        cb: impl FnOnce(&mut StateCoordinator<NyanpasuAppConfig>),
+        register_fn: impl FnOnce(&mut StateCoordinator<NyanpasuAppConfig>),
     ) -> Self {
         let mut state_coordinator = StateCoordinator::new();
-        cb(&mut state_coordinator);
+        register_fn(&mut state_coordinator);
         let state_manager = PersistentStateManager::new(
             Some(NYANPASU_CONFIG_PREFIX.to_string()),
             config_path.as_ref().to_path_buf(),

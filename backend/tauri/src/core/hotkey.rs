@@ -1,4 +1,4 @@
-use crate::{config::Config, feat, log_err};
+use crate::{config::ConfigService, feat, log_err};
 use anyhow::{Result, bail};
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
@@ -37,7 +37,7 @@ impl Hotkey {
     pub fn init(&self, app_handle: AppHandle) -> Result<()> {
         *self.app_handle.lock() = Some(app_handle);
 
-        let verge = Config::verge();
+        let verge = ConfigService::verge();
 
         if let Some(hotkeys) = verge.latest().hotkeys.as_ref() {
             for hotkey in hotkeys.iter() {

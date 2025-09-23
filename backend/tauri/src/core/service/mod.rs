@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use nyanpasu_ipc::types::StatusInfo;
 use once_cell::sync::Lazy;
 
-use crate::{config::Config, utils::dirs::app_install_dir};
+use crate::{config::ConfigService, utils::dirs::app_install_dir};
 
 pub mod control;
 pub mod ipc;
@@ -16,7 +16,7 @@ static SERVICE_PATH: Lazy<PathBuf> = Lazy::new(|| {
 
 pub async fn init_service() {
     let enable_service = {
-        *Config::verge()
+        *ConfigService::verge()
             .latest()
             .enable_service_mode
             .as_ref()

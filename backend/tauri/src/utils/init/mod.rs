@@ -138,7 +138,7 @@ pub fn init_config() -> Result<()> {
         if !path.exists() {
             help::save_yaml(
                 &path,
-                &IClashTemp::template().0,
+                &ClashGuard::template().0,
                 Some("# Clash Nyanpasuasu"),
             )?;
         }
@@ -229,7 +229,7 @@ pub fn init_service() -> Result<()> {
     tracing::debug!("init services");
     block_on(async move {
         let enable_service = {
-            *Config::verge()
+            *ConfigService::verge()
                 .latest()
                 .enable_service_mode
                 .as_ref()

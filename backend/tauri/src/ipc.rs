@@ -88,7 +88,7 @@ pub struct GetSysProxyResponse {
 #[tauri::command]
 #[specta::specta]
 pub fn get_profiles() -> Result<Profiles> {
-    Ok(Config::profiles().data().clone())
+    Ok(ConfigService::profiles().data().clone())
 }
 
 #[cfg(target_os = "windows")]
@@ -128,14 +128,14 @@ pub async fn import_profile(url: String, option: Option<RemoteProfileOptionsBuil
         .context("failed to build a remote profile")?;
     // 根据是否为 Some(uid) 来判断是否要激活配置
     let profile_id = {
-        if Config::profiles().draft().current.is_empty() {
+        if ConfigService::profiles().draft().current.is_empty() {
             Some(profile.uid().to_string())
         } else {
             None
         }
     };
     {
-        let committer = Config::profiles().auto_commit();
+        let committer = ConfigService::profiles().auto_commit();
         (committer.draft().append_item(profile.into()))?;
     }
     // TODO: 使用 activate_profile 来激活配置
@@ -188,7 +188,7 @@ pub async fn create_profile(item: ProfileBuilder, file_data: Option<String>) -> 
     // 根据是否为 Some(uid) 来判断是否要激活配置
     let profile_id = {
         if (profile.is_local() || profile.is_remote())
-            && Config::profiles().draft().current.is_empty()
+            && ConfigService::profiles().draft().current.is_empty()
         {
             Some(profile.uid().to_string())
         } else {
@@ -198,7 +198,7 @@ pub async fn create_profile(item: ProfileBuilder, file_data: Option<String>) -> 
 
     // Save the profile
     {
-        let committer = Config::profiles().auto_commit();
+        let committer = ConfigService::profiles().auto_commit();
         committer.draft().append_item(profile)?;
     };
     // TODO: 使用 activate_profile 来激活配置
@@ -214,7 +214,7 @@ pub async fn create_profile(item: ProfileBuilder, file_data: Option<String>) -> 
 #[tauri::command]
 #[specta::specta]
 pub async fn reorder_profile(active_id: String, over_id: String) -> Result {
-    let committer = Config::profiles().auto_commit();
+    let committer = ConfigService::profiles().auto_commit();
     (committer.draft().reorder(active_id, over_id))?;
     Ok(())
 }
@@ -222,7 +222,7 @@ pub async fn reorder_profile(active_id: String, over_id: String) -> Result {
 #[tauri::command]
 #[specta::specta]
 pub fn reorder_profiles_by_list(list: Vec<String>) -> Result {
-    let committer = Config::profiles().auto_commit();
+    let committer = ConfigService::profiles().auto_commit();
     (committer.draft().reorder_by_list(&list))?;
     Ok(())
 }
@@ -240,7 +240,7 @@ pub async fn delete_profile(uid: String) -> Result {
     let should_update = tokio::task::spawn_blocking(move || {
         #[allow(clippy::let_and_return)] // a bug in clippy
         nyanpasu_utils::runtime::block_on_current_thread(async move {
-            let committer = Config::profiles().auto_commit();
+            let committer = ConfigService::profiles().auto_commit();
             let x = committer.draft().delete_item(&uid).await;
             x
         })
@@ -260,13 +260,13 @@ pub async fn delete_profile(uid: String) -> Result {
 #[tauri::command]
 #[specta::specta]
 pub async fn patch_profiles_config(profiles: ProfilesBuilder) -> Result {
-    Config::profiles().draft().apply(profiles);
+    ConfigService::profiles().draft().apply(profiles);
 
     match CoreManager::global().update_config().await {
         Ok(_) => {
             handle::Handle::refresh_clash();
-            Config::profiles().apply();
-            (Config::profiles().data().save_file())?;
+            ConfigService::profiles().apply();
+            (ConfigService::profiles().data().save_file())?;
 
             // Interrupt connections based on configuration
             let _ = crate::core::connection_interruption::ConnectionInterruptionService::on_profile_change().await;
@@ -274,7 +274,7 @@ pub async fn patch_profiles_config(profiles: ProfilesBuilder) -> Result {
             Ok(())
         }
         Err(err) => {
-            Config::profiles().discard();
+            ConfigService::profiles().discard();
             log::error!(target: "app", "{err:?}");
             Err(IpcError::from(err))
         }
@@ -287,7 +287,7 @@ pub async fn patch_profiles_config(profiles: ProfilesBuilder) -> Result {
 pub async fn patch_profile(app_handle: AppHandle, uid: String, profile: ProfileBuilder) -> Result {
     tracing::debug!("patch profile: {uid} with {profile:?}");
     {
-        let committer = Config::profiles().auto_commit();
+        let committer = ConfigService::profiles().auto_commit();
         (committer.draft().patch_item(uid.clone(), profile))?;
     }
     {
@@ -295,7 +295,7 @@ pub async fn patch_profile(app_handle: AppHandle, uid: String, profile: ProfileB
         profiles_jobs.write().refresh();
     }
     let need_update = {
-        let profiles = Config::profiles();
+        let profiles = ConfigService::profiles();
         let profiles = profiles.latest();
         match (&profiles.chain, &profiles.current) {
             (chains, _) if chains.contains(&uid) => true,
@@ -332,7 +332,7 @@ pub async fn patch_profile(app_handle: AppHandle, uid: String, profile: ProfileB
 #[specta::specta]
 pub fn view_profile(app_handle: tauri::AppHandle, uid: String) -> Result {
     let file = {
-        Config::profiles()
+        ConfigService::profiles()
             .latest()
             .get_item(&uid)?
             .file()
@@ -351,7 +351,7 @@ pub fn view_profile(app_handle: tauri::AppHandle, uid: String) -> Result {
 #[tauri::command]
 #[specta::specta]
 pub fn read_profile_file(uid: String) -> Result<String> {
-    let profiles = Config::profiles();
+    let profiles = ConfigService::profiles();
     let profiles = profiles.latest();
     let item = (profiles.get_item(&uid))?;
     let data = match item.kind() {
@@ -372,7 +372,7 @@ pub fn save_profile_file(uid: String, file_data: Option<String>) -> Result {
         return Ok(());
     }
 
-    let profiles = Config::profiles();
+    let profiles = ConfigService::profiles();
     let profiles = profiles.latest();
     let item = (profiles.get_item(&uid))?;
     (item.save_file(file_data.unwrap()))?;
@@ -382,14 +382,14 @@ pub fn save_profile_file(uid: String, file_data: Option<String>) -> Result {
 #[tauri::command]
 #[specta::specta]
 pub fn get_clash_info() -> Result<ClashInfo> {
-    Ok(Config::clash().latest().get_client_info())
+    Ok(ConfigService::clash().latest().get_client_info())
 }
 
 /// get the runtime config
 #[tauri::command]
 #[specta::specta]
 pub fn get_runtime_config() -> Result<Option<serde_json::Value>> {
-    let config = Config::runtime().latest().config.clone();
+    let config = ConfigService::runtime().latest().config.clone();
     match config {
         Some(cfg) => {
             let yaml_value = serde_yaml::to_value(cfg)?;
@@ -403,7 +403,7 @@ pub fn get_runtime_config() -> Result<Option<serde_json::Value>> {
 #[tauri::command]
 #[specta::specta]
 pub fn get_runtime_yaml() -> Result<String> {
-    let runtime = Config::runtime();
+    let runtime = ConfigService::runtime();
     let runtime = runtime.latest();
     let config = runtime.config.as_ref();
     let mapping = (config
@@ -417,13 +417,13 @@ pub fn get_runtime_yaml() -> Result<String> {
 #[tauri::command]
 #[specta::specta]
 pub fn get_runtime_exists() -> Result<Vec<String>> {
-    Ok(Config::runtime().latest().exists_keys.clone())
+    Ok(ConfigService::runtime().latest().exists_keys.clone())
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn get_postprocessing_output() -> Result<PostProcessingOutput> {
-    Ok(Config::runtime().latest().postprocessing_output.clone())
+    Ok(ConfigService::runtime().latest().postprocessing_output.clone())
 }
 
 #[tauri::command]
@@ -470,7 +470,7 @@ pub async fn patch_clash_config(payload: PatchRuntimeConfig) -> Result {
 #[tauri::command]
 #[specta::specta]
 pub fn get_verge_config() -> Result<NyanpasuAppConfig> {
-    Ok(Config::verge().data().clone())
+    Ok(ConfigService::verge().data().clone())
 }
 
 #[tauri::command]
@@ -872,7 +872,7 @@ pub mod service {
     pub async fn start_service() -> Result {
         let res = service::control::start_service().await;
         let enabled_service = {
-            *crate::config::Config::verge()
+            *crate::config::ConfigService::verge()
                 .latest()
                 .enable_service_mode
                 .as_ref()
@@ -889,7 +889,7 @@ pub mod service {
     pub async fn stop_service() -> Result {
         let res = service::control::stop_service().await;
         let enabled_service = {
-            *crate::config::Config::verge()
+            *crate::config::ConfigService::verge()
                 .latest()
                 .enable_service_mode
                 .as_ref()
@@ -906,7 +906,7 @@ pub mod service {
     pub async fn restart_service() -> Result {
         let res = service::control::restart_service().await;
         let enabled_service = {
-            *crate::config::Config::verge()
+            *crate::config::ConfigService::verge()
                 .latest()
                 .enable_service_mode
                 .as_ref()

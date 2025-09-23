@@ -214,7 +214,7 @@ impl Updater {
 
     async fn replace_core(&self) -> anyhow::Result<()> {
         self.dispatch_state(UpdaterState::Replacing);
-        let current_core = crate::config::Config::verge()
+        let current_core = crate::config::ConfigService::verge()
             .latest()
             .clash_core
             .unwrap_or_default();

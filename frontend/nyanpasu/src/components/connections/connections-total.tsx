@@ -1,13 +1,13 @@
 import { filesize } from 'filesize'
 import { useEffect, useRef, useState } from 'react'
 import { Download, Upload } from '@mui/icons-material'
-import { Paper } from '@mui/material'
+import { Paper, Skeleton } from '@mui/material'
 import { useClashConnections } from '@nyanpasu/interface'
 import { darken, lighten } from '@nyanpasu/ui'
 
 export default function ConnectionTotal() {
   const {
-    query: { data: clashConnections },
+    query: { data: clashConnections, isLoading },
   } = useClashConnections()
 
   const latestClashConnections = clashConnections?.at(-1)
@@ -48,8 +48,33 @@ export default function ConnectionTotal() {
     }
   }, [latestClashConnections?.uploadTotal])
 
-  if (!latestClashConnections) {
-    return null
+  // Show skeleton loading state while data is being fetched
+  if (isLoading || !latestClashConnections) {
+    return (
+      <div className="flex gap-2">
+        <Paper
+          elevation={0}
+          className="flex min-h-8 items-center justify-center gap-1 px-2"
+          sx={{
+            borderRadius: '1em',
+          }}
+        >
+          <Download className="scale-75" />
+          <Skeleton variant="text" width={60} height={20} />
+        </Paper>
+
+        <Paper
+          elevation={0}
+          className="flex min-h-8 items-center justify-center gap-1 px-2"
+          sx={{
+            borderRadius: '1em',
+          }}
+        >
+          <Upload className="scale-75" />
+          <Skeleton variant="text" width={60} height={20} />
+        </Paper>
+      </div>
+    )
   }
 
   return (

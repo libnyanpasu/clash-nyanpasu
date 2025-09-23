@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { SearchTermCtx } from '@/components/connections/connection-search-term'
 import HeaderSearch from '@/components/connections/header-search'
 import { FilterAlt } from '@mui/icons-material'
-import { IconButton } from '@mui/material'
+import { Box, CircularProgress, IconButton } from '@mui/material'
 import { BasePage } from '@nyanpasu/ui'
 import { createFileRoute, useBlocker } from '@tanstack/react-router'
 
@@ -46,6 +46,21 @@ function Connections() {
     }
   }, [proceed, deferredMountTable])
 
+  // Loading fallback component
+  const LoadingFallback = () => (
+    <Box
+      sx={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100%',
+        minHeight: 200,
+      }}
+    >
+      <CircularProgress />
+    </Box>
+  )
+
   return (
     <SearchTermCtx.Provider value={throttledSearchTerm}>
       <BasePage
@@ -53,7 +68,9 @@ function Connections() {
         full
         header={
           <div className="flex max-h-96 w-full flex-1 items-center justify-between gap-2 pl-5">
-            <ConnectionTotal />
+            <Suspense fallback={null}>
+              <ConnectionTotal />
+            </Suspense>
             <div className="flex items-center gap-1">
               <Suspense fallback={null}>
                 <ColumnFilterDialog
@@ -72,7 +89,9 @@ function Connections() {
           </div>
         }
       >
-        {mountTable && <Component />}
+        <Suspense fallback={<LoadingFallback />}>
+          {mountTable && <Component />}
+        </Suspense>
       </BasePage>
     </SearchTermCtx.Provider>
   )

@@ -85,7 +85,7 @@
     "nanoid": "5.1.6",
     "sass-embedded": "1.93.2",
     "shiki": "2.5.0",
-    "unplugin-auto-import": "20.1.0",
+    "unplugin-auto-import": "20.2.0",
     "unplugin-icons": "22.3.0",
     "validator": "13.15.15",
     "vite": "7.1.7",

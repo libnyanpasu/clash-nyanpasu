@@ -103,7 +103,12 @@ where
     pub fn latest(&self) -> MappedRwLockReadGuard<'_, T> {
         if self.is_dirty() {
             let draft = self.draft.read();
-            RwLockReadGuard::map(draft, |guard| guard.as_ref().unwrap())
+            if draft.is_some() {
+                RwLockReadGuard::map(draft, |guard| guard.as_ref().unwrap())
+            } else {
+                let state = self.inner.read();
+                RwLockReadGuard::map(state, |guard| guard)
+            }
         } else {
             let state = self.inner.read();
             RwLockReadGuard::map(state, |guard| guard)
@@ -118,7 +123,10 @@ where
     /// You can modify the draft state, and then commit it
     pub fn draft(&self) -> MappedRwLockWriteGuard<'_, T> {
         if self.is_dirty() {
-            return RwLockWriteGuard::map(self.draft.write(), |guard| guard.as_mut().unwrap());
+            let guard = self.draft.write();
+            if guard.is_some() {
+                return RwLockWriteGuard::map(guard, |g| g.as_mut().unwrap());
+            }
         }
 
         let state = self.inner.read().clone();
@@ -140,10 +148,16 @@ where
         let mut draft = self.draft.write();
         let mut inner = self.inner.write();
         let old_value = inner.to_owned();
-        *inner = draft.take().unwrap();
-        self.is_dirty
-            .store(false, std::sync::atomic::Ordering::Release);
-        Some(old_value)
+        if let Some(draft_value) = draft.take() {
+            *inner = draft_value;
+            self.is_dirty
+                .store(false, std::sync::atomic::Ordering::Release);
+            Some(old_value)
+        } else {
+            self.is_dirty
+                .store(false, std::sync::atomic::Ordering::Release);
+            None
+        }
     }
 
     /// discard the draft state

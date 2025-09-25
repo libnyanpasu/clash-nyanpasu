@@ -105,16 +105,15 @@ export const ProfileItem = memo(function ProfileItem({
 
       await deleteConnections.mutateAsync(undefined)
     } catch (err) {
+      // This FetchError was triggered by the `DELETE /connections` API
       const isFetchError = err instanceof Error && err.name === 'FetchError'
       message(
         isFetchError
-          ? t('FetchError', {
-              content: t('Subscription'),
-            })
+          ? `Failed to delete connections: \n ${err instanceof Error ? err.message : String(err)}`
           : `Error setting profile: \n ${err instanceof Error ? err.message : String(err)}`,
         {
-          title: t('Error'),
-          kind: 'error',
+          title: isFetchError ? t('DeleteConnectionsError') : t('Error'),
+          kind: isFetchError ? 'warning' : 'error',
         },
       )
     } finally {

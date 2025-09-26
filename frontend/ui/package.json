@@ -27,7 +27,7 @@
     "react": "19.1.1",
     "react-dom": "19.1.1",
     "react-error-boundary": "6.0.0",
-    "react-i18next": "15.7.3",
+    "react-i18next": "15.7.4",
     "react-use": "17.6.0",
     "tailwindcss": "4.1.13",
     "vite": "7.1.7",

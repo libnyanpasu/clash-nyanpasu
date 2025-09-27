@@ -15,6 +15,7 @@
   <a href="https://github.com/libnyanpasu/clash-nyanpasu/releases/latest"><img src="https://img.shields.io/github/downloads/libnyanpasu/clash-nyanpasu/total?style=flat-square" alt="GitHub Downloads (all assets, all releases)" /></a>
   <a href="https://github.com/libnyanpasu/clash-nyanpasu/blob/main/LICENSE"><img src="https://img.shields.io/github/license/libnyanpasu/clash-nyanpasu?style=flat-square" alt="Nyanpasu License" /></a>
   <a href="https://twitter.com/ClashNyanpasu"><img src="https://img.shields.io/twitter/follow/ClashNyanpasu?style=flat-square" alt="Nyanpasu Twitter" /></a>
+  <a href="https://deepwiki.com/libnyanpasu/clash-nyanpasu"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
 </p>
 
 ## Features

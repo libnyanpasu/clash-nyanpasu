@@ -4,6 +4,7 @@ pub mod handle;
 pub mod hotkey;
 pub mod logger;
 pub mod manager;
+pub mod pac;
 pub mod service;
 pub mod storage;
 pub mod sysopt;

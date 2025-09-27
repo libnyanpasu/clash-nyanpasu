@@ -302,8 +302,8 @@ mod tests {
         );
 
         let invalid_pac_script = r#"
-            function FindProxyForURL(url, host) {
-                // No FindProxyForURL function here
+            function SomeOtherFunction(url, host) {
+                // This script does not contain the required function
                 return "PROXY proxy.example.com:8080";
             }
         "#;

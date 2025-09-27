@@ -287,6 +287,11 @@ pub struct IVerge {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub network_statistic_widget: Option<NetworkStatisticWidgetConfig>,
 
+    /// PAC URL for automatic proxy configuration
+    /// This field is used to set PAC proxy without exposing it to the frontend UI
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pac_url: Option<String>,
+
     /// enable tray text display on Linux systems
     /// When enabled, shows proxy and TUN mode status as text next to the tray icon
     /// When disabled, only shows status via icon changes (prevents text display issues on Wayland)

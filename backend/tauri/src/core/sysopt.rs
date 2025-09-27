@@ -7,6 +7,10 @@ use std::sync::Arc;
 use sysproxy::Sysproxy;
 use tauri::{async_runtime::Mutex as TokioMutex, utils::platform::current_exe};
 
+// Import PAC manager
+#[cfg(feature = "default-meta")]
+use crate::core::pac::PacManager;
+
 #[cfg(target_os = "linux")]
 use std::process::Command;
 
@@ -66,6 +70,22 @@ impl Sysopt {
 
     /// init the sysproxy
     pub fn init_sysproxy(&self) -> Result<()> {
+        // Check if PAC is enabled first
+        #[cfg(feature = "default-meta")]
+        if PacManager::is_pac_enabled() {
+            log::info!(target: "app", "Initializing PAC proxy");
+            // For PAC, we don't set the regular system proxy
+            // Instead, we let the PAC manager handle it
+            tauri::async_runtime::spawn(async {
+                if let Err(e) = PacManager::init_pac_proxy().await {
+                    log::error!(target: "app", "Failed to initialize PAC proxy: {}", e);
+                }
+            });
+            // run the system proxy guard
+            self.guard_proxy();
+            return Ok(());
+        }
+
         let port = Config::verge()
             .latest()
             .verge_mixed_port
@@ -89,7 +109,10 @@ impl Sysopt {
 
         if enable {
             let old = Sysproxy::get_system_proxy().ok();
-            current.set_system_proxy()?;
+            if let Err(e) = current.set_system_proxy() {
+                log::error!(target: "app", "Failed to set system proxy: {}", e);
+                return Err(e.into()); // Convert sysproxy::Error to anyhow::Error
+            }
 
             *self.old_sysproxy.lock() = old;
             *self.cur_sysproxy.lock() = Some(current);
@@ -102,6 +125,18 @@ impl Sysopt {
 
     /// update the system proxy
     pub fn update_sysproxy(&self) -> Result<()> {
+        // Check if PAC is enabled first
+        #[cfg(feature = "default-meta")]
+        if PacManager::is_pac_enabled() {
+            log::info!(target: "app", "Updating PAC proxy");
+            // For PAC, we don't set the regular system proxy
+            // Instead, we let the PAC manager handle it
+            tauri::async_runtime::spawn(async {
+                log_err!(PacManager::update_pac().await);
+            });
+            return Ok(());
+        }
+
         let mut cur_sysproxy = self.cur_sysproxy.lock();
         let old_sysproxy = self.old_sysproxy.lock();
 
@@ -132,6 +167,14 @@ impl Sysopt {
 
     /// reset the sysproxy
     pub fn reset_sysproxy(&self) -> Result<()> {
+        // Check if PAC is enabled first
+        #[cfg(feature = "default-meta")]
+        if PacManager::is_pac_enabled() {
+            log::info!(target: "app", "Resetting PAC proxy");
+            // Disable PAC proxy
+            log_err!(PacManager::disable_pac_proxy());
+        }
+
         let mut cur_sysproxy = self.cur_sysproxy.lock();
         let mut old_sysproxy = self.old_sysproxy.lock();
 

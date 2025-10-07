@@ -104,8 +104,8 @@ importers:
         specifier: 16.4.0
         version: 16.4.0
       knip:
-        specifier: 5.64.1
-        version: 5.64.1(@types/node@24.5.2)(typescript@5.9.2)
+        specifier: 5.64.2
+        version: 5.64.2(@types/node@24.5.2)(typescript@5.9.2)
       lint-staged:
         specifier: 16.2.1
         version: 16.2.1
@@ -5974,10 +5974,6 @@ packages:
   javascript-natural-sort@0.7.1:
     resolution: {integrity: sha512-nO6jcEfZWQXDhOiBtG2KvKyEptz7RVbpGP4vTD2hLBdmNQSsCiicO2Ioinv6UI4y9ukqnBpy+XZ9H6uLNgJTlw==}
 
-  jiti@2.5.1:
-    resolution: {integrity: sha512-twQoecYPiVA5K/h6SxtORw/Bs3ar+mLUtoPSc7iMXzQzK8d7eJ/R09wmTwAjiamETn1cXYPGfNnu7DMoHgu12w==}
-    hasBin: true
-
   jiti@2.6.0:
     resolution: {integrity: sha512-VXe6RjJkBPj0ohtqaO8vSWP3ZhAKo66fKrFNCll4BTcwljPLz03pCbaNKfzGP5MbrCYcbJ7v0nOYYwUzTEIdXQ==}
     hasBin: true
@@ -6099,8 +6095,8 @@ packages:
     resolution: {integrity: sha512-dcS1ul+9tmeD95T+x28/ehLgd9mENa3LsvDTtzm3vyBEO7RPptvAD+t44WVXaUjTBRcrpFeFlC8WCruUR456hw==}
     engines: {node: '>=0.10.0'}
 
-  knip@5.64.1:
-    resolution: {integrity: sha512-80XnLsyeXuyxj1F4+NBtQFHxaRH0xWRw8EKwfQ6EkVZZ0bSz/kqqan08k/Qg8ajWsFPhFq+0S2RbLCBGIQtuOg==}
+  knip@5.64.2:
+    resolution: {integrity: sha512-gyIN+ZqZjyxdsocvkZx2HMy7D9+5WAgFrTM69sGg1QZ8wZuabtanhAP8ZnroctU26sQ5bO2RSPvjnOn0pRNuKw==}
     engines: {node: '>=18.18.0'}
     hasBin: true
     peerDependencies:
@@ -11234,7 +11230,7 @@ snapshots:
     dependencies:
       '@jridgewell/remapping': 2.3.5
       enhanced-resolve: 5.18.3
-      jiti: 2.5.1
+      jiti: 2.6.0
       lightningcss: 1.30.1
       magic-string: 0.30.18
       source-map-js: 1.2.1
@@ -12766,7 +12762,7 @@ snapshots:
     dependencies:
       '@types/node': 24.5.2
       cosmiconfig: 9.0.0(typescript@5.9.2)
-      jiti: 2.5.1
+      jiti: 2.6.0
       typescript: 5.9.2
 
   cosmiconfig@7.1.0:
@@ -14728,8 +14724,6 @@ snapshots:
   javascript-natural-sort@0.7.1:
     optional: true
 
-  jiti@2.5.1: {}
-
   jiti@2.6.0: {}
 
   jju@1.4.0: {}
@@ -14816,7 +14810,7 @@ snapshots:
 
   kind-of@6.0.3: {}
 
-  knip@5.64.1(@types/node@24.5.2)(typescript@5.9.2):
+  knip@5.64.2(@types/node@24.5.2)(typescript@5.9.2):
     dependencies:
       '@nodelib/fs.walk': 1.2.8
       '@types/node': 24.5.2

@@ -62,8 +62,8 @@ importers:
         specifier: 9.1.0
         version: 9.1.0
       cross-env:
-        specifier: 10.0.0
-        version: 10.0.0
+        specifier: 10.1.0
+        version: 10.1.0
       dedent:
         specifier: 1.7.0
         version: 1.7.0(babel-plugin-macros@3.1.0)
@@ -4360,8 +4360,8 @@ packages:
     resolution: {integrity: sha512-gYTKKexFO3kh200H1Nit76sRwRtOY32vQd3jpAQKpLtZqyNsSQNfI4N7o3eP2wUjV35pTWKRYqFUDBvUha/Pkw==}
     engines: {node: '>=0.10.0'}
 
-  cross-env@10.0.0:
-    resolution: {integrity: sha512-aU8qlEK/nHYtVuN4p7UQgAwVljzMg8hB4YK5ThRqD2l/ziSnryncPNn7bMLt5cFYsKVKBh8HqLqyCoTupEUu7Q==}
+  cross-env@10.1.0:
+    resolution: {integrity: sha512-GsYosgnACZTADcmEyJctkJIoqAhHjttw7RsFrVoJNXbsWWqaq6Ym+7kZjq6mS45O0jij6vtiReppKQEtqWy6Dw==}
     engines: {node: '>=20'}
     hasBin: true
 
@@ -12806,7 +12806,7 @@ snapshots:
     dependencies:
       capture-stack-trace: 1.0.2
 
-  cross-env@10.0.0:
+  cross-env@10.1.0:
     dependencies:
       '@epic-web/invariant': 1.0.0
       cross-spawn: 7.0.6

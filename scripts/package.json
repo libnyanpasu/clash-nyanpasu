@@ -9,7 +9,7 @@
     "figlet": "1.9.3",
     "filesize": "11.0.13",
     "p-retry": "7.0.0",
-    "semver": "7.7.2",
+    "semver": "7.7.3",
     "zod": "4.1.11"
   },
   "devDependencies": {

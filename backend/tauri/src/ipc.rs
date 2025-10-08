@@ -985,38 +985,6 @@ pub async fn get_clash_ws_connections_state(
     Ok(ws_connector.state())
 }
 
-/// Move window to another monitor
-#[tauri::command]
-#[specta::specta]
-pub fn move_window_to_other_monitor(
-    window: tauri::Window,
-    target_monitor_index: usize,
-) -> Result<()> {
-    crate::utils::window_manager::move_window_to_other_monitor(window, target_monitor_index)?;
-    Ok(())
-}
-
-/// Center window on current monitor
-#[tauri::command]
-#[specta::specta]
-pub fn center_window(window: tauri::Window) -> Result<()> {
-    crate::utils::window_manager::center_window(&window)?;
-    Ok(())
-}
-
-/// Get available monitors
-#[tauri::command]
-#[specta::specta]
-pub fn get_available_monitors(
-    window: tauri::Window,
-) -> Result<Vec<crate::utils::window_manager::MonitorInfo>> {
-    let monitors = crate::utils::window_manager::get_available_monitors(window)?;
-    Ok(monitors
-        .iter()
-        .map(|(id, monitor)| ((*id, monitor)).into())
-        .collect())
-}
-
 // Updater block
 
 #[derive(Default, Clone, serde::Serialize, serde::Deserialize, specta::Type)]

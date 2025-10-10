@@ -104,8 +104,8 @@ importers:
         specifier: 16.4.0
         version: 16.4.0
       knip:
-        specifier: 5.64.2
-        version: 5.64.2(@types/node@24.5.2)(typescript@5.9.2)
+        specifier: 5.64.3
+        version: 5.64.3(@types/node@24.5.2)(typescript@5.9.2)
       lint-staged:
         specifier: 16.2.3
         version: 16.2.3
@@ -6155,8 +6155,8 @@ packages:
     resolution: {integrity: sha512-dcS1ul+9tmeD95T+x28/ehLgd9mENa3LsvDTtzm3vyBEO7RPptvAD+t44WVXaUjTBRcrpFeFlC8WCruUR456hw==}
     engines: {node: '>=0.10.0'}
 
-  knip@5.64.2:
-    resolution: {integrity: sha512-gyIN+ZqZjyxdsocvkZx2HMy7D9+5WAgFrTM69sGg1QZ8wZuabtanhAP8ZnroctU26sQ5bO2RSPvjnOn0pRNuKw==}
+  knip@5.64.3:
+    resolution: {integrity: sha512-P9dZetEZfSBwNBFwj55CAnPAMdzVLTTscWx6rdB8eBmPqXPji8F3L+hhWi+Xp+u9O6Xp2ClRDq2JENSK8Z04Qg==}
     engines: {node: '>=18.18.0'}
     hasBin: true
     peerDependencies:
@@ -8716,9 +8716,6 @@ packages:
 
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
-
-  zod@4.1.11:
-    resolution: {integrity: sha512-WPsqwxITS2tzx1bzhIKsEs19ABD5vmCVa4xBo2tq/SrV4RNZtfws1EnCWQXM6yh8bD08a1idvkB5MZSBiZsjwg==}
 
   zod@4.1.12:
     resolution: {integrity: sha512-JInaHOamG8pt5+Ey8kGmdcAcg3OL9reK8ltczgHTAwNhMys/6ThXHityHxVV2p3fkw/c+MAvBHFVYHFZDmjMCQ==}
@@ -14931,7 +14928,7 @@ snapshots:
 
   kind-of@6.0.3: {}
 
-  knip@5.64.2(@types/node@24.5.2)(typescript@5.9.2):
+  knip@5.64.3(@types/node@24.5.2)(typescript@5.9.2):
     dependencies:
       '@nodelib/fs.walk': 1.2.8
       '@types/node': 24.5.2
@@ -14946,7 +14943,7 @@ snapshots:
       smol-toml: 1.4.2
       strip-json-comments: 5.0.2
       typescript: 5.9.2
-      zod: 4.1.11
+      zod: 4.1.12
 
   known-css-properties@0.36.0: {}
 
@@ -17831,8 +17828,6 @@ snapshots:
   zod@3.24.4: {}
 
   zod@3.25.76: {}
-
-  zod@4.1.11: {}
 
   zod@4.1.12: {}
 

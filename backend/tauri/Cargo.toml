@@ -172,12 +172,12 @@ display-info = "0.5.0"  # should be removed after upgrading to tauri v2
 
 # OXC (The Oxidation Compiler)
 # We use it to parse and transpile the old script profile to esm based script profile
-oxc_parser = "0.89"
-oxc_allocator = "0.89"
-oxc_span = "0.89"
-oxc_ast = "0.89"
-oxc_syntax = "0.89"
-oxc_ast_visit = "0.89"
+oxc_parser = "0.94"
+oxc_allocator = "0.94"
+oxc_span = "0.94"
+oxc_ast = "0.94"
+oxc_syntax = "0.94"
+oxc_ast_visit = "0.94"
 
 # Lua Integration
 mlua = { version = "0.11", features = [

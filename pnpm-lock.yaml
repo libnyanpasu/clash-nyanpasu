@@ -569,8 +569,8 @@ importers:
         specifier: 11.0.13
         version: 11.0.13
       p-retry:
-        specifier: 7.0.0
-        version: 7.0.0
+        specifier: 7.1.0
+        version: 7.1.0
       semver:
         specifier: 7.7.3
         version: 7.7.3
@@ -6829,8 +6829,8 @@ packages:
     resolution: {integrity: sha512-wPrq66Llhl7/4AGC6I+cqxT07LhXvWL08LNXz1fENOw0Ap4sRZZ/gZpTTJ5jpurzzzfS2W/Ge9BY3LgLjCShcw==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
-  p-retry@7.0.0:
-    resolution: {integrity: sha512-3BgO9rjULJYyr0Y0pcsG7FZ+7JB/hfOODO8kx9ppumiO5jprUF92WK/Y7Q0xppZtq4VhTcPiVq7qWLQfIV5aKQ==}
+  p-retry@7.1.0:
+    resolution: {integrity: sha512-xL4PiFRQa/f9L9ZvR4/gUCRNus4N8YX80ku8kv9Jqz+ZokkiZLM0bcvX0gm1F3PDi9SPRsww1BDsTWgE6Y1GLQ==}
     engines: {node: '>=20'}
 
   p-timeout@3.2.0:
@@ -15802,7 +15802,7 @@ snapshots:
     dependencies:
       p-limit: 4.0.0
 
-  p-retry@7.0.0:
+  p-retry@7.1.0:
     dependencies:
       is-network-error: 1.1.0
 

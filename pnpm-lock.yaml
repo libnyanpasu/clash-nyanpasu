@@ -330,8 +330,8 @@ importers:
         specifier: 2.3.6
         version: 2.3.6(react@19.1.1)
       virtua:
-        specifier: 0.43.5
-        version: 0.43.5(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(solid-js@1.9.5)
+        specifier: 0.45.2
+        version: 0.45.2(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(solid-js@1.9.5)
       vite-bundle-visualizer:
         specifier: 1.2.1
         version: 1.2.1(rollup@4.46.2)
@@ -8429,8 +8429,8 @@ packages:
   vfile@6.0.1:
     resolution: {integrity: sha512-1bYqc7pt6NIADBJ98UiG0Bn/CHIVOoZ/IyEkqIruLg0mE1BKzkOXY2D6CSqQIcKqgadppE5lrxgWXJmXd7zZJw==}
 
-  virtua@0.43.5:
-    resolution: {integrity: sha512-Isu5UvvE+hs+1iTUfBgS4FakbAqgG8ALZP1/kLSyEASvHI4rANpWi5g+1BF8sUXVcWHStBniGVLZv1iX2i/qPw==}
+  virtua@0.45.2:
+    resolution: {integrity: sha512-kqger1ZZICN7qW164MboRDId+z7Odaxre+9ph8/67AlTI/3hyOEiUV9c9fnRumtKqnRqzwtI9BloOWE1Tb+qEg==}
     peerDependencies:
       react: '>=16.14.0'
       react-dom: '>=16.14.0'
@@ -17526,7 +17526,7 @@ snapshots:
       unist-util-stringify-position: 4.0.0
       vfile-message: 4.0.2
 
-  virtua@0.43.5(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(solid-js@1.9.5):
+  virtua@0.45.2(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(solid-js@1.9.5):
     optionalDependencies:
       react: 19.1.1
       react-dom: 19.1.1(react@19.1.1)

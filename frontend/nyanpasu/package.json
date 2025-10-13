@@ -61,7 +61,7 @@
     "@tanstack/react-query": "5.90.2",
     "@tanstack/react-router": "1.132.47",
     "@tanstack/react-router-devtools": "1.132.51",
-    "@tanstack/router-plugin": "1.132.51",
+    "@tanstack/router-plugin": "1.132.56",
     "@tauri-apps/plugin-clipboard-manager": "2.3.0",
     "@tauri-apps/plugin-dialog": "2.4.0",
     "@tauri-apps/plugin-fs": "2.4.2",

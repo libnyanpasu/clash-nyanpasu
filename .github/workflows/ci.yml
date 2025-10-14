@@ -53,7 +53,7 @@ jobs:
           xcode-version: 'latest-stable'
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
 
@@ -140,7 +140,7 @@ jobs:
           xcode-version: 'latest-stable'
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
 
@@ -231,7 +231,7 @@ jobs:
           xcode-version: 'latest-stable'
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
 

@@ -43,7 +43,7 @@ jobs:
       - name: Fetch git tags
         run: git fetch --tags
       - name: Install Node latest
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
 

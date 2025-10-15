@@ -358,8 +358,8 @@ importers:
         specifier: 1.132.47
         version: 1.132.47(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
       '@tanstack/react-router-devtools':
-        specifier: 1.132.51
-        version: 1.132.51(@tanstack/react-router@1.132.47(react-dom@19.1.1(react@19.1.1))(react@19.1.1))(@tanstack/router-core@1.132.47)(@types/node@24.5.2)(csstype@3.1.3)(jiti@2.6.0)(less@4.2.0)(lightningcss@1.30.1)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(sass-embedded@1.93.2)(sass@1.93.2)(solid-js@1.9.5)(stylus@0.62.0)(terser@5.36.0)(tiny-invariant@1.3.3)(tsx@4.20.6)(yaml@2.8.1)
+        specifier: 1.133.1
+        version: 1.133.1(@tanstack/react-router@1.132.47(react-dom@19.1.1(react@19.1.1))(react@19.1.1))(@tanstack/router-core@1.132.47)(@types/node@24.5.2)(csstype@3.1.3)(jiti@2.6.0)(less@4.2.0)(lightningcss@1.30.1)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(sass-embedded@1.93.2)(sass@1.93.2)(solid-js@1.9.5)(stylus@0.62.0)(terser@5.36.0)(tiny-invariant@1.3.3)(tsx@4.20.6)(yaml@2.8.1)
       '@tanstack/router-plugin':
         specifier: 1.132.56
         version: 1.132.56(@tanstack/react-router@1.132.47(react-dom@19.1.1(react@19.1.1))(react@19.1.1))(vite@7.1.10(@types/node@24.5.2)(jiti@2.6.0)(less@4.2.0)(lightningcss@1.30.1)(sass-embedded@1.93.2)(sass@1.93.2)(stylus@0.62.0)(terser@5.36.0)(tsx@4.20.6)(yaml@2.8.1))
@@ -3102,8 +3102,8 @@ packages:
     peerDependencies:
       react: ^18 || ^19
 
-  '@tanstack/react-router-devtools@1.132.51':
-    resolution: {integrity: sha512-09gHGUE9BVE6O+7u4ICnKigdPP0vZAYI70dKNqGp8bEy9jaMmHGlUxVV6pKqBLVgcPmwT9YMRAeJ5+QrcznXGA==}
+  '@tanstack/react-router-devtools@1.133.1':
+    resolution: {integrity: sha512-yfdRfakcuXyeFeIzjHGr95xYc05T5jiuU7i7AmgAF2GGkrAkSCEVY4fsbQ7a4aqHmQ3Y3Fn1Lc/N+2PRYY7czQ==}
     engines: {node: '>=12'}
     peerDependencies:
       '@tanstack/react-router': ^1.132.47
@@ -3140,8 +3140,8 @@ packages:
     resolution: {integrity: sha512-8YKFHmG6VUqXaWAJzEqjyW6w31dARS2USd2mtI5ZeZcihqMbskK28N4iotBXNn+sSKJnPRjc7A4jTnnEf8Mn8Q==}
     engines: {node: '>=12'}
 
-  '@tanstack/router-devtools-core@1.132.51':
-    resolution: {integrity: sha512-uhbk4rSeUpYaqOJLZwOwfyysSoeedIEiRWz37sTVM4tUBFsWqA/p9gO2kVSx/Xmcu8grLy512KNDDeji3QhdwQ==}
+  '@tanstack/router-devtools-core@1.133.1':
+    resolution: {integrity: sha512-q7WHYDjxTgTVyDGrDGyRCu6s9lyIiFyVNyvqHNPm5DCQDK+fFVjekZ61foFbe1B6loZC/ZX67ZGge5Eb4NYIfQ==}
     engines: {node: '>=12'}
     peerDependencies:
       '@tanstack/router-core': ^1.132.47
@@ -11444,10 +11444,10 @@ snapshots:
       '@tanstack/query-core': 5.90.3
       react: 19.1.1
 
-  '@tanstack/react-router-devtools@1.132.51(@tanstack/react-router@1.132.47(react-dom@19.1.1(react@19.1.1))(react@19.1.1))(@tanstack/router-core@1.132.47)(@types/node@24.5.2)(csstype@3.1.3)(jiti@2.6.0)(less@4.2.0)(lightningcss@1.30.1)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(sass-embedded@1.93.2)(sass@1.93.2)(solid-js@1.9.5)(stylus@0.62.0)(terser@5.36.0)(tiny-invariant@1.3.3)(tsx@4.20.6)(yaml@2.8.1)':
+  '@tanstack/react-router-devtools@1.133.1(@tanstack/react-router@1.132.47(react-dom@19.1.1(react@19.1.1))(react@19.1.1))(@tanstack/router-core@1.132.47)(@types/node@24.5.2)(csstype@3.1.3)(jiti@2.6.0)(less@4.2.0)(lightningcss@1.30.1)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(sass-embedded@1.93.2)(sass@1.93.2)(solid-js@1.9.5)(stylus@0.62.0)(terser@5.36.0)(tiny-invariant@1.3.3)(tsx@4.20.6)(yaml@2.8.1)':
     dependencies:
       '@tanstack/react-router': 1.132.47(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
-      '@tanstack/router-devtools-core': 1.132.51(@tanstack/router-core@1.132.47)(@types/node@24.5.2)(csstype@3.1.3)(jiti@2.6.0)(less@4.2.0)(lightningcss@1.30.1)(sass-embedded@1.93.2)(sass@1.93.2)(solid-js@1.9.5)(stylus@0.62.0)(terser@5.36.0)(tiny-invariant@1.3.3)(tsx@4.20.6)(yaml@2.8.1)
+      '@tanstack/router-devtools-core': 1.133.1(@tanstack/router-core@1.132.47)(@types/node@24.5.2)(csstype@3.1.3)(jiti@2.6.0)(less@4.2.0)(lightningcss@1.30.1)(sass-embedded@1.93.2)(sass@1.93.2)(solid-js@1.9.5)(stylus@0.62.0)(terser@5.36.0)(tiny-invariant@1.3.3)(tsx@4.20.6)(yaml@2.8.1)
       react: 19.1.1
       react-dom: 19.1.1(react@19.1.1)
       vite: 7.1.10(@types/node@24.5.2)(jiti@2.6.0)(less@4.2.0)(lightningcss@1.30.1)(sass-embedded@1.93.2)(sass@1.93.2)(stylus@0.62.0)(terser@5.36.0)(tsx@4.20.6)(yaml@2.8.1)
@@ -11508,7 +11508,7 @@ snapshots:
       tiny-invariant: 1.3.3
       tiny-warning: 1.0.3
 
-  '@tanstack/router-devtools-core@1.132.51(@tanstack/router-core@1.132.47)(@types/node@24.5.2)(csstype@3.1.3)(jiti@2.6.0)(less@4.2.0)(lightningcss@1.30.1)(sass-embedded@1.93.2)(sass@1.93.2)(solid-js@1.9.5)(stylus@0.62.0)(terser@5.36.0)(tiny-invariant@1.3.3)(tsx@4.20.6)(yaml@2.8.1)':
+  '@tanstack/router-devtools-core@1.133.1(@tanstack/router-core@1.132.47)(@types/node@24.5.2)(csstype@3.1.3)(jiti@2.6.0)(less@4.2.0)(lightningcss@1.30.1)(sass-embedded@1.93.2)(sass@1.93.2)(solid-js@1.9.5)(stylus@0.62.0)(terser@5.36.0)(tiny-invariant@1.3.3)(tsx@4.20.6)(yaml@2.8.1)':
     dependencies:
       '@tanstack/router-core': 1.132.47
       clsx: 2.1.1

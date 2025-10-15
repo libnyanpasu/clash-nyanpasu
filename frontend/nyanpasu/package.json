@@ -60,7 +60,7 @@
     "@monaco-editor/react": "4.7.0",
     "@tanstack/react-query": "5.90.3",
     "@tanstack/react-router": "1.132.47",
-    "@tanstack/react-router-devtools": "1.132.51",
+    "@tanstack/react-router-devtools": "1.133.1",
     "@tanstack/router-plugin": "1.132.56",
     "@tauri-apps/plugin-clipboard-manager": "2.3.0",
     "@tauri-apps/plugin-dialog": "2.4.0",

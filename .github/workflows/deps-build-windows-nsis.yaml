@@ -86,7 +86,7 @@ jobs:
           rustup target add ${{ inputs.arch }}-pc-windows-msvc
 
       - name: Install Node latest
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
 

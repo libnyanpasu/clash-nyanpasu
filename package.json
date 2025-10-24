@@ -97,7 +97,7 @@
     "prettier-plugin-ember-template-tag": "2.1.0",
     "prettier-plugin-tailwindcss": "0.7.1",
     "prettier-plugin-toml": "2.0.6",
-    "react-devtools": "6.1.5",
+    "react-devtools": "7.0.1",
     "stylelint": "16.25.0",
     "stylelint-config-html": "1.1.0",
     "stylelint-config-recess-order": "7.4.0",

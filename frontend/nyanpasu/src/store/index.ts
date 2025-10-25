@@ -3,7 +3,6 @@ import { atomWithStorage, createJSONStorage } from 'jotai/utils'
 import { SortType } from '@/components/proxies/utils'
 import { FileRouteTypes } from '@/routeTree.gen'
 import { NyanpasuStorage } from '@/services/storage'
-import { LogMessage } from '@nyanpasu/interface'
 
 const atomWithLocalStorage = <T>(key: string, initialValue: T) => {
   const getInitialValue = (): T => {
@@ -33,7 +32,9 @@ const atomWithLocalStorage = <T>(key: string, initialValue: T) => {
 
 export const memorizedRoutePathAtom = atomWithStorage<
   FileRouteTypes['fullPaths'] | null
->('memorizedRoutePathAtom', null)
+>('memorizedRoutePathAtom', null, undefined, {
+  getOnInit: true,
+})
 
 export const proxyGroupAtom = atomWithLocalStorage<{
   selector: number | null

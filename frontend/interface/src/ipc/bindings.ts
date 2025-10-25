@@ -1026,22 +1026,16 @@ export type IVerge = {
    */
   network_statistic_widget?: NetworkStatisticWidgetConfig | null
   /**
+   * PAC URL for automatic proxy configuration
+   * This field is used to set PAC proxy without exposing it to the frontend UI
+   */
+  pac_url?: string | null
+  /**
    * enable tray text display on Linux systems
    * When enabled, shows proxy and TUN mode status as text next to the tray icon
    * When disabled, only shows status via icon changes (prevents text display issues on Wayland)
    */
   enable_tray_text: boolean | null
-  /**
-   * enable traffic information display in system tray
-   * When enabled, shows upload/download speeds in the tray tooltip (macOS/Windows) or title (Linux)
-   */
-  enable_tray_traffic: boolean | null
-  /**
-   * enable colored tray icons on macOS
-   * When enabled, uses colored icons instead of template icons to show proxy status
-   * When disabled, uses system template icons that adapt to light/dark mode
-   */
-  enable_macos_colored_icons?: boolean | null
 }
 export type JsonValue =
   | null

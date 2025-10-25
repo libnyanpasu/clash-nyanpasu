@@ -77,7 +77,7 @@ const ThemeColor = () => {
           format="hex"
           onBlur={() => {
             if (!isHexColor(value ?? DEFAULT_COLOR)) {
-              setValue(value)
+              setValue(theme.value ?? DEFAULT_COLOR)
             }
           }}
           onChange={(color: string) => setValue(color)}
@@ -90,7 +90,12 @@ const ThemeColor = () => {
             variant="contained"
             startIcon={<Done />}
             onClick={() => {
-              theme.upsert(value)
+              if (isHexColor(value)) {
+                theme.upsert(value)
+              } else {
+                // 如果输入的不是有效的十六进制颜色，则恢复为之前的值
+                setValue(theme.value ?? DEFAULT_COLOR)
+              }
             }}
           >
             {t('Apply')}

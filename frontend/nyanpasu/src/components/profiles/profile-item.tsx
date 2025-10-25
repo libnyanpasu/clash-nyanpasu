@@ -25,7 +25,6 @@ import {
   Tooltip,
 } from '@mui/material'
 import {
-  Profile,
   ProfileQueryResultItem,
   RemoteProfile,
   RemoteProfileOptionsBuilder,
@@ -106,16 +105,15 @@ export const ProfileItem = memo(function ProfileItem({
 
       await deleteConnections.mutateAsync(undefined)
     } catch (err) {
+      // This FetchError was triggered by the `DELETE /connections` API
       const isFetchError = err instanceof Error && err.name === 'FetchError'
       message(
         isFetchError
-          ? t('FetchError', {
-              content: t('Subscription'),
-            })
+          ? `Failed to delete connections: \n ${err instanceof Error ? err.message : String(err)}`
           : `Error setting profile: \n ${err instanceof Error ? err.message : String(err)}`,
         {
-          title: t('Error'),
-          kind: 'error',
+          title: isFetchError ? t('DeleteConnectionsError') : t('Error'),
+          kind: isFetchError ? 'warning' : 'error',
         },
       )
     } finally {
@@ -314,22 +312,20 @@ export const ProfileItem = memo(function ProfileItem({
               </Button>
             </Badge>
 
-            {isRemote && (
-              <Tooltip title={t('Update')}>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  className="!size-8 !min-w-0"
-                  onClick={(e) => {
-                    cleanDeepClickEvent(e)
-                    menuMapping.Update()
-                  }}
-                  loading={globalUpdatePending || loading.update}
-                >
-                  <Update />
-                </Button>
-              </Tooltip>
-            )}
+            <Tooltip title={t('Update')}>
+              <Button
+                size="small"
+                variant="outlined"
+                className="!size-8 !min-w-0"
+                onClick={(e) => {
+                  cleanDeepClickEvent(e)
+                  menuMapping.Update()
+                }}
+                loading={globalUpdatePending || loading.update}
+              >
+                <Update />
+              </Button>
+            </Tooltip>
 
             <Tooltip title={t('Menu')}>
               <Button

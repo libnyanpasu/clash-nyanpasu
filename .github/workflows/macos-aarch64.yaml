@@ -8,7 +8,7 @@ env:
 
 jobs:
   macos-aarch64:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -32,7 +32,7 @@ jobs:
           rustup target add aarch64-apple-darwin
 
       - name: Install Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
 

@@ -70,7 +70,9 @@ export const message = async (
   if (typeof options === 'object') {
     await tauriMessage(value, {
       ...options,
-      title: `Clash Nyanpasu - ${options.title}`,
+      title: options.title
+        ? `Clash Nyanpasu - ${options.title}`
+        : 'Clash Nyanpasu',
     })
   } else {
     await tauriMessage(value, options)

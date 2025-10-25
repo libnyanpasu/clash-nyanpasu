@@ -31,7 +31,7 @@ impl AnyContextMapExt for AnyContextMap {
 }
 
 task_local! {
-    pub static STATE_CONTEXT: Arc<AnyContextMap>;
+    static STATE_CONTEXT: Arc<AnyContextMap>;
 }
 
 pub struct Context;

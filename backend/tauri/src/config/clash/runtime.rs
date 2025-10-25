@@ -22,7 +22,7 @@ pub struct PatchRuntimeConfig {
     pub mode: Option<String>,
 }
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize)]
+#[derive(Default, Debug, Clone, Deserialize, Serialize, specta::Type)]
 pub struct ClashRuntimeConfig {
     pub config: Option<Mapping>,
     // 记录在配置中（包括merge和script生成的）出现过的keys

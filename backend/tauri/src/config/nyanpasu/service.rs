@@ -1,11 +1,16 @@
 use std::sync::Arc;
 
-use anyhow::Context;
+use anyhow::Context as _;
 use camino::Utf8Path;
 use json_patch::merge;
 use tokio::sync::RwLock;
 
-use crate::core::state_v2::{PersistentStateManager, StateAsyncBuilder, StateCoordinator};
+use crate::{
+    config::NYANPASU_CONFIG_PREFIX,
+    core::state_v2::{
+        Context, PersistentBuilderManager, StateAsyncBuilder, StateCoordinator, error::*,
+    },
+};
 
 use super::*;
 
@@ -16,14 +21,10 @@ impl StateAsyncBuilder for NyanpasuAppConfigBuilder {
     }
 }
 
-struct NyanpasuConfigManager {
-    current_builder: Option<NyanpasuAppConfigBuilder>,
-    state_manager: PersistentStateManager<NyanpasuAppConfig, NyanpasuAppConfigBuilder>,
-}
-
 #[derive(Clone)]
 pub struct NyanpasuAppConfigService {
-    config_manager: Arc<RwLock<NyanpasuConfigManager>>,
+    state_manager:
+        Arc<RwLock<PersistentBuilderManager<NyanpasuAppConfig, NyanpasuAppConfigBuilder>>>,
 }
 
 impl NyanpasuAppConfigService {
@@ -33,41 +34,42 @@ impl NyanpasuAppConfigService {
     ) -> Self {
         let mut state_coordinator = StateCoordinator::new();
         register_fn(&mut state_coordinator);
-        let state_manager = PersistentStateManager::new(
+        let state_manager = PersistentBuilderManager::new(
             Some(NYANPASU_CONFIG_PREFIX.to_string()),
             config_path.as_ref().to_path_buf(),
             state_coordinator,
         );
         Self {
-            config_manager: Arc::new(RwLock::new(NyanpasuConfigManager {
-                current_builder: None,
-                state_manager,
-            })),
+            state_manager: Arc::new(RwLock::new(state_manager)),
         }
     }
 
+    /// Get the current config,
+    /// if the config is not found in the state transactional context, it will be loaded from the real manager
     pub async fn current_config(&self) -> anyhow::Result<NyanpasuAppConfig> {
-        self.config_manager
-            .read()
-            .await
-            .state_manager
-            .current_state()
-            .ok_or_else(|| anyhow::anyhow!("current config not found"))
+        match Context::get::<NyanpasuAppConfig>() {
+            Some(config) => Ok(config),
+            None => self
+                .state_manager
+                .read()
+                .await
+                .current_state()
+                .ok_or_else(|| anyhow::anyhow!("current config not found")),
+        }
     }
 
-    pub async fn load(&self) -> anyhow::Result<()> {
-        self.config_manager
+    pub async fn load(&self) -> Result<(), LoadError> {
+        self.state_manager
             .write()
             .await
-            .state_manager
             .try_load_with_defaults()
             .await
     }
 
     /// Use a partial config builder to patch the current config
     pub async fn patch(&self, patch: NyanpasuAppConfigBuilder) -> anyhow::Result<()> {
-        let mut manager = self.config_manager.write().await;
-        let builder = match &manager.current_builder {
+        let mut manager = self.state_manager.write().await;
+        let builder = match &manager.current_builder() {
             None => patch,
             Some(builder) => {
                 let mut builder =
@@ -80,16 +82,16 @@ impl NyanpasuAppConfigService {
             }
         };
 
-        manager.state_manager.upsert(builder.clone()).await?;
-        manager.current_builder = Some(builder.clone());
+        // run in a scoped context for reading pending state
+        manager.upsert_with_context(builder.clone()).await?;
         Ok(())
     }
 
     /// Upsert a complete config builder
     pub async fn upsert(&self, upsert: NyanpasuAppConfigBuilder) -> anyhow::Result<()> {
-        let mut manager = self.config_manager.write().await;
-        manager.state_manager.upsert(upsert.clone()).await?;
-        manager.current_builder = Some(upsert);
+        let mut manager = self.state_manager.write().await;
+        // run in a scoped context for reading pending state
+        manager.upsert_with_context(upsert.clone()).await?;
         Ok(())
     }
 }

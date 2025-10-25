@@ -1591,6 +1591,7 @@ dependencies = [
  "semver 1.0.27",
  "serde",
  "serde_json",
+ "serde_with",
  "serde_yaml_ng",
  "sha2 0.10.9",
  "single-instance",

@@ -97,6 +97,7 @@ sysproxy = { git = "https://github.com/libnyanpasu/sysproxy-rs.git", version = "
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
+serde_with = { version = "3.14" }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 serde_yaml = { version = "0.10", package = "serde_yaml_ng", branch = "feat/specta", git = "https://github.com/libnyanpasu/serde-yaml-ng.git", features = [
   "specta",

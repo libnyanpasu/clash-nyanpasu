@@ -2,7 +2,7 @@ use anyhow::Context as _;
 use camino::Utf8Path;
 use json_patch::merge;
 
-use super::{ClashGuardOverrides, ClashGuardOverridesBuilder};
+use super::{ClashConfig, ClashConfigBuilder};
 use crate::{
     config::NYANPASU_CONFIG_PREFIX,
     core::state_v2::{
@@ -14,11 +14,11 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 pub struct ClashGuardOverridesService {
-    manager: Arc<RwLock<PersistentBuilderManager<ClashGuardOverrides, ClashGuardOverridesBuilder>>>,
+    manager: Arc<RwLock<PersistentBuilderManager<ClashConfig, ClashConfigBuilder>>>,
 }
 
-impl StateAsyncBuilder for ClashGuardOverridesBuilder {
-    type State = ClashGuardOverrides;
+impl StateAsyncBuilder for ClashConfigBuilder {
+    type State = ClashConfig;
     async fn build(&self) -> anyhow::Result<Self::State> {
         Ok(self.build()?)
     }

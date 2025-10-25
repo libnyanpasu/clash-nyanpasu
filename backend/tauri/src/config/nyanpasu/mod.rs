@@ -20,34 +20,6 @@ pub enum ProxiesSelectorMode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
 #[serde(rename_all = "snake_case")]
-pub enum TunStack {
-    System,
-    #[default]
-    Gvisor,
-    Mixed,
-}
-
-impl AsRef<str> for TunStack {
-    fn as_ref(&self) -> &str {
-        match self {
-            TunStack::System => "system",
-            TunStack::Gvisor => "gvisor",
-            TunStack::Mixed => "mixed",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
-#[serde(rename_all = "snake_case")]
-pub enum BreakWhenProxyChange {
-    None,
-    Chain,
-    #[default]
-    All,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
-#[serde(rename_all = "snake_case")]
 pub enum ThemeMode {
     Light,
     Dark,
@@ -93,9 +65,6 @@ pub struct NyanpasuAppConfig {
     /// global ui framer motion effects
     pub lighten_animation_effects: bool,
 
-    /// clash tun mode
-    pub enable_tun_mode: bool,
-
     /// service mode
     pub enable_service_mode: bool,
 
@@ -122,43 +91,16 @@ pub struct NyanpasuAppConfig {
     /// theme setting
     pub theme_color: String,
 
-    /// web ui list
-    pub web_ui_list: Vec<String>,
-
     /// clash core path
-    pub clash_core: ClashCore,
+    #[builder_field_attr(serde(alias = "clash_core"))]
+    pub core: ClashCore,
 
     /// hotkey map
     /// format: {func},{key}
     pub hotkeys: Vec<String>,
 
-    /// 切换代理时自动关闭连接 (已弃用)
-    #[deprecated(note = "use `break_when_proxy_change` instead")]
-    pub auto_close_connection: bool,
-
-    /// 切换代理时中断连接
-    /// None: 不中断
-    /// Chain: 仅中断使用该代理链的连接
-    /// All: 中断所有连接
-    pub break_when_proxy_change: BreakWhenProxyChange,
-
-    /// 切换配置时中断连接
-    /// true: 中断所有连接
-    /// false: 不中断连接
-    #[builder(default = "true")]
-    pub break_when_profile_change: bool,
-
-    /// 切换模式时中断连接
-    /// true: 中断所有连接
-    /// false: 不中断连接
-    #[builder(default = "true")]
-    pub break_when_mode_change: bool,
-
     /// 默认的延迟测试连接
     pub default_latency_test: String,
-
-    /// 支持关闭字段过滤，避免meta的新字段都被过滤掉，默认为真
-    pub enable_clash_fields: bool,
 
     /// 是否使用内部的脚本支持，默认为真
     pub enable_builtin_enhanced: bool,
@@ -184,28 +126,16 @@ pub struct NyanpasuAppConfig {
     #[builder(setter(strip_option))]
     pub window_size_state: Option<WindowState>,
 
-    /// 是否启用随机端口
-    pub enable_random_port: bool,
-
-    /// verge mixed port 用于覆盖 clash 的 mixed port
-    #[builder(default = "7890")]
-    pub verge_mixed_port: u16,
-
     /// Check update when app launch
     #[builder(default = "true")]
     pub enable_auto_check_update: bool,
 
-    /// Clash 相关策略
-    pub clash_strategy: ClashStrategy,
-
     /// 是否启用代理托盘选择
-    pub clash_tray_selector: ProxiesSelectorMode,
+    #[builder_field_attr(serde(alias = "clash_tray_selector"))]
+    pub tray_selector_mode: ProxiesSelectorMode,
 
+    /// 是否窗口置顶
     pub always_on_top: bool,
-
-    /// Tun 堆栈选择
-    /// TODO: 弃用此字段，转移到 clash config 里
-    pub tun_stack: TunStack,
 
     /// 是否启用网络统计信息浮窗
     #[builder_field_attr(serde(skip_serializing_if = "Option::is_none"))]

@@ -10,6 +10,16 @@ use crate::{
 
 const SERVICE_NAME: &str = "ClashRuntimeConfigService";
 
+#[derive(Default, Debug, Clone, Deserialize, Serialize, PartialEq, Eq, specta::Type)]
+pub struct ClashInfo {
+    /// clash core port
+    pub port: u16,
+    /// same as `external-controller`
+    pub server: String,
+    /// clash secret
+    pub secret: Option<String>,
+}
+
 #[derive(Default, Debug, Clone, Deserialize, Serialize, specta::Type)]
 pub struct PatchRuntimeConfig {
     #[serde(default)]

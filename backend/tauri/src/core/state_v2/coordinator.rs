@@ -1,29 +1,4 @@
-use super::builder::*;
-
-#[derive(thiserror::Error, Debug)]
-pub enum StateChangedError {
-    #[error("builder validation error: {0}")]
-    Validation(anyhow::Error),
-    #[error("state migrate error: {0:#?}")]
-    Migrate(#[from] MigrateError),
-
-    #[error("state migrate and rollback error: migrate {0:#?}, rollback {1:#?}")]
-    MigrateAndRollback(MigrateError, RollbackError),
-}
-
-#[derive(thiserror::Error, Debug)]
-#[error("state migrate error: {name}: {error:#?}")]
-pub struct MigrateError {
-    pub name: String,
-    pub error: anyhow::Error,
-}
-
-#[derive(thiserror::Error, Debug)]
-#[error("state rollback error: {name}: {error:#?}")]
-pub struct RollbackError {
-    pub name: String,
-    pub error: anyhow::Error,
-}
+use super::{Context, builder::*, error::*};
 
 #[async_trait::async_trait]
 #[allow(unused_variables)]
@@ -63,7 +38,7 @@ pub struct StateCoordinator<T: Clone + Send + Sync + 'static> {
 }
 
 impl<T: Clone + Send + Sync> StateCoordinator<T> {
-    pub(super) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             current_state: None,
             subscribers: Vec::new(),
@@ -71,7 +46,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
     }
 
     /// Add a subscriber to the state coordinator.
-    fn add_subscriber(&mut self, subscriber: Box<dyn StateChangedSubscriber<T> + Send + Sync>) {
+    pub fn add_subscriber(&mut self, subscriber: Box<dyn StateChangedSubscriber<T> + Send + Sync>) {
         self.subscribers.push(subscriber);
     }
 
@@ -134,6 +109,26 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         Ok(())
     }
 
+    pub async fn upsert_with_context(
+        &mut self,
+        builder: impl StateAsyncBuilder<State = T>,
+    ) -> Result<(), StateChangedError> {
+        let new_state = builder
+            .build()
+            .await
+            .map_err(StateChangedError::Validation)?;
+        Context::scope(new_state.clone(), async {
+            for subscriber in self.subscribers.iter() {
+                Self::run_migration(subscriber.as_ref(), self.current_state.as_ref(), &new_state)
+                    .await?;
+            }
+            Ok::<_, StateChangedError>(())
+        })
+        .await?;
+        self.current_state = Some(new_state);
+        Ok(())
+    }
+
     /// Upsert the state directly, it used for a small StateObject, a bool value, etc.
     pub async fn upsert_state(&mut self, state: T) -> Result<(), StateChangedError> {
         for subscriber in self.subscribers.iter() {
@@ -141,6 +136,13 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         }
         self.current_state = Some(state);
         Ok(())
+    }
+
+    pub async fn upsert_state_with_context<F>(
+        &mut self,
+        state: T,
+    ) -> Result<(), StateChangedError> {
+        Context::scope(state.clone(), self.upsert_state(state)).await
     }
 }
 

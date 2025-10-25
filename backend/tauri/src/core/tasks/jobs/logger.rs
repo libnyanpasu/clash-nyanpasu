@@ -1,6 +1,6 @@
 use super::JobExt;
 use crate::{
-    config::Config,
+    config::ConfigService,
     core::tasks::{
         executor::{AsyncJobExecutor, TaskExecutor},
         task::TaskSchedule,
@@ -29,7 +29,7 @@ pub fn clear_logs() -> Result<()> {
     }
 
     let minutes = {
-        let verge = Config::verge();
+        let verge = ConfigService::verge();
         let verge = verge.data();
         #[allow(deprecated)]
         verge.auto_log_clean.unwrap_or(0)

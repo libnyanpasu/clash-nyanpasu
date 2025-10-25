@@ -26,7 +26,7 @@ mod window;
 use std::io;
 
 use crate::{
-    config::Config,
+    config::ConfigService,
     core::handle::Handle,
     utils::{init, resolve},
 };
@@ -312,7 +312,7 @@ pub fn run() -> std::io::Result<()> {
         };
     }
 
-    let verge = { Config::verge().latest().language.clone().unwrap() };
+    let verge = { ConfigService::verge().latest().language.clone().unwrap() };
     rust_i18n::set_locale(verge.as_str());
 
     // show a dialog to print the single instance error

@@ -1,20 +1,11 @@
-use anyhow::Context;
 use camino::Utf8PathBuf;
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::utils::help;
 
-use super::*;
+use super::{super::error::*, *};
 
-#[derive(thiserror::Error, Debug)]
-pub enum UpsertError {
-    #[error("state changed error: {0}")]
-    State(StateChangedError),
-    #[error("write config error: {0}")]
-    WriteConfig(anyhow::Error),
-}
-
-pub struct PersistentStateManager<
+pub struct PersistentBuilderManager<
     State: Clone + Send + Sync + 'static,
     Builder: StateAsyncBuilder<State = State> + Serialize + DeserializeOwned,
 > {
@@ -24,7 +15,7 @@ pub struct PersistentStateManager<
     state_coordinator: StateCoordinator<State>,
 }
 
-impl<State, Builder> PersistentStateManager<State, Builder>
+impl<State, Builder> PersistentBuilderManager<State, Builder>
 where
     State: Clone + Send + Sync + 'static,
     Builder: StateAsyncBuilder<State = State> + Serialize + DeserializeOwned,
@@ -42,36 +33,43 @@ where
         }
     }
 
-    pub async fn try_load(&mut self) -> anyhow::Result<()> {
-        let config: Builder =
-            help::read_yaml(&self.config_path).context("failed to read the config file")?;
+    pub async fn try_load(&mut self) -> Result<(), LoadError> {
+        let config: Builder = help::read_yaml(&self.config_path)
+            .await
+            .map_err(LoadError::ReadConfig)?;
 
-        self.state_coordinator.upsert(config.clone()).await?;
+        self.state_coordinator
+            .upsert(config.clone())
+            .await
+            .map_err(LoadError::Upsert)?;
 
         self.current_builder = Some(config);
         Ok(())
     }
 
-    pub async fn try_load_with_defaults(&mut self) -> anyhow::Result<()> {
+    pub async fn try_load_with_defaults(&mut self) -> Result<(), LoadError> {
         let config: Builder = help::read_yaml(&self.config_path)
+            .await
             .inspect_err(|e| {
-                log::error!(target: "app", "failed to read the config file: {e:?}");
+                log::warn!(target: "app", "failed to read the config file: {e:?}");
             })
             .unwrap_or_else(|_| Builder::default());
 
-        self.state_coordinator.upsert(config.clone()).await?;
+        self.state_coordinator
+            .upsert(config.clone())
+            .await
+            .map_err(LoadError::Upsert)?;
 
         self.current_builder = Some(config);
-        Ok(())
-    }
-
-    async fn write_config(&self, builder: Builder) -> anyhow::Result<()> {
-        help::save_yaml(&self.config_path, &builder, self.config_prefix.as_deref())?;
         Ok(())
     }
 
     pub fn current_state(&self) -> Option<State> {
         self.state_coordinator.current_state()
+    }
+
+    pub fn current_builder(&self) -> Option<Builder> {
+        self.current_builder.clone()
     }
 
     pub async fn upsert(&mut self, builder: Builder) -> Result<(), UpsertError> {
@@ -81,7 +79,20 @@ where
             .map_err(UpsertError::State)?;
         self.current_builder = Some(builder.clone());
 
-        self.write_config(builder)
+        help::save_yaml(&self.config_path, &builder, self.config_prefix.as_deref())
+            .await
+            .map_err(UpsertError::WriteConfig)?;
+        Ok(())
+    }
+
+    pub async fn upsert_with_context(&mut self, builder: Builder) -> Result<(), UpsertError> {
+        self.state_coordinator
+            .upsert_with_context(builder.clone())
+            .await
+            .map_err(UpsertError::State)?;
+        self.current_builder = Some(builder.clone());
+
+        help::save_yaml(&self.config_path, &builder, self.config_prefix.as_deref())
             .await
             .map_err(UpsertError::WriteConfig)?;
         Ok(())
@@ -151,7 +162,7 @@ mod tests {
         let config_path = temp_dir.path().join("test_config.yaml");
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
-        help::save_yaml(&config_path, builder, None)?;
+        help::save_yaml(&config_path, builder, None).await?;
         Ok((config_path, temp_dir))
     }
 
@@ -160,11 +171,12 @@ mod tests {
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
         let config_path = Utf8PathBuf::from("/tmp/test_config.yaml");
 
-        let manager: PersistentStateManager<TestState, TestBuilder> = PersistentStateManager::new(
-            Some("# 测试配置".to_string()),
-            config_path.clone(),
-            coordinator,
-        );
+        let manager: PersistentBuilderManager<TestState, TestBuilder> =
+            PersistentBuilderManager::new(
+                Some("# 测试配置".to_string()),
+                config_path.clone(),
+                coordinator,
+            );
 
         // 验证初始状态
         assert_eq!(manager.config_prefix, Some("# 测试配置".to_string()));
@@ -179,8 +191,8 @@ mod tests {
         let (config_path, _temp_dir) = create_temp_config_file(&builder).await.unwrap();
 
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager: PersistentStateManager<TestState, TestBuilder> =
-            PersistentStateManager::new(None, config_path, coordinator);
+        let mut manager: PersistentBuilderManager<TestState, TestBuilder> =
+            PersistentBuilderManager::new(None, config_path, coordinator);
 
         // 测试成功加载
         let result = manager.try_load().await;
@@ -205,8 +217,8 @@ mod tests {
     async fn test_try_load_file_not_exist() {
         let config_path = Utf8PathBuf::from("/nonexistent/config.yaml");
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager: PersistentStateManager<TestState, TestBuilder> =
-            PersistentStateManager::new(None, config_path, coordinator);
+        let mut manager: PersistentBuilderManager<TestState, TestBuilder> =
+            PersistentBuilderManager::new(None, config_path, coordinator);
 
         // 测试文件不存在的情况
         let result = manager.try_load().await;
@@ -222,8 +234,8 @@ mod tests {
         let (config_path, _temp_dir) = create_temp_config_file(&builder).await.unwrap();
 
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager: PersistentStateManager<TestState, TestBuilder> =
-            PersistentStateManager::new(None, config_path, coordinator);
+        let mut manager: PersistentBuilderManager<TestState, TestBuilder> =
+            PersistentBuilderManager::new(None, config_path, coordinator);
 
         // 测试使用默认值加载
         let result = manager.try_load_with_defaults().await;
@@ -241,8 +253,8 @@ mod tests {
     async fn test_try_load_with_defaults_file_not_exist() {
         let config_path = Utf8PathBuf::from("/nonexistent/config.yaml");
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager: PersistentStateManager<TestState, TestBuilder> =
-            PersistentStateManager::new(None, config_path, coordinator);
+        let mut manager: PersistentBuilderManager<TestState, TestBuilder> =
+            PersistentBuilderManager::new(None, config_path, coordinator);
 
         // 测试文件不存在时使用默认值
         let result = manager.try_load_with_defaults().await;
@@ -263,8 +275,8 @@ mod tests {
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager: PersistentStateManager<TestState, TestBuilder> =
-            PersistentStateManager::new(
+        let mut manager: PersistentBuilderManager<TestState, TestBuilder> =
+            PersistentBuilderManager::new(
                 Some("# 更新测试".to_string()),
                 config_path.clone(),
                 coordinator,
@@ -304,8 +316,8 @@ mod tests {
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager: PersistentStateManager<TestState, TestBuilder> =
-            PersistentStateManager::new(None, config_path, coordinator);
+        let mut manager: PersistentBuilderManager<TestState, TestBuilder> =
+            PersistentBuilderManager::new(None, config_path, coordinator);
 
         let failing_builder = TestBuilder::failing();
 
@@ -334,8 +346,8 @@ mod tests {
         let config_path = Utf8PathBuf::from("/proc/version"); // Linux 系统上的只读文件
 
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager: PersistentStateManager<TestState, TestBuilder> =
-            PersistentStateManager::new(None, config_path, coordinator);
+        let mut manager: PersistentBuilderManager<TestState, TestBuilder> =
+            PersistentBuilderManager::new(None, config_path, coordinator);
 
         let builder = TestBuilder::new("写入失败测试".to_string(), 300);
 
@@ -359,8 +371,8 @@ mod tests {
     async fn test_current_state() {
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
         let config_path = Utf8PathBuf::from("/tmp/current_state_test.yaml");
-        let mut manager: PersistentStateManager<TestState, TestBuilder> =
-            PersistentStateManager::new(None, config_path, coordinator);
+        let mut manager: PersistentBuilderManager<TestState, TestBuilder> =
+            PersistentBuilderManager::new(None, config_path, coordinator);
 
         // 初始状态应该为 None
         assert!(manager.current_state().is_none());
@@ -383,8 +395,8 @@ mod tests {
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager: PersistentStateManager<TestState, TestBuilder> =
-            PersistentStateManager::new(
+        let mut manager: PersistentBuilderManager<TestState, TestBuilder> =
+            PersistentBuilderManager::new(
                 Some("# 多次更新测试".to_string()),
                 config_path.clone(),
                 coordinator,
@@ -422,8 +434,12 @@ mod tests {
 
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
         let prefix = "# 这是一个测试配置文件\n# 请勿手动修改";
-        let mut manager: PersistentStateManager<TestState, TestBuilder> =
-            PersistentStateManager::new(Some(prefix.to_string()), config_path.clone(), coordinator);
+        let mut manager: PersistentBuilderManager<TestState, TestBuilder> =
+            PersistentBuilderManager::new(
+                Some(prefix.to_string()),
+                config_path.clone(),
+                coordinator,
+            );
 
         let builder = TestBuilder::new("前缀测试".to_string(), 500);
         let result = manager.upsert(builder).await;

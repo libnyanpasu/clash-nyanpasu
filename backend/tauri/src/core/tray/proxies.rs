@@ -1,5 +1,5 @@
 use crate::{
-    config::{Config, nyanpasu::ProxiesSelectorMode},
+    config::{ConfigService, nyanpasu::ProxiesSelectorMode},
     core::{
         clash::proxies::{Proxies, ProxiesGuard, ProxiesGuardExt},
         handle::Handle,
@@ -162,7 +162,7 @@ pub async fn proxies_updated_receiver() {
                 }
                 Handle::mutate_proxies();
                 {
-                    let is_tray_selector_enabled = Config::verge()
+                    let is_tray_selector_enabled = ConfigService::verge()
                         .latest()
                         .clash_tray_selector
                         .unwrap_or_default()
@@ -302,7 +302,7 @@ mod platform_impl {
         app_handle: &AppHandle<R>,
         mut menu: MenuBuilder<'m, R, M>,
     ) -> anyhow::Result<MenuBuilder<'m, R, M>> {
-        let selector_mode = crate::config::Config::verge()
+        let selector_mode = crate::config::ConfigService::verge()
             .latest()
             .clash_tray_selector
             .unwrap_or_default();

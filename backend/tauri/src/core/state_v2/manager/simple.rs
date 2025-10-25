@@ -1,4 +1,4 @@
-use super::*;
+use super::{super::error::*, *};
 
 #[repr(transparent)]
 pub struct SimpleStateManager<State: Clone + Send + Sync + 'static> {

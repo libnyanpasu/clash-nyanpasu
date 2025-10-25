@@ -67,8 +67,8 @@
     "@types/fs-extra": "11.0.4",
     "@types/lodash-es": "4.17.12",
     "@types/node": "24.8.1",
-    "@typescript-eslint/eslint-plugin": "8.46.1",
-    "@typescript-eslint/parser": "8.46.1",
+    "@typescript-eslint/eslint-plugin": "8.46.2",
+    "@typescript-eslint/parser": "8.46.2",
     "autoprefixer": "10.4.21",
     "conventional-changelog-conventionalcommits": "9.1.0",
     "cross-env": "10.1.0",
@@ -86,7 +86,7 @@
     "eslint-plugin-react-hooks": "7.0.1",
     "globals": "16.4.0",
     "knip": "5.66.3",
-    "lint-staged": "16.2.4",
+    "lint-staged": "16.2.6",
     "neostandard": "0.12.2",
     "npm-run-all2": "8.0.4",
     "postcss": "8.5.6",
@@ -108,7 +108,7 @@
     "tailwindcss": "4.1.14",
     "tsx": "4.20.6",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.46.1"
+    "typescript-eslint": "8.46.2"
   },
   "packageManager": "pnpm@10.18.3",
   "engines": {

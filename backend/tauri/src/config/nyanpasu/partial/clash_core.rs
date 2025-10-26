@@ -1,11 +1,26 @@
 use enumflags2::bitflags;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use strum::{AsRefStr, Display, EnumString, IntoStaticStr};
 
 // TODO: when support sing-box, remove this struct
 #[bitflags]
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Type)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Deserialize,
+    Serialize,
+    PartialEq,
+    Eq,
+    Type,
+    Display,
+    AsRefStr,
+    EnumString,
+    IntoStaticStr,
+)]
+#[strum(serialize_all = "kebab-case")]
 pub enum ClashCore {
     #[serde(rename = "clash", alias = "clash-premium")]
     ClashPremium = 0b0001,
@@ -24,30 +39,6 @@ impl Default for ClashCore {
         match cfg!(feature = "default-meta") {
             false => Self::ClashPremium,
             true => Self::Mihomo,
-        }
-    }
-}
-
-impl From<ClashCore> for String {
-    fn from(core: ClashCore) -> Self {
-        match core {
-            ClashCore::ClashPremium => "clash".into(),
-            ClashCore::ClashRs => "clash-rs".into(),
-            ClashCore::Mihomo => "mihomo".into(),
-            ClashCore::MihomoAlpha => "mihomo-alpha".into(),
-            ClashCore::ClashRsAlpha => "clash-rs-alpha".into(),
-        }
-    }
-}
-
-impl std::fmt::Display for ClashCore {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ClashCore::ClashPremium => write!(f, "clash"),
-            ClashCore::ClashRs => write!(f, "clash-rs"),
-            ClashCore::Mihomo => write!(f, "mihomo"),
-            ClashCore::MihomoAlpha => write!(f, "mihomo-alpha"),
-            ClashCore::ClashRsAlpha => write!(f, "clash-rs-alpha"),
         }
     }
 }

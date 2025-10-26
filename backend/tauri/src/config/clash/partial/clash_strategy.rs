@@ -57,7 +57,7 @@ pub enum PortStrategyKind {
     AllowFallback,
 }
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Type)]
+#[derive(Default, Debug, Clone, Deserialize, Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub struct PortStrategy {
     /// 外部控制器端口策略类型
@@ -69,6 +69,14 @@ pub struct PortStrategy {
     /// 此前缓存的 Port，用于避免重复选择相同的端口
     #[serde(skip)]
     cached_port: Arc<Mutex<Option<u16>>>,
+}
+
+impl Eq for PortStrategy {}
+
+impl PartialEq for PortStrategy {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind && self.start_port == other.start_port
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

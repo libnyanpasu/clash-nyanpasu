@@ -1,24 +1,13 @@
-use std::sync::Arc;
+use std::net::SocketAddr;
 
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 
-use crate::{
-    core::state_v2::{SimpleStateManager, StateChangedSubscriber, StateCoordinator},
-    enhance::PostProcessingOutput,
-};
+use crate::enhance::PostProcessingOutput;
 
-const SERVICE_NAME: &str = "ClashRuntimeConfigService";
+mod service;
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize, PartialEq, Eq, specta::Type)]
-pub struct ClashInfo {
-    /// clash core port
-    pub port: u16,
-    /// same as `external-controller`
-    pub server: String,
-    /// clash secret
-    pub secret: Option<String>,
-}
+pub use self::service::*;
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize, specta::Type)]
 pub struct PatchRuntimeConfig {
@@ -41,43 +30,40 @@ pub struct ClashRuntimeConfig {
     pub postprocessing_output: PostProcessingOutput,
 }
 
-#[derive(Clone)]
-pub struct ClashRuntimeConfigService {
-    runtime: Arc<SimpleStateManager<ClashRuntimeConfig>>,
-}
-
-impl ClashRuntimeConfigService {
-    pub fn new() -> Self {
-        Self {
-            runtime: Arc::new(SimpleStateManager::new(StateCoordinator::new())),
-        }
+impl ClashRuntimeConfig {
+    pub fn get_proxy_mixed_port(&self) -> Option<u16> {
+        self.config
+            .as_ref()?
+            .get("mixed-port")
+            .and_then(|value| value.as_u64().map(|v| v as u16))
     }
 
-    pub async fn patch(&self, patch: ClashRuntimeConfig) -> Result<(), anyhow::Error> {
-        // tracing::debug!("patching runtime config: {:?}", patch);
-        // if let Some(config) = self.config.as_mut() {
-        //     let patch_config: PatchRuntimeConfig =
-        //         serde_yaml::from_value(serde_yaml::Value::Mapping(patch.clone()))
-        //             .unwrap_or_default();
+    pub fn get_external_controller_server(&self) -> Option<SocketAddr> {
+        let addr_str = self
+            .config
+            .as_ref()?
+            .get("external-controller")
+            .and_then(|value| value.as_str())?;
+        let addr = addr_str
+            .parse::<SocketAddr>()
+            .inspect_err(|e| {
+                tracing::error!(
+                    addr = addr_str,
+                    "failed to parse external controller server: {e:#?}"
+                )
+            })
+            .ok()?;
+        Some(addr)
+    }
 
-        //     [
-        //         (
-        //             "allow-lan",
-        //             patch_config.allow_lan.map(serde_yaml::Value::Bool),
-        //         ),
-        //         ("ipv6", patch_config.ipv6.map(serde_yaml::Value::Bool)),
-        //         (
-        //             "log-level",
-        //             patch_config.log_level.map(serde_yaml::Value::String),
-        //         ),
-        //         ("mode", patch_config.mode.map(serde_yaml::Value::String)),
-        //     ]
-        //     .into_iter()
-        //     .filter_map(|(key, value)| value.map(|v| (key.into(), v)))
-        //     .for_each(|(k, v)| {
-        //         config.insert(k, v);
-        //     });
-        // }
-        Ok(())
+    pub fn get_secret(&self) -> Option<String> {
+        self.config
+            .as_ref()?
+            .get("secret")
+            .and_then(|value| match value {
+                serde_yaml::Value::String(val_str) => Some(val_str.clone()),
+                serde_yaml::Value::Number(val_num) => Some(val_num.to_string()),
+                _ => None,
+            })
     }
 }

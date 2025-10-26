@@ -215,7 +215,10 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
 
     let run = move || async move {
         let mixed_port = patch.get("mixed-port");
-        let enable_random_port = ConfigService::verge().latest().enable_random_port.unwrap_or(false);
+        let enable_random_port = ConfigService::verge()
+            .latest()
+            .enable_random_port
+            .unwrap_or(false);
         if mixed_port.is_some() && !enable_random_port {
             let changed = mixed_port.unwrap()
                 != ConfigService::verge()
@@ -235,7 +238,8 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
         // 检测 external-controller port 是否修改
         if let Some(external_controller) = patch.get("external-controller") {
             let external_controller = external_controller.as_str().unwrap();
-            let changed = external_controller != ConfigService::clash().data().get_client_info().server;
+            let changed =
+                external_controller != ConfigService::clash().data().get_client_info().server;
             if changed {
                 let (_, port) = external_controller.split_once(':').unwrap();
                 let port = port.parse::<u16>()?;
@@ -291,20 +295,8 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
 
 /// 修改verge的配置
 /// 一般都是一个个的修改
-<<<<<<< HEAD
 pub async fn patch_verge(patch: NyanpasuAppConfig) -> Result<()> {
     ConfigService::verge().draft().patch_config(patch.clone());
-=======
-pub async fn patch_verge(patch: IVerge) -> Result<()> {
-    // Validate theme_color if it's being updated
-    if let Some(ref theme_color) = patch.theme_color {
-        if !theme_color.is_empty() && !crate::config::nyanpasu::is_hex_color(theme_color) {
-            anyhow::bail!("Invalid theme color: {}", theme_color);
-        }
-    }
-
-    Config::verge().draft().patch_config(patch.clone());
->>>>>>> origin/main
     let tun_mode = patch.enable_tun_mode;
     let auto_launch = patch.enable_auto_launch;
     let system_proxy = patch.enable_system_proxy;
@@ -431,8 +423,12 @@ pub async fn update_profile<T: Borrow<String>>(
     opts: Option<RemoteProfileOptionsBuilder>,
 ) -> Result<()> {
     let uid = uid.borrow();
-<<<<<<< HEAD
-    let is_remote = { ConfigService::profiles().latest().get_item(uid)?.is_remote() };
+    let is_remote = {
+        ConfigService::profiles()
+            .latest()
+            .get_item(uid)?
+            .is_remote()
+    };
 
     let should_update = if is_remote {
         let mut item = ConfigService::profiles()
@@ -441,13 +437,6 @@ pub async fn update_profile<T: Borrow<String>>(
             .as_remote()
             .unwrap()
             .clone();
-=======
-    let profile_item = Config::profiles().latest().get_item(uid)?.clone();
-    let is_remote = profile_item.is_remote();
-
-    let should_update = if is_remote {
-        let mut item = profile_item.as_remote().unwrap().clone();
->>>>>>> origin/main
 
         item.subscribe(opts).await?;
         let committer = ConfigService::profiles().auto_commit();
@@ -512,7 +501,12 @@ async fn update_core_config() -> Result<()> {
 
 /// copy env variable
 pub fn copy_clash_env(app_handle: &AppHandle, option: &str) {
-    let port = { ConfigService::verge().latest().verge_mixed_port.unwrap_or(7890) };
+    let port = {
+        ConfigService::verge()
+            .latest()
+            .verge_mixed_port
+            .unwrap_or(7890)
+    };
     let http_proxy = format!("http://127.0.0.1:{port}");
     let socks5_proxy = format!("socks5://127.0.0.1:{port}");
 

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Context as _;
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 use json_patch::merge;
 use tokio::sync::RwLock;
 
@@ -27,21 +27,57 @@ pub struct NyanpasuAppConfigService {
         Arc<RwLock<PersistentBuilderManager<NyanpasuAppConfig, NyanpasuAppConfigBuilder>>>,
 }
 
-impl NyanpasuAppConfigService {
-    pub fn new(
-        config_path: impl AsRef<Utf8Path>,
-        register_fn: impl FnOnce(&mut StateCoordinator<NyanpasuAppConfig>),
+pub struct NyanpasuAppConfigServiceBuilder {
+    state_coordinator: StateCoordinator<NyanpasuAppConfig>,
+    config_path: Option<Utf8PathBuf>,
+}
+
+impl Default for NyanpasuAppConfigServiceBuilder {
+    fn default() -> Self {
+        Self {
+            state_coordinator: StateCoordinator::new(),
+            config_path: None,
+        }
+    }
+}
+
+impl NyanpasuAppConfigServiceBuilder {
+    #[must_use]
+    pub fn configure_state_coordinator(
+        mut self,
+        f: impl FnOnce(&mut StateCoordinator<NyanpasuAppConfig>),
     ) -> Self {
-        let mut state_coordinator = StateCoordinator::new();
-        register_fn(&mut state_coordinator);
+        f(&mut self.state_coordinator);
+        self
+    }
+
+    #[must_use]
+    pub fn with_config_path(mut self, config_path: impl AsRef<Utf8Path>) -> Self {
+        self.config_path = Some(config_path.as_ref().to_path_buf());
+        self
+    }
+
+    pub fn build(self) -> anyhow::Result<NyanpasuAppConfigService> {
         let state_manager = PersistentBuilderManager::new(
             Some(NYANPASU_CONFIG_PREFIX.to_string()),
-            config_path.as_ref().to_path_buf(),
-            state_coordinator,
+            self.config_path.context("config path is not set")?,
+            self.state_coordinator,
         );
-        Self {
+        Ok(NyanpasuAppConfigService {
             state_manager: Arc::new(RwLock::new(state_manager)),
-        }
+        })
+    }
+}
+
+impl NyanpasuAppConfigService {
+    /// Configure state coordinator for the service, it is used for service that need to hold the config service handle
+    pub async fn configure_state_coordinator(
+        &self,
+        f: impl FnOnce(&mut StateCoordinator<NyanpasuAppConfig>),
+    ) -> anyhow::Result<()> {
+        let mut manager = self.state_manager.write().await;
+        f(&mut manager.state_coordinator_mut());
+        Ok(())
     }
 
     /// Get the current config,

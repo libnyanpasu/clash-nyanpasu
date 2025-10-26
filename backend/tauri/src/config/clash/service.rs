@@ -27,7 +27,7 @@ impl StateAsyncBuilder for ClashConfigBuilder {
 impl ClashGuardOverridesService {
     pub fn new(
         config_path: impl AsRef<Utf8Path>,
-        register_fn: impl FnOnce(&mut StateCoordinator<ClashGuardOverrides>),
+        register_fn: impl FnOnce(&mut StateCoordinator<ClashConfig>),
     ) -> Self {
         let mut state_coordinator = StateCoordinator::new();
         register_fn(&mut state_coordinator);
@@ -45,30 +45,35 @@ impl ClashGuardOverridesService {
         Ok(())
     }
 
-    pub async fn current_config(&self) -> Option<ClashGuardOverrides> {
-        match Context::get::<ClashGuardOverrides>() {
+    pub async fn current_config(&self) -> Option<ClashConfig> {
+        match Context::get::<ClashConfig>() {
             Some(config) => Some(config),
             None => self.manager.read().await.current_state(),
         }
     }
 
-    pub async fn patch(&self, patch: ClashGuardOverrides) -> anyhow::Result<()> {
-        let mut guard = self.manager.write().await;
-        let current_config = guard.current_state().unwrap_or_default();
-        let mut current_config = serde_json::to_value(current_config)
-            .context("failed to convert current config to value")?;
-        merge(
-            &mut current_config,
-            &serde_json::to_value(patch).context("failed to convert patch to value")?,
-        );
-        let current_config = serde_json::from_value(current_config)
-            .context("failed to convert current config to value")?;
+    /// Patch the current config with the given patch
+    pub async fn patch(&self, patch: ClashConfigBuilder) -> anyhow::Result<()> {
+        let mut manager = self.manager.write().await;
+        let builder = match &manager.current_builder() {
+            None => patch,
+            Some(builder) => {
+                let mut builder =
+                    serde_json::to_value(builder).context("failed to convert builder to value")?;
+                merge(
+                    &mut builder,
+                    &serde_json::to_value(patch).context("failed to convert patch to value")?,
+                );
+                serde_json::from_value(builder).context("failed to convert builder to value")?
+            }
+        };
 
-        guard.upsert_with_context(current_config).await?;
+        // run in a scoped context for reading pending state
+        manager.upsert_with_context(builder.clone()).await?;
         Ok(())
     }
 
-    pub async fn upsert(&self, builder: ClashGuardOverridesBuilder) -> Result<(), UpsertError> {
+    pub async fn upsert(&self, builder: ClashConfigBuilder) -> Result<(), UpsertError> {
         self.manager
             .write()
             .await

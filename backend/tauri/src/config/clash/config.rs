@@ -104,28 +104,16 @@ impl ClashConfig {
             .try_pick_external_controller(reuse_port)
             .map_err(|e| ApplyOverridesError::new(e, "external-controller"))?;
 
-        let mut config = self.overrides.apply_overrides(config);
+        let mut config = self
+            .overrides
+            .apply_overrides(config)
+            .map_err(|e| ApplyOverridesError::new(e, "overrides"))?;
 
         config.insert("mixed-port".into(), port.into());
         config.insert("external-controller".into(), ctrl.into());
 
         Ok(config)
     }
-
-    // pub fn get_client_info(&self) -> ClashInfo {
-    //     let config = &self.0;
-
-    //     ClashInfo {
-    //         port: Self::guard_mixed_port(config),
-    //         server: Self::guard_client_ctrl(config),
-    //         secret: config.get("secret").and_then(|value| match value {
-    //             Value::String(val_str) => Some(val_str.clone()),
-    //             Value::Bool(val_bool) => Some(val_bool.to_string()),
-    //             Value::Number(val_num) => Some(val_num.to_string()),
-    //             _ => None,
-    //         }),
-    //     }
-    // }
 
     pub fn try_pick_mixed_port(&self, reuse_port: bool) -> Result<u16, PickPortError> {
         let port = if reuse_port && let Some(port) = self.strategy.mixed_port.cached_port() {

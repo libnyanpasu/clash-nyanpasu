@@ -38,7 +38,6 @@ pub enum ThemeMode {
 //     ))]
 //     #[builder_field_attr(serde(flatten))]
 //     #[builder_update(nested)]
-// TODO: use new managedState and builder pattern instead
 pub struct NyanpasuAppConfig {
     /// app listening port for app singleton
     pub app_singleton_port: u16,

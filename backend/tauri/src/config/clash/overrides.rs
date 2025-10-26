@@ -2,7 +2,7 @@ use crate::utils::{
     dirs,
     help::{self, get_clash_external_port},
 };
-use anyhow::Result;
+use anyhow::{Context, Result};
 use derive_builder::Builder;
 use serde::{Deserialize, Serialize};
 use serde_yaml::{Mapping, Value};
@@ -10,8 +10,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     str::FromStr,
 };
-use tracing::warn;
-use tracing_attributes::instrument;
+use tracing::{instrument, warn};
 
 #[derive(
     Default,
@@ -99,14 +98,15 @@ impl ClashGuardOverrides {
     ///
     /// The config with overrides applied
     ///
-    pub fn apply_overrides(&self, mut config: Mapping) -> Mapping {
+    pub fn apply_overrides(&self, mut config: Mapping) -> anyhow::Result<Mapping> {
         use crate::utils::yaml::apply_overrides;
-        let overrides = serde_yaml::to_value(self).expect("failed to convert overrides to value");
+        let overrides =
+            serde_yaml::to_value(self).context("failed to convert overrides to value")?;
         let overrides = overrides
             .as_mapping()
-            .expect("failed to convert overrides to mapping");
+            .context("failed to convert overrides to mapping")?;
         apply_overrides(&mut config, overrides);
-        config
+        Ok(config)
     }
 }
 

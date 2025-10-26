@@ -20,6 +20,10 @@ where
     State: Clone + Send + Sync + 'static,
     Builder: StateAsyncBuilder<State = State> + Serialize + DeserializeOwned,
 {
+    pub fn state_coordinator_mut(&mut self) -> &mut StateCoordinator<State> {
+        &mut self.state_coordinator
+    }
+
     pub fn new(
         config_prefix: Option<String>,
         config_path: Utf8PathBuf,
@@ -304,7 +308,7 @@ mod tests {
 
         // 验证配置文件已保存
         assert!(config_path.exists(), "配置文件应该被创建");
-        let saved_builder: TestBuilder = help::read_yaml(&config_path).unwrap();
+        let saved_builder: TestBuilder = help::read_yaml(&config_path).await.unwrap();
         assert_eq!(saved_builder.name, "更新测试");
         assert_eq!(saved_builder.value, 200);
     }
@@ -421,7 +425,7 @@ mod tests {
         assert_eq!(state2.value, 2);
 
         // 验证配置文件包含最新的值
-        let saved_builder: TestBuilder = help::read_yaml(&config_path).unwrap();
+        let saved_builder: TestBuilder = help::read_yaml(&config_path).await.unwrap();
         assert_eq!(saved_builder.name, "第二次");
         assert_eq!(saved_builder.value, 2);
     }

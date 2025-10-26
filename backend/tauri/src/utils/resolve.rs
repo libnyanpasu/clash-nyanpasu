@@ -474,7 +474,10 @@ pub async fn resolve_core_version(app_handle: &AppHandle, core_type: &ClashCore)
             || item.starts_with("alpha")
             || Version::parse(item).is_ok()
         {
-            return Ok(item.to_string());
+            match core_type {
+                ClashCore::ClashRs => return Ok(format!("v{}", item)),
+                _ => return Ok(item.to_string()),
+            }
         }
     }
     Err(anyhow::anyhow!("failed to get core version"))

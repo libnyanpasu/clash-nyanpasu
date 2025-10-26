@@ -87,7 +87,7 @@
     "shiki": "2.5.0",
     "unplugin-auto-import": "20.2.0",
     "unplugin-icons": "22.4.2",
-    "validator": "13.15.15",
+    "validator": "13.15.20",
     "vite": "7.1.10",
     "vite-plugin-html": "3.2.2",
     "vite-plugin-sass-dts": "1.3.34",

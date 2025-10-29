@@ -1,0 +1,1 @@
+pnpm tauri build --config backend/tauri/beta_tauri.windows.conf.json

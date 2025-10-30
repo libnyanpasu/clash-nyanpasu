@@ -1,5 +1,5 @@
 use anyhow::Context as _;
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 use json_patch::merge;
 
 use super::{ClashConfig, ClashConfigBuilder};
@@ -8,12 +8,14 @@ use crate::{
     core::state_v2::{
         Context, PersistentBuilderManager, StateAsyncBuilder, StateCoordinator, error::*,
     },
+    registry::PortRegistry,
 };
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
-pub struct ClashGuardOverridesService {
+pub struct ClashConfigService {
+    port_registry: PortRegistry,
     manager: Arc<RwLock<PersistentBuilderManager<ClashConfig, ClashConfigBuilder>>>,
 }
 
@@ -24,20 +26,61 @@ impl StateAsyncBuilder for ClashConfigBuilder {
     }
 }
 
-impl ClashGuardOverridesService {
-    pub fn new(
-        config_path: impl AsRef<Utf8Path>,
-        register_fn: impl FnOnce(&mut StateCoordinator<ClashConfig>),
-    ) -> Self {
-        let mut state_coordinator = StateCoordinator::new();
-        register_fn(&mut state_coordinator);
+pub struct ClashConfigServiceBuilder {
+    port_registry: Option<PortRegistry>,
+    state_coordinator: StateCoordinator<ClashConfig>,
+    config_path: Option<Utf8PathBuf>,
+}
+
+impl Default for ClashConfigServiceBuilder {
+    fn default() -> Self {
         Self {
+            port_registry: None,
+            state_coordinator: StateCoordinator::new(),
+            config_path: None,
+        }
+    }
+}
+
+impl ClashConfigServiceBuilder {
+    pub fn configure_state_coordinator(
+        mut self,
+        f: impl FnOnce(&mut StateCoordinator<ClashConfig>),
+    ) -> Self {
+        f(&mut self.state_coordinator);
+        self
+    }
+
+    pub fn with_config_path(mut self, config_path: impl AsRef<Utf8Path>) -> Self {
+        self.config_path = Some(config_path.as_ref().to_path_buf());
+        self
+    }
+
+    pub fn with_port_registry(mut self, port_registry: PortRegistry) -> Self {
+        self.port_registry = Some(port_registry);
+        self
+    }
+
+    pub fn build(self) -> anyhow::Result<ClashConfigService> {
+        Ok(ClashConfigService {
+            port_registry: self.port_registry.context("port registry is not set")?,
             manager: Arc::new(RwLock::new(PersistentBuilderManager::new(
                 Some(NYANPASU_CONFIG_PREFIX.to_string()),
-                config_path.as_ref().to_path_buf(),
-                state_coordinator,
+                self.config_path.context("config path is not set")?,
+                self.state_coordinator,
             ))),
-        }
+        })
+    }
+}
+
+impl ClashConfigService {
+    pub async fn configure_state_coordinator(
+        &self,
+        f: impl FnOnce(&mut StateCoordinator<ClashConfig>),
+    ) -> anyhow::Result<()> {
+        let mut manager = self.manager.write().await;
+        f(&mut manager.state_coordinator_mut());
+        Ok(())
     }
 
     pub async fn load(&self) -> Result<(), LoadError> {
@@ -50,6 +93,13 @@ impl ClashGuardOverridesService {
             Some(config) => Some(config),
             None => self.manager.read().await.current_state(),
         }
+    }
+
+    pub async fn apply_overrides(&self, overrides: ClashGuardOverrides) -> anyhow::Result<()> {
+        let config = self.current_config().await?;
+        let new_config = config.apply_overrides(overrides)?;
+        self.patch(new_config).await?;
+        Ok(())
     }
 
     /// Patch the current config with the given patch

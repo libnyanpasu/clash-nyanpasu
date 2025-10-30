@@ -1,11 +1,12 @@
 use derive_builder::Builder;
 use serde::{Deserialize, Serialize};
+use serde_yaml::Mapping;
 use specta::Type;
 use std::net::SocketAddr;
 
 use super::{
     overrides::ClashGuardOverrides,
-    partial::{ClashStrategy, PickPortError, TunStack},
+    partial::{ClashStrategy, ClashStrategyBuilder, PickPortError, TunStack},
 };
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type)]
@@ -17,9 +18,9 @@ pub enum ProxyChangeBreakMode {
     All,
 }
 
-/// Clash 默认混合端口
+/// Clash Default mixed-port
 pub const DEFAULT_MIXED_PORT: u16 = 7890;
-/// Clash 默认外部控制器端口
+/// Clash Default external-controller port
 #[cfg(debug_assertions)]
 pub const DEFAULT_EXTERNAL_CONTROLLER_PORT: u16 = 9872;
 #[cfg(not(debug_assertions))]
@@ -62,6 +63,11 @@ pub struct ClashConfig {
     pub enable_clash_fields: bool,
 
     /// Clash 相关策略
+    #[builder(field(
+        ty = "ClashStrategyBuilder",
+        build = "self.strategy.build().map_err(|e| ClashConfigBuilderError::from(e.to_string()))?"
+    ))]
+    #[builder_field_attr(serde(flatten))]
     pub strategy: ClashStrategy,
 
     /// Tun 堆栈选择
@@ -95,14 +101,15 @@ impl ClashConfig {
     pub fn apply_overrides(
         &self,
         config: Mapping,
-        reuse_port: bool,
+        port_registry: &PortRegistry,
     ) -> Result<Mapping, ApplyOverridesError> {
         let port = self
             .try_pick_mixed_port(reuse_port)
             .map_err(|e| ApplyOverridesError::new(e, "mixed-port"))?;
         let ctrl = self
             .try_pick_external_controller(reuse_port)
-            .map_err(|e| ApplyOverridesError::new(e, "external-controller"))?;
+            .map_err(|e| ApplyOverridesError::new(e, "external-controller"))?
+            .to_string();
 
         let mut config = self
             .overrides

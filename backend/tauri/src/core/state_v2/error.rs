@@ -21,6 +21,12 @@ pub enum StateChangedError {
 
     #[error("state migrate and rollback error: migrate {0:#?}, rollback {1:#?}")]
     MigrateAndRollback(MigrateError, RollbackError),
+
+    #[error("state rollback error: {0:#?}")]
+    Rollback(#[from] RollbackError),
+
+    #[error("state batch error: {0:#?}")]
+    Batch(Box<[StateChangedError]>),
 }
 
 #[derive(thiserror::Error, Debug)]

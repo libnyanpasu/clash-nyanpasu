@@ -14,6 +14,7 @@ mod event_handler;
 mod feat;
 mod ipc;
 mod logging;
+mod registry;
 mod server;
 mod setup;
 

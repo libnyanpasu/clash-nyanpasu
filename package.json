@@ -60,7 +60,7 @@
   "devDependencies": {
     "@commitlint/cli": "20.1.0",
     "@commitlint/config-conventional": "20.0.0",
-    "@eslint/compat": "1.4.0",
+    "@eslint/compat": "1.4.1",
     "@eslint/eslintrc": "3.3.1",
     "@ianvs/prettier-plugin-sort-imports": "4.7.0",
     "@tauri-apps/cli": "2.8.4",

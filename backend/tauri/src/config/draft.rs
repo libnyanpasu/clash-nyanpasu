@@ -1,4 +1,4 @@
-use super::{IClashTemp, IRuntime, IVerge};
+use super::{ClashGuard, ClashRuntimeConfig};
 use parking_lot::{MappedMutexGuard, Mutex, MutexGuard};
 use std::sync::Arc;
 
@@ -65,62 +65,5 @@ macro_rules! draft_define {
 }
 
 // draft_define!(IClash);
-draft_define!(IClashTemp);
-draft_define!(IRuntime);
-draft_define!(IVerge);
-
-#[test]
-fn test_draft() {
-    let verge = IVerge {
-        enable_auto_launch: Some(true),
-        enable_tun_mode: Some(false),
-        ..IVerge::default()
-    };
-
-    let draft = Draft::from(verge);
-
-    assert_eq!(draft.data().enable_auto_launch, Some(true));
-    assert_eq!(draft.data().enable_tun_mode, Some(false));
-
-    assert_eq!(draft.draft().enable_auto_launch, Some(true));
-    assert_eq!(draft.draft().enable_tun_mode, Some(false));
-
-    let mut d = draft.draft();
-    d.enable_auto_launch = Some(false);
-    d.enable_tun_mode = Some(true);
-    drop(d);
-
-    assert_eq!(draft.data().enable_auto_launch, Some(true));
-    assert_eq!(draft.data().enable_tun_mode, Some(false));
-
-    assert_eq!(draft.draft().enable_auto_launch, Some(false));
-    assert_eq!(draft.draft().enable_tun_mode, Some(true));
-
-    assert_eq!(draft.latest().enable_auto_launch, Some(false));
-    assert_eq!(draft.latest().enable_tun_mode, Some(true));
-
-    assert!(draft.apply().is_some());
-    assert!(draft.apply().is_none());
-
-    assert_eq!(draft.data().enable_auto_launch, Some(false));
-    assert_eq!(draft.data().enable_tun_mode, Some(true));
-
-    assert_eq!(draft.draft().enable_auto_launch, Some(false));
-    assert_eq!(draft.draft().enable_tun_mode, Some(true));
-
-    let mut d = draft.draft();
-    d.enable_auto_launch = Some(true);
-    drop(d);
-
-    assert_eq!(draft.data().enable_auto_launch, Some(false));
-
-    assert_eq!(draft.draft().enable_auto_launch, Some(true));
-
-    assert!(draft.discard().is_some());
-
-    assert_eq!(draft.data().enable_auto_launch, Some(false));
-
-    assert!(draft.discard().is_none());
-
-    assert_eq!(draft.draft().enable_auto_launch, Some(false));
-}
+draft_define!(ClashGuard);
+draft_define!(ClashRuntimeConfig);

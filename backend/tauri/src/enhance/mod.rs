@@ -8,7 +8,7 @@ mod utils;
 
 pub use self::chain::ScriptType;
 use self::{chain::*, field::*, merge::*, script::*, tun::*};
-use crate::config::{Config, ProfileMetaGetter, nyanpasu::ClashCore};
+use crate::config::{ConfigService, ProfileMetaGetter, nyanpasu::ClashCore};
 pub use chain::PostProcessingOutput;
 use futures::future::join_all;
 use indexmap::IndexMap;
@@ -21,10 +21,10 @@ use utils::{merge_profiles, process_chain};
 /// 返回最终配置、该配置包含的键、和script执行的结果
 pub async fn enhance() -> (Mapping, Vec<String>, PostProcessingOutput) {
     // config.yaml 的配置
-    let clash_config = { Config::clash().latest().0.clone() };
+    let clash_config = { ConfigService::clash().latest().0.clone() };
 
     let (clash_core, enable_tun, enable_builtin, enable_filter) = {
-        let verge = Config::verge();
+        let verge = ConfigService::verge();
         let verge = verge.latest();
         (
             verge.clash_core,
@@ -36,7 +36,7 @@ pub async fn enhance() -> (Mapping, Vec<String>, PostProcessingOutput) {
 
     // 从profiles里拿东西
     let (profiles, profile_chain, global_chain, valid) = {
-        let profiles = Config::profiles();
+        let profiles = ConfigService::profiles();
         let profiles = profiles.latest();
 
         let profile_chain_mapping = profiles

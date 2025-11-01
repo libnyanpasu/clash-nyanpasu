@@ -20,7 +20,7 @@
     "colorize-template": "1.0.0",
     "consola": "3.4.2",
     "fs-extra": "11.3.2",
-    "octokit": "5.0.4",
+    "octokit": "5.0.5",
     "picocolors": "1.1.1",
     "tar": "7.5.2",
     "telegram": "2.26.22",

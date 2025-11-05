@@ -15,7 +15,7 @@
     "@mui/icons-material": "7.3.5",
     "@mui/lab": "7.0.0-beta.17",
     "@mui/material": "7.3.5",
-    "@radix-ui/react-portal": "1.1.9",
+    "@radix-ui/react-portal": "1.1.10",
     "@radix-ui/react-scroll-area": "1.2.10",
     "@tauri-apps/api": "2.8.0",
     "@types/d3": "7.4.3",

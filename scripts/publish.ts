@@ -41,8 +41,8 @@ async function resolvePublish() {
   const nextVersion = `${a}.${b}.${c}`
   const nextNightlyVersion = `${a}.${b}.${c + 1}`
   packageJson.version = nextVersion
-  tauriJson.package.version = nextVersion
-  tauriNightlyJson.package.version = nextNightlyVersion
+  tauriJson.version = nextVersion
+  tauriNightlyJson.version = nextNightlyVersion
 
   // 发布更新前先写更新日志
   // const nextTag = `v${nextVersion}`;

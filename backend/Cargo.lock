@@ -1521,7 +1521,7 @@ dependencies = [
  "chrono",
  "clap",
  "colored",
- "convert_case 0.8.0",
+ "convert_case 0.9.0",
  "ctrlc",
  "dashmap",
  "deelevate",
@@ -1754,9 +1754,9 @@ checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
 
 [[package]]
 name = "convert_case"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "baaaa0ecca5b51987b9423ccdc971514dd8b0bb7b4060b983d3664dad3f1f89f"
+checksum = "db05ffb6856bf0ecdf6367558a76a0e8a77b1713044eb92845c692100ed50190"
 dependencies = [
  "unicode-segmentation",
 ]

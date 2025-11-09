@@ -10,25 +10,25 @@
   "arch_template": {
     "mihomo": {
       "windows-i386": "mihomo-windows-386-{}.zip",
-      "windows-x86_64": "mihomo-windows-amd64-compatible-{}.zip",
+      "windows-x86_64": "mihomo-windows-amd64-v1-{}.zip",
       "windows-arm64": "mihomo-windows-arm64-{}.zip",
       "linux-aarch64": "mihomo-linux-arm64-{}.gz",
-      "linux-amd64": "mihomo-linux-amd64-compatible-{}.gz",
+      "linux-amd64": "mihomo-linux-amd64-v1-{}.gz",
       "linux-i386": "mihomo-linux-386-{}.gz",
       "darwin-arm64": "mihomo-darwin-arm64-{}.gz",
-      "darwin-x64": "mihomo-darwin-amd64-compatible-{}.gz",
+      "darwin-x64": "mihomo-darwin-amd64-v1-{}.gz",
       "linux-armv7": "mihomo-linux-armv5-{}.gz",
       "linux-armv7hf": "mihomo-linux-armv7-{}.gz"
     },
     "mihomo_alpha": {
       "windows-i386": "mihomo-windows-386-{}.zip",
-      "windows-x86_64": "mihomo-windows-amd64-compatible-{}.zip",
+      "windows-x86_64": "mihomo-windows-amd64-v1-{}.zip",
       "windows-arm64": "mihomo-windows-arm64-{}.zip",
       "linux-aarch64": "mihomo-linux-arm64-{}.gz",
-      "linux-amd64": "mihomo-linux-amd64-compatible-{}.gz",
+      "linux-amd64": "mihomo-linux-amd64-v1-{}.gz",
       "linux-i386": "mihomo-linux-386-{}.gz",
       "darwin-arm64": "mihomo-darwin-arm64-{}.gz",
-      "darwin-x64": "mihomo-darwin-amd64-compatible-{}.gz",
+      "darwin-x64": "mihomo-darwin-amd64-v1-{}.gz",
       "linux-armv7": "mihomo-linux-armv5-{}.gz",
       "linux-armv7hf": "mihomo-linux-armv7-{}.gz"
     },

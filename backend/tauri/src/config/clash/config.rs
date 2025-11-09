@@ -4,6 +4,8 @@ use serde_yaml::Mapping;
 use specta::Type;
 use std::net::SocketAddr;
 
+use crate::registry::{Label, PortRegistry};
+
 use super::{
     overrides::ClashGuardOverrides,
     partial::{ClashStrategy, ClashStrategyBuilder, PickPortError, TunStack},
@@ -88,6 +90,9 @@ impl ApplyOverridesError {
 }
 
 impl ClashConfig {
+    pub const MIXED_PORT_LABEL: Label = Label::from("mixed-port");
+    pub const EXTERNAL_CONTROLLER_LABEL: Label = Label::from("external-controller");
+
     /// Apply overrides to the config
     /// # Arguments
     ///
@@ -104,10 +109,10 @@ impl ClashConfig {
         port_registry: &PortRegistry,
     ) -> Result<Mapping, ApplyOverridesError> {
         let port = self
-            .try_pick_mixed_port(reuse_port)
+            .try_pick_mixed_port(port_registry)
             .map_err(|e| ApplyOverridesError::new(e, "mixed-port"))?;
         let ctrl = self
-            .try_pick_external_controller(reuse_port)
+            .try_pick_external_controller(port_registry)
             .map_err(|e| ApplyOverridesError::new(e, "external-controller"))?
             .to_string();
 
@@ -122,11 +127,14 @@ impl ClashConfig {
         Ok(config)
     }
 
-    pub fn try_pick_mixed_port(&self, reuse_port: bool) -> Result<u16, PickPortError> {
-        let port = if reuse_port && let Some(port) = self.strategy.mixed_port.cached_port() {
-            port
+    pub fn try_pick_mixed_port(&self, port_registry: &PortRegistry) -> Result<u16, PickPortError> {
+        let ports = port_registry.get_ports_by_label(Self::MIXED_PORT_LABEL);
+        let port = if !ports.is_empty() {
+            ports[0]
         } else {
-            self.strategy.mixed_port.pick_and_try_port()?
+            let port = self.strategy.mixed_port.pick_and_try_port()?;
+            port_registry.replace(port, Self::MIXED_PORT_LABEL);
+            port
         };
 
         Ok(port)
@@ -134,17 +142,15 @@ impl ClashConfig {
 
     pub fn try_pick_external_controller(
         &self,
-        reuse_port: bool,
+        port_registry: &PortRegistry,
     ) -> Result<SocketAddr, PickPortError> {
-        let addr = if reuse_port
-            && let Some(addr) = self
-                .strategy
-                .external_controller_port
-                .try_pick_with_cached_port()
-        {
-            addr
+        let ports = port_registry.get_ports_by_label(Self::EXTERNAL_CONTROLLER_LABEL);
+        let addr = if !ports.is_empty() {
+            SocketAddr::from((self.strategy.external_controller.host, ports[0]))
         } else {
-            self.strategy.external_controller_port.try_pick()?
+            let addr = self.strategy.external_controller.try_pick()?;
+            port_registry.replace(addr.port(), Self::EXTERNAL_CONTROLLER_LABEL);
+            addr
         };
 
         Ok(addr)

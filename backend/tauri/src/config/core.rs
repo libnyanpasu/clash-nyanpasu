@@ -1,4 +1,4 @@
-use super::{ClashRuntimeConfig, Draft, ClashGuard, NyanpasuAppConfig, Profiles};
+use super::{ClashRuntimeState, Draft, ClashGuard, NyanpasuAppConfig, Profiles};
 use crate::{
     config::{ClashRuntimeConfigService, nyanpasu::NyanpasuAppConfigService},
     core::state::ManagedState,
@@ -34,7 +34,7 @@ impl ConfigService {
         &Self::global().profiles_config
     }
 
-    pub fn runtime() -> Draft<ClashRuntimeConfig> {
+    pub fn runtime() -> Draft<ClashRuntimeState> {
         Self::global().runtime_config.clone()
     }
 
@@ -79,7 +79,7 @@ impl ConfigService {
     pub async fn generate() -> Result<()> {
         let (config, exists_keys, postprocessing_outputs) = enhance::enhance().await;
 
-        *ConfigService::runtime().draft() = ClashRuntimeConfig {
+        *ConfigService::runtime().draft() = ClashRuntimeState {
             config: Some(config),
             exists_keys,
             postprocessing_output: postprocessing_outputs,

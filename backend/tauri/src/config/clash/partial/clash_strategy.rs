@@ -2,17 +2,15 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use super::super::config::DEFAULT_EXTERNAL_CONTROLLER_PORT;
 use derive_builder::Builder;
-use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::sync::Arc;
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize, Type, Builder)]
 #[builder(default, derive(Debug, Serialize, Deserialize, Type))]
 #[builder_struct_attr(serde_with::skip_serializing_none)]
 pub struct ClashStrategy {
     /// 外部控制器端口策略
-    pub external_controller_port: ExternalControllerStrategy,
+    pub external_controller: ExternalControllerStrategy,
     /// 混合端口策略
     pub mixed_port: PortStrategy,
 }
@@ -40,12 +38,6 @@ impl ExternalControllerStrategy {
         let port = self.port.pick_and_try_port()?;
         Ok(SocketAddr::new(self.host, port))
     }
-
-    pub fn try_pick_with_cached_port(&self) -> Option<SocketAddr> {
-        self.port
-            .cached_port()
-            .map(|port| SocketAddr::new(self.host, port))
-    }
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Type)]
@@ -66,9 +58,6 @@ pub struct PortStrategy {
     ///
     /// 用于固定或允许回退策略
     pub start_port: u16,
-    /// 此前缓存的 Port，用于避免重复选择相同的端口
-    #[serde(skip)]
-    cached_port: Arc<Mutex<Option<u16>>>,
 }
 
 impl Eq for PortStrategy {}
@@ -93,13 +82,7 @@ impl PortStrategy {
         Self {
             kind: PortStrategyKind::AllowFallback,
             start_port,
-            cached_port: Arc::new(Mutex::new(None)),
         }
-    }
-
-    /// 获取此前缓存的 Port
-    pub fn cached_port(&self) -> Option<u16> {
-        *self.cached_port.lock()
     }
 
     /// 选择并尝试端口
@@ -136,8 +119,6 @@ impl PortStrategy {
                 }
             }
         };
-
-        self.cached_port.lock().insert(port);
 
         Ok(port)
     }

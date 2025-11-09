@@ -1,4 +1,4 @@
-use super::{ClashGuard, ClashRuntimeConfig};
+use super::{ClashGuard, ClashRuntimeState};
 use parking_lot::{MappedMutexGuard, Mutex, MutexGuard};
 use std::sync::Arc;
 
@@ -66,4 +66,4 @@ macro_rules! draft_define {
 
 // draft_define!(IClash);
 draft_define!(ClashGuard);
-draft_define!(ClashRuntimeConfig);
+draft_define!(ClashRuntimeState);

@@ -1,10 +1,11 @@
 use anyhow::Context as _;
 use camino::{Utf8Path, Utf8PathBuf};
 use json_patch::merge;
+use serde_yaml::Mapping;
 
 use super::{ClashConfig, ClashConfigBuilder};
 use crate::{
-    config::NYANPASU_CONFIG_PREFIX,
+    config::{ClashGuardOverrides, NYANPASU_CONFIG_PREFIX},
     core::state_v2::{
         Context, PersistentBuilderManager, StateAsyncBuilder, StateCoordinator, error::*,
     },
@@ -95,11 +96,17 @@ impl ClashConfigService {
         }
     }
 
-    pub async fn apply_overrides(&self, overrides: ClashGuardOverrides) -> anyhow::Result<()> {
-        let config = self.current_config().await?;
-        let new_config = config.apply_overrides(overrides)?;
-        self.patch(new_config).await?;
-        Ok(())
+    pub async fn apply_overrides(
+        &self,
+        clash_config: serde_yaml::Mapping,
+    ) -> anyhow::Result<Mapping> {
+        let current_config = self
+            .current_config()
+            .await
+            .ok_or(anyhow::anyhow!("config not found"))?;
+        let new_config = current_config.apply_overrides(clash_config, &self.port_registry)?;
+
+        Ok(new_config)
     }
 
     /// Patch the current config with the given patch

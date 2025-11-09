@@ -23,6 +23,10 @@ impl PortRegistry {
         self.map.write().register(port, label);
     }
 
+    pub fn replace<L: Into<Label>>(&self, port: u16, label: L) {
+        self.map.write().replace(port, label);
+    }
+
     pub fn unregister(&self, port: u16) {
         self.map.write().unregister(port);
     }
@@ -84,6 +88,14 @@ impl PortMap {
         let label = label.into();
         self.port.insert(port, label.clone());
         self.label.entry(label).or_insert_with(Vec::new).push(port);
+    }
+
+    pub fn replace<L: Into<Label>>(&mut self, port: u16, label: L) {
+        let ports = self.get_ports_by_label(label.into());
+        for port in ports {
+            self.unregister(port);
+        }
+        self.register(port, label);
     }
 
     pub fn unregister(&mut self, port: u16) {

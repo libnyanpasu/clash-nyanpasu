@@ -24,7 +24,7 @@ humansize = "2"
 # for svg currentColor replacement
 resvg = "0.45.1"                                            # for svg rendering
 usvg = "0.45.1"                                             # for svg parsing
-csscolorparser = "0.7"                                      # for color conversion
+csscolorparser = "0.8"                                      # for color conversion
 ipc-channel = "0.20"                                        # for IPC between the Widget process and the GUI process
 serde = { version = "1", features = ["derive"] }
 anyhow = "1"

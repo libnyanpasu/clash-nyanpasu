@@ -1,13 +1,13 @@
 use anyhow::Result;
 use sysproxy::Sysproxy;
 
-use crate::config::Config;
+use crate::config::ConfigService;
 
 pub fn get_self_proxy() -> Result<String> {
-    let port = Config::verge()
+    let port = ConfigService::verge()
         .latest()
         .verge_mixed_port
-        .unwrap_or(Config::clash().data().get_mixed_port());
+        .unwrap_or(ConfigService::clash().data().get_mixed_port());
 
     let proxy_scheme = format!("http://127.0.0.1:{port}");
     Ok(proxy_scheme)
@@ -24,7 +24,7 @@ pub fn get_system_proxy() -> Result<Option<String>> {
 }
 
 pub fn get_current_clash_mode() -> String {
-    Config::clash()
+    ConfigService::clash()
         .latest()
         .0
         .get("mode")

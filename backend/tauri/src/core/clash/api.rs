@@ -1,4 +1,4 @@
-use crate::config::Config;
+use crate::config::ConfigService;
 use anyhow::{Context, Result};
 use indexmap::IndexMap;
 use reqwest::{Method, StatusCode, header::HeaderMap};
@@ -265,7 +265,7 @@ pub async fn get_proxy_delay(name: String, test_url: Option<String>) -> Result<D
 /// 根据clash info获取clash服务地址和请求头
 #[instrument]
 fn clash_client_info() -> Result<(String, HeaderMap)> {
-    let client = { Config::clash().data().get_client_info() };
+    let client = { ConfigService::clash().data().get_client_info() };
 
     let server = format!("http://{}", client.server);
 

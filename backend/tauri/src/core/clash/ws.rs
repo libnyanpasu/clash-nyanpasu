@@ -123,7 +123,7 @@ impl ClashConnectionsConnector {
 
     pub fn endpoint() -> anyhow::Result<Request> {
         let (server, secret) = {
-            let info = crate::Config::clash().data().get_client_info();
+            let info = crate::ConfigService::clash().data().get_client_info();
             (info.server, info.secret)
         };
         let url = format!("ws://{server}/connections");

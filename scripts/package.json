@@ -6,7 +6,7 @@
     "@actions/github": "6.0.1",
     "@types/figlet": "1.7.0",
     "@types/semver": "7.7.1",
-    "figlet": "1.9.3",
+    "figlet": "1.9.4",
     "filesize": "11.0.13",
     "p-retry": "7.1.0",
     "semver": "7.7.3",

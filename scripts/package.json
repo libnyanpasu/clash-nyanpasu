@@ -10,7 +10,7 @@
     "filesize": "11.0.13",
     "p-retry": "7.1.0",
     "semver": "7.7.3",
-    "zod": "4.1.12"
+    "zod": "4.1.13"
   },
   "devDependencies": {
     "@octokit/types": "14.1.0",

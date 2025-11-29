@@ -3,7 +3,7 @@ use super::super::{
     task::{Task, TaskID, TaskManager, TaskSchedule},
 };
 use crate::{
-    config::{Config, ProfileMetaGetter},
+    config::{ConfigService, ProfileMetaGetter},
     feat,
 };
 use anyhow::Result;
@@ -86,7 +86,7 @@ impl ProfilesJob {
         let cur_timestamp = chrono::Local::now().timestamp();
         let task_map = &self.task_map;
 
-        Config::profiles()
+        ConfigService::profiles()
             .latest()
             .items
             .iter()
@@ -176,7 +176,7 @@ impl ProfilesJob {
 fn gen_map() -> HashMap<ProfileUID, Minutes> {
     let mut new_map = HashMap::new();
 
-    Config::profiles()
+    ConfigService::profiles()
         .latest()
         .get_items()
         .iter()

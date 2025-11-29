@@ -1,4 +1,4 @@
-use crate::{config::Config, core::clash::api};
+use crate::{config::ConfigService, core::clash::api};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -15,7 +15,7 @@ pub struct ConnectionInterruptionService;
 impl ConnectionInterruptionService {
     /// Interrupt connections when proxy changes
     pub async fn on_proxy_change() -> Result<()> {
-        let config = Config::verge().data().clone();
+        let config = ConfigService::verge().data().clone();
         let break_when = config.break_when_proxy_change.unwrap_or_default();
 
         match break_when {
@@ -37,7 +37,7 @@ impl ConnectionInterruptionService {
 
     /// Interrupt connections when profile changes
     pub async fn on_profile_change() -> Result<()> {
-        let config = Config::verge().data().clone();
+        let config = ConfigService::verge().data().clone();
         let break_when = config.break_when_profile_change.unwrap_or_default();
 
         if break_when {
@@ -50,7 +50,7 @@ impl ConnectionInterruptionService {
 
     /// Interrupt connections when mode changes
     pub async fn on_mode_change() -> Result<()> {
-        let config = Config::verge().data().clone();
+        let config = ConfigService::verge().data().clone();
         let break_when = config.break_when_mode_change.unwrap_or_default();
 
         if break_when {

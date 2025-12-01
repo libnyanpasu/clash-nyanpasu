@@ -10,7 +10,7 @@ import svgr from 'vite-plugin-svgr'
 import tsconfigPaths from 'vite-tsconfig-paths'
 // import tailwindPlugin from '@tailwindcss/vite'
 // import react from "@vitejs/plugin-react";
-import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
+import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import legacy from '@vitejs/plugin-legacy'
 import react from '@vitejs/plugin-react-swc'
 
@@ -98,7 +98,13 @@ export default defineConfig(({ command, mode }) => {
         },
       }),
       builtinVars(),
-      TanStackRouterVite(),
+      tanstackRouter({
+        target: 'react',
+        autoCodeSplitting: true,
+        routesDirectory: `src/pages`,
+        generatedRouteTree: `src/route-tree.gen.ts`,
+        routeFileIgnorePattern: '_modules',
+      }),
       svgr(),
       react({
         // babel: {

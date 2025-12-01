@@ -1,7 +1,7 @@
 import { atom } from 'jotai'
 import { atomWithStorage, createJSONStorage } from 'jotai/utils'
 import { SortType } from '@/components/proxies/utils'
-import { FileRouteTypes } from '@/routeTree.gen'
+import { FileRouteTypes } from '@/route-tree.gen'
 import { NyanpasuStorage } from '@/services/storage'
 
 const atomWithLocalStorage = <T>(key: string, initialValue: T) => {

@@ -9,7 +9,7 @@ import '@csstools/normalize.css/opinionated.css'
 import { createRouter, RouterProvider } from '@tanstack/react-router'
 import './assets/styles/index.scss'
 import './assets/styles/tailwind.css'
-import { routeTree } from './routeTree.gen'
+import { routeTree } from './route-tree.gen'
 import './services/i18n'
 
 if (!window.ResizeObserver) {

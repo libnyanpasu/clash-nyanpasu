@@ -32,10 +32,10 @@
 
 const SERVICE_NAME: &str = "ClashRuntimeConfigService";
 
-use super::PatchRuntimeConfig;
+use super::{PatchRuntimeConfig, snapshot};
 use crate::{
     config::{ClashRuntimeState, Profile},
-    core::state_v2::{Context, SimpleStateManager, StateCoordinator},
+    core::state_v2::{Context, SimpleStateManager, StateCoordinator}, enhance,
 };
 use anyhow::Context as _;
 use serde::{Deserialize, Serialize};
@@ -76,12 +76,22 @@ impl ClashRuntimeConfigService {
         }
     }
 
-    async fn generate_runtime_config(
-        selected_profile: &[Mapping],
+    pub async fn generate_runtime_config(
+        selected_profile: &[(String, Mapping)],
         global_chain: &[Profile],
         scoped_chain: &[Profile],
     ) -> Result<ClashRuntimeState, anyhow::Error> {
-        todo!()
+        let [(primary_profile_id, primary_profile), others @ ..] = selected_profile else {
+            anyhow::bail!("selected_profile is empty");
+        };
+        let mut snapshots_builder = snapshot::ConfigSnapshotsBuilder::new(
+            snapshot::ConfigSnapshot {
+                config: primary_profile.clone(),
+                changed_fields: None,
+            },
+            primary_profile_id.to_string(),
+        );
+        enhance::process()
     }
 
     pub async fn patch_runtime_config(&self, patch: PatchPayload) -> Result<(), anyhow::Error> {

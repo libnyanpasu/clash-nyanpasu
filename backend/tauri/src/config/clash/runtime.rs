@@ -6,7 +6,7 @@ use serde_yaml::Mapping;
 use crate::enhance::PostProcessingOutput;
 
 mod service;
-mod snapshot;
+pub mod snapshot;
 
 pub use self::service::*;
 

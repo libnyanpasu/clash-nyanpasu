@@ -2,18 +2,14 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 
-use crate::config::profile::{item_type::ProfileUid, profiles::Profiles};
+use crate::config::{
+    profile::item_type::{ProfileItemType, ProfileUid},
+    snapshot,
+};
 
 use super::{ChainItem, ChainTypeWrapper, RunnerManager, use_merge};
 use parking_lot::Mutex;
 use std::{borrow::Borrow, sync::Arc};
-
-pub fn convert_uids_to_scripts(profiles: &Profiles, uids: &[ProfileUid]) -> Vec<ChainItem> {
-    uids.iter()
-        .filter_map(|uid| profiles.get_item(uid).ok())
-        .filter_map(<Option<ChainItem>>::from)
-        .collect::<Vec<ChainItem>>()
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "lowercase")]
@@ -88,34 +84,77 @@ pub fn merge_profiles<T: Borrow<String>>(mappings: IndexMap<T, Mapping>) -> Mapp
         })
 }
 
+pub struct ProcessResult {
+    pub config: Mapping,
+    pub logs: IndexMap<ProfileUid, Logs>,
+}
+
 /// 处理链
 pub async fn process_chain(
     mut config: Mapping,
     nodes: &[ChainItem],
-) -> (Mapping, IndexMap<ProfileUid, Logs>) {
+    snapshots_builder: &mut snapshot::ConfigSnapshotsBuilder,
+    snapshot_chain_type: snapshot::ChainNodeKind,
+) -> ProcessResult {
     let mut result_map = IndexMap::new();
 
     let mut script_runner = RunnerManager::new();
+
+    let mut add_snapshot = |profile_id: &str,
+                            profile_item_type: ProfileItemType,
+                            previous_config: &Mapping,
+                            new_config: &Mapping| {
+        snapshots_builder.push_node(snapshot::ConfigSnapshotState::new(
+            snapshot::ConfigSnapshot::new_with_diff(previous_config, new_config.clone()),
+            snapshot::ProcessKind::ChainNode {
+                kind: snapshot_chain_type.clone(),
+                profile_id: profile_id.to_string(),
+                profile_kind: profile_item_type,
+            },
+            None,
+        ));
+    };
+
     for item in nodes.iter() {
         match &item.data {
             ChainTypeWrapper::Merge(merge) => {
                 let mut logs = vec![];
                 let (res, process_logs) = use_merge(merge, config.clone());
-                config = res.unwrap();
+                let new_config = res.unwrap();
+                add_snapshot(&item.uid, ProfileItemType::Merge, &config, &new_config);
+                config = new_config;
                 logs.extend(process_logs);
                 result_map.insert(item.uid.to_string(), logs);
             }
-            ChainTypeWrapper::Script(script) => {
+            ChainTypeWrapper::Script {
+                kind: script_type,
+                data: script,
+            } => {
                 let mut logs = vec![];
-                let (res, process_logs) =
-                    script_runner.process_script(script, config.clone()).await;
+                let (res, process_logs) = script_runner
+                    .process_script(*script_type, script, config.clone())
+                    .await;
                 logs.extend(process_logs);
                 // TODO: 修改日记 level 格式？
                 match res {
                     Ok(res_config) => {
+                        add_snapshot(
+                            &item.uid,
+                            ProfileItemType::Script(*script_type),
+                            &config,
+                            &res_config,
+                        );
                         config = res_config;
                     }
-                    Err(err) => logs.error(err.to_string()),
+                    Err(err) => {
+                        add_snapshot(
+                            &item.uid,
+                            ProfileItemType::Script(*script_type),
+                            &config,
+                            &config,
+                        );
+                        logs.error(err.to_string())
+                    }
                 }
                 // TODO: 这里添加对 field 的检查，触发 WARN 日记。此外，需要对 Merge 的结果进行检查？
                 result_map.insert(item.uid.to_string(), logs);
@@ -123,7 +162,10 @@ pub async fn process_chain(
         }
     }
 
-    (config, result_map)
+    ProcessResult {
+        config,
+        logs: result_map,
+    }
 }
 
 #[cfg(test)]
@@ -145,22 +187,41 @@ mod tests {
         // 创建两个 ChainItem
         let item_a = ChainItem {
             uid: "a".to_string(),
-            data: ChainTypeWrapper::new_js(
-                "function main(cfg) { cfg.value = 'a'; return cfg; }".to_string(),
-            ),
+            data: ChainTypeWrapper::new_js(bytes::Bytes::from_static(
+                b"function main(cfg) { cfg.value = 'a'; return cfg; }",
+            )),
         };
 
         let item_b = ChainItem {
             uid: "b".to_string(),
-            data: ChainTypeWrapper::new_js(
-                "function main(cfg) { cfg.value = cfg.value + '_b'; return cfg; }".to_string(),
-            ),
+            data: ChainTypeWrapper::new_js(bytes::Bytes::from_static(
+                b"function main(cfg) { cfg.value = cfg.value + '_b'; return cfg; }",
+            )),
         };
 
         let chain = vec![item_a, item_b];
 
+        let mut snapshots_builder = snapshot::ConfigSnapshotsBuilder::new(
+            snapshot::ConfigSnapshot {
+                config: initial_config.clone(),
+                changed_fields: None,
+            },
+            "root".to_string(),
+        );
+
+        let snapshot_chain_type = snapshot::ChainNodeKind::Global;
+
         // 执行处理链
-        let (final_config, logs) = process_chain(initial_config, &chain).await;
+        let ProcessResult {
+            config: final_config,
+            logs,
+        } = process_chain(
+            initial_config,
+            &chain,
+            &mut snapshots_builder,
+            snapshot_chain_type,
+        )
+        .await;
 
         // 验证最终结果
         assert_eq!(

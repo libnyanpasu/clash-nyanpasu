@@ -1,19 +1,12 @@
-use crate::{
-    config::{
-        Profile,
-        nyanpasu::ClashCore,
-        profile::{
-            item::prelude::*,
-            item_type::{ProfileItemType, ProfileUid},
-        },
-    },
-    utils::{dirs, help},
+use crate::config::{
+    Profile, ProfileContentGuard, ProfileMetaGetter,
+    nyanpasu::ClashCore,
+    profile::item_type::{ProfileItemType, ProfileUid},
 };
 use enumflags2::{BitFlag, BitFlags};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
-use std::fs;
 use strum::EnumString;
 
 use super::Logs;
@@ -36,78 +29,54 @@ pub struct ChainItem {
     pub data: ChainTypeWrapper,
 }
 
+impl From<&ProfileContentGuard<'_>> for Option<ChainItem> {
+    fn from(value: ProfileContentGuard<'_>) -> Self {
+        match value.profile {
+            Profile::Script(script) => Some(ChainItem::new_script(
+                script.uid(),
+                ChainTypeWrapper::Script {
+                    kind: script.script_type,
+                    data: value.content.clone(),
+                },
+            )),
+            Profile::Merge(merge) => Some(ChainItem::new_merge(
+                merge.uid().to_string(),
+                serde_yaml::from_slice(&value.content)
+                    .inspect_err(|e| tracing::error!(profile_id = %merge.uid(), "failed to parse merge profile yaml: {e:#?}"))
+                    .ok()?,
+            )),
+            _ => None,
+        }
+    }
+}
+
+type Data = bytes::Bytes;
+
 #[derive(Debug, Clone)]
 pub enum ChainTypeWrapper {
     Merge(Mapping),
-    Script(ScriptWrapper),
+    Script { kind: ScriptType, data: Data },
 }
 
 impl ChainTypeWrapper {
     pub fn new_js(data: Data) -> Self {
-        Self::Script(ScriptWrapper(ScriptType::JavaScript, data))
+        Self::Script {
+            kind: ScriptType::JavaScript,
+            data,
+        }
     }
 
     pub fn new_lua(data: Data) -> Self {
-        Self::Script(ScriptWrapper(ScriptType::Lua, data))
+        Self::Script {
+            kind: ScriptType::Lua,
+            data,
+        }
     }
 
     pub fn new_merge(data: Mapping) -> Self {
         Self::Merge(data)
     }
 }
-
-impl TryFrom<&Profile> for ChainTypeWrapper {
-    type Error = anyhow::Error;
-
-    fn try_from(item: &Profile) -> Result<Self, Self::Error> {
-        use anyhow::Context;
-        let r#type = item.kind();
-        let file = item.file();
-        let path = dirs::app_profiles_dir()
-            .context("profiles dir not found")?
-            .join(file);
-
-        if !path.exists() {
-            anyhow::bail!("file not found: {:?}", path);
-        }
-
-        match r#type {
-            ProfileItemType::Script(ScriptType::JavaScript) => Ok(ChainTypeWrapper::Script(
-                ScriptWrapper(ScriptType::JavaScript, fs::read_to_string(path)?),
-            )),
-            ProfileItemType::Script(ScriptType::Lua) => Ok(ChainTypeWrapper::Script(
-                ScriptWrapper(ScriptType::Lua, fs::read_to_string(path)?),
-            )),
-            ProfileItemType::Merge => Ok(ChainTypeWrapper::Merge(help::read_merge_mapping(&path)?)),
-            _ => anyhow::bail!("unsupported type: {:?}", r#type),
-        }
-    }
-}
-
-impl TryFrom<&Profile> for ChainItem {
-    type Error = anyhow::Error;
-
-    fn try_from(item: &Profile) -> Result<Self, Self::Error> {
-        let uid = item.uid().to_string();
-        let data = ChainTypeWrapper::try_from(item)?;
-        Ok(Self { uid, data })
-    }
-}
-
-impl From<&Profile> for Option<ChainItem> {
-    fn from(item: &Profile) -> Self {
-        let uid = item.uid().to_string();
-        let data = ChainTypeWrapper::try_from(item);
-        match data {
-            Err(_) => None,
-            Ok(data) => Some(ChainItem { uid, data }),
-        }
-    }
-}
-
-type Data = String;
-#[derive(Debug, Clone)]
-pub struct ScriptWrapper(pub ScriptType, pub Data);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ChainType {
@@ -140,31 +109,52 @@ pub enum ScriptType {
     Lua,
 }
 
+impl From<ScriptType> for ProfileItemType {
+    fn from(value: ScriptType) -> Self {
+        ProfileItemType::Script(value)
+    }
+}
+
 impl ChainItem {
+    pub fn new_merge(uid: String, data: Mapping) -> Self {
+        Self {
+            uid: "merge".to_string(),
+            data: ChainTypeWrapper::Merge(Mapping::new()),
+        }
+    }
+
     /// 内建支持一些脚本
     pub fn builtin() -> Vec<(BitFlags<ClashCore>, ChainItem)> {
         // meta 的一些处理
-        let meta_guard = ChainItem::to_script(
+        let meta_guard = ChainItem::new_script(
             "verge_meta_guard",
-            ChainTypeWrapper::new_js(include_str!("./builtin/meta_guard.js").to_string()),
+            ChainTypeWrapper::new_js(bytes::Bytes::from_static(include_bytes!(
+                "./builtin/meta_guard.js"
+            ))),
         );
 
         // meta 1.13.2 alpn string 转 数组
-        let hy_alpn = ChainItem::to_script(
+        let hy_alpn = ChainItem::new_script(
             "verge_hy_alpn",
-            ChainTypeWrapper::new_js(include_str!("./builtin/meta_hy_alpn.js").to_string()),
+            ChainTypeWrapper::new_js(bytes::Bytes::from_static(include_bytes!(
+                "./builtin/meta_hy_alpn.js"
+            ))),
         );
 
         // 修复配置的一些问题
-        let config_fixer = ChainItem::to_script(
+        let config_fixer = ChainItem::new_script(
             "config_fixer",
-            ChainTypeWrapper::new_js(include_str!("./builtin/config_fixer.js").to_string()),
+            ChainTypeWrapper::new_js(bytes::Bytes::from_static(include_bytes!(
+                "./builtin/config_fixer.js"
+            ))),
         );
 
         // 移除或转换 Clash Rs 不支持的字段
-        let clash_rs_comp = ChainItem::to_script(
+        let clash_rs_comp = ChainItem::new_script(
             "clash_rs_comp",
-            ChainTypeWrapper::new_lua(include_str!("./builtin/clash_rs_comp.lua").to_string()),
+            ChainTypeWrapper::new_lua(bytes::Bytes::from_static(include_bytes!(
+                "./builtin/clash_rs_comp.lua"
+            ))),
         );
 
         vec![
@@ -175,7 +165,7 @@ impl ChainItem {
         ]
     }
 
-    pub fn to_script<U: Into<String>, D: Into<ChainTypeWrapper>>(uid: U, data: D) -> Self {
+    pub fn new_script<U: Into<String>, D: Into<ChainTypeWrapper>>(uid: U, data: D) -> Self {
         Self {
             uid: uid.into(),
             data: data.into(),

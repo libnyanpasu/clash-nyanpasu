@@ -77,11 +77,7 @@ pub fn use_valid_fields(valid: &[String]) -> Vec<String> {
 }
 
 /// 使用白名单过滤配置字段
-pub fn use_whitelist_fields_filter(config: Mapping, filter: &[String], enable: bool) -> Mapping {
-    if !enable {
-        return config;
-    }
-
+pub fn use_whitelist_fields_filter(config: Mapping, filter: &[String]) -> Mapping {
     let mut ret = Mapping::new();
 
     for (key, value) in config.into_iter() {

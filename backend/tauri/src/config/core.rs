@@ -77,7 +77,7 @@ impl ConfigService {
 
     /// 生成配置存好
     pub async fn generate() -> Result<()> {
-        let (config, exists_keys, postprocessing_outputs) = enhance::enhance().await;
+        let (config, exists_keys, postprocessing_outputs) = enhance::process().await;
 
         *ConfigService::runtime().draft() = ClashRuntimeState {
             config: Some(config),

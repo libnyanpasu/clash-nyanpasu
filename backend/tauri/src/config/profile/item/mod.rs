@@ -3,6 +3,7 @@ use super::item_type::ProfileItemType;
 use crate::utils::dirs;
 use ambassador::{Delegate, delegatable_trait};
 use anyhow::{Context, Result, bail};
+use bytes::Bytes;
 use nyanpasu_macro::EnumWrapperCombined;
 use std::{borrow::Borrow, fmt::Debug, fs, io::Write};
 
@@ -99,6 +100,25 @@ pub enum Profile {
     Merge(MergeProfile),
     Script(ScriptProfile),
 }
+
+pub struct ProfileContentGuard<'a> {
+    pub profile: &'a Profile,
+    pub content: Bytes,
+}
+
+impl ProfileContentGuard<'_> {
+    #[tracing::instrument(skip(self))]
+    pub async fn write_back(&self) -> Result<()> {
+        tracing::debug!("writing back profile file: {}", self.profile.file());
+        use fs_err::tokio as fs;
+        let file = self.profile.file();
+        let path = dirs::app_profiles_dir()?.join(file);
+        fs::write(&path, &self.content)
+            .await
+            .context("failed to write back the profile file")
+    }
+}
+
 // what it actually did
 // #[derive(Default, Debug, Clone, Deserialize, Serialize)]
 // pub struct PrfSelected {
@@ -127,6 +147,22 @@ impl Profile {
             bail!("file does not exist");
         }
         fs::read_to_string(path).context("failed to read the file")
+    }
+
+    pub async fn load_content<'s>(&'s self) -> Result<ProfileContentGuard<'s>> {
+        use fs_err::tokio as fs;
+        let file = self.file();
+        let path = dirs::app_profiles_dir()?.join(file);
+        fs::metadata(&path)
+            .await
+            .context("profile file does not exist")?;
+        let content = fs::read(&path)
+            .await
+            .context("failed to read the profile file")?;
+        Ok(ProfileContentGuard {
+            profile: self,
+            content: Bytes::from(content),
+        })
     }
 
     /// save the file data

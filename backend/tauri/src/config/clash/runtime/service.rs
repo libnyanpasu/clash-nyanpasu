@@ -35,7 +35,7 @@ const SERVICE_NAME: &str = "ClashRuntimeConfigService";
 use super::PatchRuntimeConfig;
 use crate::{
     config::ClashRuntimeState,
-    core::state_v2::{SimpleStateManager, StateCoordinator},
+    core::state_v2::{Context, SimpleStateManager, StateCoordinator},
 };
 use anyhow::Context as _;
 use serde::{Deserialize, Serialize};
@@ -82,40 +82,51 @@ impl ClashRuntimeConfigService {
         todo!()
     }
 
-    async fn apply_patch(&self, patch: PatchRuntimeConfig) -> Result<(), anyhow::Error> {
-        let mut runtime = self.runtime.write().await.current_state();
-        runtime.patch(patch);
+    pub async fn patch_runtime_config(&self, patch: PatchPayload) -> Result<(), anyhow::Error> {
+        let mut runtime = self.runtime.write().await;
+        let mut state = match runtime.current_state() {
+            Some(state) => state.clone(),
+            None => anyhow::bail!("no runtime state found"),
+        };
+        match &patch {
+            PatchPayload::Specific(patch) => {
+                // TODO: handle specific patch
+                let patch = serde_yaml::to_value(patch)?
+                    .as_mapping()
+                    .cloned()
+                    .unwrap_or_default();
+                crate::utils::yaml::apply_overrides(&mut state.config, &patch);
+            }
+            PatchPayload::Untyped(mapping) => {
+                crate::utils::yaml::apply_overrides(&mut state.config, mapping);
+            }
+        };
+        runtime
+            .upsert_state_with_context(state)
+            .await
+            .with_context(|| format!("failed to upsert patch {patch:?}"))?;
         Ok(())
     }
 
-    async fn apply_upsert(&self, upsert: Mapping) -> Result<(), anyhow::Error> {
-        let mut runtime = self.runtime.write().await.current_state();
-        runtime.upsert(upsert);
+    pub async fn upsert(&self, state: ClashRuntimeState) -> Result<(), anyhow::Error> {
+        let mut runtime = self.runtime.write().await;
+        runtime
+            .upsert_state_with_context(state.clone())
+            .await
+            .with_context(|| format!("failed to upsert state {state:?}"))?;
         Ok(())
     }
 
-    pub async fn upsert<P>(&self, payload: P) -> Result<(), anyhow::Error>
-    where
-        P: TryInto<UpsertPayload, Error = anyhow::Error>,
-    {
-        let payload = payload
-            .try_into()
-            .context("failed to convert payload to UpsertPayload")?;
-        let mut runtime = self.runtime.write().await.current_state();
-        match payload {
-            UpsertPayload::Patch(patch) => {
-                runtime.patch(patch);
-            }
-            UpsertPayload::Upsert(upsert) => {
-                runtime.upsert(upsert);
-            }
+    pub async fn current_state(&self) -> Option<ClashRuntimeState> {
+        match Context::get::<ClashRuntimeState>() {
+            Some(state) => Some(state.clone()),
+            None => self.runtime.read().await.current_state(),
         }
-        Ok(())
     }
 
     /// Get the client info from the runtime config
-    pub fn get_client_info(&self) -> Option<ClashInfo> {
-        let config = self.runtime.current_state()?;
+    pub async fn get_client_info(&self) -> Option<ClashInfo> {
+        let config = self.current_state().await?;
         let external_controller_server = config.get_external_controller_server()?;
         let proxy_mixed_port = config.get_proxy_mixed_port()?;
         let secret = config.get_secret();

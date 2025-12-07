@@ -27,13 +27,13 @@ export const resolveMihomo = async (): LatestVersionResolver => {
 
   const archMapping: ArchMapping = {
     [SupportedArch.WindowsX86_32]: 'mihomo-windows-386-{}.zip',
-    [SupportedArch.WindowsX86_64]: 'mihomo-windows-amd64-compatible-{}.zip',
+    [SupportedArch.WindowsX86_64]: 'mihomo-windows-amd64-v1-{}.zip',
     [SupportedArch.WindowsArm64]: 'mihomo-windows-arm64-{}.zip',
     [SupportedArch.LinuxAarch64]: 'mihomo-linux-arm64-{}.gz',
-    [SupportedArch.LinuxAmd64]: 'mihomo-linux-amd64-compatible-{}.gz',
+    [SupportedArch.LinuxAmd64]: 'mihomo-linux-amd64-v1-{}.gz',
     [SupportedArch.LinuxI386]: 'mihomo-linux-386-{}.gz',
     [SupportedArch.DarwinArm64]: 'mihomo-darwin-arm64-{}.gz',
-    [SupportedArch.DarwinX64]: 'mihomo-darwin-amd64-compatible-{}.gz',
+    [SupportedArch.DarwinX64]: 'mihomo-darwin-amd64-v1-{}.gz',
     [SupportedArch.LinuxArmv7]: 'mihomo-linux-armv5-{}.gz',
     [SupportedArch.LinuxArmv7hf]: 'mihomo-linux-armv7-{}.gz',
   } satisfies ArchMapping
@@ -57,13 +57,13 @@ export const resolveMihomoAlpha = async (): LatestVersionResolver => {
 
   const archMapping: ArchMapping = {
     [SupportedArch.WindowsX86_32]: 'mihomo-windows-386-{}.zip',
-    [SupportedArch.WindowsX86_64]: 'mihomo-windows-amd64-compatible-{}.zip',
+    [SupportedArch.WindowsX86_64]: 'mihomo-windows-amd64-v1-{}.zip',
     [SupportedArch.WindowsArm64]: 'mihomo-windows-arm64-{}.zip',
     [SupportedArch.LinuxAarch64]: 'mihomo-linux-arm64-{}.gz',
-    [SupportedArch.LinuxAmd64]: 'mihomo-linux-amd64-compatible-{}.gz',
+    [SupportedArch.LinuxAmd64]: 'mihomo-linux-amd64-v1-{}.gz',
     [SupportedArch.LinuxI386]: 'mihomo-linux-386-{}.gz',
     [SupportedArch.DarwinArm64]: 'mihomo-darwin-arm64-{}.gz',
-    [SupportedArch.DarwinX64]: 'mihomo-darwin-amd64-compatible-{}.gz',
+    [SupportedArch.DarwinX64]: 'mihomo-darwin-amd64-v1-{}.gz',
     [SupportedArch.LinuxArmv7]: 'mihomo-linux-armv5-{}.gz',
     [SupportedArch.LinuxArmv7hf]: 'mihomo-linux-armv7-{}.gz',
   } satisfies ArchMapping

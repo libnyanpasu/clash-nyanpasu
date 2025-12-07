@@ -6,6 +6,6 @@ dist/
 pnpm-lock.yaml
 *.lock
 *.wxs
-frontend/nyanpasu/src/routeTree.gen.ts
+frontend/nyanpasu/src/route-tree.gen.ts
 frontend/nyanpasu/auto-imports.d.ts
 backend/tauri/gen/schemas/

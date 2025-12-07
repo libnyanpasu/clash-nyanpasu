@@ -6,23 +6,23 @@
     "@actions/github": "6.0.1",
     "@types/figlet": "1.7.0",
     "@types/semver": "7.7.1",
-    "figlet": "1.9.3",
+    "figlet": "1.9.4",
     "filesize": "11.0.13",
     "p-retry": "7.1.0",
     "semver": "7.7.3",
-    "zod": "4.1.12"
+    "zod": "4.1.13"
   },
   "devDependencies": {
     "@octokit/types": "14.1.0",
     "@types/adm-zip": "0.5.7",
-    "@types/yargs": "17.0.33",
+    "@types/yargs": "17.0.35",
     "adm-zip": "0.5.16",
     "colorize-template": "1.0.0",
     "consola": "3.4.2",
     "fs-extra": "11.3.2",
-    "octokit": "5.0.4",
+    "octokit": "5.0.5",
     "picocolors": "1.1.1",
-    "tar": "7.5.1",
+    "tar": "7.5.2",
     "telegram": "2.26.22",
     "undici": "7.16.0",
     "yargs": "18.0.0"

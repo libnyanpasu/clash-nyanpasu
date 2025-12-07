@@ -68,6 +68,7 @@ indexmap = { version = "2.2.3", features = ["serde"] }
 bimap = "0.6.3"
 bumpalo = "3.17.0"                                     # a bump allocator for heap allocation
 rustc-hash = "2.1"
+slab = "0.4"                                           # for slab allocation
 
 # Terminal Utilities
 ansi-str = "0.9"                                    # for ansi str stripped

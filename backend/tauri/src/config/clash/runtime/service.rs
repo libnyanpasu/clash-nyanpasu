@@ -34,7 +34,7 @@ const SERVICE_NAME: &str = "ClashRuntimeConfigService";
 
 use super::PatchRuntimeConfig;
 use crate::{
-    config::ClashRuntimeState,
+    config::{ClashRuntimeState, Profile},
     core::state_v2::{Context, SimpleStateManager, StateCoordinator},
 };
 use anyhow::Context as _;
@@ -77,7 +77,9 @@ impl ClashRuntimeConfigService {
     }
 
     async fn generate_runtime_config(
-        profile_config: Mapping,
+        selected_profile: &[Mapping],
+        global_chain: &[Profile],
+        scoped_chain: &[Profile],
     ) -> Result<ClashRuntimeState, anyhow::Error> {
         todo!()
     }

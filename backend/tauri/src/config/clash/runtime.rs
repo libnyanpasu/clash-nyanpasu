@@ -6,6 +6,7 @@ use serde_yaml::Mapping;
 use crate::enhance::PostProcessingOutput;
 
 mod service;
+mod snapshot;
 
 pub use self::service::*;
 
@@ -35,6 +36,8 @@ pub struct ClashRuntimeState {
     ///
     /// And the advice from the postprocessing
     pub postprocessing_output: PostProcessingOutput,
+    /// Config Snapshots
+    pub snapshots: Option<snapshot::ConfigSnapshotState>,
 }
 
 impl Default for ClashRuntimeState {
@@ -43,6 +46,7 @@ impl Default for ClashRuntimeState {
             config: Mapping::new(),
             exists_keys: BTreeSet::new(),
             postprocessing_output: PostProcessingOutput::default(),
+            snapshots: None,
         }
     }
 }

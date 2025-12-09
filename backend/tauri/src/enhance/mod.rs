@@ -12,7 +12,8 @@ use crate::config::{
     ClashGuardOverrides, ProfileContentGuard,
     nyanpasu::ClashCore,
     snapshot::{
-        ChainNodeKind, ConfigSnapshot, ConfigSnapshotState, ConfigSnapshotsBuilder, ProcessKind,
+        ChainNodeKind, ConfigSnapshot, ConfigSnapshotState, ConfigSnapshotsBuilder,
+        ConfigSnapshotsGraph, ProcessKind,
     },
 };
 pub use chain::PostProcessingOutput;
@@ -41,7 +42,7 @@ pub struct EnhanceResult {
     pub config: Mapping,
     pub exists_keys: Vec<String>,
     pub postprocessing_output: PostProcessingOutput,
-    pub snapshots: ConfigSnapshotState,
+    pub snapshots: ConfigSnapshotsGraph,
 }
 
 /// Enhance mode
@@ -117,7 +118,8 @@ pub async fn process<'i, 'r: 'i, 's: 'i>(
     // 执行 scoped chain
     let profiles_outputs = join_all(tasks).await;
 
-    let mut profiles = IndexMap::new();
+    let mut profiles = IndexMap::with_capacity(profiles_outputs.len());
+    let mut pending_node_ids = Vec::with_capacity(profiles_outputs.len());
     for (uid, result, subtree, is_primary) in profiles_outputs {
         postprocessing_output
             .scopes
@@ -125,9 +127,14 @@ pub async fn process<'i, 'r: 'i, 's: 'i>(
         profiles.insert(uid.to_string(), result.config);
         let node_ids =
             snapshots_builder.add_leaf_from_subtree(snapshots_builder.root_node_id(), subtree);
-        // TODO: support graph merge strategy
-        if let Some(last_node_id) = node_ids.last() {
-            snapshots_builder.set_current(*last_node_id);
+
+        let last_node_id = *node_ids
+            .last()
+            .expect("subtree should have at least one node");
+        pending_node_ids.push(last_node_id);
+
+        if is_primary {
+            snapshots_builder.set_current(last_node_id);
         }
     }
 
@@ -137,7 +144,7 @@ pub async fn process<'i, 'r: 'i, 's: 'i>(
     let config = merge_profiles(profiles);
     let merge_snapshot =
         ConfigSnapshot::new_with_diff(primary_profile.profile_config, config.clone());
-    snapshots_builder.push_node(ConfigSnapshotState::new(
+    let node_id = snapshots_builder.push_node(ConfigSnapshotState::new(
         merge_snapshot,
         ProcessKind::SelectedProfilesProxiesMerge {
             primary_profile_id: primary_profile.profile_id.clone(),
@@ -148,6 +155,9 @@ pub async fn process<'i, 'r: 'i, 's: 'i>(
         },
         None,
     ));
+    for pending_node_id in pending_node_ids {
+        snapshots_builder.add_edge(pending_node_id, node_id);
+    }
 
     let global_chain = global_chain
         .iter()

@@ -74,19 +74,15 @@ pub enum ProcessKind {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct ConfigSnapshotState {
+pub struct ConfigSnapshotState<C> {
     pub snapshot: ConfigSnapshot,
     /// The kind of process that generated this snapshot
     pub process_kind: ProcessKind,
-    pub next: Option<Vec<ConfigSnapshotState>>,
+    pub next: Option<Vec<C>>,
 }
 
-impl ConfigSnapshotState {
-    pub fn new(
-        snapshot: ConfigSnapshot,
-        process_kind: ProcessKind,
-        next: Option<Vec<ConfigSnapshotState>>,
-    ) -> Self {
+impl<C> ConfigSnapshotState<C> {
+    pub fn new(snapshot: ConfigSnapshot, process_kind: ProcessKind, next: Option<Vec<C>>) -> Self {
         Self {
             snapshot,
             process_kind,
@@ -95,11 +91,26 @@ impl ConfigSnapshotState {
     }
 }
 
+pub type Idx = usize;
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct ConfigSnapshotsGraph {
+    pub nodes: Vec<ConfigSnapshotState<Idx>>,
+    /// edges as (from, to)
+    pub edges: Vec<(Idx, Idx)>,
+    pub root_id: Idx,
+}
+
+pub struct ConfigSnapshotTreeNode {
+    pub node: ConfigSnapshotState<ConfigSnapshotTreeNode>,
+}
+
 type NodeId = usize;
 
 #[derive(Debug, Clone)]
 struct BuilderNode {
-    state: ConfigSnapshotState,
+    state: ConfigSnapshotState<NodeId>,
+    parent_id: Option<NodeId>,
     children: Vec<NodeId>,
 }
 
@@ -122,6 +133,7 @@ impl ConfigSnapshotsBuilder {
 
         let root_id = slab.insert(BuilderNode {
             state: root_state,
+            parent_id: None,
             children: Vec::new(),
         });
 
@@ -153,9 +165,10 @@ impl ConfigSnapshotsBuilder {
         }
     }
 
-    pub fn add_node(&mut self, parent_id: NodeId, node: ConfigSnapshotState) -> NodeId {
+    pub fn add_node(&mut self, parent_id: NodeId, node: ConfigSnapshotState<NodeId>) -> NodeId {
         let id = self.slab.insert(BuilderNode {
             state: node,
+            parent_id: Some(parent_id),
             children: Vec::new(),
         });
 
@@ -164,12 +177,12 @@ impl ConfigSnapshotsBuilder {
         id
     }
 
-    pub fn add_node_to_current(&mut self, node: ConfigSnapshotState) -> NodeId {
+    pub fn add_node_to_current(&mut self, node: ConfigSnapshotState<NodeId>) -> NodeId {
         let parent = self.current_id;
         self.add_node(parent, node)
     }
 
-    pub fn push_node(&mut self, node: ConfigSnapshotState) -> NodeId {
+    pub fn push_node(&mut self, node: ConfigSnapshotState<NodeId>) -> NodeId {
         let id = self.add_node_to_current(node);
         self.set_current(id);
         id
@@ -180,14 +193,14 @@ impl ConfigSnapshotsBuilder {
         parent_id: NodeId,
         subtree: ConfigSnapshotsBuilder,
     ) -> Vec<NodeId> {
-        let subtree = subtree.build();
-        self.add_leaf(parent_id, subtree.next.unwrap_or_default())
+        let subtree = subtree.build_tree();
+        self.add_leaf(parent_id, subtree.node.next.unwrap_or_default())
     }
 
     pub fn add_leaf(
         &mut self,
         parent_id: NodeId,
-        children: Vec<ConfigSnapshotState>,
+        children: Vec<ConfigSnapshotTreeNode>,
     ) -> Vec<NodeId> {
         let mut ids = Vec::with_capacity(children.len());
         let mut queue = VecDeque::from_iter([(parent_id, children)]);
@@ -195,10 +208,15 @@ impl ConfigSnapshotsBuilder {
         while let Some((parent_id, children)) = queue.pop_front() {
             let mut children_ids = Vec::new();
             for mut child in children {
-                let grand_children = child.next.take();
+                let grand_children = child.node.next.take();
 
                 let id = self.slab.insert(BuilderNode {
-                    state: child,
+                    state: ConfigSnapshotState {
+                        snapshot: child.node.snapshot,
+                        process_kind: child.node.process_kind,
+                        next: None,
+                    },
+                    parent_id: Some(parent_id),
                     children: Vec::new(),
                 });
 
@@ -218,7 +236,12 @@ impl ConfigSnapshotsBuilder {
         ids
     }
 
-    pub fn add_leaf_to_current(&mut self, children: Vec<ConfigSnapshotState>) -> Vec<NodeId> {
+    pub fn add_edge(&mut self, from: NodeId, to: NodeId) {
+        self.slab[from].children.push(to);
+        self.slab[to].parent_id = Some(from);
+    }
+
+    pub fn add_leaf_to_current(&mut self, children: Vec<ConfigSnapshotTreeNode>) -> Vec<NodeId> {
         let parent = self.current_id;
         self.add_leaf(parent, children)
     }
@@ -227,26 +250,143 @@ impl ConfigSnapshotsBuilder {
         self.current_id = id;
     }
 
-    fn build_node(&mut self, id: NodeId) -> ConfigSnapshotState {
+    fn build_tree_node(slab: &mut Slab<BuilderNode>, id: NodeId) -> ConfigSnapshotTreeNode {
         let BuilderNode {
-            mut state,
+            state,
             children,
-        } = self.slab.remove(id);
+            parent_id: _,
+        } = slab.remove(id);
 
-        if children.is_empty() {
-            state.next = None;
+        let next = if children.is_empty() {
+            None
         } else {
-            let next_children = children
-                .into_iter()
-                .map(|child_id| self.build_node(child_id))
-                .collect();
-            state.next = Some(next_children);
-        }
+            Some(
+                children
+                    .into_iter()
+                    .map(|child_id| Self::build_tree_node(slab, child_id))
+                    .collect(),
+            )
+        };
 
-        state
+        ConfigSnapshotTreeNode {
+            node: ConfigSnapshotState {
+                snapshot: state.snapshot,
+                process_kind: state.process_kind,
+                next,
+            },
+        }
     }
 
-    pub fn build(mut self) -> ConfigSnapshotState {
-        self.build_node(self.root_id)
+    pub fn build_tree(mut self) -> ConfigSnapshotTreeNode {
+        use std::collections::HashMap;
+
+        let node_ids: Vec<NodeId> = self.slab.iter().map(|(idx, _)| idx).collect();
+        if !node_ids.contains(&self.root_id) {
+            panic!(
+                "cannot build tree: root {root} not found",
+                root = self.root_id
+            );
+        }
+
+        // Validate it is a proper tree: single root, no multi-parent, no cycles, all reachable.
+        let mut indegree: HashMap<NodeId, usize> = HashMap::new();
+        for (idx, node) in self.slab.iter() {
+            for &child in &node.children {
+                if self.slab.get(child).is_none() {
+                    panic!("cannot build tree: child node {child} is missing");
+                }
+
+                if child == idx {
+                    panic!("cannot build tree: self-cycle at node {idx}");
+                }
+
+                let count = indegree.entry(child).or_insert(0);
+                *count += 1;
+                if *count > 1 {
+                    panic!("cannot build tree: node {child} has multiple parents");
+                }
+            }
+        }
+
+        let roots: Vec<NodeId> = node_ids
+            .iter()
+            .copied()
+            .filter(|id| indegree.get(id).copied().unwrap_or(0) == 0)
+            .collect();
+        if roots.len() != 1 || roots[0] != self.root_id {
+            panic!("cannot build tree: multiple roots detected");
+        }
+
+        #[derive(Clone, Copy, PartialEq, Eq)]
+        enum VisitState {
+            Unvisited,
+            Visiting,
+            Done,
+        }
+
+        let mut visit_state: HashMap<NodeId, VisitState> = node_ids
+            .iter()
+            .map(|&idx| (idx, VisitState::Unvisited))
+            .collect();
+
+        fn dfs(idx: NodeId, slab: &Slab<BuilderNode>, state: &mut HashMap<NodeId, VisitState>) {
+            match state.get(&idx).copied() {
+                Some(VisitState::Visiting) => {
+                    panic!("cannot build tree: cycle detected at node {idx}")
+                }
+                Some(VisitState::Done) => return,
+                _ => {}
+            }
+
+            state.insert(idx, VisitState::Visiting);
+            for &child in &slab[idx].children {
+                dfs(child, slab, state);
+            }
+            state.insert(idx, VisitState::Done);
+        }
+
+        dfs(self.root_id, &self.slab, &mut visit_state);
+        if visit_state.values().any(|&s| s != VisitState::Done) {
+            panic!("cannot build tree: unreachable nodes present");
+        }
+
+        Self::build_tree_node(&mut self.slab, self.root_id)
+    }
+
+    pub fn build(self) -> ConfigSnapshotsGraph {
+        let max_idx = self.slab.iter().map(|(idx, _)| idx).max().unwrap_or(0);
+        let mut nodes: Vec<Option<ConfigSnapshotState<NodeId>>> = vec![None; max_idx + 1];
+        let mut edges = Vec::with_capacity(self.slab.len().saturating_sub(1));
+
+        for (idx, builder_node) in self.slab.into_iter() {
+            for &child in &builder_node.children {
+                edges.push((idx, child));
+            }
+
+            let next = if builder_node.children.is_empty() {
+                None
+            } else {
+                Some(builder_node.children.clone())
+            };
+
+            nodes[idx] = Some(ConfigSnapshotState {
+                snapshot: builder_node.state.snapshot,
+                process_kind: builder_node.state.process_kind,
+                next,
+            });
+        }
+
+        if nodes.iter().any(|node| node.is_none()) {
+            panic!("cannot build graph: sparse node ids present");
+        }
+
+        ConfigSnapshotsGraph {
+            nodes: nodes
+                .into_iter()
+                .map(|node| node.expect("node is present"))
+                .collect(),
+            edges,
+            root_id: self.root_id,
+        }
     }
 }

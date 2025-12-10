@@ -69,6 +69,16 @@ draft_define!(IClashTemp);
 draft_define!(IRuntime);
 draft_define!(IVerge);
 
+impl Draft<IClashTemp> {
+    /// Reload configuration from file
+    pub fn reload(&self) {
+        let new_config = IClashTemp::new();
+        let mut inner = self.inner.lock();
+        inner.0 = new_config;
+        inner.1 = None; // Clear any draft
+    }
+}
+
 #[test]
 fn test_draft() {
     let verge = IVerge {

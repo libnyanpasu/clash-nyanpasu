@@ -1,7 +1,10 @@
 use std::borrow::Cow;
 
 use crate::{
-    config::{Config, nyanpasu::ClashCore},
+    config::{ConfigService, nyanpasu::ClashCore},
+    core::clash::ws::{
+        ClashConnectionsConnector, ClashConnectionsConnectorEvent, ClashConnectionsInfo,
+    },
     feat, ipc, log_err,
     utils::{help, resolve},
 };
@@ -149,7 +152,7 @@ impl Tray {
     pub fn tray_menu<R: Runtime>(app_handle: &AppHandle<R>) -> Result<Menu<R>> {
         let version = env!("NYANPASU_VERSION");
         let core = {
-            *Config::verge()
+            *ConfigService::verge()
                 .latest()
                 .clash_core
                 .as_ref()
@@ -231,11 +234,27 @@ impl Tray {
                 }
                 #[cfg(target_os = "macos")]
                 {
-                    builder = builder
-                        .icon(tauri::image::Image::from_bytes(include_bytes!(
-                            "../../../icons/tray-icon.png"
-                        ))?)
-                        .icon_as_template(true);
+                    let verge = ConfigService::verge();
+                    let verge = verge.latest();
+                    let enable_colored_icons =
+                        *verge.enable_macos_colored_icons.as_ref().unwrap_or(&false);
+
+                    if enable_colored_icons {
+                        builder = builder
+                            .icon(tauri::image::Image::from_bytes(
+                                &icon::get_icon_for_platform(
+                                    &icon::TrayIcon::Normal,
+                                    Some("macos"),
+                                ),
+                            )?)
+                            .icon_as_template(false);
+                    } else {
+                        builder = builder
+                            .icon(tauri::image::Image::from_bytes(include_bytes!(
+                                "../../../icons/tray-icon.png"
+                            ))?)
+                            .icon_as_template(true);
+                    }
                 }
                 builder
                     .menu(&menu)
@@ -299,7 +318,7 @@ impl Tray {
     pub fn update_part<R: Runtime>(app_handle: &AppHandle<R>) -> Result<()> {
         let mode = crate::utils::config::get_current_clash_mode();
         let core = {
-            *Config::verge()
+            *ConfigService::verge()
                 .latest()
                 .clash_core
                 .as_ref()
@@ -312,6 +331,26 @@ impl Tray {
             .expect("tray not found");
         let state = app_handle.state::<TrayState<R>>();
         let menu = state.menu.lock();
+        // let traffic_info = *state.traffic_info.lock();
+
+        #[allow(unused_variables)]
+        let (system_proxy, tun_mode, enable_tray_text, enable_tray_traffic) = {
+            let verge = ConfigService::verge();
+            let verge = verge.latest();
+            (
+                *verge.enable_system_proxy.as_ref().unwrap_or(&false),
+                *verge.enable_tun_mode.as_ref().unwrap_or(&false),
+                *verge.enable_tray_text.as_ref().unwrap_or(&false),
+                *verge.enable_tray_traffic.as_ref().unwrap_or(&false),
+            )
+        };
+
+        #[cfg(target_os = "macos")]
+        let enable_macos_colored_icons = {
+            let verge = ConfigService::verge();
+            let verge = verge.latest();
+            *verge.enable_macos_colored_icons.as_ref().unwrap_or(&false)
+        };
 
         let _ = menu
             .get("rule_mode")

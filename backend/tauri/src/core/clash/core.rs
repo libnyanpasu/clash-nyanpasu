@@ -457,6 +457,13 @@ impl CoreManager {
             }
         }
 
+        // Reload clash config from file to get latest user preferences (e.g., mode)
+        Config::clash().reload();
+        log::debug!(target: "app", "reloaded clash config from file");
+
+        // Regenerate runtime config with the reloaded settings
+        Config::generate().await?;
+
         // 检查端口是否可用
         Config::clash()
             .latest()

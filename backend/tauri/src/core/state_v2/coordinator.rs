@@ -1,6 +1,7 @@
 // ! TODO: add a pending state to implement MVCC(Multi-Version Concurrency Control) for different tokio tasks.
 
 use super::{Context, builder::*, error::*};
+use std::any::Any;
 
 #[async_trait::async_trait]
 #[allow(unused_variables)]
@@ -23,6 +24,13 @@ pub(crate) trait StateChangedSubscriber<T: Clone + Send + Sync + 'static> {
         Ok(())
     }
 }
+
+// pub trait FusedStateChangedSubscriber<T>: StateChangedSubscriber<T>
+// where
+//     T: Clone + Send + Sync + 'static,
+// {
+//     fn is_terminated(&self) -> bool;
+// }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ConcurrencyStrategy {

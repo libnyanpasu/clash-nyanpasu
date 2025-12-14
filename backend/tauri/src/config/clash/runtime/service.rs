@@ -34,8 +34,14 @@ const SERVICE_NAME: &str = "ClashRuntimeConfigService";
 
 use super::{PatchRuntimeConfig, snapshot};
 use crate::{
-    config::{ClashRuntimeState, Profile},
-    core::state_v2::{Context, SimpleStateManager, StateCoordinator}, enhance,
+    config::{
+        ClashConfig, ClashConfigService, ClashRuntimeState, NyanpasuAppConfig, Profile,
+        ProfileContentGuard, Profiles,
+        nyanpasu::{ClashCore, NyanpasuAppConfigService},
+        profile::ProfilesService,
+    },
+    core::state_v2::{Context, SimpleStateManager, StateChangedSubscriber, StateCoordinator},
+    enhance::{self, EnhanceResult, PartialProfileItem},
 };
 use anyhow::Context as _;
 use serde::{Deserialize, Serialize};
@@ -55,7 +61,79 @@ pub struct ClashInfo {
 
 #[derive(Clone)]
 pub struct ClashRuntimeConfigService {
+    clash_config_service: Arc<ClashConfigService>,
+    profiles_service: Arc<ProfilesService>,
+    nyanpasu_config_service: Arc<NyanpasuAppConfigService>,
     runtime: Arc<RwLock<SimpleStateManager<ClashRuntimeState>>>,
+}
+
+#[async_trait::async_trait]
+impl StateChangedSubscriber<Profiles> for ClashRuntimeConfigService {
+    fn name(&self) -> &str {
+        SERVICE_NAME
+    }
+
+    async fn migrate(
+        &self,
+        prev_state: Option<Profiles>,
+        new_state: Profiles,
+    ) -> Result<(), anyhow::Error> {
+        todo!()
+    }
+
+    async fn rollback(
+        &self,
+        prev_state: Option<Profiles>,
+        new_state: Profiles,
+    ) -> Result<(), anyhow::Error> {
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl StateChangedSubscriber<ClashConfig> for ClashRuntimeConfigService {
+    fn name(&self) -> &str {
+        SERVICE_NAME
+    }
+
+    async fn migrate(
+        &self,
+        prev_state: Option<ClashConfig>,
+        new_state: ClashConfig,
+    ) -> Result<(), anyhow::Error> {
+        todo!()
+    }
+
+    async fn rollback(
+        &self,
+        prev_state: Option<ClashConfig>,
+        new_state: ClashConfig,
+    ) -> Result<(), anyhow::Error> {
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl StateChangedSubscriber<NyanpasuAppConfig> for ClashRuntimeConfigService {
+    fn name(&self) -> &str {
+        SERVICE_NAME
+    }
+
+    async fn migrate(
+        &self,
+        prev_state: Option<NyanpasuAppConfig>,
+        new_state: NyanpasuAppConfig,
+    ) -> Result<(), anyhow::Error> {
+        todo!()
+    }
+
+    async fn rollback(
+        &self,
+        prev_state: Option<NyanpasuAppConfig>,
+        new_state: NyanpasuAppConfig,
+    ) -> Result<(), anyhow::Error> {
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, specta::Type)]
@@ -76,22 +154,44 @@ impl ClashRuntimeConfigService {
         }
     }
 
-    pub async fn generate_runtime_config(
-        selected_profile: &[(String, Mapping)],
-        global_chain: &[Profile],
-        scoped_chain: &[Profile],
+    /// Generate the runtime config based on the selected profile and global chain
+    // TODO: Support patch generation from a snapshot node
+    pub async fn generate_runtime_config<'r, 'c: 'r>(
+        nyanpasu_config: &NyanpasuAppConfig,
+        clash_config: &ClashConfig,
+        // The valid fields from the profile
+        valid_fields: &BTreeSet<String>,
+        selected_profile: &[PartialProfileItem<'r, 'c>],
+        global_chain: &[ProfileContentGuard<'c>],
     ) -> Result<ClashRuntimeState, anyhow::Error> {
-        let [(primary_profile_id, primary_profile), others @ ..] = selected_profile else {
-            anyhow::bail!("selected_profile is empty");
+        let opts = enhance::EnhanceOptions {
+            clash_core: nyanpasu_config.core.clone(),
+            enable_tun: clash_config.enable_tun_mode,
+            enable_builtin_enhanced: nyanpasu_config.enable_builtin_enhanced,
+            enable_clash_fields: clash_config.enable_clash_fields,
         };
-        let mut snapshots_builder = snapshot::ConfigSnapshotsBuilder::new(
-            snapshot::ConfigSnapshot {
-                config: primary_profile.clone(),
-                changed_fields: None,
-            },
-            primary_profile_id.to_string(),
-        );
-        enhance::process()
+        let valid_fields = Vec::from_iter(valid_fields.iter().cloned());
+
+        let EnhanceResult {
+            config,
+            exists_keys,
+            postprocessing_output,
+            snapshots,
+        } = enhance::process(
+            opts,
+            valid_fields.as_slice(),
+            selected_profile,
+            global_chain,
+            &clash_config.overrides,
+        )
+        .await;
+
+        Ok(ClashRuntimeState {
+            config,
+            exists_keys,
+            postprocessing_output,
+            snapshots: Some(snapshots),
+        })
     }
 
     pub async fn patch_runtime_config(&self, patch: PatchPayload) -> Result<(), anyhow::Error> {

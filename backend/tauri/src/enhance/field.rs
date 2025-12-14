@@ -1,5 +1,5 @@
 use serde_yaml::{Mapping, Value};
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 pub const HANDLE_FIELDS: [&str; 9] = [
     "mode",
@@ -142,7 +142,7 @@ pub fn use_sort(config: Mapping, enable_filter: bool) -> Mapping {
     ret
 }
 
-pub fn use_keys(config: &Mapping) -> Vec<String> {
+pub fn use_keys(config: &Mapping) -> BTreeSet<String> {
     config
         .iter()
         .filter_map(|(key, _)| key.as_str())

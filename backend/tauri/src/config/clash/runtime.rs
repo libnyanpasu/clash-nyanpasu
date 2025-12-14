@@ -37,7 +37,7 @@ pub struct ClashRuntimeState {
     /// And the advice from the postprocessing
     pub postprocessing_output: PostProcessingOutput,
     /// Config Snapshots
-    pub snapshots: Option<snapshot::ConfigSnapshotState>,
+    pub snapshots: Option<snapshot::ConfigSnapshotsGraph>,
 }
 
 impl Default for ClashRuntimeState {

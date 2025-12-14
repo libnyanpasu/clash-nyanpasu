@@ -8,19 +8,22 @@ mod utils;
 
 pub use self::chain::ScriptType;
 use self::{chain::*, field::*, merge::*, script::*, tun::*};
-use crate::config::{
-    ClashGuardOverrides, ProfileContentGuard,
-    nyanpasu::ClashCore,
-    snapshot::{
-        ChainNodeKind, ConfigSnapshot, ConfigSnapshotState, ConfigSnapshotsBuilder,
-        ConfigSnapshotsGraph, ProcessKind,
+use crate::{
+    config::{
+        ClashGuardOverrides, ProfileContentGuard,
+        nyanpasu::ClashCore,
+        snapshot::{
+            ChainNodeKind, ConfigSnapshot, ConfigSnapshotState, ConfigSnapshotsBuilder,
+            ConfigSnapshotsGraph, ProcessKind,
+        },
     },
+    core::clash,
 };
 pub use chain::PostProcessingOutput;
 use futures::future::join_all;
 use indexmap::IndexMap;
 use serde_yaml::{Mapping, Value};
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 pub use utils::{Logs, LogsExt};
 use utils::{merge_profiles, process_chain};
 
@@ -40,7 +43,7 @@ pub struct PartialProfileItem<'a, 's: 'a> {
 
 pub struct EnhanceResult {
     pub config: Mapping,
-    pub exists_keys: Vec<String>,
+    pub exists_keys: BTreeSet<String>,
     pub postprocessing_output: PostProcessingOutput,
     pub snapshots: ConfigSnapshotsGraph,
 }
@@ -266,9 +269,8 @@ pub async fn process<'i, 'r: 'i, 's: 'i>(
     let (_, logs) = advice::chain_advice(&config);
     postprocessing_output.advice = logs;
 
-    let mut exists_set = HashSet::new();
-    exists_set.extend(exists_keys.into_iter().filter(|s| clash_fields.contains(s)));
-    exists_keys = exists_set.into_iter().collect();
+    let clash_fields: HashSet<String> = clash_fields.into_iter().collect();
+    exists_keys.retain(|v| clash_fields.contains(v));
 
     EnhanceResult {
         config,

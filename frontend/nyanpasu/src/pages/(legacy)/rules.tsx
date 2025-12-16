@@ -8,7 +8,7 @@ import { useClashRules } from '@nyanpasu/interface'
 import { alpha, BasePage } from '@nyanpasu/ui'
 import { createFileRoute } from '@tanstack/react-router'
 
-export const Route = createFileRoute('/rules')({
+export const Route = createFileRoute('/(legacy)/rules')({
   component: RulesPage,
 })
 

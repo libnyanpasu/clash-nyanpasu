@@ -24,7 +24,7 @@ import {
 import { alpha, cn, SidePage } from '@nyanpasu/ui'
 import { createFileRoute } from '@tanstack/react-router'
 
-export const Route = createFileRoute('/proxies')({
+export const Route = createFileRoute('/(legacy)/proxies')({
   component: ProxyPage,
 })
 

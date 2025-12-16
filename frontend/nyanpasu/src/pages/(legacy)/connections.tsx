@@ -18,7 +18,7 @@ const ConnectionTotal = lazy(
   () => import('@/components/connections/connections-total'),
 )
 
-export const Route = createFileRoute('/connections')({
+export const Route = createFileRoute('/(legacy)/connections')({
   component: Connections,
 })
 

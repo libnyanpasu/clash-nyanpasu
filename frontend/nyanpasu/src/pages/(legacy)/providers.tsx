@@ -12,7 +12,7 @@ import {
 import { BasePage } from '@nyanpasu/ui'
 import { createFileRoute } from '@tanstack/react-router'
 
-export const Route = createFileRoute('/providers')({
+export const Route = createFileRoute('/(legacy)/providers')({
   component: ProvidersPage,
 })
 
@@ -29,7 +29,7 @@ function ProvidersPage() {
         <div className="flex items-center justify-between">
           <Chip
             className="!h-10 truncate !rounded-full !p-2 !text-lg font-bold"
-            label={`${t('Proxies Providers')} (${Object.entries(proxiesProvider.data ?? {}).length})`}
+            label={`${t(`Proxies Providers`)} (${Object.entries(proxiesProvider.data ?? {}).length})`}
           />
 
           <UpdateProxiesProviders />
@@ -57,7 +57,7 @@ function ProvidersPage() {
         <div className="flex items-center justify-between">
           <Chip
             className="!h-10 truncate !rounded-full !p-2 !text-lg font-bold"
-            label={`${t('Rules Providers')} (${Object.entries(rulesProvider.data ?? {}).length})`}
+            label={`${t(`Rules Providers`)} (${Object.entries(rulesProvider.data ?? {}).length})`}
           />
 
           <UpdateProviders />

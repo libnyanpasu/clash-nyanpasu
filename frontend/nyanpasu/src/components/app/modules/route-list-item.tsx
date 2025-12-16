@@ -5,7 +5,7 @@ import { SvgIconComponent } from '@mui/icons-material'
 import { Box, ListItemButton, ListItemIcon, Tooltip } from '@mui/material'
 import { useSetting } from '@nyanpasu/interface'
 import { alpha, cn } from '@nyanpasu/ui'
-import { useMatch, useNavigate } from '@tanstack/react-router'
+import { useLocation, useMatch, useNavigate } from '@tanstack/react-router'
 
 export const RouteListItem = ({
   name,
@@ -19,11 +19,10 @@ export const RouteListItem = ({
   onlyIcon?: boolean
 }) => {
   const { t } = useTranslation()
-  const match = useMatch({
-    strict: false,
-    shouldThrow: false,
-    from: path as never,
-  })
+
+  const location = useLocation()
+
+  const match = location.pathname === path
 
   const navigate = useNavigate()
 

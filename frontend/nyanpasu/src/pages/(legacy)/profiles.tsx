@@ -42,7 +42,7 @@ const profileSearchParams = z.object({
   subscribeDesc: z.string().optional(),
 })
 
-export const Route = createFileRoute('/profiles')({
+export const Route = createFileRoute('/(legacy)/profiles')({
   validateSearch: zodSearchValidator(profileSearchParams),
   component: ProfilePage,
 })

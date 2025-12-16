@@ -5,7 +5,7 @@ import LogHeader from '@/components/logs/los-header'
 import { BasePage } from '@nyanpasu/ui'
 import { createFileRoute } from '@tanstack/react-router'
 
-export const Route = createFileRoute('/logs')({
+export const Route = createFileRoute('/(legacy)/logs')({
   component: LogPage,
 })
 

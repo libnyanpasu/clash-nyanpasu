@@ -11,7 +11,7 @@ import { collectEnvs, openThat } from '@nyanpasu/interface'
 import { BasePage } from '@nyanpasu/ui'
 import { createFileRoute } from '@tanstack/react-router'
 
-export const Route = createFileRoute('/settings')({
+export const Route = createFileRoute('/(legacy)/settings')({
   component: SettingPage,
 })
 

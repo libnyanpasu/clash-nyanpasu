@@ -16,18 +16,6 @@ import react from '@vitejs/plugin-react-swc'
 
 const IS_NIGHTLY = process.env.NIGHTLY?.toLowerCase() === 'true'
 
-const devtools = () => {
-  return {
-    name: 'react-devtools',
-    transformIndexHtml(html: string) {
-      return html.replace(
-        /<\/head>/,
-        `<script src="http://localhost:8097"></script></head>`,
-      )
-    },
-  }
-}
-
 const builtinVars = () => {
   return {
     name: 'built-in-vars',
@@ -123,7 +111,6 @@ export default defineConfig(({ command, mode }) => {
         compiler: 'jsx', // or 'solid'
       }),
       sassDts({ esmExport: true }),
-      isDev && devtools(),
     ],
     resolve: {
       alias: {

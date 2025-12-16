@@ -100,8 +100,7 @@ Promise.all(jobs).then(() => {
 
   const commands = [
     'pnpm dev - development with react dev tools',
-    'pnpm dev:diff - deadlock development with react dev tools (recommend)',
-    'pnpm tauri:diff - deadlock development',
+    'pnpm dev:diff - deadlock development (recommend)',
   ]
 
   consola.log('  next command:\n')

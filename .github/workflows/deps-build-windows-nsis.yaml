@@ -103,13 +103,13 @@ jobs:
           $condition = '${{ inputs.arch }}'
           switch ($condition) {
             'x86_64' {
-              pnpm check
+              pnpm prepare:check
             }
             'i686' {
-              pnpm check --arch ia32 --sidecar-host i686-pc-windows-msvc
+              pnpm prepare:check --arch ia32 --sidecar-host i686-pc-windows-msvc
             }
             'aarch64' {
-              pnpm check --arch arm64 --sidecar-host aarch64-pc-windows-msvc
+              pnpm prepare:check --arch arm64 --sidecar-host aarch64-pc-windows-msvc
             }
           }
 

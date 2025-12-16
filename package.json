@@ -36,7 +36,6 @@
     "fmt": "run-p fmt:*",
     "fmt:backend": "cargo fmt --manifest-path ./backend/Cargo.toml --all",
     "fmt:prettier": "prettier --write .",
-    "check": "tsx scripts/check.ts",
     "updater": "tsx scripts/updater.ts",
     "updater:nightly": "tsx scripts/updater-nightly.ts",
     "send-notify": "tsx scripts/telegram-notify.ts",
@@ -50,7 +49,8 @@
     "prepare": "husky",
     "prepare:nightly": "tsx scripts/prepare-nightly.ts",
     "prepare:release": "tsx scripts/prepare-release.ts",
-    "prepare:preview": "tsx scripts/prepare-preview.ts"
+    "prepare:preview": "tsx scripts/prepare-preview.ts",
+    "prepare:check": "tsx scripts/check.ts"
   },
   "dependencies": {
     "@prettier/plugin-oxc": "0.0.4",

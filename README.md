@@ -54,9 +54,9 @@ pnpm i
 
 ```shell
 # force update to latest version
-# pnpm check --force
+# pnpm prepare:check --force
 
-pnpm check
+pnpm prepare:check
 ```
 
 ### Run dev

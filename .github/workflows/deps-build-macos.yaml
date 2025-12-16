@@ -84,10 +84,10 @@ jobs:
           pnpm i
       - name: Download Sidecars aarch64
         if: ${{ inputs.aarch64 == true }}
-        run: pnpm check --arch arm64 --sidecar-host aarch64-apple-darwin
+        run: pnpm prepare:check --arch arm64 --sidecar-host aarch64-apple-darwin
       - name: Download Sidecars x64
         if: ${{ inputs.aarch64 == false }}
-        run: pnpm check --arch x64 --sidecar-host x86_64-apple-darwin
+        run: pnpm prepare:check --arch x64 --sidecar-host x86_64-apple-darwin
       - name: Nightly Prepare
         if: ${{ inputs.nightly == true }}
         run: |

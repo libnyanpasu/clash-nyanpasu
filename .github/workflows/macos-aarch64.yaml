@@ -44,7 +44,7 @@ jobs:
       - name: Pnpm install and check
         run: |
           pnpm i
-          pnpm check --arch arm64 --sidecar-host aarch64-apple-darwin
+          pnpm prepare:check --arch arm64 --sidecar-host aarch64-apple-darwin
 
       - name: Tauri build with Upload (cmd)
         env:

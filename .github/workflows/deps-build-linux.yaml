@@ -97,15 +97,15 @@ jobs:
         run: |
           case "${{ inputs.arch }}" in
             "x86_64")
-              pnpm check ;;
+              pnpm prepare:check ;;
             "i686")
-              pnpm check --arch ia32 --sidecar-host i686-unknown-linux-gnu ;;
+              pnpm prepare:check --arch ia32 --sidecar-host i686-unknown-linux-gnu ;;
             "aarch64")
-              pnpm check --arch arm64 --sidecar-host aarch64-unknown-linux-gnu ;;
+              pnpm prepare:check --arch arm64 --sidecar-host aarch64-unknown-linux-gnu ;;
             "armel")
-              pnpm check --arch armel --sidecar-host armv7-unknown-linux-gnueabi ;;
+              pnpm prepare:check --arch armel --sidecar-host armv7-unknown-linux-gnueabi ;;
             "armhf")
-              pnpm check --arch arm --sidecar-host armv7-unknown-linux-gnueabihf ;;
+              pnpm prepare:check --arch arm --sidecar-host armv7-unknown-linux-gnueabihf ;;
           esac
 
       - name: Nightly Prepare

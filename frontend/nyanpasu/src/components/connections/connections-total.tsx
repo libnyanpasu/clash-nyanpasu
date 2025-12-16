@@ -2,6 +2,7 @@ import { filesize } from 'filesize'
 import { useEffect, useRef, useState } from 'react'
 import { Download, Upload } from '@mui/icons-material'
 import { Paper, Skeleton } from '@mui/material'
+import type { SxProps, Theme } from '@mui/material/styles'
 import { useClashConnections } from '@nyanpasu/interface'
 import { darken, lighten } from '@nyanpasu/ui'
 
@@ -88,8 +89,8 @@ export default function ConnectionTotal() {
       >
         <Download
           className="scale-75"
-          sx={[
-            (theme) => ({
+          sx={
+            ((theme) => ({
               color: darken(
                 theme.vars.palette.primary.main,
                 downloadHighlight ? 0.9 : 0.3,
@@ -100,8 +101,8 @@ export default function ConnectionTotal() {
                   downloadHighlight ? 0.2 : 0.9,
                 ),
               }),
-            }),
-          ]}
+            })) as SxProps<Theme>
+          }
         />{' '}
         <span className="font-mono text-xs">
           {filesize(latestClashConnections.downloadTotal, { pad: true })}
@@ -117,8 +118,8 @@ export default function ConnectionTotal() {
       >
         <Upload
           className="scale-75"
-          sx={[
-            (theme) => ({
+          sx={
+            ((theme) => ({
               color: darken(
                 theme.vars.palette.primary.main,
                 uploadHighlight ? 0.9 : 0.3,
@@ -129,8 +130,8 @@ export default function ConnectionTotal() {
                   downloadHighlight ? 0.2 : 0.9,
                 ),
               }),
-            }),
-          ]}
+            })) as SxProps<Theme>
+          }
         />{' '}
         <span className="font-mono text-xs">
           {filesize(latestClashConnections.uploadTotal, { pad: true })}

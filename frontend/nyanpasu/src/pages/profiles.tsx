@@ -26,6 +26,7 @@ import { message } from '@/utils/notification'
 import { Public, Update } from '@mui/icons-material'
 import { Badge, Button, CircularProgress, IconButton } from '@mui/material'
 import Grid from '@mui/material/Grid'
+import type { SxProps, Theme } from '@mui/material/styles'
 import {
   RemoteProfileOptionsBuilder,
   useProfile,
@@ -262,8 +263,8 @@ function ProfilePage() {
         <div className="!fixed right-8 bottom-8">
           <FloatingButton
             className="!relative -top-15 -right-13.5 flex size-11 !min-w-fit"
-            sx={[
-              (theme) => ({
+            sx={
+              ((theme) => ({
                 backgroundColor: theme.vars.palette.grey[200],
                 boxShadow: 4,
                 '&:hover': {
@@ -275,8 +276,8 @@ function ProfilePage() {
                     backgroundColor: theme.vars.palette.grey[700],
                   },
                 }),
-              }),
-            ]}
+              })) as SxProps<Theme>
+            }
             onClick={handleGlobalProfileUpdate}
           >
             {globalUpdatePending ? <CircularProgress size={22} /> : <Update />}

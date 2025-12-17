@@ -72,8 +72,6 @@ export default function App() {
 
   return (
     <NyanpasuProvider>
-      <TanStackRouterDevtools />
-
       <ExperimentalThemeProvider>
         <StyledEngineProvider injectFirst>
           <ThemeModeProvider>
@@ -83,6 +81,8 @@ export default function App() {
           </ThemeModeProvider>
         </StyledEngineProvider>
       </ExperimentalThemeProvider>
+
+      <TanStackRouterDevtools />
     </NyanpasuProvider>
   )
 }

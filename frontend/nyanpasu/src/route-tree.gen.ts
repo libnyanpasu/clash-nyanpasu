@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './pages/__root'
 import { Route as legacyRouteRouteImport } from './pages/(legacy)/route'
+import { Route as experimentalRouteRouteImport } from './pages/(experimental)/route'
 import { Route as IndexRouteImport } from './pages/index'
 import { Route as legacySettingsRouteImport } from './pages/(legacy)/settings'
 import { Route as legacyRulesRouteImport } from './pages/(legacy)/rules'
@@ -19,9 +20,21 @@ import { Route as legacyProfilesRouteImport } from './pages/(legacy)/profiles'
 import { Route as legacyLogsRouteImport } from './pages/(legacy)/logs'
 import { Route as legacyDashboardRouteImport } from './pages/(legacy)/dashboard'
 import { Route as legacyConnectionsRouteImport } from './pages/(legacy)/connections'
+import { Route as experimentalExperimentalSettingsRouteRouteImport } from './pages/(experimental)/experimental/settings/route'
+import { Route as experimentalExperimentalRulesRouteRouteImport } from './pages/(experimental)/experimental/rules/route'
+import { Route as experimentalExperimentalProxiesRouteRouteImport } from './pages/(experimental)/experimental/proxies/route'
+import { Route as experimentalExperimentalProvidersRouteRouteImport } from './pages/(experimental)/experimental/providers/route'
+import { Route as experimentalExperimentalProfilesRouteRouteImport } from './pages/(experimental)/experimental/profiles/route'
+import { Route as experimentalExperimentalLogsRouteRouteImport } from './pages/(experimental)/experimental/logs/route'
+import { Route as experimentalExperimentalDashboardRouteRouteImport } from './pages/(experimental)/experimental/dashboard/route'
+import { Route as experimentalExperimentalConnectionsRouteRouteImport } from './pages/(experimental)/experimental/connections/route'
 
 const legacyRouteRoute = legacyRouteRouteImport.update({
   id: '/(legacy)',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const experimentalRouteRoute = experimentalRouteRouteImport.update({
+  id: '/(experimental)',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -69,6 +82,54 @@ const legacyConnectionsRoute = legacyConnectionsRouteImport.update({
   path: '/connections',
   getParentRoute: () => legacyRouteRoute,
 } as any)
+const experimentalExperimentalSettingsRouteRoute =
+  experimentalExperimentalSettingsRouteRouteImport.update({
+    id: '/experimental/settings',
+    path: '/experimental/settings',
+    getParentRoute: () => experimentalRouteRoute,
+  } as any)
+const experimentalExperimentalRulesRouteRoute =
+  experimentalExperimentalRulesRouteRouteImport.update({
+    id: '/experimental/rules',
+    path: '/experimental/rules',
+    getParentRoute: () => experimentalRouteRoute,
+  } as any)
+const experimentalExperimentalProxiesRouteRoute =
+  experimentalExperimentalProxiesRouteRouteImport.update({
+    id: '/experimental/proxies',
+    path: '/experimental/proxies',
+    getParentRoute: () => experimentalRouteRoute,
+  } as any)
+const experimentalExperimentalProvidersRouteRoute =
+  experimentalExperimentalProvidersRouteRouteImport.update({
+    id: '/experimental/providers',
+    path: '/experimental/providers',
+    getParentRoute: () => experimentalRouteRoute,
+  } as any)
+const experimentalExperimentalProfilesRouteRoute =
+  experimentalExperimentalProfilesRouteRouteImport.update({
+    id: '/experimental/profiles',
+    path: '/experimental/profiles',
+    getParentRoute: () => experimentalRouteRoute,
+  } as any)
+const experimentalExperimentalLogsRouteRoute =
+  experimentalExperimentalLogsRouteRouteImport.update({
+    id: '/experimental/logs',
+    path: '/experimental/logs',
+    getParentRoute: () => experimentalRouteRoute,
+  } as any)
+const experimentalExperimentalDashboardRouteRoute =
+  experimentalExperimentalDashboardRouteRouteImport.update({
+    id: '/experimental/dashboard',
+    path: '/experimental/dashboard',
+    getParentRoute: () => experimentalRouteRoute,
+  } as any)
+const experimentalExperimentalConnectionsRouteRoute =
+  experimentalExperimentalConnectionsRouteRouteImport.update({
+    id: '/experimental/connections',
+    path: '/experimental/connections',
+    getParentRoute: () => experimentalRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -80,6 +141,14 @@ export interface FileRoutesByFullPath {
   '/proxies': typeof legacyProxiesRoute
   '/rules': typeof legacyRulesRoute
   '/settings': typeof legacySettingsRoute
+  '/experimental/connections': typeof experimentalExperimentalConnectionsRouteRoute
+  '/experimental/dashboard': typeof experimentalExperimentalDashboardRouteRoute
+  '/experimental/logs': typeof experimentalExperimentalLogsRouteRoute
+  '/experimental/profiles': typeof experimentalExperimentalProfilesRouteRoute
+  '/experimental/providers': typeof experimentalExperimentalProvidersRouteRoute
+  '/experimental/proxies': typeof experimentalExperimentalProxiesRouteRoute
+  '/experimental/rules': typeof experimentalExperimentalRulesRouteRoute
+  '/experimental/settings': typeof experimentalExperimentalSettingsRouteRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -91,10 +160,19 @@ export interface FileRoutesByTo {
   '/proxies': typeof legacyProxiesRoute
   '/rules': typeof legacyRulesRoute
   '/settings': typeof legacySettingsRoute
+  '/experimental/connections': typeof experimentalExperimentalConnectionsRouteRoute
+  '/experimental/dashboard': typeof experimentalExperimentalDashboardRouteRoute
+  '/experimental/logs': typeof experimentalExperimentalLogsRouteRoute
+  '/experimental/profiles': typeof experimentalExperimentalProfilesRouteRoute
+  '/experimental/providers': typeof experimentalExperimentalProvidersRouteRoute
+  '/experimental/proxies': typeof experimentalExperimentalProxiesRouteRoute
+  '/experimental/rules': typeof experimentalExperimentalRulesRouteRoute
+  '/experimental/settings': typeof experimentalExperimentalSettingsRouteRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/(experimental)': typeof experimentalRouteRouteWithChildren
   '/(legacy)': typeof legacyRouteRouteWithChildren
   '/(legacy)/connections': typeof legacyConnectionsRoute
   '/(legacy)/dashboard': typeof legacyDashboardRoute
@@ -104,6 +182,14 @@ export interface FileRoutesById {
   '/(legacy)/proxies': typeof legacyProxiesRoute
   '/(legacy)/rules': typeof legacyRulesRoute
   '/(legacy)/settings': typeof legacySettingsRoute
+  '/(experimental)/experimental/connections': typeof experimentalExperimentalConnectionsRouteRoute
+  '/(experimental)/experimental/dashboard': typeof experimentalExperimentalDashboardRouteRoute
+  '/(experimental)/experimental/logs': typeof experimentalExperimentalLogsRouteRoute
+  '/(experimental)/experimental/profiles': typeof experimentalExperimentalProfilesRouteRoute
+  '/(experimental)/experimental/providers': typeof experimentalExperimentalProvidersRouteRoute
+  '/(experimental)/experimental/proxies': typeof experimentalExperimentalProxiesRouteRoute
+  '/(experimental)/experimental/rules': typeof experimentalExperimentalRulesRouteRoute
+  '/(experimental)/experimental/settings': typeof experimentalExperimentalSettingsRouteRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -117,6 +203,14 @@ export interface FileRouteTypes {
     | '/proxies'
     | '/rules'
     | '/settings'
+    | '/experimental/connections'
+    | '/experimental/dashboard'
+    | '/experimental/logs'
+    | '/experimental/profiles'
+    | '/experimental/providers'
+    | '/experimental/proxies'
+    | '/experimental/rules'
+    | '/experimental/settings'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -128,9 +222,18 @@ export interface FileRouteTypes {
     | '/proxies'
     | '/rules'
     | '/settings'
+    | '/experimental/connections'
+    | '/experimental/dashboard'
+    | '/experimental/logs'
+    | '/experimental/profiles'
+    | '/experimental/providers'
+    | '/experimental/proxies'
+    | '/experimental/rules'
+    | '/experimental/settings'
   id:
     | '__root__'
     | '/'
+    | '/(experimental)'
     | '/(legacy)'
     | '/(legacy)/connections'
     | '/(legacy)/dashboard'
@@ -140,10 +243,19 @@ export interface FileRouteTypes {
     | '/(legacy)/proxies'
     | '/(legacy)/rules'
     | '/(legacy)/settings'
+    | '/(experimental)/experimental/connections'
+    | '/(experimental)/experimental/dashboard'
+    | '/(experimental)/experimental/logs'
+    | '/(experimental)/experimental/profiles'
+    | '/(experimental)/experimental/providers'
+    | '/(experimental)/experimental/proxies'
+    | '/(experimental)/experimental/rules'
+    | '/(experimental)/experimental/settings'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  experimentalRouteRoute: typeof experimentalRouteRouteWithChildren
   legacyRouteRoute: typeof legacyRouteRouteWithChildren
 }
 
@@ -154,6 +266,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: ''
       preLoaderRoute: typeof legacyRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/(experimental)': {
+      id: '/(experimental)'
+      path: ''
+      fullPath: ''
+      preLoaderRoute: typeof experimentalRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -219,8 +338,97 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof legacyConnectionsRouteImport
       parentRoute: typeof legacyRouteRoute
     }
+    '/(experimental)/experimental/settings': {
+      id: '/(experimental)/experimental/settings'
+      path: '/experimental/settings'
+      fullPath: '/experimental/settings'
+      preLoaderRoute: typeof experimentalExperimentalSettingsRouteRouteImport
+      parentRoute: typeof experimentalRouteRoute
+    }
+    '/(experimental)/experimental/rules': {
+      id: '/(experimental)/experimental/rules'
+      path: '/experimental/rules'
+      fullPath: '/experimental/rules'
+      preLoaderRoute: typeof experimentalExperimentalRulesRouteRouteImport
+      parentRoute: typeof experimentalRouteRoute
+    }
+    '/(experimental)/experimental/proxies': {
+      id: '/(experimental)/experimental/proxies'
+      path: '/experimental/proxies'
+      fullPath: '/experimental/proxies'
+      preLoaderRoute: typeof experimentalExperimentalProxiesRouteRouteImport
+      parentRoute: typeof experimentalRouteRoute
+    }
+    '/(experimental)/experimental/providers': {
+      id: '/(experimental)/experimental/providers'
+      path: '/experimental/providers'
+      fullPath: '/experimental/providers'
+      preLoaderRoute: typeof experimentalExperimentalProvidersRouteRouteImport
+      parentRoute: typeof experimentalRouteRoute
+    }
+    '/(experimental)/experimental/profiles': {
+      id: '/(experimental)/experimental/profiles'
+      path: '/experimental/profiles'
+      fullPath: '/experimental/profiles'
+      preLoaderRoute: typeof experimentalExperimentalProfilesRouteRouteImport
+      parentRoute: typeof experimentalRouteRoute
+    }
+    '/(experimental)/experimental/logs': {
+      id: '/(experimental)/experimental/logs'
+      path: '/experimental/logs'
+      fullPath: '/experimental/logs'
+      preLoaderRoute: typeof experimentalExperimentalLogsRouteRouteImport
+      parentRoute: typeof experimentalRouteRoute
+    }
+    '/(experimental)/experimental/dashboard': {
+      id: '/(experimental)/experimental/dashboard'
+      path: '/experimental/dashboard'
+      fullPath: '/experimental/dashboard'
+      preLoaderRoute: typeof experimentalExperimentalDashboardRouteRouteImport
+      parentRoute: typeof experimentalRouteRoute
+    }
+    '/(experimental)/experimental/connections': {
+      id: '/(experimental)/experimental/connections'
+      path: '/experimental/connections'
+      fullPath: '/experimental/connections'
+      preLoaderRoute: typeof experimentalExperimentalConnectionsRouteRouteImport
+      parentRoute: typeof experimentalRouteRoute
+    }
   }
 }
+
+interface experimentalRouteRouteChildren {
+  experimentalExperimentalConnectionsRouteRoute: typeof experimentalExperimentalConnectionsRouteRoute
+  experimentalExperimentalDashboardRouteRoute: typeof experimentalExperimentalDashboardRouteRoute
+  experimentalExperimentalLogsRouteRoute: typeof experimentalExperimentalLogsRouteRoute
+  experimentalExperimentalProfilesRouteRoute: typeof experimentalExperimentalProfilesRouteRoute
+  experimentalExperimentalProvidersRouteRoute: typeof experimentalExperimentalProvidersRouteRoute
+  experimentalExperimentalProxiesRouteRoute: typeof experimentalExperimentalProxiesRouteRoute
+  experimentalExperimentalRulesRouteRoute: typeof experimentalExperimentalRulesRouteRoute
+  experimentalExperimentalSettingsRouteRoute: typeof experimentalExperimentalSettingsRouteRoute
+}
+
+const experimentalRouteRouteChildren: experimentalRouteRouteChildren = {
+  experimentalExperimentalConnectionsRouteRoute:
+    experimentalExperimentalConnectionsRouteRoute,
+  experimentalExperimentalDashboardRouteRoute:
+    experimentalExperimentalDashboardRouteRoute,
+  experimentalExperimentalLogsRouteRoute:
+    experimentalExperimentalLogsRouteRoute,
+  experimentalExperimentalProfilesRouteRoute:
+    experimentalExperimentalProfilesRouteRoute,
+  experimentalExperimentalProvidersRouteRoute:
+    experimentalExperimentalProvidersRouteRoute,
+  experimentalExperimentalProxiesRouteRoute:
+    experimentalExperimentalProxiesRouteRoute,
+  experimentalExperimentalRulesRouteRoute:
+    experimentalExperimentalRulesRouteRoute,
+  experimentalExperimentalSettingsRouteRoute:
+    experimentalExperimentalSettingsRouteRoute,
+}
+
+const experimentalRouteRouteWithChildren =
+  experimentalRouteRoute._addFileChildren(experimentalRouteRouteChildren)
 
 interface legacyRouteRouteChildren {
   legacyConnectionsRoute: typeof legacyConnectionsRoute
@@ -250,6 +458,7 @@ const legacyRouteRouteWithChildren = legacyRouteRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  experimentalRouteRoute: experimentalRouteRouteWithChildren,
   legacyRouteRoute: legacyRouteRouteWithChildren,
 }
 export const routeTree = rootRouteImport

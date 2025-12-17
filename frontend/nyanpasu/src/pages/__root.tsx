@@ -18,6 +18,7 @@ import 'dayjs/locale/zh-tw'
 import customParseFormat from 'dayjs/plugin/customParseFormat'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { lazy } from 'react'
+import { ExperimentalThemeProvider } from '@/components/providers/theme-provider'
 import { NyanpasuProvider } from '@nyanpasu/interface'
 import styles from './-__root.module.scss'
 
@@ -73,13 +74,15 @@ export default function App() {
     <NyanpasuProvider>
       <TanStackRouterDevtools />
 
-      <StyledEngineProvider injectFirst>
-        <ThemeModeProvider>
-          <CssBaseline />
+      <ExperimentalThemeProvider>
+        <StyledEngineProvider injectFirst>
+          <ThemeModeProvider>
+            <CssBaseline />
 
-          <Outlet />
-        </ThemeModeProvider>
-      </StyledEngineProvider>
+            <Outlet />
+          </ThemeModeProvider>
+        </StyledEngineProvider>
+      </ExperimentalThemeProvider>
     </NyanpasuProvider>
   )
 }

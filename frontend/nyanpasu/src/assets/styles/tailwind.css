@@ -24,6 +24,37 @@
   --custom-text-shadow-xl:
     1px 1px 3px rgb(0 0 0 / 29%), 2px 4px 7px rgb(73 64 125 / 35%);
   --custom-text-shadow-none: none;
+
+  /* Material Design 3 Color System */
+  --color-primary: var(--color-md-primary);
+  --color-on-primary: var(--color-md-on-primary);
+  --color-primary-container: var(--color-md-primary-container);
+  --color-on-primary-container: var(--color-md-on-primary-container);
+  --color-secondary: var(--color-md-secondary);
+  --color-on-secondary: var(--color-md-on-secondary);
+  --color-secondary-container: var(--color-md-secondary-container);
+  --color-on-secondary-container: var(--color-md-on-secondary-container);
+  --color-tertiary: var(--color-md-tertiary);
+  --color-on-tertiary: var(--color-md-on-tertiary);
+  --color-tertiary-container: var(--color-md-tertiary-container);
+  --color-on-tertiary-container: var(--color-md-on-tertiary-container);
+  --color-error: var(--color-md-error);
+  --color-on-error: var(--color-md-on-error);
+  --color-error-container: var(--color-md-error-container);
+  --color-on-error-container: var(--color-md-on-error-container);
+  --color-background: var(--color-md-background);
+  --color-on-background: var(--color-md-on-background);
+  --color-surface: var(--color-md-surface);
+  --color-on-surface: var(--color-md-on-surface);
+  --color-surface-variant: var(--color-md-surface-variant);
+  --color-on-surface-variant: var(--color-md-on-surface-variant);
+  --color-outline: var(--color-md-outline);
+  --color-outline-variant: var(--color-md-outline-variant);
+  --color-shadow: var(--color-md-shadow);
+  --color-scrim: var(--color-md-scrim);
+  --color-inverse-surface: var(--color-md-inverse-surface);
+  --color-inverse-on-surface: var(--color-md-inverse-on-surface);
+  --color-inverse-primary: var(--color-md-inverse-primary);
 }
 
 @utility text-shadow-* {

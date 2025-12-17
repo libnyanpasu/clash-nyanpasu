@@ -26,6 +26,7 @@
     "@tanstack/router-zod-adapter": "1.81.5",
     "@tauri-apps/api": "2.8.0",
     "@types/json-schema": "7.0.15",
+    "@uidotdev/usehooks": "^2.4.1",
     "ahooks": "3.9.6",
     "allotment": "1.20.4",
     "country-code-emoji": "2.3.0",

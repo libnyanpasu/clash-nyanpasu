@@ -55,9 +55,85 @@
   --color-inverse-surface: var(--color-md-inverse-surface);
   --color-inverse-on-surface: var(--color-md-inverse-on-surface);
   --color-inverse-primary: var(--color-md-inverse-primary);
+
+  /* Progress Spin Animation */
+  --animate-progress-spin: progress-spin 5332ms cubic-bezier(0.4, 0, 0.2, 1)
+    infinite both;
+  --animate-progress-spin-left: progress-spin-left 1333ms
+    cubic-bezier(0.4, 0, 0.2, 1) infinite both;
+  --animate-progress-spin-right: progress-spin-right 1333ms
+    cubic-bezier(0.4, 0, 0.2, 1) infinite both;
 }
 
 @utility text-shadow-* {
   /* prettier-ignore */
   text-shadow: --value(--custom-text-shadow-*);
+}
+
+@utility bg-transparent-fallback-* {
+  background-color: transparent;
+
+  --fallback-bg: --value(--color-*);
+}
+
+@keyframes progress-spin {
+  12.5% {
+    transform: rotate(135deg);
+  }
+
+  25% {
+    transform: rotate(270deg);
+  }
+
+  37.5% {
+    transform: rotate(405deg);
+  }
+
+  50% {
+    transform: rotate(540deg);
+  }
+
+  62.5% {
+    transform: rotate(675deg);
+  }
+
+  75% {
+    transform: rotate(810deg);
+  }
+
+  87.5% {
+    transform: rotate(945deg);
+  }
+
+  100% {
+    transform: rotate(1080deg);
+  }
+}
+
+@keyframes progress-spin-left {
+  0% {
+    transform: rotate(265deg);
+  }
+
+  50% {
+    transform: rotate(130deg);
+  }
+
+  100% {
+    transform: rotate(265deg);
+  }
+}
+
+@keyframes progress-spin-right {
+  0% {
+    transform: rotate(-265deg);
+  }
+
+  50% {
+    transform: rotate(-130deg);
+  }
+
+  100% {
+    transform: rotate(-265deg);
+  }
 }

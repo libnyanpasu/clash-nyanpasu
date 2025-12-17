@@ -59,3 +59,7 @@ body {
 .user-none {
   user-select: none;
 }
+
+.bg-inherit-allow-fallback {
+  background-color: var(--fallback-bg, inherit);
+}

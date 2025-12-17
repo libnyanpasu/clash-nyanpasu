@@ -92,9 +92,7 @@ const AppContent = () => {
           transition={{
             type: 'spring',
             bounce: 0.1,
-            stiffness: 30,
-            damping: 10,
-            duration: 0.25,
+            duration: 0.35,
           }}
         />
       </AnimatePresence>

@@ -40,12 +40,8 @@ export default tseslint.config(
   },
   {
     files: ['**/*.{jsx,mjsx,tsx,mtsx}'],
-    extends: [
-      // @ts-expect-error fucking plugin why export flat config with nullable types?
-      react.configs.flat.recommended,
-    ],
+    extends: [react.configs.flat.recommended],
     plugins: {
-      // @ts-expect-error react hooks not compatible with eslint types
       'react-hooks': pluginReactHooks,
       'react-compiler': pluginReactCompiler,
     },
@@ -92,7 +88,6 @@ export default tseslint.config(
     languageOptions: {
       parserOptions: {
         project: true,
-        projectService: true,
         tsconfigRootDir: import.meta.dirname,
       },
     },

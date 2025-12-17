@@ -56,7 +56,8 @@ const LazyRipple = lazy(() =>
 )
 
 export interface ButtonProps
-  extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'disabled'>,
+  extends
+    Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'disabled'>,
     ButtonVariantsProps {
   asChild?: boolean
   loading?: boolean

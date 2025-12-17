@@ -15,14 +15,12 @@ export type ClashProxiesQueryHelperFn = {
 }
 
 export interface ClashProxiesQueryProxyItem
-  extends ProxyItem,
-    ClashProxiesQueryHelperFn {
+  extends ProxyItem, ClashProxiesQueryHelperFn {
   mutateSelect: () => Promise<void>
 }
 
 export interface ClashProxiesQueryGroupItem
-  extends ProxyGroupItem,
-    ClashProxiesQueryHelperFn {
+  extends ProxyGroupItem, ClashProxiesQueryHelperFn {
   all: ClashProxiesQueryProxyItem[]
 }
 

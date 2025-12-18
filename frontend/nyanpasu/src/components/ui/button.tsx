@@ -28,7 +28,7 @@ export const buttonVariants = cva(
         raised: [
           'px-6',
           'text-primary dark:text-on-surface',
-          'shadow-sm hover:shadow-lg focus:shadow-xl',
+          'shadow-xs hover:shadow-sm focus:shadow-sm',
           'bg-surface',
           'hover:bg-surface-variant',
         ],
@@ -48,10 +48,10 @@ export const buttonVariants = cva(
         fab: [
           'px-4 h-14',
           'rounded-2xl',
-          'shadow-xl',
+          'shadow-sm',
           'text-on-primary-container dark:text-on-primary-container',
           'bg-primary-container dark:bg-on-primary',
-          'hover:shadow-2xl',
+          'hover:shadow-md',
           'hover:brightness-95 dark:hover:brightness-105',
         ],
       },

@@ -46,7 +46,10 @@ export function CircleSVG({ className, ...props }: ComponentProps<'svg'>) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      className={cn('absolute h-full w-full stroke-current', className)}
+      className={cn(
+        'absolute top-0 left-0 h-full w-full stroke-current',
+        className,
+      )}
       focusable="false"
       viewBox={`0 0 ${BASE_SIZE} ${BASE_SIZE}`}
       {...props}

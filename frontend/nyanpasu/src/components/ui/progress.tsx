@@ -20,7 +20,7 @@ const HalfCircleContainer = ({
   return (
     <div
       className={cn(
-        'relative inline-flex h-full w-1/2 overflow-hidden',
+        'relative h-full w-1/2 shrink-0 overflow-hidden',
         className,
       )}
       {...props}
@@ -46,11 +46,11 @@ export function CircularProgress({
     >
       {indeterminate ? (
         <div
-          className="absolute h-full w-full animate-spin"
+          className="absolute inset-0 animate-spin"
           data-slot="circular-progress-indeterminate"
         >
           <div
-            className="animate-progress-spin absolute h-full w-full"
+            className="animate-progress-spin absolute inset-0 flex"
             data-slot="circular-progress-indeterminate-inner"
           >
             {/* left */}

@@ -222,7 +222,7 @@ importers:
         specifier: 11.14.1
         version: 11.14.1(@emotion/react@11.14.0(@types/react@19.2.7)(react@19.2.0))(@types/react@19.2.7)(react@19.2.0)
       '@inlang/paraglide-js':
-        specifier: ^2.7.0
+        specifier: 2.7.0
         version: 2.7.0(babel-plugin-macros@3.1.0)
       '@juggle/resize-observer':
         specifier: 3.4.0

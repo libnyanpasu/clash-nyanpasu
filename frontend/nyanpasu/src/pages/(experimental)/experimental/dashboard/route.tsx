@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/button'
+import { AppContentScrollArea } from '@/components/ui/scroll-area'
 import { createFileRoute } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/(experimental)/experimental/dashboard')({
@@ -7,10 +8,12 @@ export const Route = createFileRoute('/(experimental)/experimental/dashboard')({
 
 function RouteComponent() {
   return (
-    <div className="h-dvh">
-      <p>Hello "/(experimental)/experimental/dashboard"!</p>
+    <AppContentScrollArea>
+      <div className="h-dvh">
+        <p>Hello "/(experimental)/experimental/dashboard"!</p>
 
-      <Button>Click me</Button>
-    </div>
+        <Button>Click me</Button>
+      </div>
+    </AppContentScrollArea>
   )
 }

@@ -69,3 +69,26 @@ export function ScrollBar({
     </ScrollAreaPrimitive.ScrollAreaScrollbar>
   )
 }
+
+export function AppContentScrollArea({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof ScrollAreaPrimitive.Root>) {
+  return (
+    <ScrollArea
+      className={cn(
+        'flex flex-1 flex-col',
+        'max-h-[calc(100vh-40px-64px)]',
+        'min-h-[calc(100vh-40px-64px)]',
+        'sm:max-h-[calc(100vh-40px-48px)]',
+        'sm:min-h-[calc(100vh-40px-48px)]',
+        className,
+      )}
+      data-slot="app-content-scroll-area"
+      {...props}
+    >
+      {children}
+    </ScrollArea>
+  )
+}

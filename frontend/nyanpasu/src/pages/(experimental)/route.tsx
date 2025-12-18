@@ -1,7 +1,6 @@
 import { AnimatePresence, motion, useIsPresent } from 'framer-motion'
 import { cloneDeep } from 'lodash-es'
 import { ComponentProps, useContext, useRef } from 'react'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@nyanpasu/ui'
 import {
   createFileRoute,
@@ -57,46 +56,42 @@ const AppContent = () => {
   const nextMatch = matches[nextMatchIndex]
 
   return (
-    <ScrollArea
-      className={cn(
-        'flex flex-1 flex-col',
-        'max-h-[calc(100vh-40px-64px)]',
-        'min-h-[calc(100vh-40px-64px)]',
-        'sm:max-h-[calc(100vh-40px-48px)]',
-        'sm:min-h-[calc(100vh-40px-48px)]',
-      )}
-      data-slot="app-content-scroll-area"
-    >
-      <AnimatePresence mode="popLayout" initial={false}>
-        <AnimatedOutlet
-          key={nextMatch.id}
-          layout
-          layoutId={nextMatch.id}
-          initial="initial"
-          animate="visible"
-          exit="hidden"
-          variants={{
-            initial: {
-              translateX: '30%',
-              opacity: 0,
-            },
-            visible: {
-              translateX: '0%',
-              opacity: 1,
-            },
-            hidden: {
-              translateX: '-30%',
-              opacity: 0,
-            },
-          }}
-          transition={{
-            type: 'spring',
-            bounce: 0.1,
-            duration: 0.35,
-          }}
-        />
-      </AnimatePresence>
-    </ScrollArea>
+    <AnimatePresence mode="popLayout" initial={false}>
+      <AnimatedOutlet
+        className={cn(
+          'h-[calc(100vh-40px-64px)]',
+          'sm:h-[calc(100vh-40px-48px)]',
+          'overflow-hidden',
+          'bg-white dark:bg-black',
+        )}
+        data-slot="app-content"
+        key={nextMatch.id}
+        layout
+        layoutId={nextMatch.id}
+        initial="initial"
+        animate="visible"
+        exit="hidden"
+        variants={{
+          initial: {
+            translateX: '30%',
+            opacity: 0,
+          },
+          visible: {
+            translateX: '0%',
+            opacity: 1,
+          },
+          hidden: {
+            translateX: '-30%',
+            opacity: 0,
+          },
+        }}
+        transition={{
+          type: 'spring',
+          bounce: 0.1,
+          duration: 0.35,
+        }}
+      />
+    </AnimatePresence>
   )
 }
 

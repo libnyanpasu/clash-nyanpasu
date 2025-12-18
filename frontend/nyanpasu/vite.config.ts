@@ -8,6 +8,7 @@ import { createHtmlPlugin } from 'vite-plugin-html'
 import sassDts from 'vite-plugin-sass-dts'
 import svgr from 'vite-plugin-svgr'
 import tsconfigPaths from 'vite-tsconfig-paths'
+import { paraglideVitePlugin } from '@inlang/paraglide-js'
 // import tailwindPlugin from '@tailwindcss/vite'
 // import react from "@vitejs/plugin-react";
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
@@ -111,6 +112,10 @@ export default defineConfig(({ command, mode }) => {
         compiler: 'jsx', // or 'solid'
       }),
       sassDts({ esmExport: true }),
+      paraglideVitePlugin({
+        project: './project.inlang',
+        outdir: './src/paraglide',
+      }),
     ],
     resolve: {
       alias: {

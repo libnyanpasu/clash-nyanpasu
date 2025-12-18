@@ -8,47 +8,48 @@ import SettingsRounded from '~icons/material-symbols/settings-rounded'
 import TerminalRounded from '~icons/material-symbols/terminal-rounded'
 import { ComponentProps } from 'react'
 import { Button, ButtonProps } from '@/components/ui/button'
+import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/ui'
 import { Link, useLocation } from '@tanstack/react-router'
 
 const ROUTES = [
   {
-    label: 'Dashboard',
+    label: m.navbar_label_dashboard(),
     href: '/experimental/dashboard',
     icon: DashboardRounded,
   },
   {
-    label: 'Proxies',
+    label: m.navbar_label_proxies(),
     href: '/experimental/proxies',
     icon: Public,
   },
   {
-    label: 'Profiles',
+    label: m.navbar_label_profiles(),
     href: '/experimental/profiles',
     icon: GridViewOutlineRounded,
   },
   {
-    label: 'Connections',
+    label: m.navbar_label_connections(),
     href: '/experimental/connections',
     icon: SettingsEthernetRounded,
   },
   {
-    label: 'Rules',
+    label: m.navbar_label_rules(),
     href: '/experimental/rules',
     icon: DesignServicesRounded,
   },
   {
-    label: 'Logs',
+    label: m.navbar_label_logs(),
     href: '/experimental/logs',
     icon: TerminalRounded,
   },
   {
-    label: 'Settings',
+    label: m.navbar_label_settings(),
     href: '/experimental/settings',
     icon: SettingsRounded,
   },
   {
-    label: 'Providers',
+    label: m.navbar_label_providers(),
     href: '/experimental/providers',
     icon: Apps,
   },

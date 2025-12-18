@@ -1,0 +1,12 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "language": "简体中文",
+  "navbar_label_dashboard": "概览",
+  "navbar_label_proxies": "代理",
+  "navbar_label_profiles": "配置",
+  "navbar_label_connections": "连接",
+  "navbar_label_logs": "日志",
+  "navbar_label_rules": "规则",
+  "navbar_label_settings": "设置",
+  "navbar_label_providers": "资源"
+}

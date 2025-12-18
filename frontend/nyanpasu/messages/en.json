@@ -1,0 +1,12 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "language": "English",
+  "navbar_label_dashboard": "Dashboard",
+  "navbar_label_proxies": "Proxies",
+  "navbar_label_profiles": "Profiles",
+  "navbar_label_connections": "Connections",
+  "navbar_label_logs": "Logs",
+  "navbar_label_rules": "Rules",
+  "navbar_label_settings": "Settings",
+  "navbar_label_providers": "Providers"
+}

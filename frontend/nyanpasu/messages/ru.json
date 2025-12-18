@@ -1,0 +1,12 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "language": "Русский",
+  "navbar_label_dashboard": "Панель управления",
+  "navbar_label_proxies": "Прокси",
+  "navbar_label_profiles": "Профили",
+  "navbar_label_connections": "Соединения",
+  "navbar_label_logs": "Журналы",
+  "navbar_label_rules": "Правила",
+  "navbar_label_settings": "Настройки",
+  "navbar_label_providers": "Поставщики"
+}

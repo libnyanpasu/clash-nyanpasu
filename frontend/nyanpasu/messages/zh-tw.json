@@ -1,0 +1,12 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "language": "繁體中文",
+  "navbar_label_dashboard": "概覽",
+  "navbar_label_proxies": "代理組",
+  "navbar_label_profiles": "配置",
+  "navbar_label_connections": "連接",
+  "navbar_label_logs": "日誌",
+  "navbar_label_rules": "規則",
+  "navbar_label_settings": "設置",
+  "navbar_label_providers": "資源"
+}

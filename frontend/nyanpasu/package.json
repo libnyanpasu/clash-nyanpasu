@@ -14,6 +14,7 @@
     "@dnd-kit/sortable": "10.0.0",
     "@dnd-kit/utilities": "3.2.2",
     "@emotion/styled": "11.14.1",
+    "@inlang/paraglide-js": "^2.7.0",
     "@juggle/resize-observer": "3.4.0",
     "@material/material-color-utilities": "0.3.0",
     "@mui/icons-material": "7.3.5",

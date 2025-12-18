@@ -8,5 +8,14 @@
   "navbar_label_logs": "Журналы",
   "navbar_label_rules": "Правила",
   "navbar_label_settings": "Настройки",
-  "navbar_label_providers": "Поставщики"
+  "navbar_label_providers": "Поставщики",
+  "settings_system_proxy_title": "Системный прокси",
+  "settings_system_proxy_system_proxy_label": "Системный прокси",
+  "settings_system_proxy_tun_mode_label": "TUN режим",
+  "settings_system_proxy_proxy_guard_label": "Охрана прокси",
+  "settings_system_proxy_proxy_guard_interval_label": "Интервал охраны прокси",
+  "settings_system_proxy_proxy_bypass_label": "Обход прокси",
+  "settings_system_proxy_current_system_proxy_label": "Текущий системный прокси",
+  "settings_user_interface_title": "Интерфейс пользователя",
+  "unit_seconds": "секунды"
 }

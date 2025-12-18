@@ -8,5 +8,14 @@
   "navbar_label_logs": "日誌",
   "navbar_label_rules": "規則",
   "navbar_label_settings": "設置",
-  "navbar_label_providers": "資源"
+  "navbar_label_providers": "資源",
+  "settings_system_proxy_title": "系統設置",
+  "settings_system_proxy_system_proxy_label": "系統代理",
+  "settings_system_proxy_tun_mode_label": "TUN 模式",
+  "settings_system_proxy_proxy_guard_label": "系統代理守衛",
+  "settings_system_proxy_proxy_guard_interval_label": "系統代理守衛間隔",
+  "settings_system_proxy_proxy_bypass_label": "系統代理繞過",
+  "settings_system_proxy_current_system_proxy_label": "當前系統代理",
+  "settings_user_interface_title": "使用者介面",
+  "unit_seconds": "秒"
 }

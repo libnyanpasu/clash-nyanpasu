@@ -86,7 +86,7 @@ export default function Navbar({ className, ...props }: ComponentProps<'div'>) {
       {ROUTES.map((route) => (
         <NavbarButton
           key={route.href}
-          data-active={location.pathname === route.href}
+          data-active={location.pathname.startsWith(route.href)}
           asChild
         >
           <Link

@@ -8,5 +8,14 @@
   "navbar_label_logs": "Logs",
   "navbar_label_rules": "Rules",
   "navbar_label_settings": "Settings",
-  "navbar_label_providers": "Providers"
+  "navbar_label_providers": "Providers",
+  "settings_system_proxy_title": "System Settings",
+  "settings_system_proxy_system_proxy_label": "System Proxy",
+  "settings_system_proxy_tun_mode_label": "TUN Mode",
+  "settings_system_proxy_proxy_guard_label": "System Proxy Guard",
+  "settings_system_proxy_proxy_guard_interval_label": "System Proxy Guard Interval",
+  "settings_system_proxy_proxy_bypass_label": "System Proxy Bypass",
+  "settings_system_proxy_current_system_proxy_label": "Current System Proxy",
+  "settings_user_interface_title": "User Interface",
+  "unit_seconds": "s"
 }

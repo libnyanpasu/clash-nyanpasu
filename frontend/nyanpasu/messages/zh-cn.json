@@ -8,5 +8,14 @@
   "navbar_label_logs": "日志",
   "navbar_label_rules": "规则",
   "navbar_label_settings": "设置",
-  "navbar_label_providers": "资源"
+  "navbar_label_providers": "资源",
+  "settings_system_proxy_title": "系统设置",
+  "settings_system_proxy_system_proxy_label": "系统代理",
+  "settings_system_proxy_tun_mode_label": "TUN 模式",
+  "settings_system_proxy_proxy_guard_label": "系统代理守卫",
+  "settings_system_proxy_proxy_guard_interval_label": "系统代理守卫间隔",
+  "settings_system_proxy_proxy_bypass_label": "系统代理绕过",
+  "settings_system_proxy_current_system_proxy_label": "当前系统代理",
+  "settings_user_interface_title": "用户界面",
+  "unit_seconds": "秒"
 }

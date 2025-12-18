@@ -50,12 +50,14 @@ export function AnimatedOutletPreset(props: ComponentProps<typeof motion.div>) {
   const nextMatchIndex = matches.findIndex((d) => d.id === match.id) + 1
   const nextMatch = matches[nextMatchIndex]
 
+  const id = nextMatch ? nextMatch.id : ''
+
   return (
     <AnimatePresence mode="popLayout" initial={false}>
       <AnimatedOutlet
-        key={nextMatch.id}
+        key={id}
         layout
-        layoutId={nextMatch.id}
+        layoutId={id}
         initial="initial"
         animate="visible"
         exit="hidden"

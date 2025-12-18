@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { useRef, useState } from 'react'
 import { cn } from '@nyanpasu/ui'
 import * as ScrollAreaPrimitive from '@radix-ui/react-scroll-area'
 
@@ -30,13 +31,54 @@ export function ScrollArea({
   children,
   ...props
 }: React.ComponentProps<typeof ScrollAreaPrimitive.Root>) {
+  const [isTop, setIsTop] = useState(true)
+
+  const [scrollDirection, setScrollDirection] = useState<
+    'up' | 'down' | 'left' | 'right' | 'none'
+  >('none')
+
+  const lastScrollTop = useRef(0)
+  const lastScrollLeft = useRef(0)
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget as HTMLElement
+    const { scrollTop, scrollLeft } = target
+
+    setIsTop(scrollTop === 0)
+
+    const deltaY = scrollTop - lastScrollTop.current
+    const deltaX = scrollLeft - lastScrollLeft.current
+
+    // Determine primary scroll direction
+    if (Math.abs(deltaY) > Math.abs(deltaX)) {
+      if (deltaY > 0) {
+        setScrollDirection('down')
+      } else if (deltaY < 0) {
+        setScrollDirection('up')
+      }
+    } else if (Math.abs(deltaX) > Math.abs(deltaY)) {
+      if (deltaX > 0) {
+        setScrollDirection('right')
+      } else if (deltaX < 0) {
+        setScrollDirection('left')
+      }
+    }
+
+    lastScrollTop.current = scrollTop
+    lastScrollLeft.current = scrollLeft
+  }
+
   return (
     <Root
       data-slot="scroll-area"
+      type="scroll"
+      scrollHideDelay={600}
       className={cn('relative', className)}
+      data-top={String(isTop)}
+      data-scroll-direction={scrollDirection}
       {...props}
     >
-      <Viewport>{children}</Viewport>
+      <Viewport onScroll={handleScroll}>{children}</Viewport>
       <ScrollBar />
       <Corner />
     </Root>
@@ -53,7 +95,9 @@ export function ScrollBar({
       data-slot="scroll-area-scrollbar"
       orientation={orientation}
       className={cn(
-        'flex touch-none p-px transition-colors select-none',
+        'z-50 flex touch-none p-px select-none',
+        'transition-opacity duration-300 ease-out',
+        'data-[state=hidden]:opacity-0 data-[state=visible]:opacity-100',
         orientation === 'vertical' &&
           'h-full w-2.5 border-l border-l-transparent py-1',
         orientation === 'horizontal' &&

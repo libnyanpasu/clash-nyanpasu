@@ -1,5 +1,5 @@
 import { ComponentProps } from 'react'
-import LogoSvg from '@/assets/image/logo.svg?react'
+import AnimatedLogo from '@/components/logo/animated-logo'
 import { isMacOS } from '@/consts'
 import { cn } from '@nyanpasu/ui'
 import HeaderMenu from './header-menu'
@@ -14,13 +14,7 @@ const Title = () => {
       data-slot="app-header-logo-container"
       data-tauri-drag-region
     >
-      <div
-        className="size-5"
-        data-slot="app-header-logo"
-        data-tauri-drag-region
-      >
-        <LogoSvg className="h-full w-full" data-tauri-drag-region />
-      </div>
+      <AnimatedLogo className="size-5" />
 
       <div
         className="text-on-surface text-base font-bold text-nowrap"

@@ -76,6 +76,24 @@
   --fallback-bg: --value(--color-*);
 }
 
+@layer components {
+  svg.logo-colorized #element {
+    fill: var(--color-primary);
+  }
+
+  svg.logo-colorized #bg {
+    fill: var(--color-surface);
+  }
+
+  .dark svg.logo-colorized #element {
+    fill: var(--color-on-primary);
+  }
+
+  .dark svg.logo-colorized #bg {
+    fill: var(--color-on-surface);
+  }
+}
+
 @keyframes progress-spin {
   12.5% {
     transform: rotate(135deg);

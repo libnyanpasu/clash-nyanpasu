@@ -58,7 +58,7 @@ const NavbarButton = ({ className, ...props }: ButtonProps) => {
   return (
     <Button
       className={cn(
-        'hover:bg-primary-container dark:hover:bg-primary-container h-8 min-w-0 px-3',
+        'hover:bg-primary-container dark:hover:bg-primary-container min-w-0',
         'dark:data-[active=true]:bg-primary-container! data-[active=true]:bg-inverse-primary!',
         className,
       )}
@@ -73,8 +73,10 @@ export default function Navbar({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
       className={cn(
-        'dark:bg-on-primary bg-primary-container flex items-center gap-1 px-3',
+        'dark:bg-on-primary bg-primary-container flex items-center px-3',
         'h-16 sm:h-12',
+        'justify-between sm:justify-start',
+        'gap-2 lg:gap-1',
         className,
       )}
       data-slot="app-navbar"
@@ -87,12 +89,20 @@ export default function Navbar({ className, ...props }: ComponentProps<'div'>) {
           asChild
         >
           <Link
-            className="flex items-center justify-center gap-1"
+            className={cn(
+              'flex items-center justify-center gap-1',
+              'lg:w-fit lg:px-3',
+              'sm:h-8!',
+            )}
             to={route.href}
           >
-            <route.icon className="size-5" />
+            <span className="size-5" data-slot="navbar-button-icon">
+              <route.icon className="size-5" />
+            </span>
 
-            <span>{route.label}</span>
+            <span className="hidden lg:block" data-slot="navbar-button-label">
+              {route.label}
+            </span>
           </Link>
         </NavbarButton>
       ))}

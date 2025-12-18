@@ -14,7 +14,7 @@ export const buttonVariants = cva(
     'relative overflow-hidden',
     'h-10 text-sm font-medium',
     'rounded-full',
-    'transition-[background-color,color,shadow]',
+    'transition-[background-color,color,shadow,filter]',
   ],
   {
     variants: {
@@ -24,6 +24,35 @@ export const buttonVariants = cva(
           'text-primary dark:text-primary',
           'bg-transparent-fallback-surface dark:bg-transparent-fallback-on-surface',
           'hover:bg-primary-container dark:hover:bg-surface-variant',
+        ],
+        raised: [
+          'px-6',
+          'text-primary dark:text-on-surface',
+          'shadow-sm hover:shadow-lg focus:shadow-xl',
+          'bg-surface',
+          'hover:bg-surface-variant',
+        ],
+        stroked: [
+          'px-6',
+          'text-primary',
+          'border border-primary',
+          'bg-transparent-fallback-surface dark:bg-transparent-fallback-on-surface',
+          'hover:bg-primary-container dark:hover:bg-surface-variant',
+        ],
+        flat: [
+          'px-6',
+          'text-surface dark:text-on-surface',
+          'bg-primary dark:bg-primary-container',
+          'dark:hover:bg-on-primary',
+        ],
+        fab: [
+          'px-4 h-14',
+          'rounded-2xl',
+          'shadow-xl',
+          'text-on-primary-container dark:text-on-primary-container',
+          'bg-primary-container dark:bg-on-primary',
+          'hover:shadow-2xl',
+          'hover:brightness-95 dark:hover:brightness-105',
         ],
       },
       disabled: {
@@ -37,8 +66,39 @@ export const buttonVariants = cva(
     },
     compoundVariants: [
       {
+        variant: 'basic',
+        disabled: true,
+        className: 'text-zinc-900/40 hover:bg-transparent',
+      },
+      {
+        variant: 'raised',
+        disabled: true,
+        className: 'bg-gray-900/20 text-zinc-900/40 hover:bg-gray-900/20',
+      },
+      {
+        variant: 'stroked',
+        disabled: true,
+        className: 'text-zinc-900/40 hover:bg-transparent border-zinc-300',
+      },
+      {
+        variant: 'flat',
+        disabled: true,
+        className: 'bg-gray-900/20 text-gray-900/40 hover:bg-primary',
+      },
+      {
+        variant: 'fab',
+        disabled: true,
+        className:
+          'bg-gray-900/20 text-gray-900/40 hover:brightness-100 hover:shadow-container-xl',
+      },
+      {
         icon: true,
         className: 'w-10',
+      },
+      {
+        variant: 'fab',
+        icon: true,
+        className: 'w-14',
       },
     ],
     defaultVariants: {

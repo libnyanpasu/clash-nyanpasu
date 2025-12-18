@@ -101,7 +101,7 @@ export default tseslint.config(
     },
     languageOptions: {
       parserOptions: {
-        project: './tsconfig.node.json',
+        project: './frontend/nyanpasu/tsconfig.node.json',
       },
     },
   },

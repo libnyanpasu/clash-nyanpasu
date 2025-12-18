@@ -80,7 +80,7 @@ export default tseslint.config(
   {
     files: ['**/*.{ts,tsx,mtsx}'],
     extends: [...tseslint.configs.recommended],
-    ignores,
+    ignores: [...ignores, '**/vite.config.ts', '**/tailwind.config.ts'],
     rules: {
       '@typescript-eslint/no-unused-vars': 'warn',
       '@typescript-eslint/no-explicit-any': 'warn',
@@ -89,6 +89,19 @@ export default tseslint.config(
       parserOptions: {
         project: true,
         tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+  {
+    files: ['**/vite.config.ts', '**/tailwind.config.ts'],
+    extends: [...tseslint.configs.recommended],
+    rules: {
+      '@typescript-eslint/no-unused-vars': 'warn',
+      '@typescript-eslint/no-explicit-any': 'warn',
+    },
+    languageOptions: {
+      parserOptions: {
+        project: './tsconfig.node.json',
       },
     },
   },

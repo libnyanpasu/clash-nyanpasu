@@ -110,9 +110,9 @@ const MaximizeButton = () => {
       data-slot="window-control-maximize-button"
     >
       {isMaximized ? (
-        <Crop54Outline className="size-4.5" />
-      ) : (
         <FilterNoneRounded className="size-4.5 rotate-180" />
+      ) : (
+        <Crop54Outline className="size-4.5" />
       )}
     </CtrlButton>
   )

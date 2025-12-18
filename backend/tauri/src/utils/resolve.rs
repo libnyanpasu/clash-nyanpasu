@@ -240,7 +240,7 @@ pub fn create_window(app_handle: &AppHandle) {
     .title("Clash Nyanpasu")
     .fullscreen(false)
     .always_on_top(always_on_top)
-    .min_inner_size(600.0, 520.0);
+    .min_inner_size(400.0, 600.0);
 
     let win_state = &Config::verge().latest().window_size_state.clone();
     match win_state {

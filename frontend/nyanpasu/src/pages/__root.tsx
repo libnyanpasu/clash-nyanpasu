@@ -19,6 +19,7 @@ import customParseFormat from 'dayjs/plugin/customParseFormat'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { lazy } from 'react'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
+import { LanguageProvider } from '@/components/providers/language-provider'
 import { ExperimentalThemeProvider } from '@/components/providers/theme-provider'
 import { NyanpasuProvider } from '@nyanpasu/interface'
 import styles from './-__root.module.scss'
@@ -74,17 +75,19 @@ export default function App() {
   return (
     <NyanpasuProvider>
       <BlockTaskProvider>
-        <ExperimentalThemeProvider>
-          <StyledEngineProvider injectFirst>
-            <ThemeModeProvider>
-              <CssBaseline />
+        <LanguageProvider>
+          <ExperimentalThemeProvider>
+            <StyledEngineProvider injectFirst>
+              <ThemeModeProvider>
+                <CssBaseline />
 
-              <Outlet />
-            </ThemeModeProvider>
-          </StyledEngineProvider>
-        </ExperimentalThemeProvider>
+                <Outlet />
+              </ThemeModeProvider>
+            </StyledEngineProvider>
+          </ExperimentalThemeProvider>
 
-        <TanStackRouterDevtools />
+          <TanStackRouterDevtools />
+        </LanguageProvider>
       </BlockTaskProvider>
     </NyanpasuProvider>
   )

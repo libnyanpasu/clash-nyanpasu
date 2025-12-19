@@ -17,5 +17,13 @@
   "settings_system_proxy_proxy_bypass_label": "系統代理繞過",
   "settings_system_proxy_current_system_proxy_label": "當前系統代理",
   "settings_user_interface_title": "使用者介面",
-  "unit_seconds": "秒"
+  "settings_user_interface_language_label": "語言",
+  "settings_user_interface_theme_mode_label": "主題模式",
+  "settings_user_interface_theme_mode_light": "淺色",
+  "settings_user_interface_theme_mode_dark": "深色",
+  "settings_user_interface_theme_mode_system": "跟隨系統",
+  "settings_user_interface_theme_color_label": "主題顏色",
+  "unit_seconds": "秒",
+  "common_submit": "提交",
+  "common_cancel": "取消"
 }

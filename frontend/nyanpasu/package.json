@@ -33,6 +33,7 @@
     "@tauri-apps/api": "2.8.0",
     "@types/json-schema": "7.0.15",
     "@uidotdev/usehooks": "2.4.1",
+    "@uiw/react-color": "^2.9.2",
     "ahooks": "3.9.6",
     "allotment": "1.20.4",
     "class-variance-authority": "0.7.1",

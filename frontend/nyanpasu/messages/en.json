@@ -17,5 +17,13 @@
   "settings_system_proxy_proxy_bypass_label": "System Proxy Bypass",
   "settings_system_proxy_current_system_proxy_label": "Current System Proxy",
   "settings_user_interface_title": "User Interface",
-  "unit_seconds": "s"
+  "settings_user_interface_language_label": "Language",
+  "settings_user_interface_theme_mode_label": "Theme Mode",
+  "settings_user_interface_theme_mode_light": "Light",
+  "settings_user_interface_theme_mode_dark": "Dark",
+  "settings_user_interface_theme_mode_system": "System",
+  "settings_user_interface_theme_color_label": "Theme Color",
+  "unit_seconds": "s",
+  "common_submit": "Submit",
+  "common_cancel": "Cancel"
 }

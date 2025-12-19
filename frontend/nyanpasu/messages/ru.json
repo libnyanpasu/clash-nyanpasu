@@ -17,5 +17,13 @@
   "settings_system_proxy_proxy_bypass_label": "Обход прокси",
   "settings_system_proxy_current_system_proxy_label": "Текущий системный прокси",
   "settings_user_interface_title": "Интерфейс пользователя",
-  "unit_seconds": "секунды"
+  "settings_user_interface_language_label": "Язык",
+  "settings_user_interface_theme_mode_label": "Режим темы",
+  "settings_user_interface_theme_mode_light": "Светлый",
+  "settings_user_interface_theme_mode_dark": "Темный",
+  "settings_user_interface_theme_mode_system": "Системный",
+  "settings_user_interface_theme_color_label": "Цвет темы",
+  "unit_seconds": "секунды",
+  "common_submit": "Отправить",
+  "common_cancel": "Отменить"
 }

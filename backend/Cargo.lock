@@ -4457,7 +4457,7 @@ checksum = "d0263a3d970d5c054ed9312c0057b4f3bde9c0b33836d3637361d4a9e6e7a408"
 [[package]]
 name = "include-compress-bytes"
 version = "0.1.0"
-source = "git+https://github.com/libnyanpasu/include-compress-bytes?rev=250a12c#250a12c13a8fed1cd2c0476e01c3dd89555840d2"
+source = "git+https://github.com/libnyanpasu/include-compress-bytes?rev=4e4f25b#4e4f25b794ed0b9a323a893bcdaf22f5024ab58a"
 dependencies = [
  "brotli",
  "cargo-emit 0.2.1",
@@ -4470,7 +4470,7 @@ dependencies = [
 [[package]]
 name = "include_url_macro"
 version = "0.1.0"
-source = "git+https://github.com/libnyanpasu/include_url_macro?rev=b0b88e5#b0b88e5dd0685e607c6d965420fc2a035b4a0efe"
+source = "git+https://github.com/libnyanpasu/include_url_macro?rev=fbe47bd#fbe47bd71047892a218e3166a2a1bac474488218"
 dependencies = [
  "brotli",
  "bytes",

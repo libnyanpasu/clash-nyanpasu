@@ -24,8 +24,8 @@ tracing = "0.1"
 url = "2"
 log = "0.4"
 anyhow = "1.0"
-include_url_macro = { git = "https://github.com/libnyanpasu/include_url_macro", rev = "b0b88e5" }
-include-compress-bytes = { git = "https://github.com/libnyanpasu/include-compress-bytes", rev = "250a12c" }
+include_url_macro = { git = "https://github.com/libnyanpasu/include_url_macro", rev = "fbe47bd" }
+include-compress-bytes = { git = "https://github.com/libnyanpasu/include-compress-bytes", rev = "4e4f25b" }
 phf = { version = "0.13.1", features = ["macros"] }
 
 # for cacheing

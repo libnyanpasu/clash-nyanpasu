@@ -13,15 +13,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: install Rust stable
+      - name: install Rust nightly
         run: |
-          rustup install stable --profile minimal --no-self-update
-          rustup default stable
+          rustup install nightly --profile minimal --no-self-update
+          rustup default nightly
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: './backend/'
-          prefix-key: 'rust-stable'
+          prefix-key: 'rust-nightly'
           key: 'macos-13'
           shared-key: 'release'
       - uses: maxim-lobanov/setup-xcode@v1

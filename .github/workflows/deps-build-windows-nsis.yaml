@@ -75,10 +75,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Install Rust stable
+      - name: Install Rust nightly
         run: |
-          rustup install stable --profile minimal --no-self-update
-          rustup default stable
+          rustup install nightly --profile minimal --no-self-update
+          rustup default nightly
 
       - name: Setup Rust target
         if: ${{ inputs.arch != 'x86_64' }}

@@ -51,10 +51,10 @@ jobs:
         with:
           xcode-version: 16
 
-      - name: install Rust stable
+      - name: install Rust nightly
         run: |
-          rustup install stable --profile minimal --no-self-update
-          rustup default stable
+          rustup install nightly --profile minimal --no-self-update
+          rustup default nightly
 
       - name: Install Rust intel target
         if: ${{ inputs.aarch64 == false }}

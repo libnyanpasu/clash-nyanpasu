@@ -65,8 +65,8 @@ importers:
         specifier: 10.1.0
         version: 10.1.0
       dedent:
-        specifier: 1.7.0
-        version: 1.7.0(babel-plugin-macros@3.1.0)
+        specifier: 1.7.1
+        version: 1.7.1(babel-plugin-macros@3.1.0)
       eslint:
         specifier: 9.39.2
         version: 9.39.2(jiti@2.6.1)
@@ -5137,8 +5137,8 @@ packages:
       babel-plugin-macros:
         optional: true
 
-  dedent@1.7.0:
-    resolution: {integrity: sha512-HGFtf8yhuhGhqO07SV79tRp+br4MnbdjeVxotpn1QBl30pcLLCQjX5b2295ll0fv8RKDKsmWYrl05usHM9CewQ==}
+  dedent@1.7.1:
+    resolution: {integrity: sha512-9JmrhGZpOlEgOLdQgSm0zxFaYoQon408V1v49aqTWuXENVlnCuY9JBZcXZiCsZQWDjTm5Qf/nIvAy77mXDAjEg==}
     peerDependencies:
       babel-plugin-macros: ^3.1.0
     peerDependenciesMeta:
@@ -13842,7 +13842,7 @@ snapshots:
     optionalDependencies:
       babel-plugin-macros: 3.1.0
 
-  dedent@1.7.0(babel-plugin-macros@3.1.0):
+  dedent@1.7.1(babel-plugin-macros@3.1.0):
     optionalDependencies:
       babel-plugin-macros: 3.1.0
 

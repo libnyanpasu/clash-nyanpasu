@@ -35,6 +35,7 @@
     "fmt": "run-p fmt:*",
     "fmt:backend": "cargo fmt --manifest-path ./backend/Cargo.toml --all",
     "fmt:prettier": "prettier --write .",
+    "fmt:eslint": "eslint --cache --fix . eslint.config.js",
     "updater": "tsx scripts/updater.ts",
     "updater:nightly": "tsx scripts/updater-nightly.ts",
     "send-notify": "tsx scripts/telegram-notify.ts",
@@ -108,7 +109,7 @@
     "typescript": "5.9.3",
     "typescript-eslint": "8.50.0"
   },
-  "packageManager": "pnpm@10.20.0",
+  "packageManager": "pnpm@10.26.1",
   "engines": {
     "node": "22.21.1"
   },

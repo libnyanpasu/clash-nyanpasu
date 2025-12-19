@@ -1,5 +1,19 @@
 export default {
-  '*.{js,cjs,.mjs,jsx}': ['prettier --write', 'eslint --cache --fix'],
+  '*.{js,cjs,.mjs,jsx}': (filenames) => {
+    const configFiles = [
+      'eslint.config.js',
+      '.lintstagedrc.js',
+      'commitlint.config.js',
+    ];
+    const filtered = filenames.filter(
+      (file) => !configFiles.some((config) => file.endsWith(config)),
+    );
+    if (filtered.length === 0) return [];
+    return [
+      `prettier --write ${filtered.join(' ')}`,
+      `eslint --cache --fix ${filtered.join(' ')}`,
+    ];
+  },
   'scripts/**/*.{ts,tsx}': [
     'prettier --write',
     'eslint --cache --fix',

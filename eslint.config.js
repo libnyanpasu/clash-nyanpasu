@@ -31,6 +31,10 @@ const ignores = [
   'dist/',
   'backend/',
   'backend/**/target',
+  'scripts/deno/**',
+  'eslint.config.js',
+  '.lintstagedrc.js',
+  'commitlint.config.js',
 ]
 
 export default tseslint.config(
@@ -80,7 +84,12 @@ export default tseslint.config(
   {
     files: ['**/*.{ts,tsx,mtsx}'],
     extends: [...tseslint.configs.recommended],
-    ignores: [...ignores, '**/vite.config.ts', '**/tailwind.config.ts'],
+    ignores: [
+      ...ignores,
+      'frontend/nyanpasu/vite.config.ts',
+      'frontend/nyanpasu/tailwind.config.ts',
+      'frontend/ui/vite.config.ts',
+    ],
     rules: {
       '@typescript-eslint/no-unused-vars': 'warn',
       '@typescript-eslint/no-explicit-any': 'warn',
@@ -93,7 +102,10 @@ export default tseslint.config(
     },
   },
   {
-    files: ['**/vite.config.ts', '**/tailwind.config.ts'],
+    files: [
+      'frontend/nyanpasu/vite.config.ts',
+      'frontend/nyanpasu/tailwind.config.ts',
+    ],
     extends: [...tseslint.configs.recommended],
     rules: {
       '@typescript-eslint/no-unused-vars': 'warn',
@@ -102,6 +114,19 @@ export default tseslint.config(
     languageOptions: {
       parserOptions: {
         project: './frontend/nyanpasu/tsconfig.node.json',
+      },
+    },
+  },
+  {
+    files: ['frontend/ui/vite.config.ts'],
+    extends: [...tseslint.configs.recommended],
+    rules: {
+      '@typescript-eslint/no-unused-vars': 'warn',
+      '@typescript-eslint/no-explicit-any': 'warn',
+    },
+    languageOptions: {
+      parserOptions: {
+        project: './frontend/ui/tsconfig.json',
       },
     },
   },

@@ -23,6 +23,11 @@
   "settings_user_interface_theme_mode_dark": "Темный",
   "settings_user_interface_theme_mode_system": "Системный",
   "settings_user_interface_theme_color_label": "Цвет темы",
+  "settings_clash_settings_title": "Настройки Clash",
+  "settings_clash_settings_allow_lan_label": "Разрешить LAN",
+  "settings_clash_settings_ipv6_label": "Включить IPv6",
+  "settings_clash_settings_tun_stack_label": "TUN Stack",
+  "settings_clash_settings_log_level_label": "Уровень журнала",
   "unit_seconds": "секунды",
   "common_submit": "Отправить",
   "common_cancel": "Отменить"

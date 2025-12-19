@@ -23,6 +23,11 @@
   "settings_user_interface_theme_mode_dark": "深色",
   "settings_user_interface_theme_mode_system": "跟隨系統",
   "settings_user_interface_theme_color_label": "主題顏色",
+  "settings_clash_settings_title": "Clash 設置",
+  "settings_clash_settings_allow_lan_label": "允許區域網路連線",
+  "settings_clash_settings_ipv6_label": "啟用 IPv6",
+  "settings_clash_settings_tun_stack_label": "TUN 堆棧",
+  "settings_clash_settings_log_level_label": "日誌級別",
   "unit_seconds": "秒",
   "common_submit": "提交",
   "common_cancel": "取消"

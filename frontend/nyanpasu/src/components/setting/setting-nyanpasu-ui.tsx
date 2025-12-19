@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { isHexColor } from 'validator'
 import { atomIsDrawerOnlyIcon } from '@/store'
+import { setEnabledExperimentalRouter } from '@/utils/experimental'
 import { languageOptions } from '@/utils/language'
 import Done from '@mui/icons-material/Done'
 import { Button, List, ListItem, ListItemText } from '@mui/material'
 import { useSetting } from '@nyanpasu/interface'
 import { BaseCard, Expand, MenuItem, SwitchItem } from '@nyanpasu/ui'
+import { useNavigate } from '@tanstack/react-router'
 import { DEFAULT_COLOR } from '../layout/use-custom-theme'
 
 const commonSx = {
@@ -106,6 +108,25 @@ const ThemeColor = () => {
   )
 }
 
+const ExperimentalSwitch = () => {
+  const navigate = useNavigate()
+
+  const handleClick = () => {
+    setEnabledExperimentalRouter(true)
+    navigate({ to: '/experimental/dashboard' })
+  }
+
+  return (
+    <ListItem sx={{ pl: 0, pr: 0 }}>
+      <ListItemText primary="Switch to Experimental UI" />
+
+      <Button variant="contained" onClick={handleClick}>
+        Continue
+      </Button>
+    </ListItem>
+  )
+}
+
 export const SettingNyanpasuUI = () => {
   const { t } = useTranslation()
 
@@ -125,6 +146,8 @@ export const SettingNyanpasuUI = () => {
           checked={onlyIcon}
           onChange={() => setOnlyIcon(!onlyIcon)}
         />
+
+        <ExperimentalSwitch />
       </List>
     </BaseCard>
   )

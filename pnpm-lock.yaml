@@ -249,22 +249,22 @@ importers:
         specifier: workspace:^
         version: link:../ui
       '@radix-ui/react-dropdown-menu':
-        specifier: ^2.1.16
+        specifier: 2.1.16
         version: 2.1.16(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       '@radix-ui/react-scroll-area':
         specifier: 1.2.10
         version: 1.2.10(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       '@radix-ui/react-select':
-        specifier: ^2.2.6
+        specifier: 2.2.6
         version: 2.2.6(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       '@radix-ui/react-slot':
         specifier: 1.2.4
         version: 1.2.4(@types/react@19.2.7)(react@19.2.0)
       '@radix-ui/react-switch':
-        specifier: ^1.2.6
+        specifier: 1.2.6
         version: 1.2.6(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       '@radix-ui/react-use-controllable-state':
-        specifier: ^1.2.2
+        specifier: 1.2.2
         version: 1.2.2(@types/react@19.2.7)(react@19.2.0)
       '@tailwindcss/postcss':
         specifier: 4.1.17
@@ -282,7 +282,7 @@ importers:
         specifier: 2.4.1
         version: 2.4.1(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       '@uiw/react-color':
-        specifier: ^2.9.2
+        specifier: 2.9.2
         version: 2.9.2(@babel/runtime@7.28.4)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       ahooks:
         specifier: 3.9.6

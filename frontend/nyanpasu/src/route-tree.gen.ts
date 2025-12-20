@@ -37,7 +37,6 @@ import { Route as experimentalExperimentalSettingsSystemBehaviorRouteRouteImport
 import { Route as experimentalExperimentalSettingsNyanpasuConfigRouteRouteImport } from './pages/(experimental)/experimental/settings/nyanpasu-config/route'
 import { Route as experimentalExperimentalSettingsDebugUtilsRouteRouteImport } from './pages/(experimental)/experimental/settings/debug-utils/route'
 import { Route as experimentalExperimentalSettingsClashSettingsRouteRouteImport } from './pages/(experimental)/experimental/settings/clash-settings/route'
-import { Route as experimentalExperimentalSettingsClashPortRouteRouteImport } from './pages/(experimental)/experimental/settings/clash-port/route'
 import { Route as experimentalExperimentalSettingsClashFiledRouteRouteImport } from './pages/(experimental)/experimental/settings/clash-filed/route'
 import { Route as experimentalExperimentalSettingsClashExternalControllRouteRouteImport } from './pages/(experimental)/experimental/settings/clash-external-controll/route'
 import { Route as experimentalExperimentalSettingsClashCoreRouteRouteImport } from './pages/(experimental)/experimental/settings/clash-core/route'
@@ -198,12 +197,6 @@ const experimentalExperimentalSettingsClashSettingsRouteRoute =
     path: '/clash-settings',
     getParentRoute: () => experimentalExperimentalSettingsRouteRoute,
   } as any)
-const experimentalExperimentalSettingsClashPortRouteRoute =
-  experimentalExperimentalSettingsClashPortRouteRouteImport.update({
-    id: '/clash-port',
-    path: '/clash-port',
-    getParentRoute: () => experimentalExperimentalSettingsRouteRoute,
-  } as any)
 const experimentalExperimentalSettingsClashFiledRouteRoute =
   experimentalExperimentalSettingsClashFiledRouteRouteImport.update({
     id: '/clash-filed',
@@ -251,7 +244,6 @@ export interface FileRoutesByFullPath {
   '/experimental/settings/clash-core': typeof experimentalExperimentalSettingsClashCoreRouteRoute
   '/experimental/settings/clash-external-controll': typeof experimentalExperimentalSettingsClashExternalControllRouteRoute
   '/experimental/settings/clash-filed': typeof experimentalExperimentalSettingsClashFiledRouteRoute
-  '/experimental/settings/clash-port': typeof experimentalExperimentalSettingsClashPortRouteRoute
   '/experimental/settings/clash-settings': typeof experimentalExperimentalSettingsClashSettingsRouteRoute
   '/experimental/settings/debug-utils': typeof experimentalExperimentalSettingsDebugUtilsRouteRoute
   '/experimental/settings/nyanpasu-config': typeof experimentalExperimentalSettingsNyanpasuConfigRouteRoute
@@ -283,7 +275,6 @@ export interface FileRoutesByTo {
   '/experimental/settings/clash-core': typeof experimentalExperimentalSettingsClashCoreRouteRoute
   '/experimental/settings/clash-external-controll': typeof experimentalExperimentalSettingsClashExternalControllRouteRoute
   '/experimental/settings/clash-filed': typeof experimentalExperimentalSettingsClashFiledRouteRoute
-  '/experimental/settings/clash-port': typeof experimentalExperimentalSettingsClashPortRouteRoute
   '/experimental/settings/clash-settings': typeof experimentalExperimentalSettingsClashSettingsRouteRoute
   '/experimental/settings/debug-utils': typeof experimentalExperimentalSettingsDebugUtilsRouteRoute
   '/experimental/settings/nyanpasu-config': typeof experimentalExperimentalSettingsNyanpasuConfigRouteRoute
@@ -319,7 +310,6 @@ export interface FileRoutesById {
   '/(experimental)/experimental/settings/clash-core': typeof experimentalExperimentalSettingsClashCoreRouteRoute
   '/(experimental)/experimental/settings/clash-external-controll': typeof experimentalExperimentalSettingsClashExternalControllRouteRoute
   '/(experimental)/experimental/settings/clash-filed': typeof experimentalExperimentalSettingsClashFiledRouteRoute
-  '/(experimental)/experimental/settings/clash-port': typeof experimentalExperimentalSettingsClashPortRouteRoute
   '/(experimental)/experimental/settings/clash-settings': typeof experimentalExperimentalSettingsClashSettingsRouteRoute
   '/(experimental)/experimental/settings/debug-utils': typeof experimentalExperimentalSettingsDebugUtilsRouteRoute
   '/(experimental)/experimental/settings/nyanpasu-config': typeof experimentalExperimentalSettingsNyanpasuConfigRouteRoute
@@ -354,7 +344,6 @@ export interface FileRouteTypes {
     | '/experimental/settings/clash-core'
     | '/experimental/settings/clash-external-controll'
     | '/experimental/settings/clash-filed'
-    | '/experimental/settings/clash-port'
     | '/experimental/settings/clash-settings'
     | '/experimental/settings/debug-utils'
     | '/experimental/settings/nyanpasu-config'
@@ -386,7 +375,6 @@ export interface FileRouteTypes {
     | '/experimental/settings/clash-core'
     | '/experimental/settings/clash-external-controll'
     | '/experimental/settings/clash-filed'
-    | '/experimental/settings/clash-port'
     | '/experimental/settings/clash-settings'
     | '/experimental/settings/debug-utils'
     | '/experimental/settings/nyanpasu-config'
@@ -421,7 +409,6 @@ export interface FileRouteTypes {
     | '/(experimental)/experimental/settings/clash-core'
     | '/(experimental)/experimental/settings/clash-external-controll'
     | '/(experimental)/experimental/settings/clash-filed'
-    | '/(experimental)/experimental/settings/clash-port'
     | '/(experimental)/experimental/settings/clash-settings'
     | '/(experimental)/experimental/settings/debug-utils'
     | '/(experimental)/experimental/settings/nyanpasu-config'
@@ -637,13 +624,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof experimentalExperimentalSettingsClashSettingsRouteRouteImport
       parentRoute: typeof experimentalExperimentalSettingsRouteRoute
     }
-    '/(experimental)/experimental/settings/clash-port': {
-      id: '/(experimental)/experimental/settings/clash-port'
-      path: '/clash-port'
-      fullPath: '/experimental/settings/clash-port'
-      preLoaderRoute: typeof experimentalExperimentalSettingsClashPortRouteRouteImport
-      parentRoute: typeof experimentalExperimentalSettingsRouteRoute
-    }
     '/(experimental)/experimental/settings/clash-filed': {
       id: '/(experimental)/experimental/settings/clash-filed'
       path: '/clash-filed'
@@ -680,7 +660,6 @@ interface experimentalExperimentalSettingsRouteRouteChildren {
   experimentalExperimentalSettingsClashCoreRouteRoute: typeof experimentalExperimentalSettingsClashCoreRouteRoute
   experimentalExperimentalSettingsClashExternalControllRouteRoute: typeof experimentalExperimentalSettingsClashExternalControllRouteRoute
   experimentalExperimentalSettingsClashFiledRouteRoute: typeof experimentalExperimentalSettingsClashFiledRouteRoute
-  experimentalExperimentalSettingsClashPortRouteRoute: typeof experimentalExperimentalSettingsClashPortRouteRoute
   experimentalExperimentalSettingsClashSettingsRouteRoute: typeof experimentalExperimentalSettingsClashSettingsRouteRoute
   experimentalExperimentalSettingsDebugUtilsRouteRoute: typeof experimentalExperimentalSettingsDebugUtilsRouteRoute
   experimentalExperimentalSettingsNyanpasuConfigRouteRoute: typeof experimentalExperimentalSettingsNyanpasuConfigRouteRoute
@@ -702,8 +681,6 @@ const experimentalExperimentalSettingsRouteRouteChildren: experimentalExperiment
       experimentalExperimentalSettingsClashExternalControllRouteRoute,
     experimentalExperimentalSettingsClashFiledRouteRoute:
       experimentalExperimentalSettingsClashFiledRouteRoute,
-    experimentalExperimentalSettingsClashPortRouteRoute:
-      experimentalExperimentalSettingsClashPortRouteRoute,
     experimentalExperimentalSettingsClashSettingsRouteRoute:
       experimentalExperimentalSettingsClashSettingsRouteRoute,
     experimentalExperimentalSettingsDebugUtilsRouteRoute:

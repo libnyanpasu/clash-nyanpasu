@@ -1,3 +1,4 @@
+import { Separator } from '@/components/ui/separator'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
 import {
@@ -7,6 +8,8 @@ import {
 import AllowLanSwitch from './_modules/allow-lan-switch'
 import IPv6Switch from './_modules/ipv6-switch'
 import LogLevelSelector from './_modules/log-level-selector'
+import MixedPortConfig from './_modules/mixed-port-config'
+import RandomPortSwitch from './_modules/random-port-switch'
 import TunStackSelector from './_modules/tun-stack-selector'
 
 export const Route = createFileRoute(
@@ -28,6 +31,12 @@ function RouteComponent() {
       <TunStackSelector />
 
       <LogLevelSelector />
+
+      <Separator className="my-4" />
+
+      <MixedPortConfig />
+
+      <RandomPortSwitch />
     </>
   )
 }

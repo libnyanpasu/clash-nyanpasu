@@ -3,7 +3,6 @@ import DisplayExternalInput from '~icons/material-symbols/display-external-input
 import FrameBugOutlineRounded from '~icons/material-symbols/frame-bug-outline-rounded'
 import ListsRounded from '~icons/material-symbols/lists-rounded'
 import NetworkNode from '~icons/material-symbols/network-node'
-import RoomServiceRounded from '~icons/material-symbols/room-service-rounded'
 import SettingsBoltRounded from '~icons/material-symbols/settings-b-roll-rounded'
 import SettingsEthernet from '~icons/material-symbols/settings-ethernet-rounded'
 import ShareWindows from '~icons/material-symbols/share-windows-rounded'
@@ -46,12 +45,6 @@ const ROUTES = [
     icon: SettingsBoltRounded,
   },
   {
-    label: 'Clash Port',
-    description: 'Configure the clash port',
-    href: '/experimental/settings/clash-port',
-    icon: NetworkNode,
-  },
-  {
     label: 'Clash External Controll',
     description: 'Configure the clash external controll',
     href: '/experimental/settings/clash-external-controll',
@@ -85,7 +78,7 @@ const ROUTES = [
     label: 'System Service',
     description: 'Configure the system service',
     href: '/experimental/settings/system-service',
-    icon: RoomServiceRounded,
+    icon: NetworkNode,
   },
   {
     label: 'Nyanpasu Config',

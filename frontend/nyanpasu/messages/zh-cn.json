@@ -28,7 +28,14 @@
   "settings_clash_settings_ipv6_label": "启用 IPv6",
   "settings_clash_settings_tun_stack_label": "TUN 堆栈",
   "settings_clash_settings_log_level_label": "日志级别",
+  "settings_clash_settings_mixed_port_label": "混合端口",
+  "settings_clash_settings_random_port_label": "随机端口",
+  "settings_clash_settings_random_port_enabled": "随机端口已启用，重启后生效。",
+  "settings_clash_settings_random_port_disabled": "随机端口已禁用，重启后生效。",
   "unit_seconds": "秒",
   "common_submit": "提交",
-  "common_cancel": "取消"
+  "common_cancel": "取消",
+  "common_apply": "应用",
+  "common_reset": "重置",
+  "common_save": "保存"
 }

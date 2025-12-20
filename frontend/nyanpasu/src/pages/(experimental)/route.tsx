@@ -15,7 +15,6 @@ const AppContent = () => {
         'h-[calc(100vh-40px-64px)]',
         'sm:h-[calc(100vh-40px-48px)]',
         'overflow-hidden',
-        'bg-white dark:bg-black',
       )}
       data-slot="app-content"
     />
@@ -25,10 +24,7 @@ const AppContent = () => {
 function RouteComponent() {
   return (
     <div
-      className={cn(
-        'flex max-h-dvh min-h-dvh flex-col',
-        'bg-white dark:bg-black',
-      )}
+      className={cn('flex max-h-dvh min-h-dvh flex-col', 'bg-background')}
       onContextMenu={(e) => {
         e.preventDefault()
       }}

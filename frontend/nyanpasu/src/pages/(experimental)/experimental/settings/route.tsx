@@ -16,7 +16,7 @@ function RouteComponent() {
     <div className="flex" data-slot="settings-container">
       {!isMobile && (
         <AppContentScrollArea
-          className={cn('bg-surface z-50 max-w-96 min-w-64')}
+          className={cn('bg-surface-variant/10 z-50 max-w-96 min-w-64')}
           data-slot="settings-sidebar-scroll-area"
         >
           <SettingsNavigate />
@@ -24,7 +24,10 @@ function RouteComponent() {
       )}
 
       <AppContentScrollArea
-        className={cn('group/settings-content bg-surface/80 flex-[3_1_auto]')}
+        className={cn(
+          'group/settings-content flex-[3_1_auto]',
+          'overflow-clip',
+        )}
         data-slot="settings-content-scroll-area"
       >
         <div

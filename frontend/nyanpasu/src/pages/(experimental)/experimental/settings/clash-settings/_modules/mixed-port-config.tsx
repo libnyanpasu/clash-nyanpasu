@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence } from 'framer-motion'
 import { useCallback, useEffect, useMemo } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -9,7 +9,11 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useClashConfig, useSetting } from '@nyanpasu/interface'
-import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
+import {
+  SettingsCard,
+  SettingsCardAnimatedItem,
+  SettingsCardContent,
+} from '../../_modules/settings-card'
 
 const DEFAULT_MIXED_PORT = 7890
 
@@ -49,6 +53,10 @@ export default function MixedPortConfig() {
         'mixed-port': data.mixedPort,
       })
       await mixedPort.upsert(data.mixedPort)
+
+      form.reset({
+        mixedPort: data.mixedPort,
+      })
     } catch (error) {
       message(formatError(error), {
         title: 'Error',
@@ -91,32 +99,9 @@ export default function MixedPortConfig() {
 
                   <AnimatePresence>
                     {fieldState.error && (
-                      <motion.p
-                        className="overflow-hidden text-red-500"
-                        initial={{
-                          height: 0,
-                          opacity: 0,
-                        }}
-                        animate={{
-                          height: 'auto',
-                          opacity: 1,
-                        }}
-                        exit={{
-                          height: 0,
-                          opacity: 0,
-                        }}
-                        transition={{
-                          height: {
-                            duration: 0.2,
-                            ease: 'easeInOut',
-                          },
-                          opacity: {
-                            duration: 0.15,
-                          },
-                        }}
-                      >
+                      <SettingsCardAnimatedItem className="text-error">
                         {fieldState.error.message}
-                      </motion.p>
+                      </SettingsCardAnimatedItem>
                     )}
                   </AnimatePresence>
                 </>
@@ -126,30 +111,7 @@ export default function MixedPortConfig() {
 
           <AnimatePresence initial={false}>
             {form.formState.isDirty && (
-              <motion.div
-                className="overflow-hidden"
-                initial={{
-                  height: 0,
-                  opacity: 0,
-                }}
-                animate={{
-                  height: 'auto',
-                  opacity: 1,
-                }}
-                exit={{
-                  height: 0,
-                  opacity: 0,
-                }}
-                transition={{
-                  height: {
-                    duration: 0.2,
-                    ease: 'easeInOut',
-                  },
-                  opacity: {
-                    duration: 0.15,
-                  },
-                }}
-              >
+              <SettingsCardAnimatedItem>
                 <div className="flex justify-end gap-2 pt-1">
                   <Button type="button" onClick={handleReset}>
                     {m.common_reset()}
@@ -163,7 +125,7 @@ export default function MixedPortConfig() {
                     {m.common_apply()}
                   </Button>
                 </div>
-              </motion.div>
+              </SettingsCardAnimatedItem>
             )}
           </AnimatePresence>
         </form>

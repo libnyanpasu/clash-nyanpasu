@@ -27,7 +27,7 @@ export const selectTriggerVariants = cva(
   {
     variants: {
       variant: {
-        filled: 'rounded-t bg-surface-variant dark:bg-on-surface-variant',
+        filled: 'rounded-t bg-surface-variant/30 dark:bg-surface',
         // outlined use selectValuePlaceholderFieldsetVariants
         outlined: '',
       },
@@ -72,29 +72,32 @@ export const selectLineVariants = cva('', {
 
 export type SelectLineVariants = VariantProps<typeof selectLineVariants>
 
-export const selectValueVariants = cva('pointer-events-none', {
-  variants: {
-    variant: {
-      filled: '',
-      outlined: '',
+export const selectValueVariants = cva(
+  'pointer-events-none transition-[margin] duration-200',
+  {
+    variants: {
+      variant: {
+        filled: '',
+        outlined: '',
+      },
+      haveValue: {
+        true: '',
+        false: '',
+      },
     },
-    haveValue: {
-      true: '',
-      false: '',
-    },
-  },
-  compoundVariants: [
-    {
+    compoundVariants: [
+      {
+        variant: 'filled',
+        haveValue: true,
+        className: 'mt-3!',
+      },
+    ],
+    defaultVariants: {
       variant: 'filled',
-      haveValue: true,
-      className: 'mt-3',
+      haveValue: false,
     },
-  ],
-  defaultVariants: {
-    variant: 'filled',
-    haveValue: false,
   },
-})
+)
 
 export type SelectValueVariants = VariantProps<typeof selectValueVariants>
 
@@ -111,7 +114,7 @@ export const selectValuePlaceholderVariants = cva(
     variants: {
       variant: {
         filled: [
-          'group-data-[state=open]:top-2 group-data-[state=open]:dark:text-surface',
+          'group-data-[state=open]:top-2',
           'group-data-[state=open]:text-xs group-data-[state=open]:text-primary',
         ],
         outlined: [

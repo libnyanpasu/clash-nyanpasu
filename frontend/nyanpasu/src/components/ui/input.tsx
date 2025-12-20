@@ -24,7 +24,7 @@ export const inputContainerVariants = cva(
   {
     variants: {
       variant: {
-        filled: 'rounded-t bg-surface-variant dark:bg-on-surface-variant',
+        filled: 'rounded-t bg-surface-variant/30 dark:bg-surface',
         // outlined use inputLabelFieldsetVariants
         outlined: '',
       },
@@ -42,6 +42,7 @@ export const inputVariants = cva(
     'peer',
     'w-full border-none p-0',
     'bg-transparent placeholder-transparent outline-hidden',
+    'transition-[margin] duration-200',
   ],
   {
     variants: {
@@ -63,7 +64,7 @@ export const inputVariants = cva(
         variant: 'filled',
         haveValue: true,
         haveLabel: true,
-        className: 'mt-3',
+        className: 'mt-3!',
       },
     ],
     defaultVariants: {
@@ -136,7 +137,7 @@ export const inputLineVariants = cva('', {
   variants: {
     variant: {
       filled: [
-        'absolute inset-x-0 bottom-0 w-full border-b border-on-primary-container',
+        'absolute inset-x-0 bottom-0 w-full border-b border-b-outline-variant',
         'transition-all duration-200',
         // pseudo elements be overlay parent element, will not affect the box size
         'after:absolute after:inset-x-0 after:bottom-0 after:z-10',

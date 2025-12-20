@@ -1,7 +1,16 @@
 import { useCreation } from 'ahooks'
 import { cva, type VariantProps } from 'class-variance-authority'
-import React, { useEffect } from 'react'
+import {
+  ChangeEvent,
+  ComponentProps,
+  createContext,
+  isValidElement,
+  useContext,
+  useEffect,
+  useState,
+} from 'react'
 import { cn } from '@nyanpasu/ui'
+import { Slot } from '@radix-ui/react-slot'
 
 export const inputContainerVariants = cva(
   [
@@ -10,13 +19,13 @@ export const inputContainerVariants = cva(
     'px-4 py-4 outline-hidden',
     // TODO: size variants, fix this
     'flex items-center justify-between h-14',
-    'dark:text-surface',
+    'dark:text-on-surface',
   ],
   {
     variants: {
       variant: {
-        filled: ['rounded-t', 'bg-surface-variant dark:bg-on-surface-variant'],
-        // outlined use selectValuePlaceholderFieldsetVariants
+        filled: 'rounded-t bg-surface-variant dark:bg-on-surface-variant',
+        // outlined use inputLabelFieldsetVariants
         outlined: '',
       },
     },
@@ -167,15 +176,15 @@ export const inputLabelFieldsetVariants = cva('pointer-events-none', {
         'peer-not-focus:border',
         'peer-focus:border-2',
         // different material web border color, i think this looks better
-        'group-data-[state=closed]:border-primary-container',
+        'group-data-[state=closed]:border-outline-variant',
         'group-data-[state=open]:border-primary',
         'peer-not-focus:border-primary-container',
         'peer-focus:border-primary',
         // dark must be prefixed
-        'dark:group-data-[state=closed]:border-primary-container',
-        'dark:group-data-[state=open]:border-inverse-primary',
-        'dark:peer-not-focus:border-primary-container',
-        'dark:peer-focus:border-inverse-primary',
+        'dark:group-data-[state=closed]:border-outline-variant',
+        'dark:group-data-[state=open]:border-primary-container',
+        'dark:peer-not-focus:border-outline-variant',
+        'dark:peer-focus:border-primary-container',
       ],
     },
   },
@@ -222,10 +231,10 @@ type InputContextType = {
   haveValue?: boolean
 } & InputContainerVariants
 
-const InputContext = React.createContext<InputContextType | null>(null)
+const InputContext = createContext<InputContextType | null>(null)
 
 const useInputContext = () => {
-  const context = React.useContext(InputContext)
+  const context = useContext(InputContext)
 
   if (!context) {
     throw new Error('InputContext is undefined')
@@ -237,7 +246,7 @@ const useInputContext = () => {
 export const InputContainer = ({
   className,
   ...props
-}: React.ComponentProps<'div'>) => {
+}: ComponentProps<'div'>) => {
   const { variant } = useInputContext()
 
   return (
@@ -253,10 +262,7 @@ export const InputContainer = ({
   )
 }
 
-export const InputLine = ({
-  className,
-  ...props
-}: React.ComponentProps<'input'>) => {
+export const InputLine = ({ className, ...props }: ComponentProps<'input'>) => {
   const { variant } = useInputContext()
 
   return (
@@ -272,11 +278,13 @@ export const InputLine = ({
   )
 }
 
-export type InputProps = React.ComponentProps<'input'> & {
+export type InputProps = ComponentProps<'input'> & {
   label?: string
+  asChild?: boolean
 } & InputContainerVariants
 
 export const Input = ({
+  asChild,
   variant,
   className,
   label,
@@ -284,14 +292,14 @@ export const Input = ({
   onChange,
   ...props
 }: InputProps) => {
-  const [haveValue, setHaveValue] = React.useState(false)
+  const [haveValue, setHaveValue] = useState(false)
 
   const haveLabel = useCreation(() => {
     if (label) {
       return true
     }
 
-    if (React.isValidElement(children)) {
+    if (isValidElement(children)) {
       if (typeof children.type !== 'string') {
         if ('displayName' in children.type) {
           if (children.type.displayName === InputLabel.displayName) {
@@ -312,14 +320,16 @@ export const Input = ({
     }
   }, [props.value, props.defaultValue])
 
-  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     setHaveValue(event.target.value.length > 0)
     onChange?.(event)
   }
 
   useEffect(() => {
-    console.log('haveValue', haveValue)
-  }, [haveValue])
+    setHaveValue(Boolean(props.value || props.defaultValue))
+  }, [props.value, props.defaultValue])
+
+  const Comp = asChild ? Slot : 'input'
 
   return (
     <InputContext.Provider
@@ -330,7 +340,7 @@ export const Input = ({
       }}
     >
       <InputContainer>
-        <input
+        <Comp
           className={cn(
             inputVariants({
               variant,
@@ -381,7 +391,7 @@ Input.displayName = 'Input'
 export const InputLabel = ({
   className,
   ...props
-}: React.ComponentProps<'label'>) => {
+}: ComponentProps<'label'>) => {
   const { haveValue, variant } = useInputContext()
 
   return (
@@ -398,3 +408,133 @@ export const InputLabel = ({
 }
 
 InputLabel.displayName = 'InputLabel'
+
+export type NumericInputProps = Omit<
+  ComponentProps<'input'>,
+  'onChange' | 'value' | 'defaultValue' | 'type'
+> & {
+  value?: number | null
+  defaultValue?: number | null
+  onChange?: (value: number | null) => void
+  label?: string
+  min?: number
+  max?: number
+  step?: number
+  decimalScale?: number
+  allowNegative?: boolean
+} & InputContainerVariants
+
+export const NumericInput = ({
+  label,
+  variant,
+  className,
+  onChange,
+  value,
+  defaultValue,
+  min,
+  max,
+  step = 1,
+  decimalScale,
+  allowNegative = true,
+  ...props
+}: NumericInputProps) => {
+  const [inputValue, setInputValue] = useState<string>(() => {
+    const initialValue = value ?? defaultValue
+    return initialValue != null ? String(initialValue) : ''
+  })
+
+  useEffect(() => {
+    if (value != null) {
+      setInputValue(String(value))
+    }
+  }, [value])
+
+  const validateAndFormatValue = (numValue: number): number => {
+    let validated = numValue
+
+    if (!allowNegative && validated < 0) {
+      validated = 0
+    }
+
+    if (min != null && validated < min) {
+      validated = min
+    }
+
+    if (max != null && validated > max) {
+      validated = max
+    }
+
+    if (decimalScale != null) {
+      validated = Number(validated.toFixed(decimalScale))
+    }
+
+    return validated
+  }
+
+  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const rawValue = e.target.value
+
+    // Allow empty string
+    if (rawValue === '') {
+      setInputValue('')
+      onChange?.(null)
+      return
+    }
+
+    // Allow minus sign for negative numbers
+    if (rawValue === '-' && allowNegative) {
+      setInputValue('-')
+      return
+    }
+
+    // Allow decimal point
+    if (rawValue.endsWith('.') || rawValue.endsWith(',')) {
+      setInputValue(rawValue)
+      return
+    }
+
+    const numValue = Number(rawValue)
+
+    // Check if it's a valid number
+    if (!isNaN(numValue)) {
+      setInputValue(rawValue)
+
+      // Only validate and callback when it's a complete number
+      if (!rawValue.endsWith('.') && !rawValue.endsWith(',')) {
+        const validated = validateAndFormatValue(numValue)
+        onChange?.(validated)
+      }
+    }
+  }
+
+  const handleBlur = () => {
+    if (inputValue === '' || inputValue === '-') {
+      setInputValue('')
+      onChange?.(null)
+      return
+    }
+
+    const numValue = Number(inputValue)
+    if (!isNaN(numValue)) {
+      const validated = validateAndFormatValue(numValue)
+      setInputValue(String(validated))
+      onChange?.(validated)
+    }
+  }
+
+  return (
+    <Input
+      label={label}
+      variant={variant}
+      className={className}
+      value={inputValue}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      type="text"
+      inputMode="decimal"
+      {...props}
+    />
+  )
+}
+
+NumericInput.displayName = 'NumericInput'

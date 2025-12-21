@@ -20,7 +20,7 @@
     "@tauri-apps/api": "2.8.0",
     "@types/d3": "7.4.3",
     "@types/react": "19.2.7",
-    "@vitejs/plugin-react": "5.1.1",
+    "@vitejs/plugin-react": "5.1.2",
     "ahooks": "3.9.6",
     "d3": "7.9.0",
     "framer-motion": "12.23.24",
@@ -30,7 +30,7 @@
     "react-i18next": "15.7.4",
     "react-use": "17.6.0",
     "tailwindcss": "4.1.17",
-    "vite": "7.2.4",
+    "vite": "7.3.0",
     "vite-tsconfig-paths": "5.1.4"
   },
   "devDependencies": {

@@ -27,7 +27,8 @@ export const LanguageProvider = ({ children }: PropsWithChildren) => {
 
   useEffect(() => {
     if (language.value && language.value !== getLocale()) {
-      setLocale(language.value as Locale)
+      // fix issue (#3938)
+      setLocale(language.value as Locale, { reload: false })
     }
   }, [language.value])
 

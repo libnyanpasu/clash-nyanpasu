@@ -354,7 +354,7 @@ pub fn create_window(app_handle: &AppHandle) {
             {
                 tracing::trace!("setup traffic lights pos");
                 let mtm = objc2_foundation::MainThreadMarker::new().unwrap();
-                crate::window::macos::setup_traffic_lights_pos(win.clone(), (26.0, 26.0), mtm);
+                crate::window::macos::setup_traffic_lights_pos(win.clone(), (18.0, 22.0), mtm);
             }
 
             OPEN_WINDOWS_COUNTER.fetch_add(1, Ordering::Release);

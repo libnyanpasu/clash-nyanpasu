@@ -78,7 +78,7 @@ export const AppContainer = ({
         {/* TODO: add a framer motion animation to toggle the maximized state */}
         {OS === 'macos' && !isMaximized && (
           <Box
-            className="z-top fixed top-3 left-4 h-8 w-[4.5rem] rounded-full"
+            className="z-top fixed top-1.5 left-3 h-7 w-[4.5rem] rounded-full"
             sx={(theme) => ({
               backgroundColor: alpha(theme.vars.palette.primary.main, 0.1),
             })}

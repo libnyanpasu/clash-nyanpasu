@@ -62,7 +62,7 @@ export function MacOSHeader({ className, ...props }: ComponentProps<'div'>) {
       {...props}
     >
       <div
-        className="absolute left-3 hidden items-center md:flex"
+        className="absolute left-22 hidden items-center md:flex"
         data-tauri-drag-region
       >
         <HeaderMenu />

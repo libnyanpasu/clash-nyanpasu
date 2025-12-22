@@ -8,7 +8,7 @@
     "@types/semver": "7.7.1",
     "figlet": "1.9.4",
     "filesize": "11.0.13",
-    "p-retry": "7.1.0",
+    "p-retry": "7.1.1",
     "semver": "7.7.3",
     "zod": "4.1.13"
   },

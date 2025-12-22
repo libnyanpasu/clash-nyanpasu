@@ -15,7 +15,7 @@
     "@tauri-apps/api": "2.8.0",
     "ahooks": "3.9.6",
     "dayjs": "1.11.19",
-    "lodash-es": "4.17.21",
+    "lodash-es": "4.17.22",
     "ofetch": "1.5.1",
     "react": "19.2.0",
     "swr": "2.3.6"

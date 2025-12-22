@@ -11,6 +11,8 @@ import './assets/styles/index.scss'
 import './assets/styles/tailwind.css'
 import { routeTree } from './route-tree.gen'
 import './services/i18n'
+// manually import language utils, inject paraglide custom strategy
+import '@/utils/language'
 
 if (!window.ResizeObserver) {
   window.ResizeObserver = ResizeObserver

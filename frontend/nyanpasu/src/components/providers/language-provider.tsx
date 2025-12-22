@@ -26,10 +26,14 @@ export const LanguageProvider = ({ children }: PropsWithChildren) => {
   })
 
   useEffect(() => {
-    if (language.value && language.value !== getLocale()) {
+    if (
+      language.value &&
+      language.value !== getLocale() &&
+      !language.isPending
+    ) {
       setLocale(language.value as Locale)
     }
-  }, [language.value])
+  }, [language.value, language.isPending])
 
   return (
     <LanguageContext.Provider

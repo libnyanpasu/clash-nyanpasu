@@ -1,4 +1,4 @@
-import { defineCustomClientStrategy, type locales } from '@/paraglide/runtime'
+import { defineCustomClientStrategy, locales } from '@/paraglide/runtime'
 
 export const languageOptions = {
   en: 'English',
@@ -51,10 +51,11 @@ export const setCachedLanguage = (locale: Language) => {
 }
 
 export const getCachedLanguage = () => {
-  return (
-    (localStorage.getItem(CACHED_LANGUAGE_STORAGE_KEY) as Language) ||
-    DEFAULT_LANGUAGE
-  )
+  const value = localStorage.getItem(CACHED_LANGUAGE_STORAGE_KEY)
+
+  return value && locales.includes(value as Language)
+    ? (value as Language)
+    : DEFAULT_LANGUAGE
 }
 
 defineCustomClientStrategy('custom-extension', {

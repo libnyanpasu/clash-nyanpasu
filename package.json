@@ -67,8 +67,8 @@
     "@types/fs-extra": "11.0.4",
     "@types/lodash-es": "4.17.12",
     "@types/node": "24.10.4",
-    "@typescript-eslint/eslint-plugin": "8.50.0",
-    "@typescript-eslint/parser": "8.50.0",
+    "@typescript-eslint/eslint-plugin": "8.50.1",
+    "@typescript-eslint/parser": "8.50.1",
     "autoprefixer": "10.4.23",
     "conventional-changelog-conventionalcommits": "9.1.0",
     "cross-env": "10.1.0",
@@ -107,7 +107,7 @@
     "tailwindcss": "4.1.17",
     "tsx": "4.21.0",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.50.0"
+    "typescript-eslint": "8.50.1"
   },
   "packageManager": "pnpm@10.26.1",
   "engines": {

@@ -1,4 +1,4 @@
-import { createContext, PropsWithChildren, useContext, useEffect } from 'react'
+import { createContext, PropsWithChildren, useContext } from 'react'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { getLocale, Locale, setLocale } from '@/paraglide/runtime'
 import { useSetting } from '@nyanpasu/interface'
@@ -23,22 +23,13 @@ export const LanguageProvider = ({ children }: PropsWithChildren) => {
 
   const setLanguage = useLockFn(async (value: Locale) => {
     await language.upsert(value)
+    setLocale(value)
   })
-
-  useEffect(() => {
-    if (
-      language.value &&
-      language.value !== getLocale() &&
-      !language.isPending
-    ) {
-      setLocale(language.value as Locale)
-    }
-  }, [language.value, language.isPending])
 
   return (
     <LanguageContext.Provider
       value={{
-        language: language.value as Locale,
+        language: getLocale(),
         setLanguage,
       }}
     >

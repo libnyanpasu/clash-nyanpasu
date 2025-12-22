@@ -115,6 +115,7 @@ export default defineConfig(({ command, mode }) => {
       paraglideVitePlugin({
         project: './project.inlang',
         outdir: './src/paraglide',
+        strategy: ['custom-extension'],
       }),
     ],
     resolve: {

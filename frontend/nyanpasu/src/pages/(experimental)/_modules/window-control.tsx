@@ -5,12 +5,11 @@ import HorizontalRuleRounded from '~icons/material-symbols/horizontal-rule-round
 import PushPin from '~icons/material-symbols/push-pin'
 import PushPinOutline from '~icons/material-symbols/push-pin-outline'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ComponentProps, useCallback, useEffect, useRef } from 'react'
+import { ComponentProps, useCallback } from 'react'
 import { Button, ButtonProps } from '@/components/ui/button'
+import useWindowMaximized from '@/hooks/use-window-maximized'
 import { useSetting } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
-import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
-import { listen, TauriEvent, UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
 const appWindow = getCurrentWebviewWindow()
@@ -78,35 +77,11 @@ const MinimizeButton = () => {
 }
 
 const MaximizeButton = () => {
-  const unlistenRef = useRef<UnlistenFn | null>(null)
-
-  const { data: isMaximized } = useSuspenseQuery({
-    queryKey: ['isMaximized'],
-    queryFn: () => appWindow.isMaximized(),
-  })
-
-  const queryClient = useQueryClient()
-
-  const handleToggleMaximize = useCallback(async () => {
-    await appWindow.toggleMaximize()
-    await queryClient.invalidateQueries({ queryKey: ['isMaximized'] })
-  }, [queryClient])
-
-  useEffect(() => {
-    listen(TauriEvent.WINDOW_RESIZED, () => {
-      queryClient.invalidateQueries({ queryKey: ['isMaximized'] })
-    })
-      .then((unlisten) => {
-        unlistenRef.current = unlisten
-      })
-      .catch((error) => {
-        console.error(error)
-      })
-  }, [queryClient])
+  const { isMaximized, toggleMaximize } = useWindowMaximized()
 
   return (
     <CtrlButton
-      onClick={handleToggleMaximize}
+      onClick={toggleMaximize}
       data-slot="window-control-maximize-button"
     >
       {isMaximized ? (

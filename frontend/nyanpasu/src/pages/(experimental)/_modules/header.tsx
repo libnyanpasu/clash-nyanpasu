@@ -1,6 +1,7 @@
 import { ComponentProps } from 'react'
 import AnimatedLogo from '@/components/logo/animated-logo'
 import { isMacOS } from '@/consts'
+import useWindowMaximized from '@/hooks/use-window-maximized'
 import { cn } from '@nyanpasu/ui'
 import HeaderMenu from './header-menu'
 import WindowControl from './window-control'
@@ -50,6 +51,8 @@ export function DefaultHeader({ className, ...props }: ComponentProps<'div'>) {
 }
 
 export function MacOSHeader({ className, ...props }: ComponentProps<'div'>) {
+  const { isMaximized } = useWindowMaximized()
+
   return (
     <div
       className={cn(
@@ -62,7 +65,10 @@ export function MacOSHeader({ className, ...props }: ComponentProps<'div'>) {
       {...props}
     >
       <div
-        className="absolute left-22 hidden items-center md:flex"
+        className={cn(
+          'absolute left-22 hidden items-center md:flex',
+          isMaximized ? 'left-2' : 'left-22',
+        )}
         data-tauri-drag-region
       >
         <HeaderMenu />

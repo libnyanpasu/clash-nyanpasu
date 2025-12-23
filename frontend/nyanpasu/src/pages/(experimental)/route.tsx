@@ -24,7 +24,7 @@ const AppContent = () => {
 function RouteComponent() {
   return (
     <div
-      className={cn('flex max-h-dvh min-h-dvh flex-col', 'bg-background')}
+      className={cn('flex max-h-dvh min-h-dvh flex-col', 'bg-background/30')}
       onContextMenu={(e) => {
         e.preventDefault()
       }}

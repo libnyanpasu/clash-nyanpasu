@@ -1,6 +1,7 @@
 import { commands } from './bindings'
 
 export * from './consts'
+export * from './use-server-port'
 export * from './use-clash-config'
 export * from './use-clash-connections'
 export * from './use-clash-cores'

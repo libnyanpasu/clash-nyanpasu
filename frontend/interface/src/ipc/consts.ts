@@ -4,6 +4,11 @@
 export const NYANPASU_BACKEND_EVENT_NAME = 'nyanpasu://mutation'
 
 /**
+ * Server port query key, used by useServerPort hook
+ */
+export const SERVER_PORT_QUERY_KEY = 'server-port'
+
+/**
  * Nyanpasu setting query key, used by useSettings hook
  */
 export const NYANPASU_SETTING_QUERY_KEY = 'settings'

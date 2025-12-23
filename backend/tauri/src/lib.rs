@@ -36,7 +36,7 @@ use tauri::{Emitter, Manager};
 use tauri_specta::{collect_commands, collect_events};
 use utils::resolve::{is_window_opened, reset_window_open_counter};
 
-rust_i18n::i18n!("../../locales");
+rust_i18n::i18n!("./locales");
 
 #[cfg(feature = "deadlock-detection")]
 fn deadlock_detection() {
@@ -110,7 +110,7 @@ pub fn run() -> std::io::Result<()> {
         let locale = utils::help::get_system_locale();
         utils::help::mapping_to_i18n_key(&locale)
     };
-    rust_i18n::set_locale(locale);
+    rust_i18n::set_locale(locale.to_lowercase().as_str());
 
     if single_instance_result
         .as_ref()
@@ -313,7 +313,7 @@ pub fn run() -> std::io::Result<()> {
     }
 
     let verge = { Config::verge().latest().language.clone().unwrap() };
-    rust_i18n::set_locale(verge.as_str());
+    rust_i18n::set_locale(verge.to_lowercase().as_str());
 
     // show a dialog to print the single instance error
     // Hold the guard until the end of the program if acquired

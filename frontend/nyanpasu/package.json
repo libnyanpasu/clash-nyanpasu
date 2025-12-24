@@ -62,7 +62,7 @@
     "react-split-grid": "1.0.4",
     "react-use": "17.6.0",
     "rxjs": "7.8.2",
-    "swr": "2.3.6",
+    "swr": "2.3.8",
     "virtua": "0.46.6",
     "vite-bundle-visualizer": "1.2.1"
   },

@@ -6,7 +6,7 @@ import { Link } from '@tanstack/react-router'
 
 const BackButton = () => {
   return (
-    <Button icon className="flex items-center justify-center sm:hidden" asChild>
+    <Button icon className="flex items-center justify-center md:hidden" asChild>
       <Link to="/experimental/settings">
         <ArrowBackIosNewRounded className="size-4" />
       </Link>
@@ -38,10 +38,10 @@ export function SettingsTitle({
         'sticky top-0 z-10 transition-[padding] duration-500',
         'backdrop-blur-xl',
         'flex items-center gap-1',
-        'py-4 pr-4 pl-2 sm:pl-4',
+        'py-4 pr-4 pl-2 md:pl-4',
         'group-data-[scroll-direction=down]/settings-content:pr-6',
         'group-data-[scroll-direction=down]/settings-content:pl-3',
-        'group-data-[scroll-direction=down]/settings-content:sm:pl-6',
+        'group-data-[scroll-direction=down]/settings-content:md:pl-6',
         className,
       )}
       data-slot="settings-title"

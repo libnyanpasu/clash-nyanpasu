@@ -8,6 +8,11 @@ import SettingsRounded from '~icons/material-symbols/settings-rounded'
 import TerminalRounded from '~icons/material-symbols/terminal-rounded'
 import { ComponentProps } from 'react'
 import { Button, ButtonProps } from '@/components/ui/button'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/ui'
 import { Link, useLocation } from '@tanstack/react-router'
@@ -84,28 +89,42 @@ export default function Navbar({ className, ...props }: ComponentProps<'div'>) {
       {...props}
     >
       {ROUTES.map((route) => (
-        <NavbarButton
-          key={route.href}
-          data-active={location.pathname.startsWith(route.href)}
-          asChild
-        >
-          <Link
-            className={cn(
-              'flex items-center justify-center gap-1',
-              'lg:w-fit lg:px-3',
-              'sm:h-8!',
-            )}
-            to={route.href}
-          >
-            <span className="size-5" data-slot="navbar-button-icon">
-              <route.icon className="size-5" />
-            </span>
+        <Tooltip key={route.href}>
+          <TooltipTrigger>
+            <NavbarButton
+              data-active={location.pathname.startsWith(route.href)}
+              asChild
+            >
+              <Link
+                className={cn(
+                  'flex items-center justify-center gap-1',
+                  'lg:w-fit lg:px-3',
+                  'sm:h-8!',
+                )}
+                to={route.href}
+              >
+                <span className="size-5" data-slot="navbar-button-icon">
+                  <route.icon className="size-5" />
+                </span>
 
-            <span className="hidden lg:block" data-slot="navbar-button-label">
-              {route.label}
-            </span>
-          </Link>
-        </NavbarButton>
+                <span
+                  className="hidden lg:block"
+                  data-slot="navbar-button-label"
+                >
+                  {route.label}
+                </span>
+              </Link>
+            </NavbarButton>
+          </TooltipTrigger>
+
+          <TooltipContent
+            side="bottom"
+            sideOffset={-4}
+            className="hidden sm:block md:hidden"
+          >
+            {route.label}
+          </TooltipContent>
+        </Tooltip>
       ))}
     </div>
   )

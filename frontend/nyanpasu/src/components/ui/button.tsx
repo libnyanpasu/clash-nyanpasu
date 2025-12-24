@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { lazy, Suspense, useCallback } from 'react'
 import { chains } from '@/utils/chain'
 import { cn } from '@nyanpasu/ui'
-import { Slot } from '@radix-ui/react-slot'
+import { Slot, Slottable } from '@radix-ui/react-slot'
 import { CircularProgress } from './progress'
 import { useRipple } from './ripple'
 
@@ -161,36 +161,30 @@ export const Button = ({
       data-loading={String(Boolean(loading))}
       {...props}
     >
-      {asChild ? (
-        children
-      ) : (
-        <>
-          {children}
+      <Slottable>{children}</Slottable>
 
-          <AnimatePresence initial={false}>
-            {loading && (
-              <motion.span
-                className={cn(
-                  'absolute inset-0 flex h-full w-full cursor-wait items-center justify-center',
-                  'bg-inherit-allow-fallback',
-                )}
-                data-slot="button-loading"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-              >
-                <CircularProgress className="size-6" indeterminate />
-              </motion.span>
+      <AnimatePresence initial={false}>
+        {loading && (
+          <motion.span
+            className={cn(
+              'absolute inset-0 z-10 flex h-full w-full cursor-wait items-center justify-center',
+              'bg-inherit-allow-fallback',
             )}
-          </AnimatePresence>
+            data-slot="button-loading"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <CircularProgress className="size-3/5" indeterminate />
+          </motion.span>
+        )}
+      </AnimatePresence>
 
-          <Suspense>
-            {ripple && !loading && !disabled && (
-              <LazyRipple ripples={ripple.ripples} onClear={handleClear} />
-            )}
-          </Suspense>
-        </>
-      )}
+      <Suspense>
+        {ripple && !loading && !disabled && (
+          <LazyRipple ripples={ripple.ripples} onClear={handleClear} />
+        )}
+      </Suspense>
     </Comp>
   )
 }

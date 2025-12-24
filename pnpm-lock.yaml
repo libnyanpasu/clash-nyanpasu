@@ -276,7 +276,7 @@ importers:
         specifier: 4.1.17
         version: 4.1.17
       '@tanstack/react-virtual':
-        specifier: ^3.13.13
+        specifier: 3.13.13
         version: 3.13.13(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       '@tanstack/router-zod-adapter':
         specifier: 1.81.5

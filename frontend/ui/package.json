@@ -29,7 +29,7 @@
     "react-error-boundary": "6.0.0",
     "react-i18next": "15.7.4",
     "react-use": "17.6.0",
-    "tailwindcss": "4.1.17",
+    "tailwindcss": "4.1.18",
     "vite": "7.3.0",
     "vite-tsconfig-paths": "5.1.4"
   },

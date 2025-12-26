@@ -15,7 +15,7 @@
     "@dnd-kit/utilities": "3.2.2",
     "@emotion/styled": "11.14.1",
     "@hookform/resolvers": "5.2.2",
-    "@inlang/paraglide-js": "2.7.0",
+    "@inlang/paraglide-js": "2.7.1",
     "@juggle/resize-observer": "3.4.0",
     "@material/material-color-utilities": "0.3.0",
     "@mui/icons-material": "7.3.6",

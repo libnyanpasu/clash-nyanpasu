@@ -1,27 +1,18 @@
 use std::{
-    cell::{Cell, RefCell},
-    collections::VecDeque,
+    cell::RefCell,
     path::PathBuf,
+    rc::Rc,
     str::FromStr,
     time::{Duration, SystemTime},
 };
 
 use async_fs::create_dir_all;
-use boa_engine::{
-    Context, JsNativeError, JsResult, JsString, JsValue, Module,
-    job::{FutureJob, JobQueue, NativeJob},
-    module::ModuleLoader,
-};
+use boa_engine::{Context, JsNativeError, JsResult, JsString, Module, module::ModuleLoader};
 use boa_parser::Source;
-use futures_util::{StreamExt, stream::FuturesUnordered};
 use mime::Mime;
-use smol::{LocalExecutor, future};
 // Tokio sync is not runtime related
 use tokio::sync::oneshot::channel as oneshot_channel;
 use url::Url;
-
-// Type alias to simplify the complex type
-type ModuleLoadCallback = Box<dyn FnOnce(JsResult<Module>, &mut Context)>;
 
 // Most of the boilerplate is taken from the `futures.rs` example.
 // This file only explains what is exclusive of async module loading.
@@ -61,38 +52,23 @@ impl HttpModuleLoader {
         buf
     }
 
-    #[tracing::instrument(skip(finish_load, context))]
-    fn handle_cached_item(
-        item: CachedItem,
-        finish_load: ModuleLoadCallback,
-        context: &mut Context,
-    ) {
-        let Ok(mime) = Mime::from_str(item.mime.as_str()) else {
+    #[tracing::instrument(skip(context))]
+    fn handle_cached_item(item: CachedItem, context: &mut Context) -> JsResult<Module> {
+        let mime = Mime::from_str(item.mime.as_str()).map_err(|_| {
             log::error!("failed to parse mime type `{}`", item.mime);
-            finish_load(
-                Err(JsNativeError::typ()
-                    .with_message("failed to parse mime type")
-                    .into()),
-                context,
-            );
-            return;
-        };
+            JsNativeError::typ().with_message("failed to parse mime type")
+        })?;
+
         let source_str = match (mime.type_(), mime.subtype()) {
             (mime::APPLICATION, mime::JAVASCRIPT) => item.content.clone(),
             (mime::APPLICATION, mime::JSON) => {
                 format!("export default {};", item.content)
             }
             _ => {
-                let Ok(escaped_str) = serde_json::to_string(&item.content) else {
+                let escaped_str = serde_json::to_string(&item.content).map_err(|_| {
                     log::error!("failed to serialize content.");
-                    finish_load(
-                        Err(JsNativeError::typ()
-                            .with_message("failed to serialize content")
-                            .into()),
-                        context,
-                    );
-                    return;
-                };
+                    JsNativeError::typ().with_message("failed to serialize content")
+                })?;
                 format!("export const text = {escaped_str};")
             }
         };
@@ -100,171 +76,129 @@ impl HttpModuleLoader {
         // Could also add a path if needed.
         let source = Source::from_bytes(source_str.as_bytes());
 
-        let module = Module::parse(source, None, context);
-        // TODO: rm cache or create cache after judge module is ok
-
-        // We don't do any error handling, `finish_load` takes care of that for us.
-        finish_load(module, context);
+        Module::parse(source, None, context)
     }
 }
 
 impl ModuleLoader for HttpModuleLoader {
-    fn load_imported_module(
-        &self,
+    async fn load_imported_module(
+        self: Rc<Self>,
         _referrer: boa_engine::module::Referrer,
         specifier: JsString,
-        finish_load: ModuleLoadCallback,
-        context: &mut Context,
-    ) {
+        context: &RefCell<&mut Context>,
+    ) -> JsResult<Module> {
         let url = specifier.to_std_string_escaped();
         let url = Url::from_str(&url).expect("invalid url"); // SAFETY: `url` is a valid URL, if it's not, its caller side issue
         let cache_path = self.mapping_cache_dir(&url);
-        let parent_dir = match cache_path.parent() {
-            Some(parent) => parent.to_path_buf(),
-            None => {
+        let parent_dir = cache_path
+            .parent()
+            .ok_or_else(|| {
                 log::error!("failed to get parent directory for `{url}`");
-                finish_load(
-                    Err(JsNativeError::typ()
-                        .with_message(format!(
-                            "failed to get cache parent directory for `{url}`; path: `{}`",
-                            cache_path.display()
-                        ))
-                        .into()),
-                    context,
-                );
-                return;
-            }
-        };
+                JsNativeError::typ().with_message(format!(
+                    "failed to get cache parent directory for `{url}`; path: `{}`",
+                    cache_path.display()
+                ))
+            })?
+            .to_path_buf();
+
         let max_age = self.max_age;
 
-        let fetch = async move {
-            log::debug!("checking cache for `{url}`...");
+        log::debug!("checking cache for `{url}`...");
 
-            let now = SystemTime::now();
-            let should_use_cached_content = match async_fs::metadata(&cache_path).await {
-                Ok(metadata)
-                    if metadata
-                        .modified()
-                        .is_ok_and(|modified| modified > now - max_age) =>
+        let now = SystemTime::now();
+        let should_use_cached_content = match async_fs::metadata(&cache_path).await {
+            Ok(metadata)
+                if metadata
+                    .modified()
+                    .is_ok_and(|modified| modified > now - max_age) =>
+            {
+                true
+            }
+            Err(err) => {
+                // create dir if not exists
+                if err.kind() == std::io::ErrorKind::NotFound
+                    && let Err(e) = async_fs::metadata(&parent_dir).await
+                    && e.kind() == std::io::ErrorKind::NotFound
+                    && let Err(err) = create_dir_all(parent_dir).await
                 {
-                    true
+                    log::error!(
+                        "failed to create cache directory for `{url}`; path: `{}`. error: `{}`",
+                        cache_path.display(),
+                        err
+                    );
                 }
-                Err(err) => {
-                    // create dir if not exists
-                    if err.kind() == std::io::ErrorKind::NotFound
-                        && let Err(e) = async_fs::metadata(&parent_dir).await
-                        && e.kind() == std::io::ErrorKind::NotFound
-                        && let Err(err) = create_dir_all(parent_dir).await
-                    {
+                false
+            }
+            _ => false,
+        };
+
+        let item: anyhow::Result<CachedItem> = if should_use_cached_content {
+            async {
+                log::debug!("fetching `{url}` from cache...");
+                let item = async_fs::read(&cache_path).await?;
+                let item = postcard::from_bytes(&item)?;
+                log::debug!("finished fetching `{url}` from cache");
+                Ok(item)
+            }
+            .await
+        } else {
+            log::debug!("fetching `{url}`...");
+            let (tx, rx) = oneshot_channel();
+            let fetcher_url = url.clone();
+            nyanpasu_utils::runtime::spawn(async move {
+                let result = async {
+                    let response = reqwest::Client::builder()
+                        .redirect(reqwest::redirect::Policy::limited(5))
+                        .build()?
+                        .get(fetcher_url.as_str())
+                        .send()
+                        .await?;
+
+                    let mime = response
+                        .headers()
+                        .get(reqwest::header::CONTENT_TYPE)
+                        .and_then(|v| v.to_str().ok())
+                        .map(|v| v.to_string())
+                        .unwrap_or(mime::TEXT_PLAIN.to_string());
+                    let body = response.text().await?;
+
+                    log::debug!("finished fetching `{fetcher_url}`");
+                    Ok(CachedItem {
+                        mime,
+                        content: body,
+                    })
+                }
+                .await;
+                let _ = tx.send(result);
+            });
+            rx.await.expect("should never drop oneshot tx")
+        };
+
+        if let Ok(item) = &item {
+            match postcard::to_stdvec(&item) {
+                Ok(item) => {
+                    if let Err(err) = async_fs::write(&cache_path, &item).await {
                         log::error!(
-                            "failed to create cache directory for `{url}`; path: `{}`. error: `{}`",
+                            "failed to write cache for `{url}`; path: `{}`. error: `{}`",
                             cache_path.display(),
                             err
                         );
                     }
-                    false
                 }
-                _ => false,
-            };
-
-            // Adding some prints to show the non-deterministic nature of the async fetches.
-            // Try to run the example several times to see how sometimes the fetches start in order
-            // but finish in disorder.
-
-            // This could also retry fetching in case there's an error while requesting the module.
-            let item: anyhow::Result<CachedItem> = if should_use_cached_content {
-                async {
-                    log::debug!("fetching `{url}` from cache...");
-                    let item = async_fs::read(&cache_path).await?;
-                    let item = postcard::from_bytes(&item)?;
-                    log::debug!("finished fetching `{url}` from cache");
-                    Ok(item)
-                }
-                .await
-            } else {
-                log::debug!("fetching `{url}`...");
-                let (tx, rx) = oneshot_channel();
-                let fetcher_url = url.clone();
-                nyanpasu_utils::runtime::spawn(async move {
-                    let result = async {
-                        let response = reqwest::Client::builder()
-                            .redirect(reqwest::redirect::Policy::limited(5))
-                            .build()?
-                            .get(fetcher_url.as_str())
-                            .send()
-                            .await?;
-
-                        let mime = response
-                            .headers()
-                            .get(reqwest::header::CONTENT_TYPE)
-                            .and_then(|v| v.to_str().ok())
-                            .map(|v| v.to_string())
-                            .unwrap_or(mime::TEXT_PLAIN.to_string());
-                        let body = response.text().await?;
-
-                        log::debug!("finished fetching `{fetcher_url}`");
-                        Ok(CachedItem {
-                            mime,
-                            content: body,
-                        })
-                    }
-                    .await;
-                    let _ = tx.send(result);
-                });
-                rx.await.expect("should never drop oneshot tx")
-            };
-
-            if let Ok(item) = &item {
-                match postcard::to_stdvec(&item) {
-                    Ok(item) => {
-                        if let Err(err) = async_fs::write(&cache_path, &item).await {
-                            log::error!(
-                                "failed to write cache for `{url}`; path: `{}`. error: `{}`",
-                                cache_path.display(),
-                                err
-                            );
-                        }
-                    }
-                    Err(err) => {
-                        log::error!("failed to serialize content: {err}");
-                    }
+                Err(err) => {
+                    log::error!("failed to serialize content: {err}");
                 }
             }
+        }
 
-            // Since the async context cannot take the `context` by ref, we have to continue
-            // parsing inside a new `NativeJob` that will be enqueued into the promise job queue.
-            NativeJob::new(move |context| -> JsResult<JsValue> {
-                let item = match item {
-                    Ok(item) => item,
-                    Err(err) => {
-                        // On error we always call `finish_load` to notify the load promise about the
-                        // error.
-                        finish_load(
-                            Err(JsNativeError::typ().with_message(err.to_string()).into()),
-                            context,
-                        );
-
-                        // Just returns anything to comply with `NativeJob::new`'s signature.
-                        return Ok(JsValue::undefined());
-                    }
-                };
-                Self::handle_cached_item(item, finish_load, context);
-                // Also needed to match `NativeJob::new`.
-                Ok(JsValue::undefined())
-            })
-        };
-
-        // Just enqueue the future for now. We'll advance all the enqueued futures inside our custom
-        // `JobQueue`.
-        context
-            .job_queue()
-            .enqueue_future_job(Box::pin(fetch), context)
+        let item = item.map_err(|err| JsNativeError::typ().with_message(err.to_string()))?;
+        Self::handle_cached_item(item, &mut context.borrow_mut())
     }
 }
 
 #[test]
 fn test_http_module_loader() -> JsResult<()> {
-    use boa_engine::{builtins::promise::PromiseState, js_string};
+    use boa_engine::{builtins::promise::PromiseState, job::SimpleJobExecutor, js_string};
     use std::rc::Rc;
     let temp_dir = tempfile::tempdir().unwrap();
     // A simple snippet that imports modules from the web instead of the file system.
@@ -299,9 +233,9 @@ fn test_http_module_loader() -> JsResult<()> {
         export default result;
     "#;
 
-    let queue = Rc::new(Queue::new(LocalExecutor::new()));
-    let context = &mut Context::builder()
-        .job_queue(queue)
+    let queue = Rc::new(SimpleJobExecutor::new());
+    let mut context = Context::builder()
+        .job_executor(queue)
         // NEW: sets the context module loader to our custom loader
         .module_loader(Rc::new(HttpModuleLoader::new(
             temp_dir.path().to_path_buf(),
@@ -309,15 +243,15 @@ fn test_http_module_loader() -> JsResult<()> {
         )))
         .build()?;
 
-    let module = Module::parse(Source::from_bytes(SRC.as_bytes()), None, context)?;
+    let module = Module::parse(Source::from_bytes(SRC.as_bytes()), None, &mut context)?;
 
     // Calling `Module::load_link_evaluate` takes care of having to define promise handlers for
     // `Module::load` and `Module::evaluate`.
-    let promise = module.load_link_evaluate(context);
+    let promise = module.load_link_evaluate(&mut context);
 
     // Important to call `Context::run_jobs`, or else all the futures and promises won't be
     // pushed forward by the job queue.
-    context.run_jobs();
+    let _ = context.run_jobs();
 
     match promise.state() {
         // Our job queue guarantees that all promises and futures are finished after returning
@@ -328,7 +262,7 @@ fn test_http_module_loader() -> JsResult<()> {
         PromiseState::Pending => panic!("module didn't execute!"),
         // All modules after successfully evaluating return `JsValue::undefined()`.
         PromiseState::Fulfilled(v) => {
-            assert_eq!(v, JsValue::undefined())
+            assert_eq!(v, boa_engine::JsValue::undefined())
         }
         PromiseState::Rejected(err) => {
             panic!("{}", err.display());
@@ -336,8 +270,8 @@ fn test_http_module_loader() -> JsResult<()> {
     }
 
     let default = module
-        .namespace(context)
-        .get(js_string!("default"), context)?;
+        .namespace(&mut context)
+        .get(js_string!("default"), &mut context)?;
 
     // `default` should contain the result of our calculations.
     let default = default
@@ -346,21 +280,21 @@ fn test_http_module_loader() -> JsResult<()> {
 
     assert_eq!(
         default
-            .get(0, context)?
+            .get(0, &mut context)?
             .as_string()
             .ok_or_else(|| JsNativeError::typ().with_message("array element was not a string"))?,
-        &js_string!("aGVsbG8=")
+        js_string!("aGVsbG8=")
     );
     assert_eq!(
         default
-            .get(1, context)?
+            .get(1, &mut context)?
             .as_string()
             .ok_or_else(|| JsNativeError::typ().with_message("array element was not a string"))?,
-        &js_string!("d29ybGQ=")
+        js_string!("d29ybGQ=")
     );
     assert!(
         default
-            .get(2, context)?
+            .get(2, &mut context)?
             .as_string()
             .ok_or_else(|| JsNativeError::typ().with_message("array element was not a string"))?
             .to_std_string_escaped()
@@ -369,102 +303,4 @@ fn test_http_module_loader() -> JsResult<()> {
     );
 
     Ok(())
-}
-
-// Taken from the `futures.rs` example.
-pub struct Queue<'a> {
-    executor: LocalExecutor<'a>,
-    futures: RefCell<FuturesUnordered<FutureJob>>,
-    jobs: RefCell<VecDeque<NativeJob>>,
-}
-
-impl Default for Queue<'_> {
-    fn default() -> Self {
-        Self::new(LocalExecutor::new())
-    }
-}
-
-impl<'a> Queue<'a> {
-    pub(crate) fn new(executor: LocalExecutor<'a>) -> Self {
-        Self {
-            executor,
-            futures: RefCell::default(),
-            jobs: RefCell::default(),
-        }
-    }
-}
-
-impl JobQueue for Queue<'_> {
-    fn enqueue_promise_job(&self, job: NativeJob, _context: &mut Context) {
-        self.jobs.borrow_mut().push_back(job);
-    }
-
-    fn enqueue_future_job(&self, future: FutureJob, _context: &mut Context) {
-        self.futures.borrow().push(future)
-    }
-
-    fn run_jobs(&self, context: &mut Context) {
-        // Early return in case there were no jobs scheduled.
-        if self.jobs.borrow().is_empty() && self.futures.borrow().is_empty() {
-            return;
-        }
-
-        let context = RefCell::new(context);
-
-        future::block_on(self.executor.run(async move {
-            // Used to sync the finalization of both tasks
-            let finished = Cell::new(0b00u8);
-
-            let fqueue = async {
-                loop {
-                    if self.futures.borrow().is_empty() {
-                        finished.set(finished.get() | 0b01);
-                        if finished.get() >= 0b11 {
-                            // All possible futures and jobs were completed. Exit.
-                            return;
-                        }
-                        // All possible jobs were completed, but `jqueue` could have
-                        // pending jobs. Yield to the executor to try to progress on
-                        // `jqueue` until we have more pending futures.
-                        future::yield_now().await;
-                        continue;
-                    }
-                    finished.set(finished.get() & 0b10);
-
-                    let futures = &mut std::mem::take(&mut *self.futures.borrow_mut());
-                    while let Some(job) = futures.next().await {
-                        self.enqueue_promise_job(job, &mut context.borrow_mut());
-                    }
-                }
-            };
-
-            let jqueue = async {
-                loop {
-                    if self.jobs.borrow().is_empty() {
-                        finished.set(finished.get() | 0b10);
-                        if finished.get() >= 0b11 {
-                            // All possible futures and jobs were completed. Exit.
-                            return;
-                        }
-                        // All possible jobs were completed, but `fqueue` could have
-                        // pending futures. Yield to the executor to try to progress on
-                        // `fqueue` until we have more pending jobs.
-                        future::yield_now().await;
-                        continue;
-                    };
-                    finished.set(finished.get() & 0b01);
-
-                    let jobs = std::mem::take(&mut *self.jobs.borrow_mut());
-                    for job in jobs {
-                        if let Err(e) = job.call(&mut context.borrow_mut()) {
-                            eprintln!("Uncaught {e}");
-                        }
-                        future::yield_now().await;
-                    }
-                }
-            };
-
-            future::zip(fqueue, jqueue).await;
-        }))
-    }
 }

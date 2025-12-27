@@ -1,4 +1,4 @@
-use std::io::Read;
+use std::{cell::RefCell, io::Read, rc::Rc};
 
 use anyhow::Context as _;
 use boa_engine::{Context, JsNativeError, JsResult, JsString, Module, module::ModuleLoader};
@@ -24,13 +24,12 @@ static BUILTIN_MODULES: phf::Map<&str, &[u8]> = phf_map! {
 pub struct BuiltinModuleLoader;
 
 impl ModuleLoader for BuiltinModuleLoader {
-    fn load_imported_module(
-        &self,
+    async fn load_imported_module(
+        self: Rc<Self>,
         _referrer: boa_engine::module::Referrer,
         specifier: JsString,
-        finish_load: Box<dyn FnOnce(JsResult<Module>, &mut Context)>,
-        context: &mut Context,
-    ) {
+        context: &RefCell<&mut Context>,
+    ) -> JsResult<Module> {
         let specifier_str = specifier.to_std_string_escaped();
         let result: Result<_, anyhow::Error> = (|| {
             let module_name = specifier_str
@@ -58,30 +57,20 @@ impl ModuleLoader for BuiltinModuleLoader {
             Ok(data)
         })();
 
-        match result {
-            Ok(data) => {
-                log::trace!("Finishing loading builtin module: {}", specifier_str);
-                let source = Source::from_bytes(&data);
-                let module = Module::parse(source, None, context);
-                finish_load(module, context);
-            }
-            Err(err) => {
-                log::error!("Failed to loading builtin module: {}", specifier_str);
-                finish_load(
-                    Err(JsNativeError::typ().with_message(err.to_string()).into()),
-                    context,
-                );
-            }
-        }
+        let data = result.map_err(|err| {
+            log::error!("Failed to loading builtin module: {}", specifier_str);
+            JsNativeError::typ().with_message(err.to_string())
+        })?;
+
+        log::trace!("Finishing loading builtin module: {}", specifier_str);
+        let source = Source::from_bytes(&data);
+        Module::parse(source, None, &mut context.borrow_mut())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use boa_engine::JsValue;
-    use smol::LocalExecutor;
-
-    use crate::module::http::Queue;
+    use boa_engine::{JsValue, job::SimpleJobExecutor};
 
     use super::*;
 
@@ -96,43 +85,43 @@ mod tests {
             import dedent from 'nyan:dedent';
             import YAML from 'nyan:yaml';
             import { Base64 } from 'nyan:js-base64';
-    
+
             if (isEqual(1, 2)) {
                 throw new Error('Wrong isEqual implementation');
             }
-    
+
             const data = dedent`
                 object:
                     array: ["hello", "world"]
                     key: "value"
             `;
-    
+
             const object = YAML.parse(data).object;
-    
+
             let result = [
                 Base64.encode(object.array[0]),
                 Base64.encode(object.array[1]),
             ]
-    
+
             export default result;
         "#;
 
-        let queue = Rc::new(Queue::new(LocalExecutor::new()));
-        let context = &mut Context::builder()
-            .job_queue(queue)
+        let queue = Rc::new(SimpleJobExecutor::new());
+        let mut context = Context::builder()
+            .job_executor(queue)
             // NEW: sets the context module loader to our custom loader
             .module_loader(Rc::new(BuiltinModuleLoader))
             .build()?;
 
-        let module = Module::parse(Source::from_bytes(SRC.as_bytes()), None, context)?;
+        let module = Module::parse(Source::from_bytes(SRC.as_bytes()), None, &mut context)?;
 
         // Calling `Module::load_link_evaluate` takes care of having to define promise handlers for
         // `Module::load` and `Module::evaluate`.
-        let promise = module.load_link_evaluate(context);
+        let promise = module.load_link_evaluate(&mut context);
 
         // Important to call `Context::run_jobs`, or else all the futures and promises won't be
         // pushed forward by the job queue.
-        context.run_jobs();
+        let _ = context.run_jobs();
 
         match promise.state() {
             // Our job queue guarantees that all promises and futures are finished after returning
@@ -151,8 +140,8 @@ mod tests {
         }
 
         let default = module
-            .namespace(context)
-            .get(js_string!("default"), context)?;
+            .namespace(&mut context)
+            .get(js_string!("default"), &mut context)?;
 
         // `default` should contain the result of our calculations.
         let default = default
@@ -160,16 +149,16 @@ mod tests {
             .ok_or_else(|| JsNativeError::typ().with_message("default export was not an object"))?;
 
         assert_eq!(
-            default.get(0, context)?.as_string().ok_or_else(
+            default.get(0, &mut context)?.as_string().ok_or_else(
                 || JsNativeError::typ().with_message("array element was not a string")
             )?,
-            &js_string!("aGVsbG8=")
+            js_string!("aGVsbG8=")
         );
         assert_eq!(
-            default.get(1, context)?.as_string().ok_or_else(
+            default.get(1, &mut context)?.as_string().ok_or_else(
                 || JsNativeError::typ().with_message("array element was not a string")
             )?,
-            &js_string!("d29ybGQ=")
+            js_string!("d29ybGQ=")
         );
 
         Ok(())
@@ -184,39 +173,39 @@ mod tests {
         const SRC: &str = r#"
             import { yaml } from 'nyan:utils';
             import { Base64 } from 'nyan:js-base64';
-    
+
             const data = yaml`
                 object:
                     array: ["hello", "world"]
                     key: "value"
             `;
-    
+
             const object = data.object;
-    
+
             let result = [
                 Base64.encode(object.array[0]),
                 Base64.encode(object.array[1]),
             ]
-    
+
             export default result;
         "#;
 
-        let queue = Rc::new(Queue::new(LocalExecutor::new()));
-        let context = &mut Context::builder()
-            .job_queue(queue)
+        let queue = Rc::new(SimpleJobExecutor::new());
+        let mut context = Context::builder()
+            .job_executor(queue)
             // NEW: sets the context module loader to our custom loader
             .module_loader(Rc::new(BuiltinModuleLoader))
             .build()?;
 
-        let module = Module::parse(Source::from_bytes(SRC.as_bytes()), None, context)?;
+        let module = Module::parse(Source::from_bytes(SRC.as_bytes()), None, &mut context)?;
 
         // Calling `Module::load_link_evaluate` takes care of having to define promise handlers for
         // `Module::load` and `Module::evaluate`.
-        let promise = module.load_link_evaluate(context);
+        let promise = module.load_link_evaluate(&mut context);
 
         // Important to call `Context::run_jobs`, or else all the futures and promises won't be
         // pushed forward by the job queue.
-        context.run_jobs();
+        let _ = context.run_jobs();
 
         match promise.state() {
             // Our job queue guarantees that all promises and futures are finished after returning
@@ -235,8 +224,8 @@ mod tests {
         }
 
         let default = module
-            .namespace(context)
-            .get(js_string!("default"), context)?;
+            .namespace(&mut context)
+            .get(js_string!("default"), &mut context)?;
 
         // `default` should contain the result of our calculations.
         let default = default
@@ -244,16 +233,16 @@ mod tests {
             .ok_or_else(|| JsNativeError::typ().with_message("default export was not an object"))?;
 
         assert_eq!(
-            default.get(0, context)?.as_string().ok_or_else(
+            default.get(0, &mut context)?.as_string().ok_or_else(
                 || JsNativeError::typ().with_message("array element was not a string")
             )?,
-            &js_string!("aGVsbG8=")
+            js_string!("aGVsbG8=")
         );
         assert_eq!(
-            default.get(1, context)?.as_string().ok_or_else(
+            default.get(1, &mut context)?.as_string().ok_or_else(
                 || JsNativeError::typ().with_message("array element was not a string")
             )?,
-            &js_string!("d29ybGQ=")
+            js_string!("d29ybGQ=")
         );
 
         Ok(())

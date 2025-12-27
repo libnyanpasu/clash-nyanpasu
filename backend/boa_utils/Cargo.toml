@@ -13,7 +13,7 @@ doctest = false
 rustc-hash = { version = "2", features = ["std"] }
 boa_engine = { workspace = true, features = ["annex-b"] }
 boa_gc = { version = "0.21" }
-boa_parser = { version = "0.20", features = ["annex-b"] }
+boa_parser = { version = "0.21", features = ["annex-b"] }
 tokio = { workspace = true }
 nyanpasu-utils = { workspace = true }
 reqwest = { workspace = true }

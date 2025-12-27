@@ -239,7 +239,7 @@ pub fn run() -> std::io::Result<()> {
             ipc::delete_profile,
             ipc::read_profile_file,
             ipc::save_profile_file,
-            ipc::save_window_size_state,
+            ipc::save_main_window_size_state,
             ipc::get_custom_app_dir,
             ipc::set_custom_app_dir,
             // service mode
@@ -368,7 +368,7 @@ pub fn run() -> std::io::Result<()> {
             #[cfg(not(target_os = "macos"))]
             if let Some(url) = custom_scheme {
                 log::info!(target: "app", "started with schema");
-                resolve::create_window(&handle.clone());
+                resolve::create_main_window(&handle.clone());
                 while !is_window_opened() {
                     log::info!(target: "app", "waiting for window open");
                     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -386,7 +386,7 @@ pub fn run() -> std::io::Result<()> {
                 &["clash-nyanpasu", "clash"],
                 move |request| {
                     log::info!(target: "app", "scheme request received: {:?}", &request);
-                    resolve::create_window(&handle.clone()); // create window if not exists
+                    resolve::create_main_window(&handle.clone()); // create window if not exists
                     while !is_window_opened() {
                         log::info!(target: "app", "waiting for window open");
                         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -420,7 +420,7 @@ pub fn run() -> std::io::Result<()> {
             }
             tauri::WindowEvent::CloseRequested { .. } => {
                 log::debug!(target: "app", "window close requested");
-                let _ = resolve::save_window_state(app_handle, true);
+                let _ = resolve::save_main_window_state(app_handle, true);
                 #[cfg(target_os = "macos")]
                 crate::utils::dock::macos::hide_dock_icon();
             }
@@ -431,13 +431,13 @@ pub fn run() -> std::io::Result<()> {
             tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
                 log::debug!(target: "app", "window moved or resized");
                 std::thread::sleep(std::time::Duration::from_nanos(1));
-                let _ = resolve::save_window_state(app_handle, false);
+                let _ = resolve::save_main_window_state(app_handle, false);
             }
             _ => {}
         },
         #[cfg(target_os = "macos")]
         tauri::RunEvent::Reopen { .. } => {
-            resolve::create_window(app_handle);
+            resolve::create_main_window(app_handle);
         }
         _ => {}
     });

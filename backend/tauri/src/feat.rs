@@ -35,7 +35,7 @@ pub fn open_dashboard() {
     let handle = handle::Handle::global();
     let app_handle = handle.app_handle.lock();
     if let Some(app_handle) = app_handle.as_ref() {
-        resolve::create_window(app_handle);
+        resolve::create_main_window(app_handle);
     }
 }
 
@@ -45,7 +45,7 @@ pub fn close_dashboard() {
     let handle = handle::Handle::global();
     let app_handle = handle.app_handle.lock();
     if let Some(app_handle) = app_handle.as_ref() {
-        resolve::close_window(app_handle);
+        resolve::close_main_window(app_handle);
     }
 }
 
@@ -54,9 +54,9 @@ pub fn toggle_dashboard() {
     let handle = handle::Handle::global();
     let app_handle = handle.app_handle.lock();
     if let Some(app_handle) = app_handle.as_ref() {
-        match resolve::is_window_open(app_handle) {
-            true => resolve::close_window(app_handle),
-            false => resolve::create_window(app_handle),
+        match resolve::is_main_window_open(app_handle) {
+            true => resolve::close_main_window(app_handle),
+            false => resolve::create_main_window(app_handle),
         }
     }
 }

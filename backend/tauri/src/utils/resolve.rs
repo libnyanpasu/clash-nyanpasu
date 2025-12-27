@@ -4,8 +4,9 @@ use crate::{
         nyanpasu::{ClashCore, WindowState},
     },
     core::{storage::Storage, tray::proxies, *},
-    log_err, trace_err,
+    log_err,
     utils::init,
+    window::AppWindow,
 };
 use anyhow::Result;
 use semver::Version;
@@ -182,7 +183,7 @@ pub fn resolve_setup(app: &mut App) {
 
     let silent_start = { Config::verge().data().enable_silent_start };
     if !silent_start.unwrap_or(false) {
-        create_window(app.app_handle());
+        create_main_window(app.app_handle());
     }
 
     log_err!(sysopt::Sysopt::global().init_launch());
@@ -210,242 +211,52 @@ pub fn resolve_reset() {
     log_err!(block_on(CoreManager::global().stop_core()));
 }
 
+/// Main window implementation
+struct MainWindow;
+
+impl AppWindow for MainWindow {
+    fn label(&self) -> &str {
+        "main"
+    }
+
+    fn title(&self) -> &str {
+        "Clash Nyanpasu"
+    }
+
+    fn url(&self) -> &str {
+        "/"
+    }
+
+    fn get_window_state(&self) -> Option<WindowState> {
+        Config::verge().latest().window_size_state.clone()
+    }
+
+    fn set_window_state(&self, state: Option<WindowState>) {
+        Config::verge().data().patch_config(IVerge {
+            window_size_state: state,
+            ..IVerge::default()
+        });
+    }
+}
+
 /// create main window
 #[tracing_attributes::instrument(skip(app_handle))]
-pub fn create_window(app_handle: &AppHandle) {
-    if let Some(window) = app_handle.get_webview_window("main") {
-        tracing::debug!("main window is already opened, try to show it");
-        if OPEN_WINDOWS_COUNTER.load(Ordering::Acquire) == 0 {
-            trace_err!(window.unminimize(), "set win unminimize");
-            trace_err!(window.show(), "set win visible");
-            trace_err!(window.set_focus(), "set win focus");
-        }
-        return;
-    }
-
-    let always_on_top = {
-        *Config::verge()
-            .latest()
-            .always_on_top
-            .as_ref()
-            .unwrap_or(&false)
-    };
-
-    tracing::debug!("create main window...");
-    let mut builder = tauri::WebviewWindowBuilder::new(
-        app_handle,
-        "main".to_string(),
-        tauri::WebviewUrl::App("/".into()),
-    )
-    .title("Clash Nyanpasu")
-    .fullscreen(false)
-    .always_on_top(always_on_top)
-    .min_inner_size(400.0, 600.0);
-
-    let win_state = &Config::verge().latest().window_size_state.clone();
-    match win_state {
-        Some(_) => {
-            builder = builder.inner_size(800., 800.).position(0., 0.);
-        }
-        _ => {
-            #[cfg(target_os = "windows")]
-            {
-                builder = builder.inner_size(800.0, 636.0).center();
-            }
-
-            #[cfg(target_os = "macos")]
-            {
-                builder = builder.inner_size(800.0, 642.0).center();
-            }
-
-            #[cfg(target_os = "linux")]
-            {
-                builder = builder.inner_size(800.0, 642.0).center();
-            }
-        }
-    };
-
-    #[cfg(windows)]
-    let win_res = builder
-        .decorations(false)
-        .transparent(true)
-        .visible(false)
-        .additional_browser_args("--enable-features=msWebView2EnableDraggableRegions --disable-features=OverscrollHistoryNavigation,msExperimentalScrolling")
-        .build();
-    #[cfg(target_os = "macos")]
-    let win_res = builder
-        .decorations(true)
-        .hidden_title(true)
-        .title_bar_style(tauri::TitleBarStyle::Overlay)
-        .build();
-    #[cfg(target_os = "linux")]
-    let win_res = builder.decorations(true).transparent(false).build();
-
-    match win_res {
-        Ok(win) => {
-            use tauri::{PhysicalPosition, PhysicalSize};
-
-            if win_state.is_some() {
-                let state = win_state.as_ref().unwrap();
-                win.set_position(PhysicalPosition {
-                    x: state.x,
-                    y: state.y,
-                })
-                .unwrap();
-                win.set_size(PhysicalSize {
-                    width: state.width,
-                    height: state.height,
-                })
-                .unwrap();
-            }
-
-            if let Some(state) = win_state {
-                if state.maximized {
-                    trace_err!(win.maximize(), "set win maximize");
-                }
-                if state.fullscreen {
-                    trace_err!(win.set_fullscreen(true), "set win fullscreen");
-                }
-            }
-            #[cfg(windows)]
-            trace_err!(win.set_shadow(true), "set win shadow");
-            log::trace!("try to calculate the monitor size");
-            let center = (|| -> Result<bool> {
-                let center;
-                if let Some(state) = win_state {
-                    let monitor = win.current_monitor()?.ok_or(anyhow::anyhow!(""))?;
-                    let PhysicalPosition { x, y } = *monitor.position();
-                    let PhysicalSize { width, height } = *monitor.size();
-                    let left = x;
-                    let right = x + width as i32;
-                    let top = y;
-                    let bottom = y + height as i32;
-
-                    let x = state.x;
-                    let y = state.y;
-                    let width = state.width as i32;
-                    let height = state.height as i32;
-                    center = ![
-                        (x, y),
-                        (x + width, y),
-                        (x, y + height),
-                        (x + width, y + height),
-                    ]
-                    .into_iter()
-                    .any(|(x, y)| x >= left && x < right && y >= top && y < bottom);
-                } else {
-                    center = true;
-                }
-                Ok(center)
-            })();
-
-            if center.unwrap_or(true) {
-                trace_err!(win.center(), "set win center");
-            }
-
-            #[cfg(debug_assertions)]
-            {
-                if let Some(webview_window) = win.get_webview_window("main") {
-                    webview_window.open_devtools();
-                }
-            }
-
-            #[cfg(target_os = "macos")]
-            {
-                tracing::trace!("setup traffic lights pos");
-                let mtm = objc2_foundation::MainThreadMarker::new().unwrap();
-                crate::window::macos::setup_traffic_lights_pos(win.clone(), (18.0, 22.0), mtm);
-            }
-
-            OPEN_WINDOWS_COUNTER.fetch_add(1, Ordering::Release);
-        }
-        Err(err) => {
-            log::error!(target: "app", "failed to create window, {err:?}");
-            if let Some(win) = app_handle.get_webview_window("main") {
-                // Cleanup window if failed to create, it's a workaround for tauri bug
-                log_err!(
-                    win.destroy(),
-                    "occur error when close window while failed to create"
-                );
-            }
-        }
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings6;
-        use windows_core::Interface;
-
-        app_handle
-            .get_webview_window("main")
-            .unwrap()
-            .with_webview(|webview| unsafe {
-                let settings = webview
-                    .controller()
-                    .CoreWebView2()
-                    .unwrap()
-                    .Settings()
-                    .unwrap();
-                let settings: ICoreWebView2Settings6 =
-                    settings.cast::<ICoreWebView2Settings6>().unwrap();
-                settings.SetIsSwipeNavigationEnabled(false).unwrap();
-            })
-            .unwrap();
-    }
+pub fn create_main_window(app_handle: &AppHandle) {
+    log_err!(MainWindow.create(app_handle));
 }
 
 /// close main window
-pub fn close_window(app_handle: &AppHandle) {
-    if let Some(window) = app_handle.get_webview_window("main") {
-        trace_err!(window.close(), "close window");
-        reset_window_open_counter()
-    }
+pub fn close_main_window(app_handle: &AppHandle) {
+    MainWindow.close(app_handle);
 }
 
-/// is window open
-pub fn is_window_open(app_handle: &AppHandle) -> bool {
-    app_handle.get_webview_window("main").is_some()
+/// is main window open
+pub fn is_main_window_open(app_handle: &AppHandle) -> bool {
+    MainWindow.is_open(app_handle)
 }
 
-pub fn save_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
-    let win = app_handle
-        .get_webview_window("main")
-        .ok_or(anyhow::anyhow!("failed to get window"))?;
-    let current_monitor = win.current_monitor()?;
-    let verge = Config::verge();
-    let mut verge = verge.latest();
-    match current_monitor {
-        Some(_) => {
-            let previous_state = verge.window_size_state.clone().unwrap_or_default();
-            let mut state = WindowState {
-                maximized: win.is_maximized()?,
-                fullscreen: win.is_fullscreen()?,
-                ..previous_state
-            };
-            let is_minimized = win.is_minimized()?;
-
-            let size = win.inner_size()?;
-            if size.width > 0 && size.height > 0 && !state.maximized && !is_minimized {
-                state.width = size.width;
-                state.height = size.height;
-            }
-            let position = win.outer_position()?;
-            if !state.maximized && !is_minimized {
-                state.x = position.x;
-                state.y = position.y;
-            }
-            verge.window_size_state = Some(state);
-        }
-        None => {
-            verge.window_size_state = None;
-        }
-    }
-
-    if save_to_file {
-        verge.save_file()?;
-    }
-
-    Ok(())
+pub fn save_main_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
+    MainWindow.save_state(app_handle, save_to_file)
 }
 
 /// resolve core version

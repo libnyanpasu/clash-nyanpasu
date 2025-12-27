@@ -1,6 +1,277 @@
 //! Tauri window management mod
 //!
 
+use crate::{
+    config::{Config, nyanpasu::WindowState},
+    log_err, trace_err,
+};
+use anyhow::Result;
+use std::sync::atomic::{AtomicU16, Ordering};
+use tauri::{AppHandle, Manager};
+
+/// Global counter for tracking open windows
+static OPEN_WINDOWS_COUNTER: AtomicU16 = AtomicU16::new(0);
+
+/// Trait for window management
+pub trait AppWindow {
+    /// Get window label (e.g., "main", "editor")
+    fn label(&self) -> &str;
+
+    /// Get window title
+    fn title(&self) -> &str;
+
+    /// Get window URL path
+    fn url(&self) -> &str;
+
+    /// Get window state from config
+    fn get_window_state(&self) -> Option<WindowState>;
+
+    /// Set window state to config
+    fn set_window_state(&self, state: Option<WindowState>);
+
+    fn reset_window_open_counter(&self) {
+        OPEN_WINDOWS_COUNTER.fetch_sub(1, Ordering::Release);
+    }
+
+    /// Create window with default implementation
+    fn create(&self, app_handle: &AppHandle) -> Result<()> {
+        if let Some(window) = app_handle.get_webview_window(self.label()) {
+            tracing::debug!("{} window is already opened, try to show it", self.label());
+            if OPEN_WINDOWS_COUNTER.load(Ordering::Acquire) == 0 {
+                trace_err!(window.unminimize(), "set win unminimize");
+                trace_err!(window.show(), "set win visible");
+                trace_err!(window.set_focus(), "set win focus");
+            }
+            return Ok(());
+        }
+
+        let always_on_top = {
+            *Config::verge()
+                .latest()
+                .always_on_top
+                .as_ref()
+                .unwrap_or(&false)
+        };
+
+        tracing::debug!("create {} window...", self.label());
+        let mut builder = tauri::WebviewWindowBuilder::new(
+            app_handle,
+            self.label().clone(),
+            tauri::WebviewUrl::App(self.url().into()),
+        )
+        .title(self.title())
+        .fullscreen(false)
+        .always_on_top(always_on_top)
+        .min_inner_size(400.0, 600.0);
+
+        let win_state = &self.get_window_state();
+        match win_state {
+            Some(_) => {
+                builder = builder.inner_size(800., 800.).position(0., 0.);
+            }
+            _ => {
+                #[cfg(target_os = "windows")]
+                {
+                    builder = builder.inner_size(800.0, 636.0).center();
+                }
+
+                #[cfg(target_os = "macos")]
+                {
+                    builder = builder.inner_size(800.0, 642.0).center();
+                }
+
+                #[cfg(target_os = "linux")]
+                {
+                    builder = builder.inner_size(800.0, 642.0).center();
+                }
+            }
+        };
+
+        #[cfg(windows)]
+        let win_res = builder
+            .decorations(false)
+            .transparent(true)
+            .visible(false)
+            .additional_browser_args("--enable-features=msWebView2EnableDraggableRegions --disable-features=OverscrollHistoryNavigation,msExperimentalScrolling")
+            .build();
+        #[cfg(target_os = "macos")]
+        let win_res = builder
+            .decorations(true)
+            .hidden_title(true)
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .build();
+        #[cfg(target_os = "linux")]
+        let win_res = builder.decorations(true).transparent(false).build();
+
+        match win_res {
+            Ok(win) => {
+                use tauri::{PhysicalPosition, PhysicalSize};
+
+                if win_state.is_some() {
+                    let state = win_state.as_ref().unwrap();
+                    win.set_position(PhysicalPosition {
+                        x: state.x,
+                        y: state.y,
+                    })
+                    .unwrap();
+                    win.set_size(PhysicalSize {
+                        width: state.width,
+                        height: state.height,
+                    })
+                    .unwrap();
+                }
+
+                if let Some(state) = win_state {
+                    if state.maximized {
+                        trace_err!(win.maximize(), "set win maximize");
+                    }
+                    if state.fullscreen {
+                        trace_err!(win.set_fullscreen(true), "set win fullscreen");
+                    }
+                }
+                #[cfg(windows)]
+                trace_err!(win.set_shadow(true), "set win shadow");
+                log::trace!("try to calculate the monitor size");
+                let center = (|| -> Result<bool> {
+                    let center;
+                    if let Some(state) = win_state {
+                        let monitor = win.current_monitor()?.ok_or(anyhow::anyhow!(""))?;
+                        let PhysicalPosition { x, y } = *monitor.position();
+                        let PhysicalSize { width, height } = *monitor.size();
+                        let left = x;
+                        let right = x + width as i32;
+                        let top = y;
+                        let bottom = y + height as i32;
+
+                        let x = state.x;
+                        let y = state.y;
+                        let width = state.width as i32;
+                        let height = state.height as i32;
+                        center = ![
+                            (x, y),
+                            (x + width, y),
+                            (x, y + height),
+                            (x + width, y + height),
+                        ]
+                        .into_iter()
+                        .any(|(x, y)| x >= left && x < right && y >= top && y < bottom);
+                    } else {
+                        center = true;
+                    }
+                    Ok(center)
+                })();
+
+                if center.unwrap_or(true) {
+                    trace_err!(win.center(), "set win center");
+                }
+
+                #[cfg(debug_assertions)]
+                {
+                    if let Some(webview_window) = win.get_webview_window(self.label()) {
+                        webview_window.open_devtools();
+                    }
+                }
+
+                #[cfg(target_os = "macos")]
+                {
+                    tracing::trace!("setup traffic lights pos");
+                    let mtm = objc2_foundation::MainThreadMarker::new().unwrap();
+                    crate::window::macos::setup_traffic_lights_pos(win.clone(), (18.0, 22.0), mtm);
+                }
+
+                OPEN_WINDOWS_COUNTER.fetch_add(1, Ordering::Release);
+            }
+            Err(err) => {
+                log::error!(target: "app", "failed to create window, {err:?}");
+                if let Some(win) = app_handle.get_webview_window(self.label()) {
+                    // Cleanup window if failed to create, it's a workaround for tauri bug
+                    log_err!(
+                        win.destroy(),
+                        "occur error when close window while failed to create"
+                    );
+                }
+            }
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings6;
+            use windows_core::Interface;
+
+            app_handle
+                .get_webview_window(self.label())
+                .ok_or(anyhow::anyhow!("failed to get window"))?
+                .with_webview(|webview| unsafe {
+                    let settings = webview
+                        .controller()
+                        .CoreWebView2()
+                        .unwrap()
+                        .Settings()
+                        .unwrap();
+                    let settings: ICoreWebView2Settings6 =
+                        settings.cast::<ICoreWebView2Settings6>().unwrap();
+                    settings.SetIsSwipeNavigationEnabled(false).unwrap();
+                })
+                .unwrap();
+        }
+
+        Ok(())
+    }
+
+    /// Close window with default implementation
+    fn close(&self, app_handle: &AppHandle) {
+        if let Some(window) = app_handle.get_webview_window(self.label()) {
+            trace_err!(window.close(), "close window");
+            self.reset_window_open_counter()
+        }
+    }
+
+    /// Check if window is open with default implementation
+    fn is_open(&self, app_handle: &AppHandle) -> bool {
+        app_handle.get_webview_window(self.label()).is_some()
+    }
+
+    /// Save window state with default implementation
+    fn save_state(&self, app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
+        let win = app_handle
+            .get_webview_window(self.label())
+            .ok_or(anyhow::anyhow!("failed to get window"))?;
+        let current_monitor = win.current_monitor()?;
+
+        let state = match current_monitor {
+            Some(_) => {
+                let mut state = WindowState {
+                    maximized: win.is_maximized()?,
+                    fullscreen: win.is_fullscreen()?,
+                    ..WindowState::default()
+                };
+                let is_minimized = win.is_minimized()?;
+
+                let size = win.inner_size()?;
+                if size.width > 0 && size.height > 0 && !state.maximized && !is_minimized {
+                    state.width = size.width;
+                    state.height = size.height;
+                }
+                let position = win.outer_position()?;
+                if !state.maximized && !is_minimized {
+                    state.x = position.x;
+                    state.y = position.y;
+                }
+                Some(state)
+            }
+            None => None,
+        };
+
+        self.set_window_state(state);
+
+        if save_to_file {
+            Config::verge().data().save_file()?;
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(target_os = "macos")]
 pub mod macos {
     #![allow(non_snake_case)]

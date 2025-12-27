@@ -54,7 +54,7 @@ parking_lot = { version = "0.12.1" }
 fs-err = { workspace = true }                                             # for more detailed io error
 itertools = "0.14"                                                        # sweet iterator utilities
 rayon = "1.10"                                                            # for iterator parallel processing
-ambassador = "0.4.1"                                                      # for trait delegation
+ambassador = "0.5.0"                                                      # for trait delegation
 derive_builder = "0.20"                                                   # for builder pattern
 strum = { version = "0.27", features = ["derive"] }                       # for enum string conversion
 atomic_enum = "0.3.0"                                                     # for atomic enum

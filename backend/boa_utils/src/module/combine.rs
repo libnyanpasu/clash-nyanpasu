@@ -1,6 +1,6 @@
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
-use boa_engine::module::ModuleLoader;
+use boa_engine::{Context, JsResult, JsString, Module, module::ModuleLoader};
 use url::Url;
 
 use crate::module::builtin::{BUILTIN_MODULE_PREFIX, BuiltinModuleLoader};
@@ -33,60 +33,31 @@ impl CombineModuleLoader {
 }
 
 impl ModuleLoader for CombineModuleLoader {
-    fn load_imported_module(
-        &self,
+    async fn load_imported_module(
+        self: Rc<Self>,
         referrer: boa_engine::module::Referrer,
-        specifier: boa_engine::JsString,
-        finish_load: Box<
-            dyn FnOnce(boa_engine::JsResult<boa_engine::Module>, &mut boa_engine::Context),
-        >,
-        context: &mut boa_engine::Context,
-    ) {
+        specifier: JsString,
+        context: &RefCell<&mut Context>,
+    ) -> JsResult<Module> {
         let specifier_str = specifier.to_std_string_escaped();
         match Url::parse(&specifier_str) {
             Ok(url) if url.scheme() == "http" || url.scheme() == "https" => {
                 self.http
-                    .load_imported_module(referrer, specifier, finish_load, context);
+                    .clone()
+                    .load_imported_module(referrer, specifier, context)
+                    .await
             }
             _ => {
                 if specifier_str.starts_with(BUILTIN_MODULE_PREFIX) {
                     self.builtin
-                        .load_imported_module(referrer, specifier, finish_load, context);
+                        .clone()
+                        .load_imported_module(referrer, specifier, context)
+                        .await
                 } else {
                     self.simple
-                        .load_imported_module(referrer, specifier, finish_load, context);
-                }
-            }
-        }
-    }
-
-    fn get_module(&self, _specifier: boa_engine::JsString) -> Option<boa_engine::Module> {
-        let specifier_str = _specifier.to_std_string_escaped();
-        match Url::parse(&specifier_str) {
-            Ok(url) if url.scheme() == "http" || url.scheme() == "https" => {
-                self.http.get_module(_specifier)
-            }
-            _ => {
-                if specifier_str.starts_with(BUILTIN_MODULE_PREFIX) {
-                    self.builtin.get_module(_specifier)
-                } else {
-                    self.simple.get_module(_specifier)
-                }
-            }
-        }
-    }
-
-    fn register_module(&self, _specifier: boa_engine::JsString, _module: boa_engine::Module) {
-        let specifier_str = _specifier.to_std_string_escaped();
-        match Url::parse(&specifier_str) {
-            Ok(url) if url.scheme() == "http" || url.scheme() == "https" => {
-                self.http.register_module(_specifier, _module);
-            }
-            _ => {
-                if specifier_str.starts_with(BUILTIN_MODULE_PREFIX) {
-                    self.builtin.register_module(_specifier, _module);
-                } else {
-                    self.simple.register_module(_specifier, _module);
+                        .clone()
+                        .load_imported_module(referrer, specifier, context)
+                        .await
                 }
             }
         }

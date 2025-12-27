@@ -10,7 +10,7 @@ use crate::{
         candy,
         collect::EnvInfo,
         dirs, help,
-        resolve::{self, save_window_state},
+        resolve::{self, save_main_window_state},
     },
 };
 use anyhow::{Context, anyhow};
@@ -574,9 +574,9 @@ pub fn open_web_url(url: String) -> Result<()> {
 
 #[tauri::command]
 #[specta::specta]
-pub fn save_window_size_state() -> Result<()> {
+pub fn save_main_window_size_state() -> Result<()> {
     let handle = handle::Handle::global().app_handle.lock().clone().unwrap();
-    (save_window_state(&handle, true))?;
+    (save_main_window_state(&handle, true))?;
     Ok(())
 }
 

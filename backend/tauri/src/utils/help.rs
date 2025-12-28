@@ -247,7 +247,7 @@ pub fn get_max_scale_factor() -> f64 {
 
 #[instrument(skip(app_handle))]
 pub fn cleanup_processes(app_handle: &AppHandle) {
-    let _ = super::resolve::save_window_state(app_handle, true);
+    let _ = super::resolve::save_main_window_state(app_handle, true);
     super::resolve::resolve_reset();
     let widget_manager = app_handle.state::<crate::widget::WidgetManager>();
     let _ = nyanpasu_utils::runtime::block_on(async {

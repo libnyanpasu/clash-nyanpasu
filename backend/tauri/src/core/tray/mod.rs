@@ -405,7 +405,7 @@ impl Tray {
                 feat::change_clash_mode(mode.into());
             }
 
-            "open_window" => resolve::create_window(app_handle),
+            "open_window" => resolve::create_main_window(app_handle),
             "system_proxy" => feat::toggle_system_proxy(),
             "tun_mode" => feat::toggle_tun_mode(),
             "copy_env_sh" => feat::copy_clash_env(app_handle, "sh"),
@@ -434,7 +434,7 @@ impl Tray {
             ..
         } = event
         {
-            resolve::create_window(tray_icon.app_handle());
+            resolve::create_main_window(tray_icon.app_handle());
         }
     }
 }

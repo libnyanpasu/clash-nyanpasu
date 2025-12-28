@@ -56,13 +56,19 @@
   --color-inverse-on-surface: var(--color-md-inverse-on-surface);
   --color-inverse-primary: var(--color-md-inverse-primary);
 
-  /* Progress Spin Animation */
+  /* Progress Spin Animation (Circular) */
   --animate-progress-spin: progress-spin 5332ms cubic-bezier(0.4, 0, 0.2, 1)
     infinite both;
   --animate-progress-spin-left: progress-spin-left 1333ms
     cubic-bezier(0.4, 0, 0.2, 1) infinite both;
   --animate-progress-spin-right: progress-spin-right 1333ms
     cubic-bezier(0.4, 0, 0.2, 1) infinite both;
+
+  /* Linear Progress Animation (Indeterminate) */
+  --animate-linear-progress-primary: linear-progress-primary 2.1s
+    cubic-bezier(0.65, 0.815, 0.735, 0.395) infinite;
+  --animate-linear-progress-secondary: linear-progress-secondary 2.1s
+    cubic-bezier(0.165, 0.84, 0.44, 1) 1.15s infinite;
 }
 
 @utility text-shadow-* {
@@ -153,5 +159,40 @@
 
   100% {
     transform: rotate(-265deg);
+  }
+}
+
+/* Material You Linear Progress Indeterminate Animation */
+@keyframes linear-progress-primary {
+  0% {
+    right: 100%;
+    left: -35%;
+  }
+
+  60% {
+    right: -90%;
+    left: 100%;
+  }
+
+  100% {
+    right: -90%;
+    left: 100%;
+  }
+}
+
+@keyframes linear-progress-secondary {
+  0% {
+    right: 100%;
+    left: -200%;
+  }
+
+  60% {
+    right: -8%;
+    left: 107%;
+  }
+
+  100% {
+    right: -8%;
+    left: 107%;
   }
 }

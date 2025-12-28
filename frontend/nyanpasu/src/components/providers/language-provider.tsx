@@ -1,4 +1,5 @@
-import { createContext, PropsWithChildren, useContext } from 'react'
+import { locale } from 'dayjs'
+import { createContext, PropsWithChildren, useContext, useEffect } from 'react'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { getLocale, Locale, setLocale } from '@/paraglide/runtime'
 import { useSetting } from '@nyanpasu/interface'
@@ -25,6 +26,13 @@ export const LanguageProvider = ({ children }: PropsWithChildren) => {
     await language.upsert(value)
     setLocale(value)
   })
+
+  // sync dayjs locale
+  useEffect(() => {
+    if (language) {
+      locale(language.value || 'en')
+    }
+  }, [language])
 
   return (
     <LanguageContext.Provider

@@ -281,11 +281,9 @@ export const InputLine = ({ className, ...props }: ComponentProps<'input'>) => {
 
 export type InputProps = ComponentProps<'input'> & {
   label?: string
-  asChild?: boolean
 } & InputContainerVariants
 
 export const Input = ({
-  asChild,
   variant,
   className,
   label,
@@ -330,8 +328,6 @@ export const Input = ({
     setHaveValue(Boolean(props.value || props.defaultValue))
   }, [props.value, props.defaultValue])
 
-  const Comp = asChild ? Slot : 'input'
-
   return (
     <InputContext.Provider
       value={{
@@ -341,7 +337,7 @@ export const Input = ({
       }}
     >
       <InputContainer>
-        <Comp
+        <input
           className={cn(
             inputVariants({
               variant,
@@ -350,6 +346,10 @@ export const Input = ({
             }),
             className,
           )}
+          autoComplete="off"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
           onChange={handleChange}
           {...props}
         />

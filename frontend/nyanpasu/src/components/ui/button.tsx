@@ -22,7 +22,7 @@ export const buttonVariants = cva(
         basic: [
           'px-4',
           'text-primary dark:text-primary',
-          'bg-transparent-fallback-surface dark:bg-transparent-fallback-on-surface',
+          'bg-transparent-fallback-surface dark:bg-transparent-fallback-surface-variant',
           'hover:bg-primary-container dark:hover:bg-surface-variant',
         ],
         raised: [
@@ -36,7 +36,7 @@ export const buttonVariants = cva(
           'px-6',
           'text-primary',
           'border border-primary',
-          'bg-transparent-fallback-surface dark:bg-transparent-fallback-on-surface',
+          'bg-transparent-fallback-surface dark:bg-transparent-fallback-surface-variant',
           'hover:bg-primary-container dark:hover:bg-surface-variant',
         ],
         flat: [

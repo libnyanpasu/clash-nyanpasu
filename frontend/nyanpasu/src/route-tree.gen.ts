@@ -30,6 +30,7 @@ import { Route as experimentalExperimentalDashboardRouteRouteImport } from './pa
 import { Route as experimentalExperimentalConnectionsRouteRouteImport } from './pages/(experimental)/experimental/connections/route'
 import { Route as experimentalExperimentalSettingsIndexRouteImport } from './pages/(experimental)/experimental/settings/index'
 import { Route as experimentalExperimentalProxiesIndexRouteImport } from './pages/(experimental)/experimental/proxies/index'
+import { Route as experimentalExperimentalProfilesIndexRouteImport } from './pages/(experimental)/experimental/profiles/index'
 import { Route as experimentalExperimentalSettingsWebUiRouteRouteImport } from './pages/(experimental)/experimental/settings/web-ui/route'
 import { Route as experimentalExperimentalSettingsUserInterfaceRouteRouteImport } from './pages/(experimental)/experimental/settings/user-interface/route'
 import { Route as experimentalExperimentalSettingsSystemServiceRouteRouteImport } from './pages/(experimental)/experimental/settings/system-service/route'
@@ -42,7 +43,10 @@ import { Route as experimentalExperimentalSettingsClashFiledRouteRouteImport } f
 import { Route as experimentalExperimentalSettingsClashExternalControllRouteRouteImport } from './pages/(experimental)/experimental/settings/clash-external-controll/route'
 import { Route as experimentalExperimentalSettingsClashCoreRouteRouteImport } from './pages/(experimental)/experimental/settings/clash-core/route'
 import { Route as experimentalExperimentalSettingsAboutRouteRouteImport } from './pages/(experimental)/experimental/settings/about/route'
+import { Route as experimentalExperimentalProfilesInspectRouteRouteImport } from './pages/(experimental)/experimental/profiles/inspect/route'
+import { Route as experimentalExperimentalProfilesTypeIndexRouteImport } from './pages/(experimental)/experimental/profiles/$type/index'
 import { Route as experimentalExperimentalProxiesGroupNameRouteImport } from './pages/(experimental)/experimental/proxies/group/$name'
+import { Route as experimentalExperimentalProfilesTypeDetailUidRouteImport } from './pages/(experimental)/experimental/profiles/$type/detail/$uid'
 
 const legacyRouteRoute = legacyRouteRouteImport.update({
   id: '/(legacy)',
@@ -157,6 +161,12 @@ const experimentalExperimentalProxiesIndexRoute =
     path: '/',
     getParentRoute: () => experimentalExperimentalProxiesRouteRoute,
   } as any)
+const experimentalExperimentalProfilesIndexRoute =
+  experimentalExperimentalProfilesIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => experimentalExperimentalProfilesRouteRoute,
+  } as any)
 const experimentalExperimentalSettingsWebUiRouteRoute =
   experimentalExperimentalSettingsWebUiRouteRouteImport.update({
     id: '/web-ui',
@@ -229,11 +239,29 @@ const experimentalExperimentalSettingsAboutRouteRoute =
     path: '/about',
     getParentRoute: () => experimentalExperimentalSettingsRouteRoute,
   } as any)
+const experimentalExperimentalProfilesInspectRouteRoute =
+  experimentalExperimentalProfilesInspectRouteRouteImport.update({
+    id: '/inspect',
+    path: '/inspect',
+    getParentRoute: () => experimentalExperimentalProfilesRouteRoute,
+  } as any)
+const experimentalExperimentalProfilesTypeIndexRoute =
+  experimentalExperimentalProfilesTypeIndexRouteImport.update({
+    id: '/$type/',
+    path: '/$type/',
+    getParentRoute: () => experimentalExperimentalProfilesRouteRoute,
+  } as any)
 const experimentalExperimentalProxiesGroupNameRoute =
   experimentalExperimentalProxiesGroupNameRouteImport.update({
     id: '/group/$name',
     path: '/group/$name',
     getParentRoute: () => experimentalExperimentalProxiesRouteRoute,
+  } as any)
+const experimentalExperimentalProfilesTypeDetailUidRoute =
+  experimentalExperimentalProfilesTypeDetailUidRouteImport.update({
+    id: '/$type/detail/$uid',
+    path: '/$type/detail/$uid',
+    getParentRoute: () => experimentalExperimentalProfilesRouteRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -249,11 +277,12 @@ export interface FileRoutesByFullPath {
   '/experimental/connections': typeof experimentalExperimentalConnectionsRouteRoute
   '/experimental/dashboard': typeof experimentalExperimentalDashboardRouteRoute
   '/experimental/logs': typeof experimentalExperimentalLogsRouteRoute
-  '/experimental/profiles': typeof experimentalExperimentalProfilesRouteRoute
+  '/experimental/profiles': typeof experimentalExperimentalProfilesRouteRouteWithChildren
   '/experimental/providers': typeof experimentalExperimentalProvidersRouteRoute
   '/experimental/proxies': typeof experimentalExperimentalProxiesRouteRouteWithChildren
   '/experimental/rules': typeof experimentalExperimentalRulesRouteRoute
   '/experimental/settings': typeof experimentalExperimentalSettingsRouteRouteWithChildren
+  '/experimental/profiles/inspect': typeof experimentalExperimentalProfilesInspectRouteRoute
   '/experimental/settings/about': typeof experimentalExperimentalSettingsAboutRouteRoute
   '/experimental/settings/clash-core': typeof experimentalExperimentalSettingsClashCoreRouteRoute
   '/experimental/settings/clash-external-controll': typeof experimentalExperimentalSettingsClashExternalControllRouteRoute
@@ -266,9 +295,12 @@ export interface FileRoutesByFullPath {
   '/experimental/settings/system-service': typeof experimentalExperimentalSettingsSystemServiceRouteRoute
   '/experimental/settings/user-interface': typeof experimentalExperimentalSettingsUserInterfaceRouteRoute
   '/experimental/settings/web-ui': typeof experimentalExperimentalSettingsWebUiRouteRoute
+  '/experimental/profiles/': typeof experimentalExperimentalProfilesIndexRoute
   '/experimental/proxies/': typeof experimentalExperimentalProxiesIndexRoute
   '/experimental/settings/': typeof experimentalExperimentalSettingsIndexRoute
   '/experimental/proxies/group/$name': typeof experimentalExperimentalProxiesGroupNameRoute
+  '/experimental/profiles/$type': typeof experimentalExperimentalProfilesTypeIndexRoute
+  '/experimental/profiles/$type/detail/$uid': typeof experimentalExperimentalProfilesTypeDetailUidRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -283,9 +315,9 @@ export interface FileRoutesByTo {
   '/experimental/connections': typeof experimentalExperimentalConnectionsRouteRoute
   '/experimental/dashboard': typeof experimentalExperimentalDashboardRouteRoute
   '/experimental/logs': typeof experimentalExperimentalLogsRouteRoute
-  '/experimental/profiles': typeof experimentalExperimentalProfilesRouteRoute
   '/experimental/providers': typeof experimentalExperimentalProvidersRouteRoute
   '/experimental/rules': typeof experimentalExperimentalRulesRouteRoute
+  '/experimental/profiles/inspect': typeof experimentalExperimentalProfilesInspectRouteRoute
   '/experimental/settings/about': typeof experimentalExperimentalSettingsAboutRouteRoute
   '/experimental/settings/clash-core': typeof experimentalExperimentalSettingsClashCoreRouteRoute
   '/experimental/settings/clash-external-controll': typeof experimentalExperimentalSettingsClashExternalControllRouteRoute
@@ -298,9 +330,12 @@ export interface FileRoutesByTo {
   '/experimental/settings/system-service': typeof experimentalExperimentalSettingsSystemServiceRouteRoute
   '/experimental/settings/user-interface': typeof experimentalExperimentalSettingsUserInterfaceRouteRoute
   '/experimental/settings/web-ui': typeof experimentalExperimentalSettingsWebUiRouteRoute
+  '/experimental/profiles': typeof experimentalExperimentalProfilesIndexRoute
   '/experimental/proxies': typeof experimentalExperimentalProxiesIndexRoute
   '/experimental/settings': typeof experimentalExperimentalSettingsIndexRoute
   '/experimental/proxies/group/$name': typeof experimentalExperimentalProxiesGroupNameRoute
+  '/experimental/profiles/$type': typeof experimentalExperimentalProfilesTypeIndexRoute
+  '/experimental/profiles/$type/detail/$uid': typeof experimentalExperimentalProfilesTypeDetailUidRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -318,11 +353,12 @@ export interface FileRoutesById {
   '/(experimental)/experimental/connections': typeof experimentalExperimentalConnectionsRouteRoute
   '/(experimental)/experimental/dashboard': typeof experimentalExperimentalDashboardRouteRoute
   '/(experimental)/experimental/logs': typeof experimentalExperimentalLogsRouteRoute
-  '/(experimental)/experimental/profiles': typeof experimentalExperimentalProfilesRouteRoute
+  '/(experimental)/experimental/profiles': typeof experimentalExperimentalProfilesRouteRouteWithChildren
   '/(experimental)/experimental/providers': typeof experimentalExperimentalProvidersRouteRoute
   '/(experimental)/experimental/proxies': typeof experimentalExperimentalProxiesRouteRouteWithChildren
   '/(experimental)/experimental/rules': typeof experimentalExperimentalRulesRouteRoute
   '/(experimental)/experimental/settings': typeof experimentalExperimentalSettingsRouteRouteWithChildren
+  '/(experimental)/experimental/profiles/inspect': typeof experimentalExperimentalProfilesInspectRouteRoute
   '/(experimental)/experimental/settings/about': typeof experimentalExperimentalSettingsAboutRouteRoute
   '/(experimental)/experimental/settings/clash-core': typeof experimentalExperimentalSettingsClashCoreRouteRoute
   '/(experimental)/experimental/settings/clash-external-controll': typeof experimentalExperimentalSettingsClashExternalControllRouteRoute
@@ -335,9 +371,12 @@ export interface FileRoutesById {
   '/(experimental)/experimental/settings/system-service': typeof experimentalExperimentalSettingsSystemServiceRouteRoute
   '/(experimental)/experimental/settings/user-interface': typeof experimentalExperimentalSettingsUserInterfaceRouteRoute
   '/(experimental)/experimental/settings/web-ui': typeof experimentalExperimentalSettingsWebUiRouteRoute
+  '/(experimental)/experimental/profiles/': typeof experimentalExperimentalProfilesIndexRoute
   '/(experimental)/experimental/proxies/': typeof experimentalExperimentalProxiesIndexRoute
   '/(experimental)/experimental/settings/': typeof experimentalExperimentalSettingsIndexRoute
   '/(experimental)/experimental/proxies/group/$name': typeof experimentalExperimentalProxiesGroupNameRoute
+  '/(experimental)/experimental/profiles/$type/': typeof experimentalExperimentalProfilesTypeIndexRoute
+  '/(experimental)/experimental/profiles/$type/detail/$uid': typeof experimentalExperimentalProfilesTypeDetailUidRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -359,6 +398,7 @@ export interface FileRouteTypes {
     | '/experimental/proxies'
     | '/experimental/rules'
     | '/experimental/settings'
+    | '/experimental/profiles/inspect'
     | '/experimental/settings/about'
     | '/experimental/settings/clash-core'
     | '/experimental/settings/clash-external-controll'
@@ -371,9 +411,12 @@ export interface FileRouteTypes {
     | '/experimental/settings/system-service'
     | '/experimental/settings/user-interface'
     | '/experimental/settings/web-ui'
+    | '/experimental/profiles/'
     | '/experimental/proxies/'
     | '/experimental/settings/'
     | '/experimental/proxies/group/$name'
+    | '/experimental/profiles/$type'
+    | '/experimental/profiles/$type/detail/$uid'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -388,9 +431,9 @@ export interface FileRouteTypes {
     | '/experimental/connections'
     | '/experimental/dashboard'
     | '/experimental/logs'
-    | '/experimental/profiles'
     | '/experimental/providers'
     | '/experimental/rules'
+    | '/experimental/profiles/inspect'
     | '/experimental/settings/about'
     | '/experimental/settings/clash-core'
     | '/experimental/settings/clash-external-controll'
@@ -403,9 +446,12 @@ export interface FileRouteTypes {
     | '/experimental/settings/system-service'
     | '/experimental/settings/user-interface'
     | '/experimental/settings/web-ui'
+    | '/experimental/profiles'
     | '/experimental/proxies'
     | '/experimental/settings'
     | '/experimental/proxies/group/$name'
+    | '/experimental/profiles/$type'
+    | '/experimental/profiles/$type/detail/$uid'
   id:
     | '__root__'
     | '/'
@@ -427,6 +473,7 @@ export interface FileRouteTypes {
     | '/(experimental)/experimental/proxies'
     | '/(experimental)/experimental/rules'
     | '/(experimental)/experimental/settings'
+    | '/(experimental)/experimental/profiles/inspect'
     | '/(experimental)/experimental/settings/about'
     | '/(experimental)/experimental/settings/clash-core'
     | '/(experimental)/experimental/settings/clash-external-controll'
@@ -439,9 +486,12 @@ export interface FileRouteTypes {
     | '/(experimental)/experimental/settings/system-service'
     | '/(experimental)/experimental/settings/user-interface'
     | '/(experimental)/experimental/settings/web-ui'
+    | '/(experimental)/experimental/profiles/'
     | '/(experimental)/experimental/proxies/'
     | '/(experimental)/experimental/settings/'
     | '/(experimental)/experimental/proxies/group/$name'
+    | '/(experimental)/experimental/profiles/$type/'
+    | '/(experimental)/experimental/profiles/$type/detail/$uid'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -599,6 +649,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof experimentalExperimentalProxiesIndexRouteImport
       parentRoute: typeof experimentalExperimentalProxiesRouteRoute
     }
+    '/(experimental)/experimental/profiles/': {
+      id: '/(experimental)/experimental/profiles/'
+      path: '/'
+      fullPath: '/experimental/profiles/'
+      preLoaderRoute: typeof experimentalExperimentalProfilesIndexRouteImport
+      parentRoute: typeof experimentalExperimentalProfilesRouteRoute
+    }
     '/(experimental)/experimental/settings/web-ui': {
       id: '/(experimental)/experimental/settings/web-ui'
       path: '/web-ui'
@@ -683,6 +740,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof experimentalExperimentalSettingsAboutRouteRouteImport
       parentRoute: typeof experimentalExperimentalSettingsRouteRoute
     }
+    '/(experimental)/experimental/profiles/inspect': {
+      id: '/(experimental)/experimental/profiles/inspect'
+      path: '/inspect'
+      fullPath: '/experimental/profiles/inspect'
+      preLoaderRoute: typeof experimentalExperimentalProfilesInspectRouteRouteImport
+      parentRoute: typeof experimentalExperimentalProfilesRouteRoute
+    }
+    '/(experimental)/experimental/profiles/$type/': {
+      id: '/(experimental)/experimental/profiles/$type/'
+      path: '/$type'
+      fullPath: '/experimental/profiles/$type'
+      preLoaderRoute: typeof experimentalExperimentalProfilesTypeIndexRouteImport
+      parentRoute: typeof experimentalExperimentalProfilesRouteRoute
+    }
     '/(experimental)/experimental/proxies/group/$name': {
       id: '/(experimental)/experimental/proxies/group/$name'
       path: '/group/$name'
@@ -690,8 +761,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof experimentalExperimentalProxiesGroupNameRouteImport
       parentRoute: typeof experimentalExperimentalProxiesRouteRoute
     }
+    '/(experimental)/experimental/profiles/$type/detail/$uid': {
+      id: '/(experimental)/experimental/profiles/$type/detail/$uid'
+      path: '/$type/detail/$uid'
+      fullPath: '/experimental/profiles/$type/detail/$uid'
+      preLoaderRoute: typeof experimentalExperimentalProfilesTypeDetailUidRouteImport
+      parentRoute: typeof experimentalExperimentalProfilesRouteRoute
+    }
   }
 }
+
+interface experimentalExperimentalProfilesRouteRouteChildren {
+  experimentalExperimentalProfilesInspectRouteRoute: typeof experimentalExperimentalProfilesInspectRouteRoute
+  experimentalExperimentalProfilesIndexRoute: typeof experimentalExperimentalProfilesIndexRoute
+  experimentalExperimentalProfilesTypeIndexRoute: typeof experimentalExperimentalProfilesTypeIndexRoute
+  experimentalExperimentalProfilesTypeDetailUidRoute: typeof experimentalExperimentalProfilesTypeDetailUidRoute
+}
+
+const experimentalExperimentalProfilesRouteRouteChildren: experimentalExperimentalProfilesRouteRouteChildren =
+  {
+    experimentalExperimentalProfilesInspectRouteRoute:
+      experimentalExperimentalProfilesInspectRouteRoute,
+    experimentalExperimentalProfilesIndexRoute:
+      experimentalExperimentalProfilesIndexRoute,
+    experimentalExperimentalProfilesTypeIndexRoute:
+      experimentalExperimentalProfilesTypeIndexRoute,
+    experimentalExperimentalProfilesTypeDetailUidRoute:
+      experimentalExperimentalProfilesTypeDetailUidRoute,
+  }
+
+const experimentalExperimentalProfilesRouteRouteWithChildren =
+  experimentalExperimentalProfilesRouteRoute._addFileChildren(
+    experimentalExperimentalProfilesRouteRouteChildren,
+  )
 
 interface experimentalExperimentalProxiesRouteRouteChildren {
   experimentalExperimentalProxiesIndexRoute: typeof experimentalExperimentalProxiesIndexRoute
@@ -766,7 +868,7 @@ interface experimentalRouteRouteChildren {
   experimentalExperimentalConnectionsRouteRoute: typeof experimentalExperimentalConnectionsRouteRoute
   experimentalExperimentalDashboardRouteRoute: typeof experimentalExperimentalDashboardRouteRoute
   experimentalExperimentalLogsRouteRoute: typeof experimentalExperimentalLogsRouteRoute
-  experimentalExperimentalProfilesRouteRoute: typeof experimentalExperimentalProfilesRouteRoute
+  experimentalExperimentalProfilesRouteRoute: typeof experimentalExperimentalProfilesRouteRouteWithChildren
   experimentalExperimentalProvidersRouteRoute: typeof experimentalExperimentalProvidersRouteRoute
   experimentalExperimentalProxiesRouteRoute: typeof experimentalExperimentalProxiesRouteRouteWithChildren
   experimentalExperimentalRulesRouteRoute: typeof experimentalExperimentalRulesRouteRoute
@@ -781,7 +883,7 @@ const experimentalRouteRouteChildren: experimentalRouteRouteChildren = {
   experimentalExperimentalLogsRouteRoute:
     experimentalExperimentalLogsRouteRoute,
   experimentalExperimentalProfilesRouteRoute:
-    experimentalExperimentalProfilesRouteRoute,
+    experimentalExperimentalProfilesRouteRouteWithChildren,
   experimentalExperimentalProvidersRouteRoute:
     experimentalExperimentalProvidersRouteRoute,
   experimentalExperimentalProxiesRouteRoute:

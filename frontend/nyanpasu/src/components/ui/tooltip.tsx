@@ -46,8 +46,8 @@ export function TooltipContent({
         data-slot="tooltip-content"
         sideOffset={sideOffset}
         className={cn(
-          'bg-surface text-on-surface',
-          'z-50 w-fit',
+          'bg-surface-variant text-on-surface',
+          'z-50 w-fit min-w-12 text-center',
           'rounded-full px-3 py-1.5 text-xs text-balance',
           'shadow-outline/30 dark:shadow-surface-variant/20 shadow-sm',
           className,
@@ -59,7 +59,7 @@ export function TooltipContent({
         {!disableArrow && (
           <TooltipPrimitive.Arrow
             className={cn(
-              'fill-surface z-50',
+              'fill-surface-variant z-50',
               'h-2.5 w-4 translate-y-[-6px] rounded-xl',
             )}
           />

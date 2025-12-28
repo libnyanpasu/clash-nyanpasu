@@ -45,5 +45,12 @@ export default {
   ],
   '*.{html,sass,scss,less}': ['prettier --write', 'stylelint --fix'],
   'package.json': ['prettier --write'],
-  '*.{md,json,jsonc,json5,yaml,yml,toml}': ['prettier --write'],
+  '*.{md,json,jsonc,json5,yaml,yml,toml}': (filenames) => {
+    // exclude frontend/nyanpasu/messages directory
+    const filtered = filenames.filter(
+      (file) => !file.includes('frontend/nyanpasu/messages/'),
+    )
+    if (filtered.length === 0) return []
+    return `prettier --write ${filtered.join(' ')}`
+  },
 }

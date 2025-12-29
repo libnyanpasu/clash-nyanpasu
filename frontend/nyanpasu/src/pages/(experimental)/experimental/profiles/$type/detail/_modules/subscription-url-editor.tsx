@@ -12,18 +12,18 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Profile, ProfileBuilder, useProfile } from '@nyanpasu/interface'
+import { ProfileBuilder, RemoteProfile, useProfile } from '@nyanpasu/interface'
 import AnimatedErrorItem from '../../../_modules/error-item'
 
 const formSchema = z.object({
-  name: z.string().min(1),
+  url: z.httpUrl(),
 })
 
-export default function ProfileNameEditor({
+export default function SubscriptionUrlEditor({
   profile,
   ...props
 }: ComponentProps<typeof ModalTrigger> & {
-  profile: Profile
+  profile: RemoteProfile
 }) {
   const { patch } = useProfile()
 
@@ -32,7 +32,7 @@ export default function ProfileNameEditor({
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      name: profile.name,
+      url: profile.url,
     },
   })
 
@@ -40,20 +40,20 @@ export default function ProfileNameEditor({
     setOpen(false)
     // get latest name
     form.reset({
-      name: profile.name,
+      url: profile.url,
     })
   }
 
   const blockTask = useBlockTask(
-    `update-profile-name-${profile.uid}`,
+    `update-remote-profile-url-${profile.uid}`,
     form.handleSubmit(
-      async ({ name }) => {
+      async ({ url }) => {
         try {
           await patch.mutateAsync({
             uid: profile.uid,
             profile: {
               ...profile,
-              name,
+              url,
             } as ProfileBuilder,
           })
 
@@ -67,7 +67,7 @@ export default function ProfileNameEditor({
       },
       (error) => {
         console.error(error)
-        message(formatError(error.name?.message ?? ''), {
+        message(formatError(error.url?.message ?? ''), {
           title: 'Error',
           kind: 'error',
         })
@@ -83,24 +83,24 @@ export default function ProfileNameEditor({
 
       <ModalContent>
         <Card className="w-96">
-          <CardHeader>{m.profile_name_editor_title()}</CardHeader>
+          <CardHeader>{m.profile_subscription_url_editor_label()}</CardHeader>
 
           <CardContent>
             <Controller
               control={form.control}
-              name="name"
+              name="url"
               render={({ field }) => (
                 <div className="space-y-2">
                   <Input
-                    label={m.profile_name_label()}
+                    label={m.profile_subscription_url_label()}
                     variant="outlined"
                     {...field}
                   />
 
                   <AnimatePresence>
-                    {form.formState.errors.name && (
+                    {form.formState.errors.url && (
                       <AnimatedErrorItem className="text-error">
-                        {form.formState.errors.name?.message}
+                        {form.formState.errors.url?.message}
                       </AnimatedErrorItem>
                     )}
                   </AnimatePresence>

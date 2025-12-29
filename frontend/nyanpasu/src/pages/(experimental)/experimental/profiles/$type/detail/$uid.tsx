@@ -2,6 +2,7 @@ import EditSquareOutlineRounded from '~icons/material-symbols/edit-square-outlin
 import { Button } from '@/components/ui/button'
 import { useProfile } from '@nyanpasu/interface'
 import { createFileRoute } from '@tanstack/react-router'
+import ActionCard from './_modules/action-card'
 import DetialHeader from './_modules/detial-header'
 import ProfileNameEditor from './_modules/profile-name-editor'
 import { SubscriptionCard } from './_modules/subscription-card'
@@ -42,6 +43,8 @@ function RouteComponent() {
 
       <div className="columns-1 gap-4 space-y-4 p-4 md:columns-2">
         {isRemoteProfile && <SubscriptionCard profile={currentProfile} />}
+
+        <ActionCard profile={currentProfile} />
       </div>
     </>
   )

@@ -6,75 +6,73 @@ import Public from '~icons/material-symbols/public'
 import SettingsEthernetRounded from '~icons/material-symbols/settings-ethernet-rounded'
 import SettingsRounded from '~icons/material-symbols/settings-rounded'
 import TerminalRounded from '~icons/material-symbols/terminal-rounded'
-import { ComponentProps } from 'react'
-import { Button, ButtonProps } from '@/components/ui/button'
+import { ComponentProps, ReactNode } from 'react'
+import { Button } from '@/components/ui/button'
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import useIsMobile from '@/hooks/use-is-moblie'
 import { m } from '@/paraglide/messages'
+import { useClashProxies } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 import { Link, useLocation } from '@tanstack/react-router'
 
-const ROUTES = [
-  {
-    label: m.navbar_label_dashboard(),
-    href: '/experimental/dashboard',
-    icon: DashboardRounded,
-  },
-  {
-    label: m.navbar_label_proxies(),
-    href: '/experimental/proxies',
-    icon: Public,
-  },
-  {
-    label: m.navbar_label_profiles(),
-    href: '/experimental/profiles',
-    icon: GridViewOutlineRounded,
-  },
-  {
-    label: m.navbar_label_connections(),
-    href: '/experimental/connections',
-    icon: SettingsEthernetRounded,
-  },
-  {
-    label: m.navbar_label_rules(),
-    href: '/experimental/rules',
-    icon: DesignServicesRounded,
-  },
-  {
-    label: m.navbar_label_logs(),
-    href: '/experimental/logs',
-    icon: TerminalRounded,
-  },
-  {
-    label: m.navbar_label_settings(),
-    href: '/experimental/settings',
-    icon: SettingsRounded,
-  },
-  {
-    label: m.navbar_label_providers(),
-    href: '/experimental/providers',
-    icon: Apps,
-  },
-] as const
+const NavbarButton = ({
+  icon,
+  label,
+  ...props
+}: Omit<ComponentProps<typeof Link>, 'children'> & {
+  icon: ReactNode
+  label: string
+}) => {
+  const location = useLocation()
 
-const NavbarButton = ({ className, ...props }: ButtonProps) => {
+  const isActive = location.pathname === props.to
+
   return (
-    <Button
-      className={cn(
-        'hover:bg-primary-container dark:hover:bg-primary-container min-w-0',
-        'dark:data-[active=true]:bg-primary-container! data-[active=true]:bg-inverse-primary!',
-        className,
-      )}
-      {...props}
-    />
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          className={cn(
+            'flex items-center justify-center gap-1',
+            'lg:w-fit lg:px-3',
+            'sm:h-8!',
+            'hover:bg-primary-container dark:hover:bg-primary-container min-w-0',
+            'dark:data-[active=true]:bg-primary-container! data-[active=true]:bg-inverse-primary!',
+          )}
+          data-active={String(Boolean(isActive))}
+          asChild
+        >
+          <Link {...props}>
+            <span className="size-5" data-slot="navbar-button-icon">
+              {icon}
+            </span>
+
+            <span className="hidden lg:block" data-slot="navbar-button-label">
+              {label}
+            </span>
+          </Link>
+        </Button>
+      </TooltipTrigger>
+
+      <TooltipContent
+        side="bottom"
+        sideOffset={-4}
+        className="hidden sm:block md:hidden"
+      >
+        {label}
+      </TooltipContent>
+    </Tooltip>
   )
 }
 
 export default function Navbar({ className, ...props }: ComponentProps<'div'>) {
-  const location = useLocation()
+  const isMobile = useIsMobile()
+
+  const { data: proxies } = useClashProxies()
+  const fristGroup = proxies?.groups[0].name
 
   return (
     <div
@@ -88,44 +86,66 @@ export default function Navbar({ className, ...props }: ComponentProps<'div'>) {
       data-slot="app-navbar"
       {...props}
     >
-      {ROUTES.map((route) => (
-        <Tooltip key={route.href}>
-          <TooltipTrigger>
-            <NavbarButton
-              data-active={location.pathname.startsWith(route.href)}
-              asChild
-            >
-              <Link
-                className={cn(
-                  'flex items-center justify-center gap-1',
-                  'lg:w-fit lg:px-3',
-                  'sm:h-8!',
-                )}
-                to={route.href}
-              >
-                <span className="size-5" data-slot="navbar-button-icon">
-                  <route.icon className="size-5" />
-                </span>
+      <NavbarButton
+        to="/experimental/dashboard"
+        icon={<DashboardRounded className="size-5" />}
+        label={m.navbar_label_dashboard()}
+      />
 
-                <span
-                  className="hidden lg:block"
-                  data-slot="navbar-button-label"
-                >
-                  {route.label}
-                </span>
-              </Link>
-            </NavbarButton>
-          </TooltipTrigger>
+      {isMobile || !fristGroup ? (
+        <NavbarButton
+          to="/experimental/proxies"
+          icon={<Public className="size-5" />}
+          label={m.navbar_label_proxies()}
+        />
+      ) : (
+        <NavbarButton
+          to="/experimental/proxies/group/$name"
+          params={{ name: fristGroup } as never}
+          icon={<Public className="size-5" />}
+          label={m.navbar_label_proxies()}
+        />
+      )}
 
-          <TooltipContent
-            side="bottom"
-            sideOffset={-4}
-            className="hidden sm:block md:hidden"
-          >
-            {route.label}
-          </TooltipContent>
-        </Tooltip>
-      ))}
+      <NavbarButton
+        to="/experimental/profiles"
+        icon={<GridViewOutlineRounded className="size-5" />}
+        label={m.navbar_label_profiles()}
+      />
+
+      <NavbarButton
+        to="/experimental/connections"
+        icon={<SettingsEthernetRounded className="size-5" />}
+        label={m.navbar_label_connections()}
+      />
+
+      <NavbarButton
+        to="/experimental/rules"
+        icon={<DesignServicesRounded className="size-5" />}
+        label={m.navbar_label_rules()}
+      />
+
+      <NavbarButton
+        to="/experimental/logs"
+        icon={<TerminalRounded className="size-5" />}
+        label={m.navbar_label_logs()}
+      />
+
+      <NavbarButton
+        to={
+          isMobile
+            ? '/experimental/settings'
+            : '/experimental/settings/system-proxy'
+        }
+        icon={<SettingsRounded className="size-5" />}
+        label={m.navbar_label_settings()}
+      />
+
+      <NavbarButton
+        to="/experimental/providers"
+        icon={<Apps className="size-5" />}
+        label={m.navbar_label_providers()}
+      />
     </div>
   )
 }

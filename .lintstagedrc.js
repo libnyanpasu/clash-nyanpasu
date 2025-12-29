@@ -9,29 +9,26 @@ export default {
       (file) => !configFiles.some((config) => file.endsWith(config)),
     )
     if (filtered.length === 0) return []
-    return [
-      `prettier --write ${filtered.join(' ')}`,
-      `eslint --cache --fix ${filtered.join(' ')}`,
-    ]
+    return ['prettier --write', 'eslint --cache --fix']
   },
   'scripts/**/*.{ts,tsx}': [
     'prettier --write',
-    'eslint --cache --fix',
+    'node ./node_modules/eslint/bin/eslint.js --cache --fix',
     () => 'tsc -p scripts/tsconfig.json --noEmit',
   ],
   'frontend/interface/**/*.{ts,tsx}': [
     'prettier --write',
-    'eslint --cache --fix',
+    'node ./node_modules/eslint/bin/eslint.js --cache --fix',
     () => 'tsc -p frontend/interface/tsconfig.json --noEmit',
   ],
   'frontend/ui/**/*.{ts,tsx}': [
     'prettier --write',
-    'eslint --cache --fix',
+    'node ./node_modules/eslint/bin/eslint.js --cache --fix',
     () => 'tsc -p frontend/ui/tsconfig.json --noEmit',
   ],
   'frontend/nyanpasu/**/*.{ts,tsx}': [
     'prettier --write',
-    'eslint --cache --fix',
+    'node ./node_modules/eslint/bin/eslint.js --cache --fix',
     () => 'tsc -p frontend/nyanpasu/tsconfig.json --noEmit',
   ],
   'backend/**/*.{rs,toml}': [

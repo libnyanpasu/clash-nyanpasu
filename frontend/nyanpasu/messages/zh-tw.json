@@ -50,6 +50,8 @@
   "profile_delete_title": "刪除配置",
   "profile_delete_description": "此操作無法撤銷。確定要刪除此配置嗎？",
   "profile_view_content_title": "查看配置內容",
+  "profile_quick_import_placeholder": "鍵入訂閱 URL 或粘貼訂閱鏈接以快速導入配置",
+  "profile_quick_import_success_message": "配置導入成功，請檢查列表",
   "unit_seconds": "秒",
   "common_submit": "提交",
   "common_cancel": "取消",

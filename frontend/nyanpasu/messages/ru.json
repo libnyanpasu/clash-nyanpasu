@@ -50,6 +50,8 @@
   "profile_delete_title": "Удалить профиль",
   "profile_delete_description": "Это действие не может быть отменено. Вы уверены, что хотите удалить этот профиль?",
   "profile_view_content_title": "Содержимое профиля",
+  "profile_quick_import_placeholder": "Введите URL или вставьте ссылку для быстрого импорта профиля",
+  "profile_quick_import_success_message": "Профиль успешно импортирован, пожалуйста, проверьте список",
   "unit_seconds": "секунды",
   "common_submit": "Отправить",
   "common_cancel": "Отменить",

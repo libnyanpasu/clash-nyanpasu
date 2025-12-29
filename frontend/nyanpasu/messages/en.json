@@ -50,6 +50,8 @@
   "profile_delete_title": "Delete Profile",
   "profile_delete_description": "This action cannot be reverted. Are you sure you want to delete this profile?",
   "profile_view_content_title": "Profile Content",
+  "profile_quick_import_placeholder": "Enter URL or paste link to quickly import profile",
+  "profile_quick_import_success_message": "Profile imported successfully, please check the list",
   "unit_seconds": "s",
   "common_submit": "Submit",
   "common_cancel": "Cancel",

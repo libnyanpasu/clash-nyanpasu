@@ -22,7 +22,11 @@ const GridViewProfile = ({ profile }: { profile: Profile }) => {
         <Button asChild>
           <Link
             className="flex items-center justify-center"
-            to={`/experimental/profiles/${type}/detail/${profile.uid}`}
+            to="/experimental/profiles/$type/detail/$uid"
+            params={{
+              type,
+              uid: profile.uid,
+            }}
           >
             View
           </Link>

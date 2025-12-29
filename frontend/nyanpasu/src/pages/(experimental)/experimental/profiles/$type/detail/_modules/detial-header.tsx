@@ -10,7 +10,12 @@ const BackButton = () => {
 
   return (
     <Button icon className="flex items-center justify-center" asChild>
-      <Link to={`/experimental/profiles/${type}`}>
+      <Link
+        to="/experimental/profiles/$type"
+        params={{
+          type,
+        }}
+      >
         <ArrowBackIosNewRounded className="size-4" />
       </Link>
     </Button>

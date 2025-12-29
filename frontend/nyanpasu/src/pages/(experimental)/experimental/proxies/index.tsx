@@ -20,7 +20,14 @@ function RouteComponent() {
   const fristGroup = proxies?.groups[0].name
 
   if (currentRoute?.id === Route.id && !isMobile && fristGroup) {
-    return <Navigate to={`/experimental/proxies/group/${fristGroup}`} />
+    return (
+      <Navigate
+        to="/experimental/proxies/group/$name"
+        params={{
+          name: fristGroup,
+        }}
+      />
+    )
   }
 
   return (

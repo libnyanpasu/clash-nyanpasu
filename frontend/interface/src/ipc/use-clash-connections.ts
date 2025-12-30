@@ -63,8 +63,8 @@ export const useClashConnections = () => {
   })
 
   const deleteConnections = useMutation({
-    mutationFn: async (id?: string) => {
-      await clashApi.deleteConnections(id)
+    mutationFn: async (id?: string | null) => {
+      await clashApi.deleteConnections(id || undefined)
 
       const currentData = queryClient.getQueryData([
         CLASH_CONNECTIONS_QUERY_KEY,

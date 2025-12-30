@@ -1,4 +1,5 @@
 import DeleteForeverOutlineRounded from '~icons/material-symbols/delete-forever-outline-rounded'
+import DragClickRounded from '~icons/material-symbols/drag-click-rounded'
 import EditSquareOutlineRounded from '~icons/material-symbols/edit-square-outline-rounded'
 import FileOpenOutlineRounded from '~icons/material-symbols/file-open-outline-rounded'
 import { ComponentProps } from 'react'
@@ -6,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { m } from '@/paraglide/messages'
 import { Profile } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
+import ActiveButton from './active-button'
 import DeleteProfile from './delete-profile'
 import ProfileNameEditor from './profile-name-editor'
 import SubscriptionUrlEditor from './subscription-url-editor'
@@ -54,6 +56,16 @@ export default function ActionCard({ profile }: { profile: Profile }) {
           </ActionCardButton>
         </SubscriptionUrlEditor>
       )}
+
+      <ActionCardButton asChild>
+        <ActiveButton profile={profile}>
+          <span className="size-4">
+            <DragClickRounded />
+          </span>
+
+          <span className="truncate">{m.profile_active_title()}</span>
+        </ActiveButton>
+      </ActionCardButton>
 
       <ActionCardButton asChild>
         <DeleteProfile profile={profile}>

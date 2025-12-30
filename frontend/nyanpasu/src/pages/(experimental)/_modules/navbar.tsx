@@ -29,7 +29,7 @@ const NavbarButton = ({
 }) => {
   const location = useLocation()
 
-  const isActive = location.pathname === props.to
+  const isActive = Boolean(props.to && location.pathname.startsWith(props.to))
 
   return (
     <Tooltip>

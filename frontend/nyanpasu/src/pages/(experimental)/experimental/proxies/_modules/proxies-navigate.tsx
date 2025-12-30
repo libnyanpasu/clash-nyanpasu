@@ -54,7 +54,10 @@ export default function ProxiesNavigate() {
               'data-[active=false]:hover:shadow-none',
               'data-[active=false]:hover:bg-surface-variant/30',
             )}
-            to={`/experimental/proxies/group/${group.name}`}
+            to="/experimental/proxies/group/$name"
+            params={{
+              name: group.name,
+            }}
           >
             <div className="flex items-center gap-2.5">
               {group.icon && (

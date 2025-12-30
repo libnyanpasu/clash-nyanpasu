@@ -54,6 +54,7 @@
   "profile_is_active_description": "當前配置已啟用，無需重複操作。",
   "profile_active_title_success": "配置 {name} 已成功啟用！",
   "profile_active_title_error": "配置 {name} 啟用失敗，請檢查配置或代理鏈是否正確",
+  "profile_open_locally_title": "打開配置文件",
   "profile_quick_import_placeholder": "鍵入訂閱 URL 或粘貼訂閱鏈接以快速導入配置",
   "profile_quick_import_success_message": "配置導入成功，請檢查列表",
   "unit_seconds": "秒",

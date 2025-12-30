@@ -9,6 +9,7 @@ import { Profile } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 import ActiveButton from './active-button'
 import DeleteProfile from './delete-profile'
+import OpenLocally from './open-locally'
 import ProfileNameEditor from './profile-name-editor'
 import SubscriptionUrlEditor from './subscription-url-editor'
 import ViewContent from './view-content'
@@ -85,6 +86,16 @@ export default function ActionCard({ profile }: { profile: Profile }) {
 
           <span className="truncate">{m.profile_view_content_title()}</span>
         </ViewContent>
+      </ActionCardButton>
+
+      <ActionCardButton asChild>
+        <OpenLocally profile={profile}>
+          <span className="size-4">
+            <FileOpenOutlineRounded />
+          </span>
+
+          <span className="truncate">{m.profile_open_locally_title()}</span>
+        </OpenLocally>
       </ActionCardButton>
     </div>
   )

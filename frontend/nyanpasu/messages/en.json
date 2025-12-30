@@ -54,6 +54,7 @@
   "profile_is_active_description": "The current profile is already active, no need to repeat the operation.",
   "profile_active_title_success": "Profile {name} activated successfully!",
   "profile_active_title_error": "Profile {name} activation failed, please check the profile or proxy chain is correct",
+  "profile_open_locally_title": "Open Profile File",
   "profile_quick_import_placeholder": "Enter URL or paste link to quickly import profile",
   "profile_quick_import_success_message": "Profile imported successfully, please check the list",
   "unit_seconds": "s",

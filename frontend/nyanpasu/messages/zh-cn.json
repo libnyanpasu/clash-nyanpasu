@@ -55,6 +55,7 @@
   "profile_is_active_description": "当前配置已启用，无需重复操作。",
   "profile_active_title_success": "配置 {name} 已成功启用！",
   "profile_active_title_error": "配置 {name} 启用失败，请检查配置或代理链是否正确",
+  "profile_open_locally_title": "打开配置文件",
   "profile_quick_import_placeholder": "键入订阅 URL 或粘贴订阅链接以快速导入配置",
   "profile_quick_import_success_message": "配置导入成功，请检查列表",
   "unit_seconds": "秒",

@@ -54,6 +54,7 @@
   "profile_is_active_description": "Текущий профиль уже активирован, повторная активация не требуется.",
   "profile_active_title_success": "Профиль {name} успешно активирован!",
   "profile_active_title_error": "Активация профиля {name} не удалась, пожалуйста, проверьте профиль или цепочку прокси",
+  "profile_open_locally_title": "Открыть файл профиля",
   "profile_quick_import_placeholder": "Введите URL или вставьте ссылку для быстрого импорта профиля",
   "profile_quick_import_success_message": "Профиль успешно импортирован, пожалуйста, проверьте список",
   "unit_seconds": "секунды",

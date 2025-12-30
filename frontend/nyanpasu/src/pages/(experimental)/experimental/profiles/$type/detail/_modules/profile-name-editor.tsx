@@ -6,7 +6,12 @@ import { useBlockTask } from '@/components/providers/block-task-provider'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Modal, ModalContent, ModalTrigger } from '@/components/ui/modal'
+import {
+  Modal,
+  ModalContent,
+  ModalTitle,
+  ModalTrigger,
+} from '@/components/ui/modal'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
@@ -83,7 +88,9 @@ export default function ProfileNameEditor({
 
       <ModalContent>
         <Card className="w-96">
-          <CardHeader>{m.profile_name_editor_title()}</CardHeader>
+          <CardHeader>
+            <ModalTitle>{m.profile_name_editor_title()}</ModalTitle>
+          </CardHeader>
 
           <CardContent>
             <Controller

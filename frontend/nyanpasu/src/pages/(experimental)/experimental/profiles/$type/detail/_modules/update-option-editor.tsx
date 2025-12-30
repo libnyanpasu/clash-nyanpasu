@@ -6,7 +6,12 @@ import { useBlockTask } from '@/components/providers/block-task-provider'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { Input, NumericInput } from '@/components/ui/input'
-import { Modal, ModalContent, ModalTrigger } from '@/components/ui/modal'
+import {
+  Modal,
+  ModalContent,
+  ModalTitle,
+  ModalTrigger,
+} from '@/components/ui/modal'
 import { Switch } from '@/components/ui/switch'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
@@ -121,7 +126,9 @@ export default function UpdateOptionEditor({
 
       <ModalContent>
         <Card className="w-96">
-          <CardHeader>{m.profile_update_option_editor_title()}</CardHeader>
+          <CardHeader>
+            <ModalTitle>{m.profile_update_option_editor_title()}</ModalTitle>
+          </CardHeader>
 
           <CardContent>
             <Controller

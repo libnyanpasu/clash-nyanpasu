@@ -4,6 +4,7 @@ import { cn } from '@nyanpasu/ui'
 import * as ScrollAreaPrimitive from '@radix-ui/react-scroll-area'
 
 interface ScrollAreaContextValue {
+  isScrolling: boolean
   isTop: boolean
   isBottom: boolean
   scrollDirection: 'up' | 'down' | 'left' | 'right' | 'none'
@@ -23,6 +24,7 @@ export function useScrollArea() {
 }
 
 function useScrollTracking(threshold = 50) {
+  const [isScrolling, setIsScrolling] = useState(false)
   const [isTop, setIsTop] = useState(true)
   const [isBottom, setIsBottom] = useState(false)
   const [scrollDirection, setScrollDirection] = useState<
@@ -32,9 +34,17 @@ function useScrollTracking(threshold = 50) {
   const lastScrollTop = useRef(0)
   const lastScrollLeft = useRef(0)
 
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget as HTMLElement
     const { scrollTop, scrollLeft, scrollHeight, clientHeight } = target
+
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+    }
+
+    setIsScrolling(true)
 
     setIsTop(scrollTop === 0)
 
@@ -62,9 +72,17 @@ function useScrollTracking(threshold = 50) {
 
     lastScrollTop.current = scrollTop
     lastScrollLeft.current = scrollLeft
+
+    timeoutRef.current = setTimeout(() => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+      }
+
+      setIsScrolling(false)
+    }, threshold)
   }
 
-  return { isTop, isBottom, scrollDirection, handleScroll }
+  return { isTop, isBottom, scrollDirection, handleScroll, isScrolling }
 }
 
 export function Viewport({
@@ -151,11 +169,13 @@ export function AppContentScrollArea({
 }: React.ComponentProps<typeof ScrollAreaPrimitive.Root>) {
   const viewportRef = useRef<HTMLDivElement>(null)
 
-  const { isTop, isBottom, scrollDirection, handleScroll } = useScrollTracking()
+  const { isTop, isBottom, scrollDirection, handleScroll, isScrolling } =
+    useScrollTracking()
 
   return (
     <ScrollAreaContext.Provider
       value={{
+        isScrolling,
         isTop,
         isBottom,
         scrollDirection,
@@ -175,6 +195,7 @@ export function AppContentScrollArea({
         data-slot="app-content-scroll-area"
         type="scroll"
         scrollHideDelay={600}
+        data-scrolling={String(isScrolling)}
         data-top={String(isTop)}
         data-bottom={String(isBottom)}
         data-scroll-direction={scrollDirection}

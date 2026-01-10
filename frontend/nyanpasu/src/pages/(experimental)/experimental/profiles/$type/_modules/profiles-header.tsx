@@ -1,32 +1,25 @@
-import ChevronRightRounded from '~icons/material-symbols/chevron-right-rounded'
+import ArrowBackIosNewRounded from '~icons/material-symbols/arrow-back-ios-new-rounded'
 import { Button } from '@/components/ui/button'
-import { cn } from '@nyanpasu/ui'
+import useIsMobile from '@/hooks/use-is-moblie'
+import { Link } from '@tanstack/react-router'
 import ProfileQuickImport from '../../_modules/profile-quick-import'
-import { useProfilesContext } from '../../_modules/profiles-provider'
 
-const SidebarToggleButton = () => {
-  const { sidebarOpen, setSidebarOpen } = useProfilesContext()
-
-  const handleClick = () => {
-    setSidebarOpen(!sidebarOpen)
-  }
-
+const BackButton = () => {
   return (
-    <Button icon onClick={handleClick}>
-      <ChevronRightRounded
-        className={cn(
-          'size-6 transition-transform duration-300',
-          sidebarOpen && 'rotate-180',
-        )}
-      />
+    <Button icon className="flex items-center justify-center md:hidden" asChild>
+      <Link to="/experimental/profiles">
+        <ArrowBackIosNewRounded className="size-4" />
+      </Link>
     </Button>
   )
 }
 
 export default function ProfilesHeader() {
+  const isMobile = useIsMobile()
+
   return (
     <div className="flex items-center justify-between gap-2 p-4 pb-0">
-      <SidebarToggleButton />
+      {isMobile && <BackButton />}
 
       <ProfileQuickImport />
     </div>

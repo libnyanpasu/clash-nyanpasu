@@ -127,10 +127,18 @@ export const Card = ({
 }
 
 export type CardContentProps = HTMLAttributes<HTMLDivElement> &
-  CardContentVariantsProps
+  CardContentVariantsProps & {
+    asChild?: boolean
+  }
 
-export const CardContent = ({ className, ...props }: CardContentProps) => {
-  return <div className={cn(cardContentVariants(), className)} {...props} />
+export const CardContent = ({
+  className,
+  asChild,
+  ...props
+}: CardContentProps) => {
+  const Comp = asChild ? Slot : 'div'
+
+  return <Comp className={cn(cardContentVariants(), className)} {...props} />
 }
 
 export type CardHeaderProps = HTMLAttributes<HTMLDivElement> &

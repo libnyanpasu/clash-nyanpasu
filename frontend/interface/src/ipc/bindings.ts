@@ -422,11 +422,11 @@ export const commands = {
       else return { status: 'error', error: e as any }
     }
   },
-  async saveWindowSizeState(): Promise<Result<null, string>> {
+  async saveMainWindowSizeState(): Promise<Result<null, string>> {
     try {
       return {
         status: 'ok',
-        data: await TAURI_INVOKE('save_window_size_state'),
+        data: await TAURI_INVOKE('save_main_window_size_state'),
       }
     } catch (e) {
       if (e instanceof Error) throw e

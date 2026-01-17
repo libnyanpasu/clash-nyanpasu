@@ -12,14 +12,13 @@ import {
   ModalTitle,
   ModalTrigger,
 } from '@/components/ui/modal'
-import { Switch } from '@/components/ui/switch'
+import { SwitchItem } from '@/components/ui/switch'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { ProfileBuilder, RemoteProfile, useProfile } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
 import AnimatedErrorItem from '../../../_modules/error-item'
 
 const formSchema = z.object({
@@ -28,28 +27,6 @@ const formSchema = z.object({
   self_proxy: z.boolean().optional(),
   update_interval: z.number().optional(),
 })
-
-const SwitchItem = ({
-  label,
-  ...props
-}: ComponentProps<typeof Switch> & {
-  label: string
-}) => {
-  return (
-    <div
-      className={cn(
-        'flex h-16 w-full items-center justify-between gap-2',
-        'bg-surface-variant/30 dark:bg-surface-variant/10',
-        'rounded-xl',
-        'p-4',
-      )}
-    >
-      <div>{label}</div>
-
-      <Switch {...props} />
-    </div>
-  )
-}
 
 export default function UpdateOptionEditor({
   profile,
@@ -182,10 +159,11 @@ export default function UpdateOptionEditor({
               name="with_proxy"
               render={({ field }) => (
                 <SwitchItem
-                  label={m.profile_with_proxy_label()}
                   checked={field.value}
                   onCheckedChange={(checked) => field.onChange(checked)}
-                />
+                >
+                  <span>{m.profile_with_proxy_label()}</span>
+                </SwitchItem>
               )}
             />
 
@@ -194,10 +172,11 @@ export default function UpdateOptionEditor({
               name="self_proxy"
               render={({ field }) => (
                 <SwitchItem
-                  label={m.profile_self_proxy_label()}
                   checked={field.value}
                   onCheckedChange={(checked) => field.onChange(checked)}
-                />
+                >
+                  <span>{m.profile_self_proxy_label()}</span>
+                </SwitchItem>
               )}
             />
           </CardContent>

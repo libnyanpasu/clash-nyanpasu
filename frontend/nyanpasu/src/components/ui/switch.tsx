@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { ComponentProps } from 'react'
 import { cn } from '@nyanpasu/ui'
 import * as SwitchPrimitives from '@radix-ui/react-switch'
 import { CircularProgress } from './progress'
@@ -51,5 +51,25 @@ export const Switch = ({
         )}
       </SwitchPrimitives.Thumb>
     </SwitchPrimitives.Root>
+  )
+}
+
+export function SwitchItem({
+  children,
+  ...props
+}: ComponentProps<typeof Switch>) {
+  return (
+    <div
+      className={cn(
+        'flex h-16 w-full items-center justify-between gap-2',
+        'bg-surface-variant/30 dark:bg-surface-variant/10',
+        'rounded-xl',
+        'p-4',
+      )}
+    >
+      {children}
+
+      <Switch {...props} />
+    </div>
   )
 }

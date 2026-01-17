@@ -9,11 +9,11 @@ import {
 } from './bindings'
 import { RROFILES_QUERY_KEY } from './consts'
 
-type URLImportParams = Parameters<typeof commands.importProfile>
+export type URLImportParams = Parameters<typeof commands.importProfile>
 
-type ManualImportParams = Parameters<typeof commands.createProfile>
+export type ManualImportParams = Parameters<typeof commands.createProfile>
 
-type CreateParams =
+export type CreateParams =
   | {
       type: 'url'
       data: {

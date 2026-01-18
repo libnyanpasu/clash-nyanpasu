@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "latest": {
     "mihomo": "v1.19.19",
-    "mihomo_alpha": "alpha-0c995a2",
+    "mihomo_alpha": "alpha-75a0cd5",
     "clash_rs": "v0.9.3",
     "clash_premium": "2023-09-05-gdcc8d87",
     "clash_rs_alpha": "0.9.3-alpha+sha.1c4e5b1"
@@ -69,5 +69,5 @@
       "linux-armv7hf": "clash-armv7-unknown-linux-gnueabihf"
     }
   },
-  "updated_at": "2026-01-17T22:21:31.032Z"
+  "updated_at": "2026-01-18T22:21:34.645Z"
 }

@@ -3,7 +3,6 @@
   "extends": [
     "config:recommended",
     "default:automergeMinor",
-    "default:prConcurrentLimit10",
     "default:prHourlyLimitNone",
     "default:preserveSemverRanges",
     "default:rebaseStalePrs",
@@ -62,5 +61,6 @@
       "groupName": "Testing packages",
       "matchPackageNames": ["/vitest/", "/cypress/", "/wdio/"]
     }
-  ]
+  ],
+  "prConcurrentLimit": 30
 }

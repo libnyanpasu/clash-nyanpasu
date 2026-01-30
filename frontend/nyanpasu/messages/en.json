@@ -80,6 +80,7 @@
   "profile_import_local_file_placeholder": "Click or drag file here to import",
   "profile_import_local_file_type_label": "Supported files: {types}",
   "profile_import_local_file_size_label": "File size: {size}",
+  "profile_import_chain_title": "New {type}",
   "unit_seconds": "s",
   "common_submit": "Submit",
   "common_cancel": "Cancel",

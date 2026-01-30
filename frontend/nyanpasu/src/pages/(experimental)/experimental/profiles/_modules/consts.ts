@@ -1,3 +1,4 @@
+import { m } from '@/paraglide/messages'
 import { Profile, ScriptType } from '@nyanpasu/interface'
 
 export enum ListType {
@@ -11,6 +12,13 @@ export enum ProfileType {
   Lua = 'lua',
   Merge = 'merge',
 }
+
+export const PROFILE_TYPE_NAMES = {
+  [ProfileType.Profile]: m.profile_profile_label(),
+  [ProfileType.JavaScript]: m.profile_javascript_label(),
+  [ProfileType.Lua]: m.profile_lua_label(),
+  [ProfileType.Merge]: m.profile_merge_label(),
+} satisfies Record<ProfileType, string>
 
 export const PROFILE_TYPES = {
   [ProfileType.Profile]: [{ type: 'remote' }, { type: 'local' }],

@@ -80,6 +80,7 @@
   "profile_import_local_file_placeholder": "Нажмите или перетащите файл сюда для импорта",
   "profile_import_local_file_type_label": "Поддерживаемые файлы: {types}",
   "profile_import_local_file_size_label": "Размер файла: {size}",
+  "profile_import_chain_title": "Новый {type}",
   "unit_seconds": "секунды",
   "common_submit": "Отправить",
   "common_cancel": "Отменить",

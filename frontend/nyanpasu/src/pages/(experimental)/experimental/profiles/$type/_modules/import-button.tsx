@@ -4,13 +4,6 @@ import NoteStackAddRounded from '~icons/material-symbols/note-stack-add-rounded'
 import { AnimatePresence } from 'framer-motion'
 import { ComponentProps, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import {
-  Modal,
-  ModalContent,
-  ModalTitle,
-  ModalTrigger,
-} from '@/components/ui/modal'
 import { useScrollArea } from '@/components/ui/scroll-area'
 import {
   Tooltip,
@@ -21,6 +14,7 @@ import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/ui'
 import { useParams } from '@tanstack/react-router'
 import { ProfileType } from '../../_modules/consts'
+import ChainProfileImport from './chain-profile-import'
 import LocalProfileButton from './local-profile-button'
 import RemoteProfileButton from './remote-profile-button'
 
@@ -99,30 +93,6 @@ const ProxyProfileImport = () => {
         </div>
       </AnimatePresence>
     </div>
-  )
-}
-
-const ChainProfileImport = () => {
-  const [open, setOpen] = useState(false)
-
-  return (
-    <Modal open={open} onOpenChange={setOpen}>
-      <ModalTrigger asChild>
-        <Button variant="fab" icon>
-          <NoteStackAddRounded className="size-6" />
-        </Button>
-      </ModalTrigger>
-
-      <ModalContent>
-        <Card className="w-96">
-          <CardHeader>
-            <ModalTitle>{m.profile_import_title()}</ModalTitle>
-          </CardHeader>
-
-          <CardContent className="relative overflow-hidden">111</CardContent>
-        </Card>
-      </ModalContent>
-    </Modal>
   )
 }
 

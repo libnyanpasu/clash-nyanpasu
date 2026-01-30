@@ -80,6 +80,7 @@
   "profile_import_local_file_placeholder": "點擊或拖拽文件到此處導入",
   "profile_import_local_file_type_label": "支持 {types} 文件",
   "profile_import_local_file_size_label": "文件大小: {size}",
+  "profile_import_chain_title": "新建 {type}",
   "unit_seconds": "秒",
   "common_submit": "提交",
   "common_cancel": "取消",

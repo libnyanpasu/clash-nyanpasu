@@ -13,7 +13,7 @@ const javascript = `// Clash Nyanpasu JavaScript Template
 
 /** @type {config} */
 export default function (profile) {
-return profile;
+  return profile;
 }
 `
 

@@ -22,14 +22,25 @@ import { Link, useLocation } from '@tanstack/react-router'
 const NavbarButton = ({
   icon,
   label,
+  to,
+  mobileTo,
   ...props
 }: Omit<ComponentProps<typeof Link>, 'children'> & {
   icon: ReactNode
   label: string
+  mobileTo?: ComponentProps<typeof Link>['to']
 }) => {
   const location = useLocation()
 
-  const isActive = location.pathname === props.to
+  const isMobile = useIsMobile()
+
+  const finalTo = isMobile && mobileTo ? mobileTo : to
+
+  const isActive = Boolean(
+    mobileTo
+      ? location.pathname.startsWith(mobileTo)
+      : to && location.pathname.startsWith(to),
+  )
 
   return (
     <Tooltip>
@@ -45,7 +56,7 @@ const NavbarButton = ({
           data-active={String(Boolean(isActive))}
           asChild
         >
-          <Link {...props}>
+          <Link {...props} to={finalTo}>
             <span className="size-5" data-slot="navbar-button-icon">
               {icon}
             </span>
@@ -108,7 +119,8 @@ export default function Navbar({ className, ...props }: ComponentProps<'div'>) {
       )}
 
       <NavbarButton
-        to="/experimental/profiles"
+        to="/experimental/profiles/profile"
+        mobileTo="/experimental/profiles"
         icon={<GridViewOutlineRounded className="size-5" />}
         label={m.navbar_label_profiles()}
       />

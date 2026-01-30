@@ -62,7 +62,8 @@ pub trait AppWindow {
         .title(self.title())
         .fullscreen(false)
         .always_on_top(always_on_top)
-        .min_inner_size(400.0, 600.0);
+        .min_inner_size(400.0, 600.0)
+        .disable_drag_drop_handler();
 
         let win_state = &self.get_window_state();
         match win_state {

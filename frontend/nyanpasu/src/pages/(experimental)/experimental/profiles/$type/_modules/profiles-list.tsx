@@ -79,7 +79,24 @@ export default function ProfilesList({
   const filteredProfiles = profiles?.items?.filter(
     (profile) =>
       Array.isArray(allowedTypes) &&
-      allowedTypes.some((t) => t.type === profile.type),
+      allowedTypes.some((t) => {
+        // Check if type matches
+        if (t.type !== profile.type) {
+          return false
+        }
+
+        // If script_type is specified in allowedTypes, also check profile's script_type
+        if ('script_type' in t && t.script_type !== undefined) {
+          return (
+            profile.type === 'script' &&
+            'script_type' in profile &&
+            profile.script_type === t.script_type
+          )
+        }
+
+        // If script_type is not specified, type match is sufficient
+        return true
+      }),
   )
 
   // If no profiles are found, show the empty list message

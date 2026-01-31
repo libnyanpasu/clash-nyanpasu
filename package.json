@@ -69,7 +69,7 @@
     "@types/node": "24.10.4",
     "@typescript-eslint/eslint-plugin": "8.50.1",
     "@typescript-eslint/parser": "8.50.1",
-    "autoprefixer": "10.4.23",
+    "autoprefixer": "10.4.24",
     "conventional-changelog-conventionalcommits": "9.1.0",
     "cross-env": "10.1.0",
     "dedent": "1.7.1",

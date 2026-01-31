@@ -33,9 +33,7 @@ export default function SwitchLegacy() {
 
         <Modal>
           <ModalTrigger asChild>
-            <Button variant="flat" onClick={handleClick}>
-              0.0
-            </Button>
+            <Button variant="flat">Open</Button>
           </ModalTrigger>
 
           <ModalContent>

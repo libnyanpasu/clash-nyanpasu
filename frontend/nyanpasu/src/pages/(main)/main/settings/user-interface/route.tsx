@@ -4,8 +4,8 @@ import {
   SettingsTitle,
   SettingsTitlePlaceholder,
 } from '../_modules/settings-title'
-import ExperimentalSwitch from './_modules/experimental-switch'
 import LanguageSelector from './_modules/language-selector'
+import SwitchLegacy from './_modules/switch-legacy'
 import ThemeColorConfig from './_modules/theme-color-config'
 import ThemeModeSelector from './_modules/theme-mode-selector'
 
@@ -32,7 +32,7 @@ function RouteComponent() {
 
       <ThemeColorConfig />
 
-      <ExperimentalSwitch />
+      <SwitchLegacy />
     </>
   )
 }

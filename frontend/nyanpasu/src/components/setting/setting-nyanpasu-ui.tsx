@@ -3,13 +3,17 @@ import { MuiColorInput } from 'mui-color-input'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { isHexColor } from 'validator'
+import { useLockFn } from '@/hooks/use-lock-fn'
 import { atomIsDrawerOnlyIcon } from '@/store'
 import { languageOptions } from '@/utils/language'
 import Done from '@mui/icons-material/Done'
 import { Button, List, ListItem, ListItemText } from '@mui/material'
-import { useSetting } from '@nyanpasu/interface'
+import { commands, useSetting } from '@nyanpasu/interface'
 import { BaseCard, Expand, MenuItem, SwitchItem } from '@nyanpasu/ui'
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { DEFAULT_COLOR } from '../layout/use-custom-theme'
+
+const currentWindow = getCurrentWebviewWindow()
 
 const commonSx = {
   width: 128,
@@ -107,10 +111,13 @@ const ThemeColor = () => {
 }
 
 const ExperimentalSwitch = () => {
-  const handleClick = () => {
-    // TODO: Implement experimental switch
-    console.log('switch to experimental ui')
-  }
+  const { upsert } = useSetting('use_legacy_ui')
+
+  const handleClick = useLockFn(async () => {
+    await upsert(false)
+    await commands.createMainWindow()
+    await currentWindow.close()
+  })
 
   return (
     <ListItem sx={{ pl: 0, pr: 0 }}>

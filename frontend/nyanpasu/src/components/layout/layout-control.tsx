@@ -98,7 +98,7 @@ export const LayoutControl = ({ className }: { className?: string }) => {
       <CtrlButton
         onClick={() => {
           if (platform.current === 'windows') {
-            commands.saveMainWindowSizeState().finally(() => {
+            commands.saveWindowSizeState(appWindow.label).finally(() => {
               appWindow.close()
             })
           } else {

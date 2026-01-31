@@ -422,17 +422,6 @@ export const commands = {
       else return { status: 'error', error: e as any }
     }
   },
-  async saveMainWindowSizeState(): Promise<Result<null, string>> {
-    try {
-      return {
-        status: 'ok',
-        data: await TAURI_INVOKE('save_main_window_size_state'),
-      }
-    } catch (e) {
-      if (e instanceof Error) throw e
-      else return { status: 'error', error: e as any }
-    }
-  },
   async getCustomAppDir(): Promise<Result<string | null, string>> {
     try {
       return { status: 'ok', data: await TAURI_INVOKE('get_custom_app_dir') }
@@ -728,14 +717,43 @@ export const commands = {
       else return { status: 'error', error: e as any }
     }
   },
+  async saveWindowSizeState(label: string): Promise<Result<null, string>> {
+    try {
+      return {
+        status: 'ok',
+        data: await TAURI_INVOKE('save_window_size_state', { label }),
+      }
+    } catch (e) {
+      if (e instanceof Error) throw e
+      else return { status: 'error', error: e as any }
+    }
+  },
+  async createMainWindow(): Promise<Result<null, string>> {
+    try {
+      return { status: 'ok', data: await TAURI_INVOKE('create_main_window') }
+    } catch (e) {
+      if (e instanceof Error) throw e
+      else return { status: 'error', error: e as any }
+    }
+  },
+  async createLegacyWindow(): Promise<Result<null, string>> {
+    try {
+      return { status: 'ok', data: await TAURI_INVOKE('create_legacy_window') }
+    } catch (e) {
+      if (e instanceof Error) throw e
+      else return { status: 'error', error: e as any }
+    }
+  },
 }
 
 /** user-defined events **/
 
 export const events = __makeEvents__<{
   clashConnectionsEvent: ClashConnectionsEvent
+  windowMessageEvent: WindowMessageEvent
 }>({
   clashConnectionsEvent: 'clash-connections-event',
+  windowMessageEvent: 'window-message-event',
 })
 
 /** user-defined constants **/
@@ -1036,6 +1054,11 @@ export type IVerge = {
    * When disabled, only shows status via icon changes (prevents text display issues on Wayland)
    */
   enable_tray_text: boolean | null
+  /**
+   * Use legacy UI (original UI at "/" route)
+   * When true, opens legacy window; when false, opens new main window
+   */
+  use_legacy_ui: boolean | null
 }
 export type JsonValue =
   | null
@@ -1525,6 +1548,27 @@ export type UpdaterSummary = {
   id: number
   state: UpdaterState
   downloader: DownloadStatus
+}
+/**
+ * Message for inter-window communication
+ */
+export type WindowMessageEvent = {
+  /**
+   * Source window label
+   */
+  from: string
+  /**
+   * Target window label (use "*" for broadcast)
+   */
+  to: string
+  /**
+   * Message type/event name
+   */
+  event: string
+  /**
+   * Message payload
+   */
+  payload: JsonValue
 }
 export type WindowState = {
   width: number

@@ -296,6 +296,10 @@ pub struct IVerge {
     /// When enabled, shows proxy and TUN mode status as text next to the tray icon
     /// When disabled, only shows status via icon changes (prevents text display issues on Wayland)
     pub enable_tray_text: Option<bool>,
+
+    /// Use legacy UI (original UI at "/" route)
+    /// When true, opens legacy window; when false, opens new main window
+    pub use_legacy_ui: Option<bool>,
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize, Type)]
@@ -378,6 +382,10 @@ impl IVerge {
             config.enable_tray_text = template.enable_tray_text;
         }
 
+        if config.use_legacy_ui.is_none() {
+            config.use_legacy_ui = template.use_legacy_ui;
+        }
+
         config
     }
 
@@ -413,6 +421,7 @@ impl IVerge {
             enable_service_mode: Some(false),
             always_on_top: Some(false),
             enable_tray_text: Some(false),
+            use_legacy_ui: Some(true),
             ..Self::default()
         }
     }

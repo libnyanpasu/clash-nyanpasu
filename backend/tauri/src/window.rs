@@ -12,6 +12,7 @@ use crate::{
 };
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use std::{
     collections::HashMap,
     sync::{
@@ -19,7 +20,8 @@ use std::{
         atomic::{AtomicU16, Ordering},
     },
 };
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
+use tauri_specta::Event;
 
 /// Global counter for tracking open windows
 static OPEN_WINDOWS_COUNTER: AtomicU16 = AtomicU16::new(0);
@@ -263,8 +265,8 @@ impl WindowManager {
     }
 }
 /// Message for inter-window communication
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WindowMessage {
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
+pub struct WindowMessageEvent {
     /// Source window label
     pub from: String,
     /// Target window label (use "*" for broadcast)
@@ -275,7 +277,7 @@ pub struct WindowMessage {
     pub payload: serde_json::Value,
 }
 
-impl WindowMessage {
+impl WindowMessageEvent {
     /// Create a new window message
     pub fn new(
         from: impl Into<String>,
@@ -301,16 +303,15 @@ impl WindowMessage {
     }
 }
 
-/// The event name used for inter-window communication
-pub const WINDOW_MESSAGE_EVENT: &str = "window-message";
-
 /// Send a message to a specific window
-pub fn send_message_to_window(app_handle: &AppHandle, message: WindowMessage) -> Result<()> {
-    let window = app_handle
+pub fn send_message_to_window(app_handle: &AppHandle, message: WindowMessageEvent) -> Result<()> {
+    // Verify window exists
+    let _ = app_handle
         .get_webview_window(&message.to)
         .ok_or_else(|| anyhow::anyhow!("Window '{}' not found", message.to))?;
 
-    window.emit(WINDOW_MESSAGE_EVENT, &message)?;
+    let target = message.to.clone();
+    message.emit_to(app_handle, target)?;
     Ok(())
 }
 
@@ -328,10 +329,10 @@ pub fn broadcast_to_window_type(
     };
 
     for label in instances {
-        if let Some(window) = app_handle.get_webview_window(&label) {
-            let message = WindowMessage::new(from, &label, event, payload.clone());
+        if app_handle.get_webview_window(&label).is_some() {
+            let message = WindowMessageEvent::new(from, &label, event, payload.clone());
             trace_err!(
-                window.emit(WINDOW_MESSAGE_EVENT, &message),
+                message.emit_to(app_handle, &label),
                 "failed to emit message"
             );
         }
@@ -346,10 +347,7 @@ pub fn broadcast_to_all_windows(
     event: &str,
     payload: serde_json::Value,
 ) -> Result<()> {
-    app_handle.emit(
-        WINDOW_MESSAGE_EVENT,
-        WindowMessage::broadcast(from, event, payload),
-    )?;
+    WindowMessageEvent::broadcast(from, event, payload).emit(app_handle)?;
     Ok(())
 }
 
@@ -521,16 +519,12 @@ pub trait AppWindow {
         };
 
         #[cfg(windows)]
-        let win_res = {
-            let decorations = config.decorations.unwrap_or(false);
-            let transparent = config.transparent.unwrap_or(true);
-            builder
-                .decorations(decorations)
-                .transparent(transparent)
-                .visible(false) // Always start hidden on Windows, show after setup
-                .additional_browser_args("--enable-features=msWebView2EnableDraggableRegions --disable-features=OverscrollHistoryNavigation,msExperimentalScrolling")
-                .build()
-        };
+        let win_res = builder
+            .decorations(false)
+            .transparent(true)
+            .visible(false)
+            .additional_browser_args("--enable-features=msWebView2EnableDraggableRegions --disable-features=OverscrollHistoryNavigation,msExperimentalScrolling")
+            .build();
 
         #[cfg(target_os = "macos")]
         let win_res = {
@@ -558,16 +552,14 @@ pub trait AppWindow {
 
                 if win_state.is_some() {
                     let state = win_state.as_ref().unwrap();
-                    win.set_position(PhysicalPosition {
+                    let _ = win.set_position(PhysicalPosition {
                         x: state.x,
                         y: state.y,
-                    })
-                    .unwrap();
-                    win.set_size(PhysicalSize {
+                    });
+                    let _ = win.set_size(PhysicalSize {
                         width: state.width,
                         height: state.height,
-                    })
-                    .unwrap();
+                    });
                 }
 
                 if let Some(state) = win_state {
@@ -665,26 +657,30 @@ pub trait AppWindow {
     fn create(&self, app_handle: &AppHandle) -> Result<()> {
         let result = self.create_with_params(app_handle, None)?;
 
+        // Configure webview settings asynchronously to avoid blocking
         #[cfg(target_os = "windows")]
-        {
-            use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings6;
-            use windows_core::Interface;
+        if result.is_new {
+            let label = result.label.clone();
+            let app_handle = app_handle.clone();
+            std::thread::spawn(move || {
+                use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings6;
+                use windows_core::Interface;
 
-            if let Some(window) = app_handle.get_webview_window(&result.label) {
-                window
-                    .with_webview(|webview| unsafe {
-                        let settings = webview
-                            .controller()
-                            .CoreWebView2()
-                            .unwrap()
-                            .Settings()
-                            .unwrap();
-                        let settings: ICoreWebView2Settings6 =
-                            settings.cast::<ICoreWebView2Settings6>().unwrap();
-                        settings.SetIsSwipeNavigationEnabled(false).unwrap();
-                    })
-                    .unwrap();
-            }
+                // Wait a bit for webview to be ready
+                std::thread::sleep(std::time::Duration::from_millis(100));
+
+                if let Some(window) = app_handle.get_webview_window(&label) {
+                    let _ = window.with_webview(|webview| unsafe {
+                        if let Ok(core) = webview.controller().CoreWebView2() {
+                            if let Ok(settings) = core.Settings() {
+                                if let Ok(settings6) = settings.cast::<ICoreWebView2Settings6>() {
+                                    let _ = settings6.SetIsSwipeNavigationEnabled(false);
+                                }
+                            }
+                        }
+                    });
+                }
+            });
         }
 
         Ok(())
@@ -749,7 +745,7 @@ pub trait AppWindow {
         event: &str,
         payload: serde_json::Value,
     ) -> Result<()> {
-        let message = WindowMessage::new(self.label(), to, event, payload);
+        let message = WindowMessageEvent::new(self.label(), to, event, payload);
         send_message_to_window(app_handle, message)
     }
 

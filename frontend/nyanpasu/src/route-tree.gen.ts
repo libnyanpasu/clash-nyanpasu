@@ -20,6 +20,7 @@ import { Route as legacyProfilesRouteImport } from './pages/(legacy)/profiles'
 import { Route as legacyLogsRouteImport } from './pages/(legacy)/logs'
 import { Route as legacyDashboardRouteImport } from './pages/(legacy)/dashboard'
 import { Route as legacyConnectionsRouteImport } from './pages/(legacy)/connections'
+import { Route as mainMainIndexRouteImport } from './pages/(main)/main/index'
 import { Route as mainMainSettingsRouteRouteImport } from './pages/(main)/main/settings/route'
 import { Route as mainMainRulesRouteRouteImport } from './pages/(main)/main/rules/route'
 import { Route as mainMainProxiesRouteRouteImport } from './pages/(main)/main/proxies/route'
@@ -100,6 +101,11 @@ const legacyConnectionsRoute = legacyConnectionsRouteImport.update({
   id: '/connections',
   path: '/connections',
   getParentRoute: () => legacyRouteRoute,
+} as any)
+const mainMainIndexRoute = mainMainIndexRouteImport.update({
+  id: '/main/',
+  path: '/main/',
+  getParentRoute: () => mainRouteRoute,
 } as any)
 const mainMainSettingsRouteRoute = mainMainSettingsRouteRouteImport.update({
   id: '/main/settings',
@@ -272,6 +278,7 @@ export interface FileRoutesByFullPath {
   '/main/proxies': typeof mainMainProxiesRouteRouteWithChildren
   '/main/rules': typeof mainMainRulesRouteRoute
   '/main/settings': typeof mainMainSettingsRouteRouteWithChildren
+  '/main': typeof mainMainIndexRoute
   '/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
   '/main/settings/about': typeof mainMainSettingsAboutRouteRoute
   '/main/settings/clash-core': typeof mainMainSettingsClashCoreRouteRoute
@@ -307,6 +314,7 @@ export interface FileRoutesByTo {
   '/main/logs': typeof mainMainLogsRouteRoute
   '/main/providers': typeof mainMainProvidersRouteRoute
   '/main/rules': typeof mainMainRulesRouteRoute
+  '/main': typeof mainMainIndexRoute
   '/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
   '/main/settings/about': typeof mainMainSettingsAboutRouteRoute
   '/main/settings/clash-core': typeof mainMainSettingsClashCoreRouteRoute
@@ -348,6 +356,7 @@ export interface FileRoutesById {
   '/(main)/main/proxies': typeof mainMainProxiesRouteRouteWithChildren
   '/(main)/main/rules': typeof mainMainRulesRouteRoute
   '/(main)/main/settings': typeof mainMainSettingsRouteRouteWithChildren
+  '/(main)/main/': typeof mainMainIndexRoute
   '/(main)/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
   '/(main)/main/settings/about': typeof mainMainSettingsAboutRouteRoute
   '/(main)/main/settings/clash-core': typeof mainMainSettingsClashCoreRouteRoute
@@ -388,6 +397,7 @@ export interface FileRouteTypes {
     | '/main/proxies'
     | '/main/rules'
     | '/main/settings'
+    | '/main'
     | '/main/profiles/inspect'
     | '/main/settings/about'
     | '/main/settings/clash-core'
@@ -423,6 +433,7 @@ export interface FileRouteTypes {
     | '/main/logs'
     | '/main/providers'
     | '/main/rules'
+    | '/main'
     | '/main/profiles/inspect'
     | '/main/settings/about'
     | '/main/settings/clash-core'
@@ -463,6 +474,7 @@ export interface FileRouteTypes {
     | '/(main)/main/proxies'
     | '/(main)/main/rules'
     | '/(main)/main/settings'
+    | '/(main)/main/'
     | '/(main)/main/profiles/inspect'
     | '/(main)/main/settings/about'
     | '/(main)/main/settings/clash-core'
@@ -567,6 +579,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/connections'
       preLoaderRoute: typeof legacyConnectionsRouteImport
       parentRoute: typeof legacyRouteRoute
+    }
+    '/(main)/main/': {
+      id: '/(main)/main/'
+      path: '/main'
+      fullPath: '/main'
+      preLoaderRoute: typeof mainMainIndexRouteImport
+      parentRoute: typeof mainRouteRoute
     }
     '/(main)/main/settings': {
       id: '/(main)/main/settings'
@@ -872,6 +891,7 @@ interface mainRouteRouteChildren {
   mainMainProxiesRouteRoute: typeof mainMainProxiesRouteRouteWithChildren
   mainMainRulesRouteRoute: typeof mainMainRulesRouteRoute
   mainMainSettingsRouteRoute: typeof mainMainSettingsRouteRouteWithChildren
+  mainMainIndexRoute: typeof mainMainIndexRoute
 }
 
 const mainRouteRouteChildren: mainRouteRouteChildren = {
@@ -883,6 +903,7 @@ const mainRouteRouteChildren: mainRouteRouteChildren = {
   mainMainProxiesRouteRoute: mainMainProxiesRouteRouteWithChildren,
   mainMainRulesRouteRoute: mainMainRulesRouteRoute,
   mainMainSettingsRouteRoute: mainMainSettingsRouteRouteWithChildren,
+  mainMainIndexRoute: mainMainIndexRoute,
 }
 
 const mainRouteRouteWithChildren = mainRouteRoute._addFileChildren(

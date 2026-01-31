@@ -6,7 +6,7 @@ import Public from '~icons/material-symbols/public'
 import SettingsEthernetRounded from '~icons/material-symbols/settings-ethernet-rounded'
 import SettingsRounded from '~icons/material-symbols/settings-rounded'
 import TerminalRounded from '~icons/material-symbols/terminal-rounded'
-import { ComponentProps, ReactNode } from 'react'
+import { ComponentProps, ReactNode, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -79,13 +79,39 @@ const NavbarButton = ({
   )
 }
 
-export default function Navbar({ className, ...props }: ComponentProps<'div'>) {
+const ProxiesGroupButton = () => {
   const isMobile = useIsMobile()
 
   const {
     proxies: { data: proxies },
   } = useClashProxies()
-  const fristGroup = proxies?.groups[0].name
+
+  const fristGroup = useMemo(() => {
+    return proxies?.groups[0]?.name
+  }, [proxies])
+
+  if (isMobile || !fristGroup) {
+    return (
+      <NavbarButton
+        to="/experimental/proxies"
+        icon={<Public className="size-5" />}
+        label={m.navbar_label_proxies()}
+      />
+    )
+  }
+
+  return (
+    <NavbarButton
+      to="/experimental/proxies/group/$name"
+      params={{ name: fristGroup } as never}
+      icon={<Public className="size-5" />}
+      label={m.navbar_label_proxies()}
+    />
+  )
+}
+
+export default function Navbar({ className, ...props }: ComponentProps<'div'>) {
+  const isMobile = useIsMobile()
 
   return (
     <div
@@ -105,20 +131,7 @@ export default function Navbar({ className, ...props }: ComponentProps<'div'>) {
         label={m.navbar_label_dashboard()}
       />
 
-      {isMobile || !fristGroup ? (
-        <NavbarButton
-          to="/experimental/proxies"
-          icon={<Public className="size-5" />}
-          label={m.navbar_label_proxies()}
-        />
-      ) : (
-        <NavbarButton
-          to="/experimental/proxies/group/$name"
-          params={{ name: fristGroup } as never}
-          icon={<Public className="size-5" />}
-          label={m.navbar_label_proxies()}
-        />
-      )}
+      <ProxiesGroupButton />
 
       <NavbarButton
         to="/experimental/profiles/profile"

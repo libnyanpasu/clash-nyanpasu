@@ -51,7 +51,9 @@ export const GroupList = ({
   scrollRef,
   ...listItemButtonProps
 }: GroupListProps) => {
-  const { data } = useClashProxies()
+  const {
+    proxies: { data },
+  } = useClashProxies()
 
   const [proxyGroup, setProxyGroup] = useAtom(proxyGroupAtom)
   const proxiesFilter = useAtomValue(proxiesFilterAtom)

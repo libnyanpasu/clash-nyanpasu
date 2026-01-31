@@ -82,7 +82,9 @@ const NavbarButton = ({
 export default function Navbar({ className, ...props }: ComponentProps<'div'>) {
   const isMobile = useIsMobile()
 
-  const { data: proxies } = useClashProxies()
+  const {
+    proxies: { data: proxies },
+  } = useClashProxies()
   const fristGroup = proxies?.groups[0].name
 
   return (

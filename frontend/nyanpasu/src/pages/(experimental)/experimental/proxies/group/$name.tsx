@@ -2,10 +2,7 @@ import Radar from '~icons/material-symbols/radar'
 import { useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { useScrollArea } from '@/components/ui/scroll-area'
-import {
-  ClashProxiesQueryProxyItem,
-  useClashProxies,
-} from '@nyanpasu/interface'
+import { useClashProxies } from '@nyanpasu/interface'
 import { useContainerBreakpointValue } from '@nyanpasu/ui'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
@@ -21,7 +18,9 @@ export const Route = createFileRoute(
 function RouteComponent() {
   const { name: proxyGroupName } = Route.useParams()
 
-  const { data: proxies } = useClashProxies()
+  const {
+    proxies: { data: proxies },
+  } = useClashProxies()
 
   const currentGroup = proxies?.groups.find(
     (group) => group.name === proxyGroupName,

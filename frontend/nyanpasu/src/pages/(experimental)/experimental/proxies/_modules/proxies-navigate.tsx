@@ -29,7 +29,9 @@ const ProxyGroupIconRender = ({ icon }: { icon: string }) => {
 }
 
 export default function ProxiesNavigate() {
-  const { data: proxies } = useClashProxies()
+  const {
+    proxies: { data: proxies },
+  } = useClashProxies()
 
   const location = useLocation()
 

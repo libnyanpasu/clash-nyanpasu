@@ -35,6 +35,7 @@ export default defineConfig(({ command, mode }) => {
 
   const config = {
     // root: "/",
+    clearScreen: false,
     server: {
       port: 3000,
       watch: {

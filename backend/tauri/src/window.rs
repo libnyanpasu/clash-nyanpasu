@@ -1,20 +1,384 @@
 //! Tauri window management mod
 //!
+//! This module provides a flexible window management system that supports:
+//! - URL parameters for windows
+//! - Multiple instances of the same window type (e.g., main, main-1, main-2)
+//! - Inter-window communication
+//! - Configurable window properties (singleton, visibility, size, etc.)
 
 use crate::{
     config::{Config, nyanpasu::WindowState},
     log_err, trace_err,
 };
 use anyhow::Result;
-use std::sync::atomic::{AtomicU16, Ordering};
+use serde::{Deserialize, Serialize};
+use specta::Type;
+use std::{
+    collections::HashMap,
+    sync::{
+        Mutex, OnceLock,
+        atomic::{AtomicU16, Ordering},
+    },
+};
 use tauri::{AppHandle, Manager};
+use tauri_specta::Event;
 
 /// Global counter for tracking open windows
 static OPEN_WINDOWS_COUNTER: AtomicU16 = AtomicU16::new(0);
 
+/// Global window manager instance
+static WINDOW_MANAGER: OnceLock<Mutex<WindowManager>> = OnceLock::new();
+/// Window configuration options
+#[derive(Debug, Clone)]
+pub struct WindowConfig {
+    /// Whether only one instance of this window type is allowed
+    pub singleton: bool,
+    /// Whether the window should be visible when created
+    pub visible_on_create: bool,
+    /// Default window size (width, height)
+    pub default_size: (f64, f64),
+    /// Minimum window size (width, height)
+    pub min_size: Option<(f64, f64)>,
+    /// Maximum window size (width, height)
+    pub max_size: Option<(f64, f64)>,
+    /// Whether to center the window on creation
+    pub center: bool,
+    /// Whether the window is resizable
+    pub resizable: bool,
+    /// Whether the window should always be on top (None = use global config)
+    pub always_on_top: Option<bool>,
+    /// Whether to use decorations (None = use platform default)
+    pub decorations: Option<bool>,
+    /// Whether the window is transparent (None = use platform default)
+    pub transparent: Option<bool>,
+    /// Whether to skip taskbar
+    pub skip_taskbar: bool,
+}
+
+impl Default for WindowConfig {
+    fn default() -> Self {
+        Self {
+            singleton: true,
+            visible_on_create: true,
+            default_size: (800.0, 636.0),
+            min_size: Some((400.0, 600.0)),
+            max_size: None,
+            center: true,
+            resizable: true,
+            always_on_top: None,
+            decorations: None,
+            transparent: None,
+            skip_taskbar: false,
+        }
+    }
+}
+
+impl WindowConfig {
+    /// Create a new WindowConfig with default values
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set whether only one instance is allowed
+    pub fn singleton(mut self, singleton: bool) -> Self {
+        self.singleton = singleton;
+        self
+    }
+
+    /// Set whether window is visible on creation
+    pub fn visible_on_create(mut self, visible: bool) -> Self {
+        self.visible_on_create = visible;
+        self
+    }
+
+    /// Set default window size
+    pub fn default_size(mut self, width: f64, height: f64) -> Self {
+        self.default_size = (width, height);
+        self
+    }
+
+    /// Set minimum window size
+    pub fn min_size(mut self, width: f64, height: f64) -> Self {
+        self.min_size = Some((width, height));
+        self
+    }
+
+    /// Set maximum window size
+    pub fn max_size(mut self, width: f64, height: f64) -> Self {
+        self.max_size = Some((width, height));
+        self
+    }
+
+    /// Set whether to center the window
+    pub fn center(mut self, center: bool) -> Self {
+        self.center = center;
+        self
+    }
+
+    /// Set whether the window is resizable
+    pub fn resizable(mut self, resizable: bool) -> Self {
+        self.resizable = resizable;
+        self
+    }
+
+    /// Set always on top
+    pub fn always_on_top(mut self, always_on_top: bool) -> Self {
+        self.always_on_top = Some(always_on_top);
+        self
+    }
+
+    /// Set whether to skip taskbar
+    pub fn skip_taskbar(mut self, skip: bool) -> Self {
+        self.skip_taskbar = skip;
+        self
+    }
+}
+
+/// Window URL parameters
+pub type WindowParams = HashMap<String, String>;
+
+/// Builder for constructing URL parameters
+#[derive(Debug, Clone, Default)]
+pub struct WindowParamsBuilder {
+    params: WindowParams,
+}
+
+impl WindowParamsBuilder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Add a string parameter
+    pub fn param(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.params.insert(key.into(), value.into());
+        self
+    }
+
+    /// Add a parameter if condition is true
+    pub fn param_if(
+        self,
+        condition: bool,
+        key: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Self {
+        if condition {
+            self.param(key, value)
+        } else {
+            self
+        }
+    }
+
+    /// Add an optional parameter
+    pub fn param_opt(self, key: impl Into<String>, value: Option<impl Into<String>>) -> Self {
+        match value {
+            Some(v) => self.param(key, v),
+            None => self,
+        }
+    }
+
+    /// Build the parameters
+    pub fn build(self) -> Option<WindowParams> {
+        if self.params.is_empty() {
+            None
+        } else {
+            Some(self.params)
+        }
+    }
+}
+
+/// Build URL with optional parameters
+pub fn build_url_with_params(base_url: &str, params: Option<&WindowParams>) -> String {
+    match params {
+        Some(params) if !params.is_empty() => {
+            let query: Vec<String> = params
+                .iter()
+                .map(|(k, v)| format!("{}={}", urlencoding::encode(k), urlencoding::encode(v)))
+                .collect();
+            format!("{}?{}", base_url, query.join("&"))
+        }
+        _ => base_url.to_string(),
+    }
+}
+/// Window manager for tracking window instances
+#[derive(Debug, Default)]
+pub struct WindowManager {
+    /// Maps base label to list of instance labels
+    instances: HashMap<String, Vec<String>>,
+}
+
+impl WindowManager {
+    /// Get global window manager instance
+    pub fn global() -> &'static Mutex<Self> {
+        WINDOW_MANAGER.get_or_init(|| Mutex::new(Self::default()))
+    }
+
+    /// Generate a unique label for a window
+    ///
+    /// For singleton windows, returns None if an instance already exists.
+    /// For non-singleton windows, generates labels like: base, base-1, base-2, etc.
+    pub fn generate_label(&mut self, base_label: &str, singleton: bool) -> Option<String> {
+        let instances = self.instances.entry(base_label.to_string()).or_default();
+
+        if singleton && !instances.is_empty() {
+            return None; // Singleton window already exists
+        }
+
+        if instances.is_empty() {
+            instances.push(base_label.to_string());
+            return Some(base_label.to_string());
+        }
+
+        // Find the next available number
+        let mut next_num = 1;
+        loop {
+            let label = format!("{}-{}", base_label, next_num);
+            if !instances.contains(&label) {
+                instances.push(label.clone());
+                return Some(label);
+            }
+            next_num += 1;
+        }
+    }
+
+    /// Remove a window instance
+    pub fn remove_instance(&mut self, label: &str) {
+        for instances in self.instances.values_mut() {
+            instances.retain(|l| l != label);
+        }
+    }
+
+    /// Get all instances for a base label
+    pub fn get_instances(&self, base_label: &str) -> Vec<String> {
+        self.instances.get(base_label).cloned().unwrap_or_default()
+    }
+
+    /// Check if a specific label exists
+    pub fn has_instance(&self, label: &str) -> bool {
+        self.instances
+            .values()
+            .any(|instances| instances.contains(&label.to_string()))
+    }
+
+    /// Get the count of instances for a base label
+    pub fn instance_count(&self, base_label: &str) -> usize {
+        self.instances.get(base_label).map(|v| v.len()).unwrap_or(0)
+    }
+}
+/// Message for inter-window communication
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
+pub struct WindowMessageEvent {
+    /// Source window label
+    pub from: String,
+    /// Target window label (use "*" for broadcast)
+    pub to: String,
+    /// Message type/event name
+    pub event: String,
+    /// Message payload
+    pub payload: serde_json::Value,
+}
+
+impl WindowMessageEvent {
+    /// Create a new window message
+    pub fn new(
+        from: impl Into<String>,
+        to: impl Into<String>,
+        event: impl Into<String>,
+        payload: serde_json::Value,
+    ) -> Self {
+        Self {
+            from: from.into(),
+            to: to.into(),
+            event: event.into(),
+            payload,
+        }
+    }
+
+    /// Create a broadcast message to all windows
+    pub fn broadcast(
+        from: impl Into<String>,
+        event: impl Into<String>,
+        payload: serde_json::Value,
+    ) -> Self {
+        Self::new(from, "*", event, payload)
+    }
+}
+
+/// Send a message to a specific window
+pub fn send_message_to_window(app_handle: &AppHandle, message: WindowMessageEvent) -> Result<()> {
+    // Verify window exists
+    let _ = app_handle
+        .get_webview_window(&message.to)
+        .ok_or_else(|| anyhow::anyhow!("Window '{}' not found", message.to))?;
+
+    let target = message.to.clone();
+    message.emit_to(app_handle, target)?;
+    Ok(())
+}
+
+/// Send a message to all instances of a window type
+pub fn broadcast_to_window_type(
+    app_handle: &AppHandle,
+    base_label: &str,
+    from: &str,
+    event: &str,
+    payload: serde_json::Value,
+) -> Result<()> {
+    let instances = {
+        let manager = WindowManager::global().lock().unwrap();
+        manager.get_instances(base_label)
+    };
+
+    for label in instances {
+        if app_handle.get_webview_window(&label).is_some() {
+            let message = WindowMessageEvent::new(from, &label, event, payload.clone());
+            trace_err!(
+                message.emit_to(app_handle, &label),
+                "failed to emit message"
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Broadcast a message to all open windows
+pub fn broadcast_to_all_windows(
+    app_handle: &AppHandle,
+    from: &str,
+    event: &str,
+    payload: serde_json::Value,
+) -> Result<()> {
+    WindowMessageEvent::broadcast(from, event, payload).emit(app_handle)?;
+    Ok(())
+}
+
+/// Result of window creation
+#[derive(Debug, Clone)]
+pub struct WindowCreateResult {
+    /// The actual label of the created window
+    pub label: String,
+    /// Whether this was a newly created window or an existing one was shown
+    pub is_new: bool,
+}
+
+impl WindowCreateResult {
+    fn new(label: String) -> Self {
+        Self {
+            label,
+            is_new: true,
+        }
+    }
+
+    fn existing(label: String) -> Self {
+        Self {
+            label,
+            is_new: false,
+        }
+    }
+}
+
 /// Trait for window management
 pub trait AppWindow {
-    /// Get window label (e.g., "main", "editor")
+    /// Get window base label (e.g., "main", "editor")
     fn label(&self) -> &str;
 
     /// Get window title
@@ -22,6 +386,11 @@ pub trait AppWindow {
 
     /// Get window URL path
     fn url(&self) -> &str;
+
+    /// Get window configuration
+    fn config(&self) -> WindowConfig {
+        WindowConfig::default()
+    }
 
     /// Get window state from config
     fn get_window_state(&self) -> Option<WindowState>;
@@ -33,37 +402,91 @@ pub trait AppWindow {
         OPEN_WINDOWS_COUNTER.fetch_sub(1, Ordering::Release);
     }
 
-    /// Create window with default implementation
-    fn create(&self, app_handle: &AppHandle) -> Result<()> {
-        if let Some(window) = app_handle.get_webview_window(self.label()) {
-            tracing::debug!("{} window is already opened, try to show it", self.label());
-            if OPEN_WINDOWS_COUNTER.load(Ordering::Acquire) == 0 {
-                trace_err!(window.unminimize(), "set win unminimize");
-                trace_err!(window.show(), "set win visible");
-                trace_err!(window.set_focus(), "set win focus");
+    /// Create window with optional URL parameters
+    ///
+    /// Returns the label of the created (or existing) window
+    fn create_with_params(
+        &self,
+        app_handle: &AppHandle,
+        params: Option<WindowParams>,
+    ) -> Result<WindowCreateResult> {
+        let config = self.config();
+        let base_label = self.label();
+
+        // Clean up stale window records before generating label
+        // This handles cases where the window was destroyed but the record wasn't cleaned up
+        {
+            let mut manager = WindowManager::global().lock().unwrap();
+            let stale_labels: Vec<String> = manager
+                .get_instances(base_label)
+                .into_iter()
+                .filter(|label| app_handle.get_webview_window(label).is_none())
+                .collect();
+            for label in stale_labels {
+                tracing::debug!("cleaning up stale window record: {}", label);
+                manager.remove_instance(&label);
             }
-            return Ok(());
         }
 
-        let always_on_top = {
+        // Generate unique label
+        let label = {
+            let mut manager = WindowManager::global().lock().unwrap();
+            // After cleanup above, generate_label should work correctly
+            // For singleton windows, if it returns None, the window truly exists
+            manager
+                .generate_label(base_label, config.singleton)
+                .unwrap_or_else(|| {
+                    // Singleton window already exists - try to show it
+                    if let Some(window) = app_handle.get_webview_window(base_label) {
+                        tracing::debug!("{} window is already opened, try to show it", base_label);
+                        if OPEN_WINDOWS_COUNTER.load(Ordering::Acquire) == 0 {
+                            trace_err!(window.unminimize(), "set win unminimize");
+                            trace_err!(window.show(), "set win visible");
+                            trace_err!(window.set_focus(), "set win focus");
+                        }
+                    }
+                    // Return early indicator - we'll handle this below
+                    String::new()
+                })
+        };
+
+        // Handle singleton window that already exists
+        if label.is_empty() {
+            return Ok(WindowCreateResult::existing(base_label.to_string()));
+        }
+
+        let always_on_top = config.always_on_top.unwrap_or_else(|| {
             *Config::verge()
                 .latest()
                 .always_on_top
                 .as_ref()
                 .unwrap_or(&false)
-        };
+        });
 
-        tracing::debug!("create {} window...", self.label());
+        // Build URL with params
+        let url = build_url_with_params(self.url(), params.as_ref());
+
+        tracing::debug!("create {} window (label: {})...", base_label, label);
+
         let mut builder = tauri::WebviewWindowBuilder::new(
             app_handle,
-            self.label().clone(),
-            tauri::WebviewUrl::App(self.url().into()),
+            label.clone(),
+            tauri::WebviewUrl::App(url.into()),
         )
         .title(self.title())
         .fullscreen(false)
         .always_on_top(always_on_top)
-        .min_inner_size(400.0, 600.0)
+        .resizable(config.resizable)
+        .skip_taskbar(config.skip_taskbar)
         .disable_drag_drop_handler();
+
+        // Apply min/max size
+        if let Some((w, h)) = config.min_size {
+            builder = builder.min_inner_size(w, h);
+        }
+        if let Some((w, h)) = config.max_size {
+            builder = builder.max_inner_size(w, h);
+        }
 
         let win_state = &self.get_window_state();
         match win_state {
@@ -71,19 +494,26 @@ pub trait AppWindow {
                 builder = builder.inner_size(800., 800.).position(0., 0.);
             }
             _ => {
+                let (default_width, default_height) = config.default_size;
+
                 #[cfg(target_os = "windows")]
                 {
-                    builder = builder.inner_size(800.0, 636.0).center();
+                    builder = builder.inner_size(default_width, default_height);
                 }
 
                 #[cfg(target_os = "macos")]
                 {
-                    builder = builder.inner_size(800.0, 642.0).center();
+                    // macOS has slightly different height due to title bar
+                    builder = builder.inner_size(default_width, default_height + 6.0);
                 }
 
                 #[cfg(target_os = "linux")]
                 {
-                    builder = builder.inner_size(800.0, 642.0).center();
+                    builder = builder.inner_size(default_width, default_height + 6.0);
+                }
+
+                if config.center {
+                    builder = builder.center();
                 }
             }
         };
@@ -95,14 +525,26 @@ pub trait AppWindow {
             .visible(false)
             .additional_browser_args("--enable-features=msWebView2EnableDraggableRegions --disable-features=OverscrollHistoryNavigation,msExperimentalScrolling")
             .build();
+
         #[cfg(target_os = "macos")]
-        let win_res = builder
-            .decorations(true)
-            .hidden_title(true)
-            .title_bar_style(tauri::TitleBarStyle::Overlay)
-            .build();
+        let win_res = {
+            let decorations = config.decorations.unwrap_or(true);
+            builder
+                .decorations(decorations)
+                .hidden_title(true)
+                .title_bar_style(tauri::TitleBarStyle::Overlay)
+                .build()
+        };
+
         #[cfg(target_os = "linux")]
-        let win_res = builder.decorations(true).transparent(false).build();
+        let win_res = {
+            let decorations = config.decorations.unwrap_or(true);
+            let transparent = config.transparent.unwrap_or(false);
+            builder
+                .decorations(decorations)
+                .transparent(transparent)
+                .build()
+        };
 
         match win_res {
             Ok(win) => {
@@ -110,16 +552,14 @@ pub trait AppWindow {
 
                 if win_state.is_some() {
                     let state = win_state.as_ref().unwrap();
-                    win.set_position(PhysicalPosition {
+                    let _ = win.set_position(PhysicalPosition {
                         x: state.x,
                         y: state.y,
-                    })
-                    .unwrap();
-                    win.set_size(PhysicalSize {
+                    });
+                    let _ = win.set_size(PhysicalSize {
                         width: state.width,
                         height: state.height,
-                    })
-                    .unwrap();
+                    });
                 }
 
                 if let Some(state) = win_state {
@@ -168,7 +608,7 @@ pub trait AppWindow {
 
                 #[cfg(debug_assertions)]
                 {
-                    if let Some(webview_window) = win.get_webview_window(self.label()) {
+                    if let Some(webview_window) = win.get_webview_window(&label) {
                         webview_window.open_devtools();
                     }
                 }
@@ -180,56 +620,144 @@ pub trait AppWindow {
                     crate::window::macos::setup_traffic_lights_pos(win.clone(), (18.0, 22.0), mtm);
                 }
 
+                // Register window close event to clean up WindowManager
+                let label_clone = label.clone();
+                win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::Destroyed = event {
+                        tracing::debug!("window {} destroyed, removing from manager", label_clone);
+                        let mut manager = WindowManager::global().lock().unwrap();
+                        manager.remove_instance(&label_clone);
+                        OPEN_WINDOWS_COUNTER.fetch_sub(1, Ordering::Release);
+                    }
+                });
+
                 OPEN_WINDOWS_COUNTER.fetch_add(1, Ordering::Release);
+                Ok(WindowCreateResult::new(label))
             }
             Err(err) => {
                 log::error!(target: "app", "failed to create window, {err:?}");
-                if let Some(win) = app_handle.get_webview_window(self.label()) {
+                // Remove from manager on failure
+                {
+                    let mut manager = WindowManager::global().lock().unwrap();
+                    manager.remove_instance(&label);
+                }
+                if let Some(win) = app_handle.get_webview_window(&label) {
                     // Cleanup window if failed to create, it's a workaround for tauri bug
                     log_err!(
                         win.destroy(),
                         "occur error when close window while failed to create"
                     );
                 }
+                Err(err.into())
             }
         }
+    }
 
+    /// Create window with default implementation (no params)
+    fn create(&self, app_handle: &AppHandle) -> Result<()> {
+        let result = self.create_with_params(app_handle, None)?;
+
+        // Configure webview settings asynchronously to avoid blocking
         #[cfg(target_os = "windows")]
-        {
-            use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings6;
-            use windows_core::Interface;
+        if result.is_new {
+            let label = result.label.clone();
+            let app_handle = app_handle.clone();
+            std::thread::spawn(move || {
+                use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings6;
+                use windows_core::Interface;
 
-            app_handle
-                .get_webview_window(self.label())
-                .ok_or(anyhow::anyhow!("failed to get window"))?
-                .with_webview(|webview| unsafe {
-                    let settings = webview
-                        .controller()
-                        .CoreWebView2()
-                        .unwrap()
-                        .Settings()
-                        .unwrap();
-                    let settings: ICoreWebView2Settings6 =
-                        settings.cast::<ICoreWebView2Settings6>().unwrap();
-                    settings.SetIsSwipeNavigationEnabled(false).unwrap();
-                })
-                .unwrap();
+                // Wait a bit for webview to be ready
+                std::thread::sleep(std::time::Duration::from_millis(100));
+
+                if let Some(window) = app_handle.get_webview_window(&label) {
+                    let _ = window.with_webview(|webview| unsafe {
+                        if let Ok(core) = webview.controller().CoreWebView2() {
+                            if let Ok(settings) = core.Settings() {
+                                if let Ok(settings6) = settings.cast::<ICoreWebView2Settings6>() {
+                                    let _ = settings6.SetIsSwipeNavigationEnabled(false);
+                                }
+                            }
+                        }
+                    });
+                }
+            });
         }
 
         Ok(())
     }
 
-    /// Close window with default implementation
-    fn close(&self, app_handle: &AppHandle) {
-        if let Some(window) = app_handle.get_webview_window(self.label()) {
+    /// Close window by label
+    ///
+    /// Note: The WindowManager cleanup is handled automatically by the
+    /// on_window_event callback registered during window creation.
+    fn close_by_label(&self, app_handle: &AppHandle, label: &str) {
+        if let Some(window) = app_handle.get_webview_window(label) {
             trace_err!(window.close(), "close window");
-            self.reset_window_open_counter()
+            // WindowManager cleanup is handled by on_window_event(Destroyed)
         }
     }
 
-    /// Check if window is open with default implementation
+    /// Close window with default implementation (closes the base label window)
+    fn close(&self, app_handle: &AppHandle) {
+        self.close_by_label(app_handle, self.label());
+    }
+
+    /// Close all instances of this window type
+    fn close_all(&self, app_handle: &AppHandle) {
+        let instances = {
+            let manager = WindowManager::global().lock().unwrap();
+            manager.get_instances(self.label())
+        };
+        for label in instances {
+            self.close_by_label(app_handle, &label);
+        }
+    }
+
+    /// Check if the base label window is open
     fn is_open(&self, app_handle: &AppHandle) -> bool {
         app_handle.get_webview_window(self.label()).is_some()
+    }
+
+    /// Check if any instance of this window type is open
+    fn has_any_instance(&self, app_handle: &AppHandle) -> bool {
+        let manager = WindowManager::global().lock().unwrap();
+        let instances = manager.get_instances(self.label());
+        instances
+            .iter()
+            .any(|label| app_handle.get_webview_window(label).is_some())
+    }
+
+    /// Get all open window labels for this type
+    fn get_open_instances(&self, app_handle: &AppHandle) -> Vec<String> {
+        let manager = WindowManager::global().lock().unwrap();
+        manager
+            .get_instances(self.label())
+            .into_iter()
+            .filter(|label| app_handle.get_webview_window(label).is_some())
+            .collect()
+    }
+
+    /// Send a message to another window
+    fn send_message(
+        &self,
+        app_handle: &AppHandle,
+        to: &str,
+        event: &str,
+        payload: serde_json::Value,
+    ) -> Result<()> {
+        let message = WindowMessageEvent::new(self.label(), to, event, payload);
+        send_message_to_window(app_handle, message)
+    }
+
+    /// Broadcast a message to all instances of another window type
+    fn broadcast_to_type(
+        &self,
+        app_handle: &AppHandle,
+        target_type: &str,
+        event: &str,
+        payload: serde_json::Value,
+    ) -> Result<()> {
+        broadcast_to_window_type(app_handle, target_type, self.label(), event, payload)
     }
 
     /// Save window state with default implementation

@@ -31,7 +31,7 @@ const atomWithLocalStorage = <T>(key: string, initialValue: T) => {
 }
 
 export const memorizedRoutePathAtom = atomWithStorage<
-  FileRouteTypes['fullPaths'] | null
+  FileRouteTypes['to'] | null
 >('memorizedRoutePathAtom', null, undefined, {
   getOnInit: true,
 })

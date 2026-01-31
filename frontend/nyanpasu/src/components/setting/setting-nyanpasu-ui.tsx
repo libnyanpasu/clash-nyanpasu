@@ -3,15 +3,17 @@ import { MuiColorInput } from 'mui-color-input'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { isHexColor } from 'validator'
+import { useLockFn } from '@/hooks/use-lock-fn'
 import { atomIsDrawerOnlyIcon } from '@/store'
-import { setEnabledExperimentalRouter } from '@/utils/experimental'
 import { languageOptions } from '@/utils/language'
 import Done from '@mui/icons-material/Done'
 import { Button, List, ListItem, ListItemText } from '@mui/material'
-import { useSetting } from '@nyanpasu/interface'
+import { commands, useSetting } from '@nyanpasu/interface'
 import { BaseCard, Expand, MenuItem, SwitchItem } from '@nyanpasu/ui'
-import { useNavigate } from '@tanstack/react-router'
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { DEFAULT_COLOR } from '../layout/use-custom-theme'
+
+const currentWindow = getCurrentWebviewWindow()
 
 const commonSx = {
   width: 128,
@@ -109,12 +111,13 @@ const ThemeColor = () => {
 }
 
 const ExperimentalSwitch = () => {
-  const navigate = useNavigate()
+  const { upsert } = useSetting('use_legacy_ui')
 
-  const handleClick = () => {
-    setEnabledExperimentalRouter(true)
-    navigate({ to: '/experimental/dashboard' })
-  }
+  const handleClick = useLockFn(async () => {
+    await upsert(false)
+    await commands.createMainWindow()
+    await currentWindow.close()
+  })
 
   return (
     <ListItem sx={{ pl: 0, pr: 0 }}>

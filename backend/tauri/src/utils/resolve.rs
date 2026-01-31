@@ -6,7 +6,7 @@ use crate::{
     core::{storage::Storage, tray::proxies, *},
     log_err,
     utils::init,
-    window::AppWindow,
+    window::{AppWindow, WindowConfig},
 };
 use anyhow::Result;
 use semver::Version;
@@ -183,7 +183,7 @@ pub fn resolve_setup(app: &mut App) {
 
     let silent_start = { Config::verge().data().enable_silent_start };
     if !silent_start.unwrap_or(false) {
-        create_main_window(app.app_handle());
+        create_window(app.app_handle());
     }
 
     log_err!(sysopt::Sysopt::global().init_launch());
@@ -211,20 +211,66 @@ pub fn resolve_reset() {
     log_err!(block_on(CoreManager::global().stop_core()));
 }
 
-/// Main window implementation
+/// Main window implementation (new UI)
 struct MainWindow;
 
 impl AppWindow for MainWindow {
     fn label(&self) -> &str {
-        "main"
+        crate::consts::MAIN_WINDOW_LABEL
     }
 
     fn title(&self) -> &str {
-        "Clash Nyanpasu"
+        crate::consts::APP_NAME
+    }
+
+    fn url(&self) -> &str {
+        "/main"
+    }
+
+    fn config(&self) -> WindowConfig {
+        WindowConfig::new()
+            .singleton(true)
+            .visible_on_create(true)
+            .default_size(800.0, 636.0)
+            .min_size(400.0, 600.0)
+            .center(true)
+    }
+
+    fn get_window_state(&self) -> Option<WindowState> {
+        Config::verge().latest().window_size_state.clone()
+    }
+
+    fn set_window_state(&self, state: Option<WindowState>) {
+        Config::verge().data().patch_config(IVerge {
+            window_size_state: state,
+            ..IVerge::default()
+        });
+    }
+}
+
+/// Legacy window implementation (original UI)
+struct LegacyWindow;
+
+impl AppWindow for LegacyWindow {
+    fn label(&self) -> &str {
+        crate::consts::LEGACY_WINDOW_LABEL
+    }
+
+    fn title(&self) -> &str {
+        crate::consts::APP_NAME
     }
 
     fn url(&self) -> &str {
         "/"
+    }
+
+    fn config(&self) -> WindowConfig {
+        WindowConfig::new()
+            .singleton(true)
+            .visible_on_create(true)
+            .default_size(800.0, 636.0)
+            .min_size(400.0, 600.0)
+            .center(true)
     }
 
     fn get_window_state(&self) -> Option<WindowState> {
@@ -257,6 +303,72 @@ pub fn is_main_window_open(app_handle: &AppHandle) -> bool {
 
 pub fn save_main_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
     MainWindow.save_state(app_handle, save_to_file)
+}
+
+/// create legacy window
+#[tracing_attributes::instrument(skip(app_handle))]
+pub fn create_legacy_window(app_handle: &AppHandle) {
+    log_err!(LegacyWindow.create(app_handle));
+}
+
+/// close legacy window
+pub fn close_legacy_window(app_handle: &AppHandle) {
+    LegacyWindow.close(app_handle);
+}
+
+/// is legacy window open
+pub fn is_legacy_window_open(app_handle: &AppHandle) -> bool {
+    LegacyWindow.is_open(app_handle)
+}
+
+pub fn save_legacy_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
+    LegacyWindow.save_state(app_handle, save_to_file)
+}
+
+/// Create window based on use_legacy_ui config
+/// This is the primary function to use when opening window from tray, etc.
+#[tracing_attributes::instrument(skip(app_handle))]
+pub fn create_window(app_handle: &AppHandle) {
+    let use_legacy = Config::verge().latest().use_legacy_ui.unwrap_or(true);
+
+    if use_legacy {
+        create_legacy_window(app_handle);
+    } else {
+        create_main_window(app_handle);
+    }
+}
+
+/// Close the currently active window based on use_legacy_ui config
+pub fn close_window(app_handle: &AppHandle) {
+    let use_legacy = Config::verge().latest().use_legacy_ui.unwrap_or(true);
+
+    if use_legacy {
+        close_legacy_window(app_handle);
+    } else {
+        close_main_window(app_handle);
+    }
+}
+
+/// Check if the configured window is open
+pub fn is_window_open(app_handle: &AppHandle) -> bool {
+    let use_legacy = Config::verge().latest().use_legacy_ui.unwrap_or(true);
+
+    if use_legacy {
+        is_legacy_window_open(app_handle)
+    } else {
+        is_main_window_open(app_handle)
+    }
+}
+
+/// Save window state for the configured window type
+pub fn save_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
+    let use_legacy = Config::verge().latest().use_legacy_ui.unwrap_or(true);
+
+    if use_legacy {
+        save_legacy_window_state(app_handle, save_to_file)
+    } else {
+        save_main_window_state(app_handle, save_to_file)
+    }
 }
 
 /// resolve core version

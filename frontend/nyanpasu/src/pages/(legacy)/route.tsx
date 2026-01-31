@@ -41,7 +41,7 @@ function Layout() {
 
   useEffect(() => {
     if (pathname !== '/') {
-      setMemorizedPath(pathname as FileRouteTypes['fullPaths'])
+      setMemorizedPath(pathname as FileRouteTypes['to'])
     }
   }, [pathname, setMemorizedPath])
 

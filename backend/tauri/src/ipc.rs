@@ -6,12 +6,7 @@ use crate::{
     },
     enhance::PostProcessingOutput,
     feat,
-    utils::{
-        candy,
-        collect::EnvInfo,
-        dirs, help,
-        resolve::{self, save_main_window_state},
-    },
+    utils::{candy, collect::EnvInfo, dirs, help, resolve},
 };
 use anyhow::{Context, anyhow};
 use chrono::Local;
@@ -574,14 +569,6 @@ pub fn open_web_url(url: String) -> Result<()> {
 
 #[tauri::command]
 #[specta::specta]
-pub fn save_main_window_size_state() -> Result<()> {
-    let handle = handle::Handle::global().app_handle.lock().clone().unwrap();
-    (save_main_window_state(&handle, true))?;
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
 pub async fn fetch_latest_core_versions() -> Result<ManifestVersionLatest> {
     let mut updater = updater::UpdaterManager::global().write().await; // It is intended to block here
     (updater.fetch_latest().await)?;
@@ -1064,4 +1051,51 @@ pub async fn check_update(webview: tauri::Webview) -> Result<Option<UpdateWrappe
         wrapper.rid = webview.resources_table().add(u);
         wrapper
     }))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn save_window_size_state(app_handle: AppHandle, label: String) -> Result<()> {
+    match label.as_str() {
+        crate::consts::MAIN_WINDOW_LABEL => {
+            resolve::save_main_window_state(&app_handle, true)?;
+        }
+        crate::consts::LEGACY_WINDOW_LABEL => {
+            resolve::save_legacy_window_state(&app_handle, true)?;
+        }
+        _ => {
+            log::warn!("Unknown window label: {}", label);
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn create_main_window(app_handle: AppHandle) -> Result<()> {
+    // Spawn window creation to avoid blocking
+    std::thread::spawn(move || {
+        // Small delay to let the IPC return first
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let handle_inner = app_handle.clone();
+        let _ = app_handle.run_on_main_thread(move || {
+            resolve::create_main_window(&handle_inner);
+        });
+    });
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn create_legacy_window(app_handle: AppHandle) -> Result<()> {
+    // Spawn window creation to avoid blocking
+    std::thread::spawn(move || {
+        // Small delay to let the IPC return first
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let handle_inner = app_handle.clone();
+        let _ = app_handle.run_on_main_thread(move || {
+            resolve::create_legacy_window(&handle_inner);
+        });
+    });
+    Ok(())
 }

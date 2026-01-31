@@ -1,6 +1,10 @@
 use once_cell::sync::{Lazy, OnceCell};
 use tauri::AppHandle;
 
+pub const MAIN_WINDOW_LABEL: &str = "main";
+pub const LEGACY_WINDOW_LABEL: &str = "legacy";
+pub const APP_NAME: &str = "Clash Nyanpasu";
+
 #[derive(Debug, serde::Serialize, Clone, specta::Type)]
 pub struct BuildInfo {
     pub app_name: &'static str,

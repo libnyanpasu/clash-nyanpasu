@@ -81,6 +81,8 @@
   "profile_import_local_file_type_label": "Поддерживаемые файлы: {types}",
   "profile_import_local_file_size_label": "Размер файла: {size}",
   "profile_import_chain_title": "Новый {type}",
+  "proxies_group_delay_test_title": "Тест задержки",
+  "proxies_group_delay_test_pending_title": "Тестирование…",
   "unit_seconds": "секунды",
   "common_submit": "Отправить",
   "common_cancel": "Отменить",

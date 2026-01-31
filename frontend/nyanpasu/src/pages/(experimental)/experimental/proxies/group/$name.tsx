@@ -6,6 +6,7 @@ import { useClashProxies } from '@nyanpasu/interface'
 import { useContainerBreakpointValue } from '@nyanpasu/ui'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import DelayTestButton from './_modules/delay-test-button'
 import GroupHeader from './_modules/group-header'
 import ProxyNodeButton from './_modules/proxy-node-button'
 
@@ -112,6 +113,8 @@ function RouteComponent() {
           )
         })}
       </div>
+
+      <DelayTestButton />
     </>
   )
 }

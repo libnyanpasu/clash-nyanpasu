@@ -6,7 +6,7 @@ use crate::{
     core::{storage::Storage, tray::proxies, *},
     log_err,
     utils::init,
-    window::AppWindow,
+    window::{AppWindow, WindowConfig},
 };
 use anyhow::Result;
 use semver::Version;
@@ -225,6 +225,15 @@ impl AppWindow for MainWindow {
 
     fn url(&self) -> &str {
         "/"
+    }
+
+    fn config(&self) -> WindowConfig {
+        WindowConfig::new()
+            .singleton(true)
+            .visible_on_create(true)
+            .default_size(800.0, 636.0)
+            .min_size(400.0, 600.0)
+            .center(true)
     }
 
     fn get_window_state(&self) -> Option<WindowState> {

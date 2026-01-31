@@ -88,5 +88,6 @@
   "common_cancel": "Отменить",
   "common_apply": "Применить",
   "common_reset": "Сбросить",
-  "common_save": "Сохранить"
+  "common_save": "Сохранить",
+  "common_validate": "Проверить"
 }

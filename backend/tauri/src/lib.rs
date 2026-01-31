@@ -277,6 +277,7 @@ pub fn run() -> std::io::Result<()> {
             ipc::save_window_size_state,
             ipc::create_main_window,
             ipc::create_legacy_window,
+            ipc::create_editor_window,
         ])
         .events(collect_events![
             core::clash::ClashConnectionsEvent,

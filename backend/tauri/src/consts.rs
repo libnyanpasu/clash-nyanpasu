@@ -3,7 +3,9 @@ use tauri::AppHandle;
 
 pub const MAIN_WINDOW_LABEL: &str = "main";
 pub const LEGACY_WINDOW_LABEL: &str = "legacy";
+pub const EDITOR_WINDOW_LABEL: &str = "editor";
 pub const APP_NAME: &str = "Clash Nyanpasu";
+pub const APP_EDITOR_NAME: &str = "Clash Nyanpasu - Editor";
 
 #[derive(Debug, serde::Serialize, Clone, specta::Type)]
 pub struct BuildInfo {

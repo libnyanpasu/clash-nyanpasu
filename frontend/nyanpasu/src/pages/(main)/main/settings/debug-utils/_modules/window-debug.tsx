@@ -11,6 +11,10 @@ export default function WindowDebug() {
     await commands.createLegacyWindow()
   })
 
+  const handleCreateEditorWindow = useLockFn(async () => {
+    await commands.createEditorWindow('test')
+  })
+
   return (
     <Card>
       <CardHeader>Window Debug Utils</CardHeader>
@@ -24,6 +28,10 @@ export default function WindowDebug() {
         <div className="flex items-center gap-2">
           <Button variant="flat" onClick={handleCreateLegacyWindow}>
             Create Legacy Window
+          </Button>
+
+          <Button variant="flat" onClick={handleCreateEditorWindow}>
+            Create Test Editor Window
           </Button>
         </div>
       </CardContent>

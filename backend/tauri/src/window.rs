@@ -415,13 +415,30 @@ pub trait AppWindow {
         let config = self.config();
         let base_label = self.label();
 
+        // Clean up stale window records before generating label
+        // This handles cases where the window was destroyed but the record wasn't cleaned up
+        {
+            let mut manager = WindowManager::global().lock().unwrap();
+            let stale_labels: Vec<String> = manager
+                .get_instances(base_label)
+                .into_iter()
+                .filter(|label| app_handle.get_webview_window(label).is_none())
+                .collect();
+            for label in stale_labels {
+                tracing::debug!("cleaning up stale window record: {}", label);
+                manager.remove_instance(&label);
+            }
+        }
+
         // Generate unique label
         let label = {
             let mut manager = WindowManager::global().lock().unwrap();
-            match manager.generate_label(base_label, config.singleton) {
-                Some(label) => label,
-                None => {
-                    // Singleton exists, try to show it
+            // After cleanup above, generate_label should work correctly
+            // For singleton windows, if it returns None, the window truly exists
+            manager
+                .generate_label(base_label, config.singleton)
+                .unwrap_or_else(|| {
+                    // Singleton window already exists - try to show it
                     if let Some(window) = app_handle.get_webview_window(base_label) {
                         tracing::debug!("{} window is already opened, try to show it", base_label);
                         if OPEN_WINDOWS_COUNTER.load(Ordering::Acquire) == 0 {
@@ -430,10 +447,15 @@ pub trait AppWindow {
                             trace_err!(window.set_focus(), "set win focus");
                         }
                     }
-                    return Ok(WindowCreateResult::existing(base_label.to_string()));
-                }
-            }
+                    // Return early indicator - we'll handle this below
+                    String::new()
+                })
         };
+
+        // Handle singleton window that already exists
+        if label.is_empty() {
+            return Ok(WindowCreateResult::existing(base_label.to_string()));
+        }
 
         let always_on_top = config.always_on_top.unwrap_or_else(|| {
             *Config::verge()
@@ -606,6 +628,17 @@ pub trait AppWindow {
                     crate::window::macos::setup_traffic_lights_pos(win.clone(), (18.0, 22.0), mtm);
                 }
 
+                // Register window close event to clean up WindowManager
+                let label_clone = label.clone();
+                win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::Destroyed = event {
+                        tracing::debug!("window {} destroyed, removing from manager", label_clone);
+                        let mut manager = WindowManager::global().lock().unwrap();
+                        manager.remove_instance(&label_clone);
+                        OPEN_WINDOWS_COUNTER.fetch_sub(1, Ordering::Release);
+                    }
+                });
+
                 OPEN_WINDOWS_COUNTER.fetch_add(1, Ordering::Release);
                 Ok(WindowCreateResult::new(label))
             }
@@ -658,13 +691,13 @@ pub trait AppWindow {
     }
 
     /// Close window by label
+    ///
+    /// Note: The WindowManager cleanup is handled automatically by the
+    /// on_window_event callback registered during window creation.
     fn close_by_label(&self, app_handle: &AppHandle, label: &str) {
         if let Some(window) = app_handle.get_webview_window(label) {
             trace_err!(window.close(), "close window");
-            self.reset_window_open_counter();
-            // Remove from manager
-            let mut manager = WindowManager::global().lock().unwrap();
-            manager.remove_instance(label);
+            // WindowManager cleanup is handled by on_window_event(Destroyed)
         }
     }
 

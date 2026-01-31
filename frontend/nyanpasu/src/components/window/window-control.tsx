@@ -93,10 +93,18 @@ const MaximizeButton = () => {
   )
 }
 
-const CloseButton = () => {
+const CloseButton = ({
+  beforeClose,
+}: {
+  beforeClose?: () => Promise<void>
+}) => {
   const handleClose = useCallback(async () => {
+    if (beforeClose) {
+      await beforeClose()
+    }
+
     await appWindow.close()
-  }, [])
+  }, [beforeClose])
 
   return (
     <CtrlButton onClick={handleClose} data-slot="window-control-close-button">
@@ -105,20 +113,27 @@ const CloseButton = () => {
   )
 }
 
-export default function WindowControl({ className }: ComponentProps<'div'>) {
+export default function WindowControl({
+  className,
+  hiddenAlwaysOnTop,
+  beforeClose,
+}: ComponentProps<'div'> & {
+  hiddenAlwaysOnTop?: boolean
+  beforeClose?: () => Promise<void>
+}) {
   return (
     <div
       className={cn('flex gap-1', className)}
       data-slot="window-control"
       data-tauri-drag-region
     >
-      <AlwaysOnTopButton />
+      {!hiddenAlwaysOnTop && <AlwaysOnTopButton />}
 
       <MinimizeButton />
 
       <MaximizeButton />
 
-      <CloseButton />
+      <CloseButton beforeClose={beforeClose} />
     </div>
   )
 }

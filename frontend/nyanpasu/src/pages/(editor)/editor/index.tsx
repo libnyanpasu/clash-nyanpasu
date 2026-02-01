@@ -158,73 +158,81 @@ function RouteComponent() {
     [],
   )
 
-  // loading state
-  if (content.query.isLoading || currentProfile.isLoading) {
-    return <LoadingSkeleton />
-  }
-
   return (
     <>
       <Header beforeClose={handleBeforeClose} />
 
-      <div
-        className={cn(
-          'dark:bg-on-primary bg-primary-container flex items-center px-3',
-          'h-12',
-        )}
-        data-slot="editor-header-actions"
-      >
-        <div className="text-sm font-medium" data-slot="editor-header-title">
-          {currentProfile.data?.name}.{currentProfile.data?.extension}
-        </div>
-      </div>
+      {content.query.isLoading || currentProfile.isLoading ? (
+        <LoadingSkeleton />
+      ) : (
+        <>
+          <div
+            className={cn(
+              'dark:bg-on-primary bg-primary-container flex items-center px-3',
+              'h-12',
+            )}
+            data-slot="editor-header-actions"
+          >
+            <div
+              className="text-sm font-medium"
+              data-slot="editor-header-title"
+            >
+              {currentProfile.data?.name}.{currentProfile.data?.extension}
+            </div>
+          </div>
 
-      <MonacoEditor
-        value={content.query.data}
-        language={currentProfile.data?.language}
-        path={currentProfile.data?.virtualPath}
-        theme={themeMode === 'light' ? 'vs' : 'vs-dark'}
-        beforeMount={beforeEditorMount}
-        onMount={handleEditorDidMount}
-        onChange={setEditorValue}
-        onValidate={(marks) => {
-          editorMarks.current = marks
-        }}
-        loading={<LoadingSkeleton />}
-        options={{
-          readOnly: readonly,
-          mouseWheelZoom: true,
-          renderValidationDecorations: 'on',
-          tabSize: currentProfile.data?.language === 'yaml' ? 2 : 4,
-          minimap: { enabled: false },
-          automaticLayout: true,
-          fontLigatures: true,
-          smoothScrolling: true,
-          fontFamily: MONACO_FONT_FAMILY,
-          quickSuggestions: {
-            strings: true,
-            comments: true,
-            other: true,
-          },
-        }}
-      />
+          <MonacoEditor
+            value={content.query.data}
+            language={currentProfile.data?.language}
+            path={currentProfile.data?.virtualPath}
+            theme={themeMode === 'light' ? 'vs' : 'vs-dark'}
+            beforeMount={beforeEditorMount}
+            onMount={handleEditorDidMount}
+            onChange={setEditorValue}
+            onValidate={(marks) => {
+              editorMarks.current = marks
+            }}
+            loading={<LoadingSkeleton />}
+            options={{
+              readOnly: readonly,
+              mouseWheelZoom: true,
+              renderValidationDecorations: 'on',
+              tabSize: currentProfile.data?.language === 'yaml' ? 2 : 4,
+              minimap: { enabled: false },
+              automaticLayout: true,
+              fontLigatures: true,
+              smoothScrolling: true,
+              fontFamily: MONACO_FONT_FAMILY,
+              quickSuggestions: {
+                strings: true,
+                comments: true,
+                other: true,
+              },
+            }}
+          />
 
-      <div className="bg-background flex h-14 items-center gap-2 px-3">
-        <ActionButton onClick={handleReset}>{m.common_reset()}</ActionButton>
+          <div className="bg-background flex h-14 items-center gap-2 px-3">
+            <ActionButton onClick={handleReset}>
+              {m.common_reset()}
+            </ActionButton>
 
-        <div className="flex-1" />
+            <div className="flex-1" />
 
-        <ActionButton onClick={handleCancel}>{m.common_cancel()}</ActionButton>
+            <ActionButton onClick={handleCancel}>
+              {m.common_cancel()}
+            </ActionButton>
 
-        <ActionButton
-          className="px-5"
-          variant="flat"
-          loading={blockTask.isPending}
-          onClick={handleSave}
-        >
-          {m.common_save()}
-        </ActionButton>
-      </div>
+            <ActionButton
+              className="px-5"
+              variant="flat"
+              loading={blockTask.isPending}
+              onClick={handleSave}
+            >
+              {m.common_save()}
+            </ActionButton>
+          </div>
+        </>
+      )}
     </>
   )
 }

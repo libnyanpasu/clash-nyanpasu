@@ -60,21 +60,25 @@ function RouteComponent() {
 
     if (item) {
       let language = 'yaml'
+      let extension = 'yaml'
 
       if (item.type === 'script') {
         if (item.script_type === 'javascript') {
           language = 'javascript'
+          extension = 'js'
         }
 
         if (item.script_type === 'lua') {
           language = 'lua'
+          extension = 'lua'
         }
       }
 
       return {
         ...item,
         language,
-        virtualPath: `${nanoid()}.${language}`,
+        extension,
+        virtualPath: `${nanoid()}.${extension}`,
       }
     }
   }, [profiles.query.data, uid])
@@ -122,7 +126,7 @@ function RouteComponent() {
         data-slot="editor-header-actions"
       >
         <div className="text-sm font-medium" data-slot="editor-header-title">
-          {currentProfile?.name}.{currentProfile?.language}
+          {currentProfile?.name}.{currentProfile?.extension}
         </div>
       </div>
 

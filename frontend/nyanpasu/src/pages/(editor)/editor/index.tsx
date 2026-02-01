@@ -13,6 +13,7 @@ import { cn } from '@nyanpasu/ui'
 import { createFileRoute } from '@tanstack/react-router'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { ask, message } from '@tauri-apps/plugin-dialog'
+import Chip from './_modules/chip'
 import Header from './_modules/header'
 import { useCurrentProfile } from './_modules/hooks'
 import LoadingSkeleton from './_modules/loading-skeleton'
@@ -24,7 +25,6 @@ export const Route = createFileRoute('/(editor)/editor/')({
   component: RouteComponent,
   validateSearch: z.object({
     uid: z.string(),
-    readonly: z.boolean().optional().default(false),
   }),
 })
 
@@ -38,7 +38,7 @@ const ActionButton = ({
 function RouteComponent() {
   const { themeMode } = useExperimentalThemeContext()
 
-  const { uid, readonly } = Route.useSearch()
+  const { uid } = Route.useSearch()
 
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
 
@@ -168,7 +168,7 @@ function RouteComponent() {
         <>
           <div
             className={cn(
-              'dark:bg-on-primary bg-primary-container flex shrink-0 items-center px-3',
+              'dark:bg-on-primary bg-primary-container flex shrink-0 items-center gap-2 px-3',
               'h-12',
             )}
             data-slot="editor-header-actions"
@@ -179,6 +179,10 @@ function RouteComponent() {
             >
               {currentProfile.data?.name}.{currentProfile.data?.extension}
             </div>
+
+            {currentProfile.data?.readOnly && (
+              <Chip>{m.editor_read_only_chip()}</Chip>
+            )}
           </div>
 
           <div className="min-h-0 flex-1" data-slot="editor-content">
@@ -196,7 +200,7 @@ function RouteComponent() {
               }}
               loading={<LoadingSkeleton />}
               options={{
-                readOnly: readonly,
+                readOnly: currentProfile.data?.readOnly,
                 mouseWheelZoom: true,
                 renderValidationDecorations: 'on',
                 tabSize: currentProfile.data?.language === 'yaml' ? 2 : 4,

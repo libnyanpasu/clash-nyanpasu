@@ -5,6 +5,7 @@ import { useProfile, type Profile } from '@nyanpasu/interface'
 type CurrentProfileData = Profile & {
   language: string
   extension: string
+  readOnly: boolean
   virtualPath: string
 }
 
@@ -19,7 +20,12 @@ export function useCurrentProfile(uid: string): {
     if (item) {
       let language = 'yaml'
       let extension = 'yaml'
+      let readOnly = false
       let schemaType
+
+      if (item.type === 'remote') {
+        readOnly = true
+      }
 
       if (item.type === 'remote' || item.type === 'local') {
         schemaType = 'clash'
@@ -45,6 +51,7 @@ export function useCurrentProfile(uid: string): {
         ...item,
         language,
         extension,
+        readOnly,
         virtualPath: `${nanoid()}${schemaType ? `.${schemaType}` : ''}.${language}`,
       }
     }

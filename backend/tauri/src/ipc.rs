@@ -1099,3 +1099,18 @@ pub fn create_legacy_window(app_handle: AppHandle) -> Result<()> {
     });
     Ok(())
 }
+
+#[tauri::command]
+#[specta::specta]
+pub fn create_editor_window(app_handle: AppHandle, uid: String) -> Result<()> {
+    // Spawn window creation to avoid blocking
+    std::thread::spawn(move || {
+        // Small delay to let the IPC return first
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let handle_inner = app_handle.clone();
+        let _ = app_handle.run_on_main_thread(move || {
+            let _ = resolve::create_editor_window(&handle_inner, &uid);
+        });
+    });
+    Ok(())
+}

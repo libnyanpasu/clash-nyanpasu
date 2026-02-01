@@ -6,7 +6,7 @@ use crate::{
     core::{storage::Storage, tray::proxies, *},
     log_err,
     utils::init,
-    window::{AppWindow, WindowConfig},
+    window::{AppWindow, WindowConfig, WindowParamsBuilder},
 };
 use anyhow::Result;
 use semver::Version;
@@ -248,6 +248,51 @@ impl AppWindow for MainWindow {
     }
 }
 
+/// Editor window
+struct EditorWindow {
+    label: String,
+}
+
+impl EditorWindow {
+    fn new(uid: &str) -> Self {
+        Self {
+            label: format!("{}-{}", crate::consts::EDITOR_WINDOW_LABEL, uid),
+        }
+    }
+}
+
+impl AppWindow for EditorWindow {
+    fn label(&self) -> &str {
+        &self.label
+    }
+
+    fn title(&self) -> &str {
+        &crate::consts::APP_EDITOR_NAME
+    }
+
+    fn url(&self) -> &str {
+        "/editor"
+    }
+
+    fn config(&self) -> WindowConfig {
+        WindowConfig::new()
+            .singleton(false) // Allow multiple editor windows with different uids
+            .visible_on_create(true)
+            .default_size(800.0, 636.0)
+            .min_size(400.0, 600.0)
+            .center(true)
+    }
+
+    fn get_window_state(&self) -> Option<WindowState> {
+        // EditorWindow does not remember window state
+        None
+    }
+
+    fn set_window_state(&self, _state: Option<WindowState>) {
+        // EditorWindow does not remember window state
+    }
+}
+
 /// Legacy window implementation (original UI)
 struct LegacyWindow;
 
@@ -369,6 +414,29 @@ pub fn save_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<(
     } else {
         save_main_window_state(app_handle, save_to_file)
     }
+}
+
+/// Create editor window with uid
+#[tracing_attributes::instrument(skip(app_handle))]
+pub fn create_editor_window(app_handle: &AppHandle, uid: &str) -> Result<()> {
+    let editor_window = EditorWindow::new(uid);
+    let params = WindowParamsBuilder::new().param("uid", uid).build();
+    editor_window.create_with_params(app_handle, params)?;
+    Ok(())
+}
+
+/// Close editor window by uid
+pub fn close_editor_window(app_handle: &AppHandle, uid: &str) {
+    let editor_window = EditorWindow::new(uid);
+    editor_window.close_by_label(app_handle, &editor_window.label());
+}
+
+/// Check if editor window with uid is open
+pub fn is_editor_window_open(app_handle: &AppHandle, uid: &str) -> bool {
+    let editor_window = EditorWindow::new(uid);
+    app_handle
+        .get_webview_window(editor_window.label())
+        .is_some()
 }
 
 /// resolve core version

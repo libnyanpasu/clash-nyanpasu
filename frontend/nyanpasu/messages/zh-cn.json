@@ -84,10 +84,14 @@
   "profile_import_chain_title": "新建 {type}",
   "proxies_group_delay_test_title": "延迟测试",
   "proxies_group_delay_test_pending_title": "正在测试中……",
+  "editor_before_close_message": "你尚未保存编辑的内容，确定要关闭编辑器吗？",
+  "editor_validate_error_message": "请修复错误后再保存内容",
+  "editor_read_only_chip": "只读",
   "unit_seconds": "秒",
   "common_submit": "提交",
   "common_cancel": "取消",
   "common_apply": "应用",
   "common_reset": "重置",
-  "common_save": "保存"
+  "common_save": "保存",
+  "common_validate": "验证"
 }

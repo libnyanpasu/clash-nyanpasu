@@ -19,6 +19,15 @@ export function useCurrentProfile(uid: string): {
     if (item) {
       let language = 'yaml'
       let extension = 'yaml'
+      let schemaType
+
+      if (item.type === 'remote' || item.type === 'local') {
+        schemaType = 'clash'
+      }
+
+      if (item.type === 'merge') {
+        schemaType = 'merge'
+      }
 
       if (item.type === 'script') {
         if (item.script_type === 'javascript') {
@@ -36,7 +45,7 @@ export function useCurrentProfile(uid: string): {
         ...item,
         language,
         extension,
-        virtualPath: `${nanoid()}.${extension}`,
+        virtualPath: `${nanoid()}${schemaType ? `.${schemaType}` : ''}.${language}`,
       }
     }
   }, [profiles.query.data, uid])

@@ -88,5 +88,6 @@
   "common_cancel": "Cancel",
   "common_apply": "Apply",
   "common_reset": "Reset",
-  "common_save": "Save"
+  "common_save": "Save",
+  "common_validate": "Validate"
 }

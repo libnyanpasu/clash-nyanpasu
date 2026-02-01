@@ -744,6 +744,17 @@ export const commands = {
       else return { status: 'error', error: e as any }
     }
   },
+  async createEditorWindow(uid: string): Promise<Result<null, string>> {
+    try {
+      return {
+        status: 'ok',
+        data: await TAURI_INVOKE('create_editor_window', { uid }),
+      }
+    } catch (e) {
+      if (e instanceof Error) throw e
+      else return { status: 'error', error: e as any }
+    }
+  },
 }
 
 /** user-defined events **/

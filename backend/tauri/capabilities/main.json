@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-capability",
   "local": true,
-  "windows": ["main", "legacy"],
+  "windows": ["main", "legacy", "editor-*"],
   "permissions": [
     "core:default",
     "core:app:default",

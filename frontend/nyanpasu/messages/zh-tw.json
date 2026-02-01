@@ -88,5 +88,6 @@
   "common_cancel": "取消",
   "common_apply": "應用",
   "common_reset": "重置",
-  "common_save": "保存"
+  "common_save": "保存",
+  "common_validate": "驗證"
 }

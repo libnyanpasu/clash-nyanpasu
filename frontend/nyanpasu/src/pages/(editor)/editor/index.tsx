@@ -168,7 +168,7 @@ function RouteComponent() {
         <>
           <div
             className={cn(
-              'dark:bg-on-primary bg-primary-container flex items-center px-3',
+              'dark:bg-on-primary bg-primary-container flex shrink-0 items-center px-3',
               'h-12',
             )}
             data-slot="editor-header-actions"
@@ -181,37 +181,43 @@ function RouteComponent() {
             </div>
           </div>
 
-          <MonacoEditor
-            value={content.query.data}
-            language={currentProfile.data?.language}
-            path={currentProfile.data?.virtualPath}
-            theme={themeMode === 'light' ? 'vs' : 'vs-dark'}
-            beforeMount={beforeEditorMount}
-            onMount={handleEditorDidMount}
-            onChange={setEditorValue}
-            onValidate={(marks) => {
-              editorMarks.current = marks
-            }}
-            loading={<LoadingSkeleton />}
-            options={{
-              readOnly: readonly,
-              mouseWheelZoom: true,
-              renderValidationDecorations: 'on',
-              tabSize: currentProfile.data?.language === 'yaml' ? 2 : 4,
-              minimap: { enabled: false },
-              automaticLayout: true,
-              fontLigatures: true,
-              smoothScrolling: true,
-              fontFamily: MONACO_FONT_FAMILY,
-              quickSuggestions: {
-                strings: true,
-                comments: true,
-                other: true,
-              },
-            }}
-          />
+          <div className="min-h-0 flex-1" data-slot="editor-content">
+            <MonacoEditor
+              className="h-full w-full"
+              value={content.query.data}
+              language={currentProfile.data?.language}
+              path={currentProfile.data?.virtualPath}
+              theme={themeMode === 'light' ? 'vs' : 'vs-dark'}
+              beforeMount={beforeEditorMount}
+              onMount={handleEditorDidMount}
+              onChange={setEditorValue}
+              onValidate={(marks) => {
+                editorMarks.current = marks
+              }}
+              loading={<LoadingSkeleton />}
+              options={{
+                readOnly: readonly,
+                mouseWheelZoom: true,
+                renderValidationDecorations: 'on',
+                tabSize: currentProfile.data?.language === 'yaml' ? 2 : 4,
+                minimap: { enabled: false },
+                automaticLayout: true,
+                fontLigatures: true,
+                smoothScrolling: true,
+                fontFamily: MONACO_FONT_FAMILY,
+                quickSuggestions: {
+                  strings: true,
+                  comments: true,
+                  other: true,
+                },
+              }}
+            />
+          </div>
 
-          <div className="bg-background flex h-14 items-center gap-2 px-3">
+          <div
+            className="bg-background flex h-12 shrink-0 items-center gap-2 px-3"
+            data-slot="editor-footer-actions"
+          >
             <ActionButton onClick={handleReset}>
               {m.common_reset()}
             </ActionButton>

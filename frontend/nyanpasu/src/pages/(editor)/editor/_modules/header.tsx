@@ -26,10 +26,10 @@ export default function Header({
 }) {
   return (
     <WindowHeader
-      className="items-center justify-between px-3"
+      className="shrink-0 items-center justify-between px-3"
       data-slot="window-control"
     >
-      <div className="flex h-10 items-center gap-2" data-tauri-drag-region>
+      <div className="flex items-center gap-2" data-tauri-drag-region>
         <Title />
       </div>
 

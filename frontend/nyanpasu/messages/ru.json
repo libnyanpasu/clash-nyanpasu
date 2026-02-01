@@ -83,6 +83,7 @@
   "profile_import_chain_title": "Новый {type}",
   "proxies_group_delay_test_title": "Тест задержки",
   "proxies_group_delay_test_pending_title": "Тестирование…",
+  "editor_before_close_message": "Вы не сохранили измененное содержимое, вы уверены, что хотите закрыть редактор?",
   "unit_seconds": "секунды",
   "common_submit": "Отправить",
   "common_cancel": "Отменить",

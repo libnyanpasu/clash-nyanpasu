@@ -1,3 +1,4 @@
+import { ComponentProps } from 'react'
 import WindowControl from '@/components/window/window-control'
 import WindowHeader from '@/components/window/window-header'
 import WindowTitle from '@/components/window/window-title'
@@ -18,7 +19,11 @@ const Title = () => {
   )
 }
 
-export default function Header() {
+export default function Header({
+  beforeClose,
+}: {
+  beforeClose?: ComponentProps<typeof WindowControl>['beforeClose']
+}) {
   return (
     <WindowHeader
       className="items-center justify-between px-3"
@@ -28,7 +33,7 @@ export default function Header() {
         <Title />
       </div>
 
-      <WindowControl hiddenAlwaysOnTop />
+      <WindowControl hiddenAlwaysOnTop beforeClose={beforeClose} />
     </WindowHeader>
   )
 }

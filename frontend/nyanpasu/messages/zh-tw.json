@@ -83,6 +83,7 @@
   "profile_import_chain_title": "新建 {type}",
   "proxies_group_delay_test_title": "延遲測試",
   "proxies_group_delay_test_pending_title": "正在測試中……",
+  "editor_before_close_message": "你尚未保存编辑的内容，确定要关闭编辑器吗？",
   "unit_seconds": "秒",
   "common_submit": "提交",
   "common_cancel": "取消",

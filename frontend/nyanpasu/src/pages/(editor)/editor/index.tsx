@@ -1,45 +1,31 @@
-import { nanoid } from 'nanoid'
-import { ComponentProps, useEffect, useMemo, useState } from 'react'
+import { isEqual } from 'lodash-es'
+import { ComponentProps, useEffect, useState } from 'react'
+import { z } from 'zod'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import { useExperimentalThemeContext } from '@/components/providers/theme-provider'
 import { Button } from '@/components/ui/button'
-import { CircularProgress } from '@/components/ui/progress'
-import { OS } from '@/consts'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import MonacoEditor from '@monaco-editor/react'
-import { useProfile, useProfileContent } from '@nyanpasu/interface'
+import { useProfileContent } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 import { createFileRoute } from '@tanstack/react-router'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { Route as EditorRoute } from './route'
+import { ask } from '@tauri-apps/plugin-dialog'
+import Header from './_modules/header'
+import { useCurrentProfile } from './_modules/hooks'
+import LoadingSkeleton from './_modules/loading-skeleton'
+import { MONACO_FONT_FAMILY } from './_modules/utils'
 
 const currentWindow = getCurrentWebviewWindow()
 
-const MONACO_FONT_FAMILY =
-  '"Cascadia Code NF",' +
-  '"Cascadia Code",' +
-  'Fira Code,' +
-  'JetBrains Mono,' +
-  'Roboto Mono,' +
-  '"Source Code Pro",' +
-  'Consolas,' +
-  'Menlo,' +
-  'Monaco,' +
-  'monospace,' +
-  `${OS === 'windows' ? 'twemoji mozilla' : ''}`
-
 export const Route = createFileRoute('/(editor)/editor/')({
   component: RouteComponent,
+  validateSearch: z.object({
+    uid: z.string(),
+    readonly: z.boolean().optional().default(false),
+  }),
 })
-
-const LoadingSkeleton = () => {
-  return (
-    <div className="grid flex-1 place-items-center">
-      <CircularProgress className="size-12" indeterminate />
-    </div>
-  )
-}
 
 const ActionButton = ({
   className,
@@ -51,42 +37,15 @@ const ActionButton = ({
 function RouteComponent() {
   const { themeMode } = useExperimentalThemeContext()
 
-  const { uid, readonly } = EditorRoute.useSearch()
+  const { uid, readonly } = Route.useSearch()
 
-  const profiles = useProfile()
-
-  const currentProfile = useMemo(() => {
-    const item = profiles.query.data?.items?.find((item) => item.uid === uid)
-
-    if (item) {
-      let language = 'yaml'
-      let extension = 'yaml'
-
-      if (item.type === 'script') {
-        if (item.script_type === 'javascript') {
-          language = 'javascript'
-          extension = 'js'
-        }
-
-        if (item.script_type === 'lua') {
-          language = 'lua'
-          extension = 'lua'
-        }
-      }
-
-      return {
-        ...item,
-        language,
-        extension,
-        virtualPath: `${nanoid()}.${extension}`,
-      }
-    }
-  }, [profiles.query.data, uid])
+  const currentProfile = useCurrentProfile(uid)
 
   const content = useProfileContent(uid)
 
   const [editorValue, setEditorValue] = useState<string>()
 
+  // sync editor value with content
   useEffect(() => {
     if (content.query.data) {
       setEditorValue(content.query.data)
@@ -105,19 +64,45 @@ function RouteComponent() {
 
   const handleSave = useLockFn(blockTask.execute)
 
-  const handleCancel = useLockFn(currentWindow.close)
+  const handleBeforeClose = useLockFn(async () => {
+    const isDirty = !isEqual(editorValue, content.query.data)
+
+    if (isDirty) {
+      const result = await ask(m.editor_before_close_message(), {
+        kind: 'warning',
+      })
+
+      if (!result) {
+        return false
+      }
+    }
+
+    return true
+  })
+
+  const handleCancel = useLockFn(async () => {
+    const result = await handleBeforeClose()
+
+    if (!result) {
+      return
+    }
+
+    await currentWindow.close()
+  })
 
   const handleReset = useLockFn(async () => {
     setEditorValue(content.query.data)
   })
 
   // loading state
-  if (content.query.isLoading || profiles.query.isLoading) {
+  if (content.query.isLoading || currentProfile.isLoading) {
     return <LoadingSkeleton />
   }
 
   return (
     <>
+      <Header beforeClose={handleBeforeClose} />
+
       <div
         className={cn(
           'dark:bg-on-primary bg-primary-container flex items-center px-3',
@@ -126,15 +111,14 @@ function RouteComponent() {
         data-slot="editor-header-actions"
       >
         <div className="text-sm font-medium" data-slot="editor-header-title">
-          {currentProfile?.name}.{currentProfile?.extension}
+          {currentProfile.data?.name}.{currentProfile.data?.extension}
         </div>
       </div>
 
       <MonacoEditor
-        className="flex-1"
         value={content.query.data}
-        language={currentProfile?.language}
-        path={currentProfile?.virtualPath}
+        language={currentProfile.data?.language}
+        path={currentProfile.data?.virtualPath}
         theme={themeMode === 'light' ? 'vs' : 'vs-dark'}
         // TODO: implement this
         // beforeMount={beforeEditorMount}
@@ -146,7 +130,7 @@ function RouteComponent() {
           readOnly: readonly,
           mouseWheelZoom: true,
           renderValidationDecorations: 'on',
-          tabSize: currentProfile?.language === 'yaml' ? 2 : 4,
+          tabSize: currentProfile.data?.language === 'yaml' ? 2 : 4,
           minimap: { enabled: false },
           automaticLayout: true,
           fontLigatures: true,

@@ -83,6 +83,7 @@
   "profile_import_chain_title": "New {type}",
   "proxies_group_delay_test_title": "Delay Test",
   "proxies_group_delay_test_pending_title": "Testing…",
+  "editor_before_close_message": "You have not saved the edited content, are you sure you want to close the editor?",
   "unit_seconds": "s",
   "common_submit": "Submit",
   "common_cancel": "Cancel",

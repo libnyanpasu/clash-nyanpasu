@@ -96,11 +96,15 @@ const MaximizeButton = () => {
 const CloseButton = ({
   beforeClose,
 }: {
-  beforeClose?: () => Promise<void>
+  beforeClose?: () => Promise<boolean>
 }) => {
   const handleClose = useCallback(async () => {
     if (beforeClose) {
-      await beforeClose()
+      const result = await beforeClose()
+
+      if (!result) {
+        return
+      }
     }
 
     await appWindow.close()
@@ -119,7 +123,7 @@ export default function WindowControl({
   beforeClose,
 }: ComponentProps<'div'> & {
   hiddenAlwaysOnTop?: boolean
-  beforeClose?: () => Promise<void>
+  beforeClose?: ComponentProps<typeof CloseButton>['beforeClose']
 }) {
   return (
     <div

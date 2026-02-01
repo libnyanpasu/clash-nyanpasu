@@ -4,10 +4,12 @@ import MutationProvider from '@/components/layout/mutation-provider'
 import NoticeProvider from '@/components/layout/notice-provider'
 import PageTransition from '@/components/layout/page-transition'
 import SchemeProvider from '@/components/layout/scheme-provider'
+import { ThemeModeProvider } from '@/components/layout/use-custom-theme'
 import UpdaterDialog from '@/components/updater/updater-dialog-wrapper'
 import { UpdaterProvider } from '@/hooks/use-updater'
 import { FileRouteTypes } from '@/route-tree.gen'
 import { atomIsDrawer, memorizedRoutePathAtom } from '@/store'
+import { CssBaseline, StyledEngineProvider } from '@mui/material'
 import { useSettings } from '@nyanpasu/interface'
 import { cn, useBreakpoint } from '@nyanpasu/ui'
 import { createFileRoute, useLocation } from '@tanstack/react-router'
@@ -52,27 +54,33 @@ function Layout() {
   }, [breakpoint, setIsDrawer])
 
   return (
-    <SWRConfig
-      value={{
-        errorRetryCount: 5,
-        revalidateOnMount: true,
-        revalidateOnFocus: true,
-        refreshInterval: 5000,
-      }}
-    >
-      <QueryLoaderProvider>
-        <LocalesProvider />
-        <MutationProvider />
-        <NoticeProvider />
-        <SchemeProvider />
-        <UpdaterDialog />
-        <UpdaterProvider />
-        <AppContainer isDrawer={isDrawer}>
-          <PageTransition
-            className={cn('absolute inset-4 top-10', !isDrawer && 'left-0')}
-          />
-        </AppContainer>
-      </QueryLoaderProvider>
-    </SWRConfig>
+    <StyledEngineProvider injectFirst>
+      <ThemeModeProvider>
+        <CssBaseline />
+
+        <SWRConfig
+          value={{
+            errorRetryCount: 5,
+            revalidateOnMount: true,
+            revalidateOnFocus: true,
+            refreshInterval: 5000,
+          }}
+        >
+          <QueryLoaderProvider>
+            <LocalesProvider />
+            <MutationProvider />
+            <NoticeProvider />
+            <SchemeProvider />
+            <UpdaterDialog />
+            <UpdaterProvider />
+            <AppContainer isDrawer={isDrawer}>
+              <PageTransition
+                className={cn('absolute inset-4 top-10', !isDrawer && 'left-0')}
+              />
+            </AppContainer>
+          </QueryLoaderProvider>
+        </SWRConfig>
+      </ThemeModeProvider>
+    </StyledEngineProvider>
   )
 }

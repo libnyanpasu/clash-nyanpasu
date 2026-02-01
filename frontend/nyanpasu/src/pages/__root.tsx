@@ -1,9 +1,6 @@
 import { useMount } from 'ahooks'
 import dayjs from 'dayjs'
-import { ThemeModeProvider } from '@/components/layout/use-custom-theme'
 import { useNyanpasuStorageSubscribers } from '@/hooks/use-store'
-import { CssBaseline } from '@mui/material'
-import { StyledEngineProvider } from '@mui/material/styles'
 import { cn } from '@nyanpasu/ui'
 import {
   createRootRoute,
@@ -82,13 +79,7 @@ export default function App() {
       <BlockTaskProvider>
         <LanguageProvider>
           <ExperimentalThemeProvider>
-            <StyledEngineProvider injectFirst>
-              <ThemeModeProvider>
-                <CssBaseline />
-
-                <Outlet />
-              </ThemeModeProvider>
-            </StyledEngineProvider>
+            <Outlet />
           </ExperimentalThemeProvider>
 
           <TanStackRouterDevtools />

@@ -292,7 +292,7 @@ export interface FileRoutesByFullPath {
   '/main/rules': typeof mainMainRulesRouteRoute
   '/main/settings': typeof mainMainSettingsRouteRouteWithChildren
   '/editor/': typeof editorEditorIndexRoute
-  '/main': typeof mainMainIndexRoute
+  '/main/': typeof mainMainIndexRoute
   '/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
   '/main/settings/about': typeof mainMainSettingsAboutRouteRoute
   '/main/settings/clash-core': typeof mainMainSettingsClashCoreRouteRoute
@@ -310,7 +310,7 @@ export interface FileRoutesByFullPath {
   '/main/proxies/': typeof mainMainProxiesIndexRoute
   '/main/settings/': typeof mainMainSettingsIndexRoute
   '/main/proxies/group/$name': typeof mainMainProxiesGroupNameRoute
-  '/main/profiles/$type': typeof mainMainProfilesTypeIndexRoute
+  '/main/profiles/$type/': typeof mainMainProfilesTypeIndexRoute
   '/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
 }
 export interface FileRoutesByTo {
@@ -416,7 +416,7 @@ export interface FileRouteTypes {
     | '/main/rules'
     | '/main/settings'
     | '/editor/'
-    | '/main'
+    | '/main/'
     | '/main/profiles/inspect'
     | '/main/settings/about'
     | '/main/settings/clash-core'
@@ -434,7 +434,7 @@ export interface FileRouteTypes {
     | '/main/proxies/'
     | '/main/settings/'
     | '/main/proxies/group/$name'
-    | '/main/profiles/$type'
+    | '/main/profiles/$type/'
     | '/main/profiles/$type/detail/$uid'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -613,7 +613,7 @@ declare module '@tanstack/react-router' {
     '/(main)/main/': {
       id: '/(main)/main/'
       path: '/main'
-      fullPath: '/main'
+      fullPath: '/main/'
       preLoaderRoute: typeof mainMainIndexRouteImport
       parentRoute: typeof mainRouteRoute
     }
@@ -795,7 +795,7 @@ declare module '@tanstack/react-router' {
     '/(main)/main/profiles/$type/': {
       id: '/(main)/main/profiles/$type/'
       path: '/$type'
-      fullPath: '/main/profiles/$type'
+      fullPath: '/main/profiles/$type/'
       preLoaderRoute: typeof mainMainProfilesTypeIndexRouteImport
       parentRoute: typeof mainMainProfilesRouteRoute
     }

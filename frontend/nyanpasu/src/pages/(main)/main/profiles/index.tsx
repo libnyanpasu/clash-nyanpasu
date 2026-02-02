@@ -19,7 +19,7 @@ function RouteComponent() {
       className="bg-surface-variant/10"
       data-slot="profiles-sidebar-scroll-area"
     >
-      <ProfilesNavigate />
+      <ProfilesNavigate className="p-4" />
     </AppContentScrollArea>
   )
 }

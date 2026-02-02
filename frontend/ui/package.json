@@ -11,7 +11,7 @@
     "build": "vite build --sourcemap"
   },
   "dependencies": {
-    "@material/material-color-utilities": "0.3.0",
+    "@material/material-color-utilities": "0.4.0",
     "@mui/icons-material": "7.3.7",
     "@mui/lab": "7.0.0-beta.17",
     "@mui/material": "7.3.7",

@@ -231,8 +231,8 @@ importers:
         specifier: 3.4.0
         version: 3.4.0
       '@material/material-color-utilities':
-        specifier: 0.3.0
-        version: 0.3.0
+        specifier: 0.4.0
+        version: 0.4.0
       '@mui/icons-material':
         specifier: 7.3.7
         version: 7.3.7(@mui/material@7.3.7(@emotion/react@11.14.0(@types/react@19.2.10)(react@19.2.4))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.10)(react@19.2.4))(@types/react@19.2.10)(react@19.2.4))(@types/react@19.2.10)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@types/react@19.2.10)(react@19.2.4)
@@ -508,8 +508,8 @@ importers:
   frontend/ui:
     dependencies:
       '@material/material-color-utilities':
-        specifier: 0.3.0
-        version: 0.3.0
+        specifier: 0.4.0
+        version: 0.4.0
       '@mui/icons-material':
         specifier: 7.3.7
         version: 7.3.7(@mui/material@7.3.7(@emotion/react@11.14.0(@types/react@19.2.10)(react@19.2.4))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.10)(react@19.2.4))(@types/react@19.2.10)(react@19.2.4))(@types/react@19.2.10)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@types/react@19.2.10)(react@19.2.4)
@@ -1964,8 +1964,8 @@ packages:
   '@lix-js/server-protocol-schema@0.1.1':
     resolution: {integrity: sha512-jBeALB6prAbtr5q4vTuxnRZZv1M2rKe8iNqRQhFJ4Tv7150unEa0vKyz0hs8Gl3fUGsWaNJBh3J8++fpbrpRBQ==}
 
-  '@material/material-color-utilities@0.3.0':
-    resolution: {integrity: sha512-ztmtTd6xwnuh2/xu+Vb01btgV8SQWYCaK56CkRK8gEkWe5TuDyBcYJ0wgkMRn+2VcE9KUmhvkz+N9GHrqw/C0g==}
+  '@material/material-color-utilities@0.4.0':
+    resolution: {integrity: sha512-dlq6VExJReb8dhjj3a/yTigr3ncNwoFmL5Iy2ENtbDX03EmNeOEdZ+vsaGrj7RTuO+mB7L58II4LCsl4NpM8uw==}
 
   '@microsoft/api-extractor-model@7.30.3':
     resolution: {integrity: sha512-yEAvq0F78MmStXdqz9TTT4PZ05Xu5R8nqgwI5xmUmQjWBQ9E6R2n8HB/iZMRciG4rf9iwI2mtuQwIzDXBvHn1w==}
@@ -10551,7 +10551,7 @@ snapshots:
 
   '@lix-js/server-protocol-schema@0.1.1': {}
 
-  '@material/material-color-utilities@0.3.0': {}
+  '@material/material-color-utilities@0.4.0': {}
 
   '@microsoft/api-extractor-model@7.30.3(@types/node@24.10.9)':
     dependencies:

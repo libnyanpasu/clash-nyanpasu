@@ -102,33 +102,34 @@ export default function ProfilesList({
   }
 
   return (
-    <div
-      className={cn(
-        'flex flex-col gap-4',
-        'min-h-[calc(100vh-40px-64px)]',
-        'sm:min-h-[calc(100vh-40px-48px)]',
-      )}
-    >
+    <>
       <div
         className={cn(
-          'grid gap-2',
-          'md:grid-cols-2',
-          'lg:grid-cols-3',
-          'dxl:grid-cols-4',
-
-          className,
+          'flex flex-col gap-4',
+          'min-h-[calc(100vh-40px-64px)]',
+          'sm:min-h-[calc(100vh-40px-48px)]',
         )}
-        data-slot="profiles-navigate"
-        {...props}
       >
-        {filteredProfiles.map((profile) => (
-          <GridViewProfile key={profile.uid} profile={profile} />
-        ))}
+        <div
+          className={cn(
+            'grid gap-2',
+            'md:grid-cols-2',
+            'lg:grid-cols-3',
+            'dxl:grid-cols-4',
+            className,
+          )}
+          data-slot="profiles-navigate"
+          {...props}
+        >
+          {filteredProfiles.map((profile) => (
+            <GridViewProfile key={profile.uid} profile={profile} />
+          ))}
+        </div>
+
+        <div className="flex-1" />
       </div>
 
-      <div className="flex-1" />
-
       <NoMoreProfiles />
-    </div>
+    </>
   )
 }

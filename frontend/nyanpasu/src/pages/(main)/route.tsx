@@ -1,5 +1,6 @@
 import { AnimatedOutletPreset } from '@/components/router/animated-outlet'
 import { cn } from '@nyanpasu/ui'
+import packageJson from '@root/package.json'
 import { createFileRoute } from '@tanstack/react-router'
 import Header from './_modules/header'
 import Navbar from './_modules/navbar'
@@ -25,6 +26,8 @@ function RouteComponent() {
   return (
     <div
       className={cn('flex max-h-dvh min-h-dvh flex-col', 'bg-background/30')}
+      data-slot="app-root"
+      data-app-version={packageJson.version}
       onContextMenu={(e) => {
         e.preventDefault()
       }}

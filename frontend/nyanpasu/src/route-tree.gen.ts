@@ -20,7 +20,9 @@ import { Route as legacyProfilesRouteImport } from './pages/(legacy)/profiles'
 import { Route as legacyLogsRouteImport } from './pages/(legacy)/logs'
 import { Route as legacyDashboardRouteImport } from './pages/(legacy)/dashboard'
 import { Route as legacyConnectionsRouteImport } from './pages/(legacy)/connections'
+import { Route as editorEditorRouteRouteImport } from './pages/(editor)/editor/route'
 import { Route as mainMainIndexRouteImport } from './pages/(main)/main/index'
+import { Route as editorEditorIndexRouteImport } from './pages/(editor)/editor/index'
 import { Route as mainMainSettingsRouteRouteImport } from './pages/(main)/main/settings/route'
 import { Route as mainMainRulesRouteRouteImport } from './pages/(main)/main/rules/route'
 import { Route as mainMainProxiesRouteRouteImport } from './pages/(main)/main/proxies/route'
@@ -103,10 +105,20 @@ const legacyConnectionsRoute = legacyConnectionsRouteImport.update({
   path: '/connections',
   getParentRoute: () => legacyRouteRoute,
 } as any)
+const editorEditorRouteRoute = editorEditorRouteRouteImport.update({
+  id: '/(editor)/editor',
+  path: '/editor',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const mainMainIndexRoute = mainMainIndexRouteImport.update({
   id: '/main/',
   path: '/main/',
   getParentRoute: () => mainRouteRoute,
+} as any)
+const editorEditorIndexRoute = editorEditorIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => editorEditorRouteRoute,
 } as any)
 const mainMainSettingsRouteRoute = mainMainSettingsRouteRouteImport.update({
   id: '/main/settings',
@@ -267,6 +279,7 @@ const mainMainProfilesTypeDetailUidRoute =
   } as any)
 
 export interface FileRoutesByFullPath {
+  '/editor': typeof editorEditorRouteRouteWithChildren
   '/connections': typeof legacyConnectionsRoute
   '/dashboard': typeof legacyDashboardRoute
   '/logs': typeof legacyLogsRoute
@@ -284,7 +297,8 @@ export interface FileRoutesByFullPath {
   '/main/proxies': typeof mainMainProxiesRouteRouteWithChildren
   '/main/rules': typeof mainMainRulesRouteRouteWithChildren
   '/main/settings': typeof mainMainSettingsRouteRouteWithChildren
-  '/main': typeof mainMainIndexRoute
+  '/editor/': typeof editorEditorIndexRoute
+  '/main/': typeof mainMainIndexRoute
   '/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
   '/main/settings/about': typeof mainMainSettingsAboutRouteRoute
   '/main/settings/clash-core': typeof mainMainSettingsClashCoreRouteRoute
@@ -303,7 +317,7 @@ export interface FileRoutesByFullPath {
   '/main/rules/': typeof mainMainRulesIndexRoute
   '/main/settings/': typeof mainMainSettingsIndexRoute
   '/main/proxies/group/$name': typeof mainMainProxiesGroupNameRoute
-  '/main/profiles/$type': typeof mainMainProfilesTypeIndexRoute
+  '/main/profiles/$type/': typeof mainMainProfilesTypeIndexRoute
   '/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
 }
 export interface FileRoutesByTo {
@@ -320,6 +334,7 @@ export interface FileRoutesByTo {
   '/main/dashboard': typeof mainMainDashboardRouteRoute
   '/main/logs': typeof mainMainLogsRouteRoute
   '/main/providers': typeof mainMainProvidersRouteRoute
+  '/editor': typeof editorEditorIndexRoute
   '/main': typeof mainMainIndexRoute
   '/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
   '/main/settings/about': typeof mainMainSettingsAboutRouteRoute
@@ -346,6 +361,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/(legacy)': typeof legacyRouteRouteWithChildren
   '/(main)': typeof mainRouteRouteWithChildren
+  '/(editor)/editor': typeof editorEditorRouteRouteWithChildren
   '/(legacy)/connections': typeof legacyConnectionsRoute
   '/(legacy)/dashboard': typeof legacyDashboardRoute
   '/(legacy)/logs': typeof legacyLogsRoute
@@ -363,6 +379,7 @@ export interface FileRoutesById {
   '/(main)/main/proxies': typeof mainMainProxiesRouteRouteWithChildren
   '/(main)/main/rules': typeof mainMainRulesRouteRouteWithChildren
   '/(main)/main/settings': typeof mainMainSettingsRouteRouteWithChildren
+  '/(editor)/editor/': typeof editorEditorIndexRoute
   '/(main)/main/': typeof mainMainIndexRoute
   '/(main)/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
   '/(main)/main/settings/about': typeof mainMainSettingsAboutRouteRoute
@@ -388,6 +405,7 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/editor'
     | '/connections'
     | '/dashboard'
     | '/logs'
@@ -405,7 +423,8 @@ export interface FileRouteTypes {
     | '/main/proxies'
     | '/main/rules'
     | '/main/settings'
-    | '/main'
+    | '/editor/'
+    | '/main/'
     | '/main/profiles/inspect'
     | '/main/settings/about'
     | '/main/settings/clash-core'
@@ -424,7 +443,7 @@ export interface FileRouteTypes {
     | '/main/rules/'
     | '/main/settings/'
     | '/main/proxies/group/$name'
-    | '/main/profiles/$type'
+    | '/main/profiles/$type/'
     | '/main/profiles/$type/detail/$uid'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -441,6 +460,7 @@ export interface FileRouteTypes {
     | '/main/dashboard'
     | '/main/logs'
     | '/main/providers'
+    | '/editor'
     | '/main'
     | '/main/profiles/inspect'
     | '/main/settings/about'
@@ -466,6 +486,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/(legacy)'
     | '/(main)'
+    | '/(editor)/editor'
     | '/(legacy)/connections'
     | '/(legacy)/dashboard'
     | '/(legacy)/logs'
@@ -483,6 +504,7 @@ export interface FileRouteTypes {
     | '/(main)/main/proxies'
     | '/(main)/main/rules'
     | '/(main)/main/settings'
+    | '/(editor)/editor/'
     | '/(main)/main/'
     | '/(main)/main/profiles/inspect'
     | '/(main)/main/settings/about'
@@ -509,6 +531,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   legacyRouteRoute: typeof legacyRouteRouteWithChildren
   mainRouteRoute: typeof mainRouteRouteWithChildren
+  editorEditorRouteRoute: typeof editorEditorRouteRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -590,12 +613,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof legacyConnectionsRouteImport
       parentRoute: typeof legacyRouteRoute
     }
+    '/(editor)/editor': {
+      id: '/(editor)/editor'
+      path: '/editor'
+      fullPath: '/editor'
+      preLoaderRoute: typeof editorEditorRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/(main)/main/': {
       id: '/(main)/main/'
       path: '/main'
-      fullPath: '/main'
+      fullPath: '/main/'
       preLoaderRoute: typeof mainMainIndexRouteImport
       parentRoute: typeof mainRouteRoute
+    }
+    '/(editor)/editor/': {
+      id: '/(editor)/editor/'
+      path: '/'
+      fullPath: '/editor/'
+      preLoaderRoute: typeof editorEditorIndexRouteImport
+      parentRoute: typeof editorEditorRouteRoute
     }
     '/(main)/main/settings': {
       id: '/(main)/main/settings'
@@ -775,7 +812,7 @@ declare module '@tanstack/react-router' {
     '/(main)/main/profiles/$type/': {
       id: '/(main)/main/profiles/$type/'
       path: '/$type'
-      fullPath: '/main/profiles/$type'
+      fullPath: '/main/profiles/$type/'
       preLoaderRoute: typeof mainMainProfilesTypeIndexRouteImport
       parentRoute: typeof mainMainProfilesRouteRoute
     }
@@ -938,9 +975,21 @@ const mainRouteRouteWithChildren = mainRouteRoute._addFileChildren(
   mainRouteRouteChildren,
 )
 
+interface editorEditorRouteRouteChildren {
+  editorEditorIndexRoute: typeof editorEditorIndexRoute
+}
+
+const editorEditorRouteRouteChildren: editorEditorRouteRouteChildren = {
+  editorEditorIndexRoute: editorEditorIndexRoute,
+}
+
+const editorEditorRouteRouteWithChildren =
+  editorEditorRouteRoute._addFileChildren(editorEditorRouteRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   legacyRouteRoute: legacyRouteRouteWithChildren,
   mainRouteRoute: mainRouteRouteWithChildren,
+  editorEditorRouteRoute: editorEditorRouteRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

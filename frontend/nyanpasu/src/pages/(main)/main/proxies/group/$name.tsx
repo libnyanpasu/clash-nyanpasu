@@ -1,4 +1,7 @@
+import ArrowDownwardAltRounded from '~icons/material-symbols/arrow-downward-alt-rounded'
+import ArrowUpwardAltRounded from '~icons/material-symbols/arrow-upward-alt-rounded'
 import Radar from '~icons/material-symbols/radar'
+import { filesize } from 'filesize'
 import { useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { useScrollArea } from '@/components/ui/scroll-area'
@@ -6,6 +9,7 @@ import { useClashProxies } from '@nyanpasu/interface'
 import { useContainerBreakpointValue } from '@nyanpasu/ui'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { useCurrentGroupConnection } from '../_modules/hooks'
 import DelayTestButton from './_modules/delay-test-button'
 import GroupHeader from './_modules/group-header'
 import ProxyNodeButton from './_modules/proxy-node-button'
@@ -65,10 +69,30 @@ function RouteComponent() {
     }
   }, [currentGroup?.all, currentGroup?.now, virtualizer])
 
+  const currentGroupConnection = useCurrentGroupConnection(currentGroup)
+
   return (
     <>
       <GroupHeader>
-        <span>{currentGroup?.name}</span>
+        <div className="flex items-center gap-2">
+          <div>{currentGroup?.name}</div>
+
+          <div className="flex items-center">
+            <ArrowDownwardAltRounded className="size-6" />
+
+            <span className="text-sm">
+              {filesize(currentGroupConnection?.download ?? 0)}/s
+            </span>
+          </div>
+
+          <div className="flex items-center">
+            <ArrowUpwardAltRounded className="size-6" />
+
+            <span className="text-sm">
+              {filesize(currentGroupConnection?.upload ?? 0)}/s
+            </span>
+          </div>
+        </div>
 
         <div className="flex-1" />
 

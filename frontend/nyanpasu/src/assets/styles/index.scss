@@ -16,7 +16,9 @@ body {
     sans-serif,
     'Color Emoji Flags',
     'Color Emoji';
+  color: var(--color-on-surface);
   user-select: none;
+  background-color: var(--color-on-background);
   -webkit-font-smoothing: antialiased;
 }
 

@@ -16,7 +16,7 @@ function RouteComponent() {
         className="bg-surface-variant/10"
         data-slot="profiles-sidebar-scroll-area"
       >
-        <ProfilesNavigate />
+        <ProfilesNavigate className="p-2" />
       </SidebarContent>
 
       <AppContentScrollArea
@@ -28,7 +28,7 @@ function RouteComponent() {
       >
         <div
           className={cn(
-            'container mx-auto w-full min-w-full',
+            'container mx-auto w-full max-w-7xl',
             'min-h-[calc(100vh-40px-64px)]',
             'sm:min-h-[calc(100vh-40px-48px)]',
           )}

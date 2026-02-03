@@ -1,5 +1,6 @@
 import UploadFileRounded from '~icons/material-symbols/upload-file-rounded'
 import dayjs from 'dayjs'
+import { filesize } from 'filesize'
 import { AnimatePresence } from 'framer-motion'
 import { PropsWithChildren, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
@@ -26,7 +27,6 @@ import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import parseTraffic from '@/utils/parse-traffic'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { LocalProfileBuilder, useProfile } from '@nyanpasu/interface'
 import AnimatedErrorItem from '../../_modules/error-item'
@@ -199,9 +199,7 @@ export default function LocalProfileButton({ children }: PropsWithChildren) {
 
                         <div className="text-on-surface max-w-full truncate text-sm font-medium">
                           {m.profile_import_local_file_size_label({
-                            size: parseTraffic(form.watch('file')?.length).join(
-                              '',
-                            ),
+                            size: filesize(form.watch('file')?.length ?? 0),
                           })}
                         </div>
                       </FileDropZoneFileSelected>

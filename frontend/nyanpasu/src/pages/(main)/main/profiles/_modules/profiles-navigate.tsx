@@ -5,7 +5,7 @@ import ChipLine from '~icons/mingcute/chip-line'
 import YamlIcon from '~icons/nonicons/yaml-16'
 import ScriptIcon from '~icons/streamline-plump/script-2-remix'
 import { mapValues } from 'lodash-es'
-import { PropsWithChildren, ReactNode, useMemo } from 'react'
+import { ComponentProps, PropsWithChildren, ReactNode, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { m } from '@/paraglide/messages'
@@ -100,7 +100,10 @@ const ROUTES = {
   }
 >
 
-export default function ProfilesNavigate() {
+export default function ProfilesNavigate({
+  className,
+  ...props
+}: Omit<ComponentProps<'div'>, 'children'>) {
   const {
     query: { data: profiles },
   } = useProfile()
@@ -124,7 +127,7 @@ export default function ProfilesNavigate() {
   )
 
   return (
-    <div className="flex flex-col gap-2 p-4">
+    <div className={cn('flex flex-col gap-2', className)} {...props}>
       {Object.entries(ROUTES).map(([profileType, route]) => (
         <LinkButton key={route.href} href={route.href}>
           <div className="size-8">{route.icon()}</div>

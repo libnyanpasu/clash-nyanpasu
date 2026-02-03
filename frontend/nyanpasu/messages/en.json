@@ -83,10 +83,14 @@
   "profile_import_chain_title": "New {type}",
   "proxies_group_delay_test_title": "Delay Test",
   "proxies_group_delay_test_pending_title": "Testing…",
+  "editor_before_close_message": "You have not saved the edited content, are you sure you want to close the editor?",
+  "editor_validate_error_message": "Please fix the error before saving content",
+  "editor_read_only_chip": "Read Only",
   "unit_seconds": "s",
   "common_submit": "Submit",
   "common_cancel": "Cancel",
   "common_apply": "Apply",
   "common_reset": "Reset",
-  "common_save": "Save"
+  "common_save": "Save",
+  "common_validate": "Validate"
 }

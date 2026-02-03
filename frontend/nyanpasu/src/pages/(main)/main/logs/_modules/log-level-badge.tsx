@@ -1,11 +1,14 @@
 import { ComponentProps } from 'react'
+import HighlightText from '@/components/ui/highlight-text'
 import { cn } from '@nyanpasu/ui'
 
 export default function LogLevelBadge({
   className,
+  searchText = '',
+  children,
   ...props
-}: ComponentProps<'div'> & { children: string }) {
-  const childrenLower = props.children?.toLowerCase()
+}: ComponentProps<'div'> & { children: string; searchText?: string }) {
+  const childrenLower = children?.toLowerCase()
 
   return (
     <div
@@ -17,6 +20,8 @@ export default function LogLevelBadge({
         className,
       )}
       {...props}
-    />
+    >
+      <HighlightText searchText={searchText}>{children}</HighlightText>
+    </div>
   )
 }

@@ -43,5 +43,3 @@ loader
   .catch((error) => {
     console.error('Monaco initialization failed', error)
   })
-
-export {}

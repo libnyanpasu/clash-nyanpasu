@@ -72,7 +72,7 @@ export default function ProfileQuickImport() {
       className={cn(
         'relative flex flex-1 items-center gap-1',
         'bg-surface h-10 w-full rounded-full pr-1 pl-3',
-        'shadow-outline/30 shadow dark:shadow-none',
+        'shadow-outline/30 dark:shadow-surface-variant/10 shadow',
       )}
       onSubmit={handleSubmit}
     >

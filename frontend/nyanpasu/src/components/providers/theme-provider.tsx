@@ -152,6 +152,28 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
     ],
   )
 
+  // initialize theme mode on mount
+  useEffect(() => {
+    const initializeTheme = async () => {
+      if (themeMode.value === ThemeMode.SYSTEM) {
+        const systemTheme = await appWindow.theme()
+        changeHtmlThemeMode(
+          systemTheme === ThemeMode.DARK ? ThemeMode.DARK : ThemeMode.LIGHT,
+        )
+      } else if (
+        themeMode.value === ThemeMode.LIGHT ||
+        themeMode.value === ThemeMode.DARK
+      ) {
+        changeHtmlThemeMode(themeMode.value)
+      } else {
+        // fallback to light mode if theme mode is not set
+        changeHtmlThemeMode(ThemeMode.LIGHT)
+      }
+    }
+
+    initializeTheme()
+  }, [themeMode.value])
+
   // listen to theme changed event and change html theme mode
   useEffect(() => {
     const unlisten = appWindow.onThemeChanged((e) => {

@@ -1,6 +1,7 @@
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
 import RuleSettingsRounded from '~icons/material-symbols/rule-settings-rounded'
 import dayjs from 'dayjs'
+import { filesize } from 'filesize'
 import { useMemo } from 'react'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import { Button } from '@/components/ui/button'
@@ -15,7 +16,6 @@ import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import parseTraffic from '@/utils/parse-traffic'
 import {
   RemoteProfile,
   RemoteProfileOptionsBuilder,
@@ -99,7 +99,7 @@ export const SubscriptionCard = ({ profile }: { profile: RemoteProfile }) => {
           <div className="text-sm font-bold">{progress.toFixed(2)}%</div>
 
           <div className="text-sm font-bold">
-            {parseTraffic(used)} / {parseTraffic(total)}
+            {filesize(used)} / {filesize(total)}
           </div>
         </div>
 

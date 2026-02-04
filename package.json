@@ -62,7 +62,7 @@
     "@commitlint/config-conventional": "20.4.1",
     "@eslint/compat": "1.4.1",
     "@eslint/eslintrc": "3.3.3",
-    "@ianvs/prettier-plugin-sort-imports": "4.7.0",
+    "@ianvs/prettier-plugin-sort-imports": "4.7.1",
     "@tauri-apps/cli": "2.8.4",
     "@types/fs-extra": "11.0.4",
     "@types/lodash-es": "4.17.12",

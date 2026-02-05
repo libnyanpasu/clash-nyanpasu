@@ -45,8 +45,10 @@ export default function ProxyNodeButton({
       variant="fab"
       className={cn(
         'flex w-full flex-col justify-center gap-1 px-2 text-left',
-        'group-data-[active=true]:bg-surface-variant/50',
-        'group-data-[active=false]:bg-surface/30',
+        'group-data-[active=true]:bg-primary-container/75',
+        'dark:group-data-[active=true]:bg-surface-variant/50',
+        'group-data-[active=false]:bg-on-background/3',
+        'dark:group-data-[active=false]:bg-surface/30',
         'group-data-[active=false]:shadow-none',
         'group-data-[active=false]:hover:shadow-none',
         'group-data-[active=false]:hover:bg-surface-variant/30',

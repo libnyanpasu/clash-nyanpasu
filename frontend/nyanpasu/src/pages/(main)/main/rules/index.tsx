@@ -105,7 +105,10 @@ function RouteComponent() {
         <div className="mx-auto max-w-7xl p-4" data-slot="rules-search-input">
           <input
             type="text"
-            className="bg-surface h-10 w-full rounded-full px-4 pr-10 text-sm outline-none"
+            className={cn(
+              'bg-surface-variant dark:bg-surface-variant/30',
+              'h-10 w-full rounded-full px-4 pr-10 text-sm outline-none',
+            )}
             data-slot="rules-search-input-field"
             placeholder="Search rules (type, payload, or proxy)..."
             value={search}

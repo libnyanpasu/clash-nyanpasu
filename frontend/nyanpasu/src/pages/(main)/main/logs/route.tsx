@@ -44,10 +44,17 @@ const InnerComponent = () => {
 
   return (
     <>
-      <div className="sticky top-0 z-10 px-4 py-4 backdrop-blur-xl">
+      <div
+        className="sticky top-0 z-10 px-4 py-4 backdrop-blur-xl"
+        data-slot="logs-search"
+      >
         <input
           type="text"
-          className="bg-surface h-10 w-full rounded-full px-4 pr-10 text-sm outline-none"
+          className={cn(
+            'bg-surface-variant dark:bg-surface-variant/30',
+            'h-10 w-full rounded-full px-4 pr-10 text-sm outline-none',
+          )}
+          data-slot="logs-search-input-field"
           placeholder="Search logs (time, type, or message)..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}

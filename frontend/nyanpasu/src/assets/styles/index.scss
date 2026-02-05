@@ -18,8 +18,12 @@ body {
     'Color Emoji';
   color: var(--color-on-surface);
   user-select: none;
-  background-color: var(--color-background);
+  background-color: #f7f7f7;
   -webkit-font-smoothing: antialiased;
+}
+
+.dark body {
+  background-color: #0b0b0b;
 }
 
 :root {

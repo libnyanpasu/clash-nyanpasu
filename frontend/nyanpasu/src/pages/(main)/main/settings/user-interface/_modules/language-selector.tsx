@@ -1,12 +1,11 @@
 import { useLanguage } from '@/components/providers/language-provider'
-import { Button } from '@/components/ui/button'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { m } from '@/paraglide/messages'
 import { Locale, locales } from '@/paraglide/runtime'
 import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
@@ -21,29 +20,30 @@ export default function LanguageSelector() {
   return (
     <SettingsCard data-slot="language-selector-card">
       <SettingsCardContent
-        className="flex items-center justify-between px-3"
+        className="flex items-center justify-between px-2"
         data-slot="language-selector-card-content"
       >
-        <div>{m.settings_user_interface_language_label()}</div>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="flat">{m.language()}</Button>
-          </DropdownMenuTrigger>
-
-          <DropdownMenuContent>
-            <DropdownMenuRadioGroup
-              value={language}
-              onValueChange={handleLanguageChange}
+        <Select
+          variant="outlined"
+          value={language}
+          onValueChange={handleLanguageChange}
+        >
+          <SelectTrigger>
+            <SelectValue
+              placeholder={m.settings_user_interface_language_label()}
             >
-              {locales.map((value) => (
-                <DropdownMenuRadioItem key={value} value={value}>
-                  {m.language(value, { locale: value })}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              {language ? m.language(language, { locale: language }) : null}
+            </SelectValue>
+          </SelectTrigger>
+
+          <SelectContent>
+            {Object.entries(locales).map(([key, value]) => (
+              <SelectItem key={key} value={value}>
+                {m.language(key, { locale: value })}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </SettingsCardContent>
     </SettingsCard>
   )

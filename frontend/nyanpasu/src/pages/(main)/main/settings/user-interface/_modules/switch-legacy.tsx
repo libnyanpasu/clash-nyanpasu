@@ -26,43 +26,47 @@ export default function SwitchLegacy() {
   return (
     <SettingsCard data-slot="switch-legacy-card">
       <SettingsCardContent
-        className="flex items-center justify-between px-3"
+        className="flex items-center justify-between px-2"
         data-slot="switch-legacy-card-content"
       >
-        <div>Switch to Legacy UI</div>
+        <Card className="w-full space-y-4">
+          <CardHeader>Switch to Legacy UI</CardHeader>
 
-        <Modal>
-          <ModalTrigger asChild>
-            <Button variant="flat">Open</Button>
-          </ModalTrigger>
+          <CardFooter>
+            <Modal>
+              <ModalTrigger asChild>
+                <Button variant="stroked">Open</Button>
+              </ModalTrigger>
 
-          <ModalContent>
-            <Card className="w-96">
-              <CardHeader>
-                <ModalTitle>
-                  Are you sure you want to switch to Legacy UI?
-                </ModalTitle>
-              </CardHeader>
+              <ModalContent>
+                <Card className="w-96">
+                  <CardHeader>
+                    <ModalTitle>
+                      Are you sure you want to switch to Legacy UI?
+                    </ModalTitle>
+                  </CardHeader>
 
-              <CardContent>
-                <p>
-                  Switching to Legacy UI will revert the UI to the original
-                  design.
-                </p>
-              </CardContent>
+                  <CardContent>
+                    <p>
+                      Switching to Legacy UI will revert the UI to the original
+                      design.
+                    </p>
+                  </CardContent>
 
-              <CardFooter className="gap-2">
-                <Button variant="flat" onClick={handleClick}>
-                  Continue
-                </Button>
+                  <CardFooter className="gap-2">
+                    <Button variant="flat" onClick={handleClick}>
+                      Continue
+                    </Button>
 
-                <ModalClose asChild>
-                  <Button>Cancel</Button>
-                </ModalClose>
-              </CardFooter>
-            </Card>
-          </ModalContent>
-        </Modal>
+                    <ModalClose asChild>
+                      <Button>Cancel</Button>
+                    </ModalClose>
+                  </CardFooter>
+                </Card>
+              </ModalContent>
+            </Modal>
+          </CardFooter>
+        </Card>
       </SettingsCardContent>
     </SettingsCard>
   )

@@ -14,7 +14,7 @@ import ProxyBypassConfig from './_modules/proxy-bypass-config'
 import ProxyGuardConfig from './_modules/proxy-guard-config'
 import ProxyGuardSwitch from './_modules/proxy-guard-switch'
 
-export const Route = createFileRoute('/(main)/main/settings/system-proxy')({
+export const Route = createFileRoute('/(main)/main/settings/system')({
   component: RouteComponent,
 })
 
@@ -22,7 +22,7 @@ function RouteComponent() {
   return (
     <>
       <SettingsTitlePlaceholder />
-      <SettingsTitle>{m.settings_system_proxy_title()}</SettingsTitle>
+      <SettingsTitle>{m.settings_label_system()}</SettingsTitle>
 
       <SettingsCard>
         <SettingsCardContent>

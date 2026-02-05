@@ -37,15 +37,10 @@ import { Route as mainMainProxiesIndexRouteImport } from './pages/(main)/main/pr
 import { Route as mainMainProfilesIndexRouteImport } from './pages/(main)/main/profiles/index'
 import { Route as mainMainSettingsWebUiRouteRouteImport } from './pages/(main)/main/settings/web-ui/route'
 import { Route as mainMainSettingsUserInterfaceRouteRouteImport } from './pages/(main)/main/settings/user-interface/route'
-import { Route as mainMainSettingsSystemServiceRouteRouteImport } from './pages/(main)/main/settings/system-service/route'
-import { Route as mainMainSettingsSystemProxyRouteRouteImport } from './pages/(main)/main/settings/system-proxy/route'
-import { Route as mainMainSettingsSystemBehaviorRouteRouteImport } from './pages/(main)/main/settings/system-behavior/route'
-import { Route as mainMainSettingsNyanpasuConfigRouteRouteImport } from './pages/(main)/main/settings/nyanpasu-config/route'
-import { Route as mainMainSettingsDebugUtilsRouteRouteImport } from './pages/(main)/main/settings/debug-utils/route'
-import { Route as mainMainSettingsClashSettingsRouteRouteImport } from './pages/(main)/main/settings/clash-settings/route'
-import { Route as mainMainSettingsClashFiledRouteRouteImport } from './pages/(main)/main/settings/clash-filed/route'
-import { Route as mainMainSettingsClashExternalControllRouteRouteImport } from './pages/(main)/main/settings/clash-external-controll/route'
-import { Route as mainMainSettingsClashCoreRouteRouteImport } from './pages/(main)/main/settings/clash-core/route'
+import { Route as mainMainSettingsSystemRouteRouteImport } from './pages/(main)/main/settings/system/route'
+import { Route as mainMainSettingsNyanpasuRouteRouteImport } from './pages/(main)/main/settings/nyanpasu/route'
+import { Route as mainMainSettingsDebugRouteRouteImport } from './pages/(main)/main/settings/debug/route'
+import { Route as mainMainSettingsClashRouteRouteImport } from './pages/(main)/main/settings/clash/route'
 import { Route as mainMainSettingsAboutRouteRouteImport } from './pages/(main)/main/settings/about/route'
 import { Route as mainMainProfilesInspectRouteRouteImport } from './pages/(main)/main/profiles/inspect/route'
 import { Route as mainMainProfilesTypeIndexRouteImport } from './pages/(main)/main/profiles/$type/index'
@@ -193,58 +188,28 @@ const mainMainSettingsUserInterfaceRouteRoute =
     path: '/user-interface',
     getParentRoute: () => mainMainSettingsRouteRoute,
   } as any)
-const mainMainSettingsSystemServiceRouteRoute =
-  mainMainSettingsSystemServiceRouteRouteImport.update({
-    id: '/system-service',
-    path: '/system-service',
+const mainMainSettingsSystemRouteRoute =
+  mainMainSettingsSystemRouteRouteImport.update({
+    id: '/system',
+    path: '/system',
     getParentRoute: () => mainMainSettingsRouteRoute,
   } as any)
-const mainMainSettingsSystemProxyRouteRoute =
-  mainMainSettingsSystemProxyRouteRouteImport.update({
-    id: '/system-proxy',
-    path: '/system-proxy',
+const mainMainSettingsNyanpasuRouteRoute =
+  mainMainSettingsNyanpasuRouteRouteImport.update({
+    id: '/nyanpasu',
+    path: '/nyanpasu',
     getParentRoute: () => mainMainSettingsRouteRoute,
   } as any)
-const mainMainSettingsSystemBehaviorRouteRoute =
-  mainMainSettingsSystemBehaviorRouteRouteImport.update({
-    id: '/system-behavior',
-    path: '/system-behavior',
+const mainMainSettingsDebugRouteRoute =
+  mainMainSettingsDebugRouteRouteImport.update({
+    id: '/debug',
+    path: '/debug',
     getParentRoute: () => mainMainSettingsRouteRoute,
   } as any)
-const mainMainSettingsNyanpasuConfigRouteRoute =
-  mainMainSettingsNyanpasuConfigRouteRouteImport.update({
-    id: '/nyanpasu-config',
-    path: '/nyanpasu-config',
-    getParentRoute: () => mainMainSettingsRouteRoute,
-  } as any)
-const mainMainSettingsDebugUtilsRouteRoute =
-  mainMainSettingsDebugUtilsRouteRouteImport.update({
-    id: '/debug-utils',
-    path: '/debug-utils',
-    getParentRoute: () => mainMainSettingsRouteRoute,
-  } as any)
-const mainMainSettingsClashSettingsRouteRoute =
-  mainMainSettingsClashSettingsRouteRouteImport.update({
-    id: '/clash-settings',
-    path: '/clash-settings',
-    getParentRoute: () => mainMainSettingsRouteRoute,
-  } as any)
-const mainMainSettingsClashFiledRouteRoute =
-  mainMainSettingsClashFiledRouteRouteImport.update({
-    id: '/clash-filed',
-    path: '/clash-filed',
-    getParentRoute: () => mainMainSettingsRouteRoute,
-  } as any)
-const mainMainSettingsClashExternalControllRouteRoute =
-  mainMainSettingsClashExternalControllRouteRouteImport.update({
-    id: '/clash-external-controll',
-    path: '/clash-external-controll',
-    getParentRoute: () => mainMainSettingsRouteRoute,
-  } as any)
-const mainMainSettingsClashCoreRouteRoute =
-  mainMainSettingsClashCoreRouteRouteImport.update({
-    id: '/clash-core',
-    path: '/clash-core',
+const mainMainSettingsClashRouteRoute =
+  mainMainSettingsClashRouteRouteImport.update({
+    id: '/clash',
+    path: '/clash',
     getParentRoute: () => mainMainSettingsRouteRoute,
   } as any)
 const mainMainSettingsAboutRouteRoute =
@@ -301,15 +266,10 @@ export interface FileRoutesByFullPath {
   '/main/': typeof mainMainIndexRoute
   '/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
   '/main/settings/about': typeof mainMainSettingsAboutRouteRoute
-  '/main/settings/clash-core': typeof mainMainSettingsClashCoreRouteRoute
-  '/main/settings/clash-external-controll': typeof mainMainSettingsClashExternalControllRouteRoute
-  '/main/settings/clash-filed': typeof mainMainSettingsClashFiledRouteRoute
-  '/main/settings/clash-settings': typeof mainMainSettingsClashSettingsRouteRoute
-  '/main/settings/debug-utils': typeof mainMainSettingsDebugUtilsRouteRoute
-  '/main/settings/nyanpasu-config': typeof mainMainSettingsNyanpasuConfigRouteRoute
-  '/main/settings/system-behavior': typeof mainMainSettingsSystemBehaviorRouteRoute
-  '/main/settings/system-proxy': typeof mainMainSettingsSystemProxyRouteRoute
-  '/main/settings/system-service': typeof mainMainSettingsSystemServiceRouteRoute
+  '/main/settings/clash': typeof mainMainSettingsClashRouteRoute
+  '/main/settings/debug': typeof mainMainSettingsDebugRouteRoute
+  '/main/settings/nyanpasu': typeof mainMainSettingsNyanpasuRouteRoute
+  '/main/settings/system': typeof mainMainSettingsSystemRouteRoute
   '/main/settings/user-interface': typeof mainMainSettingsUserInterfaceRouteRoute
   '/main/settings/web-ui': typeof mainMainSettingsWebUiRouteRoute
   '/main/profiles/': typeof mainMainProfilesIndexRoute
@@ -338,15 +298,10 @@ export interface FileRoutesByTo {
   '/main': typeof mainMainIndexRoute
   '/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
   '/main/settings/about': typeof mainMainSettingsAboutRouteRoute
-  '/main/settings/clash-core': typeof mainMainSettingsClashCoreRouteRoute
-  '/main/settings/clash-external-controll': typeof mainMainSettingsClashExternalControllRouteRoute
-  '/main/settings/clash-filed': typeof mainMainSettingsClashFiledRouteRoute
-  '/main/settings/clash-settings': typeof mainMainSettingsClashSettingsRouteRoute
-  '/main/settings/debug-utils': typeof mainMainSettingsDebugUtilsRouteRoute
-  '/main/settings/nyanpasu-config': typeof mainMainSettingsNyanpasuConfigRouteRoute
-  '/main/settings/system-behavior': typeof mainMainSettingsSystemBehaviorRouteRoute
-  '/main/settings/system-proxy': typeof mainMainSettingsSystemProxyRouteRoute
-  '/main/settings/system-service': typeof mainMainSettingsSystemServiceRouteRoute
+  '/main/settings/clash': typeof mainMainSettingsClashRouteRoute
+  '/main/settings/debug': typeof mainMainSettingsDebugRouteRoute
+  '/main/settings/nyanpasu': typeof mainMainSettingsNyanpasuRouteRoute
+  '/main/settings/system': typeof mainMainSettingsSystemRouteRoute
   '/main/settings/user-interface': typeof mainMainSettingsUserInterfaceRouteRoute
   '/main/settings/web-ui': typeof mainMainSettingsWebUiRouteRoute
   '/main/profiles': typeof mainMainProfilesIndexRoute
@@ -383,15 +338,10 @@ export interface FileRoutesById {
   '/(main)/main/': typeof mainMainIndexRoute
   '/(main)/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
   '/(main)/main/settings/about': typeof mainMainSettingsAboutRouteRoute
-  '/(main)/main/settings/clash-core': typeof mainMainSettingsClashCoreRouteRoute
-  '/(main)/main/settings/clash-external-controll': typeof mainMainSettingsClashExternalControllRouteRoute
-  '/(main)/main/settings/clash-filed': typeof mainMainSettingsClashFiledRouteRoute
-  '/(main)/main/settings/clash-settings': typeof mainMainSettingsClashSettingsRouteRoute
-  '/(main)/main/settings/debug-utils': typeof mainMainSettingsDebugUtilsRouteRoute
-  '/(main)/main/settings/nyanpasu-config': typeof mainMainSettingsNyanpasuConfigRouteRoute
-  '/(main)/main/settings/system-behavior': typeof mainMainSettingsSystemBehaviorRouteRoute
-  '/(main)/main/settings/system-proxy': typeof mainMainSettingsSystemProxyRouteRoute
-  '/(main)/main/settings/system-service': typeof mainMainSettingsSystemServiceRouteRoute
+  '/(main)/main/settings/clash': typeof mainMainSettingsClashRouteRoute
+  '/(main)/main/settings/debug': typeof mainMainSettingsDebugRouteRoute
+  '/(main)/main/settings/nyanpasu': typeof mainMainSettingsNyanpasuRouteRoute
+  '/(main)/main/settings/system': typeof mainMainSettingsSystemRouteRoute
   '/(main)/main/settings/user-interface': typeof mainMainSettingsUserInterfaceRouteRoute
   '/(main)/main/settings/web-ui': typeof mainMainSettingsWebUiRouteRoute
   '/(main)/main/profiles/': typeof mainMainProfilesIndexRoute
@@ -427,15 +377,10 @@ export interface FileRouteTypes {
     | '/main/'
     | '/main/profiles/inspect'
     | '/main/settings/about'
-    | '/main/settings/clash-core'
-    | '/main/settings/clash-external-controll'
-    | '/main/settings/clash-filed'
-    | '/main/settings/clash-settings'
-    | '/main/settings/debug-utils'
-    | '/main/settings/nyanpasu-config'
-    | '/main/settings/system-behavior'
-    | '/main/settings/system-proxy'
-    | '/main/settings/system-service'
+    | '/main/settings/clash'
+    | '/main/settings/debug'
+    | '/main/settings/nyanpasu'
+    | '/main/settings/system'
     | '/main/settings/user-interface'
     | '/main/settings/web-ui'
     | '/main/profiles/'
@@ -464,15 +409,10 @@ export interface FileRouteTypes {
     | '/main'
     | '/main/profiles/inspect'
     | '/main/settings/about'
-    | '/main/settings/clash-core'
-    | '/main/settings/clash-external-controll'
-    | '/main/settings/clash-filed'
-    | '/main/settings/clash-settings'
-    | '/main/settings/debug-utils'
-    | '/main/settings/nyanpasu-config'
-    | '/main/settings/system-behavior'
-    | '/main/settings/system-proxy'
-    | '/main/settings/system-service'
+    | '/main/settings/clash'
+    | '/main/settings/debug'
+    | '/main/settings/nyanpasu'
+    | '/main/settings/system'
     | '/main/settings/user-interface'
     | '/main/settings/web-ui'
     | '/main/profiles'
@@ -508,15 +448,10 @@ export interface FileRouteTypes {
     | '/(main)/main/'
     | '/(main)/main/profiles/inspect'
     | '/(main)/main/settings/about'
-    | '/(main)/main/settings/clash-core'
-    | '/(main)/main/settings/clash-external-controll'
-    | '/(main)/main/settings/clash-filed'
-    | '/(main)/main/settings/clash-settings'
-    | '/(main)/main/settings/debug-utils'
-    | '/(main)/main/settings/nyanpasu-config'
-    | '/(main)/main/settings/system-behavior'
-    | '/(main)/main/settings/system-proxy'
-    | '/(main)/main/settings/system-service'
+    | '/(main)/main/settings/clash'
+    | '/(main)/main/settings/debug'
+    | '/(main)/main/settings/nyanpasu'
+    | '/(main)/main/settings/system'
     | '/(main)/main/settings/user-interface'
     | '/(main)/main/settings/web-ui'
     | '/(main)/main/profiles/'
@@ -732,67 +667,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof mainMainSettingsUserInterfaceRouteRouteImport
       parentRoute: typeof mainMainSettingsRouteRoute
     }
-    '/(main)/main/settings/system-service': {
-      id: '/(main)/main/settings/system-service'
-      path: '/system-service'
-      fullPath: '/main/settings/system-service'
-      preLoaderRoute: typeof mainMainSettingsSystemServiceRouteRouteImport
+    '/(main)/main/settings/system': {
+      id: '/(main)/main/settings/system'
+      path: '/system'
+      fullPath: '/main/settings/system'
+      preLoaderRoute: typeof mainMainSettingsSystemRouteRouteImport
       parentRoute: typeof mainMainSettingsRouteRoute
     }
-    '/(main)/main/settings/system-proxy': {
-      id: '/(main)/main/settings/system-proxy'
-      path: '/system-proxy'
-      fullPath: '/main/settings/system-proxy'
-      preLoaderRoute: typeof mainMainSettingsSystemProxyRouteRouteImport
+    '/(main)/main/settings/nyanpasu': {
+      id: '/(main)/main/settings/nyanpasu'
+      path: '/nyanpasu'
+      fullPath: '/main/settings/nyanpasu'
+      preLoaderRoute: typeof mainMainSettingsNyanpasuRouteRouteImport
       parentRoute: typeof mainMainSettingsRouteRoute
     }
-    '/(main)/main/settings/system-behavior': {
-      id: '/(main)/main/settings/system-behavior'
-      path: '/system-behavior'
-      fullPath: '/main/settings/system-behavior'
-      preLoaderRoute: typeof mainMainSettingsSystemBehaviorRouteRouteImport
+    '/(main)/main/settings/debug': {
+      id: '/(main)/main/settings/debug'
+      path: '/debug'
+      fullPath: '/main/settings/debug'
+      preLoaderRoute: typeof mainMainSettingsDebugRouteRouteImport
       parentRoute: typeof mainMainSettingsRouteRoute
     }
-    '/(main)/main/settings/nyanpasu-config': {
-      id: '/(main)/main/settings/nyanpasu-config'
-      path: '/nyanpasu-config'
-      fullPath: '/main/settings/nyanpasu-config'
-      preLoaderRoute: typeof mainMainSettingsNyanpasuConfigRouteRouteImport
-      parentRoute: typeof mainMainSettingsRouteRoute
-    }
-    '/(main)/main/settings/debug-utils': {
-      id: '/(main)/main/settings/debug-utils'
-      path: '/debug-utils'
-      fullPath: '/main/settings/debug-utils'
-      preLoaderRoute: typeof mainMainSettingsDebugUtilsRouteRouteImport
-      parentRoute: typeof mainMainSettingsRouteRoute
-    }
-    '/(main)/main/settings/clash-settings': {
-      id: '/(main)/main/settings/clash-settings'
-      path: '/clash-settings'
-      fullPath: '/main/settings/clash-settings'
-      preLoaderRoute: typeof mainMainSettingsClashSettingsRouteRouteImport
-      parentRoute: typeof mainMainSettingsRouteRoute
-    }
-    '/(main)/main/settings/clash-filed': {
-      id: '/(main)/main/settings/clash-filed'
-      path: '/clash-filed'
-      fullPath: '/main/settings/clash-filed'
-      preLoaderRoute: typeof mainMainSettingsClashFiledRouteRouteImport
-      parentRoute: typeof mainMainSettingsRouteRoute
-    }
-    '/(main)/main/settings/clash-external-controll': {
-      id: '/(main)/main/settings/clash-external-controll'
-      path: '/clash-external-controll'
-      fullPath: '/main/settings/clash-external-controll'
-      preLoaderRoute: typeof mainMainSettingsClashExternalControllRouteRouteImport
-      parentRoute: typeof mainMainSettingsRouteRoute
-    }
-    '/(main)/main/settings/clash-core': {
-      id: '/(main)/main/settings/clash-core'
-      path: '/clash-core'
-      fullPath: '/main/settings/clash-core'
-      preLoaderRoute: typeof mainMainSettingsClashCoreRouteRouteImport
+    '/(main)/main/settings/clash': {
+      id: '/(main)/main/settings/clash'
+      path: '/clash'
+      fullPath: '/main/settings/clash'
+      preLoaderRoute: typeof mainMainSettingsClashRouteRouteImport
       parentRoute: typeof mainMainSettingsRouteRoute
     }
     '/(main)/main/settings/about': {
@@ -906,15 +806,10 @@ const mainMainRulesRouteRouteWithChildren =
 
 interface mainMainSettingsRouteRouteChildren {
   mainMainSettingsAboutRouteRoute: typeof mainMainSettingsAboutRouteRoute
-  mainMainSettingsClashCoreRouteRoute: typeof mainMainSettingsClashCoreRouteRoute
-  mainMainSettingsClashExternalControllRouteRoute: typeof mainMainSettingsClashExternalControllRouteRoute
-  mainMainSettingsClashFiledRouteRoute: typeof mainMainSettingsClashFiledRouteRoute
-  mainMainSettingsClashSettingsRouteRoute: typeof mainMainSettingsClashSettingsRouteRoute
-  mainMainSettingsDebugUtilsRouteRoute: typeof mainMainSettingsDebugUtilsRouteRoute
-  mainMainSettingsNyanpasuConfigRouteRoute: typeof mainMainSettingsNyanpasuConfigRouteRoute
-  mainMainSettingsSystemBehaviorRouteRoute: typeof mainMainSettingsSystemBehaviorRouteRoute
-  mainMainSettingsSystemProxyRouteRoute: typeof mainMainSettingsSystemProxyRouteRoute
-  mainMainSettingsSystemServiceRouteRoute: typeof mainMainSettingsSystemServiceRouteRoute
+  mainMainSettingsClashRouteRoute: typeof mainMainSettingsClashRouteRoute
+  mainMainSettingsDebugRouteRoute: typeof mainMainSettingsDebugRouteRoute
+  mainMainSettingsNyanpasuRouteRoute: typeof mainMainSettingsNyanpasuRouteRoute
+  mainMainSettingsSystemRouteRoute: typeof mainMainSettingsSystemRouteRoute
   mainMainSettingsUserInterfaceRouteRoute: typeof mainMainSettingsUserInterfaceRouteRoute
   mainMainSettingsWebUiRouteRoute: typeof mainMainSettingsWebUiRouteRoute
   mainMainSettingsIndexRoute: typeof mainMainSettingsIndexRoute
@@ -922,20 +817,10 @@ interface mainMainSettingsRouteRouteChildren {
 
 const mainMainSettingsRouteRouteChildren: mainMainSettingsRouteRouteChildren = {
   mainMainSettingsAboutRouteRoute: mainMainSettingsAboutRouteRoute,
-  mainMainSettingsClashCoreRouteRoute: mainMainSettingsClashCoreRouteRoute,
-  mainMainSettingsClashExternalControllRouteRoute:
-    mainMainSettingsClashExternalControllRouteRoute,
-  mainMainSettingsClashFiledRouteRoute: mainMainSettingsClashFiledRouteRoute,
-  mainMainSettingsClashSettingsRouteRoute:
-    mainMainSettingsClashSettingsRouteRoute,
-  mainMainSettingsDebugUtilsRouteRoute: mainMainSettingsDebugUtilsRouteRoute,
-  mainMainSettingsNyanpasuConfigRouteRoute:
-    mainMainSettingsNyanpasuConfigRouteRoute,
-  mainMainSettingsSystemBehaviorRouteRoute:
-    mainMainSettingsSystemBehaviorRouteRoute,
-  mainMainSettingsSystemProxyRouteRoute: mainMainSettingsSystemProxyRouteRoute,
-  mainMainSettingsSystemServiceRouteRoute:
-    mainMainSettingsSystemServiceRouteRoute,
+  mainMainSettingsClashRouteRoute: mainMainSettingsClashRouteRoute,
+  mainMainSettingsDebugRouteRoute: mainMainSettingsDebugRouteRoute,
+  mainMainSettingsNyanpasuRouteRoute: mainMainSettingsNyanpasuRouteRoute,
+  mainMainSettingsSystemRouteRoute: mainMainSettingsSystemRouteRoute,
   mainMainSettingsUserInterfaceRouteRoute:
     mainMainSettingsUserInterfaceRouteRoute,
   mainMainSettingsWebUiRouteRoute: mainMainSettingsWebUiRouteRoute,

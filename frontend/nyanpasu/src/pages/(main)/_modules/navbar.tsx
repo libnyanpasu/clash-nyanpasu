@@ -159,7 +159,8 @@ export default function Navbar({ className, ...props }: ComponentProps<'div'>) {
       />
 
       <NavbarButton
-        to={isMobile ? '/main/settings' : '/main/settings/system-proxy'}
+        to="/main/settings/system"
+        mobileTo="/main/settings"
         icon={<SettingsRounded className="size-5" />}
         label={m.navbar_label_settings()}
       />

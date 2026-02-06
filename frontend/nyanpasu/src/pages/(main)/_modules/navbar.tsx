@@ -103,6 +103,7 @@ const ProxiesGroupButton = () => {
   return (
     <NavbarButton
       to="/main/proxies/group/$name"
+      mobileTo="/main/proxies"
       params={{ name: fristGroup } as never}
       icon={<Public className="size-5" />}
       label={m.navbar_label_proxies()}

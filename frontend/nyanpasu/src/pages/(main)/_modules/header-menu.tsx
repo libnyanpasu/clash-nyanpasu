@@ -1,6 +1,7 @@
 import { ComponentProps } from 'react'
 import { Button, ButtonProps } from '@/components/ui/button'
 import { cn } from '@nyanpasu/ui'
+import HeaderFileAction from './header-file-action'
 import HeaderHelpAction from './header-help-action'
 import HeaderSettingsAction from './header-settings-action'
 
@@ -28,7 +29,10 @@ export default function HeaderMenu({
       {...props}
       data-tauri-drag-region
     >
-      <MenuButton>Files</MenuButton>
+      <HeaderFileAction>
+        <MenuButton>Files</MenuButton>
+      </HeaderFileAction>
+
       <MenuButton>Actions</MenuButton>
 
       <HeaderSettingsAction>

@@ -14,6 +14,7 @@
   "header_help_action_about": "關於",
   "header_settings_action_language": "語言",
   "header_settings_action_theme_mode": "主題模式",
+  "header_file_action_import_local_profile": "導入本地配置",
   "settings_system_proxy_title": "系統設置",
   "settings_system_proxy_system_proxy_label": "系統代理",
   "settings_system_proxy_tun_mode_label": "TUN 模式",

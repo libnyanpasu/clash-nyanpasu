@@ -14,6 +14,7 @@
   "header_help_action_about": "About",
   "header_settings_action_language": "Language",
   "header_settings_action_theme_mode": "Theme Mode",
+  "header_file_action_import_local_profile": "Import Local Profile",
   "settings_system_proxy_title": "System Settings",
   "settings_system_proxy_system_proxy_label": "System Proxy",
   "settings_system_proxy_tun_mode_label": "TUN Mode",

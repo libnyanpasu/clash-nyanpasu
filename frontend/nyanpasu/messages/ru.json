@@ -14,6 +14,7 @@
   "header_help_action_about": "О программе",
   "header_settings_action_language": "Язык",
   "header_settings_action_theme_mode": "Режим темы",
+  "header_file_action_import_local_profile": "Импорт локального профиля",
   "settings_system_proxy_title": "Системный прокси",
   "settings_system_proxy_system_proxy_label": "Системный прокси",
   "settings_system_proxy_tun_mode_label": "TUN режим",

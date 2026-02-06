@@ -307,7 +307,7 @@ pub fn run() -> std::io::Result<()> {
                         .map_err(io::Error::other)
                 })
                 .bigint(BigIntExportBehavior::Number)
-                .header("/* eslint-disable */\n// @ts-nocheck"),
+                .header("/* oxlint-disable */\n// @ts-nocheck"),
             SPECTA_BINDINGS_PATH,
         ) {
             Ok(_) => {

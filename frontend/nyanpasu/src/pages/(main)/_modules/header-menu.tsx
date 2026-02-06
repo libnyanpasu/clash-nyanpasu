@@ -1,12 +1,14 @@
 import { ComponentProps } from 'react'
 import { Button, ButtonProps } from '@/components/ui/button'
 import { cn } from '@nyanpasu/ui'
+import HeaderHelpAction from './header-help-action'
 
 const MenuButton = ({ className, ...props }: ButtonProps) => {
   return (
     <Button
       className={cn(
         'hover:bg-primary-container dark:hover:bg-on-primary h-8 min-w-0 px-3',
+        'data-[state=open]:bg-primary-container dark:data-[state=open]:bg-on-primary',
         className,
       )}
       {...props}
@@ -28,7 +30,10 @@ export default function HeaderMenu({
       <MenuButton>Files</MenuButton>
       <MenuButton>Actions</MenuButton>
       <MenuButton>Settings</MenuButton>
-      <MenuButton>Help</MenuButton>
+
+      <HeaderHelpAction>
+        <MenuButton>Help</MenuButton>
+      </HeaderHelpAction>
     </div>
   )
 }

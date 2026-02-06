@@ -2,6 +2,7 @@ import { ComponentProps } from 'react'
 import { Button, ButtonProps } from '@/components/ui/button'
 import { cn } from '@nyanpasu/ui'
 import HeaderHelpAction from './header-help-action'
+import HeaderSettingsAction from './header-settings-action'
 
 const MenuButton = ({ className, ...props }: ButtonProps) => {
   return (
@@ -29,7 +30,10 @@ export default function HeaderMenu({
     >
       <MenuButton>Files</MenuButton>
       <MenuButton>Actions</MenuButton>
-      <MenuButton>Settings</MenuButton>
+
+      <HeaderSettingsAction>
+        <MenuButton>Settings</MenuButton>
+      </HeaderSettingsAction>
 
       <HeaderHelpAction>
         <MenuButton>Help</MenuButton>

@@ -12,6 +12,8 @@
   "header_help_action_wiki": "Official Wiki",
   "header_help_action_issues": "Report Issue",
   "header_help_action_about": "About",
+  "header_settings_action_language": "Language",
+  "header_settings_action_theme_mode": "Theme Mode",
   "settings_system_proxy_title": "System Settings",
   "settings_system_proxy_system_proxy_label": "System Proxy",
   "settings_system_proxy_tun_mode_label": "TUN Mode",

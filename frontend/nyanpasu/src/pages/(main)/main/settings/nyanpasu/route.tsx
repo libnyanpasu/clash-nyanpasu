@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-export const Route = createFileRoute('/(main)/main/settings/nyanpasu-config')({
+export const Route = createFileRoute('/(main)/main/settings/nyanpasu')({
   component: RouteComponent,
 })
 

@@ -40,10 +40,10 @@ export default function ProxyBypassConfig() {
 
   const handleSubmit = form.handleSubmit(async (data) => {
     try {
-      await systemProxyBypass.upsert(data.systemProxyBypass ?? DEFAULT_BYPASS)
+      await systemProxyBypass.upsert(data.systemProxyBypass || DEFAULT_BYPASS)
 
       form.reset({
-        systemProxyBypass: data.systemProxyBypass ?? DEFAULT_BYPASS,
+        systemProxyBypass: data.systemProxyBypass || DEFAULT_BYPASS,
       })
     } catch (error) {
       message(formatError(error), {

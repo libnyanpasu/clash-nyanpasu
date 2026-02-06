@@ -2,6 +2,7 @@ import {
   SystemProxyButton,
   TunModeButton,
 } from '@/components/settings/system-proxy'
+import { Separator } from '@/components/ui/separator'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
 import { SettingsCard, SettingsCardContent } from '../_modules/settings-card'
@@ -13,8 +14,10 @@ import CurrentSystemProxy from './_modules/current-system-proxy'
 import ProxyBypassConfig from './_modules/proxy-bypass-config'
 import ProxyGuardConfig from './_modules/proxy-guard-config'
 import ProxyGuardSwitch from './_modules/proxy-guard-switch'
+import SystemServiceCtrl from './_modules/system-service-ctrl'
+import SystemServiceSwitch from './_modules/system-service-switch'
 
-export const Route = createFileRoute('/(main)/main/settings/system-proxy')({
+export const Route = createFileRoute('/(main)/main/settings/system')({
   component: RouteComponent,
 })
 
@@ -22,7 +25,7 @@ function RouteComponent() {
   return (
     <>
       <SettingsTitlePlaceholder />
-      <SettingsTitle>{m.settings_system_proxy_title()}</SettingsTitle>
+      <SettingsTitle>{m.settings_label_system()}</SettingsTitle>
 
       <SettingsCard>
         <SettingsCardContent>
@@ -41,6 +44,12 @@ function RouteComponent() {
       <ProxyBypassConfig />
 
       <CurrentSystemProxy />
+
+      <Separator className="my-4" />
+
+      <SystemServiceSwitch />
+
+      <SystemServiceCtrl />
     </>
   )
 }

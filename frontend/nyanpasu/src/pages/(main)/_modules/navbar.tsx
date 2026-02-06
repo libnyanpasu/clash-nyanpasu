@@ -103,6 +103,7 @@ const ProxiesGroupButton = () => {
   return (
     <NavbarButton
       to="/main/proxies/group/$name"
+      mobileTo="/main/proxies"
       params={{ name: fristGroup } as never}
       icon={<Public className="size-5" />}
       label={m.navbar_label_proxies()}
@@ -159,7 +160,8 @@ export default function Navbar({ className, ...props }: ComponentProps<'div'>) {
       />
 
       <NavbarButton
-        to={isMobile ? '/main/settings' : '/main/settings/system-proxy'}
+        to="/main/settings/system"
+        mobileTo="/main/settings"
         icon={<SettingsRounded className="size-5" />}
         label={m.navbar_label_settings()}
       />

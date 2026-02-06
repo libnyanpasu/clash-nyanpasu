@@ -13,7 +13,7 @@ function RouteComponent() {
   return (
     <Sidebar data-slot="settings-container">
       <SidebarContent
-        className="bg-surface-variant/10"
+        className="bg-surface-variant/10 [&>div>div]:block!"
         data-slot="settings-sidebar-scroll-area"
       >
         <SettingsNavigate />

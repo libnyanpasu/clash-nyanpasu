@@ -4,6 +4,16 @@
 export const NYANPASU_BACKEND_EVENT_NAME = 'nyanpasu://mutation'
 
 /**
+ * Service prompt query key, used by useServicePrompt hook
+ */
+export const SERVICE_PROMPT_QUERY_KEY = 'service-prompt'
+
+/**
+ * Core dir query key, used by useCoreDir hook
+ */
+export const CORE_DIR_QUERY_KEY = 'core-dir'
+
+/**
  * Server port query key, used by useServerPort hook
  */
 export const SERVER_PORT_QUERY_KEY = 'server-port'

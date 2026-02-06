@@ -2,14 +2,13 @@ import {
   ThemeMode,
   useExperimentalThemeContext,
 } from '@/components/providers/theme-provider'
-import { Button } from '@/components/ui/button'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { m } from '@/paraglide/messages'
 import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
 
@@ -29,29 +28,30 @@ export default function ThemeModeSelector() {
   return (
     <SettingsCard data-slot="theme-mode-selection-card">
       <SettingsCardContent
-        className="flex items-center justify-between px-3"
+        className="flex items-center justify-between px-2"
         data-slot="theme-mode-selection-card-content"
       >
-        <div>{m.settings_user_interface_theme_mode_label()}</div>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="flat">{messages[themeMode]}</Button>
-          </DropdownMenuTrigger>
-
-          <DropdownMenuContent>
-            <DropdownMenuRadioGroup
-              value={themeMode}
-              onValueChange={handleThemeModeChange}
+        <Select
+          variant="outlined"
+          value={themeMode}
+          onValueChange={handleThemeModeChange}
+        >
+          <SelectTrigger>
+            <SelectValue
+              placeholder={m.settings_user_interface_theme_mode_label()}
             >
-              {Object.values(ThemeMode).map((value) => (
-                <DropdownMenuRadioItem key={value} value={value}>
-                  {value}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              {themeMode ? messages[themeMode] : null}
+            </SelectValue>
+          </SelectTrigger>
+
+          <SelectContent>
+            {Object.entries(messages).map(([key, value]) => (
+              <SelectItem key={key} value={key}>
+                {value}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </SettingsCardContent>
     </SettingsCard>
   )

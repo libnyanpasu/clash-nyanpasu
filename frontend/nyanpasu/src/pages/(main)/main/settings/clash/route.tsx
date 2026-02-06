@@ -12,7 +12,7 @@ import MixedPortConfig from './_modules/mixed-port-config'
 import RandomPortSwitch from './_modules/random-port-switch'
 import TunStackSelector from './_modules/tun-stack-selector'
 
-export const Route = createFileRoute('/(main)/main/settings/clash-settings')({
+export const Route = createFileRoute('/(main)/main/settings/clash')({
   component: RouteComponent,
 })
 

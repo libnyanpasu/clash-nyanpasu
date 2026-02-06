@@ -8,6 +8,7 @@ import { ComponentProps, ReactNode } from 'react'
 import LogoSvg from '@/assets/image/logo.svg?react'
 import { Button } from '@/components/ui/button'
 import TextMarquee from '@/components/ui/text-marquee'
+import useCurrentCoreIcon from '@/hooks/use-current-core-icon'
 import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/ui'
 import { Link, useLocation } from '@tanstack/react-router'
@@ -15,6 +16,21 @@ import { Link, useLocation } from '@tanstack/react-router'
 const NyanpasuLogo = () => {
   return (
     <LogoSvg className="[&_#element]:fill-primary [&_#bg]:fill-surface size-8" />
+  )
+}
+
+const CurrentCoreIcon = ({
+  className,
+  ...props
+}: Omit<ComponentProps<'img'>, 'src'>) => {
+  const currentCoreIconUrl = useCurrentCoreIcon()
+
+  return (
+    <img
+      src={currentCoreIconUrl}
+      className={cn('size-full', className)}
+      {...props}
+    />
   )
 }
 
@@ -102,7 +118,20 @@ const ClashButton = () => {
 const ExternalControllButton = () => {
   return (
     <NavigateButton
-      icon={<DisplayExternalInput className="size-8" />}
+      icon={
+        <div className="relative size-8">
+          <CurrentCoreIcon className="size-7.5" />
+
+          <div
+            className={cn(
+              'absolute -right-1 -bottom-1 size-4 p-0.5',
+              'text-primary bg-surface-variant rounded-full shadow-sm',
+            )}
+          >
+            <DisplayExternalInput className="size-3" />
+          </div>
+        </div>
+      }
       label={m.settings_label_external_controll()}
       description={m.settings_label_external_controll_description()}
       to="/main/settings/web-ui"

@@ -5,7 +5,7 @@ import { SvgIconComponent } from '@mui/icons-material'
 import { Box, ListItemButton, ListItemIcon, Tooltip } from '@mui/material'
 import { useSetting } from '@nyanpasu/interface'
 import { alpha, cn } from '@nyanpasu/ui'
-import { useLocation, useMatch, useNavigate } from '@tanstack/react-router'
+import { useLocation, useNavigate } from '@tanstack/react-router'
 
 export const RouteListItem = ({
   name,

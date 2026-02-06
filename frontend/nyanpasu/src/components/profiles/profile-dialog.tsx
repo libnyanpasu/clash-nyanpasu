@@ -23,8 +23,6 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { Divider, InputAdornment } from '@mui/material'
 import {
-  LocalProfile,
-  ProfileBuilder,
   ProfileQueryResultItem,
   ProfileTemplate,
   RemoteProfile,

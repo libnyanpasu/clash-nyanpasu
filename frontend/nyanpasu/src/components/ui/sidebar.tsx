@@ -1,9 +1,4 @@
-import {
-  ComponentProps,
-  createContext,
-  PropsWithChildren,
-  useContext,
-} from 'react'
+import { ComponentProps, createContext, useContext } from 'react'
 import useIsMobile from '@/hooks/use-is-moblie'
 import { cn } from '@nyanpasu/ui'
 import { AppContentScrollArea } from './scroll-area'

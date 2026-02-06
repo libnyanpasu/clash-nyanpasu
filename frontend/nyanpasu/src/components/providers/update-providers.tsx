@@ -27,7 +27,7 @@ export const UpdateProviders = () => {
       setLoading(true)
 
       await Promise.all(
-        Object.entries(rulesProvider.data).map(([name, provider]) => {
+        Object.values(rulesProvider.data).map((provider) => {
           return provider.mutate()
         }),
       )

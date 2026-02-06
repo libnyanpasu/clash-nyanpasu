@@ -38,7 +38,7 @@ const MAX_WIDTH = 'calc(100% - 48px - 16px)'
 export const IPASNPanel = ({ refreshCount }: { refreshCount: number }) => {
   const { t } = useTranslation()
 
-  const { data, mutate, isValidating, isLoading } = useIPSB()
+  const { data, mutate, isValidating } = useIPSB()
 
   const handleRefreshIP = () => {
     mutate()

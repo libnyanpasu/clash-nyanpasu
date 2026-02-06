@@ -1,3 +1,4 @@
+// oxlint-disable typescript/no-explicit-any
 import { includes, isArray, isObject, isString, some } from 'lodash-es'
 import { EnvInfos } from '@nyanpasu/interface'
 
@@ -6,7 +7,6 @@ import { EnvInfos } from '@nyanpasu/interface'
  * @param classes - array of classes
  * @returns string of classes
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function classNames(...classes: any[]) {
   return classes.filter(Boolean).join(' ')
 }

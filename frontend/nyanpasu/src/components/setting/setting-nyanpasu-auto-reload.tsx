@@ -1,3 +1,4 @@
+// oxlint-disable typescript/no-explicit-any
 import { useTranslation } from 'react-i18next'
 import { useSetting } from '@nyanpasu/interface'
 import { SwitchItem } from '@nyanpasu/ui'

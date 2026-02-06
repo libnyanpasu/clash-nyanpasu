@@ -7,7 +7,7 @@ import { useExperimentalThemeContext } from '@/components/providers/theme-provid
 import { Button } from '@/components/ui/button'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
-import MonacoEditor, { Monaco } from '@monaco-editor/react'
+import MonacoEditor from '@monaco-editor/react'
 import { openThat, useProfileContent } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 import { createFileRoute } from '@tanstack/react-router'
@@ -112,7 +112,7 @@ function RouteComponent() {
   })
 
   const handleEditorDidMount = useCallback(
-    (editor: editor.IStandaloneCodeEditor, monaco: Monaco) => {
+    (editor: editor.IStandaloneCodeEditor) => {
       editorRef.current = editor
 
       // Enable URL detection and handling

@@ -164,7 +164,7 @@ export const NodeList = forwardRef(function NodeList(
                 )
 
                 return disableMotion ? (
-                  <div className="relative overflow-hidden">
+                  <div key={render.name} className="relative overflow-hidden">
                     <Card />
                   </div>
                 ) : (

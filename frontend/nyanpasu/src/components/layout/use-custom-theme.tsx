@@ -63,7 +63,7 @@ const ThemeInner = ({ children }: PropsWithChildren) => {
 
   const setThemeMode = useSetAtom(themeModeAtom)
 
-  const { mode, setMode } = useColorScheme()
+  const { setMode } = useColorScheme()
 
   useEffect(() => {
     if (themeMode === 'system') {

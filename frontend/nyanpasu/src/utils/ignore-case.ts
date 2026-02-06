@@ -1,3 +1,4 @@
+// oxlint-disable typescript/no-explicit-any
 // Deep copy and change all keys to lowercase
 type TData = Record<string, any>
 

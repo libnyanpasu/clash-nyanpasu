@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Switch } from '@/components/ui/switch'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
+import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useClashConfig } from '@nyanpasu/interface'
 import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
@@ -17,7 +18,7 @@ export default function AllowLanSwitch() {
         'allow-lan': input,
       })
     } catch (error) {
-      message(`Activation Allow LAN failed!`, {
+      message(`Activation Allow LAN failed!\n Error: ${formatError(error)}`, {
         title: 'Error',
         kind: 'error',
       })

@@ -91,10 +91,8 @@ export const SettingClashField = () => {
 
   const mergeFields = useMemo(
     () => [
-      ...[
-        ...Object.keys(CLASH_FIELD.default),
-        ...Object.keys(CLASH_FIELD.handle),
-      ],
+      ...Object.keys(CLASH_FIELD.default),
+      ...Object.keys(CLASH_FIELD.handle),
       ...(query.data?.valid ?? []),
     ],
     [query.data],

@@ -1,5 +1,6 @@
 import { ComponentProps } from 'react'
 import { Button, ButtonProps } from '@/components/ui/button'
+import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/ui'
 import HeaderFileAction from './header-file-action'
 import HeaderHelpAction from './header-help-action'
@@ -30,17 +31,15 @@ export default function HeaderMenu({
       data-tauri-drag-region
     >
       <HeaderFileAction>
-        <MenuButton>Files</MenuButton>
+        <MenuButton>{m.header_file_action_title()}</MenuButton>
       </HeaderFileAction>
 
-      <MenuButton>Actions</MenuButton>
-
       <HeaderSettingsAction>
-        <MenuButton>Settings</MenuButton>
+        <MenuButton>{m.header_settings_action_title()}</MenuButton>
       </HeaderSettingsAction>
 
       <HeaderHelpAction>
-        <MenuButton>Help</MenuButton>
+        <MenuButton>{m.header_help_action_title()}</MenuButton>
       </HeaderHelpAction>
     </div>
   )

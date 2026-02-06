@@ -156,5 +156,6 @@ export default defineConfig(({ command, mode }) => {
     html: {},
   } satisfies UserConfig
   // fucking vite why embedded their own sass types definition????
+  // oxlint-disable-next-line typescript/no-explicit-any
   return config as any as UserConfig
 })

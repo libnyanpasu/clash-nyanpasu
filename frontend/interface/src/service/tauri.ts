@@ -1,3 +1,4 @@
+// oxlint-disable typescript/no-explicit-any
 import { IPSBResponse } from '@/openapi'
 import { invoke } from '@tauri-apps/api/core'
 import type {

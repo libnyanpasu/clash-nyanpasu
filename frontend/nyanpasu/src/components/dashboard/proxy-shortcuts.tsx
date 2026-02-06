@@ -75,10 +75,13 @@ export const ProxyShortcuts = () => {
     try {
       await systemProxy.upsert(!systemProxy.value)
     } catch (error) {
-      message(`Activation System Proxy failed!`, {
-        title: t('Error'),
-        kind: 'error',
-      })
+      message(
+        `Activation System Proxy failed!\n Error: ${formatError(error)}`,
+        {
+          title: t('Error'),
+          kind: 'error',
+        },
+      )
     }
   })
 

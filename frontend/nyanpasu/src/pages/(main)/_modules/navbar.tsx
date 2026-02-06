@@ -112,8 +112,6 @@ const ProxiesGroupButton = () => {
 }
 
 export default function Navbar({ className, ...props }: ComponentProps<'div'>) {
-  const isMobile = useIsMobile()
-
   return (
     <div
       className={cn(

@@ -6,6 +6,7 @@ import {
 } from '@/components/ui/tooltip'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
+import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useSetting, useSystemService } from '@nyanpasu/interface'
 import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
@@ -21,10 +22,13 @@ export default function SystemServiceSwitch() {
     try {
       await serviceMode.upsert(!serviceMode.value)
     } catch (error) {
-      message(`Activation Service Mode failed!`, {
-        title: 'Error',
-        kind: 'error',
-      })
+      message(
+        `Activation Service Mode failed!\n Error: ${formatError(error)}`,
+        {
+          title: 'Error',
+          kind: 'error',
+        },
+      )
     }
   })
 

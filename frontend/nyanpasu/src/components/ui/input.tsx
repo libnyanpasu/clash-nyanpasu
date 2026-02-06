@@ -10,7 +10,6 @@ import {
   useState,
 } from 'react'
 import { cn } from '@nyanpasu/ui'
-import { Slot } from '@radix-ui/react-slot'
 
 export const inputContainerVariants = cva(
   [
@@ -402,6 +401,7 @@ export const InputLabel = ({
           variant,
           focus: haveValue,
         }),
+        className,
       )}
       {...props}
     />
@@ -420,7 +420,6 @@ export type NumericInputProps = Omit<
   label?: string
   min?: number
   max?: number
-  step?: number
   decimalScale?: number
   allowNegative?: boolean
 } & InputContainerVariants
@@ -434,7 +433,6 @@ export const NumericInput = ({
   defaultValue,
   min,
   max,
-  step = 1,
   decimalScale,
   allowNegative = true,
   ...props

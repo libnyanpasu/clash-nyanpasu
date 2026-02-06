@@ -1,3 +1,4 @@
+// oxlint-disable no-unsafe-optional-chaining
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { notification, NotificationType } from '@/utils/notification'

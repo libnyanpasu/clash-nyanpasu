@@ -62,7 +62,7 @@ export const beforeEditorMount = (monaco: Monaco) => {
     // Register link provider for all supported languages
     const registerLinkProvider = (language: string) => {
       monaco.languages.registerLinkProvider(language, {
-        provideLinks: (model, token) => {
+        provideLinks: (model) => {
           const links = []
           // More robust URL regex pattern
           const urlRegex = /\b(?:https?:\/\/|www\.)[^\s<>"']*[^<>\s"',.!?]/gi
@@ -131,7 +131,7 @@ export default function ProfileMonacoViewer({
   )
 
   const handleEditorDidMount = useCallback(
-    (editor: editor.IStandaloneCodeEditor, monaco: Monaco) => {
+    (editor: editor.IStandaloneCodeEditor) => {
       editorRef.current = editor
 
       // Enable URL detection and handling

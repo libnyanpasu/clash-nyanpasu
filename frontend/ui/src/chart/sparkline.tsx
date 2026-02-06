@@ -1,3 +1,4 @@
+// oxlint-disable typescript/no-explicit-any
 import * as d3 from 'd3'
 import { interpolatePath } from 'd3-interpolate-path'
 import { CSSProperties, FC, useEffect, useMemo, useRef } from 'react'

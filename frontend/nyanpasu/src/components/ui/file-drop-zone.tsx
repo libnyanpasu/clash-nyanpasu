@@ -4,7 +4,6 @@ import {
   ComponentProps,
   createContext,
   DragEvent,
-  ReactNode,
   RefObject,
   useContext,
   useEffect,
@@ -103,7 +102,6 @@ export interface FileDropZoneProps
   onFileRead?: (content: string) => void
   accept: string[]
   disabled?: boolean
-  fileSelected?: (fileName: string) => ReactNode
 }
 
 export function FileDropZone({
@@ -114,7 +112,6 @@ export function FileDropZone({
   className,
   disabled = false,
   variant,
-  fileSelected,
   children,
   ...props
 }: FileDropZoneProps) {

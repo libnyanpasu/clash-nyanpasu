@@ -33,7 +33,7 @@ function Connections() {
   const [mountTable, setMountTable] = useState(true)
   const deferredMountTable = useDeferredValue(mountTable)
   const { proceed } = useBlocker({
-    shouldBlockFn: (args) => {
+    shouldBlockFn: () => {
       setMountTable(false)
       return !mountTable
     },

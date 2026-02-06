@@ -54,8 +54,8 @@ export const AppContainer = ({
       square
       elevation={0}
       className={styles.layout}
-      onPointerDown={(e: any) => {
-        if (e.target?.dataset?.windrag) {
+      onPointerDown={(e) => {
+        if ((e.target as HTMLElement)?.dataset?.windrag) {
           appWindow.startDragging()
         }
       }}

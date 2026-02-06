@@ -78,7 +78,7 @@ export const LayoutControl = ({ className }: { className?: string }) => {
 
       <CtrlButton
         onClick={() => {
-          appWindow.toggleMaximize().then((isMaximized) => {
+          appWindow.toggleMaximize().then(() => {
             queryClient.invalidateQueries({ queryKey: ['isMaximized'] })
           })
         }}

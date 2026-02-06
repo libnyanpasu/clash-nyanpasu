@@ -9,14 +9,14 @@ export default function TextMarquee({
   speed = 30,
   gap = 32,
   pauseDuration = 1,
-  pauseOnHover = true,
+  // pauseOnHover = true,
 }: {
   children: React.ReactNode
   className?: string
   speed?: number
   gap?: number
   pauseDuration?: number
-  pauseOnHover?: boolean
+  // pauseOnHover?: boolean
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
 

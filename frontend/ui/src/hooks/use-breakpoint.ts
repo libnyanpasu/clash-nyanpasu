@@ -118,7 +118,7 @@ export const useContainerBreakpointValue = <T>(
 ): T => {
   const currentBreakpoint = useContainerBreakpoint(containerRef)
 
-  const calculateValue = (): T => {
+  const memoizedValue = useMemo(() => {
     const value = values[currentBreakpoint]
 
     if (value !== undefined) {
@@ -136,12 +136,7 @@ export const useContainerBreakpointValue = <T>(
     }
 
     return defaultValue ?? (values[breakpointsOrder[0]] as T)
-  }
-
-  const memoizedValue = useMemo(
-    () => calculateValue(),
-    [currentBreakpoint, values, defaultValue],
-  )
+  }, [currentBreakpoint, values, defaultValue])
 
   return memoizedValue
 }

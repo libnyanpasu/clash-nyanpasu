@@ -49,7 +49,6 @@
         "react/no-is-mounted": "error",
         "react/no-render-return-value": "error",
         "react/no-string-refs": "error",
-        "react/no-unescaped-entities": "error",
         "react/no-unknown-property": "error",
         "react/no-unsafe": "off",
         "react/react-in-jsx-scope": "error"
@@ -371,15 +370,7 @@
             "noTemplateLiterals": true
           }
         ],
-        // "react/no-unescaped-entities": [
-        //   "error",
-        //   {
-        //     "forbid": [
-        //       ">",
-        //       "}"
-        //     ]
-        //   }
-        // ],
+        "react/no-unescaped-entities": "off",
         "react/no-render-return-value": "error",
         "react/self-closing-comp": "error"
       },

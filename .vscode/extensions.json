@@ -4,13 +4,13 @@
     "editorconfig.editorconfig",
     "vadimcn.vscode-lldb",
     "bungcip.better-toml",
-    "dbaeumer.vscode-eslint",
     "denoland.vscode-deno",
     "esbenp.prettier-vscode",
     "yoavbls.pretty-ts-errors",
     "rust-lang.rust-analyzer",
     "syler.sass-indented",
     "stylelint.vscode-stylelint",
-    "bradlc.vscode-tailwindcss"
+    "bradlc.vscode-tailwindcss",
+    "oxc.oxc-vscode"
   ]
 }

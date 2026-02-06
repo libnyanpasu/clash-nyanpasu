@@ -16,6 +16,19 @@
   "settings_system_proxy_proxy_guard_interval_label": "系統代理守衛間隔",
   "settings_system_proxy_proxy_bypass_label": "系統代理繞過",
   "settings_system_proxy_current_system_proxy_label": "當前系統代理",
+  "settings_system_proxy_service_mode_label": "服務模式",
+  "settings_system_proxy_service_mode_disabled_tooltip": "要啟用服務模式，請確保 Clash Nyanpasu 服務已安裝並啟動",
+  "settings_system_proxy_system_service_ctrl_label": "系統服務",
+  "settings_system_proxy_system_service_ctrl_detail": "服務詳情",
+  "settings_system_proxy_system_service_ctrl_install": "安裝",
+  "settings_system_proxy_system_service_ctrl_uninstall": "卸載",
+  "settings_system_proxy_system_service_ctrl_failed_install": "安裝失敗",
+  "settings_system_proxy_system_service_ctrl_failed_uninstall": "卸載失敗",
+  "settings_system_proxy_system_service_ctrl_prompt": "服務提示",
+  "settings_system_proxy_system_service_ctrl_manual_prompt": "手動操作服務提示",
+  "settings_system_proxy_system_service_ctrl_manual_operation_prompt": "無法自動操作服務。請開啟核心所在目錄，在 Windows 上以管理員身分開啟 PowerShell 或在 macOS/Linux 上開啟終端模擬器，然後執行以下指令：",
+  "settings_system_proxy_system_service_ctrl_start": "啟動",
+  "settings_system_proxy_system_service_ctrl_stop": "停止",
   "settings_user_interface_title": "使用者介面",
   "settings_user_interface_language_label": "語言",
   "settings_user_interface_theme_mode_label": "主題模式",
@@ -107,5 +120,7 @@
   "common_apply": "應用",
   "common_reset": "重置",
   "common_save": "保存",
-  "common_validate": "驗證"
+  "common_validate": "驗證",
+  "common_close": "關閉",
+  "common_copy": "複製"
 }

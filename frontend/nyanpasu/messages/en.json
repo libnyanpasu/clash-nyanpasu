@@ -16,6 +16,19 @@
   "settings_system_proxy_proxy_guard_interval_label": "System Proxy Guard Interval",
   "settings_system_proxy_proxy_bypass_label": "System Proxy Bypass",
   "settings_system_proxy_current_system_proxy_label": "Current System Proxy",
+  "settings_system_proxy_service_mode_label": "Service Mode",
+  "settings_system_proxy_service_mode_disabled_tooltip": "To enable service mode, make sure the Clash Nyanpasu service is installed and started",
+  "settings_system_proxy_system_service_ctrl_label": "System Service",
+  "settings_system_proxy_system_service_ctrl_detail": "Service Detail",
+  "settings_system_proxy_system_service_ctrl_install": "Install",
+  "settings_system_proxy_system_service_ctrl_uninstall": "Uninstall",
+  "settings_system_proxy_system_service_ctrl_failed_install": "Install failed",
+  "settings_system_proxy_system_service_ctrl_failed_uninstall": "Uninstall failed",
+  "settings_system_proxy_system_service_ctrl_prompt": "Service Prompt",
+  "settings_system_proxy_system_service_ctrl_manual_prompt": "Service Manual Tips",
+  "settings_system_proxy_system_service_ctrl_manual_operation_prompt": "Unable to control the service automatically. Please navigate to the core directory, run PowerShell as administrator on Windows or a terminal emulator on macOS/Linux, and execute the following commands:",
+  "settings_system_proxy_system_service_ctrl_start": "Start",
+  "settings_system_proxy_system_service_ctrl_stop": "Stop",
   "settings_user_interface_title": "User Interface",
   "settings_user_interface_language_label": "Language",
   "settings_user_interface_theme_mode_label": "Theme Mode",
@@ -107,5 +120,7 @@
   "common_apply": "Apply",
   "common_reset": "Reset",
   "common_save": "Save",
-  "common_validate": "Validate"
+  "common_validate": "Validate",
+  "common_close": "Close",
+  "common_copy": "Copy"
 }

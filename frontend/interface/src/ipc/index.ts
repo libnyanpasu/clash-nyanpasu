@@ -22,6 +22,8 @@ export * from './use-runtime-profile'
 export * from './use-settings'
 export * from './use-system-proxy'
 export * from './use-system-service'
+export * from './use-service-prompt'
+export * from './use-core-dir'
 
 export { commands } from './bindings'
 export type * from './bindings'

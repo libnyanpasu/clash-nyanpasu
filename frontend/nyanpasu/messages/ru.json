@@ -16,6 +16,19 @@
   "settings_system_proxy_proxy_guard_interval_label": "Интервал охраны прокси",
   "settings_system_proxy_proxy_bypass_label": "Обход прокси",
   "settings_system_proxy_current_system_proxy_label": "Текущий системный прокси",
+  "settings_system_proxy_service_mode_label": "Режим службы",
+  "settings_system_proxy_service_mode_disabled_tooltip": "Чтобы включить режим службы, убедитесь, что служба Clash Nyanpasu установлена и запущена",
+  "settings_system_proxy_system_service_ctrl_label": "Системный сервис",
+  "settings_system_proxy_system_service_ctrl_detail": "Подробности сервиса",
+  "settings_system_proxy_system_service_ctrl_install": "Установить",
+  "settings_system_proxy_system_service_ctrl_uninstall": "Удалить",
+  "settings_system_proxy_system_service_ctrl_failed_install": "Установка не удалась",
+  "settings_system_proxy_system_service_ctrl_failed_uninstall": "Удаление не удалось",
+  "settings_system_proxy_system_service_ctrl_prompt": "Подсказка по сервису",
+  "settings_system_proxy_system_service_ctrl_manual_prompt": "Подсказка по сервису",
+  "settings_system_proxy_system_service_ctrl_manual_operation_prompt": "Не удалось автоматически управлять сервисом. Пожалуйста, перейдите в каталог ядра, запустите PowerShell как администратор на Windows или эмулятор терминала на macOS/Linux и выполните следующие команды:",
+  "settings_system_proxy_system_service_ctrl_start": "Запустить",
+  "settings_system_proxy_system_service_ctrl_stop": "Остановить",
   "settings_user_interface_title": "Интерфейс пользователя",
   "settings_user_interface_language_label": "Язык",
   "settings_user_interface_theme_mode_label": "Режим темы",
@@ -107,5 +120,7 @@
   "common_apply": "Применить",
   "common_reset": "Сбросить",
   "common_save": "Сохранить",
-  "common_validate": "Проверить"
+  "common_validate": "Проверить",
+  "common_close": "Закрыть",
+  "common_copy": "Копировать"
 }

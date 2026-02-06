@@ -2,7 +2,7 @@ import UploadFileRounded from '~icons/material-symbols/upload-file-rounded'
 import dayjs from 'dayjs'
 import { filesize } from 'filesize'
 import { AnimatePresence } from 'framer-motion'
-import { PropsWithChildren, useState } from 'react'
+import { PropsWithChildren, useEffect, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import z from 'zod'
 import { useBlockTask } from '@/components/providers/block-task-provider'
@@ -29,7 +29,9 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { LocalProfileBuilder, useProfile } from '@nyanpasu/interface'
+import { useLocation } from '@tanstack/react-router'
 import AnimatedErrorItem from '../../_modules/error-item'
+import { Action, Route as IndexRoute } from '../index'
 
 const formSchema = z.object({
   uid: z.string().nullable(),
@@ -56,9 +58,34 @@ const getDefaultValues = () => {
 }
 
 export default function LocalProfileButton({ children }: PropsWithChildren) {
+  const { action } = IndexRoute.useSearch()
+
+  const navigate = IndexRoute.useNavigate()
+
+  const { pathname } = useLocation()
+
   const { create } = useProfile()
 
   const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (action === Action.ImportLocalProfile) {
+      // if the current path is the index page, open the modal immediately
+      if (pathname === '/main/profiles/$type') {
+        setOpen(true)
+        return
+      }
+
+      // else, wait animation duration to open the modal
+      const timeout = setTimeout(() => {
+        setOpen(true)
+      }, 150)
+
+      return () => {
+        clearTimeout(timeout)
+      }
+    }
+  }, [action])
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -96,6 +123,12 @@ export default function LocalProfileButton({ children }: PropsWithChildren) {
     }
 
     setOpen(value)
+
+    navigate({
+      search: {
+        action: null,
+      },
+    })
 
     if (value) {
       form.reset(getDefaultValues())

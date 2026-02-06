@@ -13,7 +13,7 @@ import {
 import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/ui'
 import { ProfileType } from '../../_modules/consts'
-import { Route as IndexRoute } from '../index'
+import { Action, Route as IndexRoute } from '../index'
 import ChainProfileImport from './chain-profile-import'
 import LocalProfileButton from './local-profile-button'
 import RemoteProfileButton from './remote-profile-button'
@@ -52,7 +52,16 @@ const SelectButton = ({
 const ProxyProfileImport = () => {
   const { isScrolling } = useScrollArea()
 
+  const { action } = IndexRoute.useSearch()
+
   const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    // for animation duration to open the modal
+    if (action === Action.ImportLocalProfile) {
+      setOpen(true)
+    }
+  }, [action])
 
   const handleToggle = () => {
     setOpen(!open)

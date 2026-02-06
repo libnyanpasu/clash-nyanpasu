@@ -7,7 +7,7 @@ import TrayIconDialog from '@/components/setting/modules/tray-icon-dialog'
 import { formatEnvInfos } from '@/utils'
 import { Feedback, GitHub, Keyboard } from '@mui/icons-material'
 import { IconButton } from '@mui/material'
-import { collectEnvs, openThat } from '@nyanpasu/interface'
+import { commands, openThat } from '@nyanpasu/interface'
 import { BasePage } from '@nyanpasu/ui'
 import { createFileRoute } from '@tanstack/react-router'
 
@@ -38,9 +38,14 @@ function SettingPage() {
 
   const FeedbackIcon = () => {
     const toFeedback = useLockFn(async () => {
-      const envs = await collectEnvs()
+      const envs = await commands.collectEnvs()
+
+      if (envs.status !== 'ok') {
+        return
+      }
+
       const formattedEnv = encodeURIComponent(
-        formatEnvInfos(envs)
+        formatEnvInfos(envs.data)
           .split('\n')
           .map((v) => `> ${v}`)
           .join('\n'),

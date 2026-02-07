@@ -1,8 +1,8 @@
 import nyanpasuMergeSchema from 'meta-json-schema/schemas/clash-nyanpasu-merge-json-schema.json'
 import clashMetaSchema from 'meta-json-schema/schemas/meta-json-schema.json'
+import * as monaco from 'monaco-editor'
 import { configureMonacoYaml } from 'monaco-yaml'
 import { OS } from '@/consts'
-import { Monaco } from '@monaco-editor/react'
 
 export const MONACO_FONT_FAMILY =
   '"Cascadia Code NF",' +
@@ -19,13 +19,13 @@ export const MONACO_FONT_FAMILY =
 
 let initd = false
 
-export const beforeEditorMount = (monaco: Monaco) => {
+export const beforeEditorMount = () => {
   if (initd) {
     return
   }
 
-  monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
-    target: monaco.languages.typescript.ScriptTarget.ES2020,
+  monaco.typescript.javascriptDefaults.setCompilerOptions({
+    target: monaco.typescript.ScriptTarget.ES2020,
     allowNonTsExtensions: true,
     allowJs: true,
   })

@@ -68,7 +68,7 @@ importers:
         specifier: 8.0.4
         version: 8.0.4
       oxlint:
-        specifier: ^1.43.0
+        specifier: 1.43.0
         version: 1.43.0
       postcss:
         specifier: 8.5.6

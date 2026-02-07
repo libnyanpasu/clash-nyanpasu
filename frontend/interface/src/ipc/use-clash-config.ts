@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ClashConfig, useClashAPI } from '../service/clash-api'
+import { useClashAPI, type ClashConfig } from '../service/clash-api'
 import { unwrapResult } from '../utils'
-import { commands, PatchRuntimeConfig } from './bindings'
+import { commands, type PatchRuntimeConfig } from './bindings'
 import { CLASH_CONFIG_QUERY_KEY } from './consts'
 
 /**

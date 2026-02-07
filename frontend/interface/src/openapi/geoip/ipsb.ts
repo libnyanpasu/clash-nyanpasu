@@ -1,4 +1,4 @@
-import useSWR, { SWRConfiguration } from 'swr'
+import useSWR, { type SWRConfiguration } from 'swr'
 import { getIpsbASN } from '@/service'
 
 export interface IPSBResponse {

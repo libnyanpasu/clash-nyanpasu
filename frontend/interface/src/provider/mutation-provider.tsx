@@ -1,5 +1,5 @@
 import { useMount } from 'ahooks'
-import { PropsWithChildren, useRef } from 'react'
+import { useRef, type PropsWithChildren } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import {

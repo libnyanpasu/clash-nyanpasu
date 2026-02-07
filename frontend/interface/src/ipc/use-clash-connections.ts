@@ -79,7 +79,7 @@ export const useClashConnections = () => {
           )
 
           const lastData = {
-            ...currentData.at(-1)!,
+            ...currentData.at(-1),
             connections: filteredConnections,
           }
 

@@ -3,10 +3,10 @@ import { useClashAPI, type ClashDelayOptions } from '../service/clash-api'
 import { unwrapResult } from '../utils'
 import {
   commands,
-  ProxyItemHistory,
   type Proxies,
   type ProxyGroupItem,
   type ProxyItem,
+  type ProxyItemHistory,
 } from './bindings'
 import { CLASH_PROXIES_QUERY_KEY } from './consts'
 
@@ -177,7 +177,7 @@ export const useClashProxies = () => {
         global: {
           ...oldData.global,
           all: oldData.global.all.map((proxy) =>
-            Object.prototype.hasOwnProperty.call(data, proxy.name)
+            Object.hasOwn(data, proxy.name)
               ? createUpdatedProxy(proxy, {
                   name: proxy.name,
                   delay: data[proxy.name],
@@ -191,7 +191,7 @@ export const useClashProxies = () => {
         groups: oldData.groups.map((group) => ({
           ...group,
           all: group.all.map((proxy) =>
-            Object.prototype.hasOwnProperty.call(data, proxy.name)
+            Object.hasOwn(data, proxy.name)
               ? createUpdatedProxy(proxy, {
                   name: proxy.name,
                   delay: data[proxy.name],

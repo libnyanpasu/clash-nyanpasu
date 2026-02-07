@@ -58,6 +58,7 @@
     "lodash-es": "4.17.23"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.3.14",
     "@commitlint/cli": "20.4.1",
     "@commitlint/config-conventional": "20.4.1",
     "@ianvs/prettier-plugin-sort-imports": "4.7.1",

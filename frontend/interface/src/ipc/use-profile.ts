@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
 import {
   commands,
-  Profile,
+  type Profile,
   type ProfileBuilder,
   type ProfilesBuilder,
   type RemoteProfileOptionsBuilder,

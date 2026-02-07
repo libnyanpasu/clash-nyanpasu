@@ -40,7 +40,7 @@ export const fetchLatestCore = async () => {
 
     switch (item.core) {
       case 'clash':
-        latest = `n${results['clash_premium']}`
+        latest = `v${results.clash_premium}`
         break
 
       case 'clash-rs':

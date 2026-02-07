@@ -38,10 +38,7 @@ export const useProxyMode = () => {
 
     const currentMode = clashConfig.query.data?.mode?.toLowerCase()
 
-    if (
-      currentMode &&
-      Object.prototype.hasOwnProperty.call(modes, currentMode)
-    ) {
+    if (currentMode && Object.hasOwn(modes, currentMode)) {
       modes[currentMode as keyof typeof modes] = true
     } else {
       modes.rule = true

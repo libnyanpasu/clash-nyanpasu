@@ -5,12 +5,13 @@ import { type JSONSchema7 } from 'json-schema'
 import nyanpasuMergeSchema from 'meta-json-schema/schemas/clash-nyanpasu-merge-json-schema.json'
 import clashMetaSchema from 'meta-json-schema/schemas/meta-json-schema.json'
 import { type editor } from 'monaco-editor'
+import * as monaco from 'monaco-editor'
 import { configureMonacoYaml } from 'monaco-yaml'
 import { nanoid } from 'nanoid'
 import { useCallback, useMemo, useRef } from 'react'
 // schema
 import { themeMode } from '@/store'
-import MonacoEditor, { type Monaco } from '@monaco-editor/react'
+import MonacoEditor from '@monaco-editor/react'
 import { openThat } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 
@@ -30,10 +31,10 @@ export interface ProfileMonacoViewRef {
 
 let initd = false
 
-export const beforeEditorMount = (monaco: Monaco) => {
+export const beforeEditorMount = () => {
   if (!initd) {
-    monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
-      target: monaco.languages.typescript.ScriptTarget.ES2020,
+    monaco.typescript.javascriptDefaults.setCompilerOptions({
+      target: monaco.typescript.ScriptTarget.ES2020,
       allowNonTsExtensions: true,
       allowJs: true,
     })

@@ -241,7 +241,7 @@ importers:
         version: 3.13.18(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@tanstack/router-zod-adapter':
         specifier: 1.81.5
-        version: 1.81.5(@tanstack/react-router@1.158.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(zod@4.2.1)
+        version: 1.81.5(@tanstack/react-router@1.158.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(zod@4.3.6)
       '@tauri-apps/api':
         specifier: 2.8.0
         version: 2.8.0
@@ -457,8 +457,8 @@ importers:
         specifier: 5.1.4
         version: 5.1.4(typescript@5.9.3)(vite@7.3.1(@types/node@24.10.11)(jiti@2.6.1)(less@4.2.0)(lightningcss@1.30.2)(sass-embedded@1.97.3)(sass@1.97.3)(stylus@0.62.0)(terser@5.36.0)(tsx@4.21.0)(yaml@2.8.1))
       zod:
-        specifier: 4.2.1
-        version: 4.2.1
+        specifier: 4.3.6
+        version: 4.3.6
 
   frontend/ui:
     dependencies:
@@ -575,8 +575,8 @@ importers:
         specifier: 7.7.4
         version: 7.7.4
       zod:
-        specifier: 4.2.1
-        version: 4.2.1
+        specifier: 4.3.6
+        version: 4.3.6
     devDependencies:
       '@octokit/types':
         specifier: 16.0.0
@@ -7509,6 +7509,9 @@ packages:
   zod@4.2.1:
     resolution: {integrity: sha512-0wZ1IRqGGhMP76gLqz8EyfBXKk0J2qo2+H3fi4mcUP/KtTocoX08nmIAHl1Z2kJIZbZee8KOpBCSNPRgauucjw==}
 
+  zod@4.3.6:
+    resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
+
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
@@ -10474,10 +10477,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@tanstack/router-zod-adapter@1.81.5(@tanstack/react-router@1.158.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(zod@4.2.1)':
+  '@tanstack/router-zod-adapter@1.81.5(@tanstack/react-router@1.158.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(zod@4.3.6)':
     dependencies:
       '@tanstack/react-router': 1.158.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      zod: 4.2.1
+      zod: 4.3.6
 
   '@tanstack/store@0.8.0': {}
 
@@ -14689,5 +14692,7 @@ snapshots:
   zod@3.25.76: {}
 
   zod@4.2.1: {}
+
+  zod@4.3.6: {}
 
   zwitch@2.0.4: {}

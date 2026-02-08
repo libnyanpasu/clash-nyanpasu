@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "5.90.20",
-    "@tauri-apps/api": "2.8.0",
+    "@tauri-apps/api": "2.10.1",
     "ahooks": "3.9.6",
     "dayjs": "1.11.19",
     "lodash-es": "4.17.23",

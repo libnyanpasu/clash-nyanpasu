@@ -64,7 +64,7 @@
     "@tauri-apps/cli": "2.8.4",
     "@types/fs-extra": "11.0.4",
     "@types/lodash-es": "4.17.12",
-    "@types/node": "24.10.11",
+    "@types/node": "24.10.12",
     "autoprefixer": "10.4.24",
     "conventional-changelog-conventionalcommits": "9.1.0",
     "cross-env": "10.1.0",

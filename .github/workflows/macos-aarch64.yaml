@@ -11,7 +11,7 @@ jobs:
     runs-on: macos-15
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: install Rust nightly
         run: |

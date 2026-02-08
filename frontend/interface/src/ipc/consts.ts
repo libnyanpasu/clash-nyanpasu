@@ -1,7 +1,19 @@
+import { getSystem } from '@/utils/get-system'
+
+/**
+ * Operating system, used by useUpdaterSupported hook
+ */
+export const OS = getSystem()
+
 /**
  * Nyanpasu backend event name, use tauri event api to listen this event
  */
 export const NYANPASU_BACKEND_EVENT_NAME = 'nyanpasu://mutation'
+
+/**
+ * Is appimage query key, used by useIsAppImage hook
+ */
+export const IS_APPIMAGE_QUERY_KEY = 'is-appimage'
 
 /**
  * Service prompt query key, used by useServicePrompt hook

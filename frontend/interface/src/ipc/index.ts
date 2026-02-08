@@ -24,6 +24,7 @@ export * from './use-system-proxy'
 export * from './use-system-service'
 export * from './use-service-prompt'
 export * from './use-core-dir'
+export * from './use-platform'
 
 export { commands } from './bindings'
 export type * from './bindings'

@@ -61,7 +61,7 @@
     "@commitlint/cli": "20.4.1",
     "@commitlint/config-conventional": "20.4.1",
     "@ianvs/prettier-plugin-sort-imports": "4.7.1",
-    "@tauri-apps/cli": "2.8.4",
+    "@tauri-apps/cli": "2.10.0",
     "@types/fs-extra": "11.0.4",
     "@types/lodash-es": "4.17.12",
     "@types/node": "24.10.12",

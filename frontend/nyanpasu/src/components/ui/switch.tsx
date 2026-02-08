@@ -56,6 +56,7 @@ export const Switch = ({
 
 export function SwitchItem({
   children,
+  className,
   ...props
 }: ComponentProps<typeof Switch>) {
   return (
@@ -65,6 +66,7 @@ export function SwitchItem({
         'bg-surface-variant/30 dark:bg-surface-variant/10',
         'rounded-xl',
         'p-4',
+        className,
       )}
     >
       {children}

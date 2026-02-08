@@ -93,7 +93,7 @@
     "tsx": "4.21.0",
     "typescript": "5.9.3"
   },
-  "packageManager": "pnpm@10.28.2",
+  "packageManager": "pnpm@10.29.1",
   "engines": {
     "node": "22.22.0"
   },

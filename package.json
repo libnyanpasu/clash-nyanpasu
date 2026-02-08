@@ -84,7 +84,7 @@
     "prettier-plugin-toml": "2.0.6",
     "stylelint": "16.26.1",
     "stylelint-config-html": "1.1.0",
-    "stylelint-config-recess-order": "7.6.0",
+    "stylelint-config-recess-order": "7.6.1",
     "stylelint-config-standard": "39.0.1",
     "stylelint-declaration-block-no-ignored-properties": "2.8.0",
     "stylelint-order": "7.0.1",

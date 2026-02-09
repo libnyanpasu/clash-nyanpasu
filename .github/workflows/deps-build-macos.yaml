@@ -68,7 +68,7 @@ jobs:
       - name: Install Node latest
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x

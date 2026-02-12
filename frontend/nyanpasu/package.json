@@ -98,7 +98,7 @@
     "core-js": "3.48.0",
     "filesize": "11.0.13",
     "meta-json-schema": "1.19.20",
-    "monaco-yaml": "5.4.0",
+    "monaco-yaml": "5.4.1",
     "nanoid": "5.1.6",
     "sass-embedded": "1.97.3",
     "shiki": "2.5.0",

@@ -38,6 +38,8 @@
   "settings_system_proxy_system_service_ctrl_manual_operation_prompt": "无法自动操作服务。请导航到内核所在目录，在 Windows 上以管理员身份打开 PowerShell 或在 macOS/Linux 上打开终端仿真器，然后执行以下命令：",
   "settings_system_proxy_system_service_ctrl_start": "启动",
   "settings_system_proxy_system_service_ctrl_stop": "停止",
+  "settings_system_proxy_auto_launch_label": "开机自启",
+  "settings_system_proxy_silent_start_label": "静默启动",
   "settings_user_interface_title": "用户界面",
   "settings_user_interface_language_label": "语言",
   "settings_user_interface_theme_mode_label": "主题模式",

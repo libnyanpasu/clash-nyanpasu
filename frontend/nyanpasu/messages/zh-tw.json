@@ -38,6 +38,8 @@
   "settings_system_proxy_system_service_ctrl_manual_operation_prompt": "無法自動操作服務。請開啟核心所在目錄，在 Windows 上以管理員身分開啟 PowerShell 或在 macOS/Linux 上開啟終端模擬器，然後執行以下指令：",
   "settings_system_proxy_system_service_ctrl_start": "啟動",
   "settings_system_proxy_system_service_ctrl_stop": "停止",
+  "settings_system_proxy_auto_launch_label": "開機自啟",
+  "settings_system_proxy_silent_start_label": "靜默啟動",
   "settings_user_interface_title": "使用者介面",
   "settings_user_interface_language_label": "語言",
   "settings_user_interface_theme_mode_label": "主題模式",

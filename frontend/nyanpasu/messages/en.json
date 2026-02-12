@@ -38,6 +38,8 @@
   "settings_system_proxy_system_service_ctrl_manual_operation_prompt": "Unable to control the service automatically. Please navigate to the core directory, run PowerShell as administrator on Windows or a terminal emulator on macOS/Linux, and execute the following commands:",
   "settings_system_proxy_system_service_ctrl_start": "Start",
   "settings_system_proxy_system_service_ctrl_stop": "Stop",
+  "settings_system_proxy_auto_launch_label": "Auto Launch",
+  "settings_system_proxy_silent_start_label": "Silent Start",
   "settings_user_interface_title": "User Interface",
   "settings_user_interface_language_label": "Language",
   "settings_user_interface_theme_mode_label": "Theme Mode",

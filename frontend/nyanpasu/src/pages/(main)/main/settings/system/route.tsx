@@ -10,10 +10,12 @@ import {
   SettingsTitle,
   SettingsTitlePlaceholder,
 } from '../_modules/settings-title'
+import AutoLaunchSwitch from './_modules/auto-launch-switch'
 import CurrentSystemProxy from './_modules/current-system-proxy'
 import ProxyBypassConfig from './_modules/proxy-bypass-config'
 import ProxyGuardConfig from './_modules/proxy-guard-config'
 import ProxyGuardSwitch from './_modules/proxy-guard-switch'
+import SilentLaunchSwitch from './_modules/slient-launch-switch'
 import SystemServiceCtrl from './_modules/system-service-ctrl'
 import SystemServiceSwitch from './_modules/system-service-switch'
 
@@ -50,6 +52,12 @@ function RouteComponent() {
       <SystemServiceSwitch />
 
       <SystemServiceCtrl />
+
+      <Separator className="my-4" />
+
+      <AutoLaunchSwitch />
+
+      <SilentLaunchSwitch />
     </>
   )
 }

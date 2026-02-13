@@ -6,6 +6,7 @@ import {
   SettingsTitlePlaceholder,
 } from '../_modules/settings-title'
 import AllowLanSwitch from './_modules/allow-lan-switch'
+import CoreManagerCard from './_modules/core-manager-card'
 import IPv6Switch from './_modules/ipv6-switch'
 import LogLevelSelector from './_modules/log-level-selector'
 import MixedPortConfig from './_modules/mixed-port-config'
@@ -35,6 +36,10 @@ function RouteComponent() {
       <MixedPortConfig />
 
       <RandomPortSwitch />
+
+      <Separator className="my-4" />
+
+      <CoreManagerCard />
     </>
   )
 }

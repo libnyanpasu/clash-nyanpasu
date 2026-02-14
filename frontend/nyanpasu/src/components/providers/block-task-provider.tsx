@@ -22,7 +22,7 @@ interface BlockTask<T = any> {
 
 interface BlockTaskContextType {
   tasks: Record<string, BlockTask>
-  run: <T>(key: string, fn: () => Promise<T>) => Promise<T>
+  run: <T>(key: string, fn: (...args: unknown[]) => Promise<T>) => Promise<T>
   getTask: (key: string) => BlockTask | undefined
   clearTask: (key: string) => void
 }
@@ -39,11 +39,14 @@ export const useBlockTaskContext = () => {
   return context
 }
 
-export const useBlockTask = <T,>(key: string, fn: () => Promise<T>) => {
+export const useBlockTask = <T, Args extends unknown[] = []>(
+  key: string,
+  fn: (...args: Args) => Promise<T>,
+) => {
   const { run, tasks } = useBlockTaskContext()
 
-  const execute = useLockFn(async () => {
-    return await run(key, fn)
+  const execute = useLockFn(async (...args: Args) => {
+    return await run(key, () => fn(...args))
   })
 
   return {

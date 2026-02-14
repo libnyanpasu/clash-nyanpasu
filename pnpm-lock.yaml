@@ -361,8 +361,8 @@ importers:
         specifier: 1.159.10
         version: 1.159.10(@tanstack/react-router@1.159.10(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@tanstack/router-core@1.159.9)(csstype@3.2.3)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@tanstack/router-plugin':
-        specifier: 1.159.11
-        version: 1.159.11(@tanstack/react-router@1.159.10(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(vite@7.3.1(@types/node@24.10.13)(jiti@2.6.1)(less@4.2.0)(lightningcss@1.30.2)(sass-embedded@1.97.3)(sass@1.97.3)(stylus@0.62.0)(terser@5.36.0)(tsx@4.21.0)(yaml@2.8.1))
+        specifier: 1.159.12
+        version: 1.159.12(@tanstack/react-router@1.159.10(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(vite@7.3.1(@types/node@24.10.13)(jiti@2.6.1)(less@4.2.0)(lightningcss@1.30.2)(sass-embedded@1.97.3)(sass@1.97.3)(stylus@0.62.0)(terser@5.36.0)(tsx@4.21.0)(yaml@2.8.1))
       '@tauri-apps/plugin-clipboard-manager':
         specifier: 2.3.2
         version: 2.3.2
@@ -3541,8 +3541,8 @@ packages:
     resolution: {integrity: sha512-WDn17uYP/Mk//7OP5ZnlYK228ezQ/N+pVA8BrwoF69g3Scq5CkfZUD633UI1+oXIl8Fb1pCt4CU0LkN7niMTmQ==}
     engines: {node: '>=12'}
 
-  '@tanstack/router-plugin@1.159.11':
-    resolution: {integrity: sha512-QrnwUX9XtfOqiNsD/AYmqTvvezuUwv4W7ewWwUgSTe0CEkuyjEa8aiZMLrofB613lRmoHSmjT6ciaV3z2vHdWw==}
+  '@tanstack/router-plugin@1.159.12':
+    resolution: {integrity: sha512-0X80lU5ueimuYdb3xRf7jGtNgi12xA3c2fVfUJUoHXztOML+R/fS7bBh2WCSYH5E4BA4bt7AxqPSlMUgm93K2w==}
     engines: {node: '>=12'}
     peerDependencies:
       '@rsbuild/core': '>=1.0.2'
@@ -10588,7 +10588,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@tanstack/router-plugin@1.159.11(@tanstack/react-router@1.159.10(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(vite@7.3.1(@types/node@24.10.13)(jiti@2.6.1)(less@4.2.0)(lightningcss@1.30.2)(sass-embedded@1.97.3)(sass@1.97.3)(stylus@0.62.0)(terser@5.36.0)(tsx@4.21.0)(yaml@2.8.1))':
+  '@tanstack/router-plugin@1.159.12(@tanstack/react-router@1.159.10(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(vite@7.3.1(@types/node@24.10.13)(jiti@2.6.1)(less@4.2.0)(lightningcss@1.30.2)(sass-embedded@1.97.3)(sass@1.97.3)(stylus@0.62.0)(terser@5.36.0)(tsx@4.21.0)(yaml@2.8.1))':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/plugin-syntax-jsx': 7.27.1(@babel/core@7.29.0)

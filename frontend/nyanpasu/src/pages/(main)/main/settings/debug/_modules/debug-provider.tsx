@@ -1,5 +1,7 @@
 import { createContext, PropsWithChildren, use, useState } from 'react'
 
+const isDev = import.meta.env.DEV
+
 const DebugContext = createContext<{
   advanceTools: boolean
   setAdvanceTools: (value: boolean) => void
@@ -16,7 +18,7 @@ export const useDebugContext = () => {
 }
 
 export default function DebugProvider({ children }: PropsWithChildren) {
-  const [advanceTools, setAdvanceTools] = useState(false)
+  const [advanceTools, setAdvanceTools] = useState(isDev)
 
   return (
     <DebugContext.Provider

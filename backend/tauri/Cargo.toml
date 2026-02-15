@@ -245,15 +245,15 @@ nix = { version = "0.30.0", features = ["user", "fs"] }
 [target.'cfg(windows)'.dependencies]
 deelevate = "0.2.0"
 winreg = { version = "0.55", features = ["transactions"] }
-windows-registry = "0.5.1"
-windows-sys = { version = "0.60", features = [
+windows-registry = "0.6.0"
+windows-sys = { version = "0.61", features = [
   "Win32_System_LibraryLoader",
   "Win32_System_SystemInformation",
   "Win32_UI_WindowsAndMessaging",
   "Win32_System_Shutdown",
   "Win32_Graphics_Gdi",
 ] }
-windows-core = "0.61"
+windows-core = "0.62"
 webview2-com = "0.38"
 
 [features]

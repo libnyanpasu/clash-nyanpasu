@@ -61,6 +61,18 @@ const IssuesItem = () => {
   )
 }
 
+const CollectLogItem = () => {
+  const handleClick = useLockFn(async () => {
+    await commands.collectLogs()
+  })
+
+  return (
+    <DropdownMenuItem onClick={handleClick}>
+      {m.header_help_action_collect_logs()}
+    </DropdownMenuItem>
+  )
+}
+
 export default function HeaderHelpAction({ children }: PropsWithChildren) {
   return (
     <DropdownMenu>
@@ -70,6 +82,8 @@ export default function HeaderHelpAction({ children }: PropsWithChildren) {
         <WikiItem />
 
         <IssuesItem />
+
+        <CollectLogItem />
 
         <DropdownMenuItem asChild>
           <Link to="/main/settings/about">{m.header_help_action_about()}</Link>

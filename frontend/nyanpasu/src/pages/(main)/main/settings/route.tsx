@@ -28,7 +28,7 @@ function RouteComponent() {
       >
         <div
           className={cn(
-            'container mx-auto mb-4 w-full max-w-7xl',
+            'container mx-auto w-full max-w-7xl pb-4',
             'min-h-[calc(100vh-40px-64px)]',
             'sm:min-h-[calc(100vh-40px-48px)]',
           )}

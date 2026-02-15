@@ -59,9 +59,6 @@ export const AppContainer = ({
           appWindow.startDragging()
         }
       }}
-      onContextMenu={(e) => {
-        e.preventDefault()
-      }}
     >
       {isDrawer && <AppDrawer data-tauri-drag-region />}
 

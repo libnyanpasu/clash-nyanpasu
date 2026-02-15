@@ -170,5 +170,7 @@
   "common_validate": "Validate",
   "common_close": "Close",
   "common_copy": "Copy",
-  "common_open": "Open"
+  "common_open": "Open",
+  "common_cut": "Cut",
+  "common_paste": "Paste"
 }

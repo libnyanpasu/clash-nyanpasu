@@ -170,5 +170,7 @@
   "common_validate": "Проверить",
   "common_close": "Закрыть",
   "common_copy": "Копировать",
-  "common_open": "Открыть"
+  "common_open": "Открыть",
+  "common_cut": "Вырезать",
+  "common_paste": "Вставить"
 }

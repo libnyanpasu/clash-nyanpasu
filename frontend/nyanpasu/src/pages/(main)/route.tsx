@@ -1,3 +1,4 @@
+import ContextMenuProvider from '@/components/providers/context-menu-provider'
 import NyanpasuUpdateProvider from '@/components/providers/nyanpasu-update-provider'
 import { AnimatedOutletPreset } from '@/components/router/animated-outlet'
 import { cn } from '@nyanpasu/ui'
@@ -26,25 +27,27 @@ const AppContent = () => {
 function RouteComponent() {
   return (
     <NyanpasuUpdateProvider>
-      <div
-        className={cn('flex max-h-dvh min-h-dvh flex-col', 'bg-background/30')}
-        data-slot="app-root"
-        data-app-version={packageJson.version}
-        onContextMenu={(e) => {
-          e.preventDefault()
-        }}
-      >
-        <Header />
-
+      <ContextMenuProvider>
         <div
-          className="flex flex-1 flex-col sm:flex-col-reverse"
-          data-slot="app-content-container"
+          className={cn(
+            'flex max-h-dvh min-h-dvh flex-col',
+            'bg-background/30',
+          )}
+          data-slot="app-root"
+          data-app-version={packageJson.version}
         >
-          <AppContent />
+          <Header />
 
-          <Navbar />
+          <div
+            className="flex flex-1 flex-col sm:flex-col-reverse"
+            data-slot="app-content-container"
+          >
+            <AppContent />
+
+            <Navbar />
+          </div>
         </div>
-      </div>
+      </ContextMenuProvider>
     </NyanpasuUpdateProvider>
   )
 }

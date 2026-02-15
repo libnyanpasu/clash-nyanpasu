@@ -170,5 +170,7 @@
   "common_validate": "验证",
   "common_close": "关闭",
   "common_copy": "复制",
-  "common_open": "打开"
+  "common_open": "打开",
+  "common_cut": "剪切",
+  "common_paste": "粘贴"
 }

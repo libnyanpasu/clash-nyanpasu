@@ -18,6 +18,7 @@ import ProxyGuardSwitch from './_modules/proxy-guard-switch'
 import SilentLaunchSwitch from './_modules/slient-launch-switch'
 import SystemServiceCtrl from './_modules/system-service-ctrl'
 import SystemServiceSwitch from './_modules/system-service-switch'
+import UwpToolsButton from './_modules/uwp-tools-button'
 
 export const Route = createFileRoute('/(main)/main/settings/system')({
   component: RouteComponent,
@@ -58,6 +59,10 @@ function RouteComponent() {
       <AutoLaunchSwitch />
 
       <SilentLaunchSwitch />
+
+      <Separator className="my-4" />
+
+      <UwpToolsButton />
     </>
   )
 }

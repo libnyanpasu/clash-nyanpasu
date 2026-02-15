@@ -40,6 +40,7 @@
   "settings_system_proxy_system_service_ctrl_stop": "Остановить",
   "settings_system_proxy_auto_launch_label": "Автозапуск",
   "settings_system_proxy_silent_start_label": "Тихий запуск",
+  "settings_system_proxy_uwp_tools_label": "UWP Loopback Tools",
   "settings_user_interface_title": "Интерфейс пользователя",
   "settings_user_interface_language_label": "Язык",
   "settings_user_interface_theme_mode_label": "Режим темы",
@@ -166,5 +167,6 @@
   "common_save": "Сохранить",
   "common_validate": "Проверить",
   "common_close": "Закрыть",
-  "common_copy": "Копировать"
+  "common_copy": "Копировать",
+  "common_open": "Открыть"
 }

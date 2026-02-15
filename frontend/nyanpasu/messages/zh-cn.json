@@ -40,6 +40,7 @@
   "settings_system_proxy_system_service_ctrl_stop": "停止",
   "settings_system_proxy_auto_launch_label": "开机自启",
   "settings_system_proxy_silent_start_label": "静默启动",
+  "settings_system_proxy_uwp_tools_label": "UWP 回环工具",
   "settings_user_interface_title": "用户界面",
   "settings_user_interface_language_label": "语言",
   "settings_user_interface_theme_mode_label": "主题模式",
@@ -166,5 +167,6 @@
   "common_save": "保存",
   "common_validate": "验证",
   "common_close": "关闭",
-  "common_copy": "复制"
+  "common_copy": "复制",
+  "common_open": "打开"
 }

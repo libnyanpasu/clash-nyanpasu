@@ -63,6 +63,7 @@
   "settings_clash_settings_fixed_label": "固定",
   "settings_clash_settings_random_label": "隨機",
   "settings_clash_settings_core_secret_label": "API 訪問密鑰",
+  "settings_clash_settings_field_filter_label": "Clash 字段過濾",
   "settings_web_ui_title": "Web UI 設置",
   "settings_web_ui_add_button": "添加",
   "settings_web_ui_empty_item": "沒有找到記錄，嘗試添加一個吧",

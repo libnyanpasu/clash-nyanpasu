@@ -542,8 +542,8 @@ importers:
         specifier: 1.97.3
         version: 1.97.3
       tailwind-merge:
-        specifier: 3.4.0
-        version: 3.4.0
+        specifier: 3.4.1
+        version: 3.4.1
       typescript-plugin-css-modules:
         specifier: 5.2.0
         version: 5.2.0(typescript@5.9.3)
@@ -7086,8 +7086,8 @@ packages:
     resolution: {integrity: sha512-9kY+CygyYM6j02t5YFHbNz2FN5QmYGv9zAjVp4lCDjlCw7amdckXlEt/bjMhUIfj4ThGRE4gCUH5+yGnNuPo5A==}
     engines: {node: '>=10.0.0'}
 
-  tailwind-merge@3.4.0:
-    resolution: {integrity: sha512-uSaO4gnW+b3Y2aWoWfFpX62vn2sR3skfhbjsEnaBI81WD1wBLlHZe5sWf0AqjksNdYTbGBEd0UasQMT3SNV15g==}
+  tailwind-merge@3.4.1:
+    resolution: {integrity: sha512-2OA0rFqWOkITEAOFWSBSApYkDeH9t2B3XSJuI4YztKBzK3mX0737A2qtxDZ7xkw9Zfh0bWl+r34sF3HXV+Ig7Q==}
 
   tailwindcss@4.1.18:
     resolution: {integrity: sha512-4+Z+0yiYyEtUVCScyfHCxOYP06L5Ne+JiHhY2IjR2KWMIWhJOYZKLSGZaP5HkZ8+bY0cxfzwDE5uOmzFXyIwxw==}
@@ -14309,7 +14309,7 @@ snapshots:
       string-width: 4.2.3
       strip-ansi: 6.0.1
 
-  tailwind-merge@3.4.0: {}
+  tailwind-merge@3.4.1: {}
 
   tailwindcss@4.1.18: {}
 

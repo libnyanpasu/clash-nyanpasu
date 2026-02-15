@@ -64,6 +64,7 @@
   "settings_clash_settings_random_label": "Случайный",
   "settings_clash_settings_core_secret_label": "API ключ",
   "settings_clash_settings_field_filter_label": "Clash Field Filter",
+  "settings_clash_settings_field_filter_nyanpasu_control_fields": "Nyanpasu Control Fields",
   "settings_web_ui_title": "Web UI",
   "settings_web_ui_add_button": "Добавить",
   "settings_web_ui_empty_item": "Не найдено записей, попробуйте добавить одну",

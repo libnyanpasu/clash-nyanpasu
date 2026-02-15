@@ -63,6 +63,8 @@
   "settings_clash_settings_fixed_label": "固定",
   "settings_clash_settings_random_label": "随机",
   "settings_clash_settings_core_secret_label": "API 访问密钥",
+  "settings_clash_settings_field_filter_label": "Clash 字段过滤",
+  "settings_clash_settings_field_filter_nyanpasu_control_fields": "Nyanpasu 覆写控制字段",
   "settings_web_ui_title": "Web UI",
   "settings_web_ui_add_button": "添加",
   "settings_web_ui_empty_item": "没有找到记录，尝试添加一个吧",

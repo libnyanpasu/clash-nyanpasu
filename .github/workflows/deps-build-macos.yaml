@@ -82,6 +82,13 @@ jobs:
         shell: bash
         run: |
           pnpm i
+
+      - name: Restore build cache
+        run: deno run -A scripts/deno/build-cache.ts restore --os macos --arch ${{ inputs.aarch64 == true && 'aarch64' || 'x86_64' }}
+        env:
+          FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+        continue-on-error: true
+
       - name: Download Sidecars aarch64
         if: ${{ inputs.aarch64 == true }}
         run: pnpm prepare:check --arch arm64 --sidecar-host aarch64-apple-darwin
@@ -130,3 +137,10 @@ jobs:
           name: Clash.Nyanpasu-macOS-${{ inputs.aarch64 == true && 'aarch64' || 'amd64' }}
           path: |
             ./backend/target/**/*.dmg
+
+      - name: Save build cache
+        if: always()
+        run: deno run -A scripts/deno/build-cache.ts save --os macos --arch ${{ inputs.aarch64 == true && 'aarch64' || 'x86_64' }}
+        env:
+          FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+        continue-on-error: true

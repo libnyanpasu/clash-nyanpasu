@@ -2,10 +2,11 @@
   "version": "5",
   "specifiers": {
     "jsr:@std/async@1": "1.1.1",
+    "jsr:@std/cli@1": "1.0.27",
     "jsr:@std/fmt@1": "1.0.9",
     "jsr:@std/fs@*": "1.0.22",
     "jsr:@std/internal@^1.0.12": "1.0.12",
-    "jsr:@std/path@*": "1.0.8",
+    "jsr:@std/path@*": "1.1.4",
     "jsr:@std/path@^1.1.4": "1.1.4",
     "npm:colorize-template@*": "1.0.0",
     "npm:consola@*": "3.4.0",
@@ -17,6 +18,9 @@
   "jsr": {
     "@std/async@1.1.1": {
       "integrity": "8a79beb3378cc229ce65ba2c746cfd03e4855ddd891d1eb6b9e32128e0d5339c"
+    },
+    "@std/cli@1.0.27": {
+      "integrity": "eba97edd0891871a7410e835dd94b3c260c709cca5983df2689c25a71fbe04de"
     },
     "@std/fmt@1.0.9": {
       "integrity": "2487343e8899fb2be5d0e3d35013e54477ada198854e52dd05ed0422eddcabe0"

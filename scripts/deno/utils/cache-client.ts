@@ -1,4 +1,5 @@
 import { format as formatBytes } from 'jsr:@std/fmt@1/bytes'
+import { writeAll } from 'jsr:@std/io@0.225/write-all'
 import { CHUNK_MULTIPLIER, performChunkedUpload } from './file-server.ts'
 import { consola } from './logger.ts'
 
@@ -137,6 +138,8 @@ export async function downloadCache(
     )
   }
 
+  const totalSize = Number(resp.headers.get('Content-Length')) || 0
+  const reader = resp.body!.getReader()
   const dest = await Deno.open(destPath, {
     write: true,
     create: true,
@@ -144,7 +147,34 @@ export async function downloadCache(
   })
 
   try {
-    await resp.body!.pipeTo(dest.writable)
+    let received = 0
+    let lastLogTime = Date.now()
+    let lastLogReceived = 0
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      await writeAll(dest, value)
+      received += value.byteLength
+
+      const now = Date.now()
+      const elapsed = now - lastLogTime
+      if (elapsed >= 1000) {
+        const speed = ((received - lastLogReceived) / elapsed) * 1000
+        lastLogTime = now
+        lastLogReceived = received
+        if (totalSize > 0) {
+          const pct = Math.floor((received / totalSize) * 100)
+          consola.info(
+            `  cache "${key}": ${formatBytes(received)}/${formatBytes(totalSize)} (${pct}%) ${formatBytes(speed)}/s`,
+          )
+        } else {
+          consola.info(
+            `  cache "${key}": ${formatBytes(received)} downloaded ${formatBytes(speed)}/s`,
+          )
+        }
+      }
+    }
   } catch {
     try {
       dest.close()
@@ -154,6 +184,7 @@ export async function downloadCache(
     throw new Error(`failed to write cache to "${destPath}"`)
   }
 
+  dest.close()
   consola.success(`cache "${key}" downloaded to "${destPath}"`)
   return true
 }

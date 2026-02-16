@@ -125,6 +125,8 @@ export async function performChunkedUpload<T>(
     let start = 0
     let chunkIndex = 0
     const totalChunks = Math.ceil(fileSize / chunkSize)
+    let lastLogTime = Date.now()
+    let lastLogUploaded = 0
 
     while (start < fileSize) {
       const endExclusive = Math.min(start + chunkSize, fileSize)
@@ -146,9 +148,17 @@ export async function performChunkedUpload<T>(
         { maxAttempts: CHUNK_RETRY_ATTEMPTS },
       )
 
-      consola.debug(
-        `  ${label} chunk ${chunkIndex}/${totalChunks} uploaded (${formatBytes(endExclusive)}/${formatBytes(fileSize)})`,
-      )
+      const now = Date.now()
+      const elapsed = now - lastLogTime
+      if (elapsed >= 1000 || data.done) {
+        const speed = ((endExclusive - lastLogUploaded) / elapsed) * 1000
+        lastLogTime = now
+        lastLogUploaded = endExclusive
+        const pct = Math.floor((endExclusive / fileSize) * 100)
+        consola.info(
+          `  ${label} ${chunkIndex}/${totalChunks}: ${formatBytes(endExclusive)}/${formatBytes(fileSize)} (${pct}%) ${formatBytes(speed)}/s`,
+        )
+      }
 
       if (data.done) {
         return data

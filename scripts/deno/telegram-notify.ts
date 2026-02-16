@@ -2,8 +2,7 @@ import { retry } from 'jsr:@std/async@1/retry'
 import { format as formatBytes } from 'jsr:@std/fmt@1/bytes'
 import { ensureDir, exists } from 'jsr:@std/fs'
 import * as path from 'jsr:@std/path'
-import { TelegramClient } from 'npm:telegram'
-import { StringSession } from 'npm:telegram/sessions'
+import { Bot } from 'npm:grammy'
 import { consola } from './utils/logger.ts'
 
 // --- env helpers ---
@@ -23,8 +22,6 @@ const TELEGRAM_TOKEN = requireEnv('TELEGRAM_TOKEN')
 const TELEGRAM_TO = requireEnv('TELEGRAM_TO')
 const TELEGRAM_TO_NIGHTLY = requireEnv('TELEGRAM_TO_NIGHTLY')
 const GITHUB_TOKEN = requireEnv('GITHUB_TOKEN')
-const TELEGRAM_API_ID = Number(requireEnv('TELEGRAM_API_ID'))
-const TELEGRAM_API_HASH = requireEnv('TELEGRAM_API_HASH')
 const FILE_SERVER_TOKEN = requireEnv('FILE_SERVER_TOKEN')
 const WORKFLOW_RUN_ID = Deno.env.get('WORKFLOW_RUN_ID')
 
@@ -125,43 +122,168 @@ async function fetchRelease(): Promise<GitHubRelease> {
   return (await resp.json()) as GitHubRelease
 }
 
-// --- file server upload ---
+const UPLOAD_CONCURRENCY = 3
+const CHUNK_RETRY_ATTEMPTS = 5
 
 interface UploadResult {
   fileName: string
   downloadUrl: string
 }
 
-async function uploadToFileServer(filePath: string): Promise<UploadResult> {
-  const fileName = path.basename(filePath)
-  const fileData = await Deno.readFile(filePath)
+interface InitResponse {
+  uploadId: string
+  chunkSize: number
+}
 
-  consola.info(
-    `uploading ${fileName} (${formatBytes(fileData.byteLength)}) to file server...`,
-  )
+interface ChunkResponse {
+  done: boolean
+  file?: { id: string }
+}
 
-  const resp = await fetch(FILE_SERVER_UPLOAD_URL, {
+async function initUploadSession(
+  fileName: string,
+  fileSize: number,
+  mimeType: string | null,
+): Promise<InitResponse> {
+  const resp = await fetch(`${FILE_SERVER_UPLOAD_URL}/init`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/octet-stream',
-      'x-file-name': fileName,
-      Authorization: `Bearer ${FILE_SERVER_TOKEN}`,
+      'x-authorization': FILE_SERVER_TOKEN,
+      'Content-Type': 'application/json',
     },
-    body: fileData,
+    body: JSON.stringify({ filename: fileName, fileSize, mimeType }),
   })
 
   if (!resp.ok) {
     const body = await resp.text()
     throw new Error(
-      `file server upload failed for ${fileName}: ${resp.status} ${resp.statusText} - ${body}`,
+      `upload init failed: ${resp.status} ${resp.statusText} - ${body}`,
     )
   }
 
-  const json = (await resp.json()) as { id: string }
-  const downloadUrl = `${FILE_SERVER_BIN_URL}/${json.id}`
+  return (await resp.json()) as InitResponse
+}
 
-  consola.success(`uploaded ${fileName} -> ${downloadUrl}`)
-  return { fileName, downloadUrl }
+async function uploadChunk(
+  uploadId: string,
+  chunk: Uint8Array,
+  start: number,
+  end: number,
+  total: number,
+): Promise<ChunkResponse> {
+  const resp = await fetch(`${FILE_SERVER_UPLOAD_URL}/chunk`, {
+    method: 'POST',
+    headers: {
+      'x-authorization': FILE_SERVER_TOKEN,
+      'x-upload-id': uploadId,
+      'Content-Range': `bytes ${start}-${end}/${total}`,
+      'Content-Type': 'application/octet-stream',
+    },
+    body: chunk,
+  })
+
+  if (!resp.ok) {
+    const body = await resp.text()
+    throw new Error(
+      `chunk upload failed: ${resp.status} ${resp.statusText} - ${body}`,
+    )
+  }
+
+  return (await resp.json()) as ChunkResponse
+}
+
+async function uploadToFileServer(filePath: string): Promise<UploadResult> {
+  const fileName = path.basename(filePath)
+  const stat = await Deno.stat(filePath)
+  const fileSize = stat.size
+
+  consola.info(
+    `uploading ${fileName} (${formatBytes(fileSize)}) to file server...`,
+  )
+
+  const { uploadId, chunkSize } = await initUploadSession(
+    fileName,
+    fileSize,
+    null,
+  )
+  consola.debug(
+    `upload session created: uploadId=${uploadId}, chunkSize=${formatBytes(chunkSize)}`,
+  )
+
+  const file = await Deno.open(filePath, { read: true })
+  try {
+    let start = 0
+    let chunkIndex = 0
+    const totalChunks = Math.ceil(fileSize / chunkSize)
+
+    while (start < fileSize) {
+      const endExclusive = Math.min(start + chunkSize, fileSize)
+      const size = endExclusive - start
+      const buf = new Uint8Array(size)
+      await file.seek(start, Deno.SeekMode.Start)
+      let bytesRead = 0
+      while (bytesRead < size) {
+        const n = await file.read(buf.subarray(bytesRead))
+        if (n === null) break
+        bytesRead += n
+      }
+
+      const end = endExclusive - 1
+      chunkIndex++
+
+      const data = await retry(
+        () =>
+          uploadChunk(
+            uploadId,
+            buf.subarray(0, bytesRead),
+            start,
+            end,
+            fileSize,
+          ),
+        { maxAttempts: CHUNK_RETRY_ATTEMPTS },
+      )
+
+      consola.debug(
+        `  ${fileName} chunk ${chunkIndex}/${totalChunks} uploaded (${formatBytes(endExclusive)}/${formatBytes(fileSize)})`,
+      )
+
+      if (data.done) {
+        const downloadUrl = `${FILE_SERVER_BIN_URL}/${data.file!.id}`
+        consola.success(`uploaded ${fileName} -> ${downloadUrl}`)
+        return { fileName, downloadUrl }
+      }
+
+      start = endExclusive
+    }
+  } finally {
+    file.close()
+  }
+
+  throw new Error(`Upload of ${fileName} ended unexpectedly without done=true`)
+}
+
+async function uploadAllFiles(filePaths: string[]): Promise<UploadResult[]> {
+  const results: UploadResult[] = []
+  const queue = [...filePaths]
+  const inFlight: Promise<void>[] = []
+
+  async function processNext(): Promise<void> {
+    while (queue.length > 0) {
+      const filePath = queue.shift()!
+      const result = await retry(() => uploadToFileServer(filePath), {
+        maxAttempts: CHUNK_RETRY_ATTEMPTS,
+      })
+      results.push(result)
+    }
+  }
+
+  const workers = Math.min(UPLOAD_CONCURRENCY, filePaths.length)
+  for (let i = 0; i < workers; i++) {
+    inFlight.push(processNext())
+  }
+  await Promise.all(inFlight)
+
+  return results
 }
 
 // --- platform grouping ---
@@ -204,14 +326,7 @@ const platformGroups: PlatformGroup[] = [
 // --- main ---
 
 async function main() {
-  const client = new TelegramClient(
-    new StringSession(''),
-    TELEGRAM_API_ID,
-    TELEGRAM_API_HASH,
-    { connectionRetries: 5 },
-  )
-
-  await client.start({ botAuthToken: TELEGRAM_TOKEN })
+  const bot = new Bot(TELEGRAM_TOKEN)
 
   const release = await fetchRelease()
   const GIT_SHORT_HASH = getGitShortHash()
@@ -244,16 +359,12 @@ async function main() {
     consola.log(`found ${item}, size: ${getFileSize(item)}`, await exists(item))
   }
 
-  // upload all files to file server
-  consola.start('Uploading files to file server...')
+  // upload all files to file server (concurrent chunk upload)
+  consola.start(
+    `Uploading ${resourceMapping.length} files to file server (concurrency: ${UPLOAD_CONCURRENCY})...`,
+  )
 
-  const uploadResults: UploadResult[] = []
-  for (const filePath of resourceMapping) {
-    const result = await retry(() => uploadToFileServer(filePath), {
-      maxAttempts: 5,
-    })
-    uploadResults.push(result)
-  }
+  const uploadResults = await uploadAllFiles(resourceMapping)
 
   consola.success(`Uploaded ${uploadResults.length} files to file server`)
 
@@ -297,11 +408,8 @@ async function main() {
   const messageText = lines.join('\n')
   const chatId = nightlyBuild ? TELEGRAM_TO_NIGHTLY : TELEGRAM_TO
 
-  await client.sendMessage(chatId, { message: messageText })
+  await bot.api.sendMessage(chatId, messageText, { parse_mode: 'Markdown' })
   consola.success('Sent telegram notification')
-
-  await client.disconnect()
-  Deno.exit()
 }
 
 main().catch((error) => {

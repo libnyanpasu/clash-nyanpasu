@@ -1,5 +1,5 @@
 import { format as formatBytes } from 'jsr:@std/fmt@1/bytes'
-import { performChunkedUpload } from './file-server.ts'
+import { CHUNK_MULTIPLIER, performChunkedUpload } from './file-server.ts'
 import { consola } from './logger.ts'
 
 const CACHE_BASE_URL = 'https://file-server.elaina.moe/cache'
@@ -34,7 +34,11 @@ async function initCacheUploadSession(
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ key, fileSize }),
+    body: JSON.stringify({
+      key,
+      fileSize,
+      chunkMultiplier: CHUNK_MULTIPLIER,
+    }),
   })
 
   if (!resp.ok) {

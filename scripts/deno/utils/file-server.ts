@@ -10,6 +10,7 @@ export const FILE_SERVER_BIN_URL = 'https://file-server.elaina.moe/bin'
 
 export const UPLOAD_CONCURRENCY = 3
 export const CHUNK_RETRY_ATTEMPTS = 5
+export const CHUNK_MULTIPLIER = 32
 
 // --- types ---
 
@@ -55,6 +56,7 @@ export async function initUploadSession(
     filename: fileName,
     fileSize,
     mimeType,
+    chunkMultiplier: CHUNK_MULTIPLIER,
   }
   if (folderPath) {
     body.folderPath = folderPath

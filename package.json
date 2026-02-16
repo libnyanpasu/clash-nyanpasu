@@ -38,8 +38,6 @@
     "fmt:oxlint": "oxlint --fix .",
     "updater": "tsx scripts/updater.ts",
     "updater:nightly": "tsx scripts/updater-nightly.ts",
-    "send-notify": "tsx scripts/telegram-notify.ts",
-    "send-notify:nightly": "tsx scripts/telegram-notify.ts --nightly",
     "publish": "tsx scripts/publish.ts",
     "portable": "tsx scripts/portable.ts",
     "upload:osx-aarch64": "tsx scripts/osx-aarch64-upload.ts",

@@ -56,8 +56,8 @@
     "lodash-es": "4.17.23"
   },
   "devDependencies": {
-    "@commitlint/cli": "20.4.1",
-    "@commitlint/config-conventional": "20.4.1",
+    "@commitlint/cli": "20.4.2",
+    "@commitlint/config-conventional": "20.4.2",
     "@ianvs/prettier-plugin-sort-imports": "4.7.1",
     "@tauri-apps/cli": "2.10.0",
     "@types/fs-extra": "11.0.4",

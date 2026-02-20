@@ -21,7 +21,7 @@
     "@mui/icons-material": "7.3.8",
     "@mui/lab": "7.0.0-beta.17",
     "@mui/material": "7.3.8",
-    "@mui/x-date-pickers": "8.27.0",
+    "@mui/x-date-pickers": "8.27.2",
     "@nyanpasu/interface": "workspace:^",
     "@nyanpasu/ui": "workspace:^",
     "@radix-ui/react-context-menu": "2.2.16",

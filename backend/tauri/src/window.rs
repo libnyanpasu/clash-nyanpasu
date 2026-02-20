@@ -556,10 +556,21 @@ pub trait AppWindow {
                         x: state.x,
                         y: state.y,
                     });
-                    let _ = win.set_size(PhysicalSize {
-                        width: state.width,
-                        height: state.height,
-                    });
+                    // Clamp restored size to min_size to prevent 0x0 windows
+                    let mut width = state.width;
+                    let mut height = state.height;
+                    if let Some((min_w, min_h)) = config.min_size {
+                        let scale_factor = win.scale_factor().unwrap_or(1.0);
+                        let min_w_physical = (min_w * scale_factor) as u32;
+                        let min_h_physical = (min_h * scale_factor) as u32;
+                        if width < min_w_physical {
+                            width = min_w_physical;
+                        }
+                        if height < min_h_physical {
+                            height = min_h_physical;
+                        }
+                    }
+                    let _ = win.set_size(PhysicalSize { width, height });
                 }
 
                 if let Some(state) = win_state {

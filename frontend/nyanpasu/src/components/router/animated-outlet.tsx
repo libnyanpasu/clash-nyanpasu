@@ -1,5 +1,4 @@
 import { AnimatePresence, motion, useIsPresent } from 'framer-motion'
-import { cloneDeep } from 'lodash-es'
 import { ComponentProps, useContext, useRef } from 'react'
 import {
   getRouterContext,
@@ -20,19 +19,54 @@ export function AnimatedOutlet({
   const RouterContext = getRouterContext()
   const routerContext = useContext(RouterContext)
 
+  // Frozen router for the exit animation, created once when isPresent becomes false
+  const frozenRouterRef = useRef<typeof routerContext | null>(null)
+
   let renderedContext = routerContext
 
   if (isPresent) {
-    prevMatches.current = cloneDeep(matches)
+    prevMatches.current = matches
+    frozenRouterRef.current = null
   } else {
-    renderedContext = cloneDeep(routerContext)
-    renderedContext.__store.state.matches = [
-      ...matches.map((m, i) => ({
-        ...(prevMatches.current[i] || m),
-        id: m.id,
-      })),
-      ...prevMatches.current.slice(matches.length),
-    ]
+    if (!frozenRouterRef.current) {
+      // Build patched matches: old route data (prevMatches) but new match IDs
+      const patched = [
+        ...matches.map((m, i) => ({
+          ...(prevMatches.current[i] || m),
+          id: m.id,
+        })),
+        ...prevMatches.current.slice(matches.length),
+      ]
+
+      // Snapshot of router state with old route's matches
+      const patchedState = { ...routerContext.__store.state, matches: patched }
+
+      // Create a fake store that always returns the frozen patched state.
+      // Object.create delegates everything else (subscribe, atom, etc.) to the real
+      // store via the prototype chain, so subscriptions still work — but the snapshot
+      // always returns patchedState, which never changes, so there are no re-renders.
+      const fakeStore = Object.create(routerContext.__store)
+      Object.defineProperty(fakeStore, 'get', {
+        value: () => patchedState,
+        configurable: true,
+      })
+      Object.defineProperty(fakeStore, 'state', {
+        get: () => patchedState,
+        configurable: true,
+      })
+
+      // Create a fake router that delegates everything to the real router except __store
+      const fakeRouter = Object.create(routerContext)
+      Object.defineProperty(fakeRouter, '__store', {
+        value: fakeStore,
+        configurable: true,
+      })
+
+      frozenRouterRef.current = fakeRouter
+    }
+
+    // force type safety
+    renderedContext = frozenRouterRef.current!
   }
 
   return (

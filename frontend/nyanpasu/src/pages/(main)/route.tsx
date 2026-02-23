@@ -31,7 +31,7 @@ function RouteComponent() {
         <div
           className={cn(
             'flex max-h-dvh min-h-dvh flex-col',
-            'bg-background/30',
+            'bg-mixed-background',
           )}
           data-slot="app-root"
           data-app-version={packageJson.version}

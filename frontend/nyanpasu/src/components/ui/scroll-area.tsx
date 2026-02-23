@@ -111,8 +111,11 @@ export const Root = ScrollAreaPrimitive.Root
 export function ScrollArea({
   className,
   children,
+  scrollbars = 'vertical',
   ...props
-}: React.ComponentProps<typeof ScrollAreaPrimitive.Root>) {
+}: React.ComponentProps<typeof ScrollAreaPrimitive.Root> & {
+  scrollbars?: 'vertical' | 'horizontal' | 'both'
+}) {
   const { isTop, scrollDirection, handleScroll } = useScrollTracking()
 
   return (
@@ -127,7 +130,12 @@ export function ScrollArea({
     >
       <Viewport onScroll={handleScroll}>{children}</Viewport>
 
-      <ScrollBar />
+      {(scrollbars === 'vertical' || scrollbars === 'both') && (
+        <ScrollBar orientation="vertical" />
+      )}
+      {(scrollbars === 'horizontal' || scrollbars === 'both') && (
+        <ScrollBar orientation="horizontal" />
+      )}
       <Corner />
     </Root>
   )
@@ -147,9 +155,9 @@ export function ScrollBar({
         'transition-opacity duration-300 ease-out',
         'data-[state=hidden]:opacity-0 data-[state=visible]:opacity-100',
         orientation === 'vertical' &&
-          'h-full w-2.5 border-l border-l-transparent py-1',
+          'h-full w-3.5 border-l border-l-transparent px-0.75 py-1.5',
         orientation === 'horizontal' &&
-          'h-2.5 flex-col border-t border-t-transparent px-1',
+          'h-3.5 flex-col border-t border-t-transparent px-1.5 py-0.75',
         className,
       )}
       {...props}
@@ -165,8 +173,11 @@ export function ScrollBar({
 export function AppContentScrollArea({
   className,
   children,
+  scrollbars = 'vertical',
   ...props
-}: React.ComponentProps<typeof ScrollAreaPrimitive.Root>) {
+}: React.ComponentProps<typeof ScrollAreaPrimitive.Root> & {
+  scrollbars?: 'vertical' | 'horizontal' | 'both'
+}) {
   const viewportRef = useRef<HTMLDivElement>(null)
 
   const { isTop, isBottom, scrollDirection, handleScroll, isScrolling } =
@@ -186,6 +197,7 @@ export function AppContentScrollArea({
         className={cn(
           'relative',
           'flex flex-1 flex-col',
+          'max-w-screen min-w-0',
           'max-h-[calc(100vh-40px-64px)]',
           'min-h-[calc(100vh-40px-64px)]',
           'sm:max-h-[calc(100vh-40px-48px)]',
@@ -201,11 +213,20 @@ export function AppContentScrollArea({
         data-scroll-direction={scrollDirection}
         {...props}
       >
-        <Viewport ref={viewportRef} onScroll={handleScroll}>
+        <Viewport
+          // className={cn('[&>div]:min-h-[calc(100vh-40px-64px)]', className)}
+          ref={viewportRef}
+          onScroll={handleScroll}
+        >
           {children}
         </Viewport>
 
-        <ScrollBar />
+        {(scrollbars === 'vertical' || scrollbars === 'both') && (
+          <ScrollBar orientation="vertical" />
+        )}
+        {(scrollbars === 'horizontal' || scrollbars === 'both') && (
+          <ScrollBar orientation="horizontal" />
+        )}
         <Corner />
       </Root>
     </ScrollAreaContext.Provider>

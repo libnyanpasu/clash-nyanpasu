@@ -12,5 +12,17 @@
       "description": "Save/restore build cache to file server",
       "command": "deno run -A build-cache.ts",
     },
+    "updater": {
+      "description": "Generate and upload stable update manifests to GitHub Releases",
+      "command": "deno run -A updater.ts",
+    },
+    "updater-nightly": {
+      "description": "Generate and upload nightly update manifests to GitHub Releases",
+      "command": "deno run -A updater-nightly.ts",
+    },
+    "portable": {
+      "description": "Create and upload Windows portable zip to GitHub Releases",
+      "command": "deno run -A portable.ts",
+    },
   },
 }

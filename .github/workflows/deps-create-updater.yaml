@@ -42,42 +42,38 @@ jobs:
           # blocked by https://github.com/actions/checkout/issues/1467
       - name: Fetch git tags
         run: git fetch --tags
-      - name: Install Node latest
-        uses: actions/setup-node@v6
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
         with:
-          node-version: 24
-
-      - uses: pnpm/action-setup@v4
-        name: Install pnpm
-        with:
-          run_install: false
-
-      - name: Pnpm install
-        run: pnpm i
+          deno-version: v2.x
 
       - name: Update Nightly Updater
         if: ${{ inputs.nightly == true }}
-        run: pnpm updater:nightly
+        run: deno run -A scripts/deno/updater-nightly.ts
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
       - name: Update Nightly Fixed Webview Updater
         if: ${{ inputs.nightly == true }}
-        run: pnpm updater:nightly --fixed-webview
+        run: deno run -A scripts/deno/updater-nightly.ts --fixed-webview
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
 
       - name: Update Stable Updater
         if: ${{ inputs.nightly == false }}
-        run: pnpm updater
+        run: deno run -A scripts/deno/updater.ts
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
           RELEASE_BODY: ${{ inputs.release_body || github.event.release.body }}
 
       - name: Update Stable Fixed Webview Updater
         if: ${{ inputs.nightly == false }}
-        run: pnpm updater --fixed-webview
+        run: deno run -A scripts/deno/updater.ts --fixed-webview
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
           RELEASE_BODY: ${{ inputs.release_body || github.event.release.body }}
 
       - name: Download updater files from Github release
@@ -90,9 +86,8 @@ jobs:
           out-file-path: manifest/site/updater
       - name: Upload updater to surge.sh
         run: |
-          pnpm i -g surge
-          surge manifest/site surge.elaina.moe
-          surge manifest/site nyanpasu.surge.sh
+          npx surge manifest/site surge.elaina.moe
+          npx surge manifest/site nyanpasu.surge.sh
         env:
           SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}
       - name: Deploy to Deno Deploy

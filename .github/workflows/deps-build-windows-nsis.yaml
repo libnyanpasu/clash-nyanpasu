@@ -228,15 +228,12 @@ jobs:
       - name: Portable Bundle
         if: ${{ inputs.portable == true }}
         run: |
-          pnpm portable ${{ inputs.fixed-webview == true && '--fixed-webview' || '' }}
+          deno run -A scripts/deno/portable.ts ${{ inputs.fixed-webview == true && '--fixed-webview' || '' }}
         env:
           RUST_ARCH: ${{ inputs.arch }}
           TAG_NAME: ${{ inputs.tag }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
-          VITE_WIN_PORTABLE: 1
 
       - name: Upload NSIS Installer
         uses: actions/upload-artifact@v6

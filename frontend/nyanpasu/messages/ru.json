@@ -130,6 +130,7 @@
   "profile_delete_title": "Удалить профиль",
   "profile_delete_description": "Это действие не может быть отменено. Вы уверены, что хотите удалить этот профиль?",
   "profile_view_content_title": "Содержимое профиля",
+  "profile_pending_mask_message": "Выполнение операции…",
   "profile_active_title": "Активировать профиль",
   "profile_is_active_description": "Текущий профиль уже активирован, повторная активация не требуется.",
   "profile_active_title_success": "Профиль {name} успешно активирован!",

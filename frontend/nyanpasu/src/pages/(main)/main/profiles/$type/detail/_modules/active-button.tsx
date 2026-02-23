@@ -8,13 +8,7 @@ import { message } from '@/utils/notification'
 import { Profile, useClashConnections, useProfile } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 
-export default function ActiveButton({
-  profile,
-  className,
-  ...props
-}: Omit<ComponentProps<typeof Button>, 'loading' | 'onClick'> & {
-  profile: Profile
-}) {
+export const useActiveProfile = (profile: Profile) => {
   const {
     query: { data },
     upsert,
@@ -65,6 +59,22 @@ export default function ActiveButton({
     await blockTask.execute()
   })
 
+  return {
+    isActive,
+    handleClick,
+    isPending: blockTask.isPending,
+  }
+}
+
+export default function ActiveButton({
+  profile,
+  className,
+  ...props
+}: Omit<ComponentProps<typeof Button>, 'loading' | 'onClick'> & {
+  profile: Profile
+}) {
+  const { isActive, handleClick, isPending } = useActiveProfile(profile)
+
   return (
     <Button
       {...props}
@@ -77,7 +87,7 @@ export default function ActiveButton({
         ],
       )}
       onClick={handleClick}
-      loading={blockTask.isPending}
+      loading={isPending}
     />
   )
 }

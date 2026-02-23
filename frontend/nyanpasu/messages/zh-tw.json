@@ -130,6 +130,7 @@
   "profile_delete_title": "刪除配置",
   "profile_delete_description": "此操作無法撤銷。確定要刪除此配置嗎？",
   "profile_view_content_title": "查看配置內容",
+  "profile_pending_mask_message": "正在執行操作……",
   "profile_active_title": "啟用配置",
   "profile_is_active_description": "當前配置已啟用，無需重複操作。",
   "profile_active_title_success": "配置 {name} 已成功啟用！",

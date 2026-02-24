@@ -36,7 +36,7 @@
     "@radix-ui/react-use-controllable-state": "1.2.2",
     "@tailwindcss/postcss": "4.2.0",
     "@tanstack/react-table": "8.21.3",
-    "@tanstack/react-virtual": "3.13.18",
+    "@tanstack/react-virtual": "3.13.19",
     "@tanstack/router-zod-adapter": "1.81.5",
     "@tauri-apps/api": "2.10.1",
     "@types/json-schema": "7.0.15",

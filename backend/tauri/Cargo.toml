@@ -100,10 +100,7 @@ serde_json = { version = "1.0", features = ["preserve_order"] }
 serde_yaml = { version = "0.10", package = "serde_yaml_ng", branch = "feat/specta-update", git = "https://github.com/libnyanpasu/serde-yaml-ng.git", features = [
   "specta",
 ] }
-bincode = { version = "2.0.1", default-features = false, features = [
-  "serde",
-  "std",
-] }
+postcard = { version = "1.1", features = ["alloc"] }
 bytes = { version = "1", features = ["serde"] }
 semver = "1.0"
 

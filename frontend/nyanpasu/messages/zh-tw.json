@@ -164,6 +164,8 @@
   "profile_import_chain_title": "新建 {type}",
   "proxies_group_delay_test_title": "延遲測試",
   "proxies_group_delay_test_pending_title": "正在測試中……",
+  "profile_remote_label": "遠程配置",
+  "profile_local_label": "本地配置",
   "editor_before_close_message": "你尚未保存编辑的内容，确定要关闭编辑器吗？",
   "editor_validate_error_message": "请修复错误后再保存内容",
   "editor_read_only_chip": "只讀",

@@ -164,6 +164,8 @@
   "profile_import_chain_title": "Новый {type}",
   "proxies_group_delay_test_title": "Тест задержки",
   "proxies_group_delay_test_pending_title": "Тестирование…",
+  "profile_remote_label": "Удаленный профиль",
+  "profile_local_label": "Локальный профиль",
   "editor_before_close_message": "Вы не сохранили измененное содержимое, вы уверены, что хотите закрыть редактор?",
   "editor_validate_error_message": "Пожалуйста, исправьте ошибки перед сохранением содержимого",
   "editor_read_only_chip": "Только для чтения",

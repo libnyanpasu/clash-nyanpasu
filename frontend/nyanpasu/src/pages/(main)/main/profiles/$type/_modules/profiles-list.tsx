@@ -7,20 +7,36 @@ import {
   RegisterContextMenuContent,
   RegisterContextMenuTrigger,
 } from '@/components/providers/context-menu-provider'
-import BorderBeam from '@/components/ui/border-beam'
+import { useExperimentalThemeContext } from '@/components/providers/theme-provider'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { ContextMenuItem } from '@/components/ui/context-menu'
 import { LinearProgress } from '@/components/ui/progress'
 import TextMarquee from '@/components/ui/text-marquee'
 import { m } from '@/paraglide/messages'
+import { hexFromArgb } from '@material/material-color-utilities'
 import { Profile, useProfile } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
+import { MeshGradient } from '@paper-design/shaders-react'
 import { Link } from '@tanstack/react-router'
 import { PROFILE_TYPES } from '../../_modules/consts'
 import { useActiveProfile } from '../detail/_modules/active-button'
 import { useDeleteProfile } from '../detail/_modules/delete-profile'
 import { Route as IndexRoute } from '../index'
+
+const Chip = ({ children, className, ...props }: ComponentProps<'span'>) => {
+  return (
+    <span
+      className={cn(
+        'bg-primary-container rounded-full px-3 py-1 text-xs font-bold whitespace-nowrap',
+        className,
+      )}
+      {...props}
+    >
+      {children}
+    </span>
+  )
+}
 
 const GridViewProfile = ({ profile }: { profile: Profile }) => {
   const { type } = IndexRoute.useParams()
@@ -30,10 +46,17 @@ const GridViewProfile = ({ profile }: { profile: Profile }) => {
 
   const isPending = activeProfile.isPending || deleteProfile.isPending
 
+  const isRemote = profile.type === 'remote'
+
+  const { themePalette } = useExperimentalThemeContext()
+
   return (
     <RegisterContextMenu>
       <RegisterContextMenuTrigger asChild>
-        <Card data-slot="profile-card" className="relative">
+        <Card
+          data-slot="profile-card"
+          className="relative flex flex-col justify-between"
+        >
           <AnimatePresence initial={false}>
             {isPending && (
               <motion.div
@@ -55,14 +78,41 @@ const GridViewProfile = ({ profile }: { profile: Profile }) => {
             )}
           </AnimatePresence>
 
-          {activeProfile.isActive && <BorderBeam size={200} />}
+          {activeProfile.isActive && (
+            <MeshGradient
+              className="absolute inset-0 size-full opacity-30"
+              colors={Object.values(themePalette.schemes.light).map((color) =>
+                hexFromArgb(color),
+              )}
+              distortion={0.5}
+              swirl={0.1}
+              grainMixer={0}
+              grainOverlay={0}
+              speed={1 / 3}
+            />
+          )}
 
-          <CardHeader data-slot="profile-card-title">
-            <TextMarquee>{profile.name}</TextMarquee>
+          <CardHeader
+            className="flex items-center justify-between gap-2"
+            data-slot="profile-card-title"
+          >
+            <TextMarquee className="z-10 min-w-0 flex-1">
+              {profile.name}
+            </TextMarquee>
+
+            {activeProfile.isActive && (
+              <Chip className="shrink-0">{m.profile_is_active_label()}</Chip>
+            )}
           </CardHeader>
 
           <CardContent>
-            <div data-slot="profile-card-type">{profile.type}</div>
+            <div className="z-10" data-slot="profile-card-type">
+              {isRemote ? (
+                <Chip>{m.profile_remote_label()}</Chip>
+              ) : (
+                <Chip>{m.profile_local_label()}</Chip>
+              )}
+            </div>
           </CardContent>
 
           <CardFooter>

@@ -8,6 +8,7 @@ import { createHtmlPlugin } from 'vite-plugin-html'
 import sassDts from 'vite-plugin-sass-dts'
 import svgr from 'vite-plugin-svgr'
 import tsconfigPaths from 'vite-tsconfig-paths'
+import { paraglideVitePlugin } from '@inlang/paraglide-js'
 // import tailwindPlugin from '@tailwindcss/vite'
 // import react from "@vitejs/plugin-react";
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
@@ -15,18 +16,6 @@ import legacy from '@vitejs/plugin-legacy'
 import react from '@vitejs/plugin-react-swc'
 
 const IS_NIGHTLY = process.env.NIGHTLY?.toLowerCase() === 'true'
-
-const devtools = () => {
-  return {
-    name: 'react-devtools',
-    transformIndexHtml(html: string) {
-      return html.replace(
-        /<\/head>/,
-        `<script src="http://localhost:8097"></script></head>`,
-      )
-    },
-  }
-}
 
 const builtinVars = () => {
   return {
@@ -46,6 +35,7 @@ export default defineConfig(({ command, mode }) => {
 
   const config = {
     // root: "/",
+    clearScreen: false,
     server: {
       port: 3000,
       watch: {
@@ -123,7 +113,11 @@ export default defineConfig(({ command, mode }) => {
         compiler: 'jsx', // or 'solid'
       }),
       sassDts({ esmExport: true }),
-      isDev && devtools(),
+      paraglideVitePlugin({
+        project: './project.inlang',
+        outdir: './src/paraglide',
+        strategy: ['custom-extension'],
+      }),
     ],
     resolve: {
       alias: {
@@ -162,5 +156,6 @@ export default defineConfig(({ command, mode }) => {
     html: {},
   } satisfies UserConfig
   // fucking vite why embedded their own sass types definition????
+  // oxlint-disable-next-line typescript/no-explicit-any
   return config as any as UserConfig
 })

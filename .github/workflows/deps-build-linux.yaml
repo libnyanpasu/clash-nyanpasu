@@ -47,12 +47,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - name: Install Rust stable
+      - name: Install Rust nightly
         run: |
-          rustup install stable --profile minimal --no-self-update
-          rustup default stable
+          rustup install nightly --profile minimal --no-self-update
+          rustup default nightly
 
       - name: Setup Cargo binstall
         if: ${{ inputs.arch != 'x86_64' }}
@@ -82,7 +82,7 @@ jobs:
       - name: Install Node latest
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
 
       - uses: pnpm/action-setup@v4
         name: Install pnpm
@@ -92,20 +92,31 @@ jobs:
       - name: Install Node.js dependencies
         run: pnpm i
 
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Restore build cache
+        run: deno run -A scripts/deno/build-cache.ts restore --os linux --arch ${{ inputs.arch }}
+        env:
+          FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+        continue-on-error: true
+
       - name: Prepare sidecars and resources
         shell: bash
         run: |
           case "${{ inputs.arch }}" in
             "x86_64")
-              pnpm check ;;
+              pnpm prepare:check ;;
             "i686")
-              pnpm check --arch ia32 --sidecar-host i686-unknown-linux-gnu ;;
+              pnpm prepare:check --arch ia32 --sidecar-host i686-unknown-linux-gnu ;;
             "aarch64")
-              pnpm check --arch arm64 --sidecar-host aarch64-unknown-linux-gnu ;;
+              pnpm prepare:check --arch arm64 --sidecar-host aarch64-unknown-linux-gnu ;;
             "armel")
-              pnpm check --arch armel --sidecar-host armv7-unknown-linux-gnueabi ;;
+              pnpm prepare:check --arch armel --sidecar-host armv7-unknown-linux-gnueabi ;;
             "armhf")
-              pnpm check --arch arm --sidecar-host armv7-unknown-linux-gnueabihf ;;
+              pnpm prepare:check --arch arm --sidecar-host armv7-unknown-linux-gnueabihf ;;
           esac
 
       - name: Nightly Prepare
@@ -219,13 +230,13 @@ jobs:
 
       - name: Upload AppImage to Github Artifact
         if: ${{ inputs.arch == 'x86_64' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Clash.Nyanpasu-linux-${{ inputs.arch }}-appimage
           path: ./backend/target/**/*.AppImage
 
       - name: Upload deb to Github Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Clash.Nyanpasu-linux-${{ inputs.arch }}-deb
           path: |
@@ -233,9 +244,16 @@ jobs:
             ./backend/target/**/*.deb.sha256
 
       - name: Upload rpm to Github Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Clash.Nyanpasu-linux-${{ inputs.arch }}-rpm
           path: |
             ./backend/target/**/*.rpm
             ./backend/target/**/*.rpm.sha256
+
+      - name: Save build cache
+        if: always()
+        run: deno run -A scripts/deno/build-cache.ts save --os linux --arch ${{ inputs.arch }}
+        env:
+          FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+        continue-on-error: true

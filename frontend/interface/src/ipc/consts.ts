@@ -1,7 +1,34 @@
+import { getSystem } from '@/utils/get-system'
+
+/**
+ * Operating system, used by useUpdaterSupported hook
+ */
+export const OS = getSystem()
+
 /**
  * Nyanpasu backend event name, use tauri event api to listen this event
  */
 export const NYANPASU_BACKEND_EVENT_NAME = 'nyanpasu://mutation'
+
+/**
+ * Is appimage query key, used by useIsAppImage hook
+ */
+export const IS_APPIMAGE_QUERY_KEY = 'is-appimage'
+
+/**
+ * Service prompt query key, used by useServicePrompt hook
+ */
+export const SERVICE_PROMPT_QUERY_KEY = 'service-prompt'
+
+/**
+ * Core dir query key, used by useCoreDir hook
+ */
+export const CORE_DIR_QUERY_KEY = 'core-dir'
+
+/**
+ * Server port query key, used by useServerPort hook
+ */
+export const SERVER_PORT_QUERY_KEY = 'server-port'
 
 /**
  * Nyanpasu setting query key, used by useSettings hook

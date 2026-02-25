@@ -78,7 +78,7 @@ pnpm i
 ### 2. Download Core & Resource Files
 
 ```
-pnpm check
+pnpm prepare:check
 ```
 
 > This command downloads binaries like `sidecar` and `resource` to ensure the project runs properly
@@ -86,7 +86,7 @@ pnpm check
 If files are missing or you want to force update:
 
 ```
-pnpm check --force
+pnpm prepare:check --force
 ```
 
 💡 **Tip**: Configure terminal proxy if network issues occur

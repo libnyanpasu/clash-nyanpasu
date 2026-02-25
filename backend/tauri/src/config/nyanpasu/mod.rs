@@ -154,6 +154,11 @@ pub struct NyanpasuAppConfig {
     /// When enabled, shows upload/download speeds in the tray tooltip (macOS/Windows) or title (Linux)
     pub enable_tray_traffic: bool,
 
+    /// Use legacy UI (original UI at "/" route)
+    /// When true, opens legacy window; when false, opens new main window
+    #[builder(default = "true")]
+    pub use_legacy_ui: bool,
+
     /// enable colored tray icons on macOS
     /// When enabled, uses colored icons instead of template icons to show proxy status
     /// When disabled, uses system template icons that adapt to light/dark mode

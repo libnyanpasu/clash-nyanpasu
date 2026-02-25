@@ -1,4 +1,3 @@
-import { isEqual } from 'lodash-es'
 import type { Profile, ProfileBuilder } from '@nyanpasu/interface'
 
 /**

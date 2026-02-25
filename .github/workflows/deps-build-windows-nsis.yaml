@@ -73,12 +73,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - name: Install Rust stable
+      - name: Install Rust nightly
         run: |
-          rustup install stable --profile minimal --no-self-update
-          rustup default stable
+          rustup install nightly --profile minimal --no-self-update
+          rustup default nightly
 
       - name: Setup Rust target
         if: ${{ inputs.arch != 'x86_64' }}
@@ -88,7 +88,7 @@ jobs:
       - name: Install Node latest
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
 
       - uses: pnpm/action-setup@v4
         name: Install pnpm
@@ -98,18 +98,30 @@ jobs:
       - name: Install Node.js dependencies
         run: |
           pnpm i
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Restore build cache
+        run: deno run -A scripts/deno/build-cache.ts restore --os windows --arch ${{ inputs.arch }}
+        env:
+          FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+        continue-on-error: true
+
       - name: Prepare sidecars and resources
         run: |
           $condition = '${{ inputs.arch }}'
           switch ($condition) {
             'x86_64' {
-              pnpm check
+              pnpm prepare:check
             }
             'i686' {
-              pnpm check --arch ia32 --sidecar-host i686-pc-windows-msvc
+              pnpm prepare:check --arch ia32 --sidecar-host i686-pc-windows-msvc
             }
             'aarch64' {
-              pnpm check --arch arm64 --sidecar-host aarch64-pc-windows-msvc
+              pnpm prepare:check --arch arm64 --sidecar-host aarch64-pc-windows-msvc
             }
           }
 
@@ -227,7 +239,7 @@ jobs:
           VITE_WIN_PORTABLE: 1
 
       - name: Upload NSIS Installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Clash.Nyanpasu-windows-${{ inputs.arch }}${{ inputs.fixed-webview == true && '-fixed-webview' || '' }}-nsis-installer
           path: |
@@ -235,8 +247,15 @@ jobs:
 
       - name: Upload portable
         if: ${{ inputs.portable == true }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Clash.Nyanpasu-windows-${{ inputs.arch }}${{ inputs.fixed-webview == true && '-fixed-webview' || '' }}-portable
           path: |
             ./*_portable.zip
+
+      - name: Save build cache
+        if: always()
+        run: deno run -A scripts/deno/build-cache.ts save --os windows --arch ${{ inputs.arch }}
+        env:
+          FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+        continue-on-error: true

@@ -5,16 +5,14 @@ use async_trait::async_trait;
 use boa_engine::{
     Context, JsError, JsNativeError, JsValue, Source,
     builtins::promise::PromiseState,
+    job::SimpleJobExecutor,
     js_string,
     module::{Module, SimpleModuleLoader},
     property::Attribute,
 };
 use boa_utils::{
     Console,
-    module::{
-        combine::CombineModuleLoader,
-        http::{HttpModuleLoader, Queue},
-    },
+    module::{combine::CombineModuleLoader, http::HttpModuleLoader},
 };
 use once_cell::sync::Lazy;
 use serde_yaml::Mapping;
@@ -115,9 +113,9 @@ impl BoaRunner {
             HttpModuleLoader::new(cache_dir, Duration::from_secs(60 * 60 * 24 * 30)),
         ));
         let simple_loader = loader.clone_simple();
-        let queue = Rc::new(Queue::default());
+        let queue = Rc::new(SimpleJobExecutor::new());
         let context = Context::builder()
-            .job_queue(queue)
+            .job_executor(queue)
             .module_loader(loader.clone())
             .build()?;
         Ok(Self {
@@ -161,7 +159,7 @@ impl BoaRunner {
         let promise_result = module.load_link_evaluate(ctx);
 
         // Very important to push forward the job queue after queueing promises.
-        ctx.run_jobs();
+        let _ = ctx.run_jobs();
 
         // Checking if the final promise didn't return an error.
         for i in 0..20 {

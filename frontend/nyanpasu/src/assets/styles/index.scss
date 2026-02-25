@@ -1,4 +1,5 @@
 @use './fonts.scss';
+@use './theme.scss';
 
 body {
   margin: 0;
@@ -15,8 +16,14 @@ body {
     sans-serif,
     'Color Emoji Flags',
     'Color Emoji';
+  color: var(--color-on-surface);
   user-select: none;
+  background-color: #f7f7f7;
   -webkit-font-smoothing: antialiased;
+}
+
+.dark body {
+  background-color: #0b0b0b;
 }
 
 :root {
@@ -57,4 +64,8 @@ body {
 
 .user-none {
   user-select: none;
+}
+
+.bg-inherit-allow-fallback {
+  background-color: var(--fallback-bg, inherit);
 }

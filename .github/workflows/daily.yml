@@ -12,11 +12,11 @@ jobs:
     if: startsWith(github.repository, 'libnyanpasu')
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '24'
 
       - uses: pnpm/action-setup@v4
         name: Install pnpm
@@ -51,13 +51,13 @@ jobs:
     if: startsWith(github.repository, 'libnyanpasu')
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: dev
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '24'
 
       - uses: pnpm/action-setup@v4
         name: Install pnpm

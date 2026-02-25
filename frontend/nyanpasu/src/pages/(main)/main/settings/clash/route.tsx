@@ -1,0 +1,53 @@
+import { Separator } from '@/components/ui/separator'
+import { m } from '@/paraglide/messages'
+import { createFileRoute } from '@tanstack/react-router'
+import {
+  SettingsTitle,
+  SettingsTitlePlaceholder,
+} from '../_modules/settings-title'
+import AllowLanSwitch from './_modules/allow-lan-switch'
+import CoreManagerCard from './_modules/core-manager-card'
+import FieldFilterCard from './_modules/field-filter-card'
+import FieldFilterSwitch from './_modules/field-filter-switch'
+import IPv6Switch from './_modules/ipv6-switch'
+import LogLevelSelector from './_modules/log-level-selector'
+import MixedPortConfig from './_modules/mixed-port-config'
+import RandomPortSwitch from './_modules/random-port-switch'
+import TunStackSelector from './_modules/tun-stack-selector'
+
+export const Route = createFileRoute('/(main)/main/settings/clash')({
+  component: RouteComponent,
+})
+
+function RouteComponent() {
+  return (
+    <>
+      <SettingsTitlePlaceholder />
+      <SettingsTitle>{m.settings_system_proxy_title()}</SettingsTitle>
+
+      <AllowLanSwitch />
+
+      <IPv6Switch />
+
+      <TunStackSelector />
+
+      <LogLevelSelector />
+
+      <Separator className="my-4" />
+
+      <MixedPortConfig />
+
+      <RandomPortSwitch />
+
+      <Separator className="my-4" />
+
+      <CoreManagerCard />
+
+      <Separator className="my-4" />
+
+      <FieldFilterSwitch />
+
+      <FieldFilterCard />
+    </>
+  )
+}

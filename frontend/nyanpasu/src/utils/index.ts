@@ -1,12 +1,12 @@
+// oxlint-disable typescript/no-explicit-any
 import { includes, isArray, isObject, isString, some } from 'lodash-es'
-import { EnvInfos } from '@nyanpasu/interface'
+import { EnvInfo } from '@nyanpasu/interface'
 
 /**
  * classNames filter out falsy values and join the rest with a space
  * @param classes - array of classes
  * @returns string of classes
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function classNames(...classes: any[]) {
   return classes.filter(Boolean).join(' ')
 }
@@ -33,7 +33,7 @@ export function formatError(err: unknown): string {
   return `Error: ${err instanceof Error ? err.message : String(err)}`
 }
 
-export function formatEnvInfos(envs: EnvInfos) {
+export function formatEnvInfos(envs: EnvInfo) {
   let result = '----------- System -----------\n'
   result += `OS: ${envs.os}\n`
   result += `Arch: ${envs.arch}\n`
@@ -50,9 +50,11 @@ export function formatEnvInfos(envs: EnvInfos) {
   for (const k of Object.keys(envs.build_info) as string[]) {
     const key = k
       .split('_')
-      .map((v) => v.charAt(0).toUpperCase() + v.slice(1))
+      .map((v: string) => v.charAt(0).toUpperCase() + v.slice(1))
       .join(' ')
-    result += `${key}: ${envs.build_info[k]}\n`
+    // Fix linter error: explicitly type k as keyof typeof envs.build_info
+    result += `${key}: ${envs.build_info[k as keyof typeof envs.build_info]}\n`
   }
+
   return result
 }

@@ -4,5 +4,13 @@
       "description": "Upload macOS updater to GitHub Releases",
       "command": "deno run -A upload-macos-updater.ts",
     },
+    "telegram-notify": {
+      "description": "Send Telegram notification for releases and nightly builds",
+      "command": "deno run -A telegram-notify.ts",
+    },
+    "build-cache": {
+      "description": "Save/restore build cache to file server",
+      "command": "deno run -A build-cache.ts",
+    },
   },
 }

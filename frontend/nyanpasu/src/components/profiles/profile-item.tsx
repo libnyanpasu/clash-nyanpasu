@@ -254,10 +254,15 @@ export const ProfileItem = memo(function ProfileItem({
               className="flex h-6 w-30 items-center"
               nodes={[
                 !!item.updated && (
-                  <TimeSpan ts={item.updated!} k="Subscription Updated At" />
+                  <TimeSpan
+                    key="updated"
+                    ts={item.updated!}
+                    k="Subscription Updated At"
+                  />
                 ),
                 !!(item as RemoteProfile).extra?.expire && (
                   <TimeSpan
+                    key="expire"
                     ts={(item as RemoteProfile).extra!.expire!}
                     k="Subscription Expires In"
                   />

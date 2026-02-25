@@ -24,9 +24,182 @@
   --custom-text-shadow-xl:
     1px 1px 3px rgb(0 0 0 / 29%), 2px 4px 7px rgb(73 64 125 / 35%);
   --custom-text-shadow-none: none;
+
+  /* Material Design 3 Color System */
+  --color-primary: var(--color-md-primary);
+  --color-on-primary: var(--color-md-on-primary);
+  --color-primary-container: var(--color-md-primary-container);
+  --color-on-primary-container: var(--color-md-on-primary-container);
+  --color-secondary: var(--color-md-secondary);
+  --color-on-secondary: var(--color-md-on-secondary);
+  --color-secondary-container: var(--color-md-secondary-container);
+  --color-on-secondary-container: var(--color-md-on-secondary-container);
+  --color-tertiary: var(--color-md-tertiary);
+  --color-on-tertiary: var(--color-md-on-tertiary);
+  --color-tertiary-container: var(--color-md-tertiary-container);
+  --color-on-tertiary-container: var(--color-md-on-tertiary-container);
+  --color-error: var(--color-md-error);
+  --color-on-error: var(--color-md-on-error);
+  --color-error-container: var(--color-md-error-container);
+  --color-on-error-container: var(--color-md-on-error-container);
+  --color-background: var(--color-md-background);
+  --color-on-background: var(--color-md-on-background);
+  --color-surface: var(--color-md-surface);
+  --color-on-surface: var(--color-md-on-surface);
+  --color-surface-variant: var(--color-md-surface-variant);
+  --color-on-surface-variant: var(--color-md-on-surface-variant);
+  --color-outline: var(--color-md-outline);
+  --color-outline-variant: var(--color-md-outline-variant);
+  --color-shadow: var(--color-md-shadow);
+  --color-scrim: var(--color-md-scrim);
+  --color-inverse-surface: var(--color-md-inverse-surface);
+  --color-inverse-on-surface: var(--color-md-inverse-on-surface);
+  --color-inverse-primary: var(--color-md-inverse-primary);
+
+  /* Custom Mixed Colors */
+  --color-mixed-background: color-mix(
+    in srgb,
+    var(--color-background) 10%,
+    var(--color-surface) 10%
+  );
+
+  /* Progress Spin Animation (Circular) */
+  --animate-progress-spin: progress-spin 5332ms cubic-bezier(0.4, 0, 0.2, 1)
+    infinite both;
+  --animate-progress-spin-left: progress-spin-left 1333ms
+    cubic-bezier(0.4, 0, 0.2, 1) infinite both;
+  --animate-progress-spin-right: progress-spin-right 1333ms
+    cubic-bezier(0.4, 0, 0.2, 1) infinite both;
+
+  /* Linear Progress Animation (Indeterminate) */
+  --animate-linear-progress-primary: linear-progress-primary 2.1s
+    cubic-bezier(0.65, 0.815, 0.735, 0.395) infinite;
+  --animate-linear-progress-secondary: linear-progress-secondary 2.1s
+    cubic-bezier(0.165, 0.84, 0.44, 1) 1.15s infinite;
 }
 
 @utility text-shadow-* {
   /* prettier-ignore */
   text-shadow: --value(--custom-text-shadow-*);
+}
+
+@utility bg-transparent-fallback-* {
+  background-color: transparent;
+
+  --fallback-bg: --value(--color-*);
+}
+
+@layer components {
+  svg.logo-colorized #element {
+    fill: var(--color-primary);
+  }
+
+  svg.logo-colorized #bg {
+    fill: var(--color-surface);
+  }
+
+  .dark svg.logo-colorized #element {
+    fill: var(--color-on-primary);
+  }
+
+  .dark svg.logo-colorized #bg {
+    fill: var(--color-on-surface);
+  }
+}
+
+@keyframes progress-spin {
+  12.5% {
+    transform: rotate(135deg);
+  }
+
+  25% {
+    transform: rotate(270deg);
+  }
+
+  37.5% {
+    transform: rotate(405deg);
+  }
+
+  50% {
+    transform: rotate(540deg);
+  }
+
+  62.5% {
+    transform: rotate(675deg);
+  }
+
+  75% {
+    transform: rotate(810deg);
+  }
+
+  87.5% {
+    transform: rotate(945deg);
+  }
+
+  100% {
+    transform: rotate(1080deg);
+  }
+}
+
+@keyframes progress-spin-left {
+  0% {
+    transform: rotate(265deg);
+  }
+
+  50% {
+    transform: rotate(130deg);
+  }
+
+  100% {
+    transform: rotate(265deg);
+  }
+}
+
+@keyframes progress-spin-right {
+  0% {
+    transform: rotate(-265deg);
+  }
+
+  50% {
+    transform: rotate(-130deg);
+  }
+
+  100% {
+    transform: rotate(-265deg);
+  }
+}
+
+/* Material You Linear Progress Indeterminate Animation */
+@keyframes linear-progress-primary {
+  0% {
+    right: 100%;
+    left: -35%;
+  }
+
+  60% {
+    right: -90%;
+    left: 100%;
+  }
+
+  100% {
+    right: -90%;
+    left: 100%;
+  }
+}
+
+@keyframes linear-progress-secondary {
+  0% {
+    right: 100%;
+    left: -200%;
+  }
+
+  60% {
+    right: -8%;
+    left: 107%;
+  }
+
+  100% {
+    right: -8%;
+    left: 107%;
+  }
 }

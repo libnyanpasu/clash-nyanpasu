@@ -24,11 +24,11 @@ jobs:
           - os: windows-latest
     runs-on: ${{ matrix.targets.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Rust
         run: |
-          rustup toolchain install stable --profile minimal --no-self-update
-          rustup default stable
+          rustup toolchain install nightly --profile minimal --no-self-update
+          rustup default nightly
           rustup component add clippy rustfmt
           rustc --version
           cargo --version
@@ -55,9 +55,9 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         name: Cache Rust dependencies
         with:
           path: |
@@ -78,7 +78,7 @@ jobs:
         run: |
           echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         name: Setup pnpm cache
         with:
           path: ${{ env.STORE_PATH }}
@@ -94,7 +94,7 @@ jobs:
         env:
           NODE_OPTIONS: '--max_old_space_size=4096'
       - name: Prepare sidecar and resources
-        run: pnpm check
+        run: pnpm prepare:check
       - name: Lint
         if: startsWith(matrix.targets.os, 'ubuntu-')
         run: pnpm lint # Lint
@@ -121,7 +121,7 @@ jobs:
     runs-on: ${{ matrix.targets.os }}
     needs: lint
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Tauri dependencies
         if: startsWith(matrix.targets.os, 'ubuntu-')
         run: >-
@@ -142,9 +142,9 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         name: Cache Rust dependencies
         with:
           path: |
@@ -165,7 +165,7 @@ jobs:
         run: |
           echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         name: Setup pnpm cache
         with:
           path: ${{ env.STORE_PATH }}
@@ -177,7 +177,7 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Prepare sidecar and resources
-        run: pnpm check
+        run: pnpm prepare:check
 
       - name: Prepare frontend
         run: pnpm -r build
@@ -208,7 +208,7 @@ jobs:
     # the steps our job runs **in order**
     steps:
       # checkout the code on the workflow runner
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       # install system dependencies that Tauri needs to compile on Linux.
       # note the extra dependencies for `tauri-driver` to run which are: `webkit2gtk-driver` and `xvfb`
@@ -233,9 +233,9 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         name: Cache Rust dependencies
         with:
           path: |
@@ -256,7 +256,7 @@ jobs:
         run: |
           echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         name: Setup pnpm cache
         with:
           path: ${{ env.STORE_PATH }}
@@ -268,12 +268,23 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Prepare sidecar and resources
-        run: pnpm check
+        run: pnpm prepare:check
 
       - name: Prepare frontend
         run: pnpm -r build
         env:
           NODE_OPTIONS: '--max_old_space_size=4096'
+
+      - name: Free up disk space
+        if: startsWith(matrix.os, 'ubuntu-')
+        run: |
+          df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h
 
       - name: Test
         run: pnpm test

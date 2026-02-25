@@ -759,7 +759,7 @@ impl Console {
         console: &mut Self,
         context: &mut Context,
     ) -> JsResult<JsValue> {
-        Console::group(&JsValue::Undefined, args, console, context)
+        Console::group(&JsValue::undefined(), args, console, context)
     }
 
     /// `console.groupEnd(label)`

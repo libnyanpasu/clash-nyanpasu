@@ -48,7 +48,7 @@ export const useProxyMode = () => {
     }
 
     return modes
-  }, [clashConfig.query.data])
+  }, [clashConfig.query.data, clashCore.value])
 
   const upsert = async (mode: string) => {
     await deleteConnections()

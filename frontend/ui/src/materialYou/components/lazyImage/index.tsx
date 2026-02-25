@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import { cn } from '@/utils'
 
-export interface LazyImageProps
-  extends React.ImgHTMLAttributes<HTMLImageElement> {
+export interface LazyImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
   loadingClassName?: string
 }
 export function LazyImage({

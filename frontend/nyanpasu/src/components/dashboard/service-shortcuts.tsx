@@ -5,15 +5,9 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import useSWR from 'swr'
 import { atomIsDrawer } from '@/store'
-import {
-  Box,
-  CircularProgress,
-  Paper,
-  SxProps,
-  Theme,
-  Tooltip,
-} from '@mui/material'
+import { Box, CircularProgress, Paper, Tooltip } from '@mui/material'
 import Grid from '@mui/material/Grid'
+import type { SxProps, Theme } from '@mui/material/styles'
 import { getCoreStatus, useSystemService } from '@nyanpasu/interface'
 import { alpha } from '@nyanpasu/ui'
 
@@ -42,24 +36,24 @@ export const ServiceShortcuts = () => {
       case 'running': {
         return {
           label: t('running'),
-          sx: (theme) => ({
+          sx: ((theme) => ({
             backgroundColor: alpha(theme.vars.palette.success.light, 0.3),
             ...theme.applyStyles('dark', {
               backgroundColor: alpha(theme.vars.palette.success.dark, 0.3),
             }),
-          }),
+          })) as SxProps<Theme>,
         }
       }
 
       case 'stopped': {
         return {
           label: t('stopped'),
-          sx: (theme) => ({
+          sx: ((theme) => ({
             backgroundColor: alpha(theme.vars.palette.error.light, 0.3),
             ...theme.applyStyles('dark', {
               backgroundColor: alpha(theme.vars.palette.error.dark, 0.3),
             }),
-          }),
+          })) as SxProps<Theme>,
         }
       }
 
@@ -67,12 +61,12 @@ export const ServiceShortcuts = () => {
       default: {
         return {
           label: t('not_installed'),
-          sx: (theme) => ({
+          sx: ((theme) => ({
             backgroundColor: theme.vars.palette.grey[100],
             ...theme.applyStyles('dark', {
               backgroundColor: theme.vars.palette.background.paper,
             }),
-          }),
+          })) as SxProps<Theme>,
         }
       }
     }
@@ -90,24 +84,24 @@ export const ServiceShortcuts = () => {
           !!Stopped && Stopped.trim()
             ? t('stopped_reason', { reason: Stopped })
             : t('stopped'),
-        sx: (theme) => ({
+        sx: ((theme) => ({
           backgroundColor: alpha(theme.vars.palette.success.light, 0.3),
           ...theme.applyStyles('dark', {
             backgroundColor: alpha(theme.vars.palette.success.dark, 0.3),
           }),
-        }),
+        })) as SxProps<Theme>,
       }
     }
     return {
       label: t('service_shortcuts.core_started_by', {
         by: t(status[2] === 'normal' ? 'UI' : 'service'),
       }),
-      sx: (theme) => ({
+      sx: ((theme) => ({
         backgroundColor: alpha(theme.vars.palette.success.light, 0.3),
         ...theme.applyStyles('dark', {
           backgroundColor: alpha(theme.vars.palette.success.dark, 0.3),
         }),
-      }),
+      })) as SxProps<Theme>,
     }
   }, [coreStatusSWR.data, t])
 

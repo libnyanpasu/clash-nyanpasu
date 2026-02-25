@@ -1,0 +1,53 @@
+import ContextMenuProvider from '@/components/providers/context-menu-provider'
+import NyanpasuUpdateProvider from '@/components/providers/nyanpasu-update-provider'
+import { AnimatedOutletPreset } from '@/components/router/animated-outlet'
+import { cn } from '@nyanpasu/ui'
+import packageJson from '@root/package.json'
+import { createFileRoute } from '@tanstack/react-router'
+import Header from './_modules/header'
+import Navbar from './_modules/navbar'
+
+export const Route = createFileRoute('/(main)')({
+  component: RouteComponent,
+})
+
+const AppContent = () => {
+  return (
+    <AnimatedOutletPreset
+      className={cn(
+        'h-[calc(100vh-40px-64px)]',
+        'sm:h-[calc(100vh-40px-48px)]',
+        'overflow-hidden',
+      )}
+      data-slot="app-content"
+    />
+  )
+}
+
+function RouteComponent() {
+  return (
+    <NyanpasuUpdateProvider>
+      <ContextMenuProvider>
+        <div
+          className={cn(
+            'flex max-h-dvh min-h-dvh flex-col',
+            'bg-mixed-background',
+          )}
+          data-slot="app-root"
+          data-app-version={packageJson.version}
+        >
+          <Header />
+
+          <div
+            className="flex flex-1 flex-col sm:flex-col-reverse"
+            data-slot="app-content-container"
+          >
+            <AppContent />
+
+            <Navbar />
+          </div>
+        </div>
+      </ContextMenuProvider>
+    </NyanpasuUpdateProvider>
+  )
+}

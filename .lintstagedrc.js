@@ -1,23 +1,34 @@
 export default {
-  '*.{js,cjs,.mjs,jsx}': ['prettier --write', 'eslint --cache --fix'],
+  '*.{js,cjs,.mjs,jsx}': (filenames) => {
+    const configFiles = [
+      '.oxlintrc.json',
+      '.lintstagedrc.js',
+      'commitlint.config.js',
+    ]
+    const filtered = filenames.filter(
+      (file) => !configFiles.some((config) => file.endsWith(config)),
+    )
+    if (filtered.length === 0) return []
+    return ['prettier --write', 'oxlint --fix']
+  },
   'scripts/**/*.{ts,tsx}': [
     'prettier --write',
-    'eslint --cache --fix',
+    'oxlint --fix',
     () => 'tsc -p scripts/tsconfig.json --noEmit',
   ],
   'frontend/interface/**/*.{ts,tsx}': [
     'prettier --write',
-    'eslint --cache --fix',
+    'oxlint --fix',
     () => 'tsc -p frontend/interface/tsconfig.json --noEmit',
   ],
   'frontend/ui/**/*.{ts,tsx}': [
     'prettier --write',
-    'eslint --cache --fix',
+    'oxlint --fix',
     () => 'tsc -p frontend/ui/tsconfig.json --noEmit',
   ],
   'frontend/nyanpasu/**/*.{ts,tsx}': [
     'prettier --write',
-    'eslint --cache --fix',
+    'oxlint --fix',
     () => 'tsc -p frontend/nyanpasu/tsconfig.json --noEmit',
   ],
   'backend/**/*.{rs,toml}': [
@@ -31,5 +42,12 @@ export default {
   ],
   '*.{html,sass,scss,less}': ['prettier --write', 'stylelint --fix'],
   'package.json': ['prettier --write'],
-  '*.{md,json,jsonc,json5,yaml,yml,toml}': ['prettier --write'],
+  '*.{md,json,jsonc,json5,yaml,yml,toml}': (filenames) => {
+    // exclude frontend/nyanpasu/messages directory
+    const filtered = filenames.filter(
+      (file) => !file.includes('frontend/nyanpasu/messages/'),
+    )
+    if (filtered.length === 0) return []
+    return `prettier --write ${filtered.join(' ')}`
+  },
 }

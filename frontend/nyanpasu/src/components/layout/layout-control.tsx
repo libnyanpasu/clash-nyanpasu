@@ -9,7 +9,7 @@ import {
   PushPinOutlined,
 } from '@mui/icons-material'
 import { Button, ButtonProps } from '@mui/material'
-import { saveWindowSizeState, useSetting } from '@nyanpasu/interface'
+import { commands, useSetting } from '@nyanpasu/interface'
 import { alpha, cn } from '@nyanpasu/ui'
 import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { listen, TauriEvent, UnlistenFn } from '@tauri-apps/api/event'
@@ -78,7 +78,7 @@ export const LayoutControl = ({ className }: { className?: string }) => {
 
       <CtrlButton
         onClick={() => {
-          appWindow.toggleMaximize().then((isMaximized) => {
+          appWindow.toggleMaximize().then(() => {
             queryClient.invalidateQueries({ queryKey: ['isMaximized'] })
           })
         }}
@@ -98,7 +98,7 @@ export const LayoutControl = ({ className }: { className?: string }) => {
       <CtrlButton
         onClick={() => {
           if (platform.current === 'windows') {
-            saveWindowSizeState().finally(() => {
+            commands.saveWindowSizeState(appWindow.label).finally(() => {
               appWindow.close()
             })
           } else {

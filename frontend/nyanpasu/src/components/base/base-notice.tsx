@@ -18,6 +18,8 @@ const NoticeInner = (props: InnerProps) => {
     setVisible(false)
     onClose()
   }
+
+  // oxlint-disable-next-line typescript/no-explicit-any
   const onAutoClose = (_e: any, reason: string) => {
     if (reason !== 'clickaway') onBtnClose()
   }

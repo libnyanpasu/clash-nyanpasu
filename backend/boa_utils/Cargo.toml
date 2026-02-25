@@ -12,8 +12,8 @@ doctest = false
 [dependencies]
 rustc-hash = { version = "2", features = ["std"] }
 boa_engine = { workspace = true, features = ["annex-b"] }
-boa_gc = { version = "0.20" }
-boa_parser = { version = "0.20", features = ["annex-b"] }
+boa_gc = { version = "0.21" }
+boa_parser = { version = "0.21", features = ["annex-b"] }
 tokio = { workspace = true }
 nyanpasu-utils = { workspace = true }
 reqwest = { workspace = true }
@@ -24,8 +24,8 @@ tracing = "0.1"
 url = "2"
 log = "0.4"
 anyhow = "1.0"
-include_url_macro = { git = "https://github.com/libnyanpasu/include_url_macro", rev = "b0b88e5" }
-include-compress-bytes = { git = "https://github.com/libnyanpasu/include-compress-bytes", rev = "250a12c" }
+include_url_macro = { git = "https://github.com/libnyanpasu/include_url_macro", rev = "fbe47bd" }
+include-compress-bytes = { git = "https://github.com/libnyanpasu/include-compress-bytes", rev = "4e4f25b" }
 phf = { version = "0.13.1", features = ["macros"] }
 
 # for cacheing

@@ -3,6 +3,7 @@ import { useState } from 'react'
 import getSystem from '@/utils/get-system'
 import { MenuOpen } from '@mui/icons-material'
 import { Backdrop, IconButton } from '@mui/material'
+import type { SxProps, Theme } from '@mui/material/styles'
 import { alpha, cn } from '@nyanpasu/ui'
 import AnimatedLogo from '../layout/animated-logo'
 import DrawerContent from './drawer-content'
@@ -50,22 +51,18 @@ export const AppDrawer = () => {
       <DrawerTitle />
       <Backdrop
         className={cn('z-20', OS !== 'linux' && 'backdrop-blur-xl')}
-        sx={[
-          (theme) =>
-            OS === 'linux'
-              ? {
-                  backgroundColor: null,
-                }
-              : {
-                  backgroundColor: alpha(theme.vars.palette.primary.light, 0.1),
-                  ...theme.applyStyles('dark', {
-                    backgroundColor: alpha(
-                      theme.vars.palette.primary.dark,
-                      0.1,
-                    ),
-                  }),
-                },
-        ]}
+        sx={
+          (OS === 'linux'
+            ? {
+                backgroundColor: 'transparent',
+              }
+            : (theme) => ({
+                backgroundColor: alpha(theme.vars.palette.primary.light, 0.1),
+                ...theme.applyStyles('dark', {
+                  backgroundColor: alpha(theme.vars.palette.primary.dark, 0.1),
+                }),
+              })) as SxProps<Theme>
+        }
         open={open}
         onClick={() => setOpen(false)}
       >

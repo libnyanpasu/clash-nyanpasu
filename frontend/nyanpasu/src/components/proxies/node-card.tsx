@@ -1,6 +1,7 @@
 import { useLockFn } from 'ahooks'
 import { CSSProperties, memo, useMemo } from 'react'
 import Box from '@mui/material/Box'
+import type { SxProps, Theme } from '@mui/material/styles'
 import { ClashProxiesQueryProxyItem } from '@nyanpasu/interface'
 import { alpha, cn } from '@nyanpasu/ui'
 import { PaperSwitchButton } from '../setting/modules/system-proxy'
@@ -41,16 +42,18 @@ export const NodeCard = memo(function NodeCard({
       disabled={disabled}
       style={style}
       className={cn(styles.Card, delay === -1 && styles.NoDelay)}
-      sxPaper={(theme) => ({
-        backgroundColor: checked
-          ? alpha(theme.vars.palette.primary.main, 0.3)
-          : theme.vars.palette.grey[100],
-        ...theme.applyStyles('dark', {
+      sxPaper={
+        ((theme) => ({
           backgroundColor: checked
             ? alpha(theme.vars.palette.primary.main, 0.3)
-            : theme.vars.palette.grey[900],
-        }),
-      })}
+            : theme.vars.palette.grey[100],
+          ...theme.applyStyles('dark', {
+            backgroundColor: checked
+              ? alpha(theme.vars.palette.primary.main, 0.3)
+              : theme.vars.palette.grey[900],
+          }),
+        })) as SxProps<Theme>
+      }
     >
       <Box width="100%" display="flex" gap={0.5}>
         <FeatureChip label={node.type} />

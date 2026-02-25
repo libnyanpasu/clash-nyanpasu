@@ -1,6 +1,7 @@
 import { commands } from './bindings'
 
 export * from './consts'
+export * from './use-server-port'
 export * from './use-clash-config'
 export * from './use-clash-connections'
 export * from './use-clash-cores'
@@ -21,6 +22,9 @@ export * from './use-runtime-profile'
 export * from './use-settings'
 export * from './use-system-proxy'
 export * from './use-system-service'
+export * from './use-service-prompt'
+export * from './use-core-dir'
+export * from './use-platform'
 
 export { commands } from './bindings'
 export type * from './bindings'

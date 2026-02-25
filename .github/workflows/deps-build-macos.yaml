@@ -45,16 +45,16 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: 16
+          xcode-version: latest-stable
 
-      - name: install Rust stable
+      - name: install Rust nightly
         run: |
-          rustup install stable --profile minimal --no-self-update
-          rustup default stable
+          rustup install nightly --profile minimal --no-self-update
+          rustup default nightly
 
       - name: Install Rust intel target
         if: ${{ inputs.aarch64 == false }}
@@ -68,7 +68,7 @@ jobs:
       - name: Install Node latest
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
@@ -82,12 +82,19 @@ jobs:
         shell: bash
         run: |
           pnpm i
+
+      - name: Restore build cache
+        run: deno run -A scripts/deno/build-cache.ts restore --os macos --arch ${{ inputs.aarch64 == true && 'aarch64' || 'x86_64' }}
+        env:
+          FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+        continue-on-error: true
+
       - name: Download Sidecars aarch64
         if: ${{ inputs.aarch64 == true }}
-        run: pnpm check --arch arm64 --sidecar-host aarch64-apple-darwin
+        run: pnpm prepare:check --arch arm64 --sidecar-host aarch64-apple-darwin
       - name: Download Sidecars x64
         if: ${{ inputs.aarch64 == false }}
-        run: pnpm check --arch x64 --sidecar-host x86_64-apple-darwin
+        run: pnpm prepare:check --arch x64 --sidecar-host x86_64-apple-darwin
       - name: Nightly Prepare
         if: ${{ inputs.nightly == true }}
         run: |
@@ -125,8 +132,15 @@ jobs:
           TARGET_ARCH: ${{ inputs.aarch64 == true && 'aarch64' || 'x86_64' }}
 
       - name: Upload to Github Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Clash.Nyanpasu-macOS-${{ inputs.aarch64 == true && 'aarch64' || 'amd64' }}
           path: |
             ./backend/target/**/*.dmg
+
+      - name: Save build cache
+        if: always()
+        run: deno run -A scripts/deno/build-cache.ts save --os macos --arch ${{ inputs.aarch64 == true && 'aarch64' || 'x86_64' }}
+        env:
+          FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+        continue-on-error: true

@@ -37,7 +37,7 @@ use tauri::{Emitter, Manager};
 use tauri_specta::{collect_commands, collect_events};
 use utils::resolve::{is_window_opened, reset_window_open_counter};
 
-rust_i18n::i18n!("../../locales");
+rust_i18n::i18n!("./locales");
 
 #[cfg(feature = "deadlock-detection")]
 fn deadlock_detection() {
@@ -111,7 +111,7 @@ pub fn run() -> std::io::Result<()> {
         let locale = utils::help::get_system_locale();
         utils::help::mapping_to_i18n_key(&locale)
     };
-    rust_i18n::set_locale(locale);
+    rust_i18n::set_locale(locale.to_lowercase().as_str());
 
     if single_instance_result
         .as_ref()
@@ -240,7 +240,6 @@ pub fn run() -> std::io::Result<()> {
             ipc::delete_profile,
             ipc::read_profile_file,
             ipc::save_profile_file,
-            ipc::save_window_size_state,
             ipc::get_custom_app_dir,
             ipc::set_custom_app_dir,
             // service mode
@@ -275,8 +274,16 @@ pub fn run() -> std::io::Result<()> {
             ipc::get_clash_ws_connections_state,
             // updater layer
             ipc::check_update,
+            // window management
+            ipc::save_window_size_state,
+            ipc::create_main_window,
+            ipc::create_legacy_window,
+            ipc::create_editor_window,
         ])
-        .events(collect_events![core::clash::ClashConnectionsEvent]);
+        .events(collect_events![
+            core::clash::ClashConnectionsEvent,
+            window::WindowMessageEvent
+        ]);
 
     #[cfg(debug_assertions)]
     {
@@ -301,7 +308,7 @@ pub fn run() -> std::io::Result<()> {
                         .map_err(io::Error::other)
                 })
                 .bigint(BigIntExportBehavior::Number)
-                .header("/* eslint-disable */\n// @ts-nocheck"),
+                .header("/* oxlint-disable */\n// @ts-nocheck"),
             SPECTA_BINDINGS_PATH,
         ) {
             Ok(_) => {
@@ -314,7 +321,7 @@ pub fn run() -> std::io::Result<()> {
     }
 
     let verge = { ConfigService::verge().latest().language.clone().unwrap() };
-    rust_i18n::set_locale(verge.as_str());
+    rust_i18n::set_locale(verge.to_lowercase().as_str());
 
     // show a dialog to print the single instance error
     // Hold the guard until the end of the program if acquired

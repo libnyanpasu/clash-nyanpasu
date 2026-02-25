@@ -116,14 +116,18 @@ impl Profiles {
 
     /// reorder items with the full order list
     pub fn reorder_by_list<T: Borrow<String>>(&mut self, order: &[T]) -> Result<()> {
-        let items = &mut self.items;
-        let mut new_items = vec![];
+        let mut items = std::mem::take(&mut self.items);
+        let mut new_items = Vec::with_capacity(items.len());
 
         for uid in order {
             if let Some(index) = items.iter().position(|e| e.uid() == uid.borrow()) {
                 new_items.push(items.remove(index));
             }
         }
+
+        // Keep unmatched items to avoid accidental data loss when order is partial.
+        new_items.extend(items);
+        self.items = new_items;
 
         self.save_file()
     }

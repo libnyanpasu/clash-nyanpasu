@@ -17,6 +17,7 @@ pub mod open;
 
 pub mod dock;
 pub mod sudo;
+pub mod yaml;
 
 #[cfg(test)]
 #[cfg(windows)]

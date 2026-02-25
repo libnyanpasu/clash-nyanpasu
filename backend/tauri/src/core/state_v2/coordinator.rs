@@ -1,29 +1,7 @@
-use super::builder::*;
+// ! TODO: add a pending state to implement MVCC(Multi-Version Concurrency Control) for different tokio tasks.
 
-#[derive(thiserror::Error, Debug)]
-pub enum StateChangedError {
-    #[error("builder validation error: {0}")]
-    Validation(anyhow::Error),
-    #[error("state migrate error: {0:#?}")]
-    Migrate(#[from] MigrateError),
-
-    #[error("state migrate and rollback error: migrate {0:#?}, rollback {1:#?}")]
-    MigrateAndRollback(MigrateError, RollbackError),
-}
-
-#[derive(thiserror::Error, Debug)]
-#[error("state migrate error: {name}: {error:#?}")]
-pub struct MigrateError {
-    pub name: String,
-    pub error: anyhow::Error,
-}
-
-#[derive(thiserror::Error, Debug)]
-#[error("state rollback error: {name}: {error:#?}")]
-pub struct RollbackError {
-    pub name: String,
-    pub error: anyhow::Error,
-}
+use super::{Context, builder::*, error::*};
+use std::any::Any;
 
 #[async_trait::async_trait]
 #[allow(unused_variables)]
@@ -47,6 +25,13 @@ pub(crate) trait StateChangedSubscriber<T: Clone + Send + Sync + 'static> {
     }
 }
 
+// pub trait FusedStateChangedSubscriber<T>: StateChangedSubscriber<T>
+// where
+//     T: Clone + Send + Sync + 'static,
+// {
+//     fn is_terminated(&self) -> bool;
+// }
+
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ConcurrencyStrategy {
     #[default]
@@ -63,7 +48,7 @@ pub struct StateCoordinator<T: Clone + Send + Sync + 'static> {
 }
 
 impl<T: Clone + Send + Sync> StateCoordinator<T> {
-    pub(super) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             current_state: None,
             subscribers: Vec::new(),
@@ -71,7 +56,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
     }
 
     /// Add a subscriber to the state coordinator.
-    fn add_subscriber(&mut self, subscriber: Box<dyn StateChangedSubscriber<T> + Send + Sync>) {
+    pub fn add_subscriber(&mut self, subscriber: Box<dyn StateChangedSubscriber<T> + Send + Sync>) {
         self.subscribers.push(subscriber);
     }
 
@@ -80,7 +65,48 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         self.current_state.clone()
     }
 
-    async fn run_migration<S>(
+    /// Run the migration for the subscribers, return a vector of errors if the migration is failed.
+    /// If the migration is failed, the rollback will be called for the previous subscribers.
+    async fn run_migration<S, I>(
+        subscribers: &[I],
+        current_state: Option<&T>,
+        new_state: &T,
+    ) -> Result<(), StateChangedError>
+    where
+        I: AsRef<S>,
+        S: StateChangedSubscriber<T> + Send + Sync + ?Sized,
+    {
+        let mut errors = Vec::new();
+        for (index, subscriber) in subscribers.iter().enumerate() {
+            if let Err(e) =
+                Self::do_migration_for_subscriber(subscriber.as_ref(), current_state, new_state)
+                    .await
+            {
+                errors.push(e);
+                let previous_index = index.saturating_sub(1);
+                for subscriber in subscribers.iter().take(previous_index) {
+                    let subscriber = subscriber.as_ref();
+                    if let Err(e) = subscriber
+                        .rollback(current_state.cloned(), new_state.clone())
+                        .await
+                    {
+                        errors.push(StateChangedError::Rollback(RollbackError {
+                            name: subscriber.name().to_string(),
+                            error: e.into(),
+                        }));
+                    }
+                }
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(StateChangedError::Batch(errors.into_boxed_slice()))
+        }
+    }
+
+    async fn do_migration_for_subscriber<S>(
         subscriber: &S,
         current_state: Option<&T>,
         new_state: &T,
@@ -125,22 +151,41 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             .await
             .map_err(StateChangedError::Validation)?;
 
-        for subscriber in self.subscribers.iter() {
-            Self::run_migration(subscriber.as_ref(), self.current_state.as_ref(), &new_state)
-                .await?;
-        }
+        Self::run_migration(&self.subscribers, self.current_state.as_ref(), &new_state).await?;
 
+        self.current_state = Some(new_state);
+        Ok(())
+    }
+
+    pub async fn upsert_with_context(
+        &mut self,
+        builder: impl StateAsyncBuilder<State = T>,
+    ) -> Result<(), StateChangedError> {
+        let new_state = builder
+            .build()
+            .await
+            .map_err(StateChangedError::Validation)?;
+        Context::scope(new_state.clone(), async {
+            Self::run_migration(&self.subscribers, self.current_state.as_ref(), &new_state).await?;
+            Ok::<_, StateChangedError>(())
+        })
+        .await?;
         self.current_state = Some(new_state);
         Ok(())
     }
 
     /// Upsert the state directly, it used for a small StateObject, a bool value, etc.
     pub async fn upsert_state(&mut self, state: T) -> Result<(), StateChangedError> {
-        for subscriber in self.subscribers.iter() {
-            Self::run_migration(subscriber.as_ref(), self.current_state.as_ref(), &state).await?;
-        }
+        Self::run_migration(&self.subscribers, self.current_state.as_ref(), &state).await?;
         self.current_state = Some(state);
         Ok(())
+    }
+
+    pub async fn upsert_state_with_context<F>(
+        &mut self,
+        state: T,
+    ) -> Result<(), StateChangedError> {
+        Context::scope(state.clone(), self.upsert_state(state)).await
     }
 }
 

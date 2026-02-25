@@ -1,5 +1,5 @@
 use serde_yaml::{Mapping, Value};
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 pub const HANDLE_FIELDS: [&str; 9] = [
     "mode",
@@ -77,11 +77,7 @@ pub fn use_valid_fields(valid: &[String]) -> Vec<String> {
 }
 
 /// 使用白名单过滤配置字段
-pub fn use_whitelist_fields_filter(config: Mapping, filter: &[String], enable: bool) -> Mapping {
-    if !enable {
-        return config;
-    }
-
+pub fn use_whitelist_fields_filter(config: Mapping, filter: &[String]) -> Mapping {
     let mut ret = Mapping::new();
 
     for (key, value) in config.into_iter() {
@@ -146,7 +142,7 @@ pub fn use_sort(config: Mapping, enable_filter: bool) -> Mapping {
     ret
 }
 
-pub fn use_keys(config: &Mapping) -> Vec<String> {
+pub fn use_keys(config: &Mapping) -> BTreeSet<String> {
     config
         .iter()
         .filter_map(|(key, _)| key.as_str())

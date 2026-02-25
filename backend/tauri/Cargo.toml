@@ -56,6 +56,7 @@ itertools = "0.14"                                                        # swee
 rayon = "1.10"                                                            # for iterator parallel processing
 ambassador = "0.5.0"                                                      # for trait delegation
 derive_builder = "0.20"                                                   # for builder pattern
+json-patch = "4.1.0"                                                      # for json patch
 strum = { version = "0.28", features = ["derive"] }                       # for enum string conversion
 atomic_enum = "0.3.0"                                                     # for atomic enum
 enumflags2 = "0.7"                                                        # for enum flags
@@ -67,6 +68,7 @@ indexmap = { version = "2.2.3", features = ["serde"] }
 bimap = "0.6.3"
 bumpalo = "3.17.0"                                     # a bump allocator for heap allocation
 rustc-hash = "2.1"
+slab = "0.4"                                           # for slab allocation
 
 # Terminal Utilities
 ansi-str = "0.9"                                    # for ansi str stripped
@@ -96,6 +98,7 @@ sysproxy = { git = "https://github.com/libnyanpasu/sysproxy-rs.git", version = "
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
+serde_with = { version = "3.14" }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 serde_yaml = { version = "0.10", package = "serde_yaml_ng", branch = "feat/specta-update", git = "https://github.com/libnyanpasu/serde-yaml-ng.git", features = [
   "specta",

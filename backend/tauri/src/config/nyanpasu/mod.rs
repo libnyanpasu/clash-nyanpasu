@@ -1,116 +1,13 @@
-use crate::utils::{dirs, help};
-use anyhow::Result;
-// use log::LevelFilter;
-use enumflags2::bitflags;
-use nyanpasu_macro::VergePatch;
+use derive_builder::Builder;
+
+use nyanpasu_macro::BuilderUpdate;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-/// Validates if a string is a valid hex color code
-pub fn is_hex_color(color: &str) -> bool {
-    if color.len() != 7 || !color.starts_with('#') {
-        return false;
-    }
-
-    color[1..].chars().all(|c| c.is_ascii_hexdigit())
-}
-
-mod clash_strategy;
-pub mod logging;
-mod widget;
-
-pub use self::clash_strategy::{ClashStrategy, ExternalControllerPortStrategy};
-pub use logging::LoggingLevel;
-pub use widget::NetworkStatisticWidgetConfig;
-
-// TODO: when support sing-box, remove this struct
-#[bitflags]
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Type)]
-pub enum ClashCore {
-    #[serde(rename = "clash", alias = "clash-premium")]
-    ClashPremium = 0b0001,
-    #[serde(rename = "clash-rs")]
-    ClashRs,
-    #[serde(rename = "mihomo", alias = "clash-meta")]
-    Mihomo,
-    #[serde(rename = "mihomo-alpha")]
-    MihomoAlpha,
-    #[serde(rename = "clash-rs-alpha")]
-    ClashRsAlpha,
-}
-
-impl Default for ClashCore {
-    fn default() -> Self {
-        match cfg!(feature = "default-meta") {
-            false => Self::ClashPremium,
-            true => Self::Mihomo,
-        }
-    }
-}
-
-impl From<ClashCore> for String {
-    fn from(core: ClashCore) -> Self {
-        match core {
-            ClashCore::ClashPremium => "clash".into(),
-            ClashCore::ClashRs => "clash-rs".into(),
-            ClashCore::Mihomo => "mihomo".into(),
-            ClashCore::MihomoAlpha => "mihomo-alpha".into(),
-            ClashCore::ClashRsAlpha => "clash-rs-alpha".into(),
-        }
-    }
-}
-
-impl std::fmt::Display for ClashCore {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ClashCore::ClashPremium => write!(f, "clash"),
-            ClashCore::ClashRs => write!(f, "clash-rs"),
-            ClashCore::Mihomo => write!(f, "mihomo"),
-            ClashCore::MihomoAlpha => write!(f, "mihomo-alpha"),
-            ClashCore::ClashRsAlpha => write!(f, "clash-rs-alpha"),
-        }
-    }
-}
-
-impl From<&ClashCore> for nyanpasu_utils::core::CoreType {
-    fn from(core: &ClashCore) -> Self {
-        match core {
-            ClashCore::ClashPremium => nyanpasu_utils::core::CoreType::Clash(
-                nyanpasu_utils::core::ClashCoreType::ClashPremium,
-            ),
-            ClashCore::ClashRs => nyanpasu_utils::core::CoreType::Clash(
-                nyanpasu_utils::core::ClashCoreType::ClashRust,
-            ),
-            ClashCore::Mihomo => {
-                nyanpasu_utils::core::CoreType::Clash(nyanpasu_utils::core::ClashCoreType::Mihomo)
-            }
-            ClashCore::MihomoAlpha => nyanpasu_utils::core::CoreType::Clash(
-                nyanpasu_utils::core::ClashCoreType::MihomoAlpha,
-            ),
-            ClashCore::ClashRsAlpha => nyanpasu_utils::core::CoreType::Clash(
-                nyanpasu_utils::core::ClashCoreType::ClashRustAlpha,
-            ),
-        }
-    }
-}
-
-impl TryFrom<&nyanpasu_utils::core::CoreType> for ClashCore {
-    type Error = anyhow::Error;
-
-    fn try_from(core: &nyanpasu_utils::core::CoreType) -> Result<Self> {
-        match core {
-            nyanpasu_utils::core::CoreType::Clash(clash) => match clash {
-                nyanpasu_utils::core::ClashCoreType::ClashPremium => Ok(ClashCore::ClashPremium),
-                nyanpasu_utils::core::ClashCoreType::ClashRust => Ok(ClashCore::ClashRs),
-                nyanpasu_utils::core::ClashCoreType::ClashRustAlpha => Ok(ClashCore::ClashRsAlpha),
-                nyanpasu_utils::core::ClashCoreType::Mihomo => Ok(ClashCore::Mihomo),
-                nyanpasu_utils::core::ClashCoreType::MihomoAlpha => Ok(ClashCore::MihomoAlpha),
-            },
-            _ => Err(anyhow::anyhow!("unsupported core type")),
-        }
-    }
-}
+mod partial;
+mod service;
+pub use partial::*;
+pub use service::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
 #[serde(rename_all = "snake_case")]
@@ -123,169 +20,125 @@ pub enum ProxiesSelectorMode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
 #[serde(rename_all = "snake_case")]
-pub enum TunStack {
+pub enum ThemeMode {
+    Light,
+    Dark,
+    #[default]
     System,
-    #[default]
-    Gvisor,
-    Mixed,
-}
-
-impl AsRef<str> for TunStack {
-    fn as_ref(&self) -> &str {
-        match self {
-            TunStack::System => "system",
-            TunStack::Gvisor => "gvisor",
-            TunStack::Mixed => "mixed",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
-#[serde(rename_all = "snake_case")]
-pub enum BreakWhenProxyChange {
-    #[default]
-    None,
-    Chain,
-    All,
 }
 
 /// ### `verge.yaml` schema
-#[derive(Default, Debug, Clone, Deserialize, Serialize, VergePatch, specta::Type)]
-#[verge(patch_fn = "patch_config")]
-// TODO: use new managedState and builder pattern instead
-pub struct IVerge {
+#[derive(Default, Debug, Clone, Deserialize, Serialize, specta::Type, Builder, BuilderUpdate)]
+#[builder(default, derive(Debug, Serialize, Deserialize, specta::Type))]
+#[builder_update(patch_fn = "apply")]
+// #[serde(flatten)]
+//     #[builder(field(
+//         ty = "ProfileSharedBuilder",
+//         build = "self.shared.build(&PROFILE_TYPE).map_err(|e| LocalProfileBuilderError::from(e.to_string()))?"
+//     ))]
+//     #[builder_field_attr(serde(flatten))]
+//     #[builder_update(nested)]
+pub struct NyanpasuAppConfig {
     /// app listening port for app singleton
-    pub app_singleton_port: Option<u16>,
+    pub app_singleton_port: u16,
 
     /// app log level
     /// silent | error | warn | info | debug | trace
-    pub app_log_level: Option<logging::LoggingLevel>,
+    pub app_log_level: partial::LoggingLevel,
 
     // i18n
-    pub language: Option<String>,
+    #[builder(default = "Self::default_language()")]
+    pub language: String,
 
     /// `light` or `dark` or `system`
-    pub theme_mode: Option<String>,
+    pub theme_mode: ThemeMode,
 
-    /// enable traffic graph default is true
-    pub traffic_graph: Option<bool>,
+    /// enable traffic graph
+    #[builder(default = "true")]
+    pub traffic_graph: bool,
 
     /// show memory info (only for Clash Meta)
-    pub enable_memory_usage: Option<bool>,
+    #[builder(default = "true")]
+    pub enable_memory_usage: bool,
 
     /// global ui framer motion effects
-    pub lighten_animation_effects: Option<bool>,
+    pub lighten_animation_effects: bool,
 
-    /// clash tun mode
-    pub enable_tun_mode: Option<bool>,
-
-    /// windows service mode
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub enable_service_mode: Option<bool>,
+    /// service mode
+    pub enable_service_mode: bool,
 
     /// can the app auto startup
-    pub enable_auto_launch: Option<bool>,
+    pub enable_auto_launch: bool,
 
     /// not show the window on launch
-    pub enable_silent_start: Option<bool>,
+    pub enable_silent_start: bool,
 
     /// set system proxy
-    pub enable_system_proxy: Option<bool>,
+    pub enable_system_proxy: bool,
 
     /// enable proxy guard
-    pub enable_proxy_guard: Option<bool>,
+    pub enable_proxy_guard: bool,
 
     /// set system proxy bypass
-    pub system_proxy_bypass: Option<String>,
+    pub system_proxy_bypass: String,
 
     /// proxy guard interval
-    #[serde(alias = "proxy_guard_duration")]
-    pub proxy_guard_interval: Option<u64>,
+    #[builder_field_attr(serde(alias = "proxy_guard_duration"))]
+    #[builder(default = "30")]
+    pub proxy_guard_interval: u64,
 
     /// theme setting
-    pub theme_color: Option<String>,
-
-    /// web ui list
-    pub web_ui_list: Option<Vec<String>>,
+    pub theme_color: String,
 
     /// clash core path
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub clash_core: Option<ClashCore>,
+    #[builder_field_attr(serde(alias = "clash_core"))]
+    pub core: ClashCore,
 
     /// hotkey map
     /// format: {func},{key}
-    pub hotkeys: Option<Vec<String>>,
-
-    /// 切换代理时自动关闭连接 (已弃用)
-    #[deprecated(note = "use `break_when_proxy_change` instead")]
-    pub auto_close_connection: Option<bool>,
-
-    /// 切换代理时中断连接
-    /// None: 不中断
-    /// Chain: 仅中断使用该代理链的连接
-    /// All: 中断所有连接
-    pub break_when_proxy_change: Option<BreakWhenProxyChange>,
-
-    /// 切换配置时中断连接
-    /// true: 中断所有连接
-    /// false: 不中断连接
-    pub break_when_profile_change: Option<bool>,
-
-    /// 切换模式时中断连接
-    /// true: 中断所有连接
-    /// false: 不中断连接
-    pub break_when_mode_change: Option<bool>,
+    pub hotkeys: Vec<String>,
 
     /// 默认的延迟测试连接
-    pub default_latency_test: Option<String>,
-
-    /// 支持关闭字段过滤，避免meta的新字段都被过滤掉，默认为真
-    pub enable_clash_fields: Option<bool>,
+    pub default_latency_test: String,
 
     /// 是否使用内部的脚本支持，默认为真
-    pub enable_builtin_enhanced: Option<bool>,
+    pub enable_builtin_enhanced: bool,
 
     /// proxy 页面布局 列数
-    pub proxy_layout_column: Option<i32>,
+    pub proxy_layout_column: i32,
 
     /// 日志清理
     /// 分钟数； 0 为不清理
     #[deprecated(note = "use `max_log_files` instead")]
-    pub auto_log_clean: Option<i64>,
+    pub auto_log_clean: usize,
+
     /// 日记轮转时间，单位：天
-    pub max_log_files: Option<usize>,
+    #[builder(default = "7")]
+    pub max_log_files: usize,
     /// window size and position
     #[deprecated(note = "use `window_size_state` instead")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub window_size_position: Option<Vec<f64>>,
+    #[builder_field_attr(serde(skip_serializing_if = "Option::is_none"))]
+    #[builder(setter(strip_option))]
+    pub window_size_position: Vec<f64>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder_field_attr(serde(skip_serializing_if = "Option::is_none"))]
+    #[builder(setter(strip_option))]
     pub window_size_state: Option<WindowState>,
 
-    /// 是否启用随机端口
-    pub enable_random_port: Option<bool>,
-
-    /// verge mixed port 用于覆盖 clash 的 mixed port
-    pub verge_mixed_port: Option<u16>,
-
     /// Check update when app launch
-    pub enable_auto_check_update: Option<bool>,
-
-    /// Clash 相关策略
-    pub clash_strategy: Option<ClashStrategy>,
+    #[builder(default = "true")]
+    pub enable_auto_check_update: bool,
 
     /// 是否启用代理托盘选择
-    pub clash_tray_selector: Option<ProxiesSelectorMode>,
+    #[builder_field_attr(serde(alias = "clash_tray_selector"))]
+    pub tray_selector_mode: ProxiesSelectorMode,
 
-    pub always_on_top: Option<bool>,
-
-    /// Tun 堆栈选择
-    /// TODO: 弃用此字段，转移到 clash config 里
-    pub tun_stack: Option<TunStack>,
+    /// 是否窗口置顶
+    pub always_on_top: bool,
 
     /// 是否启用网络统计信息浮窗
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub network_statistic_widget: Option<NetworkStatisticWidgetConfig>,
+    #[builder_field_attr(serde(skip_serializing_if = "Option::is_none"))]
+    pub network_statistic_widget: NetworkStatisticWidgetConfig,
 
     /// PAC URL for automatic proxy configuration
     /// This field is used to set PAC proxy without exposing it to the frontend UI
@@ -295,11 +148,29 @@ pub struct IVerge {
     /// enable tray text display on Linux systems
     /// When enabled, shows proxy and TUN mode status as text next to the tray icon
     /// When disabled, only shows status via icon changes (prevents text display issues on Wayland)
-    pub enable_tray_text: Option<bool>,
+    pub enable_tray_text: bool,
+
+    /// enable traffic information display in system tray
+    /// When enabled, shows upload/download speeds in the tray tooltip (macOS/Windows) or title (Linux)
+    pub enable_tray_traffic: bool,
 
     /// Use legacy UI (original UI at "/" route)
     /// When true, opens legacy window; when false, opens new main window
-    pub use_legacy_ui: Option<bool>,
+    #[builder(default = "true")]
+    pub use_legacy_ui: bool,
+
+    /// enable colored tray icons on macOS
+    /// When enabled, uses colored icons instead of template icons to show proxy status
+    /// When disabled, uses system template icons that adapt to light/dark mode
+    #[cfg(target_os = "macos")]
+    pub enable_macos_colored_icons: bool,
+}
+
+impl NyanpasuAppConfigBuilder {
+    fn default_language() -> String {
+        let locale = crate::utils::help::get_system_locale();
+        crate::utils::help::mapping_to_i18n_key(&locale).into()
+    }
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize, Type)]
@@ -310,128 +181,4 @@ pub struct WindowState {
     pub y: i32,
     pub maximized: bool,
     pub fullscreen: bool,
-}
-
-impl IVerge {
-    pub fn new() -> Self {
-        match dirs::nyanpasu_config_path().and_then(|path| help::read_yaml::<IVerge, _>(&path)) {
-            Ok(mut config) => {
-                // Validate and fix theme_color if it's invalid
-                if let Some(ref theme_color) = config.theme_color {
-                    if !theme_color.is_empty() && !is_hex_color(theme_color) {
-                        log::warn!(target: "app", "Invalid theme color detected: {}, resetting to default", theme_color);
-                        config.theme_color = None;
-                    }
-                }
-
-                Self::merge_with_template(config)
-            }
-            Err(err) => {
-                log::error!(target: "app", "{err:?}");
-                Self::template()
-            }
-        }
-    }
-
-    fn merge_with_template(mut config: IVerge) -> Self {
-        let template = Self::template();
-
-        if config.enable_auto_check_update.is_none() {
-            config.enable_auto_check_update = template.enable_auto_check_update;
-        }
-
-        if config.clash_tray_selector.is_none() {
-            config.clash_tray_selector = template.clash_tray_selector;
-        }
-
-        if config.max_log_files.is_none() {
-            config.max_log_files = template.max_log_files;
-        }
-
-        if config.lighten_animation_effects.is_none() {
-            config.lighten_animation_effects = template.lighten_animation_effects;
-        }
-
-        if config.enable_service_mode.is_none() {
-            config.enable_service_mode = template.enable_service_mode;
-        }
-
-        // Handle deprecated auto_close_connection by migrating to break_when_proxy_change
-        if config.auto_close_connection.is_some() && config.break_when_proxy_change.is_none() {
-            config.break_when_proxy_change = if config.auto_close_connection.unwrap() {
-                Some(BreakWhenProxyChange::All)
-            } else {
-                Some(BreakWhenProxyChange::None)
-            };
-        }
-
-        // Set defaults for new options if not present
-        if config.break_when_proxy_change.is_none() {
-            config.break_when_proxy_change = template.break_when_proxy_change;
-        }
-
-        if config.break_when_profile_change.is_none() {
-            config.break_when_profile_change = template.break_when_profile_change;
-        }
-
-        if config.break_when_mode_change.is_none() {
-            config.break_when_mode_change = template.break_when_mode_change;
-        }
-
-        if config.enable_tray_text.is_none() {
-            config.enable_tray_text = template.enable_tray_text;
-        }
-
-        if config.use_legacy_ui.is_none() {
-            config.use_legacy_ui = template.use_legacy_ui;
-        }
-
-        config
-    }
-
-    pub fn template() -> Self {
-        Self {
-            clash_core: Some(ClashCore::default()),
-            language: {
-                let locale = crate::utils::help::get_system_locale();
-                Some(crate::utils::help::mapping_to_i18n_key(&locale).into())
-            },
-            app_log_level: Some(logging::LoggingLevel::default()),
-            theme_mode: Some("system".into()),
-            traffic_graph: Some(true),
-            enable_memory_usage: Some(true),
-            enable_auto_launch: Some(false),
-            enable_silent_start: Some(false),
-            enable_system_proxy: Some(false),
-            enable_random_port: Some(false),
-            verge_mixed_port: Some(7890),
-            enable_proxy_guard: Some(false),
-            proxy_guard_interval: Some(30),
-            // auto_close_connection: Some(true), // Deprecated, replaced by break_when_proxy_change
-            break_when_proxy_change: Some(BreakWhenProxyChange::All),
-            break_when_profile_change: Some(true),
-            break_when_mode_change: Some(true),
-            enable_builtin_enhanced: Some(true),
-            enable_clash_fields: Some(true),
-            lighten_animation_effects: Some(false),
-            // auto_log_clean: Some(60 * 24 * 7), // 7 days 自动清理日记
-            max_log_files: Some(7), // 7 days
-            enable_auto_check_update: Some(true),
-            clash_tray_selector: Some(ProxiesSelectorMode::default()),
-            enable_service_mode: Some(false),
-            always_on_top: Some(false),
-            enable_tray_text: Some(false),
-            use_legacy_ui: Some(true),
-            ..Self::default()
-        }
-    }
-
-    /// Save IVerge App Config
-    pub fn save_file(&self) -> Result<()> {
-        help::save_yaml(
-            &dirs::nyanpasu_config_path()?,
-            &self,
-            Some("# Clash Nyanpasu Config"),
-        )
-    }
 }

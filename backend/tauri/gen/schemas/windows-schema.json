@@ -1400,10 +1400,10 @@
                         "markdownDescription": "This enables all index or metadata related commands without any pre-configured accessible paths."
                       },
                       {
-                        "description": "An empty permission you can use to modify the global scope.",
+                        "description": "An empty permission you can use to modify the global scope.\n\n## Example\n\n```json\n{\n  \"identifier\": \"read-documents\",\n  \"windows\": [\"main\"],\n  \"permissions\": [\n    \"fs:allow-read\",\n    {\n      \"identifier\": \"fs:scope\",\n      \"allow\": [\n        \"$APPDATA/documents/**/*\"\n      ],\n      \"deny\": [\n        \"$APPDATA/documents/secret.txt\"\n      ]\n    }\n  ]\n}\n```\n",
                         "type": "string",
                         "const": "fs:scope",
-                        "markdownDescription": "An empty permission you can use to modify the global scope."
+                        "markdownDescription": "An empty permission you can use to modify the global scope.\n\n## Example\n\n```json\n{\n  \"identifier\": \"read-documents\",\n  \"windows\": [\"main\"],\n  \"permissions\": [\n    \"fs:allow-read\",\n    {\n      \"identifier\": \"fs:scope\",\n      \"allow\": [\n        \"$APPDATA/documents/**/*\"\n      ],\n      \"deny\": [\n        \"$APPDATA/documents/secret.txt\"\n      ]\n    }\n  ]\n}\n```\n"
                       },
                       {
                         "description": "This scope permits access to all files and list content of top level directories in the application folders.",
@@ -2439,10 +2439,10 @@
           "markdownDescription": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`"
         },
         {
-          "description": "Default permissions for the plugin.\n#### This default permission set includes:\n\n- `allow-version`\n- `allow-name`\n- `allow-tauri-version`\n- `allow-identifier`\n- `allow-bundle-type`",
+          "description": "Default permissions for the plugin.\n#### This default permission set includes:\n\n- `allow-version`\n- `allow-name`\n- `allow-tauri-version`\n- `allow-identifier`\n- `allow-bundle-type`\n- `allow-register-listener`\n- `allow-remove-listener`",
           "type": "string",
           "const": "core:app:default",
-          "markdownDescription": "Default permissions for the plugin.\n#### This default permission set includes:\n\n- `allow-version`\n- `allow-name`\n- `allow-tauri-version`\n- `allow-identifier`\n- `allow-bundle-type`"
+          "markdownDescription": "Default permissions for the plugin.\n#### This default permission set includes:\n\n- `allow-version`\n- `allow-name`\n- `allow-tauri-version`\n- `allow-identifier`\n- `allow-bundle-type`\n- `allow-register-listener`\n- `allow-remove-listener`"
         },
         {
           "description": "Enables the app_hide command without any pre-configured scope.",
@@ -2487,10 +2487,22 @@
           "markdownDescription": "Enables the name command without any pre-configured scope."
         },
         {
+          "description": "Enables the register_listener command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:app:allow-register-listener",
+          "markdownDescription": "Enables the register_listener command without any pre-configured scope."
+        },
+        {
           "description": "Enables the remove_data_store command without any pre-configured scope.",
           "type": "string",
           "const": "core:app:allow-remove-data-store",
           "markdownDescription": "Enables the remove_data_store command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the remove_listener command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:app:allow-remove-listener",
+          "markdownDescription": "Enables the remove_listener command without any pre-configured scope."
         },
         {
           "description": "Enables the set_app_theme command without any pre-configured scope.",
@@ -2559,10 +2571,22 @@
           "markdownDescription": "Denies the name command without any pre-configured scope."
         },
         {
+          "description": "Denies the register_listener command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:app:deny-register-listener",
+          "markdownDescription": "Denies the register_listener command without any pre-configured scope."
+        },
+        {
           "description": "Denies the remove_data_store command without any pre-configured scope.",
           "type": "string",
           "const": "core:app:deny-remove-data-store",
           "markdownDescription": "Denies the remove_data_store command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the remove_listener command without any pre-configured scope.",
+          "type": "string",
+          "const": "core:app:deny-remove-listener",
+          "markdownDescription": "Denies the remove_listener command without any pre-configured scope."
         },
         {
           "description": "Denies the set_app_theme command without any pre-configured scope.",
@@ -5703,10 +5727,10 @@
           "markdownDescription": "This enables all index or metadata related commands without any pre-configured accessible paths."
         },
         {
-          "description": "An empty permission you can use to modify the global scope.",
+          "description": "An empty permission you can use to modify the global scope.\n\n## Example\n\n```json\n{\n  \"identifier\": \"read-documents\",\n  \"windows\": [\"main\"],\n  \"permissions\": [\n    \"fs:allow-read\",\n    {\n      \"identifier\": \"fs:scope\",\n      \"allow\": [\n        \"$APPDATA/documents/**/*\"\n      ],\n      \"deny\": [\n        \"$APPDATA/documents/secret.txt\"\n      ]\n    }\n  ]\n}\n```\n",
           "type": "string",
           "const": "fs:scope",
-          "markdownDescription": "An empty permission you can use to modify the global scope."
+          "markdownDescription": "An empty permission you can use to modify the global scope.\n\n## Example\n\n```json\n{\n  \"identifier\": \"read-documents\",\n  \"windows\": [\"main\"],\n  \"permissions\": [\n    \"fs:allow-read\",\n    {\n      \"identifier\": \"fs:scope\",\n      \"allow\": [\n        \"$APPDATA/documents/**/*\"\n      ],\n      \"deny\": [\n        \"$APPDATA/documents/secret.txt\"\n      ]\n    }\n  ]\n}\n```\n"
         },
         {
           "description": "This scope permits access to all files and list content of top level directories in the application folders.",

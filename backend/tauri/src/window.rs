@@ -7,7 +7,7 @@
 //! - Configurable window properties (singleton, visibility, size, etc.)
 
 use crate::{
-    config::{Config, nyanpasu::WindowState},
+    config::{ConfigService, nyanpasu::WindowState},
     log_err, trace_err,
 };
 use anyhow::Result;
@@ -456,7 +456,7 @@ pub trait AppWindow {
         }
 
         let always_on_top = config.always_on_top.unwrap_or_else(|| {
-            *Config::verge()
+            *ConfigService::verge()
                 .latest()
                 .always_on_top
                 .as_ref()
@@ -805,7 +805,7 @@ pub trait AppWindow {
         self.set_window_state(state);
 
         if save_to_file {
-            Config::verge().data().save_file()?;
+            ConfigService::verge().data().save_file()?;
         }
 
         Ok(())

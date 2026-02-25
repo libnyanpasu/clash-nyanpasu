@@ -14,6 +14,7 @@ mod event_handler;
 mod feat;
 mod ipc;
 mod logging;
+mod registry;
 mod server;
 mod setup;
 
@@ -26,7 +27,7 @@ mod window;
 use std::io;
 
 use crate::{
-    config::Config,
+    config::ConfigService,
     core::handle::Handle,
     utils::{init, resolve},
 };
@@ -319,7 +320,7 @@ pub fn run() -> std::io::Result<()> {
         };
     }
 
-    let verge = { Config::verge().latest().language.clone().unwrap() };
+    let verge = { ConfigService::verge().latest().language.clone().unwrap() };
     rust_i18n::set_locale(verge.to_lowercase().as_str());
 
     // show a dialog to print the single instance error

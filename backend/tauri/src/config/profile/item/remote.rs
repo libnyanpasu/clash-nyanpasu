@@ -5,7 +5,7 @@ use super::{
 };
 use crate::{
     config::{
-        Config, ProfileKindGetter,
+        ConfigService, ProfileKindGetter,
         profile::item_type::{ProfileItemType, ProfileUid},
     },
     utils::{config::NyanpasuReqwestProxyExt, dirs::APP_VERSION, help},
@@ -130,10 +130,10 @@ async fn subscribe_url(
         // FIXME: 解耦此部分代理地址读取
         if options.self_proxy.unwrap_or_default() && !cfg!(test) {
             // 使用软件自己的代理
-            let port = Config::verge()
+            let port = ConfigService::verge()
                 .latest()
                 .verge_mixed_port
-                .unwrap_or(Config::clash().data().get_mixed_port());
+                .unwrap_or(ConfigService::clash().data().get_mixed_port());
             Some(format!("http://127.0.0.1:{port}"))
         } else if options.with_proxy.unwrap() {
             // 使用系统代理

@@ -1,6 +1,6 @@
 use crate::{
     config::{
-        Config, IVerge,
+        ConfigService, NyanpasuAppConfig,
         nyanpasu::{ClashCore, WindowState},
     },
     core::{storage::Storage, tray::proxies, *},
@@ -83,10 +83,10 @@ pub fn find_unused_port() -> Result<u16> {
             Ok(port)
         }
         Err(_) => {
-            let port = Config::verge()
+            let port = ConfigService::verge()
                 .latest()
                 .verge_mixed_port
-                .unwrap_or(Config::clash().data().get_mixed_port());
+                .unwrap_or(ConfigService::clash().data().get_mixed_port());
             log::warn!(target: "app", "use default port: {port}");
             Ok(port)
         }
@@ -115,36 +115,36 @@ pub fn resolve_setup(app: &mut App) {
     log_err!(init::init_service());
 
     // 处理随机端口
-    let enable_random_port = Config::verge().latest().enable_random_port.unwrap_or(false);
+    let enable_random_port = ConfigService::verge().latest().enable_random_port.unwrap_or(false);
 
-    let mut port = Config::verge()
+    let mut port = ConfigService::verge()
         .latest()
         .verge_mixed_port
-        .unwrap_or(Config::clash().data().get_mixed_port());
+        .unwrap_or(ConfigService::clash().data().get_mixed_port());
 
     if enable_random_port {
         port = find_unused_port().unwrap_or(
-            Config::verge()
+            ConfigService::verge()
                 .latest()
                 .verge_mixed_port
-                .unwrap_or(Config::clash().data().get_mixed_port()),
+                .unwrap_or(ConfigService::clash().data().get_mixed_port()),
         );
     }
 
-    Config::verge().data().patch_config(IVerge {
+    ConfigService::verge().data().patch_config(NyanpasuAppConfig {
         verge_mixed_port: Some(port),
-        ..IVerge::default()
+        ..NyanpasuAppConfig::default()
     });
-    let _ = Config::verge().data().save_file();
+    let _ = ConfigService::verge().data().save_file();
     let mut mapping = Mapping::new();
     mapping.insert("mixed-port".into(), port.into());
-    Config::clash().data().patch_config(mapping);
-    let _ = Config::clash().latest().prepare_external_controller_port();
-    let _ = Config::clash().data().save_config();
+    ConfigService::clash().data().patch_config(mapping);
+    let _ = ConfigService::clash().latest().prepare_external_controller_port();
+    let _ = ConfigService::clash().data().save_config();
 
     // 启动核心
     log::trace!("init config");
-    log_err!(Config::init_config());
+    log_err!(ConfigService::init_config());
 
     log::trace!("init storage");
     log_err!(crate::core::storage::setup(app));
@@ -181,7 +181,7 @@ pub fn resolve_setup(app: &mut App) {
     });
     log_err!(app.emit("update_systray", ()));
 
-    let silent_start = { Config::verge().data().enable_silent_start };
+    let silent_start = { ConfigService::verge().data().enable_silent_start };
     if !silent_start.unwrap_or(false) {
         create_window(app.app_handle());
     }
@@ -237,13 +237,13 @@ impl AppWindow for MainWindow {
     }
 
     fn get_window_state(&self) -> Option<WindowState> {
-        Config::verge().latest().window_size_state.clone()
+        ConfigService::verge().latest().window_size_state.clone()
     }
 
     fn set_window_state(&self, state: Option<WindowState>) {
-        Config::verge().data().patch_config(IVerge {
+        ConfigService::verge().data().patch_config(NyanpasuAppConfig {
             window_size_state: state,
-            ..IVerge::default()
+            ..NyanpasuAppConfig::default()
         });
     }
 }
@@ -319,13 +319,13 @@ impl AppWindow for LegacyWindow {
     }
 
     fn get_window_state(&self) -> Option<WindowState> {
-        Config::verge().latest().window_size_state.clone()
+        ConfigService::verge().latest().window_size_state.clone()
     }
 
     fn set_window_state(&self, state: Option<WindowState>) {
-        Config::verge().data().patch_config(IVerge {
+        ConfigService::verge().data().patch_config(NyanpasuAppConfig {
             window_size_state: state,
-            ..IVerge::default()
+            ..NyanpasuAppConfig::default()
         });
     }
 }
@@ -374,7 +374,7 @@ pub fn save_legacy_window_state(app_handle: &AppHandle, save_to_file: bool) -> R
 /// This is the primary function to use when opening window from tray, etc.
 #[tracing_attributes::instrument(skip(app_handle))]
 pub fn create_window(app_handle: &AppHandle) {
-    let use_legacy = Config::verge().latest().use_legacy_ui.unwrap_or(true);
+    let use_legacy = ConfigService::verge().latest().use_legacy_ui;
 
     if use_legacy {
         create_legacy_window(app_handle);
@@ -385,7 +385,7 @@ pub fn create_window(app_handle: &AppHandle) {
 
 /// Close the currently active window based on use_legacy_ui config
 pub fn close_window(app_handle: &AppHandle) {
-    let use_legacy = Config::verge().latest().use_legacy_ui.unwrap_or(true);
+    let use_legacy = ConfigService::verge().latest().use_legacy_ui;
 
     if use_legacy {
         close_legacy_window(app_handle);
@@ -396,7 +396,7 @@ pub fn close_window(app_handle: &AppHandle) {
 
 /// Check if the configured window is open
 pub fn is_window_open(app_handle: &AppHandle) -> bool {
-    let use_legacy = Config::verge().latest().use_legacy_ui.unwrap_or(true);
+    let use_legacy = ConfigService::verge().latest().use_legacy_ui;
 
     if use_legacy {
         is_legacy_window_open(app_handle)
@@ -407,7 +407,7 @@ pub fn is_window_open(app_handle: &AppHandle) -> bool {
 
 /// Save window state for the configured window type
 pub fn save_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
-    let use_legacy = Config::verge().latest().use_legacy_ui.unwrap_or(true);
+    let use_legacy = ConfigService::verge().latest().use_legacy_ui;
 
     if use_legacy {
         save_legacy_window_state(app_handle, save_to_file)

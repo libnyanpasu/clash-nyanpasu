@@ -1,4 +1,4 @@
-use crate::{config::Config, log_err};
+use crate::{config::ConfigService, log_err};
 use anyhow::{Result, anyhow};
 use auto_launch::{AutoLaunch, AutoLaunchBuilder};
 use once_cell::sync::OnceCell;
@@ -89,10 +89,10 @@ impl Sysopt {
         let port = Config::verge()
             .latest()
             .verge_mixed_port
-            .unwrap_or(Config::clash().data().get_mixed_port());
+            .unwrap_or(ConfigService::clash().data().get_mixed_port());
 
         let (enable, bypass) = {
-            let verge = Config::verge();
+            let verge = ConfigService::verge();
             let verge = verge.latest();
             (
                 verge.enable_system_proxy.unwrap_or(false),
@@ -147,7 +147,7 @@ impl Sysopt {
         }
 
         let (enable, bypass) = {
-            let verge = Config::verge();
+            let verge = ConfigService::verge();
             let verge = verge.latest();
             (
                 verge.enable_system_proxy.unwrap_or(false),
@@ -207,7 +207,7 @@ impl Sysopt {
 
     /// init the auto launch
     pub fn init_launch(&self) -> Result<()> {
-        let enable = { Config::verge().latest().enable_auto_launch };
+        let enable = { ConfigService::verge().latest().enable_auto_launch };
         let enable = enable.unwrap_or(false);
 
         log::info!(target: "app", "Initializing auto-launch with enable={}", enable);
@@ -329,7 +329,7 @@ impl Sysopt {
             drop(auto_launch);
             return self.init_launch();
         }
-        let enable = { Config::verge().latest().enable_auto_launch };
+        let enable = { ConfigService::verge().latest().enable_auto_launch };
         let enable = enable.unwrap_or(false);
         let auto_launch = auto_launch.as_ref().unwrap();
 
@@ -364,7 +364,7 @@ impl Sysopt {
                 sleep(Duration::from_secs(wait_secs)).await;
 
                 let (enable, guard, guard_interval, bypass) = {
-                    let verge = Config::verge();
+                    let verge = ConfigService::verge();
                     let verge = verge.latest();
                     (
                         verge.enable_system_proxy.unwrap_or(false),
@@ -385,10 +385,10 @@ impl Sysopt {
                 log::debug!(target: "app", "try to guard the system proxy");
 
                 let port = {
-                    Config::verge()
+                    ConfigService::verge()
                         .latest()
                         .verge_mixed_port
-                        .unwrap_or(Config::clash().data().get_mixed_port())
+                        .unwrap_or(ConfigService::clash().data().get_mixed_port())
                 };
 
                 let sysproxy = Sysproxy {

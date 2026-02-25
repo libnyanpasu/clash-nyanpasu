@@ -24,13 +24,14 @@ use crate::trace_err;
 use tauri_plugin_opener::OpenerExt;
 
 /// read data from yaml as struct T
-pub fn read_yaml<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T> {
+pub async fn read_yaml<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T> {
     let path = path.as_ref();
     if !path.exists() {
         bail!("file not found \"{}\"", path.display());
     }
 
-    let yaml_str = fs::read_to_string(path)
+    let yaml_str = fs::tokio::read_to_string(path)
+        .await
         .with_context(|| format!("failed to read the file \"{}\"", path.display()))?;
 
     serde_yaml::from_str::<T>(&yaml_str).with_context(|| {
@@ -42,8 +43,8 @@ pub fn read_yaml<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> Result<T> {
 }
 
 /// read mapping from yaml fix #165
-pub fn read_merge_mapping(path: &PathBuf) -> Result<Mapping> {
-    let mut val: Value = read_yaml(path)?;
+pub async fn read_merge_mapping(path: &PathBuf) -> Result<Mapping> {
+    let mut val: Value = read_yaml(path).await?;
     val.apply_merge()
         .with_context(|| format!("failed to apply merge \"{}\"", path.display()))?;
 
@@ -58,7 +59,7 @@ pub fn read_merge_mapping(path: &PathBuf) -> Result<Mapping> {
 
 /// save the data to the file
 /// can set `prefix` string to add some comments
-pub fn save_yaml<T: Serialize, P: AsRef<Path>>(
+pub async fn save_yaml<T: Serialize, P: AsRef<Path>>(
     path: P,
     data: &T,
     prefix: Option<&str>,
@@ -72,7 +73,8 @@ pub fn save_yaml<T: Serialize, P: AsRef<Path>>(
     };
 
     let path_str = path.as_os_str().to_string_lossy().to_string();
-    fs::write(path, yaml_str.as_bytes())
+    fs::tokio::write(path, yaml_str.as_bytes())
+        .await
         .with_context(|| format!("failed to save file \"{path_str}\""))
 }
 

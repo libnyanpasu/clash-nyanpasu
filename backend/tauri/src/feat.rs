@@ -88,9 +88,9 @@ pub fn change_clash_mode(mode: String) {
         match clash::api::patch_configs(&mapping).await {
             Ok(_) => {
                 // 更新配置
-                Config::clash().data().patch_config(mapping);
+                ConfigService::clash().data().patch_config(mapping);
 
-                if Config::clash().data().save_config().is_ok() {
+                if ConfigService::clash().data().save_config().is_ok() {
                     handle::Handle::refresh_clash();
                     log_err!(handle::Handle::update_systray_part());
                 }
@@ -115,13 +115,13 @@ pub fn change_clash_mode(mode: String) {
 
 // 切换系统代理
 pub fn toggle_system_proxy() {
-    let enable = Config::verge().draft().enable_system_proxy;
+    let enable = ConfigService::verge().draft().enable_system_proxy;
     let enable = enable.unwrap_or(false);
 
     tauri::async_runtime::spawn(async move {
-        match patch_verge(IVerge {
+        match patch_verge(NyanpasuAppConfig {
             enable_system_proxy: Some(!enable),
-            ..IVerge::default()
+            ..NyanpasuAppConfig::default()
         })
         .await
         {
@@ -134,9 +134,9 @@ pub fn toggle_system_proxy() {
 // 打开系统代理
 pub fn enable_system_proxy() {
     tauri::async_runtime::spawn(async {
-        match patch_verge(IVerge {
+        match patch_verge(NyanpasuAppConfig {
             enable_system_proxy: Some(true),
-            ..IVerge::default()
+            ..NyanpasuAppConfig::default()
         })
         .await
         {
@@ -149,9 +149,9 @@ pub fn enable_system_proxy() {
 // 关闭系统代理
 pub fn disable_system_proxy() {
     tauri::async_runtime::spawn(async {
-        match patch_verge(IVerge {
+        match patch_verge(NyanpasuAppConfig {
             enable_system_proxy: Some(false),
-            ..IVerge::default()
+            ..NyanpasuAppConfig::default()
         })
         .await
         {
@@ -163,13 +163,13 @@ pub fn disable_system_proxy() {
 
 // 切换tun模式
 pub fn toggle_tun_mode() {
-    let enable = Config::verge().data().enable_tun_mode;
+    let enable = ConfigService::verge().data().enable_tun_mode;
     let enable = enable.unwrap_or(false);
 
     tauri::async_runtime::spawn(async move {
-        match patch_verge(IVerge {
+        match patch_verge(NyanpasuAppConfig {
             enable_tun_mode: Some(!enable),
-            ..IVerge::default()
+            ..NyanpasuAppConfig::default()
         })
         .await
         {
@@ -182,9 +182,9 @@ pub fn toggle_tun_mode() {
 // 打开tun模式
 pub fn enable_tun_mode() {
     tauri::async_runtime::spawn(async {
-        match patch_verge(IVerge {
+        match patch_verge(NyanpasuAppConfig {
             enable_tun_mode: Some(true),
-            ..IVerge::default()
+            ..NyanpasuAppConfig::default()
         })
         .await
         {
@@ -197,9 +197,9 @@ pub fn enable_tun_mode() {
 // 关闭tun模式
 pub fn disable_tun_mode() {
     tauri::async_runtime::spawn(async {
-        match patch_verge(IVerge {
+        match patch_verge(NyanpasuAppConfig {
             enable_tun_mode: Some(false),
-            ..IVerge::default()
+            ..NyanpasuAppConfig::default()
         })
         .await
         {
@@ -211,23 +211,26 @@ pub fn disable_tun_mode() {
 
 /// 修改clash的配置
 pub async fn patch_clash(patch: Mapping) -> Result<()> {
-    Config::clash().draft().patch_config(patch.clone());
+    ConfigService::clash().draft().patch_config(patch.clone());
 
     let run = move || async move {
         let mixed_port = patch.get("mixed-port");
-        let enable_random_port = Config::verge().latest().enable_random_port.unwrap_or(false);
+        let enable_random_port = ConfigService::verge()
+            .latest()
+            .enable_random_port
+            .unwrap_or(false);
         if mixed_port.is_some() && !enable_random_port {
             let changed = mixed_port.unwrap()
-                != Config::verge()
+                != ConfigService::verge()
                     .latest()
                     .verge_mixed_port
-                    .unwrap_or(Config::clash().data().get_mixed_port());
+                    .unwrap_or(ConfigService::clash().data().get_mixed_port());
             // 检查端口占用
             if changed
                 && let Some(port) = mixed_port.unwrap().as_u64()
                 && !port_scanner::local_port_available(port as u16)
             {
-                Config::clash().discard();
+                ConfigService::clash().discard();
                 bail!("port already in use");
             }
         };
@@ -235,18 +238,19 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
         // 检测 external-controller port 是否修改
         if let Some(external_controller) = patch.get("external-controller") {
             let external_controller = external_controller.as_str().unwrap();
-            let changed = external_controller != Config::clash().data().get_client_info().server;
+            let changed =
+                external_controller != ConfigService::clash().data().get_client_info().server;
             if changed {
                 let (_, port) = external_controller.split_once(':').unwrap();
                 let port = port.parse::<u16>()?;
-                let strategy = Config::verge()
+                let strategy = ConfigService::verge()
                     .latest()
                     .get_external_controller_port_strategy();
                 let core_state = crate::core::CoreManager::global().status().await;
                 if matches!(core_state.0.as_ref(), &CoreState::Running)
                     && get_clash_external_port(&strategy, port).is_err()
                 {
-                    Config::clash().discard();
+                    ConfigService::clash().discard();
                     bail!("can not select fixed: current port is not available.");
                 }
             }
@@ -257,7 +261,7 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
             || patch.get("secret").is_some()
             || patch.get("external-controller").is_some()
         {
-            Config::generate().await?;
+            ConfigService::generate().await?;
             CoreManager::global().run_core().await?;
             handle::Handle::refresh_clash();
         }
@@ -272,18 +276,18 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
             log_err!(handle::Handle::update_systray_part());
         }
 
-        Config::runtime().latest().patch_config(patch);
+        ConfigService::runtime().latest().patch_config(patch);
 
         <Result<()>>::Ok(())
     };
     match run().await {
         Ok(()) => {
-            Config::clash().apply();
-            Config::clash().data().save_config()?;
+            ConfigService::clash().apply();
+            ConfigService::clash().data().save_config()?;
             Ok(())
         }
         Err(err) => {
-            Config::clash().discard();
+            ConfigService::clash().discard();
             Err(err)
         }
     }
@@ -291,15 +295,8 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
 
 /// 修改verge的配置
 /// 一般都是一个个的修改
-pub async fn patch_verge(patch: IVerge) -> Result<()> {
-    // Validate theme_color if it's being updated
-    if let Some(ref theme_color) = patch.theme_color {
-        if !theme_color.is_empty() && !crate::config::nyanpasu::is_hex_color(theme_color) {
-            anyhow::bail!("Invalid theme color: {}", theme_color);
-        }
-    }
-
-    Config::verge().draft().patch_config(patch.clone());
+pub async fn patch_verge(patch: NyanpasuAppConfig) -> Result<()> {
+    ConfigService::verge().draft().patch_config(patch.clone());
     let tun_mode = patch.enable_tun_mode;
     let auto_launch = patch.enable_auto_launch;
     let system_proxy = patch.enable_system_proxy;
@@ -316,7 +313,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
         if service_mode.is_some() && ipc_state.is_connected() {
             log::debug!(target: "app", "change service mode to {}", service_mode.unwrap());
 
-            Config::generate().await?;
+            ConfigService::generate().await?;
             CoreManager::global().run_core().await?;
         }
 
@@ -327,7 +324,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             {
                 use crate::utils::dirs::check_core_permission;
-                let current_core = Config::verge().data().clash_core.unwrap_or_default();
+                let current_core = ConfigService::verge().data().clash_core.unwrap_or_default();
                 let current_core: nyanpasu_utils::core::CoreType = (&current_core).into();
                 let service_state = crate::core::service::ipc::get_ipc_state();
                 if !service_state.is_connected() && check_core_permission(&current_core).inspect_err(|e| {
@@ -340,7 +337,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
             let (state, _, _) = CoreManager::global().status().await;
             if flag || matches!(state.as_ref(), CoreState::Stopped(_)) {
                 log::debug!(target: "app", "core is stopped, restart core");
-                Config::generate().await?;
+                ConfigService::generate().await?;
                 CoreManager::global().run_core().await?;
             } else {
                 log::debug!(target: "app", "update core config");
@@ -408,12 +405,12 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
 
     match res().await {
         Ok(()) => {
-            Config::verge().apply();
-            Config::verge().data().save_file()?;
+            ConfigService::verge().apply();
+            ConfigService::verge().data().save_file()?;
             Ok(())
         }
         Err(err) => {
-            Config::verge().discard();
+            ConfigService::verge().discard();
             Err(err)
         }
     }
@@ -426,14 +423,23 @@ pub async fn update_profile<T: Borrow<String>>(
     opts: Option<RemoteProfileOptionsBuilder>,
 ) -> Result<()> {
     let uid = uid.borrow();
-    let profile_item = Config::profiles().latest().get_item(uid)?.clone();
-    let is_remote = profile_item.is_remote();
+    let is_remote = {
+        ConfigService::profiles()
+            .latest()
+            .get_item(uid)?
+            .is_remote()
+    };
 
     let should_update = if is_remote {
-        let mut item = profile_item.as_remote().unwrap().clone();
+        let mut item = ConfigService::profiles()
+            .latest()
+            .get_item(uid)?
+            .as_remote()
+            .unwrap()
+            .clone();
 
         item.subscribe(opts).await?;
-        let committer = Config::profiles().auto_commit();
+        let committer = ConfigService::profiles().auto_commit();
         let mut profiles = committer.draft();
         profiles.replace_item(uid, item.into())?;
         profiles.get_current().contains(uid)
@@ -495,7 +501,12 @@ async fn update_core_config() -> Result<()> {
 
 /// copy env variable
 pub fn copy_clash_env(app_handle: &AppHandle, option: &str) {
-    let port = { Config::verge().latest().verge_mixed_port.unwrap_or(7890) };
+    let port = {
+        ConfigService::verge()
+            .latest()
+            .verge_mixed_port
+            .unwrap_or(7890)
+    };
     let http_proxy = format!("http://127.0.0.1:{port}");
     let socks5_proxy = format!("socks5://127.0.0.1:{port}");
 

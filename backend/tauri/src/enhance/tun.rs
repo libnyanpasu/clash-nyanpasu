@@ -1,7 +1,7 @@
 use serde_yaml::{Mapping, Value};
 
 use crate::config::{
-    Config,
+    ConfigService,
     nyanpasu::{ClashCore, TunStack},
 };
 
@@ -38,7 +38,7 @@ pub fn use_tun(mut config: Mapping, enable: bool) -> Mapping {
     revise!(tun_val, "enable", enable);
     if enable {
         let core = {
-            *Config::verge()
+            *ConfigService::verge()
                 .latest()
                 .clash_core
                 .as_ref()
@@ -49,7 +49,7 @@ pub fn use_tun(mut config: Mapping, enable: bool) -> Mapping {
             append!(tun_val, "auto-route", true);
         } else {
             let mut tun_stack = {
-                *Config::verge()
+                *ConfigService::verge()
                     .latest()
                     .tun_stack
                     .as_ref()

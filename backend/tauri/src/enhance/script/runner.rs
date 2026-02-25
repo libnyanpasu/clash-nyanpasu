@@ -4,7 +4,7 @@ use serde_yaml::Mapping;
 use std::collections::HashMap;
 
 use super::{js, lua};
-use crate::enhance::{Logs, ScriptType, ScriptWrapper};
+use crate::enhance::{Logs, ScriptType};
 
 /// The output of the process function is a tuple of the mapping and the logs.
 /// Although the process fails, the logs should be returned.
@@ -70,11 +70,14 @@ impl RunnerManager {
 
     pub async fn process_script(
         &mut self,
-        script: &ScriptWrapper,
+        script_type: ScriptType,
+        script: &bytes::Bytes,
         config: Mapping,
     ) -> ProcessOutput {
-        let runner = wrap_result!(self.get_or_init_runner(&script.0));
-        tracing::debug!("script: {:?}", script);
-        runner.process_honey(config, script.1.as_str()).await
+        let runner = wrap_result!(self.get_or_init_runner(&script_type));
+        // tracing::debug!("script: {:?}", script);
+        runner
+            .process_honey(config, &String::from_utf8_lossy(script))
+            .await
     }
 }

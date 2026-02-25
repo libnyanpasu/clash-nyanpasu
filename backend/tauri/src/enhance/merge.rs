@@ -1,51 +1,9 @@
 use super::{Logs, LogsExt, runner::ProcessOutput};
+use crate::utils::yaml::{apply_overrides, find_field, override_recursive};
 use mlua::LuaSerdeExt;
 use serde::de::DeserializeOwned;
 use serde_yaml::{Mapping, Value};
 use tracing_attributes::instrument;
-
-// Override recursive, and if the value is sequence, it should be append to the end.
-fn override_recursive(config: &mut Mapping, key: &Value, data: Value) {
-    if let Some(value) = config.get_mut(key) {
-        if value.is_mapping() {
-            let value = value.as_mapping_mut().unwrap();
-            let data = data.as_mapping().unwrap();
-            for (k, v) in data.iter() {
-                override_recursive(value, k, v.clone());
-            }
-        } else {
-            tracing::trace!("override key: {:#?}", key);
-            *value = data;
-        }
-    } else {
-        tracing::trace!("insert key: {:#?}", key);
-        config.insert(key.clone(), data);
-    }
-}
-
-/// Key should be a.b.c to access the value
-fn find_field<'a>(config: &'a mut Value, key: &'a str) -> Option<&'a mut Value> {
-    let mut keys = key.split('.').peekable();
-    let mut value = config;
-    while let Some(k) = keys.next() {
-        if let Some(v) = match k.parse::<usize>() {
-            Ok(i) => value.get_mut(i),
-            Err(_) => value.get_mut(k),
-        } {
-            if keys.peek().is_none() {
-                return Some(v);
-            }
-            if v.is_mapping() || v.is_sequence() {
-                value = v
-            } else {
-                return None;
-            }
-        } else {
-            return None;
-        }
-    }
-    None
-}
 
 fn merge_sequence(target: &mut Value, to_merge: &Value, append: bool) {
     if target.is_sequence() && to_merge.is_sequence() {

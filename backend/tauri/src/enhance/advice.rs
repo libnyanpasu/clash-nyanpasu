@@ -39,7 +39,7 @@ pub fn chain_advice(config: &Mapping) -> ProcessOutput {
         {
             if !service_state.is_connected() {
                 let core: nyanpasu_utils::core::CoreType = {
-                    crate::config::Config::verge()
+                    crate::config::ConfigService::verge()
                         .latest()
                         .clash_core
                         .as_ref()

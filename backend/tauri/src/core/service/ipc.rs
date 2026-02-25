@@ -69,7 +69,7 @@ fn dispatch_connected() {
 fn on_ipc_state_changed(state: IpcState) {
     tracing::info!("IPC state changed: {:?}", state);
     let enabled_service = {
-        *crate::config::Config::verge()
+        *crate::config::ConfigService::verge()
             .latest()
             .enable_service_mode
             .as_ref()

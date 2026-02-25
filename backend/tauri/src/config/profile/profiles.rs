@@ -4,11 +4,11 @@ use super::{
     item_type::ProfileUid,
 };
 use crate::utils::{dirs, help};
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use derive_builder::Builder;
 use indexmap::IndexMap;
+use itertools::Itertools;
 use nyanpasu_macro::BuilderUpdate;
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 use std::borrow::Borrow;
@@ -50,24 +50,6 @@ impl Default for Profiles {
 }
 
 impl Profiles {
-    pub fn new() -> Self {
-        match dirs::profiles_path().and_then(|path| help::read_yaml::<Self, _>(&path)) {
-            Ok(profiles) => profiles,
-            Err(err) => {
-                log::error!(target: "app", "{err:?}\n - use the default profiles");
-                Self::default()
-            }
-        }
-    }
-
-    pub fn save_file(&self) -> Result<()> {
-        help::save_yaml(
-            &dirs::profiles_path()?,
-            self,
-            Some("# Profiles Config for Clash Nyanpasu"),
-        )
-    }
-
     pub fn get_current(&self) -> &[ProfileUid] {
         &self.current
     }
@@ -86,13 +68,12 @@ impl Profiles {
     }
 
     /// append new item
-    pub fn append_item(&mut self, item: Profile) -> Result<()> {
+    pub fn append_item(&mut self, item: Profile) {
         self.items.push(item);
-        self.save_file()
     }
 
     /// reorder items
-    pub fn reorder(&mut self, active_id: String, over_id: String) -> Result<()> {
+    pub fn reorder(&mut self, active_id: String, over_id: String) {
         let items = &mut self.items;
         let mut old_index = None;
         let mut new_index = None;
@@ -107,15 +88,14 @@ impl Profiles {
         }
 
         if old_index.is_none() || new_index.is_none() {
-            return Ok(());
+            return;
         }
         let item = items.remove(old_index.unwrap());
         items.insert(new_index.unwrap(), item);
-        self.save_file()
     }
 
     /// reorder items with the full order list
-    pub fn reorder_by_list<T: Borrow<String>>(&mut self, order: &[T]) -> Result<()> {
+    pub fn reorder_by_list<T: Borrow<String>>(&mut self, order: &[T]) {
         let items = &mut self.items;
         let mut new_items = vec![];
 
@@ -124,8 +104,6 @@ impl Profiles {
                 new_items.push(items.remove(index));
             }
         }
-
-        self.save_file()
     }
 
     /// update the item value
@@ -150,12 +128,11 @@ impl Profiles {
             (Profile::Script(item), ProfileBuilder::Script(builder)) => item.apply(builder),
             _ => bail!("profile type mismatch when patching"),
         };
-
-        self.save_file()
+        Ok(())
     }
 
     /// replace item
-    pub fn replace_item<T: Borrow<String>>(&mut self, uid: T, item: Profile) -> Result<()> {
+    pub fn replace_item<T: Borrow<String>>(&mut self, uid: T, item: Profile) {
         let uid = uid.borrow();
 
         let index = self.items.iter().position(|e| e.uid() == uid);
@@ -164,22 +141,18 @@ impl Profiles {
                 *self.items.get_unchecked_mut(index) = item;
             }
         }
-
-        self.save_file()
     }
 
     /// delete item
     /// if delete the current then return true
-    pub async fn delete_item<T: Borrow<String>>(&mut self, uid: T) -> Result<bool> {
+    pub async fn delete_item<T: Borrow<String>>(&mut self, uid: T) -> Option<(bool, String)> {
         let uid = uid.borrow();
         let items = &mut self.items;
 
         // get the index
-        let index = items.iter().position(|e| e.uid() == uid);
-        if let Some(index) = index {
-            let mut profile = items.remove(index);
-            profile.remove_file().await?;
-        }
+        let index = items.iter().position(|e| e.uid() == uid)?;
+        let profile = items.remove(index);
+        let profile_filename = profile.file().to_string();
 
         // delete the original uid
         let mut current = self
@@ -197,28 +170,36 @@ impl Profiles {
             }
         }
         self.current = current;
-
-        self.save_file()?;
-        Ok(is_current)
+        Some((is_current, profile_filename))
     }
 
     /// 获取current指向的配置内容
-    pub fn current_mappings(&self) -> Result<IndexMap<&str, Mapping>> {
+    pub async fn current_mappings(&self) -> Result<IndexMap<&str, Mapping>> {
         let current = self
             .items
             .iter()
             .filter(|e| self.current.iter().any(|uid| uid == e.uid()))
             .collect::<Vec<_>>();
-        let (successes, failures): (Vec<(&str, Mapping)>, Vec<anyhow::Error>) = current
-            .par_iter()
-            .map(|item| {
-                let file_path = dirs::app_profiles_dir()?.join(item.file());
+        let futures = current.iter().map(|item| {
+            let uid = item.uid();
+            let file = item.file().to_string();
+            async move {
+                let file_path = dirs::app_profiles_dir()?.join(file);
                 if !file_path.exists() {
                     return Err(anyhow::anyhow!("failed to find the file: {:?}", file_path));
                 }
-                help::read_merge_mapping(&file_path).map(|mapping| (item.uid(), mapping))
-            })
-            .partition_map(|item| match item {
+
+                help::read_merge_mapping(&file_path)
+                    .await
+                    .with_context(|| format!("failed to read the profile file: {:?}", file_path))
+                    .map(|mapping| (uid, mapping))
+            }
+        });
+
+        let results = futures::future::join_all(futures).await;
+
+        let (successes, failures): (Vec<(&str, Mapping)>, Vec<anyhow::Error>) =
+            results.into_iter().partition_map(|item| match item {
                 Ok(item) => itertools::Either::Left(item),
                 Err(err) => itertools::Either::Right(err),
             });

@@ -1,20 +1,8 @@
-import {
-  AnimatePresence,
-  motion,
-  useIsPresent,
-  type Transition,
-  type Variant,
-} from 'framer-motion'
-import { cloneDeep } from 'lodash-es'
-import { useContext, useRef } from 'react'
+import { AnimatePresence, type Transition, type Variant } from 'framer-motion'
 import { useSetting } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
-import {
-  getRouterContext,
-  Outlet,
-  useMatch,
-  useMatches,
-} from '@tanstack/react-router'
+import { useMatch, useMatches } from '@tanstack/react-router'
+import { AnimatedOutlet } from '../router/animated-outlet'
 
 type PageVariantKey = 'initial' | 'visible' | 'hidden'
 
@@ -57,43 +45,6 @@ export const pageTransitionVariants: { [name: string]: PageVariant } = {
     visible: { opacity: 1 },
     hidden: { opacity: 0 },
   },
-}
-
-function AnimatedOutlet({
-  ref,
-  className,
-  ...others
-}: Parameters<typeof motion.div>['0']) {
-  const isPresent = useIsPresent()
-
-  const matches = useMatches()
-  const prevMatches = useRef(matches)
-
-  const RouterContext = getRouterContext()
-  const routerContext = useContext(RouterContext)
-
-  let renderedContext = routerContext
-
-  if (isPresent) {
-    prevMatches.current = cloneDeep(matches)
-  } else {
-    renderedContext = cloneDeep(routerContext)
-    renderedContext.__store.state.matches = [
-      ...matches.map((m, i) => ({
-        ...(prevMatches.current[i] || m),
-        id: m.id,
-      })),
-      ...prevMatches.current.slice(matches.length),
-    ]
-  }
-
-  return (
-    <motion.div ref={ref} className={className} {...others}>
-      <RouterContext.Provider value={renderedContext}>
-        <Outlet />
-      </RouterContext.Provider>
-    </motion.div>
-  )
 }
 
 export default function PageTransition({ className }: { className?: string }) {

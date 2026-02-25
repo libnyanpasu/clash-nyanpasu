@@ -21,3 +21,6 @@ manifest/site/updater/*
 !manifest/site/updater/.gitkeep
 /backend/tauri/gen/
 target/
+
+.claude/*
+!.claude/settings.json

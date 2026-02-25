@@ -204,7 +204,7 @@ importers:
         specifier: workspace:^
         version: link:../ui
       '@paper-design/shaders-react':
-        specifier: ^0.0.71
+        specifier: 0.0.71
         version: 0.0.71(@types/react@19.2.14)(react@19.2.4)
       '@radix-ui/react-context-menu':
         specifier: 2.2.16

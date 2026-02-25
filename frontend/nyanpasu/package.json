@@ -24,7 +24,7 @@
     "@mui/x-date-pickers": "8.27.2",
     "@nyanpasu/interface": "workspace:^",
     "@nyanpasu/ui": "workspace:^",
-    "@paper-design/shaders-react": "^0.0.71",
+    "@paper-design/shaders-react": "0.0.71",
     "@radix-ui/react-context-menu": "2.2.16",
     "@radix-ui/react-dialog": "1.1.15",
     "@radix-ui/react-dropdown-menu": "2.1.16",

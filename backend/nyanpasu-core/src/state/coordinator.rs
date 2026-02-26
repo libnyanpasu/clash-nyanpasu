@@ -1,6 +1,18 @@
-// ! TODO: add a pending state to implement MVCC(Multi-Version Concurrency Control) for different tokio tasks.
+//! TODO: add a pending state to implement MVCC(Multi-Version Concurrency Control) for different tokio tasks.
 
 use super::{Context, builder::*, error::*};
+use indexmap::IndexMap;
+use std::sync::Arc;
+
+/// Whether a subscriber is terminated, it was used for a subscriber was terminated but not removed from the coordinator.
+pub trait FusedStateChangedSubscriber {
+    fn is_terminated(&self) -> bool {
+        false
+    }
+}
+
+impl<T> FusedStateChangedSubscriber for Arc<T> where T: FusedStateChangedSubscriber + ?Sized {}
+impl<T> FusedStateChangedSubscriber for Box<T> where T: FusedStateChangedSubscriber + ?Sized {}
 
 #[async_trait::async_trait]
 #[allow(unused_variables)]
@@ -24,12 +36,43 @@ pub trait StateChangedSubscriber<T: Clone + Send + Sync + 'static> {
     }
 }
 
-// pub trait FusedStateChangedSubscriber<T>: StateChangedSubscriber<T>
-// where
-//     T: Clone + Send + Sync + 'static,
-// {
-//     fn is_terminated(&self) -> bool;
-// }
+#[async_trait::async_trait]
+impl<T, S> StateChangedSubscriber<T> for Arc<S>
+where
+    T: Clone + Send + Sync + 'static,
+    S: StateChangedSubscriber<T> + ?Sized + Send + Sync,
+{
+    fn name(&self) -> &str {
+        self.as_ref().name()
+    }
+
+    async fn migrate(&self, prev_state: Option<T>, new_state: T) -> Result<(), anyhow::Error> {
+        self.as_ref().migrate(prev_state, new_state).await
+    }
+
+    async fn rollback(&self, prev_state: Option<T>, new_state: T) -> Result<(), anyhow::Error> {
+        self.as_ref().rollback(prev_state, new_state).await
+    }
+}
+
+#[async_trait::async_trait]
+impl<T, S> StateChangedSubscriber<T> for Box<S>
+where
+    T: Clone + Send + Sync + 'static,
+    S: StateChangedSubscriber<T> + ?Sized + Send + Sync,
+{
+    fn name(&self) -> &str {
+        self.as_ref().name()
+    }
+
+    async fn migrate(&self, prev_state: Option<T>, new_state: T) -> Result<(), anyhow::Error> {
+        self.as_ref().migrate(prev_state, new_state).await
+    }
+
+    async fn rollback(&self, prev_state: Option<T>, new_state: T) -> Result<(), anyhow::Error> {
+        self.as_ref().rollback(prev_state, new_state).await
+    }
+}
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ConcurrencyStrategy {
@@ -39,24 +82,47 @@ pub enum ConcurrencyStrategy {
     Limited(usize),
 }
 
+pub trait Subscriber<T>: StateChangedSubscriber<T> + FusedStateChangedSubscriber
+where
+    T: Clone + Send + Sync + 'static,
+{
+}
+
+impl<T, S> Subscriber<T> for S
+where
+    T: Clone + Send + Sync + 'static,
+    S: StateChangedSubscriber<T> + FusedStateChangedSubscriber,
+{
+}
+
 #[non_exhaustive]
 pub struct StateCoordinator<T: Clone + Send + Sync + 'static> {
     current_state: Option<T>,
-    subscribers: Vec<Box<dyn StateChangedSubscriber<T> + Send + Sync>>,
+    subscribers: IndexMap<String, Box<dyn Subscriber<T> + Send + Sync>>,
     // strategy: ConcurrencyStrategy,
 }
 
 impl<T: Clone + Send + Sync> StateCoordinator<T> {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             current_state: None,
-            subscribers: Vec::new(),
+            subscribers: IndexMap::new(),
         }
     }
 
     /// Add a subscriber to the state coordinator.
-    pub fn add_subscriber(&mut self, subscriber: Box<dyn StateChangedSubscriber<T> + Send + Sync>) {
-        self.subscribers.push(subscriber);
+    pub fn add_subscriber(&mut self, subscriber: Box<dyn Subscriber<T> + Send + Sync>) {
+        self.subscribers
+            .insert(subscriber.name().to_string(), subscriber);
+    }
+
+    /// Remove a subscriber by name, return the removed subscriber if it exists.
+    pub fn remove_subscriber(
+        &mut self,
+        name: &str,
+    ) -> Option<Box<dyn Subscriber<T> + Send + Sync>> {
+        self.subscribers.shift_remove(name)
     }
 
     /// Get the current state.
@@ -94,7 +160,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
                     {
                         errors.push(StateChangedError::Rollback(RollbackError {
                             name: subscriber.name().to_string(),
-                            error: e.into(),
+                            error: e,
                         }));
                     }
                 }
@@ -156,7 +222,8 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             .await
             .map_err(StateChangedError::Validation)?;
 
-        Self::run_migration(&self.subscribers, self.current_state.as_ref(), &new_state).await?;
+        let subscribers = self.subscribers.values().collect::<Vec<_>>();
+        Self::run_migration(&subscribers, self.current_state.as_ref(), &new_state).await?;
 
         self.current_state = Some(new_state);
         Ok(())
@@ -171,7 +238,8 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             .await
             .map_err(StateChangedError::Validation)?;
         Context::scope(new_state.clone(), async {
-            Self::run_migration(&self.subscribers, self.current_state.as_ref(), &new_state).await?;
+            let subscribers = self.subscribers.values().collect::<Vec<_>>();
+            Self::run_migration(&subscribers, self.current_state.as_ref(), &new_state).await?;
             Ok::<_, StateChangedError>(())
         })
         .await?;
@@ -181,15 +249,13 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
 
     /// Upsert the state directly, it used for a small StateObject, a bool value, etc.
     pub async fn upsert_state(&mut self, state: T) -> Result<(), StateChangedError> {
-        Self::run_migration(&self.subscribers, self.current_state.as_ref(), &state).await?;
+        let subscribers = self.subscribers.values().collect::<Vec<_>>();
+        Self::run_migration(&subscribers, self.current_state.as_ref(), &state).await?;
         self.current_state = Some(state);
         Ok(())
     }
 
-    pub async fn upsert_state_with_context(
-        &mut self,
-        state: T,
-    ) -> Result<(), StateChangedError> {
+    pub async fn upsert_state_with_context(&mut self, state: T) -> Result<(), StateChangedError> {
         Context::scope(state.clone(), self.upsert_state(state)).await
     }
 }
@@ -209,6 +275,7 @@ mod test {
         name: String,
     }
 
+    #[allow(clippy::type_complexity)]
     struct MockSubscriber {
         name: String,
         migrate_calls: Arc<AtomicUsize>,
@@ -260,6 +327,8 @@ mod test {
         }
     }
 
+    impl FusedStateChangedSubscriber for MockSubscriber {}
+
     #[async_trait::async_trait]
     impl StateChangedSubscriber<TestState> for MockSubscriber {
         fn name(&self) -> &str {
@@ -298,29 +367,6 @@ mod test {
                 return Err(anyhow::anyhow!("Mock rollback failure"));
             }
             Ok(())
-        }
-    }
-
-    #[async_trait::async_trait]
-    impl StateChangedSubscriber<TestState> for Arc<MockSubscriber> {
-        fn name(&self) -> &str {
-            self.as_ref().name()
-        }
-
-        async fn migrate(
-            &self,
-            prev_state: Option<TestState>,
-            new_state: TestState,
-        ) -> Result<(), anyhow::Error> {
-            self.as_ref().migrate(prev_state, new_state).await
-        }
-
-        async fn rollback(
-            &self,
-            prev_state: Option<TestState>,
-            new_state: TestState,
-        ) -> Result<(), anyhow::Error> {
-            self.as_ref().rollback(prev_state, new_state).await
         }
     }
 
@@ -369,9 +415,7 @@ mod test {
     async fn test_upsert_state_success() {
         let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
         let subscriber = Arc::new(MockSubscriber::new("test_subscriber"));
-        coordinator.subscribers.push(Box::new(subscriber.clone())
-            as Box<dyn StateChangedSubscriber<TestState> + Send + Sync>);
-
+        coordinator.add_subscriber(Box::new(subscriber.clone()));
         let test_state = TestState {
             value: 42,
             name: "test".to_string(),
@@ -395,8 +439,7 @@ mod test {
     async fn test_upsert_with_builder_success() {
         let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
         let subscriber = Arc::new(MockSubscriber::new("test_subscriber"));
-        coordinator.subscribers.push(Box::new(subscriber.clone())
-            as Box<dyn StateChangedSubscriber<TestState> + Send + Sync>);
+        coordinator.add_subscriber(Box::new(subscriber.clone()));
 
         let test_state = TestState {
             value: 100,
@@ -436,8 +479,7 @@ mod test {
         let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
         let subscriber = Arc::new(MockSubscriber::new("failing_subscriber"));
         subscriber.set_migrate_failure(true);
-        coordinator.subscribers.push(Box::new(subscriber.clone())
-            as Box<dyn StateChangedSubscriber<TestState> + Send + Sync>);
+        coordinator.add_subscriber(Box::new(subscriber.clone()));
 
         let test_state = TestState {
             value: 42,
@@ -468,8 +510,7 @@ mod test {
         let subscriber = Arc::new(MockSubscriber::new("double_failing_subscriber"));
         subscriber.set_migrate_failure(true);
         subscriber.set_rollback_failure(true);
-        coordinator.subscribers.push(Box::new(subscriber.clone())
-            as Box<dyn StateChangedSubscriber<TestState> + Send + Sync>);
+        coordinator.add_subscriber(Box::new(subscriber.clone()));
 
         let test_state = TestState {
             value: 42,
@@ -502,12 +543,9 @@ mod test {
         let subscriber2 = Arc::new(MockSubscriber::new("subscriber2"));
         let subscriber3 = Arc::new(MockSubscriber::new("subscriber3"));
 
-        coordinator.subscribers.push(Box::new(subscriber1.clone())
-            as Box<dyn StateChangedSubscriber<TestState> + Send + Sync>);
-        coordinator.subscribers.push(Box::new(subscriber2.clone())
-            as Box<dyn StateChangedSubscriber<TestState> + Send + Sync>);
-        coordinator.subscribers.push(Box::new(subscriber3.clone())
-            as Box<dyn StateChangedSubscriber<TestState> + Send + Sync>);
+        coordinator.add_subscriber(Box::new(subscriber1.clone()));
+        coordinator.add_subscriber(Box::new(subscriber2.clone()));
+        coordinator.add_subscriber(Box::new(subscriber3.clone()));
 
         let test_state = TestState {
             value: 42,
@@ -538,12 +576,9 @@ mod test {
 
         subscriber2.set_migrate_failure(true);
 
-        coordinator.subscribers.push(Box::new(subscriber1.clone())
-            as Box<dyn StateChangedSubscriber<TestState> + Send + Sync>);
-        coordinator.subscribers.push(Box::new(subscriber2.clone())
-            as Box<dyn StateChangedSubscriber<TestState> + Send + Sync>);
-        coordinator.subscribers.push(Box::new(subscriber3.clone())
-            as Box<dyn StateChangedSubscriber<TestState> + Send + Sync>);
+        coordinator.add_subscriber(Box::new(subscriber1.clone()));
+        coordinator.add_subscriber(Box::new(subscriber2.clone()));
+        coordinator.add_subscriber(Box::new(subscriber3.clone()));
 
         let test_state = TestState {
             value: 42,
@@ -572,8 +607,7 @@ mod test {
     async fn test_state_update_sequence() {
         let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
         let subscriber = Arc::new(MockSubscriber::new("sequence_subscriber"));
-        coordinator.subscribers.push(Box::new(subscriber.clone())
-            as Box<dyn StateChangedSubscriber<TestState> + Send + Sync>);
+        coordinator.add_subscriber(Box::new(subscriber.clone()));
 
         let state1 = TestState {
             value: 1,
@@ -778,6 +812,8 @@ mod test {
             should_fail_migrate: bool,
             rollback_order: Arc<Mutex<Vec<String>>>,
         }
+
+        impl FusedStateChangedSubscriber for OrderTrackingSubscriber {}
 
         #[async_trait::async_trait]
         impl StateChangedSubscriber<TestState> for OrderTrackingSubscriber {

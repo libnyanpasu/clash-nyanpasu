@@ -9,6 +9,7 @@ authors.workspace = true
 anyhow = "1"
 async-trait = "0.1"
 dashmap = "6"
+indexmap = { version = "2.2.3", features = ["serde"] }
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true

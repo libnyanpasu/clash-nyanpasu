@@ -5739,6 +5739,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "dashmap",
+ "indexmap 2.13.0",
  "thiserror 2.0.18",
  "tokio",
  "tracing",

@@ -186,7 +186,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         Ok(())
     }
 
-    pub async fn upsert_state_with_context<F>(
+    pub async fn upsert_state_with_context(
         &mut self,
         state: T,
     ) -> Result<(), StateChangedError> {

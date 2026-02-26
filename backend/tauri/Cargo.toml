@@ -31,6 +31,7 @@ nyanpasu-ipc = { git = "https://github.com/libnyanpasu/nyanpasu-service.git", fe
 nyanpasu-macro = { path = "../nyanpasu-macro" }
 nyanpasu-utils = { workspace = true }
 nyanpasu-egui = { path = "../nyanpasu-egui" }
+nyanpasu-core = { path = "../nyanpasu-core" }
 
 # Common Utilities
 tokio = { workspace = true }

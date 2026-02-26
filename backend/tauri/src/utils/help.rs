@@ -78,6 +78,99 @@ pub async fn save_yaml<T: Serialize, P: AsRef<Path>>(
         .with_context(|| format!("failed to save file \"{path_str}\""))
 }
 
+/// A RAII guard for a staged YAML file. The staged file is written to a
+/// temporary path alongside the target. Calling [`commit`](StagedYamlFile::commit)
+/// atomically renames it into the target path. If the guard is dropped
+/// without committing, the staged file is removed (best-effort, sync).
+pub struct StagedYamlFile {
+    target_path: PathBuf,
+    staged_path: PathBuf,
+    committed: bool,
+}
+
+impl StagedYamlFile {
+    fn new(target_path: PathBuf, staged_path: PathBuf) -> Self {
+        Self {
+            target_path,
+            staged_path,
+            committed: false,
+        }
+    }
+
+    pub fn target_path(&self) -> &Path {
+        &self.target_path
+    }
+
+    pub fn staged_path(&self) -> &Path {
+        &self.staged_path
+    }
+
+    pub fn is_committed(&self) -> bool {
+        self.committed
+    }
+
+    /// Atomically rename the staged file into the target path.
+    pub async fn commit(mut self) -> Result<()> {
+        if let Err(err) = tokio::fs::rename(&self.staged_path, &self.target_path).await {
+            return Err(err).with_context(|| {
+                format!(
+                    "failed to commit staged file \"{}\" to \"{}\"",
+                    self.staged_path.display(),
+                    self.target_path.display()
+                )
+            });
+        }
+        self.committed = true;
+        Ok(())
+    }
+
+    /// Explicitly discard the staged file (optional — Drop also cleans up).
+    pub fn discard(mut self) {
+        if !self.committed {
+            if std::fs::remove_file(&self.staged_path).is_ok() {
+                self.committed = true; // Prevent Drop from retrying.
+            }
+            // If remove fails, committed stays false → Drop retries.
+        }
+    }
+}
+
+impl Drop for StagedYamlFile {
+    fn drop(&mut self) {
+        if !self.committed {
+            let _ = std::fs::remove_file(&self.staged_path);
+        }
+    }
+}
+
+/// Serialize `data` into a staging file next to `path` and return a
+/// [`StagedYamlFile`] guard. The target file is **not** modified until
+/// [`StagedYamlFile::commit`] is called.
+pub async fn stage_yaml<T: Serialize, P: AsRef<Path>>(
+    path: P,
+    data: &T,
+    prefix: Option<&str>,
+) -> Result<StagedYamlFile> {
+    let path = path.as_ref();
+    let data_str = serde_yaml::to_string(data)?;
+
+    let yaml_str = match prefix {
+        Some(prefix) => format!("{prefix}\n\n{data_str}"),
+        None => data_str,
+    };
+
+    let id = nanoid!(11, &ALPHABET);
+    let mut staged_name = path.as_os_str().to_os_string();
+    staged_name.push(format!(".staged.{id}"));
+    let staged_path = PathBuf::from(staged_name);
+
+    fs::tokio::write(&staged_path, yaml_str.as_bytes())
+        .await
+        .with_context(|| format!("failed to write staged file \"{}\"", staged_path.display()))?;
+
+    Ok(StagedYamlFile::new(path.to_path_buf(), staged_path))
+}
+
 const ALPHABET: [char; 62] = [
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i',
     'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'A', 'B',

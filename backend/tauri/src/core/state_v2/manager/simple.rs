@@ -26,7 +26,7 @@ where
 
     pub async fn upsert_state_with_context(&mut self, state: State) -> Result<(), UpsertError> {
         self.state_coordinator
-            .upsert_state_with_context::<State>(state.clone())
+            .upsert_state_with_context(state.clone())
             .await
             .map_err(UpsertError::State)?;
 

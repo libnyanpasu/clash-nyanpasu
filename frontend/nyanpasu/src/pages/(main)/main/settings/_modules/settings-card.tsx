@@ -42,7 +42,7 @@ export function SettingsCardHeader({
 }: ComponentProps<typeof CardHeader>) {
   return (
     <CardHeader
-      className={cn('px-5 py-6', className)}
+      className={cn('px-5 pt-6', className)}
       data-slot="settings-card-header"
       {...props}
     />

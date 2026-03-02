@@ -5,7 +5,6 @@ import {
   useExperimentalThemeContext,
 } from '@/components/providers/theme-provider'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,7 +12,12 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
 import { Wheel } from '@uiw/react-color'
-import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
+import {
+  SettingsCard,
+  SettingsCardContent,
+  SettingsCardFooter,
+  SettingsCardHeader,
+} from '../../_modules/settings-card'
 
 const PERSETS = [
   DEFAULT_COLOR,
@@ -37,77 +41,70 @@ export default function ThemeColorConfig() {
   }, [cachedThemeColor, setThemeColor])
 
   return (
-    <SettingsCard data-slot="theme-color-config-card">
-      <SettingsCardContent
-        className="flex items-center justify-between px-2"
-        data-slot="theme-color-config-card-content"
-      >
-        <Card className="w-full">
-          <CardHeader>
-            {m.settings_user_interface_theme_color_label()}
-          </CardHeader>
+    <SettingsCard>
+      <SettingsCardHeader>
+        {m.settings_user_interface_theme_color_label()}
+      </SettingsCardHeader>
 
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {PERSETS.map((color) => (
-                <Button
-                  key={color}
-                  className="flex items-center gap-2 px-4"
-                  variant={themeColor === color ? 'flat' : 'stroked'}
-                  onClick={() => setThemeColor(color)}
-                >
-                  <span
-                    className="outline-surface-variant size-4 rounded outline"
-                    style={{ backgroundColor: color }}
-                  />
+      <SettingsCardContent>
+        <div className="flex flex-wrap gap-2">
+          {PERSETS.map((color) => (
+            <Button
+              key={color}
+              className="flex items-center gap-2 px-4"
+              variant={themeColor === color ? 'flat' : 'stroked'}
+              onClick={() => setThemeColor(color)}
+            >
+              <span
+                className="outline-surface-variant size-4 rounded outline"
+                style={{ backgroundColor: color }}
+              />
 
-                  <span>{color.toLocaleUpperCase()}</span>
-                </Button>
-              ))}
-            </div>
-          </CardContent>
-
-          <CardFooter>
-            <DropdownMenu open={open} onOpenChange={setOpen}>
-              <DropdownMenuTrigger asChild>
-                <Button className="flex items-center gap-2 px-4" variant="flat">
-                  <span
-                    className="outline-surface-variant size-4 rounded outline"
-                    style={{
-                      backgroundColor: themeColor,
-                    }}
-                  />
-
-                  <span>
-                    {PERSETS.includes(themeColor as (typeof PERSETS)[number])
-                      ? m.settings_user_interface_theme_color_custom()
-                      : themeColor.toLocaleUpperCase()}
-                  </span>
-                </Button>
-              </DropdownMenuTrigger>
-
-              <DropdownMenuContent className="flex flex-col gap-4 rounded-2xl p-4">
-                <Wheel
-                  data-slot="theme-color-config-colorful"
-                  color={cachedThemeColor}
-                  onChange={(color) => {
-                    setCachedThemeColor(color.hex)
-                  }}
-                />
-
-                <Button
-                  className="flex items-center justify-center gap-2"
-                  variant="flat"
-                  onClick={handleSubmit}
-                >
-                  <Check className="size-5" />
-                  <span>{m.common_submit()}</span>
-                </Button>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </CardFooter>
-        </Card>
+              <span>{color.toLocaleUpperCase()}</span>
+            </Button>
+          ))}
+        </div>
       </SettingsCardContent>
+
+      <SettingsCardFooter>
+        <DropdownMenu open={open} onOpenChange={setOpen}>
+          <DropdownMenuTrigger asChild>
+            <Button className="flex items-center gap-2 px-4" variant="flat">
+              <span
+                className="outline-surface-variant size-4 rounded outline"
+                style={{
+                  backgroundColor: themeColor,
+                }}
+              />
+
+              <span>
+                {PERSETS.includes(themeColor as (typeof PERSETS)[number])
+                  ? m.settings_user_interface_theme_color_custom()
+                  : themeColor.toLocaleUpperCase()}
+              </span>
+            </Button>
+          </DropdownMenuTrigger>
+
+          <DropdownMenuContent className="flex flex-col gap-4 rounded-2xl p-4">
+            <Wheel
+              data-slot="theme-color-config-colorful"
+              color={cachedThemeColor}
+              onChange={(color) => {
+                setCachedThemeColor(color.hex)
+              }}
+            />
+
+            <Button
+              className="flex items-center justify-center gap-2"
+              variant="flat"
+              onClick={handleSubmit}
+            >
+              <Check className="size-5" />
+              <span>{m.common_submit()}</span>
+            </Button>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SettingsCardFooter>
     </SettingsCard>
   )
 }

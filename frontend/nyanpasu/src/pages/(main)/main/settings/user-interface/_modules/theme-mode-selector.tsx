@@ -10,7 +10,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { m } from '@/paraglide/messages'
-import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
 
 export default function ThemeModeSelector() {
   const { themeMode, setThemeMode } = useExperimentalThemeContext()
@@ -26,33 +25,24 @@ export default function ThemeModeSelector() {
   } satisfies Record<ThemeMode, string>
 
   return (
-    <SettingsCard data-slot="theme-mode-selection-card">
-      <SettingsCardContent
-        className="flex items-center justify-between px-2"
-        data-slot="theme-mode-selection-card-content"
-      >
-        <Select
-          variant="outlined"
-          value={themeMode}
-          onValueChange={handleThemeModeChange}
-        >
-          <SelectTrigger>
-            <SelectValue
-              placeholder={m.settings_user_interface_theme_mode_label()}
-            >
-              {themeMode ? messages[themeMode] : null}
-            </SelectValue>
-          </SelectTrigger>
+    <Select
+      variant="outlined"
+      value={themeMode}
+      onValueChange={handleThemeModeChange}
+    >
+      <SelectTrigger>
+        <SelectValue placeholder={m.settings_user_interface_theme_mode_label()}>
+          {themeMode ? messages[themeMode] : null}
+        </SelectValue>
+      </SelectTrigger>
 
-          <SelectContent>
-            {Object.entries(messages).map(([key, value]) => (
-              <SelectItem key={key} value={key}>
-                {value}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </SettingsCardContent>
-    </SettingsCard>
+      <SelectContent>
+        {Object.entries(messages).map(([key, value]) => (
+          <SelectItem key={key} value={key}>
+            {value}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }

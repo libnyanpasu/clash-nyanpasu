@@ -25,28 +25,23 @@ export function Slider({
   ComponentProps<'input'>,
   'type' | 'value' | 'defaultValue' | 'min' | 'max' | 'onChange'
 > & {
-  value?: number[]
-  defaultValue?: number[]
+  value?: number
+  defaultValue?: number
   min?: number
   max?: number
-  onValueChange?: (value: number[]) => void
-  onValueCommit?: (value: number[]) => void
+  onValueChange?: (value: number) => void
+  onValueCommit?: (value: number) => void
 }) {
-  const controlledValue = Array.isArray(value)
-    ? clamp(min, max, value[0] ?? min)
-    : undefined
+  const controlledValue =
+    typeof value === 'number' ? clamp(min, max, value) : undefined
 
-  const defaultSliderValue = clamp(
-    min,
-    max,
-    Array.isArray(defaultValue) ? (defaultValue[0] ?? min) : min,
-  )
+  const defaultSliderValue = clamp(min, max, defaultValue ?? min)
 
   const [rawValue, setRawValue] = useControllableState<number>({
     prop: controlledValue,
     defaultProp: defaultSliderValue,
     onChange: (nextValue) => {
-      onValueChange?.([clamp(min, max, nextValue)])
+      onValueChange?.(clamp(min, max, nextValue))
     },
   })
 
@@ -72,7 +67,7 @@ export function Slider({
   }
 
   const commitValue = () => {
-    onValueCommit?.([currentValue])
+    onValueCommit?.(currentValue)
   }
 
   return (

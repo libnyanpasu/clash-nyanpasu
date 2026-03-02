@@ -115,7 +115,7 @@ percent-encoding = "2.3.1"
 
 # Algorithms
 uuid = "1.7.0"
-rand = "0.9"
+rand = "0.10"
 md-5 = "0.10.6"
 sha2 = "0.10"
 nanoid = "0.4.0"

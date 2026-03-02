@@ -35,7 +35,7 @@ nyanpasu-egui = { path = "../nyanpasu-egui" }
 # Common Utilities
 tokio = { workspace = true }
 tokio-util = { version = "0.7", features = ["full"] }
-oneshot = "0.1"
+oneshot = "0.2"
 futures = "0.3"
 futures-util = "0.3"
 glob = "0.3.1"

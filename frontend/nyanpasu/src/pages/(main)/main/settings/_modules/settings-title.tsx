@@ -1,12 +1,10 @@
 import ArrowBackIosNewRounded from '~icons/material-symbols/arrow-back-ios-new-rounded'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ComponentProps } from 'react'
+import { ComponentProps, useId } from 'react'
 import { Button } from '@/components/ui/button'
 import { useScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@nyanpasu/ui'
 import { Link } from '@tanstack/react-router'
-
-const TITLE_LAYOUT_ID = 'settings-title-shared'
 
 const BackButton = () => {
   return (
@@ -40,7 +38,6 @@ const Title = (props: ComponentProps<typeof motion.p>) => {
   return (
     <motion.p
       layout
-      layoutId={TITLE_LAYOUT_ID}
       transition={{
         layout: {
           duration: 0.5,
@@ -62,6 +59,8 @@ export function SettingsTitle({
 }: ComponentProps<'div'>) {
   const { offset } = useScrollArea()
 
+  const id = useId()
+
   const showTopTitle = offset.top > 60
 
   return (
@@ -82,7 +81,11 @@ export function SettingsTitle({
 
         <AnimatePresence initial={false}>
           {showTopTitle && (
-            <Title key="settings-title-top" className="text-xl font-bold">
+            <Title
+              key="settings-title-top"
+              layoutId={id}
+              className="text-xl font-bold"
+            >
               {children}
             </Title>
           )}
@@ -96,7 +99,11 @@ export function SettingsTitle({
       >
         <AnimatePresence initial={false}>
           {!showTopTitle && (
-            <Title key="settings-title-main" className="text-3xl font-bold">
+            <Title
+              key="settings-title-main"
+              layoutId={id}
+              className="text-3xl font-bold"
+            >
               {children}
             </Title>
           )}

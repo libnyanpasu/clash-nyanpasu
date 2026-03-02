@@ -28,7 +28,7 @@ nyanpasu-utils = { git = "https://github.com/libnyanpasu/nyanpasu-utils.git", fe
   "specta",
 ] }
 test-log = { version = "0.2.16", features = ["trace"] }
-tracing-test = { git = "https://github.com/Frando/tracing-test.git", rev = "e81ec65", features = [
+tracing-test = { git = "https://github.com/Frando/tracing-test.git", rev = "5d645cb8ef31aee22023c4590b6ee14cbe7577a5", features = [
   "no-env-filter",
   "pretty-log-printing",
 ] }

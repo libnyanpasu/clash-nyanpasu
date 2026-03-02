@@ -1,8 +1,16 @@
+import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
 import { Button } from '@/components/ui/button'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { commands } from '@nyanpasu/interface'
-import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
+import {
+  ItemContainer,
+  ItemLabel,
+  ItemLabelDescription,
+  ItemLabelText,
+  SettingsCard,
+  SettingsCardContent,
+} from '../../_modules/settings-card'
 
 export default function UwpToolsButton() {
   const handleOpenUwpTools = useLockFn(async () => {
@@ -11,14 +19,26 @@ export default function UwpToolsButton() {
 
   return (
     <SettingsCard data-slot="uwp-tools-button-card">
-      <SettingsCardContent
-        className="flex items-center justify-between px-3"
-        data-slot="uwp-tools-button-card-content"
-      >
-        <div>{m.settings_system_proxy_uwp_tools_label()}</div>
+      <SettingsCardContent asChild>
+        <Button
+          className="text-on-surface! h-auto w-full rounded-none px-5 text-left text-base"
+          onClick={handleOpenUwpTools}
+        >
+          <ItemContainer>
+            <ItemLabel>
+              <ItemLabelText>
+                {m.settings_system_proxy_uwp_tools_label()}
+              </ItemLabelText>
 
-        <Button variant="flat" onClick={handleOpenUwpTools}>
-          {m.common_open()}
+              <ItemLabelDescription>
+                {m.settings_system_proxy_uwp_tools_description()}
+              </ItemLabelDescription>
+            </ItemLabel>
+
+            <div>
+              <ArrowForwardIosRounded />
+            </div>
+          </ItemContainer>
         </Button>
       </SettingsCardContent>
     </SettingsCard>

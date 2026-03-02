@@ -10,11 +10,7 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useSetting } from '@nyanpasu/interface'
-import {
-  SettingsCard,
-  SettingsCardAnimatedItem,
-  SettingsCardContent,
-} from '../../_modules/settings-card'
+import { SettingsCardAnimatedItem } from '../../_modules/settings-card'
 
 const formSchema = z.object({
   proxyGuardInterval: z.number().min(1),
@@ -58,66 +54,55 @@ export default function ProxyGuardConfig() {
   }, [proxyGuardInterval.value, form])
 
   return (
-    <SettingsCard data-slot="proxy-guard-config-card">
-      <SettingsCardContent
-        className="px-2"
-        data-slot="proxy-guard-config-card-content"
-      >
-        {/* <div className="border-surface-variant flex w-24 items-center justify-between rounded-md border p-2">
-          <span>{proxyGuardInterval.value || 0}</span>
-          <span>{m.unit_seconds()}</span>
-        </div> */}
-        <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
-          <Controller
-            name="proxyGuardInterval"
-            control={form.control}
-            render={({ field }) => {
-              const handleChange = (value: number | null) => {
-                field.onChange(value)
-              }
+    <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
+      <Controller
+        name="proxyGuardInterval"
+        control={form.control}
+        render={({ field }) => {
+          const handleChange = (value: number | null) => {
+            field.onChange(value)
+          }
 
-              return (
-                <>
-                  <NumericInput
-                    variant="outlined"
-                    label={m.settings_system_proxy_proxy_guard_interval_label()}
-                    value={field.value || 0}
-                    onChange={handleChange}
-                  />
+          return (
+            <>
+              <NumericInput
+                variant="outlined"
+                label={m.settings_system_proxy_proxy_guard_interval_label()}
+                value={field.value || 0}
+                onChange={handleChange}
+              />
 
-                  <AnimatePresence initial={false}>
-                    {form.formState.errors.proxyGuardInterval && (
-                      <SettingsCardAnimatedItem className="text-error">
-                        {form.formState.errors.proxyGuardInterval.message}
-                      </SettingsCardAnimatedItem>
-                    )}
-                  </AnimatePresence>
-                </>
-              )
-            }}
-          />
+              <AnimatePresence initial={false}>
+                {form.formState.errors.proxyGuardInterval && (
+                  <SettingsCardAnimatedItem className="text-error">
+                    {form.formState.errors.proxyGuardInterval.message}
+                  </SettingsCardAnimatedItem>
+                )}
+              </AnimatePresence>
+            </>
+          )
+        }}
+      />
 
-          <AnimatePresence initial={false}>
-            {form.formState.isDirty && (
-              <SettingsCardAnimatedItem>
-                <div className="flex justify-end gap-2 pt-1">
-                  <Button type="button" onClick={handleReset}>
-                    {m.common_reset()}
-                  </Button>
+      <AnimatePresence initial={false}>
+        {form.formState.isDirty && (
+          <SettingsCardAnimatedItem>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" onClick={handleReset}>
+                {m.common_reset()}
+              </Button>
 
-                  <Button
-                    variant="raised"
-                    onClick={handleSubmit}
-                    loading={form.formState.isSubmitting}
-                  >
-                    {m.common_apply()}
-                  </Button>
-                </div>
-              </SettingsCardAnimatedItem>
-            )}
-          </AnimatePresence>
-        </form>
-      </SettingsCardContent>
-    </SettingsCard>
+              <Button
+                variant="raised"
+                onClick={handleSubmit}
+                loading={form.formState.isSubmitting}
+              >
+                {m.common_apply()}
+              </Button>
+            </div>
+          </SettingsCardAnimatedItem>
+        )}
+      </AnimatePresence>
+    </form>
   )
 }

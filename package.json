@@ -69,7 +69,7 @@
     "dedent": "1.7.2",
     "globals": "17.4.0",
     "knip": "5.85.0",
-    "lint-staged": "16.3.0",
+    "lint-staged": "16.3.1",
     "npm-run-all2": "8.0.4",
     "oxlint": "1.50.0",
     "postcss": "8.5.6",

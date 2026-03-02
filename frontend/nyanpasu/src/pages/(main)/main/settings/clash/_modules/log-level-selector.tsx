@@ -8,7 +8,6 @@ import {
 } from '@/components/ui/select'
 import { m } from '@/paraglide/messages'
 import { useClashConfig } from '@nyanpasu/interface'
-import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
 
 const LOG_LEVEL_OPTIONS = {
   debug: 'Debug',
@@ -36,33 +35,24 @@ export default function LogLevelSelector() {
   )
 
   return (
-    <SettingsCard data-slot="log-level-selector-card">
-      <SettingsCardContent
-        className="px-2"
-        data-slot="log-level-selector-card-content"
-      >
-        <Select
-          variant="outlined"
-          value={value}
-          onValueChange={handleLogLevelChange}
-        >
-          <SelectTrigger>
-            <SelectValue
-              placeholder={m.settings_clash_settings_log_level_label()}
-            >
-              {value ? LOG_LEVEL_OPTIONS[value] : null}
-            </SelectValue>
-          </SelectTrigger>
+    <Select
+      variant="outlined"
+      value={value}
+      onValueChange={handleLogLevelChange}
+    >
+      <SelectTrigger>
+        <SelectValue placeholder={m.settings_clash_settings_log_level_label()}>
+          {value ? LOG_LEVEL_OPTIONS[value] : null}
+        </SelectValue>
+      </SelectTrigger>
 
-          <SelectContent>
-            {Object.entries(LOG_LEVEL_OPTIONS).map(([key, value]) => (
-              <SelectItem key={key} value={key}>
-                {value}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </SettingsCardContent>
-    </SettingsCard>
+      <SelectContent>
+        {Object.entries(LOG_LEVEL_OPTIONS).map(([key, value]) => (
+          <SelectItem key={key} value={key}>
+            {value}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }

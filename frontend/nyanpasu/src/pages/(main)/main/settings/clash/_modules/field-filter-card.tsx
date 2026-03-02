@@ -18,7 +18,6 @@ import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { commands, useProfile } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
-import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
 
 type Item = {
   url?: string
@@ -206,23 +205,16 @@ export default function FieldFilterCard() {
   }
 
   return (
-    <SettingsCard data-slot="field-filter-card">
-      <SettingsCardContent
-        className="flex items-center justify-between px-2"
-        data-slot="field-filter-card-content"
-      >
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-          {Object.entries(CLASH_FIELD).map(([key, value], index) => {
-            const filtered = filteredField(value)
+    <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+      {Object.entries(CLASH_FIELD).map(([key, value], index) => {
+        const filtered = filteredField(value)
 
-            return (
-              <ItemButton key={index} items={filtered}>
-                {key}
-              </ItemButton>
-            )
-          })}
-        </div>
-      </SettingsCardContent>
-    </SettingsCard>
+        return (
+          <ItemButton key={index} items={filtered}>
+            {key}
+          </ItemButton>
+        )
+      })}
+    </div>
   )
 }

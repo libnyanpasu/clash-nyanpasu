@@ -9,11 +9,7 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useClashConfig, useSetting } from '@nyanpasu/interface'
-import {
-  SettingsCard,
-  SettingsCardAnimatedItem,
-  SettingsCardContent,
-} from '../../_modules/settings-card'
+import { SettingsCardAnimatedItem } from '../../_modules/settings-card'
 
 const DEFAULT_MIXED_PORT = 7890
 
@@ -72,64 +68,57 @@ export default function MixedPortConfig() {
   }, [form, currentMixedPort])
 
   return (
-    <SettingsCard data-slot="mixed-port-config-card">
-      <SettingsCardContent
-        className="px-2"
-        data-slot="mixed-port-config-card-content"
-      >
-        <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
-          <Controller
-            name="mixedPort"
-            control={form.control}
-            render={({ field, fieldState }) => {
-              const handleChange = (value: number | null) => {
-                field.onChange(value)
-              }
+    <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
+      <Controller
+        name="mixedPort"
+        control={form.control}
+        render={({ field, fieldState }) => {
+          const handleChange = (value: number | null) => {
+            field.onChange(value)
+          }
 
-              return (
-                <>
-                  <NumericInput
-                    variant="outlined"
-                    label={m.settings_clash_settings_mixed_port_label()}
-                    value={field.value}
-                    onChange={handleChange}
-                    allowNegative={false}
-                    decimalScale={0}
-                  />
+          return (
+            <>
+              <NumericInput
+                variant="outlined"
+                label={m.settings_clash_settings_mixed_port_label()}
+                value={field.value}
+                onChange={handleChange}
+                allowNegative={false}
+                decimalScale={0}
+              />
 
-                  <AnimatePresence>
-                    {fieldState.error && (
-                      <SettingsCardAnimatedItem className="text-error">
-                        {fieldState.error.message}
-                      </SettingsCardAnimatedItem>
-                    )}
-                  </AnimatePresence>
-                </>
-              )
-            }}
-          />
+              <AnimatePresence>
+                {fieldState.error && (
+                  <SettingsCardAnimatedItem className="text-error">
+                    {fieldState.error.message}
+                  </SettingsCardAnimatedItem>
+                )}
+              </AnimatePresence>
+            </>
+          )
+        }}
+      />
 
-          <AnimatePresence initial={false}>
-            {form.formState.isDirty && (
-              <SettingsCardAnimatedItem>
-                <div className="flex justify-end gap-2 pt-1">
-                  <Button type="button" onClick={handleReset}>
-                    {m.common_reset()}
-                  </Button>
+      <AnimatePresence initial={false}>
+        {form.formState.isDirty && (
+          <SettingsCardAnimatedItem>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" onClick={handleReset}>
+                {m.common_reset()}
+              </Button>
 
-                  <Button
-                    variant="raised"
-                    onClick={handleSubmit}
-                    loading={form.formState.isSubmitting}
-                  >
-                    {m.common_apply()}
-                  </Button>
-                </div>
-              </SettingsCardAnimatedItem>
-            )}
-          </AnimatePresence>
-        </form>
-      </SettingsCardContent>
-    </SettingsCard>
+              <Button
+                variant="raised"
+                onClick={handleSubmit}
+                loading={form.formState.isSubmitting}
+              >
+                {m.common_apply()}
+              </Button>
+            </div>
+          </SettingsCardAnimatedItem>
+        )}
+      </AnimatePresence>
+    </form>
   )
 }

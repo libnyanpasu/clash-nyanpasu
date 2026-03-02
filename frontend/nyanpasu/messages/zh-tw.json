@@ -64,6 +64,7 @@
   "settings_clash_settings_ipv6_label": "啟用 IPv6",
   "settings_clash_settings_tun_stack_label": "TUN 堆棧",
   "settings_clash_settings_log_level_label": "日誌級別",
+  "settings_clash_settings_port_label": "端口設置",
   "settings_clash_settings_mixed_port_label": "混合端口",
   "settings_clash_settings_random_port_label": "隨機端口",
   "settings_clash_settings_random_port_enabled": "隨機端口已啟用，重啟後生效。",

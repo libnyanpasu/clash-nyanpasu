@@ -7,7 +7,6 @@ import { isObject } from 'lodash-es'
 import { useMemo, useState } from 'react'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { CircularProgress } from '@/components/ui/progress'
 import TextMarquee from '@/components/ui/text-marquee'
 import {
@@ -30,7 +29,12 @@ import {
   useSetting,
 } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
-import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
+import {
+  SettingsCard,
+  SettingsCardContent,
+  SettingsCardFooter,
+  SettingsCardHeader,
+} from '../../_modules/settings-card'
 
 function useCoreUpdateTask(
   core?: ClashCore | null,
@@ -350,144 +354,133 @@ export default function CoreManagerCard() {
 
   return (
     <SettingsCard data-slot="core-manager-card">
-      <SettingsCardContent
-        data-slot="core-manager-card-content"
-        className="flex flex-col gap-3 px-2"
-      >
-        <Card className="relative">
-          <AnimatePresence initial={false}>
-            {isLoading && (
-              <motion.div
-                data-slot="core-manager-card-mask"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className={cn(
-                  'bg-primary/10 absolute inset-0 z-50 backdrop-blur-3xl',
-                  'flex flex-col items-center justify-center gap-4',
-                )}
-              >
-                <CircularProgress className="size-12" indeterminate />
-
-                <p>{loadingMessage}</p>
-              </motion.div>
+      <AnimatePresence initial={false}>
+        {isLoading && (
+          <motion.div
+            data-slot="core-manager-card-mask"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className={cn(
+              'bg-primary/10 absolute inset-0 z-50 backdrop-blur-3xl',
+              'flex flex-col items-center justify-center gap-4',
             )}
-          </AnimatePresence>
+          >
+            <CircularProgress className="size-12" indeterminate />
 
-          <CardHeader className="px-5">
-            {m.settings_clash_core_manager_card_title()}
-          </CardHeader>
+            <p>{loadingMessage}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-          <CardContent>
-            <div
-              className={cn(
-                'relative flex items-center gap-3 overflow-hidden rounded-2xl p-4',
-                'bg-surface-variant',
+      <SettingsCardContent data-slot="core-manager-card-content">
+        <div
+          className={cn(
+            'relative flex items-center gap-3 overflow-hidden rounded-2xl p-4',
+            'bg-surface-variant',
+          )}
+        >
+          <UpdateProgressBar
+            isPending={currentCoreUpdate.task.isPending}
+            progress={currentCoreUpdate.progress}
+          />
+
+          <div className="relative size-12">
+            <img
+              src={currentCoreIcon}
+              alt={currentCore?.name}
+              className="size-full"
+            />
+          </div>
+
+          <div className="relative flex-1">
+            <p className="font-medium">{currentCore?.name}</p>
+
+            <p className="flex items-center gap-1 text-sm">
+              {currentCoreUpdate.task.isPending &&
+              currentCoreUpdate.stateLabel ? (
+                <span className="text-emerald-700">
+                  {currentCoreUpdate.stateLabel}
+                </span>
+              ) : haveNewVersion ? (
+                <>
+                  <span>{currentCore?.currentVersion}</span>
+                  <ArrowRightAltRounded />
+                  <span className="text-emerald-700">
+                    {currentCore?.latestVersion}
+                  </span>
+                </>
+              ) : (
+                currentCore?.currentVersion
               )}
-            >
-              <UpdateProgressBar
-                isPending={currentCoreUpdate.task.isPending}
-                progress={currentCoreUpdate.progress}
+            </p>
+          </div>
+
+          <div className="relative mr-2 flex items-center gap-3">
+            {haveNewVersion && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="stroked"
+                    icon
+                    onClick={() => currentCoreUpdate.task.execute()}
+                    loading={currentCoreUpdate.task.isPending}
+                  >
+                    <DeployedCodeUpdateOutlineRounded className="size-5" />
+                  </Button>
+                </TooltipTrigger>
+
+                <TooltipContent>
+                  {m.settings_clash_core_manager_card_click_to_update()}
+                </TooltipContent>
+              </Tooltip>
+            )}
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  icon
+                  variant="stroked"
+                  onClick={() => restartSidecarTask.execute()}
+                >
+                  <RestartAltRounded className="size-5" />
+                </Button>
+              </TooltipTrigger>
+
+              <TooltipContent>
+                {m.settings_clash_core_manager_card_restart_sidecar()}
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+          {Object.entries(clashCores.data ?? {}).map(([core, item]) => {
+            if (core === currentCoreKey) {
+              return null
+            }
+
+            return (
+              <CoreItem
+                key={item.name}
+                core={core as ClashCore}
+                item={item}
+                onClick={() => switchCoreTask.execute(core as ClashCore)}
               />
-
-              <div className="relative size-12">
-                <img
-                  src={currentCoreIcon}
-                  alt={currentCore?.name}
-                  className="size-full"
-                />
-              </div>
-
-              <div className="relative flex-1">
-                <p className="font-medium">{currentCore?.name}</p>
-
-                <p className="flex items-center gap-1 text-sm">
-                  {currentCoreUpdate.task.isPending &&
-                  currentCoreUpdate.stateLabel ? (
-                    <span className="text-emerald-700">
-                      {currentCoreUpdate.stateLabel}
-                    </span>
-                  ) : haveNewVersion ? (
-                    <>
-                      <span>{currentCore?.currentVersion}</span>
-                      <ArrowRightAltRounded />
-                      <span className="text-emerald-700">
-                        {currentCore?.latestVersion}
-                      </span>
-                    </>
-                  ) : (
-                    currentCore?.currentVersion
-                  )}
-                </p>
-              </div>
-
-              <div className="relative mr-2 flex items-center gap-3">
-                {haveNewVersion && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="stroked"
-                        icon
-                        onClick={() => currentCoreUpdate.task.execute()}
-                        loading={currentCoreUpdate.task.isPending}
-                      >
-                        <DeployedCodeUpdateOutlineRounded className="size-5" />
-                      </Button>
-                    </TooltipTrigger>
-
-                    <TooltipContent>
-                      {m.settings_clash_core_manager_card_click_to_update()}
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      icon
-                      variant="stroked"
-                      onClick={() => restartSidecarTask.execute()}
-                    >
-                      <RestartAltRounded className="size-5" />
-                    </Button>
-                  </TooltipTrigger>
-
-                  <TooltipContent>
-                    {m.settings_clash_core_manager_card_restart_sidecar()}
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-              {Object.entries(clashCores.data ?? {}).map(([core, item]) => {
-                if (core === currentCoreKey) {
-                  return null
-                }
-
-                return (
-                  <CoreItem
-                    key={item.name}
-                    core={core as ClashCore}
-                    item={item}
-                    onClick={() => switchCoreTask.execute(core as ClashCore)}
-                  />
-                )
-              })}
-            </div>
-          </CardContent>
-
-          <CardFooter className="gap-2">
-            <Button
-              variant="flat"
-              onClick={handleFetchRemote}
-              loading={fetchRemote.isPending}
-            >
-              {m.settings_clash_core_manager_card_fetch_remote()}
-            </Button>
-          </CardFooter>
-        </Card>
+            )
+          })}
+        </div>
       </SettingsCardContent>
+
+      <SettingsCardFooter className="gap-2">
+        <Button
+          variant="flat"
+          onClick={handleFetchRemote}
+          loading={fetchRemote.isPending}
+        >
+          {m.settings_clash_core_manager_card_fetch_remote()}
+        </Button>
+      </SettingsCardFooter>
     </SettingsCard>
   )
 }

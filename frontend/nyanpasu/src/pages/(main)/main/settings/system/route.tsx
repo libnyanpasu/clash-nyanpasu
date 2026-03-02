@@ -163,7 +163,7 @@ function RouteComponent() {
     <>
       <SettingsTitle>{m.settings_label_system()}</SettingsTitle>
 
-      <div className="space-y-4 px-4">
+      <div className="space-y-4 px-4 pb-4">
         <ProxyMode />
 
         <ProxyGuard />

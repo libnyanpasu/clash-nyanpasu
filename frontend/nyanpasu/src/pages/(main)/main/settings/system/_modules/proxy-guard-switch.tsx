@@ -4,7 +4,12 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useSetting } from '@nyanpasu/interface'
-import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
+import {
+  ItemContainer,
+  ItemLabel,
+  ItemLabelDescription,
+  ItemLabelText,
+} from '../../_modules/settings-card'
 
 export default function ProxyGuardSwitch() {
   const proxyGuard = useSetting('enable_proxy_guard')
@@ -21,19 +26,22 @@ export default function ProxyGuardSwitch() {
   })
 
   return (
-    <SettingsCard data-slot="proxy-guard-switch-card">
-      <SettingsCardContent
-        className="flex items-center justify-between px-3"
-        data-slot="proxy-guard-switch-card-content"
-      >
-        <div>{m.settings_system_proxy_proxy_guard_label()}</div>
+    <ItemContainer data-slot="proxy-guard-switch-container">
+      <ItemLabel>
+        <ItemLabelText>
+          {m.settings_system_proxy_proxy_guard_switch_label()}
+        </ItemLabelText>
 
-        <Switch
-          checked={Boolean(proxyGuard.value)}
-          onCheckedChange={handleProxyGuard}
-          loading={proxyGuard.isPending}
-        />
-      </SettingsCardContent>
-    </SettingsCard>
+        <ItemLabelDescription>
+          {m.settings_system_proxy_proxy_guard_switch_description()}
+        </ItemLabelDescription>
+      </ItemLabel>
+
+      <Switch
+        checked={Boolean(proxyGuard.value)}
+        onCheckedChange={handleProxyGuard}
+        loading={proxyGuard.isPending}
+      />
+    </ItemContainer>
   )
 }

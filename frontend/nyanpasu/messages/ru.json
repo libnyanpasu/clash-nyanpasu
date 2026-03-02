@@ -89,6 +89,7 @@
   "settings_debug_utils_open_data_directory": "Открыть данные директорию",
   "settings_debug_utils_open_core_directory": "Открыть ядро директорию",
   "settings_debug_utils_open_log_directory": "Открыть директорию журналов",
+  "settings_nyanpasu_max_log_files_label": "Максимальное количество файлов журнала",
   "settings_label_system": "Системные настройки",
   "settings_label_system_description": "Режим прокси, обход прокси, автозапуск, старт без отображения окна и т.д.",
   "settings_label_user_interface": "Интерфейс пользователя",

@@ -21,19 +21,6 @@ const BackButton = () => {
   )
 }
 
-export function SettingsTitlePlaceholder({
-  className,
-  ...props
-}: ComponentProps<'div'>) {
-  return (
-    <div
-      className={cn('h-4', className)}
-      data-slot="settings-title-placeholder"
-      {...props}
-    />
-  )
-}
-
 const Title = (props: ComponentProps<typeof motion.p>) => {
   return (
     <motion.p

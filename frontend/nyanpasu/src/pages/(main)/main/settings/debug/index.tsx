@@ -1,18 +1,13 @@
 import { AnimatePresence } from 'framer-motion'
-import { Separator } from '@/components/ui/separator'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   SettingsCard,
-  SettingsCardAnimatedItem,
   SettingsCardContent,
   SettingsGroup,
   SettingsLabel,
 } from '../_modules/settings-card'
-import {
-  SettingsTitle,
-  SettingsTitlePlaceholder,
-} from '../_modules/settings-title'
+import { SettingsTitle } from '../_modules/settings-title'
 import AdvanceToolsSwitch from './_modules/advance-tools-switch'
 import BlockTaskViewer from './_modules/block-task-viewer'
 import { useDebugContext } from './_modules/debug-provider'

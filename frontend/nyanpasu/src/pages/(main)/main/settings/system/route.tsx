@@ -14,10 +14,7 @@ import {
   SettingsGroup,
   SettingsLabel,
 } from '../_modules/settings-card'
-import {
-  SettingsTitle,
-  SettingsTitlePlaceholder,
-} from '../_modules/settings-title'
+import { SettingsTitle } from '../_modules/settings-title'
 import AutoLaunchSwitch from './_modules/auto-launch-switch'
 import CurrentSystemProxy from './_modules/current-system-proxy'
 import ProxyBypassConfig from './_modules/proxy-bypass-config'

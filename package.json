@@ -64,7 +64,7 @@
     "@types/lodash-es": "4.17.12",
     "@types/node": "24.11.0",
     "autoprefixer": "10.4.27",
-    "conventional-changelog-conventionalcommits": "9.1.0",
+    "conventional-changelog-conventionalcommits": "9.2.0",
     "cross-env": "10.1.0",
     "dedent": "1.7.2",
     "globals": "17.4.0",

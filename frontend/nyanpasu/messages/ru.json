@@ -70,6 +70,7 @@
   "settings_clash_settings_random_port_enabled": "Случайный порт включен, после перезапуска для вступления в силу.",
   "settings_clash_settings_random_port_disabled": "Случайный порт отключен, после перезапуска для вступления в силу.",
   "settings_clash_settings_external_controll_label": "Внешнее управление",
+  "settings_clash_settings_port_strategy_label": "Стратегия порта",
   "settings_clash_settings_allow_fallback_label": "Разрешить откат",
   "settings_clash_settings_fixed_label": "Фиксированный",
   "settings_clash_settings_random_label": "Случайный",

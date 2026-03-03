@@ -353,7 +353,7 @@ export default function CoreManagerCard() {
   const currentCoreUpdate = useCoreUpdateTask(currentCoreKey, currentCore)
 
   return (
-    <SettingsCard data-slot="core-manager-card">
+    <SettingsCard data-slot="core-manager-card" className="relative">
       <AnimatePresence initial={false}>
         {isLoading && (
           <motion.div

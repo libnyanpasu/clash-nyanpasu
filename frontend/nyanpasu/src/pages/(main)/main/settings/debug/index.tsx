@@ -1,6 +1,14 @@
+import { AnimatePresence } from 'framer-motion'
 import { Separator } from '@/components/ui/separator'
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
+import {
+  SettingsCard,
+  SettingsCardAnimatedItem,
+  SettingsCardContent,
+  SettingsGroup,
+  SettingsLabel,
+} from '../_modules/settings-card'
 import {
   SettingsTitle,
   SettingsTitlePlaceholder,
@@ -15,27 +23,54 @@ export const Route = createFileRoute('/(main)/main/settings/debug/')({
   component: RouteComponent,
 })
 
-function RouteComponent() {
+const PathUtilsSettings = () => {
+  return (
+    <div data-slot="debug-settings-container">
+      <SettingsLabel>{m.settings_label_debug()}</SettingsLabel>
+
+      <PathUtilsCard />
+    </div>
+  )
+}
+
+const AdvanceToolsSettings = () => {
   const { advanceTools } = useDebugContext()
 
   return (
+    <div data-slot="debug-settings-container">
+      <SettingsLabel>Advance Tools</SettingsLabel>
+
+      <SettingsGroup>
+        <SettingsCard>
+          <SettingsCardContent>
+            <AdvanceToolsSwitch />
+          </SettingsCardContent>
+        </SettingsCard>
+
+        <AnimatePresence initial={false}>
+          {advanceTools && (
+            <>
+              <WindowDebug />
+
+              <BlockTaskViewer />
+            </>
+          )}
+        </AnimatePresence>
+      </SettingsGroup>
+    </div>
+  )
+}
+
+function RouteComponent() {
+  return (
     <>
-      <SettingsTitlePlaceholder />
       <SettingsTitle>{m.settings_label_debug()}</SettingsTitle>
 
-      <PathUtilsCard />
+      <div className="space-y-4 px-4 pb-4">
+        <PathUtilsSettings />
 
-      <Separator className="my-4" />
-
-      <AdvanceToolsSwitch />
-
-      {advanceTools && (
-        <>
-          <WindowDebug />
-
-          <BlockTaskViewer />
-        </>
-      )}
+        <AdvanceToolsSettings />
+      </div>
     </>
   )
 }

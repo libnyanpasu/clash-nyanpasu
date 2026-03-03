@@ -8,7 +8,6 @@ import {
 } from '@/components/ui/select'
 import { m } from '@/paraglide/messages'
 import { Locale, locales } from '@/paraglide/runtime'
-import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
 
 export default function LanguageSelector() {
   const { language, setLanguage } = useLanguage()
@@ -18,33 +17,24 @@ export default function LanguageSelector() {
   }
 
   return (
-    <SettingsCard data-slot="language-selector-card">
-      <SettingsCardContent
-        className="flex items-center justify-between px-2"
-        data-slot="language-selector-card-content"
-      >
-        <Select
-          variant="outlined"
-          value={language}
-          onValueChange={handleLanguageChange}
-        >
-          <SelectTrigger>
-            <SelectValue
-              placeholder={m.settings_user_interface_language_label()}
-            >
-              {language ? m.language(language, { locale: language }) : null}
-            </SelectValue>
-          </SelectTrigger>
+    <Select
+      variant="outlined"
+      value={language}
+      onValueChange={handleLanguageChange}
+    >
+      <SelectTrigger>
+        <SelectValue placeholder={m.settings_user_interface_language_label()}>
+          {language ? m.language(language, { locale: language }) : null}
+        </SelectValue>
+      </SelectTrigger>
 
-          <SelectContent>
-            {Object.entries(locales).map(([key, value]) => (
-              <SelectItem key={key} value={value}>
-                {m.language(key, { locale: value })}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </SettingsCardContent>
-    </SettingsCard>
+      <SelectContent>
+        {Object.entries(locales).map(([key, value]) => (
+          <SelectItem key={key} value={value}>
+            {m.language(key, { locale: value })}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }

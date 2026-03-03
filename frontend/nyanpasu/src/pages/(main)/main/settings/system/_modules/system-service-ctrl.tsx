@@ -23,7 +23,11 @@ import {
 } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
-import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
+import {
+  SettingsCard,
+  SettingsCardContent,
+  SettingsCardFooter,
+} from '../../_modules/settings-card'
 
 const SystemServiceCtrlItem = ({
   name,
@@ -255,52 +259,38 @@ export default function SystemServiceCtrl() {
   const isInstalled = query.data?.status !== 'not_installed'
 
   return (
-    <SettingsCard data-slot="system-service-ctrl-card">
-      <SettingsCardContent
-        data-slot="system-service-ctrl-card-content"
-        className="flex flex-col gap-3 px-2"
-      >
-        <Card>
-          <CardHeader>
-            {m.settings_system_proxy_system_service_ctrl_label()}
-          </CardHeader>
+    <SettingsCard>
+      <SettingsCardContent className="gap-2 py-4">
+        <SystemServiceCtrlItem name="Service Name" value={query.data?.name} />
 
-          <CardContent className="gap-1 select-text">
-            <SystemServiceCtrlItem
-              name="Service Name"
-              value={query.data?.name}
-            />
+        <SystemServiceCtrlItem
+          name="Server Version"
+          value={query.data?.server?.version}
+        />
 
-            <SystemServiceCtrlItem
-              name="Server Version"
-              value={query.data?.server?.version}
-            />
-
-            <SystemServiceCtrlItem
-              name="Service Status"
-              value={startCase(query.data?.status)}
-            />
-          </CardContent>
-
-          <CardFooter className="flex-wrap-reverse gap-2">
-            {isInstalled ? (
-              <>
-                <ServiceControlButtons />
-
-                <ServiceUninstallButton />
-              </>
-            ) : (
-              <ServiceInstallButton />
-            )}
-
-            <ServiceDetailButton />
-
-            <div className="flex-1" />
-
-            <ServicePromptButton />
-          </CardFooter>
-        </Card>
+        <SystemServiceCtrlItem
+          name="Service Status"
+          value={startCase(query.data?.status)}
+        />
       </SettingsCardContent>
+
+      <SettingsCardFooter className="flex-wrap-reverse gap-2">
+        {isInstalled ? (
+          <>
+            <ServiceControlButtons />
+
+            <ServiceUninstallButton />
+          </>
+        ) : (
+          <ServiceInstallButton />
+        )}
+
+        <ServiceDetailButton />
+
+        <div className="flex-1" />
+
+        <ServicePromptButton />
+      </SettingsCardFooter>
     </SettingsCard>
   )
 }

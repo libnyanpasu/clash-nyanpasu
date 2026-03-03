@@ -22,7 +22,7 @@ export default function LogFileConfig() {
     <SettingsCard data-slot="log-file-config-card">
       <SettingsCardContent
         data-slot="log-file-config-card-content"
-        className="flex flex-col gap-3 px-2"
+        className="gap-4"
       >
         <div className="flex items-center justify-between">
           <span>{m.settings_nyanpasu_max_log_files_label()}</span>

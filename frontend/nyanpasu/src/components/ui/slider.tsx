@@ -95,7 +95,9 @@ export function Slider({
 
       <motion.span
         data-slot="slider-track"
-        className={cn('bg-surface absolute inset-y-0 right-0 select-none')}
+        className={cn(
+          'bg-surface-variant absolute inset-y-0 right-0 select-none',
+        )}
         animate={{
           width: trackWidth,
           borderRadius: '4px 12px 12px 4px',

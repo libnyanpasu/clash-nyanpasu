@@ -9,7 +9,12 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useSetting, useSystemService } from '@nyanpasu/interface'
-import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
+import {
+  ItemContainer,
+  ItemLabel,
+  ItemLabelDescription,
+  ItemLabelText,
+} from '../../_modules/settings-card'
 
 export default function SystemServiceSwitch() {
   const serviceMode = useSetting('enable_service_mode')
@@ -33,34 +38,37 @@ export default function SystemServiceSwitch() {
   })
 
   return (
-    <SettingsCard data-slot="system-service-switch-card">
-      <SettingsCardContent
-        className="flex items-center justify-between px-3"
-        data-slot="system-service-switch-card-content"
-      >
-        <div>{m.settings_system_proxy_service_mode_label()}</div>
+    <ItemContainer data-slot="system-service-switch-container">
+      <ItemLabel>
+        <ItemLabelText>
+          {m.settings_system_proxy_service_mode_label()}
+        </ItemLabelText>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div>
-              <Switch
-                checked={Boolean(serviceMode.value)}
-                onCheckedChange={handleServiceMode}
-                loading={serviceMode.isPending}
-                disabled={disabled}
-              />
-            </div>
-          </TooltipTrigger>
+        <ItemLabelDescription>
+          {m.settings_system_proxy_service_mode_description()}
+        </ItemLabelDescription>
+      </ItemLabel>
 
-          {disabled && (
-            <TooltipContent>
-              <span>
-                {m.settings_system_proxy_service_mode_disabled_tooltip()}
-              </span>
-            </TooltipContent>
-          )}
-        </Tooltip>
-      </SettingsCardContent>
-    </SettingsCard>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div data-slot="system-service-switch-trigger-wrapper">
+            <Switch
+              checked={Boolean(serviceMode.value)}
+              onCheckedChange={handleServiceMode}
+              loading={serviceMode.isPending}
+              disabled={disabled}
+            />
+          </div>
+        </TooltipTrigger>
+
+        {disabled && (
+          <TooltipContent>
+            <span>
+              {m.settings_system_proxy_service_mode_disabled_tooltip()}
+            </span>
+          </TooltipContent>
+        )}
+      </Tooltip>
+    </ItemContainer>
   )
 }

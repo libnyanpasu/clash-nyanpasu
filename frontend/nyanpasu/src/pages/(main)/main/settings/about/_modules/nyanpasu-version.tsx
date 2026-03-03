@@ -24,6 +24,11 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { commands, useSetting } from '@nyanpasu/interface'
 import { relaunch } from '@tauri-apps/plugin-process'
+import {
+  SettingsCard,
+  SettingsCardContent,
+  SettingsCardFooter,
+} from '../../_modules/settings-card'
 
 const TITLE = 'Clash Nyanpasu~(∠・ω< )⌒☆'
 
@@ -221,8 +226,8 @@ export default function NyanpasuVersion() {
   })
 
   return (
-    <Card className="space-y-2">
-      <CardContent className="items-center">
+    <SettingsCard className="space-y-2">
+      <SettingsCardContent className="items-center gap-4">
         <div className="p-4">
           <AnimatedLogo className="size-32" indeterminate />
         </div>
@@ -234,10 +239,10 @@ export default function NyanpasuVersion() {
             version: currentVersion,
           })}
         </div>
-      </CardContent>
+      </SettingsCardContent>
 
       {isSupported ? (
-        <CardFooter className="flex-col gap-2">
+        <SettingsCardFooter className="flex-col gap-2">
           <AutoCheckUpdate />
 
           {hasNewVersion ? (
@@ -256,9 +261,9 @@ export default function NyanpasuVersion() {
               {m.settings_label_about_update()}
             </Button>
           )}
-        </CardFooter>
+        </SettingsCardFooter>
       ) : (
-        <CardFooter>
+        <SettingsCardFooter>
           <Button
             variant="flat"
             className="w-full"
@@ -266,8 +271,8 @@ export default function NyanpasuVersion() {
           >
             {m.settings_label_about_update_to_github_releases()}
           </Button>
-        </CardFooter>
+        </SettingsCardFooter>
       )}
-    </Card>
+    </SettingsCard>
   )
 }

@@ -13,11 +13,7 @@ import {
   useClashInfo,
   useRuntimeProfile,
 } from '@nyanpasu/interface'
-import {
-  SettingsCard,
-  SettingsCardAnimatedItem,
-  SettingsCardContent,
-} from '../../_modules/settings-card'
+import { SettingsCardAnimatedItem } from '../../_modules/settings-card'
 
 const formSchema = z.object({
   externalController: z.string(),
@@ -69,60 +65,53 @@ export default function ExternalControllerConfig() {
   }, [form, data?.server])
 
   return (
-    <SettingsCard data-slot="external-controller-config-card">
-      <SettingsCardContent
-        className="px-2"
-        data-slot="external-controller-config-card-content"
-      >
-        <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
-          <Controller
-            control={form.control}
-            name="externalController"
-            render={({ field }) => {
-              const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
-                field.onChange(event.target.value)
-              }
+    <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
+      <Controller
+        control={form.control}
+        name="externalController"
+        render={({ field }) => {
+          const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
+            field.onChange(event.target.value)
+          }
 
-              return (
-                <>
-                  <Input
-                    variant="outlined"
-                    label={m.settings_clash_settings_external_controll_label()}
-                    value={field.value ?? ''}
-                    onChange={handleChange}
-                  />
+          return (
+            <>
+              <Input
+                variant="outlined"
+                label={m.settings_clash_settings_external_controll_label()}
+                value={field.value ?? ''}
+                onChange={handleChange}
+              />
 
-                  {form.formState.errors.externalController && (
-                    <SettingsCardAnimatedItem className="text-error">
-                      {form.formState.errors.externalController.message}
-                    </SettingsCardAnimatedItem>
-                  )}
-                </>
-              )
-            }}
-          />
+              {form.formState.errors.externalController && (
+                <SettingsCardAnimatedItem className="text-error">
+                  {form.formState.errors.externalController.message}
+                </SettingsCardAnimatedItem>
+              )}
+            </>
+          )
+        }}
+      />
 
-          <AnimatePresence initial={false}>
-            {form.formState.isDirty && (
-              <SettingsCardAnimatedItem>
-                <div className="flex justify-end gap-2 pt-1">
-                  <Button type="button" onClick={handleReset}>
-                    {m.common_reset()}
-                  </Button>
+      <AnimatePresence initial={false}>
+        {form.formState.isDirty && (
+          <SettingsCardAnimatedItem>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" onClick={handleReset}>
+                {m.common_reset()}
+              </Button>
 
-                  <Button
-                    variant="raised"
-                    onClick={handleSubmit}
-                    loading={form.formState.isSubmitting}
-                  >
-                    {m.common_apply()}
-                  </Button>
-                </div>
-              </SettingsCardAnimatedItem>
-            )}
-          </AnimatePresence>
-        </form>
-      </SettingsCardContent>
-    </SettingsCard>
+              <Button
+                variant="raised"
+                onClick={handleSubmit}
+                loading={form.formState.isSubmitting}
+              >
+                {m.common_apply()}
+              </Button>
+            </div>
+          </SettingsCardAnimatedItem>
+        )}
+      </AnimatePresence>
+    </form>
   )
 }

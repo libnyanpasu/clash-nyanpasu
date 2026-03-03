@@ -3,7 +3,11 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useSetting } from '@nyanpasu/interface'
-import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
+import {
+  ItemContainer,
+  ItemLabel,
+  ItemLabelText,
+} from '../../_modules/settings-card'
 
 export default function RandomPortSwitch() {
   const enableRandomPort = useSetting('enable_random_port')
@@ -30,19 +34,18 @@ export default function RandomPortSwitch() {
   }
 
   return (
-    <SettingsCard data-slot="random-port-switch-card">
-      <SettingsCardContent
-        className="flex items-center justify-between px-3"
-        data-slot="random-port-switch-card-content"
-      >
-        <div>{m.settings_clash_settings_random_port_label()}</div>
+    <ItemContainer data-slot="auto-launch-switch-container">
+      <ItemLabel>
+        <ItemLabelText>
+          {m.settings_clash_settings_random_port_label()}
+        </ItemLabelText>
+      </ItemLabel>
 
-        <Switch
-          checked={Boolean(enableRandomPort.value)}
-          onCheckedChange={handleRandomPort}
-          loading={enableRandomPort.isPending}
-        />
-      </SettingsCardContent>
-    </SettingsCard>
+      <Switch
+        checked={Boolean(enableRandomPort.value)}
+        onCheckedChange={handleRandomPort}
+        loading={enableRandomPort.isPending}
+      />
+    </ItemContainer>
   )
 }

@@ -4,7 +4,11 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useSetting } from '@nyanpasu/interface'
-import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
+import {
+  ItemContainer,
+  ItemLabel,
+  ItemLabelText,
+} from '../../_modules/settings-card'
 
 export default function AutoLaunchSwitch() {
   const autoLaunch = useSetting('enable_auto_launch')
@@ -21,19 +25,18 @@ export default function AutoLaunchSwitch() {
   })
 
   return (
-    <SettingsCard data-slot="auto-launch-switch-card">
-      <SettingsCardContent
-        className="flex items-center justify-between px-3"
-        data-slot="auto-launch-switch-card-content"
-      >
-        <div>{m.settings_system_proxy_auto_launch_label()}</div>
+    <ItemContainer data-slot="auto-launch-switch-container">
+      <ItemLabel>
+        <ItemLabelText>
+          {m.settings_system_proxy_auto_launch_label()}
+        </ItemLabelText>
+      </ItemLabel>
 
-        <Switch
-          checked={Boolean(autoLaunch.value)}
-          onCheckedChange={handleAutoLaunch}
-          loading={autoLaunch.isPending}
-        />
-      </SettingsCardContent>
-    </SettingsCard>
+      <Switch
+        checked={Boolean(autoLaunch.value)}
+        onCheckedChange={handleAutoLaunch}
+        loading={autoLaunch.isPending}
+      />
+    </ItemContainer>
   )
 }

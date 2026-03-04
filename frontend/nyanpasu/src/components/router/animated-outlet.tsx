@@ -1,10 +1,11 @@
 import { AnimatePresence, motion, useIsPresent, Variants } from 'framer-motion'
-import { ComponentProps, useContext, useRef } from 'react'
+import { ComponentProps, useRef } from 'react'
 import {
-  getRouterContext,
   Outlet,
+  RouterContextProvider,
   useMatch,
   useMatches,
+  useRouter,
   useRouterState,
 } from '@tanstack/react-router'
 
@@ -56,13 +57,12 @@ export function AnimatedOutlet({
   const matches = useMatches()
   const prevMatches = useRef(matches)
 
-  const RouterContext = getRouterContext()
-  const routerContext = useContext(RouterContext)
+  const router = useRouter()
 
   // Frozen router for the exit animation, created once when isPresent becomes false
-  const frozenRouterRef = useRef<typeof routerContext | null>(null)
+  const frozenRouterRef = useRef<typeof router | null>(null)
 
-  let renderedContext = routerContext
+  let renderedRouter = router
 
   if (isPresent) {
     prevMatches.current = matches
@@ -79,13 +79,13 @@ export function AnimatedOutlet({
       ]
 
       // Snapshot of router state with old route's matches
-      const patchedState = { ...routerContext.__store.state, matches: patched }
+      const patchedState = { ...router.__store.state, matches: patched }
 
       // Create a fake store that always returns the frozen patched state.
       // Object.create delegates everything else (subscribe, atom, etc.) to the real
       // store via the prototype chain, so subscriptions still work — but the snapshot
       // always returns patchedState, which never changes, so there are no re-renders.
-      const fakeStore = Object.create(routerContext.__store)
+      const fakeStore = Object.create(router.__store)
       Object.defineProperty(fakeStore, 'get', {
         value: () => patchedState,
         configurable: true,
@@ -96,7 +96,7 @@ export function AnimatedOutlet({
       })
 
       // Create a fake router that delegates everything to the real router except __store
-      const fakeRouter = Object.create(routerContext)
+      const fakeRouter = Object.create(router)
       Object.defineProperty(fakeRouter, '__store', {
         value: fakeStore,
         configurable: true,
@@ -106,14 +106,14 @@ export function AnimatedOutlet({
     }
 
     // force type safety
-    renderedContext = frozenRouterRef.current!
+    renderedRouter = frozenRouterRef.current!
   }
 
   return (
     <motion.div ref={ref} {...props}>
-      <RouterContext.Provider value={renderedContext}>
+      <RouterContextProvider router={renderedRouter}>
         <Outlet />
-      </RouterContext.Provider>
+      </RouterContextProvider>
     </motion.div>
   )
 }

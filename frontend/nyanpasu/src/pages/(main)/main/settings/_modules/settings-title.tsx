@@ -1,12 +1,19 @@
 import ArrowBackIosNewRounded from '~icons/material-symbols/arrow-back-ios-new-rounded'
-import { ComponentProps } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { ComponentProps, useId } from 'react'
 import { Button } from '@/components/ui/button'
+import { useScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@nyanpasu/ui'
 import { Link } from '@tanstack/react-router'
 
 const BackButton = () => {
   return (
-    <Button icon className="flex items-center justify-center md:hidden" asChild>
+    <Button
+      icon
+      variant="raised"
+      className="flex items-center justify-center md:hidden"
+      asChild
+    >
       <Link to="/main/settings">
         <ArrowBackIosNewRounded className="size-4" />
       </Link>
@@ -14,14 +21,19 @@ const BackButton = () => {
   )
 }
 
-export function SettingsTitlePlaceholder({
-  className,
-  ...props
-}: ComponentProps<'div'>) {
+const Title = (props: ComponentProps<typeof motion.p>) => {
   return (
-    <div
-      className={cn('h-4', className)}
-      data-slot="settings-title-placeholder"
+    <motion.p
+      layout
+      transition={{
+        layout: {
+          duration: 0.5,
+          ease: [0.32, 0.72, 0, 1],
+        },
+        opacity: {
+          duration: 0.16,
+        },
+      }}
       {...props}
     />
   )
@@ -32,24 +44,58 @@ export function SettingsTitle({
   children,
   ...props
 }: ComponentProps<'div'>) {
-  return (
-    <div
-      className={cn(
-        'sticky top-0 z-10 transition-[padding] duration-500',
-        'backdrop-blur-xl',
-        'flex items-center gap-1',
-        'py-4 pr-4 pl-2 md:pl-4',
-        'group-data-[scroll-direction=down]/settings-content:pr-6',
-        'group-data-[scroll-direction=down]/settings-content:pl-3',
-        'group-data-[scroll-direction=down]/settings-content:md:pl-6',
-        className,
-      )}
-      data-slot="settings-title"
-      {...props}
-    >
-      <BackButton />
+  const { offset } = useScrollArea()
 
-      <p className="text-2xl font-bold">{children}</p>
-    </div>
+  const id = useId()
+
+  const showTopTitle = offset.top > 60
+
+  return (
+    <>
+      <div
+        className={cn(
+          'group sticky top-0 z-10',
+          'backdrop-blur-xl',
+          'flex items-center gap-6',
+          'h-16 px-6',
+          className,
+        )}
+        data-show-title={showTopTitle}
+        data-slot="settings-title"
+        {...props}
+      >
+        <BackButton />
+
+        <AnimatePresence initial={false}>
+          {showTopTitle && (
+            <Title
+              key="settings-title-top"
+              layoutId={id}
+              className="text-xl font-bold"
+            >
+              {children}
+            </Title>
+          )}
+        </AnimatePresence>
+      </div>
+
+      <div
+        className="group flex h-24 px-6 pt-10 pb-4"
+        data-slot="settings-title"
+        data-show-title={!showTopTitle}
+      >
+        <AnimatePresence initial={false}>
+          {!showTopTitle && (
+            <Title
+              key="settings-title-main"
+              layoutId={id}
+              className="text-3xl font-bold"
+            >
+              {children}
+            </Title>
+          )}
+        </AnimatePresence>
+      </div>
+    </>
   )
 }

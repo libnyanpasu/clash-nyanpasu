@@ -5,7 +5,11 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useClashConfig } from '@nyanpasu/interface'
-import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
+import {
+  ItemContainer,
+  ItemLabel,
+  ItemLabelText,
+} from '../../_modules/settings-card'
 
 export default function IPv6Switch() {
   const { query, upsert } = useClashConfig()
@@ -26,19 +30,16 @@ export default function IPv6Switch() {
   })
 
   return (
-    <SettingsCard data-slot="ipv6-card">
-      <SettingsCardContent
-        className="flex items-center justify-between px-3"
-        data-slot="ipv6-card-content"
-      >
-        <div>{m.settings_clash_settings_ipv6_label()}</div>
+    <ItemContainer data-slot="ipv6-switch-container">
+      <ItemLabel>
+        <ItemLabelText>{m.settings_clash_settings_ipv6_label()}</ItemLabelText>
+      </ItemLabel>
 
-        <Switch
-          checked={Boolean(value)}
-          onCheckedChange={handleIPv6}
-          loading={upsert.isPending}
-        />
-      </SettingsCardContent>
-    </SettingsCard>
+      <Switch
+        checked={Boolean(value)}
+        onCheckedChange={handleIPv6}
+        loading={upsert.isPending}
+      />
+    </ItemContainer>
   )
 }

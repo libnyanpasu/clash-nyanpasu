@@ -49,12 +49,21 @@ export function ModalTrigger({
       <Comp className={cn('relative', className)}>
         <Slottable>{children}</Slottable>
 
-        <motion.div
-          className="absolute inset-0 -z-10 size-full"
-          data-slot="modal-trigger-placeholder"
-          layout
-          layoutId={layoutId}
-        />
+        <div
+          className="@container-[size] absolute inset-0 -z-10 flex items-center justify-center"
+          data-slot="modal-trigger-placeholder-container"
+        >
+          <motion.div
+            className="size-full"
+            style={{
+              maxWidth: 'min(100%, calc(4 * 100cqh))',
+              maxHeight: 'min(100%, calc(4 * 100cqw))',
+            }}
+            data-slot="modal-trigger-placeholder"
+            layout
+            layoutId={layoutId}
+          />
+        </div>
       </Comp>
     </DialogPrimitive.Trigger>
   )

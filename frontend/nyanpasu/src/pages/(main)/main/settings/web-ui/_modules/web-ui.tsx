@@ -295,31 +295,28 @@ export default function WebUI() {
   const { value } = useSetting('web_ui_list')
 
   return (
-    <SettingsCard data-slot="web-ui-card">
-      <SettingsCardContent
-        data-slot="web-ui-card-content"
-        className="flex min-w-0 flex-col gap-3 px-2"
-      >
-        <div className="px-1">{m.settings_web_ui_title()}</div>
+    <div className="space-y-3">
+      <SettingsCard data-slot="web-ui-card">
+        <SettingsCardContent data-slot="web-ui-card-content">
+          {value && value.length > 0 ? (
+            value.map((item, index) => <WebUIItem key={index} url={item} />)
+          ) : (
+            <EmptyItem />
+          )}
+        </SettingsCardContent>
+      </SettingsCard>
 
-        {value && value.length > 0 ? (
-          value.map((item, index) => <WebUIItem key={index} url={item} />)
-        ) : (
-          <EmptyItem />
-        )}
-
-        <div className="flex justify-end">
-          <EditItemButton>
-            <Button
-              className="flex items-center justify-center gap-1 px-4"
-              variant="raised"
-            >
-              <AddIcon className="size-6" />
-              <span>{m.settings_web_ui_add_button()}</span>
-            </Button>
-          </EditItemButton>
-        </div>
-      </SettingsCardContent>
-    </SettingsCard>
+      <div className="flex justify-end">
+        <EditItemButton>
+          <Button
+            className="flex items-center justify-center gap-1 px-4"
+            variant="raised"
+          >
+            <AddIcon className="size-6" />
+            <span>{m.settings_web_ui_add_button()}</span>
+          </Button>
+        </EditItemButton>
+      </div>
+    </div>
   )
 }

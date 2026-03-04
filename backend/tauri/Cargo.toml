@@ -56,7 +56,7 @@ itertools = "0.14"                                                        # swee
 rayon = "1.10"                                                            # for iterator parallel processing
 ambassador = "0.5.0"                                                      # for trait delegation
 derive_builder = "0.20"                                                   # for builder pattern
-strum = { version = "0.27", features = ["derive"] }                       # for enum string conversion
+strum = { version = "0.28", features = ["derive"] }                       # for enum string conversion
 atomic_enum = "0.3.0"                                                     # for atomic enum
 enumflags2 = "0.7"                                                        # for enum flags
 backon = { version = "1.0.1", features = ["tokio-sleep"] }                # for backoff retry
@@ -100,10 +100,7 @@ serde_json = { version = "1.0", features = ["preserve_order"] }
 serde_yaml = { version = "0.10", package = "serde_yaml_ng", branch = "feat/specta-update", git = "https://github.com/libnyanpasu/serde-yaml-ng.git", features = [
   "specta",
 ] }
-bincode = { version = "2.0.1", default-features = false, features = [
-  "serde",
-  "std",
-] }
+postcard = { version = "1.1", features = ["alloc"] }
 bytes = { version = "1", features = ["serde"] }
 semver = "1.0"
 
@@ -172,12 +169,12 @@ display-info = "0.5.0"  # should be removed after upgrading to tauri v2
 
 # OXC (The Oxidation Compiler)
 # We use it to parse and transpile the old script profile to esm based script profile
-oxc_parser = "0.114"
-oxc_allocator = "0.114"
-oxc_span = "0.114"
-oxc_ast = "0.114"
-oxc_syntax = "0.114"
-oxc_ast_visit = "0.114"
+oxc_parser = "0.116"
+oxc_allocator = "0.116"
+oxc_span = "0.116"
+oxc_ast = "0.116"
+oxc_syntax = "0.116"
+oxc_ast_visit = "0.116"
 
 # Lua Integration
 mlua = { version = "0.11", features = [

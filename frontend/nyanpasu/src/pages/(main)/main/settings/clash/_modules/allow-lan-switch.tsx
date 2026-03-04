@@ -5,7 +5,11 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useClashConfig } from '@nyanpasu/interface'
-import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
+import {
+  ItemContainer,
+  ItemLabel,
+  ItemLabelText,
+} from '../../_modules/settings-card'
 
 export default function AllowLanSwitch() {
   const { query, upsert } = useClashConfig()
@@ -26,19 +30,18 @@ export default function AllowLanSwitch() {
   })
 
   return (
-    <SettingsCard data-slot="allow-lan-card">
-      <SettingsCardContent
-        className="flex items-center justify-between px-3"
-        data-slot="allow-lan-card-content"
-      >
-        <div>{m.settings_clash_settings_allow_lan_label()}</div>
+    <ItemContainer data-slot="allow-lan-switch-container">
+      <ItemLabel>
+        <ItemLabelText>
+          {m.settings_clash_settings_allow_lan_label()}
+        </ItemLabelText>
+      </ItemLabel>
 
-        <Switch
-          checked={Boolean(value)}
-          onCheckedChange={handleAllowLan}
-          loading={upsert.isPending}
-        />
-      </SettingsCardContent>
-    </SettingsCard>
+      <Switch
+        checked={Boolean(value)}
+        onCheckedChange={handleAllowLan}
+        loading={upsert.isPending}
+      />
+    </ItemContainer>
   )
 }

@@ -12,7 +12,6 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { TunStack, useRuntimeProfile, useSetting } from '@nyanpasu/interface'
-import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
 
 export default function TunStackSelector() {
   const [coreType] = useCoreType()
@@ -67,35 +66,26 @@ export default function TunStackSelector() {
   )
 
   return (
-    <SettingsCard data-slot="tun-stack-selector-card">
-      <SettingsCardContent
-        className="px-2"
-        data-slot="tun-stack-selector-card-content"
-      >
-        <Select
-          variant="outlined"
-          value={currentTunStack}
-          onValueChange={handleTunStackChange}
-        >
-          <SelectTrigger>
-            <SelectValue
-              placeholder={m.settings_clash_settings_tun_stack_label()}
-            >
-              {tunStackOptions[currentTunStack]}
-            </SelectValue>
-          </SelectTrigger>
+    <Select
+      variant="outlined"
+      value={currentTunStack}
+      onValueChange={handleTunStackChange}
+    >
+      <SelectTrigger>
+        <SelectValue placeholder={m.settings_clash_settings_tun_stack_label()}>
+          {tunStackOptions[currentTunStack]}
+        </SelectValue>
+      </SelectTrigger>
 
-          <SelectContent>
-            <SelectGroup>
-              {Object.entries(tunStackOptions).map(([key, value]) => (
-                <SelectItem key={key} value={key}>
-                  {value}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-      </SettingsCardContent>
-    </SettingsCard>
+      <SelectContent>
+        <SelectGroup>
+          {Object.entries(tunStackOptions).map(([key, value]) => (
+            <SelectItem key={key} value={key}>
+              {value}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
   )
 }

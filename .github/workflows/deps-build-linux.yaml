@@ -230,13 +230,13 @@ jobs:
 
       - name: Upload AppImage to Github Artifact
         if: ${{ inputs.arch == 'x86_64' }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: Clash.Nyanpasu-linux-${{ inputs.arch }}-appimage
           path: ./backend/target/**/*.AppImage
 
       - name: Upload deb to Github Artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: Clash.Nyanpasu-linux-${{ inputs.arch }}-deb
           path: |
@@ -244,7 +244,7 @@ jobs:
             ./backend/target/**/*.deb.sha256
 
       - name: Upload rpm to Github Artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: Clash.Nyanpasu-linux-${{ inputs.arch }}-rpm
           path: |

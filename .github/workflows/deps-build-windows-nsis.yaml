@@ -239,7 +239,7 @@ jobs:
           VITE_WIN_PORTABLE: 1
 
       - name: Upload NSIS Installer
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: Clash.Nyanpasu-windows-${{ inputs.arch }}${{ inputs.fixed-webview == true && '-fixed-webview' || '' }}-nsis-installer
           path: |
@@ -247,7 +247,7 @@ jobs:
 
       - name: Upload portable
         if: ${{ inputs.portable == true }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: Clash.Nyanpasu-windows-${{ inputs.arch }}${{ inputs.fixed-webview == true && '-fixed-webview' || '' }}-portable
           path: |

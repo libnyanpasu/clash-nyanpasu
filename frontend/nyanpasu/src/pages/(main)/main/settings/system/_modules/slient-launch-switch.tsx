@@ -4,7 +4,11 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { useSetting } from '@nyanpasu/interface'
-import { SettingsCard, SettingsCardContent } from '../../_modules/settings-card'
+import {
+  ItemContainer,
+  ItemLabel,
+  ItemLabelText,
+} from '../../_modules/settings-card'
 
 export default function SilentLaunchSwitch() {
   const silentStart = useSetting('enable_silent_start')
@@ -24,19 +28,18 @@ export default function SilentLaunchSwitch() {
   })
 
   return (
-    <SettingsCard data-slot="silent-launch-switch-card">
-      <SettingsCardContent
-        className="flex items-center justify-between px-3"
-        data-slot="silent-launch-switch-card-content"
-      >
-        <div>{m.settings_system_proxy_silent_start_label()}</div>
+    <ItemContainer data-slot="silent-launch-switch-container">
+      <ItemLabel>
+        <ItemLabelText>
+          {m.settings_system_proxy_silent_start_label()}
+        </ItemLabelText>
+      </ItemLabel>
 
-        <Switch
-          checked={Boolean(silentStart.value)}
-          onCheckedChange={handleSilentStart}
-          loading={silentStart.isPending}
-        />
-      </SettingsCardContent>
-    </SettingsCard>
+      <Switch
+        checked={Boolean(silentStart.value)}
+        onCheckedChange={handleSilentStart}
+        loading={silentStart.isPending}
+      />
+    </ItemContainer>
   )
 }

@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { createContext, useContext, useRef, useState } from 'react'
+import { createContext, useContext, useMemo, useRef, useState } from 'react'
 import { cn } from '@nyanpasu/ui'
 import * as ScrollAreaPrimitive from '@radix-ui/react-scroll-area'
 
@@ -8,6 +8,12 @@ interface ScrollAreaContextValue {
   isTop: boolean
   isBottom: boolean
   scrollDirection: 'up' | 'down' | 'left' | 'right' | 'none'
+  offset: {
+    top: number
+    bottom: number
+    left: number
+    right: number
+  }
   viewportRef: React.RefObject<HTMLDivElement | null>
 }
 
@@ -31,6 +37,13 @@ function useScrollTracking(threshold = 50) {
     'up' | 'down' | 'left' | 'right' | 'none'
   >('none')
 
+  const [offset, setOffset] = useState({
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  })
+
   const lastScrollTop = useRef(0)
   const lastScrollLeft = useRef(0)
 
@@ -38,7 +51,14 @@ function useScrollTracking(threshold = 50) {
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget as HTMLElement
-    const { scrollTop, scrollLeft, scrollHeight, clientHeight } = target
+    const {
+      scrollTop,
+      scrollLeft,
+      scrollWidth,
+      clientWidth,
+      scrollHeight,
+      clientHeight,
+    } = target
 
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current)
@@ -47,6 +67,13 @@ function useScrollTracking(threshold = 50) {
     setIsScrolling(true)
 
     setIsTop(scrollTop === 0)
+
+    setOffset({
+      top: scrollTop,
+      left: scrollLeft,
+      right: scrollWidth - clientWidth,
+      bottom: scrollHeight - clientHeight,
+    })
 
     // check if is at bottom, allow a small threshold
     const isAtBottom = scrollHeight - scrollTop - clientHeight < threshold
@@ -82,7 +109,14 @@ function useScrollTracking(threshold = 50) {
     }, threshold)
   }
 
-  return { isTop, isBottom, scrollDirection, handleScroll, isScrolling }
+  return {
+    isTop,
+    isBottom,
+    scrollDirection,
+    handleScroll,
+    isScrolling,
+    offset,
+  }
 }
 
 export function Viewport({
@@ -111,8 +145,11 @@ export const Root = ScrollAreaPrimitive.Root
 export function ScrollArea({
   className,
   children,
+  scrollbars = 'vertical',
   ...props
-}: React.ComponentProps<typeof ScrollAreaPrimitive.Root>) {
+}: React.ComponentProps<typeof ScrollAreaPrimitive.Root> & {
+  scrollbars?: 'vertical' | 'horizontal' | 'both'
+}) {
   const { isTop, scrollDirection, handleScroll } = useScrollTracking()
 
   return (
@@ -127,7 +164,12 @@ export function ScrollArea({
     >
       <Viewport onScroll={handleScroll}>{children}</Viewport>
 
-      <ScrollBar />
+      {(scrollbars === 'vertical' || scrollbars === 'both') && (
+        <ScrollBar orientation="vertical" />
+      )}
+      {(scrollbars === 'horizontal' || scrollbars === 'both') && (
+        <ScrollBar orientation="horizontal" />
+      )}
       <Corner />
     </Root>
   )
@@ -147,9 +189,9 @@ export function ScrollBar({
         'transition-opacity duration-300 ease-out',
         'data-[state=hidden]:opacity-0 data-[state=visible]:opacity-100',
         orientation === 'vertical' &&
-          'h-full w-2.5 border-l border-l-transparent py-1',
+          'h-full w-3.5 border-l border-l-transparent px-0.75 py-1.5',
         orientation === 'horizontal' &&
-          'h-2.5 flex-col border-t border-t-transparent px-1',
+          'h-3.5 flex-col border-t border-t-transparent px-1.5 py-0.75',
         className,
       )}
       {...props}
@@ -165,12 +207,21 @@ export function ScrollBar({
 export function AppContentScrollArea({
   className,
   children,
+  scrollbars = 'vertical',
   ...props
-}: React.ComponentProps<typeof ScrollAreaPrimitive.Root>) {
+}: React.ComponentProps<typeof ScrollAreaPrimitive.Root> & {
+  scrollbars?: 'vertical' | 'horizontal' | 'both'
+}) {
   const viewportRef = useRef<HTMLDivElement>(null)
 
-  const { isTop, isBottom, scrollDirection, handleScroll, isScrolling } =
-    useScrollTracking()
+  const {
+    isTop,
+    isBottom,
+    scrollDirection,
+    handleScroll,
+    isScrolling,
+    offset,
+  } = useScrollTracking()
 
   return (
     <ScrollAreaContext.Provider
@@ -180,12 +231,14 @@ export function AppContentScrollArea({
         isBottom,
         scrollDirection,
         viewportRef,
+        offset,
       }}
     >
       <Root
         className={cn(
           'relative',
           'flex flex-1 flex-col',
+          'max-w-screen min-w-0',
           'max-h-[calc(100vh-40px-64px)]',
           'min-h-[calc(100vh-40px-64px)]',
           'sm:max-h-[calc(100vh-40px-48px)]',
@@ -201,11 +254,20 @@ export function AppContentScrollArea({
         data-scroll-direction={scrollDirection}
         {...props}
       >
-        <Viewport ref={viewportRef} onScroll={handleScroll}>
+        <Viewport
+          // className={cn('[&>div]:min-h-[calc(100vh-40px-64px)]', className)}
+          ref={viewportRef}
+          onScroll={handleScroll}
+        >
           {children}
         </Viewport>
 
-        <ScrollBar />
+        {(scrollbars === 'vertical' || scrollbars === 'both') && (
+          <ScrollBar orientation="vertical" />
+        )}
+        {(scrollbars === 'horizontal' || scrollbars === 'both') && (
+          <ScrollBar orientation="horizontal" />
+        )}
         <Corner />
       </Root>
     </ScrollAreaContext.Provider>

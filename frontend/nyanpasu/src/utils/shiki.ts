@@ -10,10 +10,9 @@ let shiki: Highlighter | null = null
 export async function getShikiSingleton() {
   if (!shiki) {
     shiki = (await getSingletonHighlighterCore({
-      engine: createOnigurumaEngine(import('shiki/wasm')),
+      engine: createOnigurumaEngine(getWasm),
       themes: [nord, minLight],
       langs: [() => import('shiki/langs/shell.mjs')],
-      loadWasm: getWasm,
     })) as Highlighter
   }
   return shiki

@@ -1,9 +1,14 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { AppContentScrollArea } from '@/components/ui/scroll-area'
+import { createFileRoute, Outlet } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/(main)/main/connections')({
   component: RouteComponent,
 })
 
 function RouteComponent() {
-  return <div>Hello "/(main)/main/connections"!</div>
+  return (
+    <AppContentScrollArea scrollbars="both" type="auto">
+      <Outlet />
+    </AppContentScrollArea>
+  )
 }

@@ -18,7 +18,7 @@
     "lodash-es": "4.17.23",
     "ofetch": "1.5.1",
     "react": "19.2.4",
-    "swr": "2.4.0"
+    "swr": "2.4.1"
   },
   "devDependencies": {
     "@types/lodash-es": "4.17.12",

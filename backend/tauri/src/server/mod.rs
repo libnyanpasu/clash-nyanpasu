@@ -52,15 +52,14 @@ impl TryFrom<CacheFile<'static>> for (HeaderValue, Bytes) {
 // TODO: use Reader instead of Vec
 async fn read_cache_file(path: &Path) -> Result<(HeaderValue, Bytes)> {
     let cache_file = tokio::fs::read(path).await?;
-    let (cache_file, _): (CacheFile<'static>, _) =
-        bincode::serde::decode_from_slice(&cache_file, bincode::config::standard())?;
+    let cache_file: CacheFile<'static> = postcard::from_bytes(&cache_file)?;
     cache_file.try_into()
 }
 
 // TODO: use Writer instead of Vec
 async fn write_cache_file(path: &Path, cache_file: &CacheFile<'_>) -> Result<()> {
     let mut file = tokio::fs::File::create(path).await?;
-    let cache_file = bincode::serde::encode_to_vec(cache_file, bincode::config::standard())?;
+    let cache_file = postcard::to_allocvec(cache_file)?;
     file.write_all(&cache_file).await?;
     Ok(())
 }

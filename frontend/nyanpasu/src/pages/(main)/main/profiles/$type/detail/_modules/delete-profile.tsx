@@ -10,25 +10,18 @@ import { useNavigate } from '@tanstack/react-router'
 import { ask } from '@tauri-apps/plugin-dialog'
 import { Route as IndexRoute } from '../$uid'
 
-export default function DeleteProfile({
-  profile,
-  ...props
-}: Omit<ComponentProps<typeof Button>, 'loading' | 'onClick'> & {
-  profile: Profile
-}) {
-  const { type } = IndexRoute.useParams()
-
-  const navigate = useNavigate()
-
+export const useDeleteProfile = (
+  profile: Profile,
+  options?: {
+    onSuccess?: () => void | Promise<void>
+  },
+) => {
   const { drop } = useProfile()
 
   const blockTask = useBlockTask(`delete-profile-${profile.uid}`, async () => {
     try {
       await drop.mutateAsync(profile.uid)
-      await navigate({
-        to: `/main/profiles/$type`,
-        params: { type },
-      })
+      await options?.onSuccess?.()
     } catch (error) {
       message(`Delete failed: \n ${formatError(error)}`, {
         title: 'Error',
@@ -51,7 +44,30 @@ export default function DeleteProfile({
     await blockTask.execute()
   })
 
-  return (
-    <Button {...props} onClick={handleClick} loading={blockTask.isPending} />
-  )
+  return {
+    handleClick,
+    isPending: blockTask.isPending,
+  }
+}
+
+export default function DeleteProfile({
+  profile,
+  ...props
+}: Omit<ComponentProps<typeof Button>, 'loading' | 'onClick'> & {
+  profile: Profile
+}) {
+  const { type } = IndexRoute.useParams()
+
+  const navigate = useNavigate()
+
+  const { handleClick, isPending } = useDeleteProfile(profile, {
+    onSuccess: async () => {
+      await navigate({
+        to: `/main/profiles/$type`,
+        params: { type },
+      })
+    },
+  })
+
+  return <Button {...props} onClick={handleClick} loading={isPending} />
 }

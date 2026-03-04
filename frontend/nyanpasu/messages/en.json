@@ -176,6 +176,8 @@
   "profile_import_chain_title": "New {type}",
   "proxies_group_delay_test_title": "Delay Test",
   "proxies_group_delay_test_pending_title": "Testing…",
+  "proxies_group_empty_message": "No proxy groups found, please try switching profiles",
+  "proxies_group_empty_button_text": "Switch to profiles",
   "profile_remote_label": "Remote Profile",
   "profile_local_label": "Local Profile",
   "editor_before_close_message": "You have not saved the edited content, are you sure you want to close the editor?",

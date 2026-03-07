@@ -133,7 +133,7 @@ open = "5.0.1"
 sysinfo = "0.37"
 num_cpus = "1"
 os_pipe = "1.2.1"
-whoami = "1.5.1"
+whoami = "2.0.0"
 camino = { version = "1.1.9", features = ["serde1"] }
 
 # IO Utilities

@@ -1,5 +1,9 @@
 {
   "tasks": {
+    "check": {
+      "description": "Check and download required sidecar binaries and resources",
+      "command": "deno run -A check.ts",
+    },
     "upload-macos-updater": {
       "description": "Upload macOS updater to GitHub Releases",
       "command": "deno run -A upload-macos-updater.ts",

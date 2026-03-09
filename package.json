@@ -48,7 +48,7 @@
     "prepare:nightly": "tsx scripts/prepare-nightly.ts",
     "prepare:release": "tsx scripts/prepare-release.ts",
     "prepare:preview": "tsx scripts/prepare-preview.ts",
-    "prepare:check": "tsx scripts/check.ts"
+    "prepare:check": "deno run -A scripts/deno/check.ts"
   },
   "dependencies": {
     "@prettier/plugin-oxc": "0.1.3",

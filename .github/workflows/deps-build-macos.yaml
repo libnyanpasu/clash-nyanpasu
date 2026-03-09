@@ -78,6 +78,10 @@ jobs:
         with:
           run_install: false
 
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
       - name: Get pnpm store directory
         shell: bash
         run: |

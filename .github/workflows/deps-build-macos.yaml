@@ -78,16 +78,29 @@ jobs:
         with:
           run_install: false
 
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - uses: actions/cache@v5
+        name: Setup pnpm cache
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - uses: Swatinem/rust-cache@v2
+        name: Cache Rust dependencies
+        with:
+          workspaces: 'backend'
+          key: ${{ inputs.aarch64 == true && 'aarch64' || 'x86_64' }}
+
       - name: Pnpm install
         shell: bash
         run: |
           pnpm i
-
-      - name: Restore build cache
-        run: deno run -A scripts/deno/build-cache.ts restore --os macos --arch ${{ inputs.aarch64 == true && 'aarch64' || 'x86_64' }}
-        env:
-          FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
-        continue-on-error: true
 
       - name: Download Sidecars aarch64
         if: ${{ inputs.aarch64 == true }}
@@ -137,10 +150,3 @@ jobs:
           name: Clash.Nyanpasu-macOS-${{ inputs.aarch64 == true && 'aarch64' || 'amd64' }}
           path: |
             ./backend/target/**/*.dmg
-
-      - name: Save build cache
-        if: always()
-        run: deno run -A scripts/deno/build-cache.ts save --os macos --arch ${{ inputs.aarch64 == true && 'aarch64' || 'x86_64' }}
-        env:
-          FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
-        continue-on-error: true

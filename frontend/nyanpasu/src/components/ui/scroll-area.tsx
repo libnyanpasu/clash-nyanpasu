@@ -1,7 +1,7 @@
+import { ScrollArea as ScrollAreaPrimitive } from 'radix-ui'
 import * as React from 'react'
-import { createContext, useContext, useMemo, useRef, useState } from 'react'
+import { createContext, useContext, useRef, useState } from 'react'
 import { cn } from '@nyanpasu/ui'
-import * as ScrollAreaPrimitive from '@radix-ui/react-scroll-area'
 
 interface ScrollAreaContextValue {
   isScrolling: boolean
@@ -179,7 +179,7 @@ export function ScrollBar({
   className,
   orientation = 'vertical',
   ...props
-}: React.ComponentProps<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>) {
+}: React.ComponentProps<typeof ScrollAreaPrimitive.Scrollbar>) {
   return (
     <ScrollAreaPrimitive.ScrollAreaScrollbar
       data-slot="scroll-area-scrollbar"

@@ -2,6 +2,7 @@ import ArrowDropDown from '~icons/material-symbols/arrow-drop-down-rounded'
 import Check from '~icons/material-symbols/check-rounded'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { AnimatePresence, motion } from 'framer-motion'
+import { Select as SelectPrimitive } from 'radix-ui'
 import {
   ComponentProps,
   createContext,
@@ -12,7 +13,6 @@ import {
 } from 'react'
 import { chains } from '@/utils/chain'
 import { cn } from '@nyanpasu/ui'
-import * as SelectPrimitive from '@radix-ui/react-select'
 import { useControllableState } from '@radix-ui/react-use-controllable-state'
 
 export const selectTriggerVariants = cva(

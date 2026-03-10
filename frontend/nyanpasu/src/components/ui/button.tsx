@@ -1,9 +1,9 @@
 import { cva, type VariantProps } from 'class-variance-authority'
 import { AnimatePresence, motion } from 'framer-motion'
+import { Slot } from 'radix-ui'
 import { lazy, Suspense, useCallback } from 'react'
 import { chains } from '@/utils/chain'
 import { cn } from '@nyanpasu/ui'
-import { Slot, Slottable } from '@radix-ui/react-slot'
 import { CircularProgress } from './progress'
 import { useRipple } from './ripple'
 
@@ -134,7 +134,7 @@ export const Button = ({
   onClick,
   ...props
 }: ButtonProps) => {
-  const Comp = asChild ? Slot : 'button'
+  const Comp = asChild ? Slot.Root : 'button'
 
   const ripple = useRipple()
 
@@ -161,7 +161,7 @@ export const Button = ({
       data-loading={String(Boolean(loading))}
       {...props}
     >
-      <Slottable>{children}</Slottable>
+      <Slot.Slottable>{children}</Slot.Slottable>
 
       <AnimatePresence initial={false}>
         {loading && (

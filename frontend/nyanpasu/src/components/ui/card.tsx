@@ -1,7 +1,7 @@
 import { cva, type VariantProps } from 'class-variance-authority'
+import { Slot } from 'radix-ui'
 import { createContext, HTMLAttributes, useContext } from 'react'
 import { cn } from '@nyanpasu/ui'
-import { Slot } from '@radix-ui/react-slot'
 
 export const cardVariants = cva('rounded-3xl text-on-surface overflow-hidden', {
   variants: {
@@ -104,7 +104,7 @@ export const Card = ({
   className,
   ...props
 }: CardProps) => {
-  const Comp = asChild ? Slot : 'div'
+  const Comp = asChild ? Slot.Root : 'div'
 
   return (
     <CardContext.Provider
@@ -136,7 +136,7 @@ export const CardContent = ({
   asChild,
   ...props
 }: CardContentProps) => {
-  const Comp = asChild ? Slot : 'div'
+  const Comp = asChild ? Slot.Root : 'div'
 
   return <Comp className={cn(cardContentVariants(), className)} {...props} />
 }

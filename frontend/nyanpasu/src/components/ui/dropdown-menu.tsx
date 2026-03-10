@@ -3,9 +3,9 @@ import Check from '~icons/material-symbols/check-rounded'
 import RadioChecked from '~icons/material-symbols/radio-button-checked'
 import Radio from '~icons/material-symbols/radio-button-unchecked'
 import { AnimatePresence, motion } from 'framer-motion'
+import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
 import { ComponentProps, createContext, useContext } from 'react'
 import { cn } from '@nyanpasu/ui'
-import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu'
 import { useControllableState } from '@radix-ui/react-use-controllable-state'
 
 const MotionContent = ({

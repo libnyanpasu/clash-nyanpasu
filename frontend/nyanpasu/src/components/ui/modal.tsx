@@ -1,8 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
+import { Dialog as DialogPrimitive, Slot } from 'radix-ui'
 import { ComponentProps, createContext, useContext, useId } from 'react'
 import { cn } from '@nyanpasu/ui'
-import * as DialogPrimitive from '@radix-ui/react-dialog'
-import { Slot, Slottable } from '@radix-ui/react-slot'
 import { useControllableState } from '@radix-ui/react-use-controllable-state'
 import { Button, type ButtonProps } from './button'
 
@@ -37,7 +36,7 @@ export function ModalTrigger({
 }: ComponentProps<typeof DialogPrimitive.Trigger>) {
   const { layoutId } = useModalContext()
 
-  const Comp = asChild ? Slot : 'button'
+  const Comp = asChild ? Slot.Root : 'button'
 
   return (
     <DialogPrimitive.Trigger
@@ -47,7 +46,7 @@ export function ModalTrigger({
       data-layout-id={layoutId}
     >
       <Comp className={cn('relative', className)}>
-        <Slottable>{children}</Slottable>
+        <Slot.Slottable>{children}</Slot.Slottable>
 
         <div
           className="@container-[size] absolute inset-0 -z-10 flex items-center justify-center"

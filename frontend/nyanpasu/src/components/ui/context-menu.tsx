@@ -1,9 +1,9 @@
 import ArrowRight from '~icons/material-symbols/arrow-right-rounded'
 import Check from '~icons/material-symbols/check-rounded'
 import { AnimatePresence, motion } from 'framer-motion'
+import { ContextMenu as ContextMenuPrimitive } from 'radix-ui'
 import { ComponentProps, createContext, useContext } from 'react'
 import { cn } from '@nyanpasu/ui'
-import * as ContextMenuPrimitive from '@radix-ui/react-context-menu'
 import { useControllableState } from '@radix-ui/react-use-controllable-state'
 
 const MotionContent = ({

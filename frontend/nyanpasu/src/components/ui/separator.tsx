@@ -1,6 +1,6 @@
+import { Separator as SeparatorPrimitive } from 'radix-ui'
 import { ComponentProps } from 'react'
 import { cn } from '@nyanpasu/ui'
-import * as SeparatorPrimitive from '@radix-ui/react-separator'
 
 export function Separator({
   className,

@@ -1,7 +1,8 @@
 import DeleteForeverOutlineRounded from '~icons/material-symbols/delete-forever-outline-rounded'
 import DragClickRounded from '~icons/material-symbols/drag-click-rounded'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ComponentProps } from 'react'
+import { isEqual } from 'lodash-es'
+import { ComponentProps, useRef } from 'react'
 import {
   RegisterContextMenu,
   RegisterContextMenuContent,
@@ -14,6 +15,9 @@ import { ContextMenuItem } from '@/components/ui/context-menu'
 import { LinearProgress } from '@/components/ui/progress'
 import TextMarquee from '@/components/ui/text-marquee'
 import { m } from '@/paraglide/messages'
+import { move } from '@dnd-kit/helpers'
+import { DragDropProvider } from '@dnd-kit/react'
+import { useSortable } from '@dnd-kit/react/sortable'
 import { hexFromArgb } from '@material/material-color-utilities'
 import { Profile, useProfile } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
@@ -38,7 +42,13 @@ const Chip = ({ children, className, ...props }: ComponentProps<'span'>) => {
   )
 }
 
-const GridViewProfile = ({ profile }: { profile: Profile }) => {
+const GridViewProfile = ({
+  profile,
+  index,
+}: {
+  profile: Profile
+  index: number
+}) => {
   const { type } = IndexRoute.useParams()
 
   const activeProfile = useActiveProfile(profile)
@@ -50,84 +60,95 @@ const GridViewProfile = ({ profile }: { profile: Profile }) => {
 
   const { themePalette } = useExperimentalThemeContext()
 
+  const cardRef = useRef<HTMLDivElement>(null)
+
+  const { isDragging: _isDragging } = useSortable({
+    id: profile.uid,
+    index,
+    element: cardRef.current,
+  })
+
   return (
     <RegisterContextMenu>
       <RegisterContextMenuTrigger asChild>
         <Card
           data-slot="profile-card"
           className="relative flex flex-col justify-between"
+          asChild
         >
-          <AnimatePresence initial={false}>
-            {isPending && (
-              <motion.div
-                data-slot="profile-card-mask"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className={cn(
-                  'bg-primary/10 absolute inset-0 z-50 backdrop-blur-3xl',
-                  'flex flex-col items-center justify-center gap-2',
-                )}
-              >
-                <LinearProgress className="w-2/3 max-w-60" indeterminate />
+          <div ref={cardRef}>
+            <AnimatePresence initial={false}>
+              {isPending && (
+                <motion.div
+                  data-slot="profile-card-mask"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className={cn(
+                    'bg-primary/10 absolute inset-0 z-50 backdrop-blur-3xl',
+                    'flex flex-col items-center justify-center gap-2',
+                  )}
+                >
+                  <LinearProgress className="w-2/3 max-w-60" indeterminate />
 
-                <p className="text-on-surface-variant text-xs">
-                  {m.profile_pending_mask_message()}
-                </p>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {activeProfile.isActive && (
-            <MeshGradient
-              className="absolute inset-0 size-full opacity-30"
-              colors={Object.values(themePalette.schemes.light).map((color) =>
-                hexFromArgb(color),
+                  <p className="text-on-surface-variant text-xs">
+                    {m.profile_pending_mask_message()}
+                  </p>
+                </motion.div>
               )}
-              distortion={0.5}
-              swirl={0.1}
-              grainMixer={0}
-              grainOverlay={0}
-              speed={1 / 3}
-            />
-          )}
-
-          <CardHeader
-            className="flex items-center justify-between gap-2"
-            data-slot="profile-card-title"
-          >
-            <TextMarquee className="z-10 min-w-0 flex-1">
-              {profile.name}
-            </TextMarquee>
+            </AnimatePresence>
 
             {activeProfile.isActive && (
-              <Chip className="shrink-0">{m.profile_is_active_label()}</Chip>
+              <MeshGradient
+                className="absolute inset-0 size-full opacity-30"
+                colors={Object.values(themePalette.schemes.light).map((color) =>
+                  hexFromArgb(color),
+                )}
+                distortion={0.5}
+                swirl={0.1}
+                grainMixer={0}
+                grainOverlay={0}
+                speed={1 / 3}
+              />
             )}
-          </CardHeader>
 
-          <CardContent>
-            <div className="z-10" data-slot="profile-card-type">
-              {isRemote ? (
-                <Chip>{m.profile_remote_label()}</Chip>
-              ) : (
-                <Chip>{m.profile_local_label()}</Chip>
+            <CardHeader
+              className="flex items-center justify-between gap-2"
+              data-slot="profile-card-title"
+            >
+              <TextMarquee className="z-10 min-w-0 flex-1">
+                {profile.name}
+              </TextMarquee>
+
+              {activeProfile.isActive && (
+                <Chip className="shrink-0">{m.profile_is_active_label()}</Chip>
               )}
-            </div>
-          </CardContent>
+            </CardHeader>
 
-          <CardFooter>
-            <Button className="flex items-center justify-center" asChild>
-              <Link
-                to="/main/profiles/$type/detail/$uid"
-                params={{
-                  type,
-                  uid: profile.uid,
-                }}
-              >
-                {m.profile_view_details_title()}
-              </Link>
-            </Button>
-          </CardFooter>
+            <CardContent>
+              <div className="z-10" data-slot="profile-card-type">
+                {isRemote ? (
+                  <Chip>{m.profile_remote_label()}</Chip>
+                ) : (
+                  <Chip>{m.profile_local_label()}</Chip>
+                )}
+              </div>
+            </CardContent>
+
+            <CardFooter>
+              <Button className="flex items-center justify-center" asChild>
+                <Link
+                  to="/main/profiles/$type/detail/$uid"
+                  params={{
+                    type,
+                    uid: profile.uid,
+                  }}
+                >
+                  {m.profile_view_details_title()}
+                </Link>
+              </Button>
+            </CardFooter>
+          </div>
         </Card>
       </RegisterContextMenuTrigger>
 
@@ -183,6 +204,7 @@ export default function ProfilesList({
 
   const {
     query: { data: profiles },
+    sort,
   } = useProfile()
 
   // Type guard: restrict type to the allowed PROFILE_TYPES keys
@@ -226,21 +248,39 @@ export default function ProfilesList({
           'sm:min-h-[calc(100vh-40px-48px)]',
         )}
       >
-        <div
-          className={cn(
-            'grid gap-2',
-            'md:grid-cols-2',
-            'lg:grid-cols-3',
-            'dxl:grid-cols-4',
-            className,
-          )}
-          data-slot="profiles-navigate"
-          {...props}
+        <DragDropProvider
+          onDragEnd={(event) => {
+            const currentUids = filteredProfiles.map((profile) => profile.uid)
+
+            const nextUids = move(currentUids, event)
+
+            if (isEqual(currentUids, nextUids)) {
+              return
+            }
+
+            sort.mutate(nextUids)
+          }}
         >
-          {filteredProfiles.map((profile) => (
-            <GridViewProfile key={profile.uid} profile={profile} />
-          ))}
-        </div>
+          <div
+            className={cn(
+              'grid gap-2',
+              'md:grid-cols-2',
+              'lg:grid-cols-3',
+              'dxl:grid-cols-4',
+              className,
+            )}
+            data-slot="profiles-navigate"
+            {...props}
+          >
+            {filteredProfiles.map((profile, index) => (
+              <GridViewProfile
+                key={profile.uid}
+                profile={profile}
+                index={index}
+              />
+            ))}
+          </div>
+        </DragDropProvider>
 
         <div className="flex-1" />
       </div>

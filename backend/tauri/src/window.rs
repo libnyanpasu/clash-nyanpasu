@@ -780,14 +780,30 @@ pub trait AppWindow {
 
         let state = match current_monitor {
             Some(_) => {
+                let maximized = win.is_maximized()?;
+                let fullscreen = win.is_fullscreen()?;
+                let is_minimized = win.is_minimized()?;
+                let size = win.inner_size()?;
+
+                // During system shutdown, Windows sends resize events with 0x0 dimensions.
+                // Skip saving in this case to preserve the last valid window state.
+                if size.width == 0 || size.height == 0 {
+                    if !maximized && !fullscreen && !is_minimized {
+                        tracing::debug!(
+                            "skipping window state save: invalid size {}x{} in normal state",
+                            size.width,
+                            size.height
+                        );
+                        return Ok(());
+                    }
+                }
+
                 let mut state = WindowState {
-                    maximized: win.is_maximized()?,
-                    fullscreen: win.is_fullscreen()?,
+                    maximized,
+                    fullscreen,
                     ..WindowState::default()
                 };
-                let is_minimized = win.is_minimized()?;
 
-                let size = win.inner_size()?;
                 if size.width > 0 && size.height > 0 && !state.maximized && !is_minimized {
                     state.width = size.width;
                     state.height = size.height;

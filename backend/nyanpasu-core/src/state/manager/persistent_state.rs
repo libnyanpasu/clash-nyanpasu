@@ -89,27 +89,51 @@ where
         Ok(())
     }
 
+    async fn rollback_upsert(&mut self, previous_state: State) {
+        if let Err(e) = self.state_coordinator.upsert_state(previous_state).await {
+            tracing::error!(target: "app", "failed to rollback state after failed to save config: {e:?}");
+        }
+    }
+
     pub async fn upsert(&mut self, state: State) -> Result<(), UpsertError> {
+        let previous_state = self.state_coordinator.current_state();
+
         self.state_coordinator
             .upsert_state(state.clone())
             .await
             .map_err(UpsertError::State)?;
 
-        self.atomic_save_config(&state)
+        if let Err(e) = self
+            .atomic_save_config(&state)
             .await
-            .map_err(UpsertError::WriteConfig)?;
+            .map_err(UpsertError::WriteConfig)
+        {
+            let previous_state = previous_state
+                .expect("rollback requires a previous state, but current_state was None");
+            self.rollback_upsert(previous_state).await;
+            return Err(e);
+        }
         Ok(())
     }
 
     pub async fn upsert_with_context(&mut self, state: State) -> Result<(), UpsertError> {
+        let previous_state = self.state_coordinator.current_state();
+
         self.state_coordinator
             .upsert_state_with_context(state.clone())
             .await
             .map_err(UpsertError::State)?;
 
-        self.atomic_save_config(&state)
+        if let Err(e) = self
+            .atomic_save_config(&state)
             .await
-            .map_err(UpsertError::WriteConfig)?;
+            .map_err(UpsertError::WriteConfig)
+        {
+            let previous_state = previous_state
+                .expect("rollback requires a previous state, but current_state was None");
+            self.rollback_upsert(previous_state).await;
+            return Err(e);
+        }
         Ok(())
     }
 }
@@ -275,7 +299,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_upsert_write_config_error() {
+    #[should_panic(expected = "rollback requires a previous state")]
+    async fn test_upsert_write_config_error_without_previous_panics() {
         let config_path = Utf8PathBuf::from("/__nonexistent_dir__/__sub__/config.yaml");
 
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
@@ -283,14 +308,44 @@ mod tests {
             PersistentStateManager::new(None, config_path, coordinator, YamlFormat);
 
         let state = TestState::new("write_fail".to_string(), 300);
+        let _ = manager.upsert(state).await;
+    }
 
-        let result = manager.upsert(state).await;
+    #[tokio::test]
+    async fn test_upsert_write_config_error_rollback() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("rollback_test.yaml");
+        let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
+
+        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let mut manager: PersistentStateManager<TestState> = PersistentStateManager::new(
+            None,
+            config_path,
+            coordinator,
+            YamlFormat,
+        );
+
+        // 先成功 upsert 建立 previous state
+        let initial_state = TestState::new("initial".to_string(), 100);
+        manager.upsert(initial_state.clone()).await.unwrap();
+        assert_eq!(manager.current_state().unwrap().name, "initial");
+
+        // 替换 config_path 为不存在的路径，触发写入失败
+        manager.config_path = Utf8PathBuf::from("/__nonexistent_dir__/__sub__/config.yaml");
+
+        let new_state = TestState::new("new_value".to_string(), 200);
+        let result = manager.upsert(new_state).await;
         assert!(result.is_err());
 
         match result.unwrap_err() {
             UpsertError::WriteConfig(_) => {}
             other => panic!("Expected UpsertError::WriteConfig, got: {:?}", other),
         }
+
+        // 验证回滚：状态应恢复为初始值
+        let state = manager.current_state().unwrap();
+        assert_eq!(state.name, "initial");
+        assert_eq!(state.value, 100);
     }
 
     #[tokio::test]

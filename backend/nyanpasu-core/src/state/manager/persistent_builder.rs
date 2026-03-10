@@ -129,16 +129,34 @@ where
         Ok(())
     }
 
+    async fn rollback_upsert(&mut self, previous_builder: Builder) {
+        if let Err(e) = self
+            .state_coordinator
+            .upsert(previous_builder.clone())
+            .await
+        {
+            tracing::error!(target: "app", "failed to rollback state after failed to save config: {e:?}");
+        }
+        self.current_builder = Some(previous_builder);
+    }
+
     pub async fn upsert(&mut self, builder: Builder) -> Result<(), UpsertError> {
         self.state_coordinator
             .upsert(builder.clone())
             .await
             .map_err(UpsertError::State)?;
-        self.current_builder = Some(builder.clone());
+        let previous_builder = self.current_builder.replace(builder.clone());
 
-        self.atomic_save_config(&builder)
+        if let Err(e) = self
+            .atomic_save_config(&builder)
             .await
-            .map_err(UpsertError::WriteConfig)?;
+            .map_err(UpsertError::WriteConfig)
+        {
+            let previous_builder = previous_builder
+                .expect("rollback requires a previous builder, but current_builder was None");
+            self.rollback_upsert(previous_builder).await;
+            return Err(e);
+        }
         Ok(())
     }
 
@@ -147,11 +165,18 @@ where
             .upsert_with_context(builder.clone())
             .await
             .map_err(UpsertError::State)?;
-        self.current_builder = Some(builder.clone());
+        let previous_builder = self.current_builder.replace(builder.clone());
 
-        self.atomic_save_config(&builder)
+        if let Err(e) = self
+            .atomic_save_config(&builder)
             .await
-            .map_err(UpsertError::WriteConfig)?;
+            .map_err(UpsertError::WriteConfig)
+        {
+            let previous_builder = previous_builder
+                .expect("rollback requires a previous builder, but current_builder was None");
+            self.rollback_upsert(previous_builder).await;
+            return Err(e);
+        }
         Ok(())
     }
 }
@@ -413,8 +438,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_upsert_write_config_error() {
-        // 使用不存在的深层目录路径来触发写入错误（跨平台兼容）
+    #[should_panic(expected = "rollback requires a previous builder")]
+    async fn test_upsert_write_config_error_without_previous_panics() {
+        // 首次 upsert 时 config 写入失败，由于没有 previous builder，应该 panic
         let config_path = Utf8PathBuf::from("/__nonexistent_dir__/__sub__/config.yaml");
 
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
@@ -423,19 +449,44 @@ mod tests {
 
         let builder = TestBuilder::new("写入失败测试".to_string(), 300);
 
-        // 写入到不存在的目录应该失败
-        let result = manager.upsert(builder).await;
+        let _ = manager.upsert(builder).await;
+    }
+
+    #[tokio::test]
+    async fn test_upsert_write_config_error_rollback() {
+        // 先成功 upsert 建立 previous builder，再触发 config 写入失败，验证回滚
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("rollback_test.yaml");
+        let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
+
+        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let mut manager: PersistentBuilderManager<TestState, TestBuilder> =
+            PersistentBuilderManager::new(None, config_path, coordinator, YamlFormat);
+
+        // 第一次 upsert 成功
+        let initial_builder = TestBuilder::new("初始值".to_string(), 100);
+        manager.upsert(initial_builder.clone()).await.unwrap();
+        assert_eq!(manager.current_state().unwrap().name, "初始值");
+
+        // 替换 config_path 为不存在的路径，触发写入失败
+        manager.config_path = Utf8PathBuf::from("/__nonexistent_dir__/__sub__/config.yaml");
+
+        let new_builder = TestBuilder::new("新值".to_string(), 200);
+        let result = manager.upsert(new_builder).await;
         assert!(result.is_err(), "写入不存在的目录应该失败");
 
         match result.unwrap_err() {
-            UpsertError::WriteConfig(_) => {
-                // 期望的错误类型
-            }
-            other => panic!(
-                "期望 UpsertError::WriteConfig, 但得到: {:?}",
-                other
-            ),
+            UpsertError::WriteConfig(_) => {}
+            other => panic!("期望 UpsertError::WriteConfig, 但得到: {:?}", other),
         }
+
+        // 验证回滚：状态和 builder 都应恢复为初始值
+        let state = manager.current_state().unwrap();
+        assert_eq!(state.name, "初始值");
+        assert_eq!(state.value, 100);
+        let builder = manager.current_builder().unwrap();
+        assert_eq!(builder.name, "初始值");
+        assert_eq!(builder.value, 100);
     }
 
     #[tokio::test]

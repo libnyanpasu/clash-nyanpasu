@@ -36,7 +36,7 @@ export default function ProfilesHeader() {
     <div
       className={cn(
         'flex items-center gap-2 p-4',
-        'sticky top-0 z-10',
+        'sticky top-0 z-50',
         'backdrop-blur-xl',
       )}
     >

@@ -165,10 +165,10 @@ importers:
         specifier: 6.3.1
         version: 6.3.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@dnd-kit/helpers':
-        specifier: ^0.3.2
+        specifier: 0.3.2
         version: 0.3.2
       '@dnd-kit/react':
-        specifier: ^0.3.2
+        specifier: 0.3.2
         version: 0.3.2(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@dnd-kit/sortable':
         specifier: 10.0.0
@@ -213,7 +213,7 @@ importers:
         specifier: 0.0.71
         version: 0.0.71(@types/react@19.2.14)(react@19.2.4)
       '@radix-ui/react-use-controllable-state':
-        specifier: ^1.2.2
+        specifier: 1.2.2
         version: 1.2.2(@types/react@19.2.14)(react@19.2.4)
       '@tailwindcss/postcss':
         specifier: 4.2.1
@@ -279,7 +279,7 @@ importers:
         specifier: 7.0.0
         version: 7.0.0(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.4))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.4))(@types/react@19.2.14)(react@19.2.4))(@mui/material@7.3.9(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.4))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.4))(@types/react@19.2.14)(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       radix-ui:
-        specifier: ^1.4.3
+        specifier: 1.4.3
         version: 1.4.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       react:
         specifier: 19.2.4

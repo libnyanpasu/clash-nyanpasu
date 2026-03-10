@@ -48,7 +48,7 @@ export function SettingsTitle({
 
   const id = useId()
 
-  const showTopTitle = offset.top > 60
+  const showTopTitle = offset.top > 40
 
   return (
     <>

@@ -80,7 +80,7 @@ impl Context {
 
 // TODO: support `spawn_blocking`?
 pub trait SpawnContextExt {
-    async fn spawn_context<T, F>(state: T, f: F) -> tokio::task::JoinHandle<F::Output>
+    fn spawn_context<T, F>(state: T, f: F) -> tokio::task::JoinHandle<F::Output>
     where
         F: Future + Send + 'static,
         F::Output: Send + 'static,

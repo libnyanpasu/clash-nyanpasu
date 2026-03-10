@@ -1,24 +1,59 @@
+use anyhow::Context;
+use atomicwrites::{AllowOverwrite, AtomicFile};
 use camino::Utf8PathBuf;
+use fs_err::tokio as fs;
 use serde::{Serialize, de::DeserializeOwned};
-
-use crate::utils::help;
+use std::io::{Read, Write};
 
 use super::{super::error::*, *};
 
-pub struct PersistentBuilderManager<
+pub trait Format {
+    fn serialize<W: Write, T: Serialize>(
+        &self,
+        writer: W,
+        value: &T,
+        prefix: Option<&str>,
+    ) -> anyhow::Result<()>;
+    fn deserialize<R: Read, T: DeserializeOwned>(&self, reader: R) -> anyhow::Result<T>;
+}
+
+pub struct YamlFormat;
+impl Format for YamlFormat {
+    fn serialize<W: Write, T: Serialize>(
+        &self,
+        mut writer: W,
+        value: &T,
+        prefix: Option<&str>,
+    ) -> anyhow::Result<()> {
+        if let Some(prefix) = prefix {
+            writeln!(writer, "{}", prefix)?;
+        }
+        serde_yaml_ng::to_writer(writer, value)?;
+        Ok(())
+    }
+
+    fn deserialize<R: Read, T: DeserializeOwned>(&self, reader: R) -> anyhow::Result<T> {
+        let value = serde_yaml_ng::from_reader(reader)?;
+        Ok(value)
+    }
+}
+
+pub struct PersistentBuilderManager<State, Builder, Formatter = YamlFormat>
+where
     State: Clone + Send + Sync + 'static,
-    Builder: StateAsyncBuilder<State = State> + Serialize + DeserializeOwned,
-> {
+{
     config_prefix: Option<String>,
     config_path: Utf8PathBuf,
     current_builder: Option<Builder>,
     state_coordinator: StateCoordinator<State>,
+    formatter: Formatter,
 }
 
-impl<State, Builder> PersistentBuilderManager<State, Builder>
+impl<State, Builder, Formatter> PersistentBuilderManager<State, Builder, Formatter>
 where
     State: Clone + Send + Sync + 'static,
     Builder: StateAsyncBuilder<State = State> + Serialize + DeserializeOwned,
+    Formatter: Format,
 {
     pub fn state_coordinator_mut(&mut self) -> &mut StateCoordinator<State> {
         &mut self.state_coordinator
@@ -28,18 +63,22 @@ where
         config_prefix: Option<String>,
         config_path: Utf8PathBuf,
         state_coordinator: StateCoordinator<State>,
+        formatter: Formatter,
     ) -> Self {
         Self {
             config_prefix,
             config_path,
             current_builder: None,
             state_coordinator,
+            formatter,
         }
     }
 
     pub async fn try_load(&mut self) -> Result<(), LoadError> {
-        let config: Builder = help::read_yaml(&self.config_path)
+        let config: Builder = fs::read(&self.config_path)
             .await
+            .map_err(anyhow::Error::from)
+            .and_then(|s| self.formatter.deserialize(s.as_slice()))
             .map_err(LoadError::ReadConfig)?;
 
         self.state_coordinator
@@ -52,10 +91,12 @@ where
     }
 
     pub async fn try_load_with_defaults(&mut self) -> Result<(), LoadError> {
-        let config: Builder = help::read_yaml(&self.config_path)
+        let config: Builder = fs::read(&self.config_path)
             .await
+            .map_err(anyhow::Error::from)
+            .and_then(|s| self.formatter.deserialize(s.as_slice()))
             .inspect_err(|e| {
-                log::warn!(target: "app", "failed to read the config file: {e:?}");
+                tracing::warn!(target: "app", "failed to read the config file: {e:?}");
             })
             .unwrap_or_else(|_| Builder::default());
 
@@ -76,6 +117,18 @@ where
         self.current_builder.clone()
     }
 
+    /// Atomic save the config file, ensuring that the file is not corrupted even if the process is killed during writing.
+    async fn atomic_save_config(&self, builder: &Builder) -> anyhow::Result<()> {
+        let mut buf = Vec::with_capacity(4096);
+        self.formatter
+            .serialize(&mut buf, builder, self.config_prefix.as_deref())?;
+        let file = AtomicFile::new(&self.config_path, AllowOverwrite);
+        tokio::task::spawn_blocking(move || file.write(|f| f.write_all(&buf)))
+            .await?
+            .with_context(|| format!("failed to write config: {}", self.config_path))?;
+        Ok(())
+    }
+
     pub async fn upsert(&mut self, builder: Builder) -> Result<(), UpsertError> {
         self.state_coordinator
             .upsert(builder.clone())
@@ -83,7 +136,7 @@ where
             .map_err(UpsertError::State)?;
         self.current_builder = Some(builder.clone());
 
-        help::save_yaml(&self.config_path, &builder, self.config_prefix.as_deref())
+        self.atomic_save_config(&builder)
             .await
             .map_err(UpsertError::WriteConfig)?;
         Ok(())
@@ -96,7 +149,7 @@ where
             .map_err(UpsertError::State)?;
         self.current_builder = Some(builder.clone());
 
-        help::save_yaml(&self.config_path, &builder, self.config_prefix.as_deref())
+        self.atomic_save_config(&builder)
             .await
             .map_err(UpsertError::WriteConfig)?;
         Ok(())
@@ -107,7 +160,6 @@ where
 mod tests {
     use super::*;
     use serde::{Deserialize, Serialize};
-    use std::sync::Arc;
     use tempfile::tempdir;
     use tokio::fs;
 
@@ -158,7 +210,7 @@ mod tests {
         }
     }
 
-    // 辅助函数：创建临时配置文件
+    // 辅助函数：将 builder 序列化为 YAML 并写入临时文件
     async fn create_temp_config_file(
         builder: &TestBuilder,
     ) -> anyhow::Result<(Utf8PathBuf, tempfile::TempDir)> {
@@ -166,20 +218,29 @@ mod tests {
         let config_path = temp_dir.path().join("test_config.yaml");
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
-        help::save_yaml(&config_path, builder, None).await?;
+        let yaml = serde_yaml_ng::to_string(builder)?;
+        fs::write(&config_path, yaml).await?;
         Ok((config_path, temp_dir))
+    }
+
+    // 辅助函数：从 YAML 文件读取并反序列化
+    async fn read_yaml<T: DeserializeOwned>(path: &Utf8PathBuf) -> anyhow::Result<T> {
+        let content = fs::read_to_string(path).await?;
+        let value = serde_yaml_ng::from_str(&content)?;
+        Ok(value)
     }
 
     #[tokio::test]
     async fn test_new_persistent_state_manager() {
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let config_path = Utf8PathBuf::from("/tmp/test_config.yaml");
+        let config_path = Utf8PathBuf::from("test_config.yaml");
 
         let manager: PersistentBuilderManager<TestState, TestBuilder> =
             PersistentBuilderManager::new(
                 Some("# 测试配置".to_string()),
                 config_path.clone(),
                 coordinator,
+                YamlFormat,
             );
 
         // 验证初始状态
@@ -196,7 +257,7 @@ mod tests {
 
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
         let mut manager: PersistentBuilderManager<TestState, TestBuilder> =
-            PersistentBuilderManager::new(None, config_path, coordinator);
+            PersistentBuilderManager::new(None, config_path, coordinator, YamlFormat);
 
         // 测试成功加载
         let result = manager.try_load().await;
@@ -219,10 +280,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_try_load_file_not_exist() {
-        let config_path = Utf8PathBuf::from("/nonexistent/config.yaml");
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("nonexistent.yaml");
+        let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
+
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
         let mut manager: PersistentBuilderManager<TestState, TestBuilder> =
-            PersistentBuilderManager::new(None, config_path, coordinator);
+            PersistentBuilderManager::new(None, config_path, coordinator, YamlFormat);
 
         // 测试文件不存在的情况
         let result = manager.try_load().await;
@@ -239,7 +303,7 @@ mod tests {
 
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
         let mut manager: PersistentBuilderManager<TestState, TestBuilder> =
-            PersistentBuilderManager::new(None, config_path, coordinator);
+            PersistentBuilderManager::new(None, config_path, coordinator, YamlFormat);
 
         // 测试使用默认值加载
         let result = manager.try_load_with_defaults().await;
@@ -255,10 +319,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_try_load_with_defaults_file_not_exist() {
-        let config_path = Utf8PathBuf::from("/nonexistent/config.yaml");
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("nonexistent.yaml");
+        let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
+
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
         let mut manager: PersistentBuilderManager<TestState, TestBuilder> =
-            PersistentBuilderManager::new(None, config_path, coordinator);
+            PersistentBuilderManager::new(None, config_path, coordinator, YamlFormat);
 
         // 测试文件不存在时使用默认值
         let result = manager.try_load_with_defaults().await;
@@ -284,6 +351,7 @@ mod tests {
                 Some("# 更新测试".to_string()),
                 config_path.clone(),
                 coordinator,
+                YamlFormat,
             );
 
         let builder = TestBuilder::new("更新测试".to_string(), 200);
@@ -308,7 +376,7 @@ mod tests {
 
         // 验证配置文件已保存
         assert!(config_path.exists(), "配置文件应该被创建");
-        let saved_builder: TestBuilder = help::read_yaml(&config_path).await.unwrap();
+        let saved_builder: TestBuilder = read_yaml(&config_path).await.unwrap();
         assert_eq!(saved_builder.name, "更新测试");
         assert_eq!(saved_builder.value, 200);
     }
@@ -321,7 +389,7 @@ mod tests {
 
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
         let mut manager: PersistentBuilderManager<TestState, TestBuilder> =
-            PersistentBuilderManager::new(None, config_path, coordinator);
+            PersistentBuilderManager::new(None, config_path, coordinator, YamlFormat);
 
         let failing_builder = TestBuilder::failing();
 
@@ -346,44 +414,46 @@ mod tests {
 
     #[tokio::test]
     async fn test_upsert_write_config_error() {
-        // 使用只读目录路径来触发写入错误
-        let config_path = Utf8PathBuf::from("/proc/version"); // Linux 系统上的只读文件
+        // 使用不存在的深层目录路径来触发写入错误（跨平台兼容）
+        let config_path = Utf8PathBuf::from("/__nonexistent_dir__/__sub__/config.yaml");
 
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
         let mut manager: PersistentBuilderManager<TestState, TestBuilder> =
-            PersistentBuilderManager::new(None, config_path, coordinator);
+            PersistentBuilderManager::new(None, config_path, coordinator, YamlFormat);
 
         let builder = TestBuilder::new("写入失败测试".to_string(), 300);
 
-        // 在某些系统上这可能不会失败，所以我们只测试逻辑
+        // 写入到不存在的目录应该失败
         let result = manager.upsert(builder).await;
+        assert!(result.is_err(), "写入不存在的目录应该失败");
 
-        // 如果写入失败，应该得到 WriteConfig 错误
-        if result.is_err() {
-            match result.unwrap_err() {
-                UpsertError::WriteConfig(_) => {
-                    // 期望的错误类型
-                }
-                UpsertError::State(_) => {
-                    // 状态更新可能成功，但写入失败
-                }
+        match result.unwrap_err() {
+            UpsertError::WriteConfig(_) => {
+                // 期望的错误类型
             }
+            other => panic!(
+                "期望 UpsertError::WriteConfig, 但得到: {:?}",
+                other
+            ),
         }
     }
 
     #[tokio::test]
     async fn test_current_state() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("current_state_test.yaml");
+        let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
+
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let config_path = Utf8PathBuf::from("/tmp/current_state_test.yaml");
         let mut manager: PersistentBuilderManager<TestState, TestBuilder> =
-            PersistentBuilderManager::new(None, config_path, coordinator);
+            PersistentBuilderManager::new(None, config_path, coordinator, YamlFormat);
 
         // 初始状态应该为 None
         assert!(manager.current_state().is_none());
 
         // 添加状态后应该能获取到
         let builder = TestBuilder::new("当前状态测试".to_string(), 400);
-        let _ = manager.upsert(builder).await;
+        manager.upsert(builder).await.unwrap();
 
         let current_state = manager.current_state();
         assert!(current_state.is_some());
@@ -404,6 +474,7 @@ mod tests {
                 Some("# 多次更新测试".to_string()),
                 config_path.clone(),
                 coordinator,
+                YamlFormat,
             );
 
         // 第一次更新
@@ -425,7 +496,7 @@ mod tests {
         assert_eq!(state2.value, 2);
 
         // 验证配置文件包含最新的值
-        let saved_builder: TestBuilder = help::read_yaml(&config_path).await.unwrap();
+        let saved_builder: TestBuilder = read_yaml(&config_path).await.unwrap();
         assert_eq!(saved_builder.name, "第二次");
         assert_eq!(saved_builder.value, 2);
     }
@@ -443,6 +514,7 @@ mod tests {
                 Some(prefix.to_string()),
                 config_path.clone(),
                 coordinator,
+                YamlFormat,
             );
 
         let builder = TestBuilder::new("前缀测试".to_string(), 500);

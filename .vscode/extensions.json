@@ -3,7 +3,6 @@
     "inlang.vs-code-extension",
     "editorconfig.editorconfig",
     "vadimcn.vscode-lldb",
-    "bungcip.better-toml",
     "denoland.vscode-deno",
     "esbenp.prettier-vscode",
     "yoavbls.pretty-ts-errors",
@@ -11,6 +10,7 @@
     "syler.sass-indented",
     "stylelint.vscode-stylelint",
     "bradlc.vscode-tailwindcss",
-    "oxc.oxc-vscode"
+    "oxc.oxc-vscode",
+    "tamasfe.even-better-toml"
   ]
 }

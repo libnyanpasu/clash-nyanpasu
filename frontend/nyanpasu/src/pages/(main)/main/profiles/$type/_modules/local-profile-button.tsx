@@ -28,7 +28,11 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { LocalProfileBuilder, useProfile } from '@nyanpasu/interface'
+import {
+  LocalProfileBuilder,
+  ProfileTemplate,
+  useProfile,
+} from '@nyanpasu/interface'
 import { useLocation } from '@tanstack/react-router'
 import AnimatedErrorItem from '../../_modules/error-item'
 import { Action, Route as IndexRoute } from '../index'
@@ -68,6 +72,8 @@ export default function LocalProfileButton({ children }: PropsWithChildren) {
 
   const [open, setOpen] = useState(false)
 
+  const [profileContent, setProfileContent] = useState<string | null>(null)
+
   useEffect(() => {
     if (action === Action.ImportLocalProfile) {
       // if the current path is the index page, open the modal immediately
@@ -85,6 +91,7 @@ export default function LocalProfileButton({ children }: PropsWithChildren) {
         clearTimeout(timeout)
       }
     }
+    // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps
   }, [action])
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -103,7 +110,7 @@ export default function LocalProfileButton({ children }: PropsWithChildren) {
               type: 'local',
               ...data,
             },
-            fileData: null,
+            fileData: profileContent || ProfileTemplate.profile,
           },
         })
 
@@ -206,7 +213,9 @@ export default function LocalProfileButton({ children }: PropsWithChildren) {
                       onChange={(name) => {
                         form.setValue('desc', name)
                       }}
-                      onFileRead={(value) => field.onChange(value)}
+                      onFileRead={(value) => {
+                        setProfileContent(value)
+                      }}
                       disabled={blockTask.isPending}
                     >
                       <FileDropZonePlaceholder className="flex flex-col items-center justify-center gap-2">
@@ -232,7 +241,7 @@ export default function LocalProfileButton({ children }: PropsWithChildren) {
 
                         <div className="text-on-surface max-w-full truncate text-sm font-medium">
                           {m.profile_import_local_file_size_label({
-                            size: filesize(form.watch('file')?.length ?? 0),
+                            size: filesize(profileContent?.length ?? 0),
                           })}
                         </div>
                       </FileDropZoneFileSelected>

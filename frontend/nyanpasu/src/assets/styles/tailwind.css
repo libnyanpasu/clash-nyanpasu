@@ -56,13 +56,6 @@
   --color-inverse-on-surface: var(--color-md-inverse-on-surface);
   --color-inverse-primary: var(--color-md-inverse-primary);
 
-  /* Custom Mixed Colors */
-  --color-mixed-background: color-mix(
-    in srgb,
-    var(--color-background) 10%,
-    var(--color-surface) 10%
-  );
-
   /* Progress Spin Animation (Circular) */
   --animate-progress-spin: progress-spin 5332ms cubic-bezier(0.4, 0, 0.2, 1)
     infinite both;
@@ -76,6 +69,24 @@
     cubic-bezier(0.65, 0.815, 0.735, 0.395) infinite;
   --animate-linear-progress-secondary: linear-progress-secondary 2.1s
     cubic-bezier(0.165, 0.84, 0.44, 1) 1.15s infinite;
+}
+
+/* Custom Mixed Colors (light) */
+@theme {
+  --color-mixed-background: color-mix(
+    in srgb,
+    var(--color-background) 95%,
+    white 5%
+  );
+}
+
+/* Custom Mixed Colors (dark) */
+.dark {
+  --color-mixed-background: color-mix(
+    in srgb,
+    var(--color-background) 50%,
+    black 50%
+  );
 }
 
 @utility text-shadow-* {

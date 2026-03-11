@@ -9,6 +9,7 @@ import { useControllableState } from '@radix-ui/react-use-controllable-state'
 const MotionContent = ({
   children,
   className,
+  style,
   ...props
 }: ComponentProps<typeof motion.div>) => {
   return (
@@ -16,29 +17,28 @@ const MotionContent = ({
       className={cn(
         'relative z-50 w-full overflow-auto rounded-md',
         'dark:text-on-surface',
-        'bg-inverse-on-surface/50 dark:bg-surface/50',
-        'backdrop-blur-2xl',
+        'bg-mixed-background/30',
+        'backdrop-blur-xl',
         'dark:shadow-inverse-on-surface/50 shadow-inverse-surface/30 shadow-sm',
         'border-outline-variant/50 dark:border-outline-variant/50 border',
         className,
       )}
       style={{
+        ...style,
         maxHeight: 'var(--radix-context-menu-content-available-height)',
+        transformOrigin:
+          'var(--radix-context-menu-content-transform-origin, top left)',
       }}
       initial={{
         opacity: 0,
-        scaleY: 0.9,
-        transformOrigin: 'top',
+        scale: 0.9,
       }}
       animate={{
         opacity: 1,
-        scaleY: 1,
-        transformOrigin: 'top',
+        scale: 1,
       }}
       exit={{
         opacity: 0,
-        scaleY: 0.9,
-        transformOrigin: 'top',
       }}
       transition={{
         type: 'spring',
@@ -190,7 +190,7 @@ export const ContextMenuContent = ({
         <ContextMenuPrimitive.Portal forceMount>
           <ContextMenuPrimitive.Content {...props} asChild>
             <MotionContent
-              className={cn('min-w-48', className)}
+              className={cn('min-w-40', className)}
               onContextMenu={(e) => {
                 e.preventDefault()
               }}

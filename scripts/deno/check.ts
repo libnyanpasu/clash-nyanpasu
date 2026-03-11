@@ -376,31 +376,20 @@ function getClashRustInfo(): BinInfo {
 }
 
 async function getClashRustAlphaInfo(): Promise<BinInfo> {
-  const { ARCH_MAPPING } = CLASH_RS_ALPHA_MANIFEST
+  const { ARCH_MAPPING, VERSION_URL, URL_PREFIX } = CLASH_RS_ALPHA_MANIFEST
 
-  // Follow GitHub redirect to get the actual latest release tag
-  const resp = await fetch(
-    'https://github.com/Watfaq/clash-rs/releases/latest',
-    { method: 'GET', redirect: 'manual' },
-  )
-  const location = resp.headers.get('location')
-  if (!location) {
-    throw new Error('Cannot find location from clash-rs response header')
-  }
-  const version = location.split('/').pop()
-  if (!version) throw new Error('Cannot find tag from clash-rs location')
-
+  const resp = await fetch(VERSION_URL!)
+  const version = (await resp.text()).trim()
   consola.debug(`clash-rs-alpha version: ${version}`)
   const archLabel = mapArch(platform, arch)
   const name = ARCH_MAPPING[archLabel].replace('{}', version)
   const isWin = platform === 'win32'
-  const urlPrefix = `https://github.com/Watfaq/clash-rs/releases/download/${version}`
   return {
     name: 'clash-rs-alpha',
     targetFile: `clash-rs-alpha-${SIDECAR_HOST}${isWin ? '.exe' : ''}`,
     exeFile: name,
     tmpFile: name,
-    downloadURL: `${urlPrefix}/${name}`,
+    downloadURL: `${URL_PREFIX}/${name}`,
   }
 }
 

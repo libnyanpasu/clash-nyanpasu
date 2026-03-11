@@ -6,7 +6,7 @@ use crate::{
     core::{storage::Storage, tray::proxies, *},
     log_err,
     utils::init,
-    window::{AppWindow, WindowConfig, WindowParamsBuilder},
+    window::{AppWindow, ReactAppMountedEvent, WindowConfig, WindowParamsBuilder},
 };
 use anyhow::Result;
 use semver::Version;
@@ -17,6 +17,8 @@ use std::{
 };
 use tauri::{App, AppHandle, Emitter, Listener, Manager, async_runtime::block_on};
 use tauri_plugin_shell::ShellExt;
+use tauri_specta::Event;
+
 static OPEN_WINDOWS_COUNTER: AtomicU16 = AtomicU16::new(0);
 
 pub fn is_window_opened() -> bool {
@@ -99,7 +101,7 @@ pub fn resolve_setup(app: &mut App) {
     app.set_activation_policy(tauri::ActivationPolicy::Accessory);
     #[cfg(target_os = "macos")]
     let app_handle = app.app_handle().clone();
-    app.listen("react_app_mounted", move |_| {
+    ReactAppMountedEvent::listen(app, move |_| {
         tracing::debug!("Frontend React App is mounted, reset open window counter");
         reset_window_open_counter();
         #[cfg(target_os = "macos")]

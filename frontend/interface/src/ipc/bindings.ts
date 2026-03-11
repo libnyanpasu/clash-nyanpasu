@@ -761,9 +761,11 @@ export const commands = {
 
 export const events = __makeEvents__<{
   clashConnectionsEvent: ClashConnectionsEvent
+  reactAppMountedEvent: ReactAppMountedEvent
   windowMessageEvent: WindowMessageEvent
 }>({
   clashConnectionsEvent: 'clash-connections-event',
+  reactAppMountedEvent: 'react-app-mounted-event',
   windowMessageEvent: 'window-message-event',
 })
 
@@ -1325,6 +1327,11 @@ export type ProxyItem = {
   hidden?: boolean
 }
 export type ProxyItemHistory = { time: string; delay: number }
+/**
+ * Event emitted by the frontend when the React app is mounted.
+ * Event name: `react-app-mounted-event`
+ */
+export type ReactAppMountedEvent = null
 export type RemoteProfile = {
   /**
    * Profile ID

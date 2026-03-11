@@ -281,7 +281,8 @@ pub fn run() -> std::io::Result<()> {
         ])
         .events(collect_events![
             core::clash::ClashConnectionsEvent,
-            window::WindowMessageEvent
+            window::WindowMessageEvent,
+            window::ReactAppMountedEvent
         ]);
 
     #[cfg(debug_assertions)]

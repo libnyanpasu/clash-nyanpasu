@@ -26,7 +26,7 @@ export * from './use-service-prompt'
 export * from './use-core-dir'
 export * from './use-platform'
 
-export { commands } from './bindings'
+export { commands, events } from './bindings'
 export type * from './bindings'
 
 // manually added

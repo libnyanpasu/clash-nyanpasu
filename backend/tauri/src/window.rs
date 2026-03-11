@@ -264,6 +264,11 @@ impl WindowManager {
         self.instances.get(base_label).map(|v| v.len()).unwrap_or(0)
     }
 }
+/// Event emitted by the frontend when the React app is mounted.
+/// Event name: `react-app-mounted-event`
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
+pub struct ReactAppMountedEvent;
+
 /// Message for inter-window communication
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
 pub struct WindowMessageEvent {

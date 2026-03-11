@@ -7,7 +7,6 @@ import {
   ErrorComponentProps,
   Outlet,
 } from '@tanstack/react-router'
-import { emit } from '@tauri-apps/api/event'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import 'dayjs/locale/ru'
 import 'dayjs/locale/zh-cn'
@@ -18,10 +17,12 @@ import { lazy } from 'react'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import { LanguageProvider } from '@/components/providers/language-provider'
 import { ExperimentalThemeProvider } from '@/components/providers/theme-provider'
-import { NyanpasuProvider } from '@nyanpasu/interface'
+import { events, NyanpasuProvider } from '@nyanpasu/interface'
 
 dayjs.extend(relativeTime)
 dayjs.extend(customParseFormat)
+
+const appWindow = getCurrentWebviewWindow()
 
 export const Catch = ({ error }: ErrorComponentProps) => {
   return (
@@ -66,12 +67,13 @@ export default function App() {
   useNyanpasuStorageSubscribers()
 
   useMount(() => {
-    const appWindow = getCurrentWebviewWindow()
     Promise.all([
       appWindow.show(),
       appWindow.unminimize(),
       appWindow.setFocus(),
-    ]).finally(() => emit('react_app_mounted'))
+    ]).finally(() => {
+      events.reactAppMountedEvent.emit(null)
+    })
   })
 
   return (

@@ -77,6 +77,12 @@ const changeHtmlThemeMode = (mode: Omit<ThemeMode, 'system'>) => {
   }
 }
 
+const getSystemThemeMode = () => {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches
+    ? ThemeMode.DARK
+    : ThemeMode.LIGHT
+}
+
 const ThemeContext = createContext<{
   themePalette: Theme
   themeCssVars: string
@@ -156,6 +162,9 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     const initializeTheme = async () => {
       if (themeMode.value === ThemeMode.SYSTEM) {
+        // Apply a synchronous system fallback first to avoid a light flash.
+        changeHtmlThemeMode(getSystemThemeMode())
+
         const systemTheme = await appWindow.theme()
         changeHtmlThemeMode(
           systemTheme === ThemeMode.DARK ? ThemeMode.DARK : ThemeMode.LIGHT,
@@ -166,8 +175,7 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
       ) {
         changeHtmlThemeMode(themeMode.value)
       } else {
-        // fallback to light mode if theme mode is not set
-        changeHtmlThemeMode(ThemeMode.LIGHT)
+        // Setting value may still be loading; keep current class to avoid visual flicker.
       }
     }
 

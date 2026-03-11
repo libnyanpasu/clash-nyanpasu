@@ -22,6 +22,12 @@ window.addEventListener('error', (event) => {
   console.error(event)
 })
 
+// prepare dark mode class on root element before React hydration to avoid FOUC
+document.documentElement.classList.toggle(
+  'dark',
+  window.matchMedia('(prefers-color-scheme: dark)').matches,
+)
+
 // Set up a Router instance
 const router = createRouter({
   routeTree,

@@ -23,7 +23,7 @@ export default function GroupHeader({
     <div
       className={cn(
         'sticky top-0 z-10 transition-[padding] duration-500',
-        'backdrop-blur-xl',
+        'bg-mixed-background',
         'flex items-center gap-1',
         'py-2 pr-4 pl-2 md:py-4 md:pl-4',
         'group-data-[scroll-direction=down]/proxies-content:pr-6',

@@ -55,7 +55,7 @@ export function SettingsTitle({
       <div
         className={cn(
           'group sticky top-0 z-10',
-          'backdrop-blur-xl',
+          'bg-mixed-background',
           'flex items-center gap-6',
           'h-16 px-6',
           className,

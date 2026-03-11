@@ -45,7 +45,7 @@ const InnerComponent = () => {
   return (
     <>
       <div
-        className="sticky top-0 z-10 px-4 py-4 backdrop-blur-xl"
+        className="bg-mixed-background sticky top-0 z-10 px-4 py-4"
         data-slot="logs-search"
       >
         <input

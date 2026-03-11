@@ -99,7 +99,7 @@ function RouteComponent() {
   return (
     <>
       <div
-        className="sticky top-0 z-10 backdrop-blur-xl"
+        className="bg-mixed-background sticky top-0 z-10"
         data-slot="rules-search"
       >
         <div className="mx-auto max-w-7xl p-4" data-slot="rules-search-input">

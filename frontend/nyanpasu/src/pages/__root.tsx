@@ -18,6 +18,7 @@ import { lazy } from 'react'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import { LanguageProvider } from '@/components/providers/language-provider'
 import { ExperimentalThemeProvider } from '@/components/providers/theme-provider'
+import { signalSplashDone } from '@/utils/splash-signal'
 import { NyanpasuProvider } from '@nyanpasu/interface'
 
 dayjs.extend(relativeTime)
@@ -43,8 +44,6 @@ export const Catch = ({ error }: ErrorComponentProps) => {
   )
 }
 
-export const Pending = () => <div>Loading from _root...</div>
-
 const TanStackRouterDevtools = import.meta.env.PROD
   ? () => null // Render nothing in production
   : lazy(() =>
@@ -57,9 +56,11 @@ const TanStackRouterDevtools = import.meta.env.PROD
     )
 
 export const Route = createRootRoute({
+  beforeLoad: async () => {
+    // TODO: impl tanstack query settings loader
+  },
   component: App,
   errorComponent: Catch,
-  pendingComponent: Pending,
 })
 
 export default function App() {
@@ -71,7 +72,10 @@ export default function App() {
       appWindow.show(),
       appWindow.unminimize(),
       appWindow.setFocus(),
-    ]).finally(() => emit('react_app_mounted'))
+    ]).finally(() => {
+      emit('react_app_mounted')
+      signalSplashDone()
+    })
   })
 
   return (

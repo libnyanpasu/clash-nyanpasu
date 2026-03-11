@@ -150,28 +150,50 @@ export function ScrollArea({
 }: React.ComponentProps<typeof ScrollAreaPrimitive.Root> & {
   scrollbars?: 'vertical' | 'horizontal' | 'both'
 }) {
-  const { isTop, scrollDirection, handleScroll } = useScrollTracking()
+  const viewportRef = useRef<HTMLDivElement>(null)
+
+  const {
+    isTop,
+    isBottom,
+    scrollDirection,
+    handleScroll,
+    isScrolling,
+    offset,
+  } = useScrollTracking()
 
   return (
-    <Root
-      data-slot="scroll-area"
-      type="scroll"
-      scrollHideDelay={600}
-      className={cn('relative', className)}
-      data-top={String(isTop)}
-      data-scroll-direction={scrollDirection}
-      {...props}
+    <ScrollAreaContext.Provider
+      value={{
+        isScrolling,
+        isTop,
+        isBottom,
+        scrollDirection,
+        viewportRef,
+        offset,
+      }}
     >
-      <Viewport onScroll={handleScroll}>{children}</Viewport>
+      <Root
+        data-slot="scroll-area"
+        type="scroll"
+        scrollHideDelay={600}
+        className={cn('relative', className)}
+        data-top={String(isTop)}
+        data-scroll-direction={scrollDirection}
+        {...props}
+      >
+        <Viewport ref={viewportRef} onScroll={handleScroll}>
+          {children}
+        </Viewport>
 
-      {(scrollbars === 'vertical' || scrollbars === 'both') && (
-        <ScrollBar orientation="vertical" />
-      )}
-      {(scrollbars === 'horizontal' || scrollbars === 'both') && (
-        <ScrollBar orientation="horizontal" />
-      )}
-      <Corner />
-    </Root>
+        {(scrollbars === 'vertical' || scrollbars === 'both') && (
+          <ScrollBar orientation="vertical" />
+        )}
+        {(scrollbars === 'horizontal' || scrollbars === 'both') && (
+          <ScrollBar orientation="horizontal" />
+        )}
+        <Corner />
+      </Root>
+    </ScrollAreaContext.Provider>
   )
 }
 

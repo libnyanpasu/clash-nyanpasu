@@ -32,8 +32,10 @@ const ActionCardButton = ({
 }
 
 export default function ActionCard({ profile }: { profile: Profile }) {
+  const isScript = !(profile.type === 'local' || profile.type === 'remote')
+
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid break-inside-avoid grid-cols-2 gap-4">
       <ProfileNameEditor profile={profile} asChild>
         <ActionCardButton>
           <span className="size-4">
@@ -58,15 +60,17 @@ export default function ActionCard({ profile }: { profile: Profile }) {
         </SubscriptionUrlEditor>
       )}
 
-      <ActionCardButton asChild>
-        <ActiveButton profile={profile}>
-          <span className="size-4">
-            <DragClickRounded />
-          </span>
+      {!isScript && (
+        <ActionCardButton asChild>
+          <ActiveButton profile={profile}>
+            <span className="size-4">
+              <DragClickRounded />
+            </span>
 
-          <span className="truncate">{m.profile_active_title()}</span>
-        </ActiveButton>
-      </ActionCardButton>
+            <span className="truncate">{m.profile_active_title()}</span>
+          </ActiveButton>
+        </ActionCardButton>
+      )}
 
       <ActionCardButton asChild>
         <DeleteProfile profile={profile}>

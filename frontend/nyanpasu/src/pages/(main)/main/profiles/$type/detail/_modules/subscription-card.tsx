@@ -91,7 +91,7 @@ export const SubscriptionCard = ({ profile }: { profile: RemoteProfile }) => {
   })
 
   return (
-    <Card className="col-span-2 break-inside-avoid">
+    <Card className="col-span-2">
       <CardHeader>{m.profile_subscription_title()}</CardHeader>
 
       <CardContent>

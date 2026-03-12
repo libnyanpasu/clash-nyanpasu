@@ -23,10 +23,10 @@ import { Profile, useProfile } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 import { MeshGradient } from '@paper-design/shaders-react'
 import { Link } from '@tanstack/react-router'
-import { PROFILE_TYPES } from '../../_modules/consts'
 import { useActiveProfile } from '../detail/_modules/active-button'
 import { useDeleteProfile } from '../detail/_modules/delete-profile'
 import { Route as IndexRoute } from '../index'
+import { categoryProfiles, isProxyProfile } from './utils'
 
 const Chip = ({ children, className, ...props }: ComponentProps<'span'>) => {
   return (
@@ -153,13 +153,15 @@ const GridViewProfile = ({
       </RegisterContextMenuTrigger>
 
       <RegisterContextMenuContent>
-        <ContextMenuItem
-          disabled={isPending}
-          onClick={activeProfile.handleClick}
-        >
-          <DragClickRounded className="size-4" />
-          <span>{m.profile_active_title()}</span>
-        </ContextMenuItem>
+        {isProxyProfile(profile) && (
+          <ContextMenuItem
+            disabled={isPending}
+            onClick={activeProfile.handleClick}
+          >
+            <DragClickRounded className="size-4" />
+            <span>{m.profile_active_title()}</span>
+          </ContextMenuItem>
+        )}
 
         <ContextMenuItem
           disabled={isPending}
@@ -207,37 +209,21 @@ export default function ProfilesList({
     sort,
   } = useProfile()
 
-  // Type guard: restrict type to the allowed PROFILE_TYPES keys
-  const allowedTypes = PROFILE_TYPES[type as keyof typeof PROFILE_TYPES]
-
   // Filter by allowed types, fallback to no filtering if not found
-  const filteredProfiles = profiles?.items?.filter(
-    (profile) =>
-      Array.isArray(allowedTypes) &&
-      allowedTypes.some((t) => {
-        // Check if type matches
-        if (t.type !== profile.type) {
-          return false
-        }
-
-        // If script_type is specified in allowedTypes, also check profile's script_type
-        if ('script_type' in t && t.script_type !== undefined) {
-          return (
-            profile.type === 'script' &&
-            'script_type' in profile &&
-            profile.script_type === t.script_type
-          )
-        }
-
-        // If script_type is not specified, type match is sufficient
-        return true
-      }),
-  )
+  const categorizedProfiles = profiles?.items
+    ? categoryProfiles(profiles.items)
+    : null
 
   // If no profiles are found, show the empty list message
-  if (!filteredProfiles || filteredProfiles.length === 0) {
+  if (
+    !categorizedProfiles?.profile ||
+    categorizedProfiles.profile.length === 0
+  ) {
     return <EmptyList />
   }
+
+  const filteredProfiles =
+    categorizedProfiles[type as keyof typeof categorizedProfiles]
 
   return (
     <>

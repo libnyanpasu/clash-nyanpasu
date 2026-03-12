@@ -30,12 +30,10 @@ export default function DetialHeader({
   return (
     <div
       className={cn(
-        'sticky top-0 z-10 transition-[padding] duration-500',
+        'sticky top-0 z-10',
         'bg-mixed-background',
-        'flex items-center gap-1',
-        'py-2 pr-4 pl-2',
-        'group-data-[scroll-direction=down]/proxies-content:pr-6',
-        'group-data-[scroll-direction=down]/proxies-content:pl-3',
+        'flex items-center gap-4',
+        'h-16 px-4',
         className,
       )}
       {...props}

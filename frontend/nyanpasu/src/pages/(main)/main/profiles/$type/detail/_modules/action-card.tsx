@@ -35,7 +35,7 @@ export default function ActionCard({ profile }: { profile: Profile }) {
   const isScript = !(profile.type === 'local' || profile.type === 'remote')
 
   return (
-    <div className="grid break-inside-avoid grid-cols-2 gap-4">
+    <div className="col-span-2 grid grid-cols-2 gap-4">
       <ProfileNameEditor profile={profile} asChild>
         <ActionCardButton>
           <span className="size-4">

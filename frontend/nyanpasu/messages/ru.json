@@ -184,6 +184,7 @@
   "profile_local_label": "Локальный профиль",
   "logs_search_placeholder": "Поиск журналов (время, тип или сообщение)...",
   "logs_empty_message": "Нет записей в журналах",
+  "logs_action_clear_log": "Очистить журналы",
   "editor_before_close_message": "Вы не сохранили измененное содержимое, вы уверены, что хотите закрыть редактор?",
   "editor_validate_error_message": "Пожалуйста, исправьте ошибки перед сохранением содержимого",
   "editor_read_only_chip": "Только для чтения",

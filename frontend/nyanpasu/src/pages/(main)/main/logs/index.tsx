@@ -1,7 +1,15 @@
 import BoxOutlineRounded from '~icons/material-symbols/box-outline-rounded'
+import DeleteForeverOutlineRounded from '~icons/material-symbols/delete-forever-outline-rounded'
 import { useEffect, useMemo, useState } from 'react'
+import {
+  RegisterContextMenu,
+  RegisterContextMenuContent,
+  RegisterContextMenuTrigger,
+} from '@/components/providers/context-menu-provider'
+import { ContextMenuItem } from '@/components/ui/context-menu'
 import HighlightText from '@/components/ui/highlight-text'
 import { ScrollArea, useScrollArea } from '@/components/ui/scroll-area'
+import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { useClashLogs } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
@@ -128,11 +136,34 @@ const Viewer = ({ search }: { search: string }) => {
 function RouteComponent() {
   const [search, setSearch] = useState('')
 
+  const {
+    query: { data: logs },
+    clean,
+  } = useClashLogs()
+
+  const handleClearLogs = useLockFn(async () => {
+    await clean.mutateAsync()
+  })
+
   return (
     <div className="divide-outline-variant flex h-full min-h-0 flex-1 flex-col divide-y overflow-hidden">
-      <ScrollArea className="min-h-0 flex-1">
-        <Viewer search={search} />
-      </ScrollArea>
+      <RegisterContextMenu>
+        <RegisterContextMenuTrigger asChild>
+          <ScrollArea className="min-h-0 flex-1">
+            <Viewer search={search} />
+          </ScrollArea>
+        </RegisterContextMenuTrigger>
+
+        <RegisterContextMenuContent>
+          <ContextMenuItem
+            disabled={logs?.length === 0}
+            onClick={handleClearLogs}
+          >
+            <DeleteForeverOutlineRounded className="size-4" />
+            <span>{m.logs_action_clear_log()}</span>
+          </ContextMenuItem>
+        </RegisterContextMenuContent>
+      </RegisterContextMenu>
 
       <div
         className="bg-mixed-background flex h-16 shrink-0 items-center px-4"

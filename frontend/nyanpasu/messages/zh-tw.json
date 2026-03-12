@@ -184,6 +184,7 @@
   "profile_local_label": "本地配置",
   "logs_search_placeholder": "透過時間、類型或訊息等等搜尋日誌",
   "logs_empty_message": "沒有任何日誌記錄",
+  "logs_action_clear_log": "清空日誌",
   "editor_before_close_message": "你尚未儲存編輯的內容，確定要關閉編輯器嗎？",
   "editor_validate_error_message": "請修正錯誤後再儲存內容",
   "editor_read_only_chip": "只讀",

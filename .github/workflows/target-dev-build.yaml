@@ -5,6 +5,10 @@ on:
   schedule:
     - cron: '15 0 * * *' # 每天 08:15 UTC+8 自动构建
 
+concurrency:
+  group: dev-build
+  cancel-in-progress: true
+
 env:
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: short

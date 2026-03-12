@@ -31,6 +31,25 @@ type SupportedArch =
 
 type ArchMapping = Record<SupportedArch, string>
 
+interface VersionManifest {
+  manifest_version: number
+  latest: {
+    mihomo: string
+    mihomo_alpha: string
+    clash_rs: string
+    clash_premium: string
+    clash_rs_alpha: string
+  }
+  arch_template: {
+    mihomo: ArchMapping
+    mihomo_alpha: ArchMapping
+    clash_rs: ArchMapping
+    clash_premium: ArchMapping
+    clash_rs_alpha: ArchMapping
+  }
+  updated_at: string
+}
+
 interface ClashManifest {
   URL_PREFIX: string
   BACKUP_URL_PREFIX?: string
@@ -116,7 +135,7 @@ function mapArch(platform: string, arch: string): SupportedArch {
 
 const versionManifest = JSON.parse(
   await Deno.readTextFile(path.join(WORKSPACE_ROOT, 'manifest/version.json')),
-)
+) as VersionManifest
 
 const CLASH_MANIFEST: ClashManifest = {
   URL_PREFIX: 'https://github.com/Dreamacro/clash/releases/download/premium/',

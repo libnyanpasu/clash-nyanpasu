@@ -1,32 +1,8 @@
-import { useMemo } from 'react'
 import { Button } from '@/components/ui/button'
-import { useClashProxies, useServerPort } from '@nyanpasu/interface'
-import { cn, LazyImage } from '@nyanpasu/ui'
+import Image from '@/components/ui/image'
+import { useClashProxies } from '@nyanpasu/interface'
+import { cn } from '@nyanpasu/ui'
 import { Link, useLocation } from '@tanstack/react-router'
-
-const ProxyGroupIconRender = ({ icon }: { icon: string }) => {
-  const serverPort = useServerPort()
-
-  const src = icon.trim().startsWith('<svg')
-    ? `data:image/svg+xml;base64,${btoa(icon)}`
-    : icon
-
-  const cachedUrl = useMemo(() => {
-    if (!src.startsWith('http')) {
-      return src
-    }
-
-    return `http://localhost:${serverPort}/cache/icon?url=${btoa(src)}`
-  }, [src, serverPort])
-
-  return (
-    <LazyImage
-      className="size-8"
-      loadingClassName="rounded-full"
-      src={cachedUrl}
-    />
-  )
-}
 
 export default function ProxiesNavigate() {
   const {
@@ -64,7 +40,11 @@ export default function ProxiesNavigate() {
             <div className="flex items-center gap-2.5">
               {group.icon && (
                 <div className="size-8">
-                  <ProxyGroupIconRender icon={group.icon} />
+                  <Image
+                    icon={group.icon}
+                    className="size-8"
+                    loadingClassName="rounded-full"
+                  />
                 </div>
               )}
 

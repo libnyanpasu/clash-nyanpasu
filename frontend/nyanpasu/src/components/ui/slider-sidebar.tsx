@@ -58,6 +58,7 @@ export function SidebarProvider({
 }
 
 export function Sidebar({
+  className,
   animate,
   transition,
   width = DEFAULT_SIDEBAR_WIDTH,
@@ -71,22 +72,36 @@ export function Sidebar({
   const { open } = useSidebar()
 
   return (
-    <motion.aside
-      initial={false}
-      animate={merge(
-        {
-          width: open ? width.open : width.closed,
-        },
-        animate,
-      )}
-      transition={{
-        type: 'spring',
-        stiffness: 300,
-        damping: 30,
-        ...transition,
-      }}
-      {...props}
-    />
+    <>
+      <div
+        className="h-full md:hidden"
+        data-slot="sidebar-placeholder"
+        style={{
+          width: width.closed,
+        }}
+      />
+
+      <motion.aside
+        className={cn(
+          'bg-mixed-background absolute h-full md:static',
+          className,
+        )}
+        initial={false}
+        animate={merge(
+          {
+            width: open ? width.open : width.closed,
+          },
+          animate,
+        )}
+        transition={{
+          type: 'spring',
+          stiffness: 300,
+          damping: 30,
+          ...transition,
+        }}
+        {...props}
+      />
+    </>
   )
 }
 

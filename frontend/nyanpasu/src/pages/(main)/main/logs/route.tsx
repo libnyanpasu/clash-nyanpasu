@@ -13,6 +13,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { useIsMobileOrTablet } from '@/hooks/use-is-moblie'
 import { cn } from '@nyanpasu/ui'
 import { createFileRoute, Link, Outlet } from '@tanstack/react-router'
 import { LogLevel } from './_modules/consts'
@@ -57,10 +58,18 @@ const LogLevelButton = ({
 
   const Icon = inputLevel ? LogLevelIcon[inputLevel] : () => '📋'
 
-  const { open } = useSidebar()
+  const { open, setOpen } = useSidebar()
+
+  const isMobileOrTablet = useIsMobileOrTablet()
+
+  const handleClick = () => {
+    if (isMobileOrTablet) {
+      setOpen(false)
+    }
+  }
 
   return (
-    <Tooltip>
+    <Tooltip open={open ? false : undefined}>
       <TooltipTrigger asChild>
         <Button
           variant="fab"
@@ -74,6 +83,7 @@ const LogLevelButton = ({
             'data-[active=false]:hover:shadow-none',
             'data-[active=false]:hover:bg-surface-variant/30',
           )}
+          onClick={handleClick}
           asChild
         >
           <Link
@@ -93,11 +103,9 @@ const LogLevelButton = ({
         </Button>
       </TooltipTrigger>
 
-      {!open && (
-        <TooltipContent side="right">
-          <p className="capitalize">{children}</p>
-        </TooltipContent>
-      )}
+      <TooltipContent side="right">
+        <p className="capitalize">{children}</p>
+      </TooltipContent>
     </Tooltip>
   )
 }
@@ -107,10 +115,10 @@ function RouteComponent() {
     <SidebarProvider defaultOpen={false}>
       <div
         className={cn(
-          'divide-outline-variant flex h-full min-h-0 w-full divide-x overflow-hidden',
+          'divide-outline-variant relative flex h-full min-h-0 w-full divide-x overflow-hidden',
         )}
       >
-        <Sidebar className="divide-outline-variant flex flex-col divide-y">
+        <Sidebar className="divide-outline-variant z-10 flex flex-col divide-y">
           <SidebarContent className="flex flex-1 flex-col gap-2">
             <LogLevelButton>All</LogLevelButton>
 

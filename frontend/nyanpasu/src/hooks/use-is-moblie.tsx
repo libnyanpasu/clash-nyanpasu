@@ -7,3 +7,12 @@ export default function useIsMobile() {
 
   return isMobile
 }
+
+export function useIsMobileOrTablet() {
+  const breakpoint = useBreakpoint()
+
+  const isMobileOrTablet =
+    breakpoint === 'sm' || breakpoint === 'xs' || breakpoint === 'md'
+
+  return isMobileOrTablet
+}

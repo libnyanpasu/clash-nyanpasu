@@ -441,14 +441,12 @@ pub trait AppWindow {
             manager
                 .generate_label(base_label, config.singleton)
                 .unwrap_or_else(|| {
-                    // Singleton window already exists - try to show it
+                    // Singleton window already exists - try to focus it
                     if let Some(window) = app_handle.get_webview_window(base_label) {
-                        tracing::debug!("{} window is already opened, try to show it", base_label);
-                        if OPEN_WINDOWS_COUNTER.load(Ordering::Acquire) == 0 {
-                            trace_err!(window.unminimize(), "set win unminimize");
-                            trace_err!(window.show(), "set win visible");
-                            trace_err!(window.set_focus(), "set win focus");
-                        }
+                        tracing::debug!("{} window is already opened, try to focus it", base_label);
+                        trace_err!(window.unminimize(), "set win unminimize");
+                        trace_err!(window.show(), "set win visible");
+                        trace_err!(window.set_focus(), "set win focus");
                     }
                     // Return early indicator - we'll handle this below
                     String::new()

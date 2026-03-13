@@ -187,6 +187,7 @@
   "logs_search_placeholder": "通过时间、类型或消息等等搜索日志",
   "logs_empty_message": "没有任何日志记录",
   "logs_action_clear_log": "清空日志",
+  "rules_list_all_proxies": "所有分组",
   "editor_before_close_message": "你尚未保存编辑的内容，确定要关闭编辑器吗？",
   "editor_validate_error_message": "请修复错误后再保存内容",
   "editor_read_only_chip": "只读",

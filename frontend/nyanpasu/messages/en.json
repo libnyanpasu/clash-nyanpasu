@@ -187,6 +187,7 @@
   "logs_search_placeholder": "Search logs (time, type, or message)...",
   "logs_empty_message": "No logs recorded",
   "logs_action_clear_log": "Clear Logs",
+  "rules_list_all_proxies": "All Groups",
   "editor_before_close_message": "You have not saved the edited content, are you sure you want to close the editor?",
   "editor_validate_error_message": "Please fix the error before saving content",
   "editor_read_only_chip": "Read Only",

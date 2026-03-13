@@ -1,4 +1,3 @@
-import MenuOpenRounded from '~icons/material-symbols/menu-open-rounded'
 import { ComponentProps, PropsWithChildren } from 'react'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
@@ -6,6 +5,7 @@ import {
   Sidebar,
   SidebarLabelItem,
   SidebarProvider,
+  SidebarToggleButton,
   useSidebar,
 } from '@/components/ui/slider-sidebar'
 import {
@@ -34,20 +34,6 @@ const LogLevelIcon = {
 
 const SidebarContent = ({ className, ...props }: ComponentProps<'div'>) => {
   return <div className={cn('p-2', className)} {...props} />
-}
-
-const SidebarToggleButton = () => {
-  const { open, setOpen } = useSidebar()
-
-  return (
-    <Button
-      className="flex size-12 min-w-0 items-center gap-2 rounded-2xl px-3 text-left"
-      variant="raised"
-      onClick={() => setOpen(!open)}
-    >
-      <MenuOpenRounded className="size-6 shrink-0" />
-    </Button>
-  )
 }
 
 const LogLevelButton = ({

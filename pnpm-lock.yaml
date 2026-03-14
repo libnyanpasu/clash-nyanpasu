@@ -102,7 +102,7 @@ importers:
         version: 1.1.0(postcss-html@1.8.1)(stylelint@17.4.0(typescript@5.9.3))
       stylelint-config-recess-order:
         specifier: 7.6.1
-        version: 7.6.1(stylelint-order@8.0.0(stylelint@17.4.0(typescript@5.9.3)))(stylelint@17.4.0(typescript@5.9.3))
+        version: 7.6.1(stylelint-order@8.1.0(stylelint@17.4.0(typescript@5.9.3)))(stylelint@17.4.0(typescript@5.9.3))
       stylelint-config-standard:
         specifier: 40.0.0
         version: 40.0.0(stylelint@17.4.0(typescript@5.9.3))
@@ -110,8 +110,8 @@ importers:
         specifier: 3.0.0
         version: 3.0.0(stylelint@17.4.0(typescript@5.9.3))
       stylelint-order:
-        specifier: 8.0.0
-        version: 8.0.0(stylelint@17.4.0(typescript@5.9.3))
+        specifier: 8.1.0
+        version: 8.1.0(stylelint@17.4.0(typescript@5.9.3))
       stylelint-scss:
         specifier: 7.0.0
         version: 7.0.0(stylelint@17.4.0(typescript@5.9.3))
@@ -7396,8 +7396,8 @@ packages:
     peerDependencies:
       stylelint: ^17.0.0
 
-  stylelint-order@8.0.0:
-    resolution: {integrity: sha512-1oAwPRz6Ba8u9LPjgvdbeMjZszHhjY6DBBK+xMlS3IC89GdTsvAPpGYvW+dkn6pxc4ZaI1S959g4c8CftZbhIg==}
+  stylelint-order@8.1.0:
+    resolution: {integrity: sha512-ao2+VzToCqbAVGaEYEeSR2zNurvQx+86Kw1d0//kZDx3zlyjvb24dE4J0e4HQgOTruOwZpfaHHRtK58+lrsTAQ==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       stylelint: ^16.18.0 || ^17.0.0
@@ -15085,10 +15085,10 @@ snapshots:
       postcss-html: 1.8.1
       stylelint: 17.4.0(typescript@5.9.3)
 
-  stylelint-config-recess-order@7.6.1(stylelint-order@8.0.0(stylelint@17.4.0(typescript@5.9.3)))(stylelint@17.4.0(typescript@5.9.3)):
+  stylelint-config-recess-order@7.6.1(stylelint-order@8.1.0(stylelint@17.4.0(typescript@5.9.3)))(stylelint@17.4.0(typescript@5.9.3)):
     dependencies:
       stylelint: 17.4.0(typescript@5.9.3)
-      stylelint-order: 8.0.0(stylelint@17.4.0(typescript@5.9.3))
+      stylelint-order: 8.1.0(stylelint@17.4.0(typescript@5.9.3))
 
   stylelint-config-recommended@18.0.0(stylelint@17.4.0(typescript@5.9.3)):
     dependencies:
@@ -15103,7 +15103,7 @@ snapshots:
     dependencies:
       stylelint: 17.4.0(typescript@5.9.3)
 
-  stylelint-order@8.0.0(stylelint@17.4.0(typescript@5.9.3)):
+  stylelint-order@8.1.0(stylelint@17.4.0(typescript@5.9.3)):
     dependencies:
       postcss: 8.5.8
       postcss-sorting: 10.0.0(postcss@8.5.8)

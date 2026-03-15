@@ -244,9 +244,9 @@ jobs:
         with:
           name: Clash.Nyanpasu-windows-${{ inputs.arch }}${{ inputs.fixed-webview == true && '-fixed-webview' || '' }}-nsis-installer
           path: |
-            ./backend/target/**/bundle/*.exe
-            ./backend/target/**/bundle/*.zip
-            ./backend/target/**/bundle/*.zip.sig
+            ./backend/target/**/bundle/**/*.exe
+            ./backend/target/**/bundle/**/*.zip
+            ./backend/target/**/bundle/**/*.zip.sig
 
       - name: Upload portable
         if: ${{ inputs.portable == true }}
@@ -269,7 +269,7 @@ jobs:
         continue-on-error: true
         run: |
           deno run -A scripts/deno/upload-build-artifacts.ts \
-            "backend/target/**/bundle/*.exe" \
+            "backend/target/**/bundle/**/*.exe" \
             "*_portable.zip"
         env:
           FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}

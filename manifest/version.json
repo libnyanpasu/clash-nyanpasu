@@ -33,16 +33,16 @@
       "linux-armv7hf": "mihomo-linux-armv7-{}.gz"
     },
     "clash_rs": {
-      "windows-i386": "clash-i686-pc-windows-msvc-static-crt.exe",
-      "windows-x86_64": "clash-x86_64-pc-windows-msvc.exe",
-      "windows-arm64": "clash-aarch64-pc-windows-msvc.exe",
-      "linux-aarch64": "clash-aarch64-unknown-linux-gnu",
-      "linux-amd64": "clash-x86_64-unknown-linux-gnu-static-crt",
-      "linux-i386": "clash-i686-unknown-linux-gnu",
-      "darwin-arm64": "clash-aarch64-apple-darwin",
-      "darwin-x64": "clash-x86_64-apple-darwin",
-      "linux-armv7": "clash-armv7-unknown-linux-gnueabi",
-      "linux-armv7hf": "clash-armv7-unknown-linux-gnueabihf"
+      "windows-i386": "clash-rs-i686-pc-windows-msvc-static-crt.exe",
+      "windows-x86_64": "clash-rs-x86_64-pc-windows-msvc.exe",
+      "windows-arm64": "clash-rs-aarch64-pc-windows-msvc.exe",
+      "linux-aarch64": "clash-rs-aarch64-unknown-linux-gnu",
+      "linux-amd64": "clash-rs-x86_64-unknown-linux-gnu-static-crt",
+      "linux-i386": "clash-rs-i686-unknown-linux-gnu",
+      "darwin-arm64": "clash-rs-aarch64-apple-darwin",
+      "darwin-x64": "clash-rs-x86_64-apple-darwin",
+      "linux-armv7": "clash-rs-armv7-unknown-linux-gnueabi",
+      "linux-armv7hf": "clash-rs-armv7-unknown-linux-gnueabihf"
     },
     "clash_premium": {
       "windows-i386": "clash-windows-386-n{}.zip",
@@ -69,5 +69,5 @@
       "linux-armv7hf": "clash-rs-armv7-unknown-linux-gnueabihf"
     }
   },
-  "updated_at": "2026-03-14T22:22:22.880Z"
+  "updated_at": "2026-03-15T15:34:28.976Z"
 }

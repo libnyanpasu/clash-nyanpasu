@@ -91,16 +91,16 @@ export const resolveClashRs = async (): LatestVersionResolver => {
   consola.debug(`clash-rs latest release: ${version}`)
 
   const archMapping: ArchMapping = {
-    'windows-i386': 'clash-i686-pc-windows-msvc-static-crt.exe',
-    'windows-x86_64': 'clash-x86_64-pc-windows-msvc.exe',
-    'windows-arm64': 'clash-aarch64-pc-windows-msvc.exe',
-    'linux-aarch64': 'clash-aarch64-unknown-linux-gnu',
-    'linux-amd64': 'clash-x86_64-unknown-linux-gnu-static-crt',
-    'linux-i386': 'clash-i686-unknown-linux-gnu',
-    'darwin-arm64': 'clash-aarch64-apple-darwin',
-    'darwin-x64': 'clash-x86_64-apple-darwin',
-    'linux-armv7': 'clash-armv7-unknown-linux-gnueabi',
-    'linux-armv7hf': 'clash-armv7-unknown-linux-gnueabihf',
+    'windows-i386': 'clash-rs-i686-pc-windows-msvc-static-crt.exe',
+    'windows-x86_64': 'clash-rs-x86_64-pc-windows-msvc.exe',
+    'windows-arm64': 'clash-rs-aarch64-pc-windows-msvc.exe',
+    'linux-aarch64': 'clash-rs-aarch64-unknown-linux-gnu',
+    'linux-amd64': 'clash-rs-x86_64-unknown-linux-gnu-static-crt',
+    'linux-i386': 'clash-rs-i686-unknown-linux-gnu',
+    'darwin-arm64': 'clash-rs-aarch64-apple-darwin',
+    'darwin-x64': 'clash-rs-x86_64-apple-darwin',
+    'linux-armv7': 'clash-rs-armv7-unknown-linux-gnueabi',
+    'linux-armv7hf': 'clash-rs-armv7-unknown-linux-gnueabihf',
   }
 
   return { name: 'clash_rs', version, archMapping }

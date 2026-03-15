@@ -15,6 +15,9 @@ jobs:
       contents: write
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
       - name: Download all build artifacts
         uses: actions/download-artifact@v8
         with:
@@ -24,7 +27,7 @@ jobs:
 
       - name: Upload to release
         run: |
-          find ./release-assets -type f | while read file; do
+          find ./release-assets -type f -print0 | while IFS= read -r -d '' file; do
             echo "Uploading $file"
             gh release upload "${{ inputs.tag }}" "$file" --clobber
           done

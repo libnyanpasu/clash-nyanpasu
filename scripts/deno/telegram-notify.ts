@@ -3,7 +3,11 @@ import { format as formatBytes } from 'jsr:@std/fmt@1/bytes'
 import { ensureDir, exists } from 'jsr:@std/fs'
 import * as path from 'jsr:@std/path'
 import { Bot } from 'npm:grammy'
-import { UPLOAD_CONCURRENCY, uploadAllFiles } from './utils/file-server.ts'
+import {
+  UPLOAD_CONCURRENCY,
+  uploadAllFiles,
+  UploadResult,
+} from './utils/file-server.ts'
 import { consola } from './utils/logger.ts'
 
 // --- env helpers ---
@@ -18,13 +22,15 @@ function requireEnv(name: string): string {
 }
 
 const nightlyBuild = Deno.args.includes('--nightly')
+const fromLocal = Deno.args.includes('--from-local')
 
 const TELEGRAM_TOKEN = requireEnv('TELEGRAM_TOKEN')
 const TELEGRAM_TO = requireEnv('TELEGRAM_TO')
 const TELEGRAM_TO_NIGHTLY = requireEnv('TELEGRAM_TO_NIGHTLY')
 const GITHUB_TOKEN = requireEnv('GITHUB_TOKEN')
-const FILE_SERVER_TOKEN = requireEnv('FILE_SERVER_TOKEN')
+const FILE_SERVER_TOKEN = fromLocal ? '' : requireEnv('FILE_SERVER_TOKEN')
 const WORKFLOW_RUN_ID = Deno.env.get('WORKFLOW_RUN_ID')
+const UPLOAD_RESULTS_DIR = Deno.env.get('UPLOAD_RESULTS_DIR') || '.'
 
 // --- constants ---
 
@@ -120,6 +126,28 @@ async function fetchRelease(): Promise<GitHubRelease> {
   return (await resp.json()) as GitHubRelease
 }
 
+async function readLocalUploadResults(dir: string): Promise<UploadResult[]> {
+  const results: UploadResult[] = []
+  try {
+    for await (const entry of Deno.readDir(dir)) {
+      if (entry.isDirectory) {
+        const jsonPath = path.join(dir, entry.name, 'upload-results.json')
+        try {
+          const content = await Deno.readTextFile(jsonPath)
+          const parsed = JSON.parse(content) as UploadResult[]
+          results.push(...parsed)
+          consola.success(`Loaded ${parsed.length} results from ${entry.name}`)
+        } catch {
+          // No upload-results.json in this subdirectory, skip
+        }
+      }
+    }
+  } catch (err) {
+    consola.warn(`Could not read directory ${dir}: ${err}`)
+  }
+  return results
+}
+
 // --- platform grouping ---
 
 interface PlatformGroup {
@@ -162,52 +190,64 @@ const platformGroups: PlatformGroup[] = [
 async function main() {
   const bot = new Bot(TELEGRAM_TOKEN)
 
-  const release = await fetchRelease()
   const GIT_SHORT_HASH = getGitShortHash()
   const version = await getVersion()
 
-  const resourceMapping: string[] = []
-  const downloadTasks: Promise<void>[] = []
+  let uploadResults: UploadResult[]
 
-  for (const asset of release.assets) {
-    if (isValidFormat(asset.name)) {
-      const dest = path.join(TEMP_DIR, asset.name)
-      resourceMapping.push(dest)
-      downloadTasks.push(
-        retry(() => downloadFile(asset.browser_download_url, dest), {
-          maxAttempts: 5,
-        }),
+  if (fromLocal) {
+    consola.info(
+      `Reading upload results from local directory: ${UPLOAD_RESULTS_DIR}`,
+    )
+    uploadResults = await readLocalUploadResults(UPLOAD_RESULTS_DIR)
+    consola.success(`Loaded ${uploadResults.length} total upload results`)
+  } else {
+    const release = await fetchRelease()
+    const resourceMapping: string[] = []
+    const downloadTasks: Promise<void>[] = []
+
+    for (const asset of release.assets) {
+      if (isValidFormat(asset.name)) {
+        const dest = path.join(TEMP_DIR, asset.name)
+        resourceMapping.push(dest)
+        downloadTasks.push(
+          retry(() => downloadFile(asset.browser_download_url, dest), {
+            maxAttempts: 5,
+          }),
+        )
+      }
+    }
+
+    try {
+      await ensureDir(TEMP_DIR)
+      await Promise.all(downloadTasks)
+    } catch (error) {
+      consola.error(error)
+      throw new Error('Error during download tasks')
+    }
+
+    for (const item of resourceMapping) {
+      consola.log(
+        `found ${item}, size: ${getFileSize(item)}`,
+        await exists(item),
       )
     }
+
+    const buildType = nightlyBuild ? 'nightly' : 'release'
+    const folderPath = `${buildType}/${GIT_SHORT_HASH}`
+
+    consola.start(
+      `Uploading ${resourceMapping.length} files to file server (concurrency: ${UPLOAD_CONCURRENCY}, folder: ${folderPath})...`,
+    )
+
+    uploadResults = await uploadAllFiles(
+      resourceMapping,
+      FILE_SERVER_TOKEN,
+      folderPath,
+    )
+
+    consola.success(`Uploaded ${uploadResults.length} files to file server`)
   }
-
-  try {
-    await ensureDir(TEMP_DIR)
-    await Promise.all(downloadTasks)
-  } catch (error) {
-    consola.error(error)
-    throw new Error('Error during download tasks')
-  }
-
-  for (const item of resourceMapping) {
-    consola.log(`found ${item}, size: ${getFileSize(item)}`, await exists(item))
-  }
-
-  // upload all files to file server (concurrent chunk upload)
-  const buildType = nightlyBuild ? 'nightly' : 'release'
-  const folderPath = `${buildType}/${GIT_SHORT_HASH}`
-
-  consola.start(
-    `Uploading ${resourceMapping.length} files to file server (concurrency: ${UPLOAD_CONCURRENCY}, folder: ${folderPath})...`,
-  )
-
-  const uploadResults = await uploadAllFiles(
-    resourceMapping,
-    FILE_SERVER_TOKEN,
-    folderPath,
-  )
-
-  consola.success(`Uploaded ${uploadResults.length} files to file server`)
 
   // build message with grouped download links
   const lines: string[] = []

@@ -140,12 +140,10 @@ jobs:
           NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
           NODE_OPTIONS: '--max_old_space_size=4096'
 
-      - name: Upload to release
+      - name: Rename updater files
         run: |
           deno run -A scripts/deno/upload-macos-updater.ts
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_TAG: ${{ inputs.tag }}
           TARGET_ARCH: ${{ inputs.aarch64 == true && 'aarch64' || 'x86_64' }}
 
       - name: Upload to Github Artifact
@@ -154,3 +152,31 @@ jobs:
           name: Clash.Nyanpasu-macOS-${{ inputs.aarch64 == true && 'aarch64' || 'amd64' }}
           path: |
             ./backend/target/**/*.dmg
+            ./backend/target/**/*.tar.gz
+            ./backend/target/**/*.tar.gz.sig
+
+      - name: Set file server folder path
+        if: ${{ inputs.nightly == true }}
+        shell: bash
+        run: |
+          GIT_HASH=$(git rev-parse --short HEAD)
+          echo "FOLDER_PATH=nightly/${GIT_HASH}" >> $GITHUB_ENV
+
+      - name: Upload to file server
+        if: ${{ inputs.nightly == true }}
+        shell: bash
+        continue-on-error: true
+        run: |
+          deno run -A scripts/deno/upload-build-artifacts.ts \
+            "backend/target/**/*.dmg"
+        env:
+          FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+          FOLDER_PATH: ${{ env.FOLDER_PATH }}
+
+      - name: Upload file server results
+        if: ${{ inputs.nightly == true }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: upload-results-macos-${{ inputs.aarch64 == true && 'aarch64' || 'amd64' }}
+          path: ./upload-results.json
+          if-no-files-found: ignore

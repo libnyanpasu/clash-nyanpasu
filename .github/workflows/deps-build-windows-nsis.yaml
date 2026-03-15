@@ -151,7 +151,7 @@ jobs:
             'aarch64' {
               $arch = 'arm64'
             }
-          } 
+          }
 
           $version = '127.0.2651.105'
           $uri = "https://github.com/westinyang/WebView2RuntimeArchive/releases/download/$version/Microsoft.WebView2.FixedVersionRuntime.$version.$arch.cab"
@@ -226,17 +226,6 @@ jobs:
             Rename-Item -Path $file -NewName $newname
           }
 
-      - name: Upload to release
-        run: |
-          $files = Get-ChildItem -Path "./backend/target" -Recurse -Include "*.exe", "*.zip", "*.zip.sig" | Where-Object { $_.FullName -like "*\bundle\*" }
-          foreach ($file in $files) {
-            echo "Uploading $file"
-            gh release upload ${{ inputs.tag }} "$file" --clobber
-          }
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Portable Bundle
         if: ${{ inputs.portable == true }}
         run: |
@@ -256,6 +245,8 @@ jobs:
           name: Clash.Nyanpasu-windows-${{ inputs.arch }}${{ inputs.fixed-webview == true && '-fixed-webview' || '' }}-nsis-installer
           path: |
             ./backend/target/**/bundle/*.exe
+            ./backend/target/**/bundle/*.zip
+            ./backend/target/**/bundle/*.zip.sig
 
       - name: Upload portable
         if: ${{ inputs.portable == true }}
@@ -264,3 +255,30 @@ jobs:
           name: Clash.Nyanpasu-windows-${{ inputs.arch }}${{ inputs.fixed-webview == true && '-fixed-webview' || '' }}-portable
           path: |
             ./*_portable.zip
+
+      - name: Set file server folder path
+        if: ${{ inputs.nightly == true }}
+        shell: bash
+        run: |
+          GIT_HASH=$(git rev-parse --short HEAD)
+          echo "FOLDER_PATH=nightly/${GIT_HASH}" >> $GITHUB_ENV
+
+      - name: Upload to file server
+        if: ${{ inputs.nightly == true }}
+        shell: bash
+        continue-on-error: true
+        run: |
+          deno run -A scripts/deno/upload-build-artifacts.ts \
+            "backend/target/**/bundle/*.exe" \
+            "*_portable.zip"
+        env:
+          FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+          FOLDER_PATH: ${{ env.FOLDER_PATH }}
+
+      - name: Upload file server results
+        if: ${{ inputs.nightly == true }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: upload-results-windows-${{ inputs.arch }}${{ inputs.fixed-webview == true && '-fixed-webview' || '' }}
+          path: ./upload-results.json
+          if-no-files-found: ignore

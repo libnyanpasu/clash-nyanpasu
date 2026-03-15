@@ -185,21 +185,14 @@ jobs:
           fi
       # ===========================
       - name: Tauri build (x86_64)
-        uses: tauri-apps/tauri-action@v0
         if: ${{ inputs.arch == 'x86_64' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           NIGHTLY: ${{ inputs.nightly == true && 'true' || 'false' }}
-        with:
-          tagName: ${{ inputs.tag }}
-          releaseName: 'Clash Nyanpasu Dev'
-          releaseBody: 'More new features are now supported.'
-          releaseDraft: false
-          prerelease: true
-          tauriScript: pnpm tauri
-          args: ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json' || '-f default-meta' }}
+        run: |
+          pnpm tauri build ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json' || '-f default-meta' }}
 
       - name: Tauri build and upload (cross)
         if: ${{ inputs.arch != 'x86_64' }}
@@ -221,23 +214,14 @@ jobs:
               ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target armv7-unknown-linux-gnueabihf -b "rpm,deb"' || 'pnpm build -r cross --target armv7-unknown-linux-gnueabihf -b "rpm,deb" -c "{ "bundle": { "createUpdaterArtifacts": false } }"' }} ;;
           esac
 
-          find ./backend/target \( -name "*.deb" -o -name "*.rpm" \) | while read file; do
-            gh release upload ${{ inputs.tag }} "$file" --clobber
-          done
-
       - name: Calc the archive signature
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG_NAME=${{ inputs.tag }}
           find ./backend/target \( -name "*.deb" -o -name "*.rpm" \) | while read file; do
             sha_file="$file.sha256"
             if [[ ! -f "$sha_file" ]]; then
               sha256sum "$file" > "$sha_file"
               echo "Created checksum file for: $file"
             fi
-            gh release upload $TAG_NAME "$sha_file" --clobber
-            echo "Uploaded $sha_file to release $TAG_NAME"
           done
 
       - name: Upload AppImage to Github Artifact
@@ -245,7 +229,10 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: Clash.Nyanpasu-linux-${{ inputs.arch }}-appimage
-          path: ./backend/target/**/*.AppImage
+          path: |
+            ./backend/target/**/*.AppImage
+            ./backend/target/**/*.AppImage.tar.gz
+            ./backend/target/**/*.AppImage.tar.gz.sig
 
       - name: Upload deb to Github Artifact
         uses: actions/upload-artifact@v7
@@ -262,3 +249,37 @@ jobs:
           path: |
             ./backend/target/**/*.rpm
             ./backend/target/**/*.rpm.sha256
+
+      - name: Set file server folder path
+        if: ${{ inputs.nightly == true }}
+        shell: bash
+        run: |
+          GIT_HASH=$(git rev-parse --short HEAD)
+          echo "FOLDER_PATH=nightly/${GIT_HASH}" >> $GITHUB_ENV
+
+      - name: Upload to file server
+        if: ${{ inputs.nightly == true }}
+        shell: bash
+        continue-on-error: true
+        run: |
+          case "${{ inputs.arch }}" in
+            "x86_64")
+              deno run -A scripts/deno/upload-build-artifacts.ts \
+                "backend/target/**/*.deb" \
+                "backend/target/**/*.AppImage" ;;
+            *)
+              deno run -A scripts/deno/upload-build-artifacts.ts \
+                "backend/target/**/*.deb" \
+                "backend/target/**/*.rpm" ;;
+          esac
+        env:
+          FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+          FOLDER_PATH: ${{ env.FOLDER_PATH }}
+
+      - name: Upload file server results
+        if: ${{ inputs.nightly == true }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: upload-results-linux-${{ inputs.arch }}
+          path: ./upload-results.json
+          if-no-files-found: ignore

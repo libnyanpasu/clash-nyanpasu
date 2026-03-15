@@ -44,17 +44,24 @@ jobs:
       tag: ${{ github.event.release.tag_name }}
     secrets: inherit
 
+  upload_release_assets:
+    name: Upload Release Assets
+    needs: [windows_build, linux_build, macos_amd64_build, macos_aarch64_build]
+    uses: ./.github/workflows/deps-upload-release-assets.yaml
+    with:
+      tag: ${{ github.event.release.tag_name }}
+
   updater:
     name: Create Updater
+    needs: [upload_release_assets]
     uses: ./.github/workflows/deps-create-updater.yaml
-    needs: [windows_build, linux_build, macos_amd64_build, macos_aarch64_build]
     with:
       nightly: false
 
   telegram:
     name: Send Release Message to Telegram
     if: startsWith(github.repository, 'libnyanpasu')
-    needs: [windows_build, linux_build, macos_amd64_build, macos_aarch64_build]
+    needs: [upload_release_assets]
     uses: ./.github/workflows/deps-message-telegram.yaml
     with:
       nightly: false

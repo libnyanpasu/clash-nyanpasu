@@ -9,11 +9,23 @@ on:
         type: boolean
         default: false
 
+      from-local:
+        description: 'Use per-build uploaded results instead of downloading from release'
+        required: false
+        type: boolean
+        default: false
+
   workflow_call:
     inputs:
       nightly:
         description: 'Nightly'
         required: true
+        type: boolean
+        default: false
+
+      from-local:
+        description: 'Use per-build uploaded results instead of downloading from release'
+        required: false
         type: boolean
         default: false
 
@@ -33,14 +45,25 @@ jobs:
         with:
           deno-version: v2.x
 
+      - name: Download upload results
+        if: ${{ inputs.from-local == true }}
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: upload-results-*
+          path: ./upload-results
+          merge-multiple: false
+
       - name: Send Releases
         run: |
+          ARGS=""
           if [ "${{ inputs.nightly }}" = "true" ]; then
-            deno run -A scripts/deno/telegram-notify.ts --nightly
-
-          else
-            deno run -A scripts/deno/telegram-notify.ts
+            ARGS="$ARGS --nightly"
           fi
+          if [ "${{ inputs.from-local }}" = "true" ]; then
+            ARGS="$ARGS --from-local"
+          fi
+          deno run -A scripts/deno/telegram-notify.ts $ARGS
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
@@ -50,3 +73,4 @@ jobs:
           TELEGRAM_TO: '@keikolog'
           TELEGRAM_TO_NIGHTLY: '@ClashNyanpasu'
           WORKFLOW_RUN_ID: ${{ github.run_id }}
+          UPLOAD_RESULTS_DIR: ./upload-results

@@ -14,17 +14,10 @@ env:
   RUST_BACKTRACE: short
 
 jobs:
-  delete_current_releases:
-    name: Delete Current Releases
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
-    uses: ./.github/workflows/deps-delete-releases.yaml
-    with:
-      tag: 'pre-release'
-
   windows_amd64_build:
     name: Windows x86_64 Build
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
     uses: ./.github/workflows/deps-build-windows-nsis.yaml
-    needs: [delete_current_releases]
     with:
       portable: true
       nightly: true
@@ -35,8 +28,8 @@ jobs:
 
   windows_aarch64_build:
     name: Windows aarch64 Build
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
     uses: ./.github/workflows/deps-build-windows-nsis.yaml
-    needs: [delete_current_releases]
     with:
       portable: true
       nightly: true
@@ -47,8 +40,8 @@ jobs:
 
   windows_i686_build:
     name: Windows i686 Build
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
     uses: ./.github/workflows/deps-build-windows-nsis.yaml
-    needs: [delete_current_releases]
     with:
       portable: true
       nightly: true
@@ -59,8 +52,8 @@ jobs:
 
   windows_amd64_build_fixed_webview:
     name: Windows x86_64 Build with Fixed WebView
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
     uses: ./.github/workflows/deps-build-windows-nsis.yaml
-    needs: [delete_current_releases]
     with:
       portable: true
       nightly: true
@@ -71,8 +64,8 @@ jobs:
 
   windows_aarch64_build_fixed_webview:
     name: Windows aarch64 Build with Fixed WebView
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
     uses: ./.github/workflows/deps-build-windows-nsis.yaml
-    needs: [delete_current_releases]
     with:
       portable: true
       nightly: true
@@ -83,8 +76,8 @@ jobs:
 
   windows_i686_build_fixed_webview:
     name: Windows i686 Build with Fixed WebView
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
     uses: ./.github/workflows/deps-build-windows-nsis.yaml
-    needs: [delete_current_releases]
     with:
       portable: true
       nightly: true
@@ -95,8 +88,8 @@ jobs:
 
   linux_amd64_build:
     name: Linux amd64 Build
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
     uses: ./.github/workflows/deps-build-linux.yaml
-    needs: [delete_current_releases]
     with:
       nightly: true
       tag: 'pre-release'
@@ -105,8 +98,8 @@ jobs:
 
   linux_i686_build:
     name: Linux i686 Build
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
     uses: ./.github/workflows/deps-build-linux.yaml
-    needs: [delete_current_releases]
     with:
       nightly: true
       tag: 'pre-release'
@@ -115,8 +108,8 @@ jobs:
 
   linux_aarch64_build:
     name: Linux aarch64 Build
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
     uses: ./.github/workflows/deps-build-linux.yaml
-    needs: [delete_current_releases]
     with:
       nightly: true
       tag: 'pre-release'
@@ -125,8 +118,8 @@ jobs:
 
   linux_armhf_build:
     name: Linux armhf Build
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
     uses: ./.github/workflows/deps-build-linux.yaml
-    needs: [delete_current_releases]
     with:
       nightly: true
       tag: 'pre-release'
@@ -135,8 +128,8 @@ jobs:
 
   linux_armel_build:
     name: Linux armel Build
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
     uses: ./.github/workflows/deps-build-linux.yaml
-    needs: [delete_current_releases]
     with:
       nightly: true
       tag: 'pre-release'
@@ -145,8 +138,8 @@ jobs:
 
   macos_amd64_build:
     name: macOS amd64 Build
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
     uses: ./.github/workflows/deps-build-macos.yaml
-    needs: [delete_current_releases]
     with:
       nightly: true
       aarch64: false
@@ -155,8 +148,8 @@ jobs:
 
   macos_aarch64_build:
     name: macOS aarch64 Build
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
     uses: ./.github/workflows/deps-build-macos.yaml
-    needs: [delete_current_releases]
     with:
       nightly: true
       aarch64: true
@@ -185,9 +178,23 @@ jobs:
     with:
       tag: 'pre-release'
 
+  delete_current_releases:
+    name: Delete Current Releases
+    needs: [update_tag]
+    uses: ./.github/workflows/deps-delete-releases.yaml
+    with:
+      tag: 'pre-release'
+
+  upload_release_assets:
+    name: Upload Release Assets
+    needs: [delete_current_releases]
+    uses: ./.github/workflows/deps-upload-release-assets.yaml
+    with:
+      tag: 'pre-release'
+
   updater:
     name: Create Updater
-    needs: [update_tag]
+    needs: [upload_release_assets]
     uses: ./.github/workflows/deps-create-updater.yaml
     with:
       nightly: true
@@ -200,4 +207,5 @@ jobs:
     uses: ./.github/workflows/deps-message-telegram.yaml
     with:
       nightly: true
+      from-local: true
     secrets: inherit

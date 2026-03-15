@@ -24,20 +24,25 @@ export type LatestVersionResolver = Promise<{
 
 // === GitHub API helpers ===
 
-async function getLatestRelease(owner: string, repo: string): Promise<string> {
-  const resp = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/releases/latest`,
-    {
-      headers: {
-        Accept: 'application/vnd.github+json',
-        'User-Agent': 'clash-nyanpasu',
-      },
-    },
-  )
+const GITHUB_API_HEADERS = {
+  Accept: 'application/vnd.github+json',
+  'User-Agent': 'clash-nyanpasu',
+}
+
+async function githubFetch<T>(url: string): Promise<T> {
+  const resp = await fetch(url, { headers: GITHUB_API_HEADERS })
   if (!resp.ok) {
-    throw new Error(`GitHub API error: ${resp.statusText} (${resp.status})`)
+    throw new Error(
+      `GitHub API error: ${resp.statusText} (${resp.status}) — ${url}`,
+    )
   }
-  const data = (await resp.json()) as { tag_name: string }
+  return resp.json() as Promise<T>
+}
+
+async function getLatestRelease(owner: string, repo: string): Promise<string> {
+  const data = await githubFetch<{ tag_name: string }>(
+    `https://api.github.com/repos/${owner}/${repo}/releases/latest`,
+  )
   return data.tag_name
 }
 
@@ -107,12 +112,26 @@ export const resolveClashRs = async (): LatestVersionResolver => {
 }
 
 export const resolveClashRsAlpha = async (): LatestVersionResolver => {
-  const resp = await fetch(
-    'https://github.com/Watfaq/clash-rs/releases/download/latest/version.txt',
-  )
-  const alphaVersion = resp.ok
-    ? (await resp.text()).trim().split(' ').pop()!
-    : 'latest'
+  // Fetch commit SHA for the "latest" pre-release tag and the stable base version in parallel
+  const [ref, stableTag] = await Promise.all([
+    githubFetch<{ object: { type: string; sha: string; url: string } }>(
+      'https://api.github.com/repos/Watfaq/clash-rs/git/ref/tags/latest',
+    ),
+    getLatestRelease('Watfaq', 'clash-rs'),
+  ])
+
+  // Dereference annotated tags to get the underlying commit SHA
+  let commitSha = ref.object.sha
+  if (ref.object.type === 'tag') {
+    const tagObj = await githubFetch<{ object: { sha: string } }>(
+      ref.object.url,
+    )
+    commitSha = tagObj.object.sha
+  }
+
+  const shortSha = commitSha.substring(0, 7)
+  const baseVersion = stableTag.replace(/^v/, '')
+  const alphaVersion = `${baseVersion}-alpha+sha.${shortSha}`
   consola.debug(`clash-rs alpha latest release: ${alphaVersion}`)
 
   const archMapping: ArchMapping = {

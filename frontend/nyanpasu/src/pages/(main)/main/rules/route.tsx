@@ -2,7 +2,6 @@ import ListRounded from '~icons/material-symbols/lists-rounded'
 import { ComponentProps, PropsWithChildren, ReactNode, useMemo } from 'react'
 import z from 'zod'
 import { Button } from '@/components/ui/button'
-import Image from '@/components/ui/image'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Sidebar,
@@ -18,9 +17,10 @@ import {
 } from '@/components/ui/tooltip'
 import { useIsMobileOrTablet } from '@/hooks/use-is-moblie'
 import { m } from '@/paraglide/messages'
-import { useClashProxies, useClashRules } from '@nyanpasu/interface'
+import { useClashRules } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 import { createFileRoute, Link, Outlet } from '@tanstack/react-router'
+import ProxyIcon from './_modules/proxy-icon'
 
 export const Route = createFileRoute('/(main)/main/rules')({
   component: RouteComponent,
@@ -31,30 +31,6 @@ export const Route = createFileRoute('/(main)/main/rules')({
 
 const SidebarContent = ({ className, ...props }: ComponentProps<'div'>) => {
   return <div className={cn('p-2', className)} {...props} />
-}
-
-const ProxyIcon = ({ item }: { item?: string }) => {
-  const {
-    proxies: { data: proxies },
-  } = useClashProxies()
-
-  const icon = useMemo(() => {
-    const proxyInfo = proxies?.groups.find((p) => p.name === item)
-
-    return proxyInfo?.icon
-  }, [item, proxies])
-
-  return icon ? (
-    <Image className="size-6" loadingClassName="rounded-full" icon={icon} />
-  ) : (
-    <div
-      className={cn(
-        'bg-surface text-secondary grid size-6 place-content-center rounded-full text-[10px]',
-      )}
-    >
-      {item?.toLocaleUpperCase().slice(0, 2)}
-    </div>
-  )
 }
 
 const Item = ({
@@ -134,7 +110,7 @@ const ProxySelector = () => {
       <Item icon={<ListRounded />}>{m.rules_list_all_proxies()}</Item>
 
       {allProxy.map((item) => (
-        <Item key={item} item={item} icon={<ProxyIcon item={item} />}>
+        <Item key={item} item={item} icon={<ProxyIcon groupName={item} />}>
           {item}
         </Item>
       ))}

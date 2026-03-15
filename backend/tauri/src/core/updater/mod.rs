@@ -12,7 +12,7 @@ use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use shared::{CoreTypeMeta, get_arch};
 use specta::Type;
-use tokio::{join, sync::RwLock};
+use tokio::sync::RwLock;
 
 mod instance;
 mod shared;
@@ -173,17 +173,9 @@ impl UpdaterManager {
     pub async fn fetch_latest(&mut self) -> Result<()> {
         self.mirror_speed_test().await?;
         let mirror = self.get_mirror().unwrap();
-        let latest = self.get_latest_version_manifest(&mirror);
-        let mihomo_alpha_version = self.get_mihomo_alpha_version();
-        let clash_rs_alpha_version = self.get_clash_rs_alpha_version();
-        let (latest, mihomo_alpha_version, clash_rs_alpha_version) =
-            join!(latest, mihomo_alpha_version, clash_rs_alpha_version);
+        let latest = self.get_latest_version_manifest(&mirror).await?;
         log::debug!("latest version: {latest:?}");
-        self.manifest_version = latest?;
-        log::debug!("mihomo alpha version: {mihomo_alpha_version:?}");
-        self.manifest_version.latest.mihomo_alpha = mihomo_alpha_version?;
-        log::debug!("clash rs alpha version: {clash_rs_alpha_version:?}");
-        self.manifest_version.latest.clash_rs_alpha = clash_rs_alpha_version?;
+        self.manifest_version = latest;
         Ok(())
     }
 
@@ -214,48 +206,6 @@ impl UpdaterManager {
             ));
         }
         Ok(())
-    }
-
-    async fn get_mihomo_alpha_version(&self) -> Result<String> {
-        self.mirror_speed_test().await?;
-        let mirror = self.get_mirror().unwrap();
-        let url = crate::utils::candy::parse_gh_url(
-            &mirror,
-            "/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt",
-        )?;
-        let res = self.client.get(url).send().await?;
-        let status_code = res.status();
-        if !status_code.is_success() {
-            anyhow::bail!(
-                "failed to get mihomo alpha version: response status is {}, expected 200",
-                status_code
-            );
-        }
-        Ok(res.text().await?.trim().to_string())
-    }
-
-    async fn get_clash_rs_alpha_version(&self) -> Result<String> {
-        self.mirror_speed_test().await?;
-        let mirror = self.get_mirror().unwrap();
-        let url = crate::utils::candy::parse_gh_url(
-            &mirror,
-            "/Watfaq/clash-rs/releases/download/latest/version.txt",
-        )?;
-        let res = self.client.get(url).send().await?;
-        let status_code = res.status();
-        if !status_code.is_success() {
-            anyhow::bail!(
-                "failed to get clash rs alpha version: response status is {}, expected 200",
-                status_code
-            );
-        }
-        let res = res.text().await?;
-        let version = res
-            .trim()
-            .split(' ')
-            .next_back()
-            .ok_or(anyhow!("no version found"))?;
-        Ok(version.to_string())
     }
 
     pub async fn update_core(&mut self, core_type: &ClashCore) -> Result<usize> {

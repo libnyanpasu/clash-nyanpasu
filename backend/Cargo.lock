@@ -1592,7 +1592,7 @@ dependencies = [
  "mime",
  "mlua",
  "nanoid",
- "nix 0.30.1",
+ "nix 0.31.2",
  "notify",
  "notify-debouncer-full",
  "num_cpus",

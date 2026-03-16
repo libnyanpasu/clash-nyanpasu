@@ -40,6 +40,22 @@ export const Catch = ({ error }: ErrorComponentProps) => {
         {error.message}
         {error.stack}
       </pre>
+
+      <div className="flex items-center gap-2">
+        <button
+          className="cursor-pointer bg-zinc-900 px-3 py-2 text-zinc-100"
+          onClick={() => window.location.reload()}
+        >
+          Reload Resource
+        </button>
+
+        <button
+          className="cursor-pointer bg-zinc-900 px-3 py-2 text-zinc-100"
+          onClick={() => appWindow.close()}
+        >
+          Close Window
+        </button>
+      </div>
     </div>
   )
 }

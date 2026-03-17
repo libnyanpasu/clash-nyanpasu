@@ -2,7 +2,7 @@ import AllInboxRounded from '~icons/material-symbols/all-inbox-outline-rounded'
 import RefreshRounded from '~icons/material-symbols/refresh-rounded'
 import dayjs from 'dayjs'
 import { filesize } from 'filesize'
-import { ComponentProps, PropsWithChildren, useMemo } from 'react'
+import { ComponentProps, PropsWithChildren } from 'react'
 import { useBlockTask } from '@/components/providers/block-task-provider'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -20,6 +20,8 @@ import {
 } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { useProxiesProviderUpdate } from './_modules/use-proxies-provider-update'
+import { useProxiesSubscription } from './_modules/use-proxies-subscription'
 
 export const Route = createFileRoute('/(main)/main/providers/')({
   component: RouteComponent,
@@ -93,53 +95,10 @@ const Empty = ({ children }: PropsWithChildren) => {
 }
 
 const Proxies = ({ data }: { data: ClashProxiesProviderQueryItem }) => {
-  const hasSubscriptionInfo =
-    'subscriptionInfo' in data && data.subscriptionInfo !== undefined
+  const { progress, total, used, hasSubscriptionInfo } =
+    useProxiesSubscription(data)
 
-  const { progress, total, used } = useMemo(() => {
-    let progress = 0
-    let total = 0
-    let used = 0
-
-    if (hasSubscriptionInfo) {
-      const subscriptionInfo = data.subscriptionInfo as Record<
-        string,
-        number | undefined
-      >
-
-      const download =
-        subscriptionInfo.download ?? subscriptionInfo.Download ?? 0
-      const upload = subscriptionInfo.upload ?? subscriptionInfo.Upload ?? 0
-      const t = subscriptionInfo.total ?? subscriptionInfo.Total ?? 0
-
-      total = t
-
-      used = download + upload
-
-      progress = (used / (total || 1)) * 100
-    }
-
-    return {
-      progress,
-      total,
-      used,
-    }
-  }, [data, hasSubscriptionInfo])
-
-  const blockTask = useBlockTask(
-    `update-proxies-provider-${data.name}`,
-    async () => {
-      try {
-        await data.mutate()
-      } catch (error) {
-        console.error('Failed to update proxies provider', error)
-        message(`Update provider failed: \n ${formatError(error)}`, {
-          title: 'Error',
-          kind: 'error',
-        })
-      }
-    },
-  )
+  const blockTask = useProxiesProviderUpdate(data)
 
   const handleClick = useLockFn(blockTask.execute)
 

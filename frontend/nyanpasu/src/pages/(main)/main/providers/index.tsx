@@ -22,6 +22,7 @@ import { cn } from '@nyanpasu/ui'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useProxiesProviderUpdate } from './_modules/use-proxies-provider-update'
 import { useProxiesSubscription } from './_modules/use-proxies-subscription'
+import { useRulesProviderUpdate } from './_modules/use-rules-provider-update'
 
 export const Route = createFileRoute('/(main)/main/providers/')({
   component: RouteComponent,
@@ -166,20 +167,7 @@ const Proxies = ({ data }: { data: ClashProxiesProviderQueryItem }) => {
 }
 
 const Rules = ({ data }: { data: ClashRulesProviderQueryItem }) => {
-  const blockTask = useBlockTask(
-    `update-rules-provider-${data.name}`,
-    async () => {
-      try {
-        await data.mutate()
-      } catch (error) {
-        console.error('Failed to update rules provider', error)
-        message(`Update provider failed: \n ${formatError(error)}`, {
-          title: 'Error',
-          kind: 'error',
-        })
-      }
-    },
-  )
+  const blockTask = useRulesProviderUpdate(data)
 
   const handleClick = useLockFn(blockTask.execute)
 

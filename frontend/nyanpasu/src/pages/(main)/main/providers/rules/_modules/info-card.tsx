@@ -4,11 +4,11 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
-import { ClashProxiesProviderQueryItem } from '@nyanpasu/interface'
-import { useProxiesProviderUpdate } from '../../_modules/use-proxies-provider-update'
+import { ClashRulesProviderQueryItem } from '@nyanpasu/interface'
+import { useRulesProviderUpdate } from '../../_modules/use-rules-provider-update'
 
-export const InfoCard = ({ data }: { data: ClashProxiesProviderQueryItem }) => {
-  const blockTask = useProxiesProviderUpdate(data)
+export const InfoCard = ({ data }: { data: ClashRulesProviderQueryItem }) => {
+  const blockTask = useRulesProviderUpdate(data)
 
   const handleRefreshClick = useLockFn(async () => {
     await blockTask.execute()
@@ -21,8 +21,8 @@ export const InfoCard = ({ data }: { data: ClashProxiesProviderQueryItem }) => {
       <CardContent>
         <div className="flex items-center justify-between px-1">
           <div className="text-secondary text-sm">
-            {m.providers_proxies_proxy_count_label({
-              count: data.proxies.length,
+            {m.providers_rules_rule_count_label({
+              count: data.ruleCount,
             })}
           </div>
 

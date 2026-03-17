@@ -91,7 +91,7 @@
     "@vitejs/plugin-react-swc": "4.3.0",
     "change-case": "5.4.4",
     "clsx": "2.1.1",
-    "core-js": "3.48.0",
+    "core-js": "3.49.0",
     "filesize": "11.0.13",
     "meta-json-schema": "1.19.21",
     "monaco-yaml": "5.4.1",

@@ -11,7 +11,7 @@ const BackButton = () => {
     <Button
       icon
       variant="raised"
-      className="flex items-center justify-center md:hidden"
+      className="flex items-center justify-center"
       asChild
     >
       <Link to="/main/providers">
@@ -57,7 +57,7 @@ export function ProvidersTitle({
           'group sticky top-0 z-10',
           'bg-mixed-background',
           'flex items-center gap-4',
-          'h-16 px-4 md:px-6',
+          'h-16 px-4',
           className,
         )}
         data-show-title={showTopTitle}

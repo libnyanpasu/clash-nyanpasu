@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
 } from 'react'
 import { insertStyle } from '@/utils/styled'
 import {
@@ -89,6 +90,7 @@ const ThemeContext = createContext<{
   themeColor: string
   setThemeColor: (color: string) => Promise<void>
   themeMode: ThemeMode
+  currentThemeMode: Omit<ThemeMode, 'system'>
   setThemeMode: (mode: ThemeMode) => Promise<void>
 } | null>(null)
 
@@ -209,6 +211,18 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
     [themeMode],
   )
 
+  const currentThemeMode = useMemo<Omit<ThemeMode, 'system'>>(() => {
+    if (themeMode.value === ThemeMode.DARK) {
+      return ThemeMode.DARK
+    }
+
+    if (themeMode.value === ThemeMode.LIGHT) {
+      return ThemeMode.LIGHT
+    }
+
+    return getSystemThemeMode()
+  }, [themeMode.value])
+
   return (
     <ThemeContext.Provider
       value={{
@@ -217,6 +231,7 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
         themeColor: themeColor.value || DEFAULT_COLOR,
         setThemeColor,
         themeMode: themeMode.value as ThemeMode,
+        currentThemeMode,
         setThemeMode,
       }}
     >

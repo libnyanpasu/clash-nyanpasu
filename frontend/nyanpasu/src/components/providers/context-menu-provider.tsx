@@ -181,10 +181,14 @@ export function RegisterContextMenuContent({ children }: PropsWithChildren) {
   childrenRef.current = children
 
   useEffect(() => {
+    // Also set in the effect body so that React StrictMode's cleanup+re-invoke
+    // cycle restores the value after the cleanup sets it to null.
+    childrenRef.current = children
+
     return () => {
       childrenRef.current = null
     }
-  }, [childrenRef])
+  })
 
   return null
 }
@@ -223,12 +227,16 @@ export default function ContextMenuProvider({ children }: PropsWithChildren) {
   const lastRightClickTargetRef = useRef<Element | null>(null)
 
   // Capture the right-clicked element before the context menu opens.
+  // Use pointerdown (button === 2) instead of contextmenu so the target is
+  // always recorded before any contextmenu listener (including Radix's) fires.
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      lastRightClickTargetRef.current = e.target as Element
+    const handler = (e: PointerEvent) => {
+      if (e.button === 2) {
+        lastRightClickTargetRef.current = e.target as Element
+      }
     }
-    document.addEventListener('contextmenu', handler, true)
-    return () => document.removeEventListener('contextmenu', handler, true)
+    document.addEventListener('pointerdown', handler, true)
+    return () => document.removeEventListener('pointerdown', handler, true)
   }, [])
 
   const registerElement = useCallback(

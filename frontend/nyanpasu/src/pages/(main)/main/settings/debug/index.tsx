@@ -11,6 +11,7 @@ import { SettingsTitle } from '../_modules/settings-title'
 import AdvanceToolsSwitch from './_modules/advance-tools-switch'
 import BlockTaskViewer from './_modules/block-task-viewer'
 import { useDebugContext } from './_modules/debug-provider'
+import KVStorage from './_modules/kv-storage'
 import PathUtilsCard from './_modules/path-utils-card'
 import WindowDebug from './_modules/window-debug'
 
@@ -48,6 +49,8 @@ const AdvanceToolsSettings = () => {
               <WindowDebug />
 
               <BlockTaskViewer />
+
+              <KVStorage />
             </>
           )}
         </AnimatePresence>

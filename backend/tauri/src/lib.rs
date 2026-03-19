@@ -267,6 +267,8 @@ pub fn run() -> std::io::Result<()> {
             ipc::get_storage_item,
             ipc::set_storage_item,
             ipc::remove_storage_item,
+            ipc::get_all_storage_items,
+            ipc::clear_storage,
             ipc::mutate_proxies,
             ipc::get_core_dir,
             // clash layer
@@ -282,7 +284,8 @@ pub fn run() -> std::io::Result<()> {
         .events(collect_events![
             core::clash::ClashConnectionsEvent,
             window::WindowMessageEvent,
-            window::ReactAppMountedEvent
+            window::ReactAppMountedEvent,
+            core::storage::StorageValueChangedEvent
         ]);
 
     #[cfg(debug_assertions)]

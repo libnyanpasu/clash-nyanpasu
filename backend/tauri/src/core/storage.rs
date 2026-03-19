@@ -1,9 +1,11 @@
 use crate::{log_err, utils::dirs};
 use anyhow::Context;
-use redb::{ReadableDatabase, TableDefinition};
-use serde::{Serialize, de::DeserializeOwned};
+use redb::{ReadableDatabase, ReadableTable, TableDefinition};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use specta::Type;
 use std::{fs, ops::Deref, result::Result as StdResult, sync::Arc};
-use tauri::{Emitter, Manager};
+use tauri::Manager;
+use tauri_specta::Event;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StorageOperationError {
@@ -56,10 +58,23 @@ pub struct StorageInner {
     tx: tokio::sync::broadcast::Sender<(String, Option<Vec<u8>>)>,
 }
 
+/// Event emitted to all windows when a storage value changes.
+/// Event name: `storage-value-changed-event`
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
+pub struct StorageValueChangedEvent {
+    pub key: String,
+    /// The new JSON-encoded value, or `None` if the key was removed.
+    pub value: Option<String>,
+}
+
 pub trait WebStorage {
     fn get_item<T: DeserializeOwned>(&self, key: impl AsRef<str>) -> Result<Option<T>>;
     fn set_item<T: Serialize>(&self, key: impl AsRef<str>, value: &T) -> Result<()>;
     fn remove_item(&self, key: impl AsRef<str>) -> Result<()>;
+    /// Returns all key-value pairs as raw JSON strings (for debug use).
+    fn get_all(&self) -> Result<Vec<(String, String)>>;
+    /// Removes all entries from the storage (for debug use).
+    fn clear(&self) -> Result<()>;
 }
 
 impl StorageInner {
@@ -163,6 +178,45 @@ impl WebStorage for StorageInner {
         self.notify_subscribers(key_str, None);
         Ok(())
     }
+
+    fn get_all(&self) -> Result<Vec<(String, String)>> {
+        let db = self.get_instance();
+        let read_txn = db.begin_read()?;
+        let table = read_txn.open_table(NYANPASU_TABLE)?;
+        let mut result = Vec::new();
+        for entry in table.iter()? {
+            let (key, value) = entry?;
+            let key = String::from_utf8_lossy(key.value()).to_string();
+            let value = String::from_utf8_lossy(value.value()).to_string();
+            result.push((key, value));
+        }
+        Ok(result)
+    }
+
+    fn clear(&self) -> Result<()> {
+        let db = self.get_instance();
+        // Collect all keys in a read transaction first
+        let keys: Vec<Vec<u8>> = {
+            let read_txn = db.begin_read()?;
+            let table = read_txn.open_table(NYANPASU_TABLE)?;
+            let mut keys = Vec::new();
+            for entry in table.iter()? {
+                let (key, _) = entry?;
+                keys.push(key.value().to_vec());
+            }
+            keys
+        };
+        // Remove all in a write transaction
+        let write_txn = db.begin_write()?;
+        {
+            let mut table = write_txn.open_table(NYANPASU_TABLE)?;
+            for key in &keys {
+                table.remove(key.as_slice())?;
+            }
+        }
+        write_txn.commit()?;
+        Ok(())
+    }
 }
 
 pub fn register_web_storage_listener(app_handle: &tauri::AppHandle) {
@@ -175,12 +229,11 @@ pub fn register_web_storage_listener(app_handle: &tauri::AppHandle) {
 
             while let Ok((key, value)) = rx.recv().await {
                 let value = value.map(|v| String::from_utf8_lossy(&v).to_string());
-                let payload = (key, value);
-                log_err!(app_handle.emit_filter(
-                    "storage_value_changed",
-                    payload,
-                    |t| matches!(t, tauri::EventTarget::WebviewWindow { label } if label == "main"),
-                ), "failed to emit storage_value_changed event");
+                let event = StorageValueChangedEvent { key, value };
+                log_err!(
+                    event.emit(&app_handle),
+                    "failed to emit storage_value_changed event"
+                );
             }
         });
     });

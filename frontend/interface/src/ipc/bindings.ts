@@ -680,6 +680,30 @@ export const commands = {
       else return { status: 'error', error: e as any }
     }
   },
+  /**
+   * Debug: returns all frontend KV entries (keys with the `web:` prefix).
+   * Internal storage entries used by other subsystems are excluded.
+   */
+  async getAllStorageItems(): Promise<Result<StorageEntry[], string>> {
+    try {
+      return { status: 'ok', data: await TAURI_INVOKE('get_all_storage_items') }
+    } catch (e) {
+      if (e instanceof Error) throw e
+      else return { status: 'error', error: e as any }
+    }
+  },
+  /**
+   * Debug: clears all frontend KV entries (keys with the `web:` prefix).
+   * Internal storage entries used by other subsystems are left intact.
+   */
+  async clearStorage(): Promise<Result<null, string>> {
+    try {
+      return { status: 'ok', data: await TAURI_INVOKE('clear_storage') }
+    } catch (e) {
+      if (e instanceof Error) throw e
+      else return { status: 'error', error: e as any }
+    }
+  },
   async mutateProxies(): Promise<Result<Proxies, string>> {
     try {
       return { status: 'ok', data: await TAURI_INVOKE('mutate_proxies') }
@@ -762,10 +786,12 @@ export const commands = {
 export const events = __makeEvents__<{
   clashConnectionsEvent: ClashConnectionsEvent
   reactAppMountedEvent: ReactAppMountedEvent
+  storageValueChangedEvent: StorageValueChangedEvent
   windowMessageEvent: WindowMessageEvent
 }>({
   clashConnectionsEvent: 'clash-connections-event',
   reactAppMountedEvent: 'react-app-mounted-event',
+  storageValueChangedEvent: 'storage-value-changed-event',
   windowMessageEvent: 'window-message-event',
 })
 
@@ -1536,6 +1562,24 @@ export type StatusResBody = {
   version: string
   core_infos: CoreInfos
   runtime_infos: RuntimeInfos
+}
+export type StorageEntry = {
+  key: string
+  /**
+   * Raw JSON-encoded value string.
+   */
+  value: string
+}
+/**
+ * Event emitted to all windows when a storage value changes.
+ * Event name: `storage-value-changed-event`
+ */
+export type StorageValueChangedEvent = {
+  key: string
+  /**
+   * The new JSON-encoded value, or `None` if the key was removed.
+   */
+  value: string | null
 }
 export type SubscriptionInfo = {
   upload: number

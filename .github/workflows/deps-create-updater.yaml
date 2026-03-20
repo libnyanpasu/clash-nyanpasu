@@ -91,7 +91,6 @@ jobs:
       - name: Upload updater to surge.sh
         run: |
           pnpm i -g surge
-          surge manifest/site surge.elaina.moe
           surge manifest/site nyanpasu.surge.sh
         env:
           SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}

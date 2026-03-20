@@ -13,7 +13,7 @@ import { Link } from '@tanstack/react-router'
 
 const WikiItem = () => {
   const handleClick = useLockFn(async () => {
-    await commands.openThat('https://nyanpasu.elaina.moe')
+    await commands.openThat('https://nyanpasu.majokeiko.com')
   })
 
   return (

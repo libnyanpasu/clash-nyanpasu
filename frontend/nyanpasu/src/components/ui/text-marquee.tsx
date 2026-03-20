@@ -1,5 +1,11 @@
 import { motion, useAnimationControls } from 'framer-motion'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react'
 import { sleep } from '@/utils'
 import { cn } from '@nyanpasu/ui'
 
@@ -9,6 +15,8 @@ export default function TextMarquee({
   speed = 30,
   gap = 32,
   pauseDuration = 1,
+  fadeEdges = false,
+  fadeWidth = 12,
   // pauseOnHover = true,
 }: {
   children: React.ReactNode
@@ -16,6 +24,8 @@ export default function TextMarquee({
   speed?: number
   gap?: number
   pauseDuration?: number
+  fadeEdges?: boolean
+  fadeWidth?: number
   // pauseOnHover?: boolean
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -171,8 +181,22 @@ export default function TextMarquee({
   return (
     <div
       ref={containerRef}
-      className={cn('overflow-hidden', className)}
+      className={cn(
+        'overflow-hidden',
+        fadeEdges && [
+          'mask-[linear-gradient(to_right,transparent_0,black_var(--marquee-fade-width),black_calc(100%-var(--marquee-fade-width)),transparent_100%)]',
+          '[-webkit-mask-image:linear-gradient(to_right,transparent_0,black_var(--marquee-fade-width),black_calc(100%-var(--marquee-fade-width)),transparent_100%)]',
+        ],
+        className,
+      )}
       data-slot="text-marquee"
+      style={
+        fadeEdges
+          ? ({
+              '--marquee-fade-width': `${fadeWidth}px`,
+            } as CSSProperties)
+          : {}
+      }
     >
       {shouldAnimate ? (
         <motion.div

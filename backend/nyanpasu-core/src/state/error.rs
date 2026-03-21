@@ -50,3 +50,16 @@ pub enum UpsertError {
     #[error("write config error: {0}")]
     WriteConfig(anyhow::Error),
 }
+
+/// Error type for `with_pending_state` closure-scoped async cleanup pattern.
+#[derive(thiserror::Error, Debug)]
+pub enum WithEffectError<E> {
+    #[error("state migration failed: {0}")]
+    State(StateChangedError),
+
+    #[error("effect failed: {0}")]
+    Effect(E),
+
+    #[error("effect failed and rollback also failed: effect={effect}, rollback={rollback}")]
+    EffectAndRollback { effect: E, rollback: StateChangedError },
+}

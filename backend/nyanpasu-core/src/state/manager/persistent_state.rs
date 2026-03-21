@@ -3,7 +3,7 @@ use atomicwrites::{AllowOverwrite, AtomicFile};
 use camino::Utf8PathBuf;
 use fs_err::tokio as fs;
 use serde::{Serialize, de::DeserializeOwned};
-use std::io::Write;
+use std::{future::Future, io::Write};
 
 use super::{super::error::*, *};
 
@@ -89,51 +89,110 @@ where
         Ok(())
     }
 
-    async fn rollback_upsert(&mut self, previous_state: State) {
-        if let Err(e) = self.state_coordinator.upsert_state(previous_state).await {
-            tracing::error!(target: "app", "failed to rollback state after failed to save config: {e:?}");
-        }
-    }
-
-    pub async fn upsert(&mut self, state: State) -> Result<(), UpsertError> {
+    /// Closure-scoped async cleanup pattern for state mutations.
+    ///
+    /// Instead of relying on RAII/Drop for cleanup (which cannot be async),
+    /// this method constrains the "pending state" lifetime within the closure scope,
+    /// and performs async rollback explicitly after `.await` completes.
+    ///
+    /// # Flow
+    /// 1. Tentatively apply `new_state` to in-memory state (run migrations)
+    /// 2. Execute effect closure `f` with reference to new state
+    /// 3. If effect succeeds → return `Ok(result)`
+    /// 4. If effect fails → async rollback in-memory state, return `Err`
+    pub async fn with_pending_state<'s, F, Fut, R, E>(
+        &mut self,
+        new_state: &'s State,
+        f: F,
+    ) -> Result<R, WithEffectError<E>>
+    where
+        F: FnOnce(&'s State) -> Fut,
+        Fut: Future<Output = Result<R, E>> + 's,
+    {
         let previous_state = self.state_coordinator.current_state();
 
+        // Step 1: Tentatively apply new state (migrations run here)
         self.state_coordinator
-            .upsert_state(state.clone())
+            .upsert_state(new_state.clone())
             .await
-            .map_err(UpsertError::State)?;
+            .map_err(WithEffectError::State)?;
 
-        if let Err(e) = self
-            .atomic_save_config(&state)
-            .await
-            .map_err(UpsertError::WriteConfig)
-        {
-            let previous_state = previous_state
-                .expect("rollback requires a previous state, but current_state was None");
-            self.rollback_upsert(previous_state).await;
-            return Err(e);
+        // Step 2: Execute effect - state lifetime bounded to closure
+        let result = f(new_state).await;
+
+        // Step 3: Explicit async cleanup AFTER .await - not in Drop
+        match result {
+            Ok(r) => Ok(r),
+            Err(effect_err) => {
+                if let Some(prev) = previous_state
+                    && let Err(rollback_err) = self.state_coordinator.upsert_state(prev).await
+                {
+                    tracing::error!(
+                        target: "app",
+                        "failed to rollback state after effect failure: {rollback_err:?}"
+                    );
+                    return Err(WithEffectError::EffectAndRollback {
+                        effect: effect_err,
+                        rollback: rollback_err,
+                    });
+                }
+                Err(WithEffectError::Effect(effect_err))
+            }
         }
-        Ok(())
     }
 
-    pub async fn upsert_with_context(&mut self, state: State) -> Result<(), UpsertError> {
+    pub async fn upsert(&mut self, state: State) -> Result<(), UpsertError>
+    where
+        Formatter: Clone,
+    {
+        let config_path = self.config_path.clone();
+        let config_prefix = self.config_prefix.clone();
+        let formatter = self.formatter.clone();
+
+        self.with_pending_state(&state, |s| async {
+            let mut buf = Vec::with_capacity(4096);
+            formatter.serialize(&mut buf, &s, config_prefix.as_deref())?;
+            let file = AtomicFile::new(&config_path, AllowOverwrite);
+            tokio::task::spawn_blocking(move || file.write(|f| f.write_all(&buf)))
+                .await?
+                .with_context(|| format!("failed to write config: {config_path}"))?;
+            Ok::<_, anyhow::Error>(())
+        })
+        .await
+        .map_err(|e| match e {
+            WithEffectError::State(e) => UpsertError::State(e),
+            WithEffectError::Effect(e) | WithEffectError::EffectAndRollback { effect: e, .. } => {
+                UpsertError::WriteConfig(e)
+            }
+        })
+    }
+
+    pub async fn upsert_with_context(&mut self, state: State) -> Result<(), UpsertError>
+    where
+        Formatter: Clone,
+    {
         let previous_state = self.state_coordinator.current_state();
 
+        // Migration with context (Context::scope wraps only the migration)
         self.state_coordinator
             .upsert_state_with_context(state.clone())
             .await
             .map_err(UpsertError::State)?;
 
-        if let Err(e) = self
-            .atomic_save_config(&state)
-            .await
-            .map_err(UpsertError::WriteConfig)
-        {
-            let previous_state = previous_state
-                .expect("rollback requires a previous state, but current_state was None");
-            self.rollback_upsert(previous_state).await;
-            return Err(e);
+        // Effect: write to disk (outside context scope, matching original behavior)
+        if let Err(e) = self.atomic_save_config(&state).await {
+            // Async rollback
+            if let Some(prev) = previous_state
+                && let Err(rollback_err) = self.state_coordinator.upsert_state(prev).await
+            {
+                tracing::error!(
+                    target: "app",
+                    "failed to rollback state after effect failure: {rollback_err:?}"
+                );
+            }
+            return Err(UpsertError::WriteConfig(e));
         }
+
         Ok(())
     }
 }
@@ -318,12 +377,8 @@ mod tests {
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager: PersistentStateManager<TestState> = PersistentStateManager::new(
-            None,
-            config_path,
-            coordinator,
-            YamlFormat,
-        );
+        let mut manager: PersistentStateManager<TestState> =
+            PersistentStateManager::new(None, config_path, coordinator, YamlFormat);
 
         // 先成功 upsert 建立 previous state
         let initial_state = TestState::new("initial".to_string(), 100);

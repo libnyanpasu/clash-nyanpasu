@@ -3,7 +3,7 @@ use atomicwrites::{AllowOverwrite, AtomicFile};
 use camino::Utf8PathBuf;
 use fs_err::tokio as fs;
 use serde::{Serialize, de::DeserializeOwned};
-use std::io::{Read, Write};
+use std::{future::Future, io::{Read, Write}};
 
 use super::{super::error::*, *};
 
@@ -17,7 +17,9 @@ pub trait Format {
     fn deserialize<R: Read, T: DeserializeOwned>(&self, reader: R) -> anyhow::Result<T>;
 }
 
+#[derive(Debug, Clone, Copy, Default)]
 pub struct YamlFormat;
+
 impl Format for YamlFormat {
     fn serialize<W: Write, T: Serialize>(
         &self,
@@ -129,54 +131,116 @@ where
         Ok(())
     }
 
-    async fn rollback_upsert(&mut self, previous_builder: Builder) {
-        if let Err(e) = self
-            .state_coordinator
-            .upsert(previous_builder.clone())
+    /// Closure-scoped async cleanup pattern for builder mutations.
+    ///
+    /// Instead of relying on RAII/Drop for cleanup (which cannot be async),
+    /// this method constrains the "pending builder" lifetime within the closure scope,
+    /// and performs async rollback explicitly after `.await` completes.
+    ///
+    /// # Flow
+    /// 1. Tentatively apply `new_builder` to coordinator (run migrations)
+    /// 2. Execute effect closure `f` with reference to new builder
+    /// 3. If effect succeeds → return `Ok(result)`
+    /// 4. If effect fails → async rollback, return `Err`
+    pub async fn with_pending_builder<'b, F, Fut, R, E>(
+        &mut self,
+        new_builder: &'b Builder,
+        f: F,
+    ) -> Result<R, WithEffectError<E>>
+    where
+        F: FnOnce(&'b Builder) -> Fut,
+        Fut: Future<Output = Result<R, E>> + 'b,
+    {
+        let previous_builder = self.current_builder.clone();
+
+        // Step 1: Tentatively apply new builder (migrations run here)
+        self.state_coordinator
+            .upsert(new_builder.clone())
             .await
-        {
-            tracing::error!(target: "app", "failed to rollback state after failed to save config: {e:?}");
+            .map_err(WithEffectError::State)?;
+        self.current_builder = Some(new_builder.clone());
+
+        // Step 2: Execute effect - builder lifetime bounded to closure
+        let result = f(new_builder).await;
+
+        // Step 3: Explicit async cleanup AFTER .await - not in Drop
+        match result {
+            Ok(r) => Ok(r),
+            Err(effect_err) => {
+                if let Some(prev) = previous_builder {
+                    if let Err(rollback_err) = self.state_coordinator.upsert(prev.clone()).await {
+                        tracing::error!(
+                            target: "app",
+                            "failed to rollback builder after effect failure: {rollback_err:?}"
+                        );
+                        self.current_builder = Some(prev);
+                        return Err(WithEffectError::EffectAndRollback {
+                            effect: effect_err,
+                            rollback: rollback_err,
+                        });
+                    }
+                    self.current_builder = Some(prev);
+                } else {
+                    self.current_builder = None;
+                }
+                Err(WithEffectError::Effect(effect_err))
+            }
         }
-        self.current_builder = Some(previous_builder);
     }
 
-    pub async fn upsert(&mut self, builder: Builder) -> Result<(), UpsertError> {
-        self.state_coordinator
-            .upsert(builder.clone())
-            .await
-            .map_err(UpsertError::State)?;
-        let previous_builder = self.current_builder.replace(builder.clone());
+    pub async fn upsert(&mut self, builder: Builder) -> Result<(), UpsertError>
+    where
+        Formatter: Clone,
+    {
+        let config_path = self.config_path.clone();
+        let config_prefix = self.config_prefix.clone();
+        let formatter = self.formatter.clone();
 
-        if let Err(e) = self
-            .atomic_save_config(&builder)
-            .await
-            .map_err(UpsertError::WriteConfig)
-        {
-            let previous_builder = previous_builder
-                .expect("rollback requires a previous builder, but current_builder was None");
-            self.rollback_upsert(previous_builder).await;
-            return Err(e);
-        }
-        Ok(())
+        self.with_pending_builder(&builder, |b| async {
+            let mut buf = Vec::with_capacity(4096);
+            formatter.serialize(&mut buf, b, config_prefix.as_deref())?;
+            let file = AtomicFile::new(&config_path, AllowOverwrite);
+            tokio::task::spawn_blocking(move || file.write(|f| f.write_all(&buf)))
+                .await?
+                .with_context(|| format!("failed to write config: {config_path}"))?;
+            Ok::<_, anyhow::Error>(())
+        })
+        .await
+        .map_err(|e| match e {
+            WithEffectError::State(e) => UpsertError::State(e),
+            WithEffectError::Effect(e) | WithEffectError::EffectAndRollback { effect: e, .. } => {
+                UpsertError::WriteConfig(e)
+            }
+        })
     }
 
     pub async fn upsert_with_context(&mut self, builder: Builder) -> Result<(), UpsertError> {
+        let previous_builder = self.current_builder.clone();
+
+        // Migration with context (Context::scope wraps only the migration)
         self.state_coordinator
             .upsert_with_context(builder.clone())
             .await
             .map_err(UpsertError::State)?;
-        let previous_builder = self.current_builder.replace(builder.clone());
+        self.current_builder = Some(builder.clone());
 
-        if let Err(e) = self
-            .atomic_save_config(&builder)
-            .await
-            .map_err(UpsertError::WriteConfig)
-        {
-            let previous_builder = previous_builder
-                .expect("rollback requires a previous builder, but current_builder was None");
-            self.rollback_upsert(previous_builder).await;
-            return Err(e);
+        // Effect: write to disk (outside context scope, matching original behavior)
+        if let Err(e) = self.atomic_save_config(&builder).await {
+            // Async rollback
+            if let Some(prev) = previous_builder {
+                if let Err(rollback_err) = self.state_coordinator.upsert(prev.clone()).await {
+                    tracing::error!(
+                        target: "app",
+                        "failed to rollback builder after effect failure: {rollback_err:?}"
+                    );
+                }
+                self.current_builder = Some(prev);
+            } else {
+                self.current_builder = None;
+            }
+            return Err(UpsertError::WriteConfig(e));
         }
+
         Ok(())
     }
 }

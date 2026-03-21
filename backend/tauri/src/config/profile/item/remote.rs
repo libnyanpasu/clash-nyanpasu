@@ -155,7 +155,18 @@ async fn subscribe_url(
         url: url.to_string(),
         source: e,
     })?;
-    let perform_req = || async { client.get(url.as_str()).send().await?.error_for_status() };
+    let device_info = crate::utils::hwid::get_device_info();
+    let perform_req = || async {
+        client
+            .get(url.as_str())
+            .header("x-hwid", &device_info.hwid)
+            .header("x-device-os", &device_info.device_os)
+            .header("x-ver-os", &device_info.os_version)
+            .header("x-device-model", &device_info.device_model)
+            .send()
+            .await?
+            .error_for_status()
+    };
     let resp = perform_req
         .retry(backon::ExponentialBuilder::default())
         // Only retry on network errors or server errors

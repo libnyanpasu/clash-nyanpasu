@@ -89,17 +89,7 @@ where
         Ok(())
     }
 
-    /// Closure-scoped async cleanup pattern for state mutations.
-    ///
-    /// Instead of relying on RAII/Drop for cleanup (which cannot be async),
-    /// this method constrains the "pending state" lifetime within the closure scope,
-    /// and performs async rollback explicitly after `.await` completes.
-    ///
-    /// # Flow
-    /// 1. Tentatively apply `new_state` to in-memory state (run migrations)
-    /// 2. Execute effect closure `f` with reference to new state
-    /// 3. If effect succeeds → return `Ok(result)`
-    /// 4. If effect fails → async rollback in-memory state, return `Err`
+    // Closure-scoped async cleanup pattern for state mutations.
     pub async fn with_pending_state<'s, F, Fut, R, E>(
         &mut self,
         new_state: &'s State,
@@ -151,7 +141,7 @@ where
 
         self.with_pending_state(&state, |s| async {
             let mut buf = Vec::with_capacity(4096);
-            formatter.serialize(&mut buf, &s, config_prefix.as_deref())?;
+            formatter.serialize(&mut buf, s, config_prefix.as_deref())?;
             let file = AtomicFile::new(&config_path, AllowOverwrite);
             tokio::task::spawn_blocking(move || file.write(|f| f.write_all(&buf)))
                 .await?

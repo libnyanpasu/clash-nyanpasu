@@ -3,7 +3,7 @@ use atomicwrites::{AllowOverwrite, AtomicFile};
 use camino::Utf8PathBuf;
 use fs_err::tokio as fs;
 use serde::{Serialize, de::DeserializeOwned};
-use std::{future::Future, io::{Read, Write}};
+use std::io::{Read, Write};
 
 use super::{super::error::*, *};
 
@@ -119,129 +119,88 @@ where
         self.current_builder.clone()
     }
 
-    /// Atomic save the config file, ensuring that the file is not corrupted even if the process is killed during writing.
-    async fn atomic_save_config(&self, builder: &Builder) -> anyhow::Result<()> {
-        let mut buf = Vec::with_capacity(4096);
-        self.formatter
-            .serialize(&mut buf, builder, self.config_prefix.as_deref())?;
-        let file = AtomicFile::new(&self.config_path, AllowOverwrite);
-        tokio::task::spawn_blocking(move || file.write(|f| f.write_all(&buf)))
-            .await?
-            .with_context(|| format!("failed to write config: {}", self.config_path))?;
-        Ok(())
-    }
-
-    /// Closure-scoped async cleanup pattern for builder mutations.
-    ///
-    /// Instead of relying on RAII/Drop for cleanup (which cannot be async),
-    /// this method constrains the "pending builder" lifetime within the closure scope,
-    /// and performs async rollback explicitly after `.await` completes.
-    ///
-    /// # Flow
-    /// 1. Tentatively apply `new_builder` to coordinator (run migrations)
-    /// 2. Execute effect closure `f` with reference to new builder
-    /// 3. If effect succeeds → return `Ok(result)`
-    /// 4. If effect fails → async rollback, return `Err`
-    pub async fn with_pending_builder<'b, F, Fut, R, E>(
-        &mut self,
-        new_builder: &'b Builder,
-        f: F,
-    ) -> Result<R, WithEffectError<E>>
-    where
-        F: FnOnce(&'b Builder) -> Fut,
-        Fut: Future<Output = Result<R, E>> + 'b,
-    {
-        let previous_builder = self.current_builder.clone();
-
-        // Step 1: Tentatively apply new builder (migrations run here)
-        self.state_coordinator
-            .upsert(new_builder.clone())
-            .await
-            .map_err(WithEffectError::State)?;
-        self.current_builder = Some(new_builder.clone());
-
-        // Step 2: Execute effect - builder lifetime bounded to closure
-        let result = f(new_builder).await;
-
-        // Step 3: Explicit async cleanup AFTER .await - not in Drop
-        match result {
-            Ok(r) => Ok(r),
-            Err(effect_err) => {
-                if let Some(prev) = previous_builder {
-                    if let Err(rollback_err) = self.state_coordinator.upsert(prev.clone()).await {
-                        tracing::error!(
-                            target: "app",
-                            "failed to rollback builder after effect failure: {rollback_err:?}"
-                        );
-                        self.current_builder = Some(prev);
-                        return Err(WithEffectError::EffectAndRollback {
-                            effect: effect_err,
-                            rollback: rollback_err,
-                        });
-                    }
-                    self.current_builder = Some(prev);
-                } else {
-                    self.current_builder = None;
-                }
-                Err(WithEffectError::Effect(effect_err))
-            }
-        }
-    }
-
     pub async fn upsert(&mut self, builder: Builder) -> Result<(), UpsertError>
     where
         Formatter: Clone,
     {
+        let new_state = builder
+            .build()
+            .await
+            .map_err(|e| UpsertError::State(StateChangedError::Validation(e)))?;
+
         let config_path = self.config_path.clone();
         let config_prefix = self.config_prefix.clone();
         let formatter = self.formatter.clone();
+        let builder_for_save = builder.clone();
 
-        self.with_pending_builder(&builder, |b| async {
-            let mut buf = Vec::with_capacity(4096);
-            formatter.serialize(&mut buf, b, config_prefix.as_deref())?;
-            let file = AtomicFile::new(&config_path, AllowOverwrite);
-            tokio::task::spawn_blocking(move || file.write(|f| f.write_all(&buf)))
-                .await?
-                .with_context(|| format!("failed to write config: {config_path}"))?;
-            Ok::<_, anyhow::Error>(())
-        })
-        .await
-        .map_err(|e| match e {
-            WithEffectError::State(e) => UpsertError::State(e),
-            WithEffectError::Effect(e) | WithEffectError::EffectAndRollback { effect: e, .. } => {
-                UpsertError::WriteConfig(e)
+        let result = self
+            .state_coordinator
+            .with_pending_state(&new_state, |_s| async move {
+                let mut buf = Vec::with_capacity(4096);
+                formatter.serialize(&mut buf, &builder_for_save, config_prefix.as_deref())?;
+                let file = AtomicFile::new(&config_path, AllowOverwrite);
+                tokio::task::spawn_blocking(move || file.write(|f| f.write_all(&buf)))
+                    .await?
+                    .with_context(|| format!("failed to write config: {config_path}"))?;
+                Ok::<_, anyhow::Error>(())
+            })
+            .await;
+
+        match result {
+            Ok(()) => {
+                self.current_builder = Some(builder);
+                Ok(())
             }
-        })
+            Err(e) => Err(match e {
+                WithEffectError::State(e) => UpsertError::State(e),
+                WithEffectError::Effect(e)
+                | WithEffectError::EffectAndRollback { effect: e, .. } => {
+                    UpsertError::WriteConfig(e)
+                }
+            }),
+        }
     }
 
-    pub async fn upsert_with_context(&mut self, builder: Builder) -> Result<(), UpsertError> {
-        let previous_builder = self.current_builder.clone();
-
-        // Migration with context (Context::scope wraps only the migration)
-        self.state_coordinator
-            .upsert_with_context(builder.clone())
+    pub async fn upsert_with_context(&mut self, builder: Builder) -> Result<(), UpsertError>
+    where
+        Formatter: Clone,
+    {
+        let new_state = builder
+            .build()
             .await
-            .map_err(UpsertError::State)?;
-        self.current_builder = Some(builder.clone());
+            .map_err(|e| UpsertError::State(StateChangedError::Validation(e)))?;
 
-        // Effect: write to disk (outside context scope, matching original behavior)
-        if let Err(e) = self.atomic_save_config(&builder).await {
-            // Async rollback
-            if let Some(prev) = previous_builder {
-                if let Err(rollback_err) = self.state_coordinator.upsert(prev.clone()).await {
-                    tracing::error!(
-                        target: "app",
-                        "failed to rollback builder after effect failure: {rollback_err:?}"
-                    );
-                }
-                self.current_builder = Some(prev);
-            } else {
-                self.current_builder = None;
+        let config_path = self.config_path.clone();
+        let config_prefix = self.config_prefix.clone();
+        let formatter = self.formatter.clone();
+        let builder_for_save = builder.clone();
+
+        let result = self
+            .state_coordinator
+            .with_pending_state_in_context(&new_state, |_s| async move {
+                let mut buf = Vec::with_capacity(4096);
+                formatter.serialize(&mut buf, &builder_for_save, config_prefix.as_deref())?;
+                let file = AtomicFile::new(&config_path, AllowOverwrite);
+                tokio::task::spawn_blocking(move || file.write(|f| f.write_all(&buf)))
+                    .await?
+                    .with_context(|| format!("failed to write config: {config_path}"))?;
+                Ok::<_, anyhow::Error>(())
+            })
+            .await;
+
+        match result {
+            Ok(()) => {
+                self.current_builder = Some(builder);
+                Ok(())
             }
-            return Err(UpsertError::WriteConfig(e));
+            Err(e) => Err(match e {
+                WithEffectError::State(e) => UpsertError::State(e),
+                WithEffectError::Effect(e)
+                | WithEffectError::EffectAndRollback { effect: e, .. } => {
+                    UpsertError::WriteConfig(e)
+                }
+            }),
         }
-
-        Ok(())
     }
 }
 
@@ -502,9 +461,8 @@ mod tests {
     }
 
     #[tokio::test]
-    #[should_panic(expected = "rollback requires a previous builder")]
-    async fn test_upsert_write_config_error_without_previous_panics() {
-        // 首次 upsert 时 config 写入失败，由于没有 previous builder，应该 panic
+    async fn test_upsert_write_config_error_without_previous() {
+        // 首次 upsert 时 config 写入失败，应返回 WriteConfig 错误且状态不变
         let config_path = Utf8PathBuf::from("/__nonexistent_dir__/__sub__/config.yaml");
 
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
@@ -513,7 +471,17 @@ mod tests {
 
         let builder = TestBuilder::new("写入失败测试".to_string(), 300);
 
-        let _ = manager.upsert(builder).await;
+        let result = manager.upsert(builder).await;
+        assert!(result.is_err());
+
+        match result.unwrap_err() {
+            UpsertError::WriteConfig(_) => {}
+            other => panic!("期望 UpsertError::WriteConfig, 但得到: {:?}", other),
+        }
+
+        // 状态不应被提交
+        assert!(manager.current_state().is_none());
+        assert!(manager.current_builder().is_none());
     }
 
     #[tokio::test]

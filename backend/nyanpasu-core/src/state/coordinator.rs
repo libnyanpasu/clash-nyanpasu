@@ -2,6 +2,7 @@
 
 use super::{Context, builder::*, error::*};
 use indexmap::IndexMap;
+use std::future::Future;
 use std::sync::Arc;
 
 /// Whether a subscriber is terminated, it was used for a subscriber was terminated but not removed from the coordinator.
@@ -130,10 +131,9 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         self.current_state.clone()
     }
 
-    /// Run the migration for the subscribers, return an error if the migration is failed.
-    /// If the migration is failed, the rollback will be called for the previous subscribers
-    /// in reverse order, and no further subscribers will be migrated.
-    async fn run_migration<S, I>(
+    /// Run subscriber migrations only. If a migration fails, previously successful
+    /// subscribers are rolled back in reverse order.
+    async fn migrate_subscribers<S, I>(
         subscribers: &[I],
         current_state: Option<&T>,
         new_state: &T,
@@ -212,6 +212,88 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         Ok(())
     }
 
+    /// Rollback all subscribers in reverse order.
+    async fn rollback_all_subscribers<S, I>(
+        subscribers: &[I],
+        current_state: Option<&T>,
+        new_state: &T,
+    ) -> Result<(), StateChangedError>
+    where
+        I: AsRef<S>,
+        S: StateChangedSubscriber<T> + Send + Sync + ?Sized,
+    {
+        let mut errors = Vec::new();
+        for subscriber in subscribers.iter().rev() {
+            let subscriber = subscriber.as_ref();
+            if let Err(e) = subscriber
+                .rollback(current_state.cloned(), new_state.clone())
+                .await
+            {
+                errors.push(StateChangedError::Rollback(RollbackError {
+                    name: subscriber.name().to_string(),
+                    error: e,
+                }));
+            }
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else if errors.len() == 1 {
+            Err(errors.pop().unwrap())
+        } else {
+            Err(StateChangedError::Batch(errors.into_boxed_slice()))
+        }
+    }
+
+    /// Execute the effect closure. If it fails, rollback all subscribers in reverse order.
+    async fn run_effect_or_rollback<'a, S, I, F, Fut, R, E>(
+        subscribers: &[I],
+        current_state: Option<&T>,
+        new_state: &'a T,
+        effect_fn: F,
+    ) -> Result<R, WithEffectError<E>>
+    where
+        I: AsRef<S>,
+        S: StateChangedSubscriber<T> + Send + Sync + ?Sized,
+        F: FnOnce(&'a T) -> Fut,
+        Fut: Future<Output = Result<R, E>> + 'a,
+    {
+        match effect_fn(new_state).await {
+            Ok(r) => Ok(r),
+            Err(effect_err) => {
+                match Self::rollback_all_subscribers(subscribers, current_state, new_state).await {
+                    Ok(()) => Err(WithEffectError::Effect(effect_err)),
+                    Err(rollback) => Err(WithEffectError::EffectAndRollback {
+                        effect: effect_err,
+                        rollback,
+                    }),
+                }
+            }
+        }
+    }
+
+    /// Run subscriber migrations, then execute the effect closure.
+    ///
+    /// Phase 1: Migrate all subscribers (with internal rollback on migration failure)
+    /// Phase 2: Execute effect_fn
+    /// Phase 3: If effect fails, rollback all subscribers in reverse order
+    async fn run_migration<'a, S, I, F, Fut, R, E>(
+        subscribers: &[I],
+        current_state: Option<&T>,
+        new_state: &'a T,
+        effect_fn: F,
+    ) -> Result<R, WithEffectError<E>>
+    where
+        I: AsRef<S>,
+        S: StateChangedSubscriber<T> + Send + Sync + ?Sized,
+        F: FnOnce(&'a T) -> Fut,
+        Fut: Future<Output = Result<R, E>> + 'a,
+    {
+        Self::migrate_subscribers(subscribers, current_state, new_state)
+            .await
+            .map_err(WithEffectError::State)?;
+        Self::run_effect_or_rollback(subscribers, current_state, new_state, effect_fn).await
+    }
+
     /// Upsert the state by a builder, it was used for a builder was patched for upsert.
     pub async fn upsert(
         &mut self,
@@ -223,7 +305,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             .map_err(StateChangedError::Validation)?;
 
         let subscribers = self.subscribers.values().collect::<Vec<_>>();
-        Self::run_migration(&subscribers, self.current_state.as_ref(), &new_state).await?;
+        Self::migrate_subscribers(&subscribers, self.current_state.as_ref(), &new_state).await?;
 
         self.current_state = Some(new_state);
         Ok(())
@@ -239,7 +321,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             .map_err(StateChangedError::Validation)?;
         Context::scope(new_state.clone(), async {
             let subscribers = self.subscribers.values().collect::<Vec<_>>();
-            Self::run_migration(&subscribers, self.current_state.as_ref(), &new_state).await?;
+            Self::migrate_subscribers(&subscribers, self.current_state.as_ref(), &new_state).await?;
             Ok::<_, StateChangedError>(())
         })
         .await?;
@@ -250,13 +332,71 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
     /// Upsert the state directly, it used for a small StateObject, a bool value, etc.
     pub async fn upsert_state(&mut self, state: T) -> Result<(), StateChangedError> {
         let subscribers = self.subscribers.values().collect::<Vec<_>>();
-        Self::run_migration(&subscribers, self.current_state.as_ref(), &state).await?;
+        Self::migrate_subscribers(&subscribers, self.current_state.as_ref(), &state).await?;
         self.current_state = Some(state);
         Ok(())
     }
 
     pub async fn upsert_state_with_context(&mut self, state: T) -> Result<(), StateChangedError> {
         Context::scope(state.clone(), self.upsert_state(state)).await
+    }
+
+    /// Closure-scoped async cleanup pattern for state mutations.
+    ///
+    /// 1. Run subscriber migrations for `state`
+    /// 2. Execute `effect_fn` with reference to the state
+    /// 3. If effect succeeds → update current state, return `Ok(result)`
+    /// 4. If effect fails → rollback all subscribers, return `Err`
+    pub async fn with_pending_state<'s, F, Fut, R, E>(
+        &mut self,
+        state: &'s T,
+        effect_fn: F,
+    ) -> Result<R, WithEffectError<E>>
+    where
+        F: FnOnce(&'s T) -> Fut,
+        Fut: Future<Output = Result<R, E>> + 's,
+    {
+        let subscribers = self.subscribers.values().collect::<Vec<_>>();
+        let result = Self::run_migration(
+            &subscribers,
+            self.current_state.as_ref(),
+            state,
+            effect_fn,
+        )
+        .await;
+        if result.is_ok() {
+            self.current_state = Some(state.clone());
+        }
+        result
+    }
+
+    /// Like `with_pending_state` but wraps subscriber migrations in `Context::scope`.
+    pub async fn with_pending_state_in_context<'s, F, Fut, R, E>(
+        &mut self,
+        state: &'s T,
+        effect_fn: F,
+    ) -> Result<R, WithEffectError<E>>
+    where
+        F: FnOnce(&'s T) -> Fut,
+        Fut: Future<Output = Result<R, E>> + 's,
+    {
+        let subscribers = self.subscribers.values().collect::<Vec<_>>();
+
+        // Migration in context scope
+        Context::scope(state.clone(), async {
+            Self::migrate_subscribers(&subscribers, self.current_state.as_ref(), state).await
+        })
+        .await
+        .map_err(WithEffectError::State)?;
+
+        // Effect outside context scope
+        let result =
+            Self::run_effect_or_rollback(&subscribers, self.current_state.as_ref(), state, effect_fn)
+                .await;
+        if result.is_ok() {
+            self.current_state = Some(state.clone());
+        }
+        result
     }
 }
 
@@ -594,7 +734,7 @@ mod test {
         assert_eq!(subscriber3.get_migrate_calls(), 0); // break prevents further migration
 
         // subscriber2's rollback is handled by do_migration_for_subscriber
-        // subscriber1 was successfully migrated, so it gets rolled back by run_migration
+        // subscriber1 was successfully migrated, so it gets rolled back by migrate_subscribers
         assert_eq!(subscriber1.get_rollback_calls(), 1);
         assert_eq!(subscriber2.get_rollback_calls(), 1);
         assert_eq!(subscriber3.get_rollback_calls(), 0);
@@ -914,5 +1054,190 @@ mod test {
         assert_eq!(subscriber1.get_rollback_calls(), 1);
         assert_eq!(subscriber2.get_migrate_calls(), 1);
         assert_eq!(subscriber2.get_rollback_calls(), 1);
+    }
+
+    // ─── with_pending_state tests ───
+
+    #[tokio::test]
+    async fn test_with_pending_state_effect_success() {
+        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let subscriber = Arc::new(MockSubscriber::new("sub"));
+        coordinator.add_subscriber(Box::new(subscriber.clone()));
+
+        let state = TestState {
+            value: 42,
+            name: "effect_ok".to_string(),
+        };
+        let result = coordinator
+            .with_pending_state(&state, |s| async move {
+                assert_eq!(s.value, 42);
+                Ok::<_, anyhow::Error>("done")
+            })
+            .await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "done");
+        assert_eq!(coordinator.current_state().unwrap().value, 42);
+        assert_eq!(subscriber.get_migrate_calls(), 1);
+        assert_eq!(subscriber.get_rollback_calls(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_with_pending_state_effect_failure_rollback() {
+        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let subscriber = Arc::new(MockSubscriber::new("sub"));
+        coordinator.add_subscriber(Box::new(subscriber.clone()));
+
+        let state = TestState {
+            value: 99,
+            name: "effect_fail".to_string(),
+        };
+        let result: Result<(), WithEffectError<anyhow::Error>> = coordinator
+            .with_pending_state(&state, |_s| async move {
+                Err::<(), _>(anyhow::anyhow!("effect failed"))
+            })
+            .await;
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            WithEffectError::Effect(e) => {
+                assert!(e.to_string().contains("effect failed"));
+            }
+            other => panic!("Expected WithEffectError::Effect, got: {other:?}"),
+        }
+
+        // State should NOT be committed
+        assert!(coordinator.current_state().is_none());
+        // Subscriber was migrated then rolled back
+        assert_eq!(subscriber.get_migrate_calls(), 1);
+        assert_eq!(subscriber.get_rollback_calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_with_pending_state_migration_failure_no_effect() {
+        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let subscriber = Arc::new(MockSubscriber::new("sub"));
+        subscriber.set_migrate_failure(true);
+        coordinator.add_subscriber(Box::new(subscriber.clone()));
+
+        let state = TestState {
+            value: 1,
+            name: "migrate_fail".to_string(),
+        };
+        let effect_called = Arc::new(AtomicBool::new(false));
+        let effect_called_clone = effect_called.clone();
+
+        let result: Result<(), WithEffectError<anyhow::Error>> = coordinator
+            .with_pending_state(&state, |_s| async move {
+                effect_called_clone.store(true, Ordering::SeqCst);
+                Ok::<(), anyhow::Error>(())
+            })
+            .await;
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            WithEffectError::State(_) => {}
+            other => panic!("Expected WithEffectError::State, got: {other:?}"),
+        }
+
+        // Effect should NOT have been called
+        assert!(!effect_called.load(Ordering::SeqCst));
+        assert!(coordinator.current_state().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_with_pending_state_effect_fail_rollback_fail() {
+        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let subscriber = Arc::new(MockSubscriber::new("sub"));
+        subscriber.set_rollback_failure(true);
+        coordinator.add_subscriber(Box::new(subscriber.clone()));
+
+        let state = TestState {
+            value: 1,
+            name: "double_fail".to_string(),
+        };
+        let result: Result<(), WithEffectError<anyhow::Error>> = coordinator
+            .with_pending_state(&state, |_s| async move {
+                Err::<(), _>(anyhow::anyhow!("effect failed"))
+            })
+            .await;
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            WithEffectError::EffectAndRollback { effect, rollback } => {
+                assert!(effect.to_string().contains("effect failed"));
+                assert!(matches!(rollback, StateChangedError::Rollback(_)));
+            }
+            other => panic!("Expected WithEffectError::EffectAndRollback, got: {other:?}"),
+        }
+
+        assert!(coordinator.current_state().is_none());
+        assert_eq!(subscriber.get_migrate_calls(), 1);
+        assert_eq!(subscriber.get_rollback_calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_with_pending_state_effect_fail_multi_subscriber_rollback_order() {
+        let rollback_order = Arc::new(Mutex::new(Vec::<String>::new()));
+
+        struct OrderTracker {
+            name: String,
+            rollback_order: Arc<Mutex<Vec<String>>>,
+        }
+
+        impl FusedStateChangedSubscriber for OrderTracker {}
+
+        #[async_trait::async_trait]
+        impl StateChangedSubscriber<TestState> for OrderTracker {
+            fn name(&self) -> &str {
+                &self.name
+            }
+
+            async fn migrate(
+                &self,
+                _prev: Option<TestState>,
+                _new: TestState,
+            ) -> Result<(), anyhow::Error> {
+                Ok(())
+            }
+
+            async fn rollback(
+                &self,
+                _prev: Option<TestState>,
+                _new: TestState,
+            ) -> Result<(), anyhow::Error> {
+                self.rollback_order.lock().await.push(self.name.clone());
+                Ok(())
+            }
+        }
+
+        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        coordinator.add_subscriber(Box::new(OrderTracker {
+            name: "A".to_string(),
+            rollback_order: rollback_order.clone(),
+        }));
+        coordinator.add_subscriber(Box::new(OrderTracker {
+            name: "B".to_string(),
+            rollback_order: rollback_order.clone(),
+        }));
+        coordinator.add_subscriber(Box::new(OrderTracker {
+            name: "C".to_string(),
+            rollback_order: rollback_order.clone(),
+        }));
+
+        let state = TestState {
+            value: 0,
+            name: "order".to_string(),
+        };
+
+        let _result: Result<(), WithEffectError<anyhow::Error>> = coordinator
+            .with_pending_state(&state, |_s| async move {
+                Err::<(), _>(anyhow::anyhow!("effect failed"))
+            })
+            .await;
+
+        let order = rollback_order.lock().await;
+        // All subscribers should be rolled back in reverse order
+        assert_eq!(*order, vec!["C", "B", "A"]);
     }
 }

@@ -269,7 +269,7 @@ jobs:
         continue-on-error: true
         run: |
           deno run -A scripts/deno/upload-build-artifacts.ts \
-            "backend/target/**/bundle/**/*.exe" \
+            "backend/target/**/bundle/nsis/*.exe" \
             "*_portable.zip"
         env:
           FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}

@@ -9,11 +9,15 @@ on:
         type: boolean
         default: false
 
-      fixed-webview:
-        description: 'Fixed WebView'
+      bundle-type:
+        description: 'Bundle variant'
         required: true
-        type: boolean
-        default: false
+        type: choice
+        default: 'standard'
+        options:
+          - standard
+          - fixed-webview
+          - both
 
       nightly:
         description: 'Nightly prepare'
@@ -44,11 +48,11 @@ on:
         type: boolean
         default: false
 
-      fixed-webview:
-        description: 'Fixed WebView'
-        required: true
-        type: boolean
-        default: false
+      bundle-type:
+        description: 'Bundle variant: standard | fixed-webview | both'
+        required: false
+        type: string
+        default: 'standard'
 
       nightly:
         description: 'Nightly prepare'
@@ -137,8 +141,114 @@ jobs:
             }
           }
 
+      - name: Build UI
+        run: |
+          pnpm -F ui build
+
+      - name: Set file server folder path
+        if: ${{ inputs.nightly == true }}
+        shell: bash
+        run: |
+          GIT_HASH=$(git rev-parse --short HEAD)
+          echo "FOLDER_PATH=nightly/${GIT_HASH}" >> $GITHUB_ENV
+
+      - name: Prepare (Windows NSIS and Portable)
+        if: ${{ inputs.bundle-type != 'fixed-webview' }}
+        run: ${{ inputs.nightly == true && 'pnpm prepare:nightly --nsis' || 'pnpm prepare:release --nsis' }}
+
+      - name: Tauri build x86_64
+        if: ${{ inputs.arch == 'x86_64' && inputs.bundle-type != 'fixed-webview' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
+        run: |
+          pnpm tauri build ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json' || '-f default-meta' }}
+
+      - name: Tauri build i686
+        if: ${{ inputs.arch == 'i686' && inputs.bundle-type != 'fixed-webview' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
+        run: |
+          pnpm tauri build ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json --target i686-pc-windows-msvc' || '-f default-meta --target i686-pc-windows-msvc' }}
+
+      - name: Tauri build arm64
+        if: ${{ inputs.arch == 'aarch64' && inputs.bundle-type != 'fixed-webview' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
+        run: |
+          pnpm tauri build ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json --target aarch64-pc-windows-msvc' || '-f default-meta --target aarch64-pc-windows-msvc' }}
+
+      - name: Portable Bundle
+        if: ${{ inputs.portable == true && inputs.bundle-type != 'fixed-webview' }}
+        run: |
+          pnpm portable
+        env:
+          RUST_ARCH: ${{ inputs.arch }}
+          TAG_NAME: ${{ inputs.tag }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
+          VITE_WIN_PORTABLE: 1
+
+      - name: Upload NSIS Installer
+        if: ${{ inputs.bundle-type != 'fixed-webview' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: Clash.Nyanpasu-windows-${{ inputs.arch }}-nsis-installer
+          path: |
+            ./backend/target/**/bundle/**/*.exe
+            ./backend/target/**/bundle/**/*.zip
+            ./backend/target/**/bundle/**/*.zip.sig
+
+      - name: Upload portable
+        if: ${{ inputs.portable == true && inputs.bundle-type != 'fixed-webview' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: Clash.Nyanpasu-windows-${{ inputs.arch }}-portable
+          path: |
+            ./*_portable.zip
+
+      - name: Upload to file server
+        if: ${{ inputs.nightly == true && inputs.bundle-type != 'fixed-webview' }}
+        shell: bash
+        continue-on-error: true
+        run: |
+          deno run -A scripts/deno/upload-build-artifacts.ts \
+            "backend/target/**/bundle/nsis/*.exe" \
+            "*_portable.zip"
+        env:
+          FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
+          FOLDER_PATH: ${{ env.FOLDER_PATH }}
+
+      - name: Upload file server results
+        if: ${{ inputs.nightly == true && inputs.bundle-type != 'fixed-webview' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: upload-results-windows-${{ inputs.arch }}
+          path: ./upload-results.json
+          if-no-files-found: ignore
+
+      - name: Clean standard build outputs
+        if: ${{ inputs.bundle-type == 'both' }}
+        run: |
+          Get-ChildItem -Path "./backend/target" -Recurse -Include "*.exe", "*.zip", "*.zip.sig" |
+            Where-Object { $_.FullName -like "*\bundle\*" } |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -Path "." -Filter "*_portable.zip" -ErrorAction SilentlyContinue |
+            Remove-Item -Force
+          Remove-Item -Path "./upload-results.json" -Force -ErrorAction SilentlyContinue
+
       - name: Download fixed WebView
-        if: ${{ inputs.fixed-webview == true }}
+        if: ${{ inputs.bundle-type != 'standard' }}
         run: |
           $condition = '${{ inputs.arch }}'
           switch ($condition) {
@@ -162,20 +272,12 @@ jobs:
           expand.exe $outfile -F:* ./backend/tauri
           echo "Extraction finished"
 
-      - name: Prepare (Windows NSIS and Portable)
-        if: ${{ inputs.fixed-webview == false }}
-        run: ${{ inputs.nightly == true && 'pnpm prepare:nightly --nsis' || 'pnpm prepare:release --nsis' }}
-
       - name: Prepare (Windows NSIS and Portable) with fixed WebView
-        if: ${{ inputs.fixed-webview == true }}
+        if: ${{ inputs.bundle-type != 'standard' }}
         run: ${{ inputs.nightly == true && 'pnpm prepare:nightly --nsis --fixed-webview' || 'pnpm prepare:release --nsis --fixed-webview' }}
 
-      - name: Build UI
-        run: |
-          pnpm -F ui build
-      # TODO: optimize strategy
-      - name: Tauri build x86_64
-        if: ${{ inputs.arch == 'x86_64' }}
+      - name: Tauri build x86_64 with fixed WebView
+        if: ${{ inputs.arch == 'x86_64' && inputs.bundle-type != 'standard' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
@@ -184,8 +286,8 @@ jobs:
         run: |
           pnpm tauri build ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json' || '-f default-meta' }}
 
-      - name: Tauri build i686
-        if: ${{ inputs.arch == 'i686' }}
+      - name: Tauri build i686 with fixed WebView
+        if: ${{ inputs.arch == 'i686' && inputs.bundle-type != 'standard' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
@@ -193,8 +295,9 @@ jobs:
           NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
         run: |
           pnpm tauri build ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json --target i686-pc-windows-msvc' || '-f default-meta --target i686-pc-windows-msvc' }}
-      - name: Tauri build arm64
-        if: ${{ inputs.arch == 'aarch64' }}
+
+      - name: Tauri build arm64 with fixed WebView
+        if: ${{ inputs.arch == 'aarch64' && inputs.bundle-type != 'standard' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
@@ -204,7 +307,7 @@ jobs:
           pnpm tauri build ${{ inputs.nightly == true && '-f nightly -c ./backend/tauri/tauri.nightly.conf.json --target aarch64-pc-windows-msvc' || '-f default-meta --target aarch64-pc-windows-msvc' }}
 
       - name: Rename fixed webview bundle name
-        if: ${{ inputs.fixed-webview == true }}
+        if: ${{ inputs.bundle-type != 'standard' }}
         run: |
           $files = Get-ChildItem -Path "./backend/target" -Recurse -Include "*.exe", "*.zip", "*.zip.sig" | Where-Object { $_.FullName -like "*\bundle\*" }
           $condition = '${{ inputs.arch }}'
@@ -226,10 +329,10 @@ jobs:
             Rename-Item -Path $file -NewName $newname
           }
 
-      - name: Portable Bundle
-        if: ${{ inputs.portable == true }}
+      - name: Portable Bundle with fixed WebView
+        if: ${{ inputs.portable == true && inputs.bundle-type != 'standard' }}
         run: |
-          pnpm portable ${{ inputs.fixed-webview == true && '--fixed-webview' || '' }}
+          pnpm portable --fixed-webview
         env:
           RUST_ARCH: ${{ inputs.arch }}
           TAG_NAME: ${{ inputs.tag }}
@@ -239,32 +342,26 @@ jobs:
           NIGHTLY: ${{ inputs.nightly == true  && 'true' || 'false' }}
           VITE_WIN_PORTABLE: 1
 
-      - name: Upload NSIS Installer
+      - name: Upload NSIS Installer with fixed WebView
+        if: ${{ inputs.bundle-type != 'standard' }}
         uses: actions/upload-artifact@v7
         with:
-          name: Clash.Nyanpasu-windows-${{ inputs.arch }}${{ inputs.fixed-webview == true && '-fixed-webview' || '' }}-nsis-installer
+          name: Clash.Nyanpasu-windows-${{ inputs.arch }}-fixed-webview-nsis-installer
           path: |
             ./backend/target/**/bundle/**/*.exe
             ./backend/target/**/bundle/**/*.zip
             ./backend/target/**/bundle/**/*.zip.sig
 
-      - name: Upload portable
-        if: ${{ inputs.portable == true }}
+      - name: Upload portable with fixed WebView
+        if: ${{ inputs.portable == true && inputs.bundle-type != 'standard' }}
         uses: actions/upload-artifact@v7
         with:
-          name: Clash.Nyanpasu-windows-${{ inputs.arch }}${{ inputs.fixed-webview == true && '-fixed-webview' || '' }}-portable
+          name: Clash.Nyanpasu-windows-${{ inputs.arch }}-fixed-webview-portable
           path: |
             ./*_portable.zip
 
-      - name: Set file server folder path
-        if: ${{ inputs.nightly == true }}
-        shell: bash
-        run: |
-          GIT_HASH=$(git rev-parse --short HEAD)
-          echo "FOLDER_PATH=nightly/${GIT_HASH}" >> $GITHUB_ENV
-
-      - name: Upload to file server
-        if: ${{ inputs.nightly == true }}
+      - name: Upload to file server with fixed WebView
+        if: ${{ inputs.nightly == true && inputs.bundle-type != 'standard' }}
         shell: bash
         continue-on-error: true
         run: |
@@ -275,10 +372,10 @@ jobs:
           FILE_SERVER_TOKEN: ${{ secrets.FILE_SERVER_TOKEN }}
           FOLDER_PATH: ${{ env.FOLDER_PATH }}
 
-      - name: Upload file server results
-        if: ${{ inputs.nightly == true }}
+      - name: Upload file server results with fixed WebView
+        if: ${{ inputs.nightly == true && inputs.bundle-type != 'standard' }}
         uses: actions/upload-artifact@v7
         with:
-          name: upload-results-windows-${{ inputs.arch }}${{ inputs.fixed-webview == true && '-fixed-webview' || '' }}
+          name: upload-results-windows-${{ inputs.arch }}-fixed-webview
           path: ./upload-results.json
           if-no-files-found: ignore

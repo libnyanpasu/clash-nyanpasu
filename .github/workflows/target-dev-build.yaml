@@ -21,7 +21,7 @@ jobs:
     with:
       portable: true
       nightly: true
-      fixed-webview: false
+      bundle-type: 'both'
       arch: 'x86_64'
       tag: 'pre-release'
     secrets: inherit
@@ -33,7 +33,7 @@ jobs:
     with:
       portable: true
       nightly: true
-      fixed-webview: false
+      bundle-type: 'both'
       arch: 'aarch64'
       tag: 'pre-release'
     secrets: inherit
@@ -45,44 +45,8 @@ jobs:
     with:
       portable: true
       nightly: true
-      fixed-webview: false
+      bundle-type: 'both'
       arch: 'i686'
-      tag: 'pre-release'
-    secrets: inherit
-
-  windows_amd64_build_fixed_webview:
-    name: Windows x86_64 Build with Fixed WebView
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
-    uses: ./.github/workflows/deps-build-windows-nsis.yaml
-    with:
-      portable: true
-      nightly: true
-      arch: 'x86_64'
-      fixed-webview: true
-      tag: 'pre-release'
-    secrets: inherit
-
-  windows_aarch64_build_fixed_webview:
-    name: Windows aarch64 Build with Fixed WebView
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
-    uses: ./.github/workflows/deps-build-windows-nsis.yaml
-    with:
-      portable: true
-      nightly: true
-      arch: 'aarch64'
-      fixed-webview: true
-      tag: 'pre-release'
-    secrets: inherit
-
-  windows_i686_build_fixed_webview:
-    name: Windows i686 Build with Fixed WebView
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
-    uses: ./.github/workflows/deps-build-windows-nsis.yaml
-    with:
-      portable: true
-      nightly: true
-      arch: 'i686'
-      fixed-webview: true
       tag: 'pre-release'
     secrets: inherit
 
@@ -163,9 +127,6 @@ jobs:
         windows_amd64_build,
         windows_i686_build,
         windows_aarch64_build,
-        windows_amd64_build_fixed_webview,
-        windows_i686_build_fixed_webview,
-        windows_aarch64_build_fixed_webview,
         linux_amd64_build,
         linux_i686_build,
         linux_aarch64_build,

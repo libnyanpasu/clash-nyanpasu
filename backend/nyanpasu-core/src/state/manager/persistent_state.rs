@@ -76,7 +76,6 @@ where
     pub fn current_state(&self) -> Option<State> {
         self.state_coordinator.current_state()
     }
-
     pub async fn upsert(&mut self, state: State) -> Result<(), UpsertError>
     where
         Formatter: Clone,
@@ -84,7 +83,6 @@ where
         let config_path = self.config_path.clone();
         let config_prefix = self.config_prefix.clone();
         let formatter = self.formatter.clone();
-
         self.state_coordinator
             .with_pending_state(&state, |s| async move {
                 let mut buf = Vec::with_capacity(4096);

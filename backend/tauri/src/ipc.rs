@@ -102,6 +102,12 @@ pub fn is_portable() -> Result<bool> {
 
 #[tauri::command]
 #[specta::specta]
+pub fn get_device_info() -> Result<crate::utils::hwid::DeviceInfo> {
+    Ok(crate::utils::hwid::get_device_info())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn enhance_profiles() -> Result {
     CoreManager::global().update_config().await?;
     handle::Handle::refresh_clash();

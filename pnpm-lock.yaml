@@ -59,8 +59,8 @@ importers:
         specifier: 17.4.0
         version: 17.4.0
       knip:
-        specifier: 6.0.2
-        version: 6.0.2
+        specifier: 6.0.3
+        version: 6.0.3
       lint-staged:
         specifier: 16.4.0
         version: 16.4.0
@@ -6083,8 +6083,8 @@ packages:
     resolution: {integrity: sha512-dcS1ul+9tmeD95T+x28/ehLgd9mENa3LsvDTtzm3vyBEO7RPptvAD+t44WVXaUjTBRcrpFeFlC8WCruUR456hw==}
     engines: {node: '>=0.10.0'}
 
-  knip@6.0.2:
-    resolution: {integrity: sha512-W17Bo5N9AYn0ZkgWHGBmK/01SrSmr3B6iStr3zudDa2eqi+Kc8VmPjSpTYKDV2Uy/kojrlcH/gS1wypAXfXRRA==}
+  knip@6.0.3:
+    resolution: {integrity: sha512-6Ai+Iv41dVpBYH6mReFejhniWq4eiaKrBw4kghqz2Ew5psQMYEqYxJtXLdj/7vRJ3nVaHpakhYUCKO8p3ftNsQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
 
@@ -13727,7 +13727,7 @@ snapshots:
 
   kind-of@6.0.3: {}
 
-  knip@6.0.2:
+  knip@6.0.3:
     dependencies:
       '@nodelib/fs.walk': 1.2.8
       fast-glob: 3.3.3

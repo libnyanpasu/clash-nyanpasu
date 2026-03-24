@@ -134,8 +134,8 @@ importers:
         specifier: 2.10.1
         version: 2.10.1
       ahooks:
-        specifier: 3.9.6
-        version: 3.9.6(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        specifier: 3.9.7
+        version: 3.9.7(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       dayjs:
         specifier: 1.11.20
         version: 1.11.20
@@ -240,8 +240,8 @@ importers:
         specifier: 2.9.6
         version: 2.9.6(@babel/runtime@7.29.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       ahooks:
-        specifier: 3.9.6
-        version: 3.9.6(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        specifier: 3.9.7
+        version: 3.9.7(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       allotment:
         specifier: 1.20.5
         version: 1.20.5(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -481,8 +481,8 @@ importers:
         specifier: 5.2.0
         version: 5.2.0(vite@7.3.1(@types/node@24.11.0)(jiti@2.6.1)(less@4.2.0)(lightningcss@1.32.0)(sass-embedded@1.98.0)(sass@1.98.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.21.0)(yaml@2.8.2))
       ahooks:
-        specifier: 3.9.6
-        version: 3.9.6(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        specifier: 3.9.7
+        version: 3.9.7(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       d3:
         specifier: 7.9.0
         version: 7.9.0
@@ -1203,10 +1203,6 @@ packages:
 
   '@babel/runtime@7.28.3':
     resolution: {integrity: sha512-9uIQ10o0WGdpP6GDhXcdOJPJuDgFtIDtN/9+ArJQ2NAfAmiuhTQdzkaTGR33v43GYS2UrSA0eX2pPPHoFVvpxA==}
-    engines: {node: '>=6.9.0'}
-
-  '@babel/runtime@7.28.4':
-    resolution: {integrity: sha512-Q/N6JNWvIvPnLDvjlE1OUBLPQHH6l3CltCEsHIujp45zQUSSh8K+gHnaEX45yAT1nyngnINhvWtzN+Nb9D8RAQ==}
     engines: {node: '>=6.9.0'}
 
   '@babel/runtime@7.28.6':
@@ -4657,8 +4653,8 @@ packages:
     resolution: {integrity: sha512-TGw5yVi4saajsSEgz25grObGHEUaDrniwvA2qwSC060KfqGPdglhvPMA2lPIoxs3PQIItj2iag35fONcQqgUaQ==}
     engines: {node: '>=12.0'}
 
-  ahooks@3.9.6:
-    resolution: {integrity: sha512-Mr7f05swd5SmKlR9SZo5U6M0LsL4ErweLzpdgXjA1JPmnZ78Vr6wzx0jUtvoxrcqGKYnX0Yjc02iEASVxHFPjQ==}
+  ahooks@3.9.7:
+    resolution: {integrity: sha512-S0lvzhbdlhK36RFBkGv+RbOM/dbbweym+BIHM/bwwuWVSVN5TuVErHPMWo4w0t1NDYg5KPp2iEf7Y7E5LASYiw==}
     peerDependencies:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
@@ -8953,8 +8949,6 @@ snapshots:
 
   '@babel/runtime@7.28.3': {}
 
-  '@babel/runtime@7.28.4': {}
-
   '@babel/runtime@7.28.6': {}
 
   '@babel/runtime@7.29.2': {}
@@ -12354,9 +12348,9 @@ snapshots:
 
   adm-zip@0.5.16: {}
 
-  ahooks@3.9.6(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
+  ahooks@3.9.7(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
     dependencies:
-      '@babel/runtime': 7.28.4
+      '@babel/runtime': 7.29.2
       '@types/js-cookie': 3.0.6
       dayjs: 1.11.20
       intersection-observer: 0.12.2

@@ -12,17 +12,36 @@ pub struct DeviceInfo {
     pub device_model: String,
 }
 
-/// Cached device info — computed once, reused for all subscription requests.
-pub static DEVICE_INFO: Lazy<DeviceInfo> = Lazy::new(|| {
-    get_device_info_inner().unwrap_or_else(|e| {
-        tracing::error!("Failed to generate device info: {e:?}");
-        DeviceInfo {
-            hwid: "unknown".to_string(),
+impl Default for DeviceInfo {
+    fn default() -> Self {
+        Self {
+            hwid: generate_fallback_hwid(),
             device_os: get_device_os().to_string(),
-            os_version: "unknown".to_string(),
-            device_model: "unknown".to_string(),
+            os_version: get_os_version(),
+            device_model: get_device_model(),
         }
-    })
+    }
+}
+
+/// Cached device info — computed once, reused for all subscription requests.
+/// Starts from `Default` (which already has real OS/model data and a fallback HWID),
+/// then tries to replace the HWID with a platform-specific one.
+pub static DEVICE_INFO: Lazy<DeviceInfo> = Lazy::new(|| {
+    let mut info = DeviceInfo::default();
+    match get_platform_hwid() {
+        Ok(hwid) => {
+            tracing::debug!(
+                "HWID generated: {}...{}",
+                &hwid[..4],
+                &hwid[hwid.len() - 4..]
+            );
+            info.hwid = hwid;
+        }
+        Err(e) => {
+            tracing::error!("Failed to generate platform HWID, using fallback: {e:?}");
+        }
+    }
+    info
 });
 
 /// Public accessor that returns a clone of the cached DeviceInfo.
@@ -30,27 +49,15 @@ pub fn get_device_info() -> DeviceInfo {
     DEVICE_INFO.clone()
 }
 
-fn get_device_info_inner() -> Result<DeviceInfo> {
+/// Generates a platform-specific HWID from the machine ID.
+fn get_platform_hwid() -> Result<String> {
     let raw_id = get_platform_machine_id()?;
     let salted = format!("clash-nyanpasu:{}", raw_id);
 
     let mut hasher = Sha256::new();
     hasher.update(salted.as_bytes());
     let hash = hasher.finalize();
-    let hwid = hex::encode(&hash[..16]); // 32 hex chars
-
-    tracing::info!(
-        "HWID generated: {}...{}",
-        &hwid[..4],
-        &hwid[hwid.len() - 4..]
-    );
-
-    Ok(DeviceInfo {
-        hwid,
-        device_os: get_device_os().to_string(),
-        os_version: get_os_version(),
-        device_model: get_device_model(),
-    })
+    Ok(hex::encode(&hash[..16])) // 32 hex chars
 }
 
 // ---------------------------------------------------------------------------
@@ -112,6 +119,30 @@ fn get_platform_machine_id() -> Result<String> {
 #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
 fn get_platform_machine_id() -> Result<String> {
     Err(anyhow!("Unsupported platform for HWID generation"))
+}
+
+// ---------------------------------------------------------------------------
+// Fallback HWID
+// ---------------------------------------------------------------------------
+
+/// Generates a deterministic 32-char hex fallback HWID when platform-specific
+/// machine ID retrieval fails. Uses a fixed seed so the value is stable.
+fn generate_fallback_hwid() -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"clash-nyanpasu:fallback");
+    let hash = hasher.finalize();
+    hex::encode(&hash[..16])
+}
+
+// ---------------------------------------------------------------------------
+// ASCII sanitization for HTTP headers
+// ---------------------------------------------------------------------------
+
+/// Strips non-ASCII characters from a string to produce a valid HTTP header value.
+/// `reqwest::header::HeaderValue` rejects non-ASCII bytes, so this prevents
+/// runtime panics for users with localized hostnames or model names.
+pub fn sanitize_for_header(s: &str) -> String {
+    s.chars().filter(|c| c.is_ascii() && *c >= ' ').collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -220,5 +251,20 @@ mod tests {
     fn test_device_model_not_empty() {
         let model = get_device_model();
         assert!(!model.is_empty());
+    }
+
+    #[test]
+    fn test_fallback_hwid_is_valid_hex_32() {
+        let hwid = generate_fallback_hwid();
+        assert_eq!(hwid.len(), 32);
+        assert!(hwid.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_sanitize_for_header_strips_non_ascii() {
+        assert_eq!(sanitize_for_header("Hello"), "Hello");
+        assert_eq!(sanitize_for_header("Привет"), "");
+        assert_eq!(sanitize_for_header("PC-Кирилл"), "PC-");
+        assert_eq!(sanitize_for_header("Model\x00Name"), "ModelName");
     }
 }

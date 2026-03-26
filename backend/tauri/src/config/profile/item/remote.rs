@@ -156,13 +156,14 @@ async fn subscribe_url(
         source: e,
     })?;
     let device_info = crate::utils::hwid::get_device_info();
+    let sanitize = crate::utils::hwid::sanitize_for_header;
     let perform_req = || async {
         client
             .get(url.as_str())
             .header("x-hwid", &device_info.hwid)
-            .header("x-device-os", &device_info.device_os)
-            .header("x-ver-os", &device_info.os_version)
-            .header("x-device-model", &device_info.device_model)
+            .header("x-device-os", sanitize(&device_info.device_os))
+            .header("x-ver-os", sanitize(&device_info.os_version))
+            .header("x-device-model", sanitize(&device_info.device_model))
             .send()
             .await?
             .error_for_status()

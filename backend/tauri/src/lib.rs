@@ -249,7 +249,7 @@ pub fn run() -> std::io::Result<()> {
             ipc::service::stop_service,
             ipc::service::restart_service,
             ipc::is_portable,
-            ipc::get_device_info,
+            // ipc::get_device_info,
             ipc::get_proxies,
             ipc::select_proxy,
             ipc::update_proxy_provider,

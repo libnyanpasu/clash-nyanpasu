@@ -1,7 +1,7 @@
 use crate::{
     config::{
         Config, IVerge,
-        nyanpasu::{ClashCore, WindowState},
+        nyanpasu::{ClashCore, WindowState, WindowType},
     },
     core::{storage::Storage, tray::proxies, *},
     log_err,
@@ -372,49 +372,57 @@ pub fn save_legacy_window_state(app_handle: &AppHandle, save_to_file: bool) -> R
     LegacyWindow.save_state(app_handle, save_to_file)
 }
 
-/// Create window based on use_legacy_ui config
+/// Create window based on window_type config
 /// This is the primary function to use when opening window from tray, etc.
 #[tracing_attributes::instrument(skip(app_handle))]
 pub fn create_window(app_handle: &AppHandle) {
-    let use_legacy = Config::verge().latest().use_legacy_ui.unwrap_or(true);
+    let window_type = Config::verge()
+        .latest()
+        .window_type
+        .unwrap_or(WindowType::Main);
 
-    if use_legacy {
-        create_legacy_window(app_handle);
-    } else {
-        create_main_window(app_handle);
+    match window_type {
+        WindowType::Legacy => create_legacy_window(app_handle),
+        WindowType::Main => create_main_window(app_handle),
     }
 }
 
-/// Close the currently active window based on use_legacy_ui config
+/// Close the currently active window based on window_type config
 pub fn close_window(app_handle: &AppHandle) {
-    let use_legacy = Config::verge().latest().use_legacy_ui.unwrap_or(true);
+    let window_type = Config::verge()
+        .latest()
+        .window_type
+        .unwrap_or(WindowType::Main);
 
-    if use_legacy {
-        close_legacy_window(app_handle);
-    } else {
-        close_main_window(app_handle);
+    match window_type {
+        WindowType::Legacy => close_legacy_window(app_handle),
+        WindowType::Main => close_main_window(app_handle),
     }
 }
 
 /// Check if the configured window is open
 pub fn is_window_open(app_handle: &AppHandle) -> bool {
-    let use_legacy = Config::verge().latest().use_legacy_ui.unwrap_or(true);
+    let window_type = Config::verge()
+        .latest()
+        .window_type
+        .unwrap_or(WindowType::Main);
 
-    if use_legacy {
-        is_legacy_window_open(app_handle)
-    } else {
-        is_main_window_open(app_handle)
+    match window_type {
+        WindowType::Legacy => is_legacy_window_open(app_handle),
+        WindowType::Main => is_main_window_open(app_handle),
     }
 }
 
 /// Save window state for the configured window type
 pub fn save_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
-    let use_legacy = Config::verge().latest().use_legacy_ui.unwrap_or(true);
+    let window_type = Config::verge()
+        .latest()
+        .window_type
+        .unwrap_or(WindowType::Main);
 
-    if use_legacy {
-        save_legacy_window_state(app_handle, save_to_file)
-    } else {
-        save_main_window_state(app_handle, save_to_file)
+    match window_type {
+        WindowType::Legacy => save_legacy_window_state(app_handle, save_to_file),
+        WindowType::Main => save_main_window_state(app_handle, save_to_file),
     }
 }
 

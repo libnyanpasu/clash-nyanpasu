@@ -70,9 +70,15 @@ function RouteComponent() {
         <LanguageSettings />
 
         <ThemeModeSettings />
-      </div>
 
-      {/* <SwitchLegacy /> */}
+        <div data-slot="switch-legacy-settings-container">
+          <SettingsLabel>Switch to Legacy UI</SettingsLabel>
+
+          <SettingsGroup>
+            <SwitchLegacy />
+          </SettingsGroup>
+        </div>
+      </div>
     </>
   )
 }

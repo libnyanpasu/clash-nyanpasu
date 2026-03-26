@@ -149,6 +149,14 @@ pub enum BreakWhenProxyChange {
     All,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum WindowType {
+    Legacy,
+    #[default]
+    Main,
+}
+
 /// ### `verge.yaml` schema
 #[derive(Default, Debug, Clone, Deserialize, Serialize, VergePatch, specta::Type)]
 #[verge(patch_fn = "patch_config")]
@@ -297,9 +305,9 @@ pub struct IVerge {
     /// When disabled, only shows status via icon changes (prevents text display issues on Wayland)
     pub enable_tray_text: Option<bool>,
 
-    /// Use legacy UI (original UI at "/" route)
-    /// When true, opens legacy window; when false, opens new main window
-    pub use_legacy_ui: Option<bool>,
+    /// Window type to use when opening the app window
+    /// Legacy: opens legacy window; Main: opens new main window
+    pub window_type: Option<WindowType>,
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize, Type)]
@@ -382,8 +390,8 @@ impl IVerge {
             config.enable_tray_text = template.enable_tray_text;
         }
 
-        if config.use_legacy_ui.is_none() {
-            config.use_legacy_ui = template.use_legacy_ui;
+        if config.window_type.is_none() {
+            config.window_type = template.window_type;
         }
 
         config
@@ -421,7 +429,7 @@ impl IVerge {
             enable_service_mode: Some(false),
             always_on_top: Some(false),
             enable_tray_text: Some(false),
-            use_legacy_ui: Some(true),
+            window_type: Some(WindowType::Main),
             ..Self::default()
         }
     }

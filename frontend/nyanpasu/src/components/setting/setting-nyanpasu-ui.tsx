@@ -111,10 +111,10 @@ const ThemeColor = () => {
 }
 
 const ExperimentalSwitch = () => {
-  const { upsert } = useSetting('use_legacy_ui')
+  const { upsert } = useSetting('window_type')
 
   const handleClick = useLockFn(async () => {
-    await upsert(false)
+    await upsert('main')
     await commands.createMainWindow()
     await currentWindow.close()
   })

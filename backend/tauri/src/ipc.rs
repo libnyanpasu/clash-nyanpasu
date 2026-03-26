@@ -100,11 +100,11 @@ pub fn is_portable() -> Result<bool> {
     Ok(false)
 }
 
-#[tauri::command]
-#[specta::specta]
-pub fn get_device_info() -> Result<crate::utils::hwid::DeviceInfo> {
-    Ok(crate::utils::hwid::get_device_info())
-}
+// #[tauri::command]
+// #[specta::specta]
+// pub fn get_device_info() -> Result<crate::utils::hwid::DeviceInfo> {
+//     Ok(crate::utils::hwid::get_device_info())
+// }
 
 #[tauri::command]
 #[specta::specta]

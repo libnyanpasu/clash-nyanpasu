@@ -1094,10 +1094,10 @@ export type IVerge = {
    */
   enable_tray_text: boolean | null
   /**
-   * Use legacy UI (original UI at "/" route)
-   * When true, opens legacy window; when false, opens new main window
+   * Window type to use when opening the app window
+   * Legacy: opens legacy window; Main: opens new main window
    */
-  use_legacy_ui: boolean | null
+  window_type: WindowType | null
 }
 export type JsonValue =
   | null
@@ -1640,6 +1640,7 @@ export type WindowState = {
   maximized: boolean
   fullscreen: boolean
 }
+export type WindowType = 'legacy' | 'main'
 
 type __EventObj__<T> = {
   listen: (

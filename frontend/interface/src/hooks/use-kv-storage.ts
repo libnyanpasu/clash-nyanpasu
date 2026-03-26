@@ -75,6 +75,11 @@ export function useKvStorage<T>(
   const migrateRef = useRef(options?.migrate)
   migrateRef.current = options?.migrate
 
+  // Track pending writes so the echo event from the backend doesn't cause a
+  // redundant re-render. The set stores the serialized JSON of each in-flight
+  // write; when the confirming event arrives we just discard it.
+  const pendingWritesRef = useRef<Set<string>>(new Set())
+
   const applyMigrate = useCallback((raw: unknown): T => {
     return migrateRef.current ? migrateRef.current(raw) : (raw as T)
   }, [])
@@ -111,11 +116,31 @@ export function useKvStorage<T>(
       }
 
       if (event.payload.value === null) {
+        pendingWritesRef.current.delete('null')
         setValueState(defaultValueRef.current)
         removeLocalCache(key)
       } else {
+        // If this event is the echo of our own optimistic write, skip the
+        // redundant setState to avoid an unnecessary re-render.
+        // Note: the backend double-encodes the value in the event payload
+        // (the stored JSON string is wrapped in another JSON string), so we
+        // compare against the double-encoded form.
+        if (pendingWritesRef.current.has(event.payload.value)) {
+          pendingWritesRef.current.delete(event.payload.value)
+          return
+        }
+
         try {
-          const parsed = JSON.parse(event.payload.value)
+          // The backend emits the stored value double-encoded: the raw stored
+          // string (already valid JSON) is JSON-encoded again inside the event
+          // payload. Parse once to get the inner string, then parse again to
+          // get the actual value. Fall back to single-parse for backends that
+          // emit the value without extra encoding.
+          const firstParsed = JSON.parse(event.payload.value)
+          const parsed =
+            typeof firstParsed === 'string'
+              ? JSON.parse(firstParsed)
+              : firstParsed
           const migrated = applyMigrate(parsed)
 
           setValueState(migrated)
@@ -138,14 +163,18 @@ export function useKvStorage<T>(
           ? (newValue as (prev: T) => T)(valueRef.current)
           : newValue
 
+      const serialized = JSON.stringify(resolved)
+
+      // Register this write so the confirming event can be suppressed.
+      // The backend double-encodes the value in the event, so we store the
+      // double-encoded form to match what the event listener will receive.
+      pendingWritesRef.current.add(JSON.stringify(serialized))
+
       // Optimistic update — the backend event will also arrive and confirm
       setValueState(resolved)
       setLocalCache(key, resolved)
 
-      const result = await commands.setStorageItem(
-        key,
-        JSON.stringify(resolved),
-      )
+      const result = await commands.setStorageItem(key, serialized)
 
       if (result.status === 'error') {
         console.error('[useKvStorage] setStorageItem failed:', result.error)

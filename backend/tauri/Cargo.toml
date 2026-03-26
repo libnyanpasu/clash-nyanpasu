@@ -89,7 +89,7 @@ axum = "0.8"
 url = "2"
 mime = "0.3"
 reqwest = { workspace = true }
-tokio-tungstenite = "0.28"
+tokio-tungstenite = "0.29"
 urlencoding = "2.1"
 port_scanner = "0.1.5"
 sysproxy = { git = "https://github.com/libnyanpasu/sysproxy-rs.git", version = "0.3" }
@@ -107,7 +107,7 @@ semver = "1.0"
 # Compression & Encoding
 flate2 = "1.0"
 zip = "8.0.0"
-zip-extensions = "0.13.0"
+zip-extensions = "0.14.0"
 base64 = "0.22"
 adler = "1.0.2"
 hex = "0.4"
@@ -169,12 +169,12 @@ display-info = "0.5.0"  # should be removed after upgrading to tauri v2
 
 # OXC (The Oxidation Compiler)
 # We use it to parse and transpile the old script profile to esm based script profile
-oxc_parser = "0.120"
-oxc_allocator = "0.120"
-oxc_span = "0.120"
-oxc_ast = "0.120"
-oxc_syntax = "0.120"
-oxc_ast_visit = "0.120"
+oxc_parser = "0.122"
+oxc_allocator = "0.122"
+oxc_span = "0.122"
+oxc_ast = "0.122"
+oxc_syntax = "0.122"
+oxc_ast_visit = "0.122"
 
 # Lua Integration
 mlua = { version = "0.11", features = [

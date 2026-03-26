@@ -21,7 +21,7 @@
     "@types/d3": "7.4.3",
     "@types/react": "19.2.14",
     "@vitejs/plugin-react": "5.2.0",
-    "ahooks": "3.9.6",
+    "ahooks": "3.9.7",
     "d3": "7.9.0",
     "framer-motion": "12.38.0",
     "react": "19.2.4",
@@ -29,7 +29,7 @@
     "react-error-boundary": "6.0.0",
     "react-i18next": "15.7.4",
     "react-use": "17.6.0",
-    "tailwindcss": "4.2.1",
+    "tailwindcss": "4.2.2",
     "vite": "7.3.1",
     "vite-tsconfig-paths": "6.1.1"
   },

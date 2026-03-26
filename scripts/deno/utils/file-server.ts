@@ -5,8 +5,8 @@ import { consola } from './logger.ts'
 
 // --- constants ---
 
-export const FILE_SERVER_UPLOAD_URL = 'https://file-server.elaina.moe/upload'
-export const FILE_SERVER_BIN_URL = 'https://file-server.elaina.moe/bin'
+export const FILE_SERVER_UPLOAD_URL = 'https://file-server.majokeiko.com/upload'
+export const FILE_SERVER_BIN_URL = 'https://file-server.majokeiko.com/bin'
 
 export const UPLOAD_CONCURRENCY = 3
 export const CHUNK_RETRY_ATTEMPTS = 5

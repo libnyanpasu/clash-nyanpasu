@@ -15,6 +15,7 @@ jobs:
     with:
       portable: true
       nightly: false
+      bundle-type: 'both'
       tag: ${{ github.event.release.tag_name }}
     secrets: inherit
 

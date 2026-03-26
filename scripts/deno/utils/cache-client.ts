@@ -3,7 +3,7 @@ import { writeAll } from 'jsr:@std/io@0.225/write-all'
 import { CHUNK_MULTIPLIER, performChunkedUpload } from './file-server.ts'
 import { consola } from './logger.ts'
 
-const CACHE_BASE_URL = 'https://file-server.elaina.moe/cache'
+const CACHE_BASE_URL = 'https://file-server.majokeiko.com/cache'
 
 // --- cache chunked upload types ---
 

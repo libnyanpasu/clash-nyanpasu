@@ -7,7 +7,7 @@
     "@types/figlet": "1.7.0",
     "@types/semver": "7.7.1",
     "figlet": "1.11.0",
-    "filesize": "11.0.13",
+    "filesize": "11.0.14",
     "p-retry": "7.1.1",
     "semver": "7.7.4",
     "zod": "4.3.6"
@@ -22,9 +22,9 @@
     "fs-extra": "11.3.4",
     "octokit": "5.0.5",
     "picocolors": "1.1.1",
-    "tar": "7.5.11",
+    "tar": "7.5.13",
     "telegram": "2.26.22",
-    "undici": "7.24.4",
+    "undici": "7.24.6",
     "yargs": "18.0.0"
   }
 }

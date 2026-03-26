@@ -37,6 +37,7 @@ import { Route as mainMainProxiesIndexRouteImport } from './pages/(main)/main/pr
 import { Route as mainMainProvidersIndexRouteImport } from './pages/(main)/main/providers/index'
 import { Route as mainMainProfilesIndexRouteImport } from './pages/(main)/main/profiles/index'
 import { Route as mainMainLogsIndexRouteImport } from './pages/(main)/main/logs/index'
+import { Route as mainMainDashboardIndexRouteImport } from './pages/(main)/main/dashboard/index'
 import { Route as mainMainConnectionsIndexRouteImport } from './pages/(main)/main/connections/index'
 import { Route as mainMainSettingsWebUiRouteRouteImport } from './pages/(main)/main/settings/web-ui/route'
 import { Route as mainMainSettingsUserInterfaceRouteRouteImport } from './pages/(main)/main/settings/user-interface/route'
@@ -192,6 +193,11 @@ const mainMainLogsIndexRoute = mainMainLogsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => mainMainLogsRouteRoute,
 } as any)
+const mainMainDashboardIndexRoute = mainMainDashboardIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => mainMainDashboardRouteRoute,
+} as any)
 const mainMainConnectionsIndexRoute =
   mainMainConnectionsIndexRouteImport.update({
     id: '/',
@@ -295,7 +301,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof legacySettingsRoute
   '/': typeof legacyIndexRoute
   '/main/connections': typeof mainMainConnectionsRouteRouteWithChildren
-  '/main/dashboard': typeof mainMainDashboardRouteRoute
+  '/main/dashboard': typeof mainMainDashboardRouteRouteWithChildren
   '/main/logs': typeof mainMainLogsRouteRouteWithChildren
   '/main/profiles': typeof mainMainProfilesRouteRouteWithChildren
   '/main/providers': typeof mainMainProvidersRouteRouteWithChildren
@@ -313,6 +319,7 @@ export interface FileRoutesByFullPath {
   '/main/settings/user-interface': typeof mainMainSettingsUserInterfaceRouteRoute
   '/main/settings/web-ui': typeof mainMainSettingsWebUiRouteRoute
   '/main/connections/': typeof mainMainConnectionsIndexRoute
+  '/main/dashboard/': typeof mainMainDashboardIndexRoute
   '/main/logs/': typeof mainMainLogsIndexRoute
   '/main/profiles/': typeof mainMainProfilesIndexRoute
   '/main/providers/': typeof mainMainProvidersIndexRoute
@@ -336,7 +343,6 @@ export interface FileRoutesByTo {
   '/rules': typeof legacyRulesRoute
   '/settings': typeof legacySettingsRoute
   '/': typeof legacyIndexRoute
-  '/main/dashboard': typeof mainMainDashboardRouteRoute
   '/editor': typeof editorEditorIndexRoute
   '/main': typeof mainMainIndexRoute
   '/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
@@ -347,6 +353,7 @@ export interface FileRoutesByTo {
   '/main/settings/user-interface': typeof mainMainSettingsUserInterfaceRouteRoute
   '/main/settings/web-ui': typeof mainMainSettingsWebUiRouteRoute
   '/main/connections': typeof mainMainConnectionsIndexRoute
+  '/main/dashboard': typeof mainMainDashboardIndexRoute
   '/main/logs': typeof mainMainLogsIndexRoute
   '/main/profiles': typeof mainMainProfilesIndexRoute
   '/main/providers': typeof mainMainProvidersIndexRoute
@@ -375,7 +382,7 @@ export interface FileRoutesById {
   '/(legacy)/settings': typeof legacySettingsRoute
   '/(legacy)/': typeof legacyIndexRoute
   '/(main)/main/connections': typeof mainMainConnectionsRouteRouteWithChildren
-  '/(main)/main/dashboard': typeof mainMainDashboardRouteRoute
+  '/(main)/main/dashboard': typeof mainMainDashboardRouteRouteWithChildren
   '/(main)/main/logs': typeof mainMainLogsRouteRouteWithChildren
   '/(main)/main/profiles': typeof mainMainProfilesRouteRouteWithChildren
   '/(main)/main/providers': typeof mainMainProvidersRouteRouteWithChildren
@@ -393,6 +400,7 @@ export interface FileRoutesById {
   '/(main)/main/settings/user-interface': typeof mainMainSettingsUserInterfaceRouteRoute
   '/(main)/main/settings/web-ui': typeof mainMainSettingsWebUiRouteRoute
   '/(main)/main/connections/': typeof mainMainConnectionsIndexRoute
+  '/(main)/main/dashboard/': typeof mainMainDashboardIndexRoute
   '/(main)/main/logs/': typeof mainMainLogsIndexRoute
   '/(main)/main/profiles/': typeof mainMainProfilesIndexRoute
   '/(main)/main/providers/': typeof mainMainProvidersIndexRoute
@@ -438,6 +446,7 @@ export interface FileRouteTypes {
     | '/main/settings/user-interface'
     | '/main/settings/web-ui'
     | '/main/connections/'
+    | '/main/dashboard/'
     | '/main/logs/'
     | '/main/profiles/'
     | '/main/providers/'
@@ -461,7 +470,6 @@ export interface FileRouteTypes {
     | '/rules'
     | '/settings'
     | '/'
-    | '/main/dashboard'
     | '/editor'
     | '/main'
     | '/main/profiles/inspect'
@@ -472,6 +480,7 @@ export interface FileRouteTypes {
     | '/main/settings/user-interface'
     | '/main/settings/web-ui'
     | '/main/connections'
+    | '/main/dashboard'
     | '/main/logs'
     | '/main/profiles'
     | '/main/providers'
@@ -517,6 +526,7 @@ export interface FileRouteTypes {
     | '/(main)/main/settings/user-interface'
     | '/(main)/main/settings/web-ui'
     | '/(main)/main/connections/'
+    | '/(main)/main/dashboard/'
     | '/(main)/main/logs/'
     | '/(main)/main/profiles/'
     | '/(main)/main/providers/'
@@ -735,6 +745,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof mainMainLogsIndexRouteImport
       parentRoute: typeof mainMainLogsRouteRoute
     }
+    '/(main)/main/dashboard/': {
+      id: '/(main)/main/dashboard/'
+      path: '/'
+      fullPath: '/main/dashboard/'
+      preLoaderRoute: typeof mainMainDashboardIndexRouteImport
+      parentRoute: typeof mainMainDashboardRouteRoute
+    }
     '/(main)/main/connections/': {
       id: '/(main)/main/connections/'
       path: '/'
@@ -885,6 +902,20 @@ const mainMainConnectionsRouteRouteWithChildren =
     mainMainConnectionsRouteRouteChildren,
   )
 
+interface mainMainDashboardRouteRouteChildren {
+  mainMainDashboardIndexRoute: typeof mainMainDashboardIndexRoute
+}
+
+const mainMainDashboardRouteRouteChildren: mainMainDashboardRouteRouteChildren =
+  {
+    mainMainDashboardIndexRoute: mainMainDashboardIndexRoute,
+  }
+
+const mainMainDashboardRouteRouteWithChildren =
+  mainMainDashboardRouteRoute._addFileChildren(
+    mainMainDashboardRouteRouteChildren,
+  )
+
 interface mainMainLogsRouteRouteChildren {
   mainMainLogsIndexRoute: typeof mainMainLogsIndexRoute
 }
@@ -1001,7 +1032,7 @@ const mainMainSettingsRouteRouteWithChildren =
 
 interface mainRouteRouteChildren {
   mainMainConnectionsRouteRoute: typeof mainMainConnectionsRouteRouteWithChildren
-  mainMainDashboardRouteRoute: typeof mainMainDashboardRouteRoute
+  mainMainDashboardRouteRoute: typeof mainMainDashboardRouteRouteWithChildren
   mainMainLogsRouteRoute: typeof mainMainLogsRouteRouteWithChildren
   mainMainProfilesRouteRoute: typeof mainMainProfilesRouteRouteWithChildren
   mainMainProvidersRouteRoute: typeof mainMainProvidersRouteRouteWithChildren
@@ -1013,7 +1044,7 @@ interface mainRouteRouteChildren {
 
 const mainRouteRouteChildren: mainRouteRouteChildren = {
   mainMainConnectionsRouteRoute: mainMainConnectionsRouteRouteWithChildren,
-  mainMainDashboardRouteRoute: mainMainDashboardRouteRoute,
+  mainMainDashboardRouteRoute: mainMainDashboardRouteRouteWithChildren,
   mainMainLogsRouteRoute: mainMainLogsRouteRouteWithChildren,
   mainMainProfilesRouteRoute: mainMainProfilesRouteRouteWithChildren,
   mainMainProvidersRouteRoute: mainMainProvidersRouteRouteWithChildren,

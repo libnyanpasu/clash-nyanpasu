@@ -34,6 +34,11 @@ export default function KVStorage() {
     await query.refetch()
   })
 
+  const handleRemoveItem = useLockFn(async (key: string) => {
+    await commands.removeStorageItem(key)
+    await query.refetch()
+  })
+
   return (
     <SettingsCard asChild>
       <SettingsCardAnimatedItem>
@@ -47,37 +52,61 @@ export default function KVStorage() {
           </div>
 
           {query.data &&
-            query.data.map((storage) => (
-              <div key={storage.key} className="flex items-center gap-2">
-                <div className="flex-1">Key: {storage.key}</div>
+            query.data.map((storage) => {
+              const tryFmt = () => {
+                try {
+                  const parsed = JSON.parse(storage.value)
 
-                <Modal>
-                  <ModalTrigger asChild>
-                    <Button variant="stroked" className="h-8 min-w-0 px-3">
-                      Detail
-                    </Button>
-                  </ModalTrigger>
+                  return JSON.stringify(
+                    typeof parsed === 'string' ? JSON.parse(parsed) : parsed,
+                    null,
+                    2,
+                  )
+                } catch {
+                  return storage.value
+                }
+              }
 
-                  <ModalContent>
-                    <Card className="min-w-96">
-                      <CardHeader>
-                        <ModalTitle>Storage Detail</ModalTitle>
-                      </CardHeader>
+              return (
+                <div key={storage.key} className="flex items-center gap-2">
+                  <div className="flex-1">Key: {storage.key}</div>
 
-                      <CardContent>
-                        <pre className="overflow-auto font-mono select-text">
-                          {JSON.stringify(storage, null, 2)}
-                        </pre>
-                      </CardContent>
+                  <Button
+                    variant="stroked"
+                    className="h-8 min-w-0 px-3"
+                    onClick={() => handleRemoveItem(storage.key)}
+                  >
+                    Delete
+                  </Button>
 
-                      <CardFooter className="gap-2">
-                        <ModalClose>{m.common_close()}</ModalClose>
-                      </CardFooter>
-                    </Card>
-                  </ModalContent>
-                </Modal>
-              </div>
-            ))}
+                  <Modal>
+                    <ModalTrigger asChild>
+                      <Button variant="stroked" className="h-8 min-w-0 px-3">
+                        Detail
+                      </Button>
+                    </ModalTrigger>
+
+                    <ModalContent>
+                      <Card className="min-w-96">
+                        <CardHeader>
+                          <ModalTitle>Storage Detail</ModalTitle>
+                        </CardHeader>
+
+                        <CardContent>
+                          <pre className="max-h-[70vh] max-w-[80vw] overflow-auto font-mono text-wrap select-text">
+                            {tryFmt()}
+                          </pre>
+                        </CardContent>
+
+                        <CardFooter className="gap-2">
+                          <ModalClose>{m.common_close()}</ModalClose>
+                        </CardFooter>
+                      </Card>
+                    </ModalContent>
+                  </Modal>
+                </div>
+              )
+            })}
         </SettingsCardContent>
 
         <SettingsCardFooter>

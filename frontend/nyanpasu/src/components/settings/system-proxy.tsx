@@ -19,7 +19,7 @@ const ProxyButton = ({
   return (
     <Button
       className={cn(
-        'group h-16 rounded-3xl font-bold',
+        'group h-16 rounded-3xl font-bold text-nowrap',
         'flex items-center justify-between gap-2',
         'data-[active=false]:bg-white dark:data-[active=false]:bg-black',
         className,

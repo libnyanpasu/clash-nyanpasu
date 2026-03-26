@@ -230,9 +230,6 @@ importers:
       '@tauri-apps/api':
         specifier: 2.10.1
         version: 2.10.1
-      '@types/json-schema':
-        specifier: 7.0.15
-        version: 7.0.15
       '@uidotdev/usehooks':
         specifier: 2.4.1
         version: 2.4.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -254,6 +251,9 @@ importers:
       country-emoji:
         specifier: 1.5.6
         version: 1.5.6
+      d3:
+        specifier: 7.9.0
+        version: 7.9.0
       dayjs:
         specifier: 1.11.20
         version: 1.11.20
@@ -317,6 +317,9 @@ importers:
       swr:
         specifier: 2.4.1
         version: 2.4.1(react@19.2.4)
+      vaul:
+        specifier: ^1.1.2
+        version: 1.1.2(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       virtua:
         specifier: 0.46.6
         version: 0.46.6(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(solid-js@1.9.5)
@@ -375,6 +378,15 @@ importers:
       '@tauri-apps/plugin-updater':
         specifier: 2.10.0
         version: 2.10.0
+      '@types/d3':
+        specifier: 7.4.3
+        version: 7.4.3
+      '@types/d3-interpolate-path':
+        specifier: 2.0.3
+        version: 2.0.3
+      '@types/json-schema':
+        specifier: 7.0.15
+        version: 7.0.15
       '@types/react':
         specifier: 19.2.14
         version: 19.2.14
@@ -7926,6 +7938,12 @@ packages:
 
   varint@6.0.0:
     resolution: {integrity: sha512-cXEIW6cfr15lFv563k4GuVuW/fiwjknytD37jIOLSdSWuOI6WnO/oKwmP2FQTU2l01LP8/M5TSAJpzUaGe3uWg==}
+
+  vaul@1.1.2:
+    resolution: {integrity: sha512-ZFkClGpWyI2WUQjdLJ/BaGuV6AVQiJ3uELGk3OYtP+B6yCO7Cmn9vPFXVJkRaGkOJu3m8bQMgtyzNHixULceQA==}
+    peerDependencies:
+      react: ^16.8 || ^17.0 || ^18.0 || ^19.0.0 || ^19.0.0-rc
+      react-dom: ^16.8 || ^17.0 || ^18.0 || ^19.0.0 || ^19.0.0-rc
 
   vfile-message@4.0.2:
     resolution: {integrity: sha512-jRDZ1IMLttGj41KcZvlrYAaI3CfqpLpfpf+Mfig13viT6NKvRzWZ+lXz0Y5D60w6uJIBAOGq9mSHf0gktF0duw==}
@@ -15782,6 +15800,15 @@ snapshots:
   validator@13.15.26: {}
 
   varint@6.0.0: {}
+
+  vaul@1.1.2(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
+    dependencies:
+      '@radix-ui/react-dialog': 1.1.15(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      react: 19.2.4
+      react-dom: 19.2.4(react@19.2.4)
+    transitivePeerDependencies:
+      - '@types/react'
+      - '@types/react-dom'
 
   vfile-message@4.0.2:
     dependencies:

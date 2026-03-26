@@ -111,6 +111,11 @@ export const CLASH_RULES_PROVIDER_QUERY_KEY = 'clash-rules-provider'
 export const CLASH_PROXIES_PROVIDER_QUERY_KEY = 'clash-proxies-provider'
 
 /**
+ * Clash core status query key, used by useCoreStatus hook to fetch core status from query
+ */
+export const CLASH_CORE_STATUS_QUERY_KEY = 'clash-core-status'
+
+/**
  * Maximum connections history length, used by clash ws provider to limit connections history length
  */
 export const MAX_CONNECTIONS_HISTORY = 32

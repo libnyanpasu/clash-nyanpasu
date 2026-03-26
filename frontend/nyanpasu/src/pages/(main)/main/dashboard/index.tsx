@@ -15,7 +15,6 @@ import {
 import { m } from '@/paraglide/messages'
 import { useKvStorage } from '@nyanpasu/interface'
 import { createFileRoute } from '@tanstack/react-router'
-import { useLocalStorage } from '@uidotdev/usehooks'
 import {
   DEFAULT_ITEMS,
   DEFAULT_LAYOUTS,

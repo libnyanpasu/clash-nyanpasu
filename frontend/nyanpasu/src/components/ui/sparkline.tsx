@@ -102,8 +102,20 @@ export const Sparkline = ({
       leftGuard?: number,
     ) => {
       const n = points.length
+
+      // Fast-path for empty or single-point series to avoid invalid guard math.
+      if (n === 0) {
+        // No data → no path.
+        return { line: '', area: '' }
+      }
+
+      if (n === 1) {
+        // Single point: render a degenerate path without guard extension.
+        return makePaths(points, xRange, yMax)
+      }
+
       const lGuard = leftGuard ?? 2 * points[0] - points[1]
-      const rGuard = n >= 2 ? 2 * points[n - 1] - points[n - 2] : points[n - 1]
+      const rGuard = 2 * points[n - 1] - points[n - 2]
 
       return makePaths(
         [lGuard, ...points, rGuard],
@@ -118,7 +130,15 @@ export const Sparkline = ({
     animRef.current?.stop()
     animRef.current = null
 
-    if (!prevData || data.length < 2 || prevData.length !== data.length) {
+    // Handle short series early to avoid division by zero and invalid indexing.
+    if (data.length < 2) {
+      g.selectAll('*').remove()
+      g.attr('transform', 'translate(0,0)')
+      leftGuardRef.current = null
+      return
+    }
+
+    if (!prevData || prevData.length !== data.length) {
       const yMax = Math.max(d3.max(data) ?? 0, 1)
       const step = width / (data.length - 1)
       const { line, area } = buildPaths(

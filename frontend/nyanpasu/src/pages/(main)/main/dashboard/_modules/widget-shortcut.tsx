@@ -141,28 +141,30 @@ const CoreStatusBadge = () => {
         serviceStatus?.server?.core_infos.state !== 'Running' &&
         serviceStatus?.server?.core_infos.state.Stopped
       ) {
-        stopedMessage = m.dashboard_widget_core_stoped_by_service_with_message({
-          message: serviceStatus?.server.core_infos.state.Stopped,
-        })
+        stopedMessage = m.dashboard_widget_core_stopped_by_service_with_message(
+          {
+            message: serviceStatus?.server.core_infos.state.Stopped,
+          },
+        )
       } else {
-        stopedMessage = m.dashboard_widget_core_stoped_by_service_unknown()
+        stopedMessage = m.dashboard_widget_core_stopped_by_service_unknown()
       }
     }
 
     // service is not running, so core is either stopped by service or not installed
     if (serviceStatus?.status === 'stopped') {
-      serviceMessage = m.dashboard_widget_core_service_stoped()
+      serviceMessage = m.dashboard_widget_core_service_stopped()
     } else {
       serviceMessage = m.dashboard_widget_core_service_not_installed()
     }
 
     // core is stopped, but we don't know why, so we check the core status
     if (coreStatus?.status.Stopped) {
-      stopedMessage = m.dashboard_widget_core_stoped_with_message({
+      stopedMessage = m.dashboard_widget_core_stopped_with_message({
         message: coreStatus.status.Stopped,
       })
     } else {
-      stopedMessage = m.dashboard_widget_core_stoped_unknown()
+      stopedMessage = m.dashboard_widget_core_stopped_unknown()
     }
 
     return `${stopedMessage} ${serviceMessage}`

@@ -254,9 +254,6 @@ importers:
       d3:
         specifier: 7.9.0
         version: 7.9.0
-      d3-interpolate-path:
-        specifier: 2.3.0
-        version: 2.3.0
       dayjs:
         specifier: 1.11.20
         version: 1.11.20

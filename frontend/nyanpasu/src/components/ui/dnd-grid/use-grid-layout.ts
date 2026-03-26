@@ -6,11 +6,8 @@ export function useGridLayout(
   minCellSize: number,
   gap: number,
   size?: GridSize,
-  onSizeChange?: (size: GridSize) => void,
 ) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const onSizeChangeRef = useRef(onSizeChange)
-  onSizeChangeRef.current = onSizeChange
 
   const [layout, setLayout] = useState<GridLayout>({
     cols: 1,
@@ -18,6 +15,8 @@ export function useGridLayout(
     cellW: minCellSize,
     cellH: minCellSize,
   })
+
+  const [computedSize, setComputedSize] = useState<GridSize | null>(null)
 
   // Track container dimensions separately so we can recompute cellW/cellH when
   // the external `size` override changes without waiting for a resize event.
@@ -48,10 +47,14 @@ export function useGridLayout(
         Math.floor((height + gap) / (minCellSize + gap)),
       )
 
-      const computedSize = { cols: computedCols, rows: computedRows }
-      if (!isEqual(computedSize, lastComputedSizeRef.current)) {
-        lastComputedSizeRef.current = computedSize
-        onSizeChangeRef.current?.(computedSize)
+      const newComputedSize = {
+        cols: computedCols,
+        rows: computedRows,
+      }
+
+      if (!isEqual(newComputedSize, lastComputedSizeRef.current)) {
+        lastComputedSizeRef.current = newComputedSize
+        setComputedSize(newComputedSize)
       }
 
       const cols = size?.cols ?? computedCols
@@ -110,5 +113,5 @@ export function useGridLayout(
     [layout, gap],
   )
 
-  return { containerRef, layout, getItemRect, snapToGrid }
+  return { containerRef, layout, computedSize, getItemRect, snapToGrid }
 }

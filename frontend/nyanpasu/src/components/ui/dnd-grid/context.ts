@@ -13,6 +13,8 @@ const DndGridContext = createContext<{
   activeItemId: string | null
   resizingItemId: string | null
   disabled: boolean
+  sourceOnly: boolean
+  dragIdPrefix: string
   isOverlay: boolean
   constraintsMapRef: RefObject<Record<string, GridItemConstraints>> & {
     current: Record<string, GridItemConstraints>

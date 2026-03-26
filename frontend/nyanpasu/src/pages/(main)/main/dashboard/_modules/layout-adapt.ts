@@ -14,11 +14,11 @@ export function sizeKey(size: GridSize): string {
  * Scans all stored layouts whose dimensions fit within `size` and returns the
  * one with the largest area (closest match). Returns null if none found.
  */
-export function findBestLayout<T extends string>(
-  storage: Record<string, DndGridItemType<T>[]>,
+export function findBestLayout<T extends DndGridItemType<string>>(
+  storage: Record<string, T[]>,
   size: GridSize,
-): DndGridItemType<T>[] | null {
-  let best: { area: number; items: DndGridItemType<T>[] } | null = null
+): T[] | null {
+  let best: { area: number; items: T[] } | null = null
 
   for (const [key, items] of Object.entries(storage)) {
     const match = key.match(/^(\d+)x(\d+)$/)
@@ -31,10 +31,7 @@ export function findBestLayout<T extends string>(
       const area = cols * rows
 
       if (!best || area > best.area) {
-        best = {
-          area,
-          items: items as DndGridItemType<T>[],
-        }
+        best = { area, items }
       }
     }
   }
@@ -47,11 +44,11 @@ export function findBestLayout<T extends string>(
  * are closest (Manhattan distance on cols/rows) to use as an adaptation base.
  * Returns null if storage is empty.
  */
-export function findClosestStoredLayout<T extends string>(
-  storage: Record<string, DndGridItemType<T>[]>,
+export function findClosestStoredLayout<T extends DndGridItemType<string>>(
+  storage: Record<string, T[]>,
   size: GridSize,
-): DndGridItemType<T>[] | null {
-  let best: { dist: number; items: DndGridItemType<T>[] } | null = null
+): T[] | null {
+  let best: { dist: number; items: T[] } | null = null
 
   for (const [key, items] of Object.entries(storage)) {
     const match = key.match(/^(\d+)x(\d+)$/)
@@ -62,35 +59,33 @@ export function findClosestStoredLayout<T extends string>(
     const dist = Math.abs(cols - size.cols) + Math.abs(rows - size.rows)
 
     if (!best || dist < best.dist) {
-      best = {
-        dist,
-        items: items as DndGridItemType<T>[],
-      }
+      best = { dist, items }
     }
   }
 
   return best?.items ?? null
 }
 
-function hasOverlapWith<T extends string>(
-  placed: DndGridItemType<T>[],
-  candidate: DndGridItemType<T>,
+function hasOverlapWith<T extends DndGridItemType<string>>(
+  placed: T[],
+  candidate: T,
 ): boolean {
   return placed.some((p) => p.id !== candidate.id && isOverlap(p, candidate))
 }
 
 /** Scan top-to-bottom, left-to-right for the first free slot of size (w × h). */
-function tryPlace<T extends string>(
-  id: T,
+function tryPlace<T extends DndGridItemType<string>>(
+  item: T,
   w: number,
   h: number,
-  placed: DndGridItemType<T>[],
+  placed: T[],
   cols: number,
   rows: number,
-): DndGridItemType<T> | null {
+): T | null {
   for (let y = 0; y + h <= rows; y++) {
     for (let x = 0; x + w <= cols; x++) {
-      const candidate = { id, x, y, w, h }
+      const candidate = { ...item, x, y, w, h } as T
+
       if (!hasOverlapWith(placed, candidate)) {
         return candidate
       }
@@ -113,13 +108,13 @@ function tryPlace<T extends string>(
  * Items are processed in reading order (top → bottom, left → right) so earlier
  * items have priority over later ones.
  */
-export function adaptLayout<T extends string>(
-  items: DndGridItemType<T>[],
+export function adaptLayout<T extends DndGridItemType<string>>(
+  items: T[],
   size: GridSize,
   constraints: Record<string, GridItemConstraints>,
-): DndGridItemType<T>[] {
+): T[] {
   const { cols, rows } = size
-  const result: DndGridItemType<T>[] = []
+  const result: T[] = []
 
   const sorted = [...items].sort((a, b) =>
     a.y !== b.y ? a.y - b.y : a.x - b.x,
@@ -140,7 +135,7 @@ export function adaptLayout<T extends string>(
     const x = Math.max(0, Math.min(item.x, cols - w))
     const y = Math.max(0, Math.min(item.y, rows - h))
 
-    const clamped = { ...item, x, y, w, h }
+    const clamped = { ...item, x, y, w, h } as T
 
     // Step 1: try at clamped position (no overlap).
     if (!hasOverlapWith(result, clamped)) {
@@ -149,19 +144,19 @@ export function adaptLayout<T extends string>(
     }
 
     // Step 2: find a free slot at current (w, h).
-    const placed = tryPlace(item.id, w, h, result, cols, rows)
+    const placed = tryPlace(item, w, h, result, cols, rows)
     if (placed) {
       result.push(placed)
       continue
     }
 
     // Step 3: shrink (w, h) toward (minW, minH) and retry.
-    const findShrinkPlacement = (): DndGridItemType<T> | null => {
+    const findShrinkPlacement = (): T | null => {
       for (let tw = w; tw >= minW; tw--) {
         for (let th = h; th >= minH; th--) {
           if (tw === w && th === h) continue // already tried above
 
-          const p = tryPlace(item.id, tw, th, result, cols, rows)
+          const p = tryPlace(item, tw, th, result, cols, rows)
 
           if (p) {
             return p

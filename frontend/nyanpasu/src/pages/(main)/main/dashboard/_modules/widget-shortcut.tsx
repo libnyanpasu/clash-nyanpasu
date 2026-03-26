@@ -5,7 +5,6 @@ import {
 } from '@/components/settings/system-proxy'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { DndGridItem } from '@/components/ui/dnd-grid'
 import TextMarquee from '@/components/ui/text-marquee'
 import useCoreIcon from '@/hooks/use-core-icon'
 import { m } from '@/paraglide/messages'
@@ -19,7 +18,8 @@ import {
 } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 import { Link } from '@tanstack/react-router'
-import { WidgetId } from './consts'
+import { WidgetComponentProps } from './consts'
+import WidgetItem from './widget-item'
 
 enum ProxyStatus {
   SYSTEM = 'system',
@@ -97,9 +97,12 @@ const ProxyTitleRow = () => {
   )
 }
 
-export function ProxyShortcutsWidget() {
+export function ProxyShortcutsWidget({
+  id,
+  onCloseClick,
+}: WidgetComponentProps) {
   return (
-    <DndGridItem id={WidgetId.ProxyShortcuts} minW={3} minH={2}>
+    <WidgetItem id={id} minW={3} minH={2} onCloseClick={onCloseClick}>
       <Card className="flex size-full flex-col justify-between">
         <ProxyTitleRow />
 
@@ -109,7 +112,7 @@ export function ProxyShortcutsWidget() {
           <TunModeButton className="h-full rounded-3xl" />
         </CardContent>
       </Card>
-    </DndGridItem>
+    </WidgetItem>
   )
 }
 
@@ -269,9 +272,12 @@ const CurrentCoreCard = () => {
   )
 }
 
-export function CoreShortcutsWidget() {
+export function CoreShortcutsWidget({
+  id,
+  onCloseClick,
+}: WidgetComponentProps) {
   return (
-    <DndGridItem id={WidgetId.CoreShortcuts} minW={4} minH={2}>
+    <WidgetItem id={id} minW={4} minH={2} onCloseClick={onCloseClick}>
       <Card className="flex size-full flex-col justify-between">
         <CardHeader>
           <span className="shrink-0 font-bold">
@@ -285,6 +291,6 @@ export function CoreShortcutsWidget() {
           <CurrentCoreCard />
         </CardContent>
       </Card>
-    </DndGridItem>
+    </WidgetItem>
   )
 }

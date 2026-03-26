@@ -5,7 +5,6 @@ import SettingsEthernetRounded from '~icons/material-symbols/settings-ethernet-r
 import { filesize } from 'filesize'
 import { ComponentProps, ComponentType } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { DndGridItem, DndGridItemProps } from '@/components/ui/dnd-grid'
 import { Sparkline } from '@/components/ui/sparkline'
 import TextMarquee from '@/components/ui/text-marquee'
 import { m } from '@/paraglide/messages'
@@ -18,7 +17,8 @@ import {
   useClashTraffic,
 } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
-import { WidgetId } from './consts'
+import { WidgetComponentProps } from './consts'
+import WidgetItem, { WidgetItemProps } from './widget-item'
 
 const padData = (data: (number | undefined)[] = [], max: number) =>
   Array(Math.max(0, max - data.length))
@@ -34,12 +34,20 @@ function SparklineCard({
   data,
   className,
   children,
+  onCloseClick,
   ...props
 }: ComponentProps<typeof Card> & {
   data: number[]
-} & DndGridItemProps) {
+} & WidgetItemProps) {
   return (
-    <DndGridItem id={id} minH={minH} minW={minW} maxW={maxW} maxH={maxH}>
+    <WidgetItem
+      id={id}
+      minH={minH}
+      minW={minW}
+      maxW={maxW}
+      maxH={maxH}
+      onCloseClick={onCloseClick}
+    >
       <Card
         className={cn('relative isolate size-full', className)}
         data-slot="widget-sparkline-card"
@@ -54,7 +62,7 @@ function SparklineCard({
           {children}
         </CardContent>
       </Card>
-    </DndGridItem>
+    </WidgetItem>
   )
 }
 
@@ -104,7 +112,7 @@ function SparklineCardBottom({ className, ...props }: ComponentProps<'div'>) {
   )
 }
 
-export function TrafficDownWidget() {
+export function TrafficDownWidget({ id, onCloseClick }: WidgetComponentProps) {
   const { data: clashTraffic } = useClashTraffic()
 
   const {
@@ -115,11 +123,12 @@ export function TrafficDownWidget() {
 
   return (
     <SparklineCard
-      id={WidgetId.TrafficDown}
+      id={id}
       data={padData(
         clashTraffic?.map((item) => item.down),
         MAX_TRAFFIC_HISTORY,
       )}
+      onCloseClick={onCloseClick}
     >
       <SparklineCardTitle icon={ArrowDownwardRounded}>
         {m.dashboard_widget_traffic_download()}
@@ -139,7 +148,7 @@ export function TrafficDownWidget() {
   )
 }
 
-export function TrafficUpWidget() {
+export function TrafficUpWidget({ id, onCloseClick }: WidgetComponentProps) {
   const { data: clashTraffic } = useClashTraffic()
 
   const {
@@ -150,11 +159,12 @@ export function TrafficUpWidget() {
 
   return (
     <SparklineCard
-      id={WidgetId.TrafficUp}
+      id={id}
       data={padData(
         clashTraffic?.map((item) => item.up),
         MAX_TRAFFIC_HISTORY,
       )}
+      onCloseClick={onCloseClick}
     >
       <SparklineCardTitle icon={ArrowUpwardRounded}>
         {m.dashboard_widget_traffic_upload()}
@@ -174,18 +184,19 @@ export function TrafficUpWidget() {
   )
 }
 
-export function ConnectionsWidget() {
+export function ConnectionsWidget({ id, onCloseClick }: WidgetComponentProps) {
   const {
     query: { data: clashConnections },
   } = useClashConnections()
 
   return (
     <SparklineCard
-      id={WidgetId.Connections}
+      id={id}
       data={padData(
         clashConnections?.map((item) => item.connections?.length ?? 0),
         MAX_CONNECTIONS_HISTORY,
       )}
+      onCloseClick={onCloseClick}
     >
       <SparklineCardTitle icon={SettingsEthernetRounded}>
         {m.dashboard_widget_connections()}
@@ -200,16 +211,17 @@ export function ConnectionsWidget() {
   )
 }
 
-export function MemoryWidget() {
+export function MemoryWidget({ id, onCloseClick }: WidgetComponentProps) {
   const { data: clashMemory } = useClashMemory()
 
   return (
     <SparklineCard
-      id={WidgetId.Memory}
+      id={id}
       data={padData(
         clashMemory?.map((item) => item.inuse),
         MAX_MEMORY_HISTORY,
       )}
+      onCloseClick={onCloseClick}
     >
       <SparklineCardTitle icon={MemoryOutlineRounded}>
         {m.dashboard_widget_memory()}

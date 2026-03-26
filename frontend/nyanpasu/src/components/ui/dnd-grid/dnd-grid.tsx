@@ -1,5 +1,12 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -13,6 +20,7 @@ import {
 } from '@dnd-kit/core'
 import { cn } from '@nyanpasu/ui'
 import { DndGridProvider } from './context'
+import { useDndGridRoot, type GridRegistration } from './root-context'
 import type {
   DndGridItemType,
   GridItemConstraints,
@@ -22,17 +30,7 @@ import type {
 import { useGridLayout } from './use-grid-layout'
 import { calculateResize, hasOverlap } from './utils'
 
-export function DndGrid<T extends string = string>({
-  items,
-  onLayoutChange,
-  minCellSize = 96,
-  gap = 8,
-  size,
-  onSizeChange,
-  children,
-  className,
-  disabled = true,
-}: {
+export interface DndGridProps<T extends string = string> {
   items: DndGridItemType<T>[]
   onLayoutChange?: (items: DndGridItemType<T>[]) => void
   minCellSize?: number
@@ -45,27 +43,48 @@ export function DndGrid<T extends string = string>({
   children: (item: DndGridItemType<T>) => React.ReactNode
   className?: string
   disabled?: boolean
-}) {
+  sourceOnly?: boolean
+  dragIdPrefix?: string
+  gridId?: string
+  onSourceDrop?: (itemId: string) => void
+  onSourceDragStart?: () => void
+}
+
+export function DndGrid<T extends string = string>({
+  items,
+  onLayoutChange,
+  minCellSize = 96,
+  gap = 8,
+  size,
+  onSizeChange,
+  children,
+  className,
+  disabled = true,
+  sourceOnly = false,
+  dragIdPrefix = '',
+  gridId,
+  onSourceDrop,
+  onSourceDragStart,
+}: DndGridProps<T>) {
   const constraintsMapRef = useRef<Record<string, GridItemConstraints>>({})
 
-  const wrappedOnSizeChange = useCallback(
-    (newSize: GridSize) => {
-      onSizeChange?.(newSize, constraintsMapRef.current)
-    },
-    [onSizeChange],
-  )
+  const { containerRef, layout, computedSize, getItemRect, snapToGrid } =
+    useGridLayout(minCellSize, gap, size)
 
-  const { containerRef, layout, getItemRect, snapToGrid } = useGridLayout(
-    minCellSize,
-    gap,
-    size,
-    wrappedOnSizeChange,
-  )
+  const onSizeChangeRef = useRef(onSizeChange)
+  onSizeChangeRef.current = onSizeChange
+
+  useEffect(() => {
+    if (computedSize) {
+      onSizeChangeRef.current?.(computedSize, constraintsMapRef.current)
+    }
+  }, [computedSize])
 
   const [activeItem, setActiveItem] = useState<DndGridItemType<T> | null>(null)
   const [previewItem, setPreviewItem] = useState<DndGridItemType<T> | null>(
     null,
   )
+
   const [displayItems, setDisplayItems] = useState<DndGridItemType<T>[]>(items)
   const [dropInfoMap, setDropInfoMap] = useState<
     Record<string, { left: number; top: number }>
@@ -94,7 +113,6 @@ export function DndGrid<T extends string = string>({
     }
   }, [items])
 
-  // Substitute resize preview into displayItems for live visual feedback
   const effectiveDisplayItems = resizePreview
     ? displayItems.map((item) =>
         item.id === resizePreview.id ? resizePreview : item,
@@ -249,70 +267,103 @@ export function DndGrid<T extends string = string>({
     }
   }, [items, onLayoutChange])
 
+  const rootCtx = useDndGridRoot()
+
+  // Stable object mutated in place every render so the root always reads fresh closures
+  const registrationRef = useRef<GridRegistration>({
+    itemIds: [],
+    dragIdPrefix: '',
+    sourceOnly: false,
+    handleDragStart: () => {},
+    handleDragMove: () => {},
+    handleDragEnd: () => {},
+    handleDragCancel: () => {},
+    getCellSize: () => ({ cellW: 0, cellH: 0, gap: 0 }),
+  })
+
+  Object.assign(registrationRef.current, {
+    itemIds: items.map((i) => i.id),
+    dragIdPrefix,
+    sourceOnly,
+    handleDragStart,
+    handleDragMove,
+    handleDragEnd,
+    handleDragCancel,
+    getCellSize: () => ({ cellW: layout.cellW, cellH: layout.cellH, gap }),
+    onSourceDrop,
+    onSourceDragStart,
+  })
+
+  useLayoutEffect(() => {
+    if (!rootCtx || !gridId) {
+      return
+    }
+
+    rootCtx.registerGrid(gridId, registrationRef.current)
+
+    return () => {
+      rootCtx.unregisterGrid(gridId)
+    }
+  }, [rootCtx, gridId])
+
+  const isManaged = Boolean(rootCtx && gridId)
+
   const overlayRect = activeItem ? getItemRect(activeItem) : null
   const placeholderRect = previewItem ? getItemRect(previewItem) : null
 
-  return (
-    <DndContext
-      sensors={sensors}
-      onDragStart={handleDragStart}
-      onDragMove={handleDragMove}
-      onDragEnd={handleDragEnd}
-      onDragCancel={handleDragCancel}
+  const gridContent = (
+    <DndGridProvider
+      value={{
+        displayItems: effectiveDisplayItems,
+        getItemRect,
+        dropInfoMap,
+        activeItemId: activeItem?.id ?? null,
+        resizingItemId,
+        disabled,
+        sourceOnly,
+        dragIdPrefix,
+        isOverlay: false,
+        constraintsMapRef,
+        onResizeStart,
+        onResizeMove,
+        onResizeEnd,
+      }}
     >
-      <DndGridProvider
-        value={{
-          displayItems: effectiveDisplayItems,
-          getItemRect,
-          dropInfoMap,
-          activeItemId: activeItem?.id ?? null,
-          resizingItemId,
-          disabled,
-          isOverlay: false,
-          constraintsMapRef,
-          onResizeStart,
-          onResizeMove,
-          onResizeEnd,
-        }}
+      <div
+        ref={containerRef}
+        className={cn('relative', className)}
+        data-slot="dnd-grid-container"
       >
-        <div
-          ref={containerRef}
-          className={cn('relative', className)}
-          data-slot="dnd-grid-container"
-        >
-          <AnimatePresence>
-            {placeholderRect && activeItem && (
-              <motion.div
-                key="dnd-grid-placeholder"
-                data-slot="dnd-grid-placeholder"
-                layout
-                className={cn(
-                  'border-primary/40 bg-primary/5 border-2 border-dashed',
-                  'pointer-events-none absolute rounded-2xl',
-                )}
-                style={{
-                  left: placeholderRect.left,
-                  top: placeholderRect.top,
-                  width: placeholderRect.width,
-                  height: placeholderRect.height,
-                }}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{
-                  type: 'spring',
-                  stiffness: 300,
-                  damping: 28,
-                }}
-              />
-            )}
-          </AnimatePresence>
+        <AnimatePresence>
+          {placeholderRect && activeItem && (
+            <motion.div
+              key="dnd-grid-placeholder"
+              data-slot="dnd-grid-placeholder"
+              layout
+              className={cn(
+                'border-primary/40 bg-primary/5 border-2 border-dashed',
+                'pointer-events-none absolute rounded-2xl',
+              )}
+              style={{
+                left: placeholderRect.left,
+                top: placeholderRect.top,
+                width: placeholderRect.width,
+                height: placeholderRect.height,
+              }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+            />
+          )}
+        </AnimatePresence>
 
-          {effectiveDisplayItems.map((item) => (
-            <Fragment key={item.id}>{children(item)}</Fragment>
-          ))}
-        </div>
+        {effectiveDisplayItems.map((item) => (
+          <Fragment key={item.id}>{children(item)}</Fragment>
+        ))}
+      </div>
 
+      {!isManaged && (
         <DragOverlay dropAnimation={null}>
           <AnimatePresence>
             {activeItem && overlayRect && (
@@ -320,18 +371,11 @@ export function DndGrid<T extends string = string>({
                 key="dnd-grid-overlay"
                 data-slot="dnd-grid-overlay"
                 className="cursor-grabbing"
-                style={{
-                  width: overlayRect.width,
-                  height: overlayRect.height,
-                }}
+                style={{ width: overlayRect.width, height: overlayRect.height }}
                 initial={{ opacity: 0.85 }}
                 animate={{ opacity: 0.95 }}
                 exit={{ opacity: 0 }}
-                transition={{
-                  type: 'tween',
-                  duration: 0.1,
-                  ease: 'easeOut',
-                }}
+                transition={{ type: 'tween', duration: 0.1, ease: 'easeOut' }}
               >
                 <DndGridProvider
                   value={{
@@ -341,6 +385,8 @@ export function DndGrid<T extends string = string>({
                     activeItemId: activeItem?.id ?? null,
                     resizingItemId,
                     disabled,
+                    sourceOnly,
+                    dragIdPrefix,
                     isOverlay: true,
                     constraintsMapRef,
                     onResizeStart,
@@ -354,7 +400,23 @@ export function DndGrid<T extends string = string>({
             )}
           </AnimatePresence>
         </DragOverlay>
-      </DndGridProvider>
+      )}
+    </DndGridProvider>
+  )
+
+  if (isManaged) {
+    return gridContent
+  }
+
+  return (
+    <DndContext
+      sensors={sensors}
+      onDragStart={handleDragStart}
+      onDragMove={handleDragMove}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
+      {gridContent}
     </DndContext>
   )
 }

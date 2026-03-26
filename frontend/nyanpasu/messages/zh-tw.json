@@ -204,7 +204,7 @@
   "providers_subscription_title": "訂閱信息",
   "providers_update_provider": "更新資源",
   "dashboard_context_menu_edit_widgets": "編輯組件",
-  "dashboard_context_menu_edit_widgets_done": "完成編輯",
+  "dashboard_context_menu_add_widgets": "添加組件",
   "dashboard_widget_traffic_download": "下載流量",
   "dashboard_widget_traffic_upload": "上傳流量",
   "dashboard_widget_traffic_total": "總量：{value}",

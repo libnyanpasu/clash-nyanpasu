@@ -204,7 +204,7 @@
   "providers_subscription_title": "Информация о подписке",
   "providers_update_provider": "Обновить ресурсы",
   "dashboard_context_menu_edit_widgets": "Редактировать компоненты",
-  "dashboard_context_menu_edit_widgets_done": "Завершить редактирование",
+  "dashboard_context_menu_add_widgets": "Добавить компоненты",
   "dashboard_widget_traffic_download": "Загрузка трафика",
   "dashboard_widget_traffic_upload": "Отправка трафика",
   "dashboard_widget_traffic_total": "Всего: {value}",

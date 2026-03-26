@@ -25,8 +25,8 @@ const INSTANT = {
   duration: 0,
 } as Transition
 
-export type DndGridItemProps = PropsWithChildren<{
-  id: string
+export type DndGridItemProps<T extends string> = PropsWithChildren<{
+  id: T
   className?: string
 }> &
   GridItemConstraints
@@ -112,7 +112,7 @@ function ResizeKnob({
   )
 }
 
-function DndGridItemDraggable({
+function DndGridItemDraggable<T extends string>({
   id,
   className,
   children,
@@ -120,7 +120,7 @@ function DndGridItemDraggable({
   minH,
   maxW,
   maxH,
-}: DndGridItemProps) {
+}: DndGridItemProps<T>) {
   const {
     displayItems,
     getItemRect,
@@ -128,6 +128,8 @@ function DndGridItemDraggable({
     activeItemId,
     resizingItemId,
     disabled,
+    sourceOnly,
+    dragIdPrefix,
     constraintsMapRef,
     onResizeStart,
     onResizeMove,
@@ -142,7 +144,7 @@ function DndGridItemDraggable({
 
   // Disable drag while any item is being resized
   const { attributes, listeners, setNodeRef } = useDraggable({
-    id,
+    id: dragIdPrefix ? `${dragIdPrefix}${id}` : id,
     disabled: disabled || !item || resizingItemId !== null,
     data: item,
   })
@@ -213,7 +215,7 @@ function DndGridItemDraggable({
       {children}
 
       <AnimatePresence>
-        {!disabled && (
+        {!disabled && !sourceOnly && (
           <ResizeKnob
             onStart={(x, y) => onResizeStart(id, 'bottom-right', x, y)}
             onMove={onResizeMove}
@@ -225,7 +227,7 @@ function DndGridItemDraggable({
   )
 }
 
-export function DndGridItem({
+export function DndGridItem<T extends string>({
   id,
   className,
   children,
@@ -233,7 +235,7 @@ export function DndGridItem({
   minH,
   maxW,
   maxH,
-}: DndGridItemProps) {
+}: DndGridItemProps<T>) {
   const { isOverlay } = useDndGridContext()
 
   if (isOverlay) {

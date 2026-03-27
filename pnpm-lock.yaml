@@ -318,7 +318,7 @@ importers:
         specifier: 2.4.1
         version: 2.4.1(react@19.2.4)
       vaul:
-        specifier: ^1.1.2
+        specifier: 1.1.2
         version: 1.1.2(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       virtua:
         specifier: 0.46.6

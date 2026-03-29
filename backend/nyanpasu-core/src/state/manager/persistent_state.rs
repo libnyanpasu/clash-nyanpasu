@@ -76,6 +76,11 @@ where
     pub fn current_state(&self) -> Option<State> {
         self.state_coordinator.current_state()
     }
+
+    pub fn snapshot_handle(&self) -> StateSnapshot<State> {
+        self.state_coordinator.snapshot_handle()
+    }
+
     pub async fn upsert(&mut self, state: State) -> Result<(), UpsertError>
     where
         Formatter: Clone,

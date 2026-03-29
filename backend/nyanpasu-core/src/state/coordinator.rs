@@ -1,6 +1,5 @@
-//! TODO: add a pending state to implement MVCC(Multi-Version Concurrency Control) for different tokio tasks.
-
 use super::{Context, builder::*, error::*};
+use arc_swap::ArcSwap;
 use indexmap::IndexMap;
 use std::future::Future;
 use std::sync::Arc;
@@ -96,11 +95,31 @@ where
 {
 }
 
+/// MVCC snapshot handle: a lock-free reader for last committed state.
+///
+/// Clone is cheap (Arc bump). `load()` returns a point-in-time snapshot
+/// without acquiring any RwLock, making it safe to read sibling sources
+/// inside subscriber migrations (fan-in pattern).
+pub struct StateSnapshot<T: Clone + Send + Sync + 'static>(Arc<ArcSwap<Option<T>>>);
+
+impl<T: Clone + Send + Sync + 'static> Clone for StateSnapshot<T> {
+    fn clone(&self) -> Self {
+        Self(Arc::clone(&self.0))
+    }
+}
+
+impl<T: Clone + Send + Sync + 'static> StateSnapshot<T> {
+    /// Lock-free read of the last committed state.
+    pub fn load(&self) -> Option<T> {
+        (**self.0.load()).clone()
+    }
+}
+
 #[non_exhaustive]
 pub struct StateCoordinator<T: Clone + Send + Sync + 'static> {
     current_state: Option<T>,
+    snapshot: Arc<ArcSwap<Option<T>>>,
     subscribers: IndexMap<String, Box<dyn Subscriber<T> + Send + Sync>>,
-    // strategy: ConcurrencyStrategy,
 }
 
 impl<T: Clone + Send + Sync> StateCoordinator<T> {
@@ -108,6 +127,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
     pub fn new() -> Self {
         Self {
             current_state: None,
+            snapshot: Arc::new(ArcSwap::from_pointee(None)),
             subscribers: IndexMap::new(),
         }
     }
@@ -129,6 +149,16 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
     /// Get the current state.
     pub fn current_state(&self) -> Option<T> {
         self.current_state.clone()
+    }
+
+    /// MVCC snapshot handle for lock-free reads of last committed state.
+    pub fn snapshot_handle(&self) -> StateSnapshot<T> {
+        StateSnapshot(Arc::clone(&self.snapshot))
+    }
+
+    /// Convenience: directly read the current snapshot value.
+    pub fn load_snapshot(&self) -> Option<T> {
+        (**self.snapshot.load()).clone()
     }
 
     /// Run subscriber migrations only. If a migration fails, previously successful
@@ -308,6 +338,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         Self::migrate_subscribers(&subscribers, self.current_state.as_ref(), &new_state).await?;
 
         self.current_state = Some(new_state);
+        self.snapshot.store(Arc::new(self.current_state.clone()));
         Ok(())
     }
 
@@ -326,6 +357,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         })
         .await?;
         self.current_state = Some(new_state);
+        self.snapshot.store(Arc::new(self.current_state.clone()));
         Ok(())
     }
 
@@ -334,6 +366,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         let subscribers = self.subscribers.values().collect::<Vec<_>>();
         Self::migrate_subscribers(&subscribers, self.current_state.as_ref(), &state).await?;
         self.current_state = Some(state);
+        self.snapshot.store(Arc::new(self.current_state.clone()));
         Ok(())
     }
 
@@ -366,6 +399,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         .await;
         if result.is_ok() {
             self.current_state = Some(state.clone());
+            self.snapshot.store(Arc::new(self.current_state.clone()));
         }
         result
     }
@@ -395,6 +429,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
                 .await;
         if result.is_ok() {
             self.current_state = Some(state.clone());
+            self.snapshot.store(Arc::new(self.current_state.clone()));
         }
         result
     }

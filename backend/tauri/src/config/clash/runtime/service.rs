@@ -84,8 +84,8 @@ impl StateChangedSubscriber<Profiles> for ClashRuntimeConfigService {
         _prev_state: Option<Profiles>,
         new_state: Profiles,
     ) -> Result<(), anyhow::Error> {
-        let clash_config = self.resolve_clash_config().await?;
-        let nyanpasu_config = self.resolve_nyanpasu_config().await?;
+        let clash_config = self.resolve_clash_config()?;
+        let nyanpasu_config = self.resolve_nyanpasu_config()?;
         let runtime = self
             .derive_runtime(&new_state, &clash_config, &nyanpasu_config)
             .await?;
@@ -112,8 +112,8 @@ impl StateChangedSubscriber<ClashConfig> for ClashRuntimeConfigService {
         _prev_state: Option<ClashConfig>,
         new_state: ClashConfig,
     ) -> Result<(), anyhow::Error> {
-        let profiles = self.resolve_profiles().await?;
-        let nyanpasu_config = self.resolve_nyanpasu_config().await?;
+        let profiles = self.resolve_profiles()?;
+        let nyanpasu_config = self.resolve_nyanpasu_config()?;
         let runtime = self
             .derive_runtime(&profiles, &new_state, &nyanpasu_config)
             .await?;
@@ -140,8 +140,8 @@ impl StateChangedSubscriber<NyanpasuAppConfig> for ClashRuntimeConfigService {
         _prev_state: Option<NyanpasuAppConfig>,
         new_state: NyanpasuAppConfig,
     ) -> Result<(), anyhow::Error> {
-        let profiles = self.resolve_profiles().await?;
-        let clash_config = self.resolve_clash_config().await?;
+        let profiles = self.resolve_profiles()?;
+        let clash_config = self.resolve_clash_config()?;
         let runtime = self
             .derive_runtime(&profiles, &clash_config, &new_state)
             .await?;
@@ -208,24 +208,24 @@ impl ClashRuntimeConfigService {
         }
     }
 
-    // -- Source state resolution (Context-first via service APIs) --
+    // -- Source state resolution (MVCC snapshot for fan-in deadlock avoidance) --
 
-    async fn resolve_profiles(&self) -> Result<Profiles, anyhow::Error> {
+    fn resolve_profiles(&self) -> Result<Profiles, anyhow::Error> {
         self.profiles_service
-            .current_state()
-            .await
+            .snapshot()
             .context("profiles state not available")
     }
 
-    async fn resolve_clash_config(&self) -> Result<ClashConfig, anyhow::Error> {
+    fn resolve_clash_config(&self) -> Result<ClashConfig, anyhow::Error> {
         self.clash_config_service
-            .current_config()
-            .await
+            .snapshot()
             .context("clash config not available")
     }
 
-    async fn resolve_nyanpasu_config(&self) -> Result<NyanpasuAppConfig, anyhow::Error> {
-        self.nyanpasu_config_service.current_config().await
+    fn resolve_nyanpasu_config(&self) -> Result<NyanpasuAppConfig, anyhow::Error> {
+        self.nyanpasu_config_service
+            .snapshot()
+            .context("nyanpasu config not available")
     }
 
     // -- Runtime derivation --

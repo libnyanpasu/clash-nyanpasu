@@ -7,6 +7,7 @@ authors.workspace = true
 
 [dependencies]
 anyhow = "1"
+arc-swap = "1"
 async-trait = "0.1"
 dashmap = "6"
 indexmap = { version = "2.2.3", features = ["serde"] }

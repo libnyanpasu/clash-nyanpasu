@@ -5,7 +5,7 @@ use camino::Utf8PathBuf;
 use tokio::sync::RwLock;
 
 use crate::{
-    core::state_v2::{SimpleStateManager, StateCoordinator},
+    core::state_v2::{SimpleStateManager, StateCoordinator, StateSnapshot},
     utils::help,
 };
 
@@ -13,6 +13,7 @@ use super::profiles::Profiles;
 
 pub struct ProfilesService {
     manager: Arc<RwLock<SimpleStateManager<Profiles>>>,
+    snapshot: StateSnapshot<Profiles>,
     /// the path of the profiles file
     profiles_path: Utf8PathBuf,
     /// the directory of the profile items
@@ -21,13 +22,19 @@ pub struct ProfilesService {
 
 impl ProfilesService {
     pub fn new(profiles_path: Utf8PathBuf, profile_items_dir: Utf8PathBuf) -> Self {
+        let manager = SimpleStateManager::new(StateCoordinator::new());
+        let snapshot = manager.snapshot_handle();
         Self {
-            manager: Arc::new(RwLock::new(
-                SimpleStateManager::new(StateCoordinator::new()),
-            )),
+            manager: Arc::new(RwLock::new(manager)),
+            snapshot,
             profiles_path,
             profile_items_dir,
         }
+    }
+
+    /// MVCC snapshot read: lock-free read of last committed state.
+    pub fn snapshot(&self) -> Option<Profiles> {
+        self.snapshot.load()
     }
 
     pub async fn load(&self) -> Result<(), anyhow::Error> {

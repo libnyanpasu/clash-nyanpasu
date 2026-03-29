@@ -10,7 +10,8 @@ use nyanpasu_core::state::YamlFormat;
 use crate::{
     config::NYANPASU_CONFIG_PREFIX,
     core::state_v2::{
-        Context, PersistentBuilderManager, StateAsyncBuilder, StateCoordinator, error::*,
+        Context, PersistentBuilderManager, StateAsyncBuilder, StateCoordinator, StateSnapshot,
+        error::*,
     },
 };
 
@@ -25,6 +26,7 @@ impl StateAsyncBuilder for NyanpasuAppConfigBuilder {
 
 #[derive(Clone)]
 pub struct NyanpasuAppConfigService {
+    snapshot: StateSnapshot<NyanpasuAppConfig>,
     state_manager:
         Arc<RwLock<PersistentBuilderManager<NyanpasuAppConfig, NyanpasuAppConfigBuilder>>>,
 }
@@ -66,13 +68,20 @@ impl NyanpasuAppConfigServiceBuilder {
             self.state_coordinator,
             YamlFormat,
         );
+        let snapshot = state_manager.snapshot_handle();
         Ok(NyanpasuAppConfigService {
+            snapshot,
             state_manager: Arc::new(RwLock::new(state_manager)),
         })
     }
 }
 
 impl NyanpasuAppConfigService {
+    /// MVCC snapshot read: lock-free read of last committed state.
+    pub fn snapshot(&self) -> Option<NyanpasuAppConfig> {
+        self.snapshot.load()
+    }
+
     /// Get the current config,
     /// if the config is not found in the state transactional context, it will be loaded from the real manager
     pub async fn current_config(&self) -> anyhow::Result<NyanpasuAppConfig> {

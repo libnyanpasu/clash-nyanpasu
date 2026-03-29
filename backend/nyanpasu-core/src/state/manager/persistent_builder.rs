@@ -115,6 +115,10 @@ where
         self.state_coordinator.current_state()
     }
 
+    pub fn snapshot_handle(&self) -> StateSnapshot<State> {
+        self.state_coordinator.snapshot_handle()
+    }
+
     pub fn current_builder(&self) -> Option<Builder> {
         self.current_builder.clone()
     }

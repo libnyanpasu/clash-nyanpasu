@@ -46,6 +46,10 @@ where
         self.state_coordinator.current_state()
     }
 
+    pub fn snapshot_handle(&self) -> StateSnapshot<State> {
+        self.state_coordinator.snapshot_handle()
+    }
+
     pub fn state_coordinator_mut(&mut self) -> &mut StateCoordinator<State> {
         &mut self.state_coordinator
     }

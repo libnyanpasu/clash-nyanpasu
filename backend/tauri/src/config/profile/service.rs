@@ -33,7 +33,7 @@ impl ProfilesService {
     }
 
     /// MVCC snapshot read: lock-free read of last committed state.
-    pub fn snapshot(&self) -> Option<Profiles> {
+    pub fn snapshot(&self) -> Option<Arc<Profiles>> {
         self.snapshot.load()
     }
 
@@ -66,9 +66,9 @@ impl ProfilesService {
         Ok(())
     }
 
-    pub async fn current_state(&self) -> Option<Profiles> {
+    pub async fn current_state(&self) -> Option<Arc<Profiles>> {
         match Context::get::<Profiles>() {
-            Some(profiles) => Some(profiles),
+            Some(profiles) => Some(Arc::new(profiles)),
             None => self.manager.read().await.current_state(),
         }
     }

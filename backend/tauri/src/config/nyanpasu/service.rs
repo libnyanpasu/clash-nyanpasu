@@ -78,15 +78,15 @@ impl NyanpasuAppConfigServiceBuilder {
 
 impl NyanpasuAppConfigService {
     /// MVCC snapshot read: lock-free read of last committed state.
-    pub fn snapshot(&self) -> Option<NyanpasuAppConfig> {
+    pub fn snapshot(&self) -> Option<Arc<NyanpasuAppConfig>> {
         self.snapshot.load()
     }
 
     /// Get the current config,
     /// if the config is not found in the state transactional context, it will be loaded from the real manager
-    pub async fn current_config(&self) -> anyhow::Result<NyanpasuAppConfig> {
+    pub async fn current_config(&self) -> anyhow::Result<Arc<NyanpasuAppConfig>> {
         match Context::get::<NyanpasuAppConfig>() {
-            Some(config) => Ok(config),
+            Some(config) => Ok(Arc::new(config)),
             None => self
                 .state_manager
                 .read()

@@ -1,8 +1,7 @@
 use super::{Context, builder::*, error::*};
-use arc_swap::ArcSwap;
+use arc_swap::ArcSwapOption;
 use indexmap::IndexMap;
-use std::future::Future;
-use std::sync::Arc;
+use std::{future::Future, sync::Arc};
 
 /// Whether a subscriber is terminated, it was used for a subscriber was terminated but not removed from the coordinator.
 pub trait FusedStateChangedSubscriber {
@@ -100,7 +99,7 @@ where
 /// Clone is cheap (Arc bump). `load()` returns a point-in-time snapshot
 /// without acquiring any RwLock, making it safe to read sibling sources
 /// inside subscriber migrations (fan-in pattern).
-pub struct StateSnapshot<T: Clone + Send + Sync + 'static>(Arc<ArcSwap<Option<T>>>);
+pub struct StateSnapshot<T: Clone + Send + Sync + 'static>(Arc<ArcSwapOption<T>>);
 
 impl<T: Clone + Send + Sync + 'static> Clone for StateSnapshot<T> {
     fn clone(&self) -> Self {
@@ -110,15 +109,14 @@ impl<T: Clone + Send + Sync + 'static> Clone for StateSnapshot<T> {
 
 impl<T: Clone + Send + Sync + 'static> StateSnapshot<T> {
     /// Lock-free read of the last committed state.
-    pub fn load(&self) -> Option<T> {
-        (**self.0.load()).clone()
+    pub fn load(&self) -> Option<Arc<T>> {
+        self.0.load_full()
     }
 }
 
 #[non_exhaustive]
 pub struct StateCoordinator<T: Clone + Send + Sync + 'static> {
-    current_state: Option<T>,
-    snapshot: Arc<ArcSwap<Option<T>>>,
+    current_state: Arc<ArcSwapOption<T>>,
     subscribers: IndexMap<String, Box<dyn Subscriber<T> + Send + Sync>>,
 }
 
@@ -126,8 +124,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
-            current_state: None,
-            snapshot: Arc::new(ArcSwap::from_pointee(None)),
+            current_state: Arc::new(ArcSwapOption::empty()),
             subscribers: IndexMap::new(),
         }
     }
@@ -147,18 +144,13 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
     }
 
     /// Get the current state.
-    pub fn current_state(&self) -> Option<T> {
-        self.current_state.clone()
+    pub fn current_state(&self) -> Option<Arc<T>> {
+        self.current_state.load_full()
     }
 
     /// MVCC snapshot handle for lock-free reads of last committed state.
     pub fn snapshot_handle(&self) -> StateSnapshot<T> {
-        StateSnapshot(Arc::clone(&self.snapshot))
-    }
-
-    /// Convenience: directly read the current snapshot value.
-    pub fn load_snapshot(&self) -> Option<T> {
-        (**self.snapshot.load()).clone()
+        StateSnapshot(Arc::clone(&self.current_state))
     }
 
     /// Run subscriber migrations only. If a migration fails, previously successful
@@ -335,10 +327,10 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             .map_err(StateChangedError::Validation)?;
 
         let subscribers = self.subscribers.values().collect::<Vec<_>>();
-        Self::migrate_subscribers(&subscribers, self.current_state.as_ref(), &new_state).await?;
+        let current = self.current_state.load_full();
+        Self::migrate_subscribers(&subscribers, current.as_deref(), &new_state).await?;
 
-        self.current_state = Some(new_state);
-        self.snapshot.store(Arc::new(self.current_state.clone()));
+        self.current_state.store(Some(Arc::new(new_state)));
         Ok(())
     }
 
@@ -350,23 +342,23 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             .build()
             .await
             .map_err(StateChangedError::Validation)?;
+        let current = self.current_state.load_full();
         Context::scope(new_state.clone(), async {
             let subscribers = self.subscribers.values().collect::<Vec<_>>();
-            Self::migrate_subscribers(&subscribers, self.current_state.as_ref(), &new_state).await?;
+            Self::migrate_subscribers(&subscribers, current.as_deref(), &new_state).await?;
             Ok::<_, StateChangedError>(())
         })
         .await?;
-        self.current_state = Some(new_state);
-        self.snapshot.store(Arc::new(self.current_state.clone()));
+        self.current_state.store(Some(Arc::new(new_state)));
         Ok(())
     }
 
     /// Upsert the state directly, it used for a small StateObject, a bool value, etc.
     pub async fn upsert_state(&mut self, state: T) -> Result<(), StateChangedError> {
         let subscribers = self.subscribers.values().collect::<Vec<_>>();
-        Self::migrate_subscribers(&subscribers, self.current_state.as_ref(), &state).await?;
-        self.current_state = Some(state);
-        self.snapshot.store(Arc::new(self.current_state.clone()));
+        let current = self.current_state.load_full();
+        Self::migrate_subscribers(&subscribers, current.as_deref(), &state).await?;
+        self.current_state.store(Some(Arc::new(state)));
         Ok(())
     }
 
@@ -390,16 +382,10 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         Fut: Future<Output = Result<R, E>> + 's,
     {
         let subscribers = self.subscribers.values().collect::<Vec<_>>();
-        let result = Self::run_migration(
-            &subscribers,
-            self.current_state.as_ref(),
-            state,
-            effect_fn,
-        )
-        .await;
+        let current = self.current_state.load_full();
+        let result = Self::run_migration(&subscribers, current.as_deref(), state, effect_fn).await;
         if result.is_ok() {
-            self.current_state = Some(state.clone());
-            self.snapshot.store(Arc::new(self.current_state.clone()));
+            self.current_state.store(Some(Arc::new(state.clone())));
         }
         result
     }
@@ -415,21 +401,20 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         Fut: Future<Output = Result<R, E>> + 's,
     {
         let subscribers = self.subscribers.values().collect::<Vec<_>>();
+        let current = self.current_state.load_full();
 
         // Migration in context scope
         Context::scope(state.clone(), async {
-            Self::migrate_subscribers(&subscribers, self.current_state.as_ref(), state).await
+            Self::migrate_subscribers(&subscribers, current.as_deref(), state).await
         })
         .await
         .map_err(WithEffectError::State)?;
 
         // Effect outside context scope
         let result =
-            Self::run_effect_or_rollback(&subscribers, self.current_state.as_ref(), state, effect_fn)
-                .await;
+            Self::run_effect_or_rollback(&subscribers, current.as_deref(), state, effect_fn).await;
         if result.is_ok() {
-            self.current_state = Some(state.clone());
-            self.snapshot.store(Arc::new(self.current_state.clone()));
+            self.current_state.store(Some(Arc::new(state.clone())));
         }
         result
     }
@@ -581,8 +566,7 @@ mod test {
     #[tokio::test]
     async fn test_new_coordinator() {
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let current_state = coordinator.current_state.clone();
-        assert!(current_state.is_none());
+        assert!(coordinator.current_state().is_none());
         assert_eq!(coordinator.subscribers.len(), 0);
     }
 
@@ -599,8 +583,7 @@ mod test {
         let result = coordinator.upsert_state(test_state.clone()).await;
         assert!(result.is_ok());
 
-        let current_state = coordinator.current_state.clone();
-        assert_eq!(current_state, Some(test_state.clone()));
+        assert_eq!(coordinator.current_state().as_deref(), Some(&test_state));
 
         assert_eq!(subscriber.get_migrate_calls(), 1);
         assert_eq!(subscriber.get_rollback_calls(), 0);
@@ -625,8 +608,7 @@ mod test {
         let result = coordinator.upsert(builder).await;
         assert!(result.is_ok());
 
-        let current_state = coordinator.current_state.clone();
-        assert_eq!(current_state, Some(test_state.clone()));
+        assert_eq!(coordinator.current_state().as_deref(), Some(&test_state));
 
         assert_eq!(subscriber.get_migrate_calls(), 1);
         assert_eq!(subscriber.get_rollback_calls(), 0);
@@ -645,8 +627,7 @@ mod test {
             _ => panic!("Expected validation error"),
         }
 
-        let current_state = coordinator.current_state.clone();
-        assert!(current_state.is_none());
+        assert!(coordinator.current_state().is_none());
     }
 
     #[tokio::test]
@@ -675,8 +656,7 @@ mod test {
         assert_eq!(subscriber.get_migrate_calls(), 1);
         assert_eq!(subscriber.get_rollback_calls(), 1);
 
-        let current_state = coordinator.current_state.clone();
-        assert!(current_state.is_none());
+        assert!(coordinator.current_state().is_none());
     }
 
     #[tokio::test]
@@ -707,8 +687,7 @@ mod test {
         assert_eq!(subscriber.get_migrate_calls(), 1);
         assert_eq!(subscriber.get_rollback_calls(), 1);
 
-        let current_state = coordinator.current_state.clone();
-        assert!(current_state.is_none());
+        assert!(coordinator.current_state().is_none());
     }
 
     #[tokio::test]
@@ -738,8 +717,7 @@ mod test {
         assert_eq!(subscriber2.get_rollback_calls(), 0);
         assert_eq!(subscriber3.get_rollback_calls(), 0);
 
-        let current_state = coordinator.current_state.clone();
-        assert_eq!(current_state, Some(test_state));
+        assert_eq!(coordinator.current_state().as_deref(), Some(&test_state));
     }
 
     #[tokio::test]
@@ -774,8 +752,7 @@ mod test {
         assert_eq!(subscriber2.get_rollback_calls(), 1);
         assert_eq!(subscriber3.get_rollback_calls(), 0);
 
-        let current_state = coordinator.current_state.clone();
-        assert!(current_state.is_none());
+        assert!(coordinator.current_state().is_none());
     }
 
     #[tokio::test]
@@ -801,8 +778,7 @@ mod test {
         assert_eq!(history[0], (None, state1.clone()));
         assert_eq!(history[1], (Some(state1), state2.clone()));
 
-        let current_state = coordinator.current_state.clone();
-        assert_eq!(current_state, Some(state2));
+        assert_eq!(coordinator.current_state().as_deref(), Some(&state2));
     }
 
     #[tokio::test]
@@ -838,8 +814,7 @@ mod test {
         let result = coordinator.upsert(sync_builder).await;
         assert!(result.is_ok());
 
-        let current_state = coordinator.current_state.clone();
-        assert_eq!(current_state, Some(test_state));
+        assert_eq!(coordinator.current_state().as_deref(), Some(&test_state));
     }
 
     #[tokio::test]
@@ -872,8 +847,7 @@ mod test {
     async fn test_get_state() {
         let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
 
-        let initial_state = coordinator.current_state();
-        assert!(initial_state.is_none());
+        assert!(coordinator.current_state().is_none());
 
         let test_state = TestState {
             value: 100,
@@ -881,8 +855,7 @@ mod test {
         };
 
         coordinator.upsert_state(test_state.clone()).await.unwrap();
-        let retrieved_state = coordinator.current_state();
-        assert_eq!(retrieved_state, Some(test_state.clone()));
+        assert_eq!(coordinator.current_state().as_deref(), Some(&test_state));
 
         let new_state = TestState {
             value: 200,
@@ -890,8 +863,7 @@ mod test {
         };
 
         coordinator.upsert_state(new_state.clone()).await.unwrap();
-        let updated_retrieved_state = coordinator.current_state();
-        assert_eq!(updated_retrieved_state, Some(new_state));
+        assert_eq!(coordinator.current_state().as_deref(), Some(&new_state));
     }
 
     #[tokio::test]
@@ -905,8 +877,7 @@ mod test {
         let result = coordinator.upsert_state(test_state.clone()).await;
         assert!(result.is_ok());
 
-        let current_state = coordinator.current_state();
-        assert_eq!(current_state, Some(test_state));
+        assert_eq!(coordinator.current_state().as_deref(), Some(&test_state));
     }
 
     // ─── C1 fix: rollback off-by-one + break + reverse order ───

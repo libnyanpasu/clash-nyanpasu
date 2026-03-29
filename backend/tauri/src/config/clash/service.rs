@@ -92,7 +92,7 @@ impl ClashConfigService {
     }
 
     /// MVCC snapshot read: lock-free read of last committed state.
-    pub fn snapshot(&self) -> Option<ClashConfig> {
+    pub fn snapshot(&self) -> Option<Arc<ClashConfig>> {
         self.snapshot.load()
     }
 
@@ -101,9 +101,9 @@ impl ClashConfigService {
         Ok(())
     }
 
-    pub async fn current_config(&self) -> Option<ClashConfig> {
+    pub async fn current_config(&self) -> Option<Arc<ClashConfig>> {
         match Context::get::<ClashConfig>() {
-            Some(config) => Some(config),
+            Some(config) => Some(Arc::new(config)),
             None => self.manager.read().await.current_state(),
         }
     }

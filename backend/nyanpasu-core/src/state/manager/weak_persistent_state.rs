@@ -3,7 +3,7 @@ use atomicwrites::{AllowOverwrite, AtomicFile};
 use camino::Utf8PathBuf;
 use fs_err::tokio as fs;
 use serde::{Serialize, de::DeserializeOwned};
-use std::{future::Future, io::Write};
+use std::{future::Future, io::Write, sync::Arc};
 
 use super::{super::error::*, *};
 
@@ -42,7 +42,7 @@ where
         }
     }
 
-    pub fn current_state(&self) -> Option<State> {
+    pub fn current_state(&self) -> Option<Arc<State>> {
         self.state_coordinator.current_state()
     }
 
@@ -540,7 +540,7 @@ mod tests {
         // First upsert succeeds (establishes initial state)
         let initial = TestState::new("initial".to_string(), 100);
         manager.upsert(initial.clone()).await.unwrap();
-        assert_eq!(manager.current_state().unwrap(), initial);
+        assert_eq!(*manager.current_state().unwrap(), initial);
 
         // Switch to unreachable path to trigger write failure
         manager.config_path = Utf8PathBuf::from("/__nonexistent_dir__/__sub__/config.yaml");
@@ -551,6 +551,6 @@ mod tests {
         assert!(result.is_ok());
 
         // State is the NEW value (not rolled back to initial)
-        assert_eq!(manager.current_state().unwrap(), updated);
+        assert_eq!(*manager.current_state().unwrap(), updated);
     }
 }

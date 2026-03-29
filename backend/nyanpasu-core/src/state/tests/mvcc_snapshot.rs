@@ -56,7 +56,7 @@ impl<T: Clone + Send + Sync + 'static> StateChangedSubscriber<T> for FailSubscri
 struct SnapshotCapture {
     name: String,
     handle: StateSnapshot<i32>,
-    captured: std::sync::Mutex<Option<Option<i32>>>,
+    captured: std::sync::Mutex<Option<Option<Arc<i32>>>>,
 }
 
 impl FusedStateChangedSubscriber for SnapshotCapture {}
@@ -80,7 +80,7 @@ async fn test_snapshot_reflects_committed_state() {
     let mut coord = StateCoordinator::<i32>::new();
     let handle = coord.snapshot_handle();
     coord.upsert_state(42).await.unwrap();
-    assert_eq!(handle.load(), Some(42));
+    assert_eq!(handle.load().as_deref(), Some(&42));
 }
 
 #[tokio::test]
@@ -96,7 +96,7 @@ async fn test_snapshot_updates_on_each_commit() {
     let handle = coord.snapshot_handle();
     for i in 1..=3 {
         coord.upsert_state(i).await.unwrap();
-        assert_eq!(handle.load(), Some(i));
+        assert_eq!(handle.load().as_deref(), Some(&i));
     }
 }
 
@@ -121,13 +121,13 @@ async fn test_snapshot_not_updated_on_effect_failure() {
     let handle = coord.snapshot_handle();
 
     coord.upsert_state(1).await.unwrap();
-    assert_eq!(handle.load(), Some(1));
+    assert_eq!(handle.load().as_deref(), Some(&1));
 
     let result: Result<(), WithEffectError<anyhow::Error>> = coord
         .with_pending_state(&2, |_s| async { Err(anyhow::anyhow!("effect failed")) })
         .await;
     assert!(result.is_err());
-    assert_eq!(handle.load(), Some(1));
+    assert_eq!(handle.load().as_deref(), Some(&1));
 }
 
 // ─── 5.4 Effect success updates snapshot ──────────────────────
@@ -141,7 +141,7 @@ async fn test_snapshot_updated_on_effect_success() {
         .with_pending_state(&42, |_s| async { Ok(()) })
         .await;
     assert!(result.is_ok());
-    assert_eq!(handle.load(), Some(42));
+    assert_eq!(handle.load().as_deref(), Some(&42));
 }
 
 // ─── 5.5 Multiple handles see the same snapshot ───────────────
@@ -153,8 +153,8 @@ async fn test_multiple_handles_see_same_snapshot() {
     let h2 = coord.snapshot_handle();
 
     coord.upsert_state(42).await.unwrap();
-    assert_eq!(h1.load(), Some(42));
-    assert_eq!(h2.load(), Some(42));
+    assert_eq!(h1.load().as_deref(), Some(&42));
+    assert_eq!(h2.load().as_deref(), Some(&42));
 }
 
 // ─── 5.6 Concurrent fan-in: no deadlock ──────────────────────
@@ -182,7 +182,7 @@ impl<S: Clone + Send + Sync + 'static, D: Clone + Send + Sync + 'static>
 
     async fn migrate(&self, _prev: Option<S>, new_state: S) -> Result<(), anyhow::Error> {
         if let Some(sibling) = self.sibling_snapshot.load() {
-            let derived = (self.combiner)(new_state, sibling);
+            let derived = (self.combiner)(new_state, (*sibling).clone());
             self.derived.write().await.upsert(derived).await?;
         }
         // If sibling hasn't committed yet, skip — the sibling's own write will
@@ -236,13 +236,13 @@ async fn test_concurrent_fan_in_no_deadlock() {
     assert!(result.is_ok(), "deadlock detected: timeout after 5 seconds");
 
     // Both sources committed
-    assert_eq!(snap_a.load(), Some(10));
-    assert_eq!(snap_b.load(), Some(20));
+    assert_eq!(snap_a.load().as_deref(), Some(&10));
+    assert_eq!(snap_b.load().as_deref(), Some(&20));
 
     // Force convergence: re-trigger B so its subscriber reads committed A snapshot
     mgr_b.write().await.upsert(20).await.unwrap();
     let d_state = snap_d.load().expect("D should converge");
-    assert_eq!(d_state, (10, 20));
+    assert_eq!(*d_state, (10, 20));
 }
 
 // ─── 5.7 Concurrent fan-in eventual convergence ──────────────
@@ -279,14 +279,14 @@ async fn test_concurrent_fan_in_eventual_convergence() {
     // Phase 1: A commits first. B hasn't committed yet, so A's subscriber
     // skips (no sibling snapshot available). D is still None.
     mgr_a.write().await.upsert(10).await.unwrap();
-    assert_eq!(snap_a.load(), Some(10));
+    assert_eq!(snap_a.load().as_deref(), Some(&10));
     assert!(snap_d.load().is_none(), "D should be None — B not yet committed");
 
     // Phase 2: B commits. A's snapshot is now 10, so B's subscriber
     // derives D = (10, 20) — convergence achieved.
     mgr_b.write().await.upsert(20).await.unwrap();
     let d_final = snap_d.load().expect("D should converge after B upsert");
-    assert_eq!(d_final, (10, 20));
+    assert_eq!(*d_final, (10, 20));
 }
 
 // ─── 5.8 Three-source concurrent fan-in ──────────────────────
@@ -313,17 +313,17 @@ impl StateChangedSubscriber<i32> for TriFanInSubscriber {
         let a = if self.source == 'a' {
             new_state
         } else {
-            self.snap_a.load().unwrap_or(0)
+            self.snap_a.load().map(|v| *v).unwrap_or(0)
         };
         let b = if self.source == 'b' {
             new_state
         } else {
-            self.snap_b.load().unwrap_or(0)
+            self.snap_b.load().map(|v| *v).unwrap_or(0)
         };
         let c = if self.source == 'c' {
             new_state
         } else {
-            self.snap_c.load().unwrap_or(0)
+            self.snap_c.load().map(|v| *v).unwrap_or(0)
         };
         self.derived.write().await.upsert((a, b, c)).await?;
         Ok(())
@@ -394,9 +394,9 @@ async fn test_three_source_concurrent_fan_in() {
     assert!(result.is_ok(), "deadlock detected: timeout after 5 seconds");
 
     // All sources have committed
-    assert_eq!(snap_a.load(), Some(1));
-    assert_eq!(snap_b.load(), Some(2));
-    assert_eq!(snap_c.load(), Some(3));
+    assert_eq!(snap_a.load().as_deref(), Some(&1));
+    assert_eq!(snap_b.load().as_deref(), Some(&2));
+    assert_eq!(snap_c.load().as_deref(), Some(&3));
 
     // D has some value (no panic during fan-in)
     let _d_intermediate = snap_d.load();
@@ -406,7 +406,7 @@ async fn test_three_source_concurrent_fan_in() {
     // committed snapshots of A and B.
     mgr_c.write().await.upsert(3).await.unwrap();
     let d_final = snap_d.load().expect("D should converge");
-    assert_eq!(d_final, (1, 2, 3));
+    assert_eq!(*d_final, (1, 2, 3));
 }
 
 // ─── 5.9 Snapshot during subscriber reflects pre-commit ──────
@@ -434,18 +434,23 @@ async fn test_snapshot_during_subscriber_reflects_pre_commit() {
     );
 
     // After commit: snapshot is now 42
-    assert_eq!(handle.load(), Some(42));
+    assert_eq!(handle.load().as_deref(), Some(&42));
 
     // Second commit: snapshot during migration should be 42 (previous committed value)
     coord.upsert_state(100).await.unwrap();
-    let captured_during_second = capture.captured.lock().unwrap().take();
+    let captured_during_second = capture
+        .captured
+        .lock()
+        .unwrap()
+        .take()
+        .map(|opt| opt.map(|arc| *arc));
     assert_eq!(
         captured_during_second,
         Some(Some(42)),
         "snapshot during second migration should be 42 (previous committed value)"
     );
 
-    assert_eq!(handle.load(), Some(100));
+    assert_eq!(handle.load().as_deref(), Some(&100));
 }
 
 // ─── 5.10 upsert_with_context updates snapshot ───────────────
@@ -456,7 +461,7 @@ async fn test_upsert_with_context_updates_snapshot() {
     let handle = coord.snapshot_handle();
 
     coord.upsert_state_with_context(42).await.unwrap();
-    assert_eq!(handle.load(), Some(42));
+    assert_eq!(handle.load().as_deref(), Some(&42));
 }
 
 // ─── 5.11 with_pending_state_in_context updates snapshot ─────
@@ -470,7 +475,7 @@ async fn test_with_pending_state_in_context_updates_snapshot() {
         .with_pending_state_in_context(&42, |_s| async { Ok(()) })
         .await;
     assert!(result.is_ok());
-    assert_eq!(handle.load(), Some(42));
+    assert_eq!(handle.load().as_deref(), Some(&42));
 }
 
 // ─── 5.12 Manager snapshot_handle works ──────────────────────
@@ -482,5 +487,5 @@ async fn test_simple_manager_snapshot_handle() {
 
     assert_eq!(handle.load(), None);
     mgr.upsert(42).await.unwrap();
-    assert_eq!(handle.load(), Some(42));
+    assert_eq!(handle.load().as_deref(), Some(&42));
 }

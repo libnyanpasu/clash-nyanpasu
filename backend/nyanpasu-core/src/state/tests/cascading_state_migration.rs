@@ -157,7 +157,7 @@ impl StateChangedSubscriber<SourceConfig> for BridgeSubscriber {
         let new_b = Self::derive(&new);
         let mut mgr = self.b_manager.lock().await;
         // Snapshot B's current state for rollback
-        *self.prev_b.lock().unwrap() = mgr.current_state();
+        *self.prev_b.lock().unwrap() = mgr.current_state().map(|arc| (*arc).clone());
         // Upsert B — triggers LeafSubscriber.migrate() inside B's coordinator
         mgr.upsert(new_b).await.map_err(|e| anyhow::anyhow!(e))?;
         Ok(())
@@ -278,10 +278,10 @@ async fn cascade_commit_a_to_b_to_c() {
 
     // Assert: all levels committed
     assert!(result.is_ok());
-    assert_eq!(chain.a.current_state(), Some(42));
+    assert_eq!(chain.a.current_state().as_deref(), Some(&42));
     assert_eq!(
-        chain.b.lock().await.current_state(),
-        Some("derived_from_42".to_string())
+        chain.b.lock().await.current_state().as_deref(),
+        Some(&"derived_from_42".to_string())
     );
 
     // LeafSubscriber saw the cascade
@@ -353,8 +353,8 @@ async fn cascade_rollback_on_effect_failure_from_none() {
     // Bridge.rollback(None, 42) is a no-op because prev_b=None.
     // This is the "rollback from zero" limitation.
     assert_eq!(
-        chain.b.lock().await.current_state(),
-        Some("derived_from_42".to_string())
+        chain.b.lock().await.current_state().as_deref(),
+        Some(&"derived_from_42".to_string())
     );
 
     // Leaf: migrated once during Bridge.migrate(). Not rolled back because
@@ -387,10 +387,10 @@ async fn cascade_consistent_after_failed_second_update() {
 
     // First update: success
     chain.a.upsert_state(1).await.unwrap();
-    assert_eq!(chain.a.current_state(), Some(1));
+    assert_eq!(chain.a.current_state().as_deref(), Some(&1));
     assert_eq!(
-        chain.b.lock().await.current_state(),
-        Some("derived_from_1".to_string())
+        chain.b.lock().await.current_state().as_deref(),
+        Some(&"derived_from_1".to_string())
     );
 
     // Configure leaf to fail on ALL subsequent migrates
@@ -401,10 +401,10 @@ async fn cascade_consistent_after_failed_second_update() {
     assert!(result.is_err());
 
     // State consistent at first update despite cascading failure
-    assert_eq!(chain.a.current_state(), Some(1));
+    assert_eq!(chain.a.current_state().as_deref(), Some(&1));
     assert_eq!(
-        chain.b.lock().await.current_state(),
-        Some("derived_from_1".to_string())
+        chain.b.lock().await.current_state().as_deref(),
+        Some(&"derived_from_1".to_string())
     );
 
     // Leaf migrate log — trace the full cascade:
@@ -473,8 +473,8 @@ async fn cascade_rollback_when_sibling_fails_after_bridge() {
     // B was committed during Bridge.migrate() and stays committed.
     // Bridge.rollback(None, 99) is a no-op — "rollback from zero" limitation.
     assert_eq!(
-        b.lock().await.current_state(),
-        Some("derived_from_99".to_string())
+        b.lock().await.current_state().as_deref(),
+        Some(&"derived_from_99".to_string())
     );
 
     // Bridge: migrated (success), then rollback called (no-op)
@@ -516,10 +516,10 @@ async fn cascade_full_rollback_sibling_with_prev_state() {
 
     // First update: success
     a.upsert_state(1).await.unwrap();
-    assert_eq!(a.current_state(), Some(1));
+    assert_eq!(a.current_state().as_deref(), Some(&1));
     assert_eq!(
-        b.lock().await.current_state(),
-        Some("derived_from_1".to_string())
+        b.lock().await.current_state().as_deref(),
+        Some(&"derived_from_1".to_string())
     );
 
     // Now make sibling fail
@@ -530,12 +530,12 @@ async fn cascade_full_rollback_sibling_with_prev_state() {
     assert!(result.is_err());
 
     // A rolled back to first state
-    assert_eq!(a.current_state(), Some(1));
+    assert_eq!(a.current_state().as_deref(), Some(&1));
 
     // B rolled back to first derived state via Bridge.rollback()
     assert_eq!(
-        b.lock().await.current_state(),
-        Some("derived_from_1".to_string())
+        b.lock().await.current_state().as_deref(),
+        Some(&"derived_from_1".to_string())
     );
 
     // Verify the full cascade:
@@ -580,8 +580,8 @@ async fn cascade_effect_failure_with_prev_state() {
     // First: establish state
     chain.a.upsert_state(1).await.unwrap();
     assert_eq!(
-        chain.b.lock().await.current_state(),
-        Some("derived_from_1".to_string())
+        chain.b.lock().await.current_state().as_deref(),
+        Some(&"derived_from_1".to_string())
     );
 
     // Second: with_pending_state where effect fails
@@ -595,12 +595,12 @@ async fn cascade_effect_failure_with_prev_state() {
     assert!(result.is_err());
 
     // A stays at 1 (effect failed, state not committed)
-    assert_eq!(chain.a.current_state(), Some(1));
+    assert_eq!(chain.a.current_state().as_deref(), Some(&1));
 
     // B restored to "derived_from_1" by Bridge.rollback()
     assert_eq!(
-        chain.b.lock().await.current_state(),
-        Some("derived_from_1".to_string())
+        chain.b.lock().await.current_state().as_deref(),
+        Some(&"derived_from_1".to_string())
     );
 
     // Leaf saw the full cascade:

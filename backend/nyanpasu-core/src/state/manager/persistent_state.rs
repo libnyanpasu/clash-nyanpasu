@@ -4,6 +4,7 @@ use camino::Utf8PathBuf;
 use fs_err::tokio as fs;
 use serde::{Serialize, de::DeserializeOwned};
 use std::io::Write;
+use std::sync::Arc;
 
 use super::{super::error::*, *};
 
@@ -73,7 +74,7 @@ where
         Ok(())
     }
 
-    pub fn current_state(&self) -> Option<State> {
+    pub fn current_state(&self) -> Option<Arc<State>> {
         self.state_coordinator.current_state()
     }
 

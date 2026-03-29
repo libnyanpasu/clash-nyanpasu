@@ -210,19 +210,19 @@ impl ClashRuntimeConfigService {
 
     // -- Source state resolution (MVCC snapshot for fan-in deadlock avoidance) --
 
-    fn resolve_profiles(&self) -> Result<Profiles, anyhow::Error> {
+    fn resolve_profiles(&self) -> Result<Arc<Profiles>, anyhow::Error> {
         self.profiles_service
             .snapshot()
             .context("profiles state not available")
     }
 
-    fn resolve_clash_config(&self) -> Result<ClashConfig, anyhow::Error> {
+    fn resolve_clash_config(&self) -> Result<Arc<ClashConfig>, anyhow::Error> {
         self.clash_config_service
             .snapshot()
             .context("clash config not available")
     }
 
-    fn resolve_nyanpasu_config(&self) -> Result<NyanpasuAppConfig, anyhow::Error> {
+    fn resolve_nyanpasu_config(&self) -> Result<Arc<NyanpasuAppConfig>, anyhow::Error> {
         self.nyanpasu_config_service
             .snapshot()
             .context("nyanpasu config not available")
@@ -390,7 +390,7 @@ impl ClashRuntimeConfigService {
     /// Patch the current runtime config with a partial update.
     pub async fn patch_runtime_config(&self, patch: PatchPayload) -> Result<(), anyhow::Error> {
         let mut runtime = self.runtime.write().await;
-        let mut state = runtime.current_state().context("no runtime state found")?;
+        let mut state = (*runtime.current_state().context("no runtime state found")?).clone();
         match &patch {
             PatchPayload::Specific(p) => {
                 let mapping = serde_yaml::to_value(p)?
@@ -411,9 +411,9 @@ impl ClashRuntimeConfigService {
     }
 
     /// Get the current runtime state (Context-first for transactional consistency).
-    pub async fn current_state(&self) -> Option<ClashRuntimeState> {
+    pub async fn current_state(&self) -> Option<Arc<ClashRuntimeState>> {
         if let Some(state) = Context::get::<ClashRuntimeState>() {
-            return Some(state);
+            return Some(Arc::new(state));
         }
         self.runtime.read().await.current_state()
     }

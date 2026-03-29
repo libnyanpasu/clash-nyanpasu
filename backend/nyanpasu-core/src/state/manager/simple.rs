@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use super::{super::error::*, *};
 
 pub struct SimpleStateManager<State>
@@ -15,7 +17,7 @@ where
         Self { state_coordinator }
     }
 
-    pub fn current_state(&self) -> Option<State> {
+    pub fn current_state(&self) -> Option<Arc<State>> {
         self.state_coordinator.current_state()
     }
 

@@ -90,8 +90,8 @@ impl ApplyOverridesError {
 }
 
 impl ClashConfig {
-    pub const MIXED_PORT_LABEL: Label = Label::from("mixed-port");
-    pub const EXTERNAL_CONTROLLER_LABEL: Label = Label::from("external-controller");
+    pub const MIXED_PORT_LABEL: Label = Label::new_static("mixed-port");
+    pub const EXTERNAL_CONTROLLER_LABEL: Label = Label::new_static("external-controller");
 
     /// Apply overrides to the config
     /// # Arguments

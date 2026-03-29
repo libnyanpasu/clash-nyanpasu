@@ -46,6 +46,11 @@ impl PortRegistry {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Label(Cow<'static, str>);
+impl Label {
+    pub const fn new_static(s: &'static str) -> Self {
+        Label(Cow::Borrowed(s))
+    }
+}
 
 impl From<&'static str> for Label {
     fn from(s: &'static str) -> Self {

@@ -1,6 +1,12 @@
 [workspace]
 resolver = "2"
-members = ["tauri", "boa_utils", "nyanpasu-macro", "nyanpasu-egui"]
+members = [
+  "tauri",
+  "boa_utils",
+  "nyanpasu-macro",
+  "nyanpasu-egui",
+  "nyanpasu-core",
+]
 
 [patch.crates-io]
 tray-icon = { git = "https://github.com/tauri-apps/tray-icon.git", rev = "34a3442" }

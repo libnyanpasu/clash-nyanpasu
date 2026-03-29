@@ -36,8 +36,7 @@ use super::PatchRuntimeConfig;
 use crate::{
     config::{
         ClashConfig, ClashConfigService, ClashRuntimeState, NyanpasuAppConfig, Profile,
-        ProfileContentGuard, Profiles,
-        nyanpasu::NyanpasuAppConfigService,
+        ProfileContentGuard, Profiles, nyanpasu::NyanpasuAppConfigService,
         profile::ProfilesService,
     },
     core::state_v2::{
@@ -247,8 +246,9 @@ impl ClashRuntimeConfigService {
 
         let valid_fields = profiles.valid.iter().cloned().collect::<BTreeSet<_>>();
 
-        // Phase 1: Load all profile data (owned values)
-        let mut loaded_profiles: Vec<LoadedProfile<'_>> = Vec::new();
+        // Load all profile data (owned values)
+        let mut loaded_profiles: Vec<LoadedProfile<'_>> =
+            Vec::with_capacity(profiles.current.len());
         for uid in &profiles.current {
             let profile = profiles
                 .get_item(uid)
@@ -284,18 +284,11 @@ impl ClashRuntimeConfigService {
                 let chain_profile = profiles
                     .get_item(chain_uid)
                     .with_context(|| format!("scoped chain profile not found: {chain_uid}"))?;
-                scoped_chain.push(
-                    chain_profile
-                        .load_content()
-                        .await
-                        .with_context(|| {
-                            format!("failed to load scoped chain content: {chain_uid}")
-                        })?,
-                );
+                scoped_chain.push(chain_profile.load_content().await.with_context(|| {
+                    format!("failed to load scoped chain content: {chain_uid}")
+                })?);
             }
 
-            // content_guard is dropped here — we've extracted what we need into `config`
-            drop(content_guard);
             loaded_profiles.push(LoadedProfile {
                 profile_id: uid.clone(),
                 config,
@@ -317,7 +310,7 @@ impl ClashRuntimeConfigService {
             );
         }
 
-        // Phase 2: Build borrowed PartialProfileItem references from owned data
+        // Build borrowed PartialProfileItem references from owned data
         let partial_items: Vec<PartialProfileItem<'_, '_>> = loaded_profiles
             .iter()
             .map(|loaded| PartialProfileItem {
@@ -377,9 +370,7 @@ impl ClashRuntimeConfigService {
         })
     }
 
-    // -- Public API --
-
-    /// Try to load the LKG snapshot from disk (for bootstrap fallback).
+    /// Try to load the LastGoodKnown snapshot from disk (for bootstrap fallback).
     /// Returns None if the file doesn't exist or is corrupted.
     pub async fn try_load_snapshot(&self) -> Option<ClashRuntimeState> {
         self.runtime.read().await.try_load_snapshot().await
@@ -399,9 +390,7 @@ impl ClashRuntimeConfigService {
     /// Patch the current runtime config with a partial update.
     pub async fn patch_runtime_config(&self, patch: PatchPayload) -> Result<(), anyhow::Error> {
         let mut runtime = self.runtime.write().await;
-        let mut state = runtime
-            .current_state()
-            .context("no runtime state found")?;
+        let mut state = runtime.current_state().context("no runtime state found")?;
         match &patch {
             PatchPayload::Specific(p) => {
                 let mapping = serde_yaml::to_value(p)?
@@ -463,10 +452,7 @@ mod tests {
     fn make_test_runtime_state() -> ClashRuntimeState {
         let mut config = Mapping::new();
         config.insert("mixed-port".into(), 7890.into());
-        config.insert(
-            "external-controller".into(),
-            "127.0.0.1:9090".into(),
-        );
+        config.insert("external-controller".into(), "127.0.0.1:9090".into());
         ClashRuntimeState {
             config,
             exists_keys: BTreeSet::from(["mixed-port".to_string()]),
@@ -478,8 +464,7 @@ mod tests {
     #[tokio::test]
     async fn test_upsert_persists_to_lkg_file() {
         let temp = tempdir().unwrap();
-        let lkg_path =
-            Utf8PathBuf::from_path_buf(temp.path().join("runtime-lkg.yaml")).unwrap();
+        let lkg_path = Utf8PathBuf::from_path_buf(temp.path().join("runtime-lkg.yaml")).unwrap();
 
         let mut manager = WeakPersistentStateManager::new(
             None,
@@ -500,8 +485,7 @@ mod tests {
     #[tokio::test]
     async fn test_try_load_snapshot_returns_persisted_state() {
         let temp = tempdir().unwrap();
-        let lkg_path =
-            Utf8PathBuf::from_path_buf(temp.path().join("runtime-lkg.yaml")).unwrap();
+        let lkg_path = Utf8PathBuf::from_path_buf(temp.path().join("runtime-lkg.yaml")).unwrap();
 
         // Write state
         {
@@ -529,8 +513,7 @@ mod tests {
     #[tokio::test]
     async fn test_try_load_snapshot_returns_none_when_no_file() {
         let temp = tempdir().unwrap();
-        let lkg_path =
-            Utf8PathBuf::from_path_buf(temp.path().join("nonexistent.yaml")).unwrap();
+        let lkg_path = Utf8PathBuf::from_path_buf(temp.path().join("nonexistent.yaml")).unwrap();
 
         let manager = WeakPersistentStateManager::<ClashRuntimeState>::new(
             None,

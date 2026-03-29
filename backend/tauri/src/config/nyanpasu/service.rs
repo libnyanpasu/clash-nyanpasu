@@ -5,6 +5,8 @@ use camino::{Utf8Path, Utf8PathBuf};
 use json_patch::merge;
 use tokio::sync::RwLock;
 
+use nyanpasu_core::state::YamlFormat;
+
 use crate::{
     config::NYANPASU_CONFIG_PREFIX,
     core::state_v2::{
@@ -62,6 +64,7 @@ impl NyanpasuAppConfigServiceBuilder {
             Some(NYANPASU_CONFIG_PREFIX.to_string()),
             self.config_path.context("config path is not set")?,
             self.state_coordinator,
+            YamlFormat,
         );
         Ok(NyanpasuAppConfigService {
             state_manager: Arc::new(RwLock::new(state_manager)),
@@ -70,16 +73,6 @@ impl NyanpasuAppConfigServiceBuilder {
 }
 
 impl NyanpasuAppConfigService {
-    /// Configure state coordinator for the service, it is used for service that need to hold the config service handle
-    pub async fn configure_state_coordinator(
-        &self,
-        f: impl FnOnce(&mut StateCoordinator<NyanpasuAppConfig>),
-    ) -> anyhow::Result<()> {
-        let mut manager = self.state_manager.write().await;
-        f(&mut manager.state_coordinator_mut());
-        Ok(())
-    }
-
     /// Get the current config,
     /// if the config is not found in the state transactional context, it will be loaded from the real manager
     pub async fn current_config(&self) -> anyhow::Result<NyanpasuAppConfig> {

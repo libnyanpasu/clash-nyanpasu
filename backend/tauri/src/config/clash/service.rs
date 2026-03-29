@@ -1,11 +1,12 @@
 use anyhow::Context as _;
 use camino::{Utf8Path, Utf8PathBuf};
 use json_patch::merge;
+use nyanpasu_core::state::YamlFormat;
 use serde_yaml::Mapping;
 
 use super::{ClashConfig, ClashConfigBuilder};
 use crate::{
-    config::{ClashGuardOverrides, NYANPASU_CONFIG_PREFIX},
+    config::NYANPASU_CONFIG_PREFIX,
     core::state_v2::{
         Context, PersistentBuilderManager, StateAsyncBuilder, StateCoordinator, error::*,
     },
@@ -69,6 +70,7 @@ impl ClashConfigServiceBuilder {
                 Some(NYANPASU_CONFIG_PREFIX.to_string()),
                 self.config_path.context("config path is not set")?,
                 self.state_coordinator,
+                YamlFormat,
             ))),
         })
     }

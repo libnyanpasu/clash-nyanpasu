@@ -5,7 +5,6 @@ import {
   useEffect,
   useState,
 } from 'react'
-import { Action as AboutAction } from '@/pages/(main)/main/settings/about/route'
 import {
   commands,
   unwrapResult,
@@ -13,7 +12,6 @@ import {
   useUpdaterSupported,
 } from '@nyanpasu/interface'
 import packageJson from '@root/package.json'
-import { useNavigate } from '@tanstack/react-router'
 import { Update } from '@tauri-apps/plugin-updater'
 import { useBlockTask } from './block-task-provider'
 
@@ -72,22 +70,10 @@ export default function NyanpasuUpdateProvider({
     return null
   })
 
-  const navigate = useNavigate()
-
   // auto check update
   useEffect(() => {
     if (enableAutoCheckUpdate) {
-      blockTask.execute().then((update) => {
-        // if there is a new version, navigate to the about page
-        if (update) {
-          navigate({
-            to: '/main/settings/about',
-            search: {
-              action: AboutAction.NEED_UPDATE,
-            },
-          })
-        }
-      })
+      blockTask.execute()
     }
     // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps
   }, [enableAutoCheckUpdate, blockTask.execute])

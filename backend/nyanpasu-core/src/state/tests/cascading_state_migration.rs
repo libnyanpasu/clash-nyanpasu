@@ -84,11 +84,11 @@ impl StateChangedSubscriber<DerivedRuntime> for LeafSubscriber {
 
     async fn migrate(
         &self,
-        prev: Option<DerivedRuntime>,
-        new: DerivedRuntime,
+        prev: Option<&DerivedRuntime>,
+        new: &DerivedRuntime,
     ) -> Result<(), anyhow::Error> {
         self.migrate_count.fetch_add(1, Ordering::SeqCst);
-        self.migrate_log.lock().unwrap().push((prev, new));
+        self.migrate_log.lock().unwrap().push((prev.cloned(), new.clone()));
         if self.should_fail_migrate.load(Ordering::SeqCst) {
             return Err(anyhow::anyhow!("leaf migrate failed"));
         }
@@ -97,11 +97,11 @@ impl StateChangedSubscriber<DerivedRuntime> for LeafSubscriber {
 
     async fn rollback(
         &self,
-        prev: Option<DerivedRuntime>,
-        new: DerivedRuntime,
+        prev: Option<&DerivedRuntime>,
+        new: &DerivedRuntime,
     ) -> Result<(), anyhow::Error> {
         self.rollback_count.fetch_add(1, Ordering::SeqCst);
-        self.rollback_log.lock().unwrap().push((prev, new));
+        self.rollback_log.lock().unwrap().push((prev.cloned(), new.clone()));
         Ok(())
     }
 }
@@ -150,11 +150,11 @@ impl StateChangedSubscriber<SourceConfig> for BridgeSubscriber {
 
     async fn migrate(
         &self,
-        _prev: Option<SourceConfig>,
-        new: SourceConfig,
+        _prev: Option<&SourceConfig>,
+        new: &SourceConfig,
     ) -> Result<(), anyhow::Error> {
         self.migrate_count.fetch_add(1, Ordering::SeqCst);
-        let new_b = Self::derive(&new);
+        let new_b = Self::derive(new);
         let mut mgr = self.b_manager.lock().await;
         // Snapshot B's current state for rollback
         *self.prev_b.lock().unwrap() = mgr.current_state().map(|arc| (*arc).clone());
@@ -165,8 +165,8 @@ impl StateChangedSubscriber<SourceConfig> for BridgeSubscriber {
 
     async fn rollback(
         &self,
-        _prev: Option<SourceConfig>,
-        _new: SourceConfig,
+        _prev: Option<&SourceConfig>,
+        _new: &SourceConfig,
     ) -> Result<(), anyhow::Error> {
         self.rollback_count.fetch_add(1, Ordering::SeqCst);
         let prev = self.prev_b.lock().unwrap().take();
@@ -221,8 +221,8 @@ impl StateChangedSubscriber<SourceConfig> for SiblingSubscriber {
 
     async fn migrate(
         &self,
-        _prev: Option<SourceConfig>,
-        _new: SourceConfig,
+        _prev: Option<&SourceConfig>,
+        _new: &SourceConfig,
     ) -> Result<(), anyhow::Error> {
         self.migrate_count.fetch_add(1, Ordering::SeqCst);
         if self.should_fail_migrate.load(Ordering::SeqCst) {
@@ -233,8 +233,8 @@ impl StateChangedSubscriber<SourceConfig> for SiblingSubscriber {
 
     async fn rollback(
         &self,
-        _prev: Option<SourceConfig>,
-        _new: SourceConfig,
+        _prev: Option<&SourceConfig>,
+        _new: &SourceConfig,
     ) -> Result<(), anyhow::Error> {
         self.rollback_count.fetch_add(1, Ordering::SeqCst);
         Ok(())

@@ -81,21 +81,21 @@ impl StateChangedSubscriber<Profiles> for ClashRuntimeConfigService {
 
     async fn migrate(
         &self,
-        _prev_state: Option<Profiles>,
-        new_state: Profiles,
+        _prev_state: Option<&Profiles>,
+        new_state: &Profiles,
     ) -> Result<(), anyhow::Error> {
         let clash_config = self.resolve_clash_config()?;
         let nyanpasu_config = self.resolve_nyanpasu_config()?;
         let runtime = self
-            .derive_runtime(&new_state, &clash_config, &nyanpasu_config)
+            .derive_runtime(new_state, &clash_config, &nyanpasu_config)
             .await?;
         self.upsert(runtime).await
     }
 
     async fn rollback(
         &self,
-        _prev_state: Option<Profiles>,
-        _new_state: Profiles,
+        _prev_state: Option<&Profiles>,
+        _new_state: &Profiles,
     ) -> Result<(), anyhow::Error> {
         Ok(())
     }
@@ -109,21 +109,21 @@ impl StateChangedSubscriber<ClashConfig> for ClashRuntimeConfigService {
 
     async fn migrate(
         &self,
-        _prev_state: Option<ClashConfig>,
-        new_state: ClashConfig,
+        _prev_state: Option<&ClashConfig>,
+        new_state: &ClashConfig,
     ) -> Result<(), anyhow::Error> {
         let profiles = self.resolve_profiles()?;
         let nyanpasu_config = self.resolve_nyanpasu_config()?;
         let runtime = self
-            .derive_runtime(&profiles, &new_state, &nyanpasu_config)
+            .derive_runtime(&profiles, new_state, &nyanpasu_config)
             .await?;
         self.upsert(runtime).await
     }
 
     async fn rollback(
         &self,
-        _prev_state: Option<ClashConfig>,
-        _new_state: ClashConfig,
+        _prev_state: Option<&ClashConfig>,
+        _new_state: &ClashConfig,
     ) -> Result<(), anyhow::Error> {
         Ok(())
     }
@@ -137,21 +137,21 @@ impl StateChangedSubscriber<NyanpasuAppConfig> for ClashRuntimeConfigService {
 
     async fn migrate(
         &self,
-        _prev_state: Option<NyanpasuAppConfig>,
-        new_state: NyanpasuAppConfig,
+        _prev_state: Option<&NyanpasuAppConfig>,
+        new_state: &NyanpasuAppConfig,
     ) -> Result<(), anyhow::Error> {
         let profiles = self.resolve_profiles()?;
         let clash_config = self.resolve_clash_config()?;
         let runtime = self
-            .derive_runtime(&profiles, &clash_config, &new_state)
+            .derive_runtime(&profiles, &clash_config, new_state)
             .await?;
         self.upsert(runtime).await
     }
 
     async fn rollback(
         &self,
-        _prev_state: Option<NyanpasuAppConfig>,
-        _new_state: NyanpasuAppConfig,
+        _prev_state: Option<&NyanpasuAppConfig>,
+        _new_state: &NyanpasuAppConfig,
     ) -> Result<(), anyhow::Error> {
         Ok(())
     }

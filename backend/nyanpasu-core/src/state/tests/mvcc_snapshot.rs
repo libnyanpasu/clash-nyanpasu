@@ -43,7 +43,7 @@ impl<T: Clone + Send + Sync + 'static> StateChangedSubscriber<T> for FailSubscri
     fn name(&self) -> &str {
         &self.name
     }
-    async fn migrate(&self, _prev: Option<T>, _new: T) -> Result<(), anyhow::Error> {
+    async fn migrate(&self, _prev: Option<&T>, _new: &T) -> Result<(), anyhow::Error> {
         if self.should_fail.load(Ordering::SeqCst) {
             Err(anyhow::anyhow!("forced migration failure"))
         } else {
@@ -66,7 +66,7 @@ impl StateChangedSubscriber<i32> for SnapshotCapture {
     fn name(&self) -> &str {
         &self.name
     }
-    async fn migrate(&self, _prev: Option<i32>, _new: i32) -> Result<(), anyhow::Error> {
+    async fn migrate(&self, _prev: Option<&i32>, _new: &i32) -> Result<(), anyhow::Error> {
         let snap = self.handle.load();
         *self.captured.lock().unwrap() = Some(snap);
         Ok(())
@@ -180,9 +180,9 @@ impl<S: Clone + Send + Sync + 'static, D: Clone + Send + Sync + 'static>
         &self.name
     }
 
-    async fn migrate(&self, _prev: Option<S>, new_state: S) -> Result<(), anyhow::Error> {
+    async fn migrate(&self, _prev: Option<&S>, new_state: &S) -> Result<(), anyhow::Error> {
         if let Some(sibling) = self.sibling_snapshot.load() {
-            let derived = (self.combiner)(new_state, (*sibling).clone());
+            let derived = (self.combiner)(new_state.clone(), (*sibling).clone());
             self.derived.write().await.upsert(derived).await?;
         }
         // If sibling hasn't committed yet, skip — the sibling's own write will
@@ -309,19 +309,19 @@ impl StateChangedSubscriber<i32> for TriFanInSubscriber {
         &self.name
     }
 
-    async fn migrate(&self, _prev: Option<i32>, new_state: i32) -> Result<(), anyhow::Error> {
+    async fn migrate(&self, _prev: Option<&i32>, new_state: &i32) -> Result<(), anyhow::Error> {
         let a = if self.source == 'a' {
-            new_state
+            *new_state
         } else {
             self.snap_a.load().map(|v| *v).unwrap_or(0)
         };
         let b = if self.source == 'b' {
-            new_state
+            *new_state
         } else {
             self.snap_b.load().map(|v| *v).unwrap_or(0)
         };
         let c = if self.source == 'c' {
-            new_state
+            *new_state
         } else {
             self.snap_c.load().map(|v| *v).unwrap_or(0)
         };

@@ -262,8 +262,8 @@ mod tests {
 
         async fn migrate(
             &self,
-            _prev_state: Option<TestState>,
-            _new_state: TestState,
+            _prev_state: Option<&TestState>,
+            _new_state: &TestState,
         ) -> Result<(), anyhow::Error> {
             if self.should_fail_migrate.load(Ordering::SeqCst) {
                 return Err(anyhow::anyhow!("Mock migrate failure"));
@@ -287,8 +287,8 @@ mod tests {
 
         async fn migrate(
             &self,
-            _prev_state: Option<TestState>,
-            _new_state: TestState,
+            _prev_state: Option<&TestState>,
+            _new_state: &TestState,
         ) -> Result<(), anyhow::Error> {
             use super::super::super::context::Context;
             let ctx = Context::get::<TestState>();

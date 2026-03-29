@@ -24,13 +24,13 @@ pub trait StateChangedSubscriber<T: Clone + Send + Sync + 'static> {
     /// While state migrate is failed, the rollback will be called.
     ///
     /// When the prev_state is None, it means the state is not initialized.
-    async fn migrate(&self, prev_state: Option<T>, new_state: T) -> Result<(), anyhow::Error>;
+    async fn migrate(&self, prev_state: Option<&T>, new_state: &T) -> Result<(), anyhow::Error>;
 
     /// Called when the state migrate is failed, return a Error if the state rollback is failed.
     ///
     /// If the migration do not affect the real system/service, you can use the default implementation,
     /// OR you MUST implement the rollback method.
-    async fn rollback(&self, prev_state: Option<T>, new_state: T) -> Result<(), anyhow::Error> {
+    async fn rollback(&self, prev_state: Option<&T>, new_state: &T) -> Result<(), anyhow::Error> {
         Ok(())
     }
 }
@@ -45,11 +45,11 @@ where
         self.as_ref().name()
     }
 
-    async fn migrate(&self, prev_state: Option<T>, new_state: T) -> Result<(), anyhow::Error> {
+    async fn migrate(&self, prev_state: Option<&T>, new_state: &T) -> Result<(), anyhow::Error> {
         self.as_ref().migrate(prev_state, new_state).await
     }
 
-    async fn rollback(&self, prev_state: Option<T>, new_state: T) -> Result<(), anyhow::Error> {
+    async fn rollback(&self, prev_state: Option<&T>, new_state: &T) -> Result<(), anyhow::Error> {
         self.as_ref().rollback(prev_state, new_state).await
     }
 }
@@ -64,11 +64,11 @@ where
         self.as_ref().name()
     }
 
-    async fn migrate(&self, prev_state: Option<T>, new_state: T) -> Result<(), anyhow::Error> {
+    async fn migrate(&self, prev_state: Option<&T>, new_state: &T) -> Result<(), anyhow::Error> {
         self.as_ref().migrate(prev_state, new_state).await
     }
 
-    async fn rollback(&self, prev_state: Option<T>, new_state: T) -> Result<(), anyhow::Error> {
+    async fn rollback(&self, prev_state: Option<&T>, new_state: &T) -> Result<(), anyhow::Error> {
         self.as_ref().rollback(prev_state, new_state).await
     }
 }
@@ -177,7 +177,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
                 for subscriber in subscribers.iter().take(index).rev() {
                     let subscriber = subscriber.as_ref();
                     if let Err(e) = subscriber
-                        .rollback(current_state.cloned(), new_state.clone())
+                        .rollback(current_state, new_state)
                         .await
                     {
                         errors.push(StateChangedError::Rollback(RollbackError {
@@ -208,7 +208,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         S: StateChangedSubscriber<T> + Send + Sync + ?Sized,
     {
         if let Err(e) = subscriber
-            .migrate(current_state.cloned(), new_state.clone())
+            .migrate(current_state, new_state)
             .await
         {
             let migrate_error = MigrateError {
@@ -217,7 +217,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             };
             tracing::error!("migrate error: {migrate_error:#?}");
             if let Err(e) = subscriber
-                .rollback(current_state.cloned(), new_state.clone())
+                .rollback(current_state, new_state)
                 .await
             {
                 tracing::error!("rollback error: {e:#?}");
@@ -248,7 +248,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         for subscriber in subscribers.iter().rev() {
             let subscriber = subscriber.as_ref();
             if let Err(e) = subscriber
-                .rollback(current_state.cloned(), new_state.clone())
+                .rollback(current_state, new_state)
                 .await
             {
                 errors.push(StateChangedError::Rollback(RollbackError {
@@ -497,14 +497,14 @@ mod test {
 
         async fn migrate(
             &self,
-            prev_state: Option<TestState>,
-            new_state: TestState,
+            prev_state: Option<&TestState>,
+            new_state: &TestState,
         ) -> Result<(), anyhow::Error> {
             self.migrate_calls.fetch_add(1, Ordering::SeqCst);
             self.migrate_history
                 .lock()
                 .await
-                .push((prev_state.clone(), new_state.clone()));
+                .push((prev_state.cloned(), new_state.clone()));
 
             if self.should_fail_migrate.load(Ordering::SeqCst) {
                 return Err(anyhow::anyhow!("Mock migrate failure"));
@@ -514,14 +514,14 @@ mod test {
 
         async fn rollback(
             &self,
-            prev_state: Option<TestState>,
-            new_state: TestState,
+            prev_state: Option<&TestState>,
+            new_state: &TestState,
         ) -> Result<(), anyhow::Error> {
             self.rollback_calls.fetch_add(1, Ordering::SeqCst);
             self.rollback_history
                 .lock()
                 .await
-                .push((prev_state.clone(), new_state.clone()));
+                .push((prev_state.cloned(), new_state.clone()));
 
             if self.should_fail_rollback.load(Ordering::SeqCst) {
                 return Err(anyhow::anyhow!("Mock rollback failure"));
@@ -969,8 +969,8 @@ mod test {
 
             async fn migrate(
                 &self,
-                _prev: Option<TestState>,
-                _new: TestState,
+                _prev: Option<&TestState>,
+                _new: &TestState,
             ) -> Result<(), anyhow::Error> {
                 if self.should_fail_migrate {
                     Err(anyhow::anyhow!("fail"))
@@ -981,8 +981,8 @@ mod test {
 
             async fn rollback(
                 &self,
-                _prev: Option<TestState>,
-                _new: TestState,
+                _prev: Option<&TestState>,
+                _new: &TestState,
             ) -> Result<(), anyhow::Error> {
                 self.rollback_order.lock().await.push(self.name.clone());
                 Ok(())
@@ -1201,16 +1201,16 @@ mod test {
 
             async fn migrate(
                 &self,
-                _prev: Option<TestState>,
-                _new: TestState,
+                _prev: Option<&TestState>,
+                _new: &TestState,
             ) -> Result<(), anyhow::Error> {
                 Ok(())
             }
 
             async fn rollback(
                 &self,
-                _prev: Option<TestState>,
-                _new: TestState,
+                _prev: Option<&TestState>,
+                _new: &TestState,
             ) -> Result<(), anyhow::Error> {
                 self.rollback_order.lock().await.push(self.name.clone());
                 Ok(())

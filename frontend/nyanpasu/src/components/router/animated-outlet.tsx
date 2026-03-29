@@ -79,26 +79,69 @@ export function AnimatedOutlet({
       ]
 
       // Snapshot of router state with old route's matches
-      const patchedState = { ...router.__store.state, matches: patched }
+      const patchedState = { ...router.state, matches: patched }
 
-      // Create a fake store that always returns the frozen patched state.
-      // Object.create delegates everything else (subscribe, atom, etc.) to the real
-      // store via the prototype chain, so subscriptions still work — but the snapshot
-      // always returns patchedState, which never changes, so there are no re-renders.
-      const fakeStore = Object.create(router.__store)
-      Object.defineProperty(fakeStore, 'get', {
-        value: () => patchedState,
+      // Helper: create a static frozen store for the exit animation.
+      // useStore (@tanstack/react-store) needs .get() and .subscribe(); returning a
+      // no-op unsubscribe means the frozen store never triggers re-renders.
+      // Use function syntax to avoid <T> being parsed as JSX in .tsx files.
+      function frozenStore<T>(value: T) {
+        return {
+          state: value,
+          get: () => value,
+          subscribe: (_: () => void) => ({ unsubscribe: () => {} }),
+        }
+      }
+
+      // router.stores is a v1.168+ internal API not yet reflected in all type declarations
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const routerStores = (router as any).stores
+
+      // Build patched match stores keyed by match ID and by route ID.
+      // useMatch({ from: routeId }) calls getMatchStoreByRouteId(routeId),
+      // so we must cover both lookup paths.
+      const fakeActiveMatchStoresById = new Map(
+        routerStores.activeMatchStoresById,
+      )
+      const routeIdToFrozenStore = new Map<
+        string,
+        ReturnType<typeof frozenStore>
+      >()
+      patched.forEach((m) => {
+        const store = frozenStore(m)
+        fakeActiveMatchStoresById.set(m.id, store)
+        if (m.routeId) routeIdToFrozenStore.set(m.routeId, store)
+      })
+
+      // Create fake stores with frozen match data (router.stores moved from router.__store in v1.168+)
+      const fakeStores = Object.create(routerStores)
+      Object.defineProperty(fakeStores, 'activeMatchesSnapshot', {
+        value: frozenStore(patched),
         configurable: true,
       })
-      Object.defineProperty(fakeStore, 'state', {
-        get: () => patchedState,
+      Object.defineProperty(fakeStores, 'matchesId', {
+        value: frozenStore(patched.map((m) => m.id)),
+        configurable: true,
+      })
+      Object.defineProperty(fakeStores, 'activeMatchStoresById', {
+        value: fakeActiveMatchStoresById,
+        configurable: true,
+      })
+      // getMatchStoreByRouteId is called by useMatch({ from }) inside route components
+      Object.defineProperty(fakeStores, 'getMatchStoreByRouteId', {
+        value: (routeId: string) =>
+          routeIdToFrozenStore.get(routeId) ?? frozenStore(undefined),
         configurable: true,
       })
 
-      // Create a fake router that delegates everything to the real router except __store
+      // Create a fake router that delegates everything to the real router except stores/state
       const fakeRouter = Object.create(router)
-      Object.defineProperty(fakeRouter, '__store', {
-        value: fakeStore,
+      Object.defineProperty(fakeRouter, 'stores', {
+        value: fakeStores,
+        configurable: true,
+      })
+      Object.defineProperty(fakeRouter, 'state', {
+        get: () => patchedState,
         configurable: true,
       })
 

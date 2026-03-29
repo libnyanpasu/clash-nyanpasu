@@ -27,7 +27,6 @@ mod window;
 use std::io;
 
 use crate::{
-    config::ConfigService,
     core::handle::Handle,
     utils::{init, resolve},
 };

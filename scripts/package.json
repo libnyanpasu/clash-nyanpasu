@@ -16,7 +16,7 @@
     "@octokit/types": "16.0.0",
     "@types/adm-zip": "0.5.7",
     "@types/yargs": "17.0.35",
-    "adm-zip": "0.5.16",
+    "adm-zip": "0.5.17",
     "colorize-template": "1.0.0",
     "consola": "3.4.2",
     "fs-extra": "11.3.4",

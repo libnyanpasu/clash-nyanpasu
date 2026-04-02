@@ -439,8 +439,8 @@ importers:
         specifier: 23.0.1
         version: 23.0.1(@svgr/core@8.1.0(typescript@5.9.3))
       validator:
-        specifier: 13.15.26
-        version: 13.15.26
+        specifier: 13.15.35
+        version: 13.15.35
       vite:
         specifier: 7.3.1
         version: 7.3.1(@types/node@24.11.0)(jiti@2.6.1)(less@4.2.0)(lightningcss@1.32.0)(sass-embedded@1.98.0)(sass@1.98.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.21.0)(yaml@2.8.2)
@@ -7929,8 +7929,8 @@ packages:
     resolution: {integrity: sha512-XQegIaBTVUjSHliKqcnFqYypAd4S+WCYt5NIeRs6w/UAry7z8Y9j5ZwRRL4kzq9U3sD6v+85er9FvkEaBpji2w==}
     hasBin: true
 
-  validator@13.15.26:
-    resolution: {integrity: sha512-spH26xU080ydGggxRyR1Yhcbgx+j3y5jbNXk/8L+iRvdIEQ4uTRH2Sgf2dokud6Q4oAtsbNvJ1Ft+9xmm6IZcA==}
+  validator@13.15.35:
+    resolution: {integrity: sha512-TQ5pAGhd5whStmqWvYF4OjQROlmv9SMFVt37qoCBdqRffuuklWYQlCNnEs2ZaIBD1kZRNnikiZOS1eqgkar0iw==}
     engines: {node: '>= 0.10'}
 
   varint@6.0.0:
@@ -15786,7 +15786,7 @@ snapshots:
 
   uuid@13.0.0: {}
 
-  validator@13.15.26: {}
+  validator@13.15.35: {}
 
   varint@6.0.0: {}
 

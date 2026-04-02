@@ -7524,9 +7524,9 @@ checksum = "d3edd4d5d42c92f0a659926464d4cce56b562761267ecf0f469d85b7de384175"
 
 [[package]]
 name = "redb"
-version = "3.1.1"
+version = "3.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef99362319c782aa4639ad3a306b64c3bb90e12874e99b8df124cb679d988611"
+checksum = "b440f171acaaddcd7e65eefc2ce4f4d4e05c1dffe2afe23f81af2a87cbfc4e0d"
 dependencies = [
  "libc",
 ]

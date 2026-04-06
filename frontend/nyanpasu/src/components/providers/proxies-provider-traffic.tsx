@@ -2,6 +2,8 @@ import parseTraffic from '@/utils/parse-traffic'
 import { LinearProgress, Tooltip } from '@mui/material'
 import { ProxiesProviderProps } from './proxies-provider'
 
+const clampPercentage = (value: number) => Math.min(100, Math.max(0, value))
+
 export const ProxiesProviderTraffic = ({ provider }: ProxiesProviderProps) => {
   const calc = () => {
     let progress = 0
@@ -15,7 +17,9 @@ export const ProxiesProviderTraffic = ({ provider }: ProxiesProviderProps) => {
 
       used = (download ?? 0) + (upload ?? 0)
 
-      progress = (used / (total ?? 0)) * 100
+      if (total > 0) {
+        progress = clampPercentage((used / total) * 100)
+      }
     }
 
     return { progress, total, used }

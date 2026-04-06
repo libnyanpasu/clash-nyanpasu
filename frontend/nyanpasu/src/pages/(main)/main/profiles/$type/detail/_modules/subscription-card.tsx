@@ -23,6 +23,8 @@ import {
 } from '@nyanpasu/interface'
 import UpdateOptionEditor from './update-option-editor'
 
+const clampPercentage = (value: number) => Math.min(100, Math.max(0, value))
+
 export const SubscriptionCard = ({ profile }: { profile: RemoteProfile }) => {
   const { update } = useProfile()
 
@@ -38,11 +40,13 @@ export const SubscriptionCard = ({ profile }: { profile: RemoteProfile }) => {
     ) {
       const { download, upload, total: t } = profile.extra
 
-      total = t
+      total = t ?? 0
 
-      used = download + upload
+      used = (download ?? 0) + (upload ?? 0)
 
-      progress = (used / (total || 1)) * 100
+      if (total > 0) {
+        progress = clampPercentage((used / total) * 100)
+      }
     }
 
     return { progress, total, used }

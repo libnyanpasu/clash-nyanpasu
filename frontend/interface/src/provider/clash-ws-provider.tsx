@@ -45,6 +45,59 @@ const createPersistedState = (key: string, defaultValue: boolean) => {
   return { getStoredValue, setStoredValue }
 }
 
+const MAX_REASONABLE_MEMORY_BYTES = 16 * 1024 ** 4 // 16 TB
+
+const toNonNegativeFiniteNumber = (value: unknown): number | null => {
+  const parsed =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string'
+        ? Number(value)
+        : NaN
+
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null
+  }
+
+  return parsed
+}
+
+const normalizeClashMemory = (raw: unknown): ClashMemory | null => {
+  if (typeof raw !== 'object' || raw === null) {
+    return null
+  }
+
+  const data = raw as Record<string, unknown>
+  let inuse = toNonNegativeFiniteNumber(data.inuse)
+  let oslimit = toNonNegativeFiniteNumber(data.oslimit) ?? 0
+
+  if (inuse === null) {
+    return null
+  }
+
+  // Keep memory values in bytes and normalize obvious unit mismatches.
+  if (oslimit > 0 && inuse > oslimit * 2) {
+    if (inuse / 8 <= oslimit * 2) {
+      inuse /= 8
+    }
+
+    while (inuse > oslimit * 2 && inuse % 1024 === 0) {
+      inuse /= 1024
+    }
+
+    if (inuse > oslimit * 2) {
+      inuse = oslimit
+    }
+  } else if (oslimit <= 0 && inuse > MAX_REASONABLE_MEMORY_BYTES) {
+    return null
+  }
+
+  return {
+    inuse: Math.trunc(inuse),
+    oslimit: Math.trunc(oslimit),
+  }
+}
+
 const ClashWSContext = createContext<{
   recordLogs: boolean
   setRecordLogs: (value: boolean) => void
@@ -142,7 +195,12 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
       return
     }
 
-    const data = JSON.parse(memoryWS.latestMessage?.data) as ClashMemory
+    const rawData = JSON.parse(memoryWS.latestMessage?.data ?? 'null')
+    const data = normalizeClashMemory(rawData)
+
+    if (!data) {
+      return
+    }
 
     const currentData = queryClient.getQueryData([
       CLASH_MEMORY_QUERY_KEY,

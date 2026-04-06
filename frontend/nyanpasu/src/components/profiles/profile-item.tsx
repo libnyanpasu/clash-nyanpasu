@@ -36,6 +36,8 @@ import { ProfileDialog } from './profile-dialog'
 import { GlobalUpdatePendingContext } from './provider'
 import { ClashProfile } from './utils'
 
+const clampPercentage = (value: number) => Math.min(100, Math.max(0, value))
+
 export interface ProfileItemProps {
   item: ProfileQueryResultItem
   selected?: boolean
@@ -75,11 +77,13 @@ export const ProfileItem = memo(function ProfileItem({
     if ('extra' in item && item.extra) {
       const { download, upload, total: t } = item.extra
 
-      total = t
+      total = t ?? 0
 
-      used = download + upload
+      used = (download ?? 0) + (upload ?? 0)
 
-      progress = (used / (total || 1)) * 100
+      if (total > 0) {
+        progress = clampPercentage((used / total) * 100)
+      }
     }
 
     return { progress, total, used }

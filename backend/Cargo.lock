@@ -1692,7 +1692,7 @@ dependencies = [
  "windows-registry 0.5.3",
  "windows-sys 0.60.2",
  "winreg 0.55.0",
- "zip 8.5.0",
+ "zip 8.5.1",
  "zip-extensions",
 ]
 
@@ -12750,9 +12750,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "8.5.0"
+version = "8.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2726508a48f38dceb22b35ecbbd2430efe34ff05c62bd3285f965d7911b33464"
+checksum = "dcab981e19633ebcf0b001ddd37dd802996098bc1864f90b7c5d970ce76c1d59"
 dependencies = [
  "aes",
  "bzip2",
@@ -12782,7 +12782,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "285251480403d7097be64d5c33518279ecf5f816d5ebe403c476e45ea16c5628"
 dependencies = [
  "ignore",
- "zip 8.5.0",
+ "zip 8.5.1",
 ]
 
 [[package]]

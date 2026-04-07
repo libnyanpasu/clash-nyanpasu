@@ -183,8 +183,8 @@ importers:
         specifier: 5.2.2
         version: 5.2.2(react-hook-form@7.72.1(react@19.2.4))
       '@inlang/paraglide-js':
-        specifier: 2.15.1
-        version: 2.15.1(babel-plugin-macros@3.1.0)
+        specifier: 2.15.2
+        version: 2.15.2(babel-plugin-macros@3.1.0)
       '@juggle/resize-observer':
         specifier: 3.4.0
         version: 3.4.0
@@ -1730,8 +1730,8 @@ packages:
   '@iconify/utils@3.1.0':
     resolution: {integrity: sha512-Zlzem1ZXhI1iHeeERabLNzBHdOa4VhQbqAcOQaMKuTuyZCpwKbC2R4Dd0Zo3g9EAc+Y4fiarO8HIHRAth7+skw==}
 
-  '@inlang/paraglide-js@2.15.1':
-    resolution: {integrity: sha512-7wWKbLWwLx1dkkYz55TnVp+39atKXf7rnlHnL8adSmM73UaAdB9fXDzo24GHSY/6FPGFKSkgHdT2qyJv2whWsA==}
+  '@inlang/paraglide-js@2.15.2':
+    resolution: {integrity: sha512-1S2jBvc8jzJAZFRf3gKu3Z2+9zQRhvIzALEE4vvWDNIoiiOn0vF3cJHf3xFqgfN/JY5IVS//zQsvAT0jWXH69g==}
     hasBin: true
 
   '@inlang/recommend-sherlock@0.2.1':
@@ -9514,7 +9514,7 @@ snapshots:
       '@iconify/types': 2.0.0
       mlly: 1.8.0
 
-  '@inlang/paraglide-js@2.15.1(babel-plugin-macros@3.1.0)':
+  '@inlang/paraglide-js@2.15.2(babel-plugin-macros@3.1.0)':
     dependencies:
       '@inlang/recommend-sherlock': 0.2.1
       '@inlang/sdk': 2.9.1(babel-plugin-macros@3.1.0)

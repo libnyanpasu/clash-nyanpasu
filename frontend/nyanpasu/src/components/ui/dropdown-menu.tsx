@@ -11,6 +11,7 @@ import { useControllableState } from '@radix-ui/react-use-controllable-state'
 const MotionContent = ({
   children,
   className,
+  style,
   ...props
 }: ComponentProps<typeof motion.div>) => {
   return (
@@ -24,6 +25,7 @@ const MotionContent = ({
       )}
       style={{
         maxHeight: 'var(--radix-popper-available-height)',
+        ...style,
       }}
       initial={{
         opacity: 0,
@@ -52,8 +54,11 @@ const MotionContent = ({
   )
 }
 
+type WidthType = 'auto' | 'full'
+
 const DropdownMenuContext = createContext<{
   open: boolean
+  width: WidthType
 } | null>(null)
 
 const useDropdownMenuContext = () => {
@@ -69,11 +74,14 @@ const useDropdownMenuContext = () => {
 }
 
 export const DropdownMenu = ({
+  width = 'auto',
   open: inputOpen,
   defaultOpen,
   onOpenChange,
   ...props
-}: ComponentProps<typeof DropdownMenuPrimitive.Root>) => {
+}: ComponentProps<typeof DropdownMenuPrimitive.Root> & {
+  width?: WidthType
+}) => {
   const [open, setOpen] = useControllableState({
     prop: inputOpen,
     defaultProp: defaultOpen ?? false,
@@ -81,7 +89,12 @@ export const DropdownMenu = ({
   })
 
   return (
-    <DropdownMenuContext.Provider value={{ open }}>
+    <DropdownMenuContext.Provider
+      value={{
+        open,
+        width,
+      }}
+    >
       <DropdownMenuPrimitive.Root
         {...props}
         open={open}
@@ -228,14 +241,24 @@ export const DropdownMenuContent = ({
   className,
   ...props
 }: ComponentProps<typeof DropdownMenuPrimitive.Content>) => {
-  const { open } = useDropdownMenuContext()
+  const { open, width } = useDropdownMenuContext()
 
   return (
     <AnimatePresence initial={false}>
       {open && (
         <DropdownMenuPrimitive.Portal forceMount>
           <DropdownMenuPrimitive.Content {...props} asChild>
-            <MotionContent className={className}>{children}</MotionContent>
+            <MotionContent
+              className={className}
+              style={{
+                width:
+                  width === 'full'
+                    ? 'var(--radix-popper-anchor-width)'
+                    : undefined,
+              }}
+            >
+              {children}
+            </MotionContent>
           </DropdownMenuPrimitive.Content>
         </DropdownMenuPrimitive.Portal>
       )}

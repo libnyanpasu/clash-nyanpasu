@@ -1,3 +1,4 @@
+import { motion, type Transition } from 'framer-motion'
 import { Tooltip as TooltipPrimitive } from 'radix-ui'
 import * as React from 'react'
 import { cn } from '@nyanpasu/ui'
@@ -33,37 +34,27 @@ export function TooltipTrigger({
 
 export function TooltipContent({
   className,
-  sideOffset = 0,
+  sideOffset = 4,
   children,
-  disableArrow = false,
   ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Content> & {
-  disableArrow?: boolean
-}) {
+}: React.ComponentProps<typeof TooltipPrimitive.Content> & {}) {
   return (
     <TooltipPrimitive.Portal>
       <TooltipPrimitive.Content
         data-slot="tooltip-content"
         sideOffset={sideOffset}
         className={cn(
-          'bg-surface-variant text-on-surface',
           'z-50 w-fit min-w-12 text-center',
           'rounded-full px-3 py-1.5 text-xs text-balance',
-          'shadow-outline/30 dark:shadow-surface-variant/20 shadow-sm',
+          'dark:text-on-surface',
+          'bg-mixed-background/30',
+          'backdrop-blur',
+          'dark:shadow-inverse-on-surface/50 shadow-inverse-surface/30 shadow-sm',
           className,
         )}
         {...props}
       >
         {children}
-
-        {!disableArrow && (
-          <TooltipPrimitive.Arrow
-            className={cn(
-              'fill-surface-variant z-50',
-              'h-2.5 w-4 translate-y-[-6px] rounded-xl',
-            )}
-          />
-        )}
       </TooltipPrimitive.Content>
     </TooltipPrimitive.Portal>
   )

@@ -9,6 +9,14 @@
 
 @tailwind utilities;
 
+/* do not use layer */
+:where(code, kbd, pre, samp) {
+  font-family: var(--font-mono);
+  font-feature-settings:
+    'liga' 0,
+    'calt' 0;
+}
+
 @theme {
   --font-mono:
     'Cascadia Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco,

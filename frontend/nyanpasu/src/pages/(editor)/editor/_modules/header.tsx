@@ -1,7 +1,8 @@
 import { ComponentProps } from 'react'
+import { DefaultHeader, MacOSHeader } from '@/components/window/system-titlebar'
 import WindowControl from '@/components/window/window-control'
-import WindowHeader from '@/components/window/window-header'
 import WindowTitle from '@/components/window/window-title'
+import { isMacOS } from '@/consts'
 
 const APP_NAME = 'Clash Nyanpasu - Editor'
 
@@ -20,20 +21,18 @@ const Title = () => {
 }
 
 export default function Header({
-  beforeClose,
-}: {
+  className,
+  ...props
+}: ComponentProps<'div'> & {
   beforeClose?: ComponentProps<typeof WindowControl>['beforeClose']
 }) {
-  return (
-    <WindowHeader
-      className="shrink-0 items-center justify-between px-3"
-      data-slot="window-control"
-    >
-      <div className="flex items-center gap-2" data-tauri-drag-region>
-        <Title />
-      </div>
-
-      <WindowControl hiddenAlwaysOnTop beforeClose={beforeClose} />
-    </WindowHeader>
+  return isMacOS ? (
+    <MacOSHeader className={className} {...props}>
+      <Title />
+    </MacOSHeader>
+  ) : (
+    <DefaultHeader className={className} {...props}>
+      <Title />
+    </DefaultHeader>
   )
 }

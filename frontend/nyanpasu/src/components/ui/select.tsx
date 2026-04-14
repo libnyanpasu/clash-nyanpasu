@@ -223,7 +223,8 @@ export type SelectValuePlaceholderLegendVariants = VariantProps<
 
 export const selectContentVariants = cva(
   [
-    'relative w-full overflow-auto rounded shadow-container z-50',
+    'relative w-full overflow-auto rounded z-50',
+    'shadow shadow-zinc-300 dark:shadow-zinc-900',
     'bg-inverse-on-surface dark:bg-surface',
     'dark:text-on-surface',
   ],
@@ -464,9 +465,21 @@ export const SelectContent = ({
                 width: 'var(--radix-popper-anchor-width)',
                 maxHeight: 'var(--radix-popper-available-height)',
               }}
-              initial={{ opacity: 0, scaleY: 0.9, transformOrigin: 'top' }}
-              animate={{ opacity: 1, scaleY: 1, transformOrigin: 'top' }}
-              exit={{ opacity: 0, scaleY: 0.9, transformOrigin: 'top' }}
+              initial={{
+                opacity: 0,
+                scaleY: 0.9,
+                transformOrigin: 'var(--radix-popper-transform-origin)',
+              }}
+              animate={{
+                opacity: 1,
+                scaleY: 1,
+                transformOrigin: 'var(--radix-popper-transform-origin)',
+              }}
+              exit={{
+                opacity: 0,
+                scaleY: 0.9,
+                transformOrigin: 'var(--radix-popper-transform-origin)',
+              }}
               transition={{
                 type: 'spring',
                 bounce: 0,

@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button'
-import Image from '@/components/ui/image'
+import { CacheImage } from '@/components/ui/image'
 import { useClashProxies } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 import { Link, useLocation } from '@tanstack/react-router'
@@ -40,7 +40,7 @@ export default function ProxiesNavigate() {
             <div className="flex items-center gap-2.5">
               {group.icon && (
                 <div className="size-8">
-                  <Image
+                  <CacheImage
                     icon={group.icon}
                     className="size-8"
                     loadingClassName="rounded-full"

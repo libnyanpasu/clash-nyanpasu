@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import Image from '@/components/ui/image'
+import { CacheImage } from '@/components/ui/image'
 import { useClashProxies } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 
@@ -15,7 +15,11 @@ export default function ProxyIcon({ groupName }: { groupName: string }) {
   }, [groupName, proxies])
 
   return icon ? (
-    <Image className="size-6" loadingClassName="rounded-full" icon={icon} />
+    <CacheImage
+      className="size-6"
+      loadingClassName="rounded-full"
+      icon={icon}
+    />
   ) : (
     <div
       className={cn(

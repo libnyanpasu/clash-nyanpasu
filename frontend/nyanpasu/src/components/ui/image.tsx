@@ -2,9 +2,9 @@ import { ComponentProps, useMemo } from 'react'
 import { useServerPort } from '@nyanpasu/interface'
 import { LazyImage } from '@nyanpasu/ui'
 
-export default function Image({
+export function CacheImage({
   icon,
-  ...porps
+  ...props
 }: Omit<ComponentProps<typeof LazyImage>, 'src'> & {
   icon: string
 }) {
@@ -22,5 +22,20 @@ export default function Image({
     return `http://localhost:${serverPort}/cache/icon?url=${btoa(src)}`
   }, [src, serverPort])
 
-  return <LazyImage src={cachedUrl} {...porps} />
+  return <LazyImage src={cachedUrl} {...props} />
+}
+
+export function TrayImage({
+  mode,
+  version,
+  ...props
+}: Omit<ComponentProps<typeof LazyImage>, 'src'> & {
+  mode: 'system_proxy' | 'tun' | 'normal'
+  version?: number
+}) {
+  const serverPort = useServerPort()
+
+  const src = `http://localhost:${serverPort}/tray/icon?mode=${mode}${version !== undefined ? `&v=${version}` : ''}`
+
+  return <LazyImage src={src} {...props} />
 }

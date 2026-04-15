@@ -1,6 +1,8 @@
 import { useMemo } from 'react'
 import { ClashProviderProxies } from '@nyanpasu/interface'
 
+const clampPercentage = (value: number) => Math.min(100, Math.max(0, value))
+
 export const useProxiesSubscription = (data: ClashProviderProxies) => {
   return useMemo(() => {
     let progress = 0
@@ -25,7 +27,9 @@ export const useProxiesSubscription = (data: ClashProviderProxies) => {
 
       used = download + upload
 
-      progress = (used / (total || 1)) * 100
+      if (total > 0) {
+        progress = clampPercentage((used / total) * 100)
+      }
     }
 
     return {

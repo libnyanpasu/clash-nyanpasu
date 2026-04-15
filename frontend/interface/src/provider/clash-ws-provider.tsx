@@ -69,7 +69,7 @@ const normalizeClashMemory = (raw: unknown): ClashMemory | null => {
 
   const data = raw as Record<string, unknown>
   let inuse = toNonNegativeFiniteNumber(data.inuse)
-  let oslimit = toNonNegativeFiniteNumber(data.oslimit) ?? 0
+  const oslimit = toNonNegativeFiniteNumber(data.oslimit) ?? 0
 
   if (inuse === null) {
     return null

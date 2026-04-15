@@ -73,7 +73,7 @@ jobs:
         with:
           deno-version: v2.x
 
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@v6
         name: Install pnpm
         with:
           run_install: false

@@ -7,6 +7,7 @@ import {
   SettingsLabel,
 } from '../_modules/settings-card'
 import { SettingsTitle } from '../_modules/settings-title'
+import HotkeyManager from './_modules/hotket-manager'
 import LogFileConfig from './_modules/log-file-config'
 import LogLevelSelector from './_modules/log-level-selector'
 import TrayIconConfig from './_modules/tray-icon-config'
@@ -48,6 +49,18 @@ const TraySettings = () => {
   )
 }
 
+const KeyboardSettings = () => {
+  return (
+    <div data-slot="app-settings-container">
+      <SettingsLabel>{m.settings_nyanpasu_keyboard_shortcuts()}</SettingsLabel>
+
+      <SettingsGroup>
+        <HotkeyManager />
+      </SettingsGroup>
+    </div>
+  )
+}
+
 function RouteComponent() {
   return (
     <>
@@ -57,6 +70,8 @@ function RouteComponent() {
         <LogSettings />
 
         <TraySettings />
+
+        <KeyboardSettings />
       </div>
     </>
   )

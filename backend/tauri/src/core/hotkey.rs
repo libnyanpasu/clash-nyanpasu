@@ -2,10 +2,146 @@ use crate::{config::Config, feat, log_err};
 use anyhow::{Result, bail};
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
-use std::{collections::HashMap, sync::Arc};
+use rust_i18n::t;
+use serde::{Deserialize, Serialize};
+use specta::Type;
+use std::{collections::HashMap, fmt, str::FromStr, sync::Arc};
 use tauri::AppHandle;
 
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+
+/// Super keys that must be present in a valid hotkey
+/// These are case-insensitive checked against the hotkey string
+const SUPER_KEYS: &[&str] = &[
+    "CommandOrControl",
+    "Command",
+    "Control",
+    "Ctrl",
+    "Meta",
+    "Super",
+    "Win",
+    "Shift",
+    "Alt",
+];
+
+/// Hotkey error types for frontend validation feedback
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(tag = "kind", content = "data")]
+pub enum HotkeyError {
+    InvalidHotkey(String),
+    MissingSuperKey(String),
+}
+
+impl std::fmt::Display for HotkeyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HotkeyError::InvalidHotkey(hotkey) => {
+                write!(f, "{}", t!("hotkey_error.invalid_hotkey", hotkey = hotkey))
+            }
+            HotkeyError::MissingSuperKey(_hotkey) => {
+                write!(f, "{}", t!("hotkey_error.missing_super_key"))
+            }
+        }
+    }
+}
+
+impl std::error::Error for HotkeyError {}
+
+/// Hotkey function identifier enum
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
+pub enum HotkeyFunc {
+    OpenOrCloseDashboard,
+    ClashModeRule,
+    ClashModeGlobal,
+    ClashModeDirect,
+    ClashModeScript,
+    ToggleSystemProxy,
+    EnableSystemProxy,
+    DisableSystemProxy,
+    ToggleTunMode,
+    EnableTunMode,
+    DisableTunMode,
+}
+
+impl HotkeyFunc {
+    /// Returns all supported hotkey functions
+    pub fn all() -> &'static [HotkeyFunc] {
+        &[
+            HotkeyFunc::OpenOrCloseDashboard,
+            HotkeyFunc::ClashModeRule,
+            HotkeyFunc::ClashModeGlobal,
+            HotkeyFunc::ClashModeDirect,
+            HotkeyFunc::ClashModeScript,
+            HotkeyFunc::ToggleSystemProxy,
+            HotkeyFunc::EnableSystemProxy,
+            HotkeyFunc::DisableSystemProxy,
+            HotkeyFunc::ToggleTunMode,
+            HotkeyFunc::EnableTunMode,
+            HotkeyFunc::DisableTunMode,
+        ]
+    }
+
+    /// Returns the string identifier for this function
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            HotkeyFunc::OpenOrCloseDashboard => "open_or_close_dashboard",
+            HotkeyFunc::ClashModeRule => "clash_mode_rule",
+            HotkeyFunc::ClashModeGlobal => "clash_mode_global",
+            HotkeyFunc::ClashModeDirect => "clash_mode_direct",
+            HotkeyFunc::ClashModeScript => "clash_mode_script",
+            HotkeyFunc::ToggleSystemProxy => "toggle_system_proxy",
+            HotkeyFunc::EnableSystemProxy => "enable_system_proxy",
+            HotkeyFunc::DisableSystemProxy => "disable_system_proxy",
+            HotkeyFunc::ToggleTunMode => "toggle_tun_mode",
+            HotkeyFunc::EnableTunMode => "enable_tun_mode",
+            HotkeyFunc::DisableTunMode => "disable_tun_mode",
+        }
+    }
+
+    /// Execute the hotkey action
+    fn execute(&self) {
+        match self {
+            HotkeyFunc::OpenOrCloseDashboard => feat::toggle_dashboard(),
+            HotkeyFunc::ClashModeRule => feat::change_clash_mode("rule".into()),
+            HotkeyFunc::ClashModeGlobal => feat::change_clash_mode("global".into()),
+            HotkeyFunc::ClashModeDirect => feat::change_clash_mode("direct".into()),
+            HotkeyFunc::ClashModeScript => feat::change_clash_mode("script".into()),
+            HotkeyFunc::ToggleSystemProxy => feat::toggle_system_proxy(),
+            HotkeyFunc::EnableSystemProxy => feat::enable_system_proxy(),
+            HotkeyFunc::DisableSystemProxy => feat::disable_system_proxy(),
+            HotkeyFunc::ToggleTunMode => feat::toggle_tun_mode(),
+            HotkeyFunc::EnableTunMode => feat::enable_tun_mode(),
+            HotkeyFunc::DisableTunMode => feat::disable_tun_mode(),
+        }
+    }
+}
+
+impl fmt::Display for HotkeyFunc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl FromStr for HotkeyFunc {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "open_or_close_dashboard" => Ok(HotkeyFunc::OpenOrCloseDashboard),
+            "clash_mode_rule" => Ok(HotkeyFunc::ClashModeRule),
+            "clash_mode_global" => Ok(HotkeyFunc::ClashModeGlobal),
+            "clash_mode_direct" => Ok(HotkeyFunc::ClashModeDirect),
+            "clash_mode_script" => Ok(HotkeyFunc::ClashModeScript),
+            "toggle_system_proxy" => Ok(HotkeyFunc::ToggleSystemProxy),
+            "enable_system_proxy" => Ok(HotkeyFunc::EnableSystemProxy),
+            "disable_system_proxy" => Ok(HotkeyFunc::DisableSystemProxy),
+            "toggle_tun_mode" => Ok(HotkeyFunc::ToggleTunMode),
+            "enable_tun_mode" => Ok(HotkeyFunc::EnableTunMode),
+            "disable_tun_mode" => Ok(HotkeyFunc::DisableTunMode),
+            _ => bail!("invalid hotkey function: {s}"),
+        }
+    }
+}
 
 pub struct Hotkey {
     current: Arc<Mutex<Vec<String>>>, // 保存当前的热键设置
@@ -25,6 +161,11 @@ enum HotKeyOpType<'a> {
 }
 
 impl Hotkey {
+    /// Returns the list of supported hotkey function identifiers
+    pub fn get_supported_hotkey_functions() -> Vec<&'static str> {
+        HotkeyFunc::all().iter().map(|f| f.as_str()).collect()
+    }
+
     pub fn global() -> &'static Hotkey {
         static HOTKEY: OnceCell<Hotkey> = OnceCell::new();
 
@@ -63,13 +204,25 @@ impl Hotkey {
     }
 
     /// 检查一个键是否合法
-    fn check_key(hotkey: &str) -> Result<()> {
+    fn check_key(hotkey: &str) -> anyhow::Result<()> {
         // fix #287
         // tauri的这几个方法全部有Result expect，会panic，先检测一遍避免挂了
         if hotkey.parse::<Shortcut>().is_err() {
-            bail!("invalid hotkey `{hotkey}`");
+            bail!("{}", t!("hotkey_error.invalid_hotkey", hotkey = hotkey));
+        }
+        // Validate super key requirement
+        if !Self::validate_super_key(hotkey) {
+            bail!("{}", t!("hotkey_error.missing_super_key"));
         }
         Ok(())
+    }
+
+    /// Check if the hotkey contains a super key modifier (case-insensitive)
+    pub fn validate_super_key(hotkey: &str) -> bool {
+        let hotkey_lower = hotkey.to_lowercase();
+        SUPER_KEYS
+            .iter()
+            .any(|key| hotkey_lower.contains(&key.to_lowercase()))
     }
 
     fn register(&self, hotkey: &str, func: &str) -> Result<()> {
@@ -83,25 +236,12 @@ impl Hotkey {
             manager.unregister(hotkey)?;
         }
 
-        let f = match func.trim() {
-            "open_or_close_dashboard" => feat::toggle_dashboard,
-            "clash_mode_rule" => || feat::change_clash_mode("rule".into()),
-            "clash_mode_global" => || feat::change_clash_mode("global".into()),
-            "clash_mode_direct" => || feat::change_clash_mode("direct".into()),
-            "clash_mode_script" => || feat::change_clash_mode("script".into()),
-            "toggle_system_proxy" => feat::toggle_system_proxy,
-            "enable_system_proxy" => feat::enable_system_proxy,
-            "disable_system_proxy" => feat::disable_system_proxy,
-            "toggle_tun_mode" => feat::toggle_tun_mode,
-            "enable_tun_mode" => feat::enable_tun_mode,
-            "disable_tun_mode" => feat::disable_tun_mode,
-            _ => bail!("invalid function \"{func}\""),
-        };
+        let hotkey_func: HotkeyFunc = func.trim().parse()?;
 
         manager.on_shortcut(hotkey, move |_app_handle, hotkey, ev| {
             if let ShortcutState::Pressed = ev.state {
                 tracing::info!("hotkey pressed: {}", hotkey);
-                f();
+                hotkey_func.execute();
             }
         })?;
 

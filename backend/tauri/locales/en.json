@@ -61,5 +61,9 @@
   },
   "break_when_proxy_change": "Interrupt connections when proxy changes",
   "break_when_profile_change": "Interrupt connections when profile changes",
-  "break_when_mode_change": "Interrupt connections when mode changes"
+  "break_when_mode_change": "Interrupt connections when mode changes",
+  "hotkey_error": {
+    "invalid_hotkey": "Invalid hotkey: %{hotkey}",
+    "missing_super_key": "Hotkey must contain a super key (Cmd/Ctrl/Win/Meta)"
+  }
 }

@@ -259,6 +259,9 @@ export const commands = {
       else return { status: 'error', error: e as any }
     }
   },
+  async getHotkeyFunctions(): Promise<string[]> {
+    return await TAURI_INVOKE('get_hotkey_functions')
+  },
   async getProfiles(): Promise<Result<Profiles, string>> {
     try {
       return { status: 'ok', data: await TAURI_INVOKE('get_profiles') }
@@ -699,6 +702,25 @@ export const commands = {
   async clearStorage(): Promise<Result<null, string>> {
     try {
       return { status: 'ok', data: await TAURI_INVOKE('clear_storage') }
+    } catch (e) {
+      if (e instanceof Error) throw e
+      else return { status: 'error', error: e as any }
+    }
+  },
+  async getHotkeys(): Promise<Result<string[] | null, string>> {
+    try {
+      return { status: 'ok', data: await TAURI_INVOKE('get_hotkeys') }
+    } catch (e) {
+      if (e instanceof Error) throw e
+      else return { status: 'error', error: e as any }
+    }
+  },
+  async setHotkeys(hotkeys: string[]): Promise<Result<null, string>> {
+    try {
+      return {
+        status: 'ok',
+        data: await TAURI_INVOKE('set_hotkeys', { hotkeys }),
+      }
     } catch (e) {
       if (e instanceof Error) throw e
       else return { status: 'error', error: e as any }

@@ -476,6 +476,12 @@ pub fn get_verge_config() -> Result<IVerge> {
 
 #[tauri::command]
 #[specta::specta]
+pub fn get_hotkey_functions() -> Vec<&'static str> {
+    crate::core::hotkey::Hotkey::get_supported_hotkey_functions()
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn patch_verge_config(payload: IVerge) -> Result {
     (feat::patch_verge(payload).await)?;
     Ok(())
@@ -975,6 +981,27 @@ pub fn set_storage_item(app_handle: AppHandle, key: String, value: String) -> Re
 pub fn remove_storage_item(app_handle: AppHandle, key: String) -> Result {
     let storage = app_handle.state::<Storage>();
     (storage.remove_item(&web_key(&key)))?;
+    Ok(())
+}
+
+const HOTKEYS_KEY: &str = "hotkeys";
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_hotkeys(app_handle: AppHandle) -> Result<Option<Vec<String>>> {
+    let storage = app_handle.state::<Storage>();
+    let value = storage.get_item::<Vec<String>>(HOTKEYS_KEY)?;
+    Ok(value)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_hotkeys(app_handle: AppHandle, hotkeys: Vec<String>) -> Result {
+    // Validate and register hotkeys first (may fail with error)
+    (hotkey::Hotkey::global().update(hotkeys.clone()))?;
+    // Only save to storage after validation succeeds
+    let storage = app_handle.state::<Storage>();
+    storage.set_item(HOTKEYS_KEY, &hotkeys)?;
     Ok(())
 }
 

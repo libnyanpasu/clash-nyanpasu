@@ -8,6 +8,7 @@ import styles from './hotkey-input.module.scss'
 
 export interface Props extends React.HTMLAttributes<HTMLInputElement> {
   isDuplicate?: boolean
+  isInvalid?: boolean
   value?: string[]
   onValueChange?: (value: string[]) => void
   func: string
@@ -17,6 +18,7 @@ export interface Props extends React.HTMLAttributes<HTMLInputElement> {
 
 export default function HotkeyInput({
   isDuplicate = false,
+  isInvalid = false,
   value,
   func,
   onValueChange,
@@ -77,9 +79,10 @@ export default function HotkeyInput({
           )}
           style={
             {
-              '--border-color': isDuplicate
-                ? theme.vars.palette.error.main
-                : alpha(theme.vars.palette.text.secondary, 0.15),
+              '--border-color':
+                isDuplicate || isInvalid
+                  ? theme.vars.palette.error.main
+                  : alpha(theme.vars.palette.text.secondary, 0.15),
               '--input-focus-border-color': alpha(
                 theme.vars.palette.primary.main,
                 0.75,
@@ -97,6 +100,16 @@ export default function HotkeyInput({
             <CircularProgress className="absolute right-2" size={13} />
           )}
           {isDuplicate && (
+            <Dangerous
+              className="absolute right-2 text-base"
+              sx={[
+                (theme) => ({
+                  color: theme.vars.palette.error.main,
+                }),
+              ]}
+            />
+          )}
+          {isInvalid && (
             <Dangerous
               className="absolute right-2 text-base"
               sx={[

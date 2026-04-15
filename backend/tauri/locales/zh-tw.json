@@ -61,5 +61,9 @@
   },
   "break_when_proxy_change": "當代理切換時打斷連線",
   "break_when_profile_change": "當設定檔切換時打斷連線",
-  "break_when_mode_change": "當模式切換時打斷連線"
+  "break_when_mode_change": "當模式切換時打斷連線",
+  "hotkey_error": {
+    "invalid_hotkey": "無效的快捷鍵：%{hotkey}",
+    "missing_super_key": "快捷鍵必須包含修飾鍵 (Cmd/Ctrl/Win/Meta)"
+  }
 }

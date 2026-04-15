@@ -224,6 +224,7 @@ pub fn run() -> std::io::Result<()> {
             // verge
             ipc::get_verge_config,
             ipc::patch_verge_config,
+            ipc::get_hotkey_functions,
             // cmds::update_hotkeys,
             // profile
             ipc::get_profiles,
@@ -270,6 +271,8 @@ pub fn run() -> std::io::Result<()> {
             ipc::remove_storage_item,
             ipc::get_all_storage_items,
             ipc::clear_storage,
+            ipc::get_hotkeys,
+            ipc::set_hotkeys,
             ipc::mutate_proxies,
             ipc::get_core_dir,
             // clash layer

@@ -61,5 +61,9 @@
   },
   "break_when_proxy_change": "Прерывать соединения при смене прокси",
   "break_when_profile_change": "Прерывать соединения при смене профиля",
-  "break_when_mode_change": "Прерывать соединения при смене режима"
+  "break_when_mode_change": "Прерывать соединения при смене режима",
+  "hotkey_error": {
+    "invalid_hotkey": "Неверная горячая клавиша: %{hotkey}",
+    "missing_super_key": "Горячая клавиша должна содержать модификатор (Cmd/Ctrl/Win/Meta)"
+  }
 }

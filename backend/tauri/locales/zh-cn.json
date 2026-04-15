@@ -61,5 +61,9 @@
   },
   "break_when_proxy_change": "当代理切换时打断连接",
   "break_when_profile_change": "当配置文件切换时打断连接",
-  "break_when_mode_change": "当模式切换时打断连接"
+  "break_when_mode_change": "当模式切换时打断连接",
+  "hotkey_error": {
+    "invalid_hotkey": "无效的快捷键：%{hotkey}",
+    "missing_super_key": "快捷键必须包含修饰键 (Cmd/Ctrl/Win/Meta)"
+  }
 }

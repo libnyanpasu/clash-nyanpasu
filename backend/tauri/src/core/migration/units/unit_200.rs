@@ -5,7 +5,11 @@ use semver::Version;
 use serde_yaml::Mapping;
 
 use crate::{
-    core::migration::{DynMigration, Migration, MigrationExt},
+    core::{
+        hotkey,
+        migration::{DynMigration, Migration, MigrationExt},
+        storage::{Storage, WebStorage},
+    },
     utils::dirs,
 };
 
@@ -16,6 +20,7 @@ pub static UNITS: Lazy<Vec<DynMigration>> = Lazy::new(|| {
         MigrateProfilesNullValue.boxed(),
         MigrateLanguageOption.boxed(),
         MigrateThemeSetting.boxed(),
+        MigrateHotkeysToKv.boxed(),
         profile_script_newtype::MigrateProfileScriptNewtype.boxed(),
     ]
 });
@@ -183,6 +188,76 @@ impl<'a> Migration<'a> for MigrateThemeSetting {
         }
         let new_config = serde_yaml::to_string(&config).map_err(std::io::Error::other)?;
         std::fs::write(&config_path, new_config)?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MigrateHotkeysToKv;
+
+impl Migration<'_> for MigrateHotkeysToKv {
+    fn version(&self) -> &'static Version {
+        &VERSION
+    }
+
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("MigrateHotkeysToKv")
+    }
+
+    fn migrate(&self) -> std::io::Result<()> {
+        // Read the verge config to get hotkeys from the old location
+        let config_path = dirs::nyanpasu_config_path().map_err(std::io::Error::other)?;
+
+        if !config_path.exists() {
+            return Ok(());
+        }
+
+        let raw = std::fs::read_to_string(&config_path)?;
+        let mut config: Mapping = serde_yaml::from_str(&raw)
+            .map_err(|e| std::io::Error::other(format!("failed to parse config: {e}")))?;
+
+        // Find hotkeys in the config
+        let hotkeys_key = serde_yaml::Value::String("hotkeys".to_string());
+        if let Some(hotkeys_value) = config.get(&hotkeys_key) {
+            if let Some(hotkeys) = hotkeys_value.as_sequence() {
+                let hotkey_strings: Vec<String> = hotkeys
+                    .iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect();
+
+                if !hotkey_strings.is_empty() {
+                    // Save to KV storage
+                    let storage_path = dirs::storage_path().map_err(std::io::Error::other)?;
+                    let storage = Storage::try_new(&storage_path).map_err(|e| {
+                        std::io::Error::other(format!("failed to open storage: {e}"))
+                    })?;
+
+                    storage.set_item("hotkeys", &hotkey_strings).map_err(|e| {
+                        std::io::Error::other(format!("failed to save hotkeys: {e}"))
+                    })?;
+
+                    // Update the hotkey system
+                    if let Err(e) = hotkey::Hotkey::global().update(hotkey_strings.clone()) {
+                        tracing::warn!("failed to update hotkeys after migration: {e}");
+                    }
+
+                    tracing::info!("migrated {} hotkeys to KV storage", hotkey_strings.len());
+
+                    // Remove hotkeys from the old config location
+                    config.remove(&hotkeys_key);
+                    let new_config = serde_yaml::to_string(&config).map_err(|e| {
+                        std::io::Error::other(format!("failed to serialize config: {e}"))
+                    })?;
+                    std::fs::write(&config_path, new_config)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn discard(&self) -> std::io::Result<()> {
+        // Migration is one-way, nothing to discard
         Ok(())
     }
 }

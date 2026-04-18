@@ -68,7 +68,7 @@ export default defineConfig(({ command, mode }) => {
       tsconfigPaths(),
       legacy({
         renderLegacyChunks: false,
-        modernTargets: ['edge>=109', 'safari>=13'],
+        modernTargets: ['edge>=109', 'safari>=15'],
         modernPolyfills: true,
         additionalModernPolyfills: [
           'core-js/modules/es.object.has-own.js',

@@ -56,8 +56,8 @@ importers:
         specifier: 1.7.2
         version: 1.7.2(babel-plugin-macros@3.1.0)
       globals:
-        specifier: 17.4.0
-        version: 17.4.0
+        specifier: 17.5.0
+        version: 17.5.0
       knip:
         specifier: 6.3.1
         version: 6.3.1
@@ -5761,8 +5761,8 @@ packages:
     resolution: {integrity: sha512-WOBp/EEGUiIsJSp7wcv/y6MO+lV9UoncWqxuFfm8eBwzWNgyfBd6Gz+IeKQ9jCmyhoH99g15M3T+QaVHFjizVA==}
     engines: {node: '>=4'}
 
-  globals@17.4.0:
-    resolution: {integrity: sha512-hjrNztw/VajQwOLsMNT1cbJiH2muO3OROCHnbehc8eY5JyD2gqz4AcMHPqgaOR59DjgUjYAYLeH699g/eWi2jw==}
+  globals@17.5.0:
+    resolution: {integrity: sha512-qoV+HK2yFl/366t2/Cb3+xxPUo5BuMynomoDmiaZBIdbs+0pYbjfZU+twLhGKp4uCZ/+NbtpVepH5bGCxRyy2g==}
     engines: {node: '>=18'}
 
   globby@16.2.0:
@@ -13469,7 +13469,7 @@ snapshots:
   globals@11.12.0:
     optional: true
 
-  globals@17.4.0: {}
+  globals@17.5.0: {}
 
   globby@16.2.0:
     dependencies:

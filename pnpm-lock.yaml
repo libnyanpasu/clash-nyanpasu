@@ -1,97 +1,3 @@
----
-lockfileVersion: '9.0'
-
-importers:
-
-  .:
-    configDependencies: {}
-    packageManagerDependencies:
-      '@pnpm/exe':
-        specifier: 9.7.0
-        version: 9.7.0
-      pnpm:
-        specifier: 9.7.0
-        version: 9.7.0
-
-packages:
-
-  '@pnpm/exe@9.7.0':
-    resolution: {integrity: sha512-qiYOYJYzAP29wsfwnsjyG++ZQ1fDbA9/5uO+nOjDXfmt4I0uHg3rJPqWLwGZ8TrC6hyMMylYoaIvWJQZJ788Sg==}
-    hasBin: true
-
-  '@pnpm/linux-arm64@9.7.0':
-    resolution: {integrity: sha512-o+oYTRNOBfI4fyfWYNloeqGRdyLkFsBTf0YzCPOhYIj1zjOYIHSD4/pH6SIwEIHgJ+vh9MnwlKxkE32WyNPa2Q==}
-    cpu: [arm64]
-    os: [linux]
-    hasBin: true
-
-  '@pnpm/linux-x64@9.7.0':
-    resolution: {integrity: sha512-uesoR+mC+cS3e4guRG6bkGvc1C0z31TcnZgC8ExZpvkzL2VicPayYq8VNaaOxeBlhNv7uLMClEgboPFbwLqmpw==}
-    cpu: [x64]
-    os: [linux]
-    hasBin: true
-
-  '@pnpm/macos-arm64@9.7.0':
-    resolution: {integrity: sha512-71I16oz9SbaRQ6tvy63LEU6H1C4vGy+U1Fkb/QfIOhNIHJu/tu3nJ06ZQll8t2Tlt5yR5bapDGaeVerj2B8l8w==}
-    cpu: [arm64]
-    os: [darwin]
-    hasBin: true
-
-  '@pnpm/macos-x64@9.7.0':
-    resolution: {integrity: sha512-SG2e4JpmAXXPma5Z1NAZ3kUurN2cCkaA9AcZsArmnVrynpq6G6wcxma3fGzw/T2A0g8ppkGF/kjTLXLYuRFyKg==}
-    cpu: [x64]
-    os: [darwin]
-    hasBin: true
-
-  '@pnpm/win-arm64@9.7.0':
-    resolution: {integrity: sha512-40HxWP1AFp54NcwcW28G8UTncJEOukLs0sWXRM1cKIQwIYKb2gnBVF+sLJaND4eR6pHwg7Yb4wjaLlBI5KRd0w==}
-    cpu: [arm64]
-    os: [win32]
-    hasBin: true
-
-  '@pnpm/win-x64@9.7.0':
-    resolution: {integrity: sha512-roE4ImZSUqk/fWOWQS/dc0EXjLSdhL6BWv9iQHGxkkHiq8IzF55ir93dT/9jkQZ9wckd6/23JYnabx84a6nlAw==}
-    cpu: [x64]
-    os: [win32]
-    hasBin: true
-
-  pnpm@9.7.0:
-    resolution: {integrity: sha512-3AlDAVa0J/Xs/HmIiJnhw50taQ8AS+cOBSMLcssXPZaDlYdUXQlCm1WsPEKcgBtNw8DgAvZTgwpCD6LdTjz5zw==}
-    engines: {node: '>=18.12'}
-    hasBin: true
-
-snapshots:
-
-  '@pnpm/exe@9.7.0':
-    optionalDependencies:
-      '@pnpm/linux-arm64': 9.7.0
-      '@pnpm/linux-x64': 9.7.0
-      '@pnpm/macos-arm64': 9.7.0
-      '@pnpm/macos-x64': 9.7.0
-      '@pnpm/win-arm64': 9.7.0
-      '@pnpm/win-x64': 9.7.0
-
-  '@pnpm/linux-arm64@9.7.0':
-    optional: true
-
-  '@pnpm/linux-x64@9.7.0':
-    optional: true
-
-  '@pnpm/macos-arm64@9.7.0':
-    optional: true
-
-  '@pnpm/macos-x64@9.7.0':
-    optional: true
-
-  '@pnpm/win-arm64@9.7.0':
-    optional: true
-
-  '@pnpm/win-x64@9.7.0':
-    optional: true
-
-  pnpm@9.7.0: {}
-
----
 lockfileVersion: '9.0'
 
 settings:
@@ -3454,8 +3360,8 @@ packages:
   easy-table@1.2.0:
     resolution: {integrity: sha512-OFzVOv03YpvtcWGe5AayU5G2hgybsg3iqA6drU8UaoZyB9jLGMTrz9+asnLp/E+6qPh88yEI1gvyZFZ41dmgww==}
 
-  electron-to-chromium@1.5.340:
-    resolution: {integrity: sha512-908qahOGocRMinT2nM3ajCEM99H4iPdv84eagPP3FfZy/1ZGeOy2CZYzjhms81ckOPCXPlW7LkY4XpxD8r1DrA==}
+  electron-to-chromium@1.5.342:
+    resolution: {integrity: sha512-GTuy59SdGxYgz+HN8KwOjFAVF2gfoKEmv0PFholcvVtbI9GPDND0m6ynGX3gAKOavcHRLrcfNy0QMbHbAemYdw==}
 
   electron@23.3.13:
     resolution: {integrity: sha512-BaXtHEb+KYKLouUXlUVDa/lj9pj4F5kiE0kwFdJV84Y2EU7euIDgPthfKtchhr5MVHmjtavRMIV/zAwEiSQ9rQ==}
@@ -6128,8 +6034,8 @@ packages:
     engines: {node: '>=14.0.0'}
     hasBin: true
 
-  tapable@2.3.2:
-    resolution: {integrity: sha512-1MOpMXuhGzGL5TTCZFItxCc0AARf1EZFQkGqMm7ERKj8+Hgr5oLvJOVFcC+lRmR8hCe2S3jC4T5D7Vg/d7/fhA==}
+  tapable@2.3.3:
+    resolution: {integrity: sha512-uxc/zpqFg6x7C8vOE7lh6Lbda8eEL9zmVm/PLeTPBRhh1xCgdWaQ+J1CUieGpIfm2HdtsUpRv+HshiasBMcc6A==}
     engines: {node: '>=6'}
 
   tar@7.4.3:
@@ -8841,7 +8747,7 @@ snapshots:
     dependencies:
       baseline-browser-mapping: 2.10.20
       caniuse-lite: 1.0.30001788
-      electron-to-chromium: 1.5.340
+      electron-to-chromium: 1.5.342
       node-releases: 2.0.37
       update-browserslist-db: 1.2.3(browserslist@4.28.2)
 
@@ -9490,7 +9396,7 @@ snapshots:
     optionalDependencies:
       wcwidth: 1.0.1
 
-  electron-to-chromium@1.5.340: {}
+  electron-to-chromium@1.5.342: {}
 
   electron@23.3.13:
     dependencies:
@@ -9511,7 +9417,7 @@ snapshots:
   enhanced-resolve@5.20.1:
     dependencies:
       graceful-fs: 4.2.11
-      tapable: 2.3.2
+      tapable: 2.3.3
 
   entities@2.2.0: {}
 
@@ -12575,7 +12481,7 @@ snapshots:
     transitivePeerDependencies:
       - ts-node
 
-  tapable@2.3.2: {}
+  tapable@2.3.3: {}
 
   tar@7.4.3:
     dependencies:

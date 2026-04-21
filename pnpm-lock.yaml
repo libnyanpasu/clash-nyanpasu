@@ -59,8 +59,8 @@ importers:
         specifier: 17.5.0
         version: 17.5.0
       knip:
-        specifier: 6.5.0
-        version: 6.5.0(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)
+        specifier: 6.6.0
+        version: 6.6.0(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)
       lint-staged:
         specifier: 16.4.0
         version: 16.4.0
@@ -6125,8 +6125,8 @@ packages:
     resolution: {integrity: sha512-dcS1ul+9tmeD95T+x28/ehLgd9mENa3LsvDTtzm3vyBEO7RPptvAD+t44WVXaUjTBRcrpFeFlC8WCruUR456hw==}
     engines: {node: '>=0.10.0'}
 
-  knip@6.5.0:
-    resolution: {integrity: sha512-84xSq/g8CtPWLJcY5WZeGWj/pbqQxJRC7iXTTutB0MkMm260hKxlzIXSTnxuTuIxre2MBSokhLkfth8dQQYVPQ==}
+  knip@6.6.0:
+    resolution: {integrity: sha512-IT1YDiHyRctYYsuZNBd/ZiGoa7HmCaxs+ZrWxCfYjQKPG6QyRqMfkteqC+rBuMymBJeLXyBnRa7hn95O+sGG8Q==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
 
@@ -11264,7 +11264,7 @@ snapshots:
     dependencies:
       '@types/estree': 1.0.8
       estree-walker: 2.0.2
-      picomatch: 4.0.3
+      picomatch: 4.0.4
     optionalDependencies:
       rollup: 4.46.2
 
@@ -13774,16 +13774,15 @@ snapshots:
 
   kind-of@6.0.3: {}
 
-  knip@6.5.0(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2):
+  knip@6.6.0(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2):
     dependencies:
-      '@nodelib/fs.walk': 1.2.8
+      fdir: 6.5.0(picomatch@4.0.4)
       formatly: 0.3.0
       get-tsconfig: 4.14.0
       jiti: 2.6.1
       minimist: 1.2.8
       oxc-parser: 0.126.0
       oxc-resolver: 11.19.1(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)
-      picocolors: 1.1.1
       picomatch: 4.0.4
       smol-toml: 1.6.1
       strip-json-comments: 5.0.3

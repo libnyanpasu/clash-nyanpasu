@@ -31,11 +31,7 @@ const LanguageSettings = () => {
       </SettingsLabel>
 
       <SettingsGroup>
-        <SettingsCard>
-          <SettingsCardContent>
-            <LanguageSelector />
-          </SettingsCardContent>
-        </SettingsCard>
+        <LanguageSelector />
       </SettingsGroup>
     </div>
   )

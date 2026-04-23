@@ -1,11 +1,6 @@
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
-import {
-  SettingsCard,
-  SettingsCardContent,
-  SettingsGroup,
-  SettingsLabel,
-} from '../_modules/settings-card'
+import { SettingsGroup, SettingsLabel } from '../_modules/settings-card'
 import { SettingsTitle } from '../_modules/settings-title'
 import CoreSecretConfig from './_modules/core-secret-config'
 import ExternalControllerConfig from './_modules/external-controller-config'
@@ -22,23 +17,11 @@ const ExternalController = () => {
       <SettingsLabel>{m.settings_label_external_controll()}</SettingsLabel>
 
       <SettingsGroup>
-        <SettingsCard>
-          <SettingsCardContent>
-            <ExternalControllerConfig />
-          </SettingsCardContent>
-        </SettingsCard>
+        <ExternalControllerConfig />
 
-        <SettingsCard>
-          <SettingsCardContent>
-            <PortStrategySelector />
-          </SettingsCardContent>
-        </SettingsCard>
+        <PortStrategySelector />
 
-        <SettingsCard>
-          <SettingsCardContent>
-            <CoreSecretConfig />
-          </SettingsCardContent>
-        </SettingsCard>
+        <CoreSecretConfig />
       </SettingsGroup>
     </div>
   )

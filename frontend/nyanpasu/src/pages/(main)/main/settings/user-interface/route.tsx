@@ -1,11 +1,6 @@
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
-import {
-  SettingsCard,
-  SettingsCardContent,
-  SettingsGroup,
-  SettingsLabel,
-} from '../_modules/settings-card'
+import { SettingsGroup, SettingsLabel } from '../_modules/settings-card'
 import { SettingsTitle } from '../_modules/settings-title'
 import LanguageSelector from './_modules/language-selector'
 import SwitchLegacy from './_modules/switch-legacy'
@@ -45,11 +40,7 @@ const ThemeModeSettings = () => {
       </SettingsLabel>
 
       <SettingsGroup>
-        <SettingsCard>
-          <SettingsCardContent>
-            <ThemeModeSelector />
-          </SettingsCardContent>
-        </SettingsCard>
+        <ThemeModeSelector />
 
         <ThemeColorConfig />
       </SettingsGroup>

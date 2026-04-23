@@ -1,15 +1,24 @@
+import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
 import {
   ThemeMode,
   useExperimentalThemeContext,
 } from '@/components/providers/theme-provider'
+import { Button } from '@/components/ui/button'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
+import {
+  ItemContainer,
+  ItemLabel,
+  ItemLabelDescription,
+  ItemLabelText,
+  SettingsCard,
+  SettingsCardContent,
+} from '../../_modules/settings-card'
 
 export default function ThemeModeSelector() {
   const { themeMode, setThemeMode } = useExperimentalThemeContext()
@@ -25,24 +34,40 @@ export default function ThemeModeSelector() {
   } satisfies Record<ThemeMode, string>
 
   return (
-    <Select
-      variant="outlined"
-      value={themeMode}
-      onValueChange={handleThemeModeChange}
-    >
-      <SelectTrigger>
-        <SelectValue placeholder={m.settings_user_interface_theme_mode_label()}>
-          {themeMode ? messages[themeMode] : null}
-        </SelectValue>
-      </SelectTrigger>
+    <SettingsCard data-slot="theme-mode-selector">
+      <DropdownMenu align="end">
+        <DropdownMenuTrigger asChild>
+          <SettingsCardContent data-slot="theme-mode-selector-trigger" asChild>
+            <Button className="text-on-surface! h-auto w-full rounded-none px-5 text-left text-base">
+              <ItemContainer>
+                <ItemLabel>
+                  <ItemLabelText>
+                    {m.settings_user_interface_theme_mode_label()}
+                  </ItemLabelText>
 
-      <SelectContent>
-        {Object.entries(messages).map(([key, value]) => (
-          <SelectItem key={key} value={key}>
-            {value}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+                  <ItemLabelDescription>
+                    {themeMode ? messages[themeMode] : null}
+                  </ItemLabelDescription>
+                </ItemLabel>
+
+                <ArrowForwardIosRounded />
+              </ItemContainer>
+            </Button>
+          </SettingsCardContent>
+        </DropdownMenuTrigger>
+
+        <DropdownMenuContent sideOffset={-16} alignOffset={16}>
+          {Object.entries(messages).map(([key, message]) => (
+            <DropdownMenuCheckboxItem
+              checked={themeMode === key}
+              key={key}
+              onSelect={() => handleThemeModeChange(key)}
+            >
+              {message}
+            </DropdownMenuCheckboxItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </SettingsCard>
   )
 }

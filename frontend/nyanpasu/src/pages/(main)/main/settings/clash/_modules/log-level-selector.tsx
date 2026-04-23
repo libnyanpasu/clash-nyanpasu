@@ -1,13 +1,22 @@
+import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
 import { useCallback, useMemo } from 'react'
+import { Button } from '@/components/ui/button'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
 import { useClashConfig } from '@nyanpasu/interface'
+import {
+  ItemContainer,
+  ItemLabel,
+  ItemLabelDescription,
+  ItemLabelText,
+  SettingsCard,
+  SettingsCardContent,
+} from '../../_modules/settings-card'
 
 const LOG_LEVEL_OPTIONS = {
   debug: 'Debug',
@@ -35,24 +44,40 @@ export default function LogLevelSelector() {
   )
 
   return (
-    <Select
-      variant="outlined"
-      value={value}
-      onValueChange={handleLogLevelChange}
-    >
-      <SelectTrigger>
-        <SelectValue placeholder={m.settings_clash_settings_log_level_label()}>
-          {value ? LOG_LEVEL_OPTIONS[value] : null}
-        </SelectValue>
-      </SelectTrigger>
+    <SettingsCard data-slot="log-level-selector-card">
+      <DropdownMenu align="end">
+        <DropdownMenuTrigger asChild>
+          <SettingsCardContent data-slot="log-level-selector-trigger" asChild>
+            <Button className="text-on-surface! h-auto w-full rounded-none px-5 text-left text-base">
+              <ItemContainer>
+                <ItemLabel>
+                  <ItemLabelText>
+                    {m.settings_clash_settings_log_level_label()}
+                  </ItemLabelText>
 
-      <SelectContent>
-        {Object.entries(LOG_LEVEL_OPTIONS).map(([key, value]) => (
-          <SelectItem key={key} value={key}>
-            {value}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+                  <ItemLabelDescription>
+                    {value ? LOG_LEVEL_OPTIONS[value] : null}
+                  </ItemLabelDescription>
+                </ItemLabel>
+
+                <ArrowForwardIosRounded />
+              </ItemContainer>
+            </Button>
+          </SettingsCardContent>
+        </DropdownMenuTrigger>
+
+        <DropdownMenuContent sideOffset={-16} alignOffset={16}>
+          {Object.entries(LOG_LEVEL_OPTIONS).map(([key, message]) => (
+            <DropdownMenuCheckboxItem
+              checked={value === key}
+              key={key}
+              onSelect={() => handleLogLevelChange(key)}
+            >
+              {message}
+            </DropdownMenuCheckboxItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </SettingsCard>
   )
 }

@@ -1,17 +1,25 @@
+import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
 import { useCallback, useMemo } from 'react'
+import { Button } from '@/components/ui/button'
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useCoreType } from '@/hooks/use-store'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { TunStack, useRuntimeProfile, useSetting } from '@nyanpasu/interface'
+import {
+  ItemContainer,
+  ItemLabel,
+  ItemLabelDescription,
+  ItemLabelText,
+  SettingsCard,
+  SettingsCardContent,
+} from '../../_modules/settings-card'
 
 export default function TunStackSelector() {
   const [coreType] = useCoreType()
@@ -66,26 +74,40 @@ export default function TunStackSelector() {
   )
 
   return (
-    <Select
-      variant="outlined"
-      value={currentTunStack}
-      onValueChange={handleTunStackChange}
-    >
-      <SelectTrigger>
-        <SelectValue placeholder={m.settings_clash_settings_tun_stack_label()}>
-          {tunStackOptions[currentTunStack]}
-        </SelectValue>
-      </SelectTrigger>
+    <SettingsCard data-slot="tun-stack-selector-card">
+      <DropdownMenu align="end">
+        <DropdownMenuTrigger asChild>
+          <SettingsCardContent data-slot="tun-stack-selector-trigger" asChild>
+            <Button className="text-on-surface! h-auto w-full rounded-none px-5 text-left text-base">
+              <ItemContainer>
+                <ItemLabel>
+                  <ItemLabelText>
+                    {m.settings_clash_settings_tun_stack_label()}
+                  </ItemLabelText>
 
-      <SelectContent>
-        <SelectGroup>
-          {Object.entries(tunStackOptions).map(([key, value]) => (
-            <SelectItem key={key} value={key}>
-              {value}
-            </SelectItem>
+                  <ItemLabelDescription>
+                    {currentTunStack ? tunStackOptions[currentTunStack] : null}
+                  </ItemLabelDescription>
+                </ItemLabel>
+
+                <ArrowForwardIosRounded />
+              </ItemContainer>
+            </Button>
+          </SettingsCardContent>
+        </DropdownMenuTrigger>
+
+        <DropdownMenuContent sideOffset={-16} alignOffset={16}>
+          {Object.entries(tunStackOptions).map(([key, message]) => (
+            <DropdownMenuCheckboxItem
+              checked={tunStack.value === key}
+              key={key}
+              onSelect={() => handleTunStackChange(key)}
+            >
+              {message}
+            </DropdownMenuCheckboxItem>
           ))}
-        </SelectGroup>
-      </SelectContent>
-    </Select>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </SettingsCard>
   )
 }

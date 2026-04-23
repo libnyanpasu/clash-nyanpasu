@@ -39,13 +39,9 @@ const PatchSettings = () => {
           </SettingsCardContent>
         </SettingsCard>
 
-        <SettingsCard>
-          <SettingsCardContent>
-            <TunStackSelector />
+        <TunStackSelector />
 
-            <LogLevelSelector />
-          </SettingsCardContent>
-        </SettingsCard>
+        <LogLevelSelector />
       </SettingsGroup>
     </div>
   )

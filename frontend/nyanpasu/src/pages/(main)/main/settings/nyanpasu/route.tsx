@@ -1,11 +1,6 @@
 import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
-import {
-  SettingsCard,
-  SettingsCardContent,
-  SettingsGroup,
-  SettingsLabel,
-} from '../_modules/settings-card'
+import { SettingsGroup, SettingsLabel } from '../_modules/settings-card'
 import { SettingsTitle } from '../_modules/settings-title'
 import HotkeyManager from './_modules/hotket-manager'
 import LogFileConfig from './_modules/log-file-config'
@@ -23,11 +18,7 @@ const LogSettings = () => {
       <SettingsLabel>{m.settings_nyanpasu_logs()}</SettingsLabel>
 
       <SettingsGroup>
-        <SettingsCard>
-          <SettingsCardContent>
-            <LogLevelSelector />
-          </SettingsCardContent>
-        </SettingsCard>
+        <LogLevelSelector />
 
         <LogFileConfig />
       </SettingsGroup>

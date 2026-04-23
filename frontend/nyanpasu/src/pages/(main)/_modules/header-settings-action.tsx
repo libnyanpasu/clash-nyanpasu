@@ -6,6 +6,7 @@ import {
 } from '@/components/providers/theme-provider'
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -14,6 +15,8 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { CircularProgress } from '@/components/ui/progress'
+import { useSystemProxy, useTunMode } from '@/hooks/use-proxy-settings'
 import { m } from '@/paraglide/messages'
 import { Locale, locales } from '@/paraglide/runtime'
 
@@ -81,6 +84,60 @@ const ThemeModeSelector = () => {
   )
 }
 
+const ProxySettings = () => {
+  const systemProxy = useSystemProxy()
+
+  const tunMode = useTunMode()
+
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger>
+        {m.header_settings_action_proxy_settings()}
+      </DropdownMenuSubTrigger>
+
+      <DropdownMenuSubContent>
+        <DropdownMenuCheckboxItem
+          key="system-proxy"
+          className="group relative"
+          checked={systemProxy.isActive}
+          onCheckedChange={() => {
+            systemProxy.execute()
+          }}
+          data-loading={String(systemProxy.isPending)}
+        >
+          <span className="text-nowrap">
+            {m.settings_system_proxy_system_proxy_label()}
+          </span>
+
+          <CircularProgress
+            className="invisible size-4 group-data-[loading=true]:visible"
+            indeterminate
+          />
+        </DropdownMenuCheckboxItem>
+
+        <DropdownMenuCheckboxItem
+          key="tun-mode"
+          className="group relative"
+          checked={tunMode.isActive}
+          onCheckedChange={() => {
+            tunMode.execute()
+          }}
+          data-loading={String(tunMode.isPending)}
+        >
+          <span className="text-nowrap">
+            {m.settings_system_proxy_tun_mode_label()}
+          </span>
+
+          <CircularProgress
+            className="invisible size-4 group-data-[loading=true]:visible"
+            indeterminate
+          />
+        </DropdownMenuCheckboxItem>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  )
+}
+
 export default function HeaderSettingsAction({ children }: PropsWithChildren) {
   return (
     <DropdownMenu>
@@ -90,6 +147,8 @@ export default function HeaderSettingsAction({ children }: PropsWithChildren) {
         <LanguageSelector />
 
         <ThemeModeSelector />
+
+        <ProxySettings />
       </DropdownMenuContent>
     </DropdownMenu>
   )

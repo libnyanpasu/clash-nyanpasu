@@ -17,6 +17,7 @@
   "header_settings_action_title": "Настройки",
   "header_settings_action_language": "Язык",
   "header_settings_action_theme_mode": "Режим темы",
+  "header_settings_action_proxy_settings": "Настройки прокси",
   "header_file_action_title": "Файл",
   "header_file_action_import_local_profile": "Импорт локального профиля",
   "header_new_version": "Обновить",

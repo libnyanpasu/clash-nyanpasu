@@ -17,6 +17,7 @@
   "header_settings_action_title": "設置",
   "header_settings_action_language": "語言",
   "header_settings_action_theme_mode": "主題模式",
+  "header_settings_action_proxy_settings": "代理設置",
   "header_file_action_title": "文件",
   "header_file_action_import_local_profile": "匯入本機配置",
   "header_new_version": "更新",

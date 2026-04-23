@@ -17,6 +17,7 @@
   "header_settings_action_title": "Settings",
   "header_settings_action_language": "Language",
   "header_settings_action_theme_mode": "Theme Mode",
+  "header_settings_action_proxy_settings": "Proxy Settings",
   "header_file_action_title": "File",
   "header_file_action_import_local_profile": "Import Local Profile",
   "header_new_version": "Update App",

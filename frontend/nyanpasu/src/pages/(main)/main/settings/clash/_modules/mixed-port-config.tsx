@@ -1,15 +1,32 @@
+import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
 import { AnimatePresence } from 'framer-motion'
-import { useCallback, useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { NumericInput } from '@/components/ui/input'
+import {
+  Modal,
+  ModalClose,
+  ModalContent,
+  ModalTitle,
+  ModalTrigger,
+} from '@/components/ui/modal'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useClashConfig, useSetting } from '@nyanpasu/interface'
-import { SettingsCardAnimatedItem } from '../../_modules/settings-card'
+import {
+  ItemContainer,
+  ItemLabel,
+  ItemLabelDescription,
+  ItemLabelText,
+  SettingsCard,
+  SettingsCardAnimatedItem,
+  SettingsCardContent,
+} from '../../_modules/settings-card'
 
 const DEFAULT_MIXED_PORT = 7890
 
@@ -18,6 +35,8 @@ const formSchema = z.object({
 })
 
 export default function MixedPortConfig() {
+  const [open, setOpen] = useState(false)
+
   const mixedPort = useSetting('verge_mixed_port')
 
   const clashConfig = useClashConfig()
@@ -53,6 +72,8 @@ export default function MixedPortConfig() {
       form.reset({
         mixedPort: data.mixedPort,
       })
+
+      setOpen(false)
     } catch (error) {
       message(formatError(error), {
         title: 'Error',
@@ -61,64 +82,88 @@ export default function MixedPortConfig() {
     }
   })
 
-  const handleReset = useCallback(() => {
-    form.reset({
-      mixedPort: currentMixedPort,
-    })
-  }, [form, currentMixedPort])
-
   return (
-    <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
-      <Controller
-        name="mixedPort"
-        control={form.control}
-        render={({ field, fieldState }) => {
-          const handleChange = (value: number | null) => {
-            field.onChange(value)
-          }
+    <SettingsCard data-slot="mixed-port-config-card">
+      <Modal open={open} onOpenChange={setOpen}>
+        <SettingsCardContent asChild>
+          <ModalTrigger asChild>
+            <Button className="text-on-surface! h-auto w-full rounded-none px-5 text-left text-base">
+              <ItemContainer>
+                <ItemLabel>
+                  <ItemLabelText>
+                    {m.settings_clash_settings_mixed_port_label()}
+                  </ItemLabelText>
 
-          return (
-            <>
-              <NumericInput
-                variant="outlined"
-                label={m.settings_clash_settings_mixed_port_label()}
-                value={field.value}
-                onChange={handleChange}
-                allowNegative={false}
-                decimalScale={0}
-              />
+                  <ItemLabelDescription>
+                    {m.settings_clash_settings_mixed_port_label_value({
+                      port: currentMixedPort,
+                    })}
+                  </ItemLabelDescription>
+                </ItemLabel>
 
-              <AnimatePresence>
-                {fieldState.error && (
-                  <SettingsCardAnimatedItem className="text-error">
-                    {fieldState.error.message}
-                  </SettingsCardAnimatedItem>
-                )}
-              </AnimatePresence>
-            </>
-          )
-        }}
-      />
+                <ArrowForwardIosRounded />
+              </ItemContainer>
+            </Button>
+          </ModalTrigger>
+        </SettingsCardContent>
 
-      <AnimatePresence initial={false}>
-        {form.formState.isDirty && (
-          <SettingsCardAnimatedItem>
-            <div className="flex justify-end gap-2 pt-1">
-              <Button type="button" onClick={handleReset}>
-                {m.common_reset()}
-              </Button>
+        <ModalContent>
+          <Card className="flex min-w-96 flex-col">
+            <CardHeader>
+              <ModalTitle>
+                {m.settings_clash_settings_mixed_port_label_edit()}
+              </ModalTitle>
+            </CardHeader>
 
+            <CardContent asChild>
+              <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
+                <Controller
+                  name="mixedPort"
+                  control={form.control}
+                  render={({ field, fieldState }) => {
+                    const handleChange = (value: number | null) => {
+                      field.onChange(value)
+                    }
+
+                    return (
+                      <>
+                        <NumericInput
+                          variant="outlined"
+                          label={m.settings_clash_settings_mixed_port_label()}
+                          value={field.value}
+                          onChange={handleChange}
+                          allowNegative={false}
+                          decimalScale={0}
+                        />
+
+                        <AnimatePresence>
+                          {fieldState.error && (
+                            <SettingsCardAnimatedItem className="text-error">
+                              {fieldState.error.message}
+                            </SettingsCardAnimatedItem>
+                          )}
+                        </AnimatePresence>
+                      </>
+                    )
+                  }}
+                />
+              </form>
+            </CardContent>
+
+            <CardFooter className="gap-2">
               <Button
-                variant="raised"
+                variant="flat"
                 onClick={handleSubmit}
                 loading={form.formState.isSubmitting}
               >
                 {m.common_apply()}
               </Button>
-            </div>
-          </SettingsCardAnimatedItem>
-        )}
-      </AnimatePresence>
-    </form>
+
+              <ModalClose>{m.common_close()}</ModalClose>
+            </CardFooter>
+          </Card>
+        </ModalContent>
+      </Modal>
+    </SettingsCard>
   )
 }

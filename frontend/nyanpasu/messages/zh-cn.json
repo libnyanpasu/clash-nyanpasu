@@ -67,6 +67,8 @@
   "settings_clash_settings_log_level_label": "日志级别",
   "settings_clash_settings_port_label": "端口设置",
   "settings_clash_settings_mixed_port_label": "混合端口",
+  "settings_clash_settings_mixed_port_label_value": "当前端口: {port}",
+  "settings_clash_settings_mixed_port_label_edit": "编辑混合端口",
   "settings_clash_settings_random_port_label": "随机端口",
   "settings_clash_settings_random_port_enabled": "随机端口已启用，重启后生效。",
   "settings_clash_settings_random_port_disabled": "随机端口已禁用，重启后生效。",

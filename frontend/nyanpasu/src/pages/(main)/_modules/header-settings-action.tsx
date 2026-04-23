@@ -10,6 +10,7 @@ import {
   DropdownMenuContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -19,6 +20,7 @@ import { CircularProgress } from '@/components/ui/progress'
 import { useSystemProxy, useTunMode } from '@/hooks/use-proxy-settings'
 import { m } from '@/paraglide/messages'
 import { Locale, locales } from '@/paraglide/runtime'
+import { ProxyMode, useProxyMode } from '@nyanpasu/interface'
 
 const LanguageSelector = () => {
   const { language, setLanguage } = useLanguage()
@@ -89,6 +91,15 @@ const ProxySettings = () => {
 
   const tunMode = useTunMode()
 
+  const proxyMode = useProxyMode()
+
+  const proxyModeMessages = {
+    global: m.settings_system_proxy_global_mode_label(),
+    direct: m.settings_system_proxy_direct_mode_label(),
+    rule: m.settings_system_proxy_rule_mode_label(),
+    script: m.settings_system_proxy_script_mode_label(),
+  } satisfies Record<ProxyMode, string>
+
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger>
@@ -133,6 +144,25 @@ const ProxySettings = () => {
             indeterminate
           />
         </DropdownMenuCheckboxItem>
+
+        <DropdownMenuSeparator />
+
+        <DropdownMenuRadioGroup
+          value={
+            Object.entries(proxyMode.value).find(([, enabled]) => enabled)?.[0]
+          }
+          onValueChange={(value) => proxyMode.upsert(value as ProxyMode)}
+        >
+          {Object.keys(proxyMode.value).map((key) => (
+            <DropdownMenuRadioItem
+              key={key}
+              className="[&>div]:pl-1.5"
+              value={key}
+            >
+              {proxyModeMessages[key as ProxyMode]}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
       </DropdownMenuSubContent>
     </DropdownMenuSub>
   )

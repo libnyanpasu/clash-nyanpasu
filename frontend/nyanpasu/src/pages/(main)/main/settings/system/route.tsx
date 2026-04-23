@@ -20,6 +20,7 @@ import CurrentSystemProxy from './_modules/current-system-proxy'
 import ProxyBypassConfig from './_modules/proxy-bypass-config'
 import ProxyGuardConfig from './_modules/proxy-guard-config'
 import ProxyGuardSwitch from './_modules/proxy-guard-switch'
+import ProxyModeSelector from './_modules/proxy-mode-selector'
 import SilentLaunchSwitch from './_modules/slient-launch-switch'
 import SystemServiceCtrl from './_modules/system-service-ctrl'
 import SystemServiceSwitch from './_modules/system-service-switch'
@@ -36,13 +37,15 @@ const ProxyMode = () => {
         {m.settings_system_proxy_proxy_mode_label()}
       </SettingsLabel>
 
-      <SettingsGroup>
+      <SettingsGroup className="pb-4">
         <div className="grid grid-cols-2 gap-2">
           <SystemProxyButton />
 
           <TunModeButton />
         </div>
       </SettingsGroup>
+
+      <ProxyModeSelector />
     </div>
   )
 }

@@ -18,6 +18,7 @@ import { Check } from '@mui/icons-material'
 import { TextField, ToggleButton, ToggleButtonGroup } from '@mui/material'
 import {
   ProxyGroupItem,
+  ProxyMode,
   useClashProxies,
   useProxyMode,
 } from '@nyanpasu/interface'
@@ -107,7 +108,7 @@ function ProxyPage() {
 
   const nodeListRef = useRef<NodeListRef>(null)
 
-  const handleSwitch = useLockFn(async (key: string) => {
+  const handleSwitch = useLockFn(async (key: ProxyMode) => {
     await upsert(key)
   })
 

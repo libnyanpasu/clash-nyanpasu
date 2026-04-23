@@ -2,10 +2,14 @@ import ArrowDownwardAltRounded from '~icons/material-symbols/arrow-downward-alt-
 import ArrowUpwardAltRounded from '~icons/material-symbols/arrow-upward-alt-rounded'
 import Radar from '~icons/material-symbols/radar'
 import { filesize } from 'filesize'
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { useScrollArea } from '@/components/ui/scroll-area'
-import { useClashProxies } from '@nyanpasu/interface'
+import {
+  ClashProxiesQueryGroupItem,
+  useClashProxies,
+  useProxyMode,
+} from '@nyanpasu/interface'
 import { useContainerBreakpointValue } from '@nyanpasu/ui'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
@@ -25,9 +29,15 @@ function RouteComponent() {
     proxies: { data: proxies },
   } = useClashProxies()
 
-  const currentGroup = proxies?.groups.find(
-    (group) => group.name === proxyGroupName,
-  )
+  const { value: proxyMode } = useProxyMode()
+
+  const currentGroup = useMemo<ClashProxiesQueryGroupItem | undefined>(() => {
+    if (proxyMode.global) {
+      return proxies?.global
+    }
+
+    return proxies?.groups.find((group) => group.name === proxyGroupName)
+  }, [proxies, proxyGroupName, proxyMode])
 
   const { viewportRef } = useScrollArea()
 

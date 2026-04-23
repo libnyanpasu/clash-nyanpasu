@@ -9,6 +9,8 @@ export default function ProxiesNavigate() {
     proxies: { data: proxies },
   } = useClashProxies()
 
+  console.log(proxies)
+
   const location = useLocation()
 
   return (

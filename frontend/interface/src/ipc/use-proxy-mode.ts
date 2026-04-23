@@ -3,6 +3,8 @@ import { useClashAPI } from '../service/clash-api'
 import { useClashConfig } from './use-clash-config'
 import { useSetting } from './use-settings'
 
+export type ProxyMode = 'rule' | 'global' | 'direct' | 'script'
+
 /**
  * Hook for managing proxy mode in Clash configuration
  *
@@ -50,7 +52,12 @@ export const useProxyMode = () => {
     return modes
   }, [clashConfig.query.data, clashCore.value])
 
-  const upsert = async (mode: string) => {
+  const upsert = async (mode: ProxyMode) => {
+    // only clash premium support script mode
+    if (clashCore.value !== 'clash' && mode === 'script') {
+      throw new Error('Script mode is only available for Clash Premium')
+    }
+
     await deleteConnections()
 
     await clashConfig.upsert.mutateAsync({ mode })

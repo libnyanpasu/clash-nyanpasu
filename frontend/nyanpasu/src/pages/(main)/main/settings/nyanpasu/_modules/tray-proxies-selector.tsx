@@ -1,13 +1,13 @@
+import ArrowForwardIosRounded from '~icons/material-symbols/arrow-forward-ios-rounded'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
-import { ArrowForwardIosRounded } from '@mui/icons-material'
 import { ProxiesSelectorMode, useSetting } from '@nyanpasu/interface'
 import {
   ItemContainer,
@@ -33,7 +33,7 @@ export default function TrayProxiesSelector() {
 
   return (
     <SettingsCard data-slot="tray-proxies-selector">
-      <DropdownMenu width="full">
+      <DropdownMenu align="end">
         <DropdownMenuTrigger asChild>
           <SettingsCardContent
             data-slot="tray-proxies-selector-trigger"
@@ -57,14 +57,15 @@ export default function TrayProxiesSelector() {
           </SettingsCardContent>
         </DropdownMenuTrigger>
 
-        <DropdownMenuContent>
-          {Object.entries(messages).map(([key, value]) => (
-            <DropdownMenuItem
+        <DropdownMenuContent sideOffset={-16} alignOffset={16}>
+          {Object.entries(messages).map(([key, message]) => (
+            <DropdownMenuCheckboxItem
+              checked={value === key}
               key={key}
               onSelect={() => handleChange(key as ProxiesSelectorMode)}
             >
-              {value}
-            </DropdownMenuItem>
+              {message}
+            </DropdownMenuCheckboxItem>
           ))}
         </DropdownMenuContent>
       </DropdownMenu>

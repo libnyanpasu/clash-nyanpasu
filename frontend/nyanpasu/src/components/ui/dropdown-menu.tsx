@@ -20,27 +20,29 @@ const MotionContent = ({
         'relative z-50 w-full overflow-auto rounded',
         'dark:text-on-surface',
         'bg-inverse-on-surface dark:bg-surface',
-        'shadow shadow-zinc-300 dark:shadow-zinc-900',
+        'shadow-background shadow-sm',
+        'border-outline-variant/50 dark:border-outline-variant/15 border',
         className,
       )}
       style={{
-        maxHeight: 'var(--radix-popper-available-height)',
         ...style,
+        maxHeight: 'var(--radix-popper-available-height)',
+        transformOrigin:
+          'var(--radix-dropdown-menu-content-transform-origin, ' +
+          'var(--radix-dropdown-menu-sub-content-transform-origin, ' +
+          'var(--radix-popper-transform-origin, top)))',
       }}
       initial={{
         opacity: 0,
         scaleY: 0.9,
-        transformOrigin: 'top',
       }}
       animate={{
         opacity: 1,
         scaleY: 1,
-        transformOrigin: 'top',
       }}
       exit={{
         opacity: 0,
         scaleY: 0.9,
-        transformOrigin: 'top',
       }}
       transition={{
         type: 'spring',
@@ -56,9 +58,12 @@ const MotionContent = ({
 
 type WidthType = 'auto' | 'full'
 
+type AlignType = 'start' | 'center' | 'end'
+
 const DropdownMenuContext = createContext<{
   open: boolean
   width: WidthType
+  align: AlignType
 } | null>(null)
 
 const useDropdownMenuContext = () => {
@@ -75,12 +80,14 @@ const useDropdownMenuContext = () => {
 
 export const DropdownMenu = ({
   width = 'auto',
+  align = 'center',
   open: inputOpen,
   defaultOpen,
   onOpenChange,
   ...props
 }: ComponentProps<typeof DropdownMenuPrimitive.Root> & {
   width?: WidthType
+  align?: AlignType
 }) => {
   const [open, setOpen] = useControllableState({
     prop: inputOpen,
@@ -93,6 +100,7 @@ export const DropdownMenu = ({
       value={{
         open,
         width,
+        align,
       }}
     >
       <DropdownMenuPrimitive.Root
@@ -104,7 +112,17 @@ export const DropdownMenu = ({
   )
 }
 
-export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger
+export function DropdownMenuTrigger({
+  className,
+  ...props
+}: ComponentProps<typeof DropdownMenuPrimitive.Trigger>) {
+  return (
+    <DropdownMenuPrimitive.Trigger
+      className={cn('data-[state=open]:bg-inverse-on-surface', className)}
+      {...props}
+    />
+  )
+}
 
 export const DropdownMenuGroup = DropdownMenuPrimitive.Group
 
@@ -239,15 +257,20 @@ export const DropdownMenuRadioGroup = ({
 export const DropdownMenuContent = ({
   children,
   className,
+  align: alignProp,
   ...props
 }: ComponentProps<typeof DropdownMenuPrimitive.Content>) => {
-  const { open, width } = useDropdownMenuContext()
+  const { open, width, align } = useDropdownMenuContext()
 
   return (
     <AnimatePresence initial={false}>
       {open && (
         <DropdownMenuPrimitive.Portal forceMount>
-          <DropdownMenuPrimitive.Content {...props} asChild>
+          <DropdownMenuPrimitive.Content
+            align={alignProp ?? align}
+            {...props}
+            asChild
+          >
             <MotionContent
               className={className}
               style={{
@@ -292,8 +315,8 @@ export const DropdownMenuCheckboxItem = ({
   return (
     <DropdownMenuPrimitive.CheckboxItem
       className={cn(
-        'flex h-12 cursor-default items-center justify-between gap-2 p-4 outline-hidden',
-        'cursor-pointer',
+        'relative flex h-12 items-center justify-between gap-2 p-4 outline-hidden',
+        'cursor-pointer pl-12',
         'hover:bg-surface-variant',
         'dark:hover:bg-surface-variant',
         'data-[state=checked]:bg-primary-container dark:data-[state=checked]:bg-on-primary',
@@ -301,11 +324,11 @@ export const DropdownMenuCheckboxItem = ({
       )}
       {...props}
     >
-      {children}
-
-      <DropdownMenuPrimitive.ItemIndicator>
+      <DropdownMenuPrimitive.ItemIndicator className="absolute top-1/2 left-4 -translate-y-1/2">
         <Check className="text-primary" />
       </DropdownMenuPrimitive.ItemIndicator>
+
+      {children}
     </DropdownMenuPrimitive.CheckboxItem>
   )
 }

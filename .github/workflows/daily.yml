@@ -36,7 +36,7 @@ jobs:
       - name: Check for changes
         id: git-check
         run: echo ::set-output name=has-changes::$(if git diff --quiet; then echo "false"; else echo "true"; fi)
-      - uses: oleksiyrudenko/gha-git-credentials@v2-latest
+      - uses: oleksiyrudenko/gha-git-credentials@v2.1
         if: steps.git-check.outputs.has-changes == 'true'
         with:
           token: '${{ secrets.GITHUB_TOKEN }}'
@@ -81,7 +81,7 @@ jobs:
       - name: Check for changes
         id: git-check
         run: echo ::set-output name=has-changes::$(if git diff --quiet; then echo "false"; else echo "true"; fi)
-      - uses: oleksiyrudenko/gha-git-credentials@v2-latest
+      - uses: oleksiyrudenko/gha-git-credentials@v2.1
         if: steps.git-check.outputs.has-changes == 'true'
         with:
           token: '${{ secrets.GITHUB_TOKEN }}'

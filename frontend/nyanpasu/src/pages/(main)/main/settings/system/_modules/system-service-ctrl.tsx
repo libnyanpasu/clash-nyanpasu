@@ -21,7 +21,7 @@ import {
   useServicePrompt,
   useSystemService,
 } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import {
   SettingsCard,

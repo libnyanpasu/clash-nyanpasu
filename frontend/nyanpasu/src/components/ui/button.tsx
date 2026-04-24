@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Slot } from 'radix-ui'
 import { lazy, Suspense, useCallback } from 'react'
 import { chains } from '@/utils/chain'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { CircularProgress } from './progress'
 import { useRipple } from './ripple'
 

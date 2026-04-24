@@ -1,5 +1,6 @@
 import useSWR, { SWRConfiguration } from 'swr'
-import { getIpsbASN } from '@/service'
+import { commands } from '@interface/ipc'
+import { unwrapResult } from '@interface/utils'
 
 export interface IPSBResponse {
   organization: string
@@ -17,5 +18,10 @@ export interface IPSBResponse {
 }
 
 export const useIPSB = (config?: SWRConfiguration) => {
-  return useSWR('https://api.ip.sb/geoip', () => getIpsbASN(), config)
+  return useSWR(
+    'https://api.ip.sb/geoip',
+    async () =>
+      unwrapResult(await commands.getIpsbAsn()) as unknown as IPSBResponse,
+    config,
+  )
 }

@@ -21,10 +21,10 @@ export default {
     'oxlint --fix',
     () => 'tsc -p frontend/interface/tsconfig.json --noEmit',
   ],
-  'frontend/ui/**/*.{ts,tsx}': [
+  'frontend/utils/**/*.{ts,tsx}': [
     'prettier --write',
     'oxlint --fix',
-    () => 'tsc -p frontend/ui/tsconfig.json --noEmit',
+    () => 'tsc -p frontend/utils/tsconfig.json --noEmit',
   ],
   'frontend/nyanpasu/**/*.{ts,tsx}': [
     'prettier --write',

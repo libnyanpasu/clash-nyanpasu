@@ -1,4 +1,4 @@
-import { commands } from '@/ipc'
+import { commands } from '@interface/ipc'
 import { useQuery } from '@tanstack/react-query'
 
 export const HOTKEY_FUNCTIONS_QUERY_KEY = 'hotkey_functions'

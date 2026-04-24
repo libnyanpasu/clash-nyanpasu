@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { ComponentProps, useId } from 'react'
 import { Button } from '@/components/ui/button'
 import { useScrollArea } from '@/components/ui/scroll-area'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { Link } from '@tanstack/react-router'
 
 const BackButton = () => {

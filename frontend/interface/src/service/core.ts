@@ -1,5 +1,5 @@
-import type { ClashCore } from '../ipc/bindings'
-import { fetchLatestCoreVersions, getCoreVersion } from './tauri'
+import { commands, type ClashCore } from '../ipc/bindings'
+import { unwrapResult } from '../utils'
 
 export interface Core {
   name: string
@@ -20,7 +20,7 @@ export const fetchCoreVersion = async () => {
   return await Promise.all(
     VALID_CORE.map(async (item) => {
       try {
-        const version = await getCoreVersion(item.core)
+        const version = unwrapResult(await commands.getCoreVersion(item.core))
         return { ...item, version }
       } catch (e) {
         console.error('failed to fetch core version', e)
@@ -31,7 +31,11 @@ export const fetchCoreVersion = async () => {
 }
 
 export const fetchLatestCore = async () => {
-  const results = await fetchLatestCoreVersions()
+  const results = unwrapResult(await commands.fetchLatestCoreVersions())
+
+  if (!results) {
+    return VALID_CORE.map((item) => ({ ...item }))
+  }
 
   const cores = VALID_CORE.map((item) => {
     const key = item.core.replace(/-/g, '_') as keyof typeof results

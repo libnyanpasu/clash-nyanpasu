@@ -12,7 +12,7 @@ import {
   useState,
 } from 'react'
 import { chains } from '@/utils/chain'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { useControllableState } from '@radix-ui/react-use-controllable-state'
 
 export const selectTriggerVariants = cva(

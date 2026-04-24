@@ -1,5 +1,5 @@
 import { kebabCase } from 'lodash-es'
-import { unwrapResult } from '@/utils'
+import { unwrapResult } from '@interface/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { commands, type ClashCore } from './bindings'
 import {

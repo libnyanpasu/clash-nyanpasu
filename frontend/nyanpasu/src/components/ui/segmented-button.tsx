@@ -15,7 +15,7 @@ import {
   useState,
 } from 'react'
 import { chains } from '@/utils/chain'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { useControllableState } from '@radix-ui/react-use-controllable-state'
 import { useRipple } from './ripple'
 
@@ -295,7 +295,7 @@ export interface SegmentedButtonItemProps extends ComponentProps<
 > {
   /**
    * Hide the automatic check indicator shown when the item is selected.
-   * Only relevant in the `filled` variant — tabs never render the check.
+   * Only relevant in the `filled` variant �?tabs never render the check.
    * Use this when providing a persistent leading icon via `children`.
    */
   hideIndicator?: boolean

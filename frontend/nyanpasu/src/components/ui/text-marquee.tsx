@@ -7,7 +7,7 @@ import {
   type CSSProperties,
 } from 'react'
 import { sleep } from '@/utils'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 
 export default function TextMarquee({
   children,

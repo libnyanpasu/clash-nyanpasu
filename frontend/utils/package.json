@@ -1,0 +1,21 @@
+{
+  "name": "@nyanpasu/utils",
+  "version": "2.0.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.10.1",
+    "ahooks": "3.9.7",
+    "clsx": "2.1.1",
+    "react": "19.2.5",
+    "react-use": "17.6.0",
+    "tailwind-merge": "3.3.1"
+  }
+}

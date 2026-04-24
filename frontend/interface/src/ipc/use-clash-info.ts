@@ -1,4 +1,4 @@
-import { unwrapResult } from '@/utils'
+import { unwrapResult } from '@interface/utils'
 import { useQuery } from '@tanstack/react-query'
 import { commands } from './bindings'
 import { CLASH_INFO_QUERY_KEY } from './consts'

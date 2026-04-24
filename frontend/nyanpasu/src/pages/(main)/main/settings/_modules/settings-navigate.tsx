@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import TextMarquee from '@/components/ui/text-marquee'
 import useCurrentCoreIcon from '@/hooks/use-current-core-icon'
 import { m } from '@/paraglide/messages'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { Link, useLocation } from '@tanstack/react-router'
 
 const NyanpasuLogo = () => {

@@ -3,7 +3,6 @@ import { createFileRoute } from '@tanstack/react-router'
 import { SettingsGroup, SettingsLabel } from '../_modules/settings-card'
 import { SettingsTitle } from '../_modules/settings-title'
 import LanguageSelector from './_modules/language-selector'
-import SwitchLegacy from './_modules/switch-legacy'
 import ThemeColorConfig from './_modules/theme-color-config'
 import ThemeModeSelector from './_modules/theme-mode-selector'
 
@@ -57,14 +56,6 @@ function RouteComponent() {
         <LanguageSettings />
 
         <ThemeModeSettings />
-
-        <div data-slot="switch-legacy-settings-container">
-          <SettingsLabel>Switch to Legacy UI</SettingsLabel>
-
-          <SettingsGroup>
-            <SwitchLegacy />
-          </SettingsGroup>
-        </div>
       </div>
     </>
   )

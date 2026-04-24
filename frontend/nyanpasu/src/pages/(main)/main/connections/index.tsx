@@ -21,7 +21,7 @@ import { m } from '@/paraglide/messages'
 import { containsSearchTerm } from '@/utils'
 import parseTraffic from '@/utils/parse-traffic'
 import { ClashConnectionItem, useClashConnections } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   ColumnDef,
@@ -357,8 +357,8 @@ const Viewer = ({ search }: { search: string }) => {
                         header.column.columnDef.header,
                         header.getContext(),
                       )}
-                      {header.column.getIsSorted() === 'asc' && ' ↑'}
-                      {header.column.getIsSorted() === 'desc' && ' ↓'}
+                      {header.column.getIsSorted() === 'asc' && ' ��'}
+                      {header.column.getIsSorted() === 'desc' && ' ��'}
                     </div>
                   )}
                   {header.column.getCanResize() && (

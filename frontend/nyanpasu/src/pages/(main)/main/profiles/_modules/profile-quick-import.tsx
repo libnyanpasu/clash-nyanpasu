@@ -9,7 +9,7 @@ import { m } from '@/paraglide/messages'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useProfile } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 
 const formSchema = z.object({
   url: z.httpUrl(),

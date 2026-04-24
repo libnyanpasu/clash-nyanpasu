@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { DndGrid, GridSize } from '@/components/ui/dnd-grid'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { m } from '@/paraglide/messages'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { RENDER_MAP, WIDGET_MIN_SIZE_MAP, WidgetId } from './consts'
 import { useDashboardContext } from './provider'
 

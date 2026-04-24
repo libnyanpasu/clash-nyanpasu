@@ -18,7 +18,7 @@
     "composite": true,
     "declaration": true,
     "paths": {
-      "@/*": ["./src/*"],
+      "@interface/*": ["./src/*"],
     },
     "outDir": "./dist",
     "sourceMap": true,

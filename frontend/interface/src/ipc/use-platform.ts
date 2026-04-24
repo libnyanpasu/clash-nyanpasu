@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { unwrapResult } from '@/utils'
+import { unwrapResult } from '@interface/utils'
 import { useQuery } from '@tanstack/react-query'
 import { commands } from './bindings'
 import { IS_APPIMAGE_QUERY_KEY, OS } from './consts'

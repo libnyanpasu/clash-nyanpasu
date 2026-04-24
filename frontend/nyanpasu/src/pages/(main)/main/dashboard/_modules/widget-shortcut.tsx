@@ -16,7 +16,7 @@ import {
   useSystemProxy,
   useSystemService,
 } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { Link } from '@tanstack/react-router'
 import { WidgetComponentProps } from './consts'
 import WidgetItem from './widget-item'

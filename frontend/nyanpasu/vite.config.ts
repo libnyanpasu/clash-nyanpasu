@@ -9,8 +9,7 @@ import sassDts from 'vite-plugin-sass-dts'
 import svgr from 'vite-plugin-svgr'
 import tsconfigPaths from 'vite-tsconfig-paths'
 import { paraglideVitePlugin } from '@inlang/paraglide-js'
-// import tailwindPlugin from '@tailwindcss/vite'
-// import react from "@vitejs/plugin-react";
+import tailwindPlugin from '@tailwindcss/vite'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import legacy from '@vitejs/plugin-legacy'
 import react from '@vitejs/plugin-react-swc'
@@ -64,7 +63,7 @@ export default defineConfig(({ command, mode }) => {
       },
     },
     plugins: [
-      // tailwindPlugin(),
+      tailwindPlugin(),
       tsconfigPaths(),
       legacy({
         renderLegacyChunks: false,
@@ -96,11 +95,7 @@ export default defineConfig(({ command, mode }) => {
         routeFileIgnorePattern: '_modules',
       }),
       svgr(),
-      react({
-        // babel: {
-        //   plugins: ["@emotion/babel-plugin"],
-        // },
-      }),
+      react(),
       AutoImport({
         resolvers: [
           IconsResolver({
@@ -122,13 +117,17 @@ export default defineConfig(({ command, mode }) => {
     resolve: {
       alias: {
         '@repo': path.resolve('../../'),
-        '@nyanpasu/ui': path.resolve('../ui/src'),
         '@nyanpasu/interface': path.resolve('../interface/src'),
+        '@nyanpasu/utils': path.resolve('../utils/src'),
+        '@tauri-apps/api': path.resolve('./node_modules/@tauri-apps/api'),
+        ahooks: path.resolve('./node_modules/ahooks'),
+        clsx: path.resolve('./node_modules/clsx'),
+        react: path.resolve('./node_modules/react'),
+        'react-use': path.resolve('./node_modules/react-use'),
       },
     },
     optimizeDeps: {
       entries: ['./src/main.tsx'],
-      include: ['@emotion/styled'],
     },
     esbuild: {
       drop: isDev ? undefined : ['debugger'],

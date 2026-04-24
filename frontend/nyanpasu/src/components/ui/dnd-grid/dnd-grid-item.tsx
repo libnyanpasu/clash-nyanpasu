@@ -6,7 +6,7 @@ import {
 } from 'framer-motion'
 import { PropsWithChildren, useLayoutEffect, useRef } from 'react'
 import { useDraggable } from '@dnd-kit/core'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { useDndGridContext } from './context'
 import type { GridItemConstraints } from './types'
 
@@ -239,7 +239,7 @@ export function DndGridItem<T extends string>({
   const { isOverlay } = useDndGridContext()
 
   if (isOverlay) {
-    // Inside DragOverlay: skip positioning and drag logic — just fill the overlay div.
+    // Inside DragOverlay: skip positioning and drag logic �?just fill the overlay div.
     return <div className={cn('size-full', className)}>{children}</div>
   }
 

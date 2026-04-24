@@ -11,7 +11,7 @@ import {
   useClashProxiesProvider,
   useClashRulesProvider,
 } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { createFileRoute, Link, useLocation } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/(main)/main/providers')({

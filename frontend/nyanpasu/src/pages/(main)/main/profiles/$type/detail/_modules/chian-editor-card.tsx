@@ -17,7 +17,7 @@ import {
   RemoteProfile,
   useProfile,
 } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { categoryProfiles, CategoryProfiles } from '../../_modules/utils'
 import { ProfileType } from '../../../_modules/consts'
 

@@ -1,5 +1,5 @@
 import { ComponentProps } from 'react'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 
 const BASE_STROKE_WIDTH = 10
 const BASE_SIZE = 100

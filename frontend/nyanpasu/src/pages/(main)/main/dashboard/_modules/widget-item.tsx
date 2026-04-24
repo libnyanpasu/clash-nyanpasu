@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { DndGridItem, DndGridItemProps } from '@/components/ui/dnd-grid'
 import { useDndGridContext } from '@/components/ui/dnd-grid/context'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { WidgetComponentProps } from './consts'
 
 export type WidgetItemProps = DndGridItemProps<string> & WidgetComponentProps

@@ -6,7 +6,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { Profile, useClashConnections, useProfile } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 
 export const useActiveProfile = (profile: Profile) => {
   const {

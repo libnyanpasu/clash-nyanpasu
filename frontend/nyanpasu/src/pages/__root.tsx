@@ -1,7 +1,7 @@
 import { useMount } from 'ahooks'
 import dayjs from 'dayjs'
 import { useNyanpasuStorageSubscribers } from '@/hooks/use-store'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import {
   createRootRoute,
   ErrorComponentProps,

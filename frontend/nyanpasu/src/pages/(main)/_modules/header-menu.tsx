@@ -3,7 +3,7 @@ import { useNyanpasuUpdate } from '@/components/providers/nyanpasu-update-provid
 import { Button, ButtonProps } from '@/components/ui/button'
 import { Action as AboutAction } from '@/pages/(main)/main/settings/about/route'
 import { m } from '@/paraglide/messages'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { Link } from '@tanstack/react-router'
 import HeaderFileAction from './header-file-action'
 import HeaderHelpAction from './header-help-action'

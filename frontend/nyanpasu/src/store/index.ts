@@ -1,6 +1,5 @@
 import { atom } from 'jotai'
 import { atomWithStorage, createJSONStorage } from 'jotai/utils'
-import { SortType } from '@/components/proxies/utils'
 import { FileRouteTypes } from '@/route-tree.gen'
 import { NyanpasuStorage } from '@/services/storage'
 
@@ -36,23 +35,10 @@ export const memorizedRoutePathAtom = atomWithStorage<
   getOnInit: true,
 })
 
-export const proxyGroupAtom = atomWithLocalStorage<{
-  selector: number | null
-}>('proxyGroupAtom', {
-  selector: 0,
-})
-
-export const proxyGroupSortAtom = atomWithLocalStorage<SortType>(
-  'proxyGroupSortAtom',
-  SortType.Default,
-)
-
 export const themeMode = atomWithLocalStorage<'light' | 'dark'>(
   'themeMode',
   'light',
 )
-
-export const atomIsDrawer = atom<boolean>()
 
 export const atomIsDrawerOnlyIcon = atomWithStorage<boolean>(
   'atomIsDrawerOnlyIcon',

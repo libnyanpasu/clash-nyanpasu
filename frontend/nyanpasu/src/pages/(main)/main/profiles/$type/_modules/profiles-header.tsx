@@ -2,7 +2,7 @@ import ArrowBackIosNewRounded from '~icons/material-symbols/arrow-back-ios-new-r
 import { Button } from '@/components/ui/button'
 import useIsMobile from '@/hooks/use-is-moblie'
 import { m } from '@/paraglide/messages'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { Link } from '@tanstack/react-router'
 import { ProfileType } from '../../_modules/consts'
 import ProfileQuickImport from '../../_modules/profile-quick-import'

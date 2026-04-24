@@ -9,7 +9,7 @@ import { ComponentProps, useCallback } from 'react'
 import { Button, ButtonProps } from '@/components/ui/button'
 import useWindowMaximized from '@/hooks/use-window-maximized'
 import { useSetting } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
 const appWindow = getCurrentWebviewWindow()

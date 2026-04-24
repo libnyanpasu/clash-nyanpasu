@@ -1,4 +1,3 @@
-import { Notice } from '@/components/base'
 import { isPortable } from '@nyanpasu/interface'
 import {
   MessageDialogOptions,
@@ -51,9 +50,10 @@ export const notification = async ({
   }
   const permissionGranted = portable || (await checkPermission())
   if (portable || !permissionGranted) {
-    // fallback to mui notification
-    Notice[type](`${title} ${body ? `: ${body}` : ''}`)
-    // throw new Error("notification permission not granted!");
+    await tauriMessage(body ? `${title}: ${body}` : title, {
+      title: 'Clash Nyanpasu',
+      kind: type === NotificationType.Error ? 'error' : 'info',
+    })
     return
   }
   const options: Options = {

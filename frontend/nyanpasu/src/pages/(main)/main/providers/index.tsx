@@ -18,7 +18,7 @@ import {
   useClashProxiesProvider,
   useClashRulesProvider,
 } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useProxiesProviderUpdate } from './_modules/use-proxies-provider-update'
 import { useProxiesSubscription } from './_modules/use-proxies-subscription'

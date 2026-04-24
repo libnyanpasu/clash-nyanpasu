@@ -10,8 +10,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import getSystem from '@/utils/get-system'
-import { cn } from '@nyanpasu/ui'
+import { cn, getSystem } from '@nyanpasu/utils'
 import { readTextFile } from '@tauri-apps/plugin-fs'
 
 const isWin = getSystem() === 'windows'

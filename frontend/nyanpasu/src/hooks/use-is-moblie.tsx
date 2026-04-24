@@ -1,4 +1,4 @@
-import { useBreakpoint } from '@nyanpasu/ui'
+import { useBreakpoint } from '@nyanpasu/utils'
 
 export default function useIsMobile() {
   const breakpoint = useBreakpoint()

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import HighlightText from '@/components/ui/highlight-text'
 import { ScrollArea, useScrollArea } from '@/components/ui/scroll-area'
 import { useClashRules } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   flexRender,

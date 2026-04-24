@@ -28,7 +28,7 @@ import {
   useClashCores,
   useSetting,
 } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import {
   SettingsCard,
   SettingsCardContent,

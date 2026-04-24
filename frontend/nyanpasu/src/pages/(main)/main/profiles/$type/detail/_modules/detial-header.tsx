@@ -1,7 +1,7 @@
 import ArrowBackIosNewRounded from '~icons/material-symbols/arrow-back-ios-new-rounded'
 import { ComponentProps } from 'react'
 import { Button } from '@/components/ui/button'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { Link } from '@tanstack/react-router'
 import { Route as IndexRoute } from '../$uid'
 

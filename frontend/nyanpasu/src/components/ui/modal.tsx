@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { Dialog as DialogPrimitive, Slot } from 'radix-ui'
 import { ComponentProps, createContext, useContext, useId } from 'react'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { useControllableState } from '@radix-ui/react-use-controllable-state'
 import { Button, type ButtonProps } from './button'
 

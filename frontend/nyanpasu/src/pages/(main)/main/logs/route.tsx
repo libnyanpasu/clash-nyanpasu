@@ -14,7 +14,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useIsMobileOrTablet } from '@/hooks/use-is-moblie'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { createFileRoute, Link, Outlet } from '@tanstack/react-router'
 import { LogLevel } from './_modules/consts'
 
@@ -26,10 +26,10 @@ export const Route = createFileRoute('/(main)/main/logs')({
 })
 
 const LogLevelIcon = {
-  [LogLevel.Debug]: () => '🐛',
-  [LogLevel.Info]: () => 'ℹ️',
-  [LogLevel.Warning]: () => '⚠️',
-  [LogLevel.Error]: () => '❌',
+  [LogLevel.Debug]: () => '??',
+  [LogLevel.Info]: () => '??',
+  [LogLevel.Warning]: () => '??',
+  [LogLevel.Error]: () => '?',
 } satisfies Record<LogLevel, React.FC>
 
 const SidebarContent = ({ className, ...props }: ComponentProps<'div'>) => {
@@ -42,7 +42,7 @@ const LogLevelButton = ({
 }: PropsWithChildren<{ level?: LogLevel }>) => {
   const { level } = Route.useSearch()
 
-  const Icon = inputLevel ? LogLevelIcon[inputLevel] : () => '📋'
+  const Icon = inputLevel ? LogLevelIcon[inputLevel] : () => '??'
 
   const { open, setOpen } = useSidebar()
 

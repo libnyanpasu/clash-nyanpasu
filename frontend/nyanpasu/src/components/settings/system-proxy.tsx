@@ -6,7 +6,7 @@ import { CircularProgress } from '@/components/ui/progress'
 import { useSystemProxy, useTunMode } from '@/hooks/use-proxy-settings'
 import { m } from '@/paraglide/messages'
 import { useSetting } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 
 const ProxyButton = ({
   className,

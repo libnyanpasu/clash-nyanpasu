@@ -22,7 +22,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { useClashConnections } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { ConnectionRow } from '..'
 
 // Keys added by ConnectionRow that should not be rendered in the dialog

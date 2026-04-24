@@ -1,6 +1,6 @@
 import { ComponentProps } from 'react'
 import AnimatedLogo from '@/components/logo/animated-logo'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 
 export default function WindowTitle({
   children,

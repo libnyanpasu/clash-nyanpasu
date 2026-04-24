@@ -1,4 +1,4 @@
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { createFileRoute, Outlet } from '@tanstack/react-router'
 import '@/services/monaco'
 

@@ -1,7 +1,7 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import { getSystem } from '@nyanpasu/ui'
+import { getSystem } from '@nyanpasu/utils'
 
 export const OS = getSystem()
 

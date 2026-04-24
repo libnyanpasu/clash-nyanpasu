@@ -1,11 +1,13 @@
-import { ComponentProps, useMemo } from 'react'
+import { useMemo } from 'react'
 import { useServerPort } from '@nyanpasu/interface'
-import { LazyImage } from '@nyanpasu/ui'
+import { LazyImage, type LazyImageProps } from '@nyanpasu/utils'
+
+type SharedImageProps = Omit<LazyImageProps, 'src'>
 
 export function CacheImage({
   icon,
   ...props
-}: Omit<ComponentProps<typeof LazyImage>, 'src'> & {
+}: SharedImageProps & {
   icon: string
 }) {
   const serverPort = useServerPort()
@@ -29,7 +31,7 @@ export function TrayImage({
   mode,
   version,
   ...props
-}: Omit<ComponentProps<typeof LazyImage>, 'src'> & {
+}: SharedImageProps & {
   mode: 'system_proxy' | 'tun' | 'normal'
   version?: number
 }) {

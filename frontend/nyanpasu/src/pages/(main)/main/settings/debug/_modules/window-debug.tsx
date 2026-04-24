@@ -12,10 +12,6 @@ import {
 const currentWindow = getCurrentWebviewWindow()
 
 export default function WindowDebug() {
-  const handleCreateLegacyWindow = useLockFn(async () => {
-    await commands.createLegacyWindow()
-  })
-
   const handleCreateEditorWindow = useLockFn(async () => {
     await commands.createEditorWindow('test')
   })
@@ -32,10 +28,6 @@ export default function WindowDebug() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Button variant="flat" onClick={handleCreateLegacyWindow}>
-              Create Legacy Window
-            </Button>
-
             <Button variant="flat" onClick={handleCreateEditorWindow}>
               Create Test Editor Window
             </Button>

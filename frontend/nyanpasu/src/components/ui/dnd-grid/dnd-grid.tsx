@@ -18,7 +18,7 @@ import {
   type DragMoveEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { DndGridProvider } from './context'
 import { useDndGridRoot, type GridRegistration } from './root-context'
 import type {
@@ -155,7 +155,7 @@ export function DndGrid<T extends string = string>({
         lastValidSnapRef.current = snapped
         setPreviewItem(snapped)
       }
-      // If overlapping, placeholder stays at lastValidSnapRef — no state update needed.
+      // If overlapping, placeholder stays at lastValidSnapRef �?no state update needed.
     },
     [activeItem, items, snapToGrid],
   )

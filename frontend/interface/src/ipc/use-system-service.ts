@@ -1,4 +1,4 @@
-import { unwrapResult } from '@/utils'
+import { unwrapResult } from '@interface/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { commands } from './bindings'
 

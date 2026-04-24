@@ -2,6 +2,10 @@ import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
 import { SettingsGroup, SettingsLabel } from '../_modules/settings-card'
 import { SettingsTitle } from '../_modules/settings-title'
+import BreakWhenModeChangeSwitch from './_modules/break-when-mode-change-switch'
+import BreakWhenProfileChangeSwitch from './_modules/break-when-profile-change-switch'
+import BreakWhenProxyChangeSwitch from './_modules/break-when-proxy-change-switch'
+import EnableBuiltinEnhancedSwitch from './_modules/enable-builtin-enhanced-switch'
 import HotkeyManager from './_modules/hotket-manager'
 import LogFileConfig from './_modules/log-file-config'
 import LogLevelSelector from './_modules/log-level-selector'
@@ -36,6 +40,24 @@ const SystemWidgetSettings = () => {
 
       <SettingsGroup>
         <NetworkStatisticWidgetSelector />
+      </SettingsGroup>
+    </div>
+  )
+}
+
+const EnhanceSettings = () => {
+  return (
+    <div data-slot="app-settings-container">
+      <SettingsLabel>{m.settings_nyanpasu_enhance_label()}</SettingsLabel>
+
+      <SettingsGroup>
+        <BreakWhenProxyChangeSwitch />
+
+        <BreakWhenProfileChangeSwitch />
+
+        <BreakWhenModeChangeSwitch />
+
+        <EnableBuiltinEnhancedSwitch />
       </SettingsGroup>
     </div>
   )
@@ -76,6 +98,8 @@ function RouteComponent() {
         <LogSettings />
 
         <SystemWidgetSettings />
+
+        <EnhanceSettings />
 
         <TraySettings />
 

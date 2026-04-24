@@ -1,4 +1,4 @@
-use crate::config::{Config, nyanpasu::NetworkStatisticWidgetConfig};
+use crate::config::Config;
 
 use super::core::clash::ws::ClashConnectionsConnectorEvent;
 
@@ -227,7 +227,7 @@ pub async fn setup<R: Runtime, M: Manager<R>>(
         .network_statistic_widget
         .unwrap_or_default();
     widget_manager.register_listener(ws_connections_receiver);
-    if let NetworkStatisticWidgetConfig::Enabled(widget) = option {
+    if let Some(widget) = option.to_variant() {
         widget_manager.start(widget).await?;
     }
 

@@ -1257,9 +1257,7 @@ export type MergeProfileBuilder = {
    */
   updated: number | null
 }
-export type NetworkStatisticWidgetConfig =
-  | { kind: 'disabled' }
-  | { kind: 'enabled'; value: StatisticWidgetVariant }
+export type NetworkStatisticWidgetConfig = 'disabled' | 'large' | 'small'
 export type PatchRuntimeConfig = {
   allow_lan?: boolean | null
   ipv6?: boolean | null
@@ -1573,7 +1571,6 @@ export type ScriptProfileBuilder = {
 } & { script_type: ScriptType | null }
 export type ScriptType = 'javascript' | 'lua'
 export type ServiceStatus = 'not_installed' | 'stopped' | 'running'
-export type StatisticWidgetVariant = 'large' | 'small'
 export type StatusInfo = {
   name: string
   version: string

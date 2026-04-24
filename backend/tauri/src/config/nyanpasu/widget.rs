@@ -4,9 +4,19 @@ use specta::Type;
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Type)]
 #[serde(rename_all = "snake_case")]
-#[serde(tag = "kind", content = "value")]
 pub enum NetworkStatisticWidgetConfig {
     #[default]
     Disabled,
-    Enabled(StatisticWidgetVariant),
+    Large,
+    Small,
+}
+
+impl NetworkStatisticWidgetConfig {
+    pub fn to_variant(self) -> Option<StatisticWidgetVariant> {
+        match self {
+            Self::Disabled => None,
+            Self::Large => Some(StatisticWidgetVariant::Large),
+            Self::Small => Some(StatisticWidgetVariant::Small),
+        }
+    }
 }

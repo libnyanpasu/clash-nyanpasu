@@ -13,6 +13,7 @@ use crate::{
     utils::dirs,
 };
 
+mod network_statistic_widget_flatten;
 mod profile_script_newtype;
 
 pub static UNITS: Lazy<Vec<DynMigration>> = Lazy::new(|| {
@@ -22,6 +23,7 @@ pub static UNITS: Lazy<Vec<DynMigration>> = Lazy::new(|| {
         MigrateThemeSetting.boxed(),
         MigrateHotkeysToKv.boxed(),
         profile_script_newtype::MigrateProfileScriptNewtype.boxed(),
+        network_statistic_widget_flatten::MigrateNetworkStatisticWidgetFlatten.boxed(),
     ]
 });
 

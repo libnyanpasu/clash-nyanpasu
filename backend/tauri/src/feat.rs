@@ -8,7 +8,6 @@ use std::borrow::Borrow;
 
 use crate::{
     config::{
-        nyanpasu::NetworkStatisticWidgetConfig,
         profile::{
             builder::ProfileBuilder,
             item::{
@@ -391,13 +390,13 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
             let widget_manager =
                 crate::consts::app_handle().state::<crate::widget::WidgetManager>();
             let is_running = widget_manager.is_running().await;
-            match network_statistic_widget {
-                NetworkStatisticWidgetConfig::Disabled => {
+            match network_statistic_widget.to_variant() {
+                None => {
                     if is_running {
                         widget_manager.stop().await?;
                     }
                 }
-                NetworkStatisticWidgetConfig::Enabled(variant) => {
+                Some(variant) => {
                     widget_manager.start(variant).await?;
                 }
             }

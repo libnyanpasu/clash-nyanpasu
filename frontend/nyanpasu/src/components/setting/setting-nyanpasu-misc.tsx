@@ -95,34 +95,14 @@ const NetworkWidgetVariant = () => {
     disabled: t('Disabled'),
     small: 'Small',
     large: 'Large',
-  }
-
-  const mapping: { [key: string]: NetworkStatisticWidgetConfig } = {
-    disabled: {
-      kind: 'disabled',
-    },
-    small: {
-      kind: 'enabled',
-      value: 'small',
-    },
-    large: {
-      kind: 'enabled',
-      value: 'large',
-    },
-  }
+  } satisfies Record<NetworkStatisticWidgetConfig, string>
 
   return (
     <MenuItem
       label={t('Network Statistic Widget')}
       options={options}
-      selected={
-        Object.entries(mapping).find(([_, config]) =>
-          config.kind === 'disabled'
-            ? value?.kind === 'disabled'
-            : value?.kind === 'enabled' && config.value === value.value,
-        )?.[0] || 'disabled'
-      }
-      onSelected={(val) => upsert(mapping[val as string])}
+      selected={value ?? 'disabled'}
+      onSelected={(val) => upsert(val as NetworkStatisticWidgetConfig)}
     />
   )
 }

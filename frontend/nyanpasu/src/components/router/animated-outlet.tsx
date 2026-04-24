@@ -98,24 +98,25 @@ export function AnimatedOutlet({
       const routerStores = (router as any).stores
 
       // Build patched match stores keyed by match ID and by route ID.
-      // useMatch({ from: routeId }) calls getMatchStoreByRouteId(routeId),
-      // so we must cover both lookup paths.
-      const fakeActiveMatchStoresById = new Map(
-        routerStores.activeMatchStoresById,
-      )
+      // <Match>/<Outlet> look up by matchId via router.stores.matchStores;
+      // useMatch({ from: routeId }) goes through router.stores.getRouteMatchStore(routeId).
+      const fakeMatchStores = new Map(routerStores.matchStores)
       const routeIdToFrozenStore = new Map<
         string,
         ReturnType<typeof frozenStore>
       >()
       patched.forEach((m) => {
         const store = frozenStore(m)
-        fakeActiveMatchStoresById.set(m.id, store)
+        // The real matchStores entries carry a `routeId` property alongside the
+        // store interface — mirror that so any code that reads it keeps working.
+        ;(store as typeof store & { routeId?: string }).routeId = m.routeId
+        fakeMatchStores.set(m.id, store)
         if (m.routeId) routeIdToFrozenStore.set(m.routeId, store)
       })
 
       // Create fake stores with frozen match data (router.stores moved from router.__store in v1.168+)
       const fakeStores = Object.create(routerStores)
-      Object.defineProperty(fakeStores, 'activeMatchesSnapshot', {
+      Object.defineProperty(fakeStores, 'matches', {
         value: frozenStore(patched),
         configurable: true,
       })
@@ -123,12 +124,12 @@ export function AnimatedOutlet({
         value: frozenStore(patched.map((m) => m.id)),
         configurable: true,
       })
-      Object.defineProperty(fakeStores, 'activeMatchStoresById', {
-        value: fakeActiveMatchStoresById,
+      Object.defineProperty(fakeStores, 'matchStores', {
+        value: fakeMatchStores,
         configurable: true,
       })
-      // getMatchStoreByRouteId is called by useMatch({ from }) inside route components
-      Object.defineProperty(fakeStores, 'getMatchStoreByRouteId', {
+      // getRouteMatchStore is called by useMatch({ from }) inside route components
+      Object.defineProperty(fakeStores, 'getRouteMatchStore', {
         value: (routeId: string) =>
           routeIdToFrozenStore.get(routeId) ?? frozenStore(undefined),
         configurable: true,

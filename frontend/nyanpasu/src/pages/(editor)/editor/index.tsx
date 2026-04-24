@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import MonacoEditor from '@monaco-editor/react'
-import { openThat, useProfileContent } from '@nyanpasu/interface'
+import { commands, useProfileContent } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
@@ -147,7 +147,7 @@ function RouteComponent() {
               const url = match[0].startsWith('http')
                 ? match[0]
                 : `https://${match[0]}`
-              openThat(url)
+              commands.openThat(url)
               e.event.preventDefault()
               break
             }

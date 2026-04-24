@@ -112,9 +112,14 @@ export const useClashCores = () => {
     return await commands.restartSidecar()
   }
 
+  const inspectUpdater = async (updaterId: number) => {
+    return unwrapResult(await commands.inspectUpdater(updaterId))
+  }
+
   return {
     query,
     updateCore,
+    inspectUpdater,
     upsert,
     restartSidecar,
     fetchRemote,

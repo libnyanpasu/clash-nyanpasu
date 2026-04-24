@@ -1,6 +1,5 @@
 import { useMount } from 'ahooks'
 import dayjs from 'dayjs'
-import { useNyanpasuStorageSubscribers } from '@/hooks/use-store'
 import { cn } from '@nyanpasu/utils'
 import {
   createRootRoute,
@@ -80,8 +79,6 @@ export const Route = createRootRoute({
 })
 
 export default function App() {
-  useNyanpasuStorageSubscribers()
-
   useMount(() => {
     Promise.all([
       appWindow.show(),

@@ -7,7 +7,6 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { useCoreType } from '@/hooks/use-store'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
@@ -22,13 +21,15 @@ import {
 } from '../../_modules/settings-card'
 
 export default function TunStackSelector() {
-  const [coreType] = useCoreType()
+  const coreType = useSetting('clash_core')
 
   const tunStack = useSetting('tun_stack')
 
   const enableTunMode = useSetting('enable_tun_mode')
 
   const runtimeProfile = useRuntimeProfile()
+
+  const coreTypeValue = coreType.value ?? 'mihomo'
 
   const tunStackOptions = useMemo(() => {
     const options: {
@@ -40,11 +41,11 @@ export default function TunStackSelector() {
     }
 
     // clash not support mixed
-    if (coreType === 'clash') {
+    if (coreTypeValue === 'clash') {
       delete options.mixed
     }
     return options
-  }, [coreType])
+  }, [coreTypeValue])
 
   const currentTunStack = useMemo(() => {
     const stack = tunStack.value || 'gvisor'

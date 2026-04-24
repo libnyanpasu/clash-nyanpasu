@@ -22,8 +22,7 @@ import { message } from '@/utils/notification'
 import {
   ClashCore,
   ClashCoresDetail,
-  InspectUpdater,
-  inspectUpdater,
+  UpdaterSummary,
   useClashConnections,
   useClashCores,
   useSetting,
@@ -33,16 +32,15 @@ import {
   SettingsCard,
   SettingsCardContent,
   SettingsCardFooter,
-  SettingsCardHeader,
 } from '../../_modules/settings-card'
 
 function useCoreUpdateTask(
   core?: ClashCore | null,
   item?: ClashCoresDetail | null,
 ) {
-  const { query, updateCore } = useClashCores()
+  const { query, updateCore, inspectUpdater } = useClashCores()
 
-  const [updater, setUpdater] = useState<InspectUpdater>()
+  const [updater, setUpdater] = useState<UpdaterSummary>()
 
   const task = useBlockTask(`core-manager-update-${core}`, async () => {
     try {
@@ -55,6 +53,12 @@ function useCoreUpdateTask(
       await new Promise<void>((resolve, reject) => {
         const interval = setInterval(async () => {
           const result = await inspectUpdater(updaterId)
+
+          if (!result) {
+            reject(new Error('Failed to inspect updater'))
+            clearInterval(interval)
+            return
+          }
 
           setUpdater(result)
 

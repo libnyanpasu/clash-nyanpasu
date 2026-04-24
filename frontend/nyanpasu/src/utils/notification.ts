@@ -1,4 +1,4 @@
-import { isPortable } from '@nyanpasu/interface'
+import { commands, unwrapResult } from '@nyanpasu/interface'
 import {
   MessageDialogOptions,
   message as tauriMessage,
@@ -46,7 +46,7 @@ export const notification = async ({
     throw new Error('missing message argument!')
   }
   if (portable === null) {
-    portable = await isPortable()
+    portable = Boolean(unwrapResult(await commands.isPortable()))
   }
   const permissionGranted = portable || (await checkPermission())
   if (portable || !permissionGranted) {

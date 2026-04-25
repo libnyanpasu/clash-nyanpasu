@@ -1,4 +1,4 @@
-import { useUpdateEffect } from 'react-use'
+import useUpdateEffect from 'react-use/esm/useUpdateEffect'
 import { useQuery } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
 import { commands } from './bindings'

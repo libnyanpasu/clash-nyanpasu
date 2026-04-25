@@ -23,7 +23,6 @@
       "clsx": ["../nyanpasu/node_modules/clsx"],
       "react": ["../nyanpasu/node_modules/@types/react/index.d.ts"],
       "react/*": ["../nyanpasu/node_modules/@types/react/*"],
-      "react-use": ["../nyanpasu/node_modules/react-use"],
       "tailwind-merge": ["./node_modules/tailwind-merge/dist/types.d.ts"],
     },
     "outDir": "./dist",

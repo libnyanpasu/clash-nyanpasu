@@ -1,5 +1,5 @@
 import { RefObject, useEffect, useMemo, useState } from 'react'
-import { createBreakpoint } from 'react-use'
+import createBreakpoint from 'react-use/esm/factory/createBreakpoint'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
 const appWindow = getCurrentWebviewWindow()

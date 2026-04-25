@@ -128,8 +128,8 @@ importers:
   frontend/interface:
     dependencies:
       '@tanstack/react-query':
-        specifier: 5.97.0
-        version: 5.97.0(react@19.2.5)
+        specifier: 5.100.1
+        version: 5.100.1(react@19.2.5)
       '@tauri-apps/api':
         specifier: 2.10.1
         version: 2.10.1
@@ -343,8 +343,8 @@ importers:
         specifier: 4.7.0
         version: 4.7.0(monaco-editor@0.55.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@tanstack/react-query':
-        specifier: 5.97.0
-        version: 5.97.0(react@19.2.5)
+        specifier: 5.100.1
+        version: 5.100.1(react@19.2.5)
       '@tanstack/react-router':
         specifier: 1.168.23
         version: 1.168.23(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -3996,11 +3996,11 @@ packages:
     resolution: {integrity: sha512-Wo1iKt2b9OT7d+YGhvEPD3DXvPv2etTusIMhMUoG7fbhmxcXCtIjJDEygy91Y2JFlwGyjqiBPRozme7UD8hoqg==}
     engines: {node: '>=12'}
 
-  '@tanstack/query-core@5.97.0':
-    resolution: {integrity: sha512-QdpLP5VzVMgo4VtaPppRA2W04UFjIqX+bxke/ZJhE5cfd5UPkRzqIAJQt9uXkQJjqE8LBOMbKv7f8HCsZltXlg==}
+  '@tanstack/query-core@5.100.1':
+    resolution: {integrity: sha512-awvQhOO/2TrSCHE5LKKsXcvvj6WSBncwEcMFCB/ez0Qs0b17iyyivoGArNV3HFfXryZwCpnb/olsaBBKrIbtSw==}
 
-  '@tanstack/react-query@5.97.0':
-    resolution: {integrity: sha512-y4So4eGcQoK2WVMAcDNZE9ofB/p5v1OlKvtc1F3uqHwrtifobT7q+ZnXk2mRkc8E84HKYSlAE9z6HXl2V0+ySQ==}
+  '@tanstack/react-query@5.100.1':
+    resolution: {integrity: sha512-UgWRLhQKprC37SsO6y1zRabOqDmM2gsdTNPbqTT35yl7kOOhwXU4nyfOiGHXPwoEFJV1IpSk85hjIFjNFWVpzw==}
     peerDependencies:
       react: ^18 || ^19
 
@@ -11567,11 +11567,11 @@ snapshots:
     dependencies:
       remove-accents: 0.5.0
 
-  '@tanstack/query-core@5.97.0': {}
+  '@tanstack/query-core@5.100.1': {}
 
-  '@tanstack/react-query@5.97.0(react@19.2.5)':
+  '@tanstack/react-query@5.100.1(react@19.2.5)':
     dependencies:
-      '@tanstack/query-core': 5.97.0
+      '@tanstack/query-core': 5.100.1
       react: 19.2.5
 
   '@tanstack/react-router-devtools@1.166.13(@tanstack/react-router@1.168.23(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(@tanstack/router-core@1.168.15)(csstype@3.2.3)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':

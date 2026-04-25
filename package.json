@@ -74,7 +74,7 @@
     "cross-env": "10.1.0",
     "dedent": "1.7.2",
     "globals": "17.5.0",
-    "knip": "6.6.3",
+    "knip": "6.7.0",
     "lint-staged": "16.4.0",
     "npm-run-all2": "8.0.4",
     "oxlint": "1.61.0",

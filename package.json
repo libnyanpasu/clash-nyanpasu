@@ -26,6 +26,7 @@
     "lint": "run-s lint:*",
     "lint:prettier": "prettier --check .",
     "lint:oxlint": "oxlint .",
+    "lint:deno": "deno fmt --check --config scripts/deno/deno.jsonc scripts/deno && deno check --config scripts/deno/deno.jsonc scripts/deno/*.ts",
     "lint:styles": "stylelint --cache --allow-empty-input \"**/*.{css,scss}\"",
     "lint:ts": "run-s lint:ts:*",
     "lint:ts:scripts": "tsc --noEmit --project ./scripts/tsconfig.json",

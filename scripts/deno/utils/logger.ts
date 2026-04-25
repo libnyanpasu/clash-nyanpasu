@@ -1,8 +1,8 @@
-import { createColorize } from 'npm:colorize-template'
-import { createConsola } from 'npm:consola'
-import pc from 'npm:picocolors'
+import { createColorize } from "npm:colorize-template";
+import { createConsola } from "npm:consola";
+import pc from "npm:picocolors";
 
-const logLevelStr = Deno.env.get('LOG_LEVEL')
+const logLevelStr = Deno.env.get("LOG_LEVEL");
 
 export const consola = createConsola({
   level: logLevelStr ? Number.parseInt(logLevelStr) : 5,
@@ -12,10 +12,10 @@ export const consola = createConsola({
     compact: false,
     date: true,
   },
-})
+});
 
 export const colorize = createColorize({
   ...pc,
   success: pc.green,
   error: pc.red,
-})
+});

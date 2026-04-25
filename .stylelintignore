@@ -1,2 +1,3 @@
 dist/
 backend/**/target
+backend/tauri/tmp/

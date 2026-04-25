@@ -11,7 +11,7 @@
     ".": "./dist/index.js"
   },
   "dependencies": {
-    "@tanstack/react-query": "5.97.0",
+    "@tanstack/react-query": "5.100.1",
     "@tauri-apps/api": "2.10.1",
     "dayjs": "1.11.20",
     "lodash-es": "4.18.1",

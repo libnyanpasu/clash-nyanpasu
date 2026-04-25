@@ -43,7 +43,7 @@
     "d3": "7.9.0",
     "dayjs": "1.11.20",
     "framer-motion": "12.38.0",
-    "i18next": "25.10.10",
+    "i18next": "26.0.8",
     "jotai": "2.19.1",
     "json-schema": "0.4.0",
     "material-react-table": "3.2.1",

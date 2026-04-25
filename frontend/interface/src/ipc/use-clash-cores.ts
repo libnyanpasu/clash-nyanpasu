@@ -1,5 +1,5 @@
 import { kebabCase } from 'lodash-es'
-import { unwrapResult } from '@/utils'
+import { unwrapResult } from '@interface/utils'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { commands, type ClashCore } from './bindings'
 import {
@@ -112,9 +112,14 @@ export const useClashCores = () => {
     return await commands.restartSidecar()
   }
 
+  const inspectUpdater = async (updaterId: number) => {
+    return unwrapResult(await commands.inspectUpdater(updaterId))
+  }
+
   return {
     query,
     updateCore,
+    inspectUpdater,
     upsert,
     restartSidecar,
     fetchRemote,

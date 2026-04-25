@@ -7,7 +7,7 @@ import {
 import { CSSProperties } from 'react'
 import LogoSvg from '@/assets/image/logo.svg?react'
 import { useSetting } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import styles from './animated-logo.module.scss'
 
 const Logo = motion.create(LogoSvg)

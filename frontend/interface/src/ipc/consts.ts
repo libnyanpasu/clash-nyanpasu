@@ -1,4 +1,4 @@
-import { getSystem } from '@/utils/get-system'
+import { getSystem } from '@interface/utils/get-system'
 
 /**
  * Operating system, used by useUpdaterSupported hook

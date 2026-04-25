@@ -14,7 +14,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useIsMobileOrTablet } from '@/hooks/use-is-moblie'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { createFileRoute, Link, Outlet } from '@tanstack/react-router'
 import { LogLevel } from './_modules/consts'
 

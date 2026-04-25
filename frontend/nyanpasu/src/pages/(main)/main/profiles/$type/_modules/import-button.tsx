@@ -11,7 +11,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { m } from '@/paraglide/messages'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { ProfileType } from '../../_modules/consts'
 import { Action, Route as IndexRoute } from '../index'
 import ChainProfileImport from './chain-profile-import'

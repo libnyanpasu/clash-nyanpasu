@@ -2,18 +2,18 @@ import * as d3 from 'd3'
 import { animate } from 'framer-motion'
 import { cloneDeep } from 'lodash-es'
 import { ComponentPropsWithoutRef, useEffect, useRef } from 'react'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 
 /**
  * Coefficient of variation threshold (std / mean) below which the series is
- * considered "stable".  CV is scale-independent: 11↔12 and 9 000↔=11 000 are
+ * considered "stable".  CV is scale-independent: 1–2 and 9 000–11 000 are
  * evaluated on the same relative basis regardless of their absolute magnitude.
  */
 const STABLE_CV_THRESHOLD = 0.15
 
 /**
  * When the series is stable, the chart only occupies the bottom third of the
- * SVG height (topFactor = 2/3 → usable band = height - height*(2/3) = h/3).
+ * SVG height (topFactor = 2/3 — usable band = height - height*(2/3) = h/3).
  */
 const STABLE_TOP_FACTOR = 2 / 3
 

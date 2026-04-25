@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useState,
 } from 'react'
 import { insertStyle } from '@/utils/styled'
 import {
@@ -15,6 +16,7 @@ import {
   themeFromSourceColor,
 } from '@material/material-color-utilities'
 import { useSetting } from '@nyanpasu/interface'
+import { alpha, darken, lighten } from '@nyanpasu/utils'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { useLocalStorage } from '@uidotdev/usehooks'
 
@@ -27,6 +29,8 @@ export enum ThemeMode {
   DARK = 'dark',
   SYSTEM = 'system',
 }
+
+type ResolvedThemeMode = ThemeMode.LIGHT | ThemeMode.DARK
 
 const CUSTOM_THEME_KEY = 'custom-theme' as const
 
@@ -84,13 +88,48 @@ const getSystemThemeMode = () => {
     : ThemeMode.LIGHT
 }
 
+const getThemeScheme = (theme: Theme, mode: ResolvedThemeMode) => {
+  const scheme = theme.schemes[mode]
+
+  return typeof scheme.toJSON === 'function' ? scheme.toJSON() : scheme
+}
+
+const applyRootStyleVar = (mode: ResolvedThemeMode, themePalette: Theme) => {
+  const root = document.documentElement
+  const scheme = getThemeScheme(themePalette, mode)
+  const secondaryColor = hexFromArgb(scheme.secondary)
+  const primaryColor = hexFromArgb(scheme.primary)
+  const reactRootDom = document.getElementById('root')
+  const isDarkMode = mode === ThemeMode.DARK
+
+  root.style.setProperty(
+    '--background-color',
+    isDarkMode ? darken(secondaryColor, 0.95) : lighten(secondaryColor, 0.95),
+  )
+  root.style.setProperty(
+    '--selection-color',
+    isDarkMode ? '#d5d5d5' : '#f5f5f5',
+  )
+  root.style.setProperty(
+    '--scroller-color',
+    isDarkMode ? '#54545480' : '#90939980',
+  )
+  root.style.setProperty('--primary-main', primaryColor)
+  root.style.setProperty('--background-color-alpha', alpha(primaryColor, 0.1))
+
+  if (reactRootDom) {
+    reactRootDom.classList.toggle(ThemeMode.DARK, isDarkMode)
+    reactRootDom.classList.toggle(ThemeMode.LIGHT, !isDarkMode)
+  }
+}
+
 const ThemeContext = createContext<{
   themePalette: Theme
   themeCssVars: string
   themeColor: string
   setThemeColor: (color: string) => Promise<void>
   themeMode: ThemeMode
-  currentThemeMode: Omit<ThemeMode, 'system'>
+  currentThemeMode: ResolvedThemeMode
   setThemeMode: (mode: ThemeMode) => Promise<void>
 } | null>(null)
 
@@ -110,6 +149,8 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
   const themeMode = useSetting('theme_mode')
 
   const themeColor = useSetting('theme_color')
+  const [resolvedThemeMode, setResolvedThemeMode] =
+    useState<ResolvedThemeMode>(getSystemThemeMode())
 
   const [cachedThemePalette, setCachedThemePalette] = useLocalStorage<Theme>(
     THEME_PALETTE_KEY,
@@ -129,6 +170,28 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     insertStyle(CUSTOM_THEME_KEY, cachedThemeCssVars)
   }, [cachedThemeCssVars])
+
+  useEffect(() => {
+    const nextThemePalette = themeFromSourceColor(
+      argbFromHex(themeColor.value || DEFAULT_COLOR),
+    )
+
+    if (!isEqual(nextThemePalette, cachedThemePalette)) {
+      setCachedThemePalette(nextThemePalette)
+    }
+
+    const nextThemeCssVars = generateThemeCssVars(nextThemePalette)
+
+    if (nextThemeCssVars !== cachedThemeCssVars) {
+      setCachedThemeCssVars(nextThemeCssVars)
+    }
+  }, [
+    themeColor.value,
+    cachedThemePalette,
+    cachedThemeCssVars,
+    setCachedThemeCssVars,
+    setCachedThemePalette,
+  ])
 
   const setThemeColor = useCallback(
     async (color: string) => {
@@ -160,58 +223,65 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
     ],
   )
 
+  const applyThemeMode = useCallback((mode: ResolvedThemeMode) => {
+    changeHtmlThemeMode(mode)
+    setResolvedThemeMode(mode)
+  }, [])
+
   // initialize theme mode on mount
   useEffect(() => {
     const initializeTheme = async () => {
       if (themeMode.value === ThemeMode.SYSTEM) {
         // Apply a synchronous system fallback first to avoid a light flash.
-        changeHtmlThemeMode(getSystemThemeMode())
+        applyThemeMode(getSystemThemeMode())
 
         const systemTheme = await appWindow.theme()
-        changeHtmlThemeMode(
+        applyThemeMode(
           systemTheme === ThemeMode.DARK ? ThemeMode.DARK : ThemeMode.LIGHT,
         )
       } else if (
         themeMode.value === ThemeMode.LIGHT ||
         themeMode.value === ThemeMode.DARK
       ) {
-        changeHtmlThemeMode(themeMode.value)
+        applyThemeMode(themeMode.value)
       } else {
         // Setting value may still be loading; keep current class to avoid visual flicker.
       }
     }
 
     initializeTheme()
-  }, [themeMode.value])
+  }, [applyThemeMode, themeMode.value])
 
   // listen to theme changed event and change html theme mode
   useEffect(() => {
     const unlisten = appWindow.onThemeChanged((e) => {
       if (themeMode.value === ThemeMode.SYSTEM) {
-        changeHtmlThemeMode(e.payload)
+        applyThemeMode(
+          e.payload === ThemeMode.DARK ? ThemeMode.DARK : ThemeMode.LIGHT,
+        )
       }
     })
 
     return () => {
       unlisten.then((fn) => fn())
     }
-  }, [themeMode.value])
+  }, [applyThemeMode, themeMode.value])
 
   const setThemeMode = useCallback(
     async (mode: ThemeMode) => {
       // if theme mode is not system, change html theme mode
       if (mode !== ThemeMode.SYSTEM) {
-        changeHtmlThemeMode(mode)
+        applyThemeMode(mode)
       }
 
       if (mode !== themeMode.value) {
         await themeMode.upsert(mode)
       }
     },
-    [themeMode],
+    [applyThemeMode, themeMode],
   )
 
-  const currentThemeMode = useMemo<Omit<ThemeMode, 'system'>>(() => {
+  const currentThemeMode = useMemo<ResolvedThemeMode>(() => {
     if (themeMode.value === ThemeMode.DARK) {
       return ThemeMode.DARK
     }
@@ -220,8 +290,12 @@ export function ExperimentalThemeProvider({ children }: PropsWithChildren) {
       return ThemeMode.LIGHT
     }
 
-    return getSystemThemeMode()
-  }, [themeMode.value])
+    return resolvedThemeMode
+  }, [resolvedThemeMode, themeMode.value])
+
+  useEffect(() => {
+    applyRootStyleVar(currentThemeMode, cachedThemePalette)
+  }, [cachedThemePalette, currentThemeMode])
 
   return (
     <ThemeContext.Provider

@@ -782,14 +782,6 @@ export const commands = {
       else return { status: 'error', error: e as any }
     }
   },
-  async createLegacyWindow(): Promise<Result<null, string>> {
-    try {
-      return { status: 'ok', data: await TAURI_INVOKE('create_legacy_window') }
-    } catch (e) {
-      if (e instanceof Error) throw e
-      else return { status: 'error', error: e as any }
-    }
-  },
   async createEditorWindow(uid: string): Promise<Result<null, string>> {
     try {
       return {
@@ -1117,7 +1109,7 @@ export type IVerge = {
   enable_tray_text: boolean | null
   /**
    * Window type to use when opening the app window
-   * Legacy: opens legacy window; Main: opens new main window
+   * Main: opens new main window
    */
   window_type: WindowType | null
 }
@@ -1659,7 +1651,7 @@ export type WindowState = {
   maximized: boolean
   fullscreen: boolean
 }
-export type WindowType = 'legacy' | 'main'
+export type WindowType = 'main'
 
 type __EventObj__<T> = {
   listen: (

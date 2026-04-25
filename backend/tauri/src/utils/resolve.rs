@@ -295,43 +295,6 @@ impl AppWindow for EditorWindow {
     }
 }
 
-/// Legacy window implementation (original UI)
-struct LegacyWindow;
-
-impl AppWindow for LegacyWindow {
-    fn label(&self) -> &str {
-        crate::consts::LEGACY_WINDOW_LABEL
-    }
-
-    fn title(&self) -> &str {
-        crate::consts::APP_NAME
-    }
-
-    fn url(&self) -> &str {
-        "/"
-    }
-
-    fn config(&self) -> WindowConfig {
-        WindowConfig::new()
-            .singleton(true)
-            .visible_on_create(true)
-            .default_size(800.0, 636.0)
-            .min_size(400.0, 600.0)
-            .center(true)
-    }
-
-    fn get_window_state(&self) -> Option<WindowState> {
-        Config::verge().latest().window_size_state.clone()
-    }
-
-    fn set_window_state(&self, state: Option<WindowState>) {
-        Config::verge().data().patch_config(IVerge {
-            window_size_state: state,
-            ..IVerge::default()
-        });
-    }
-}
-
 /// create main window
 #[tracing_attributes::instrument(skip(app_handle))]
 pub fn create_main_window(app_handle: &AppHandle) {
@@ -352,78 +315,26 @@ pub fn save_main_window_state(app_handle: &AppHandle, save_to_file: bool) -> Res
     MainWindow.save_state(app_handle, save_to_file)
 }
 
-/// create legacy window
-#[tracing_attributes::instrument(skip(app_handle))]
-pub fn create_legacy_window(app_handle: &AppHandle) {
-    log_err!(LegacyWindow.create(app_handle));
-}
-
-/// close legacy window
-pub fn close_legacy_window(app_handle: &AppHandle) {
-    LegacyWindow.close(app_handle);
-}
-
-/// is legacy window open
-pub fn is_legacy_window_open(app_handle: &AppHandle) -> bool {
-    LegacyWindow.is_open(app_handle)
-}
-
-pub fn save_legacy_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
-    LegacyWindow.save_state(app_handle, save_to_file)
-}
-
 /// Create window based on window_type config
 /// This is the primary function to use when opening window from tray, etc.
 #[tracing_attributes::instrument(skip(app_handle))]
 pub fn create_window(app_handle: &AppHandle) {
-    let window_type = Config::verge()
-        .latest()
-        .window_type
-        .unwrap_or(WindowType::Main);
-
-    match window_type {
-        WindowType::Legacy => create_legacy_window(app_handle),
-        WindowType::Main => create_main_window(app_handle),
-    }
+    create_main_window(app_handle)
 }
 
 /// Close the currently active window based on window_type config
 pub fn close_window(app_handle: &AppHandle) {
-    let window_type = Config::verge()
-        .latest()
-        .window_type
-        .unwrap_or(WindowType::Main);
-
-    match window_type {
-        WindowType::Legacy => close_legacy_window(app_handle),
-        WindowType::Main => close_main_window(app_handle),
-    }
+    close_main_window(app_handle)
 }
 
 /// Check if the configured window is open
 pub fn is_window_open(app_handle: &AppHandle) -> bool {
-    let window_type = Config::verge()
-        .latest()
-        .window_type
-        .unwrap_or(WindowType::Main);
-
-    match window_type {
-        WindowType::Legacy => is_legacy_window_open(app_handle),
-        WindowType::Main => is_main_window_open(app_handle),
-    }
+    is_main_window_open(app_handle)
 }
 
 /// Save window state for the configured window type
 pub fn save_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
-    let window_type = Config::verge()
-        .latest()
-        .window_type
-        .unwrap_or(WindowType::Main);
-
-    match window_type {
-        WindowType::Legacy => save_legacy_window_state(app_handle, save_to_file),
-        WindowType::Main => save_main_window_state(app_handle, save_to_file),
-    }
+    save_main_window_state(app_handle, save_to_file)
 }
 
 /// Create editor window with uid

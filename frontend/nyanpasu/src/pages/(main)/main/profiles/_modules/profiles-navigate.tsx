@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { m } from '@/paraglide/messages'
 import { useProfile } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { Link, useMatchRoute } from '@tanstack/react-router'
 import { PROFILE_TYPES, ProfileType } from './consts'
 

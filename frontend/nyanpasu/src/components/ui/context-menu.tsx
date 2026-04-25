@@ -3,7 +3,7 @@ import Check from '~icons/material-symbols/check-rounded'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ContextMenu as ContextMenuPrimitive } from 'radix-ui'
 import { ComponentProps, createContext, useContext } from 'react'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { useControllableState } from '@radix-ui/react-use-controllable-state'
 
 const MotionContent = ({

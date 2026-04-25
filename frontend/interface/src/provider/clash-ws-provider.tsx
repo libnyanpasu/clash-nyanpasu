@@ -1,4 +1,3 @@
-import { useUpdateEffect } from 'ahooks'
 import dayjs from 'dayjs'
 import {
   createContext,
@@ -6,6 +5,7 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react'
+import useUpdateEffect from 'react-use/esm/useUpdateEffect'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   CLASH_CONNECTIONS_QUERY_KEY,
@@ -98,6 +98,23 @@ const normalizeClashMemory = (raw: unknown): ClashMemory | null => {
   }
 }
 
+const parseLatestMessage = <T,>(
+  message: MessageEvent | undefined,
+): T | null => {
+  const raw = message?.data
+
+  if (typeof raw !== 'string' || raw.length === 0) {
+    return null
+  }
+
+  try {
+    return JSON.parse(raw) as T
+  } catch (error) {
+    console.warn('Failed to parse clash websocket message', error, raw)
+    return null
+  }
+}
+
 const ClashWSContext = createContext<{
   recordLogs: boolean
   setRecordLogs: (value: boolean) => void
@@ -172,9 +189,13 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
       return
     }
 
-    const data = JSON.parse(
-      connectionsWS.latestMessage?.data,
-    ) as ClashConnection
+    const data = parseLatestMessage<ClashConnection>(
+      connectionsWS.latestMessage,
+    )
+
+    if (!data) {
+      return
+    }
 
     const currentData = queryClient.getQueryData([
       CLASH_CONNECTIONS_QUERY_KEY,
@@ -195,7 +216,7 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
       return
     }
 
-    const rawData = JSON.parse(memoryWS.latestMessage?.data ?? 'null')
+    const rawData = parseLatestMessage<unknown>(memoryWS.latestMessage)
     const data = normalizeClashMemory(rawData)
 
     if (!data) {
@@ -221,7 +242,11 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
       return
     }
 
-    const data = JSON.parse(trafficWS.latestMessage?.data) as ClashTraffic
+    const data = parseLatestMessage<ClashTraffic>(trafficWS.latestMessage)
+
+    if (!data) {
+      return
+    }
 
     const currentData = queryClient.getQueryData([
       CLASH_TRAAFFIC_QUERY_KEY,
@@ -242,8 +267,14 @@ export const ClashWSProvider = ({ children }: PropsWithChildren) => {
       return
     }
 
+    const log = parseLatestMessage<ClashLog>(logsWS.latestMessage)
+
+    if (!log) {
+      return
+    }
+
     const data = {
-      ...JSON.parse(logsWS.latestMessage?.data),
+      ...log,
       time: dayjs(new Date()).format('HH:mm:ss'),
     } as ClashLog
 

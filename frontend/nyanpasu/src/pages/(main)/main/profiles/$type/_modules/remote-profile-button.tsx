@@ -1,4 +1,3 @@
-import { useLockFn } from 'ahooks'
 import dayjs from 'dayjs'
 import { AnimatePresence } from 'framer-motion'
 import { PropsWithChildren, useState } from 'react'
@@ -16,6 +15,7 @@ import {
 } from '@/components/ui/modal'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { SwitchItem } from '@/components/ui/switch'
+import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'

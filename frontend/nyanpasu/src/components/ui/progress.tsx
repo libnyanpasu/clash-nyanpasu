@@ -1,5 +1,5 @@
 import { ComponentProps } from 'react'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { Circle, CircleSVG } from './circle'
 
 const HalfCircle = (props: Omit<ComponentProps<typeof Circle>, 'value'>) => {

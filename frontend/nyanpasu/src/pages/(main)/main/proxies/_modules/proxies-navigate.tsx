@@ -1,15 +1,13 @@
 import { Button } from '@/components/ui/button'
 import { CacheImage } from '@/components/ui/image'
 import { useClashProxies } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { Link, useLocation } from '@tanstack/react-router'
 
 export default function ProxiesNavigate() {
   const {
     proxies: { data: proxies },
   } = useClashProxies()
-
-  console.log(proxies)
 
   const location = useLocation()
 

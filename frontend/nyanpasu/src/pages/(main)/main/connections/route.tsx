@@ -18,7 +18,7 @@ import {
 import { useIsMobileOrTablet } from '@/hooks/use-is-moblie'
 import { m } from '@/paraglide/messages'
 import { useClashRules } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { createFileRoute, Link, Outlet } from '@tanstack/react-router'
 import ProxyIcon from '../rules/_modules/proxy-icon'
 

@@ -21,7 +21,7 @@ import { m } from '@/paraglide/messages'
 import { containsSearchTerm } from '@/utils'
 import parseTraffic from '@/utils/parse-traffic'
 import { ClashConnectionItem, useClashConnections } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   ColumnDef,

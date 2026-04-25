@@ -16,7 +16,7 @@ import {
   useClashMemory,
   useClashTraffic,
 } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { WidgetComponentProps } from './consts'
 import WidgetItem, { WidgetItemProps } from './widget-item'
 

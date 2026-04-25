@@ -10,7 +10,7 @@ import {
   useClashProxies,
   useProxyMode,
 } from '@nyanpasu/interface'
-import { useContainerBreakpointValue } from '@nyanpasu/ui'
+import { useContainerBreakpointValue } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useCurrentGroupConnection } from '../_modules/hooks'

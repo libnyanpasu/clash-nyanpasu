@@ -1,5 +1,5 @@
 import { ComponentProps } from 'react'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 
 export default function Chip({ className, ...props }: ComponentProps<'span'>) {
   return (

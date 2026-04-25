@@ -1,7 +1,8 @@
-import { urlDelayTest } from '@/service'
+import { commands } from '@interface/ipc'
+import { unwrapResult } from '@interface/utils'
 
 export const timing = async (url: string, code: number) => {
-  return (await urlDelayTest(url, code)) ?? 0
+  return (unwrapResult(await commands.urlDelayTest(url, code)) ?? 0) as number
 }
 
 export const createTiming = (url: string, code: number = 204) => {

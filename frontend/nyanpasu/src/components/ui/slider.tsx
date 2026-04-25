@@ -1,6 +1,6 @@
 import { clamp, motion, Transition } from 'framer-motion'
 import { ComponentProps } from 'react'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { useControllableState } from '@radix-ui/react-use-controllable-state'
 
 const EDGE_OFFSET_PX = 16

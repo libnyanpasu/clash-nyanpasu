@@ -1,5 +1,3 @@
-import { commands } from './bindings'
-
 export * from './consts'
 export * from './use-server-port'
 export * from './use-clash-config'
@@ -28,6 +26,3 @@ export * from './use-platform'
 
 export { commands, events } from './bindings'
 export type * from './bindings'
-
-// manually added
-export const openUWPTool = commands.invokeUwpTool

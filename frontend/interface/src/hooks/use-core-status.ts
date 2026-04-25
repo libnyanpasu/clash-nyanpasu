@@ -1,6 +1,6 @@
-import { commands } from '@/ipc'
-import { CLASH_CORE_STATUS_QUERY_KEY } from '@/ipc/consts'
-import { unwrapResult } from '@/utils'
+import { commands } from '@interface/ipc'
+import { CLASH_CORE_STATUS_QUERY_KEY } from '@interface/ipc/consts'
+import { unwrapResult } from '@interface/utils'
 import { useQuery } from '@tanstack/react-query'
 
 export function useCoreStatus() {

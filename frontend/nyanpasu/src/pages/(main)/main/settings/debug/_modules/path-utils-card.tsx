@@ -3,7 +3,7 @@ import TextMarquee from '@/components/ui/text-marquee'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { commands } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 
 const PathButton = ({
   className,

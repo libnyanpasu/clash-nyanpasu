@@ -16,7 +16,7 @@ import {
 import useIsMobile from '@/hooks/use-is-moblie'
 import { m } from '@/paraglide/messages'
 import { useClashProxies } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { Link, useLocation } from '@tanstack/react-router'
 
 const NavbarButton = ({

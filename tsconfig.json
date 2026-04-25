@@ -5,13 +5,15 @@
     "esModuleInterop": true,
     "composite": true,
     "paths": {
-      "@nyanpasu/ui/*": ["./frontend/ui/*"],
+      "@interface/*": ["./frontend/interface/src/*"],
       "@nyanpasu/nyanpasu/*": ["./frontend/nyanpasu/*"],
-      "@nyanpasu/interface/*": ["./frontend/interface/*"],
+      "@nyanpasu/interface": ["./frontend/interface/src/index.ts"],
+      "@nyanpasu/interface/*": ["./frontend/interface/src/*"],
+      "@nyanpasu/utils": ["./frontend/utils/src/index.ts"],
+      "@nyanpasu/utils/*": ["./frontend/utils/src/*"],
     },
   },
   "references": [
-    { "path": "./frontend/ui" },
     { "path": "./frontend/nyanpasu" },
     { "path": "./frontend/interface" },
     { "path": "./scripts" },

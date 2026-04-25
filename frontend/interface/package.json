@@ -1,23 +1,23 @@
 {
   "name": "@nyanpasu/interface",
   "version": "2.0.0",
-  "main": "dist/src/index.js",
-  "types": "dist/src/index.d.ts",
-  "require": {
-    ".": "dist/src/index.js"
-  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "type": "module",
   "scripts": {
     "build": "tsc"
   },
+  "exports": {
+    ".": "./dist/index.js"
+  },
   "dependencies": {
     "@tanstack/react-query": "5.100.1",
     "@tauri-apps/api": "2.10.1",
-    "ahooks": "3.9.7",
     "dayjs": "1.11.20",
     "lodash-es": "4.18.1",
     "ofetch": "1.5.1",
     "react": "19.2.5",
+    "react-use": "17.6.0",
     "swr": "2.4.1"
   },
   "devDependencies": {

@@ -7,7 +7,7 @@ import {
   type ComponentProps,
   type PropsWithChildren,
 } from 'react'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { useControllableState } from '@radix-ui/react-use-controllable-state'
 import { Button } from './button'
 

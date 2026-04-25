@@ -3,7 +3,7 @@ import DoneRounded from '~icons/material-symbols/done-rounded'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { m } from '@/paraglide/messages'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { useDashboardContext } from './provider'
 
 export default function EditAction() {

@@ -4,7 +4,7 @@ import { useBlockTask } from '@/components/providers/block-task-provider'
 import { Button } from '@/components/ui/button'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { ClashProxiesQueryProxyItem } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 
 export default function ProxyNodeButton({
   proxy,

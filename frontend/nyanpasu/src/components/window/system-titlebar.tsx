@@ -1,6 +1,6 @@
 import { ComponentProps } from 'react'
 import useWindowMaximized from '@/hooks/use-window-maximized'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import WindowControl from './window-control'
 import WindowHeader from './window-header'
 

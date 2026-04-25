@@ -1147,9 +1147,6 @@ pub fn save_window_size_state(app_handle: AppHandle, label: String) -> Result<()
         crate::consts::MAIN_WINDOW_LABEL => {
             resolve::save_main_window_state(&app_handle, true)?;
         }
-        crate::consts::LEGACY_WINDOW_LABEL => {
-            resolve::save_legacy_window_state(&app_handle, true)?;
-        }
         _ => {
             log::warn!("Unknown window label: {}", label);
         }
@@ -1167,21 +1164,6 @@ pub fn create_main_window(app_handle: AppHandle) -> Result<()> {
         let handle_inner = app_handle.clone();
         let _ = app_handle.run_on_main_thread(move || {
             resolve::create_main_window(&handle_inner);
-        });
-    });
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn create_legacy_window(app_handle: AppHandle) -> Result<()> {
-    // Spawn window creation to avoid blocking
-    std::thread::spawn(move || {
-        // Small delay to let the IPC return first
-        std::thread::sleep(std::time::Duration::from_millis(10));
-        let handle_inner = app_handle.clone();
-        let _ = app_handle.run_on_main_thread(move || {
-            resolve::create_legacy_window(&handle_inner);
         });
     });
     Ok(())

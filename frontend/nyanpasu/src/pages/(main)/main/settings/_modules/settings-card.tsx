@@ -2,7 +2,7 @@ import { motion } from 'framer-motion'
 import { ComponentProps } from 'react'
 import { AnimatedItem } from '@/components/ui/animated-item'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 
 export function SettingsLabel({ className, ...props }: ComponentProps<'div'>) {
   return (

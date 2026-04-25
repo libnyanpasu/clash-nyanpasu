@@ -1,7 +1,5 @@
-import { useMount } from 'ahooks'
 import dayjs from 'dayjs'
-import { useNyanpasuStorageSubscribers } from '@/hooks/use-store'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import {
   createRootRoute,
   ErrorComponentProps,
@@ -14,6 +12,7 @@ import 'dayjs/locale/zh-tw'
 import customParseFormat from 'dayjs/plugin/customParseFormat'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { lazy } from 'react'
+import useMount from 'react-use/esm/useMount'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import { LanguageProvider } from '@/components/providers/language-provider'
 import { ExperimentalThemeProvider } from '@/components/providers/theme-provider'
@@ -80,8 +79,6 @@ export const Route = createRootRoute({
 })
 
 export default function App() {
-  useNyanpasuStorageSubscribers()
-
   useMount(() => {
     Promise.all([
       appWindow.show(),

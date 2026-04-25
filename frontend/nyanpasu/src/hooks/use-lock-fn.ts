@@ -6,7 +6,7 @@ export type LockFn<P extends any[] = any[], T = any> = (
 ) => Promise<T>
 
 /**
- * Hook similar to ahooks useLockFn - prevents concurrent execution of async functions
+ * Prevents concurrent execution of async functions.
  * When the function is executing, subsequent calls will be ignored until the function completes
  */
 export function useLockFn<P extends any[] = any[], T = any>(

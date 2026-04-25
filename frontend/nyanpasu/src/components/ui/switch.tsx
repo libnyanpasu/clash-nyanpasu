@@ -1,6 +1,6 @@
 import { Switch as SwitchPrimitives } from 'radix-ui'
 import React, { ComponentProps } from 'react'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { CircularProgress } from './progress'
 
 export const Switch = ({

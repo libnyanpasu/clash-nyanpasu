@@ -1,5 +1,4 @@
-import { useMount } from 'ahooks'
-import { PropsWithChildren, useRef } from 'react'
+import { PropsWithChildren, useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import {
@@ -64,7 +63,9 @@ export const MutationProvider = ({ children }: PropsWithChildren) => {
     ).catch((e) => console.error(e))
   }
 
-  useMount(() => {
+  useEffect(() => {
+    let disposed = false
+
     listen<EventPayload>(NYANPASU_BACKEND_EVENT_NAME, ({ payload }) => {
       console.log('MutationProvider', payload)
 
@@ -84,12 +85,23 @@ export const MutationProvider = ({ children }: PropsWithChildren) => {
       }
     })
       .then((unlisten) => {
+        if (disposed) {
+          unlisten()
+          return
+        }
+
         unlistenFn.current = unlisten
       })
       .catch((e) => {
         console.error(e)
       })
-  })
+
+    return () => {
+      disposed = true
+      unlistenFn.current?.()
+    }
+    // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps
+  }, [])
 
   return children
 }

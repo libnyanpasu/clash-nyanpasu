@@ -1,7 +1,7 @@
 import { motion, type Transition } from 'framer-motion'
 import { Tooltip as TooltipPrimitive } from 'radix-ui'
 import * as React from 'react'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 
 export function TooltipProvider({
   delayDuration = 0,

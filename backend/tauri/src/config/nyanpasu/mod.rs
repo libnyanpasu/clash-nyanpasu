@@ -152,7 +152,6 @@ pub enum BreakWhenProxyChange {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum WindowType {
-    Legacy,
     #[default]
     Main,
 }
@@ -306,7 +305,7 @@ pub struct IVerge {
     pub enable_tray_text: Option<bool>,
 
     /// Window type to use when opening the app window
-    /// Legacy: opens legacy window; Main: opens new main window
+    /// Main: opens new main window
     pub window_type: Option<WindowType>,
 }
 

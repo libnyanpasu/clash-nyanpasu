@@ -11,7 +11,7 @@ import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { sleep } from '@/utils'
 import { useClashProxies } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 import { Route as NameRoute } from '../$name'
 
 export default function DelayTestButton() {

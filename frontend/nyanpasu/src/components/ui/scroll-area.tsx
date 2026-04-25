@@ -1,7 +1,7 @@
 import { ScrollArea as ScrollAreaPrimitive } from 'radix-ui'
 import * as React from 'react'
 import { createContext, useContext, useRef, useState } from 'react'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 
 interface ScrollAreaContextValue {
   isScrolling: boolean

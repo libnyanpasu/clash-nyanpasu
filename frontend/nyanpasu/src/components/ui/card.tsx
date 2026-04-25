@@ -1,7 +1,7 @@
 import { cva, type VariantProps } from 'class-variance-authority'
 import { Slot } from 'radix-ui'
 import { createContext, HTMLAttributes, useContext } from 'react'
-import { cn } from '@nyanpasu/ui'
+import { cn } from '@nyanpasu/utils'
 
 export const cardVariants = cva('rounded-3xl text-on-surface overflow-hidden', {
   variants: {

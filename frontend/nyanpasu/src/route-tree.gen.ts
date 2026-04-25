@@ -10,16 +10,6 @@
 
 import { Route as rootRouteImport } from './pages/__root'
 import { Route as mainRouteRouteImport } from './pages/(main)/route'
-import { Route as legacyRouteRouteImport } from './pages/(legacy)/route'
-import { Route as legacyIndexRouteImport } from './pages/(legacy)/index'
-import { Route as legacySettingsRouteImport } from './pages/(legacy)/settings'
-import { Route as legacyRulesRouteImport } from './pages/(legacy)/rules'
-import { Route as legacyProxiesRouteImport } from './pages/(legacy)/proxies'
-import { Route as legacyProvidersRouteImport } from './pages/(legacy)/providers'
-import { Route as legacyProfilesRouteImport } from './pages/(legacy)/profiles'
-import { Route as legacyLogsRouteImport } from './pages/(legacy)/logs'
-import { Route as legacyDashboardRouteImport } from './pages/(legacy)/dashboard'
-import { Route as legacyConnectionsRouteImport } from './pages/(legacy)/connections'
 import { Route as editorEditorRouteRouteImport } from './pages/(editor)/editor/route'
 import { Route as mainMainIndexRouteImport } from './pages/(main)/main/index'
 import { Route as editorEditorIndexRouteImport } from './pages/(editor)/editor/index'
@@ -57,55 +47,6 @@ import { Route as mainMainProfilesTypeDetailUidRouteImport } from './pages/(main
 const mainRouteRoute = mainRouteRouteImport.update({
   id: '/(main)',
   getParentRoute: () => rootRouteImport,
-} as any)
-const legacyRouteRoute = legacyRouteRouteImport.update({
-  id: '/(legacy)',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const legacyIndexRoute = legacyIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => legacyRouteRoute,
-} as any)
-const legacySettingsRoute = legacySettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => legacyRouteRoute,
-} as any)
-const legacyRulesRoute = legacyRulesRouteImport.update({
-  id: '/rules',
-  path: '/rules',
-  getParentRoute: () => legacyRouteRoute,
-} as any)
-const legacyProxiesRoute = legacyProxiesRouteImport.update({
-  id: '/proxies',
-  path: '/proxies',
-  getParentRoute: () => legacyRouteRoute,
-} as any)
-const legacyProvidersRoute = legacyProvidersRouteImport.update({
-  id: '/providers',
-  path: '/providers',
-  getParentRoute: () => legacyRouteRoute,
-} as any)
-const legacyProfilesRoute = legacyProfilesRouteImport.update({
-  id: '/profiles',
-  path: '/profiles',
-  getParentRoute: () => legacyRouteRoute,
-} as any)
-const legacyLogsRoute = legacyLogsRouteImport.update({
-  id: '/logs',
-  path: '/logs',
-  getParentRoute: () => legacyRouteRoute,
-} as any)
-const legacyDashboardRoute = legacyDashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
-  getParentRoute: () => legacyRouteRoute,
-} as any)
-const legacyConnectionsRoute = legacyConnectionsRouteImport.update({
-  id: '/connections',
-  path: '/connections',
-  getParentRoute: () => legacyRouteRoute,
 } as any)
 const editorEditorRouteRoute = editorEditorRouteRouteImport.update({
   id: '/(editor)/editor',
@@ -291,15 +232,6 @@ const mainMainProfilesTypeDetailUidRoute =
 
 export interface FileRoutesByFullPath {
   '/editor': typeof editorEditorRouteRouteWithChildren
-  '/connections': typeof legacyConnectionsRoute
-  '/dashboard': typeof legacyDashboardRoute
-  '/logs': typeof legacyLogsRoute
-  '/profiles': typeof legacyProfilesRoute
-  '/providers': typeof legacyProvidersRoute
-  '/proxies': typeof legacyProxiesRoute
-  '/rules': typeof legacyRulesRoute
-  '/settings': typeof legacySettingsRoute
-  '/': typeof legacyIndexRoute
   '/main/connections': typeof mainMainConnectionsRouteRouteWithChildren
   '/main/dashboard': typeof mainMainDashboardRouteRouteWithChildren
   '/main/logs': typeof mainMainLogsRouteRouteWithChildren
@@ -334,15 +266,6 @@ export interface FileRoutesByFullPath {
   '/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
 }
 export interface FileRoutesByTo {
-  '/connections': typeof legacyConnectionsRoute
-  '/dashboard': typeof legacyDashboardRoute
-  '/logs': typeof legacyLogsRoute
-  '/profiles': typeof legacyProfilesRoute
-  '/providers': typeof legacyProvidersRoute
-  '/proxies': typeof legacyProxiesRoute
-  '/rules': typeof legacyRulesRoute
-  '/settings': typeof legacySettingsRoute
-  '/': typeof legacyIndexRoute
   '/editor': typeof editorEditorIndexRoute
   '/main': typeof mainMainIndexRoute
   '/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
@@ -369,18 +292,8 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/(legacy)': typeof legacyRouteRouteWithChildren
   '/(main)': typeof mainRouteRouteWithChildren
   '/(editor)/editor': typeof editorEditorRouteRouteWithChildren
-  '/(legacy)/connections': typeof legacyConnectionsRoute
-  '/(legacy)/dashboard': typeof legacyDashboardRoute
-  '/(legacy)/logs': typeof legacyLogsRoute
-  '/(legacy)/profiles': typeof legacyProfilesRoute
-  '/(legacy)/providers': typeof legacyProvidersRoute
-  '/(legacy)/proxies': typeof legacyProxiesRoute
-  '/(legacy)/rules': typeof legacyRulesRoute
-  '/(legacy)/settings': typeof legacySettingsRoute
-  '/(legacy)/': typeof legacyIndexRoute
   '/(main)/main/connections': typeof mainMainConnectionsRouteRouteWithChildren
   '/(main)/main/dashboard': typeof mainMainDashboardRouteRouteWithChildren
   '/(main)/main/logs': typeof mainMainLogsRouteRouteWithChildren
@@ -418,15 +331,6 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/editor'
-    | '/connections'
-    | '/dashboard'
-    | '/logs'
-    | '/profiles'
-    | '/providers'
-    | '/proxies'
-    | '/rules'
-    | '/settings'
-    | '/'
     | '/main/connections'
     | '/main/dashboard'
     | '/main/logs'
@@ -461,15 +365,6 @@ export interface FileRouteTypes {
     | '/main/profiles/$type/detail/$uid'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/connections'
-    | '/dashboard'
-    | '/logs'
-    | '/profiles'
-    | '/providers'
-    | '/proxies'
-    | '/rules'
-    | '/settings'
-    | '/'
     | '/editor'
     | '/main'
     | '/main/profiles/inspect'
@@ -495,18 +390,8 @@ export interface FileRouteTypes {
     | '/main/profiles/$type/detail/$uid'
   id:
     | '__root__'
-    | '/(legacy)'
     | '/(main)'
     | '/(editor)/editor'
-    | '/(legacy)/connections'
-    | '/(legacy)/dashboard'
-    | '/(legacy)/logs'
-    | '/(legacy)/profiles'
-    | '/(legacy)/providers'
-    | '/(legacy)/proxies'
-    | '/(legacy)/rules'
-    | '/(legacy)/settings'
-    | '/(legacy)/'
     | '/(main)/main/connections'
     | '/(main)/main/dashboard'
     | '/(main)/main/logs'
@@ -542,7 +427,6 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  legacyRouteRoute: typeof legacyRouteRouteWithChildren
   mainRouteRoute: typeof mainRouteRouteWithChildren
   editorEditorRouteRoute: typeof editorEditorRouteRouteWithChildren
 }
@@ -555,76 +439,6 @@ declare module '@tanstack/react-router' {
       fullPath: ''
       preLoaderRoute: typeof mainRouteRouteImport
       parentRoute: typeof rootRouteImport
-    }
-    '/(legacy)': {
-      id: '/(legacy)'
-      path: ''
-      fullPath: ''
-      preLoaderRoute: typeof legacyRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/(legacy)/': {
-      id: '/(legacy)/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof legacyIndexRouteImport
-      parentRoute: typeof legacyRouteRoute
-    }
-    '/(legacy)/settings': {
-      id: '/(legacy)/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof legacySettingsRouteImport
-      parentRoute: typeof legacyRouteRoute
-    }
-    '/(legacy)/rules': {
-      id: '/(legacy)/rules'
-      path: '/rules'
-      fullPath: '/rules'
-      preLoaderRoute: typeof legacyRulesRouteImport
-      parentRoute: typeof legacyRouteRoute
-    }
-    '/(legacy)/proxies': {
-      id: '/(legacy)/proxies'
-      path: '/proxies'
-      fullPath: '/proxies'
-      preLoaderRoute: typeof legacyProxiesRouteImport
-      parentRoute: typeof legacyRouteRoute
-    }
-    '/(legacy)/providers': {
-      id: '/(legacy)/providers'
-      path: '/providers'
-      fullPath: '/providers'
-      preLoaderRoute: typeof legacyProvidersRouteImport
-      parentRoute: typeof legacyRouteRoute
-    }
-    '/(legacy)/profiles': {
-      id: '/(legacy)/profiles'
-      path: '/profiles'
-      fullPath: '/profiles'
-      preLoaderRoute: typeof legacyProfilesRouteImport
-      parentRoute: typeof legacyRouteRoute
-    }
-    '/(legacy)/logs': {
-      id: '/(legacy)/logs'
-      path: '/logs'
-      fullPath: '/logs'
-      preLoaderRoute: typeof legacyLogsRouteImport
-      parentRoute: typeof legacyRouteRoute
-    }
-    '/(legacy)/dashboard': {
-      id: '/(legacy)/dashboard'
-      path: '/dashboard'
-      fullPath: '/dashboard'
-      preLoaderRoute: typeof legacyDashboardRouteImport
-      parentRoute: typeof legacyRouteRoute
-    }
-    '/(legacy)/connections': {
-      id: '/(legacy)/connections'
-      path: '/connections'
-      fullPath: '/connections'
-      preLoaderRoute: typeof legacyConnectionsRouteImport
-      parentRoute: typeof legacyRouteRoute
     }
     '/(editor)/editor': {
       id: '/(editor)/editor'
@@ -860,34 +674,6 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface legacyRouteRouteChildren {
-  legacyConnectionsRoute: typeof legacyConnectionsRoute
-  legacyDashboardRoute: typeof legacyDashboardRoute
-  legacyLogsRoute: typeof legacyLogsRoute
-  legacyProfilesRoute: typeof legacyProfilesRoute
-  legacyProvidersRoute: typeof legacyProvidersRoute
-  legacyProxiesRoute: typeof legacyProxiesRoute
-  legacyRulesRoute: typeof legacyRulesRoute
-  legacySettingsRoute: typeof legacySettingsRoute
-  legacyIndexRoute: typeof legacyIndexRoute
-}
-
-const legacyRouteRouteChildren: legacyRouteRouteChildren = {
-  legacyConnectionsRoute: legacyConnectionsRoute,
-  legacyDashboardRoute: legacyDashboardRoute,
-  legacyLogsRoute: legacyLogsRoute,
-  legacyProfilesRoute: legacyProfilesRoute,
-  legacyProvidersRoute: legacyProvidersRoute,
-  legacyProxiesRoute: legacyProxiesRoute,
-  legacyRulesRoute: legacyRulesRoute,
-  legacySettingsRoute: legacySettingsRoute,
-  legacyIndexRoute: legacyIndexRoute,
-}
-
-const legacyRouteRouteWithChildren = legacyRouteRoute._addFileChildren(
-  legacyRouteRouteChildren,
-)
-
 interface mainMainConnectionsRouteRouteChildren {
   mainMainConnectionsIndexRoute: typeof mainMainConnectionsIndexRoute
 }
@@ -1070,7 +856,6 @@ const editorEditorRouteRouteWithChildren =
   editorEditorRouteRoute._addFileChildren(editorEditorRouteRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
-  legacyRouteRoute: legacyRouteRouteWithChildren,
   mainRouteRoute: mainRouteRouteWithChildren,
   editorEditorRouteRoute: editorEditorRouteRouteWithChildren,
 }

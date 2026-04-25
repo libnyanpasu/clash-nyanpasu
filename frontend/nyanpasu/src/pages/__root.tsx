@@ -1,4 +1,3 @@
-import { useMount } from 'ahooks'
 import dayjs from 'dayjs'
 import { cn } from '@nyanpasu/utils'
 import {
@@ -13,6 +12,7 @@ import 'dayjs/locale/zh-tw'
 import customParseFormat from 'dayjs/plugin/customParseFormat'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { lazy } from 'react'
+import { useMount } from 'react-use'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import { LanguageProvider } from '@/components/providers/language-provider'
 import { ExperimentalThemeProvider } from '@/components/providers/theme-provider'

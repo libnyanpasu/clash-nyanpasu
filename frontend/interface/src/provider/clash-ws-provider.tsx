@@ -1,4 +1,3 @@
-import { useUpdateEffect } from 'ahooks'
 import dayjs from 'dayjs'
 import {
   createContext,
@@ -6,6 +5,7 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react'
+import { useUpdateEffect } from 'react-use'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   CLASH_CONNECTIONS_QUERY_KEY,

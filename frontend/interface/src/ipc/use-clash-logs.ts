@@ -1,4 +1,4 @@
-import { useMemoizedFn } from 'ahooks'
+import { useCallback } from 'react'
 import { useClashWSContext } from '@interface/provider/clash-ws-provider'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CLASH_LOGS_QUERY_KEY } from './consts'
@@ -29,13 +29,13 @@ export const useClashLogs = () => {
 
   const status = recordLogs
 
-  const enable = useMemoizedFn(() => {
+  const enable = useCallback(() => {
     setRecordLogs(true)
-  })
+  }, [setRecordLogs])
 
-  const disable = useMemoizedFn(() => {
+  const disable = useCallback(() => {
     setRecordLogs(false)
-  })
+  }, [setRecordLogs])
 
   return {
     query,

@@ -1,5 +1,5 @@
-import { useWebSocket } from 'ahooks'
 import { useCallback, useMemo } from 'react'
+import { useWebSocket } from '../hooks'
 import { useClashInfo } from './use-clash-info'
 
 export const useClashWebSocket = () => {

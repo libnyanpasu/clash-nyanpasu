@@ -124,14 +124,7 @@ export default defineConfig(({ command, mode }) => {
     },
     optimizeDeps: {
       entries: ['./src/main.tsx'],
-      include: [
-        '@tauri-apps/api',
-        'ahooks',
-        'clsx',
-        'react',
-        'react-dom',
-        'react-use',
-      ],
+      include: ['@tauri-apps/api', 'clsx', 'react', 'react-dom', 'react-use'],
     },
     esbuild: {
       drop: isDev ? undefined : ['debugger'],

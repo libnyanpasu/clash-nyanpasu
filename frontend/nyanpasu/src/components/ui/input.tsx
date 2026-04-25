@@ -1,4 +1,3 @@
-import { useCreation } from 'ahooks'
 import { cva, type VariantProps } from 'class-variance-authority'
 import {
   ChangeEvent,
@@ -7,6 +6,7 @@ import {
   isValidElement,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from 'react'
 import { cn } from '@nyanpasu/utils'
@@ -292,7 +292,7 @@ export const Input = ({
 }: InputProps) => {
   const [haveValue, setHaveValue] = useState(false)
 
-  const haveLabel = useCreation(() => {
+  const haveLabel = useMemo(() => {
     if (label) {
       return true
     }

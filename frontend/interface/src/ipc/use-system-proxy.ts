@@ -1,4 +1,4 @@
-import { useUpdateEffect } from 'ahooks'
+import { useUpdateEffect } from 'react-use'
 import { useQuery } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
 import { commands } from './bindings'

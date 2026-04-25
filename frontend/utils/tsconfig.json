@@ -20,7 +20,6 @@
     "paths": {
       "@tauri-apps/api": ["../nyanpasu/node_modules/@tauri-apps/api"],
       "@tauri-apps/api/*": ["../nyanpasu/node_modules/@tauri-apps/api/*"],
-      "ahooks": ["../nyanpasu/node_modules/ahooks"],
       "clsx": ["../nyanpasu/node_modules/clsx"],
       "react": ["../nyanpasu/node_modules/@types/react/index.d.ts"],
       "react/*": ["../nyanpasu/node_modules/@types/react/*"],

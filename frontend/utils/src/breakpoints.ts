@@ -1,7 +1,8 @@
-import { useAsyncEffect } from 'ahooks'
 import { RefObject, useEffect, useMemo, useState } from 'react'
 import { createBreakpoint } from 'react-use'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+
+const appWindow = getCurrentWebviewWindow()
 
 export type Breakpoint = 'xs' | 'sm' | 'md' | 'lg' | 'xl'
 
@@ -61,16 +62,25 @@ export const useBreakpointValue = <T>(
 
   const [result, setResult] = useState<T>(calculateValue)
 
-  useAsyncEffect(async () => {
-    const appWindow = getCurrentWebviewWindow()
+  useEffect(() => {
+    let cancelled = false
 
-    if (!(await appWindow.isMinimized())) {
+    appWindow.isMinimized().then((isMinimized) => {
+      if (cancelled || isMinimized) {
+        return
+      }
+
       const nextValue = calculateValue()
 
       if (result !== nextValue) {
         setResult(nextValue)
       }
+    })
+
+    return () => {
+      cancelled = true
     }
+    // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps
   }, [currentBreakpoint, values, defaultValue])
 
   return result

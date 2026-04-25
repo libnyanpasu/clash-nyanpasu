@@ -11,6 +11,7 @@ import LogFileConfig from './_modules/log-file-config'
 import LogLevelSelector from './_modules/log-level-selector'
 import NetworkStatisticWidgetSelector from './_modules/network-statistic-widget-selector'
 import TrayIconConfig from './_modules/tray-icon-config'
+import TrayMenuModeSelector from './_modules/tray-menu-mode'
 import TrayProxiesSelector from './_modules/tray-proxies-selector'
 
 export const Route = createFileRoute('/(main)/main/settings/nyanpasu')({
@@ -69,6 +70,8 @@ const TraySettings = () => {
       <SettingsLabel>{m.settings_nyanpasu_tray()}</SettingsLabel>
 
       <SettingsGroup>
+        <TrayMenuModeSelector />
+
         <TrayProxiesSelector />
 
         <TrayIconConfig />

@@ -16,6 +16,10 @@ export default function WindowDebug() {
     await commands.createEditorWindow('test')
   })
 
+  const handleCreateDebugTrayMenuWindow = useLockFn(async () => {
+    await commands.createDebugTrayMenuWindow()
+  })
+
   return (
     <SettingsCard asChild>
       <SettingsCardAnimatedItem>
@@ -30,6 +34,10 @@ export default function WindowDebug() {
           <div className="flex items-center gap-2">
             <Button variant="flat" onClick={handleCreateEditorWindow}>
               Create Test Editor Window
+            </Button>
+
+            <Button variant="flat" onClick={handleCreateDebugTrayMenuWindow}>
+              Create Persistent Tray Menu Window
             </Button>
           </div>
         </SettingsCardContent>

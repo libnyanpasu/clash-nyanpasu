@@ -24,7 +24,9 @@ use crate::{
 use anyhow::{Result, bail};
 use handle::Message;
 use nyanpasu_ipc::api::status::CoreState;
+use serde::{Deserialize, Serialize};
 use serde_yaml::{Mapping, Value};
+use strum::EnumString;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
@@ -492,36 +494,48 @@ async fn update_core_config() -> Result<()> {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, EnumString, specta::Type)]
+#[strum(serialize_all = "kebab-case")]
+pub enum CopyEnvOption {
+    #[serde(rename = "shell")]
+    Shell,
+    #[serde(rename = "cmd")]
+    Cmd,
+    #[serde(rename = "pwsh")]
+    Pwsh,
+}
+
 /// copy env variable
-pub fn copy_clash_env(app_handle: &AppHandle, option: &str) {
+pub fn copy_clash_env(app_handle: &AppHandle, option: &CopyEnvOption) {
     let port = { Config::verge().latest().verge_mixed_port.unwrap_or(7890) };
     let http_proxy = format!("http://127.0.0.1:{port}");
     let socks5_proxy = format!("socks5://127.0.0.1:{port}");
 
-    let sh =
+    let shell =
         format!("export https_proxy={http_proxy} http_proxy={http_proxy} all_proxy={socks5_proxy}");
     let cmd: String = format!("set http_proxy={http_proxy} \n set https_proxy={http_proxy}");
-    let ps: String = format!("$env:HTTP_PROXY=\"{http_proxy}\"; $env:HTTPS_PROXY=\"{http_proxy}\"");
+    let pwsh: String =
+        format!("$env:HTTP_PROXY=\"{http_proxy}\"; $env:HTTPS_PROXY=\"{http_proxy}\"");
 
     let clipboard = app_handle.clipboard();
 
     match option {
-        "sh" => {
-            if let Err(e) = clipboard.write_text(sh) {
+        CopyEnvOption::Shell => {
+            if let Err(e) = clipboard.write_text(shell) {
                 log::error!(target: "app", "copy_clash_env failed: {e}");
             }
         }
-        "cmd" => {
+        CopyEnvOption::Cmd => {
             if let Err(e) = clipboard.write_text(cmd) {
                 log::error!(target: "app", "copy_clash_env failed: {e}");
             }
         }
-        "ps" => {
-            if let Err(e) = clipboard.write_text(ps) {
+        CopyEnvOption::Pwsh => {
+            if let Err(e) = clipboard.write_text(pwsh) {
                 log::error!(target: "app", "copy_clash_env failed: {e}");
             }
         }
-        _ => log::error!(target: "app", "copy_clash_env: Invalid option! {option}"),
+        _ => log::error!(target: "app", "copy_clash_env: Invalid option! {option:?}"),
     }
 }
 

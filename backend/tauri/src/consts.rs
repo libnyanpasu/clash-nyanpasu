@@ -3,6 +3,7 @@ use tauri::AppHandle;
 
 pub const MAIN_WINDOW_LABEL: &str = "main";
 pub const EDITOR_WINDOW_LABEL: &str = "editor";
+pub const TRAY_MENU_WINDOW_LABEL: &str = "tray-menu";
 pub const APP_NAME: &str = "Clash Nyanpasu";
 pub const APP_EDITOR_NAME: &str = "Clash Nyanpasu - Editor";
 

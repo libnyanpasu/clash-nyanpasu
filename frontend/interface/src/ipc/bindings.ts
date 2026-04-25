@@ -782,6 +782,17 @@ export const commands = {
       else return { status: 'error', error: e as any }
     }
   },
+  async createDebugTrayMenuWindow(): Promise<Result<null, string>> {
+    try {
+      return {
+        status: 'ok',
+        data: await TAURI_INVOKE('create_debug_tray_menu_window'),
+      }
+    } catch (e) {
+      if (e instanceof Error) throw e
+      else return { status: 'error', error: e as any }
+    }
+  },
   async createEditorWindow(uid: string): Promise<Result<null, string>> {
     try {
       return {
@@ -792,6 +803,12 @@ export const commands = {
       if (e instanceof Error) throw e
       else return { status: 'error', error: e as any }
     }
+  },
+  async copyClashEnv(envType: CopyEnvOption): Promise<void> {
+    await TAURI_INVOKE('copy_clash_env', { envType })
+  },
+  async quitApplication(): Promise<void> {
+    await TAURI_INVOKE('quit_application')
   },
 }
 
@@ -878,6 +895,7 @@ export type ClashInfo = {
 export type ClashStrategy = {
   external_controller_port_strategy: ExternalControllerPortStrategy
 }
+export type CopyEnvOption = 'shell' | 'cmd' | 'pwsh'
 export type CoreInfos = {
   type: CoreType | null
   state: CoreState
@@ -1112,6 +1130,12 @@ export type IVerge = {
    * Main: opens new main window
    */
   window_type: WindowType | null
+  /**
+   * Tray menu implementation mode
+   * Native: use the OS system tray menu (default on non-Windows)
+   * Webview: use a custom WebView window (default on Windows)
+   */
+  tray_menu_mode: TrayMenuMode | null
 }
 export type JsonValue =
   | null
@@ -1599,6 +1623,7 @@ export type SubscriptionInfo = {
   expire: number
 }
 export type TrayIcon = 'normal' | 'tun' | 'system_proxy'
+export type TrayMenuMode = 'native' | 'webview'
 export type TunStack = 'system' | 'gvisor' | 'mixed'
 export type UpdateWrapper = {
   rid: number

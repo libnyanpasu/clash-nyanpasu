@@ -1,7 +1,7 @@
 use crate::{
     config::{
         Config, IVerge,
-        nyanpasu::{ClashCore, WindowState, WindowType},
+        nyanpasu::{ClashCore, WindowState},
     },
     core::{storage::Storage, tray::proxies, *},
     log_err,
@@ -335,6 +335,162 @@ pub fn is_window_open(app_handle: &AppHandle) -> bool {
 /// Save window state for the configured window type
 pub fn save_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
     save_main_window_state(app_handle, save_to_file)
+}
+
+/// Webview tray menu window
+struct TrayMenuWindow;
+
+impl AppWindow for TrayMenuWindow {
+    fn label(&self) -> &str {
+        crate::consts::TRAY_MENU_WINDOW_LABEL
+    }
+
+    fn title(&self) -> &str {
+        crate::consts::APP_NAME
+    }
+
+    fn url(&self) -> &str {
+        "/tray-menu"
+    }
+
+    fn config(&self) -> WindowConfig {
+        WindowConfig::new()
+            .singleton(true)
+            .visible_on_create(false)
+            .default_size(240.0, 420.0)
+            .min_size(240.0, 420.0)
+            .center(false)
+            .resizable(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+    }
+
+    fn get_window_state(&self) -> Option<WindowState> {
+        None
+    }
+
+    fn set_window_state(&self, _state: Option<WindowState>) {}
+}
+
+/// Create a persistent tray menu window for debugging.
+pub fn create_debug_tray_menu_window(app_handle: &AppHandle) -> Result<()> {
+    let params = WindowParamsBuilder::new()
+        .param("persistent", "true")
+        .build();
+    TrayMenuWindow.create_with_params(app_handle, params)?;
+
+    if let Some(win) = app_handle.get_webview_window(crate::consts::TRAY_MENU_WINDOW_LABEL) {
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
+
+    Ok(())
+}
+
+/// Show the webview tray menu window near the given cursor position.
+pub fn show_tray_menu_window(
+    app_handle: &AppHandle,
+    cursor: tauri::PhysicalPosition<f64>,
+) -> Result<()> {
+    use tauri::{Manager, PhysicalPosition};
+
+    let win = match app_handle.get_webview_window(crate::consts::TRAY_MENU_WINDOW_LABEL) {
+        Some(existing) => existing,
+        None => {
+            TrayMenuWindow.create_with_params(app_handle, None)?;
+            app_handle
+                .get_webview_window(crate::consts::TRAY_MENU_WINDOW_LABEL)
+                .ok_or_else(|| anyhow::anyhow!("failed to get tray menu window after creation"))?
+        }
+    };
+
+    let (menu_w, menu_h) = win
+        .outer_size()
+        .map(|size| {
+            let width = if size.width == 0 {
+                240.0
+            } else {
+                size.width as f64
+            };
+            let height = if size.height == 0 {
+                420.0
+            } else {
+                size.height as f64
+            };
+            (width, height)
+        })
+        .unwrap_or((240.0, 420.0));
+    let margin = 8.0_f64;
+
+    let (screen_x, screen_y, screen_w, screen_h) = win
+        .available_monitors()
+        .ok()
+        .and_then(|monitors| {
+            monitors
+                .iter()
+                .find(|monitor| {
+                    let position = monitor.position();
+                    let size = monitor.size();
+                    let left = position.x as f64;
+                    let top = position.y as f64;
+                    let right = left + size.width as f64;
+                    let bottom = top + size.height as f64;
+
+                    cursor.x >= left && cursor.x < right && cursor.y >= top && cursor.y < bottom
+                })
+                .or_else(|| monitors.first())
+                .map(|monitor| {
+                    let work_area = monitor.work_area();
+                    let size = if work_area.size.width == 0 || work_area.size.height == 0 {
+                        *monitor.size()
+                    } else {
+                        work_area.size
+                    };
+                    let position = if work_area.size.width == 0 || work_area.size.height == 0 {
+                        *monitor.position()
+                    } else {
+                        work_area.position
+                    };
+
+                    (
+                        position.x as f64,
+                        position.y as f64,
+                        size.width as f64,
+                        size.height as f64,
+                    )
+                })
+        })
+        .unwrap_or((0.0, 0.0, 1920.0, 1080.0));
+
+    let left = screen_x + margin;
+    let top = screen_y + margin;
+    let right = screen_x + screen_w - margin;
+    let bottom = screen_y + screen_h - margin;
+
+    let max_x = (right - menu_w).max(left);
+    let max_y = (bottom - menu_h).max(top);
+    let mut x = if cursor.x + menu_w > right {
+        cursor.x - menu_w
+    } else {
+        cursor.x
+    };
+    let mut y = if cursor.y + menu_h > bottom {
+        cursor.y - menu_h
+    } else {
+        cursor.y
+    };
+
+    x = x.max(left).min(max_x);
+    y = y.max(top).min(max_y);
+
+    let _ = win.set_position(PhysicalPosition {
+        x: x as i32,
+        y: y as i32,
+    });
+    let _ = win.show();
+    let _ = win.set_focus();
+
+    Ok(())
 }
 
 /// Create editor window with uid

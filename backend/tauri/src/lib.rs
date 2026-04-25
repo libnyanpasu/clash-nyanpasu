@@ -282,7 +282,11 @@ pub fn run() -> std::io::Result<()> {
             // window management
             ipc::save_window_size_state,
             ipc::create_main_window,
+            ipc::create_debug_tray_menu_window,
             ipc::create_editor_window,
+            // tray actions
+            ipc::copy_clash_env,
+            ipc::quit_application,
         ])
         .events(collect_events![
             core::clash::ClashConnectionsEvent,

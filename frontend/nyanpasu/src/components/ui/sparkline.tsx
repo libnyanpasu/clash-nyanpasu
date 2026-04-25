@@ -6,14 +6,14 @@ import { cn } from '@nyanpasu/utils'
 
 /**
  * Coefficient of variation threshold (std / mean) below which the series is
- * considered "stable".  CV is scale-independent: 11�?2 and 9 000�?11 000 are
+ * considered "stable".  CV is scale-independent: 1–2 and 9 000–11 000 are
  * evaluated on the same relative basis regardless of their absolute magnitude.
  */
 const STABLE_CV_THRESHOLD = 0.15
 
 /**
  * When the series is stable, the chart only occupies the bottom third of the
- * SVG height (topFactor = 2/3 �?usable band = height - height*(2/3) = h/3).
+ * SVG height (topFactor = 2/3 — usable band = height - height*(2/3) = h/3).
  */
 const STABLE_TOP_FACTOR = 2 / 3
 
@@ -105,7 +105,7 @@ export const Sparkline = ({
 
       // Fast-path for empty or single-point series to avoid invalid guard math.
       if (n === 0) {
-        // No data �?no path.
+        // No data → no path.
         return { line: '', area: '' }
       }
 
@@ -192,13 +192,13 @@ export const Sparkline = ({
       duration: animationDuration,
       ease: 'linear',
       onUpdate(t) {
-        // X-axis: pure linear translation �?the scroll must feel constant-speed.
+        // X-axis: pure linear translation — the scroll must feel constant-speed.
         g.attr('transform', `translate(${-stepWidth * t},0)`)
 
         // Y-axis: non-linear easing for the yMax interpolation so the height
         // change feels more natural (slow start/end, faster in the middle).
         // Because x is driven by the translation and y is driven independently
-        // by yMax, the two axes never couple �?no wobble.
+        // by yMax, the two axes never couple — no wobble.
         if (yMaxChanges) {
           const easedT = d3.easeCubicInOut(t)
           const currentYMax = fromYMax + (toYMax - fromYMax) * easedT

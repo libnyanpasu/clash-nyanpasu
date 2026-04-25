@@ -29,8 +29,6 @@ export default function TunStackSelector() {
 
   const runtimeProfile = useRuntimeProfile()
 
-  const coreTypeValue = coreType.value ?? 'mihomo'
-
   const tunStackOptions = useMemo(() => {
     const options: {
       [key: string]: string
@@ -41,11 +39,11 @@ export default function TunStackSelector() {
     }
 
     // clash not support mixed
-    if (coreTypeValue === 'clash') {
+    if (coreType.value === 'clash') {
       delete options.mixed
     }
     return options
-  }, [coreTypeValue])
+  }, [coreType.value])
 
   const currentTunStack = useMemo(() => {
     const stack = tunStack.value || 'gvisor'

@@ -357,8 +357,8 @@ const Viewer = ({ search }: { search: string }) => {
                         header.column.columnDef.header,
                         header.getContext(),
                       )}
-                      {header.column.getIsSorted() === 'asc' && ' ��'}
-                      {header.column.getIsSorted() === 'desc' && ' ��'}
+                      {header.column.getIsSorted() === 'asc' && ' ↑'}
+                      {header.column.getIsSorted() === 'desc' && ' ↓'}
                     </div>
                   )}
                   {header.column.getCanResize() && (

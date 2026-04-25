@@ -1,4 +1,5 @@
 export default {
+  'scripts/deno/**/*.{ts,tsx}': ['deno fmt', 'deno check'],
   '*.{js,cjs,.mjs,jsx}': (filenames) => {
     const configFiles = [
       '.oxlintrc.json',
@@ -11,11 +12,17 @@ export default {
     if (filtered.length === 0) return []
     return ['prettier --write', 'oxlint --fix']
   },
-  'scripts/**/*.{ts,tsx}': [
-    'prettier --write',
-    'oxlint --fix',
-    () => 'tsc -p scripts/tsconfig.json --noEmit',
-  ],
+  'scripts/**/*.{ts,tsx}': (filenames) => {
+    const filtered = filenames.filter(
+      (file) => !file.includes('scripts/deno/'),
+    )
+    if (filtered.length === 0) return []
+    return [
+      `prettier --write ${filtered.join(' ')}`,
+      `oxlint --fix ${filtered.join(' ')}`,
+      'tsc -p scripts/tsconfig.json --noEmit',
+    ]
+  },
   'frontend/interface/**/*.{ts,tsx}': [
     'prettier --write',
     'oxlint --fix',

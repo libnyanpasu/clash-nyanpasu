@@ -266,8 +266,8 @@ importers:
         specifier: 7.73.1
         version: 7.73.1(react@19.2.5)
       react-hook-form-mui:
-        specifier: 8.2.0
-        version: 8.2.0(@mui/material@7.3.10(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(react-hook-form@7.73.1(react@19.2.5))(react@19.2.5)
+        specifier: 9.0.1
+        version: 9.0.1(@mui/material@7.3.10(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(@mui/system@7.3.10(@types/react@19.2.14)(react@19.2.5))(react-hook-form@7.73.1(react@19.2.5))(react@19.2.5)
       react-i18next:
         specifier: 15.7.4
         version: 15.7.4(i18next@26.0.8(typescript@5.9.3))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(typescript@5.9.3)
@@ -6282,14 +6282,15 @@ packages:
       react: '>= 16.8.0 || ^18.0.0'
       react-dom: '>= 16.8.0 || ^18.0.0'
 
-  react-hook-form-mui@8.2.0:
-    resolution: {integrity: sha512-hQ6tleg+VuHOk7+HUZLBlsztx5ZigslqgLKfcEdQDS0qUow1B6I7HG3uY2EvmPDdeFS1D4lU7pGxYKmnYpJwVg==}
+  react-hook-form-mui@9.0.1:
+    resolution: {integrity: sha512-PkgKccWWK+ZB4HH/WjCuphiVIE0JN/z/k2ksfwReLeIg70iAS0luzI4LZn9NzqzWOXIJ90jpsOs5m/4jdDkzGA==}
     engines: {node: '>=14'}
     peerDependencies:
-      '@mui/icons-material': '>= 5.x <8'
-      '@mui/material': '>= 5.x <8'
-      '@mui/x-date-pickers': '>=8.10.2 <9'
-      react: '>=17 <20'
+      '@mui/icons-material': ^9.0.0
+      '@mui/material': ^9.0.0
+      '@mui/system': ^9.0.0
+      '@mui/x-date-pickers': ^9.0.0
+      react: '>=18 <21'
       react-hook-form: '>=7.62.0'
     peerDependenciesMeta:
       '@mui/icons-material':
@@ -13449,9 +13450,10 @@ snapshots:
       react: 19.2.5
       react-dom: 19.2.5(react@19.2.5)
 
-  react-hook-form-mui@8.2.0(@mui/material@7.3.10(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(react-hook-form@7.73.1(react@19.2.5))(react@19.2.5):
+  react-hook-form-mui@9.0.1(@mui/material@7.3.10(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(@mui/system@7.3.10(@types/react@19.2.14)(react@19.2.5))(react-hook-form@7.73.1(react@19.2.5))(react@19.2.5):
     dependencies:
       '@mui/material': 7.3.10(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@mui/system': 7.3.10(@types/react@19.2.14)(react@19.2.5)
       react: 19.2.5
       react-hook-form: 7.73.1(react@19.2.5)
 

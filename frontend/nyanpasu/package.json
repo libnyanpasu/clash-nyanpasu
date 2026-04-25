@@ -63,7 +63,7 @@
     "rxjs": "7.8.2",
     "swr": "2.4.1",
     "vaul": "1.1.2",
-    "virtua": "0.46.6",
+    "virtua": "0.49.1",
     "vite-bundle-visualizer": "1.2.1"
   },
   "devDependencies": {

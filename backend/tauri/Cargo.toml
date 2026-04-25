@@ -118,7 +118,7 @@ uuid = "1.7.0"
 rand = "0.10"
 md-5 = "0.10.6"
 sha2 = "0.10"
-nanoid = "0.4.0"
+nanoid = "0.5.0"
 rs-snowflake = "0.6"
 seahash = "4.1"
 

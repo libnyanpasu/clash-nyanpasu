@@ -82,7 +82,7 @@ rfd = { version = "0.15", default-features = false, features = [
 ] } # cross platform dialog
 
 # Internationalization
-rust-i18n = "3"
+rust-i18n = "4"
 
 # Networking Libraries
 axum = "0.8"

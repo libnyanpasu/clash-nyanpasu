@@ -1,7 +1,3 @@
-import useSWR, { SWRConfiguration } from 'swr'
-import { commands } from '@interface/ipc'
-import { unwrapResult } from '@interface/utils'
-
 export interface IPSBResponse {
   organization: string
   longitude: number
@@ -17,11 +13,11 @@ export interface IPSBResponse {
   country_code: string
 }
 
-export const useIPSB = (config?: SWRConfiguration) => {
-  return useSWR(
-    'https://api.ip.sb/geoip',
-    async () =>
-      unwrapResult(await commands.getIpsbAsn()) as unknown as IPSBResponse,
-    config,
-  )
-}
+// export const useIPSB = (config?: SWRConfiguration) => {
+//   return useSWR(
+//     'https://api.ip.sb/geoip',
+//     async () =>
+//       unwrapResult(await commands.getIpsbAsn()) as unknown as IPSBResponse,
+//     config,
+//   )
+// }

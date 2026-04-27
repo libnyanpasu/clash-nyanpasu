@@ -50,7 +50,7 @@
   },
   "devDependencies": {
     "@csstools/normalize.css": "12.1.1",
-    "@iconify/json": "2.2.466",
+    "@iconify/json": "2.2.467",
     "@monaco-editor/react": "4.7.0",
     "@tailwindcss/vite": "4.2.4",
     "@tanstack/react-query": "5.100.5",

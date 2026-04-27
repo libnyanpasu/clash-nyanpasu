@@ -251,8 +251,8 @@ importers:
         specifier: 19.2.5
         version: 19.2.5(react@19.2.5)
       react-error-boundary:
-        specifier: 6.0.0
-        version: 6.0.0(react@19.2.5)
+        specifier: 6.1.1
+        version: 6.1.1(react@19.2.5)
       react-hook-form:
         specifier: 7.73.1
         version: 7.73.1(react@19.2.5)
@@ -1047,10 +1047,6 @@ packages:
     resolution: {integrity: sha512-HrcgcIESLm9aIR842yhJ5RWan/gebQUJ6E/E5+rf0y9o6oj7w0Br+sWuL6kEQ/o/AdfvR1Je9jG18/gnpwjEyA==}
     peerDependencies:
       '@babel/core': ^7.0.0-0 || ^8.0.0-0 <8.0.0
-
-  '@babel/runtime@7.27.1':
-    resolution: {integrity: sha512-1x3D2xEk2fRo3PAhwQwu5UubzgiVWSXTBfWpVd2Mx2AzRqJuDJCsgaDVZ7HB5iGzDW1Hl1sWN2mFyKjmR9uAog==}
-    engines: {node: '>=6.9.0'}
 
   '@babel/runtime@7.29.2':
     resolution: {integrity: sha512-JiDShH45zKHWyGe4ZNVRrCjBz8Nh9TMmZG1kh4QTK8hCBTWBi8Da+i7s1fJw7/lYpM4ccepSNfqzZ/QvABBi5g==}
@@ -6095,10 +6091,10 @@ packages:
     peerDependencies:
       react: ^19.2.5
 
-  react-error-boundary@6.0.0:
-    resolution: {integrity: sha512-gdlJjD7NWr0IfkPlaREN2d9uUZUlksrfOx7SX62VRerwXbMY6ftGCIZua1VG1aXFNOimhISsTq+Owp725b9SiA==}
+  react-error-boundary@6.1.1:
+    resolution: {integrity: sha512-BrYwPOdXi5mqkk5lw+Uvt0ThHx32rCt3BkukS4X23A2AIWDPSGX6iaWTc0y9TU/mHDA/6qOSGel+B2ERkOvD1w==}
     peerDependencies:
-      react: '>=16.13.1'
+      react: ^18.0.0 || ^19.0.0
 
   react-hook-form@7.73.1:
     resolution: {integrity: sha512-VAfVYOPcx3piiEVQy95vyFmBwbVUsP/AUIN+mpFG8h11yshDd444nn0VyfaGWSRnhOLVgiDu7HIuBtAIzxn9dA==}
@@ -7938,8 +7934,6 @@ snapshots:
       '@babel/helper-plugin-utils': 7.27.1
       '@babel/types': 7.29.0
       esutils: 2.0.3
-
-  '@babel/runtime@7.27.1': {}
 
   '@babel/runtime@7.29.2': {}
 
@@ -13039,9 +13033,8 @@ snapshots:
       react: 19.2.5
       scheduler: 0.27.0
 
-  react-error-boundary@6.0.0(react@19.2.5):
+  react-error-boundary@6.1.1(react@19.2.5):
     dependencies:
-      '@babel/runtime': 7.27.1
       react: 19.2.5
 
   react-hook-form@7.73.1(react@19.2.5):

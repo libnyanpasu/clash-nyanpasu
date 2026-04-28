@@ -15,6 +15,6 @@
     "clsx": "2.1.1",
     "react": "19.2.5",
     "react-use": "17.6.0",
-    "tailwind-merge": "3.3.1"
+    "tailwind-merge": "3.5.0"
   }
 }

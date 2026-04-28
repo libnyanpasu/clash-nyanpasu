@@ -47,7 +47,7 @@ const DelayTestButton = () => {
 
 const ProxyButton = ({ proxy }: { proxy: ClashProxiesQueryProxyItem }) => {
   const currentDelay = useMemo(() => {
-    if (!proxy.history || proxy.history.length !== 0) {
+    if (proxy.history.length > 0) {
       return proxy.history[proxy.history.length - 1].delay
     }
 

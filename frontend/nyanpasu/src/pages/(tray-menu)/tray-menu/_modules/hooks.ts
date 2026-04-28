@@ -19,10 +19,12 @@ export function useTrayClickHandler<
       await appWindow.hide()
     }
 
-    await onClick?.(...args)
-
-    if (!disableClose) {
-      await appWindow.close()
+    try {
+      await onClick?.(...args)
+    } finally {
+      if (!disableClose) {
+        await appWindow.close()
+      }
     }
   })
 }

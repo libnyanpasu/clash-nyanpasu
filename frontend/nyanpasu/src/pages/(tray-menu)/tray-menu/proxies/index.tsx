@@ -15,7 +15,7 @@ export const Route = createFileRoute('/(tray-menu)/tray-menu/proxies/')({
 
 const ProxyButton = ({ proxy }: { proxy: ClashProxiesQueryGroupItem }) => {
   const currentDelay = useMemo(() => {
-    if (!proxy.history || proxy.history.length !== 0) {
+    if (proxy.history.length > 0) {
       return proxy.history[proxy.history.length - 1].delay
     }
 

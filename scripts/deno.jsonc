@@ -56,10 +56,6 @@
     "portable": {
       "description": "Create Windows portable ZIP and upload to release",
       "command": "deno run -A portable.ts"
-    },
-    "osx-aarch64-upload": {
-      "description": "Upload macOS aarch64 build assets",
-      "command": "deno run -A osx-aarch64-upload.ts"
     }
   }
 }

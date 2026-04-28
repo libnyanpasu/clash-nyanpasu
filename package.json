@@ -45,7 +45,6 @@
     "updater:nightly": "deno run -A scripts/updater-nightly.ts",
     "publish": "deno run -A scripts/publish.ts",
     "portable": "deno run -A scripts/portable.ts",
-    "upload:osx-aarch64": "deno run -A scripts/osx-aarch64-upload.ts",
     "generate:git-info": "deno run -A scripts/generate-git-info.ts",
     "generate:manifest": "run-p generate:manifest:*",
     "generate:manifest:latest-version": "deno run -A scripts/generate-latest-version.ts",

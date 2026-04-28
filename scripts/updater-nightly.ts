@@ -283,7 +283,6 @@ async function resolveUpdater() {
     ...options,
     release_id: updateRelease.id,
     name: mainFileName,
-    // @ts-ignore string data is accepted
     data: mainContent,
   });
   await saveToCache(mainFileName, mainContent);
@@ -292,7 +291,6 @@ async function resolveUpdater() {
     ...options,
     release_id: updateRelease.id,
     name: proxyFileName,
-    // @ts-ignore string data is accepted
     data: proxyContent,
   });
   await saveToCache(proxyFileName, proxyContent);

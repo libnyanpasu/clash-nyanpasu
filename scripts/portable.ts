@@ -101,7 +101,7 @@ async function resolvePortable() {
     ...options,
     release_id: release.id,
     name: zipFile,
-    // @ts-ignore Buffer-compatible Uint8Array
+    // @ts-expect-error Buffer-compatible Uint8Array
     data: zip.toBuffer(),
   });
 }

@@ -5,7 +5,7 @@ use crate::{
         updater::ManifestVersionLatest, *,
     },
     enhance::PostProcessingOutput,
-    feat,
+    feat::{self, CopyEnvOption},
     utils::{candy, collect::EnvInfo, dirs, help, resolve},
 };
 use anyhow::{Context, anyhow};
@@ -1167,6 +1167,33 @@ pub fn create_main_window(app_handle: AppHandle) -> Result<()> {
         });
     });
     Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn create_debug_tray_menu_window(app_handle: AppHandle) -> Result<()> {
+    // Spawn window creation to avoid blocking
+    std::thread::spawn(move || {
+        // Small delay to let the IPC return first
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let handle_inner = app_handle.clone();
+        let _ = app_handle.run_on_main_thread(move || {
+            let _ = resolve::create_debug_tray_menu_window(&handle_inner);
+        });
+    });
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn copy_clash_env(app_handle: AppHandle, env_type: CopyEnvOption) {
+    feat::copy_clash_env(&app_handle, &env_type);
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn quit_application(app_handle: AppHandle) {
+    crate::utils::help::quit_application(&app_handle);
 }
 
 #[tauri::command]

@@ -151,6 +151,14 @@ pub enum BreakWhenProxyChange {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
 #[serde(rename_all = "snake_case")]
+pub enum TrayMenuMode {
+    #[default]
+    Native,
+    Webview,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
+#[serde(rename_all = "snake_case")]
 pub enum WindowType {
     #[default]
     Main,
@@ -307,6 +315,11 @@ pub struct IVerge {
     /// Window type to use when opening the app window
     /// Main: opens new main window
     pub window_type: Option<WindowType>,
+
+    /// Tray menu implementation mode
+    /// Native: use the OS system tray menu (default on non-Windows)
+    /// Webview: use a custom WebView window (default on Windows)
+    pub tray_menu_mode: Option<TrayMenuMode>,
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize, Type)]
@@ -393,6 +406,10 @@ impl IVerge {
             config.window_type = template.window_type;
         }
 
+        if config.tray_menu_mode.is_none() {
+            config.tray_menu_mode = template.tray_menu_mode;
+        }
+
         config
     }
 
@@ -429,6 +446,11 @@ impl IVerge {
             always_on_top: Some(false),
             enable_tray_text: Some(false),
             window_type: Some(WindowType::Main),
+            tray_menu_mode: Some(if cfg!(windows) {
+                TrayMenuMode::Webview
+            } else {
+                TrayMenuMode::Native
+            }),
             ..Self::default()
         }
     }

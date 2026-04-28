@@ -24,7 +24,9 @@ use crate::{
 use anyhow::{Result, bail};
 use handle::Message;
 use nyanpasu_ipc::api::status::CoreState;
+use serde::{Deserialize, Serialize};
 use serde_yaml::{Mapping, Value};
+use strum::EnumString;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
@@ -308,6 +310,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
     let log_max_files = patch.max_log_files;
     let enable_tray_selector = patch.clash_tray_selector;
     let enable_tray_text = patch.enable_tray_text;
+    let tray_menu_mode = patch.tray_menu_mode;
     let network_statistic_widget = patch.network_statistic_widget;
     let res = || async move {
         let service_mode = patch.enable_service_mode;
@@ -370,8 +373,12 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
             hotkey::Hotkey::global().update(hotkeys)?;
         }
 
-        if language.is_some() {
-            rust_i18n::set_locale(language.unwrap().as_str());
+        let language_changed = language.is_some();
+        if let Some(language) = language {
+            rust_i18n::set_locale(language.as_str());
+        }
+
+        if language_changed || tray_menu_mode.is_some() || enable_tray_selector.is_some() {
             handle::Handle::update_systray()?;
         } else if system_proxy.or(tun_mode).or(enable_tray_text).is_some() {
             handle::Handle::update_systray_part()?;
@@ -379,10 +386,6 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
 
         if log_level.is_some() || log_max_files.is_some() {
             utils::init::refresh_logger((log_level, log_max_files))?;
-        }
-
-        if enable_tray_selector.is_some() {
-            handle::Handle::update_systray()?;
         }
 
         // TODO: refactor config with changed notify
@@ -492,36 +495,48 @@ async fn update_core_config() -> Result<()> {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, EnumString, specta::Type)]
+#[strum(serialize_all = "kebab-case")]
+pub enum CopyEnvOption {
+    #[serde(rename = "shell")]
+    Shell,
+    #[serde(rename = "cmd")]
+    Cmd,
+    #[serde(rename = "pwsh")]
+    Pwsh,
+}
+
 /// copy env variable
-pub fn copy_clash_env(app_handle: &AppHandle, option: &str) {
+pub fn copy_clash_env(app_handle: &AppHandle, option: &CopyEnvOption) {
     let port = { Config::verge().latest().verge_mixed_port.unwrap_or(7890) };
     let http_proxy = format!("http://127.0.0.1:{port}");
     let socks5_proxy = format!("socks5://127.0.0.1:{port}");
 
-    let sh =
+    let shell =
         format!("export https_proxy={http_proxy} http_proxy={http_proxy} all_proxy={socks5_proxy}");
     let cmd: String = format!("set http_proxy={http_proxy} \n set https_proxy={http_proxy}");
-    let ps: String = format!("$env:HTTP_PROXY=\"{http_proxy}\"; $env:HTTPS_PROXY=\"{http_proxy}\"");
+    let pwsh: String =
+        format!("$env:HTTP_PROXY=\"{http_proxy}\"; $env:HTTPS_PROXY=\"{http_proxy}\"");
 
     let clipboard = app_handle.clipboard();
 
     match option {
-        "sh" => {
-            if let Err(e) = clipboard.write_text(sh) {
+        CopyEnvOption::Shell => {
+            if let Err(e) = clipboard.write_text(shell) {
                 log::error!(target: "app", "copy_clash_env failed: {e}");
             }
         }
-        "cmd" => {
+        CopyEnvOption::Cmd => {
             if let Err(e) = clipboard.write_text(cmd) {
                 log::error!(target: "app", "copy_clash_env failed: {e}");
             }
         }
-        "ps" => {
-            if let Err(e) = clipboard.write_text(ps) {
+        CopyEnvOption::Pwsh => {
+            if let Err(e) = clipboard.write_text(pwsh) {
                 log::error!(target: "app", "copy_clash_env failed: {e}");
             }
         }
-        _ => log::error!(target: "app", "copy_clash_env: Invalid option! {option}"),
+        _ => log::error!(target: "app", "copy_clash_env: Invalid option! {option:?}"),
     }
 }
 

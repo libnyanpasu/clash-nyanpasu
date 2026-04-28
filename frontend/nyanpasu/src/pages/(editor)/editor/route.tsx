@@ -1,6 +1,5 @@
 import { cn } from '@nyanpasu/utils'
 import { createFileRoute, Outlet } from '@tanstack/react-router'
-import '@/services/monaco'
 
 export const Route = createFileRoute('/(editor)/editor')({
   component: RouteComponent,

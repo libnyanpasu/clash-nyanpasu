@@ -1,8 +1,12 @@
 use std::borrow::Cow;
 
 use crate::{
-    config::{Config, nyanpasu::ClashCore},
-    feat, ipc, log_err,
+    config::{
+        Config,
+        nyanpasu::{ClashCore, TrayMenuMode},
+    },
+    feat::{self, CopyEnvOption},
+    ipc, log_err,
     utils::{help, resolve},
 };
 use anyhow::Result;
@@ -26,9 +30,18 @@ use std::sync::atomic::AtomicU16;
 
 struct TrayState<R: Runtime> {
     menu: Mutex<Menu<R>>,
+    menu_mode: Mutex<TrayMenuMode>,
 }
 
 pub struct Tray {}
+
+fn get_tray_menu_mode() -> TrayMenuMode {
+    *Config::verge()
+        .latest()
+        .tray_menu_mode
+        .as_ref()
+        .unwrap_or(&TrayMenuMode::default())
+}
 
 static UPDATE_SYSTRAY_MUTEX: Lazy<parking_lot::Mutex<()>> =
     Lazy::new(|| parking_lot::Mutex::new(()));
@@ -208,7 +221,17 @@ impl Tray {
     pub fn update_systray(app_handle: &AppHandle<tauri::Wry>) -> Result<()> {
         let _guard = UPDATE_SYSTRAY_MUTEX.lock();
         let tray_id = get_tray_id();
-        let tray = {
+        let menu_mode = get_tray_menu_mode();
+        let use_native_menu = menu_mode == TrayMenuMode::Native;
+        let menu_mode_changed = app_handle
+            .try_state::<TrayState<tauri::Wry>>()
+            .is_some_and(|state| *state.menu_mode.lock() != menu_mode);
+        let tray = if menu_mode_changed {
+            tracing::debug!("tray menu mode changed, recreating tray icon");
+            let tray = app_handle.remove_tray_by_id(tray_id.as_ref());
+            drop(tray);
+            None
+        } else {
             // if cfg!(target_os = "linux") {
             //     tracing::debug!("removing tray by id: {}", tray_id);
             //     let mut tray = app_handle.remove_tray_by_id(tray_id.as_ref());
@@ -237,11 +260,12 @@ impl Tray {
                         ))?)
                         .icon_as_template(true);
                 }
-                builder
-                    .menu(&menu)
-                    .on_menu_event(|app, event| {
+                if use_native_menu {
+                    builder = builder.menu(&menu).on_menu_event(|app, event| {
                         Tray::on_menu_item_event(app, event);
-                    })
+                    });
+                }
+                builder
                     .on_tray_icon_event(|tray_icon, event| {
                         Tray::on_system_tray_event(tray_icon, event);
                     })
@@ -253,23 +277,27 @@ impl Tray {
                 // and recreate tray icon will cause buggy tray. No icon and no menu.
                 // So this block is a dirty inheritance of the menu items from the previous tray menu.
                 if cfg!(target_os = "linux") {
-                    let state = app_handle.state::<TrayState<tauri::Wry>>();
-                    let previous_menu = state.menu.lock();
-                    if let Ok(items) = previous_menu.items() {
-                        tracing::debug!("removing previous tray menu items");
-                        for item in items {
-                            log_err!(previous_menu.remove(&item), "failed to remove menu item");
+                    if use_native_menu {
+                        let state = app_handle.state::<TrayState<tauri::Wry>>();
+                        let previous_menu = state.menu.lock();
+                        if let Ok(items) = previous_menu.items() {
+                            tracing::debug!("removing previous tray menu items");
+                            for item in items {
+                                log_err!(previous_menu.remove(&item), "failed to remove menu item");
+                            }
+                        }
+                        // migrate the menu items
+                        if let Ok(items) = menu.items() {
+                            tracing::debug!("migrating new tray menu items");
+                            for item in items {
+                                log_err!(previous_menu.append(&item), "failed to append menu item");
+                            }
                         }
                     }
-                    // migrate the menu items
-                    if let Ok(items) = menu.items() {
-                        tracing::debug!("migrating new tray menu items");
-                        for item in items {
-                            log_err!(previous_menu.append(&item), "failed to append menu item");
-                        }
-                    }
-                } else {
+                } else if use_native_menu {
                     tray.set_menu(Some(menu.clone()))?;
+                } else {
+                    tray.set_menu(None::<tauri::menu::Menu<tauri::Wry>>)?;
                 }
                 tray
             }
@@ -277,17 +305,21 @@ impl Tray {
         tray.set_visible(true)?;
         {
             match app_handle.try_state::<TrayState<tauri::Wry>>() {
-                Some(state) if cfg!(not(target_os = "linux")) => {
+                Some(state) if cfg!(not(target_os = "linux")) || menu_mode_changed => {
                     tracing::debug!("replacing previous tray menu");
                     *state.menu.lock() = menu;
+                    *state.menu_mode.lock() = menu_mode;
                 }
                 None => {
                     tracing::debug!("creating new tray menu");
                     app_handle.manage(TrayState {
                         menu: Mutex::new(menu),
+                        menu_mode: Mutex::new(menu_mode),
                     });
                 }
-                _ => {}
+                Some(state) => {
+                    *state.menu_mode.lock() = menu_mode;
+                }
             }
         }
         tracing::debug!("full update tray finished");
@@ -408,11 +440,11 @@ impl Tray {
             "open_window" => resolve::create_window(app_handle),
             "system_proxy" => feat::toggle_system_proxy(),
             "tun_mode" => feat::toggle_tun_mode(),
-            "copy_env_sh" => feat::copy_clash_env(app_handle, "sh"),
+            "copy_env_sh" => feat::copy_clash_env(app_handle, &CopyEnvOption::Shell),
             #[cfg(target_os = "windows")]
-            "copy_env_cmd" => feat::copy_clash_env(app_handle, "cmd"),
+            "copy_env_cmd" => feat::copy_clash_env(app_handle, &CopyEnvOption::Cmd),
             #[cfg(target_os = "windows")]
-            "copy_env_ps" => feat::copy_clash_env(app_handle, "ps"),
+            "copy_env_ps" => feat::copy_clash_env(app_handle, &CopyEnvOption::Pwsh),
             "open_app_config_dir" => crate::log_err!(ipc::open_app_config_dir()),
             "open_app_data_dir" => crate::log_err!(ipc::open_app_data_dir()),
             "open_core_dir" => crate::log_err!(ipc::open_core_dir()),
@@ -429,12 +461,27 @@ impl Tray {
     }
 
     pub fn on_system_tray_event(tray_icon: &TrayIcon, event: TrayIconEvent) {
-        if let TrayIconEvent::Click {
-            button: MouseButton::Left,
-            ..
-        } = event
-        {
-            resolve::create_window(tray_icon.app_handle());
+        match event {
+            TrayIconEvent::Click {
+                button: MouseButton::Left,
+                ..
+            } => {
+                resolve::create_window(tray_icon.app_handle());
+            }
+            TrayIconEvent::Click {
+                button: MouseButton::Right,
+                position,
+                ..
+            } => {
+                if get_tray_menu_mode() == TrayMenuMode::Webview {
+                    log_err!(
+                        resolve::show_tray_menu_window(tray_icon.app_handle(), position),
+                        "failed to show webview tray menu"
+                    );
+                }
+                // In Native mode the system shows the attached menu automatically
+            }
+            _ => {}
         }
     }
 }

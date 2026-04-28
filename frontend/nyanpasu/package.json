@@ -16,7 +16,7 @@
     "@dnd-kit/sortable": "10.0.0",
     "@dnd-kit/utilities": "3.2.2",
     "@hookform/resolvers": "5.2.2",
-    "@inlang/paraglide-js": "2.16.1",
+    "@inlang/paraglide-js": "2.17.0",
     "@juggle/resize-observer": "3.4.0",
     "@material/material-color-utilities": "0.4.0",
     "@nyanpasu/interface": "workspace:^",

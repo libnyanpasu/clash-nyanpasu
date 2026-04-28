@@ -34,7 +34,7 @@ const UPLOAD_RESULTS_DIR = Deno.env.get("UPLOAD_RESULTS_DIR") || ".";
 
 // --- constants ---
 
-const WORKSPACE_ROOT = path.join(import.meta.dirname!, "../..");
+const WORKSPACE_ROOT = path.join(import.meta.dirname!, "..");
 const TEMP_DIR = path.join(WORKSPACE_ROOT, "node_modules/.verge");
 
 const repoInfo = { owner: "libnyanpasu", repo: "clash-nyanpasu" } as const;

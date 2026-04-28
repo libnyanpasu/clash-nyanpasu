@@ -63,7 +63,7 @@ jobs:
           if [ "${{ inputs.from-local }}" = "true" ]; then
             ARGS="$ARGS --from-local"
           fi
-          deno run -A scripts/deno/telegram-notify.ts $ARGS
+          deno run -A scripts/telegram-notify.ts $ARGS
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}

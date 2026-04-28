@@ -16,6 +16,5 @@
   "references": [
     { "path": "./frontend/nyanpasu" },
     { "path": "./frontend/interface" },
-    { "path": "./scripts" },
   ],
 }

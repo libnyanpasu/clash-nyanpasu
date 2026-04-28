@@ -10,7 +10,7 @@ import { consola } from "./utils/logger.ts";
 
 // --- config ---
 
-const WORKSPACE_ROOT = path.join(import.meta.dirname!, "../..");
+const WORKSPACE_ROOT = path.join(import.meta.dirname!, "..");
 const TARGET_DIR = path.join(WORKSPACE_ROOT, "backend/target");
 const CARGO_LOCK_PATH = path.join(WORKSPACE_ROOT, "backend/Cargo.lock");
 

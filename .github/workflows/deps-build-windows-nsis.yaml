@@ -222,7 +222,7 @@ jobs:
         shell: bash
         continue-on-error: true
         run: |
-          deno run -A scripts/deno/upload-build-artifacts.ts \
+          deno run -A scripts/upload-build-artifacts.ts \
             "backend/target/**/bundle/nsis/*.exe" \
             "*_portable.zip"
         env:
@@ -365,7 +365,7 @@ jobs:
         shell: bash
         continue-on-error: true
         run: |
-          deno run -A scripts/deno/upload-build-artifacts.ts \
+          deno run -A scripts/upload-build-artifacts.ts \
             "backend/target/**/bundle/nsis/*.exe" \
             "*_portable.zip"
         env:

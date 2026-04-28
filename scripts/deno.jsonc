@@ -1,0 +1,61 @@
+{
+  "nodeModulesDir": "auto",
+  "tasks": {
+    "check": {
+      "description": "Check and download required sidecar binaries and resources",
+      "command": "deno run -A check.ts"
+    },
+    "upload-macos-updater": {
+      "description": "Upload macOS updater to GitHub Releases",
+      "command": "deno run -A upload-macos-updater.ts"
+    },
+    "telegram-notify": {
+      "description": "Send Telegram notification for releases and nightly builds",
+      "command": "deno run -A telegram-notify.ts"
+    },
+    "build-cache": {
+      "description": "Save/restore build cache to file server",
+      "command": "deno run -A build-cache.ts"
+    },
+    "upload-build-artifacts": {
+      "description": "Upload build artifacts to file server",
+      "command": "deno run -A upload-build-artifacts.ts"
+    },
+    "generate-latest-version": {
+      "description": "Resolve and write latest versions of clash cores to manifest/version.json",
+      "command": "deno run -A generate-latest-version.ts"
+    },
+    "generate-git-info": {
+      "description": "Generate git summary info for Tauri build",
+      "command": "deno run -A generate-git-info.ts"
+    },
+    "publish": {
+      "description": "Bump monorepo version (major|minor|patch)",
+      "command": "deno run -A publish.ts"
+    },
+    "updater": {
+      "description": "Generate and upload update.json for stable release",
+      "command": "deno run -A updater.ts"
+    },
+    "updater-nightly": {
+      "description": "Generate and upload update-nightly.json for pre-release",
+      "command": "deno run -A updater-nightly.ts"
+    },
+    "prepare-nightly": {
+      "description": "Prepare Tauri config for nightly build",
+      "command": "deno run -A prepare-nightly.ts"
+    },
+    "prepare-release": {
+      "description": "Prepare Tauri config for stable release build",
+      "command": "deno run -A prepare-release.ts"
+    },
+    "prepare-preview": {
+      "description": "Prepare Tauri preview config",
+      "command": "deno run -A prepare-preview.ts"
+    },
+    "portable": {
+      "description": "Create Windows portable ZIP and upload to release",
+      "command": "deno run -A portable.ts"
+    }
+  }
+}

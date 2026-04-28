@@ -264,11 +264,11 @@ jobs:
         run: |
           case "${{ inputs.arch }}" in
             "x86_64")
-              deno run -A scripts/deno/upload-build-artifacts.ts \
+              deno run -A scripts/upload-build-artifacts.ts \
                 "backend/target/**/*.deb" \
                 "backend/target/**/*.AppImage" ;;
             *)
-              deno run -A scripts/deno/upload-build-artifacts.ts \
+              deno run -A scripts/upload-build-artifacts.ts \
                 "backend/target/**/*.deb" \
                 "backend/target/**/*.rpm" ;;
           esac

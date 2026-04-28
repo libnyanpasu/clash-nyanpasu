@@ -1,31 +1,37 @@
-import { execSync } from 'node:child_process'
-import fs from 'fs-extra'
-import { GIT_SUMMARY_INFO_PATH, TAURI_APP_TEMP_DIR } from './utils/env'
-import { consola } from './utils/logger'
+import * as path from "jsr:@std/path";
+import { consola } from "./utils/logger.ts";
+
+const cwd = Deno.cwd();
+const TAURI_APP_DIR = path.join(cwd, "backend/tauri");
+const TAURI_APP_TEMP_DIR = path.join(TAURI_APP_DIR, "tmp");
+const GIT_SUMMARY_INFO_PATH = path.join(TAURI_APP_TEMP_DIR, "git-info.json");
 
 async function main() {
-  const [hash, author, time] = execSync(
-    "git show --pretty=format:'%H,%cn,%cI' --no-patch --no-notes",
-    {
-      cwd: process.cwd(),
-    },
-  )
-    .toString()
-    .replace(/'/g, '')
-    .split(',')
+  const result = await new Deno.Command("git", {
+    args: [
+      "show",
+      "--pretty=format:'%H,%cn,%cI'",
+      "--no-patch",
+      "--no-notes",
+    ],
+    stdout: "piped",
+  }).output();
 
-  const summary = {
-    hash,
-    author,
-    time,
-  }
-  consola.info(summary)
-  if (!(await fs.exists(TAURI_APP_TEMP_DIR))) {
-    await fs.mkdir(TAURI_APP_TEMP_DIR)
-  }
+  const output = new TextDecoder()
+    .decode(result.stdout)
+    .replace(/'/g, "")
+    .trim();
+  const [hash, author, time] = output.split(",");
 
-  await fs.writeJSON(GIT_SUMMARY_INFO_PATH, summary, { spaces: 2 })
-  consola.success('Git summary info generated')
+  const summary = { hash, author, time };
+  consola.info(summary);
+
+  await Deno.mkdir(TAURI_APP_TEMP_DIR, { recursive: true });
+  await Deno.writeTextFile(
+    GIT_SUMMARY_INFO_PATH,
+    JSON.stringify(summary, null, 2),
+  );
+  consola.success("Git summary info generated");
 }
 
-main().catch(consola.error)
+main().catch(consola.error);

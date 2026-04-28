@@ -1,63 +1,84 @@
-import fs from 'fs/promises'
-import path from 'path'
-import { fetch } from 'undici'
-import yargs from 'yargs'
-import { hideBin } from 'yargs/helpers'
-import { context, getOctokit } from '@actions/github'
-import { resolveUpdateLog } from './updatelog'
-import { getGithubUrl, getProxyAgent } from './utils'
-import { colorize, consola } from './utils/logger'
+import * as path from "jsr:@std/path";
+import { parseArgs } from "jsr:@std/cli@1/parse-args";
+import { Octokit } from "npm:octokit";
+import { colorize, consola } from "./utils/logger.ts";
+import { resolveUpdateLog } from "./updatelog.ts";
 
-const UPDATE_TAG_NAME = 'updater'
-const UPDATE_JSON_FILE = 'update.json'
-const UPDATE_JSON_PROXY = 'update-proxy.json'
-const UPDATE_FIXED_WEBVIEW_FILE = 'update-fixed-webview.json'
-const UPDATE_FIXED_WEBVIEW_PROXY = 'update-fixed-webview-proxy.json'
-const UPDATE_RELEASE_BODY = process.env.RELEASE_BODY || ''
+const GITHUB_PROXY = "https://gh-proxy.com/";
+const UPDATE_TAG_NAME = "updater";
+const UPDATE_JSON_FILE = "update.json";
+const UPDATE_JSON_PROXY = "update-proxy.json";
+const UPDATE_FIXED_WEBVIEW_FILE = "update-fixed-webview.json";
+const UPDATE_FIXED_WEBVIEW_PROXY = "update-fixed-webview-proxy.json";
+const UPDATE_RELEASE_BODY = Deno.env.get("RELEASE_BODY") ?? "";
 
-const argv = yargs(hideBin(process.argv))
-  .option('fixed-webview', {
-    type: 'boolean',
-    default: false,
-  })
-  .option('cache-path', {
-    type: 'string',
-    requiresArg: false,
-  })
-  .help()
-  .parseSync()
+const argv = parseArgs(Deno.args, {
+  boolean: ["fixed-webview"],
+  string: ["cache-path"],
+  default: { "fixed-webview": false },
+});
 
-/// generate update.json
-/// upload to update tag's release asset
-async function resolveUpdater() {
-  if (process.env.GITHUB_TOKEN === undefined) {
-    throw new Error('GITHUB_TOKEN is required')
+function getGithubUrl(url: string): string {
+  return new URL(url.replace(/^https?:\/\//g, ""), GITHUB_PROXY).toString();
+}
+
+function getRepoContext() {
+  const token = Deno.env.get("GITHUB_TOKEN");
+  if (!token) throw new Error("GITHUB_TOKEN is required");
+  const repoStr = Deno.env.get("GITHUB_REPOSITORY") ?? "";
+  const [owner, repo] = repoStr.split("/");
+  if (!owner || !repo) throw new Error("GITHUB_REPOSITORY must be owner/repo");
+  return { token, owner, repo };
+}
+
+async function getSignature(url: string) {
+  const response = await fetch(url, {
+    method: "GET",
+    headers: { "Content-Type": "application/octet-stream" },
+  });
+  return response.text();
+}
+
+async function saveToCache(fileName: string, content: string) {
+  const cachePath = argv["cache-path"];
+  if (!cachePath) return;
+  try {
+    await Deno.mkdir(cachePath, { recursive: true });
+    const filePath = path.join(cachePath, fileName);
+    await Deno.writeTextFile(filePath, content);
+    consola.success(colorize`cached file saved to: {gray.bold ${filePath}}`);
+  } catch (err) {
+    consola.error(`Failed to save cache file: ${err}`);
   }
+}
 
-  const options = { owner: context.repo.owner, repo: context.repo.repo }
-  const github = getOctokit(process.env.GITHUB_TOKEN)
+async function resolveUpdater() {
+  const { token, owner, repo } = getRepoContext();
+  const github = new Octokit({ auth: token });
+  const options = { owner, repo };
 
   const { data: tags } = await github.rest.repos.listTags({
     ...options,
     per_page: 10,
     page: 1,
-  })
+  });
 
-  // get the latest publish tag
-  const tag = tags.find((t) => t.name.startsWith('v'))
-  if (!tag) throw new Error('could not found the latest tag')
-  consola.debug(colorize`latest tag: {gray.bold ${tag.name}}`)
+  const tag = (tags as Array<{ name: string }>).find((t) =>
+    t.name.startsWith("v")
+  );
+  if (!tag) throw new Error("could not found the latest tag");
+  consola.debug(colorize`latest tag: {gray.bold ${tag.name}}`);
 
   const { data: latestRelease } = await github.rest.repos.getReleaseByTag({
     ...options,
     tag: tag.name,
-  })
+  });
 
-  let updateLog: string | null = null
+  let updateLog: string | null = null;
   try {
-    updateLog = await resolveUpdateLog(tag.name)
+    updateLog = await resolveUpdateLog(tag.name);
   } catch (err) {
-    consola.error(err)
+    consola.error(err);
   }
 
   const updateData = {
@@ -65,214 +86,173 @@ async function resolveUpdater() {
     notes: UPDATE_RELEASE_BODY || updateLog || latestRelease.body,
     pub_date: new Date().toISOString(),
     platforms: {
-      win64: { signature: '', url: '' }, // compatible with older formats
-      linux: { signature: '', url: '' }, // compatible with older formats
-      darwin: { signature: '', url: '' }, // compatible with older formats
-      'darwin-aarch64': { signature: '', url: '' },
-      'darwin-intel': { signature: '', url: '' },
-      'darwin-x86_64': { signature: '', url: '' },
-      'linux-x86_64': { signature: '', url: '' },
-      // "linux-aarch64": { signature: "", url: "" },
-      // "linux-armv7": { signature: "", url: "" },
-      'windows-x86_64': { signature: '', url: '' },
-      'windows-i686': { signature: '', url: '' },
-      'windows-aarch64': { signature: '', url: '' },
+      win64: { signature: "", url: "" },
+      linux: { signature: "", url: "" },
+      darwin: { signature: "", url: "" },
+      "darwin-aarch64": { signature: "", url: "" },
+      "darwin-intel": { signature: "", url: "" },
+      "darwin-x86_64": { signature: "", url: "" },
+      "linux-x86_64": { signature: "", url: "" },
+      "windows-x86_64": { signature: "", url: "" },
+      "windows-i686": { signature: "", url: "" },
+      "windows-aarch64": { signature: "", url: "" },
     },
-  }
+  };
 
-  const promises = latestRelease.assets.map(async (asset) => {
-    const { name, browser_download_url: browserDownloadUrl } = asset
+  const promises = (
+    latestRelease.assets as Array<{
+      name: string;
+      browser_download_url: string;
+    }>
+  ).map(async (asset) => {
+    const { name, browser_download_url: browserDownloadUrl } = asset;
 
     function isMatch(name: string, extension: string, arch: string) {
       return (
         name.endsWith(extension) &&
         name.includes(arch) &&
-        (argv.fixedWebview
-          ? name.includes('fixed-webview')
-          : !name.includes('fixed-webview'))
-      )
+        (argv["fixed-webview"]
+          ? name.includes("fixed-webview")
+          : !name.includes("fixed-webview"))
+      );
     }
 
-    // win64 url
-    if (isMatch(name, '.nsis.zip', 'x64')) {
-      updateData.platforms.win64.url = browserDownloadUrl
-      updateData.platforms['windows-x86_64'].url = browserDownloadUrl
+    if (isMatch(name, ".nsis.zip", "x64")) {
+      updateData.platforms.win64.url = browserDownloadUrl;
+      updateData.platforms["windows-x86_64"].url = browserDownloadUrl;
     }
-    // win64 signature
-    if (isMatch(name, '.nsis.zip.sig', 'x64')) {
-      const sig = await getSignature(browserDownloadUrl)
-      updateData.platforms.win64.signature = sig
-      updateData.platforms['windows-x86_64'].signature = sig
+    if (isMatch(name, ".nsis.zip.sig", "x64")) {
+      const sig = await getSignature(browserDownloadUrl);
+      updateData.platforms.win64.signature = sig;
+      updateData.platforms["windows-x86_64"].signature = sig;
     }
+    if (isMatch(name, ".nsis.zip", "x86")) {
+      updateData.platforms["windows-i686"].url = browserDownloadUrl;
+    }
+    if (isMatch(name, ".nsis.zip.sig", "x86")) {
+      const sig = await getSignature(browserDownloadUrl);
+      updateData.platforms["windows-i686"].signature = sig;
+    }
+    if (isMatch(name, ".nsis.zip", "arm64")) {
+      updateData.platforms["windows-aarch64"].url = browserDownloadUrl;
+    }
+    if (isMatch(name, ".nsis.zip.sig", "arm64")) {
+      const sig = await getSignature(browserDownloadUrl);
+      updateData.platforms["windows-aarch64"].signature = sig;
+    }
+    if (name.endsWith(".app.tar.gz") && !name.includes("aarch")) {
+      updateData.platforms.darwin.url = browserDownloadUrl;
+      updateData.platforms["darwin-intel"].url = browserDownloadUrl;
+      updateData.platforms["darwin-x86_64"].url = browserDownloadUrl;
+    }
+    if (name.endsWith(".app.tar.gz.sig") && !name.includes("aarch")) {
+      const sig = await getSignature(browserDownloadUrl);
+      updateData.platforms.darwin.signature = sig;
+      updateData.platforms["darwin-intel"].signature = sig;
+      updateData.platforms["darwin-x86_64"].signature = sig;
+    }
+    if (name.endsWith("aarch64.app.tar.gz")) {
+      updateData.platforms["darwin-aarch64"].url = browserDownloadUrl;
+    }
+    if (name.endsWith("aarch64.app.tar.gz.sig")) {
+      const sig = await getSignature(browserDownloadUrl);
+      updateData.platforms["darwin-aarch64"].signature = sig;
+    }
+    if (name.endsWith(".AppImage.tar.gz")) {
+      updateData.platforms.linux.url = browserDownloadUrl;
+      updateData.platforms["linux-x86_64"].url = browserDownloadUrl;
+    }
+    if (name.endsWith(".AppImage.tar.gz.sig")) {
+      const sig = await getSignature(browserDownloadUrl);
+      updateData.platforms.linux.signature = sig;
+      updateData.platforms["linux-x86_64"].signature = sig;
+    }
+  });
 
-    // win32 url
-    if (isMatch(name, '.nsis.zip', 'x86')) {
-      updateData.platforms['windows-i686'].url = browserDownloadUrl
-    }
-    // win32 signature
-    if (isMatch(name, '.nsis.zip.sig', 'x86')) {
-      const sig = await getSignature(browserDownloadUrl)
-      updateData.platforms['windows-i686'].signature = sig
-    }
+  await Promise.allSettled(promises);
+  consola.info(updateData);
 
-    // win arm64 url
-    if (isMatch(name, '.nsis.zip', 'arm64')) {
-      updateData.platforms['windows-aarch64'].url = browserDownloadUrl
-    }
-    // win arm64 signature
-    if (isMatch(name, '.nsis.zip.sig', 'arm64')) {
-      const sig = await getSignature(browserDownloadUrl)
-      updateData.platforms['windows-aarch64'].signature = sig
-    }
-
-    // darwin url (intel)
-    if (name.endsWith('.app.tar.gz') && !name.includes('aarch')) {
-      updateData.platforms.darwin.url = browserDownloadUrl
-      updateData.platforms['darwin-intel'].url = browserDownloadUrl
-      updateData.platforms['darwin-x86_64'].url = browserDownloadUrl
-    }
-    // darwin signature (intel)
-    if (name.endsWith('.app.tar.gz.sig') && !name.includes('aarch')) {
-      const sig = await getSignature(browserDownloadUrl)
-      updateData.platforms.darwin.signature = sig
-      updateData.platforms['darwin-intel'].signature = sig
-      updateData.platforms['darwin-x86_64'].signature = sig
-    }
-
-    // darwin url (aarch)
-    if (name.endsWith('aarch64.app.tar.gz')) {
-      updateData.platforms['darwin-aarch64'].url = browserDownloadUrl
-    }
-    // darwin signature (aarch)
-    if (name.endsWith('aarch64.app.tar.gz.sig')) {
-      const sig = await getSignature(browserDownloadUrl)
-      updateData.platforms['darwin-aarch64'].signature = sig
-    }
-
-    // linux url
-    if (name.endsWith('.AppImage.tar.gz')) {
-      updateData.platforms.linux.url = browserDownloadUrl
-      updateData.platforms['linux-x86_64'].url = browserDownloadUrl
-    }
-    // linux signature
-    if (name.endsWith('.AppImage.tar.gz.sig')) {
-      const sig = await getSignature(browserDownloadUrl)
-      updateData.platforms.linux.signature = sig
-      updateData.platforms['linux-x86_64'].signature = sig
-    }
-  })
-
-  await Promise.allSettled(promises)
-  consola.info(updateData)
-
-  // maybe should test the signature as well
-  // delete the null field
   Object.entries(updateData.platforms).forEach(([key, value]) => {
     if (!value.url) {
-      consola.error(`failed to parse release for "${key}"`)
-      delete updateData.platforms[key as keyof typeof updateData.platforms]
+      consola.error(`failed to parse release for "${key}"`);
+      delete updateData.platforms[key as keyof typeof updateData.platforms];
     }
-  })
+  });
 
-  // 生成一个代理github的更新文件
-  // 使用 https://hub.fastgit.xyz/ 做github资源的加速
   const updateDataNew = JSON.parse(
     JSON.stringify(updateData),
-  ) as typeof updateData
-
+  ) as typeof updateData;
   Object.entries(updateDataNew.platforms).forEach(([key, value]) => {
     if (value.url) {
       updateDataNew.platforms[key as keyof typeof updateData.platforms].url =
-        getGithubUrl(value.url)
+        getGithubUrl(value.url);
     } else {
-      consola.error(`updateDataNew.platforms.${key} is null`)
+      consola.error(`updateDataNew.platforms.${key} is null`);
     }
-  })
+  });
 
-  // update the update.json
   const { data: updateRelease } = await github.rest.repos.getReleaseByTag({
     ...options,
     tag: UPDATE_TAG_NAME,
-  })
+  });
 
-  // delete the old assets
-  for (const asset of updateRelease.assets) {
+  for (
+    const asset of updateRelease.assets as Array<{
+      name: string;
+      id: number;
+    }>
+  ) {
     if (
-      argv.fixedWebview
+      argv["fixed-webview"]
         ? asset.name === UPDATE_FIXED_WEBVIEW_FILE
         : asset.name === UPDATE_JSON_FILE
     ) {
       await github.rest.repos.deleteReleaseAsset({
         ...options,
         asset_id: asset.id,
-      })
+      });
     }
-
     if (
-      argv.fixedWebview
+      argv["fixed-webview"]
         ? asset.name === UPDATE_FIXED_WEBVIEW_PROXY
         : asset.name === UPDATE_JSON_PROXY
     ) {
       await github.rest.repos
         .deleteReleaseAsset({ ...options, asset_id: asset.id })
-        .catch((err) => {
-          consola.error(err)
-        }) // do not break the pipeline
+        .catch((err: unknown) => {
+          consola.error(err);
+        });
     }
   }
 
-  // upload new assets
-  await github.rest.repos.uploadReleaseAsset({
-    ...options,
-    release_id: updateRelease.id,
-    name: argv.fixedWebview ? UPDATE_FIXED_WEBVIEW_FILE : UPDATE_JSON_FILE,
-    data: JSON.stringify(updateData, null, 2),
-  })
-
-  // cache the files if cache path is provided
-  await saveToCache(
-    argv.fixedWebview ? UPDATE_FIXED_WEBVIEW_FILE : UPDATE_JSON_FILE,
-    JSON.stringify(updateData, null, 2),
-  )
+  const mainFileName = argv["fixed-webview"]
+    ? UPDATE_FIXED_WEBVIEW_FILE
+    : UPDATE_JSON_FILE;
+  const proxyFileName = argv["fixed-webview"]
+    ? UPDATE_FIXED_WEBVIEW_PROXY
+    : UPDATE_JSON_PROXY;
+  const mainContent = JSON.stringify(updateData, null, 2);
+  const proxyContent = JSON.stringify(updateDataNew, null, 2);
 
   await github.rest.repos.uploadReleaseAsset({
     ...options,
     release_id: updateRelease.id,
-    name: argv.fixedWebview ? UPDATE_FIXED_WEBVIEW_PROXY : UPDATE_JSON_PROXY,
-    data: JSON.stringify(updateDataNew, null, 2),
-  })
+    name: mainFileName,
+    // @ts-ignore string data is accepted
+    data: mainContent,
+  });
+  await saveToCache(mainFileName, mainContent);
 
-  // cache the proxy file if cache path is provided
-  await saveToCache(
-    argv.fixedWebview ? UPDATE_FIXED_WEBVIEW_PROXY : UPDATE_JSON_PROXY,
-    JSON.stringify(updateDataNew, null, 2),
-  )
-}
-
-async function saveToCache(fileName: string, content: string) {
-  if (!argv.cachePath) return
-
-  try {
-    await fs.mkdir(argv.cachePath, { recursive: true })
-    const filePath = path.join(argv.cachePath, fileName)
-    await fs.writeFile(filePath, content, 'utf-8')
-    consola.success(colorize`cached file saved to: {gray.bold ${filePath}}`)
-  } catch (err) {
-    consola.error(`Failed to save cache file: ${err}`)
-  }
-}
-
-// get the signature file content
-async function getSignature(url: string) {
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: { 'Content-Type': 'application/octet-stream' },
-    dispatcher: getProxyAgent(),
-  })
-
-  return response.text()
+  await github.rest.repos.uploadReleaseAsset({
+    ...options,
+    release_id: updateRelease.id,
+    name: proxyFileName,
+    // @ts-ignore string data is accepted
+    data: proxyContent,
+  });
+  await saveToCache(proxyFileName, proxyContent);
 }
 
 resolveUpdater().catch((err) => {
-  consola.error(err)
-})
+  consola.error(err);
+});

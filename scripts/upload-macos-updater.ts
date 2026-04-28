@@ -2,7 +2,7 @@ import * as path from "jsr:@std/path";
 import { globby } from "npm:globby";
 import { consola } from "./utils/logger.ts";
 
-const WORKSPACE_ROOT = path.join(import.meta.dirname!, "../..");
+const WORKSPACE_ROOT = path.join(import.meta.dirname!, "..");
 consola.info(`WORKSPACE_ROOT: ${WORKSPACE_ROOT}`);
 
 const TARGET_ARCH = Deno.env.get("TARGET_ARCH") || Deno.build.arch;

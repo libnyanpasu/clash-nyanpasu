@@ -21,7 +21,7 @@ if (patterns.length === 0) {
   Deno.exit(1);
 }
 
-const WORKSPACE_ROOT = path.join(import.meta.dirname!, "../..");
+const WORKSPACE_ROOT = path.join(import.meta.dirname!, "..");
 
 consola.info(`Searching for files matching: ${patterns.join(", ")}`);
 const files = await globby(patterns, { cwd: WORKSPACE_ROOT, absolute: true });

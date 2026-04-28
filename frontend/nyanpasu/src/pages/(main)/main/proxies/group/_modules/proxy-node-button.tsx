@@ -1,6 +1,7 @@
 import FlashOnRounded from '~icons/material-symbols/flash-on-rounded'
 import { ComponentProps, MouseEvent, useMemo } from 'react'
 import { useBlockTask } from '@/components/providers/block-task-provider'
+import DelayChip from '@/components/proxies/delay-chip'
 import { Button } from '@/components/ui/button'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { ClashProxiesQueryProxyItem } from '@nyanpasu/interface'
@@ -71,17 +72,7 @@ export default function ProxyNodeButton({
           asChild
         >
           {currentDelay > 0 ? (
-            <span
-              className={cn(
-                'text-[10px]',
-                currentDelay > 0 && 'text-green-500!',
-                currentDelay > 100 && 'text-yellow-500!',
-                currentDelay > 300 && 'text-orange-500!',
-                currentDelay > 500 && 'text-red-500!',
-              )}
-            >
-              {currentDelay} ms
-            </span>
+            <DelayChip delay={currentDelay} />
           ) : (
             <span>
               <FlashOnRounded className="py-1" />

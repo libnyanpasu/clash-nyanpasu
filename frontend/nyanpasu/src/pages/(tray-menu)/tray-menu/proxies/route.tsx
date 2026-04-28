@@ -1,3 +1,4 @@
+import { AnimatedOutletPreset } from '@/components/router/animated-outlet'
 import { createFileRoute } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/(tray-menu)/tray-menu/proxies')({
@@ -5,5 +6,5 @@ export const Route = createFileRoute('/(tray-menu)/tray-menu/proxies')({
 })
 
 function RouteComponent() {
-  return <div>Hello "/(tray-menu)/tray-menu/proxies/"!</div>
+  return <AnimatedOutletPreset />
 }

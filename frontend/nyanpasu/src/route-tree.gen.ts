@@ -33,6 +33,7 @@ import { Route as mainMainProfilesIndexRouteImport } from './pages/(main)/main/p
 import { Route as mainMainLogsIndexRouteImport } from './pages/(main)/main/logs/index'
 import { Route as mainMainDashboardIndexRouteImport } from './pages/(main)/main/dashboard/index'
 import { Route as mainMainConnectionsIndexRouteImport } from './pages/(main)/main/connections/index'
+import { Route as trayMenuTrayMenuProxiesGroupRouteRouteImport } from './pages/(tray-menu)/tray-menu/proxies/group/route'
 import { Route as mainMainSettingsWebUiRouteRouteImport } from './pages/(main)/main/settings/web-ui/route'
 import { Route as mainMainSettingsUserInterfaceRouteRouteImport } from './pages/(main)/main/settings/user-interface/route'
 import { Route as mainMainSettingsSystemRouteRouteImport } from './pages/(main)/main/settings/system/route'
@@ -172,6 +173,12 @@ const mainMainConnectionsIndexRoute =
     path: '/',
     getParentRoute: () => mainMainConnectionsRouteRoute,
   } as any)
+const trayMenuTrayMenuProxiesGroupRouteRoute =
+  trayMenuTrayMenuProxiesGroupRouteRouteImport.update({
+    id: '/group',
+    path: '/group',
+    getParentRoute: () => trayMenuTrayMenuProxiesRouteRoute,
+  } as any)
 const mainMainSettingsWebUiRouteRoute =
   mainMainSettingsWebUiRouteRouteImport.update({
     id: '/web-ui',
@@ -234,9 +241,9 @@ const mainMainProfilesTypeIndexRoute =
   } as any)
 const trayMenuTrayMenuProxiesGroupNameRoute =
   trayMenuTrayMenuProxiesGroupNameRouteImport.update({
-    id: '/group/$name',
-    path: '/group/$name',
-    getParentRoute: () => trayMenuTrayMenuProxiesRouteRoute,
+    id: '/$name',
+    path: '/$name',
+    getParentRoute: () => trayMenuTrayMenuProxiesGroupRouteRoute,
   } as any)
 const mainMainProxiesGroupNameRoute =
   mainMainProxiesGroupNameRouteImport.update({
@@ -286,6 +293,7 @@ export interface FileRoutesByFullPath {
   '/main/settings/system': typeof mainMainSettingsSystemRouteRoute
   '/main/settings/user-interface': typeof mainMainSettingsUserInterfaceRouteRoute
   '/main/settings/web-ui': typeof mainMainSettingsWebUiRouteRoute
+  '/tray-menu/proxies/group': typeof trayMenuTrayMenuProxiesGroupRouteRouteWithChildren
   '/main/connections/': typeof mainMainConnectionsIndexRoute
   '/main/dashboard/': typeof mainMainDashboardIndexRoute
   '/main/logs/': typeof mainMainLogsIndexRoute
@@ -314,6 +322,7 @@ export interface FileRoutesByTo {
   '/main/settings/system': typeof mainMainSettingsSystemRouteRoute
   '/main/settings/user-interface': typeof mainMainSettingsUserInterfaceRouteRoute
   '/main/settings/web-ui': typeof mainMainSettingsWebUiRouteRoute
+  '/tray-menu/proxies/group': typeof trayMenuTrayMenuProxiesGroupRouteRouteWithChildren
   '/main/connections': typeof mainMainConnectionsIndexRoute
   '/main/dashboard': typeof mainMainDashboardIndexRoute
   '/main/logs': typeof mainMainLogsIndexRoute
@@ -356,6 +365,7 @@ export interface FileRoutesById {
   '/(main)/main/settings/system': typeof mainMainSettingsSystemRouteRoute
   '/(main)/main/settings/user-interface': typeof mainMainSettingsUserInterfaceRouteRoute
   '/(main)/main/settings/web-ui': typeof mainMainSettingsWebUiRouteRoute
+  '/(tray-menu)/tray-menu/proxies/group': typeof trayMenuTrayMenuProxiesGroupRouteRouteWithChildren
   '/(main)/main/connections/': typeof mainMainConnectionsIndexRoute
   '/(main)/main/dashboard/': typeof mainMainDashboardIndexRoute
   '/(main)/main/logs/': typeof mainMainLogsIndexRoute
@@ -398,6 +408,7 @@ export interface FileRouteTypes {
     | '/main/settings/system'
     | '/main/settings/user-interface'
     | '/main/settings/web-ui'
+    | '/tray-menu/proxies/group'
     | '/main/connections/'
     | '/main/dashboard/'
     | '/main/logs/'
@@ -426,6 +437,7 @@ export interface FileRouteTypes {
     | '/main/settings/system'
     | '/main/settings/user-interface'
     | '/main/settings/web-ui'
+    | '/tray-menu/proxies/group'
     | '/main/connections'
     | '/main/dashboard'
     | '/main/logs'
@@ -467,6 +479,7 @@ export interface FileRouteTypes {
     | '/(main)/main/settings/system'
     | '/(main)/main/settings/user-interface'
     | '/(main)/main/settings/web-ui'
+    | '/(tray-menu)/tray-menu/proxies/group'
     | '/(main)/main/connections/'
     | '/(main)/main/dashboard/'
     | '/(main)/main/logs/'
@@ -661,6 +674,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof mainMainConnectionsIndexRouteImport
       parentRoute: typeof mainMainConnectionsRouteRoute
     }
+    '/(tray-menu)/tray-menu/proxies/group': {
+      id: '/(tray-menu)/tray-menu/proxies/group'
+      path: '/group'
+      fullPath: '/tray-menu/proxies/group'
+      preLoaderRoute: typeof trayMenuTrayMenuProxiesGroupRouteRouteImport
+      parentRoute: typeof trayMenuTrayMenuProxiesRouteRoute
+    }
     '/(main)/main/settings/web-ui': {
       id: '/(main)/main/settings/web-ui'
       path: '/web-ui'
@@ -733,10 +753,10 @@ declare module '@tanstack/react-router' {
     }
     '/(tray-menu)/tray-menu/proxies/group/$name': {
       id: '/(tray-menu)/tray-menu/proxies/group/$name'
-      path: '/group/$name'
+      path: '/$name'
       fullPath: '/tray-menu/proxies/group/$name'
       preLoaderRoute: typeof trayMenuTrayMenuProxiesGroupNameRouteImport
-      parentRoute: typeof trayMenuTrayMenuProxiesRouteRoute
+      parentRoute: typeof trayMenuTrayMenuProxiesGroupRouteRoute
     }
     '/(main)/main/proxies/group/$name': {
       id: '/(main)/main/proxies/group/$name'
@@ -950,16 +970,31 @@ const editorEditorRouteRouteChildren: editorEditorRouteRouteChildren = {
 const editorEditorRouteRouteWithChildren =
   editorEditorRouteRoute._addFileChildren(editorEditorRouteRouteChildren)
 
-interface trayMenuTrayMenuProxiesRouteRouteChildren {
-  trayMenuTrayMenuProxiesIndexRoute: typeof trayMenuTrayMenuProxiesIndexRoute
+interface trayMenuTrayMenuProxiesGroupRouteRouteChildren {
   trayMenuTrayMenuProxiesGroupNameRoute: typeof trayMenuTrayMenuProxiesGroupNameRoute
+}
+
+const trayMenuTrayMenuProxiesGroupRouteRouteChildren: trayMenuTrayMenuProxiesGroupRouteRouteChildren =
+  {
+    trayMenuTrayMenuProxiesGroupNameRoute:
+      trayMenuTrayMenuProxiesGroupNameRoute,
+  }
+
+const trayMenuTrayMenuProxiesGroupRouteRouteWithChildren =
+  trayMenuTrayMenuProxiesGroupRouteRoute._addFileChildren(
+    trayMenuTrayMenuProxiesGroupRouteRouteChildren,
+  )
+
+interface trayMenuTrayMenuProxiesRouteRouteChildren {
+  trayMenuTrayMenuProxiesGroupRouteRoute: typeof trayMenuTrayMenuProxiesGroupRouteRouteWithChildren
+  trayMenuTrayMenuProxiesIndexRoute: typeof trayMenuTrayMenuProxiesIndexRoute
 }
 
 const trayMenuTrayMenuProxiesRouteRouteChildren: trayMenuTrayMenuProxiesRouteRouteChildren =
   {
+    trayMenuTrayMenuProxiesGroupRouteRoute:
+      trayMenuTrayMenuProxiesGroupRouteRouteWithChildren,
     trayMenuTrayMenuProxiesIndexRoute: trayMenuTrayMenuProxiesIndexRoute,
-    trayMenuTrayMenuProxiesGroupNameRoute:
-      trayMenuTrayMenuProxiesGroupNameRoute,
   }
 
 const trayMenuTrayMenuProxiesRouteRouteWithChildren =

@@ -310,6 +310,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
     let log_max_files = patch.max_log_files;
     let enable_tray_selector = patch.clash_tray_selector;
     let enable_tray_text = patch.enable_tray_text;
+    let tray_menu_mode = patch.tray_menu_mode;
     let network_statistic_widget = patch.network_statistic_widget;
     let res = || async move {
         let service_mode = patch.enable_service_mode;
@@ -372,8 +373,12 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
             hotkey::Hotkey::global().update(hotkeys)?;
         }
 
-        if language.is_some() {
-            rust_i18n::set_locale(language.unwrap().as_str());
+        let language_changed = language.is_some();
+        if let Some(language) = language {
+            rust_i18n::set_locale(language.as_str());
+        }
+
+        if language_changed || tray_menu_mode.is_some() || enable_tray_selector.is_some() {
             handle::Handle::update_systray()?;
         } else if system_proxy.or(tun_mode).or(enable_tray_text).is_some() {
             handle::Handle::update_systray_part()?;
@@ -381,10 +386,6 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
 
         if log_level.is_some() || log_max_files.is_some() {
             utils::init::refresh_logger((log_level, log_max_files))?;
-        }
-
-        if enable_tray_selector.is_some() {
-            handle::Handle::update_systray()?;
         }
 
         // TODO: refactor config with changed notify

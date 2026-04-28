@@ -357,8 +357,8 @@ impl AppWindow for TrayMenuWindow {
         WindowConfig::new()
             .singleton(true)
             .visible_on_create(false)
-            .default_size(240.0, 420.0)
-            .min_size(240.0, 420.0)
+            .default_size(240.0, 448.0)
+            .min_size(240.0, 448.0)
             .center(false)
             .resizable(false)
             .always_on_top(true)
@@ -413,13 +413,13 @@ pub fn show_tray_menu_window(
                 size.width as f64
             };
             let height = if size.height == 0 {
-                420.0
+                448.0
             } else {
                 size.height as f64
             };
             (width, height)
         })
-        .unwrap_or((240.0, 420.0));
+        .unwrap_or((240.0, 448.0));
     let margin = 8.0_f64;
 
     let (screen_x, screen_y, screen_w, screen_h) = win

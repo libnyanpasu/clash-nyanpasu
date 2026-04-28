@@ -67,5 +67,7 @@ body {
 }
 
 .bg-inherit-allow-fallback {
-  background-color: var(--fallback-bg, inherit);
+  background-color: rgb(
+    from var(--fallback-bg, var(--background-color, #fff)) r g b / 100%
+  );
 }

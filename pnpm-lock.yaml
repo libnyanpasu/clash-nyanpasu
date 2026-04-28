@@ -432,8 +432,8 @@ importers:
         specifier: 11.0.17
         version: 11.0.17
       p-retry:
-        specifier: 7.1.1
-        version: 7.1.1
+        specifier: 8.0.0
+        version: 8.0.0
       semver:
         specifier: 7.7.4
         version: 7.7.4
@@ -5234,8 +5234,8 @@ packages:
   is-hexadecimal@2.0.1:
     resolution: {integrity: sha512-DgZQp241c8oO6cA1SbTEWiXeoxV42vlcJxgH+B3hi1AiqqKruZR3ZGF8In3fj4+/y/7rHvlOZLZtgJ/4ttYGZg==}
 
-  is-network-error@1.1.0:
-    resolution: {integrity: sha512-tUdRRAnhT+OtCZR/LxZelH/C7QtjtFrTu5tXCA8pl55eTUElUHT+GPYV8MBMBvea/j+NxQqVt3LbWMRir7Gx9g==}
+  is-network-error@1.3.1:
+    resolution: {integrity: sha512-6QCxa49rQbmUWLfk0nuGqzql9U8uaV2H6279bRErPBHe/109hCzsLUBUHfbEtvLIHBd6hyXbgedBSHevm43Edw==}
     engines: {node: '>=16'}
 
   is-number@7.0.0:
@@ -5833,9 +5833,9 @@ packages:
       oxlint-tsgolint:
         optional: true
 
-  p-retry@7.1.1:
-    resolution: {integrity: sha512-J5ApzjyRkkf601HpEeykoiCvzHQjWxPAHhyjFcEUP2SWq0+35NKh8TLhpLw+Dkq5TZBFvUM6UigdE9hIVYTl5w==}
-    engines: {node: '>=20'}
+  p-retry@8.0.0:
+    resolution: {integrity: sha512-kFVqH1HxOHp8LupNsOys7bSV09VYTRLxarH/mokO4Rqhk6wGi70E0jh4VzvVGXfEVNggHoHLAMWsQqHyU1Ey9A==}
+    engines: {node: '>=22'}
 
   package-manager-detector@1.3.0:
     resolution: {integrity: sha512-ZsEbbZORsyHuO00lY1kV3/t72yp6Ysay6Pd17ZAlNGuGwmWDLCJxFpRs0IzfXfj1o4icJOkUEioexFHzyPurSQ==}
@@ -11999,7 +11999,7 @@ snapshots:
 
   is-hexadecimal@2.0.1: {}
 
-  is-network-error@1.1.0: {}
+  is-network-error@1.3.1: {}
 
   is-number@7.0.0: {}
 
@@ -12788,9 +12788,9 @@ snapshots:
       '@oxlint/binding-win32-ia32-msvc': 1.62.0
       '@oxlint/binding-win32-x64-msvc': 1.62.0
 
-  p-retry@7.1.1:
+  p-retry@8.0.0:
     dependencies:
-      is-network-error: 1.1.0
+      is-network-error: 1.3.1
 
   package-manager-detector@1.3.0: {}
 

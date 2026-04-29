@@ -55,6 +55,10 @@ jobs:
       - name: Pnpm install
         run: pnpm i
 
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
       - name: Update Nightly Updater
         if: ${{ inputs.nightly == true }}
         run: pnpm updater:nightly

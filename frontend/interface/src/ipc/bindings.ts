@@ -1136,6 +1136,12 @@ export type IVerge = {
    * Webview: use a custom WebView window (default on Windows)
    */
   tray_menu_mode: TrayMenuMode | null
+  /**
+   * Webview tray menu window dismiss behavior
+   * Hide: hide the window on close (fast re-open, higher memory usage)
+   * Close: destroy the window on close (slower re-open, lower memory usage)
+   */
+  tray_menu_close_behavior: TrayMenuCloseBehavior | null
 }
 export type JsonValue =
   | null
@@ -1623,6 +1629,7 @@ export type SubscriptionInfo = {
   expire: number
 }
 export type TrayIcon = 'normal' | 'tun' | 'system_proxy'
+export type TrayMenuCloseBehavior = 'hide' | 'close'
 export type TrayMenuMode = 'native' | 'webview'
 export type TunStack = 'system' | 'gvisor' | 'mixed'
 export type UpdateWrapper = {

@@ -166,6 +166,19 @@ impl Default for TrayMenuMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum TrayMenuCloseBehavior {
+    Hide,
+    Close,
+}
+
+impl Default for TrayMenuCloseBehavior {
+    fn default() -> Self {
+        TrayMenuCloseBehavior::Hide
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum WindowType {
@@ -329,6 +342,11 @@ pub struct IVerge {
     /// Native: use the OS system tray menu (default on non-Windows)
     /// Webview: use a custom WebView window (default on Windows)
     pub tray_menu_mode: Option<TrayMenuMode>,
+
+    /// Webview tray menu window dismiss behavior
+    /// Hide: hide the window on close (fast re-open, higher memory usage)
+    /// Close: destroy the window on close (slower re-open, lower memory usage)
+    pub tray_menu_close_behavior: Option<TrayMenuCloseBehavior>,
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize, Type)]
@@ -419,6 +437,10 @@ impl IVerge {
             config.tray_menu_mode = template.tray_menu_mode;
         }
 
+        if config.tray_menu_close_behavior.is_none() {
+            config.tray_menu_close_behavior = template.tray_menu_close_behavior;
+        }
+
         config
     }
 
@@ -460,6 +482,7 @@ impl IVerge {
             } else {
                 TrayMenuMode::Native
             }),
+            tray_menu_close_behavior: Some(TrayMenuCloseBehavior::default()),
             ..Self::default()
         }
     }

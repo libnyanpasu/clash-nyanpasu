@@ -1,7 +1,7 @@
 use crate::{
     config::{
         Config, IVerge,
-        nyanpasu::{ClashCore, WindowState},
+        nyanpasu::{ClashCore, TrayMenuCloseBehavior, WindowState},
     },
     core::{storage::Storage, tray::proxies, *},
     log_err,
@@ -13,7 +13,8 @@ use semver::Version;
 use serde_yaml::Mapping;
 use std::{
     net::TcpListener,
-    sync::atomic::{AtomicBool, AtomicU16, Ordering},
+    sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering},
+    time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::{App, AppHandle, Emitter, Listener, Manager, async_runtime::block_on};
 use tauri_plugin_shell::ShellExt;
@@ -21,6 +22,20 @@ use tauri_specta::Event;
 
 static OPEN_WINDOWS_COUNTER: AtomicU16 = AtomicU16::new(0);
 static TRAY_MENU_PERSISTENT: AtomicBool = AtomicBool::new(false);
+/// Set to true only after the window has received Focused(true) at least once.
+/// Prevents spurious Focused(false) events during window creation from triggering
+/// hide/close before the user has ever seen the window.
+static TRAY_MENU_READY: AtomicBool = AtomicBool::new(false);
+/// Ignore focus-loss events until this unix timestamp in milliseconds.
+///
+/// Windows can emit Focused(true) immediately followed by Focused(false) while
+/// the shell is still finishing the tray right-click interaction. Without a
+/// short guard window, the webview tray menu flashes and is hidden/closed
+/// before it can be used.
+static TRAY_MENU_IGNORE_BLUR_UNTIL_MS: AtomicU64 = AtomicU64::new(0);
+
+const TRAY_MENU_SHOW_BLUR_GRACE_MS: u64 = 750;
+const TRAY_MENU_FOCUS_BLUR_GRACE_MS: u64 = 250;
 
 pub fn is_window_opened() -> bool {
     OPEN_WINDOWS_COUNTER.load(Ordering::Acquire) == 0 // 0 means no window open or windows is initialized
@@ -28,6 +43,20 @@ pub fn is_window_opened() -> bool {
 
 pub fn reset_window_open_counter() {
     OPEN_WINDOWS_COUNTER.store(0, Ordering::Release);
+}
+
+fn unix_time_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
+        .unwrap_or(0)
+}
+
+fn ignore_tray_menu_blur_for(duration_ms: u64) {
+    TRAY_MENU_IGNORE_BLUR_UNTIL_MS.store(
+        unix_time_millis().saturating_add(duration_ms),
+        Ordering::Release,
+    );
 }
 
 #[cfg(target_os = "macos")]
@@ -374,22 +403,50 @@ impl AppWindow for TrayMenuWindow {
     fn set_window_state(&self, _state: Option<WindowState>) {}
 }
 
-/// Register a window event handler that hides the tray menu window on blur,
-/// unless TRAY_MENU_PERSISTENT is set to true.
+/// Register a window event handler that hides or closes the tray menu window on
+/// focus loss, unless TRAY_MENU_PERSISTENT is set to true.
+///
+/// TRAY_MENU_READY guards against spurious Focused(false) events that fire
+/// during window creation / OS tray interaction before the user sees the window.
 fn setup_tray_menu_focus_handler(win: &tauri::WebviewWindow<tauri::Wry>) {
     let win_clone = win.clone();
-    win.on_window_event(move |event| {
-        if let tauri::WindowEvent::Focused(false) = event {
-            if !TRAY_MENU_PERSISTENT.load(Ordering::Acquire) {
-                let _ = win_clone.hide();
+    win.on_window_event(move |event| match event {
+        tauri::WindowEvent::Focused(true) => {
+            TRAY_MENU_READY.store(true, Ordering::Release);
+            ignore_tray_menu_blur_for(TRAY_MENU_FOCUS_BLUR_GRACE_MS);
+        }
+        tauri::WindowEvent::Focused(false) => {
+            let ignore_blur_until = TRAY_MENU_IGNORE_BLUR_UNTIL_MS.load(Ordering::Acquire);
+            if unix_time_millis() < ignore_blur_until {
+                return;
+            }
+
+            if !TRAY_MENU_PERSISTENT.load(Ordering::Acquire)
+                && TRAY_MENU_READY.load(Ordering::Acquire)
+            {
+                TRAY_MENU_READY.store(false, Ordering::Release);
+                let close_behavior = Config::verge()
+                    .latest()
+                    .tray_menu_close_behavior
+                    .unwrap_or_default();
+                match close_behavior {
+                    TrayMenuCloseBehavior::Close => {
+                        let _ = win_clone.close();
+                    }
+                    TrayMenuCloseBehavior::Hide => {
+                        let _ = win_clone.hide();
+                    }
+                }
             }
         }
+        _ => {}
     });
 }
 
 /// Create a persistent tray menu window for debugging.
 pub fn create_debug_tray_menu_window(app_handle: &AppHandle) -> Result<()> {
     TRAY_MENU_PERSISTENT.store(true, Ordering::Release);
+    ignore_tray_menu_blur_for(TRAY_MENU_SHOW_BLUR_GRACE_MS);
 
     let params = WindowParamsBuilder::new()
         .param("persistent", "true")
@@ -418,6 +475,8 @@ pub fn show_tray_menu_window(
     use tauri::{Manager, PhysicalPosition};
 
     TRAY_MENU_PERSISTENT.store(false, Ordering::Release);
+    TRAY_MENU_READY.store(false, Ordering::Release);
+    ignore_tray_menu_blur_for(TRAY_MENU_SHOW_BLUR_GRACE_MS);
 
     let win = match app_handle.get_webview_window(crate::consts::TRAY_MENU_WINDOW_LABEL) {
         Some(existing) => existing,

@@ -132,6 +132,12 @@ impl WindowConfig {
         self.skip_taskbar = skip;
         self
     }
+
+    /// Set whether to use decorations (title bar and traffic lights on macOS)
+    pub fn decorations(mut self, decorations: bool) -> Self {
+        self.decorations = Some(decorations);
+        self
+    }
 }
 
 /// Window URL parameters
@@ -532,11 +538,15 @@ pub trait AppWindow {
         #[cfg(target_os = "macos")]
         let win_res = {
             let decorations = config.decorations.unwrap_or(true);
-            builder
-                .decorations(decorations)
-                .hidden_title(true)
-                .title_bar_style(tauri::TitleBarStyle::Overlay)
-                .build()
+            if decorations {
+                builder
+                    .decorations(true)
+                    .hidden_title(true)
+                    .title_bar_style(tauri::TitleBarStyle::Overlay)
+                    .build()
+            } else {
+                builder.decorations(false).build()
+            }
         };
 
         #[cfg(target_os = "linux")]
@@ -628,7 +638,7 @@ pub trait AppWindow {
                 }
 
                 #[cfg(target_os = "macos")]
-                {
+                if config.decorations.unwrap_or(true) {
                     tracing::trace!("setup traffic lights pos");
                     let mtm = objc2_foundation::MainThreadMarker::new().unwrap();
                     crate::window::macos::setup_traffic_lights_pos(win.clone(), (18.0, 22.0), mtm);

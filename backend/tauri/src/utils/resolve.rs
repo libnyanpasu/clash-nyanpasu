@@ -13,13 +13,14 @@ use semver::Version;
 use serde_yaml::Mapping;
 use std::{
     net::TcpListener,
-    sync::atomic::{AtomicU16, Ordering},
+    sync::atomic::{AtomicBool, AtomicU16, Ordering},
 };
 use tauri::{App, AppHandle, Emitter, Listener, Manager, async_runtime::block_on};
 use tauri_plugin_shell::ShellExt;
 use tauri_specta::Event;
 
 static OPEN_WINDOWS_COUNTER: AtomicU16 = AtomicU16::new(0);
+static TRAY_MENU_PERSISTENT: AtomicBool = AtomicBool::new(false);
 
 pub fn is_window_opened() -> bool {
     OPEN_WINDOWS_COUNTER.load(Ordering::Acquire) == 0 // 0 means no window open or windows is initialized
@@ -363,6 +364,7 @@ impl AppWindow for TrayMenuWindow {
             .resizable(false)
             .always_on_top(true)
             .skip_taskbar(true)
+            .decorations(false)
     }
 
     fn get_window_state(&self) -> Option<WindowState> {
@@ -372,17 +374,38 @@ impl AppWindow for TrayMenuWindow {
     fn set_window_state(&self, _state: Option<WindowState>) {}
 }
 
+/// Register a window event handler that hides the tray menu window on blur,
+/// unless TRAY_MENU_PERSISTENT is set to true.
+fn setup_tray_menu_focus_handler(win: &tauri::WebviewWindow<tauri::Wry>) {
+    let win_clone = win.clone();
+    win.on_window_event(move |event| {
+        if let tauri::WindowEvent::Focused(false) = event {
+            if !TRAY_MENU_PERSISTENT.load(Ordering::Acquire) {
+                let _ = win_clone.hide();
+            }
+        }
+    });
+}
+
 /// Create a persistent tray menu window for debugging.
 pub fn create_debug_tray_menu_window(app_handle: &AppHandle) -> Result<()> {
+    TRAY_MENU_PERSISTENT.store(true, Ordering::Release);
+
     let params = WindowParamsBuilder::new()
         .param("persistent", "true")
         .build();
-    TrayMenuWindow.create_with_params(app_handle, params)?;
+    let result = TrayMenuWindow.create_with_params(app_handle, params)?;
 
-    if let Some(win) = app_handle.get_webview_window(crate::consts::TRAY_MENU_WINDOW_LABEL) {
-        let _ = win.show();
-        let _ = win.set_focus();
+    let win = app_handle
+        .get_webview_window(crate::consts::TRAY_MENU_WINDOW_LABEL)
+        .ok_or_else(|| anyhow::anyhow!("failed to get tray menu window"))?;
+
+    if result.is_new {
+        setup_tray_menu_focus_handler(&win);
     }
+
+    let _ = win.show();
+    let _ = win.set_focus();
 
     Ok(())
 }
@@ -394,13 +417,19 @@ pub fn show_tray_menu_window(
 ) -> Result<()> {
     use tauri::{Manager, PhysicalPosition};
 
+    TRAY_MENU_PERSISTENT.store(false, Ordering::Release);
+
     let win = match app_handle.get_webview_window(crate::consts::TRAY_MENU_WINDOW_LABEL) {
         Some(existing) => existing,
         None => {
-            TrayMenuWindow.create_with_params(app_handle, None)?;
-            app_handle
+            let result = TrayMenuWindow.create_with_params(app_handle, None)?;
+            let win = app_handle
                 .get_webview_window(crate::consts::TRAY_MENU_WINDOW_LABEL)
-                .ok_or_else(|| anyhow::anyhow!("failed to get tray menu window after creation"))?
+                .ok_or_else(|| anyhow::anyhow!("failed to get tray menu window after creation"))?;
+            if result.is_new {
+                setup_tray_menu_focus_handler(&win);
+            }
+            win
         }
     };
 

@@ -149,12 +149,21 @@ pub enum BreakWhenProxyChange {
     All,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum TrayMenuMode {
-    #[default]
     Native,
     Webview,
+}
+
+impl Default for TrayMenuMode {
+    fn default() -> Self {
+        if cfg!(windows) {
+            TrayMenuMode::Webview
+        } else {
+            TrayMenuMode::Native
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]

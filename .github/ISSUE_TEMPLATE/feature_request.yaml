@@ -86,7 +86,7 @@ body:
         - label: 如果您有足够的时间和能力，并愿意为此提交 PR，请勾上此复选框 / Pull request is welcome. Check this if you want to start a pull request
           required: false
 
-        - label: 您已仔细查看并知情 [Q&A](https://nyanpasu.majokeiko.com/zh-CN/others/issues) 中的内容 / You have checked [Q&A](https://nyanpasu.majokeiko.com/others/issues) carefully
+        - label: 您已仔细查看并知情 [Q&A](https://nyanpasu.org/zh-cn/others/issues) 中的内容 / You have checked [Q&A](https://nyanpasu.org/others/issues) carefully
           required: true
 
         - label: 您已搜索过 [Issue Tracker](https://github.com/libnyanpasu/clash-nyanpasu/issues)，没有找到类似内容 / I have searched on [Issue Tracker](https://github.com/libnyanpasu/clash-nyanpasu/issues), No duplicate or related open issue has been found

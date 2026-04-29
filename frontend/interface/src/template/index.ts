@@ -1,6 +1,6 @@
 // nyanpasu merge profile chain template
 const merge = `# Clash Nyanpasu Merge Template (YAML)
-# Documentation on https://nyanpasu.majokeiko.com/
+# Documentation on https://nyanpasu.org/
 # Set the default merge strategy to recursive merge. 
 # Enable the old mode with the override__ prefix. 
 # Use the filter__ prefix to filter lists (removing unwanted content). 
@@ -9,7 +9,7 @@ const merge = `# Clash Nyanpasu Merge Template (YAML)
 
 // nyanpasu javascript profile chain template
 const javascript = `// Clash Nyanpasu JavaScript Template
-// Documentation on https://nyanpasu.majokeiko.com/
+// Documentation on https://nyanpasu.org/
 
 /** @type {config} */
 export default function (profile) {
@@ -19,14 +19,14 @@ export default function (profile) {
 
 // nyanpasu lua profile chain template
 const luascript = `-- Clash Nyanpasu Lua Script Template
--- Documentation on https://nyanpasu.majokeiko.com/
+-- Documentation on https://nyanpasu.org/
 
 return config;
 `
 
 // clash profile template example
 const profile = `# Clash Nyanpasu Profile Template
-# Documentation on https://nyanpasu.majokeiko.com/
+# Documentation on https://nyanpasu.org/
 
 proxies:
 

@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="https://nyanpasu.majokeiko.com/images/banner/nyanpasu_banner.png" alt="Clash Nyanpasu Banner" />
+  <img src="https://nyanpasu.org/images/banner/nyanpasu_banner.png" alt="Clash Nyanpasu Banner" />
 </h1>
 
 <h3>Clash Nyanpasu</h3>
@@ -21,22 +21,22 @@
 ## Features
 
 - Built-in support [Clash Premium](https://github.com/Dreamacro/clash), [Mihomo](https://github.com/MetaCubeX/mihomo) & [Clash Rust](https://github.com/Watfaq/clash-rs).
-- Profiles management and enhancement (by YAML, JavaScript & Lua). [Doc](https://nyanpasu.majokeiko.com/tutorial/proxy-chain)
+- Profiles management and enhancement (by YAML, JavaScript & Lua). [Doc](https://nyanpasu.org/tutorial/proxy-chain)
 - Provider management support.
 - Google Material You Design UI and animation support.
 
 ## Preview
 
-![preview-light](https://nyanpasu.majokeiko.com/images/screenshot/app-dashboard-light.png)
+![preview-light](https://nyanpasu.org/images/screenshot/app-dashboard-light.png)
 
-![preview-dark](https://nyanpasu.majokeiko.com/images/screenshot/app-dashboard-dark.png)
+![preview-dark](https://nyanpasu.org/images/screenshot/app-dashboard-dark.png)
 
 ## Links
 
-- [Install](https://nyanpasu.majokeiko.com/tutorial/install)
-- [FAQ](https://nyanpasu.majokeiko.com/others/faq)
-- [Q&A Convention](https://nyanpasu.majokeiko.com/others/issues)
-- [How To Ask Questions](https://nyanpasu.majokeiko.com/others/how-to-ask)
+- [Install](https://nyanpasu.org/tutorial/install)
+- [FAQ](https://nyanpasu.org/others/faq)
+- [Q&A Convention](https://nyanpasu.org/others/issues)
+- [How To Ask Questions](https://nyanpasu.org/others/how-to-ask)
 
 ## Development
 

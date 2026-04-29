@@ -5,9 +5,8 @@ import { consola } from "./logger.ts";
 
 // --- constants ---
 
-export const FILE_SERVER_UPLOAD_URL =
-  "https://file-server.majokeiko.com/upload";
-export const FILE_SERVER_BIN_URL = "https://file-server.majokeiko.com/bin";
+export const FILE_SERVER_UPLOAD_URL = "https://archive.nyanpasu.org/upload";
+export const FILE_SERVER_BIN_URL = "https://archive.nyanpasu.org/bin";
 
 export const UPLOAD_CONCURRENCY = 3;
 export const CHUNK_RETRY_ATTEMPTS = 5;

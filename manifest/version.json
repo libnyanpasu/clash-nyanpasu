@@ -3,7 +3,7 @@
   "latest": {
     "mihomo": "v1.19.24",
     "mihomo_alpha": "alpha-df1c5e5",
-    "clash_rs": "v0.10.1",
+    "clash_rs": "v0.10.2",
     "clash_premium": "2023-09-05-gdcc8d87"
   },
   "arch_template": {
@@ -36,5 +36,5 @@
       "darwin-x64": "clash-darwin-amd64-n{}.gz"
     }
   },
-  "updated_at": "2026-04-28T22:33:38.481Z"
+  "updated_at": "2026-04-30T22:32:20.737Z"
 }

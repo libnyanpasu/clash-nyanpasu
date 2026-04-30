@@ -170,8 +170,8 @@ importers:
         specifier: 5.2.2
         version: 5.2.2(react-hook-form@7.74.0(react@19.2.5))
       '@inlang/paraglide-js':
-        specifier: 2.17.0
-        version: 2.17.0(babel-plugin-macros@3.1.0)
+        specifier: 2.18.0
+        version: 2.18.0(babel-plugin-macros@3.1.0)(typescript@5.9.3)
       '@juggle/resize-observer':
         specifier: 3.4.0
         version: 3.4.0
@@ -1403,15 +1403,20 @@ packages:
   '@iconify/utils@3.1.0':
     resolution: {integrity: sha512-Zlzem1ZXhI1iHeeERabLNzBHdOa4VhQbqAcOQaMKuTuyZCpwKbC2R4Dd0Zo3g9EAc+Y4fiarO8HIHRAth7+skw==}
 
-  '@inlang/paraglide-js@2.17.0':
-    resolution: {integrity: sha512-dY4yoQkQkF1En1m3qpO22cVGubluU2W78fatLb33s8qe6K8wDqP0mIGZ/oZ0/h609YC8/Y0CkceaLcYeJTcpwg==}
+  '@inlang/paraglide-js@2.18.0':
+    resolution: {integrity: sha512-Acp6htA5W7rS2kL3iMjhSr08eECz696MYsud+FBKrmahzM7PdywPVq9UOr9MaC/aV7AZPElrYcqYZOOlUri5fg==}
     hasBin: true
+    peerDependencies:
+      typescript: '>=5'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
 
   '@inlang/recommend-sherlock@0.2.1':
     resolution: {integrity: sha512-ckv8HvHy/iTqaVAEKrr+gnl+p3XFNwe5D2+6w6wJk2ORV2XkcRkKOJ/XsTUJbPSiyi4PI+p+T3bqbmNx/rDUlg==}
 
-  '@inlang/sdk@2.9.2':
-    resolution: {integrity: sha512-H/iVZEcOtbowKaiq6yirnUR9eyffAOsXpgwWr4eAe45H7l1f1A1Wowb7hVkWQcAE62sL1g76qN4XkyOx2BkV2w==}
+  '@inlang/sdk@2.9.3':
+    resolution: {integrity: sha512-E/SxcSji8WIt4DqQG9APlOs6tVtJxrrOUS3dE4ho3pWRCLLIY0PIVzgNwSukuFT+m8LuJDFwpRY5VY3ryzyGWQ==}
     engines: {node: '>=20.0.0'}
 
   '@jridgewell/gen-mapping@0.3.12':
@@ -7798,15 +7803,17 @@ snapshots:
       '@iconify/types': 2.0.0
       mlly: 1.8.0
 
-  '@inlang/paraglide-js@2.17.0(babel-plugin-macros@3.1.0)':
+  '@inlang/paraglide-js@2.18.0(babel-plugin-macros@3.1.0)(typescript@5.9.3)':
     dependencies:
       '@inlang/recommend-sherlock': 0.2.1
-      '@inlang/sdk': 2.9.2(babel-plugin-macros@3.1.0)
+      '@inlang/sdk': 2.9.3(babel-plugin-macros@3.1.0)
       commander: 11.1.0
       consola: 3.4.0
       json5: 2.2.3
       unplugin: 2.3.11
       urlpattern-polyfill: 10.1.0
+    optionalDependencies:
+      typescript: 5.9.3
     transitivePeerDependencies:
       - babel-plugin-macros
 
@@ -7814,7 +7821,7 @@ snapshots:
     dependencies:
       comment-json: 4.5.0
 
-  '@inlang/sdk@2.9.2(babel-plugin-macros@3.1.0)':
+  '@inlang/sdk@2.9.3(babel-plugin-macros@3.1.0)':
     dependencies:
       '@lix-js/sdk': 0.4.10(babel-plugin-macros@3.1.0)
       '@sinclair/typebox': 0.31.28

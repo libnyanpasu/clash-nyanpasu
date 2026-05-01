@@ -5,7 +5,7 @@ use camino::Utf8PathBuf;
 use tokio::sync::RwLock;
 
 use crate::{
-    core::state_v2::{SimpleStateManager, StateCoordinator, StateSnapshot},
+    core::state_v2::{SimpleStateManager, SimpleStateManagerSetup, StateSnapshot},
     utils::help,
 };
 
@@ -21,25 +21,11 @@ pub struct ProfilesService {
 }
 
 impl ProfilesService {
-    pub fn new(profiles_path: Utf8PathBuf, profile_items_dir: Utf8PathBuf) -> Self {
-        let manager = SimpleStateManager::new(StateCoordinator::new());
-        let snapshot = manager.snapshot_handle();
-        Self {
-            manager: Arc::new(RwLock::new(manager)),
-            snapshot,
-            profiles_path,
-            profile_items_dir,
-        }
-    }
-
-    /// MVCC snapshot read: lock-free read of last committed state.
-    pub fn snapshot(&self) -> Option<Arc<Profiles>> {
-        self.snapshot.load()
-    }
-
-    pub async fn load(&self) -> Result<(), anyhow::Error> {
-        let mut manager = self.manager.write().await;
-        let profiles = help::read_yaml(&self.profiles_path)
+    pub async fn new(
+        profiles_path: Utf8PathBuf,
+        profile_items_dir: Utf8PathBuf,
+    ) -> Result<Self, anyhow::Error> {
+        let profiles = help::read_yaml(&profiles_path)
             .await
             .inspect_err(|e| {
                 tracing::error!(
@@ -48,9 +34,24 @@ impl ProfilesService {
             })
             .unwrap_or_else(|_| Profiles::default());
 
-        manager.upsert(profiles).await?;
+        let manager = SimpleStateManagerSetup::builder()
+            .initial_state(profiles)
+            .assemble()
+            .initialize()
+            .await?;
+        let snapshot = manager.snapshot_handle();
 
-        Ok(())
+        Ok(Self {
+            manager: Arc::new(RwLock::new(manager)),
+            snapshot,
+            profiles_path,
+            profile_items_dir,
+        })
+    }
+
+    /// MVCC snapshot read: lock-free read of last committed state.
+    pub fn snapshot(&self) -> Option<Arc<Profiles>> {
+        self.snapshot.load()
     }
 
     async fn write_file(&self, profiles: Profiles) -> Result<(), anyhow::Error> {

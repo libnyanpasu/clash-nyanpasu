@@ -1,5 +1,6 @@
 use anyhow::Context;
 use atomicwrites::{AllowOverwrite, AtomicFile};
+use bon::Builder;
 use camino::Utf8PathBuf;
 use fs_err::tokio as fs;
 use serde::{Serialize, de::DeserializeOwned};
@@ -7,6 +8,92 @@ use std::io::Write;
 use std::sync::Arc;
 
 use super::{super::error::*, *};
+
+#[derive(Builder)]
+#[builder(finish_fn = assemble)]
+pub struct PersistentStateManagerSetup<State, Formatter = YamlFormat>
+where
+    State: Clone + Send + Sync + 'static,
+    Formatter: Default,
+{
+    config_path: Utf8PathBuf,
+    config_prefix: Option<String>,
+    #[builder(default)]
+    state_coordinator: StateCoordinatorBuilder<State>,
+    #[builder(default)]
+    formatter: Formatter,
+}
+
+impl<State, Formatter> PersistentStateManagerSetup<State, Formatter>
+where
+    State: Clone + Send + Sync + Serialize + DeserializeOwned + Default + 'static,
+    Formatter: Format + Clone + Default,
+{
+    pub async fn load(self) -> Result<PersistentStateManager<State, Formatter>, LoadError> {
+        let state: State = fs::read(&self.config_path)
+            .await
+            .map_err(anyhow::Error::from)
+            .and_then(|s| self.formatter.deserialize(s.as_slice()))
+            .map_err(LoadError::ReadConfig)?;
+
+        let coordinator = self
+            .state_coordinator
+            .build_initialized(state)
+            .await
+            .map_err(LoadError::Upsert)?;
+
+        Ok(PersistentStateManager {
+            config_prefix: self.config_prefix,
+            config_path: self.config_path,
+            state_coordinator: coordinator,
+            formatter: self.formatter,
+        })
+    }
+
+    pub async fn load_or_default(
+        self,
+    ) -> Result<PersistentStateManager<State, Formatter>, LoadError> {
+        let state: State = fs::read(&self.config_path)
+            .await
+            .map_err(anyhow::Error::from)
+            .and_then(|s| self.formatter.deserialize(s.as_slice()))
+            .inspect_err(|e| {
+                tracing::warn!(target: "app", "failed to read the config file: {e:?}");
+            })
+            .unwrap_or_default();
+
+        let coordinator = self
+            .state_coordinator
+            .build_initialized(state)
+            .await
+            .map_err(LoadError::Upsert)?;
+
+        Ok(PersistentStateManager {
+            config_prefix: self.config_prefix,
+            config_path: self.config_path,
+            state_coordinator: coordinator,
+            formatter: self.formatter,
+        })
+    }
+
+    pub async fn from_state(
+        self,
+        state: State,
+    ) -> Result<PersistentStateManager<State, Formatter>, LoadError> {
+        let coordinator = self
+            .state_coordinator
+            .build_initialized(state)
+            .await
+            .map_err(LoadError::Upsert)?;
+
+        Ok(PersistentStateManager {
+            config_prefix: self.config_prefix,
+            config_path: self.config_path,
+            state_coordinator: coordinator,
+            formatter: self.formatter,
+        })
+    }
+}
 
 pub struct PersistentStateManager<State, Formatter = YamlFormat>
 where
@@ -25,53 +112,6 @@ where
 {
     pub fn state_coordinator_mut(&mut self) -> &mut StateCoordinator<State> {
         &mut self.state_coordinator
-    }
-
-    pub fn new(
-        config_prefix: Option<String>,
-        config_path: Utf8PathBuf,
-        state_coordinator: StateCoordinator<State>,
-        formatter: Formatter,
-    ) -> Self {
-        Self {
-            config_prefix,
-            config_path,
-            state_coordinator,
-            formatter,
-        }
-    }
-
-    pub async fn try_load(&mut self) -> Result<(), LoadError> {
-        let state: State = fs::read(&self.config_path)
-            .await
-            .map_err(anyhow::Error::from)
-            .and_then(|s| self.formatter.deserialize(s.as_slice()))
-            .map_err(LoadError::ReadConfig)?;
-
-        self.state_coordinator
-            .upsert_state(state)
-            .await
-            .map_err(LoadError::Upsert)?;
-
-        Ok(())
-    }
-
-    pub async fn try_load_with_defaults(&mut self) -> Result<(), LoadError> {
-        let state: State = fs::read(&self.config_path)
-            .await
-            .map_err(anyhow::Error::from)
-            .and_then(|s| self.formatter.deserialize(s.as_slice()))
-            .inspect_err(|e| {
-                tracing::warn!(target: "app", "failed to read the config file: {e:?}");
-            })
-            .unwrap_or_default();
-
-        self.state_coordinator
-            .upsert_state(state)
-            .await
-            .map_err(LoadError::Upsert)?;
-
-        Ok(())
     }
 
     pub fn current_state(&self) -> Option<Arc<State>> {
@@ -175,34 +215,19 @@ mod tests {
         Ok(value)
     }
 
-    #[tokio::test]
-    async fn test_new_persistent_state_manager() {
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let config_path = Utf8PathBuf::from("test_config.yaml");
-
-        let manager: PersistentStateManager<TestState> = PersistentStateManager::new(
-            Some("# test config".to_string()),
-            config_path.clone(),
-            coordinator,
-            YamlFormat,
-        );
-
-        assert_eq!(manager.config_prefix, Some("# test config".to_string()));
-        assert_eq!(manager.config_path, config_path);
-        assert!(manager.current_state().is_none());
-    }
+    // --- Setup-based tests ---
 
     #[tokio::test]
-    async fn test_try_load_success() {
+    async fn test_setup_load_success() {
         let state = TestState::new("test".to_string(), 42);
         let (config_path, _temp_dir) = create_temp_config_file(&state).await.unwrap();
 
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager: PersistentStateManager<TestState> =
-            PersistentStateManager::new(None, config_path, coordinator, YamlFormat);
-
-        let result = manager.try_load().await;
-        assert!(result.is_ok());
+        let manager = PersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path)
+            .assemble()
+            .load()
+            .await
+            .unwrap();
 
         let current_state = manager.current_state();
         assert!(current_state.is_some());
@@ -212,33 +237,33 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_try_load_file_not_exist() {
+    async fn test_setup_load_file_not_exist() {
         let temp_dir = tempdir().unwrap();
         let config_path = temp_dir.path().join("nonexistent.yaml");
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager: PersistentStateManager<TestState> =
-            PersistentStateManager::new(None, config_path, coordinator, YamlFormat);
+        let result = PersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path)
+            .assemble()
+            .load()
+            .await;
 
-        let result = manager.try_load().await;
         assert!(result.is_err());
-
-        let error_msg = result.unwrap_err().to_string();
+        let error_msg = result.err().unwrap().to_string();
         assert!(error_msg.contains("failed to read the config file"));
     }
 
     #[tokio::test]
-    async fn test_try_load_with_defaults_success() {
+    async fn test_setup_load_or_default_success() {
         let state = TestState::new("default_test".to_string(), 100);
         let (config_path, _temp_dir) = create_temp_config_file(&state).await.unwrap();
 
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager: PersistentStateManager<TestState> =
-            PersistentStateManager::new(None, config_path, coordinator, YamlFormat);
-
-        let result = manager.try_load_with_defaults().await;
-        assert!(result.is_ok());
+        let manager = PersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path)
+            .assemble()
+            .load_or_default()
+            .await
+            .unwrap();
 
         let current_state = manager.current_state();
         assert!(current_state.is_some());
@@ -248,17 +273,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_try_load_with_defaults_file_not_exist() {
+    async fn test_setup_load_or_default_file_not_exist() {
         let temp_dir = tempdir().unwrap();
         let config_path = temp_dir.path().join("nonexistent.yaml");
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager: PersistentStateManager<TestState> =
-            PersistentStateManager::new(None, config_path, coordinator, YamlFormat);
-
-        let result = manager.try_load_with_defaults().await;
-        assert!(result.is_ok());
+        let manager = PersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path)
+            .assemble()
+            .load_or_default()
+            .await
+            .unwrap();
 
         let current_state = manager.current_state();
         assert!(current_state.is_some());
@@ -268,21 +293,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_setup_from_state() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("from_state.yaml");
+        let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
+
+        let state = TestState::new("from_state".to_string(), 99);
+        let manager = PersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path)
+            .assemble()
+            .from_state(state.clone())
+            .await
+            .unwrap();
+
+        assert_eq!(manager.current_state().as_deref(), Some(&state));
+    }
+
+    #[tokio::test]
     async fn test_upsert_success() {
         let temp_dir = tempdir().unwrap();
         let config_path = temp_dir.path().join("upsert_test.yaml");
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager: PersistentStateManager<TestState> = PersistentStateManager::new(
-            Some("# upsert test".to_string()),
-            config_path.clone(),
-            coordinator,
-            YamlFormat,
-        );
+        let mut manager = PersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path.clone())
+            .config_prefix("# upsert test".to_string())
+            .assemble()
+            .from_state(TestState::default())
+            .await
+            .unwrap();
 
         let state = TestState::new("upsert".to_string(), 200);
-
         let result = manager.upsert(state).await;
         assert!(result.is_ok());
 
@@ -302,9 +343,12 @@ mod tests {
     async fn test_upsert_write_config_error_without_previous() {
         let config_path = Utf8PathBuf::from("/__nonexistent_dir__/__sub__/config.yaml");
 
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager: PersistentStateManager<TestState> =
-            PersistentStateManager::new(None, config_path, coordinator, YamlFormat);
+        let mut manager = PersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path)
+            .assemble()
+            .from_state(TestState::default())
+            .await
+            .unwrap();
 
         let state = TestState::new("write_fail".to_string(), 300);
         let result = manager.upsert(state).await;
@@ -314,9 +358,6 @@ mod tests {
             UpsertError::WriteConfig(_) => {}
             other => panic!("Expected UpsertError::WriteConfig, got: {:?}", other),
         }
-
-        // State should not be committed since effect failed
-        assert!(manager.current_state().is_none());
     }
 
     #[tokio::test]
@@ -325,16 +366,15 @@ mod tests {
         let config_path = temp_dir.path().join("rollback_test.yaml");
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager: PersistentStateManager<TestState> =
-            PersistentStateManager::new(None, config_path, coordinator, YamlFormat);
+        let mut manager = PersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path)
+            .assemble()
+            .from_state(TestState::new("initial".to_string(), 100))
+            .await
+            .unwrap();
 
-        // 先成功 upsert 建立 previous state
-        let initial_state = TestState::new("initial".to_string(), 100);
-        manager.upsert(initial_state.clone()).await.unwrap();
         assert_eq!(manager.current_state().unwrap().name, "initial");
 
-        // 替换 config_path 为不存在的路径，触发写入失败
         manager.config_path = Utf8PathBuf::from("/__nonexistent_dir__/__sub__/config.yaml");
 
         let new_state = TestState::new("new_value".to_string(), 200);
@@ -346,7 +386,6 @@ mod tests {
             other => panic!("Expected UpsertError::WriteConfig, got: {:?}", other),
         }
 
-        // 验证回滚：状态应恢复为初始值
         let state = manager.current_state().unwrap();
         assert_eq!(state.name, "initial");
         assert_eq!(state.value, 100);
@@ -358,13 +397,13 @@ mod tests {
         let config_path = temp_dir.path().join("multiple_upserts_test.yaml");
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager: PersistentStateManager<TestState> = PersistentStateManager::new(
-            Some("# multiple upserts".to_string()),
-            config_path.clone(),
-            coordinator,
-            YamlFormat,
-        );
+        let mut manager = PersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path.clone())
+            .config_prefix("# multiple upserts".to_string())
+            .assemble()
+            .from_state(TestState::default())
+            .await
+            .unwrap();
 
         let state1 = TestState::new("first".to_string(), 1);
         manager.upsert(state1).await.unwrap();
@@ -389,14 +428,14 @@ mod tests {
         let config_path = temp_dir.path().join("prefix_test.yaml");
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
         let prefix = "# This is a test config\n# Do not edit manually";
-        let mut manager: PersistentStateManager<TestState> = PersistentStateManager::new(
-            Some(prefix.to_string()),
-            config_path.clone(),
-            coordinator,
-            YamlFormat,
-        );
+        let mut manager = PersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path.clone())
+            .config_prefix(prefix.to_string())
+            .assemble()
+            .from_state(TestState::default())
+            .await
+            .unwrap();
 
         let state = TestState::new("prefix_test".to_string(), 500);
         manager.upsert(state).await.unwrap();

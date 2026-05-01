@@ -1,11 +1,107 @@
 use anyhow::Context;
 use atomicwrites::{AllowOverwrite, AtomicFile};
+use bon::Builder;
 use camino::Utf8PathBuf;
 use fs_err::tokio as fs;
 use serde::{Serialize, de::DeserializeOwned};
 use std::{future::Future, io::Write, sync::Arc};
 
 use super::{super::error::*, *};
+
+#[derive(Builder)]
+#[builder(finish_fn = assemble)]
+pub struct WeakPersistentStateManagerSetup<State, Formatter = YamlFormat>
+where
+    State: Clone + Send + Sync + 'static,
+    Formatter: Default,
+{
+    config_path: Utf8PathBuf,
+    config_prefix: Option<String>,
+    #[builder(default)]
+    state_coordinator: StateCoordinatorBuilder<State>,
+    #[builder(default)]
+    formatter: Formatter,
+}
+
+impl<State, Formatter> WeakPersistentStateManagerSetup<State, Formatter>
+where
+    State: Clone + Send + Sync + Serialize + DeserializeOwned + 'static,
+    Formatter: Format + Default,
+{
+    pub async fn load_snapshot(&self) -> Option<State> {
+        match fs::read(&self.config_path).await {
+            Ok(bytes) => match self.formatter.deserialize(bytes.as_slice()) {
+                Ok(state) => Some(state),
+                Err(e) => {
+                    tracing::warn!(
+                        target: "app",
+                        path = %self.config_path,
+                        "failed to deserialize weak snapshot: {e:?}"
+                    );
+                    None
+                }
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => {
+                tracing::warn!(
+                    target: "app",
+                    path = %self.config_path,
+                    "failed to read weak snapshot: {e:?}"
+                );
+                None
+            }
+        }
+    }
+}
+
+impl<State, Formatter> WeakPersistentStateManagerSetup<State, Formatter>
+where
+    State: Clone + Send + Sync + Serialize + DeserializeOwned + Default + 'static,
+    Formatter: Format + Default,
+{
+    pub async fn load_or_default(
+        self,
+    ) -> Result<WeakPersistentStateManager<State, Formatter>, LoadError> {
+        let state = self.load_snapshot().await.unwrap_or_default();
+
+        let coordinator = self
+            .state_coordinator
+            .build_initialized(state)
+            .await
+            .map_err(LoadError::Upsert)?;
+
+        Ok(WeakPersistentStateManager {
+            config_prefix: self.config_prefix,
+            config_path: self.config_path,
+            state_coordinator: coordinator,
+            formatter: self.formatter,
+        })
+    }
+}
+
+impl<State, Formatter> WeakPersistentStateManagerSetup<State, Formatter>
+where
+    State: Clone + Send + Sync + Serialize + DeserializeOwned + 'static,
+    Formatter: Format + Default,
+{
+    pub async fn from_state(
+        self,
+        state: State,
+    ) -> Result<WeakPersistentStateManager<State, Formatter>, LoadError> {
+        let coordinator = self
+            .state_coordinator
+            .build_initialized(state)
+            .await
+            .map_err(LoadError::Upsert)?;
+
+        Ok(WeakPersistentStateManager {
+            config_prefix: self.config_prefix,
+            config_path: self.config_path,
+            state_coordinator: coordinator,
+            formatter: self.formatter,
+        })
+    }
+}
 
 /// A state manager with **advisory persistence** — file write happens
 /// post-commit and failure only logs a warning, never triggers rollback.
@@ -28,20 +124,6 @@ where
     State: Clone + Send + Sync + Serialize + DeserializeOwned + 'static,
     Formatter: Format,
 {
-    pub fn new(
-        config_prefix: Option<String>,
-        config_path: Utf8PathBuf,
-        state_coordinator: StateCoordinator<State>,
-        formatter: Formatter,
-    ) -> Self {
-        Self {
-            config_prefix,
-            config_path,
-            state_coordinator,
-            formatter,
-        }
-    }
-
     pub fn current_state(&self) -> Option<Arc<State>> {
         self.state_coordinator.current_state()
     }
@@ -54,8 +136,6 @@ where
         &mut self.state_coordinator
     }
 
-    /// Attempt to load a snapshot from disk. Returns `None` on any failure.
-    /// Distinguishes `NotFound` (silent) from other IO errors (warn).
     pub async fn try_load_snapshot(&self) -> Option<State> {
         match fs::read(&self.config_path).await {
             Ok(bytes) => match self.formatter.deserialize(bytes.as_slice()) {
@@ -81,7 +161,6 @@ where
         }
     }
 
-    /// Advisory post-commit persistence. All errors are logged as warnings.
     async fn try_persist(&self, state: &State)
     where
         Formatter: Clone,
@@ -109,8 +188,6 @@ where
         }
     }
 
-    /// Commit state then advisory persist post-commit.
-    /// Unlike `PersistentStateManager::upsert`, write failure does NOT roll back state.
     pub async fn upsert(&mut self, state: State) -> Result<(), StateChangedError>
     where
         Formatter: Clone,
@@ -120,7 +197,6 @@ where
         Ok(())
     }
 
-    /// Commit state with Context scope then advisory persist post-commit.
     pub async fn upsert_with_context(&mut self, state: State) -> Result<(), StateChangedError>
     where
         Formatter: Clone,
@@ -132,8 +208,6 @@ where
         Ok(())
     }
 
-    /// 3-phase transaction via `StateCoordinator::with_pending_state()` +
-    /// advisory persist on success only.
     pub async fn with_pending_state<'s, F, Fut, R, E>(
         &mut self,
         state: &'s State,
@@ -154,7 +228,6 @@ where
         result
     }
 
-    /// 3-phase transaction with Context scope + advisory persist on success only.
     pub async fn with_pending_state_in_context<'s, F, Fut, R, E>(
         &mut self,
         state: &'s State,
@@ -176,20 +249,6 @@ where
     }
 }
 
-impl<State, Formatter> WeakPersistentStateManager<State, Formatter>
-where
-    State: Clone + Send + Sync + Serialize + Default + DeserializeOwned + 'static,
-    Formatter: Format,
-{
-    /// Load snapshot or use `Default::default()`. Does NOT persist the default to disk.
-    pub async fn try_load_with_defaults(&mut self) -> Result<(), LoadError> {
-        let state = self.try_load_snapshot().await.unwrap_or_default();
-        self.state_coordinator
-            .upsert_state(state)
-            .await
-            .map_err(LoadError::Upsert)
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -297,7 +356,62 @@ mod tests {
         }
     }
 
-    // --- Tests ---
+    // --- Setup-based tests ---
+
+    #[tokio::test]
+    async fn test_setup_load_or_default_existing_file() {
+        let state = TestState::new("snapshot".to_string(), 77);
+        let (config_path, _temp_dir) = create_temp_config_file(&state).await.unwrap();
+
+        let manager = WeakPersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path)
+            .assemble()
+            .load_or_default()
+            .await
+            .unwrap();
+
+        let current = manager.current_state().unwrap();
+        assert_eq!(current.name, "snapshot");
+        assert_eq!(current.value, 77);
+    }
+
+    #[tokio::test]
+    async fn test_setup_load_or_default_missing_file() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("nonexistent.yaml");
+        let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
+
+        let manager = WeakPersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path.clone())
+            .assemble()
+            .load_or_default()
+            .await
+            .unwrap();
+
+        let current = manager.current_state().unwrap();
+        assert_eq!(current.name, "");
+        assert_eq!(current.value, 0);
+        assert!(!config_path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_setup_from_state() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("from_state.yaml");
+        let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
+
+        let state = TestState::new("from_state".to_string(), 42);
+        let manager = WeakPersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path)
+            .assemble()
+            .from_state(state.clone())
+            .await
+            .unwrap();
+
+        assert_eq!(*manager.current_state().unwrap(), state);
+    }
+
+    // --- Runtime tests ---
 
     #[tokio::test]
     async fn test_upsert_success() {
@@ -305,13 +419,13 @@ mod tests {
         let config_path = temp_dir.path().join("upsert_test.yaml");
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager = WeakPersistentStateManager::new(
-            Some("# weak test".to_string()),
-            config_path.clone(),
-            coordinator,
-            YamlFormat,
-        );
+        let mut manager = WeakPersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path.clone())
+            .config_prefix("# weak test".to_string())
+            .assemble()
+            .from_state(TestState::default())
+            .await
+            .unwrap();
 
         let state = TestState::new("upsert".to_string(), 42);
         let result = manager.upsert(state).await;
@@ -331,9 +445,12 @@ mod tests {
     async fn test_upsert_unreachable_path_still_commits() {
         let config_path = Utf8PathBuf::from("/__nonexistent_dir__/__sub__/config.yaml");
 
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager =
-            WeakPersistentStateManager::new(None, config_path.clone(), coordinator, YamlFormat);
+        let mut manager = WeakPersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path.clone())
+            .assemble()
+            .from_state(TestState::default())
+            .await
+            .unwrap();
 
         let state = TestState::new("committed".to_string(), 100);
         let result = manager.upsert(state).await;
@@ -347,76 +464,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_try_load_snapshot_missing_file() {
-        let temp_dir = tempdir().unwrap();
-        let config_path = temp_dir.path().join("nonexistent.yaml");
-        let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
-
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let manager = WeakPersistentStateManager::new(None, config_path, coordinator, YamlFormat);
-
-        assert!(manager.try_load_snapshot().await.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_try_load_snapshot_existing_file() {
-        let state = TestState::new("snapshot".to_string(), 77);
-        let (config_path, _temp_dir) = create_temp_config_file(&state).await.unwrap();
-
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let manager = WeakPersistentStateManager::new(None, config_path, coordinator, YamlFormat);
-
-        let loaded = manager.try_load_snapshot().await;
-        assert!(loaded.is_some());
-        let loaded = loaded.unwrap();
-        assert_eq!(loaded.name, "snapshot");
-        assert_eq!(loaded.value, 77);
-    }
-
-    #[tokio::test]
-    async fn test_try_load_snapshot_malformed_file() {
-        let temp_dir = tempdir().unwrap();
-        let config_path = temp_dir.path().join("malformed.yaml");
-        let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
-        fs::write(&config_path, "not: [valid: yaml: for TestState")
-            .await
-            .unwrap();
-
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let manager = WeakPersistentStateManager::new(None, config_path, coordinator, YamlFormat);
-
-        assert!(manager.try_load_snapshot().await.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_try_load_with_defaults_missing() {
-        let temp_dir = tempdir().unwrap();
-        let config_path = temp_dir.path().join("nonexistent.yaml");
-        let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
-
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager =
-            WeakPersistentStateManager::new(None, config_path.clone(), coordinator, YamlFormat);
-
-        assert!(manager.try_load_with_defaults().await.is_ok());
-
-        let current = manager.current_state().unwrap();
-        assert_eq!(current.name, "");
-        assert_eq!(current.value, 0);
-
-        // Does NOT persist default to disk
-        assert!(!config_path.exists());
-    }
-
-    #[tokio::test]
     async fn test_with_pending_state_effect_failure() {
         let temp_dir = tempdir().unwrap();
         let config_path = temp_dir.path().join("effect_fail.yaml");
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager =
-            WeakPersistentStateManager::new(None, config_path.clone(), coordinator, YamlFormat);
+        let mut manager = WeakPersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path.clone())
+            .assemble()
+            .from_state(TestState::default())
+            .await
+            .unwrap();
 
         let state = TestState::new("pending".to_string(), 50);
         let result: Result<(), WithEffectError<anyhow::Error>> = manager
@@ -424,7 +482,8 @@ mod tests {
             .await;
 
         assert!(result.is_err());
-        assert!(manager.current_state().is_none());
+        // State should still be the initial default, not the pending state
+        assert_eq!(manager.current_state().unwrap().name, "");
         assert!(!config_path.exists());
     }
 
@@ -434,9 +493,12 @@ mod tests {
         let config_path = temp_dir.path().join("effect_success.yaml");
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager =
-            WeakPersistentStateManager::new(None, config_path.clone(), coordinator, YamlFormat);
+        let mut manager = WeakPersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path.clone())
+            .assemble()
+            .from_state(TestState::default())
+            .await
+            .unwrap();
 
         let state = TestState::new("effect_ok".to_string(), 60);
         let result: Result<i32, WithEffectError<anyhow::Error>> = manager
@@ -459,19 +521,20 @@ mod tests {
     async fn test_with_pending_state_persist_failure_after_commit() {
         let config_path = Utf8PathBuf::from("/__nonexistent_dir__/__sub__/config.yaml");
 
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager =
-            WeakPersistentStateManager::new(None, config_path.clone(), coordinator, YamlFormat);
+        let mut manager = WeakPersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path.clone())
+            .assemble()
+            .from_state(TestState::default())
+            .await
+            .unwrap();
 
         let state = TestState::new("persist_fail".to_string(), 70);
         let result: Result<(), WithEffectError<anyhow::Error>> = manager
             .with_pending_state(&state, |_s| async { Ok(()) })
             .await;
 
-        // Effect succeeded → Ok returned despite persist failure
         assert!(result.is_ok());
 
-        // State IS committed (persist failure doesn't roll back)
         let current = manager.current_state().unwrap();
         assert_eq!(current.name, "persist_fail");
         assert_eq!(current.value, 70);
@@ -485,20 +548,20 @@ mod tests {
         let config_path = temp_dir.path().join("migrate_fail.yaml");
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let mut coordinator_builder = StateCoordinatorBuilder::default();
         let subscriber = MockSubscriber::new("fail_sub");
         subscriber.set_migrate_failure(true);
-        coordinator.add_subscriber(Box::new(subscriber));
+        coordinator_builder.add_subscriber(Box::new(subscriber));
 
-        let mut manager =
-            WeakPersistentStateManager::new(None, config_path.clone(), coordinator, YamlFormat);
+        // Subscriber fails during build_initialized → Setup fails
+        let result = WeakPersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path.clone())
+            .state_coordinator(coordinator_builder)
+            .assemble()
+            .from_state(TestState::new("should_not_commit".to_string(), 99))
+            .await;
 
-        let state = TestState::new("should_not_commit".to_string(), 99);
-        let result = manager.upsert(state).await;
         assert!(result.is_err());
-
-        assert!(manager.current_state().is_none());
-        assert!(!config_path.exists());
     }
 
     #[tokio::test]
@@ -507,16 +570,22 @@ mod tests {
         let config_path = temp_dir.path().join("context_test.yaml");
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
         let captured = Arc::new(Mutex::new(None::<TestState>));
         let subscriber = ContextReadSubscriber {
             name: "ctx_reader".to_string(),
             captured_context: captured.clone(),
         };
-        coordinator.add_subscriber(Box::new(subscriber));
 
-        let mut manager =
-            WeakPersistentStateManager::new(None, config_path, coordinator, YamlFormat);
+        let mut coordinator_builder = StateCoordinatorBuilder::default();
+        coordinator_builder.add_subscriber(Box::new(subscriber));
+
+        let mut manager = WeakPersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path)
+            .state_coordinator(coordinator_builder)
+            .assemble()
+            .from_state(TestState::default())
+            .await
+            .unwrap();
 
         let state = TestState::new("ctx_state".to_string(), 123);
         let result = manager.upsert_with_context(state.clone()).await;
@@ -533,24 +602,23 @@ mod tests {
         let config_path = temp_dir.path().join("preserve_test.yaml");
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let mut manager =
-            WeakPersistentStateManager::new(None, config_path.clone(), coordinator, YamlFormat);
+        let mut manager = WeakPersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path)
+            .assemble()
+            .from_state(TestState::default())
+            .await
+            .unwrap();
 
-        // First upsert succeeds (establishes initial state)
         let initial = TestState::new("initial".to_string(), 100);
         manager.upsert(initial.clone()).await.unwrap();
         assert_eq!(*manager.current_state().unwrap(), initial);
 
-        // Switch to unreachable path to trigger write failure
         manager.config_path = Utf8PathBuf::from("/__nonexistent_dir__/__sub__/config.yaml");
 
-        // Second upsert — state commits, write fails silently
         let updated = TestState::new("updated".to_string(), 200);
         let result = manager.upsert(updated.clone()).await;
         assert!(result.is_ok());
 
-        // State is the NEW value (not rolled back to initial)
         assert_eq!(*manager.current_state().unwrap(), updated);
     }
 }

@@ -40,7 +40,8 @@ use crate::{
         profile::ProfilesService,
     },
     core::state_v2::{
-        Context, StateChangedSubscriber, StateCoordinator, WeakPersistentStateManager, YamlFormat,
+        Context, StateChangedSubscriber, StateCoordinator, WeakPersistentStateManager,
+        WeakPersistentStateManagerSetup, YamlFormat,
     },
     enhance::{self, EnhanceResult, PartialProfileItem},
 };
@@ -189,23 +190,28 @@ struct LoadedProfile<'c> {
 }
 
 impl ClashRuntimeConfigService {
-    pub fn new(
+    pub async fn new(
         clash_config_service: Arc<ClashConfigService>,
         profiles_service: Arc<ProfilesService>,
         nyanpasu_config_service: Arc<NyanpasuAppConfigService>,
         lkg_path: Utf8PathBuf,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, anyhow::Error> {
+        let runtime =
+            WeakPersistentStateManagerSetup::<ClashRuntimeState>::builder()
+                .config_path(lkg_path)
+                .config_prefix(
+                    "# Clash Nyanpasu Runtime LKG - Do not edit manually".to_string(),
+                )
+                .assemble()
+                .load_or_default()
+                .await
+                .map_err(|e| anyhow::anyhow!("failed to load runtime state: {e}"))?;
+        Ok(Self {
             clash_config_service,
             profiles_service,
             nyanpasu_config_service,
-            runtime: Arc::new(RwLock::new(WeakPersistentStateManager::new(
-                Some("# Clash Nyanpasu Runtime LKG - Do not edit manually".to_string()),
-                lkg_path,
-                StateCoordinator::new(),
-                YamlFormat,
-            ))),
-        }
+            runtime: Arc::new(RwLock::new(runtime)),
+        })
     }
 
     // -- Source state resolution (MVCC snapshot for fan-in deadlock avoidance) --
@@ -466,12 +472,13 @@ mod tests {
         let temp = tempdir().unwrap();
         let lkg_path = Utf8PathBuf::from_path_buf(temp.path().join("runtime-lkg.yaml")).unwrap();
 
-        let mut manager = WeakPersistentStateManager::new(
-            None,
-            lkg_path.clone(),
-            StateCoordinator::<ClashRuntimeState>::new(),
-            YamlFormat,
-        );
+        let mut manager =
+            WeakPersistentStateManagerSetup::<ClashRuntimeState>::builder()
+                .config_path(lkg_path.clone())
+                .assemble()
+                .from_state(ClashRuntimeState::default())
+                .await
+                .unwrap();
 
         let state = make_test_runtime_state();
         manager.upsert(state).await.unwrap();
@@ -489,49 +496,53 @@ mod tests {
 
         // Write state
         {
-            let mut manager = WeakPersistentStateManager::new(
-                None,
-                lkg_path.clone(),
-                StateCoordinator::<ClashRuntimeState>::new(),
-                YamlFormat,
-            );
+            let mut manager =
+                WeakPersistentStateManagerSetup::<ClashRuntimeState>::builder()
+                    .config_path(lkg_path.clone())
+                    .assemble()
+                    .from_state(ClashRuntimeState::default())
+                    .await
+                    .unwrap();
             manager.upsert(make_test_runtime_state()).await.unwrap();
         }
 
-        // Load snapshot with fresh manager
-        let manager = WeakPersistentStateManager::<ClashRuntimeState>::new(
-            None,
-            lkg_path,
-            StateCoordinator::new(),
-            YamlFormat,
-        );
-        let snapshot = manager.try_load_snapshot().await;
-        assert!(snapshot.is_some());
-        assert_eq!(snapshot.unwrap().get_proxy_mixed_port(), Some(7890));
+        // Load snapshot with fresh manager via Setup
+        let manager =
+            WeakPersistentStateManagerSetup::<ClashRuntimeState>::builder()
+                .config_path(lkg_path)
+                .assemble()
+                .load_or_default()
+                .await
+                .unwrap();
+        let current = manager.current_state().unwrap();
+        assert_eq!(current.get_proxy_mixed_port(), Some(7890));
     }
 
     #[tokio::test]
-    async fn test_try_load_snapshot_returns_none_when_no_file() {
+    async fn test_load_or_default_returns_default_when_no_file() {
         let temp = tempdir().unwrap();
         let lkg_path = Utf8PathBuf::from_path_buf(temp.path().join("nonexistent.yaml")).unwrap();
 
-        let manager = WeakPersistentStateManager::<ClashRuntimeState>::new(
-            None,
-            lkg_path,
-            StateCoordinator::new(),
-            YamlFormat,
-        );
-        assert!(manager.try_load_snapshot().await.is_none());
+        let manager =
+            WeakPersistentStateManagerSetup::<ClashRuntimeState>::builder()
+                .config_path(lkg_path)
+                .assemble()
+                .load_or_default()
+                .await
+                .unwrap();
+        let current = manager.current_state().unwrap();
+        assert!(current.config.is_empty());
     }
 
     #[tokio::test]
     async fn test_upsert_with_unreachable_path_still_commits() {
-        let mut manager = WeakPersistentStateManager::<ClashRuntimeState>::new(
-            None,
-            Utf8PathBuf::from("/__nonexistent__/lkg.yaml"),
-            StateCoordinator::new(),
-            YamlFormat,
-        );
+        let mut manager =
+            WeakPersistentStateManagerSetup::<ClashRuntimeState>::builder()
+                .config_path(Utf8PathBuf::from("/__nonexistent__/lkg.yaml"))
+                .assemble()
+                .from_state(ClashRuntimeState::default())
+                .await
+                .unwrap();
 
         let state = make_test_runtime_state();
         manager.upsert(state).await.unwrap();

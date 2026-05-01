@@ -420,6 +420,41 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
     }
 }
 
+pub struct StateCoordinatorBuilder<T: Clone + Send + Sync + 'static> {
+    subscribers: IndexMap<String, Box<dyn Subscriber<T> + Send + Sync>>,
+}
+
+impl<T: Clone + Send + Sync + 'static> Default for StateCoordinatorBuilder<T> {
+    fn default() -> Self {
+        Self {
+            subscribers: IndexMap::new(),
+        }
+    }
+}
+
+impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
+    pub fn add_subscriber(&mut self, subscriber: Box<dyn Subscriber<T> + Send + Sync>) {
+        self.subscribers
+            .insert(subscriber.name().to_string(), subscriber);
+    }
+
+    pub async fn build_initialized(
+        self,
+        initial_state: T,
+    ) -> Result<StateCoordinator<T>, StateChangedError> {
+        let subscribers = self.subscribers.values().collect::<Vec<_>>();
+        StateCoordinator::<T>::migrate_subscribers(&subscribers, None, &initial_state).await?;
+
+        let current_state = Arc::new(ArcSwapOption::empty());
+        current_state.store(Some(Arc::new(initial_state)));
+
+        Ok(StateCoordinator {
+            current_state,
+            subscribers: self.subscribers,
+        })
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;

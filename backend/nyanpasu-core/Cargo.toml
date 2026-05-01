@@ -7,6 +7,7 @@ authors.workspace = true
 
 [dependencies]
 anyhow = "1"
+bon = "3"
 arc-swap = "1"
 async-trait = "0.1"
 dashmap = "6"

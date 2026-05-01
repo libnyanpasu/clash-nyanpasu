@@ -10,7 +10,8 @@ use nyanpasu_core::state::YamlFormat;
 use crate::{
     config::NYANPASU_CONFIG_PREFIX,
     core::state_v2::{
-        Context, PersistentBuilderManager, StateAsyncBuilder, StateCoordinator, StateSnapshot,
+        Context, PersistentBuiltStateManager, PersistentBuiltStateManagerSetup,
+        StateAsyncBuilder, StateCoordinatorBuilder, StateSnapshot,
         error::*,
     },
 };
@@ -28,18 +29,18 @@ impl StateAsyncBuilder for NyanpasuAppConfigBuilder {
 pub struct NyanpasuAppConfigService {
     snapshot: StateSnapshot<NyanpasuAppConfig>,
     state_manager:
-        Arc<RwLock<PersistentBuilderManager<NyanpasuAppConfig, NyanpasuAppConfigBuilder>>>,
+        Arc<RwLock<PersistentBuiltStateManager<NyanpasuAppConfig, NyanpasuAppConfigBuilder>>>,
 }
 
 pub struct NyanpasuAppConfigServiceBuilder {
-    state_coordinator: StateCoordinator<NyanpasuAppConfig>,
+    state_coordinator: StateCoordinatorBuilder<NyanpasuAppConfig>,
     config_path: Option<Utf8PathBuf>,
 }
 
 impl Default for NyanpasuAppConfigServiceBuilder {
     fn default() -> Self {
         Self {
-            state_coordinator: StateCoordinator::new(),
+            state_coordinator: StateCoordinatorBuilder::default(),
             config_path: None,
         }
     }
@@ -49,7 +50,7 @@ impl NyanpasuAppConfigServiceBuilder {
     #[must_use]
     pub fn configure_state_coordinator(
         mut self,
-        f: impl FnOnce(&mut StateCoordinator<NyanpasuAppConfig>),
+        f: impl FnOnce(&mut StateCoordinatorBuilder<NyanpasuAppConfig>),
     ) -> Self {
         f(&mut self.state_coordinator);
         self
@@ -61,13 +62,15 @@ impl NyanpasuAppConfigServiceBuilder {
         self
     }
 
-    pub fn build(self) -> anyhow::Result<NyanpasuAppConfigService> {
-        let state_manager = PersistentBuilderManager::new(
-            Some(NYANPASU_CONFIG_PREFIX.to_string()),
-            self.config_path.context("config path is not set")?,
-            self.state_coordinator,
-            YamlFormat,
-        );
+    pub async fn build(self) -> anyhow::Result<NyanpasuAppConfigService> {
+        let state_manager =
+            PersistentBuiltStateManagerSetup::<NyanpasuAppConfig, NyanpasuAppConfigBuilder>::builder()
+                .config_path(self.config_path.context("config path is not set")?)
+                .config_prefix(NYANPASU_CONFIG_PREFIX.to_string())
+                .state_coordinator(self.state_coordinator)
+                .assemble()
+                .load_or_default()
+                .await?;
         let snapshot = state_manager.snapshot_handle();
         Ok(NyanpasuAppConfigService {
             snapshot,
@@ -94,14 +97,6 @@ impl NyanpasuAppConfigService {
                 .current_state()
                 .ok_or_else(|| anyhow::anyhow!("current config not found")),
         }
-    }
-
-    pub async fn load(&self) -> Result<(), LoadError> {
-        self.state_manager
-            .write()
-            .await
-            .try_load_with_defaults()
-            .await
     }
 
     /// Use a partial config builder to patch the current config

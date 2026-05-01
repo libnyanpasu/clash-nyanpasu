@@ -8,7 +8,8 @@ use super::{ClashConfig, ClashConfigBuilder};
 use crate::{
     config::NYANPASU_CONFIG_PREFIX,
     core::state_v2::{
-        Context, PersistentBuilderManager, StateAsyncBuilder, StateCoordinator, StateSnapshot,
+        Context, PersistentBuiltStateManager, PersistentBuiltStateManagerSetup,
+        StateAsyncBuilder, StateCoordinator, StateCoordinatorBuilder, StateSnapshot,
         error::*,
     },
     registry::PortRegistry,
@@ -20,7 +21,7 @@ use tokio::sync::RwLock;
 pub struct ClashConfigService {
     port_registry: PortRegistry,
     snapshot: StateSnapshot<ClashConfig>,
-    manager: Arc<RwLock<PersistentBuilderManager<ClashConfig, ClashConfigBuilder>>>,
+    manager: Arc<RwLock<PersistentBuiltStateManager<ClashConfig, ClashConfigBuilder>>>,
 }
 
 impl StateAsyncBuilder for ClashConfigBuilder {
@@ -32,7 +33,7 @@ impl StateAsyncBuilder for ClashConfigBuilder {
 
 pub struct ClashConfigServiceBuilder {
     port_registry: Option<PortRegistry>,
-    state_coordinator: StateCoordinator<ClashConfig>,
+    state_coordinator: StateCoordinatorBuilder<ClashConfig>,
     config_path: Option<Utf8PathBuf>,
 }
 
@@ -40,7 +41,7 @@ impl Default for ClashConfigServiceBuilder {
     fn default() -> Self {
         Self {
             port_registry: None,
-            state_coordinator: StateCoordinator::new(),
+            state_coordinator: StateCoordinatorBuilder::default(),
             config_path: None,
         }
     }
@@ -49,7 +50,7 @@ impl Default for ClashConfigServiceBuilder {
 impl ClashConfigServiceBuilder {
     pub fn configure_state_coordinator(
         mut self,
-        f: impl FnOnce(&mut StateCoordinator<ClashConfig>),
+        f: impl FnOnce(&mut StateCoordinatorBuilder<ClashConfig>),
     ) -> Self {
         f(&mut self.state_coordinator);
         self
@@ -65,13 +66,15 @@ impl ClashConfigServiceBuilder {
         self
     }
 
-    pub fn build(self) -> anyhow::Result<ClashConfigService> {
-        let manager = PersistentBuilderManager::new(
-            Some(NYANPASU_CONFIG_PREFIX.to_string()),
-            self.config_path.context("config path is not set")?,
-            self.state_coordinator,
-            YamlFormat,
-        );
+    pub async fn build(self) -> anyhow::Result<ClashConfigService> {
+        let manager =
+            PersistentBuiltStateManagerSetup::<ClashConfig, ClashConfigBuilder>::builder()
+                .config_path(self.config_path.context("config path is not set")?)
+                .config_prefix(NYANPASU_CONFIG_PREFIX.to_string())
+                .state_coordinator(self.state_coordinator)
+                .assemble()
+                .load_or_default()
+                .await?;
         let snapshot = manager.snapshot_handle();
         Ok(ClashConfigService {
             port_registry: self.port_registry.context("port registry is not set")?,
@@ -87,18 +90,13 @@ impl ClashConfigService {
         f: impl FnOnce(&mut StateCoordinator<ClashConfig>),
     ) -> anyhow::Result<()> {
         let mut manager = self.manager.write().await;
-        f(&mut manager.state_coordinator_mut());
+        f(manager.state_coordinator_mut());
         Ok(())
     }
 
     /// MVCC snapshot read: lock-free read of last committed state.
     pub fn snapshot(&self) -> Option<Arc<ClashConfig>> {
         self.snapshot.load()
-    }
-
-    pub async fn load(&self) -> Result<(), LoadError> {
-        self.manager.write().await.try_load_with_defaults().await?;
-        Ok(())
     }
 
     pub async fn current_config(&self) -> Option<Arc<ClashConfig>> {

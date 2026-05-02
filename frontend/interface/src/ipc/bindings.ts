@@ -755,6 +755,39 @@ export const commands = {
       else return { status: 'error', error: e as any }
     }
   },
+  async getClashWsSnapshot(): Promise<Result<ClashWsSnapshot, string>> {
+    try {
+      return { status: 'ok', data: await TAURI_INVOKE('get_clash_ws_snapshot') }
+    } catch (e) {
+      if (e instanceof Error) throw e
+      else return { status: 'error', error: e as any }
+    }
+  },
+  async setClashWsRecording(
+    kind: ClashWsKind,
+    enabled: boolean,
+  ): Promise<Result<ClashWsRecording, string>> {
+    try {
+      return {
+        status: 'ok',
+        data: await TAURI_INVOKE('set_clash_ws_recording', { kind, enabled }),
+      }
+    } catch (e) {
+      if (e instanceof Error) throw e
+      else return { status: 'error', error: e as any }
+    }
+  },
+  async clearClashWsHistory(kind: ClashWsKind): Promise<Result<null, string>> {
+    try {
+      return {
+        status: 'ok',
+        data: await TAURI_INVOKE('clear_clash_ws_history', { kind }),
+      }
+    } catch (e) {
+      if (e instanceof Error) throw e
+      else return { status: 'error', error: e as any }
+    }
+  },
   async checkUpdate(): Promise<Result<UpdateWrapper | null, string>> {
     try {
       return { status: 'ok', data: await TAURI_INVOKE('check_update') }
@@ -816,11 +849,13 @@ export const commands = {
 
 export const events = __makeEvents__<{
   clashConnectionsEvent: ClashConnectionsEvent
+  clashWsEvent: ClashWsEvent
   reactAppMountedEvent: ReactAppMountedEvent
   storageValueChangedEvent: StorageValueChangedEvent
   windowMessageEvent: WindowMessageEvent
 }>({
   clashConnectionsEvent: 'clash-connections-event',
+  clashWsEvent: 'clash-ws-event',
   reactAppMountedEvent: 'react-app-mounted-event',
   storageValueChangedEvent: 'storage-value-changed-event',
   windowMessageEvent: 'window-message-event',
@@ -895,6 +930,40 @@ export type ClashInfo = {
 export type ClashStrategy = {
   external_controller_port_strategy: ExternalControllerPortStrategy
 }
+export type ClashWsConnectionSnapshot = {
+  downloadTotal: number
+  uploadTotal: number
+  downloadSpeed: number
+  uploadSpeed: number
+  memory: number | null
+  connections: JsonValue[] | null
+}
+export type ClashWsEvent =
+  | { kind: 'state_changed'; data: ClashConnectionsConnectorState }
+  | { kind: 'connections_updated'; data: ClashWsConnectionSnapshot }
+  | { kind: 'log_appended'; data: ClashWsLog }
+  | { kind: 'traffic_updated'; data: ClashWsTraffic }
+  | { kind: 'memory_updated'; data: ClashWsMemory }
+  | { kind: 'recording_changed'; data: ClashWsRecording }
+  | { kind: 'history_cleared'; data: ClashWsKind }
+export type ClashWsKind = 'connections' | 'logs' | 'traffic' | 'memory'
+export type ClashWsLog = { type: string; time: string | null; payload: string }
+export type ClashWsMemory = { inuse: number; oslimit: number }
+export type ClashWsRecording = {
+  connections: boolean
+  logs: boolean
+  traffic: boolean
+  memory: boolean
+}
+export type ClashWsSnapshot = {
+  state: ClashConnectionsConnectorState
+  recording: ClashWsRecording
+  connections: ClashWsConnectionSnapshot[]
+  logs: ClashWsLog[]
+  traffic: ClashWsTraffic[]
+  memory: ClashWsMemory[]
+}
+export type ClashWsTraffic = { up: number; down: number }
 export type CopyEnvOption = 'shell' | 'cmd' | 'pwsh'
 export type CoreInfos = {
   type: CoreType | null

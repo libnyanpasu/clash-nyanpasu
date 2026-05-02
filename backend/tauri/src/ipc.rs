@@ -1059,6 +1059,37 @@ pub async fn get_clash_ws_connections_state(
     Ok(ws_connector.state())
 }
 
+#[tauri::command]
+#[specta::specta]
+pub async fn get_clash_ws_snapshot(
+    app_handle: AppHandle,
+) -> Result<crate::core::clash::ws::ClashWsSnapshot> {
+    let ws_connector = app_handle.state::<crate::core::clash::ws::ClashConnectionsConnector>();
+    Ok(ws_connector.snapshot())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn set_clash_ws_recording(
+    app_handle: AppHandle,
+    kind: crate::core::clash::ws::ClashWsKind,
+    enabled: bool,
+) -> Result<crate::core::clash::ws::ClashWsRecording> {
+    let ws_connector = app_handle.state::<crate::core::clash::ws::ClashConnectionsConnector>();
+    Ok(ws_connector.set_recording(kind, enabled))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn clear_clash_ws_history(
+    app_handle: AppHandle,
+    kind: crate::core::clash::ws::ClashWsKind,
+) -> Result {
+    let ws_connector = app_handle.state::<crate::core::clash::ws::ClashConnectionsConnector>();
+    ws_connector.clear_history(kind);
+    Ok(())
+}
+
 // Updater block
 
 #[derive(Default, Clone, serde::Serialize, serde::Deserialize, specta::Type)]

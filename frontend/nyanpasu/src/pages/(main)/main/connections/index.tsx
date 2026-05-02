@@ -57,9 +57,7 @@ const Viewer = ({ search }: { search: string }) => {
     {},
   )
 
-  const {
-    query: { data: clashConnections },
-  } = useClashConnections()
+  const { data: clashConnections } = useClashConnections()
 
   const { viewportRef } = useScrollArea()
 

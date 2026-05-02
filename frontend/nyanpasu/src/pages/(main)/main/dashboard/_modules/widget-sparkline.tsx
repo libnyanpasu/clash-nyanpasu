@@ -115,9 +115,7 @@ function SparklineCardBottom({ className, ...props }: ComponentProps<'div'>) {
 export function TrafficDownWidget({ id, onCloseClick }: WidgetComponentProps) {
   const { data: clashTraffic } = useClashTraffic()
 
-  const {
-    query: { data: clashConnections },
-  } = useClashConnections()
+  const { data: clashConnections } = useClashConnections()
 
   const total = clashConnections?.at(-1)?.downloadTotal
 
@@ -151,9 +149,7 @@ export function TrafficDownWidget({ id, onCloseClick }: WidgetComponentProps) {
 export function TrafficUpWidget({ id, onCloseClick }: WidgetComponentProps) {
   const { data: clashTraffic } = useClashTraffic()
 
-  const {
-    query: { data: clashConnections },
-  } = useClashConnections()
+  const { data: clashConnections } = useClashConnections()
 
   const total = clashConnections?.at(-1)?.uploadTotal
 
@@ -185,9 +181,7 @@ export function TrafficUpWidget({ id, onCloseClick }: WidgetComponentProps) {
 }
 
 export function ConnectionsWidget({ id, onCloseClick }: WidgetComponentProps) {
-  const {
-    query: { data: clashConnections },
-  } = useClashConnections()
+  const { data: clashConnections } = useClashConnections()
 
   return (
     <SparklineCard

@@ -25,9 +25,7 @@ export const Route = createFileRoute('/(main)/main/logs/')({
 const Viewer = ({ search }: { search: string }) => {
   const { level } = IndexRoute.useSearch()
 
-  const {
-    query: { data: logs },
-  } = useClashLogs()
+  const { data: logs } = useClashLogs()
 
   const filteredLogs = useMemo(() => {
     if (!logs) {
@@ -136,10 +134,7 @@ const Viewer = ({ search }: { search: string }) => {
 function RouteComponent() {
   const [search, setSearch] = useState('')
 
-  const {
-    query: { data: logs },
-    clean,
-  } = useClashLogs()
+  const { data: logs, clean } = useClashLogs()
 
   const handleClearLogs = useLockFn(async () => {
     await clean.mutateAsync()

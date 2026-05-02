@@ -1,5 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CLASH_MEMORY_QUERY_KEY } from './consts'
+import { useClashWSContext } from '@interface/provider/clash-ws-provider'
 
 export type ClashMemory = {
   inuse: number
@@ -7,16 +6,11 @@ export type ClashMemory = {
 }
 
 export const useClashMemory = () => {
-  const queryClient = useQueryClient()
+  const { memory, isLoading, error } = useClashWSContext()
 
-  const query = useQuery<ClashMemory[]>({
-    queryKey: [CLASH_MEMORY_QUERY_KEY],
-    queryFn: () => {
-      return (
-        queryClient.getQueryData<ClashMemory[]>([CLASH_MEMORY_QUERY_KEY]) || []
-      )
-    },
-  })
-
-  return query
+  return {
+    data: memory,
+    isLoading,
+    error,
+  }
 }

@@ -1,17 +1,13 @@
-import dayjs from 'dayjs'
 import {
   createContext,
+  useCallback,
   useContext,
+  useEffect,
   useState,
   type PropsWithChildren,
 } from 'react'
-import useUpdateEffect from 'react-use/esm/useUpdateEffect'
-import { useQueryClient } from '@tanstack/react-query'
+import { commands, events, type ClashWsKind } from '../ipc/bindings'
 import {
-  CLASH_CONNECTIONS_QUERY_KEY,
-  CLASH_LOGS_QUERY_KEY,
-  CLASH_MEMORY_QUERY_KEY,
-  CLASH_TRAAFFIC_QUERY_KEY,
   MAX_CONNECTIONS_HISTORY,
   MAX_LOGS_HISTORY,
   MAX_MEMORY_HISTORY,
@@ -21,109 +17,15 @@ import type { ClashConnection } from '../ipc/use-clash-connections'
 import type { ClashLog } from '../ipc/use-clash-logs'
 import type { ClashMemory } from '../ipc/use-clash-memory'
 import type { ClashTraffic } from '../ipc/use-clash-traffic'
-import { useClashWebSocket } from '../ipc/use-clash-web-socket'
-
-// Utility functions for localStorage persistence
-const createPersistedState = (key: string, defaultValue: boolean) => {
-  const getStoredValue = (): boolean => {
-    try {
-      const item = localStorage.getItem(key)
-      return item ? JSON.parse(item) : defaultValue
-    } catch {
-      return defaultValue
-    }
-  }
-
-  const setStoredValue = (value: boolean) => {
-    try {
-      localStorage.setItem(key, JSON.stringify(value))
-    } catch {
-      // Ignore storage errors
-    }
-  }
-
-  return { getStoredValue, setStoredValue }
-}
-
-const MAX_REASONABLE_MEMORY_BYTES = 16 * 1024 ** 4 // 16 TB
-
-const toNonNegativeFiniteNumber = (value: unknown): number | null => {
-  const parsed =
-    typeof value === 'number'
-      ? value
-      : typeof value === 'string'
-        ? Number(value)
-        : NaN
-
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return null
-  }
-
-  return parsed
-}
-
-const normalizeClashMemory = (raw: unknown): ClashMemory | null => {
-  if (typeof raw !== 'object' || raw === null) {
-    return null
-  }
-
-  const data = raw as Record<string, unknown>
-  let inuse = toNonNegativeFiniteNumber(data.inuse)
-  const oslimit = toNonNegativeFiniteNumber(data.oslimit) ?? 0
-
-  if (inuse === null) {
-    return null
-  }
-
-  // Keep memory values in bytes and normalize obvious unit mismatches.
-  if (oslimit > 0 && inuse > oslimit * 2) {
-    if (inuse / 8 <= oslimit * 2) {
-      inuse /= 8
-    }
-
-    while (inuse > oslimit * 2 && inuse % 1024 === 0) {
-      inuse /= 1024
-    }
-
-    if (inuse > oslimit * 2) {
-      inuse = oslimit
-    }
-  } else if (oslimit <= 0 && inuse > MAX_REASONABLE_MEMORY_BYTES) {
-    return null
-  }
-
-  return {
-    inuse: Math.trunc(inuse),
-    oslimit: Math.trunc(oslimit),
-  }
-}
-
-const parseLatestMessage = <T,>(
-  message: MessageEvent | undefined,
-): T | null => {
-  const raw = message?.data
-
-  if (typeof raw !== 'string' || raw.length === 0) {
-    return null
-  }
-
-  try {
-    return JSON.parse(raw) as T
-  } catch (error) {
-    console.warn('Failed to parse clash websocket message', error, raw)
-    return null
-  }
-}
 
 const ClashWSContext = createContext<{
-  recordLogs: boolean
-  setRecordLogs: (value: boolean) => void
-  recordTraffic: boolean
-  setRecordTraffic: (value: boolean) => void
-  recordMemory: boolean
-  setRecordMemory: (value: boolean) => void
-  recordConnections: boolean
-  setRecordConnections: (value: boolean) => void
+  connections: ClashConnection[]
+  logs: ClashLog[]
+  traffic: ClashTraffic[]
+  memory: ClashMemory[]
+  isLoading: boolean
+  error: unknown
+  clearHistory: (kind: ClashWsKind) => Promise<void>
 } | null>(null)
 
 export const useClashWSContext = () => {
@@ -136,172 +38,173 @@ export const useClashWSContext = () => {
   return context
 }
 
+const queryKeyForKind = (kind: ClashWsKind) => {
+  switch (kind) {
+    case 'connections':
+      return 'connections'
+    case 'logs':
+      return 'logs'
+    case 'traffic':
+      return 'traffic'
+    case 'memory':
+      return 'memory'
+  }
+}
+
+const appendLimited = <T,>(items: T[] | undefined, item: T, limit: number) => {
+  const next = [...(items || []), item]
+
+  if (next.length > limit) {
+    next.shift()
+  }
+
+  return next
+}
+
 export const ClashWSProvider = ({ children }: PropsWithChildren) => {
-  // Create persisted state handlers
-  const logsStorage = createPersistedState('clash-ws-record-logs', true)
-  const trafficStorage = createPersistedState('clash-ws-record-traffic', true)
-  const memoryStorage = createPersistedState('clash-ws-record-memory', true)
-  const connectionsStorage = createPersistedState(
-    'clash-ws-record-connections',
-    true,
-  )
+  const [connections, setConnections] = useState<ClashConnection[]>([])
+  const [logs, setLogs] = useState<ClashLog[]>([])
+  const [traffic, setTraffic] = useState<ClashTraffic[]>([])
+  const [memory, setMemory] = useState<ClashMemory[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<unknown>(null)
 
-  // Initialize states with persisted values
-  const [recordLogs, setRecordLogsState] = useState(logsStorage.getStoredValue)
-  const [recordTraffic, setRecordTrafficState] = useState(
-    trafficStorage.getStoredValue,
-  )
-  const [recordMemory, setRecordMemoryState] = useState(
-    memoryStorage.getStoredValue,
-  )
-  const [recordConnections, setRecordConnectionsState] = useState(
-    connectionsStorage.getStoredValue,
-  )
+  useEffect(() => {
+    commands.getClashWsSnapshot().then((result) => {
+      if (result.status === 'error') {
+        console.error('Failed to load clash websocket snapshot', result.error)
+        setError(result.error)
+        setIsLoading(false)
+        return
+      }
 
-  // Wrapped setters that also persist to localStorage
-  const setRecordLogs = (value: boolean) => {
-    setRecordLogsState(value)
-    logsStorage.setStoredValue(value)
-  }
+      const snapshot = result.data
+      setConnections(
+        snapshot.connections.map((connection) => ({
+          ...connection,
+          memory: connection.memory ?? undefined,
+          connections:
+            (connection.connections as ClashConnection['connections']) ??
+            undefined,
+        })),
+      )
+      setLogs(snapshot.logs as ClashLog[])
+      setTraffic(snapshot.traffic as ClashTraffic[])
+      setMemory(snapshot.memory as ClashMemory[])
+      setIsLoading(false)
+    })
+  }, [])
 
-  const setRecordTraffic = (value: boolean) => {
-    setRecordTrafficState(value)
-    trafficStorage.setStoredValue(value)
-  }
+  useEffect(() => {
+    const unlistenPromise = events.clashWsEvent.listen((event) => {
+      const payload = event.payload
 
-  const setRecordMemory = (value: boolean) => {
-    setRecordMemoryState(value)
-    memoryStorage.setStoredValue(value)
-  }
+      switch (payload.kind) {
+        case 'connections_updated': {
+          setConnections((current) =>
+            appendLimited(
+              current,
+              {
+                ...payload.data,
+                memory: payload.data.memory ?? undefined,
+                connections:
+                  (payload.data
+                    .connections as ClashConnection['connections']) ??
+                  undefined,
+              },
+              MAX_CONNECTIONS_HISTORY,
+            ),
+          )
+          break
+        }
+        case 'log_appended': {
+          setLogs((current) =>
+            appendLimited(current, payload.data as ClashLog, MAX_LOGS_HISTORY),
+          )
+          break
+        }
+        case 'traffic_updated': {
+          setTraffic((current) =>
+            appendLimited(
+              current,
+              payload.data as ClashTraffic,
+              MAX_TRAFFIC_HISTORY,
+            ),
+          )
+          break
+        }
+        case 'memory_updated': {
+          setMemory((current) =>
+            appendLimited(
+              current,
+              payload.data as ClashMemory,
+              MAX_MEMORY_HISTORY,
+            ),
+          )
+          break
+        }
+        case 'recording_changed':
+          break
+        case 'history_cleared': {
+          switch (queryKeyForKind(payload.data)) {
+            case 'connections':
+              setConnections([])
+              break
+            case 'logs':
+              setLogs([])
+              break
+            case 'traffic':
+              setTraffic([])
+              break
+            case 'memory':
+              setMemory([])
+              break
+          }
+          break
+        }
+        case 'state_changed':
+          break
+      }
+    })
 
-  const setRecordConnections = (value: boolean) => {
-    setRecordConnectionsState(value)
-    connectionsStorage.setStoredValue(value)
-  }
+    return () => {
+      unlistenPromise.then((unlisten) => unlisten())
+    }
+  }, [])
 
-  const { connectionsWS, memoryWS, trafficWS, logsWS } = useClashWebSocket()
+  const clearHistory = useCallback(async (kind: ClashWsKind) => {
+    const result = await commands.clearClashWsHistory(kind)
 
-  const queryClient = useQueryClient()
-
-  // clash connections
-  useUpdateEffect(() => {
-    if (!recordConnections) {
-      return
+    if (result.status === 'error') {
+      throw result.error
     }
 
-    const data = parseLatestMessage<ClashConnection>(
-      connectionsWS.latestMessage,
-    )
-
-    if (!data) {
-      return
+    switch (kind) {
+      case 'connections':
+        setConnections([])
+        break
+      case 'logs':
+        setLogs([])
+        break
+      case 'traffic':
+        setTraffic([])
+        break
+      case 'memory':
+        setMemory([])
+        break
     }
-
-    const currentData = queryClient.getQueryData([
-      CLASH_CONNECTIONS_QUERY_KEY,
-    ]) as ClashConnection[]
-
-    const newData = [...(currentData || []), data]
-
-    if (newData.length > MAX_CONNECTIONS_HISTORY) {
-      newData.shift()
-    }
-
-    queryClient.setQueryData([CLASH_CONNECTIONS_QUERY_KEY], newData)
-  }, [connectionsWS.latestMessage])
-
-  // clash memory
-  useUpdateEffect(() => {
-    if (!recordMemory) {
-      return
-    }
-
-    const rawData = parseLatestMessage<unknown>(memoryWS.latestMessage)
-    const data = normalizeClashMemory(rawData)
-
-    if (!data) {
-      return
-    }
-
-    const currentData = queryClient.getQueryData([
-      CLASH_MEMORY_QUERY_KEY,
-    ]) as ClashMemory[]
-
-    const newData = [...(currentData || []), data]
-
-    if (newData.length > MAX_MEMORY_HISTORY) {
-      newData.shift()
-    }
-
-    queryClient.setQueryData([CLASH_MEMORY_QUERY_KEY], newData)
-  }, [memoryWS.latestMessage])
-
-  // clash traffic
-  useUpdateEffect(() => {
-    if (!recordTraffic) {
-      return
-    }
-
-    const data = parseLatestMessage<ClashTraffic>(trafficWS.latestMessage)
-
-    if (!data) {
-      return
-    }
-
-    const currentData = queryClient.getQueryData([
-      CLASH_TRAAFFIC_QUERY_KEY,
-    ]) as ClashTraffic[]
-
-    const newData = [...(currentData || []), data]
-
-    if (newData.length > MAX_TRAFFIC_HISTORY) {
-      newData.shift()
-    }
-
-    queryClient.setQueryData([CLASH_TRAAFFIC_QUERY_KEY], newData)
-  }, [trafficWS.latestMessage])
-
-  // clash logs
-  useUpdateEffect(() => {
-    if (!recordLogs) {
-      return
-    }
-
-    const log = parseLatestMessage<ClashLog>(logsWS.latestMessage)
-
-    if (!log) {
-      return
-    }
-
-    const data = {
-      ...log,
-      time: dayjs(new Date()).format('HH:mm:ss'),
-    } as ClashLog
-
-    const currentData = queryClient.getQueryData([
-      CLASH_LOGS_QUERY_KEY,
-    ]) as ClashLog[]
-
-    const newData = [...(currentData || []), data]
-
-    if (newData.length > MAX_LOGS_HISTORY) {
-      newData.shift()
-    }
-
-    queryClient.setQueryData([CLASH_LOGS_QUERY_KEY], newData)
-  }, [logsWS.latestMessage])
+  }, [])
 
   return (
     <ClashWSContext.Provider
       value={{
-        recordLogs,
-        setRecordLogs,
-        recordTraffic,
-        setRecordTraffic,
-        recordMemory,
-        setRecordMemory,
-        recordConnections,
-        setRecordConnections,
+        connections,
+        logs,
+        traffic,
+        memory,
+        isLoading,
+        error,
+        clearHistory,
       }}
     >
       {children}

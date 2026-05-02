@@ -1,10 +1,12 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useClashWSContext } from '@interface/provider/clash-ws-provider'
 import { useClashAPI } from '../service/clash-api'
-import { CLASH_CONNECTIONS_QUERY_KEY } from './consts'
 
 export type ClashConnection = {
   downloadTotal: number
   uploadTotal: number
+  downloadSpeed: number
+  uploadSpeed: number
   memory?: number
   connections?: ClashConnectionItem[]
 }
@@ -44,73 +46,33 @@ export type ClashConnectionMetadata = {
 }
 
 export const useClashConnections = () => {
-  const queryClient = useQueryClient()
-
+  const { connections, isLoading, error } = useClashWSContext()
   const clashApi = useClashAPI()
+  const [deleteError, setDeleteError] = useState<unknown>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
-  const query = useQuery<ClashConnection[]>({
-    queryKey: [CLASH_CONNECTIONS_QUERY_KEY],
-    queryFn: () => {
-      return (
-        queryClient.getQueryData<ClashConnection[]>([
-          CLASH_CONNECTIONS_QUERY_KEY,
-        ]) || []
-      )
-    },
-    // Ensure the query is enabled and properly initialized
-    enabled: true,
-    staleTime: 0, // Data is always fresh as it comes from WebSocket
-  })
+  const deleteConnections = {
+    isPending: isDeleting,
+    error: deleteError,
+    mutateAsync: async (id?: string | null) => {
+      setIsDeleting(true)
+      setDeleteError(null)
 
-  const deleteConnections = useMutation({
-    mutationFn: async (id?: string | null) => {
-      await clashApi.deleteConnections(id || undefined)
-
-      const currentData = queryClient.getQueryData([
-        CLASH_CONNECTIONS_QUERY_KEY,
-      ]) as ClashConnection[]
-
-      if (id) {
-        const lastConnections = currentData.at(-1)?.connections
-
-        if (lastConnections) {
-          const filteredConnections = lastConnections.filter(
-            (conn) => conn.id !== id,
-          )
-
-          const lastData = {
-            ...currentData.at(-1)!,
-            connections: filteredConnections,
-          }
-
-          queryClient.setQueryData(
-            [CLASH_CONNECTIONS_QUERY_KEY],
-            [...currentData.slice(0, -1), lastData],
-          )
-        }
-      } else {
-        const lastData = currentData.at(-1)
-
-        if (lastData) {
-          const { downloadTotal, uploadTotal } = lastData
-
-          queryClient.setQueryData(
-            [CLASH_CONNECTIONS_QUERY_KEY],
-            [
-              ...currentData.slice(0, -1),
-              {
-                downloadTotal,
-                uploadTotal,
-              },
-            ],
-          )
-        }
+      try {
+        await clashApi.deleteConnections(id || undefined)
+      } catch (error) {
+        setDeleteError(error)
+        throw error
+      } finally {
+        setIsDeleting(false)
       }
     },
-  })
+  }
 
   return {
-    query,
+    data: connections,
+    isLoading,
+    error,
     deleteConnections,
   }
 }

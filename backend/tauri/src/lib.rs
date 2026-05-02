@@ -277,6 +277,9 @@ pub fn run() -> std::io::Result<()> {
             ipc::get_core_dir,
             // clash layer
             ipc::get_clash_ws_connections_state,
+            ipc::get_clash_ws_snapshot,
+            ipc::set_clash_ws_recording,
+            ipc::clear_clash_ws_history,
             // updater layer
             ipc::check_update,
             // window management
@@ -290,6 +293,7 @@ pub fn run() -> std::io::Result<()> {
         ])
         .events(collect_events![
             core::clash::ClashConnectionsEvent,
+            core::clash::ws::ClashWsEvent,
             window::WindowMessageEvent,
             window::ReactAppMountedEvent,
             core::storage::StorageValueChangedEvent

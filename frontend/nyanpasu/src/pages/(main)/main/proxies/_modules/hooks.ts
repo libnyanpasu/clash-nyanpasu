@@ -7,9 +7,7 @@ import {
 export function useCurrentGroupConnection(
   currentGroup?: ClashProxiesQueryGroupItem,
 ) {
-  const {
-    query: { data: clashConnections },
-  } = useClashConnections()
+  const { data: clashConnections } = useClashConnections()
 
   return useMemo(() => {
     if (!currentGroup?.name) {

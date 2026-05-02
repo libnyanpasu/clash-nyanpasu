@@ -43,6 +43,13 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(manager: &M) -> anyhow::Re
             }
         }
         let mut rx = ws_connector.subscribe();
+        let mut ws_rx = ws_connector.subscribe_ws();
+        let ws_app_handle = app_handle.clone();
+        tauri::async_runtime::spawn(async move {
+            while let Ok(event) = ws_rx.recv().await {
+                event.emit(&ws_app_handle).unwrap();
+            }
+        });
         while let Ok(event) = rx.recv().await {
             ClashConnectionsEvent(event).emit(&app_handle).unwrap();
         }

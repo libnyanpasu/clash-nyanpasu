@@ -11,7 +11,7 @@ import { paraglideVitePlugin } from '@inlang/paraglide-js'
 import tailwindPlugin from '@tailwindcss/vite'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import legacy from '@vitejs/plugin-legacy'
-import react from '@vitejs/plugin-react-swc'
+import react from '@vitejs/plugin-react'
 
 const IS_NIGHTLY = process.env.NIGHTLY?.toLowerCase() === 'true'
 
@@ -100,7 +100,9 @@ export default defineConfig(({ command, mode }) => {
           jsx: { runtime: 'classic' },
         },
       }),
-      react(),
+      react({
+        jsxRuntime: 'classic',
+      }),
       AutoImport({
         resolvers: [
           IconsResolver({

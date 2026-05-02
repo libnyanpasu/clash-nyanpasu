@@ -201,7 +201,7 @@ importers:
         version: 3.13.24(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@tanstack/router-zod-adapter':
         specifier: 1.81.5
-        version: 1.81.5(@tanstack/react-router@1.168.25(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(zod@4.4.1)
+        version: 1.81.5(@tanstack/react-router@1.168.25(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(zod@4.4.2)
       '@tauri-apps/api':
         specifier: 2.10.1
         version: 2.10.1
@@ -387,8 +387,8 @@ importers:
         specifier: 6.1.1
         version: 6.1.1(typescript@5.9.3)(vite@7.3.2(@types/node@24.11.0)(jiti@2.6.1)(less@4.2.0)(lightningcss@1.32.0)(sass-embedded@1.99.0)(sass@1.99.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.21.0)(yaml@2.8.2))
       zod:
-        specifier: 4.4.1
-        version: 4.4.1
+        specifier: 4.4.2
+        version: 4.4.2
 
   frontend/utils:
     dependencies:
@@ -6605,8 +6605,8 @@ packages:
   zod@4.3.6:
     resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
 
-  zod@4.4.1:
-    resolution: {integrity: sha512-a6ENMBBGZBsnlSebQ/eKCguSBeGKSf4O7BPnqVPmYGtpBYI7VSqoVqw+QcB7kPRjbqPwhYTpFbVj/RqNz/CT0Q==}
+  zod@4.4.2:
+    resolution: {integrity: sha512-IynmDyxsEsb9RKzO3J9+4SxXnl2FTFSzNBaKKaMV6tsSk0rw9gYw9gs+JFCq/qk2LCZ78KDwyj+Z289TijSkUw==}
 
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
@@ -9434,10 +9434,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@tanstack/router-zod-adapter@1.81.5(@tanstack/react-router@1.168.25(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(zod@4.4.1)':
+  '@tanstack/router-zod-adapter@1.81.5(@tanstack/react-router@1.168.25(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(zod@4.4.2)':
     dependencies:
       '@tanstack/react-router': 1.168.25(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      zod: 4.4.1
+      zod: 4.4.2
 
   '@tanstack/store@0.9.3': {}
 
@@ -13026,6 +13026,6 @@ snapshots:
 
   zod@4.3.6: {}
 
-  zod@4.4.1: {}
+  zod@4.4.2: {}
 
   zwitch@2.0.4: {}

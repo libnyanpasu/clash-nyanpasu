@@ -7,12 +7,11 @@ import { defineConfig, UserConfig } from 'vite'
 import { createHtmlPlugin } from 'vite-plugin-html'
 import sassDts from 'vite-plugin-sass-dts'
 import svgr from 'vite-plugin-svgr'
-import tsconfigPaths from 'vite-tsconfig-paths'
 import { paraglideVitePlugin } from '@inlang/paraglide-js'
 import tailwindPlugin from '@tailwindcss/vite'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import legacy from '@vitejs/plugin-legacy'
-import react from '@vitejs/plugin-react-swc'
+import react from '@vitejs/plugin-react'
 
 const IS_NIGHTLY = process.env.NIGHTLY?.toLowerCase() === 'true'
 
@@ -64,7 +63,6 @@ export default defineConfig(({ command, mode }) => {
     },
     plugins: [
       tailwindPlugin(),
-      tsconfigPaths(),
       legacy({
         renderLegacyChunks: false,
         modernTargets: ['edge>=109', 'safari>=15'],
@@ -94,8 +92,17 @@ export default defineConfig(({ command, mode }) => {
         generatedRouteTree: `src/route-tree.gen.ts`,
         routeFileIgnorePattern: '_modules',
       }),
-      svgr(),
-      react(),
+      // ref: https://github.com/pd4d10/vite-plugin-svgr/issues/141
+      svgr({
+        include: '**/*.svg',
+        svgrOptions: { jsxRuntime: 'classic', prettier: false },
+        oxcOptions: {
+          jsx: { runtime: 'classic' },
+        },
+      }),
+      react({
+        jsxRuntime: 'classic',
+      }),
       AutoImport({
         resolvers: [
           IconsResolver({
@@ -130,18 +137,34 @@ export default defineConfig(({ command, mode }) => {
       drop: isDev ? undefined : ['debugger'],
       pure: isDev || IS_NIGHTLY ? [] : ['console.log'],
     },
-    build: {
-      outDir: '../../backend/tauri/tmp/dist',
-      rollupOptions: {
+    worker: {
+      format: 'es',
+      rolldownOptions: {
         output: {
-          manualChunks: {
-            jsonWorker: [`monaco-editor/esm/vs/language/json/json.worker`],
-            tsWorker: [`monaco-editor/esm/vs/language/typescript/ts.worker`],
-            editorWorker: [`monaco-editor/esm/vs/editor/editor.worker`],
-            yamlWorker: [`monaco-yaml/yaml.worker`],
+          manualChunks: (id) => {
+            if (id.includes('monaco-editor/esm/vs/language/json/json.worker')) {
+              return 'json-worker'
+            }
+
+            if (
+              id.includes('monaco-editor/esm/vs/language/typescript/ts.worker')
+            ) {
+              return 'ts-worker'
+            }
+
+            if (id.includes('monaco-editor/esm/vs/editor/editor.worker')) {
+              return 'editor-worker'
+            }
+
+            if (id.includes('monaco-yaml/yaml.worker')) {
+              return 'yaml-worker'
+            }
           },
         },
       },
+    },
+    build: {
+      outDir: '../../backend/tauri/tmp/dist',
       emptyOutDir: true,
       sourcemap: isDev || IS_NIGHTLY ? 'inline' : false,
     },

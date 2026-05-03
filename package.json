@@ -83,7 +83,7 @@
     "prettier-plugin-ember-template-tag": "2.1.5",
     "prettier-plugin-tailwindcss": "0.8.0",
     "prettier-plugin-toml": "2.0.6",
-    "stylelint": "17.9.1",
+    "stylelint": "17.10.0",
     "stylelint-config-html": "1.1.0",
     "stylelint-config-recess-order": "7.7.0",
     "stylelint-config-standard": "40.0.0",

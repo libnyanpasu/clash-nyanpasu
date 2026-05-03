@@ -1,10 +1,13 @@
 import { useMemo } from 'react'
+import {
+  ClashProxiesQueryGroupItem,
+  useClashProxies,
+} from '@nyanpasu/interface/ipc'
 import DelayChip from '@/components/proxies/delay-chip'
 import { CacheImage } from '@/components/ui/image'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import TextMarquee from '@/components/ui/text-marquee'
 import { m } from '@/paraglide/messages'
-import { ClashProxiesQueryGroupItem, useClashProxies } from '@interface/ipc'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { ActionButton } from '../_modules/action-button'
 import BackButton from './_modules/back-button'

@@ -9,6 +9,12 @@ import RestartAltRounded from '~icons/material-symbols/restart-alt-rounded'
 import SettingsEthernet from '~icons/material-symbols/settings-ethernet-rounded'
 import TerminalIcon from '~icons/material-symbols/terminal-rounded'
 import {
+  commands,
+  CopyEnvOption,
+  ProxyMode as ProxyModeType,
+  useProxyMode,
+} from '@nyanpasu/interface/ipc'
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -22,12 +28,6 @@ import TextMarquee from '@/components/ui/text-marquee'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { useSystemProxy, useTunMode } from '@/hooks/use-proxy-settings'
 import { m } from '@/paraglide/messages'
-import {
-  commands,
-  CopyEnvOption,
-  ProxyMode as ProxyModeType,
-  useProxyMode,
-} from '@interface/ipc'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { ActionButton } from './_modules/action-button'

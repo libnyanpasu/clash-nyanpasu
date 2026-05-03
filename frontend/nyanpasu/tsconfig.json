@@ -29,7 +29,7 @@
       "react/*": ["./node_modules/@types/react/*"],
       "~/*": ["./*"],
     },
-    "types": ["unplugin-icons/types/react"],
+    "types": ["unplugin-icons/types/react", "vite-plugin-svgr/client"],
   },
   "include": ["src", "../interface/src", "../utils/src", "./auto-imports.d.ts"],
   "references": [{ "path": "./tsconfig.node.json" }],

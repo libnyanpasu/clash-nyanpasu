@@ -92,17 +92,13 @@ export default defineConfig(({ command, mode }) => {
         generatedRouteTree: `src/route-tree.gen.ts`,
         routeFileIgnorePattern: '_modules',
       }),
-      // ref: https://github.com/pd4d10/vite-plugin-svgr/issues/141
       svgr({
-        include: '**/*.svg',
-        svgrOptions: { jsxRuntime: 'classic', prettier: false },
+        svgrOptions: { jsxRuntime: 'automatic', prettier: false },
         oxcOptions: {
-          jsx: { runtime: 'classic' },
+          jsx: { runtime: 'automatic' },
         },
       }),
-      react({
-        jsxRuntime: 'classic',
-      }),
+      react(),
       AutoImport({
         resolvers: [
           IconsResolver({
@@ -122,11 +118,18 @@ export default defineConfig(({ command, mode }) => {
       }),
     ],
     resolve: {
-      alias: {
-        '@repo': path.resolve('../../'),
-        '@nyanpasu/interface': path.resolve('../interface/src'),
-        '@nyanpasu/utils': path.resolve('../utils/src'),
-      },
+      alias: [
+        { find: '@root', replacement: path.resolve('../../') },
+        { find: '@repo', replacement: path.resolve('../../') },
+        { find: '@', replacement: path.resolve('./src') },
+        { find: '@interface', replacement: path.resolve('../interface/src') },
+        {
+          find: '@nyanpasu/interface',
+          replacement: path.resolve('../interface/src'),
+        },
+        { find: '@nyanpasu/utils', replacement: path.resolve('../utils/src') },
+        { find: '~', replacement: path.resolve('.') },
+      ],
       dedupe: ['react', 'react-dom'],
     },
     optimizeDeps: {

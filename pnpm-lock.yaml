@@ -91,26 +91,26 @@ importers:
         specifier: 2.0.6
         version: 2.0.6(prettier@3.8.3)
       stylelint:
-        specifier: 17.9.1
-        version: 17.9.1(typescript@5.9.3)
+        specifier: 17.10.0
+        version: 17.10.0(typescript@5.9.3)
       stylelint-config-html:
         specifier: 1.1.0
-        version: 1.1.0(postcss-html@1.8.1)(stylelint@17.9.1(typescript@5.9.3))
+        version: 1.1.0(postcss-html@1.8.1)(stylelint@17.10.0(typescript@5.9.3))
       stylelint-config-recess-order:
         specifier: 7.7.0
-        version: 7.7.0(stylelint-order@8.1.1(stylelint@17.9.1(typescript@5.9.3)))(stylelint@17.9.1(typescript@5.9.3))
+        version: 7.7.0(stylelint-order@8.1.1(stylelint@17.10.0(typescript@5.9.3)))(stylelint@17.10.0(typescript@5.9.3))
       stylelint-config-standard:
         specifier: 40.0.0
-        version: 40.0.0(stylelint@17.9.1(typescript@5.9.3))
+        version: 40.0.0(stylelint@17.10.0(typescript@5.9.3))
       stylelint-declaration-block-no-ignored-properties:
         specifier: 3.0.0
-        version: 3.0.0(stylelint@17.9.1(typescript@5.9.3))
+        version: 3.0.0(stylelint@17.10.0(typescript@5.9.3))
       stylelint-order:
         specifier: 8.1.1
-        version: 8.1.1(stylelint@17.9.1(typescript@5.9.3))
+        version: 8.1.1(stylelint@17.10.0(typescript@5.9.3))
       stylelint-scss:
         specifier: 7.0.0
-        version: 7.0.0(stylelint@17.9.1(typescript@5.9.3))
+        version: 7.0.0(stylelint@17.10.0(typescript@5.9.3))
       tailwindcss:
         specifier: 4.2.4
         version: 4.2.4
@@ -4600,10 +4600,6 @@ packages:
     resolution: {integrity: sha512-DyFP3BM/3YHTQOCUL/w0OZHR0lpKeGrxotcHWcqNEdnltqFwXVfhEBQ94eIo34AfQpo0rGki4cyIiftY06h2Fg==}
     engines: {node: 6.* || 8.* || >= 10.*}
 
-  get-east-asian-width@1.2.0:
-    resolution: {integrity: sha512-2nk+7SIVb14QrgXFHcm84tD4bKQz0RxPuMT8Ag5KPOq7J5fEmAg0UbXdTOSHqNuHSU28k55qnceesxXRZGzKWA==}
-    engines: {node: '>=18'}
-
   get-east-asian-width@1.5.0:
     resolution: {integrity: sha512-CQ+bEO+Tva/qlmw24dCejulK5pMzVnUOFOijVogd3KQs07HnRIgp8TGipvCCRT06xeYEbpbgwaCxglFyiuIcmA==}
     engines: {node: '>=18'}
@@ -6147,8 +6143,8 @@ packages:
     peerDependencies:
       stylelint: ^16.8.2 || ^17.0.0
 
-  stylelint@17.9.1:
-    resolution: {integrity: sha512-THTmnAPJTrg/JhkTWZlSyrO+HUYMx6ELthIHeMyD2WOKqXIJUFQv2Yxn91bvUrZdbBJaW2dUuQdPST2wcQ6C3g==}
+  stylelint@17.10.0:
+    resolution: {integrity: sha512-cI7I6HHEYOHHVNVci+s92WlA3QfmNhjwFdgCgYV3TLEysilOjk+B3EFxMED1xY9GYB0Kre3OD+mSLj19VLTIvA==}
     engines: {node: '>=20.19.0'}
     hasBin: true
 
@@ -10713,8 +10709,6 @@ snapshots:
 
   get-caller-file@2.0.5: {}
 
-  get-east-asian-width@1.2.0: {}
-
   get-east-asian-width@1.5.0: {}
 
   get-nonce@1.0.1: {}
@@ -12409,7 +12403,7 @@ snapshots:
   string-width@7.2.0:
     dependencies:
       emoji-regex: 10.4.0
-      get-east-asian-width: 1.2.0
+      get-east-asian-width: 1.5.0
       strip-ansi: 7.2.0
 
   string-width@8.2.0:
@@ -12440,36 +12434,36 @@ snapshots:
     dependencies:
       inline-style-parser: 0.2.3
 
-  stylelint-config-html@1.1.0(postcss-html@1.8.1)(stylelint@17.9.1(typescript@5.9.3)):
+  stylelint-config-html@1.1.0(postcss-html@1.8.1)(stylelint@17.10.0(typescript@5.9.3)):
     dependencies:
       postcss-html: 1.8.1
-      stylelint: 17.9.1(typescript@5.9.3)
+      stylelint: 17.10.0(typescript@5.9.3)
 
-  stylelint-config-recess-order@7.7.0(stylelint-order@8.1.1(stylelint@17.9.1(typescript@5.9.3)))(stylelint@17.9.1(typescript@5.9.3)):
+  stylelint-config-recess-order@7.7.0(stylelint-order@8.1.1(stylelint@17.10.0(typescript@5.9.3)))(stylelint@17.10.0(typescript@5.9.3)):
     dependencies:
-      stylelint: 17.9.1(typescript@5.9.3)
-      stylelint-order: 8.1.1(stylelint@17.9.1(typescript@5.9.3))
+      stylelint: 17.10.0(typescript@5.9.3)
+      stylelint-order: 8.1.1(stylelint@17.10.0(typescript@5.9.3))
 
-  stylelint-config-recommended@18.0.0(stylelint@17.9.1(typescript@5.9.3)):
+  stylelint-config-recommended@18.0.0(stylelint@17.10.0(typescript@5.9.3)):
     dependencies:
-      stylelint: 17.9.1(typescript@5.9.3)
+      stylelint: 17.10.0(typescript@5.9.3)
 
-  stylelint-config-standard@40.0.0(stylelint@17.9.1(typescript@5.9.3)):
+  stylelint-config-standard@40.0.0(stylelint@17.10.0(typescript@5.9.3)):
     dependencies:
-      stylelint: 17.9.1(typescript@5.9.3)
-      stylelint-config-recommended: 18.0.0(stylelint@17.9.1(typescript@5.9.3))
+      stylelint: 17.10.0(typescript@5.9.3)
+      stylelint-config-recommended: 18.0.0(stylelint@17.10.0(typescript@5.9.3))
 
-  stylelint-declaration-block-no-ignored-properties@3.0.0(stylelint@17.9.1(typescript@5.9.3)):
+  stylelint-declaration-block-no-ignored-properties@3.0.0(stylelint@17.10.0(typescript@5.9.3)):
     dependencies:
-      stylelint: 17.9.1(typescript@5.9.3)
+      stylelint: 17.10.0(typescript@5.9.3)
 
-  stylelint-order@8.1.1(stylelint@17.9.1(typescript@5.9.3)):
+  stylelint-order@8.1.1(stylelint@17.10.0(typescript@5.9.3)):
     dependencies:
       postcss: 8.5.13
       postcss-sorting: 10.0.0(postcss@8.5.13)
-      stylelint: 17.9.1(typescript@5.9.3)
+      stylelint: 17.10.0(typescript@5.9.3)
 
-  stylelint-scss@7.0.0(stylelint@17.9.1(typescript@5.9.3)):
+  stylelint-scss@7.0.0(stylelint@17.10.0(typescript@5.9.3)):
     dependencies:
       css-tree: 3.1.0
       is-plain-object: 5.0.0
@@ -12479,9 +12473,9 @@ snapshots:
       postcss-resolve-nested-selector: 0.1.6
       postcss-selector-parser: 7.1.1
       postcss-value-parser: 4.2.0
-      stylelint: 17.9.1(typescript@5.9.3)
+      stylelint: 17.10.0(typescript@5.9.3)
 
-  stylelint@17.9.1(typescript@5.9.3):
+  stylelint@17.10.0(typescript@5.9.3):
     dependencies:
       '@csstools/css-calc': 3.2.0(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-parser-algorithms': 4.0.0(@csstools/css-tokenizer@4.0.0)

@@ -201,7 +201,7 @@ importers:
         version: 3.13.24(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@tanstack/router-zod-adapter':
         specifier: 1.81.5
-        version: 1.81.5(@tanstack/react-router@1.169.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(zod@4.4.2)
+        version: 1.81.5(@tanstack/react-router@1.169.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(zod@4.4.3)
       '@tauri-apps/api':
         specifier: 2.10.1
         version: 2.10.1
@@ -384,8 +384,8 @@ importers:
         specifier: 5.2.0
         version: 5.2.0(rollup@4.46.2)(typescript@5.9.3)(vite@8.0.10(@types/node@24.11.0)(esbuild@0.27.2)(jiti@2.6.1)(less@4.2.0)(sass-embedded@1.99.0)(sass@1.99.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.21.0)(yaml@2.8.2))
       zod:
-        specifier: 4.4.2
-        version: 4.4.2
+        specifier: 4.4.3
+        version: 4.4.3
 
   frontend/utils:
     dependencies:
@@ -6581,6 +6581,9 @@ packages:
   zod@4.4.2:
     resolution: {integrity: sha512-IynmDyxsEsb9RKzO3J9+4SxXnl2FTFSzNBaKKaMV6tsSk0rw9gYw9gs+JFCq/qk2LCZ78KDwyj+Z289TijSkUw==}
 
+  zod@4.4.3:
+    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
+
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
@@ -9369,10 +9372,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@tanstack/router-zod-adapter@1.81.5(@tanstack/react-router@1.169.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(zod@4.4.2)':
+  '@tanstack/router-zod-adapter@1.81.5(@tanstack/react-router@1.169.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(zod@4.4.3)':
     dependencies:
       '@tanstack/react-router': 1.169.1(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      zod: 4.4.2
+      zod: 4.4.3
 
   '@tanstack/store@0.9.3': {}
 
@@ -12929,5 +12932,7 @@ snapshots:
   zod@3.25.76: {}
 
   zod@4.4.2: {}
+
+  zod@4.4.3: {}
 
   zwitch@2.0.4: {}

@@ -1005,7 +1005,7 @@ export type DownloaderState =
   | 'finished'
 /**
  * Type of content the editor window displays.
- * Used to derive the window label (for singleton logic) and URL search params.
+ * Used to derive the window label (for singleton logic) and URL path params.
  */
 export type EditorWindowType = 'profile' | 'css-editor'
 export type EnvInfo = {

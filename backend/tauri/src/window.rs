@@ -398,6 +398,11 @@ pub trait AppWindow {
     /// Get window URL path
     fn url(&self) -> &str;
 
+    /// Build the final window URL with optional parameters.
+    fn url_with_params(&self, params: Option<&WindowParams>) -> String {
+        build_url_with_params(self.url(), params)
+    }
+
     /// Get window configuration
     fn config(&self) -> WindowConfig {
         WindowConfig::default()
@@ -473,7 +478,7 @@ pub trait AppWindow {
         });
 
         // Build URL with params
-        let url = build_url_with_params(self.url(), params.as_ref());
+        let url = self.url_with_params(params.as_ref());
 
         tracing::debug!("create {} window (label: {})...", base_label, label);
 

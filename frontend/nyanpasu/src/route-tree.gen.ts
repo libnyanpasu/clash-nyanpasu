@@ -14,7 +14,6 @@ import { Route as trayMenuTrayMenuRouteRouteImport } from './pages/(tray-menu)/t
 import { Route as editorEditorRouteRouteImport } from './pages/(editor)/editor/route'
 import { Route as trayMenuTrayMenuIndexRouteImport } from './pages/(tray-menu)/tray-menu/index'
 import { Route as mainMainIndexRouteImport } from './pages/(main)/main/index'
-import { Route as editorEditorIndexRouteImport } from './pages/(editor)/editor/index'
 import { Route as trayMenuTrayMenuProxiesRouteRouteImport } from './pages/(tray-menu)/tray-menu/proxies/route'
 import { Route as mainMainSettingsRouteRouteImport } from './pages/(main)/main/settings/route'
 import { Route as mainMainRulesRouteRouteImport } from './pages/(main)/main/rules/route'
@@ -33,6 +32,8 @@ import { Route as mainMainProfilesIndexRouteImport } from './pages/(main)/main/p
 import { Route as mainMainLogsIndexRouteImport } from './pages/(main)/main/logs/index'
 import { Route as mainMainDashboardIndexRouteImport } from './pages/(main)/main/dashboard/index'
 import { Route as mainMainConnectionsIndexRouteImport } from './pages/(main)/main/connections/index'
+import { Route as editorEditorProfileIndexRouteImport } from './pages/(editor)/editor/profile/index'
+import { Route as editorEditorCssIndexRouteImport } from './pages/(editor)/editor/css/index'
 import { Route as trayMenuTrayMenuProxiesGroupRouteRouteImport } from './pages/(tray-menu)/tray-menu/proxies/group/route'
 import { Route as mainMainSettingsWebUiRouteRouteImport } from './pages/(main)/main/settings/web-ui/route'
 import { Route as mainMainSettingsUserInterfaceRouteRouteImport } from './pages/(main)/main/settings/user-interface/route'
@@ -73,11 +74,6 @@ const mainMainIndexRoute = mainMainIndexRouteImport.update({
   id: '/main/',
   path: '/main/',
   getParentRoute: () => mainRouteRoute,
-} as any)
-const editorEditorIndexRoute = editorEditorIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => editorEditorRouteRoute,
 } as any)
 const trayMenuTrayMenuProxiesRouteRoute =
   trayMenuTrayMenuProxiesRouteRouteImport.update({
@@ -173,6 +169,17 @@ const mainMainConnectionsIndexRoute =
     path: '/',
     getParentRoute: () => mainMainConnectionsRouteRoute,
   } as any)
+const editorEditorProfileIndexRoute =
+  editorEditorProfileIndexRouteImport.update({
+    id: '/profile/',
+    path: '/profile/',
+    getParentRoute: () => editorEditorRouteRoute,
+  } as any)
+const editorEditorCssIndexRoute = editorEditorCssIndexRouteImport.update({
+  id: '/css/',
+  path: '/css/',
+  getParentRoute: () => editorEditorRouteRoute,
+} as any)
 const trayMenuTrayMenuProxiesGroupRouteRoute =
   trayMenuTrayMenuProxiesGroupRouteRouteImport.update({
     id: '/group',
@@ -282,7 +289,6 @@ export interface FileRoutesByFullPath {
   '/main/rules': typeof mainMainRulesRouteRouteWithChildren
   '/main/settings': typeof mainMainSettingsRouteRouteWithChildren
   '/tray-menu/proxies': typeof trayMenuTrayMenuProxiesRouteRouteWithChildren
-  '/editor/': typeof editorEditorIndexRoute
   '/main/': typeof mainMainIndexRoute
   '/tray-menu/': typeof trayMenuTrayMenuIndexRoute
   '/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
@@ -294,6 +300,8 @@ export interface FileRoutesByFullPath {
   '/main/settings/user-interface': typeof mainMainSettingsUserInterfaceRouteRoute
   '/main/settings/web-ui': typeof mainMainSettingsWebUiRouteRoute
   '/tray-menu/proxies/group': typeof trayMenuTrayMenuProxiesGroupRouteRouteWithChildren
+  '/editor/css/': typeof editorEditorCssIndexRoute
+  '/editor/profile/': typeof editorEditorProfileIndexRoute
   '/main/connections/': typeof mainMainConnectionsIndexRoute
   '/main/dashboard/': typeof mainMainDashboardIndexRoute
   '/main/logs/': typeof mainMainLogsIndexRoute
@@ -312,7 +320,7 @@ export interface FileRoutesByFullPath {
   '/main/profiles/$type/detail/$uid': typeof mainMainProfilesTypeDetailUidRoute
 }
 export interface FileRoutesByTo {
-  '/editor': typeof editorEditorIndexRoute
+  '/editor': typeof editorEditorRouteRouteWithChildren
   '/main': typeof mainMainIndexRoute
   '/tray-menu': typeof trayMenuTrayMenuIndexRoute
   '/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
@@ -323,6 +331,8 @@ export interface FileRoutesByTo {
   '/main/settings/user-interface': typeof mainMainSettingsUserInterfaceRouteRoute
   '/main/settings/web-ui': typeof mainMainSettingsWebUiRouteRoute
   '/tray-menu/proxies/group': typeof trayMenuTrayMenuProxiesGroupRouteRouteWithChildren
+  '/editor/css': typeof editorEditorCssIndexRoute
+  '/editor/profile': typeof editorEditorProfileIndexRoute
   '/main/connections': typeof mainMainConnectionsIndexRoute
   '/main/dashboard': typeof mainMainDashboardIndexRoute
   '/main/logs': typeof mainMainLogsIndexRoute
@@ -354,7 +364,6 @@ export interface FileRoutesById {
   '/(main)/main/rules': typeof mainMainRulesRouteRouteWithChildren
   '/(main)/main/settings': typeof mainMainSettingsRouteRouteWithChildren
   '/(tray-menu)/tray-menu/proxies': typeof trayMenuTrayMenuProxiesRouteRouteWithChildren
-  '/(editor)/editor/': typeof editorEditorIndexRoute
   '/(main)/main/': typeof mainMainIndexRoute
   '/(tray-menu)/tray-menu/': typeof trayMenuTrayMenuIndexRoute
   '/(main)/main/profiles/inspect': typeof mainMainProfilesInspectRouteRoute
@@ -366,6 +375,8 @@ export interface FileRoutesById {
   '/(main)/main/settings/user-interface': typeof mainMainSettingsUserInterfaceRouteRoute
   '/(main)/main/settings/web-ui': typeof mainMainSettingsWebUiRouteRoute
   '/(tray-menu)/tray-menu/proxies/group': typeof trayMenuTrayMenuProxiesGroupRouteRouteWithChildren
+  '/(editor)/editor/css/': typeof editorEditorCssIndexRoute
+  '/(editor)/editor/profile/': typeof editorEditorProfileIndexRoute
   '/(main)/main/connections/': typeof mainMainConnectionsIndexRoute
   '/(main)/main/dashboard/': typeof mainMainDashboardIndexRoute
   '/(main)/main/logs/': typeof mainMainLogsIndexRoute
@@ -397,7 +408,6 @@ export interface FileRouteTypes {
     | '/main/rules'
     | '/main/settings'
     | '/tray-menu/proxies'
-    | '/editor/'
     | '/main/'
     | '/tray-menu/'
     | '/main/profiles/inspect'
@@ -409,6 +419,8 @@ export interface FileRouteTypes {
     | '/main/settings/user-interface'
     | '/main/settings/web-ui'
     | '/tray-menu/proxies/group'
+    | '/editor/css/'
+    | '/editor/profile/'
     | '/main/connections/'
     | '/main/dashboard/'
     | '/main/logs/'
@@ -438,6 +450,8 @@ export interface FileRouteTypes {
     | '/main/settings/user-interface'
     | '/main/settings/web-ui'
     | '/tray-menu/proxies/group'
+    | '/editor/css'
+    | '/editor/profile'
     | '/main/connections'
     | '/main/dashboard'
     | '/main/logs'
@@ -468,7 +482,6 @@ export interface FileRouteTypes {
     | '/(main)/main/rules'
     | '/(main)/main/settings'
     | '/(tray-menu)/tray-menu/proxies'
-    | '/(editor)/editor/'
     | '/(main)/main/'
     | '/(tray-menu)/tray-menu/'
     | '/(main)/main/profiles/inspect'
@@ -480,6 +493,8 @@ export interface FileRouteTypes {
     | '/(main)/main/settings/user-interface'
     | '/(main)/main/settings/web-ui'
     | '/(tray-menu)/tray-menu/proxies/group'
+    | '/(editor)/editor/css/'
+    | '/(editor)/editor/profile/'
     | '/(main)/main/connections/'
     | '/(main)/main/dashboard/'
     | '/(main)/main/logs/'
@@ -540,13 +555,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/main/'
       preLoaderRoute: typeof mainMainIndexRouteImport
       parentRoute: typeof mainRouteRoute
-    }
-    '/(editor)/editor/': {
-      id: '/(editor)/editor/'
-      path: '/'
-      fullPath: '/editor/'
-      preLoaderRoute: typeof editorEditorIndexRouteImport
-      parentRoute: typeof editorEditorRouteRoute
     }
     '/(tray-menu)/tray-menu/proxies': {
       id: '/(tray-menu)/tray-menu/proxies'
@@ -673,6 +681,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/main/connections/'
       preLoaderRoute: typeof mainMainConnectionsIndexRouteImport
       parentRoute: typeof mainMainConnectionsRouteRoute
+    }
+    '/(editor)/editor/profile/': {
+      id: '/(editor)/editor/profile/'
+      path: '/profile'
+      fullPath: '/editor/profile/'
+      preLoaderRoute: typeof editorEditorProfileIndexRouteImport
+      parentRoute: typeof editorEditorRouteRoute
+    }
+    '/(editor)/editor/css/': {
+      id: '/(editor)/editor/css/'
+      path: '/css'
+      fullPath: '/editor/css/'
+      preLoaderRoute: typeof editorEditorCssIndexRouteImport
+      parentRoute: typeof editorEditorRouteRoute
     }
     '/(tray-menu)/tray-menu/proxies/group': {
       id: '/(tray-menu)/tray-menu/proxies/group'
@@ -960,11 +982,13 @@ const mainRouteRouteWithChildren = mainRouteRoute._addFileChildren(
 )
 
 interface editorEditorRouteRouteChildren {
-  editorEditorIndexRoute: typeof editorEditorIndexRoute
+  editorEditorCssIndexRoute: typeof editorEditorCssIndexRoute
+  editorEditorProfileIndexRoute: typeof editorEditorProfileIndexRoute
 }
 
 const editorEditorRouteRouteChildren: editorEditorRouteRouteChildren = {
-  editorEditorIndexRoute: editorEditorIndexRoute,
+  editorEditorCssIndexRoute: editorEditorCssIndexRoute,
+  editorEditorProfileIndexRoute: editorEditorProfileIndexRoute,
 }
 
 const editorEditorRouteRouteWithChildren =

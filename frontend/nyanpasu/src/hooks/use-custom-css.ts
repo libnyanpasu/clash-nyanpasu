@@ -16,7 +16,7 @@ export default function useCustomCss() {
     useKvStorage<string | null>(CUSTOM_CSS_COMPILED_KV_KEY, null)
 
   const tryInjectCss = useCallback(() => {
-    if (compiledCss) {
+    if (compiledCss !== null) {
       insertStyle(STYLE_ID, compiledCss)
     }
   }, [compiledCss])
@@ -28,7 +28,7 @@ export default function useCustomCss() {
       await setCustomCss(rawCss)
       await setCompiledCss(compiled)
     },
-    [setCompiledCss],
+    [setCustomCss, setCompiledCss],
   )
 
   return {

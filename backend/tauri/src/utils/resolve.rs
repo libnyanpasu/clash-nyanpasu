@@ -12,6 +12,7 @@ use anyhow::Result;
 use semver::Version;
 use serde_yaml::Mapping;
 use std::{
+    collections::HashMap,
     net::TcpListener,
     sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
@@ -281,7 +282,7 @@ impl AppWindow for MainWindow {
 }
 
 /// Type of content the editor window displays.
-/// Used to derive the window label (for singleton logic) and URL search params.
+/// Used to derive the window label (for singleton logic) and URL path params.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
 pub enum EditorWindowType {
@@ -301,7 +302,7 @@ impl EditorWindowType {
     fn type_str(&self) -> &str {
         match self {
             Self::Profile => "profile",
-            Self::CssEditor => "css-editor",
+            Self::CssEditor => "css",
         }
     }
 }
@@ -350,6 +351,26 @@ impl AppWindow for EditorWindow {
 
     fn url(&self) -> &str {
         "/editor"
+    }
+
+    fn url_with_params(&self, params: Option<&HashMap<String, String>>) -> String {
+        let editor_type = params
+            .and_then(|params| params.get("type"))
+            .map(String::as_str)
+            .unwrap_or_else(|| self.window_type.type_str());
+
+        let query_params = params.map(|params| {
+            params
+                .iter()
+                .filter(|(key, _)| key.as_str() != "type")
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect()
+        });
+
+        crate::window::build_url_with_params(
+            &format!("{}/{}", self.url(), editor_type),
+            query_params.as_ref(),
+        )
     }
 
     fn config(&self) -> WindowConfig {

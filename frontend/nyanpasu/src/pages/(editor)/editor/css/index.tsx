@@ -1,28 +1,38 @@
-import { ComponentProps, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useExperimentalThemeContext } from '@/components/providers/theme-provider'
-import { Button } from '@/components/ui/button'
 import useCustomCss from '@/hooks/use-custom-css'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { registerCssDataSlotCompletion } from '@/utils/monaco-css'
+import { message } from '@/utils/notification'
 import MonacoEditor from '@monaco-editor/react'
-import { useKvStorage } from '@nyanpasu/interface'
-import { cn } from '@nyanpasu/utils'
+import { createFileRoute } from '@tanstack/react-router'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
-import { message } from '@tauri-apps/plugin-dialog'
-import Header from './header'
-import { MONACO_FONT_FAMILY } from './utils'
+import ActionButton from '../_modules/action-button'
+import Header from '../_modules/header'
+import { MONACO_FONT_FAMILY } from '../_modules/utils'
 
 const currentWindow = getCurrentWebviewWindow()
 
-const ActionButton = ({
-  className,
-  ...props
-}: ComponentProps<typeof Button>) => {
-  return <Button className={cn('h-8 min-w-0 px-3', className)} {...props} />
-}
+const EMPTY_CSS_TEMPLATE = `/* Welcome to Clash Nyanpasu CSS Editor! */
+/* You can write your custom CSS here to customize the appearance of the app. */
+/* For example, you can change the background color of the header: */
 
-export default function CssEditorContent() {
+/*
+#app-header {
+  background-color: #ff69b4;
+}
+*/
+
+/* Feel free to experiment and make the app your own! */
+/* Show more at https://nyanpasu.org/tutorial/custom-css/ */
+`
+
+export const Route = createFileRoute('/(editor)/editor/css/')({
+  component: RouteComponent,
+})
+
+function RouteComponent() {
   const { themeMode } = useExperimentalThemeContext()
 
   const customCss = useCustomCss()
@@ -32,15 +42,17 @@ export default function CssEditorContent() {
   // Sync the initial value once the KV storage has loaded
   useEffect(() => {
     if (!initialized && !customCss.isLoading) {
-      setEditorValue(customCss.value ?? '')
+      setEditorValue(customCss.value || EMPTY_CSS_TEMPLATE)
       setInitialized(true)
     }
   }, [customCss.value, customCss.isLoading, initialized])
 
-  const handleSave = useLockFn(async () => {
+  const handleSave = useLockFn(async (close?: boolean) => {
     try {
       await customCss.upsert(editorValue)
-      await currentWindow.close()
+      if (close) {
+        await currentWindow.close()
+      }
     } catch {
       await message(m.custom_css_save_error(), { kind: 'error' })
     }
@@ -89,7 +101,19 @@ export default function CssEditorContent() {
 
         <ActionButton onClick={handleCancel}>{m.common_cancel()}</ActionButton>
 
-        <ActionButton className="px-5" variant="flat" onClick={handleSave}>
+        <ActionButton
+          className="px-5"
+          variant="flat"
+          onClick={() => handleSave(false)}
+        >
+          {m.common_apply()}
+        </ActionButton>
+
+        <ActionButton
+          className="px-5"
+          variant="flat"
+          onClick={() => handleSave(true)}
+        >
           {m.common_save()}
         </ActionButton>
       </div>

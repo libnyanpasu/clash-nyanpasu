@@ -14,6 +14,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { ask, message } from '@tauri-apps/plugin-dialog'
 import Chip from './_modules/chip'
+import CssEditorContent from './_modules/css-editor-content'
 import Header from './_modules/header'
 import { useCurrentProfile } from './_modules/hooks'
 import LoadingSkeleton from './_modules/loading-skeleton'
@@ -24,7 +25,8 @@ const currentWindow = getCurrentWebviewWindow()
 export const Route = createFileRoute('/(editor)/editor/')({
   component: RouteComponent,
   validateSearch: z.object({
-    uid: z.string(),
+    type: z.enum(['profile', 'css-editor']).default('profile'),
+    uid: z.string().optional(),
   }),
 })
 
@@ -36,9 +38,19 @@ const ActionButton = ({
 }
 
 function RouteComponent() {
-  const { themeMode } = useExperimentalThemeContext()
+  const { type, uid } = Route.useSearch()
 
-  const { uid } = Route.useSearch()
+  if (type === 'css-editor') {
+    return <CssEditorContent />
+  }
+
+  // Profile editor (uid is required)
+  if (!uid) return null
+  return <ProfileEditorContent uid={uid} />
+}
+
+function ProfileEditorContent({ uid }: { uid: string }) {
+  const { themeMode } = useExperimentalThemeContext()
 
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
 

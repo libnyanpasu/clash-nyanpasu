@@ -14,6 +14,7 @@ import relativeTime from 'dayjs/plugin/relativeTime'
 import { lazy } from 'react'
 import useMount from 'react-use/esm/useMount'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
+import CustomCssProvider from '@/components/providers/custom-css-provider'
 import { LanguageProvider } from '@/components/providers/language-provider'
 import { ExperimentalThemeProvider } from '@/components/providers/theme-provider'
 import { events, NyanpasuProvider } from '@nyanpasu/interface'
@@ -94,7 +95,9 @@ export default function App() {
       <BlockTaskProvider>
         <LanguageProvider>
           <ExperimentalThemeProvider>
-            <Outlet />
+            <CustomCssProvider>
+              <Outlet />
+            </CustomCssProvider>
           </ExperimentalThemeProvider>
 
           <TanStackRouterDevtools />

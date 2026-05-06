@@ -4,9 +4,9 @@ import WindowControl from '@/components/window/window-control'
 import WindowTitle from '@/components/window/window-title'
 import { isMacOS } from '@/consts'
 
-const APP_NAME = 'Clash Nyanpasu - Editor'
+const DEFAULT_APP_NAME = 'Clash Nyanpasu - Editor'
 
-const Title = () => {
+const Title = ({ title }: { title: string }) => {
   return (
     <WindowTitle>
       <div
@@ -14,7 +14,7 @@ const Title = () => {
         data-slot="app-header-logo-name"
         data-tauri-drag-region
       >
-        {APP_NAME}
+        {title}
       </div>
     </WindowTitle>
   )
@@ -22,17 +22,19 @@ const Title = () => {
 
 export default function Header({
   className,
+  title = DEFAULT_APP_NAME,
   ...props
 }: ComponentProps<'div'> & {
   beforeClose?: ComponentProps<typeof WindowControl>['beforeClose']
+  title?: string
 }) {
   return isMacOS ? (
     <MacOSHeader className={className} {...props}>
-      <Title />
+      <Title title={title} />
     </MacOSHeader>
   ) : (
     <DefaultHeader className={className} {...props}>
-      <Title />
+      <Title title={title} />
     </DefaultHeader>
   )
 }

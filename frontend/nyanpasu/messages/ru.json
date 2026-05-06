@@ -65,6 +65,12 @@
   "settings_user_interface_theme_mode_system": "Системный",
   "settings_user_interface_theme_color_label": "Цвет темы",
   "settings_user_interface_theme_color_custom": "Пользовательский",
+  "settings_user_interface_custom_css_group": "Пользовательский CSS",
+  "settings_user_interface_custom_css_label": "Редактор CSS",
+  "settings_user_interface_custom_css_empty": "Нет пользовательского CSS",
+  "settings_user_interface_custom_css_chars": "{count} символов",
+  "settings_user_interface_custom_css_large_warning": "CSS содержимое велико, может влиять на производительность",
+  "custom_css_save_error": "Ошибка сохранения CSS",
   "settings_clash_settings_title": "Настройки Clash",
   "settings_clash_settings_allow_lan_label": "Разрешить LAN",
   "settings_clash_settings_ipv6_label": "Включить IPv6",
@@ -336,5 +342,6 @@
   "common_on": "Вкл",
   "common_off": "Выкл",
   "common_enabled": "Включено",
-  "common_disabled": "Отключено"
+  "common_disabled": "Отключено",
+  "common_clear": "Очистить"
 }

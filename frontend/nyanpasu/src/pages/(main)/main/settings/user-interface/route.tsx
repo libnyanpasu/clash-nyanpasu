@@ -2,6 +2,7 @@ import { m } from '@/paraglide/messages'
 import { createFileRoute } from '@tanstack/react-router'
 import { SettingsGroup, SettingsLabel } from '../_modules/settings-card'
 import { SettingsTitle } from '../_modules/settings-title'
+import CustomCssCard from './_modules/custom-css-card'
 import LanguageSelector from './_modules/language-selector'
 import ThemeColorConfig from './_modules/theme-color-config'
 import ThemeModeSelector from './_modules/theme-mode-selector'
@@ -47,6 +48,20 @@ const ThemeModeSettings = () => {
   )
 }
 
+const CustomCssSettings = () => {
+  return (
+    <div data-slot="custom-css-settings-container">
+      <SettingsLabel>
+        {m.settings_user_interface_custom_css_group()}
+      </SettingsLabel>
+
+      <SettingsGroup>
+        <CustomCssCard />
+      </SettingsGroup>
+    </div>
+  )
+}
+
 function RouteComponent() {
   return (
     <>
@@ -56,6 +71,8 @@ function RouteComponent() {
         <LanguageSettings />
 
         <ThemeModeSettings />
+
+        <CustomCssSettings />
       </div>
     </>
   )

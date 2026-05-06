@@ -826,11 +826,14 @@ export const commands = {
       else return { status: 'error', error: e as any }
     }
   },
-  async createEditorWindow(uid: string): Promise<Result<null, string>> {
+  async createEditorWindow(
+    windowType: EditorWindowType,
+    uid: string | null,
+  ): Promise<Result<null, string>> {
     try {
       return {
         status: 'ok',
-        data: await TAURI_INVOKE('create_editor_window', { uid }),
+        data: await TAURI_INVOKE('create_editor_window', { windowType, uid }),
       }
     } catch (e) {
       if (e instanceof Error) throw e
@@ -1000,6 +1003,11 @@ export type DownloaderState =
   | 'merging'
   | { failed: string }
   | 'finished'
+/**
+ * Type of content the editor window displays.
+ * Used to derive the window label (for singleton logic) and URL search params.
+ */
+export type EditorWindowType = 'profile' | 'css-editor'
 export type EnvInfo = {
   os: string
   arch: string

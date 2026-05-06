@@ -65,6 +65,12 @@
   "settings_user_interface_theme_mode_system": "System",
   "settings_user_interface_theme_color_label": "Theme Color",
   "settings_user_interface_theme_color_custom": "Custom",
+  "settings_user_interface_custom_css_group": "Custom CSS",
+  "settings_user_interface_custom_css_label": "Custom CSS Editor",
+  "settings_user_interface_custom_css_empty": "No custom CSS",
+  "settings_user_interface_custom_css_chars": "{count} characters",
+  "settings_user_interface_custom_css_large_warning": "CSS content is large, may affect performance",
+  "custom_css_save_error": "Failed to save custom CSS",
   "settings_clash_settings_title": "Clash Settings",
   "settings_clash_settings_allow_lan_label": "Allow LAN",
   "settings_clash_settings_ipv6_label": "Enable IPv6",
@@ -336,5 +342,6 @@
   "common_on": "On",
   "common_off": "Off",
   "common_enabled": "Enabled",
-  "common_disabled": "Disabled"
+  "common_disabled": "Disabled",
+  "common_clear": "Clear"
 }

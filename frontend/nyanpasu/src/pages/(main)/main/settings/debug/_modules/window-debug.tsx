@@ -13,7 +13,7 @@ const currentWindow = getCurrentWebviewWindow()
 
 export default function WindowDebug() {
   const handleCreateEditorWindow = useLockFn(async () => {
-    await commands.createEditorWindow('test')
+    await commands.createEditorWindow('profile', 'test')
   })
 
   const handleCreateDebugTrayMenuWindow = useLockFn(async () => {

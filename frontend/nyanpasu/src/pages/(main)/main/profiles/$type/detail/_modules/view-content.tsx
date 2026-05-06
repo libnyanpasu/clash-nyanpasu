@@ -10,7 +10,7 @@ export default function ViewContent({
   profile: Profile
 }) {
   const handleClick = useLockFn(async () => {
-    await commands.createEditorWindow(profile.uid)
+    await commands.createEditorWindow('profile', profile.uid)
   })
 
   return <Button {...props} onClick={handleClick} />

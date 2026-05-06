@@ -65,6 +65,12 @@
   "settings_user_interface_theme_mode_system": "跟随系统",
   "settings_user_interface_theme_color_label": "主题颜色",
   "settings_user_interface_theme_color_custom": "自定义",
+  "settings_user_interface_custom_css_group": "自定义 CSS",
+  "settings_user_interface_custom_css_label": "自定义 CSS 编辑器",
+  "settings_user_interface_custom_css_empty": "无自定义 CSS",
+  "settings_user_interface_custom_css_chars": "{count} 个字符",
+  "settings_user_interface_custom_css_large_warning": "CSS 内容较大，可能影响性能",
+  "custom_css_save_error": "保存自定义 CSS 失败",
   "settings_clash_settings_title": "Clash 设置",
   "settings_clash_settings_allow_lan_label": "允许局域网连接",
   "settings_clash_settings_ipv6_label": "启用 IPv6",
@@ -336,5 +342,6 @@
   "common_on": "开",
   "common_off": "关",
   "common_enabled": "启用",
-  "common_disabled": "禁用"
+  "common_disabled": "禁用",
+  "common_clear": "清除"
 }

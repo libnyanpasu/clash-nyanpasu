@@ -46,6 +46,7 @@
     "publish": "deno run -A scripts/publish.ts",
     "portable": "deno run -A scripts/portable.ts",
     "generate:git-info": "deno run -A scripts/generate-git-info.ts",
+    "generate:data-slots": "deno run -A scripts/extract-data-slots.ts",
     "generate:manifest": "run-p generate:manifest:*",
     "generate:manifest:latest-version": "deno run -A scripts/generate-latest-version.ts",
     "prepare": "husky",

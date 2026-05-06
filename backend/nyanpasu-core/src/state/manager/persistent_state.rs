@@ -100,7 +100,7 @@ where
     State: Clone + Send + Sync + 'static,
 {
     config_prefix: Option<String>,
-    config_path: Utf8PathBuf,
+    pub(crate) config_path: Utf8PathBuf,
     state_coordinator: StateCoordinator<State>,
     formatter: Formatter,
 }
@@ -114,12 +114,21 @@ where
         &mut self.state_coordinator
     }
 
+    pub fn snapshot(&self) -> Option<Arc<State>> {
+        self.state_coordinator.snapshot()
+    }
+
+    #[deprecated(note = "Use snapshot() instead")]
     pub fn current_state(&self) -> Option<Arc<State>> {
-        self.state_coordinator.current_state()
+        self.snapshot()
     }
 
     pub fn snapshot_handle(&self) -> StateSnapshot<State> {
         self.state_coordinator.snapshot_handle()
+    }
+
+    pub async fn read(&self) -> Option<Arc<State>> {
+        self.state_coordinator.read().await
     }
 
     pub async fn upsert(&mut self, state: State) -> Result<(), UpsertError>
@@ -131,34 +140,6 @@ where
         let formatter = self.formatter.clone();
         self.state_coordinator
             .with_pending_state(&state, |s| async move {
-                let mut buf = Vec::with_capacity(4096);
-                formatter.serialize(&mut buf, s, config_prefix.as_deref())?;
-                let file = AtomicFile::new(&config_path, AllowOverwrite);
-                tokio::task::spawn_blocking(move || file.write(|f| f.write_all(&buf)))
-                    .await?
-                    .with_context(|| format!("failed to write config: {config_path}"))?;
-                Ok::<_, anyhow::Error>(())
-            })
-            .await
-            .map_err(|e| match e {
-                WithEffectError::State(e) => UpsertError::State(e),
-                WithEffectError::Effect(e)
-                | WithEffectError::EffectAndRollback { effect: e, .. } => {
-                    UpsertError::WriteConfig(e)
-                }
-            })
-    }
-
-    pub async fn upsert_with_context(&mut self, state: State) -> Result<(), UpsertError>
-    where
-        Formatter: Clone,
-    {
-        let config_path = self.config_path.clone();
-        let config_prefix = self.config_prefix.clone();
-        let formatter = self.formatter.clone();
-
-        self.state_coordinator
-            .with_pending_state_in_context(&state, |s| async move {
                 let mut buf = Vec::with_capacity(4096);
                 formatter.serialize(&mut buf, s, config_prefix.as_deref())?;
                 let file = AtomicFile::new(&config_path, AllowOverwrite);
@@ -215,8 +196,6 @@ mod tests {
         Ok(value)
     }
 
-    // --- Setup-based tests ---
-
     #[tokio::test]
     async fn test_setup_load_success() {
         let state = TestState::new("test".to_string(), 42);
@@ -229,7 +208,7 @@ mod tests {
             .await
             .unwrap();
 
-        let current_state = manager.current_state();
+        let current_state = manager.snapshot();
         assert!(current_state.is_some());
         let loaded = current_state.unwrap();
         assert_eq!(loaded.name, "test");
@@ -265,7 +244,7 @@ mod tests {
             .await
             .unwrap();
 
-        let current_state = manager.current_state();
+        let current_state = manager.snapshot();
         assert!(current_state.is_some());
         let loaded = current_state.unwrap();
         assert_eq!(loaded.name, "default_test");
@@ -285,7 +264,7 @@ mod tests {
             .await
             .unwrap();
 
-        let current_state = manager.current_state();
+        let current_state = manager.snapshot();
         assert!(current_state.is_some());
         let loaded = current_state.unwrap();
         assert_eq!(loaded.name, "");
@@ -306,7 +285,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(manager.current_state().as_deref(), Some(&state));
+        assert_eq!(manager.snapshot().as_deref(), Some(&state));
     }
 
     #[tokio::test]
@@ -327,7 +306,7 @@ mod tests {
         let result = manager.upsert(state).await;
         assert!(result.is_ok());
 
-        let current_state = manager.current_state();
+        let current_state = manager.snapshot();
         assert!(current_state.is_some());
         let loaded = current_state.unwrap();
         assert_eq!(loaded.name, "upsert");
@@ -361,7 +340,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_upsert_write_config_error_rollback() {
+    async fn test_upsert_write_config_error_no_commit() {
         let temp_dir = tempdir().unwrap();
         let config_path = temp_dir.path().join("rollback_test.yaml");
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
@@ -373,7 +352,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(manager.current_state().unwrap().name, "initial");
+        assert_eq!(manager.snapshot().unwrap().name, "initial");
 
         manager.config_path = Utf8PathBuf::from("/__nonexistent_dir__/__sub__/config.yaml");
 
@@ -386,7 +365,7 @@ mod tests {
             other => panic!("Expected UpsertError::WriteConfig, got: {:?}", other),
         }
 
-        let state = manager.current_state().unwrap();
+        let state = manager.snapshot().unwrap();
         assert_eq!(state.name, "initial");
         assert_eq!(state.value, 100);
     }
@@ -407,13 +386,13 @@ mod tests {
 
         let state1 = TestState::new("first".to_string(), 1);
         manager.upsert(state1).await.unwrap();
-        let loaded1 = manager.current_state().unwrap();
+        let loaded1 = manager.snapshot().unwrap();
         assert_eq!(loaded1.name, "first");
         assert_eq!(loaded1.value, 1);
 
         let state2 = TestState::new("second".to_string(), 2);
         manager.upsert(state2).await.unwrap();
-        let loaded2 = manager.current_state().unwrap();
+        let loaded2 = manager.snapshot().unwrap();
         assert_eq!(loaded2.name, "second");
         assert_eq!(loaded2.value, 2);
 

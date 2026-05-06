@@ -1,3 +1,5 @@
+use super::ack::CommitReport;
+
 #[derive(thiserror::Error, Debug)]
 #[error("state migrate error: {name}: {error:#?}")]
 pub struct MigrateError {
@@ -10,6 +12,12 @@ pub struct MigrateError {
 pub struct RollbackError {
     pub name: String,
     pub error: anyhow::Error,
+}
+
+#[derive(thiserror::Error, Debug)]
+#[error("state committed but required subscriber ACK failed")]
+pub struct CommitAckError {
+    pub report: CommitReport,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -27,6 +35,15 @@ pub enum StateChangedError {
 
     #[error("state batch error: {0:#?}")]
     Batch(Box<[StateChangedError]>),
+
+    #[error("state committed but required subscriber ACK failed: {0}")]
+    CommitAck(CommitAckError),
+}
+
+impl StateChangedError {
+    pub fn is_post_commit(&self) -> bool {
+        matches!(self, StateChangedError::CommitAck(_))
+    }
 }
 
 #[derive(thiserror::Error, Debug)]

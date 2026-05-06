@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use crate::core::state_v2::Context;
 use camino::Utf8PathBuf;
 use tokio::sync::RwLock;
 
@@ -67,17 +66,18 @@ impl ProfilesService {
         Ok(())
     }
 
-    pub async fn current_state(&self) -> Option<Arc<Profiles>> {
-        match Context::get::<Profiles>() {
-            Some(profiles) => Some(Arc::new(profiles)),
-            None => self.manager.read().await.current_state(),
-        }
+    pub fn current_state(&self) -> Option<Arc<Profiles>> {
+        self.snapshot()
     }
 
     pub async fn upsert(&self, profiles: Profiles) -> Result<(), anyhow::Error> {
         let mut manager = self.manager.write().await;
-        manager.upsert_state_with_context(profiles.clone()).await?;
-        self.write_file(profiles).await?;
-        Ok(())
+        let result = manager.upsert(profiles.clone()).await;
+        match &result {
+            Ok(_) => self.write_file(profiles).await?,
+            Err(e) if e.is_post_commit() => self.write_file(profiles).await?,
+            Err(_) => {}
+        }
+        result.map_err(|e| anyhow::anyhow!(e))
     }
 }

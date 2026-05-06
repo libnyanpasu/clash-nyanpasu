@@ -1,40 +1,46 @@
-use super::{Context, builder::*, error::*};
+use super::{ack::*, builder::*, error::*};
 use arc_swap::ArcSwapOption;
 use indexmap::IndexMap;
-use std::{future::Future, sync::Arc};
+use std::{future::Future, sync::Arc, time::Instant};
+use tokio::sync::watch;
 
-/// Whether a subscriber is terminated, it was used for a subscriber was terminated but not removed from the coordinator.
 pub trait FusedStateChangedSubscriber {
     fn is_terminated(&self) -> bool {
         false
     }
 }
 
-impl<T> FusedStateChangedSubscriber for Arc<T> where T: FusedStateChangedSubscriber + ?Sized {}
-impl<T> FusedStateChangedSubscriber for Box<T> where T: FusedStateChangedSubscriber + ?Sized {}
+impl<T> FusedStateChangedSubscriber for Arc<T>
+where
+    T: FusedStateChangedSubscriber + ?Sized,
+{
+    fn is_terminated(&self) -> bool {
+        self.as_ref().is_terminated()
+    }
+}
+impl<T> FusedStateChangedSubscriber for Box<T>
+where
+    T: FusedStateChangedSubscriber + ?Sized,
+{
+    fn is_terminated(&self) -> bool {
+        self.as_ref().is_terminated()
+    }
+}
 
+#[deprecated(note = "Use StateAckSubscriber instead")]
 #[async_trait::async_trait]
 #[allow(unused_variables)]
 pub trait StateChangedSubscriber<T: Clone + Send + Sync + 'static> {
-    /// The name of the subscriber.
     fn name(&self) -> &str;
 
-    /// Called when the state is changed, return a Error if the state change is failed.
-    ///
-    /// While state migrate is failed, the rollback will be called.
-    ///
-    /// When the prev_state is None, it means the state is not initialized.
     async fn migrate(&self, prev_state: Option<&T>, new_state: &T) -> Result<(), anyhow::Error>;
 
-    /// Called when the state migrate is failed, return a Error if the state rollback is failed.
-    ///
-    /// If the migration do not affect the real system/service, you can use the default implementation,
-    /// OR you MUST implement the rollback method.
     async fn rollback(&self, prev_state: Option<&T>, new_state: &T) -> Result<(), anyhow::Error> {
         Ok(())
     }
 }
 
+#[allow(deprecated)]
 #[async_trait::async_trait]
 impl<T, S> StateChangedSubscriber<T> for Arc<S>
 where
@@ -44,16 +50,15 @@ where
     fn name(&self) -> &str {
         self.as_ref().name()
     }
-
     async fn migrate(&self, prev_state: Option<&T>, new_state: &T) -> Result<(), anyhow::Error> {
         self.as_ref().migrate(prev_state, new_state).await
     }
-
     async fn rollback(&self, prev_state: Option<&T>, new_state: &T) -> Result<(), anyhow::Error> {
         self.as_ref().rollback(prev_state, new_state).await
     }
 }
 
+#[allow(deprecated)]
 #[async_trait::async_trait]
 impl<T, S> StateChangedSubscriber<T> for Box<S>
 where
@@ -63,42 +68,90 @@ where
     fn name(&self) -> &str {
         self.as_ref().name()
     }
-
     async fn migrate(&self, prev_state: Option<&T>, new_state: &T) -> Result<(), anyhow::Error> {
         self.as_ref().migrate(prev_state, new_state).await
     }
-
     async fn rollback(&self, prev_state: Option<&T>, new_state: &T) -> Result<(), anyhow::Error> {
         self.as_ref().rollback(prev_state, new_state).await
     }
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ConcurrencyStrategy {
-    #[default]
-    Sequential,
-    Concurrent,
-    Limited(usize),
-}
+// -- New compound trait for ACK subscribers --
 
-pub trait Subscriber<T>: StateChangedSubscriber<T> + FusedStateChangedSubscriber
+pub trait AckSubscriber<T>: StateAckSubscriber<T> + FusedStateChangedSubscriber
 where
     T: Clone + Send + Sync + 'static,
 {
 }
 
-impl<T, S> Subscriber<T> for S
+impl<T, S> AckSubscriber<T> for S
 where
     T: Clone + Send + Sync + 'static,
-    S: StateChangedSubscriber<T> + FusedStateChangedSubscriber,
+    S: StateAckSubscriber<T> + FusedStateChangedSubscriber,
 {
 }
 
-/// MVCC snapshot handle: a lock-free reader for last committed state.
-///
-/// Clone is cheap (Arc bump). `load()` returns a point-in-time snapshot
-/// without acquiring any RwLock, making it safe to read sibling sources
-/// inside subscriber migrations (fan-in pattern).
+// -- Legacy adapter --
+
+#[allow(deprecated)]
+pub struct LegacySubscriberAdapter<S> {
+    inner: S,
+    options: AckOptions,
+}
+
+#[allow(deprecated)]
+impl<S> LegacySubscriberAdapter<S> {
+    pub fn new(inner: S, options: AckOptions) -> Self {
+        Self { inner, options }
+    }
+
+    pub fn with_defaults(inner: S) -> Self {
+        Self {
+            inner,
+            options: AckOptions::default(),
+        }
+    }
+}
+
+#[allow(deprecated)]
+impl<S> FusedStateChangedSubscriber for LegacySubscriberAdapter<S>
+where
+    S: FusedStateChangedSubscriber,
+{
+    fn is_terminated(&self) -> bool {
+        self.inner.is_terminated()
+    }
+}
+
+#[allow(deprecated)]
+#[async_trait::async_trait]
+impl<T, S> StateAckSubscriber<T> for LegacySubscriberAdapter<S>
+where
+    T: Clone + Send + Sync + 'static,
+    S: StateChangedSubscriber<T> + FusedStateChangedSubscriber + Send + Sync,
+{
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    fn ack_options(&self) -> AckOptions {
+        self.options
+    }
+
+    async fn on_committed(&self, change: StateChange<T>) -> Ack {
+        match self
+            .inner
+            .migrate(change.previous(), change.current())
+            .await
+        {
+            Ok(()) => Ack::Ok,
+            Err(e) => Ack::Failed(e),
+        }
+    }
+}
+
+// -- MVCC snapshot handle --
+
 pub struct StateSnapshot<T: Clone + Send + Sync + 'static>(Arc<ArcSwapOption<T>>);
 
 impl<T: Clone + Send + Sync + 'static> Clone for StateSnapshot<T> {
@@ -108,270 +161,169 @@ impl<T: Clone + Send + Sync + 'static> Clone for StateSnapshot<T> {
 }
 
 impl<T: Clone + Send + Sync + 'static> StateSnapshot<T> {
-    /// Lock-free read of the last committed state.
     pub fn load(&self) -> Option<Arc<T>> {
         self.0.load_full()
     }
 }
 
+// -- StateCoordinator --
+
 #[non_exhaustive]
 pub struct StateCoordinator<T: Clone + Send + Sync + 'static> {
     current_state: Arc<ArcSwapOption<T>>,
-    subscribers: IndexMap<String, Box<dyn Subscriber<T> + Send + Sync>>,
+    subscribers: IndexMap<String, Box<dyn AckSubscriber<T> + Send + Sync>>,
+    version: u64,
+    commit_barrier: watch::Sender<u64>,
+    commit_rx: watch::Receiver<u64>,
 }
 
 impl<T: Clone + Send + Sync> StateCoordinator<T> {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
+        let (tx, rx) = watch::channel(0u64);
         Self {
             current_state: Arc::new(ArcSwapOption::empty()),
             subscribers: IndexMap::new(),
+            version: 0,
+            commit_barrier: tx,
+            commit_rx: rx,
         }
     }
 
-    /// Add a subscriber to the state coordinator.
-    pub fn add_subscriber(&mut self, subscriber: Box<dyn Subscriber<T> + Send + Sync>) {
+    pub fn add_subscriber(&mut self, subscriber: Box<dyn AckSubscriber<T> + Send + Sync>) {
         self.subscribers
             .insert(subscriber.name().to_string(), subscriber);
     }
 
-    /// Remove a subscriber by name, return the removed subscriber if it exists.
+    #[allow(deprecated)]
+    pub fn add_legacy_subscriber<S>(&mut self, subscriber: S)
+    where
+        S: StateChangedSubscriber<T> + FusedStateChangedSubscriber + Send + Sync + 'static,
+    {
+        let adapter = LegacySubscriberAdapter::with_defaults(subscriber);
+        self.subscribers
+            .insert(adapter.name().to_string(), Box::new(adapter));
+    }
+
     pub fn remove_subscriber(
         &mut self,
         name: &str,
-    ) -> Option<Box<dyn Subscriber<T> + Send + Sync>> {
+    ) -> Option<Box<dyn AckSubscriber<T> + Send + Sync>> {
         self.subscribers.shift_remove(name)
     }
 
-    /// Get the current state.
-    pub fn current_state(&self) -> Option<Arc<T>> {
+    pub fn snapshot(&self) -> Option<Arc<T>> {
         self.current_state.load_full()
     }
 
-    /// MVCC snapshot handle for lock-free reads of last committed state.
     pub fn snapshot_handle(&self) -> StateSnapshot<T> {
         StateSnapshot(Arc::clone(&self.current_state))
     }
 
-    /// Run subscriber migrations only. If a migration fails, previously successful
-    /// subscribers are rolled back in reverse order.
-    async fn migrate_subscribers<S, I>(
-        subscribers: &[I],
-        current_state: Option<&T>,
-        new_state: &T,
-    ) -> Result<(), StateChangedError>
-    where
-        I: AsRef<S>,
-        S: StateChangedSubscriber<T> + Send + Sync + ?Sized,
-    {
-        let mut errors = Vec::new();
-        for (index, subscriber) in subscribers.iter().enumerate() {
-            if let Err(e) =
-                Self::do_migration_for_subscriber(subscriber.as_ref(), current_state, new_state)
-                    .await
-            {
-                errors.push(e);
-                // Rollback all previously successful subscribers in reverse order.
-                // The failing subscriber's own rollback is already handled by
-                // `do_migration_for_subscriber`, so we only need 0..index.
-                for subscriber in subscribers.iter().take(index).rev() {
-                    let subscriber = subscriber.as_ref();
-                    if let Err(e) = subscriber
-                        .rollback(current_state, new_state)
-                        .await
-                    {
-                        errors.push(StateChangedError::Rollback(RollbackError {
-                            name: subscriber.name().to_string(),
-                            error: e,
-                        }));
-                    }
-                }
-                break;
-            }
-        }
-
-        if errors.is_empty() {
-            Ok(())
-        } else if errors.len() == 1 {
-            Err(errors.pop().unwrap())
-        } else {
-            Err(StateChangedError::Batch(errors.into_boxed_slice()))
-        }
+    #[deprecated(note = "Use snapshot() instead")]
+    pub fn current_state(&self) -> Option<Arc<T>> {
+        self.snapshot()
     }
 
-    async fn do_migration_for_subscriber<S>(
-        subscriber: &S,
-        current_state: Option<&T>,
-        new_state: &T,
-    ) -> Result<(), StateChangedError>
-    where
-        S: StateChangedSubscriber<T> + Send + Sync + ?Sized,
-    {
-        if let Err(e) = subscriber
-            .migrate(current_state, new_state)
-            .await
-        {
-            let migrate_error = MigrateError {
-                name: subscriber.name().to_string(),
-                error: e,
-            };
-            tracing::error!("migrate error: {migrate_error:#?}");
-            if let Err(e) = subscriber
-                .rollback(current_state, new_state)
-                .await
-            {
-                tracing::error!("rollback error: {e:#?}");
-                return Err(StateChangedError::MigrateAndRollback(
-                    migrate_error,
-                    RollbackError {
-                        name: subscriber.name().to_string(),
-                        error: e,
-                    },
-                ));
-            }
-            return Err(StateChangedError::Migrate(migrate_error));
+    pub async fn read(&self) -> Option<Arc<T>> {
+        if self.version > 0 {
+            return self.current_state.load_full();
         }
-        Ok(())
+        let mut rx = self.commit_rx.clone();
+        let _ = rx.changed().await;
+        self.current_state.load_full()
     }
 
-    /// Rollback all subscribers in reverse order.
-    async fn rollback_all_subscribers<S, I>(
-        subscribers: &[I],
-        current_state: Option<&T>,
-        new_state: &T,
-    ) -> Result<(), StateChangedError>
-    where
-        I: AsRef<S>,
-        S: StateChangedSubscriber<T> + Send + Sync + ?Sized,
-    {
-        let mut errors = Vec::new();
-        for subscriber in subscribers.iter().rev() {
-            let subscriber = subscriber.as_ref();
-            if let Err(e) = subscriber
-                .rollback(current_state, new_state)
-                .await
-            {
-                errors.push(StateChangedError::Rollback(RollbackError {
+    async fn notify_committed(&self, change: StateChange<T>) -> CommitReport {
+        let mut report = CommitReport::default();
+        for subscriber in self.subscribers.values() {
+            if subscriber.is_terminated() {
+                report.push(SubscriberAck {
                     name: subscriber.name().to_string(),
-                    error: e,
-                }));
+                    policy: subscriber.ack_options().policy,
+                    timeout: subscriber.ack_options().timeout,
+                    elapsed: std::time::Duration::ZERO,
+                    status: AckStatus::SkippedTerminated,
+                });
+                continue;
             }
+            let options = subscriber.ack_options();
+            let started = Instant::now();
+            let status =
+                match tokio::time::timeout(options.timeout, subscriber.on_committed(change.clone()))
+                    .await
+                {
+                    Ok(Ack::Ok) => AckStatus::Acked,
+                    Ok(Ack::Degraded(msg)) => AckStatus::Degraded { message: msg },
+                    Ok(Ack::Failed(error)) => {
+                        tracing::error!(
+                            subscriber = subscriber.name(),
+                            "subscriber ACK failed: {error:#}"
+                        );
+                        AckStatus::Failed { error }
+                    }
+                    Err(_) => {
+                        tracing::warn!(
+                            subscriber = subscriber.name(),
+                            timeout_ms = options.timeout.as_millis(),
+                            "subscriber ACK timed out"
+                        );
+                        AckStatus::TimedOut
+                    }
+                };
+            report.push(SubscriberAck {
+                name: subscriber.name().to_string(),
+                policy: options.policy,
+                timeout: options.timeout,
+                elapsed: started.elapsed(),
+                status,
+            });
         }
-        if errors.is_empty() {
-            Ok(())
-        } else if errors.len() == 1 {
-            Err(errors.pop().unwrap())
+        report
+    }
+
+    fn store_state(&mut self, state: T) -> (StateChange<T>, Arc<T>) {
+        let previous = self.current_state.load_full();
+        let current = Arc::new(state);
+        self.current_state.store(Some(current.clone()));
+        let change = StateChange::new(previous, current.clone());
+        (change, current)
+    }
+
+    fn signal_barrier(&mut self) {
+        self.version = self.version.wrapping_add(1);
+        let _ = self.commit_barrier.send(self.version);
+    }
+
+    async fn commit_notify_signal(
+        &mut self,
+        state: T,
+    ) -> Result<CommitReport, StateChangedError> {
+        let (change, _) = self.store_state(state);
+        let report = self.notify_committed(change).await;
+        self.signal_barrier();
+        if report.has_required_failures() {
+            Err(StateChangedError::CommitAck(CommitAckError { report }))
         } else {
-            Err(StateChangedError::Batch(errors.into_boxed_slice()))
+            Ok(report)
         }
     }
 
-    /// Execute the effect closure. If it fails, rollback all subscribers in reverse order.
-    async fn run_effect_or_rollback<'a, S, I, F, Fut, R, E>(
-        subscribers: &[I],
-        current_state: Option<&T>,
-        new_state: &'a T,
-        effect_fn: F,
-    ) -> Result<R, WithEffectError<E>>
-    where
-        I: AsRef<S>,
-        S: StateChangedSubscriber<T> + Send + Sync + ?Sized,
-        F: FnOnce(&'a T) -> Fut,
-        Fut: Future<Output = Result<R, E>> + 'a,
-    {
-        match effect_fn(new_state).await {
-            Ok(r) => Ok(r),
-            Err(effect_err) => {
-                match Self::rollback_all_subscribers(subscribers, current_state, new_state).await {
-                    Ok(()) => Err(WithEffectError::Effect(effect_err)),
-                    Err(rollback) => Err(WithEffectError::EffectAndRollback {
-                        effect: effect_err,
-                        rollback,
-                    }),
-                }
-            }
-        }
-    }
-
-    /// Run subscriber migrations, then execute the effect closure.
-    ///
-    /// Phase 1: Migrate all subscribers (with internal rollback on migration failure)
-    /// Phase 2: Execute effect_fn
-    /// Phase 3: If effect fails, rollback all subscribers in reverse order
-    async fn run_migration<'a, S, I, F, Fut, R, E>(
-        subscribers: &[I],
-        current_state: Option<&T>,
-        new_state: &'a T,
-        effect_fn: F,
-    ) -> Result<R, WithEffectError<E>>
-    where
-        I: AsRef<S>,
-        S: StateChangedSubscriber<T> + Send + Sync + ?Sized,
-        F: FnOnce(&'a T) -> Fut,
-        Fut: Future<Output = Result<R, E>> + 'a,
-    {
-        Self::migrate_subscribers(subscribers, current_state, new_state)
-            .await
-            .map_err(WithEffectError::State)?;
-        Self::run_effect_or_rollback(subscribers, current_state, new_state, effect_fn).await
-    }
-
-    /// Upsert the state by a builder, it was used for a builder was patched for upsert.
     pub async fn upsert(
         &mut self,
         builder: impl StateAsyncBuilder<State = T>,
-    ) -> Result<(), StateChangedError> {
+    ) -> Result<CommitReport, StateChangedError> {
         let new_state = builder
             .build()
             .await
             .map_err(StateChangedError::Validation)?;
-
-        let subscribers = self.subscribers.values().collect::<Vec<_>>();
-        let current = self.current_state.load_full();
-        Self::migrate_subscribers(&subscribers, current.as_deref(), &new_state).await?;
-
-        self.current_state.store(Some(Arc::new(new_state)));
-        Ok(())
+        self.commit_notify_signal(new_state).await
     }
 
-    pub async fn upsert_with_context(
-        &mut self,
-        builder: impl StateAsyncBuilder<State = T>,
-    ) -> Result<(), StateChangedError> {
-        let new_state = builder
-            .build()
-            .await
-            .map_err(StateChangedError::Validation)?;
-        let current = self.current_state.load_full();
-        Context::scope(new_state.clone(), async {
-            let subscribers = self.subscribers.values().collect::<Vec<_>>();
-            Self::migrate_subscribers(&subscribers, current.as_deref(), &new_state).await?;
-            Ok::<_, StateChangedError>(())
-        })
-        .await?;
-        self.current_state.store(Some(Arc::new(new_state)));
-        Ok(())
+    pub async fn upsert_state(&mut self, state: T) -> Result<CommitReport, StateChangedError> {
+        self.commit_notify_signal(state).await
     }
 
-    /// Upsert the state directly, it used for a small StateObject, a bool value, etc.
-    pub async fn upsert_state(&mut self, state: T) -> Result<(), StateChangedError> {
-        let subscribers = self.subscribers.values().collect::<Vec<_>>();
-        let current = self.current_state.load_full();
-        Self::migrate_subscribers(&subscribers, current.as_deref(), &state).await?;
-        self.current_state.store(Some(Arc::new(state)));
-        Ok(())
-    }
-
-    pub async fn upsert_state_with_context(&mut self, state: T) -> Result<(), StateChangedError> {
-        Context::scope(state.clone(), self.upsert_state(state)).await
-    }
-
-    /// Closure-scoped async cleanup pattern for state mutations.
-    ///
-    /// 1. Run subscriber migrations for `state`
-    /// 2. Execute `effect_fn` with reference to the state
-    /// 3. If effect succeeds → update current state, return `Ok(result)`
-    /// 4. If effect fails → rollback all subscribers, return `Err`
     pub async fn with_pending_state<'s, F, Fut, R, E>(
         &mut self,
         state: &'s T,
@@ -381,47 +333,23 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         F: FnOnce(&'s T) -> Fut,
         Fut: Future<Output = Result<R, E>> + 's,
     {
-        let subscribers = self.subscribers.values().collect::<Vec<_>>();
-        let current = self.current_state.load_full();
-        let result = Self::run_migration(&subscribers, current.as_deref(), state, effect_fn).await;
-        if result.is_ok() {
-            self.current_state.store(Some(Arc::new(state.clone())));
+        let result = effect_fn(state).await.map_err(WithEffectError::Effect)?;
+        let (change, _) = self.store_state(state.clone());
+        let report = self.notify_committed(change).await;
+        self.signal_barrier();
+        if report.has_required_failures() {
+            return Err(WithEffectError::State(StateChangedError::CommitAck(
+                CommitAckError { report },
+            )));
         }
-        result
-    }
-
-    /// Like `with_pending_state` but wraps subscriber migrations in `Context::scope`.
-    pub async fn with_pending_state_in_context<'s, F, Fut, R, E>(
-        &mut self,
-        state: &'s T,
-        effect_fn: F,
-    ) -> Result<R, WithEffectError<E>>
-    where
-        F: FnOnce(&'s T) -> Fut,
-        Fut: Future<Output = Result<R, E>> + 's,
-    {
-        let subscribers = self.subscribers.values().collect::<Vec<_>>();
-        let current = self.current_state.load_full();
-
-        // Migration in context scope
-        Context::scope(state.clone(), async {
-            Self::migrate_subscribers(&subscribers, current.as_deref(), state).await
-        })
-        .await
-        .map_err(WithEffectError::State)?;
-
-        // Effect outside context scope
-        let result =
-            Self::run_effect_or_rollback(&subscribers, current.as_deref(), state, effect_fn).await;
-        if result.is_ok() {
-            self.current_state.store(Some(Arc::new(state.clone())));
-        }
-        result
+        Ok(result)
     }
 }
 
+// -- Builder --
+
 pub struct StateCoordinatorBuilder<T: Clone + Send + Sync + 'static> {
-    subscribers: IndexMap<String, Box<dyn Subscriber<T> + Send + Sync>>,
+    subscribers: IndexMap<String, Box<dyn AckSubscriber<T> + Send + Sync>>,
 }
 
 impl<T: Clone + Send + Sync + 'static> Default for StateCoordinatorBuilder<T> {
@@ -433,26 +361,77 @@ impl<T: Clone + Send + Sync + 'static> Default for StateCoordinatorBuilder<T> {
 }
 
 impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
-    pub fn add_subscriber(&mut self, subscriber: Box<dyn Subscriber<T> + Send + Sync>) {
+    pub fn add_subscriber(&mut self, subscriber: Box<dyn AckSubscriber<T> + Send + Sync>) {
         self.subscribers
             .insert(subscriber.name().to_string(), subscriber);
+    }
+
+    #[allow(deprecated)]
+    pub fn add_legacy_subscriber<S>(&mut self, subscriber: S)
+    where
+        S: StateChangedSubscriber<T> + FusedStateChangedSubscriber + Send + Sync + 'static,
+    {
+        let adapter = LegacySubscriberAdapter::with_defaults(subscriber);
+        self.subscribers
+            .insert(adapter.name().to_string(), Box::new(adapter));
     }
 
     pub async fn build_initialized(
         self,
         initial_state: T,
     ) -> Result<StateCoordinator<T>, StateChangedError> {
-        let subscribers = self.subscribers.values().collect::<Vec<_>>();
-        StateCoordinator::<T>::migrate_subscribers(&subscribers, None, &initial_state).await?;
-
+        let (tx, rx) = watch::channel(0u64);
         let current_state = Arc::new(ArcSwapOption::empty());
-        current_state.store(Some(Arc::new(initial_state)));
+        let current = Arc::new(initial_state);
+        current_state.store(Some(current.clone()));
 
-        Ok(StateCoordinator {
+        let mut coordinator = StateCoordinator {
             current_state,
             subscribers: self.subscribers,
-        })
+            version: 0,
+            commit_barrier: tx,
+            commit_rx: rx,
+        };
+
+        let change = StateChange::new(None, current);
+        let report = coordinator.notify_committed(change).await;
+        coordinator.signal_barrier();
+
+        if report.has_required_failures() {
+            Err(StateChangedError::CommitAck(CommitAckError { report }))
+        } else {
+            Ok(coordinator)
+        }
     }
+}
+
+// -- Deprecated ConcurrencyStrategy (kept for source compat) --
+
+#[allow(deprecated)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[deprecated(note = "Subscribers now run sequentially in ACK model")]
+pub enum ConcurrencyStrategy {
+    #[default]
+    Sequential,
+    Concurrent,
+    Limited(usize),
+}
+
+// -- Deprecated Subscriber compound trait (kept for legacy adapter) --
+
+#[allow(deprecated)]
+pub trait Subscriber<T>: StateChangedSubscriber<T> + FusedStateChangedSubscriber
+where
+    T: Clone + Send + Sync + 'static,
+{
+}
+
+#[allow(deprecated)]
+impl<T, S> Subscriber<T> for S
+where
+    T: Clone + Send + Sync + 'static,
+    S: StateChangedSubscriber<T> + FusedStateChangedSubscriber,
+{
 }
 
 #[cfg(test)]
@@ -470,98 +449,66 @@ mod test {
         name: String,
     }
 
-    #[allow(clippy::type_complexity)]
-    struct MockSubscriber {
+    type CommittedEntry = (Option<TestState>, TestState);
+
+    struct MockAckSubscriber {
         name: String,
-        migrate_calls: Arc<AtomicUsize>,
-        rollback_calls: Arc<AtomicUsize>,
-        should_fail_migrate: Arc<AtomicBool>,
-        should_fail_rollback: Arc<AtomicBool>,
-        migrate_history: Arc<Mutex<Vec<(Option<TestState>, TestState)>>>,
-        rollback_history: Arc<Mutex<Vec<(Option<TestState>, TestState)>>>,
+        on_committed_calls: Arc<AtomicUsize>,
+        should_fail: Arc<AtomicBool>,
+        should_degrade: Arc<AtomicBool>,
+        committed_history: Arc<Mutex<Vec<CommittedEntry>>>,
     }
 
-    impl MockSubscriber {
+    impl MockAckSubscriber {
         fn new(name: &str) -> Self {
             Self {
                 name: name.to_string(),
-                migrate_calls: Arc::new(AtomicUsize::new(0)),
-                rollback_calls: Arc::new(AtomicUsize::new(0)),
-                should_fail_migrate: Arc::new(AtomicBool::new(false)),
-                should_fail_rollback: Arc::new(AtomicBool::new(false)),
-                migrate_history: Arc::new(Mutex::new(Vec::new())),
-                rollback_history: Arc::new(Mutex::new(Vec::new())),
+                on_committed_calls: Arc::new(AtomicUsize::new(0)),
+                should_fail: Arc::new(AtomicBool::new(false)),
+                should_degrade: Arc::new(AtomicBool::new(false)),
+                committed_history: Arc::new(Mutex::new(Vec::new())),
             }
         }
 
-        fn set_migrate_failure(&self, should_fail: bool) {
-            self.should_fail_migrate
-                .store(should_fail, Ordering::SeqCst);
+        fn set_fail(&self, fail: bool) {
+            self.should_fail.store(fail, Ordering::SeqCst);
         }
 
-        fn set_rollback_failure(&self, should_fail: bool) {
-            self.should_fail_rollback
-                .store(should_fail, Ordering::SeqCst);
+        fn set_degrade(&self, degrade: bool) {
+            self.should_degrade.store(degrade, Ordering::SeqCst);
         }
 
-        async fn get_migrate_history(&self) -> Vec<(Option<TestState>, TestState)> {
-            self.migrate_history.lock().await.clone()
+        fn call_count(&self) -> usize {
+            self.on_committed_calls.load(Ordering::SeqCst)
         }
 
-        #[allow(dead_code)]
-        async fn get_rollback_history(&self) -> Vec<(Option<TestState>, TestState)> {
-            self.rollback_history.lock().await.clone()
-        }
-
-        fn get_migrate_calls(&self) -> usize {
-            self.migrate_calls.load(Ordering::SeqCst)
-        }
-
-        fn get_rollback_calls(&self) -> usize {
-            self.rollback_calls.load(Ordering::SeqCst)
+        async fn history(&self) -> Vec<(Option<TestState>, TestState)> {
+            self.committed_history.lock().await.clone()
         }
     }
 
-    impl FusedStateChangedSubscriber for MockSubscriber {}
+    impl FusedStateChangedSubscriber for MockAckSubscriber {}
 
     #[async_trait::async_trait]
-    impl StateChangedSubscriber<TestState> for MockSubscriber {
+    impl StateAckSubscriber<TestState> for MockAckSubscriber {
         fn name(&self) -> &str {
             &self.name
         }
 
-        async fn migrate(
-            &self,
-            prev_state: Option<&TestState>,
-            new_state: &TestState,
-        ) -> Result<(), anyhow::Error> {
-            self.migrate_calls.fetch_add(1, Ordering::SeqCst);
-            self.migrate_history
+        async fn on_committed(&self, change: StateChange<TestState>) -> Ack {
+            self.on_committed_calls.fetch_add(1, Ordering::SeqCst);
+            self.committed_history
                 .lock()
                 .await
-                .push((prev_state.cloned(), new_state.clone()));
+                .push((change.previous().cloned(), change.current().clone()));
 
-            if self.should_fail_migrate.load(Ordering::SeqCst) {
-                return Err(anyhow::anyhow!("Mock migrate failure"));
+            if self.should_fail.load(Ordering::SeqCst) {
+                return Ack::Failed(anyhow::anyhow!("mock ACK failure"));
             }
-            Ok(())
-        }
-
-        async fn rollback(
-            &self,
-            prev_state: Option<&TestState>,
-            new_state: &TestState,
-        ) -> Result<(), anyhow::Error> {
-            self.rollback_calls.fetch_add(1, Ordering::SeqCst);
-            self.rollback_history
-                .lock()
-                .await
-                .push((prev_state.cloned(), new_state.clone()));
-
-            if self.should_fail_rollback.load(Ordering::SeqCst) {
-                return Err(anyhow::anyhow!("Mock rollback failure"));
+            if self.should_degrade.load(Ordering::SeqCst) {
+                return Ack::Degraded("mock degraded".to_string());
             }
-            Ok(())
+            Ack::Ok
         }
     }
 
@@ -589,7 +536,6 @@ mod test {
 
     impl StateSyncBuilder for TestStateBuilder {
         type State = TestState;
-
         fn build(&self) -> anyhow::Result<Self::State> {
             if self.should_fail {
                 return Err(anyhow::anyhow!("Builder validation failed"));
@@ -598,17 +544,19 @@ mod test {
         }
     }
 
+    // -- Basic tests --
+
     #[tokio::test]
     async fn test_new_coordinator() {
         let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        assert!(coordinator.current_state().is_none());
+        assert!(coordinator.snapshot().is_none());
         assert_eq!(coordinator.subscribers.len(), 0);
     }
 
     #[tokio::test]
     async fn test_upsert_state_success() {
         let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let subscriber = Arc::new(MockSubscriber::new("test_subscriber"));
+        let subscriber = Arc::new(MockAckSubscriber::new("test_subscriber"));
         coordinator.add_subscriber(Box::new(subscriber.clone()));
         let test_state = TestState {
             value: 42,
@@ -617,13 +565,13 @@ mod test {
 
         let result = coordinator.upsert_state(test_state.clone()).await;
         assert!(result.is_ok());
+        let report = result.unwrap();
+        assert!(!report.has_required_failures());
 
-        assert_eq!(coordinator.current_state().as_deref(), Some(&test_state));
+        assert_eq!(coordinator.snapshot().as_deref(), Some(&test_state));
+        assert_eq!(subscriber.call_count(), 1);
 
-        assert_eq!(subscriber.get_migrate_calls(), 1);
-        assert_eq!(subscriber.get_rollback_calls(), 0);
-
-        let history = subscriber.get_migrate_history().await;
+        let history = subscriber.history().await;
         assert_eq!(history.len(), 1);
         assert_eq!(history[0], (None, test_state));
     }
@@ -631,7 +579,7 @@ mod test {
     #[tokio::test]
     async fn test_upsert_with_builder_success() {
         let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let subscriber = Arc::new(MockSubscriber::new("test_subscriber"));
+        let subscriber = Arc::new(MockAckSubscriber::new("test_subscriber"));
         coordinator.add_subscriber(Box::new(subscriber.clone()));
 
         let test_state = TestState {
@@ -642,11 +590,8 @@ mod test {
 
         let result = coordinator.upsert(builder).await;
         assert!(result.is_ok());
-
-        assert_eq!(coordinator.current_state().as_deref(), Some(&test_state));
-
-        assert_eq!(subscriber.get_migrate_calls(), 1);
-        assert_eq!(subscriber.get_rollback_calls(), 0);
+        assert_eq!(coordinator.snapshot().as_deref(), Some(&test_state));
+        assert_eq!(subscriber.call_count(), 1);
     }
 
     #[tokio::test]
@@ -661,15 +606,14 @@ mod test {
             StateChangedError::Validation(_) => {}
             _ => panic!("Expected validation error"),
         }
-
-        assert!(coordinator.current_state().is_none());
+        assert!(coordinator.snapshot().is_none());
     }
 
     #[tokio::test]
-    async fn test_migrate_failure_with_successful_rollback() {
+    async fn test_required_ack_failure_still_commits() {
         let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let subscriber = Arc::new(MockSubscriber::new("failing_subscriber"));
-        subscriber.set_migrate_failure(true);
+        let subscriber = Arc::new(MockAckSubscriber::new("failing_subscriber"));
+        subscriber.set_fail(true);
         coordinator.add_subscriber(Box::new(subscriber.clone()));
 
         let test_state = TestState {
@@ -680,61 +624,80 @@ mod test {
         let result = coordinator.upsert_state(test_state.clone()).await;
         assert!(result.is_err());
 
-        // Single error is unwrapped from Batch, yielding Migrate directly
-        match result.unwrap_err() {
-            StateChangedError::Migrate(migrate_error) => {
-                assert_eq!(migrate_error.name, "failing_subscriber");
+        match &result.unwrap_err() {
+            StateChangedError::CommitAck(e) => {
+                assert!(e.report.has_required_failures());
             }
-            other => panic!("Expected migrate error, got: {other:?}"),
+            other => panic!("Expected CommitAck error, got: {other:?}"),
         }
 
-        assert_eq!(subscriber.get_migrate_calls(), 1);
-        assert_eq!(subscriber.get_rollback_calls(), 1);
-
-        assert!(coordinator.current_state().is_none());
+        // State IS committed even though ACK failed (post-commit model)
+        assert_eq!(coordinator.snapshot().as_deref(), Some(&test_state));
+        assert_eq!(subscriber.call_count(), 1);
     }
 
     #[tokio::test]
-    async fn test_migrate_failure_with_rollback_failure() {
+    async fn test_advisory_ack_failure_is_ok() {
         let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let subscriber = Arc::new(MockSubscriber::new("double_failing_subscriber"));
-        subscriber.set_migrate_failure(true);
-        subscriber.set_rollback_failure(true);
+
+        struct AdvisorySubscriber;
+        impl FusedStateChangedSubscriber for AdvisorySubscriber {}
+        #[async_trait::async_trait]
+        impl StateAckSubscriber<TestState> for AdvisorySubscriber {
+            fn name(&self) -> &str {
+                "advisory"
+            }
+            fn ack_options(&self) -> AckOptions {
+                AckOptions::advisory(std::time::Duration::from_secs(30))
+            }
+            async fn on_committed(&self, _change: StateChange<TestState>) -> Ack {
+                Ack::Failed(anyhow::anyhow!("advisory failure"))
+            }
+        }
+
+        coordinator.add_subscriber(Box::new(AdvisorySubscriber));
+        let test_state = TestState {
+            value: 1,
+            name: "advisory_test".to_string(),
+        };
+
+        let result = coordinator.upsert_state(test_state.clone()).await;
+        assert!(result.is_ok());
+        let report = result.unwrap();
+        assert!(!report.has_required_failures());
+
+        assert_eq!(coordinator.snapshot().as_deref(), Some(&test_state));
+    }
+
+    #[tokio::test]
+    async fn test_degraded_ack() {
+        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let subscriber = Arc::new(MockAckSubscriber::new("degraded_sub"));
+        subscriber.set_degrade(true);
         coordinator.add_subscriber(Box::new(subscriber.clone()));
 
         let test_state = TestState {
-            value: 42,
-            name: "test".to_string(),
+            value: 1,
+            name: "degraded".to_string(),
         };
 
-        let result = coordinator.upsert_state(test_state).await;
-        assert!(result.is_err());
-
-        // Single error is unwrapped from Batch, yielding MigrateAndRollback directly
-        match result.unwrap_err() {
-            StateChangedError::MigrateAndRollback(migrate_error, rollback_error) => {
-                assert_eq!(migrate_error.name, "double_failing_subscriber");
-                assert_eq!(rollback_error.name, "double_failing_subscriber");
-            }
-            other => panic!("Expected migrate and rollback error, got: {other:?}"),
-        }
-
-        assert_eq!(subscriber.get_migrate_calls(), 1);
-        assert_eq!(subscriber.get_rollback_calls(), 1);
-
-        assert!(coordinator.current_state().is_none());
+        let result = coordinator.upsert_state(test_state.clone()).await;
+        assert!(result.is_ok());
+        let report = result.unwrap();
+        assert!(report.is_degraded());
+        assert!(!report.has_required_failures());
     }
 
     #[tokio::test]
     async fn test_multiple_subscribers_success() {
         let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let subscriber1 = Arc::new(MockSubscriber::new("subscriber1"));
-        let subscriber2 = Arc::new(MockSubscriber::new("subscriber2"));
-        let subscriber3 = Arc::new(MockSubscriber::new("subscriber3"));
+        let sub1 = Arc::new(MockAckSubscriber::new("sub1"));
+        let sub2 = Arc::new(MockAckSubscriber::new("sub2"));
+        let sub3 = Arc::new(MockAckSubscriber::new("sub3"));
 
-        coordinator.add_subscriber(Box::new(subscriber1.clone()));
-        coordinator.add_subscriber(Box::new(subscriber2.clone()));
-        coordinator.add_subscriber(Box::new(subscriber3.clone()));
+        coordinator.add_subscriber(Box::new(sub1.clone()));
+        coordinator.add_subscriber(Box::new(sub2.clone()));
+        coordinator.add_subscriber(Box::new(sub3.clone()));
 
         let test_state = TestState {
             value: 42,
@@ -744,56 +707,16 @@ mod test {
         let result = coordinator.upsert_state(test_state.clone()).await;
         assert!(result.is_ok());
 
-        assert_eq!(subscriber1.get_migrate_calls(), 1);
-        assert_eq!(subscriber2.get_migrate_calls(), 1);
-        assert_eq!(subscriber3.get_migrate_calls(), 1);
-
-        assert_eq!(subscriber1.get_rollback_calls(), 0);
-        assert_eq!(subscriber2.get_rollback_calls(), 0);
-        assert_eq!(subscriber3.get_rollback_calls(), 0);
-
-        assert_eq!(coordinator.current_state().as_deref(), Some(&test_state));
-    }
-
-    #[tokio::test]
-    async fn test_multiple_subscribers_with_one_failure() {
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let subscriber1 = Arc::new(MockSubscriber::new("subscriber1"));
-        let subscriber2 = Arc::new(MockSubscriber::new("failing_subscriber"));
-        let subscriber3 = Arc::new(MockSubscriber::new("subscriber3"));
-
-        subscriber2.set_migrate_failure(true);
-
-        coordinator.add_subscriber(Box::new(subscriber1.clone()));
-        coordinator.add_subscriber(Box::new(subscriber2.clone()));
-        coordinator.add_subscriber(Box::new(subscriber3.clone()));
-
-        let test_state = TestState {
-            value: 42,
-            name: "multi_fail_test".to_string(),
-        };
-
-        let result = coordinator.upsert_state(test_state).await;
-        assert!(result.is_err());
-
-        // Only the first two subscribers had migrate called
-        assert_eq!(subscriber1.get_migrate_calls(), 1);
-        assert_eq!(subscriber2.get_migrate_calls(), 1);
-        assert_eq!(subscriber3.get_migrate_calls(), 0); // break prevents further migration
-
-        // subscriber2's rollback is handled by do_migration_for_subscriber
-        // subscriber1 was successfully migrated, so it gets rolled back by migrate_subscribers
-        assert_eq!(subscriber1.get_rollback_calls(), 1);
-        assert_eq!(subscriber2.get_rollback_calls(), 1);
-        assert_eq!(subscriber3.get_rollback_calls(), 0);
-
-        assert!(coordinator.current_state().is_none());
+        assert_eq!(sub1.call_count(), 1);
+        assert_eq!(sub2.call_count(), 1);
+        assert_eq!(sub3.call_count(), 1);
+        assert_eq!(coordinator.snapshot().as_deref(), Some(&test_state));
     }
 
     #[tokio::test]
     async fn test_state_update_sequence() {
         let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let subscriber = Arc::new(MockSubscriber::new("sequence_subscriber"));
+        let subscriber = Arc::new(MockAckSubscriber::new("sequence_subscriber"));
         coordinator.add_subscriber(Box::new(subscriber.clone()));
 
         let state1 = TestState {
@@ -808,12 +731,238 @@ mod test {
         };
         coordinator.upsert_state(state2.clone()).await.unwrap();
 
-        let history = subscriber.get_migrate_history().await;
+        let history = subscriber.history().await;
         assert_eq!(history.len(), 2);
         assert_eq!(history[0], (None, state1.clone()));
         assert_eq!(history[1], (Some(state1), state2.clone()));
 
-        assert_eq!(coordinator.current_state().as_deref(), Some(&state2));
+        assert_eq!(coordinator.snapshot().as_deref(), Some(&state2));
+    }
+
+    #[tokio::test]
+    async fn test_timeout_subscriber() {
+        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+
+        struct SlowSubscriber;
+        impl FusedStateChangedSubscriber for SlowSubscriber {}
+        #[async_trait::async_trait]
+        impl StateAckSubscriber<TestState> for SlowSubscriber {
+            fn name(&self) -> &str {
+                "slow"
+            }
+            fn ack_options(&self) -> AckOptions {
+                AckOptions::required(std::time::Duration::from_millis(50))
+            }
+            async fn on_committed(&self, _change: StateChange<TestState>) -> Ack {
+                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                Ack::Ok
+            }
+        }
+
+        coordinator.add_subscriber(Box::new(SlowSubscriber));
+        let test_state = TestState {
+            value: 1,
+            name: "timeout_test".to_string(),
+        };
+
+        let result = coordinator.upsert_state(test_state.clone()).await;
+        assert!(result.is_err());
+
+        match &result.unwrap_err() {
+            StateChangedError::CommitAck(e) => {
+                assert!(e.report.has_required_failures());
+                assert!(matches!(
+                    e.report.subscriber_acks[0].status,
+                    AckStatus::TimedOut
+                ));
+            }
+            other => panic!("Expected CommitAck with TimedOut, got: {other:?}"),
+        }
+
+        // State IS committed despite timeout
+        assert_eq!(coordinator.snapshot().as_deref(), Some(&test_state));
+    }
+
+    #[tokio::test]
+    async fn test_fused_subscriber_skipped() {
+        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+
+        struct TerminatedSubscriber;
+        impl FusedStateChangedSubscriber for TerminatedSubscriber {
+            fn is_terminated(&self) -> bool {
+                true
+            }
+        }
+        #[async_trait::async_trait]
+        impl StateAckSubscriber<TestState> for TerminatedSubscriber {
+            fn name(&self) -> &str {
+                "terminated"
+            }
+            async fn on_committed(&self, _change: StateChange<TestState>) -> Ack {
+                panic!("should not be called");
+            }
+        }
+
+        coordinator.add_subscriber(Box::new(TerminatedSubscriber));
+        let test_state = TestState {
+            value: 1,
+            name: "fused_test".to_string(),
+        };
+
+        let result = coordinator.upsert_state(test_state).await;
+        assert!(result.is_ok());
+        let report = result.unwrap();
+        assert!(matches!(
+            report.subscriber_acks[0].status,
+            AckStatus::SkippedTerminated
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_is_post_commit() {
+        assert!(StateChangedError::CommitAck(CommitAckError {
+            report: CommitReport::default()
+        })
+        .is_post_commit());
+        assert!(!StateChangedError::Validation(anyhow::anyhow!("nope")).is_post_commit());
+    }
+
+    #[tokio::test]
+    async fn test_with_pending_state_effect_success() {
+        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let subscriber = Arc::new(MockAckSubscriber::new("sub"));
+        coordinator.add_subscriber(Box::new(subscriber.clone()));
+
+        let state = TestState {
+            value: 42,
+            name: "effect_ok".to_string(),
+        };
+        let result = coordinator
+            .with_pending_state(&state, |s| async move {
+                assert_eq!(s.value, 42);
+                Ok::<_, anyhow::Error>("done")
+            })
+            .await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "done");
+        assert_eq!(coordinator.snapshot().unwrap().value, 42);
+        assert_eq!(subscriber.call_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_with_pending_state_effect_failure_no_commit() {
+        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let subscriber = Arc::new(MockAckSubscriber::new("sub"));
+        coordinator.add_subscriber(Box::new(subscriber.clone()));
+
+        let state = TestState {
+            value: 99,
+            name: "effect_fail".to_string(),
+        };
+        let result: Result<(), WithEffectError<anyhow::Error>> = coordinator
+            .with_pending_state(&state, |_s| async move {
+                Err::<(), _>(anyhow::anyhow!("effect failed"))
+            })
+            .await;
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            WithEffectError::Effect(e) => {
+                assert!(e.to_string().contains("effect failed"));
+            }
+            other => panic!("Expected WithEffectError::Effect, got: {other:?}"),
+        }
+
+        // State NOT committed (effect failed before commit)
+        assert!(coordinator.snapshot().is_none());
+        // Subscriber NOT called (commit never happened)
+        assert_eq!(subscriber.call_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_empty_subscribers_list() {
+        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let test_state = TestState {
+            value: 42,
+            name: "no_subscribers".to_string(),
+        };
+
+        let result = coordinator.upsert_state(test_state.clone()).await;
+        assert!(result.is_ok());
+        assert_eq!(coordinator.snapshot().as_deref(), Some(&test_state));
+    }
+
+    #[tokio::test]
+    async fn test_snapshot_handle() {
+        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let handle = coordinator.snapshot_handle();
+        assert!(handle.load().is_none());
+
+        let state = TestState {
+            value: 42,
+            name: "handle_test".to_string(),
+        };
+        coordinator.upsert_state(state.clone()).await.unwrap();
+        assert_eq!(handle.load().as_deref(), Some(&state));
+    }
+
+    #[tokio::test]
+    async fn test_builder_initialized() {
+        let mut builder = StateCoordinatorBuilder::<TestState>::default();
+        let subscriber = Arc::new(MockAckSubscriber::new("init_sub"));
+        builder.add_subscriber(Box::new(subscriber.clone()));
+
+        let state = TestState {
+            value: 42,
+            name: "init".to_string(),
+        };
+        let coordinator = builder.build_initialized(state.clone()).await.unwrap();
+
+        assert_eq!(coordinator.snapshot().as_deref(), Some(&state));
+        assert_eq!(subscriber.call_count(), 1);
+
+        let history = subscriber.history().await;
+        assert_eq!(history[0], (None, state));
+    }
+
+    #[allow(deprecated)]
+    #[tokio::test]
+    async fn test_legacy_adapter() {
+        struct OldSub {
+            name: String,
+            calls: AtomicUsize,
+        }
+        impl FusedStateChangedSubscriber for OldSub {}
+        #[async_trait::async_trait]
+        impl StateChangedSubscriber<TestState> for OldSub {
+            fn name(&self) -> &str {
+                &self.name
+            }
+            async fn migrate(
+                &self,
+                _prev: Option<&TestState>,
+                _new: &TestState,
+            ) -> Result<(), anyhow::Error> {
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+        }
+
+        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let old = Arc::new(OldSub {
+            name: "legacy".to_string(),
+            calls: AtomicUsize::new(0),
+        });
+        coordinator.add_legacy_subscriber(old.clone());
+
+        let state = TestState {
+            value: 1,
+            name: "legacy_test".to_string(),
+        };
+        let result = coordinator.upsert_state(state).await;
+        assert!(result.is_ok());
+        assert_eq!(old.calls.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
@@ -848,15 +997,14 @@ mod test {
 
         let result = coordinator.upsert(sync_builder).await;
         assert!(result.is_ok());
-
-        assert_eq!(coordinator.current_state().as_deref(), Some(&test_state));
+        assert_eq!(coordinator.snapshot().as_deref(), Some(&test_state));
     }
 
     #[tokio::test]
     async fn test_add_subscriber() {
         let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let subscriber1 = Arc::new(MockSubscriber::new("subscriber1"));
-        let subscriber2 = Arc::new(MockSubscriber::new("subscriber2"));
+        let subscriber1 = Arc::new(MockAckSubscriber::new("subscriber1"));
+        let subscriber2 = Arc::new(MockAckSubscriber::new("subscriber2"));
 
         assert_eq!(coordinator.subscribers.len(), 0);
 
@@ -874,411 +1022,28 @@ mod test {
         let result = coordinator.upsert_state(test_state.clone()).await;
         assert!(result.is_ok());
 
-        assert_eq!(subscriber1.get_migrate_calls(), 1);
-        assert_eq!(subscriber2.get_migrate_calls(), 1);
+        assert_eq!(subscriber1.call_count(), 1);
+        assert_eq!(subscriber2.call_count(), 1);
     }
 
     #[tokio::test]
     async fn test_get_state() {
         let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
 
-        assert!(coordinator.current_state().is_none());
+        assert!(coordinator.snapshot().is_none());
 
         let test_state = TestState {
             value: 100,
             name: "get_test".to_string(),
         };
-
         coordinator.upsert_state(test_state.clone()).await.unwrap();
-        assert_eq!(coordinator.current_state().as_deref(), Some(&test_state));
+        assert_eq!(coordinator.snapshot().as_deref(), Some(&test_state));
 
         let new_state = TestState {
             value: 200,
             name: "updated_test".to_string(),
         };
-
         coordinator.upsert_state(new_state.clone()).await.unwrap();
-        assert_eq!(coordinator.current_state().as_deref(), Some(&new_state));
-    }
-
-    #[tokio::test]
-    async fn test_empty_subscribers_list() {
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let test_state = TestState {
-            value: 42,
-            name: "no_subscribers".to_string(),
-        };
-
-        let result = coordinator.upsert_state(test_state.clone()).await;
-        assert!(result.is_ok());
-
-        assert_eq!(coordinator.current_state().as_deref(), Some(&test_state));
-    }
-
-    // ─── C1 fix: rollback off-by-one + break + reverse order ───
-
-    #[tokio::test]
-    async fn test_first_subscriber_fails_no_previous_rollback() {
-        // When the first subscriber (index=0) fails, there are no previously
-        // successful subscribers to rollback. Only its own rollback is called
-        // by do_migration_for_subscriber.
-        let subscriber1 = Arc::new(MockSubscriber::new("sub1"));
-        let subscriber2 = Arc::new(MockSubscriber::new("sub2"));
-        subscriber1.set_migrate_failure(true);
-
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        coordinator.add_subscriber(Box::new(subscriber1.clone()));
-        coordinator.add_subscriber(Box::new(subscriber2.clone()));
-
-        let state = TestState {
-            value: 1,
-            name: "first_fail".to_string(),
-        };
-        let result = coordinator.upsert_state(state).await;
-        assert!(result.is_err());
-
-        // sub1: migrate called (failed), rollback called by do_migration_for_subscriber
-        assert_eq!(subscriber1.get_migrate_calls(), 1);
-        assert_eq!(subscriber1.get_rollback_calls(), 1);
-
-        // sub2: never reached due to break
-        assert_eq!(subscriber2.get_migrate_calls(), 0);
-        assert_eq!(subscriber2.get_rollback_calls(), 0);
-
-        assert!(coordinator.current_state().is_none());
-    }
-
-    #[tokio::test]
-    async fn test_third_subscriber_fails_first_two_rolled_back() {
-        // When the third subscriber (index=2) fails, subscribers 0 and 1
-        // should be rolled back in reverse order (1 then 0).
-        let subscriber1 = Arc::new(MockSubscriber::new("sub1"));
-        let subscriber2 = Arc::new(MockSubscriber::new("sub2"));
-        let subscriber3 = Arc::new(MockSubscriber::new("sub3"));
-        subscriber3.set_migrate_failure(true);
-
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        coordinator.add_subscriber(Box::new(subscriber1.clone()));
-        coordinator.add_subscriber(Box::new(subscriber2.clone()));
-        coordinator.add_subscriber(Box::new(subscriber3.clone()));
-
-        let state = TestState {
-            value: 3,
-            name: "third_fail".to_string(),
-        };
-        let result = coordinator.upsert_state(state).await;
-        assert!(result.is_err());
-
-        // sub1 & sub2: migrated successfully, then rolled back
-        assert_eq!(subscriber1.get_migrate_calls(), 1);
-        assert_eq!(subscriber1.get_rollback_calls(), 1);
-        assert_eq!(subscriber2.get_migrate_calls(), 1);
-        assert_eq!(subscriber2.get_rollback_calls(), 1);
-
-        // sub3: migrate called (failed), rollback called by do_migration_for_subscriber
-        assert_eq!(subscriber3.get_migrate_calls(), 1);
-        assert_eq!(subscriber3.get_rollback_calls(), 1);
-
-        assert!(coordinator.current_state().is_none());
-    }
-
-    #[tokio::test]
-    async fn test_rollback_reverse_order() {
-        // Verify that rollback happens in reverse order: if A, B, C succeed
-        // and D fails, rollback order should be D (self), then C, B, A.
-        let rollback_order = Arc::new(Mutex::new(Vec::<String>::new()));
-
-        struct OrderTrackingSubscriber {
-            name: String,
-            should_fail_migrate: bool,
-            rollback_order: Arc<Mutex<Vec<String>>>,
-        }
-
-        impl FusedStateChangedSubscriber for OrderTrackingSubscriber {}
-
-        #[async_trait::async_trait]
-        impl StateChangedSubscriber<TestState> for OrderTrackingSubscriber {
-            fn name(&self) -> &str {
-                &self.name
-            }
-
-            async fn migrate(
-                &self,
-                _prev: Option<&TestState>,
-                _new: &TestState,
-            ) -> Result<(), anyhow::Error> {
-                if self.should_fail_migrate {
-                    Err(anyhow::anyhow!("fail"))
-                } else {
-                    Ok(())
-                }
-            }
-
-            async fn rollback(
-                &self,
-                _prev: Option<&TestState>,
-                _new: &TestState,
-            ) -> Result<(), anyhow::Error> {
-                self.rollback_order.lock().await.push(self.name.clone());
-                Ok(())
-            }
-        }
-
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        coordinator.add_subscriber(Box::new(OrderTrackingSubscriber {
-            name: "A".to_string(),
-            should_fail_migrate: false,
-            rollback_order: rollback_order.clone(),
-        }));
-        coordinator.add_subscriber(Box::new(OrderTrackingSubscriber {
-            name: "B".to_string(),
-            should_fail_migrate: false,
-            rollback_order: rollback_order.clone(),
-        }));
-        coordinator.add_subscriber(Box::new(OrderTrackingSubscriber {
-            name: "C".to_string(),
-            should_fail_migrate: false,
-            rollback_order: rollback_order.clone(),
-        }));
-        coordinator.add_subscriber(Box::new(OrderTrackingSubscriber {
-            name: "D_fail".to_string(),
-            should_fail_migrate: true,
-            rollback_order: rollback_order.clone(),
-        }));
-
-        let state = TestState {
-            value: 0,
-            name: "order_test".to_string(),
-        };
-        let result = coordinator.upsert_state(state).await;
-        assert!(result.is_err());
-
-        let order = rollback_order.lock().await;
-        // D_fail's own rollback is called first by do_migration_for_subscriber,
-        // then C, B, A in reverse order by run_migration.
-        assert_eq!(*order, vec!["D_fail", "C", "B", "A"]);
-    }
-
-    #[tokio::test]
-    async fn test_rollback_failure_accumulated_in_batch_error() {
-        // When a rollback of a previously successful subscriber also fails,
-        // the error should be accumulated alongside the migration error
-        // and returned as a Batch.
-        let subscriber1 = Arc::new(MockSubscriber::new("sub1_rollback_fails"));
-        let subscriber2 = Arc::new(MockSubscriber::new("sub2_fails_migrate"));
-
-        subscriber1.set_rollback_failure(true); // sub1 rollback will fail
-        subscriber2.set_migrate_failure(true); // sub2 migrate will fail
-
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        coordinator.add_subscriber(Box::new(subscriber1.clone()));
-        coordinator.add_subscriber(Box::new(subscriber2.clone()));
-
-        let state = TestState {
-            value: 99,
-            name: "rollback_fail_test".to_string(),
-        };
-        let result = coordinator.upsert_state(state).await;
-        assert!(result.is_err());
-
-        match result.unwrap_err() {
-            StateChangedError::Batch(errors) => {
-                // Should contain: sub2's migrate error + sub1's rollback error
-                assert_eq!(errors.len(), 2);
-                assert!(matches!(&errors[0], StateChangedError::Migrate(_)));
-                assert!(matches!(&errors[1], StateChangedError::Rollback(_)));
-            }
-            other => panic!("Expected Batch error, got: {other:?}"),
-        }
-
-        assert_eq!(subscriber1.get_migrate_calls(), 1);
-        assert_eq!(subscriber1.get_rollback_calls(), 1);
-        assert_eq!(subscriber2.get_migrate_calls(), 1);
-        assert_eq!(subscriber2.get_rollback_calls(), 1);
-    }
-
-    // ─── with_pending_state tests ───
-
-    #[tokio::test]
-    async fn test_with_pending_state_effect_success() {
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let subscriber = Arc::new(MockSubscriber::new("sub"));
-        coordinator.add_subscriber(Box::new(subscriber.clone()));
-
-        let state = TestState {
-            value: 42,
-            name: "effect_ok".to_string(),
-        };
-        let result = coordinator
-            .with_pending_state(&state, |s| async move {
-                assert_eq!(s.value, 42);
-                Ok::<_, anyhow::Error>("done")
-            })
-            .await;
-
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "done");
-        assert_eq!(coordinator.current_state().unwrap().value, 42);
-        assert_eq!(subscriber.get_migrate_calls(), 1);
-        assert_eq!(subscriber.get_rollback_calls(), 0);
-    }
-
-    #[tokio::test]
-    async fn test_with_pending_state_effect_failure_rollback() {
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let subscriber = Arc::new(MockSubscriber::new("sub"));
-        coordinator.add_subscriber(Box::new(subscriber.clone()));
-
-        let state = TestState {
-            value: 99,
-            name: "effect_fail".to_string(),
-        };
-        let result: Result<(), WithEffectError<anyhow::Error>> = coordinator
-            .with_pending_state(&state, |_s| async move {
-                Err::<(), _>(anyhow::anyhow!("effect failed"))
-            })
-            .await;
-
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            WithEffectError::Effect(e) => {
-                assert!(e.to_string().contains("effect failed"));
-            }
-            other => panic!("Expected WithEffectError::Effect, got: {other:?}"),
-        }
-
-        // State should NOT be committed
-        assert!(coordinator.current_state().is_none());
-        // Subscriber was migrated then rolled back
-        assert_eq!(subscriber.get_migrate_calls(), 1);
-        assert_eq!(subscriber.get_rollback_calls(), 1);
-    }
-
-    #[tokio::test]
-    async fn test_with_pending_state_migration_failure_no_effect() {
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let subscriber = Arc::new(MockSubscriber::new("sub"));
-        subscriber.set_migrate_failure(true);
-        coordinator.add_subscriber(Box::new(subscriber.clone()));
-
-        let state = TestState {
-            value: 1,
-            name: "migrate_fail".to_string(),
-        };
-        let effect_called = Arc::new(AtomicBool::new(false));
-        let effect_called_clone = effect_called.clone();
-
-        let result: Result<(), WithEffectError<anyhow::Error>> = coordinator
-            .with_pending_state(&state, |_s| async move {
-                effect_called_clone.store(true, Ordering::SeqCst);
-                Ok::<(), anyhow::Error>(())
-            })
-            .await;
-
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            WithEffectError::State(_) => {}
-            other => panic!("Expected WithEffectError::State, got: {other:?}"),
-        }
-
-        // Effect should NOT have been called
-        assert!(!effect_called.load(Ordering::SeqCst));
-        assert!(coordinator.current_state().is_none());
-    }
-
-    #[tokio::test]
-    async fn test_with_pending_state_effect_fail_rollback_fail() {
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        let subscriber = Arc::new(MockSubscriber::new("sub"));
-        subscriber.set_rollback_failure(true);
-        coordinator.add_subscriber(Box::new(subscriber.clone()));
-
-        let state = TestState {
-            value: 1,
-            name: "double_fail".to_string(),
-        };
-        let result: Result<(), WithEffectError<anyhow::Error>> = coordinator
-            .with_pending_state(&state, |_s| async move {
-                Err::<(), _>(anyhow::anyhow!("effect failed"))
-            })
-            .await;
-
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            WithEffectError::EffectAndRollback { effect, rollback } => {
-                assert!(effect.to_string().contains("effect failed"));
-                assert!(matches!(rollback, StateChangedError::Rollback(_)));
-            }
-            other => panic!("Expected WithEffectError::EffectAndRollback, got: {other:?}"),
-        }
-
-        assert!(coordinator.current_state().is_none());
-        assert_eq!(subscriber.get_migrate_calls(), 1);
-        assert_eq!(subscriber.get_rollback_calls(), 1);
-    }
-
-    #[tokio::test]
-    async fn test_with_pending_state_effect_fail_multi_subscriber_rollback_order() {
-        let rollback_order = Arc::new(Mutex::new(Vec::<String>::new()));
-
-        struct OrderTracker {
-            name: String,
-            rollback_order: Arc<Mutex<Vec<String>>>,
-        }
-
-        impl FusedStateChangedSubscriber for OrderTracker {}
-
-        #[async_trait::async_trait]
-        impl StateChangedSubscriber<TestState> for OrderTracker {
-            fn name(&self) -> &str {
-                &self.name
-            }
-
-            async fn migrate(
-                &self,
-                _prev: Option<&TestState>,
-                _new: &TestState,
-            ) -> Result<(), anyhow::Error> {
-                Ok(())
-            }
-
-            async fn rollback(
-                &self,
-                _prev: Option<&TestState>,
-                _new: &TestState,
-            ) -> Result<(), anyhow::Error> {
-                self.rollback_order.lock().await.push(self.name.clone());
-                Ok(())
-            }
-        }
-
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        coordinator.add_subscriber(Box::new(OrderTracker {
-            name: "A".to_string(),
-            rollback_order: rollback_order.clone(),
-        }));
-        coordinator.add_subscriber(Box::new(OrderTracker {
-            name: "B".to_string(),
-            rollback_order: rollback_order.clone(),
-        }));
-        coordinator.add_subscriber(Box::new(OrderTracker {
-            name: "C".to_string(),
-            rollback_order: rollback_order.clone(),
-        }));
-
-        let state = TestState {
-            value: 0,
-            name: "order".to_string(),
-        };
-
-        let _result: Result<(), WithEffectError<anyhow::Error>> = coordinator
-            .with_pending_state(&state, |_s| async move {
-                Err::<(), _>(anyhow::anyhow!("effect failed"))
-            })
-            .await;
-
-        let order = rollback_order.lock().await;
-        // All subscribers should be rolled back in reverse order
-        assert_eq!(*order, vec!["C", "B", "A"]);
+        assert_eq!(coordinator.snapshot().as_deref(), Some(&new_state));
     }
 }

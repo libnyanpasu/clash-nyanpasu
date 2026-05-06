@@ -39,24 +39,29 @@ where
         Self { state_coordinator }
     }
 
+    pub fn snapshot(&self) -> Option<Arc<State>> {
+        self.state_coordinator.snapshot()
+    }
+
+    #[deprecated(note = "Use snapshot() instead")]
     pub fn current_state(&self) -> Option<Arc<State>> {
-        self.state_coordinator.current_state()
+        self.snapshot()
     }
 
     pub fn snapshot_handle(&self) -> StateSnapshot<State> {
         self.state_coordinator.snapshot_handle()
     }
 
-    pub async fn upsert(&mut self, state: State) -> Result<(), StateChangedError> {
-        self.state_coordinator.upsert_state(state).await
+    pub async fn read(&self) -> Option<Arc<State>> {
+        self.state_coordinator.read().await
     }
 
-    pub async fn upsert_state_with_context(&mut self, state: State) -> Result<(), UpsertError> {
-        self.state_coordinator
-            .upsert_state_with_context(state.clone())
-            .await
-            .map_err(UpsertError::State)?;
-
+    pub async fn upsert(&mut self, state: State) -> Result<(), StateChangedError> {
+        self.state_coordinator.upsert_state(state).await?;
         Ok(())
+    }
+
+    pub fn state_coordinator_mut(&mut self) -> &mut StateCoordinator<State> {
+        &mut self.state_coordinator
     }
 }

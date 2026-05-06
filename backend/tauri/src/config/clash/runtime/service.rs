@@ -40,7 +40,8 @@ use crate::{
         profile::ProfilesService,
     },
     core::state_v2::{
-        Context, StateChangedSubscriber, StateCoordinator, WeakPersistentStateManager,
+        Ack, AckOptions, FusedStateChangedSubscriber, StateAckSubscriber, StateChange,
+        StateCoordinator, StateSnapshot, WeakPersistentStateManager,
         WeakPersistentStateManagerSetup, YamlFormat,
     },
     enhance::{self, EnhanceResult, PartialProfileItem},
@@ -49,7 +50,7 @@ use anyhow::Context as _;
 use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
-use std::{collections::BTreeSet, net::SocketAddr, sync::Arc};
+use std::{collections::BTreeSet, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 
 type RuntimeManager = WeakPersistentStateManager<ClashRuntimeState>;
@@ -70,91 +71,106 @@ pub struct ClashRuntimeConfigService {
     profiles_service: Arc<ProfilesService>,
     nyanpasu_config_service: Arc<NyanpasuAppConfigService>,
     runtime: Arc<RwLock<RuntimeManager>>,
+    snapshot: StateSnapshot<ClashRuntimeState>,
 }
 
-// -- StateChangedSubscriber impls --
+// -- StateAckSubscriber impls --
+
+impl FusedStateChangedSubscriber for ClashRuntimeConfigService {}
 
 #[async_trait::async_trait]
-impl StateChangedSubscriber<Profiles> for ClashRuntimeConfigService {
+impl StateAckSubscriber<Profiles> for ClashRuntimeConfigService {
     fn name(&self) -> &str {
         SERVICE_NAME
     }
 
-    async fn migrate(
-        &self,
-        _prev_state: Option<&Profiles>,
-        new_state: &Profiles,
-    ) -> Result<(), anyhow::Error> {
-        let clash_config = self.resolve_clash_config()?;
-        let nyanpasu_config = self.resolve_nyanpasu_config()?;
-        let runtime = self
-            .derive_runtime(new_state, &clash_config, &nyanpasu_config)
-            .await?;
-        self.upsert(runtime).await
+    fn ack_options(&self) -> AckOptions {
+        AckOptions::required(Duration::from_secs(30))
     }
 
-    async fn rollback(
-        &self,
-        _prev_state: Option<&Profiles>,
-        _new_state: &Profiles,
-    ) -> Result<(), anyhow::Error> {
-        Ok(())
-    }
-}
-
-#[async_trait::async_trait]
-impl StateChangedSubscriber<ClashConfig> for ClashRuntimeConfigService {
-    fn name(&self) -> &str {
-        SERVICE_NAME
-    }
-
-    async fn migrate(
-        &self,
-        _prev_state: Option<&ClashConfig>,
-        new_state: &ClashConfig,
-    ) -> Result<(), anyhow::Error> {
-        let profiles = self.resolve_profiles()?;
-        let nyanpasu_config = self.resolve_nyanpasu_config()?;
-        let runtime = self
-            .derive_runtime(&profiles, new_state, &nyanpasu_config)
-            .await?;
-        self.upsert(runtime).await
-    }
-
-    async fn rollback(
-        &self,
-        _prev_state: Option<&ClashConfig>,
-        _new_state: &ClashConfig,
-    ) -> Result<(), anyhow::Error> {
-        Ok(())
+    async fn on_committed(&self, change: StateChange<Profiles>) -> Ack {
+        let clash_config = match self.resolve_clash_config() {
+            Ok(c) => c,
+            Err(e) => return Ack::Failed(e),
+        };
+        let nyanpasu_config = match self.resolve_nyanpasu_config() {
+            Ok(c) => c,
+            Err(e) => return Ack::Failed(e),
+        };
+        match self
+            .derive_runtime(change.current(), &clash_config, &nyanpasu_config)
+            .await
+        {
+            Ok(runtime) => match self.upsert(runtime).await {
+                Ok(_) => Ack::Ok,
+                Err(e) => Ack::Failed(e),
+            },
+            Err(e) => Ack::Failed(e),
+        }
     }
 }
 
 #[async_trait::async_trait]
-impl StateChangedSubscriber<NyanpasuAppConfig> for ClashRuntimeConfigService {
+impl StateAckSubscriber<ClashConfig> for ClashRuntimeConfigService {
     fn name(&self) -> &str {
         SERVICE_NAME
     }
 
-    async fn migrate(
-        &self,
-        _prev_state: Option<&NyanpasuAppConfig>,
-        new_state: &NyanpasuAppConfig,
-    ) -> Result<(), anyhow::Error> {
-        let profiles = self.resolve_profiles()?;
-        let clash_config = self.resolve_clash_config()?;
-        let runtime = self
-            .derive_runtime(&profiles, &clash_config, new_state)
-            .await?;
-        self.upsert(runtime).await
+    fn ack_options(&self) -> AckOptions {
+        AckOptions::required(Duration::from_secs(30))
     }
 
-    async fn rollback(
-        &self,
-        _prev_state: Option<&NyanpasuAppConfig>,
-        _new_state: &NyanpasuAppConfig,
-    ) -> Result<(), anyhow::Error> {
-        Ok(())
+    async fn on_committed(&self, change: StateChange<ClashConfig>) -> Ack {
+        let profiles = match self.resolve_profiles() {
+            Ok(p) => p,
+            Err(e) => return Ack::Failed(e),
+        };
+        let nyanpasu_config = match self.resolve_nyanpasu_config() {
+            Ok(c) => c,
+            Err(e) => return Ack::Failed(e),
+        };
+        match self
+            .derive_runtime(&profiles, change.current(), &nyanpasu_config)
+            .await
+        {
+            Ok(runtime) => match self.upsert(runtime).await {
+                Ok(_) => Ack::Ok,
+                Err(e) => Ack::Failed(e),
+            },
+            Err(e) => Ack::Failed(e),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl StateAckSubscriber<NyanpasuAppConfig> for ClashRuntimeConfigService {
+    fn name(&self) -> &str {
+        SERVICE_NAME
+    }
+
+    fn ack_options(&self) -> AckOptions {
+        AckOptions::required(Duration::from_secs(30))
+    }
+
+    async fn on_committed(&self, change: StateChange<NyanpasuAppConfig>) -> Ack {
+        let profiles = match self.resolve_profiles() {
+            Ok(p) => p,
+            Err(e) => return Ack::Failed(e),
+        };
+        let clash_config = match self.resolve_clash_config() {
+            Ok(c) => c,
+            Err(e) => return Ack::Failed(e),
+        };
+        match self
+            .derive_runtime(&profiles, &clash_config, change.current())
+            .await
+        {
+            Ok(runtime) => match self.upsert(runtime).await {
+                Ok(_) => Ack::Ok,
+                Err(e) => Ack::Failed(e),
+            },
+            Err(e) => Ack::Failed(e),
+        }
     }
 }
 
@@ -206,11 +222,13 @@ impl ClashRuntimeConfigService {
                 .load_or_default()
                 .await
                 .map_err(|e| anyhow::anyhow!("failed to load runtime state: {e}"))?;
+        let snapshot = runtime.snapshot_handle();
         Ok(Self {
             clash_config_service,
             profiles_service,
             nyanpasu_config_service,
             runtime: Arc::new(RwLock::new(runtime)),
+            snapshot,
         })
     }
 
@@ -387,7 +405,7 @@ impl ClashRuntimeConfigService {
     pub async fn upsert(&self, state: ClashRuntimeState) -> Result<(), anyhow::Error> {
         let mut runtime = self.runtime.write().await;
         runtime
-            .upsert_with_context(state)
+            .upsert(state)
             .await
             .map_err(|e| anyhow::anyhow!("failed to upsert runtime state: {e}"))?;
         Ok(())
@@ -396,7 +414,7 @@ impl ClashRuntimeConfigService {
     /// Patch the current runtime config with a partial update.
     pub async fn patch_runtime_config(&self, patch: PatchPayload) -> Result<(), anyhow::Error> {
         let mut runtime = self.runtime.write().await;
-        let mut state = (*runtime.current_state().context("no runtime state found")?).clone();
+        let mut state = (*runtime.snapshot().context("no runtime state found")?).clone();
         match &patch {
             PatchPayload::Specific(p) => {
                 let mapping = serde_yaml::to_value(p)?
@@ -410,23 +428,20 @@ impl ClashRuntimeConfigService {
             }
         }
         runtime
-            .upsert_with_context(state)
+            .upsert(state)
             .await
             .map_err(|e| anyhow::anyhow!("failed to upsert patched runtime state: {e}"))?;
         Ok(())
     }
 
-    /// Get the current runtime state (Context-first for transactional consistency).
-    pub async fn current_state(&self) -> Option<Arc<ClashRuntimeState>> {
-        if let Some(state) = Context::get::<ClashRuntimeState>() {
-            return Some(Arc::new(state));
-        }
-        self.runtime.read().await.current_state()
+    /// Get the current runtime state via snapshot (lock-free).
+    pub fn current_state(&self) -> Option<Arc<ClashRuntimeState>> {
+        self.snapshot.load()
     }
 
     /// Get the client info from the runtime config
     pub async fn get_client_info(&self) -> Option<ClashInfo> {
-        let config = self.current_state().await?;
+        let config = self.current_state()?;
         let external_controller_server = config.get_external_controller_server()?;
         let proxy_mixed_port = config.get_proxy_mixed_port()?;
         let secret = config.get_secret();
@@ -483,8 +498,8 @@ mod tests {
         let state = make_test_runtime_state();
         manager.upsert(state).await.unwrap();
 
-        assert!(manager.current_state().is_some());
-        let current = manager.current_state().unwrap();
+        assert!(manager.snapshot().is_some());
+        let current = manager.snapshot().unwrap();
         assert_eq!(current.get_proxy_mixed_port(), Some(7890));
         assert!(lkg_path.exists());
     }
@@ -514,7 +529,7 @@ mod tests {
                 .load_or_default()
                 .await
                 .unwrap();
-        let current = manager.current_state().unwrap();
+        let current = manager.snapshot().unwrap();
         assert_eq!(current.get_proxy_mixed_port(), Some(7890));
     }
 
@@ -530,7 +545,7 @@ mod tests {
                 .load_or_default()
                 .await
                 .unwrap();
-        let current = manager.current_state().unwrap();
+        let current = manager.snapshot().unwrap();
         assert!(current.config.is_empty());
     }
 
@@ -546,7 +561,7 @@ mod tests {
 
         let state = make_test_runtime_state();
         manager.upsert(state).await.unwrap();
-        assert!(manager.current_state().is_some());
+        assert!(manager.snapshot().is_some());
     }
 
     #[tokio::test]

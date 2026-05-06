@@ -8,7 +8,7 @@ use super::{ClashConfig, ClashConfigBuilder};
 use crate::{
     config::NYANPASU_CONFIG_PREFIX,
     core::state_v2::{
-        Context, PersistentBuiltStateManager, PersistentBuiltStateManagerSetup,
+        PersistentBuiltStateManager, PersistentBuiltStateManagerSetup,
         StateAsyncBuilder, StateCoordinator, StateCoordinatorBuilder, StateSnapshot,
         error::*,
     },
@@ -99,11 +99,9 @@ impl ClashConfigService {
         self.snapshot.load()
     }
 
-    pub async fn current_config(&self) -> Option<Arc<ClashConfig>> {
-        match Context::get::<ClashConfig>() {
-            Some(config) => Some(Arc::new(config)),
-            None => self.manager.read().await.current_state(),
-        }
+    /// Get the current config via snapshot (lock-free).
+    pub fn current_config(&self) -> Option<Arc<ClashConfig>> {
+        self.snapshot()
     }
 
     pub async fn apply_overrides(
@@ -112,7 +110,6 @@ impl ClashConfigService {
     ) -> anyhow::Result<Mapping> {
         let current_config = self
             .current_config()
-            .await
             .ok_or(anyhow::anyhow!("config not found"))?;
         let new_config = current_config.apply_overrides(clash_config, &self.port_registry)?;
 
@@ -135,8 +132,7 @@ impl ClashConfigService {
             }
         };
 
-        // run in a scoped context for reading pending state
-        manager.upsert_with_context(builder.clone()).await?;
+        manager.upsert(builder.clone()).await?;
         Ok(())
     }
 
@@ -144,7 +140,7 @@ impl ClashConfigService {
         self.manager
             .write()
             .await
-            .upsert_with_context(builder)
+            .upsert(builder)
             .await?;
         Ok(())
     }

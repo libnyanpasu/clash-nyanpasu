@@ -176,12 +176,21 @@ where
         &mut self.state_coordinator
     }
 
+    pub fn snapshot(&self) -> Option<Arc<State>> {
+        self.state_coordinator.snapshot()
+    }
+
+    #[deprecated(note = "Use snapshot() instead")]
     pub fn current_state(&self) -> Option<Arc<State>> {
-        self.state_coordinator.current_state()
+        self.snapshot()
     }
 
     pub fn snapshot_handle(&self) -> StateSnapshot<State> {
         self.state_coordinator.snapshot_handle()
+    }
+
+    pub async fn read(&self) -> Option<Arc<State>> {
+        self.state_coordinator.read().await
     }
 
     pub fn current_builder(&self) -> Option<Builder>
@@ -224,56 +233,23 @@ where
                 self.current_builder = Some(builder);
                 Ok(())
             }
-            Err(e) => Err(match e {
-                WithEffectError::State(e) => UpsertError::State(e),
-                WithEffectError::Effect(e)
-                | WithEffectError::EffectAndRollback { effect: e, .. } => {
-                    UpsertError::WriteConfig(e)
-                }
-            }),
-        }
-    }
-
-    pub async fn upsert_with_context(&mut self, builder: Builder) -> Result<(), UpsertError>
-    where
-        Formatter: Clone,
-        Builder: Clone,
-    {
-        let new_state = builder
-            .build()
-            .await
-            .map_err(|e| UpsertError::State(StateChangedError::Validation(e)))?;
-
-        let config_path = self.config_path.clone();
-        let config_prefix = self.config_prefix.clone();
-        let formatter = self.formatter.clone();
-        let builder_for_save = builder.clone();
-
-        let result = self
-            .state_coordinator
-            .with_pending_state_in_context(&new_state, |_s| async move {
-                let mut buf = Vec::with_capacity(4096);
-                formatter.serialize(&mut buf, &builder_for_save, config_prefix.as_deref())?;
-                let file = AtomicFile::new(&config_path, AllowOverwrite);
-                tokio::task::spawn_blocking(move || file.write(|f| f.write_all(&buf)))
-                    .await?
-                    .with_context(|| format!("failed to write config: {config_path}"))?;
-                Ok::<_, anyhow::Error>(())
-            })
-            .await;
-
-        match result {
-            Ok(()) => {
-                self.current_builder = Some(builder);
-                Ok(())
+            Err(e) => {
+                let err = match e {
+                    WithEffectError::State(ref s) if s.is_post_commit() => {
+                        self.current_builder = Some(builder);
+                        UpsertError::State(match e {
+                            WithEffectError::State(s) => s,
+                            _ => unreachable!(),
+                        })
+                    }
+                    WithEffectError::State(e) => UpsertError::State(e),
+                    WithEffectError::Effect(e)
+                    | WithEffectError::EffectAndRollback { effect: e, .. } => {
+                        UpsertError::WriteConfig(e)
+                    }
+                };
+                Err(err)
             }
-            Err(e) => Err(match e {
-                WithEffectError::State(e) => UpsertError::State(e),
-                WithEffectError::Effect(e)
-                | WithEffectError::EffectAndRollback { effect: e, .. } => {
-                    UpsertError::WriteConfig(e)
-                }
-            }),
         }
     }
 }
@@ -321,7 +297,7 @@ mod tests {
 
         async fn build(&self) -> anyhow::Result<Self::State> {
             if self.should_fail {
-                return Err(anyhow::anyhow!("构建失败"));
+                return Err(anyhow::anyhow!("build failed"));
             }
             Ok(TestState {
                 name: self.name.clone(),
@@ -348,27 +324,24 @@ mod tests {
         Ok(value)
     }
 
-    // --- Setup-based tests ---
-
     #[tokio::test]
     async fn test_setup_load_success() {
-        let builder = TestBuilder::new("测试".to_string(), 42);
+        let builder = TestBuilder::new("test".to_string(), 42);
         let (config_path, _temp_dir) = create_temp_config_file(&builder).await.unwrap();
 
-        let manager =
-            PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
-                .config_path(config_path)
-                .assemble()
-                .load()
-                .await
-                .unwrap();
+        let manager = PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
+            .config_path(config_path)
+            .assemble()
+            .load()
+            .await
+            .unwrap();
 
-        let state = manager.current_state().unwrap();
-        assert_eq!(state.name, "测试");
+        let state = manager.snapshot().unwrap();
+        assert_eq!(state.name, "test");
         assert_eq!(state.value, 42);
 
         let current_builder = manager.current_builder().unwrap();
-        assert_eq!(current_builder.name, "测试");
+        assert_eq!(current_builder.name, "test");
         assert_eq!(current_builder.value, 42);
     }
 
@@ -378,12 +351,11 @@ mod tests {
         let config_path = temp_dir.path().join("nonexistent.yaml");
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
-        let result =
-            PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
-                .config_path(config_path)
-                .assemble()
-                .load()
-                .await;
+        let result = PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
+            .config_path(config_path)
+            .assemble()
+            .load()
+            .await;
 
         assert!(result.is_err());
         let error_msg = result.err().unwrap().to_string();
@@ -392,19 +364,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_setup_load_or_default_success() {
-        let builder = TestBuilder::new("默认测试".to_string(), 100);
+        let builder = TestBuilder::new("default_test".to_string(), 100);
         let (config_path, _temp_dir) = create_temp_config_file(&builder).await.unwrap();
 
-        let manager =
-            PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
-                .config_path(config_path)
-                .assemble()
-                .load_or_default()
-                .await
-                .unwrap();
+        let manager = PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
+            .config_path(config_path)
+            .assemble()
+            .load_or_default()
+            .await
+            .unwrap();
 
-        let state = manager.current_state().unwrap();
-        assert_eq!(state.name, "默认测试");
+        let state = manager.snapshot().unwrap();
+        assert_eq!(state.name, "default_test");
         assert_eq!(state.value, 100);
     }
 
@@ -414,15 +385,14 @@ mod tests {
         let config_path = temp_dir.path().join("nonexistent.yaml");
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
-        let manager =
-            PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
-                .config_path(config_path)
-                .assemble()
-                .load_or_default()
-                .await
-                .unwrap();
+        let manager = PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
+            .config_path(config_path)
+            .assemble()
+            .load_or_default()
+            .await
+            .unwrap();
 
-        let state = manager.current_state().unwrap();
+        let state = manager.snapshot().unwrap();
         assert_eq!(state.name, "");
         assert_eq!(state.value, 0);
     }
@@ -434,20 +404,17 @@ mod tests {
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
         let builder = TestBuilder::new("from_builder".to_string(), 77);
-        let manager =
-            PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
-                .config_path(config_path)
-                .assemble()
-                .from_builder(builder)
-                .await
-                .unwrap();
+        let manager = PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
+            .config_path(config_path)
+            .assemble()
+            .from_builder(builder)
+            .await
+            .unwrap();
 
-        let state = manager.current_state().unwrap();
+        let state = manager.snapshot().unwrap();
         assert_eq!(state.name, "from_builder");
         assert_eq!(state.value, 77);
     }
-
-    // --- Runtime tests ---
 
     #[tokio::test]
     async fn test_upsert_success() {
@@ -456,29 +423,28 @@ mod tests {
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
         let initial = TestBuilder::new("initial".to_string(), 0);
-        let mut manager =
-            PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
-                .config_path(config_path.clone())
-                .config_prefix("# 更新测试".to_string())
-                .assemble()
-                .from_builder(initial)
-                .await
-                .unwrap();
+        let mut manager = PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
+            .config_path(config_path.clone())
+            .config_prefix("# update test".to_string())
+            .assemble()
+            .from_builder(initial)
+            .await
+            .unwrap();
 
-        let builder = TestBuilder::new("更新测试".to_string(), 200);
+        let builder = TestBuilder::new("updated".to_string(), 200);
         let result = manager.upsert(builder.clone()).await;
         assert!(result.is_ok());
 
-        let state = manager.current_state().unwrap();
-        assert_eq!(state.name, "更新测试");
+        let state = manager.snapshot().unwrap();
+        assert_eq!(state.name, "updated");
         assert_eq!(state.value, 200);
 
         let current_builder = manager.current_builder().unwrap();
-        assert_eq!(current_builder.name, "更新测试");
+        assert_eq!(current_builder.name, "updated");
 
         assert!(config_path.exists());
         let saved_builder: TestBuilder = read_yaml(&config_path).await.unwrap();
-        assert_eq!(saved_builder.name, "更新测试");
+        assert_eq!(saved_builder.name, "updated");
         assert_eq!(saved_builder.value, 200);
     }
 
@@ -489,13 +455,12 @@ mod tests {
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
         let initial = TestBuilder::new("initial".to_string(), 0);
-        let mut manager =
-            PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
-                .config_path(config_path)
-                .assemble()
-                .from_builder(initial)
-                .await
-                .unwrap();
+        let mut manager = PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
+            .config_path(config_path)
+            .assemble()
+            .from_builder(initial)
+            .await
+            .unwrap();
 
         let failing_builder = TestBuilder::failing();
         let result = manager.upsert(failing_builder).await;
@@ -515,15 +480,14 @@ mod tests {
         let config_path = Utf8PathBuf::from("/__nonexistent_dir__/__sub__/config.yaml");
 
         let initial = TestBuilder::new("initial".to_string(), 0);
-        let mut manager =
-            PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
-                .config_path(config_path)
-                .assemble()
-                .from_builder(initial)
-                .await
-                .unwrap();
+        let mut manager = PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
+            .config_path(config_path)
+            .assemble()
+            .from_builder(initial)
+            .await
+            .unwrap();
 
-        let builder = TestBuilder::new("写入失败测试".to_string(), 300);
+        let builder = TestBuilder::new("write_fail".to_string(), 300);
         let result = manager.upsert(builder).await;
         assert!(result.is_err());
 
@@ -534,28 +498,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_upsert_write_config_error_rollback() {
+    async fn test_upsert_write_config_error_no_commit() {
         let temp_dir = tempdir().unwrap();
         let config_path = temp_dir.path().join("rollback_test.yaml");
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
-        let initial_builder = TestBuilder::new("初始值".to_string(), 100);
-        let mut manager =
-            PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
-                .config_path(config_path)
-                .assemble()
-                .from_builder(initial_builder)
-                .await
-                .unwrap();
+        let initial_builder = TestBuilder::new("initial".to_string(), 100);
+        let mut manager = PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
+            .config_path(config_path)
+            .assemble()
+            .from_builder(initial_builder)
+            .await
+            .unwrap();
 
-        // First upsert to persist
-        let b = TestBuilder::new("初始值".to_string(), 100);
+        let b = TestBuilder::new("initial".to_string(), 100);
         manager.upsert(b).await.unwrap();
-        assert_eq!(manager.current_state().unwrap().name, "初始值");
+        assert_eq!(manager.snapshot().unwrap().name, "initial");
 
         manager.config_path = Utf8PathBuf::from("/__nonexistent_dir__/__sub__/config.yaml");
 
-        let new_builder = TestBuilder::new("新值".to_string(), 200);
+        let new_builder = TestBuilder::new("new_value".to_string(), 200);
         let result = manager.upsert(new_builder).await;
         assert!(result.is_err());
 
@@ -564,11 +526,11 @@ mod tests {
             other => panic!("Expected UpsertError::WriteConfig, got: {:?}", other),
         }
 
-        let state = manager.current_state().unwrap();
-        assert_eq!(state.name, "初始值");
+        let state = manager.snapshot().unwrap();
+        assert_eq!(state.name, "initial");
         assert_eq!(state.value, 100);
         let builder = manager.current_builder().unwrap();
-        assert_eq!(builder.name, "初始值");
+        assert_eq!(builder.name, "initial");
         assert_eq!(builder.value, 100);
     }
 
@@ -579,25 +541,24 @@ mod tests {
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
         let initial = TestBuilder::new("initial".to_string(), 0);
-        let mut manager =
-            PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
-                .config_path(config_path.clone())
-                .config_prefix("# 多次更新测试".to_string())
-                .assemble()
-                .from_builder(initial)
-                .await
-                .unwrap();
+        let mut manager = PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
+            .config_path(config_path.clone())
+            .config_prefix("# multiple upserts".to_string())
+            .assemble()
+            .from_builder(initial)
+            .await
+            .unwrap();
 
-        let builder1 = TestBuilder::new("第一次".to_string(), 1);
+        let builder1 = TestBuilder::new("first".to_string(), 1);
         manager.upsert(builder1).await.unwrap();
-        assert_eq!(manager.current_state().unwrap().name, "第一次");
+        assert_eq!(manager.snapshot().unwrap().name, "first");
 
-        let builder2 = TestBuilder::new("第二次".to_string(), 2);
+        let builder2 = TestBuilder::new("second".to_string(), 2);
         manager.upsert(builder2).await.unwrap();
-        assert_eq!(manager.current_state().unwrap().name, "第二次");
+        assert_eq!(manager.snapshot().unwrap().name, "second");
 
         let saved_builder: TestBuilder = read_yaml(&config_path).await.unwrap();
-        assert_eq!(saved_builder.name, "第二次");
+        assert_eq!(saved_builder.name, "second");
         assert_eq!(saved_builder.value, 2);
     }
 
@@ -607,23 +568,22 @@ mod tests {
         let config_path = temp_dir.path().join("prefix_test.yaml");
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
-        let prefix = "# 这是一个测试配置文件\n# 请勿手动修改";
+        let prefix = "# Test config\n# Do not edit";
         let initial = TestBuilder::new("initial".to_string(), 0);
-        let mut manager =
-            PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
-                .config_path(config_path.clone())
-                .config_prefix(prefix.to_string())
-                .assemble()
-                .from_builder(initial)
-                .await
-                .unwrap();
+        let mut manager = PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
+            .config_path(config_path.clone())
+            .config_prefix(prefix.to_string())
+            .assemble()
+            .from_builder(initial)
+            .await
+            .unwrap();
 
-        let builder = TestBuilder::new("前缀测试".to_string(), 500);
+        let builder = TestBuilder::new("prefix_test".to_string(), 500);
         manager.upsert(builder).await.unwrap();
 
         let file_content = fs::read_to_string(&config_path).await.unwrap();
-        assert!(file_content.starts_with("# 这是一个测试配置文件"));
-        assert!(file_content.contains("# 请勿手动修改"));
-        assert!(file_content.contains("name: 前缀测试"));
+        assert!(file_content.starts_with("# Test config"));
+        assert!(file_content.contains("# Do not edit"));
+        assert!(file_content.contains("name: prefix_test"));
     }
 }

@@ -10,7 +10,7 @@ use nyanpasu_core::state::YamlFormat;
 use crate::{
     config::NYANPASU_CONFIG_PREFIX,
     core::state_v2::{
-        Context, PersistentBuiltStateManager, PersistentBuiltStateManagerSetup,
+        PersistentBuiltStateManager, PersistentBuiltStateManagerSetup,
         StateAsyncBuilder, StateCoordinatorBuilder, StateSnapshot,
         error::*,
     },
@@ -85,18 +85,10 @@ impl NyanpasuAppConfigService {
         self.snapshot.load()
     }
 
-    /// Get the current config,
-    /// if the config is not found in the state transactional context, it will be loaded from the real manager
-    pub async fn current_config(&self) -> anyhow::Result<Arc<NyanpasuAppConfig>> {
-        match Context::get::<NyanpasuAppConfig>() {
-            Some(config) => Ok(Arc::new(config)),
-            None => self
-                .state_manager
-                .read()
-                .await
-                .current_state()
-                .ok_or_else(|| anyhow::anyhow!("current config not found")),
-        }
+    /// Get the current config via snapshot (lock-free).
+    pub fn current_config(&self) -> anyhow::Result<Arc<NyanpasuAppConfig>> {
+        self.snapshot()
+            .ok_or_else(|| anyhow::anyhow!("current config not found"))
     }
 
     /// Use a partial config builder to patch the current config
@@ -115,16 +107,14 @@ impl NyanpasuAppConfigService {
             }
         };
 
-        // run in a scoped context for reading pending state
-        manager.upsert_with_context(builder.clone()).await?;
+        manager.upsert(builder.clone()).await?;
         Ok(())
     }
 
     /// Upsert a complete config builder
     pub async fn upsert(&self, upsert: NyanpasuAppConfigBuilder) -> anyhow::Result<()> {
         let mut manager = self.state_manager.write().await;
-        // run in a scoped context for reading pending state
-        manager.upsert_with_context(upsert.clone()).await?;
+        manager.upsert(upsert.clone()).await?;
         Ok(())
     }
 }

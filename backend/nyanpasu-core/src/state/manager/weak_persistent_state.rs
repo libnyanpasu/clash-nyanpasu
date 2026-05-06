@@ -4,7 +4,8 @@ use bon::Builder;
 use camino::Utf8PathBuf;
 use fs_err::tokio as fs;
 use serde::{Serialize, de::DeserializeOwned};
-use std::{future::Future, io::Write, sync::Arc};
+use std::io::Write;
+use std::sync::Arc;
 
 use super::{super::error::*, *};
 
@@ -103,18 +104,12 @@ where
     }
 }
 
-/// A state manager with **advisory persistence** — file write happens
-/// post-commit and failure only logs a warning, never triggers rollback.
-///
-/// This is the correct semantics for derived/computed state where the
-/// persisted file is a "last known good" recovery snapshot rather than
-/// the authoritative source of truth.
 pub struct WeakPersistentStateManager<State, Formatter = YamlFormat>
 where
     State: Clone + Send + Sync + 'static,
 {
     config_prefix: Option<String>,
-    config_path: Utf8PathBuf,
+    pub(crate) config_path: Utf8PathBuf,
     state_coordinator: StateCoordinator<State>,
     formatter: Formatter,
 }
@@ -124,12 +119,21 @@ where
     State: Clone + Send + Sync + Serialize + DeserializeOwned + 'static,
     Formatter: Format,
 {
+    pub fn snapshot(&self) -> Option<Arc<State>> {
+        self.state_coordinator.snapshot()
+    }
+
+    #[deprecated(note = "Use snapshot() instead")]
     pub fn current_state(&self) -> Option<Arc<State>> {
-        self.state_coordinator.current_state()
+        self.snapshot()
     }
 
     pub fn snapshot_handle(&self) -> StateSnapshot<State> {
         self.state_coordinator.snapshot_handle()
+    }
+
+    pub async fn read(&self) -> Option<Arc<State>> {
+        self.state_coordinator.read().await
     }
 
     pub fn state_coordinator_mut(&mut self) -> &mut StateCoordinator<State> {
@@ -192,74 +196,27 @@ where
     where
         Formatter: Clone,
     {
-        self.state_coordinator.upsert_state(state.clone()).await?;
-        self.try_persist(&state).await;
-        Ok(())
-    }
-
-    pub async fn upsert_with_context(&mut self, state: State) -> Result<(), StateChangedError>
-    where
-        Formatter: Clone,
-    {
-        self.state_coordinator
-            .upsert_state_with_context(state.clone())
-            .await?;
-        self.try_persist(&state).await;
-        Ok(())
-    }
-
-    pub async fn with_pending_state<'s, F, Fut, R, E>(
-        &mut self,
-        state: &'s State,
-        effect_fn: F,
-    ) -> Result<R, WithEffectError<E>>
-    where
-        F: FnOnce(&'s State) -> Fut,
-        Fut: Future<Output = Result<R, E>> + 's,
-        Formatter: Clone,
-    {
         let result = self
             .state_coordinator
-            .with_pending_state(state, effect_fn)
+            .upsert_state(state.clone())
             .await;
-        if result.is_ok() {
-            self.try_persist(state).await;
+        match &result {
+            Ok(_) => self.try_persist(&state).await,
+            Err(e) if e.is_post_commit() => self.try_persist(&state).await,
+            Err(_) => {}
         }
-        result
-    }
-
-    pub async fn with_pending_state_in_context<'s, F, Fut, R, E>(
-        &mut self,
-        state: &'s State,
-        effect_fn: F,
-    ) -> Result<R, WithEffectError<E>>
-    where
-        F: FnOnce(&'s State) -> Fut,
-        Fut: Future<Output = Result<R, E>> + 's,
-        Formatter: Clone,
-    {
-        let result = self
-            .state_coordinator
-            .with_pending_state_in_context(state, effect_fn)
-            .await;
-        if result.is_ok() {
-            self.try_persist(state).await;
-        }
-        result
+        result.map(|_| ())
     }
 }
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::super::ack::*;
     use serde::{Deserialize, Serialize};
-    use std::sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    };
+    use std::sync::atomic::{AtomicBool, Ordering};
     use tempfile::tempdir;
-    use tokio::{fs, sync::Mutex};
+    use tokio::fs;
 
     #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
     struct TestState {
@@ -290,73 +247,39 @@ mod tests {
         Ok(value)
     }
 
-    // --- Mock subscribers ---
-
-    struct MockSubscriber {
+    struct MockAckSub {
         name: String,
-        should_fail_migrate: AtomicBool,
+        should_fail: AtomicBool,
     }
 
-    impl MockSubscriber {
+    impl MockAckSub {
         fn new(name: &str) -> Self {
             Self {
                 name: name.to_string(),
-                should_fail_migrate: AtomicBool::new(false),
+                should_fail: AtomicBool::new(false),
             }
         }
 
-        fn set_migrate_failure(&self, should_fail: bool) {
-            self.should_fail_migrate
-                .store(should_fail, Ordering::SeqCst);
+        fn set_fail(&self, fail: bool) {
+            self.should_fail.store(fail, Ordering::SeqCst);
         }
     }
 
-    impl FusedStateChangedSubscriber for MockSubscriber {}
+    impl FusedStateChangedSubscriber for MockAckSub {}
 
     #[async_trait::async_trait]
-    impl StateChangedSubscriber<TestState> for MockSubscriber {
+    impl StateAckSubscriber<TestState> for MockAckSub {
         fn name(&self) -> &str {
             &self.name
         }
 
-        async fn migrate(
-            &self,
-            _prev_state: Option<&TestState>,
-            _new_state: &TestState,
-        ) -> Result<(), anyhow::Error> {
-            if self.should_fail_migrate.load(Ordering::SeqCst) {
-                return Err(anyhow::anyhow!("Mock migrate failure"));
+        async fn on_committed(&self, _change: StateChange<TestState>) -> Ack {
+            if self.should_fail.load(Ordering::SeqCst) {
+                return Ack::Failed(anyhow::anyhow!("mock ACK failure"));
             }
-            Ok(())
+            Ack::Ok
         }
     }
-
-    struct ContextReadSubscriber {
-        name: String,
-        captured_context: Arc<Mutex<Option<TestState>>>,
-    }
-
-    impl FusedStateChangedSubscriber for ContextReadSubscriber {}
-
-    #[async_trait::async_trait]
-    impl StateChangedSubscriber<TestState> for ContextReadSubscriber {
-        fn name(&self) -> &str {
-            &self.name
-        }
-
-        async fn migrate(
-            &self,
-            _prev_state: Option<&TestState>,
-            _new_state: &TestState,
-        ) -> Result<(), anyhow::Error> {
-            use super::super::super::context::Context;
-            let ctx = Context::get::<TestState>();
-            *self.captured_context.lock().await = ctx;
-            Ok(())
-        }
-    }
-
-    // --- Setup-based tests ---
 
     #[tokio::test]
     async fn test_setup_load_or_default_existing_file() {
@@ -370,7 +293,7 @@ mod tests {
             .await
             .unwrap();
 
-        let current = manager.current_state().unwrap();
+        let current = manager.snapshot().unwrap();
         assert_eq!(current.name, "snapshot");
         assert_eq!(current.value, 77);
     }
@@ -388,7 +311,7 @@ mod tests {
             .await
             .unwrap();
 
-        let current = manager.current_state().unwrap();
+        let current = manager.snapshot().unwrap();
         assert_eq!(current.name, "");
         assert_eq!(current.value, 0);
         assert!(!config_path.exists());
@@ -408,10 +331,8 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(*manager.current_state().unwrap(), state);
+        assert_eq!(*manager.snapshot().unwrap(), state);
     }
-
-    // --- Runtime tests ---
 
     #[tokio::test]
     async fn test_upsert_success() {
@@ -431,7 +352,7 @@ mod tests {
         let result = manager.upsert(state).await;
         assert!(result.is_ok());
 
-        let current = manager.current_state().unwrap();
+        let current = manager.snapshot().unwrap();
         assert_eq!(current.name, "upsert");
         assert_eq!(current.value, 42);
 
@@ -456,7 +377,7 @@ mod tests {
         let result = manager.upsert(state).await;
         assert!(result.is_ok());
 
-        let current = manager.current_state().unwrap();
+        let current = manager.snapshot().unwrap();
         assert_eq!(current.name, "committed");
         assert_eq!(current.value, 100);
 
@@ -464,136 +385,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_with_pending_state_effect_failure() {
+    async fn test_subscriber_ack_failure() {
         let temp_dir = tempdir().unwrap();
-        let config_path = temp_dir.path().join("effect_fail.yaml");
-        let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
-
-        let mut manager = WeakPersistentStateManagerSetup::<TestState>::builder()
-            .config_path(config_path.clone())
-            .assemble()
-            .from_state(TestState::default())
-            .await
-            .unwrap();
-
-        let state = TestState::new("pending".to_string(), 50);
-        let result: Result<(), WithEffectError<anyhow::Error>> = manager
-            .with_pending_state(&state, |_s| async { Err(anyhow::anyhow!("effect failed")) })
-            .await;
-
-        assert!(result.is_err());
-        // State should still be the initial default, not the pending state
-        assert_eq!(manager.current_state().unwrap().name, "");
-        assert!(!config_path.exists());
-    }
-
-    #[tokio::test]
-    async fn test_with_pending_state_effect_success() {
-        let temp_dir = tempdir().unwrap();
-        let config_path = temp_dir.path().join("effect_success.yaml");
-        let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
-
-        let mut manager = WeakPersistentStateManagerSetup::<TestState>::builder()
-            .config_path(config_path.clone())
-            .assemble()
-            .from_state(TestState::default())
-            .await
-            .unwrap();
-
-        let state = TestState::new("effect_ok".to_string(), 60);
-        let result: Result<i32, WithEffectError<anyhow::Error>> = manager
-            .with_pending_state(&state, |_s| async { Ok(42) })
-            .await;
-
-        assert_eq!(result.unwrap(), 42);
-
-        let current = manager.current_state().unwrap();
-        assert_eq!(current.name, "effect_ok");
-        assert_eq!(current.value, 60);
-
-        assert!(config_path.exists());
-        let saved: TestState = read_yaml(&config_path).await.unwrap();
-        assert_eq!(saved.name, "effect_ok");
-        assert_eq!(saved.value, 60);
-    }
-
-    #[tokio::test]
-    async fn test_with_pending_state_persist_failure_after_commit() {
-        let config_path = Utf8PathBuf::from("/__nonexistent_dir__/__sub__/config.yaml");
-
-        let mut manager = WeakPersistentStateManagerSetup::<TestState>::builder()
-            .config_path(config_path.clone())
-            .assemble()
-            .from_state(TestState::default())
-            .await
-            .unwrap();
-
-        let state = TestState::new("persist_fail".to_string(), 70);
-        let result: Result<(), WithEffectError<anyhow::Error>> = manager
-            .with_pending_state(&state, |_s| async { Ok(()) })
-            .await;
-
-        assert!(result.is_ok());
-
-        let current = manager.current_state().unwrap();
-        assert_eq!(current.name, "persist_fail");
-        assert_eq!(current.value, 70);
-
-        assert!(!config_path.exists());
-    }
-
-    #[tokio::test]
-    async fn test_subscriber_migration_failure() {
-        let temp_dir = tempdir().unwrap();
-        let config_path = temp_dir.path().join("migrate_fail.yaml");
+        let config_path = temp_dir.path().join("ack_fail.yaml");
         let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
 
         let mut coordinator_builder = StateCoordinatorBuilder::default();
-        let subscriber = MockSubscriber::new("fail_sub");
-        subscriber.set_migrate_failure(true);
+        let subscriber = MockAckSub::new("fail_sub");
+        subscriber.set_fail(true);
         coordinator_builder.add_subscriber(Box::new(subscriber));
 
-        // Subscriber fails during build_initialized → Setup fails
         let result = WeakPersistentStateManagerSetup::<TestState>::builder()
             .config_path(config_path.clone())
             .state_coordinator(coordinator_builder)
             .assemble()
-            .from_state(TestState::new("should_not_commit".to_string(), 99))
+            .from_state(TestState::new("should_commit".to_string(), 99))
             .await;
 
+        // build_initialized will return CommitAck error since the subscriber fails
         assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_upsert_with_context_provides_scope() {
-        let temp_dir = tempdir().unwrap();
-        let config_path = temp_dir.path().join("context_test.yaml");
-        let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
-
-        let captured = Arc::new(Mutex::new(None::<TestState>));
-        let subscriber = ContextReadSubscriber {
-            name: "ctx_reader".to_string(),
-            captured_context: captured.clone(),
-        };
-
-        let mut coordinator_builder = StateCoordinatorBuilder::default();
-        coordinator_builder.add_subscriber(Box::new(subscriber));
-
-        let mut manager = WeakPersistentStateManagerSetup::<TestState>::builder()
-            .config_path(config_path)
-            .state_coordinator(coordinator_builder)
-            .assemble()
-            .from_state(TestState::default())
-            .await
-            .unwrap();
-
-        let state = TestState::new("ctx_state".to_string(), 123);
-        let result = manager.upsert_with_context(state.clone()).await;
-        assert!(result.is_ok());
-
-        let ctx_value = captured.lock().await.clone();
-        assert!(ctx_value.is_some());
-        assert_eq!(ctx_value.unwrap(), state);
     }
 
     #[tokio::test]
@@ -611,7 +421,7 @@ mod tests {
 
         let initial = TestState::new("initial".to_string(), 100);
         manager.upsert(initial.clone()).await.unwrap();
-        assert_eq!(*manager.current_state().unwrap(), initial);
+        assert_eq!(*manager.snapshot().unwrap(), initial);
 
         manager.config_path = Utf8PathBuf::from("/__nonexistent_dir__/__sub__/config.yaml");
 
@@ -619,6 +429,6 @@ mod tests {
         let result = manager.upsert(updated.clone()).await;
         assert!(result.is_ok());
 
-        assert_eq!(*manager.current_state().unwrap(), updated);
+        assert_eq!(*manager.snapshot().unwrap(), updated);
     }
 }

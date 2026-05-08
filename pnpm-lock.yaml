@@ -55,8 +55,8 @@ importers:
         specifier: 17.6.0
         version: 17.6.0
       knip:
-        specifier: 6.12.0
-        version: 6.12.0(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
+        specifier: 6.12.1
+        version: 6.12.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
       lint-staged:
         specifier: 17.0.2
         version: 17.0.2
@@ -4924,8 +4924,8 @@ packages:
     resolution: {integrity: sha512-dcS1ul+9tmeD95T+x28/ehLgd9mENa3LsvDTtzm3vyBEO7RPptvAD+t44WVXaUjTBRcrpFeFlC8WCruUR456hw==}
     engines: {node: '>=0.10.0'}
 
-  knip@6.12.0:
-    resolution: {integrity: sha512-nRg8+DOFcfBD6NjmNzu9+3D35QnEmMsnojJGOHQUqv+70r1aOx99wpSUXvEV7syQVOL5E6tNXXkoyG1Fuz8BWg==}
+  knip@6.12.1:
+    resolution: {integrity: sha512-9JRZB1mENe8xNMpP4jJRiFXkRVBHTWzD7YtiLywkO7aKXCefbvI+hA0YDl7H7dPvJt7gcVolgxKgABJQ31NL3w==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
 
@@ -11021,7 +11021,7 @@ snapshots:
 
   kind-of@6.0.3: {}
 
-  knip@6.12.0(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0):
+  knip@6.12.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0):
     dependencies:
       fdir: 6.5.0(picomatch@4.0.4)
       formatly: 0.3.0

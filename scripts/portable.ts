@@ -1,17 +1,7 @@
 import * as path from "jsr:@std/path";
 import { ensureDir, exists } from "jsr:@std/fs";
 import AdmZip from "npm:adm-zip";
-import { Octokit } from "npm:octokit";
-import { colorize, consola } from "./utils/logger.ts";
-
-function getRepoContext() {
-  const token = Deno.env.get("GITHUB_TOKEN");
-  if (!token) throw new Error("GITHUB_TOKEN is required");
-  const repoStr = Deno.env.get("GITHUB_REPOSITORY") ?? "";
-  const [owner, repo] = repoStr.split("/");
-  if (!owner || !repo) throw new Error("GITHUB_REPOSITORY must be owner/repo");
-  return { token, owner, repo };
-}
+import { consola } from "./utils/logger.ts";
 
 const RUST_ARCH = Deno.env.get("RUST_ARCH") ?? "x86_64";
 const fixedWebview = Deno.args.includes("--fixed-webview");
@@ -79,31 +69,6 @@ async function resolvePortable() {
   zip.writeZip(zipFile);
 
   consola.success("create portable zip successfully");
-
-  if (!Deno.env.get("GITHUB_TOKEN")) {
-    throw new Error("GITHUB_TOKEN is required");
-  }
-
-  const { token, owner, repo } = getRepoContext();
-  const github = new Octokit({ auth: token });
-  const options = { owner, repo };
-
-  consola.info("upload to ", Deno.env.get("TAG_NAME") || `v${version}`);
-
-  const { data: release } = await github.rest.repos.getReleaseByTag({
-    ...options,
-    tag: Deno.env.get("TAG_NAME") || `v${version}`,
-  });
-
-  consola.debug(colorize`releaseName: {green ${release.name}}`);
-
-  await github.rest.repos.uploadReleaseAsset({
-    ...options,
-    release_id: release.id,
-    name: zipFile,
-    // @ts-expect-error Buffer-compatible Uint8Array
-    data: zip.toBuffer(),
-  });
 }
 
 resolvePortable().catch((err) => {

@@ -110,6 +110,12 @@ pub enum UpsertError {
     WriteConfig(anyhow::Error),
 }
 
+impl UpsertError {
+    pub fn is_post_commit(&self) -> bool {
+        matches!(self, UpsertError::State(s) if s.is_post_commit())
+    }
+}
+
 #[derive(thiserror::Error, Debug)]
 pub enum WithEffectError<E> {
     #[error("state migration failed: {0}")]

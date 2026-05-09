@@ -69,6 +69,18 @@ pub enum Ack {
     Failed(anyhow::Error),
 }
 
+/// # Deadlock Warning
+///
+/// Subscribers are notified **sequentially** while the coordinator holds &mut self.
+/// If a subscriber acquires an async lock on a manager that transitively writes back
+/// to this coordinator (cyclic dependency), it **will deadlock**.
+///
+/// Safe patterns:
+/// - Fan-in: A->D, B->D (multiple sources update one target)
+/// - Chain: A->B->C (linear cascade)
+///
+/// Unsafe patterns:
+/// - Cycle: A->B->A (mutual subscription)
 #[async_trait::async_trait]
 pub trait StateAckSubscriber<T: Clone + Send + Sync + 'static>: Send + Sync {
     fn name(&self) -> &str;

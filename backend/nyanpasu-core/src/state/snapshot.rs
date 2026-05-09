@@ -27,3 +27,11 @@ impl<T: Clone + Send + Sync + 'static> Clone for StateSnapshot<T> {
         Self(Arc::clone(&self.0))
     }
 }
+
+impl<T: Clone + Send + Sync + 'static> std::fmt::Debug for StateSnapshot<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("StateSnapshot")
+            .field(&format_args!("..."))
+            .finish()
+    }
+}

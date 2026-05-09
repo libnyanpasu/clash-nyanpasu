@@ -8,7 +8,10 @@ use std::io::Write;
 
 use super::{super::error::*, *};
 
-use crate::format::{Format, YamlFormat};
+use crate::{
+    format::{Format, YamlFormat},
+    state::CommitReport,
+};
 
 #[derive(Builder)]
 #[builder(finish_fn = assemble)]
@@ -187,7 +190,7 @@ where
         }
     }
 
-    pub async fn upsert(&mut self, state: State) -> Result<(), StateChangedError>
+    pub async fn upsert(&mut self, state: State) -> Result<CommitReport, StateChangedError>
     where
         Formatter: Clone,
     {
@@ -197,7 +200,7 @@ where
             Err(e) if e.is_post_commit() => self.try_persist(&state).await,
             Err(_) => {}
         }
-        result.map(|_| ())
+        result
     }
 }
 

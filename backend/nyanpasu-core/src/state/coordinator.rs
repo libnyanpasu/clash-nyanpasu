@@ -41,6 +41,11 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         StateSnapshot::new(Arc::clone(&self.current_state))
     }
 
+    /// Notify all subscribers sequentially about a committed state change.
+    ///
+    /// **Warning**: Subscribers are awaited one-by-one while &mut self is held.
+    /// A slow subscriber blocks all subsequent ones. See StateAckSubscriber
+    /// for deadlock avoidance guidance.
     async fn notify_committed(&self, change: StateChange<T>) -> CommitReport {
         let mut report = CommitReport::default();
         for subscriber in self.subscribers.values() {
@@ -67,7 +72,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
                 Ok(Ack::Failed(error)) => {
                     tracing::error!(
                         subscriber = subscriber.name(),
-                        "subscriber ACK failed: {error:#}"
+                        "subscriber ACK failed: {error}"
                     );
                     AckStatus::Failed { error }
                 }
@@ -128,7 +133,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         &mut self,
         state: &'s T,
         effect_fn: F,
-    ) -> Result<R, WithEffectError<E>>
+    ) -> Result<(R, CommitReport), WithEffectError<E>>
     where
         F: FnOnce(&'s T) -> Fut,
         Fut: Future<Output = Result<R, E>> + 's,
@@ -141,7 +146,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
                 CommitAckError { report },
             )));
         }
-        Ok(result)
+        Ok((result, report))
     }
 }
 
@@ -667,7 +672,9 @@ mod test {
             .await;
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "done");
+        let (effect_result, report) = result.unwrap();
+        assert_eq!(effect_result, "done");
+        assert!(!report.has_required_failures());
         assert_eq!(coordinator.snapshot().value, 42);
         assert_eq!(subscriber.call_count(), 1);
     }
@@ -684,7 +691,7 @@ mod test {
             value: 99,
             name: "effect_fail".to_string(),
         };
-        let result: Result<(), WithEffectError<anyhow::Error>> = coordinator
+        let result: Result<((), CommitReport), WithEffectError<anyhow::Error>> = coordinator
             .with_pending_state(&state, |_s| async move {
                 Err::<(), _>(anyhow::anyhow!("effect failed"))
             })

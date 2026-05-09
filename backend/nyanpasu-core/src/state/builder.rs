@@ -1,3 +1,5 @@
+use std::future::Future;
+
 pub trait StateSyncBuilder: Default + Clone {
     type State: Clone + Send + Sync + 'static;
 

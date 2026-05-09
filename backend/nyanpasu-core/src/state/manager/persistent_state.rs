@@ -8,7 +8,10 @@ use std::io::Write;
 
 use super::{super::error::*, *};
 
-use crate::format::{Format, YamlFormat};
+use crate::{
+    format::{Format, YamlFormat},
+    state::CommitReport,
+};
 
 #[derive(Builder)]
 #[builder(finish_fn = assemble)]
@@ -75,11 +78,13 @@ where
         PersistentStateManager<State, Formatter>,
         LoadError<PersistentStateManager<State, Formatter>>,
     > {
-        let state: State = fs::read(&self.config_path)
+        let bytes = fs::read(&self.config_path)
             .await
-            .map_err(anyhow::Error::from)
-            .and_then(|s| self.formatter.deserialize(s.as_slice()))
-            .map_err(LoadError::ReadConfig)?;
+            .map_err(|e| LoadError::ReadConfig(e.into()))?;
+        let state: State = self
+            .formatter
+            .deserialize(bytes.as_slice())
+            .map_err(LoadError::DeserializeConfig)?;
 
         self.build_manager(state).await.map_err(LoadError::Init)
     }
@@ -137,7 +142,7 @@ where
 {
     super::impl_state_manager_delegates!(State);
 
-    pub async fn upsert(&mut self, state: State) -> Result<(), UpsertError>
+    pub async fn upsert(&mut self, state: State) -> Result<CommitReport, UpsertError>
     where
         Formatter: Clone,
     {
@@ -155,6 +160,7 @@ where
                 Ok::<_, anyhow::Error>(())
             })
             .await
+            .map(|((), report)| report)
             .map_err(|e| match e {
                 WithEffectError::State(e) => UpsertError::State(e),
                 WithEffectError::Effect(e) => UpsertError::WriteConfig(e),

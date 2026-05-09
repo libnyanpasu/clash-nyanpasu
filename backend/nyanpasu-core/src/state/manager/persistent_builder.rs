@@ -8,7 +8,10 @@ use std::io::Write;
 
 use super::{super::error::*, *};
 
-use crate::format::{Format, YamlFormat};
+use crate::{
+    format::{Format, YamlFormat},
+    state::CommitReport,
+};
 
 #[derive(Builder)]
 #[builder(finish_fn = assemble)]
@@ -81,11 +84,13 @@ where
         PersistentBuiltStateManager<State, SB, Formatter>,
         LoadError<PersistentBuiltStateManager<State, SB, Formatter>>,
     > {
-        let config: SB = fs::read(&self.config_path)
+        let bytes = fs::read(&self.config_path)
             .await
-            .map_err(anyhow::Error::from)
-            .and_then(|s| self.formatter.deserialize(s.as_slice()))
-            .map_err(LoadError::ReadConfig)?;
+            .map_err(|e| LoadError::ReadConfig(e.into()))?;
+        let config: SB = self
+            .formatter
+            .deserialize(bytes.as_slice())
+            .map_err(LoadError::DeserializeConfig)?;
 
         let state = config
             .build()
@@ -175,7 +180,7 @@ where
         self.current_builder.clone()
     }
 
-    pub async fn upsert(&mut self, builder: Builder) -> Result<(), UpsertError>
+    pub async fn upsert(&mut self, builder: Builder) -> Result<CommitReport, UpsertError>
     where
         Formatter: Clone,
         Builder: Clone,
@@ -204,24 +209,19 @@ where
             .await;
 
         match result {
-            Ok(()) => {
+            Ok(((), report)) => {
                 self.current_builder = Some(builder);
-                Ok(())
+                Ok(report)
             }
-            Err(e) => {
-                let err = match e {
-                    WithEffectError::State(ref s) if s.is_post_commit() => {
+            Err(e) => match e {
+                WithEffectError::State(e) => {
+                    if e.is_post_commit() {
                         self.current_builder = Some(builder);
-                        UpsertError::State(match e {
-                            WithEffectError::State(s) => s,
-                            _ => unreachable!(),
-                        })
                     }
-                    WithEffectError::State(e) => UpsertError::State(e),
-                    WithEffectError::Effect(e) => UpsertError::WriteConfig(e),
-                };
-                Err(err)
-            }
+                    Err(UpsertError::State(e))
+                }
+                WithEffectError::Effect(e) => Err(UpsertError::WriteConfig(e)),
+            },
         }
     }
 }

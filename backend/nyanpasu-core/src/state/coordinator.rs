@@ -3,152 +3,6 @@ use arc_swap::ArcSwap;
 use indexmap::IndexMap;
 use std::{future::Future, sync::Arc, time::Instant};
 
-pub trait FusedStateChangedSubscriber {
-    fn is_terminated(&self) -> bool {
-        false
-    }
-}
-
-impl<T> FusedStateChangedSubscriber for Arc<T>
-where
-    T: FusedStateChangedSubscriber + ?Sized,
-{
-    fn is_terminated(&self) -> bool {
-        self.as_ref().is_terminated()
-    }
-}
-impl<T> FusedStateChangedSubscriber for Box<T>
-where
-    T: FusedStateChangedSubscriber + ?Sized,
-{
-    fn is_terminated(&self) -> bool {
-        self.as_ref().is_terminated()
-    }
-}
-
-#[deprecated(note = "Use StateAckSubscriber instead")]
-#[async_trait::async_trait]
-#[allow(unused_variables)]
-pub trait StateChangedSubscriber<T: Clone + Send + Sync + 'static> {
-    fn name(&self) -> &str;
-
-    async fn migrate(&self, prev_state: Option<&T>, new_state: &T) -> Result<(), anyhow::Error>;
-
-    async fn rollback(&self, prev_state: Option<&T>, new_state: &T) -> Result<(), anyhow::Error> {
-        Ok(())
-    }
-}
-
-#[allow(deprecated)]
-#[async_trait::async_trait]
-impl<T, S> StateChangedSubscriber<T> for Arc<S>
-where
-    T: Clone + Send + Sync + 'static,
-    S: StateChangedSubscriber<T> + ?Sized + Send + Sync,
-{
-    fn name(&self) -> &str {
-        self.as_ref().name()
-    }
-    async fn migrate(&self, prev_state: Option<&T>, new_state: &T) -> Result<(), anyhow::Error> {
-        self.as_ref().migrate(prev_state, new_state).await
-    }
-    async fn rollback(&self, prev_state: Option<&T>, new_state: &T) -> Result<(), anyhow::Error> {
-        self.as_ref().rollback(prev_state, new_state).await
-    }
-}
-
-#[allow(deprecated)]
-#[async_trait::async_trait]
-impl<T, S> StateChangedSubscriber<T> for Box<S>
-where
-    T: Clone + Send + Sync + 'static,
-    S: StateChangedSubscriber<T> + ?Sized + Send + Sync,
-{
-    fn name(&self) -> &str {
-        self.as_ref().name()
-    }
-    async fn migrate(&self, prev_state: Option<&T>, new_state: &T) -> Result<(), anyhow::Error> {
-        self.as_ref().migrate(prev_state, new_state).await
-    }
-    async fn rollback(&self, prev_state: Option<&T>, new_state: &T) -> Result<(), anyhow::Error> {
-        self.as_ref().rollback(prev_state, new_state).await
-    }
-}
-
-// -- New compound trait for ACK subscribers --
-
-pub trait AckSubscriber<T>: StateAckSubscriber<T> + FusedStateChangedSubscriber
-where
-    T: Clone + Send + Sync + 'static,
-{
-}
-
-impl<T, S> AckSubscriber<T> for S
-where
-    T: Clone + Send + Sync + 'static,
-    S: StateAckSubscriber<T> + FusedStateChangedSubscriber,
-{
-}
-
-// -- Legacy adapter --
-
-#[allow(deprecated)]
-pub struct LegacySubscriberAdapter<S> {
-    inner: S,
-    options: AckOptions,
-}
-
-#[allow(deprecated)]
-impl<S> LegacySubscriberAdapter<S> {
-    pub fn new(inner: S, options: AckOptions) -> Self {
-        Self { inner, options }
-    }
-
-    pub fn with_defaults(inner: S) -> Self {
-        Self {
-            inner,
-            options: AckOptions::default(),
-        }
-    }
-}
-
-#[allow(deprecated)]
-impl<S> FusedStateChangedSubscriber for LegacySubscriberAdapter<S>
-where
-    S: FusedStateChangedSubscriber,
-{
-    fn is_terminated(&self) -> bool {
-        self.inner.is_terminated()
-    }
-}
-
-#[allow(deprecated)]
-#[async_trait::async_trait]
-impl<T, S> StateAckSubscriber<T> for LegacySubscriberAdapter<S>
-where
-    T: Clone + Send + Sync + 'static,
-    S: StateChangedSubscriber<T> + FusedStateChangedSubscriber + Send + Sync,
-{
-    fn name(&self) -> &str {
-        self.inner.name()
-    }
-
-    fn ack_options(&self) -> AckOptions {
-        self.options
-    }
-
-    async fn on_committed(&self, change: StateChange<T>) -> Ack {
-        match self
-            .inner
-            .migrate(change.previous(), change.current())
-            .await
-        {
-            Ok(()) => Ack::Ok,
-            Err(e) => Ack::Failed(e),
-        }
-    }
-}
-
 // -- MVCC snapshot handle --
 
 pub struct StateSnapshot<T: Clone + Send + Sync + 'static>(Arc<ArcSwap<T>>);
@@ -170,7 +24,7 @@ impl<T: Clone + Send + Sync + 'static> StateSnapshot<T> {
 #[non_exhaustive]
 pub struct StateCoordinator<T: Clone + Send + Sync + 'static> {
     current_state: Arc<ArcSwap<T>>,
-    subscribers: IndexMap<String, Box<dyn AckSubscriber<T> + Send + Sync>>,
+    subscribers: IndexMap<String, Box<dyn StateAckSubscriber<T> + Send + Sync>>,
 }
 
 impl<T: Clone + Send + Sync> StateCoordinator<T> {
@@ -181,25 +35,15 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         }
     }
 
-    pub fn add_subscriber(&mut self, subscriber: Box<dyn AckSubscriber<T> + Send + Sync>) {
+    pub fn add_subscriber(&mut self, subscriber: Box<dyn StateAckSubscriber<T> + Send + Sync>) {
         self.subscribers
             .insert(subscriber.name().to_string(), subscriber);
-    }
-
-    #[allow(deprecated)]
-    pub fn add_legacy_subscriber<S>(&mut self, subscriber: S)
-    where
-        S: StateChangedSubscriber<T> + FusedStateChangedSubscriber + Send + Sync + 'static,
-    {
-        let adapter = LegacySubscriberAdapter::with_defaults(subscriber);
-        self.subscribers
-            .insert(adapter.name().to_string(), Box::new(adapter));
     }
 
     pub fn remove_subscriber(
         &mut self,
         name: &str,
-    ) -> Option<Box<dyn AckSubscriber<T> + Send + Sync>> {
+    ) -> Option<Box<dyn StateAckSubscriber<T> + Send + Sync>> {
         self.subscribers.shift_remove(name)
     }
 
@@ -319,7 +163,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
 // -- Builder --
 
 pub struct StateCoordinatorBuilder<T: Clone + Send + Sync + 'static> {
-    subscribers: IndexMap<String, Box<dyn AckSubscriber<T> + Send + Sync>>,
+    subscribers: IndexMap<String, Box<dyn StateAckSubscriber<T> + Send + Sync>>,
 }
 
 impl<T: Clone + Send + Sync + 'static> Default for StateCoordinatorBuilder<T> {
@@ -331,19 +175,9 @@ impl<T: Clone + Send + Sync + 'static> Default for StateCoordinatorBuilder<T> {
 }
 
 impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
-    pub fn add_subscriber(&mut self, subscriber: Box<dyn AckSubscriber<T> + Send + Sync>) {
+    pub fn add_subscriber(&mut self, subscriber: Box<dyn StateAckSubscriber<T> + Send + Sync>) {
         self.subscribers
             .insert(subscriber.name().to_string(), subscriber);
-    }
-
-    #[allow(deprecated)]
-    pub fn add_legacy_subscriber<S>(&mut self, subscriber: S)
-    where
-        S: StateChangedSubscriber<T> + FusedStateChangedSubscriber + Send + Sync + 'static,
-    {
-        let adapter = LegacySubscriberAdapter::with_defaults(subscriber);
-        self.subscribers
-            .insert(adapter.name().to_string(), Box::new(adapter));
     }
 
     pub async fn build_initialized(
@@ -367,35 +201,6 @@ impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
             Ok(coordinator)
         }
     }
-}
-
-// -- Deprecated ConcurrencyStrategy (kept for source compat) --
-
-#[allow(deprecated)]
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[deprecated(note = "Subscribers now run sequentially in ACK model")]
-pub enum ConcurrencyStrategy {
-    #[default]
-    Sequential,
-    Concurrent,
-    Limited(usize),
-}
-
-// -- Deprecated Subscriber compound trait (kept for legacy adapter) --
-
-#[allow(deprecated)]
-pub trait Subscriber<T>: StateChangedSubscriber<T> + FusedStateChangedSubscriber
-where
-    T: Clone + Send + Sync + 'static,
-{
-}
-
-#[allow(deprecated)]
-impl<T, S> Subscriber<T> for S
-where
-    T: Clone + Send + Sync + 'static,
-    S: StateChangedSubscriber<T> + FusedStateChangedSubscriber,
-{
 }
 
 #[cfg(test)]
@@ -450,8 +255,6 @@ mod test {
             self.committed_history.lock().await.clone()
         }
     }
-
-    impl FusedStateChangedSubscriber for MockAckSubscriber {}
 
     #[async_trait::async_trait]
     impl StateAckSubscriber<TestState> for MockAckSubscriber {
@@ -612,7 +415,6 @@ mod test {
         let mut coordinator = StateCoordinator::new(default_test_state());
 
         struct AdvisorySubscriber;
-        impl FusedStateChangedSubscriber for AdvisorySubscriber {}
         #[async_trait::async_trait]
         impl StateAckSubscriber<TestState> for AdvisorySubscriber {
             fn name(&self) -> &str {
@@ -716,7 +518,6 @@ mod test {
         let mut coordinator = StateCoordinator::new(default_test_state());
 
         struct SlowSubscriber;
-        impl FusedStateChangedSubscriber for SlowSubscriber {}
         #[async_trait::async_trait]
         impl StateAckSubscriber<TestState> for SlowSubscriber {
             fn name(&self) -> &str {
@@ -760,15 +561,13 @@ mod test {
         let mut coordinator = StateCoordinator::new(default_test_state());
 
         struct TerminatedSubscriber;
-        impl FusedStateChangedSubscriber for TerminatedSubscriber {
-            fn is_terminated(&self) -> bool {
-                true
-            }
-        }
         #[async_trait::async_trait]
         impl StateAckSubscriber<TestState> for TerminatedSubscriber {
             fn name(&self) -> &str {
                 "terminated"
+            }
+            fn is_terminated(&self) -> bool {
+                true
             }
             async fn on_committed(&self, _change: StateChange<TestState>) -> Ack {
                 panic!("should not be called");
@@ -899,64 +698,17 @@ mod test {
         assert_eq!(history[0], (None, state));
     }
 
-    #[allow(deprecated)]
-    #[tokio::test]
-    async fn test_legacy_adapter() {
-        struct OldSub {
-            name: String,
-            calls: AtomicUsize,
-        }
-        impl FusedStateChangedSubscriber for OldSub {}
-        #[async_trait::async_trait]
-        impl StateChangedSubscriber<TestState> for OldSub {
-            fn name(&self) -> &str {
-                &self.name
-            }
-            async fn migrate(
-                &self,
-                _prev: Option<&TestState>,
-                _new: &TestState,
-            ) -> Result<(), anyhow::Error> {
-                self.calls.fetch_add(1, Ordering::SeqCst);
-                Ok(())
-            }
-        }
-
-        let mut coordinator = StateCoordinator::new(default_test_state());
-        let old = Arc::new(OldSub {
-            name: "legacy".to_string(),
-            calls: AtomicUsize::new(0),
-        });
-        coordinator.add_legacy_subscriber(old.clone());
-
-        let state = TestState {
-            value: 1,
-            name: "legacy_test".to_string(),
-        };
-        let result = coordinator.upsert_state(state).await;
-        assert!(result.is_ok());
-        assert_eq!(old.calls.load(Ordering::SeqCst), 1);
-    }
-
     #[tokio::test]
     async fn test_error_display() {
-        let migrate_error = MigrateError {
-            name: "test_subscriber".to_string(),
-            error: anyhow::anyhow!("test error"),
-        };
-        let error_string = format!("{}", migrate_error);
-        assert!(error_string.contains("state migrate error: test_subscriber"));
-
-        let rollback_error = RollbackError {
-            name: "test_subscriber".to_string(),
-            error: anyhow::anyhow!("rollback error"),
-        };
-        let error_string = format!("{}", rollback_error);
-        assert!(error_string.contains("state rollback error: test_subscriber"));
-
-        let state_error = StateChangedError::Migrate(migrate_error);
+        let state_error = StateChangedError::Validation(anyhow::anyhow!("bad input"));
         let error_string = format!("{}", state_error);
-        assert!(error_string.contains("state migrate error"));
+        assert!(error_string.contains("builder validation error"));
+
+        let commit_ack_error = StateChangedError::CommitAck(CommitAckError {
+            report: CommitReport::default(),
+        });
+        let error_string = format!("{}", commit_ack_error);
+        assert!(error_string.contains("required subscriber ACK failed"));
     }
 
     #[tokio::test]

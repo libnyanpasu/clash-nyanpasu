@@ -67,8 +67,6 @@ impl LeafAckSubscriber {
     }
 }
 
-impl FusedStateChangedSubscriber for LeafAckSubscriber {}
-
 #[async_trait::async_trait]
 impl StateAckSubscriber<DerivedRuntime> for LeafAckSubscriber {
     fn name(&self) -> &str {
@@ -112,8 +110,6 @@ impl BridgeAckSubscriber {
     }
 }
 
-impl FusedStateChangedSubscriber for BridgeAckSubscriber {}
-
 #[async_trait::async_trait]
 impl StateAckSubscriber<SourceConfig> for BridgeAckSubscriber {
     fn name(&self) -> &str {
@@ -156,8 +152,6 @@ impl SiblingAckSubscriber {
         self.call_count.load(Ordering::SeqCst)
     }
 }
-
-impl FusedStateChangedSubscriber for SiblingAckSubscriber {}
 
 #[async_trait::async_trait]
 impl StateAckSubscriber<SourceConfig> for SiblingAckSubscriber {

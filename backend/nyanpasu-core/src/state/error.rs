@@ -1,20 +1,6 @@
 use super::ack::CommitReport;
 
 #[derive(thiserror::Error, Debug)]
-#[error("state migrate error: {name}: {error:#?}")]
-pub struct MigrateError {
-    pub name: String,
-    pub error: anyhow::Error,
-}
-
-#[derive(thiserror::Error, Debug)]
-#[error("state rollback error: {name}: {error:#?}")]
-pub struct RollbackError {
-    pub name: String,
-    pub error: anyhow::Error,
-}
-
-#[derive(thiserror::Error, Debug)]
 #[error("state committed but required subscriber ACK failed")]
 pub struct CommitAckError {
     pub report: CommitReport,
@@ -24,17 +10,6 @@ pub struct CommitAckError {
 pub enum StateChangedError {
     #[error("builder validation error: {0}")]
     Validation(anyhow::Error),
-    #[error("state migrate error: {0:#?}")]
-    Migrate(#[from] MigrateError),
-
-    #[error("state migrate and rollback error: migrate {0:#?}, rollback {1:#?}")]
-    MigrateAndRollback(MigrateError, RollbackError),
-
-    #[error("state rollback error: {0:#?}")]
-    Rollback(#[from] RollbackError),
-
-    #[error("state batch error: {0:#?}")]
-    Batch(Box<[StateChangedError]>),
 
     #[error("state committed but required subscriber ACK failed: {0}")]
     CommitAck(CommitAckError),
@@ -68,7 +43,6 @@ pub enum UpsertError {
     WriteConfig(anyhow::Error),
 }
 
-/// Error type for `with_pending_state` closure-scoped async cleanup pattern.
 #[derive(thiserror::Error, Debug)]
 pub enum WithEffectError<E> {
     #[error("state migration failed: {0}")]

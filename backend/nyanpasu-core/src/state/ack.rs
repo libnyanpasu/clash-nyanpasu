@@ -73,6 +73,10 @@ pub enum Ack {
 pub trait StateAckSubscriber<T: Clone + Send + Sync + 'static>: Send + Sync {
     fn name(&self) -> &str;
 
+    fn is_terminated(&self) -> bool {
+        false
+    }
+
     fn ack_options(&self) -> AckOptions {
         AckOptions::default()
     }
@@ -88,6 +92,10 @@ where
 {
     fn name(&self) -> &str {
         self.as_ref().name()
+    }
+
+    fn is_terminated(&self) -> bool {
+        self.as_ref().is_terminated()
     }
 
     fn ack_options(&self) -> AckOptions {
@@ -107,6 +115,10 @@ where
 {
     fn name(&self) -> &str {
         self.as_ref().name()
+    }
+
+    fn is_terminated(&self) -> bool {
+        self.as_ref().is_terminated()
     }
 
     fn ack_options(&self) -> AckOptions {

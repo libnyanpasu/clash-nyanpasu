@@ -36,8 +36,6 @@ impl FailAckSubscriber {
     }
 }
 
-impl FusedStateChangedSubscriber for FailAckSubscriber {}
-
 #[async_trait::async_trait]
 impl<T: Clone + Send + Sync + 'static> StateAckSubscriber<T> for FailAckSubscriber {
     fn name(&self) -> &str {
@@ -52,14 +50,11 @@ impl<T: Clone + Send + Sync + 'static> StateAckSubscriber<T> for FailAckSubscrib
     }
 }
 
-/// Subscriber that captures the snapshot value during on_committed.
 struct SnapshotCapture {
     name: String,
     handle: StateSnapshot<i32>,
     captured: std::sync::Mutex<Option<Arc<i32>>>,
 }
-
-impl FusedStateChangedSubscriber for SnapshotCapture {}
 
 #[async_trait::async_trait]
 impl StateAckSubscriber<i32> for SnapshotCapture {
@@ -152,17 +147,11 @@ async fn test_multiple_handles_see_same_snapshot() {
 
 // ─── 5.6 Concurrent fan-in: no deadlock ──────────────────────
 
-/// Fan-in subscriber: reads a sibling snapshot and writes to derived state.
 struct FanInAckSubscriber<S: Clone + Send + Sync + 'static, D: Clone + Send + Sync + 'static> {
     name: String,
     sibling_snapshot: StateSnapshot<S>,
     derived: Arc<RwLock<SimpleStateManager<D>>>,
     combiner: Box<dyn Fn(S, S) -> D + Send + Sync>,
-}
-
-impl<S: Clone + Send + Sync + 'static, D: Clone + Send + Sync + 'static>
-    FusedStateChangedSubscriber for FanInAckSubscriber<S, D>
-{
 }
 
 #[async_trait::async_trait]
@@ -283,8 +272,6 @@ struct TriFanInAckSubscriber {
     derived: Arc<RwLock<SimpleStateManager<(i32, i32, i32)>>>,
     source: char,
 }
-
-impl FusedStateChangedSubscriber for TriFanInAckSubscriber {}
 
 #[async_trait::async_trait]
 impl StateAckSubscriber<i32> for TriFanInAckSubscriber {

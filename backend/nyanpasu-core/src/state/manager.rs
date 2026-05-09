@@ -3,7 +3,7 @@ mod persistent_state;
 mod simple;
 mod weak_persistent_state;
 
-use super::{builder::*, coordinator::*};
+use super::{ack::*, builder::*, coordinator::*};
 
 pub use persistent_builder::*;
 pub use persistent_state::{PersistentStateManager, PersistentStateManagerSetup};

@@ -50,7 +50,7 @@ where
 
     pub fn add_subscriber(
         &mut self,
-        subscriber: Box<dyn AckSubscriber<State> + Send + Sync>,
+        subscriber: Box<dyn StateAckSubscriber<State> + Send + Sync>,
     ) {
         self.state_coordinator.add_subscriber(subscriber);
     }
@@ -58,7 +58,7 @@ where
     pub fn remove_subscriber(
         &mut self,
         name: &str,
-    ) -> Option<Box<dyn AckSubscriber<State> + Send + Sync>> {
+    ) -> Option<Box<dyn StateAckSubscriber<State> + Send + Sync>> {
         self.state_coordinator.remove_subscriber(name)
     }
 

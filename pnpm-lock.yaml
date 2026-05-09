@@ -351,8 +351,8 @@ importers:
         specifier: 1.19.24
         version: 1.19.24
       monaco-yaml:
-        specifier: 5.4.1
-        version: 5.4.1(monaco-editor@0.55.1)
+        specifier: 5.5.0
+        version: 5.5.0(monaco-editor@0.55.1)
       nanoid:
         specifier: 5.1.11
         version: 5.1.11
@@ -3768,6 +3768,9 @@ packages:
       babel-plugin-react-compiler:
         optional: true
 
+  '@vscode/l10n@0.0.18':
+    resolution: {integrity: sha512-KYSIHVmslkaCDyw013pphY+d7x1qV8IZupYfeIfzNA+nsaWHbn5uPuQRvdRFsa9zFzGeudPuoGoZ1Op4jrJXIQ==}
+
   '@xobotyi/scrollbar-width@1.9.5':
     resolution: {integrity: sha512-N8tkAACJx2ww8vFMneJmaAgmjAG1tnVBZJRLRcx061tmsLRZHSEZSLuGWnwPtunsSLvSqXQ2wfp7Mgqg1I+2dQ==}
 
@@ -5237,8 +5240,8 @@ packages:
     peerDependencies:
       monaco-editor: '>=0.30.0'
 
-  monaco-yaml@5.4.1:
-    resolution: {integrity: sha512-YQ6d/Ei98Uk073SJLFbwuSi95qhnl8F8NNmIUqN2XhDt9psZN2LqQ1T7pPQ866NJb2wFj44IrjnANgpa2jTfag==}
+  monaco-yaml@5.5.0:
+    resolution: {integrity: sha512-FEJezTYwzL3VFCWnA98mPp0AmPERoiQNN54ycllF0LorUeTXPN2YzJzu9jfzwVn2CxX1qajEornAr4CrZffuMQ==}
     peerDependencies:
       monaco-editor: '>=0.36'
 
@@ -6560,11 +6563,6 @@ packages:
   yaml@1.10.2:
     resolution: {integrity: sha512-r3vXyErRCYJ7wg28yvBY5VSoAF8ZvlcW9/BwUzEtUsjvX/DKs24dIkuwjtuprwJJHsbyUbLApepYTR1BN4uHrg==}
     engines: {node: '>= 6'}
-
-  yaml@2.8.1:
-    resolution: {integrity: sha512-lcYcMxX2PO9XMGvAJkJ3OsNMw+/7FKes7/hgerGUYWIoWu5j/+YQqcZr5JnPZWzOsEBgMbSbiSTn/dv/69Mkpw==}
-    engines: {node: '>= 14.6'}
-    hasBin: true
 
   yaml@2.8.4:
     resolution: {integrity: sha512-ml/JPOj9fOQK8RNnWojA67GbZ0ApXAUlN2UQclwv2eVgTgn7O9gg9o7paZWKMp4g0H3nTLtS9LVzhkpOFIKzog==}
@@ -9899,6 +9897,8 @@ snapshots:
       '@rolldown/pluginutils': 1.0.0-rc.7
       vite: 8.0.11(@types/node@24.11.0)(esbuild@0.27.2)(jiti@2.7.0)(less@4.2.0)(sass-embedded@1.99.0)(sass@1.99.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.21.0)(yaml@2.8.4)
 
+  '@vscode/l10n@0.0.18': {}
+
   '@xobotyi/scrollbar-width@1.9.5': {}
 
   acorn@8.15.0: {}
@@ -11475,8 +11475,9 @@ snapshots:
     dependencies:
       monaco-editor: 0.55.1
 
-  monaco-yaml@5.4.1(monaco-editor@0.55.1):
+  monaco-yaml@5.5.0(monaco-editor@0.55.1):
     dependencies:
+      '@vscode/l10n': 0.0.18
       jsonc-parser: 3.3.1
       monaco-editor: 0.55.1
       monaco-languageserver-types: 0.4.0
@@ -11488,7 +11489,7 @@ snapshots:
       vscode-languageserver-textdocument: 1.0.12
       vscode-languageserver-types: 3.17.5
       vscode-uri: 3.0.8
-      yaml: 2.8.1
+      yaml: 2.8.4
 
   motion-dom@12.38.0:
     dependencies:
@@ -12931,8 +12932,6 @@ snapshots:
 
   yaml@1.10.2:
     optional: true
-
-  yaml@2.8.1: {}
 
   yaml@2.8.4: {}
 

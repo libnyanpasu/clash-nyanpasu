@@ -73,7 +73,7 @@ where
             .state_coordinator
             .build_initialized(state)
             .await
-            .map_err(LoadError::Upsert)?;
+            .map_err(LoadError::from)?;
 
         Ok(WeakPersistentStateManager {
             config_prefix: self.config_prefix,
@@ -97,7 +97,7 @@ where
             .state_coordinator
             .build_initialized(state)
             .await
-            .map_err(LoadError::Upsert)?;
+            .map_err(LoadError::from)?;
 
         Ok(WeakPersistentStateManager {
             config_prefix: self.config_prefix,

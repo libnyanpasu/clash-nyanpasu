@@ -54,7 +54,7 @@ where
             .state_coordinator
             .build_initialized(state)
             .await
-            .map_err(LoadError::Upsert)?;
+            .map_err(LoadError::from)?;
 
         Ok(PersistentBuiltStateManager {
             config_prefix: self.config_prefix,
@@ -68,14 +68,21 @@ where
     pub async fn load_or_default(
         self,
     ) -> Result<PersistentBuiltStateManager<State, SB, Formatter>, LoadError> {
-        let config: SB = fs::read(&self.config_path)
-            .await
-            .map_err(anyhow::Error::from)
-            .and_then(|s| self.formatter.deserialize(s.as_slice()))
-            .inspect_err(|e| {
-                tracing::warn!(target: "app", "failed to read the config file: {e:?}");
-            })
-            .unwrap_or_else(|_| SB::default());
+        let config: SB = match fs::read(&self.config_path).await {
+            Ok(bytes) => self
+                .formatter
+                .deserialize(bytes.as_slice())
+                .map_err(LoadError::DeserializeConfig)?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                tracing::info!(
+                    target: "app",
+                    path = %self.config_path,
+                    "config file not found, using default builder"
+                );
+                SB::default()
+            }
+            Err(e) => return Err(LoadError::ReadConfig(e.into())),
+        };
 
         let state = config
             .build()
@@ -86,7 +93,7 @@ where
             .state_coordinator
             .build_initialized(state)
             .await
-            .map_err(LoadError::Upsert)?;
+            .map_err(LoadError::from)?;
 
         Ok(PersistentBuiltStateManager {
             config_prefix: self.config_prefix,
@@ -110,7 +117,7 @@ where
             .state_coordinator
             .build_initialized(state)
             .await
-            .map_err(LoadError::Upsert)?;
+            .map_err(LoadError::from)?;
 
         Ok(PersistentBuiltStateManager {
             config_prefix: self.config_prefix,
@@ -210,10 +217,7 @@ where
                         })
                     }
                     WithEffectError::State(e) => UpsertError::State(e),
-                    WithEffectError::Effect(e)
-                    | WithEffectError::EffectAndRollback { effect: e, .. } => {
-                        UpsertError::WriteConfig(e)
-                    }
+                    WithEffectError::Effect(e) => UpsertError::WriteConfig(e),
                 };
                 Err(err)
             }

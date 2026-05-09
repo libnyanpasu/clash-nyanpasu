@@ -151,7 +151,10 @@ pub struct SubscriberAck {
 impl SubscriberAck {
     pub fn is_required_failure(&self) -> bool {
         self.policy == AckPolicy::Required
-            && matches!(self.status, AckStatus::Failed { .. } | AckStatus::TimedOut)
+            && matches!(
+                self.status,
+                AckStatus::Failed { .. } | AckStatus::TimedOut | AckStatus::SkippedTerminated
+            )
     }
 }
 

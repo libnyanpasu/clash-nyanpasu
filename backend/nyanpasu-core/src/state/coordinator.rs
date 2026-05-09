@@ -14,9 +14,16 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         StateCoordinatorBuilder::default()
     }
 
-    pub fn add_subscriber(&mut self, subscriber: Box<dyn StateAckSubscriber<T> + Send + Sync>) {
-        self.subscribers
-            .insert(subscriber.name().to_string(), subscriber);
+    pub fn add_subscriber(
+        &mut self,
+        subscriber: Box<dyn StateAckSubscriber<T> + Send + Sync>,
+    ) -> Option<Box<dyn StateAckSubscriber<T> + Send + Sync>> {
+        let name = subscriber.name().to_string();
+        let replaced = self.subscribers.insert(name.clone(), subscriber);
+        if replaced.is_some() {
+            tracing::warn!(subscriber = %name, "replaced existing subscriber with same name");
+        }
+        replaced
     }
 
     pub fn remove_subscriber(
@@ -172,7 +179,7 @@ impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
     pub async fn build_initialized(
         self,
         initial_state: T,
-    ) -> Result<StateCoordinator<T>, StateChangedError> {
+    ) -> Result<StateCoordinator<T>, InitAckError<T>> {
         let current = Arc::new(initial_state);
         let current_state = Arc::new(ArcSwap::new(Arc::clone(&current)));
 
@@ -185,7 +192,10 @@ impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
         let report = coordinator.notify_committed(change).await;
 
         if report.has_required_failures() {
-            Err(StateChangedError::CommitAck(CommitAckError { report }))
+            Err(InitAckError {
+                coordinator,
+                report,
+            })
         } else {
             Ok(coordinator)
         }
@@ -552,7 +562,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_fused_subscriber_skipped() {
+    async fn test_fused_required_subscriber_is_failure() {
         struct TerminatedSubscriber;
         #[async_trait::async_trait]
         impl StateAckSubscriber<TestState> for TerminatedSubscriber {
@@ -573,6 +583,49 @@ mod test {
         let test_state = TestState {
             value: 1,
             name: "fused_test".to_string(),
+        };
+
+        let result = coordinator.upsert_state(test_state.clone()).await;
+        assert!(result.is_err());
+        match &result.unwrap_err() {
+            StateChangedError::CommitAck(e) => {
+                assert!(e.report.has_required_failures());
+                assert!(matches!(
+                    e.report.subscriber_acks[0].status,
+                    AckStatus::SkippedTerminated
+                ));
+            }
+            other => panic!("Expected CommitAck, got: {other:?}"),
+        }
+        // State IS committed (post-commit model)
+        assert_eq!(&*coordinator.snapshot(), &test_state);
+    }
+
+    #[tokio::test]
+    async fn test_fused_advisory_subscriber_is_ok() {
+        struct TerminatedAdvisorySubscriber;
+        #[async_trait::async_trait]
+        impl StateAckSubscriber<TestState> for TerminatedAdvisorySubscriber {
+            fn name(&self) -> &str {
+                "terminated_advisory"
+            }
+            fn is_terminated(&self) -> bool {
+                true
+            }
+            fn ack_options(&self) -> AckOptions {
+                AckOptions::advisory(std::time::Duration::from_secs(30))
+            }
+            async fn on_committed(&self, _change: StateChange<TestState>) -> Ack {
+                panic!("should not be called");
+            }
+        }
+
+        let mut coordinator = StateCoordinator::builder()
+            .with_subscriber(Box::new(TerminatedAdvisorySubscriber))
+            .build(default_test_state());
+        let test_state = TestState {
+            value: 1,
+            name: "fused_advisory_test".to_string(),
         };
 
         let result = coordinator.upsert_state(test_state).await;

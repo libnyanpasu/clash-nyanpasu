@@ -443,6 +443,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_upsert_post_commit_ack_failure_persists() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("post_commit_ack_fail.yaml");
+        let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
+
+        let subscriber = MockAckSub::new("fail_sub");
+        subscriber.set_fail(true);
+        let calls = subscriber.calls();
+        let coordinator_builder =
+            StateCoordinatorBuilder::default().with_subscriber(Box::new(subscriber));
+
+        let mut manager = WeakPersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path.clone())
+            .state_coordinator(coordinator_builder)
+            .force_build(true)
+            .assemble()
+            .from_state(TestState::default())
+            .await
+            .unwrap();
+
+        // build_initialized already notified once; capture the baseline
+        let calls_before = calls.load(Ordering::SeqCst);
+
+        let new_state = TestState::new("post_commit".to_string(), 55);
+        let result = manager.upsert(new_state.clone()).await;
+
+        // ACK failure is post-commit — the error surfaces
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            StateChangedError::CommitAck(e) => assert!(e.report.has_required_failures()),
+            other => panic!("expected CommitAck error, got: {:?}", other),
+        }
+
+        // state IS committed in memory
+        assert_eq!(*manager.snapshot(), new_state);
+
+        // persistence attempt IS made (file written) despite ACK failure
+        assert!(config_path.exists(), "weak persistence must run even after ACK failure");
+        let saved: TestState = read_yaml(&config_path).await.unwrap();
+        assert_eq!(saved, new_state);
+
+        // exactly one additional call during upsert
+        assert_eq!(calls.load(Ordering::SeqCst), calls_before + 1);
+    }
+
+    #[tokio::test]
     async fn test_write_failure_after_successful_commit_preserves_state() {
         let temp_dir = tempdir().unwrap();
         let config_path = temp_dir.path().join("preserve_test.yaml");

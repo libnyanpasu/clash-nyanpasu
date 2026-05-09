@@ -477,6 +477,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_upsert_post_commit_ack_failure_still_writes_config() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("post_commit_ack_fail.yaml");
+        let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+
+        let mut manager = PersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path.clone())
+            .assemble()
+            .from_state(TestState::default())
+            .await
+            .unwrap();
+
+        // attach a failing subscriber after init so init ack succeeds
+        let sub = FailingInitSubscriber {
+            calls: Arc::clone(&calls),
+        };
+        manager
+            .state_coordinator
+            .add_subscriber(Box::new(sub));
+
+        let new_state = TestState::new("post_commit".to_string(), 77);
+        let result = manager.upsert(new_state.clone()).await;
+
+        // upsert writes the file BEFORE notifying subscribers, so the file must exist
+        assert!(config_path.exists(), "config file must be written even when ACK fails");
+        let saved: TestState = read_yaml(&config_path).await.unwrap();
+        assert_eq!(saved, new_state);
+
+        // the error is a post-commit ACK failure, not a write failure
+        match result.unwrap_err() {
+            UpsertError::State(e) => assert!(e.is_post_commit()),
+            other => panic!("expected UpsertError::State (post-commit), got: {:?}", other),
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
     async fn test_config_prefix_in_saved_file() {
         let temp_dir = tempdir().unwrap();
         let config_path = temp_dir.path().join("prefix_test.yaml");

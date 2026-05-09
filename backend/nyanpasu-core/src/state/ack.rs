@@ -186,6 +186,13 @@ impl CommitReport {
             .any(SubscriberAck::is_required_failure)
     }
 
+    pub fn has_advisory_failures(&self) -> bool {
+        self.subscriber_acks.iter().any(|a| {
+            a.policy == AckPolicy::Advisory
+                && matches!(a.status, AckStatus::Failed { .. } | AckStatus::TimedOut)
+        })
+    }
+
     pub fn is_degraded(&self) -> bool {
         self.subscriber_acks
             .iter()

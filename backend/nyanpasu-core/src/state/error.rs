@@ -118,7 +118,7 @@ impl UpsertError {
 
 #[derive(thiserror::Error, Debug)]
 pub enum WithEffectError<E> {
-    #[error("state migration failed: {0}")]
+    #[error("state commit failed: {0}")]
     State(StateChangedError),
 
     #[error("effect failed: {0}")]

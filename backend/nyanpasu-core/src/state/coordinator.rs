@@ -43,8 +43,10 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
 
     /// Notify all subscribers sequentially about a committed state change.
     ///
-    /// **Warning**: Subscribers are awaited one-by-one while &mut self is held.
-    /// A slow subscriber blocks all subsequent ones. See StateAckSubscriber
+    /// **Warning**: Subscribers are awaited one-by-one. Public mutating methods
+    /// (`upsert`, `upsert_state`, `with_pending_state`) hold `&mut self` across
+    /// the entire commit-then-notify sequence, so a slow subscriber blocks all
+    /// subsequent ones and any concurrent mutation. See [`StateAckSubscriber`]
     /// for deadlock avoidance guidance.
     async fn notify_committed(&self, change: StateChange<T>) -> CommitReport {
         let mut report = CommitReport::default();
@@ -169,8 +171,11 @@ impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
         mut self,
         subscriber: Box<dyn StateAckSubscriber<T> + Send + Sync>,
     ) -> Self {
-        self.subscribers
-            .insert(subscriber.name().to_string(), subscriber);
+        let name = subscriber.name().to_string();
+        let replaced = self.subscribers.insert(name.clone(), subscriber);
+        if replaced.is_some() {
+            tracing::warn!(subscriber = %name, "replaced existing subscriber with same name");
+        }
         self
     }
 
@@ -783,6 +788,93 @@ mod test {
         let result = coordinator.upsert(sync_builder).await;
         assert!(result.is_ok());
         assert_eq!(&*coordinator.snapshot(), &test_state);
+    }
+
+    #[tokio::test]
+    async fn test_advisory_failure_report_helper() {
+        struct AdvisoryFailSub;
+        #[async_trait::async_trait]
+        impl StateAckSubscriber<TestState> for AdvisoryFailSub {
+            fn name(&self) -> &str {
+                "advisory_fail"
+            }
+            fn ack_options(&self) -> AckOptions {
+                AckOptions::advisory(std::time::Duration::from_secs(30))
+            }
+            async fn on_committed(&self, _: StateChange<TestState>) -> Ack {
+                Ack::Failed(anyhow::anyhow!("advisory error"))
+            }
+        }
+
+        let mut coordinator = StateCoordinator::builder()
+            .with_subscriber(Box::new(AdvisoryFailSub))
+            .build(default_test_state());
+
+        let result = coordinator
+            .upsert_state(TestState {
+                value: 1,
+                name: "adv".to_string(),
+            })
+            .await;
+
+        assert!(result.is_ok(), "advisory failure must not surface as Err");
+        let report = result.unwrap();
+        assert!(!report.has_required_failures());
+        assert!(report.has_advisory_failures());
+    }
+
+    #[tokio::test]
+    async fn test_remove_subscriber() {
+        let sub = Arc::new(MockAckSubscriber::new("removable"));
+        let mut coordinator = StateCoordinator::builder()
+            .with_subscriber(Box::new(sub.clone()))
+            .build(default_test_state());
+
+        assert_eq!(coordinator.subscribers.len(), 1);
+
+        let removed = coordinator.remove_subscriber("removable");
+        assert!(removed.is_some(), "remove_subscriber must return the removed subscriber");
+        assert_eq!(coordinator.subscribers.len(), 0);
+
+        // confirm the removed subscriber is no longer notified
+        coordinator
+            .upsert_state(TestState {
+                value: 99,
+                name: "after_removal".to_string(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(sub.call_count(), 0);
+
+        // removing a non-existent name returns None
+        let not_found = coordinator.remove_subscriber("removable");
+        assert!(not_found.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_builder_duplicate_subscriber_replaces() {
+        let sub_a = Arc::new(MockAckSubscriber::new("dup"));
+        let sub_b = Arc::new(MockAckSubscriber::new("dup"));
+
+        let mut coordinator = StateCoordinator::builder()
+            .with_subscriber(Box::new(sub_a.clone()))
+            .with_subscriber(Box::new(sub_b.clone()))
+            .build(default_test_state());
+
+        // only one subscriber remains after the duplicate insert
+        assert_eq!(coordinator.subscribers.len(), 1);
+
+        coordinator
+            .upsert_state(TestState {
+                value: 7,
+                name: "dup_test".to_string(),
+            })
+            .await
+            .unwrap();
+
+        // sub_b replaced sub_a, so only sub_b receives notifications
+        assert_eq!(sub_a.call_count(), 0, "first sub must be replaced");
+        assert_eq!(sub_b.call_count(), 1, "second sub must receive the notification");
     }
 
     #[tokio::test]

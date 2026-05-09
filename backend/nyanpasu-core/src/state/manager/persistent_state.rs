@@ -110,25 +110,26 @@ where
     State: Clone + Send + Sync + Serialize + DeserializeOwned + Default + 'static,
     Formatter: Format,
 {
-    pub fn state_coordinator_mut(&mut self) -> &mut StateCoordinator<State> {
-        &mut self.state_coordinator
-    }
-
-    pub fn snapshot(&self) -> Option<Arc<State>> {
+    pub fn snapshot(&self) -> Arc<State> {
         self.state_coordinator.snapshot()
-    }
-
-    #[deprecated(note = "Use snapshot() instead")]
-    pub fn current_state(&self) -> Option<Arc<State>> {
-        self.snapshot()
     }
 
     pub fn snapshot_handle(&self) -> StateSnapshot<State> {
         self.state_coordinator.snapshot_handle()
     }
 
-    pub async fn read(&self) -> Option<Arc<State>> {
-        self.state_coordinator.read().await
+    pub fn add_subscriber(
+        &mut self,
+        subscriber: Box<dyn AckSubscriber<State> + Send + Sync>,
+    ) {
+        self.state_coordinator.add_subscriber(subscriber);
+    }
+
+    pub fn remove_subscriber(
+        &mut self,
+        name: &str,
+    ) -> Option<Box<dyn AckSubscriber<State> + Send + Sync>> {
+        self.state_coordinator.remove_subscriber(name)
     }
 
     pub async fn upsert(&mut self, state: State) -> Result<(), UpsertError>
@@ -208,9 +209,7 @@ mod tests {
             .await
             .unwrap();
 
-        let current_state = manager.snapshot();
-        assert!(current_state.is_some());
-        let loaded = current_state.unwrap();
+        let loaded = manager.snapshot();
         assert_eq!(loaded.name, "test");
         assert_eq!(loaded.value, 42);
     }
@@ -244,9 +243,7 @@ mod tests {
             .await
             .unwrap();
 
-        let current_state = manager.snapshot();
-        assert!(current_state.is_some());
-        let loaded = current_state.unwrap();
+        let loaded = manager.snapshot();
         assert_eq!(loaded.name, "default_test");
         assert_eq!(loaded.value, 100);
     }
@@ -264,9 +261,7 @@ mod tests {
             .await
             .unwrap();
 
-        let current_state = manager.snapshot();
-        assert!(current_state.is_some());
-        let loaded = current_state.unwrap();
+        let loaded = manager.snapshot();
         assert_eq!(loaded.name, "");
         assert_eq!(loaded.value, 0);
     }
@@ -285,7 +280,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(manager.snapshot().as_deref(), Some(&state));
+        assert_eq!(&*manager.snapshot(), &state);
     }
 
     #[tokio::test]
@@ -306,9 +301,7 @@ mod tests {
         let result = manager.upsert(state).await;
         assert!(result.is_ok());
 
-        let current_state = manager.snapshot();
-        assert!(current_state.is_some());
-        let loaded = current_state.unwrap();
+        let loaded = manager.snapshot();
         assert_eq!(loaded.name, "upsert");
         assert_eq!(loaded.value, 200);
 
@@ -352,7 +345,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(manager.snapshot().unwrap().name, "initial");
+        assert_eq!(manager.snapshot().name, "initial");
 
         manager.config_path = Utf8PathBuf::from("/__nonexistent_dir__/__sub__/config.yaml");
 
@@ -365,7 +358,7 @@ mod tests {
             other => panic!("Expected UpsertError::WriteConfig, got: {:?}", other),
         }
 
-        let state = manager.snapshot().unwrap();
+        let state = manager.snapshot();
         assert_eq!(state.name, "initial");
         assert_eq!(state.value, 100);
     }
@@ -386,13 +379,13 @@ mod tests {
 
         let state1 = TestState::new("first".to_string(), 1);
         manager.upsert(state1).await.unwrap();
-        let loaded1 = manager.snapshot().unwrap();
+        let loaded1 = manager.snapshot();
         assert_eq!(loaded1.name, "first");
         assert_eq!(loaded1.value, 1);
 
         let state2 = TestState::new("second".to_string(), 2);
         manager.upsert(state2).await.unwrap();
-        let loaded2 = manager.snapshot().unwrap();
+        let loaded2 = manager.snapshot();
         assert_eq!(loaded2.name, "second");
         assert_eq!(loaded2.value, 2);
 

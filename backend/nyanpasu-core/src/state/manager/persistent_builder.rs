@@ -172,25 +172,26 @@ where
     Builder: StateAsyncBuilder<State = State> + Serialize + DeserializeOwned,
     Formatter: Format,
 {
-    pub fn state_coordinator_mut(&mut self) -> &mut StateCoordinator<State> {
-        &mut self.state_coordinator
-    }
-
-    pub fn snapshot(&self) -> Option<Arc<State>> {
+    pub fn snapshot(&self) -> Arc<State> {
         self.state_coordinator.snapshot()
-    }
-
-    #[deprecated(note = "Use snapshot() instead")]
-    pub fn current_state(&self) -> Option<Arc<State>> {
-        self.snapshot()
     }
 
     pub fn snapshot_handle(&self) -> StateSnapshot<State> {
         self.state_coordinator.snapshot_handle()
     }
 
-    pub async fn read(&self) -> Option<Arc<State>> {
-        self.state_coordinator.read().await
+    pub fn add_subscriber(
+        &mut self,
+        subscriber: Box<dyn AckSubscriber<State> + Send + Sync>,
+    ) {
+        self.state_coordinator.add_subscriber(subscriber);
+    }
+
+    pub fn remove_subscriber(
+        &mut self,
+        name: &str,
+    ) -> Option<Box<dyn AckSubscriber<State> + Send + Sync>> {
+        self.state_coordinator.remove_subscriber(name)
     }
 
     pub fn current_builder(&self) -> Option<Builder>
@@ -336,7 +337,7 @@ mod tests {
             .await
             .unwrap();
 
-        let state = manager.snapshot().unwrap();
+        let state = manager.snapshot();
         assert_eq!(state.name, "test");
         assert_eq!(state.value, 42);
 
@@ -374,7 +375,7 @@ mod tests {
             .await
             .unwrap();
 
-        let state = manager.snapshot().unwrap();
+        let state = manager.snapshot();
         assert_eq!(state.name, "default_test");
         assert_eq!(state.value, 100);
     }
@@ -392,7 +393,7 @@ mod tests {
             .await
             .unwrap();
 
-        let state = manager.snapshot().unwrap();
+        let state = manager.snapshot();
         assert_eq!(state.name, "");
         assert_eq!(state.value, 0);
     }
@@ -411,7 +412,7 @@ mod tests {
             .await
             .unwrap();
 
-        let state = manager.snapshot().unwrap();
+        let state = manager.snapshot();
         assert_eq!(state.name, "from_builder");
         assert_eq!(state.value, 77);
     }
@@ -435,7 +436,7 @@ mod tests {
         let result = manager.upsert(builder.clone()).await;
         assert!(result.is_ok());
 
-        let state = manager.snapshot().unwrap();
+        let state = manager.snapshot();
         assert_eq!(state.name, "updated");
         assert_eq!(state.value, 200);
 
@@ -513,7 +514,7 @@ mod tests {
 
         let b = TestBuilder::new("initial".to_string(), 100);
         manager.upsert(b).await.unwrap();
-        assert_eq!(manager.snapshot().unwrap().name, "initial");
+        assert_eq!(manager.snapshot().name, "initial");
 
         manager.config_path = Utf8PathBuf::from("/__nonexistent_dir__/__sub__/config.yaml");
 
@@ -526,7 +527,7 @@ mod tests {
             other => panic!("Expected UpsertError::WriteConfig, got: {:?}", other),
         }
 
-        let state = manager.snapshot().unwrap();
+        let state = manager.snapshot();
         assert_eq!(state.name, "initial");
         assert_eq!(state.value, 100);
         let builder = manager.current_builder().unwrap();
@@ -551,11 +552,11 @@ mod tests {
 
         let builder1 = TestBuilder::new("first".to_string(), 1);
         manager.upsert(builder1).await.unwrap();
-        assert_eq!(manager.snapshot().unwrap().name, "first");
+        assert_eq!(manager.snapshot().name, "first");
 
         let builder2 = TestBuilder::new("second".to_string(), 2);
         manager.upsert(builder2).await.unwrap();
-        assert_eq!(manager.snapshot().unwrap().name, "second");
+        assert_eq!(manager.snapshot().name, "second");
 
         let saved_builder: TestBuilder = read_yaml(&config_path).await.unwrap();
         assert_eq!(saved_builder.name, "second");

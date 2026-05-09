@@ -35,33 +35,35 @@ impl<State> SimpleStateManager<State>
 where
     State: Clone + Send + Sync + 'static,
 {
-    pub fn new(state_coordinator: StateCoordinator<State>) -> Self {
+    #[cfg(test)]
+    pub(crate) fn from_coordinator(state_coordinator: StateCoordinator<State>) -> Self {
         Self { state_coordinator }
     }
 
-    pub fn snapshot(&self) -> Option<Arc<State>> {
+    pub fn snapshot(&self) -> Arc<State> {
         self.state_coordinator.snapshot()
-    }
-
-    #[deprecated(note = "Use snapshot() instead")]
-    pub fn current_state(&self) -> Option<Arc<State>> {
-        self.snapshot()
     }
 
     pub fn snapshot_handle(&self) -> StateSnapshot<State> {
         self.state_coordinator.snapshot_handle()
     }
 
-    pub async fn read(&self) -> Option<Arc<State>> {
-        self.state_coordinator.read().await
+    pub fn add_subscriber(
+        &mut self,
+        subscriber: Box<dyn AckSubscriber<State> + Send + Sync>,
+    ) {
+        self.state_coordinator.add_subscriber(subscriber);
+    }
+
+    pub fn remove_subscriber(
+        &mut self,
+        name: &str,
+    ) -> Option<Box<dyn AckSubscriber<State> + Send + Sync>> {
+        self.state_coordinator.remove_subscriber(name)
     }
 
     pub async fn upsert(&mut self, state: State) -> Result<(), StateChangedError> {
         self.state_coordinator.upsert_state(state).await?;
         Ok(())
-    }
-
-    pub fn state_coordinator_mut(&mut self) -> &mut StateCoordinator<State> {
-        &mut self.state_coordinator
     }
 }

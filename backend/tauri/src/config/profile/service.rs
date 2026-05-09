@@ -4,7 +4,7 @@ use camino::Utf8PathBuf;
 use tokio::sync::RwLock;
 
 use crate::{
-    core::state_v2::{SimpleStateManager, SimpleStateManagerSetup, StateSnapshot},
+    core::state_v2::{AckSubscriber, SimpleStateManager, SimpleStateManagerSetup, StateSnapshot},
     utils::help,
 };
 
@@ -49,7 +49,7 @@ impl ProfilesService {
     }
 
     /// MVCC snapshot read: lock-free read of last committed state.
-    pub fn snapshot(&self) -> Option<Arc<Profiles>> {
+    pub fn snapshot(&self) -> Arc<Profiles> {
         self.snapshot.load()
     }
 
@@ -66,8 +66,20 @@ impl ProfilesService {
         Ok(())
     }
 
-    pub fn current_state(&self) -> Option<Arc<Profiles>> {
-        self.snapshot()
+    pub async fn add_subscriber(
+        &self,
+        subscriber: Box<dyn AckSubscriber<Profiles> + Send + Sync>,
+    ) {
+        let mut manager = self.manager.write().await;
+        manager.add_subscriber(subscriber);
+    }
+
+    pub async fn remove_subscriber(
+        &self,
+        name: &str,
+    ) -> Option<Box<dyn AckSubscriber<Profiles> + Send + Sync>> {
+        let mut manager = self.manager.write().await;
+        manager.remove_subscriber(name)
     }
 
     pub async fn upsert(&self, profiles: Profiles) -> Result<(), anyhow::Error> {

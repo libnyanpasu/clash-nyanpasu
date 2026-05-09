@@ -1,8 +1,7 @@
 use super::{ack::*, builder::*, error::*};
-use arc_swap::ArcSwapOption;
+use arc_swap::ArcSwap;
 use indexmap::IndexMap;
 use std::{future::Future, sync::Arc, time::Instant};
-use tokio::sync::watch;
 
 pub trait FusedStateChangedSubscriber {
     fn is_terminated(&self) -> bool {
@@ -152,7 +151,7 @@ where
 
 // -- MVCC snapshot handle --
 
-pub struct StateSnapshot<T: Clone + Send + Sync + 'static>(Arc<ArcSwapOption<T>>);
+pub struct StateSnapshot<T: Clone + Send + Sync + 'static>(Arc<ArcSwap<T>>);
 
 impl<T: Clone + Send + Sync + 'static> Clone for StateSnapshot<T> {
     fn clone(&self) -> Self {
@@ -161,7 +160,7 @@ impl<T: Clone + Send + Sync + 'static> Clone for StateSnapshot<T> {
 }
 
 impl<T: Clone + Send + Sync + 'static> StateSnapshot<T> {
-    pub fn load(&self) -> Option<Arc<T>> {
+    pub fn load(&self) -> Arc<T> {
         self.0.load_full()
     }
 }
@@ -170,23 +169,15 @@ impl<T: Clone + Send + Sync + 'static> StateSnapshot<T> {
 
 #[non_exhaustive]
 pub struct StateCoordinator<T: Clone + Send + Sync + 'static> {
-    current_state: Arc<ArcSwapOption<T>>,
+    current_state: Arc<ArcSwap<T>>,
     subscribers: IndexMap<String, Box<dyn AckSubscriber<T> + Send + Sync>>,
-    version: u64,
-    commit_barrier: watch::Sender<u64>,
-    commit_rx: watch::Receiver<u64>,
 }
 
 impl<T: Clone + Send + Sync> StateCoordinator<T> {
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
-        let (tx, rx) = watch::channel(0u64);
+    pub fn new(initial_state: T) -> Self {
         Self {
-            current_state: Arc::new(ArcSwapOption::empty()),
+            current_state: Arc::new(ArcSwap::from_pointee(initial_state)),
             subscribers: IndexMap::new(),
-            version: 0,
-            commit_barrier: tx,
-            commit_rx: rx,
         }
     }
 
@@ -212,26 +203,12 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         self.subscribers.shift_remove(name)
     }
 
-    pub fn snapshot(&self) -> Option<Arc<T>> {
+    pub fn snapshot(&self) -> Arc<T> {
         self.current_state.load_full()
     }
 
     pub fn snapshot_handle(&self) -> StateSnapshot<T> {
         StateSnapshot(Arc::clone(&self.current_state))
-    }
-
-    #[deprecated(note = "Use snapshot() instead")]
-    pub fn current_state(&self) -> Option<Arc<T>> {
-        self.snapshot()
-    }
-
-    pub async fn read(&self) -> Option<Arc<T>> {
-        if self.version > 0 {
-            return self.current_state.load_full();
-        }
-        let mut rx = self.commit_rx.clone();
-        let _ = rx.changed().await;
-        self.current_state.load_full()
     }
 
     async fn notify_committed(&self, change: StateChange<T>) -> CommitReport {
@@ -285,14 +262,9 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
     fn store_state(&mut self, state: T) -> (StateChange<T>, Arc<T>) {
         let previous = self.current_state.load_full();
         let current = Arc::new(state);
-        self.current_state.store(Some(current.clone()));
-        let change = StateChange::new(previous, current.clone());
+        self.current_state.store(Arc::clone(&current));
+        let change = StateChange::new(Some(previous), current.clone());
         (change, current)
-    }
-
-    fn signal_barrier(&mut self) {
-        self.version = self.version.wrapping_add(1);
-        let _ = self.commit_barrier.send(self.version);
     }
 
     async fn commit_notify_signal(
@@ -301,7 +273,6 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
     ) -> Result<CommitReport, StateChangedError> {
         let (change, _) = self.store_state(state);
         let report = self.notify_committed(change).await;
-        self.signal_barrier();
         if report.has_required_failures() {
             Err(StateChangedError::CommitAck(CommitAckError { report }))
         } else {
@@ -336,7 +307,6 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         let result = effect_fn(state).await.map_err(WithEffectError::Effect)?;
         let (change, _) = self.store_state(state.clone());
         let report = self.notify_committed(change).await;
-        self.signal_barrier();
         if report.has_required_failures() {
             return Err(WithEffectError::State(StateChangedError::CommitAck(
                 CommitAckError { report },
@@ -380,22 +350,16 @@ impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
         self,
         initial_state: T,
     ) -> Result<StateCoordinator<T>, StateChangedError> {
-        let (tx, rx) = watch::channel(0u64);
-        let current_state = Arc::new(ArcSwapOption::empty());
         let current = Arc::new(initial_state);
-        current_state.store(Some(current.clone()));
+        let current_state = Arc::new(ArcSwap::new(Arc::clone(&current)));
 
-        let mut coordinator = StateCoordinator {
+        let coordinator = StateCoordinator {
             current_state,
             subscribers: self.subscribers,
-            version: 0,
-            commit_barrier: tx,
-            commit_rx: rx,
         };
 
         let change = StateChange::new(None, current);
         let report = coordinator.notify_committed(change).await;
-        coordinator.signal_barrier();
 
         if report.has_required_failures() {
             Err(StateChangedError::CommitAck(CommitAckError { report }))
@@ -546,16 +510,23 @@ mod test {
 
     // -- Basic tests --
 
+    fn default_test_state() -> TestState {
+        TestState {
+            value: 0,
+            name: String::new(),
+        }
+    }
+
     #[tokio::test]
     async fn test_new_coordinator() {
-        let coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-        assert!(coordinator.snapshot().is_none());
+        let coordinator = StateCoordinator::new(default_test_state());
+        assert_eq!(coordinator.snapshot().value, 0);
         assert_eq!(coordinator.subscribers.len(), 0);
     }
 
     #[tokio::test]
     async fn test_upsert_state_success() {
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let mut coordinator = StateCoordinator::new(default_test_state());
         let subscriber = Arc::new(MockAckSubscriber::new("test_subscriber"));
         coordinator.add_subscriber(Box::new(subscriber.clone()));
         let test_state = TestState {
@@ -568,17 +539,17 @@ mod test {
         let report = result.unwrap();
         assert!(!report.has_required_failures());
 
-        assert_eq!(coordinator.snapshot().as_deref(), Some(&test_state));
+        assert_eq!(&*coordinator.snapshot(), &test_state);
         assert_eq!(subscriber.call_count(), 1);
 
         let history = subscriber.history().await;
         assert_eq!(history.len(), 1);
-        assert_eq!(history[0], (None, test_state));
+        assert_eq!(history[0].1, test_state);
     }
 
     #[tokio::test]
     async fn test_upsert_with_builder_success() {
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let mut coordinator = StateCoordinator::new(default_test_state());
         let subscriber = Arc::new(MockAckSubscriber::new("test_subscriber"));
         coordinator.add_subscriber(Box::new(subscriber.clone()));
 
@@ -590,13 +561,13 @@ mod test {
 
         let result = coordinator.upsert(builder).await;
         assert!(result.is_ok());
-        assert_eq!(coordinator.snapshot().as_deref(), Some(&test_state));
+        assert_eq!(&*coordinator.snapshot(), &test_state);
         assert_eq!(subscriber.call_count(), 1);
     }
 
     #[tokio::test]
     async fn test_upsert_builder_validation_failure() {
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let mut coordinator = StateCoordinator::new(default_test_state());
         let builder = TestStateBuilder::failing();
 
         let result = coordinator.upsert(builder).await;
@@ -606,12 +577,12 @@ mod test {
             StateChangedError::Validation(_) => {}
             _ => panic!("Expected validation error"),
         }
-        assert!(coordinator.snapshot().is_none());
+        assert_eq!(coordinator.snapshot().value, 0);
     }
 
     #[tokio::test]
     async fn test_required_ack_failure_still_commits() {
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let mut coordinator = StateCoordinator::new(default_test_state());
         let subscriber = Arc::new(MockAckSubscriber::new("failing_subscriber"));
         subscriber.set_fail(true);
         coordinator.add_subscriber(Box::new(subscriber.clone()));
@@ -632,13 +603,13 @@ mod test {
         }
 
         // State IS committed even though ACK failed (post-commit model)
-        assert_eq!(coordinator.snapshot().as_deref(), Some(&test_state));
+        assert_eq!(&*coordinator.snapshot(), &test_state);
         assert_eq!(subscriber.call_count(), 1);
     }
 
     #[tokio::test]
     async fn test_advisory_ack_failure_is_ok() {
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let mut coordinator = StateCoordinator::new(default_test_state());
 
         struct AdvisorySubscriber;
         impl FusedStateChangedSubscriber for AdvisorySubscriber {}
@@ -666,12 +637,12 @@ mod test {
         let report = result.unwrap();
         assert!(!report.has_required_failures());
 
-        assert_eq!(coordinator.snapshot().as_deref(), Some(&test_state));
+        assert_eq!(&*coordinator.snapshot(), &test_state);
     }
 
     #[tokio::test]
     async fn test_degraded_ack() {
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let mut coordinator = StateCoordinator::new(default_test_state());
         let subscriber = Arc::new(MockAckSubscriber::new("degraded_sub"));
         subscriber.set_degrade(true);
         coordinator.add_subscriber(Box::new(subscriber.clone()));
@@ -690,7 +661,7 @@ mod test {
 
     #[tokio::test]
     async fn test_multiple_subscribers_success() {
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let mut coordinator = StateCoordinator::new(default_test_state());
         let sub1 = Arc::new(MockAckSubscriber::new("sub1"));
         let sub2 = Arc::new(MockAckSubscriber::new("sub2"));
         let sub3 = Arc::new(MockAckSubscriber::new("sub3"));
@@ -710,12 +681,13 @@ mod test {
         assert_eq!(sub1.call_count(), 1);
         assert_eq!(sub2.call_count(), 1);
         assert_eq!(sub3.call_count(), 1);
-        assert_eq!(coordinator.snapshot().as_deref(), Some(&test_state));
+        assert_eq!(&*coordinator.snapshot(), &test_state);
     }
 
     #[tokio::test]
     async fn test_state_update_sequence() {
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let initial = default_test_state();
+        let mut coordinator = StateCoordinator::new(initial.clone());
         let subscriber = Arc::new(MockAckSubscriber::new("sequence_subscriber"));
         coordinator.add_subscriber(Box::new(subscriber.clone()));
 
@@ -733,15 +705,15 @@ mod test {
 
         let history = subscriber.history().await;
         assert_eq!(history.len(), 2);
-        assert_eq!(history[0], (None, state1.clone()));
+        assert_eq!(history[0], (Some(initial), state1.clone()));
         assert_eq!(history[1], (Some(state1), state2.clone()));
 
-        assert_eq!(coordinator.snapshot().as_deref(), Some(&state2));
+        assert_eq!(&*coordinator.snapshot(), &state2);
     }
 
     #[tokio::test]
     async fn test_timeout_subscriber() {
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let mut coordinator = StateCoordinator::new(default_test_state());
 
         struct SlowSubscriber;
         impl FusedStateChangedSubscriber for SlowSubscriber {}
@@ -780,12 +752,12 @@ mod test {
         }
 
         // State IS committed despite timeout
-        assert_eq!(coordinator.snapshot().as_deref(), Some(&test_state));
+        assert_eq!(&*coordinator.snapshot(), &test_state);
     }
 
     #[tokio::test]
     async fn test_fused_subscriber_skipped() {
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let mut coordinator = StateCoordinator::new(default_test_state());
 
         struct TerminatedSubscriber;
         impl FusedStateChangedSubscriber for TerminatedSubscriber {
@@ -829,7 +801,7 @@ mod test {
 
     #[tokio::test]
     async fn test_with_pending_state_effect_success() {
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let mut coordinator = StateCoordinator::new(default_test_state());
         let subscriber = Arc::new(MockAckSubscriber::new("sub"));
         coordinator.add_subscriber(Box::new(subscriber.clone()));
 
@@ -846,13 +818,14 @@ mod test {
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "done");
-        assert_eq!(coordinator.snapshot().unwrap().value, 42);
+        assert_eq!(coordinator.snapshot().value, 42);
         assert_eq!(subscriber.call_count(), 1);
     }
 
     #[tokio::test]
     async fn test_with_pending_state_effect_failure_no_commit() {
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let initial = default_test_state();
+        let mut coordinator = StateCoordinator::new(initial.clone());
         let subscriber = Arc::new(MockAckSubscriber::new("sub"));
         coordinator.add_subscriber(Box::new(subscriber.clone()));
 
@@ -875,14 +848,14 @@ mod test {
         }
 
         // State NOT committed (effect failed before commit)
-        assert!(coordinator.snapshot().is_none());
+        assert_eq!(&*coordinator.snapshot(), &initial);
         // Subscriber NOT called (commit never happened)
         assert_eq!(subscriber.call_count(), 0);
     }
 
     #[tokio::test]
     async fn test_empty_subscribers_list() {
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let mut coordinator = StateCoordinator::new(default_test_state());
         let test_state = TestState {
             value: 42,
             name: "no_subscribers".to_string(),
@@ -890,21 +863,21 @@ mod test {
 
         let result = coordinator.upsert_state(test_state.clone()).await;
         assert!(result.is_ok());
-        assert_eq!(coordinator.snapshot().as_deref(), Some(&test_state));
+        assert_eq!(&*coordinator.snapshot(), &test_state);
     }
 
     #[tokio::test]
     async fn test_snapshot_handle() {
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let mut coordinator = StateCoordinator::new(default_test_state());
         let handle = coordinator.snapshot_handle();
-        assert!(handle.load().is_none());
+        assert_eq!(handle.load().value, 0);
 
         let state = TestState {
             value: 42,
             name: "handle_test".to_string(),
         };
         coordinator.upsert_state(state.clone()).await.unwrap();
-        assert_eq!(handle.load().as_deref(), Some(&state));
+        assert_eq!(&*handle.load(), &state);
     }
 
     #[tokio::test]
@@ -919,7 +892,7 @@ mod test {
         };
         let coordinator = builder.build_initialized(state.clone()).await.unwrap();
 
-        assert_eq!(coordinator.snapshot().as_deref(), Some(&state));
+        assert_eq!(&*coordinator.snapshot(), &state);
         assert_eq!(subscriber.call_count(), 1);
 
         let history = subscriber.history().await;
@@ -949,7 +922,7 @@ mod test {
             }
         }
 
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let mut coordinator = StateCoordinator::new(default_test_state());
         let old = Arc::new(OldSub {
             name: "legacy".to_string(),
             calls: AtomicUsize::new(0),
@@ -988,7 +961,7 @@ mod test {
 
     #[tokio::test]
     async fn test_sync_builder_to_async_conversion() {
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let mut coordinator = StateCoordinator::new(default_test_state());
         let test_state = TestState {
             value: 123,
             name: "sync_to_async".to_string(),
@@ -997,12 +970,12 @@ mod test {
 
         let result = coordinator.upsert(sync_builder).await;
         assert!(result.is_ok());
-        assert_eq!(coordinator.snapshot().as_deref(), Some(&test_state));
+        assert_eq!(&*coordinator.snapshot(), &test_state);
     }
 
     #[tokio::test]
     async fn test_add_subscriber() {
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
+        let mut coordinator = StateCoordinator::new(default_test_state());
         let subscriber1 = Arc::new(MockAckSubscriber::new("subscriber1"));
         let subscriber2 = Arc::new(MockAckSubscriber::new("subscriber2"));
 
@@ -1028,22 +1001,20 @@ mod test {
 
     #[tokio::test]
     async fn test_get_state() {
-        let mut coordinator: StateCoordinator<TestState> = StateCoordinator::new();
-
-        assert!(coordinator.snapshot().is_none());
+        let mut coordinator = StateCoordinator::new(default_test_state());
 
         let test_state = TestState {
             value: 100,
             name: "get_test".to_string(),
         };
         coordinator.upsert_state(test_state.clone()).await.unwrap();
-        assert_eq!(coordinator.snapshot().as_deref(), Some(&test_state));
+        assert_eq!(&*coordinator.snapshot(), &test_state);
 
         let new_state = TestState {
             value: 200,
             name: "updated_test".to_string(),
         };
         coordinator.upsert_state(new_state.clone()).await.unwrap();
-        assert_eq!(coordinator.snapshot().as_deref(), Some(&new_state));
+        assert_eq!(&*coordinator.snapshot(), &new_state);
     }
 }

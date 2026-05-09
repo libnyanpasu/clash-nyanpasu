@@ -32,6 +32,9 @@ use tokio::sync::Mutex as TokioMutex;
 type SourceConfig = i32;
 type DerivedRuntime = String;
 
+const INITIAL_SOURCE: SourceConfig = 0;
+const INITIAL_DERIVED: &str = "";
+
 // ─── LeafAckSubscriber: terminal subscriber on B's coordinator ───
 
 struct LeafAckSubscriber {
@@ -182,12 +185,13 @@ struct TestChain {
 
 fn build_chain() -> TestChain {
     let leaf = Arc::new(LeafAckSubscriber::new("service_c"));
-    let mut b_coord: StateCoordinator<DerivedRuntime> = StateCoordinator::new();
+    let mut b_coord: StateCoordinator<DerivedRuntime> =
+        StateCoordinator::new(INITIAL_DERIVED.to_string());
     b_coord.add_subscriber(Box::new(leaf.clone()));
-    let b = Arc::new(TokioMutex::new(SimpleStateManager::new(b_coord)));
+    let b = Arc::new(TokioMutex::new(SimpleStateManager::from_coordinator(b_coord)));
 
     let bridge = Arc::new(BridgeAckSubscriber::new(b.clone()));
-    let mut a: StateCoordinator<SourceConfig> = StateCoordinator::new();
+    let mut a: StateCoordinator<SourceConfig> = StateCoordinator::new(INITIAL_SOURCE);
     a.add_subscriber(Box::new(bridge.clone()));
 
     TestChain { a, b, bridge, leaf }
@@ -204,15 +208,15 @@ async fn cascade_commit_a_to_b_to_c() {
     let result = chain.a.upsert_state(42).await;
 
     assert!(result.is_ok());
-    assert_eq!(chain.a.snapshot().as_deref(), Some(&42));
+    assert_eq!(*chain.a.snapshot(), 42);
     assert_eq!(
-        chain.b.lock().await.snapshot().as_deref(),
-        Some(&"derived_from_42".to_string())
+        &*chain.b.lock().await.snapshot(),
+        "derived_from_42"
     );
 
     assert_eq!(chain.leaf.call_count(), 1);
     let log = chain.leaf.call_log();
-    assert_eq!(log[0].0, None);
+    assert_eq!(log[0].0, Some(INITIAL_DERIVED.to_string()));
     assert_eq!(log[0].1, "derived_from_42");
 }
 
@@ -231,7 +235,7 @@ async fn cascade_committed_even_when_leaf_fails() {
     let result = chain.a.upsert_state(42).await;
 
     // A committed (post-commit model)
-    assert_eq!(chain.a.snapshot().as_deref(), Some(&42));
+    assert_eq!(*chain.a.snapshot(), 42);
 
     // B committed (bridge ran successfully, leaf failure on B doesn't prevent B's commit)
     // However, B's upsert_state will return CommitAck error, which bridge maps to Ack::Failed
@@ -245,7 +249,7 @@ async fn cascade_committed_even_when_leaf_fails() {
     }
 
     // B IS committed because state is stored before notification
-    assert!(chain.b.lock().await.snapshot().is_some());
+    assert_eq!(&*chain.b.lock().await.snapshot(), "derived_from_42");
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -267,10 +271,10 @@ async fn cascade_no_commit_on_effect_failure() {
     assert!(matches!(result.unwrap_err(), WithEffectError::Effect(_)));
 
     // A not committed (effect failed before commit)
-    assert_eq!(chain.a.snapshot(), None);
+    assert_eq!(*chain.a.snapshot(), INITIAL_SOURCE);
 
     // B not committed (bridge never called)
-    assert_eq!(chain.b.lock().await.snapshot(), None);
+    assert_eq!(&*chain.b.lock().await.snapshot(), INITIAL_DERIVED);
 
     assert_eq!(chain.bridge.call_count(), 0);
     assert_eq!(chain.leaf.call_count(), 0);
@@ -290,10 +294,10 @@ async fn cascade_second_update_leaf_failure_still_commits() {
 
     // First update: success
     chain.a.upsert_state(1).await.unwrap();
-    assert_eq!(chain.a.snapshot().as_deref(), Some(&1));
+    assert_eq!(*chain.a.snapshot(), 1);
     assert_eq!(
-        chain.b.lock().await.snapshot().as_deref(),
-        Some(&"derived_from_1".to_string())
+        &*chain.b.lock().await.snapshot(),
+        "derived_from_1"
     );
 
     // Configure leaf to fail
@@ -304,17 +308,17 @@ async fn cascade_second_update_leaf_failure_still_commits() {
     assert!(result.is_err());
 
     // A IS committed to 2 (post-commit)
-    assert_eq!(chain.a.snapshot().as_deref(), Some(&2));
+    assert_eq!(*chain.a.snapshot(), 2);
 
     // B IS committed to derived_from_2 (bridge ran, B committed before leaf notified)
     assert_eq!(
-        chain.b.lock().await.snapshot().as_deref(),
-        Some(&"derived_from_2".to_string())
+        &*chain.b.lock().await.snapshot(),
+        "derived_from_2"
     );
 
     let log = chain.leaf.call_log();
     assert_eq!(log.len(), 2);
-    assert_eq!(log[0], (None, "derived_from_1".to_string()));
+    assert_eq!(log[0], (Some(INITIAL_DERIVED.to_string()), "derived_from_1".to_string()));
     assert_eq!(
         log[1],
         (
@@ -334,22 +338,23 @@ async fn cascade_second_update_leaf_failure_still_commits() {
 #[tokio::test]
 async fn cascade_sibling_failure_still_committed() {
     let leaf = Arc::new(LeafAckSubscriber::new("service_c"));
-    let mut b_coord: StateCoordinator<DerivedRuntime> = StateCoordinator::new();
+    let mut b_coord: StateCoordinator<DerivedRuntime> =
+        StateCoordinator::new(INITIAL_DERIVED.to_string());
     b_coord.add_subscriber(Box::new(leaf.clone()));
-    let b = Arc::new(TokioMutex::new(SimpleStateManager::new(b_coord)));
+    let b = Arc::new(TokioMutex::new(SimpleStateManager::from_coordinator(b_coord)));
 
     let bridge = Arc::new(BridgeAckSubscriber::new(b.clone()));
     let sibling = Arc::new(SiblingAckSubscriber::new("sibling_d"));
     sibling.set_should_fail(true);
 
-    let mut a: StateCoordinator<SourceConfig> = StateCoordinator::new();
+    let mut a: StateCoordinator<SourceConfig> = StateCoordinator::new(INITIAL_SOURCE);
     a.add_subscriber(Box::new(bridge.clone()));
     a.add_subscriber(Box::new(sibling.clone()));
 
     let result = a.upsert_state(99).await;
 
     // A committed (post-commit)
-    assert_eq!(a.snapshot().as_deref(), Some(&99));
+    assert_eq!(*a.snapshot(), 99);
 
     // Both subscribers were called
     assert_eq!(bridge.call_count(), 1);
@@ -357,8 +362,8 @@ async fn cascade_sibling_failure_still_committed() {
 
     // B committed via bridge
     assert_eq!(
-        b.lock().await.snapshot().as_deref(),
-        Some(&"derived_from_99".to_string())
+        &*b.lock().await.snapshot(),
+        "derived_from_99"
     );
 
     // Leaf notified
@@ -385,8 +390,8 @@ async fn cascade_effect_failure_with_prev_state() {
     // First: establish state
     chain.a.upsert_state(1).await.unwrap();
     assert_eq!(
-        chain.b.lock().await.snapshot().as_deref(),
-        Some(&"derived_from_1".to_string())
+        &*chain.b.lock().await.snapshot(),
+        "derived_from_1"
     );
 
     // Second: with_pending_state where effect fails
@@ -400,12 +405,12 @@ async fn cascade_effect_failure_with_prev_state() {
     assert!(result.is_err());
 
     // A stays at 1 (effect failed, no commit)
-    assert_eq!(chain.a.snapshot().as_deref(), Some(&1));
+    assert_eq!(*chain.a.snapshot(), 1);
 
     // B stays at derived_from_1 (bridge never called)
     assert_eq!(
-        chain.b.lock().await.snapshot().as_deref(),
-        Some(&"derived_from_1".to_string())
+        &*chain.b.lock().await.snapshot(),
+        "derived_from_1"
     );
 
     // Only 1 call to bridge (from first upsert)

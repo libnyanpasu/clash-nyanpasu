@@ -10,7 +10,7 @@ use nyanpasu_core::state::YamlFormat;
 use crate::{
     config::NYANPASU_CONFIG_PREFIX,
     core::state_v2::{
-        PersistentBuiltStateManager, PersistentBuiltStateManagerSetup,
+        AckSubscriber, PersistentBuiltStateManager, PersistentBuiltStateManagerSetup,
         StateAsyncBuilder, StateCoordinatorBuilder, StateSnapshot,
         error::*,
     },
@@ -81,14 +81,24 @@ impl NyanpasuAppConfigServiceBuilder {
 
 impl NyanpasuAppConfigService {
     /// MVCC snapshot read: lock-free read of last committed state.
-    pub fn snapshot(&self) -> Option<Arc<NyanpasuAppConfig>> {
+    pub fn snapshot(&self) -> Arc<NyanpasuAppConfig> {
         self.snapshot.load()
     }
 
-    /// Get the current config via snapshot (lock-free).
-    pub fn current_config(&self) -> anyhow::Result<Arc<NyanpasuAppConfig>> {
-        self.snapshot()
-            .ok_or_else(|| anyhow::anyhow!("current config not found"))
+    pub async fn add_subscriber(
+        &self,
+        subscriber: Box<dyn AckSubscriber<NyanpasuAppConfig> + Send + Sync>,
+    ) {
+        let mut manager = self.state_manager.write().await;
+        manager.add_subscriber(subscriber);
+    }
+
+    pub async fn remove_subscriber(
+        &self,
+        name: &str,
+    ) -> Option<Box<dyn AckSubscriber<NyanpasuAppConfig> + Send + Sync>> {
+        let mut manager = self.state_manager.write().await;
+        manager.remove_subscriber(name)
     }
 
     /// Use a partial config builder to patch the current config

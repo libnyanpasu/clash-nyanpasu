@@ -119,25 +119,26 @@ where
     State: Clone + Send + Sync + Serialize + DeserializeOwned + 'static,
     Formatter: Format,
 {
-    pub fn snapshot(&self) -> Option<Arc<State>> {
+    pub fn snapshot(&self) -> Arc<State> {
         self.state_coordinator.snapshot()
-    }
-
-    #[deprecated(note = "Use snapshot() instead")]
-    pub fn current_state(&self) -> Option<Arc<State>> {
-        self.snapshot()
     }
 
     pub fn snapshot_handle(&self) -> StateSnapshot<State> {
         self.state_coordinator.snapshot_handle()
     }
 
-    pub async fn read(&self) -> Option<Arc<State>> {
-        self.state_coordinator.read().await
+    pub fn add_subscriber(
+        &mut self,
+        subscriber: Box<dyn AckSubscriber<State> + Send + Sync>,
+    ) {
+        self.state_coordinator.add_subscriber(subscriber);
     }
 
-    pub fn state_coordinator_mut(&mut self) -> &mut StateCoordinator<State> {
-        &mut self.state_coordinator
+    pub fn remove_subscriber(
+        &mut self,
+        name: &str,
+    ) -> Option<Box<dyn AckSubscriber<State> + Send + Sync>> {
+        self.state_coordinator.remove_subscriber(name)
     }
 
     pub async fn try_load_snapshot(&self) -> Option<State> {
@@ -293,7 +294,7 @@ mod tests {
             .await
             .unwrap();
 
-        let current = manager.snapshot().unwrap();
+        let current = manager.snapshot();
         assert_eq!(current.name, "snapshot");
         assert_eq!(current.value, 77);
     }
@@ -311,7 +312,7 @@ mod tests {
             .await
             .unwrap();
 
-        let current = manager.snapshot().unwrap();
+        let current = manager.snapshot();
         assert_eq!(current.name, "");
         assert_eq!(current.value, 0);
         assert!(!config_path.exists());
@@ -331,7 +332,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(*manager.snapshot().unwrap(), state);
+        assert_eq!(*manager.snapshot(), state);
     }
 
     #[tokio::test]
@@ -352,7 +353,7 @@ mod tests {
         let result = manager.upsert(state).await;
         assert!(result.is_ok());
 
-        let current = manager.snapshot().unwrap();
+        let current = manager.snapshot();
         assert_eq!(current.name, "upsert");
         assert_eq!(current.value, 42);
 
@@ -377,7 +378,7 @@ mod tests {
         let result = manager.upsert(state).await;
         assert!(result.is_ok());
 
-        let current = manager.snapshot().unwrap();
+        let current = manager.snapshot();
         assert_eq!(current.name, "committed");
         assert_eq!(current.value, 100);
 
@@ -421,7 +422,7 @@ mod tests {
 
         let initial = TestState::new("initial".to_string(), 100);
         manager.upsert(initial.clone()).await.unwrap();
-        assert_eq!(*manager.snapshot().unwrap(), initial);
+        assert_eq!(*manager.snapshot(), initial);
 
         manager.config_path = Utf8PathBuf::from("/__nonexistent_dir__/__sub__/config.yaml");
 
@@ -429,6 +430,6 @@ mod tests {
         let result = manager.upsert(updated.clone()).await;
         assert!(result.is_ok());
 
-        assert_eq!(*manager.snapshot().unwrap(), updated);
+        assert_eq!(*manager.snapshot(), updated);
     }
 }

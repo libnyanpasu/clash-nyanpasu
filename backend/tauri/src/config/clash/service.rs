@@ -8,8 +8,8 @@ use super::{ClashConfig, ClashConfigBuilder};
 use crate::{
     config::NYANPASU_CONFIG_PREFIX,
     core::state_v2::{
-        PersistentBuiltStateManager, PersistentBuiltStateManagerSetup,
-        StateAsyncBuilder, StateCoordinator, StateCoordinatorBuilder, StateSnapshot,
+        AckSubscriber, PersistentBuiltStateManager, PersistentBuiltStateManagerSetup,
+        StateAsyncBuilder, StateCoordinatorBuilder, StateSnapshot,
         error::*,
     },
     registry::PortRegistry,
@@ -85,32 +85,32 @@ impl ClashConfigServiceBuilder {
 }
 
 impl ClashConfigService {
-    pub async fn configure_state_coordinator(
+    pub async fn add_subscriber(
         &self,
-        f: impl FnOnce(&mut StateCoordinator<ClashConfig>),
-    ) -> anyhow::Result<()> {
+        subscriber: Box<dyn AckSubscriber<ClashConfig> + Send + Sync>,
+    ) {
         let mut manager = self.manager.write().await;
-        f(manager.state_coordinator_mut());
-        Ok(())
+        manager.add_subscriber(subscriber);
+    }
+
+    pub async fn remove_subscriber(
+        &self,
+        name: &str,
+    ) -> Option<Box<dyn AckSubscriber<ClashConfig> + Send + Sync>> {
+        let mut manager = self.manager.write().await;
+        manager.remove_subscriber(name)
     }
 
     /// MVCC snapshot read: lock-free read of last committed state.
-    pub fn snapshot(&self) -> Option<Arc<ClashConfig>> {
+    pub fn snapshot(&self) -> Arc<ClashConfig> {
         self.snapshot.load()
-    }
-
-    /// Get the current config via snapshot (lock-free).
-    pub fn current_config(&self) -> Option<Arc<ClashConfig>> {
-        self.snapshot()
     }
 
     pub async fn apply_overrides(
         &self,
         clash_config: serde_yaml::Mapping,
     ) -> anyhow::Result<Mapping> {
-        let current_config = self
-            .current_config()
-            .ok_or(anyhow::anyhow!("config not found"))?;
+        let current_config = self.snapshot();
         let new_config = current_config.apply_overrides(clash_config, &self.port_registry)?;
 
         Ok(new_config)

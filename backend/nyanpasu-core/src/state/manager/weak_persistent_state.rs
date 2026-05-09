@@ -4,12 +4,9 @@ use bon::Builder;
 use camino::Utf8PathBuf;
 use fs_err::tokio as fs;
 use serde::{Serialize, de::DeserializeOwned};
-use std::{io::Write, sync::Arc};
+use std::io::Write;
 
-use super::{
-    super::{StateSnapshot, error::*},
-    *,
-};
+use super::{super::error::*, *};
 
 use crate::format::{Format, YamlFormat};
 
@@ -28,34 +25,45 @@ where
     formatter: Formatter,
 }
 
+async fn load_weak_snapshot<State, Formatter>(
+    config_path: &Utf8PathBuf,
+    formatter: &Formatter,
+) -> Option<State>
+where
+    State: DeserializeOwned,
+    Formatter: Format,
+{
+    match fs::read(config_path).await {
+        Ok(bytes) => match formatter.deserialize(bytes.as_slice()) {
+            Ok(state) => Some(state),
+            Err(e) => {
+                tracing::warn!(
+                    target: "app",
+                    path = %config_path,
+                    "failed to deserialize weak snapshot: {e:?}"
+                );
+                None
+            }
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => {
+            tracing::warn!(
+                target: "app",
+                path = %config_path,
+                "failed to read weak snapshot: {e:?}"
+            );
+            None
+        }
+    }
+}
+
 impl<State, Formatter> WeakPersistentStateManagerSetup<State, Formatter>
 where
     State: Clone + Send + Sync + Serialize + DeserializeOwned + 'static,
     Formatter: Format + Default,
 {
     pub async fn load_snapshot(&self) -> Option<State> {
-        match fs::read(&self.config_path).await {
-            Ok(bytes) => match self.formatter.deserialize(bytes.as_slice()) {
-                Ok(state) => Some(state),
-                Err(e) => {
-                    tracing::warn!(
-                        target: "app",
-                        path = %self.config_path,
-                        "failed to deserialize weak snapshot: {e:?}"
-                    );
-                    None
-                }
-            },
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-            Err(e) => {
-                tracing::warn!(
-                    target: "app",
-                    path = %self.config_path,
-                    "failed to read weak snapshot: {e:?}"
-                );
-                None
-            }
-        }
+        load_weak_snapshot(&self.config_path, &self.formatter).await
     }
 }
 
@@ -123,48 +131,10 @@ where
     State: Clone + Send + Sync + Serialize + DeserializeOwned + 'static,
     Formatter: Format,
 {
-    pub fn snapshot(&self) -> Arc<State> {
-        self.state_coordinator.snapshot()
-    }
-
-    pub fn snapshot_handle(&self) -> StateSnapshot<State> {
-        self.state_coordinator.snapshot_handle()
-    }
-
-    pub fn add_subscriber(&mut self, subscriber: Box<dyn StateAckSubscriber<State> + Send + Sync>) {
-        self.state_coordinator.add_subscriber(subscriber);
-    }
-
-    pub fn remove_subscriber(
-        &mut self,
-        name: &str,
-    ) -> Option<Box<dyn StateAckSubscriber<State> + Send + Sync>> {
-        self.state_coordinator.remove_subscriber(name)
-    }
+    super::impl_state_manager_delegates!(State);
 
     pub async fn try_load_snapshot(&self) -> Option<State> {
-        match fs::read(&self.config_path).await {
-            Ok(bytes) => match self.formatter.deserialize(bytes.as_slice()) {
-                Ok(state) => Some(state),
-                Err(e) => {
-                    tracing::warn!(
-                        target: "app",
-                        path = %self.config_path,
-                        "failed to deserialize weak snapshot: {e:?}"
-                    );
-                    None
-                }
-            },
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-            Err(e) => {
-                tracing::warn!(
-                    target: "app",
-                    path = %self.config_path,
-                    "failed to read weak snapshot: {e:?}"
-                );
-                None
-            }
-        }
+        load_weak_snapshot(&self.config_path, &self.formatter).await
     }
 
     async fn try_persist(&self, state: &State)

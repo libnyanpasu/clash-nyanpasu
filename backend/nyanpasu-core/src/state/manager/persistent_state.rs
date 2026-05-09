@@ -4,12 +4,9 @@ use bon::Builder;
 use camino::Utf8PathBuf;
 use fs_err::tokio as fs;
 use serde::{Serialize, de::DeserializeOwned};
-use std::{io::Write, sync::Arc};
+use std::io::Write;
 
-use super::{
-    super::{StateSnapshot, error::*},
-    *,
-};
+use super::{super::error::*, *};
 
 use crate::format::{Format, YamlFormat};
 
@@ -121,24 +118,7 @@ where
     State: Clone + Send + Sync + Serialize + DeserializeOwned + Default + 'static,
     Formatter: Format,
 {
-    pub fn snapshot(&self) -> Arc<State> {
-        self.state_coordinator.snapshot()
-    }
-
-    pub fn snapshot_handle(&self) -> StateSnapshot<State> {
-        self.state_coordinator.snapshot_handle()
-    }
-
-    pub fn add_subscriber(&mut self, subscriber: Box<dyn StateAckSubscriber<State> + Send + Sync>) {
-        self.state_coordinator.add_subscriber(subscriber);
-    }
-
-    pub fn remove_subscriber(
-        &mut self,
-        name: &str,
-    ) -> Option<Box<dyn StateAckSubscriber<State> + Send + Sync>> {
-        self.state_coordinator.remove_subscriber(name)
-    }
+    super::impl_state_manager_delegates!(State);
 
     pub async fn upsert(&mut self, state: State) -> Result<(), UpsertError>
     where

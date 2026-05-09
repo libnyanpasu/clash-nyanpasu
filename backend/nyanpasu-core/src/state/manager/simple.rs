@@ -1,11 +1,6 @@
-use std::sync::Arc;
-
 use bon::Builder;
 
-use super::{
-    super::{StateSnapshot, error::*},
-    *,
-};
+use super::{super::error::*, *};
 
 #[derive(Builder)]
 #[builder(finish_fn = assemble)]
@@ -43,24 +38,7 @@ where
         Self { state_coordinator }
     }
 
-    pub fn snapshot(&self) -> Arc<State> {
-        self.state_coordinator.snapshot()
-    }
-
-    pub fn snapshot_handle(&self) -> StateSnapshot<State> {
-        self.state_coordinator.snapshot_handle()
-    }
-
-    pub fn add_subscriber(&mut self, subscriber: Box<dyn StateAckSubscriber<State> + Send + Sync>) {
-        self.state_coordinator.add_subscriber(subscriber);
-    }
-
-    pub fn remove_subscriber(
-        &mut self,
-        name: &str,
-    ) -> Option<Box<dyn StateAckSubscriber<State> + Send + Sync>> {
-        self.state_coordinator.remove_subscriber(name)
-    }
+    super::impl_state_manager_delegates!(State);
 
     pub async fn upsert(&mut self, state: State) -> Result<(), StateChangedError> {
         self.state_coordinator.upsert_state(state).await?;

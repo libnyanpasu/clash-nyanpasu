@@ -23,6 +23,8 @@ where
     state_coordinator: StateCoordinatorBuilder<State>,
     #[builder(default)]
     formatter: Formatter,
+    #[builder(default)]
+    force_build: bool,
 }
 
 async fn load_weak_snapshot<State, Formatter>(
@@ -65,6 +67,43 @@ where
     pub async fn load_snapshot(&self) -> Option<State> {
         load_weak_snapshot(&self.config_path, &self.formatter).await
     }
+
+    async fn build_manager(
+        self,
+        state: State,
+    ) -> Result<
+        WeakPersistentStateManager<State, Formatter>,
+        ManagerInitError<WeakPersistentStateManager<State, Formatter>>,
+    > {
+        let Self {
+            config_path,
+            config_prefix,
+            state_coordinator,
+            formatter,
+            force_build,
+        } = self;
+
+        let build_result = state_coordinator.build_initialized(state).await;
+        let make_manager = |coordinator| WeakPersistentStateManager {
+            config_prefix,
+            config_path,
+            state_coordinator: coordinator,
+            formatter,
+        };
+
+        match build_result {
+            Ok(coordinator) => Ok(make_manager(coordinator)),
+            Err(error) => {
+                let (coordinator, report) = error.into_parts();
+                let manager = make_manager(coordinator);
+                if force_build {
+                    Ok(manager)
+                } else {
+                    Err(ManagerInitError::new(manager, report))
+                }
+            }
+        }
+    }
 }
 
 impl<State, Formatter> WeakPersistentStateManagerSetup<State, Formatter>
@@ -74,21 +113,13 @@ where
 {
     pub async fn load_or_default(
         self,
-    ) -> Result<WeakPersistentStateManager<State, Formatter>, LoadError> {
+    ) -> Result<
+        WeakPersistentStateManager<State, Formatter>,
+        LoadError<WeakPersistentStateManager<State, Formatter>>,
+    > {
         let state = self.load_snapshot().await.unwrap_or_default();
 
-        let coordinator = self
-            .state_coordinator
-            .build_initialized(state)
-            .await
-            .map_err(LoadError::from)?;
-
-        Ok(WeakPersistentStateManager {
-            config_prefix: self.config_prefix,
-            config_path: self.config_path,
-            state_coordinator: coordinator,
-            formatter: self.formatter,
-        })
+        self.build_manager(state).await.map_err(LoadError::Init)
     }
 }
 
@@ -100,19 +131,11 @@ where
     pub async fn from_state(
         self,
         state: State,
-    ) -> Result<WeakPersistentStateManager<State, Formatter>, LoadError> {
-        let coordinator = self
-            .state_coordinator
-            .build_initialized(state)
-            .await
-            .map_err(LoadError::from)?;
-
-        Ok(WeakPersistentStateManager {
-            config_prefix: self.config_prefix,
-            config_path: self.config_path,
-            state_coordinator: coordinator,
-            formatter: self.formatter,
-        })
+    ) -> Result<
+        WeakPersistentStateManager<State, Formatter>,
+        LoadError<WeakPersistentStateManager<State, Formatter>>,
+    > {
+        self.build_manager(state).await.map_err(LoadError::Init)
     }
 }
 
@@ -182,7 +205,10 @@ where
 mod tests {
     use super::{super::super::ack::*, *};
     use serde::{Deserialize, Serialize};
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    };
     use tempfile::tempdir;
     use tokio::fs;
 
@@ -218,6 +244,7 @@ mod tests {
     struct MockAckSub {
         name: String,
         should_fail: AtomicBool,
+        calls: Arc<AtomicUsize>,
     }
 
     impl MockAckSub {
@@ -225,11 +252,16 @@ mod tests {
             Self {
                 name: name.to_string(),
                 should_fail: AtomicBool::new(false),
+                calls: Arc::new(AtomicUsize::new(0)),
             }
         }
 
         fn set_fail(&self, fail: bool) {
             self.should_fail.store(fail, Ordering::SeqCst);
+        }
+
+        fn calls(&self) -> Arc<AtomicUsize> {
+            Arc::clone(&self.calls)
         }
     }
 
@@ -240,6 +272,7 @@ mod tests {
         }
 
         async fn on_committed(&self, _change: StateChange<TestState>) -> Ack {
+            self.calls.fetch_add(1, Ordering::SeqCst);
             if self.should_fail.load(Ordering::SeqCst) {
                 return Ack::Failed(anyhow::anyhow!("mock ACK failure"));
             }
@@ -358,6 +391,7 @@ mod tests {
 
         let subscriber = MockAckSub::new("fail_sub");
         subscriber.set_fail(true);
+        let calls = subscriber.calls();
         let coordinator_builder =
             StateCoordinatorBuilder::default().with_subscriber(Box::new(subscriber));
 
@@ -368,8 +402,41 @@ mod tests {
             .from_state(TestState::new("should_commit".to_string(), 99))
             .await;
 
-        // build_initialized will return CommitAck error since the subscriber fails
-        assert!(result.is_err());
+        match result {
+            Err(LoadError::Init(error)) => {
+                let (manager, report) = error.into_parts();
+                assert!(report.has_required_failures());
+                assert_eq!(manager.snapshot().name, "should_commit");
+                assert_eq!(calls.load(Ordering::SeqCst), 1);
+            }
+            Err(error) => panic!("expected init ACK error, got {error}"),
+            Ok(_) => panic!("expected recoverable init ACK error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_force_build_returns_manager_after_ack_failure() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("force_ack_fail.yaml");
+        let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
+
+        let subscriber = MockAckSub::new("fail_sub");
+        subscriber.set_fail(true);
+        let calls = subscriber.calls();
+        let coordinator_builder =
+            StateCoordinatorBuilder::default().with_subscriber(Box::new(subscriber));
+
+        let manager = WeakPersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path)
+            .state_coordinator(coordinator_builder)
+            .force_build(true)
+            .assemble()
+            .from_state(TestState::new("forced".to_string(), 123))
+            .await
+            .unwrap();
+
+        assert_eq!(manager.snapshot().name, "forced");
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]

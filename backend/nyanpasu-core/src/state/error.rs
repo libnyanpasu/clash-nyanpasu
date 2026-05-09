@@ -1,4 +1,5 @@
 use super::ack::CommitReport;
+use std::fmt;
 
 #[derive(thiserror::Error, Debug)]
 #[error("state committed but required subscriber ACK failed")]
@@ -21,14 +22,29 @@ impl StateChangedError {
     }
 }
 
-#[derive(thiserror::Error, Debug)]
-pub enum LoadError {
+#[derive(thiserror::Error)]
+pub enum LoadError<Manager = ()> {
     #[error("failed to read the config file: {0}")]
     ReadConfig(anyhow::Error),
     #[error("failed to upsert the state: {0}")]
     Upsert(StateChangedError),
     #[error("failed to deserialize the config file: {0}")]
     DeserializeConfig(anyhow::Error),
+    #[error("state manager initialization ACK failed: {0}")]
+    Init(ManagerInitError<Manager>),
+}
+
+impl<Manager> fmt::Debug for LoadError<Manager> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ReadConfig(error) => f.debug_tuple("ReadConfig").field(error).finish(),
+            Self::Upsert(error) => f.debug_tuple("Upsert").field(error).finish(),
+            Self::DeserializeConfig(error) => {
+                f.debug_tuple("DeserializeConfig").field(error).finish()
+            }
+            Self::Init(error) => f.debug_tuple("Init").field(error).finish(),
+        }
+    }
 }
 
 #[derive(thiserror::Error)]
@@ -52,17 +68,39 @@ impl<T: Clone + Send + Sync + 'static> InitAckError<T> {
     }
 }
 
-impl<T: Clone + Send + Sync + 'static> From<InitAckError<T>> for StateChangedError {
-    fn from(e: InitAckError<T>) -> Self {
-        StateChangedError::CommitAck(CommitAckError { report: e.report })
+pub struct ManagerInitError<Manager> {
+    pub manager: Manager,
+    pub report: CommitReport,
+}
+
+impl<Manager> ManagerInitError<Manager> {
+    pub fn new(manager: Manager, report: CommitReport) -> Self {
+        Self { manager, report }
+    }
+
+    pub fn into_parts(self) -> (Manager, CommitReport) {
+        (self.manager, self.report)
     }
 }
 
-impl<T: Clone + Send + Sync + 'static> From<InitAckError<T>> for LoadError {
-    fn from(e: InitAckError<T>) -> Self {
-        LoadError::Upsert(StateChangedError::from(e))
+impl<Manager> fmt::Debug for ManagerInitError<Manager> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ManagerInitError")
+            .field("report", &self.report)
+            .finish_non_exhaustive()
     }
 }
+
+impl<Manager> fmt::Display for ManagerInitError<Manager> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "state manager initialized but required subscriber ACK failed"
+        )
+    }
+}
+
+impl<Manager> std::error::Error for ManagerInitError<Manager> {}
 
 #[derive(thiserror::Error, Debug)]
 pub enum UpsertError {

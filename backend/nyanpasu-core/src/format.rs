@@ -1,8 +1,5 @@
 use serde::{Serialize, de::DeserializeOwned};
-use std::{
-    io::{Read, Write},
-    sync::Arc,
-};
+use std::io::{Read, Write};
 
 pub trait Format {
     fn serialize<W: Write, T: Serialize>(

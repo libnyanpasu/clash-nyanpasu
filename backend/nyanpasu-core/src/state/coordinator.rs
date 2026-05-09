@@ -1,25 +1,7 @@
-use super::{ack::*, builder::*, error::*};
+use super::{StateSnapshot, ack::*, builder::*, error::*};
 use arc_swap::ArcSwap;
 use indexmap::IndexMap;
 use std::{future::Future, sync::Arc, time::Instant};
-
-// -- MVCC snapshot handle --
-
-pub struct StateSnapshot<T: Clone + Send + Sync + 'static>(Arc<ArcSwap<T>>);
-
-impl<T: Clone + Send + Sync + 'static> Clone for StateSnapshot<T> {
-    fn clone(&self) -> Self {
-        Self(Arc::clone(&self.0))
-    }
-}
-
-impl<T: Clone + Send + Sync + 'static> StateSnapshot<T> {
-    pub fn load(&self) -> Arc<T> {
-        self.0.load_full()
-    }
-}
-
-// -- StateCoordinator --
 
 #[non_exhaustive]
 pub struct StateCoordinator<T: Clone + Send + Sync + 'static> {
@@ -52,7 +34,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
     }
 
     pub fn snapshot_handle(&self) -> StateSnapshot<T> {
-        StateSnapshot(Arc::clone(&self.current_state))
+        StateSnapshot::new(Arc::clone(&self.current_state))
     }
 
     async fn notify_committed(&self, change: StateChange<T>) -> CommitReport {
@@ -70,28 +52,30 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             }
             let options = subscriber.ack_options();
             let started = Instant::now();
-            let status =
-                match tokio::time::timeout(options.timeout, subscriber.on_committed(change.clone()))
-                    .await
-                {
-                    Ok(Ack::Ok) => AckStatus::Acked,
-                    Ok(Ack::Degraded(msg)) => AckStatus::Degraded { message: msg },
-                    Ok(Ack::Failed(error)) => {
-                        tracing::error!(
-                            subscriber = subscriber.name(),
-                            "subscriber ACK failed: {error:#}"
-                        );
-                        AckStatus::Failed { error }
-                    }
-                    Err(_) => {
-                        tracing::warn!(
-                            subscriber = subscriber.name(),
-                            timeout_ms = options.timeout.as_millis(),
-                            "subscriber ACK timed out"
-                        );
-                        AckStatus::TimedOut
-                    }
-                };
+            let status = match tokio::time::timeout(
+                options.timeout,
+                subscriber.on_committed(change.clone()),
+            )
+            .await
+            {
+                Ok(Ack::Ok) => AckStatus::Acked,
+                Ok(Ack::Degraded(msg)) => AckStatus::Degraded { message: msg },
+                Ok(Ack::Failed(error)) => {
+                    tracing::error!(
+                        subscriber = subscriber.name(),
+                        "subscriber ACK failed: {error:#}"
+                    );
+                    AckStatus::Failed { error }
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        subscriber = subscriber.name(),
+                        timeout_ms = options.timeout.as_millis(),
+                        "subscriber ACK timed out"
+                    );
+                    AckStatus::TimedOut
+                }
+            };
             report.push(SubscriberAck {
                 name: subscriber.name().to_string(),
                 policy: options.policy,
@@ -111,10 +95,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         (change, current)
     }
 
-    async fn commit_notify_signal(
-        &mut self,
-        state: T,
-    ) -> Result<CommitReport, StateChangedError> {
+    async fn commit_notify_signal(&mut self, state: T) -> Result<CommitReport, StateChangedError> {
         let (change, _) = self.store_state(state);
         let report = self.notify_committed(change).await;
         if report.has_required_failures() {
@@ -591,10 +572,12 @@ mod test {
 
     #[tokio::test]
     async fn test_is_post_commit() {
-        assert!(StateChangedError::CommitAck(CommitAckError {
-            report: CommitReport::default()
-        })
-        .is_post_commit());
+        assert!(
+            StateChangedError::CommitAck(CommitAckError {
+                report: CommitReport::default()
+            })
+            .is_post_commit()
+        );
         assert!(!StateChangedError::Validation(anyhow::anyhow!("nope")).is_post_commit());
     }
 

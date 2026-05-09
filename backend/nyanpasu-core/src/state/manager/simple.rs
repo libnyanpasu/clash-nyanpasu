@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use bon::Builder;
 
-use super::{super::error::*, *};
+use super::{
+    super::{StateSnapshot, error::*},
+    *,
+};
 
 #[derive(Builder)]
 #[builder(finish_fn = assemble)]
@@ -48,10 +51,7 @@ where
         self.state_coordinator.snapshot_handle()
     }
 
-    pub fn add_subscriber(
-        &mut self,
-        subscriber: Box<dyn StateAckSubscriber<State> + Send + Sync>,
-    ) {
+    pub fn add_subscriber(&mut self, subscriber: Box<dyn StateAckSubscriber<State> + Send + Sync>) {
         self.state_coordinator.add_subscriber(subscriber);
     }
 

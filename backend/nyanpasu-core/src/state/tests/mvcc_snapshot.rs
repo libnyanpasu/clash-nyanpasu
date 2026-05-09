@@ -15,8 +15,8 @@
 
 use crate::state::{error::*, *};
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
 };
 use tokio::sync::RwLock;
 
@@ -125,9 +125,8 @@ async fn test_snapshot_updated_on_effect_success() {
     let mut coord = StateCoordinator::<i32>::builder().build(0);
     let handle = coord.snapshot_handle();
 
-    let result: Result<(), WithEffectError<anyhow::Error>> = coord
-        .with_pending_state(&42, |_s| async { Ok(()) })
-        .await;
+    let result: Result<(), WithEffectError<anyhow::Error>> =
+        coord.with_pending_state(&42, |_s| async { Ok(()) }).await;
     assert!(result.is_ok());
     assert_eq!(*handle.load(), 42);
 }
@@ -155,8 +154,8 @@ struct FanInAckSubscriber<S: Clone + Send + Sync + 'static, D: Clone + Send + Sy
 }
 
 #[async_trait::async_trait]
-impl<S: Clone + Send + Sync + 'static, D: Clone + Send + Sync + 'static>
-    StateAckSubscriber<S> for FanInAckSubscriber<S, D>
+impl<S: Clone + Send + Sync + 'static, D: Clone + Send + Sync + 'static> StateAckSubscriber<S>
+    for FanInAckSubscriber<S, D>
 {
     fn name(&self) -> &str {
         &self.name
@@ -403,12 +402,7 @@ async fn test_snapshot_during_subscriber_reflects_committed_value() {
 
     // Second commit: snapshot during on_committed should be 100 (new committed value)
     coord.upsert_state(100).await.unwrap();
-    let captured_during_second = capture
-        .captured
-        .lock()
-        .unwrap()
-        .take()
-        .map(|arc| *arc);
+    let captured_during_second = capture.captured.lock().unwrap().take().map(|arc| *arc);
     assert_eq!(
         captured_during_second,
         Some(100),

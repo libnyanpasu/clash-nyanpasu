@@ -388,8 +388,8 @@ mod tests {
 
         let subscriber = MockAckSub::new("fail_sub");
         subscriber.set_fail(true);
-        let coordinator_builder = StateCoordinatorBuilder::default()
-            .with_subscriber(Box::new(subscriber));
+        let coordinator_builder =
+            StateCoordinatorBuilder::default().with_subscriber(Box::new(subscriber));
 
         let result = WeakPersistentStateManagerSetup::<TestState>::builder()
             .config_path(config_path.clone())

@@ -52,5 +52,8 @@ pub enum WithEffectError<E> {
     Effect(E),
 
     #[error("effect failed and rollback also failed: effect={effect}, rollback={rollback}")]
-    EffectAndRollback { effect: E, rollback: StateChangedError },
+    EffectAndRollback {
+        effect: E,
+        rollback: StateChangedError,
+    },
 }

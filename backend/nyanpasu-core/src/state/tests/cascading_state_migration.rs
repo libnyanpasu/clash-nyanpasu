@@ -179,14 +179,15 @@ struct TestChain {
 
 fn build_chain() -> TestChain {
     let leaf = Arc::new(LeafAckSubscriber::new("service_c"));
-    let mut b_coord: StateCoordinator<DerivedRuntime> =
-        StateCoordinator::new(INITIAL_DERIVED.to_string());
-    b_coord.add_subscriber(Box::new(leaf.clone()));
+    let b_coord = StateCoordinator::builder()
+        .with_subscriber(Box::new(leaf.clone()))
+        .build(INITIAL_DERIVED.to_string());
     let b = Arc::new(TokioMutex::new(SimpleStateManager::from_coordinator(b_coord)));
 
     let bridge = Arc::new(BridgeAckSubscriber::new(b.clone()));
-    let mut a: StateCoordinator<SourceConfig> = StateCoordinator::new(INITIAL_SOURCE);
-    a.add_subscriber(Box::new(bridge.clone()));
+    let a = StateCoordinator::builder()
+        .with_subscriber(Box::new(bridge.clone()))
+        .build(INITIAL_SOURCE);
 
     TestChain { a, b, bridge, leaf }
 }
@@ -332,18 +333,19 @@ async fn cascade_second_update_leaf_failure_still_commits() {
 #[tokio::test]
 async fn cascade_sibling_failure_still_committed() {
     let leaf = Arc::new(LeafAckSubscriber::new("service_c"));
-    let mut b_coord: StateCoordinator<DerivedRuntime> =
-        StateCoordinator::new(INITIAL_DERIVED.to_string());
-    b_coord.add_subscriber(Box::new(leaf.clone()));
+    let b_coord = StateCoordinator::builder()
+        .with_subscriber(Box::new(leaf.clone()))
+        .build(INITIAL_DERIVED.to_string());
     let b = Arc::new(TokioMutex::new(SimpleStateManager::from_coordinator(b_coord)));
 
     let bridge = Arc::new(BridgeAckSubscriber::new(b.clone()));
     let sibling = Arc::new(SiblingAckSubscriber::new("sibling_d"));
     sibling.set_should_fail(true);
 
-    let mut a: StateCoordinator<SourceConfig> = StateCoordinator::new(INITIAL_SOURCE);
-    a.add_subscriber(Box::new(bridge.clone()));
-    a.add_subscriber(Box::new(sibling.clone()));
+    let mut a = StateCoordinator::builder()
+        .with_subscriber(Box::new(bridge.clone()))
+        .with_subscriber(Box::new(sibling.clone()))
+        .build(INITIAL_SOURCE);
 
     let result = a.upsert_state(99).await;
 

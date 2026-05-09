@@ -10,11 +10,8 @@ pub struct StateCoordinator<T: Clone + Send + Sync + 'static> {
 }
 
 impl<T: Clone + Send + Sync> StateCoordinator<T> {
-    pub fn new(initial_state: T) -> Self {
-        Self {
-            current_state: Arc::new(ArcSwap::from_pointee(initial_state)),
-            subscribers: IndexMap::new(),
-        }
+    pub fn builder() -> StateCoordinatorBuilder<T> {
+        StateCoordinatorBuilder::default()
     }
 
     pub fn add_subscriber(&mut self, subscriber: Box<dyn StateAckSubscriber<T> + Send + Sync>) {
@@ -156,9 +153,20 @@ impl<T: Clone + Send + Sync + 'static> Default for StateCoordinatorBuilder<T> {
 }
 
 impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
-    pub fn add_subscriber(&mut self, subscriber: Box<dyn StateAckSubscriber<T> + Send + Sync>) {
+    pub fn with_subscriber(
+        mut self,
+        subscriber: Box<dyn StateAckSubscriber<T> + Send + Sync>,
+    ) -> Self {
         self.subscribers
             .insert(subscriber.name().to_string(), subscriber);
+        self
+    }
+
+    pub fn build(self, initial_state: T) -> StateCoordinator<T> {
+        StateCoordinator {
+            current_state: Arc::new(ArcSwap::from_pointee(initial_state)),
+            subscribers: self.subscribers,
+        }
     }
 
     pub async fn build_initialized(
@@ -303,16 +311,17 @@ mod test {
 
     #[tokio::test]
     async fn test_new_coordinator() {
-        let coordinator = StateCoordinator::new(default_test_state());
+        let coordinator = StateCoordinator::builder().build(default_test_state());
         assert_eq!(coordinator.snapshot().value, 0);
         assert_eq!(coordinator.subscribers.len(), 0);
     }
 
     #[tokio::test]
     async fn test_upsert_state_success() {
-        let mut coordinator = StateCoordinator::new(default_test_state());
         let subscriber = Arc::new(MockAckSubscriber::new("test_subscriber"));
-        coordinator.add_subscriber(Box::new(subscriber.clone()));
+        let mut coordinator = StateCoordinator::builder()
+            .with_subscriber(Box::new(subscriber.clone()))
+            .build(default_test_state());
         let test_state = TestState {
             value: 42,
             name: "test".to_string(),
@@ -333,9 +342,10 @@ mod test {
 
     #[tokio::test]
     async fn test_upsert_with_builder_success() {
-        let mut coordinator = StateCoordinator::new(default_test_state());
         let subscriber = Arc::new(MockAckSubscriber::new("test_subscriber"));
-        coordinator.add_subscriber(Box::new(subscriber.clone()));
+        let mut coordinator = StateCoordinator::builder()
+            .with_subscriber(Box::new(subscriber.clone()))
+            .build(default_test_state());
 
         let test_state = TestState {
             value: 100,
@@ -351,7 +361,7 @@ mod test {
 
     #[tokio::test]
     async fn test_upsert_builder_validation_failure() {
-        let mut coordinator = StateCoordinator::new(default_test_state());
+        let mut coordinator = StateCoordinator::builder().build(default_test_state());
         let builder = TestStateBuilder::failing();
 
         let result = coordinator.upsert(builder).await;
@@ -366,10 +376,11 @@ mod test {
 
     #[tokio::test]
     async fn test_required_ack_failure_still_commits() {
-        let mut coordinator = StateCoordinator::new(default_test_state());
         let subscriber = Arc::new(MockAckSubscriber::new("failing_subscriber"));
         subscriber.set_fail(true);
-        coordinator.add_subscriber(Box::new(subscriber.clone()));
+        let mut coordinator = StateCoordinator::builder()
+            .with_subscriber(Box::new(subscriber.clone()))
+            .build(default_test_state());
 
         let test_state = TestState {
             value: 42,
@@ -393,8 +404,6 @@ mod test {
 
     #[tokio::test]
     async fn test_advisory_ack_failure_is_ok() {
-        let mut coordinator = StateCoordinator::new(default_test_state());
-
         struct AdvisorySubscriber;
         #[async_trait::async_trait]
         impl StateAckSubscriber<TestState> for AdvisorySubscriber {
@@ -409,7 +418,9 @@ mod test {
             }
         }
 
-        coordinator.add_subscriber(Box::new(AdvisorySubscriber));
+        let mut coordinator = StateCoordinator::builder()
+            .with_subscriber(Box::new(AdvisorySubscriber))
+            .build(default_test_state());
         let test_state = TestState {
             value: 1,
             name: "advisory_test".to_string(),
@@ -425,10 +436,11 @@ mod test {
 
     #[tokio::test]
     async fn test_degraded_ack() {
-        let mut coordinator = StateCoordinator::new(default_test_state());
         let subscriber = Arc::new(MockAckSubscriber::new("degraded_sub"));
         subscriber.set_degrade(true);
-        coordinator.add_subscriber(Box::new(subscriber.clone()));
+        let mut coordinator = StateCoordinator::builder()
+            .with_subscriber(Box::new(subscriber.clone()))
+            .build(default_test_state());
 
         let test_state = TestState {
             value: 1,
@@ -444,14 +456,15 @@ mod test {
 
     #[tokio::test]
     async fn test_multiple_subscribers_success() {
-        let mut coordinator = StateCoordinator::new(default_test_state());
         let sub1 = Arc::new(MockAckSubscriber::new("sub1"));
         let sub2 = Arc::new(MockAckSubscriber::new("sub2"));
         let sub3 = Arc::new(MockAckSubscriber::new("sub3"));
 
-        coordinator.add_subscriber(Box::new(sub1.clone()));
-        coordinator.add_subscriber(Box::new(sub2.clone()));
-        coordinator.add_subscriber(Box::new(sub3.clone()));
+        let mut coordinator = StateCoordinator::builder()
+            .with_subscriber(Box::new(sub1.clone()))
+            .with_subscriber(Box::new(sub2.clone()))
+            .with_subscriber(Box::new(sub3.clone()))
+            .build(default_test_state());
 
         let test_state = TestState {
             value: 42,
@@ -470,9 +483,10 @@ mod test {
     #[tokio::test]
     async fn test_state_update_sequence() {
         let initial = default_test_state();
-        let mut coordinator = StateCoordinator::new(initial.clone());
         let subscriber = Arc::new(MockAckSubscriber::new("sequence_subscriber"));
-        coordinator.add_subscriber(Box::new(subscriber.clone()));
+        let mut coordinator = StateCoordinator::builder()
+            .with_subscriber(Box::new(subscriber.clone()))
+            .build(initial.clone());
 
         let state1 = TestState {
             value: 1,
@@ -496,8 +510,6 @@ mod test {
 
     #[tokio::test]
     async fn test_timeout_subscriber() {
-        let mut coordinator = StateCoordinator::new(default_test_state());
-
         struct SlowSubscriber;
         #[async_trait::async_trait]
         impl StateAckSubscriber<TestState> for SlowSubscriber {
@@ -513,7 +525,9 @@ mod test {
             }
         }
 
-        coordinator.add_subscriber(Box::new(SlowSubscriber));
+        let mut coordinator = StateCoordinator::builder()
+            .with_subscriber(Box::new(SlowSubscriber))
+            .build(default_test_state());
         let test_state = TestState {
             value: 1,
             name: "timeout_test".to_string(),
@@ -539,8 +553,6 @@ mod test {
 
     #[tokio::test]
     async fn test_fused_subscriber_skipped() {
-        let mut coordinator = StateCoordinator::new(default_test_state());
-
         struct TerminatedSubscriber;
         #[async_trait::async_trait]
         impl StateAckSubscriber<TestState> for TerminatedSubscriber {
@@ -555,7 +567,9 @@ mod test {
             }
         }
 
-        coordinator.add_subscriber(Box::new(TerminatedSubscriber));
+        let mut coordinator = StateCoordinator::builder()
+            .with_subscriber(Box::new(TerminatedSubscriber))
+            .build(default_test_state());
         let test_state = TestState {
             value: 1,
             name: "fused_test".to_string(),
@@ -583,9 +597,10 @@ mod test {
 
     #[tokio::test]
     async fn test_with_pending_state_effect_success() {
-        let mut coordinator = StateCoordinator::new(default_test_state());
         let subscriber = Arc::new(MockAckSubscriber::new("sub"));
-        coordinator.add_subscriber(Box::new(subscriber.clone()));
+        let mut coordinator = StateCoordinator::builder()
+            .with_subscriber(Box::new(subscriber.clone()))
+            .build(default_test_state());
 
         let state = TestState {
             value: 42,
@@ -607,9 +622,10 @@ mod test {
     #[tokio::test]
     async fn test_with_pending_state_effect_failure_no_commit() {
         let initial = default_test_state();
-        let mut coordinator = StateCoordinator::new(initial.clone());
         let subscriber = Arc::new(MockAckSubscriber::new("sub"));
-        coordinator.add_subscriber(Box::new(subscriber.clone()));
+        let mut coordinator = StateCoordinator::builder()
+            .with_subscriber(Box::new(subscriber.clone()))
+            .build(initial.clone());
 
         let state = TestState {
             value: 99,
@@ -637,7 +653,7 @@ mod test {
 
     #[tokio::test]
     async fn test_empty_subscribers_list() {
-        let mut coordinator = StateCoordinator::new(default_test_state());
+        let mut coordinator = StateCoordinator::builder().build(default_test_state());
         let test_state = TestState {
             value: 42,
             name: "no_subscribers".to_string(),
@@ -650,7 +666,7 @@ mod test {
 
     #[tokio::test]
     async fn test_snapshot_handle() {
-        let mut coordinator = StateCoordinator::new(default_test_state());
+        let mut coordinator = StateCoordinator::builder().build(default_test_state());
         let handle = coordinator.snapshot_handle();
         assert_eq!(handle.load().value, 0);
 
@@ -664,15 +680,16 @@ mod test {
 
     #[tokio::test]
     async fn test_builder_initialized() {
-        let mut builder = StateCoordinatorBuilder::<TestState>::default();
         let subscriber = Arc::new(MockAckSubscriber::new("init_sub"));
-        builder.add_subscriber(Box::new(subscriber.clone()));
-
         let state = TestState {
             value: 42,
             name: "init".to_string(),
         };
-        let coordinator = builder.build_initialized(state.clone()).await.unwrap();
+        let coordinator = StateCoordinator::builder()
+            .with_subscriber(Box::new(subscriber.clone()))
+            .build_initialized(state.clone())
+            .await
+            .unwrap();
 
         assert_eq!(&*coordinator.snapshot(), &state);
         assert_eq!(subscriber.call_count(), 1);
@@ -696,7 +713,7 @@ mod test {
 
     #[tokio::test]
     async fn test_sync_builder_to_async_conversion() {
-        let mut coordinator = StateCoordinator::new(default_test_state());
+        let mut coordinator = StateCoordinator::builder().build(default_test_state());
         let test_state = TestState {
             value: 123,
             name: "sync_to_async".to_string(),
@@ -710,7 +727,7 @@ mod test {
 
     #[tokio::test]
     async fn test_add_subscriber() {
-        let mut coordinator = StateCoordinator::new(default_test_state());
+        let mut coordinator = StateCoordinator::builder().build(default_test_state());
         let subscriber1 = Arc::new(MockAckSubscriber::new("subscriber1"));
         let subscriber2 = Arc::new(MockAckSubscriber::new("subscriber2"));
 
@@ -736,7 +753,7 @@ mod test {
 
     #[tokio::test]
     async fn test_get_state() {
-        let mut coordinator = StateCoordinator::new(default_test_state());
+        let mut coordinator = StateCoordinator::builder().build(default_test_state());
 
         let test_state = TestState {
             value: 100,

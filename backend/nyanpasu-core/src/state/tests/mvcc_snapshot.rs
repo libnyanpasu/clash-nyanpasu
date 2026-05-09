@@ -71,7 +71,7 @@ impl StateAckSubscriber<i32> for SnapshotCapture {
 
 #[tokio::test]
 async fn test_snapshot_reflects_committed_state() {
-    let mut coord = StateCoordinator::<i32>::new(0);
+    let mut coord = StateCoordinator::<i32>::builder().build(0);
     let handle = coord.snapshot_handle();
     coord.upsert_state(42).await.unwrap();
     assert_eq!(*handle.load(), 42);
@@ -79,7 +79,7 @@ async fn test_snapshot_reflects_committed_state() {
 
 #[tokio::test]
 async fn test_snapshot_updates_on_each_commit() {
-    let mut coord = StateCoordinator::<i32>::new(0);
+    let mut coord = StateCoordinator::<i32>::builder().build(0);
     let handle = coord.snapshot_handle();
     for i in 1..=3 {
         coord.upsert_state(i).await.unwrap();
@@ -91,7 +91,7 @@ async fn test_snapshot_updates_on_each_commit() {
 
 #[tokio::test]
 async fn test_snapshot_updated_even_on_ack_failure() {
-    let mut coord = StateCoordinator::<i32>::new(0);
+    let mut coord = StateCoordinator::<i32>::builder().build(0);
     coord.add_subscriber(Box::new(FailAckSubscriber::always_fail("blocker")));
     let handle = coord.snapshot_handle();
 
@@ -105,7 +105,7 @@ async fn test_snapshot_updated_even_on_ack_failure() {
 
 #[tokio::test]
 async fn test_snapshot_not_updated_on_effect_failure() {
-    let mut coord = StateCoordinator::<i32>::new(0);
+    let mut coord = StateCoordinator::<i32>::builder().build(0);
     let handle = coord.snapshot_handle();
 
     coord.upsert_state(1).await.unwrap();
@@ -122,7 +122,7 @@ async fn test_snapshot_not_updated_on_effect_failure() {
 
 #[tokio::test]
 async fn test_snapshot_updated_on_effect_success() {
-    let mut coord = StateCoordinator::<i32>::new(0);
+    let mut coord = StateCoordinator::<i32>::builder().build(0);
     let handle = coord.snapshot_handle();
 
     let result: Result<(), WithEffectError<anyhow::Error>> = coord
@@ -136,7 +136,7 @@ async fn test_snapshot_updated_on_effect_success() {
 
 #[tokio::test]
 async fn test_multiple_handles_see_same_snapshot() {
-    let mut coord = StateCoordinator::<i32>::new(0);
+    let mut coord = StateCoordinator::<i32>::builder().build(0);
     let h1 = coord.snapshot_handle();
     let h2 = coord.snapshot_handle();
 
@@ -174,9 +174,9 @@ impl<S: Clone + Send + Sync + 'static, D: Clone + Send + Sync + 'static>
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_concurrent_fan_in_no_deadlock() {
-    let mut coord_a = StateCoordinator::<i32>::new(0);
-    let mut coord_b = StateCoordinator::<i32>::new(0);
-    let coord_d = StateCoordinator::<(i32, i32)>::new((0, 0));
+    let mut coord_a = StateCoordinator::<i32>::builder().build(0);
+    let mut coord_b = StateCoordinator::<i32>::builder().build(0);
+    let coord_d = StateCoordinator::<(i32, i32)>::builder().build((0, 0));
 
     let snap_a = coord_a.snapshot_handle();
     let snap_b = coord_b.snapshot_handle();
@@ -226,9 +226,9 @@ async fn test_concurrent_fan_in_no_deadlock() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_concurrent_fan_in_eventual_convergence() {
-    let mut coord_a = StateCoordinator::<i32>::new(0);
-    let mut coord_b = StateCoordinator::<i32>::new(0);
-    let coord_d = StateCoordinator::<(i32, i32)>::new((0, 0));
+    let mut coord_a = StateCoordinator::<i32>::builder().build(0);
+    let mut coord_b = StateCoordinator::<i32>::builder().build(0);
+    let coord_d = StateCoordinator::<(i32, i32)>::builder().build((0, 0));
 
     let snap_a = coord_a.snapshot_handle();
     let snap_b = coord_b.snapshot_handle();
@@ -304,10 +304,10 @@ impl StateAckSubscriber<i32> for TriFanInAckSubscriber {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_three_source_concurrent_fan_in() {
-    let mut coord_a = StateCoordinator::<i32>::new(0);
-    let mut coord_b = StateCoordinator::<i32>::new(0);
-    let mut coord_c = StateCoordinator::<i32>::new(0);
-    let coord_d = StateCoordinator::<(i32, i32, i32)>::new((0, 0, 0));
+    let mut coord_a = StateCoordinator::<i32>::builder().build(0);
+    let mut coord_b = StateCoordinator::<i32>::builder().build(0);
+    let mut coord_c = StateCoordinator::<i32>::builder().build(0);
+    let coord_d = StateCoordinator::<(i32, i32, i32)>::builder().build((0, 0, 0));
 
     let snap_a = coord_a.snapshot_handle();
     let snap_b = coord_b.snapshot_handle();
@@ -379,7 +379,7 @@ async fn test_three_source_concurrent_fan_in() {
 
 #[tokio::test]
 async fn test_snapshot_during_subscriber_reflects_committed_value() {
-    let mut coord = StateCoordinator::<i32>::new(0);
+    let mut coord = StateCoordinator::<i32>::builder().build(0);
     let handle = coord.snapshot_handle();
 
     let capture = Arc::new(SnapshotCapture {
@@ -422,7 +422,7 @@ async fn test_snapshot_during_subscriber_reflects_committed_value() {
 
 #[tokio::test]
 async fn test_simple_manager_snapshot_handle() {
-    let mut mgr = SimpleStateManager::from_coordinator(StateCoordinator::<i32>::new(0));
+    let mut mgr = SimpleStateManager::from_coordinator(StateCoordinator::<i32>::builder().build(0));
     let handle = mgr.snapshot_handle();
 
     assert_eq!(*handle.load(), 0);

@@ -29,7 +29,7 @@ importers:
         version: 21.0.0
       '@ianvs/prettier-plugin-sort-imports':
         specifier: 4.7.1
-        version: 4.7.1(@prettier/plugin-oxc@0.1.4)(content-tag@4.0.0)(prettier-plugin-ember-template-tag@2.1.5(prettier@3.8.3))(prettier@3.8.3)
+        version: 4.7.1(@prettier/plugin-oxc@0.1.4)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.8.3))(prettier@3.8.3)
       '@tauri-apps/cli':
         specifier: 2.10.1
         version: 2.10.1
@@ -82,11 +82,11 @@ importers:
         specifier: 3.8.3
         version: 3.8.3
       prettier-plugin-ember-template-tag:
-        specifier: 2.1.5
-        version: 2.1.5(prettier@3.8.3)
+        specifier: 2.1.6
+        version: 2.1.6(prettier@3.8.3)
       prettier-plugin-tailwindcss:
         specifier: 0.8.0
-        version: 0.8.0(@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.1.4)(content-tag@4.0.0)(prettier-plugin-ember-template-tag@2.1.5(prettier@3.8.3))(prettier@3.8.3))(@prettier/plugin-oxc@0.1.4)(@trivago/prettier-plugin-sort-imports@4.3.0(prettier@3.8.3))(prettier@3.8.3)
+        version: 0.8.0(@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.1.4)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.8.3))(prettier@3.8.3))(@prettier/plugin-oxc@0.1.4)(@trivago/prettier-plugin-sort-imports@4.3.0(prettier@3.8.3))(prettier@3.8.3)
       prettier-plugin-toml:
         specifier: 2.0.6
         version: 2.0.6(prettier@3.8.3)
@@ -4054,8 +4054,8 @@ packages:
     resolution: {integrity: sha512-EiPU8G6dQG0GFHNR8ljnZFki/8a+cQwEQ+7wpxdChl02Q8HXlwEZWD5lqAF8vC2sEC3Tehr8hy7vErz88LHyUA==}
     engines: {node: ^14.18.0 || >=16.10.0}
 
-  content-tag@4.0.0:
-    resolution: {integrity: sha512-qqJiY9nueYAI396MOmfOk+w/0KL6ERKxANQcSKcR0CrNTc38yT//b73l+WHr9brZx57bFHNaW7a/6Yll0bn95w==}
+  content-tag@4.2.0:
+    resolution: {integrity: sha512-f/o+F3qSa4gg23I7RWy6cMDxP2nPo99YWusxw2bjne7ZC6Acqqf4uB/+87AekOq1ehTocHH7b7nMd2X4S3NHVw==}
 
   conventional-changelog-angular@8.2.0:
     resolution: {integrity: sha512-4YB1zEXqB17oBI8yRsAs1T+ZhbdsOgJqkl6Trz+GXt/eKf1e4jnA0oW+sOd9BEENzEViuNW0DNoFFjSf3CeC5Q==}
@@ -5489,8 +5489,8 @@ packages:
     resolution: {integrity: sha512-SoSL4+OSEtR99LHFZQiJLkT59C5B1amGO1NzTwj7TT1qCUgUO6hxOvzkOYxD+vMrXBM3XJIKzokoERdqQq/Zmg==}
     engines: {node: ^10 || ^12 || >=14}
 
-  prettier-plugin-ember-template-tag@2.1.5:
-    resolution: {integrity: sha512-AF8Ld5DagbD5V3cw0tkw8youFD9fxsKAR4nowJ41WzgnaFZHXkyw+PnOAWP2ose1rw+Aff3Z7PXFPkn0/CmA5Q==}
+  prettier-plugin-ember-template-tag@2.1.6:
+    resolution: {integrity: sha512-Y0/Id2dxccxM9pRaBXLT7sc89mc6B0UVX7Lh0SCEPb2WtQuksx4wJx98YATQKKiv5vInPmDLi9RGMipU6vAztQ==}
     engines: {node: 18.* || >= 20}
     peerDependencies:
       prettier: '>= 3.0.0'
@@ -7722,7 +7722,7 @@ snapshots:
       '@standard-schema/utils': 0.3.0
       react-hook-form: 7.75.0(react@19.2.6)
 
-  '@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.1.4)(content-tag@4.0.0)(prettier-plugin-ember-template-tag@2.1.5(prettier@3.8.3))(prettier@3.8.3)':
+  '@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.1.4)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.8.3))(prettier@3.8.3)':
     dependencies:
       '@babel/generator': 7.29.0
       '@babel/parser': 7.29.0
@@ -7732,8 +7732,8 @@ snapshots:
       semver: 7.7.3
     optionalDependencies:
       '@prettier/plugin-oxc': 0.1.4
-      content-tag: 4.0.0
-      prettier-plugin-ember-template-tag: 2.1.5(prettier@3.8.3)
+      content-tag: 4.2.0
+      prettier-plugin-ember-template-tag: 2.1.6(prettier@3.8.3)
     transitivePeerDependencies:
       - supports-color
 
@@ -10171,7 +10171,7 @@ snapshots:
 
   consola@3.4.0: {}
 
-  content-tag@4.0.0: {}
+  content-tag@4.2.0: {}
 
   conventional-changelog-angular@8.2.0:
     dependencies:
@@ -11819,19 +11819,19 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  prettier-plugin-ember-template-tag@2.1.5(prettier@3.8.3):
+  prettier-plugin-ember-template-tag@2.1.6(prettier@3.8.3):
     dependencies:
       '@babel/traverse': 7.29.0
-      content-tag: 4.0.0
+      content-tag: 4.2.0
       prettier: 3.8.3
     transitivePeerDependencies:
       - supports-color
 
-  prettier-plugin-tailwindcss@0.8.0(@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.1.4)(content-tag@4.0.0)(prettier-plugin-ember-template-tag@2.1.5(prettier@3.8.3))(prettier@3.8.3))(@prettier/plugin-oxc@0.1.4)(@trivago/prettier-plugin-sort-imports@4.3.0(prettier@3.8.3))(prettier@3.8.3):
+  prettier-plugin-tailwindcss@0.8.0(@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.1.4)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.8.3))(prettier@3.8.3))(@prettier/plugin-oxc@0.1.4)(@trivago/prettier-plugin-sort-imports@4.3.0(prettier@3.8.3))(prettier@3.8.3):
     dependencies:
       prettier: 3.8.3
     optionalDependencies:
-      '@ianvs/prettier-plugin-sort-imports': 4.7.1(@prettier/plugin-oxc@0.1.4)(content-tag@4.0.0)(prettier-plugin-ember-template-tag@2.1.5(prettier@3.8.3))(prettier@3.8.3)
+      '@ianvs/prettier-plugin-sort-imports': 4.7.1(@prettier/plugin-oxc@0.1.4)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.8.3))(prettier@3.8.3)
       '@prettier/plugin-oxc': 0.1.4
       '@trivago/prettier-plugin-sort-imports': 4.3.0(prettier@3.8.3)
 

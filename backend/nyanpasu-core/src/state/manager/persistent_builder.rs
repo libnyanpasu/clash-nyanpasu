@@ -59,7 +59,7 @@ where
         let make_manager = |coordinator| PersistentBuiltStateManager {
             config_prefix,
             config_path,
-            current_builder: Some(builder),
+            current_builder: builder,
             state_coordinator: coordinator,
             formatter,
         };
@@ -160,7 +160,7 @@ where
 {
     config_prefix: Option<String>,
     config_path: Utf8PathBuf,
-    current_builder: Option<Builder>,
+    current_builder: Builder,
     state_coordinator: StateCoordinator<State>,
     formatter: Formatter,
 }
@@ -173,7 +173,7 @@ where
 {
     super::impl_state_manager_delegates!(State);
 
-    pub fn current_builder(&self) -> Option<Builder>
+    pub fn current_builder(&self) -> Builder
     where
         Builder: Clone,
     {
@@ -210,12 +210,15 @@ where
 
         match result {
             Ok(((), report)) => {
-                self.current_builder = Some(builder);
+                self.current_builder = builder;
                 Ok(report)
             }
             Err(e) => match e {
                 WithEffectError::State(e) => Err(UpsertError::State(e)),
                 WithEffectError::Effect(e) => Err(UpsertError::WriteConfig(e)),
+                WithEffectError::EffectTimedOut(timeout) => Err(UpsertError::WriteConfig(
+                    anyhow::anyhow!("write config timed out after {timeout:?}"),
+                )),
             },
         }
     }
@@ -333,7 +336,7 @@ mod tests {
         assert_eq!(state.name, "test");
         assert_eq!(state.value, 42);
 
-        let current_builder = manager.current_builder().unwrap();
+        let current_builder = manager.current_builder();
         assert_eq!(current_builder.name, "test");
         assert_eq!(current_builder.value, 42);
     }
@@ -429,7 +432,7 @@ mod tests {
                 let (manager, report) = error.into_parts();
                 assert!(report.has_required_failures());
                 assert_eq!(manager.snapshot().name, "committed");
-                assert_eq!(manager.current_builder().unwrap().name, "committed");
+                assert_eq!(manager.current_builder().name, "committed");
                 assert_eq!(calls.load(Ordering::SeqCst), 1);
             }
             Err(error) => panic!("expected init ACK error, got {error}"),
@@ -455,7 +458,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(manager.snapshot().name, "forced");
-        assert_eq!(manager.current_builder().unwrap().name, "forced");
+        assert_eq!(manager.current_builder().name, "forced");
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
@@ -482,7 +485,7 @@ mod tests {
         assert_eq!(state.name, "updated");
         assert_eq!(state.value, 200);
 
-        let current_builder = manager.current_builder().unwrap();
+        let current_builder = manager.current_builder();
         assert_eq!(current_builder.name, "updated");
 
         assert!(config_path.exists());
@@ -548,13 +551,33 @@ mod tests {
         assert_eq!(state.name, "initial");
         assert_eq!(state.value, 100);
 
-        let current_builder = manager.current_builder().unwrap();
+        let current_builder = manager.current_builder();
         assert_eq!(current_builder.name, "initial");
         assert_eq!(current_builder.value, 100);
 
         let saved_builder: TestBuilder = read_yaml(&config_path).await.unwrap();
         assert_eq!(saved_builder.name, "initial");
         assert_eq!(saved_builder.value, 100);
+
+        let removed = manager.remove_subscriber("failing_init");
+        assert!(removed.is_some());
+
+        manager
+            .upsert(TestBuilder::new("retried".to_string(), 300))
+            .await
+            .unwrap();
+
+        let state = manager.snapshot();
+        assert_eq!(state.name, "retried");
+        assert_eq!(state.value, 300);
+
+        let current_builder = manager.current_builder();
+        assert_eq!(current_builder.name, "retried");
+        assert_eq!(current_builder.value, 300);
+
+        let saved_builder: TestBuilder = read_yaml(&config_path).await.unwrap();
+        assert_eq!(saved_builder.name, "retried");
+        assert_eq!(saved_builder.value, 300);
     }
 
     #[tokio::test]
@@ -611,7 +634,7 @@ mod tests {
         let state = manager.snapshot();
         assert_eq!(state.name, "initial");
         assert_eq!(state.value, 100);
-        let builder = manager.current_builder().unwrap();
+        let builder = manager.current_builder();
         assert_eq!(builder.name, "initial");
         assert_eq!(builder.value, 100);
     }

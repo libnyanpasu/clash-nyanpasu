@@ -9,18 +9,12 @@ impl<T> StateSnapshot<T>
 where
     T: Clone + Send + Sync + 'static,
 {
-    pub fn new(value: Arc<ArcSwap<VersionedState<T>>>) -> Self {
+    pub(crate) fn from_store(value: Arc<ArcSwap<VersionedState<T>>>) -> Self {
         Self(value)
     }
 
     pub fn load(&self) -> Arc<VersionedState<T>> {
         self.0.load_full()
-    }
-}
-
-impl<T: Clone + Send + Sync + 'static> From<Arc<ArcSwap<VersionedState<T>>>> for StateSnapshot<T> {
-    fn from(arc_swap: Arc<ArcSwap<VersionedState<T>>>) -> Self {
-        Self(arc_swap)
     }
 }
 

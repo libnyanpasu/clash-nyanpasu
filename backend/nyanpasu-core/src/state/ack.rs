@@ -199,8 +199,6 @@ where
     }
 }
 
-pub enum RequiredAckFailureStatus {}
-
 #[derive(Debug)]
 pub enum AckStatus {
     Acked,
@@ -269,7 +267,10 @@ impl PrepareReport {
     pub fn has_advisory_failures(&self) -> bool {
         self.subscriber_acks.iter().any(|a| {
             a.policy == AckPolicy::Advisory
-                && matches!(a.status, AckStatus::Failed { .. } | AckStatus::TimedOut)
+                && matches!(
+                    a.status,
+                    AckStatus::Rejected { .. } | AckStatus::Failed { .. } | AckStatus::TimedOut
+                )
         })
     }
 
@@ -277,5 +278,28 @@ impl PrepareReport {
         self.subscriber_acks
             .iter()
             .any(|a| matches!(a.status, AckStatus::Degraded { .. }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn advisory_rejected_counts_as_failure() {
+        let report = PrepareReport {
+            subscriber_acks: vec![SubscriberAck {
+                name: "advisory".into(),
+                policy: AckPolicy::Advisory,
+                timeout: Duration::from_secs(1),
+                elapsed: Duration::from_millis(1),
+                status: AckStatus::Rejected {
+                    reason: "not acceptable".to_string(),
+                },
+            }],
+        };
+
+        assert!(report.has_advisory_failures());
+        assert!(!report.has_required_failures());
     }
 }

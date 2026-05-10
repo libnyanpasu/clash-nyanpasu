@@ -5815,6 +5815,7 @@ dependencies = [
  "dashmap",
  "fs-err",
  "indexmap 2.14.0",
+ "nyanpasu-utils",
  "serde",
  "serde_yaml_ng",
  "tempfile",

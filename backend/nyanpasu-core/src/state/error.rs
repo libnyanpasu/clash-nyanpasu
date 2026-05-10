@@ -1,5 +1,5 @@
 use super::{ack::PrepareReport, version::Version};
-use std::fmt;
+use std::{fmt, time::Duration};
 #[derive(thiserror::Error, Debug)]
 #[error("state prepared but required subscriber ACK failed")]
 pub struct PrepareAckError {
@@ -127,4 +127,7 @@ pub enum WithEffectError<E> {
 
     #[error("effect failed: {0}")]
     Effect(E),
+
+    #[error("effect timed out after {0:?}")]
+    EffectTimedOut(Duration),
 }

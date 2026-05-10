@@ -164,6 +164,9 @@ where
             .map_err(|e| match e {
                 WithEffectError::State(e) => UpsertError::State(e),
                 WithEffectError::Effect(e) => UpsertError::WriteConfig(e),
+                WithEffectError::EffectTimedOut(timeout) => UpsertError::WriteConfig(
+                    anyhow::anyhow!("write config timed out after {timeout:?}"),
+                ),
             })
     }
 }

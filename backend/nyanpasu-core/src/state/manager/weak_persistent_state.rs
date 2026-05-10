@@ -13,6 +13,10 @@ use crate::{
     state::PrepareReport,
 };
 
+/// Setup for [`WeakPersistentStateManager`].
+///
+/// Weak persistence is best effort: a committed in-memory state may be lost on
+/// process crash if the advisory write has not reached disk yet.
 #[derive(Builder)]
 #[builder(finish_fn = assemble)]
 pub struct WeakPersistentStateManagerSetup<State, Formatter = YamlFormat>
@@ -142,6 +146,12 @@ where
     }
 }
 
+/// State manager with best-effort persistence.
+///
+/// `upsert` commits to memory first and then attempts to persist the snapshot.
+/// A successful `upsert` means the in-memory state changed; it does not
+/// guarantee the last committed state will survive a crash before the advisory
+/// write completes.
 pub struct WeakPersistentStateManager<State, Formatter = YamlFormat>
 where
     State: Clone + Send + Sync + 'static,

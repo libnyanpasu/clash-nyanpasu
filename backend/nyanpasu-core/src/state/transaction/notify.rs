@@ -144,11 +144,12 @@ where
         }
 
         let opt = subscriber.ack_options();
-        if let Err(_) = tokio::time::timeout(
+        if tokio::time::timeout(
             opt.timeout,
             subscriber.on_rolled_back(change.clone(), reason),
         )
         .await
+        .is_err()
         {
             tracing::warn!(
                 subscriber = %subscriber.name(),
@@ -212,7 +213,11 @@ where
         let mut acks = Vec::with_capacity(subscribers.len());
         for subscriber in subscribers.iter() {
             let ack = Self::notify_one(change, Arc::clone(subscriber)).await;
+            let should_stop = ack.is_required_failure();
             acks.push(ack);
+            if should_stop {
+                break;
+            }
         }
         acks
     }

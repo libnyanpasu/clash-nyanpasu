@@ -1,5 +1,5 @@
 use super::{
-    StateChangeId, StateSnapshot, VersionedState,
+    StateChangeId, StateSnapshot, Version, VersionedState,
     ack::*,
     builder::*,
     error::*,
@@ -8,7 +8,7 @@ use super::{
 use anyhow::anyhow;
 use arc_swap::ArcSwap;
 use indexmap::IndexMap;
-use std::{future::Future, sync::Arc};
+use std::{future::Future, sync::Arc, time::Duration};
 use tokio::sync::Semaphore;
 
 pub(super) type ArcStateSubscriber<T> = Arc<dyn StateAckSubscriber<T> + Send + Sync>;
@@ -44,8 +44,8 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
     }
 
     /// Remove subscriber from the coordinator by name. Returns the removed subscriber if it existed.
-    pub fn remove_subscriber<'s, 'a>(
-        &'s mut self,
+    pub fn remove_subscriber(
+        &mut self,
         name: impl Into<SubscriberName<'static>>,
     ) -> Option<ArcStateSubscriber<T>> {
         self.subscribers.shift_remove(&name.into())
@@ -60,13 +60,22 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
     }
 
     pub fn snapshot_handle(&self) -> StateSnapshot<T> {
-        StateSnapshot::new(Arc::clone(&self.current_state))
+        StateSnapshot::from_store(Arc::clone(&self.current_state))
     }
 
-    fn next_change_id(&mut self) -> StateChangeId {
-        let id = self.next_change_id;
-        self.next_change_id = self.next_change_id.next();
-        id
+    fn pending_change_id(&self) -> StateChangeId {
+        self.next_change_id
+    }
+
+    fn mark_change_id_committed(&mut self, id: StateChangeId) {
+        debug_assert_eq!(self.next_change_id, id);
+        self.next_change_id = id.next();
+    }
+
+    fn sync_change_id_after_cas_mismatch(&mut self) -> Version {
+        let actual = self.snapshot_versioned().version;
+        self.next_change_id = StateChangeId(actual.next());
+        actual
     }
 
     fn clone_subscribers(&self) -> Subscribers<T> {
@@ -89,7 +98,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             .build()
             .await
             .map_err(StateChangedError::Validation)?;
-        let next_changed_id = self.next_change_id();
+        let next_changed_id = self.pending_change_id();
         let current_state = self.snapshot_versioned();
         let change = StateChange {
             id: next_changed_id,
@@ -103,15 +112,23 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             notify_strategy,
             permit,
         );
-        match tx.commit().await {
-            Ok((report, _)) => Ok(report),
-            Err((report, _rolled_back_tx)) => match report {
-                Some(r) => Err(StateChangedError::PrepareAck(PrepareAckError { report: r })),
-                None => Err(StateChangedError::StateCasMismatch {
-                    expected: current_state.version,
-                    actual: self.snapshot_versioned().version,
-                }),
+        match tx.prepare().await {
+            Ok((report, tx)) => match tx.commit().await {
+                Ok(_) => {
+                    self.mark_change_id_committed(next_changed_id);
+                    Ok(report)
+                }
+                Err(_) => {
+                    let actual = self.sync_change_id_after_cas_mismatch();
+                    Err(StateChangedError::StateCasMismatch {
+                        expected: current_state.version,
+                        actual,
+                    })
+                }
             },
+            Err((report, _rolled_back_tx)) => {
+                Err(StateChangedError::PrepareAck(PrepareAckError { report }))
+            }
         }
     }
 
@@ -124,7 +141,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             .expect("semaphore should never closed");
         let subscribers = self.clone_subscribers();
         let notify_strategy = self.notify_strategy;
-        let next_changed_id = self.next_change_id();
+        let next_changed_id = self.pending_change_id();
         let current_state = self.snapshot_versioned();
         let change = StateChange {
             id: next_changed_id,
@@ -138,21 +155,64 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             notify_strategy,
             permit,
         );
-        match tx.commit().await {
-            Ok((report, _)) => Ok(report),
-            Err((report, _rolled_back_tx)) => match report {
-                Some(r) => Err(StateChangedError::PrepareAck(PrepareAckError { report: r })),
-                None => Err(StateChangedError::StateCasMismatch {
-                    expected: current_state.version,
-                    actual: self.snapshot_versioned().version,
-                }),
+        match tx.prepare().await {
+            Ok((report, tx)) => match tx.commit().await {
+                Ok(_) => {
+                    self.mark_change_id_committed(next_changed_id);
+                    Ok(report)
+                }
+                Err(_) => {
+                    let actual = self.sync_change_id_after_cas_mismatch();
+                    Err(StateChangedError::StateCasMismatch {
+                        expected: current_state.version,
+                        actual,
+                    })
+                }
             },
+            Err((report, _rolled_back_tx)) => {
+                Err(StateChangedError::PrepareAck(PrepareAckError { report }))
+            }
         }
     }
 
     pub async fn with_pending_state<'s, F, Fut, R, E>(
         &mut self,
         new_state: &'s T,
+        effect_fn: F,
+    ) -> Result<(R, PrepareReport), WithEffectError<E>>
+    where
+        F: FnOnce(&'s T) -> Fut,
+        Fut: Future<Output = Result<R, E>> + 's,
+        E: std::fmt::Debug,
+    {
+        self.with_pending_state_inner(new_state, None, effect_fn)
+            .await
+    }
+
+    /// Run an external effect between prepare and commit, rolling back if the
+    /// effect does not complete before `effect_timeout`.
+    ///
+    /// The effect is still executed while the coordinator holds the writer
+    /// permit, so callers should keep it short and cancellation-safe.
+    pub async fn with_pending_state_timeout<'s, F, Fut, R, E>(
+        &mut self,
+        new_state: &'s T,
+        effect_timeout: Duration,
+        effect_fn: F,
+    ) -> Result<(R, PrepareReport), WithEffectError<E>>
+    where
+        F: FnOnce(&'s T) -> Fut,
+        Fut: Future<Output = Result<R, E>> + 's,
+        E: std::fmt::Debug,
+    {
+        self.with_pending_state_inner(new_state, Some(effect_timeout), effect_fn)
+            .await
+    }
+
+    async fn with_pending_state_inner<'s, F, Fut, R, E>(
+        &mut self,
+        new_state: &'s T,
+        effect_timeout: Option<Duration>,
         effect_fn: F,
     ) -> Result<(R, PrepareReport), WithEffectError<E>>
     where
@@ -168,7 +228,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             .expect("semaphore should never closed");
         let subscribers = self.clone_subscribers();
         let notify_strategy = self.notify_strategy;
-        let next_changed_id = self.next_change_id();
+        let next_changed_id = self.pending_change_id();
         let current_state = self.snapshot_versioned();
         let change = StateChange {
             id: next_changed_id,
@@ -190,16 +250,25 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
                 )));
             }
         };
-        match effect_fn(new_state).await.map_err(WithEffectError::Effect) {
+        let effect_result = match effect_timeout {
+            Some(timeout) => match tokio::time::timeout(timeout, effect_fn(new_state)).await {
+                Ok(result) => result.map_err(WithEffectError::Effect),
+                Err(_) => Err(WithEffectError::EffectTimedOut(timeout)),
+            },
+            None => effect_fn(new_state).await.map_err(WithEffectError::Effect),
+        };
+        match effect_result {
             Ok(result) => {
                 if tx.commit().await.is_err() {
+                    let actual = self.sync_change_id_after_cas_mismatch();
                     return Err(WithEffectError::State(
                         StateChangedError::StateCasMismatch {
                             expected: current_state.version,
-                            actual: self.snapshot_versioned().version,
+                            actual,
                         },
                     ));
                 }
+                self.mark_change_id_committed(next_changed_id);
                 Ok((result, report))
             }
             Err(e) => {
@@ -207,7 +276,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
                     "effect function failed: {e:#?}"
                 ))))
                 .await;
-                return Err(e);
+                Err(e)
             }
         }
     }
@@ -324,7 +393,7 @@ mod test {
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     };
-    use tokio::sync::Mutex;
+    use tokio::sync::{Mutex, Notify};
 
     #[derive(Debug, Clone, PartialEq)]
     struct TestState {
@@ -553,6 +622,116 @@ mod test {
 
         assert_eq!(coordinator.snapshot_versioned().value, 0);
         assert_eq!(subscriber.call_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_prepare_failure_does_not_consume_change_id() {
+        let subscriber = Arc::new(MockAckSubscriber::new("failing_subscriber"));
+        subscriber.set_fail(true);
+        let mut coordinator = StateCoordinator::builder()
+            .with_subscriber(Box::new(subscriber.clone()))
+            .build(default_test_state());
+
+        let rejected = TestState {
+            value: 41,
+            name: "rejected".to_string(),
+        };
+        assert!(coordinator.upsert_state(rejected).await.is_err());
+        assert_eq!(
+            coordinator.snapshot_versioned().version,
+            StateChangeId::new(0).0
+        );
+
+        subscriber.set_fail(false);
+        coordinator
+            .upsert_state(TestState {
+                value: 42,
+                name: "accepted".to_string(),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(
+            coordinator.snapshot_versioned().version,
+            StateChangeId::new(1).0
+        );
+    }
+
+    #[tokio::test]
+    async fn test_sequential_prepare_stops_after_required_failure() {
+        struct RecordingSubscriber {
+            name: &'static str,
+            should_fail: bool,
+            events: Arc<Mutex<Vec<String>>>,
+        }
+
+        #[async_trait::async_trait]
+        impl StateAckSubscriber<TestState> for RecordingSubscriber {
+            fn name(&self) -> SubscriberName<'_> {
+                self.name.into()
+            }
+
+            async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
+                self.events
+                    .lock()
+                    .await
+                    .push(format!("prepare:{}", self.name));
+                if self.should_fail {
+                    Ack::Failed(anyhow::anyhow!("prepare failed"))
+                } else {
+                    Ack::Ok
+                }
+            }
+
+            async fn on_rolled_back(
+                &self,
+                _change: StateChange<TestState>,
+                _reason: RollbackReason,
+            ) {
+                self.events
+                    .lock()
+                    .await
+                    .push(format!("rollback:{}", self.name));
+            }
+        }
+
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let mut coordinator = StateCoordinator::builder()
+            .with_notify_strategy(NotifyStrategy::Sequential)
+            .with_subscriber(Box::new(RecordingSubscriber {
+                name: "first",
+                should_fail: false,
+                events: Arc::clone(&events),
+            }))
+            .with_subscriber(Box::new(RecordingSubscriber {
+                name: "second",
+                should_fail: true,
+                events: Arc::clone(&events),
+            }))
+            .with_subscriber(Box::new(RecordingSubscriber {
+                name: "third",
+                should_fail: false,
+                events: Arc::clone(&events),
+            }))
+            .build(default_test_state());
+
+        let result = coordinator
+            .upsert_state(TestState {
+                value: 42,
+                name: "sequential".to_string(),
+            })
+            .await;
+
+        assert!(matches!(result, Err(StateChangedError::PrepareAck(_))));
+        assert_eq!(
+            *events.lock().await,
+            vec![
+                "prepare:first".to_string(),
+                "prepare:second".to_string(),
+                "rollback:first".to_string(),
+                "rollback:second".to_string(),
+            ]
+        );
     }
 
     #[tokio::test]
@@ -842,6 +1021,133 @@ mod test {
         assert_eq!(subscriber.call_count(), 0);
     }
 
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_with_pending_state_cancel_rolls_back_prepared_subscribers() {
+        struct RollbackSubscriber {
+            events: Arc<Mutex<Vec<&'static str>>>,
+        }
+
+        #[async_trait::async_trait]
+        impl StateAckSubscriber<TestState> for RollbackSubscriber {
+            fn name(&self) -> SubscriberName<'_> {
+                "rollback_subscriber".into()
+            }
+
+            async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
+                self.events.lock().await.push("prepare");
+                Ack::Ok
+            }
+
+            async fn on_rolled_back(
+                &self,
+                _change: StateChange<TestState>,
+                _reason: RollbackReason,
+            ) {
+                self.events.lock().await.push("rollback");
+            }
+        }
+
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let effect_started = Arc::new(Notify::new());
+        let mut coordinator = StateCoordinator::builder()
+            .with_subscriber(Box::new(RollbackSubscriber {
+                events: Arc::clone(&events),
+            }))
+            .build(default_test_state());
+        let state = TestState {
+            value: 99,
+            name: "cancelled".to_string(),
+        };
+
+        let mut future = Box::pin(coordinator.with_pending_state(&state, {
+            let effect_started = Arc::clone(&effect_started);
+            move |_s| {
+                let effect_started = Arc::clone(&effect_started);
+                async move {
+                    effect_started.notify_one();
+                    std::future::pending::<Result<(), anyhow::Error>>().await
+                }
+            }
+        }));
+
+        tokio::select! {
+            result = &mut future => panic!("effect should stay pending, got {result:?}"),
+            _ = effect_started.notified() => {}
+        }
+
+        drop(future);
+
+        assert_eq!(*events.lock().await, vec!["prepare", "rollback"]);
+        assert_eq!(coordinator.snapshot_versioned().value, 0);
+    }
+
+    #[tokio::test]
+    async fn test_with_pending_state_effect_failure_does_not_consume_change_id() {
+        let mut coordinator = StateCoordinator::builder().build(default_test_state());
+
+        let failed = TestState {
+            value: 99,
+            name: "effect_fail".to_string(),
+        };
+        let result: Result<((), PrepareReport), WithEffectError<anyhow::Error>> = coordinator
+            .with_pending_state(&failed, |_s| async move {
+                Err::<(), _>(anyhow::anyhow!("effect failed"))
+            })
+            .await;
+        assert!(matches!(result, Err(WithEffectError::Effect(_))));
+        assert_eq!(
+            coordinator.snapshot_versioned().version,
+            StateChangeId::new(0).0
+        );
+
+        coordinator
+            .upsert_state(TestState {
+                value: 1,
+                name: "accepted".to_string(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            coordinator.snapshot_versioned().version,
+            StateChangeId::new(1).0
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_with_pending_state_timeout_rolls_back_without_consuming_change_id() {
+        let mut coordinator = StateCoordinator::builder().build(default_test_state());
+        let timed_out = TestState {
+            value: 99,
+            name: "timeout".to_string(),
+        };
+
+        let result: Result<((), PrepareReport), WithEffectError<anyhow::Error>> = coordinator
+            .with_pending_state_timeout(&timed_out, std::time::Duration::from_secs(1), |_s| async {
+                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                Ok::<_, anyhow::Error>(())
+            })
+            .await;
+
+        assert!(matches!(result, Err(WithEffectError::EffectTimedOut(_))));
+        assert_eq!(
+            coordinator.snapshot_versioned().version,
+            StateChangeId::new(0).0
+        );
+        assert_eq!(coordinator.snapshot_versioned().value, 0);
+
+        coordinator
+            .upsert_state(TestState {
+                value: 1,
+                name: "accepted".to_string(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            coordinator.snapshot_versioned().version,
+            StateChangeId::new(1).0
+        );
+    }
+
     #[tokio::test]
     async fn test_with_pending_state_commit_cas_mismatch_returns_error() {
         let initial = default_test_state();
@@ -880,6 +1186,15 @@ mod test {
             }
             other => panic!("expected StateCasMismatch, got {other:?}"),
         }
+
+        coordinator
+            .upsert_state(TestState {
+                value: 100,
+                name: "after_external".to_string(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(coordinator.snapshot_versioned().version, Version::new(100));
     }
 
     #[tokio::test]

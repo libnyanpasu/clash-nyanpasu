@@ -197,7 +197,7 @@ where
         let result = self.state_coordinator.upsert_state(state.clone()).await;
         match &result {
             Ok(_) => self.try_persist(&state).await,
-            Err(e) if e.is_post_commit() => self.try_persist(&state).await,
+            Err(e) if e.is_precommit() => self.try_persist(&state).await,
             Err(_) => {}
         }
         result

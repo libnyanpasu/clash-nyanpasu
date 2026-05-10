@@ -150,7 +150,7 @@ where
                 failed_acks.push(ack);
             } else if matches!(ack.status, AckStatus::SkippedShutdown) {
                 // Remove shutdown subscriber in this transaction for state dispatch consistent
-                self.subscribers.retain(|s| s.name().0 == ack.name.0);
+                self.subscribers.retain(|s| s.name().0 != ack.name.0);
             }
         }
 
@@ -249,7 +249,7 @@ where
                 });
                 let guard = self.store.compare_and_swap(&prev, new_state.clone());
 
-                if guard.version != new_state.version {
+                if !Arc::ptr_eq(&guard, &prev) {
                     return Err(self
                         ._rollback(RollbackReason::StoreStateCasMismatch {
                             expected: prev.version,

@@ -215,7 +215,7 @@ where
             }
             Err(e) => match e {
                 WithEffectError::State(e) => {
-                    if e.is_post_commit() {
+                    if e.is_precommit() {
                         self.current_builder = Some(builder);
                     }
                     Err(UpsertError::State(e))

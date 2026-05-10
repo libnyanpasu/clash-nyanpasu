@@ -207,7 +207,7 @@ async fn cascade_commit_a_to_b_to_c() {
     let result = chain.a.upsert_state(42).await;
 
     assert!(result.is_ok());
-    assert_eq!(*chain.a.snapshot(), 42);
+    assert_eq!(*chain.a.snapshot_versioned(), 42);
     assert_eq!(&*chain.b.lock().await.snapshot(), "derived_from_42");
 
     assert_eq!(chain.leaf.call_count(), 1);
@@ -231,7 +231,7 @@ async fn cascade_committed_even_when_leaf_fails() {
     let result = chain.a.upsert_state(42).await;
 
     // A committed (post-commit model)
-    assert_eq!(*chain.a.snapshot(), 42);
+    assert_eq!(*chain.a.snapshot_versioned(), 42);
 
     // B committed (bridge ran successfully, leaf failure on B doesn't prevent B's commit)
     // However, B's upsert_state will return CommitAck error, which bridge maps to Ack::Failed
@@ -267,7 +267,7 @@ async fn cascade_no_commit_on_effect_failure() {
     assert!(matches!(result.unwrap_err(), WithEffectError::Effect(_)));
 
     // A not committed (effect failed before commit)
-    assert_eq!(*chain.a.snapshot(), INITIAL_SOURCE);
+    assert_eq!(*chain.a.snapshot_versioned(), INITIAL_SOURCE);
 
     // B not committed (bridge never called)
     assert_eq!(&*chain.b.lock().await.snapshot(), INITIAL_DERIVED);
@@ -290,7 +290,7 @@ async fn cascade_second_update_leaf_failure_still_commits() {
 
     // First update: success
     chain.a.upsert_state(1).await.unwrap();
-    assert_eq!(*chain.a.snapshot(), 1);
+    assert_eq!(*chain.a.snapshot_versioned(), 1);
     assert_eq!(&*chain.b.lock().await.snapshot(), "derived_from_1");
 
     // Configure leaf to fail
@@ -301,7 +301,7 @@ async fn cascade_second_update_leaf_failure_still_commits() {
     assert!(result.is_err());
 
     // A IS committed to 2 (post-commit)
-    assert_eq!(*chain.a.snapshot(), 2);
+    assert_eq!(*chain.a.snapshot_versioned(), 2);
 
     // B IS committed to derived_from_2 (bridge ran, B committed before leaf notified)
     assert_eq!(&*chain.b.lock().await.snapshot(), "derived_from_2");
@@ -353,7 +353,7 @@ async fn cascade_sibling_failure_still_committed() {
     let result = a.upsert_state(99).await;
 
     // A committed (post-commit)
-    assert_eq!(*a.snapshot(), 99);
+    assert_eq!(*a.snapshot_versioned(), 99);
 
     // Both subscribers were called
     assert_eq!(bridge.call_count(), 1);
@@ -398,7 +398,7 @@ async fn cascade_effect_failure_with_prev_state() {
     assert!(result.is_err());
 
     // A stays at 1 (effect failed, no commit)
-    assert_eq!(*chain.a.snapshot(), 1);
+    assert_eq!(*chain.a.snapshot_versioned(), 1);
 
     // B stays at derived_from_1 (bridge never called)
     assert_eq!(&*chain.b.lock().await.snapshot(), "derived_from_1");

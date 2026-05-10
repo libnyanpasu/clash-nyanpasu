@@ -509,7 +509,7 @@ mod tests {
 
         // the error is a post-commit ACK failure, not a write failure
         match result.unwrap_err() {
-            UpsertError::State(e) => assert!(e.is_post_commit()),
+            UpsertError::State(e) => assert!(e.is_precommit()),
             other => panic!(
                 "expected UpsertError::State (post-commit), got: {:?}",
                 other

@@ -53,7 +53,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         self.subscribers.shift_remove(&name.into())
     }
 
-    pub fn snapshot(&self) -> Arc<VersionedState<T>> {
+    pub fn snapshot_versioned(&self) -> Arc<VersionedState<T>> {
         self.current_state.load_full()
     }
 
@@ -88,7 +88,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
             .await
             .map_err(StateChangedError::Validation)?;
         let next_changed_id = self.next_change_id();
-        let current_state = self.snapshot();
+        let current_state = self.snapshot_versioned();
         let change = StateChange {
             id: next_changed_id,
             previous: Some(current_state.clone()),
@@ -107,7 +107,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
                 Some(r) => Err(StateChangedError::PrepareAck(PrepareAckError { report: r })),
                 None => Err(StateChangedError::StateCasMismatch {
                     expected: current_state.version,
-                    actual: self.snapshot().version,
+                    actual: self.snapshot_versioned().version,
                 }),
             },
         }
@@ -123,7 +123,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         let subscribers = self.clone_subscribers();
         let notify_strategy = self.notify_strategy;
         let next_changed_id = self.next_change_id();
-        let current_state = self.snapshot();
+        let current_state = self.snapshot_versioned();
         let change = StateChange {
             id: next_changed_id,
             previous: Some(current_state.clone()),
@@ -142,7 +142,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
                 Some(r) => Err(StateChangedError::PrepareAck(PrepareAckError { report: r })),
                 None => Err(StateChangedError::StateCasMismatch {
                     expected: current_state.version,
-                    actual: self.snapshot().version,
+                    actual: self.snapshot_versioned().version,
                 }),
             },
         }
@@ -167,7 +167,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         let subscribers = self.clone_subscribers();
         let notify_strategy = self.notify_strategy;
         let next_changed_id = self.next_change_id();
-        let current_state = self.snapshot();
+        let current_state = self.snapshot_versioned();
         let change = StateChange {
             id: next_changed_id,
             previous: Some(current_state.clone()),
@@ -190,15 +190,10 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         };
         match effect_fn(new_state).await.map_err(WithEffectError::Effect) {
             Ok(result) => {
-                match tx.commit().await {
-                    Ok(_committed_tx) => Ok((result, report)),
-                    Err(_) => Err(WithEffectError::State(
-                        StateChangedError::StateCasMismatch {
-                            expected: current_state.version,
-                            actual: self.snapshot().version,
-                        },
-                    )),
+                if let Err(_) = tx.commit().await {
+                    unreachable!("commit should not hit CAS mismatch after successful prepare");
                 }
+                Ok((result, report))
             }
             Err(e) => {
                 tx.rollback(RollbackReason::CoordinatorError(Arc::new(anyhow!(
@@ -391,7 +386,7 @@ mod test {
     #[tokio::test]
     async fn test_new_coordinator() {
         let coordinator = StateCoordinator::builder().build(default_test_state());
-        assert_eq!(coordinator.snapshot().value, 0);
+        assert_eq!(coordinator.snapshot_versioned().value, 0);
         assert_eq!(coordinator.subscribers.len(), 0);
     }
 
@@ -411,7 +406,7 @@ mod test {
         let report = result.unwrap();
         assert!(!report.has_required_failures());
 
-        assert_eq!(&*coordinator.snapshot(), &test_state);
+        assert_eq!(&*coordinator.snapshot_versioned(), &test_state);
         assert_eq!(subscriber.call_count(), 1);
 
         let history = subscriber.history().await;
@@ -434,7 +429,7 @@ mod test {
 
         let result = coordinator.upsert(builder).await;
         assert!(result.is_ok());
-        assert_eq!(&*coordinator.snapshot(), &test_state);
+        assert_eq!(&*coordinator.snapshot_versioned(), &test_state);
         assert_eq!(subscriber.call_count(), 1);
     }
 
@@ -450,7 +445,7 @@ mod test {
             StateChangedError::Validation(_) => {}
             _ => panic!("Expected validation error"),
         }
-        assert_eq!(coordinator.snapshot().value, 0);
+        assert_eq!(coordinator.snapshot_versioned().value, 0);
     }
 
     #[tokio::test]
@@ -477,7 +472,7 @@ mod test {
         }
 
         // State IS committed even though ACK failed (post-commit model)
-        assert_eq!(&*coordinator.snapshot(), &test_state);
+        assert_eq!(&*coordinator.snapshot_versioned(), &test_state);
         assert_eq!(subscriber.call_count(), 1);
     }
 
@@ -510,7 +505,7 @@ mod test {
         let report = result.unwrap();
         assert!(!report.has_required_failures());
 
-        assert_eq!(&*coordinator.snapshot(), &test_state);
+        assert_eq!(&*coordinator.snapshot_versioned(), &test_state);
     }
 
     #[tokio::test]
@@ -556,7 +551,7 @@ mod test {
         assert_eq!(sub1.call_count(), 1);
         assert_eq!(sub2.call_count(), 1);
         assert_eq!(sub3.call_count(), 1);
-        assert_eq!(&*coordinator.snapshot(), &test_state);
+        assert_eq!(&*coordinator.snapshot_versioned(), &test_state);
     }
 
     #[tokio::test]
@@ -584,7 +579,7 @@ mod test {
         assert_eq!(history[0], (Some(initial), state1.clone()));
         assert_eq!(history[1], (Some(state1), state2.clone()));
 
-        assert_eq!(&*coordinator.snapshot(), &state2);
+        assert_eq!(&*coordinator.snapshot_versioned(), &state2);
     }
 
     #[tokio::test]
@@ -627,7 +622,7 @@ mod test {
         }
 
         // State IS committed despite timeout
-        assert_eq!(&*coordinator.snapshot(), &test_state);
+        assert_eq!(&*coordinator.snapshot_versioned(), &test_state);
     }
 
     #[tokio::test]
@@ -667,7 +662,7 @@ mod test {
             other => panic!("Expected CommitAck, got: {other:?}"),
         }
         // State IS committed (post-commit model)
-        assert_eq!(&*coordinator.snapshot(), &test_state);
+        assert_eq!(&*coordinator.snapshot_versioned(), &test_state);
     }
 
     #[tokio::test]
@@ -712,9 +707,9 @@ mod test {
             StateChangedError::PrepareAck(PrepareAckError {
                 report: PrepareReport::default()
             })
-            .is_post_commit()
+            .is_precommit()
         );
-        assert!(!StateChangedError::Validation(anyhow::anyhow!("nope")).is_post_commit());
+        assert!(!StateChangedError::Validation(anyhow::anyhow!("nope")).is_precommit());
     }
 
     #[tokio::test]
@@ -739,7 +734,7 @@ mod test {
         let (effect_result, report) = result.unwrap();
         assert_eq!(effect_result, "done");
         assert!(!report.has_required_failures());
-        assert_eq!(coordinator.snapshot().value, 42);
+        assert_eq!(coordinator.snapshot_versioned().value, 42);
         assert_eq!(subscriber.call_count(), 1);
     }
 
@@ -770,7 +765,7 @@ mod test {
         }
 
         // State NOT committed (effect failed before commit)
-        assert_eq!(&*coordinator.snapshot(), &initial);
+        assert_eq!(&*coordinator.snapshot_versioned(), &initial);
         // Subscriber NOT called (commit never happened)
         assert_eq!(subscriber.call_count(), 0);
     }
@@ -785,7 +780,7 @@ mod test {
 
         let result = coordinator.upsert_state(test_state.clone()).await;
         assert!(result.is_ok());
-        assert_eq!(&*coordinator.snapshot(), &test_state);
+        assert_eq!(&*coordinator.snapshot_versioned(), &test_state);
     }
 
     #[tokio::test]
@@ -815,7 +810,7 @@ mod test {
             .await
             .unwrap();
 
-        assert_eq!(&*coordinator.snapshot(), &state);
+        assert_eq!(&*coordinator.snapshot_versioned(), &state);
         assert_eq!(subscriber.call_count(), 1);
 
         let history = subscriber.history().await;
@@ -846,7 +841,7 @@ mod test {
 
         let result = coordinator.upsert(sync_builder).await;
         assert!(result.is_ok());
-        assert_eq!(&*coordinator.snapshot(), &test_state);
+        assert_eq!(&*coordinator.snapshot_versioned(), &test_state);
     }
 
     #[tokio::test]
@@ -978,13 +973,13 @@ mod test {
             name: "get_test".to_string(),
         };
         coordinator.upsert_state(test_state.clone()).await.unwrap();
-        assert_eq!(&*coordinator.snapshot(), &test_state);
+        assert_eq!(&*coordinator.snapshot_versioned(), &test_state);
 
         let new_state = TestState {
             value: 200,
             name: "updated_test".to_string(),
         };
         coordinator.upsert_state(new_state.clone()).await.unwrap();
-        assert_eq!(&*coordinator.snapshot(), &new_state);
+        assert_eq!(&*coordinator.snapshot_versioned(), &new_state);
     }
 }

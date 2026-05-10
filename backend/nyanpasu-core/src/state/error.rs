@@ -1,7 +1,7 @@
 use super::{ack::PrepareReport, version::Version};
 use std::{error::Error, fmt};
 #[derive(thiserror::Error, Debug)]
-#[error("state committed but required subscriber ACK failed")]
+#[error("state prepared but required subscriber ACK failed")]
 pub struct PrepareAckError {
     pub report: PrepareReport,
 }
@@ -21,7 +21,7 @@ pub enum StateChangedError {
 }
 
 impl StateChangedError {
-    pub fn is_post_commit(&self) -> bool {
+    pub fn is_precommit(&self) -> bool {
         matches!(self, StateChangedError::PrepareAck(_))
     }
 }
@@ -52,7 +52,7 @@ impl<Manager> fmt::Debug for LoadError<Manager> {
 }
 
 #[derive(thiserror::Error)]
-#[error("state committed but required subscriber ACK failed during initialization")]
+#[error("state prepared but required subscriber ACK failed during initialization")]
 pub struct InitAckError<T: Clone + Send + Sync + 'static> {
     pub coordinator: super::coordinator::StateCoordinator<T>,
     pub report: PrepareReport,
@@ -115,8 +115,8 @@ pub enum UpsertError {
 }
 
 impl UpsertError {
-    pub fn is_post_commit(&self) -> bool {
-        matches!(self, UpsertError::State(s) if s.is_post_commit())
+    pub fn is_precommit(&self) -> bool {
+        matches!(self, UpsertError::State(s) if s.is_precommit())
     }
 }
 

@@ -1,6 +1,6 @@
 mod notify;
 
-use std::{future::Future, marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, sync::Arc};
 use tokio::sync::OwnedSemaphorePermit;
 
 use crate::state::{StateStore, VersionedState};
@@ -182,29 +182,29 @@ impl<T, S> StateTransaction<T, S>
 where
     T: Clone + Send + Sync + 'static,
 {
-    async fn _rollback(self, reason: RollbackReason) -> StateTransaction<T, state::RolledBack> {
-        // Notify all subscribers about the rollback. This is best effort and does not affect the rollback process.
-        let mut tx = self;
-        notify_rollback(&tx.change, &tx.subscribers, tx.notify_strategy, reason).await;
-        tx.rollback_guard.disarm();
+    async fn _rollback(mut self, reason: RollbackReason) -> StateTransaction<T, state::RolledBack> {
+        // Rollback notifications are best-effort cleanup. They must not keep
+        // the writer permit, and the returned RolledBack transaction must not
+        // be able to hold it indefinitely.
+        drop(self.permit.take());
 
-        let StateTransaction {
-            change,
-            subscribers,
-            store,
-            notify_strategy,
-            rollback_guard,
-            permit,
-            _state,
-        } = tx;
-        drop(rollback_guard);
+        // Notify all subscribers about the rollback. This is best effort and does not affect the rollback process.
+        notify_rollback(
+            &self.change,
+            &self.subscribers,
+            self.notify_strategy,
+            reason,
+        )
+        .await;
+        self.rollback_guard.disarm();
+
         StateTransaction {
-            change,
-            subscribers,
-            store,
-            notify_strategy,
+            change: self.change,
+            subscribers: self.subscribers,
+            store: self.store,
+            notify_strategy: self.notify_strategy,
             rollback_guard: RollbackGuard::disarmed(),
-            permit,
+            permit: None,
             _state: PhantomData,
         }
     }
@@ -508,6 +508,27 @@ mod tests {
         }
     }
 
+    struct BlockingRollbackSubscriber {
+        started: Arc<Notify>,
+        release: Arc<Notify>,
+    }
+
+    #[async_trait::async_trait]
+    impl StateAckSubscriber<i32> for BlockingRollbackSubscriber {
+        fn name(&self) -> SubscriberName<'_> {
+            "blocking_rollback".into()
+        }
+
+        async fn on_prepare(&self, _change: StateChange<i32>) -> Ack {
+            Ack::Ok
+        }
+
+        async fn on_rolled_back(&self, _change: StateChange<i32>, _reason: RollbackReason) {
+            self.started.notify_one();
+            self.release.notified().await;
+        }
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     async fn commit_releases_permit_before_post_commit_notifications_finish() {
         let store: StateStore<i32> = Arc::new(ArcSwap::from_pointee(VersionedState {
@@ -562,6 +583,81 @@ mod tests {
 
         release.notify_one();
         commit_task.await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn rollback_releases_permit_before_rollback_notifications_finish() {
+        let store: StateStore<i32> = Arc::new(ArcSwap::from_pointee(VersionedState {
+            version: Version::new(0),
+            state: 0,
+        }));
+        let previous = store.load_full();
+        let semaphore = Arc::new(Semaphore::new(1));
+        let permit = semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .expect("semaphore should never close");
+        let started = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let subscribers: Subscribers<i32> = vec![Arc::new(BlockingRollbackSubscriber {
+            started: Arc::clone(&started),
+            release: Arc::clone(&release),
+        })];
+        let change = StateChange {
+            id: StateChangeId::new(1),
+            previous: Some(previous),
+            current: Arc::new(1),
+        };
+        let tx = new_transaction(
+            change,
+            Arc::clone(&store),
+            subscribers,
+            NotifyStrategy::Parallel,
+            permit,
+        );
+        let (_report, prepared_tx) = match tx.prepare().await {
+            Ok(result) => result,
+            Err(_) => panic!("prepare should succeed"),
+        };
+
+        let rollback_task = tokio::spawn(async move {
+            prepared_tx
+                .rollback(RollbackReason::CoordinatorError(Arc::new(anyhow::anyhow!(
+                    "test rollback"
+                ))))
+                .await
+        });
+
+        started.notified().await;
+
+        let next_permit = tokio::time::timeout(
+            Duration::from_millis(100),
+            semaphore.clone().acquire_owned(),
+        )
+        .await;
+        assert!(
+            next_permit.is_ok(),
+            "rollback notification must not keep the writer permit"
+        );
+        drop(next_permit);
+
+        release.notify_one();
+        let rolled_back_tx = rollback_task.await.unwrap();
+        assert!(
+            rolled_back_tx.permit.is_none(),
+            "rolled-back transactions must not retain the writer permit"
+        );
+
+        let permit_after_rollback = tokio::time::timeout(
+            Duration::from_millis(100),
+            semaphore.clone().acquire_owned(),
+        )
+        .await;
+        assert!(
+            permit_after_rollback.is_ok(),
+            "holding a rolled-back transaction must not block future writers"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]

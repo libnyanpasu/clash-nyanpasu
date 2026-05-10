@@ -840,6 +840,103 @@ mod test {
         assert_eq!(&*coordinator.snapshot_versioned(), &state2);
     }
 
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_concurrent_upsert_state_uses_latest_committed_version() {
+        struct BlockingFirstPrepareSubscriber {
+            prepare_calls: Arc<AtomicUsize>,
+            first_prepare_started: Arc<Notify>,
+            release_first_prepare: Arc<Notify>,
+            committed_history: Arc<Mutex<Vec<CommittedEntry>>>,
+        }
+
+        #[async_trait::async_trait]
+        impl StateAckSubscriber<TestState> for BlockingFirstPrepareSubscriber {
+            fn name(&self) -> SubscriberName<'_> {
+                "blocking_first_prepare".into()
+            }
+
+            async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
+                let call_index = self.prepare_calls.fetch_add(1, Ordering::SeqCst);
+                if call_index == 0 {
+                    self.first_prepare_started.notify_one();
+                    self.release_first_prepare.notified().await;
+                }
+                Ack::Ok
+            }
+
+            async fn on_committed(&self, change: StateChange<TestState>) -> Ack {
+                self.committed_history
+                    .lock()
+                    .await
+                    .push((change.previous().cloned(), change.current().clone()));
+                Ack::Ok
+            }
+        }
+
+        let initial = default_test_state();
+        let prepare_calls = Arc::new(AtomicUsize::new(0));
+        let first_prepare_started = Arc::new(Notify::new());
+        let release_first_prepare = Arc::new(Notify::new());
+        let committed_history = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = Arc::new(BlockingFirstPrepareSubscriber {
+            prepare_calls: Arc::clone(&prepare_calls),
+            first_prepare_started: Arc::clone(&first_prepare_started),
+            release_first_prepare: Arc::clone(&release_first_prepare),
+            committed_history: Arc::clone(&committed_history),
+        });
+        let coordinator = Arc::new(Mutex::new(
+            StateCoordinator::builder()
+                .with_subscriber(Box::new(subscriber))
+                .build(initial.clone()),
+        ));
+
+        let state1 = TestState {
+            value: 1,
+            name: "first".to_string(),
+        };
+        let state2 = TestState {
+            value: 2,
+            name: "second".to_string(),
+        };
+
+        let first = tokio::spawn({
+            let coordinator = Arc::clone(&coordinator);
+            let state1 = state1.clone();
+            async move { coordinator.lock().await.upsert_state(state1).await }
+        });
+
+        first_prepare_started.notified().await;
+
+        let second = tokio::spawn({
+            let coordinator = Arc::clone(&coordinator);
+            let state2 = state2.clone();
+            async move { coordinator.lock().await.upsert_state(state2).await }
+        });
+
+        tokio::task::yield_now().await;
+        assert!(
+            !second.is_finished(),
+            "second writer should wait while the first upsert is in flight"
+        );
+
+        release_first_prepare.notify_one();
+        first.await.unwrap().unwrap();
+        second.await.unwrap().unwrap();
+
+        let coordinator = coordinator.lock().await;
+        assert_eq!(&*coordinator.snapshot_versioned(), &state2);
+        assert_eq!(
+            coordinator.snapshot_versioned().version,
+            StateChangeId::new(2).0
+        );
+
+        let history = committed_history.lock().await.clone();
+        assert_eq!(
+            history,
+            vec![(Some(initial), state1.clone()), (Some(state1), state2)]
+        );
+    }
+
     #[tokio::test]
     async fn test_timeout_subscriber() {
         struct SlowSubscriber;
@@ -1246,6 +1343,66 @@ mod test {
 
         let history = subscriber.history().await;
         assert_eq!(history[0], (None, state));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_build_initialized_prepare_timeout_returns_init_ack_error() {
+        struct InitPrepareTimeoutSubscriber {
+            prepare_calls: Arc<AtomicUsize>,
+            committed_calls: Arc<AtomicUsize>,
+        }
+
+        #[async_trait::async_trait]
+        impl StateAckSubscriber<TestState> for InitPrepareTimeoutSubscriber {
+            fn name(&self) -> SubscriberName<'_> {
+                "init_timeout".into()
+            }
+
+            fn ack_options(&self) -> AckOptions {
+                AckOptions::required(std::time::Duration::from_secs(1))
+            }
+
+            async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
+                self.prepare_calls.fetch_add(1, Ordering::SeqCst);
+                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                Ack::Ok
+            }
+
+            async fn on_committed(&self, _change: StateChange<TestState>) -> Ack {
+                self.committed_calls.fetch_add(1, Ordering::SeqCst);
+                Ack::Ok
+            }
+        }
+
+        let prepare_calls = Arc::new(AtomicUsize::new(0));
+        let committed_calls = Arc::new(AtomicUsize::new(0));
+        let state = TestState {
+            value: 42,
+            name: "init_timeout".to_string(),
+        };
+
+        let result = StateCoordinator::builder()
+            .with_subscriber(Box::new(InitPrepareTimeoutSubscriber {
+                prepare_calls: Arc::clone(&prepare_calls),
+                committed_calls: Arc::clone(&committed_calls),
+            }))
+            .build_initialized(state.clone())
+            .await;
+
+        let (coordinator, report) = match result {
+            Ok(_) => panic!("initialization should fail when required prepare ACK times out"),
+            Err(error) => error.into_parts(),
+        };
+
+        assert_eq!(prepare_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(committed_calls.load(Ordering::SeqCst), 0);
+        assert!(report.has_required_failures());
+        assert_eq!(report.subscriber_acks.len(), 1);
+        assert!(matches!(
+            report.subscriber_acks[0].status,
+            AckStatus::TimedOut
+        ));
+        assert_eq!(&*coordinator.snapshot_versioned(), &state);
     }
 
     #[tokio::test]

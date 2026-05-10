@@ -97,14 +97,35 @@ where
         }
 
         let opt = subscriber.ack_options();
-        if let Err(_) =
-            tokio::time::timeout(opt.timeout, subscriber.on_committed(change.clone())).await
-        {
-            tracing::warn!(
-                subscriber = %subscriber.name(),
-                timeout_ms = opt.timeout.as_millis(),
-                "subscriber post-commit notification timed out"
-            );
+        match tokio::time::timeout(opt.timeout, subscriber.on_committed(change.clone())).await {
+            Ok(Ack::Ok) => {}
+            Ok(Ack::Degraded(message)) => {
+                tracing::warn!(
+                    subscriber = %subscriber.name(),
+                    message = %message,
+                    "subscriber post-commit notification degraded"
+                );
+            }
+            Ok(Ack::Rejected(reason)) => {
+                tracing::warn!(
+                    subscriber = %subscriber.name(),
+                    reason = %reason,
+                    "subscriber rejected post-commit notification"
+                );
+            }
+            Ok(Ack::Failed(error)) => {
+                tracing::warn!(
+                    subscriber = %subscriber.name(),
+                    "subscriber post-commit notification failed: {error}"
+                );
+            }
+            Err(_) => {
+                tracing::warn!(
+                    subscriber = %subscriber.name(),
+                    timeout_ms = opt.timeout.as_millis(),
+                    "subscriber post-commit notification timed out"
+                );
+            }
         }
     }
 }

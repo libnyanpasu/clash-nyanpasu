@@ -214,12 +214,7 @@ where
                 Ok(report)
             }
             Err(e) => match e {
-                WithEffectError::State(e) => {
-                    if e.is_precommit() {
-                        self.current_builder = Some(builder);
-                    }
-                    Err(UpsertError::State(e))
-                }
+                WithEffectError::State(e) => Err(UpsertError::State(e)),
                 WithEffectError::Effect(e) => Err(UpsertError::WriteConfig(e)),
             },
         }
@@ -518,6 +513,48 @@ mod tests {
             UpsertError::State(StateChangedError::Validation(_)) => {}
             other => panic!("Expected UpsertError::State(Validation), got: {:?}", other),
         }
+    }
+
+    #[tokio::test]
+    async fn test_precommit_failure_does_not_update_current_builder() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("precommit_builder_fail.yaml");
+        let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
+
+        let initial = TestBuilder::new("initial".to_string(), 100);
+        let mut manager = PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
+            .config_path(config_path.clone())
+            .assemble()
+            .from_builder(initial.clone())
+            .await
+            .unwrap();
+        manager.upsert(initial.clone()).await.unwrap();
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        manager.add_subscriber(Box::new(FailingInitSubscriber {
+            calls: Arc::clone(&calls),
+        }));
+
+        let result = manager
+            .upsert(TestBuilder::new("rejected".to_string(), 200))
+            .await;
+        assert!(matches!(
+            result,
+            Err(UpsertError::State(StateChangedError::PrepareAck(_)))
+        ));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        let state = manager.snapshot();
+        assert_eq!(state.name, "initial");
+        assert_eq!(state.value, 100);
+
+        let current_builder = manager.current_builder().unwrap();
+        assert_eq!(current_builder.name, "initial");
+        assert_eq!(current_builder.value, 100);
+
+        let saved_builder: TestBuilder = read_yaml(&config_path).await.unwrap();
+        assert_eq!(saved_builder.name, "initial");
+        assert_eq!(saved_builder.value, 100);
     }
 
     #[tokio::test]

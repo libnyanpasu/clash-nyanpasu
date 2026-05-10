@@ -23,6 +23,7 @@ pub struct VersionedState<T: Clone + Send + Sync + 'static> {
     pub state: T,
 }
 
+#[cfg(test)]
 impl<T> PartialEq<T> for VersionedState<T>
 where
     T: Clone + Send + Sync + PartialEq + 'static,

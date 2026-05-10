@@ -29,8 +29,13 @@ impl Version {
         Self(version)
     }
 
+    /// Return the next monotonic version.
+    ///
+    /// Panics if the counter overflows, because wrapping would break CAS
+    /// monotonicity and may make different state changes compare as the same
+    /// version.
     pub fn next(&self) -> Self {
-        Self(self.0 + 1)
+        Self(self.0.checked_add(1).expect("version overflow"))
     }
 }
 
@@ -60,5 +65,22 @@ impl StateChangeId {
 
     pub fn next(&self) -> Self {
         Self(self.0.next())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[should_panic(expected = "version overflow")]
+    fn version_next_panics_on_overflow() {
+        Version::new(u64::MAX).next();
+    }
+
+    #[test]
+    #[should_panic(expected = "version overflow")]
+    fn state_change_id_next_panics_on_overflow() {
+        StateChangeId::new(u64::MAX).next();
     }
 }

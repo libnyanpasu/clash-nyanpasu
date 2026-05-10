@@ -195,10 +195,8 @@ where
         Formatter: Clone,
     {
         let result = self.state_coordinator.upsert_state(state.clone()).await;
-        match &result {
-            Ok(_) => self.try_persist(&state).await,
-            Err(e) if e.is_precommit() => self.try_persist(&state).await,
-            Err(_) => {}
+        if result.is_ok() {
+            self.try_persist(&state).await;
         }
         result
     }
@@ -415,6 +413,43 @@ mod tests {
             Err(error) => panic!("expected init ACK error, got {error}"),
             Ok(_) => panic!("expected recoverable init ACK error"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_precommit_failure_does_not_persist_rejected_state() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("precommit_fail.yaml");
+        let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
+
+        let mut manager = WeakPersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path.clone())
+            .assemble()
+            .from_state(TestState::default())
+            .await
+            .unwrap();
+
+        let initial = TestState::new("initial".to_string(), 100);
+        manager.upsert(initial.clone()).await.unwrap();
+
+        let subscriber = MockAckSub::new("reject_sub");
+        subscriber.set_fail(true);
+        manager.add_subscriber(Box::new(subscriber));
+
+        let rejected = TestState::new("rejected".to_string(), 200);
+        let result = manager.upsert(rejected).await;
+        assert!(matches!(result, Err(StateChangedError::PrepareAck(_))));
+        assert_eq!(*manager.snapshot(), initial);
+
+        let saved: TestState = read_yaml(&config_path).await.unwrap();
+        assert_eq!(saved, initial);
+
+        let reloaded = WeakPersistentStateManagerSetup::<TestState>::builder()
+            .config_path(config_path)
+            .assemble()
+            .load_or_default()
+            .await
+            .unwrap();
+        assert_eq!(*reloaded.snapshot(), initial);
     }
 
     #[tokio::test]

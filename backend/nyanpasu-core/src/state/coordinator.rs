@@ -192,8 +192,13 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         };
         match effect_fn(new_state).await.map_err(WithEffectError::Effect) {
             Ok(result) => {
-                if let Err(_) = tx.commit().await {
-                    unreachable!("commit should not hit CAS mismatch after successful prepare");
+                if tx.commit().await.is_err() {
+                    return Err(WithEffectError::State(
+                        StateChangedError::StateCasMismatch {
+                            expected: current_state.version,
+                            actual: self.snapshot_versioned().version,
+                        },
+                    ));
                 }
                 Ok((result, report))
             }
@@ -314,6 +319,7 @@ impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::state::Version;
     use std::sync::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -834,6 +840,46 @@ mod test {
         assert_eq!(&*coordinator.snapshot_versioned(), &initial);
         // Subscriber NOT called (commit never happened)
         assert_eq!(subscriber.call_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_with_pending_state_commit_cas_mismatch_returns_error() {
+        let initial = default_test_state();
+        let mut coordinator = StateCoordinator::builder().build(initial);
+        let store = Arc::clone(&coordinator.current_state);
+        let effect_ran = Arc::new(AtomicBool::new(false));
+
+        let state = TestState {
+            value: 42,
+            name: "cas_mismatch".to_string(),
+        };
+        let external_state = TestState {
+            value: -1,
+            name: "external".to_string(),
+        };
+        let effect_ran_for_closure = Arc::clone(&effect_ran);
+        let result: Result<((), PrepareReport), WithEffectError<anyhow::Error>> = coordinator
+            .with_pending_state(&state, move |_s| async move {
+                effect_ran_for_closure.store(true, Ordering::SeqCst);
+                store.store(Arc::new(VersionedState {
+                    version: Version::new(99),
+                    state: external_state,
+                }));
+                Ok(())
+            })
+            .await;
+
+        assert!(effect_ran.load(Ordering::SeqCst));
+        match result {
+            Err(WithEffectError::State(StateChangedError::StateCasMismatch {
+                expected,
+                actual,
+            })) => {
+                assert_eq!(expected, Version::new(0));
+                assert_eq!(actual, Version::new(99));
+            }
+            other => panic!("expected StateCasMismatch, got {other:?}"),
+        }
     }
 
     #[tokio::test]

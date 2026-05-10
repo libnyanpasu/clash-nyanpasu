@@ -11,13 +11,12 @@ import 'dayjs/locale/zh-cn'
 import 'dayjs/locale/zh-tw'
 import customParseFormat from 'dayjs/plugin/customParseFormat'
 import relativeTime from 'dayjs/plugin/relativeTime'
-import { lazy } from 'react'
-import useMount from 'react-use/esm/useMount'
+import { lazy, useEffect, useRef } from 'react'
 import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import CustomCssProvider from '@/components/providers/custom-css-provider'
 import { LanguageProvider } from '@/components/providers/language-provider'
 import { ExperimentalThemeProvider } from '@/components/providers/theme-provider'
-import { events, NyanpasuProvider } from '@nyanpasu/interface'
+import { events, NyanpasuProvider, useSettings } from '@nyanpasu/interface'
 
 dayjs.extend(relativeTime)
 dayjs.extend(customParseFormat)
@@ -79,23 +78,34 @@ export const Route = createRootRoute({
   pendingComponent: Pending,
 })
 
-export default function App() {
-  useMount(() => {
-    Promise.all([
-      appWindow.show(),
-      appWindow.unminimize(),
-      appWindow.setFocus(),
-    ]).finally(() => {
-      events.reactAppMountedEvent.emit(null)
-    })
-  })
+function WindowReveal() {
+  const { query } = useSettings()
+  const hasRevealed = useRef(false)
 
+  useEffect(() => {
+    if ((query.isSuccess || query.isError) && !hasRevealed.current) {
+      hasRevealed.current = true
+      Promise.all([
+        appWindow.show(),
+        appWindow.unminimize(),
+        appWindow.setFocus(),
+      ]).finally(() => {
+        events.windowReadyEvent.emit({ label: appWindow.label })
+      })
+    }
+  }, [query.isSuccess, query.isError])
+
+  return null
+}
+
+export default function App() {
   return (
     <NyanpasuProvider>
       <BlockTaskProvider>
         <LanguageProvider>
           <ExperimentalThemeProvider>
             <CustomCssProvider>
+              <WindowReveal />
               <Outlet />
             </CustomCssProvider>
           </ExperimentalThemeProvider>

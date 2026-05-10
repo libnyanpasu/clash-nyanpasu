@@ -6,7 +6,7 @@ use crate::{
     core::{storage::Storage, tray::proxies, *},
     log_err,
     utils::init,
-    window::{AppWindow, ReactAppMountedEvent, WindowConfig, WindowParamsBuilder},
+    window::{AppWindow, WindowConfig, WindowParamsBuilder, WindowReadyEvent},
 };
 use anyhow::Result;
 use semver::Version;
@@ -131,14 +131,17 @@ pub fn resolve_setup(app: &mut App) {
     #[cfg(target_os = "macos")]
     app.set_activation_policy(tauri::ActivationPolicy::Accessory);
     #[cfg(target_os = "macos")]
-    let app_handle = app.app_handle().clone();
-    ReactAppMountedEvent::listen(app, move |_| {
-        tracing::debug!("Frontend React App is mounted, reset open window counter");
-        reset_window_open_counter();
-        #[cfg(target_os = "macos")]
-        log_err!(app_handle.run_on_main_thread(move || {
-            crate::utils::dock::macos::show_dock_icon();
-        }));
+    let ready_app_handle = app.app_handle().clone();
+    WindowReadyEvent::listen(app, move |event| {
+        let label = &event.payload.label;
+        tracing::debug!("Window '{}' is ready", label);
+        if label == crate::consts::MAIN_WINDOW_LABEL {
+            reset_window_open_counter();
+            #[cfg(target_os = "macos")]
+            log_err!(ready_app_handle.run_on_main_thread(|| {
+                crate::utils::dock::macos::show_dock_icon();
+            }));
+        }
     });
 
     handle::Handle::global().init(app.app_handle().clone());
@@ -217,6 +220,7 @@ pub fn resolve_setup(app: &mut App) {
     let silent_start = { Config::verge().data().enable_silent_start };
     if !silent_start.unwrap_or(false) {
         create_window(app.app_handle());
+        spawn_window_ready_timeout(app.app_handle().clone());
     }
 
     log_err!(sysopt::Sysopt::global().init_launch());
@@ -236,6 +240,31 @@ pub fn resolve_setup(app: &mut App) {
     // test job
     proxies::setup_proxies();
     crate::core::storage::register_web_storage_listener(app.app_handle());
+}
+
+/// Spawn a background task that shows the main window after a timeout if the
+/// frontend never called show() — guards against a crashed or hung webview
+/// leaving the window permanently invisible.
+fn spawn_window_ready_timeout(app_handle: AppHandle) {
+    const TIMEOUT_SECS: u64 = 10;
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(TIMEOUT_SECS)).await;
+        let inner = app_handle.clone();
+        let _ = app_handle.run_on_main_thread(move || {
+            if let Some(win) = inner.get_webview_window(crate::consts::MAIN_WINDOW_LABEL) {
+                if !win.is_visible().unwrap_or(true) {
+                    tracing::warn!(
+                        "Main window still hidden after {}s timeout, showing as fallback",
+                        TIMEOUT_SECS
+                    );
+                    let _ = win.show();
+                    let _ = win.set_focus();
+                    #[cfg(target_os = "macos")]
+                    log_err!(crate::utils::dock::macos::show_dock_icon());
+                }
+            }
+        });
+    });
 }
 
 /// reset system proxy
@@ -263,7 +292,7 @@ impl AppWindow for MainWindow {
     fn config(&self) -> WindowConfig {
         WindowConfig::new()
             .singleton(true)
-            .visible_on_create(true)
+            .visible_on_create(false)
             .default_size(800.0, 636.0)
             .min_size(400.0, 600.0)
             .center(true)

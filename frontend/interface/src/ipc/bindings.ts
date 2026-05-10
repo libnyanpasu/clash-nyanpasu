@@ -853,15 +853,15 @@ export const commands = {
 export const events = __makeEvents__<{
   clashConnectionsEvent: ClashConnectionsEvent
   clashWsEvent: ClashWsEvent
-  reactAppMountedEvent: ReactAppMountedEvent
   storageValueChangedEvent: StorageValueChangedEvent
   windowMessageEvent: WindowMessageEvent
+  windowReadyEvent: WindowReadyEvent
 }>({
   clashConnectionsEvent: 'clash-connections-event',
   clashWsEvent: 'clash-ws-event',
-  reactAppMountedEvent: 'react-app-mounted-event',
   storageValueChangedEvent: 'storage-value-changed-event',
   windowMessageEvent: 'window-message-event',
+  windowReadyEvent: 'window-ready-event',
 })
 
 /** user-defined constants **/
@@ -1472,11 +1472,6 @@ export type ProxyItem = {
   hidden?: boolean
 }
 export type ProxyItemHistory = { time: string; delay: number }
-/**
- * Event emitted by the frontend when the React app is mounted.
- * Event name: `react-app-mounted-event`
- */
-export type ReactAppMountedEvent = null
 export type RemoteProfile = {
   /**
    * Profile ID
@@ -1752,6 +1747,12 @@ export type WindowMessageEvent = {
    */
   payload: JsonValue
 }
+/**
+ * Event emitted by the frontend when a window's webview is ready and visible.
+ * Carries the window label so the backend can handle per-window logic.
+ * Event name: `window-ready-event`
+ */
+export type WindowReadyEvent = { label: string }
 export type WindowState = {
   width: number
   height: number

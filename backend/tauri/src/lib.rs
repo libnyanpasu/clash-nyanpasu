@@ -295,7 +295,7 @@ pub fn run() -> std::io::Result<()> {
             core::clash::ClashConnectionsEvent,
             core::clash::ws::ClashWsEvent,
             window::WindowMessageEvent,
-            window::ReactAppMountedEvent,
+            window::WindowReadyEvent,
             core::storage::StorageValueChangedEvent
         ]);
 

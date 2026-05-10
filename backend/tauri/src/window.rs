@@ -270,10 +270,13 @@ impl WindowManager {
         self.instances.get(base_label).map(|v| v.len()).unwrap_or(0)
     }
 }
-/// Event emitted by the frontend when the React app is mounted.
-/// Event name: `react-app-mounted-event`
+/// Event emitted by the frontend when a window's webview is ready and visible.
+/// Carries the window label so the backend can handle per-window logic.
+/// Event name: `window-ready-event`
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
-pub struct ReactAppMountedEvent;
+pub struct WindowReadyEvent {
+    pub label: String,
+}
 
 /// Message for inter-window communication
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
@@ -536,7 +539,7 @@ pub trait AppWindow {
         let win_res = builder
             .decorations(false)
             .transparent(true)
-            .visible(false)
+            .visible(config.visible_on_create)
             .additional_browser_args("--enable-features=msWebView2EnableDraggableRegions --disable-features=OverscrollHistoryNavigation,msExperimentalScrolling")
             .build();
 
@@ -548,9 +551,13 @@ pub trait AppWindow {
                     .decorations(true)
                     .hidden_title(true)
                     .title_bar_style(tauri::TitleBarStyle::Overlay)
+                    .visible(config.visible_on_create)
                     .build()
             } else {
-                builder.decorations(false).build()
+                builder
+                    .decorations(false)
+                    .visible(config.visible_on_create)
+                    .build()
             }
         };
 
@@ -561,6 +568,7 @@ pub trait AppWindow {
             builder
                 .decorations(decorations)
                 .transparent(transparent)
+                .visible(config.visible_on_create)
                 .build()
         };
 

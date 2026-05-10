@@ -10,7 +10,7 @@ use super::{super::error::*, *};
 
 use crate::{
     format::{Format, YamlFormat},
-    state::CommitReport,
+    state::PrepareReport,
 };
 
 #[derive(Builder)]
@@ -190,7 +190,7 @@ where
         }
     }
 
-    pub async fn upsert(&mut self, state: State) -> Result<CommitReport, StateChangedError>
+    pub async fn upsert(&mut self, state: State) -> Result<PrepareReport, StateChangedError>
     where
         Formatter: Clone,
     {
@@ -472,7 +472,7 @@ mod tests {
         // ACK failure is post-commit — the error surfaces
         assert!(result.is_err());
         match result.unwrap_err() {
-            StateChangedError::CommitAck(e) => assert!(e.report.has_required_failures()),
+            StateChangedError::PrepareAck(e) => assert!(e.report.has_required_failures()),
             other => panic!("expected CommitAck error, got: {:?}", other),
         }
 
@@ -480,7 +480,10 @@ mod tests {
         assert_eq!(*manager.snapshot(), new_state);
 
         // persistence attempt IS made (file written) despite ACK failure
-        assert!(config_path.exists(), "weak persistence must run even after ACK failure");
+        assert!(
+            config_path.exists(),
+            "weak persistence must run even after ACK failure"
+        );
         let saved: TestState = read_yaml(&config_path).await.unwrap();
         assert_eq!(saved, new_state);
 

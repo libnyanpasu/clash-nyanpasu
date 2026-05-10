@@ -1,12 +1,27 @@
-use super::{StateSnapshot, ack::*, builder::*, error::*};
+use super::{
+    StateChangeId, StateSnapshot, VersionedState,
+    ack::*,
+    builder::*,
+    error::*,
+    transaction::{NotifyStrategy, new_transaction},
+};
+use anyhow::anyhow;
 use arc_swap::ArcSwap;
 use indexmap::IndexMap;
-use std::{future::Future, sync::Arc, time::Instant};
+use std::{borrow::Cow, future::Future, sync::Arc};
+use tokio::sync::Semaphore;
+
+pub(super) type ArcStateSubscriber<T> = Arc<dyn StateAckSubscriber<T> + Send + Sync>;
+pub(super) type Subscribers<T> = Vec<ArcStateSubscriber<T>>;
+pub(super) type StateStore<T> = Arc<ArcSwap<VersionedState<T>>>;
 
 #[non_exhaustive]
 pub struct StateCoordinator<T: Clone + Send + Sync + 'static> {
-    current_state: Arc<ArcSwap<T>>,
-    subscribers: IndexMap<String, Box<dyn StateAckSubscriber<T> + Send + Sync>>,
+    current_state: StateStore<T>,
+    notify_strategy: NotifyStrategy,
+    subscribers: IndexMap<SubscriberName<'static>, ArcStateSubscriber<T>>,
+    semaphore: Arc<Semaphore>,
+    next_change_id: StateChangeId,
 }
 
 impl<T: Clone + Send + Sync> StateCoordinator<T> {
@@ -14,26 +29,31 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         StateCoordinatorBuilder::default()
     }
 
+    /// Add subscriber to the coordinator. If a subscriber with the same name already exists, it will be replaced and returned.
     pub fn add_subscriber(
         &mut self,
-        subscriber: Box<dyn StateAckSubscriber<T> + Send + Sync>,
-    ) -> Option<Box<dyn StateAckSubscriber<T> + Send + Sync>> {
-        let name = subscriber.name().to_string();
-        let replaced = self.subscribers.insert(name.clone(), subscriber);
+        subscriber: ArcStateSubscriber<T>,
+    ) -> Option<ArcStateSubscriber<T>> {
+        let owned_name: SubscriberName<'static> = {
+            let name = subscriber.name();
+            SubscriberName(Cow::Owned(name.to_string()))
+        };
+        let replaced = self.subscribers.insert(owned_name.clone(), subscriber);
         if replaced.is_some() {
-            tracing::warn!(subscriber = %name, "replaced existing subscriber with same name");
+            tracing::warn!(subscriber = %owned_name, "replaced existing subscriber with same name");
         }
         replaced
     }
 
-    pub fn remove_subscriber(
-        &mut self,
-        name: &str,
-    ) -> Option<Box<dyn StateAckSubscriber<T> + Send + Sync>> {
-        self.subscribers.shift_remove(name)
+    /// Remove subscriber from the coordinator by name. Returns the removed subscriber if it existed.
+    pub fn remove_subscriber<'s, 'a>(
+        &'s mut self,
+        name: impl Into<SubscriberName<'static>>,
+    ) -> Option<ArcStateSubscriber<T>> {
+        self.subscribers.shift_remove(&name.into())
     }
 
-    pub fn snapshot(&self) -> Arc<T> {
+    pub fn snapshot(&self) -> Arc<VersionedState<T>> {
         self.current_state.load_full()
     }
 
@@ -41,114 +61,153 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
         StateSnapshot::new(Arc::clone(&self.current_state))
     }
 
-    /// Notify all subscribers sequentially about a committed state change.
-    ///
-    /// **Warning**: Subscribers are awaited one-by-one. Public mutating methods
-    /// (`upsert`, `upsert_state`, `with_pending_state`) hold `&mut self` across
-    /// the entire commit-then-notify sequence, so a slow subscriber blocks all
-    /// subsequent ones and any concurrent mutation. See [`StateAckSubscriber`]
-    /// for deadlock avoidance guidance.
-    async fn notify_committed(&self, change: StateChange<T>) -> CommitReport {
-        let mut report = CommitReport::default();
-        for subscriber in self.subscribers.values() {
-            if subscriber.is_terminated() {
-                report.push(SubscriberAck {
-                    name: subscriber.name().to_string(),
-                    policy: subscriber.ack_options().policy,
-                    timeout: subscriber.ack_options().timeout,
-                    elapsed: std::time::Duration::ZERO,
-                    status: AckStatus::SkippedTerminated,
-                });
-                continue;
-            }
-            let options = subscriber.ack_options();
-            let started = Instant::now();
-            let status = match tokio::time::timeout(
-                options.timeout,
-                subscriber.on_committed(change.clone()),
-            )
-            .await
-            {
-                Ok(Ack::Ok) => AckStatus::Acked,
-                Ok(Ack::Degraded(msg)) => AckStatus::Degraded { message: msg },
-                Ok(Ack::Failed(error)) => {
-                    tracing::error!(
-                        subscriber = subscriber.name(),
-                        "subscriber ACK failed: {error}"
-                    );
-                    AckStatus::Failed { error }
-                }
-                Err(_) => {
-                    tracing::warn!(
-                        subscriber = subscriber.name(),
-                        timeout_ms = options.timeout.as_millis(),
-                        "subscriber ACK timed out"
-                    );
-                    AckStatus::TimedOut
-                }
-            };
-            report.push(SubscriberAck {
-                name: subscriber.name().to_string(),
-                policy: options.policy,
-                timeout: options.timeout,
-                elapsed: started.elapsed(),
-                status,
-            });
-        }
-        report
+    fn next_change_id(&mut self) -> StateChangeId {
+        let id = self.next_change_id;
+        self.next_change_id = self.next_change_id.next();
+        id
     }
 
-    fn store_state(&mut self, state: T) -> (StateChange<T>, Arc<T>) {
-        let previous = self.current_state.load_full();
-        let current = Arc::new(state);
-        self.current_state.store(Arc::clone(&current));
-        let change = StateChange::new(Some(previous), current.clone());
-        (change, current)
-    }
-
-    async fn commit_notify_signal(&mut self, state: T) -> Result<CommitReport, StateChangedError> {
-        let (change, _) = self.store_state(state);
-        let report = self.notify_committed(change).await;
-        if report.has_required_failures() {
-            Err(StateChangedError::CommitAck(CommitAckError { report }))
-        } else {
-            Ok(report)
-        }
+    fn clone_subscribers(&self) -> Subscribers<T> {
+        self.subscribers.values().cloned().collect()
     }
 
     pub async fn upsert(
         &mut self,
         builder: impl StateAsyncBuilder<State = T>,
-    ) -> Result<CommitReport, StateChangedError> {
+    ) -> Result<PrepareReport, StateChangedError> {
+        let permit = self
+            .semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .expect("semaphore should never closed");
+        let subscribers = self.clone_subscribers();
+        let notify_strategy = self.notify_strategy;
         let new_state = builder
             .build()
             .await
             .map_err(StateChangedError::Validation)?;
-        self.commit_notify_signal(new_state).await
+        let next_changed_id = self.next_change_id();
+        let current_state = self.snapshot();
+        let change = StateChange {
+            id: next_changed_id,
+            previous: Some(current_state.clone()),
+            current: Arc::new(new_state),
+        };
+        let tx = new_transaction(
+            change,
+            self.current_state.clone(),
+            subscribers,
+            notify_strategy,
+            permit,
+        );
+        match tx.commit().await {
+            Ok((report, _)) => Ok(report),
+            Err((report, _rolled_back_tx)) => match report {
+                Some(r) => Err(StateChangedError::PrepareAck(PrepareAckError { report: r })),
+                None => Err(StateChangedError::StateCasMismatch {
+                    expected: current_state.version,
+                    actual: self.snapshot().version,
+                }),
+            },
+        }
     }
 
-    pub async fn upsert_state(&mut self, state: T) -> Result<CommitReport, StateChangedError> {
-        self.commit_notify_signal(state).await
+    pub async fn upsert_state(&mut self, new_state: T) -> Result<PrepareReport, StateChangedError> {
+        let permit = self
+            .semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .expect("semaphore should never closed");
+        let subscribers = self.clone_subscribers();
+        let notify_strategy = self.notify_strategy;
+        let next_changed_id = self.next_change_id();
+        let current_state = self.snapshot();
+        let change = StateChange {
+            id: next_changed_id,
+            previous: Some(current_state.clone()),
+            current: Arc::new(new_state),
+        };
+        let tx = new_transaction(
+            change,
+            self.current_state.clone(),
+            subscribers,
+            notify_strategy,
+            permit,
+        );
+        match tx.commit().await {
+            Ok((report, _)) => Ok(report),
+            Err((report, _rolled_back_tx)) => match report {
+                Some(r) => Err(StateChangedError::PrepareAck(PrepareAckError { report: r })),
+                None => Err(StateChangedError::StateCasMismatch {
+                    expected: current_state.version,
+                    actual: self.snapshot().version,
+                }),
+            },
+        }
     }
 
     pub async fn with_pending_state<'s, F, Fut, R, E>(
         &mut self,
-        state: &'s T,
+        new_state: &'s T,
         effect_fn: F,
-    ) -> Result<(R, CommitReport), WithEffectError<E>>
+    ) -> Result<(R, PrepareReport), WithEffectError<E>>
     where
         F: FnOnce(&'s T) -> Fut,
         Fut: Future<Output = Result<R, E>> + 's,
+        E: std::error::Error,
     {
-        let result = effect_fn(state).await.map_err(WithEffectError::Effect)?;
-        let (change, _) = self.store_state(state.clone());
-        let report = self.notify_committed(change).await;
-        if report.has_required_failures() {
-            return Err(WithEffectError::State(StateChangedError::CommitAck(
-                CommitAckError { report },
-            )));
+        let permit = self
+            .semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .expect("semaphore should never closed");
+        let subscribers = self.clone_subscribers();
+        let notify_strategy = self.notify_strategy;
+        let next_changed_id = self.next_change_id();
+        let current_state = self.snapshot();
+        let change = StateChange {
+            id: next_changed_id,
+            previous: Some(current_state.clone()),
+            current: Arc::new(new_state.clone()),
+        };
+        let tx = new_transaction(
+            change,
+            self.current_state.clone(),
+            subscribers,
+            notify_strategy,
+            permit,
+        );
+        let (report, tx) = match tx.prepare().await {
+            Ok((report, prepared_tx)) => (report, prepared_tx),
+            Err((report, _)) => {
+                return Err(WithEffectError::State(StateChangedError::PrepareAck(
+                    PrepareAckError { report },
+                )));
+            }
+        };
+        match effect_fn(new_state).await.map_err(WithEffectError::Effect) {
+            Ok(result) => {
+                match tx.commit().await {
+                    Ok(_committed_tx) => Ok((result, report)),
+                    Err(_) => Err(WithEffectError::State(
+                        StateChangedError::StateCasMismatch {
+                            expected: current_state.version,
+                            actual: self.snapshot().version,
+                        },
+                    )),
+                }
+            }
+            Err(e) => {
+                tx.rollback(RollbackReason::CoordinatorError(Arc::new(anyhow!(
+                    "effect function failed: {e:#?}"
+                ))))
+                .await;
+                return Err(e);
+            }
         }
-        Ok((result, report))
     }
 }
 
@@ -411,7 +470,7 @@ mod test {
         assert!(result.is_err());
 
         match &result.unwrap_err() {
-            StateChangedError::CommitAck(e) => {
+            StateChangedError::PrepareAck(e) => {
                 assert!(e.report.has_required_failures());
             }
             other => panic!("Expected CommitAck error, got: {other:?}"),
@@ -557,7 +616,7 @@ mod test {
         assert!(result.is_err());
 
         match &result.unwrap_err() {
-            StateChangedError::CommitAck(e) => {
+            StateChangedError::PrepareAck(e) => {
                 assert!(e.report.has_required_failures());
                 assert!(matches!(
                     e.report.subscriber_acks[0].status,
@@ -579,7 +638,7 @@ mod test {
             fn name(&self) -> &str {
                 "terminated"
             }
-            fn is_terminated(&self) -> bool {
+            fn is_shutdown(&self) -> bool {
                 true
             }
             async fn on_committed(&self, _change: StateChange<TestState>) -> Ack {
@@ -598,11 +657,11 @@ mod test {
         let result = coordinator.upsert_state(test_state.clone()).await;
         assert!(result.is_err());
         match &result.unwrap_err() {
-            StateChangedError::CommitAck(e) => {
+            StateChangedError::PrepareAck(e) => {
                 assert!(e.report.has_required_failures());
                 assert!(matches!(
                     e.report.subscriber_acks[0].status,
-                    AckStatus::SkippedTerminated
+                    AckStatus::SkippedShutdown
                 ));
             }
             other => panic!("Expected CommitAck, got: {other:?}"),
@@ -619,7 +678,7 @@ mod test {
             fn name(&self) -> &str {
                 "terminated_advisory"
             }
-            fn is_terminated(&self) -> bool {
+            fn is_shutdown(&self) -> bool {
                 true
             }
             fn ack_options(&self) -> AckOptions {
@@ -643,15 +702,15 @@ mod test {
         let report = result.unwrap();
         assert!(matches!(
             report.subscriber_acks[0].status,
-            AckStatus::SkippedTerminated
+            AckStatus::SkippedShutdown
         ));
     }
 
     #[tokio::test]
     async fn test_is_post_commit() {
         assert!(
-            StateChangedError::CommitAck(CommitAckError {
-                report: CommitReport::default()
+            StateChangedError::PrepareAck(PrepareAckError {
+                report: PrepareReport::default()
             })
             .is_post_commit()
         );
@@ -696,7 +755,7 @@ mod test {
             value: 99,
             name: "effect_fail".to_string(),
         };
-        let result: Result<((), CommitReport), WithEffectError<anyhow::Error>> = coordinator
+        let result: Result<((), PrepareReport), WithEffectError<anyhow::Error>> = coordinator
             .with_pending_state(&state, |_s| async move {
                 Err::<(), _>(anyhow::anyhow!("effect failed"))
             })
@@ -769,8 +828,8 @@ mod test {
         let error_string = format!("{}", state_error);
         assert!(error_string.contains("builder validation error"));
 
-        let commit_ack_error = StateChangedError::CommitAck(CommitAckError {
-            report: CommitReport::default(),
+        let commit_ack_error = StateChangedError::PrepareAck(PrepareAckError {
+            report: PrepareReport::default(),
         });
         let error_string = format!("{}", commit_ack_error);
         assert!(error_string.contains("required subscriber ACK failed"));
@@ -833,7 +892,10 @@ mod test {
         assert_eq!(coordinator.subscribers.len(), 1);
 
         let removed = coordinator.remove_subscriber("removable");
-        assert!(removed.is_some(), "remove_subscriber must return the removed subscriber");
+        assert!(
+            removed.is_some(),
+            "remove_subscriber must return the removed subscriber"
+        );
         assert_eq!(coordinator.subscribers.len(), 0);
 
         // confirm the removed subscriber is no longer notified
@@ -874,7 +936,11 @@ mod test {
 
         // sub_b replaced sub_a, so only sub_b receives notifications
         assert_eq!(sub_a.call_count(), 0, "first sub must be replaced");
-        assert_eq!(sub_b.call_count(), 1, "second sub must receive the notification");
+        assert_eq!(
+            sub_b.call_count(),
+            1,
+            "second sub must receive the notification"
+        );
     }
 
     #[tokio::test]

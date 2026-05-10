@@ -1,6 +1,6 @@
 use bon::Builder;
 
-use crate::state::CommitReport;
+use crate::state::PrepareReport;
 
 use super::{super::error::*, *};
 
@@ -61,7 +61,7 @@ where
 
     super::impl_state_manager_delegates!(State);
 
-    pub async fn upsert(&mut self, state: State) -> Result<CommitReport, StateChangedError> {
+    pub async fn upsert(&mut self, state: State) -> Result<PrepareReport, StateChangedError> {
         self.state_coordinator.upsert_state(state).await
     }
 }

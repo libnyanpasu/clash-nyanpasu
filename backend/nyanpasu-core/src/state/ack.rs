@@ -1,31 +1,15 @@
-use std::{sync::Arc, time::Duration};
+use std::{borrow::Cow, sync::Arc, time::Duration};
+
+use super::{
+    VersionedState,
+    version::{StateChangeId, Version},
+};
 
 #[derive(Debug, Clone)]
 pub struct StateChange<T: Clone + Send + Sync + 'static> {
-    previous: Option<Arc<T>>,
-    current: Arc<T>,
-}
-
-impl<T: Clone + Send + Sync + 'static> StateChange<T> {
-    pub fn new(previous: Option<Arc<T>>, current: Arc<T>) -> Self {
-        Self { previous, current }
-    }
-
-    pub fn previous(&self) -> Option<&T> {
-        self.previous.as_deref()
-    }
-
-    pub fn previous_arc(&self) -> Option<Arc<T>> {
-        self.previous.clone()
-    }
-
-    pub fn current(&self) -> &T {
-        self.current.as_ref()
-    }
-
-    pub fn current_arc(&self) -> Arc<T> {
-        self.current.clone()
-    }
+    pub id: StateChangeId,
+    pub previous: Option<Arc<VersionedState<T>>>,
+    pub current: Arc<T>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,8 +49,53 @@ impl Default for AckOptions {
 #[derive(Debug)]
 pub enum Ack {
     Ok,
+    /// Successful ACK but with some degradation, e.g. degraded performance or partial failure that does not block the commit.
     Degraded(String),
+    /// Reject with a message explaining the reason. This is a failure that should block the commit.
+    Rejected(String),
+    /// Failed with an error. This is a failure that should block the commit and may require investigation.
     Failed(anyhow::Error),
+}
+
+/// A unique identifier for a subscriber, used in logging and reporting. It can be a simple string or a more complex struct if needed.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct SubscriberName<'a>(pub Cow<'a, str>);
+
+impl core::fmt::Display for SubscriberName<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl SubscriberName<'_> {
+    pub fn into_static(self) -> SubscriberName<'static> {
+        SubscriberName(Cow::Owned(self.0.into_owned()))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum SubscriberFailureKind {
+    Rejected { reason: String },
+    Failed { error: Arc<anyhow::Error> },
+    TimedOut,
+}
+
+#[derive(Debug, Clone)]
+pub struct SubscriberFailure {
+    pub name: SubscriberName<'static>,
+    pub kind: SubscriberFailureKind,
+}
+
+#[derive(Debug, Clone)]
+pub enum RollbackReason {
+    /// Global coordinator timeout waiting for required ACKs.
+    Timeout,
+    /// Any required ACK returned a failure status (rejected, failed, or timed out).
+    SubscriberFailed(Vec<SubscriberFailure>),
+    /// An unexpected error occurred in the coordinator or during notification.
+    CoordinatorError(Arc<anyhow::Error>),
+    /// CAS mismatch detected during commit, indicating the state was changed by another transaction after this transaction was prepared.
+    StoreStateCasMismatch { expected: Version, actual: Version },
 }
 
 /// # Deadlock Warning
@@ -83,77 +112,65 @@ pub enum Ack {
 /// - Cycle: A->B->A (mutual subscription)
 #[async_trait::async_trait]
 pub trait StateAckSubscriber<T: Clone + Send + Sync + 'static>: Send + Sync {
-    fn name(&self) -> &str;
+    /// A unique name for this subscriber, used in logging and reporting.
+    fn name(&self) -> SubscriberName<'_>;
 
-    fn is_terminated(&self) -> bool {
+    /// If true, the coordinator will skip this subscriber and treat it as if it acknowledged immediately.
+    fn is_shutdown(&self) -> bool {
         false
     }
 
+    /// Ack options for this subscriber. By default, it's required with a 30-second timeout.
     fn ack_options(&self) -> AckOptions {
         AckOptions::default()
     }
 
+    /// Required / advisory ACK
+    /// The coordinator will wait for the ACK response before proceeding to the next subscriber or finalizing the commit.
+    async fn on_prepare(&self, change: StateChange<T>) -> Ack;
+
+    /// Post commit ACK for monitoring and reporting purposes. It does not affect the commit process.
     async fn on_committed(&self, change: StateChange<T>) -> Ack;
+
+    /// Optional hook for handling rollbacks, e.g. to clean up resources provisioned during on_prepare.
+    async fn on_rolled_back(&self, _change: StateChange<T>, _reason: RollbackReason);
 }
 
-#[async_trait::async_trait]
-impl<T, S> StateAckSubscriber<T> for Arc<S>
-where
-    T: Clone + Send + Sync + 'static,
-    S: StateAckSubscriber<T> + ?Sized,
-{
-    fn name(&self) -> &str {
-        self.as_ref().name()
-    }
-
-    fn is_terminated(&self) -> bool {
-        self.as_ref().is_terminated()
-    }
-
-    fn ack_options(&self) -> AckOptions {
-        self.as_ref().ack_options()
-    }
-
-    async fn on_committed(&self, change: StateChange<T>) -> Ack {
-        self.as_ref().on_committed(change).await
-    }
-}
-
-#[async_trait::async_trait]
-impl<T, S> StateAckSubscriber<T> for Box<S>
-where
-    T: Clone + Send + Sync + 'static,
-    S: StateAckSubscriber<T> + ?Sized,
-{
-    fn name(&self) -> &str {
-        self.as_ref().name()
-    }
-
-    fn is_terminated(&self) -> bool {
-        self.as_ref().is_terminated()
-    }
-
-    fn ack_options(&self) -> AckOptions {
-        self.as_ref().ack_options()
-    }
-
-    async fn on_committed(&self, change: StateChange<T>) -> Ack {
-        self.as_ref().on_committed(change).await
-    }
-}
+pub enum RequiredAckFailureStatus {}
 
 #[derive(Debug)]
 pub enum AckStatus {
     Acked,
-    Degraded { message: String },
-    Failed { error: anyhow::Error },
+    Degraded {
+        message: String,
+    },
+    Rejected {
+        reason: String,
+    },
+    Failed {
+        error: Arc<anyhow::Error>,
+    },
     TimedOut,
-    SkippedTerminated,
+    /// A Service is shutdown and cannot process ACKs, so the coordinator will skip waiting for it and treat it as if it acknowledged immediately.
+    SkippedShutdown,
+}
+
+impl From<Ack> for AckStatus {
+    fn from(ack: Ack) -> Self {
+        match ack {
+            Ack::Ok => AckStatus::Acked,
+            Ack::Degraded(message) => AckStatus::Degraded { message },
+            Ack::Rejected(message) => AckStatus::Rejected { reason: message },
+            Ack::Failed(error) => AckStatus::Failed {
+                error: Arc::new(error),
+            },
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct SubscriberAck {
-    pub name: String,
+    pub name: SubscriberName<'static>,
     pub policy: AckPolicy,
     pub timeout: Duration,
     pub elapsed: Duration,
@@ -165,17 +182,17 @@ impl SubscriberAck {
         self.policy == AckPolicy::Required
             && matches!(
                 self.status,
-                AckStatus::Failed { .. } | AckStatus::TimedOut | AckStatus::SkippedTerminated
+                AckStatus::Rejected { .. } | AckStatus::Failed { .. } | AckStatus::TimedOut
             )
     }
 }
 
 #[derive(Debug, Default)]
-pub struct CommitReport {
+pub struct PrepareReport {
     pub subscriber_acks: Vec<SubscriberAck>,
 }
 
-impl CommitReport {
+impl PrepareReport {
     pub fn push(&mut self, ack: SubscriberAck) {
         self.subscriber_acks.push(ack);
     }

@@ -10,7 +10,7 @@ use super::{super::error::*, *};
 
 use crate::{
     format::{Format, YamlFormat},
-    state::CommitReport,
+    state::PrepareReport,
 };
 
 #[derive(Builder)]
@@ -142,7 +142,7 @@ where
 {
     super::impl_state_manager_delegates!(State);
 
-    pub async fn upsert(&mut self, state: State) -> Result<CommitReport, UpsertError>
+    pub async fn upsert(&mut self, state: State) -> Result<PrepareReport, UpsertError>
     where
         Formatter: Clone,
     {
@@ -494,22 +494,26 @@ mod tests {
         let sub = FailingInitSubscriber {
             calls: Arc::clone(&calls),
         };
-        manager
-            .state_coordinator
-            .add_subscriber(Box::new(sub));
+        manager.state_coordinator.add_subscriber(Box::new(sub));
 
         let new_state = TestState::new("post_commit".to_string(), 77);
         let result = manager.upsert(new_state.clone()).await;
 
         // upsert writes the file BEFORE notifying subscribers, so the file must exist
-        assert!(config_path.exists(), "config file must be written even when ACK fails");
+        assert!(
+            config_path.exists(),
+            "config file must be written even when ACK fails"
+        );
         let saved: TestState = read_yaml(&config_path).await.unwrap();
         assert_eq!(saved, new_state);
 
         // the error is a post-commit ACK failure, not a write failure
         match result.unwrap_err() {
             UpsertError::State(e) => assert!(e.is_post_commit()),
-            other => panic!("expected UpsertError::State (post-commit), got: {:?}", other),
+            other => panic!(
+                "expected UpsertError::State (post-commit), got: {:?}",
+                other
+            ),
         }
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }

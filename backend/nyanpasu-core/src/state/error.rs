@@ -1,10 +1,9 @@
-use super::ack::CommitReport;
-use std::fmt;
-
+use super::{ack::PrepareReport, version::Version};
+use std::{error::Error, fmt};
 #[derive(thiserror::Error, Debug)]
 #[error("state committed but required subscriber ACK failed")]
-pub struct CommitAckError {
-    pub report: CommitReport,
+pub struct PrepareAckError {
+    pub report: PrepareReport,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -12,13 +11,18 @@ pub enum StateChangedError {
     #[error("builder validation error: {0}")]
     Validation(anyhow::Error),
 
-    #[error("state committed but required subscriber ACK failed: {0}")]
-    CommitAck(CommitAckError),
+    #[error("state pre-commit but required subscriber ACK failed: {0}")]
+    PrepareAck(PrepareAckError),
+    /// This error indicates that the state has been updated optimistically, but the commit failed due to required subscriber ACK failures. The caller should check the current state and decide whether to retry or not.
+    #[error(
+        "state commit failed due to cas mismatch: expected version {expected}, but actual version is {actual}"
+    )]
+    StateCasMismatch { expected: Version, actual: Version },
 }
 
 impl StateChangedError {
     pub fn is_post_commit(&self) -> bool {
-        matches!(self, StateChangedError::CommitAck(_))
+        matches!(self, StateChangedError::PrepareAck(_))
     }
 }
 
@@ -51,7 +55,7 @@ impl<Manager> fmt::Debug for LoadError<Manager> {
 #[error("state committed but required subscriber ACK failed during initialization")]
 pub struct InitAckError<T: Clone + Send + Sync + 'static> {
     pub coordinator: super::coordinator::StateCoordinator<T>,
-    pub report: CommitReport,
+    pub report: PrepareReport,
 }
 
 impl<T: Clone + Send + Sync + 'static> std::fmt::Debug for InitAckError<T> {
@@ -63,22 +67,22 @@ impl<T: Clone + Send + Sync + 'static> std::fmt::Debug for InitAckError<T> {
 }
 
 impl<T: Clone + Send + Sync + 'static> InitAckError<T> {
-    pub fn into_parts(self) -> (super::coordinator::StateCoordinator<T>, CommitReport) {
+    pub fn into_parts(self) -> (super::coordinator::StateCoordinator<T>, PrepareReport) {
         (self.coordinator, self.report)
     }
 }
 
 pub struct ManagerInitError<Manager> {
     pub manager: Manager,
-    pub report: CommitReport,
+    pub report: PrepareReport,
 }
 
 impl<Manager> ManagerInitError<Manager> {
-    pub fn new(manager: Manager, report: CommitReport) -> Self {
+    pub fn new(manager: Manager, report: PrepareReport) -> Self {
         Self { manager, report }
     }
 
-    pub fn into_parts(self) -> (Manager, CommitReport) {
+    pub fn into_parts(self) -> (Manager, PrepareReport) {
         (self.manager, self.report)
     }
 }
@@ -117,7 +121,7 @@ impl UpsertError {
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum WithEffectError<E> {
+pub enum WithEffectError<E: Error> {
     #[error("state commit failed: {0}")]
     State(StateChangedError),
 

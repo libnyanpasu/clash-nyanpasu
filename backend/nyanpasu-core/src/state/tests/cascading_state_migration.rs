@@ -238,7 +238,7 @@ async fn cascade_committed_even_when_leaf_fails() {
     // So A's report will show bridge as failed (Required policy)
     assert!(result.is_err());
     match &result.unwrap_err() {
-        StateChangedError::CommitAck(e) => {
+        StateChangedError::PrepareAck(e) => {
             assert!(e.report.has_required_failures());
         }
         other => panic!("Expected CommitAck, got: {other:?}"),
@@ -256,7 +256,7 @@ async fn cascade_committed_even_when_leaf_fails() {
 async fn cascade_no_commit_on_effect_failure() {
     let mut chain = build_chain();
 
-    let result: Result<((), CommitReport), WithEffectError<anyhow::Error>> = chain
+    let result: Result<((), PrepareReport), WithEffectError<anyhow::Error>> = chain
         .a
         .with_pending_state(&42, |_state| async {
             Err::<(), _>(anyhow::anyhow!("effect failed"))
@@ -368,7 +368,7 @@ async fn cascade_sibling_failure_still_committed() {
     // Result is error because sibling (Required) failed
     assert!(result.is_err());
     match &result.unwrap_err() {
-        StateChangedError::CommitAck(e) => {
+        StateChangedError::PrepareAck(e) => {
             assert!(e.report.has_required_failures());
         }
         other => panic!("Expected CommitAck, got: {other:?}"),
@@ -388,7 +388,7 @@ async fn cascade_effect_failure_with_prev_state() {
     assert_eq!(&*chain.b.lock().await.snapshot(), "derived_from_1");
 
     // Second: with_pending_state where effect fails
-    let result: Result<((), CommitReport), WithEffectError<anyhow::Error>> = chain
+    let result: Result<((), PrepareReport), WithEffectError<anyhow::Error>> = chain
         .a
         .with_pending_state(&2, |_state| async {
             Err::<(), _>(anyhow::anyhow!("disk write failed"))

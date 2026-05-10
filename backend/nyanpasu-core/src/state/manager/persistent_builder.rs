@@ -10,7 +10,7 @@ use super::{super::error::*, *};
 
 use crate::{
     format::{Format, YamlFormat},
-    state::CommitReport,
+    state::PrepareReport,
 };
 
 #[derive(Builder)]
@@ -180,7 +180,7 @@ where
         self.current_builder.clone()
     }
 
-    pub async fn upsert(&mut self, builder: Builder) -> Result<CommitReport, UpsertError>
+    pub async fn upsert(&mut self, builder: Builder) -> Result<PrepareReport, UpsertError>
     where
         Formatter: Clone,
         Builder: Clone,
@@ -535,7 +535,7 @@ mod tests {
         let result = manager.upsert(builder.clone()).await;
 
         match result {
-            Err(UpsertError::State(StateChangedError::CommitAck(error))) => {
+            Err(UpsertError::State(StateChangedError::PrepareAck(error))) => {
                 assert!(error.report.has_required_failures());
                 assert_eq!(error.report.subscriber_acks.len(), 1);
                 assert_eq!(error.report.subscriber_acks[0].name, "failing_runtime");

@@ -1,23 +1,25 @@
 use arc_swap::ArcSwap;
 use std::sync::Arc;
 
-pub struct StateSnapshot<T: Clone + Send + Sync + 'static>(Arc<ArcSwap<T>>);
+use crate::state::VersionedState;
+
+pub struct StateSnapshot<T: Clone + Send + Sync + 'static>(Arc<ArcSwap<VersionedState<T>>>);
 
 impl<T> StateSnapshot<T>
 where
     T: Clone + Send + Sync + 'static,
 {
-    pub fn new(value: Arc<ArcSwap<T>>) -> Self {
+    pub fn new(value: Arc<ArcSwap<VersionedState<T>>>) -> Self {
         Self(value)
     }
 
-    pub fn load(&self) -> Arc<T> {
+    pub fn load(&self) -> Arc<VersionedState<T>> {
         self.0.load_full()
     }
 }
 
-impl<T: Clone + Send + Sync + 'static> From<Arc<ArcSwap<T>>> for StateSnapshot<T> {
-    fn from(arc_swap: Arc<ArcSwap<T>>) -> Self {
+impl<T: Clone + Send + Sync + 'static> From<Arc<ArcSwap<VersionedState<T>>>> for StateSnapshot<T> {
+    fn from(arc_swap: Arc<ArcSwap<VersionedState<T>>>) -> Self {
         Self(arc_swap)
     }
 }

@@ -23,6 +23,15 @@ pub struct VersionedState<T: Clone + Send + Sync + 'static> {
     pub state: T,
 }
 
+impl<T> PartialEq<T> for VersionedState<T>
+where
+    T: Clone + Send + Sync + PartialEq + 'static,
+{
+    fn eq(&self, other: &T) -> bool {
+        self.state.eq(other)
+    }
+}
+
 impl<T> core::ops::Deref for VersionedState<T>
 where
     T: Clone + Send + Sync + 'static,

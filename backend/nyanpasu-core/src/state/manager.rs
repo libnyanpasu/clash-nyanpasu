@@ -18,7 +18,7 @@ macro_rules! impl_state_manager_delegates {
         pub fn remove_subscriber(
             &mut self,
             name: &str,
-        ) -> Option<Box<dyn $crate::state::StateAckSubscriber<$state> + Send + Sync>> {
+        ) -> Option<std::sync::Arc<dyn $crate::state::StateAckSubscriber<$state> + Send + Sync>> {
             self.state_coordinator.remove_subscriber(name)
         }
     };

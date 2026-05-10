@@ -229,7 +229,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{Ack, AckStatus, StateAckSubscriber, StateChange};
+    use crate::state::{Ack, StateAckSubscriber, StateChange, SubscriberName};
     use serde::{Deserialize, Serialize};
     use std::sync::{
         Arc,
@@ -305,31 +305,15 @@ mod tests {
         calls: Arc<AtomicUsize>,
     }
 
-    struct FailingRuntimeSubscriber {
-        calls: Arc<AtomicUsize>,
-    }
-
     #[async_trait::async_trait]
     impl StateAckSubscriber<TestState> for FailingInitSubscriber {
-        fn name(&self) -> &str {
-            "failing_init"
+        fn name(&self) -> SubscriberName<'_> {
+            "failing_init".into()
         }
 
-        async fn on_committed(&self, _change: StateChange<TestState>) -> Ack {
+        async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ack::Failed(anyhow::anyhow!("init ACK failed"))
-        }
-    }
-
-    #[async_trait::async_trait]
-    impl StateAckSubscriber<TestState> for FailingRuntimeSubscriber {
-        fn name(&self) -> &str {
-            "failing_runtime"
-        }
-
-        async fn on_committed(&self, _change: StateChange<TestState>) -> Ack {
-            self.calls.fetch_add(1, Ordering::SeqCst);
-            Ack::Failed(anyhow::anyhow!("runtime ACK failed"))
         }
     }
 
@@ -510,57 +494,6 @@ mod tests {
         let saved_builder: TestBuilder = read_yaml(&config_path).await.unwrap();
         assert_eq!(saved_builder.name, "updated");
         assert_eq!(saved_builder.value, 200);
-    }
-
-    #[tokio::test]
-    async fn test_upsert_post_commit_ack_failure_updates_state_builder_and_config() {
-        let temp_dir = tempdir().unwrap();
-        let config_path = temp_dir.path().join("post_commit_ack_fail.yaml");
-        let config_path = Utf8PathBuf::from_path_buf(config_path).unwrap();
-
-        let initial = TestBuilder::new("initial".to_string(), 0);
-        let mut manager = PersistentBuiltStateManagerSetup::<TestState, TestBuilder>::builder()
-            .config_path(config_path.clone())
-            .assemble()
-            .from_builder(initial)
-            .await
-            .unwrap();
-
-        let calls = Arc::new(AtomicUsize::new(0));
-        manager.add_subscriber(Box::new(FailingRuntimeSubscriber {
-            calls: Arc::clone(&calls),
-        }));
-
-        let builder = TestBuilder::new("committed_after_ack_failure".to_string(), 201);
-        let result = manager.upsert(builder.clone()).await;
-
-        match result {
-            Err(UpsertError::State(StateChangedError::PrepareAck(error))) => {
-                assert!(error.report.has_required_failures());
-                assert_eq!(error.report.subscriber_acks.len(), 1);
-                assert_eq!(error.report.subscriber_acks[0].name, "failing_runtime");
-                assert!(matches!(
-                    error.report.subscriber_acks[0].status,
-                    AckStatus::Failed { .. }
-                ));
-            }
-            Err(error) => panic!("expected post-commit ACK failure, got {error:?}"),
-            Ok(_) => panic!("expected post-commit ACK failure"),
-        }
-
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
-
-        let state = manager.snapshot();
-        assert_eq!(state.name, "committed_after_ack_failure");
-        assert_eq!(state.value, 201);
-
-        let current_builder = manager.current_builder().unwrap();
-        assert_eq!(current_builder.name, "committed_after_ack_failure");
-        assert_eq!(current_builder.value, 201);
-
-        let saved_builder: TestBuilder = read_yaml(&config_path).await.unwrap();
-        assert_eq!(saved_builder.name, "committed_after_ack_failure");
-        assert_eq!(saved_builder.value, 201);
     }
 
     #[tokio::test]

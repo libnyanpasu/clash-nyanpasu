@@ -1,5 +1,5 @@
 use super::{ack::PrepareReport, version::Version};
-use std::{error::Error, fmt};
+use std::fmt;
 #[derive(thiserror::Error, Debug)]
 #[error("state prepared but required subscriber ACK failed")]
 pub struct PrepareAckError {
@@ -121,7 +121,7 @@ impl UpsertError {
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum WithEffectError<E: Error> {
+pub enum WithEffectError<E> {
     #[error("state commit failed: {0}")]
     State(StateChangedError),
 

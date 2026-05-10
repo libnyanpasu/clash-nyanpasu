@@ -69,7 +69,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{Ack, StateAckSubscriber, StateChange};
+    use crate::state::{Ack, StateAckSubscriber, StateChange, SubscriberName};
     use std::sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -86,11 +86,11 @@ mod tests {
 
     #[async_trait::async_trait]
     impl StateAckSubscriber<TestState> for FailingInitSubscriber {
-        fn name(&self) -> &str {
-            "failing_init"
+        fn name(&self) -> SubscriberName<'_> {
+            "failing_init".into()
         }
 
-        async fn on_committed(&self, _change: StateChange<TestState>) -> Ack {
+        async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ack::Failed(anyhow::anyhow!("init ACK failed"))
         }

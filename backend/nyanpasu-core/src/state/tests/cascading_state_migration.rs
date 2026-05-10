@@ -9,23 +9,17 @@
 //! Modifying A triggers B derivation via BridgeAckSub.on_committed(),
 //! which in turn triggers C's LeafAckSub.on_committed() inside B's coordinator.
 //!
-//! Key difference from pre-commit model: state is committed BEFORE subscribers
-//! are notified. Subscriber failures don't prevent state commit.
+//! The current coordinator asks subscribers to prepare before commit, then sends
+//! post-commit notifications for side effects that should not affect the commit.
 //!
 //! Proves:
 //! 1. Happy cascade: A commits → B commits → C notified
-//! 2. Leaf failure: C fails ACK → A still committed, B still committed
-//! 3. Effect failure at A: with_pending_state effect fails → nothing committed
-//! 4. Consistent state after failed second update subscriber
-//! 5. Sibling subscriber failure: still committed
+//! 2. Effect failure at A: with_pending_state effect fails → nothing committed
 
-use crate::state::{
-    error::{StateChangedError, WithEffectError},
-    *,
-};
+use crate::state::{error::WithEffectError, *};
 use std::sync::{
     Arc, Mutex as StdMutex,
-    atomic::{AtomicBool, AtomicUsize, Ordering},
+    atomic::{AtomicUsize, Ordering},
 };
 use tokio::sync::Mutex as TokioMutex;
 
@@ -41,7 +35,6 @@ const INITIAL_DERIVED: &str = "";
 
 struct LeafAckSubscriber {
     name: String,
-    should_fail: AtomicBool,
     call_count: AtomicUsize,
     call_log: StdMutex<Vec<(Option<DerivedRuntime>, DerivedRuntime)>>,
 }
@@ -50,14 +43,9 @@ impl LeafAckSubscriber {
     fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
-            should_fail: AtomicBool::new(false),
             call_count: AtomicUsize::new(0),
             call_log: StdMutex::new(Vec::new()),
         }
-    }
-
-    fn set_should_fail(&self, fail: bool) {
-        self.should_fail.store(fail, Ordering::SeqCst);
     }
 
     fn call_count(&self) -> usize {
@@ -71,8 +59,8 @@ impl LeafAckSubscriber {
 
 #[async_trait::async_trait]
 impl StateAckSubscriber<DerivedRuntime> for LeafAckSubscriber {
-    fn name(&self) -> &str {
-        &self.name
+    fn name(&self) -> SubscriberName<'_> {
+        self.name.as_str().into()
     }
 
     async fn on_committed(&self, change: StateChange<DerivedRuntime>) -> Ack {
@@ -81,9 +69,6 @@ impl StateAckSubscriber<DerivedRuntime> for LeafAckSubscriber {
             .lock()
             .unwrap()
             .push((change.previous().cloned(), change.current().clone()));
-        if self.should_fail.load(Ordering::SeqCst) {
-            return Ack::Failed(anyhow::anyhow!("leaf ACK failed"));
-        }
         Ack::Ok
     }
 }
@@ -114,8 +99,8 @@ impl BridgeAckSubscriber {
 
 #[async_trait::async_trait]
 impl StateAckSubscriber<SourceConfig> for BridgeAckSubscriber {
-    fn name(&self) -> &str {
-        "bridge_a_to_b"
+    fn name(&self) -> SubscriberName<'_> {
+        "bridge_a_to_b".into()
     }
 
     async fn on_committed(&self, change: StateChange<SourceConfig>) -> Ack {
@@ -126,47 +111,6 @@ impl StateAckSubscriber<SourceConfig> for BridgeAckSubscriber {
             Ok(_) => Ack::Ok,
             Err(e) => Ack::Failed(anyhow::anyhow!(e)),
         }
-    }
-}
-
-// ─── SiblingAckSubscriber: another subscriber on A ───
-
-struct SiblingAckSubscriber {
-    name: String,
-    should_fail: AtomicBool,
-    call_count: AtomicUsize,
-}
-
-impl SiblingAckSubscriber {
-    fn new(name: &str) -> Self {
-        Self {
-            name: name.to_string(),
-            should_fail: AtomicBool::new(false),
-            call_count: AtomicUsize::new(0),
-        }
-    }
-
-    fn set_should_fail(&self, fail: bool) {
-        self.should_fail.store(fail, Ordering::SeqCst);
-    }
-
-    fn call_count(&self) -> usize {
-        self.call_count.load(Ordering::SeqCst)
-    }
-}
-
-#[async_trait::async_trait]
-impl StateAckSubscriber<SourceConfig> for SiblingAckSubscriber {
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    async fn on_committed(&self, _change: StateChange<SourceConfig>) -> Ack {
-        self.call_count.fetch_add(1, Ordering::SeqCst);
-        if self.should_fail.load(Ordering::SeqCst) {
-            return Ack::Failed(anyhow::anyhow!("sibling ACK failed"));
-        }
-        Ack::Ok
     }
 }
 
@@ -217,39 +161,7 @@ async fn cascade_commit_a_to_b_to_c() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Test 2: Leaf failure → A still committed, B still committed
-//
-// In the ACK model, state is committed before notification.
-// Subscriber failure doesn't prevent commit.
-// ═══════════════════════════════════════════════════════════════
-
-#[tokio::test]
-async fn cascade_committed_even_when_leaf_fails() {
-    let mut chain = build_chain();
-    chain.leaf.set_should_fail(true);
-
-    let result = chain.a.upsert_state(42).await;
-
-    // A committed (post-commit model)
-    assert_eq!(*chain.a.snapshot_versioned(), 42);
-
-    // B committed (bridge ran successfully, leaf failure on B doesn't prevent B's commit)
-    // However, B's upsert_state will return CommitAck error, which bridge maps to Ack::Failed
-    // So A's report will show bridge as failed (Required policy)
-    assert!(result.is_err());
-    match &result.unwrap_err() {
-        StateChangedError::PrepareAck(e) => {
-            assert!(e.report.has_required_failures());
-        }
-        other => panic!("Expected CommitAck, got: {other:?}"),
-    }
-
-    // B IS committed because state is stored before notification
-    assert_eq!(&*chain.b.lock().await.snapshot(), "derived_from_42");
-}
-
-// ═══════════════════════════════════════════════════════════════
-// Test 3: Effect failure at A — nothing committed
+// Test 2: Effect failure at A — nothing committed
 // ═══════════════════════════════════════════════════════════════
 
 #[tokio::test]
@@ -277,106 +189,7 @@ async fn cascade_no_commit_on_effect_failure() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Test 4: Second update with leaf failure
-//
-// First: A=1 → B="derived_from_1" → C sees (None, "derived_from_1") ✓
-// Second: A=2 → B="derived_from_2" → C FAILS ACK
-// Result: Both A=2 and B="derived_from_2" ARE committed (post-commit)
-// ═══════════════════════════════════════════════════════════════
-
-#[tokio::test]
-async fn cascade_second_update_leaf_failure_still_commits() {
-    let mut chain = build_chain();
-
-    // First update: success
-    chain.a.upsert_state(1).await.unwrap();
-    assert_eq!(*chain.a.snapshot_versioned(), 1);
-    assert_eq!(&*chain.b.lock().await.snapshot(), "derived_from_1");
-
-    // Configure leaf to fail
-    chain.leaf.set_should_fail(true);
-
-    // Second update: leaf fails but state still committed
-    let result = chain.a.upsert_state(2).await;
-    assert!(result.is_err());
-
-    // A IS committed to 2 (post-commit)
-    assert_eq!(*chain.a.snapshot_versioned(), 2);
-
-    // B IS committed to derived_from_2 (bridge ran, B committed before leaf notified)
-    assert_eq!(&*chain.b.lock().await.snapshot(), "derived_from_2");
-
-    let log = chain.leaf.call_log();
-    assert_eq!(log.len(), 2);
-    assert_eq!(
-        log[0],
-        (
-            Some(INITIAL_DERIVED.to_string()),
-            "derived_from_1".to_string()
-        )
-    );
-    assert_eq!(
-        log[1],
-        (
-            Some("derived_from_1".to_string()),
-            "derived_from_2".to_string()
-        )
-    );
-}
-
-// ═══════════════════════════════════════════════════════════════
-// Test 5: Sibling subscriber failure — still committed
-//
-// A has [BridgeSub, SiblingSub]. Sibling fails.
-// In ACK model: A committed, both subscribers notified.
-// ═══════════════════════════════════════════════════════════════
-
-#[tokio::test]
-async fn cascade_sibling_failure_still_committed() {
-    let leaf = Arc::new(LeafAckSubscriber::new("service_c"));
-    let b_coord = StateCoordinator::builder()
-        .with_subscriber(Box::new(leaf.clone()))
-        .build(INITIAL_DERIVED.to_string());
-    let b = Arc::new(TokioMutex::new(SimpleStateManager::from_coordinator(
-        b_coord,
-    )));
-
-    let bridge = Arc::new(BridgeAckSubscriber::new(b.clone()));
-    let sibling = Arc::new(SiblingAckSubscriber::new("sibling_d"));
-    sibling.set_should_fail(true);
-
-    let mut a = StateCoordinator::builder()
-        .with_subscriber(Box::new(bridge.clone()))
-        .with_subscriber(Box::new(sibling.clone()))
-        .build(INITIAL_SOURCE);
-
-    let result = a.upsert_state(99).await;
-
-    // A committed (post-commit)
-    assert_eq!(*a.snapshot_versioned(), 99);
-
-    // Both subscribers were called
-    assert_eq!(bridge.call_count(), 1);
-    assert_eq!(sibling.call_count(), 1);
-
-    // B committed via bridge
-    assert_eq!(&*b.lock().await.snapshot(), "derived_from_99");
-
-    // Leaf notified
-    assert_eq!(leaf.call_count(), 1);
-
-    // Result is error because sibling (Required) failed
-    assert!(result.is_err());
-    match &result.unwrap_err() {
-        StateChangedError::PrepareAck(e) => {
-            assert!(e.report.has_required_failures());
-        }
-        other => panic!("Expected CommitAck, got: {other:?}"),
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// Test 6: Effect failure with previous state — nothing new committed
+// Test 3: Effect failure with previous state — nothing new committed
 // ═══════════════════════════════════════════════════════════════
 
 #[tokio::test]

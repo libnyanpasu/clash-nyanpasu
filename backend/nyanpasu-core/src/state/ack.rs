@@ -12,6 +12,16 @@ pub struct StateChange<T: Clone + Send + Sync + 'static> {
     pub current: Arc<T>,
 }
 
+impl<T: Clone + Send + Sync + 'static> StateChange<T> {
+    pub fn previous(&self) -> Option<&T> {
+        self.previous.as_ref().map(|previous| &previous.state)
+    }
+
+    pub fn current(&self) -> &T {
+        &self.current
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AckPolicy {
     Required,
@@ -73,6 +83,24 @@ impl SubscriberName<'_> {
     }
 }
 
+impl From<String> for SubscriberName<'static> {
+    fn from(value: String) -> Self {
+        SubscriberName(Cow::Owned(value))
+    }
+}
+
+impl From<&str> for SubscriberName<'static> {
+    fn from(value: &str) -> Self {
+        SubscriberName(Cow::Owned(value.to_string()))
+    }
+}
+
+impl PartialEq<&str> for SubscriberName<'_> {
+    fn eq(&self, other: &&str) -> bool {
+        self.0.as_ref() == *other
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum SubscriberFailureKind {
     Rejected { reason: String },
@@ -127,13 +155,48 @@ pub trait StateAckSubscriber<T: Clone + Send + Sync + 'static>: Send + Sync {
 
     /// Required / advisory ACK
     /// The coordinator will wait for the ACK response before proceeding to the next subscriber or finalizing the commit.
-    async fn on_prepare(&self, change: StateChange<T>) -> Ack;
+    async fn on_prepare(&self, _change: StateChange<T>) -> Ack {
+        Ack::Ok
+    }
 
     /// Post commit ACK for monitoring and reporting purposes. It does not affect the commit process.
-    async fn on_committed(&self, change: StateChange<T>) -> Ack;
+    async fn on_committed(&self, _change: StateChange<T>) -> Ack {
+        Ack::Ok
+    }
 
     /// Optional hook for handling rollbacks, e.g. to clean up resources provisioned during on_prepare.
-    async fn on_rolled_back(&self, _change: StateChange<T>, _reason: RollbackReason);
+    async fn on_rolled_back(&self, _change: StateChange<T>, _reason: RollbackReason) {}
+}
+
+#[async_trait::async_trait]
+impl<T, S> StateAckSubscriber<T> for Arc<S>
+where
+    T: Clone + Send + Sync + 'static,
+    S: StateAckSubscriber<T> + ?Sized,
+{
+    fn name(&self) -> SubscriberName<'_> {
+        (**self).name()
+    }
+
+    fn is_shutdown(&self) -> bool {
+        (**self).is_shutdown()
+    }
+
+    fn ack_options(&self) -> AckOptions {
+        (**self).ack_options()
+    }
+
+    async fn on_prepare(&self, change: StateChange<T>) -> Ack {
+        (**self).on_prepare(change).await
+    }
+
+    async fn on_committed(&self, change: StateChange<T>) -> Ack {
+        (**self).on_committed(change).await
+    }
+
+    async fn on_rolled_back(&self, change: StateChange<T>, reason: RollbackReason) {
+        (**self).on_rolled_back(change, reason).await
+    }
 }
 
 pub enum RequiredAckFailureStatus {}

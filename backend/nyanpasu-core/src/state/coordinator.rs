@@ -8,7 +8,7 @@ use super::{
 use anyhow::anyhow;
 use arc_swap::ArcSwap;
 use indexmap::IndexMap;
-use std::{borrow::Cow, future::Future, sync::Arc};
+use std::{future::Future, sync::Arc};
 use tokio::sync::Semaphore;
 
 pub(super) type ArcStateSubscriber<T> = Arc<dyn StateAckSubscriber<T> + Send + Sync>;
@@ -32,12 +32,10 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
     /// Add subscriber to the coordinator. If a subscriber with the same name already exists, it will be replaced and returned.
     pub fn add_subscriber(
         &mut self,
-        subscriber: ArcStateSubscriber<T>,
+        subscriber: Box<dyn StateAckSubscriber<T> + Send + Sync>,
     ) -> Option<ArcStateSubscriber<T>> {
-        let owned_name: SubscriberName<'static> = {
-            let name = subscriber.name();
-            SubscriberName(Cow::Owned(name.to_string()))
-        };
+        let subscriber: ArcStateSubscriber<T> = subscriber.into();
+        let owned_name = subscriber.name().into_static();
         let replaced = self.subscribers.insert(owned_name.clone(), subscriber);
         if replaced.is_some() {
             tracing::warn!(subscriber = %owned_name, "replaced existing subscriber with same name");
@@ -55,6 +53,10 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
 
     pub fn snapshot_versioned(&self) -> Arc<VersionedState<T>> {
         self.current_state.load_full()
+    }
+
+    pub fn snapshot(&self) -> Arc<T> {
+        Arc::new(self.snapshot_versioned().state.clone())
     }
 
     pub fn snapshot_handle(&self) -> StateSnapshot<T> {
@@ -156,7 +158,7 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
     where
         F: FnOnce(&'s T) -> Fut,
         Fut: Future<Output = Result<R, E>> + 's,
-        E: std::error::Error,
+        E: std::fmt::Debug,
     {
         let permit = self
             .semaphore
@@ -209,23 +211,31 @@ impl<T: Clone + Send + Sync> StateCoordinator<T> {
 // -- Builder --
 
 pub struct StateCoordinatorBuilder<T: Clone + Send + Sync + 'static> {
-    subscribers: IndexMap<String, Box<dyn StateAckSubscriber<T> + Send + Sync>>,
+    notify_strategy: NotifyStrategy,
+    subscribers: IndexMap<SubscriberName<'static>, ArcStateSubscriber<T>>,
 }
 
 impl<T: Clone + Send + Sync + 'static> Default for StateCoordinatorBuilder<T> {
     fn default() -> Self {
         Self {
+            notify_strategy: NotifyStrategy::default(),
             subscribers: IndexMap::new(),
         }
     }
 }
 
 impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
+    pub fn with_notify_strategy(mut self, notify_strategy: NotifyStrategy) -> Self {
+        self.notify_strategy = notify_strategy;
+        self
+    }
+
     pub fn with_subscriber(
         mut self,
         subscriber: Box<dyn StateAckSubscriber<T> + Send + Sync>,
     ) -> Self {
-        let name = subscriber.name().to_string();
+        let name = subscriber.name().into_static();
+        let subscriber: ArcStateSubscriber<T> = subscriber.into();
         let replaced = self.subscribers.insert(name.clone(), subscriber);
         if replaced.is_some() {
             tracing::warn!(subscriber = %name, "replaced existing subscriber with same name");
@@ -234,9 +244,16 @@ impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
     }
 
     pub fn build(self, initial_state: T) -> StateCoordinator<T> {
+        let init_change_id = StateChangeId::default();
         StateCoordinator {
-            current_state: Arc::new(ArcSwap::from_pointee(initial_state)),
+            current_state: Arc::new(ArcSwap::from_pointee(VersionedState {
+                version: init_change_id.0,
+                state: initial_state,
+            })),
+            notify_strategy: self.notify_strategy,
             subscribers: self.subscribers,
+            semaphore: Arc::new(Semaphore::new(1)),
+            next_change_id: init_change_id.next(),
         }
     }
 
@@ -244,24 +261,52 @@ impl<T: Clone + Send + Sync + 'static> StateCoordinatorBuilder<T> {
         self,
         initial_state: T,
     ) -> Result<StateCoordinator<T>, InitAckError<T>> {
+        let init_change_id = StateChangeId::default();
         let current = Arc::new(initial_state);
-        let current_state = Arc::new(ArcSwap::new(Arc::clone(&current)));
+        let current_state = Arc::new(ArcSwap::from_pointee(VersionedState {
+            version: init_change_id.0,
+            state: (*current).clone(),
+        }));
+        let subscribers: Subscribers<T> = self.subscribers.values().cloned().collect();
+        let notify_strategy = self.notify_strategy;
 
         let coordinator = StateCoordinator {
-            current_state,
+            current_state: Arc::clone(&current_state),
+            notify_strategy,
             subscribers: self.subscribers,
+            semaphore: Arc::new(Semaphore::new(1)),
+            next_change_id: init_change_id.next(),
         };
 
-        let change = StateChange::new(None, current);
-        let report = coordinator.notify_committed(change).await;
+        let change = StateChange {
+            id: init_change_id,
+            previous: None,
+            current,
+        };
+        let permit = coordinator
+            .semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .expect("semaphore should never closed");
+        let tx = new_transaction(change, current_state, subscribers, notify_strategy, permit);
 
-        if report.has_required_failures() {
-            Err(InitAckError {
+        match tx.commit().await {
+            Ok((report, _)) => {
+                if report.has_required_failures() {
+                    Err(InitAckError {
+                        coordinator,
+                        report,
+                    })
+                } else {
+                    Ok(coordinator)
+                }
+            }
+            Err((Some(report), _)) => Err(InitAckError {
                 coordinator,
                 report,
-            })
-        } else {
-            Ok(coordinator)
+            }),
+            Err((None, _)) => unreachable!("init transaction cannot hit CAS mismatch"),
         }
     }
 }
@@ -321,8 +366,18 @@ mod test {
 
     #[async_trait::async_trait]
     impl StateAckSubscriber<TestState> for MockAckSubscriber {
-        fn name(&self) -> &str {
-            &self.name
+        fn name(&self) -> SubscriberName<'_> {
+            self.name.as_str().into()
+        }
+
+        async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
+            if self.should_fail.load(Ordering::SeqCst) {
+                return Ack::Failed(anyhow::anyhow!("mock ACK failure"));
+            }
+            if self.should_degrade.load(Ordering::SeqCst) {
+                return Ack::Degraded("mock degraded".to_string());
+            }
+            Ack::Ok
         }
 
         async fn on_committed(&self, change: StateChange<TestState>) -> Ack {
@@ -331,13 +386,6 @@ mod test {
                 .lock()
                 .await
                 .push((change.previous().cloned(), change.current().clone()));
-
-            if self.should_fail.load(Ordering::SeqCst) {
-                return Ack::Failed(anyhow::anyhow!("mock ACK failure"));
-            }
-            if self.should_degrade.load(Ordering::SeqCst) {
-                return Ack::Degraded("mock degraded".to_string());
-            }
             Ack::Ok
         }
     }
@@ -387,7 +435,33 @@ mod test {
     async fn test_new_coordinator() {
         let coordinator = StateCoordinator::builder().build(default_test_state());
         assert_eq!(coordinator.snapshot_versioned().value, 0);
+        assert_eq!(
+            coordinator.snapshot_versioned().version,
+            StateChangeId::default().0
+        );
         assert_eq!(coordinator.subscribers.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_initial_version_advances_next_change_id() {
+        let mut coordinator = StateCoordinator::builder().build(default_test_state());
+        assert_eq!(
+            coordinator.snapshot_versioned().version,
+            StateChangeId::new(0).0
+        );
+
+        coordinator
+            .upsert_state(TestState {
+                value: 1,
+                name: "next".to_string(),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(
+            coordinator.snapshot_versioned().version,
+            StateChangeId::new(1).0
+        );
     }
 
     #[tokio::test]
@@ -449,7 +523,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_required_ack_failure_still_commits() {
+    async fn test_required_ack_failure_prevents_commit() {
         let subscriber = Arc::new(MockAckSubscriber::new("failing_subscriber"));
         subscriber.set_fail(true);
         let mut coordinator = StateCoordinator::builder()
@@ -468,12 +542,11 @@ mod test {
             StateChangedError::PrepareAck(e) => {
                 assert!(e.report.has_required_failures());
             }
-            other => panic!("Expected CommitAck error, got: {other:?}"),
+            other => panic!("Expected PrepareAck error, got: {other:?}"),
         }
 
-        // State IS committed even though ACK failed (post-commit model)
-        assert_eq!(&*coordinator.snapshot_versioned(), &test_state);
-        assert_eq!(subscriber.call_count(), 1);
+        assert_eq!(coordinator.snapshot_versioned().value, 0);
+        assert_eq!(subscriber.call_count(), 0);
     }
 
     #[tokio::test]
@@ -481,13 +554,13 @@ mod test {
         struct AdvisorySubscriber;
         #[async_trait::async_trait]
         impl StateAckSubscriber<TestState> for AdvisorySubscriber {
-            fn name(&self) -> &str {
-                "advisory"
+            fn name(&self) -> SubscriberName<'_> {
+                "advisory".into()
             }
             fn ack_options(&self) -> AckOptions {
                 AckOptions::advisory(std::time::Duration::from_secs(30))
             }
-            async fn on_committed(&self, _change: StateChange<TestState>) -> Ack {
+            async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
                 Ack::Failed(anyhow::anyhow!("advisory failure"))
             }
         }
@@ -587,13 +660,13 @@ mod test {
         struct SlowSubscriber;
         #[async_trait::async_trait]
         impl StateAckSubscriber<TestState> for SlowSubscriber {
-            fn name(&self) -> &str {
-                "slow"
+            fn name(&self) -> SubscriberName<'_> {
+                "slow".into()
             }
             fn ack_options(&self) -> AckOptions {
                 AckOptions::required(std::time::Duration::from_millis(50))
             }
-            async fn on_committed(&self, _change: StateChange<TestState>) -> Ack {
+            async fn on_prepare(&self, _change: StateChange<TestState>) -> Ack {
                 tokio::time::sleep(std::time::Duration::from_secs(10)).await;
                 Ack::Ok
             }
@@ -618,20 +691,19 @@ mod test {
                     AckStatus::TimedOut
                 ));
             }
-            other => panic!("Expected CommitAck with TimedOut, got: {other:?}"),
+            other => panic!("Expected PrepareAck with TimedOut, got: {other:?}"),
         }
 
-        // State IS committed despite timeout
-        assert_eq!(&*coordinator.snapshot_versioned(), &test_state);
+        assert_eq!(coordinator.snapshot_versioned().value, 0);
     }
 
     #[tokio::test]
-    async fn test_fused_required_subscriber_is_failure() {
+    async fn test_fused_required_subscriber_is_skipped() {
         struct TerminatedSubscriber;
         #[async_trait::async_trait]
         impl StateAckSubscriber<TestState> for TerminatedSubscriber {
-            fn name(&self) -> &str {
-                "terminated"
+            fn name(&self) -> SubscriberName<'_> {
+                "terminated".into()
             }
             fn is_shutdown(&self) -> bool {
                 true
@@ -650,18 +722,12 @@ mod test {
         };
 
         let result = coordinator.upsert_state(test_state.clone()).await;
-        assert!(result.is_err());
-        match &result.unwrap_err() {
-            StateChangedError::PrepareAck(e) => {
-                assert!(e.report.has_required_failures());
-                assert!(matches!(
-                    e.report.subscriber_acks[0].status,
-                    AckStatus::SkippedShutdown
-                ));
-            }
-            other => panic!("Expected CommitAck, got: {other:?}"),
-        }
-        // State IS committed (post-commit model)
+        assert!(result.is_ok());
+        let report = result.unwrap();
+        assert!(matches!(
+            report.subscriber_acks[0].status,
+            AckStatus::SkippedShutdown
+        ));
         assert_eq!(&*coordinator.snapshot_versioned(), &test_state);
     }
 
@@ -670,8 +736,8 @@ mod test {
         struct TerminatedAdvisorySubscriber;
         #[async_trait::async_trait]
         impl StateAckSubscriber<TestState> for TerminatedAdvisorySubscriber {
-            fn name(&self) -> &str {
-                "terminated_advisory"
+            fn name(&self) -> SubscriberName<'_> {
+                "terminated_advisory".into()
             }
             fn is_shutdown(&self) -> bool {
                 true
@@ -702,7 +768,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_is_post_commit() {
+    async fn test_prepare_ack_is_precommit() {
         assert!(
             StateChangedError::PrepareAck(PrepareAckError {
                 report: PrepareReport::default()
@@ -811,6 +877,10 @@ mod test {
             .unwrap();
 
         assert_eq!(&*coordinator.snapshot_versioned(), &state);
+        assert_eq!(
+            coordinator.snapshot_versioned().version,
+            StateChangeId::new(0).0
+        );
         assert_eq!(subscriber.call_count(), 1);
 
         let history = subscriber.history().await;
@@ -849,13 +919,13 @@ mod test {
         struct AdvisoryFailSub;
         #[async_trait::async_trait]
         impl StateAckSubscriber<TestState> for AdvisoryFailSub {
-            fn name(&self) -> &str {
-                "advisory_fail"
+            fn name(&self) -> SubscriberName<'_> {
+                "advisory_fail".into()
             }
             fn ack_options(&self) -> AckOptions {
                 AckOptions::advisory(std::time::Duration::from_secs(30))
             }
-            async fn on_committed(&self, _: StateChange<TestState>) -> Ack {
+            async fn on_prepare(&self, _: StateChange<TestState>) -> Ack {
                 Ack::Failed(anyhow::anyhow!("advisory error"))
             }
         }

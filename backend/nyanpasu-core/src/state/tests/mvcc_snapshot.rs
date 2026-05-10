@@ -4,7 +4,7 @@
 //! 1. Snapshot reflects committed state
 //! 2. Snapshot is initialized at coordinator construction
 //! 3. Snapshot updates on each commit
-//! 4. Snapshot IS updated even on ACK failure (post-commit model)
+//! 4. Snapshot IS updated even when post-commit notification fails
 //! 5. Snapshot NOT updated on effect failure (with_pending_state)
 //! 6. Snapshot updated on effect success
 //! 7. Multiple handles see the same snapshot
@@ -38,8 +38,8 @@ impl FailAckSubscriber {
 
 #[async_trait::async_trait]
 impl<T: Clone + Send + Sync + 'static> StateAckSubscriber<T> for FailAckSubscriber {
-    fn name(&self) -> &str {
-        &self.name
+    fn name(&self) -> SubscriberName<'_> {
+        self.name.as_str().into()
     }
     async fn on_committed(&self, _change: StateChange<T>) -> Ack {
         if self.should_fail.load(Ordering::SeqCst) {
@@ -53,16 +53,16 @@ impl<T: Clone + Send + Sync + 'static> StateAckSubscriber<T> for FailAckSubscrib
 struct SnapshotCapture {
     name: String,
     handle: StateSnapshot<i32>,
-    captured: std::sync::Mutex<Option<Arc<i32>>>,
+    captured: std::sync::Mutex<Option<i32>>,
 }
 
 #[async_trait::async_trait]
 impl StateAckSubscriber<i32> for SnapshotCapture {
-    fn name(&self) -> &str {
-        &self.name
+    fn name(&self) -> SubscriberName<'_> {
+        self.name.as_str().into()
     }
     async fn on_committed(&self, _change: StateChange<i32>) -> Ack {
-        *self.captured.lock().unwrap() = Some(self.handle.load());
+        *self.captured.lock().unwrap() = Some(self.handle.load().state);
         Ack::Ok
     }
 }
@@ -90,14 +90,13 @@ async fn test_snapshot_updates_on_each_commit() {
 // ─── 5.2 ACK failure still updates snapshot (post-commit) ────
 
 #[tokio::test]
-async fn test_snapshot_updated_even_on_ack_failure() {
+async fn test_snapshot_updated_even_on_post_commit_failure() {
     let mut coord = StateCoordinator::<i32>::builder().build(0);
     coord.add_subscriber(Box::new(FailAckSubscriber::always_fail("blocker")));
     let handle = coord.snapshot_handle();
 
     let result = coord.upsert_state(42).await;
-    assert!(result.is_err());
-    // Post-commit: state IS committed even though ACK failed
+    assert!(result.is_ok());
     assert_eq!(*handle.load(), 42);
 }
 
@@ -157,13 +156,13 @@ struct FanInAckSubscriber<S: Clone + Send + Sync + 'static, D: Clone + Send + Sy
 impl<S: Clone + Send + Sync + 'static, D: Clone + Send + Sync + 'static> StateAckSubscriber<S>
     for FanInAckSubscriber<S, D>
 {
-    fn name(&self) -> &str {
-        &self.name
+    fn name(&self) -> SubscriberName<'_> {
+        self.name.as_str().into()
     }
 
     async fn on_committed(&self, change: StateChange<S>) -> Ack {
         let sibling = self.sibling_snapshot.load();
-        let derived = (self.combiner)(change.current().clone(), (*sibling).clone());
+        let derived = (self.combiner)(change.current().clone(), sibling.state.clone());
         match self.derived.write().await.upsert(derived).await {
             Ok(_) => Ack::Ok,
             Err(e) => Ack::Failed(anyhow::anyhow!(e)),
@@ -274,25 +273,25 @@ struct TriFanInAckSubscriber {
 
 #[async_trait::async_trait]
 impl StateAckSubscriber<i32> for TriFanInAckSubscriber {
-    fn name(&self) -> &str {
-        &self.name
+    fn name(&self) -> SubscriberName<'_> {
+        self.name.as_str().into()
     }
 
     async fn on_committed(&self, change: StateChange<i32>) -> Ack {
         let a = if self.source == 'a' {
             *change.current()
         } else {
-            *self.snap_a.load()
+            self.snap_a.load().state
         };
         let b = if self.source == 'b' {
             *change.current()
         } else {
-            *self.snap_b.load()
+            self.snap_b.load().state
         };
         let c = if self.source == 'c' {
             *change.current()
         } else {
-            *self.snap_c.load()
+            self.snap_c.load().state
         };
         match self.derived.write().await.upsert((a, b, c)).await {
             Ok(_) => Ack::Ok,
@@ -389,11 +388,11 @@ async fn test_snapshot_during_subscriber_reflects_committed_value() {
 
     coord.add_subscriber(Box::new(Arc::clone(&capture)));
 
-    // First commit: in post-commit model, snapshot IS the new value during on_committed
+    // The post-commit hook observes the already committed snapshot.
     coord.upsert_state(42).await.unwrap();
     let captured_during_first = capture.captured.lock().unwrap().take();
     assert_eq!(
-        captured_during_first.map(|arc| *arc),
+        captured_during_first,
         Some(42),
         "snapshot during first on_committed should be 42 (post-commit)"
     );
@@ -402,7 +401,7 @@ async fn test_snapshot_during_subscriber_reflects_committed_value() {
 
     // Second commit: snapshot during on_committed should be 100 (new committed value)
     coord.upsert_state(100).await.unwrap();
-    let captured_during_second = capture.captured.lock().unwrap().take().map(|arc| *arc);
+    let captured_during_second = capture.captured.lock().unwrap().take();
     assert_eq!(
         captured_during_second,
         Some(100),

@@ -115,6 +115,7 @@ where
     T: Clone + Send + Sync + 'static,
 {
     /// Upsert the new state for this transaction. This can be used in the on_prepare phase to update the state before committing.
+    #[allow(dead_code)]
     pub fn upsert_state(&mut self, new_state: T) {
         self.change.current = Arc::new(new_state);
     }
@@ -227,6 +228,7 @@ where
         }
     }
 
+    #[allow(dead_code)]
     pub async fn rollback(self, reason: RollbackReason) -> StateTransaction<T, state::RolledBack> {
         self._rollback(reason).await
     }

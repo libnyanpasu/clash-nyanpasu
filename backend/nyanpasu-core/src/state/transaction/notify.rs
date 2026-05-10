@@ -63,7 +63,9 @@ where
                         subscriber = %subscriber.name(),
                         "subscriber ACK failed: {error}"
                     );
-                    AckStatus::Failed { error }
+                    AckStatus::Failed {
+                        error: error.into(),
+                    }
                 }
 
                 Err(_) => {
@@ -165,7 +167,8 @@ where
                             timeout: Duration::from_secs(0),
                             elapsed: Duration::from_secs(0),
                             status: AckStatus::Failed {
-                                error: anyhow::anyhow!("failed to join notify task: {error}"),
+                                error: anyhow::anyhow!("failed to join notify task: {error}")
+                                    .into(),
                             },
                         },
                     ));

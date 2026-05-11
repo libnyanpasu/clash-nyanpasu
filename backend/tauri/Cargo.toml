@@ -211,10 +211,9 @@ tauri-plugin-opener = "2.5"
 window-vibrancy = { version = "0.7.0" }
 
 # Strong typed api binding between typescript and rust
-specta-typescript = "0.0.9"
-tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
-specta = { version = "=2.0.0-rc.22", features = [
-  "serde",
+specta-typescript = "0.0.12"
+tauri-specta = { version = "^2.0.0-rc.25", features = ["derive", "typescript"] }
+specta = { version = "^2.0.0-rc.25", features = [
   "serde_json",
   "serde_yaml",
   "uuid",

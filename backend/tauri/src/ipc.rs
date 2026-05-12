@@ -56,11 +56,9 @@ impl serde::Serialize for IpcError {
 }
 
 impl specta::Type for IpcError {
-    fn inline(
-        type_map: &mut specta::TypeMap,
-        generics: specta::Generics,
-    ) -> specta::datatype::DataType {
-        specta::datatype::DataType::Primitive(specta::datatype::PrimitiveType::String)
+    fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
+        let _ = types;
+        specta::datatype::DataType::Primitive(specta::datatype::Primitive::str)
     }
 }
 

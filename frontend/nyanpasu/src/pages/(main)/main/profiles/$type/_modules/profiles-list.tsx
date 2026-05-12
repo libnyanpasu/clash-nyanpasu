@@ -19,7 +19,7 @@ import { move } from '@dnd-kit/helpers'
 import { DragDropProvider } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import { hexFromArgb } from '@material/material-color-utilities'
-import { Profile, useProfile } from '@nyanpasu/interface'
+import { NormalizedProfile, useProfile } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import { MeshGradient } from '@paper-design/shaders-react'
 import { Link } from '@tanstack/react-router'
@@ -46,7 +46,7 @@ const GridViewProfile = ({
   profile,
   index,
 }: {
-  profile: Profile
+  profile: NormalizedProfile
   index: number
 }) => {
   const { type } = IndexRoute.useParams()

@@ -4,9 +4,9 @@ import { unwrapResult } from '../utils'
 import {
   commands,
   ProxyItemHistory,
-  type Proxies,
-  type ProxyGroupItem,
-  type ProxyItem,
+  type Proxies_Serialize,
+  type ProxyGroupItem_Serialize,
+  type ProxyItem_Serialize,
 } from './bindings'
 import { CLASH_PROXIES_QUERY_KEY } from './consts'
 
@@ -15,16 +15,16 @@ export type ClashProxiesQueryHelperFn = {
 }
 
 export interface ClashProxiesQueryProxyItem
-  extends ProxyItem, ClashProxiesQueryHelperFn {
+  extends ProxyItem_Serialize, ClashProxiesQueryHelperFn {
   mutateSelect: () => Promise<void>
 }
 
 export interface ClashProxiesQueryGroupItem
-  extends ProxyGroupItem, ClashProxiesQueryHelperFn {
+  extends ProxyGroupItem_Serialize, ClashProxiesQueryHelperFn {
   all: ClashProxiesQueryProxyItem[]
 }
 
-export interface ClashProxiesQuery extends Proxies {
+export interface ClashProxiesQuery extends Proxies_Serialize {
   global: ClashProxiesQueryGroupItem
   groups: ClashProxiesQueryGroupItem[]
 }
@@ -60,7 +60,7 @@ export const useClashProxies = () => {
 
       // Create helper functions to reduce code duplication
       const createProxyWithHelpers = (
-        proxy: ProxyItem,
+        proxy: ProxyItem_Serialize,
         groupName: string,
       ): ClashProxiesQueryProxyItem => ({
         ...proxy,
@@ -74,7 +74,7 @@ export const useClashProxies = () => {
       })
 
       const createGroupWithHelpers = (
-        group: ProxyGroupItem,
+        group: ProxyGroupItem_Serialize,
       ): ClashProxiesQueryGroupItem => ({
         ...group,
         mutateDelay: async (options?: ClashDelayOptions) => {

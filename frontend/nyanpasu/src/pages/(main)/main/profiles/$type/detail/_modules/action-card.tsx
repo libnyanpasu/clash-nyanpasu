@@ -5,7 +5,7 @@ import FileOpenOutlineRounded from '~icons/material-symbols/file-open-outline-ro
 import { ComponentProps } from 'react'
 import { Button } from '@/components/ui/button'
 import { m } from '@/paraglide/messages'
-import { Profile } from '@nyanpasu/interface'
+import { NormalizedProfile } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import ActiveButton from './active-button'
 import DeleteProfile from './delete-profile'
@@ -31,7 +31,11 @@ const ActionCardButton = ({
   )
 }
 
-export default function ActionCard({ profile }: { profile: Profile }) {
+export default function ActionCard({
+  profile,
+}: {
+  profile: NormalizedProfile
+}) {
   const isScript = !(profile.type === 'local' || profile.type === 'remote')
 
   return (

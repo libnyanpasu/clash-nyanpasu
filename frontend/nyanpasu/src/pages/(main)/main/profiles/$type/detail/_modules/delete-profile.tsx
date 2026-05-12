@@ -5,13 +5,13 @@ import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { Profile, useProfile } from '@nyanpasu/interface'
+import { NormalizedProfile, useProfile } from '@nyanpasu/interface'
 import { useNavigate } from '@tanstack/react-router'
 import { ask } from '@tauri-apps/plugin-dialog'
 import { Route as IndexRoute } from '../$uid'
 
 export const useDeleteProfile = (
-  profile: Profile,
+  profile: NormalizedProfile,
   options?: {
     onSuccess?: () => void | Promise<void>
   },
@@ -54,7 +54,7 @@ export default function DeleteProfile({
   profile,
   ...props
 }: Omit<ComponentProps<typeof Button>, 'loading' | 'onClick'> & {
-  profile: Profile
+  profile: NormalizedProfile
 }) {
   const { type } = IndexRoute.useParams()
 

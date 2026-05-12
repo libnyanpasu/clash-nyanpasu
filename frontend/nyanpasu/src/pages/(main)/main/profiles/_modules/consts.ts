@@ -1,5 +1,5 @@
 import { m } from '@/paraglide/messages'
-import { Profile, ScriptType } from '@nyanpasu/interface'
+import { NormalizedProfile, ScriptType } from '@nyanpasu/interface'
 
 export enum ListType {
   Grid = 'grid',
@@ -28,7 +28,7 @@ export const PROFILE_TYPES = {
 } satisfies Record<
   ProfileType,
   Array<{
-    type: Profile['type']
+    type: NormalizedProfile['type']
     script_type?: ScriptType
   }>
 >

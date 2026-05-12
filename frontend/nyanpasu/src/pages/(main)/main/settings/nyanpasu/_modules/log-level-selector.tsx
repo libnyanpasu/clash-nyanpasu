@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
-import { LoggingLevel, useSetting } from '@nyanpasu/interface'
+import { LoggingLevel_Serialize, useSetting } from '@nyanpasu/interface'
 import {
   ItemContainer,
   ItemLabel,
@@ -21,7 +21,7 @@ import {
 export default function LogLevelSelector() {
   const { value, upsert } = useSetting('app_log_level')
 
-  const handleChange = useLockFn(async (mode: LoggingLevel) => {
+  const handleChange = useLockFn(async (mode: LoggingLevel_Serialize) => {
     await upsert(mode)
   })
 
@@ -32,7 +32,7 @@ export default function LogLevelSelector() {
     warn: 'Warn',
     error: 'Error',
     silent: 'Silent',
-  } satisfies Record<LoggingLevel, string>
+  } satisfies Record<LoggingLevel_Serialize, string>
 
   return (
     <SettingsCard data-slot="log-level-selector">
@@ -62,7 +62,7 @@ export default function LogLevelSelector() {
             <DropdownMenuCheckboxItem
               checked={value === key}
               key={key}
-              onSelect={() => handleChange(key as LoggingLevel)}
+              onSelect={() => handleChange(key as LoggingLevel_Serialize)}
             >
               {message}
             </DropdownMenuCheckboxItem>

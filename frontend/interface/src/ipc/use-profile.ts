@@ -2,12 +2,19 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
 import {
   commands,
-  Profile,
-  type ProfileBuilder,
-  type ProfilesBuilder,
+  type Profile_Serialize,
+  type ProfilesBuilder_Deserialize,
   type RemoteProfileOptionsBuilder,
 } from './bindings'
 import { RROFILES_QUERY_KEY } from './consts'
+import {
+  denormalizeProfileBuilder,
+  NormalizedProfile,
+  NormalizedProfileBuilder,
+  normalizeProfile,
+} from './profile-normalize'
+
+export type { NormalizedProfile, NormalizedProfileBuilder }
 
 export type URLImportParams = Parameters<typeof commands.importProfile>
 
@@ -24,8 +31,8 @@ export type CreateParams =
   | {
       type: 'manual'
       data: {
-        item: ManualImportParams[0]
-        fileData: ManualImportParams[1]
+        item: NormalizedProfileBuilder
+        fileData: string | null
       }
     }
 
@@ -39,7 +46,8 @@ export type ProfileQueryResult = NonNullable<
   ReturnType<typeof useProfile>['query']['data']
 >
 
-export type ProfileQueryResultItem = Profile & Partial<ProfileHelperFn>
+export type ProfileQueryResultItem = NormalizedProfile &
+  Partial<ProfileHelperFn>
 /**
  * A custom hook for managing profiles with various operations including creation, updating, sorting, and deletion.
  *
@@ -82,13 +90,17 @@ export type ProfileQueryResultItem = Profile & Partial<ProfileHelperFn>
 export const useProfile = (options?: { without_helper_fn?: boolean }) => {
   const queryClient = useQueryClient()
 
-  function addHelperFn(item: Profile): Profile & ProfileHelperFn {
+  function addHelperFn(
+    item: Profile_Serialize,
+  ): NormalizedProfile & ProfileHelperFn {
+    const normalized = normalizeProfile(item)
+    const uid = normalized.uid
     return {
-      ...item,
-      view: async () => unwrapResult(await commands.viewProfile(item.uid)),
+      ...normalized,
+      view: async () => unwrapResult(await commands.viewProfile(uid)),
       update: async (option: RemoteProfileOptionsBuilder) =>
-        await update.mutateAsync({ uid: item.uid, option }),
-      drop: async () => await drop.mutateAsync(item.uid),
+        await update.mutateAsync({ uid, option }),
+      drop: async () => await drop.mutateAsync(uid),
     }
   }
 
@@ -110,17 +122,18 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
     queryFn: async () => {
       const result = unwrapResult(await commands.getProfiles())
 
-      // Skip helper functions if without_helper_fn is set
-      if (options?.without_helper_fn) {
-        return result
+      if (!result) {
+        return undefined
       }
 
-      return {
-        ...result,
-        items: result?.items?.map((item) => {
-          return addHelperFn(item)
-        }),
-      }
+      const items: (NormalizedProfile & Partial<ProfileHelperFn>)[] =
+        result.items.map((item) =>
+          options?.without_helper_fn
+            ? normalizeProfile(item)
+            : addHelperFn(item),
+        )
+
+      return { ...result, items }
     },
   })
 
@@ -152,7 +165,12 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
         return unwrapResult(await commands.importProfile(url, option))
       } else {
         const { item, fileData } = data
-        return unwrapResult(await commands.createProfile(item, fileData))
+        return unwrapResult(
+          await commands.createProfile(
+            denormalizeProfileBuilder(item),
+            fileData,
+          ),
+        )
       }
     },
     onSuccess: () => {
@@ -210,9 +228,11 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
       profile,
     }: {
       uid: string
-      profile: ProfileBuilder
+      profile: NormalizedProfileBuilder
     }) => {
-      return unwrapResult(await commands.patchProfile(uid, profile))
+      return unwrapResult(
+        await commands.patchProfile(uid, denormalizeProfileBuilder(profile)),
+      )
     },
     onSuccess: () => {
       // Invalidate and refetch
@@ -257,9 +277,11 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
    * - Automatically invalidates the 'profiles' query cache on successful mutation
    */
   const upsert = useMutation({
-    mutationFn: async (options: Partial<ProfilesBuilder>) => {
+    mutationFn: async (options: Partial<ProfilesBuilder_Deserialize>) => {
       return unwrapResult(
-        await commands.patchProfilesConfig(options as ProfilesBuilder),
+        await commands.patchProfilesConfig(
+          options as ProfilesBuilder_Deserialize,
+        ),
       )
     },
     onSuccess: () => {

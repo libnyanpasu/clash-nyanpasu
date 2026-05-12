@@ -1,4 +1,5 @@
 export * from './consts'
+export * from './profile-normalize'
 export * from './use-server-port'
 export * from './use-clash-config'
 export * from './use-clash-connections'

@@ -28,8 +28,6 @@ function RouteComponent() {
     return null
   }
 
-  const isRemoteProfile = currentProfile.type === 'remote'
-
   return (
     <>
       <DetialHeader>
@@ -45,7 +43,9 @@ function RouteComponent() {
       </DetialHeader>
 
       <div className="grid grid-cols-2 gap-4 p-4 md:grid-cols-4">
-        {isRemoteProfile && <SubscriptionCard profile={currentProfile} />}
+        {currentProfile.type === 'remote' && (
+          <SubscriptionCard profile={currentProfile} />
+        )}
 
         <ActionCard profile={currentProfile} />
 

@@ -288,6 +288,9 @@ pub struct WindowMessageEvent {
     /// Message type/event name
     pub event: String,
     /// Message payload
+    // TODO: specta 2.0.0-rc.25 cannot export recursive inline types (serde_json::Value).
+    // Keep as `any` until a named recursive JsonValue type is supported by specta.
+    #[specta(type = specta_typescript::Any)]
     pub payload: serde_json::Value,
 }
 

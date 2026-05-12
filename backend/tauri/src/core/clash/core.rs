@@ -660,17 +660,14 @@ impl CoreManager {
         if let Some(new_dns) = new_dns {
             log::debug!(target: "app", "set new dns: {:?}", new_dns);
             let result = match run_type {
-                RunType::Service => {
-                    nyanpasu_ipc::client::shortcuts::Client::service_default()
-                        .set_dns(&NetworkSetDnsReq {
-                            // FIXME: improve this type notation
-                            dns_servers: new_dns
-                                .as_ref()
-                                .map(|dns| dns.iter().map(Cow::Borrowed).collect()),
-                        })
-                        .await
-                        .map_err(anyhow::Error::from)
-                }
+                RunType::Service => nyanpasu_ipc::client::shortcuts::Client::service_default()
+                    .set_dns(&NetworkSetDnsReq {
+                        dns_servers: new_dns
+                            .as_ref()
+                            .map(|dns| dns.iter().map(|ip| Cow::Owned(*ip)).collect()),
+                    })
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{e}")),
                 _ => set_dns(&default_device, new_dns).map_err(anyhow::Error::from),
             };
             if let Err(e) = result.context("failed to set system dns") {

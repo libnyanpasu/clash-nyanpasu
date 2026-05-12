@@ -6,6 +6,8 @@ members = [
   "nyanpasu-macro",
   "nyanpasu-egui",
   "nyanpasu-core",
+  "nyanpasu-helper",
+  "nyanpasu-config",
 ]
 
 [patch.crates-io]

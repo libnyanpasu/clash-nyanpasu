@@ -1250,7 +1250,7 @@ version = "3.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "519bd3116aeeb42d5372c29d982d16d0170d3d4a5ed85fc7dd91642ffff3c67c"
 dependencies = [
- "darling 0.20.11",
+ "darling 0.23.0",
  "ident_case",
  "prettyplease",
  "proc-macro2",
@@ -4991,6 +4991,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "language-tags"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4345964bb142484797b161f473a503a434de77149dd8c7427788c6e13379388"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5837,6 +5846,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "nyanpasu-config"
+version = "0.1.0"
+dependencies = [
+ "atomic_enum",
+ "csscolorparser",
+ "derive_builder",
+ "enumflags2",
+ "language-tags",
+ "nyanpasu-egui",
+ "nyanpasu-helper",
+ "nyanpasu-utils",
+ "serde",
+ "specta",
+ "struct-patch",
+ "strum",
+ "thiserror 2.0.18",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "nyanpasu-core"
 version = "0.1.0"
 dependencies = [
@@ -5847,13 +5876,11 @@ dependencies = [
  "bon 3.9.1",
  "camino",
  "dashmap",
- "derive_builder",
  "fs-err",
  "indexmap 2.14.0",
  "nyanpasu-utils",
  "serde",
  "serde_yaml_ng",
- "specta",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
@@ -5880,6 +5907,15 @@ dependencies = [
  "serde",
  "specta",
  "usvg",
+]
+
+[[package]]
+name = "nyanpasu-helper"
+version = "0.1.0"
+dependencies = [
+ "language-tags",
+ "sys-locale",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -9189,6 +9225,26 @@ name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+
+[[package]]
+name = "struct-patch"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f19113e4a69e522707bfc091d0bf34def27cb734506a58e086288bec295093ac"
+dependencies = [
+ "struct-patch-derive",
+]
+
+[[package]]
+name = "struct-patch-derive"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "65b68ee01d5cbcd4f403fd8a9cb4ad1af95debf22d66de15603afe3f74598e45"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
 
 [[package]]
 name = "strum"

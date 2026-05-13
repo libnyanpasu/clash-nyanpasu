@@ -61,8 +61,8 @@
     "lodash-es": "4.18.1"
   },
   "devDependencies": {
-    "@commitlint/cli": "21.0.0",
-    "@commitlint/config-conventional": "21.0.0",
+    "@commitlint/cli": "21.0.1",
+    "@commitlint/config-conventional": "21.0.1",
     "@ianvs/prettier-plugin-sort-imports": "4.7.1",
     "@tauri-apps/cli": "2.10.1",
     "@types/lodash-es": "4.17.12",
@@ -90,7 +90,7 @@
     "stylelint-config-standard": "40.0.0",
     "stylelint-declaration-block-no-ignored-properties": "3.0.0",
     "stylelint-order": "8.1.1",
-    "stylelint-scss": "7.0.0",
+    "stylelint-scss": "7.1.1",
     "tailwindcss": "4.3.0",
     "typescript": "5.9.3"
   },

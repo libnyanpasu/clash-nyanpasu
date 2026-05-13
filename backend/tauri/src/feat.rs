@@ -536,7 +536,6 @@ pub fn copy_clash_env(app_handle: &AppHandle, option: &CopyEnvOption) {
                 log::error!(target: "app", "copy_clash_env failed: {e}");
             }
         }
-        _ => log::error!(target: "app", "copy_clash_env: Invalid option! {option:?}"),
     }
 }
 

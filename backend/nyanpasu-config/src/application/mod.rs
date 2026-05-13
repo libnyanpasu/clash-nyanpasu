@@ -1,9 +1,10 @@
 use derive_builder::Builder;
 
-use language_tags::LanguageTag;
 use csscolorparser::Color as CssColor;
+use language_tags::LanguageTag;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use url::Url;
 
 mod clash_core;
 mod logging;
@@ -114,23 +115,9 @@ pub struct NyanpasuAppConfig {
     /// proxy 页面布局 列数
     pub proxy_layout_column: i32,
 
-    /// 日志清理
-    /// 分钟数； 0 为不清理
-    #[deprecated(note = "use `max_log_files` instead")]
-    pub auto_log_clean: usize,
-
     /// 日记轮转时间，单位：天
     #[builder(default = "7")]
     pub max_log_files: usize,
-    /// window size and position
-    #[deprecated(note = "use `window_size_state` instead")]
-    #[builder_field_attr(serde(skip_serializing_if = "Option::is_none"))]
-    #[builder(setter(strip_option))]
-    pub window_size_position: Vec<f64>,
-
-    #[builder_field_attr(serde(skip_serializing_if = "Option::is_none"))]
-    #[builder(setter(strip_option))]
-    pub window_size_state: Option<WindowState>,
 
     /// Check update when app launch
     #[builder(default = "true")]
@@ -150,7 +137,7 @@ pub struct NyanpasuAppConfig {
     /// PAC URL for automatic proxy configuration
     /// This field is used to set PAC proxy without exposing it to the frontend UI
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub pac_url: Option<String>,
+    pub pac_url: Option<Url>,
 
     /// enable tray text display on Linux systems
     /// When enabled, shows proxy and TUN mode status as text next to the tray icon
@@ -196,10 +183,7 @@ impl Default for NyanpasuAppConfig {
             default_latency_test: todo!(),
             enable_builtin_enhanced: todo!(),
             proxy_layout_column: todo!(),
-            auto_log_clean: todo!(),
             max_log_files: todo!(),
-            window_size_position: todo!(),
-            window_size_state: todo!(),
             enable_auto_check_update: todo!(),
             tray_selector_mode: todo!(),
             always_on_top: todo!(),
@@ -216,14 +200,4 @@ impl NyanpasuAppConfigBuilder {
     fn default_language() -> LanguageTag {
         nyanpasu_helper::locale::get_system_locale()
     }
-}
-
-#[derive(Default, Debug, Clone, Deserialize, Serialize, Type)]
-pub struct WindowState {
-    pub width: u32,
-    pub height: u32,
-    pub x: i32,
-    pub y: i32,
-    pub maximized: bool,
-    pub fullscreen: bool,
 }

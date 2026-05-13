@@ -81,9 +81,7 @@ impl TryFrom<&nyanpasu_utils::core::CoreType> for ClashCore {
                 nyanpasu_utils::core::ClashCoreType::Mihomo => Ok(ClashCore::Mihomo),
                 nyanpasu_utils::core::ClashCoreType::MihomoAlpha => Ok(ClashCore::MihomoAlpha),
             },
-            _ => Err(UnsupportedCoreTypeError(
-                core.clone(),
-            )),
+            _ => Err(UnsupportedCoreTypeError(core.clone())),
         }
     }
 }

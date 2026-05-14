@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useClashWSContext } from '@interface/provider/clash-ws-provider'
-import { useClashAPI } from '../service/clash-api'
+import { unwrapResult } from '../utils'
+import { commands } from './bindings'
 
 export type ClashConnection = {
   downloadTotal: number
@@ -47,7 +48,6 @@ export type ClashConnectionMetadata = {
 
 export const useClashConnections = () => {
   const { connections, isLoading, error } = useClashWSContext()
-  const clashApi = useClashAPI()
   const [deleteError, setDeleteError] = useState<unknown>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
@@ -59,7 +59,7 @@ export const useClashConnections = () => {
       setDeleteError(null)
 
       try {
-        await clashApi.deleteConnections(id || undefined)
+        unwrapResult(await commands.clashApiDeleteConnections(id ?? null))
       } catch (error) {
         setDeleteError(error)
         throw error

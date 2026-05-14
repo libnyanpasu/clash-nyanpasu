@@ -14,7 +14,12 @@ use log::debug;
 use nyanpasu_ipc::api::status::CoreState;
 use profile::item_type::ProfileItemType;
 use serde_yaml::Mapping;
-use std::{borrow::Cow, collections::VecDeque, path::PathBuf, result::Result as StdResult};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, VecDeque},
+    path::PathBuf,
+    result::Result as StdResult,
+};
 use storage::{StorageOperationError, WebStorage};
 use sysproxy::Sysproxy;
 use tauri::{AppHandle, Manager};
@@ -663,6 +668,57 @@ pub async fn clash_api_get_proxy_delay(
         Ok(res) => Ok(res),
         Err(err) => Err(err.into()),
     }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn clash_api_get_configs() -> Result<clash::api::ClashConfig> {
+    Ok(clash::api::get_configs().await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn clash_api_delete_connections(id: Option<String>) -> Result<()> {
+    Ok(clash::api::delete_connections(id.as_deref()).await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn clash_api_get_version() -> Result<clash::api::ClashVersion> {
+    Ok(clash::api::get_version().await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn clash_api_get_rules() -> Result<clash::api::RulesRes> {
+    Ok(clash::api::get_rules().await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn clash_api_get_providers_rules() -> Result<clash::api::ProvidersRulesRes> {
+    Ok(clash::api::get_providers_rules().await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn clash_api_update_providers_rules(name: String) -> Result<()> {
+    Ok(clash::api::update_providers_rules_group(&name).await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn clash_api_get_group_delay(
+    group: String,
+    url: Option<String>,
+) -> Result<HashMap<String, u32>> {
+    Ok(clash::api::get_group_delay(group, url).await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn clash_api_get_providers_proxies() -> Result<clash::api::ProvidersProxiesRes> {
+    Ok(clash::api::get_providers_proxies().await?)
 }
 
 #[tauri::command]

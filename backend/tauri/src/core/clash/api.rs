@@ -12,6 +12,125 @@ use std::{
 use tracing_attributes::instrument;
 use url::Url;
 
+#[derive(Debug, Clone, Default, Deserialize, Serialize, Type)]
+pub struct ClashConfig {
+    pub port: Option<u16>,
+    pub mode: Option<String>,
+    pub ipv6: Option<bool>,
+    #[serde(rename = "socket-port")]
+    pub socket_port: Option<u16>,
+    #[serde(rename = "allow-lan")]
+    pub allow_lan: Option<bool>,
+    #[serde(rename = "log-level")]
+    pub log_level: Option<String>,
+    #[serde(rename = "mixed-port")]
+    pub mixed_port: Option<u16>,
+    #[serde(rename = "redir-port")]
+    pub redir_port: Option<u16>,
+    #[serde(rename = "socks-port")]
+    pub socks_port: Option<u16>,
+    #[serde(rename = "tproxy-port")]
+    pub tproxy_port: Option<u16>,
+    #[serde(rename = "external-controller")]
+    pub external_controller: Option<String>,
+    pub secret: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Type)]
+pub struct ClashVersion {
+    pub version: String,
+    pub premium: Option<bool>,
+    pub meta: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Type)]
+pub struct ClashRule {
+    pub r#type: String,
+    pub payload: String,
+    pub proxy: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Type)]
+pub struct RulesRes {
+    pub rules: Vec<ClashRule>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Type)]
+pub struct RuleProviderItem {
+    pub behavior: Option<String>,
+    pub format: Option<String>,
+    pub name: String,
+    #[serde(rename = "ruleCount")]
+    pub rule_count: Option<u32>,
+    pub r#type: Option<String>,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: Option<String>,
+    #[serde(rename = "vehicleType")]
+    pub vehicle_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Type)]
+pub struct ProvidersRulesRes {
+    pub providers: IndexMap<String, RuleProviderItem>,
+}
+
+/// GET /configs
+#[instrument]
+pub async fn get_configs() -> Result<ClashConfig> {
+    let path = "/configs";
+    let resp: ClashConfig = perform_request((Method::GET, path)).await?.json().await?;
+    Ok(resp)
+}
+
+/// GET /version
+#[instrument]
+pub async fn get_version() -> Result<ClashVersion> {
+    let path = "/version";
+    let resp: ClashVersion = perform_request((Method::GET, path)).await?.json().await?;
+    Ok(resp)
+}
+
+/// GET /rules
+#[instrument]
+pub async fn get_rules() -> Result<RulesRes> {
+    let path = "/rules";
+    let resp: RulesRes = perform_request((Method::GET, path)).await?.json().await?;
+    Ok(resp)
+}
+
+/// GET /providers/rules
+#[instrument]
+pub async fn get_providers_rules() -> Result<ProvidersRulesRes> {
+    let path = "/providers/rules";
+    let resp: ProvidersRulesRes = perform_request((Method::GET, path)).await?.json().await?;
+    Ok(resp)
+}
+
+/// PUT /providers/rules/:name
+#[instrument]
+pub async fn update_providers_rules_group(name: &str) -> Result<()> {
+    let path = format!("/providers/rules/{name}");
+    let _ = perform_request((Method::PUT, path.as_str())).await?;
+    Ok(())
+}
+
+/// GET /group/:name/delay
+#[instrument]
+pub async fn get_group_delay(group: String, url: Option<String>) -> Result<HashMap<String, u32>> {
+    let path = format!("/group/{group}/delay");
+    let default_url = "http://www.gstatic.com/generate_204";
+    let test_url = url
+        .map(|s| if s.is_empty() { default_url.into() } else { s })
+        .unwrap_or(default_url.into());
+
+    let query = Query([("timeout", "10000"), ("url", &test_url)]);
+    let resp: HashMap<String, u32> = perform_request((Method::GET, path.as_str(), query))
+        .await?
+        .json()
+        .await?;
+    Ok(resp)
+}
+
 /// PUT /configs
 /// path 是绝对路径
 #[instrument]
@@ -77,6 +196,8 @@ impl From<ProxyProviderItem> for ProxyItem {
             r#type,
             proxies,
             vehicle_type: _,
+            updated_at: _,
+            subscription_info: _,
             test_url: _,
             expected_status: _,
         } = item;
@@ -179,6 +300,10 @@ pub struct ProxyProviderItem {
     pub r#type: ProviderType,
     pub proxies: Vec<ProxyItem>,
     pub vehicle_type: VehicleType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subscription_info: Option<crate::config::profile::item::SubscriptionInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub test_url: Option<String>, // Mihomo Only
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -455,6 +580,172 @@ pub fn parse_check_output(log: String) -> String {
     }
 
     log
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn subscription_info_deserializes_pascal_case() {
+        // Mihomo REST API returns PascalCase field names
+        let json = r#"{"Upload":100,"Download":200,"Total":1073741824000,"Expire":1716979200}"#;
+        let info: crate::config::profile::item::SubscriptionInfo =
+            serde_json::from_str(json).unwrap();
+        assert_eq!(info.upload, 100);
+        assert_eq!(info.download, 200);
+        assert_eq!(info.total, 1_073_741_824_000);
+        assert_eq!(info.expire, 1_716_979_200);
+    }
+
+    #[test]
+    fn subscription_info_deserializes_lowercase() {
+        // Profile YAML uses lowercase field names; must still work
+        let json = r#"{"upload":10,"download":20,"total":30,"expire":0}"#;
+        let info: crate::config::profile::item::SubscriptionInfo =
+            serde_json::from_str(json).unwrap();
+        assert_eq!(info.upload, 10);
+        assert_eq!(info.download, 20);
+    }
+
+    #[test]
+    fn subscription_info_deserializes_partial_fields() {
+        // Some providers return only partial subscription info (e.g. only Expire)
+        let json = r#"{"Expire":1716979200}"#;
+        let info: crate::config::profile::item::SubscriptionInfo =
+            serde_json::from_str(json).unwrap();
+        assert_eq!(info.upload, 0);
+        assert_eq!(info.expire, 1_716_979_200);
+    }
+
+    #[test]
+    fn providers_proxies_res_deserializes_without_subscription_info() {
+        let json = r#"{
+            "providers": {
+                "MyProvider": {
+                    "name": "MyProvider",
+                    "type": "Proxy",
+                    "proxies": [],
+                    "vehicleType": "HTTP"
+                }
+            }
+        }"#;
+        let res: ProvidersProxiesRes = serde_json::from_str(json).unwrap();
+        let provider = res.providers.get("MyProvider").unwrap();
+        assert!(provider.subscription_info.is_none());
+    }
+
+    #[test]
+    fn providers_proxies_res_deserializes_with_pascal_subscription_info() {
+        // Reproduces the original crash: Mihomo returns PascalCase SubscriptionInfo
+        let json = r#"{
+            "providers": {
+                "MyProvider": {
+                    "name": "MyProvider",
+                    "type": "Proxy",
+                    "proxies": [],
+                    "vehicleType": "HTTP",
+                    "subscriptionInfo": {
+                        "Upload": 100000,
+                        "Download": 200000,
+                        "Total": 1073741824000,
+                        "Expire": 1716979200
+                    }
+                }
+            }
+        }"#;
+        let res: ProvidersProxiesRes = serde_json::from_str(json).unwrap();
+        let info = res
+            .providers
+            .get("MyProvider")
+            .unwrap()
+            .subscription_info
+            .as_ref()
+            .unwrap();
+        assert_eq!(info.upload, 100_000);
+        assert_eq!(info.expire, 1_716_979_200);
+    }
+
+    #[test]
+    fn providers_proxies_res_deserializes_with_partial_subscription_info() {
+        // Some providers may return subscriptionInfo with only some fields set
+        let json = r#"{
+            "providers": {
+                "P": {
+                    "name": "P",
+                    "type": "Proxy",
+                    "proxies": [],
+                    "vehicleType": "File",
+                    "subscriptionInfo": {"Expire": 9999}
+                }
+            }
+        }"#;
+        let res: ProvidersProxiesRes = serde_json::from_str(json).unwrap();
+        let info = res
+            .providers
+            .get("P")
+            .unwrap()
+            .subscription_info
+            .as_ref()
+            .unwrap();
+        assert_eq!(info.upload, 0);
+        assert_eq!(info.expire, 9999);
+    }
+
+    #[test]
+    fn clash_config_deserializes_partial_fields() {
+        // Not all cores return all config fields; all must be optional
+        let json = r#"{"mode":"rule","mixed-port":7890}"#;
+        let cfg: ClashConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.mode.as_deref(), Some("rule"));
+        assert_eq!(cfg.mixed_port, Some(7890));
+        assert!(cfg.port.is_none());
+        assert!(cfg.allow_lan.is_none());
+    }
+
+    #[test]
+    fn clash_version_deserializes_without_premium_meta() {
+        // clash-rs returns only version
+        let json = r#"{"version":"2025.01.01"}"#;
+        let v: ClashVersion = serde_json::from_str(json).unwrap();
+        assert!(v.premium.is_none());
+        assert!(v.meta.is_none());
+    }
+
+    #[test]
+    fn clash_version_deserializes_meta() {
+        let json = r#"{"version":"1.18.0","meta":true}"#;
+        let v: ClashVersion = serde_json::from_str(json).unwrap();
+        assert_eq!(v.meta, Some(true));
+        assert!(v.premium.is_none());
+    }
+
+    #[test]
+    fn rule_provider_item_deserializes_all_optional_fields_absent() {
+        // clash-rs may return minimal provider info
+        let json = r#"{"name":"GeoIP"}"#;
+        let item: RuleProviderItem = serde_json::from_str(json).unwrap();
+        assert_eq!(item.name, "GeoIP");
+        assert!(item.rule_count.is_none());
+        assert!(item.vehicle_type.is_none());
+    }
+
+    #[test]
+    fn rule_provider_item_deserializes_full_mihomo_response() {
+        let json = r#"{
+            "behavior": "ipcidr",
+            "format": "mrs",
+            "name": "GeoIP",
+            "ruleCount": 17523,
+            "type": "Rule",
+            "updatedAt": "2025-01-01T00:00:00Z",
+            "vehicleType": "HTTP"
+        }"#;
+        let item: RuleProviderItem = serde_json::from_str(json).unwrap();
+        assert_eq!(item.name, "GeoIP");
+        assert_eq!(item.rule_count, Some(17523));
+        assert_eq!(item.vehicle_type.as_deref(), Some("HTTP"));
+    }
 }
 
 /// DELETE /connections

@@ -27,3 +27,7 @@ export * from './use-platform'
 
 export { commands, events } from './bindings'
 export type * from './bindings'
+export type { ClashDelayOptions } from './use-clash-proxies'
+
+export type { ProxyProviderItem_Serialize as ClashProviderProxies } from './bindings'
+export type { RuleProviderItem as ClashProviderRule } from './bindings'

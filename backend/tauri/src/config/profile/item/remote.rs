@@ -417,9 +417,15 @@ impl RemoteProfileBuilder {
 
 #[derive(Default, Debug, Clone, Copy, Deserialize, Serialize, Type)]
 pub struct SubscriptionInfo {
+    // Clash REST API returns PascalCase; profile YAML uses lowercase.
+    // aliases accept both; default handles provider responses with partial fields.
+    #[serde(alias = "Upload", default)]
     pub upload: usize,
+    #[serde(alias = "Download", default)]
     pub download: usize,
+    #[serde(alias = "Total", default)]
     pub total: usize,
+    #[serde(alias = "Expire", default)]
     pub expire: usize,
 }
 

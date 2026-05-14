@@ -60,6 +60,32 @@ export const commands = {
     typedError<DelayRes, string>(
       __TAURI_INVOKE('clash_api_get_proxy_delay', { name, url }),
     ),
+  clashApiGetConfigs: () =>
+    typedError<ClashConfig, string>(__TAURI_INVOKE('clash_api_get_configs')),
+  clashApiDeleteConnections: (id: string | null) =>
+    typedError<null, string>(
+      __TAURI_INVOKE('clash_api_delete_connections', { id }),
+    ),
+  clashApiGetVersion: () =>
+    typedError<ClashVersion, string>(__TAURI_INVOKE('clash_api_get_version')),
+  clashApiGetRules: () =>
+    typedError<RulesRes, string>(__TAURI_INVOKE('clash_api_get_rules')),
+  clashApiGetProvidersRules: () =>
+    typedError<ProvidersRulesRes, string>(
+      __TAURI_INVOKE('clash_api_get_providers_rules'),
+    ),
+  clashApiUpdateProvidersRules: (name: string) =>
+    typedError<null, string>(
+      __TAURI_INVOKE('clash_api_update_providers_rules', { name }),
+    ),
+  clashApiGetGroupDelay: (group: string, url: string | null) =>
+    typedError<{ [key in string]: number }, string>(
+      __TAURI_INVOKE('clash_api_get_group_delay', { group, url }),
+    ),
+  clashApiGetProvidersProxies: () =>
+    typedError<ProvidersProxiesRes_Serialize, string>(
+      __TAURI_INVOKE('clash_api_get_providers_proxies'),
+    ),
   invokeUwpTool: () =>
     typedError<null, string>(__TAURI_INVOKE('invoke_uwp_tool')),
   fetchLatestCoreVersions: () =>
@@ -313,6 +339,21 @@ export type ChunkStatus = {
 
 export type ChunkThreadState = 'Idle' | 'Downloading' | 'Finished'
 
+export type ClashConfig = {
+  port: number | null
+  mode: string | null
+  ipv6: boolean | null
+  'socket-port': number | null
+  'allow-lan': boolean | null
+  'log-level': string | null
+  'mixed-port': number | null
+  'redir-port': number | null
+  'socks-port': number | null
+  'tproxy-port': number | null
+  'external-controller': string | null
+  secret: string | null
+}
+
 export type ClashConnectionsConnectorEvent =
   | { kind: 'state_changed'; data: ClashConnectionsConnectorState }
   | { kind: 'update'; data: ClashConnectionsInfo }
@@ -365,8 +406,20 @@ export type ClashInfo = {
   secret: string | null
 }
 
+export type ClashRule = {
+  type: string
+  payload: string
+  proxy: string
+}
+
 export type ClashStrategy = {
   external_controller_port_strategy: ExternalControllerPortStrategy
+}
+
+export type ClashVersion = {
+  version: string
+  premium: boolean | null
+  meta: boolean | null
 }
 
 export type ClashWsConnectionSnapshot = {
@@ -1072,6 +1125,24 @@ export type Profiles_Serialize = {
   items: Profile_Serialize[]
 }
 
+export type ProviderType = 'Proxy' | 'Rule' | 'Unknown'
+
+export type ProvidersProxiesRes =
+  | ProvidersProxiesRes_Serialize
+  | ProvidersProxiesRes_Deserialize
+
+export type ProvidersProxiesRes_Deserialize = {
+  providers?: { [key in string]: ProxyProviderItem_Deserialize }
+}
+
+export type ProvidersProxiesRes_Serialize = {
+  providers: { [key in string]: ProxyProviderItem_Serialize }
+}
+
+export type ProvidersRulesRes = {
+  providers: { [key in string]: RuleProviderItem }
+}
+
 export type Proxies = Proxies_Serialize | Proxies_Deserialize
 
 export type ProxiesSelectorMode = 'hidden' | 'normal' | 'submenu'
@@ -1163,6 +1234,32 @@ export type ProxyItem_Serialize = {
   hidden: boolean
 }
 
+export type ProxyProviderItem =
+  | ProxyProviderItem_Serialize
+  | ProxyProviderItem_Deserialize
+
+export type ProxyProviderItem_Deserialize = {
+  name: string
+  type: ProviderType
+  proxies: ProxyItem_Deserialize[]
+  vehicleType: VehicleType
+  updatedAt: string | null
+  subscriptionInfo: SubscriptionInfo_Deserialize | null
+  testUrl: string | null
+  expectedStatus: string | null
+}
+
+export type ProxyProviderItem_Serialize = {
+  name: string
+  type: ProviderType
+  proxies: ProxyItem_Serialize[]
+  vehicleType: VehicleType
+  updatedAt?: string | null
+  subscriptionInfo?: SubscriptionInfo_Serialize | null
+  testUrl?: string | null
+  expectedStatus?: string | null
+}
+
 export type RemoteProfile = RemoteProfile_Serialize | RemoteProfile_Deserialize
 
 /** Builder for [`RemoteProfile`](struct.RemoteProfile.html). */
@@ -1176,7 +1273,7 @@ export type RemoteProfileBuilder_Deserialize =
       /**  subscription url */
       url: string | null
       /**  subscription user info */
-      extra: SubscriptionInfo | null
+      extra: SubscriptionInfo_Deserialize | null
       /**  remote profile options */
       option?: RemoteProfileOptionsBuilder
     } & ProfileSharedBuilder & {
@@ -1193,7 +1290,7 @@ export type RemoteProfileBuilder_Serialize = {
   /**  subscription url */
   url: string | null
   /**  subscription user info */
-  extra: SubscriptionInfo | null
+  extra: SubscriptionInfo_Serialize | null
   /**  remote profile options */
   option: RemoteProfileOptionsBuilder
   /**  process chain */
@@ -1252,7 +1349,7 @@ export type RemoteProfile_Deserialize =
       /**  subscription url */
       url: string
       /**  subscription user info */
-      extra?: SubscriptionInfo
+      extra?: SubscriptionInfo_Deserialize
       /**  remote profile options */
       option?: RemoteProfileOptions_Deserialize
     } & ProfileShared & {
@@ -1268,12 +1365,26 @@ export type RemoteProfile_Serialize = {
   /**  subscription url */
   url: string
   /**  subscription user info */
-  extra: SubscriptionInfo
+  extra: SubscriptionInfo_Serialize
   /**  remote profile options */
   option: RemoteProfileOptions_Serialize
   /**  process chain */
   chain: string[]
 } & ProfileShared
+
+export type RuleProviderItem = {
+  behavior: string | null
+  format: string | null
+  name: string
+  ruleCount: number | null
+  type: string | null
+  updatedAt: string | null
+  vehicleType: string | null
+}
+
+export type RulesRes = {
+  rules: ClashRule[]
+}
 
 export type RunType =
   /**  Run as child process directly */
@@ -1332,7 +1443,34 @@ export type StorageValueChangedEvent = {
   value: string | null
 }
 
-export type SubscriptionInfo = {
+export type SubscriptionInfo =
+  | SubscriptionInfo_Serialize
+  | SubscriptionInfo_Deserialize
+
+export type SubscriptionInfo_Deserialize =
+  | {
+      upload?: number
+    }
+  | ({
+      Upload?: number
+    } & {
+      download?: number
+    })
+  | ({
+      Download?: number
+    } & {
+      total?: number
+    })
+  | ({
+      Total?: number
+    } & {
+      expire?: number
+    })
+  | {
+      Expire?: number
+    }
+
+export type SubscriptionInfo_Serialize = {
   upload: number
   download: number
   total: number
@@ -1371,6 +1509,8 @@ export type UpdaterSummary = {
   state: UpdaterState
   downloader: DownloadStatus
 }
+
+export type VehicleType = 'File' | 'HTTP' | 'Compatible' | 'Unknown'
 
 /**  Message for inter-window communication */
 export type WindowMessageEvent = {

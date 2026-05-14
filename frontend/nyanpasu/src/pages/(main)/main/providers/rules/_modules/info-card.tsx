@@ -22,7 +22,7 @@ export const InfoCard = ({ data }: { data: ClashRulesProviderQueryItem }) => {
         <div className="flex items-center justify-between px-1">
           <div className="text-secondary text-sm">
             {m.providers_rules_rule_count_label({
-              count: data.ruleCount,
+              count: data.ruleCount ?? 0,
             })}
           </div>
 

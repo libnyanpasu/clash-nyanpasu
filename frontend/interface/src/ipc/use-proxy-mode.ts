@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useClashAPI } from '../service/clash-api'
+import { commands } from './bindings'
 import { useClashConfig } from './use-clash-config'
 import { useSetting } from './use-settings'
 
@@ -21,8 +21,6 @@ export const useProxyMode = () => {
   const clashConfig = useClashConfig()
 
   const clashCore = useSetting('clash_core')
-
-  const { deleteConnections } = useClashAPI()
 
   const value = useMemo(() => {
     const modes: Record<'rule' | 'global' | 'direct', boolean> & {
@@ -58,7 +56,7 @@ export const useProxyMode = () => {
       throw new Error('Script mode is only available for Clash Premium')
     }
 
-    await deleteConnections()
+    await commands.clashApiDeleteConnections(null)
 
     await clashConfig.upsert.mutateAsync({ mode })
   }

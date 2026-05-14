@@ -6,9 +6,9 @@
 // This lint was needed by ambassador
 #![allow(clippy::duplicated_attributes)]
 mod cmds;
-mod config;
+pub mod config;
 mod consts;
-mod core;
+pub mod core;
 mod enhance;
 mod event_handler;
 mod feat;

@@ -1,2 +1,5 @@
 packages:
   - 'frontend/*'
+allowBuilds:
+  core-js: true
+  meta-json-schema: true

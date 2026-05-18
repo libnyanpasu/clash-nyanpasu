@@ -116,6 +116,11 @@ export const CLASH_PROXIES_PROVIDER_QUERY_KEY = 'clash-proxies-provider'
 export const CLASH_CORE_STATUS_QUERY_KEY = 'clash-core-status'
 
 /**
+ * System accent color query key, used by useSystemAccentColor hook to fetch system accent color from query
+ */
+export const SYSTEM_ACCENT_COLOR_QUERY_KEY = 'system-accent-color'
+
+/**
  * Maximum connections history length, used by clash ws provider to limit connections history length
  */
 export const MAX_CONNECTIONS_HISTORY = 32

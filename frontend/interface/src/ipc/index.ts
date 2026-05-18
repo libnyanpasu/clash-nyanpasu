@@ -23,6 +23,7 @@ export * from './use-system-service'
 export * from './use-service-prompt'
 export * from './use-core-dir'
 export * from './use-platform'
+export * from './use-system-accent-color'
 
 export { commands, events } from './bindings'
 export type * from './bindings'

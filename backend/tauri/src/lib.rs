@@ -298,6 +298,8 @@ pub fn run() -> std::io::Result<()> {
             // tray actions
             ipc::copy_clash_env,
             ipc::quit_application,
+            // color
+            ipc::get_system_accent_color,
         ])
         .events(collect_events![
             core::clash::ClashConnectionsEvent,

@@ -1309,3 +1309,9 @@ pub fn create_editor_window(
     });
     Ok(())
 }
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_system_accent_color() -> Result<Option<String>> {
+    Ok(crate::utils::color::get_system_accent_color())
+}

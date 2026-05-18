@@ -27,6 +27,11 @@ export function registerCssDataSlotCompletion(monacoInstance: Monaco): void {
       model: Monaco['editor']['ITextModel'],
       position: Monaco['Position'],
     ) {
+      // Never provide data-slot completions inside a declarations block
+      if (!isLikelySelectorPosition(model, position)) {
+        return { suggestions: [] }
+      }
+
       const textBefore = model
         .getLineContent(position.lineNumber)
         .substring(0, position.column - 1)
@@ -37,16 +42,11 @@ export function registerCssDataSlotCompletion(monacoInstance: Monaco): void {
 
       const isAttrContext = attrPrefix !== undefined
 
-      // For direct slot selector context, only suggest if we're likely in selector position
+      // For direct slot selector context
       let directPrefix: string | undefined
       if (!isAttrContext) {
         const directMatch = textBefore.match(/(^|[\s>+~,])([a-zA-Z0-9_-]*)$/)
         directPrefix = directMatch?.[2]
-
-        // Light heuristic: if we're inside a declarations block (after `{`), don't suggest
-        if (!isLikelySelectorPosition(model, position)) {
-          directPrefix = undefined
-        }
       }
 
       const prefix = isAttrContext ? attrPrefix : directPrefix

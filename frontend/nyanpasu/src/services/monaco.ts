@@ -10,6 +10,7 @@ import 'monaco-editor/esm/vs/editor/contrib/links/browser/links.js'
 import * as monaco from 'monaco-editor'
 import 'monaco-editor/esm/vs/language/typescript/monaco.contribution.js'
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
+import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
 import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
 import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
 // workers
@@ -25,6 +26,10 @@ self.MonacoEnvironment = {
       case 'typescript':
       case 'javascript':
         return new tsWorker()
+      case 'css':
+      case 'less':
+      case 'scss':
+        return new cssWorker()
       case 'yaml':
         return new yamlWorker()
       default:

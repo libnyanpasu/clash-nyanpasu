@@ -136,15 +136,19 @@ export default defineConfig(({ command, mode }) => {
       entries: ['./src/main.tsx'],
       include: ['@tauri-apps/api', 'clsx', 'react', 'react-dom'],
     },
-    esbuild: {
-      drop: isDev ? undefined : ['debugger'],
-      pure: isDev || IS_NIGHTLY ? [] : ['console.log'],
-    },
+    // esbuild: {
+    //   drop: isDev ? undefined : ['debugger'],
+    //   pure: isDev || IS_NIGHTLY ? [] : ['console.log'],
+    // },
     worker: {
       format: 'es',
       rolldownOptions: {
         output: {
           manualChunks: (id) => {
+            if (id.includes('monaco-editor/esm/vs/language/css/css.worker')) {
+              return 'css-worker'
+            }
+
             if (id.includes('monaco-editor/esm/vs/language/json/json.worker')) {
               return 'json-worker'
             }

@@ -58,5 +58,9 @@
       "command": "deno run -A portable.ts"
     }
   },
-  "allowScripts": ["npm:bufferutil@4.1.0", "npm:es5-ext@0.10.64", "npm:utf-8-validate@5.0.10"]
+  "allowScripts": [
+    "npm:bufferutil@4.1.0",
+    "npm:es5-ext@0.10.64",
+    "npm:utf-8-validate@5.0.10"
+  ]
 }

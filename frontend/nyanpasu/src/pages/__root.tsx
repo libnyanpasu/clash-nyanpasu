@@ -83,6 +83,16 @@ function WindowReveal() {
   const hasRevealed = useRef(false)
 
   useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  useEffect(() => {
     if ((query.isSuccess || query.isError) && !hasRevealed.current) {
       hasRevealed.current = true
       Promise.all([

@@ -36,19 +36,23 @@ export default function DelayTestButton() {
 
   return (
     <div
+      data-slot="delay-test-button"
       data-success={String(isSuccess)}
       data-loading={String(blockTask.isPending)}
       className={cn(
-        'absolute',
-        'right-4 transition-[top] duration-500',
+        'absolute right-4 ml-auto w-fit',
+        // The top position is calculated based on the viewport height and the heights of other components (header, tabs, etc.)
+        // DO NOT change these values unless you know what you are doing
         'top-[calc(100vh-40px-64px-72px)]',
         'sm:top-[calc(100vh-40px-48px-72px)]',
-        'data-[loading=false]:data-[success=false]:group-data-[scroll-direction=down]/proxies-content:top-full',
+        'transition-[top] duration-500 sm:bottom-4',
+        'data-[loading=false]:data-[success=false]:group-data-[bottom=true]/proxies-content:top-full',
       )}
     >
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
+            data-slot="delay-test-button-trigger"
             data-success={String(isSuccess)}
             data-loading={String(blockTask.isPending)}
             className={cn(
@@ -69,7 +73,7 @@ export default function DelayTestButton() {
           </Button>
         </TooltipTrigger>
 
-        <TooltipContent>
+        <TooltipContent data-slot="delay-test-button-tooltip">
           <span>
             {blockTask.isPending
               ? m.proxies_group_delay_test_pending_title()

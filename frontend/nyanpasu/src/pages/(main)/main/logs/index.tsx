@@ -141,7 +141,7 @@ function RouteComponent() {
   })
 
   return (
-    <div className="divide-outline-variant flex h-full min-h-0 flex-1 flex-col divide-y overflow-hidden">
+    <div className="divide-outline-variant flex min-h-0 flex-1 flex-col divide-y overflow-hidden">
       <RegisterContextMenu>
         <RegisterContextMenuTrigger asChild>
           <ScrollArea className="min-h-0 flex-1">

@@ -129,7 +129,7 @@ export default function RemoteProfileButton({ children }: PropsWithChildren) {
           </CardHeader>
 
           <CardContent asChild>
-            <ScrollArea className="max-h-[calc(100vh-200px)]">
+            <ScrollArea className="max-h-[80dvh]">
               <div className="space-y-4 pt-2">
                 <Controller
                   control={form.control}

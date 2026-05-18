@@ -20,7 +20,7 @@ function RouteComponent() {
     <>
       <ProfilesHeader />
 
-      <ProfilesList className="p-4 pt-0" />
+      <ProfilesList className="min-h-0 flex-1 p-4 pt-0" />
 
       <ImportButton />
     </>

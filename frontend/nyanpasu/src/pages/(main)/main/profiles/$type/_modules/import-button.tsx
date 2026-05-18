@@ -113,11 +113,13 @@ export default function ImportButton() {
   return (
     <div
       className={cn(
-        'absolute',
-        'right-4 transition-[top] duration-500',
+        'absolute right-4 ml-auto w-fit',
+        // The top position is calculated based on the viewport height and the heights of other components (header, tabs, etc.)
+        // DO NOT change these values unless you know what you are doing
         'top-[calc(100vh-40px-64px-72px)]',
         'sm:top-[calc(100vh-40px-48px-72px)]',
-        'group-data-[scroll-direction=down]/profiles-content:top-full',
+        'transition-[bottom] duration-500',
+        'group-data-[scroll-direction=down]/profiles-content:-bottom-18',
       )}
     >
       {isProxy ? <ProxyProfileImport /> : <ChainProfileImport />}

@@ -22,6 +22,8 @@ function RouteComponent() {
       <AppContentScrollArea
         className={cn(
           'group/profiles-content flex-[3_1_auto]',
+          // for AnimatedOutletPreset transition to work properly,
+          // the scroll area must have overflow: clip
           'overflow-clip',
         )}
         data-slot="profiles-content-scroll-area"
@@ -29,12 +31,11 @@ function RouteComponent() {
         <div
           className={cn(
             'container mx-auto w-full max-w-7xl',
-            'min-h-[calc(100vh-40px-64px)]',
-            'sm:min-h-[calc(100vh-40px-48px)]',
+            'flex min-h-full flex-col',
           )}
           data-slot="profiles-content"
         >
-          <AnimatedOutletPreset />
+          <AnimatedOutletPreset className="flex flex-1 flex-col" />
         </div>
       </AppContentScrollArea>
     </Sidebar>

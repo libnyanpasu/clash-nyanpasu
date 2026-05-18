@@ -85,7 +85,7 @@ export function Sidebar({
 
       <motion.aside
         className={cn(
-          'bg-mixed-background absolute h-full md:static',
+          'bg-mixed-background absolute h-full md:static md:h-auto',
           className,
         )}
         initial={false}

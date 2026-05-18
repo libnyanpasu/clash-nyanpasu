@@ -1,36 +1,12 @@
-import { useEffect, useState } from 'react'
 import { unwrapResult } from '@interface/utils'
 import { useQuery } from '@tanstack/react-query'
 import { commands } from './bindings'
-import { IS_APPIMAGE_QUERY_KEY, OS } from './consts'
+import { IS_APPIMAGE_QUERY_KEY } from './consts'
 
 export const useIsAppImage = () => {
-  const query = useQuery({
+  return useQuery({
     queryKey: [IS_APPIMAGE_QUERY_KEY],
     queryFn: async () => unwrapResult(await commands.isAppimage()),
+    staleTime: Infinity,
   })
-
-  return {
-    ...query,
-  }
-}
-
-export function useUpdaterSupported() {
-  const [supported, setSupported] = useState(false)
-
-  const isAppImage = useIsAppImage()
-
-  useEffect(() => {
-    switch (OS) {
-      case 'macos':
-      case 'windows':
-        setSupported(true)
-        break
-      case 'linux':
-        setSupported(!!isAppImage.data)
-        break
-    }
-  }, [isAppImage.data])
-
-  return supported
 }

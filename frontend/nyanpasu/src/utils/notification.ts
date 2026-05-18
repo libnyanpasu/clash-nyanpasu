@@ -1,4 +1,3 @@
-import { commands, unwrapResult } from '@nyanpasu/interface'
 import {
   MessageDialogOptions,
   message as tauriMessage,
@@ -11,7 +10,6 @@ import {
 } from '@tauri-apps/plugin-notification'
 
 let permissionGranted: boolean | null = null
-let portable: boolean | null = null
 
 const checkPermission = async () => {
   if (permissionGranted == null) {
@@ -45,11 +43,8 @@ export const notification = async ({
   if (!title) {
     throw new Error('missing message argument!')
   }
-  if (portable === null) {
-    portable = Boolean(unwrapResult(await commands.isPortable()))
-  }
-  const permissionGranted = portable || (await checkPermission())
-  if (portable || !permissionGranted) {
+  const permissionGranted = WIN_PORTABLE || (await checkPermission())
+  if (WIN_PORTABLE || !permissionGranted) {
     await tauriMessage(body ? `${title}: ${body}` : title, {
       title: 'Clash Nyanpasu',
       kind: type === NotificationType.Error ? 'error' : 'info',

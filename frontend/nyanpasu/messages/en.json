@@ -64,6 +64,7 @@
   "settings_user_interface_theme_mode_dark": "Dark",
   "settings_user_interface_theme_mode_system": "System",
   "settings_user_interface_theme_color_label": "Theme Color",
+  "settings_user_interface_theme_color_system_accent": "System Accent Color",
   "settings_user_interface_theme_color_custom": "Custom",
   "settings_user_interface_custom_css_group": "Custom CSS",
   "settings_user_interface_custom_css_label": "Custom CSS Editor",

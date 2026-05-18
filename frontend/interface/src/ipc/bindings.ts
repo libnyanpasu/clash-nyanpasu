@@ -297,6 +297,10 @@ export const commands = {
   copyClashEnv: (envType: CopyEnvOption) =>
     __TAURI_INVOKE<void>('copy_clash_env', { envType }),
   quitApplication: () => __TAURI_INVOKE<void>('quit_application'),
+  getSystemAccentColor: () =>
+    typedError<string | null, string>(
+      __TAURI_INVOKE('get_system_accent_color'),
+    ),
 }
 
 /** Events */

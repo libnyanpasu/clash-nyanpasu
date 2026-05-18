@@ -229,6 +229,8 @@ tauri-plugin-global-shortcut = "2.2.0"
 objc2 = "0.6.1"
 objc2-app-kit = { version = "0.3.1", features = [
   "NSApplication",
+  "NSColor",
+  "NSColorSpace",
   "NSResponder",
   "NSRunningApplication",
   "NSWindow",
@@ -248,6 +250,7 @@ windows-sys = { version = "0.60", features = [
   "Win32_System_SystemInformation",
   "Win32_UI_WindowsAndMessaging",
   "Win32_System_Shutdown",
+  "Win32_Graphics_Dwm",
   "Win32_Graphics_Gdi",
 ] }
 windows-core = "0.61"

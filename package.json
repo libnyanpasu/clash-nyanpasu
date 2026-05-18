@@ -75,7 +75,7 @@
     "knip": "6.13.1",
     "lint-staged": "17.0.4",
     "npm-run-all2": "8.0.4",
-    "oxlint": "1.64.0",
+    "oxlint": "1.65.0",
     "postcss": "8.5.14",
     "postcss-html": "1.8.1",
     "postcss-import": "16.1.1",

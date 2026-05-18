@@ -26,8 +26,8 @@ pub fn get_system_accent_color() -> Option<String> {
         use objc2_app_kit::{NSColor, NSColorSpace};
         use objc2_foundation::MainThreadMarker;
 
-        fn component_to_u8(component: objc2_foundation::CGFloat) -> u8 {
-            ((component as f64).clamp(0.0, 1.0) * 255.0).round() as u8
+        fn component_to_u8(component: f64) -> u8 {
+            (component.clamp(0.0, 1.0) * 255.0).round() as u8
         }
 
         let _mtm = MainThreadMarker::new()?;

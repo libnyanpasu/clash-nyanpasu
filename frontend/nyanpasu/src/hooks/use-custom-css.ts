@@ -24,7 +24,7 @@ export default function useCustomCss() {
   /** Compile raw CSS source, save the compiled result to KV, and inject it into the DOM. */
   const upsert = useCallback(
     async (rawCss: string) => {
-      const compiled = compileCustomCss(rawCss)
+      const compiled = await compileCustomCss(rawCss)
       await setCustomCss(rawCss)
       await setCompiledCss(compiled)
     },

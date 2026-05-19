@@ -3,8 +3,9 @@
  * Registers a completion item provider that suggests data-slot values.
  */
 
-// Ensure CSS basic language support is loaded
+// Ensure CSS and LESS basic language support is loaded
 import 'monaco-editor/esm/vs/basic-languages/css/css.contribution.js'
+import 'monaco-editor/esm/vs/basic-languages/less/less.contribution.js'
 import 'monaco-editor/esm/vs/language/css/monaco.contribution.js'
 import { DATA_SLOTS } from '@/generated/data-slots.gen'
 import type { Monaco } from '@monaco-editor/react'
@@ -20,63 +21,65 @@ export function registerCssDataSlotCompletion(monacoInstance: Monaco): void {
   if (registered) return
   registered = true
 
-  monacoInstance.languages.registerCompletionItemProvider('css', {
-    triggerCharacters: ['"', '=', '-', '['],
+  for (const lang of ['css', 'less']) {
+    monacoInstance.languages.registerCompletionItemProvider(lang, {
+      triggerCharacters: ['"', '=', '-', '['],
 
-    provideCompletionItems(
-      model: Monaco['editor']['ITextModel'],
-      position: Monaco['Position'],
-    ) {
-      // Never provide data-slot completions inside a declarations block
-      if (!isLikelySelectorPosition(model, position)) {
-        return { suggestions: [] }
-      }
+      provideCompletionItems(
+        model: Monaco['editor']['ITextModel'],
+        position: Monaco['Position'],
+      ) {
+        // Never provide data-slot completions inside a declarations block
+        if (!isLikelySelectorPosition(model, position)) {
+          return { suggestions: [] }
+        }
 
-      const textBefore = model
-        .getLineContent(position.lineNumber)
-        .substring(0, position.column - 1)
+        const textBefore = model
+          .getLineContent(position.lineNumber)
+          .substring(0, position.column - 1)
 
-      // Check if we're in an attribute selector context: [data-slot=" or [data-slot=
-      const attrMatch = textBefore.match(/\[data-slot="?([^"\]]*)$/)
-      const attrPrefix = attrMatch?.[1]
+        // Check if we're in an attribute selector context: [data-slot=" or [data-slot=
+        const attrMatch = textBefore.match(/\[data-slot="?([^"\]]*)$/)
+        const attrPrefix = attrMatch?.[1]
 
-      const isAttrContext = attrPrefix !== undefined
+        const isAttrContext = attrPrefix !== undefined
 
-      // For direct slot selector context
-      let directPrefix: string | undefined
-      if (!isAttrContext) {
-        const directMatch = textBefore.match(/(^|[\s>+~,])([a-zA-Z0-9_-]*)$/)
-        directPrefix = directMatch?.[2]
-      }
+        // For direct slot selector context
+        let directPrefix: string | undefined
+        if (!isAttrContext) {
+          const directMatch = textBefore.match(/(^|[\s>+~,])([a-zA-Z0-9_-]*)$/)
+          directPrefix = directMatch?.[2]
+        }
 
-      const prefix = isAttrContext ? attrPrefix : directPrefix
-      if (prefix === undefined) return { suggestions: [] }
+        const prefix = isAttrContext ? attrPrefix : directPrefix
+        if (prefix === undefined) return { suggestions: [] }
 
-      const range = new monacoInstance.Range(
-        position.lineNumber,
-        position.column - prefix.length,
-        position.lineNumber,
-        position.column,
-      )
+        const range = new monacoInstance.Range(
+          position.lineNumber,
+          position.column - prefix.length,
+          position.lineNumber,
+          position.column,
+        )
 
-      const suggestions = DATA_SLOTS.filter((s) => s.startsWith(prefix)).map(
-        (slot) => ({
-          label: slot,
-          kind: monacoInstance.languages.CompletionItemKind.Value,
-          // Attribute selector: complete with closing "]
-          // Direct selector: just the slot name
-          insertText: isAttrContext ? `${slot}"]` : slot,
-          range,
-          detail: 'data-slot',
-          documentation: {
-            value: `Selects: \`[data-slot="${slot}"]\``,
-          },
-        }),
-      )
+        const suggestions = DATA_SLOTS.filter((s) => s.startsWith(prefix)).map(
+          (slot) => ({
+            label: slot,
+            kind: monacoInstance.languages.CompletionItemKind.Value,
+            // Attribute selector: complete with closing "]
+            // Direct selector: just the slot name
+            insertText: isAttrContext ? `${slot}"]` : slot,
+            range,
+            detail: 'data-slot',
+            documentation: {
+              value: `Selects: \`[data-slot="${slot}"]\``,
+            },
+          }),
+        )
 
-      return { suggestions }
-    },
-  })
+        return { suggestions }
+      },
+    })
+  }
 }
 
 /**

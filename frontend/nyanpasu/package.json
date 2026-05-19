@@ -69,7 +69,7 @@
     "@types/d3": "7.4.3",
     "@types/d3-interpolate-path": "2.0.3",
     "@types/json-schema": "7.0.15",
-    "@types/less": "^3.0.8",
+    "@types/less": "3.0.8",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@types/validator": "13.15.10",

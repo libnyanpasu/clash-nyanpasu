@@ -9,6 +9,7 @@ onlyBuiltDependencies:
   - meta-json-schema
   - oxc-resolver
 allowBuilds:
+  '@parcel/watcher': false
   core-js: true
   meta-json-schema: true
 supportedArchitectures:
@@ -20,4 +21,8 @@ supportedArchitectures:
   cpu:
     - x64
     - arm64
+    - current
+  libc:
+    - glibc
+    - musl
     - current

@@ -39,7 +39,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: latest
 
       - uses: denoland/setup-deno@v2
         with:

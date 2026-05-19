@@ -52,16 +52,16 @@ jobs:
         with:
           xcode-version: 'latest-stable'
 
-      - name: Install Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-
       - uses: Swatinem/rust-cache@v2
         name: Cache Rust dependencies
         with:
           workspaces: 'backend'
           save-if: ${{ github.event_name == 'push' }}
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: latest
 
       - uses: pnpm/action-setup@v6
         name: Install pnpm
@@ -142,7 +142,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: latest
 
       - name: Install Deno
         uses: denoland/setup-deno@v2
@@ -234,7 +234,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: latest
 
       - name: Install Deno
         uses: denoland/setup-deno@v2

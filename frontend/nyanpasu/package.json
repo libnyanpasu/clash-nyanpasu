@@ -15,7 +15,7 @@
     "@dnd-kit/react": "0.4.0",
     "@dnd-kit/sortable": "10.0.0",
     "@dnd-kit/utilities": "3.2.2",
-    "@floating-ui/react": "^0.27.19",
+    "@floating-ui/react": "0.27.19",
     "@hookform/resolvers": "5.2.2",
     "@inlang/paraglide-js": "2.18.1",
     "@juggle/resize-observer": "3.4.0",

@@ -1,61 +1,78 @@
-import { motion, type Transition } from 'framer-motion'
-import { Tooltip as TooltipPrimitive } from 'radix-ui'
-import * as React from 'react'
+import { motion } from 'framer-motion'
 import { cn } from '@nyanpasu/utils'
+import {
+  TooltipContent as TooltipContentPrimitive,
+  Tooltip as TooltipPrimitive,
+  TooltipProvider as TooltipProviderPrimitive,
+  TooltipTrigger as TooltipTriggerPrimitive,
+  type TooltipContentProps as TooltipContentPrimitiveProps,
+  type TooltipProps as TooltipPrimitiveProps,
+  type TooltipProviderProps as TooltipProviderPrimitiveProps,
+  type TooltipTriggerProps as TooltipTriggerPrimitiveProps,
+} from '../primitives/animate/tooltip'
+
+export type TooltipProviderProps = TooltipProviderPrimitiveProps
 
 export function TooltipProvider({
-  delayDuration = 0,
+  openDelay = 0,
   ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
-  return (
-    <TooltipPrimitive.Provider
-      data-slot="tooltip-provider"
-      delayDuration={delayDuration}
-      {...props}
-    />
-  )
+}: TooltipProviderProps) {
+  return <TooltipProviderPrimitive openDelay={openDelay} {...props} />
 }
 
-export function Tooltip({
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Root>) {
-  return (
-    <TooltipProvider>
-      <TooltipPrimitive.Root data-slot="tooltip" {...props} />
-    </TooltipProvider>
-  )
+export type TooltipProps = TooltipPrimitiveProps
+
+export function Tooltip({ sideOffset = 10, ...props }: TooltipProps) {
+  return <TooltipPrimitive sideOffset={sideOffset} {...props} />
 }
 
-export function TooltipTrigger({
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
+export type TooltipTriggerProps = TooltipTriggerPrimitiveProps
+
+export function TooltipTrigger({ ...props }: TooltipTriggerProps) {
+  return <TooltipTriggerPrimitive {...props} />
+}
+
+export type TooltipContentProps = Omit<
+  TooltipContentPrimitiveProps,
+  'asChild'
+> & {
+  children: React.ReactNode
+  layout?: boolean | 'position' | 'size' | 'preserve-aspect'
 }
 
 export function TooltipContent({
   className,
-  sideOffset = 4,
   children,
+  layout = 'preserve-aspect',
   ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Content> & {}) {
+}: TooltipContentProps) {
   return (
-    <TooltipPrimitive.Portal>
-      <TooltipPrimitive.Content
-        data-slot="tooltip-content"
-        sideOffset={sideOffset}
+    <TooltipContentPrimitive
+      className={cn(
+        'z-50 w-fit rounded-full text-xs text-balance',
+        'dark:text-on-surface',
+        'bg-mixed-background/30',
+        'backdrop-blur',
+        'dark:shadow-inverse-on-surface/50 shadow-inverse-surface/30 shadow-sm',
+        className,
+      )}
+      {...props}
+    >
+      <motion.div className="overflow-hidden px-3 py-1.5 text-xs text-balance">
+        <motion.div layout={layout}>{children}</motion.div>
+      </motion.div>
+
+      {/* <TooltipArrowPrimitive
         className={cn(
-          'z-50 w-fit min-w-12 text-center',
-          'rounded-full px-3 py-1.5 text-xs text-balance',
-          'dark:text-on-surface',
-          'bg-mixed-background/30',
-          'backdrop-blur',
-          'dark:shadow-inverse-on-surface/50 shadow-inverse-surface/30 shadow-sm',
-          className,
+          'fill-mixed-background/30 size-3',
+          // 'backdrop-blur',
+          "data-[side='bottom']:translate-y-px",
+          "data-[side='left']:-translate-x-px",
+          "data-[side='right']:translate-x-px",
+          "data-[side='top']:-translate-y-px",
         )}
-        {...props}
-      >
-        {children}
-      </TooltipPrimitive.Content>
-    </TooltipPrimitive.Portal>
+        tipRadius={2}
+      /> */}
+    </TooltipContentPrimitive>
   )
 }

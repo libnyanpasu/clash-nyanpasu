@@ -16,6 +16,7 @@ import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import CustomCssProvider from '@/components/providers/custom-css-provider'
 import { LanguageProvider } from '@/components/providers/language-provider'
 import { ExperimentalThemeProvider } from '@/components/providers/theme-provider'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { events, NyanpasuProvider, useSettings } from '@nyanpasu/interface'
 
 dayjs.extend(relativeTime)
@@ -115,8 +116,10 @@ export default function App() {
         <LanguageProvider>
           <ExperimentalThemeProvider>
             <CustomCssProvider>
-              <WindowReveal />
-              <Outlet />
+              <TooltipProvider>
+                <WindowReveal />
+                <Outlet />
+              </TooltipProvider>
             </CustomCssProvider>
           </ExperimentalThemeProvider>
 

@@ -26,3 +26,4 @@ supportedArchitectures:
     - glibc
     - musl
     - current
+minimumReleaseAge: 0

@@ -74,7 +74,7 @@
     "globals": "17.6.0",
     "knip": "6.14.2",
     "lint-staged": "17.0.5",
-    "npm-run-all2": "9.0.0",
+    "npm-run-all2": "9.0.1",
     "oxlint": "1.66.0",
     "postcss": "8.5.15",
     "postcss-html": "1.8.1",

@@ -30,7 +30,7 @@
     "@tanstack/router-zod-adapter": "1.81.5",
     "@tauri-apps/api": "2.11.0",
     "@uidotdev/usehooks": "2.4.1",
-    "@uiw/react-color": "2.10.1",
+    "@uiw/react-color": "2.10.2",
     "class-variance-authority": "0.7.1",
     "country-code-emoji": "2.3.0",
     "country-emoji": "1.5.6",

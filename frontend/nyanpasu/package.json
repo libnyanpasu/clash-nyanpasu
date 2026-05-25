@@ -43,7 +43,7 @@
     "radix-ui": "1.4.3",
     "react": "19.2.6",
     "react-dom": "19.2.6",
-    "react-error-boundary": "6.1.1",
+    "react-error-boundary": "6.1.2",
     "react-hook-form": "7.76.1",
     "react-markdown": "10.1.0",
     "react-use": "17.6.0",

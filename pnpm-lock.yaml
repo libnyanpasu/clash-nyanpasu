@@ -127,8 +127,8 @@ importers:
         specifier: 2.11.0
         version: 2.11.0
       dayjs:
-        specifier: 1.11.20
-        version: 1.11.20
+        specifier: 1.11.21
+        version: 1.11.21
       lodash-es:
         specifier: 4.18.1
         version: 4.18.1
@@ -227,8 +227,8 @@ importers:
         specifier: 7.9.0
         version: 7.9.0
       dayjs:
-        specifier: 1.11.20
-        version: 1.11.20
+        specifier: 1.11.21
+        version: 1.11.21
       framer-motion:
         specifier: 12.40.0
         version: 12.40.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -3961,8 +3961,8 @@ packages:
     resolution: {integrity: sha512-e1U46jVP+w7Iut8Jt8ri1YsPOvFpg46k+K8TpCb0P+zjCkjkPnV7WzfDJzMHy1LnA+wj5pLT1wjO901gLXeEhA==}
     engines: {node: '>=12'}
 
-  dayjs@1.11.20:
-    resolution: {integrity: sha512-YbwwqR/uYpeoP4pu043q+LTDLFBLApUP6VxRihdfNTqu4ubqMlGDLd6ErXhEgsyvY0K6nCs7nggYumAN+9uEuQ==}
+  dayjs@1.11.21:
+    resolution: {integrity: sha512-98IT+HOahAisibz/yjKbzuOBwYcjJ7BCLPzARyHiyEBmRz4fatF+KPJszEHXsGYjUG234aH/cOjW1wwTbKUZlA==}
 
   debug@4.4.3:
     resolution: {integrity: sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==}
@@ -9737,7 +9737,7 @@ snapshots:
       d3-transition: 3.0.1(d3-selection@3.0.0)
       d3-zoom: 3.0.0
 
-  dayjs@1.11.20: {}
+  dayjs@1.11.21: {}
 
   debug@4.4.3:
     dependencies:

@@ -1722,7 +1722,7 @@ dependencies = [
  "specta",
  "specta-typescript",
  "strum",
- "sysinfo 0.39.2",
+ "sysinfo 0.39.3",
  "sysproxy",
  "tauri",
  "tauri-build",
@@ -9527,9 +9527,9 @@ dependencies = [
 
 [[package]]
 name = "sysinfo"
-version = "0.39.2"
+version = "0.39.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14311e7e9a03114cd4b65eedd54e8fed2945e17f08586ae97ef53bc0669f9581"
+checksum = "21d0d938c10fcda3e897e28aaddf4ab462375d411f4378cd63b1c945f69aba96"
 dependencies = [
  "libc",
  "memchr",

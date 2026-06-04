@@ -221,8 +221,8 @@ importers:
         specifier: 2.3.0
         version: 2.3.0
       country-emoji:
-        specifier: 1.5.6
-        version: 1.5.6
+        specifier: 2.0.1
+        version: 2.0.1
       d3:
         specifier: 7.9.0
         version: 7.9.0
@@ -3799,8 +3799,9 @@ packages:
   country-code-emoji@2.3.0:
     resolution: {integrity: sha512-MqmIWr3aucoU/3XZU44e0sz6izAlErqaUYp9/NFzdnzb9TrwwornyW3ws2da5TSnpTUr2qP2840oJW9oNKXCoQ==}
 
-  country-emoji@1.5.6:
-    resolution: {integrity: sha512-pSB8OOROfimFc2bcN+H41DuzXYIod/JQ6SgF4pYXkRCm9f8uF1JAJ0vXPhenug6xkpt3Gv33mdypMXB49CJWRA==}
+  country-emoji@2.0.1:
+    resolution: {integrity: sha512-PETK0WcCGkZOjB3NZQa2x8tItytKtp+gitRcejcZKvkQ9Q3BuWa28PxrhrJFI2ugbrUzCS/AUCUNjoYac/mq9Q==}
+    engines: {node: '>=22'}
 
   cross-env@10.1.0:
     resolution: {integrity: sha512-GsYosgnACZTADcmEyJctkJIoqAhHjttw7RsFrVoJNXbsWWqaq6Ym+7kZjq6mS45O0jij6vtiReppKQEtqWy6Dw==}
@@ -9565,7 +9566,7 @@ snapshots:
 
   country-code-emoji@2.3.0: {}
 
-  country-emoji@1.5.6: {}
+  country-emoji@2.0.1: {}
 
   cross-env@10.1.0:
     dependencies:

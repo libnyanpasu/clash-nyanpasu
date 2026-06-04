@@ -7,7 +7,6 @@ pub mod help;
 pub mod init;
 pub mod resolve;
 // mod winhelp;
-pub mod downloader;
 pub mod hwid;
 #[cfg(windows)]
 pub mod winreg;

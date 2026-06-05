@@ -42,7 +42,7 @@ pub fn get_reqwest_client() -> Result<reqwest::Client> {
 
 pub const INTERNAL_MIRRORS: &[&str] = &[
     "https://github.com/",
-    "https://gh-proxy.com/",
+    "https://nyanpasu-script.majokeiko.com/",
     // too many restrictions, not recommended
     // "https://gh.idayer.com/",
 ];

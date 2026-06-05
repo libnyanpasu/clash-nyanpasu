@@ -4,6 +4,7 @@ use serde_yaml::Mapping;
 use crate::enhance::PostProcessingOutput;
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
 pub struct PatchRuntimeConfig {
     #[serde(default)]
     pub allow_lan: Option<bool>,

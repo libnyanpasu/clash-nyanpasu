@@ -19,7 +19,7 @@ export default function AllowLanSwitch() {
   const handleAllowLan = useLockFn(async (input: boolean) => {
     try {
       await upsert.mutateAsync({
-        'allow-lan': input,
+        allow_lan: input,
       })
     } catch (error) {
       message(`Activation Allow LAN failed!\n Error: ${formatError(error)}`, {

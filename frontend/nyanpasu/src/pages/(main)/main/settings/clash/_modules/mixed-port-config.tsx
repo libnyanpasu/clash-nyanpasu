@@ -65,7 +65,7 @@ export default function MixedPortConfig() {
   const handleSubmit = form.handleSubmit(async (data) => {
     try {
       await clashConfig.upsert.mutateAsync({
-        'mixed-port': data.mixedPort,
+        mixed_port: data.mixedPort,
       })
       await mixedPort.upsert(data.mixedPort)
 

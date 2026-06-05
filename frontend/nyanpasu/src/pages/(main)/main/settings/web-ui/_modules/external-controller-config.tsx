@@ -62,7 +62,7 @@ export default function ExternalControllerConfig() {
     async (data) => {
       try {
         await upsert.mutateAsync({
-          'external-controller': data.externalController,
+          external_controller: data.externalController,
         })
         await refetch()
 

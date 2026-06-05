@@ -37,7 +37,7 @@ export default function LogLevelSelector() {
   const handleLogLevelChange = useCallback(
     async (value: string) => {
       await upsert.mutateAsync({
-        'log-level': value as string,
+        log_level: value as string,
       })
     },
     [upsert],

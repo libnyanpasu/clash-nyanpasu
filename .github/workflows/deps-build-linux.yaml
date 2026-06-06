@@ -134,7 +134,7 @@ jobs:
       - name: Nightly Prepare
         if: ${{ inputs.nightly == true }}
         run: |
-          pnpm prepare:nightly ${{ inputs.arch != 'x86_64' && '--disable-updater'}}
+          pnpm prepare:nightly --linux ${{ inputs.arch != 'x86_64' && '--disable-updater'}}
 
       - name: Build UI
         run: pnpm -F ui build

@@ -51,9 +51,9 @@ export function TooltipContent({
       className={cn(
         'z-50 w-fit rounded-full text-xs text-balance',
         'dark:text-on-surface',
-        'bg-mixed-background/30',
-        'backdrop-blur',
-        'dark:shadow-inverse-on-surface/50 shadow-inverse-surface/30 shadow-sm',
+        'backdrop-blur-lg',
+        'bg-primary-container/20 dark:bg-primary/10',
+        'dark:shadow-inverse-on-surface/30 shadow-on-primary-container/30 shadow-sm',
         className,
       )}
       {...props}

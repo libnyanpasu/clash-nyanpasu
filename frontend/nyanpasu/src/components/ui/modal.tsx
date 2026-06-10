@@ -91,8 +91,8 @@ export function ModalOverlay({
       <motion.div
         className={cn(
           'fixed inset-0 z-50',
-          'backdrop-blur-lg',
-          'bg-on-primary-container/10 dark:bg-on-primary/5',
+          'backdrop-blur-xl',
+          'bg-on-primary-container/30 dark:bg-on-primary/15',
           className,
         )}
         initial={{ opacity: 0 }}

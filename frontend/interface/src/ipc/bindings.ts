@@ -29,7 +29,7 @@ export const commands = {
   getClashLogs: () =>
     typedError<string[], string>(__TAURI_INVOKE('get_clash_logs')),
   /**  patch clash runtime config */
-  patchClashConfig: (payload: PatchRuntimeConfig) =>
+  patchClashConfig: (payload: PatchRuntimeConfig_Deserialize) =>
     typedError<null, string>(__TAURI_INVOKE('patch_clash_config', { payload })),
   changeClashCore: (
     clashCore:
@@ -923,7 +923,18 @@ export type MergeProfileBuilder = ProfileSharedBuilder
 
 export type NetworkStatisticWidgetConfig = 'disabled' | 'large' | 'small'
 
-export type PatchRuntimeConfig = {
+export type PatchRuntimeConfig =
+  | PatchRuntimeConfig_Serialize
+  | PatchRuntimeConfig_Deserialize
+
+export type PatchRuntimeConfig_Deserialize = {
+  'allow-lan'?: boolean | null
+  ipv6?: boolean | null
+  'log-level'?: string | null
+  mode?: string | null
+}
+
+export type PatchRuntimeConfig_Serialize = {
   'allow-lan'?: boolean | null
   ipv6?: boolean | null
   'log-level'?: string | null

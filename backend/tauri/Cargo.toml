@@ -252,9 +252,9 @@ nix = { version = "0.31.0", features = ["user", "fs"] }
 
 [target.'cfg(windows)'.dependencies]
 deelevate = "0.2.0"
-winreg = { version = "0.55", features = ["transactions"] }
-windows-registry = "0.5.1"
-windows-sys = { version = "0.60", features = [
+winreg = { version = "0.56", features = ["transactions"] }
+windows-registry = "0.6.0"
+windows-sys = { version = "0.61", features = [
   "Win32_System_LibraryLoader",
   "Win32_System_SystemInformation",
   "Win32_UI_WindowsAndMessaging",
@@ -262,6 +262,8 @@ windows-sys = { version = "0.60", features = [
   "Win32_Graphics_Dwm",
   "Win32_Graphics_Gdi",
 ] }
+# windows-core and webview2-com must stay in lockstep with the versions used
+# by tauri/wry, since we cast COM interfaces obtained from tauri's webview.
 windows-core = "0.61"
 webview2-com = "0.38"
 

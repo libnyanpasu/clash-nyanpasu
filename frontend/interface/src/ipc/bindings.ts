@@ -924,9 +924,9 @@ export type MergeProfileBuilder = ProfileSharedBuilder
 export type NetworkStatisticWidgetConfig = 'disabled' | 'large' | 'small'
 
 export type PatchRuntimeConfig = {
-  allow_lan?: boolean | null
+  'allow-lan'?: boolean | null
   ipv6?: boolean | null
-  log_level?: string | null
+  'log-level'?: string | null
   mode?: string | null
 }
 

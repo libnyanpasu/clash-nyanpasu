@@ -80,7 +80,7 @@
     "postcss-html": "1.8.1",
     "postcss-import": "16.1.1",
     "postcss-scss": "4.0.9",
-    "prettier": "3.8.3",
+    "prettier": "3.8.4",
     "prettier-plugin-ember-template-tag": "2.1.6",
     "prettier-plugin-tailwindcss": "0.8.0",
     "prettier-plugin-toml": "2.0.6",

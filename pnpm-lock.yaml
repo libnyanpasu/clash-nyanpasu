@@ -29,7 +29,7 @@ importers:
         version: 21.0.2
       '@ianvs/prettier-plugin-sort-imports':
         specifier: 4.7.1
-        version: 4.7.1(@prettier/plugin-oxc@0.1.4)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.8.3))(prettier@3.8.3)
+        version: 4.7.1(@prettier/plugin-oxc@0.1.4)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.8.4))(prettier@3.8.4)
       '@tauri-apps/cli':
         specifier: 2.11.2
         version: 2.11.2
@@ -79,17 +79,17 @@ importers:
         specifier: 4.0.9
         version: 4.0.9(postcss@8.5.15)
       prettier:
-        specifier: 3.8.3
-        version: 3.8.3
+        specifier: 3.8.4
+        version: 3.8.4
       prettier-plugin-ember-template-tag:
         specifier: 2.1.6
-        version: 2.1.6(prettier@3.8.3)
+        version: 2.1.6(prettier@3.8.4)
       prettier-plugin-tailwindcss:
         specifier: 0.8.0
-        version: 0.8.0(@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.1.4)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.8.3))(prettier@3.8.3))(@prettier/plugin-oxc@0.1.4)(prettier@3.8.3)
+        version: 0.8.0(@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.1.4)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.8.4))(prettier@3.8.4))(@prettier/plugin-oxc@0.1.4)(prettier@3.8.4)
       prettier-plugin-toml:
         specifier: 2.0.6
-        version: 2.0.6(prettier@3.8.3)
+        version: 2.0.6(prettier@3.8.4)
       stylelint:
         specifier: 17.13.0
         version: 17.13.0(typescript@5.9.3)
@@ -388,7 +388,7 @@ importers:
         version: 3.2.2(vite@8.0.16(@types/node@24.13.1)(jiti@2.7.0)(less@4.6.4)(sass-embedded@1.100.0)(sass@1.100.0)(terser@5.36.0)(yaml@2.9.0))
       vite-plugin-sass-dts:
         specifier: 1.3.37
-        version: 1.3.37(postcss@8.5.15)(prettier@3.8.3)(sass-embedded@1.100.0)(vite@8.0.16(@types/node@24.13.1)(jiti@2.7.0)(less@4.6.4)(sass-embedded@1.100.0)(sass@1.100.0)(terser@5.36.0)(yaml@2.9.0))
+        version: 1.3.37(postcss@8.5.15)(prettier@3.8.4)(sass-embedded@1.100.0)(vite@8.0.16(@types/node@24.13.1)(jiti@2.7.0)(less@4.6.4)(sass-embedded@1.100.0)(sass@1.100.0)(terser@5.36.0)(yaml@2.9.0))
       vite-plugin-svgr:
         specifier: 5.2.0
         version: 5.2.0(typescript@5.9.3)(vite@8.0.16(@types/node@24.13.1)(jiti@2.7.0)(less@4.6.4)(sass-embedded@1.100.0)(sass@1.100.0)(terser@5.36.0)(yaml@2.9.0))
@@ -5325,6 +5325,11 @@ packages:
     engines: {node: '>=14'}
     hasBin: true
 
+  prettier@3.8.4:
+    resolution: {integrity: sha512-N2MylSdi48+5N/6S5j+maeHbUSIzzZ5uOcX5Hm4QpV8Dkb1HFjfAKTKX6yNPJQD9AhcT3ifHNB66tWTTJDi11Q==}
+    engines: {node: '>=14'}
+    hasBin: true
+
   property-information@6.5.0:
     resolution: {integrity: sha512-PgTgs/BlvHxOu8QuEN7wi5A0OmXaBcHpmCSTehcs6Uuu9IkDIEo13Hy7n898RHfrQ49vKCoGeWZSaAK01nwVig==}
 
@@ -7278,18 +7283,18 @@ snapshots:
       '@standard-schema/utils': 0.3.0
       react-hook-form: 7.78.0(react@19.2.7)
 
-  '@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.1.4)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.8.3))(prettier@3.8.3)':
+  '@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.1.4)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.8.4))(prettier@3.8.4)':
     dependencies:
       '@babel/generator': 7.29.0
       '@babel/parser': 7.29.0
       '@babel/traverse': 7.29.0
       '@babel/types': 7.29.0
-      prettier: 3.8.3
+      prettier: 3.8.4
       semver: 7.7.3
     optionalDependencies:
       '@prettier/plugin-oxc': 0.1.4
       content-tag: 4.2.0
-      prettier-plugin-ember-template-tag: 2.1.6(prettier@3.8.3)
+      prettier-plugin-ember-template-tag: 2.1.6(prettier@3.8.4)
     transitivePeerDependencies:
       - supports-color
 
@@ -11297,27 +11302,29 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  prettier-plugin-ember-template-tag@2.1.6(prettier@3.8.3):
+  prettier-plugin-ember-template-tag@2.1.6(prettier@3.8.4):
     dependencies:
       '@babel/traverse': 7.29.0
       content-tag: 4.2.0
-      prettier: 3.8.3
+      prettier: 3.8.4
     transitivePeerDependencies:
       - supports-color
 
-  prettier-plugin-tailwindcss@0.8.0(@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.1.4)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.8.3))(prettier@3.8.3))(@prettier/plugin-oxc@0.1.4)(prettier@3.8.3):
+  prettier-plugin-tailwindcss@0.8.0(@ianvs/prettier-plugin-sort-imports@4.7.1(@prettier/plugin-oxc@0.1.4)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.8.4))(prettier@3.8.4))(@prettier/plugin-oxc@0.1.4)(prettier@3.8.4):
     dependencies:
-      prettier: 3.8.3
+      prettier: 3.8.4
     optionalDependencies:
-      '@ianvs/prettier-plugin-sort-imports': 4.7.1(@prettier/plugin-oxc@0.1.4)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.8.3))(prettier@3.8.3)
+      '@ianvs/prettier-plugin-sort-imports': 4.7.1(@prettier/plugin-oxc@0.1.4)(content-tag@4.2.0)(prettier-plugin-ember-template-tag@2.1.6(prettier@3.8.4))(prettier@3.8.4)
       '@prettier/plugin-oxc': 0.1.4
 
-  prettier-plugin-toml@2.0.6(prettier@3.8.3):
+  prettier-plugin-toml@2.0.6(prettier@3.8.4):
     dependencies:
       '@taplo/lib': 0.5.0
-      prettier: 3.8.3
+      prettier: 3.8.4
 
   prettier@3.8.3: {}
+
+  prettier@3.8.4: {}
 
   property-information@6.5.0: {}
 
@@ -12241,11 +12248,11 @@ snapshots:
       pathe: 0.2.0
       vite: 8.0.16(@types/node@24.13.1)(jiti@2.7.0)(less@4.6.4)(sass-embedded@1.100.0)(sass@1.100.0)(terser@5.36.0)(yaml@2.9.0)
 
-  vite-plugin-sass-dts@1.3.37(postcss@8.5.15)(prettier@3.8.3)(sass-embedded@1.100.0)(vite@8.0.16(@types/node@24.13.1)(jiti@2.7.0)(less@4.6.4)(sass-embedded@1.100.0)(sass@1.100.0)(terser@5.36.0)(yaml@2.9.0)):
+  vite-plugin-sass-dts@1.3.37(postcss@8.5.15)(prettier@3.8.4)(sass-embedded@1.100.0)(vite@8.0.16(@types/node@24.13.1)(jiti@2.7.0)(less@4.6.4)(sass-embedded@1.100.0)(sass@1.100.0)(terser@5.36.0)(yaml@2.9.0)):
     dependencies:
       postcss: 8.5.15
       postcss-js: 4.0.1(postcss@8.5.15)
-      prettier: 3.8.3
+      prettier: 3.8.4
       sass-embedded: 1.100.0
       vite: 8.0.16(@types/node@24.13.1)(jiti@2.7.0)(less@4.6.4)(sass-embedded@1.100.0)(sass@1.100.0)(terser@5.36.0)(yaml@2.9.0)
 

@@ -3,9 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 export type WebSocketHookResult = {
   latestMessage?: MessageEvent
   readyState: number
-  sendMessage: (
-    message: string | ArrayBufferLike | Blob | ArrayBufferView,
-  ) => void
+  sendMessage: (message: string | Blob | BufferSource) => void
   disconnect: () => void
   connect: () => void
 }

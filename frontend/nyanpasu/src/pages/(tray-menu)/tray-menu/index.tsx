@@ -248,7 +248,7 @@ const RestartButton = () => {
   const handleRestart = useTrayClickHandler(async (type: RestartType) => {
     switch (type) {
       case 'app':
-        await relaunch()
+        await commands.restartApplication()
         break
       case 'core':
         await commands.restartSidecar()

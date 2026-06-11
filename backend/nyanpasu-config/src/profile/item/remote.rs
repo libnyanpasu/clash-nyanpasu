@@ -7,15 +7,47 @@ use url::Url;
 #[derive(Default, Debug, Clone, Copy, Deserialize, Serialize, Type)]
 pub struct SubscriptionInfo {
     /// Uploaded bytes
+    #[serde(default)]
     pub upload: Option<usize>,
     /// Downloaded bytes
+    #[serde(default)]
     pub download: Option<usize>,
     /// Total bytes
+    #[serde(default)]
     pub total: Option<usize>,
-    #[specta(type = Option<String>)]
-    #[serde(with = "time::serde::rfc3339::option")]
-    /// Expire time of the subscription
+    /// Expire time of the subscription.
+    ///
+    /// Original `profiles.yaml` stores this as a unix timestamp in seconds and
+    /// uses `0` to mean "no expiry"; we keep that wire shape and map `0`/absent
+    /// to `None`.
+    #[specta(type = i64)]
+    #[serde(with = "expire_serde", default)]
     pub expire: Option<OffsetDateTime>,
+}
+
+/// Serde adapter for [`SubscriptionInfo::expire`]: unix-seconds on the wire,
+/// `0` (and absent) decoded as `None`, `None` encoded as `0`.
+mod expire_serde {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use time::OffsetDateTime;
+
+    pub fn serialize<S: Serializer>(
+        value: &Option<OffsetDateTime>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.serialize_i64(value.map(|t| t.unix_timestamp()).unwrap_or(0))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Option<OffsetDateTime>, D::Error> {
+        match Option::<i64>::deserialize(deserializer)? {
+            None | Some(0) => Ok(None),
+            Some(ts) => OffsetDateTime::from_unix_timestamp(ts)
+                .map(Some)
+                .map_err(serde::de::Error::custom),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Type, Builder)]
@@ -27,9 +59,11 @@ pub struct RemoteProfileOptions {
 
     /// for `remote` profile
     /// use system proxy
+    #[serde(default)]
     pub with_proxy: bool,
 
     /// use self proxy
+    #[serde(default = "default_self_proxy")]
     pub self_proxy: bool,
 
     /// subscription update interval
@@ -37,12 +71,18 @@ pub struct RemoteProfileOptions {
     pub update_interval_seconds: u64,
 }
 
+/// Serde default for [`RemoteProfileOptions::self_proxy`]: matches the original
+/// profile semantics where an absent `self_proxy` means "use self proxy".
+fn default_self_proxy() -> bool {
+    true
+}
+
 impl Default for RemoteProfileOptions {
     fn default() -> Self {
         Self {
             user_agent: None,
             with_proxy: true,
-            self_proxy: false,
+            self_proxy: default_self_proxy(),
             update_interval_seconds: 3600,
         }
     }

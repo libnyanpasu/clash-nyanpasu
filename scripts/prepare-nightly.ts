@@ -83,9 +83,10 @@ async function main() {
   consola.debug(`Current git short hash: ${GIT_SHORT_HASH}`);
 
   const version = `${tauriConf.version}-alpha+${GIT_SHORT_HASH}`;
-  // RPM/DEB forbid `-` in the version string and use `~` to mark pre-releases
-  // (sorts before the final release). See #3850.
-  const linuxVersion = `${tauriConf.version}~alpha.${GIT_SHORT_HASH}`;
+  // RPM/DEB forbid `-` in the version string (#3850), but tauri requires
+  // `version` to be valid semver, so `~` is not usable here. `+` is legal in
+  // semver (build metadata) and in RPM/DEB version strings, so use it instead.
+  const linuxVersion = `${tauriConf.version}+alpha.${GIT_SHORT_HASH}`;
 
   consola.debug("Write tauri version to tauri.nightly.conf.json");
   if (isLinux) {

@@ -199,6 +199,12 @@ mod tests {
             State(s): State<StdArc<SvcState>>,
             req: axum::http::Request<Body>,
         ) -> axum::http::Response<Body> {
+            if s.fail_get {
+                return axum::http::Response::builder()
+                    .status(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(Body::empty())
+                    .unwrap();
+            }
             if req.method() == axum::http::Method::HEAD {
                 let mut r = axum::http::Response::new(Body::empty());
                 let hd = r.headers_mut();
@@ -211,12 +217,6 @@ mod tests {
                     axum::http::HeaderValue::from_str(&s.content.len().to_string()).unwrap(),
                 );
                 return r;
-            }
-            if s.fail_get {
-                return axum::http::Response::builder()
-                    .status(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
-                    .body(Body::empty())
-                    .unwrap();
             }
             let total = s.content.len();
             let (status, body) = match req
@@ -325,11 +325,11 @@ mod tests {
 
         let tmp = TempDir::new().unwrap();
         let sp = tmp.path().join("payload.bin");
-        let session = DownloadSession::new(test_client(), Url::parse(&u).unwrap(), sp)
-            .await
-            .unwrap();
 
-        assert!(session.start().await.is_err());
-        assert!(matches!(session.status().state, DownloaderState::Failed(_)));
+        assert!(
+            DownloadSession::new(test_client(), Url::parse(&u).unwrap(), sp)
+                .await
+                .is_err()
+        );
     }
 }

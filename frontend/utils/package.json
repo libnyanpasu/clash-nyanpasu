@@ -14,7 +14,7 @@
     "@tauri-apps/api": "2.11.0",
     "clsx": "2.1.1",
     "react": "19.2.7",
-    "react-use": "17.6.0",
+    "react-use": "17.6.1",
     "tailwind-merge": "3.6.0"
   }
 }

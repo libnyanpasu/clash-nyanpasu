@@ -314,7 +314,9 @@ mod tests {
         let s = session.status();
         assert!(matches!(
             &s.state,
-            DownloaderState::Failed(reason) if reason.contains("cancelled") || reason.contains("stopped")
+            DownloaderState::Failed(reason)
+                if reason.to_lowercase().contains("cancelled")
+                    || reason.to_lowercase().contains("stopped")
         ));
     }
 

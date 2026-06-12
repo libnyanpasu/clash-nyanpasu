@@ -1,7 +1,6 @@
 use derive_builder::Builder;
 
 use csscolorparser::Color as CssColor;
-use language_tags::LanguageTag;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use url::Url;
@@ -9,9 +8,11 @@ use url::Url;
 mod clash_core;
 mod logging;
 mod widget;
+mod i18n;
 pub use clash_core::*;
 pub use logging::*;
 pub use widget::*;
+pub use i18n::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
 #[serde(rename_all = "snake_case")]
@@ -51,10 +52,8 @@ pub struct NyanpasuAppConfig {
     pub app_log_level: LoggingLevel,
 
     // i18n
-    #[builder(default = "Self::default_language()")]
-    #[specta(type = String)]
-    #[builder_field_attr(specta(type = String))]
-    pub language: LanguageTag,
+    #[builder(default = "default_i18n_language()")]
+    pub language: I18nLanguage,
 
     /// `light` or `dark` or `system`
     pub theme_mode: ThemeMode,
@@ -196,8 +195,3 @@ impl Default for NyanpasuAppConfig {
     }
 }
 
-impl NyanpasuAppConfigBuilder {
-    fn default_language() -> LanguageTag {
-        nyanpasu_helper::locale::get_system_locale()
-    }
-}

@@ -1,3 +1,5 @@
+use std::{convert::Infallible, str::FromStr};
+
 use serde::{Deserialize, Serialize};
 use strum::EnumString;
 
@@ -44,3 +46,11 @@ pub enum ScriptType {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, specta::Type)]
 #[repr(transparent)]
 pub struct ProfileId(pub String);
+
+impl FromStr for ProfileId {
+    type Err = Infallible;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Ok(Self(value.to_owned()))
+    }
+}

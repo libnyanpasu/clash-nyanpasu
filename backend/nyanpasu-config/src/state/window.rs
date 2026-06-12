@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-#[derive(Debug, Clone, Deserialize, Serialize, Type, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Serialize, Type, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct WindowLabel(pub String);
 

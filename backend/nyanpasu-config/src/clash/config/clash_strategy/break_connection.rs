@@ -1,6 +1,6 @@
-use derive_builder::Builder;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use struct_patch::Patch;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type)]
 #[serde(rename_all = "snake_case")]
@@ -13,7 +13,9 @@ pub enum ProxyChangeBreakMode {
     All,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type, Builder)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type, Patch)]
+#[patch(attribute(serde_with::skip_serializing_none))]
+#[patch(attribute(derive(Debug, Default, Clone, Serialize, Deserialize, Type)))]
 pub struct BreakConnectionStrategy {
     /// 切换代理时中断连接
     pub on_proxy_change: ProxyChangeBreakMode,

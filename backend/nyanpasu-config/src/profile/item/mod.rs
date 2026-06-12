@@ -1,10 +1,9 @@
 pub mod kind;
 pub mod remote;
 
-use derive_builder::Builder;
-
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use struct_patch::Patch;
 use time::OffsetDateTime;
 use url::Url;
 
@@ -13,7 +12,7 @@ use self::{kind::*, remote::*};
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct ProfileBuilder {
     #[serde(flatten)]
-    pub meta: ProfileMetaBuilder,
+    pub meta: ProfileMetaPatch,
     #[specta(type = Option<String>)]
     pub file: Option<ProfileFile>,
 }
@@ -74,21 +73,23 @@ impl<'de> Deserialize<'de> for ProfileFile {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type, Builder)]
-#[builder(derive(Debug, Serialize, Deserialize, Type))]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Patch)]
+#[patch(attribute(serde_with::skip_serializing_none))]
+#[patch(attribute(derive(Debug, Default, Clone, Serialize, Deserialize, Type)))]
 pub struct ProfileMeta {
     pub uid: ProfileId,
     pub name: String,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[patch(attribute(serde(default, with = "::serde_with::rust::double_option")))]
     pub desc: Option<String>,
 
     // Original `profiles.yaml` stores `updated` as a unix timestamp in seconds
     // (e.g. `updated: 1720954186`); keep that wire shape for compatibility.
     #[serde(with = "time::serde::timestamp")]
     #[specta(type = i64)]
-    #[builder(default = "OffsetDateTime::now_utc()")]
-    #[builder_field_attr(specta(type = Option<i64>))]
+    #[patch(attribute(serde(default, with = "time::serde::timestamp::option")))]
+    #[patch(attribute(specta(type = Option<i64>)))]
     pub updated: OffsetDateTime,
 }
 

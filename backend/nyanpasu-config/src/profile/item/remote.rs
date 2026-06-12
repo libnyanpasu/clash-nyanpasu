@@ -1,6 +1,6 @@
-use derive_builder::Builder;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use struct_patch::Patch;
 use time::OffsetDateTime;
 use url::Url;
 
@@ -50,11 +50,13 @@ mod expire_serde {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Type, Builder)]
-#[builder(default, derive(Debug, Deserialize, Serialize, Type))]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Type, Patch)]
+#[patch(attribute(serde_with::skip_serializing_none))]
+#[patch(attribute(derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize, Type)))]
 pub struct RemoteProfileOptions {
     /// see issue #13
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[patch(attribute(serde(default, with = "::serde_with::rust::double_option")))]
     pub user_agent: Option<String>,
 
     /// for `remote` profile
@@ -68,7 +70,8 @@ pub struct RemoteProfileOptions {
 
     /// subscription update interval
     #[serde(alias = "update_interval")]
-    pub update_interval_seconds: u64,
+    #[patch(attribute(serde(alias = "update_interval")))]
+    pub update_interval_minutes: u64,
 }
 
 /// Serde default for [`RemoteProfileOptions::self_proxy`]: matches the original
@@ -83,7 +86,7 @@ impl Default for RemoteProfileOptions {
             user_agent: None,
             with_proxy: true,
             self_proxy: default_self_proxy(),
-            update_interval_seconds: 3600,
+            update_interval_minutes: 120,
         }
     }
 }

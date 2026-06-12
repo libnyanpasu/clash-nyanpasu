@@ -103,8 +103,8 @@ chain: []"#,
     assert_eq!(extra.total, Some(789));
     // `expire: 0` must decode to "no expiry".
     assert_eq!(extra.expire, None);
-    // `update_interval` alias must map onto `update_interval_seconds`.
-    assert_eq!(option.update_interval_seconds, 120);
+    // `update_interval` alias must map onto `update_interval_minutes`.
+    assert_eq!(option.update_interval_minutes, 120);
     assert!(option.self_proxy);
     assert!(!option.with_proxy);
 }
@@ -216,7 +216,7 @@ extra:
 option:
   with_proxy: false
   self_proxy: true
-  update_interval_seconds: 3600
+  update_interval: 120
 chain: []"#;
 
     let item = parse(original);

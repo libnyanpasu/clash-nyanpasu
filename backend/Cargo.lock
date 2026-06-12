@@ -5910,7 +5910,6 @@ dependencies = [
  "atomic_enum",
  "ciborium",
  "csscolorparser",
- "derive_builder",
  "enumflags2",
  "indexmap 2.14.0",
  "json-patch 4.2.0",

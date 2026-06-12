@@ -1,8 +1,7 @@
-use derive_builder::Builder;
-
 use csscolorparser::Color as CssColor;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use struct_patch::Patch;
 use url::Url;
 
 mod clash_core;
@@ -33,16 +32,9 @@ pub enum ThemeMode {
 }
 
 /// ### `verge.yaml` schema
-#[derive(Debug, Clone, Deserialize, Serialize, specta::Type, Builder)]
-#[builder(default, derive(Debug, Serialize, Deserialize, specta::Type))]
-// #[builder_update(patch_fn = "apply")]
-// #[serde(flatten)]
-//     #[builder(field(
-//         ty = "ProfileSharedBuilder",
-//         build = "self.shared.build(&PROFILE_TYPE).map_err(|e| LocalProfileBuilderError::from(e.to_string()))?"
-//     ))]
-//     #[builder_field_attr(serde(flatten))]
-//     #[builder_update(nested)]
+#[derive(Debug, Clone, Deserialize, Serialize, specta::Type, Patch)]
+#[patch(attribute(serde_with::skip_serializing_none))]
+#[patch(attribute(derive(Debug, Default, Clone, Serialize, Deserialize, specta::Type)))]
 pub struct NyanpasuAppConfig {
     /// app listening port for app singleton
     pub app_singleton_port: u16,
@@ -52,18 +44,15 @@ pub struct NyanpasuAppConfig {
     pub app_log_level: LoggingLevel,
 
     // i18n
-    #[builder(default = "default_i18n_language()")]
     pub language: I18nLanguage,
 
     /// `light` or `dark` or `system`
     pub theme_mode: ThemeMode,
 
     /// enable traffic graph
-    #[builder(default = "true")]
     pub traffic_graph: bool,
 
     /// show memory info (only for Clash Meta)
-    #[builder(default = "true")]
     pub enable_memory_usage: bool,
 
     /// global ui framer motion effects
@@ -88,17 +77,16 @@ pub struct NyanpasuAppConfig {
     pub system_proxy_bypass: String,
 
     /// proxy guard interval
-    #[builder_field_attr(serde(alias = "proxy_guard_duration"))]
-    #[builder(default = "30")]
+    #[patch(attribute(serde(alias = "proxy_guard_duration")))]
     pub proxy_guard_interval: u64,
 
     /// theme setting
     #[specta(type = String)]
-    #[builder_field_attr(specta(type = String))]
+    #[patch(attribute(specta(type = String)))]
     pub theme_color: CssColor,
 
     /// clash core path
-    #[builder_field_attr(serde(alias = "clash_core"))]
+    #[patch(attribute(serde(alias = "clash_core")))]
     pub core: ClashCore,
 
     /// hotkey map
@@ -115,27 +103,25 @@ pub struct NyanpasuAppConfig {
     pub proxy_layout_column: i32,
 
     /// 日记轮转时间，单位：天
-    #[builder(default = "7")]
     pub max_log_files: usize,
 
     /// Check update when app launch
-    #[builder(default = "true")]
     pub enable_auto_check_update: bool,
 
     /// 是否启用代理托盘选择
-    #[builder_field_attr(serde(alias = "clash_tray_selector"))]
+    #[patch(attribute(serde(alias = "clash_tray_selector")))]
     pub tray_selector_mode: ProxiesSelectorMode,
 
     /// 是否窗口置顶
     pub always_on_top: bool,
 
     /// 是否启用网络统计信息浮窗
-    #[builder_field_attr(serde(skip_serializing_if = "Option::is_none"))]
     pub network_statistic_widget: NetworkStatisticWidgetConfig,
 
     /// PAC URL for automatic proxy configuration
     /// This field is used to set PAC proxy without exposing it to the frontend UI
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[patch(attribute(serde(default, with = "::serde_with::rust::double_option")))]
     pub pac_url: Option<Url>,
 
     /// enable tray text display on Linux systems
@@ -149,7 +135,6 @@ pub struct NyanpasuAppConfig {
 
     /// Use legacy UI (original UI at "/" route)
     /// When true, opens legacy window; when false, opens new main window
-    #[builder(default = "true")]
     pub use_legacy_ui: bool,
 
     /// enable colored tray icons on macOS
@@ -192,6 +177,64 @@ impl Default for NyanpasuAppConfig {
             enable_tray_traffic: todo!(),
             use_legacy_ui: todo!(),
         }
+    }
+}
+
+#[cfg(test)]
+mod patch_tests {
+    use super::*;
+    use struct_patch::Status;
+
+    /// The legacy field aliases carried over from the former derive-builder
+    /// partial must still decode onto the generated `NyanpasuAppConfigPatch`.
+    #[test]
+    fn patch_honours_legacy_aliases() {
+        let patch: NyanpasuAppConfigPatch = serde_yaml_ng::from_str(
+            "proxy_guard_duration: 45\nclash_core: mihomo\nclash_tray_selector: hidden\n",
+        )
+        .expect("aliased patch must deserialize");
+
+        assert_eq!(patch.proxy_guard_interval, Some(45));
+        assert_eq!(patch.core, Some(ClashCore::Mihomo));
+        assert_eq!(patch.tray_selector_mode, Some(ProxiesSelectorMode::Hidden));
+        // Untouched fields stay absent.
+        assert_eq!(patch.app_singleton_port, None);
+        assert!(!patch.is_empty());
+    }
+
+    /// An absent field must serialize away (skip_serializing_none on the patch),
+    /// so a partial patch round-trips to only the fields it carries.
+    #[test]
+    fn patch_skips_none_on_serialize() {
+        let mut patch = NyanpasuAppConfig::new_empty_patch();
+        patch.traffic_graph = Some(false);
+
+        let dumped = serde_yaml_ng::to_string(&patch).expect("serialize patch");
+        assert!(dumped.contains("traffic_graph: false"), "got:\n{dumped}");
+        assert!(
+            !dumped.contains("app_singleton_port"),
+            "absent fields must be skipped, got:\n{dumped}"
+        );
+    }
+
+    /// `pac_url` (struct-level `skip_serializing_none` + `double_option`):
+    /// absent decodes to keep, explicit `null` to clear, `Some(None)` serializes
+    /// as `null` while an absent field is skipped.
+    #[test]
+    fn pac_url_double_option_wire_semantics() {
+        let keep: NyanpasuAppConfigPatch =
+            serde_yaml_ng::from_str("traffic_graph: true\n").expect("patch must deserialize");
+        assert_eq!(keep.pac_url, None, "absent decodes to outer None (keep)");
+
+        let clear: NyanpasuAppConfigPatch =
+            serde_yaml_ng::from_str("pac_url: null\n").expect("patch must deserialize");
+        assert_eq!(clear.pac_url, Some(None), "null decodes to Some(None) (clear)");
+
+        let mut patch = NyanpasuAppConfig::new_empty_patch();
+        patch.pac_url = Some(None);
+        let dumped = serde_yaml_ng::to_string(&patch).expect("serialize patch");
+        assert!(dumped.contains("pac_url: null"), "Some(None) -> null, got:\n{dumped}");
+        assert!(!dumped.contains("theme_mode"), "absent skipped, got:\n{dumped}");
     }
 }
 

@@ -4,13 +4,13 @@ use std::{
 };
 
 use crate::clash::config::DEFAULT_EXTERNAL_CONTROLLER_PORT;
-use derive_builder::Builder;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use struct_patch::Patch;
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize, Type, Builder)]
-#[builder(default, derive(Debug, Serialize, Deserialize, Type))]
-#[builder_struct_attr(serde_with::skip_serializing_none)]
+#[derive(Default, Debug, Clone, Deserialize, Serialize, Type, Patch)]
+#[patch(attribute(serde_with::skip_serializing_none))]
+#[patch(attribute(derive(Debug, Default, Clone, Serialize, Deserialize, Type)))]
 pub struct ClashStrategy {
     /// 外部控制器端口策略
     pub external_controller: ExternalControllerStrategy,
@@ -18,9 +18,10 @@ pub struct ClashStrategy {
     pub mixed_port: PortStrategy,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Type, Builder)]
-#[builder(default, derive(Debug, Serialize, Deserialize, Type))]
-#[builder_struct_attr(serde_with::skip_serializing_none)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Type, Patch)]
+#[patch(attribute(serde_with::skip_serializing_none))]
+#[patch(attribute(derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq, Type)))]
+#[patch(attribute(serde(rename_all = "snake_case")))]
 #[serde(rename_all = "snake_case")]
 pub struct ExternalControllerStrategy {
     pub host: IpAddr,

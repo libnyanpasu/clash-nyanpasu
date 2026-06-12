@@ -3,13 +3,14 @@
 
 pub mod window;
 
-use derive_builder::Builder;
 use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use struct_patch::Patch;
 
-#[derive(Debug, Default, Serialize, Deserialize, Type, Builder)]
-#[builder(default, derive(Debug, Serialize, Deserialize, specta::Type))]
+#[derive(Debug, Default, Serialize, Deserialize, Type, Patch)]
+#[patch(attribute(serde_with::skip_serializing_none))]
+#[patch(attribute(derive(Debug, Default, Serialize, Deserialize, specta::Type)))]
 pub struct PersistentState {
     pub window_state: BTreeMap<window::WindowLabel, window::WindowState>,
 }

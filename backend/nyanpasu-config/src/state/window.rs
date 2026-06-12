@@ -5,7 +5,7 @@ use specta::Type;
 #[repr(transparent)]
 pub struct WindowLabel(pub String);
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize, Type)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Type)]
 pub struct WindowState {
     pub width: u32,
     pub height: u32,

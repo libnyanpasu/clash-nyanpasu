@@ -123,7 +123,7 @@ function RouteComponent() {
     <SidebarProvider defaultOpen={false}>
       <div
         className={cn(
-          'divide-outline-variant relative flex h-full min-h-0 w-full divide-x overflow-hidden',
+          'divide-outline-variant relative flex min-h-0 w-full divide-x overflow-hidden',
         )}
       >
         <Sidebar className="divide-outline-variant z-10 flex h-full min-h-0 flex-col divide-y">

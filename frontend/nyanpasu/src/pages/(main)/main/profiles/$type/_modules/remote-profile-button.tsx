@@ -20,7 +20,11 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { RemoteProfileBuilder, useProfile } from '@nyanpasu/interface'
+import {
+  NormalizedProfileBuilder,
+  RemoteProfileBuilder_Serialize,
+  useProfile,
+} from '@nyanpasu/interface'
 import AnimatedErrorItem from '../../_modules/error-item'
 
 const formSchema = z.object({
@@ -39,16 +43,14 @@ const formSchema = z.object({
       expire: z.number(),
     })
     .nullable(),
-  option: z
-    .object({
-      user_agent: z.string().nullable(),
-      with_proxy: z.boolean(),
-      self_proxy: z.boolean(),
-      update_interval: z.number().nullable(),
-    })
-    .optional(),
-  chain: z.array(z.string()).nullable().optional(),
-}) satisfies z.ZodType<RemoteProfileBuilder>
+  option: z.object({
+    user_agent: z.string().nullable(),
+    with_proxy: z.boolean(),
+    self_proxy: z.boolean(),
+    update_interval: z.number().nullable(),
+  }),
+  chain: z.array(z.string()).nullable(),
+}) satisfies z.ZodType<{ type: 'remote' } & RemoteProfileBuilder_Serialize>
 
 const getDefaultValues = () => {
   return {
@@ -127,7 +129,7 @@ export default function RemoteProfileButton({ children }: PropsWithChildren) {
           </CardHeader>
 
           <CardContent asChild>
-            <ScrollArea className="max-h-[calc(100vh-200px)]">
+            <ScrollArea className="max-h-[80dvh]">
               <div className="space-y-4 pt-2">
                 <Controller
                   control={form.control}

@@ -29,7 +29,7 @@ export function Sidebar({ className, ...props }: ComponentProps<'div'>) {
       }}
     >
       <div
-        className={cn('flex', className)}
+        className={cn('flex min-h-0', className)}
         data-slot="sidebar-container"
         {...props}
       />

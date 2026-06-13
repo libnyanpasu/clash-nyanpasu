@@ -5,10 +5,14 @@ import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { Profile, useClashConnections, useProfile } from '@nyanpasu/interface'
+import {
+  NormalizedProfile,
+  useClashConnections,
+  useProfile,
+} from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 
-export const useActiveProfile = (profile: Profile) => {
+export const useActiveProfile = (profile: NormalizedProfile) => {
   const {
     query: { data },
     upsert,
@@ -71,7 +75,7 @@ export default function ActiveButton({
   className,
   ...props
 }: Omit<ComponentProps<typeof Button>, 'loading' | 'onClick'> & {
-  profile: Profile
+  profile: NormalizedProfile
 }) {
   const { isActive, handleClick, isPending } = useActiveProfile(profile)
 

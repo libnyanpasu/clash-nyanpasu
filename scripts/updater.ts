@@ -4,7 +4,7 @@ import { Octokit } from "npm:octokit";
 import { colorize, consola } from "./utils/logger.ts";
 import { resolveUpdateLog } from "./updatelog.ts";
 
-const GITHUB_PROXY = "https://gh-proxy.com/";
+const GITHUB_PROXY = "https://nyanpasu-script.majokeiko.com/";
 const UPDATE_TAG_NAME = "updater";
 const UPDATE_JSON_FILE = "update.json";
 const UPDATE_JSON_PROXY = "update-proxy.json";
@@ -19,7 +19,12 @@ const argv = parseArgs(Deno.args, {
 });
 
 function getGithubUrl(url: string): string {
-  return new URL(url.replace(/^https?:\/\//g, ""), GITHUB_PROXY).toString();
+  // The proxy expects the GitHub path without the github.com host, e.g.
+  // https://nyanpasu-script.majokeiko.com/<owner>/<repo>/releases/download/...
+  return new URL(
+    url.replace(/^https?:\/\/github\.com\//, ""),
+    GITHUB_PROXY,
+  ).toString();
 }
 
 function getRepoContext() {

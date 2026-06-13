@@ -1,7 +1,11 @@
 import { merge } from 'lodash-es'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
-import { commands, type IVerge } from './bindings'
+import {
+  commands,
+  type IVerge_Deserialize,
+  type IVerge_Serialize,
+} from './bindings'
 import { NYANPASU_SETTING_QUERY_KEY } from './consts'
 
 /**
@@ -65,8 +69,12 @@ export const useSettings = () => {
    */
   const upsert = useMutation({
     // Partial to allow for partial updates
-    mutationFn: async (options: Partial<IVerge>) => {
-      return unwrapResult(await commands.patchVergeConfig(options as IVerge))
+    mutationFn: async (options: Partial<IVerge_Serialize>) => {
+      return unwrapResult(
+        await commands.patchVergeConfig(
+          options as unknown as IVerge_Deserialize,
+        ),
+      )
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -98,7 +106,7 @@ export const useSettings = () => {
  * // upsert can be used to update theme setting
  * ```
  */
-export const useSetting = <K extends keyof IVerge>(key: K) => {
+export const useSetting = <K extends keyof IVerge_Serialize>(key: K) => {
   const {
     query: { data, ...query },
     upsert: update,
@@ -116,12 +124,12 @@ export const useSetting = <K extends keyof IVerge>(key: K) => {
    * @returns void
    * @remarks This function will not execute if the data is not available
    */
-  const upsert = async (value: IVerge[K]) => {
+  const upsert = async (value: IVerge_Serialize[K]) => {
     if (!data) {
       return
     }
 
-    await update.mutateAsync({ [key]: value })
+    await update.mutateAsync({ [key]: value } as Partial<IVerge_Serialize>)
   }
 
   return {

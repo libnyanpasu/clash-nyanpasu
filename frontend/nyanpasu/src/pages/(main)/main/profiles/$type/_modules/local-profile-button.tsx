@@ -29,7 +29,7 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
-  LocalProfileBuilder,
+  LocalProfileBuilder_Serialize,
   ProfileTemplate,
   useProfile,
 } from '@nyanpasu/interface'
@@ -44,8 +44,8 @@ const formSchema = z.object({
   desc: z.string().nullable(),
   updated: z.number().nullable(),
   symlinks: z.string().nullable(),
-  chain: z.array(z.string()).nullable().optional(),
-}) satisfies z.ZodType<LocalProfileBuilder>
+  chain: z.array(z.string()).nullable(),
+}) satisfies z.ZodType<LocalProfileBuilder_Serialize>
 
 const acceptFiles = ['.yaml', '.yml']
 
@@ -155,7 +155,7 @@ export default function LocalProfileButton({ children }: PropsWithChildren) {
           </CardHeader>
 
           <CardContent asChild>
-            <ScrollArea className="max-h-[calc(100vh-200px)]">
+            <ScrollArea className="max-h-[80dvh]">
               <div className="space-y-4 pt-2">
                 <Controller
                   control={form.control}

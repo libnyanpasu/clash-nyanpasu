@@ -90,6 +90,10 @@ pub struct ClashWsConnectionSnapshot {
     pub download_speed: u64,
     pub upload_speed: u64,
     pub memory: Option<u64>,
+    // TODO: specta 2.0.0-rc.25 cannot export recursive inline types (serde_json::Value expands
+    // infinitely via Vec<Value>). Replace with a concrete ClashConnection struct once the specta
+    // bug is fixed or a proper named recursive JsonValue type is available.
+    #[specta(type = Option<specta_typescript::Any>)]
     pub connections: Option<Vec<serde_json::Value>>,
 }
 

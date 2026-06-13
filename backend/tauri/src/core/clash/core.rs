@@ -204,7 +204,7 @@ impl Instance {
                                             stated_changed_at
                                                 .store(get_current_ts(), Ordering::Relaxed);
                                             if status.code != Some(0)
-                                                || !matches!(status.signal, Some(9) | Some(15))
+                                                && !matches!(status.signal, Some(9) | Some(15))
                                             {
                                                 let err = anyhow::anyhow!(format!(
                                                     "core terminated with status: {:?}\n{}",
@@ -376,6 +376,9 @@ impl Instance {
 #[derive(Debug)]
 pub struct CoreManager {
     instance: Mutex<Option<Arc<Instance>>>,
+    /// Serializes concurrent run_core / change_core calls to prevent races (double-start,
+    /// port conflicts, or stale-draft restarts triggered by the IPC health-check).
+    run_lock: tokio::sync::Mutex<()>,
     #[cfg(target_os = "macos")]
     previous_dns: tokio::sync::Mutex<Option<Vec<std::net::IpAddr>>>,
 }
@@ -385,6 +388,7 @@ impl CoreManager {
         static CORE_MANAGER: OnceCell<CoreManager> = OnceCell::new();
         CORE_MANAGER.get_or_init(|| CoreManager {
             instance: Mutex::new(None),
+            run_lock: tokio::sync::Mutex::new(()),
             #[cfg(target_os = "macos")]
             previous_dns: tokio::sync::Mutex::new(None),
         })
@@ -442,8 +446,8 @@ impl CoreManager {
         Ok(())
     }
 
-    /// 启动核心
-    pub async fn run_core(&self) -> Result<()> {
+    /// Inner implementation of run_core — must only be called while holding `run_lock`.
+    async fn run_core_inner(&self) -> Result<()> {
         {
             let instance = {
                 let instance = self.instance.lock();
@@ -487,8 +491,15 @@ impl CoreManager {
         instance.start().await
     }
 
+    /// 启动核心
+    pub async fn run_core(&self) -> Result<()> {
+        let _guard = self.run_lock.lock().await;
+        self.run_core_inner().await
+    }
+
     /// 重启内核
     pub async fn recover_core(&'static self) -> Result<()> {
+        let _guard = self.run_lock.lock().await;
         // 清除原来的实例
         {
             let instance = {
@@ -503,9 +514,10 @@ impl CoreManager {
             }
         }
 
-        if let Err(err) = self.run_core().await {
+        if let Err(err) = self.run_core_inner().await {
             log::error!(target: "app", "failed to recover clash core");
             log::error!(target: "app", "{err:?}");
+            drop(_guard);
             tokio::time::sleep(Duration::from_secs(5)).await; // sleep 5s
             std::thread::spawn(move || {
                 block_on(async {
@@ -541,17 +553,26 @@ impl CoreManager {
 
         log::debug!(target: "app", "change core to `{clash_core}`");
 
+        let _guard = self.run_lock.lock().await;
+
         Config::verge().draft().clash_core = Some(clash_core);
 
         // 更新配置
-        Config::generate().await?;
+        if let Err(err) = Config::generate().await {
+            Config::verge().discard();
+            return Err(err);
+        }
 
-        self.check_config().await?;
+        if let Err(err) = self.check_config().await {
+            Config::verge().discard();
+            Config::runtime().discard();
+            return Err(err);
+        }
 
         // 清掉旧日志
         Logger::global().clear_log();
 
-        match self.run_core().await {
+        match self.run_core_inner().await {
             Ok(_) => {
                 tracing::info!("change core success");
                 Config::verge().apply();
@@ -563,7 +584,7 @@ impl CoreManager {
                 tracing::error!("failed to change core: {err:?}");
                 Config::verge().discard();
                 Config::runtime().discard();
-                self.run_core().await?;
+                self.run_core_inner().await?;
                 Err(err)
             }
         }
@@ -639,17 +660,14 @@ impl CoreManager {
         if let Some(new_dns) = new_dns {
             log::debug!(target: "app", "set new dns: {:?}", new_dns);
             let result = match run_type {
-                RunType::Service => {
-                    nyanpasu_ipc::client::shortcuts::Client::service_default()
-                        .set_dns(&NetworkSetDnsReq {
-                            // FIXME: improve this type notation
-                            dns_servers: new_dns
-                                .as_ref()
-                                .map(|dns| dns.iter().map(Cow::Borrowed).collect()),
-                        })
-                        .await
-                        .map_err(anyhow::Error::from)
-                }
+                RunType::Service => nyanpasu_ipc::client::shortcuts::Client::service_default()
+                    .set_dns(&NetworkSetDnsReq {
+                        dns_servers: new_dns
+                            .as_ref()
+                            .map(|dns| dns.iter().map(|ip| Cow::Owned(*ip)).collect()),
+                    })
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{e}")),
                 _ => set_dns(&default_device, new_dns).map_err(anyhow::Error::from),
             };
             if let Err(e) = result.context("failed to set system dns") {

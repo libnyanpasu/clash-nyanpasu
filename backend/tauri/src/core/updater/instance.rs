@@ -1,8 +1,10 @@
 use super::shared::{self, CoreTypeMeta};
 use crate::{
     config::nyanpasu::ClashCore,
-    core::CoreManager,
-    utils::downloader::{DownloadStatus, Downloader, DownloaderBuilder, DownloaderState},
+    core::{
+        CoreManager,
+        download::{DownloadSession, DownloadStatus},
+    },
 };
 use anyhow::anyhow;
 use runas::Command as RunasCommand;
@@ -12,7 +14,6 @@ use specta::Type;
 use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 use tempfile::TempDir;
-use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, Serialize, Default, specta::Type)]
 #[serde(rename_all = "snake_case")]
@@ -27,16 +28,13 @@ pub enum UpdaterState {
     Failed(String),
 }
 
-type DownloaderWithDynCallback = Downloader<Box<dyn Fn(DownloaderState) + Send + Sync>>;
-
 pub(super) struct Updater {
     id: usize,
     temp_dir: TempDir,
     core_type: ClashCore,
     artifact: String,
     inner: parking_lot::RwLock<UpdaterInner>,
-    rx: Mutex<tokio::sync::mpsc::Receiver<DownloaderState>>,
-    downloader: Arc<DownloaderWithDynCallback>,
+    downloader: Arc<DownloadSession>,
 }
 
 struct UpdaterInner {
@@ -115,33 +113,16 @@ impl UpdaterBuilder {
         let mut download_url = url::Url::parse("https://github.com")?;
         download_url.set_path(&download_path);
         let download_url = crate::utils::candy::parse_gh_url(&mirror, download_url.as_str())?;
-        let file = tokio::fs::File::create(temp_dir.path().join(&artifact)).await?;
+        let save_path = temp_dir.path().join(&artifact);
         tracing::debug!("downloader url: {}", download_url);
-        tracing::debug!("downloader file: {:?}", file);
-        let (tx, rx) = tokio::sync::mpsc::channel::<DownloaderState>(1);
-        let callback: Box<dyn Fn(DownloaderState) + Send + Sync> = Box::new(move |state| {
-            let tx = tx.clone();
-            tokio::spawn(async move {
-                if let Err(e) = tx.send(state).await {
-                    tracing::warn!("failed to send downloader state: {}", e);
-                }
-            });
-        });
-        let downloader = Arc::new(
-            DownloaderBuilder::new()
-                .set_client(client)
-                .set_url(download_url)?
-                .set_file(file)
-                .set_event_callback(callback)
-                .build()?,
-        );
+        tracing::debug!("downloader save path: {:?}", save_path);
+        let downloader = Arc::new(DownloadSession::new(client, download_url, save_path).await?);
         Ok(Updater {
             id: rand::random::<u32>() as usize,
             temp_dir,
             core_type,
             inner: parking_lot::RwLock::new(inner),
             artifact,
-            rx: Mutex::new(rx),
             downloader,
         })
     }
@@ -295,56 +276,32 @@ impl Updater {
             }
             inner.state = UpdaterState::Downloading;
         }
-        let downloader = self.downloader.clone();
-        tokio::spawn(async move {
-            if let Err(e) = downloader.start().await {
-                tracing::error!("failed to start downloader: {}", e);
-            }
-        });
-        let mut rx = self.rx.lock().await;
-        loop {
-            match rx.recv().await {
-                Some(state) => match state {
-                    DownloaderState::Downloading => {
-                        tracing::debug!("start to download core.");
-                        self.dispatch_state(UpdaterState::Downloading);
-                    }
-                    DownloaderState::Finished => {
-                        tracing::debug!("download finished and start to incoming update logic");
-                        if let Err(e) = self.decompress_and_set_permission().await {
-                            tracing::error!("failed to decompress and set permission: {}", e);
-                            self.dispatch_state(UpdaterState::Failed(e.to_string()));
-                            return;
-                        }
-                        if let Err(e) = self.replace_core().await {
-                            tracing::error!("failed to replace core: {}", e);
-                            self.dispatch_state(UpdaterState::Failed(e.to_string()));
-                            return;
-                        }
-                        self.dispatch_state(UpdaterState::Done);
-                        break;
-                    }
-                    DownloaderState::Failed(e) => {
-                        tracing::error!("download failed: {}", e);
-                        self.dispatch_state(UpdaterState::Failed(e));
-                        break;
-                    }
-                    _ => {
-                        tracing::debug!("downloader enter state: {:?}", state);
-                    }
-                },
-                None => {
-                    tracing::error!("downloader channel closed");
-                }
-            }
+        // The download engine reports live progress through `downloader.status()`,
+        // which `get_report` surfaces to the frontend while this runs.
+        if let Err(e) = self.downloader.start().await {
+            tracing::error!("download failed: {}", e);
+            self.dispatch_state(UpdaterState::Failed(e.to_string()));
+            return;
         }
+        tracing::debug!("download finished and start to incoming update logic");
+        if let Err(e) = self.decompress_and_set_permission().await {
+            tracing::error!("failed to decompress and set permission: {}", e);
+            self.dispatch_state(UpdaterState::Failed(e.to_string()));
+            return;
+        }
+        if let Err(e) = self.replace_core().await {
+            tracing::error!("failed to replace core: {}", e);
+            self.dispatch_state(UpdaterState::Failed(e.to_string()));
+            return;
+        }
+        self.dispatch_state(UpdaterState::Done);
     }
 
     pub fn get_report(&self) -> UpdaterSummary {
         UpdaterSummary {
             id: self.id,
             state: self.inner.read().state.clone(),
-            downloader: self.downloader.get_current_status(),
+            downloader: self.downloader.status(),
         }
     }
 
@@ -352,5 +309,3 @@ impl Updater {
         self.id
     }
 }
-
-unsafe impl Send for Updater {}

@@ -127,7 +127,7 @@ export default function WindowControl({
 }) {
   return (
     <div
-      className={cn('flex gap-1', className)}
+      className={cn('z-top flex gap-1', className)}
       data-slot="window-control"
       data-tauri-drag-region
     >

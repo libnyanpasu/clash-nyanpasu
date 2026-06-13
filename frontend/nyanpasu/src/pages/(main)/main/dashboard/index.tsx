@@ -214,10 +214,13 @@ const WidgetRender = () => {
 
   return (
     <DndGridRoot>
-      <div className="size-full p-4" data-slot="dashboard-widget-container">
+      <div
+        className="flex min-h-0 flex-1 flex-col p-4"
+        data-slot="dashboard-widget-container"
+      >
         <DndGrid
           gridId="main"
-          className="size-full"
+          className="min-h-0 flex-1"
           items={displayItems}
           onLayoutChange={(newItems) =>
             handleLayoutChange(normalizeItems(newItems))
@@ -262,7 +265,7 @@ function RouteComponent() {
       <RegisterContextMenuTrigger asChild>
         <div
           data-slot="dashboard-container"
-          className="relative size-full overflow-hidden"
+          className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
         >
           <WidgetRender />
 

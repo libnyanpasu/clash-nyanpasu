@@ -22,10 +22,10 @@ parking_lot = "0.12"
 image = { version = "0.25.6", features = ["jpeg", "png"] }
 humansize = "2"
 # for svg currentColor replacement
-resvg = "0.45.1"                                            # for svg rendering
-usvg = "0.45.1"                                             # for svg parsing
-csscolorparser = "0.8"                                      # for color conversion
-ipc-channel = "0.20"                                        # for IPC between the Widget process and the GUI process
+resvg = "0.45.1"                                 # for svg rendering
+usvg = "0.45.1"                                  # for svg parsing
+csscolorparser = "0.8"                           # for color conversion
+ipc-channel = "0.20"                             # for IPC between the Widget process and the GUI process
 serde = { version = "1", features = ["derive"] }
 anyhow = "1"
 specta = { version = "^2.0.0-rc.25" }

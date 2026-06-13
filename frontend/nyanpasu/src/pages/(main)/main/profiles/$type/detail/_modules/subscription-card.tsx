@@ -17,7 +17,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import {
-  RemoteProfile,
+  RemoteProfile_Serialize,
   RemoteProfileOptionsBuilder,
   useProfile,
 } from '@nyanpasu/interface'
@@ -25,7 +25,11 @@ import UpdateOptionEditor from './update-option-editor'
 
 const clampPercentage = (value: number) => Math.min(100, Math.max(0, value))
 
-export const SubscriptionCard = ({ profile }: { profile: RemoteProfile }) => {
+export const SubscriptionCard = ({
+  profile,
+}: {
+  profile: RemoteProfile_Serialize
+}) => {
   const { update } = useProfile()
 
   const { progress, total, used } = useMemo(() => {

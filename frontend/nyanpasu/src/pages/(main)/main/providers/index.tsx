@@ -194,7 +194,7 @@ const Rules = ({ data }: { data: ClashRulesProviderQueryItem }) => {
         <div className="flex items-center justify-between">
           <div className="bg-surface-variant text-secondary rounded-full px-2 py-1 text-[10px]">
             {m.providers_rules_rule_count_label({
-              count: data.ruleCount,
+              count: data.ruleCount ?? 0,
             })}
           </div>
 

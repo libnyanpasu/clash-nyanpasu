@@ -15,18 +15,6 @@ import react from '@vitejs/plugin-react'
 
 const IS_NIGHTLY = process.env.NIGHTLY?.toLowerCase() === 'true'
 
-const builtinVars = () => {
-  return {
-    name: 'built-in-vars',
-    transformIndexHtml(html: string) {
-      return html.replace(
-        /<\/head>/,
-        `<script>window.__IS_NIGHTLY__ = ${IS_NIGHTLY ? 'true' : 'false'}</script></head>`,
-      )
-    },
-  }
-}
-
 // https://vitejs.dev/config/
 export default defineConfig(({ command, mode }) => {
   const isDev = command === 'serve'
@@ -84,7 +72,6 @@ export default defineConfig(({ command, mode }) => {
           },
         },
       }),
-      builtinVars(),
       tanstackRouter({
         target: 'react',
         autoCodeSplitting: true,
@@ -136,15 +123,19 @@ export default defineConfig(({ command, mode }) => {
       entries: ['./src/main.tsx'],
       include: ['@tauri-apps/api', 'clsx', 'react', 'react-dom'],
     },
-    esbuild: {
-      drop: isDev ? undefined : ['debugger'],
-      pure: isDev || IS_NIGHTLY ? [] : ['console.log'],
-    },
+    // esbuild: {
+    //   drop: isDev ? undefined : ['debugger'],
+    //   pure: isDev || IS_NIGHTLY ? [] : ['console.log'],
+    // },
     worker: {
       format: 'es',
       rolldownOptions: {
         output: {
           manualChunks: (id) => {
+            if (id.includes('monaco-editor/esm/vs/language/css/css.worker')) {
+              return 'css-worker'
+            }
+
             if (id.includes('monaco-editor/esm/vs/language/json/json.worker')) {
               return 'json-worker'
             }
@@ -174,6 +165,7 @@ export default defineConfig(({ command, mode }) => {
     define: {
       OS_PLATFORM: `"${process.platform}"`,
       WIN_PORTABLE: !!process.env.VITE_WIN_PORTABLE,
+      IS_NIGHTLY: IS_NIGHTLY,
     },
     html: {},
   } satisfies UserConfig

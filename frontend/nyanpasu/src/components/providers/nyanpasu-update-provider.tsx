@@ -8,8 +8,8 @@ import {
 import {
   commands,
   unwrapResult,
+  useIsAppImage,
   useSetting,
-  useUpdaterSupported,
 } from '@nyanpasu/interface'
 import packageJson from '@root/package.json'
 import { Update } from '@tauri-apps/plugin-updater'
@@ -43,7 +43,10 @@ export default function NyanpasuUpdateProvider({
     'enable_auto_check_update',
   )
 
-  const isSupported = useUpdaterSupported()
+  const { data: isAppImage } = useIsAppImage()
+
+  // windows portable version does not support auto update
+  const isSupported = !isAppImage || !WIN_PORTABLE
 
   const [hasNewVersion, setHasNewVersion] = useState(false)
 

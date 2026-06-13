@@ -260,7 +260,7 @@ fn spawn_window_ready_timeout(app_handle: AppHandle) {
                     let _ = win.show();
                     let _ = win.set_focus();
                     #[cfg(target_os = "macos")]
-                    log_err!(crate::utils::dock::macos::show_dock_icon());
+                    crate::utils::dock::macos::show_dock_icon();
                 }
             }
         });

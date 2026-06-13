@@ -146,16 +146,14 @@ function RouteComponent() {
       <AppContentScrollArea
         className={cn(
           'group/providers-content flex-[3_1_auto]',
+          // for AnimatedOutletPreset transition to work properly,
+          // the scroll area must have overflow: clip
           'overflow-clip',
         )}
         data-slot="providers-content-scroll-area"
       >
         <div
-          className={cn(
-            'container mx-auto w-full max-w-7xl',
-            'min-h-[calc(100vh-40px-64px)]',
-            'sm:min-h-[calc(100vh-40px-48px)]',
-          )}
+          className={cn('container mx-auto w-full max-w-7xl', 'min-h-full')}
           data-slot="providers-content"
         >
           <AnimatedOutletPreset />

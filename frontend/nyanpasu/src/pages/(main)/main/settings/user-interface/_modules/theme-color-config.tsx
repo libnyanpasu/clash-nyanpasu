@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
+import { useSystemAccentColor } from '@interface/ipc'
 import { cn } from '@nyanpasu/utils'
 import { Hue } from '@uiw/react-color'
 import {
@@ -85,10 +86,10 @@ export default function ThemeColorConfig() {
     [setThemeColor],
   )
 
-  const [customHueColor, setCustomHueColor] = useState<number>()
+  const [customHueColor, setCustomHueColor] = useState<number>(0)
 
   const customColorHex = useMemo(
-    () => (customHueColor !== undefined ? hueToHex(customHueColor) : undefined),
+    () => hueToHex(customHueColor),
     [customHueColor],
   )
 
@@ -99,6 +100,11 @@ export default function ThemeColorConfig() {
 
     await setThemeColor(customColorHex)
   }, [customColorHex, setThemeColor])
+
+  const { systemAccentColor } = useSystemAccentColor()
+
+  const isCustomColor =
+    !PERSETS.includes(themeColor) && themeColor !== systemAccentColor
 
   return (
     <SettingsCard data-slot="theme-color-config-card">
@@ -134,6 +140,7 @@ export default function ThemeColorConfig() {
         <DropdownMenuContent sideOffset={-16} alignOffset={16}>
           {PERSETS.map((value) => (
             <DropdownMenuCheckboxItem
+              className="justify-start gap-5"
               checked={themeColor === value}
               key={value}
               onSelect={() => handleThemeModeChange(value)}
@@ -150,10 +157,30 @@ export default function ThemeColorConfig() {
             </DropdownMenuCheckboxItem>
           ))}
 
+          {systemAccentColor && (
+            <DropdownMenuCheckboxItem
+              className="justify-start gap-5"
+              checked={themeColor === systemAccentColor}
+              onSelect={() => handleThemeModeChange(systemAccentColor)}
+            >
+              <span
+                className="inline-block size-4 rounded-full"
+                data-slot="theme-color-config-colorful-system-accent-preview"
+                style={{
+                  backgroundColor: systemAccentColor,
+                }}
+              />
+
+              <span>
+                {m.settings_user_interface_theme_color_system_accent()}
+              </span>
+            </DropdownMenuCheckboxItem>
+          )}
+
           <DropdownMenuSub>
             <DropdownMenuSubTrigger
               className="group justify-start gap-4"
-              data-selected={String(!PERSETS.includes(themeColor))}
+              data-selected={String(isCustomColor)}
             >
               <Check
                 className={cn(
@@ -172,7 +199,7 @@ export default function ThemeColorConfig() {
                 <div className="flex items-center gap-2">
                   <span
                     className="inline-block size-4 rounded-full"
-                    data-slot="theme-color-config-colorful-select-preview"
+                    data-slot="theme-color-config-colorful-custom-preview"
                     style={{
                       backgroundColor: customColorHex,
                     }}

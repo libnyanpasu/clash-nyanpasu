@@ -19,7 +19,7 @@ import { move } from '@dnd-kit/helpers'
 import { DragDropProvider } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import { hexFromArgb } from '@material/material-color-utilities'
-import { Profile, useProfile } from '@nyanpasu/interface'
+import { NormalizedProfile, useProfile } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import { MeshGradient } from '@paper-design/shaders-react'
 import { Link } from '@tanstack/react-router'
@@ -46,7 +46,7 @@ const GridViewProfile = ({
   profile,
   index,
 }: {
-  profile: Profile
+  profile: NormalizedProfile
   index: number
 }) => {
   const { type } = IndexRoute.useParams()
@@ -179,10 +179,9 @@ const EmptyList = () => {
   return (
     <div
       className={cn(
-        'mb-4 flex h-16 items-center justify-center text-center text-sm',
+        'flex min-h-full items-center justify-center text-center text-sm',
         'text-on-surface-variant',
         'dark:text-on-surface-variant-dark',
-        'min-h-[calc(100vh-40px-64px-80px)]',
       )}
     >
       {m.profile_empty_list_message()}
@@ -228,11 +227,9 @@ export default function ProfilesList({
   return (
     <>
       <div
-        className={cn(
-          'flex flex-col gap-4',
-          'min-h-[calc(100vh-40px-64px)]',
-          'sm:min-h-[calc(100vh-40px-48px)]',
-        )}
+        className={cn('flex min-h-full flex-1 flex-col gap-4')}
+        data-slot="profiles-list"
+        {...props}
       >
         <DragDropProvider
           onDragEnd={(event) => {
@@ -249,7 +246,7 @@ export default function ProfilesList({
         >
           <div
             className={cn(
-              'grid gap-2',
+              'grid content-start gap-2',
               'md:grid-cols-2',
               'lg:grid-cols-3',
               'dxl:grid-cols-4',

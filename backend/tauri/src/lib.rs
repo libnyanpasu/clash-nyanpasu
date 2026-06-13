@@ -31,8 +31,8 @@ use crate::{
     utils::{init, resolve},
 };
 use anyhow::Context;
-use specta_typescript::{BigIntExportBehavior, Typescript};
-use tauri::{Emitter, Manager};
+use specta_typescript::Typescript;
+use tauri::Emitter;
 use tauri_specta::{collect_commands, collect_events};
 use utils::resolve::{is_window_opened, reset_window_open_counter};
 
@@ -213,6 +213,14 @@ pub fn run() -> std::io::Result<()> {
             ipc::get_runtime_exists,
             ipc::get_postprocessing_output,
             ipc::clash_api_get_proxy_delay,
+            ipc::clash_api_get_configs,
+            ipc::clash_api_delete_connections,
+            ipc::clash_api_get_version,
+            ipc::clash_api_get_rules,
+            ipc::clash_api_get_providers_rules,
+            ipc::clash_api_update_providers_rules,
+            ipc::clash_api_get_group_delay,
+            ipc::clash_api_get_providers_proxies,
             ipc::uwp::invoke_uwp_tool,
             // updater
             ipc::fetch_latest_core_versions,
@@ -290,6 +298,8 @@ pub fn run() -> std::io::Result<()> {
             // tray actions
             ipc::copy_clash_env,
             ipc::quit_application,
+            // color
+            ipc::get_system_accent_color,
         ])
         .events(collect_events![
             core::clash::ClashConnectionsEvent,
@@ -297,35 +307,26 @@ pub fn run() -> std::io::Result<()> {
             window::WindowMessageEvent,
             window::WindowReadyEvent,
             core::storage::StorageValueChangedEvent
-        ]);
+        ])
+        .dangerously_cast_bigints_to_number();
 
     #[cfg(debug_assertions)]
     {
         const SPECTA_BINDINGS_PATH: &str = "../../frontend/interface/src/ipc/bindings.ts";
 
         match specta_builder.export(
-            Typescript::default()
-                .formatter(specta_typescript::formatter::prettier)
-                .formatter(|file| {
-                    let npx_command = if cfg!(target_os = "windows") {
-                        "npx.cmd"
-                    } else {
-                        "npx"
-                    };
-
-                    std::process::Command::new(npx_command)
-                        .arg("prettier")
-                        .arg("--write")
-                        .arg(file)
-                        .output()
-                        .map(|_| ())
-                        .map_err(io::Error::other)
-                })
-                .bigint(BigIntExportBehavior::Number)
-                .header("/* oxlint-disable */\n// @ts-nocheck"),
+            Typescript::default().header("/* oxlint-disable */\n// @ts-nocheck"),
             SPECTA_BINDINGS_PATH,
         ) {
             Ok(_) => {
+                let npx_command = if cfg!(target_os = "windows") {
+                    "npx.cmd"
+                } else {
+                    "npx"
+                };
+                let _ = std::process::Command::new(npx_command)
+                    .args(["prettier", "--write", SPECTA_BINDINGS_PATH])
+                    .output();
                 log::debug!("Exported typescript bindings, path: {SPECTA_BINDINGS_PATH}");
             }
             Err(e) => {

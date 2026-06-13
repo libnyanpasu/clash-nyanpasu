@@ -25,6 +25,7 @@ const ROOT_PACKAGE_JSON_PATH = path.join(cwd, "package.json");
 
 const isNSIS = Deno.args.includes("--nsis");
 const isMSI = Deno.args.includes("--msi");
+const isLinux = Deno.args.includes("--linux");
 const fixedWebview = Deno.args.includes("--fixed-webview");
 const disableUpdater = Deno.args.includes("--disable-updater");
 
@@ -82,9 +83,17 @@ async function main() {
   consola.debug(`Current git short hash: ${GIT_SHORT_HASH}`);
 
   const version = `${tauriConf.version}-alpha+${GIT_SHORT_HASH}`;
+  // RPM/DEB forbid `-` in the version string (#3850), but tauri requires
+  // `version` to be valid semver, so `~` is not usable here. `+` is legal in
+  // semver (build metadata) and in RPM/DEB version strings, so use it instead.
+  const linuxVersion = `${tauriConf.version}+alpha.${GIT_SHORT_HASH}`;
 
   consola.debug("Write tauri version to tauri.nightly.conf.json");
-  if (!isNSIS && !isMSI) tauriConf.version = version;
+  if (isLinux) {
+    tauriConf.version = linuxVersion;
+  } else if (!isNSIS && !isMSI) {
+    tauriConf.version = version;
+  }
   await Deno.writeTextFile(
     TAURI_DEV_APP_CONF_PATH,
     JSON.stringify(tauriConf, null, 2),

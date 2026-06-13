@@ -64,6 +64,7 @@
   "settings_user_interface_theme_mode_dark": "深色",
   "settings_user_interface_theme_mode_system": "跟随系统",
   "settings_user_interface_theme_color_label": "主题颜色",
+  "settings_user_interface_theme_color_system_accent": "系统强调色",
   "settings_user_interface_theme_color_custom": "自定义",
   "settings_user_interface_custom_css_group": "自定义 CSS",
   "settings_user_interface_custom_css_label": "自定义 CSS 编辑器",

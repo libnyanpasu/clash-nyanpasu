@@ -11,8 +11,8 @@
   "plugins": {
     "updater": {
       "endpoints": [
+        "https://nyanpasu-script.majokeiko.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update-fixed-webview-proxy.json",
         "https://nyanpasu.surge.sh/updater/update-fixed-webview-proxy.json",
-        "https://gh-proxy.com/https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update-fixed-webview-proxy.json",
         "https://github.com/libnyanpasu/clash-nyanpasu/releases/download/updater/update-fixed-webview.json"
       ]
     }

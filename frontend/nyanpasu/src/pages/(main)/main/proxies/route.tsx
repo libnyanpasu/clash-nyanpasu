@@ -104,7 +104,12 @@ function RouteComponent() {
       )}
 
       <AppContentScrollArea
-        className={cn('group/proxies-content flex-[3_1_auto]', 'overflow-clip')}
+        className={cn(
+          'group/proxies-content flex-[3_1_auto]',
+          // for AnimatedOutletPreset transition to work properly,
+          // the scroll area must have overflow: clip
+          'overflow-clip',
+        )}
         data-slot="proxies-content-scroll-area"
       >
         {isNoProxies || proxyMode.direct ? (
@@ -113,12 +118,11 @@ function RouteComponent() {
           <div
             className={cn(
               'container mx-auto w-full min-w-full',
-              'min-h-[calc(100vh-40px-64px)]',
-              'sm:min-h-[calc(100vh-40px-48px)]',
+              'flex min-h-full flex-col',
             )}
             data-slot="proxies-content"
           >
-            <AnimatedOutletPreset />
+            <AnimatedOutletPreset className="flex flex-1 flex-col" />
           </div>
         )}
       </AppContentScrollArea>

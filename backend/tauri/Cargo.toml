@@ -90,6 +90,16 @@ axum = "0.8"
 url = "2"
 mime = "0.3"
 reqwest = { workspace = true }
+# Parallel/concurrent download engine. We disable the bundled reqwest adapter
+# (it targets reqwest 0.13 while this workspace pins 0.12) and implement our own
+# BoltLoadAdapter over the existing reqwest 0.12 client in `core::download`.
+bolt-load = { version = "0.1", default-features = false, features = [
+  "tokio",
+  "serde",
+  "tracing",
+] }
+# the CancellationToken type required by bolt-load's TaskBuilder
+smol-cancellation-token = "0.1"
 tokio-tungstenite = "0.29"
 urlencoding = "2.1"
 port_scanner = "0.1.5"
@@ -132,7 +142,6 @@ single-instance = "0.3.3"
 which = "8"
 open = "5.0.1"
 sysinfo = "0.39"
-num_cpus = "1"
 os_pipe = "1.2.1"
 whoami = "1.5.1"
 camino = { version = "1.1.9", features = ["serde1"] }
@@ -170,12 +179,12 @@ display-info = "0.5.0"  # should be removed after upgrading to tauri v2
 
 # OXC (The Oxidation Compiler)
 # We use it to parse and transpile the old script profile to esm based script profile
-oxc_parser = "0.129"
-oxc_allocator = "0.129"
-oxc_span = "0.129"
-oxc_ast = "0.129"
-oxc_syntax = "0.129"
-oxc_ast_visit = "0.129"
+oxc_parser = "0.135"
+oxc_allocator = "0.135"
+oxc_span = "0.135"
+oxc_ast = "0.135"
+oxc_syntax = "0.135"
+oxc_ast_visit = "0.135"
 
 # Lua Integration
 mlua = { version = "0.11", features = [
@@ -211,7 +220,7 @@ tauri-plugin-opener = "2.5"
 window-vibrancy = { version = "0.7.0" }
 
 # Strong typed api binding between typescript and rust
-specta-typescript = "0.0.12"
+specta-typescript = { version = "0.0.12", features = ["serde"] }
 tauri-specta = { version = "^2.0.0-rc.25", features = ["derive", "typescript"] }
 specta = { version = "^2.0.0-rc.25", features = [
   "serde_json",
@@ -229,6 +238,8 @@ tauri-plugin-global-shortcut = "2.2.0"
 objc2 = "0.6.1"
 objc2-app-kit = { version = "0.3.1", features = [
   "NSApplication",
+  "NSColor",
+  "NSColorSpace",
   "NSResponder",
   "NSRunningApplication",
   "NSWindow",
@@ -241,15 +252,18 @@ nix = { version = "0.31.0", features = ["user", "fs"] }
 
 [target.'cfg(windows)'.dependencies]
 deelevate = "0.2.0"
-winreg = { version = "0.55", features = ["transactions"] }
-windows-registry = "0.5.1"
-windows-sys = { version = "0.60", features = [
+winreg = { version = "0.56", features = ["transactions"] }
+windows-registry = "0.6.0"
+windows-sys = { version = "0.61", features = [
   "Win32_System_LibraryLoader",
   "Win32_System_SystemInformation",
   "Win32_UI_WindowsAndMessaging",
   "Win32_System_Shutdown",
+  "Win32_Graphics_Dwm",
   "Win32_Graphics_Gdi",
 ] }
+# windows-core and webview2-com must stay in lockstep with the versions used
+# by tauri/wry, since we cast COM interfaces obtained from tauri's webview.
 windows-core = "0.61"
 webview2-com = "0.38"
 

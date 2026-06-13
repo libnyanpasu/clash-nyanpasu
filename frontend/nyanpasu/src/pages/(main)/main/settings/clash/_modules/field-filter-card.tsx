@@ -152,7 +152,7 @@ const ItemButton = ({
           </CardHeader>
 
           <CardContent asChild>
-            <ScrollArea className="max-h-[calc(100vh-200px)]">
+            <ScrollArea className="max-h-[80dvh]">
               <div className="grid grid-cols-2 gap-2">
                 {Object.entries(items).map(([item, data]) => {
                   return (

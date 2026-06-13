@@ -1,8 +1,8 @@
 import { nanoid } from 'nanoid'
 import { useMemo } from 'react'
-import { useProfile, type Profile } from '@nyanpasu/interface'
+import { useProfile, type NormalizedProfile } from '@nyanpasu/interface'
 
-type CurrentProfileData = Profile & {
+type CurrentProfileData = NormalizedProfile & {
   language: string
   extension: string
   readOnly: boolean

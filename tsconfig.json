@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "baseUrl": ".",
     "skipLibCheck": true,
     "esModuleInterop": true,
     "composite": true,

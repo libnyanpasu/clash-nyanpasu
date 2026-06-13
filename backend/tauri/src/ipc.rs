@@ -14,7 +14,12 @@ use log::debug;
 use nyanpasu_ipc::api::status::CoreState;
 use profile::item_type::ProfileItemType;
 use serde_yaml::Mapping;
-use std::{borrow::Cow, collections::VecDeque, path::PathBuf, result::Result as StdResult};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, VecDeque},
+    path::PathBuf,
+    result::Result as StdResult,
+};
 use storage::{StorageOperationError, WebStorage};
 use sysproxy::Sysproxy;
 use tauri::{AppHandle, Manager};
@@ -56,11 +61,9 @@ impl serde::Serialize for IpcError {
 }
 
 impl specta::Type for IpcError {
-    fn inline(
-        type_map: &mut specta::TypeMap,
-        generics: specta::Generics,
-    ) -> specta::datatype::DataType {
-        specta::datatype::DataType::Primitive(specta::datatype::PrimitiveType::String)
+    fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
+        let _ = types;
+        specta::datatype::DataType::Primitive(specta::datatype::Primitive::str)
     }
 }
 
@@ -389,13 +392,17 @@ pub fn get_clash_info() -> Result<ClashInfo> {
 /// get the runtime config
 #[tauri::command]
 #[specta::specta]
-pub fn get_runtime_config() -> Result<Option<serde_json::Value>> {
+// TODO: specta 2.0.0-rc.25 cannot export recursive inline types (serde_json::Value). Wrapped in
+// Any<> to avoid infinite type expansion. Replace with a typed ClashConfig struct if desired.
+pub fn get_runtime_config() -> Result<Option<specta_typescript::Any<serde_json::Value>>> {
     let config = Config::runtime().latest().config.clone();
     match config {
         Some(cfg) => {
             let yaml_value = serde_yaml::to_value(cfg)?;
             let json_value = serde_json::to_value(&yaml_value)?;
-            Ok(Some(json_value))
+            let wrapped: specta_typescript::Any<serde_json::Value> =
+                serde_json::from_value(json_value)?;
+            Ok(Some(wrapped))
         }
         None => Ok(None),
     }
@@ -441,8 +448,12 @@ pub async fn url_delay_test(url: &str, expected_status: u16) -> Result<Option<u6
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_ipsb_asn() -> Result<serde_json::Value> {
-    Ok(crate::utils::net::get_ipsb_asn().await?)
+// TODO: specta 2.0.0-rc.25 cannot export recursive inline types (serde_json::Value). Wrapped in
+// Any<> to avoid infinite type expansion.
+pub async fn get_ipsb_asn() -> Result<specta_typescript::Any<serde_json::Value>> {
+    let value = crate::utils::net::get_ipsb_asn().await?;
+    let wrapped: specta_typescript::Any<serde_json::Value> = serde_json::from_value(value)?;
+    Ok(wrapped)
 }
 
 /// patch clash runtime config
@@ -657,6 +668,57 @@ pub async fn clash_api_get_proxy_delay(
         Ok(res) => Ok(res),
         Err(err) => Err(err.into()),
     }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn clash_api_get_configs() -> Result<clash::api::ClashConfig> {
+    Ok(clash::api::get_configs().await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn clash_api_delete_connections(id: Option<String>) -> Result<()> {
+    Ok(clash::api::delete_connections(id.as_deref()).await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn clash_api_get_version() -> Result<clash::api::ClashVersion> {
+    Ok(clash::api::get_version().await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn clash_api_get_rules() -> Result<clash::api::RulesRes> {
+    Ok(clash::api::get_rules().await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn clash_api_get_providers_rules() -> Result<clash::api::ProvidersRulesRes> {
+    Ok(clash::api::get_providers_rules().await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn clash_api_update_providers_rules(name: String) -> Result<()> {
+    Ok(clash::api::update_providers_rules_group(&name).await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn clash_api_get_group_delay(
+    group: String,
+    url: Option<String>,
+) -> Result<HashMap<String, u32>> {
+    Ok(clash::api::get_group_delay(group, url).await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn clash_api_get_providers_proxies() -> Result<clash::api::ProvidersProxiesRes> {
+    Ok(clash::api::get_providers_proxies().await?)
 }
 
 #[tauri::command]
@@ -1101,6 +1163,8 @@ pub struct UpdateWrapper {
     version: String,
     date: Option<String>,
     body: Option<String>,
+    // TODO: specta 2.0.0-rc.25 cannot export recursive inline types (serde_json::Value).
+    #[specta(type = specta_typescript::Any)]
     raw_json: serde_json::Value,
 }
 
@@ -1244,4 +1308,10 @@ pub fn create_editor_window(
         });
     });
     Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_system_accent_color() -> Result<Option<String>> {
+    Ok(crate::utils::color::get_system_accent_color())
 }

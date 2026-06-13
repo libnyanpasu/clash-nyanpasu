@@ -1,39 +1,43 @@
 import { findKey } from 'lodash-es'
-import { Profile } from '@nyanpasu/interface'
+import { NormalizedProfile } from '@nyanpasu/interface'
 import { PROFILE_TYPES, ProfileType } from '../../_modules/consts'
 
 export type CategoryProfiles = {
-  [ProfileType.Profile]: Array<Extract<Profile, { type: 'local' | 'remote' }>>
+  [ProfileType.Profile]: Array<
+    Extract<NormalizedProfile, { type: 'local' | 'remote' }>
+  >
   [ProfileType.JavaScript]: Array<
-    Extract<Profile, { type: 'script'; script_type: 'javascript' }>
+    Extract<NormalizedProfile, { type: 'script'; script_type: 'javascript' }>
   >
   [ProfileType.Lua]: Array<
-    Extract<Profile, { type: 'script'; script_type: 'lua' }>
+    Extract<NormalizedProfile, { type: 'script'; script_type: 'lua' }>
   >
-  [ProfileType.Merge]: Array<Extract<Profile, { type: 'merge' }>>
+  [ProfileType.Merge]: Array<Extract<NormalizedProfile, { type: 'merge' }>>
 }
 
 export const isProxyProfile = (
-  profile: Profile,
+  profile: NormalizedProfile,
 ): profile is CategoryProfiles[ProfileType.Profile][number] =>
   profile.type === 'local' || profile.type === 'remote'
 
 export const isJavaScriptProfile = (
-  profile: Profile,
+  profile: NormalizedProfile,
 ): profile is CategoryProfiles[ProfileType.JavaScript][number] =>
   profile.type === 'script' && profile.script_type === 'javascript'
 
 export const isLuaProfile = (
-  profile: Profile,
+  profile: NormalizedProfile,
 ): profile is CategoryProfiles[ProfileType.Lua][number] =>
   profile.type === 'script' && profile.script_type === 'lua'
 
 export const isMergeProfile = (
-  profile: Profile,
+  profile: NormalizedProfile,
 ): profile is CategoryProfiles[ProfileType.Merge][number] =>
   profile.type === 'merge'
 
-export const categoryProfiles = (profiles: Profile[]): CategoryProfiles => {
+export const categoryProfiles = (
+  profiles: NormalizedProfile[],
+): CategoryProfiles => {
   const initialCategorized: CategoryProfiles = {
     [ProfileType.Profile]: [],
     [ProfileType.JavaScript]: [],

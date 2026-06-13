@@ -23,6 +23,11 @@ export * from './use-system-service'
 export * from './use-service-prompt'
 export * from './use-core-dir'
 export * from './use-platform'
+export * from './use-system-accent-color'
 
 export { commands, events } from './bindings'
 export type * from './bindings'
+export type { ClashDelayOptions } from './use-clash-proxies'
+
+export type { ProxyProviderItem_Serialize as ClashProviderProxies } from './bindings'
+export type { RuleProviderItem as ClashProviderRule } from './bindings'

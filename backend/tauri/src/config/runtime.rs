@@ -4,14 +4,15 @@ use serde_yaml::Mapping;
 use crate::enhance::PostProcessingOutput;
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
 pub struct PatchRuntimeConfig {
-    #[serde(default)]
+    #[serde(default, rename = "allow-lan", skip_serializing_if = "Option::is_none")]
     pub allow_lan: Option<bool>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ipv6: Option<bool>,
-    #[serde(default)]
+    #[serde(default, rename = "log-level", skip_serializing_if = "Option::is_none")]
     pub log_level: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<String>,
 }
 

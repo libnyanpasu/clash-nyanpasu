@@ -14,13 +14,15 @@ import { MONACO_FONT_FAMILY } from '../_modules/utils'
 
 const currentWindow = getCurrentWebviewWindow()
 
-const EMPTY_CSS_TEMPLATE = `/* Welcome to Clash Nyanpasu CSS Editor! */
-/* You can write your custom CSS here to customize the appearance of the app. */
+const EMPTY_CSS_TEMPLATE = `/* Welcome to Clash Nyanpasu CSS/LESS Editor! */
+/* You can write standard CSS or LESS syntax to customize the appearance of the app. */
 /* For example, you can change the background color of the header: */
 
 /*
+@primary: #ff69b4;
+
 #app-header {
-  background-color: #ff69b4;
+  background-color: @primary;
 }
 */
 
@@ -74,7 +76,7 @@ function RouteComponent() {
       <div className="min-h-0 flex-1" data-slot="editor-content">
         <MonacoEditor
           className="h-full w-full"
-          language="css"
+          language="less"
           value={editorValue}
           theme={themeMode === 'light' ? 'vs' : 'vs-dark'}
           beforeMount={(monacoInstance) =>

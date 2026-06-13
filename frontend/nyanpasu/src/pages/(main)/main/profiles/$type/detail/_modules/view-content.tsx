@@ -1,13 +1,13 @@
 import { ComponentProps } from 'react'
 import { Button } from '@/components/ui/button'
 import { useLockFn } from '@/hooks/use-lock-fn'
-import { commands, Profile } from '@nyanpasu/interface'
+import { commands, NormalizedProfile } from '@nyanpasu/interface'
 
 export default function ViewContent({
   profile,
   ...props
 }: Omit<ComponentProps<typeof Button>, 'loading' | 'onClick'> & {
-  profile: Profile
+  profile: NormalizedProfile
 }) {
   const handleClick = useLockFn(async () => {
     await commands.createEditorWindow('profile', profile.uid)

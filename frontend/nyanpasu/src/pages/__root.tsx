@@ -16,6 +16,7 @@ import { BlockTaskProvider } from '@/components/providers/block-task-provider'
 import CustomCssProvider from '@/components/providers/custom-css-provider'
 import { LanguageProvider } from '@/components/providers/language-provider'
 import { ExperimentalThemeProvider } from '@/components/providers/theme-provider'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { events, NyanpasuProvider, useSettings } from '@nyanpasu/interface'
 
 dayjs.extend(relativeTime)
@@ -83,6 +84,16 @@ function WindowReveal() {
   const hasRevealed = useRef(false)
 
   useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  useEffect(() => {
     if ((query.isSuccess || query.isError) && !hasRevealed.current) {
       hasRevealed.current = true
       Promise.all([
@@ -105,8 +116,10 @@ export default function App() {
         <LanguageProvider>
           <ExperimentalThemeProvider>
             <CustomCssProvider>
-              <WindowReveal />
-              <Outlet />
+              <TooltipProvider>
+                <WindowReveal />
+                <Outlet />
+              </TooltipProvider>
             </CustomCssProvider>
           </ExperimentalThemeProvider>
 

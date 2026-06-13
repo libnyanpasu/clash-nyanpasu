@@ -22,6 +22,7 @@ pub struct Profiles {
     /// same as PrfConfig.current
     #[serde(default)]
     #[serde(deserialize_with = "super::deserialize_single_or_vec")]
+    #[specta(type = Vec<ProfileUid>)]
     pub current: Vec<ProfileUid>,
     #[serde(default)]
     /// same as PrfConfig.chain

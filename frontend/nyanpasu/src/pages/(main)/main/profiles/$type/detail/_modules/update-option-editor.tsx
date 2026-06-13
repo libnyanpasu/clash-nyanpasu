@@ -18,7 +18,11 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { ProfileBuilder, RemoteProfile, useProfile } from '@nyanpasu/interface'
+import {
+  NormalizedProfileBuilder,
+  RemoteProfile_Serialize,
+  useProfile,
+} from '@nyanpasu/interface'
 import AnimatedErrorItem from '../../../_modules/error-item'
 
 const formSchema = z.object({
@@ -32,7 +36,7 @@ export default function UpdateOptionEditor({
   profile,
   ...props
 }: ComponentProps<typeof ModalTrigger> & {
-  profile: RemoteProfile
+  profile: RemoteProfile_Serialize
 }) {
   const { patch } = useProfile()
 
@@ -75,7 +79,7 @@ export default function UpdateOptionEditor({
                 ...profile.option,
                 ...data,
               },
-            } as ProfileBuilder,
+            } as NormalizedProfileBuilder,
           })
           handleClose()
         } catch (error) {

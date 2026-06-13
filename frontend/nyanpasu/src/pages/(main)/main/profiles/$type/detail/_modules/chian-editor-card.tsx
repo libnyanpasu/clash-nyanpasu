@@ -12,9 +12,8 @@ import { move } from '@dnd-kit/helpers'
 import { DragDropProvider, useDroppable } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import {
-  LocalProfile,
-  ProfileBuilder,
-  RemoteProfile,
+  NormalizedProfile,
+  NormalizedProfileBuilder,
   useProfile,
 } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
@@ -101,7 +100,7 @@ const Column = ({
 export default function ChianEditorCard({
   profile,
 }: {
-  profile: LocalProfile | RemoteProfile
+  profile: Extract<NormalizedProfile, { type: 'local' | 'remote' }>
 }) {
   const {
     query: { data: profiles },
@@ -218,9 +217,9 @@ export default function ChianEditorCard({
       await patch.mutateAsync({
         uid: profile.uid,
         profile: {
-          ...(profile as ProfileBuilder),
+          ...profile,
           chain: chainsUids[ColumnType.Active],
-        } as ProfileBuilder,
+        } as NormalizedProfileBuilder,
       })
     } catch {
       //

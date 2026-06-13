@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
-import { useClashAPI, type ClashProviderProxies } from '../service/clash-api'
+import { unwrapResult } from '../utils'
+import { commands, type ProxyProviderItem_Serialize } from './bindings'
 import { CLASH_PROXIES_PROVIDER_QUERY_KEY } from './consts'
 
-export interface ClashProxiesProviderQueryItem extends ClashProviderProxies {
+export interface ClashProxiesProviderQueryItem extends ProxyProviderItem_Serialize {
   mutate: () => Promise<void>
 }
 
@@ -12,25 +13,31 @@ export type ClashProxiesProviderQuery = Record<
 >
 
 export const useClashProxiesProvider = () => {
-  const { providersProxies, putProvidersProxies } = useClashAPI()
-
   const query = useQuery({
     queryKey: [CLASH_PROXIES_PROVIDER_QUERY_KEY],
     queryFn: async () => {
-      const { providers } = await providersProxies()
+      const result = unwrapResult(await commands.clashApiGetProvidersProxies())
+
+      if (!result) return {} as ClashProxiesProviderQuery
+
+      const { providers } = result
 
       return Object.fromEntries(
-        Object.entries(providers).map(([key, value]) => [
-          key,
-          {
-            ...value,
-            mutate: async () => {
-              await putProvidersProxies(key)
-              await query.refetch()
+        Object.entries(providers)
+          .filter(([, value]) =>
+            ['http', 'file'].includes(value.vehicleType.toLowerCase()),
+          )
+          .map(([key, value]) => [
+            key,
+            {
+              ...value,
+              mutate: async () => {
+                unwrapResult(await commands.updateProxyProvider(key))
+                await query.refetch()
+              },
             },
-          },
-        ]),
-      )
+          ]),
+      ) as ClashProxiesProviderQuery
     },
   })
 

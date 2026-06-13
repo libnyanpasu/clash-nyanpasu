@@ -9,6 +9,7 @@
  * Unknown bare identifiers are left untouched to preserve normal CSS semantics.
  */
 
+import Less from 'less'
 import { DATA_SLOTS } from '@/generated/data-slots.gen'
 
 const SLOT_SET = new Set<string>(DATA_SLOTS)
@@ -26,11 +27,13 @@ const SLOT_SELECTOR_RE = new RegExp(
 )
 
 /**
- * Compile user CSS source into standard CSS ready for injection into the DOM.
+ * Compile user LESS/CSS source into standard CSS ready for injection into the DOM.
+ * LESS is compiled first, then slot-name shorthand is resolved.
  * The original source is preserved in KV storage; only the compiled result is injected.
  */
-export function compileCustomCss(source: string): string {
-  return twoPassCompile(source, compileSelectorList)
+export async function compileCustomCss(source: string): Promise<string> {
+  const { css } = await Less.render(source)
+  return twoPassCompile(css, compileSelectorList)
 }
 
 function compileSelectorList(selectorList: string): string {

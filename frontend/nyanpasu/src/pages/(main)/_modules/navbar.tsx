@@ -49,10 +49,11 @@ const NavbarButton = ({
           className={cn(
             'flex items-center justify-center gap-1',
             'lg:w-fit lg:px-3',
-            'sm:h-8!',
+            'sm:h-8',
             'hover:bg-primary-container dark:hover:bg-primary-container min-w-0',
-            'dark:data-[active=true]:bg-primary-container! data-[active=true]:bg-inverse-primary!',
+            'dark:data-[active=true]:bg-primary-container data-[active=true]:bg-inverse-primary',
           )}
+          data-slot="navbar-button"
           data-active={String(Boolean(isActive))}
           asChild
         >

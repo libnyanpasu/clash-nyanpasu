@@ -128,7 +128,9 @@ export function Viewport({
     <ScrollAreaPrimitive.Viewport
       data-slot="scroll-area-viewport"
       className={cn(
-        'size-full rounded-[inherit] transition-[color,box-shadow] outline-none',
+        'flex min-h-0 w-full flex-1 flex-col',
+        'rounded-[inherit] transition-[color,box-shadow] outline-none',
+        '[&>div]:block! [&>div]:min-h-0! [&>div]:flex-1!',
         className,
       )}
       {...props}
@@ -176,7 +178,7 @@ export function ScrollArea({
         data-slot="scroll-area"
         type="scroll"
         scrollHideDelay={600}
-        className={cn('relative', className)}
+        className={cn('relative flex min-h-0 flex-col', className)}
         data-top={String(isTop)}
         data-scroll-direction={scrollDirection}
         {...props}
@@ -260,11 +262,8 @@ export function AppContentScrollArea({
         className={cn(
           'relative',
           'flex flex-1 flex-col',
+          'min-h-0',
           'max-w-screen min-w-0',
-          'max-h-[calc(100vh-40px-64px)]',
-          'min-h-[calc(100vh-40px-64px)]',
-          'sm:max-h-[calc(100vh-40px-48px)]',
-          'sm:min-h-[calc(100vh-40px-48px)]',
           className,
         )}
         data-slot="app-content-scroll-area"
@@ -276,11 +275,7 @@ export function AppContentScrollArea({
         data-scroll-direction={scrollDirection}
         {...props}
       >
-        <Viewport
-          // className={cn('[&>div]:min-h-[calc(100vh-40px-64px)]', className)}
-          ref={viewportRef}
-          onScroll={handleScroll}
-        >
+        <Viewport ref={viewportRef} onScroll={handleScroll}>
           {children}
         </Viewport>
 

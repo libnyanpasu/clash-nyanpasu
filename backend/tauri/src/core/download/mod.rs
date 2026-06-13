@@ -156,6 +156,7 @@ impl DownloadSession {
 mod tests {
     use super::*;
     use axum::{Router, body::Body, extract::State, routing::get};
+    use futures::StreamExt;
     use sha2::{Digest, Sha256 as Sha2};
     use std::{io::Read, sync::Arc as StdArc, time::Duration};
     use tempfile::TempDir;
@@ -191,10 +192,15 @@ mod tests {
     struct SvcState {
         content: Vec<u8>,
         fail_get: bool,
+        throttle: bool,
     }
 
-    fn content_router(content: Vec<u8>, fail_get: bool) -> Router {
-        let s = StdArc::new(SvcState { content, fail_get });
+    fn content_router(content: Vec<u8>, fail_get: bool, throttle: bool) -> Router {
+        let s = StdArc::new(SvcState {
+            content,
+            fail_get,
+            throttle,
+        });
         async fn h(
             State(s): State<StdArc<SvcState>>,
             req: axum::http::Request<Body>,
@@ -241,7 +247,17 @@ mod tests {
                 None => (axum::http::StatusCode::OK, s.content.clone()),
             };
             let len = body.len();
-            let mut r = axum::http::Response::new(Body::from(body));
+            let body = if s.throttle {
+                let chunks: Vec<Vec<u8>> = body.chunks(64 * 1024).map(|c| c.to_vec()).collect();
+                let stream = futures::stream::iter(chunks).then(|chunk| async move {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                    Ok::<_, std::io::Error>(chunk)
+                });
+                Body::from_stream(stream)
+            } else {
+                Body::from(body)
+            };
+            let mut r = axum::http::Response::new(body);
             let hd = r.headers_mut();
             hd.insert(
                 axum::http::header::ACCEPT_RANGES,
@@ -263,7 +279,7 @@ mod tests {
         let hash = sha256(&content);
         let u = format!(
             "{}/data",
-            spawn(content_router(content.clone(), false)).await
+            spawn(content_router(content.clone(), false, false)).await
         );
 
         let tmp = TempDir::new().unwrap();
@@ -292,7 +308,7 @@ mod tests {
         let content = test_content(8 * 1024 * 1024);
         let u = format!(
             "{}/data",
-            spawn(content_router(content.clone(), false)).await
+            spawn(content_router(content.clone(), false, true)).await
         );
 
         let tmp = TempDir::new().unwrap();
@@ -305,7 +321,16 @@ mod tests {
 
         let s2 = session.clone();
         let h = tokio::spawn(async move { s2.start().await });
-        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let mut waited = Duration::ZERO;
+        loop {
+            if session.status().downloaded > 0 {
+                break;
+            }
+            assert!(waited < Duration::from_secs(5), "download never started");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            waited += Duration::from_millis(10);
+        }
 
         session.cancel();
         let r = h.await.unwrap();
@@ -323,7 +348,7 @@ mod tests {
     #[tokio::test]
     async fn download_error_produces_failed() {
         let content = test_content(32 * 1024);
-        let u = format!("{}/data", spawn(content_router(content, true)).await);
+        let u = format!("{}/data", spawn(content_router(content, true, false)).await);
 
         let tmp = TempDir::new().unwrap();
         let sp = tmp.path().join("payload.bin");

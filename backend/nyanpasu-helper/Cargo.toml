@@ -1,0 +1,12 @@
+[package]
+name = "nyanpasu-helper"
+version = "0.1.0"
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+thiserror = "2"
+language-tags = "0.3.2"
+sys-locale = "0.3.2"

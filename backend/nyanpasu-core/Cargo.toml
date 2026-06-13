@@ -24,9 +24,6 @@ serde_yaml_ng = { version = "0.10", branch = "feat/specta-update", git = "https:
   "specta",
 ] }
 
-specta = { version = "^2.0.0-rc.25" }
-derive_builder = "0.20"               # for builder pattern and runtime validation
-
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 tempfile = "3"

@@ -22,6 +22,35 @@ pub enum ProxiesSelectorMode {
     Submenu,
 }
 
+/// Whether the tray menu uses the system-native menu or the WebView menu.
+///
+/// Platform-dependent default: `Webview` on Windows, `Native` elsewhere.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum TrayMenuMode {
+    Native,
+    Webview,
+}
+
+impl Default for TrayMenuMode {
+    fn default() -> Self {
+        if cfg!(windows) {
+            TrayMenuMode::Webview
+        } else {
+            TrayMenuMode::Native
+        }
+    }
+}
+
+/// What happens to the WebView tray menu window when it loses focus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum TrayMenuCloseBehavior {
+    #[default]
+    Hide,
+    Close,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum ThemeMode {
@@ -115,6 +144,13 @@ pub struct NyanpasuAppConfig {
     /// 是否窗口置顶
     pub always_on_top: bool,
 
+    /// 托盘菜单模式：系统原生菜单还是 WebView 菜单
+    /// 平台相关默认值：Windows 为 `webview`，其他平台 `native`
+    pub tray_menu_mode: TrayMenuMode,
+
+    /// WebView 托盘菜单窗口失焦时的行为：隐藏还是销毁
+    pub tray_menu_close_behavior: TrayMenuCloseBehavior,
+
     /// 是否启用网络统计信息浮窗
     pub network_statistic_widget: NetworkStatisticWidgetConfig,
 
@@ -171,6 +207,8 @@ impl Default for NyanpasuAppConfig {
             enable_auto_check_update: todo!(),
             tray_selector_mode: todo!(),
             always_on_top: todo!(),
+            tray_menu_mode: todo!(),
+            tray_menu_close_behavior: todo!(),
             network_statistic_widget: todo!(),
             pac_url: todo!(),
             enable_tray_text: todo!(),
@@ -215,6 +253,34 @@ mod patch_tests {
             !dumped.contains("app_singleton_port"),
             "absent fields must be skipped, got:\n{dumped}"
         );
+    }
+
+    /// Tray menu settings decode from their snake_case wire form onto the patch,
+    /// and the enums keep their platform-dependent / `Hide` defaults.
+    #[test]
+    fn tray_menu_settings_wire_format() {
+        let patch: NyanpasuAppConfigPatch =
+            serde_yaml_ng::from_str("tray_menu_mode: native\ntray_menu_close_behavior: close\n")
+                .expect("tray menu patch must deserialize");
+
+        assert_eq!(patch.tray_menu_mode, Some(TrayMenuMode::Native));
+        assert_eq!(
+            patch.tray_menu_close_behavior,
+            Some(TrayMenuCloseBehavior::Close)
+        );
+
+        assert_eq!(TrayMenuCloseBehavior::default(), TrayMenuCloseBehavior::Hide);
+        let expected_mode = if cfg!(windows) {
+            TrayMenuMode::Webview
+        } else {
+            TrayMenuMode::Native
+        };
+        assert_eq!(TrayMenuMode::default(), expected_mode);
+
+        let mut patch = NyanpasuAppConfig::new_empty_patch();
+        patch.tray_menu_mode = Some(TrayMenuMode::Webview);
+        let dumped = serde_yaml_ng::to_string(&patch).expect("serialize patch");
+        assert!(dumped.contains("tray_menu_mode: webview"), "got:\n{dumped}");
     }
 
     /// `pac_url` (struct-level `skip_serializing_none` + `double_option`):

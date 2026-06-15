@@ -119,10 +119,13 @@ impl Profiles {
     pub fn sanitize_current(&mut self) -> ProfilesSanitizeReport {
         let removed_current = retain_existing_refs(&self.items, &mut self.current);
         let removed_chain = retain_existing_refs(&self.items, &mut self.chain);
-        let default_activatable = self.items.iter().find_map(|(uid, item)| match &item.source {
-            ProfileSource::Local(_) | ProfileSource::Remote(_) => Some(uid.clone()),
-            ProfileSource::Merge(_) | ProfileSource::Script(_) => None,
-        });
+        let default_activatable = self
+            .items
+            .iter()
+            .find_map(|(uid, item)| match &item.source {
+                ProfileSource::Local(_) | ProfileSource::Remote(_) => Some(uid.clone()),
+                ProfileSource::Merge(_) | ProfileSource::Script(_) => None,
+            });
         let current_needs_activation = self.current.is_empty() && default_activatable.is_some();
 
         ProfilesSanitizeReport {
@@ -192,7 +195,9 @@ where
         where
             E: serde::de::Error,
         {
-            T::from_str(value).map(|value| vec![value]).map_err(E::custom)
+            T::from_str(value)
+                .map(|value| vec![value])
+                .map_err(E::custom)
         }
 
         fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
@@ -226,7 +231,9 @@ mod items_serde {
         serializer.collect_seq(items.values())
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<IndexMap<ProfileId, ProfileItem>, D::Error>
+    pub fn deserialize<'de, D>(
+        deserializer: D,
+    ) -> Result<IndexMap<ProfileId, ProfileItem>, D::Error>
     where
         D: Deserializer<'de>,
     {

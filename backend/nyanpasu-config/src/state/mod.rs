@@ -3,9 +3,9 @@
 
 pub mod window;
 
-use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use std::collections::BTreeMap;
 use struct_patch::Patch;
 
 #[derive(Debug, Default, Serialize, Deserialize, Type, Patch)]

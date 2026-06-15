@@ -9,7 +9,6 @@ pub fn get_system_locale() -> LanguageTag {
         .expect("should a valid language tag")
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

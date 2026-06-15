@@ -2,7 +2,9 @@ use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 use tracing_subscriber::filter;
 
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, specta::Type, EnumString, Display)]
+#[derive(
+    Deserialize, Serialize, Debug, Clone, PartialEq, Eq, specta::Type, EnumString, Display,
+)]
 #[strum(serialize_all = "kebab-case")]
 pub enum LoggingLevel {
     #[serde(rename = "silent", alias = "off")]

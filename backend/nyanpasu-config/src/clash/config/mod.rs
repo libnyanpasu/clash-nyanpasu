@@ -84,7 +84,11 @@ mod patch_tests {
         // Explicit null → clear.
         let clear: ClashConfigPatch =
             serde_yaml_ng::from_str("socks_port: null\n").expect("patch must deserialize");
-        assert_eq!(clear.socks_port, Some(None), "null decodes to Some(None) (clear)");
+        assert_eq!(
+            clear.socks_port,
+            Some(None),
+            "null decodes to Some(None) (clear)"
+        );
         let mut cfg = seeded();
         cfg.apply(clear);
         assert_eq!(cfg.socks_port, None, "explicit null must clear socks_port");
@@ -93,7 +97,13 @@ mod patch_tests {
         let mut patch = ClashConfig::new_empty_patch();
         patch.socks_port = Some(None);
         let dumped = serde_yaml_ng::to_string(&patch).expect("serialize patch");
-        assert!(dumped.contains("socks_port: null"), "Some(None) -> null, got:\n{dumped}");
-        assert!(!dumped.contains("http_port"), "absent skipped, got:\n{dumped}");
+        assert!(
+            dumped.contains("socks_port: null"),
+            "Some(None) -> null, got:\n{dumped}"
+        );
+        assert!(
+            !dumped.contains("http_port"),
+            "absent skipped, got:\n{dumped}"
+        );
     }
 }

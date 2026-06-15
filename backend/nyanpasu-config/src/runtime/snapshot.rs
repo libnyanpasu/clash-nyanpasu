@@ -559,7 +559,9 @@ impl ConfigSnapshotsBuilder {
             state: &mut HashMap<NodeId, VisitState>,
         ) -> Result<(), SnapshotBuildError> {
             match state.get(&idx).copied() {
-                Some(VisitState::Visiting) => return Err(SnapshotBuildError::Cycle { node_id: idx }),
+                Some(VisitState::Visiting) => {
+                    return Err(SnapshotBuildError::Cycle { node_id: idx });
+                }
                 Some(VisitState::Done) => return Ok(()),
                 _ => {}
             }
@@ -640,7 +642,11 @@ impl StoredConfigSnapshotsGraph {
         let nodes = nodes
             .into_iter()
             .enumerate()
-            .map(|(idx, node)| node.ok_or(SnapshotBuildError::Unreachable { node_ids: vec![idx] }))
+            .map(|(idx, node)| {
+                node.ok_or(SnapshotBuildError::Unreachable {
+                    node_ids: vec![idx],
+                })
+            })
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(ConfigSnapshotsGraph {
@@ -779,7 +785,9 @@ pub fn changed_fields_from_patch(patch: &Patch) -> Option<IndexSet<ConfigField>>
     let mut fields = IndexSet::new();
     for operation in &patch.0 {
         match operation {
-            PatchOperation::Add(operation) => insert_pointer_path(&mut fields, operation.path.as_str()),
+            PatchOperation::Add(operation) => {
+                insert_pointer_path(&mut fields, operation.path.as_str())
+            }
             PatchOperation::Remove(operation) => {
                 insert_pointer_path(&mut fields, operation.path.as_str())
             }
@@ -1125,7 +1133,10 @@ mod tests {
         let bytes = persistence::encode_archive(&graph).unwrap();
         let archive = persistence::decode_archive(&bytes).unwrap();
 
-        assert_eq!(archive.format_version, persistence::SNAPSHOT_ARCHIVE_VERSION);
+        assert_eq!(
+            archive.format_version,
+            persistence::SNAPSHOT_ARCHIVE_VERSION
+        );
         assert_eq!(archive.graph.root_id, graph.root_id);
     }
 }

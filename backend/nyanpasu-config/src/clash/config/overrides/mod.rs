@@ -113,6 +113,9 @@ mod patch_tests {
 
         let dumped = serde_yaml_ng::to_string(&patch).expect("serialize patch");
         assert!(dumped.contains("allow-lan: true"), "got:\n{dumped}");
-        assert!(!dumped.contains("log-level"), "absent skipped, got:\n{dumped}");
+        assert!(
+            !dumped.contains("log-level"),
+            "absent skipped, got:\n{dumped}"
+        );
     }
 }

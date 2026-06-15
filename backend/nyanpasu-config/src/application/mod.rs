@@ -5,13 +5,13 @@ use struct_patch::Patch;
 use url::Url;
 
 mod clash_core;
+mod i18n;
 mod logging;
 mod widget;
-mod i18n;
 pub use clash_core::*;
+pub use i18n::*;
 pub use logging::*;
 pub use widget::*;
-pub use i18n::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default, Type)]
 #[serde(rename_all = "snake_case")]
@@ -269,7 +269,10 @@ mod patch_tests {
             Some(TrayMenuCloseBehavior::Close)
         );
 
-        assert_eq!(TrayMenuCloseBehavior::default(), TrayMenuCloseBehavior::Hide);
+        assert_eq!(
+            TrayMenuCloseBehavior::default(),
+            TrayMenuCloseBehavior::Hide
+        );
         let expected_mode = if cfg!(windows) {
             TrayMenuMode::Webview
         } else {
@@ -294,13 +297,22 @@ mod patch_tests {
 
         let clear: NyanpasuAppConfigPatch =
             serde_yaml_ng::from_str("pac_url: null\n").expect("patch must deserialize");
-        assert_eq!(clear.pac_url, Some(None), "null decodes to Some(None) (clear)");
+        assert_eq!(
+            clear.pac_url,
+            Some(None),
+            "null decodes to Some(None) (clear)"
+        );
 
         let mut patch = NyanpasuAppConfig::new_empty_patch();
         patch.pac_url = Some(None);
         let dumped = serde_yaml_ng::to_string(&patch).expect("serialize patch");
-        assert!(dumped.contains("pac_url: null"), "Some(None) -> null, got:\n{dumped}");
-        assert!(!dumped.contains("theme_mode"), "absent skipped, got:\n{dumped}");
+        assert!(
+            dumped.contains("pac_url: null"),
+            "Some(None) -> null, got:\n{dumped}"
+        );
+        assert!(
+            !dumped.contains("theme_mode"),
+            "absent skipped, got:\n{dumped}"
+        );
     }
 }
-

@@ -17,7 +17,11 @@ nyanpasu-egui = { path = "../nyanpasu-egui" }
 nyanpasu-utils.workspace = true
 
 thiserror.workspace = true
-specta = { version = "^2.0.0-rc.25", features = ["serde_json", "indexmap", "url"] }
+specta = { version = "^2.0.0-rc.25", features = [
+  "serde_json",
+  "indexmap",
+  "url",
+] }
 json-patch = "4.2"
 rmp-serde = { version = "1.3.1", optional = true }
 zstd = { version = "0.13.3", optional = true }

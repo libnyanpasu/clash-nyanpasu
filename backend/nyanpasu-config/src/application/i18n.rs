@@ -38,10 +38,7 @@ fn is_simplified_chinese(lang: &LanguageTag) -> bool {
     // Fall back to the region: only TW/HK/MO are Traditional Chinese.
     // Bare `zh` and Simplified regions (CN/SG/MY) default to Simplified.
     match lang.region() {
-        Some(region) => !matches!(
-            region.to_ascii_uppercase().as_str(),
-            "TW" | "HK" | "MO"
-        ),
+        Some(region) => !matches!(region.to_ascii_uppercase().as_str(), "TW" | "HK" | "MO"),
         None => true,
     }
 }

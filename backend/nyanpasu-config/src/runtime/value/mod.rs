@@ -119,7 +119,12 @@ mod tests {
             "remove": { "y": 2 }
         }))
         .unwrap();
-        let stable_before = value.as_object_arc().unwrap().get(&stable_key).unwrap().clone();
+        let stable_before = value
+            .as_object_arc()
+            .unwrap()
+            .get(&stable_key)
+            .unwrap()
+            .clone();
         let updated = value.remove_path(&[PathSegment::Key(remove_key)]).unwrap();
         let stable_after = updated
             .as_object_arc()

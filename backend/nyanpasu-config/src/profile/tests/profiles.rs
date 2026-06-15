@@ -5,8 +5,10 @@
 //! exercise the pure in-memory operations that replace the original `Vec`-based
 //! `O(n)` ones.
 
-use super::super::item::{ProfileItem, ProfileSource, kind::ProfileId};
-use super::super::profiles::Profiles;
+use super::super::{
+    item::{ProfileItem, ProfileSource, kind::ProfileId},
+    profiles::Profiles,
+};
 
 fn parse(yaml: &str) -> Profiles {
     serde_yaml_ng::from_str::<Profiles>(yaml)
@@ -44,7 +46,10 @@ fn defaults_fill_valid_and_leave_collections_empty() {
     assert!(profiles.current.is_empty());
     assert!(profiles.chain.is_empty());
     assert!(profiles.items.is_empty());
-    assert_eq!(profiles.valid, vec!["dns", "unified-delay", "tcp-concurrent"]);
+    assert_eq!(
+        profiles.valid,
+        vec!["dns", "unified-delay", "tcp-concurrent"]
+    );
 
     // `Default` must agree with the deserialized-empty form.
     assert_eq!(Profiles::default().valid, profiles.valid);

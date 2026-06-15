@@ -6,8 +6,10 @@
 //! legacy `update_interval` alias must still decode, and `into_patch_by_diff`
 //! must surface exactly the changed fields.
 
-use super::super::item::remote::{RemoteProfileOptions, RemoteProfileOptionsPatch};
-use super::super::item::{ProfileMeta, ProfileMetaPatch};
+use super::super::item::{
+    ProfileMeta, ProfileMetaPatch,
+    remote::{RemoteProfileOptions, RemoteProfileOptionsPatch},
+};
 use struct_patch::{Patch, Status};
 
 /// A partial patch only overwrites the fields it carries; absent fields keep
@@ -73,7 +75,11 @@ fn patch_can_clear_optional_field_with_null() {
     // Explicit null clears it.
     let clear: RemoteProfileOptionsPatch =
         serde_yaml_ng::from_str("user_agent: null\n").expect("patch must deserialize");
-    assert_eq!(clear.user_agent, Some(None), "null decodes to Some(None) (clear)");
+    assert_eq!(
+        clear.user_agent,
+        Some(None),
+        "null decodes to Some(None) (clear)"
+    );
     let mut opts = seed();
     opts.apply(clear);
     assert_eq!(opts.user_agent, None, "explicit null must clear the field");
@@ -94,7 +100,11 @@ fn profile_meta_desc_clear_and_sparse_serialize() {
     // Sparse serialize: an empty patch must not emit `uid: null` / `name: null`.
     let dumped = serde_yaml_ng::to_string(&ProfileMeta::new_empty_patch())
         .expect("serialize empty meta patch");
-    assert_eq!(dumped.trim(), "{}", "empty meta patch must be sparse, got:\n{dumped}");
+    assert_eq!(
+        dumped.trim(),
+        "{}",
+        "empty meta patch must be sparse, got:\n{dumped}"
+    );
 }
 
 /// `into_patch_by_diff` surfaces exactly the fields that differ.

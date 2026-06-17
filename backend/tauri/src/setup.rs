@@ -10,6 +10,8 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
     })
     .context("Failed to setup the shutdown hook")?;
 
+    crate::client::setup(app).context("Failed to setup nyanpasu client")?;
+
     // FIXME: this is a background setup, so be careful use this state in ipc.
     // crate::logging::setup(app).context("Failed to setup logging")?;
     Ok(())

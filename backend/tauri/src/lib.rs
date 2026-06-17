@@ -5,6 +5,7 @@
 )]
 // This lint was needed by ambassador
 #![allow(clippy::duplicated_attributes)]
+mod client;
 mod cmds;
 mod config;
 mod consts;

@@ -1,4 +1,5 @@
 use crate::{
+    client::{ClientError, NyanpasuClient},
     config::{profile::ProfileBuilder, *},
     core::{
         logger::Logger, storage::Storage, tasks::jobs::ProfilesJobGuard,
@@ -22,7 +23,7 @@ use std::{
 };
 use storage::{StorageOperationError, WebStorage};
 use sysproxy::Sysproxy;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, State};
 use tray::icon::TrayIcon;
 
 use tauri_plugin_dialog::{DialogExt, FileDialogBuilder};
@@ -48,6 +49,19 @@ pub enum IpcError {
 impl From<String> for IpcError {
     fn from(s: String) -> Self {
         IpcError::Custom(s)
+    }
+}
+
+impl From<ClientError> for IpcError {
+    fn from(err: ClientError) -> Self {
+        match err {
+            ClientError::Io(err) => IpcError::Io(err),
+            ClientError::SerdeYaml(err) => IpcError::SerdeYaml(err),
+            ClientError::SerdeJson(err) => IpcError::SerdeJson(err),
+            ClientError::Storage(err) => IpcError::Storage(err),
+            ClientError::Anyhow(err) => IpcError::Anyhow(err),
+            ClientError::Custom(err) => IpcError::Custom(err),
+        }
     }
 }
 
@@ -85,8 +99,8 @@ pub struct GetSysProxyResponse {
 
 #[tauri::command]
 #[specta::specta]
-pub fn get_profiles() -> Result<Profiles> {
-    Ok(Config::profiles().data().clone())
+pub fn get_profiles(client: State<'_, NyanpasuClient>) -> Result<Profiles> {
+    Ok(client.get_profiles())
 }
 
 #[cfg(target_os = "windows")]
@@ -119,7 +133,11 @@ pub async fn enhance_profiles() -> Result {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn import_profile(url: String, option: Option<RemoteProfileOptionsBuilder>) -> Result {
+pub async fn import_profile(
+    client: State<'_, NyanpasuClient>,
+    url: String,
+    option: Option<RemoteProfileOptionsBuilder>,
+) -> Result {
     let url = url::Url::parse(&url).context("failed to parse the url")?;
     let mut builder = crate::config::profile::item::RemoteProfileBuilder::default();
     builder.url(url);
@@ -146,7 +164,7 @@ pub async fn import_profile(url: String, option: Option<RemoteProfileOptionsBuil
     if let Some(profile_id) = profile_id {
         let mut builder = ProfilesBuilder::default();
         builder.current(vec![profile_id]);
-        patch_profiles_config(builder).await?;
+        client.patch_profiles_config(builder).await?;
     }
     Ok(())
 }
@@ -154,7 +172,11 @@ pub async fn import_profile(url: String, option: Option<RemoteProfileOptionsBuil
 /// create a new profile
 #[tauri::command]
 #[specta::specta]
-pub async fn create_profile(item: ProfileBuilder, file_data: Option<String>) -> Result {
+pub async fn create_profile(
+    client: State<'_, NyanpasuClient>,
+    item: ProfileBuilder,
+    file_data: Option<String>,
+) -> Result {
     tracing::trace!("create profile: {item:?}");
 
     let is_remote = matches!(&item, ProfileBuilder::Remote(_));
@@ -209,7 +231,7 @@ pub async fn create_profile(item: ProfileBuilder, file_data: Option<String>) -> 
     if let Some(profile_id) = profile_id {
         let mut builder = ProfilesBuilder::default();
         builder.current(vec![profile_id]);
-        patch_profiles_config(builder).await?;
+        client.patch_profiles_config(builder).await?;
     }
 
     Ok(())
@@ -263,26 +285,12 @@ pub async fn delete_profile(uid: String) -> Result {
 /// 修改profiles的
 #[tauri::command]
 #[specta::specta]
-pub async fn patch_profiles_config(profiles: ProfilesBuilder) -> Result {
-    Config::profiles().draft().apply(profiles);
-
-    match CoreManager::global().update_config().await {
-        Ok(_) => {
-            handle::Handle::refresh_clash();
-            Config::profiles().apply();
-            (Config::profiles().data().save_file())?;
-
-            // Interrupt connections based on configuration
-            let _ = crate::core::connection_interruption::ConnectionInterruptionService::on_profile_change().await;
-
-            Ok(())
-        }
-        Err(err) => {
-            Config::profiles().discard();
-            log::error!(target: "app", "{err:?}");
-            Err(IpcError::from(err))
-        }
-    }
+pub async fn patch_profiles_config(
+    client: State<'_, NyanpasuClient>,
+    profiles: ProfilesBuilder,
+) -> Result {
+    client.patch_profiles_config(profiles).await?;
+    Ok(())
 }
 
 /// update profile by uid
@@ -436,8 +444,10 @@ pub fn get_postprocessing_output() -> Result<PostProcessingOutput> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_core_status<'n>() -> Result<(Cow<'n, CoreState>, i64, RunType)> {
-    Ok(CoreManager::global().status().await)
+pub async fn get_core_status(
+    client: State<'_, NyanpasuClient>,
+) -> Result<(Cow<'static, CoreState>, i64, RunType)> {
+    Ok(client.get_core_status().await)
 }
 
 #[tauri::command]
@@ -481,8 +491,8 @@ pub async fn patch_clash_config(payload: PatchRuntimeConfig) -> Result {
 
 #[tauri::command]
 #[specta::specta]
-pub fn get_verge_config() -> Result<IVerge> {
-    Ok(Config::verge().data().clone())
+pub fn get_verge_config(client: State<'_, NyanpasuClient>) -> Result<IVerge> {
+    Ok(client.get_verge_config())
 }
 
 #[tauri::command]
@@ -493,8 +503,8 @@ pub fn get_hotkey_functions() -> Vec<&'static str> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn patch_verge_config(payload: IVerge) -> Result {
-    (feat::patch_verge(payload).await)?;
+pub async fn patch_verge_config(client: State<'_, NyanpasuClient>, payload: IVerge) -> Result {
+    client.patch_verge_config(payload).await?;
     Ok(())
 }
 

@@ -17,7 +17,7 @@ function RouteComponent() {
 
   return (
     <AppContentScrollArea
-      className={cn('bg-surface z-50 w-full [&>div>div]:block!')}
+      className={cn('bg-surface z-50 w-full flex-1 [&>div>div]:block!')}
       data-slot="settings-sidebar-scroll-area"
     >
       <SettingsNavigate />

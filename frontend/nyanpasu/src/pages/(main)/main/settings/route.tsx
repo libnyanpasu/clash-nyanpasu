@@ -29,7 +29,10 @@ function RouteComponent() {
         data-slot="settings-content-scroll-area"
       >
         <div
-          className={cn('container mx-auto w-full max-w-7xl', 'min-h-full')}
+          className={cn(
+            'container mx-auto w-full max-w-7xl',
+            'flex min-h-full flex-col [&>div]:flex [&>div]:flex-1 [&>div]:flex-col',
+          )}
           data-slot="settings-content"
         >
           <AnimatedOutletPreset />

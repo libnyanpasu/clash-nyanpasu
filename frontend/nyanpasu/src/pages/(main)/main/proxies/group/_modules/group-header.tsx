@@ -1,12 +1,19 @@
 import ArrowBackIosNewRounded from '~icons/material-symbols/arrow-back-ios-new-rounded'
 import { ComponentProps } from 'react'
 import { Button } from '@/components/ui/button'
+import { useSidebarContext } from '@/components/ui/sidebar'
 import { cn } from '@nyanpasu/utils'
 import { Link } from '@tanstack/react-router'
 
 const BackButton = () => {
+  const { isHiddenSide } = useSidebarContext()
+
+  if (!isHiddenSide) {
+    return null
+  }
+
   return (
-    <Button icon className="flex items-center justify-center md:hidden" asChild>
+    <Button icon className="flex items-center justify-center" asChild>
       <Link to="/main/proxies">
         <ArrowBackIosNewRounded className="size-4" />
       </Link>

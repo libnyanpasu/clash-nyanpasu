@@ -65,7 +65,7 @@
     "@ianvs/prettier-plugin-sort-imports": "4.7.1",
     "@tauri-apps/cli": "2.11.2",
     "@types/node": "24.13.2",
-    "knip": "6.16.1",
+    "knip": "6.17.1",
     "lint-staged": "17.0.7",
     "npm-run-all2": "9.0.2",
     "oxlint": "1.69.0",

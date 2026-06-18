@@ -2,87 +2,94 @@ import Apps from '~icons/material-symbols/apps'
 import DashboardRounded from '~icons/material-symbols/dashboard-rounded'
 import DesignServicesRounded from '~icons/material-symbols/design-services-rounded'
 import GridViewOutlineRounded from '~icons/material-symbols/grid-view-outline-rounded'
+import MenuRounded from '~icons/material-symbols/menu-rounded'
 import Public from '~icons/material-symbols/public'
 import SettingsEthernetRounded from '~icons/material-symbols/settings-ethernet-rounded'
 import SettingsRounded from '~icons/material-symbols/settings-rounded'
 import TerminalRounded from '~icons/material-symbols/terminal-rounded'
-import { ComponentProps, ReactNode, useMemo } from 'react'
+import { ComponentProps, useMemo } from 'react'
+import AnimatedTabs, { AnimatedTabsItem } from '@/components/ui/animated-tabs'
 import { Button } from '@/components/ui/button'
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import useIsMobile from '@/hooks/use-is-moblie'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { m } from '@/paraglide/messages'
 import { useClashProxies } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
-import { Link, useLocation } from '@tanstack/react-router'
+import {
+  Link,
+  useMatchRoute,
+  type LinkComponentProps,
+  type RegisteredRouter,
+} from '@tanstack/react-router'
 
-const NavbarButton = ({
-  icon,
-  label,
-  to,
-  mobileTo,
-  ...props
-}: Omit<ComponentProps<typeof Link>, 'children'> & {
-  icon: ReactNode
-  label: string
-  mobileTo?: ComponentProps<typeof Link>['to']
-}) => {
-  const location = useLocation()
+function NavbarButton<
+  const TFrom extends string = string,
+  const TTo extends string | undefined = undefined,
+  const TMaskFrom extends string = TFrom,
+  const TMaskTo extends string = '',
+>(
+  props: LinkComponentProps<
+    'a',
+    RegisteredRouter,
+    TFrom,
+    TTo,
+    TMaskFrom,
+    TMaskTo
+  >,
+) {
+  const matchRoute = useMatchRoute()
 
-  const isMobile = useIsMobile()
-
-  const finalTo = isMobile && mobileTo ? mobileTo : to
-
-  const isActive = Boolean(
-    mobileTo
-      ? location.pathname.startsWith(mobileTo)
-      : to && location.pathname.startsWith(to),
-  )
+  const isActive = !!matchRoute({
+    ...props,
+    fuzzy: true,
+  })
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          className={cn(
-            'flex items-center justify-center gap-1',
-            'lg:w-fit lg:px-3',
-            'sm:h-8',
-            'hover:bg-primary-container dark:hover:bg-primary-container min-w-0',
-            'dark:data-[active=true]:bg-primary-container data-[active=true]:bg-inverse-primary',
-          )}
-          data-slot="navbar-button"
-          data-active={String(Boolean(isActive))}
-          asChild
-        >
-          <Link {...props} to={finalTo}>
-            <span className="size-5" data-slot="navbar-button-icon">
-              {icon}
-            </span>
-
-            <span className="hidden lg:block" data-slot="navbar-button-label">
-              {label}
-            </span>
-          </Link>
-        </Button>
-      </TooltipTrigger>
-
-      <TooltipContent
-        side="bottom"
-        sideOffset={-4}
-        className="hidden sm:block md:hidden"
-      >
-        {label}
-      </TooltipContent>
-    </Tooltip>
+    <AnimatedTabsItem
+      className={cn('[&_svg]:size-5')}
+      data-active={String(isActive)}
+      data-slot="animated-tabs-item"
+      isActive={isActive}
+      asChild
+    >
+      <Link {...props} />
+    </AnimatedTabsItem>
   )
 }
 
-const ProxiesGroupButton = () => {
-  const isMobile = useIsMobile()
+const NavbarLabel = ({ className, ...props }: ComponentProps<'span'>) => {
+  return (
+    <span
+      className={cn('text-sm font-medium text-nowrap', className)}
+      data-slot="navbar-label"
+      {...props}
+    />
+  )
+}
 
+const MoblieNavbarContainer = ({
+  className,
+  ...props
+}: ComponentProps<'div'>) => {
+  return (
+    <div
+      className={cn(
+        'flex flex-col items-center gap-1',
+        'min-w-0 flex-1',
+        // '**:data-[slot=animated-tabs-item]:py-1!',
+        className,
+      )}
+      data-slot="mobile-navbar-container"
+      {...props}
+    />
+  )
+}
+
+export const DefaultNavbar = () => {
   const {
     proxies: { data: proxies },
   } = useClashProxies()
@@ -91,85 +98,176 @@ const ProxiesGroupButton = () => {
     return proxies?.groups[0]?.name
   }, [proxies])
 
-  if (isMobile || !fristGroup) {
-    return (
-      <NavbarButton
-        to="/main/proxies"
-        icon={<Public className="size-5" />}
-        label={m.navbar_label_proxies()}
-      />
-    )
-  }
-
   return (
-    <NavbarButton
-      to="/main/proxies/group/$name"
-      mobileTo="/main/proxies"
-      params={{ name: fristGroup } as never}
-      icon={<Public className="size-5" />}
-      label={m.navbar_label_proxies()}
-    />
+    <AnimatedTabs
+      className={cn(
+        'bg-transparent!',
+        '**:data-[slot=animated-tabs-indicator]:bg-inverse-primary',
+        '**:dark:data-[slot=animated-tabs-indicator]:bg-primary-container',
+      )}
+      data-slot="app-navbar"
+      variant="pill"
+      size="sm"
+    >
+      <NavbarButton to="/main/dashboard">
+        <DashboardRounded />
+
+        <NavbarLabel>{m.navbar_label_dashboard()}</NavbarLabel>
+      </NavbarButton>
+
+      {fristGroup ? (
+        <NavbarButton
+          to="/main/proxies/group/$name"
+          params={{ name: fristGroup }}
+        >
+          <Public />
+
+          <NavbarLabel>{m.navbar_label_proxies()}</NavbarLabel>
+        </NavbarButton>
+      ) : (
+        <NavbarButton to="/main/proxies">
+          <Public />
+
+          <NavbarLabel>{m.navbar_label_proxies()}</NavbarLabel>
+        </NavbarButton>
+      )}
+
+      <NavbarButton
+        to="/main/profiles/$type"
+        params={{
+          type: 'profile',
+        }}
+      >
+        <GridViewOutlineRounded />
+
+        <NavbarLabel>{m.navbar_label_profiles()}</NavbarLabel>
+      </NavbarButton>
+
+      <NavbarButton to="/main/connections">
+        <SettingsEthernetRounded />
+
+        <NavbarLabel>{m.navbar_label_connections()}</NavbarLabel>
+      </NavbarButton>
+
+      <NavbarButton to="/main/rules">
+        <DesignServicesRounded />
+
+        <NavbarLabel>{m.navbar_label_rules()}</NavbarLabel>
+      </NavbarButton>
+
+      <NavbarButton to="/main/logs">
+        <TerminalRounded />
+
+        <NavbarLabel>{m.navbar_label_logs()}</NavbarLabel>
+      </NavbarButton>
+
+      <NavbarButton to="/main/settings/system">
+        <SettingsRounded />
+
+        <NavbarLabel>{m.navbar_label_settings()}</NavbarLabel>
+      </NavbarButton>
+
+      <NavbarButton to="/main/providers">
+        <Apps />
+
+        <NavbarLabel>{m.navbar_label_providers()}</NavbarLabel>
+      </NavbarButton>
+    </AnimatedTabs>
   )
 }
 
-export default function Navbar({ className, ...props }: ComponentProps<'div'>) {
+export const MobileNavbar = () => {
   return (
-    <div
+    <AnimatedTabs
       className={cn(
-        'dark:bg-on-primary bg-primary-container flex items-center px-3',
-        'h-16 sm:h-12',
-        'justify-between sm:justify-start',
-        'gap-2 lg:gap-1',
-        className,
+        'h-full w-full bg-transparent! py-2',
+        '**:data-[slot=animated-tabs-indicator]:bg-inverse-primary',
+        '**:dark:data-[slot=animated-tabs-indicator]:bg-on-primary',
       )}
-      data-slot="app-navbar"
-      {...props}
+      variant="pill"
+      size="sm"
     >
-      <NavbarButton
-        to="/main/dashboard"
-        icon={<DashboardRounded className="size-5" />}
-        label={m.navbar_label_dashboard()}
-      />
+      <MoblieNavbarContainer>
+        <NavbarButton to="/main/dashboard">
+          <DashboardRounded />
+        </NavbarButton>
 
-      <ProxiesGroupButton />
+        {m.navbar_label_dashboard()}
+      </MoblieNavbarContainer>
 
-      <NavbarButton
-        to="/main/profiles/profile"
-        mobileTo="/main/profiles"
-        icon={<GridViewOutlineRounded className="size-5" />}
-        label={m.navbar_label_profiles()}
-      />
+      <MoblieNavbarContainer>
+        <NavbarButton to="/main/proxies">
+          <Public />
+        </NavbarButton>
 
-      <NavbarButton
-        to="/main/connections"
-        icon={<SettingsEthernetRounded className="size-5" />}
-        label={m.navbar_label_connections()}
-      />
+        {m.navbar_label_proxies()}
+      </MoblieNavbarContainer>
 
-      <NavbarButton
-        to="/main/rules"
-        icon={<DesignServicesRounded className="size-5" />}
-        label={m.navbar_label_rules()}
-      />
+      <MoblieNavbarContainer>
+        <NavbarButton to="/main/connections">
+          <SettingsEthernetRounded />
+        </NavbarButton>
 
-      <NavbarButton
-        to="/main/logs"
-        icon={<TerminalRounded className="size-5" />}
-        label={m.navbar_label_logs()}
-      />
+        {m.navbar_label_connections()}
+      </MoblieNavbarContainer>
 
-      <NavbarButton
-        to="/main/settings/system"
-        mobileTo="/main/settings"
-        icon={<SettingsRounded className="size-5" />}
-        label={m.navbar_label_settings()}
-      />
+      <MoblieNavbarContainer>
+        <NavbarButton to="/main/settings/system">
+          <SettingsRounded />
+        </NavbarButton>
 
-      <NavbarButton
-        to="/main/providers"
-        icon={<Apps className="size-5" />}
-        label={m.navbar_label_providers()}
-      />
-    </div>
+        {m.navbar_label_settings()}
+      </MoblieNavbarContainer>
+
+      <DropdownMenu>
+        <MoblieNavbarContainer>
+          <DropdownMenuTrigger asChild>
+            <Button
+              className="min-w-0 flex-1 bg-transparent! px-4"
+              variant="flat"
+            >
+              <MenuRounded className="size-5" />
+            </Button>
+          </DropdownMenuTrigger>
+
+          {m.navbar_label_more()}
+        </MoblieNavbarContainer>
+
+        <DropdownMenuContent>
+          <DropdownMenuItem asChild>
+            <Link
+              to="/main/profiles/$type"
+              params={{
+                type: 'profile',
+              }}
+            >
+              <GridViewOutlineRounded />
+              <span>{m.navbar_label_profiles()}</span>
+            </Link>
+          </DropdownMenuItem>
+
+          <DropdownMenuItem asChild>
+            <Link to="/main/rules">
+              <DesignServicesRounded />
+              <span>{m.navbar_label_rules()}</span>
+            </Link>
+          </DropdownMenuItem>
+
+          <DropdownMenuItem asChild>
+            <Link to="/main/logs">
+              <TerminalRounded />
+              <span>{m.navbar_label_logs()}</span>
+            </Link>
+          </DropdownMenuItem>
+
+          <DropdownMenuItem asChild>
+            <Link to="/main/providers">
+              <Apps />
+              <span>{m.navbar_label_providers()}</span>
+            </Link>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </AnimatedTabs>
   )
 }

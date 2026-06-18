@@ -1,8 +1,11 @@
 import { cva, type VariantProps } from 'class-variance-authority'
 import { motion, useReducedMotion } from 'framer-motion'
+import { Slot } from 'radix-ui'
 import {
+  cloneElement,
   ComponentProps,
   createContext,
+  isValidElement,
   use,
   useCallback,
   useId,
@@ -11,33 +14,6 @@ import {
   type ReactNode,
 } from 'react'
 import { cn } from '@nyanpasu/utils'
-
-export type AnimatedTabVariant = 'pill' | 'segment'
-
-const AnimatedTabsContext = createContext<{
-  activeTab: string
-  layoutId: string
-  onKeyDown: (event: React.KeyboardEvent, tabId: string) => void
-  onTabChange: (tabId: string) => void
-  shouldReduceMotion: boolean | null
-  variant: AnimatedTabVariant
-} | null>(null)
-
-function useAnimatedTabsContext() {
-  const ctx = use(AnimatedTabsContext)
-
-  if (!ctx) {
-    throw new Error('AnimatedTabsItem must be used within AnimatedTabs')
-  }
-
-  return ctx
-}
-
-const SPRING = {
-  type: 'spring' as const,
-  duration: 0.35,
-  bounce: 0.15,
-}
 
 const containerVariants = cva('relative inline-flex items-stretch', {
   variants: {
@@ -64,6 +40,8 @@ const containerVariants = cva('relative inline-flex items-stretch', {
     size: 'md',
   },
 })
+
+type AnimatedTabContainer = VariantProps<typeof containerVariants>
 
 const tabVariants = cva(
   [
@@ -100,13 +78,60 @@ const tabVariants = cva(
   },
 )
 
+const activeIndicatorVariants = cva(
+  [
+    'absolute inset-0 z-1',
+    'bg-secondary-container dark:bg-secondary-container',
+  ],
+  {
+    variants: {
+      variant: {
+        pill: 'rounded-full',
+        segment: '',
+      },
+    },
+    defaultVariants: {
+      variant: 'pill',
+    },
+  },
+)
+
+const AnimatedTabsContext = createContext<{
+  activeTab: string
+  layoutId: string
+  onKeyDown: (event: React.KeyboardEvent, tabId?: string) => void
+  onTabChange: (tabId?: string) => void
+  shouldReduceMotion: boolean | null
+  variant: AnimatedTabContainer['variant']
+} | null>(null)
+
+function useAnimatedTabsContext() {
+  const ctx = use(AnimatedTabsContext)
+
+  if (!ctx) {
+    throw new Error('AnimatedTabsItem must be used within AnimatedTabs')
+  }
+
+  return ctx
+}
+
+const SPRING = {
+  type: 'spring' as const,
+  duration: 0.35,
+  bounce: 0.15,
+}
+
 export function AnimatedTabsItem({
   value,
+  isActive: isActiveProp,
   className,
   children,
+  asChild,
   ...props
 }: ComponentProps<'button'> & {
-  value: string
+  value?: string
+  isActive?: boolean
+  asChild?: boolean
 }) {
   const {
     activeTab,
@@ -117,31 +142,82 @@ export function AnimatedTabsItem({
     onKeyDown,
   } = useAnimatedTabsContext()
 
-  const isActive = activeTab === value
+  const isActive = isActiveProp ?? activeTab === value
+
+  const Comp = asChild ? Slot.Root : 'button'
+
+  const { id, onClick, onKeyDown: onKeyDownProp, type, ...restProps } = props
+
+  const tabValue = value || 'null'
+
+  const tabId = id ?? `${layoutId}-tab-${tabValue}`
+
+  const renderLabel = (content: ReactNode) => (
+    <span
+      className="relative z-3 flex items-center gap-2"
+      data-slot="animated-tabs-item-label"
+    >
+      {content}
+    </span>
+  )
+
+  const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    onClick?.(event)
+
+    if (!event.defaultPrevented) {
+      onTabChange(value)
+    }
+  }
+
+  const handleItemKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    onKeyDownProp?.(event)
+
+    if (!event.defaultPrevented) {
+      onKeyDown(event, value)
+    }
+  }
+
+  let slottableChild: ReactNode
+
+  if (asChild) {
+    if (!isValidElement(children)) {
+      throw new Error(
+        'AnimatedTabsItem with asChild expects a single React element child',
+      )
+    }
+
+    const childContent = (children.props as { children?: ReactNode }).children
+
+    slottableChild = cloneElement(
+      children,
+      undefined,
+      renderLabel(childContent),
+    )
+  } else {
+    slottableChild = renderLabel(children)
+  }
 
   return (
-    <button
+    <Comp
       aria-selected={isActive}
       className={cn(tabVariants({ variant }), className)}
       data-slot="animated-tabs-item"
-      onClick={() => onTabChange(value)}
-      onKeyDown={(e) => onKeyDown(e, value)}
+      data-tab-id={tabValue}
+      id={tabId}
+      onClick={handleClick}
+      onKeyDown={handleItemKeyDown}
       role="tab"
       tabIndex={isActive ? 0 : -1}
-      type="button"
-      {...props}
+      type={asChild ? undefined : (type ?? 'button')}
+      {...restProps}
     >
       {/* Sliding pill indicator — rendered first so it sits at the bottom of the stack */}
       {isActive && (
         <motion.span
           aria-hidden
-          className={cn(
-            'absolute inset-0 z-1',
-            variant === 'pill' &&
-              'bg-secondary-container dark:bg-secondary-container rounded-full',
-            variant === 'segment' &&
-              'bg-secondary-container dark:bg-secondary-container',
-          )}
+          className={activeIndicatorVariants({
+            variant,
+          })}
           layout
           layoutId={layoutId}
           transition={shouldReduceMotion ? { duration: 0 } : SPRING}
@@ -163,8 +239,8 @@ export function AnimatedTabsItem({
         />
       )}
 
-      <span className="relative z-3 flex items-center gap-2">{children}</span>
-    </button>
+      <Slot.Slottable>{slottableChild}</Slot.Slottable>
+    </Comp>
   )
 }
 
@@ -182,8 +258,8 @@ export default function AnimatedTabs({
   className?: string
   defaultTab?: string
   onChange?: (tabId: string) => void
-  variant?: AnimatedTabVariant
-  size?: VariantProps<typeof containerVariants>['size']
+  variant?: AnimatedTabContainer['variant']
+  size?: AnimatedTabContainer['size']
 }) {
   const shouldReduceMotion = useReducedMotion()
 
@@ -198,25 +274,23 @@ export default function AnimatedTabs({
   const activeTab = isControlled ? controlledActiveTab : internalActiveTab
 
   const handleTabChange = useCallback(
-    (tabId: string) => {
+    (tabId?: string) => {
       if (!isControlled) {
-        setInternalActiveTab(tabId)
+        setInternalActiveTab(tabId || 'null')
       }
-      onChange?.(tabId)
+      onChange?.(tabId || 'null')
     },
     [isControlled, onChange],
   )
 
   const handleKeyDown = useCallback(
-    (event: React.KeyboardEvent, tabId: string) => {
+    (event: React.KeyboardEvent, tabId?: string) => {
       if (!containerRef.current) return
       const tabElements = Array.from(
-        containerRef.current.querySelectorAll<HTMLButtonElement>(
-          '[role="tab"]',
-        ),
+        containerRef.current.querySelectorAll<HTMLElement>('[role="tab"]'),
       )
       const currentIndex = tabElements.findIndex(
-        (el) => el.id === `${layoutId}-tab-${tabId}`,
+        (el) => el.dataset.tabId === (tabId || 'null'),
       )
       let newIndex = currentIndex
 
@@ -238,12 +312,12 @@ export default function AnimatedTabs({
 
       const newTabEl = tabElements[newIndex]
       if (newTabEl) {
-        const newTabId = newTabEl.id.replace(`${layoutId}-tab-`, '')
+        const newTabId = newTabEl.dataset.tabId
         handleTabChange(newTabId)
         newTabEl.focus()
       }
     },
-    [layoutId, handleTabChange],
+    [handleTabChange],
   )
 
   return (

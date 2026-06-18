@@ -1,11 +1,12 @@
 import ContextMenuProvider from '@/components/providers/context-menu-provider'
 import NyanpasuUpdateProvider from '@/components/providers/nyanpasu-update-provider'
 import { AnimatedOutletPreset } from '@/components/router/animated-outlet'
+import useIsMobile from '@/hooks/use-is-moblie'
 import { cn } from '@nyanpasu/utils'
 import packageJson from '@root/package.json'
 import { createFileRoute } from '@tanstack/react-router'
 import Header from './_modules/header'
-import Navbar from './_modules/navbar'
+import { DefaultNavbar, MobileNavbar } from './_modules/navbar'
 
 export const Route = createFileRoute('/(main)')({
   component: RouteComponent,
@@ -24,6 +25,8 @@ const AppContent = () => {
 }
 
 function RouteComponent() {
+  const isMobile = useIsMobile()
+
   return (
     <NyanpasuUpdateProvider>
       <ContextMenuProvider>
@@ -38,12 +41,35 @@ function RouteComponent() {
           <Header className="shrink-0" />
 
           <div
-            className="flex min-h-0 flex-1 flex-col-reverse sm:flex-col"
+            className="flex min-h-0 flex-1 flex-col"
             data-slot="app-content-container"
           >
-            <Navbar className="shrink-0" />
+            {!isMobile && (
+              <div
+                className={cn(
+                  'flex h-12 shrink-0 items-center gap-2 px-3',
+                  'dark:bg-on-primary bg-primary-container',
+                )}
+                data-slot="app-navbar"
+              >
+                <DefaultNavbar />
+              </div>
+            )}
 
             <AppContent />
+
+            {isMobile && (
+              <div
+                className={cn(
+                  'flex h-16 shrink-0 items-center gap-2 px-3',
+                  'dark:bg-scrim bg-primary-container',
+                  'justify-between',
+                )}
+                data-slot="app-navbar-mobile"
+              >
+                {isMobile ? <MobileNavbar /> : <DefaultNavbar />}
+              </div>
+            )}
           </div>
         </div>
       </ContextMenuProvider>

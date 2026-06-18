@@ -26,7 +26,7 @@
     "@tanstack/react-table": "8.21.3",
     "@tanstack/react-virtual": "3.14.3",
     "@tanstack/router-zod-adapter": "1.81.5",
-    "@tauri-apps/api": "2.11.0",
+    "@tauri-apps/api": "2.11.1",
     "@types/lodash-es": "4.17.12",
     "@uidotdev/usehooks": "2.4.1",
     "@uiw/react-color": "2.10.3",

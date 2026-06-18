@@ -97,8 +97,8 @@ importers:
         specifier: 5.101.0
         version: 5.101.0(react@19.2.7)
       '@tauri-apps/api':
-        specifier: 2.11.0
-        version: 2.11.0
+        specifier: 2.11.1
+        version: 2.11.1
       lodash-es:
         specifier: 4.18.1
         version: 4.18.1
@@ -167,8 +167,8 @@ importers:
         specifier: 1.81.5
         version: 1.81.5(@tanstack/react-router@1.170.15(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(zod@4.4.3)
       '@tauri-apps/api':
-        specifier: 2.11.0
-        version: 2.11.0
+        specifier: 2.11.1
+        version: 2.11.1
       '@types/lodash-es':
         specifier: 4.17.12
         version: 4.17.12
@@ -351,8 +351,8 @@ importers:
   frontend/utils:
     dependencies:
       '@tauri-apps/api':
-        specifier: 2.11.0
-        version: 2.11.0
+        specifier: 2.11.1
+        version: 2.11.1
       clsx:
         specifier: 2.1.1
         version: 2.1.1
@@ -3113,6 +3113,9 @@ packages:
 
   '@tauri-apps/api@2.11.0':
     resolution: {integrity: sha512-7CinYODhky9lmO23xHnUFv0Xt43fbtWMyxZcLcRBlFkcgXKuEirBvHpmtJ89YMhyeGcq20Wuc47Fa4XjyniywA==}
+
+  '@tauri-apps/api@2.11.1':
+    resolution: {integrity: sha512-M2FPuYND2m+wh5hfW9ZpSdxMPdEJovPBWwoHJmwUpysTYNHaOkVFN419m/K0LIgjb/7KU2vBgsUepJWugQCvAA==}
 
   '@tauri-apps/cli-darwin-arm64@2.11.2':
     resolution: {integrity: sha512-+4UZzLt+eOAEQCwgd+TqKgyUJMrvx+BgdXLLaqJYmPqzP+nE6YZr/hY6CWLYGQb8jFn99jEkmC6uA3tNvamA1w==}
@@ -8886,6 +8889,8 @@ snapshots:
       '@taplo/core': 0.2.0
 
   '@tauri-apps/api@2.11.0': {}
+
+  '@tauri-apps/api@2.11.1': {}
 
   '@tauri-apps/cli-darwin-arm64@2.11.2':
     optional: true

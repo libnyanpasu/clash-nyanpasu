@@ -17,6 +17,7 @@ mod ipc;
 mod logging;
 mod server;
 mod setup;
+mod state;
 
 #[cfg(windows)]
 mod shutdown_hook;
@@ -33,7 +34,7 @@ use crate::{
 };
 use anyhow::Context;
 use specta_typescript::Typescript;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tauri_specta::{collect_commands, collect_events};
 use utils::resolve::{is_window_opened, reset_window_open_counter};
 
@@ -385,6 +386,16 @@ pub fn run() -> std::io::Result<()> {
             }
 
             resolve::resolve_setup(app);
+
+            // The state actor is seeded before resolve_setup, while resolve_setup always
+            // patches and saves verge_mixed_port. Sync the actor with the post-resolve
+            // legacy state before any later actor upsert can persist a stale port.
+            {
+                let client = app.state::<crate::client::NyanpasuClient>().inner().clone();
+                let verge = Config::verge().data().clone();
+                tauri::async_runtime::block_on(client.replace_verge_config(verge))
+                    .context("Failed to sync verge state after resolve setup")?;
+            }
 
             // setup custom scheme
             let handle = app.handle().clone();

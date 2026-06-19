@@ -16,7 +16,10 @@ use nyanpasu_core::state::PersistentStateManagerSetup;
 const STATE_RPC_TIMEOUT: Duration = Duration::from_secs(5);
 /// Must match the prefix used by the legacy `IVerge::save_file` so both writers
 /// produce an identical header for `nyanpasu-config.yaml`.
-const VERGE_CONFIG_PREFIX: &str = "# Clash Nyanpasu Config";
+/// The trailing `\n` ensures that `YamlFormat` (which calls `writeln!`) emits a
+/// blank line between the prefix and the YAML body, matching `save_yaml`'s
+/// `"{prefix}\n\n{data}"` layout.
+const VERGE_CONFIG_PREFIX: &str = "# Clash Nyanpasu Config\n";
 
 #[derive(Clone)]
 pub struct StateClient {

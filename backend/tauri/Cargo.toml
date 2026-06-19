@@ -29,6 +29,7 @@ nyanpasu-ipc = { git = "https://github.com/libnyanpasu/nyanpasu-service.git", fe
   "specta",
 ] } # IPC bridge between the UI process and service process
 nyanpasu-macro = { path = "../nyanpasu-macro" }
+nyanpasu-core = { path = "../nyanpasu-core" }
 nyanpasu-utils = { workspace = true }
 nyanpasu-egui = { path = "../nyanpasu-egui" }
 

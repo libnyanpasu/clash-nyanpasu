@@ -491,8 +491,8 @@ pub async fn patch_clash_config(payload: PatchRuntimeConfig) -> Result {
 
 #[tauri::command]
 #[specta::specta]
-pub fn get_verge_config(client: State<'_, NyanpasuClient>) -> Result<IVerge> {
-    Ok(client.get_verge_config())
+pub async fn get_verge_config(client: State<'_, NyanpasuClient>) -> Result<IVerge> {
+    Ok(client.get_verge_config().await?)
 }
 
 #[tauri::command]
@@ -510,8 +510,17 @@ pub async fn patch_verge_config(client: State<'_, NyanpasuClient>, payload: IVer
 
 #[tauri::command]
 #[specta::specta]
-pub async fn change_clash_core(clash_core: Option<nyanpasu::ClashCore>) -> Result {
-    (CoreManager::global().change_core(clash_core).await)?;
+pub async fn change_clash_core(
+    client: State<'_, NyanpasuClient>,
+    clash_core: Option<nyanpasu::ClashCore>,
+) -> Result {
+    // `change_core` writes `Config::verge().clash_core` directly; reseed the actor so a
+    // later pure patch does not persist a stale snapshot and revert the core change.
+    client
+        .run_legacy_verge_mutation(
+            || async move { CoreManager::global().change_core(clash_core).await },
+        )
+        .await?;
     Ok(())
 }
 
@@ -1247,15 +1256,24 @@ pub async fn check_update(webview: tauri::Webview) -> Result<Option<UpdateWrappe
 
 #[tauri::command]
 #[specta::specta]
-pub fn save_window_size_state(app_handle: AppHandle, label: String) -> Result<()> {
-    match label.as_str() {
-        crate::consts::MAIN_WINDOW_LABEL => {
-            resolve::save_main_window_state(&app_handle, true)?;
-        }
-        _ => {
-            log::warn!("Unknown window label: {}", label);
-        }
-    }
+pub async fn save_window_size_state(
+    client: State<'_, NyanpasuClient>,
+    app_handle: AppHandle,
+    label: String,
+) -> Result<()> {
+    // Window-state save writes `Config::verge().window_size_state` directly; reseed the
+    // actor so a later pure patch does not revert the saved geometry.
+    client
+        .run_legacy_verge_mutation(|| async move {
+            match label.as_str() {
+                crate::consts::MAIN_WINDOW_LABEL => {
+                    resolve::save_main_window_state(&app_handle, true)?;
+                }
+                _ => log::warn!("Unknown window label: {}", label),
+            }
+            Ok(())
+        })
+        .await?;
     Ok(())
 }
 

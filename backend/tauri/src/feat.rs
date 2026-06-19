@@ -114,13 +114,28 @@ pub fn change_clash_mode(mode: String) {
     });
 }
 
+/// Route a verge patch through the managed `NyanpasuClient` when it is available, so
+/// the state actor is reseeded after a legacy side-effect write. Falls back to a direct
+/// `patch_verge` before the client is managed (early startup), where no actor exists yet.
+async fn patch_verge_entrypoint(patch: IVerge) -> Result<()> {
+    let app_handle = handle::Handle::global().app_handle.lock().clone();
+    if let Some(app_handle) = app_handle
+        && let Some(client) = app_handle.try_state::<crate::client::NyanpasuClient>()
+    {
+        let client = client.inner().clone();
+        client.patch_verge_config(patch).await?;
+        return Ok(());
+    }
+    patch_verge(patch).await
+}
+
 // 切换系统代理
 pub fn toggle_system_proxy() {
     let enable = Config::verge().draft().enable_system_proxy;
     let enable = enable.unwrap_or(false);
 
     tauri::async_runtime::spawn(async move {
-        match patch_verge(IVerge {
+        match patch_verge_entrypoint(IVerge {
             enable_system_proxy: Some(!enable),
             ..IVerge::default()
         })
@@ -135,7 +150,7 @@ pub fn toggle_system_proxy() {
 // 打开系统代理
 pub fn enable_system_proxy() {
     tauri::async_runtime::spawn(async {
-        match patch_verge(IVerge {
+        match patch_verge_entrypoint(IVerge {
             enable_system_proxy: Some(true),
             ..IVerge::default()
         })
@@ -150,7 +165,7 @@ pub fn enable_system_proxy() {
 // 关闭系统代理
 pub fn disable_system_proxy() {
     tauri::async_runtime::spawn(async {
-        match patch_verge(IVerge {
+        match patch_verge_entrypoint(IVerge {
             enable_system_proxy: Some(false),
             ..IVerge::default()
         })
@@ -168,7 +183,7 @@ pub fn toggle_tun_mode() {
     let enable = enable.unwrap_or(false);
 
     tauri::async_runtime::spawn(async move {
-        match patch_verge(IVerge {
+        match patch_verge_entrypoint(IVerge {
             enable_tun_mode: Some(!enable),
             ..IVerge::default()
         })
@@ -183,7 +198,7 @@ pub fn toggle_tun_mode() {
 // 打开tun模式
 pub fn enable_tun_mode() {
     tauri::async_runtime::spawn(async {
-        match patch_verge(IVerge {
+        match patch_verge_entrypoint(IVerge {
             enable_tun_mode: Some(true),
             ..IVerge::default()
         })
@@ -198,7 +213,7 @@ pub fn enable_tun_mode() {
 // 关闭tun模式
 pub fn disable_tun_mode() {
     tauri::async_runtime::spawn(async {
-        match patch_verge(IVerge {
+        match patch_verge_entrypoint(IVerge {
             enable_tun_mode: Some(false),
             ..IVerge::default()
         })

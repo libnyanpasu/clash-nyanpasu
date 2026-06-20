@@ -14,9 +14,12 @@ import { useContainerBreakpointValue } from '@nyanpasu/utils'
 import { createFileRoute } from '@tanstack/react-router'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useCurrentGroupConnection } from '../_modules/hooks'
+import CreateGroupDialog from './_modules/create-group-dialog'
 import DelayTestButton from './_modules/delay-test-button'
 import GroupHeader from './_modules/group-header'
 import ProxyNodeButton from './_modules/proxy-node-button'
+import { GroupSelectionProvider } from './_modules/selection'
+import SelectionActionBar from './_modules/selection-action-bar'
 
 export const Route = createFileRoute('/(main)/main/proxies/group/$name')({
   component: RouteComponent,
@@ -81,8 +84,17 @@ function RouteComponent() {
 
   const currentGroupConnection = useCurrentGroupConnection(currentGroup)
 
+  // Leaf proxies eligible for "select all" (exclude nested proxy-groups).
+  const nodeNames = useMemo(
+    () =>
+      currentGroup?.all
+        ?.filter((proxy) => !proxy.all)
+        .map((proxy) => proxy.name) ?? [],
+    [currentGroup?.all],
+  )
+
   return (
-    <>
+    <GroupSelectionProvider key={proxyGroupName}>
       <GroupHeader>
         <div className="flex items-center gap-2">
           <div>{currentGroup?.name}</div>
@@ -147,6 +159,10 @@ function RouteComponent() {
       </div>
 
       <DelayTestButton />
-    </>
+
+      <SelectionActionBar nodeNames={nodeNames} />
+
+      <CreateGroupDialog />
+    </GroupSelectionProvider>
   )
 }

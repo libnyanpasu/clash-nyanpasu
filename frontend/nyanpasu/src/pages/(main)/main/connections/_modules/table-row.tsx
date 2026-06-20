@@ -1,5 +1,6 @@
 import ChatInfoRounded from '~icons/material-symbols/chat-info-rounded'
 import CloseRounded from '~icons/material-symbols/close-rounded'
+import RuleRounded from '~icons/material-symbols/rule-rounded'
 import { sentenceCase } from 'change-case'
 import dayjs from 'dayjs'
 import { filesize } from 'filesize'
@@ -24,6 +25,7 @@ import { m } from '@/paraglide/messages'
 import { useClashConnections } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import { ConnectionRow } from '..'
+import AddRuleDialog from './add-rule-dialog'
 
 // Keys added by ConnectionRow that should not be rendered in the dialog
 const INTERNAL_KEYS = new Set(['closed', 'downloadSpeed', 'uploadSpeed'])
@@ -94,6 +96,8 @@ export default function TableRow({
 
   const [open, setOpen] = useState(false)
 
+  const [ruleOpen, setRuleOpen] = useState(false)
+
   const handleCloseConnection = useLockFn(async () => {
     // frist close the dialog to avoid showing stale data when the deletion is slow
     if (open) {
@@ -122,12 +126,19 @@ export default function TableRow({
             <span>{m.connections_view_details()}</span>
           </ContextMenuItem>
 
+          <ContextMenuItem onSelect={() => setRuleOpen(true)}>
+            <RuleRounded className="size-4" />
+            <span>{m.connections_add_rule()}</span>
+          </ContextMenuItem>
+
           <ContextMenuItem onSelect={() => handleCloseConnection()}>
             <CloseRounded className="size-4" />
             <span>{m.connections_close_connection()}</span>
           </ContextMenuItem>
         </RegisterContextMenuContent>
       </RegisterContextMenu>
+
+      <AddRuleDialog data={data} open={ruleOpen} onOpenChange={setRuleOpen} />
 
       <Modal open={open} onOpenChange={setOpen}>
         <ModalContent>

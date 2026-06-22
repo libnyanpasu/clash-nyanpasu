@@ -61,6 +61,10 @@ impl Profiles {
         }
     }
 
+    // Legacy persistence bridge. PR-3 routes every profiles writer through the actor (the
+    // sole persister), so these `save_file`-backed helpers currently have no callers; they are
+    // retained as thin wrappers for any future un-migrated path.
+    #[allow(dead_code)]
     pub fn save_file(&self) -> Result<()> {
         help::save_yaml(
             &dirs::profiles_path()?,
@@ -86,56 +90,35 @@ impl Profiles {
             .ok_or_else(|| anyhow::anyhow!("failed to get the profile item \"uid:{uid}\""))
     }
 
-    /// append new item
-    pub fn append_item(&mut self, item: Profile) -> Result<()> {
+    /// append a new item (pure, in-memory only)
+    pub fn push_item(&mut self, item: Profile) {
         self.items.push(item);
+    }
+
+    /// append a new item and persist (legacy bridge for un-migrated callers)
+    #[allow(dead_code)]
+    pub fn append_item(&mut self, item: Profile) -> Result<()> {
+        self.push_item(item);
         self.save_file()
     }
 
-    /// reorder items
+    /// reorder items and persist (legacy bridge for un-migrated callers)
+    #[allow(dead_code)]
     pub fn reorder(&mut self, active_id: String, over_id: String) -> Result<()> {
-        let items = &mut self.items;
-        let mut old_index = None;
-        let mut new_index = None;
-
-        for (i, item) in items.iter().enumerate() {
-            if item.uid() == active_id {
-                old_index = Some(i);
-            }
-            if item.uid() == over_id {
-                new_index = Some(i);
-            }
-        }
-
-        if old_index.is_none() || new_index.is_none() {
-            return Ok(());
-        }
-        let item = items.remove(old_index.unwrap());
-        items.insert(new_index.unwrap(), item);
+        reorder_items(&mut self.items, &active_id, &over_id);
         self.save_file()
     }
 
-    /// reorder items with the full order list
+    /// reorder items with the full order list and persist (legacy bridge)
+    #[allow(dead_code)]
     pub fn reorder_by_list<T: Borrow<String>>(&mut self, order: &[T]) -> Result<()> {
-        let mut items = std::mem::take(&mut self.items);
-        let mut new_items = Vec::with_capacity(items.len());
-
-        for uid in order {
-            if let Some(index) = items.iter().position(|e| e.uid() == uid.borrow()) {
-                new_items.push(items.remove(index));
-            }
-        }
-
-        // Keep unmatched items to avoid accidental data loss when order is partial.
-        new_items.extend(items);
-        self.items = new_items;
-
+        reorder_items_by_list(&mut self.items, order);
         self.save_file()
     }
 
-    /// update the item value
+    /// update the item value in place (pure, in-memory only)
     #[instrument]
-    pub fn patch_item(&mut self, uid: String, patch: ProfileBuilder) -> Result<()> {
+    pub fn apply_item_patch(&mut self, uid: String, patch: ProfileBuilder) -> Result<()> {
         tracing::debug!("patch item: {uid} with {patch:?}");
 
         let item = self
@@ -156,55 +139,78 @@ impl Profiles {
             _ => bail!("profile type mismatch when patching"),
         };
 
+        Ok(())
+    }
+
+    /// update the item value and persist (legacy bridge for un-migrated callers)
+    #[allow(dead_code)]
+    pub fn patch_item(&mut self, uid: String, patch: ProfileBuilder) -> Result<()> {
+        self.apply_item_patch(uid, patch)?;
         self.save_file()
     }
 
-    /// replace item
+    /// replace an item in place (pure, in-memory only)
+    pub fn set_item<T: Borrow<String>>(&mut self, uid: T, item: Profile) {
+        let uid = uid.borrow();
+        if let Some(index) = self.items.iter().position(|e| e.uid() == uid) {
+            self.items[index] = item;
+        }
+    }
+
+    /// replace an item and persist (legacy bridge for un-migrated callers)
+    #[allow(dead_code)]
     pub fn replace_item<T: Borrow<String>>(&mut self, uid: T, item: Profile) -> Result<()> {
-        let uid = uid.borrow();
-
-        let index = self.items.iter().position(|e| e.uid() == uid);
-        if let Some(index) = index {
-            unsafe {
-                *self.items.get_unchecked_mut(index) = item;
-            }
-        }
-
+        self.set_item(uid, item);
         self.save_file()
     }
 
-    /// delete item
-    /// if delete the current then return true
-    pub async fn delete_item<T: Borrow<String>>(&mut self, uid: T) -> Result<bool> {
-        let uid = uid.borrow();
-        let items = &mut self.items;
+    /// overwrite the current selection (pure, in-memory only)
+    pub fn set_current(&mut self, current: Vec<ProfileUid>) {
+        self.current = current;
+    }
 
-        // get the index
-        let index = items.iter().position(|e| e.uid() == uid);
-        if let Some(index) = index {
-            let mut profile = items.remove(index);
-            profile.remove_file().await?;
-        }
+    /// remove the index entry and fix up `current`, returning the removed item and
+    /// whether the removed uid was part of `current`.
+    /// Pure: no file IO, no persistence (the caller persists the index and deletes
+    /// the content file separately).
+    pub fn remove_item<T: Borrow<String>>(&mut self, uid: T) -> (Option<Profile>, bool) {
+        let uid: &str = uid.borrow();
 
-        // delete the original uid
+        let removed = self
+            .items
+            .iter()
+            .position(|e| e.uid() == uid)
+            .map(|index| self.items.remove(index));
+
         let mut current = self
             .current
             .iter()
-            .filter(|e| e != &uid)
+            .filter(|e| e.as_str() != uid)
             .cloned()
             .collect::<Vec<_>>();
-        let is_current = self.current != current;
+        let was_current = self.current != current;
+
         // 尝试激活存在的第一个配置
-        if current.is_empty() {
-            let item = items.iter().find(|e| e.is_local() || e.is_remote());
-            if let Some(item) = item {
-                current.push(item.uid().to_string());
-            }
+        if current.is_empty()
+            && let Some(item) = self.items.iter().find(|e| e.is_local() || e.is_remote())
+        {
+            current.push(item.uid().to_string());
         }
         self.current = current;
 
+        (removed, was_current)
+    }
+
+    /// delete item, remove its content file, and persist (legacy bridge).
+    /// if delete the current then return true
+    #[allow(dead_code)]
+    pub async fn delete_item<T: Borrow<String>>(&mut self, uid: T) -> Result<bool> {
+        let (removed, was_current) = self.remove_item(uid);
+        if let Some(mut profile) = removed {
+            profile.remove_file().await?;
+        }
         self.save_file()?;
-        Ok(is_current)
+        Ok(was_current)
     }
 
     /// 获取current指向的配置内容
@@ -232,5 +238,138 @@ impl Profiles {
         }
         let map = IndexMap::from_iter(successes);
         Ok(map)
+    }
+}
+
+/// reorder items in place (pure, in-memory only)
+pub fn reorder_items(items: &mut [Profile], active_id: &str, over_id: &str) {
+    let mut old_index = None;
+    let mut new_index = None;
+
+    for (i, item) in items.iter().enumerate() {
+        if item.uid() == active_id {
+            old_index = Some(i);
+        }
+        if item.uid() == over_id {
+            new_index = Some(i);
+        }
+    }
+
+    if let (Some(old_index), Some(new_index)) = (old_index, new_index) {
+        // `[T]::rotate_*` keeps the move in-bounds without reallocating the slice.
+        if old_index < new_index {
+            items[old_index..=new_index].rotate_left(1);
+        } else if old_index > new_index {
+            items[new_index..=old_index].rotate_right(1);
+        }
+    }
+}
+
+/// reorder items with the full order list (pure, in-memory only)
+pub fn reorder_items_by_list<T: Borrow<String>>(items: &mut Vec<Profile>, order: &[T]) {
+    let mut old = std::mem::take(items);
+    let mut new_items = Vec::with_capacity(old.len());
+
+    for uid in order {
+        if let Some(index) = old.iter().position(|e| e.uid() == uid.borrow()) {
+            new_items.push(old.remove(index));
+        }
+    }
+
+    // Keep unmatched items to avoid accidental data loss when order is partial.
+    new_items.extend(old);
+    *items = new_items;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Profiles, reorder_items, reorder_items_by_list};
+    use crate::config::profile::{
+        builder::ProfileBuilder,
+        item::{LocalProfileBuilder, Profile, ProfileSharedBuilder, prelude::ProfileMetaGetter},
+    };
+
+    fn local(uid: &str) -> Profile {
+        serde_yaml::from_str(&format!(
+            "type: local\nuid: \"{uid}\"\nname: \"{uid}\"\nfile: {uid}.yaml\nupdated: 0\n"
+        ))
+        .expect("local profile yaml should parse")
+    }
+
+    fn profiles_with(uids: &[&str]) -> Profiles {
+        let mut profiles = Profiles::default();
+        for uid in uids {
+            profiles.push_item(local(uid));
+        }
+        profiles
+    }
+
+    fn uids(profiles: &Profiles) -> Vec<&str> {
+        profiles.items.iter().map(|item| item.uid()).collect()
+    }
+
+    #[test]
+    fn reorder_items_moves_forward_and_backward() {
+        let mut profiles = profiles_with(&["a", "b", "c", "d"]);
+        reorder_items(&mut profiles.items, "a", "c");
+        assert_eq!(uids(&profiles), ["b", "c", "a", "d"]);
+        reorder_items(&mut profiles.items, "a", "b");
+        assert_eq!(uids(&profiles), ["a", "b", "c", "d"]);
+    }
+
+    #[test]
+    fn reorder_items_missing_id_is_noop() {
+        let mut profiles = profiles_with(&["a", "b"]);
+        reorder_items(&mut profiles.items, "a", "missing");
+        assert_eq!(uids(&profiles), ["a", "b"]);
+    }
+
+    #[test]
+    fn reorder_items_by_list_keeps_unmatched_tail() {
+        let mut profiles = profiles_with(&["a", "b", "c"]);
+        reorder_items_by_list(&mut profiles.items, &["c".to_string(), "a".to_string()]);
+        assert_eq!(uids(&profiles), ["c", "a", "b"]);
+    }
+
+    #[test]
+    fn remove_item_reactivates_first_when_current_emptied() {
+        let mut profiles = profiles_with(&["a", "b"]);
+        profiles.set_current(vec!["a".into()]);
+        let (removed, was_current) = profiles.remove_item("a".to_string());
+        assert!(was_current);
+        assert_eq!(removed.expect("removed").uid(), "a");
+        assert_eq!(profiles.current, vec!["b".to_string()]);
+    }
+
+    #[test]
+    fn remove_item_non_current_keeps_current() {
+        let mut profiles = profiles_with(&["a", "b"]);
+        profiles.set_current(vec!["a".into()]);
+        let (_removed, was_current) = profiles.remove_item("b".to_string());
+        assert!(!was_current);
+        assert_eq!(profiles.current, vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn set_item_replaces_in_place_only_when_present() {
+        let mut profiles = profiles_with(&["a", "b"]);
+        profiles.set_item("a".to_string(), local("a"));
+        assert_eq!(uids(&profiles), ["a", "b"]);
+        // unknown uid is a no-op
+        profiles.set_item("missing".to_string(), local("missing"));
+        assert_eq!(uids(&profiles), ["a", "b"]);
+    }
+
+    #[test]
+    fn apply_item_patch_is_pure_and_matches_type() {
+        let mut profiles = profiles_with(&["a"]);
+        let mut shared_builder = ProfileSharedBuilder::default();
+        shared_builder.name("renamed".to_string());
+        let mut local_builder = LocalProfileBuilder::default();
+        local_builder.shared(shared_builder);
+        profiles
+            .apply_item_patch("a".to_string(), ProfileBuilder::Local(local_builder))
+            .expect("patch should apply");
+        assert_eq!(profiles.get_item("a").unwrap().name(), "renamed");
     }
 }

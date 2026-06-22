@@ -45,12 +45,17 @@ impl<T> ManagedState<T>
 where
     T: Clone + Sync + Send,
 {
-    /// to auto commit the state when it is dropped
-    pub fn auto_commit(&self) -> ManagedStateAutoCommit<T> {
+    /// to auto commit the state when it is dropped.
+    ///
+    /// Retained for any un-migrated path: PR-2/PR-3 moved every verge/profiles writer to the
+    /// state actors, so this draft-and-commit-on-drop helper currently has no callers.
+    #[allow(dead_code)]
+    pub fn auto_commit(&self) -> ManagedStateAutoCommit<'_, T> {
         ManagedStateAutoCommit(self)
     }
 }
 
+#[allow(dead_code)]
 pub struct ManagedStateAutoCommit<'a, T: Clone + Send + Sync>(&'a ManagedState<T>);
 
 impl<T> Deref for ManagedStateAutoCommit<'_, T>

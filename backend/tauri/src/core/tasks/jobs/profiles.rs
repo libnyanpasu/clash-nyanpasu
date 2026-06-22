@@ -3,8 +3,8 @@ use super::super::{
     task::{Task, TaskID, TaskManager, TaskSchedule},
 };
 use crate::{
+    client::NyanpasuClient,
     config::{Config, ProfileMetaGetter},
-    feat,
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -16,21 +16,42 @@ const INITIAL_TASK_ID: TaskID = 10000000; // 留一个初始的 TaskID，避免�
 type Minutes = u64;
 type ProfileUID = String;
 
+/// Narrow, non-Tauri gate the scheduled updater uses to funnel profile updates through the
+/// client, so the actor and `Config::profiles()` stay in sync. One-way dependency: job → client.
+#[async_trait]
+pub trait ProfilesUpdateGate: Send + Sync {
+    async fn update_profile(&self, uid: String) -> Result<()>;
+}
+
+#[async_trait]
+impl ProfilesUpdateGate for NyanpasuClient {
+    async fn update_profile(&self, uid: String) -> Result<()> {
+        NyanpasuClient::update_profile(self, uid, None)
+            .await
+            .map_err(anyhow::Error::from)
+    }
+}
+
 #[derive(Clone)]
-pub struct ProfileUpdater(ProfileUID);
+pub struct ProfileUpdater {
+    uid: ProfileUID,
+    gate: Arc<dyn ProfilesUpdateGate>,
+}
 
 impl ProfileUpdater {
-    #[allow(dead_code)]
-    pub fn new(profile_uid: &str) -> Self {
-        Self(profile_uid.to_string())
+    pub fn new(uid: &str, gate: Arc<dyn ProfilesUpdateGate>) -> Self {
+        Self {
+            uid: uid.to_string(),
+            gate,
+        }
     }
 }
 
 #[async_trait]
 impl AsyncJobExecutor for ProfileUpdater {
     async fn execute(&self) -> Result<()> {
-        log::info!(target: "app", "running timer task `{}`", self.0);
-        match feat::update_profile(self.0.clone(), None).await {
+        log::info!(target: "app", "running timer task `{}`", self.uid);
+        match self.gate.update_profile(self.uid.clone()).await {
             Ok(_) => Ok(()),
             Err(err) => {
                 log::error!(target: "app", "failed to update profile: {err:?}");
@@ -49,6 +70,7 @@ enum ProfileTaskOp {
 pub struct ProfilesJob {
     task_map: HashMap<ProfileUID, (TaskID, u64)>,
     task_manager: Arc<RwLock<TaskManager>>,
+    gate: Arc<dyn ProfilesUpdateGate>,
     // next_id: TaskID,
 }
 
@@ -57,9 +79,9 @@ pub struct ProfilesJobGuard {
 }
 
 impl ProfilesJobGuard {
-    pub fn new(task_manager: Arc<RwLock<TaskManager>>) -> Self {
+    pub fn new(task_manager: Arc<RwLock<TaskManager>>, gate: Arc<dyn ProfilesUpdateGate>) -> Self {
         Self {
-            job: Arc::new(RwLock::new(ProfilesJob::new(task_manager))),
+            job: Arc::new(RwLock::new(ProfilesJob::new(task_manager, gate))),
         }
     }
 }
@@ -73,10 +95,11 @@ impl Deref for ProfilesJobGuard {
 }
 
 impl ProfilesJob {
-    pub fn new(task_manager: Arc<RwLock<TaskManager>>) -> Self {
+    pub fn new(task_manager: Arc<RwLock<TaskManager>>, gate: Arc<dyn ProfilesUpdateGate>) -> Self {
         Self {
             task_map: HashMap::new(),
             task_manager,
+            gate,
         }
     }
 
@@ -120,7 +143,7 @@ impl ProfilesJob {
         for (uid, diff) in diff_map.into_iter() {
             match diff {
                 ProfileTaskOp::Add(task_id, interval) => {
-                    let task = new_task(task_id, &uid, interval);
+                    let task = new_task(task_id, &uid, interval, self.gate.clone());
                     crate::log_err!(self.task_manager.write().add_task(task));
                     self.task_map.insert(uid, (task_id, interval));
                 }
@@ -130,7 +153,7 @@ impl ProfilesJob {
                 }
                 ProfileTaskOp::Update(task_id, interval) => {
                     crate::log_err!(self.task_manager.write().remove_task(task_id));
-                    let task = new_task(task_id, &uid, interval);
+                    let task = new_task(task_id, &uid, interval, self.gate.clone());
                     crate::log_err!(self.task_manager.write().add_task(task));
                     self.task_map.insert(uid, (task_id, interval));
                 }
@@ -201,11 +224,16 @@ fn get_task_id(uid: &str) -> TaskID {
     }
 }
 
-fn new_task(task_id: TaskID, profile_uid: &str, interval: Minutes) -> Task {
+fn new_task(
+    task_id: TaskID,
+    profile_uid: &str,
+    interval: Minutes,
+    gate: Arc<dyn ProfilesUpdateGate>,
+) -> Task {
     Task {
         id: task_id,
         name: format!("profile-updater-{profile_uid}"),
-        executor: TaskExecutor::Async(Box::new(ProfileUpdater(profile_uid.to_owned().to_string()))),
+        executor: TaskExecutor::Async(Box::new(ProfileUpdater::new(profile_uid, gate))),
         schedule: TaskSchedule::Interval(Duration::from_secs(interval * 60)),
         ..Task::default()
     }

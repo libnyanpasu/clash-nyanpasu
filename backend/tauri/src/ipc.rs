@@ -99,8 +99,8 @@ pub struct GetSysProxyResponse {
 
 #[tauri::command]
 #[specta::specta]
-pub fn get_profiles(client: State<'_, NyanpasuClient>) -> Result<Profiles> {
-    Ok(client.get_profiles())
+pub async fn get_profiles(client: State<'_, NyanpasuClient>) -> Result<Profiles> {
+    Ok(client.get_profiles().await?)
 }
 
 #[cfg(target_os = "windows")]
@@ -125,9 +125,8 @@ pub fn is_portable() -> Result<bool> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn enhance_profiles() -> Result {
-    CoreManager::global().update_config().await?;
-    handle::Handle::refresh_clash();
+pub async fn enhance_profiles(client: State<'_, NyanpasuClient>) -> Result {
+    client.enhance_profiles().await?;
     Ok(())
 }
 
@@ -148,24 +147,8 @@ pub async fn import_profile(
         .build_no_blocking()
         .await
         .context("failed to build a remote profile")?;
-    // 根据是否为 Some(uid) 来判断是否要激活配置
-    let profile_id = {
-        if Config::profiles().draft().current.is_empty() {
-            Some(profile.uid().to_string())
-        } else {
-            None
-        }
-    };
-    {
-        let committer = Config::profiles().auto_commit();
-        (committer.draft().append_item(profile.into()))?;
-    }
-    // TODO: 使用 activate_profile 来激活配置
-    if let Some(profile_id) = profile_id {
-        let mut builder = ProfilesBuilder::default();
-        builder.current(vec![profile_id]);
-        client.patch_profiles_config(builder).await?;
-    }
+    // The client decides activation under its lock (activate when no profile is current yet).
+    client.create_profile(profile.into(), true).await?;
     Ok(())
 }
 
@@ -211,74 +194,48 @@ pub async fn create_profile(
         profile.save_file(file_data)?;
     }
 
-    // 根据是否为 Some(uid) 来判断是否要激活配置
-    let profile_id = {
-        if (profile.is_local() || profile.is_remote())
-            && Config::profiles().draft().current.is_empty()
-        {
-            Some(profile.uid().to_string())
-        } else {
-            None
-        }
-    };
-
-    // Save the profile
-    {
-        let committer = Config::profiles().auto_commit();
-        committer.draft().append_item(profile)?;
-    };
-    // TODO: 使用 activate_profile 来激活配置
-    if let Some(profile_id) = profile_id {
-        let mut builder = ProfilesBuilder::default();
-        builder.current(vec![profile_id]);
-        client.patch_profiles_config(builder).await?;
-    }
+    // The client appends + (conditionally) activates atomically under its lock.
+    client.create_profile(profile, true).await?;
 
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn reorder_profile(active_id: String, over_id: String) -> Result {
-    let committer = Config::profiles().auto_commit();
-    (committer.draft().reorder(active_id, over_id))?;
+pub async fn reorder_profile(
+    client: State<'_, NyanpasuClient>,
+    active_id: String,
+    over_id: String,
+) -> Result {
+    client.reorder_profile(active_id, over_id).await?;
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn reorder_profiles_by_list(list: Vec<String>) -> Result {
-    let committer = Config::profiles().auto_commit();
-    (committer.draft().reorder_by_list(&list))?;
+pub async fn reorder_profiles_by_list(
+    client: State<'_, NyanpasuClient>,
+    list: Vec<String>,
+) -> Result {
+    client.reorder_profiles_by_list(list).await?;
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn update_profile(uid: String, option: Option<RemoteProfileOptionsBuilder>) -> Result {
-    (feat::update_profile(uid, option).await)?;
+pub async fn update_profile(
+    client: State<'_, NyanpasuClient>,
+    uid: String,
+    option: Option<RemoteProfileOptionsBuilder>,
+) -> Result {
+    client.update_profile(uid, option).await?;
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn delete_profile(uid: String) -> Result {
-    let should_update = tokio::task::spawn_blocking(move || {
-        #[allow(clippy::let_and_return)] // a bug in clippy
-        nyanpasu_utils::runtime::block_on_current_thread(async move {
-            let committer = Config::profiles().auto_commit();
-            let x = committer.draft().delete_item(&uid).await;
-            x
-        })
-    })
-    .await
-    .context("failed to join the task")?
-    .context("failed to delete the profile")?;
-
-    if should_update {
-        (CoreManager::global().update_config().await)?;
-        handle::Handle::refresh_clash();
-    }
+pub async fn delete_profile(client: State<'_, NyanpasuClient>, uid: String) -> Result {
+    client.delete_profile(uid).await?;
     Ok(())
 }
 
@@ -296,46 +253,16 @@ pub async fn patch_profiles_config(
 /// update profile by uid
 #[tauri::command]
 #[specta::specta]
-pub async fn patch_profile(app_handle: AppHandle, uid: String, profile: ProfileBuilder) -> Result {
+pub async fn patch_profile(
+    app_handle: AppHandle,
+    client: State<'_, NyanpasuClient>,
+    uid: String,
+    profile: ProfileBuilder,
+) -> Result {
     tracing::debug!("patch profile: {uid} with {profile:?}");
-    {
-        let committer = Config::profiles().auto_commit();
-        (committer.draft().patch_item(uid.clone(), profile))?;
-    }
-    {
-        let profiles_jobs = app_handle.state::<ProfilesJobGuard>();
-        profiles_jobs.write().refresh();
-    }
-    let need_update = {
-        let profiles = Config::profiles();
-        let profiles = profiles.latest();
-        match (&profiles.chain, &profiles.current) {
-            (chains, _) if chains.contains(&uid) => true,
-            (_, current_chain) if current_chain.contains(&uid) => true,
-            (_, current_chain) => {
-                current_chain
-                    .iter()
-                    .any(|chain_uid| match profiles.get_item(chain_uid) {
-                        Ok(item) if item.is_local() => {
-                            item.as_local().unwrap().chain.contains(&uid)
-                        }
-                        Ok(item) if item.is_remote() => {
-                            item.as_remote().unwrap().chain.contains(&uid)
-                        }
-                        _ => false,
-                    })
-            }
-        }
-    };
-    if need_update {
-        match CoreManager::global().update_config().await {
-            Ok(_) => {
-                handle::Handle::refresh_clash();
-            }
-            Err(err) => {
-                log::error!(target: "app", "{err:?}");
-            }
-        }
+    let report = client.patch_profile(uid, profile).await?;
+    if report.refresh_jobs {
+        app_handle.state::<ProfilesJobGuard>().write().refresh();
     }
     Ok(())
 }

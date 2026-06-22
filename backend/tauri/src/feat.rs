@@ -4,8 +4,6 @@
 //! - timer 定时器
 //! - cmds 页面调用
 //!
-use std::borrow::Borrow;
-
 use crate::{
     config::{
         profile::{
@@ -21,7 +19,7 @@ use crate::{
     log_err,
     utils::{self, help::get_clash_external_port, resolve},
 };
-use anyhow::{Result, bail};
+use anyhow::{Context as _, Result, bail};
 use handle::Message;
 use nyanpasu_ipc::api::status::CoreState;
 use serde::{Deserialize, Serialize};
@@ -436,63 +434,112 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
     }
 }
 
-/// 更新某个profile
-/// 如果更新当前配置就激活配置
-pub async fn update_profile<T: Borrow<String>>(
-    uid: T,
-    opts: Option<RemoteProfileOptionsBuilder>,
-) -> Result<()> {
-    let uid = uid.borrow();
-    let profile_item = Config::profiles().latest().get_item(uid)?.clone();
-    let is_remote = profile_item.is_remote();
+/// A snapshot of a pending `update_profile`: the network/IO phase ran outside the
+/// `profiles_update_lock`, and `base_hash` pins the baseline item so the commit phase
+/// can reject a concurrent edit instead of clobbering it (TOCTOU guard).
+pub struct PreparedProfileUpdate {
+    uid: String,
+    /// Canonical full-value hash of the baseline item. `updated()` alone is insufficient:
+    /// it is a second-granularity timestamp that `patch_item` does not bump, so a concurrent
+    /// `patch_profile` (URL/options/name/chain) would slip past an `updated`-only comparison.
+    base_hash: u64,
+    kind: PreparedKind,
+}
 
-    let should_update = if is_remote {
-        let mut item = profile_item.as_remote().unwrap().clone();
+enum PreparedKind {
+    /// A freshly downloaded remote profile, ready to replace the baseline item.
+    Remote(Box<Profile>),
+    /// A non-remote profile whose timestamp should be bumped in place.
+    LocalTouch,
+}
 
-        item.subscribe(opts).await?;
-        let committer = Config::profiles().auto_commit();
-        let mut profiles = committer.draft();
-        profiles.replace_item(uid, item.into())?;
-        profiles.get_current().contains(uid)
-    } else {
-        // For local profiles, we need to update the timestamp
-        let committer = Config::profiles().auto_commit();
-        let mut profiles = committer.draft();
+/// Canonical full-value fingerprint of a profile item (serialize, then hash).
+/// Fails closed: a serialization error propagates instead of collapsing to a shared hash,
+/// so the TOCTOU guard can never be defeated by two items that both fail to serialize.
+fn profile_fingerprint(item: &Profile) -> Result<u64> {
+    let serialized =
+        serde_yaml::to_string(item).context("failed to serialize profile for fingerprint")?;
+    Ok(seahash::hash(serialized.as_bytes()))
+}
 
-        // Create a builder to update the timestamp
-        match profile_item {
-            Profile::Local(_) => {
-                let mut shared_builder = ProfileSharedBuilder::default();
-                shared_builder.updated(chrono::Local::now().timestamp() as usize);
-                let mut builder = LocalProfileBuilder::default();
-                builder.shared(shared_builder);
-                profiles.patch_item(uid.to_string(), ProfileBuilder::Local(builder))?;
-            }
-            Profile::Merge(_) => {
-                let mut shared_builder = ProfileSharedBuilder::default();
-                shared_builder.updated(chrono::Local::now().timestamp() as usize);
-                let mut builder = MergeProfileBuilder::default();
-                builder.shared(shared_builder);
-                profiles.patch_item(uid.to_string(), ProfileBuilder::Merge(builder))?;
-            }
-            Profile::Script(_) => {
-                let mut shared_builder = ProfileSharedBuilder::default();
-                shared_builder.updated(chrono::Local::now().timestamp() as usize);
-                let mut builder = ScriptProfileBuilder::default();
-                builder.shared(shared_builder);
-                profiles.patch_item(uid.to_string(), ProfileBuilder::Script(builder))?;
-            }
-            _ => {}
+/// Build the timestamp-bump patch for a non-remote profile; `None` for remote items.
+fn touch_profile_builder(item: &Profile) -> Option<ProfileBuilder> {
+    let mut shared_builder = ProfileSharedBuilder::default();
+    shared_builder.updated(chrono::Local::now().timestamp() as usize);
+    match item {
+        Profile::Local(_) => {
+            let mut builder = LocalProfileBuilder::default();
+            builder.shared(shared_builder);
+            Some(ProfileBuilder::Local(builder))
         }
+        Profile::Merge(_) => {
+            let mut builder = MergeProfileBuilder::default();
+            builder.shared(shared_builder);
+            Some(ProfileBuilder::Merge(builder))
+        }
+        Profile::Script(_) => {
+            let mut builder = ScriptProfileBuilder::default();
+            builder.shared(shared_builder);
+            Some(ProfileBuilder::Script(builder))
+        }
+        Profile::Remote(_) => None,
+    }
+}
 
-        profiles.get_current().contains(uid)
+/// Phase 1 of `update_profile`: perform the network download (remote) outside any lock,
+/// and pin the baseline fingerprint for the later TOCTOU check.
+///
+/// SCOPE NOTE (PR-3): `RemoteProfile::subscribe` writes the *content file* to disk as part of
+/// fetching (`remote.rs`), exactly as the legacy `feat::update_profile` did. PR-3 only takes
+/// over the profiles *index*; content-file IO stays in the legacy layer. Consequently a later
+/// TOCTOU rejection in `commit_profile_update` (or a failed index persist) leaves the freshly
+/// downloaded content file in place while the index is unchanged — the same residual window
+/// documented in the plan (§5). True all-or-nothing for content files requires the
+/// `ProfileFileService` / 2PC introduced in PR-4/PR-5 and is intentionally out of scope here.
+pub async fn prepare_profile_update(
+    uid: &str,
+    opts: Option<RemoteProfileOptionsBuilder>,
+) -> Result<PreparedProfileUpdate> {
+    let item = Config::profiles().data().get_item(uid)?.clone();
+    let base_hash = profile_fingerprint(&item)?;
+    let kind = if item.is_remote() {
+        let mut remote = item.as_remote().unwrap().clone();
+        remote.subscribe(opts).await?;
+        PreparedKind::Remote(Box::new(remote.into()))
+    } else {
+        PreparedKind::LocalTouch
     };
+    Ok(PreparedProfileUpdate {
+        uid: uid.to_string(),
+        base_hash,
+        kind,
+    })
+}
 
-    if should_update {
-        update_core_config().await?;
+/// Phase 2 of `update_profile`: pure, in-memory write into `next`. Returns whether the
+/// updated profile is active (so the caller knows to reload the core). Called by the client
+/// inside `profiles_update_lock`. Rejects (Err) if the baseline changed concurrently.
+pub fn commit_profile_update(next: &mut Profiles, prepared: PreparedProfileUpdate) -> Result<bool> {
+    let PreparedProfileUpdate {
+        uid,
+        base_hash,
+        kind,
+    } = prepared;
+
+    if profile_fingerprint(next.get_item(&uid)?)? != base_hash {
+        bail!("profile {uid} changed during update; aborting to avoid overwrite");
     }
 
-    Ok(())
+    match kind {
+        PreparedKind::Remote(item) => next.set_item(&uid, *item),
+        PreparedKind::LocalTouch => {
+            if let Some(builder) = touch_profile_builder(next.get_item(&uid)?) {
+                next.apply_item_patch(uid.clone(), builder)?;
+            }
+        }
+    }
+
+    Ok(next.get_current().contains(&uid))
 }
 
 /// 更新配置
@@ -572,4 +619,53 @@ pub fn update_proxies_buff(rx: Option<tokio::sync::oneshot::Receiver<()>>) {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PreparedKind, PreparedProfileUpdate, commit_profile_update, profile_fingerprint};
+    use crate::config::{Profiles, profile::item::Profile};
+
+    fn local(uid: &str, updated: usize) -> Profile {
+        serde_yaml::from_str(&format!(
+            "type: local\nuid: \"{uid}\"\nname: \"{uid}\"\nfile: {uid}.yaml\nupdated: {updated}\n"
+        ))
+        .expect("local profile yaml should parse")
+    }
+
+    /// TOCTOU guard: a baseline that changed between prepare and commit must be rejected
+    /// instead of overwriting the concurrent edit.
+    #[test]
+    fn commit_profile_update_rejects_on_baseline_change() {
+        let base_hash = profile_fingerprint(&local("a", 0)).expect("fingerprint");
+        let prepared = PreparedProfileUpdate {
+            uid: "a".to_string(),
+            base_hash,
+            kind: PreparedKind::LocalTouch,
+        };
+
+        let mut next = Profiles::default();
+        next.push_item(local("a", 999)); // concurrently changed → different fingerprint
+
+        let err = commit_profile_update(&mut next, prepared).expect_err("should reject");
+        assert!(err.to_string().contains("changed during update"));
+    }
+
+    /// Happy path: an unchanged baseline commits and reports `true` when the profile is active.
+    #[test]
+    fn commit_profile_update_applies_and_reports_active() {
+        let mut next = Profiles::default();
+        next.push_item(local("a", 0));
+        next.set_current(vec!["a".into()]);
+        let base_hash =
+            profile_fingerprint(next.get_item("a").expect("item")).expect("fingerprint");
+        let prepared = PreparedProfileUpdate {
+            uid: "a".to_string(),
+            base_hash,
+            kind: PreparedKind::LocalTouch,
+        };
+
+        let reload = commit_profile_update(&mut next, prepared).expect("should apply");
+        assert!(reload, "active profile update should request a reload");
+    }
 }

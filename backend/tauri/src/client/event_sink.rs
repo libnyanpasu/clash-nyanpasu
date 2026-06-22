@@ -13,6 +13,12 @@ pub trait UiEventSink: Send + Sync + 'static {
 
     fn notice_message(&self, message: &Message);
 
+    /// Forwards the legacy `SetConfig` notice, preserving `feat::update_core_config`'s
+    /// behaviour without coupling the client to the global `Handle`.
+    fn notice_set_config(&self, result: std::result::Result<(), String>) {
+        self.notice_message(&Message::SetConfig(result));
+    }
+
     fn update_systray(&self) -> Result<()>;
 
     fn update_systray_part(&self) -> Result<()>;

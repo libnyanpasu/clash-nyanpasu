@@ -94,8 +94,8 @@ importers:
   frontend/interface:
     dependencies:
       '@tanstack/react-query':
-        specifier: 5.101.0
-        version: 5.101.0(react@19.2.7)
+        specifier: 5.101.1
+        version: 5.101.1(react@19.2.7)
       '@tauri-apps/api':
         specifier: 2.11.1
         version: 2.11.1
@@ -246,8 +246,8 @@ importers:
         specifier: 4.3.1
         version: 4.3.1(vite@8.0.16(@types/node@24.13.2)(jiti@2.7.0)(less@4.6.7)(sass-embedded@1.100.0)(sass@1.100.0)(terser@5.36.0)(yaml@2.9.0))
       '@tanstack/react-query':
-        specifier: 5.101.0
-        version: 5.101.0(react@19.2.7)
+        specifier: 5.101.1
+        version: 5.101.1(react@19.2.7)
       '@tanstack/react-router':
         specifier: 1.170.16
         version: 1.170.16(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -2995,11 +2995,11 @@ packages:
     resolution: {integrity: sha512-79pf/RkhteYZTRgcR4F9kbk84P2N8rugQJswxfIqovlbRiT3yI7eBE+5QorIrZaOKktsgzRlXh1l/du/xpl4iA==}
     engines: {node: '>=20.19'}
 
-  '@tanstack/query-core@5.101.0':
-    resolution: {integrity: sha512-cQetA74EB+seWySv1TTKr828TnP0u39m6LykwDXIo84SNortpDkp30TMEjkqtYCNP9c40uT/iwl6MLiufEt0Ow==}
+  '@tanstack/query-core@5.101.1':
+    resolution: {integrity: sha512-Y6Y92dkXtNqx67m2pMSxUsA3zOCwv862JexZRP8/EPwvKXMPu9m8rv43spiXWzOUIggQ3SQApttALStzhA8B4g==}
 
-  '@tanstack/react-query@5.101.0':
-    resolution: {integrity: sha512-rLlJXSpkqfizLWgkR5+eLeIk0MvTx/meEIR7LRjxic+qxiQP8zVjq7BqQkiCMNLQBlLfuOLqqr6KO5GtrDlmSg==}
+  '@tanstack/react-query@5.101.1':
+    resolution: {integrity: sha512-ZnONUuQKJe1bJMStXUL1s5uKN9FcfC28j5cK+iDZcdSHtUv1wtin1cGc/Oewhf2Oc4eKY7lggtpvT/AbMmhHew==}
     peerDependencies:
       react: ^18 || ^19
 
@@ -8756,11 +8756,11 @@ snapshots:
 
   '@tanstack/history@1.162.0': {}
 
-  '@tanstack/query-core@5.101.0': {}
+  '@tanstack/query-core@5.101.1': {}
 
-  '@tanstack/react-query@5.101.0(react@19.2.7)':
+  '@tanstack/react-query@5.101.1(react@19.2.7)':
     dependencies:
-      '@tanstack/query-core': 5.101.0
+      '@tanstack/query-core': 5.101.1
       react: 19.2.7
 
   '@tanstack/react-router-devtools@1.167.0(@tanstack/react-router@1.170.16(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@tanstack/router-core@1.171.13)(csstype@3.2.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':

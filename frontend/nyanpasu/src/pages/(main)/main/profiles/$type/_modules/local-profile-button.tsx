@@ -241,7 +241,12 @@ export default function LocalProfileButton({ children }: PropsWithChildren) {
 
                         <div className="text-on-surface max-w-full truncate text-sm font-medium">
                           {m.profile_import_local_file_size_label({
-                            size: filesize(profileContent?.length ?? 0),
+                            size: filesize(
+                              profileContent
+                                ? new Blob([profileContent]).size
+                                : 0,
+                              { standard: 'iec' },
+                            ),
                           })}
                         </div>
                       </FileDropZoneFileSelected>

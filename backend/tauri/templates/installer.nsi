@@ -9,9 +9,11 @@
 ;   - StopAndRemoveServiceDirectory: uninstall nyanpasu-service and wipe its data dir
 ;   - RemoveRegs: clean autostart entries and clash / clash-nyanpasu protocol handlers
 ;
-; The service, autostart entry and protocol handlers are all opt-in states that the
-; user enables from within the app, so they are treated as user data: they are only
-; cleaned up when the user ticks "delete app data" on a real (non-update) uninstall.
+; The nyanpasu-service, autostart entry and protocol handlers are system integration /
+; persistence points: they are cleaned up on every real (non-update) uninstall so a
+; plain uninstall never strands a running privileged service or stale autostart /
+; protocol entries. Update mode (/UPDATE) keeps them intact. Actual user data
+; (config / cache / profiles) is only removed when "delete app data" is ticked.
 
 Unicode true
 ManifestDPIAware true
@@ -578,9 +580,13 @@ FunctionEnd
   ${Else}
     DetailPrint "Core stop failed with exit code $0"
   ${EndIf}
+  Goto StopCoreDone
+
   SkipStopCore:
-    ; 如果文件不存在，打印错误
+    ; 仅在服务可执行文件不存在时才打印此信息
     DetailPrint "Nyanpasu Service is not installed, skipping stop-core"
+
+  StopCoreDone:
 !macroend
 
 ; Clash Nyanpasu: uninstall nyanpasu-service and remove its data directory.
@@ -588,8 +594,8 @@ FunctionEnd
   ; 构建服务路径
   StrCpy $1 "$ProgramDataPathVar\nyanpasu-service\data\nyanpasu-service.exe"
 
-  ; 检查服务可执行文件是否存在
-  IfFileExists "$1" 0 StopServiceSkip
+  ; 服务可执行文件不存在时跳过 uninstall 调用，但仍尝试清理残留数据目录
+  IfFileExists "$1" 0 RemoveDirectories
   nsExec::ExecToLog '"$1" uninstall'
   Pop $0
   DetailPrint "uninstall service with exit code $0"
@@ -600,17 +606,22 @@ FunctionEnd
   IntCmp $0 102 RemoveDirectories UninstallServiceFailed UninstallServiceFailed
 
   UninstallServiceFailed:
-    Abort "Failed to stop the service. Aborting installation."
+    ; 非致命：执行到此处时上游卸载流程已删除应用文件与“添加/删除程序”入口，
+    ; 此时 Abort 只会让用户停留在“半卸载”状态。改为记录失败并尽力继续清理。
+    DetailPrint "Failed to uninstall nyanpasu-service (exit code $0); continuing uninstall and removing its data directory best-effort."
 
   RemoveDirectories:
-    ; 如果服务成功停止，继续检查目录是否存在并删除
+    ; 检查数据目录是否存在并删除（即使服务 exe 已缺失也尝试清理残留数据）
     StrCpy $2 "$ProgramDataPathVar\nyanpasu-service"
     IfFileExists "$2\*" 0 StopServiceSkip
     RMDir /r "$2"
     DetailPrint "Removed service directory successfully"
+    Goto StopServiceDone
 
   StopServiceSkip:
-    DetailPrint "Service directory does not exist, skipping stop and remove service directory"
+    DetailPrint "Service directory does not exist, skipping service directory removal"
+
+  StopServiceDone:
 !macroend
 
 ; Clash Nyanpasu: clean up autostart entries and custom protocol handlers.
@@ -1014,25 +1025,30 @@ Section Uninstall
     DeleteRegKey HKCU "${UNINSTKEY}"
   !endif
 
-  ; Clash Nyanpasu: the autostart entry, the nyanpasu-service and the custom protocol
-  ; handlers are all opt-in states the user enables from within the app. We treat them
-  ; as user data and only clean them up when the user ticks "delete app data" on a real
-  ; (non-update) uninstall, so updates and plain uninstalls keep them intact.
+  ; Clash Nyanpasu: split cleanup into "system integration" and "user data".
   ;
-  ; (Upstream removes the HKCU Run autostart entry here on every non-update uninstall;
-  ;  we intentionally moved that into the "delete app data" block below, via RemoveRegs.)
-
-  ; Delete app data if the checkbox is selected
-  ; and if not updating
-  ${If} $DeleteAppDataCheckboxState = 1
-  ${AndIf} $UpdateMode <> 1
+  ; The nyanpasu-service (a privileged Windows service that may still be running a
+  ; core such as clash / mihomo), the HKCU Run autostart entry and the custom
+  ; clash / clash-nyanpasu protocol handlers are system integration / persistence
+  ; points, NOT user data. We remove them on every real (non-update) uninstall so a
+  ; plain uninstall never strands a running privileged service or stale autostart /
+  ; protocol entries that point at the now-removed app.
+  ;
+  ; Update mode (/UPDATE) is an uninstall+reinstall, so it deliberately keeps these
+  ; integrations intact.
+  ${If} $UpdateMode <> 1
     ; Clash Nyanpasu: stop and remove nyanpasu-service and its data directory
     !insertmacro GetProgramDataPath
     !insertmacro StopAndRemoveServiceDirectory
 
     ; Clash Nyanpasu: remove autostart entries and clash / clash-nyanpasu protocol handlers
     !insertmacro RemoveRegs
+  ${EndIf}
 
+  ; Delete app data (config / cache / profiles and install metadata) only if the
+  ; "delete app data" checkbox is selected and if not updating.
+  ${If} $DeleteAppDataCheckboxState = 1
+  ${AndIf} $UpdateMode <> 1
     ; Clear the install location $INSTDIR from registry
     DeleteRegKey SHCTX "${MANUPRODUCTKEY}"
     DeleteRegKey /ifempty SHCTX "${MANUKEY}"

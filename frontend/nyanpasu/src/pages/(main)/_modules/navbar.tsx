@@ -50,7 +50,7 @@ function NavbarButton<
 
   return (
     <AnimatedTabsItem
-      className={cn('[&_svg]:size-5')}
+      className={cn('md:min-w-max md:flex-none [&_svg]:size-5')}
       data-active={String(isActive)}
       data-slot="animated-tabs-item"
       isActive={isActive}

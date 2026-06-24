@@ -5,6 +5,12 @@ module.exports = {
   content: ['./src/**/*.{tsx,ts}'],
   darkMode: 'selector',
   theme: {
+    screens: {
+      sm: '600px',
+      md: '900px',
+      lg: '1200px',
+      xl: '1536px',
+    },
     extend: {
       maxHeight: {
         '1/8': 'calc(100vh / 8)',

@@ -307,7 +307,17 @@ Function PageReinstall
     ; Check the first radio button if this the first time
     ; we enter this page or if the second button wasn't
     ; selected the last time we were on this page
-    ${If} $ReinstallPageCheck <> 2
+    ;
+    ; Clash Nyanpasu: on first entry, default to the second radio "don't uninstall"
+    ; (direct in-place update) for a cross-version UPGRADE ($R0 = 1), instead of
+    ; upstream's default of "uninstall before installing". Same-version and downgrade
+    ; keep the upstream default (downgrade's "don't uninstall" may even be disabled).
+    ; The decision is still read live from $R2 in PageLeaveReinstall, so leaving
+    ; $ReinstallPageCheck at 0 here is fine.
+    ${If} $ReinstallPageCheck = 0
+    ${AndIf} $R0 = 1
+      SendMessage $R3 ${BM_SETCHECK} ${BST_CHECKED} 0
+    ${ElseIf} $ReinstallPageCheck <> 2
       SendMessage $R2 ${BM_SETCHECK} ${BST_CHECKED} 0
     ${Else}
       SendMessage $R3 ${BM_SETCHECK} ${BST_CHECKED} 0

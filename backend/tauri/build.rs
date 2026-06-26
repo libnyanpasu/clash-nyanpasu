@@ -103,5 +103,37 @@ fn main() {
             None => "Unknown".to_string(),
         }
     );
-    tauri_build::build()
+
+    // On Windows (MSVC), tauri-build embeds the application manifest via
+    // `rustc-link-arg-bins`, so the Common-Controls v6 dependency required by our
+    // dialog stack (rfd `common-controls-v6`) is linked into the binaries only,
+    // never into the test executables. Without that manifest the loader resolves
+    // ComCtl5 instead of ComCtl6 and the test process aborts at load time with
+    // `STATUS_ENTRYPOINT_NOT_FOUND` (0xc0000139) before any test code runs.
+    //
+    // Work around it by disabling tauri's manifest injection and embedding the
+    // manifest ourselves with `/MANIFEST:EMBED`, which is a plain `rustc-link-arg`
+    // and therefore applies to every artifact — binaries, tests and benches alike.
+    // See https://github.com/tauri-apps/tauri/issues/13419
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
+    if target_os == "windows" && target_env == "msvc" {
+        let manifest = env::current_dir()
+            .expect("failed to resolve build script working directory")
+            .join("windows-app-manifest.xml");
+        println!("cargo:rerun-if-changed={}", manifest.display());
+        println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+        println!(
+            "cargo:rustc-link-arg=/MANIFESTINPUT:{}",
+            manifest
+                .to_str()
+                .expect("windows-app-manifest.xml path is not valid UTF-8")
+        );
+
+        let attributes = tauri_build::Attributes::new()
+            .windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest());
+        tauri_build::try_build(attributes).expect("failed to run tauri-build");
+    } else {
+        tauri_build::build();
+    }
 }

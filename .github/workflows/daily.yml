@@ -12,7 +12,7 @@ jobs:
     if: startsWith(github.repository, 'libnyanpasu')
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Install Node
         uses: actions/setup-node@v6
         with:
@@ -55,7 +55,7 @@ jobs:
     if: startsWith(github.repository, 'libnyanpasu')
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: dev
       - name: Install Node

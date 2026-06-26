@@ -133,7 +133,8 @@ const Proxies = ({ data }: { data: ClashProxiesProviderQueryItem }) => {
                   <div>{progress.toFixed(2)}%</div>
 
                   <div>
-                    {filesize(used)} / {filesize(total)}
+                    {filesize(used, { standard: 'iec' })} /
+                    {filesize(total, { standard: 'iec' })}
                   </div>
                 </div>
               </TextMarquee>

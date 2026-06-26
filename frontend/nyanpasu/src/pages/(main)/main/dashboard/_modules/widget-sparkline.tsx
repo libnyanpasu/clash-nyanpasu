@@ -133,13 +133,13 @@ export function TrafficDownWidget({ id, onCloseClick }: WidgetComponentProps) {
       </SparklineCardTitle>
 
       <SparklineCardContent>
-        {filesize(clashTraffic?.at(-1)?.down ?? 0)}/s
+        {filesize(clashTraffic?.at(-1)?.down ?? 0, { standard: 'iec' })}/s
       </SparklineCardContent>
 
       <SparklineCardBottom>
         {total !== undefined &&
           m.dashboard_widget_traffic_total({
-            value: filesize(total),
+            value: filesize(total, { standard: 'iec' }),
           })}
       </SparklineCardBottom>
     </SparklineCard>
@@ -167,13 +167,13 @@ export function TrafficUpWidget({ id, onCloseClick }: WidgetComponentProps) {
       </SparklineCardTitle>
 
       <SparklineCardContent>
-        {filesize(clashTraffic?.at(-1)?.up ?? 0)}/s
+        {filesize(clashTraffic?.at(-1)?.up ?? 0, { standard: 'iec' })}/s
       </SparklineCardContent>
 
       <SparklineCardBottom>
         {total !== undefined &&
           m.dashboard_widget_traffic_total({
-            value: filesize(total),
+            value: filesize(total, { standard: 'iec' }),
           })}
       </SparklineCardBottom>
     </SparklineCard>
@@ -222,7 +222,7 @@ export function MemoryWidget({ id, onCloseClick }: WidgetComponentProps) {
       </SparklineCardTitle>
 
       <SparklineCardContent>
-        {filesize(clashMemory?.at(-1)?.inuse ?? 0)}
+        {filesize(clashMemory?.at(-1)?.inuse ?? 0, { standard: 'iec' })}
       </SparklineCardContent>
 
       <SparklineCardBottom />

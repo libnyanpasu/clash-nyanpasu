@@ -1,4 +1,4 @@
-const UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB']
+const UNITS = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB', 'ZiB', 'YiB']
 
 const parseTraffic = (num?: string | number) => {
   if (typeof num !== 'number') {

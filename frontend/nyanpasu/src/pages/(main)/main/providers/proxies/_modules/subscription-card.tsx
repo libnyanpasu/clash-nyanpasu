@@ -28,7 +28,8 @@ export const SubscriptionCard = ({
           <div className="text-sm font-bold">{progress.toFixed(2)}%</div>
 
           <div className="text-sm font-bold">
-            {filesize(used)} / {filesize(total)}
+            {filesize(used, { standard: 'iec' })} /
+            {filesize(total, { standard: 'iec' })}
           </div>
         </div>
       </CardContent>

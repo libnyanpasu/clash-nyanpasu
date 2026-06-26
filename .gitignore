@@ -20,3 +20,9 @@ tauri.preview.conf.json
 manifest/site/updater/*
 !manifest/site/updater/.gitkeep
 /backend/tauri/gen/
+
+# AI agent tooling — exclude local/session state, keep shared docs & config
+# (CLAUDE.md / AGENTS.md and .claude shared config stay tracked;
+#  .serena manages its own cache via .serena/.gitignore)
+.ccg/
+.claude/settings.local.json

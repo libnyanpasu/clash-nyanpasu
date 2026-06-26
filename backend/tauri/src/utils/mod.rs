@@ -5,6 +5,7 @@ pub mod dialog;
 pub mod dirs;
 pub mod help;
 pub mod init;
+pub mod path;
 pub mod resolve;
 // mod winhelp;
 pub mod hwid;

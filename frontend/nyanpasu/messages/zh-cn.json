@@ -195,7 +195,7 @@
   "settings_label_about_update_installing": "正在安装...",
   "profile_subscription_title": "订阅信息",
   "profile_subscription_updated_at": "{updated}更新",
-  "profile_subscription_next_update_at": "下次更新于 {next} 更新",
+  "profile_subscription_next_update_at": "下次更新时间：{next}",
   "profile_subscription_expires_in": "{expires}到期",
   "profile_subscription_update": "更新",
   "profile_base_info_title": "基本信息",

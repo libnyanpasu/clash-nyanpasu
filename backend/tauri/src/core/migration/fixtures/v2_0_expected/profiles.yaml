@@ -1,0 +1,21 @@
+current: []
+chain: []
+valid:
+  - dns
+  - unified-delay
+  - tun
+items:
+  - uid: rIWXPHuafvEM
+    type: remote
+    name: Test Remote
+    file: rIWXPHuafvEM.yaml
+    desc: null
+    updated: 1758110672
+    url: https://example.com
+  - uid: siL1cvjnvLB6
+    type: script
+    name: Script Chain
+    file: siL1cvjnvLB6.js
+    desc: ''
+    updated: 1720954186
+    script_type: javascript

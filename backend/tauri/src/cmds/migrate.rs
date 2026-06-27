@@ -1,16 +1,13 @@
 use clap::Args;
 
-use crate::core::migration::{
-    MigrationAdvice, Runner,
-    units::{find_migration, get_migrations},
-};
+use crate::core::migration::{MigrationAdvice, Runner, current_version, registry};
 use colored::Colorize;
 
 #[derive(Debug, Args)]
 pub struct MigrateOpts {
-    /// force to run migration without advice
-    #[arg(long, default_value = "false")]
-    skip_advice: bool,
+    /// Force migration execution without advice
+    #[arg(long, default_value_t = false)]
+    force: bool,
     /// Run specific migration
     #[arg(long)]
     migration: Option<String>,
@@ -36,74 +33,76 @@ fn is_fresh_install_instance() -> bool {
 }
 
 pub fn parse(args: &MigrateOpts) {
-    let runner = if args.skip_advice {
-        Runner::new_with_skip_advice()
-    } else {
-        Runner::default()
-    };
-    if args.list {
-        println!("Available migrations:\n");
-        let migrations = get_migrations();
-        for migration in migrations {
-            let advice = runner.advice_migration(migration.as_ref());
-            println!(
-                "[{}] {} - {}",
-                match &advice {
-                    MigrationAdvice::Pending => format!("{advice}").yellow(),
-                    MigrationAdvice::Ignored => format!("{advice}").cyan(),
-                    MigrationAdvice::Done => format!("{advice}").green(),
-                },
-                migration.version(),
-                migration.name()
-            );
-        }
-        std::process::exit(0);
-    }
-
     if args.migration.is_some() && args.version.is_some() {
         eprintln!("Please specify only one of migration or version.");
         std::process::exit(1);
     }
 
-    // When `Drop`, commit the changes to the migration file.
-    let runner = runner.drop_guard();
+    let fresh_install = is_fresh_install_instance();
+    let target = match args.version.as_deref() {
+        Some(version) => semver::Version::parse(version).unwrap_or_else(|error| {
+            eprintln!("Invalid migration target version {version}: {error}");
+            std::process::exit(1);
+        }),
+        None => current_version().unwrap_or_else(|error| {
+            eprintln!("Failed to resolve current version: {error:#}");
+            std::process::exit(1);
+        }),
+    };
+    let mut runner = Runner::with_target(target, args.force).unwrap_or_else(|error| {
+        eprintln!("Failed to initialize migration runner: {error:#}");
+        std::process::exit(1);
+    });
 
-    if is_fresh_install_instance() {
-        eprintln!("Fresh install detected, skip all migrations");
-        return;
-    }
-
-    if args.migration.is_none() && args.version.is_none() {
-        match crate::consts::BUILD_INFO.build_profile {
-            "Nightly" => {
-                println!("Running all upcoming migrations.");
-                runner.run_upcoming_units().unwrap();
-            }
-            _ => {
+    if args.list {
+        println!("Available migrations:\n");
+        for module in registry::modules() {
+            println!("{}:", module.module());
+            for migration in module.steps() {
+                let advice = runner.advice_step(*migration);
                 println!(
-                    "No migration or version specified. Running migrations up to current version."
+                    "  [{}] {} rev{} introduced_in={} - {}",
+                    match &advice {
+                        MigrationAdvice::Pending => format!("{advice}").yellow(),
+                        MigrationAdvice::Ignored => format!("{advice}").cyan(),
+                        MigrationAdvice::Done => format!("{advice}").green(),
+                    },
+                    migration.id(),
+                    migration.revision(),
+                    migration.introduced_in(),
+                    migration.name()
                 );
-                runner
-                    .run_units_up_to_version(&runner.current_version)
-                    .unwrap();
             }
         }
+        std::process::exit(0);
     }
 
     if let Some(migration) = args.migration.as_ref() {
-        let migration = find_migration(migration);
+        let migration = registry::find_migration(migration);
         match migration {
             Some(migration) => {
-                runner.run_migration(migration.as_ref()).unwrap();
+                if let Err(error) = runner.run_migration(migration) {
+                    eprintln!("Migration failed: {error:#}");
+                    std::process::exit(1);
+                }
             }
             None => {
                 eprintln!("Migration not found.");
                 std::process::exit(1);
             }
         }
-    } else if let Some(version) = args.version.as_deref() {
-        let version = semver::Version::parse(version).unwrap();
-        runner.run_units_up_to_version(&version).unwrap();
+    } else {
+        if fresh_install {
+            println!("Fresh install detected; recording migration baselines.");
+        } else if args.version.is_none() {
+            println!(
+                "No migration or version specified. Running migrations up to current version."
+            );
+        }
+        if let Err(error) = runner.run_pending() {
+            eprintln!("Migration failed: {error:#}");
+            std::process::exit(1);
+        }
     }
 }
 

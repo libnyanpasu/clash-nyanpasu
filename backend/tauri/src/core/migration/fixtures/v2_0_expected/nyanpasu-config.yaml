@@ -1,0 +1,8 @@
+language: zh-CN
+theme_color: '#1867c0'
+network_statistic_widget: large
+clash_core: mihomo
+enable_auto_launch: false
+enable_system_proxy: true
+enable_tun_mode: false
+verge_mixed_port: 7890

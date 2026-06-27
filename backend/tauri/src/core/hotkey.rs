@@ -6,7 +6,7 @@ use rust_i18n::t;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::{collections::HashMap, fmt, str::FromStr, sync::Arc};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
@@ -176,11 +176,33 @@ impl Hotkey {
     }
 
     pub fn init(&self, app_handle: AppHandle) -> Result<()> {
-        *self.app_handle.lock() = Some(app_handle);
+        *self.app_handle.lock() = Some(app_handle.clone());
 
-        let verge = Config::verge();
+        // Hotkeys were migrated from the verge config into KV storage (see the
+        // `storage/hotkeys_to_kv` migration, which also removes them from the
+        // config). Prefer the KV value and fall back to the legacy config for
+        // installs that have not been migrated yet.
+        let hotkeys = {
+            use crate::core::storage::WebStorage;
+            app_handle
+                .try_state::<crate::core::storage::Storage>()
+                .and_then(|storage| match storage.get_item::<Vec<String>>("hotkeys") {
+                    Ok(hotkeys) => hotkeys,
+                    Err(e) => {
+                        // Don't fall back silently: the config no longer holds
+                        // hotkeys after migration, so a KV read error means the
+                        // user's hotkeys would vanish without a trace.
+                        log::warn!(target: "app", "failed to read hotkeys from KV storage: {e}");
+                        None
+                    }
+                })
+                // TODO(actor-migration): temporary bridge to legacy Config::verge().
+                // Reason: old installs may not have hotkeys in KV storage until storage/hotkeys_to_kv runs.
+                // Remove when: Hotkey receives its initial state through injected NyanpasuClient/StateClient.
+                .or_else(|| Config::verge().latest().hotkeys.clone())
+        };
 
-        if let Some(hotkeys) = verge.latest().hotkeys.as_ref() {
+        if let Some(hotkeys) = hotkeys {
             for hotkey in hotkeys.iter() {
                 let mut iter = hotkey.split(',');
                 let func = iter.next();
@@ -197,7 +219,7 @@ impl Hotkey {
                     }
                 }
             }
-            self.current.lock().clone_from(hotkeys);
+            *self.current.lock() = hotkeys;
         }
 
         Ok(())

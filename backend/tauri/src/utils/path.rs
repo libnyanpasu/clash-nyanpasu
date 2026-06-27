@@ -11,6 +11,21 @@
 //! Only the migration subsystem consumes this module for now. The existing
 //! `dirs::*` call sites are intentionally left untouched and will be migrated to
 //! `PathResolver` in a follow-up change.
+//!
+//! Known remaining coupling, to be removed by the follow-up that makes
+//! `PathResolver` truly own path resolution:
+//!
+//! - [`PathResolver::from_env`] and the delegating helpers
+//!   ([`PathResolver::app_install_dir`], [`PathResolver::data_or_sidecar_path`],
+//!   [`PathResolver::single_instance_placeholder`]) still call into `dirs::*`
+//!   rather than resolving paths themselves.
+//! - [`PathResolver::app_resources_dir`] reaches `Handle::global()` through
+//!   `dirs::app_resources_dir`, so it still depends on the Tauri app handle.
+//! - The process-wide `Lazy<PathBuf>` caches `CUSTOM_SCRIPTS_DIR`
+//!   (`enhance/script/js.rs`) and `SERVICE_PATH` (`core/service/mod.rs`) are
+//!   resolved once at first use; after `migrate_home_dir_handler` relocates the
+//!   home directory they go stale until the process restarts. Folding these into
+//!   an injected `PathResolver` is tracked as follow-up cleanup.
 
 use crate::utils::dirs;
 use anyhow::Result;

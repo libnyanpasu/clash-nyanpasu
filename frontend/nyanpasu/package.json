@@ -24,7 +24,7 @@
     "@radix-ui/react-use-controllable-state": "1.2.3",
     "@tailwindcss/postcss": "4.3.1",
     "@tanstack/react-table": "8.21.3",
-    "@tanstack/react-virtual": "3.14.3",
+    "@tanstack/react-virtual": "3.14.4",
     "@tanstack/router-zod-adapter": "1.81.5",
     "@tauri-apps/api": "2.11.1",
     "@types/lodash-es": "4.17.12",

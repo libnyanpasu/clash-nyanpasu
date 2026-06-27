@@ -91,7 +91,7 @@ impl MigrationStep for MigrateLanguageOption {
                     *lang = Value::from("zh-CN");
                     println!("write config file...");
                     let config = serde_yaml::to_string(&config)?;
-                    std::fs::write(&config_path, config)?;
+                    crate::core::migration::store::atomic_write(&config_path, config.as_bytes())?;
                 }
                 println!("Migration completed");
             }
@@ -141,7 +141,7 @@ impl MigrationStep for MigrateThemeSetting {
         }
         config.remove("theme_setting");
         let new_config = serde_yaml::to_string(&config)?;
-        std::fs::write(&config_path, new_config)?;
+        crate::core::migration::store::atomic_write(&config_path, new_config.as_bytes())?;
         Ok(())
     }
 
@@ -159,7 +159,7 @@ impl MigrationStep for MigrateThemeSetting {
             config.remove("theme_color");
         }
         let new_config = serde_yaml::to_string(&config)?;
-        std::fs::write(&config_path, new_config)?;
+        crate::core::migration::store::atomic_write(&config_path, new_config.as_bytes())?;
         Ok(())
     }
 }
@@ -204,7 +204,7 @@ impl MigrationStep for MigrateNetworkStatisticWidgetFlatten {
         };
         config.insert(NETWORK_STATISTIC_WIDGET_KEY.into(), flattened);
         let new_config = serde_yaml::to_string(&config)?;
-        std::fs::write(&config_path, new_config)?;
+        crate::core::migration::store::atomic_write(&config_path, new_config.as_bytes())?;
         Ok(())
     }
 
@@ -224,7 +224,7 @@ impl MigrationStep for MigrateNetworkStatisticWidgetFlatten {
         };
         config.insert(NETWORK_STATISTIC_WIDGET_KEY.into(), expanded);
         let new_config = serde_yaml::to_string(&config)?;
-        std::fs::write(&config_path, new_config)?;
+        crate::core::migration::store::atomic_write(&config_path, new_config.as_bytes())?;
         Ok(())
     }
 }

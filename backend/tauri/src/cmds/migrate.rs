@@ -81,7 +81,10 @@ pub fn parse(args: &MigrateOpts) {
         let migration = registry::find_migration(migration);
         match migration {
             Some(migration) => {
-                runner.run_migration(migration).unwrap();
+                if let Err(error) = runner.run_migration(migration) {
+                    eprintln!("Migration failed: {error:#}");
+                    std::process::exit(1);
+                }
             }
             None => {
                 eprintln!("Migration not found.");
@@ -96,7 +99,10 @@ pub fn parse(args: &MigrateOpts) {
                 "No migration or version specified. Running migrations up to current version."
             );
         }
-        runner.run_pending().unwrap();
+        if let Err(error) = runner.run_pending() {
+            eprintln!("Migration failed: {error:#}");
+            std::process::exit(1);
+        }
     }
 }
 

@@ -1,8 +1,5 @@
 use super::super::{Ctx, MigrationStep, ModuleMigrator};
-use crate::core::{
-    hotkey,
-    storage::{Storage, WebStorage},
-};
+use crate::core::storage::{Storage, WebStorage};
 use once_cell::sync::Lazy;
 use semver::Version;
 use serde_yaml::Mapping;
@@ -106,17 +103,17 @@ impl MigrationStep for MigrateHotkeysToKv {
                 .set_item("hotkeys", &hotkey_strings)
                 .map_err(|e| anyhow::anyhow!("failed to save hotkeys: {e}"))?;
 
-            if let Err(e) = hotkey::Hotkey::global().update(hotkey_strings.clone()) {
-                tracing::warn!("failed to update hotkeys after migration: {e}");
-            }
-
+            // Note: registration is intentionally NOT done here. This migration
+            // runs in a separate `migrate` subprocess with no Tauri app handle, so
+            // `Hotkey::update` would fail; `Hotkey::init` reads the migrated value
+            // from KV storage at app startup instead.
             tracing::info!("migrated {} hotkeys to KV storage", hotkey_strings.len());
         }
 
         config.remove(&hotkeys_key);
         let new_config = serde_yaml::to_string(&config)
             .map_err(|e| anyhow::anyhow!("failed to serialize config: {e}"))?;
-        std::fs::write(&config_path, new_config)?;
+        crate::core::migration::store::atomic_write(&config_path, new_config.as_bytes())?;
 
         Ok(())
     }

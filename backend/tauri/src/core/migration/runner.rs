@@ -44,7 +44,9 @@ impl Runner {
         }
 
         let module_state = self.store.module_state(step.module());
-        if step.revision() > module_state.applied_revision && step.introduced_in() <= &self.target {
+        if step.revision() > module_state.applied_revision
+            && introduced_in_reached(step.introduced_in(), &self.target)
+        {
             MigrationAdvice::Pending
         } else {
             MigrationAdvice::Ignored
@@ -140,7 +142,7 @@ impl Runner {
             Ok(()) => {
                 println!("Migration {} completed.", step.id());
                 self.store.mark_completed(step);
-                self.store.bump_module(step.module(), step.revision());
+                self.store.bump_module(step.module());
                 self.store
                     .flush_atomic(&self.ctx.state_path())
                     .with_context(|| format!("failed to persist {} completed state", step.id()))?;
@@ -165,6 +167,19 @@ impl Runner {
             }
         }
     }
+}
+
+/// Whether a migration introduced in `introduced_in` should run when upgrading
+/// to `target`. Only the `(major, minor, patch)` triple is compared, so a
+/// prerelease/nightly build (e.g. `2.0.0-rc.1`) still runs migrations introduced
+/// in the matching release (`2.0.0`) instead of skipping them due to semver
+/// prerelease ordering (`2.0.0-rc.1 < 2.0.0`).
+fn introduced_in_reached(introduced_in: &Version, target: &Version) -> bool {
+    (
+        introduced_in.major,
+        introduced_in.minor,
+        introduced_in.patch,
+    ) <= (target.major, target.minor, target.patch)
 }
 
 #[cfg(test)]
@@ -292,6 +307,25 @@ mod tests {
         assert_eq!(runner.advice_step(&step), MigrationAdvice::Ignored);
 
         let runner = runner_with_store(store, true);
+        assert_eq!(runner.advice_step(&step), MigrationAdvice::Pending);
+    }
+
+    #[test]
+    fn advice_runs_on_prerelease_target() {
+        // A migration introduced in 2.0.0 must still run on a 2.0.0-rc.1 build,
+        // even though semver orders the prerelease below the release.
+        let step = TestStep {
+            id: "profiles/example",
+            module: "profiles",
+            revision: 1,
+            fail: false,
+        };
+        let mut store = MigrationStore::default();
+        store
+            .modules
+            .insert("profiles".to_string(), ModuleState::default());
+        let mut runner = runner_with_store(store, false);
+        runner.target = Version::parse("2.0.0-rc.1").unwrap();
         assert_eq!(runner.advice_step(&step), MigrationAdvice::Pending);
     }
 

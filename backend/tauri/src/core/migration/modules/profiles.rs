@@ -80,11 +80,7 @@ impl MigrationStep for MigrateProfilesNullValue {
                 *value = serde_yaml::Value::Sequence(Vec::new());
             }
         });
-        let file = std::fs::OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .open(profiles_path)?;
-        serde_yaml::to_writer(file, &profiles)?;
+        write_profiles_atomic(&profiles_path, &profiles, None)?;
         Ok(())
     }
 
@@ -107,11 +103,7 @@ impl MigrationStep for MigrateProfilesNullValue {
                 *value = serde_yaml::Value::Null;
             }
         });
-        let file = std::fs::OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .open(profiles_path)?;
-        serde_yaml::to_writer(file, &profiles)?;
+        write_profiles_atomic(&profiles_path, &profiles, None)?;
         Ok(())
     }
 }
@@ -154,7 +146,7 @@ impl MigrationStep for MigrateProfileScriptNewtype {
         eprintln!("Trying to migrate profiles files...");
         let profiles = migrate_profile_data(profiles);
         eprintln!("Trying to write profiles files...");
-        crate::utils::help::save_yaml(
+        write_profiles_atomic(
             &profiles_path,
             &profiles,
             Some("# Profiles Config for Clash Nyanpasu"),
@@ -176,13 +168,30 @@ impl MigrationStep for MigrateProfileScriptNewtype {
         eprintln!("Trying to discard profiles files...");
         let profiles = discard_profile_data(profiles);
         eprintln!("Trying to write profiles files...");
-        crate::utils::help::save_yaml(
+        write_profiles_atomic(
             &profiles_path,
             &profiles,
             Some("# Profiles Config for Clash Nyanpasu"),
         )?;
         Ok(())
     }
+}
+
+/// Atomically persist a profiles mapping, mirroring [`crate::utils::help::save_yaml`]
+/// but writing through a temp file + rename so a crash mid-write can never
+/// truncate the user's `profiles.yaml`.
+fn write_profiles_atomic(
+    path: &std::path::Path,
+    profiles: &Mapping,
+    prefix: Option<&str>,
+) -> anyhow::Result<()> {
+    let body = serde_yaml::to_string(profiles)
+        .map_err(|e| anyhow::anyhow!("failed to serialize profiles: {e}"))?;
+    let content = match prefix {
+        Some(prefix) => format!("{prefix}\n\n{body}"),
+        None => body,
+    };
+    crate::core::migration::store::atomic_write(path, content.as_bytes())
 }
 
 fn current_revision() -> u64 {

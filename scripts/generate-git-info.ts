@@ -10,7 +10,7 @@ async function main() {
   const result = await new Deno.Command("git", {
     args: [
       "show",
-      "--pretty=format:'%H,%cn,%cI'",
+      "--pretty=format:'%H,%an,%cI'",
       "--no-patch",
       "--no-notes",
     ],

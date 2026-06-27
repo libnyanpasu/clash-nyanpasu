@@ -37,11 +37,11 @@ function formatValue(key: string, value: any): React.ReactNode {
   const k = key.toLowerCase()
 
   if (k.includes('speed')) {
-    return <span>{filesize(value)}/s</span>
+    return <span>{filesize(value, { standard: 'iec' })}/s</span>
   }
 
   if (k.includes('download') || k.includes('upload')) {
-    return <span>{filesize(value)}</span>
+    return <span>{filesize(value, { standard: 'iec' })}</span>
   }
 
   if (k.includes('port') || k === 'id' || k.includes('ip')) {

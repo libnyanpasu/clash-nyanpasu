@@ -120,7 +120,7 @@ function useCoreUpdateTask(
 
     if (state === 'downloading') {
       const { downloaded, total, speed } = updater.downloader
-      return `${filesize(downloaded)} / ${filesize(total)} · ${filesize(speed ?? 0)}/s`
+      return `${filesize(downloaded, { standard: 'iec' })} / ${filesize(total, { standard: 'iec' })} · ${filesize(speed ?? 0, { standard: 'iec' })}/s`
     }
 
     if (state === 'decompressing') {

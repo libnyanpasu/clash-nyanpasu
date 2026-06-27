@@ -91,7 +91,10 @@ function RouteComponent() {
             <ArrowDownwardAltRounded className="size-6" />
 
             <span className="text-sm">
-              {filesize(currentGroupConnection?.download ?? 0)}/s
+              {filesize(currentGroupConnection?.download ?? 0, {
+                standard: 'iec',
+              })}
+              /s
             </span>
           </div>
 
@@ -99,7 +102,10 @@ function RouteComponent() {
             <ArrowUpwardAltRounded className="size-6" />
 
             <span className="text-sm">
-              {filesize(currentGroupConnection?.upload ?? 0)}/s
+              {filesize(currentGroupConnection?.upload ?? 0, {
+                standard: 'iec',
+              })}
+              /s
             </span>
           </div>
         </div>

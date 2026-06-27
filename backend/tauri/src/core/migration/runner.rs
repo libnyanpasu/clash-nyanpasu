@@ -346,6 +346,90 @@ mod tests {
         assert_eq!(runner.advice_step(&step), MigrationAdvice::Pending);
     }
 
+    fn assert_yaml_shape_eq(path: std::path::PathBuf, expected: &str) {
+        let actual_raw = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+        let actual: serde_yaml::Value = serde_yaml::from_str(&actual_raw).unwrap();
+        let expected: serde_yaml::Value = serde_yaml::from_str(expected).unwrap();
+        assert_eq!(
+            actual,
+            expected,
+            "migrated YAML shape mismatch for {}",
+            path.display()
+        );
+    }
+
+    /// Pins the supported upgrade boundary (1.6.1 -> 2.0): a real 1.6.1 config
+    /// pair must end up in the exact 2.0 shape every migration step produces.
+    /// Compares parsed structure (order-independent) rather than raw bytes so the
+    /// test tracks the data contract, not serializer key ordering.
+    #[test]
+    fn real_1_6_1_fixture_migrates_to_2_0_shape() {
+        use crate::core::storage::{Storage, WebStorage};
+
+        let temp = tempfile::tempdir().unwrap();
+        let config_dir = temp.path().join("config");
+        let data_dir = temp.path().join("data");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&data_dir).unwrap();
+
+        let config_path = config_dir.join("nyanpasu-config.yaml");
+        let profiles_path = config_dir.join("profiles.yaml");
+        std::fs::write(
+            &config_path,
+            include_str!("fixtures/v1_6_1/nyanpasu-config.yaml"),
+        )
+        .unwrap();
+        std::fs::write(
+            &profiles_path,
+            include_str!("fixtures/v1_6_1/profiles.yaml"),
+        )
+        .unwrap();
+
+        let ctx = Ctx::new(config_dir.clone(), data_dir.clone());
+        let mut runner =
+            Runner::with_context(Version::parse("2.0.0").unwrap(), false, ctx).unwrap();
+        runner.run_pending().unwrap();
+
+        assert_yaml_shape_eq(
+            config_path,
+            include_str!("fixtures/v2_0_expected/nyanpasu-config.yaml"),
+        );
+
+        // The script migration re-prefixes profiles.yaml; the header is part of
+        // the on-disk contract, so assert it verbatim before the comment-agnostic
+        // shape check.
+        let profiles_raw = std::fs::read_to_string(&profiles_path).unwrap();
+        assert!(
+            profiles_raw.starts_with("# Profiles Config for Clash Nyanpasu\n\n"),
+            "profiles.yaml lost its generated header prefix"
+        );
+        assert_yaml_shape_eq(
+            profiles_path,
+            include_str!("fixtures/v2_0_expected/profiles.yaml"),
+        );
+
+        // Each module advanced to the head of its step list.
+        assert_eq!(runner.store.module_state("profiles").applied_revision, 2);
+        assert_eq!(runner.store.module_state("app_config").applied_revision, 3);
+        assert_eq!(runner.store.module_state("storage").applied_revision, 1);
+        assert_eq!(
+            runner.store.app.last_succeeded,
+            Some(Version::parse("2.0.0").unwrap())
+        );
+
+        // Hotkeys moved out of the config file and into KV storage.
+        let storage = Storage::try_new(&data_dir.join(crate::utils::dirs::STORAGE_DB)).unwrap();
+        let hotkeys: Option<Vec<String>> = storage.get_item("hotkeys").unwrap();
+        assert_eq!(
+            hotkeys,
+            Some(vec![
+                "clash_mode_rule,Control+Q".to_string(),
+                "toggle_system_proxy,Control+Shift+P".to_string(),
+            ])
+        );
+    }
+
     #[test]
     fn failed_step_does_not_advance_module_revision() {
         let step = TestStep {

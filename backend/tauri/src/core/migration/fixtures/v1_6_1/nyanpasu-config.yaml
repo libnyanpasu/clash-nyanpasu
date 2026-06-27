@@ -1,0 +1,14 @@
+language: zh
+theme_setting:
+  primary_color: '#1867c0'
+network_statistic_widget:
+  kind: enabled
+  value: large
+hotkeys:
+  - clash_mode_rule,Control+Q
+  - toggle_system_proxy,Control+Shift+P
+clash_core: mihomo
+enable_auto_launch: false
+enable_system_proxy: true
+enable_tun_mode: false
+verge_mixed_port: 7890

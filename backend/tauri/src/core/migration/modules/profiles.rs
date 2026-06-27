@@ -191,7 +191,7 @@ fn write_profiles_atomic(
         Some(prefix) => format!("{prefix}\n\n{body}"),
         None => body,
     };
-    crate::core::migration::store::atomic_write(path, content.as_bytes())
+    crate::core::migration::fs::atomic_write(path, content.as_bytes())
 }
 
 fn current_revision() -> u64 {

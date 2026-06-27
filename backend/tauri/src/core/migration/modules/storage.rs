@@ -113,7 +113,7 @@ impl MigrationStep for MigrateHotkeysToKv {
         config.remove(&hotkeys_key);
         let new_config = serde_yaml::to_string(&config)
             .map_err(|e| anyhow::anyhow!("failed to serialize config: {e}"))?;
-        crate::core::migration::store::atomic_write(&config_path, new_config.as_bytes())?;
+        crate::core::migration::fs::atomic_write(&config_path, new_config.as_bytes())?;
 
         Ok(())
     }

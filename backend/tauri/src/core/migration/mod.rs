@@ -2,6 +2,7 @@ use crate::utils::path::PathResolver;
 use semver::Version;
 use std::path::PathBuf;
 
+pub(crate) mod fs;
 pub mod modules;
 pub mod registry;
 pub mod runner;

@@ -9,11 +9,21 @@ use crate::{
     state::verge::VergeMirror,
 };
 use nyanpasu_ipc::api::status::CoreState;
-use std::{borrow::Cow, future::Future, sync::Arc};
+use std::{
+    borrow::Cow,
+    future::Future,
+    sync::{
+        Arc, Mutex as StdMutex,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Duration,
+};
 use tokio::sync::Mutex;
 
 pub use error::{ClientError, Result};
 pub use event_sink::{TauriUiEventSink, UiEventSink};
+
+const WINDOW_STATE_SAVE_DEBOUNCE: Duration = Duration::from_millis(500);
 
 #[derive(Clone)]
 pub struct NyanpasuClient {
@@ -27,6 +37,8 @@ struct NyanpasuClientInner {
     /// legacy reseeds). The actor serializes its own state, but the legacy path holds
     /// `Config::verge()` draft across awaits, so client-level mutations must not interleave.
     verge_update_lock: Mutex<()>,
+    window_state_save_generation: AtomicU64,
+    window_state_save_lock: StdMutex<()>,
 }
 
 impl NyanpasuClient {
@@ -42,6 +54,8 @@ impl NyanpasuClient {
                 ui,
                 state,
                 verge_update_lock: Mutex::new(()),
+                window_state_save_generation: AtomicU64::new(0),
+                window_state_save_lock: StdMutex::new(()),
             }),
         }
     }
@@ -56,8 +70,8 @@ impl NyanpasuClient {
         Ok(())
     }
 
-    /// Run a legacy mutation that writes `Config::verge()` directly (e.g. core change,
-    /// window-state save), then reseed the actor from the post-mutation legacy state.
+    /// Run a legacy mutation that writes `Config::verge()` directly, then reseed the actor
+    /// from the post-mutation legacy state.
     /// Every legacy verge writer that bypasses the actor must go through this, otherwise
     /// a later actor commit would persist a stale snapshot and clobber the legacy change.
     pub async fn run_legacy_verge_mutation<F, Fut>(&self, mutate: F) -> Result<()>
@@ -66,11 +80,74 @@ impl NyanpasuClient {
         Fut: Future<Output = anyhow::Result<()>>,
     {
         let _guard = self.inner.verge_update_lock.lock().await;
-        mutate().await?;
+        let legacy_result = mutate().await;
         // Bind the clone to a local so the `Config::verge()` guard is dropped before the
         // await (a held parking_lot guard would make this future !Send).
         let committed = Config::verge().data().clone();
-        self.replace_verge_unlocked(committed).await
+        let sync_result = self.replace_verge_unlocked(committed).await;
+
+        match (legacy_result, sync_result) {
+            (Ok(()), Ok(())) => Ok(()),
+            (Err(legacy), Ok(())) => Err(legacy.into()),
+            (Ok(()), Err(sync)) => Err(sync),
+            (Err(legacy), Err(sync)) => Err(anyhow::anyhow!(
+                "legacy verge mutation failed: {legacy:#}; actor reseed also failed: {sync:#}"
+            )
+            .into()),
+        }
+    }
+
+    pub fn schedule_window_state_save(&self, app_handle: tauri::AppHandle) {
+        let generation = self
+            .inner
+            .window_state_save_generation
+            .fetch_add(1, Ordering::AcqRel)
+            + 1;
+
+        let client = self.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(WINDOW_STATE_SAVE_DEBOUNCE).await;
+
+            if client
+                .inner
+                .window_state_save_generation
+                .load(Ordering::Acquire)
+                != generation
+            {
+                return;
+            }
+
+            let Ok(_save_guard) = client.inner.window_state_save_lock.lock() else {
+                log::error!(target: "app", "window state save lock poisoned");
+                return;
+            };
+
+            if client
+                .inner
+                .window_state_save_generation
+                .load(Ordering::Acquire)
+                != generation
+            {
+                return;
+            }
+
+            if let Err(err) = crate::utils::resolve::save_window_state(&app_handle, false) {
+                log::error!(target: "app", "failed to save debounced window state: {err:?}");
+            }
+        });
+    }
+
+    pub fn flush_window_state_save(&self, app_handle: &tauri::AppHandle) -> Result<()> {
+        self.inner
+            .window_state_save_generation
+            .fetch_add(1, Ordering::AcqRel);
+        let _save_guard = self
+            .inner
+            .window_state_save_lock
+            .lock()
+            .map_err(|_| anyhow::anyhow!("window state save lock poisoned"))?;
+        crate::utils::resolve::save_window_state(app_handle, false)?;
+        Ok(())
     }
 
     pub fn get_profiles(&self) -> Profiles {
@@ -133,8 +210,10 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(manager: &M) -> anyhow::Re
 /// performs the atomic disk write, so the mirror must not call `save_file` again.
 fn legacy_verge_mirror() -> VergeMirror {
     Arc::new(|state| {
-        *Config::verge().draft() = state;
-        Config::verge().apply();
+        let discarded = Config::verge().replace_committed(state);
+        if discarded.is_some() {
+            log::warn!(target: "app", "discarded pending legacy verge draft while mirroring actor state");
+        }
         Ok(())
     })
 }

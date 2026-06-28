@@ -455,7 +455,13 @@ pub fn run() -> std::io::Result<()> {
             }
             tauri::WindowEvent::CloseRequested { .. } => {
                 log::debug!(target: "app", "window close requested");
-                let _ = resolve::save_window_state(app_handle, true);
+                let client = app_handle
+                    .state::<crate::client::NyanpasuClient>()
+                    .inner()
+                    .clone();
+                if let Err(err) = client.flush_window_state_save(app_handle) {
+                    log::error!(target: "app", "failed to flush window state: {err:?}");
+                }
                 #[cfg(target_os = "macos")]
                 crate::utils::dock::macos::hide_dock_icon();
             }
@@ -465,8 +471,11 @@ pub fn run() -> std::io::Result<()> {
             }
             tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
                 log::debug!(target: "app", "window moved or resized");
-                std::thread::sleep(std::time::Duration::from_nanos(1));
-                let _ = resolve::save_window_state(app_handle, false);
+                let client = app_handle
+                    .state::<crate::client::NyanpasuClient>()
+                    .inner()
+                    .clone();
+                client.schedule_window_state_save(app_handle.clone());
             }
             _ => {}
         },

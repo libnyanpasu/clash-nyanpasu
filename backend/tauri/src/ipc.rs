@@ -1261,19 +1261,13 @@ pub async fn save_window_size_state(
     app_handle: AppHandle,
     label: String,
 ) -> Result<()> {
-    // Window-state save writes `Config::verge().window_size_state` directly; reseed the
-    // actor so a later pure patch does not revert the saved geometry.
-    client
-        .run_legacy_verge_mutation(|| async move {
-            match label.as_str() {
-                crate::consts::MAIN_WINDOW_LABEL => {
-                    resolve::save_main_window_state(&app_handle, true)?;
-                }
-                _ => log::warn!("Unknown window label: {}", label),
-            }
-            Ok(())
-        })
-        .await?;
+    match label.as_str() {
+        crate::consts::MAIN_WINDOW_LABEL => {
+            client.flush_window_state_save(&app_handle)?;
+        }
+        _ => log::warn!("Unknown window label: {}", label),
+    }
+
     Ok(())
 }
 

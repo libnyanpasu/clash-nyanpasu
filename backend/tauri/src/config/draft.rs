@@ -69,6 +69,15 @@ draft_define!(IClashTemp);
 draft_define!(IRuntime);
 draft_define!(IVerge);
 
+impl Draft<IVerge> {
+    pub fn replace_committed(&self, state: IVerge) -> Option<IVerge> {
+        let mut inner = self.inner.lock();
+        let discarded = inner.1.take();
+        inner.0 = state;
+        discarded
+    }
+}
+
 impl Draft<IClashTemp> {
     /// Reload configuration from file
     pub fn reload(&self) {

@@ -302,11 +302,26 @@ impl AppWindow for MainWindow {
         Config::verge().latest().window_size_state.clone()
     }
 
-    fn set_window_state(&self, state: Option<WindowState>) {
-        Config::verge().data().patch_config(IVerge {
+    fn set_window_state(&self, state: Option<WindowState>) -> Result<()> {
+        let patch = IVerge {
             window_size_state: state,
             ..IVerge::default()
-        });
+        };
+
+        let app_handle = crate::core::handle::Handle::global()
+            .app_handle
+            .lock()
+            .clone();
+        if let Some(app_handle) = app_handle
+            && let Some(client) = app_handle.try_state::<crate::client::NyanpasuClient>()
+        {
+            let client = client.inner().clone();
+            nyanpasu_utils::runtime::block_on_anywhere(client.patch_verge_config(patch))?;
+            return Ok(());
+        }
+
+        Config::verge().data().patch_config(patch);
+        Ok(())
     }
 }
 
@@ -417,8 +432,9 @@ impl AppWindow for EditorWindow {
         None
     }
 
-    fn set_window_state(&self, _state: Option<WindowState>) {
+    fn set_window_state(&self, _state: Option<WindowState>) -> Result<()> {
         // EditorWindow does not remember window state
+        Ok(())
     }
 }
 
@@ -497,7 +513,9 @@ impl AppWindow for TrayMenuWindow {
         None
     }
 
-    fn set_window_state(&self, _state: Option<WindowState>) {}
+    fn set_window_state(&self, _state: Option<WindowState>) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// Register a window event handler that hides or closes the tray menu window on

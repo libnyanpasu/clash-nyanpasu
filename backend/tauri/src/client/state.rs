@@ -73,29 +73,34 @@ impl StateClient {
     }
 
     pub async fn get_verge(&self) -> anyhow::Result<IVerge> {
-        Ok(self.call(StateActorMessage::GetVerge).await?.state)
+        Ok(self
+            .call_with_timeout(StateActorMessage::GetVerge, Some(STATE_RPC_TIMEOUT))
+            .await?
+            .state)
     }
 
     pub async fn patch_verge(&self, patch: IVerge) -> anyhow::Result<VergeStateSnapshot> {
-        self.call(|reply| StateActorMessage::PatchVerge { patch, reply })
+        self.call_with_timeout(|reply| StateActorMessage::PatchVerge { patch, reply }, None)
             .await
     }
 
     pub async fn replace_verge(&self, state: IVerge) -> anyhow::Result<VergeStateSnapshot> {
-        self.call(|reply| StateActorMessage::ReplaceVerge { state, reply })
-            .await
+        self.call_with_timeout(
+            |reply| StateActorMessage::ReplaceVerge { state, reply },
+            None,
+        )
+        .await
     }
 
-    async fn call<F>(&self, make: F) -> anyhow::Result<VergeStateSnapshot>
+    async fn call_with_timeout<F>(
+        &self,
+        make: F,
+        timeout: Option<Duration>,
+    ) -> anyhow::Result<VergeStateSnapshot>
     where
         F: FnOnce(RpcReplyPort<anyhow::Result<VergeStateSnapshot>>) -> StateActorMessage,
     {
-        match self
-            .inner
-            .actor_ref
-            .call(make, Some(STATE_RPC_TIMEOUT))
-            .await?
-        {
+        match self.inner.actor_ref.call(make, timeout).await? {
             CallResult::Success(result) => result,
             CallResult::SenderError => anyhow::bail!("state actor reply dropped"),
             CallResult::Timeout => anyhow::bail!("state actor call timed out"),

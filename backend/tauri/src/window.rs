@@ -418,7 +418,7 @@ pub trait AppWindow {
     fn get_window_state(&self) -> Option<WindowState>;
 
     /// Set window state to config
-    fn set_window_state(&self, state: Option<WindowState>);
+    fn set_window_state(&self, state: Option<WindowState>) -> Result<()>;
 
     fn reset_window_open_counter(&self) {
         OPEN_WINDOWS_COUNTER.fetch_sub(1, Ordering::Release);
@@ -847,7 +847,7 @@ pub trait AppWindow {
             None => None,
         };
 
-        self.set_window_state(state);
+        self.set_window_state(state)?;
 
         if save_to_file {
             Config::verge().data().save_file()?;

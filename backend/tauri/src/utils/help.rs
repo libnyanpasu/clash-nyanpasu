@@ -247,7 +247,18 @@ pub fn get_max_scale_factor() -> f64 {
 
 #[instrument(skip(app_handle))]
 pub fn cleanup_processes(app_handle: &AppHandle) {
-    let _ = super::resolve::save_window_state(app_handle, true);
+    if let Some(client) = app_handle.try_state::<crate::client::NyanpasuClient>() {
+        let client = client.inner().clone();
+        if let Err(err) = client.flush_window_state_save(app_handle) {
+            log::error!(target: "app", "failed to flush window state during cleanup: {err:?}");
+        }
+    } else {
+        log::warn!(
+            target: "app",
+            "NyanpasuClient unavailable during cleanup; using legacy window save"
+        );
+        let _ = super::resolve::save_window_state(app_handle, true);
+    }
     super::resolve::resolve_reset();
     let widget_manager = app_handle.state::<crate::widget::WidgetManager>();
     let _ = nyanpasu_utils::runtime::block_on(async {

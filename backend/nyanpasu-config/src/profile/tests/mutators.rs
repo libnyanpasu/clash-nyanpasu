@@ -41,6 +41,7 @@ fn list_ops_dedup_remove_and_move() {
     assert!(list_move(&mut list, 0, 1));
     assert_eq!(list, vec![id("c"), id("a")]);
     assert!(!list_move(&mut list, 0, 9), "out of range is a no-op");
+    assert!(!list_move(&mut list, 0, 0), "equal indices is a no-op");
 }
 
 #[test]

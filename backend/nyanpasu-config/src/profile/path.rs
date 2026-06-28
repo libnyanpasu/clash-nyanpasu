@@ -133,6 +133,6 @@ pub enum ProfilePathError {
     ExternalMustBeAbsolute(String),
 }
 
-pub(super) fn looks_like_url(value: &str) -> bool {
+fn looks_like_url(value: &str) -> bool {
     value.contains("://")
 }

@@ -43,7 +43,10 @@ fn diff_surfaces_only_changed_fields() {
         ..base.clone()
     };
     let patch = changed.into_patch_by_diff(base);
-    assert_eq!(patch.with_proxy, Some(!RemoteProfileOptions::default().with_proxy));
+    assert_eq!(
+        patch.with_proxy,
+        Some(!RemoteProfileOptions::default().with_proxy)
+    );
     assert_eq!(patch.update_interval_minutes, None);
     assert_eq!(patch.user_agent, None);
     assert_eq!(patch.self_proxy, None);

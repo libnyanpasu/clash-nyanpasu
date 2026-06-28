@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use indexmap::{map::Entry, IndexMap, IndexSet};
+use indexmap::{IndexMap, IndexSet, map::Entry};
 use serde::{Deserialize, Deserializer, Serialize};
 use specta::Type;
 use thiserror::Error;
@@ -85,7 +85,12 @@ impl Profiles {
     /// changed silently because that would change user-visible config semantics.
     pub fn sanitize_top_level(&mut self) -> ProfilesSanitizeReport {
         let removed_current = match self.current.as_ref() {
-            Some(uid) if self.items.get(uid).is_some_and(|item| item.definition.is_config()) => {
+            Some(uid)
+                if self
+                    .items
+                    .get(uid)
+                    .is_some_and(|item| item.definition.is_config()) =>
+            {
                 None
             }
             Some(_) => self.current.take(),
@@ -104,9 +109,10 @@ impl Profiles {
             keep
         });
 
-        let default_config = self.items.iter().find_map(|(uid, item)| {
-            item.definition.is_config().then(|| uid.clone())
-        });
+        let default_config = self
+            .items
+            .iter()
+            .find_map(|(uid, item)| item.definition.is_config().then(|| uid.clone()));
 
         let current_needs_activation = self.current.is_none() && default_config.is_some();
 
@@ -383,13 +389,13 @@ fn validate_composition_member(
             role,
             profile: member.clone(),
         }),
-        Some(item) if !item.definition.is_direct_file_config() => {
-            errors.push(ProfileValidationError::CompositionMemberNotDirectFileConfig {
+        Some(item) if !item.definition.is_direct_file_config() => errors.push(
+            ProfileValidationError::CompositionMemberNotDirectFileConfig {
                 composition: composition.clone(),
                 role,
                 profile: member.clone(),
-            })
-        }
+            },
+        ),
         Some(_) => {}
     }
 }

@@ -3,7 +3,7 @@ use std::{
     path::{Component, Path},
 };
 
-use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use specta::Type;
 use thiserror::Error;
 

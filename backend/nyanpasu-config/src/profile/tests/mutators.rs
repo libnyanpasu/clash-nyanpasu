@@ -84,7 +84,12 @@ fn item_atomic_replacement_and_metadata_patch() {
     };
     assert!(item.set_source(new_source));
     assert_eq!(
-        item.definition.source().unwrap().materialized().file.as_str(),
+        item.definition
+            .source()
+            .unwrap()
+            .materialized()
+            .file
+            .as_str(),
         "ov2.yaml"
     );
 

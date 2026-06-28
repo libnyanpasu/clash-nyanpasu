@@ -13,7 +13,9 @@ use super::*;
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProfileSource {
-    Local { binding: LocalBinding },
+    Local {
+        binding: LocalBinding,
+    },
 
     Remote {
         #[serde(flatten)]

@@ -8,7 +8,10 @@ fn id(s: &str) -> ProfileId {
 fn file_config(uid: &str, file: &str, transforms: Vec<ProfileId>) -> ProfileItem {
     ProfileItem {
         uid: id(uid),
-        metadata: ProfileMetadata { name: uid.into(), desc: None },
+        metadata: ProfileMetadata {
+            name: uid.into(),
+            desc: None,
+        },
         definition: ProfileDefinition::Config {
             config: ConfigDefinition::File(FileConfig {
                 source: ProfileSource::Local {
@@ -28,7 +31,10 @@ fn file_config(uid: &str, file: &str, transforms: Vec<ProfileId>) -> ProfileItem
 fn overlay(uid: &str, file: &str) -> ProfileItem {
     ProfileItem {
         uid: id(uid),
-        metadata: ProfileMetadata { name: uid.into(), desc: None },
+        metadata: ProfileMetadata {
+            name: uid.into(),
+            desc: None,
+        },
         definition: ProfileDefinition::Transform {
             transform: TransformDefinition::Overlay(OverlayTransform {
                 source: ProfileSource::Local {
@@ -54,7 +60,10 @@ fn index_maps_base_extend_transform_and_global() {
 
     let comp = ProfileItem {
         uid: id("comp"),
-        metadata: ProfileMetadata { name: "comp".into(), desc: None },
+        metadata: ProfileMetadata {
+            name: "comp".into(),
+            desc: None,
+        },
         definition: ProfileDefinition::Config {
             config: ConfigDefinition::Composition(CompositionConfig {
                 base: Some(id("a")),

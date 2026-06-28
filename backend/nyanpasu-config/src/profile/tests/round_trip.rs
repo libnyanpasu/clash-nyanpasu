@@ -84,7 +84,10 @@ items:
           file: global-fix.yaml
 "#;
     let profiles = parse(yaml);
-    assert_eq!(profiles.current, Some(ProfileId("all-subscriptions".into())));
+    assert_eq!(
+        profiles.current,
+        Some(ProfileId("all-subscriptions".into()))
+    );
     assert_eq!(
         profiles.global_transforms,
         vec![ProfileId("global-fix".into())]

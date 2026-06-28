@@ -46,39 +46,39 @@
 
 ## 类型 → 文件 → 示例文件位置 映射表(Task 1 转录用)
 
-| 类型 / 项 | 目标文件 | 示例文件位置(行) |
-|---|---|---|
-| `ProfileId`(struct + Display + FromStr) | `id.rs` | 15–33 |
-| `ProfileMetadata` | `metadata.rs` | 80–86(**需改:加 Patch**) |
-| `ManagedProfilePath`(struct+impl+Display+Deserialize) | `path.rs` | 232–290 |
-| `ExternalProfilePath`(同上) | `path.rs` | 292–336 |
-| `ProfilePathError` | `path.rs` | 338–354 |
-| `looks_like_url` | `path.rs` | 1006–1008 |
-| `ProfileSource`(enum)+impl | `source.rs` | 171–192 + 518–536 |
-| `LocalBinding`(enum)+impl | `source.rs` | 194–208 + 538–550 |
-| `ExternalMode` | `source.rs` | 210–215 |
-| `MaterializedFile` | `source.rs` | 217–230 |
-| `RemoteProfileOptions` | `source.rs` | 356–380(**需改:加 Patch**) |
-| `SubscriptionInfo` | `source.rs` | 382–409 |
-| `default_true` / `default_update_interval_minutes` | `source.rs` | 990–996 |
-| `ProfileDefinition`(enum)+impl | `definition.rs` | 88–94 + 420–468 |
-| `ConfigDefinition`(enum)+impl | `definition.rs` | 96–105 + 470–491 |
-| `FileConfig` | `definition.rs` | 107–114 |
-| `CompositionConfig` | `definition.rs` | 116–133 |
-| `TransformDefinition`(enum)+impl | `definition.rs` | 135–144 + 493–516 |
-| `OverlayTransform` / `ScriptTransform` | `definition.rs` | 146–155 |
-| `ProfileCategory` | `definition.rs` | 157–162 |
-| `TransformKind` | `definition.rs` | 164–169 |
-| `ScriptRuntime` | `definition.rs` | 411–418 |
-| `ProfileItem` | `item.rs` | 68–78 |
-| `Profiles`(struct+Default)+impl | `profiles.rs` | 35–66 + 552–700 |
-| `ProfilesSanitizeReport` | `profiles.rs` | 702–708 |
-| `TransformOwner` / `CompositionMemberRole` | `profiles.rs` | 710–722 |
-| `ProfileValidationError` | `profiles.rs` | 724–794 |
-| `validate_transforms` / `validate_composition_config` / `validate_composition_member` / `validate_source` | `profiles.rs` | 862–988 |
-| `default_valid` | `profiles.rs` | 998–1004 |
-| `items_serde`(mod) | `profiles.rs` | 1010–1049 |
-| `ProfileDependencyIndex`+impl | `dependency.rs` | 798–860 |
+| 类型 / 项                                                                                                 | 目标文件        | 示例文件位置(行)           |
+| --------------------------------------------------------------------------------------------------------- | --------------- | -------------------------- |
+| `ProfileId`(struct + Display + FromStr)                                                                   | `id.rs`         | 15–33                      |
+| `ProfileMetadata`                                                                                         | `metadata.rs`   | 80–86(**需改:加 Patch**)   |
+| `ManagedProfilePath`(struct+impl+Display+Deserialize)                                                     | `path.rs`       | 232–290                    |
+| `ExternalProfilePath`(同上)                                                                               | `path.rs`       | 292–336                    |
+| `ProfilePathError`                                                                                        | `path.rs`       | 338–354                    |
+| `looks_like_url`                                                                                          | `path.rs`       | 1006–1008                  |
+| `ProfileSource`(enum)+impl                                                                                | `source.rs`     | 171–192 + 518–536          |
+| `LocalBinding`(enum)+impl                                                                                 | `source.rs`     | 194–208 + 538–550          |
+| `ExternalMode`                                                                                            | `source.rs`     | 210–215                    |
+| `MaterializedFile`                                                                                        | `source.rs`     | 217–230                    |
+| `RemoteProfileOptions`                                                                                    | `source.rs`     | 356–380(**需改:加 Patch**) |
+| `SubscriptionInfo`                                                                                        | `source.rs`     | 382–409                    |
+| `default_true` / `default_update_interval_minutes`                                                        | `source.rs`     | 990–996                    |
+| `ProfileDefinition`(enum)+impl                                                                            | `definition.rs` | 88–94 + 420–468            |
+| `ConfigDefinition`(enum)+impl                                                                             | `definition.rs` | 96–105 + 470–491           |
+| `FileConfig`                                                                                              | `definition.rs` | 107–114                    |
+| `CompositionConfig`                                                                                       | `definition.rs` | 116–133                    |
+| `TransformDefinition`(enum)+impl                                                                          | `definition.rs` | 135–144 + 493–516          |
+| `OverlayTransform` / `ScriptTransform`                                                                    | `definition.rs` | 146–155                    |
+| `ProfileCategory`                                                                                         | `definition.rs` | 157–162                    |
+| `TransformKind`                                                                                           | `definition.rs` | 164–169                    |
+| `ScriptRuntime`                                                                                           | `definition.rs` | 411–418                    |
+| `ProfileItem`                                                                                             | `item.rs`       | 68–78                      |
+| `Profiles`(struct+Default)+impl                                                                           | `profiles.rs`   | 35–66 + 552–700            |
+| `ProfilesSanitizeReport`                                                                                  | `profiles.rs`   | 702–708                    |
+| `TransformOwner` / `CompositionMemberRole`                                                                | `profiles.rs`   | 710–722                    |
+| `ProfileValidationError`                                                                                  | `profiles.rs`   | 724–794                    |
+| `validate_transforms` / `validate_composition_config` / `validate_composition_member` / `validate_source` | `profiles.rs`   | 862–988                    |
+| `default_valid`                                                                                           | `profiles.rs`   | 998–1004                   |
+| `items_serde`(mod)                                                                                        | `profiles.rs`   | 1010–1049                  |
+| `ProfileDependencyIndex`+impl                                                                             | `dependency.rs` | 798–860                    |
 
 每个文件顶部按需加 `use super::*;` 引入兄弟类型(经 `mod.rs` 的 `pub use` 重导出),再加该文件用到的外部 crate `use`(下方各 task 给出确切 header)。
 
@@ -89,6 +89,7 @@
 把整套 clean 类型落地、删除 legacy、修复 snapshot.rs,使 `cargo test` 在新格式下转绿。本 task 是不可再分的原子类型替换(类型、snapshot、测试必须同批落地)。
 
 **Files:**
+
 - Create: `backend/nyanpasu-config/src/profile/{id,metadata,path,source,definition,item,profiles,dependency}.rs`
 - Create: `backend/nyanpasu-config/src/profile/tests/round_trip.rs`
 - Rewrite: `backend/nyanpasu-config/src/profile/mod.rs`、`backend/nyanpasu-config/src/profile/tests/mod.rs`
@@ -96,6 +97,7 @@
 - Delete: `backend/nyanpasu-config/src/profile/builder.rs`、`backend/nyanpasu-config/src/profile/item/{mod,kind,remote}.rs`、`backend/nyanpasu-config/src/profile/tests/{compat,patch,profiles}.rs`
 
 **Interfaces:**
+
 - Produces:
   - `nyanpasu_config::profile::Profiles { current: Option<ProfileId>, global_transforms: Vec<ProfileId>, valid: Vec<String>, items: IndexMap<ProfileId, ProfileItem> }`
   - `ProfileItem { uid: ProfileId, metadata: ProfileMetadata, definition: ProfileDefinition }`
@@ -250,6 +252,7 @@ use std::{fmt, str::FromStr};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 ```
+
 其后**逐字**粘贴示例文件 `ProfileId` 段(15–33 行:struct 定义 + `impl fmt::Display` + `impl FromStr`)。
 
 - [ ] **Step 4: 创建 `metadata.rs`(加 Patch)**
@@ -284,6 +287,7 @@ use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 use specta::Type;
 use thiserror::Error;
 ```
+
 其后逐字粘贴示例文件:`ManagedProfilePath`(232–290)、`ExternalProfilePath`(292–336)、`ProfilePathError`(338–354)、`looks_like_url`(1006–1008)。
 
 - [ ] **Step 6: 创建 `source.rs`(`RemoteProfileOptions` 加 Patch)**
@@ -297,6 +301,7 @@ use url::Url;
 
 use super::*;
 ```
+
 逐字粘贴:`ProfileSource`(171–192)+其 impl(518–536)、`LocalBinding`(194–208)+impl(538–550)、`ExternalMode`(210–215)、`MaterializedFile`(217–230)、`SubscriptionInfo`(382–409)、`default_true`(990–992)、`default_update_interval_minutes`(994–996)。
 
 `RemoteProfileOptions` 用下面这段**替代**示例的 356–380(只加 `Patch` 派生与 patch 属性,字段与默认值不变):
@@ -340,6 +345,7 @@ use specta::Type;
 
 use super::*;
 ```
+
 逐字粘贴:`ProfileDefinition`(88–94)+impl(420–468)、`ConfigDefinition`(96–105)+impl(470–491)、`FileConfig`(107–114)、`CompositionConfig`(116–133)、`TransformDefinition`(135–144)+impl(493–516)、`OverlayTransform`/`ScriptTransform`(146–155)、`ProfileCategory`(157–162)、`TransformKind`(164–169)、`ScriptRuntime`(411–418)。
 
 - [ ] **Step 8: 创建 `item.rs`**
@@ -350,6 +356,7 @@ use specta::Type;
 
 use super::*;
 ```
+
 逐字粘贴示例文件 `ProfileItem`(68–78)。
 
 - [ ] **Step 9: 创建 `profiles.rs`**
@@ -364,6 +371,7 @@ use thiserror::Error;
 
 use super::*;
 ```
+
 逐字粘贴:`Profiles`(35–66)+impl(552–700)、`ProfilesSanitizeReport`(702–708)、`TransformOwner`(710–715)、`CompositionMemberRole`(717–722)、`ProfileValidationError`(724–794)、`validate_transforms`(862–883)、`validate_composition_config`(885–936)、`validate_composition_member`(938–968)、`validate_source`(970–988)、`default_valid`(998–1004)、`items_serde`(1010–1049)。
 
 > 注:示例 `items_serde` 内部用了 `serde::de::Error as _`;在 mod 内补 `use serde::de::Error as _;`(示例第 1014 行已含),保持原样粘贴即可。
@@ -377,6 +385,7 @@ use indexmap::IndexSet;
 
 use super::*;
 ```
+
 逐字粘贴示例文件 `ProfileDependencyIndex` + impl(798–860)。
 
 - [ ] **Step 11: 重写 `profile/mod.rs`**
@@ -425,18 +434,25 @@ mod round_trip;
 - [ ] **Step 14: 修复 `runtime/snapshot.rs`**
 
 把第 14 行
+
 ```rust
 use crate::{profile::item::kind::ProfileItemType, runtime::value::ConfigValue};
 ```
+
 改为
+
 ```rust
 use crate::{profile::TransformKind, runtime::value::ConfigValue};
 ```
+
 把 `OperatorTag::ChainNode` 里的
+
 ```rust
         profile_kind: ProfileItemType,
 ```
+
 改为
+
 ```rust
         profile_kind: TransformKind,
 ```
@@ -444,6 +460,7 @@ use crate::{profile::TransformKind, runtime::value::ConfigValue};
 - [ ] **Step 15: 在 `snapshot.rs` 的 `#[cfg(test)] mod tests` 内追加 ChainNode round-trip 测试**
 
 在 `mod tests` 内新增:
+
 ```rust
     #[test]
     fn chain_node_tag_round_trips_with_transform_kind() {
@@ -481,10 +498,12 @@ git commit -m "refactor(nyanpasu-config): migrate profile types to clean composi
 `ProfileMetadata` 已在 Task 1 派生 `Patch`。本 task 用测试钉死 leaf patch 语义(absent-keep / null-clear / sparse serialize)。
 
 **Files:**
+
 - Create: `backend/nyanpasu-config/src/profile/tests/metadata_patch.rs`
 - Modify: `backend/nyanpasu-config/src/profile/tests/mod.rs`
 
 **Interfaces:**
+
 - Consumes: `ProfileMetadata`、`ProfileMetadataPatch`(Task 1)、`struct_patch::{Patch, Status}`。
 
 - [ ] **Step 1: 写失败测试**
@@ -536,6 +555,7 @@ fn empty_patch_is_noop_and_sparse() {
 - [ ] **Step 2: 在 `tests/mod.rs` 注册模块**
 
 把 `tests/mod.rs` 改为:
+
 ```rust
 mod metadata_patch;
 mod round_trip;
@@ -560,10 +580,12 @@ git commit -m "test(nyanpasu-config): pin ProfileMetadata leaf-patch semantics"
 钉死 remote 选项 leaf patch(只覆盖在场字段、null 清空 `user_agent`、diff 只暴露变化字段;**不**再支持旧 `update_interval` alias)。
 
 **Files:**
+
 - Create: `backend/nyanpasu-config/src/profile/tests/remote_options_patch.rs`
 - Modify: `backend/nyanpasu-config/src/profile/tests/mod.rs`
 
 **Interfaces:**
+
 - Consumes: `RemoteProfileOptions`、`RemoteProfileOptionsPatch`(Task 1)、`struct_patch::Patch`。
 
 - [ ] **Step 1: 写测试**
@@ -652,11 +674,13 @@ git commit -m "test(nyanpasu-config): pin RemoteProfileOptions patch, prove alia
 实现并测试特化 patch 面:profile-id 列表的 add/remove/move、顶层 current/valid、global transforms 列表操作、`ProfileItem` 的原子 `set_definition`/`set_source`/`apply_metadata_patch`、`CompositionConfig` 的 base/contributor 操作。
 
 **Files:**
+
 - Create: `backend/nyanpasu-config/src/profile/patch.rs`
 - Create: `backend/nyanpasu-config/src/profile/tests/mutators.rs`
 - Modify: `backend/nyanpasu-config/src/profile/mod.rs`、`backend/nyanpasu-config/src/profile/tests/mod.rs`
 
 **Interfaces:**
+
 - Consumes: `Profiles`、`ProfileItem`、`ProfileDefinition`、`ConfigDefinition`、`CompositionConfig`、`ProfileSource`、`ProfileId`、`ProfileMetadataPatch`(Task 1–2)。
 - Produces:
   - 自由函数 `list_add(&mut Vec<ProfileId>, ProfileId) -> bool`、`list_remove(&mut Vec<ProfileId>, &ProfileId) -> bool`、`list_move(&mut Vec<ProfileId>, usize, usize) -> bool`
@@ -801,17 +825,22 @@ fn composition_contributor_ops() {
 - [ ] **Step 2: 注册测试模块并占位 `mod patch`**
 
 `tests/mod.rs`:
+
 ```rust
 mod metadata_patch;
 mod mutators;
 mod remote_options_patch;
 mod round_trip;
 ```
+
 `profile/mod.rs` 增加(放在其它 `mod` 行之间,保持字母序):
+
 ```rust
 mod patch;
 ```
+
 并在 `pub use` 区追加:
+
 ```rust
 pub use patch::*;
 ```
@@ -957,11 +986,13 @@ git commit -m "feat(nyanpasu-config): specialized profile mutators (list-ops + a
 `validate()` / `ProfileDependencyIndex::build()` 已随 Task 1 转录落地。本 task 用测试覆盖设计文档 §18 的代表性引用约束,以及依赖索引反向映射。
 
 **Files:**
+
 - Create: `backend/nyanpasu-config/src/profile/tests/validation.rs`
 - Create: `backend/nyanpasu-config/src/profile/tests/dependency.rs`
 - Modify: `backend/nyanpasu-config/src/profile/tests/mod.rs`
 
 **Interfaces:**
+
 - Consumes: `Profiles`、`ProfileValidationError`、`ProfileDependencyIndex`、各类型构造器、`ManagedProfilePath`、`ExternalProfilePath`(Task 1)。
 
 - [ ] **Step 1: 写 validation 测试**
@@ -1237,6 +1268,7 @@ fn index_maps_base_extend_transform_and_global() {
 - [ ] **Step 3: 注册测试模块**
 
 `tests/mod.rs`:
+
 ```rust
 mod dependency;
 mod metadata_patch;
@@ -1266,9 +1298,11 @@ git commit -m "test(nyanpasu-config): cover profile validation and dependency in
 ## Task 6: 文档 #1 —— tauri 调用迁移指南
 
 **Files:**
+
 - Create: `docs/design/profile-tauri-migration-guide.md`
 
 **Interfaces:**
+
 - Consumes: 已落地的 `nyanpasu_config::profile` 类型;现状调用点(`backend/tauri/src/ipc.rs`、`feat.rs`、`enhance/chain.rs`、`config/profile/**`、`client/mod.rs`)。
 
 - [ ] **Step 1: 写文档**
@@ -1300,9 +1334,11 @@ git commit -m "docs(design): tauri profiles call-site migration guide"
 ## Task 7: 文档 #2 —— patch 接口分析
 
 **Files:**
+
 - Create: `docs/design/profile-patch-interface.md`
 
 **Interfaces:**
+
 - Consumes: Task 1–4 已实现的 patch 面(`ProfileMetadataPatch`、`RemoteProfileOptionsPatch`、`patch.rs` mutator)。
 
 - [ ] **Step 1: 写文档**
@@ -1334,9 +1370,11 @@ git commit -m "docs(design): profile patch interface analysis"
 ## Task 8: 文档 #3 —— snapshot store 迁移思路
 
 **Files:**
+
 - Create: `docs/design/profile-snapshot-store-migration.md`
 
 **Interfaces:**
+
 - Consumes: `runtime/snapshot.rs`(`OperatorTag`、`ChainNodeKind`、Task 1 已把 `ChainNode.profile_kind` 改为 `TransformKind`)。
 
 - [ ] **Step 1: 写文档**

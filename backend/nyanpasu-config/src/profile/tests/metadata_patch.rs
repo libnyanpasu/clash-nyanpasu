@@ -30,7 +30,11 @@ fn explicit_null_clears_desc() {
 fn empty_patch_is_noop_and_sparse() {
     let patch = ProfileMetadata::new_empty_patch();
     let dumped = serde_yaml_ng::to_string(&patch).expect("serialize empty patch");
-    assert_eq!(dumped.trim(), "{}", "empty patch must be sparse, got:\n{dumped}");
+    assert_eq!(
+        dumped.trim(),
+        "{}",
+        "empty patch must be sparse, got:\n{dumped}"
+    );
 
     let before = seed();
     let mut after = before.clone();

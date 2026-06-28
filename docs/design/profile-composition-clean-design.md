@@ -738,12 +738,12 @@ Remote URL 仅允许 HTTP/HTTPS。
 
 ### 14.1 旧 Profile 类型映射
 
-| 旧 `type` | 新定义 | 默认来源 |
-|---|---|---|
-| `local` | `Config / File` | `Local / Managed` |
-| `remote` | `Config / File` | `Remote` |
-| `merge` | `Transform / Overlay` | `Local / Managed` |
-| `script` | `Transform / Script` | `Local / Managed` |
+| 旧 `type` | 新定义                | 默认来源          |
+| --------- | --------------------- | ----------------- |
+| `local`   | `Config / File`       | `Local / Managed` |
+| `remote`  | `Config / File`       | `Remote`          |
+| `merge`   | `Transform / Overlay` | `Local / Managed` |
+| `script`  | `Transform / Script`  | `Local / Managed` |
 
 字段移动：
 

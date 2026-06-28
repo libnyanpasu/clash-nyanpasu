@@ -18,10 +18,10 @@ pub enum ChainNodeKind {
 }
 ```
 
-| 变体 | 含义 | 携带 Profile 语义？ |
-|---|---|---|
+| 变体                           | 含义                                           | 携带 Profile 语义？                     |
+| ------------------------------ | ---------------------------------------------- | --------------------------------------- |
 | `Scoped { parent_profile_id }` | 该 chain 节点属于特定 Profile 的 scoped 处理流 | 是，`parent_profile_id` 标识宿主 Config |
-| `Global` | 该 chain 节点属于全局处理流 | 否（全局，不绑定单一 Profile） |
+| `Global`                       | 该 chain 节点属于全局处理流                    | 否（全局，不绑定单一 Profile）          |
 
 ### 1.2 `OperatorTag`
 
@@ -45,16 +45,16 @@ pub enum OperatorTag {
 }
 ```
 
-| 变体 | 含义 | 携带 Profile 语义？ |
-|---|---|---|
-| `Root { primary_profile_id }` | 处理图的根节点，标识主配置 Profile | 是，`primary_profile_id` 直接引用 Profile uid |
-| `SecondaryProcessing { profile_id }` | 第二来源 Profile 的处理节点（旧多 current 语义残留） | 是，`profile_id` 直接引用 Profile uid |
-| `SelectedProfilesProxiesMerge { primary_profile_id, other_profiles_ids }` | 将多个 Profile 的 proxies 合并到主配置 | 是，携带所有参与合并的 Profile uid 列表 |
-| `ChainNode { kind, profile_id, profile_kind }` | 一个 Transform 节点在处理链中的执行步骤 | 是，`profile_id` + `profile_kind` 标识具体 Transform Profile |
-| `BuiltinChain { name }` | 内建处理步骤（不对应用户 Profile） | 否（内建逻辑，无 Profile uid） |
-| `GuardOverrides` | 覆盖守卫节点 | 否 |
-| `WhitelistFieldFilter` | 白名单字段过滤节点 | 否 |
-| `Finalizing` | 最终化步骤 | 否 |
+| 变体                                                                      | 含义                                                 | 携带 Profile 语义？                                          |
+| ------------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------ |
+| `Root { primary_profile_id }`                                             | 处理图的根节点，标识主配置 Profile                   | 是，`primary_profile_id` 直接引用 Profile uid                |
+| `SecondaryProcessing { profile_id }`                                      | 第二来源 Profile 的处理节点（旧多 current 语义残留） | 是，`profile_id` 直接引用 Profile uid                        |
+| `SelectedProfilesProxiesMerge { primary_profile_id, other_profiles_ids }` | 将多个 Profile 的 proxies 合并到主配置               | 是，携带所有参与合并的 Profile uid 列表                      |
+| `ChainNode { kind, profile_id, profile_kind }`                            | 一个 Transform 节点在处理链中的执行步骤              | 是，`profile_id` + `profile_kind` 标识具体 Transform Profile |
+| `BuiltinChain { name }`                                                   | 内建处理步骤（不对应用户 Profile）                   | 否（内建逻辑，无 Profile uid）                               |
+| `GuardOverrides`                                                          | 覆盖守卫节点                                         | 否                                                           |
+| `WhitelistFieldFilter`                                                    | 白名单字段过滤节点                                   | 否                                                           |
+| `Finalizing`                                                              | 最终化步骤                                           | 否                                                           |
 
 携带 Profile 语义的变体（共 4 个）：`Root`、`SecondaryProcessing`、`SelectedProfilesProxiesMerge`、`ChainNode`。
 
@@ -127,14 +127,14 @@ fn chain_node_tag_round_trips_with_transform_kind() {
 
 下表将旧 snapshot 标签中使用的概念映射到新领域模型的对应术语。
 
-| 旧 `OperatorTag` / `ChainNodeKind` 语义 | 新模型对应概念 | 说明 |
-|---|---|---|
-| `ChainNode { kind: Scoped { parent_profile_id }, profile_id, profile_kind }` | `FileConfig.transforms` 中的 `Transform Profile` 执行步骤 | `parent_profile_id` 对应宿主 `FileConfig` 或 `CompositionConfig` 的 uid；`profile_id` 对应被执行的 `Transform` uid |
-| `ChainNode { kind: Global, profile_id, profile_kind }` | `Profiles.global_transforms` 中的 `Transform Profile` 执行步骤 | 不绑定单一宿主 Config，跨所有 current Config 执行 |
-| `SelectedProfilesProxiesMerge { primary_profile_id, other_profiles_ids }` | `CompositionConfig { base: Some(primary_profile_id), extend_proxies_from: other_profiles_ids }` | 旧多 current 语义；新模型用一等 `CompositionConfig` 表达，`base` 提供完整配置，`extend_proxies_from` 贡献 proxies/nodes |
-| `Root { primary_profile_id }` | `Profiles.current = Some(uid)`，对应被选中的 `Config` Profile | 新模型 `current` 只保存单个 `ProfileId`；`Root` 节点是整棵处理树的起点，新设计中可绑定到选中的 `FileConfig` 或 `CompositionConfig` |
-| `SecondaryProcessing { profile_id }` | `CompositionConfig.extend_proxies_from` 中的成员处理步骤 | 旧实现中第二来源 Profile 的独立处理节点；新模型通过 `CompositionConfig` 在组合层统一表达，不再需要单独的 secondary tag |
-| 旧 "chain" 概念（chain node 链条） | `transforms`（scoped）和 `global_transforms`（全局） | 旧 chain 将 Merge/Script 节点线性排列；新模型改用 `Vec<ProfileId>` 明确列出各 Transform Profile |
+| 旧 `OperatorTag` / `ChainNodeKind` 语义                                      | 新模型对应概念                                                                                  | 说明                                                                                                                               |
+| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `ChainNode { kind: Scoped { parent_profile_id }, profile_id, profile_kind }` | `FileConfig.transforms` 中的 `Transform Profile` 执行步骤                                       | `parent_profile_id` 对应宿主 `FileConfig` 或 `CompositionConfig` 的 uid；`profile_id` 对应被执行的 `Transform` uid                 |
+| `ChainNode { kind: Global, profile_id, profile_kind }`                       | `Profiles.global_transforms` 中的 `Transform Profile` 执行步骤                                  | 不绑定单一宿主 Config，跨所有 current Config 执行                                                                                  |
+| `SelectedProfilesProxiesMerge { primary_profile_id, other_profiles_ids }`    | `CompositionConfig { base: Some(primary_profile_id), extend_proxies_from: other_profiles_ids }` | 旧多 current 语义；新模型用一等 `CompositionConfig` 表达，`base` 提供完整配置，`extend_proxies_from` 贡献 proxies/nodes            |
+| `Root { primary_profile_id }`                                                | `Profiles.current = Some(uid)`，对应被选中的 `Config` Profile                                   | 新模型 `current` 只保存单个 `ProfileId`；`Root` 节点是整棵处理树的起点，新设计中可绑定到选中的 `FileConfig` 或 `CompositionConfig` |
+| `SecondaryProcessing { profile_id }`                                         | `CompositionConfig.extend_proxies_from` 中的成员处理步骤                                        | 旧实现中第二来源 Profile 的独立处理节点；新模型通过 `CompositionConfig` 在组合层统一表达，不再需要单独的 secondary tag             |
+| 旧 "chain" 概念（chain node 链条）                                           | `transforms`（scoped）和 `global_transforms`（全局）                                            | 旧 chain 将 Merge/Script 节点线性排列；新模型改用 `Vec<ProfileId>` 明确列出各 Transform Profile                                    |
 
 ---
 
@@ -169,12 +169,12 @@ pub struct ProfileDependencyIndex {
 
 这四类依赖恰好覆盖了处理图中所有需要重建的触发路径：
 
-| 依赖类型 | 触发条件 | 对应 `OperatorTag` 重建影响 |
-|---|---|---|
-| `composition_base_dependents` | 某 `FileConfig`（base）内容更新 | 需重建所有以该 Profile 为 base 的 `CompositionConfig` 处理树 |
-| `extend_proxies_dependents` | 某 `FileConfig`（proxies 来源）内容更新 | 需重建所有在 `extend_proxies_from` 中引用该 Profile 的 `CompositionConfig` 处理树 |
-| `transform_dependents` | 某 `Transform` Profile 内容更新 | 需重建所有在 `transforms` 中引用该 Transform 的 Config 处理树（scoped 部分） |
-| `global_transform_ids` | `global_transforms` 中任一 Transform 内容更新 | 当前运行配置总是失效，需全量重建 |
+| 依赖类型                      | 触发条件                                      | 对应 `OperatorTag` 重建影响                                                       |
+| ----------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------- |
+| `composition_base_dependents` | 某 `FileConfig`（base）内容更新               | 需重建所有以该 Profile 为 base 的 `CompositionConfig` 处理树                      |
+| `extend_proxies_dependents`   | 某 `FileConfig`（proxies 来源）内容更新       | 需重建所有在 `extend_proxies_from` 中引用该 Profile 的 `CompositionConfig` 处理树 |
+| `transform_dependents`        | 某 `Transform` Profile 内容更新               | 需重建所有在 `transforms` 中引用该 Transform 的 Config 处理树（scoped 部分）      |
+| `global_transform_ids`        | `global_transforms` 中任一 Transform 内容更新 | 当前运行配置总是失效，需全量重建                                                  |
 
 全量重做时，`OperatorTag` 的枚举结构应按照新模型语义重新设计，使每个 tag 的字段直接对应 `ProfileDependencyIndex` 中的查询键，从而让 snapshot 图中的失效判断和增量重建可以通过索引直接驱动，而不需要手工扫描图节点。
 

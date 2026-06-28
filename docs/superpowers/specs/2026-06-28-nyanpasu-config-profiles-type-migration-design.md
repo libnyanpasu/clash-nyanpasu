@@ -70,14 +70,14 @@
 
 ### 4.3 关键语义变化(会写进迁移文档)
 
-| legacy | clean 模型 |
-|---|---|
-| `current: Vec<ProfileId>` | `current: Option<ProfileId>`;多选语义改由 `CompositionConfig{base, extend_proxies_from}` 表达 |
-| `chain` / `chains` | `FileConfig/CompositionConfig.transforms` + `Profiles.global_transforms` |
-| `ProfileMeta.updated`(用户可见) | `MaterializedFile.updated_at`(运行时维护,不再用户 patch) |
-| `Merge` | `Overlay` |
-| `ProfileItemType{Remote,Local,Script,Merge}` | 删除;改由 `ProfileCategory` + `ConfigDefinition` + `TransformKind` 表达 |
-| `ProfileFile`(URL/path 猜测) | `MaterializedFile.file: ManagedProfilePath` + `ProfileSource::Remote.url`;URL 识别只在 migration |
+| legacy                                       | clean 模型                                                                                       |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `current: Vec<ProfileId>`                    | `current: Option<ProfileId>`;多选语义改由 `CompositionConfig{base, extend_proxies_from}` 表达    |
+| `chain` / `chains`                           | `FileConfig/CompositionConfig.transforms` + `Profiles.global_transforms`                         |
+| `ProfileMeta.updated`(用户可见)              | `MaterializedFile.updated_at`(运行时维护,不再用户 patch)                                         |
+| `Merge`                                      | `Overlay`                                                                                        |
+| `ProfileItemType{Remote,Local,Script,Merge}` | 删除;改由 `ProfileCategory` + `ConfigDefinition` + `TransformKind` 表达                          |
+| `ProfileFile`(URL/path 猜测)                 | `MaterializedFile.file: ManagedProfilePath` + `ProfileSource::Remote.url`;URL 识别只在 migration |
 
 ---
 
@@ -91,15 +91,15 @@
 
 ### 5.2 特化 patch 面(本期实现)
 
-| 原始 patch 需求 | 新接口 | 机制 |
-|---|---|---|
-| 元数据 name / desc | `ProfileMetadataPatch` | struct_patch(leaf) |
-| Remote 选项 user_agent / with_proxy / self_proxy / update_interval_minutes | `RemoteProfileOptionsPatch` | struct_patch(leaf) |
-| kind / source / binding 切换(Local↔Remote、File↔Composition、Overlay↔Script) | `set_definition` / `set_source` | **原子替换**(非 field patch) |
-| chain 增删改排 | `transforms` / `extend_proxies_from` / `global_transforms` 的 list-ops | 按 `ProfileId` add / remove / move / replace |
-| 顶层 current / valid | `set_current` / `clear_current` / `set_valid` | 直接设值 |
-| 旧 `updated` patch | **取消** | updated_at 运行时维护 |
-| 旧 subscription extra patch | 由 remote 更新任务写入 | 非用户 patch |
+| 原始 patch 需求                                                              | 新接口                                                                 | 机制                                         |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------- |
+| 元数据 name / desc                                                           | `ProfileMetadataPatch`                                                 | struct_patch(leaf)                           |
+| Remote 选项 user_agent / with_proxy / self_proxy / update_interval_minutes   | `RemoteProfileOptionsPatch`                                            | struct_patch(leaf)                           |
+| kind / source / binding 切换(Local↔Remote、File↔Composition、Overlay↔Script) | `set_definition` / `set_source`                                        | **原子替换**(非 field patch)                 |
+| chain 增删改排                                                               | `transforms` / `extend_proxies_from` / `global_transforms` 的 list-ops | 按 `ProfileId` add / remove / move / replace |
+| 顶层 current / valid                                                         | `set_current` / `clear_current` / `set_valid`                          | 直接设值                                     |
+| 旧 `updated` patch                                                           | **取消**                                                               | updated_at 运行时维护                        |
+| 旧 subscription extra patch                                                  | 由 remote 更新任务写入                                                 | 非用户 patch                                 |
 
 ### 5.3 事务流程(设计 §15)
 
@@ -154,13 +154,13 @@ clone 当前 Profiles → 应用修改 → validate → 计算 scheduler/watcher
 
 ## 9. 交付物与落盘位置
 
-| 交付物 | 路径 |
-|---|---|
-| 设计 spec(本文件) | `docs/superpowers/specs/2026-06-28-nyanpasu-config-profiles-type-migration-design.md` |
-| 文档 #1 迁移指南 | `docs/design/profile-tauri-migration-guide.md` |
-| 文档 #2 patch 接口 | `docs/design/profile-patch-interface.md` |
-| 文档 #3 snapshot 迁移 | `docs/design/profile-snapshot-store-migration.md` |
-| 代码 | `nyanpasu-config/src/profile/**`、`nyanpasu-config/src/runtime/snapshot.rs` |
+| 交付物                | 路径                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------- |
+| 设计 spec(本文件)     | `docs/superpowers/specs/2026-06-28-nyanpasu-config-profiles-type-migration-design.md` |
+| 文档 #1 迁移指南      | `docs/design/profile-tauri-migration-guide.md`                                        |
+| 文档 #2 patch 接口    | `docs/design/profile-patch-interface.md`                                              |
+| 文档 #3 snapshot 迁移 | `docs/design/profile-snapshot-store-migration.md`                                     |
+| 代码                  | `nyanpasu-config/src/profile/**`、`nyanpasu-config/src/runtime/snapshot.rs`           |
 
 ---
 

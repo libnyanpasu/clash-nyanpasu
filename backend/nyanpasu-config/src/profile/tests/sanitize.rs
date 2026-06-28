@@ -8,7 +8,10 @@ fn id(s: &str) -> ProfileId {
 fn file_config(uid: &str, file: &str) -> ProfileItem {
     ProfileItem {
         uid: id(uid),
-        metadata: ProfileMetadata { name: uid.into(), desc: None },
+        metadata: ProfileMetadata {
+            name: uid.into(),
+            desc: None,
+        },
         definition: ProfileDefinition::Config {
             config: ConfigDefinition::File(FileConfig {
                 source: ProfileSource::Local {
@@ -28,7 +31,10 @@ fn file_config(uid: &str, file: &str) -> ProfileItem {
 fn overlay(uid: &str, file: &str) -> ProfileItem {
     ProfileItem {
         uid: id(uid),
-        metadata: ProfileMetadata { name: uid.into(), desc: None },
+        metadata: ProfileMetadata {
+            name: uid.into(),
+            desc: None,
+        },
         definition: ProfileDefinition::Transform {
             transform: TransformDefinition::Overlay(OverlayTransform {
                 source: ProfileSource::Local {

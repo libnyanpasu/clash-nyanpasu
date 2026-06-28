@@ -11,9 +11,11 @@
 本指南为后期将 `backend/tauri` 的 Profile 调用点迁移到 `nyanpasu_config::profile` 新类型提供逐步参考。
 
 **本期已完成的工作：**
+
 - `backend/nyanpasu-config/src/profile/` 已落地新领域类型（`Profiles`、`ProfileItem`、`ProfileDefinition{Config|Transform}`、`ConfigDefinition{File|Composition}`、`TransformDefinition{Overlay|Script}`、`ProfileSource{Local{binding}|Remote}`、`TransformKind`、`ProfileMetadataPatch`、`RemoteProfileOptionsPatch` 及 `patch.rs` 中的特化 mutator）。
 
 **本指南不完成的工作（留给后期迭代）：**
+
 - 修改 `backend/tauri` 中任何源文件；
 - 在 tauri crate 中引入 `nyanpasu-config` 依赖；
 - 实现新的 `NyanpasuClient` API（`get_profiles_v2`、`patch_profile` 等）；
@@ -21,6 +23,7 @@
 - 旧数据迁移的执行（由 migration V2 子系统负责）。
 
 **参考文档：**
+
 - 新领域设计：`docs/design/profile-composition-clean-design.md`（下文以 §N 形式引用章节号）
 - 新类型实现：`docs/design/profile-composition-clean-types.rs`
 
@@ -30,40 +33,40 @@
 
 ### 2.1 `backend/tauri/src/ipc.rs`
 
-| 命令 | 大致行号 | 职责一句话 |
-|---|---|---|
-| `get_profiles` | ~100 | 从 `NyanpasuClient` 读取整个 `Profiles` 快照并返回给前端 |
-| `enhance_profiles` | ~128 | 调用 `CoreManager::global().update_config()` 重建运行配置并刷新 Clash 连接 |
-| `import_profile` | ~136 | 解析 URL 构造 `RemoteProfile`，追加到 `Profiles.items`；若 `current` 为空则自动激活 |
-| `create_profile` | ~175 | 按 `ProfileBuilder` 变体（Remote/Local/Merge/Script）构建新 Profile，可写入初始文件内容，首个 Local/Remote 时自动激活 |
-| `reorder_profile` | ~242 | 传入 `active_id`/`over_id` 拖拽重排单条 Profile |
-| `reorder_profiles_by_list` | ~250 | 按完整 uid 列表整体重排 `Profiles.items` 顺序 |
-| `update_profile` | ~258 | 调用 `feat::update_profile`：Remote 触发订阅刷新，Local/Merge/Script 更新 `updated` 时间戳 |
-| `delete_profile` | ~265 | 删除 Profile 及其物化文件；若被删除的是 current 则重建运行配置 |
-| `patch_profiles_config` | ~288 | 通过 `NyanpasuClient::patch_profiles_config(ProfilesBuilder)` 修改全局配置（current、chain 等） |
-| `patch_profile` | ~299 | 通过 `Profiles::patch_item(uid, ProfileBuilder)` 修改单个 Profile；判断是否影响运行配置以决定是否重建 |
-| `view_profile` | ~345 | 读取 Profile 的 `file` 字段，拼接完整路径，调用系统工具打开 |
-| `read_profile_file` | ~365 | 读取 Profile 文件内容：Local/Remote 先 YAML 规范化，Merge/Script 返回原始文本 |
-| `save_profile_file` | ~382 | 向 Profile 的物化文件写入新内容（仅供编辑器保存使用） |
+| 命令                       | 大致行号 | 职责一句话                                                                                                            |
+| -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `get_profiles`             | ~100     | 从 `NyanpasuClient` 读取整个 `Profiles` 快照并返回给前端                                                              |
+| `enhance_profiles`         | ~128     | 调用 `CoreManager::global().update_config()` 重建运行配置并刷新 Clash 连接                                            |
+| `import_profile`           | ~136     | 解析 URL 构造 `RemoteProfile`，追加到 `Profiles.items`；若 `current` 为空则自动激活                                   |
+| `create_profile`           | ~175     | 按 `ProfileBuilder` 变体（Remote/Local/Merge/Script）构建新 Profile，可写入初始文件内容，首个 Local/Remote 时自动激活 |
+| `reorder_profile`          | ~242     | 传入 `active_id`/`over_id` 拖拽重排单条 Profile                                                                       |
+| `reorder_profiles_by_list` | ~250     | 按完整 uid 列表整体重排 `Profiles.items` 顺序                                                                         |
+| `update_profile`           | ~258     | 调用 `feat::update_profile`：Remote 触发订阅刷新，Local/Merge/Script 更新 `updated` 时间戳                            |
+| `delete_profile`           | ~265     | 删除 Profile 及其物化文件；若被删除的是 current 则重建运行配置                                                        |
+| `patch_profiles_config`    | ~288     | 通过 `NyanpasuClient::patch_profiles_config(ProfilesBuilder)` 修改全局配置（current、chain 等）                       |
+| `patch_profile`            | ~299     | 通过 `Profiles::patch_item(uid, ProfileBuilder)` 修改单个 Profile；判断是否影响运行配置以决定是否重建                 |
+| `view_profile`             | ~345     | 读取 Profile 的 `file` 字段，拼接完整路径，调用系统工具打开                                                           |
+| `read_profile_file`        | ~365     | 读取 Profile 文件内容：Local/Remote 先 YAML 规范化，Merge/Script 返回原始文本                                         |
+| `save_profile_file`        | ~382     | 向 Profile 的物化文件写入新内容（仅供编辑器保存使用）                                                                 |
 
 ### 2.2 `backend/tauri/src/feat.rs`
 
-| 函数 | 大致行号 | 职责一句话 |
-|---|---|---|
+| 函数                              | 大致行号 | 职责一句话                                                                                                                                                                                                                          |
+| --------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `feat::update_profile(uid, opts)` | ~441–470 | 区分 Remote/Local/Merge/Script：Remote 调用 `item.subscribe(opts)` 后 `replace_item`；其他类型用 `LocalProfileBuilder`/`MergeProfileBuilder`/`ScriptProfileBuilder` 构造只包含 `updated` 字段的 patch，并调用 `profiles.patch_item` |
 
 ### 2.3 `backend/tauri/src/enhance/mod.rs` 与 `enhance/chain.rs`
 
-| 位置 | 大致行号 | 职责一句话 |
-|---|---|---|
-| `enhance::enhance()` | mod.rs ~22–104 | 从 `Config::profiles()` 读取 `current_mappings()` 和 scoped `profile_chain_mapping`，以及 `global_chain`；并行执行 scoped chain，合并多配置，执行 global chain，过滤字段 |
-| `ChainTypeWrapper::try_from(&Profile)` | chain.rs ~59–84 | 按 `ProfileItemType` 分发：`Script(JS/Lua)` 加载文件为字符串，`Merge` 加载为 `Mapping`；其他类型返回 error |
+| 位置                                   | 大致行号        | 职责一句话                                                                                                                                                               |
+| -------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `enhance::enhance()`                   | mod.rs ~22–104  | 从 `Config::profiles()` 读取 `current_mappings()` 和 scoped `profile_chain_mapping`，以及 `global_chain`；并行执行 scoped chain，合并多配置，执行 global chain，过滤字段 |
+| `ChainTypeWrapper::try_from(&Profile)` | chain.rs ~59–84 | 按 `ProfileItemType` 分发：`Script(JS/Lua)` 加载文件为字符串，`Merge` 加载为 `Mapping`；其他类型返回 error                                                               |
 
 ### 2.4 `backend/tauri/src/client/mod.rs`
 
-| 方法 | 大致行号 | 职责一句话 |
-|---|---|---|
-| `NyanpasuClient::patch_profiles_config(profiles: ProfilesBuilder)` | ~80–99 | 把 `ProfilesBuilder` 应用到 `Config::profiles()` 草稿，调用 `CoreManager::global().update_config()`；成功提交并保存，失败回滚草稿 |
+| 方法                                                               | 大致行号 | 职责一句话                                                                                                                        |
+| ------------------------------------------------------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `NyanpasuClient::patch_profiles_config(profiles: ProfilesBuilder)` | ~80–99   | 把 `ProfilesBuilder` 应用到 `Config::profiles()` 草稿，调用 `CoreManager::global().update_config()`；成功提交并保存，失败回滚草稿 |
 
 ---
 
@@ -71,23 +74,23 @@
 
 下表列出 tauri legacy 类型（`backend/tauri/src/config/profile/`）与新 `nyanpasu_config::profile` 类型的对应关系。
 
-| 旧类型（tauri） | 语义 | 新类型（nyanpasu-config） | 说明 |
-|---|---|---|---|
-| `Profile` enum {`Remote`,`Local`,`Merge`,`Script`} | Profile 四变体 | `ProfileItem { uid, metadata, definition: ProfileDefinition }` | 不再用枚举变体表达文件来源，改用 `definition` 二分类 |
-| `ProfileItemType` {`Remote`,`Local`,`Script(ScriptType)`,`Merge`} | 种类枚举 | `ProfileDefinition::Config(ConfigDefinition::File)` 对应 Remote/Local；`ProfileDefinition::Transform(TransformDefinition::Overlay)` 对应 Merge；`ProfileDefinition::Transform(TransformDefinition::Script{runtime})` 对应 Script | 见设计 §4 |
-| `ProfileBuilder` enum {`Remote(RemoteProfileBuilder)`,`Local`,`Merge`,`Script`} | 统一创建/patch DTO | 分层：`ProfileMetadataPatch`（name/desc）+ `RemoteProfileOptionsPatch`（url/option）+ 完整 `ProfileDefinition`/`ProfileSource` 替换 | 设计 §15：枚举 variant 变化用原子替换；metadata/options 可细粒度 patch |
-| `ProfilesBuilder` {current, chain, valid} | Profiles 全局 patch DTO | `Profiles` 直接通过 `StateActor` 事务 mutator 修改；无全局 builder | `ProfilesBuilder.current: Vec<String>` 的多值语义将改为 `Option<ProfileId>` 单值 |
-| `Profiles.current: Vec<ProfileUid>` | 当前激活列表，可为空可多值 | `Profiles.current: Option<ProfileId>` | 单值；多订阅语义迁移为 `CompositionConfig`（见 §4.1 及设计 §4.3） |
-| `Profiles.chain: Vec<ProfileUid>` | 全局 chain，引用 Merge/Script | `Profiles.global_transforms: Vec<ProfileId>` | 只允许引用 `Transform`；字段重命名（见设计 §8.2） |
-| `LocalProfile.chain` / `RemoteProfile.chain` | 每 Profile 的 scoped chain | `ConfigDefinition::File.transforms: Vec<ProfileId>` | 只允许引用 `Transform`（见设计 §8.3） |
-| `ProfileMetaGetter.updated(): usize` | Unix epoch 时间戳（usize） | `MaterializedFile.updated_at: Option<OffsetDateTime>` | 移入文件型 Profile 内部；`CompositionConfig` 无自己的 `updated_at`（见设计 §11） |
-| `Profile.file(): &str` | 相对路径或 HTTP URL（运行时猜测） | `ManagedProfilePath`（相对路径 newtype）；Remote URL 单独存入 `ProfileSource::Remote { url: Url, .. }` | URL/path 猜测逻辑只存在于 migration（见设计 §12、§14.2） |
-| `MergeProfile` | Merge 后处理类型 | `TransformDefinition::Overlay(OverlayTransform)` | 重命名 Merge → Overlay，避免与 CompositionConfig 语义混淆（见设计 §1） |
-| `ScriptProfile` + `ScriptType { JavaScript, Lua }` | JS/Lua script 后处理 | `TransformDefinition::Script { source, runtime: JavaScript \| Lua }` | `ScriptType` 枚举迁移为 `runtime` 字段（见设计 §14.1） |
-| `Profiles.items: Vec<Profile>` | 有序列表（无 key，靠 uid 查找） | `Profiles.items: IndexMap<ProfileId, ProfileItem>` | 有序 map，反序列化时禁止重复 uid（见设计 §18 第 27 条） |
-| `ProfileUid = String` | uid 字符串 | `ProfileId` newtype（`pub struct ProfileId(pub String)`） | 类型系统区分，见 `profile-composition-clean-types.rs` |
-| `RemoteProfile.option: RemoteProfileOptions` | 订阅更新选项 | `ProfileSource::Remote { option: RemoteProfileOptions, .. }` | 见设计 §9；字段 `update_interval` 重命名为 `update_interval_minutes` |
-| `RemoteProfile.extra: Option<RemoteProfileExtra>` | 订阅流量信息（upload/download/total/expire） | `ProfileSource::Remote { subscription: SubscriptionInfo, .. }`（空值经 `skip_serializing_if = "SubscriptionInfo::is_empty"` 省略） | `extra.expire: 0` 在 migration 中转为 `None` |
+| 旧类型（tauri）                                                                 | 语义                                         | 新类型（nyanpasu-config）                                                                                                                                                                                                        | 说明                                                                             |
+| ------------------------------------------------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `Profile` enum {`Remote`,`Local`,`Merge`,`Script`}                              | Profile 四变体                               | `ProfileItem { uid, metadata, definition: ProfileDefinition }`                                                                                                                                                                   | 不再用枚举变体表达文件来源，改用 `definition` 二分类                             |
+| `ProfileItemType` {`Remote`,`Local`,`Script(ScriptType)`,`Merge`}               | 种类枚举                                     | `ProfileDefinition::Config(ConfigDefinition::File)` 对应 Remote/Local；`ProfileDefinition::Transform(TransformDefinition::Overlay)` 对应 Merge；`ProfileDefinition::Transform(TransformDefinition::Script{runtime})` 对应 Script | 见设计 §4                                                                        |
+| `ProfileBuilder` enum {`Remote(RemoteProfileBuilder)`,`Local`,`Merge`,`Script`} | 统一创建/patch DTO                           | 分层：`ProfileMetadataPatch`（name/desc）+ `RemoteProfileOptionsPatch`（url/option）+ 完整 `ProfileDefinition`/`ProfileSource` 替换                                                                                              | 设计 §15：枚举 variant 变化用原子替换；metadata/options 可细粒度 patch           |
+| `ProfilesBuilder` {current, chain, valid}                                       | Profiles 全局 patch DTO                      | `Profiles` 直接通过 `StateActor` 事务 mutator 修改；无全局 builder                                                                                                                                                               | `ProfilesBuilder.current: Vec<String>` 的多值语义将改为 `Option<ProfileId>` 单值 |
+| `Profiles.current: Vec<ProfileUid>`                                             | 当前激活列表，可为空可多值                   | `Profiles.current: Option<ProfileId>`                                                                                                                                                                                            | 单值；多订阅语义迁移为 `CompositionConfig`（见 §4.1 及设计 §4.3）                |
+| `Profiles.chain: Vec<ProfileUid>`                                               | 全局 chain，引用 Merge/Script                | `Profiles.global_transforms: Vec<ProfileId>`                                                                                                                                                                                     | 只允许引用 `Transform`；字段重命名（见设计 §8.2）                                |
+| `LocalProfile.chain` / `RemoteProfile.chain`                                    | 每 Profile 的 scoped chain                   | `ConfigDefinition::File.transforms: Vec<ProfileId>`                                                                                                                                                                              | 只允许引用 `Transform`（见设计 §8.3）                                            |
+| `ProfileMetaGetter.updated(): usize`                                            | Unix epoch 时间戳（usize）                   | `MaterializedFile.updated_at: Option<OffsetDateTime>`                                                                                                                                                                            | 移入文件型 Profile 内部；`CompositionConfig` 无自己的 `updated_at`（见设计 §11） |
+| `Profile.file(): &str`                                                          | 相对路径或 HTTP URL（运行时猜测）            | `ManagedProfilePath`（相对路径 newtype）；Remote URL 单独存入 `ProfileSource::Remote { url: Url, .. }`                                                                                                                           | URL/path 猜测逻辑只存在于 migration（见设计 §12、§14.2）                         |
+| `MergeProfile`                                                                  | Merge 后处理类型                             | `TransformDefinition::Overlay(OverlayTransform)`                                                                                                                                                                                 | 重命名 Merge → Overlay，避免与 CompositionConfig 语义混淆（见设计 §1）           |
+| `ScriptProfile` + `ScriptType { JavaScript, Lua }`                              | JS/Lua script 后处理                         | `TransformDefinition::Script { source, runtime: JavaScript \| Lua }`                                                                                                                                                             | `ScriptType` 枚举迁移为 `runtime` 字段（见设计 §14.1）                           |
+| `Profiles.items: Vec<Profile>`                                                  | 有序列表（无 key，靠 uid 查找）              | `Profiles.items: IndexMap<ProfileId, ProfileItem>`                                                                                                                                                                               | 有序 map，反序列化时禁止重复 uid（见设计 §18 第 27 条）                          |
+| `ProfileUid = String`                                                           | uid 字符串                                   | `ProfileId` newtype（`pub struct ProfileId(pub String)`）                                                                                                                                                                        | 类型系统区分，见 `profile-composition-clean-types.rs`                            |
+| `RemoteProfile.option: RemoteProfileOptions`                                    | 订阅更新选项                                 | `ProfileSource::Remote { option: RemoteProfileOptions, .. }`                                                                                                                                                                     | 见设计 §9；字段 `update_interval` 重命名为 `update_interval_minutes`             |
+| `RemoteProfile.extra: Option<RemoteProfileExtra>`                               | 订阅流量信息（upload/download/total/expire） | `ProfileSource::Remote { subscription: SubscriptionInfo, .. }`（空值经 `skip_serializing_if = "SubscriptionInfo::is_empty"` 省略）                                                                                               | `extra.expire: 0` 在 migration 中转为 `None`                                     |
 
 ---
 
@@ -109,13 +112,14 @@ items:
     type: config
     config:
       type: composition
-      base: a                    # 提供完整配置
-      extend_proxies_from: [b, c]  # 只贡献 proxies
+      base: a # 提供完整配置
+      extend_proxies_from: [b, c] # 只贡献 proxies
 ```
 
 `CompositionConfig.base = None` 是新增能力（无完整 base，只从订阅继承节点），旧数据 migration 不自动生成（见设计 §14.3）。
 
 迁移 mapping 规则（见设计 §14.3）：
+
 - 旧 `current` 缺失或 `[]` → `current = None`
 - 旧 `current = [a]` → `current = Some(a)`
 - 旧 `current = [a, b, c]` → 新建 `CompositionConfig { base: Some(a), extend_proxies_from: [b, c] }`，`current` 指向该新 uid
@@ -123,6 +127,7 @@ items:
 ### 4.2 `chain` / `chains` → `transforms` + `global_transforms`
 
 **现状：**
+
 - `Profiles.chain`：全局 chain，枚举时调用 `convert_uids_to_scripts` 解析成可执行脚本列表；
 - `LocalProfile.chain` / `RemoteProfile.chain`：per-Profile scoped chain；
 - 两者都可以引用 Merge 或 Script 类型的 Profile。
@@ -152,6 +157,7 @@ local/remote.chain     →  ConfigDefinition::File.transforms: Vec<ProfileId>
 **现状：** `updated` 是存储在 Profile shared 字段中的 usize Unix 时间戳，由 `feat::update_profile` 手动设置。`CompositionConfig`（旧 multi-current 合并配置）没有对应字段。
 
 **新语义（设计 §11）：**
+
 - 文件型 Profile（`Config::File`、`Transform::Overlay`、`Transform::Script`）的 `MaterializedFile.updated_at: Option<OffsetDateTime>` 由 Remote 更新器或本地同步任务维护；
 - `CompositionConfig` 没有自己的 `updated_at`，运行时计算为 `max(base.updated_at?, extend_proxies_from[*].updated_at)`；
 - `feat::update_profile` 中手动 `set_updated()` 的逻辑由更新器原子写入 `MaterializedFile` 时自动更新。
@@ -161,6 +167,7 @@ local/remote.chain     →  ConfigDefinition::File.transforms: Vec<ProfileId>
 **现状：** `file` 字段是 `String`，可能是相对路径（如 `abc123.yaml`）或 HTTP URL。`view_profile`、`read_profile_file`、`chain.rs` 等处通过 `dirs::app_profiles_dir().join(file)` 拼接路径。旧 Local/Merge/Script 的 `file` 如果是 URL，则 `ProfileItemType` 与来源语义不一致。
 
 **新语义（设计 §12、§14.2）：**
+
 - `ManagedProfilePath`：强 newtype，必须是相对于应用 Profile 目录的规范相对路径，反序列化时拒绝绝对路径、`..`、`.` 和 URL；
 - Remote URL 单独存储在 `ProfileSource::Remote { url: Url, .. }`；
 - "旧 file 字段为 HTTP URL"的情况只在 migration 中处理：根据旧 `type` 决定新定义，将 URL 迁移到 `source.url`，并生成 `ManagedProfilePath`（见设计 §14.2）。
@@ -176,6 +183,7 @@ local/remote.chain     →  ConfigDefinition::File.transforms: Vec<ProfileId>
 ### `get_profiles`
 
 **现状（ipc.rs ~100）：**
+
 ```rust
 pub fn get_profiles(client: State<'_, NyanpasuClient>) -> Result<Profiles> {
     Ok(client.get_profiles())  // 返回旧 tauri::Profiles
@@ -183,6 +191,7 @@ pub fn get_profiles(client: State<'_, NyanpasuClient>) -> Result<Profiles> {
 ```
 
 **目标草图：**
+
 ```rust
 // NyanpasuClient 新方法
 pub async fn get_profiles(&self) -> nyanpasu_config::profile::Profiles {
@@ -204,6 +213,7 @@ pub async fn get_profiles(client: State<'_, NyanpasuClient>)
 ### `enhance_profiles`
 
 **现状（ipc.rs ~128）：**
+
 ```rust
 pub async fn enhance_profiles() -> Result {
     CoreManager::global().update_config().await?;
@@ -213,6 +223,7 @@ pub async fn enhance_profiles() -> Result {
 ```
 
 **目标草图：**
+
 ```rust
 pub async fn enhance_profiles(client: State<'_, NyanpasuClient>) -> Result {
     client.rebuild_running_config().await?;
@@ -227,6 +238,7 @@ pub async fn enhance_profiles(client: State<'_, NyanpasuClient>) -> Result {
 ### `import_profile`
 
 **现状（ipc.rs ~136）：**
+
 ```rust
 pub async fn import_profile(
     client: State<'_, NyanpasuClient>,
@@ -239,6 +251,7 @@ pub async fn import_profile(
 ```
 
 **目标草图：**
+
 ```rust
 pub async fn import_profile(
     client: State<'_, NyanpasuClient>,
@@ -253,6 +266,7 @@ pub async fn import_profile(
 ```
 
 **迁移要点：**
+
 - 旧 `RemoteProfileOptionsBuilder` → 新 `RemoteProfileOptionsPatch`；
 - `current.is_empty()` 判断 → `current == None`；
 - 不再使用 `ProfilesBuilder.current(vec![uid])` 多值接口。
@@ -262,6 +276,7 @@ pub async fn import_profile(
 ### `create_profile`
 
 **现状（ipc.rs ~175）：**
+
 ```rust
 pub async fn create_profile(
     client: State<'_, NyanpasuClient>,
@@ -271,6 +286,7 @@ pub async fn create_profile(
 ```
 
 **目标草图：**
+
 ```rust
 pub async fn create_profile(
     client: State<'_, NyanpasuClient>,
@@ -285,6 +301,7 @@ pub async fn create_profile(
 ```
 
 **迁移要点：**
+
 - 旧 `ProfileBuilder` 四变体 → 新 `ProfileDefinition` 完整结构；Merge → `Transform/Overlay`，Script → `Transform/Script`；
 - 自动激活条件从 `profile.is_local() || profile.is_remote()` → `ProfileDefinition::Config(_)`（包含 File 和 Composition）；
 - `current.is_empty()` → `current == None`。
@@ -294,6 +311,7 @@ pub async fn create_profile(
 ### `reorder_profile`
 
 **现状（ipc.rs ~242）：**
+
 ```rust
 pub async fn reorder_profile(active_id: String, over_id: String) -> Result {
     committer.draft().reorder(active_id, over_id)?;
@@ -301,6 +319,7 @@ pub async fn reorder_profile(active_id: String, over_id: String) -> Result {
 ```
 
 **目标草图：**
+
 ```rust
 pub async fn reorder_profile(
     client: State<'_, NyanpasuClient>,
@@ -318,6 +337,7 @@ pub async fn reorder_profile(
 ### `reorder_profiles_by_list`
 
 **现状（ipc.rs ~250）：**
+
 ```rust
 pub fn reorder_profiles_by_list(list: Vec<String>) -> Result {
     committer.draft().reorder_by_list(&list)?;
@@ -325,6 +345,7 @@ pub fn reorder_profiles_by_list(list: Vec<String>) -> Result {
 ```
 
 **目标草图：**
+
 ```rust
 pub async fn reorder_profiles_by_list(
     client: State<'_, NyanpasuClient>,
@@ -339,6 +360,7 @@ pub async fn reorder_profiles_by_list(
 ### `update_profile`
 
 **现状（ipc.rs ~258 → feat.rs ~441）：**
+
 ```rust
 pub async fn update_profile(uid: String, option: Option<RemoteProfileOptionsBuilder>) -> Result {
     feat::update_profile(uid, option).await?;
@@ -347,6 +369,7 @@ pub async fn update_profile(uid: String, option: Option<RemoteProfileOptionsBuil
 ```
 
 **目标草图：**
+
 ```rust
 pub async fn update_profile(
     client: State<'_, NyanpasuClient>,
@@ -360,6 +383,7 @@ pub async fn update_profile(
 ```
 
 **迁移要点：**
+
 - 旧 `feat::update_profile` 中手动 `set_updated()` 的逻辑迁移到更新器；
 - Local/Managed 文件修改后的时间戳更新也应由文件监听器或编辑保存触发，而非手动 patch。
 
@@ -368,6 +392,7 @@ pub async fn update_profile(
 ### `delete_profile`
 
 **现状（ipc.rs ~265）：**
+
 ```rust
 pub async fn delete_profile(uid: String) -> Result {
     // 删除 item，删除文件
@@ -377,6 +402,7 @@ pub async fn delete_profile(uid: String) -> Result {
 ```
 
 **目标草图：**
+
 ```rust
 pub async fn delete_profile(
     client: State<'_, NyanpasuClient>,
@@ -399,6 +425,7 @@ pub async fn delete_profile(
 ### `patch_profiles_config`
 
 **现状（ipc.rs ~288 → client/mod.rs ~80）：**
+
 ```rust
 pub async fn patch_profiles_config(
     client: State<'_, NyanpasuClient>,
@@ -410,6 +437,7 @@ pub async fn patch_profiles_config(
 ```
 
 **目标草图：**
+
 ```rust
 // 拆分为两个独立操作：
 // (a) 激活配置
@@ -436,6 +464,7 @@ pub async fn set_global_transforms(
 ### `patch_profile`
 
 **现状（ipc.rs ~299）：**
+
 ```rust
 pub async fn patch_profile(
     app_handle: AppHandle,
@@ -448,6 +477,7 @@ pub async fn patch_profile(
 ```
 
 **目标草图（分层 patch，见设计 §15）：**
+
 ```rust
 // (a) Metadata patch（name/desc）
 pub async fn patch_profile_metadata(
@@ -478,6 +508,7 @@ pub async fn replace_profile_definition(
 ```
 
 **迁移要点：**
+
 - 旧 `patch_item(uid, ProfileBuilder)` 是 variant-typed patch，`Remote(RemoteProfileBuilder)` 与 `Local(LocalProfileBuilder)` 不可互换；新设计拆成三层——metadata patch、options patch、definition 原子替换，设计 §15；
 - 旧 `patch_profile` 通过检查 `profiles.chain.contains(&uid) || current_chain.contains(&uid)` 判断是否重建配置；新设计由 `ProfileDependencyIndex`（设计 §16）在事务提交后自动判断并触发 core 重建。
 
@@ -486,6 +517,7 @@ pub async fn replace_profile_definition(
 ### `view_profile`
 
 **现状（ipc.rs ~345）：**
+
 ```rust
 pub fn view_profile(app_handle: AppHandle, uid: String) -> Result {
     let file = Config::profiles().latest().get_item(&uid)?.file().to_string();
@@ -495,6 +527,7 @@ pub fn view_profile(app_handle: AppHandle, uid: String) -> Result {
 ```
 
 **目标草图：**
+
 ```rust
 pub async fn view_profile(
     app_handle: AppHandle,
@@ -514,6 +547,7 @@ pub async fn view_profile(
 ### `read_profile_file`
 
 **现状（ipc.rs ~365）：**
+
 ```rust
 pub fn read_profile_file(uid: String) -> Result<String> {
     match item.kind() {
@@ -526,6 +560,7 @@ pub fn read_profile_file(uid: String) -> Result<String> {
 ```
 
 **目标草图：**
+
 ```rust
 pub async fn read_profile_file(
     client: State<'_, NyanpasuClient>,
@@ -545,6 +580,7 @@ pub async fn read_profile_file(
 ### `save_profile_file`
 
 **现状（ipc.rs ~382）：**
+
 ```rust
 pub fn save_profile_file(uid: String, file_data: Option<String>) -> Result {
     item.save_file(file_data.unwrap())?;
@@ -552,6 +588,7 @@ pub fn save_profile_file(uid: String, file_data: Option<String>) -> Result {
 ```
 
 **目标草图：**
+
 ```rust
 pub async fn save_profile_file(
     client: State<'_, NyanpasuClient>,
@@ -590,12 +627,12 @@ pub async fn save_profile_file(
 
 ### 6.2 旧 `type` → 新定义映射（设计 §14.1）
 
-| 旧 `type` 字段 | 新 `ProfileDefinition` | 默认来源 |
-|---|---|---|
-| `local` | `Config / File` | `Local / Managed` |
-| `remote` | `Config / File` | `Remote` |
-| `merge` | `Transform / Overlay` | `Local / Managed` |
-| `script` | `Transform / Script` | `Local / Managed` |
+| 旧 `type` 字段 | 新 `ProfileDefinition` | 默认来源          |
+| -------------- | ---------------------- | ----------------- |
+| `local`        | `Config / File`        | `Local / Managed` |
+| `remote`       | `Config / File`        | `Remote`          |
+| `merge`        | `Transform / Overlay`  | `Local / Managed` |
+| `script`       | `Transform / Script`   | `Local / Managed` |
 
 **字段移动：**
 
@@ -608,6 +645,7 @@ remote.url / option / extra     →  ProfileSource::Remote { url, option, subscr
 ```
 
 **兼容细节：**
+
 - `extra.expire: 0` → `subscription.expire = None`；
 - `option.update_interval` → `option.update_interval_minutes`（字段重命名）；
 - 旧 `file` 字段为 HTTP/HTTPS URL 时（见设计 §14.2）：按 `type` 决定新定义，将 URL 迁移到 `source.url`，根据 uid 和定义类型生成 `ManagedProfilePath`。
@@ -680,15 +718,15 @@ remote.url / option / extra     →  ProfileSource::Remote { url, option, subscr
 
 以下 TS 类型将发生**破坏性变更**，前端需要同步更新：
 
-| 旧 TS 类型 | 新 TS 类型 | 变更描述 |
-|---|---|---|
-| `Profiles.current: string[]` | `Profiles.current: string \| null` | 从数组到可选单值 |
-| `Profiles.chain: string[]` | `Profiles.global_transforms: string[]` | 字段重命名 |
-| `Profiles.items: Profile[]` | `Profiles.items: ProfileItem[]`（序列，uid 作为字段） | 内存为 IndexMap，序列化仍为数组 |
-| `Profile` union `{type: "remote"\|"local"\|"merge"\|"script"}` | `ProfileItem { uid, metadata, definition: ProfileDefinition }` | 完全重构 |
-| `ProfileDefinition` union `{Config: ...} \| {Transform: ...}` | 新二分结构 | 新增类型 |
-| `ProfileBuilder` union | 拆分为 `ProfileMetadataPatch`、`RemoteProfileOptionsPatch`、`NewProfileRequest` | 按操作类型拆分 |
-| `ProfilesBuilder` | 废弃；由 `activate_profile`/`set_global_transforms` 替代 | 破坏性删除 |
+| 旧 TS 类型                                                     | 新 TS 类型                                                                      | 变更描述                        |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------- |
+| `Profiles.current: string[]`                                   | `Profiles.current: string \| null`                                              | 从数组到可选单值                |
+| `Profiles.chain: string[]`                                     | `Profiles.global_transforms: string[]`                                          | 字段重命名                      |
+| `Profiles.items: Profile[]`                                    | `Profiles.items: ProfileItem[]`（序列，uid 作为字段）                           | 内存为 IndexMap，序列化仍为数组 |
+| `Profile` union `{type: "remote"\|"local"\|"merge"\|"script"}` | `ProfileItem { uid, metadata, definition: ProfileDefinition }`                  | 完全重构                        |
+| `ProfileDefinition` union `{Config: ...} \| {Transform: ...}`  | 新二分结构                                                                      | 新增类型                        |
+| `ProfileBuilder` union                                         | 拆分为 `ProfileMetadataPatch`、`RemoteProfileOptionsPatch`、`NewProfileRequest` | 按操作类型拆分                  |
+| `ProfilesBuilder`                                              | 废弃；由 `activate_profile`/`set_global_transforms` 替代                        | 破坏性删除                      |
 
 **迁移策略建议：** 先保留旧命令别名（如 `patch_profiles_config_v1` 对应旧行为），待前端适配完成后统一删除旧命令。
 

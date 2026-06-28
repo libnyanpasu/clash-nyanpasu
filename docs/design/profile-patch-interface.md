@@ -229,29 +229,29 @@ impl CompositionConfig {
 
 ## 5. 原始需求 → 新接口逐条映射表
 
-| 原始 patch 需求 | 新接口 | 机制 | 说明 |
-|---|---|---|---|
-| `name` 更新 | `apply_metadata_patch(ProfileMetadataPatch { name: Some(...), .. })` | struct_patch leaf | 缺席不覆写 |
-| `desc` 更新/清空 | `apply_metadata_patch(ProfileMetadataPatch { desc: Some(Some(...)) / Some(None), .. })` | struct_patch leaf + double_option | `Some(None)` 触发清空 |
-| `user_agent` 更新/清空 | `RemoteProfileOptionsPatch { user_agent: Some(Some(...)) / Some(None), .. }` + `set_source` 中的 `option.apply(patch)` | struct_patch leaf + double_option | 由 Remote update task 或 Tauri 命令调用 |
-| `with_proxy` / `self_proxy` 更新 | `RemoteProfileOptionsPatch { with_proxy: Some(b), .. }` | struct_patch leaf | 缺席不覆写 |
-| `update_interval_minutes` 更新 | `RemoteProfileOptionsPatch { update_interval_minutes: Some(n), .. }` | struct_patch leaf | 仅认 canonical 字段名 |
-| `update_interval`（旧别名）| **已删除** | — | 旧数据在 migration 中转换；新代码不再解析此别名 |
-| `Local → Remote` 切换 | `item.set_definition(ProfileDefinition::Config { config: ConfigDefinition::File(FileConfig { source: ProfileSource::Remote { .. }, .. }) })` | 原子替换 | 一次替换，不存在中间态 |
-| `Remote → Local` 切换 | 同上，替换为 `ProfileSource::Local { binding: .. }` | 原子替换 | |
-| `FileConfig → CompositionConfig` 切换 | `item.set_definition(ProfileDefinition::Config { config: ConfigDefinition::Composition(..) })` | 原子替换 | |
-| `Overlay → Script` 切换 | `item.set_definition(ProfileDefinition::Transform { transform: TransformDefinition::Script(..) })` | 原子替换 | |
-| Remote url / source 原地替换 | `item.set_source(ProfileSource::Remote { url, option, .. })` | 原子替换 | 仅限已有 source 的 definition |
-| transforms 追加 | `list_add(&mut file.transforms, uid)` | list-op | FileConfig / CompositionConfig 内 |
-| transforms 删除 | `list_remove(&mut file.transforms, &uid)` | list-op | |
-| transforms 重排 | `list_move(&mut file.transforms, from, to)` | list-op | |
-| global_transforms 追加/删除/重排 | `profiles.add_global_transform` / `remove_global_transform` / `move_global_transform` | list-op | |
-| extend_proxies_from（contributor）追加/删除/重排 | `composition.add_contributor` / `remove_contributor` / `move_contributor` | list-op | |
-| CompositionConfig base 设置/清空 | `composition.set_base(Some(uid))` / `composition.set_base(None)` | 直接设值 | |
-| 顶层 `current` 更新/清空 | `profiles.set_current(Some(uid))` / `profiles.clear_current()` | 直接设值 | 新模型单值，旧模型为 Vec |
-| 顶层 `valid` 替换 | `profiles.set_valid(vec![...])` | 直接设值 | 整体替换，非逐项 patch |
-| `updated` / `updated_at` patch | **已取消** | — | `MaterializedFile.updated_at` 由 remote 拉取任务在物化成功后写入，不接受用户 patch |
-| `subscription` extra patch（upload/download/total/expire）| **非用户 patch** | — | `SubscriptionInfo` 由 remote 更新任务解析响应头后写入，不暴露为用户 patch 接口 |
+| 原始 patch 需求                                            | 新接口                                                                                                                                       | 机制                              | 说明                                                                               |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | ---------------------------------------------------------------------------------- |
+| `name` 更新                                                | `apply_metadata_patch(ProfileMetadataPatch { name: Some(...), .. })`                                                                         | struct_patch leaf                 | 缺席不覆写                                                                         |
+| `desc` 更新/清空                                           | `apply_metadata_patch(ProfileMetadataPatch { desc: Some(Some(...)) / Some(None), .. })`                                                      | struct_patch leaf + double_option | `Some(None)` 触发清空                                                              |
+| `user_agent` 更新/清空                                     | `RemoteProfileOptionsPatch { user_agent: Some(Some(...)) / Some(None), .. }` + `set_source` 中的 `option.apply(patch)`                       | struct_patch leaf + double_option | 由 Remote update task 或 Tauri 命令调用                                            |
+| `with_proxy` / `self_proxy` 更新                           | `RemoteProfileOptionsPatch { with_proxy: Some(b), .. }`                                                                                      | struct_patch leaf                 | 缺席不覆写                                                                         |
+| `update_interval_minutes` 更新                             | `RemoteProfileOptionsPatch { update_interval_minutes: Some(n), .. }`                                                                         | struct_patch leaf                 | 仅认 canonical 字段名                                                              |
+| `update_interval`（旧别名）                                | **已删除**                                                                                                                                   | —                                 | 旧数据在 migration 中转换；新代码不再解析此别名                                    |
+| `Local → Remote` 切换                                      | `item.set_definition(ProfileDefinition::Config { config: ConfigDefinition::File(FileConfig { source: ProfileSource::Remote { .. }, .. }) })` | 原子替换                          | 一次替换，不存在中间态                                                             |
+| `Remote → Local` 切换                                      | 同上，替换为 `ProfileSource::Local { binding: .. }`                                                                                          | 原子替换                          |                                                                                    |
+| `FileConfig → CompositionConfig` 切换                      | `item.set_definition(ProfileDefinition::Config { config: ConfigDefinition::Composition(..) })`                                               | 原子替换                          |                                                                                    |
+| `Overlay → Script` 切换                                    | `item.set_definition(ProfileDefinition::Transform { transform: TransformDefinition::Script(..) })`                                           | 原子替换                          |                                                                                    |
+| Remote url / source 原地替换                               | `item.set_source(ProfileSource::Remote { url, option, .. })`                                                                                 | 原子替换                          | 仅限已有 source 的 definition                                                      |
+| transforms 追加                                            | `list_add(&mut file.transforms, uid)`                                                                                                        | list-op                           | FileConfig / CompositionConfig 内                                                  |
+| transforms 删除                                            | `list_remove(&mut file.transforms, &uid)`                                                                                                    | list-op                           |                                                                                    |
+| transforms 重排                                            | `list_move(&mut file.transforms, from, to)`                                                                                                  | list-op                           |                                                                                    |
+| global_transforms 追加/删除/重排                           | `profiles.add_global_transform` / `remove_global_transform` / `move_global_transform`                                                        | list-op                           |                                                                                    |
+| extend_proxies_from（contributor）追加/删除/重排           | `composition.add_contributor` / `remove_contributor` / `move_contributor`                                                                    | list-op                           |                                                                                    |
+| CompositionConfig base 设置/清空                           | `composition.set_base(Some(uid))` / `composition.set_base(None)`                                                                             | 直接设值                          |                                                                                    |
+| 顶层 `current` 更新/清空                                   | `profiles.set_current(Some(uid))` / `profiles.clear_current()`                                                                               | 直接设值                          | 新模型单值，旧模型为 Vec                                                           |
+| 顶层 `valid` 替换                                          | `profiles.set_valid(vec![...])`                                                                                                              | 直接设值                          | 整体替换，非逐项 patch                                                             |
+| `updated` / `updated_at` patch                             | **已取消**                                                                                                                                   | —                                 | `MaterializedFile.updated_at` 由 remote 拉取任务在物化成功后写入，不接受用户 patch |
+| `subscription` extra patch（upload/download/total/expire） | **非用户 patch**                                                                                                                             | —                                 | `SubscriptionInfo` 由 remote 更新任务解析响应头后写入，不暴露为用户 patch 接口     |
 
 ---
 
@@ -293,30 +293,30 @@ impl CompositionConfig {
 
 ### `tests/metadata_patch.rs`
 
-| 测试名 | 验证内容 |
-|---|---|
-| `absent_fields_are_kept` | 缺席字段（`desc`）在 patch 应用后保留原值，证明稀疏更新语义正确 |
-| `explicit_null_clears_desc` | `desc: null` 将 `desc` 清空为 `None`，证明 `double_option` 三态语义有效 |
+| 测试名                           | 验证内容                                                                              |
+| -------------------------------- | ------------------------------------------------------------------------------------- |
+| `absent_fields_are_kept`         | 缺席字段（`desc`）在 patch 应用后保留原值，证明稀疏更新语义正确                       |
+| `explicit_null_clears_desc`      | `desc: null` 将 `desc` 清空为 `None`，证明 `double_option` 三态语义有效               |
 | `empty_patch_is_noop_and_sparse` | 空 patch 序列化为 `{}`（无多余字段），应用后不改变任何字段，证明 patch 类型可安全传输 |
 
 ### `tests/remote_options_patch.rs`
 
-| 测试名 | 验证内容 |
-|---|---|
-| `applies_only_present_fields` | 只改 `with_proxy`，`update_interval_minutes` 保留原值，证明稀疏更新 |
-| `null_clears_user_agent` | `user_agent: null` 清空为 `None`，证明 `double_option` 三态语义 |
+| 测试名                                 | 验证内容                                                                    |
+| -------------------------------------- | --------------------------------------------------------------------------- |
+| `applies_only_present_fields`          | 只改 `with_proxy`，`update_interval_minutes` 保留原值，证明稀疏更新         |
+| `null_clears_user_agent`               | `user_agent: null` 清空为 `None`，证明 `double_option` 三态语义             |
 | `legacy_update_interval_alias_is_gone` | `update_interval: 240` 不映射到 `update_interval_minutes`，证明旧别名已删除 |
-| `diff_surfaces_only_changed_fields` | `into_patch_by_diff` 只输出变更字段，证明 diff patch 可用于精确同步 |
+| `diff_surfaces_only_changed_fields`    | `into_patch_by_diff` 只输出变更字段，证明 diff patch 可用于精确同步         |
 
 ### `tests/mutators.rs`
 
-| 测试名 | 验证内容 |
-|---|---|
-| `list_ops_dedup_remove_and_move` | `list_add` 去重、`list_remove` 幂等、`list_move` 边界安全，证明三个 list-op 原语的正确性 |
-| `top_level_setters_and_global_transforms` | `set_current`/`clear_current`/`set_valid`/`add|move|remove_global_transform` 均按预期工作，证明顶层 setter 覆盖旧 `current`/`valid`/chain 需求 |
+| 测试名                                       | 验证内容                                                                                                                                                                                                                           |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ---------------------------------------------------------------------------------------- |
+| `list_ops_dedup_remove_and_move`             | `list_add` 去重、`list_remove` 幂等、`list_move` 边界安全，证明三个 list-op 原语的正确性                                                                                                                                           |
+| `top_level_setters_and_global_transforms`    | `set_current`/`clear_current`/`set_valid`/`add                                                                                                                                                                                     | move | remove_global_transform`均按预期工作，证明顶层 setter 覆盖旧`current`/`valid`/chain 需求 |
 | `item_atomic_replacement_and_metadata_patch` | `apply_metadata_patch` 仅改元数据；`set_source` 在有 source 的 Transform 上成功返回 `true`；`set_definition` 切换到 `CompositionConfig` 后 `source()` 返回 `None`，`set_source` 返回 `false`，证明原子替换与 source 缺失的安全处理 |
-| `composition_contributor_ops` | `set_base`/`add_contributor`/`move_contributor`/`remove_contributor` 正确管理 `extend_proxies_from`，去重有效，证明 Composition 的 list-op 需求 |
+| `composition_contributor_ops`                | `set_base`/`add_contributor`/`move_contributor`/`remove_contributor` 正确管理 `extend_proxies_from`，去重有效，证明 Composition 的 list-op 需求                                                                                    |
 
 ---
 
-*本文档与 `patch.rs`（`backend/nyanpasu-config/src/profile/patch.rs`）、`metadata.rs`、`source.rs` 的实现保持一致；如实现变更，应同步更新本文档。*
+_本文档与 `patch.rs`（`backend/nyanpasu-config/src/profile/patch.rs`）、`metadata.rs`、`source.rs` 的实现保持一致；如实现变更，应同步更新本文档。_

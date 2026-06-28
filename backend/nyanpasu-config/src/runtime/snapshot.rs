@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use slab::Slab;
 use thiserror::Error;
 
-use crate::{profile::item::kind::ProfileItemType, runtime::value::ConfigValue};
+use crate::{profile::TransformKind, runtime::value::ConfigValue};
 
 /// A field in the config, use `.` to represent nested fields.
 pub type ConfigField = String;
@@ -79,7 +79,7 @@ pub enum OperatorTag {
         kind: ChainNodeKind,
         #[specta(type = String)]
         profile_id: Arc<str>,
-        profile_kind: ProfileItemType,
+        profile_kind: TransformKind,
     },
     BuiltinChain {
         #[specta(type = String)]
@@ -1121,6 +1121,22 @@ mod tests {
             .clone();
 
         assert!(Arc::ptr_eq(&before_stable, &after_stable));
+    }
+
+    #[test]
+    fn chain_node_tag_round_trips_with_transform_kind() {
+        use crate::profile::{ScriptRuntime, TransformKind};
+
+        let tag = OperatorTag::ChainNode {
+            kind: ChainNodeKind::Global,
+            profile_id: Arc::from("global-fix"),
+            profile_kind: TransformKind::Script {
+                runtime: ScriptRuntime::Lua,
+            },
+        };
+        let json = serde_json::to_value(&tag).unwrap();
+        let back: OperatorTag = serde_json::from_value(json).unwrap();
+        assert_eq!(tag, back);
     }
 
     #[cfg(feature = "snapshot-persistence")]

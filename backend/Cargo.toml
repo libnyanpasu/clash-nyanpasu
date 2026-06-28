@@ -13,6 +13,11 @@ members = [
 [patch.crates-io]
 tray-icon = { git = "https://github.com/tauri-apps/tray-icon.git", rev = "34a3442" }
 
+# Consume nyanpasu-ipc from the in-tree `nyanpasu-service` submodule so it can be
+# edited directly during the actor/DI migration.
+[patch."https://github.com/libnyanpasu/nyanpasu-service.git"]
+nyanpasu-ipc = { path = "../nyanpasu-service/nyanpasu_ipc" }
+
 [workspace.package]
 repository = "https://github.com/keiko233/clash-nyanpasu.git"
 edition = "2024"
@@ -32,7 +37,7 @@ reqwest = { version = "0.12", default-features = false, features = [
   "rustls-tls",
 ] }
 tokio = { version = "1", features = ["full"] }
-nyanpasu-utils = { git = "https://github.com/libnyanpasu/nyanpasu-utils.git", features = [
+nyanpasu-utils = { git = "https://github.com/LibNyanpasu/nyanpasu-utils.git", rev = "2232574", features = [
   "specta",
 ] }
 test-log = { version = "0.2.16", features = ["trace"] }

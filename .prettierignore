@@ -13,3 +13,5 @@ frontend/nyanpasu/project.inlang/
 scripts/
 backend/tauri/gen/schemas/
 backend/tauri/tmp/
+# Vendored upstream submodule — not ours to format
+nyanpasu-service/

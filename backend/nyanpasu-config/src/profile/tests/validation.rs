@@ -1,5 +1,6 @@
 //! Referential/semantic validation coverage (design doc §18 subset).
 use crate::profile::*;
+use url::Url;
 
 fn id(s: &str) -> ProfileId {
     ProfileId(s.to_owned())
@@ -8,7 +9,10 @@ fn id(s: &str) -> ProfileId {
 fn file_config(uid: &str, file: &str) -> ProfileItem {
     ProfileItem {
         uid: id(uid),
-        metadata: ProfileMetadata { name: uid.into(), desc: None },
+        metadata: ProfileMetadata {
+            name: uid.into(),
+            desc: None,
+        },
         definition: ProfileDefinition::Config {
             config: ConfigDefinition::File(FileConfig {
                 source: ProfileSource::Local {
@@ -28,7 +32,10 @@ fn file_config(uid: &str, file: &str) -> ProfileItem {
 fn overlay(uid: &str, file: &str) -> ProfileItem {
     ProfileItem {
         uid: id(uid),
-        metadata: ProfileMetadata { name: uid.into(), desc: None },
+        metadata: ProfileMetadata {
+            name: uid.into(),
+            desc: None,
+        },
         definition: ProfileDefinition::Transform {
             transform: TransformDefinition::Overlay(OverlayTransform {
                 source: ProfileSource::Local {
@@ -52,7 +59,10 @@ fn profiles_with(items: Vec<ProfileItem>) -> Profiles {
     profiles
 }
 
-fn has_error(errors: &[ProfileValidationError], pred: impl Fn(&ProfileValidationError) -> bool) -> bool {
+fn has_error(
+    errors: &[ProfileValidationError],
+    pred: impl Fn(&ProfileValidationError) -> bool,
+) -> bool {
     errors.iter().any(pred)
 }
 
@@ -61,17 +71,26 @@ fn current_must_be_an_existing_config() {
     let mut profiles = profiles_with(vec![overlay("ov", "ov.yaml")]);
     profiles.current = Some(id("ov"));
     let errors = profiles.validate().unwrap_err();
-    assert!(has_error(&errors, |e| matches!(e, ProfileValidationError::CurrentNotConfig(_))));
+    assert!(has_error(&errors, |e| matches!(
+        e,
+        ProfileValidationError::CurrentNotConfig(_)
+    )));
 
     profiles.current = Some(id("ghost"));
     let errors = profiles.validate().unwrap_err();
-    assert!(has_error(&errors, |e| matches!(e, ProfileValidationError::CurrentNotFound(_))));
+    assert!(has_error(&errors, |e| matches!(
+        e,
+        ProfileValidationError::CurrentNotFound(_)
+    )));
 }
 
 #[test]
 fn transform_target_must_be_a_transform() {
     let mut cfg = file_config("c", "c.yaml");
-    if let ProfileDefinition::Config { config: ConfigDefinition::File(f) } = &mut cfg.definition {
+    if let ProfileDefinition::Config {
+        config: ConfigDefinition::File(f),
+    } = &mut cfg.definition
+    {
         f.transforms = vec![id("c")]; // points at a Config, not a Transform
     }
     let profiles = profiles_with(vec![cfg]);
@@ -86,7 +105,10 @@ fn transform_target_must_be_a_transform() {
 fn composition_member_must_be_direct_file_config() {
     let comp = ProfileItem {
         uid: id("comp"),
-        metadata: ProfileMetadata { name: "comp".into(), desc: None },
+        metadata: ProfileMetadata {
+            name: "comp".into(),
+            desc: None,
+        },
         definition: ProfileDefinition::Config {
             config: ConfigDefinition::Composition(CompositionConfig {
                 base: Some(id("ov")),
@@ -107,7 +129,10 @@ fn composition_member_must_be_direct_file_config() {
 fn empty_composition_is_rejected() {
     let comp = ProfileItem {
         uid: id("comp"),
-        metadata: ProfileMetadata { name: "comp".into(), desc: None },
+        metadata: ProfileMetadata {
+            name: "comp".into(),
+            desc: None,
+        },
         definition: ProfileDefinition::Config {
             config: ConfigDefinition::Composition(CompositionConfig {
                 base: None,
@@ -176,4 +201,142 @@ fn duplicate_uid_fails_to_deserialize() {
           file: b.yaml
 "#;
     assert!(serde_yaml_ng::from_str::<Profiles>(yaml).is_err());
+}
+
+fn composition(uid: &str, base: Option<&str>, contributors: &[&str]) -> ProfileItem {
+    ProfileItem {
+        uid: id(uid),
+        metadata: ProfileMetadata {
+            name: uid.into(),
+            desc: None,
+        },
+        definition: ProfileDefinition::Config {
+            config: ConfigDefinition::Composition(CompositionConfig {
+                base: base.map(id),
+                extend_proxies_from: contributors.iter().copied().map(id).collect(),
+                transforms: vec![],
+            }),
+        },
+    }
+}
+
+fn remote_file_config(uid: &str, file: &str, url: &str, interval_minutes: u64) -> ProfileItem {
+    ProfileItem {
+        uid: id(uid),
+        metadata: ProfileMetadata {
+            name: uid.into(),
+            desc: None,
+        },
+        definition: ProfileDefinition::Config {
+            config: ConfigDefinition::File(FileConfig {
+                source: ProfileSource::Remote {
+                    materialized: MaterializedFile {
+                        file: ManagedProfilePath::new(file).unwrap(),
+                        updated_at: None,
+                    },
+                    url: Url::parse(url).unwrap(),
+                    option: RemoteProfileOptions {
+                        update_interval_minutes: interval_minutes,
+                        ..Default::default()
+                    },
+                    subscription: SubscriptionInfo::default(),
+                },
+                transforms: vec![],
+            }),
+        },
+    }
+}
+
+#[test]
+fn composition_member_must_exist() {
+    let profiles = profiles_with(vec![composition("comp", Some("ghost"), &[])]);
+    let errors = profiles.validate().unwrap_err();
+    assert!(has_error(&errors, |e| matches!(
+        e,
+        ProfileValidationError::CompositionMemberNotFound { .. }
+    )));
+}
+
+#[test]
+fn composition_cannot_reference_itself() {
+    let profiles = profiles_with(vec![composition("comp", Some("comp"), &[])]);
+    let errors = profiles.validate().unwrap_err();
+    assert!(has_error(&errors, |e| matches!(
+        e,
+        ProfileValidationError::CompositionSelfReference { .. }
+    )));
+}
+
+#[test]
+fn composition_base_cannot_also_be_contributor() {
+    let profiles = profiles_with(vec![
+        file_config("a", "a.yaml"),
+        composition("comp", Some("a"), &["a"]),
+    ]);
+    let errors = profiles.validate().unwrap_err();
+    assert!(has_error(&errors, |e| matches!(
+        e,
+        ProfileValidationError::CompositionBaseAlsoContributor { .. }
+    )));
+}
+
+#[test]
+fn composition_rejects_duplicate_contributor() {
+    let profiles = profiles_with(vec![
+        file_config("a", "a.yaml"),
+        composition("comp", None, &["a", "a"]),
+    ]);
+    let errors = profiles.validate().unwrap_err();
+    assert!(has_error(&errors, |e| matches!(
+        e,
+        ProfileValidationError::CompositionDuplicateContributor { .. }
+    )));
+}
+
+#[test]
+fn transform_target_must_exist() {
+    let mut cfg = file_config("c", "c.yaml");
+    if let ProfileDefinition::Config {
+        config: ConfigDefinition::File(f),
+    } = &mut cfg.definition
+    {
+        f.transforms = vec![id("ghost")]; // dangling reference
+    }
+    let profiles = profiles_with(vec![cfg]);
+    let errors = profiles.validate().unwrap_err();
+    assert!(has_error(&errors, |e| matches!(
+        e,
+        ProfileValidationError::TransformTargetNotFound { .. }
+    )));
+}
+
+#[test]
+fn remote_source_rejects_unsupported_scheme_and_zero_interval() {
+    let profiles = profiles_with(vec![
+        remote_file_config("ftp", "ftp.yaml", "ftp://example.com/a.yaml", 120),
+        remote_file_config("zero", "zero.yaml", "https://example.com/b.yaml", 0),
+    ]);
+    let errors = profiles.validate().unwrap_err();
+    assert!(has_error(&errors, |e| matches!(
+        e,
+        ProfileValidationError::UnsupportedRemoteUrlScheme { .. }
+    )));
+    assert!(has_error(&errors, |e| matches!(
+        e,
+        ProfileValidationError::RemoteUpdateIntervalIsZero { .. }
+    )));
+}
+
+#[test]
+fn item_key_must_match_item_uid() {
+    let mut profiles = Profiles::default();
+    // `items` is public, so a mismatched insert key is reachable; validate catches it.
+    profiles
+        .items
+        .insert(id("wrong-key"), file_config("real-uid", "real.yaml"));
+    let errors = profiles.validate().unwrap_err();
+    assert!(has_error(&errors, |e| matches!(
+        e,
+        ProfileValidationError::ItemKeyMismatch { .. }
+    )));
 }

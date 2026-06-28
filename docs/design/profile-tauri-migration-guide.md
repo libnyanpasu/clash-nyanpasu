@@ -86,8 +86,8 @@
 | `ScriptProfile` + `ScriptType { JavaScript, Lua }` | JS/Lua script 后处理 | `TransformDefinition::Script { source, runtime: JavaScript \| Lua }` | `ScriptType` 枚举迁移为 `runtime` 字段（见设计 §14.1） |
 | `Profiles.items: Vec<Profile>` | 有序列表（无 key，靠 uid 查找） | `Profiles.items: IndexMap<ProfileId, ProfileItem>` | 有序 map，反序列化时禁止重复 uid（见设计 §18 第 27 条） |
 | `ProfileUid = String` | uid 字符串 | `ProfileId` newtype（`pub struct ProfileId(pub String)`） | 类型系统区分，见 `profile-composition-clean-types.rs` |
-| `RemoteProfile.option: RemoteProfileOptions` | 订阅更新选项 | `ProfileSource::Remote { option: RemoteUpdateOptions, .. }` | 见设计 §9；字段 `update_interval` 重命名为 `update_interval_minutes` |
-| `RemoteProfile.extra: Option<RemoteProfileExtra>` | 订阅流量信息（upload/download/total/expire） | `ProfileSource::Remote { subscription: Option<SubscriptionInfo>, .. }` | `extra.expire: 0` 在 migration 中转为 `None` |
+| `RemoteProfile.option: RemoteProfileOptions` | 订阅更新选项 | `ProfileSource::Remote { option: RemoteProfileOptions, .. }` | 见设计 §9；字段 `update_interval` 重命名为 `update_interval_minutes` |
+| `RemoteProfile.extra: Option<RemoteProfileExtra>` | 订阅流量信息（upload/download/total/expire） | `ProfileSource::Remote { subscription: SubscriptionInfo, .. }`（空值经 `skip_serializing_if = "SubscriptionInfo::is_empty"` 省略） | `extra.expire: 0` 在 migration 中转为 `None` |
 
 ---
 

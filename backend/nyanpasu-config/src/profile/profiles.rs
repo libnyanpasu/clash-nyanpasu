@@ -1,33 +1,29 @@
-use std::{fmt, str::FromStr};
+use std::collections::HashMap;
 
-use indexmap::{IndexMap, map::Entry};
-use serde::{
-    Deserialize, Deserializer, Serialize,
-    de::{Error, SeqAccess, Visitor},
-};
+use indexmap::{IndexMap, IndexSet, map::Entry};
+use serde::{Deserialize, Deserializer, Serialize};
 use specta::Type;
+use thiserror::Error;
 
-use super::item::{ProfileItem, ProfileSource, kind::ProfileId};
+use super::*;
 
-/// Defines the top-level `profiles.yaml` schema.
+/// Persisted profile document.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct Profiles {
-    /// Same as legacy `PrfConfig.current`.
-    #[serde(default, deserialize_with = "deserialize_single_or_vec")]
-    pub current: Vec<ProfileId>,
+    /// The single selected activatable Config profile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current: Option<ProfileId>,
 
-    /// Same as legacy `PrfConfig.chain`.
-    #[serde(default)]
-    pub chain: Vec<ProfileId>,
+    /// Global post-processing transforms. They run once after the selected Config
+    /// has been resolved.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub global_transforms: Vec<ProfileId>,
 
-    /// Clash fields considered valid when extracting runtime config.
+    /// Clash fields retained by the runtime extraction stage.
     #[serde(default = "default_valid")]
     pub valid: Vec<String>,
 
-    /// Profile list keyed by uid while preserving the original sequence order.
-    ///
-    /// Invariant: each map key must equal its value's `ProfileItem::meta.uid`.
-    /// Prefer the mutation helpers below, which uphold that invariant.
+    /// Serialized as a sequence, kept as an ordered map in memory.
     #[serde(default, with = "items_serde")]
     #[specta(type = Vec<ProfileItem>)]
     pub items: IndexMap<ProfileId, ProfileItem>,
@@ -36,8 +32,8 @@ pub struct Profiles {
 impl Default for Profiles {
     fn default() -> Self {
         Self {
-            current: Vec::new(),
-            chain: Vec::new(),
+            current: None,
+            global_transforms: Vec::new(),
             valid: default_valid(),
             items: IndexMap::new(),
         }
@@ -49,10 +45,8 @@ impl Profiles {
         self.items.get(uid)
     }
 
-    /// Append a new item. Returns `false` (and keeps the existing item) when the
-    /// uid already exists.
     pub fn append_item(&mut self, item: ProfileItem) -> bool {
-        match self.items.entry(item.meta.uid.clone()) {
+        match self.items.entry(item.uid.clone()) {
             Entry::Vacant(entry) => {
                 entry.insert(item);
                 true
@@ -61,21 +55,16 @@ impl Profiles {
         }
     }
 
-    /// Replace an existing item in place, returning the previous value. Returns
-    /// `None` when the uid is unknown.
     pub fn replace_item(&mut self, item: ProfileItem) -> Option<ProfileItem> {
         self.items
-            .get_mut(&item.meta.uid)
+            .get_mut(&item.uid)
             .map(|slot| std::mem::replace(slot, item))
     }
 
-    /// Remove an item, preserving the order of the remaining items.
-    pub fn remove_item(&mut self, uid: &ProfileId) -> Option<ProfileItem> {
+    pub fn remove_item_unchecked(&mut self, uid: &ProfileId) -> Option<ProfileItem> {
         self.items.shift_remove(uid)
     }
 
-    /// Move `active_id` to the position of `over_id`. No-op (returns `false`)
-    /// when either uid is missing or both refer to the same slot.
     pub fn reorder(&mut self, active_id: &ProfileId, over_id: &ProfileId) -> bool {
         let (Some(active_index), Some(over_index)) = (
             self.items.get_index_of(active_id),
@@ -92,59 +81,343 @@ impl Profiles {
         true
     }
 
-    /// Reorder items to match `order`. Unknown/duplicate uids are ignored; items
-    /// not present in `order` keep their relative order and are appended last.
-    pub fn reorder_by_list<I>(&mut self, order: I)
-    where
-        I: IntoIterator<Item = ProfileId>,
-    {
-        let mut remaining = std::mem::take(&mut self.items);
-        let mut ordered = IndexMap::with_capacity(remaining.len());
-
-        for uid in order {
-            if let Some((key, item)) = remaining.shift_remove_entry(&uid) {
-                ordered.insert(key, item);
+    /// Repairs only safe top-level references. Composition membership is not
+    /// changed silently because that would change user-visible config semantics.
+    pub fn sanitize_top_level(&mut self) -> ProfilesSanitizeReport {
+        let removed_current = match self.current.as_ref() {
+            Some(uid)
+                if self
+                    .items
+                    .get(uid)
+                    .is_some_and(|item| item.definition.is_config()) =>
+            {
+                None
             }
-        }
+            Some(_) => self.current.take(),
+            None => None,
+        };
 
-        ordered.extend(remaining);
-        self.items = ordered;
-    }
+        let mut removed_global_transforms = Vec::new();
+        self.global_transforms.retain(|uid| {
+            let keep = self
+                .items
+                .get(uid)
+                .is_some_and(|item| item.definition.is_transform());
+            if !keep {
+                removed_global_transforms.push(uid.clone());
+            }
+            keep
+        });
 
-    /// Drop dangling `current`/`chain` references (uids no longer present in
-    /// `items`) and report the first activatable item.
-    ///
-    /// This only mutates the in-memory top-level references; file deletion and
-    /// the actual activation decision remain the service layer's responsibility.
-    pub fn sanitize_current(&mut self) -> ProfilesSanitizeReport {
-        let removed_current = retain_existing_refs(&self.items, &mut self.current);
-        let removed_chain = retain_existing_refs(&self.items, &mut self.chain);
-        let default_activatable = self
+        let default_config = self
             .items
             .iter()
-            .find_map(|(uid, item)| match &item.source {
-                ProfileSource::Local(_) | ProfileSource::Remote(_) => Some(uid.clone()),
-                ProfileSource::Merge(_) | ProfileSource::Script(_) => None,
-            });
-        let current_needs_activation = self.current.is_empty() && default_activatable.is_some();
+            .find_map(|(uid, item)| item.definition.is_config().then(|| uid.clone()));
+
+        let current_needs_activation = self.current.is_none() && default_config.is_some();
 
         ProfilesSanitizeReport {
             removed_current,
-            removed_chain,
-            default_activatable,
+            removed_global_transforms,
+            default_config,
             current_needs_activation,
+        }
+    }
+
+    /// Referential and semantic validation for an already deserialized document.
+    pub fn validate(&self) -> Result<(), Vec<ProfileValidationError>> {
+        let mut errors = Vec::new();
+        let mut materialized_owners: HashMap<ManagedProfilePath, ProfileId> = HashMap::new();
+
+        if let Some(current) = &self.current {
+            match self.items.get(current) {
+                None => errors.push(ProfileValidationError::CurrentNotFound(current.clone())),
+                Some(item) if !item.definition.is_config() => {
+                    errors.push(ProfileValidationError::CurrentNotConfig(current.clone()))
+                }
+                Some(_) => {}
+            }
+        }
+
+        validate_transforms(
+            self,
+            TransformOwner::Global,
+            &self.global_transforms,
+            &mut errors,
+        );
+
+        for (uid, item) in &self.items {
+            if uid != &item.uid {
+                errors.push(ProfileValidationError::ItemKeyMismatch {
+                    key: uid.clone(),
+                    item_uid: item.uid.clone(),
+                });
+            }
+
+            match &item.definition {
+                ProfileDefinition::Config { config } => match config {
+                    ConfigDefinition::File(file) => {
+                        validate_transforms(
+                            self,
+                            TransformOwner::Config { uid: uid.clone() },
+                            &file.transforms,
+                            &mut errors,
+                        );
+                    }
+                    ConfigDefinition::Composition(composition) => {
+                        validate_transforms(
+                            self,
+                            TransformOwner::Config { uid: uid.clone() },
+                            &composition.transforms,
+                            &mut errors,
+                        );
+                        validate_composition_config(self, uid, composition, &mut errors);
+                    }
+                },
+                ProfileDefinition::Transform { .. } => {}
+            }
+
+            if let Some(source) = item.definition.source() {
+                let file = source.materialized().file.clone();
+                if let Some(first) = materialized_owners.insert(file.clone(), uid.clone()) {
+                    errors.push(ProfileValidationError::DuplicateMaterializedFile {
+                        file,
+                        first,
+                        second: uid.clone(),
+                    });
+                }
+                validate_source(uid, source, &mut errors);
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
         }
     }
 }
 
-/// Outcome of [`Profiles::sanitize_current`], handed to the service layer so it
-/// can decide whether to persist changes or activate a default profile.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct ProfilesSanitizeReport {
-    pub removed_current: Vec<ProfileId>,
-    pub removed_chain: Vec<ProfileId>,
-    pub default_activatable: Option<ProfileId>,
+    pub removed_current: Option<ProfileId>,
+    pub removed_global_transforms: Vec<ProfileId>,
+    pub default_config: Option<ProfileId>,
     pub current_needs_activation: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum TransformOwner {
+    Global,
+    Config { uid: ProfileId },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum CompositionMemberRole {
+    Base,
+    Contributor,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error, Serialize, Deserialize, Type)]
+pub enum ProfileValidationError {
+    #[error("profile map key {key} does not match item uid {item_uid}")]
+    ItemKeyMismatch { key: ProfileId, item_uid: ProfileId },
+
+    #[error("current profile does not exist: {0}")]
+    CurrentNotFound(ProfileId),
+
+    #[error("current profile is not a Config: {0}")]
+    CurrentNotConfig(ProfileId),
+
+    #[error("transform target does not exist: {target}")]
+    TransformTargetNotFound {
+        owner: TransformOwner,
+        target: ProfileId,
+    },
+
+    #[error("transform target is not a Transform: {target}")]
+    TransformTargetNotTransform {
+        owner: TransformOwner,
+        target: ProfileId,
+    },
+
+    #[error("composition is empty and cannot produce a meaningful config: {composition}")]
+    EmptyCompositionConfig { composition: ProfileId },
+
+    #[error("composition references itself: {composition}")]
+    CompositionSelfReference {
+        composition: ProfileId,
+        role: CompositionMemberRole,
+    },
+
+    #[error("composition member does not exist: {profile}")]
+    CompositionMemberNotFound {
+        composition: ProfileId,
+        role: CompositionMemberRole,
+        profile: ProfileId,
+    },
+
+    #[error("composition member must be a direct file Config: {profile}")]
+    CompositionMemberNotDirectFileConfig {
+        composition: ProfileId,
+        role: CompositionMemberRole,
+        profile: ProfileId,
+    },
+
+    #[error("composition base is repeated in extend_proxies_from: {profile}")]
+    CompositionBaseAlsoContributor {
+        composition: ProfileId,
+        profile: ProfileId,
+    },
+
+    #[error("composition contains a duplicate contributor: {profile}")]
+    CompositionDuplicateContributor {
+        composition: ProfileId,
+        profile: ProfileId,
+    },
+
+    #[error("multiple profiles use the same materialized file {file}: {first}, {second}")]
+    DuplicateMaterializedFile {
+        file: ManagedProfilePath,
+        first: ProfileId,
+        second: ProfileId,
+    },
+
+    #[error("remote URL scheme is not supported for {profile}: {scheme}")]
+    UnsupportedRemoteUrlScheme { profile: ProfileId, scheme: String },
+
+    #[error("remote update interval must be greater than zero: {profile}")]
+    RemoteUpdateIntervalIsZero { profile: ProfileId },
+}
+
+fn validate_transforms(
+    profiles: &Profiles,
+    owner: TransformOwner,
+    transforms: &[ProfileId],
+    errors: &mut Vec<ProfileValidationError>,
+) {
+    for target in transforms {
+        match profiles.items.get(target) {
+            None => errors.push(ProfileValidationError::TransformTargetNotFound {
+                owner: owner.clone(),
+                target: target.clone(),
+            }),
+            Some(item) if !item.definition.is_transform() => {
+                errors.push(ProfileValidationError::TransformTargetNotTransform {
+                    owner: owner.clone(),
+                    target: target.clone(),
+                })
+            }
+            Some(_) => {}
+        }
+    }
+}
+
+fn validate_composition_config(
+    profiles: &Profiles,
+    composition_id: &ProfileId,
+    composition: &CompositionConfig,
+    errors: &mut Vec<ProfileValidationError>,
+) {
+    if composition.base.is_none()
+        && composition.extend_proxies_from.is_empty()
+        && composition.transforms.is_empty()
+    {
+        errors.push(ProfileValidationError::EmptyCompositionConfig {
+            composition: composition_id.clone(),
+        });
+    }
+
+    if let Some(base) = &composition.base {
+        validate_composition_member(
+            profiles,
+            composition_id,
+            CompositionMemberRole::Base,
+            base,
+            errors,
+        );
+    }
+
+    let mut seen = IndexSet::new();
+    for contributor in &composition.extend_proxies_from {
+        if let Some(base) = &composition.base {
+            if contributor == base {
+                errors.push(ProfileValidationError::CompositionBaseAlsoContributor {
+                    composition: composition_id.clone(),
+                    profile: contributor.clone(),
+                });
+            }
+        }
+
+        if !seen.insert(contributor.clone()) {
+            errors.push(ProfileValidationError::CompositionDuplicateContributor {
+                composition: composition_id.clone(),
+                profile: contributor.clone(),
+            });
+        }
+
+        validate_composition_member(
+            profiles,
+            composition_id,
+            CompositionMemberRole::Contributor,
+            contributor,
+            errors,
+        );
+    }
+}
+
+fn validate_composition_member(
+    profiles: &Profiles,
+    composition: &ProfileId,
+    role: CompositionMemberRole,
+    member: &ProfileId,
+    errors: &mut Vec<ProfileValidationError>,
+) {
+    if composition == member {
+        errors.push(ProfileValidationError::CompositionSelfReference {
+            composition: composition.clone(),
+            role,
+        });
+        return;
+    }
+
+    match profiles.items.get(member) {
+        None => errors.push(ProfileValidationError::CompositionMemberNotFound {
+            composition: composition.clone(),
+            role,
+            profile: member.clone(),
+        }),
+        Some(item) if !item.definition.is_direct_file_config() => errors.push(
+            ProfileValidationError::CompositionMemberNotDirectFileConfig {
+                composition: composition.clone(),
+                role,
+                profile: member.clone(),
+            },
+        ),
+        Some(_) => {}
+    }
+}
+
+fn validate_source(
+    profile: &ProfileId,
+    source: &ProfileSource,
+    errors: &mut Vec<ProfileValidationError>,
+) {
+    if let ProfileSource::Remote { url, option, .. } = source {
+        if !matches!(url.scheme(), "http" | "https") {
+            errors.push(ProfileValidationError::UnsupportedRemoteUrlScheme {
+                profile: profile.clone(),
+                scheme: url.scheme().to_owned(),
+            });
+        }
+        if option.update_interval_minutes == 0 {
+            errors.push(ProfileValidationError::RemoteUpdateIntervalIsZero {
+                profile: profile.clone(),
+            });
+        }
+    }
 }
 
 fn default_valid() -> Vec<String> {
@@ -155,71 +428,11 @@ fn default_valid() -> Vec<String> {
     ]
 }
 
-fn retain_existing_refs(
-    items: &IndexMap<ProfileId, ProfileItem>,
-    refs: &mut Vec<ProfileId>,
-) -> Vec<ProfileId> {
-    let mut removed = Vec::new();
-    refs.retain(|uid| {
-        let keep = items.contains_key(uid);
-        if !keep {
-            removed.push(uid.clone());
-        }
-        keep
-    });
-    removed
-}
-
-/// Decode either a single bare string or a sequence of strings into a `Vec<T>`,
-/// matching the legacy `current` wire format.
-fn deserialize_single_or_vec<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: FromStr,
-    T::Err: fmt::Display,
-{
-    struct StringOrVec<T>(std::marker::PhantomData<T>);
-
-    impl<'de, T> Visitor<'de> for StringOrVec<T>
-    where
-        T: FromStr,
-        T::Err: fmt::Display,
-    {
-        type Value = Vec<T>;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a string or a sequence of strings")
-        }
-
-        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-        where
-            E: serde::de::Error,
-        {
-            T::from_str(value)
-                .map(|value| vec![value])
-                .map_err(E::custom)
-        }
-
-        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-        where
-            A: SeqAccess<'de>,
-        {
-            let mut values = Vec::new();
-            while let Some(value) = seq.next_element::<String>()? {
-                values.push(T::from_str(&value).map_err(A::Error::custom)?);
-            }
-            Ok(values)
-        }
-    }
-
-    deserializer.deserialize_any(StringOrVec(std::marker::PhantomData))
-}
-
-/// Serde glue that keeps the on-disk `items` shape a YAML sequence
-/// (`items: [{uid, ...}]`) while the in-memory model is an [`IndexMap`] keyed by
-/// uid. Duplicate uids keep the first occurrence and are logged.
+/// Serde glue: sequence on disk, ordered uid map in memory. Duplicate ids are
+/// rejected rather than silently dropping one item.
 mod items_serde {
     use super::*;
+    use serde::de::Error as _;
 
     pub fn serialize<S>(
         items: &IndexMap<ProfileId, ProfileItem>,
@@ -239,19 +452,17 @@ mod items_serde {
     {
         let items = Vec::<ProfileItem>::deserialize(deserializer)?;
         let mut map = IndexMap::with_capacity(items.len());
-        let mut duplicates = Vec::new();
 
         for item in items {
-            match map.entry(item.meta.uid.clone()) {
+            let uid = item.uid.clone();
+            match map.entry(uid.clone()) {
                 Entry::Vacant(entry) => {
                     entry.insert(item);
                 }
-                Entry::Occupied(entry) => duplicates.push(entry.key().clone()),
+                Entry::Occupied(_) => {
+                    return Err(D::Error::custom(format!("duplicate profile id: {uid}")));
+                }
             }
-        }
-
-        if !duplicates.is_empty() {
-            tracing::warn!(?duplicates, "duplicate profile ids ignored");
         }
 
         Ok(map)

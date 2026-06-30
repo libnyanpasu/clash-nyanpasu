@@ -1,0 +1,3 @@
+[submodule "nyanpasu-service"]
+	path = nyanpasu-service
+	url = https://github.com/libnyanpasu/nyanpasu-service.git

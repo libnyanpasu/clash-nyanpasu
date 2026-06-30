@@ -22,7 +22,7 @@
     "@nyanpasu/utils": "workspace:^",
     "@paper-design/shaders-react": "0.0.76",
     "@radix-ui/react-use-controllable-state": "1.2.3",
-    "@tailwindcss/postcss": "4.3.1",
+    "@tailwindcss/postcss": "4.3.2",
     "@tanstack/react-table": "8.21.3",
     "@tanstack/react-virtual": "3.14.4",
     "@tanstack/router-zod-adapter": "1.81.5",

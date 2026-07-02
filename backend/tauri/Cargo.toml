@@ -266,8 +266,8 @@ windows-sys = { version = "0.61", features = [
 ] }
 # windows-core and webview2-com must stay in lockstep with the versions used
 # by tauri/wry, since we cast COM interfaces obtained from tauri's webview.
-windows-core = "0.61"
-webview2-com = "0.38"
+windows-core = "0.62"
+webview2-com = "0.39"
 
 [features]
 default = ["custom-protocol", "default-meta"]

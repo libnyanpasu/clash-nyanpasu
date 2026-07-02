@@ -56,12 +56,12 @@
     "prepare:check": "deno run -A scripts/check.ts"
   },
   "dependencies": {
-    "@prettier/plugin-oxc": "0.1.4",
+    "@prettier/plugin-oxc": "0.2.0",
     "husky": "9.1.7"
   },
   "devDependencies": {
-    "@commitlint/cli": "21.1.0",
-    "@commitlint/config-conventional": "21.1.0",
+    "@commitlint/cli": "21.2.0",
+    "@commitlint/config-conventional": "21.2.0",
     "@ianvs/prettier-plugin-sort-imports": "4.7.1",
     "@tauri-apps/cli": "2.11.4",
     "@types/node": "24.13.2",
@@ -72,7 +72,7 @@
     "postcss": "8.5.16",
     "postcss-html": "1.8.1",
     "postcss-scss": "4.0.9",
-    "prettier": "3.8.5",
+    "prettier": "3.9.4",
     "prettier-plugin-tailwindcss": "0.8.0",
     "prettier-plugin-toml": "2.0.6",
     "stylelint": "17.14.0",

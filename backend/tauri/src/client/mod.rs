@@ -12,7 +12,10 @@ use self::{
     state::{StateClient, VergePatchRoute, route_verge_patch},
 };
 use crate::{
-    bridge::{clash::LegacyClashBridge, verge::LegacyVergeBridge, window::LegacyWindowBridge},
+    bridge::{
+        clash::LegacyClashBridge, legacy_iverge_from_typed, typed_config_from_legacy,
+        verge::LegacyVergeBridge, window::LegacyWindowBridge,
+    },
     config::{Config, IVerge, Profiles, ProfilesBuilder},
     core::{CoreManager, RunType},
     state::{
@@ -224,6 +227,20 @@ impl NyanpasuClient {
 
     async fn replace_verge_unlocked(&self, state: IVerge) -> Result<()> {
         self.inner.state.replace_verge(state).await?;
+        self.reseed_typed_config_from_legacy().await
+    }
+
+    async fn reseed_typed_config_from_legacy(&self) -> Result<()> {
+        let Some(typed) = self.inner.typed_config.as_ref() else {
+            return Ok(());
+        };
+
+        let legacy = self.inner.state.get_verge().await?;
+        let (app, session, clash) = typed_config_from_legacy(&legacy)?;
+
+        typed.application.clone().replace(app).await?;
+        typed.session_state.clone().replace(session).await?;
+        typed.clash_config.clone().replace(clash).await?;
         Ok(())
     }
 
@@ -270,7 +287,15 @@ impl NyanpasuClient {
     }
 
     pub async fn get_verge_config(&self) -> Result<IVerge> {
-        Ok(self.inner.state.get_verge().await?)
+        let Some(typed) = self.inner.typed_config.as_ref() else {
+            return Ok(self.inner.state.get_verge().await?);
+        };
+
+        let base = self.inner.state.get_verge().await?;
+        let app = typed.application.clone().get().await?.state;
+        let session = typed.session_state.clone().get().await?.state;
+        let clash = typed.clash_config.clone().get().await?.state;
+        Ok(legacy_iverge_from_typed(base, &app, &session, &clash)?)
     }
 
     pub async fn patch_verge_config(&self, payload: IVerge) -> Result<()> {
@@ -280,6 +305,7 @@ impl NyanpasuClient {
             VergePatchRoute::PureConfig => {
                 let _guard = self.inner.verge_update_lock.lock().await;
                 self.inner.state.patch_verge(payload).await?;
+                self.reseed_typed_config_from_legacy().await?;
             }
             VergePatchRoute::LegacySideEffects => {
                 self.run_legacy_verge_mutation(|| crate::feat::patch_verge(payload))
@@ -331,6 +357,8 @@ mod tests {
         state::mirror::{ClashLegacyBridge, VergeLegacyBridge, WindowLegacyBridge},
     };
     use camino::Utf8PathBuf;
+    use nyanpasu_config::state::window::{WindowLabel, WindowState};
+    use std::collections::BTreeMap;
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
 
@@ -457,11 +485,33 @@ mod tests {
                 .expect("app replace should succeed");
             assert!(client.get_app_config().await.unwrap().enable_silent_start);
 
-            let session_patch = PersistentState::new_empty_patch();
+            let window_label = WindowLabel("main".into());
+            let window_state = WindowState {
+                width: 1024,
+                height: 768,
+                x: 10,
+                y: 20,
+                maximized: false,
+                fullscreen: false,
+            };
+            let mut session_patch = PersistentState::new_empty_patch();
+            session_patch.window_state = Some(BTreeMap::from([(
+                window_label.clone(),
+                window_state.clone(),
+            )]));
             client
                 .patch_session_state(session_patch)
                 .await
                 .expect("session patch should succeed");
+            assert_eq!(
+                client
+                    .get_session_state()
+                    .await
+                    .unwrap()
+                    .window_state
+                    .get(&window_label),
+                Some(&window_state)
+            );
 
             client
                 .replace_session_state(PersistentState::default())
@@ -489,6 +539,99 @@ mod tests {
                 .await
                 .expect("clash replace should succeed");
             assert!(!client.get_clash_config().await.unwrap().enable_tun_mode);
+        });
+    }
+
+    #[test]
+    fn get_verge_config_composes_typed_actor_snapshots() {
+        let (state, dir) = test_state_client();
+
+        tauri::async_runtime::block_on(async {
+            let typed_config = test_typed_config_clients(&dir).await;
+            let client = NyanpasuClient::with_state_and_typed_config(
+                Arc::new(NoopUiEventSink),
+                state,
+                Some(typed_config),
+            );
+
+            let mut app_patch = NyanpasuAppConfig::new_empty_patch();
+            app_patch.enable_system_proxy = Some(true);
+            client
+                .patch_app_config(app_patch)
+                .await
+                .expect("app patch should succeed");
+
+            let window_label = WindowLabel("main".into());
+            let window_state = WindowState {
+                width: 1024,
+                height: 768,
+                x: 10,
+                y: 20,
+                maximized: false,
+                fullscreen: false,
+            };
+            let mut session_patch = PersistentState::new_empty_patch();
+            session_patch.window_state =
+                Some(BTreeMap::from([(window_label, window_state.clone())]));
+            client
+                .patch_session_state(session_patch)
+                .await
+                .expect("session patch should succeed");
+
+            let mut clash_patch = ClashConfig::new_empty_patch();
+            clash_patch.enable_tun_mode = Some(true);
+            client
+                .patch_clash_config(clash_patch)
+                .await
+                .expect("clash patch should succeed");
+
+            let verge = client
+                .get_verge_config()
+                .await
+                .expect("legacy verge config should compose from typed snapshots");
+            assert_eq!(verge.enable_system_proxy, Some(true));
+            assert_eq!(verge.enable_tun_mode, Some(true));
+            assert_eq!(
+                verge.window_size_state.as_ref().map(|state| state.width),
+                Some(window_state.width)
+            );
+        });
+    }
+
+    #[test]
+    fn legacy_patch_then_get_verge_config_preserves_contract() {
+        let (state, dir) = test_state_client();
+
+        tauri::async_runtime::block_on(async {
+            let typed_config = test_typed_config_clients(&dir).await;
+            let client = NyanpasuClient::with_state_and_typed_config(
+                Arc::new(NoopUiEventSink),
+                state,
+                Some(typed_config),
+            );
+
+            client
+                .patch_verge_config(IVerge {
+                    theme_color: Some("#112233".into()),
+                    ..IVerge::default()
+                })
+                .await
+                .expect("legacy patch should succeed");
+
+            let verge = client
+                .get_verge_config()
+                .await
+                .expect("legacy verge config should read patched value");
+            assert_eq!(verge.theme_color.as_deref(), Some("#112233"));
+            assert_eq!(
+                client
+                    .get_app_config()
+                    .await
+                    .unwrap()
+                    .theme_color
+                    .to_string(),
+                "#112233"
+            );
         });
     }
 

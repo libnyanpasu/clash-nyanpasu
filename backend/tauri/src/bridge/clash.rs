@@ -29,7 +29,7 @@ impl ClashLegacyBridge for LegacyClashBridge {
     }
 }
 
-fn clash_config_from_legacy(
+pub(crate) fn clash_config_from_legacy(
     legacy_verge: &IVerge,
     legacy_clash: &Mapping,
 ) -> anyhow::Result<ClashConfig> {
@@ -97,7 +97,16 @@ fn mirror_clash_overrides(snap: &ClashConfig) -> anyhow::Result<()> {
 fn mirror_clash_verge_fields(snap: &ClashConfig) -> anyhow::Result<()> {
     let verge = Config::verge();
     let mut draft = verge.draft();
+    apply_clash_config_to_legacy_verge(&mut draft, snap)?;
+    drop(draft);
+    verge.apply();
+    Ok(())
+}
 
+pub(crate) fn apply_clash_config_to_legacy_verge(
+    draft: &mut IVerge,
+    snap: &ClashConfig,
+) -> anyhow::Result<()> {
     draft.enable_tun_mode = Some(snap.enable_tun_mode);
     draft.web_ui_list = Some(snap.web_ui_list.clone());
     draft.enable_clash_fields = Some(snap.enable_clash_fields);
@@ -116,8 +125,6 @@ fn mirror_clash_verge_fields(snap: &ClashConfig) -> anyhow::Result<()> {
     draft.break_when_profile_change = Some(profile_change);
     draft.break_when_mode_change = Some(mode_change);
 
-    drop(draft);
-    verge.apply();
     Ok(())
 }
 

@@ -16,7 +16,7 @@ impl VergeLegacyBridge for LegacyVergeBridge {
         // Remove when get_verge_config and direct Config::verge() readers use typed facade data.
         let verge = Config::verge();
         let mut draft = verge.draft();
-        mirror_application_fields(&mut draft, snap)?;
+        apply_app_config_to_legacy_verge(&mut draft, snap)?;
         drop(draft);
         verge.apply();
         Ok(())
@@ -28,7 +28,7 @@ impl VergeLegacyBridge for LegacyVergeBridge {
     }
 }
 
-fn application_from_legacy(legacy: &IVerge) -> anyhow::Result<NyanpasuAppConfig> {
+pub(crate) fn application_from_legacy(legacy: &IVerge) -> anyhow::Result<NyanpasuAppConfig> {
     let mut next = NyanpasuAppConfig::default();
 
     if let Some(value) = legacy.app_singleton_port {
@@ -141,7 +141,10 @@ fn application_from_legacy(legacy: &IVerge) -> anyhow::Result<NyanpasuAppConfig>
     Ok(next)
 }
 
-fn mirror_application_fields(draft: &mut IVerge, snap: &NyanpasuAppConfig) -> anyhow::Result<()> {
+pub(crate) fn apply_app_config_to_legacy_verge(
+    draft: &mut IVerge,
+    snap: &NyanpasuAppConfig,
+) -> anyhow::Result<()> {
     draft.app_singleton_port = Some(snap.app_singleton_port);
     draft.app_log_level = Some(super::yaml_convert(&snap.app_log_level)?);
     draft.language = Some(super::yaml_convert(&snap.language)?);

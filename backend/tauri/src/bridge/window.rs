@@ -20,7 +20,7 @@ impl WindowLegacyBridge for LegacyWindowBridge {
         // Remove when window state commands and restore paths use SessionStateClient.
         let verge = Config::verge();
         let mut draft = verge.draft();
-        mirror_window_fields(&mut draft, snap)?;
+        apply_session_state_to_legacy_verge(&mut draft, snap)?;
         drop(draft);
         verge.apply();
         Ok(())
@@ -32,7 +32,7 @@ impl WindowLegacyBridge for LegacyWindowBridge {
     }
 }
 
-fn persistent_state_from_legacy(legacy: &IVerge) -> anyhow::Result<PersistentState> {
+pub(crate) fn persistent_state_from_legacy(legacy: &IVerge) -> anyhow::Result<PersistentState> {
     let state = if let Some(window_state) = legacy.window_size_state.as_ref() {
         super::yaml_convert::<_, WindowState>(window_state)?
     } else {
@@ -59,7 +59,10 @@ fn window_state_from_position(position: &[f64]) -> WindowState {
     }
 }
 
-fn mirror_window_fields(draft: &mut IVerge, snap: &PersistentState) -> anyhow::Result<()> {
+pub(crate) fn apply_session_state_to_legacy_verge(
+    draft: &mut IVerge,
+    snap: &PersistentState,
+) -> anyhow::Result<()> {
     draft.window_size_state = snap
         .window_state
         .get(&WindowLabel(MAIN_WINDOW_LABEL.into()))

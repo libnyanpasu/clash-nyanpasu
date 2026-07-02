@@ -1,12 +1,25 @@
+mod application;
+mod clash_config;
 mod error;
 mod event_sink;
+mod session_state;
 mod state;
 
-use self::state::{StateClient, VergePatchRoute, route_verge_patch};
+use self::{
+    application::ApplicationClient,
+    clash_config::ClashConfigClient,
+    session_state::SessionStateClient,
+    state::{StateClient, VergePatchRoute, route_verge_patch},
+};
 use crate::{
     config::{Config, IVerge, Profiles, ProfilesBuilder},
     core::{CoreManager, RunType},
     state::verge::VergeMirror,
+};
+use nyanpasu_config::{
+    application::{NyanpasuAppConfig, NyanpasuAppConfigPatch},
+    clash::config::{ClashConfig, ClashConfigPatch},
+    state::{PersistentState, PersistentStatePatch},
 };
 use nyanpasu_ipc::api::status::CoreState;
 use std::{borrow::Cow, future::Future, sync::Arc};
@@ -20,9 +33,18 @@ pub struct NyanpasuClient {
     inner: Arc<NyanpasuClientInner>,
 }
 
+// Phase 1 typed infrastructure only. Composition-root wiring is deferred to Phase 2;
+// legacy frontend commands must continue using the existing `StateClient` path until then.
+struct TypedConfigClients {
+    application: ApplicationClient,
+    session_state: SessionStateClient,
+    clash_config: ClashConfigClient,
+}
+
 struct NyanpasuClientInner {
     ui: Arc<dyn UiEventSink>,
     state: StateClient,
+    typed_config: Option<TypedConfigClients>,
     /// Serializes all verge mutations funneled through this client (IPC patches,
     /// legacy reseeds). The actor serializes its own state, but the legacy path holds
     /// `Config::verge()` draft across awaits, so client-level mutations must not interleave.
@@ -37,13 +59,81 @@ impl NyanpasuClient {
     }
 
     fn with_state(ui: Arc<dyn UiEventSink>, state: StateClient) -> Self {
+        Self::with_state_and_typed_config(ui, state, None)
+    }
+
+    fn with_state_and_typed_config(
+        ui: Arc<dyn UiEventSink>,
+        state: StateClient,
+        typed_config: Option<TypedConfigClients>,
+    ) -> Self {
         Self {
             inner: Arc::new(NyanpasuClientInner {
                 ui,
                 state,
+                typed_config,
                 verge_update_lock: Mutex::new(()),
             }),
         }
+    }
+
+    fn typed_config(&self) -> Result<&TypedConfigClients> {
+        self.inner.typed_config.as_ref().ok_or_else(|| {
+            ClientError::Custom(
+                "typed config actors are not initialized in the legacy setup path".into(),
+            )
+        })
+    }
+
+    pub async fn get_app_config(&self) -> Result<NyanpasuAppConfig> {
+        let client = self.typed_config()?.application.clone();
+        Ok(client.get().await?.state)
+    }
+
+    pub async fn patch_app_config(&self, patch: NyanpasuAppConfigPatch) -> Result<()> {
+        let client = self.typed_config()?.application.clone();
+        client.patch(patch).await?;
+        Ok(())
+    }
+
+    pub async fn replace_app_config(&self, state: NyanpasuAppConfig) -> Result<()> {
+        let client = self.typed_config()?.application.clone();
+        client.replace(state).await?;
+        Ok(())
+    }
+
+    pub async fn get_session_state(&self) -> Result<PersistentState> {
+        let client = self.typed_config()?.session_state.clone();
+        Ok(client.get().await?.state)
+    }
+
+    pub async fn patch_session_state(&self, patch: PersistentStatePatch) -> Result<()> {
+        let client = self.typed_config()?.session_state.clone();
+        client.patch(patch).await?;
+        Ok(())
+    }
+
+    pub async fn replace_session_state(&self, state: PersistentState) -> Result<()> {
+        let client = self.typed_config()?.session_state.clone();
+        client.replace(state).await?;
+        Ok(())
+    }
+
+    pub async fn get_clash_config(&self) -> Result<ClashConfig> {
+        let client = self.typed_config()?.clash_config.clone();
+        Ok(client.get().await?.state)
+    }
+
+    pub async fn patch_clash_config(&self, patch: ClashConfigPatch) -> Result<()> {
+        let client = self.typed_config()?.clash_config.clone();
+        client.patch(patch).await?;
+        Ok(())
+    }
+
+    pub async fn replace_clash_config(&self, state: ClashConfig) -> Result<()> {
+        let client = self.typed_config()?.clash_config.clone();
+        client.replace(state).await?;
+        Ok(())
     }
 
     pub async fn replace_verge_config(&self, state: IVerge) -> Result<()> {
@@ -142,18 +232,88 @@ fn legacy_verge_mirror() -> VergeMirror {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{client::event_sink::NoopUiEventSink, ipc::IpcError};
+    use crate::{
+        client::event_sink::NoopUiEventSink,
+        ipc::IpcError,
+        state::mirror::{ClashLegacyBridge, VergeLegacyBridge, WindowLegacyBridge},
+    };
     use camino::Utf8PathBuf;
-    use tempfile::tempdir;
+    use struct_patch::Patch;
+    use tempfile::{TempDir, tempdir};
 
-    fn test_state_client() -> (StateClient, tempfile::TempDir) {
+    struct NoopVergeBridge;
+
+    impl VergeLegacyBridge for NoopVergeBridge {
+        fn mirror(&self, _snap: &NyanpasuAppConfig) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        fn snapshot_legacy(&self) -> anyhow::Result<NyanpasuAppConfig> {
+            Ok(NyanpasuAppConfig::default())
+        }
+    }
+
+    struct NoopWindowBridge;
+
+    impl WindowLegacyBridge for NoopWindowBridge {
+        fn mirror(&self, _snap: &PersistentState) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        fn snapshot_legacy(&self) -> anyhow::Result<PersistentState> {
+            Ok(PersistentState::default())
+        }
+    }
+
+    struct NoopClashBridge;
+
+    impl ClashLegacyBridge for NoopClashBridge {
+        fn mirror(&self, _snap: &ClashConfig) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        fn snapshot_legacy(&self) -> anyhow::Result<ClashConfig> {
+            Ok(ClashConfig::default())
+        }
+    }
+
+    fn temp_config_path(dir: &TempDir, file_name: &str) -> Utf8PathBuf {
+        Utf8PathBuf::from_path_buf(dir.path().join(file_name)).expect("temp path should be UTF-8")
+    }
+
+    fn test_state_client() -> (StateClient, TempDir) {
         let dir = tempdir().expect("tempdir should be created");
-        let path = Utf8PathBuf::from_path_buf(dir.path().join("nyanpasu-config.yaml"))
-            .expect("temp path should be UTF-8");
+        let path = temp_config_path(&dir, "nyanpasu-config.yaml");
         let mirror: VergeMirror = Arc::new(|_| Ok(()));
         let state = StateClient::new_with_path(path, IVerge::default(), mirror)
             .expect("state client should be created");
         (state, dir)
+    }
+
+    async fn test_typed_config_clients(dir: &TempDir) -> TypedConfigClients {
+        TypedConfigClients {
+            application: ApplicationClient::new_with_path(
+                temp_config_path(dir, "application.yaml"),
+                NyanpasuAppConfig::default(),
+                Arc::new(NoopVergeBridge),
+            )
+            .await
+            .expect("application client should be created"),
+            session_state: SessionStateClient::new_with_path(
+                temp_config_path(dir, "session-state.yaml"),
+                PersistentState::default(),
+                Arc::new(NoopWindowBridge),
+            )
+            .await
+            .expect("session state client should be created"),
+            clash_config: ClashConfigClient::new_with_path(
+                temp_config_path(dir, "clash-config.yaml"),
+                ClashConfig::default(),
+                Arc::new(NoopClashBridge),
+            )
+            .await
+            .expect("clash config client should be created"),
+        }
     }
 
     #[test]
@@ -161,6 +321,82 @@ mod tests {
         let (state, _dir) = test_state_client();
         let client = NyanpasuClient::with_state(Arc::new(NoopUiEventSink), state);
         let _ = client.clone();
+    }
+
+    #[test]
+    fn typed_config_facade_is_not_initialized_by_legacy_setup() {
+        let (state, _dir) = test_state_client();
+        let client = NyanpasuClient::with_state(Arc::new(NoopUiEventSink), state);
+
+        tauri::async_runtime::block_on(async {
+            assert!(matches!(
+                client.get_app_config().await,
+                Err(ClientError::Custom(message)) if message.contains("typed config actors")
+            ));
+        });
+    }
+
+    #[test]
+    fn typed_config_facade_delegates_to_typed_clients() {
+        let (state, dir) = test_state_client();
+
+        tauri::async_runtime::block_on(async {
+            let typed_config = test_typed_config_clients(&dir).await;
+            let client = NyanpasuClient::with_state_and_typed_config(
+                Arc::new(NoopUiEventSink),
+                state,
+                Some(typed_config),
+            );
+
+            let mut app_patch = NyanpasuAppConfig::new_empty_patch();
+            app_patch.enable_system_proxy = Some(true);
+            client
+                .patch_app_config(app_patch)
+                .await
+                .expect("app patch should succeed");
+            assert!(client.get_app_config().await.unwrap().enable_system_proxy);
+
+            let mut app_replacement = NyanpasuAppConfig::default();
+            app_replacement.enable_silent_start = true;
+            client
+                .replace_app_config(app_replacement)
+                .await
+                .expect("app replace should succeed");
+            assert!(client.get_app_config().await.unwrap().enable_silent_start);
+
+            let session_patch = PersistentState::new_empty_patch();
+            client
+                .patch_session_state(session_patch)
+                .await
+                .expect("session patch should succeed");
+
+            client
+                .replace_session_state(PersistentState::default())
+                .await
+                .expect("session replace should succeed");
+            assert!(
+                client
+                    .get_session_state()
+                    .await
+                    .unwrap()
+                    .window_state
+                    .is_empty()
+            );
+
+            let mut clash_patch = ClashConfig::new_empty_patch();
+            clash_patch.enable_tun_mode = Some(true);
+            client
+                .patch_clash_config(clash_patch)
+                .await
+                .expect("clash patch should succeed");
+            assert!(client.get_clash_config().await.unwrap().enable_tun_mode);
+
+            client
+                .replace_clash_config(ClashConfig::default())
+                .await
+                .expect("clash replace should succeed");
+            assert!(!client.get_clash_config().await.unwrap().enable_tun_mode);
+        });
     }
 
     #[test]

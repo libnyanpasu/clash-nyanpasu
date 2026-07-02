@@ -8,7 +8,7 @@ use specta::Type;
 use std::collections::BTreeMap;
 use struct_patch::Patch;
 
-#[derive(Debug, Default, Serialize, Deserialize, Type, Patch)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Type, Patch)]
 #[patch(attribute(serde_with::skip_serializing_none))]
 #[patch(attribute(derive(Debug, Default, Serialize, Deserialize, specta::Type)))]
 pub struct PersistentState {

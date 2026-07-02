@@ -25,17 +25,26 @@ struct ClashConfigClientInner {
 }
 
 impl ClashConfigClient {
-    pub(crate) async fn new_with_path(
+    pub(crate) async fn new(
         config_path: Utf8PathBuf,
-        initial: ClashConfig,
+        seed: ClashConfig,
         bridge: Arc<dyn ClashLegacyBridge>,
     ) -> anyhow::Result<Self> {
-        let manager = PersistentStateManagerSetup::<ClashConfig>::builder()
+        let should_load = config_path.exists();
+        let setup = PersistentStateManagerSetup::<ClashConfig>::builder()
             .config_path(config_path)
-            .assemble()
-            .from_state(initial)
-            .await
-            .context("failed to initialize clash persistent state manager")?;
+            .assemble();
+        let manager = if should_load {
+            setup
+                .load()
+                .await
+                .context("failed to load clash persistent state manager")?
+        } else {
+            setup
+                .from_state(seed)
+                .await
+                .context("failed to initialize clash persistent state manager")?
+        };
 
         let actor_ref = Actor::spawn(
             None,
@@ -122,7 +131,7 @@ mod tests {
 
     async fn test_client() -> (ClashConfigClient, TempDir) {
         let dir = tempdir().expect("tempdir should be created");
-        let client = ClashConfigClient::new_with_path(
+        let client = ClashConfigClient::new(
             temp_config_path(&dir),
             ClashConfig::default(),
             Arc::new(NoopClashBridge),

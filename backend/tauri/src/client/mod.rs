@@ -12,33 +12,95 @@ use self::{
     state::{StateClient, VergePatchRoute, route_verge_patch},
 };
 use crate::{
+    bridge::{clash::LegacyClashBridge, verge::LegacyVergeBridge, window::LegacyWindowBridge},
     config::{Config, IVerge, Profiles, ProfilesBuilder},
     core::{CoreManager, RunType},
-    state::verge::VergeMirror,
+    state::{
+        mirror::{
+            ClashLegacyBridge as ClashLegacyBridgeTrait,
+            VergeLegacyBridge as VergeLegacyBridgeTrait,
+            WindowLegacyBridge as WindowLegacyBridgeTrait,
+        },
+        verge::VergeMirror,
+    },
+    utils::path::PathResolver,
 };
+use camino::Utf8PathBuf;
 use nyanpasu_config::{
     application::{NyanpasuAppConfig, NyanpasuAppConfigPatch},
     clash::config::{ClashConfig, ClashConfigPatch},
     state::{PersistentState, PersistentStatePatch},
 };
 use nyanpasu_ipc::api::status::CoreState;
-use std::{borrow::Cow, future::Future, sync::Arc};
+use std::{borrow::Cow, future::Future, path::PathBuf, sync::Arc};
 use tokio::sync::Mutex;
 
 pub use error::{ClientError, Result};
 pub use event_sink::{TauriUiEventSink, UiEventSink};
+
+pub struct ClientSetupArgs {
+    pub ui: Arc<dyn UiEventSink>,
+    pub paths: PathResolver,
+    pub bridges: LegacyBridgeSet,
+}
+
+#[derive(Clone)]
+pub struct LegacyBridgeSet {
+    pub verge: Arc<dyn VergeLegacyBridgeTrait>,
+    pub window: Arc<dyn WindowLegacyBridgeTrait>,
+    pub clash: Arc<dyn ClashLegacyBridgeTrait>,
+}
+
+impl LegacyBridgeSet {
+    pub fn tauri() -> Self {
+        Self {
+            verge: Arc::new(LegacyVergeBridge),
+            window: Arc::new(LegacyWindowBridge),
+            clash: Arc::new(LegacyClashBridge),
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct NyanpasuClient {
     inner: Arc<NyanpasuClientInner>,
 }
 
-// Phase 1 typed infrastructure only. Composition-root wiring is deferred to Phase 2;
-// legacy frontend commands must continue using the existing `StateClient` path until then.
 struct TypedConfigClients {
     application: ApplicationClient,
     session_state: SessionStateClient,
     clash_config: ClashConfigClient,
+}
+
+impl TypedConfigClients {
+    async fn new(paths: PathResolver, bridges: LegacyBridgeSet) -> anyhow::Result<Self> {
+        let application = ApplicationClient::new(
+            utf8_path(paths.application_config_path())?,
+            bridges.verge.snapshot_legacy()?,
+            bridges.verge.clone(),
+        )
+        .await?;
+
+        let session_state = SessionStateClient::new(
+            utf8_path(paths.session_state_path())?,
+            bridges.window.snapshot_legacy()?,
+            bridges.window.clone(),
+        )
+        .await?;
+
+        let clash_config = ClashConfigClient::new(
+            utf8_path(paths.clash_config_path())?,
+            bridges.clash.snapshot_legacy()?,
+            bridges.clash.clone(),
+        )
+        .await?;
+
+        Ok(Self {
+            application,
+            session_state,
+            clash_config,
+        })
+    }
 }
 
 struct NyanpasuClientInner {
@@ -53,11 +115,30 @@ struct NyanpasuClientInner {
 
 impl NyanpasuClient {
     pub fn try_new(ui: Arc<dyn UiEventSink>) -> anyhow::Result<Self> {
-        let initial = Config::verge().data().clone();
-        let state = StateClient::new(initial, legacy_verge_mirror())?;
-        Ok(Self::with_state(ui, state))
+        Self::try_new_with_args(ClientSetupArgs {
+            ui,
+            paths: PathResolver::from_env()?,
+            bridges: LegacyBridgeSet::tauri(),
+        })
     }
 
+    pub fn try_new_with_args(args: ClientSetupArgs) -> anyhow::Result<Self> {
+        let ClientSetupArgs { ui, paths, bridges } = args;
+        let initial = Config::verge().data().clone();
+        let state = StateClient::new_with_path(
+            utf8_path(paths.nyanpasu_config_path())?,
+            initial,
+            legacy_verge_mirror(),
+        )?;
+        let typed_config = tauri::async_runtime::block_on(TypedConfigClients::new(paths, bridges))?;
+        Ok(Self::with_state_and_typed_config(
+            ui,
+            state,
+            Some(typed_config),
+        ))
+    }
+
+    #[cfg(test)]
     fn with_state(ui: Arc<dyn UiEventSink>, state: StateClient) -> Self {
         Self::with_state_and_typed_config(ui, state, None)
     }
@@ -213,9 +294,16 @@ impl NyanpasuClient {
     }
 }
 
-pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(manager: &M) -> anyhow::Result<()> {
+pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(
+    manager: &M,
+    paths: PathResolver,
+) -> anyhow::Result<()> {
     let sink: Arc<dyn UiEventSink> = Arc::new(TauriUiEventSink::new(manager.app_handle().clone()));
-    manager.manage(NyanpasuClient::try_new(sink)?);
+    manager.manage(NyanpasuClient::try_new_with_args(ClientSetupArgs {
+        ui: sink,
+        paths,
+        bridges: LegacyBridgeSet::tauri(),
+    })?);
     Ok(())
 }
 
@@ -227,6 +315,11 @@ fn legacy_verge_mirror() -> VergeMirror {
         Config::verge().apply();
         Ok(())
     })
+}
+
+fn utf8_path(path: PathBuf) -> anyhow::Result<Utf8PathBuf> {
+    Utf8PathBuf::from_path_buf(path)
+        .map_err(|path| anyhow::anyhow!("config path is not UTF-8: {}", path.display()))
 }
 
 #[cfg(test)]
@@ -292,21 +385,21 @@ mod tests {
 
     async fn test_typed_config_clients(dir: &TempDir) -> TypedConfigClients {
         TypedConfigClients {
-            application: ApplicationClient::new_with_path(
+            application: ApplicationClient::new(
                 temp_config_path(dir, "application.yaml"),
                 NyanpasuAppConfig::default(),
                 Arc::new(NoopVergeBridge),
             )
             .await
             .expect("application client should be created"),
-            session_state: SessionStateClient::new_with_path(
+            session_state: SessionStateClient::new(
                 temp_config_path(dir, "session-state.yaml"),
                 PersistentState::default(),
                 Arc::new(NoopWindowBridge),
             )
             .await
             .expect("session state client should be created"),
-            clash_config: ClashConfigClient::new_with_path(
+            clash_config: ClashConfigClient::new(
                 temp_config_path(dir, "clash-config.yaml"),
                 ClashConfig::default(),
                 Arc::new(NoopClashBridge),
@@ -396,6 +489,32 @@ mod tests {
                 .await
                 .expect("clash replace should succeed");
             assert!(!client.get_clash_config().await.unwrap().enable_tun_mode);
+        });
+    }
+
+    #[test]
+    fn try_new_with_args_constructs_typed_config_facade() {
+        let dir = tempdir().expect("tempdir should be created");
+        let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
+        let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
+            ui: Arc::new(NoopUiEventSink),
+            paths,
+            bridges: LegacyBridgeSet {
+                verge: Arc::new(NoopVergeBridge),
+                window: Arc::new(NoopWindowBridge),
+                clash: Arc::new(NoopClashBridge),
+            },
+        })
+        .expect("client should construct with typed config actors");
+
+        tauri::async_runtime::block_on(async {
+            let mut patch = NyanpasuAppConfig::new_empty_patch();
+            patch.enable_system_proxy = Some(true);
+            client
+                .patch_app_config(patch)
+                .await
+                .expect("typed app patch should succeed");
+            assert!(client.get_app_config().await.unwrap().enable_system_proxy);
         });
     }
 

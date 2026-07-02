@@ -105,6 +105,21 @@ impl PathResolver {
         self.config_dir.join(dirs::NYANPASU_CONFIG)
     }
 
+    /// Typed application config path used by the ApplicationActor.
+    pub fn application_config_path(&self) -> PathBuf {
+        self.config_dir.join("application.yaml")
+    }
+
+    /// Typed session/window state path used by the SessionStateActor.
+    pub fn session_state_path(&self) -> PathBuf {
+        self.config_dir.join("session-state.yaml")
+    }
+
+    /// Typed persistent Clash config path used by the ClashConfigActor.
+    pub fn clash_config_path(&self) -> PathBuf {
+        self.config_dir.join("clash-config.yaml")
+    }
+
     /// `clash-guard-overrides.yaml` file.
     pub fn clash_guard_overrides_path(&self) -> PathBuf {
         self.config_dir.join(dirs::CLASH_CFG_GUARD_OVERRIDES)
@@ -172,6 +187,18 @@ mod tests {
         assert_eq!(
             r.clash_guard_overrides_path(),
             Path::new("/cfg").join(dirs::CLASH_CFG_GUARD_OVERRIDES)
+        );
+        assert_eq!(
+            r.application_config_path(),
+            Path::new("/cfg").join("application.yaml")
+        );
+        assert_eq!(
+            r.session_state_path(),
+            Path::new("/cfg").join("session-state.yaml")
+        );
+        assert_eq!(
+            r.clash_config_path(),
+            Path::new("/cfg").join("clash-config.yaml")
         );
         assert_eq!(r.app_profiles_dir(), Path::new("/cfg").join("profiles"));
         assert_eq!(

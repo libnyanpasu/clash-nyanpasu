@@ -25,17 +25,26 @@ struct SessionStateClientInner {
 }
 
 impl SessionStateClient {
-    pub(crate) async fn new_with_path(
+    pub(crate) async fn new(
         config_path: Utf8PathBuf,
-        initial: PersistentState,
+        seed: PersistentState,
         bridge: Arc<dyn WindowLegacyBridge>,
     ) -> anyhow::Result<Self> {
-        let manager = PersistentStateManagerSetup::<PersistentState>::builder()
+        let should_load = config_path.exists();
+        let setup = PersistentStateManagerSetup::<PersistentState>::builder()
             .config_path(config_path)
-            .assemble()
-            .from_state(initial)
-            .await
-            .context("failed to initialize session persistent state manager")?;
+            .assemble();
+        let manager = if should_load {
+            setup
+                .load()
+                .await
+                .context("failed to load session persistent state manager")?
+        } else {
+            setup
+                .from_state(seed)
+                .await
+                .context("failed to initialize session persistent state manager")?
+        };
 
         let actor_ref = Actor::spawn(
             None,
@@ -124,7 +133,7 @@ mod tests {
 
     async fn test_client() -> (SessionStateClient, TempDir) {
         let dir = tempdir().expect("tempdir should be created");
-        let client = SessionStateClient::new_with_path(
+        let client = SessionStateClient::new(
             temp_config_path(&dir),
             PersistentState::default(),
             Arc::new(NoopWindowBridge),

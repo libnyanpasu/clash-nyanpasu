@@ -1,4 +1,5 @@
 //! Setup logic for the app
+use crate::utils::path::PathResolver;
 use anyhow::Context;
 
 pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), anyhow::Error> {
@@ -10,7 +11,8 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
     })
     .context("Failed to setup the shutdown hook")?;
 
-    crate::client::setup(app).context("Failed to setup nyanpasu client")?;
+    let paths = PathResolver::from_env().context("Failed to resolve app paths")?;
+    crate::client::setup(app, paths).context("Failed to setup nyanpasu client")?;
 
     // FIXME: this is a background setup, so be careful use this state in ipc.
     // crate::logging::setup(app).context("Failed to setup logging")?;

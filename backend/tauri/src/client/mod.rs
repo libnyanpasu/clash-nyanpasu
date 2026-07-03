@@ -29,6 +29,7 @@ use crate::{
     },
     utils::path::PathResolver,
 };
+use anyhow::Context as _;
 use camino::Utf8PathBuf;
 use nyanpasu_config::{
     application::{NyanpasuAppConfig, NyanpasuAppConfigPatch},
@@ -99,11 +100,50 @@ impl TypedConfigClients {
         )
         .await?;
 
-        Ok(Self {
+        let typed = Self {
             application,
             session_state,
             clash_config,
-        })
+        };
+        typed.sync_legacy_mirrors(&bridges).await?;
+        Ok(typed)
+    }
+
+    async fn sync_legacy_mirrors(&self, bridges: &LegacyBridgeSet) -> anyhow::Result<()> {
+        let application = self
+            .application
+            .get()
+            .await
+            .context("failed to read loaded application config")?
+            .state;
+        bridges
+            .verge
+            .mirror(&application)
+            .context("failed to mirror loaded application config into legacy state")?;
+
+        let session_state = self
+            .session_state
+            .get()
+            .await
+            .context("failed to read loaded session state")?
+            .state;
+        bridges
+            .window
+            .mirror(&session_state)
+            .context("failed to mirror loaded session state into legacy state")?;
+
+        let clash_config = self
+            .clash_config
+            .get()
+            .await
+            .context("failed to read loaded clash config")?
+            .state;
+        bridges
+            .clash
+            .mirror(&clash_config)
+            .context("failed to mirror loaded clash config into legacy state")?;
+
+        Ok(())
     }
 }
 
@@ -311,10 +351,26 @@ impl NyanpasuClient {
         };
 
         let base = self.inner.state.get_verge().await?;
-        let app = typed.application.clone().get().await?.state;
-        let session = typed.session_state.clone().get().await?.state;
-        let clash = typed.clash_config.clone().get().await?.state;
-        Ok(legacy_iverge_from_typed(base, &app, &session, &clash)?)
+        let typed_read = async {
+            let app = typed.application.clone().get().await?.state;
+            let session = typed.session_state.clone().get().await?.state;
+            let clash = typed.clash_config.clone().get().await?.state;
+            Ok::<_, ClientError>(legacy_iverge_from_typed(
+                base.clone(),
+                &app,
+                &session,
+                &clash,
+            )?)
+        }
+        .await;
+
+        match typed_read {
+            Ok(verge) => Ok(verge),
+            Err(err) => {
+                log::warn!(target: "app", "typed get_verge_config failed; falling back to legacy state: {err}");
+                Ok(base)
+            }
+        }
     }
 
     pub async fn patch_verge_config(&self, payload: IVerge) -> Result<()> {
@@ -384,7 +440,7 @@ mod tests {
     };
     use camino::Utf8PathBuf;
     use nyanpasu_config::state::window::{WindowLabel, WindowState};
-    use std::collections::BTreeMap;
+    use std::{collections::BTreeMap, sync::Mutex as StdMutex};
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
 
@@ -392,6 +448,24 @@ mod tests {
 
     impl VergeLegacyBridge for NoopVergeBridge {
         fn mirror(&self, _snap: &NyanpasuAppConfig) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        fn snapshot_legacy(&self) -> anyhow::Result<NyanpasuAppConfig> {
+            Ok(NyanpasuAppConfig::default())
+        }
+    }
+
+    struct RecordingVergeBridge {
+        mirrored_theme_color: Arc<StdMutex<Option<String>>>,
+    }
+
+    impl VergeLegacyBridge for RecordingVergeBridge {
+        fn mirror(&self, snap: &NyanpasuAppConfig) -> anyhow::Result<()> {
+            *self
+                .mirrored_theme_color
+                .lock()
+                .expect("mirror capture should not poison") = Some(snap.theme_color.to_string());
             Ok(())
         }
 
@@ -818,6 +892,45 @@ mod tests {
                     .theme_color
                     .as_deref(),
                 Some("#445566")
+            );
+        });
+    }
+
+    #[test]
+    fn typed_setup_mirrors_loaded_state_to_legacy_bridges() {
+        let dir = tempdir().expect("tempdir should be created");
+
+        tauri::async_runtime::block_on(async {
+            let first = test_typed_config_clients(&dir).await;
+            let mut patch = NyanpasuAppConfig::new_empty_patch();
+            patch.theme_color = Some(serde_yaml::from_str("\"#123456\"").unwrap());
+            first
+                .application
+                .patch(patch)
+                .await
+                .expect("typed application patch should persist");
+            drop(first);
+
+            let mirrored_theme_color = Arc::new(StdMutex::new(None));
+            let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
+            let bridges = LegacyBridgeSet {
+                verge: Arc::new(RecordingVergeBridge {
+                    mirrored_theme_color: mirrored_theme_color.clone(),
+                }),
+                window: Arc::new(NoopWindowBridge),
+                clash: Arc::new(NoopClashBridge),
+            };
+
+            let _loaded = TypedConfigClients::new(paths, bridges)
+                .await
+                .expect("typed clients should load and mirror persisted state");
+
+            assert_eq!(
+                mirrored_theme_color
+                    .lock()
+                    .expect("mirror capture should not poison")
+                    .as_deref(),
+                Some("#123456")
             );
         });
     }

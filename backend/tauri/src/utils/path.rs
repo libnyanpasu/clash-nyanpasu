@@ -8,9 +8,9 @@
 //! XDG/Known-Folder lookup) is still delegated to [`dirs`] so there is a single
 //! source of truth for it.
 //!
-//! Only the migration subsystem consumes this module for now. The existing
-//! `dirs::*` call sites are intentionally left untouched and will be migrated to
-//! `PathResolver` in a follow-up change.
+//! The migration subsystem and application composition root consume this module
+//! for now. The existing `dirs::*` call sites are intentionally left untouched
+//! and will be migrated to `PathResolver` in a follow-up change.
 //!
 //! Known remaining coupling, to be removed by the follow-up that makes
 //! `PathResolver` truly own path resolution:

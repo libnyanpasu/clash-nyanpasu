@@ -128,6 +128,7 @@ pub fn route_verge_patch(patch: &IVerge) -> VergePatchRoute {
         || patch.language.is_some()
         || patch.app_log_level.is_some()
         || patch.max_log_files.is_some()
+        || patch.auto_log_clean.is_some()
         || patch.clash_tray_selector.is_some()
         || patch.enable_tray_text.is_some()
         || patch.tray_menu_mode.is_some()
@@ -358,6 +359,10 @@ mod tests {
         assert_legacy!(language: "en".to_string());
         assert_legacy!(app_log_level: LoggingLevel::default());
         assert_legacy!(max_log_files: 7usize);
+        #[allow(deprecated)]
+        {
+            assert_legacy!(auto_log_clean: 7i64);
+        }
         assert_legacy!(clash_tray_selector: ProxiesSelectorMode::default());
         assert_legacy!(enable_tray_text: true);
         assert_legacy!(tray_menu_mode: TrayMenuMode::default());

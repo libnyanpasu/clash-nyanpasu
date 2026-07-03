@@ -13,8 +13,9 @@ use self::{
 };
 use crate::{
     bridge::{
-        clash::LegacyClashBridge, legacy_iverge_from_typed, typed_config_from_legacy,
-        verge::LegacyVergeBridge, window::LegacyWindowBridge,
+        TypedConfigPatchPlan, clash::LegacyClashBridge, legacy_iverge_from_typed,
+        typed_config_from_legacy, typed_patches_from_legacy_patch, verge::LegacyVergeBridge,
+        window::LegacyWindowBridge,
     },
     config::{Config, IVerge, Profiles, ProfilesBuilder},
     core::{CoreManager, RunType},
@@ -24,7 +25,7 @@ use crate::{
             VergeLegacyBridge as VergeLegacyBridgeTrait,
             WindowLegacyBridge as WindowLegacyBridgeTrait,
         },
-        verge::VergeMirror,
+        verge::{VergeMirror, validate_verge_patch},
     },
     utils::path::PathResolver,
 };
@@ -230,6 +231,24 @@ impl NyanpasuClient {
         self.reseed_typed_config_from_legacy().await
     }
 
+    async fn apply_typed_config_patch_plan(&self, plan: TypedConfigPatchPlan) -> Result<()> {
+        let Some(typed) = self.inner.typed_config.as_ref() else {
+            return Ok(());
+        };
+
+        if let Some(patch) = plan.application {
+            typed.application.clone().patch(patch).await?;
+        }
+        if let Some(patch) = plan.session_state {
+            typed.session_state.clone().patch(patch).await?;
+        }
+        if let Some(patch) = plan.clash_config {
+            typed.clash_config.clone().patch(patch).await?;
+        }
+
+        Ok(())
+    }
+
     async fn reseed_typed_config_from_legacy(&self) -> Result<()> {
         let Some(typed) = self.inner.typed_config.as_ref() else {
             return Ok(());
@@ -304,8 +323,15 @@ impl NyanpasuClient {
         match route_verge_patch(&payload) {
             VergePatchRoute::PureConfig => {
                 let _guard = self.inner.verge_update_lock.lock().await;
-                self.inner.state.patch_verge(payload).await?;
-                self.reseed_typed_config_from_legacy().await?;
+                if self.inner.typed_config.is_none() {
+                    self.inner.state.patch_verge(payload).await?;
+                    return Ok(());
+                }
+
+                validate_verge_patch(&payload)?;
+                let base = self.get_verge_config().await?;
+                let plan = typed_patches_from_legacy_patch(base, &payload)?;
+                self.apply_typed_config_patch_plan(plan).await?;
             }
             VergePatchRoute::LegacySideEffects => {
                 self.run_legacy_verge_mutation(|| crate::feat::patch_verge(payload))
@@ -631,6 +657,167 @@ mod tests {
                     .theme_color
                     .to_string(),
                 "#112233"
+            );
+        });
+    }
+
+    #[test]
+    fn patch_verge_config_window_state_updates_session_actor() {
+        let (state, dir) = test_state_client();
+
+        tauri::async_runtime::block_on(async {
+            let typed_config = test_typed_config_clients(&dir).await;
+            let client = NyanpasuClient::with_state_and_typed_config(
+                Arc::new(NoopUiEventSink),
+                state,
+                Some(typed_config),
+            );
+
+            let window_state = crate::config::nyanpasu::WindowState {
+                width: 1280,
+                height: 720,
+                x: 30,
+                y: 40,
+                maximized: false,
+                fullscreen: false,
+            };
+            client
+                .patch_verge_config(IVerge {
+                    window_size_state: Some(window_state.clone()),
+                    ..IVerge::default()
+                })
+                .await
+                .expect("window state patch should succeed");
+
+            let session = client.get_session_state().await.unwrap();
+            assert_eq!(
+                session
+                    .window_state
+                    .get(&WindowLabel("main".into()))
+                    .map(|state| (state.width, state.height, state.x, state.y)),
+                Some((
+                    window_state.width,
+                    window_state.height,
+                    window_state.x,
+                    window_state.y
+                ))
+            );
+            assert_eq!(
+                client
+                    .get_verge_config()
+                    .await
+                    .unwrap()
+                    .window_size_state
+                    .as_ref()
+                    .map(|state| state.width),
+                Some(window_state.width)
+            );
+        });
+    }
+
+    #[test]
+    fn patch_verge_config_clash_field_updates_persistent_clash_actor() {
+        let (state, dir) = test_state_client();
+
+        tauri::async_runtime::block_on(async {
+            let typed_config = test_typed_config_clients(&dir).await;
+            let client = NyanpasuClient::with_state_and_typed_config(
+                Arc::new(NoopUiEventSink),
+                state,
+                Some(typed_config),
+            );
+
+            client
+                .patch_verge_config(IVerge {
+                    web_ui_list: Some(vec!["dashboard".into(), "yacd".into()]),
+                    enable_clash_fields: Some(false),
+                    ..IVerge::default()
+                })
+                .await
+                .expect("clash-owned pure patch should succeed");
+
+            let clash = client.get_clash_config().await.unwrap();
+            assert_eq!(clash.web_ui_list, vec!["dashboard", "yacd"]);
+            assert!(!clash.enable_clash_fields);
+
+            let verge = client.get_verge_config().await.unwrap();
+            assert_eq!(
+                verge.web_ui_list,
+                Some(vec!["dashboard".into(), "yacd".into()])
+            );
+            assert_eq!(verge.enable_clash_fields, Some(false));
+        });
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn patch_verge_config_deprecated_auto_log_clean_stays_on_legacy_path() {
+        let (state, dir) = test_state_client();
+
+        tauri::async_runtime::block_on(async {
+            let typed_config = test_typed_config_clients(&dir).await;
+            let client = NyanpasuClient::with_state_and_typed_config(
+                Arc::new(NoopUiEventSink),
+                state,
+                Some(typed_config),
+            );
+
+            client
+                .patch_verge_config(IVerge {
+                    auto_log_clean: Some(30),
+                    ..IVerge::default()
+                })
+                .await
+                .expect("deprecated legacy field should still be preserved");
+
+            assert_eq!(
+                client.get_verge_config().await.unwrap().auto_log_clean,
+                Some(30)
+            );
+        });
+    }
+
+    #[test]
+    fn legacy_mutation_reseeds_typed_actors_without_os_side_effects() {
+        let (state, dir) = test_state_client();
+
+        tauri::async_runtime::block_on(async {
+            let typed_config = test_typed_config_clients(&dir).await;
+            let client = NyanpasuClient::with_state_and_typed_config(
+                Arc::new(NoopUiEventSink),
+                state,
+                Some(typed_config),
+            );
+
+            client
+                .run_legacy_verge_mutation(|| async {
+                    Config::verge().draft().patch_config(IVerge {
+                        theme_color: Some("#445566".into()),
+                        ..IVerge::default()
+                    });
+                    Config::verge().apply();
+                    Ok(())
+                })
+                .await
+                .expect("legacy mutation should reseed typed actors");
+
+            assert_eq!(
+                client
+                    .get_app_config()
+                    .await
+                    .unwrap()
+                    .theme_color
+                    .to_string(),
+                "#445566"
+            );
+            assert_eq!(
+                client
+                    .get_verge_config()
+                    .await
+                    .unwrap()
+                    .theme_color
+                    .as_deref(),
+                Some("#445566")
             );
         });
     }

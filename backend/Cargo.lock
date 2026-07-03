@@ -4648,7 +4648,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.61.2",
+ "windows-core 0.58.0",
 ]
 
 [[package]]
@@ -10612,7 +10612,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.3",
+ "getrandom 0.4.1",
  "once_cell",
  "rustix 1.1.4",
  "windows-sys 0.61.2",
@@ -10849,9 +10849,9 @@ dependencies = [
 
 [[package]]
 name = "timeago"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e86660b0935ca5912eb155f5b3794e2f8f1a09d8c00c9efd5c1075ca26403638"
+checksum = "46c29b13d230e9cd58513d38701a661fc06e1215398937532a2d938ecca6f219"
 dependencies = [
  "chrono",
  "isolang",

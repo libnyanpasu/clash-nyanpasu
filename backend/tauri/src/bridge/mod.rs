@@ -35,10 +35,17 @@ pub(crate) fn typed_config_from_legacy(
     legacy: &IVerge,
 ) -> anyhow::Result<(NyanpasuAppConfig, PersistentState, ClashConfig)> {
     let legacy_clash = Config::clash().data().clone();
+    typed_config_from_legacy_parts(legacy, &legacy_clash.0)
+}
+
+pub(crate) fn typed_config_from_legacy_parts(
+    legacy: &IVerge,
+    legacy_clash: &serde_yaml::Mapping,
+) -> anyhow::Result<(NyanpasuAppConfig, PersistentState, ClashConfig)> {
     Ok((
         verge::application_from_legacy(legacy)?,
         window::persistent_state_from_legacy(legacy)?,
-        clash::clash_config_from_legacy(legacy, &legacy_clash.0)?,
+        clash::clash_config_from_legacy(legacy, legacy_clash)?,
     ))
 }
 

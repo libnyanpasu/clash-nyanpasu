@@ -12,6 +12,11 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
     .context("Failed to setup the shutdown hook")?;
 
     let paths = PathResolver::from_env().context("Failed to resolve app paths")?;
+    let mut migrations = crate::core::migration::Runner::with_paths(paths.clone(), false)
+        .context("Failed to setup config migrations")?;
+    migrations
+        .run_pending()
+        .context("Failed to run config migrations before client setup")?;
     crate::client::setup(app, paths).context("Failed to setup nyanpasu client")?;
 
     // FIXME: this is a background setup, so be careful use this state in ipc.

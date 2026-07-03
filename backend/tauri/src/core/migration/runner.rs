@@ -2,6 +2,7 @@ use super::{
     Ctx, MigrationAdvice, MigrationState, MigrationStep, current_version, registry,
     store::MigrationStore,
 };
+use crate::utils::path::PathResolver;
 use anyhow::Context;
 use semver::Version;
 
@@ -26,6 +27,10 @@ impl Runner {
 
     pub fn with_target(target: Version, force: bool) -> anyhow::Result<Self> {
         Self::with_context(target, force, Ctx::from_app_dirs()?)
+    }
+
+    pub fn with_paths(paths: PathResolver, force: bool) -> anyhow::Result<Self> {
+        Self::with_context(current_version()?, force, Ctx::from_paths(paths))
     }
 
     pub fn advice_step(&self, step: &dyn MigrationStep) -> MigrationAdvice {
@@ -414,6 +419,10 @@ mod tests {
         assert_eq!(runner.store.module_state("app_config").applied_revision, 3);
         assert_eq!(runner.store.module_state("storage").applied_revision, 1);
         assert_eq!(
+            runner.store.module_state("typed_config").applied_revision,
+            1
+        );
+        assert_eq!(
             runner.store.app.last_succeeded,
             Some(Version::parse("2.0.0").unwrap())
         );
@@ -428,6 +437,23 @@ mod tests {
                 "toggle_system_proxy,Control+Shift+P".to_string(),
             ])
         );
+
+        let application: nyanpasu_config::application::NyanpasuAppConfig = serde_yaml::from_str(
+            &std::fs::read_to_string(config_dir.join("application.yaml")).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            application.hotkeys.is_empty(),
+            "hotkeys are KV-owned after storage/hotkeys_to_kv and must not be re-seeded into typed application config"
+        );
+        let _: nyanpasu_config::state::PersistentState = serde_yaml::from_str(
+            &std::fs::read_to_string(config_dir.join("session-state.yaml")).unwrap(),
+        )
+        .unwrap();
+        let _: nyanpasu_config::clash::config::ClashConfig = serde_yaml::from_str(
+            &std::fs::read_to_string(config_dir.join("clash-config.yaml")).unwrap(),
+        )
+        .unwrap();
     }
 
     #[test]

@@ -1,5 +1,5 @@
 use crate::{
-    config::{Config, IVerge, nyanpasu as legacy_app},
+    config::{Config, IClashTemp, IVerge, nyanpasu as legacy_app},
     state::mirror::ClashLegacyBridge,
 };
 use nyanpasu_config::clash::config::{
@@ -9,6 +9,7 @@ use nyanpasu_config::clash::config::{
     },
 };
 use serde_yaml::Mapping;
+use std::net::SocketAddr;
 
 pub struct LegacyClashBridge;
 
@@ -53,7 +54,7 @@ pub(crate) fn clash_config_from_legacy(
 
     let mixed_port = legacy_verge
         .verge_mixed_port
-        .unwrap_or_else(|| Config::clash().data().get_mixed_port());
+        .unwrap_or_else(|| IClashTemp::guard_mixed_port(legacy_clash));
     next.mixed_port = if legacy_verge.enable_random_port.unwrap_or(false) {
         PortStrategy {
             kind: PortStrategyKind::Random,
@@ -63,6 +64,11 @@ pub(crate) fn clash_config_from_legacy(
         PortStrategy::new_allow_fallback(mixed_port)
     };
 
+    if let Some(controller) = external_controller_from_legacy_clash(legacy_clash) {
+        next.external_controller.host = controller.ip();
+        next.external_controller.port.start_port = controller.port();
+    }
+
     if let Some(strategy) = &legacy_verge.clash_strategy {
         next.external_controller.port.kind =
             super::yaml_convert(&strategy.external_controller_port_strategy)?;
@@ -71,6 +77,10 @@ pub(crate) fn clash_config_from_legacy(
     next.break_connection = break_connection_from_legacy(legacy_verge);
 
     Ok(next)
+}
+
+fn external_controller_from_legacy_clash(legacy_clash: &Mapping) -> Option<SocketAddr> {
+    IClashTemp::guard_server_ctrl(legacy_clash).parse().ok()
 }
 
 fn mirror_clash_overrides(snap: &ClashConfig) -> anyhow::Result<()> {

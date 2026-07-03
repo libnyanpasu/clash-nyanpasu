@@ -51,6 +51,10 @@ impl Ctx {
         })
     }
 
+    pub fn from_paths(paths: PathResolver) -> Self {
+        Self { paths }
+    }
+
     #[cfg(test)]
     pub fn new(app_config_dir: PathBuf, app_data_dir: PathBuf) -> Self {
         Self {
@@ -69,6 +73,22 @@ impl Ctx {
 
     pub fn nyanpasu_config_path(&self) -> PathBuf {
         self.paths.nyanpasu_config_path()
+    }
+
+    pub fn application_config_path(&self) -> PathBuf {
+        self.paths.application_config_path()
+    }
+
+    pub fn session_state_path(&self) -> PathBuf {
+        self.paths.session_state_path()
+    }
+
+    pub fn clash_config_path(&self) -> PathBuf {
+        self.paths.clash_config_path()
+    }
+
+    pub fn clash_guard_overrides_path(&self) -> PathBuf {
+        self.paths.clash_guard_overrides_path()
     }
 
     pub fn storage_path(&self) -> PathBuf {

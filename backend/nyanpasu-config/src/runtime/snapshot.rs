@@ -11,7 +11,10 @@ use serde::{Deserialize, Serialize};
 use slab::Slab;
 use thiserror::Error;
 
-use crate::{profile::TransformKind, runtime::value::ConfigValue};
+use crate::{
+    profile::{ProfileId, TransformKind},
+    runtime::value::ConfigValue,
+};
 
 /// A field in the config, use `.` to represent nested fields.
 pub type ConfigField = String;
@@ -48,46 +51,158 @@ impl ConfigSnapshot {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+/// Why a config pipeline is being executed.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case", tag = "kind", content = "data")]
-pub enum ChainNodeKind {
-    Scoped {
-        #[specta(type = String)]
-        parent_profile_id: Arc<str>,
+pub enum ConfigExecutionRole {
+    /// The final config selected by `Profiles.current`.
+    Selected,
+    /// Built as the base member of a composition.
+    CompositionBase { composition_id: ProfileId },
+    /// Built as a proxies contributor of a composition.
+    CompositionContributor {
+        composition_id: ProfileId,
+        contributor_index: u32,
     },
-    Global,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
-#[serde(rename_all = "snake_case", tag = "kind", content = "data")]
-pub enum OperatorTag {
-    Root {
-        #[specta(type = String)]
-        primary_profile_id: Arc<str>,
-    },
-    SecondaryProcessing {
-        #[specta(type = String)]
-        profile_id: Arc<str>,
-    },
-    SelectedProfilesProxiesMerge {
-        #[specta(type = String)]
-        primary_profile_id: Arc<str>,
-        #[specta(type = Vec<String>)]
-        other_profiles_ids: Vec<Arc<str>>,
-    },
-    ChainNode {
-        kind: ChainNodeKind,
-        #[specta(type = String)]
-        profile_id: Arc<str>,
-        profile_kind: TransformKind,
-    },
-    BuiltinChain {
-        #[specta(type = String)]
-        name: Arc<str>,
-    },
+/// Built-in post-processing steps applied to the selected config.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum BuiltinStepKind {
     GuardOverrides,
     WhitelistFieldFilter,
     Finalizing,
+}
+
+/// The pipeline operator that produced a snapshot node.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case", tag = "kind", content = "data")]
+pub enum OperatorTag {
+    FileConfigRoot {
+        profile_id: ProfileId,
+        role: ConfigExecutionRole,
+    },
+    /// `base: None` is the clean seed (`proxies: []`).
+    CompositionRoot {
+        profile_id: ProfileId,
+        base: Option<ProfileId>,
+    },
+    ExtendProxiesStep {
+        composition_id: ProfileId,
+        contributor_profile_id: ProfileId,
+        contributor_index: u32,
+    },
+    ScopedTransform {
+        host_profile_id: ProfileId,
+        role: ConfigExecutionRole,
+        transform_profile_id: ProfileId,
+        transform_kind: TransformKind,
+        step_index: u32,
+    },
+    GlobalTransform {
+        selected_profile_id: ProfileId,
+        transform_profile_id: ProfileId,
+        transform_kind: TransformKind,
+        step_index: u32,
+    },
+    BuiltinStep {
+        selected_profile_id: ProfileId,
+        step: BuiltinStepKind,
+    },
+}
+
+impl OperatorTag {
+    /// Derives the semantic position key of this tag. Never stored; the
+    /// materialized graph computes it on demand.
+    pub fn node_key(&self) -> SnapshotNodeKey {
+        match self {
+            Self::FileConfigRoot { profile_id, role } => SnapshotNodeKey::FileRoot {
+                profile_id: profile_id.clone(),
+                role: role.clone(),
+            },
+            Self::CompositionRoot { profile_id, .. } => SnapshotNodeKey::CompositionRoot {
+                profile_id: profile_id.clone(),
+            },
+            Self::ExtendProxiesStep {
+                composition_id,
+                contributor_index,
+                ..
+            } => SnapshotNodeKey::ExtendProxies {
+                composition_id: composition_id.clone(),
+                contributor_index: *contributor_index,
+            },
+            Self::ScopedTransform {
+                host_profile_id,
+                role,
+                step_index,
+                ..
+            } => SnapshotNodeKey::ScopedTransform {
+                host_profile_id: host_profile_id.clone(),
+                role: role.clone(),
+                step_index: *step_index,
+            },
+            Self::GlobalTransform {
+                selected_profile_id,
+                step_index,
+                ..
+            } => SnapshotNodeKey::GlobalTransform {
+                selected_profile_id: selected_profile_id.clone(),
+                step_index: *step_index,
+            },
+            Self::BuiltinStep {
+                selected_profile_id,
+                step,
+            } => SnapshotNodeKey::Builtin {
+                selected_profile_id: selected_profile_id.clone(),
+                step: *step,
+            },
+        }
+    }
+}
+
+/// Semantic position key: the tag stripped of display-only fields. Stable
+/// across rebuilds, so the UI can anchor onto nodes; carries `Eq + Hash`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case", tag = "kind", content = "data")]
+pub enum SnapshotNodeKey {
+    FileRoot {
+        profile_id: ProfileId,
+        role: ConfigExecutionRole,
+    },
+    CompositionRoot {
+        profile_id: ProfileId,
+    },
+    ExtendProxies {
+        composition_id: ProfileId,
+        contributor_index: u32,
+    },
+    ScopedTransform {
+        host_profile_id: ProfileId,
+        role: ConfigExecutionRole,
+        step_index: u32,
+    },
+    GlobalTransform {
+        selected_profile_id: ProfileId,
+        step_index: u32,
+    },
+    Builtin {
+        selected_profile_id: ProfileId,
+        step: BuiltinStepKind,
+    },
+}
+
+/// Controls what a node's payload is encoded against during materialization.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum SnapshotBaseline {
+    /// Keyframe/delta encoded against the parent node; materialization
+    /// derives `changed_fields`.
+    #[default]
+    Parent,
+    /// Independent branch root: forced `Full` keyframe, materialized
+    /// `changed_fields = None`.
+    Independent,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
@@ -95,14 +210,18 @@ pub struct ConfigSnapshotState<C> {
     pub snapshot: ConfigSnapshot,
     /// The operator that generated this snapshot.
     pub tag: OperatorTag,
+    /// Semantic position key derived from `tag` at materialization time.
+    pub key: SnapshotNodeKey,
     pub next: Option<Vec<C>>,
 }
 
 impl<C> ConfigSnapshotState<C> {
     pub fn new(snapshot: ConfigSnapshot, tag: OperatorTag, next: Option<Vec<C>>) -> Self {
+        let key = tag.node_key();
         Self {
             snapshot,
             tag,
+            key,
             next,
         }
     }
@@ -132,14 +251,21 @@ pub struct StoredConfigSnapshot {
 pub struct StoredConfigSnapshotState<C> {
     pub snapshot: StoredConfigSnapshot,
     pub tag: OperatorTag,
+    pub baseline: SnapshotBaseline,
     pub next: Option<Vec<C>>,
 }
 
 impl<C> StoredConfigSnapshotState<C> {
-    pub fn new(snapshot: StoredConfigSnapshot, tag: OperatorTag, next: Option<Vec<C>>) -> Self {
+    pub fn new(
+        snapshot: StoredConfigSnapshot,
+        tag: OperatorTag,
+        baseline: SnapshotBaseline,
+        next: Option<Vec<C>>,
+    ) -> Self {
         Self {
             snapshot,
             tag,
+            baseline,
             next,
         }
     }
@@ -205,6 +331,10 @@ pub enum SnapshotBuildError {
     IdOverflow { node_id: usize },
     #[error("snapshot graph depth {depth} exceeds maximum {max}")]
     DepthLimitExceeded { depth: usize, max: usize },
+    #[error("independent snapshot node {node_id} must carry a full payload")]
+    IndependentDelta { node_id: usize },
+    #[error("root node {root_id} must use the independent baseline")]
+    RootNotIndependent { root_id: usize },
     #[error(transparent)]
     Patch(#[from] json_patch::PatchError),
 }
@@ -218,6 +348,9 @@ struct BuilderNode {
     children: Vec<NodeId>,
 }
 
+/// Pure recorder for the pipeline executor: appends main-line nodes with
+/// [`Self::push`] and grafts pre-built branches with
+/// [`Self::attach_independent_branch`]. Tags are constructed by the caller.
 pub struct ConfigSnapshotsBuilder {
     slab: Slab<BuilderNode>,
     root_id: NodeId,
@@ -227,28 +360,27 @@ pub struct ConfigSnapshotsBuilder {
 }
 
 impl ConfigSnapshotsBuilder {
-    pub fn new(root_config: Arc<ConfigValue>, primary_profile_id: impl Into<Arc<str>>) -> Self {
-        Self::with_keyframe_policy(root_config, primary_profile_id, KeyframePolicy::default())
+    pub fn new_root(root_value: Arc<ConfigValue>, tag: OperatorTag) -> Self {
+        Self::new_root_with_keyframe_policy(root_value, tag, KeyframePolicy::default())
     }
 
-    pub fn with_keyframe_policy(
-        root_config: Arc<ConfigValue>,
-        primary_profile_id: impl Into<Arc<str>>,
+    pub fn new_root_with_keyframe_policy(
+        root_value: Arc<ConfigValue>,
+        tag: OperatorTag,
         keyframe_policy: KeyframePolicy,
     ) -> Self {
         let mut slab = Slab::new();
         let root_state = StoredConfigSnapshotState {
             snapshot: StoredConfigSnapshot {
-                payload: SnapshotPayload::Full(root_config.clone()),
+                payload: SnapshotPayload::Full(root_value.clone()),
             },
-            tag: OperatorTag::Root {
-                primary_profile_id: primary_profile_id.into(),
-            },
+            tag,
+            baseline: SnapshotBaseline::Independent,
             next: None,
         };
 
         let root_id = slab.insert(BuilderNode {
-            full: root_config,
+            full: root_value,
             state: root_state,
             parent_id: None,
             children: Vec::new(),
@@ -270,144 +402,72 @@ impl ConfigSnapshotsBuilder {
         self.root_id
     }
 
-    pub fn new_subtree(&self, node_id: NodeId) -> Result<Self, SnapshotBuildError> {
-        let node = self
-            .slab
-            .get(node_id)
-            .ok_or(SnapshotBuildError::MissingRoot { root_id: node_id })?;
-
-        let mut slab = Slab::new();
-        let root_state = StoredConfigSnapshotState {
-            snapshot: StoredConfigSnapshot {
-                payload: SnapshotPayload::Full(node.full.clone()),
-            },
-            tag: node.state.tag.clone(),
-            next: None,
-        };
-        let root_id = slab.insert(BuilderNode {
-            full: node.full.clone(),
-            state: root_state,
-            parent_id: None,
-            children: Vec::new(),
-        });
-
-        Ok(Self {
-            slab,
-            root_id,
-            current_id: root_id,
-            keyframe_policy: self.keyframe_policy,
-        })
-    }
-
-    pub fn add_node(
+    /// Appends a main-line node after the current node and advances the
+    /// current position onto it.
+    pub fn push(
         &mut self,
-        parent_id: NodeId,
         tag: OperatorTag,
-        current: Arc<ConfigValue>,
+        value: Arc<ConfigValue>,
     ) -> Result<NodeId, SnapshotBuildError> {
+        let parent_id = self.current_id;
         let parent = self
             .slab
             .get(parent_id)
             .ok_or(SnapshotBuildError::MissingRoot { root_id: parent_id })?;
-        let payload = self.keyframe_policy.encode(&parent.full, current.clone());
-        Ok(self.insert_child(parent_id, tag, current, payload))
-    }
-
-    pub fn add_node_to_current(
-        &mut self,
-        tag: OperatorTag,
-        current: Arc<ConfigValue>,
-    ) -> Result<NodeId, SnapshotBuildError> {
-        self.add_node(self.current_id, tag, current)
-    }
-
-    pub fn push_value(
-        &mut self,
-        tag: OperatorTag,
-        current: Arc<ConfigValue>,
-    ) -> Result<Idx, SnapshotBuildError> {
-        let id = self.add_node_to_current(tag, current)?;
-        self.current_id = id;
-        usize_to_idx(id)
-    }
-
-    pub fn push_node(
-        &mut self,
-        tag: OperatorTag,
-        current: Arc<ConfigValue>,
-    ) -> Result<NodeId, SnapshotBuildError> {
-        let id = self.add_node_to_current(tag, current)?;
+        let payload = self.keyframe_policy.encode(&parent.full, value.clone());
+        let id = self.insert_child(parent_id, tag, value, SnapshotBaseline::Parent, payload);
         self.current_id = id;
         Ok(id)
     }
 
-    pub fn add_leaf_from_subtree(
+    /// Grafts a whole branch builder under `parent`. The branch root becomes
+    /// an [`SnapshotBaseline::Independent`] node with a forced `Full` payload
+    /// (no delta against the new parent); inner branch nodes keep their
+    /// encoding. The main-line current position is left untouched. Returns the
+    /// grafted branch-root id.
+    pub fn attach_independent_branch(
         &mut self,
         parent_id: NodeId,
-        subtree: ConfigSnapshotsBuilder,
-    ) -> Result<Vec<NodeId>, SnapshotBuildError> {
-        let mut subtree = subtree.build_tree()?;
-        self.add_leaf(parent_id, subtree.node.next.take().unwrap_or_default())
-    }
-
-    pub fn add_leaf(
-        &mut self,
-        parent_id: NodeId,
-        children: Vec<ConfigSnapshotTreeNode>,
-    ) -> Result<Vec<NodeId>, SnapshotBuildError> {
+        branch: ConfigSnapshotsBuilder,
+    ) -> Result<NodeId, SnapshotBuildError> {
         if self.slab.get(parent_id).is_none() {
             return Err(SnapshotBuildError::MissingRoot { root_id: parent_id });
         }
+        branch.validate_tree()?;
 
-        let mut ids = Vec::with_capacity(children.len());
-        let mut queue = VecDeque::from_iter([(parent_id, children)]);
+        let ordered_ids = branch.slab.iter().map(|(idx, _)| idx).collect::<Vec<_>>();
+        let mut id_map = HashMap::with_capacity(ordered_ids.len());
+        for &old_id in &ordered_ids {
+            let node = &branch.slab[old_id];
+            let mut state = node.state.clone();
+            if old_id == branch.root_id {
+                state.baseline = SnapshotBaseline::Independent;
+                state.snapshot.payload = SnapshotPayload::Full(node.full.clone());
+            }
 
-        while let Some((parent_id, children)) = queue.pop_front() {
-            for mut child in children {
-                let grand_children = child.node.next.take();
-                let id = self.add_node(parent_id, child.node.tag, child.full)?;
+            let new_id = self.slab.insert(BuilderNode {
+                full: node.full.clone(),
+                state,
+                parent_id: None,
+                children: Vec::new(),
+            });
+            id_map.insert(old_id, new_id);
+        }
 
-                if let Some(grand_children) = grand_children {
-                    queue.push_back((id, grand_children));
-                }
-
-                ids.push(id);
+        // The branch passed `validate_tree`, so every child id resolves.
+        for &old_id in &ordered_ids {
+            let new_id = id_map[&old_id];
+            for child in &branch.slab[old_id].children {
+                let new_child = id_map[child];
+                self.slab[new_id].children.push(new_child);
+                self.slab[new_child].parent_id = Some(new_id);
             }
         }
 
-        Ok(ids)
-    }
-
-    pub fn add_leaf_to_current(
-        &mut self,
-        children: Vec<ConfigSnapshotTreeNode>,
-    ) -> Result<Vec<NodeId>, SnapshotBuildError> {
-        self.add_leaf(self.current_id, children)
-    }
-
-    pub fn add_edge(&mut self, from: NodeId, to: NodeId) -> Result<(), SnapshotBuildError> {
-        if self.slab.get(from).is_none() {
-            return Err(SnapshotBuildError::MissingRoot { root_id: from });
-        }
-        if self.slab.get(to).is_none() {
-            return Err(SnapshotBuildError::MissingChild {
-                parent_id: from,
-                child_id: to,
-            });
-        }
-
-        self.slab[from].children.push(to);
-        self.slab[to].parent_id = Some(from);
-        Ok(())
-    }
-
-    pub fn set_current(&mut self, id: NodeId) -> Result<(), SnapshotBuildError> {
-        if self.slab.get(id).is_none() {
-            return Err(SnapshotBuildError::MissingRoot { root_id: id });
-        }
-
-        self.current_id = id;
-        Ok(())
+        let branch_root = id_map[&branch.root_id];
+        self.slab[parent_id].children.push(branch_root);
+        self.slab[branch_root].parent_id = Some(parent_id);
+        Ok(branch_root)
     }
 
     pub fn build_tree(mut self) -> Result<ConfigSnapshotTreeNode, SnapshotBuildError> {
@@ -429,6 +489,7 @@ impl ConfigSnapshotsBuilder {
         parent_id: NodeId,
         tag: OperatorTag,
         current: Arc<ConfigValue>,
+        baseline: SnapshotBaseline,
         payload: SnapshotPayload,
     ) -> NodeId {
         let id = self.slab.insert(BuilderNode {
@@ -436,6 +497,7 @@ impl ConfigSnapshotsBuilder {
             state: StoredConfigSnapshotState {
                 snapshot: StoredConfigSnapshot { payload },
                 tag,
+                baseline,
                 next: None,
             },
             parent_id: Some(parent_id),
@@ -469,6 +531,7 @@ impl ConfigSnapshotsBuilder {
             node: StoredConfigSnapshotState {
                 snapshot: state.snapshot,
                 tag: state.tag,
+                baseline: state.baseline,
                 next,
             },
         }
@@ -623,6 +686,7 @@ impl ConfigSnapshotsBuilder {
             nodes.push(StoredConfigSnapshotState {
                 snapshot: builder_node.state.snapshot.clone(),
                 tag: builder_node.state.tag.clone(),
+                baseline: builder_node.state.baseline,
                 next,
             });
         }
@@ -678,15 +742,21 @@ impl StoredConfigSnapshotsGraph {
                 child_id: index,
             })?;
 
-        let (config, changed_fields) = match &state.snapshot.payload {
-            SnapshotPayload::Full(value) => {
+        let (config, changed_fields) = match (state.baseline, &state.snapshot.payload) {
+            (SnapshotBaseline::Independent, SnapshotPayload::Full(value)) => {
+                (value.to_json(), None)
+            }
+            (SnapshotBaseline::Independent, SnapshotPayload::Delta(_)) => {
+                return Err(SnapshotBuildError::IndependentDelta { node_id: index });
+            }
+            (SnapshotBaseline::Parent, SnapshotPayload::Full(value)) => {
                 let config = value.to_json();
                 let changed_fields = parent
                     .map(|parent| json_patch::diff(parent, &config))
                     .and_then(|patch| changed_fields_from_patch(&patch));
                 (config, changed_fields)
             }
-            SnapshotPayload::Delta(patch) => {
+            (SnapshotBaseline::Parent, SnapshotPayload::Delta(patch)) => {
                 let mut config = parent
                     .cloned()
                     .ok_or(SnapshotBuildError::MissingRoot { root_id: index })?;
@@ -702,6 +772,7 @@ impl StoredConfigSnapshotsGraph {
                 changed_fields,
             },
             tag: state.tag.clone(),
+            key: state.tag.node_key(),
             next: next.clone(),
         });
 
@@ -714,11 +785,24 @@ impl StoredConfigSnapshotsGraph {
 
     /// Validates that a (possibly deserialized) stored graph is a single-rooted
     /// tree: valid child ids, no self-loops, no multi-parent edges, every node
-    /// reachable from the root, and depth within [`MAX_MATERIALIZE_DEPTH`].
+    /// reachable from the root, depth within [`MAX_MATERIALIZE_DEPTH`], an
+    /// independent root, and no independent node carrying a delta payload.
     pub(crate) fn validate_tree_shape(&self) -> Result<(), SnapshotBuildError> {
         let root = self.root_id as usize;
         if root >= self.nodes.len() {
             return Err(SnapshotBuildError::MissingRoot { root_id: root });
+        }
+
+        if self.nodes[root].baseline != SnapshotBaseline::Independent {
+            return Err(SnapshotBuildError::RootNotIndependent { root_id: root });
+        }
+
+        for (node_id, node) in self.nodes.iter().enumerate() {
+            if node.baseline == SnapshotBaseline::Independent
+                && matches!(node.snapshot.payload, SnapshotPayload::Delta(_))
+            {
+                return Err(SnapshotBuildError::IndependentDelta { node_id });
+            }
         }
 
         let mut indegree = vec![0usize; self.nodes.len()];
@@ -858,6 +942,21 @@ fn usize_to_idx(node_id: usize) -> Result<Idx, SnapshotBuildError> {
     u32::try_from(node_id).map_err(|_| SnapshotBuildError::IdOverflow { node_id })
 }
 
+/// Snapshot archive encoding/decoding.
+///
+/// Decoding is strict: any version, shape, or serialization mismatch is
+/// returned as an error. Cache owners MUST treat every decode error as a
+/// cache miss and rebuild snapshots from source state:
+///
+/// ```ignore
+/// match persistence::decode_archive(bytes) {
+///     Ok(archive) => Some(archive.graph),
+///     Err(error) => {
+///         tracing::debug!(?error, "discarding runtime snapshot cache");
+///         None
+///     }
+/// }
+/// ```
 #[cfg(feature = "snapshot-persistence")]
 pub mod persistence {
     use std::{
@@ -870,13 +969,14 @@ pub mod persistence {
 
     use super::StoredConfigSnapshotsGraph;
 
-    pub const SNAPSHOT_ARCHIVE_VERSION: u16 = 1;
+    pub const SNAPSHOT_ARCHIVE_VERSION: u16 = 2;
     /// Decompression ceiling, guarding against zstd decompression bombs.
     const MAX_ARCHIVE_DECODED_BYTES: u64 = 64 * 1024 * 1024;
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     pub struct SnapshotArchive {
         pub format_version: u16,
+        /// Diagnostic only; never used for compatibility decisions.
         pub crate_version: Arc<str>,
         pub graph: StoredConfigSnapshotsGraph,
     }
@@ -939,10 +1039,131 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::runtime::value::{ConfigValue, PathSegment};
+    use crate::{
+        profile::ScriptRuntime,
+        runtime::value::{ConfigValue, PathSegment},
+    };
 
     fn value(value: serde_json::Value) -> Arc<ConfigValue> {
         Arc::new(ConfigValue::try_from(value).unwrap())
+    }
+
+    fn pid(value: &str) -> ProfileId {
+        ProfileId(value.to_owned())
+    }
+
+    fn file_root(profile_id: &str, role: ConfigExecutionRole) -> OperatorTag {
+        OperatorTag::FileConfigRoot {
+            profile_id: pid(profile_id),
+            role,
+        }
+    }
+
+    fn selected_file_root(profile_id: &str) -> OperatorTag {
+        file_root(profile_id, ConfigExecutionRole::Selected)
+    }
+
+    fn composition_root(profile_id: &str, base: Option<&str>) -> OperatorTag {
+        OperatorTag::CompositionRoot {
+            profile_id: pid(profile_id),
+            base: base.map(pid),
+        }
+    }
+
+    fn extend_step(
+        composition_id: &str,
+        contributor_profile_id: &str,
+        contributor_index: u32,
+    ) -> OperatorTag {
+        OperatorTag::ExtendProxiesStep {
+            composition_id: pid(composition_id),
+            contributor_profile_id: pid(contributor_profile_id),
+            contributor_index,
+        }
+    }
+
+    fn scoped_transform(
+        host_profile_id: &str,
+        role: ConfigExecutionRole,
+        transform_profile_id: &str,
+        transform_kind: TransformKind,
+        step_index: u32,
+    ) -> OperatorTag {
+        OperatorTag::ScopedTransform {
+            host_profile_id: pid(host_profile_id),
+            role,
+            transform_profile_id: pid(transform_profile_id),
+            transform_kind,
+            step_index,
+        }
+    }
+
+    fn global_transform(
+        selected_profile_id: &str,
+        transform_profile_id: &str,
+        transform_kind: TransformKind,
+        step_index: u32,
+    ) -> OperatorTag {
+        OperatorTag::GlobalTransform {
+            selected_profile_id: pid(selected_profile_id),
+            transform_profile_id: pid(transform_profile_id),
+            transform_kind,
+            step_index,
+        }
+    }
+
+    fn builtin_step(selected_profile_id: &str, step: BuiltinStepKind) -> OperatorTag {
+        OperatorTag::BuiltinStep {
+            selected_profile_id: pid(selected_profile_id),
+            step,
+        }
+    }
+
+    fn round_trip_tag(tag: OperatorTag) {
+        let json = serde_json::to_value(&tag).unwrap();
+        let back: OperatorTag = serde_json::from_value(json).unwrap();
+        assert_eq!(tag, back);
+    }
+
+    fn full_node(
+        tag: OperatorTag,
+        baseline: SnapshotBaseline,
+        next: Option<Vec<Idx>>,
+    ) -> StoredConfigSnapshotState<Idx> {
+        StoredConfigSnapshotState {
+            snapshot: StoredConfigSnapshot {
+                payload: SnapshotPayload::Full(value(json!({ "a": 1 }))),
+            },
+            tag,
+            baseline,
+            next,
+        }
+    }
+
+    /// A member/base FileConfig branch: raw root followed by one scoped
+    /// transform, mirroring design doc section 7.2.
+    fn scoped_file_branch(
+        profile_id: &str,
+        role: ConfigExecutionRole,
+        transform_profile_id: &str,
+    ) -> ConfigSnapshotsBuilder {
+        let mut builder = ConfigSnapshotsBuilder::new_root(
+            value(json!({ "profile": profile_id, "stage": "raw" })),
+            file_root(profile_id, role.clone()),
+        );
+        builder
+            .push(
+                scoped_transform(
+                    profile_id,
+                    role,
+                    transform_profile_id,
+                    TransformKind::Overlay,
+                    0,
+                ),
+                value(json!({ "profile": profile_id, "stage": "scoped" })),
+            )
+            .unwrap();
+        builder
     }
 
     #[test]
@@ -985,13 +1206,22 @@ mod tests {
     fn builder_materializes_delta_graph() {
         let root = value(json!({ "a": 1, "stable": [1, 2] }));
         let child = value(json!({ "a": 2, "stable": [1, 2] }));
-        let mut builder = ConfigSnapshotsBuilder::new(root, "primary");
+        let mut builder = ConfigSnapshotsBuilder::new_root(root, selected_file_root("primary"));
 
-        builder.push_node(OperatorTag::Finalizing, child).unwrap();
+        builder
+            .push(builtin_step("primary", BuiltinStepKind::Finalizing), child)
+            .unwrap();
         let graph = builder.build().unwrap();
 
         assert_eq!(graph.root_id, 0);
         assert_eq!(graph.nodes.len(), 2);
+        assert_eq!(
+            graph.nodes[1].key,
+            SnapshotNodeKey::Builtin {
+                selected_profile_id: pid("primary"),
+                step: BuiltinStepKind::Finalizing,
+            }
+        );
         assert_eq!(
             graph.nodes[1].snapshot.config,
             json!({ "a": 2, "stable": [1, 2] })
@@ -1007,59 +1237,14 @@ mod tests {
     }
 
     #[test]
-    fn builder_reports_cycle() {
-        let root = value(json!({ "a": 1 }));
-        let mut builder = ConfigSnapshotsBuilder::new(root, "primary");
-
-        builder
-            .add_edge(builder.root_node_id(), builder.root_node_id())
-            .unwrap();
-        assert!(matches!(
-            builder.build_stored(),
-            Err(SnapshotBuildError::Cycle { .. })
-        ));
-    }
-
-    #[test]
-    fn builder_reports_multiple_parents() {
-        let root = value(json!({ "a": 1 }));
-        let child = value(json!({ "a": 2 }));
-        let mut builder = ConfigSnapshotsBuilder::new(root, "primary");
-        let child_id = builder
-            .add_node_to_current(OperatorTag::Finalizing, child)
-            .unwrap();
-
-        builder.add_edge(builder.root_node_id(), child_id).unwrap();
-        assert!(matches!(
-            builder.build_stored(),
-            Err(SnapshotBuildError::MultipleParents { .. })
-        ));
-    }
-
-    #[test]
-    fn builder_reports_missing_child() {
-        let root = value(json!({ "a": 1 }));
-        let mut builder = ConfigSnapshotsBuilder::new(root, "primary");
-
-        assert!(matches!(
-            builder.add_edge(builder.root_node_id(), 999),
-            Err(SnapshotBuildError::MissingChild { .. })
-        ));
-    }
-
-    #[test]
     fn materialize_rejects_malformed_stored_graph() {
-        let stored_node = |next: Option<Vec<Idx>>| StoredConfigSnapshotState {
-            snapshot: StoredConfigSnapshot {
-                payload: SnapshotPayload::Full(value(json!({ "a": 1 }))),
-            },
-            tag: OperatorTag::Finalizing,
-            next,
-        };
-
         // Self-cycle: node 0 references itself as a child.
         let cyclic = StoredConfigSnapshotsGraph {
-            nodes: vec![stored_node(Some(vec![0]))],
+            nodes: vec![full_node(
+                selected_file_root("primary"),
+                SnapshotBaseline::Independent,
+                Some(vec![0]),
+            )],
             root_id: 0,
         };
         assert!(matches!(
@@ -1069,12 +1254,56 @@ mod tests {
 
         // Out-of-range child id.
         let dangling = StoredConfigSnapshotsGraph {
-            nodes: vec![stored_node(Some(vec![7]))],
+            nodes: vec![full_node(
+                selected_file_root("primary"),
+                SnapshotBaseline::Independent,
+                Some(vec![7]),
+            )],
             root_id: 0,
         };
         assert!(matches!(
             dangling.materialize(),
             Err(SnapshotBuildError::MissingChild { .. })
+        ));
+
+        // Multi-parent: nodes 0 and 1 both reference node 2.
+        let multi_parent = StoredConfigSnapshotsGraph {
+            nodes: vec![
+                full_node(
+                    selected_file_root("primary"),
+                    SnapshotBaseline::Independent,
+                    Some(vec![1, 2]),
+                ),
+                full_node(
+                    builtin_step("primary", BuiltinStepKind::GuardOverrides),
+                    SnapshotBaseline::Parent,
+                    Some(vec![2]),
+                ),
+                full_node(
+                    builtin_step("primary", BuiltinStepKind::Finalizing),
+                    SnapshotBaseline::Parent,
+                    None,
+                ),
+            ],
+            root_id: 0,
+        };
+        assert!(matches!(
+            multi_parent.materialize(),
+            Err(SnapshotBuildError::MultipleParents { .. })
+        ));
+
+        // Root carrying a parent-relative baseline.
+        let parent_root = StoredConfigSnapshotsGraph {
+            nodes: vec![full_node(
+                selected_file_root("primary"),
+                SnapshotBaseline::Parent,
+                None,
+            )],
+            root_id: 0,
+        };
+        assert!(matches!(
+            parent_root.materialize(),
+            Err(SnapshotBuildError::RootNotIndependent { .. })
         ));
     }
 
@@ -1124,26 +1353,462 @@ mod tests {
     }
 
     #[test]
-    fn chain_node_tag_round_trips_with_transform_kind() {
-        use crate::profile::{ScriptRuntime, TransformKind};
+    fn operator_tag_file_config_root_round_trips_all_roles() {
+        round_trip_tag(selected_file_root("selected"));
+        round_trip_tag(file_root(
+            "base",
+            ConfigExecutionRole::CompositionBase {
+                composition_id: pid("composition"),
+            },
+        ));
+        round_trip_tag(file_root(
+            "member",
+            ConfigExecutionRole::CompositionContributor {
+                composition_id: pid("composition"),
+                contributor_index: 2,
+            },
+        ));
+    }
 
-        let tag = OperatorTag::ChainNode {
-            kind: ChainNodeKind::Global,
-            profile_id: Arc::from("global-fix"),
-            profile_kind: TransformKind::Script {
+    #[test]
+    fn operator_tag_composition_root_round_trips_base_some_and_none() {
+        round_trip_tag(composition_root("composition", Some("base")));
+        round_trip_tag(composition_root("composition", None));
+        assert_eq!(
+            composition_root("composition", Some("base")).node_key(),
+            composition_root("composition", None).node_key()
+        );
+    }
+
+    #[test]
+    fn operator_tag_extend_proxies_step_round_trips() {
+        round_trip_tag(extend_step("composition", "member", 3));
+        assert_eq!(
+            extend_step("composition", "member-a", 3).node_key(),
+            extend_step("composition", "member-b", 3).node_key()
+        );
+    }
+
+    #[test]
+    fn operator_tag_scoped_transform_round_trips_and_key_drops_transform_identity() {
+        let overlay = scoped_transform(
+            "host",
+            ConfigExecutionRole::Selected,
+            "overlay-transform",
+            TransformKind::Overlay,
+            0,
+        );
+        let script = scoped_transform(
+            "host",
+            ConfigExecutionRole::Selected,
+            "script-transform",
+            TransformKind::Script {
                 runtime: ScriptRuntime::Lua,
             },
+            0,
+        );
+
+        round_trip_tag(overlay.clone());
+        round_trip_tag(script.clone());
+        assert_eq!(overlay.node_key(), script.node_key());
+    }
+
+    #[test]
+    fn operator_tag_global_transform_round_trips_and_key_drops_transform_identity() {
+        let overlay = global_transform("selected", "overlay-transform", TransformKind::Overlay, 1);
+        let script = global_transform(
+            "selected",
+            "script-transform",
+            TransformKind::Script {
+                runtime: ScriptRuntime::Lua,
+            },
+            1,
+        );
+
+        round_trip_tag(overlay.clone());
+        round_trip_tag(script.clone());
+        assert_eq!(overlay.node_key(), script.node_key());
+    }
+
+    #[test]
+    fn operator_tag_builtin_step_round_trips_all_steps() {
+        round_trip_tag(builtin_step("selected", BuiltinStepKind::GuardOverrides));
+        round_trip_tag(builtin_step(
+            "selected",
+            BuiltinStepKind::WhitelistFieldFilter,
+        ));
+        round_trip_tag(builtin_step("selected", BuiltinStepKind::Finalizing));
+    }
+
+    #[test]
+    fn selected_file_config_processing_order_is_scoped_global_builtin() {
+        let mut builder = ConfigSnapshotsBuilder::new_root(
+            value(json!({ "step": "file" })),
+            selected_file_root("selected"),
+        );
+        builder
+            .push(
+                scoped_transform(
+                    "selected",
+                    ConfigExecutionRole::Selected,
+                    "scoped",
+                    TransformKind::Overlay,
+                    0,
+                ),
+                value(json!({ "step": "scoped" })),
+            )
+            .unwrap();
+        builder
+            .push(
+                global_transform("selected", "global", TransformKind::Overlay, 0),
+                value(json!({ "step": "global" })),
+            )
+            .unwrap();
+        builder
+            .push(
+                builtin_step("selected", BuiltinStepKind::GuardOverrides),
+                value(json!({ "step": "guard" })),
+            )
+            .unwrap();
+        builder
+            .push(
+                builtin_step("selected", BuiltinStepKind::WhitelistFieldFilter),
+                value(json!({ "step": "whitelist" })),
+            )
+            .unwrap();
+        builder
+            .push(
+                builtin_step("selected", BuiltinStepKind::Finalizing),
+                value(json!({ "step": "final" })),
+            )
+            .unwrap();
+
+        let graph = builder.build().unwrap();
+        assert!(matches!(
+            &graph.nodes[0].tag,
+            OperatorTag::FileConfigRoot {
+                role: ConfigExecutionRole::Selected,
+                ..
+            }
+        ));
+        assert!(matches!(
+            &graph.nodes[1].tag,
+            OperatorTag::ScopedTransform { .. }
+        ));
+        assert!(matches!(
+            &graph.nodes[2].tag,
+            OperatorTag::GlobalTransform { .. }
+        ));
+        assert!(matches!(
+            &graph.nodes[3].tag,
+            OperatorTag::BuiltinStep {
+                step: BuiltinStepKind::GuardOverrides,
+                ..
+            }
+        ));
+        assert!(matches!(
+            &graph.nodes[4].tag,
+            OperatorTag::BuiltinStep {
+                step: BuiltinStepKind::WhitelistFieldFilter,
+                ..
+            }
+        ));
+        assert!(matches!(
+            &graph.nodes[5].tag,
+            OperatorTag::BuiltinStep {
+                step: BuiltinStepKind::Finalizing,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn member_file_config_processing_order_is_scoped_only() {
+        let builder = scoped_file_branch(
+            "member",
+            ConfigExecutionRole::CompositionContributor {
+                composition_id: pid("composition"),
+                contributor_index: 0,
+            },
+            "normalize",
+        );
+        let graph = builder.build().unwrap();
+
+        assert_eq!(graph.nodes.len(), 2);
+        assert!(graph.nodes.iter().all(|node| !matches!(
+            node.tag,
+            OperatorTag::GlobalTransform { .. } | OperatorTag::BuiltinStep { .. }
+        )));
+    }
+
+    #[test]
+    fn composition_with_base_processing_order_attaches_independent_branches() {
+        let mut builder = ConfigSnapshotsBuilder::new_root(
+            value(json!({ "source": "base-scoped" })),
+            composition_root("composition", Some("base")),
+        );
+        let root_id = builder.root_node_id();
+
+        let before_base_attach = builder.current_node_id();
+        let base_root = builder
+            .attach_independent_branch(
+                root_id,
+                scoped_file_branch(
+                    "base",
+                    ConfigExecutionRole::CompositionBase {
+                        composition_id: pid("composition"),
+                    },
+                    "base-transform",
+                ),
+            )
+            .unwrap();
+        assert_eq!(builder.current_node_id(), before_base_attach);
+
+        let contributor_0_root = builder
+            .attach_independent_branch(
+                builder.current_node_id(),
+                scoped_file_branch(
+                    "member-a",
+                    ConfigExecutionRole::CompositionContributor {
+                        composition_id: pid("composition"),
+                        contributor_index: 0,
+                    },
+                    "member-a-transform",
+                ),
+            )
+            .unwrap();
+        assert_eq!(builder.current_node_id(), before_base_attach);
+        let extend_0 = builder
+            .push(
+                extend_step("composition", "member-a", 0),
+                value(json!({ "source": "extend-a" })),
+            )
+            .unwrap();
+
+        let before_contributor_1_attach = builder.current_node_id();
+        let contributor_1_root = builder
+            .attach_independent_branch(
+                before_contributor_1_attach,
+                scoped_file_branch(
+                    "member-b",
+                    ConfigExecutionRole::CompositionContributor {
+                        composition_id: pid("composition"),
+                        contributor_index: 1,
+                    },
+                    "member-b-transform",
+                ),
+            )
+            .unwrap();
+        assert_eq!(builder.current_node_id(), before_contributor_1_attach);
+        let extend_1 = builder
+            .push(
+                extend_step("composition", "member-b", 1),
+                value(json!({ "source": "extend-b" })),
+            )
+            .unwrap();
+        builder
+            .push(
+                scoped_transform(
+                    "composition",
+                    ConfigExecutionRole::Selected,
+                    "composition-transform",
+                    TransformKind::Overlay,
+                    0,
+                ),
+                value(json!({ "source": "composition-scoped" })),
+            )
+            .unwrap();
+        builder
+            .push(
+                global_transform("composition", "global", TransformKind::Overlay, 0),
+                value(json!({ "source": "global" })),
+            )
+            .unwrap();
+        builder
+            .push(
+                builtin_step("composition", BuiltinStepKind::Finalizing),
+                value(json!({ "source": "final" })),
+            )
+            .unwrap();
+
+        let stored = builder.build_stored().unwrap();
+        assert_eq!(
+            stored.nodes[root_id].next.as_deref(),
+            Some(&[base_root as Idx, contributor_0_root as Idx, extend_0 as Idx][..])
+        );
+        assert_eq!(
+            stored.nodes[extend_0].next.as_deref(),
+            Some(&[contributor_1_root as Idx, extend_1 as Idx][..])
+        );
+        assert_eq!(
+            stored.nodes[base_root].baseline,
+            SnapshotBaseline::Independent
+        );
+        assert_eq!(
+            stored.nodes[contributor_0_root].baseline,
+            SnapshotBaseline::Independent
+        );
+        assert_eq!(
+            stored.nodes[contributor_1_root].baseline,
+            SnapshotBaseline::Independent
+        );
+    }
+
+    #[test]
+    fn composition_without_base_processing_order_starts_from_clean_seed() {
+        let mut builder = ConfigSnapshotsBuilder::new_root(
+            value(json!({ "proxies": [] })),
+            composition_root("composition", None),
+        );
+        let root_id = builder.root_node_id();
+        let contributor_root = builder
+            .attach_independent_branch(
+                root_id,
+                scoped_file_branch(
+                    "member",
+                    ConfigExecutionRole::CompositionContributor {
+                        composition_id: pid("composition"),
+                        contributor_index: 0,
+                    },
+                    "member-transform",
+                ),
+            )
+            .unwrap();
+        let extend = builder
+            .push(
+                extend_step("composition", "member", 0),
+                value(json!({ "proxies": [{ "name": "a" }] })),
+            )
+            .unwrap();
+
+        let stored = builder.build_stored().unwrap();
+        assert!(matches!(
+            &stored.nodes[root_id].tag,
+            OperatorTag::CompositionRoot { base: None, .. }
+        ));
+        assert_eq!(
+            stored.nodes[root_id].next.as_deref(),
+            Some(&[contributor_root as Idx, extend as Idx][..])
+        );
+    }
+
+    #[test]
+    fn global_transforms_appear_once_on_final_selected_mainline() {
+        let mut builder = ConfigSnapshotsBuilder::new_root(
+            value(json!({ "proxies": [] })),
+            composition_root("composition", None),
+        );
+        builder
+            .attach_independent_branch(
+                builder.root_node_id(),
+                scoped_file_branch(
+                    "member",
+                    ConfigExecutionRole::CompositionContributor {
+                        composition_id: pid("composition"),
+                        contributor_index: 0,
+                    },
+                    "member-transform",
+                ),
+            )
+            .unwrap();
+        builder
+            .push(
+                extend_step("composition", "member", 0),
+                value(json!({ "step": "extend" })),
+            )
+            .unwrap();
+        builder
+            .push(
+                global_transform("composition", "global", TransformKind::Overlay, 0),
+                value(json!({ "step": "global" })),
+            )
+            .unwrap();
+        builder
+            .push(
+                builtin_step("composition", BuiltinStepKind::Finalizing),
+                value(json!({ "step": "final" })),
+            )
+            .unwrap();
+
+        let stored = builder.build_stored().unwrap();
+        assert_eq!(
+            stored
+                .nodes
+                .iter()
+                .filter(|node| matches!(node.tag, OperatorTag::GlobalTransform { .. }))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn storage_contract_independent_branch_root_materializes_without_changed_fields() {
+        let mut builder = ConfigSnapshotsBuilder::new_root(
+            value(json!({ "a": 1 })),
+            composition_root("composition", None),
+        );
+        let branch_root = builder
+            .attach_independent_branch(
+                builder.root_node_id(),
+                scoped_file_branch(
+                    "member",
+                    ConfigExecutionRole::CompositionContributor {
+                        composition_id: pid("composition"),
+                        contributor_index: 0,
+                    },
+                    "member-transform",
+                ),
+            )
+            .unwrap();
+
+        let stored = builder.build_stored().unwrap();
+        assert_eq!(
+            stored.nodes[branch_root].baseline,
+            SnapshotBaseline::Independent
+        );
+        assert!(matches!(
+            stored.nodes[branch_root].snapshot.payload,
+            SnapshotPayload::Full(_)
+        ));
+
+        let materialized = stored.materialize().unwrap();
+        assert!(
+            materialized.nodes[branch_root]
+                .snapshot
+                .changed_fields
+                .is_none()
+        );
+
+        // An independent node carrying a delta payload is rejected.
+        let invalid = StoredConfigSnapshotsGraph {
+            nodes: vec![StoredConfigSnapshotState {
+                snapshot: StoredConfigSnapshot {
+                    payload: SnapshotPayload::Delta(json_patch::diff(
+                        &json!({ "a": 1 }),
+                        &json!({ "a": 2 }),
+                    )),
+                },
+                tag: selected_file_root("primary"),
+                baseline: SnapshotBaseline::Independent,
+                next: None,
+            }],
+            root_id: 0,
         };
-        let json = serde_json::to_value(&tag).unwrap();
-        let back: OperatorTag = serde_json::from_value(json).unwrap();
-        assert_eq!(tag, back);
+        assert!(matches!(
+            invalid.validate_tree_shape(),
+            Err(SnapshotBuildError::IndependentDelta { .. })
+        ));
+        assert!(matches!(
+            invalid.materialize(),
+            Err(SnapshotBuildError::IndependentDelta { .. })
+        ));
     }
 
     #[cfg(feature = "snapshot-persistence")]
     #[test]
-    fn archive_round_trip() {
+    fn storage_contract_archive_v2_round_trip_and_decode_failures() {
         let root = value(json!({ "a": 1 }));
-        let graph = ConfigSnapshotsBuilder::new(root, "primary")
+        let graph = ConfigSnapshotsBuilder::new_root(root, selected_file_root("primary"))
             .build_stored()
             .unwrap();
         let bytes = persistence::encode_archive(&graph).unwrap();
@@ -1154,5 +1819,66 @@ mod tests {
             persistence::SNAPSHOT_ARCHIVE_VERSION
         );
         assert_eq!(archive.graph.root_id, graph.root_id);
+
+        // A v1 archive is rejected by version.
+        let v1_archive = persistence::SnapshotArchive {
+            format_version: 1,
+            crate_version: Arc::from("0.0.0"),
+            graph: graph.clone(),
+        };
+        let v1_body = rmp_serde::to_vec_named(&v1_archive).unwrap();
+        let v1_bytes = zstd::stream::encode_all(v1_body.as_slice(), 3).unwrap();
+        assert!(matches!(
+            persistence::decode_archive(&v1_bytes),
+            Err(persistence::SnapshotPersistError::UnsupportedVersion {
+                found: 1,
+                expected: 2,
+            })
+        ));
+
+        // A malformed graph is rejected by shape validation.
+        let malformed = StoredConfigSnapshotsGraph {
+            nodes: vec![full_node(
+                selected_file_root("primary"),
+                SnapshotBaseline::Independent,
+                Some(vec![7]),
+            )],
+            root_id: 0,
+        };
+        let malformed_archive = persistence::SnapshotArchive {
+            format_version: persistence::SNAPSHOT_ARCHIVE_VERSION,
+            crate_version: Arc::from("0.0.0"),
+            graph: malformed,
+        };
+        let malformed_body = rmp_serde::to_vec_named(&malformed_archive).unwrap();
+        let malformed_bytes = zstd::stream::encode_all(malformed_body.as_slice(), 3).unwrap();
+        assert!(matches!(
+            persistence::decode_archive(&malformed_bytes),
+            Err(persistence::SnapshotPersistError::Graph(
+                SnapshotBuildError::MissingChild { .. }
+            ))
+        ));
+
+        let cyclic = StoredConfigSnapshotsGraph {
+            nodes: vec![full_node(
+                selected_file_root("primary"),
+                SnapshotBaseline::Independent,
+                Some(vec![0]),
+            )],
+            root_id: 0,
+        };
+        let cyclic_archive = persistence::SnapshotArchive {
+            format_version: persistence::SNAPSHOT_ARCHIVE_VERSION,
+            crate_version: Arc::from("0.0.0"),
+            graph: cyclic,
+        };
+        let cyclic_body = rmp_serde::to_vec_named(&cyclic_archive).unwrap();
+        let cyclic_bytes = zstd::stream::encode_all(cyclic_body.as_slice(), 3).unwrap();
+        assert!(matches!(
+            persistence::decode_archive(&cyclic_bytes),
+            Err(persistence::SnapshotPersistError::Graph(
+                SnapshotBuildError::Cycle { .. }
+            ))
+        ));
     }
 }

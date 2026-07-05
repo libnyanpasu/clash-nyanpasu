@@ -1,21 +1,32 @@
-current: []
-chain: []
 valid:
   - dns
   - unified-delay
   - tun
 items:
   - uid: rIWXPHuafvEM
-    type: remote
     name: Test Remote
-    file: rIWXPHuafvEM.yaml
-    desc: null
-    updated: 1758110672
-    url: https://example.com
+    type: config
+    config:
+      type: file
+      source:
+        type: remote
+        file: rIWXPHuafvEM.yaml
+        updated_at: 1758110672
+        url: https://example.com/
+        option:
+          with_proxy: false
+          self_proxy: true
+          update_interval_minutes: 120
   - uid: siL1cvjnvLB6
-    type: script
     name: Script Chain
-    file: siL1cvjnvLB6.js
     desc: ''
-    updated: 1720954186
-    script_type: javascript
+    type: transform
+    transform:
+      type: script
+      source:
+        type: local
+        binding:
+          type: managed
+          file: siL1cvjnvLB6.js
+          updated_at: 1720954186
+      runtime: javascript

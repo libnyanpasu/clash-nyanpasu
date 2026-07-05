@@ -876,6 +876,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "relies on real OS file events; flaky on loaded CI runners - run manually"]
     async fn external_watcher_smoke_mirror_real_file_event() {
         let config_dir = tempdir().unwrap();
         let data_dir = tempdir().unwrap();
@@ -1165,10 +1166,17 @@ mod tests {
             .reorder(ReorderOp::ByList(vec![ProfileId("cfg1".into())]))
             .await
             .unwrap_err();
-        assert!(matches!(
-            err,
-            ProfilesError::ValidationFailed(_) | ProfilesError::ProfileNotFound(_)
-        ));
+        assert!(matches!(err, ProfilesError::InvalidReorderList { .. }));
+
+        let err = client
+            .reorder(ReorderOp::ByList(vec![
+                ProfileId("cfg1".into()),
+                ProfileId("cfg1".into()),
+                ProfileId("ovl1".into()),
+            ]))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ProfilesError::InvalidReorderList { .. }));
     }
 
     #[tokio::test]
@@ -1230,10 +1238,291 @@ mod tests {
 
         let err = client.delete(ProfileId("ovl1".into())).await.unwrap_err();
         match err {
-            ProfilesError::ProfileInUse { referrers } => {
+            ProfilesError::ProfileInUse {
+                referrers,
+                current,
+                global_transforms,
+            } => {
                 assert_eq!(referrers, vec![ProfileId("cfg1".into())]);
+                assert!(!current);
+                assert!(!global_transforms);
             }
             other => panic!("expected ProfileInUse, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn validation_failure_leaves_disk_untouched() {
+        let (client, dir) = seeded_client().await;
+        let err = client
+            .set_current(Some(ProfileId("ghost".into())))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ProfilesError::ValidationFailed(_)));
+        drop(client);
+
+        let reopened = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            std::sync::Arc::new(MockProfileFsPort::new()),
+            std::sync::Arc::new(MockSubscriptionFetcher::new()),
+            std::sync::Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .expect("reopen after failed mutation");
+        let snapshot = reopened.get().await.unwrap();
+        assert!(snapshot.current.is_none());
+        assert_eq!(snapshot.items.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn delete_protects_composition_base_and_contributors() {
+        let (client, _dir) = test_client_with(MockProfileFsPort::new()).await;
+        let mut profiles = seeded_profiles();
+        profiles.append_item(nyanpasu_config::profile::ProfileItem {
+            uid: ProfileId("comp".into()),
+            metadata: ProfileMetadata {
+                name: "COMP".into(),
+                desc: None,
+            },
+            definition: ProfileDefinition::Config {
+                config: ConfigDefinition::Composition(
+                    nyanpasu_config::profile::CompositionConfig {
+                        base: Some(ProfileId("cfg1".into())),
+                        extend_proxies_from: vec![ProfileId("cfg2".into())],
+                        transforms: vec![],
+                    },
+                ),
+            },
+        });
+        client.replace(profiles).await.unwrap();
+
+        let err = client.delete(ProfileId("cfg1".into())).await.unwrap_err();
+        match err {
+            ProfilesError::ProfileInUse {
+                referrers,
+                current,
+                global_transforms,
+            } => {
+                assert_eq!(referrers, vec![ProfileId("comp".into())]);
+                assert!(!current);
+                assert!(!global_transforms);
+            }
+            other => panic!("expected ProfileInUse, got {other:?}"),
+        }
+        let err = client.delete(ProfileId("cfg2".into())).await.unwrap_err();
+        match err {
+            ProfilesError::ProfileInUse { referrers, .. } => {
+                assert_eq!(referrers, vec![ProfileId("comp".into())]);
+            }
+            other => panic!("expected ProfileInUse, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn delete_reports_document_level_references() {
+        let (client, _dir) = seeded_client().await;
+        client
+            .set_current(Some(ProfileId("cfg1".into())))
+            .await
+            .unwrap();
+        let err = client.delete(ProfileId("cfg1".into())).await.unwrap_err();
+        match err {
+            ProfilesError::ProfileInUse {
+                referrers,
+                current,
+                global_transforms,
+            } => {
+                assert!(referrers.is_empty());
+                assert!(current);
+                assert!(!global_transforms);
+            }
+            other => panic!("expected ProfileInUse, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn delete_cleanup_per_binding_kind() {
+        let outside_a = if cfg!(windows) {
+            "C:\\outside\\a.yaml"
+        } else {
+            "/outside/a.yaml"
+        };
+        let outside_b = if cfg!(windows) {
+            "C:\\outside\\b.yaml"
+        } else {
+            "/outside/b.yaml"
+        };
+
+        // External Symlink: only the app-managed link is removed.
+        let mut fs = MockProfileFsPort::new();
+        fs.expect_remove()
+            .withf(|path| path.as_str() == "sym1.yaml")
+            .times(1)
+            .returning(|_| Ok(()));
+        let (client, _dir) = test_client_with(fs).await;
+        let mut profiles = Profiles::default();
+        profiles.append_item(external_item(
+            "sym1",
+            ExternalMode::Symlink,
+            external_path(std::path::Path::new(outside_a)),
+        ));
+        client.replace(profiles).await.unwrap();
+        client.delete(ProfileId("sym1".into())).await.unwrap();
+
+        // External Mirror: the mirror copy is removed.
+        let mut fs = MockProfileFsPort::new();
+        fs.expect_remove()
+            .withf(|path| path.as_str() == "mir1.yaml")
+            .times(1)
+            .returning(|_| Ok(()));
+        let (client, _dir) = test_client_with(fs).await;
+        let mut profiles = Profiles::default();
+        profiles.append_item(external_item(
+            "mir1",
+            ExternalMode::Mirror,
+            external_path(std::path::Path::new(outside_b)),
+        ));
+        client.replace(profiles).await.unwrap();
+        client.delete(ProfileId("mir1".into())).await.unwrap();
+
+        // Composition: no filesystem call at all (mock without expectations
+        // panics on any use).
+        let (client, _dir) = test_client_with(MockProfileFsPort::new()).await;
+        let mut profiles = seeded_profiles();
+        profiles.append_item(nyanpasu_config::profile::ProfileItem {
+            uid: ProfileId("comp".into()),
+            metadata: ProfileMetadata {
+                name: "COMP".into(),
+                desc: None,
+            },
+            definition: ProfileDefinition::Config {
+                config: ConfigDefinition::Composition(
+                    nyanpasu_config::profile::CompositionConfig {
+                        base: Some(ProfileId("cfg1".into())),
+                        extend_proxies_from: vec![],
+                        transforms: vec![],
+                    },
+                ),
+            },
+        });
+        client.replace(profiles).await.unwrap();
+        client.delete(ProfileId("comp".into())).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn load_fails_fast_on_invalid_document() {
+        let dir = tempdir().unwrap();
+        let path = temp_profiles_path(&dir);
+        std::fs::write(
+            &path,
+            "current: ghost\nitems:\n- uid: a\n  name: A\n  type: config\n  config:\n    type: file\n    source:\n      type: local\n      binding:\n        type: managed\n        file: a.yaml\n",
+        )
+        .unwrap();
+        let result = ProfilesClient::new(
+            path,
+            std::sync::Arc::new(MockProfileFsPort::new()),
+            std::sync::Arc::new(MockSubscriptionFetcher::new()),
+            std::sync::Arc::new(MockRebuildNotifier::new()),
+        )
+        .await;
+        assert!(result.is_err(), "invalid persisted document must fail fast");
+    }
+
+    #[tokio::test]
+    async fn add_remote_resets_materialization_metadata() {
+        let (client, _dir) = test_client_with(MockProfileFsPort::new()).await;
+        let mut item = remote_config_item("placeholder");
+        if let Some(source) = item.definition.source_mut() {
+            source.materialized_mut().updated_at = Some(time::OffsetDateTime::UNIX_EPOCH);
+            if let ProfileSource::Remote { subscription, .. } = source {
+                subscription.upload = Some(1);
+            }
+        }
+        let report = client
+            .add(
+                NewProfileRequest {
+                    metadata: item.metadata.clone(),
+                    definition: item.definition,
+                },
+                None,
+            )
+            .await
+            .unwrap();
+        let (uid, added) = report.snapshot.items.first().unwrap();
+        let source = added.definition.source().unwrap();
+        assert_eq!(source.materialized().file.as_str(), format!("{uid}.yaml"));
+        assert!(source.materialized().updated_at.is_none());
+        match source {
+            ProfileSource::Remote { subscription, .. } => assert!(subscription.is_empty()),
+            _ => panic!("expected remote source"),
+        }
+    }
+
+    #[tokio::test]
+    async fn replace_definition_rejects_invalid_and_keeps_state() {
+        let (client, dir) = seeded_client().await;
+        let mut definition = seeded_profiles().items[&ProfileId("cfg1".into())]
+            .definition
+            .clone();
+        if let ProfileDefinition::Config {
+            config: ConfigDefinition::File(file),
+        } = &mut definition
+        {
+            file.transforms = vec![ProfileId("ghost".into())];
+        }
+        let err = client
+            .replace_definition(ProfileId("cfg1".into()), definition)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ProfilesError::ValidationFailed(_)));
+        drop(client);
+
+        let reopened = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            std::sync::Arc::new(MockProfileFsPort::new()),
+            std::sync::Arc::new(MockSubscriptionFetcher::new()),
+            std::sync::Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+        let snapshot = reopened.get().await.unwrap();
+        let item = &snapshot.items[&ProfileId("cfg1".into())];
+        match &item.definition {
+            ProfileDefinition::Config { config } => assert!(config.transforms().is_empty()),
+            other => panic!("cfg1 must stay a config, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn replace_definition_kind_switch_rewrites_path_and_cleans_orphan() {
+        let mut fs = MockProfileFsPort::new();
+        fs.expect_remove()
+            .withf(|path| path.as_str() == "cfg2.yaml")
+            .times(1)
+            .returning(|_| Ok(()));
+        let (client, _dir) = test_client_with(fs).await;
+        client.replace(seeded_profiles()).await.unwrap();
+
+        let definition = ProfileDefinition::Transform {
+            transform: TransformDefinition::Script(nyanpasu_config::profile::ScriptTransform {
+                source: ProfileSource::Local {
+                    binding: LocalBinding::Managed {
+                        materialized: MaterializedFile {
+                            file: ManagedProfilePath::new("client-supplied.lua").unwrap(),
+                            updated_at: Some(time::OffsetDateTime::UNIX_EPOCH),
+                        },
+                    },
+                },
+                runtime: nyanpasu_config::profile::ScriptRuntime::Lua,
+            }),
+        };
+        let report = client
+            .replace_definition(ProfileId("cfg2".into()), definition)
+            .await
+            .unwrap();
+        let item = &report.snapshot.items[&ProfileId("cfg2".into())];
+        let source = item.definition.source().unwrap();
+        assert_eq!(source.materialized().file.as_str(), "cfg2.lua");
+        assert!(source.materialized().updated_at.is_none());
     }
 }

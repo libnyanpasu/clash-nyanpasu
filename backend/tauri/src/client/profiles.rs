@@ -4,13 +4,15 @@ use std::{sync::Arc, time::Duration};
 
 use anyhow::Context as _;
 use camino::Utf8PathBuf;
-use nyanpasu_config::profile::{ProfileId, Profiles};
+use nyanpasu_config::profile::{
+    ProfileDefinition, ProfileId, ProfileMetadataPatch, Profiles, RemoteProfileOptionsPatch,
+};
 use nyanpasu_core::state::PersistentStateManagerSetup;
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 
 use crate::state::profiles::{
     CommitReport, NewProfileRequest, ProfilesActor, ProfilesActorArgs, ProfilesActorMessage,
-    ProfilesError,
+    ProfilesError, ReorderOp,
     ports::{ProfileFsPort, RebuildNotifier, SubscriptionFetcher},
 };
 
@@ -130,6 +132,51 @@ impl ProfilesClient {
             .await
     }
 
+    pub async fn reorder(&self, op: ReorderOp) -> Result<CommitReport, ProfilesError> {
+        self.call(|reply| ProfilesActorMessage::Reorder { op, reply }, None)
+            .await
+    }
+
+    pub async fn patch_metadata(
+        &self,
+        uid: ProfileId,
+        patch: ProfileMetadataPatch,
+    ) -> Result<CommitReport, ProfilesError> {
+        self.call(
+            |reply| ProfilesActorMessage::PatchMetadata { uid, patch, reply },
+            None,
+        )
+        .await
+    }
+
+    pub async fn patch_remote_options(
+        &self,
+        uid: ProfileId,
+        patch: RemoteProfileOptionsPatch,
+    ) -> Result<CommitReport, ProfilesError> {
+        self.call(
+            |reply| ProfilesActorMessage::PatchRemoteOptions { uid, patch, reply },
+            None,
+        )
+        .await
+    }
+
+    pub async fn replace_definition(
+        &self,
+        uid: ProfileId,
+        definition: ProfileDefinition,
+    ) -> Result<CommitReport, ProfilesError> {
+        self.call(
+            |reply| ProfilesActorMessage::ReplaceDefinition {
+                uid,
+                definition,
+                reply,
+            },
+            None,
+        )
+        .await
+    }
+
     async fn call<F, T>(&self, make: F, timeout: Option<Duration>) -> Result<T, ProfilesError>
     where
         F: FnOnce(RpcReplyPort<Result<T, ProfilesError>>) -> ProfilesActorMessage,
@@ -161,6 +208,7 @@ mod tests {
         OverlayTransform, ProfileDefinition, ProfileId, ProfileMetadata, ProfileSource, Profiles,
         ScriptRuntime, ScriptTransform, TransformDefinition,
     };
+    use struct_patch::Patch as _;
     use tempfile::{TempDir, tempdir};
 
     pub(crate) fn temp_profiles_path(dir: &TempDir) -> Utf8PathBuf {
@@ -449,5 +497,106 @@ mod tests {
                 .get(&ProfileId("cfg2".into()))
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn reorder_move_and_by_list() {
+        let (client, _dir) = seeded_client().await;
+        let report = client
+            .reorder(ReorderOp::Move {
+                active: ProfileId("cfg2".into()),
+                over: ProfileId("cfg1".into()),
+            })
+            .await
+            .unwrap();
+        assert!(!report.affects_current);
+        let uids: Vec<_> = report.snapshot.items.keys().map(|u| u.0.clone()).collect();
+        assert_eq!(uids, vec!["cfg2", "cfg1", "ovl1"]);
+
+        let report = client
+            .reorder(ReorderOp::ByList(vec![
+                ProfileId("ovl1".into()),
+                ProfileId("cfg1".into()),
+                ProfileId("cfg2".into()),
+            ]))
+            .await
+            .unwrap();
+        let uids: Vec<_> = report.snapshot.items.keys().map(|u| u.0.clone()).collect();
+        assert_eq!(uids, vec!["ovl1", "cfg1", "cfg2"]);
+
+        let err = client
+            .reorder(ReorderOp::ByList(vec![ProfileId("cfg1".into())]))
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            ProfilesError::ValidationFailed(_) | ProfilesError::ProfileNotFound(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn patch_metadata_and_remote_options() {
+        let (client, _dir) = seeded_client().await;
+        let mut patch = ProfileMetadata::new_empty_patch();
+        patch.name = Some("Renamed".into());
+        let report = client
+            .patch_metadata(ProfileId("cfg1".into()), patch)
+            .await
+            .unwrap();
+        assert!(!report.affects_current);
+        assert_eq!(
+            report.snapshot.items[&ProfileId("cfg1".into())]
+                .metadata
+                .name,
+            "Renamed"
+        );
+
+        let options_patch = nyanpasu_config::profile::RemoteProfileOptions::new_empty_patch();
+        let err = client
+            .patch_remote_options(ProfileId("cfg1".into()), options_patch)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ProfilesError::NotARemoteProfile));
+    }
+
+    #[tokio::test]
+    async fn replace_definition_is_atomic_and_reports_closure_hit() {
+        let (client, _dir) = seeded_client().await;
+        client
+            .set_current(Some(ProfileId("cfg1".into())))
+            .await
+            .unwrap();
+
+        let mut definition = seeded_profiles().items[&ProfileId("cfg1".into())]
+            .definition
+            .clone();
+        if let ProfileDefinition::Config {
+            config: ConfigDefinition::File(file),
+        } = &mut definition
+        {
+            file.transforms = vec![ProfileId("ovl1".into())];
+        }
+        let report = client
+            .replace_definition(ProfileId("cfg1".into()), definition)
+            .await
+            .unwrap();
+        assert!(report.affects_current);
+
+        let definition = seeded_profiles().items[&ProfileId("cfg2".into())]
+            .definition
+            .clone();
+        let report = client
+            .replace_definition(ProfileId("cfg2".into()), definition)
+            .await
+            .unwrap();
+        assert!(!report.affects_current);
+
+        let err = client.delete(ProfileId("ovl1".into())).await.unwrap_err();
+        match err {
+            ProfilesError::ProfileInUse { referrers } => {
+                assert_eq!(referrers, vec![ProfileId("cfg1".into())]);
+            }
+            other => panic!("expected ProfileInUse, got {other:?}"),
+        }
     }
 }

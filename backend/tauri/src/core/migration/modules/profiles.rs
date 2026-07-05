@@ -30,14 +30,10 @@ impl ModuleMigrator for ProfilesMigrator {
         let raw = std::fs::read_to_string(&profiles_path)?;
         let profiles: Mapping = serde_yaml::from_str(&raw)
             .map_err(|e| anyhow::anyhow!("failed to parse profiles: {e}"))?;
-        if needs_null_value_migration(&profiles)
-            || needs_script_newtype_migration(&profiles)
-            || !is_clean_schema(&profiles)
-        {
-            Ok(0)
-        } else {
-            Ok(current_revision())
+        if is_clean_schema(&profiles) {
+            return Ok(current_revision());
         }
+        Ok(0)
     }
 
     fn steps(&self) -> &'static [&'static dyn MigrationStep] {
@@ -401,6 +397,12 @@ fn migrate_item(item: Mapping) -> Result<Mapping, CleanSchemaError> {
     }
 
     let source = if ty == "remote" || is_url {
+        if ty == "local" && item.get("symlinks").is_some_and(|value| !value.is_null()) {
+            return Err(fail(
+                "symlinks",
+                "remote source cannot preserve external symlink binding",
+            ));
+        }
         let url = if ty == "remote" {
             item.get("url")
                 .and_then(str_value)
@@ -534,11 +536,12 @@ fn migrate_remote_options(uid: &str, option: Option<&Value>) -> Result<Mapping, 
     let fail = |field: &str, reason: &str| CleanSchemaError::new(Some(uid), field, reason);
     let mut out = Mapping::new();
     match option {
-        None | Some(Value::Null) => {
+        None => {
             out.insert("with_proxy".into(), Value::Bool(false));
             out.insert("self_proxy".into(), Value::Bool(true));
             out.insert("update_interval_minutes".into(), Value::from(120u64));
         }
+        Some(Value::Null) => return Err(fail("option", "option must be a mapping")),
         Some(Value::Mapping(option)) => {
             for key in option.keys() {
                 let Some(key) = key.as_str() else {
@@ -794,23 +797,6 @@ fn write_profiles_atomic(
 
 fn current_revision() -> u64 {
     STEPS.last().map(|step| step.revision()).unwrap_or_default()
-}
-
-fn needs_null_value_migration(mapping: &Mapping) -> bool {
-    mapping.values().any(Value::is_null)
-}
-
-fn needs_script_newtype_migration(mapping: &Mapping) -> bool {
-    mapping
-        .get("items")
-        .and_then(Value::as_sequence)
-        .is_some_and(|items| {
-            items.iter().any(|item| {
-                item.as_mapping()
-                    .and_then(|item| item.get("type"))
-                    .is_some_and(|ty| matches!(ty, Value::Tagged(tag) if tag.tag == "script"))
-            })
-        })
 }
 
 fn migrate_profile_data(mut mapping: Mapping) -> Mapping {
@@ -1111,6 +1097,17 @@ config:
     }
 
     #[test]
+    fn remote_option_null_fails_explicitly() {
+        let err = migrate_item(item(
+            "uid: r1\ntype: remote\nname: A\nfile: r1.yaml\nurl: https://e.com\noption: null\n",
+        ))
+        .unwrap_err();
+        assert_eq!(err.uid.as_deref(), Some("r1"));
+        assert_eq!(err.field_path, "option");
+        assert_eq!(err.reason, "option must be a mapping");
+    }
+
+    #[test]
     fn remote_extra_expire_zero_becomes_absent() {
         let out = migrated(
             "uid: r1\ntype: remote\nname: A\nfile: r1.yaml\nurl: https://e.com\nextra: {upload: 0, download: 0, total: 0, expire: 0}\n",
@@ -1234,6 +1231,13 @@ transform:
         assert_eq!(source["file"], Value::from("l1.yaml"));
         let option = source["option"].as_mapping().unwrap();
         assert_eq!(option["self_proxy"], Value::Bool(true)); // R5 absent 语义
+
+        let err = migrate_item(item(
+            "uid: l1\ntype: local\nname: L\nfile: https://e.com/sub.yaml\nsymlinks: /outside/real.yaml\n",
+        ))
+        .unwrap_err();
+        assert_eq!(err.uid.as_deref(), Some("l1"));
+        assert_eq!(err.field_path, "symlinks");
 
         let out = migrated(
             "uid: s1\ntype: script\nname: S\nfile: https://e.com/x.js\nscript_type: javascript\n",
@@ -1384,6 +1388,30 @@ items:
     }
 
     #[test]
+    fn clean_schema_with_null_current_baselines_to_head_and_is_noop() {
+        let (_temp, mut ctx) = temp_ctx();
+        let path = ctx.profiles_path();
+        let clean = r#"current: null
+items:
+  - uid: l1
+    name: L
+    type: config
+    config:
+      type: file
+      source:
+        type: local
+        binding:
+          type: managed
+          file: l1.yaml
+"#;
+        std::fs::write(&path, clean).unwrap();
+
+        assert_eq!(MIGRATOR.detect_baseline(&ctx).unwrap(), current_revision());
+        run_clean_schema(&mut ctx).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), clean);
+    }
+
+    #[test]
     fn clean_schema_run_failure_leaves_file_untouched() {
         let (_temp, mut ctx) = temp_ctx();
         let path = ctx.profiles_path();
@@ -1392,6 +1420,29 @@ items:
         std::fs::write(&path, bad).unwrap();
         assert!(run_clean_schema(&mut ctx).is_err());
         assert_eq!(std::fs::read_to_string(&path).unwrap(), bad);
+    }
+
+    #[test]
+    fn clean_schema_run_rejects_duplicate_item_uid() {
+        let (_temp, mut ctx) = temp_ctx();
+        let path = ctx.profiles_path();
+        let duplicate = r#"items:
+  - uid: same
+    type: local
+    name: A
+    file: a.yaml
+  - uid: same
+    type: local
+    name: B
+    file: b.yaml
+"#;
+        std::fs::write(&path, duplicate).unwrap();
+
+        let err = run_clean_schema(&mut ctx).unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains("clean-schema output rejected by domain model"));
+        assert!(message.contains("duplicate profile id: same"));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), duplicate);
     }
 
     #[test]

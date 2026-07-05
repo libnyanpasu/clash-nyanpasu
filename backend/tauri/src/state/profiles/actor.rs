@@ -12,7 +12,10 @@ use nyanpasu_config::profile::{
 use nyanpasu_core::state::PersistentStateManager;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 
-use super::ports::{ProfileFsPort, RebuildNotifier, SubscriptionFetcher};
+use super::{
+    ports::{ProfileFsPort, RebuildNotifier, SubscriptionFetcher},
+    scheduler::RemoteUpdateScheduler,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProfilesError {
@@ -73,6 +76,7 @@ pub struct ProfilesActorState {
     fetcher: Arc<dyn SubscriptionFetcher>,
     notifier: Arc<dyn RebuildNotifier>,
     pending_refresh: HashMap<ProfileId, Option<RpcReplyPort<Result<CommitReport, ProfilesError>>>>,
+    scheduler: RemoteUpdateScheduler,
 }
 
 #[derive(Debug)]
@@ -234,6 +238,7 @@ impl ProfilesActor {
     }
 
     async fn run_write<F>(
+        myself: &ActorRef<ProfilesActorMessage>,
         state: &mut ProfilesActorState,
         mutate: F,
     ) -> Result<CommitReport, ProfilesError>
@@ -250,6 +255,7 @@ impl ProfilesActor {
             .await
             .map_err(|e| ProfilesError::Persist(e.to_string()))?;
         state.index = ProfileDependencyIndex::build(&next);
+        state.scheduler.reconcile(&next, myself, false);
 
         let mut warnings = Vec::new();
         for op in outcome.post_ops {
@@ -366,7 +372,18 @@ impl Actor for ProfilesActor {
             fetcher: args.fetcher,
             notifier: args.notifier,
             pending_refresh: HashMap::new(),
+            scheduler: RemoteUpdateScheduler::default(),
         })
+    }
+
+    async fn post_start(
+        &self,
+        myself: ActorRef<Self::Msg>,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        let snapshot = Self::current_state(state);
+        state.scheduler.reconcile(&snapshot, &myself, true);
+        Ok(())
     }
 
     async fn handle(
@@ -380,7 +397,7 @@ impl Actor for ProfilesActor {
                 let _ = reply.send(Ok(Arc::new(Self::current_state(state))));
             }
             ProfilesActorMessage::SetCurrent { current, reply } => {
-                let result = Self::run_write(state, |profiles| {
+                let result = Self::run_write(&myself, state, |profiles| {
                     profiles.set_current(current);
                     Ok(WriteOutcome {
                         affects: AffectsRule::CurrentChanged,
@@ -391,7 +408,7 @@ impl Actor for ProfilesActor {
                 let _ = reply.send(result);
             }
             ProfilesActorMessage::SetGlobalTransforms { ids, reply } => {
-                let result = Self::run_write(state, |profiles| {
+                let result = Self::run_write(&myself, state, |profiles| {
                     profiles.global_transforms = ids;
                     Ok(WriteOutcome {
                         affects: AffectsRule::GlobalChanged,
@@ -405,7 +422,7 @@ impl Actor for ProfilesActor {
                 profiles: next,
                 reply,
             } => {
-                let result = Self::run_write(state, |profiles| {
+                let result = Self::run_write(&myself, state, |profiles| {
                     *profiles = next;
                     Ok(WriteOutcome {
                         affects: AffectsRule::Always,
@@ -459,7 +476,7 @@ impl Actor for ProfilesActor {
                         metadata: request.metadata,
                         definition,
                     };
-                    Self::run_write(state, move |profiles| {
+                    Self::run_write(&myself, state, move |profiles| {
                         if !profiles.append_item(item) {
                             return Err(ProfilesError::Persist("uid collision".into()));
                         }
@@ -490,7 +507,7 @@ impl Actor for ProfilesActor {
                                 }]
                             })
                             .unwrap_or_default();
-                        Self::run_write(state, move |profiles| {
+                        Self::run_write(&myself, state, move |profiles| {
                             profiles.remove_item_unchecked(&uid);
                             Ok(WriteOutcome {
                                 affects: AffectsRule::Never,
@@ -503,7 +520,7 @@ impl Actor for ProfilesActor {
                 let _ = reply.send(result);
             }
             ProfilesActorMessage::Reorder { op, reply } => {
-                let result = Self::run_write(state, move |profiles| {
+                let result = Self::run_write(&myself, state, move |profiles| {
                     match op {
                         ReorderOp::Move { active, over } => {
                             if profiles.items.get(&active).is_none() {
@@ -547,7 +564,7 @@ impl Actor for ProfilesActor {
                 let _ = reply.send(result);
             }
             ProfilesActorMessage::PatchMetadata { uid, patch, reply } => {
-                let result = Self::run_write(state, move |profiles| {
+                let result = Self::run_write(&myself, state, move |profiles| {
                     let Some(item) = profiles.items.get_mut(&uid) else {
                         return Err(ProfilesError::ProfileNotFound(uid));
                     };
@@ -561,7 +578,7 @@ impl Actor for ProfilesActor {
                 let _ = reply.send(result);
             }
             ProfilesActorMessage::PatchRemoteOptions { uid, patch, reply } => {
-                let result = Self::run_write(state, move |profiles| {
+                let result = Self::run_write(&myself, state, move |profiles| {
                     let Some(item) = profiles.items.get_mut(&uid) else {
                         return Err(ProfilesError::ProfileNotFound(uid));
                     };
@@ -591,7 +608,7 @@ impl Actor for ProfilesActor {
                 }
 
                 if let Some(patch) = patch {
-                    let patched = Self::run_write(state, {
+                    let patched = Self::run_write(&myself, state, {
                         let uid = uid.clone();
                         move |profiles| {
                             let Some(item) = profiles.items.get_mut(&uid) else {
@@ -691,7 +708,7 @@ impl Actor for ProfilesActor {
                         Err(ProfilesError::RefreshFailed { message })
                     }
                     RefreshOutcome::Succeeded { subscription } => {
-                        Self::run_write(state, {
+                        Self::run_write(&myself, state, {
                             let uid = uid.clone();
                             move |profiles| {
                                 let Some(item) = profiles.items.get_mut(&uid) else {
@@ -735,7 +752,7 @@ impl Actor for ProfilesActor {
                 definition,
                 reply,
             } => {
-                let result = Self::run_write(state, move |profiles| {
+                let result = Self::run_write(&myself, state, move |profiles| {
                     let Some(item) = profiles.items.get_mut(&uid) else {
                         return Err(ProfilesError::ProfileNotFound(uid.clone()));
                     };
@@ -758,6 +775,15 @@ impl Actor for ProfilesActor {
                 let _ = inserted.send(());
             }
         }
+        Ok(())
+    }
+
+    async fn post_stop(
+        &self,
+        _myself: ActorRef<Self::Msg>,
+        state: &mut Self::State,
+    ) -> Result<(), ActorProcessingErr> {
+        state.scheduler.shutdown();
         Ok(())
     }
 }

@@ -153,6 +153,7 @@ flowchart LR
 pub trait ProfileFsPort: Send + Sync + 'static {
     fn read(&self, path: &ManagedProfilePath) -> anyhow::Result<String>;
     fn write_atomic(&self, path: &ManagedProfilePath, content: &str) -> anyhow::Result<()>;
+    /// Idempotent: removing a missing file succeeds.
     fn remove(&self, path: &ManagedProfilePath) -> anyhow::Result<()>;
     fn ensure_not_symlink(&self, path: &ManagedProfilePath) -> anyhow::Result<()>;
     fn ensure_symlink(&self, path: &ManagedProfilePath, target: &ExternalProfilePath) -> anyhow::Result<()>;
@@ -165,8 +166,18 @@ pub trait SubscriptionFetcher: Send + Sync + 'static {
 pub trait RebuildNotifier: Send + Sync + 'static {
     fn request_rebuild(&self);
 }
-pub struct FetchedSubscription { pub content: String, pub subscription: SubscriptionInfo }
-// ProfileFileService::new(paths: PathResolver, http: reqwest::Client) — 同时 impl ProfileFsPort + SubscriptionFetcher
+pub struct FetchedSubscription {
+    pub content: String,
+    pub filename: Option<String>,
+    pub subscription: SubscriptionInfo,
+}
+#[cfg_attr(test, mockall::automock)]
+pub trait SelfProxyPortSource: Send + Sync + 'static {
+    fn mixed_port(&self) -> Option<u16>;
+}
+// ProfileFileService::new(paths: PathResolver, self_proxy_port: Arc<dyn SelfProxyPortSource>)
+// — 同时 impl ProfileFsPort + SubscriptionFetcher;T07 composition root 提供 SelfProxyPortSource。
+pub fn normalize_yaml_document(content: &str) -> anyhow::Result<String>;
 ```
 
 **验证**:

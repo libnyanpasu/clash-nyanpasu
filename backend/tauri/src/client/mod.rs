@@ -13,9 +13,9 @@ use self::{
 };
 use crate::{
     bridge::{
-        TypedConfigPatchPlan, clash::LegacyClashBridge, legacy_iverge_from_typed,
-        typed_config_from_legacy, typed_patches_from_legacy_patch, verge::LegacyVergeBridge,
-        window::LegacyWindowBridge,
+        TypedConfigPatchPlan, clash::LegacyClashBridge, legacy_iverge_base_for_typed_read,
+        legacy_iverge_from_typed, typed_config_from_legacy, typed_patches_from_legacy_patch,
+        verge::LegacyVergeBridge, window::LegacyWindowBridge,
     },
     config::{Config, IVerge, Profiles, ProfilesBuilder},
     core::{CoreManager, RunType},
@@ -150,7 +150,7 @@ impl TypedConfigClients {
 struct NyanpasuClientInner {
     ui: Arc<dyn UiEventSink>,
     state: StateClient,
-    typed_config: Option<TypedConfigClients>,
+    typed_config: TypedConfigClients,
     /// Serializes all verge mutations funneled through this client (IPC patches,
     /// legacy reseeds). The actor serializes its own state, but the legacy path holds
     /// `Config::verge()` draft across awaits, so client-level mutations must not interleave.
@@ -175,22 +175,13 @@ impl NyanpasuClient {
             legacy_verge_mirror(),
         )?;
         let typed_config = tauri::async_runtime::block_on(TypedConfigClients::new(paths, bridges))?;
-        Ok(Self::with_state_and_typed_config(
-            ui,
-            state,
-            Some(typed_config),
-        ))
-    }
-
-    #[cfg(test)]
-    fn with_state(ui: Arc<dyn UiEventSink>, state: StateClient) -> Self {
-        Self::with_state_and_typed_config(ui, state, None)
+        Ok(Self::with_state_and_typed_config(ui, state, typed_config))
     }
 
     fn with_state_and_typed_config(
         ui: Arc<dyn UiEventSink>,
         state: StateClient,
-        typed_config: Option<TypedConfigClients>,
+        typed_config: TypedConfigClients,
     ) -> Self {
         Self {
             inner: Arc::new(NyanpasuClientInner {
@@ -202,61 +193,57 @@ impl NyanpasuClient {
         }
     }
 
-    fn typed_config(&self) -> Result<&TypedConfigClients> {
-        self.inner.typed_config.as_ref().ok_or_else(|| {
-            ClientError::Custom(
-                "typed config actors are not initialized in the legacy setup path".into(),
-            )
-        })
+    fn typed_config(&self) -> &TypedConfigClients {
+        &self.inner.typed_config
     }
 
     pub async fn get_app_config(&self) -> Result<NyanpasuAppConfig> {
-        let client = self.typed_config()?.application.clone();
+        let client = self.typed_config().application.clone();
         Ok(client.get().await?.state)
     }
 
     pub async fn patch_app_config(&self, patch: NyanpasuAppConfigPatch) -> Result<()> {
-        let client = self.typed_config()?.application.clone();
+        let client = self.typed_config().application.clone();
         client.patch(patch).await?;
         Ok(())
     }
 
     pub async fn replace_app_config(&self, state: NyanpasuAppConfig) -> Result<()> {
-        let client = self.typed_config()?.application.clone();
+        let client = self.typed_config().application.clone();
         client.replace(state).await?;
         Ok(())
     }
 
     pub async fn get_session_state(&self) -> Result<PersistentState> {
-        let client = self.typed_config()?.session_state.clone();
+        let client = self.typed_config().session_state.clone();
         Ok(client.get().await?.state)
     }
 
     pub async fn patch_session_state(&self, patch: PersistentStatePatch) -> Result<()> {
-        let client = self.typed_config()?.session_state.clone();
+        let client = self.typed_config().session_state.clone();
         client.patch(patch).await?;
         Ok(())
     }
 
     pub async fn replace_session_state(&self, state: PersistentState) -> Result<()> {
-        let client = self.typed_config()?.session_state.clone();
+        let client = self.typed_config().session_state.clone();
         client.replace(state).await?;
         Ok(())
     }
 
     pub async fn get_clash_config(&self) -> Result<ClashConfig> {
-        let client = self.typed_config()?.clash_config.clone();
+        let client = self.typed_config().clash_config.clone();
         Ok(client.get().await?.state)
     }
 
     pub async fn patch_clash_config(&self, patch: ClashConfigPatch) -> Result<()> {
-        let client = self.typed_config()?.clash_config.clone();
+        let client = self.typed_config().clash_config.clone();
         client.patch(patch).await?;
         Ok(())
     }
 
     pub async fn replace_clash_config(&self, state: ClashConfig) -> Result<()> {
-        let client = self.typed_config()?.clash_config.clone();
+        let client = self.typed_config().clash_config.clone();
         client.replace(state).await?;
         Ok(())
     }
@@ -272,9 +259,7 @@ impl NyanpasuClient {
     }
 
     async fn apply_typed_config_patch_plan(&self, plan: TypedConfigPatchPlan) -> Result<()> {
-        let Some(typed) = self.inner.typed_config.as_ref() else {
-            return Ok(());
-        };
+        let typed = &self.inner.typed_config;
 
         if let Some(patch) = plan.application {
             typed.application.clone().patch(patch).await?;
@@ -290,9 +275,7 @@ impl NyanpasuClient {
     }
 
     async fn reseed_typed_config_from_legacy(&self) -> Result<()> {
-        let Some(typed) = self.inner.typed_config.as_ref() else {
-            return Ok(());
-        };
+        let typed = &self.inner.typed_config;
 
         let legacy = self.inner.state.get_verge().await?;
         let (app, session, clash) = typed_config_from_legacy(&legacy)?;
@@ -346,31 +329,17 @@ impl NyanpasuClient {
     }
 
     pub async fn get_verge_config(&self) -> Result<IVerge> {
-        let Some(typed) = self.inner.typed_config.as_ref() else {
-            return Ok(self.inner.state.get_verge().await?);
-        };
+        let typed = &self.inner.typed_config;
+        let app = typed.application.clone().get().await?.state;
+        let session = typed.session_state.clone().get().await?.state;
+        let clash = typed.clash_config.clone().get().await?.state;
 
-        let base = self.inner.state.get_verge().await?;
-        let typed_read = async {
-            let app = typed.application.clone().get().await?.state;
-            let session = typed.session_state.clone().get().await?.state;
-            let clash = typed.clash_config.clone().get().await?.state;
-            Ok::<_, ClientError>(legacy_iverge_from_typed(
-                base.clone(),
-                &app,
-                &session,
-                &clash,
-            )?)
-        }
-        .await;
-
-        match typed_read {
-            Ok(verge) => Ok(verge),
-            Err(err) => {
-                log::warn!(target: "app", "typed get_verge_config failed; falling back to legacy state: {err}");
-                Ok(base)
-            }
-        }
+        Ok(legacy_iverge_from_typed(
+            legacy_iverge_base_for_typed_read(),
+            &app,
+            &session,
+            &clash,
+        )?)
     }
 
     pub async fn patch_verge_config(&self, payload: IVerge) -> Result<()> {
@@ -379,11 +348,6 @@ impl NyanpasuClient {
         match route_verge_patch(&payload) {
             VergePatchRoute::PureConfig => {
                 let _guard = self.inner.verge_update_lock.lock().await;
-                if self.inner.typed_config.is_none() {
-                    self.inner.state.patch_verge(payload).await?;
-                    return Ok(());
-                }
-
                 validate_verge_patch(&payload)?;
                 let base = self.get_verge_config().await?;
                 let plan = typed_patches_from_legacy_patch(base, &payload)?;
@@ -538,22 +502,17 @@ mod tests {
     }
 
     #[test]
-    fn client_constructs_without_tauri_runtime() {
-        let (state, _dir) = test_state_client();
-        let client = NyanpasuClient::with_state(Arc::new(NoopUiEventSink), state);
-        let _ = client.clone();
-    }
-
-    #[test]
-    fn typed_config_facade_is_not_initialized_by_legacy_setup() {
-        let (state, _dir) = test_state_client();
-        let client = NyanpasuClient::with_state(Arc::new(NoopUiEventSink), state);
+    fn client_constructs_with_mandatory_typed_config_clients() {
+        let (state, dir) = test_state_client();
 
         tauri::async_runtime::block_on(async {
-            assert!(matches!(
-                client.get_app_config().await,
-                Err(ClientError::Custom(message)) if message.contains("typed config actors")
-            ));
+            let typed_config = test_typed_config_clients(&dir).await;
+            let client = NyanpasuClient::with_state_and_typed_config(
+                Arc::new(NoopUiEventSink),
+                state,
+                typed_config,
+            );
+            let _ = client.clone();
         });
     }
 
@@ -566,7 +525,7 @@ mod tests {
             let client = NyanpasuClient::with_state_and_typed_config(
                 Arc::new(NoopUiEventSink),
                 state,
-                Some(typed_config),
+                typed_config,
             );
 
             let mut app_patch = NyanpasuAppConfig::new_empty_patch();
@@ -651,7 +610,7 @@ mod tests {
             let client = NyanpasuClient::with_state_and_typed_config(
                 Arc::new(NoopUiEventSink),
                 state,
-                Some(typed_config),
+                typed_config,
             );
 
             let mut app_patch = NyanpasuAppConfig::new_empty_patch();
@@ -699,6 +658,39 @@ mod tests {
     }
 
     #[test]
+    fn get_verge_config_does_not_use_state_client_base_for_typed_fields() {
+        let dir = tempdir().expect("tempdir should be created");
+        let path = temp_config_path(&dir, "nyanpasu-config.yaml");
+        let mirror: VergeMirror = Arc::new(|_| Ok(()));
+        let state = StateClient::new_with_path(
+            path,
+            IVerge {
+                theme_color: Some("#000000".into()),
+                enable_system_proxy: Some(true),
+                ..IVerge::default()
+            },
+            mirror,
+        )
+        .expect("state client should be created");
+
+        tauri::async_runtime::block_on(async {
+            let typed_config = test_typed_config_clients(&dir).await;
+            let client = NyanpasuClient::with_state_and_typed_config(
+                Arc::new(NoopUiEventSink),
+                state,
+                typed_config,
+            );
+
+            let verge = client
+                .get_verge_config()
+                .await
+                .expect("legacy verge config should read typed actor fields");
+            assert_ne!(verge.theme_color.as_deref(), Some("#000000"));
+            assert_ne!(verge.enable_system_proxy, Some(true));
+        });
+    }
+
+    #[test]
     fn legacy_patch_then_get_verge_config_preserves_contract() {
         let (state, dir) = test_state_client();
 
@@ -707,7 +699,7 @@ mod tests {
             let client = NyanpasuClient::with_state_and_typed_config(
                 Arc::new(NoopUiEventSink),
                 state,
-                Some(typed_config),
+                typed_config,
             );
 
             client
@@ -744,7 +736,7 @@ mod tests {
             let client = NyanpasuClient::with_state_and_typed_config(
                 Arc::new(NoopUiEventSink),
                 state,
-                Some(typed_config),
+                typed_config,
             );
 
             let window_state = crate::config::nyanpasu::WindowState {
@@ -798,7 +790,7 @@ mod tests {
             let client = NyanpasuClient::with_state_and_typed_config(
                 Arc::new(NoopUiEventSink),
                 state,
-                Some(typed_config),
+                typed_config,
             );
 
             client
@@ -833,7 +825,7 @@ mod tests {
             let client = NyanpasuClient::with_state_and_typed_config(
                 Arc::new(NoopUiEventSink),
                 state,
-                Some(typed_config),
+                typed_config,
             );
 
             client
@@ -860,7 +852,7 @@ mod tests {
             let client = NyanpasuClient::with_state_and_typed_config(
                 Arc::new(NoopUiEventSink),
                 state,
-                Some(typed_config),
+                typed_config,
             );
 
             client

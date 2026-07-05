@@ -19,6 +19,15 @@ pub(crate) struct TypedConfigPatchPlan {
     pub clash_config: Option<ClashConfigPatch>,
 }
 
+pub(crate) fn legacy_iverge_base_for_typed_read() -> IVerge {
+    // TODO(actor-migration): compatibility bridge for legacy-only IVerge DTO fields.
+    // Reason: get_verge_config still returns the legacy IVerge DTO while only part of
+    // the schema is owned by typed config actors.
+    // Remove when: frontend IPC uses typed application/session/clash DTOs and legacy
+    // IVerge fields are deleted or explicitly migrated to typed owners.
+    Config::verge().data().clone()
+}
+
 pub(crate) fn legacy_iverge_from_typed(
     mut base: IVerge,
     app: &NyanpasuAppConfig,

@@ -1,0 +1,6 @@
+proxies:
+  - name: b1
+    type: vmess
+    server: b.example.com
+    port: 8080
+custom-field: dropped-by-scope

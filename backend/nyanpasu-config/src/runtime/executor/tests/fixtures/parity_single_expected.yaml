@@ -1,0 +1,18 @@
+mode: rule
+mixed-port: 7890
+allow-lan: false
+log-level: info
+ipv6: false
+secret: golden-secret
+dns:
+  enable: true
+profile:
+  store-selected: true
+  store-fake-ip: false
+proxies:
+  - name: a1
+    type: ss
+    server: a.example.com
+    port: 443
+rules:
+  - MATCH,DIRECT

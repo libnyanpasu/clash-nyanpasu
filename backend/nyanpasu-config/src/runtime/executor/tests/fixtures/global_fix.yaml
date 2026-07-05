@@ -1,0 +1,2 @@
+append__rules:
+  - 'DOMAIN,example.com,DIRECT'

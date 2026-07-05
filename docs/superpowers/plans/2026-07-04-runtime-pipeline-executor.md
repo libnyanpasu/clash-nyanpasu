@@ -4,7 +4,7 @@
 
 **Goal:** 在 `nyanpasu-config` 内落地纯 runtime pipeline executor：给定已验证 `Profiles` 快照 + 注入 ports，执行 clean-design §7.1–7.5 五种处理顺序与最终阶段，产出 `RuntimeArtifact{final_config, graph, step_logs, applied_fields}`；`backend/tauri/**` 提交面零改动。
 
-**Architecture:** 权威设计 = `docs/superpowers/specs/2026-07-04-runtime-pipeline-executor-design.md`（下称 **spec**，语义决策一律以其为准，本计划只做落地拆分）。先做 snapshot tag 受控扩展（spec §8.2），再自底向上：ports/类型骨架 → Overlay 指令集 → 三 BuiltinStep 纯函数 → 五顺序编排与录制 → golden/失效/parity 测试 → roadmap 勘误回写。行为基线 = 旧 `backend/tauri/src/enhance/`（spec §4.3 十七步实测），故意差异封闭于 spec §13 台账（14 条）。
+**Architecture:** 权威设计 = `docs/superpowers/specs/2026-07-04-runtime-pipeline-executor-design.md`（下称 **spec**，语义决策一律以其为准，本计划只做落地拆分）。先做 snapshot tag 受控扩展（spec §8.2），再自底向上：ports/类型骨架 → Overlay 指令集 → 三 BuiltinStep 纯函数 → 五顺序编排与录制 → golden/失效/parity 测试 → roadmap 勘误回写。行为基线 = 旧 `backend/tauri/src/enhance/`（spec §4.3 十七步实测），故意差异封闭于 spec §13 台账（15 条）。并行执行协调文件：`.claude/plan/runtime-pipeline-executor-parallel.md`（波次调度、worktree/合并协议、任务卡）。
 
 **Tech Stack:** Rust、serde / serde_json / serde_yaml_ng（含 `Value::apply_merge`，已核实 fork 保留）、indexmap、thiserror、specta、既有 `runtime::{snapshot, value}`。**不新增任何依赖**。
 
@@ -16,6 +16,7 @@
 - parity 默认；输出差异必须能对到 spec §13 台账条目，否则视为 bug。
 - 每个 task 结束：`cargo test -p nyanpasu-config` 必须绿；Task 1 与 Task 8 额外跑 `cargo test -p nyanpasu-config --features snapshot-persistence`。
 - 每个 task 至少一次提交（信息见各 task Step）。
+- 并行执行规则：任务依赖固定为 DAG `T1 → T2 → (T3 ‖ T4) → T5 → (T6 ‖ T7 ‖ T8) → T9`；仅同一波（wave）内的任务可并行；每个任务只允许改动其独占文件集（见 Module Diagrams「Parallel Execution Waves」）；所有 cargo 命令必须在 `backend/` 目录下执行（cargo 工作区根 = `backend/Cargo.toml`，或加 `--manifest-path backend/Cargo.toml`）。
 
 **与 spec 的三处实施细化**（写代码时以本计划为准，Task 9 一并回写 spec 勘误行）：
 
@@ -44,12 +45,202 @@
 - `scoped.rs` — scoped FileConfig 分支（三 role 复用）
 - `compose.rs` — composition seed + 11 条追加规则
 - `builtin.rs` — 45 字段常量 + Whitelist/Guard/Finalizing（tun/include-all/cache/sort）
-- `tests/{mod,support,overlay,builtin,compose,orders,golden,invalidation,parity}.rs`
-- `tests/fixtures/*.yaml`（Task 6/8 给出全文）
+- `tests/{mod,support}.rs` 与全部空测试 stub `tests/{overlay,builtin,compose,orders,golden,invalidation,parity}.rs` —— **全部由 Task 2 一次性创建**；`tests/mod.rs` 自 Task 2 起全量声明所有测试模块，此后**冻结**（Task 3–8 只填充各自 stub，不再改 `tests/mod.rs`）
+- `tests/fixtures/{sub_a.yaml,sub_b.yaml}` —— Task 2 创建（共享 fixture，Task 6/8 只读消费）；其余 `tests/fixtures/*.yaml` 由 Task 6/8 给出全文
 
 文档（Task 9）：`docs/design/actor-migration-roadmap.md`、`docs/superpowers/specs/2026-07-04-runtime-pipeline-executor-design.md`。
 
 **关键 import 路径**（已核实）：`crate::profile::*`（mod.rs 全量重导出）；guard/tun 类型**无**顶层重导出，必须 `crate::clash::config::overrides::ClashGuardOverrides`、`crate::clash::config::tun_stack::TunStack`。
+
+---
+
+## Module Diagrams（实施参照）
+
+语义权威仍是 spec（参与者级图见 spec §7.5 / §12.1–12.5）；本节把这些图细化到 **executor 模块级**（函数签名与各 Task 的 Interfaces 一致），并补 Task 依赖与失败策略两张流程图。实施中若与 spec 冲突，以 spec 为准并回报。
+
+### Task 依赖图
+
+```mermaid
+flowchart LR
+  T1["Task 1<br/>snapshot tag 受控扩展"] --> T2["Task 2<br/>骨架：ports/artifact/error/类型"]
+  T2 --> T3["Task 3<br/>Overlay 指令集"]
+  T2 --> T4["Task 4<br/>三 BuiltinStep 纯函数"]
+  T3 --> T5["Task 5<br/>五顺序编排 execute()"]
+  T4 --> T5
+  T5 --> T6["Task 6<br/>golden + 确定性"]
+  T5 --> T7["Task 7<br/>失效重建闭环"]
+  T5 --> T8["Task 8<br/>parity fixtures"]
+  T6 --> T9["Task 9<br/>文档回写"]
+  T7 --> T9
+  T8 --> T9
+```
+
+T3 ⟂ T4 可并行；T6 / T7 / T8 互不依赖（各自只新增测试文件），可并行，但均须在 T5 之后。
+
+### Parallel Execution Waves
+
+调度单一参照：波次表 + 独占文件矩阵 + 各波 gate。同波任务文件两两无交集（已逐对核对）。所有路径省略前缀 `backend/nyanpasu-config/src/runtime/`；所有 gate 在 `backend/` 目录下执行。
+
+| Wave | 任务         | 独占文件（提交面）                                                                                                                                                                                                                                                                                              | 波 gate（在 `backend/` 下）                                                   |
+| ---- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| W1   | T1           | `snapshot.rs`、`invalidation.rs`                                                                                                                                                                                                                                                                                | `cargo test -p nyanpasu-config` + `--features snapshot-persistence`           |
+| W2   | T2           | `mod.rs`（runtime）；`executor/{mod,ports,artifact,error,value_util}.rs`；占位 `executor/{overlay,scoped,compose,builtin}.rs`；`executor/tests/{mod,support}.rs`；全部测试空 stub `executor/tests/{overlay,builtin,compose,orders,golden,invalidation,parity}.rs`；`executor/tests/fixtures/{sub_a,sub_b}.yaml` | `cargo test -p nyanpasu-config`                                               |
+| W3   | T3 ‖ T4      | T3: `executor/overlay.rs`、`executor/tests/overlay.rs`；T4: `executor/builtin.rs`、`executor/tests/builtin.rs`                                                                                                                                                                                                  | 每任务 gate → 合并后波 gate `cargo test -p nyanpasu-config`                   |
+| W4   | T5           | `executor/{scoped,compose}.rs`、`executor/mod.rs`（追加 `execute`）、`executor/tests/{compose,orders}.rs`                                                                                                                                                                                                       | `cargo test -p nyanpasu-config`                                               |
+| W5   | T6 ‖ T7 ‖ T8 | T6: `executor/tests/golden.rs`、`executor/tests/fixtures/{build_groups,global_fix}.yaml`；T7: `executor/tests/invalidation.rs`；T8: `executor/tests/parity.rs`、`executor/tests/fixtures/parity_{single,merged,bare}_expected.yaml`                                                                             | 每任务 gate（T8 额外 `--features snapshot-persistence`）→ 合并后双命令波 gate |
+| W6   | T9           | `docs/design/actor-migration-roadmap.md`、spec 状态行                                                                                                                                                                                                                                                           | 双 cargo 命令 + 纯度 grep（spec §16 #7）+ `git status backend/tauri` 干净     |
+
+补充规则：
+
+- `tests/mod.rs` 仅 T2 拥有，T2 之后冻结；`executor/mod.rs` 仅 T5 允许追加 `execute`；`backend/tauri/**` 属提交面禁区（T8 临时 harness 必须在跑 gate 与提交前 revert）。
+- 波内单任务 gate 失败 → 原地重试/修复，不阻塞兄弟任务合并；连续 2 次失败 → 停下上报，不得扩大文件所有权。
+- 合并冲突 = 协调 bug：先对照本矩阵定位越权编辑，禁止顺手改非本任务文件。
+
+### executor 模块依赖图
+
+实线 = 模块内调用；虚线 = 经 port 出纯度边界。`error.rs`（`RuntimePipelineError`）与 `artifact.rs` 的日志类型为纯类型层，被多数模块引用，图中仅保留输出边。
+
+```mermaid
+flowchart TB
+  subgraph modrs["mod.rs（编排层）"]
+    EX["execute()<br/>五顺序分派 + 共享尾部"]
+    AT["apply_transform()<br/>Overlay/Script 统一入口（lenient）"]
+  end
+  SC["scoped.rs<br/>build_scoped_file()<br/>Selected / base / contributor 三 role 复用"]
+  CO["compose.rs<br/>run_composition() · append_proxies()"]
+  OV["overlay.rs<br/>apply_overlay()（指令集）"]
+  BI["builtin.rs<br/>stage1_fields · whitelist_filter<br/>apply_guard · finalize · 45 字段常量"]
+  VU["value_util.rs<br/>纯 ConfigValue 辅助"]
+  subgraph portsrs["ports.rs（调用方注入）"]
+    CS["ProfileContentSource"]
+    SR["ScriptRunner"]
+  end
+  subgraph snap["runtime::snapshot（既有 + Task 1 扩展）"]
+    B["ConfigSnapshotsBuilder<br/>OperatorTag / SnapshotNodeKey"]
+  end
+  AR["artifact.rs<br/>RuntimeArtifact / StepLog*"]
+
+  EX -->|"File 场景"| SC
+  EX -->|"Composition 场景"| CO
+  EX -->|"global transforms"| AT
+  EX -->|"尾部：whitelist/guard/finalize"| BI
+  EX -.->|"内建脚本 run"| SR
+  EX -->|"push 尾部节点 / build()"| B
+  EX --> AR
+  CO -->|"base / contributor 分支"| SC
+  CO -->|"composition transforms"| AT
+  CO --> VU
+  CO -->|"new_root / attach / push"| B
+  SC -->|"自身 transforms"| AT
+  SC -.->|"读 Config 文件（strict）"| CS
+  SC -->|"new_root / push"| B
+  AT -.->|"读 transform 源（lenient）"| CS
+  AT -->|"Overlay"| OV
+  AT -.->|"Script run"| SR
+  OV -.->|"filter__ eval_item_*"| SR
+  OV --> VU
+  BI --> VU
+```
+
+### 模块级时序图 ①：Selected FileConfig 全程（细化 spec §12.2）
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant C as 调用方
+  participant E as mod.rs execute()
+  participant SC as scoped.rs
+  participant AT as mod.rs apply_transform()
+  participant OV as overlay.rs
+  participant BI as builtin.rs
+  participant CS as port ContentSource
+  participant SR as port ScriptRunner
+  participant B as SnapshotsBuilder（主线）
+  C->>E: execute(inputs, content, runner)
+  E->>SC: build_scoped_file(id, role=Selected)
+  SC->>CS: read(选中 Config 文件)
+  CS-->>SC: YAML 文本（失败 = strict Err）
+  SC->>SC: parse_config_document（merge-key → ConfigValue，失败 = strict Err）
+  SC->>B: new_root(raw, FileConfigRoot{Selected})
+  loop 每条 scoped transform
+    SC->>AT: apply_transform(transform_id, cur)
+    AT->>CS: read(transform 源)
+    alt Overlay
+      AT->>OV: apply_overlay(doc, cur, runner, logs)
+      OV->>SR: eval_item_predicate / eval_item_expr（仅 filter__）
+    else Script
+      AT->>SR: run(runtime, source, cur)
+    end
+    AT-->>SC: (新值或透传, kind, 日志) — lenient
+    SC->>B: push(ScopedTransform{i})
+  end
+  SC-->>E: ScopedBuild{builder, value}
+  loop 每条 global transform
+    E->>AT: apply_transform(transform_id, working)
+    E->>B: push(GlobalTransform{i})
+  end
+  E->>E: applied_fields 采样（顶层键小写，保插入序）
+  E->>BI: stage1_fields(valid) + whitelist_filter
+  E->>B: push(BuiltinStep::WhitelistFieldFilter)
+  E->>BI: apply_guard(working, guard)
+  E->>B: push(BuiltinStep::GuardOverrides)
+  loop 每个 builtin_transforms[j]
+    E->>SR: run(bt.runtime, bt.source, working)
+    E->>B: push(BuiltinTransform{j})（失败 = 透传 + error 日志）
+  end
+  E->>BI: finalize（45 键过滤 → tun → include-all → cache → sort）
+  E->>B: push(BuiltinStep::Finalizing)
+  E->>E: applied_fields ∩= known_fields()
+  E->>B: build()
+  B-->>E: ConfigSnapshotsGraph
+  E-->>C: RuntimeArtifact{final_config, graph, step_logs, applied_fields}
+```
+
+Bare 变体（⑤）：跳过 build_scoped_file，`new_root({}, BareRoot)` 后直接从「每条 global transform」起复用同一尾部，`selected_profile_id = None`。
+
+### 模块级时序图 ②：Composition with base（compose / scoped 协作，细化 spec §12.3）
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant E as mod.rs execute()
+  participant CO as compose.rs
+  participant SC as scoped.rs
+  participant B as SnapshotsBuilder（主线）
+  E->>CO: run_composition(comp_id, composition)
+  CO->>SC: build_scoped_file(base, role=CompositionBase)
+  SC-->>CO: ScopedBuild{分支 builder_b, V_base}（失败 = strict Err）
+  CO->>B: new_root(V_base, CompositionRoot{base:Some})
+  CO->>B: attach_independent_branch(root, builder_b)
+  loop 第 i 个 contributor（声明序）
+    CO->>SC: build_scoped_file(member_i, role=Contributor{i})
+    SC-->>CO: ScopedBuild{分支 builder_i, V_i}
+    CO->>B: attach_independent_branch(当前主线节点, builder_i)
+    CO->>CO: append_proxies(working, V_i)（缺 proxies → WARN + 空列表，D11）
+    CO->>B: push(ExtendProxiesStep{comp, member_i, i}, 追加后值)
+  end
+  loop 每条 composition transform
+    CO->>CO: apply_transform(...)（mod.rs，lenient）
+    CO->>B: push(ScopedTransform{host=comp})
+  end
+  CO-->>E: (主线 builder, working)
+  Note over E: 进入共享尾部（时序图 ① 的 global transforms 起）
+```
+
+Clean-seed 变体（④）：`base = None` 时 `new_root(clean_seed = {proxies: []}, CompositionRoot{base:None})`，无 base 分支，其余同上。
+
+### 失败策略流程图（spec D7 / §10.1 分层）
+
+```mermaid
+flowchart TD
+  F["管线中某步失败"] --> W{"失败位置"}
+  W -->|"选中 / base / contributor 的<br/>Config 文件读取或解析"| S1["strict：Err(RuntimePipelineError)<br/>整条管线中止"]
+  S1 --> S2["调用方保留上一份 artifact 降级<br/>（spec §13 差异 #4）"]
+  W -->|"transform 源读取 / Overlay 文档解析<br/>/ Script 或内建脚本执行"| L1["lenient：error 日志锚定节点 key<br/>+ 值透传，节点仍录制，管线继续"]
+  W -->|"Overlay 单条指令异常"| L2["lenient：WARN + 该键跳过<br/>（merge.rs parity，永不中断）"]
+  W -->|"组合成员缺 proxies / 非序列"| L3["lenient：WARN + 视为空列表<br/>（D11；旧行为 panic，差异 #3）"]
+  W -->|"guard 序列化 / 图录制不变式"| S3["strict：Internal / Snapshot<br/>（理论不可达，防御保留）"]
+```
 
 ---
 
@@ -421,7 +612,10 @@ git commit -m "refactor(nyanpasu-config): extend snapshot operator tags for exec
 
 - Modify: `backend/nyanpasu-config/src/runtime/mod.rs`
 - Create: `backend/nyanpasu-config/src/runtime/executor/{mod,ports,artifact,error,value_util}.rs`
+- Create: `backend/nyanpasu-config/src/runtime/executor/{overlay,scoped,compose,builtin}.rs`（最小占位，仅注释；Task 3–5 重写）
 - Create: `backend/nyanpasu-config/src/runtime/executor/tests/{mod,support}.rs`
+- Create: `backend/nyanpasu-config/src/runtime/executor/tests/{overlay,builtin,compose,orders,golden,invalidation,parity}.rs`（空 stub；Task 3–8 填充）
+- Create: `backend/nyanpasu-config/src/runtime/executor/tests/fixtures/{sub_a.yaml,sub_b.yaml}`（共享 fixture；Task 6/8 只读消费）
 
 **Interfaces:**
 
@@ -955,19 +1149,53 @@ pub(crate) fn apply_transform(
 //! Filled by later plan tasks.
 ```
 
-- [ ] **Step 7: 测试支撑 `executor/tests/mod.rs` + `executor/tests/support.rs`**
+- [ ] **Step 7: 测试支撑 `executor/tests/mod.rs` + `executor/tests/support.rs` + 全部空 stub + 共享 fixtures**
 
-`tests/mod.rs`（随任务推进逐行解注释，本 task 只启用 support）：
+`tests/mod.rs`（**全量激活，一次写死；本 task 之后冻结，Task 3–8 不得再改此文件**）：
 
 ```rust
 mod support;
-// mod overlay;        // Task 3
-// mod builtin;        // Task 4
-// mod compose;        // Task 5
-// mod orders;         // Task 5
-// mod golden;         // Task 6
-// mod invalidation;   // Task 7
-// mod parity;         // Task 8
+
+mod overlay;        // Task 3 填充
+mod builtin;        // Task 4 填充
+mod compose;        // Task 5 填充
+mod orders;         // Task 5 填充
+mod golden;         // Task 6 填充
+mod invalidation;   // Task 7 填充
+mod parity;         // Task 8 填充
+```
+
+同时创建七个空测试 stub `tests/{overlay,builtin,compose,orders,golden,invalidation,parity}.rs`，内容统一为一行注释（空模块可编译；crate 无 `deny(warnings)`，过渡期 dead_code 警告可接受）：
+
+```rust
+//! Filled by later plan tasks.
+```
+
+并创建两个共享 fixture（Task 6/8 只读消费，正文如下）：
+
+`tests/fixtures/sub_a.yaml`:
+
+```yaml
+proxies:
+  - name: a1
+    type: ss
+    server: a.example.com
+    port: 443
+rules:
+  - MATCH,DIRECT
+dns:
+  enable: true
+```
+
+`tests/fixtures/sub_b.yaml`:
+
+```yaml
+proxies:
+  - name: b1
+    type: vmess
+    server: b.example.com
+    port: 8080
+custom-field: dropped-by-scope
 ```
 
 `tests/support.rs`（完整文件）：
@@ -1217,7 +1445,7 @@ git commit -m "feat(nyanpasu-config): scaffold runtime pipeline executor ports a
 **Files:**
 
 - Rewrite: `backend/nyanpasu-config/src/runtime/executor/overlay.rs`
-- Create: `backend/nyanpasu-config/src/runtime/executor/tests/overlay.rs`（并解注释 `tests/mod.rs` 的 `mod overlay;`）
+- Rewrite: `backend/nyanpasu-config/src/runtime/executor/tests/overlay.rs`（Task 2 已建空 stub，本 task 填充；`tests/mod.rs` 已全量激活，勿改）
 
 **Interfaces:**
 
@@ -1415,6 +1643,95 @@ fn filter_when_variants_expr_override_merge_remove() {
         result,
         json!({ "items": [{ "good": { "keep": 2 }, "test": [10, 30] }] })
     );
+}
+
+#[test]
+fn filter_merge_non_mapping_value_is_invalid_filter() {
+    // merge.rs:153 arm guard: non-mapping `merge` matches no arm; the `_` arm
+    // warns once and never evaluates `when` (a Fail reply would log if it ran).
+    let mut runner = FakeScriptRunner::default();
+    runner.predicates.insert(
+        "hit".to_string(),
+        PredicateReply::Fail("must not run".to_string()),
+    );
+    let (result, logs) = apply_with(
+        json!({ "filter__items": { "when": "hit", "merge": 42 } }),
+        json!({ "items": [{ "n": 1 }] }),
+        &runner,
+    );
+    assert_eq!(result, json!({ "items": [{ "n": 1 }] }));
+    assert_eq!(logs.len(), 1);
+    assert_eq!(logs[0].0, StepLogLevel::Warn);
+    assert!(logs[0].1.contains("invalid filter"));
+}
+
+#[test]
+fn filter_non_mapping_merge_falls_through_to_remove() {
+    // Legacy arm order: an unmatched merge guard falls through to the remove arm.
+    let mut runner = FakeScriptRunner::default();
+    runner
+        .predicates
+        .insert("hit".to_string(), PredicateReply::Fixed(true));
+    let (result, _) = apply_with(
+        json!({ "filter__items": { "when": "hit", "merge": 42, "remove": ["drop"] } }),
+        json!({ "items": [{ "drop": 1, "keep": 2 }] }),
+        &runner,
+    );
+    assert_eq!(result, json!({ "items": [{ "keep": 2 }] }));
+}
+
+#[test]
+fn filter_merge_on_non_mapping_item_keeps_item() {
+    // Legacy panics (merge.rs:163 unwrap); never-fail keeps the item (spec §13 #15).
+    let mut runner = FakeScriptRunner::default();
+    runner
+        .predicates
+        .insert("hit".to_string(), PredicateReply::Fixed(true));
+    let (result, logs) = apply_with(
+        json!({ "filter__rules": { "when": "hit", "merge": { "extra": 1 } } }),
+        json!({ "rules": ["MATCH,DIRECT"] }),
+        &runner,
+    );
+    assert_eq!(result, json!({ "rules": ["MATCH,DIRECT"] }));
+    assert!(logs.iter().any(|(level, message)| *level == StepLogLevel::Warn
+        && message.contains("target item is not a mapping")));
+}
+
+#[test]
+fn filter_remove_entries_respect_item_shape() {
+    // merge.rs:186/221: string paths → mapping items only; numeric → sequence items only.
+    let mut runner = FakeScriptRunner::default();
+    runner
+        .predicates
+        .insert("hit".to_string(), PredicateReply::Fixed(true));
+
+    // String "0" on a sequence item: legacy logs invalid and keeps the item.
+    let (result, logs) = apply_with(
+        json!({ "filter__groups": { "when": "hit", "remove": ["0"] } }),
+        json!({ "groups": [["a", "b"]] }),
+        &runner,
+    );
+    assert_eq!(result, json!({ "groups": [["a", "b"]] }));
+    assert!(logs.iter().any(|(level, message)| *level == StepLogLevel::Warn
+        && message.contains("non-mapping item")));
+
+    // Numeric index on a mapping item: legacy logs invalid and keeps the item.
+    let (result, logs) = apply_with(
+        json!({ "filter__items": { "when": "hit", "remove": [0] } }),
+        json!({ "items": [{ "0": "keep" }] }),
+        &runner,
+    );
+    assert_eq!(result, json!({ "items": [{ "0": "keep" }] }));
+    assert!(logs.iter().any(|(level, message)| *level == StepLogLevel::Warn
+        && message.contains("non-sequence item")));
+
+    // Numeric index on a sequence item still removes (legacy parity).
+    let (result, _) = apply_with(
+        json!({ "filter__groups": { "when": "hit", "remove": [0] } }),
+        json!({ "groups": [["a", "b"]] }),
+        &runner,
+    );
+    assert_eq!(result, json!({ "groups": [["b"]] }));
 }
 
 #[test]
@@ -1619,6 +1936,31 @@ fn apply_filter(
                 logs.push(StepLogEntry::warn("invalid filter: missing `when`"));
                 return items;
             };
+            // Action selection mirrors the legacy match-arm order and typed
+            // guards (merge.rs:122-231): an action whose guard fails falls
+            // through to the next arm; when nothing matches, the `_` arm
+            // warns once without evaluating `when` per item.
+            enum FilterAction<'a> {
+                Expr(&'a str),
+                Override(&'a ConfigValue),
+                Merge(&'a ConfigValue),
+                Remove(&'a Arc<[ConfigValue]>),
+            }
+            let action = if let Some(ConfigValue::String(expr)) = actions.get("expr") {
+                FilterAction::Expr(expr.as_ref())
+            } else if let Some(replacement) = actions.get("override") {
+                FilterAction::Override(replacement)
+            } else if let Some(merge) = actions
+                .get("merge")
+                .filter(|value| value.as_object_arc().is_some())
+            {
+                FilterAction::Merge(merge)
+            } else if let Some(ConfigValue::Array(paths)) = actions.get("remove") {
+                FilterAction::Remove(paths)
+            } else {
+                logs.push(StepLogEntry::warn("invalid filter: no action"));
+                return items;
+            };
             items
                 .into_iter()
                 .map(|item| {
@@ -1634,8 +1976,8 @@ fn apply_filter(
                     if !hit {
                         return item;
                     }
-                    if let Some(ConfigValue::String(expr)) = actions.get("expr") {
-                        return match runner.eval_item_expr(expr, &item) {
+                    match &action {
+                        FilterAction::Expr(expr) => match runner.eval_item_expr(expr, &item) {
                             Ok(next) => next,
                             Err(error) => {
                                 logs.push(StepLogEntry::warn(format!(
@@ -1643,19 +1985,22 @@ fn apply_filter(
                                 )));
                                 item
                             }
-                        };
+                        },
+                        FilterAction::Override(replacement) => (*replacement).clone(),
+                        FilterAction::Merge(merge) => {
+                            // Legacy panics on non-mapping items (merge.rs:163
+                            // `as_mapping_mut().unwrap()`); never-fail keeps
+                            // the item instead (spec §13 #15).
+                            if item.as_object_arc().is_none() {
+                                logs.push(StepLogEntry::warn(
+                                    "filter `merge` target item is not a mapping, item kept",
+                                ));
+                                return item;
+                            }
+                            deep_merge_value(Some(&item), merge)
+                        }
+                        FilterAction::Remove(paths) => remove_from_item(item, paths, logs),
                     }
-                    if let Some(replacement) = actions.get("override") {
-                        return replacement.clone();
-                    }
-                    if let Some(merge) = actions.get("merge") {
-                        return deep_merge_value(Some(&item), merge);
-                    }
-                    if let Some(ConfigValue::Array(paths)) = actions.get("remove") {
-                        return remove_from_item(item, paths, logs);
-                    }
-                    logs.push(StepLogEntry::warn("invalid filter: no action"));
-                    item
                 })
                 .collect()
         }
@@ -1675,6 +2020,14 @@ fn remove_from_item(
     for path in paths.iter() {
         match path {
             ConfigValue::String(dotted) => {
+                // Legacy applies string paths to mapping items only
+                // (merge.rs:186 `key.is_string() && item.is_mapping()`).
+                if current.as_object_arc().is_none() {
+                    logs.push(StepLogEntry::warn(format!(
+                        "remove path `{dotted}` on non-mapping item, skipped"
+                    )));
+                    continue;
+                }
                 let segments = parse_dotted_path(dotted);
                 match remove_at(&current, &segments) {
                     Some(next) => current = next,
@@ -1684,6 +2037,14 @@ fn remove_from_item(
                 }
             }
             ConfigValue::Number(index) => {
+                // Legacy numeric removal applies to sequence items only
+                // (merge.rs:221 `Value::Sequence(list) if key.is_i64()`).
+                if !matches!(current, ConfigValue::Array(_)) {
+                    logs.push(StepLogEntry::warn(
+                        "remove index on non-sequence item, skipped",
+                    ));
+                    continue;
+                }
                 let removed = index
                     .as_u64()
                     .map(|index| index.to_string())
@@ -1700,8 +2061,6 @@ fn remove_from_item(
 }
 ```
 
-同时把 `tests/mod.rs` 的 `mod overlay;` 解注释。
-
 - [ ] **Step 4: 对照 `merge.rs` 复核错误分支（spec 开放问题 #1）**
 
 打开 `backend/tauri/src/enhance/merge.rs` 通读 `do_filter`（99-238 行）与 `run_expr`（62-97 行），逐分支核对：字符串谓词错误→移除、`when` 错误→按假、`expr` 错误→保留原项。若与上面实现不符，改实现与测试对齐旧代码，并把最终行为回填 spec §7.3 表（Task 9 一并提交）。
@@ -1709,7 +2068,7 @@ fn remove_from_item(
 - [ ] **Step 5: 跑测试 + Commit**
 
 Run: `cargo test -p nyanpasu-config executor::tests::overlay`
-Expected: PASS（10 个测试）
+Expected: PASS（14 个测试）
 
 ```bash
 git add backend/nyanpasu-config/src/runtime/executor/
@@ -1723,7 +2082,7 @@ git commit -m "feat(nyanpasu-config): implement overlay transform directive sema
 **Files:**
 
 - Rewrite: `backend/nyanpasu-config/src/runtime/executor/builtin.rs`
-- Create: `backend/nyanpasu-config/src/runtime/executor/tests/builtin.rs`（解注释 `mod builtin;`）
+- Rewrite: `backend/nyanpasu-config/src/runtime/executor/tests/builtin.rs`（Task 2 已建空 stub，本 task 填充；`tests/mod.rs` 已全量激活，勿改）
 
 **Interfaces:**
 
@@ -2275,8 +2634,6 @@ fn apply_sort(config: &ConfigValue) -> ConfigValue {
 }
 ```
 
-解注释 `tests/mod.rs` 的 `mod builtin;`。
-
 - [ ] **Step 4: 跑测试 + Commit**
 
 Run: `cargo test -p nyanpasu-config executor::tests::builtin`
@@ -2295,7 +2652,7 @@ git commit -m "feat(nyanpasu-config): implement builtin whitelist/guard/finalizi
 
 - Rewrite: `backend/nyanpasu-config/src/runtime/executor/{scoped,compose}.rs`
 - Modify: `backend/nyanpasu-config/src/runtime/executor/mod.rs`（追加 `execute`）
-- Create: `backend/nyanpasu-config/src/runtime/executor/tests/{compose,orders}.rs`（解注释）
+- Rewrite: `backend/nyanpasu-config/src/runtime/executor/tests/{compose,orders}.rs`（Task 2 已建空 stub，本 task 填充；`tests/mod.rs` 已全量激活，勿改）
 
 **Interfaces:**
 
@@ -3045,8 +3402,6 @@ pub fn execute(
 }
 ```
 
-同时删除 `scoped.rs` 末尾的 `let _ = value_util::empty_object;` 行，解注释 `tests/mod.rs` 的 `mod compose;`/`mod orders;`。
-
 - [ ] **Step 7: 全量跑测试 + Commit**
 
 Run: `cargo test -p nyanpasu-config`
@@ -3063,39 +3418,15 @@ git commit -m "feat(nyanpasu-config): implement five-order pipeline orchestratio
 
 **Files:**
 
-- Create: `backend/nyanpasu-config/src/runtime/executor/tests/golden.rs`（解注释）
-- Create: `backend/nyanpasu-config/src/runtime/executor/tests/fixtures/{sub_a.yaml,sub_b.yaml,build_groups.yaml,global_fix.yaml}`
+- Rewrite: `backend/nyanpasu-config/src/runtime/executor/tests/golden.rs`（Task 2 已建空 stub，本 task 填充；`tests/mod.rs` 已全量激活，勿改）
+- Create: `backend/nyanpasu-config/src/runtime/executor/tests/fixtures/{build_groups.yaml,global_fix.yaml}`
+- 只读消费: `backend/nyanpasu-config/src/runtime/executor/tests/fixtures/{sub_a.yaml,sub_b.yaml}`（Task 2 共享 fixture，消费不拥有，勿改）
 
 **Interfaces:**
 
 - Consumes: `execute` + support 构造器（Task 5 形状）
 
-- [ ] **Step 1: fixtures（四个文件，全文）**
-
-`fixtures/sub_a.yaml`:
-
-```yaml
-proxies:
-  - name: a1
-    type: ss
-    server: a.example.com
-    port: 443
-rules:
-  - MATCH,DIRECT
-dns:
-  enable: true
-```
-
-`fixtures/sub_b.yaml`:
-
-```yaml
-proxies:
-  - name: b1
-    type: vmess
-    server: b.example.com
-    port: 8080
-custom-field: dropped-by-scope
-```
+- [ ] **Step 1: fixtures（两个文件，全文；`sub_a.yaml`/`sub_b.yaml` 已由 Task 2 创建，只读消费）**
 
 `fixtures/build_groups.yaml`:
 
@@ -3265,7 +3596,7 @@ git commit -m "test(nyanpasu-config): add five-order golden and determinism cove
 
 **Files:**
 
-- Create: `backend/nyanpasu-config/src/runtime/executor/tests/invalidation.rs`（解注释）
+- Rewrite: `backend/nyanpasu-config/src/runtime/executor/tests/invalidation.rs`（Task 2 已建空 stub，本 task 填充；`tests/mod.rs` 已全量激活，勿改）
 
 - [ ] **Step 1: 测试（完整文件）**
 
@@ -3359,10 +3690,11 @@ git commit -m "test(nyanpasu-config): add invalidation rebuild integration cover
 
 **Files:**
 
-- Create: `backend/nyanpasu-config/src/runtime/executor/tests/parity.rs`（解注释）
+- Rewrite: `backend/nyanpasu-config/src/runtime/executor/tests/parity.rs`（Task 2 已建空 stub，本 task 填充；`tests/mod.rs` 已全量激活，勿改）
 - Create: `backend/nyanpasu-config/src/runtime/executor/tests/fixtures/parity_{single,merged,bare}_expected.yaml`
+- 只读消费: `backend/nyanpasu-config/src/runtime/executor/tests/fixtures/{sub_a.yaml,sub_b.yaml}`（Task 2 共享 fixture，消费不拥有，勿改）
 
-**约束**：期望值由旧管线纯函数**离线**生成——临时 harness 不入库，`backend/tauri` 提交面零改动（spec T8）。fixtures 场景刻意避开 §13 会显形的差异（成员都有 `proxies`、whitelist 开、tun 关、无脚本、secret 固定），**唯一不可避开的是差异 #5**：typed `ClashGuardOverrides` 恒插 `unified-delay`/`tcp-concurrent`，而旧 HANDLE 覆盖不含这两键——parity 比较前双边剥除这两键（`normalized()`），其余键逐字节等价。
+**约束**：期望值由旧管线纯函数**离线**生成——临时 harness 不入库，`backend/tauri` 提交面零改动（spec T8）。**提交面仅** `tests/parity.rs` + `fixtures/parity_{single,merged,bare}_expected.yaml`；临时 harness 属工作区废料，**必须在跑任务 gate 与提交前 revert `backend/tauri/**`全部改动**（验证含`git status --short backend/tauri`为空）。fixtures 场景刻意避开 §13 会显形的差异（成员都有`proxies`、whitelist 开、tun 关、无脚本、secret 固定），**唯一不可避开的是差异 #5**：typed `ClashGuardOverrides`恒插`unified-delay`/`tcp-concurrent`，而旧 HANDLE 覆盖不含这两键——parity 比较前双边剥除这两键（`normalized()`），其余键逐字节等价。
 
 - [ ] **Step 1: 临时 harness 生成期望值（不提交）**
 
@@ -3583,3 +3915,17 @@ git commit -m "docs: record runtime executor roadmap errata and spec status"
 1. **spec 覆盖**：§7.1 五场景 + bare ↔ orders/golden 测试；§7.2 11 条规则 ↔ compose 测试；§7.3 指令集 ↔ overlay 测试；§7.4 三步 ↔ builtin 测试；§8.1 录制契约 ↔ orders 图形状断言；§9 artifact ↔ 类型 + applied_fields 测试；§10 错误矩阵 ↔ lenient/strict 测试；§11 ↔ invalidation 测试；§13 台账 ↔ parity 三分法；§14 T1–T9 ↔ 本计划 Task 1–9。
 2. **成功判据对账**（spec §16 九条）：#7 纯度 grep 在 Task 9 Step 3；#9 `backend/tauri` 零改动在 Task 8 Step 4 复核。
 3. **类型一致性抽查**：`ScriptRunOutcome.result`（非 tuple）、`ResolvedPortBindings.port: Option<u16>` 不插键、`SnapshotNodeKey::BuiltinTransform{selected_profile_id, step_index}`（无 name）三处最易写岔。
+
+---
+
+## 审查修正（2026-07-05，T1–T9 执行完毕后的多模型审查）
+
+codex 审查发现三处边界语义问题，已修复并同步本计划与 spec（spec §20 勘误 #4–#6）：
+
+1. **overlay `when`+`merge` 卫语句**：`merge` 命中项非映射 → WARN 保留原项（旧代码 `merge.rs:163` panic，登记 spec §13 #15）。Task 3 Step 3 代码块与 Step 1 测试块已就地更新。
+2. **overlay `when`+`remove` 形状卫语句**：字符串路径仅对映射项生效、数字索引仅对序列项生效（对齐 `merge.rs:186/221`）。同上已就地更新。
+3. **`invalidate_profile` bare 模式重建**：全局 transform 变更在 `current == None` 时也返回 `FullCurrent`（本计划引入 `ExecutionTarget::Bare` 后旧判定 `global_changed && current.is_some()` 会让 bare artifact 过期；`invalidation.rs` 既有测试断言已同步改为 `FullCurrent`）。spec §11 已补充说明。
+
+第二轮审查（/ccg:review，codex Major）追加修正：
+
+4. **`filter__` 动作选择对齐旧 arm fallthrough**：第一轮的「`merge` 非映射 → WARN 保留」比旧代码截断更早——旧 match arm 带类型卫，`merge` 非映射会**落入后续 `remove` arm**，全部不匹配才走 `_`「invalid filter」（单次 WARN、不逐项求值 `when`）。现重构为循环前按 expr→override→merge(映射)→remove(序列) 顺序预选动作。overlay 测试 10 → 14 个（含混合动作 fallthrough 与 invalid-filter 不求值 `when` 断言）。

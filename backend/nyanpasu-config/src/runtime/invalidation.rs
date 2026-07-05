@@ -60,7 +60,9 @@ pub fn invalidate_profile(
     let current_affected = current
         .map(|current| affected_configs.contains(current))
         .unwrap_or(false);
-    let rebuild = if current_affected || (global_changed && current.is_some()) {
+    // Global transforms also run in bare mode (BareRoot, spec §13 #9), so a
+    // global transform change must rebuild even when nothing is selected.
+    let rebuild = if current_affected || global_changed {
         SnapshotRebuild::FullCurrent
     } else {
         SnapshotRebuild::None
@@ -150,11 +152,25 @@ fn tag_references_any_profile(tag: &OperatorTag, profiles: &IndexSet<ProfileId>)
             selected_profile_id,
             transform_profile_id,
             ..
-        } => profiles.contains(selected_profile_id) || profiles.contains(transform_profile_id),
+        } => {
+            selected_profile_id
+                .as_ref()
+                .is_some_and(|id| profiles.contains(id))
+                || profiles.contains(transform_profile_id)
+        }
         OperatorTag::BuiltinStep {
             selected_profile_id,
             ..
-        } => profiles.contains(selected_profile_id),
+        } => selected_profile_id
+            .as_ref()
+            .is_some_and(|id| profiles.contains(id)),
+        OperatorTag::BareRoot => false,
+        OperatorTag::BuiltinTransform {
+            selected_profile_id,
+            ..
+        } => selected_profile_id
+            .as_ref()
+            .is_some_and(|id| profiles.contains(id)),
     }
 }
 
@@ -289,7 +305,7 @@ mod tests {
     }
 
     #[test]
-    fn invalidate_global_transform_changed_rebuilds_only_when_current_exists() {
+    fn invalidate_global_transform_changed_rebuilds_even_without_current() {
         let global = pid("global");
         let current = pid("current");
         let mut index = ProfileDependencyIndex::default();
@@ -307,7 +323,8 @@ mod tests {
 
         let without_current =
             invalidate_profile(&global, ProfileCategory::Transform, None, &index, None);
-        assert_eq!(without_current.rebuild, SnapshotRebuild::None);
+        // Bare mode still runs global transforms; the artifact must rebuild.
+        assert_eq!(without_current.rebuild, SnapshotRebuild::FullCurrent);
         assert!(without_current.affected_configs.is_empty());
     }
 
@@ -326,5 +343,42 @@ mod tests {
 
         assert_eq!(invalidation.rebuild, SnapshotRebuild::None);
         assert!(!invalidation.affected_configs.contains(&current));
+    }
+
+    #[test]
+    fn invalidate_marks_builtin_transform_nodes_of_selected() {
+        let current = pid("current");
+        let mut builder = ConfigSnapshotsBuilder::new_root(
+            Arc::new(ConfigValue::try_from(json!({ "a": 1 })).unwrap()),
+            selected_file_root("current"),
+        );
+        builder
+            .push(
+                OperatorTag::BuiltinTransform {
+                    selected_profile_id: Some(current.clone()),
+                    name: "config_fixer".to_string(),
+                    step_index: 0,
+                },
+                Arc::new(ConfigValue::try_from(json!({ "a": 2 })).unwrap()),
+            )
+            .unwrap();
+        let graph = builder.build_stored().unwrap();
+
+        let invalidation = invalidate_profile(
+            &current,
+            ProfileCategory::Config,
+            Some(&current),
+            &ProfileDependencyIndex::default(),
+            Some(&graph),
+        );
+
+        assert!(
+            invalidation
+                .stale_node_keys
+                .contains(&SnapshotNodeKey::BuiltinTransform {
+                    selected_profile_id: Some(current.clone()),
+                    step_index: 0,
+                })
+        );
     }
 }

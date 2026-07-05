@@ -1,0 +1,9 @@
+proxies:
+  - name: a1
+    type: ss
+    server: a.example.com
+    port: 443
+rules:
+  - MATCH,DIRECT
+dns:
+  enable: true

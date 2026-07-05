@@ -468,6 +468,77 @@ export type ClashWsTraffic = {
   down: number
 }
 
+export type CompositionConfig =
+  | CompositionConfig_Serialize
+  | CompositionConfig_Deserialize
+
+export type CompositionConfig_Deserialize = {
+  /**
+   *  Optional full config seed.
+   *
+   *  - Some(id): inherit a full scoped config from `id`.
+   *  - None: start from a clean config seed and only extend proxies/nodes from
+   *    `extend_proxies_from` before running `transforms`.
+   */
+  base?: ProfileId | null
+  /**  Members that only contribute their scoped-result proxies/nodes. */
+  extend_proxies_from?: ProfileId[]
+  /**  Post-processing transforms after proxies have been extended. */
+  transforms?: ProfileId[]
+}
+
+export type CompositionConfig_Serialize = {
+  /**
+   *  Optional full config seed.
+   *
+   *  - Some(id): inherit a full scoped config from `id`.
+   *  - None: start from a clean config seed and only extend proxies/nodes from
+   *    `extend_proxies_from` before running `transforms`.
+   */
+  base?: ProfileId | null
+  /**  Members that only contribute their scoped-result proxies/nodes. */
+  extend_proxies_from?: ProfileId[]
+  /**  Post-processing transforms after proxies have been extended. */
+  transforms?: ProfileId[]
+}
+
+export type CompositionMemberRole = 'base' | 'contributor'
+
+/**  A profile that can produce a complete config and can be selected by current. */
+export type ConfigDefinition =
+  | ConfigDefinition_Serialize
+  | ConfigDefinition_Deserialize
+
+/**  A profile that can produce a complete config and can be selected by current. */
+export type ConfigDefinition_Deserialize =
+  /**  A config parsed from a locally materialized file. */
+  | ({
+      file: {
+        type: 'file'
+      } & FileConfig_Deserialize
+    } & { composition?: never })
+  /**  A config composed from an optional full base and proxy contributors. */
+  | ({
+      composition: {
+        type: 'composition'
+      } & CompositionConfig_Deserialize
+    } & { file?: never })
+
+/**  A profile that can produce a complete config and can be selected by current. */
+export type ConfigDefinition_Serialize =
+  /**  A config parsed from a locally materialized file. */
+  | ({
+      file: {
+        type: 'file'
+      } & FileConfig_Serialize
+    } & { composition?: never })
+  /**  A config composed from an optional full base and proxy contributors. */
+  | ({
+      composition: {
+        type: 'composition'
+      } & CompositionConfig_Serialize
+    } & { file?: never })
+
 export type CopyEnvOption = 'shell' | 'cmd' | 'pwsh'
 
 export type CoreInfos = {
@@ -540,6 +611,25 @@ export type ExternalControllerPortStrategy =
   | 'fixed'
   | 'random'
   | 'allow_fallback'
+
+export type ExternalMode = 'symlink' | 'mirror'
+
+/**  An absolute path outside the managed profile directory. */
+export type ExternalProfilePath = string
+
+export type FileConfig = FileConfig_Serialize | FileConfig_Deserialize
+
+export type FileConfig_Deserialize = {
+  source: ProfileSource_Deserialize
+  /**  Scoped post-processing transforms. */
+  transforms?: ProfileId[]
+}
+
+export type FileConfig_Serialize = {
+  source: ProfileSource_Serialize
+  /**  Scoped post-processing transforms. */
+  transforms?: ProfileId[]
+}
 
 export type GetSysProxyResponse = {
   enable: boolean
@@ -836,6 +926,32 @@ export type IVerge_Serialize = {
   tray_menu_close_behavior: TrayMenuCloseBehavior | null
 }
 
+export type LocalBinding = LocalBinding_Serialize | LocalBinding_Deserialize
+
+export type LocalBinding_Deserialize =
+  | ({ type: 'managed'; materialized: MaterializedFile_Deserialize } & {
+      mode?: never
+      target?: never
+    })
+  | {
+      type: 'external'
+      materialized: MaterializedFile_Deserialize
+      target: ExternalProfilePath
+      mode: ExternalMode
+    }
+
+export type LocalBinding_Serialize =
+  | ({ type: 'managed'; materialized: MaterializedFile_Serialize } & {
+      mode?: never
+      target?: never
+    })
+  | {
+      type: 'external'
+      materialized: MaterializedFile_Serialize
+      target: ExternalProfilePath
+      mode: ExternalMode
+    }
+
 export type LocalProfile = LocalProfile_Serialize | LocalProfile_Deserialize
 
 /** Builder for [`LocalProfile`](struct.LocalProfile.html). */
@@ -908,6 +1024,9 @@ export type LoggingLevel_Serialize =
   | 'warn'
   | 'error'
 
+/**  A path relative to the application-managed profile directory. */
+export type ManagedProfilePath = string
+
 export type ManifestVersionLatest = {
   mihomo: string
   mihomo_alpha: string
@@ -916,12 +1035,43 @@ export type ManifestVersionLatest = {
   clash_premium: string
 }
 
+/**  Stable read location used by parsers and processors. */
+export type MaterializedFile =
+  | MaterializedFile_Serialize
+  | MaterializedFile_Deserialize
+
+/**  Stable read location used by parsers and processors. */
+export type MaterializedFile_Deserialize = {
+  file: ManagedProfilePath
+  /**  Last successful materialization time. */
+  updated_at?: number | null
+}
+
+/**  Stable read location used by parsers and processors. */
+export type MaterializedFile_Serialize = {
+  file: ManagedProfilePath
+  /**  Last successful materialization time. */
+  updated_at?: number | null
+}
+
 export type MergeProfile = ProfileShared
 
 /** Builder for [`MergeProfile`](struct.MergeProfile.html). */
 export type MergeProfileBuilder = ProfileSharedBuilder
 
 export type NetworkStatisticWidgetConfig = 'disabled' | 'large' | 'small'
+
+export type OverlayTransform =
+  | OverlayTransform_Serialize
+  | OverlayTransform_Deserialize
+
+export type OverlayTransform_Deserialize = {
+  source: ProfileSource_Deserialize
+}
+
+export type OverlayTransform_Serialize = {
+  source: ProfileSource_Serialize
+}
 
 export type PatchRuntimeConfig =
   | PatchRuntimeConfig_Serialize
@@ -1001,6 +1151,103 @@ export type ProfileBuilder_Serialize =
       } & ScriptProfileBuilder
     } & { local?: never; merge?: never; remote?: never })
 
+/**  Top-level semantic split. */
+export type ProfileDefinition =
+  | ProfileDefinition_Serialize
+  | ProfileDefinition_Deserialize
+
+/**  Top-level semantic split. */
+export type ProfileDefinition_Deserialize =
+  | ({ type: 'config'; config: ConfigDefinition_Deserialize } & {
+      transform?: never
+    })
+  | ({ type: 'transform'; transform: TransformDefinition_Deserialize } & {
+      config?: never
+    })
+
+/**  Top-level semantic split. */
+export type ProfileDefinition_Serialize =
+  | ({ type: 'config'; config: ConfigDefinition_Serialize } & {
+      transform?: never
+    })
+  | ({ type: 'transform'; transform: TransformDefinition_Serialize } & {
+      config?: never
+    })
+
+export type ProfileDocument =
+  | ProfileDocument_Serialize
+  | ProfileDocument_Deserialize
+
+export type ProfileDocument_Deserialize = {
+  current?: ProfileId | null
+  global_transforms?: ProfileId[]
+  valid: string[]
+  items: ProfileItem_Deserialize[]
+}
+
+export type ProfileDocument_Serialize = {
+  current?: ProfileId | null
+  global_transforms?: ProfileId[]
+  valid: string[]
+  items: ProfileItem_Serialize[]
+}
+
+/**  Stable profile identifier. It is also the key used by [`Profiles::items`]. */
+export type ProfileId = string
+
+/**  One named profile item. */
+export type ProfileItem = ProfileItem_Serialize | ProfileItem_Deserialize
+
+/**  One named profile item. */
+export type ProfileItem_Deserialize = {
+  uid: ProfileId
+} & ProfileMetadata_Deserialize &
+  ProfileDefinition_Deserialize
+
+/**  One named profile item. */
+export type ProfileItem_Serialize = {
+  uid: ProfileId
+} & ProfileMetadata_Serialize &
+  ProfileDefinition_Serialize
+
+/**  Public, user-editable profile metadata. */
+export type ProfileMetadata =
+  | ProfileMetadata_Serialize
+  | ProfileMetadata_Deserialize
+
+export type ProfileMetadataPatch =
+  | ProfileMetadataPatch_Serialize
+  | ProfileMetadataPatch_Deserialize
+
+export type ProfileMetadataPatch_Deserialize = {
+  name: string | null
+  desc?: string | null
+}
+
+export type ProfileMetadataPatch_Serialize = {
+  name?: string | null
+  desc?: string | null
+}
+
+/**  Public, user-editable profile metadata. */
+export type ProfileMetadata_Deserialize = {
+  name: string
+  desc?: string | null
+}
+
+/**  Public, user-editable profile metadata. */
+export type ProfileMetadata_Serialize = {
+  name: string
+  desc?: string | null
+}
+
+export type ProfileRemoteOptions = {
+  user_agent?: string | null
+  with_proxy: boolean
+  self_proxy: boolean
+  update_interval_minutes: number
+}
+
 export type ProfileShared = {
   /**  Profile ID */
   uid: string
@@ -1027,6 +1274,336 @@ export type ProfileSharedBuilder = {
   /**  update time */
   updated: number | null
 }
+
+/**
+ *  Who is responsible for maintaining the locally readable file.
+ *
+ *  `Remote + External` is unrepresentable: external binding exists only inside
+ *  the `Local` branch, while `Remote` owns a managed materialization directly.
+ */
+export type ProfileSource = ProfileSource_Serialize | ProfileSource_Deserialize
+
+/**
+ *  Who is responsible for maintaining the locally readable file.
+ *
+ *  `Remote + External` is unrepresentable: external binding exists only inside
+ *  the `Local` branch, while `Remote` owns a managed materialization directly.
+ */
+export type ProfileSource_Deserialize =
+  | ({ type: 'local'; binding: LocalBinding_Deserialize } & {
+      materialized?: never
+      option?: never
+      subscription?: never
+      url?: never
+    })
+  | ({
+      type: 'remote'
+      materialized: MaterializedFile_Deserialize
+      url: string
+      option?: ProfileRemoteOptions
+      subscription?: ProfileSubscriptionInfo
+    } & { binding?: never })
+
+/**
+ *  Who is responsible for maintaining the locally readable file.
+ *
+ *  `Remote + External` is unrepresentable: external binding exists only inside
+ *  the `Local` branch, while `Remote` owns a managed materialization directly.
+ */
+export type ProfileSource_Serialize =
+  | ({ type: 'local'; binding: LocalBinding_Serialize } & {
+      materialized?: never
+      option?: never
+      subscription?: never
+      url?: never
+    })
+  | ({
+      type: 'remote'
+      materialized: MaterializedFile_Serialize
+      url: string
+      option: ProfileRemoteOptions
+      subscription?: ProfileSubscriptionInfo
+    } & { binding?: never })
+
+export type ProfileSubscriptionInfo = {
+  upload?: number | null
+  download?: number | null
+  total?: number | null
+  expire?: number | null
+}
+
+export type ProfileValidationError =
+  | ({
+      ItemKeyMismatch: {
+        key: ProfileId
+        item_uid: ProfileId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      RemoteUpdateIntervalIsZero?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({ CurrentNotFound: ProfileId } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      ItemKeyMismatch?: never
+      RemoteUpdateIntervalIsZero?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({ CurrentNotConfig: ProfileId } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      ItemKeyMismatch?: never
+      RemoteUpdateIntervalIsZero?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      TransformTargetNotFound: {
+        owner: TransformOwner
+        target: ProfileId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      ItemKeyMismatch?: never
+      RemoteUpdateIntervalIsZero?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      TransformTargetNotTransform: {
+        owner: TransformOwner
+        target: ProfileId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      ItemKeyMismatch?: never
+      RemoteUpdateIntervalIsZero?: never
+      TransformTargetNotFound?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      EmptyCompositionConfig: {
+        composition: ProfileId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      ItemKeyMismatch?: never
+      RemoteUpdateIntervalIsZero?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      CompositionSelfReference: {
+        composition: ProfileId
+        role: CompositionMemberRole
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      ItemKeyMismatch?: never
+      RemoteUpdateIntervalIsZero?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      CompositionMemberNotFound: {
+        composition: ProfileId
+        role: CompositionMemberRole
+        profile: ProfileId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      ItemKeyMismatch?: never
+      RemoteUpdateIntervalIsZero?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      CompositionMemberNotDirectFileConfig: {
+        composition: ProfileId
+        role: CompositionMemberRole
+        profile: ProfileId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      ItemKeyMismatch?: never
+      RemoteUpdateIntervalIsZero?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      CompositionBaseAlsoContributor: {
+        composition: ProfileId
+        profile: ProfileId
+      }
+    } & {
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      ItemKeyMismatch?: never
+      RemoteUpdateIntervalIsZero?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      CompositionDuplicateContributor: {
+        composition: ProfileId
+        profile: ProfileId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      ItemKeyMismatch?: never
+      RemoteUpdateIntervalIsZero?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      DuplicateMaterializedFile: {
+        file: ManagedProfilePath
+        first: ProfileId
+        second: ProfileId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      EmptyCompositionConfig?: never
+      ItemKeyMismatch?: never
+      RemoteUpdateIntervalIsZero?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
+  | ({
+      UnsupportedRemoteUrlScheme: {
+        profile: ProfileId
+        scheme: string
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      ItemKeyMismatch?: never
+      RemoteUpdateIntervalIsZero?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+    })
+  | ({
+      RemoteUpdateIntervalIsZero: {
+        profile: ProfileId
+      }
+    } & {
+      CompositionBaseAlsoContributor?: never
+      CompositionDuplicateContributor?: never
+      CompositionMemberNotDirectFileConfig?: never
+      CompositionMemberNotFound?: never
+      CompositionSelfReference?: never
+      CurrentNotConfig?: never
+      CurrentNotFound?: never
+      DuplicateMaterializedFile?: never
+      EmptyCompositionConfig?: never
+      ItemKeyMismatch?: never
+      TransformTargetNotFound?: never
+      TransformTargetNotTransform?: never
+      UnsupportedRemoteUrlScheme?: never
+    })
 
 export type Profile_Deserialize =
   | ({
@@ -1319,6 +1896,24 @@ export type RemoteProfileOptionsBuilder = {
   update_interval: number | null
 }
 
+export type RemoteProfileOptionsPatch =
+  | RemoteProfileOptionsPatch_Serialize
+  | RemoteProfileOptionsPatch_Deserialize
+
+export type RemoteProfileOptionsPatch_Deserialize = {
+  user_agent?: string | null
+  with_proxy: boolean | null
+  self_proxy: boolean | null
+  update_interval_minutes: number | null
+}
+
+export type RemoteProfileOptionsPatch_Serialize = {
+  user_agent?: string | null
+  with_proxy?: boolean | null
+  self_proxy?: boolean | null
+  update_interval_minutes?: number | null
+}
+
 export type RemoteProfileOptions_Deserialize = {
   /**  see issue #13 */
   user_agent: string | null
@@ -1413,6 +2008,22 @@ export type ScriptProfileBuilder = {
   script_type: ScriptType | null
 } & ProfileSharedBuilder
 
+export type ScriptRuntime = 'javascript' | 'lua'
+
+export type ScriptTransform =
+  | ScriptTransform_Serialize
+  | ScriptTransform_Deserialize
+
+export type ScriptTransform_Deserialize = {
+  source: ProfileSource_Deserialize
+  runtime: ScriptRuntime
+}
+
+export type ScriptTransform_Serialize = {
+  source: ProfileSource_Serialize
+  runtime: ScriptRuntime
+}
+
 export type ScriptType = 'javascript' | 'lua'
 
 export type ServiceStatus = 'not_installed' | 'stopped' | 'running'
@@ -1479,6 +2090,45 @@ export type SubscriptionInfo_Serialize = {
   total: number
   expire: number
 }
+
+/**  A named config transformer. Transform profiles are reusable but not activatable. */
+export type TransformDefinition =
+  | TransformDefinition_Serialize
+  | TransformDefinition_Deserialize
+
+/**  A named config transformer. Transform profiles are reusable but not activatable. */
+export type TransformDefinition_Deserialize =
+  /**  Declarative YAML overlay/patch. This is the new name for legacy Merge. */
+  | ({
+      overlay: {
+        type: 'overlay'
+      } & OverlayTransform_Deserialize
+    } & { script?: never })
+  /**  Imperative JS/Lua transform. */
+  | ({
+      script: {
+        type: 'script'
+      } & ScriptTransform_Deserialize
+    } & { overlay?: never })
+
+/**  A named config transformer. Transform profiles are reusable but not activatable. */
+export type TransformDefinition_Serialize =
+  /**  Declarative YAML overlay/patch. This is the new name for legacy Merge. */
+  | ({
+      overlay: {
+        type: 'overlay'
+      } & OverlayTransform_Serialize
+    } & { script?: never })
+  /**  Imperative JS/Lua transform. */
+  | ({
+      script: {
+        type: 'script'
+      } & ScriptTransform_Serialize
+    } & { overlay?: never })
+
+export type TransformOwner =
+  | { type: 'global' }
+  | { type: 'config'; uid: ProfileId }
 
 export type TrayIcon = 'normal' | 'tun' | 'system_proxy'
 

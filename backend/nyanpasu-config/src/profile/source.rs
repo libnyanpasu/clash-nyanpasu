@@ -103,12 +103,13 @@ pub struct MaterializedFile {
     pub updated_at: Option<OffsetDateTime>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type, Patch)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Patch)]
 #[patch(attribute(serde_with::skip_serializing_none))]
 #[patch(attribute(derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize, Type)))]
 pub struct RemoteProfileOptions {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[patch(attribute(serde(default, with = "::serde_with::rust::double_option")))]
+    #[patch(attribute(specta(type = Option<Option<String>>)))]
     pub user_agent: Option<String>,
 
     #[serde(default = "default_true")]
@@ -119,6 +120,17 @@ pub struct RemoteProfileOptions {
 
     #[serde(default = "default_update_interval_minutes")]
     pub update_interval_minutes: u64,
+}
+
+#[allow(dead_code)]
+#[derive(Type)]
+#[specta(remote = RemoteProfileOptions)]
+struct ProfileRemoteOptions {
+    #[specta(optional)]
+    user_agent: Option<String>,
+    with_proxy: bool,
+    self_proxy: bool,
+    update_interval_minutes: u64,
 }
 
 impl Default for RemoteProfileOptions {
@@ -132,7 +144,7 @@ impl Default for RemoteProfileOptions {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SubscriptionInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub upload: Option<u64>,
@@ -148,8 +160,21 @@ pub struct SubscriptionInfo {
         with = "time::serde::timestamp::option",
         skip_serializing_if = "Option::is_none"
     )]
-    #[specta(type = Option<i64>)]
     pub expire: Option<OffsetDateTime>,
+}
+
+#[allow(dead_code)]
+#[derive(Type)]
+#[specta(remote = SubscriptionInfo)]
+struct ProfileSubscriptionInfo {
+    #[specta(optional)]
+    upload: Option<u64>,
+    #[specta(optional)]
+    download: Option<u64>,
+    #[specta(optional)]
+    total: Option<u64>,
+    #[specta(optional, type = Option<i64>)]
+    expire: Option<OffsetDateTime>,
 }
 
 impl SubscriptionInfo {

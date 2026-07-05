@@ -11,7 +11,8 @@ pub static MIGRATOR: ProfilesMigrator = ProfilesMigrator;
 static VERSION_2_0_0: Lazy<Version> = Lazy::new(|| Version::parse("2.0.0").unwrap());
 static NULL_VALUE: MigrateProfilesNullValue = MigrateProfilesNullValue;
 static SCRIPT_NEWTYPE: MigrateProfileScriptNewtype = MigrateProfileScriptNewtype;
-static STEPS: [&dyn MigrationStep; 2] = [&NULL_VALUE, &SCRIPT_NEWTYPE];
+static CLEAN_SCHEMA: MigrateProfilesCleanSchema = MigrateProfilesCleanSchema;
+static STEPS: [&dyn MigrationStep; 3] = [&NULL_VALUE, &SCRIPT_NEWTYPE, &CLEAN_SCHEMA];
 
 pub struct ProfilesMigrator;
 
@@ -29,7 +30,10 @@ impl ModuleMigrator for ProfilesMigrator {
         let raw = std::fs::read_to_string(&profiles_path)?;
         let profiles: Mapping = serde_yaml::from_str(&raw)
             .map_err(|e| anyhow::anyhow!("failed to parse profiles: {e}"))?;
-        if needs_null_value_migration(&profiles) || needs_script_newtype_migration(&profiles) {
+        if needs_null_value_migration(&profiles)
+            || needs_script_newtype_migration(&profiles)
+            || !is_clean_schema(&profiles)
+        {
             Ok(0)
         } else {
             Ok(current_revision())
@@ -175,6 +179,65 @@ impl MigrationStep for MigrateProfileScriptNewtype {
         )?;
         Ok(())
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MigrateProfilesCleanSchema;
+
+impl MigrationStep for MigrateProfilesCleanSchema {
+    fn id(&self) -> &'static str {
+        "profiles/clean_schema"
+    }
+
+    fn module(&self) -> &'static str {
+        "profiles"
+    }
+
+    fn revision(&self) -> u64 {
+        3
+    }
+
+    fn introduced_in(&self) -> &'static Version {
+        &VERSION_2_0_0
+    }
+
+    fn name(&self) -> &'static str {
+        "MigrateProfilesCleanSchema"
+    }
+
+    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
+        run_clean_schema(ctx)
+    }
+
+    fn rollback(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
+        rollback_clean_schema(ctx)
+    }
+}
+
+/// New-schema marker: every item is a `config`/`transform` definition. A doc
+/// with zero legacy markers (no legacy item types, no top-level `chain`) has
+/// nothing to migrate and counts as clean.
+fn is_clean_schema(doc: &Mapping) -> bool {
+    if doc.contains_key("chain") {
+        return false;
+    }
+    match doc.get("items").and_then(Value::as_sequence) {
+        None => true,
+        Some(items) => items.iter().all(|item| {
+            item.as_mapping()
+                .and_then(|item| item.get("type"))
+                .and_then(Value::as_str)
+                .is_some_and(|ty| matches!(ty, "config" | "transform"))
+        }),
+    }
+}
+
+fn run_clean_schema(_ctx: &mut Ctx) -> anyhow::Result<()> {
+    Ok(())
+}
+
+fn rollback_clean_schema(_ctx: &mut Ctx) -> anyhow::Result<()> {
+    Ok(())
 }
 
 /// Atomically persist a profiles mapping, mirroring [`crate::utils::help::save_yaml`]
@@ -416,6 +479,30 @@ items:
   updated: 1727621893
   chain: []
 "#;
+
+    const CLEAN_SAMPLE: &str = r#"valid:
+- dns
+items:
+- uid: aaa
+  name: A
+  type: config
+  config:
+    type: file
+    source:
+      type: local
+      binding:
+        type: managed
+        file: aaa.yaml
+"#;
+
+    #[test]
+    fn clean_schema_detection() {
+        let clean: Mapping = serde_yaml::from_str(CLEAN_SAMPLE).unwrap();
+        assert!(is_clean_schema(&clean));
+        let legacy: Mapping = serde_yaml::from_str(MIGRATED_SAMPLE).unwrap();
+        assert!(!is_clean_schema(&legacy));
+        assert!(is_clean_schema(&Mapping::new()));
+    }
 
     #[test]
     fn test_migrate_existing_data() {

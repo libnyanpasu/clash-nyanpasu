@@ -1,0 +1,9 @@
+mode: rule
+mixed-port: 7890
+allow-lan: false
+log-level: info
+ipv6: false
+secret: golden-secret
+profile:
+  store-selected: true
+  store-fake-ip: false

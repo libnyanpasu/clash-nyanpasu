@@ -150,11 +150,25 @@ fn tag_references_any_profile(tag: &OperatorTag, profiles: &IndexSet<ProfileId>)
             selected_profile_id,
             transform_profile_id,
             ..
-        } => profiles.contains(selected_profile_id) || profiles.contains(transform_profile_id),
+        } => {
+            selected_profile_id
+                .as_ref()
+                .is_some_and(|id| profiles.contains(id))
+                || profiles.contains(transform_profile_id)
+        }
         OperatorTag::BuiltinStep {
             selected_profile_id,
             ..
-        } => profiles.contains(selected_profile_id),
+        } => selected_profile_id
+            .as_ref()
+            .is_some_and(|id| profiles.contains(id)),
+        OperatorTag::BareRoot => false,
+        OperatorTag::BuiltinTransform {
+            selected_profile_id,
+            ..
+        } => selected_profile_id
+            .as_ref()
+            .is_some_and(|id| profiles.contains(id)),
     }
 }
 
@@ -326,5 +340,42 @@ mod tests {
 
         assert_eq!(invalidation.rebuild, SnapshotRebuild::None);
         assert!(!invalidation.affected_configs.contains(&current));
+    }
+
+    #[test]
+    fn invalidate_marks_builtin_transform_nodes_of_selected() {
+        let current = pid("current");
+        let mut builder = ConfigSnapshotsBuilder::new_root(
+            Arc::new(ConfigValue::try_from(json!({ "a": 1 })).unwrap()),
+            selected_file_root("current"),
+        );
+        builder
+            .push(
+                OperatorTag::BuiltinTransform {
+                    selected_profile_id: Some(current.clone()),
+                    name: "config_fixer".to_string(),
+                    step_index: 0,
+                },
+                Arc::new(ConfigValue::try_from(json!({ "a": 2 })).unwrap()),
+            )
+            .unwrap();
+        let graph = builder.build_stored().unwrap();
+
+        let invalidation = invalidate_profile(
+            &current,
+            ProfileCategory::Config,
+            Some(&current),
+            &ProfileDependencyIndex::default(),
+            Some(&graph),
+        );
+
+        assert!(
+            invalidation
+                .stale_node_keys
+                .contains(&SnapshotNodeKey::BuiltinTransform {
+                    selected_profile_id: Some(current.clone()),
+                    step_index: 0,
+                })
+        );
     }
 }

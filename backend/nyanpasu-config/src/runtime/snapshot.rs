@@ -100,15 +100,24 @@ pub enum OperatorTag {
         transform_kind: TransformKind,
         step_index: u32,
     },
+    /// `selected_profile_id: None` = bare 模式（current 为空，spec §2 目标 6）。
     GlobalTransform {
-        selected_profile_id: ProfileId,
+        selected_profile_id: Option<ProfileId>,
         transform_profile_id: ProfileId,
         transform_kind: TransformKind,
         step_index: u32,
     },
     BuiltinStep {
-        selected_profile_id: ProfileId,
+        selected_profile_id: Option<ProfileId>,
         step: BuiltinStepKind,
+    },
+    /// current = None 的裸配置管线根（spec §8.2）。
+    BareRoot,
+    /// 内建增强脚本步骤；`name` 为展示性字段，`node_key()` 丢弃。
+    BuiltinTransform {
+        selected_profile_id: Option<ProfileId>,
+        name: String,
+        step_index: u32,
     },
 }
 
@@ -157,6 +166,15 @@ impl OperatorTag {
                 selected_profile_id: selected_profile_id.clone(),
                 step: *step,
             },
+            Self::BareRoot => SnapshotNodeKey::BareRoot,
+            Self::BuiltinTransform {
+                selected_profile_id,
+                step_index,
+                ..
+            } => SnapshotNodeKey::BuiltinTransform {
+                selected_profile_id: selected_profile_id.clone(),
+                step_index: *step_index,
+            },
         }
     }
 }
@@ -183,12 +201,17 @@ pub enum SnapshotNodeKey {
         step_index: u32,
     },
     GlobalTransform {
-        selected_profile_id: ProfileId,
+        selected_profile_id: Option<ProfileId>,
         step_index: u32,
     },
     Builtin {
-        selected_profile_id: ProfileId,
+        selected_profile_id: Option<ProfileId>,
         step: BuiltinStepKind,
+    },
+    BareRoot,
+    BuiltinTransform {
+        selected_profile_id: Option<ProfileId>,
+        step_index: u32,
     },
 }
 
@@ -1105,7 +1128,7 @@ mod tests {
         step_index: u32,
     ) -> OperatorTag {
         OperatorTag::GlobalTransform {
-            selected_profile_id: pid(selected_profile_id),
+            selected_profile_id: Some(pid(selected_profile_id)),
             transform_profile_id: pid(transform_profile_id),
             transform_kind,
             step_index,
@@ -1114,7 +1137,7 @@ mod tests {
 
     fn builtin_step(selected_profile_id: &str, step: BuiltinStepKind) -> OperatorTag {
         OperatorTag::BuiltinStep {
-            selected_profile_id: pid(selected_profile_id),
+            selected_profile_id: Some(pid(selected_profile_id)),
             step,
         }
     }
@@ -1218,7 +1241,7 @@ mod tests {
         assert_eq!(
             graph.nodes[1].key,
             SnapshotNodeKey::Builtin {
-                selected_profile_id: pid("primary"),
+                selected_profile_id: Some(pid("primary")),
                 step: BuiltinStepKind::Finalizing,
             }
         );
@@ -1466,14 +1489,24 @@ mod tests {
             .unwrap();
         builder
             .push(
+                builtin_step("selected", BuiltinStepKind::WhitelistFieldFilter),
+                value(json!({ "step": "whitelist" })),
+            )
+            .unwrap();
+        builder
+            .push(
                 builtin_step("selected", BuiltinStepKind::GuardOverrides),
                 value(json!({ "step": "guard" })),
             )
             .unwrap();
         builder
             .push(
-                builtin_step("selected", BuiltinStepKind::WhitelistFieldFilter),
-                value(json!({ "step": "whitelist" })),
+                OperatorTag::BuiltinTransform {
+                    selected_profile_id: Some(pid("selected")),
+                    name: "config_fixer".to_string(),
+                    step_index: 0,
+                },
+                value(json!({ "step": "builtin_transform" })),
             )
             .unwrap();
         builder
@@ -1502,19 +1535,23 @@ mod tests {
         assert!(matches!(
             &graph.nodes[3].tag,
             OperatorTag::BuiltinStep {
-                step: BuiltinStepKind::GuardOverrides,
+                step: BuiltinStepKind::WhitelistFieldFilter,
                 ..
             }
         ));
         assert!(matches!(
             &graph.nodes[4].tag,
             OperatorTag::BuiltinStep {
-                step: BuiltinStepKind::WhitelistFieldFilter,
+                step: BuiltinStepKind::GuardOverrides,
                 ..
             }
         ));
         assert!(matches!(
             &graph.nodes[5].tag,
+            OperatorTag::BuiltinTransform { .. }
+        ));
+        assert!(matches!(
+            &graph.nodes[6].tag,
             OperatorTag::BuiltinStep {
                 step: BuiltinStepKind::Finalizing,
                 ..
@@ -1879,6 +1916,70 @@ mod tests {
             Err(persistence::SnapshotPersistError::Graph(
                 SnapshotBuildError::Cycle { .. }
             ))
+        ));
+    }
+
+    #[test]
+    fn operator_tag_bare_root_and_builtin_transform_round_trip() {
+        round_trip_tag(OperatorTag::BareRoot);
+        round_trip_tag(OperatorTag::BuiltinTransform {
+            selected_profile_id: Some(pid("selected")),
+            name: "verge_hy_alpn".to_string(),
+            step_index: 0,
+        });
+        round_trip_tag(OperatorTag::BuiltinTransform {
+            selected_profile_id: None,
+            name: "config_fixer".to_string(),
+            step_index: 1,
+        });
+
+        // node_key 丢弃展示性 name 字段。
+        let a = OperatorTag::BuiltinTransform {
+            selected_profile_id: None,
+            name: "a".to_string(),
+            step_index: 2,
+        };
+        let b = OperatorTag::BuiltinTransform {
+            selected_profile_id: None,
+            name: "b".to_string(),
+            step_index: 2,
+        };
+        assert_eq!(a.node_key(), b.node_key());
+        assert_eq!(OperatorTag::BareRoot.node_key(), SnapshotNodeKey::BareRoot);
+    }
+
+    #[test]
+    fn operator_tag_optional_selected_is_forward_compatible_with_v2_wire() {
+        // 旧 v2 wire 中 selected_profile_id 是裸字符串；Option 化后必须解码为 Some。
+        let tag: OperatorTag = serde_json::from_value(json!({
+            "kind": "builtin_step",
+            "data": { "selected_profile_id": "sel", "step": "finalizing" }
+        }))
+        .unwrap();
+        assert_eq!(
+            tag,
+            OperatorTag::BuiltinStep {
+                selected_profile_id: Some(pid("sel")),
+                step: BuiltinStepKind::Finalizing,
+            }
+        );
+
+        let tag: OperatorTag = serde_json::from_value(json!({
+            "kind": "global_transform",
+            "data": {
+                "selected_profile_id": "sel",
+                "transform_profile_id": "t",
+                "transform_kind": { "type": "overlay" },
+                "step_index": 0
+            }
+        }))
+        .unwrap();
+        assert!(matches!(
+            tag,
+            OperatorTag::GlobalTransform {
+                selected_profile_id: Some(_),
+                ..
+            }
         ));
     }
 }

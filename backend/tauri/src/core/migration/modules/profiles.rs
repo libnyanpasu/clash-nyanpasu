@@ -583,6 +583,160 @@ fn migrate_subscription(
     }
 }
 
+/// R7/R10/R11/R12: whole-document mapping. Input is the post-rev2 doc.
+fn migrate_clean_schema(doc: Mapping) -> Result<Mapping, CleanSchemaError> {
+    for key in doc.keys() {
+        let Some(key) = key.as_str() else {
+            return Err(CleanSchemaError::new(
+                None,
+                "<non-string key>",
+                "top-level keys must be strings",
+            ));
+        };
+        if !["current", "chain", "valid", "items"].contains(&key) {
+            return Err(CleanSchemaError::new(
+                None,
+                key,
+                "unknown legacy top-level field",
+            ));
+        }
+    }
+
+    let items: Vec<Mapping> = match doc.get("items") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::Sequence(seq)) => seq
+            .iter()
+            .map(|v| {
+                v.as_mapping().cloned().ok_or_else(|| {
+                    CleanSchemaError::new(None, "items", "every item must be a mapping")
+                })
+            })
+            .collect::<Result<_, _>>()?,
+        Some(_) => {
+            return Err(CleanSchemaError::new(
+                None,
+                "items",
+                "items must be a sequence",
+            ));
+        }
+    };
+
+    let mut new_items: Vec<Value> = Vec::with_capacity(items.len() + 1);
+    let mut uids: Vec<String> = Vec::with_capacity(items.len());
+    let mut direct_file_config: Vec<String> = Vec::new();
+    for item in items {
+        let migrated = migrate_item(item)?;
+        let uid = migrated["uid"]
+            .as_str()
+            .expect("set by migrate_item")
+            .to_owned();
+        if migrated.get("type") == Some(&Value::from("config")) {
+            direct_file_config.push(uid.clone());
+        }
+        uids.push(uid);
+        new_items.push(Value::Mapping(migrated));
+    }
+
+    // R10: current forms
+    let old_current: Vec<String> = match doc.get("current") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::String(s)) => vec![s.clone()],
+        Some(Value::Sequence(seq)) => seq
+            .iter()
+            .map(|v| {
+                v.as_str().map(str::to_owned).ok_or_else(|| {
+                    CleanSchemaError::new(None, "current", "current entries must be strings")
+                })
+            })
+            .collect::<Result<_, _>>()?,
+        Some(_) => {
+            return Err(CleanSchemaError::new(
+                None,
+                "current",
+                "current must be a string or sequence",
+            ));
+        }
+    };
+
+    let current: Option<String> = match old_current.len() {
+        0 => None,
+        1 => Some(old_current[0].clone()),
+        _ => {
+            for member in &old_current {
+                if !uids.contains(member) {
+                    return Err(CleanSchemaError::new(
+                        Some(member),
+                        "current",
+                        "current member does not exist",
+                    ));
+                }
+                if !direct_file_config.contains(member) {
+                    return Err(CleanSchemaError::new(
+                        Some(member),
+                        "current",
+                        "multi-current member cannot be represented as a direct FileConfig",
+                    ));
+                }
+            }
+            let uid = {
+                let mut candidate = "combined-profile".to_owned();
+                let mut n = 1;
+                while uids.contains(&candidate) {
+                    n += 1;
+                    candidate = format!("combined-profile-{n}");
+                }
+                candidate
+            };
+            let mut config = Mapping::new();
+            config.insert("type".into(), "composition".into());
+            config.insert("base".into(), Value::String(old_current[0].clone()));
+            config.insert(
+                "extend_proxies_from".into(),
+                Value::Sequence(
+                    old_current[1..]
+                        .iter()
+                        .cloned()
+                        .map(Value::String)
+                        .collect(),
+                ),
+            );
+            let mut combined = Mapping::new();
+            combined.insert("uid".into(), Value::String(uid.clone()));
+            combined.insert("name".into(), "Combined Profile".into());
+            combined.insert("type".into(), "config".into());
+            combined.insert("config".into(), Value::Mapping(config));
+            new_items.push(Value::Mapping(combined));
+            Some(uid)
+        }
+    };
+
+    let mut out = Mapping::new();
+    if let Some(current) = current {
+        out.insert("current".into(), Value::String(current));
+    }
+    match doc.get("chain") {
+        None | Some(Value::Null) => {}
+        Some(Value::Sequence(seq)) if seq.is_empty() => {}
+        Some(Value::Sequence(seq)) => {
+            out.insert("global_transforms".into(), Value::Sequence(seq.clone()));
+        }
+        Some(_) => {
+            return Err(CleanSchemaError::new(
+                None,
+                "chain",
+                "chain must be a sequence",
+            ));
+        }
+    }
+    if let Some(valid) = doc.get("valid")
+        && !valid.is_null()
+    {
+        out.insert("valid".into(), valid.clone());
+    }
+    out.insert("items".into(), Value::Sequence(new_items));
+    Ok(out)
+}
+
 /// Atomically persist a profiles mapping, mirroring [`crate::utils::help::save_yaml`]
 /// but writing through a temp file + rename so a crash mid-write can never
 /// truncate the user's `profiles.yaml`.
@@ -1070,6 +1224,90 @@ transform:
         ))
         .unwrap_err();
         assert_eq!(err.field_path, "chain");
+    }
+
+    #[test]
+    fn top_level_current_forms() {
+        // 缺失/[] → 无 current 键
+        let out = migrate_clean_schema(item("items: []\n")).unwrap();
+        assert!(!out.contains_key("current"));
+        let out = migrate_clean_schema(item("current: []\nitems: []\n")).unwrap();
+        assert!(!out.contains_key("current"));
+
+        // 标量与单元素(rev1 前旧数据可能是标量,防御性支持)
+        let doc = "current: l1\nitems:\n- {uid: l1, type: local, name: L, file: l1.yaml}\n";
+        let out = migrate_clean_schema(item(doc)).unwrap();
+        assert_eq!(out["current"], Value::from("l1"));
+        let doc = "current: [l1]\nitems:\n- {uid: l1, type: local, name: L, file: l1.yaml}\n";
+        let out = migrate_clean_schema(item(doc)).unwrap();
+        assert_eq!(out["current"], Value::from("l1"));
+    }
+
+    #[test]
+    fn multi_current_synthesizes_composition() {
+        let doc = r#"current: [a, b, c]
+items:
+- {uid: a, type: local, name: A, file: a.yaml}
+- {uid: b, type: remote, name: B, file: b.yaml, url: "https://e.com"}
+- {uid: c, type: local, name: C, file: c.yaml}
+"#;
+        let out = migrate_clean_schema(item(doc)).unwrap();
+        assert_eq!(out["current"], Value::from("combined-profile"));
+        let items = out["items"].as_sequence().unwrap();
+        let combined = items
+            .iter()
+            .find(|i| i["uid"] == Value::from("combined-profile"))
+            .expect("synthesized composition present");
+        assert_eq!(combined["name"], Value::from("Combined Profile"));
+        yaml_eq(
+            combined["config"].as_mapping().unwrap(),
+            "type: composition\nbase: a\nextend_proxies_from: [b, c]\n",
+        );
+    }
+
+    #[test]
+    fn combined_profile_uid_is_collision_safe_and_deterministic() {
+        let doc = r#"current: [a, b]
+items:
+- {uid: a, type: local, name: A, file: a.yaml}
+- {uid: b, type: local, name: B, file: b.yaml}
+- {uid: combined-profile, type: local, name: Taken, file: t.yaml}
+"#;
+        let out = migrate_clean_schema(item(doc)).unwrap();
+        assert_eq!(out["current"], Value::from("combined-profile-2"));
+    }
+
+    #[test]
+    fn multi_current_with_transform_member_fails() {
+        let doc = r#"current: [a, s]
+items:
+- {uid: a, type: local, name: A, file: a.yaml}
+- {uid: s, type: script, name: S, file: s.js, script_type: javascript}
+"#;
+        let err = migrate_clean_schema(item(doc)).unwrap_err();
+        assert_eq!(err.uid.as_deref(), Some("s"));
+        assert_eq!(err.field_path, "current");
+    }
+
+    #[test]
+    fn chain_becomes_global_transforms_and_unknown_top_level_fails() {
+        let doc = r#"chain: [t1]
+items:
+- {uid: t1, type: merge, name: T, file: t1.yaml}
+"#;
+        let out = migrate_clean_schema(item(doc)).unwrap();
+        assert_eq!(out["global_transforms"], item("x: [t1]")["x"]);
+
+        let err = migrate_clean_schema(item("bogus: 1\nitems: []\n")).unwrap_err();
+        assert_eq!(err.field_path, "bogus");
+        assert!(err.uid.is_none());
+    }
+
+    #[test]
+    fn valid_carries_verbatim() {
+        let doc = "valid: [dns, tun]\nitems: []\n";
+        let out = migrate_clean_schema(item(doc)).unwrap();
+        assert_eq!(out["valid"], item("x: [dns, tun]")["x"]);
     }
 
     #[test]

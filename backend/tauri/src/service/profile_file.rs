@@ -149,6 +149,11 @@ impl ProfileFsPort for ProfileFileService {
         }
     }
 
+    fn read_external(&self, target: &ExternalProfilePath) -> anyhow::Result<String> {
+        std::fs::read_to_string(target.as_path())
+            .with_context(|| format!("read external profile target {target}"))
+    }
+
     fn ensure_not_symlink(&self, path: &ManagedProfilePath) -> anyhow::Result<()> {
         let full = self.resolve(path)?;
         match std::fs::symlink_metadata(&full) {

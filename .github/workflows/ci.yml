@@ -294,3 +294,7 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Check typescript bindings freshness
+        if: matrix.os == 'ubuntu-latest'
+        run: git diff --exit-code -- frontend/interface/src/ipc/bindings.ts

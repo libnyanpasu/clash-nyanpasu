@@ -201,6 +201,77 @@ fn filter_when_variants_expr_override_merge_remove() {
 }
 
 #[test]
+fn filter_merge_non_mapping_value_keeps_item() {
+    // merge.rs:153 arm guard: non-mapping `merge` never fires (invalid filter).
+    let mut runner = FakeScriptRunner::default();
+    runner
+        .predicates
+        .insert("hit".to_string(), PredicateReply::Fixed(true));
+    let (result, logs) = apply_with(
+        json!({ "filter__items": { "when": "hit", "merge": 42 } }),
+        json!({ "items": [{ "n": 1 }] }),
+        &runner,
+    );
+    assert_eq!(result, json!({ "items": [{ "n": 1 }] }));
+    assert!(logs.iter().any(|(level, message)| *level == StepLogLevel::Warn
+        && message.contains("`merge` is not a mapping")));
+}
+
+#[test]
+fn filter_merge_on_non_mapping_item_keeps_item() {
+    // Legacy panics (merge.rs:163 unwrap); never-fail keeps the item (spec §13 #15).
+    let mut runner = FakeScriptRunner::default();
+    runner
+        .predicates
+        .insert("hit".to_string(), PredicateReply::Fixed(true));
+    let (result, logs) = apply_with(
+        json!({ "filter__rules": { "when": "hit", "merge": { "extra": 1 } } }),
+        json!({ "rules": ["MATCH,DIRECT"] }),
+        &runner,
+    );
+    assert_eq!(result, json!({ "rules": ["MATCH,DIRECT"] }));
+    assert!(logs.iter().any(|(level, message)| *level == StepLogLevel::Warn
+        && message.contains("target item is not a mapping")));
+}
+
+#[test]
+fn filter_remove_entries_respect_item_shape() {
+    // merge.rs:186/221: string paths → mapping items only; numeric → sequence items only.
+    let mut runner = FakeScriptRunner::default();
+    runner
+        .predicates
+        .insert("hit".to_string(), PredicateReply::Fixed(true));
+
+    // String "0" on a sequence item: legacy logs invalid and keeps the item.
+    let (result, logs) = apply_with(
+        json!({ "filter__groups": { "when": "hit", "remove": ["0"] } }),
+        json!({ "groups": [["a", "b"]] }),
+        &runner,
+    );
+    assert_eq!(result, json!({ "groups": [["a", "b"]] }));
+    assert!(logs.iter().any(|(level, message)| *level == StepLogLevel::Warn
+        && message.contains("non-mapping item")));
+
+    // Numeric index on a mapping item: legacy logs invalid and keeps the item.
+    let (result, logs) = apply_with(
+        json!({ "filter__items": { "when": "hit", "remove": [0] } }),
+        json!({ "items": [{ "0": "keep" }] }),
+        &runner,
+    );
+    assert_eq!(result, json!({ "items": [{ "0": "keep" }] }));
+    assert!(logs.iter().any(|(level, message)| *level == StepLogLevel::Warn
+        && message.contains("non-sequence item")));
+
+    // Numeric index on a sequence item still removes (legacy parity).
+    let (result, _) = apply_with(
+        json!({ "filter__groups": { "when": "hit", "remove": [0] } }),
+        json!({ "groups": [["a", "b"]] }),
+        &runner,
+    );
+    assert_eq!(result, json!({ "groups": [["b"]] }));
+}
+
+#[test]
 fn filter_sequence_composes_and_invalid_filter_warns() {
     let mut runner = FakeScriptRunner::default();
     runner.predicates.insert(

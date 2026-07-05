@@ -206,6 +206,23 @@ fn apply_filter(
                         return replacement.clone();
                     }
                     if let Some(merge) = actions.get("merge") {
+                        // Legacy arm guard requires a mapping merge value
+                        // (merge.rs:153 `is_mapping()`), else "invalid filter".
+                        if merge.as_object_arc().is_none() {
+                            logs.push(StepLogEntry::warn(
+                                "filter `merge` is not a mapping, item kept",
+                            ));
+                            return item;
+                        }
+                        // Legacy panics on non-mapping items (merge.rs:163
+                        // `as_mapping_mut().unwrap()`); never-fail keeps the
+                        // item instead (spec §13 #15).
+                        if item.as_object_arc().is_none() {
+                            logs.push(StepLogEntry::warn(
+                                "filter `merge` target item is not a mapping, item kept",
+                            ));
+                            return item;
+                        }
                         return deep_merge_value(Some(&item), merge);
                     }
                     if let Some(ConfigValue::Array(paths)) = actions.get("remove") {
@@ -232,6 +249,14 @@ fn remove_from_item(
     for path in paths.iter() {
         match path {
             ConfigValue::String(dotted) => {
+                // Legacy applies string paths to mapping items only
+                // (merge.rs:186 `key.is_string() && item.is_mapping()`).
+                if current.as_object_arc().is_none() {
+                    logs.push(StepLogEntry::warn(format!(
+                        "remove path `{dotted}` on non-mapping item, skipped"
+                    )));
+                    continue;
+                }
                 let segments = parse_dotted_path(dotted);
                 match remove_at(&current, &segments) {
                     Some(next) => current = next,
@@ -241,6 +266,14 @@ fn remove_from_item(
                 }
             }
             ConfigValue::Number(index) => {
+                // Legacy numeric removal applies to sequence items only
+                // (merge.rs:221 `Value::Sequence(list) if key.is_i64()`).
+                if !matches!(current, ConfigValue::Array(_)) {
+                    logs.push(StepLogEntry::warn(
+                        "remove index on non-sequence item, skipped",
+                    ));
+                    continue;
+                }
                 let removed = index
                     .as_u64()
                     .map(|index| index.to_string())

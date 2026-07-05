@@ -1646,6 +1646,77 @@ fn filter_when_variants_expr_override_merge_remove() {
 }
 
 #[test]
+fn filter_merge_non_mapping_value_keeps_item() {
+    // merge.rs:153 arm guard: non-mapping `merge` never fires (invalid filter).
+    let mut runner = FakeScriptRunner::default();
+    runner
+        .predicates
+        .insert("hit".to_string(), PredicateReply::Fixed(true));
+    let (result, logs) = apply_with(
+        json!({ "filter__items": { "when": "hit", "merge": 42 } }),
+        json!({ "items": [{ "n": 1 }] }),
+        &runner,
+    );
+    assert_eq!(result, json!({ "items": [{ "n": 1 }] }));
+    assert!(logs.iter().any(|(level, message)| *level == StepLogLevel::Warn
+        && message.contains("`merge` is not a mapping")));
+}
+
+#[test]
+fn filter_merge_on_non_mapping_item_keeps_item() {
+    // Legacy panics (merge.rs:163 unwrap); never-fail keeps the item (spec §13 #15).
+    let mut runner = FakeScriptRunner::default();
+    runner
+        .predicates
+        .insert("hit".to_string(), PredicateReply::Fixed(true));
+    let (result, logs) = apply_with(
+        json!({ "filter__rules": { "when": "hit", "merge": { "extra": 1 } } }),
+        json!({ "rules": ["MATCH,DIRECT"] }),
+        &runner,
+    );
+    assert_eq!(result, json!({ "rules": ["MATCH,DIRECT"] }));
+    assert!(logs.iter().any(|(level, message)| *level == StepLogLevel::Warn
+        && message.contains("target item is not a mapping")));
+}
+
+#[test]
+fn filter_remove_entries_respect_item_shape() {
+    // merge.rs:186/221: string paths → mapping items only; numeric → sequence items only.
+    let mut runner = FakeScriptRunner::default();
+    runner
+        .predicates
+        .insert("hit".to_string(), PredicateReply::Fixed(true));
+
+    // String "0" on a sequence item: legacy logs invalid and keeps the item.
+    let (result, logs) = apply_with(
+        json!({ "filter__groups": { "when": "hit", "remove": ["0"] } }),
+        json!({ "groups": [["a", "b"]] }),
+        &runner,
+    );
+    assert_eq!(result, json!({ "groups": [["a", "b"]] }));
+    assert!(logs.iter().any(|(level, message)| *level == StepLogLevel::Warn
+        && message.contains("non-mapping item")));
+
+    // Numeric index on a mapping item: legacy logs invalid and keeps the item.
+    let (result, logs) = apply_with(
+        json!({ "filter__items": { "when": "hit", "remove": [0] } }),
+        json!({ "items": [{ "0": "keep" }] }),
+        &runner,
+    );
+    assert_eq!(result, json!({ "items": [{ "0": "keep" }] }));
+    assert!(logs.iter().any(|(level, message)| *level == StepLogLevel::Warn
+        && message.contains("non-sequence item")));
+
+    // Numeric index on a sequence item still removes (legacy parity).
+    let (result, _) = apply_with(
+        json!({ "filter__groups": { "when": "hit", "remove": [0] } }),
+        json!({ "groups": [["a", "b"]] }),
+        &runner,
+    );
+    assert_eq!(result, json!({ "groups": [["b"]] }));
+}
+
+#[test]
 fn filter_sequence_composes_and_invalid_filter_warns() {
     let mut runner = FakeScriptRunner::default();
     runner.predicates.insert(
@@ -1877,6 +1948,23 @@ fn apply_filter(
                         return replacement.clone();
                     }
                     if let Some(merge) = actions.get("merge") {
+                        // Legacy arm guard requires a mapping merge value
+                        // (merge.rs:153 `is_mapping()`), else "invalid filter".
+                        if merge.as_object_arc().is_none() {
+                            logs.push(StepLogEntry::warn(
+                                "filter `merge` is not a mapping, item kept",
+                            ));
+                            return item;
+                        }
+                        // Legacy panics on non-mapping items (merge.rs:163
+                        // `as_mapping_mut().unwrap()`); never-fail keeps the
+                        // item instead (spec §13 #15).
+                        if item.as_object_arc().is_none() {
+                            logs.push(StepLogEntry::warn(
+                                "filter `merge` target item is not a mapping, item kept",
+                            ));
+                            return item;
+                        }
                         return deep_merge_value(Some(&item), merge);
                     }
                     if let Some(ConfigValue::Array(paths)) = actions.get("remove") {
@@ -1903,6 +1991,14 @@ fn remove_from_item(
     for path in paths.iter() {
         match path {
             ConfigValue::String(dotted) => {
+                // Legacy applies string paths to mapping items only
+                // (merge.rs:186 `key.is_string() && item.is_mapping()`).
+                if current.as_object_arc().is_none() {
+                    logs.push(StepLogEntry::warn(format!(
+                        "remove path `{dotted}` on non-mapping item, skipped"
+                    )));
+                    continue;
+                }
                 let segments = parse_dotted_path(dotted);
                 match remove_at(&current, &segments) {
                     Some(next) => current = next,
@@ -1912,6 +2008,14 @@ fn remove_from_item(
                 }
             }
             ConfigValue::Number(index) => {
+                // Legacy numeric removal applies to sequence items only
+                // (merge.rs:221 `Value::Sequence(list) if key.is_i64()`).
+                if !matches!(current, ConfigValue::Array(_)) {
+                    logs.push(StepLogEntry::warn(
+                        "remove index on non-sequence item, skipped",
+                    ));
+                    continue;
+                }
                 let removed = index
                     .as_u64()
                     .map(|index| index.to_string())
@@ -1935,7 +2039,7 @@ fn remove_from_item(
 - [ ] **Step 5: 跑测试 + Commit**
 
 Run: `cargo test -p nyanpasu-config executor::tests::overlay`
-Expected: PASS（10 个测试）
+Expected: PASS（13 个测试）
 
 ```bash
 git add backend/nyanpasu-config/src/runtime/executor/
@@ -3782,3 +3886,13 @@ git commit -m "docs: record runtime executor roadmap errata and spec status"
 1. **spec 覆盖**：§7.1 五场景 + bare ↔ orders/golden 测试；§7.2 11 条规则 ↔ compose 测试；§7.3 指令集 ↔ overlay 测试；§7.4 三步 ↔ builtin 测试；§8.1 录制契约 ↔ orders 图形状断言；§9 artifact ↔ 类型 + applied_fields 测试；§10 错误矩阵 ↔ lenient/strict 测试；§11 ↔ invalidation 测试；§13 台账 ↔ parity 三分法；§14 T1–T9 ↔ 本计划 Task 1–9。
 2. **成功判据对账**（spec §16 九条）：#7 纯度 grep 在 Task 9 Step 3；#9 `backend/tauri` 零改动在 Task 8 Step 4 复核。
 3. **类型一致性抽查**：`ScriptRunOutcome.result`（非 tuple）、`ResolvedPortBindings.port: Option<u16>` 不插键、`SnapshotNodeKey::BuiltinTransform{selected_profile_id, step_index}`（无 name）三处最易写岔。
+
+---
+
+## 审查修正（2026-07-05，T1–T9 执行完毕后的多模型审查）
+
+codex 审查发现三处边界语义问题，已修复并同步本计划与 spec（spec §20 勘误 #4–#6）：
+
+1. **overlay `when`+`merge` 卫语句**：`merge` 非映射 → WARN 保留原项（对齐旧 `merge.rs:153` arm guard 的「invalid filter」不生效）；命中项非映射 → WARN 保留原项（旧代码 `merge.rs:163` panic，登记 spec §13 #15）。Task 3 Step 3 代码块与 Step 1 测试块已就地更新（overlay 测试 10 → 13 个）。
+2. **overlay `when`+`remove` 形状卫语句**：字符串路径仅对映射项生效、数字索引仅对序列项生效（对齐 `merge.rs:186/221`）。同上已就地更新。
+3. **`invalidate_profile` bare 模式重建**：全局 transform 变更在 `current == None` 时也返回 `FullCurrent`（本计划引入 `ExecutionTarget::Bare` 后旧判定 `global_changed && current.is_some()` 会让 bare artifact 过期；`invalidation.rs` 既有测试断言已同步改为 `FullCurrent`）。spec §11 已补充说明。

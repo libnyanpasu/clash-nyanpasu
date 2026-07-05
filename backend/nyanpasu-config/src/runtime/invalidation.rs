@@ -60,7 +60,9 @@ pub fn invalidate_profile(
     let current_affected = current
         .map(|current| affected_configs.contains(current))
         .unwrap_or(false);
-    let rebuild = if current_affected || (global_changed && current.is_some()) {
+    // Global transforms also run in bare mode (BareRoot, spec §13 #9), so a
+    // global transform change must rebuild even when nothing is selected.
+    let rebuild = if current_affected || global_changed {
         SnapshotRebuild::FullCurrent
     } else {
         SnapshotRebuild::None
@@ -303,7 +305,7 @@ mod tests {
     }
 
     #[test]
-    fn invalidate_global_transform_changed_rebuilds_only_when_current_exists() {
+    fn invalidate_global_transform_changed_rebuilds_even_without_current() {
         let global = pid("global");
         let current = pid("current");
         let mut index = ProfileDependencyIndex::default();
@@ -321,7 +323,8 @@ mod tests {
 
         let without_current =
             invalidate_profile(&global, ProfileCategory::Transform, None, &index, None);
-        assert_eq!(without_current.rebuild, SnapshotRebuild::None);
+        // Bare mode still runs global transforms; the artifact must rebuild.
+        assert_eq!(without_current.rebuild, SnapshotRebuild::FullCurrent);
         assert!(without_current.affected_configs.is_empty());
     }
 

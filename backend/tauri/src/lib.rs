@@ -17,6 +17,7 @@ mod feat;
 mod ipc;
 mod logging;
 mod server;
+mod service;
 mod setup;
 mod specta_export;
 mod state;

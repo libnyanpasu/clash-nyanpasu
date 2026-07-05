@@ -957,6 +957,122 @@ config:
     }
 
     #[test]
+    fn local_item_managed_mapping() {
+        let out =
+            migrated("uid: l1\ntype: local\nname: L\nfile: l1.yaml\nupdated: 5\nchains: [t1]\n");
+        yaml_eq(
+            &out,
+            r#"uid: l1
+name: L
+type: config
+config:
+  type: file
+  source:
+    type: local
+    binding: {type: managed, file: l1.yaml, updated_at: 5}
+  transforms: [t1]
+"#,
+        );
+    }
+
+    #[test]
+    fn local_symlinks_becomes_external_symlink_binding() {
+        let out = migrated(
+            "uid: l1\ntype: local\nname: L\nfile: l1.yaml\nsymlinks: /outside/real.yaml\n",
+        );
+        yaml_eq(
+            &out,
+            r#"uid: l1
+name: L
+type: config
+config:
+  type: file
+  source:
+    type: local
+    binding: {type: external, file: l1.yaml, target: /outside/real.yaml, mode: symlink}
+"#,
+        );
+        // 相对 target 显式失败
+        let err = migrate_item(item(
+            "uid: l1\ntype: local\nname: L\nfile: l1.yaml\nsymlinks: not/absolute.yaml\n",
+        ))
+        .unwrap_err();
+        assert_eq!(err.field_path, "symlinks");
+    }
+
+    #[test]
+    fn merge_and_script_become_transforms() {
+        let out = migrated("uid: m1\ntype: merge\nname: M\nfile: m1.yaml\n");
+        yaml_eq(
+            &out,
+            r#"uid: m1
+name: M
+type: transform
+transform:
+  type: overlay
+  source:
+    type: local
+    binding: {type: managed, file: m1.yaml}
+"#,
+        );
+        let out = migrated("uid: s1\ntype: script\nname: S\nfile: s1.lua\nscript_type: lua\n");
+        yaml_eq(
+            &out,
+            r#"uid: s1
+name: S
+type: transform
+transform:
+  type: script
+  source:
+    type: local
+    binding: {type: managed, file: s1.lua}
+  runtime: lua
+"#,
+        );
+    }
+
+    #[test]
+    fn url_in_file_converts_to_remote_source_per_legacy_type() {
+        // design §14.2: 定义按旧 type,Source 改 Remote,file 重新生成
+        let out = migrated("uid: l1\ntype: local\nname: L\nfile: https://e.com/sub.yaml\n");
+        assert_eq!(out["type"], Value::from("config"));
+        let source = out["config"]["source"].as_mapping().unwrap();
+        assert_eq!(source["type"], Value::from("remote"));
+        assert_eq!(source["url"], Value::from("https://e.com/sub.yaml"));
+        assert_eq!(source["file"], Value::from("l1.yaml"));
+        let option = source["option"].as_mapping().unwrap();
+        assert_eq!(option["self_proxy"], Value::Bool(true)); // R5 absent 语义
+
+        let out = migrated(
+            "uid: s1\ntype: script\nname: S\nfile: https://e.com/x.js\nscript_type: javascript\n",
+        );
+        assert_eq!(out["transform"]["source"]["file"], Value::from("s1.js"));
+    }
+
+    #[test]
+    fn item_failures_for_non_remote_kinds() {
+        // merge/script 不允许 chain(R8 → 未知键)
+        let err = migrate_item(item(
+            "uid: m1\ntype: merge\nname: M\nfile: m1.yaml\nchain: []\n",
+        ))
+        .unwrap_err();
+        assert_eq!(err.field_path, "chain");
+        // 未知 type(R1)
+        let err = migrate_item(item("uid: x\ntype: banana\nname: X\nfile: x.yaml\n")).unwrap_err();
+        assert_eq!(err.field_path, "type");
+        // 路径穿越(R3)
+        let err =
+            migrate_item(item("uid: l1\ntype: local\nname: L\nfile: ../up.yaml\n")).unwrap_err();
+        assert_eq!(err.field_path, "file");
+        // chain 与 chains 同存(R8)
+        let err = migrate_item(item(
+            "uid: l1\ntype: local\nname: L\nfile: l1.yaml\nchain: []\nchains: []\n",
+        ))
+        .unwrap_err();
+        assert_eq!(err.field_path, "chain");
+    }
+
+    #[test]
     fn test_migrate_existing_data() {
         let original_data = serde_yaml::from_str::<Mapping>(ORIGINAL_SAMPLE).unwrap();
         let migrated_data = migrate_profile_data(original_data);

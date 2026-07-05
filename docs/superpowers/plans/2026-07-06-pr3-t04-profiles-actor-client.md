@@ -1031,14 +1031,14 @@ git commit -m "feat(tauri): add profile create/delete with reference protection"
     #[tokio::test]
     async fn patch_metadata_and_remote_options() {
         let (client, _dir) = seeded_client().await;
-        let mut patch = ProfileMetadata { name: String::new(), desc: None }.new_empty_patch();
+        let mut patch = ProfileMetadata::new_empty_patch();
         patch.name = Some("Renamed".into());
         let report = client.patch_metadata(ProfileId("cfg1".into()), patch).await.unwrap();
         assert!(!report.affects_current);
         assert_eq!(report.snapshot.items[&ProfileId("cfg1".into())].metadata.name, "Renamed");
 
         // 非 Remote → NotARemoteProfile
-        let options_patch = nyanpasu_config::profile::RemoteProfileOptions::default().new_empty_patch();
+        let options_patch = nyanpasu_config::profile::RemoteProfileOptions::new_empty_patch();
         let err = client
             .patch_remote_options(ProfileId("cfg1".into()), options_patch)
             .await

@@ -114,16 +114,19 @@ pub fn change_clash_mode(mode: String) {
     });
 }
 
-/// Route a verge patch through the managed `NyanpasuClient` when it is available, so
-/// the state actor is reseeded after a legacy side-effect write. Falls back to a direct
-/// `patch_verge` before the client is managed (early startup), where no actor exists yet.
+/// Route a verge patch through the managed `LegacyVergeBridge` when it is available, so
+/// typed actors are reseeded after a legacy side-effect write. Falls back to a direct
+/// `patch_verge` before the bridge is managed during early startup.
 async fn patch_verge_entrypoint(patch: IVerge) -> Result<()> {
+    // TODO(actor-migration): compatibility bridge for legacy feature toggles.
+    // Reason: feature paths still enter through Handle::global() and legacy Config::verge().
+    // Remove when: feature toggles call typed actor clients through injected command adapters.
     let app_handle = handle::Handle::global().app_handle.lock().clone();
     if let Some(app_handle) = app_handle
-        && let Some(client) = app_handle.try_state::<crate::client::NyanpasuClient>()
+        && let Some(legacy) = app_handle.try_state::<crate::bridge::verge::LegacyVergeBridge>()
     {
-        let client = client.inner().clone();
-        client.patch_verge_config(patch).await?;
+        let legacy = legacy.inner().clone();
+        legacy.patch_verge_config(patch).await?;
         return Ok(());
     }
     patch_verge(patch).await

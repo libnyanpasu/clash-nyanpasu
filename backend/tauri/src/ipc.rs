@@ -1,5 +1,6 @@
 use crate::{
-    client::{ClientError, NyanpasuClient},
+    bridge::verge::LegacyVergeBridge,
+    client::ClientError,
     config::{profile::ProfileBuilder, *},
     core::{
         logger::Logger, storage::Storage, tasks::jobs::ProfilesJobGuard,
@@ -99,8 +100,11 @@ pub struct GetSysProxyResponse {
 
 #[tauri::command]
 #[specta::specta]
-pub fn get_profiles(client: State<'_, NyanpasuClient>) -> Result<Profiles> {
-    Ok(client.get_profiles())
+pub fn get_profiles() -> Result<Profiles> {
+    // TODO(actor-migration): compatibility bridge for legacy profile IPC.
+    // Reason: profiles are not yet owned by a typed actor/client facade.
+    // Remove when: profile reads are exposed through injected typed clients.
+    Ok(Config::profiles().data().clone())
 }
 
 #[cfg(target_os = "windows")]
@@ -133,11 +137,7 @@ pub async fn enhance_profiles() -> Result {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn import_profile(
-    client: State<'_, NyanpasuClient>,
-    url: String,
-    option: Option<RemoteProfileOptionsBuilder>,
-) -> Result {
+pub async fn import_profile(url: String, option: Option<RemoteProfileOptionsBuilder>) -> Result {
     let url = url::Url::parse(&url).context("failed to parse the url")?;
     let mut builder = crate::config::profile::item::RemoteProfileBuilder::default();
     builder.url(url);
@@ -164,7 +164,7 @@ pub async fn import_profile(
     if let Some(profile_id) = profile_id {
         let mut builder = ProfilesBuilder::default();
         builder.current(vec![profile_id]);
-        client.patch_profiles_config(builder).await?;
+        patch_profiles_config_inner(builder).await?;
     }
     Ok(())
 }
@@ -172,11 +172,7 @@ pub async fn import_profile(
 /// create a new profile
 #[tauri::command]
 #[specta::specta]
-pub async fn create_profile(
-    client: State<'_, NyanpasuClient>,
-    item: ProfileBuilder,
-    file_data: Option<String>,
-) -> Result {
+pub async fn create_profile(item: ProfileBuilder, file_data: Option<String>) -> Result {
     tracing::trace!("create profile: {item:?}");
 
     let is_remote = matches!(&item, ProfileBuilder::Remote(_));
@@ -231,7 +227,7 @@ pub async fn create_profile(
     if let Some(profile_id) = profile_id {
         let mut builder = ProfilesBuilder::default();
         builder.current(vec![profile_id]);
-        client.patch_profiles_config(builder).await?;
+        patch_profiles_config_inner(builder).await?;
     }
 
     Ok(())
@@ -285,12 +281,32 @@ pub async fn delete_profile(uid: String) -> Result {
 /// 修改profiles的
 #[tauri::command]
 #[specta::specta]
-pub async fn patch_profiles_config(
-    client: State<'_, NyanpasuClient>,
-    profiles: ProfilesBuilder,
-) -> Result {
-    client.patch_profiles_config(profiles).await?;
-    Ok(())
+pub async fn patch_profiles_config(profiles: ProfilesBuilder) -> Result {
+    patch_profiles_config_inner(profiles).await
+}
+
+async fn patch_profiles_config_inner(profiles: ProfilesBuilder) -> Result {
+    // TODO(actor-migration): compatibility bridge for legacy profile mutations.
+    // Reason: profile commits still coordinate Config::profiles() and CoreManager::global().
+    // Remove when: profile mutations are handled by an injected profile actor/client.
+    Config::profiles().draft().apply(profiles);
+
+    match CoreManager::global().update_config().await {
+        Ok(_) => {
+            handle::Handle::refresh_clash();
+            Config::profiles().apply();
+            Config::profiles().data().save_file()?;
+
+            let _ = crate::core::connection_interruption::ConnectionInterruptionService::on_profile_change().await;
+
+            Ok(())
+        }
+        Err(err) => {
+            Config::profiles().discard();
+            log::error!(target: "app", "{err:?}");
+            Err(err.into())
+        }
+    }
 }
 
 /// update profile by uid
@@ -444,10 +460,11 @@ pub fn get_postprocessing_output() -> Result<PostProcessingOutput> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_core_status(
-    client: State<'_, NyanpasuClient>,
-) -> Result<(Cow<'static, CoreState>, i64, RunType)> {
-    Ok(client.get_core_status().await)
+pub async fn get_core_status() -> Result<(Cow<'static, CoreState>, i64, RunType)> {
+    // TODO(actor-migration): compatibility bridge for legacy core manager status.
+    // Reason: core lifecycle/status is not yet owned by an injected typed client here.
+    // Remove when: CoreClient exposes typed status through NyanpasuClient or command adapters.
+    Ok(CoreManager::global().status().await)
 }
 
 #[tauri::command]
@@ -491,8 +508,8 @@ pub async fn patch_clash_config(payload: PatchRuntimeConfig) -> Result {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_verge_config(client: State<'_, NyanpasuClient>) -> Result<IVerge> {
-    Ok(client.get_verge_config().await?)
+pub async fn get_verge_config(legacy: State<'_, LegacyVergeBridge>) -> Result<IVerge> {
+    Ok(legacy.get_verge_config().await?)
 }
 
 #[tauri::command]
@@ -503,20 +520,20 @@ pub fn get_hotkey_functions() -> Vec<&'static str> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn patch_verge_config(client: State<'_, NyanpasuClient>, payload: IVerge) -> Result {
-    client.patch_verge_config(payload).await?;
+pub async fn patch_verge_config(legacy: State<'_, LegacyVergeBridge>, payload: IVerge) -> Result {
+    legacy.patch_verge_config(payload).await?;
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn change_clash_core(
-    client: State<'_, NyanpasuClient>,
+    legacy: State<'_, LegacyVergeBridge>,
     clash_core: Option<nyanpasu::ClashCore>,
 ) -> Result {
-    // `change_core` writes `Config::verge().clash_core` directly; reseed the actor so a
-    // later pure patch does not persist a stale snapshot and revert the core change.
-    client
+    // `change_core` writes `Config::verge().clash_core` directly; reseed typed actors so a
+    // later pure patch does not persist stale typed state and revert the core change.
+    legacy
         .run_legacy_verge_mutation(
             || async move { CoreManager::global().change_core(clash_core).await },
         )
@@ -1257,13 +1274,13 @@ pub async fn check_update(webview: tauri::Webview) -> Result<Option<UpdateWrappe
 #[tauri::command]
 #[specta::specta]
 pub async fn save_window_size_state(
-    client: State<'_, NyanpasuClient>,
+    legacy: State<'_, LegacyVergeBridge>,
     app_handle: AppHandle,
     label: String,
 ) -> Result<()> {
-    // Window-state save writes `Config::verge().window_size_state` directly; reseed the
-    // actor so a later pure patch does not revert the saved geometry.
-    client
+    // Window-state save writes `Config::verge().window_size_state` directly; reseed typed
+    // actors so a later pure patch does not revert the saved geometry.
+    legacy
         .run_legacy_verge_mutation(|| async move {
             match label.as_str() {
                 crate::consts::MAIN_WINDOW_LABEL => {

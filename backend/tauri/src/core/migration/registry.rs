@@ -6,6 +6,7 @@ pub static MODULES: Lazy<Vec<&'static dyn ModuleMigrator>> = Lazy::new(|| {
         &modules::profiles::MIGRATOR,
         &modules::app_config::MIGRATOR,
         &modules::storage::MIGRATOR,
+        &modules::typed_config::MIGRATOR,
     ]
 });
 

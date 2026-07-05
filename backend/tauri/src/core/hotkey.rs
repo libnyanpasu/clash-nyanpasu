@@ -198,7 +198,7 @@ impl Hotkey {
                 })
                 // TODO(actor-migration): temporary bridge to legacy Config::verge().
                 // Reason: old installs may not have hotkeys in KV storage until storage/hotkeys_to_kv runs.
-                // Remove when: Hotkey receives its initial state through injected NyanpasuClient/StateClient.
+                // Remove when: Hotkey receives its initial state through injected NyanpasuClient.
                 .or_else(|| Config::verge().latest().hotkeys.clone())
         };
 

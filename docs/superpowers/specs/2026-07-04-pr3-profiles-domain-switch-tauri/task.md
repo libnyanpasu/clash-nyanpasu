@@ -156,6 +156,8 @@ pub trait ProfileFsPort: Send + Sync + 'static {
     fn write_atomic(&self, path: &ManagedProfilePath, content: &str) -> anyhow::Result<()>;
     /// Idempotent: removing a missing file succeeds.
     fn remove(&self, path: &ManagedProfilePath) -> anyhow::Result<()>;
+    /// Read an External binding target for Mirror synchronization.
+    fn read_external(&self, target: &ExternalProfilePath) -> anyhow::Result<String>;
     fn ensure_not_symlink(&self, path: &ManagedProfilePath) -> anyhow::Result<()>;
     fn ensure_symlink(&self, path: &ManagedProfilePath, target: &ExternalProfilePath) -> anyhow::Result<()>;
 }
@@ -281,6 +283,17 @@ pub struct ProfilesActorArgs { pub manager: PersistentStateManager<Profiles>,
 - `CommitRefreshed` 时 uid 已被删除 → 丢弃结果、结清 reply(design §17 竞态行)
 - 后台提交且 `affects_current` → `notifier.request_rebuild()` 恰好一次
 
+**2026-07-06 契约补遗(T05 实物,下游以此为准)**:
+
+- `ProfilesActorMessage::RefreshRemote { uid, patch, reply: Option<RpcReplyPort<Result<CommitReport, ProfilesError>>> }`:手动 `ProfilesClient::refresh(...)` 使用 `Some(reply)`;scheduler 后台刷新使用 `None`。`patch` 先以普通写事务更新 remote options,失败则立即结清 `Some(reply)`。
+- 同一 uid 已有 `pending_refresh` 时,`Some(reply)` 返回 `ProfilesError::RefreshFailed { message: "refresh already in progress" }`;`None` 后台触发静默丢弃。所有已登记 pending 的路径必须在 success/failure/deleted race 中结清。
+- `RefreshRemote` handler 不做网络 I/O:它快照 remote 参数、登记 pending reply,然后 `tokio::spawn` 执行 fetch/校验/`ensure_not_symlink`/`write_atomic`;子任务只回 cast `CommitRefreshed { uid, outcome }`,由 actor 串行提交 `updated_at` 与 `subscription`。
+- `CommitRefreshed` 发现 uid 已删除时,若 outcome 为 success, best-effort 清理 `{uid}.yaml` / `{uid}.js` / `{uid}.lua` 三个可能 orphan;`Some(reply)` 以 `RefreshFailed { message: "profile deleted during refresh" }` 结清。
+- 后台刷新(`reply == None`)只有在成功提交且 `CommitReport.affects_current` 时调用 `RebuildNotifier::request_rebuild()`;每次 background-driven commit 恰好一次。手动 refresh 的 reply 路径不在 actor 内直接 notify,由 T07 facade 按 `CommitReport` 统一编排。
+- `RemoteUpdateScheduler` 为每个 remote uid 持有独立 tokio timer task;每次 committed write 后按 uid+interval diff add/remove/update。`post_start` 会 catch-up overdue remote: `updated_at == None` 视为 overdue,否则 `now - updated_at >= update_interval_minutes` 触发一次后台 refresh。
+- `ExternalWatchers` 使用 `notify-debouncer-full` 按 External binding 建 watcher。Symlink 监听 canonicalized target(失败回退 raw target)且事件只 bump `updated_at`;Mirror 事件先 `ProfileFsPort::read_external`、按 profile definition 校验、`write_atomic` 到 managed materialization,再 bump `updated_at`。成功提交且影响 current 时 notify 恰好一次;读取/校验/写入失败只记录 warn,不改状态、不 notify。
+- 测试入口保留 `#[cfg(test)]` client helper 直接 cast `ExternalFileChanged`,用于覆盖 handler 语义;真实 watcher smoke 使用 bounded `<=5s` 文件事件测试,当前未标 `#[ignore]`。
+
 **验证**: mock fetcher 注入可控延迟/失败;watcher 用 tempdir 真实文件事件或注入触发;全程无 sleep(用消息 ack/通道)。
 
 **单独 plan 时读**: design §7、图 13.3、D8/D9、§18 O1/O3;clean-design §9/§10;现 `core/tasks/jobs/profiles.rs:49-139`(被取代者的 cron diff 语义参考)。
@@ -358,7 +371,7 @@ impl RuntimeBuilder {
 - Modify: `backend/tauri/src/config/core.rs:88`(`generate()` 改调 RuntimeBuilder;产物仍写 runtime draft + `generate_file`,两处标 `TODO(actor-migration)` B8)
 - Modify: `backend/tauri/src/client/mod.rs`(新 facade 方法;旧 `patch_profiles_config:80` 本卡保留——删除在 T10)
 
-**Interfaces — Consumes**: T02 revision 3 后的新 schema;T04 ProfilesClient 全部方法与 2026-07-06 契约修正(`CommitReport.warnings` 不代表事务失败,`affects_current` 按闭包规则触发 rebuild);T05 `refresh`;T06 `RuntimeBuilder`。
+**Interfaces — Consumes**: T02 revision 3 后的新 schema;T04 ProfilesClient 全部方法与 2026-07-06 契约修正(`CommitReport.warnings` 不代表事务失败,`affects_current` 按闭包规则触发 rebuild);T05 final refresh signature `ProfilesClient::refresh(uid: ProfileId, patch: Option<RemoteProfileOptionsPatch>) -> Result<CommitReport, ProfilesError>`;T06 `RuntimeBuilder`。
 
 **Interfaces — Produces**(T08 依赖,方法名以此为准):
 

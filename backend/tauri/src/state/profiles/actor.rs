@@ -14,7 +14,7 @@ use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 
 use super::{
     ports::{ProfileFsPort, RebuildNotifier, SubscriptionFetcher},
-    scheduler::RemoteUpdateScheduler,
+    scheduler::{ExternalWatchers, RemoteUpdateScheduler},
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -77,6 +77,7 @@ pub struct ProfilesActorState {
     notifier: Arc<dyn RebuildNotifier>,
     pending_refresh: HashMap<ProfileId, Option<RpcReplyPort<Result<CommitReport, ProfilesError>>>>,
     scheduler: RemoteUpdateScheduler,
+    external_watchers: ExternalWatchers,
 }
 
 #[derive(Debug)]
@@ -135,6 +136,9 @@ pub enum ProfilesActorMessage {
     CommitRefreshed {
         uid: ProfileId,
         outcome: RefreshOutcome,
+    },
+    ExternalFileChanged {
+        uid: ProfileId,
     },
     ReplaceDefinition {
         uid: ProfileId,
@@ -256,6 +260,7 @@ impl ProfilesActor {
             .map_err(|e| ProfilesError::Persist(e.to_string()))?;
         state.index = ProfileDependencyIndex::build(&next);
         state.scheduler.reconcile(&next, myself, false);
+        state.external_watchers.reconcile(&next, myself);
 
         let mut warnings = Vec::new();
         for op in outcome.post_ops {
@@ -373,6 +378,7 @@ impl Actor for ProfilesActor {
             notifier: args.notifier,
             pending_refresh: HashMap::new(),
             scheduler: RemoteUpdateScheduler::default(),
+            external_watchers: ExternalWatchers::default(),
         })
     }
 
@@ -383,6 +389,7 @@ impl Actor for ProfilesActor {
     ) -> Result<(), ActorProcessingErr> {
         let snapshot = Self::current_state(state);
         state.scheduler.reconcile(&snapshot, &myself, true);
+        state.external_watchers.reconcile(&snapshot, &myself);
         Ok(())
     }
 
@@ -747,6 +754,92 @@ impl Actor for ProfilesActor {
                     let _ = reply.send(result);
                 }
             }
+            ProfilesActorMessage::ExternalFileChanged { uid } => {
+                let snapshot = Self::current_state(state);
+                let Some(item) = snapshot.items.get(&uid) else {
+                    return Ok(());
+                };
+                let Some(ProfileSource::Local {
+                    binding:
+                        LocalBinding::External {
+                            materialized,
+                            target,
+                            mode,
+                        },
+                }) = item.definition.source()
+                else {
+                    return Ok(());
+                };
+
+                if *mode == ExternalMode::Mirror {
+                    let content = match state.fs.read_external(target) {
+                        Ok(content) => content,
+                        Err(error) => {
+                            tracing::warn!(
+                                uid = %uid,
+                                target = %target,
+                                error = %error,
+                                "failed to read changed external profile"
+                            );
+                            return Ok(());
+                        }
+                    };
+                    if let Err(message) = Self::validate_fetched_content(&item.definition, &content)
+                    {
+                        tracing::warn!(
+                            uid = %uid,
+                            target = %target,
+                            error = %message,
+                            "changed external profile failed validation"
+                        );
+                        return Ok(());
+                    }
+                    if let Err(error) = state.fs.write_atomic(&materialized.file, &content) {
+                        tracing::warn!(
+                            uid = %uid,
+                            path = %materialized.file,
+                            error = %error,
+                            "failed to mirror changed external profile"
+                        );
+                        return Ok(());
+                    }
+                }
+
+                let result = Self::run_write(&myself, state, {
+                    let uid = uid.clone();
+                    move |profiles| {
+                        let Some(item) = profiles.items.get_mut(&uid) else {
+                            return Err(ProfilesError::ProfileNotFound(uid.clone()));
+                        };
+                        match item.definition.source_mut() {
+                            Some(ProfileSource::Local {
+                                binding: LocalBinding::External { materialized, .. },
+                            }) => {
+                                materialized.updated_at = Some(time::OffsetDateTime::now_utc());
+                                Ok(WriteOutcome {
+                                    affects: AffectsRule::Touched(uid.clone()),
+                                    post_ops: vec![],
+                                })
+                            }
+                            _ => Err(ProfilesError::ProfileNotFound(uid.clone())),
+                        }
+                    }
+                })
+                .await;
+                match result {
+                    Ok(report) if report.affects_current => {
+                        state.notifier.request_rebuild();
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        tracing::warn!(
+                            uid = %uid,
+                            error = %error,
+                            "failed to commit external profile change"
+                        );
+                    }
+                }
+            }
             ProfilesActorMessage::ReplaceDefinition {
                 uid,
                 definition,
@@ -784,6 +877,7 @@ impl Actor for ProfilesActor {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         state.scheduler.shutdown();
+        state.external_watchers.shutdown();
         Ok(())
     }
 }

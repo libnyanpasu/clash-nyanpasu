@@ -243,6 +243,15 @@ impl ProfilesClient {
             .cast(ProfilesActorMessage::CommitRefreshed { uid, outcome });
         tokio::task::yield_now().await;
     }
+
+    #[cfg(test)]
+    async fn debug_cast_external_changed(&self, uid: ProfileId) {
+        let _ = self
+            .inner
+            .actor_ref
+            .cast(ProfilesActorMessage::ExternalFileChanged { uid });
+        tokio::task::yield_now().await;
+    }
 }
 
 impl Drop for ProfilesClientInner {
@@ -254,17 +263,29 @@ impl Drop for ProfilesClientInner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::profiles::ports::{
-        FetchedSubscription, MockProfileFsPort, MockRebuildNotifier, MockSubscriptionFetcher,
+    use crate::{
+        service::profile_file::{ProfileFileService, SelfProxyPortSource},
+        state::profiles::ports::{
+            FetchedSubscription, MockProfileFsPort, MockRebuildNotifier, MockSubscriptionFetcher,
+        },
+        utils::path::PathResolver,
     };
     use nyanpasu_config::profile::{
-        ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
-        OverlayTransform, ProfileDefinition, ProfileId, ProfileMetadata, ProfileSource, Profiles,
-        RemoteProfileOptions, ScriptRuntime, ScriptTransform, SubscriptionInfo,
-        TransformDefinition,
+        ConfigDefinition, ExternalMode, ExternalProfilePath, FileConfig, LocalBinding,
+        ManagedProfilePath, MaterializedFile, OverlayTransform, ProfileDefinition, ProfileId,
+        ProfileMetadata, ProfileSource, Profiles, RemoteProfileOptions, ScriptRuntime,
+        ScriptTransform, SubscriptionInfo, TransformDefinition,
     };
     use struct_patch::Patch as _;
     use tempfile::{TempDir, tempdir};
+
+    struct NoProxyPort;
+
+    impl SelfProxyPortSource for NoProxyPort {
+        fn mixed_port(&self) -> Option<u16> {
+            None
+        }
+    }
 
     pub(crate) fn temp_profiles_path(dir: &TempDir) -> Utf8PathBuf {
         Utf8PathBuf::from_path_buf(dir.path().join("profiles.yaml")).expect("utf-8 temp path")
@@ -375,6 +396,59 @@ mod tests {
                     transforms: vec![],
                 }),
             },
+        }
+    }
+
+    fn external_item(
+        uid: &str,
+        mode: ExternalMode,
+        target: ExternalProfilePath,
+    ) -> nyanpasu_config::profile::ProfileItem {
+        nyanpasu_config::profile::ProfileItem {
+            uid: ProfileId(uid.into()),
+            metadata: ProfileMetadata {
+                name: uid.to_uppercase(),
+                desc: None,
+            },
+            definition: ProfileDefinition::Config {
+                config: ConfigDefinition::File(FileConfig {
+                    source: ProfileSource::Local {
+                        binding: LocalBinding::External {
+                            materialized: MaterializedFile {
+                                file: ManagedProfilePath::new(format!("{uid}.yaml")).unwrap(),
+                                updated_at: None,
+                            },
+                            target,
+                            mode,
+                        },
+                    },
+                    transforms: vec![],
+                }),
+            },
+        }
+    }
+
+    fn external_path(path: &std::path::Path) -> ExternalProfilePath {
+        ExternalProfilePath::new(path.to_string_lossy().into_owned()).unwrap()
+    }
+
+    async fn wait_for_updated_at(client: &ProfilesClient, uid: &str) -> Arc<Profiles> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            let snapshot = client.get().await.unwrap();
+            let updated = snapshot
+                .items
+                .get(&ProfileId(uid.into()))
+                .and_then(|item| item.definition.source())
+                .and_then(|source| source.materialized().updated_at);
+            if updated.is_some() {
+                return snapshot;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "profile {uid} was not updated before timeout"
+            );
+            tokio::task::yield_now().await;
         }
     }
 
@@ -705,6 +779,161 @@ mod tests {
             tokio::task::yield_now().await;
         }
         assert_eq!(fetch_count.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn external_mirror_change_syncs_copy_and_bumps_updated_at() {
+        let target_dir = tempdir().unwrap();
+        let target_path = target_dir.path().join("external.yaml");
+        std::fs::write(&target_path, "proxies: []\n").unwrap();
+        let target = external_path(&target_path);
+
+        let mut fs = MockProfileFsPort::new();
+        fs.expect_read_external()
+            .withf({
+                let target = target.clone();
+                move |observed| observed == &target
+            })
+            .times(1)
+            .returning(|_| Ok("proxies: []\n".into()));
+        fs.expect_write_atomic()
+            .withf(|path, content| path.as_str() == "ext1.yaml" && content == "proxies: []\n")
+            .times(1)
+            .returning(|_, _| Ok(()));
+        let (client, _dir) = test_client_with(fs).await;
+        let mut profiles = Profiles::default();
+        profiles.append_item(external_item("ext1", ExternalMode::Mirror, target));
+        client.replace(profiles).await.unwrap();
+
+        client
+            .debug_cast_external_changed(ProfileId("ext1".into()))
+            .await;
+
+        let snapshot = wait_for_updated_at(&client, "ext1").await;
+        assert!(
+            snapshot.items[&ProfileId("ext1".into())]
+                .definition
+                .source()
+                .unwrap()
+                .materialized()
+                .updated_at
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn external_symlink_change_bumps_updated_at_without_copy() {
+        let target_dir = tempdir().unwrap();
+        let target_path = target_dir.path().join("external.yaml");
+        std::fs::write(&target_path, "proxies: []\n").unwrap();
+        let target = external_path(&target_path);
+
+        let (client, _dir) = test_client_with(MockProfileFsPort::new()).await;
+        let mut profiles = Profiles::default();
+        profiles.append_item(external_item("ext1", ExternalMode::Symlink, target));
+        client.replace(profiles).await.unwrap();
+
+        client
+            .debug_cast_external_changed(ProfileId("ext1".into()))
+            .await;
+
+        wait_for_updated_at(&client, "ext1").await;
+    }
+
+    #[tokio::test]
+    async fn external_background_commit_requests_rebuild_once_for_current() {
+        let target_dir = tempdir().unwrap();
+        let target_path = target_dir.path().join("external.yaml");
+        std::fs::write(&target_path, "proxies: []\n").unwrap();
+        let target = external_path(&target_path);
+
+        let mut fs = MockProfileFsPort::new();
+        fs.expect_read_external()
+            .times(1)
+            .returning(|_| Ok("proxies: []\n".into()));
+        fs.expect_write_atomic().times(1).returning(|_, _| Ok(()));
+        let mut notifier = MockRebuildNotifier::new();
+        notifier.expect_request_rebuild().times(1).returning(|| ());
+        let dir = tempdir().unwrap();
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            std::sync::Arc::new(fs),
+            std::sync::Arc::new(MockSubscriptionFetcher::new()),
+            std::sync::Arc::new(notifier),
+        )
+        .await
+        .unwrap();
+        let mut profiles = Profiles::default();
+        profiles.append_item(external_item("ext1", ExternalMode::Mirror, target));
+        profiles.set_current(Some(ProfileId("ext1".into())));
+        client.replace(profiles).await.unwrap();
+
+        client
+            .debug_cast_external_changed(ProfileId("ext1".into()))
+            .await;
+
+        wait_for_updated_at(&client, "ext1").await;
+    }
+
+    #[tokio::test]
+    async fn external_watcher_smoke_mirror_real_file_event() {
+        let config_dir = tempdir().unwrap();
+        let data_dir = tempdir().unwrap();
+        let target_dir = tempdir().unwrap();
+        let target_path = target_dir.path().join("external.yaml");
+        std::fs::write(&target_path, "proxies: []\n").unwrap();
+        let paths = PathResolver::with_base_dirs(
+            config_dir.path().to_path_buf(),
+            data_dir.path().to_path_buf(),
+        );
+        let fs = std::sync::Arc::new(ProfileFileService::new(
+            paths,
+            std::sync::Arc::new(NoProxyPort),
+        ));
+        let profiles_path =
+            Utf8PathBuf::from_path_buf(config_dir.path().join("profiles.yaml")).unwrap();
+        let client = ProfilesClient::new(
+            profiles_path,
+            fs,
+            std::sync::Arc::new(MockSubscriptionFetcher::new()),
+            std::sync::Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+        let mut profiles = Profiles::default();
+        profiles.append_item(external_item(
+            "ext1",
+            ExternalMode::Mirror,
+            external_path(&target_path),
+        ));
+        client.replace(profiles).await.unwrap();
+
+        tokio::fs::write(&target_path, "mode: rule\nproxies: []\n")
+            .await
+            .unwrap();
+
+        let managed_path = config_dir.path().join("profiles").join("ext1.yaml");
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                let updated = client
+                    .get()
+                    .await
+                    .unwrap()
+                    .items
+                    .get(&ProfileId("ext1".into()))
+                    .and_then(|item| item.definition.source())
+                    .and_then(|source| source.materialized().updated_at)
+                    .is_some();
+                let mirrored = std::fs::read_to_string(&managed_path)
+                    .is_ok_and(|content| content.contains("mode: rule"));
+                if updated && mirrored {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+            }
+        })
+        .await
+        .expect("real external watcher event should commit within 5s");
     }
 
     #[tokio::test]

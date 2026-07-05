@@ -1,7 +1,7 @@
 //! ProfilesActor: single owner of the profiles document.
 //! Tauri-free; every filesystem/network effect goes through the ports.
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use nyanpasu_config::profile::{
     ConfigDefinition, ExternalMode, ExternalProfilePath, LocalBinding, ManagedProfilePath,
@@ -70,10 +70,19 @@ pub struct ProfilesActorState {
     #[allow(dead_code)]
     index: ProfileDependencyIndex,
     fs: Arc<dyn ProfileFsPort>,
-    #[allow(dead_code)]
     fetcher: Arc<dyn SubscriptionFetcher>,
-    #[allow(dead_code)]
     notifier: Arc<dyn RebuildNotifier>,
+    pending_refresh: HashMap<ProfileId, Option<RpcReplyPort<Result<CommitReport, ProfilesError>>>>,
+}
+
+#[derive(Debug)]
+pub enum RefreshOutcome {
+    Succeeded {
+        subscription: nyanpasu_config::profile::SubscriptionInfo,
+    },
+    Failed {
+        message: String,
+    },
 }
 
 #[derive(Debug)]
@@ -114,10 +123,25 @@ pub enum ProfilesActorMessage {
         patch: RemoteProfileOptionsPatch,
         reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
     },
+    RefreshRemote {
+        uid: ProfileId,
+        patch: Option<RemoteProfileOptionsPatch>,
+        reply: Option<RpcReplyPort<Result<CommitReport, ProfilesError>>>,
+    },
+    CommitRefreshed {
+        uid: ProfileId,
+        outcome: RefreshOutcome,
+    },
     ReplaceDefinition {
         uid: ProfileId,
         definition: ProfileDefinition,
         reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
+    },
+    #[cfg(test)]
+    DebugInsertPendingRefresh {
+        uid: ProfileId,
+        reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
+        inserted: tokio::sync::oneshot::Sender<()>,
     },
 }
 
@@ -277,6 +301,27 @@ impl ProfilesActor {
         }
     }
 
+    fn validate_fetched_content(
+        definition: &ProfileDefinition,
+        content: &str,
+    ) -> Result<(), String> {
+        let needs_yaml = match definition {
+            ProfileDefinition::Config { .. } => true,
+            ProfileDefinition::Transform { transform } => {
+                matches!(transform, TransformDefinition::Overlay(_))
+            }
+        };
+        if needs_yaml {
+            serde_yaml::from_str::<serde_yaml::Mapping>(content)
+                .map(|_| ())
+                .map_err(|e| format!("downloaded content is not a YAML mapping: {e}"))
+        } else if content.trim().is_empty() {
+            Err("downloaded script is empty".into())
+        } else {
+            Ok(())
+        }
+    }
+
     fn referrers_of(
         state: &ProfilesActorState,
         profiles: &Profiles,
@@ -320,12 +365,13 @@ impl Actor for ProfilesActor {
             fs: args.fs,
             fetcher: args.fetcher,
             notifier: args.notifier,
+            pending_refresh: HashMap::new(),
         })
     }
 
     async fn handle(
         &self,
-        _myself: ActorRef<Self::Msg>,
+        myself: ActorRef<Self::Msg>,
         message: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
@@ -534,6 +580,156 @@ impl Actor for ProfilesActor {
                 .await;
                 let _ = reply.send(result);
             }
+            ProfilesActorMessage::RefreshRemote { uid, patch, reply } => {
+                if state.pending_refresh.contains_key(&uid) {
+                    if let Some(reply) = reply {
+                        let _ = reply.send(Err(ProfilesError::RefreshFailed {
+                            message: "refresh already in progress".into(),
+                        }));
+                    }
+                    return Ok(());
+                }
+
+                if let Some(patch) = patch {
+                    let patched = Self::run_write(state, {
+                        let uid = uid.clone();
+                        move |profiles| {
+                            let Some(item) = profiles.items.get_mut(&uid) else {
+                                return Err(ProfilesError::ProfileNotFound(uid.clone()));
+                            };
+                            match item.definition.source_mut() {
+                                Some(ProfileSource::Remote { option, .. }) => {
+                                    use struct_patch::Patch as _;
+                                    option.apply(patch);
+                                    Ok(WriteOutcome {
+                                        affects: AffectsRule::Never,
+                                        post_ops: vec![],
+                                    })
+                                }
+                                _ => Err(ProfilesError::NotARemoteProfile),
+                            }
+                        }
+                    })
+                    .await;
+                    if let Err(err) = patched {
+                        if let Some(reply) = reply {
+                            let _ = reply.send(Err(err));
+                        }
+                        return Ok(());
+                    }
+                }
+
+                let snapshot = Self::current_state(state);
+                let Some(item) = snapshot.items.get(&uid) else {
+                    if let Some(reply) = reply {
+                        let _ = reply.send(Err(ProfilesError::ProfileNotFound(uid.clone())));
+                    }
+                    return Ok(());
+                };
+                let Some(ProfileSource::Remote {
+                    url,
+                    option,
+                    materialized,
+                    ..
+                }) = item.definition.source()
+                else {
+                    if let Some(reply) = reply {
+                        let _ = reply.send(Err(ProfilesError::NotARemoteProfile));
+                    }
+                    return Ok(());
+                };
+
+                let definition = item.definition.clone();
+                let url = url.clone();
+                let option = option.clone();
+                let path = materialized.file.clone();
+                state.pending_refresh.insert(uid.clone(), reply);
+                let fetcher = Arc::clone(&state.fetcher);
+                let fs = Arc::clone(&state.fs);
+                let actor = myself.clone();
+                tokio::spawn(async move {
+                    let outcome = async {
+                        let fetched = fetcher
+                            .fetch(&url, &option)
+                            .await
+                            .map_err(|e| format!("download failed: {e}"))?;
+                        Self::validate_fetched_content(&definition, &fetched.content)?;
+                        fs.ensure_not_symlink(&path).map_err(|e| e.to_string())?;
+                        fs.write_atomic(&path, &fetched.content)
+                            .map_err(|e| e.to_string())?;
+                        Ok::<_, String>(fetched.subscription)
+                    }
+                    .await;
+                    let outcome = match outcome {
+                        Ok(subscription) => RefreshOutcome::Succeeded { subscription },
+                        Err(message) => RefreshOutcome::Failed { message },
+                    };
+                    let _ = actor.cast(ProfilesActorMessage::CommitRefreshed { uid, outcome });
+                });
+            }
+            ProfilesActorMessage::CommitRefreshed { uid, outcome } => {
+                let reply = state.pending_refresh.remove(&uid).flatten();
+                let snapshot = Self::current_state(state);
+                if snapshot.items.get(&uid).is_none() {
+                    if let RefreshOutcome::Succeeded { .. } = outcome {
+                        for ext in ["yaml", "js", "lua"] {
+                            if let Ok(path) = ManagedProfilePath::new(format!("{uid}.{ext}")) {
+                                let _ = state.fs.remove(&path);
+                            }
+                        }
+                    }
+                    if let Some(reply) = reply {
+                        let _ = reply.send(Err(ProfilesError::RefreshFailed {
+                            message: "profile deleted during refresh".into(),
+                        }));
+                    }
+                    return Ok(());
+                }
+
+                let result = match outcome {
+                    RefreshOutcome::Failed { message } => {
+                        Err(ProfilesError::RefreshFailed { message })
+                    }
+                    RefreshOutcome::Succeeded { subscription } => {
+                        Self::run_write(state, {
+                            let uid = uid.clone();
+                            move |profiles| {
+                                let Some(item) = profiles.items.get_mut(&uid) else {
+                                    return Err(ProfilesError::ProfileNotFound(uid.clone()));
+                                };
+                                match item.definition.source_mut() {
+                                    Some(ProfileSource::Remote {
+                                        materialized,
+                                        subscription: slot,
+                                        ..
+                                    }) => {
+                                        materialized.updated_at =
+                                            Some(time::OffsetDateTime::now_utc());
+                                        *slot = subscription;
+                                        Ok(WriteOutcome {
+                                            affects: AffectsRule::Touched(uid.clone()),
+                                            post_ops: vec![],
+                                        })
+                                    }
+                                    _ => Err(ProfilesError::NotARemoteProfile),
+                                }
+                            }
+                        })
+                        .await
+                    }
+                };
+
+                if reply.is_none() {
+                    if let Ok(report) = &result {
+                        if report.affects_current {
+                            state.notifier.request_rebuild();
+                        }
+                    }
+                }
+                if let Some(reply) = reply {
+                    let _ = reply.send(result);
+                }
+            }
             ProfilesActorMessage::ReplaceDefinition {
                 uid,
                 definition,
@@ -551,6 +747,15 @@ impl Actor for ProfilesActor {
                 })
                 .await;
                 let _ = reply.send(result);
+            }
+            #[cfg(test)]
+            ProfilesActorMessage::DebugInsertPendingRefresh {
+                uid,
+                reply,
+                inserted,
+            } => {
+                state.pending_refresh.insert(uid, Some(reply));
+                let _ = inserted.send(());
             }
         }
         Ok(())

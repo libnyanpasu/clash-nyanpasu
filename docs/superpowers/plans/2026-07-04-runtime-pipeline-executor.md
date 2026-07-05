@@ -4,7 +4,7 @@
 
 **Goal:** 在 `nyanpasu-config` 内落地纯 runtime pipeline executor：给定已验证 `Profiles` 快照 + 注入 ports，执行 clean-design §7.1–7.5 五种处理顺序与最终阶段，产出 `RuntimeArtifact{final_config, graph, step_logs, applied_fields}`；`backend/tauri/**` 提交面零改动。
 
-**Architecture:** 权威设计 = `docs/superpowers/specs/2026-07-04-runtime-pipeline-executor-design.md`（下称 **spec**，语义决策一律以其为准，本计划只做落地拆分）。先做 snapshot tag 受控扩展（spec §8.2），再自底向上：ports/类型骨架 → Overlay 指令集 → 三 BuiltinStep 纯函数 → 五顺序编排与录制 → golden/失效/parity 测试 → roadmap 勘误回写。行为基线 = 旧 `backend/tauri/src/enhance/`（spec §4.3 十七步实测），故意差异封闭于 spec §13 台账（14 条）。并行执行协调文件：`.claude/plan/runtime-pipeline-executor-parallel.md`（波次调度、worktree/合并协议、任务卡）。
+**Architecture:** 权威设计 = `docs/superpowers/specs/2026-07-04-runtime-pipeline-executor-design.md`（下称 **spec**，语义决策一律以其为准，本计划只做落地拆分）。先做 snapshot tag 受控扩展（spec §8.2），再自底向上：ports/类型骨架 → Overlay 指令集 → 三 BuiltinStep 纯函数 → 五顺序编排与录制 → golden/失效/parity 测试 → roadmap 勘误回写。行为基线 = 旧 `backend/tauri/src/enhance/`（spec §4.3 十七步实测），故意差异封闭于 spec §13 台账（15 条）。并行执行协调文件：`.claude/plan/runtime-pipeline-executor-parallel.md`（波次调度、worktree/合并协议、任务卡）。
 
 **Tech Stack:** Rust、serde / serde_json / serde_yaml_ng（含 `Value::apply_merge`，已核实 fork 保留）、indexmap、thiserror、specta、既有 `runtime::{snapshot, value}`。**不新增任何依赖**。
 
@@ -1646,20 +1646,37 @@ fn filter_when_variants_expr_override_merge_remove() {
 }
 
 #[test]
-fn filter_merge_non_mapping_value_keeps_item() {
-    // merge.rs:153 arm guard: non-mapping `merge` never fires (invalid filter).
+fn filter_merge_non_mapping_value_is_invalid_filter() {
+    // merge.rs:153 arm guard: non-mapping `merge` matches no arm; the `_` arm
+    // warns once and never evaluates `when` (a Fail reply would log if it ran).
     let mut runner = FakeScriptRunner::default();
-    runner
-        .predicates
-        .insert("hit".to_string(), PredicateReply::Fixed(true));
+    runner.predicates.insert(
+        "hit".to_string(),
+        PredicateReply::Fail("must not run".to_string()),
+    );
     let (result, logs) = apply_with(
         json!({ "filter__items": { "when": "hit", "merge": 42 } }),
         json!({ "items": [{ "n": 1 }] }),
         &runner,
     );
     assert_eq!(result, json!({ "items": [{ "n": 1 }] }));
-    assert!(logs.iter().any(|(level, message)| *level == StepLogLevel::Warn
-        && message.contains("`merge` is not a mapping")));
+    assert_eq!(logs.len(), 1);
+    assert!(logs[0].0 == StepLogLevel::Warn && logs[0].1.contains("invalid filter"));
+}
+
+#[test]
+fn filter_non_mapping_merge_falls_through_to_remove() {
+    // Legacy arm order: an unmatched merge guard falls through to the remove arm.
+    let mut runner = FakeScriptRunner::default();
+    runner
+        .predicates
+        .insert("hit".to_string(), PredicateReply::Fixed(true));
+    let (result, _) = apply_with(
+        json!({ "filter__items": { "when": "hit", "merge": 42, "remove": ["drop"] } }),
+        json!({ "items": [{ "drop": 1, "keep": 2 }] }),
+        &runner,
+    );
+    assert_eq!(result, json!({ "items": [{ "keep": 2 }] }));
 }
 
 #[test]
@@ -1918,6 +1935,31 @@ fn apply_filter(
                 logs.push(StepLogEntry::warn("invalid filter: missing `when`"));
                 return items;
             };
+            // Action selection mirrors the legacy match-arm order and typed
+            // guards (merge.rs:122-231): an action whose guard fails falls
+            // through to the next arm; when nothing matches, the `_` arm
+            // warns once without evaluating `when` per item.
+            enum FilterAction<'a> {
+                Expr(&'a str),
+                Override(&'a ConfigValue),
+                Merge(&'a ConfigValue),
+                Remove(&'a Arc<[ConfigValue]>),
+            }
+            let action = if let Some(ConfigValue::String(expr)) = actions.get("expr") {
+                FilterAction::Expr(expr.as_ref())
+            } else if let Some(replacement) = actions.get("override") {
+                FilterAction::Override(replacement)
+            } else if let Some(merge) = actions
+                .get("merge")
+                .filter(|value| value.as_object_arc().is_some())
+            {
+                FilterAction::Merge(merge)
+            } else if let Some(ConfigValue::Array(paths)) = actions.get("remove") {
+                FilterAction::Remove(paths)
+            } else {
+                logs.push(StepLogEntry::warn("invalid filter: no action"));
+                return items;
+            };
             items
                 .into_iter()
                 .map(|item| {
@@ -1933,8 +1975,8 @@ fn apply_filter(
                     if !hit {
                         return item;
                     }
-                    if let Some(ConfigValue::String(expr)) = actions.get("expr") {
-                        return match runner.eval_item_expr(expr, &item) {
+                    match &action {
+                        FilterAction::Expr(expr) => match runner.eval_item_expr(expr, &item) {
                             Ok(next) => next,
                             Err(error) => {
                                 logs.push(StepLogEntry::warn(format!(
@@ -1942,36 +1984,22 @@ fn apply_filter(
                                 )));
                                 item
                             }
-                        };
-                    }
-                    if let Some(replacement) = actions.get("override") {
-                        return replacement.clone();
-                    }
-                    if let Some(merge) = actions.get("merge") {
-                        // Legacy arm guard requires a mapping merge value
-                        // (merge.rs:153 `is_mapping()`), else "invalid filter".
-                        if merge.as_object_arc().is_none() {
-                            logs.push(StepLogEntry::warn(
-                                "filter `merge` is not a mapping, item kept",
-                            ));
-                            return item;
+                        },
+                        FilterAction::Override(replacement) => (*replacement).clone(),
+                        FilterAction::Merge(merge) => {
+                            // Legacy panics on non-mapping items (merge.rs:163
+                            // `as_mapping_mut().unwrap()`); never-fail keeps
+                            // the item instead (spec §13 #15).
+                            if item.as_object_arc().is_none() {
+                                logs.push(StepLogEntry::warn(
+                                    "filter `merge` target item is not a mapping, item kept",
+                                ));
+                                return item;
+                            }
+                            deep_merge_value(Some(&item), merge)
                         }
-                        // Legacy panics on non-mapping items (merge.rs:163
-                        // `as_mapping_mut().unwrap()`); never-fail keeps the
-                        // item instead (spec §13 #15).
-                        if item.as_object_arc().is_none() {
-                            logs.push(StepLogEntry::warn(
-                                "filter `merge` target item is not a mapping, item kept",
-                            ));
-                            return item;
-                        }
-                        return deep_merge_value(Some(&item), merge);
+                        FilterAction::Remove(paths) => remove_from_item(item, paths, logs),
                     }
-                    if let Some(ConfigValue::Array(paths)) = actions.get("remove") {
-                        return remove_from_item(item, paths, logs);
-                    }
-                    logs.push(StepLogEntry::warn("invalid filter: no action"));
-                    item
                 })
                 .collect()
         }
@@ -2039,7 +2067,7 @@ fn remove_from_item(
 - [ ] **Step 5: 跑测试 + Commit**
 
 Run: `cargo test -p nyanpasu-config executor::tests::overlay`
-Expected: PASS（13 个测试）
+Expected: PASS（14 个测试）
 
 ```bash
 git add backend/nyanpasu-config/src/runtime/executor/
@@ -3893,6 +3921,10 @@ git commit -m "docs: record runtime executor roadmap errata and spec status"
 
 codex 审查发现三处边界语义问题，已修复并同步本计划与 spec（spec §20 勘误 #4–#6）：
 
-1. **overlay `when`+`merge` 卫语句**：`merge` 非映射 → WARN 保留原项（对齐旧 `merge.rs:153` arm guard 的「invalid filter」不生效）；命中项非映射 → WARN 保留原项（旧代码 `merge.rs:163` panic，登记 spec §13 #15）。Task 3 Step 3 代码块与 Step 1 测试块已就地更新（overlay 测试 10 → 13 个）。
+1. **overlay `when`+`merge` 卫语句**：`merge` 命中项非映射 → WARN 保留原项（旧代码 `merge.rs:163` panic，登记 spec §13 #15）。Task 3 Step 3 代码块与 Step 1 测试块已就地更新。
 2. **overlay `when`+`remove` 形状卫语句**：字符串路径仅对映射项生效、数字索引仅对序列项生效（对齐 `merge.rs:186/221`）。同上已就地更新。
 3. **`invalidate_profile` bare 模式重建**：全局 transform 变更在 `current == None` 时也返回 `FullCurrent`（本计划引入 `ExecutionTarget::Bare` 后旧判定 `global_changed && current.is_some()` 会让 bare artifact 过期；`invalidation.rs` 既有测试断言已同步改为 `FullCurrent`）。spec §11 已补充说明。
+
+第二轮审查（/ccg:review，codex Major）追加修正：
+
+4. **`filter__` 动作选择对齐旧 arm fallthrough**：第一轮的「`merge` 非映射 → WARN 保留」比旧代码截断更早——旧 match arm 带类型卫，`merge` 非映射会**落入后续 `remove` arm**，全部不匹配才走 `_`「invalid filter」（单次 WARN、不逐项求值 `when`）。现重构为循环前按 expr→override→merge(映射)→remove(序列) 顺序预选动作。overlay 测试 10 → 14 个（含混合动作 fallthrough 与 invalid-filter 不求值 `when` 断言）。

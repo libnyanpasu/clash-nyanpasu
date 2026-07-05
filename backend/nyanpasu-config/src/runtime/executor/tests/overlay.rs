@@ -201,20 +201,37 @@ fn filter_when_variants_expr_override_merge_remove() {
 }
 
 #[test]
-fn filter_merge_non_mapping_value_keeps_item() {
-    // merge.rs:153 arm guard: non-mapping `merge` never fires (invalid filter).
+fn filter_merge_non_mapping_value_is_invalid_filter() {
+    // merge.rs:153 arm guard: non-mapping `merge` matches no arm; the `_` arm
+    // warns once and never evaluates `when` (a Fail reply would log if it ran).
     let mut runner = FakeScriptRunner::default();
-    runner
-        .predicates
-        .insert("hit".to_string(), PredicateReply::Fixed(true));
+    runner.predicates.insert(
+        "hit".to_string(),
+        PredicateReply::Fail("must not run".to_string()),
+    );
     let (result, logs) = apply_with(
         json!({ "filter__items": { "when": "hit", "merge": 42 } }),
         json!({ "items": [{ "n": 1 }] }),
         &runner,
     );
     assert_eq!(result, json!({ "items": [{ "n": 1 }] }));
-    assert!(logs.iter().any(|(level, message)| *level == StepLogLevel::Warn
-        && message.contains("`merge` is not a mapping")));
+    assert_eq!(logs.len(), 1);
+    assert!(logs[0].0 == StepLogLevel::Warn && logs[0].1.contains("invalid filter"));
+}
+
+#[test]
+fn filter_non_mapping_merge_falls_through_to_remove() {
+    // Legacy arm order: an unmatched merge guard falls through to the remove arm.
+    let mut runner = FakeScriptRunner::default();
+    runner
+        .predicates
+        .insert("hit".to_string(), PredicateReply::Fixed(true));
+    let (result, _) = apply_with(
+        json!({ "filter__items": { "when": "hit", "merge": 42, "remove": ["drop"] } }),
+        json!({ "items": [{ "drop": 1, "keep": 2 }] }),
+        &runner,
+    );
+    assert_eq!(result, json!({ "items": [{ "keep": 2 }] }));
 }
 
 #[test]

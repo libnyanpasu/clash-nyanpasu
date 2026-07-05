@@ -176,6 +176,31 @@ fn apply_filter(
                 logs.push(StepLogEntry::warn("invalid filter: missing `when`"));
                 return items;
             };
+            // Action selection mirrors the legacy match-arm order and typed
+            // guards (merge.rs:122-231): an action whose guard fails falls
+            // through to the next arm; when nothing matches, the `_` arm
+            // warns once without evaluating `when` per item.
+            enum FilterAction<'a> {
+                Expr(&'a str),
+                Override(&'a ConfigValue),
+                Merge(&'a ConfigValue),
+                Remove(&'a Arc<[ConfigValue]>),
+            }
+            let action = if let Some(ConfigValue::String(expr)) = actions.get("expr") {
+                FilterAction::Expr(expr.as_ref())
+            } else if let Some(replacement) = actions.get("override") {
+                FilterAction::Override(replacement)
+            } else if let Some(merge) = actions
+                .get("merge")
+                .filter(|value| value.as_object_arc().is_some())
+            {
+                FilterAction::Merge(merge)
+            } else if let Some(ConfigValue::Array(paths)) = actions.get("remove") {
+                FilterAction::Remove(paths)
+            } else {
+                logs.push(StepLogEntry::warn("invalid filter: no action"));
+                return items;
+            };
             items
                 .into_iter()
                 .map(|item| {
@@ -191,8 +216,8 @@ fn apply_filter(
                     if !hit {
                         return item;
                     }
-                    if let Some(ConfigValue::String(expr)) = actions.get("expr") {
-                        return match runner.eval_item_expr(expr, &item) {
+                    match &action {
+                        FilterAction::Expr(expr) => match runner.eval_item_expr(expr, &item) {
                             Ok(next) => next,
                             Err(error) => {
                                 logs.push(StepLogEntry::warn(format!(
@@ -200,36 +225,22 @@ fn apply_filter(
                                 )));
                                 item
                             }
-                        };
-                    }
-                    if let Some(replacement) = actions.get("override") {
-                        return replacement.clone();
-                    }
-                    if let Some(merge) = actions.get("merge") {
-                        // Legacy arm guard requires a mapping merge value
-                        // (merge.rs:153 `is_mapping()`), else "invalid filter".
-                        if merge.as_object_arc().is_none() {
-                            logs.push(StepLogEntry::warn(
-                                "filter `merge` is not a mapping, item kept",
-                            ));
-                            return item;
+                        },
+                        FilterAction::Override(replacement) => (*replacement).clone(),
+                        FilterAction::Merge(merge) => {
+                            // Legacy panics on non-mapping items (merge.rs:163
+                            // `as_mapping_mut().unwrap()`); never-fail keeps
+                            // the item instead (spec §13 #15).
+                            if item.as_object_arc().is_none() {
+                                logs.push(StepLogEntry::warn(
+                                    "filter `merge` target item is not a mapping, item kept",
+                                ));
+                                return item;
+                            }
+                            deep_merge_value(Some(&item), merge)
                         }
-                        // Legacy panics on non-mapping items (merge.rs:163
-                        // `as_mapping_mut().unwrap()`); never-fail keeps the
-                        // item instead (spec §13 #15).
-                        if item.as_object_arc().is_none() {
-                            logs.push(StepLogEntry::warn(
-                                "filter `merge` target item is not a mapping, item kept",
-                            ));
-                            return item;
-                        }
-                        return deep_merge_value(Some(&item), merge);
+                        FilterAction::Remove(paths) => remove_from_item(item, paths, logs),
                     }
-                    if let Some(ConfigValue::Array(paths)) = actions.get("remove") {
-                        return remove_from_item(item, paths, logs);
-                    }
-                    logs.push(StepLogEntry::warn("invalid filter: no action"));
-                    item
                 })
                 .collect()
         }

@@ -218,17 +218,37 @@ impl ProfilesClient {
     pub async fn set_global_transforms(&self, ids: Vec<ProfileId>) -> Result<CommitReport, ProfilesError>;
     pub async fn replace(&self, profiles: Profiles) -> Result<CommitReport, ProfilesError>;
 }
-pub struct CommitReport { pub snapshot: Arc<Profiles>, pub affects_current: bool }
+pub struct CommitReport { pub snapshot: Arc<Profiles>, pub affects_current: bool, pub warnings: Vec<String> }
 pub struct NewProfileRequest { pub metadata: ProfileMetadata, pub definition: ProfileDefinition }  // uid 服务端生成(D13)
 pub enum ReorderOp { Move { active: ProfileId, over: ProfileId }, ByList(Vec<ProfileId>) }
 pub enum ProfilesError { ProfileNotFound, ProfileInUse { referrers: Vec<ProfileId> }, ProfileHasNoFile,
                          ValidationFailed(Vec<ProfileValidationError>), NotARemoteProfile,
-                         FileNotWritable { reason: String }, RefreshFailed { message: String }, Rpc(String) }
+                         FileNotWritable { reason: String }, RefreshFailed { message: String },
+                         Persist(String), Rpc(String) }
 pub const PROFILES_READ_TIMEOUT: Duration = Duration::from_secs(5);
-pub struct ProfilesActorArgs { pub paths: PathResolver, pub fs: Arc<dyn ProfileFsPort>,
-                               pub fetcher: Arc<dyn SubscriptionFetcher>, pub notifier: Arc<dyn RebuildNotifier>,
-                               pub initial: Profiles }
+pub struct ProfilesActorArgs { pub manager: PersistentStateManager<Profiles>,
+                               pub fs: Arc<dyn ProfileFsPort>, pub fetcher: Arc<dyn SubscriptionFetcher>,
+                               pub notifier: Arc<dyn RebuildNotifier> }
 ```
+
+**2026-07-06 契约修正(T04 实物,下游以此为准)**:
+
+- `ProfilesClient::new(profiles_path, fs, fetcher, notifier)` 是构造边界:若 `profiles_path` 存在则 `load()`;否则 `from_state(Profiles::default())`;随后立即 `validate()` fail-fast 再 spawn actor。`ProfilesActorArgs` 不含 `PathResolver` 或 `initial`。
+- 所有写 handler 仍走 clone→mutate→`validate()`→持久化→commit+重建索引→post-commit 副作用→`CommitReport`;post-commit 文件副作用失败写入 `CommitReport.warnings`,不回滚已持久化状态。
+- `ProfilesError::Persist(String)` 专指持久化/提交失败;`Rpc(String)` 仅表示 actor call/reply/timeout 层失败。
+- Add 服务端生成 uid:`Config` 用 `c` 前缀、`Transform` 用 `t` 前缀,后接 `nanoid(11)`;忽略请求里的 materialized 路径并改写为规范 `{uid}.{ext}`。`FileConfig`/`OverlayTransform` 用 `.yaml`;`ScriptRuntime::JavaScript` 用 `.js`;`ScriptRuntime::Lua` 用 `.lua`。`ExternalMode::Symlink` 只做 post-commit `ensure_symlink`;Remote 与 Mirror 的初始内容同步由 T05 的 RefreshRemote/watcher reconcile 承接。
+- `affects_current` 判定表:
+
+| 消息                                                                  | 规则                                                              |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `Get`                                                                 | 不适用                                                            |
+| `Add` / `Delete` / `Reorder` / `PatchMetadata` / `PatchRemoteOptions` | `false`                                                           |
+| `SetCurrent`                                                          | before/after `current` 不同                                       |
+| `SetGlobalTransforms`                                                 | before/after `global_transforms` 不同                             |
+| `ReplaceDefinition`                                                   | before/after 当前闭包不同,或被替换 uid 在 before/after 当前闭包内 |
+| `Replace`                                                             | `true`                                                            |
+
+当前闭包 = `current` + 若 current 为 Composition 则含 base/extend 成员 + 这些 config 的 scoped transforms + `global_transforms`;`current == None` 时闭包仅为 `global_transforms`。
 
 **验证**(mock ports + tempdir manager spawn,不 sleep):
 
@@ -250,7 +270,7 @@ pub struct ProfilesActorArgs { pub paths: PathResolver, pub fs: Arc<dyn ProfileF
 - Create(如拆文件): `backend/tauri/src/state/profiles/scheduler.rs`
 - Modify: `backend/tauri/src/client/profiles.rs`(+`refresh(uid, Option<RemoteProfileOptionsPatch>) -> Result<CommitReport, ProfilesError>`)
 
-**Interfaces — Consumes**: T04 全部 + T03 `SubscriptionFetcher`/`ProfileFsPort`/`RebuildNotifier`。
+**Interfaces — Consumes**: T04 全部(含 2026-07-06 契约修正:`CommitReport.warnings` 降级通道、`Persist` 错误、Add 规范路径与 Remote/Mirror 初始内容延后规则) + T03 `SubscriptionFetcher`/`ProfileFsPort`/`RebuildNotifier`。
 **Interfaces — Produces**: `ProfilesClient::refresh(...)`(T07/T08 的 `update_profile` 链路);scheduler/watcher 对外不可见(actor 内部)。
 
 **行为要点**(plan 时逐条转测试):
@@ -337,6 +357,8 @@ impl RuntimeBuilder {
 - Modify: `backend/tauri/src/setup.rs` / `client/mod.rs`(spawn 顺序:migration 子进程已完成 → 构造 ProfileFileService → spawn ProfilesActor → 构造 ProfilesClient → facade;`RebuildNotifier` 具体实现接到 facade 重建入口,注意用 `Weak`/channel 避免循环持有)
 - Modify: `backend/tauri/src/config/core.rs:88`(`generate()` 改调 RuntimeBuilder;产物仍写 runtime draft + `generate_file`,两处标 `TODO(actor-migration)` B8)
 - Modify: `backend/tauri/src/client/mod.rs`(新 facade 方法;旧 `patch_profiles_config:80` 本卡保留——删除在 T10)
+
+**Interfaces — Consumes**: T02 revision 3 后的新 schema;T04 ProfilesClient 全部方法与 2026-07-06 契约修正(`CommitReport.warnings` 不代表事务失败,`affects_current` 按闭包规则触发 rebuild);T05 `refresh`;T06 `RuntimeBuilder`。
 
 **Interfaces — Produces**(T08 依赖,方法名以此为准):
 

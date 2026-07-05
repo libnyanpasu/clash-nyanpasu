@@ -350,9 +350,18 @@ pub struct RuntimeBuildInput {
 }
 impl RuntimeBuilder {
     pub fn build(input: &RuntimeBuildInput, content: &dyn ProfileContentSource, scripts: &dyn ScriptRunner)
-        -> Result<RuntimeArtifact, RuntimePipelineError>;
+        -> Result<RuntimeArtifact, RuntimeBuildError>;   // Validation(Vec<ProfileValidationError>) | Pipeline(RuntimePipelineError)
 }
 ```
+
+**2026-07-06 契约修正(T06 实物,下游以此为准)**:
+
+- 落点实名:`enhance/runtime_builder.rs`(`RuntimeBuilder`/`RuntimeBuildInput`/`RuntimeBuildError` + `builtin_transforms_for(core)`/`derive_tun_flavor(core, stack)` 公开可测)、`enhance/content_source.rs`(`FsProfileContentSource::new(profiles_dir: PathBuf)`)、`enhance/script/adapter.rs`(`EnhanceScriptRunner::new()`,三方法 `ScriptRunner`,复用 `RunnerManager` + `create_lua_context`)。均从 `crate::enhance` 顶层 `pub use`。
+- `build()` 前置 `profiles.validate()` 防御(executor 契约要求已验证输入)→ `RuntimeBuildError::Validation`。
+- builtin 门控实现为切片匹配表(未给 tauri 引入 enumflags2);顺序与 gating 与 `chain.rs:170-175` 逐位一致,含 `clash_rs_comp` 不含 `ClashRsAlpha`、tun `ClashRs` 分支不含 Alpha 两处 legacy 怪癖(修复属行为变更,需另走勘误)。
+- `TunStack` 实际路径 = `nyanpasu_config::clash::config::tun_stack::TunStack`。
+- `EnhanceScriptRunner` 自持 current-thread runtime(`run` 同步阻塞)——**`RuntimeBuilder::build` 必须在阻塞上下文调用**(T07 统一 `spawn_blocking`);禁止在 async worker 线程直接调用。
+- golden 现状:端到端不变量测试(真实 boa + 真实文件源:脚本生效/guard 端口注入/whitelist-off 保键/step_logs 锚定)+ executor 侧 PR-3-pre② parity 套件背书;**snapshot 期望文件套件列为 T07 pre-flight 跟进项**(多场景:Composition、global chain、builtin 门控、whitelist-on)。
 
 **验证**:
 

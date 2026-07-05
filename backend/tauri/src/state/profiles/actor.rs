@@ -6,7 +6,8 @@ use std::sync::Arc;
 use nyanpasu_config::profile::{
     ConfigDefinition, ExternalMode, ExternalProfilePath, LocalBinding, ManagedProfilePath,
     ProfileDefinition, ProfileDependencyIndex, ProfileId, ProfileItem, ProfileMetadata,
-    ProfileSource, ProfileValidationError, Profiles, ScriptRuntime, TransformDefinition,
+    ProfileMetadataPatch, ProfileSource, ProfileValidationError, Profiles,
+    RemoteProfileOptionsPatch, ScriptRuntime, TransformDefinition,
 };
 use nyanpasu_core::state::PersistentStateManager;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
@@ -97,6 +98,25 @@ pub enum ProfilesActorMessage {
     },
     Delete {
         uid: ProfileId,
+        reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
+    },
+    Reorder {
+        op: ReorderOp,
+        reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
+    },
+    PatchMetadata {
+        uid: ProfileId,
+        patch: ProfileMetadataPatch,
+        reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
+    },
+    PatchRemoteOptions {
+        uid: ProfileId,
+        patch: RemoteProfileOptionsPatch,
+        reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
+    },
+    ReplaceDefinition {
+        uid: ProfileId,
+        definition: ProfileDefinition,
         reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
     },
 }
@@ -434,6 +454,102 @@ impl Actor for ProfilesActor {
                         .await
                     }
                 };
+                let _ = reply.send(result);
+            }
+            ProfilesActorMessage::Reorder { op, reply } => {
+                let result = Self::run_write(state, move |profiles| {
+                    match op {
+                        ReorderOp::Move { active, over } => {
+                            if profiles.items.get(&active).is_none() {
+                                return Err(ProfilesError::ProfileNotFound(active));
+                            }
+                            if profiles.items.get(&over).is_none() {
+                                return Err(ProfilesError::ProfileNotFound(over));
+                            }
+                            profiles.reorder(&active, &over);
+                        }
+                        ReorderOp::ByList(list) => {
+                            if list.len() != profiles.items.len() {
+                                return Err(ProfilesError::ValidationFailed(vec![]));
+                            }
+                            let mut seen = indexmap::IndexSet::with_capacity(list.len());
+                            for uid in &list {
+                                if !seen.insert(uid.clone()) {
+                                    return Err(ProfilesError::ValidationFailed(vec![]));
+                                }
+                                if profiles.items.get(uid).is_none() {
+                                    return Err(ProfilesError::ProfileNotFound(uid.clone()));
+                                }
+                            }
+                            let mut reordered = indexmap::IndexMap::with_capacity(list.len());
+                            for uid in list {
+                                let item = profiles
+                                    .items
+                                    .shift_remove(&uid)
+                                    .ok_or_else(|| ProfilesError::ProfileNotFound(uid.clone()))?;
+                                reordered.insert(uid, item);
+                            }
+                            profiles.items = reordered;
+                        }
+                    }
+                    Ok(WriteOutcome {
+                        affects: AffectsRule::Never,
+                        post_ops: vec![],
+                    })
+                })
+                .await;
+                let _ = reply.send(result);
+            }
+            ProfilesActorMessage::PatchMetadata { uid, patch, reply } => {
+                let result = Self::run_write(state, move |profiles| {
+                    let Some(item) = profiles.items.get_mut(&uid) else {
+                        return Err(ProfilesError::ProfileNotFound(uid));
+                    };
+                    item.apply_metadata_patch(patch);
+                    Ok(WriteOutcome {
+                        affects: AffectsRule::Never,
+                        post_ops: vec![],
+                    })
+                })
+                .await;
+                let _ = reply.send(result);
+            }
+            ProfilesActorMessage::PatchRemoteOptions { uid, patch, reply } => {
+                let result = Self::run_write(state, move |profiles| {
+                    let Some(item) = profiles.items.get_mut(&uid) else {
+                        return Err(ProfilesError::ProfileNotFound(uid));
+                    };
+                    match item.definition.source_mut() {
+                        Some(ProfileSource::Remote { option, .. }) => {
+                            use struct_patch::Patch as _;
+                            option.apply(patch);
+                            Ok(WriteOutcome {
+                                affects: AffectsRule::Never,
+                                post_ops: vec![],
+                            })
+                        }
+                        _ => Err(ProfilesError::NotARemoteProfile),
+                    }
+                })
+                .await;
+                let _ = reply.send(result);
+            }
+            ProfilesActorMessage::ReplaceDefinition {
+                uid,
+                definition,
+                reply,
+            } => {
+                let result = Self::run_write(state, move |profiles| {
+                    let Some(item) = profiles.items.get_mut(&uid) else {
+                        return Err(ProfilesError::ProfileNotFound(uid.clone()));
+                    };
+                    item.set_definition(definition);
+                    Ok(WriteOutcome {
+                        affects: AffectsRule::Touched(uid),
+                        post_ops: vec![],
+                    })
+                })
+                .await;
                 let _ = reply.send(result);
             }
         }

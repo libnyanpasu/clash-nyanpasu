@@ -91,8 +91,9 @@ flowchart LR
 
 **Interfaces — Produces**(T08/T09 依赖):
 
-- TS 侧命名类型:`Profiles`、`ProfileItem`、`ProfileDefinition` 及其逐 variant 命名导出(`FileConfig`/`CompositionConfig`/`OverlayTransform`/`ScriptTransform`/`ProfileSourceLocal`/`ProfileSourceRemote`…,具体命名 plan 时定,原则 = design D11:嵌套 tagged enum 不内联递归)
-- `ProfileMetadataPatch` / `RemoteProfileOptionsPatch` 的 TS 形态(`double_option` 三态字段)
+- TS 侧实际导出的 PR-3 profile 域命名类型:`ProfileDocument`(`nyanpasu_config::profile::Profiles` 的 collision-safe 导出名;旧 `Profiles` 仍为 legacy profile DTO)、`ProfileItem`/`ProfileItem_Deserialize`/`ProfileItem_Serialize`、`ProfileMetadata`/`ProfileMetadata_Deserialize`/`ProfileMetadata_Serialize`、`ProfileDefinition`/`ProfileDefinition_Deserialize`/`ProfileDefinition_Serialize`、`ConfigDefinition`/`ConfigDefinition_Deserialize`/`ConfigDefinition_Serialize`、`FileConfig`/`FileConfig_Deserialize`/`FileConfig_Serialize`、`CompositionConfig`/`CompositionConfig_Deserialize`/`CompositionConfig_Serialize`、`TransformDefinition`/`TransformDefinition_Deserialize`/`TransformDefinition_Serialize`、`OverlayTransform`/`OverlayTransform_Deserialize`/`OverlayTransform_Serialize`、`ScriptTransform`/`ScriptTransform_Deserialize`/`ScriptTransform_Serialize`、`ScriptRuntime`、`ProfileSource`/`ProfileSource_Deserialize`/`ProfileSource_Serialize`、`LocalBinding`/`LocalBinding_Deserialize`/`LocalBinding_Serialize`、`ExternalMode`、`MaterializedFile`/`MaterializedFile_Deserialize`/`MaterializedFile_Serialize`、`ProfileRemoteOptions`(旧 `RemoteProfileOptions` 仍为 legacy DTO)、`ProfileSubscriptionInfo`(旧 `SubscriptionInfo` 仍为 legacy DTO)、`TransformOwner`、`CompositionMemberRole`。
+- 透明 newtype 实际导出为命名别名:`ProfileId = string`、`ManagedProfilePath = string`、`ExternalProfilePath = string`。
+- Patch / error 实际导出:`ProfileMetadataPatch`/`ProfileMetadataPatch_Deserialize`/`ProfileMetadataPatch_Serialize`、`RemoteProfileOptionsPatch`/`RemoteProfileOptionsPatch_Deserialize`/`RemoteProfileOptionsPatch_Serialize`、`ProfileValidationError`。`double_option` 三态字段通过 serialize/deserialize patch 形态保留。
 
 **验证**:
 

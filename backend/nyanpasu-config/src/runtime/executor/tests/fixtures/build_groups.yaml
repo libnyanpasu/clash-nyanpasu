@@ -1,0 +1,6 @@
+proxy-groups:
+  - name: Auto
+    type: select
+    proxies:
+      - a1
+      - b1

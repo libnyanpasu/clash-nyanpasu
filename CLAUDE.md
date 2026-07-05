@@ -488,6 +488,65 @@ Before finishing a change, check:
 - tests use injection, fakes, mocks, or pure values;
 - `NyanpasuClient` remains a facade, not a service locator.
 
+## 17. Worktree Setup and Resource Reuse
+
+Feature/migration work runs in isolated git worktrees. The worktree location is the developer's choice (any path outside the repo tree); this section only fixes the reuse policy, not where worktrees live. Worktrees share the main `.git`. The rule: reuse expensive **branch-independent** assets from the main checkout via symlink, and regenerate everything **branch-dependent** per worktree.
+
+### Reuse policy
+
+| Path (repo-relative)       | Approx size  | Policy                          | Reason                                                                                                                                    |
+| -------------------------- | ------------ | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `backend/tauri/sidecar/`   | ~213M        | **Symlink → main**              | gitignored downloaded cores (mihomo / clash-rs / clash / nyanpasu-service); branch-independent; re-fetch via `pnpm prepare:check` is slow |
+| `backend/tauri/resources/` | ~21M         | **Symlink → main**              | gitignored static assets (`geoip.dat`, `geosite.dat`, `Country.mmdb`, `wintun.dll`, service exes); branch-independent                     |
+| `node_modules/`            | ~1.5G        | **Independent `pnpm install`**  | pnpm global store already hardlink-dedupes; sharing risks concurrent lock conflicts                                                       |
+| `backend/target/`          | ~50G         | **Independent — never symlink** | sharing causes Cargo incremental-fingerprint churn + concurrent build-lock waits across diverged source trees                             |
+| `backend/tauri/tmp/dist/`  | build output | **Independent — never symlink** | branch-dependent frontend build; `emptyOutDir: true` means one worktree's `web:build` wipes the shared dir                                |
+
+Only `sidecar/` and `resources/` are symlink candidates.
+
+### Gitignored build prerequisites a fresh worktree lacks
+
+- **`frontend/interface/dist`** — `@nyanpasu/interface` (`main` → `./dist/index.js`) is consumed by `@nyanpasu/nyanpasu`. Produce with `pnpm -F interface build`.
+- **`backend/tauri/tmp/dist`** — `backend/tauri/build.rs` calls `tauri_build::build()`, which validates `frontendDist: ./tmp/dist` **at compile time**. When missing, every `cargo build` / `clippy` / `cargo test --all-features` / rust-analyzer run on the tauri crate fails. Resolve one of:
+  - Rust-only worktree → drop a placeholder (cheapest, no vite build).
+  - Runnable UI → `pnpm web:build` (build `interface` first; it clears and refills `tmp/dist`).
+
+`backend/tauri/tmp/git-info.json` is optional (`build.rs` guards it with `exists()`); run `pnpm generate:git-info` only if accurate commit metadata must be baked in.
+
+### Create a worktree
+
+Commands shown for Windows / PowerShell (dir symlinks need Developer Mode, no elevation). `<worktree-path>` and `<type>/<name>` are yours to choose.
+
+```powershell
+$main = git rev-parse --show-toplevel                 # capture main checkout root
+git worktree add <worktree-path> -b <type>/<name>
+cd <worktree-path>
+
+# Reuse branch-independent downloads (symlink back to main)
+New-Item -ItemType SymbolicLink backend/tauri/sidecar   -Target "$main/backend/tauri/sidecar"
+New-Item -ItemType SymbolicLink backend/tauri/resources -Target "$main/backend/tauri/resources"
+
+pnpm install
+pnpm -F interface build                               # -> frontend/interface/dist (gitignored)
+
+# Satisfy tauri-build's frontendDist check — pick one:
+New-Item -ItemType Directory -Force backend/tauri/tmp/dist | Out-Null            # A) Rust-only placeholder
+Set-Content backend/tauri/tmp/dist/index.html '<!doctype html><title>dev</title>'
+# pnpm web:build                                      # B) real UI (replaces tmp/dist)
+```
+
+### Remove a worktree
+
+`git worktree remove` on Windows can fail with `Filename too long` because per-worktree `node_modules` / `target` hold paths over MAX_PATH. Force-delete with the extended-length prefix, then reconcile git:
+
+```powershell
+Remove-Item -LiteralPath "\\?\<absolute-worktree-path>" -Recurse -Force
+git worktree prune
+git worktree list
+```
+
+Removal reclaims only the worktree's own files and its symlinks (pointers back to main) — it never touches the main checkout's real `sidecar/` / `resources/`.
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, clarifying questions come before implementation rather than after mistakes, and new code moves away from global singletons toward injected actor/pure-service composition.

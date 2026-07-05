@@ -239,6 +239,9 @@ pub struct ProfilesActorArgs { pub manager: PersistentStateManager<Profiles>,
 - 所有写 handler 仍走 clone→mutate→`validate()`→持久化→commit+重建索引→post-commit 副作用→`CommitReport`;post-commit 文件副作用失败写入 `CommitReport.warnings`,不回滚已持久化状态。
 - `ProfilesError::Persist(String)` 专指持久化/提交失败;`Rpc(String)` 仅表示 actor call/reply/timeout 层失败。
 - Add 服务端生成 uid:`Config` 用 `c` 前缀、`Transform` 用 `t` 前缀,后接 `nanoid(11)`;忽略请求里的 materialized 路径并改写为规范 `{uid}.{ext}`。`FileConfig`/`OverlayTransform` 用 `.yaml`;`ScriptRuntime::JavaScript` 用 `.js`;`ScriptRuntime::Lua` 用 `.lua`。`ExternalMode::Symlink` 只做 post-commit `ensure_symlink`;Remote 与 Mirror 的初始内容同步由 T05 的 RefreshRemote/watcher reconcile 承接。
+- **(2026-07-06 审查修复)materialization 元数据由服务端所有**:Add 一律重置 `updated_at = None`(Remote 另重置 `subscription = default`);`ReplaceDefinition` 同样把传入定义的路径改写为规范 `{uid}.{新类型 ext}`——source 槽位(Managed/External/Remote 判别 + 规范路径)不变时沿用旧存储的 materialized 元数据、忽略客户端传值;槽位变化时重置元数据,旧路径与新规范路径不同(或新定义无 source,如换成 Composition)时 post-commit `Remove` 清理孤儿文件,新引入 External Symlink 绑定时 post-commit `ensure_symlink`(与 Add 对齐)。
+- **(2026-07-06 审查修复)错误形态**:`ProfileInUse { referrers, current: bool, global_transforms: bool }`(document 级引用不再以空列表歧义表达);新增 `InvalidReorderList { reason }`(ByList 长度不符/重复 uid),未知 uid 仍报 `ProfileNotFound`。
+- **(2026-07-06 审查记录)** 真实文件事件冒烟测试 `external_watcher_smoke_mirror_real_file_event` 标 `#[ignore]`(CI 抖动;注入式测试保有覆盖);Mirror 同步在 actor handler 内做同步 fs I/O,target 位于网络盘时有阻塞风险——候选硬化项(spawn_blocking 化),T07 阶段评估。
 - `affects_current` 判定表:
 
 | 消息                                                                  | 规则                                                              |

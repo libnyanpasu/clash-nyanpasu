@@ -7,7 +7,7 @@ use nyanpasu_config::profile::{
     ConfigDefinition, ExternalMode, ExternalProfilePath, LocalBinding, ManagedProfilePath,
     ProfileDefinition, ProfileDependencyIndex, ProfileId, ProfileItem, ProfileMetadata,
     ProfileMetadataPatch, ProfileSource, ProfileValidationError, Profiles,
-    RemoteProfileOptionsPatch, ScriptRuntime, TransformDefinition,
+    RemoteProfileOptionsPatch, ScriptRuntime, SubscriptionInfo, TransformDefinition,
 };
 use nyanpasu_core::state::PersistentStateManager;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
@@ -21,12 +21,22 @@ use super::{
 pub enum ProfilesError {
     #[error("profile not found: {0}")]
     ProfileNotFound(ProfileId),
-    #[error("profile is referenced and cannot be deleted (referrers: {referrers:?})")]
-    ProfileInUse { referrers: Vec<ProfileId> },
+    #[error(
+        "profile is referenced and cannot be deleted (referrers: {referrers:?}, current: {current}, global_transforms: {global_transforms})"
+    )]
+    ProfileInUse {
+        referrers: Vec<ProfileId>,
+        /// Referenced by the document-level `current` selection.
+        current: bool,
+        /// Referenced by the document-level `global_transforms` list.
+        global_transforms: bool,
+    },
     #[error("profile has no materialized file")]
     ProfileHasNoFile,
     #[error("validation failed: {0:?}")]
     ValidationFailed(Vec<ProfileValidationError>),
+    #[error("invalid reorder list: {reason}")]
+    InvalidReorderList { reason: String },
     #[error("profile is not a remote profile")]
     NotARemoteProfile,
     #[error("file not writable: {reason}")]
@@ -333,11 +343,14 @@ impl ProfilesActor {
         }
     }
 
+    /// design §17 five reference categories. Item-level referrers plus the two
+    /// document-level flags (current / global_transforms) so the IPC layer can
+    /// render an unambiguous message even when the referrer list is empty.
     fn referrers_of(
         state: &ProfilesActorState,
         profiles: &Profiles,
         uid: &ProfileId,
-    ) -> Option<Vec<ProfileId>> {
+    ) -> Option<(Vec<ProfileId>, bool, bool)> {
         let mut referrers: indexmap::IndexSet<ProfileId> = Default::default();
         if let Some(set) = state.index.composition_base_dependents.get(uid) {
             referrers.extend(set.iter().cloned());
@@ -349,12 +362,26 @@ impl ProfilesActor {
             referrers.extend(set.iter().cloned());
         }
 
-        let document_level = profiles.current.as_ref() == Some(uid)
-            || state.index.global_transform_ids.contains(uid);
-        if referrers.is_empty() && !document_level {
+        let current = profiles.current.as_ref() == Some(uid);
+        let global_transforms = state.index.global_transform_ids.contains(uid);
+        if referrers.is_empty() && !current && !global_transforms {
             None
         } else {
-            Some(referrers.into_iter().collect())
+            Some((referrers.into_iter().collect(), current, global_transforms))
+        }
+    }
+
+    /// Source slot discriminant used by ReplaceDefinition to decide whether the
+    /// previously stored materialization metadata still describes the same file.
+    fn source_kind(source: &ProfileSource) -> u8 {
+        match source {
+            ProfileSource::Local {
+                binding: LocalBinding::Managed { .. },
+            } => 0,
+            ProfileSource::Local {
+                binding: LocalBinding::External { .. },
+            } => 1,
+            ProfileSource::Remote { .. } => 2,
         }
     }
 }
@@ -453,7 +480,16 @@ impl Actor for ProfilesActor {
                     let mut definition = request.definition;
                     let mut post_ops = Vec::new();
                     if let Some(source) = definition.source_mut() {
-                        source.materialized_mut().file = canonical.clone();
+                        {
+                            // Server owns materialization metadata: new profiles
+                            // start unmaterialized regardless of client input.
+                            let materialized = source.materialized_mut();
+                            materialized.file = canonical.clone();
+                            materialized.updated_at = None;
+                        }
+                        if let ProfileSource::Remote { subscription, .. } = source {
+                            *subscription = SubscriptionInfo::default();
+                        }
                         match source {
                             ProfileSource::Local {
                                 binding: LocalBinding::External { target, mode, .. },
@@ -501,8 +537,14 @@ impl Actor for ProfilesActor {
                     let existing = Self::current_state(state);
                     if existing.items.get(&uid).is_none() {
                         Err(ProfilesError::ProfileNotFound(uid.clone()))
-                    } else if let Some(referrers) = Self::referrers_of(state, &existing, &uid) {
-                        Err(ProfilesError::ProfileInUse { referrers })
+                    } else if let Some((referrers, current, global_transforms)) =
+                        Self::referrers_of(state, &existing, &uid)
+                    {
+                        Err(ProfilesError::ProfileInUse {
+                            referrers,
+                            current,
+                            global_transforms,
+                        })
                     } else {
                         let removed = existing.items.get(&uid).cloned();
                         let post_ops = removed
@@ -540,12 +582,20 @@ impl Actor for ProfilesActor {
                         }
                         ReorderOp::ByList(list) => {
                             if list.len() != profiles.items.len() {
-                                return Err(ProfilesError::ValidationFailed(vec![]));
+                                return Err(ProfilesError::InvalidReorderList {
+                                    reason: format!(
+                                        "expected {} uids, got {}",
+                                        profiles.items.len(),
+                                        list.len()
+                                    ),
+                                });
                             }
                             let mut seen = indexmap::IndexSet::with_capacity(list.len());
                             for uid in &list {
                                 if !seen.insert(uid.clone()) {
-                                    return Err(ProfilesError::ValidationFailed(vec![]));
+                                    return Err(ProfilesError::InvalidReorderList {
+                                        reason: format!("duplicate uid {uid}"),
+                                    });
                                 }
                                 if profiles.items.get(uid).is_none() {
                                     return Err(ProfilesError::ProfileNotFound(uid.clone()));
@@ -845,17 +895,92 @@ impl Actor for ProfilesActor {
                 definition,
                 reply,
             } => {
-                let result = Self::run_write(&myself, state, move |profiles| {
-                    let Some(item) = profiles.items.get_mut(&uid) else {
-                        return Err(ProfilesError::ProfileNotFound(uid.clone()));
-                    };
-                    item.set_definition(definition);
-                    Ok(WriteOutcome {
-                        affects: AffectsRule::Touched(uid),
-                        post_ops: vec![],
-                    })
-                })
-                .await;
+                let result = {
+                    let existing = Self::current_state(state);
+                    match existing.items.get(&uid) {
+                        None => Err(ProfilesError::ProfileNotFound(uid.clone())),
+                        Some(previous_item) => {
+                            let mut definition = definition;
+                            let ext = Self::canonical_extension(&definition);
+                            let canonical = ManagedProfilePath::new(format!("{uid}.{ext}"))
+                                .expect("uid-derived path is always a valid managed path");
+                            let previous_source = previous_item.definition.source().cloned();
+                            let mut post_ops = Vec::new();
+
+                            // Server owns materialization metadata (same policy
+                            // as Add): only an unchanged source slot keeps the
+                            // previously stored updated_at/subscription.
+                            let same_slot = match (&previous_source, definition.source()) {
+                                (Some(previous), Some(next)) => {
+                                    Self::source_kind(previous) == Self::source_kind(next)
+                                        && previous.materialized().file == canonical
+                                }
+                                _ => false,
+                            };
+                            if let Some(source) = definition.source_mut() {
+                                {
+                                    let materialized = source.materialized_mut();
+                                    materialized.file = canonical.clone();
+                                    materialized.updated_at = if same_slot {
+                                        previous_source
+                                            .as_ref()
+                                            .and_then(|p| p.materialized().updated_at)
+                                    } else {
+                                        None
+                                    };
+                                }
+                                if let ProfileSource::Remote { subscription, .. } = source {
+                                    *subscription = match (same_slot, previous_source.as_ref()) {
+                                        (
+                                            true,
+                                            Some(ProfileSource::Remote {
+                                                subscription: previous,
+                                                ..
+                                            }),
+                                        ) => previous.clone(),
+                                        _ => SubscriptionInfo::default(),
+                                    };
+                                }
+                            }
+                            // Orphan cleanup: the old materialized file is
+                            // unreachable once the path changes or the new
+                            // definition has no source (Composition).
+                            if let Some(previous) = previous_source.as_ref() {
+                                let old_path = previous.materialized().file.clone();
+                                if definition.source().is_none() || old_path != canonical {
+                                    post_ops.push(PostCommitOp::Remove { path: old_path });
+                                }
+                            }
+                            // Parity with Add: a newly introduced External
+                            // Symlink binding must get its link created.
+                            if !same_slot {
+                                if let Some(ProfileSource::Local {
+                                    binding: LocalBinding::External { target, mode, .. },
+                                }) = definition.source()
+                                {
+                                    if *mode == ExternalMode::Symlink {
+                                        post_ops.push(PostCommitOp::EnsureSymlink {
+                                            path: canonical.clone(),
+                                            target: target.clone(),
+                                        });
+                                    }
+                                }
+                            }
+
+                            Self::run_write(&myself, state, move |profiles| {
+                                let Some(item) = profiles.items.get_mut(&uid) else {
+                                    return Err(ProfilesError::ProfileNotFound(uid.clone()));
+                                };
+                                item.set_definition(definition);
+                                Ok(WriteOutcome {
+                                    affects: AffectsRule::Touched(uid),
+                                    post_ops,
+                                })
+                            })
+                            .await
+                        }
+                    }
+                };
                 let _ = reply.send(result);
             }
             #[cfg(test)]

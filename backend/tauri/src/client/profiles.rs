@@ -4,12 +4,12 @@ use std::{sync::Arc, time::Duration};
 
 use anyhow::Context as _;
 use camino::Utf8PathBuf;
-use nyanpasu_config::profile::Profiles;
+use nyanpasu_config::profile::{ProfileId, Profiles};
 use nyanpasu_core::state::PersistentStateManagerSetup;
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 
 use crate::state::profiles::{
-    ProfilesActor, ProfilesActorArgs, ProfilesActorMessage, ProfilesError,
+    CommitReport, ProfilesActor, ProfilesActorArgs, ProfilesActorMessage, ProfilesError,
     ports::{ProfileFsPort, RebuildNotifier, SubscriptionFetcher},
 };
 
@@ -78,6 +78,36 @@ impl ProfilesClient {
             .await
     }
 
+    pub async fn set_current(
+        &self,
+        current: Option<ProfileId>,
+    ) -> Result<CommitReport, ProfilesError> {
+        self.call(
+            |reply| ProfilesActorMessage::SetCurrent { current, reply },
+            None,
+        )
+        .await
+    }
+
+    pub async fn set_global_transforms(
+        &self,
+        ids: Vec<ProfileId>,
+    ) -> Result<CommitReport, ProfilesError> {
+        self.call(
+            |reply| ProfilesActorMessage::SetGlobalTransforms { ids, reply },
+            None,
+        )
+        .await
+    }
+
+    pub async fn replace(&self, profiles: Profiles) -> Result<CommitReport, ProfilesError> {
+        self.call(
+            |reply| ProfilesActorMessage::Replace { profiles, reply },
+            None,
+        )
+        .await
+    }
+
     async fn call<F, T>(&self, make: F, timeout: Option<Duration>) -> Result<T, ProfilesError>
     where
         F: FnOnce(RpcReplyPort<Result<T, ProfilesError>>) -> ProfilesActorMessage,
@@ -103,6 +133,11 @@ mod tests {
     use super::*;
     use crate::state::profiles::ports::{
         MockProfileFsPort, MockRebuildNotifier, MockSubscriptionFetcher,
+    };
+    use nyanpasu_config::profile::{
+        ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
+        OverlayTransform, ProfileDefinition, ProfileId, ProfileMetadata, ProfileSource, Profiles,
+        TransformDefinition,
     };
     use tempfile::{TempDir, tempdir};
 
@@ -130,5 +165,134 @@ mod tests {
         assert!(snapshot.current.is_none());
         assert!(snapshot.items.is_empty());
         assert_eq!(snapshot.valid.len(), 3);
+    }
+
+    pub(crate) fn file_config_item(uid: &str) -> nyanpasu_config::profile::ProfileItem {
+        nyanpasu_config::profile::ProfileItem {
+            uid: ProfileId(uid.into()),
+            metadata: ProfileMetadata {
+                name: uid.to_uppercase(),
+                desc: None,
+            },
+            definition: ProfileDefinition::Config {
+                config: ConfigDefinition::File(FileConfig {
+                    source: ProfileSource::Local {
+                        binding: LocalBinding::Managed {
+                            materialized: MaterializedFile {
+                                file: ManagedProfilePath::new(format!("{uid}.yaml")).unwrap(),
+                                updated_at: None,
+                            },
+                        },
+                    },
+                    transforms: vec![],
+                }),
+            },
+        }
+    }
+
+    pub(crate) fn overlay_item(uid: &str) -> nyanpasu_config::profile::ProfileItem {
+        nyanpasu_config::profile::ProfileItem {
+            uid: ProfileId(uid.into()),
+            metadata: ProfileMetadata {
+                name: uid.to_uppercase(),
+                desc: None,
+            },
+            definition: ProfileDefinition::Transform {
+                transform: TransformDefinition::Overlay(OverlayTransform {
+                    source: ProfileSource::Local {
+                        binding: LocalBinding::Managed {
+                            materialized: MaterializedFile {
+                                file: ManagedProfilePath::new(format!("{uid}.yaml")).unwrap(),
+                                updated_at: None,
+                            },
+                        },
+                    },
+                }),
+            },
+        }
+    }
+
+    pub(crate) fn seeded_profiles() -> Profiles {
+        let mut profiles = Profiles::default();
+        profiles.append_item(file_config_item("cfg1"));
+        profiles.append_item(file_config_item("cfg2"));
+        profiles.append_item(overlay_item("ovl1"));
+        profiles
+    }
+
+    async fn seeded_client() -> (ProfilesClient, TempDir) {
+        let (client, dir) = test_client_with(MockProfileFsPort::new()).await;
+        client
+            .replace(seeded_profiles())
+            .await
+            .expect("seed replace");
+        (client, dir)
+    }
+
+    #[tokio::test]
+    async fn set_current_commits_and_reports_affects_current() {
+        let (client, dir) = seeded_client().await;
+        let report = client
+            .set_current(Some(ProfileId("cfg1".into())))
+            .await
+            .expect("activate cfg1");
+        assert!(report.affects_current);
+        assert_eq!(report.snapshot.current, Some(ProfileId("cfg1".into())));
+
+        let report = client
+            .set_current(Some(ProfileId("cfg1".into())))
+            .await
+            .unwrap();
+        assert!(!report.affects_current);
+
+        drop(client);
+        let (client, _dir2) = {
+            let path = temp_profiles_path(&dir);
+            let client = ProfilesClient::new(
+                path,
+                std::sync::Arc::new(MockProfileFsPort::new()),
+                std::sync::Arc::new(MockSubscriptionFetcher::new()),
+                std::sync::Arc::new(MockRebuildNotifier::new()),
+            )
+            .await
+            .unwrap();
+            (client, dir)
+        };
+        assert_eq!(
+            client.get().await.unwrap().current,
+            Some(ProfileId("cfg1".into()))
+        );
+    }
+
+    #[tokio::test]
+    async fn set_current_rejects_missing_and_transform_targets() {
+        let (client, _dir) = seeded_client().await;
+        let err = client
+            .set_current(Some(ProfileId("ghost".into())))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ProfilesError::ValidationFailed(_)));
+        let err = client
+            .set_current(Some(ProfileId("ovl1".into())))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ProfilesError::ValidationFailed(_)));
+        assert!(client.get().await.unwrap().current.is_none());
+    }
+
+    #[tokio::test]
+    async fn set_global_transforms_validates_kind_and_reports_change() {
+        let (client, _dir) = seeded_client().await;
+        let report = client
+            .set_global_transforms(vec![ProfileId("ovl1".into())])
+            .await
+            .expect("set transforms");
+        assert!(report.affects_current);
+
+        let err = client
+            .set_global_transforms(vec![ProfileId("cfg1".into())])
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ProfilesError::ValidationFailed(_)));
     }
 }

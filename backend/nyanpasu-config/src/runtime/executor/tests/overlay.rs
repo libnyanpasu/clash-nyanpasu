@@ -216,7 +216,8 @@ fn filter_merge_non_mapping_value_is_invalid_filter() {
     );
     assert_eq!(result, json!({ "items": [{ "n": 1 }] }));
     assert_eq!(logs.len(), 1);
-    assert!(logs[0].0 == StepLogLevel::Warn && logs[0].1.contains("invalid filter"));
+    assert_eq!(logs[0].0, StepLogLevel::Warn);
+    assert!(logs[0].1.contains("invalid filter"));
 }
 
 #[test]

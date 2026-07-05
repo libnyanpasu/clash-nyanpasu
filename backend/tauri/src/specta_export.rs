@@ -124,4 +124,81 @@ pub(crate) fn build_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             core::storage::StorageValueChangedEvent
         ])
         .dangerously_cast_bigints_to_number()
+        // PR-3 T01: profile domain types, add-only. Commands referencing them
+        // arrive with T08; explicit registration keeps them exported (and the
+        // specta nested-tagged-enum risk probed) before any command exists.
+        .typ::<nyanpasu_config::profile::Profiles>()
+        .typ::<nyanpasu_config::profile::ProfileMetadataPatch>()
+        .typ::<nyanpasu_config::profile::RemoteProfileOptionsPatch>()
+        .typ::<nyanpasu_config::profile::ProfileValidationError>()
+}
+
+#[cfg(test)]
+mod tests {
+    use specta_typescript::Typescript;
+
+    use super::build_specta_builder;
+
+    const BINDINGS_PATH: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../frontend/interface/src/ipc/bindings.ts"
+    );
+
+    /// Regenerates the committed TS bindings in place (same path and header as
+    /// the debug-run export in lib.rs), then asserts every profile domain type
+    /// exports as a named TS type. CI enforces freshness via
+    /// `git diff --exit-code` after `pnpm test` (ci.yml test_unit job).
+    #[test]
+    fn export_typescript_bindings() {
+        build_specta_builder()
+            .export(
+                Typescript::default().header("/* oxlint-disable */\n// @ts-nocheck"),
+                BINDINGS_PATH,
+            )
+            .expect("failed to export typescript bindings");
+
+        let npx = if cfg!(target_os = "windows") {
+            "npx.cmd"
+        } else {
+            "npx"
+        };
+        let status = std::process::Command::new(npx)
+            .args(["prettier", "--write", BINDINGS_PATH])
+            .status()
+            .expect("failed to spawn prettier");
+        assert!(status.success(), "prettier --write failed on bindings.ts");
+
+        let generated =
+            std::fs::read_to_string(BINDINGS_PATH).expect("bindings.ts must exist after export");
+        for name in [
+            "Profiles",
+            "ProfileDocument",
+            "ProfileItem",
+            "ProfileDefinition",
+            "ConfigDefinition",
+            "FileConfig",
+            "CompositionConfig",
+            "TransformDefinition",
+            "OverlayTransform",
+            "ScriptTransform",
+            "ScriptRuntime",
+            "ProfileSource",
+            "LocalBinding",
+            "ExternalMode",
+            "MaterializedFile",
+            "RemoteProfileOptions",
+            "ProfileRemoteOptions",
+            "SubscriptionInfo",
+            "ProfileSubscriptionInfo",
+            "ProfileMetadataPatch",
+            "RemoteProfileOptionsPatch",
+            "ProfileValidationError",
+        ] {
+            assert!(
+                generated.contains(&format!("export type {name}"))
+                    || generated.contains(&format!("export interface {name}")),
+                "expected named TS export for {name}"
+            );
+        }
+    }
 }

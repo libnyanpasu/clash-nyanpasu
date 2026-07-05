@@ -11,5 +11,6 @@ pub struct ProfileMetadata {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[patch(attribute(serde(default, with = "::serde_with::rust::double_option")))]
+    #[patch(attribute(specta(type = Option<Option<String>>)))]
     pub desc: Option<String>,
 }

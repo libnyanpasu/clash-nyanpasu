@@ -15,7 +15,7 @@ fn value(json: serde_json::Value) -> ConfigValue {
     ConfigValue::try_from(json).unwrap()
 }
 
-/// Fixed-secret guard input; the default constructor uses a random uuid.
+/// Fixed-secret guard input; the default constructor generates a fresh uuid.
 pub fn fixed_overrides() -> ClashGuardOverrides {
     serde_yaml_ng::from_str(
         "log-level: info\nallow-lan: false\nmode: rule\nsecret: golden-secret\nunified-delay: true\ntcp-concurrent: true\nipv6: false\n",

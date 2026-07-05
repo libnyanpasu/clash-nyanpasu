@@ -362,6 +362,7 @@ impl RuntimeBuilder {
 - `TunStack` 实际路径 = `nyanpasu_config::clash::config::tun_stack::TunStack`。
 - `EnhanceScriptRunner` 自持 current-thread runtime(`run` 同步阻塞)——**`RuntimeBuilder::build` 必须在阻塞上下文调用**(T07 统一 `spawn_blocking`);禁止在 async worker 线程直接调用。
 - golden 现状:端到端不变量测试(真实 boa + 真实文件源:脚本生效/guard 端口注入/whitelist-off 保键/step_logs 锚定)+ executor 侧 PR-3-pre② parity 套件背书;**snapshot 期望文件套件列为 T07 pre-flight 跟进项**(多场景:Composition、global chain、builtin 门控、whitelist-on)。
+- 评审处置(antigravity 2026-07-06;codex 后端故障,其评审延期):①"`block_on` 在 `spawn_blocking` 内 panic"判**误报**——tokio 仅在 async worker 线程禁止 `block_on`,blocking 池线程允许(`Handle::block_on` 官方文档模式、reqwest::blocking 同构先例),阻塞上下文契约见上条;②"每次 `run` 重建 `RunnerManager` 是性能回退"**不成立**——`JSRunner` 为 unit struct,boa `Context`(`Rc<RefCell<_>>`,!Send)legacy 同样每脚本新建,manager 仅空 HashMap;③BitFlags 门控为有意偏离(新域 `ClashCore` 无 `#[bitflags]` derive,跨 crate 改动超卡范围)——新增 core 变体时切片表需手工同步,由门控测试兜底;④**T07 加固项**:`ManagedProfilePath` 反序列化侧缺 `..` 组件拒绝(防御纵深),须用 `Component::ParentDir` 组件检查而非 `starts_with`(lexical 比较对未归一化路径无效)。
 
 **验证**:
 

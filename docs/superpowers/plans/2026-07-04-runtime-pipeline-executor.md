@@ -81,14 +81,14 @@ T3 ⟂ T4 可并行；T6 / T7 / T8 互不依赖（各自只新增测试文件）
 
 调度单一参照：波次表 + 独占文件矩阵 + 各波 gate。同波任务文件两两无交集（已逐对核对）。所有路径省略前缀 `backend/nyanpasu-config/src/runtime/`；所有 gate 在 `backend/` 目录下执行。
 
-| Wave | 任务 | 独占文件（提交面） | 波 gate（在 `backend/` 下） |
-| --- | --- | --- | --- |
-| W1 | T1 | `snapshot.rs`、`invalidation.rs` | `cargo test -p nyanpasu-config` + `--features snapshot-persistence` |
-| W2 | T2 | `mod.rs`（runtime）；`executor/{mod,ports,artifact,error,value_util}.rs`；占位 `executor/{overlay,scoped,compose,builtin}.rs`；`executor/tests/{mod,support}.rs`；全部测试空 stub `executor/tests/{overlay,builtin,compose,orders,golden,invalidation,parity}.rs`；`executor/tests/fixtures/{sub_a,sub_b}.yaml` | `cargo test -p nyanpasu-config` |
-| W3 | T3 ‖ T4 | T3: `executor/overlay.rs`、`executor/tests/overlay.rs`；T4: `executor/builtin.rs`、`executor/tests/builtin.rs` | 每任务 gate → 合并后波 gate `cargo test -p nyanpasu-config` |
-| W4 | T5 | `executor/{scoped,compose}.rs`、`executor/mod.rs`（追加 `execute`）、`executor/tests/{compose,orders}.rs` | `cargo test -p nyanpasu-config` |
-| W5 | T6 ‖ T7 ‖ T8 | T6: `executor/tests/golden.rs`、`executor/tests/fixtures/{build_groups,global_fix}.yaml`；T7: `executor/tests/invalidation.rs`；T8: `executor/tests/parity.rs`、`executor/tests/fixtures/parity_{single,merged,bare}_expected.yaml` | 每任务 gate（T8 额外 `--features snapshot-persistence`）→ 合并后双命令波 gate |
-| W6 | T9 | `docs/design/actor-migration-roadmap.md`、spec 状态行 | 双 cargo 命令 + 纯度 grep（spec §16 #7）+ `git status backend/tauri` 干净 |
+| Wave | 任务         | 独占文件（提交面）                                                                                                                                                                                                                                                                                              | 波 gate（在 `backend/` 下）                                                   |
+| ---- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| W1   | T1           | `snapshot.rs`、`invalidation.rs`                                                                                                                                                                                                                                                                                | `cargo test -p nyanpasu-config` + `--features snapshot-persistence`           |
+| W2   | T2           | `mod.rs`（runtime）；`executor/{mod,ports,artifact,error,value_util}.rs`；占位 `executor/{overlay,scoped,compose,builtin}.rs`；`executor/tests/{mod,support}.rs`；全部测试空 stub `executor/tests/{overlay,builtin,compose,orders,golden,invalidation,parity}.rs`；`executor/tests/fixtures/{sub_a,sub_b}.yaml` | `cargo test -p nyanpasu-config`                                               |
+| W3   | T3 ‖ T4      | T3: `executor/overlay.rs`、`executor/tests/overlay.rs`；T4: `executor/builtin.rs`、`executor/tests/builtin.rs`                                                                                                                                                                                                  | 每任务 gate → 合并后波 gate `cargo test -p nyanpasu-config`                   |
+| W4   | T5           | `executor/{scoped,compose}.rs`、`executor/mod.rs`（追加 `execute`）、`executor/tests/{compose,orders}.rs`                                                                                                                                                                                                       | `cargo test -p nyanpasu-config`                                               |
+| W5   | T6 ‖ T7 ‖ T8 | T6: `executor/tests/golden.rs`、`executor/tests/fixtures/{build_groups,global_fix}.yaml`；T7: `executor/tests/invalidation.rs`；T8: `executor/tests/parity.rs`、`executor/tests/fixtures/parity_{single,merged,bare}_expected.yaml`                                                                             | 每任务 gate（T8 额外 `--features snapshot-persistence`）→ 合并后双命令波 gate |
+| W6   | T9           | `docs/design/actor-migration-roadmap.md`、spec 状态行                                                                                                                                                                                                                                                           | 双 cargo 命令 + 纯度 grep（spec §16 #7）+ `git status backend/tauri` 干净     |
 
 补充规则：
 
@@ -3694,7 +3694,7 @@ git commit -m "test(nyanpasu-config): add invalidation rebuild integration cover
 - Create: `backend/nyanpasu-config/src/runtime/executor/tests/fixtures/parity_{single,merged,bare}_expected.yaml`
 - 只读消费: `backend/nyanpasu-config/src/runtime/executor/tests/fixtures/{sub_a.yaml,sub_b.yaml}`（Task 2 共享 fixture，消费不拥有，勿改）
 
-**约束**：期望值由旧管线纯函数**离线**生成——临时 harness 不入库，`backend/tauri` 提交面零改动（spec T8）。**提交面仅** `tests/parity.rs` + `fixtures/parity_{single,merged,bare}_expected.yaml`；临时 harness 属工作区废料，**必须在跑任务 gate 与提交前 revert `backend/tauri/**` 全部改动**（验证含 `git status --short backend/tauri` 为空）。fixtures 场景刻意避开 §13 会显形的差异（成员都有 `proxies`、whitelist 开、tun 关、无脚本、secret 固定），**唯一不可避开的是差异 #5**：typed `ClashGuardOverrides` 恒插 `unified-delay`/`tcp-concurrent`，而旧 HANDLE 覆盖不含这两键——parity 比较前双边剥除这两键（`normalized()`），其余键逐字节等价。
+**约束**：期望值由旧管线纯函数**离线**生成——临时 harness 不入库，`backend/tauri` 提交面零改动（spec T8）。**提交面仅** `tests/parity.rs` + `fixtures/parity_{single,merged,bare}_expected.yaml`；临时 harness 属工作区废料，**必须在跑任务 gate 与提交前 revert `backend/tauri/**`全部改动**（验证含`git status --short backend/tauri`为空）。fixtures 场景刻意避开 §13 会显形的差异（成员都有`proxies`、whitelist 开、tun 关、无脚本、secret 固定），**唯一不可避开的是差异 #5**：typed `ClashGuardOverrides`恒插`unified-delay`/`tcp-concurrent`，而旧 HANDLE 覆盖不含这两键——parity 比较前双边剥除这两键（`normalized()`），其余键逐字节等价。
 
 - [ ] **Step 1: 临时 harness 生成期望值（不提交）**
 

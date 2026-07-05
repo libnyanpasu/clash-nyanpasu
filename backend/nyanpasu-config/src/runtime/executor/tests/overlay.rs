@@ -248,8 +248,11 @@ fn filter_merge_on_non_mapping_item_keeps_item() {
         &runner,
     );
     assert_eq!(result, json!({ "rules": ["MATCH,DIRECT"] }));
-    assert!(logs.iter().any(|(level, message)| *level == StepLogLevel::Warn
-        && message.contains("target item is not a mapping")));
+    assert!(
+        logs.iter()
+            .any(|(level, message)| *level == StepLogLevel::Warn
+                && message.contains("target item is not a mapping"))
+    );
 }
 
 #[test]
@@ -267,8 +270,9 @@ fn filter_remove_entries_respect_item_shape() {
         &runner,
     );
     assert_eq!(result, json!({ "groups": [["a", "b"]] }));
-    assert!(logs.iter().any(|(level, message)| *level == StepLogLevel::Warn
-        && message.contains("non-mapping item")));
+    assert!(logs.iter().any(
+        |(level, message)| *level == StepLogLevel::Warn && message.contains("non-mapping item")
+    ));
 
     // Numeric index on a mapping item: legacy logs invalid and keeps the item.
     let (result, logs) = apply_with(
@@ -277,8 +281,11 @@ fn filter_remove_entries_respect_item_shape() {
         &runner,
     );
     assert_eq!(result, json!({ "items": [{ "0": "keep" }] }));
-    assert!(logs.iter().any(|(level, message)| *level == StepLogLevel::Warn
-        && message.contains("non-sequence item")));
+    assert!(
+        logs.iter()
+            .any(|(level, message)| *level == StepLogLevel::Warn
+                && message.contains("non-sequence item"))
+    );
 
     // Numeric index on a sequence item still removes (legacy parity).
     let (result, _) = apply_with(

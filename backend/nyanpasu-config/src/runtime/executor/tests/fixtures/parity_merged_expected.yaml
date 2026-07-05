@@ -10,13 +10,13 @@ profile:
   store-selected: true
   store-fake-ip: false
 proxies:
-- name: a1
-  type: ss
-  server: a.example.com
-  port: 443
-- name: b1
-  type: vmess
-  server: b.example.com
-  port: 8080
+  - name: a1
+    type: ss
+    server: a.example.com
+    port: 443
+  - name: b1
+    type: vmess
+    server: b.example.com
+    port: 8080
 rules:
-- MATCH,DIRECT
+  - MATCH,DIRECT

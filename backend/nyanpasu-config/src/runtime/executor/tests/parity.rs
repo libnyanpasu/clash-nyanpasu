@@ -4,8 +4,7 @@
 
 use serde_json::Value;
 
-use super::orders::base_inputs;
-use super::support::*;
+use super::{orders::base_inputs, support::*};
 use crate::runtime::executor::{ExecutionTarget, execute};
 
 const EXPECTED_SINGLE: &str = include_str!("fixtures/parity_single_expected.yaml");
@@ -85,7 +84,12 @@ fn parity_merged_equals_base_composition() {
 
 #[test]
 fn parity_bare_mode() {
-    let profiles = profiles_with(None, &[], &["dns", "unified-delay", "tcp-concurrent"], vec![]);
+    let profiles = profiles_with(
+        None,
+        &[],
+        &["dns", "unified-delay", "tcp-concurrent"],
+        vec![],
+    );
     let overrides = super::builtin::fixed_overrides();
     let inputs = base_inputs(&profiles, ExecutionTarget::Bare, &overrides, &[]);
     let artifact = execute(&inputs, &content(), &FakeScriptRunner::default()).unwrap();

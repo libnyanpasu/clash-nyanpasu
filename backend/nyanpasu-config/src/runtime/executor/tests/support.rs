@@ -2,15 +2,18 @@
 
 use std::collections::HashMap;
 
-use crate::profile::{
-    ConfigDefinition, CompositionConfig, FileConfig, LocalBinding, ManagedProfilePath,
-    MaterializedFile, OverlayTransform, ProfileDefinition, ProfileId, ProfileItem,
-    ProfileMetadata, ProfileSource, Profiles, ScriptRuntime, ScriptTransform, TransformDefinition,
+use crate::{
+    profile::{
+        CompositionConfig, ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath,
+        MaterializedFile, OverlayTransform, ProfileDefinition, ProfileId, ProfileItem,
+        ProfileMetadata, ProfileSource, Profiles, ScriptRuntime, ScriptTransform,
+        TransformDefinition,
+    },
+    runtime::{
+        executor::{PortError, ProfileContentSource, ScriptRunOutcome, ScriptRunner, StepLogEntry},
+        value::ConfigValue,
+    },
 };
-use crate::runtime::executor::{
-    PortError, ProfileContentSource, ScriptRunOutcome, ScriptRunner, StepLogEntry,
-};
-use crate::runtime::value::ConfigValue;
 
 pub fn pid(value: &str) -> ProfileId {
     ProfileId(value.to_owned())
@@ -191,7 +194,10 @@ pub fn profiles_with(
         current: current.map(pid),
         global_transforms: global_transforms.iter().map(|t| pid(t)).collect(),
         valid: valid.iter().map(|v| (*v).to_string()).collect(),
-        items: items.into_iter().map(|item| (item.uid.clone(), item)).collect(),
+        items: items
+            .into_iter()
+            .map(|item| (item.uid.clone(), item))
+            .collect(),
     }
 }
 

@@ -3,12 +3,15 @@
 
 use indexmap::IndexSet;
 
-use super::support::*;
-use super::orders::base_inputs;
-use crate::profile::{ProfileCategory, ProfileDependencyIndex};
-use crate::runtime::executor::{execute, ExecutionTarget, RuntimeArtifact};
-use crate::runtime::invalidation::{invalidate_profile, SnapshotRebuild};
-use crate::runtime::snapshot::SnapshotNodeKey;
+use super::{orders::base_inputs, support::*};
+use crate::{
+    profile::{ProfileCategory, ProfileDependencyIndex},
+    runtime::{
+        executor::{ExecutionTarget, RuntimeArtifact, execute},
+        invalidation::{SnapshotRebuild, invalidate_profile},
+        snapshot::SnapshotNodeKey,
+    },
+};
 
 #[test]
 fn contributor_change_triggers_full_rebuild_with_stable_anchors() {
@@ -22,7 +25,12 @@ fn contributor_change_triggers_full_rebuild_with_stable_anchors() {
         ],
     );
     let overrides = super::builtin::fixed_overrides();
-    let inputs = base_inputs(&profiles, ExecutionTarget::Selected(pid("clean")), &overrides, &[]);
+    let inputs = base_inputs(
+        &profiles,
+        ExecutionTarget::Selected(pid("clean")),
+        &overrides,
+        &[],
+    );
 
     // 首次构建。
     let before = execute(
@@ -55,19 +63,25 @@ fn contributor_change_triggers_full_rebuild_with_stable_anchors() {
     .unwrap();
 
     let after_json = after.final_config.to_json();
-    let names: Vec<&str> = after_json["proxies"].as_array().unwrap()
-        .iter().map(|p| p["name"].as_str().unwrap()).collect();
+    let names: Vec<&str> = after_json["proxies"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["name"].as_str().unwrap())
+        .collect();
     assert_eq!(names, vec!["new"]);
 
     // 锚点稳定：重建前后的语义位置键集合一致（UI 可对齐）。
     let keys = |artifact: &RuntimeArtifact| -> IndexSet<SnapshotNodeKey> {
-        artifact.graph.nodes.iter().map(|node| node.key.clone()).collect()
+        artifact
+            .graph
+            .nodes
+            .iter()
+            .map(|node| node.key.clone())
+            .collect()
     };
     assert_eq!(keys(&before), keys(&after));
     // 但配置内容确实变了。
     let before_json = before.final_config.to_json();
-    assert_ne!(
-        before_json["proxies"],
-        after_json["proxies"]
-    );
+    assert_ne!(before_json["proxies"], after_json["proxies"]);
 }

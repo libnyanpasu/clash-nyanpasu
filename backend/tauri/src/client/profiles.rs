@@ -583,6 +583,130 @@ mod tests {
         assert!(removals.iter().any(|path| path == "r1.lua"));
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn scheduler_fires_refresh_on_interval() {
+        let mut fs = MockProfileFsPort::new();
+        fs.expect_ensure_not_symlink().returning(|_| Ok(()));
+        fs.expect_write_atomic().returning(|_, _| Ok(()));
+        let fetch_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut fetcher = MockSubscriptionFetcher::new();
+        let counter = std::sync::Arc::clone(&fetch_count);
+        fetcher.expect_fetch().returning(move |_, _| {
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(FetchedSubscription {
+                content: "a: 1\n".into(),
+                filename: None,
+                subscription: SubscriptionInfo::default(),
+            })
+        });
+        let dir = tempdir().unwrap();
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            std::sync::Arc::new(fs),
+            std::sync::Arc::new(fetcher),
+            std::sync::Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+        let mut item = remote_config_item("r1");
+        if let Some(source) = item.definition.source_mut() {
+            source.materialized_mut().updated_at = Some(time::OffsetDateTime::now_utc());
+        }
+        let mut profiles = Profiles::default();
+        profiles.append_item(item);
+        client.replace(profiles).await.unwrap();
+
+        assert_eq!(fetch_count.load(std::sync::atomic::Ordering::SeqCst), 0);
+        tokio::time::advance(std::time::Duration::from_secs(120 * 60 + 1)).await;
+        for _ in 0..200 {
+            if fetch_count.load(std::sync::atomic::Ordering::SeqCst) >= 1 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert!(fetch_count.load(std::sync::atomic::Ordering::SeqCst) >= 1);
+        drop(client);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn scheduler_reconcile_add_remove_and_kind_switch() {
+        let fetch_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut fetcher = MockSubscriptionFetcher::new();
+        let counter = std::sync::Arc::clone(&fetch_count);
+        fetcher.expect_fetch().returning(move |_, _| {
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            anyhow::bail!("count only")
+        });
+        let mut fs = MockProfileFsPort::new();
+        fs.expect_remove().returning(|_| Ok(()));
+        let (client, _dir) = remote_seeded_client(fs, fetcher, MockRebuildNotifier::new()).await;
+
+        client
+            .replace_definition(ProfileId("r1".into()), file_config_item("r1").definition)
+            .await
+            .unwrap();
+        tokio::time::advance(std::time::Duration::from_secs(240 * 60)).await;
+        for _ in 0..50 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(fetch_count.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+        let mut profiles = Profiles::default();
+        profiles.append_item(remote_config_item("r1"));
+        client.replace(profiles).await.unwrap();
+        client.delete(ProfileId("r1".into())).await.unwrap();
+        tokio::time::advance(std::time::Duration::from_secs(240 * 60)).await;
+        for _ in 0..50 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(fetch_count.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn scheduler_catches_up_overdue_profiles_on_start() {
+        let fetch_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut fetcher = MockSubscriptionFetcher::new();
+        let counter = std::sync::Arc::clone(&fetch_count);
+        fetcher.expect_fetch().returning(move |_, _| {
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            anyhow::bail!("count only")
+        });
+        let dir = tempdir().unwrap();
+        {
+            let client = ProfilesClient::new(
+                temp_profiles_path(&dir),
+                std::sync::Arc::new(MockProfileFsPort::new()),
+                std::sync::Arc::new(MockSubscriptionFetcher::new()),
+                std::sync::Arc::new(MockRebuildNotifier::new()),
+            )
+            .await
+            .unwrap();
+            let mut item = remote_config_item("r1");
+            if let Some(source) = item.definition.source_mut() {
+                source.materialized_mut().updated_at =
+                    Some(time::OffsetDateTime::now_utc() - time::Duration::days(30));
+            }
+            let mut profiles = Profiles::default();
+            profiles.append_item(item);
+            client.replace(profiles).await.unwrap();
+        }
+        let _client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            std::sync::Arc::new(MockProfileFsPort::new()),
+            std::sync::Arc::new(fetcher),
+            std::sync::Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+        for _ in 0..200 {
+            if fetch_count.load(std::sync::atomic::Ordering::SeqCst) >= 1 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(fetch_count.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
     #[tokio::test]
     async fn set_current_commits_and_reports_affects_current() {
         let (client, dir) = seeded_client().await;

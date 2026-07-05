@@ -2,5 +2,6 @@
 
 pub mod actor;
 pub mod ports;
+mod scheduler;
 
 pub use actor::*;

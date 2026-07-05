@@ -9,7 +9,8 @@ use nyanpasu_core::state::PersistentStateManagerSetup;
 use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 
 use crate::state::profiles::{
-    CommitReport, ProfilesActor, ProfilesActorArgs, ProfilesActorMessage, ProfilesError,
+    CommitReport, NewProfileRequest, ProfilesActor, ProfilesActorArgs, ProfilesActorMessage,
+    ProfilesError,
     ports::{ProfileFsPort, RebuildNotifier, SubscriptionFetcher},
 };
 
@@ -108,6 +109,27 @@ impl ProfilesClient {
         .await
     }
 
+    pub async fn add(
+        &self,
+        request: NewProfileRequest,
+        initial_file: Option<String>,
+    ) -> Result<CommitReport, ProfilesError> {
+        self.call(
+            |reply| ProfilesActorMessage::Add {
+                request,
+                initial_file,
+                reply,
+            },
+            None,
+        )
+        .await
+    }
+
+    pub async fn delete(&self, uid: ProfileId) -> Result<CommitReport, ProfilesError> {
+        self.call(|reply| ProfilesActorMessage::Delete { uid, reply }, None)
+            .await
+    }
+
     async fn call<F, T>(&self, make: F, timeout: Option<Duration>) -> Result<T, ProfilesError>
     where
         F: FnOnce(RpcReplyPort<Result<T, ProfilesError>>) -> ProfilesActorMessage,
@@ -137,7 +159,7 @@ mod tests {
     use nyanpasu_config::profile::{
         ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
         OverlayTransform, ProfileDefinition, ProfileId, ProfileMetadata, ProfileSource, Profiles,
-        TransformDefinition,
+        ScriptRuntime, ScriptTransform, TransformDefinition,
     };
     use tempfile::{TempDir, tempdir};
 
@@ -294,5 +316,138 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, ProfilesError::ValidationFailed(_)));
+    }
+
+    #[tokio::test]
+    async fn add_generates_uid_canonical_path_and_writes_initial_file() {
+        let mut fs = MockProfileFsPort::new();
+        fs.expect_write_atomic()
+            .withf(|path, content| path.as_str().ends_with(".yaml") && content == "proxies: []\n")
+            .times(1)
+            .returning(|_, _| Ok(()));
+        let (client, _dir) = test_client_with(fs).await;
+
+        let report = client
+            .add(
+                NewProfileRequest {
+                    metadata: ProfileMetadata {
+                        name: "New".into(),
+                        desc: None,
+                    },
+                    definition: file_config_item("placeholder").definition,
+                },
+                Some("proxies: []\n".to_string()),
+            )
+            .await
+            .expect("add should succeed");
+
+        assert!(!report.affects_current);
+        assert!(report.warnings.is_empty());
+        let snapshot = report.snapshot;
+        assert_eq!(snapshot.items.len(), 1);
+        let (uid, item) = snapshot.items.first().unwrap();
+        assert!(uid.0.starts_with('c'), "config uid prefixed with c: {uid}");
+        let file = item
+            .definition
+            .source()
+            .unwrap()
+            .materialized()
+            .file
+            .as_str();
+        assert_eq!(file, format!("{uid}.yaml"));
+    }
+
+    #[tokio::test]
+    async fn add_script_transform_uses_runtime_extension() {
+        let mut fs = MockProfileFsPort::new();
+        fs.expect_write_atomic()
+            .withf(|path, _| path.as_str().ends_with(".lua"))
+            .times(1)
+            .returning(|_, _| Ok(()));
+        let (client, _dir) = test_client_with(fs).await;
+        let mut item = overlay_item("placeholder");
+        item.definition = ProfileDefinition::Transform {
+            transform: TransformDefinition::Script(ScriptTransform {
+                source: overlay_item("p").definition.source().unwrap().clone(),
+                runtime: ScriptRuntime::Lua,
+            }),
+        };
+        let report = client
+            .add(
+                NewProfileRequest {
+                    metadata: item.metadata.clone(),
+                    definition: item.definition,
+                },
+                Some("-- lua".to_string()),
+            )
+            .await
+            .unwrap();
+        let (uid, _) = report.snapshot.items.first().unwrap();
+        assert!(uid.0.starts_with('t'), "transform uid prefixed with t");
+    }
+
+    #[tokio::test]
+    async fn delete_enforces_reference_protection() {
+        let (client, _dir) = seeded_client().await;
+        client
+            .set_current(Some(ProfileId("cfg1".into())))
+            .await
+            .unwrap();
+        let err = client.delete(ProfileId("cfg1".into())).await.unwrap_err();
+        assert!(matches!(err, ProfilesError::ProfileInUse { .. }));
+
+        client
+            .set_global_transforms(vec![ProfileId("ovl1".into())])
+            .await
+            .unwrap();
+        let err = client.delete(ProfileId("ovl1".into())).await.unwrap_err();
+        assert!(matches!(err, ProfilesError::ProfileInUse { .. }));
+
+        let err = client.delete(ProfileId("ghost".into())).await.unwrap_err();
+        assert!(matches!(err, ProfilesError::ProfileNotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn delete_unreferenced_managed_profile_removes_file() {
+        let mut fs = MockProfileFsPort::new();
+        fs.expect_remove()
+            .withf(|path| path.as_str() == "cfg2.yaml")
+            .times(1)
+            .returning(|_| Ok(()));
+        let (client, _dir) = test_client_with(fs).await;
+        client.replace(seeded_profiles()).await.unwrap();
+        let report = client
+            .delete(ProfileId("cfg2".into()))
+            .await
+            .expect("delete cfg2");
+        assert!(!report.affects_current);
+        assert!(
+            report
+                .snapshot
+                .items
+                .get(&ProfileId("cfg2".into()))
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_cleanup_failure_degrades_to_warning() {
+        let mut fs = MockProfileFsPort::new();
+        fs.expect_remove()
+            .returning(|_| anyhow::bail!("disk on fire"));
+        let (client, _dir) = test_client_with(fs).await;
+        client.replace(seeded_profiles()).await.unwrap();
+        let report = client
+            .delete(ProfileId("cfg2".into()))
+            .await
+            .expect("delete commits anyway");
+        assert_eq!(report.warnings.len(), 1);
+        assert!(
+            report
+                .snapshot
+                .items
+                .get(&ProfileId("cfg2".into()))
+                .is_none()
+        );
     }
 }

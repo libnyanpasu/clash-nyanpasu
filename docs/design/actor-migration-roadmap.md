@@ -504,6 +504,13 @@ sequenceDiagram
 | T3p.5 | 输出类型 `RuntimeArtifact { final_config: ConfigValue, graph: ConfigSnapshotsGraph, step_logs(以 SnapshotNodeKey 锚定), applied_fields }` —— 覆盖旧 `IRuntime{config, exists_keys, postprocessing_output}` 三元组的消费需求(前端 `get_postprocessing_output` 依赖脚本日志)                                                                            | 不引入 StepId(设计非目标),日志锚定用 `node_key()`                                         |
 | T3p.6 | 测试:五顺序 golden 测试(对照 clean-design §6.1 YAML 示例)、与失效机制的集成(`invalidate_profile` → FullCurrent 重建)、**与旧 `enhance()` 行为对照 fixtures**(同输入产出等价配置,防语义漂移——tauri 迁移指南 §7.4 列为最高风险)                                                                                                                         | `cargo test -p nyanpasu-config` 全绿                                                      |
 
+> **勘误(2026-07-04,executor 设计定稿,详见 `docs/superpowers/specs/2026-07-04-runtime-pipeline-executor-design.md` §19):**
+> ① T3p.1 的 `ScriptRunner` 单 `run` 方法不够——Overlay `filter__` 内嵌 per-item Lua,需另加 `eval_item_predicate`/`eval_item_expr` 两方法;
+> ② T3p.2 「六变体」实为**八变体**:新增 `BareRoot` 与 `BuiltinTransform`,且 `GlobalTransform`/`BuiltinStep` 的 `selected_profile_id` Option 化(bare 模式);
+> ③ T3p.5 所称 `get_runtime_exists_keys` 实名 `get_runtime_exists`(`ipc.rs:433-436`);
+> ④ T3p.3 Finalizing 已裁定:stage-2 45 键过滤 + tun + include-all + cache + sort 全入 executor,advice 除外;
+> ⑤ 补遗:bare 模式(`current=None`)是 executor 显式目标——旧 `enhance()` 无激活配置仍产出裸配置,启动路径依赖之。
+
 ### 4.5 PR-3 — profiles 域切换(tauri,BC)
 
 **目标:** tauri 接入 `nyanpasu-config`,profiles 域一次性切换:数据迁移 + `ProfilesActor` + 全部 profile IPC 重写(BC)+ `enhance()` 替换为 executor + 删除 legacy profiles 类型。**不留新旧双轨。**

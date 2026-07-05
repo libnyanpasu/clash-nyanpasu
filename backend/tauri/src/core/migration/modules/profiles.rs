@@ -232,12 +232,50 @@ fn is_clean_schema(doc: &Mapping) -> bool {
     }
 }
 
-fn run_clean_schema(_ctx: &mut Ctx) -> anyhow::Result<()> {
+fn run_clean_schema(ctx: &mut Ctx) -> anyhow::Result<()> {
+    let path = ctx.profiles_path();
+    if !path.exists() {
+        return Ok(());
+    }
+    let raw = std::fs::read_to_string(&path)?;
+    let doc: Mapping =
+        serde_yaml::from_str(&raw).map_err(|e| anyhow::anyhow!("failed to parse profiles: {e}"))?;
+    if is_clean_schema(&doc) {
+        return Ok(());
+    }
+
+    // R15: backup first, then transform (D3: mandatory .bak)
+    let bak = path.with_extension("yaml.bak");
+    crate::core::migration::fs::atomic_write(&bak, raw.as_bytes())?;
+
+    let migrated = migrate_clean_schema(doc)?;
+
+    // Typed round-trip: the only accepted output is a document the new domain
+    // model can load AND validate (design §14.4). Duplicate uids are rejected
+    // here by the items deserializer (R13).
+    let profiles: nyanpasu_config::profile::Profiles =
+        serde_yaml::from_value(Value::Mapping(migrated))
+            .map_err(|e| anyhow::anyhow!("clean-schema output rejected by domain model: {e}"))?;
+    profiles
+        .validate()
+        .map_err(|errors| anyhow::anyhow!("clean-schema output failed validation: {errors:?}"))?;
+
+    let body = serde_yaml::to_string(&profiles)
+        .map_err(|e| anyhow::anyhow!("failed to serialize migrated profiles: {e}"))?;
+    let content = format!("# Profiles Config for Clash Nyanpasu\n\n{body}");
+    crate::core::migration::fs::atomic_write(&path, content.as_bytes())?;
     Ok(())
 }
 
-fn rollback_clean_schema(_ctx: &mut Ctx) -> anyhow::Result<()> {
-    Ok(())
+fn rollback_clean_schema(ctx: &mut Ctx) -> anyhow::Result<()> {
+    let path = ctx.profiles_path();
+    let bak = path.with_extension("yaml.bak");
+    if !bak.exists() {
+        eprintln!("profiles.yaml.bak not found, nothing to roll back");
+        return Ok(());
+    }
+    let raw = std::fs::read(&bak)?;
+    crate::core::migration::fs::atomic_write(&path, &raw)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -1308,6 +1346,62 @@ items:
         let doc = "valid: [dns, tun]\nitems: []\n";
         let out = migrate_clean_schema(item(doc)).unwrap();
         assert_eq!(out["valid"], item("x: [dns, tun]")["x"]);
+    }
+
+    fn temp_ctx() -> (tempfile::TempDir, Ctx) {
+        let temp = tempfile::tempdir().unwrap();
+        let config = temp.path().join("config");
+        let data = temp.path().join("data");
+        std::fs::create_dir_all(&config).unwrap();
+        std::fs::create_dir_all(&data).unwrap();
+        let ctx = Ctx::new(config, data);
+        (temp, ctx)
+    }
+
+    #[test]
+    fn clean_schema_run_writes_bak_and_validated_new_schema() {
+        let (_temp, mut ctx) = temp_ctx();
+        let path = ctx.profiles_path();
+        std::fs::write(&path, MIGRATED_SAMPLE).unwrap();
+
+        run_clean_schema(&mut ctx).unwrap();
+
+        // .bak = 迁移前原文
+        let bak = std::fs::read_to_string(path.with_extension("yaml.bak")).unwrap();
+        assert_eq!(bak, MIGRATED_SAMPLE);
+
+        // 输出带头注释,且能被新类型加载并通过 validate
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(raw.starts_with("# Profiles Config for Clash Nyanpasu\n\n"));
+        let profiles: nyanpasu_config::profile::Profiles = serde_yaml::from_str(&raw).unwrap();
+        profiles.validate().unwrap();
+        assert_eq!(profiles.items.len(), 7);
+        assert!(profiles.current.is_some());
+
+        // 幂等重入:再跑一遍 no-op,内容不变
+        run_clean_schema(&mut ctx).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), raw);
+    }
+
+    #[test]
+    fn clean_schema_run_failure_leaves_file_untouched() {
+        let (_temp, mut ctx) = temp_ctx();
+        let path = ctx.profiles_path();
+        // 引用不存在 transform 的 chain → validate 失败
+        let bad = "chain: [ghost]\nitems: []\n";
+        std::fs::write(&path, bad).unwrap();
+        assert!(run_clean_schema(&mut ctx).is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), bad);
+    }
+
+    #[test]
+    fn clean_schema_rollback_restores_bak() {
+        let (_temp, mut ctx) = temp_ctx();
+        let path = ctx.profiles_path();
+        std::fs::write(&path, MIGRATED_SAMPLE).unwrap();
+        run_clean_schema(&mut ctx).unwrap();
+        rollback_clean_schema(&mut ctx).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), MIGRATED_SAMPLE);
     }
 
     #[test]

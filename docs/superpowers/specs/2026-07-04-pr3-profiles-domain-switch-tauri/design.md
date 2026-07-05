@@ -628,4 +628,14 @@ flowchart TD
 
 ---
 
+## 19. 勘误(2026-07-06,plan 阶段现状核对)
+
+基准前移:main @ `356864d5`。T01–T06 逐卡 plan 以本节 + task.md 已同步的卡内契约为准;与正文冲突处本节胜出。
+
+1. **硬前置与 D12 已落定**:PR-3-pre①(snapshot store v2,`ffd80168` #4868)、PR-3-pre②(executor,`356864d5` #4877)、PR-2b(三 StateActor,`95c4ca8a` #4869)均已合并。D12 走有利分支——RuntimeBuilder 取数直接来自 `ClashConfigClient`/`ApplicationClient`(facade 已有 `get_clash_config()`/`get_app_config()`,`client/mod.rs:181,147`),「暂读旧全局 + TODO 取数点」备选路径作废;台账 B8 仅余 §8 所列两处(`Config::runtime()` 写产物、`CoreManager::global().update_config()`),roadmap §5 B8 行同步作废登记。§17「PR-2b 未合时的取数点」风险行与 §18 假设第 4 条随之关闭。
+2. **§8 executor 接口草图按实物修正**(`backend/nyanpasu-config/src/runtime/executor/`):入口 `execute(&RuntimePipelineInputs, &dyn ProfileContentSource, &dyn ScriptRunner) -> Result<RuntimeArtifact, RuntimePipelineError>`;输入 `RuntimePipelineInputs{ profiles, target: ExecutionTarget::{Selected|Bare}, guard: GuardInputs{ overrides: &ClashGuardOverrides, ports: ResolvedPortBindings }, whitelist_enabled, tun: TunParams{ enable, flavor: TunFlavor, windows_fake_ip_filter }, builtin_transforms: &[BuiltinTransform{ name, runtime, source }] }`——草图中的 `FinalizeParams` 聚合团不存在。`ScriptRunner` 为三方法形态(`run`/`eval_item_predicate`/`eval_item_expr`,`run` 返回 `ScriptRunOutcome{result, logs}`;executor 设计 §19 勘误①);`RuntimeArtifact.final_config` 为 `Arc<ConfigValue>`,specta 投影经 DTO 层 `to_json()`(executor 设计 D14)。端口解析(IO)、`TunFlavor` 推导(含 Premium+Mixed→Gvisor 降级)、`ClashCore` 门控 builtins、`cfg!(windows)` 传参均为调用方/RuntimeBuilder 职责;`ExecutionTarget::Bare` 覆盖 `current=None` 裸配置路径。§4.3 第 2 条「executor 尚不存在」的现状描述随之过时。
+3. **T06/T07 契约同步**:task.md T06 卡 Consumes/Produces 已按实物改写(`RuntimeBuildInput` 改为携带 `Profiles`/`ClashConfig`/`NyanpasuAppConfig` 快照 + 预解析 `ResolvedPortBindings`);T07 台账检查判据改为「恰好两处 TODO」。
+
+---
+
 _本文档基于代码库实测锚点(2026-07-04)撰写;实施中若与 clean-design/patch-interface/roadmap 冲突,以 design 文档 + roadmap 勘误流程为准。_

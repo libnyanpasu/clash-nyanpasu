@@ -64,16 +64,17 @@ stateDiagram-v2
 
 ### 2.1 已合并 / 进行中
 
-| 阶段           | 内容                                                    | 状态                  | 证据                                                     |
-| -------------- | ------------------------------------------------------- | --------------------- | -------------------------------------------------------- |
-| **PR-1**       | `NyanpasuClient` facade(ACL)                            | ✅ 已合并             | `8d22e2596` (#4764),commit 标题自带 `[PR-1]`             |
-| **PR-2a**      | verge 配置接入 ractor `StateActor`                      | ✅ 已合并             | `f903be837` (#4778)                                      |
-| 基建           | `PathResolver`                                          | ✅ 已合并             | `1085d36c7` (#4828),`utils/path.rs:40`                   |
-| 基建           | **migration 子系统 V2**(store/runner/registry + 3 模块) | ✅ **已合并**(squash) | `5ae2c004a` (#4824),`core/migration/`                    |
-| 基建           | nyanpasu-core 状态管理器(MVCC/持久化)                   | ✅ 已合并             | #3656,`nyanpasu-core/src/state/`                         |
-| **PR-3 前置①** | profiles clean 组合域模型 + 三份迁移文档                | ✅ 已合并             | `ee197a55e` (#4840)                                      |
-| **PR-3 前置②** | runtime snapshot store v2(图/失效/归档)                 | 🔄 当前分支待提 PR    | `d0b3cf6ac`,仅改 `nyanpasu-config/src/runtime/`          |
-| **PR-2b**      | 三 StateActor 基础设施                                  | 📐 设计已批准,待实施  | 2026-06-27 spec(**文件尚未提交**,`git status` untracked) |
+| 阶段                  | 内容                                                           | 状态                  | 证据                                         |
+| --------------------- | -------------------------------------------------------------- | --------------------- | -------------------------------------------- |
+| **PR-1**              | `NyanpasuClient` facade(ACL)                                   | ✅ 已合并             | `8d22e2596` (#4764),commit 标题自带 `[PR-1]` |
+| **PR-2a**             | verge 配置接入 ractor `StateActor`                             | ✅ 已合并             | `f903be837` (#4778)                          |
+| 基建                  | `PathResolver`                                                 | ✅ 已合并             | `1085d36c7` (#4828),`utils/path.rs:40`       |
+| 基建                  | **migration 子系统 V2**(store/runner/registry + 3 模块)        | ✅ **已合并**(squash) | `5ae2c004a` (#4824),`core/migration/`        |
+| 基建                  | nyanpasu-core 状态管理器(MVCC/持久化)                          | ✅ 已合并             | #3656,`nyanpasu-core/src/state/`             |
+| **PR-3 前置(域模型)** | profiles clean 组合域模型 + 三份迁移文档                       | ✅ 已合并             | `ee197a55e` (#4840)                          |
+| **PR-3-pre①**         | runtime snapshot store v2(图/失效/归档)                        | ✅ 已合并             | `ffd80168` (#4868)                           |
+| **PR-3-pre②**         | runtime pipeline executor(执行半:五顺序/八 tag/三 BuiltinStep) | ✅ 已合并             | `356864d5` (#4877)                           |
+| **PR-2b**             | 三 StateActor 基础设施                                         | ✅ 已合并             | `95c4ca8a` (#4869)                           |
 
 > ⚠️ **进度账本更正:** 本地 `.ccg` 任务状态(「migration V2 待推送 review-fix」)已过期——#4824 已 squash 合并进 main;本地 `refactor/migration-service-v2` 分支(3 个 pre-squash 提交)可以删除,该任务可关闭。
 
@@ -435,7 +436,7 @@ flowchart LR
 
 **并行性:** PR-2b(tauri + bridge)与 PR-3-pre②(纯 nyanpasu-config)零文件重叠,**可并行推进**。PR-3 对 PR-2b 无硬依赖(executor 输入显式,取数点可暂用旧全局),但推荐 PR-2b 先合——`ClashConfigActor` 就位后 RuntimeBuilder 的 overrides 输入直接来自新域类型,免一次返工。
 
-### 4.2 PR-2b — 三 StateActor 基础设施(进行中)
+### 4.2 PR-2b — 三 StateActor 基础设施(已合并,#4869)
 
 **目标:** 按已批准 spec 建 `ApplicationActor`/`SessionStateActor`/`ClashConfigActor` + 三 typed client + 双向桥,`NyanpasuClient` 暴露三域 API;旧全局保持一致可读;**不**在本 PR 切换 153 处调用点。
 
@@ -483,13 +484,13 @@ sequenceDiagram
     Note over Mig,Act: 顺序铁律:migration 完成后才允许 spawn actor(D8)；<br/>PR-5/6 在同一装配点继续 spawn CoreActor 与外围 actor
 ```
 
-### 4.3 PR-3-pre① — snapshot store v2 收尾(当前分支)
+### 4.3 PR-3-pre① — snapshot store v2 收尾(已合并,#4868)
 
 **目标:** 把 `d0b3cf6ac` 提为 PR 并合并。代码已完成(OperatorTag 六变体、`SnapshotNodeKey`、`SnapshotBaseline`、`invalidate_profile`、archive v2、+18 测试)。
 
 **剩余可执行任务:** ① 自查 `snapshot-persistence` feature 默认关闭、v1/malformed 归档解码必失败的测试在位(已有);② 提 PR、过 review;③ 合并后在 `profile-snapshot-store-migration.md` 状态行更新。
 
-### 4.4 PR-3-pre② — runtime pipeline executor(纯,nyanpasu-config)
+### 4.4 PR-3-pre② — runtime pipeline executor(纯,nyanpasu-config;已合并,#4877)
 
 **目标:** 补上 snapshot store 缺失的「执行半」:给定 Profiles 快照 + 文件内容 + overrides,真正执行处理管线,产出最终配置 + snapshot 图 + 步骤日志。**这是 PR-3 的硬前置(修正 C5)。**
 
@@ -610,16 +611,16 @@ sequenceDiagram
 
 ## 5. 兼容层台账(唯一允许的桥,全部有删除条件)
 
-| #   | 桥                                      | 位置                                     | 方向                | 状态            | 删除条件(负责 PR)                                         |
-| --- | --------------------------------------- | ---------------------------------------- | ------------------- | --------------- | --------------------------------------------------------- |
-| B1  | `VergeMirror` / `legacy_verge_mirror()` | `state/verge.rs:11`、`client/mod.rs:134` | Actor→旧全局(内存)  | **在用,未标记** | PR-2b 收编进 `bridge/verge.rs` 并标 TODO;PR-7 删除        |
-| B2  | `run_legacy_verge_mutation()`           | `client/mod.rs:63`                       | 旧写点→Actor reseed | **在用,未标记** | 最后一个 LegacySideEffects 字段迁完(PR-6 末)即删          |
-| B3  | `route_verge_patch`                     | `client/state.rs:120`                    | patch 分流          | **在用,未标记** | PR-2b 三域化;PR-6 后无 Legacy 路由可走,PR-7 删            |
-| B4  | `patch_verge_entrypoint`                | `feat.rs:120`                            | 早期启动回退        | **在用,未标记** | composition root 保证 client 先于一切调用方就绪后删(PR-7) |
-| B5  | mixed_port 启动 reseed                  | `lib.rs:390-398`                         | 旧启动写→Actor      | **在用,未标记** | PR-2b T2.9 消除或标记;PR-7 前删                           |
-| B6  | hotkey KV/verge 双读                    | `core/hotkey.rs:199`                     | 存储桥              | ✅ 已标记       | PR-6b                                                     |
-| B7  | 三域 `*LegacyBridge`(mirror+reseed)     | 未来 `bridge/{verge,window,clash}.rs`    | 双向                | PR-2b 新建      | PR-7 整体删除                                             |
-| B8  | RuntimeBuilder 暂读旧全局取数           | PR-3 T3.7                                | 输入装配            | 视 PR-2b 时序   | PR-2b 合并后改走新 client 即删                            |
+| #   | 桥                                      | 位置                                     | 方向                | 状态                                                           | 删除条件(负责 PR)                                                                                                         |
+| --- | --------------------------------------- | ---------------------------------------- | ------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| B1  | `VergeMirror` / `legacy_verge_mirror()` | `state/verge.rs:11`、`client/mod.rs:134` | Actor→旧全局(内存)  | **在用,未标记**                                                | PR-2b 收编进 `bridge/verge.rs` 并标 TODO;PR-7 删除                                                                        |
+| B2  | `run_legacy_verge_mutation()`           | `client/mod.rs:63`                       | 旧写点→Actor reseed | **在用,未标记**                                                | 最后一个 LegacySideEffects 字段迁完(PR-6 末)即删                                                                          |
+| B3  | `route_verge_patch`                     | `client/state.rs:120`                    | patch 分流          | **在用,未标记**                                                | PR-2b 三域化;PR-6 后无 Legacy 路由可走,PR-7 删                                                                            |
+| B4  | `patch_verge_entrypoint`                | `feat.rs:120`                            | 早期启动回退        | **在用,未标记**                                                | composition root 保证 client 先于一切调用方就绪后删(PR-7)                                                                 |
+| B5  | mixed_port 启动 reseed                  | `lib.rs:390-398`                         | 旧启动写→Actor      | **在用,未标记**                                                | PR-2b T2.9 消除或标记;PR-7 前删                                                                                           |
+| B6  | hotkey KV/verge 双读                    | `core/hotkey.rs:199`                     | 存储桥              | ✅ 已标记                                                      | PR-6b                                                                                                                     |
+| B7  | 三域 `*LegacyBridge`(mirror+reseed)     | 未来 `bridge/{verge,window,clash}.rs`    | 双向                | PR-2b 新建                                                     | PR-7 整体删除                                                                                                             |
+| B8  | RuntimeBuilder 暂读旧全局取数           | PR-3 T3.7                                | 输入装配            | **作废**(PR-2b #4869 已合并,取数走 typed client;PR-3 spec §19) | 已由 PR-2b 消解;PR-3 残留旧全局消费仅 `Config::runtime()` 写 + `CoreManager.update_config()` 两处(TODO 标记,PR-4/PR-5 删) |
 
 **规则:** 台账之外不得新增桥;每条桥的代码处必须有 `TODO(actor-migration)` + 删除条件注释。
 

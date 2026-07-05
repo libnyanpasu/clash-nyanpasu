@@ -4,8 +4,9 @@
 use std::sync::Arc;
 
 use nyanpasu_config::profile::{
-    ConfigDefinition, ExternalProfilePath, ManagedProfilePath, ProfileDefinition,
-    ProfileDependencyIndex, ProfileId, ProfileMetadata, ProfileValidationError, Profiles,
+    ConfigDefinition, ExternalMode, ExternalProfilePath, LocalBinding, ManagedProfilePath,
+    ProfileDefinition, ProfileDependencyIndex, ProfileId, ProfileItem, ProfileMetadata,
+    ProfileSource, ProfileValidationError, Profiles, ScriptRuntime, TransformDefinition,
 };
 use nyanpasu_core::state::PersistentStateManager;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
@@ -87,6 +88,15 @@ pub enum ProfilesActorMessage {
     },
     Replace {
         profiles: Profiles,
+        reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
+    },
+    Add {
+        request: NewProfileRequest,
+        initial_file: Option<String>,
+        reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
+    },
+    Delete {
+        uid: ProfileId,
         reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
     },
 }
@@ -220,6 +230,57 @@ impl ProfilesActor {
             warnings,
         })
     }
+
+    fn generate_uid(definition: &ProfileDefinition, existing: &Profiles) -> ProfileId {
+        let prefix = match definition {
+            ProfileDefinition::Config { .. } => 'c',
+            ProfileDefinition::Transform { .. } => 't',
+        };
+        loop {
+            let candidate = ProfileId(format!("{prefix}{}", nanoid::nanoid!(11)));
+            if existing.items.get(&candidate).is_none() {
+                return candidate;
+            }
+        }
+    }
+
+    fn canonical_extension(definition: &ProfileDefinition) -> &'static str {
+        match definition {
+            ProfileDefinition::Config { .. } => "yaml",
+            ProfileDefinition::Transform { transform } => match transform {
+                TransformDefinition::Overlay(_) => "yaml",
+                TransformDefinition::Script(script) => match script.runtime {
+                    ScriptRuntime::JavaScript => "js",
+                    ScriptRuntime::Lua => "lua",
+                },
+            },
+        }
+    }
+
+    fn referrers_of(
+        state: &ProfilesActorState,
+        profiles: &Profiles,
+        uid: &ProfileId,
+    ) -> Option<Vec<ProfileId>> {
+        let mut referrers: indexmap::IndexSet<ProfileId> = Default::default();
+        if let Some(set) = state.index.composition_base_dependents.get(uid) {
+            referrers.extend(set.iter().cloned());
+        }
+        if let Some(set) = state.index.extend_proxies_dependents.get(uid) {
+            referrers.extend(set.iter().cloned());
+        }
+        if let Some(set) = state.index.transform_dependents.get(uid) {
+            referrers.extend(set.iter().cloned());
+        }
+
+        let document_level = profiles.current.as_ref() == Some(uid)
+            || state.index.global_transform_ids.contains(uid);
+        if referrers.is_empty() && !document_level {
+            None
+        } else {
+            Some(referrers.into_iter().collect())
+        }
+    }
 }
 
 impl Actor for ProfilesActor {
@@ -286,6 +347,93 @@ impl Actor for ProfilesActor {
                     })
                 })
                 .await;
+                let _ = reply.send(result);
+            }
+            ProfilesActorMessage::Add {
+                request,
+                initial_file,
+                reply,
+            } => {
+                let result = {
+                    let existing = Self::current_state(state);
+                    let uid = Self::generate_uid(&request.definition, &existing);
+                    let ext = Self::canonical_extension(&request.definition);
+                    let canonical = ManagedProfilePath::new(format!("{uid}.{ext}"))
+                        .expect("uid-derived path is always a valid managed path");
+                    let mut definition = request.definition;
+                    let mut post_ops = Vec::new();
+                    if let Some(source) = definition.source_mut() {
+                        source.materialized_mut().file = canonical.clone();
+                        match source {
+                            ProfileSource::Local {
+                                binding: LocalBinding::External { target, mode, .. },
+                            } => {
+                                if *mode == ExternalMode::Symlink {
+                                    post_ops.push(PostCommitOp::EnsureSymlink {
+                                        path: canonical.clone(),
+                                        target: target.clone(),
+                                    });
+                                }
+                                // T05 watcher reconcile owns the first mirror sync.
+                            }
+                            ProfileSource::Remote { .. } => {
+                                // T05 RefreshRemote owns the first remote download.
+                            }
+                            _ => {
+                                post_ops.push(PostCommitOp::WriteInitial {
+                                    path: canonical.clone(),
+                                    content: initial_file.clone().unwrap_or_default(),
+                                });
+                            }
+                        }
+                    }
+
+                    let item = ProfileItem {
+                        uid: uid.clone(),
+                        metadata: request.metadata,
+                        definition,
+                    };
+                    Self::run_write(state, move |profiles| {
+                        if !profiles.append_item(item) {
+                            return Err(ProfilesError::Persist("uid collision".into()));
+                        }
+                        Ok(WriteOutcome {
+                            affects: AffectsRule::Never,
+                            post_ops,
+                        })
+                    })
+                    .await
+                };
+                let _ = reply.send(result);
+            }
+            ProfilesActorMessage::Delete { uid, reply } => {
+                let result = {
+                    let existing = Self::current_state(state);
+                    if existing.items.get(&uid).is_none() {
+                        Err(ProfilesError::ProfileNotFound(uid.clone()))
+                    } else if let Some(referrers) = Self::referrers_of(state, &existing, &uid) {
+                        Err(ProfilesError::ProfileInUse { referrers })
+                    } else {
+                        let removed = existing.items.get(&uid).cloned();
+                        let post_ops = removed
+                            .as_ref()
+                            .and_then(|item| item.definition.source())
+                            .map(|source| {
+                                vec![PostCommitOp::Remove {
+                                    path: source.materialized().file.clone(),
+                                }]
+                            })
+                            .unwrap_or_default();
+                        Self::run_write(state, move |profiles| {
+                            profiles.remove_item_unchecked(&uid);
+                            Ok(WriteOutcome {
+                                affects: AffectsRule::Never,
+                                post_ops,
+                            })
+                        })
+                        .await
+                    }
+                };
                 let _ = reply.send(result);
             }
         }

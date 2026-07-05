@@ -14,6 +14,8 @@ pub trait ProfileFsPort: Send + Sync + 'static {
     fn write_atomic(&self, path: &ManagedProfilePath, content: &str) -> anyhow::Result<()>;
     /// Idempotent: removing a missing file succeeds.
     fn remove(&self, path: &ManagedProfilePath) -> anyhow::Result<()>;
+    /// Read an External binding target for Mirror synchronization.
+    fn read_external(&self, target: &ExternalProfilePath) -> anyhow::Result<String>;
     /// Remote-updater write guard: the target must not be an unexpected
     /// symlink (clean-design §9 last paragraph).
     fn ensure_not_symlink(&self, path: &ManagedProfilePath) -> anyhow::Result<()>;

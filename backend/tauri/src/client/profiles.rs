@@ -161,6 +161,22 @@ impl ProfilesClient {
         .await
     }
 
+    pub async fn refresh(
+        &self,
+        uid: ProfileId,
+        patch: Option<RemoteProfileOptionsPatch>,
+    ) -> Result<CommitReport, ProfilesError> {
+        self.call(
+            |reply| ProfilesActorMessage::RefreshRemote {
+                uid,
+                patch,
+                reply: Some(reply),
+            },
+            None,
+        )
+        .await
+    }
+
     pub async fn replace_definition(
         &self,
         uid: ProfileId,
@@ -189,6 +205,44 @@ impl ProfilesClient {
             Err(e) => Err(ProfilesError::Rpc(e.to_string())),
         }
     }
+
+    #[cfg(test)]
+    fn debug_pending_refresh(
+        &self,
+        uid: ProfileId,
+    ) -> (
+        tokio::sync::oneshot::Receiver<()>,
+        tokio::task::JoinHandle<Result<CommitReport, ProfilesError>>,
+    ) {
+        let (inserted, inserted_rx) = tokio::sync::oneshot::channel();
+        let client = self.clone();
+        let handle = tokio::spawn(async move {
+            client
+                .call(
+                    |reply| ProfilesActorMessage::DebugInsertPendingRefresh {
+                        uid,
+                        reply,
+                        inserted,
+                    },
+                    None,
+                )
+                .await
+        });
+        (inserted_rx, handle)
+    }
+
+    #[cfg(test)]
+    async fn debug_cast_commit_refreshed(
+        &self,
+        uid: ProfileId,
+        outcome: crate::state::profiles::RefreshOutcome,
+    ) {
+        let _ = self
+            .inner
+            .actor_ref
+            .cast(ProfilesActorMessage::CommitRefreshed { uid, outcome });
+        tokio::task::yield_now().await;
+    }
 }
 
 impl Drop for ProfilesClientInner {
@@ -201,12 +255,13 @@ impl Drop for ProfilesClientInner {
 mod tests {
     use super::*;
     use crate::state::profiles::ports::{
-        MockProfileFsPort, MockRebuildNotifier, MockSubscriptionFetcher,
+        FetchedSubscription, MockProfileFsPort, MockRebuildNotifier, MockSubscriptionFetcher,
     };
     use nyanpasu_config::profile::{
         ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
         OverlayTransform, ProfileDefinition, ProfileId, ProfileMetadata, ProfileSource, Profiles,
-        ScriptRuntime, ScriptTransform, TransformDefinition,
+        RemoteProfileOptions, ScriptRuntime, ScriptTransform, SubscriptionInfo,
+        TransformDefinition,
     };
     use struct_patch::Patch as _;
     use tempfile::{TempDir, tempdir};
@@ -297,6 +352,235 @@ mod tests {
             .await
             .expect("seed replace");
         (client, dir)
+    }
+
+    pub(crate) fn remote_config_item(uid: &str) -> nyanpasu_config::profile::ProfileItem {
+        nyanpasu_config::profile::ProfileItem {
+            uid: ProfileId(uid.into()),
+            metadata: ProfileMetadata {
+                name: uid.to_uppercase(),
+                desc: None,
+            },
+            definition: ProfileDefinition::Config {
+                config: ConfigDefinition::File(FileConfig {
+                    source: ProfileSource::Remote {
+                        materialized: MaterializedFile {
+                            file: ManagedProfilePath::new(format!("{uid}.yaml")).unwrap(),
+                            updated_at: None,
+                        },
+                        url: url::Url::parse("https://example.com/sub").unwrap(),
+                        option: RemoteProfileOptions::default(),
+                        subscription: SubscriptionInfo::default(),
+                    },
+                    transforms: vec![],
+                }),
+            },
+        }
+    }
+
+    fn ok_fetch(content: &'static str) -> MockSubscriptionFetcher {
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher.expect_fetch().returning(move |_, _| {
+            Ok(FetchedSubscription {
+                content: content.to_string(),
+                filename: None,
+                subscription: SubscriptionInfo {
+                    upload: Some(1),
+                    ..Default::default()
+                },
+            })
+        });
+        fetcher
+    }
+
+    async fn remote_seeded_client(
+        fs: MockProfileFsPort,
+        fetcher: MockSubscriptionFetcher,
+        notifier: MockRebuildNotifier,
+    ) -> (ProfilesClient, TempDir) {
+        remote_seeded_client_with_fetcher(fs, std::sync::Arc::new(fetcher), notifier).await
+    }
+
+    async fn remote_seeded_client_with_fetcher(
+        fs: MockProfileFsPort,
+        fetcher: std::sync::Arc<dyn SubscriptionFetcher>,
+        notifier: MockRebuildNotifier,
+    ) -> (ProfilesClient, TempDir) {
+        let dir = tempdir().unwrap();
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            std::sync::Arc::new(fs),
+            fetcher,
+            std::sync::Arc::new(notifier),
+        )
+        .await
+        .unwrap();
+        let mut profiles = Profiles::default();
+        profiles.append_item(remote_config_item("r1"));
+        client.replace(profiles).await.unwrap();
+        (client, dir)
+    }
+
+    struct HoldingFetcher {
+        started: std::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+        release: std::sync::Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait::async_trait]
+    impl SubscriptionFetcher for HoldingFetcher {
+        async fn fetch(
+            &self,
+            _url: &url::Url,
+            _options: &RemoteProfileOptions,
+        ) -> anyhow::Result<FetchedSubscription> {
+            if let Some(started) = self.started.lock().unwrap().take() {
+                let _ = started.send(());
+            }
+            self.release.notified().await;
+            Ok(FetchedSubscription {
+                content: "a: 1\n".into(),
+                filename: None,
+                subscription: SubscriptionInfo::default(),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn refresh_downloads_writes_and_commits_subscription() {
+        let mut fs = MockProfileFsPort::new();
+        fs.expect_ensure_not_symlink().returning(|_| Ok(()));
+        fs.expect_write_atomic()
+            .withf(|path, content| path.as_str() == "r1.yaml" && content == "proxies: []\n")
+            .times(1)
+            .returning(|_, _| Ok(()));
+        let (client, _dir) =
+            remote_seeded_client(fs, ok_fetch("proxies: []\n"), MockRebuildNotifier::new()).await;
+
+        let report = client
+            .refresh(ProfileId("r1".into()), None)
+            .await
+            .expect("refresh ok");
+        let item = &report.snapshot.items[&ProfileId("r1".into())];
+        let source = item.definition.source().unwrap();
+        assert!(source.materialized().updated_at.is_some());
+        match source {
+            ProfileSource::Remote { subscription, .. } => {
+                assert_eq!(subscription.upload, Some(1));
+            }
+            _ => unreachable!(),
+        }
+        assert!(!report.affects_current);
+    }
+
+    #[tokio::test]
+    async fn refresh_failure_settles_reply_with_error() {
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher
+            .expect_fetch()
+            .returning(|_, _| anyhow::bail!("dns exploded"));
+        let (client, _dir) = remote_seeded_client(
+            MockProfileFsPort::new(),
+            fetcher,
+            MockRebuildNotifier::new(),
+        )
+        .await;
+        let err = client
+            .refresh(ProfileId("r1".into()), None)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ProfilesError::RefreshFailed { .. }));
+        let snapshot = client.get().await.unwrap();
+        let source = snapshot.items[&ProfileId("r1".into())]
+            .definition
+            .source()
+            .unwrap();
+        assert!(source.materialized().updated_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn refresh_rejects_non_remote_and_unknown_and_concurrent() {
+        let (client, _dir) = seeded_client().await;
+        let err = client
+            .refresh(ProfileId("cfg1".into()), None)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ProfilesError::NotARemoteProfile));
+        let err = client
+            .refresh(ProfileId("ghost".into()), None)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ProfilesError::ProfileNotFound(_)));
+
+        let (started, started_rx) = tokio::sync::oneshot::channel();
+        let release_fetch = std::sync::Arc::new(tokio::sync::Notify::new());
+        let fetcher = HoldingFetcher {
+            started: std::sync::Mutex::new(Some(started)),
+            release: std::sync::Arc::clone(&release_fetch),
+        };
+        let mut fs = MockProfileFsPort::new();
+        fs.expect_ensure_not_symlink().returning(|_| Ok(()));
+        fs.expect_write_atomic().returning(|_, _| Ok(()));
+        let (client, _dir) = remote_seeded_client_with_fetcher(
+            fs,
+            std::sync::Arc::new(fetcher),
+            MockRebuildNotifier::new(),
+        )
+        .await;
+        let c2 = client.clone();
+        let first = tokio::spawn(async move { c2.refresh(ProfileId("r1".into()), None).await });
+        started_rx.await.unwrap();
+        let err = loop {
+            match client.refresh(ProfileId("r1".into()), None).await {
+                Err(ProfilesError::RefreshFailed { message })
+                    if message.contains("in progress") =>
+                {
+                    break ProfilesError::RefreshFailed { message };
+                }
+                Ok(_) => panic!("second refresh must not both succeed before first settles"),
+                Err(_) => tokio::task::yield_now().await,
+            }
+        };
+        assert!(matches!(err, ProfilesError::RefreshFailed { .. }));
+        release_fetch.notify_waiters();
+        first.await.unwrap().expect("first refresh completes");
+    }
+
+    #[tokio::test]
+    async fn refresh_commit_refreshed_deleted_profile_settles_reply_and_cleans_orphan() {
+        let removals = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let mut fs = MockProfileFsPort::new();
+        let observed = std::sync::Arc::clone(&removals);
+        fs.expect_remove().returning(move |path| {
+            observed.lock().unwrap().push(path.as_str().to_string());
+            Ok(())
+        });
+        let (client, _dir) = remote_seeded_client(
+            fs,
+            MockSubscriptionFetcher::new(),
+            MockRebuildNotifier::new(),
+        )
+        .await;
+
+        let (inserted, pending) = client.debug_pending_refresh(ProfileId("r1".into()));
+        inserted.await.unwrap();
+        client.delete(ProfileId("r1".into())).await.unwrap();
+        client
+            .debug_cast_commit_refreshed(
+                ProfileId("r1".into()),
+                crate::state::profiles::RefreshOutcome::Succeeded {
+                    subscription: SubscriptionInfo::default(),
+                },
+            )
+            .await;
+
+        let err = pending.await.unwrap().unwrap_err();
+        assert!(
+            matches!(err, ProfilesError::RefreshFailed { message } if message.contains("deleted"))
+        );
+        let removals = removals.lock().unwrap();
+        assert!(removals.iter().filter(|path| *path == "r1.yaml").count() >= 2);
+        assert!(removals.iter().any(|path| path == "r1.js"));
+        assert!(removals.iter().any(|path| path == "r1.lua"));
     }
 
     #[tokio::test]

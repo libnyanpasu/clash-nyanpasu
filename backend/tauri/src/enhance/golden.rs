@@ -53,6 +53,7 @@ fn golden_input(profiles: Profiles) -> RuntimeBuildInput {
     };
     input.clash.overrides = fixed_overrides();
     input.clash.enable_tun_mode = false; // windows_fake_ip_filter 平台相关
+    input.clash.enable_clash_fields = false; // 基线依赖 whitelist off,显式声明
     input.app.enable_builtin_enhanced = false; // 各场景按需显式开启
     input
 }

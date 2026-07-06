@@ -400,6 +400,13 @@ impl RuntimeBuilder {
 - golden 套件实名:`enhance/golden.rs` + `enhance/fixtures/golden/{composition_global_chain,builtin_mihomo,builtin_clash_rs,whitelist_on}.yaml`;重铸 `GOLDEN_BLESS=1 cargo test -p clash-nyanpasu golden_`;确定性 = 固定 `secret: golden-secret` + tun off。**T07 切换后本套件须原样全绿,改 fixtures = 行为回归须勘误。**
 - Mirror 同步已移入 `spawn_blocking`(actor.rs `ExternalFileChanged` Mirror 分支;消息顺序不变,warn 日志逐字保留)。
 
+**2026-07-07 评审处置(codex 79/100 + antigravity 98/100 APPROVE,无 Critical)**:
+
+- Major(已修):golden builtin 两例经真 boa 执行,而 `boa_utils::set_logger` 为进程级全局(js.rs 注释自证非并发安全),与 `runtime_builder.rs` 日志断言 e2e 测试并行有窃取/漏失竞态 → js.rs 增 `BOA_LOGGER_LOCK` 在 `spawn_blocking` 闭包内串行整段 boa 执行(生产侧脚本本就经 actor 串行,无性能回退)。
+- Suggestion(已采纳):`golden_input` 显式 `enable_clash_fields = false`,基线自文档化。
+- Minor(遗留,记 T07 预备项):Mirror 失败三分支(读失败/校验失败/镜像写失败)缺「不 commit updated_at、不触发 rebuild」的断言钉。
+- antigravity 2 条 Info(run_write 后置文件操作仍同步、golden 测试助手与 runtime_builder 测试重复)均记为未来事项,不入本卡。
+
 ---
 
 ### T07 — composition root + facade 接线(⚠️ 切换组起点)

@@ -465,9 +465,6 @@ impl CoreManager {
         Config::clash().reload();
         log::debug!(target: "app", "reloaded clash config from file");
 
-        // Regenerate runtime config with the reloaded settings
-        Config::generate().await?;
-
         // 检查端口是否可用
         Config::clash()
             .latest()
@@ -558,7 +555,7 @@ impl CoreManager {
         Config::verge().draft().clash_core = Some(clash_core);
 
         // 更新配置
-        if let Err(err) = Config::generate().await {
+        if let Err(err) = crate::client::rebuild::regenerate().await {
             Config::verge().discard();
             return Err(err);
         }
@@ -595,7 +592,10 @@ impl CoreManager {
     pub async fn update_config(&self) -> Result<()> {
         log::debug!(target: "app", "try to update clash config");
         // 更新配置
-        Config::generate().await?;
+        // FIXME(actor-migration): legacy regenerate path for pre-T08 callers
+        // (enhance_profiles/delete_profile ipc etc.). New code must use
+        // NyanpasuClient::rebuild_running_config(). Remove after T10.
+        crate::client::rebuild::regenerate().await?;
         self.apply_config().await
     }
 

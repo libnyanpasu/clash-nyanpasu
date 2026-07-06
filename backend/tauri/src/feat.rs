@@ -276,7 +276,7 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
             || patch.get("secret").is_some()
             || patch.get("external-controller").is_some()
         {
-            Config::generate().await?;
+            crate::client::rebuild::regenerate().await?;
             CoreManager::global().run_core().await?;
             handle::Handle::refresh_clash();
         }
@@ -336,7 +336,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
         if service_mode.is_some() && ipc_state.is_connected() {
             log::debug!(target: "app", "change service mode to {}", service_mode.unwrap());
 
-            Config::generate().await?;
+            crate::client::rebuild::regenerate().await?;
             CoreManager::global().run_core().await?;
         }
 
@@ -360,7 +360,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
             let (state, _, _) = CoreManager::global().status().await;
             if flag || matches!(state.as_ref(), CoreState::Stopped(_)) {
                 log::debug!(target: "app", "core is stopped, restart core");
-                Config::generate().await?;
+                crate::client::rebuild::regenerate().await?;
                 CoreManager::global().run_core().await?;
             } else {
                 log::debug!(target: "app", "update core config");

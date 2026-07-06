@@ -1,11 +1,11 @@
 use crate::{
     config::{
-        Config, IVerge,
+        Config, ConfigType, IVerge,
         nyanpasu::{ClashCore, TrayMenuCloseBehavior, WindowState},
     },
     core::{storage::Storage, tray::proxies, *},
     log_err,
-    utils::init,
+    utils::{help, init},
     window::{AppWindow, WindowConfig, WindowParamsBuilder, WindowReadyEvent},
 };
 use anyhow::Result;
@@ -150,37 +150,48 @@ pub fn resolve_setup(app: &mut App) {
     log_err!(init::init_resources());
     log_err!(init::init_service());
 
-    // 处理随机端口
-    let enable_random_port = Config::verge().latest().enable_random_port.unwrap_or(false);
+    // FIXME(actor-migration): write the session-resolved ports back into the
+    // legacy mirrors (IVerge/IClashTemp) so sysproxy & the clash api client keep
+    // observing the real ports during the BC window. The typed side is the
+    // single resolver (SessionPortResolver); prepare_external_controller_port
+    // double-resolution is removed. Remove after PR-4/PR-6 migrate those readers.
+    {
+        let client = app.state::<crate::client::NyanpasuClient>();
+        if let Some(ports) = client.session_ports() {
+            Config::verge().data().patch_config(IVerge {
+                verge_mixed_port: Some(ports.mixed_port),
+                ..IVerge::default()
+            });
+            let _ = Config::verge().data().save_file();
+            let mut mapping = Mapping::new();
+            mapping.insert("mixed-port".into(), ports.mixed_port.into());
+            if let Some(external_controller) = ports.external_controller.as_deref() {
+                mapping.insert("external-controller".into(), external_controller.into());
+            }
+            Config::clash().data().patch_config(mapping);
+            let _ = Config::clash().data().save_config();
+        }
 
-    let mut port = Config::verge()
-        .latest()
-        .verge_mixed_port
-        .unwrap_or(Config::clash().data().get_mixed_port());
-
-    if enable_random_port {
-        port = find_unused_port().unwrap_or(
-            Config::verge()
-                .latest()
-                .verge_mixed_port
-                .unwrap_or(Config::clash().data().get_mixed_port()),
-        );
+        // 启动首铸:profiles/clash/app 快照 → RuntimeBuilder → runtime draft
+        log::trace!("init config");
+        log_err!(tauri::async_runtime::block_on(client.regenerate_runtime()));
+        if let Err(err) = Config::generate_file(ConfigType::Run) {
+            log::error!(target: "app", "{err:?}");
+            let runtime_path =
+                Config::runtime_config_path().expect("failed to resolve runtime config path");
+            // 与旧 init_config 相同的兜底:文件缺失时落默认 clash 配置
+            if !runtime_path.exists() {
+                if let Some(parent) = runtime_path.parent() {
+                    log_err!(std::fs::create_dir_all(parent));
+                }
+                log_err!(help::save_yaml(
+                    &runtime_path,
+                    &Config::clash().latest().0,
+                    Some("# Clash Nyanpasu Runtime"),
+                ));
+            }
+        }
     }
-
-    Config::verge().data().patch_config(IVerge {
-        verge_mixed_port: Some(port),
-        ..IVerge::default()
-    });
-    let _ = Config::verge().data().save_file();
-    let mut mapping = Mapping::new();
-    mapping.insert("mixed-port".into(), port.into());
-    Config::clash().data().patch_config(mapping);
-    let _ = Config::clash().latest().prepare_external_controller_port();
-    let _ = Config::clash().data().save_config();
-
-    // 启动核心
-    log::trace!("init config");
-    log_err!(Config::init_config());
 
     log::trace!("init storage");
     log_err!(crate::core::storage::setup(app));

@@ -103,6 +103,17 @@ impl ProfilesClient {
         .await
     }
 
+    pub async fn set_valid_fields(
+        &self,
+        fields: Vec<String>,
+    ) -> Result<CommitReport, ProfilesError> {
+        self.call(
+            |reply| ProfilesActorMessage::SetValidFields { fields, reply },
+            None,
+        )
+        .await
+    }
+
     pub async fn replace(&self, profiles: Profiles) -> Result<CommitReport, ProfilesError> {
         self.call(
             |reply| ProfilesActorMessage::Replace { profiles, reply },
@@ -1002,6 +1013,23 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, ProfilesError::ValidationFailed(_)));
+    }
+
+    #[tokio::test]
+    async fn set_valid_fields_commits_and_always_affects_current() {
+        let (client, _dir) = seeded_client().await;
+        let report = client
+            .set_valid_fields(vec!["dns".into(), "tun".into()])
+            .await
+            .expect("set valid fields");
+        assert!(
+            report.affects_current,
+            "whitelist change must trigger rebuild"
+        );
+        assert_eq!(
+            report.snapshot.valid,
+            vec!["dns".to_string(), "tun".to_string()]
+        );
     }
 
     #[tokio::test]

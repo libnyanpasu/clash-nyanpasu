@@ -60,6 +60,7 @@ pub(crate) fn build_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             ipc::delete_profile,
             ipc::activate_profile,
             ipc::set_global_transforms,
+            ipc::set_profile_valid_fields,
             ipc::patch_profile_metadata,
             ipc::patch_remote_profile_options,
             ipc::replace_profile_definition,

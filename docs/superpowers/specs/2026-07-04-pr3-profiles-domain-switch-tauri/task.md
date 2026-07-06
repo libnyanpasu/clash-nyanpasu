@@ -427,6 +427,7 @@ impl RuntimeBuilder {
 impl NyanpasuClient {
     pub async fn get_profiles(&self) -> Result<Arc<Profiles>>;
     pub async fn add_profile(&self, req: NewProfileRequest, initial_file: Option<String>) -> Result<ProfileId>; // 2026-07-06:返回服务端生成 uid(import 条件激活用)
+    pub async fn import_profile(&self, url: Url, options: Option<RemoteProfileOptionsPatch>) -> Result<ProfileId>; // 2026-07-06 T08:add→首刷→条件激活的复合编排
     pub async fn delete_profile(&self, uid: ProfileId) -> Result<()>;
     pub async fn reorder_profile(&self, active: ProfileId, over: ProfileId) -> Result<()>;
     pub async fn reorder_profiles_by_list(&self, list: Vec<ProfileId>) -> Result<()>;
@@ -510,6 +511,17 @@ impl NyanpasuClient {
 - `import_profile` 条件自动激活:用 facade `add_profile` 返回的 `ProfileId`(T07 契约修正),激活调 facade `activate_profile`;连接中断由 `rebuild_running_config()` 统一触发(T07 用户决策),命令层零编排。
 - `patch_profiles_config_inner`(`ipc.rs:288-310`)随两条旧命令在本卡删除,不留 T10。
 - 现状 13 条命令清单实测与本卡一致;16 条目标名单不变。
+
+**2026-07-06 执行修正(T08 实物)**:
+
+- import 编排收编 facade `import_profile`(add 占位名 → refresh 首次物化,失败回删 → current==None 激活);命名 BC:content-disposition 命名退役,fallback = url 末段(去 `.yaml`/`.yml`)/host。`ProfileSource::Remote.subscription` 为 `SubscriptionInfo`(非 `Option`),import 构造用 `SubscriptionInfo::default()`,Add 会覆写。
+- `create_profile` 请求 DTO = `NewProfileRequest`(uid 服务端生成,D13);`NewProfileRequest` 补 derive `serde::Deserialize` + `specta::Type`(actor.rs,仅注解);自动激活在命令层按快照判定(`Config` 定义 + `current==None`)。
+- `save_profile_file` 参数收紧为必填 `String`(legacy `Option::None` 分支为无操作)。
+- `enhance_profiles` 不再显式 refresh_clash(rebuild 内 UiEventSink 同事件,避免双发)。
+- facade import 测试注入**真实 `ProfileFileService`**(非 mock fs)+ mock fetcher:activate 触发的 rebuild 经 `FsProfileContentSource` 读磁盘物化文件,mock fs 不落盘会致 rebuild 失败(plan Step 1/2 的 mock-fs 写法与此冲突,已按实物调整,断言不变)。
+- `specta_export.rs` 的 `export_typescript_bindings` 冻结测试:BC 切换后 legacy `Profiles`/`RemoteProfileOptions` 类型名退役(域文档/选项类型经 `#[specta(remote)]` 影子名 `ProfileDocument`/`ProfileRemoteOptions` 断言),断言名单去此两项。
+- bindings.ts 导出移交 T09 首步:该冻结测试每次 `cargo test` 都会重生成 bindings.ts,但提交它会触发 pre-commit lint-staged 的前端 `tsc`(use-profile.ts 仍调旧命令)而失败——故本卡**不提交 bindings.ts**(测试后 `git checkout` 还原);T09 首步重生成 + 改 callers 同一 commit 落账(前端红形态见 §4)。
+- 台账(TODO/FIXME(actor-migration),backend/tauri/src):20 → 18,净 −2(删 `ipc.rs` 的 get_profiles bridge + patch_profiles_config_inner bridge);本卡零新增。
 
 ---
 

@@ -61,7 +61,7 @@ pub struct CommitReport {
     pub created: Option<ProfileId>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize, specta::Type)]
 pub struct NewProfileRequest {
     pub metadata: ProfileMetadata,
     /// Add rewrites the materialized path to `{uid}.{ext}`.

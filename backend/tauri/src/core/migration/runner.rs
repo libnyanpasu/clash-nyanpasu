@@ -190,7 +190,7 @@ fn introduced_in_reached(introduced_in: &Version, target: &Version) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::migration::store::ModuleState;
+    use crate::core::migration::store::{ModuleState, STORE_FILE_NAME};
     use anyhow::bail;
     use once_cell::sync::Lazy;
 
@@ -446,6 +446,78 @@ mod tests {
             application.hotkeys.is_empty(),
             "hotkeys are KV-owned after storage/hotkeys_to_kv and must not be re-seeded into typed application config"
         );
+        let _: nyanpasu_config::state::PersistentState = serde_yaml::from_str(
+            &std::fs::read_to_string(config_dir.join("session-state.yaml")).unwrap(),
+        )
+        .unwrap();
+        let _: nyanpasu_config::clash::config::ClashConfig = serde_yaml::from_str(
+            &std::fs::read_to_string(config_dir.join("clash-config.yaml")).unwrap(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn existing_store_without_typed_config_accepts_legacy_runtime_clash_baseline() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_dir = temp.path().join("config");
+        let data_dir = temp.path().join("data");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&data_dir).unwrap();
+
+        let mut store = MigrationStore::default();
+        store.modules.insert(
+            "profiles".to_string(),
+            ModuleState {
+                applied_revision: 2,
+                baseline_revision: 2,
+            },
+        );
+        store.modules.insert(
+            "app_config".to_string(),
+            ModuleState {
+                applied_revision: 3,
+                baseline_revision: 3,
+            },
+        );
+        store.modules.insert(
+            "storage".to_string(),
+            ModuleState {
+                applied_revision: 1,
+                baseline_revision: 1,
+            },
+        );
+        store
+            .flush_atomic(&config_dir.join(STORE_FILE_NAME))
+            .unwrap();
+        std::fs::write(
+            config_dir.join("clash-config.yaml"),
+            "mixed-port: 7890\nproxies: []\nproxy-groups: []\nrules: []\n",
+        )
+        .unwrap();
+
+        let ctx = Ctx::new(config_dir.clone(), data_dir);
+        let mut runner =
+            Runner::with_context(Version::parse("2.0.0").unwrap(), false, ctx).unwrap();
+
+        assert_eq!(
+            runner.store.module_state("typed_config").applied_revision,
+            0
+        );
+        assert_eq!(
+            runner.store.module_state("typed_config").baseline_revision,
+            0
+        );
+
+        runner.run_pending().unwrap();
+
+        assert_eq!(
+            runner.store.module_state("typed_config").applied_revision,
+            1
+        );
+        let _: nyanpasu_config::application::NyanpasuAppConfig = serde_yaml::from_str(
+            &std::fs::read_to_string(config_dir.join("application.yaml")).unwrap(),
+        )
+        .unwrap();
         let _: nyanpasu_config::state::PersistentState = serde_yaml::from_str(
             &std::fs::read_to_string(config_dir.join("session-state.yaml")).unwrap(),
         )

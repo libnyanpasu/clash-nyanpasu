@@ -23,7 +23,7 @@
 - `Config` 结构(config/core.rs:15-20):`profiles_config: ManagedState<Profiles>` 字段 + `profiles()` accessor(:42-44);`IRuntime`/`Draft` 等其余字段保留(PR-4 范围)。
 - `enhance/mod.rs` 现状:`enhance()` 已 `#[allow(dead_code)]`(T07);其专属 helpers:`merge_profiles`/`process_chain`/`convert_uids_to_scripts`(utils.rs)、chain 装配(chain.rs 的 ChainItem/装配逻辑)、`use_whitelist_fields_filter`/`HANDLE_FIELDS`(field.rs)、tun 注入(tun.rs)、advice 分析(advice.rs)、merge 应用(merge.rs 的 use_merge 部分)。
 - **新管线仍依赖**:`chain.rs::ScriptType` + `PostProcessingOutput`(mod.rs:17/20 pub use;adapter/artifact_bridge/ipc 消费)、`utils.rs::{Logs, LogsExt, LogSpan}`、`merge.rs::create_lua_context`(adapter eval)、`enhance/builtin/*.{js,lua}`(runtime_builder include_str)、`script/**`、`content_source.rs`/`runtime_builder.rs`/`artifact_bridge.rs`/`golden.rs`。
-- **advice BC(T07 既定)**:legacy `advice.rs` 的配置分析建议随 enhance 退役;新 `PostProcessingOutput.advice` 装 executor 的 Guard/Whitelist/Finalizing 日志(artifact*bridge `* =>` 臂)。前端 advice 展示内容变化,记 T11 复核。
+- **advice BC(T07 既定)**:legacy `advice.rs` 的配置分析建议随 enhance 退役;新 `PostProcessingOutput.advice` 装 executor 的 Guard/Whitelist/Finalizing 日志(`artifact_bridge` 的兜底 match 臂)。前端 advice 展示内容变化,记 T11 复核。
 
 ## 契约修正(执行后回写 task.md T10 卡,§5.3)
 

@@ -37,13 +37,15 @@ use nyanpasu_config::{
     application::{NyanpasuAppConfig, NyanpasuAppConfigPatch},
     clash::config::{ClashConfig, ClashConfigPatch},
     profile::{
-        LocalBinding, ProfileDefinition, ProfileId, ProfileMetadataPatch, ProfileSource, Profiles,
-        RemoteProfileOptionsPatch,
+        ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
+        ProfileDefinition, ProfileId, ProfileMetadata, ProfileMetadataPatch, ProfileSource,
+        Profiles, RemoteProfileOptions, RemoteProfileOptionsPatch, SubscriptionInfo,
     },
     runtime::executor::ResolvedPortBindings,
     state::{PersistentState, PersistentStatePatch},
 };
 use std::{path::PathBuf, sync::Arc};
+use struct_patch::Patch as _;
 
 #[cfg(test)]
 pub use core_bridge::MockRunningCoreBridge;
@@ -337,6 +339,71 @@ impl NyanpasuClient {
             .clone()
             .ok_or_else(|| ClientError::Custom("add committed without a created uid".into()))?;
         self.after_commit(&report).await?;
+        Ok(created)
+    }
+
+    /// Import a remote subscription: add (placeholder name) -> first download
+    /// via the refresh transaction -> auto-activate when nothing is current.
+    /// Naming BC (recorded 2026-07-06): legacy content-disposition naming is
+    /// retired; the fallback is the url's last path segment (sans extension)
+    /// or the host.
+    pub async fn import_profile(
+        &self,
+        url: url::Url,
+        options: Option<RemoteProfileOptionsPatch>,
+    ) -> Result<ProfileId> {
+        let name = url
+            .path_segments()
+            .and_then(|segments| segments.filter(|segment| !segment.is_empty()).next_back())
+            .map(|segment| {
+                segment
+                    .trim_end_matches(".yaml")
+                    .trim_end_matches(".yml")
+                    .to_string()
+            })
+            .filter(|name| !name.is_empty())
+            .or_else(|| url.host_str().map(str::to_string))
+            .unwrap_or_else(|| "Remote Profile".into());
+        let mut option = RemoteProfileOptions::default();
+        if let Some(patch) = options {
+            option.apply(patch);
+        }
+        let request = NewProfileRequest {
+            metadata: ProfileMetadata { name, desc: None },
+            definition: ProfileDefinition::Config {
+                config: ConfigDefinition::File(FileConfig {
+                    source: ProfileSource::Remote {
+                        // Add rewrites the path to `{uid}.{ext}` and resets the
+                        // subscription/materialization metadata server-side, so
+                        // these placeholders are never persisted.
+                        materialized: MaterializedFile {
+                            file: ManagedProfilePath::new("pending.yaml")
+                                .expect("static managed path is valid"),
+                            updated_at: None,
+                        },
+                        url,
+                        option,
+                        subscription: SubscriptionInfo::default(),
+                    },
+                    transforms: vec![],
+                }),
+            },
+        };
+        let report = self.inner.profiles.add(request, None).await?;
+        let created = report
+            .created
+            .clone()
+            .ok_or_else(|| ClientError::Custom("import committed without a created uid".into()))?;
+        let was_empty = report.snapshot.current.is_none();
+        if let Err(error) = self.refresh_profile(created.clone(), None).await {
+            // First download failed = import failed; delete the empty shell to
+            // preserve the legacy all-or-nothing observable behavior.
+            let _ = self.inner.profiles.delete(created.clone()).await;
+            return Err(error);
+        }
+        if was_empty {
+            self.activate_profile(Some(created.clone())).await?;
+        }
         Ok(created)
     }
 
@@ -733,6 +800,59 @@ mod tests {
         }
     }
 
+    /// Build a facade whose profiles domain uses a real [`ProfileFileService`]
+    /// for the filesystem port and an injected fake fetcher. The refresh
+    /// transaction must materialize `{uid}.yaml` on disk so the
+    /// activate-triggered rebuild can read it back; only the network fetch is
+    /// faked.
+    async fn test_client_with_fetcher(
+        dir: &TempDir,
+        fetcher: Arc<dyn SubscriptionFetcher>,
+        core: Arc<dyn RunningCoreBridge>,
+    ) -> NyanpasuClient {
+        let (application, session_state, clash_config) = test_typed_config_clients(dir).await;
+        let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
+        let ports = Arc::new(SessionPortResolver::default());
+        ports
+            .resolve(&ClashConfig::default())
+            .expect("default ports should resolve");
+        let file_service = Arc::new(ProfileFileService::new(
+            paths.clone(),
+            ports.clone() as Arc<dyn SelfProxyPortSource>,
+        ));
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let profiles = profiles::ProfilesClient::new(
+            temp_config_path(dir, "profiles.yaml"),
+            file_service.clone() as Arc<dyn ProfileFsPort>,
+            fetcher,
+            Arc::new(rebuild::ChannelRebuildNotifier::new(tx)),
+        )
+        .await
+        .expect("profiles client should be created");
+        let client = NyanpasuClient::with_parts(
+            application,
+            session_state,
+            clash_config,
+            profiles,
+            file_service.clone() as Arc<dyn ProfileFsPort>,
+            ports,
+            paths.app_profiles_dir(),
+            Arc::new(crate::client::event_sink::NoopUiEventSink),
+            core,
+        );
+        let listener = client.clone();
+        rebuild::spawn_listener_with(rx, move || {
+            let client = listener.clone();
+            async move {
+                client
+                    .rebuild_running_config()
+                    .await
+                    .map_err(anyhow::Error::from)
+            }
+        });
+        client
+    }
+
     #[test]
     fn client_constructs_with_mandatory_typed_config_clients() {
         let dir = tempdir().expect("tempdir should be created");
@@ -980,6 +1100,37 @@ mod tests {
                 .save_profile_file(uid.clone(), "proxies: []\nmode: direct\n".into())
                 .await
                 .unwrap();
+        });
+    }
+
+    #[test]
+    fn facade_import_downloads_and_conditionally_activates() {
+        let dir = tempdir().unwrap();
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher.expect_fetch().times(1).returning(|_, _| {
+            Ok(crate::state::profiles::ports::FetchedSubscription {
+                content: "proxies: []\n".into(),
+                subscription: SubscriptionInfo::default(),
+                filename: Some("sub.yaml".into()),
+            })
+        });
+        let mut core = MockRunningCoreBridge::new();
+        core.expect_apply_config().returning(|| Ok(()));
+        core.expect_on_profile_change().returning(|| ());
+
+        tauri::async_runtime::block_on(async {
+            let client = test_client_with_fetcher(&dir, Arc::new(fetcher), Arc::new(core)).await;
+            let url = url::Url::parse("https://example.com/subs/my-sub.yaml").unwrap();
+            let uid = client.import_profile(url, None).await.expect("import");
+            let snapshot = client.get_profiles().await.unwrap();
+            assert_eq!(
+                snapshot.current.as_ref(),
+                Some(&uid),
+                "empty current must auto-activate"
+            );
+            let item = &snapshot.items[&uid];
+            assert_eq!(item.metadata.name, "my-sub"); // url last-segment fallback naming
+            assert!(item.definition.source().unwrap().is_remote());
         });
     }
 }

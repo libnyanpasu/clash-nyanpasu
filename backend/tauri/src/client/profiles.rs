@@ -1029,6 +1029,11 @@ mod tests {
 
         assert!(!report.affects_current);
         assert!(report.warnings.is_empty());
+        let created = report
+            .created
+            .clone()
+            .expect("add must report the server-generated uid");
+        assert!(report.snapshot.items.contains_key(&created));
         let snapshot = report.snapshot;
         assert_eq!(snapshot.items.len(), 1);
         let (uid, item) = snapshot.items.first().unwrap();

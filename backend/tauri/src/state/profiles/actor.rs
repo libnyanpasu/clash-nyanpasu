@@ -56,6 +56,9 @@ pub struct CommitReport {
     pub affects_current: bool,
     /// Post-commit side-effect failures are degraded, not rolled back.
     pub warnings: Vec<String>,
+    /// Server-generated uid (D13); set only by Add, consumed by import
+    /// auto-activation (design §9).
+    pub created: Option<ProfileId>,
 }
 
 #[derive(Debug, Clone)]
@@ -293,6 +296,7 @@ impl ProfilesActor {
             snapshot: Arc::new(next),
             affects_current,
             warnings,
+            created: None,
         })
     }
 
@@ -471,7 +475,7 @@ impl Actor for ProfilesActor {
                 initial_file,
                 reply,
             } => {
-                let result = {
+                let (uid, result) = {
                     let existing = Self::current_state(state);
                     let uid = Self::generate_uid(&request.definition, &existing);
                     let ext = Self::canonical_extension(&request.definition);
@@ -519,7 +523,7 @@ impl Actor for ProfilesActor {
                         metadata: request.metadata,
                         definition,
                     };
-                    Self::run_write(&myself, state, move |profiles| {
+                    let result = Self::run_write(&myself, state, move |profiles| {
                         if !profiles.append_item(item) {
                             return Err(ProfilesError::Persist("uid collision".into()));
                         }
@@ -528,8 +532,13 @@ impl Actor for ProfilesActor {
                             post_ops,
                         })
                     })
-                    .await
+                    .await;
+                    (uid, result)
                 };
+                let result = result.map(|mut report| {
+                    report.created = Some(uid.clone());
+                    report
+                });
                 let _ = reply.send(result);
             }
             ProfilesActorMessage::Delete { uid, reply } => {

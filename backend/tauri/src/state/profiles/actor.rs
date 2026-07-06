@@ -822,35 +822,58 @@ impl Actor for ProfilesActor {
                 };
 
                 if *mode == ExternalMode::Mirror {
-                    let content = match state.fs.read_external(target) {
-                        Ok(content) => content,
-                        Err(error) => {
+                    // T06A: keep the read→validate→write mirror sync off the
+                    // async actor thread. The handler awaits the blocking task,
+                    // so per-actor message ordering is unchanged.
+                    let fs = state.fs.clone();
+                    let target = target.clone();
+                    let mirror_file = materialized.file.clone();
+                    let definition = item.definition.clone();
+                    let log_uid = uid.clone();
+                    let synced = tokio::task::spawn_blocking(move || {
+                        let content = match fs.read_external(&target) {
+                            Ok(content) => content,
+                            Err(error) => {
+                                tracing::warn!(
+                                    uid = %log_uid,
+                                    target = %target,
+                                    error = %error,
+                                    "failed to read changed external profile"
+                                );
+                                return false;
+                            }
+                        };
+                        if let Err(message) = Self::validate_fetched_content(&definition, &content)
+                        {
                             tracing::warn!(
-                                uid = %uid,
+                                uid = %log_uid,
                                 target = %target,
-                                error = %error,
-                                "failed to read changed external profile"
+                                error = %message,
+                                "changed external profile failed validation"
                             );
-                            return Ok(());
+                            return false;
                         }
-                    };
-                    if let Err(message) = Self::validate_fetched_content(&item.definition, &content)
-                    {
+                        if let Err(error) = fs.write_atomic(&mirror_file, &content) {
+                            tracing::warn!(
+                                uid = %log_uid,
+                                path = %mirror_file,
+                                error = %error,
+                                "failed to mirror changed external profile"
+                            );
+                            return false;
+                        }
+                        true
+                    })
+                    .await
+                    .unwrap_or_else(|join_error| {
                         tracing::warn!(
                             uid = %uid,
-                            target = %target,
-                            error = %message,
-                            "changed external profile failed validation"
+                            error = %join_error,
+                            "mirror sync task failed to run"
                         );
-                        return Ok(());
-                    }
-                    if let Err(error) = state.fs.write_atomic(&materialized.file, &content) {
-                        tracing::warn!(
-                            uid = %uid,
-                            path = %materialized.file,
-                            error = %error,
-                            "failed to mirror changed external profile"
-                        );
+                        false
+                    });
+                    if !synced {
                         return Ok(());
                     }
                 }

@@ -588,10 +588,21 @@ impl NyanpasuClient {
     // New code must use rebuild_running_config()/regenerate_runtime().
     // Remove when: PR-4/5/6 migrate the legacy writers onto typed clients.
     fn legacy_regen_inputs() -> Result<(NyanpasuAppConfig, ClashConfig)> {
+        // MUST read latest() (draft-inclusive), never data(): legacy writers
+        // draft first and expect the regen to see it (see the FIXME above).
         let legacy_verge = crate::config::Config::verge().latest().clone();
         let legacy_clash = crate::config::Config::clash().latest().0.clone();
+        Self::legacy_regen_inputs_from(&legacy_verge, &legacy_clash)
+    }
+
+    /// Pure conversion half of [`Self::legacy_regen_inputs`], directly testable
+    /// without touching the process-global legacy config singletons.
+    fn legacy_regen_inputs_from(
+        legacy_verge: &crate::config::IVerge,
+        legacy_clash: &serde_yaml::Mapping,
+    ) -> Result<(NyanpasuAppConfig, ClashConfig)> {
         let (app, _session, clash) =
-            crate::bridge::typed_config_from_legacy_parts(&legacy_verge, &legacy_clash)
+            crate::bridge::typed_config_from_legacy_parts(legacy_verge, legacy_clash)
                 .map_err(ClientError::Anyhow)?;
         Ok((app, clash))
     }
@@ -1010,34 +1021,32 @@ mod tests {
         });
     }
 
-    /// T07 review fix regression pin: the regeneration bridge must see legacy
-    /// DRAFT state (feat::patch_clash / change_core draft first, reseed typed
-    /// actors only after commit). Locks legacy_regen_inputs on latest(), not
-    /// on typed snapshots or committed data().
+    /// T07 review fix regression pin: the regeneration bridge assembles its
+    /// inputs from legacy verge/clash values as the writers drafted them
+    /// (feat::patch_clash / change_core draft first, reseed typed actors only
+    /// after commit). Tests the pure conversion half — the production wrapper
+    /// reads Config::{verge,clash}().latest() and must stay draft-inclusive
+    /// (mutating the process-global singletons here is inherently racy, so the
+    /// wrapper's latest() choice is locked by comment + review, not by test).
     #[test]
-    fn legacy_regen_inputs_see_uncommitted_legacy_drafts() {
-        use crate::config::Config;
-        {
-            let mut mapping = serde_yaml::Mapping::new();
-            mapping.insert("mixed-port".into(), 49301.into());
-            Config::clash().draft().patch_config(mapping);
-        }
-        Config::verge().draft().clash_core = Some(crate::config::nyanpasu::ClashCore::ClashRs);
+    fn legacy_regen_inputs_conversion_reflects_drafted_fields() {
+        let verge = crate::config::IVerge {
+            clash_core: Some(crate::config::nyanpasu::ClashCore::ClashRs),
+            verge_mixed_port: Some(49301),
+            ..crate::config::IVerge::default()
+        };
+        let template = crate::config::IClashTemp::template().0;
 
-        let result = NyanpasuClient::legacy_regen_inputs();
-
-        Config::clash().discard();
-        Config::verge().discard();
-
-        let (app, clash) = result.expect("legacy regen inputs should assemble");
+        let (app, clash) = NyanpasuClient::legacy_regen_inputs_from(&verge, &template)
+            .expect("legacy regen inputs should assemble");
         assert_eq!(
             app.core,
             nyanpasu_config::application::ClashCore::ClashRs,
-            "drafted clash_core must reach the app input before commit"
+            "drafted clash_core must reach the app input"
         );
         assert_eq!(
             clash.mixed_port.start_port, 49301,
-            "drafted mixed-port must reach the clash input before commit"
+            "drafted mixed-port must reach the clash input"
         );
     }
 

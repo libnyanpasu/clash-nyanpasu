@@ -594,10 +594,15 @@ impl CoreManager {
     /// 如果涉及端口和外部控制则需要重启
     pub async fn update_config(&self) -> Result<()> {
         log::debug!(target: "app", "try to update clash config");
-
         // 更新配置
         Config::generate().await?;
+        self.apply_config().await
+    }
 
+    /// Apply the CURRENT runtime draft to the running core: check, write the
+    /// runtime file, and push it over the api. Regeneration is the caller's
+    /// responsibility (facade `regenerate_runtime` or the legacy bridge).
+    pub async fn apply_config(&self) -> Result<()> {
         // 检查配置是否正常
         self.check_config().await?;
 

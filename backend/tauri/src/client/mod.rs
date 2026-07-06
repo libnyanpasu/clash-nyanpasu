@@ -1,5 +1,6 @@
 mod application;
 mod clash_config;
+mod core_bridge;
 mod error;
 mod event_sink;
 mod ports;
@@ -26,6 +27,7 @@ use nyanpasu_config::{
 };
 use std::{path::PathBuf, sync::Arc};
 
+pub use core_bridge::{LegacyCoreBridge, RunningCoreBridge};
 pub use error::{ClientError, Result};
 pub use event_sink::{TauriUiEventSink, UiEventSink};
 pub use ports::SessionPortResolver;

@@ -2,6 +2,7 @@ mod application;
 mod clash_config;
 mod error;
 mod event_sink;
+mod ports;
 pub mod profiles;
 mod session_state;
 
@@ -27,6 +28,7 @@ use std::{path::PathBuf, sync::Arc};
 
 pub use error::{ClientError, Result};
 pub use event_sink::{TauriUiEventSink, UiEventSink};
+pub use ports::SessionPortResolver;
 
 pub struct ClientSetupArgs {
     pub paths: PathResolver,

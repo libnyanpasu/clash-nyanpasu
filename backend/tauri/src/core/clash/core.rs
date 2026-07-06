@@ -465,10 +465,11 @@ impl CoreManager {
         Config::clash().reload();
         log::debug!(target: "app", "reloaded clash config from file");
 
-        // 检查端口是否可用
-        Config::clash()
-            .latest()
-            .prepare_external_controller_port()?;
+        // T07 review fix: port ownership moved to SessionPortResolver (resolved at
+        // startup, written back by resolve_setup). Re-picking external-controller
+        // here (legacy prepare_external_controller_port) could select a NEW port on
+        // core restart — e.g. while the old core still holds the current one — and
+        // desync the api client from the runtime config generated off session ports.
         let run_type = RunType::default();
         let instance = Arc::new(Instance::try_new(run_type)?);
 

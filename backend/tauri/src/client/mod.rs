@@ -227,7 +227,7 @@ impl NyanpasuClient {
                 let client = bridge.clone();
                 async move {
                     client
-                        .regenerate_runtime()
+                        .regenerate_runtime_for_legacy()
                         .await
                         .map_err(anyhow::Error::from)
                 }
@@ -506,6 +506,45 @@ impl NyanpasuClient {
         let profiles = self.inner.profiles.get().await?;
         let clash = self.get_clash_config().await?;
         let app = self.get_app_config().await?;
+        self.regenerate_runtime_with(profiles, clash, app).await
+    }
+
+    /// Legacy-draft snapshot -> typed build inputs for the regeneration bridge.
+    // FIXME(actor-migration): legacy-draft-aware input assembly for BC callers.
+    // Legacy Config::generate() read Config::{verge,clash}().latest() — including
+    // uncommitted drafts. Legacy side-effect writers (feat::patch_clash /
+    // patch_verge tun+service paths, CoreManager::change_core) draft first and
+    // only reseed typed actors after the mutation commits, so regenerating from
+    // typed snapshots would run one step behind (stale ports/secret/core).
+    // Convert legacy latest() via the reseed converters instead — without
+    // mutating the typed actors, so a later discard() stays a discard.
+    // New code must use rebuild_running_config()/regenerate_runtime().
+    // Remove when: PR-4/5/6 migrate the legacy writers onto typed clients.
+    fn legacy_regen_inputs() -> Result<(NyanpasuAppConfig, ClashConfig)> {
+        let legacy_verge = crate::config::Config::verge().latest().clone();
+        let legacy_clash = crate::config::Config::clash().latest().0.clone();
+        let (app, _session, clash) =
+            crate::bridge::typed_config_from_legacy_parts(&legacy_verge, &legacy_clash)
+                .map_err(ClientError::Anyhow)?;
+        Ok((app, clash))
+    }
+
+    /// Regeneration entry for legacy bridge callers (`CoreManager::update_config`,
+    /// `feat::patch_clash`/`patch_verge` side-effect paths, `change_core`).
+    /// Profiles still come from the typed actor: their legacy writers are
+    /// rewritten against the facade in T08.
+    pub(crate) async fn regenerate_runtime_for_legacy(&self) -> Result<()> {
+        let (app, clash) = Self::legacy_regen_inputs()?;
+        let profiles = self.inner.profiles.get().await?;
+        self.regenerate_runtime_with(profiles, clash, app).await
+    }
+
+    async fn regenerate_runtime_with(
+        &self,
+        profiles: Arc<Profiles>,
+        clash: ClashConfig,
+        app: NyanpasuAppConfig,
+    ) -> Result<()> {
         let resolved_ports = self
             .inner
             .ports
@@ -849,6 +888,37 @@ mod tests {
                 .expect("typed app patch should succeed");
             assert!(client.get_app_config().await.unwrap().enable_system_proxy);
         });
+    }
+
+    /// T07 review fix regression pin: the regeneration bridge must see legacy
+    /// DRAFT state (feat::patch_clash / change_core draft first, reseed typed
+    /// actors only after commit). Locks legacy_regen_inputs on latest(), not
+    /// on typed snapshots or committed data().
+    #[test]
+    fn legacy_regen_inputs_see_uncommitted_legacy_drafts() {
+        use crate::config::Config;
+        {
+            let mut mapping = serde_yaml::Mapping::new();
+            mapping.insert("mixed-port".into(), 49301.into());
+            Config::clash().draft().patch_config(mapping);
+        }
+        Config::verge().draft().clash_core = Some(crate::config::nyanpasu::ClashCore::ClashRs);
+
+        let result = NyanpasuClient::legacy_regen_inputs();
+
+        Config::clash().discard();
+        Config::verge().discard();
+
+        let (app, clash) = result.expect("legacy regen inputs should assemble");
+        assert_eq!(
+            app.core,
+            nyanpasu_config::application::ClashCore::ClashRs,
+            "drafted clash_core must reach the app input before commit"
+        );
+        assert_eq!(
+            clash.mixed_port.start_port, 49301,
+            "drafted mixed-port must reach the clash input before commit"
+        );
     }
 
     #[test]

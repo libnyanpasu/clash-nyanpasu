@@ -471,6 +471,14 @@ impl NyanpasuClient {
 - 端口:`SessionPortResolver`(pick_and_try_port + 指纹缓存,eager 首解析于核启动前)兼任 `SelfProxyPortSource`;legacy 镜像回写 mixed-port/external-controller,`prepare_external_controller_port` 双头解析删除。**T11 必查**:typed `overrides.secret` 与 legacy IClashTemp secret 的一致性(api 客户端 401 风险,本卡未回写 secret——字段私有)。
 - 映射:exists_keys←applied_fields(artifact.rs §9.3);postprocessing 按 SnapshotNodeKey 变体表(Scoped→scopes[host]transforms[idx]]、Global→global[global_transforms[idx]]、BuiltinTransform→global[builtin 名]、其余→advice)。文件三方法 fs 直调为有意取舍(小 IO,与 legacy ipc 等同)。
 
+**2026-07-07 评审处置(codex 49/100 NEEDS_IMPROVEMENT;antigravity 3 连败超时跳过;修复由 Claude 接管——codex 后端故障复发)**:
+
+- Critical(已修,部分确认):再生成桥原从 typed 快照取数,而 legacy 副作用写者**先 draft 后 reseed**(`feat::patch_clash`/`patch_verge` tun+service 路径/`change_core`),regen 时 typed 落后一拍(旧端口/secret/核)。→ facade 增 `legacy_regen_inputs()`(读 legacy `latest()` 经 reseed 转换器 `typed_config_from_legacy_parts` 组装 clash/app 输入,**不动 typed actor**,discard 语义保真)+ `regenerate_runtime_for_legacy()`,REGEN_BRIDGE handler 切换至此;新 caller 的 `regenerate_runtime()` 仍走 typed 快照。分项核实:patch_clash **确认**(ipc:503 直调,无 reseed);change_core **确认**(reseed 在 mutation 完成后);patch_verge tun/service **确认**(桥内 mutation 先行);`patch_profiles_config_inner` **不修**——profiles 命令面 T08 整体重写(中间态不可运行属预期),桥内 profiles 仍取 typed actor。
+- Major①(已修):`run_core_inner` 残留 `prepare_external_controller_port` 二次选端口(Random 策略核重启时会另选新口与 api 客户端脱节)→ 删除,端口所有权归 `SessionPortResolver`(`config/clash/mod.rs:105` 定义成为无调用者,T10 一并清)。
+- Major②(部分补):新增回归钉 `legacy_regen_inputs_see_uncommitted_legacy_drafts`(draft mixed-port/clash_core 必须进桥输入);run_core_inner 不二次选口无法离核测试,以删除代码 + 注释锁定。
+- Minor(已注):REGEN_BRIDGE first-install-wins 限制注释补记。
+- **台账修正:7→8 处**(新增 `legacy_regen_inputs` 的 FIXME legacy-draft-aware 输入组装块)。
+
 ---
 
 ### T08 — IPC BC 切换(13 → 16 条)

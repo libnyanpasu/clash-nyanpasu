@@ -46,6 +46,9 @@ where
 // receive the client by injection yet. New code must use
 // NyanpasuClient::rebuild_running_config() / regenerate_runtime().
 // Remove after PR-4/PR-5 migrate those flows onto injected clients.
+// Known limitation (accepted): installation is first-install-wins — a second
+// client constructed in the same process (tests) keeps the FIRST client's
+// handler, including its paths. Production installs exactly once at setup.
 type RegenRequest = oneshot::Sender<anyhow::Result<()>>;
 static REGEN_BRIDGE: OnceCell<mpsc::UnboundedSender<RegenRequest>> = OnceCell::new();
 

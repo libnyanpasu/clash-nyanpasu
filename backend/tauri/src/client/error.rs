@@ -14,6 +14,8 @@ pub enum ClientError {
     Storage(#[from] StorageOperationError),
     #[error(transparent)]
     Anyhow(#[from] anyhow::Error),
+    #[error(transparent)]
+    Profiles(#[from] crate::state::profiles::actor::ProfilesError),
     #[error("{0}")]
     Custom(String),
 }

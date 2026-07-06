@@ -43,6 +43,8 @@ pub enum IpcError {
     Storage(#[from] StorageOperationError),
     #[error(transparent)]
     Anyhow(#[from] anyhow::Error),
+    #[error(transparent)]
+    Profiles(#[from] crate::state::profiles::actor::ProfilesError),
     #[error("{0}")]
     Custom(String),
 }
@@ -61,6 +63,7 @@ impl From<ClientError> for IpcError {
             ClientError::SerdeJson(err) => IpcError::SerdeJson(err),
             ClientError::Storage(err) => IpcError::Storage(err),
             ClientError::Anyhow(err) => IpcError::Anyhow(err),
+            ClientError::Profiles(err) => IpcError::Profiles(err),
             ClientError::Custom(err) => IpcError::Custom(err),
         }
     }

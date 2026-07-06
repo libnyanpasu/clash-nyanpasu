@@ -523,6 +523,11 @@ impl NyanpasuClient {
 - bindings.ts 导出移交 T09 首步:该冻结测试每次 `cargo test` 都会重生成 bindings.ts,但提交它会触发 pre-commit lint-staged 的前端 `tsc`(use-profile.ts 仍调旧命令)而失败——故本卡**不提交 bindings.ts**(测试后 `git checkout` 还原);T09 首步重生成 + 改 callers 同一 commit 落账(前端红形态见 §4)。
 - 台账(TODO/FIXME(actor-migration),backend/tauri/src):20 → 18,净 −2(删 `ipc.rs` 的 get_profiles bridge + patch_profiles_config_inner bridge);本卡零新增。
 
+**2026-07-07 评审处置(codex 持续宕机、antigravity 3 连败超时——本卡评审由 Claude 替补完成,外部双模型复审延期)**:
+
+- Claude 独立对账:台账 18 ✓、`ipc.rs` 零 `Config::profiles()`/`ProfilesBuilder` ✓、specta 16 命令注册 ✓、actor.rs 仅 derive 注解 ✓;`import_profile` 失败语义(占位回删/条件激活)与薄适配器纪律逐条核过,无 Critical/Major。
+- 执行报告揭露的 flaky 测试(T07 的 `legacy_regen_inputs_see_uncommitted_legacy_drafts`)根因 = legacy 全局单例非密闭(隔离跑时惰性加载宿主真实配置且反序列化失败;全量跑时与共享 draft 槽竞态,discard 可吞并发提交)→ 已修 `3b529c55`:`legacy_regen_inputs` 拆出纯转换半段 `legacy_regen_inputs_from` 直接测,生产包装 3 行保持 draft 可见的 `latest()` 读(注释锁定)。
+
 ---
 
 ### T09 — 前端适配

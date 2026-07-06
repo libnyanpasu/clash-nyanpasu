@@ -11,15 +11,14 @@ use std::{path::PathBuf, sync::Arc};
 use nyanpasu_config::{
     application::ClashCore,
     clash::config::overrides::ClashGuardOverrides,
-    profile::{
-        CompositionConfig, ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath,
-        MaterializedFile, OverlayTransform, ProfileDefinition, ProfileId, ProfileItem,
-        ProfileMetadata, ProfileSource, Profiles, TransformDefinition,
-    },
+    profile::{ProfileId, Profiles},
     runtime::executor::ResolvedPortBindings,
 };
 
-use super::{EnhanceScriptRunner, FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder};
+use super::{
+    EnhanceScriptRunner, FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder,
+    golden_support::{composition, file_config, overlay},
+};
 
 const SUB_A: &str =
     "proxies:\n  - name: a1\n    type: ss\n    server: a.example.com\n    port: 443\n";
@@ -56,67 +55,6 @@ fn golden_input(profiles: Profiles) -> RuntimeBuildInput {
     input.clash.enable_clash_fields = false; // 基线依赖 whitelist off,显式声明
     input.app.enable_builtin_enhanced = false; // 各场景按需显式开启
     input
-}
-
-fn managed(name: &str) -> MaterializedFile {
-    MaterializedFile {
-        file: ManagedProfilePath::new(name).unwrap(),
-        updated_at: None,
-    }
-}
-
-fn metadata(name: &str) -> ProfileMetadata {
-    ProfileMetadata {
-        name: name.into(),
-        desc: None,
-    }
-}
-
-fn file_config(uid: &str, file: &str, transforms: &[&str]) -> ProfileItem {
-    ProfileItem {
-        uid: ProfileId(uid.into()),
-        metadata: metadata(uid),
-        definition: ProfileDefinition::Config {
-            config: ConfigDefinition::File(FileConfig {
-                source: ProfileSource::Local {
-                    binding: LocalBinding::Managed {
-                        materialized: managed(file),
-                    },
-                },
-                transforms: transforms.iter().map(|t| ProfileId((*t).into())).collect(),
-            }),
-        },
-    }
-}
-
-fn overlay(uid: &str, file: &str) -> ProfileItem {
-    ProfileItem {
-        uid: ProfileId(uid.into()),
-        metadata: metadata(uid),
-        definition: ProfileDefinition::Transform {
-            transform: TransformDefinition::Overlay(OverlayTransform {
-                source: ProfileSource::Local {
-                    binding: LocalBinding::Managed {
-                        materialized: managed(file),
-                    },
-                },
-            }),
-        },
-    }
-}
-
-fn composition(uid: &str, base: Option<&str>, extend: &[&str], transforms: &[&str]) -> ProfileItem {
-    ProfileItem {
-        uid: ProfileId(uid.into()),
-        metadata: metadata(uid),
-        definition: ProfileDefinition::Config {
-            config: ConfigDefinition::Composition(CompositionConfig {
-                base: base.map(|b| ProfileId(b.into())),
-                extend_proxies_from: extend.iter().map(|e| ProfileId((*e).into())).collect(),
-                transforms: transforms.iter().map(|t| ProfileId((*t).into())).collect(),
-            }),
-        },
-    }
 }
 
 fn build_to_yaml(input: &RuntimeBuildInput, dir: &std::path::Path) -> serde_yaml::Value {

@@ -453,7 +453,10 @@ fn network_widget_to_legacy(
 mod tests {
     use super::*;
     use crate::{
-        client::{ClientSetupArgs, LegacyBridgeSet, NyanpasuClient},
+        client::{
+            ClientSetupArgs, LegacyBridgeSet, MockRunningCoreBridge, NoopUiEventSink,
+            NyanpasuClient,
+        },
         config::{
             IClashTemp,
             nyanpasu::{
@@ -519,6 +522,8 @@ mod tests {
                 window: Arc::new(NoopWindowBridge),
                 clash: Arc::new(NoopClashBridge),
             },
+            ui_sink: Arc::new(NoopUiEventSink),
+            core: Arc::new(MockRunningCoreBridge::new()),
         })
         .expect("client should construct with typed config actors");
         let bridge = LegacyVergeBridge::new(client.clone(), legacy_verge_path);

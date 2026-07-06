@@ -13,9 +13,21 @@ use self::{
     session_state::SessionStateClient,
 };
 use crate::{
-    state::mirror::{
-        ClashLegacyBridge as ClashLegacyBridgeTrait, VergeLegacyBridge as VergeLegacyBridgeTrait,
-        WindowLegacyBridge as WindowLegacyBridgeTrait,
+    enhance::{
+        EnhanceScriptRunner, FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder,
+        runtime_from_artifact,
+    },
+    service::profile_file::{ProfileFileService, SelfProxyPortSource},
+    state::{
+        mirror::{
+            ClashLegacyBridge as ClashLegacyBridgeTrait,
+            VergeLegacyBridge as VergeLegacyBridgeTrait,
+            WindowLegacyBridge as WindowLegacyBridgeTrait,
+        },
+        profiles::{
+            CommitReport, NewProfileRequest, ProfilesError, ReorderOp,
+            ports::{ProfileFsPort, SubscriptionFetcher},
+        },
     },
     utils::path::PathResolver,
 };
@@ -24,18 +36,28 @@ use camino::Utf8PathBuf;
 use nyanpasu_config::{
     application::{NyanpasuAppConfig, NyanpasuAppConfigPatch},
     clash::config::{ClashConfig, ClashConfigPatch},
+    profile::{
+        LocalBinding, ProfileDefinition, ProfileId, ProfileMetadataPatch, ProfileSource, Profiles,
+        RemoteProfileOptionsPatch,
+    },
     state::{PersistentState, PersistentStatePatch},
 };
 use std::{path::PathBuf, sync::Arc};
 
+#[cfg(test)]
+pub use core_bridge::MockRunningCoreBridge;
 pub use core_bridge::{LegacyCoreBridge, RunningCoreBridge};
 pub use error::{ClientError, Result};
+#[cfg(test)]
+pub use event_sink::NoopUiEventSink;
 pub use event_sink::{TauriUiEventSink, UiEventSink};
 pub use ports::SessionPortResolver;
 
 pub struct ClientSetupArgs {
     pub paths: PathResolver,
     pub bridges: LegacyBridgeSet,
+    pub ui_sink: Arc<dyn UiEventSink>,
+    pub core: Arc<dyn RunningCoreBridge>,
 }
 
 #[derive(Clone)]
@@ -122,30 +144,119 @@ struct NyanpasuClientInner {
     application: ApplicationClient,
     session_state: SessionStateClient,
     clash_config: ClashConfigClient,
+    profiles: profiles::ProfilesClient,
+    fs: Arc<dyn ProfileFsPort>,
+    ports: Arc<SessionPortResolver>,
+    profiles_dir: PathBuf,
+    ui_sink: Arc<dyn UiEventSink>,
+    core: Arc<dyn RunningCoreBridge>,
 }
 
 impl NyanpasuClient {
     pub fn try_new_with_args(args: ClientSetupArgs) -> anyhow::Result<Self> {
-        let ClientSetupArgs { paths, bridges } = args;
-        let (application, session_state, clash_config) =
-            tauri::async_runtime::block_on(new_typed_config_clients(paths, bridges))?;
-        Ok(Self::with_typed_clients(
+        let ClientSetupArgs {
+            paths,
+            bridges,
+            ui_sink,
+            core,
+        } = args;
+        let profiles_dir = paths.app_profiles_dir();
+        let profiles_path = utf8_path(paths.profiles_path())?;
+        let (application, session_state, clash_config, profiles, ports, fs, rebuild_rx) =
+            tauri::async_runtime::block_on(async move {
+                let (application, session_state, clash_config) =
+                    new_typed_config_clients(paths.clone(), bridges).await?;
+
+                // Eager session port resolution: the core is not running yet,
+                // so probing strategies is race-free (design §19.2 caller duty).
+                let ports = Arc::new(SessionPortResolver::default());
+                let clash_snapshot = clash_config.get().await?.state;
+                ports
+                    .resolve(&clash_snapshot)
+                    .context("failed to resolve session ports")?;
+
+                let file_service = Arc::new(ProfileFileService::new(
+                    paths,
+                    ports.clone() as Arc<dyn SelfProxyPortSource>,
+                ));
+                let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+                let profiles = profiles::ProfilesClient::new(
+                    profiles_path,
+                    file_service.clone() as Arc<dyn ProfileFsPort>,
+                    file_service.clone() as Arc<dyn SubscriptionFetcher>,
+                    Arc::new(rebuild::ChannelRebuildNotifier::new(tx)),
+                )
+                .await?;
+                anyhow::Ok((
+                    application,
+                    session_state,
+                    clash_config,
+                    profiles,
+                    ports,
+                    file_service as Arc<dyn ProfileFsPort>,
+                    rx,
+                ))
+            })?;
+        let client = Self::with_parts(
             application,
             session_state,
             clash_config,
-        ))
+            profiles,
+            fs,
+            ports,
+            profiles_dir,
+            ui_sink,
+            core,
+        );
+        {
+            let listener = client.clone();
+            rebuild::spawn_listener_with(rebuild_rx, move || {
+                let client = listener.clone();
+                async move {
+                    client
+                        .rebuild_running_config()
+                        .await
+                        .map_err(anyhow::Error::from)
+                }
+            });
+        }
+        {
+            let bridge = client.clone();
+            rebuild::install_regen_bridge(move || {
+                let client = bridge.clone();
+                async move {
+                    client
+                        .regenerate_runtime()
+                        .await
+                        .map_err(anyhow::Error::from)
+                }
+            });
+        }
+        Ok(client)
     }
 
-    fn with_typed_clients(
+    fn with_parts(
         application: ApplicationClient,
         session_state: SessionStateClient,
         clash_config: ClashConfigClient,
+        profiles: profiles::ProfilesClient,
+        fs: Arc<dyn ProfileFsPort>,
+        ports: Arc<SessionPortResolver>,
+        profiles_dir: PathBuf,
+        ui_sink: Arc<dyn UiEventSink>,
+        core: Arc<dyn RunningCoreBridge>,
     ) -> Self {
         Self {
             inner: Arc::new(NyanpasuClientInner {
                 application,
                 session_state,
                 clash_config,
+                profiles,
+                fs,
+                ports,
+                profiles_dir,
+                ui_sink,
+                core,
             }),
         }
     }
@@ -200,6 +311,226 @@ impl NyanpasuClient {
         client.replace(state).await?;
         Ok(())
     }
+
+    // ---- profiles domain (PR-3 T07) ----
+
+    pub async fn get_profiles(&self) -> Result<Arc<Profiles>> {
+        Ok(self.inner.profiles.get().await?)
+    }
+
+    async fn after_commit(&self, report: &CommitReport) -> Result<()> {
+        if report.affects_current {
+            self.rebuild_running_config().await?;
+        }
+        Ok(())
+    }
+
+    pub async fn add_profile(
+        &self,
+        request: NewProfileRequest,
+        initial_file: Option<String>,
+    ) -> Result<ProfileId> {
+        let report = self.inner.profiles.add(request, initial_file).await?;
+        let created = report
+            .created
+            .clone()
+            .ok_or_else(|| ClientError::Custom("add committed without a created uid".into()))?;
+        self.after_commit(&report).await?;
+        Ok(created)
+    }
+
+    pub async fn delete_profile(&self, uid: ProfileId) -> Result<()> {
+        let report = self.inner.profiles.delete(uid).await?;
+        self.after_commit(&report).await
+    }
+
+    pub async fn reorder_profile(&self, active: ProfileId, over: ProfileId) -> Result<()> {
+        let report = self
+            .inner
+            .profiles
+            .reorder(ReorderOp::Move { active, over })
+            .await?;
+        self.after_commit(&report).await
+    }
+
+    pub async fn reorder_profiles_by_list(&self, list: Vec<ProfileId>) -> Result<()> {
+        let report = self.inner.profiles.reorder(ReorderOp::ByList(list)).await?;
+        self.after_commit(&report).await
+    }
+
+    pub async fn refresh_profile(
+        &self,
+        uid: ProfileId,
+        patch: Option<RemoteProfileOptionsPatch>,
+    ) -> Result<()> {
+        let report = self.inner.profiles.refresh(uid, patch).await?;
+        self.after_commit(&report).await
+    }
+
+    pub async fn patch_profile_metadata(
+        &self,
+        uid: ProfileId,
+        patch: ProfileMetadataPatch,
+    ) -> Result<()> {
+        let report = self.inner.profiles.patch_metadata(uid, patch).await?;
+        self.after_commit(&report).await
+    }
+
+    pub async fn patch_remote_profile_options(
+        &self,
+        uid: ProfileId,
+        patch: RemoteProfileOptionsPatch,
+    ) -> Result<()> {
+        let report = self.inner.profiles.patch_remote_options(uid, patch).await?;
+        self.after_commit(&report).await
+    }
+
+    pub async fn replace_profile_definition(
+        &self,
+        uid: ProfileId,
+        definition: ProfileDefinition,
+    ) -> Result<()> {
+        let report = self
+            .inner
+            .profiles
+            .replace_definition(uid, definition)
+            .await?;
+        self.after_commit(&report).await
+    }
+
+    pub async fn activate_profile(&self, uid: Option<ProfileId>) -> Result<()> {
+        let report = self.inner.profiles.set_current(uid).await?;
+        self.after_commit(&report).await
+    }
+
+    pub async fn set_global_transforms(&self, ids: Vec<ProfileId>) -> Result<()> {
+        let report = self.inner.profiles.set_global_transforms(ids).await?;
+        self.after_commit(&report).await
+    }
+
+    pub async fn get_profile_materialized_path(&self, uid: ProfileId) -> Result<PathBuf> {
+        let snapshot = self.inner.profiles.get().await?;
+        let item = snapshot
+            .items
+            .get(&uid)
+            .ok_or(ProfilesError::ProfileNotFound(uid))?;
+        let source = item
+            .definition
+            .source()
+            .ok_or(ProfilesError::ProfileHasNoFile)?;
+        Ok(self
+            .inner
+            .profiles_dir
+            .join(source.materialized().file.as_path()))
+    }
+
+    pub async fn read_profile_file(&self, uid: ProfileId) -> Result<String> {
+        let snapshot = self.inner.profiles.get().await?;
+        let item = snapshot
+            .items
+            .get(&uid)
+            .ok_or_else(|| ProfilesError::ProfileNotFound(uid.clone()))?;
+        let source = item
+            .definition
+            .source()
+            .ok_or(ProfilesError::ProfileHasNoFile)?;
+        let raw = self
+            .inner
+            .fs
+            .read(&source.materialized().file)
+            .map_err(ClientError::Anyhow)?;
+        match &item.definition {
+            ProfileDefinition::Config { .. } => {
+                crate::service::profile_file::normalize_yaml_document(&raw)
+                    .map_err(ClientError::Anyhow)
+            }
+            ProfileDefinition::Transform { .. } => Ok(raw),
+        }
+    }
+
+    pub async fn save_profile_file(&self, uid: ProfileId, data: String) -> Result<()> {
+        let snapshot = self.inner.profiles.get().await?;
+        let item = snapshot
+            .items
+            .get(&uid)
+            .ok_or_else(|| ProfilesError::ProfileNotFound(uid.clone()))?;
+        let source = item
+            .definition
+            .source()
+            .ok_or(ProfilesError::ProfileHasNoFile)?;
+        match source {
+            ProfileSource::Local {
+                binding:
+                    LocalBinding::Managed {
+                        materialized: materialized_file,
+                    },
+            } => {
+                self.inner
+                    .fs
+                    .write_atomic(&materialized_file.file, &data)
+                    .map_err(ClientError::Anyhow)?;
+                Ok(())
+            }
+            ProfileSource::Remote { .. } => Err(ProfilesError::FileNotWritable {
+                reason: "remote profiles are updater-owned".into(),
+            }
+            .into()),
+            ProfileSource::Local {
+                binding: LocalBinding::External { .. },
+            } => Err(ProfilesError::FileNotWritable {
+                reason: "external profiles are edited at their source".into(),
+            }
+            .into()),
+        }
+    }
+
+    pub async fn rebuild_running_config(&self) -> Result<()> {
+        self.regenerate_runtime().await?;
+        self.inner
+            .core
+            .apply_config()
+            .await
+            .map_err(ClientError::Anyhow)?;
+        self.inner.ui_sink.refresh_clash();
+        // 用户决策 2026-07-06:所有 rebuild 统一触发(选项默认 false 门控)。
+        self.inner.core.on_profile_change().await;
+        Ok(())
+    }
+
+    pub(crate) async fn regenerate_runtime(&self) -> Result<()> {
+        let profiles = self.inner.profiles.get().await?;
+        let clash = self.get_clash_config().await?;
+        let app = self.get_app_config().await?;
+        let resolved_ports = self
+            .inner
+            .ports
+            .resolve(&clash)
+            .map_err(ClientError::Anyhow)?;
+        let profiles_dir = self.inner.profiles_dir.clone();
+        let core = app.core;
+        let builtin_enabled = app.enable_builtin_enhanced;
+        let runtime =
+            tokio::task::spawn_blocking(move || -> anyhow::Result<crate::config::IRuntime> {
+                let content = FsProfileContentSource::new(profiles_dir);
+                let scripts = EnhanceScriptRunner::new()?;
+                let input = RuntimeBuildInput {
+                    profiles: profiles.clone(),
+                    clash,
+                    app,
+                    resolved_ports,
+                };
+                let artifact = RuntimeBuilder::build(&input, &content, &scripts)?;
+                runtime_from_artifact(&artifact, &profiles, core, builtin_enabled)
+            })
+            .await
+            .map_err(|error| ClientError::Custom(format!("runtime build task failed: {error}")))?
+            .map_err(ClientError::Anyhow)?;
+        // TODO(actor-migration): temporary bridge to Config::runtime() draft (B8).
+        // Reason: runtime derivation cleanup is PR-4.
+        // Remove when: PR-4 lands RuntimeArtifact in SimpleStateManager.
+        *crate::config::Config::runtime().draft() = runtime;
+        Ok(())
+    }
 }
 
 fn utf8_path(path: PathBuf) -> anyhow::Result<Utf8PathBuf> {
@@ -210,9 +541,21 @@ fn utf8_path(path: PathBuf) -> anyhow::Result<Utf8PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::mirror::{ClashLegacyBridge, VergeLegacyBridge, WindowLegacyBridge};
+    use crate::{
+        client::core_bridge::MockRunningCoreBridge,
+        state::{
+            mirror::{ClashLegacyBridge, VergeLegacyBridge, WindowLegacyBridge},
+            profiles::ports::{MockProfileFsPort, MockRebuildNotifier, MockSubscriptionFetcher},
+        },
+    };
     use camino::Utf8PathBuf;
-    use nyanpasu_config::state::window::{WindowLabel, WindowState};
+    use nyanpasu_config::{
+        profile::{
+            ConfigDefinition, FileConfig, LocalBinding, ManagedProfilePath, MaterializedFile,
+            ProfileDefinition, ProfileMetadata, ProfileSource,
+        },
+        state::window::{WindowLabel, WindowState},
+    };
     use std::{collections::BTreeMap, sync::Mutex as StdMutex};
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
@@ -305,7 +648,45 @@ mod tests {
 
     async fn test_client(dir: &TempDir) -> NyanpasuClient {
         let (application, session_state, clash_config) = test_typed_config_clients(dir).await;
-        NyanpasuClient::with_typed_clients(application, session_state, clash_config)
+        let profiles = profiles::ProfilesClient::new(
+            temp_config_path(dir, "profiles.yaml"),
+            Arc::new(MockProfileFsPort::new()),
+            Arc::new(MockSubscriptionFetcher::new()),
+            Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .expect("profiles client should be created");
+        let ports = Arc::new(SessionPortResolver::default());
+        ports
+            .resolve(&ClashConfig::default())
+            .expect("default ports should resolve");
+        NyanpasuClient::with_parts(
+            application,
+            session_state,
+            clash_config,
+            profiles,
+            Arc::new(MockProfileFsPort::new()),
+            ports,
+            dir.path().join("profiles"),
+            Arc::new(crate::client::event_sink::NoopUiEventSink),
+            Arc::new(MockRunningCoreBridge::new()),
+        )
+    }
+
+    fn test_profiles_client_args(
+        dir: &TempDir,
+        core: Arc<dyn RunningCoreBridge>,
+    ) -> ClientSetupArgs {
+        ClientSetupArgs {
+            paths: PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data")),
+            bridges: LegacyBridgeSet {
+                verge: Arc::new(NoopVergeBridge),
+                window: Arc::new(NoopWindowBridge),
+                clash: Arc::new(NoopClashBridge),
+            },
+            ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
+            core,
+        }
     }
 
     #[test]
@@ -449,6 +830,8 @@ mod tests {
                 window: Arc::new(NoopWindowBridge),
                 clash: Arc::new(NoopClashBridge),
             },
+            ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
+            core: Arc::new(MockRunningCoreBridge::new()),
         })
         .expect("client should construct with typed config actors");
 
@@ -460,6 +843,68 @@ mod tests {
                 .await
                 .expect("typed app patch should succeed");
             assert!(client.get_app_config().await.unwrap().enable_system_proxy);
+        });
+    }
+
+    #[test]
+    fn facade_add_activate_rebuilds_via_core_bridge() {
+        let dir = tempdir().unwrap();
+        let mut core = MockRunningCoreBridge::new();
+        core.expect_apply_config().times(1).returning(|| Ok(()));
+        core.expect_on_profile_change().times(1).returning(|| ());
+        let client =
+            NyanpasuClient::try_new_with_args(test_profiles_client_args(&dir, Arc::new(core)))
+                .unwrap();
+
+        tauri::async_runtime::block_on(async {
+            let uid = client
+                .add_profile(
+                    NewProfileRequest {
+                        metadata: ProfileMetadata {
+                            name: "t".into(),
+                            desc: None,
+                        },
+                        definition: ProfileDefinition::Config {
+                            config: ConfigDefinition::File(FileConfig {
+                                source: ProfileSource::Local {
+                                    binding: LocalBinding::Managed {
+                                        materialized: MaterializedFile {
+                                            file: ManagedProfilePath::new("t.yaml").unwrap(),
+                                            updated_at: None,
+                                        },
+                                    },
+                                },
+                                transforms: vec![],
+                            }),
+                        },
+                    },
+                    Some("proxies: []\nmode: rule\n".into()),
+                )
+                .await
+                .expect("add");
+            client
+                .activate_profile(Some(uid.clone()))
+                .await
+                .expect("activate");
+            let runtime = crate::config::Config::runtime();
+            let runtime = runtime.latest();
+            let config = runtime.config.as_ref().expect("runtime draft written");
+            assert!(config.get("mixed-port").is_some());
+            let path = client
+                .get_profile_materialized_path(uid.clone())
+                .await
+                .unwrap();
+            let expected_file = format!("{}.yaml", uid.0);
+            assert_eq!(
+                path.file_name().and_then(|name| name.to_str()),
+                Some(expected_file.as_str())
+            );
+            let content = client.read_profile_file(uid.clone()).await.unwrap();
+            assert!(content.contains("proxies"));
+            client
+                .save_profile_file(uid.clone(), "proxies: []\nmode: direct\n".into())
+                .await
+                .unwrap();
         });
     }
 }

@@ -610,4 +610,28 @@ mod tests {
         assert_eq!(clash.external_controller.host.to_string(), "127.0.0.1");
         assert_eq!(clash.external_controller.port.start_port, 19090);
     }
+
+    #[test]
+    fn legacy_clash_null_overrides_keep_defaults() {
+        let (mut ctx, _temp) = test_ctx();
+        write_yaml(&ctx.nyanpasu_config_path(), &IVerge::template());
+        std::fs::write(
+            ctx.clash_guard_overrides_path(),
+            "mode:\nlog-level:\nallow-lan:\nipv6:\n",
+        )
+        .unwrap();
+
+        SPLIT_LEGACY_CONFIG.run(&mut ctx).unwrap();
+
+        let clash: ClashConfig = read_typed(&ctx.clash_config_path());
+        let overrides = serde_yaml::to_value(&clash.overrides).unwrap();
+        let overrides = overrides.as_mapping().unwrap();
+        assert_eq!(overrides.get("mode"), Some(&Value::String("rule".into())));
+        assert_eq!(
+            overrides.get("log-level"),
+            Some(&Value::String("info".into()))
+        );
+        assert_eq!(overrides.get("allow-lan"), Some(&Value::Bool(false)));
+        assert_eq!(overrides.get("ipv6"), Some(&Value::Bool(false)));
+    }
 }

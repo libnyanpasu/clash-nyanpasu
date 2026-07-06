@@ -394,6 +394,12 @@ impl RuntimeBuilder {
 
 **单独 plan 时读**: T06 卡「2026-07-06 契约修正」评审处置条;`state/profiles/scheduler.rs`(Mirror 分支现状);`enhance/runtime_builder.rs` 现有测试(`base_input()` 可复用)。
 
+**2026-07-06 执行修正(T06A 实物)**:
+
+- 第 1 项按实物收缩:`..`/穿越拒绝防御与构造侧测试**原已在位**(nyanpasu-config path.rs:30-40/60-67 + validation.rs:166-171;T06 评审处置④的「反序列化侧缺失」表述与实物不符)——本卡实际交付 = profiles 文档反序列化面的回归钉测试(validation.rs 尾部)。
+- golden 套件实名:`enhance/golden.rs` + `enhance/fixtures/golden/{composition_global_chain,builtin_mihomo,builtin_clash_rs,whitelist_on}.yaml`;重铸 `GOLDEN_BLESS=1 cargo test -p clash-nyanpasu golden_`;确定性 = 固定 `secret: golden-secret` + tun off。**T07 切换后本套件须原样全绿,改 fixtures = 行为回归须勘误。**
+- Mirror 同步已移入 `spawn_blocking`(actor.rs `ExternalFileChanged` Mirror 分支;消息顺序不变,warn 日志逐字保留)。
+
 ---
 
 ### T07 — composition root + facade 接线(⚠️ 切换组起点)

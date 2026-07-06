@@ -40,6 +40,7 @@ use nyanpasu_config::{
         LocalBinding, ProfileDefinition, ProfileId, ProfileMetadataPatch, ProfileSource, Profiles,
         RemoteProfileOptionsPatch,
     },
+    runtime::executor::ResolvedPortBindings,
     state::{PersistentState, PersistentStatePatch},
 };
 use std::{path::PathBuf, sync::Arc};
@@ -482,6 +483,10 @@ impl NyanpasuClient {
             }
             .into()),
         }
+    }
+
+    pub fn session_ports(&self) -> Option<ResolvedPortBindings> {
+        self.inner.ports.cached_ports()
     }
 
     pub async fn rebuild_running_config(&self) -> Result<()> {

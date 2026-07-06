@@ -463,6 +463,14 @@ impl NyanpasuClient {
 - 锚点修正:删「旧 `patch_profiles_config:80` 本卡保留」条——`NyanpasuClient` 无此方法(唯一同名物 `ipc.rs:284` 命令,归 T08);profiles 域作为 `NyanpasuClientInner` 第四成员(现 application/session_state/clash_config 三成员)。
 - 迁移顺序现状已满足:`setup.rs:22-26` `run_pending()` 先于 client 构造,ProfilesClient 插入同一序列;存在双迁移机制(`lib.rs:120` 子进程 + `setup.rs` in-process),plan 时核实 rev3 实际生效路径。
 
+**2026-07-06 执行修正(T07 实物,plan 期即发现)**:
+
+- spec 缺口:`Config::generate()` 实有 6 个调用点(update_config/run_core:469/core.rs:561/feat.rs:279,339,363)+ `init_config` 首铸。处置:`generate()`/`init_config()` 删除;新增 `client/rebuild.rs` 再生成桥(FIXME 全局,oneshot 保序)供 update_config/core.rs:561/feat×3;run_core 内再生成删除(重启=应用当前 draft);首铸与端口回写移入 `resolve_setup`(client 取自 app state)。`CoreManager` 拆出 `apply_config()`(check+file+put),facade 经 `RunningCoreBridge` 适配器调用。
+- 台账:新增 TODO/FIXME(actor-migration) 注释块恰好 7 处(regenerate draft 写入/LegacyCoreBridge×2/桥定义/resolve_setup 端口回写/enhance dead_code/update_config legacy 路径);「恰好三处」勘误作废。
+- UI 事件走注入 `UiEventSink`(与 Handle 同 URI 同 payload,不占台账);`ClientSetupArgs` 增 `ui_sink`/`core` 两注入点。
+- 端口:`SessionPortResolver`(pick_and_try_port + 指纹缓存,eager 首解析于核启动前)兼任 `SelfProxyPortSource`;legacy 镜像回写 mixed-port/external-controller,`prepare_external_controller_port` 双头解析删除。**T11 必查**:typed `overrides.secret` 与 legacy IClashTemp secret 的一致性(api 客户端 401 风险,本卡未回写 secret——字段私有)。
+- 映射:exists_keys←applied_fields(artifact.rs §9.3);postprocessing 按 SnapshotNodeKey 变体表(Scoped→scopes[host]transforms[idx]]、Global→global[global_transforms[idx]]、BuiltinTransform→global[builtin 名]、其余→advice)。文件三方法 fs 直调为有意取舍(小 IO,与 legacy ipc 等同)。
+
 ---
 
 ### T08 — IPC BC 切换(13 → 16 条)

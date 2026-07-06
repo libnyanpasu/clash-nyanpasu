@@ -8,6 +8,9 @@ mod script;
 mod tun;
 mod utils;
 
+#[cfg(test)]
+mod golden;
+
 pub use content_source::FsProfileContentSource;
 pub use runtime_builder::{
     RuntimeBuildError, RuntimeBuildInput, RuntimeBuilder, builtin_transforms_for, derive_tun_flavor,

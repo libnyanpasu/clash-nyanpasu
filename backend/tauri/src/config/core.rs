@@ -9,6 +9,7 @@ use nyanpasu_utils::runtime::block_on;
 use once_cell::sync::OnceCell;
 use std::{env::temp_dir, path::PathBuf};
 
+pub const RUNTIME_CONFIG_DIR: &str = "runtime";
 pub const RUNTIME_CONFIG: &str = "clash-config.yaml";
 pub const CHECK_CONFIG: &str = "clash-config-check.yaml";
 
@@ -53,9 +54,12 @@ impl Config {
         if let Err(err) = Self::generate_file(ConfigType::Run) {
             log::error!(target: "app", "{err:?}");
 
-            let runtime_path = dirs::app_config_dir()?.join(RUNTIME_CONFIG);
+            let runtime_path = Self::runtime_config_path()?;
             // 如果不存在就将默认的clash文件拿过来
             if !runtime_path.exists() {
+                if let Some(parent) = runtime_path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
                 help::save_yaml(
                     &runtime_path,
                     &Config::clash().latest().0,
@@ -69,9 +73,12 @@ impl Config {
     /// 将配置丢到对应的文件中
     pub fn generate_file(typ: ConfigType) -> Result<PathBuf> {
         let path = match typ {
-            ConfigType::Run => dirs::app_config_dir()?.join(RUNTIME_CONFIG),
+            ConfigType::Run => Self::runtime_config_path()?,
             ConfigType::Check => temp_dir().join(CHECK_CONFIG),
         };
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
 
         let runtime = Config::runtime();
         let runtime = runtime.latest();
@@ -95,6 +102,12 @@ impl Config {
         };
 
         Ok(())
+    }
+
+    fn runtime_config_path() -> Result<PathBuf> {
+        Ok(dirs::app_config_dir()?
+            .join(RUNTIME_CONFIG_DIR)
+            .join(RUNTIME_CONFIG))
     }
 }
 

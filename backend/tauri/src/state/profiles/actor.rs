@@ -114,6 +114,10 @@ pub enum ProfilesActorMessage {
         ids: Vec<ProfileId>,
         reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
     },
+    SetValidFields {
+        fields: Vec<String>,
+        reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
+    },
     Replace {
         profiles: Profiles,
         reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
@@ -450,6 +454,19 @@ impl Actor for ProfilesActor {
                     profiles.global_transforms = ids;
                     Ok(WriteOutcome {
                         affects: AffectsRule::GlobalChanged,
+                        post_ops: vec![],
+                    })
+                })
+                .await;
+                let _ = reply.send(result);
+            }
+            ProfilesActorMessage::SetValidFields { fields, reply } => {
+                let result = Self::run_write(&myself, state, move |profiles| {
+                    profiles.valid = fields;
+                    // Whitelist changes reshape runtime extraction for the active
+                    // config, so a rebuild is always required.
+                    Ok(WriteOutcome {
+                        affects: AffectsRule::Always,
                         post_ops: vec![],
                     })
                 })

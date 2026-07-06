@@ -476,6 +476,11 @@ impl NyanpasuClient {
         self.after_commit(&report).await
     }
 
+    pub async fn set_profile_valid_fields(&self, fields: Vec<String>) -> Result<()> {
+        let report = self.inner.profiles.set_valid_fields(fields).await?;
+        self.after_commit(&report).await
+    }
+
     pub async fn get_profile_materialized_path(&self, uid: ProfileId) -> Result<PathBuf> {
         let snapshot = self.inner.profiles.get().await?;
         let item = snapshot

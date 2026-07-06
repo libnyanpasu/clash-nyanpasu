@@ -228,6 +228,16 @@ pub async fn set_global_transforms(
 
 #[tauri::command]
 #[specta::specta]
+pub async fn set_profile_valid_fields(
+    client: State<'_, NyanpasuClient>,
+    fields: Vec<String>,
+) -> Result {
+    client.set_profile_valid_fields(fields).await?;
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn patch_profile_metadata(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,

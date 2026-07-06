@@ -8,9 +8,8 @@ use anyhow::{Context as _, bail};
 use once_cell::sync::Lazy;
 use semver::Version;
 use serde::{Serialize, de::DeserializeOwned};
-use serde_yaml::Mapping;
-use std::path::{Path, PathBuf};
-use struct_patch::Patch;
+use serde_yaml::{Mapping, Value};
+use std::path::Path;
 
 pub static MIGRATOR: TypedConfigMigrator = TypedConfigMigrator;
 
@@ -89,45 +88,154 @@ enum TypedFileState {
     None,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SharedClashFileState {
+    Missing,
+    Typed,
+    LegacyRuntime,
+    Unrecognized,
+}
+
 fn typed_file_state(ctx: &Ctx) -> anyhow::Result<TypedFileState> {
-    let paths = typed_paths(ctx);
-    let mut existing = Vec::new();
-    let mut missing = Vec::new();
+    let application_exists = typed_path_exists(&ctx.application_config_path())?;
+    let session_exists = typed_path_exists(&ctx.session_state_path())?;
+    let clash_state = classify_shared_clash_file(ctx)?;
 
-    for (name, path) in &paths {
-        if path
-            .try_exists()
-            .with_context(|| format!("failed to inspect typed config file {}", path.display()))?
-        {
-            existing.push(*name);
-        } else {
-            missing.push(*name);
-        }
+    if !application_exists && !session_exists {
+        return match clash_state {
+            SharedClashFileState::Missing => Ok(TypedFileState::None),
+            SharedClashFileState::LegacyRuntime => Ok(TypedFileState::None),
+            SharedClashFileState::Typed => partial_typed_file_state(
+                vec!["clash-config.yaml"],
+                vec!["application.yaml", "session-state.yaml"],
+            ),
+            SharedClashFileState::Unrecognized => bail!(
+                "unrecognized typed config migration state: existing {} is neither \
+                 a valid typed clash config nor a recognized legacy runtime config; restore or \
+                 remove it before retrying",
+                ctx.clash_config_path().display()
+            ),
+        };
     }
 
-    if existing.is_empty() {
-        return Ok(TypedFileState::None);
-    }
-
-    if missing.is_empty() {
+    if application_exists && session_exists && clash_state == SharedClashFileState::Typed {
         validate_existing_typed_files(ctx)?;
         return Ok(TypedFileState::All);
     }
 
+    if clash_state == SharedClashFileState::Unrecognized {
+        bail!(
+            "unrecognized typed config migration state: existing {} is neither \
+             a valid typed clash config nor a recognized legacy runtime config; restore or \
+             remove it before retrying",
+            ctx.clash_config_path().display()
+        );
+    }
+
+    let mut existing = Vec::new();
+    let mut missing = Vec::new();
+    push_file_state(
+        &mut existing,
+        &mut missing,
+        application_exists,
+        "application.yaml",
+    );
+    push_file_state(
+        &mut existing,
+        &mut missing,
+        session_exists,
+        "session-state.yaml",
+    );
+    match clash_state {
+        SharedClashFileState::Typed => existing.push("clash-config.yaml"),
+        SharedClashFileState::Missing | SharedClashFileState::LegacyRuntime => {
+            missing.push("clash-config.yaml")
+        }
+        SharedClashFileState::Unrecognized => unreachable!("handled above"),
+    }
+
+    partial_typed_file_state(existing, missing)
+}
+
+fn typed_path_exists(path: &Path) -> anyhow::Result<bool> {
+    path.try_exists()
+        .with_context(|| format!("failed to inspect typed config file {}", path.display()))
+}
+
+fn classify_shared_clash_file(ctx: &Ctx) -> anyhow::Result<SharedClashFileState> {
+    let path = ctx.clash_config_path();
+    if !typed_path_exists(&path)? {
+        return Ok(SharedClashFileState::Missing);
+    }
+
+    if read_yaml::<nyanpasu_config::clash::config::ClashConfig>(&path).is_ok() {
+        return Ok(SharedClashFileState::Typed);
+    }
+
+    let raw = std::fs::read_to_string(&path)
+        .with_context(|| format!("failed to read {}", path.display()))?;
+    let value: Value = serde_yaml::from_str(&raw)
+        .with_context(|| format!("failed to parse {}", path.display()))?;
+
+    if looks_like_legacy_runtime_clash_mapping(&value) {
+        return Ok(SharedClashFileState::LegacyRuntime);
+    }
+
+    Ok(SharedClashFileState::Unrecognized)
+}
+
+fn looks_like_legacy_runtime_clash_mapping(value: &Value) -> bool {
+    let Some(map) = value.as_mapping() else {
+        return false;
+    };
+
+    [
+        "mixed-port",
+        "port",
+        "socks-port",
+        "redir-port",
+        "tproxy-port",
+        "external-controller",
+        "allow-lan",
+        "log-level",
+        "mode",
+        "ipv6",
+        "dns",
+        "tun",
+        "listeners",
+        "proxies",
+        "proxy-groups",
+        "rules",
+        "proxy-providers",
+        "rule-providers",
+    ]
+    .iter()
+    .any(|key| map.contains_key(&Value::String((*key).to_string())))
+}
+
+fn push_file_state(
+    existing: &mut Vec<&'static str>,
+    missing: &mut Vec<&'static str>,
+    exists: bool,
+    name: &'static str,
+) {
+    if exists {
+        existing.push(name);
+    } else {
+        missing.push(name);
+    }
+}
+
+fn partial_typed_file_state(
+    existing: Vec<&'static str>,
+    missing: Vec<&'static str>,
+) -> anyhow::Result<TypedFileState> {
     bail!(
         "partial typed config migration state: existing [{}], missing [{}]; \
          restore or remove the typed config files before retrying",
         existing.join(", "),
         missing.join(", ")
     );
-}
-
-fn typed_paths(ctx: &Ctx) -> [(&'static str, PathBuf); 3] {
-    [
-        ("application.yaml", ctx.application_config_path()),
-        ("session-state.yaml", ctx.session_state_path()),
-        ("clash-config.yaml", ctx.clash_config_path()),
-    ]
 }
 
 fn validate_existing_typed_files(ctx: &Ctx) -> anyhow::Result<()> {
@@ -261,6 +369,73 @@ mod tests {
         legacy.insert("mode".into(), "global".into());
         legacy.insert("ipv6".into(), true.into());
         write_yaml(path, &legacy);
+    }
+
+    #[test]
+    fn legacy_runtime_clash_config_alone_detects_baseline_zero() {
+        let (ctx, _temp) = test_ctx();
+        write_legacy_clash(&ctx.clash_config_path());
+
+        assert_eq!(MIGRATOR.detect_baseline(&ctx).unwrap(), 0);
+    }
+
+    #[test]
+    fn split_legacy_config_accepts_legacy_runtime_clash_config_alone() {
+        let (mut ctx, _temp) = test_ctx();
+        write_legacy_clash(&ctx.clash_config_path());
+        write_yaml(&ctx.nyanpasu_config_path(), &IVerge::template());
+
+        SPLIT_LEGACY_CONFIG.run(&mut ctx).unwrap();
+
+        let _: NyanpasuAppConfig = read_typed(&ctx.application_config_path());
+        let _: PersistentState = read_typed(&ctx.session_state_path());
+        let _: ClashConfig = read_typed(&ctx.clash_config_path());
+    }
+
+    #[test]
+    fn typed_clash_config_alone_still_fails_as_partial_typed_state() {
+        let (mut ctx, _temp) = test_ctx();
+        write_yaml(&ctx.clash_config_path(), &ClashConfig::default());
+
+        let err = SPLIT_LEGACY_CONFIG.run(&mut ctx).unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("partial typed config migration state"),
+            "{err:#}"
+        );
+        assert!(err.to_string().contains("existing [clash-config.yaml]"));
+    }
+
+    #[test]
+    fn all_existing_valid_typed_files_detect_current_baseline() {
+        let (ctx, _temp) = test_ctx();
+        write_yaml(
+            &ctx.application_config_path(),
+            &NyanpasuAppConfig::default(),
+        );
+        write_yaml(&ctx.session_state_path(), &PersistentState::default());
+        write_yaml(&ctx.clash_config_path(), &ClashConfig::default());
+
+        assert_eq!(MIGRATOR.detect_baseline(&ctx).unwrap(), current_revision());
+    }
+
+    #[test]
+    fn unrecognized_clash_config_alone_fails_without_overwrite() {
+        let (ctx, _temp) = test_ctx();
+        std::fs::write(ctx.clash_config_path(), "unexpected: true\n").unwrap();
+
+        let err = MIGRATOR.detect_baseline(&ctx).unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("unrecognized typed config migration state"),
+            "{err:#}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(ctx.clash_config_path()).unwrap(),
+            "unexpected: true\n"
+        );
     }
 
     #[test]
@@ -434,5 +609,29 @@ mod tests {
         assert_eq!(clash.mixed_port.start_port, 7890);
         assert_eq!(clash.external_controller.host.to_string(), "127.0.0.1");
         assert_eq!(clash.external_controller.port.start_port, 19090);
+    }
+
+    #[test]
+    fn legacy_clash_null_overrides_keep_defaults() {
+        let (mut ctx, _temp) = test_ctx();
+        write_yaml(&ctx.nyanpasu_config_path(), &IVerge::template());
+        std::fs::write(
+            ctx.clash_guard_overrides_path(),
+            "mode:\nlog-level:\nallow-lan:\nipv6:\n",
+        )
+        .unwrap();
+
+        SPLIT_LEGACY_CONFIG.run(&mut ctx).unwrap();
+
+        let clash: ClashConfig = read_typed(&ctx.clash_config_path());
+        let overrides = serde_yaml::to_value(&clash.overrides).unwrap();
+        let overrides = overrides.as_mapping().unwrap();
+        assert_eq!(overrides.get("mode"), Some(&Value::String("rule".into())));
+        assert_eq!(
+            overrides.get("log-level"),
+            Some(&Value::String("info".into()))
+        );
+        assert_eq!(overrides.get("allow-lan"), Some(&Value::Bool(false)));
+        assert_eq!(overrides.get("ipv6"), Some(&Value::Bool(false)));
     }
 }

@@ -246,15 +246,25 @@ export default function ProfilesList({
 
         <DragDropProvider
           onDragEnd={(event) => {
-            const currentUids = filteredProfiles.map((profile) => profile.uid)
+            const filteredUids = filteredProfiles.map((profile) => profile.uid)
 
-            const nextUids = move(currentUids, event)
+            const nextFilteredUids = move(filteredUids, event)
 
-            if (isEqual(currentUids, nextUids)) {
+            if (isEqual(filteredUids, nextFilteredUids)) {
               return
             }
 
-            sort.mutate(nextUids)
+            // reorder_profiles_by_list requires a FULL ordering of every
+            // profile (the actor rejects partial lists). Splice the reordered
+            // filtered uids back into the full items order, keeping items from
+            // other tabs at their original positions.
+            const filteredSet = new Set(filteredUids)
+            let cursor = 0
+            const fullOrder = (profiles?.items ?? []).map((item) =>
+              filteredSet.has(item.uid) ? nextFilteredUids[cursor++] : item.uid,
+            )
+
+            sort.mutate(fullOrder)
           }}
         >
           <div

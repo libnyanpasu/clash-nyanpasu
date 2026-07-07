@@ -361,14 +361,22 @@ impl NyanpasuClient {
         }
         let uid = self.add_profile(request, initial_file).await?;
         // design §9: auto-activate a Config definition (File/Composition) when
-        // nothing is currently selected.
-        let snapshot = self.inner.profiles.get().await?;
+        // nothing is currently selected. set_current_if_none keeps the
+        // check-and-set atomic so a concurrent selection is not overwritten.
         let is_config = matches!(
-            snapshot.items.get(&uid).map(|item| &item.definition),
+            self.inner
+                .profiles
+                .get()
+                .await?
+                .items
+                .get(&uid)
+                .map(|item| &item.definition),
             Some(ProfileDefinition::Config { .. })
         );
-        if is_config && snapshot.current.is_none() {
-            self.activate_profile(Some(uid.clone())).await?;
+        if is_config {
+            if let Some(report) = self.inner.profiles.set_current_if_none(uid.clone()).await? {
+                self.after_commit(&report).await?;
+            }
         }
         Ok(uid)
     }
@@ -438,11 +446,16 @@ impl NyanpasuClient {
             }
             return Err(error);
         }
-        // Re-read current AFTER the download window: a selection made
-        // concurrently during the download must not be overwritten by import
-        // auto-activation.
-        if self.inner.profiles.get().await?.current.is_none() {
-            self.activate_profile(Some(created.clone())).await?;
+        // Atomically activate only when nothing was selected during the download
+        // window. The actor decides inside a single serialized message, so a
+        // concurrent SetCurrent can never be overwritten by import.
+        if let Some(report) = self
+            .inner
+            .profiles
+            .set_current_if_none(created.clone())
+            .await?
+        {
+            self.after_commit(&report).await?;
         }
         Ok(created)
     }

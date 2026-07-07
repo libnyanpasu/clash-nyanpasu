@@ -92,6 +92,20 @@ impl ProfilesClient {
         .await
     }
 
+    /// Atomically activate `uid` only if nothing is currently selected.
+    /// Returns `Some(report)` when it activated, `None` when a current already
+    /// existed (so the caller's activation was intentionally skipped).
+    pub async fn set_current_if_none(
+        &self,
+        uid: ProfileId,
+    ) -> Result<Option<CommitReport>, ProfilesError> {
+        self.call(
+            |reply| ProfilesActorMessage::SetCurrentIfNone { uid, reply },
+            None,
+        )
+        .await
+    }
+
     pub async fn set_global_transforms(
         &self,
         ids: Vec<ProfileId>,
@@ -977,6 +991,32 @@ mod tests {
             .unwrap();
             (client, dir)
         };
+        assert_eq!(
+            client.get().await.unwrap().current,
+            Some(ProfileId("cfg1".into()))
+        );
+    }
+
+    #[tokio::test]
+    async fn set_current_if_none_only_activates_when_empty() {
+        let (client, _dir) = seeded_client().await;
+
+        // Empty current -> activates and reports the change.
+        let report = client
+            .set_current_if_none(ProfileId("cfg1".into()))
+            .await
+            .expect("call ok")
+            .expect("activated when current was empty");
+        assert!(report.affects_current);
+        assert_eq!(report.snapshot.current, Some(ProfileId("cfg1".into())));
+
+        // A current already exists -> does NOT activate (returns None) and
+        // leaves the existing selection untouched.
+        let skipped = client
+            .set_current_if_none(ProfileId("cfg2".into()))
+            .await
+            .expect("call ok");
+        assert!(skipped.is_none(), "must not overwrite an existing current");
         assert_eq!(
             client.get().await.unwrap().current,
             Some(ProfileId("cfg1".into()))

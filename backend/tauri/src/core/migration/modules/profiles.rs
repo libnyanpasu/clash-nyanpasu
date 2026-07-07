@@ -853,8 +853,6 @@ fn discard_profile_data(mut mapping: Mapping) -> Mapping {
 
 #[cfg(test)]
 mod tests {
-    use crate::config::Profiles;
-
     use super::*;
     use pretty_assertions::assert_str_eq;
 
@@ -1469,12 +1467,5 @@ items:
         let original_data = discard_profile_data(migrated_data);
         let output_data = serde_yaml::to_string(&original_data).unwrap();
         assert_str_eq!(output_data, ORIGINAL_SAMPLE);
-    }
-
-    #[test]
-    #[ignore]
-    fn test_profile_parse_migrated_data() {
-        let profiles = serde_yaml::from_str::<Profiles>(MIGRATED_SAMPLE).unwrap();
-        eprintln!("{profiles:#?}");
     }
 }

@@ -293,6 +293,23 @@ impl Display for ProviderType {
     }
 }
 
+// Subscription usage returned inline by the Clash providers REST API.
+// Relocated here (PR-3 T10) from the retired legacy profile module; it is a
+// clash-API concern, not part of the profiles domain model.
+#[derive(Default, Debug, Clone, Copy, Deserialize, Serialize, Type)]
+pub struct SubscriptionInfo {
+    // Clash REST API returns PascalCase; profile YAML uses lowercase.
+    // aliases accept both; default handles provider responses with partial fields.
+    #[serde(alias = "Upload", default)]
+    pub upload: usize,
+    #[serde(alias = "Download", default)]
+    pub download: usize,
+    #[serde(alias = "Total", default)]
+    pub total: usize,
+    #[serde(alias = "Expire", default)]
+    pub expire: usize,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxyProviderItem {
@@ -303,7 +320,7 @@ pub struct ProxyProviderItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub subscription_info: Option<crate::config::profile::item::SubscriptionInfo>,
+    pub subscription_info: Option<SubscriptionInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub test_url: Option<String>, // Mihomo Only
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -590,8 +607,7 @@ mod tests {
     fn subscription_info_deserializes_pascal_case() {
         // Mihomo REST API returns PascalCase field names
         let json = r#"{"Upload":100,"Download":200,"Total":1073741824000,"Expire":1716979200}"#;
-        let info: crate::config::profile::item::SubscriptionInfo =
-            serde_json::from_str(json).unwrap();
+        let info: SubscriptionInfo = serde_json::from_str(json).unwrap();
         assert_eq!(info.upload, 100);
         assert_eq!(info.download, 200);
         assert_eq!(info.total, 1_073_741_824_000);
@@ -602,8 +618,7 @@ mod tests {
     fn subscription_info_deserializes_lowercase() {
         // Profile YAML uses lowercase field names; must still work
         let json = r#"{"upload":10,"download":20,"total":30,"expire":0}"#;
-        let info: crate::config::profile::item::SubscriptionInfo =
-            serde_json::from_str(json).unwrap();
+        let info: SubscriptionInfo = serde_json::from_str(json).unwrap();
         assert_eq!(info.upload, 10);
         assert_eq!(info.download, 20);
     }
@@ -612,8 +627,7 @@ mod tests {
     fn subscription_info_deserializes_partial_fields() {
         // Some providers return only partial subscription info (e.g. only Expire)
         let json = r#"{"Expire":1716979200}"#;
-        let info: crate::config::profile::item::SubscriptionInfo =
-            serde_json::from_str(json).unwrap();
+        let info: SubscriptionInfo = serde_json::from_str(json).unwrap();
         assert_eq!(info.upload, 0);
         assert_eq!(info.expire, 1_716_979_200);
     }

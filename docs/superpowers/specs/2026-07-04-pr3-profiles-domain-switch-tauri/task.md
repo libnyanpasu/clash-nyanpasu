@@ -556,6 +556,21 @@ impl NyanpasuClient {
 - 前端锚点:`use-profile.ts` 唯一导出 hook 为 `useProfile`(内部消费 `getProfiles`/`viewProfile` + update/drop mutations);其余消费点仍按本卡原话 plan 时全量盘点。
 - `postprocessing_output` 前端不感知:T07 映射保持 `IRuntime` 对外 shape,`get_postprocessing_output` 返回类型不变,本卡无此项工作。
 
+**2026-07-07 执行修正(T09 实物)**:
+
+- **命令面 16→17**:新增 `set_profile_valid_fields`(actor `SetValidFields` 消息,`AffectsRule::Always` → 恒 rebuild;`ProfilesClient::set_valid_fields` + facade `set_profile_valid_fields` + ipc + specta,全链)。design §9 表补一行。Task 0 单独 commit,后端包级 222 绿,台账不变(18,无新增 actor-migration 块)。
+- **`NormalizedProfile` 崩塌层退役**:`useProfile` 直吐 `ProfileItem_Serialize`(扁平:`{uid, name, desc?, type:'config'|'transform', config|transform}`,**无嵌套 metadata**);判别 helpers `isConfigItem/isTransformItem/isRemoteItem/scopedTransformsOf` 从 `@nyanpasu/interface` 导出。**bindings 已导出同名 union 类型**(`export type * from './bindings'`),故 hook **不再重导出** `ProfileItem`/`ProfileDocument`/`NewProfileRequest`/`ProfileDefinition`/`ProfileMetadataPatch`/`RemoteProfileOptionsPatch` 别名(避免 TS2308 歧义);页面直用 bindings 具体 `_Serialize`(读)/`_Deserialize`(命令入参)类型。
+- **mutation 拆解**:`upsert` → `activate`(current 单值)+ `setValidFields`;`patch` → `patchMetadata`/`patchRemoteOptions`/`replaceDefinition`。命令入参用 `_Deserialize` 变体(`with_proxy/self_proxy/update_interval_minutes` required-nullable)。
+- **4-way ProfileType 分类法保留**(路由 `$type`/tab/header/navigate 深度依赖,collapse 风险大):`$type/_modules/utils.ts` 的 classifiers 从新域重派生(`isProxyProfile=isConfigItem`;JS/Lua/Merge 按 `item.transform.script?.runtime` / `item.transform.overlay`),`categoryProfiles` 保留 4 桶;`consts.ts` 删 `PROFILE_TYPES`(消费者 chain-profile-import/profiles-navigate 改用 categoryProfiles / 内联)。
+- **chain 编辑器语义迁移**:`chian-editor-card` 编辑对象从 `profile.chain` 改为当前 config item 的 scoped `transforms`(`scopedTransformsOf`),Apply 走 `replaceDefinition`(File/Composition 皆重建定义、仅换 transforms、原子替换);DnD 两列骨架零改动。
+- **create 三件**:local-profile-button 产 File Config `NewProfileRequest`(source `local/managed`,占位 `pending.yaml` 后端 Add 重写);remote-profile-button「手动 Remote」改走 URL 导入(`create({type:'url'})` → importProfile);chain-profile-import 按路由 type 产 Overlay/Script transform 定义 + 对应模板。
+- **detail 编辑四件**:profile-name-editor→`patchMetadata`;update-option-editor→`patchRemoteProfileOptions`(读写走 remote source `option`);subscription-url-editor→`replaceDefinition`(URL 属定义,重建 Remote 定义换 url);subscription-card 读 remote source 的 `subscription`/`materialized.updated_at`/`option.update_interval_minutes`,刷新按钮 `update({option:null})` 纯刷新。
+- **`deleteConnections(null)` 保留**(active-button,契约修正 5,与后端统一中断可能双断连,幂等)。
+- **mutation-provider**:`'profiles'` 事件映射补 `RROFILES_QUERY_KEY`(前向兼容;当前 rebuild 走 `clash_config` 事件已间接覆盖)。
+- **Composition 最小交互**:`create-composition-button.tsx` 为**自包含 modal**(toggle 多选 ≥2 File Config → `extend_proxies_from` → Composition `NewProfileRequest`),挂载于 `profiles-list` 的 profile tab。**偏离 plan 的「card grid 内多选态」**——自包含 modal 不动既有 DnD 列表,降风险且同样满足「最小交互」;完整管理界面(base 切换/成员编辑)仍为非目标。新 UI 文案用纯字符串("Create Composition"),避免新增 Paraglide 消息的编译依赖。
+- **bindings.ts 本卡提交**(17 命令):Task 1 起 committed 版与冻结测试(`export_typescript_bindings`)输出一致,`cargo test` 后工作树不再漂移(仅 `.serena` 脏)。
+- 出口判据全绿:interface tsc、nyanpasu tsc、`pnpm -F interface build`、`pnpm web:build` 均 exit 0;残留 grep(`patch_profiles_config`/`patchProfilesConfig`/`Profiles_Serialize`/`ProfileBuilder`/`.chain`)零命中(唯一 `NormalizedProfile` 命中为退役注释)。
+
 ---
 
 ### T10 — legacy 清算(切换组终点)

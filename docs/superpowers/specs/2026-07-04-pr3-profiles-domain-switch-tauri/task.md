@@ -583,7 +583,7 @@ impl NyanpasuClient {
 - **mutation-provider**:`'profiles'` 事件映射补 `RROFILES_QUERY_KEY`(前向兼容;当前 rebuild 走 `clash_config` 事件已间接覆盖)。
 - **Composition 最小交互**:`create-composition-button.tsx` 为**自包含 modal**(toggle 多选 ≥2 File Config → `extend_proxies_from` → Composition `NewProfileRequest`),挂载于 `profiles-list` 的 profile tab。**偏离 plan 的「card grid 内多选态」**——自包含 modal 不动既有 DnD 列表,降风险且同样满足「最小交互」;完整管理界面(base 切换/成员编辑)仍为非目标。新 UI 文案用纯字符串("Create Composition"),避免新增 Paraglide 消息的编译依赖。
 - **bindings.ts 本卡提交**(17 命令):Task 1 起 committed 版与冻结测试(`export_typescript_bindings`)输出一致,`cargo test` 后工作树不再漂移(仅 `.serena` 脏)。
-- 出口判据全绿:interface tsc、nyanpasu tsc、`pnpm -F interface build`、`pnpm web:build` 均 exit 0;残留 grep(`patch_profiles_config`/`patchProfilesConfig`/`Profiles_Serialize`/`ProfileBuilder`/`.chain`)零命中(唯一 `NormalizedProfile` 命中为退役注释)。
+- 出口判据全绿:interface tsc、nyanpasu tsc、`pnpm -F interface build`、`pnpm web:build` 均 exit 0;残留 grep(`patch_profiles_config`/`patchProfilesConfig`/`Profiles_Serialize`/`ProfileBuilder`/profile 链字段 `.chain`)零命中(唯一 `NormalizedProfile` 命中为退役注释;connections 页的 `.chains` 为 Clash 连接链概念,与 profile chain 无关,不在判据范围)。
 
 **2026-07-07 T09 评审处置(codex 64/100 NEEDS_IMPROVEMENT,无 Critical;4 Major + 2 Minor;修复 commit `7335658f`/`4669d668`/`6c1194cd`/`69ce9144`)**:
 
@@ -664,7 +664,7 @@ impl NyanpasuClient {
 
 design §16 判据 1–8 逐条取证(全部在 tip `20cfbf3c`,当前 env 规则:`RUSTUP_TOOLCHAIN=nightly-2026-05-27`、无 `CARGO_TARGET_DIR`、G 盘默认 target):
 
-- **判据 1(零残留)**:`Config::profiles(` / `config::profile::` / `ProfilesJob(Guard)` 在 `backend/tauri/src` 均 0 命中;`config/profile/` 目录不存在。
+- **判据 1(零残留)**:`Config::profiles(` / `crate::config::profile::`(限定 legacy 路径——裸 `config::profile::` 会误中合法的 `nyanpasu_config::profile::`)/ `ProfilesJob(Guard)` 在 `backend/tauri/src` 均 0 命中;`config/profile/` 目录不存在。
 - **判据 2(迁移 e2e)——迁移+生成半由测试确定性取证,活体启动半移交用户清单(见下)**:`cargo test -p clash-nyanpasu --lib migration` **52 passed / 0 failed**,含 `core::migration::runner::tests::real_1_6_1_fixture_migrates_to_2_0_shape`(真实 1.6.1 legacy fixture → 2.0 形态端到端迁移)、`modules::profiles::tests::test_migrate_existing_data`(rev-3 legacy→clean)、`modules::typed_config::tests::*`(legacy verge/clash/window → typed application/clash-config/session-state)。rev-3 迁移 + `.bak` 语义、typed 首铸均经测试钉死。「启动→激活→生成→**核心可运行**」的活体观测因涉及在用户真机拉起真实 clash/mihomo 核心(outward,不可逆),按 plan 保障条 C.2 移交用户手动清单。
 - **判据 3(纯度)**:`tauri::|crate::config::Config` 在 `state/profiles` + `client/profiles.rs` 0 命中。
 - **判据 4/5(读写断言/引用保护)**:`cargo test -p clash-nyanpasu --lib client::profiles::` **32 passed / 0 failed / 1 ignored**(含引用保护、下载-提交分离、`validation_failure_leaves_disk_untouched`、`replace_definition_is_atomic`、`set_current_rejects_missing_and_transform_targets`、新增 `set_current_if_none_only_activates_when_empty`);`state::profiles::` 1 passed。
@@ -691,7 +691,7 @@ design §16 判据 1–8 逐条取证(全部在 tip `20cfbf3c`,当前 env 规则
 
 **PR-3 BC 清单(供 PR 描述汇编;未推送,发布属用户决策)**:
 
-- IPC 命令面 **13 → 16 条**,profile 命令重写为 thin adapter(签名见 T08 卡)。
+- IPC 命令面 **13 → 17 条**(T08 重写 13→16 + T09 补第 17 条 `set_profile_valid_fields`),profile 命令全部为 thin adapter(签名见 T08/T09 卡)。
 - profiles `current` **单值化**——旧多选激活 → 单值 `current` + 最小 Composition 创建交互(T09)。
 - 域模型 BC:`chain` → `transforms`(Overlay/Script);`ProfileItem` 扁平化(无嵌套 metadata);`ProfileDefinition` = Config/Transform 二分。
 - import 命名:content-disposition 退役,fallback = url 末段(去 `.yaml`/`.yml`)/host。
@@ -705,6 +705,14 @@ design §16 判据 1–8 逐条取证(全部在 tip `20cfbf3c`,当前 env 规则
 - **antigravity(前端视角评审)全日宕机**——T08/T09/T11 前端视角外部评审缺席,记为已知评审缺口(codex 后端评审已覆盖 T07–T10)。
 - **孤儿 `ConfigChangedNotifier` 已清除**(commit `d1486837`,非遗留):原属 T10 codex Suggestion,经核实全 workspace 零 caller,team-lead 明确接受删除;技术上略超「严格既存死代码」范围,post-hoc 接受在案。
 - **codex T05/T06 评审延期**项仍挂账(其后端故障期未复审;后续可补)。
+
+**2026-07-07 T11 评审处置(codex 83/100 NEEDS_IMPROVEMENT → 修复;全部为文档一致性,无代码问题;Claude 直接修复)**:
+
+- Major①(已修):roadmap §5 收尾行「B8 归零」与实物矛盾(client/mod.rs:708 仍存 B8 runtime draft 写入 TODO,B8 表行本就记有残余)→ 改述为「B8 输入装配面归零」并点名两处残余桥(runtime draft 写入 + CoreManager apply,PR-4/5 清偿)。
+- Major②(已修):迁移指南头部「已实施」与正文规划期口径(「本期零改动/后期迭代」:11/:17/:21)及 :731 旧命令别名建议矛盾 → 头部重分类为**历史设计材料**(正文按撰写期口径原样保留,注明所列"未完成"已全部落地);:731 加执行期勘误(别名建议未采纳,按 §11 走原子切换)。
+- Minor①(已修):判据 1 的 `config::profile::` grep 会误中合法 `nyanpasu_config::profile::` → 限定为 `crate::config::profile::`。
+- Minor②(已修):T09 出口判据「`.chain` 零命中」被 connections 页 `.chains`(Clash 连接链概念)反证 → 限定为 profile 链字段。
+- 顺带更正 BC 清单命令面终态 13→17(原记 13→16 漏 T09 第 17 条)。
 
 ---
 

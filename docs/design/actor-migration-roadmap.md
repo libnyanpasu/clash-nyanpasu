@@ -626,7 +626,7 @@ sequenceDiagram
 
 **规则:** 台账之外不得新增桥;每条桥的代码处必须有 `TODO(actor-migration)` + 删除条件注释。
 
-**2026-07-07 PR-3(profiles 域切换,T07–T11)收尾登记:** 已实施(本地 `refactor/pr3-profiles-domain-switch`@`20cfbf3c`,未推送)。**B8 归零**——RuntimeBuilder 取数经 typed client/facade,无旧全局输入装配残留。当前 `TODO/FIXME(actor-migration)` 注释账本 **17 处**,全属 verge/clash/window/core/runtime 桥(PR-4/5/6 负责),**profiles 域桥已在 T07/T08/T10 清尽**。逐处枚举见 `docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md` T11 判据 7。
+**2026-07-07 PR-3(profiles 域切换,T07–T11)收尾登记:** 已实施(本地 `refactor/pr3-profiles-domain-switch`@`20cfbf3c`,未推送)。**B8 输入装配面归零**——RuntimeBuilder 取数经 typed client/facade,无旧全局输入装配残留;B8 残余与上表一致 = `Config::runtime()` draft 写入(`client/mod.rs` regenerate,TODO 标记)+ `CoreManager::apply_config` 桥(`client/core_bridge.rs`,TODO 标记),随 PR-4/PR-5 清偿。当前 `TODO/FIXME(actor-migration)` 注释账本 **17 处**,全属 verge/clash/window/core/runtime 桥(PR-4/5/6 负责),**profiles 域桥已在 T07/T08/T10 清尽**。逐处枚举见 `docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md` T11 判据 7。
 
 ### 5.1 桥接双向数据流(图示)
 

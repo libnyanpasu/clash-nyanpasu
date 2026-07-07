@@ -123,7 +123,9 @@ export const commands = {
       update_interval_minutes: number | null
     } | null,
   ) =>
-    typedError<null, string>(__TAURI_INVOKE('import_profile', { url, option })),
+    typedError<ProfileId, string>(
+      __TAURI_INVOKE('import_profile', { url, option }),
+    ),
   /**  create a new profile */
   createProfile: (
     request: NewProfileRequest_Deserialize,

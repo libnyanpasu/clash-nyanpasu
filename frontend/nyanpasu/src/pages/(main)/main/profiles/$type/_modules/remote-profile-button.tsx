@@ -50,7 +50,7 @@ const getDefaultValues = () => {
 }
 
 export default function RemoteProfileButton({ children }: PropsWithChildren) {
-  const { create } = useProfile()
+  const { create, patchMetadata } = useProfile()
 
   const [open, setOpen] = useState(false)
 
@@ -63,7 +63,7 @@ export default function RemoteProfileButton({ children }: PropsWithChildren) {
     `create-remote-profile`,
     form.handleSubmit(async (data) => {
       try {
-        await create.mutateAsync({
+        const uid = await create.mutateAsync({
           type: 'url',
           data: {
             url: data.url,
@@ -75,6 +75,18 @@ export default function RemoteProfileButton({ children }: PropsWithChildren) {
             },
           },
         })
+
+        // Import derives the name from the url server-side; apply the user's
+        // form name/desc afterwards so their input is not discarded.
+        if (uid && data.name) {
+          await patchMetadata.mutateAsync({
+            uid,
+            patch: {
+              name: data.name,
+              ...(data.desc ? { desc: data.desc } : {}),
+            },
+          })
+        }
 
         handleToggle(false)
       } catch (error) {

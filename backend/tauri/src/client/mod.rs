@@ -667,8 +667,8 @@ impl NyanpasuClient {
 
     /// Regeneration entry for legacy bridge callers (`CoreManager::update_config`,
     /// `feat::patch_clash`/`patch_verge` side-effect paths, `change_core`).
-    /// Profiles still come from the typed actor: their legacy writers are
-    /// rewritten against the facade in T08.
+    /// Profiles come from the typed actor only; their legacy IPC writers moved
+    /// onto the facade in T08 and the legacy profile code was removed in T10.
     pub(crate) async fn regenerate_runtime_for_legacy(&self) -> Result<()> {
         let (app, clash) = Self::legacy_regen_inputs()?;
         let profiles = self.inner.profiles.get().await?;

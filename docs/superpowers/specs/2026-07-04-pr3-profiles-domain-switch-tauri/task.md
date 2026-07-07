@@ -571,6 +571,16 @@ impl NyanpasuClient {
 - **bindings.ts 本卡提交**(17 命令):Task 1 起 committed 版与冻结测试(`export_typescript_bindings`)输出一致,`cargo test` 后工作树不再漂移(仅 `.serena` 脏)。
 - 出口判据全绿:interface tsc、nyanpasu tsc、`pnpm -F interface build`、`pnpm web:build` 均 exit 0;残留 grep(`patch_profiles_config`/`patchProfilesConfig`/`Profiles_Serialize`/`ProfileBuilder`/`.chain`)零命中(唯一 `NormalizedProfile` 命中为退役注释)。
 
+**2026-07-07 T09 评审处置(codex 64/100 NEEDS_IMPROVEMENT,无 Critical;4 Major + 2 Minor;修复 commit `7335658f`/`4669d668`/`6c1194cd`/`69ce9144`)**:
+
+- **Major 1 — 过滤态拖拽发部分列表 → InvalidReorderList**:**CONFIRMED**(actor `ReorderOp::ByList` 要求 `list.len() == items.len()`,`actor.rs:610`)。修:`profiles-list.tsx` onDragEnd 将过滤态重排结果按 uid 拼回全量 `profiles.items` 顺序(非过滤项位置不变),再发 `sort.mutate`。
+- **Major 2 — remote 表单 name/desc 丢弃**:**CONFIRMED**(URL 导入后端按 url 派生名,表单 name/desc 未落)。修:`import_profile` ipc 返回 `Result<ProfileId>`(facade 已返回),再生 bindings(`importProfile` → `ProfileId`);`remote-profile-button` 导入成功后以 `patchMetadata` 落 name(及非空 desc)。三面同 commit(后端+bindings+前端),freshness 稳定。
+- **Major 3 — URL 变更后旧内容仍被服务**:**CONFIRMED**(replaceDefinition 只换 url,物化文件仍旧内容,active rebuild 服务旧订阅)。plan Step 5 只提 replaceDefinition、未显式 defer;stale 为实缺陷。修:`subscription-url-editor` 在 replaceDefinition 成功后立即 `update({uid, option:null})`(refresh)重新物化新 url。
+- **Major 4 — Composition 显示文件类操作**:**CONFIRMED**(Composition 无物化文件,ViewContent/OpenLocally → `ProfileHasNoFile`)。修:`action-card` 增 `hasMaterializedFile`(File config 有 `config.file` 或 Transform 项),门控 ViewContent/OpenLocally。
+- **Minor 1 — `view()` 返回裸 envelope**:**CONFIRMED**。修:`use-profile.ts` 的 `view` 改 `async () => unwrapResult(await commands.viewProfile(uid))`,与 update/drop 一致。
+- **Minor 2 — chain 编辑器 apply 失败吞错**:**CONFIRMED**(空 catch)。修:`chian-editor-card` catch 走 `message(...)` + `formatError`(与 profiles 页既有错误反馈模式一致)。
+- 复验全绿:后端包级 222 绿;golden diff vs `d3f25eaa` = 0;clippy 净;interface+nyanpasu tsc + `pnpm web:build` exit 0;bindings.ts 稳定(`cargo test` 后仅 `.serena` 脏)。台账不变(18)。
+
 ---
 
 ### T10 — legacy 清算(切换组终点)

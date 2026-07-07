@@ -1,8 +1,5 @@
-use super::{Draft, IClashTemp, IRuntime, IVerge, Profiles};
-use crate::{
-    core::state::ManagedState,
-    utils::{dirs, help},
-};
+use super::{Draft, IClashTemp, IRuntime, IVerge};
+use crate::utils::{dirs, help};
 use anyhow::{Result, anyhow};
 use once_cell::sync::OnceCell;
 use std::{env::temp_dir, path::PathBuf};
@@ -13,7 +10,6 @@ pub const CHECK_CONFIG: &str = "clash-config-check.yaml";
 pub struct Config {
     clash_config: Draft<IClashTemp>,
     verge_config: Draft<IVerge>,
-    profiles_config: ManagedState<Profiles>,
     runtime_config: Draft<IRuntime>,
 }
 
@@ -24,7 +20,6 @@ impl Config {
         CONFIG.get_or_init(|| Config {
             clash_config: Draft::from(IClashTemp::new()),
             verge_config: Draft::from(IVerge::new()),
-            profiles_config: ManagedState::from(Profiles::new()),
             runtime_config: Draft::from(IRuntime::new()),
         })
     }
@@ -35,10 +30,6 @@ impl Config {
 
     pub fn verge() -> Draft<IVerge> {
         Self::global().verge_config.clone()
-    }
-
-    pub fn profiles() -> &'static ManagedState<Profiles> {
-        &Self::global().profiles_config
     }
 
     pub fn runtime() -> Draft<IRuntime> {

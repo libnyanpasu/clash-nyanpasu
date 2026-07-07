@@ -51,8 +51,3 @@ impl Error {
         Self::InnerTask { message, source }
     }
 }
-
-pub trait ConfigChangedNotifier {
-    #[allow(dead_code)]
-    fn notify_config_changed(&self, task_name: &str) -> Result<()>;
-}

@@ -537,6 +537,11 @@ impl NyanpasuClient {
 - **测试缺口(T8-m1)**:新增 3 例(`facade_import_failure_deletes_placeholder` 首刷失败回删占位;`facade_create_auto_activates_config_and_rejects_remote` 钉 auto-activation 规则 + remote 拒绝;`facade_import_does_not_steal_existing_current` 钉 T8-M3 非空 current 不激活)。M3 真正的下载窗口并发竞态无 test hook 难以确定性复现,以重读快照的代码不变式 + 上述非空 current 用例覆盖观察面。
 - 复验全绿:后端包级 225 绿(+3);workspace 全绿;golden diff vs `ea863cd9` = 0;clippy 净;interface+nyanpasu tsc + `pnpm web:build` exit 0;bindings 稳定(命令签名未变,`cargo test` 后仅 `.serena` + 两后端文件);台账不变(18)。
 
+**2026-07-07 SetCurrentIfNone 原子化处置(codex T08 补审 1 PARTIAL 收口,Medium;修复 commit `4dfdd88b`,纯后端、命令签名不变故 bindings/前端零改)**:
+
+- **T8-M3 收口 — import/create 自动激活原子性**:T08 修复以「首刷后重读快照 + `current.is_none()` 才激活」覆盖非空 current,但读与激活仍是两次独立 actor RPC,下载窗口内落地的并发选择仍可能被覆盖(codex 判 PARTIAL/Medium)。根治:actor 新增 `SetCurrentIfNone { uid, reply }`,在**单条序列化消息**内判 `current.is_some()` 则回 `None`、否则复用 `run_write` 七步事务激活并回 `Some(report)`(不复制事务逻辑);typed client `set_current_if_none(uid) -> Result<Option<CommitReport>>`;`import_profile`/`create_profile` 组合改走此单条 RPC,`after_commit`/rebuild 仅在实际激活(`Some`)时触发。序列化消息处理使读-写免竞,并发 `SetCurrent` 不再能被覆盖。
+- 三组组合测试改经新路径;`facade_import_does_not_steal_existing_current` 钉原子不偷占语义;新增 `set_current_if_none_only_activates_when_empty` 单测。包级 205 绿(+1);golden 原样;bindings 零漂移;台账不变。
+
 ---
 
 ### T09 — 前端适配
@@ -630,6 +635,11 @@ impl NyanpasuClient {
 - **advice**:legacy 配置分析建议随 enhance 退役(已接受 BC;新 `advice` 面 = executor Guard/Whitelist/Finalizing 日志,T11 前端复核)。
 - **台账**:18 → 17,净 −1(删 `enhance/mod.rs:38` 的 legacy-enhance `FIXME(actor-migration)`)。profiles 域桥已在 T07/T08 清尽,余 17 皆 verge/clash/window/core/runtime 桥(PR-4/5/6 范围),本卡不动;本卡的「大幅下降」是 legacy **代码**(~4300 行:jobs 221 + feat 71 + enhance 2047 + config/profile ~2000),非桥注释。
 - **验证**:§16 grep 三判据全零;golden fixtures byte-identical vs `35f26303`(diff 0)+ golden filter 绿;后端包级 204 绿(225→204,删 legacy merge/chain/cache/config-profile 单测,golden 回归网原样);workspace 全绿;clippy 净;`pnpm web:build` exit 0(前端未触,app 恢复端到端可构建,运行留 T11)。
+
+**2026-07-07 T10 评审处置(codex APPROVE 93/100,无 Critical/Major;1 Minor + 1 Suggestion;修复 commit `d1486837`,纯后端、命令签名不变故 bindings/前端零改)**:
+
+- **T10-Minor — `CoreManager::update_config` 迁移桥注释过期**:codex 基于 `35f26303`(切换组前 tip)审查,彼时注释仍写「pre-T08 callers(enhance_profiles/delete_profile ipc etc.)... Remove after T10」。核实:该注释**已由 commit `dc8b9777` 订正**(本轮 on-branch 修复,parent=`5829dc7b`,15:49;非本代理提交——系 team-lead 于共享 worktree 独立修复,与本代理提交无文件重叠),现文准确点名唯一残留调用链 `feat::patch_verge`(TUN/service)→ `update_core_config` → `update_config`、指引 `rebuild_running_config()`、移除条件「PR-4/5 迁 verge 特性流」,并保留 `FIXME(actor-migration)`——与评审诉求逐字吻合,故本代理**无需改码**(no-op)。附带:`client/mod.rs:670` 另一处过期注释(profiles 写者「T08 rewritten」)于本代理跟进轮 commit `5829dc7b` 一并订正(实为 T08 迁 IPC + T10 删除),非 codex 所指该条。
+- **T10-Suggestion(接受)— 孤儿 `ConfigChangedNotifier` 清除**:核实 `notify_config_changed` 全 workspace 零 caller(trait 方法早带 `#[allow(dead_code)]`),自 profiles 迁移(T08/T10)链路退役后彻底孤立。删 `core/tasks/utils.rs` trait + `core/tasks/jobs/mod.rs` `JobsManager` impl + 随之孤儿的 `use anyhow::anyhow` / `utils::Result` import(编译器/grep 双证零消费);`JobsManager::setup` 仅注册 `EventsRotateJob` 不受影响。包级 205 绿;clippy 净;golden 原样;bindings 零漂移;台账不变(17)。
 
 ---
 

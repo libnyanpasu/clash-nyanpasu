@@ -21,58 +21,70 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
-  MergeProfileBuilder,
   ProfileTemplate,
-  ScriptProfileBuilder,
   useProfile,
+  type NewProfileRequest_Deserialize,
+  type ProfileDefinition_Deserialize,
 } from '@nyanpasu/interface'
 import {
   PROFILE_TYPE_NAMES,
-  PROFILE_TYPES,
   ProfileType as RawProfileType,
 } from '../../_modules/consts'
 import AnimatedErrorItem from '../../_modules/error-item'
 import { Route as IndexRoute } from '../index'
 
 const formSchema = z.object({
-  type: z.enum(['merge', 'script']),
-  uid: z.string().nullable(),
   name: z.string().nullable(),
-  file: z.string().nullable(),
   desc: z.string().nullable(),
-  updated: z.number().nullable(),
-  script_type: z.literal('javascript').or(z.literal('lua')).nullable(),
-}) satisfies z.ZodType<MergeProfileBuilder | ScriptProfileBuilder>
+})
 
 const getDefaultValues = (rawType: RawProfileType) => {
-  // get the first type of the raw type
-  // FIXME: better error handling
-  const finallyType = PROFILE_TYPES[rawType][0]
+  return {
+    name: `${PROFILE_TYPE_NAMES[rawType]} - ${dayjs().format('YYYY-MM-DD HH:mm:ss')}`,
+    desc: null,
+  } satisfies z.infer<typeof formSchema>
+}
 
-  // check if the type is script
-  const typeValidation = formSchema.shape.type.safeParse(finallyType.type)
-  if (!typeValidation.success) {
-    throw new Error(typeValidation.error.message)
+/** Build a Transform request (Overlay/Script) + its seed template for the tab. */
+const buildTransformRequest = (
+  rawType: RawProfileType,
+  name: string,
+  desc: string | null,
+): { request: NewProfileRequest_Deserialize; fileData: string } => {
+  const source = {
+    type: 'local' as const,
+    binding: {
+      type: 'managed' as const,
+      materialized: { file: 'pending.yaml' },
+    },
   }
 
-  // check if script_type is valid
-  const scriptTypeValue =
-    'script_type' in finallyType ? finallyType.script_type : null
-  const scriptTypeValidation =
-    formSchema.shape.script_type.safeParse(scriptTypeValue)
-  if (!scriptTypeValidation.success) {
-    throw new Error(scriptTypeValidation.error.message)
+  let definition: ProfileDefinition_Deserialize
+  let fileData: string
+  if (rawType === RawProfileType.Merge) {
+    definition = {
+      type: 'transform',
+      transform: { overlay: { type: 'overlay', source } },
+    }
+    fileData = ProfileTemplate.merge
+  } else if (rawType === RawProfileType.Lua) {
+    definition = {
+      type: 'transform',
+      transform: { script: { type: 'script', source, runtime: 'lua' } },
+    }
+    fileData = ProfileTemplate.luascript
+  } else {
+    definition = {
+      type: 'transform',
+      transform: { script: { type: 'script', source, runtime: 'javascript' } },
+    }
+    fileData = ProfileTemplate.javascript
   }
 
   return {
-    type: typeValidation.data,
-    uid: null,
-    name: `${PROFILE_TYPE_NAMES[rawType]} - ${dayjs().format('YYYY-MM-DD HH:mm:ss')}`,
-    file: null,
-    desc: null,
-    updated: null,
-    script_type: scriptTypeValidation.data,
-  } satisfies z.infer<typeof formSchema>
+    request: { metadata: { name, desc }, definition },
+    fileData,
+  }
 }
 
 export default function ChainProfileImport() {
@@ -91,13 +103,15 @@ export default function ChainProfileImport() {
     `create-chain-profile`,
     form.handleSubmit(async (data) => {
       try {
+        // TODO: when content editor is implemented, use the content editor value instead of the template
+        const { request, fileData } = buildTransformRequest(
+          type as RawProfileType,
+          data.name ?? '',
+          data.desc ?? null,
+        )
         await create.mutateAsync({
           type: 'manual',
-          data: {
-            item: data,
-            // TODO: when content editor is implemented, use the content editor value instead of the template
-            fileData: ProfileTemplate[type as keyof typeof ProfileTemplate],
-          },
+          data: { request, fileData },
         })
         handleToggle(false)
       } catch (error) {

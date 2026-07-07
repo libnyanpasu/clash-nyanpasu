@@ -18,9 +18,9 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
-  NormalizedProfileBuilder,
-  RemoteProfile_Serialize,
   useProfile,
+  type ProfileDefinition_Deserialize,
+  type ProfileItem_Serialize,
 } from '@nyanpasu/interface'
 import AnimatedErrorItem from '../../../_modules/error-item'
 
@@ -28,20 +28,29 @@ const formSchema = z.object({
   url: z.httpUrl(),
 })
 
+const remoteFileOf = (profile: ProfileItem_Serialize) => {
+  if (profile.type !== 'config') return undefined
+  const file = profile.config.file
+  if (!file || file.source.type !== 'remote') return undefined
+  return { file, source: file.source }
+}
+
 export default function SubscriptionUrlEditor({
   profile,
   ...props
 }: ComponentProps<typeof ModalTrigger> & {
-  profile: RemoteProfile_Serialize
+  profile: ProfileItem_Serialize
 }) {
-  const { patch } = useProfile()
+  const { replaceDefinition } = useProfile()
 
   const [open, setOpen] = useState(false)
+
+  const currentUrl = remoteFileOf(profile)?.source.url ?? ''
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      url: profile.url,
+      url: currentUrl,
     },
   })
 
@@ -49,7 +58,7 @@ export default function SubscriptionUrlEditor({
     setOpen(false)
     // get latest name
     form.reset({
-      url: profile.url,
+      url: currentUrl,
     })
   }
 
@@ -58,13 +67,19 @@ export default function SubscriptionUrlEditor({
     form.handleSubmit(
       async ({ url }) => {
         try {
-          await patch.mutateAsync({
-            uid: profile.uid,
-            profile: {
-              ...profile,
-              url,
-            } as NormalizedProfileBuilder,
-          })
+          const remote = remoteFileOf(profile)
+          if (remote) {
+            const definition: ProfileDefinition_Deserialize = {
+              type: 'config',
+              config: {
+                file: { ...remote.file, source: { ...remote.source, url } },
+              },
+            }
+            await replaceDefinition.mutateAsync({
+              uid: profile.uid,
+              definition,
+            })
+          }
 
           handleClose()
         } catch (error) {

@@ -6,26 +6,29 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import {
-  NormalizedProfile,
   useClashConnections,
   useProfile,
+  type ProfileItem_Serialize,
 } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 
-export const useActiveProfile = (profile: NormalizedProfile) => {
+export const useActiveProfile = (profile: ProfileItem_Serialize) => {
   const {
     query: { data },
-    upsert,
+    activate,
   } = useProfile()
 
-  const isActive = data?.current?.find((uid) => uid === profile.uid)
+  const isActive = data?.current === profile.uid
 
   const { deleteConnections } = useClashConnections()
 
   const blockTask = useBlockTask(`active-profile-${profile.uid}`, async () => {
     try {
-      await upsert.mutateAsync({ current: [profile.uid] })
+      await activate.mutateAsync(profile.uid)
 
+      // Legacy UX: unconditionally drop connections after activation. The
+      // backend also interrupts connections (opt-in, default off); when that
+      // option is enabled the double interruption is idempotent.
       await deleteConnections.mutateAsync(null)
 
       message(m.profile_active_title_success({ name: profile.name }), {
@@ -75,7 +78,7 @@ export default function ActiveButton({
   className,
   ...props
 }: Omit<ComponentProps<typeof Button>, 'loading' | 'onClick'> & {
-  profile: NormalizedProfile
+  profile: ProfileItem_Serialize
 }) {
   const { isActive, handleClick, isPending } = useActiveProfile(profile)
 

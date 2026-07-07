@@ -61,18 +61,15 @@ const FieldButton = ({
   disabled: boolean
   label: string
 }) => {
-  const { query, upsert } = useProfile()
+  const { query, setValidFields } = useProfile()
 
   const blockTask = useBlockTask(`update-clash-field-${label}`, async () => {
-    let valid = query.data?.valid ?? []
+    const current = query.data?.valid ?? []
+    const valid = data.enabled
+      ? current.filter((item) => item !== label)
+      : [...current, label]
 
-    if (data.enabled) {
-      valid = valid.filter((item) => item !== label)
-    } else {
-      valid.push(label)
-    }
-
-    await upsert.mutateAsync({ valid })
+    await setValidFields.mutateAsync(valid)
   })
 
   return (

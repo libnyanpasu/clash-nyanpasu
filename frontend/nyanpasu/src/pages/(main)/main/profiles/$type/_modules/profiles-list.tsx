@@ -19,7 +19,11 @@ import { move } from '@dnd-kit/helpers'
 import { DragDropProvider } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import { hexFromArgb } from '@material/material-color-utilities'
-import { NormalizedProfile, useProfile } from '@nyanpasu/interface'
+import {
+  isRemoteItem,
+  useProfile,
+  type ProfileItem_Serialize,
+} from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import { MeshGradient } from '@paper-design/shaders-react'
 import { Link } from '@tanstack/react-router'
@@ -46,7 +50,7 @@ const GridViewProfile = ({
   profile,
   index,
 }: {
-  profile: NormalizedProfile
+  profile: ProfileItem_Serialize
   index: number
 }) => {
   const { type } = IndexRoute.useParams()
@@ -56,7 +60,7 @@ const GridViewProfile = ({
 
   const isPending = activeProfile.isPending || deleteProfile.isPending
 
-  const isRemote = profile.type === 'remote'
+  const isRemote = isRemoteItem(profile)
 
   const { themePalette } = useExperimentalThemeContext()
 

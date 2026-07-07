@@ -12,18 +12,18 @@ import { move } from '@dnd-kit/helpers'
 import { DragDropProvider, useDroppable } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import {
-  NormalizedProfile,
-  NormalizedProfileBuilder,
+  scopedTransformsOf,
   useProfile,
+  type ProfileDefinition_Deserialize,
 } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
-import { categoryProfiles, CategoryProfiles } from '../../_modules/utils'
-import { ProfileType } from '../../../_modules/consts'
+import {
+  isChainProfile,
+  type ConfigProfile,
+  type TransformProfile,
+} from '../../_modules/utils'
 
-type ScriptOrMergeProfile = CategoryProfiles[
-  | ProfileType.JavaScript
-  | ProfileType.Lua
-  | ProfileType.Merge][number]
+type ScriptOrMergeProfile = TransformProfile
 
 enum ColumnType {
   Active = 'active',
@@ -100,36 +100,28 @@ const Column = ({
 export default function ChianEditorCard({
   profile,
 }: {
-  profile: Extract<NormalizedProfile, { type: 'local' | 'remote' }>
+  profile: ConfigProfile
 }) {
   const {
     query: { data: profiles },
-    patch,
+    replaceDefinition,
   } = useProfile()
 
-  const categorizedProfiles = useMemo(() => {
-    if (!profiles?.items) {
-      return null
-    }
-
-    return categoryProfiles(profiles.items)
-  }, [profiles?.items])
-
-  const scriptProfiles = useMemo<ScriptOrMergeProfile[]>(() => {
-    if (!categorizedProfiles) {
-      return []
-    }
-
-    return [
-      ...categorizedProfiles[ProfileType.JavaScript],
-      ...categorizedProfiles[ProfileType.Lua],
-      ...categorizedProfiles[ProfileType.Merge],
-    ]
-  }, [categorizedProfiles])
+  // Candidate chain items = every Transform profile (Overlay / Script).
+  const scriptProfiles = useMemo<ScriptOrMergeProfile[]>(
+    () => (profiles?.items ?? []).filter(isChainProfile),
+    [profiles?.items],
+  )
 
   const scriptProfileUids = useMemo(() => {
     return scriptProfiles.map((item) => item.uid)
   }, [scriptProfiles])
+
+  // The edited config item's own scoped transforms (File or Composition).
+  const currentTransforms = useMemo(
+    () => scopedTransformsOf(profile),
+    [profile],
+  )
 
   const [chainsUids, setChainsUids] = useState<Record<ColumnType, string[]>>({
     [ColumnType.Active]: [],
@@ -174,9 +166,9 @@ export default function ChianEditorCard({
     }
   }, [chainsUids, scriptProfiles])
 
-  // sync chains with profile.chain and scriptProfiles
+  // sync chains with the config item's scoped transforms and scriptProfiles
   useEffect(() => {
-    const activeSet = new Set(profile.chain ?? [])
+    const activeSet = new Set(currentTransforms)
     const nextActive = scriptProfileUids.filter((uid) => activeSet.has(uid))
     const nextInactive = scriptProfileUids.filter((uid) => !activeSet.has(uid))
 
@@ -197,10 +189,10 @@ export default function ChianEditorCard({
         [ColumnType.Inactive]: nextInactive,
       }
     })
-  }, [scriptProfileUids, profile.chain])
+  }, [scriptProfileUids, currentTransforms])
 
   const isChanged = useMemo(() => {
-    const activeSet = new Set(profile.chain ?? [])
+    const activeSet = new Set(currentTransforms)
     const baselineActive = scriptProfileUids.filter((uid) => activeSet.has(uid))
     const baselineInactive = scriptProfileUids.filter(
       (uid) => !activeSet.has(uid),
@@ -210,17 +202,31 @@ export default function ChianEditorCard({
       !hasSameOrder(chainsUids[ColumnType.Active], baselineActive) ||
       !hasSameOrder(chainsUids[ColumnType.Inactive], baselineInactive)
     )
-  }, [chainsUids, profile.chain, scriptProfileUids])
+  }, [chainsUids, currentTransforms, scriptProfileUids])
 
   const blockTask = useBlockTask(`update-chain-${profile.uid}`, async () => {
     try {
-      await patch.mutateAsync({
-        uid: profile.uid,
-        profile: {
-          ...profile,
-          chain: chainsUids[ColumnType.Active],
-        } as NormalizedProfileBuilder,
-      })
+      const nextTransforms = chainsUids[ColumnType.Active]
+      // Rebuild the config definition with the reordered scoped transforms,
+      // preserving every other field, and replace it atomically.
+      const definition: ProfileDefinition_Deserialize = profile.config.file
+        ? {
+            type: 'config',
+            config: {
+              file: { ...profile.config.file, transforms: nextTransforms },
+            },
+          }
+        : {
+            type: 'config',
+            config: {
+              composition: {
+                ...profile.config.composition!,
+                transforms: nextTransforms,
+              },
+            },
+          }
+
+      await replaceDefinition.mutateAsync({ uid: profile.uid, definition })
     } catch {
       //
     }

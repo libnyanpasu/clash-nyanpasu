@@ -1,8 +1,14 @@
 import { nanoid } from 'nanoid'
 import { useMemo } from 'react'
-import { useProfile, type NormalizedProfile } from '@nyanpasu/interface'
+import {
+  isConfigItem,
+  isRemoteItem,
+  isTransformItem,
+  useProfile,
+  type ProfileItem_Serialize,
+} from '@nyanpasu/interface'
 
-type CurrentProfileData = NormalizedProfile & {
+type CurrentProfileData = ProfileItem_Serialize & {
   language: string
   extension: string
   readOnly: boolean
@@ -23,27 +29,20 @@ export function useCurrentProfile(uid: string): {
       let readOnly = false
       let schemaType
 
-      if (item.type === 'remote') {
-        readOnly = true
-      }
-
-      if (item.type === 'remote' || item.type === 'local') {
+      if (isConfigItem(item)) {
         schemaType = 'clash'
-      }
-
-      if (item.type === 'merge') {
-        schemaType = 'merge'
-      }
-
-      if (item.type === 'script') {
-        if (item.script_type === 'javascript') {
-          language = 'javascript'
-          extension = 'js'
-        }
-
-        if (item.script_type === 'lua') {
-          language = 'lua'
-          extension = 'lua'
+        readOnly = isRemoteItem(item)
+      } else if (isTransformItem(item)) {
+        if (item.transform.overlay) {
+          schemaType = 'merge'
+        } else if (item.transform.script) {
+          if (item.transform.script.runtime === 'javascript') {
+            language = 'javascript'
+            extension = 'js'
+          } else if (item.transform.script.runtime === 'lua') {
+            language = 'lua'
+            extension = 'lua'
+          }
         }
       }
 

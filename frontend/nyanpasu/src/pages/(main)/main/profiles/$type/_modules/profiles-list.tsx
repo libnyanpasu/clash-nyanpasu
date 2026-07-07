@@ -30,6 +30,7 @@ import { Link } from '@tanstack/react-router'
 import { useActiveProfile } from '../detail/_modules/active-button'
 import { useDeleteProfile } from '../detail/_modules/delete-profile'
 import { Route as IndexRoute } from '../index'
+import CreateCompositionButton from './create-composition-button'
 import { categoryProfiles, isProxyProfile } from './utils'
 
 const Chip = ({ children, className, ...props }: ComponentProps<'span'>) => {
@@ -235,6 +236,14 @@ export default function ProfilesList({
         data-slot="profiles-list"
         {...props}
       >
+        {type === 'profile' && (
+          <CreateCompositionButton>
+            <Button variant="stroked" className="self-start">
+              Create Composition
+            </Button>
+          </CreateCompositionButton>
+        )}
+
         <DragDropProvider
           onDragEnd={(event) => {
             const currentUids = filteredProfiles.map((profile) => profile.uid)

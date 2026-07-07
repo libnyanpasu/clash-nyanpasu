@@ -660,6 +660,52 @@ impl NyanpasuClient {
 
 - e2e 迁移路径:存在双迁移机制(`lib.rs:120` 子进程 + `setup.rs:22-26` in-process runner),plan 时核实 rev3 实际生效路径,e2e 步骤以实测为准;`.bak` 由 CLEAN_SCHEMA step 写入(design §10 安全行)。
 
+**2026-07-07 T11 执行修正(e2e 验证 + 文档收尾;opus 子代理 t08-executor;tip `20cfbf3c`,全程本地未推送)**:
+
+design §16 判据 1–8 逐条取证(全部在 tip `20cfbf3c`,当前 env 规则:`RUSTUP_TOOLCHAIN=nightly-2026-05-27`、无 `CARGO_TARGET_DIR`、G 盘默认 target):
+
+- **判据 1(零残留)**:`Config::profiles(` / `config::profile::` / `ProfilesJob(Guard)` 在 `backend/tauri/src` 均 0 命中;`config/profile/` 目录不存在。
+- **判据 2(迁移 e2e)——迁移+生成半由测试确定性取证,活体启动半移交用户清单(见下)**:`cargo test -p clash-nyanpasu --lib migration` **52 passed / 0 failed**,含 `core::migration::runner::tests::real_1_6_1_fixture_migrates_to_2_0_shape`(真实 1.6.1 legacy fixture → 2.0 形态端到端迁移)、`modules::profiles::tests::test_migrate_existing_data`(rev-3 legacy→clean)、`modules::typed_config::tests::*`(legacy verge/clash/window → typed application/clash-config/session-state)。rev-3 迁移 + `.bak` 语义、typed 首铸均经测试钉死。「启动→激活→生成→**核心可运行**」的活体观测因涉及在用户真机拉起真实 clash/mihomo 核心(outward,不可逆),按 plan 保障条 C.2 移交用户手动清单。
+- **判据 3(纯度)**:`tauri::|crate::config::Config` 在 `state/profiles` + `client/profiles.rs` 0 命中。
+- **判据 4/5(读写断言/引用保护)**:`cargo test -p clash-nyanpasu --lib client::profiles::` **32 passed / 0 failed / 1 ignored**(含引用保护、下载-提交分离、`validation_failure_leaves_disk_untouched`、`replace_definition_is_atomic`、`set_current_rejects_missing_and_transform_targets`、新增 `set_current_if_none_only_activates_when_empty`);`state::profiles::` 1 passed。
+- **判据 6(golden)**:`cargo test -p clash-nyanpasu --lib golden_` **5 passed / 0 failed**(`enhance::golden::*` ×4 + `runtime_builder::tests::golden_selected_file_with_script_transform_end_to_end`;plan 原记 4 条,实为 5)。golden fixtures byte-identical(`git status` 除 `.serena` 外净)。
+- **判据 7(台账)**:`(TODO|FIXME)(actor-migration)` 在 `backend/tauri/src` **17 处**(与账本 17 一致),逐处枚举:`bridge/clash.rs:18`、`bridge/mod.rs:23`、`bridge/verge.rs:{88,193,253}`、`bridge/window.rs:18`、`client/core_bridge.rs:{20,27}`、`client/mod.rs:{638,708}`、`client/rebuild.rs:44`、`core/clash/core.rs:596`、`core/hotkey.rs:199`、`feat.rs:110`、`ipc.rs:353`、`lib.rs:279`、`utils/resolve.rs:153`——全属 verge/clash/window/core/runtime 桥(PR-4/5/6 范围),profiles 域零残留。
+- **判据 8(构建面)**:`cargo build -p clash-nyanpasu`(lib+bin)**exit 0**(1m02s,app 端到端可构建);`cargo test -p clash-nyanpasu --lib` 全量 **205 passed**;`pnpm -F interface build` + `pnpm web:build` **绿**。
+
+**契约修正 1–3 实测**:
+
+1. **rev-3 迁移生效路径 + `.bak`**:双机制并存(`lib.rs` 子进程 + `setup.rs` in-process runner);`registry.rs` 注册 `modules::profiles::MIGRATOR`,`detect_baseline` 遇 legacy 文件返 0 → `setup.rs`(client 构造前)路径必然生效;`.bak` 由 CLEAN_SCHEMA step 写 `profiles.yaml.bak`。哪条路径**先**落 `.bak` 属活体时序观测,移交用户清单。
+2. **判据 7 台账**:17 处(上枚举),roadmap §5 B8 行同步引用本枚举。
+3. **secret 一致性(挂账①)静态处置**:api 客户端 secret 读自 `Config::clash().data().get_client_info()`(`core/clash/api.rs:410`);运行时生成经 `legacy_regen_inputs()` 读 `Config::clash().latest()`(`client/mod.rs:648-653`)——**同一 legacy IClashTemp 源**;composition root `sync_legacy_mirrors`(`client/mod.rs:107`)启动时把 typed clash config 镜像入 legacy,故 api 读到的即镜像后的 typed secret。静态无发散证据(单一 secret 源)。残留:typed→legacy 镜像是否逐字段搬运 `secret`(尤其新装随机 uuid 首铸)、以及 401/200 终局需活体核心 + api 调用确认,移交用户清单。
+
+**§16-2 活体半 + 前端全功能 = 用户手动验证清单(pending user manual verification)**:
+
+> 隔离启动准备(已核实,供用户或后续执行):无环境变量式配置目录覆盖;隔离机制 = **便携模式**——在可执行体同目录放 `.config/PORTABLE` 空标记(`target/debug/.config/PORTABLE`),则 `app_config_dir` 解析为 `target/debug/.config/clash-nyanpasu/`(构建树内,绝不触宿主 `%APPDATA%\Clash Nyanpasu`)。默认 `enable_system_proxy=false`(`config/nyanpasu/mod.rs:460`)、`enable_tun_mode=false`(`config/draft.rs:86`),启动不改系统代理/TUN。
+
+- [ ] 隔离目录放 legacy 样本 `profiles.yaml`(含 `current`、chain、remote item、local item 旧 schema)+ `profiles/` 旧物化文件;启动应用 → `profiles.yaml` 变 rev-3 clean schema、`profiles.yaml.bak` 在位、窗口起、日志无 panic。
+- [ ] `clash-config.yaml` 生成且含 guard 注入 `mixed-port`(值 = SessionPortResolver 解析);核心进程在跑(日志 `run core` / 任务管理器)。
+- [ ] UI 切换激活另一 profile → `clash-config.yaml` 重写、核心 api 收 put(日志)、连接不中断。
+- [ ] 连接/代理面板数据正常(api 200)——**secret 一致性活体确认**;若 401/空,回 plan 契约修正 3 最小修复(resolve_setup 回写 secret 至 IClashTemp,单独 commit)。
+- [ ] 日志/后处理输出面板显示 executor 阶段日志(scoped/global/builtin 键位)——**advice BC 活体确认**。
+- [ ] Task 2 前端全功能:导入订阅(名称 = url 末段 fallback)、新建 Local(current 空时自动激活)、单值 current 切换、拖拽重排、编辑(metadata 改名 / remote interval / definition 原子替换三类分开)、文件编辑(Remote 只读拒写 toast / Composition 无文件提示)、删除(被引用弹 `ProfileInUse`)、手动+到期自动订阅刷新、多选 File Config → 创建 Composition 最小交互。
+
+**PR-3 BC 清单(供 PR 描述汇编;未推送,发布属用户决策)**:
+
+- IPC 命令面 **13 → 16 条**,profile 命令重写为 thin adapter(签名见 T08 卡)。
+- profiles `current` **单值化**——旧多选激活 → 单值 `current` + 最小 Composition 创建交互(T09)。
+- 域模型 BC:`chain` → `transforms`(Overlay/Script);`ProfileItem` 扁平化(无嵌套 metadata);`ProfileDefinition` = Config/Transform 二分。
+- import 命名:content-disposition 退役,fallback = url 末段(去 `.yaml`/`.yml`)/host。
+- 文件写入参数收紧(Remote 只读拒写;Composition 无独立文件)。
+- advice 面 BC:legacy 配置分析建议退役 → executor 阶段日志(Guard/Whitelist/Finalizing),前端渲染见用户清单。
+- on-disk BC:`profiles.yaml` rev-3 迁移(新 clean schema),真实旧数据首启自动迁移 + `.bak`(自 T02 起中间态,整分支单 PR 合入无实害)。
+- 连接中断处理挂全量 rebuild(用户决策项,记录待定)。
+
+**评审缺口 + 遗留**:
+
+- **antigravity(前端视角评审)全日宕机**——T08/T09/T11 前端视角外部评审缺席,记为已知评审缺口(codex 后端评审已覆盖 T07–T10)。
+- **孤儿 `ConfigChangedNotifier` 已清除**(commit `d1486837`,非遗留):原属 T10 codex Suggestion,经核实全 workspace 零 caller,team-lead 明确接受删除;技术上略超「严格既存死代码」范围,post-hoc 接受在案。
+- **codex T05/T06 评审延期**项仍挂账(其后端故障期未复审;后续可补)。
+
 ---
 
 ## 4. 原子切换组说明(T07–T10)

@@ -158,16 +158,7 @@ pub async fn create_profile(
     request: NewProfileRequest,
     file_data: Option<String>,
 ) -> Result {
-    let uid = client.add_profile(request, file_data).await?;
-    // 自动激活条件 = Config 定义(含 Composition)且当前无激活(design §9)
-    let snapshot = client.get_profiles().await?;
-    let is_config = matches!(
-        snapshot.items.get(&uid).map(|item| &item.definition),
-        Some(ProfileDefinition::Config { .. })
-    );
-    if is_config && snapshot.current.is_none() {
-        client.activate_profile(Some(uid)).await?;
-    }
+    client.create_profile(request, file_data).await?;
     Ok(())
 }
 

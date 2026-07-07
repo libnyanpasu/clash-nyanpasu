@@ -342,6 +342,37 @@ impl NyanpasuClient {
         Ok(created)
     }
 
+    /// Create a profile from a fully-specified request and apply the design §9
+    /// auto-activation rule (activate a new Config profile when nothing is
+    /// current). Keeps the auto-activation policy in the facade so the command
+    /// stays a thin adapter.
+    pub async fn create_profile(
+        &self,
+        request: NewProfileRequest,
+        initial_file: Option<String>,
+    ) -> Result<ProfileId> {
+        // Create does not download: a remote source would be added
+        // unmaterialized, and the auto-activation below would then rebuild
+        // against a missing file. Remote subscriptions must use import_profile.
+        if matches!(request.definition.source(), Some(source) if source.is_remote()) {
+            return Err(ClientError::Custom(
+                "remote profiles must be created via import_profile".into(),
+            ));
+        }
+        let uid = self.add_profile(request, initial_file).await?;
+        // design §9: auto-activate a Config definition (File/Composition) when
+        // nothing is currently selected.
+        let snapshot = self.inner.profiles.get().await?;
+        let is_config = matches!(
+            snapshot.items.get(&uid).map(|item| &item.definition),
+            Some(ProfileDefinition::Config { .. })
+        );
+        if is_config && snapshot.current.is_none() {
+            self.activate_profile(Some(uid.clone())).await?;
+        }
+        Ok(uid)
+    }
+
     /// Import a remote subscription: add (placeholder name) -> first download
     /// via the refresh transaction -> auto-activate when nothing is current.
     /// Naming BC (recorded 2026-07-06): legacy content-disposition naming is
@@ -394,14 +425,23 @@ impl NyanpasuClient {
             .created
             .clone()
             .ok_or_else(|| ClientError::Custom("import committed without a created uid".into()))?;
-        let was_empty = report.snapshot.current.is_none();
         if let Err(error) = self.refresh_profile(created.clone(), None).await {
             // First download failed = import failed; delete the empty shell to
-            // preserve the legacy all-or-nothing observable behavior.
-            let _ = self.inner.profiles.delete(created.clone()).await;
+            // preserve the legacy all-or-nothing observable behavior. Log if the
+            // rollback itself fails so the orphaned placeholder is not silent.
+            if let Err(cleanup_error) = self.inner.profiles.delete(created.clone()).await {
+                tracing::warn!(
+                    uid = %created,
+                    error = %cleanup_error,
+                    "failed to delete placeholder profile after failed import download",
+                );
+            }
             return Err(error);
         }
-        if was_empty {
+        // Re-read current AFTER the download window: a selection made
+        // concurrently during the download must not be overwritten by import
+        // auto-activation.
+        if self.inner.profiles.get().await?.current.is_none() {
             self.activate_profile(Some(created.clone())).await?;
         }
         Ok(created)
@@ -1145,6 +1185,151 @@ mod tests {
             let item = &snapshot.items[&uid];
             assert_eq!(item.metadata.name, "my-sub"); // url last-segment fallback naming
             assert!(item.definition.source().unwrap().is_remote());
+        });
+    }
+
+    fn local_config_request(name: &str) -> NewProfileRequest {
+        NewProfileRequest {
+            metadata: ProfileMetadata {
+                name: name.into(),
+                desc: None,
+            },
+            definition: ProfileDefinition::Config {
+                config: ConfigDefinition::File(FileConfig {
+                    source: ProfileSource::Local {
+                        binding: LocalBinding::Managed {
+                            materialized: MaterializedFile {
+                                file: ManagedProfilePath::new("pending.yaml").unwrap(),
+                                updated_at: None,
+                            },
+                        },
+                    },
+                    transforms: vec![],
+                }),
+            },
+        }
+    }
+
+    fn remote_config_request() -> NewProfileRequest {
+        NewProfileRequest {
+            metadata: ProfileMetadata {
+                name: "remote".into(),
+                desc: None,
+            },
+            definition: ProfileDefinition::Config {
+                config: ConfigDefinition::File(FileConfig {
+                    source: ProfileSource::Remote {
+                        materialized: MaterializedFile {
+                            file: ManagedProfilePath::new("pending.yaml").unwrap(),
+                            updated_at: None,
+                        },
+                        url: url::Url::parse("https://example.com/sub").unwrap(),
+                        option: RemoteProfileOptions::default(),
+                        subscription: SubscriptionInfo::default(),
+                    },
+                    transforms: vec![],
+                }),
+            },
+        }
+    }
+
+    #[test]
+    fn facade_import_failure_deletes_placeholder() {
+        let dir = tempdir().unwrap();
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher
+            .expect_fetch()
+            .returning(|_, _| anyhow::bail!("dns exploded"));
+        // A failed import never reaches core apply, so the bridge expects nothing.
+        let core = MockRunningCoreBridge::new();
+
+        tauri::async_runtime::block_on(async {
+            let client = test_client_with_fetcher(&dir, Arc::new(fetcher), Arc::new(core)).await;
+            let url = url::Url::parse("https://example.com/subs/x.yaml").unwrap();
+            let result = client.import_profile(url, None).await;
+            assert!(
+                result.is_err(),
+                "import must fail when the first download fails"
+            );
+            let snapshot = client.get_profiles().await.unwrap();
+            assert!(
+                snapshot.items.is_empty(),
+                "the placeholder profile must be deleted after a failed import"
+            );
+        });
+    }
+
+    #[test]
+    fn facade_create_auto_activates_config_and_rejects_remote() {
+        let dir = tempdir().unwrap();
+        let fetcher = MockSubscriptionFetcher::new();
+        let mut core = MockRunningCoreBridge::new();
+        core.expect_apply_config().returning(|| Ok(()));
+        core.expect_on_profile_change().returning(|| ());
+
+        tauri::async_runtime::block_on(async {
+            let client = test_client_with_fetcher(&dir, Arc::new(fetcher), Arc::new(core)).await;
+
+            // A remote source cannot be created (must go through import_profile).
+            let rejected = client.create_profile(remote_config_request(), None).await;
+            assert!(
+                matches!(rejected, Err(ClientError::Custom(_))),
+                "create must reject remote sources"
+            );
+
+            // A local Config with no current selection auto-activates (design §9).
+            let uid = client
+                .create_profile(local_config_request("local"), Some("proxies: []\n".into()))
+                .await
+                .expect("create local config");
+            let snapshot = client.get_profiles().await.unwrap();
+            assert_eq!(
+                snapshot.current.as_ref(),
+                Some(&uid),
+                "an empty current must auto-activate the new Config profile"
+            );
+        });
+    }
+
+    #[test]
+    fn facade_import_does_not_steal_existing_current() {
+        let dir = tempdir().unwrap();
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher.expect_fetch().times(1).returning(|_, _| {
+            Ok(crate::state::profiles::ports::FetchedSubscription {
+                content: "proxies: []\n".into(),
+                subscription: SubscriptionInfo::default(),
+                filename: None,
+            })
+        });
+        let mut core = MockRunningCoreBridge::new();
+        core.expect_apply_config().returning(|| Ok(()));
+        core.expect_on_profile_change().returning(|| ());
+
+        tauri::async_runtime::block_on(async {
+            let client = test_client_with_fetcher(&dir, Arc::new(fetcher), Arc::new(core)).await;
+
+            // Establish a current selection via a local Config.
+            let local_uid = client
+                .create_profile(local_config_request("local"), Some("proxies: []\n".into()))
+                .await
+                .expect("create local config");
+            assert_eq!(
+                client.get_profiles().await.unwrap().current.as_ref(),
+                Some(&local_uid)
+            );
+
+            // Import a remote subscription; current is already set, so import
+            // must NOT overwrite the selection made before it.
+            let url = url::Url::parse("https://example.com/subs/x.yaml").unwrap();
+            let imported = client.import_profile(url, None).await.expect("import");
+            let snapshot = client.get_profiles().await.unwrap();
+            assert_eq!(
+                snapshot.current.as_ref(),
+                Some(&local_uid),
+                "import must not overwrite an existing current selection"
+            );
+            assert!(snapshot.items.contains_key(&imported));
         });
     }
 }

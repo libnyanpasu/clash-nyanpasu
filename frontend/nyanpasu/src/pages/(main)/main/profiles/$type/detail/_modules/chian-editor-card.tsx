@@ -8,6 +8,8 @@ import { CircularProgress } from '@/components/ui/progress'
 import TextMarquee from '@/components/ui/text-marquee'
 import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
+import { formatError } from '@/utils'
+import { message } from '@/utils/notification'
 import { move } from '@dnd-kit/helpers'
 import { DragDropProvider, useDroppable } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
@@ -227,8 +229,11 @@ export default function ChianEditorCard({
           }
 
       await replaceDefinition.mutateAsync({ uid: profile.uid, definition })
-    } catch {
-      //
+    } catch (error) {
+      message(`Update failed: \n ${formatError(error)}`, {
+        title: 'Error',
+        kind: 'error',
+      })
     }
   })
 

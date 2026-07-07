@@ -83,7 +83,7 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
         ...result,
         items: items.map((item) => ({
           ...item,
-          view: () => commands.viewProfile(item.uid),
+          view: async () => unwrapResult(await commands.viewProfile(item.uid)),
           update: (option?: RemoteProfileOptionsPatch_Deserialize | null) =>
             update.mutateAsync({ uid: item.uid, option: option ?? null }),
           drop: () => drop.mutateAsync(item.uid),

@@ -143,10 +143,11 @@ pub async fn import_profile(
     client: State<'_, NyanpasuClient>,
     url: String,
     option: Option<RemoteProfileOptionsPatch>,
-) -> Result {
+) -> Result<ProfileId> {
     let url = url::Url::parse(&url).context("failed to parse the url")?;
-    client.import_profile(url, option).await?;
-    Ok(())
+    // Return the created uid so the caller can apply user-provided metadata
+    // (import derives the name from the url server-side).
+    Ok(client.import_profile(url, option).await?)
 }
 
 /// create a new profile

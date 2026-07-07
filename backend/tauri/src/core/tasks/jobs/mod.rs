@@ -1,6 +1,5 @@
 mod events_rotate;
 mod logger;
-mod profiles;
 
 use super::{
     task::{Task, TaskManager},
@@ -8,7 +7,6 @@ use super::{
 };
 use anyhow::anyhow;
 use parking_lot::RwLock;
-pub use profiles::ProfilesJobGuard;
 use std::sync::Arc;
 pub trait JobExt {
     fn name(&self) -> &'static str;

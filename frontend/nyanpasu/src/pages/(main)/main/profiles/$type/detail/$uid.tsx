@@ -1,7 +1,7 @@
 import EditSquareOutlineRounded from '~icons/material-symbols/edit-square-outline-rounded'
 import { Button } from '@/components/ui/button'
 import TextMarquee from '@/components/ui/text-marquee'
-import { useProfile } from '@nyanpasu/interface'
+import { isRemoteItem, useProfile } from '@nyanpasu/interface'
 import { createFileRoute } from '@tanstack/react-router'
 import { isProxyProfile } from '../_modules/utils'
 import ActionCard from './_modules/action-card'
@@ -43,7 +43,7 @@ function RouteComponent() {
       </DetialHeader>
 
       <div className="grid grid-cols-2 gap-4 p-4 md:grid-cols-4">
-        {currentProfile.type === 'remote' && (
+        {isRemoteItem(currentProfile) && (
           <SubscriptionCard profile={currentProfile} />
         )}
 

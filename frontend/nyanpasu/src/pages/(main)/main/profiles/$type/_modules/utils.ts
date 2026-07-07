@@ -1,101 +1,69 @@
-import { findKey } from 'lodash-es'
-import { NormalizedProfile } from '@nyanpasu/interface'
-import { PROFILE_TYPES, ProfileType } from '../../_modules/consts'
+import {
+  isConfigItem,
+  isTransformItem,
+  type ProfileItem_Serialize,
+} from '@nyanpasu/interface'
+import { ProfileType } from '../../_modules/consts'
+
+export type ConfigProfile = Extract<ProfileItem_Serialize, { type: 'config' }>
+export type TransformProfile = Extract<
+  ProfileItem_Serialize,
+  { type: 'transform' }
+>
 
 export type CategoryProfiles = {
-  [ProfileType.Profile]: Array<
-    Extract<NormalizedProfile, { type: 'local' | 'remote' }>
-  >
-  [ProfileType.JavaScript]: Array<
-    Extract<NormalizedProfile, { type: 'script'; script_type: 'javascript' }>
-  >
-  [ProfileType.Lua]: Array<
-    Extract<NormalizedProfile, { type: 'script'; script_type: 'lua' }>
-  >
-  [ProfileType.Merge]: Array<Extract<NormalizedProfile, { type: 'merge' }>>
+  [ProfileType.Profile]: ConfigProfile[]
+  [ProfileType.JavaScript]: TransformProfile[]
+  [ProfileType.Lua]: TransformProfile[]
+  [ProfileType.Merge]: TransformProfile[]
 }
 
+/** Activatable = Config definition (File / Composition). */
 export const isProxyProfile = (
-  profile: NormalizedProfile,
-): profile is CategoryProfiles[ProfileType.Profile][number] =>
-  profile.type === 'local' || profile.type === 'remote'
+  profile: ProfileItem_Serialize,
+): profile is ConfigProfile => isConfigItem(profile)
+
+/** Chain candidate = Transform definition (Overlay / Script). */
+export const isChainProfile = (
+  profile: ProfileItem_Serialize,
+): profile is TransformProfile => isTransformItem(profile)
 
 export const isJavaScriptProfile = (
-  profile: NormalizedProfile,
-): profile is CategoryProfiles[ProfileType.JavaScript][number] =>
-  profile.type === 'script' && profile.script_type === 'javascript'
+  profile: ProfileItem_Serialize,
+): profile is TransformProfile =>
+  isTransformItem(profile) && profile.transform.script?.runtime === 'javascript'
 
 export const isLuaProfile = (
-  profile: NormalizedProfile,
-): profile is CategoryProfiles[ProfileType.Lua][number] =>
-  profile.type === 'script' && profile.script_type === 'lua'
+  profile: ProfileItem_Serialize,
+): profile is TransformProfile =>
+  isTransformItem(profile) && profile.transform.script?.runtime === 'lua'
 
 export const isMergeProfile = (
-  profile: NormalizedProfile,
-): profile is CategoryProfiles[ProfileType.Merge][number] =>
-  profile.type === 'merge'
+  profile: ProfileItem_Serialize,
+): profile is TransformProfile =>
+  isTransformItem(profile) && profile.transform.overlay !== undefined
 
 export const categoryProfiles = (
-  profiles: NormalizedProfile[],
+  profiles?: ProfileItem_Serialize[] | null,
 ): CategoryProfiles => {
-  const initialCategorized: CategoryProfiles = {
+  const categorized: CategoryProfiles = {
     [ProfileType.Profile]: [],
     [ProfileType.JavaScript]: [],
     [ProfileType.Lua]: [],
     [ProfileType.Merge]: [],
   }
 
-  return profiles.reduce((categorized, profile) => {
-    const matchedProfileType = findKey(PROFILE_TYPES, (allowedTypes) =>
-      allowedTypes.some((allowedType) => {
-        if (allowedType.type !== profile.type) {
-          return false
-        }
-
-        if (
-          'script_type' in allowedType &&
-          allowedType.script_type !== undefined
-        ) {
-          return (
-            profile.type === 'script' &&
-            profile.script_type === allowedType.script_type
-          )
-        }
-
-        return true
-      }),
-    ) as ProfileType | undefined
-
-    if (!matchedProfileType) {
-      return categorized
+  for (const profile of profiles ?? []) {
+    if (isProxyProfile(profile)) {
+      categorized[ProfileType.Profile].push(profile)
+    } else if (isJavaScriptProfile(profile)) {
+      categorized[ProfileType.JavaScript].push(profile)
+    } else if (isLuaProfile(profile)) {
+      categorized[ProfileType.Lua].push(profile)
+    } else if (isMergeProfile(profile)) {
+      categorized[ProfileType.Merge].push(profile)
     }
+  }
 
-    switch (matchedProfileType) {
-      case ProfileType.Profile:
-        if (isProxyProfile(profile)) {
-          categorized[ProfileType.Profile].push(profile)
-        }
-        break
-
-      case ProfileType.JavaScript:
-        if (isJavaScriptProfile(profile)) {
-          categorized[ProfileType.JavaScript].push(profile)
-        }
-        break
-
-      case ProfileType.Lua:
-        if (isLuaProfile(profile)) {
-          categorized[ProfileType.Lua].push(profile)
-        }
-        break
-
-      case ProfileType.Merge:
-        if (isMergeProfile(profile)) {
-          categorized[ProfileType.Merge].push(profile)
-        }
-        break
-    }
-
-    return categorized
-  }, initialCategorized)
+  return categorized
 }

@@ -5,7 +5,11 @@ import FileOpenOutlineRounded from '~icons/material-symbols/file-open-outline-ro
 import { ComponentProps } from 'react'
 import { Button } from '@/components/ui/button'
 import { m } from '@/paraglide/messages'
-import { NormalizedProfile } from '@nyanpasu/interface'
+import {
+  isRemoteItem,
+  isTransformItem,
+  type ProfileItem_Serialize,
+} from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import ActiveButton from './active-button'
 import DeleteProfile from './delete-profile'
@@ -34,9 +38,9 @@ const ActionCardButton = ({
 export default function ActionCard({
   profile,
 }: {
-  profile: NormalizedProfile
+  profile: ProfileItem_Serialize
 }) {
-  const isScript = !(profile.type === 'local' || profile.type === 'remote')
+  const isScript = isTransformItem(profile)
 
   return (
     <div className="col-span-2 grid grid-cols-2 gap-4">
@@ -50,7 +54,7 @@ export default function ActionCard({
         </ActionCardButton>
       </ProfileNameEditor>
 
-      {profile.type === 'remote' && (
+      {isRemoteItem(profile) && (
         <SubscriptionUrlEditor profile={profile} asChild>
           <ActionCardButton>
             <span className="size-4">

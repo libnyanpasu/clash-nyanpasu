@@ -4,7 +4,6 @@ import LuaIcon from '~icons/mdi/language-lua'
 import ChipLine from '~icons/mingcute/chip-line'
 import YamlIcon from '~icons/nonicons/yaml-16'
 import ScriptIcon from '~icons/streamline-plump/script-2-remix'
-import { mapValues } from 'lodash-es'
 import { ComponentProps, PropsWithChildren, ReactNode, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -12,7 +11,8 @@ import { m } from '@/paraglide/messages'
 import { useProfile } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import { Link, useMatchRoute } from '@tanstack/react-router'
-import { PROFILE_TYPES, ProfileType } from './consts'
+import { categoryProfiles } from '../$type/_modules/utils'
+import { ProfileType } from './consts'
 
 const LinkButton = ({
   href,
@@ -108,23 +108,15 @@ export default function ProfilesNavigate({
     query: { data: profiles },
   } = useProfile()
 
-  const counts = useMemo<Record<ProfileType, number>>(
-    () =>
-      mapValues(
-        PROFILE_TYPES,
-        (conditions) =>
-          (profiles?.items ?? []).filter((profile) =>
-            conditions.some(
-              (condition) =>
-                profile.type === condition.type &&
-                (!('script_type' in condition) ||
-                  ('script_type' in profile &&
-                    profile.script_type === condition.script_type)),
-            ),
-          ).length,
-      ),
-    [profiles?.items],
-  )
+  const counts = useMemo<Record<ProfileType, number>>(() => {
+    const categorized = categoryProfiles(profiles?.items)
+    return {
+      [ProfileType.Profile]: categorized[ProfileType.Profile].length,
+      [ProfileType.JavaScript]: categorized[ProfileType.JavaScript].length,
+      [ProfileType.Lua]: categorized[ProfileType.Lua].length,
+      [ProfileType.Merge]: categorized[ProfileType.Merge].length,
+    }
+  }, [profiles?.items])
 
   return (
     <div className={cn('flex flex-col gap-2', className)} {...props}>

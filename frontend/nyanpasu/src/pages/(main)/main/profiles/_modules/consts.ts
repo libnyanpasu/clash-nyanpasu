@@ -1,5 +1,4 @@
 import { m } from '@/paraglide/messages'
-import { NormalizedProfile, ScriptType } from '@nyanpasu/interface'
 
 export enum ListType {
   Grid = 'grid',
@@ -19,16 +18,3 @@ export const PROFILE_TYPE_NAMES = {
   [ProfileType.Lua]: m.profile_lua_label(),
   [ProfileType.Merge]: m.profile_merge_label(),
 } satisfies Record<ProfileType, string>
-
-export const PROFILE_TYPES = {
-  [ProfileType.Profile]: [{ type: 'remote' }, { type: 'local' }],
-  [ProfileType.JavaScript]: [{ type: 'script', script_type: 'javascript' }],
-  [ProfileType.Lua]: [{ type: 'script', script_type: 'lua' }],
-  [ProfileType.Merge]: [{ type: 'merge' }],
-} satisfies Record<
-  ProfileType,
-  Array<{
-    type: NormalizedProfile['type']
-    script_type?: ScriptType
-  }>
->

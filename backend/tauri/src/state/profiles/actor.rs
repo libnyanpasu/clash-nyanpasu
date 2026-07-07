@@ -110,6 +110,12 @@ pub enum ProfilesActorMessage {
         current: Option<ProfileId>,
         reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
     },
+    /// Activate `uid` only if nothing is currently selected. The reply is
+    /// `Some(report)` when it activated, `None` when a current already existed.
+    SetCurrentIfNone {
+        uid: ProfileId,
+        reply: RpcReplyPort<Result<Option<CommitReport>, ProfilesError>>,
+    },
     SetGlobalTransforms {
         ids: Vec<ProfileId>,
         reply: RpcReplyPort<Result<CommitReport, ProfilesError>>,
@@ -448,6 +454,25 @@ impl Actor for ProfilesActor {
                 })
                 .await;
                 let _ = reply.send(result);
+            }
+            ProfilesActorMessage::SetCurrentIfNone { uid, reply } => {
+                // Atomic conditional activation: select `uid` only when nothing
+                // is currently selected. Serialized actor message handling makes
+                // this read-then-write race-free without a second RPC, so a
+                // concurrent SetCurrent cannot be silently overwritten.
+                if Self::current_state(state).current.is_some() {
+                    let _ = reply.send(Ok(None));
+                } else {
+                    let result = Self::run_write(&myself, state, |profiles| {
+                        profiles.set_current(Some(uid));
+                        Ok(WriteOutcome {
+                            affects: AffectsRule::CurrentChanged,
+                            post_ops: vec![],
+                        })
+                    })
+                    .await;
+                    let _ = reply.send(result.map(Some));
+                }
             }
             ProfilesActorMessage::SetGlobalTransforms { ids, reply } => {
                 let result = Self::run_write(&myself, state, |profiles| {

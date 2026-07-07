@@ -593,9 +593,11 @@ impl CoreManager {
     pub async fn update_config(&self) -> Result<()> {
         log::debug!(target: "app", "try to update clash config");
         // 更新配置
-        // FIXME(actor-migration): legacy regenerate path for pre-T08 callers
-        // (enhance_profiles/delete_profile ipc etc.). New code must use
-        // NyanpasuClient::rebuild_running_config(). Remove after T10.
+        // FIXME(actor-migration): legacy regenerate path. Sole remaining caller
+        // chain: feat::patch_verge (TUN/service toggles) -> update_core_config
+        // -> update_config. New code must use
+        // NyanpasuClient::rebuild_running_config(). Remove when PR-4/5 migrate
+        // the verge feature flows onto injected clients.
         crate::client::rebuild::regenerate().await?;
         self.apply_config().await
     }

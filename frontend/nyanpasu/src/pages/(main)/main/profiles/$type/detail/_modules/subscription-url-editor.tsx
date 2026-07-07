@@ -41,7 +41,7 @@ export default function SubscriptionUrlEditor({
 }: ComponentProps<typeof ModalTrigger> & {
   profile: ProfileItem_Serialize
 }) {
-  const { replaceDefinition } = useProfile()
+  const { replaceDefinition, update } = useProfile()
 
   const [open, setOpen] = useState(false)
 
@@ -79,6 +79,10 @@ export default function SubscriptionUrlEditor({
               uid: profile.uid,
               definition,
             })
+            // The materialized file still holds the old subscription until a
+            // refresh; re-download from the new url immediately so the active
+            // rebuild does not keep serving stale content.
+            await update.mutateAsync({ uid: profile.uid, option: null })
           }
 
           handleClose()

@@ -528,6 +528,15 @@ impl NyanpasuClient {
 - Claude 独立对账:台账 18 ✓、`ipc.rs` 零 `Config::profiles()`/`ProfilesBuilder` ✓、specta 16 命令注册 ✓、actor.rs 仅 derive 注解 ✓;`import_profile` 失败语义(占位回删/条件激活)与薄适配器纪律逐条核过,无 Critical/Major。
 - 执行报告揭露的 flaky 测试(T07 的 `legacy_regen_inputs_see_uncommitted_legacy_drafts`)根因 = legacy 全局单例非密闭(隔离跑时惰性加载宿主真实配置且反序列化失败;全量跑时与共享 draft 槽竞态,discard 可吞并发提交)→ 已修 `3b529c55`:`legacy_regen_inputs` 拆出纯转换半段 `legacy_regen_inputs_from` 直接测,生产包装 3 行保持 draft 可见的 `latest()` 读(注释锁定)。
 
+**2026-07-07 T08 后端补审处置(codex 恢复后 68/100 NEEDS_IMPROVEMENT,无 Critical;4 Major + 测试缺口;修复 commit `bc2b296b`,纯后端、命令签名不变故 bindings/前端零改)**:
+
+- **T8-M1 — `create_profile` 命令层编排**:**CONFIRMED**(ipc 读快照、判 Config-kind、命令层调 `activate_profile`,违 CLAUDE.md §12)。修:auto-activation 收编 facade `create_profile(request, initial_file) -> Result<ProfileId>`(镜像 `import_profile` 形态,内含 add + design §9 条件激活);ipc 变纯适配器(parse → facade → map);命令签名不变,前端无感。
+- **T8-M2 — create 接受 remote 源可激活未物化壳**:**CONFIRMED**(actor Add 对 Remote 不下载,占位 `{uid}.yaml` 未写;current==None 时 create 会激活 → 提交后 rebuild 读缺失文件失败)。修:facade `create_profile` 前置拒绝 remote 源(`definition.source().is_remote()` → `ClientError::Custom`,指引走 `import_profile`)。
+- **T8-M3 — import `was_empty` 竞态**:**CONFIRMED**(`was_empty` 在 await 首刷之前捕获,下载窗口内的并发选择会被刷后激活覆盖)。修:删 `was_empty`,首刷成功后**重读快照** `current.is_none()` 才激活。
+- **T8-M4 — import 清理吞错**:**CONFIRMED**(`let _ = delete` 静默)。修:回删失败走 `tracing::warn!(uid, error, ...)`(降级效应模式,不改 all-or-nothing 观感)。
+- **测试缺口(T8-m1)**:新增 3 例(`facade_import_failure_deletes_placeholder` 首刷失败回删占位;`facade_create_auto_activates_config_and_rejects_remote` 钉 auto-activation 规则 + remote 拒绝;`facade_import_does_not_steal_existing_current` 钉 T8-M3 非空 current 不激活)。M3 真正的下载窗口并发竞态无 test hook 难以确定性复现,以重读快照的代码不变式 + 上述非空 current 用例覆盖观察面。
+- 复验全绿:后端包级 225 绿(+3);workspace 全绿;golden diff vs `ea863cd9` = 0;clippy 净;interface+nyanpasu tsc + `pnpm web:build` exit 0;bindings 稳定(命令签名未变,`cargo test` 后仅 `.serena` + 两后端文件);台账不变(18)。
+
 ---
 
 ### T09 — 前端适配

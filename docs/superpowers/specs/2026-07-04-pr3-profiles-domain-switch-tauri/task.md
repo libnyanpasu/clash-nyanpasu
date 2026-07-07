@@ -620,6 +620,17 @@ impl NyanpasuClient {
 - 增补删除面:`enhance/utils.rs`——全仓唯一 `crate::config::profile` 直接 import(`utils.rs:5`),随旧 `enhance()` 清理一并处理。
 - 切换面基数实测(2026-07-06):`Config::profiles()` 共 24 处(ipc 18 / feat 3 / enhance 1 / jobs 2)——T08 清 ipc 后本卡清余下 6 处;grep 判据不变。
 
+**2026-07-07 执行修正(T10 实物;commit `51098a52`/`f9ad0698`/`c754138b`/`72e2a157`)**:
+
+- **删除顺序(消费者先行,每步编译+测试绿)**:①`core/tasks/jobs/profiles.rs`(`ProfilesJob`/`ProfilesJobGuard`)+ `jobs/mod.rs` re-export + `core/tasks/mod.rs:24-30` 注册块;②`feat::update_profile` 本体 + 孤儿 `Borrow`/`config::profile::{builder,item}` import;③legacy enhance;④`config/profile/**` 全目录 + `Config::profiles()` accessor/字段/init。
+- **legacy enhance 退役(Task 3)实测**:`enhance/{advice,field,tun}.rs` **全删**;`merge.rs` **全删**(plan 说「部分删保 create_lua_context」为基线误记——`create_lua_context` 实在 `script/lua/mod.rs`,adapter 用 script 版;`merge.rs` 全 legacy YAML merge,新 executor overlay 替代);`chain.rs` 仅存 `PostProcessingOutput`/`ScriptType`/`ScriptWrapper`(`PostProcessingOutput` 的 `ProfileUid` 内联为 `String`,解耦即将删除的 config::profile);`utils.rs` 仅存 `LogSpan`/`Logs`/`LogsExt`/`take_logs`(`take_logs` 为 script/lua 存活消费);`mod.rs` 删 `enhance()`+`use_include_all_proxy_groups`+`use_cache`+tests,re-export 收敛到 4 行。`script/lua/mod.rs` 两处 `crate::enhance::runner` 路径(旧 `script::*` glob 提供)改 `crate::enhance::script::runner`(编译器牵引,不重加 glob)。
+- **`SubscriptionInfo` 迁址(非纯删)**:`config::profile::item::SubscriptionInfo` 实为 clash providers REST API 内联订阅用量类型(`ProxyProviderItem.subscription_info`,specta 导出,前端消费),非 profiles 域;随目录删除会破坏 `core/clash/api.rs`。→ 原样迁入 `core/clash/api.rs`(同名同形,3 测同迁);注释用 `//`(非 `///`)避免 specta doc 注入使 `bindings.ts` 漂移——最终 bindings **零变化**。
+- **首铸路径修**(startup 关键):`utils/init/mod.rs:157` 首次写 `profiles.yaml` 的默认值由 legacy `Profiles::default()` 改 `nyanpasu_config::profile::Profiles::default()`(新 schema 明文,与 `ProfilesClient` 加载/migration 一致)。
+- **migration rev-3 保留**:`core/migration/modules/profiles.rs` 全程 Value/`Mapping` 层操作(`is_clean_schema`/`migrate_profile_data`),零 `config::profile` 类型依赖——按 design D3 保留(on-disk legacy→clean 转换);仅删一 `#[ignore]` 遗留测试 `test_profile_parse_migrated_data`(用 legacy `Profiles` 解析已迁移数据,冗余无意义)。
+- **advice**:legacy 配置分析建议随 enhance 退役(已接受 BC;新 `advice` 面 = executor Guard/Whitelist/Finalizing 日志,T11 前端复核)。
+- **台账**:18 → 17,净 −1(删 `enhance/mod.rs:38` 的 legacy-enhance `FIXME(actor-migration)`)。profiles 域桥已在 T07/T08 清尽,余 17 皆 verge/clash/window/core/runtime 桥(PR-4/5/6 范围),本卡不动;本卡的「大幅下降」是 legacy **代码**(~4300 行:jobs 221 + feat 71 + enhance 2047 + config/profile ~2000),非桥注释。
+- **验证**:§16 grep 三判据全零;golden fixtures byte-identical vs `35f26303`(diff 0)+ golden filter 绿;后端包级 204 绿(225→204,删 legacy merge/chain/cache/config-profile 单测,golden 回归网原样);workspace 全绿;clippy 净;`pnpm web:build` exit 0(前端未触,app 恢复端到端可构建,运行留 T11)。
+
 ---
 
 ### T11 — 端到端验证 + 文档收尾

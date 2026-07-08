@@ -67,7 +67,7 @@ impl MigrationStep for SplitLegacyConfig {
         }
 
         let legacy = read_legacy_verge(&ctx.nyanpasu_config_path())?;
-        let legacy_clash = read_legacy_clash(&ctx.clash_guard_overrides_path())?;
+        let legacy_clash = read_legacy_clash_inputs(ctx)?;
         let (application, session_state, clash_config) =
             typed_config_from_legacy_parts(&legacy, &legacy_clash)?;
 
@@ -260,18 +260,30 @@ fn read_legacy_verge(path: &Path) -> anyhow::Result<IVerge> {
     Ok(merged)
 }
 
-fn read_legacy_clash(path: &Path) -> anyhow::Result<Mapping> {
+fn read_legacy_clash_inputs(ctx: &Ctx) -> anyhow::Result<Mapping> {
     let mut merged = IClashTemp::template().0;
+
+    if classify_shared_clash_file(ctx)? == SharedClashFileState::LegacyRuntime {
+        merge_legacy_clash_file(&mut merged, &ctx.clash_config_path())?;
+    }
+    merge_legacy_clash_file(&mut merged, &ctx.clash_guard_overrides_path())?;
+
+    Ok(merged)
+}
+
+fn merge_legacy_clash_file(merged: &mut Mapping, path: &Path) -> anyhow::Result<()> {
     if !path.exists() {
-        return Ok(merged);
+        return Ok(());
     }
 
     let legacy = help::read_merge_mapping(&path.to_path_buf())
         .with_context(|| format!("failed to read legacy clash overrides {}", path.display()))?;
     for (key, value) in legacy {
-        merged.insert(key, value);
+        if !matches!(value, Value::Null) {
+            merged.insert(key, value);
+        }
     }
-    Ok(merged)
+    Ok(())
 }
 
 fn read_yaml<T: DeserializeOwned>(path: &Path) -> anyhow::Result<T> {
@@ -598,6 +610,80 @@ mod tests {
     }
 
     #[test]
+    fn legacy_guard_overrides_preserve_override_fields() {
+        let (mut ctx, _temp) = test_ctx();
+        write_yaml(&ctx.nyanpasu_config_path(), &IVerge::template());
+        std::fs::write(
+            ctx.clash_guard_overrides_path(),
+            "ipv6: true\nallow-lan: true\nmode: global\nlog-level: debug\n",
+        )
+        .unwrap();
+
+        SPLIT_LEGACY_CONFIG.run(&mut ctx).unwrap();
+
+        let clash: ClashConfig = read_typed(&ctx.clash_config_path());
+        let overrides = serde_yaml::to_value(&clash.overrides).unwrap();
+        let overrides = overrides.as_mapping().unwrap();
+        assert_eq!(overrides.get("ipv6"), Some(&Value::Bool(true)));
+        assert_eq!(overrides.get("allow-lan"), Some(&Value::Bool(true)));
+        assert_eq!(overrides.get("mode"), Some(&Value::String("global".into())));
+        assert_eq!(
+            overrides.get("log-level"),
+            Some(&Value::String("debug".into()))
+        );
+    }
+
+    #[test]
+    fn legacy_runtime_clash_config_alone_preserves_override_fields() {
+        let (mut ctx, _temp) = test_ctx();
+        write_yaml(&ctx.nyanpasu_config_path(), &IVerge::template());
+        write_legacy_clash(&ctx.clash_config_path());
+
+        SPLIT_LEGACY_CONFIG.run(&mut ctx).unwrap();
+
+        let clash: ClashConfig = read_typed(&ctx.clash_config_path());
+        let overrides = serde_yaml::to_value(&clash.overrides).unwrap();
+        let overrides = overrides.as_mapping().unwrap();
+        assert_eq!(overrides.get("ipv6"), Some(&Value::Bool(true)));
+        assert_eq!(overrides.get("allow-lan"), Some(&Value::Bool(true)));
+        assert_eq!(overrides.get("mode"), Some(&Value::String("global".into())));
+        assert_eq!(
+            overrides.get("log-level"),
+            Some(&Value::String("info".into()))
+        );
+    }
+
+    #[test]
+    fn legacy_guard_overrides_take_precedence_over_runtime_clash_config() {
+        let (mut ctx, _temp) = test_ctx();
+        write_yaml(&ctx.nyanpasu_config_path(), &IVerge::template());
+        let mut runtime = IClashTemp::template().0;
+        runtime.insert("ipv6".into(), false.into());
+        runtime.insert("allow-lan".into(), false.into());
+        runtime.insert("mode".into(), "direct".into());
+        runtime.insert("log-level".into(), "warning".into());
+        write_yaml(&ctx.clash_config_path(), &runtime);
+        std::fs::write(
+            ctx.clash_guard_overrides_path(),
+            "ipv6: true\nallow-lan: true\nmode: global\nlog-level: debug\n",
+        )
+        .unwrap();
+
+        SPLIT_LEGACY_CONFIG.run(&mut ctx).unwrap();
+
+        let clash: ClashConfig = read_typed(&ctx.clash_config_path());
+        let overrides = serde_yaml::to_value(&clash.overrides).unwrap();
+        let overrides = overrides.as_mapping().unwrap();
+        assert_eq!(overrides.get("ipv6"), Some(&Value::Bool(true)));
+        assert_eq!(overrides.get("allow-lan"), Some(&Value::Bool(true)));
+        assert_eq!(overrides.get("mode"), Some(&Value::String("global".into())));
+        assert_eq!(
+            overrides.get("log-level"),
+            Some(&Value::String("debug".into()))
+        );
+    }
+
+    #[test]
     fn legacy_clash_overrides_seed_modeled_clash_config() {
         let (mut ctx, _temp) = test_ctx();
         write_yaml(&ctx.nyanpasu_config_path(), &IVerge::template());
@@ -606,9 +692,12 @@ mod tests {
         SPLIT_LEGACY_CONFIG.run(&mut ctx).unwrap();
 
         let clash: ClashConfig = read_typed(&ctx.clash_config_path());
+        let overrides = serde_yaml::to_value(&clash.overrides).unwrap();
+        let overrides = overrides.as_mapping().unwrap();
         assert_eq!(clash.mixed_port.start_port, 7890);
         assert_eq!(clash.external_controller.host.to_string(), "127.0.0.1");
         assert_eq!(clash.external_controller.port.start_port, 19090);
+        assert_eq!(overrides.get("ipv6"), Some(&Value::Bool(true)));
     }
 
     #[test]

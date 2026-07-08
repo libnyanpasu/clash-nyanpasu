@@ -8,7 +8,7 @@ use thiserror::Error;
 use super::*;
 
 /// Persisted profile document.
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Profiles {
     /// The single selected activatable Config profile.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -25,8 +25,20 @@ pub struct Profiles {
 
     /// Serialized as a sequence, kept as an ordered map in memory.
     #[serde(default, with = "items_serde")]
-    #[specta(type = Vec<ProfileItem>)]
     pub items: IndexMap<ProfileId, ProfileItem>,
+}
+
+#[allow(dead_code)]
+#[derive(Type)]
+#[specta(remote = Profiles)]
+struct ProfileDocument {
+    #[specta(optional)]
+    current: Option<ProfileId>,
+    #[specta(optional)]
+    global_transforms: Vec<ProfileId>,
+    valid: Vec<String>,
+    #[specta(type = Vec<ProfileItem>)]
+    items: IndexMap<ProfileId, ProfileItem>,
 }
 
 impl Default for Profiles {

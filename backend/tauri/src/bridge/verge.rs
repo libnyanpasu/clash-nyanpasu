@@ -454,8 +454,11 @@ mod tests {
     use super::*;
     use crate::{
         client::{ClientSetupArgs, LegacyBridgeSet, NyanpasuClient},
-        config::nyanpasu::{
-            LoggingLevel, NetworkStatisticWidgetConfig, ProxiesSelectorMode, TrayMenuMode,
+        config::{
+            IClashTemp,
+            nyanpasu::{
+                LoggingLevel, NetworkStatisticWidgetConfig, ProxiesSelectorMode, TrayMenuMode,
+            },
         },
         state::mirror::{ClashLegacyBridge, WindowLegacyBridge},
     };
@@ -499,6 +502,11 @@ mod tests {
     }
 
     fn test_bridge(dir: &TempDir) -> (NyanpasuClient, LegacyVergeBridge) {
+        // Keep tests hermetic: the legacy global otherwise reads host config/registry state.
+        let clash = Config::clash();
+        *clash.draft() = IClashTemp::template();
+        clash.apply();
+
         let paths = crate::utils::path::PathResolver::with_base_dirs(
             dir.path().into(),
             dir.path().join("data"),

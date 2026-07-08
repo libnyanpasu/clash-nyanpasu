@@ -3,6 +3,7 @@
 - **关联设计**: [`./design.md`](./design.md)(下文「design §N」均指该文件章节)
 - **拆解目标**: 每个任务 = 一个可独立 plan、独立执行、独立过审的 commit 组(1–3 个 conventional commit);任务卡自带 scope、接口契约与验证判据,供后续用 `superpowers:writing-plans` 逐卡展开为 bite-sized plan(执行时配合 `superpowers:subagent-driven-development` 或 `executing-plans`)。
 - **分支策略**: 单一 feature 分支(建议 `refactor/pr3-profiles-domain-switch`),任务按依赖序落 commit;T07–T10 为**原子切换组**(见 §4),必须同 PR 合并。
+- **前置状态(2026-07-06 勘误)**: pre①(#4868)/pre②(#4877)/PR-2b(#4869)均已合并,基准 = main @ `356864d5`;executor 实物签名与 D12 落定见 design §19,T06/T07 卡已同步。
 
 ---
 
@@ -12,9 +13,9 @@
 2. `state/profiles.rs` + `client/profiles.rs` **禁止** import `tauri::*` / `crate::config::Config`(design D10)。
 3. RPC 超时:读 `call(_, Some(PROFILES_READ_TIMEOUT))`(5s 域内常量)、写 `call(_, None)`;写 handler 禁无界 I/O(design D9)。
 4. 全部 mutation 走七步事务:clone→mutate→`validate()`→scheduler diff→原子持久化→commit→重建索引+reconcile;commit 后副作用失败 = 降级不回滚(design D5)。
-5. 本 PR 允许的旧全局消费点仅:`Config::runtime()` 写产物、`CoreManager::global().update_config()`、D12 取数点——全部标 `TODO(actor-migration)` 注释(格式见 design §8),台账 B8。
+5. 本 PR 允许的旧全局消费点仅:`Config::runtime()` 写产物、`CoreManager::global().update_config()` 两处(D12 已落定走 typed client,取数点不复存在——design §19)——全部标 `TODO(actor-migration)` 注释(格式见 design §8),台账 B8。
 6. 测试不 sleep,同步用 `RpcReplyPort` ack;ports 兼容 `mockall::automock`。
-7. 硬前置:**PR-3-pre②(runtime pipeline executor)已合并**;PR-3-pre①(snapshot store v2,当前分支)已合并。未满足时 T06 及其下游全部阻塞。
+7. 硬前置(2026-07-06 核对,**全部满足**):PR-3-pre①(snapshot store v2)已合并 `ffd80168`(#4868);PR-3-pre②(runtime pipeline executor)已合并 `356864d5`(#4877);PR-2b(三 StateActor)已合并 `95c4ca8a`(#4869)→ D12 走 typed client 分支(design §19)。T06 解除阻塞。
 8. 中间态规则:每个 commit 必须 `cargo build` + `cargo test` 绿;「应用端到端可运行」只在原子切换组边界(T07 之前 / T10 之后)保证。
 
 ---
@@ -24,7 +25,7 @@
 ```mermaid
 flowchart LR
   subgraph pre["硬前置(非本 PR)"]
-    P2["PR-3-pre② executor"]
+    P2["PR-3-pre② executor ✅ #4877"]
   end
   subgraph parallel["可并行 lane"]
     T01["T01 specta 接入<br/>与类型导出"]
@@ -90,8 +91,10 @@ flowchart LR
 
 **Interfaces — Produces**(T08/T09 依赖):
 
-- TS 侧命名类型:`Profiles`、`ProfileItem`、`ProfileDefinition` 及其逐 variant 命名导出(`FileConfig`/`CompositionConfig`/`OverlayTransform`/`ScriptTransform`/`ProfileSourceLocal`/`ProfileSourceRemote`…,具体命名 plan 时定,原则 = design D11:嵌套 tagged enum 不内联递归)
-- `ProfileMetadataPatch` / `RemoteProfileOptionsPatch` 的 TS 形态(`double_option` 三态字段)
+- TS 侧实际导出的 PR-3 profile 域命名类型:`ProfileDocument`(`nyanpasu_config::profile::Profiles` 的 collision-safe 导出名;旧 `Profiles` 仍为 legacy profile DTO)、`ProfileItem`/`ProfileItem_Deserialize`/`ProfileItem_Serialize`、`ProfileMetadata`/`ProfileMetadata_Deserialize`/`ProfileMetadata_Serialize`、`ProfileDefinition`/`ProfileDefinition_Deserialize`/`ProfileDefinition_Serialize`、`ConfigDefinition`/`ConfigDefinition_Deserialize`/`ConfigDefinition_Serialize`、`FileConfig`/`FileConfig_Deserialize`/`FileConfig_Serialize`、`CompositionConfig`/`CompositionConfig_Deserialize`/`CompositionConfig_Serialize`、`TransformDefinition`/`TransformDefinition_Deserialize`/`TransformDefinition_Serialize`、`OverlayTransform`/`OverlayTransform_Deserialize`/`OverlayTransform_Serialize`、`ScriptTransform`/`ScriptTransform_Deserialize`/`ScriptTransform_Serialize`、`ScriptRuntime`、`ProfileSource`/`ProfileSource_Deserialize`/`ProfileSource_Serialize`、`LocalBinding`/`LocalBinding_Deserialize`/`LocalBinding_Serialize`、`ExternalMode`、`MaterializedFile`/`MaterializedFile_Deserialize`/`MaterializedFile_Serialize`、`ProfileRemoteOptions`(旧 `RemoteProfileOptions` 仍为 legacy DTO)、`ProfileSubscriptionInfo`(旧 `SubscriptionInfo` 仍为 legacy DTO)、`TransformOwner`、`CompositionMemberRole`。
+- 透明 newtype 实际导出为命名别名:`ProfileId = string`、`ManagedProfilePath = string`、`ExternalProfilePath = string`。
+- Patch / error 实际导出:`ProfileMetadataPatch`/`ProfileMetadataPatch_Deserialize`/`ProfileMetadataPatch_Serialize`、`RemoteProfileOptionsPatch`/`RemoteProfileOptionsPatch_Deserialize`/`RemoteProfileOptionsPatch_Serialize`、`ProfileValidationError`。`double_option` 三态字段通过 serialize/deserialize patch 形态保留。
+- **维护注意(T01 审查发现)**: `ProfileDocument`/`ProfileRemoteOptions`/`ProfileSubscriptionInfo` 来自 `#[specta(remote = ...)]` mirror 结构(真实 struct 不再 derive `Type`)——域模型字段变更时必须**手动同步 mirror**,导出测试只断言类型名、不校验字段形状(漂移不会被编译或 CI 拦截);T08 plan 时评估补充字段形状断言。
 
 **验证**:
 
@@ -256,20 +259,48 @@ pub struct ProfilesActorArgs { pub paths: PathResolver, pub fs: Arc<dyn ProfileF
 
 **Files**:
 
-- Create: `backend/tauri/src/enhance/runtime_builder.rs`(`RuntimeBuilder` + `RuntimeBuildInput`/`FinalizeParams`)
+- Create: `backend/tauri/src/enhance/runtime_builder.rs`(`RuntimeBuilder` + `RuntimeBuildInput`)
 - Create: `backend/tauri/src/enhance/content_source.rs`(`FsProfileContentSource: ProfileContentSource`,按 `ManagedProfilePath` 读物化文件)
 - Modify: `backend/tauri/src/enhance/script/`(为现 boa/lua runner 加 `ScriptRunner` trait impl 包装,不动原逻辑)
 - Create: golden fixtures(旧行为样本:单 current、multi-current→Composition、scoped chain、global chain、builtin 门控、HANDLE_FIELDS overlay、whitelist 过滤)
 
-**Interfaces — Consumes**: PR-3-pre② 交付的 `ProfileContentSource`/`ScriptRunner` ports 与 executor 入口、`RuntimeArtifact`;`enhance/chain.rs:145` builtin 门控表(组装为 `Vec<BuiltinTransform>` 传参)。
-**Interfaces — Produces**(T07 依赖):
+**Interfaces — Consumes**(2026-07-06 勘误,#4877 实物:`backend/nyanpasu-config/src/runtime/executor/{mod,ports,artifact}.rs`):
 
 ```rust
-pub struct RuntimeBuildInput { pub profiles: Arc<Profiles>, pub guard_overrides: ClashGuardOverrides,
-                               pub finalize_params: FinalizeParams, pub builtins: Vec<BuiltinTransform> }
+// executor 入口(mod.rs:196)
+pub fn execute(inputs: &RuntimePipelineInputs<'_>, content: &dyn ProfileContentSource, runner: &dyn ScriptRunner)
+    -> Result<RuntimeArtifact, RuntimePipelineError>;
+pub struct RuntimePipelineInputs<'a> { pub profiles: &'a Profiles, pub target: ExecutionTarget,
+    pub guard: GuardInputs<'a>, pub whitelist_enabled: bool, pub tun: TunParams,
+    pub builtin_transforms: &'a [BuiltinTransform] }
+pub enum ExecutionTarget { Selected(ProfileId), Bare }                     // Bare = current 为 None 的裸配置路径
+pub struct GuardInputs<'a> { pub overrides: &'a ClashGuardOverrides, pub ports: ResolvedPortBindings }
+pub struct ResolvedPortBindings { pub mixed_port: u16, pub port: Option<u16>,
+    pub socks_port: Option<u16>, pub external_controller: Option<String> } // 端口探测 IO 不进 executor
+pub struct TunParams { pub enable: bool, pub flavor: TunFlavor, pub windows_fake_ip_filter: bool }
+pub enum TunFlavor { ClashRs, Standard { stack: TunStack } }               // 含 Premium+Mixed→Gvisor 降级,由调用方推导
+pub struct BuiltinTransform { pub name: String, pub runtime: ScriptRuntime, pub source: String }
+// ports.rs:ScriptRunner 三方法 run / eval_item_predicate / eval_item_expr;run 返回 ScriptRunOutcome{result, logs}
+// artifact.rs:RuntimeArtifact { final_config: Arc<ConfigValue>, graph, step_logs: Vec<StepLog>, applied_fields }
+```
+
+另消费:`enhance/chain.rs:145` builtin 门控表(按 `ClashCore` bitflags 组装 `Vec<BuiltinTransform>`)。
+
+**Interfaces — Produces**(T07 依赖;字段实名 plan 时锚定,变更回写本卡):
+
+```rust
+// RuntimeBuilder 职责 = 把域快照确定性地降解为 RuntimePipelineInputs:
+// TunFlavor 推导(含 Premium+Mixed→Gvisor)、ClashCore 门控 builtins、cfg!(windows) 传参、
+// current=None → ExecutionTarget::Bare。端口解析(IO)不在 builder 内,作为 ResolvedPortBindings 传入。
+pub struct RuntimeBuildInput {
+    pub profiles: Arc<Profiles>,               // ProfilesClient 快照
+    pub clash: ClashConfig,                    // ClashConfigClient 快照(guard overrides/tun/enable_clash_fields)
+    pub app: NyanpasuAppConfig,                // ApplicationClient 快照(core 选择 + builtin 开关)
+    pub resolved_ports: ResolvedPortBindings,  // 调用方预解析(T07:composition/facade 侧)
+}
 impl RuntimeBuilder {
-    pub fn build(input: RuntimeBuildInput, content: &dyn ProfileContentSource, scripts: &dyn ScriptRunner)
-        -> Result<RuntimeArtifact>;
+    pub fn build(input: &RuntimeBuildInput, content: &dyn ProfileContentSource, scripts: &dyn ScriptRunner)
+        -> Result<RuntimeArtifact, RuntimePipelineError>;
 }
 ```
 
@@ -279,7 +310,7 @@ impl RuntimeBuilder {
 - `RuntimeArtifact.step_logs` 能还原旧 `postprocessing_output` 消费需求
 - 纯度断言:`runtime_builder.rs` 无 `Config::` / `tauri::` import(D12 取数不在本卡——输入全部显式传参)
 
-**单独 plan 时读**: design §8、图 13.2、D7/D12;roadmap §4.4(executor 交付形态);`enhance/mod.rs:22-104`、`enhance/chain.rs:59-160`(旧语义源)。
+**单独 plan 时读**: design §8/§19、图 13.2、D7/D12;`backend/nyanpasu-config/src/runtime/executor/`(实物:`mod.rs`/`ports.rs`/`artifact.rs`;`tests/{golden,parity}.rs` fixtures 可复用);`docs/superpowers/specs/2026-07-04-runtime-pipeline-executor-design.md` §19 勘误;`enhance/mod.rs:22-104`、`enhance/chain.rs:59-160`(旧语义源)。
 
 ---
 
@@ -320,7 +351,7 @@ impl NyanpasuClient {
 **验证**:
 
 - 启动冒烟(顺序断言:migration 先于 spawn);`rebuild_running_config` 集成测试(mock 或真实 executor)
-- 台账检查:本卡新增 TODO 注释恰好覆盖 design §8 所列两处 + D12 取数点
+- 台账检查:本卡新增 TODO 注释恰好覆盖 design §8 所列两处(D12 已走 typed client 取数,无第三处;design §19)
 
 **单独 plan 时读**: design §5/§6.4/§8、图 13.2;PR-2b spec §10.2(composition root 顺序样板);`setup.rs`/`lib.rs:120,362-398` 现状。
 

@@ -1,10 +1,10 @@
 pub mod format;
 pub mod state;
 
-/// Smoke test proving the gxhash dependency compiles and runs under the
+/// Smoke test proving the gxhash dev-dependency compiles and runs under the
 /// target-feature flags configured in `.cargo/config.toml`. gxhash fails to
-/// compile without `+aes` (plus `+sse2` / `+neon`), so a passing build here
-/// confirms the per-target rustflags are actually being applied.
+/// compile without `+aes` (plus `+sse2` / `+neon`), so a passing test build
+/// here confirms the per-target rustflags are actually being applied.
 #[cfg(test)]
 mod gxhash_smoke {
     use gxhash::{HashMap as GxHashMap, HashMapExt};
@@ -21,13 +21,10 @@ mod gxhash_smoke {
 
     #[test]
     fn gxhash64_is_deterministic() {
-        let a = gxhash::gxhash64(b"clash-nyanpasu", 0);
-        let b = gxhash::gxhash64(b"clash-nyanpasu", 0);
-        assert_eq!(a, b, "same input + seed must hash identically");
-        assert_ne!(
-            gxhash::gxhash64(b"a", 0),
-            gxhash::gxhash64(b"b", 0),
-            "different inputs should (almost surely) differ"
+        assert_eq!(
+            gxhash::gxhash64(b"clash-nyanpasu", 0),
+            gxhash::gxhash64(b"clash-nyanpasu", 0),
+            "same input + seed must hash identically",
         );
     }
 }

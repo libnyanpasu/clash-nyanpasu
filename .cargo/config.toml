@@ -1,19 +1,23 @@
-# gxhash requires hardware SIMD intrinsics at COMPILE time, or the crate fails
-# to build (`compile_error!`). Enable them per distributed target triple:
-#   x86-64:  AES-NI (+aes) + SSE2 (+sse2, usually on by default)
-#   aarch64: AES (+aes) + NEON (+neon)
+# gxhash needs the +aes intrinsic (plus +sse2 on x86-64 / +neon on aarch64) at
+# COMPILE time or it fails with `compile_error!`. It has no scalar fallback.
 #
-# These flags apply to the WHOLE binary, so every release target below now
-# requires a CPU with AES-NI / AES at runtime (x86 CPUs since ~2010; a few old
-# low-end Atom/Pentium/Celeron lack it and would crash with an illegal
-# instruction). Accepted tradeoff for gxhash performance.
+# gxhash is currently a dev-dependency (test-only — see nyanpasu-core), so it is
+# compiled only when running `cargo test` / clippy on a CI or developer host,
+# never by the `tauri build` cross-compiles in the daily dev build. The triples
+# below are exactly those hosts (GitHub CI: ubuntu = x86_64 linux, windows =
+# x86_64 msvc, macos-latest = aarch64 darwin; x86_64 darwin for Intel-Mac devs).
 #
-# Gotcha: a bare `RUSTFLAGS` env var OVERRIDES (does not merge with) these
-# settings. Any build/CI step that sets `RUSTFLAGS` must also include
-# `target-feature=+aes,...`, otherwise gxhash will fail to compile.
+# Do NOT promote gxhash to a normal dependency and "just add more triples" here.
+# The daily dev build also targets i686 and 32-bit ARM (armv7 armel/armhf):
+#   - armv7 has no ARMv8 AES crypto extension at all, so gxhash can never build
+#     there (NEON alone is not enough);
+#   - i686 builds target old CPUs that predate AES-NI.
+# Production use of gxhash must be gated behind cfg(target_feature = "aes") with
+# a portable fallback hasher, not enabled globally in this file.
 #
-# Extend this list for any other distributed target (e.g. aarch64 linux/windows,
-# x86_64 musl) — an unlisted target will not build gxhash.
+# Gotcha: a bare RUSTFLAGS env var OVERRIDES (does not merge with) these
+# settings; any build/CI step that sets RUSTFLAGS must also include
+# `target-feature=+aes,...`.
 
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+aes,+sse2"]

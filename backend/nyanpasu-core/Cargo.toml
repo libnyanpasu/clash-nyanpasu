@@ -11,7 +11,6 @@ bon = "3"
 arc-swap = "1"
 async-trait = "0.1"
 dashmap = "6"
-gxhash = { workspace = true }
 indexmap = { version = "2.2.3", features = ["serde"] }
 thiserror.workspace = true
 tokio.workspace = true
@@ -28,3 +27,7 @@ serde_yaml_ng = { version = "0.10", branch = "feat/specta-update", git = "https:
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 tempfile = "3"
+# Test-only for now. Keep as a dev-dependency until production code gates gxhash
+# behind cfg(target_feature = "aes") with a fallback: the daily dev build
+# cross-compiles to i686 and 32-bit armv7, where gxhash cannot build.
+gxhash = { workspace = true }

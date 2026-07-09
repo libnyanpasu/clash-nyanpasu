@@ -119,6 +119,9 @@ flowchart LR
 
 - 类型映射四则;字段移动五组(`chain→global_transforms`、`local/remote.chain→File.transforms`、`script_type→runtime`、`file+updated→MaterializedFile`、`url/option/extra→ProfileSource::Remote`)
 - `extra.expire:0→None`;`update_interval→update_interval_minutes`;URL-file→Remote(design §14.2)
+- `local.symlinks: Some(target)` → `LocalBinding::External{target, mode: symlink}`(legacy field,guide §6 未列出;non-absolute target 显式失败)
+- `remote.option` legacy defaults: absent key => `{with_proxy:false, self_proxy:true, 120}`;present missing fields => false/false;`update_interval == 0` 显式失败
+- `option: null` 与 `URL 文件 + symlinks` 组合均显式失败(审查修复)
 - multi-current:`[]→None`、`[a]→Some(a)`、`[a,b,c]→CompositionConfig{base:Some(a),extend:[b,c]}` + 碰撞安全 uid,顺序原样;成员无法映射 → **显式失败**(`MigrationError{uid, field_path}`)
 - 收尾:反序列化为新 `Profiles` → `validate()` → 原子写回
 

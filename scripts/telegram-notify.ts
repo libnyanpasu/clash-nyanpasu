@@ -169,19 +169,9 @@ const platformGroups: PlatformGroup[] = [
   {
     label: "Linux",
     filter: (item) =>
-      (item.endsWith(".rpm") ||
-        item.endsWith(".deb") ||
-        item.endsWith(".AppImage")) &&
-      !item.includes("armel") &&
-      !item.includes("armhf"),
-  },
-  {
-    label: "Linux (armv7)",
-    filter: (item) =>
-      (item.endsWith(".rpm") ||
-        item.endsWith(".deb") ||
-        item.endsWith(".AppImage")) &&
-      (item.includes("armel") || item.includes("armhf")),
+      item.endsWith(".rpm") ||
+      item.endsWith(".deb") ||
+      item.endsWith(".AppImage"),
   },
 ];
 

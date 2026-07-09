@@ -8,12 +8,10 @@
 # x86_64 msvc, macos-latest = aarch64 darwin; x86_64 darwin for Intel-Mac devs).
 #
 # Do NOT promote gxhash to a normal dependency and "just add more triples" here.
-# The daily dev build also targets i686 and 32-bit ARM (armv7 armel/armhf):
-#   - armv7 has no ARMv8 AES crypto extension at all, so gxhash can never build
-#     there (NEON alone is not enough);
-#   - i686 builds target old CPUs that predate AES-NI.
-# Production use of gxhash must be gated behind cfg(target_feature = "aes") with
-# a portable fallback hasher, not enabled globally in this file.
+# The daily dev build still targets i686, which does not guarantee AES-NI, so
+# gxhash could not run there. Production use must be gated behind
+# cfg(target_feature = "aes") with a portable fallback hasher, not enabled
+# globally in this file.
 #
 # Gotcha: a bare RUSTFLAGS env var OVERRIDES (does not merge with) these
 # settings; any build/CI step that sets RUSTFLAGS must also include

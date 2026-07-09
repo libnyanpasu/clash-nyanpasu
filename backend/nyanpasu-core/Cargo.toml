@@ -29,5 +29,5 @@ tokio = { workspace = true, features = ["full", "test-util"] }
 tempfile = "3"
 # Test-only for now. Keep as a dev-dependency until production code gates gxhash
 # behind cfg(target_feature = "aes") with a fallback: the daily dev build
-# cross-compiles to i686 and 32-bit armv7, where gxhash cannot build.
+# cross-compiles to i686, which does not guarantee AES-NI.
 gxhash = { workspace = true }

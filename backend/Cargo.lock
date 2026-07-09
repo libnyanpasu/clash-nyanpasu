@@ -4289,6 +4289,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "gxhash"
+version = "3.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3ce1bab7aa741d4e7042b2aae415b78741f267a98a7271ea226cd5ba6c43d7d"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "h2"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6238,6 +6247,7 @@ dependencies = [
  "camino",
  "dashmap",
  "fs-err",
+ "gxhash",
  "indexmap 2.14.0",
  "nyanpasu-utils",
  "serde",

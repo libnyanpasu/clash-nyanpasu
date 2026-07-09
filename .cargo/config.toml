@@ -1,0 +1,28 @@
+# gxhash requires hardware SIMD intrinsics at COMPILE time, or the crate fails
+# to build (`compile_error!`). Enable them per distributed target triple:
+#   x86-64:  AES-NI (+aes) + SSE2 (+sse2, usually on by default)
+#   aarch64: AES (+aes) + NEON (+neon)
+#
+# These flags apply to the WHOLE binary, so every release target below now
+# requires a CPU with AES-NI / AES at runtime (x86 CPUs since ~2010; a few old
+# low-end Atom/Pentium/Celeron lack it and would crash with an illegal
+# instruction). Accepted tradeoff for gxhash performance.
+#
+# Gotcha: a bare `RUSTFLAGS` env var OVERRIDES (does not merge with) these
+# settings. Any build/CI step that sets `RUSTFLAGS` must also include
+# `target-feature=+aes,...`, otherwise gxhash will fail to compile.
+#
+# Extend this list for any other distributed target (e.g. aarch64 linux/windows,
+# x86_64 musl) — an unlisted target will not build gxhash.
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+aes,+sse2"]
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "target-feature=+aes,+sse2"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "target-feature=+aes,+sse2"]
+
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "target-feature=+aes,+neon"]

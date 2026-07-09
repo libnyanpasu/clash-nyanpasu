@@ -42,6 +42,9 @@ tracing-test = { git = "https://github.com/Frando/tracing-test.git", rev = "e81e
 ] }
 fs4 = { version = "1.0.0", features = ["fs-err3-tokio", "fs-err3"] }
 fs-err = { version = "3.1.2", features = ["tokio"] }
+# Hardware-accelerated hasher. Requires target-feature +aes (+sse2 / +neon);
+# see .cargo/config.toml for the per-target build flags this depends on.
+gxhash = "3"
 
 [profile.release]
 panic = "unwind"

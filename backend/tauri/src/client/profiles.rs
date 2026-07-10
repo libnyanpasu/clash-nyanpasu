@@ -365,6 +365,7 @@ mod tests {
             metadata: ProfileMetadata {
                 name: uid.to_uppercase(),
                 desc: None,
+                custom_name: true,
             },
             definition: ProfileDefinition::Config {
                 config: ConfigDefinition::File(FileConfig {
@@ -388,6 +389,7 @@ mod tests {
             metadata: ProfileMetadata {
                 name: uid.to_uppercase(),
                 desc: None,
+                custom_name: true,
             },
             definition: ProfileDefinition::Transform {
                 transform: TransformDefinition::Overlay(OverlayTransform {
@@ -427,6 +429,7 @@ mod tests {
             metadata: ProfileMetadata {
                 name: uid.to_uppercase(),
                 desc: None,
+                custom_name: true,
             },
             definition: ProfileDefinition::Config {
                 config: ConfigDefinition::File(FileConfig {
@@ -455,6 +458,7 @@ mod tests {
             metadata: ProfileMetadata {
                 name: uid.to_uppercase(),
                 desc: None,
+                custom_name: true,
             },
             definition: ProfileDefinition::Config {
                 config: ConfigDefinition::File(FileConfig {
@@ -599,6 +603,104 @@ mod tests {
             _ => unreachable!(),
         }
         assert!(!report.affects_current);
+    }
+
+    fn ok_fetch_named(content: &'static str, filename: &'static str) -> MockSubscriptionFetcher {
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher.expect_fetch().returning(move |_, _| {
+            Ok(FetchedSubscription {
+                content: content.to_string(),
+                filename: Some(filename.to_string()),
+                subscription: SubscriptionInfo::default(),
+                suggested_update_interval_minutes: None,
+            })
+        });
+        fetcher
+    }
+
+    /// Seed a single remote profile (`r1`, name `R1`) with an explicit
+    /// `custom_name`, backed by a fs that accepts refresh writes.
+    async fn remote_client_with_custom_name(
+        custom_name: bool,
+        fetcher: MockSubscriptionFetcher,
+    ) -> (ProfilesClient, TempDir) {
+        let mut fs = MockProfileFsPort::new();
+        fs.expect_ensure_not_symlink().returning(|_| Ok(()));
+        fs.expect_write_atomic().returning(|_, _| Ok(()));
+        let dir = tempdir().unwrap();
+        let client = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            std::sync::Arc::new(fs),
+            std::sync::Arc::new(fetcher),
+            std::sync::Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .unwrap();
+        let mut item = remote_config_item("r1");
+        item.metadata.custom_name = custom_name;
+        let mut profiles = Profiles::default();
+        profiles.append_item(item);
+        client.replace(profiles).await.unwrap();
+        (client, dir)
+    }
+
+    fn name_of(report: &CommitReport, uid: &str) -> String {
+        report.snapshot.items[&ProfileId(uid.into())]
+            .metadata
+            .name
+            .clone()
+    }
+
+    #[tokio::test]
+    async fn refresh_syncs_server_name_when_not_user_named() {
+        let (client, _dir) =
+            remote_client_with_custom_name(false, ok_fetch_named("proxies: []\n", "Server Name"))
+                .await;
+        let report = client
+            .refresh(ProfileId("r1".into()), None)
+            .await
+            .expect("refresh ok");
+        assert_eq!(name_of(&report, "r1"), "Server Name");
+    }
+
+    #[tokio::test]
+    async fn refresh_keeps_name_when_user_named() {
+        let (client, _dir) =
+            remote_client_with_custom_name(true, ok_fetch_named("proxies: []\n", "Server Name"))
+                .await;
+        let report = client
+            .refresh(ProfileId("r1".into()), None)
+            .await
+            .expect("refresh ok");
+        assert_eq!(
+            name_of(&report, "r1"),
+            "R1",
+            "a user-named profile is pinned"
+        );
+    }
+
+    #[tokio::test]
+    async fn rename_pins_custom_name_and_survives_refresh() {
+        let (client, _dir) =
+            remote_client_with_custom_name(false, ok_fetch_named("proxies: []\n", "Server Name"))
+                .await;
+
+        let mut patch = ProfileMetadata::new_empty_patch();
+        patch.name = Some("My Name".into());
+        let report = client
+            .patch_metadata(ProfileId("r1".into()), patch)
+            .await
+            .expect("rename ok");
+        let item = &report.snapshot.items[&ProfileId("r1".into())];
+        assert_eq!(item.metadata.name, "My Name");
+        assert!(item.metadata.custom_name, "rename must pin the flag");
+
+        // The server still advertises "Server Name", but the pin must win.
+        let report = client
+            .refresh(ProfileId("r1".into()), None)
+            .await
+            .expect("refresh ok");
+        assert_eq!(name_of(&report, "r1"), "My Name");
     }
 
     #[tokio::test]
@@ -847,6 +949,7 @@ mod tests {
                     subscription: SubscriptionInfo::default(),
                     suggested_update_interval_minutes: None,
                     content: "proxies: []\n".into(),
+                    filename: None,
                 },
             )
             .await;
@@ -887,6 +990,7 @@ mod tests {
                     subscription: SubscriptionInfo::default(),
                     suggested_update_interval_minutes: None,
                     content: "proxies: []\n".into(),
+                    filename: None,
                 },
             )
             .await;
@@ -1314,6 +1418,7 @@ mod tests {
                     metadata: ProfileMetadata {
                         name: "New".into(),
                         desc: None,
+                        custom_name: true,
                     },
                     definition: file_config_item("placeholder").definition,
                 },
@@ -1583,6 +1688,7 @@ mod tests {
             metadata: ProfileMetadata {
                 name: "COMP".into(),
                 desc: None,
+                custom_name: true,
             },
             definition: ProfileDefinition::Config {
                 config: ConfigDefinition::Composition(
@@ -1694,6 +1800,7 @@ mod tests {
             metadata: ProfileMetadata {
                 name: "COMP".into(),
                 desc: None,
+                custom_name: true,
             },
             definition: ProfileDefinition::Config {
                 config: ConfigDefinition::Composition(

@@ -300,6 +300,7 @@ mod tests {
             metadata: ProfileMetadata {
                 name: "CFG1".into(),
                 desc: None,
+                custom_name: true,
             },
             definition: ProfileDefinition::Config {
                 config: ConfigDefinition::File(FileConfig {
@@ -317,6 +318,7 @@ mod tests {
             metadata: ProfileMetadata {
                 name: "SCR1".into(),
                 desc: None,
+                custom_name: true,
             },
             definition: ProfileDefinition::Transform {
                 transform: TransformDefinition::Script(ScriptTransform {

@@ -852,10 +852,33 @@ impl Actor for ProfilesActor {
                         subscription,
                         content,
                     } => {
-                        let written = state
-                            .fs
-                            .ensure_not_symlink(&path)
-                            .and_then(|_| state.fs.write_atomic(&path, &content));
+                        // Re-validate against the CURRENT definition: the URL
+                        // fence above cannot see a same-URL definition change
+                        // (e.g. Overlay -> Config), whose content rules differ.
+                        let written = match Self::validate_fetched_content(
+                            &item.definition,
+                            &content,
+                        ) {
+                            Err(message) => Err(anyhow::anyhow!(
+                                "stale download no longer valid for the current definition: {message}"
+                            )),
+                            Ok(()) => {
+                                // Keep the blocking write off the async actor
+                                // thread (same pattern as the mirror sync); the
+                                // handler awaits it, so message ordering is
+                                // unchanged.
+                                let fs = Arc::clone(&state.fs);
+                                let write_path = path.clone();
+                                tokio::task::spawn_blocking(move || {
+                                    fs.ensure_not_symlink(&write_path)?;
+                                    fs.write_atomic(&write_path, &content)
+                                })
+                                .await
+                                .unwrap_or_else(|error| {
+                                    Err(anyhow::anyhow!("refresh write task failed: {error}"))
+                                })
+                            }
+                        };
                         match written {
                             Err(error) => Err(ProfilesError::RefreshFailed {
                                 message: format!("failed to write refreshed content: {error}"),
@@ -1140,5 +1163,31 @@ impl Actor for ProfilesActor {
         state.scheduler.shutdown();
         state.external_watchers.shutdown();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Round-2 review fix regression pins: Config subscriptions must carry
+    /// proxies (legacy remote.rs semantics); overlays only need a mapping.
+    #[test]
+    fn config_content_requires_proxies_key() {
+        let config = crate::enhance::golden_support::file_config("p1", "p1.yaml", &[]);
+        assert!(ProfilesActor::validate_fetched_content(&config.definition, "{}\n").is_err());
+        assert!(
+            ProfilesActor::validate_fetched_content(&config.definition, "proxies: []\n").is_ok()
+        );
+        assert!(
+            ProfilesActor::validate_fetched_content(&config.definition, "proxy-providers: {}\n")
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn overlay_content_needs_only_a_mapping() {
+        let overlay = crate::enhance::golden_support::overlay("t1", "t1.yaml");
+        assert!(ProfilesActor::validate_fetched_content(&overlay.definition, "a: 1\n").is_ok());
     }
 }

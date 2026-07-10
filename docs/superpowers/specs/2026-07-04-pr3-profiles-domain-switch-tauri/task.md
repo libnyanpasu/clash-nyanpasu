@@ -681,3 +681,11 @@ impl NyanpasuClient {
 - **C-Min2 `profile-update-interval` 响应头不再解析**:legacy 在用户未设 interval 时采纳服务端建议(hour→min);新 fetcher 丢弃,导入后永用默认/用户值。恢复需 `FetchedSubscription` 增字段 + actor 提交处应用,属行为增补。
 
 **知悉不修(本 PR)**:C-M4 后半(端口生命周期编排 stop→resolve→mirror→start 与 legacy sysproxy/API 镜像回写时机,PR-4);A-Minor 空列表早退、chain 编辑器后台刷新重置本地顺序、query cache 存闭包(均 pre-existing 模式);C-Suggestion 并发 rebuild/HoldingFetcher+Replace/降级可观察三测试与 URL 协议白名单(挂账)。
+
+**第 2 轮复审(antigravity APPROVE 100/100,含对拖拽驳回的独立确认;codex 61/100 余 3 Major)与处置**:
+
+- **R2-M3 external-controller host-only 变更仍重探端口**:CONFIRMED,已修——host 与 port strategy 分开比较,host 变更复用缓存 pick 仅重格式化 `host:port`;回归钉 `external_host_change_keeps_port_pick`。
+- **R2-M2 URL fence 不识别同 URL 定义变化/ABA**:部分接受——提交段增加**按当前定义的内容复校验**(封堵 Overlay→Config 同 URL 的校验洞);URL ABA 与同 URL 选项变更为已知残余(内容仍来自正确 URL,等价于稍早完成的下载),接受;完整 definition generation fence 挂账。
+- **R2-Suggestion 提交段同步写阻塞 actor mailbox**:已修——`spawn_blocking` + handler await(与 mirror sync 同模式,消息序不变)。
+- **R2-M1 rebuild gate 未覆盖 legacy runtime 直写**(`feat::patch_clash` 的 `Config::runtime().latest().patch_config` / `change_core` 的 runtime apply/discard):属 legacy 写者路径,pre-existing 且为 PR-4/5 迁移对象(runtime 镜像本身即 TODO B8);gate 的边界=新管线内部串行,**记录不修**。
+- **R2-Minor 测试缺口**:已补 validate 正反钉(`config_content_requires_proxies_key`/`overlay_content_needs_only_a_mapping`)与 external host-only 钉;并发 rebuild 顺序、真实 HoldingFetcher→ReplaceDefinition fence 测试仍挂账。

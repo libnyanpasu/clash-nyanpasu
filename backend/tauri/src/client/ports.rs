@@ -105,21 +105,33 @@ impl SessionPortResolver {
                 .context("failed to resolve socks port")?
                 .map(|picked| *picked),
         };
-        let external_controller = match unchanged(
+        // The external controller compares host and port strategy separately:
+        // a host-only change must keep the session port pick (re-probing it
+        // would race the running core exactly like the fields above).
+        let external_port = match unchanged(
             previous
                 .as_ref()
-                .is_some_and(|(prev, _)| prev.external == fingerprint.external),
+                .is_some_and(|(prev, _)| prev.external.port == fingerprint.external.port),
         ) {
-            Some(ports) => ports.external_controller.clone(),
-            None => {
-                let external = clash
-                    .external_controller
-                    .port
-                    .pick_and_try_port()
-                    .context("failed to resolve external controller port")?;
-                Some(format!("{}:{}", clash.external_controller.host, *external))
-            }
+            Some(ports) => ports
+                .external_controller
+                .as_deref()
+                .and_then(|addr| addr.rsplit(':').next())
+                .and_then(|raw| raw.parse::<u16>().ok()),
+            None => None,
         };
+        let external_port = match external_port {
+            Some(port) => port,
+            None => *clash
+                .external_controller
+                .port
+                .pick_and_try_port()
+                .context("failed to resolve external controller port")?,
+        };
+        let external_controller = Some(format!(
+            "{}:{}",
+            clash.external_controller.host, external_port
+        ));
 
         let ports = ResolvedPortBindings {
             mixed_port,
@@ -231,6 +243,37 @@ mod tests {
             .expect("unchanged mixed port must not be re-probed");
         assert_eq!(second.mixed_port, mixed);
         assert_eq!(second.socks_port, Some(socks));
+    }
+
+    /// Round-2 review fix regression pin: an external-controller host-only
+    /// change must keep the session port pick — only a port-strategy change
+    /// re-probes.
+    #[test]
+    fn external_host_change_keeps_port_pick() {
+        let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let ext = probe.local_addr().unwrap().port();
+        drop(probe);
+
+        let resolver = SessionPortResolver::default();
+        let mut clash = ClashConfig::default();
+        clash.external_controller.port = fixed(ext);
+        let first = resolver.resolve(&clash).unwrap();
+        assert_eq!(
+            first.external_controller.as_deref(),
+            Some(format!("127.0.0.1:{ext}").as_str())
+        );
+
+        // Simulate the running core holding the external port, then change
+        // only the host.
+        let _core = std::net::TcpListener::bind(("127.0.0.1", ext)).unwrap();
+        clash.external_controller.host = "0.0.0.0".parse().unwrap();
+        let second = resolver
+            .resolve(&clash)
+            .expect("host-only change must not re-probe the external port");
+        assert_eq!(
+            second.external_controller.as_deref(),
+            Some(format!("0.0.0.0:{ext}").as_str())
+        );
     }
 
     #[test]

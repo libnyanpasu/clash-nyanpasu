@@ -84,12 +84,12 @@ export const resolveMihomo = async (): LatestVersionResolver => {
   consola.debug(`mihomo latest release: ${version}`);
 
   const archMapping: ArchMapping = {
-    "windows-x86_64": "mihomo-windows-amd64-v1-{}.zip",
+    "windows-x86_64": "mihomo-windows-amd64-v2-{}.zip",
     "windows-arm64": "mihomo-windows-arm64-{}.zip",
     "linux-aarch64": "mihomo-linux-arm64-{}.gz",
-    "linux-amd64": "mihomo-linux-amd64-v1-{}.gz",
+    "linux-amd64": "mihomo-linux-amd64-v2-{}.gz",
     "darwin-arm64": "mihomo-darwin-arm64-{}.gz",
-    "darwin-x64": "mihomo-darwin-amd64-v1-{}.gz",
+    "darwin-x64": "mihomo-darwin-amd64-v2-{}.gz",
   };
 
   return { name: "mihomo", version, archMapping };
@@ -97,12 +97,12 @@ export const resolveMihomo = async (): LatestVersionResolver => {
 
 export const resolveMihomoAlpha = async (): LatestVersionResolver => {
   const archMapping: ArchMapping = {
-    "windows-x86_64": "mihomo-windows-amd64-v1-{}.zip",
+    "windows-x86_64": "mihomo-windows-amd64-v2-{}.zip",
     "windows-arm64": "mihomo-windows-arm64-{}.zip",
     "linux-aarch64": "mihomo-linux-arm64-{}.gz",
-    "linux-amd64": "mihomo-linux-amd64-v1-{}.gz",
+    "linux-amd64": "mihomo-linux-amd64-v2-{}.gz",
     "darwin-arm64": "mihomo-darwin-arm64-{}.gz",
-    "darwin-x64": "mihomo-darwin-amd64-v1-{}.gz",
+    "darwin-x64": "mihomo-darwin-amd64-v2-{}.gz",
   };
 
   const versionFromFile = (await fetchText(MIHOMO_ALPHA_VERSION_URL))?.trim();

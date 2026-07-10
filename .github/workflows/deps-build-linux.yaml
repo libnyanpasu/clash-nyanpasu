@@ -19,7 +19,6 @@ on:
         default: 'x86_64'
         options:
           - x86_64
-          - i686
           - aarch64
 
   workflow_call:
@@ -61,8 +60,6 @@ jobs:
         shell: bash
         run: |
           case "${{ inputs.arch }}" in
-            "i686")
-              rustup target add i686-unknown-linux-gnu ;;
             "aarch64")
               rustup target add aarch64-unknown-linux-gnu ;;
           esac
@@ -115,8 +112,6 @@ jobs:
           case "${{ inputs.arch }}" in
             "x86_64")
               pnpm prepare:check ;;
-            "i686")
-              pnpm prepare:check --arch ia32 --sidecar-host i686-unknown-linux-gnu ;;
             "aarch64")
               pnpm prepare:check --arch arm64 --sidecar-host aarch64-unknown-linux-gnu ;;
           esac
@@ -141,8 +136,6 @@ jobs:
           case "${{ inputs.arch }}" in
             "x86_64")
               TARGET_DIR="backend/target/release" ;;
-            "i686")
-              TARGET_DIR="backend/target/i686-unknown-linux-gnu/release" ;;
             "aarch64")
               TARGET_DIR="backend/target/aarch64-unknown-linux-gnu/release" ;;
             *)
@@ -190,8 +183,6 @@ jobs:
           NIGHTLY: ${{ inputs.nightly == true && 'true' || 'false' }}
         run: |
           case "${{ inputs.arch }}" in
-            "i686")
-              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target i686-unknown-linux-gnu -b "rpm,deb"' || 'pnpm build -r cross --target i686-unknown-linux-gnu -b "rpm,deb" -c "{ "bundle": { "createUpdaterArtifacts": false } }"' }} ;;
             "aarch64")
               ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target aarch64-unknown-linux-gnu -b "rpm,deb"' || 'pnpm build -r cross --target aarch64-unknown-linux-gnu -b "rpm,deb" -c "{ "bundle": { "createUpdaterArtifacts": false } }"' }} ;;
           esac

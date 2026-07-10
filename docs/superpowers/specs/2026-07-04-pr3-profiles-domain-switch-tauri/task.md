@@ -154,7 +154,10 @@ flowchart LR
 pub trait ProfileFsPort: Send + Sync + 'static {
     fn read(&self, path: &ManagedProfilePath) -> anyhow::Result<String>;
     fn write_atomic(&self, path: &ManagedProfilePath, content: &str) -> anyhow::Result<()>;
+    /// Idempotent: removing a missing file succeeds.
     fn remove(&self, path: &ManagedProfilePath) -> anyhow::Result<()>;
+    /// Read an External binding target for Mirror synchronization.
+    fn read_external(&self, target: &ExternalProfilePath) -> anyhow::Result<String>;
     fn ensure_not_symlink(&self, path: &ManagedProfilePath) -> anyhow::Result<()>;
     fn ensure_symlink(&self, path: &ManagedProfilePath, target: &ExternalProfilePath) -> anyhow::Result<()>;
 }
@@ -166,8 +169,18 @@ pub trait SubscriptionFetcher: Send + Sync + 'static {
 pub trait RebuildNotifier: Send + Sync + 'static {
     fn request_rebuild(&self);
 }
-pub struct FetchedSubscription { pub content: String, pub subscription: SubscriptionInfo }
-// ProfileFileService::new(paths: PathResolver, http: reqwest::Client) — 同时 impl ProfileFsPort + SubscriptionFetcher
+pub struct FetchedSubscription {
+    pub content: String,
+    pub filename: Option<String>,
+    pub subscription: SubscriptionInfo,
+}
+#[cfg_attr(test, mockall::automock)]
+pub trait SelfProxyPortSource: Send + Sync + 'static {
+    fn mixed_port(&self) -> Option<u16>;
+}
+// ProfileFileService::new(paths: PathResolver, self_proxy_port: Arc<dyn SelfProxyPortSource>)
+// — 同时 impl ProfileFsPort + SubscriptionFetcher;T07 composition root 提供 SelfProxyPortSource。
+pub fn normalize_yaml_document(content: &str) -> anyhow::Result<String>;
 ```
 
 **验证**:
@@ -207,17 +220,40 @@ impl ProfilesClient {
     pub async fn set_global_transforms(&self, ids: Vec<ProfileId>) -> Result<CommitReport, ProfilesError>;
     pub async fn replace(&self, profiles: Profiles) -> Result<CommitReport, ProfilesError>;
 }
-pub struct CommitReport { pub snapshot: Arc<Profiles>, pub affects_current: bool }
+pub struct CommitReport { pub snapshot: Arc<Profiles>, pub affects_current: bool, pub warnings: Vec<String> }
 pub struct NewProfileRequest { pub metadata: ProfileMetadata, pub definition: ProfileDefinition }  // uid 服务端生成(D13)
 pub enum ReorderOp { Move { active: ProfileId, over: ProfileId }, ByList(Vec<ProfileId>) }
 pub enum ProfilesError { ProfileNotFound, ProfileInUse { referrers: Vec<ProfileId> }, ProfileHasNoFile,
                          ValidationFailed(Vec<ProfileValidationError>), NotARemoteProfile,
-                         FileNotWritable { reason: String }, RefreshFailed { message: String }, Rpc(String) }
+                         FileNotWritable { reason: String }, RefreshFailed { message: String },
+                         Persist(String), Rpc(String) }
 pub const PROFILES_READ_TIMEOUT: Duration = Duration::from_secs(5);
-pub struct ProfilesActorArgs { pub paths: PathResolver, pub fs: Arc<dyn ProfileFsPort>,
-                               pub fetcher: Arc<dyn SubscriptionFetcher>, pub notifier: Arc<dyn RebuildNotifier>,
-                               pub initial: Profiles }
+pub struct ProfilesActorArgs { pub manager: PersistentStateManager<Profiles>,
+                               pub fs: Arc<dyn ProfileFsPort>, pub fetcher: Arc<dyn SubscriptionFetcher>,
+                               pub notifier: Arc<dyn RebuildNotifier> }
 ```
+
+**2026-07-06 契约修正(T04 实物,下游以此为准)**:
+
+- `ProfilesClient::new(profiles_path, fs, fetcher, notifier)` 是构造边界:若 `profiles_path` 存在则 `load()`;否则 `from_state(Profiles::default())`;随后立即 `validate()` fail-fast 再 spawn actor。`ProfilesActorArgs` 不含 `PathResolver` 或 `initial`。
+- 所有写 handler 仍走 clone→mutate→`validate()`→持久化→commit+重建索引→post-commit 副作用→`CommitReport`;post-commit 文件副作用失败写入 `CommitReport.warnings`,不回滚已持久化状态。
+- `ProfilesError::Persist(String)` 专指持久化/提交失败;`Rpc(String)` 仅表示 actor call/reply/timeout 层失败。
+- Add 服务端生成 uid:`Config` 用 `c` 前缀、`Transform` 用 `t` 前缀,后接 `nanoid(11)`;忽略请求里的 materialized 路径并改写为规范 `{uid}.{ext}`。`FileConfig`/`OverlayTransform` 用 `.yaml`;`ScriptRuntime::JavaScript` 用 `.js`;`ScriptRuntime::Lua` 用 `.lua`。`ExternalMode::Symlink` 只做 post-commit `ensure_symlink`;Remote 与 Mirror 的初始内容同步由 T05 的 RefreshRemote/watcher reconcile 承接。
+- **(2026-07-06 审查修复)materialization 元数据由服务端所有**:Add 一律重置 `updated_at = None`(Remote 另重置 `subscription = default`);`ReplaceDefinition` 同样把传入定义的路径改写为规范 `{uid}.{新类型 ext}`——source 槽位(Managed/External/Remote 判别 + 规范路径)不变时沿用旧存储的 materialized 元数据、忽略客户端传值;槽位变化时重置元数据,旧路径与新规范路径不同(或新定义无 source,如换成 Composition)时 post-commit `Remove` 清理孤儿文件,新引入 External Symlink 绑定时 post-commit `ensure_symlink`(与 Add 对齐)。
+- **(2026-07-06 审查修复)错误形态**:`ProfileInUse { referrers, current: bool, global_transforms: bool }`(document 级引用不再以空列表歧义表达);新增 `InvalidReorderList { reason }`(ByList 长度不符/重复 uid),未知 uid 仍报 `ProfileNotFound`。
+- **(2026-07-06 审查记录)** 真实文件事件冒烟测试 `external_watcher_smoke_mirror_real_file_event` 标 `#[ignore]`(CI 抖动;注入式测试保有覆盖);Mirror 同步在 actor handler 内做同步 fs I/O,target 位于网络盘时有阻塞风险——候选硬化项(spawn_blocking 化),T07 阶段评估。
+- `affects_current` 判定表:
+
+| 消息                                                                  | 规则                                                              |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `Get`                                                                 | 不适用                                                            |
+| `Add` / `Delete` / `Reorder` / `PatchMetadata` / `PatchRemoteOptions` | `false`                                                           |
+| `SetCurrent`                                                          | before/after `current` 不同                                       |
+| `SetGlobalTransforms`                                                 | before/after `global_transforms` 不同                             |
+| `ReplaceDefinition`                                                   | before/after 当前闭包不同,或被替换 uid 在 before/after 当前闭包内 |
+| `Replace`                                                             | `true`                                                            |
+
+当前闭包 = `current` + 若 current 为 Composition 则含 base/extend 成员 + 这些 config 的 scoped transforms + `global_transforms`;`current == None` 时闭包仅为 `global_transforms`。
 
 **验证**(mock ports + tempdir manager spawn,不 sleep):
 
@@ -239,7 +275,7 @@ pub struct ProfilesActorArgs { pub paths: PathResolver, pub fs: Arc<dyn ProfileF
 - Create(如拆文件): `backend/tauri/src/state/profiles/scheduler.rs`
 - Modify: `backend/tauri/src/client/profiles.rs`(+`refresh(uid, Option<RemoteProfileOptionsPatch>) -> Result<CommitReport, ProfilesError>`)
 
-**Interfaces — Consumes**: T04 全部 + T03 `SubscriptionFetcher`/`ProfileFsPort`/`RebuildNotifier`。
+**Interfaces — Consumes**: T04 全部(含 2026-07-06 契约修正:`CommitReport.warnings` 降级通道、`Persist` 错误、Add 规范路径与 Remote/Mirror 初始内容延后规则) + T03 `SubscriptionFetcher`/`ProfileFsPort`/`RebuildNotifier`。
 **Interfaces — Produces**: `ProfilesClient::refresh(...)`(T07/T08 的 `update_profile` 链路);scheduler/watcher 对外不可见(actor 内部)。
 
 **行为要点**(plan 时逐条转测试):
@@ -249,6 +285,17 @@ pub struct ProfilesActorArgs { pub paths: PathResolver, pub fs: Arc<dyn ProfileF
 - watcher:Symlink 监听 target 真实路径、Mirror 变化→临时文件→校验→原子替换(design §7;clean-design §10)
 - `CommitRefreshed` 时 uid 已被删除 → 丢弃结果、结清 reply(design §17 竞态行)
 - 后台提交且 `affects_current` → `notifier.request_rebuild()` 恰好一次
+
+**2026-07-06 契约补遗(T05 实物,下游以此为准)**:
+
+- `ProfilesActorMessage::RefreshRemote { uid, patch, reply: Option<RpcReplyPort<Result<CommitReport, ProfilesError>>> }`:手动 `ProfilesClient::refresh(...)` 使用 `Some(reply)`;scheduler 后台刷新使用 `None`。`patch` 先以普通写事务更新 remote options,失败则立即结清 `Some(reply)`。
+- 同一 uid 已有 `pending_refresh` 时,`Some(reply)` 返回 `ProfilesError::RefreshFailed { message: "refresh already in progress" }`;`None` 后台触发静默丢弃。所有已登记 pending 的路径必须在 success/failure/deleted race 中结清。
+- `RefreshRemote` handler 不做网络 I/O:它快照 remote 参数、登记 pending reply,然后 `tokio::spawn` 执行 fetch/校验/`ensure_not_symlink`/`write_atomic`;子任务只回 cast `CommitRefreshed { uid, outcome }`,由 actor 串行提交 `updated_at` 与 `subscription`。
+- `CommitRefreshed` 发现 uid 已删除时,若 outcome 为 success, best-effort 清理 `{uid}.yaml` / `{uid}.js` / `{uid}.lua` 三个可能 orphan;`Some(reply)` 以 `RefreshFailed { message: "profile deleted during refresh" }` 结清。
+- 后台刷新(`reply == None`)只有在成功提交且 `CommitReport.affects_current` 时调用 `RebuildNotifier::request_rebuild()`;每次 background-driven commit 恰好一次。手动 refresh 的 reply 路径不在 actor 内直接 notify,由 T07 facade 按 `CommitReport` 统一编排。
+- `RemoteUpdateScheduler` 为每个 remote uid 持有独立 tokio timer task;每次 committed write 后按 uid+interval diff add/remove/update。`post_start` 会 catch-up overdue remote: `updated_at == None` 视为 overdue,否则 `now - updated_at >= update_interval_minutes` 触发一次后台 refresh。
+- `ExternalWatchers` 使用 `notify-debouncer-full` 按 External binding 建 watcher。Symlink 监听 canonicalized target(失败回退 raw target)且事件只 bump `updated_at`;Mirror 事件先 `ProfileFsPort::read_external`、按 profile definition 校验、`write_atomic` 到 managed materialization,再 bump `updated_at`。成功提交且影响 current 时 notify 恰好一次;读取/校验/写入失败只记录 warn,不改状态、不 notify。
+- 测试入口保留 `#[cfg(test)]` client helper 直接 cast `ExternalFileChanged`,用于覆盖 handler 语义;真实 watcher smoke 使用 bounded `<=5s` 文件事件测试,当前未标 `#[ignore]`。
 
 **验证**: mock fetcher 注入可控延迟/失败;watcher 用 tempdir 真实文件事件或注入触发;全程无 sleep(用消息 ack/通道)。
 
@@ -326,6 +373,8 @@ impl RuntimeBuilder {
 - Modify: `backend/tauri/src/setup.rs` / `client/mod.rs`(spawn 顺序:migration 子进程已完成 → 构造 ProfileFileService → spawn ProfilesActor → 构造 ProfilesClient → facade;`RebuildNotifier` 具体实现接到 facade 重建入口,注意用 `Weak`/channel 避免循环持有)
 - Modify: `backend/tauri/src/config/core.rs:88`(`generate()` 改调 RuntimeBuilder;产物仍写 runtime draft + `generate_file`,两处标 `TODO(actor-migration)` B8)
 - Modify: `backend/tauri/src/client/mod.rs`(新 facade 方法;旧 `patch_profiles_config:80` 本卡保留——删除在 T10)
+
+**Interfaces — Consumes**: T02 revision 3 后的新 schema;T04 ProfilesClient 全部方法与 2026-07-06 契约修正(`CommitReport.warnings` 不代表事务失败,`affects_current` 按闭包规则触发 rebuild);T05 final refresh signature `ProfilesClient::refresh(uid: ProfileId, patch: Option<RemoteProfileOptionsPatch>) -> Result<CommitReport, ProfilesError>`;T06 `RuntimeBuilder`。
 
 **Interfaces — Produces**(T08 依赖,方法名以此为准):
 

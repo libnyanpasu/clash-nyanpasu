@@ -25,8 +25,6 @@ type SupportedArch =
   | "linux-aarch64"
   | "linux-amd64"
   | "linux-i386"
-  | "linux-armv7"
-  | "linux-armv7hf"
   | "darwin-arm64"
   | "darwin-x64";
 
@@ -264,9 +262,7 @@ function mapArch(platform: string, arch: string): SupportedArch {
     "win32-arm64": "windows-arm64",
     "linux-x64": "linux-amd64",
     "linux-ia32": "linux-i386",
-    "linux-arm": "linux-armv7hf",
     "linux-arm64": "linux-aarch64",
-    "linux-armel": "linux-armv7",
   };
   const result = mapping[`${platform}-${arch}`];
   if (!result) {

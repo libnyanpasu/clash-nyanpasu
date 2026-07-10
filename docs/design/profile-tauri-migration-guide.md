@@ -1,8 +1,7 @@
 # Tauri 调用点 Profile 迁移指南
 
-**状态：** 参考文档（供后期迁移迭代使用）  
-**范围：** `backend/tauri` 中所有 Profile 相关 IPC 命令的现状分析与迁移映射  
-**本期约束：** 本文档不实现任何代码改动。`backend/tauri/**` 本期零改动。
+**状态：** 已实施——作为**历史设计材料**保留（实施于 PR-3 T07–T11,本地 `refactor/pr3-profiles-domain-switch`@`20cfbf3c`,未推送）。正文按撰写时(实施前)的口径原样保留:文中「本期/后期/本指南不完成」均指**规划期**框架,所列"未完成"工作现已全部由 T07–T11 落地;个别建议已被执行期决策取代(见文内标注)。实施实录与判据取证以 `docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md` T08/T11 为准。  
+**范围：** `backend/tauri` 中所有 Profile 相关 IPC 命令的现状分析与迁移映射（实施前快照）
 
 ---
 
@@ -729,6 +728,8 @@ remote.url / option / extra     →  ProfileSource::Remote { url, option, subscr
 | `ProfilesBuilder`                                              | 废弃；由 `activate_profile`/`set_global_transforms` 替代                        | 破坏性删除                      |
 
 **迁移策略建议：** 先保留旧命令别名（如 `patch_profiles_config_v1` 对应旧行为），待前端适配完成后统一删除旧命令。
+
+> **执行期勘误（2026-07-07）：** 本条建议未被采纳。实际执行按 CLAUDE.md §11「可迁移的破坏性变更优先」走原子切换组（T08 直接重写 13→17 条命令、T09 同步前端、T10 删净 legacy），未保留任何旧命令别名。
 
 ### 7.3 破坏性变更点汇总
 

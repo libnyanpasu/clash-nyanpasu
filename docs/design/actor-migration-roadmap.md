@@ -78,6 +78,8 @@ stateDiagram-v2
 
 > ⚠️ **进度账本更正:** 本地 `.ccg` 任务状态(「migration V2 待推送 review-fix」)已过期——#4824 已 squash 合并进 main;本地 `refactor/migration-service-v2` 分支(3 个 pre-squash 提交)可以删除,该任务可关闭。
 
+> 🔨 **PR-3(profiles 域切换,T07–T11)状态:已实施(本地,未推送)**——分支 `refactor/pr3-profiles-domain-switch`@`20cfbf3c`:profiles `ProfilesActor` + facade + IPC BC(13→16 命令)+ 前端单值 `current` 适配 + legacy 清算(删 `config/profile/**`、`Config::profiles()`、`ProfilesJobGuard`、legacy enhance 管线 ~4300 行)。design §16 判据 1–8 取证见 `task.md` T11(活体启动半 + 前端全功能为用户手动清单)。**注:** 下方 §2.2/§2.4 的 tauri 侧细节(「仅 7 条命令迁移」「`Config::profiles()` 23/5」等)成文于 PR-3 之前,待后续统一刷新。
+
 ### 2.2 新架构已落地面(tauri 侧)
 
 - **Actor ×2:** `StateActor`(拥有 `PersistentStateManager<IVerge>` + `VergeMirror`,消息 `GetVerge/PatchVerge/ReplaceVerge`,`state/verge.rs:34,73`);`ClashConnectionsActor`(WS 流,`core/clash/ws.rs:609`)。
@@ -623,6 +625,8 @@ sequenceDiagram
 | B8  | RuntimeBuilder 暂读旧全局取数           | PR-3 T3.7                                | 输入装配            | **作废**(PR-2b #4869 已合并,取数走 typed client;PR-3 spec §19) | 已由 PR-2b 消解;PR-3 残留旧全局消费仅 `Config::runtime()` 写 + `CoreManager.update_config()` 两处(TODO 标记,PR-4/PR-5 删) |
 
 **规则:** 台账之外不得新增桥;每条桥的代码处必须有 `TODO(actor-migration)` + 删除条件注释。
+
+**2026-07-07 PR-3(profiles 域切换,T07–T11)收尾登记:** 已实施(本地 `refactor/pr3-profiles-domain-switch`@`20cfbf3c`,未推送)。**B8 输入装配面归零**——RuntimeBuilder 取数经 typed client/facade,无旧全局输入装配残留;B8 残余与上表一致 = `Config::runtime()` draft 写入(`client/mod.rs` regenerate,TODO 标记)+ `CoreManager::apply_config` 桥(`client/core_bridge.rs`,TODO 标记),随 PR-4/PR-5 清偿。当前 `TODO/FIXME(actor-migration)` 注释账本 **17 处**,全属 verge/clash/window/core/runtime 桥(PR-4/5/6 负责),**profiles 域桥已在 T07/T08/T10 清尽**。逐处枚举见 `docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md` T11 判据 7。
 
 ### 5.1 桥接双向数据流(图示)
 

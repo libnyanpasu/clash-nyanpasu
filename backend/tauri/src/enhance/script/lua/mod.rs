@@ -5,7 +5,7 @@ use mlua::prelude::*;
 use parking_lot::Mutex;
 use serde_yaml::{Mapping, Value};
 
-use crate::enhance::{Logs, LogsExt, runner::wrap_result, utils::take_logs};
+use crate::enhance::{Logs, LogsExt, script::runner::wrap_result, utils::take_logs};
 
 use super::runner::{ProcessOutput, Runner};
 
@@ -153,7 +153,7 @@ mod tests {
     #[test]
     fn test_process_honey() {
         use super::*;
-        use crate::enhance::runner::Runner;
+        use crate::enhance::script::runner::Runner;
         use serde_yaml::Mapping;
 
         let runner = LuaRunner;

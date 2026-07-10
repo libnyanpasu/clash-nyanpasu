@@ -21,13 +21,6 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(
     job_manager.setup().context("failed to setup job manager")?;
     let job_manager = std::sync::Arc::new(RwLock::new(job_manager));
     app.manage(job_manager);
-    // profiles job
-    let profiles_job = jobs::ProfilesJobGuard::new(task_manager.clone());
-    {
-        let mut profiles_job = profiles_job.write();
-        profiles_job.init()?;
-    }
-    app.manage(profiles_job);
     app.manage(task_manager);
     Ok(())
 }

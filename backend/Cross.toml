@@ -23,6 +23,3 @@ image = "ghcr.io/libnyanpasu/builder-debian-trixie-aarch64:latest"
 #     libssl-dev:$CROSS_DEB_ARCH \
 #   """,
 # ]
-
-[target.i686-unknown-linux-gnu]
-image = "ghcr.io/libnyanpasu/builder-debian-trixie-i686:latest"

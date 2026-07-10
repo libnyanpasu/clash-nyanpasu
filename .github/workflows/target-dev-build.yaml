@@ -38,18 +38,6 @@ jobs:
       tag: 'pre-release'
     secrets: inherit
 
-  windows_i686_build:
-    name: Windows i686 Build
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
-    uses: ./.github/workflows/deps-build-windows-nsis.yaml
-    with:
-      portable: true
-      nightly: true
-      bundle-type: 'both'
-      arch: 'i686'
-      tag: 'pre-release'
-    secrets: inherit
-
   linux_amd64_build:
     name: Linux amd64 Build
     if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
@@ -58,16 +46,6 @@ jobs:
       nightly: true
       tag: 'pre-release'
       arch: 'x86_64'
-    secrets: inherit
-
-  linux_i686_build:
-    name: Linux i686 Build
-    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.repository, 'libnyanpasu') }}
-    uses: ./.github/workflows/deps-build-linux.yaml
-    with:
-      nightly: true
-      tag: 'pre-release'
-      arch: 'i686'
     secrets: inherit
 
   linux_aarch64_build:
@@ -105,10 +83,8 @@ jobs:
     needs:
       [
         windows_amd64_build,
-        windows_i686_build,
         windows_aarch64_build,
         linux_amd64_build,
-        linux_i686_build,
         linux_aarch64_build,
         macos_amd64_build,
         macos_aarch64_build,

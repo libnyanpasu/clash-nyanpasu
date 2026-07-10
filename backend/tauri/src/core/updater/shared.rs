@@ -9,8 +9,6 @@ pub(super) fn get_arch() -> anyhow::Result<&'static str> {
         ("x86_64", "macos") => Ok("darwin-x64"),
         ("x86_64", "linux") => Ok("linux-amd64"),
         ("x86_64", "windows") => Ok("windows-x86_64"),
-        ("i686", "windows") => Ok("windows-i386"),
-        ("i686", "linux") => Ok("linux-i386"),
         ("aarch64", "macos") => Ok("darwin-arm64"),
         ("aarch64", "linux") => Ok("linux-aarch64"),
         ("aarch64", "windows") => Ok("windows-arm64"),

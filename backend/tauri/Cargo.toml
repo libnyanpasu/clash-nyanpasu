@@ -35,7 +35,7 @@ nyanpasu-utils = { workspace = true }
 nyanpasu-egui = { path = "../nyanpasu-egui" }
 
 # Common Utilities
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
 tokio-util = { version = "0.7", features = ["full"] }
 oneshot = "0.2"
 futures = "0.3"
@@ -270,6 +270,9 @@ windows-sys = { version = "0.61", features = [
 # by tauri/wry, since we cast COM interfaces obtained from tauri's webview.
 windows-core = "0.61"
 webview2-com = "0.38"
+
+[dev-dependencies]
+mockall = "0.13"
 
 [features]
 default = ["custom-protocol", "default-meta"]

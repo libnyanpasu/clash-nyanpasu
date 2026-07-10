@@ -2,6 +2,7 @@ mod application;
 mod clash_config;
 mod error;
 mod event_sink;
+pub mod profiles;
 mod session_state;
 
 use self::{

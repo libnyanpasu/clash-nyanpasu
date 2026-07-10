@@ -1,10 +1,21 @@
 mod advice;
 mod chain;
+mod content_source;
 mod field;
 mod merge;
+mod runtime_builder;
 mod script;
 mod tun;
 mod utils;
+
+#[cfg(test)]
+mod golden;
+
+pub use content_source::FsProfileContentSource;
+pub use runtime_builder::{
+    RuntimeBuildError, RuntimeBuildInput, RuntimeBuilder, builtin_transforms_for, derive_tun_flavor,
+};
+pub use script::adapter::EnhanceScriptRunner;
 
 pub use self::chain::ScriptType;
 use self::{chain::*, field::*, merge::*, script::*, tun::*};

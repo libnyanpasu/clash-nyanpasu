@@ -340,3 +340,30 @@ fn item_key_must_match_item_uid() {
         ProfileValidationError::ItemKeyMismatch { .. }
     )));
 }
+
+/// T06A 回归钉:不可信文档面(磁盘 profiles.yaml)在反序列化时就必须拒绝
+/// 穿越型 managed 路径。防御在 ManagedProfilePath::new(path.rs:30-40),
+/// Deserialize 委托 new(path.rs:60-67);本测试锁死该委托关系。
+#[test]
+fn profiles_document_with_traversal_managed_path_fails_to_deserialize() {
+    let yaml = r#"items:
+  - uid: evil
+    name: evil
+    type: transform
+    transform:
+      type: overlay
+      source:
+        type: local
+        binding:
+          type: managed
+          file: ../escape.yaml
+"#;
+    let error = serde_yaml_ng::from_str::<Profiles>(yaml).unwrap_err();
+    assert!(
+        error.to_string().contains("parent"),
+        "error must name the traversal rejection: {error}"
+    );
+
+    // 直接类型面同理(serde 字符串标量 → ManagedProfilePath)。
+    assert!(serde_yaml_ng::from_str::<ManagedProfilePath>("../escape.yaml").is_err());
+}

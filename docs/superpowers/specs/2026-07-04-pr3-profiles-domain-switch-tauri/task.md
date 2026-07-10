@@ -350,9 +350,19 @@ pub struct RuntimeBuildInput {
 }
 impl RuntimeBuilder {
     pub fn build(input: &RuntimeBuildInput, content: &dyn ProfileContentSource, scripts: &dyn ScriptRunner)
-        -> Result<RuntimeArtifact, RuntimePipelineError>;
+        -> Result<RuntimeArtifact, RuntimeBuildError>;   // Validation(Vec<ProfileValidationError>) | Pipeline(RuntimePipelineError)
 }
 ```
+
+**2026-07-06 契约修正(T06 实物,下游以此为准)**:
+
+- 落点实名:`enhance/runtime_builder.rs`(`RuntimeBuilder`/`RuntimeBuildInput`/`RuntimeBuildError` + `builtin_transforms_for(core)`/`derive_tun_flavor(core, stack)` 公开可测)、`enhance/content_source.rs`(`FsProfileContentSource::new(profiles_dir: PathBuf)`)、`enhance/script/adapter.rs`(`EnhanceScriptRunner::new()`,三方法 `ScriptRunner`,复用 `RunnerManager` + `create_lua_context`)。均从 `crate::enhance` 顶层 `pub use`。
+- `build()` 前置 `profiles.validate()` 防御(executor 契约要求已验证输入)→ `RuntimeBuildError::Validation`。
+- builtin 门控实现为切片匹配表(未给 tauri 引入 enumflags2);顺序与 gating 与 `chain.rs:170-175` 逐位一致,含 `clash_rs_comp` 不含 `ClashRsAlpha`、tun `ClashRs` 分支不含 Alpha 两处 legacy 怪癖(修复属行为变更,需另走勘误)。
+- `TunStack` 实际路径 = `nyanpasu_config::clash::config::tun_stack::TunStack`。
+- `EnhanceScriptRunner` 自持 current-thread runtime(`run` 同步阻塞)——**`RuntimeBuilder::build` 必须在阻塞上下文调用**(T07 统一 `spawn_blocking`);禁止在 async worker 线程直接调用。
+- golden 现状:端到端不变量测试(真实 boa + 真实文件源:脚本生效/guard 端口注入/whitelist-off 保键/step_logs 锚定)+ executor 侧 PR-3-pre② parity 套件背书;**snapshot 期望文件套件列为 T07 pre-flight 跟进项**(多场景:Composition、global chain、builtin 门控、whitelist-on)。
+- 评审处置(antigravity 2026-07-06;codex 后端故障,其评审延期):①"`block_on` 在 `spawn_blocking` 内 panic"判**误报**——tokio 仅在 async worker 线程禁止 `block_on`,blocking 池线程允许(`Handle::block_on` 官方文档模式、reqwest::blocking 同构先例),阻塞上下文契约见上条;②"每次 `run` 重建 `RunnerManager` 是性能回退"**不成立**——`JSRunner` 为 unit struct,boa `Context`(`Rc<RefCell<_>>`,!Send)legacy 同样每脚本新建,manager 仅空 HashMap;③BitFlags 门控为有意偏离(新域 `ClashCore` 无 `#[bitflags]` derive,跨 crate 改动超卡范围)——新增 core 变体时切片表需手工同步,由门控测试兜底;④**T07 加固项**:`ManagedProfilePath` 反序列化侧缺 `..` 组件拒绝(防御纵深),须用 `Component::ParentDir` 组件检查而非 `starts_with`(lexical 比较对未归一化路径无效)。
 
 **验证**:
 
@@ -361,6 +371,41 @@ impl RuntimeBuilder {
 - 纯度断言:`runtime_builder.rs` 无 `Config::` / `tauri::` import(D12 取数不在本卡——输入全部显式传参)
 
 **单独 plan 时读**: design §8/§19、图 13.2、D7/D12;`backend/nyanpasu-config/src/runtime/executor/`(实物:`mod.rs`/`ports.rs`/`artifact.rs`;`tests/{golden,parity}.rs` fixtures 可复用);`docs/superpowers/specs/2026-07-04-runtime-pipeline-executor-design.md` §19 勘误;`enhance/mod.rs:22-104`、`enhance/chain.rs:59-160`(旧语义源)。
+
+---
+
+### T06A — 评审加固 + golden 基线(add-only,排 T07 前;2026-07-06 增补)
+
+**目标**: 落地 T06 评审处置遗留的三项加固,并在 `Config::generate()` 切换前锁定 RuntimeBuilder 行为基线。全部 add-only,不入 §4 原子切换组,可独立提交。
+
+**内容**:
+
+1. `ManagedProfilePath` 构造/反序列化拒绝 `..`:用 `Component::ParentDir` 组件检查(**不得**用 `Path::starts_with`——lexical 比较对未归一化路径无效,T06 评审处置④)。落点 `backend/nyanpasu-config`(路径类型),含拒绝用例单测。
+2. Mirror 同步阻塞 I/O 加固:核实 T05 watcher Mirror 分支(`state/profiles/scheduler.rs`)的复制/校验是否已在阻塞线程执行;否则移入 `spawn_blocking`。plan 时以实测定改动量(可能为零改动 + 测试确认)。
+3. RuntimeBuilder golden snapshot 文件套件(T06 附录跟进项):固定输入(样本 profiles + clash/app 快照 + 固定 `ResolvedPortBindings`)驱动 `RuntimeBuilder::build`,`final_config` 序列化 YAML 作为期望文件入库;场景至少覆盖 Composition、global chain、builtin 门控、whitelist-on。T07 切换后同套件必须仍绿。
+
+**Interfaces — Consumes**: T06 `RuntimeBuilder`/`FsProfileContentSource`/`EnhanceScriptRunner` 实物。
+**Interfaces — Produces**: golden 套件(T07 回归安全网);`ManagedProfilePath` 构造语义收紧(拒绝 `..`;T02 迁移生成的 `{uid}.{ext}` 形态路径不受影响)。
+
+**验证**:
+
+- `ManagedProfilePath::new("../evil")` 等含 `..` 组件的构造被拒(含反序列化路径)
+- golden 套件可重复运行、期望文件稳定;`cargo test` 全绿
+
+**单独 plan 时读**: T06 卡「2026-07-06 契约修正」评审处置条;`state/profiles/scheduler.rs`(Mirror 分支现状);`enhance/runtime_builder.rs` 现有测试(`base_input()` 可复用)。
+
+**2026-07-06 执行修正(T06A 实物)**:
+
+- 第 1 项按实物收缩:`..`/穿越拒绝防御与构造侧测试**原已在位**(nyanpasu-config path.rs:30-40/60-67 + validation.rs:166-171;T06 评审处置④的「反序列化侧缺失」表述与实物不符)——本卡实际交付 = profiles 文档反序列化面的回归钉测试(validation.rs 尾部)。
+- golden 套件实名:`enhance/golden.rs` + `enhance/fixtures/golden/{composition_global_chain,builtin_mihomo,builtin_clash_rs,whitelist_on}.yaml`;重铸 `GOLDEN_BLESS=1 cargo test -p clash-nyanpasu golden_`;确定性 = 固定 `secret: golden-secret` + tun off。**T07 切换后本套件须原样全绿,改 fixtures = 行为回归须勘误。**
+- Mirror 同步已移入 `spawn_blocking`(actor.rs `ExternalFileChanged` Mirror 分支;消息顺序不变,warn 日志逐字保留)。
+
+**2026-07-07 评审处置(codex 79/100 + antigravity 98/100 APPROVE,无 Critical)**:
+
+- Major(已修):golden builtin 两例经真 boa 执行,而 `boa_utils::set_logger` 为进程级全局(js.rs 注释自证非并发安全),与 `runtime_builder.rs` 日志断言 e2e 测试并行有窃取/漏失竞态 → js.rs 增 `BOA_LOGGER_LOCK` 在 `spawn_blocking` 闭包内串行整段 boa 执行(生产侧脚本本就经 actor 串行,无性能回退)。
+- Suggestion(已采纳):`golden_input` 显式 `enable_clash_fields = false`,基线自文档化。
+- Minor(遗留,记 T07 预备项):Mirror 失败三分支(读失败/校验失败/镜像写失败)缺「不 commit updated_at、不触发 rebuild」的断言钉。
+- antigravity 2 条 Info(run_write 后置文件操作仍同步、golden 测试助手与 runtime_builder 测试重复)均记为未来事项,不入本卡。
 
 ---
 
@@ -381,7 +426,7 @@ impl RuntimeBuilder {
 ```rust
 impl NyanpasuClient {
     pub async fn get_profiles(&self) -> Result<Arc<Profiles>>;
-    pub async fn add_profile(&self, req: NewProfileRequest, initial_file: Option<String>) -> Result<()>;
+    pub async fn add_profile(&self, req: NewProfileRequest, initial_file: Option<String>) -> Result<ProfileId>; // 2026-07-06:返回服务端生成 uid(import 条件激活用)
     pub async fn delete_profile(&self, uid: ProfileId) -> Result<()>;
     pub async fn reorder_profile(&self, active: ProfileId, over: ProfileId) -> Result<()>;
     pub async fn reorder_profiles_by_list(&self, list: Vec<ProfileId>) -> Result<()>;
@@ -407,6 +452,17 @@ impl NyanpasuClient {
 
 **单独 plan 时读**: design §5/§6.4/§8、图 13.2;PR-2b spec §10.2(composition root 顺序样板);`setup.rs`/`lib.rs:120,362-398` 现状。
 
+**2026-07-06 契约修正(现场盘点,下游以此为准)**:
+
+- 接线简化(实物):`ProfileFileService::new(paths: PathResolver, self_proxy_port: Arc<dyn SelfProxyPortSource>)` 一个实例同时实现 `ProfileFsPort` + `SubscriptionFetcher`(`profile_file.rs:126/202`);`ProfilesClient::new(profiles_path: Utf8PathBuf, fs, fetcher, notifier)`(`client/profiles.rs:31`,`pub(crate)`)内部自行 spawn actor——无独立 spawn 步骤;T05 调度器/watcher 为 actor 生命周期内部细节,composition root 零额外接线。
+- 本卡新增三个生产实现(盘点:全仓均无非测试实现):① `RebuildNotifier`(channel 接 facade 重建入口,接收侧去抖);② `SelfProxyPortSource`(D12:取 ClashConfig 快照 mixed port);③ 端口解析纯函数 `resolve_port_bindings(&ClashConfig, &NyanpasuAppConfig) -> ResolvedPortBindings`(random-port 等 legacy 语义 plan 时实测对齐)。
+- 契约修正(§5.3,波及 T04 实物):`CommitReport` 增补 `created: Option<ProfileId>`(仅 Add 置值)——`import_profile` 条件自动激活需要服务端生成的 uid(`actor.rs:476` `generate_uid`);facade `add_profile` 改返 `Result<ProfileId>`(上方方法表 `Result<()>` 作废)。
+- 文件三方法(`get_profile_materialized_path`/`read_profile_file`/`save_profile_file`)在 facade 层实现,不经 actor 消息:快照定位 + `ProfileFileService` 直读写(§9 BC 要点照旧:仅 Local/Managed 可写、Composition→`ProfileHasNoFile`);save 不自动 rebuild(维持 legacy:前端显式 `enhance_profiles`)。
+- `generate()` 切换映射:`RuntimeArtifact→IRuntime` = `config←final_config`(ConfigValue→Mapping 投影)、`exists_keys←applied_fields`、`postprocessing_output←step_logs`(shape 转换 plan 时定,保持 `IRuntime` 对外 shape 与 `get_postprocessing_output` 返回类型不变);`rebuild_running_config()` 读完快照后全程 `spawn_blocking`(T06 附录阻塞契约),`FsProfileContentSource`/`EnhanceScriptRunner` 在闭包内每次构造。
+- 连接中断(**用户决策 2026-07-06,有意偏离 legacy**):`rebuild_running_config()` 成功后统一调用 `ConnectionInterruptionService::on_profile_change()`(加 `TODO(actor-migration)` bridge 注释,其内读 `Config::verge()`)。legacy 仅 `patch_profiles_config_inner` 路径触发;新行为下删除当前 profile、订阅后台刷新、External 失效等 affects_current 提交同样触发。影响评估:`break_when_profile_change` 默认 false,仅影响显式开启用户,语义更贴近选项本意。台账判据由「恰好两处 TODO」改为「**恰好三处**」。
+- 锚点修正:删「旧 `patch_profiles_config:80` 本卡保留」条——`NyanpasuClient` 无此方法(唯一同名物 `ipc.rs:284` 命令,归 T08);profiles 域作为 `NyanpasuClientInner` 第四成员(现 application/session_state/clash_config 三成员)。
+- 迁移顺序现状已满足:`setup.rs:22-26` `run_pending()` 先于 client 构造,ProfilesClient 插入同一序列;存在双迁移机制(`lib.rs:120` 子进程 + `setup.rs` in-process),plan 时核实 rev3 实际生效路径。
+
 ---
 
 ### T08 — IPC BC 切换(13 → 16 条)
@@ -431,6 +487,14 @@ impl NyanpasuClient {
 
 **单独 plan 时读**: design §9 全表(每行含 BC 要点);guide §5(逐命令现状签名)。
 
+**2026-07-06 契约修正(现场盘点)**:
+
+- 注册表锚点:命令注册 + specta 导出在 `specta_export.rs`(`build_specta_builder()`,profiles 条目 53–66 行),非 lib.rs(lib.rs 仅 199/238/249 三处消费 builder)。
+- `feat::update_profile` 实际在 `feat.rs:444-447`;调用者两处:`ipc.rs:255`(本卡改走 facade)+ `core/tasks/jobs/profiles.rs:33`(T10 随整文件删除,本卡不动)。
+- `import_profile` 条件自动激活:用 facade `add_profile` 返回的 `ProfileId`(T07 契约修正),激活调 facade `activate_profile`;连接中断由 `rebuild_running_config()` 统一触发(T07 用户决策),命令层零编排。
+- `patch_profiles_config_inner`(`ipc.rs:288-310`)随两条旧命令在本卡删除,不留 T10。
+- 现状 13 条命令清单实测与本卡一致;16 条目标名单不变。
+
 ---
 
 ### T09 — 前端适配
@@ -453,6 +517,11 @@ impl NyanpasuClient {
 - 全仓 `patch_profiles_config` / `chain` 字段引用零残留(grep 前端源码)
 
 **单独 plan 时读**: design §11;guide §7.2/§7.3(TS 破坏性变更表);现 profiles 页组件树。
+
+**2026-07-06 契约修正(现场盘点)**:
+
+- 前端锚点:`use-profile.ts` 唯一导出 hook 为 `useProfile`(内部消费 `getProfiles`/`viewProfile` + update/drop mutations);其余消费点仍按本卡原话 plan 时全量盘点。
+- `postprocessing_output` 前端不感知:T07 映射保持 `IRuntime` 对外 shape,`get_postprocessing_output` 返回类型不变,本卡无此项工作。
 
 ---
 
@@ -478,6 +547,12 @@ impl NyanpasuClient {
 
 **单独 plan 时读**: design §14 T3.8、§16;T08/T09 完成后的实际残留清单(plan 时以 grep 现场盘点为准,不硬编码本卡文件列表)。
 
+**2026-07-06 契约修正(现场盘点)**:
+
+- 删「`client/mod.rs:80` 旧 `patch_profiles_config` 方法」条——该方法不存在(规划期误记);命令与 helper 已在 T08 删除,本卡仅 grep 核对零残留。
+- 增补删除面:`enhance/utils.rs`——全仓唯一 `crate::config::profile` 直接 import(`utils.rs:5`),随旧 `enhance()` 清理一并处理。
+- 切换面基数实测(2026-07-06):`Config::profiles()` 共 24 处(ipc 18 / feat 3 / enhance 1 / jobs 2)——T08 清 ipc 后本卡清余下 6 处;grep 判据不变。
+
 ---
 
 ### T11 — 端到端验证 + 文档收尾
@@ -493,6 +568,10 @@ impl NyanpasuClient {
 
 **验证**: `cargo build && cargo test` + 前端构建全绿;判据 1–8 逐条勾选留痕(PR 描述引用)。
 
+**2026-07-06 契约修正(现场盘点)**:
+
+- e2e 迁移路径:存在双迁移机制(`lib.rs:120` 子进程 + `setup.rs:22-26` in-process runner),plan 时核实 rev3 实际生效路径,e2e 步骤以实测为准;`.bak` 由 CLEAN_SCHEMA step 写入(design §10 安全行)。
+
 ---
 
 ## 4. 原子切换组说明(T07–T10)
@@ -503,9 +582,10 @@ impl NyanpasuClient {
   - T08 落地后前端类型检查红,直至 T09 完成——这是铁律 3(前端 BC 同 PR)的预期形态;
   - **本组四卡必须在同一 PR 内连续完成后再请求 review/merge**,不得单独合入 main。
 - **T10 之后**: 应用恢复端到端可运行,进入 T11 验证。
+- **2026-07-06 叙事修正**:「T07 之前应用行为不变」仅对空数据/新装成立——T02 落地后,真实旧数据启动即被 rev3 迁移(`detect_baseline` 遇 legacy 文件返 0),legacy 读取失效,BC 中间态(真实数据可运行性)实际自 T02 开始。整分支单 PR 合入前提下无实害;开发者中途跑真机需知。
 
 ## 5. 执行建议
 
 1. **逐卡出 plan**: 每张卡以「本卡 + design.md 对应章节 + 卡内 Interfaces 契约」为输入,用 `superpowers:writing-plans` 展开为 bite-sized plan(TDD、每步一动作、含完整代码);卡与卡之间只通过 Interfaces 契约耦合,plan 之间不需要互读。
-2. **推荐排程**: 先并行 T01/T02/T03(+ T06 若 PR-3-pre② 已合),再 T04→T05,最后一口气完成切换组 T07–T10 + T11。
+2. **推荐排程**: 先并行 T01/T02/T03(+ T06 若 PR-3-pre② 已合),再 T04→T05,最后一口气完成切换组 T07–T10 + T11。(2026-07-06 增补:T01–T06 已执行完毕;T06A 加固卡排 T07 前,不入原子组。)
 3. **契约变更规则**: 实施中若需改动任务卡 Produces 签名,先改本文件对应卡(及下游 Consumes),再改代码——本文件是跨卡契约的唯一权威。

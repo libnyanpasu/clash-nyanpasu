@@ -1,3 +1,4 @@
+pub mod adapter;
 mod js;
 mod lua;
 pub use lua::create_lua_context;

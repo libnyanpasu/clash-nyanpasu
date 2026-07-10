@@ -20,6 +20,7 @@ use std::{
     cell::RefCell,
     path::{Path, PathBuf},
     rc::Rc,
+    sync::Mutex,
     time::Duration,
 };
 use tracing_attributes::instrument;
@@ -36,6 +37,11 @@ static CUSTOM_SCRIPTS_DIR: Lazy<PathBuf> = Lazy::new(|| {
     }
     dunce::canonicalize(path).unwrap()
 });
+
+// boa_utils stores the console logger in a process-global slot (see
+// setup_console below); serialize whole runs so parallel executions
+// (e.g. concurrent tests) cannot steal or drain each other's logs.
+static BOA_LOGGER_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 // define a JsRunnerError due to boa engine error is not Send
 #[derive(Debug, thiserror::Error)]
@@ -210,6 +216,9 @@ impl Runner for JSRunner {
         );
         // boa engine is single-thread runner so that we can use it in tokio::task::spawn_blocking
         let res = tokio::task::spawn_blocking(move || {
+            let _logger_guard = BOA_LOGGER_LOCK
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             let wrapped_fn = move || {
                 let mut logger = BoaConsoleLogger(Logs::new());
                 let boa_runner = wrap_result!(BoaRunner::try_new(), logger.take());

@@ -1,21 +1,16 @@
 use crate::{
     bridge::verge::LegacyVergeBridge,
-    client::ClientError,
-    config::{profile::ProfileBuilder, *},
-    core::{
-        logger::Logger, storage::Storage, tasks::jobs::ProfilesJobGuard,
-        updater::ManifestVersionLatest, *,
-    },
+    client::{ClientError, NyanpasuClient},
+    config::*,
+    core::{logger::Logger, storage::Storage, updater::ManifestVersionLatest, *},
     enhance::PostProcessingOutput,
     feat::{self, CopyEnvOption},
     utils::{candy, collect::EnvInfo, dirs, help, resolve},
 };
-use anyhow::{Context, anyhow};
+use anyhow::Context;
 use chrono::Local;
 use log::debug;
 use nyanpasu_ipc::api::status::CoreState;
-use profile::item_type::ProfileItemType;
-use serde_yaml::Mapping;
 use std::{
     borrow::Cow,
     collections::{HashMap, VecDeque},
@@ -43,6 +38,8 @@ pub enum IpcError {
     Storage(#[from] StorageOperationError),
     #[error(transparent)]
     Anyhow(#[from] anyhow::Error),
+    #[error(transparent)]
+    Profiles(#[from] crate::state::profiles::actor::ProfilesError),
     #[error("{0}")]
     Custom(String),
 }
@@ -61,6 +58,7 @@ impl From<ClientError> for IpcError {
             ClientError::SerdeJson(err) => IpcError::SerdeJson(err),
             ClientError::Storage(err) => IpcError::Storage(err),
             ClientError::Anyhow(err) => IpcError::Anyhow(err),
+            ClientError::Profiles(err) => IpcError::Profiles(err),
             ClientError::Custom(err) => IpcError::Custom(err),
         }
     }
@@ -98,13 +96,18 @@ pub struct GetSysProxyResponse {
     pub server: String,
 }
 
+// ---- profiles domain commands (PR-3 T08, thin adapters over NyanpasuClient) ----
+
+use crate::state::profiles::actor::NewProfileRequest;
+use nyanpasu_config::profile::{
+    ProfileDefinition, ProfileId, ProfileMetadataPatch, Profiles as DomainProfiles,
+    RemoteProfileOptionsPatch,
+};
+
 #[tauri::command]
 #[specta::specta]
-pub fn get_profiles() -> Result<Profiles> {
-    // TODO(actor-migration): compatibility bridge for legacy profile IPC.
-    // Reason: profiles are not yet owned by a typed actor/client facade.
-    // Remove when: profile reads are exposed through injected typed clients.
-    Ok(Config::profiles().data().clone())
+pub async fn get_profiles(client: State<'_, NyanpasuClient>) -> Result<DomainProfiles> {
+    Ok((*client.get_profiles().await?).clone())
 }
 
 #[cfg(target_os = "windows")]
@@ -129,281 +132,167 @@ pub fn is_portable() -> Result<bool> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn enhance_profiles() -> Result {
-    CoreManager::global().update_config().await?;
-    handle::Handle::refresh_clash();
+pub async fn enhance_profiles(client: State<'_, NyanpasuClient>) -> Result {
+    client.rebuild_running_config().await?;
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn import_profile(url: String, option: Option<RemoteProfileOptionsBuilder>) -> Result {
+pub async fn import_profile(
+    client: State<'_, NyanpasuClient>,
+    url: String,
+    option: Option<RemoteProfileOptionsPatch>,
+) -> Result<ProfileId> {
     let url = url::Url::parse(&url).context("failed to parse the url")?;
-    let mut builder = crate::config::profile::item::RemoteProfileBuilder::default();
-    builder.url(url);
-    if let Some(option) = option {
-        builder.option(option.clone());
-    }
-    let profile = builder
-        .build_no_blocking()
-        .await
-        .context("failed to build a remote profile")?;
-    // 根据是否为 Some(uid) 来判断是否要激活配置
-    let profile_id = {
-        if Config::profiles().draft().current.is_empty() {
-            Some(profile.uid().to_string())
-        } else {
-            None
-        }
-    };
-    {
-        let committer = Config::profiles().auto_commit();
-        (committer.draft().append_item(profile.into()))?;
-    }
-    // TODO: 使用 activate_profile 来激活配置
-    if let Some(profile_id) = profile_id {
-        let mut builder = ProfilesBuilder::default();
-        builder.current(vec![profile_id]);
-        patch_profiles_config_inner(builder).await?;
-    }
-    Ok(())
+    // Return the created uid so the caller can apply user-provided metadata
+    // (import derives the name from the url server-side).
+    Ok(client.import_profile(url, option).await?)
 }
 
 /// create a new profile
 #[tauri::command]
 #[specta::specta]
-pub async fn create_profile(item: ProfileBuilder, file_data: Option<String>) -> Result {
-    tracing::trace!("create profile: {item:?}");
-
-    let is_remote = matches!(&item, ProfileBuilder::Remote(_));
-
-    let profile: Profile = match item {
-        ProfileBuilder::Local(builder) => builder
-            .build()
-            .context("failed to build local profile")?
-            .into(),
-        ProfileBuilder::Remote(mut builder) => builder
-            .build_no_blocking()
-            .await
-            .context("failed to build remote profile")?
-            .into(),
-        ProfileBuilder::Merge(builder) => builder
-            .build()
-            .context("failed to build merge profile")?
-            .into(),
-        ProfileBuilder::Script(builder) => builder
-            .build()
-            .context("failed to build script profile")?
-            .into(),
-    };
-
-    tracing::info!("created new profile: {:#?}", profile);
-
-    // Save file data for non-remote profiles
-    if let Some(file_data) = file_data
-        && !file_data.is_empty()
-        && !is_remote
-    {
-        profile.save_file(file_data)?;
-    }
-
-    // 根据是否为 Some(uid) 来判断是否要激活配置
-    let profile_id = {
-        if (profile.is_local() || profile.is_remote())
-            && Config::profiles().draft().current.is_empty()
-        {
-            Some(profile.uid().to_string())
-        } else {
-            None
-        }
-    };
-
-    // Save the profile
-    {
-        let committer = Config::profiles().auto_commit();
-        committer.draft().append_item(profile)?;
-    };
-    // TODO: 使用 activate_profile 来激活配置
-    if let Some(profile_id) = profile_id {
-        let mut builder = ProfilesBuilder::default();
-        builder.current(vec![profile_id]);
-        patch_profiles_config_inner(builder).await?;
-    }
-
+pub async fn create_profile(
+    client: State<'_, NyanpasuClient>,
+    request: NewProfileRequest,
+    file_data: Option<String>,
+) -> Result {
+    client.create_profile(request, file_data).await?;
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn reorder_profile(active_id: String, over_id: String) -> Result {
-    let committer = Config::profiles().auto_commit();
-    (committer.draft().reorder(active_id, over_id))?;
+pub async fn reorder_profile(
+    client: State<'_, NyanpasuClient>,
+    active_id: ProfileId,
+    over_id: ProfileId,
+) -> Result {
+    client.reorder_profile(active_id, over_id).await?;
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn reorder_profiles_by_list(list: Vec<String>) -> Result {
-    let committer = Config::profiles().auto_commit();
-    (committer.draft().reorder_by_list(&list))?;
+pub async fn reorder_profiles_by_list(
+    client: State<'_, NyanpasuClient>,
+    list: Vec<ProfileId>,
+) -> Result {
+    client.reorder_profiles_by_list(list).await?;
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn update_profile(uid: String, option: Option<RemoteProfileOptionsBuilder>) -> Result {
-    (feat::update_profile(uid, option).await)?;
+pub async fn update_profile(
+    client: State<'_, NyanpasuClient>,
+    uid: ProfileId,
+    option: Option<RemoteProfileOptionsPatch>,
+) -> Result {
+    client.refresh_profile(uid, option).await?;
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn delete_profile(uid: String) -> Result {
-    let should_update = tokio::task::spawn_blocking(move || {
-        #[allow(clippy::let_and_return)] // a bug in clippy
-        nyanpasu_utils::runtime::block_on_current_thread(async move {
-            let committer = Config::profiles().auto_commit();
-            let x = committer.draft().delete_item(&uid).await;
-            x
-        })
-    })
-    .await
-    .context("failed to join the task")?
-    .context("failed to delete the profile")?;
-
-    if should_update {
-        (CoreManager::global().update_config().await)?;
-        handle::Handle::refresh_clash();
-    }
-    Ok(())
-}
-
-/// 修改profiles的
-#[tauri::command]
-#[specta::specta]
-pub async fn patch_profiles_config(profiles: ProfilesBuilder) -> Result {
-    patch_profiles_config_inner(profiles).await
-}
-
-async fn patch_profiles_config_inner(profiles: ProfilesBuilder) -> Result {
-    // TODO(actor-migration): compatibility bridge for legacy profile mutations.
-    // Reason: profile commits still coordinate Config::profiles() and CoreManager::global().
-    // Remove when: profile mutations are handled by an injected profile actor/client.
-    Config::profiles().draft().apply(profiles);
-
-    match CoreManager::global().update_config().await {
-        Ok(_) => {
-            handle::Handle::refresh_clash();
-            Config::profiles().apply();
-            Config::profiles().data().save_file()?;
-
-            let _ = crate::core::connection_interruption::ConnectionInterruptionService::on_profile_change().await;
-
-            Ok(())
-        }
-        Err(err) => {
-            Config::profiles().discard();
-            log::error!(target: "app", "{err:?}");
-            Err(err.into())
-        }
-    }
-}
-
-/// update profile by uid
-#[tauri::command]
-#[specta::specta]
-pub async fn patch_profile(app_handle: AppHandle, uid: String, profile: ProfileBuilder) -> Result {
-    tracing::debug!("patch profile: {uid} with {profile:?}");
-    {
-        let committer = Config::profiles().auto_commit();
-        (committer.draft().patch_item(uid.clone(), profile))?;
-    }
-    {
-        let profiles_jobs = app_handle.state::<ProfilesJobGuard>();
-        profiles_jobs.write().refresh();
-    }
-    let need_update = {
-        let profiles = Config::profiles();
-        let profiles = profiles.latest();
-        match (&profiles.chain, &profiles.current) {
-            (chains, _) if chains.contains(&uid) => true,
-            (_, current_chain) if current_chain.contains(&uid) => true,
-            (_, current_chain) => {
-                current_chain
-                    .iter()
-                    .any(|chain_uid| match profiles.get_item(chain_uid) {
-                        Ok(item) if item.is_local() => {
-                            item.as_local().unwrap().chain.contains(&uid)
-                        }
-                        Ok(item) if item.is_remote() => {
-                            item.as_remote().unwrap().chain.contains(&uid)
-                        }
-                        _ => false,
-                    })
-            }
-        }
-    };
-    if need_update {
-        match CoreManager::global().update_config().await {
-            Ok(_) => {
-                handle::Handle::refresh_clash();
-            }
-            Err(err) => {
-                log::error!(target: "app", "{err:?}");
-            }
-        }
-    }
+pub async fn delete_profile(client: State<'_, NyanpasuClient>, uid: ProfileId) -> Result {
+    client.delete_profile(uid).await?;
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn view_profile(app_handle: tauri::AppHandle, uid: String) -> Result {
-    let file = {
-        Config::profiles()
-            .latest()
-            .get_item(&uid)?
-            .file()
-            .to_string()
-    };
+pub async fn activate_profile(client: State<'_, NyanpasuClient>, uid: Option<ProfileId>) -> Result {
+    client.activate_profile(uid).await?;
+    Ok(())
+}
 
-    let path = (dirs::app_profiles_dir())?.join(file);
+#[tauri::command]
+#[specta::specta]
+pub async fn set_global_transforms(
+    client: State<'_, NyanpasuClient>,
+    ids: Vec<ProfileId>,
+) -> Result {
+    client.set_global_transforms(ids).await?;
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn set_profile_valid_fields(
+    client: State<'_, NyanpasuClient>,
+    fields: Vec<String>,
+) -> Result {
+    client.set_profile_valid_fields(fields).await?;
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn patch_profile_metadata(
+    client: State<'_, NyanpasuClient>,
+    uid: ProfileId,
+    patch: ProfileMetadataPatch,
+) -> Result {
+    client.patch_profile_metadata(uid, patch).await?;
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn patch_remote_profile_options(
+    client: State<'_, NyanpasuClient>,
+    uid: ProfileId,
+    patch: RemoteProfileOptionsPatch,
+) -> Result {
+    client.patch_remote_profile_options(uid, patch).await?;
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn replace_profile_definition(
+    client: State<'_, NyanpasuClient>,
+    uid: ProfileId,
+    definition: ProfileDefinition,
+) -> Result {
+    client.replace_profile_definition(uid, definition).await?;
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn view_profile(
+    app_handle: tauri::AppHandle,
+    client: State<'_, NyanpasuClient>,
+    uid: ProfileId,
+) -> Result {
+    let path = client.get_profile_materialized_path(uid).await?;
     if !path.exists() {
-        return Err(anyhow!("file not exists: {:#?}", path).into());
+        return Err(IpcError::Custom("profile file not found".into()));
     }
-
     help::open_file(app_handle, path)?;
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn read_profile_file(uid: String) -> Result<String> {
-    let profiles = Config::profiles();
-    let profiles = profiles.latest();
-    let item = (profiles.get_item(&uid))?;
-    let data = match item.kind() {
-        ProfileItemType::Local | ProfileItemType::Remote => {
-            let raw = (item.read_file())?;
-            let data = (serde_yaml::from_str::<Mapping>(&raw))?;
-            (serde_yaml::to_string(&data).context("failed to convert yaml to string"))?
-        }
-        _ => (item.read_file())?,
-    };
-    Ok(data)
+pub async fn read_profile_file(
+    client: State<'_, NyanpasuClient>,
+    uid: ProfileId,
+) -> Result<String> {
+    Ok(client.read_profile_file(uid).await?)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn save_profile_file(uid: String, file_data: Option<String>) -> Result {
-    if file_data.is_none() {
-        return Ok(());
-    }
-
-    let profiles = Config::profiles();
-    let profiles = profiles.latest();
-    let item = (profiles.get_item(&uid))?;
-    (item.save_file(file_data.unwrap()))?;
+pub async fn save_profile_file(
+    client: State<'_, NyanpasuClient>,
+    uid: ProfileId,
+    file_data: String,
+) -> Result {
+    client.save_profile_file(uid, file_data).await?;
     Ok(())
 }
 

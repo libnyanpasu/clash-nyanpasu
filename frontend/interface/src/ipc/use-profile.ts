@@ -2,194 +2,194 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
 import {
   commands,
-  type Profile_Serialize,
-  type ProfileBuilder_Deserialize,
-  type ProfileBuilder_Serialize,
-  type ProfilesBuilder_Deserialize,
-  type RemoteProfileOptionsBuilder,
+  type NewProfileRequest_Deserialize,
+  type ProfileDefinition_Deserialize,
+  type ProfileId,
+  type ProfileItem_Serialize,
+  type ProfileMetadataPatch_Deserialize,
+  type RemoteProfileOptionsPatch_Deserialize,
 } from './bindings'
 import { RROFILES_QUERY_KEY } from './consts'
 
-export type NormalizedProfile = NonNullable<
-  | Profile_Serialize['remote']
-  | Profile_Serialize['local']
-  | Profile_Serialize['merge']
-  | Profile_Serialize['script']
->
+// ---- discriminant helpers (successors of the retired NormalizedProfile collapse) ----
 
-export type NormalizedProfileBuilder = NonNullable<
-  | ProfileBuilder_Serialize['remote']
-  | ProfileBuilder_Serialize['local']
-  | ProfileBuilder_Serialize['merge']
-  | ProfileBuilder_Serialize['script']
->
+export const isConfigItem = (
+  item: ProfileItem_Serialize,
+): item is Extract<ProfileItem_Serialize, { type: 'config' }> =>
+  item.type === 'config'
 
-export type URLImportParams = Parameters<typeof commands.importProfile>
+export const isTransformItem = (
+  item: ProfileItem_Serialize,
+): item is Extract<ProfileItem_Serialize, { type: 'transform' }> =>
+  item.type === 'transform'
 
-export type ManualImportParams = Parameters<typeof commands.createProfile>
+/** Remote = a File config whose source is a remote subscription. */
+export const isRemoteItem = (item: ProfileItem_Serialize): boolean =>
+  isConfigItem(item) && item.config.file?.source.type === 'remote'
 
-export type CreateParams =
-  | {
-      type: 'url'
-      data: {
-        url: URLImportParams[0]
-        option: URLImportParams[1]
-      }
-    }
-  | {
-      type: 'manual'
-      data: {
-        item: NormalizedProfileBuilder
-        fileData: string | null
-      }
-    }
-
-type ProfileHelperFn = {
-  view: () => Promise<null | undefined>
-  update: (option: RemoteProfileOptionsBuilder) => Promise<null | undefined>
-  drop: () => Promise<null | undefined>
+/** Scoped transforms of the current config item (File or Composition). */
+export const scopedTransformsOf = (
+  item: ProfileItem_Serialize,
+): ProfileId[] => {
+  if (!isConfigItem(item)) return []
+  return (
+    item.config.file?.transforms ?? item.config.composition?.transforms ?? []
+  )
 }
+
+export interface ProfileHelperFn {
+  view: () => Promise<unknown>
+  update: (
+    option?: RemoteProfileOptionsPatch_Deserialize | null,
+  ) => Promise<unknown>
+  drop: () => Promise<unknown>
+}
+
+export type ProfileQueryResultItem = ProfileItem_Serialize &
+  Partial<ProfileHelperFn>
 
 export type ProfileQueryResult = NonNullable<
   ReturnType<typeof useProfile>['query']['data']
 >
 
-export type ProfileQueryResultItem = NormalizedProfile &
-  Partial<ProfileHelperFn>
+export type CreateParams =
+  | {
+      type: 'url'
+      data: {
+        url: string
+        option?: RemoteProfileOptionsPatch_Deserialize | null
+      }
+    }
+  | {
+      type: 'manual'
+      data: { request: NewProfileRequest_Deserialize; fileData: string | null }
+    }
 
 export const useProfile = (options?: { without_helper_fn?: boolean }) => {
   const queryClient = useQueryClient()
-
-  function addHelperFn(
-    item: Profile_Serialize,
-  ): NormalizedProfile & ProfileHelperFn {
-    const normalized = item as unknown as NormalizedProfile
-    const uid = normalized.uid
-    return {
-      ...normalized,
-      view: async () => unwrapResult(await commands.viewProfile(uid)),
-      update: async (option: RemoteProfileOptionsBuilder) =>
-        await update.mutateAsync({ uid, option }),
-      drop: async () => await drop.mutateAsync(uid),
-    }
-  }
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: [RROFILES_QUERY_KEY] })
 
   const query = useQuery({
     queryKey: [RROFILES_QUERY_KEY],
     queryFn: async () => {
       const result = unwrapResult(await commands.getProfiles())
-
-      if (!result) {
-        return undefined
-      }
-
+      if (!result) return undefined
+      const items = result.items ?? []
       if (options?.without_helper_fn) {
-        return {
-          ...result,
-          items: result.items as unknown as NormalizedProfile[],
-        }
+        return { ...result, items }
       }
-
       return {
         ...result,
-        items: result.items.map((item) => addHelperFn(item)),
+        items: items.map((item) => ({
+          ...item,
+          view: async () => unwrapResult(await commands.viewProfile(item.uid)),
+          update: (option?: RemoteProfileOptionsPatch_Deserialize | null) =>
+            update.mutateAsync({ uid: item.uid, option: option ?? null }),
+          drop: () => drop.mutateAsync(item.uid),
+        })),
       }
     },
   })
 
   const create = useMutation({
-    mutationFn: async ({ type, data }: CreateParams) => {
-      if (type === 'url') {
-        const { url, option } = data
-        return unwrapResult(await commands.importProfile(url, option))
-      } else {
-        const { item, fileData } = data
+    mutationFn: async (params: CreateParams) => {
+      if (params.type === 'url') {
         return unwrapResult(
-          await commands.createProfile(
-            item as unknown as ProfileBuilder_Deserialize,
-            fileData,
+          await commands.importProfile(
+            params.data.url,
+            params.data.option ?? null,
           ),
         )
       }
+      return unwrapResult(
+        await commands.createProfile(params.data.request, params.data.fileData),
+      )
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [RROFILES_QUERY_KEY] })
-    },
+    onSuccess: invalidate,
   })
 
+  // Refresh a remote subscription (legacy "update" semantics; the backend
+  // returns a domain error for non-remote profiles).
   const update = useMutation({
     mutationFn: async ({
       uid,
       option,
     }: {
-      uid: string
-      option: RemoteProfileOptionsBuilder
-    }) => {
-      return unwrapResult(await commands.updateProfile(uid, option))
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [RROFILES_QUERY_KEY] })
-    },
+      uid: ProfileId
+      option?: RemoteProfileOptionsPatch_Deserialize | null
+    }) => unwrapResult(await commands.updateProfile(uid, option ?? null)),
+    onSuccess: invalidate,
   })
 
-  const patch = useMutation({
+  const patchMetadata = useMutation({
     mutationFn: async ({
       uid,
-      profile,
+      patch,
     }: {
-      uid: string
-      profile: NormalizedProfileBuilder
-    }) => {
-      return unwrapResult(
-        await commands.patchProfile(
-          uid,
-          profile as unknown as ProfileBuilder_Deserialize,
-        ),
-      )
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [RROFILES_QUERY_KEY] })
-    },
+      uid: ProfileId
+      patch: ProfileMetadataPatch_Deserialize
+    }) => unwrapResult(await commands.patchProfileMetadata(uid, patch)),
+    onSuccess: invalidate,
+  })
+
+  const patchRemoteOptions = useMutation({
+    mutationFn: async ({
+      uid,
+      patch,
+    }: {
+      uid: ProfileId
+      patch: RemoteProfileOptionsPatch_Deserialize
+    }) => unwrapResult(await commands.patchRemoteProfileOptions(uid, patch)),
+    onSuccess: invalidate,
+  })
+
+  const replaceDefinition = useMutation({
+    mutationFn: async ({
+      uid,
+      definition,
+    }: {
+      uid: ProfileId
+      definition: ProfileDefinition_Deserialize
+    }) =>
+      unwrapResult(await commands.replaceProfileDefinition(uid, definition)),
+    onSuccess: invalidate,
+  })
+
+  const activate = useMutation({
+    mutationFn: async (uid: ProfileId | null) =>
+      unwrapResult(await commands.activateProfile(uid)),
+    onSuccess: invalidate,
+  })
+
+  const setValidFields = useMutation({
+    mutationFn: async (fields: string[]) =>
+      unwrapResult(await commands.setProfileValidFields(fields)),
+    onSuccess: invalidate,
   })
 
   const sort = useMutation({
-    mutationFn: async (uids: string[]) => {
-      return unwrapResult(await commands.reorderProfilesByList(uids))
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [RROFILES_QUERY_KEY] })
-    },
-  })
-
-  const upsert = useMutation({
-    mutationFn: async (options: Partial<ProfilesBuilder_Deserialize>) => {
-      return unwrapResult(
-        await commands.patchProfilesConfig(
-          options as ProfilesBuilder_Deserialize,
-        ),
-      )
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [RROFILES_QUERY_KEY] })
-    },
+    mutationFn: async (uids: ProfileId[]) =>
+      unwrapResult(await commands.reorderProfilesByList(uids)),
+    onSuccess: invalidate,
   })
 
   const drop = useMutation({
-    mutationFn: async (uid: string) => {
-      return unwrapResult(await commands.deleteProfile(uid))
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [RROFILES_QUERY_KEY] })
-    },
+    mutationFn: async (uid: ProfileId) =>
+      unwrapResult(await commands.deleteProfile(uid)),
+    onSuccess: invalidate,
   })
 
   return {
     query,
     create,
     update,
-    patch,
+    patchMetadata,
+    patchRemoteOptions,
+    replaceDefinition,
+    activate,
+    setValidFields,
     sort,
-    upsert,
     drop,
   }
 }

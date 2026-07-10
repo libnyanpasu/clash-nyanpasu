@@ -1,4 +1,5 @@
 mod advice;
+mod artifact_bridge;
 mod chain;
 mod content_source;
 mod field;
@@ -10,7 +11,10 @@ mod utils;
 
 #[cfg(test)]
 mod golden;
+#[cfg(test)]
+pub(crate) mod golden_support;
 
+pub use artifact_bridge::runtime_from_artifact;
 pub use content_source::FsProfileContentSource;
 pub use runtime_builder::{
     RuntimeBuildError, RuntimeBuildInput, RuntimeBuilder, builtin_transforms_for, derive_tun_flavor,
@@ -30,6 +34,10 @@ use utils::{merge_profiles, process_chain};
 
 /// Enhance mode
 /// 返回最终配置、该配置包含的键、和script执行的结果
+#[allow(dead_code)]
+// FIXME(actor-migration): legacy enhance pipeline kept only for T10 deletion
+// bookkeeping; Config::generate() was removed in T07 and nothing calls this.
+// New code must use RuntimeBuilder via NyanpasuClient. Remove in T10.
 pub async fn enhance() -> (Mapping, Vec<String>, PostProcessingOutput) {
     // config.yaml 的配置
     let clash_config = { Config::clash().latest().0.clone() };

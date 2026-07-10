@@ -52,15 +52,19 @@ pub(crate) fn build_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             // profile
             ipc::get_profiles,
             ipc::enhance_profiles,
-            ipc::patch_profiles_config,
-            ipc::view_profile,
-            ipc::patch_profile,
-            ipc::create_profile,
             ipc::import_profile,
+            ipc::create_profile,
             ipc::reorder_profile,
             ipc::reorder_profiles_by_list,
             ipc::update_profile,
             ipc::delete_profile,
+            ipc::activate_profile,
+            ipc::set_global_transforms,
+            ipc::set_profile_valid_fields,
+            ipc::patch_profile_metadata,
+            ipc::patch_remote_profile_options,
+            ipc::replace_profile_definition,
+            ipc::view_profile,
             ipc::read_profile_file,
             ipc::save_profile_file,
             ipc::get_custom_app_dir,
@@ -170,8 +174,11 @@ mod tests {
 
         let generated =
             std::fs::read_to_string(BINDINGS_PATH).expect("bindings.ts must exist after export");
+        // PR-3 T08: the profile IPC surface now speaks the domain types, so the
+        // legacy `Profiles` / `RemoteProfileOptions` exports are retired. The
+        // domain document/options types are asserted via their specta remote
+        // shadow names (`ProfileDocument` / `ProfileRemoteOptions`).
         for name in [
-            "Profiles",
             "ProfileDocument",
             "ProfileItem",
             "ProfileDefinition",
@@ -186,7 +193,6 @@ mod tests {
             "LocalBinding",
             "ExternalMode",
             "MaterializedFile",
-            "RemoteProfileOptions",
             "ProfileRemoteOptions",
             "SubscriptionInfo",
             "ProfileSubscriptionInfo",

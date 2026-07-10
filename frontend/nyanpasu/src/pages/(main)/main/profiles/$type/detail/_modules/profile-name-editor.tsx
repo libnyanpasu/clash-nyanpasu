@@ -17,11 +17,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
-import {
-  NormalizedProfile,
-  NormalizedProfileBuilder,
-  useProfile,
-} from '@nyanpasu/interface'
+import { useProfile, type ProfileItem_Serialize } from '@nyanpasu/interface'
 import AnimatedErrorItem from '../../../_modules/error-item'
 
 const formSchema = z.object({
@@ -32,9 +28,9 @@ export default function ProfileNameEditor({
   profile,
   ...props
 }: ComponentProps<typeof ModalTrigger> & {
-  profile: NormalizedProfile
+  profile: ProfileItem_Serialize
 }) {
-  const { patch } = useProfile()
+  const { patchMetadata } = useProfile()
 
   const [open, setOpen] = useState(false)
 
@@ -58,12 +54,9 @@ export default function ProfileNameEditor({
     form.handleSubmit(
       async ({ name }) => {
         try {
-          await patch.mutateAsync({
+          await patchMetadata.mutateAsync({
             uid: profile.uid,
-            profile: {
-              ...profile,
-              name,
-            } as NormalizedProfileBuilder,
+            patch: { name },
           })
 
           handleClose()

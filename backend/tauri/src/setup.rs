@@ -3,7 +3,9 @@ use std::sync::Arc;
 
 use crate::{
     bridge::{clash::LegacyClashBridge, verge::LegacyVergeBridge, window::LegacyWindowBridge},
-    client::{ClientSetupArgs, LegacyBridgeSet, NyanpasuClient},
+    client::{
+        ClientSetupArgs, LegacyBridgeSet, LegacyCoreBridge, NyanpasuClient, TauriUiEventSink,
+    },
     utils::path::PathResolver,
 };
 use anyhow::Context;
@@ -12,11 +14,14 @@ use camino::Utf8PathBuf;
 pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), anyhow::Error> {
     let app_handle = app.app_handle().clone();
     #[cfg(target_os = "windows")]
-    super::shutdown_hook::setup_shutdown_hook(move || {
-        tracing::info!("Shutdown hook triggered, exiting app...");
-        app_handle.exit(0);
-    })
-    .context("Failed to setup the shutdown hook")?;
+    {
+        let shutdown_handle = app_handle.clone();
+        super::shutdown_hook::setup_shutdown_hook(move || {
+            tracing::info!("Shutdown hook triggered, exiting app...");
+            shutdown_handle.exit(0);
+        })
+        .context("Failed to setup the shutdown hook")?;
+    }
 
     let paths = PathResolver::from_env().context("Failed to resolve app paths")?;
     let mut migrations = crate::core::migration::Runner::with_paths(paths.clone(), false)
@@ -32,6 +37,8 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
             window: Arc::new(LegacyWindowBridge),
             clash: Arc::new(LegacyClashBridge),
         },
+        ui_sink: Arc::new(TauriUiEventSink::<R>::new(app_handle)),
+        core: Arc::new(LegacyCoreBridge),
     })
     .context("Failed to setup nyanpasu client")?;
     app.manage(LegacyVergeBridge::new(client.clone(), legacy_verge_path));

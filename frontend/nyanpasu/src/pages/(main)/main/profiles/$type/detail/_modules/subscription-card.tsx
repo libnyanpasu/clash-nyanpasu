@@ -16,37 +16,38 @@ import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import {
-  RemoteProfile_Serialize,
-  RemoteProfileOptionsBuilder,
-  useProfile,
-} from '@nyanpasu/interface'
+import { useProfile, type ProfileItem_Serialize } from '@nyanpasu/interface'
 import UpdateOptionEditor from './update-option-editor'
 
 const clampPercentage = (value: number) => Math.min(100, Math.max(0, value))
 
+const remoteSourceOf = (profile: ProfileItem_Serialize) =>
+  profile.type === 'config' && profile.config.file?.source.type === 'remote'
+    ? profile.config.file.source
+    : undefined
+
 export const SubscriptionCard = ({
   profile,
 }: {
-  profile: RemoteProfile_Serialize
+  profile: ProfileItem_Serialize
 }) => {
   const { update } = useProfile()
+
+  const remote = remoteSourceOf(profile)
+  const updatedAt = remote?.materialized.updated_at ?? null
+  const updateIntervalMinutes = remote?.option.update_interval_minutes
+  const expire = remote?.subscription?.expire
 
   const { progress, total, used } = useMemo(() => {
     let progress = 0
     let total = 0
     let used = 0
 
-    if (
-      profile !== undefined &&
-      'extra' in profile &&
-      profile.extra !== undefined
-    ) {
-      const { download, upload, total: t } = profile.extra
+    const sub = remoteSourceOf(profile)?.subscription
+    if (sub) {
+      total = sub.total ?? 0
 
-      total = t ?? 0
-
-      used = (download ?? 0) + (upload ?? 0)
+      used = (sub.download ?? 0) + (sub.upload ?? 0)
 
       if (total > 0) {
         progress = clampPercentage((used / total) * 100)
@@ -59,31 +60,11 @@ export const SubscriptionCard = ({
   const blockTask = useBlockTask(
     `update-remote-profile-${profile.uid}`,
     async () => {
-      // TODO: define backend serde(option) to move null
-      const selfOption = 'option' in profile ? profile.option : undefined
-
-      const options: RemoteProfileOptionsBuilder = {
-        with_proxy: false,
-        self_proxy: false,
-        update_interval: 0,
-        user_agent: null,
-        ...selfOption,
-      }
-
-      // if (proxy) {
-      //   if (selfOption?.self_proxy) {
-      //     options.with_proxy = false
-      //     options.self_proxy = true
-      //   } else {
-      //     options.with_proxy = true
-      //     options.self_proxy = false
-      //   }
-      // }
-
       try {
+        // Pure refresh: re-download without changing stored options.
         await update.mutateAsync({
           uid: profile.uid,
-          option: options,
+          option: null,
         })
       } catch (e) {
         message(`Update failed: \n ${formatError(e)}`, {
@@ -118,29 +99,28 @@ export const SubscriptionCard = ({
           <Tooltip>
             <TooltipTrigger>
               {m.profile_subscription_updated_at({
-                updated: dayjs(profile.updated * 1000).fromNow(),
+                updated: updatedAt ? dayjs(updatedAt * 1000).fromNow() : '-',
               })}
             </TooltipTrigger>
 
-            {profile.option?.update_interval && (
+            {updatedAt && updateIntervalMinutes ? (
               <TooltipContent side="bottom">
                 {m.profile_subscription_next_update_at({
                   next: dayjs(
-                    profile.updated * 1000 +
-                      profile.option.update_interval * 1000 * 60,
+                    updatedAt * 1000 + updateIntervalMinutes * 60 * 1000,
                   ).format('YYYY-MM-DD HH:mm:ss'),
                 })}
               </TooltipContent>
-            )}
+            ) : null}
           </Tooltip>
 
-          {profile.extra?.expire && (
+          {expire ? (
             <span>
               {m.profile_subscription_expires_in({
-                expires: dayjs(profile.extra?.expire * 1000).fromNow(),
+                expires: dayjs(expire * 1000).fromNow(),
               })}
             </span>
-          )}
+          ) : null}
         </div>
       </CardContent>
 

@@ -465,13 +465,11 @@ impl CoreManager {
         Config::clash().reload();
         log::debug!(target: "app", "reloaded clash config from file");
 
-        // Regenerate runtime config with the reloaded settings
-        Config::generate().await?;
-
-        // 检查端口是否可用
-        Config::clash()
-            .latest()
-            .prepare_external_controller_port()?;
+        // T07 review fix: port ownership moved to SessionPortResolver (resolved at
+        // startup, written back by resolve_setup). Re-picking external-controller
+        // here (legacy prepare_external_controller_port) could select a NEW port on
+        // core restart — e.g. while the old core still holds the current one — and
+        // desync the api client from the runtime config generated off session ports.
         let run_type = RunType::default();
         let instance = Arc::new(Instance::try_new(run_type)?);
 
@@ -558,7 +556,7 @@ impl CoreManager {
         Config::verge().draft().clash_core = Some(clash_core);
 
         // 更新配置
-        if let Err(err) = Config::generate().await {
+        if let Err(err) = crate::client::rebuild::regenerate().await {
             Config::verge().discard();
             return Err(err);
         }
@@ -594,10 +592,18 @@ impl CoreManager {
     /// 如果涉及端口和外部控制则需要重启
     pub async fn update_config(&self) -> Result<()> {
         log::debug!(target: "app", "try to update clash config");
-
         // 更新配置
-        Config::generate().await?;
+        // FIXME(actor-migration): legacy regenerate path for pre-T08 callers
+        // (enhance_profiles/delete_profile ipc etc.). New code must use
+        // NyanpasuClient::rebuild_running_config(). Remove after T10.
+        crate::client::rebuild::regenerate().await?;
+        self.apply_config().await
+    }
 
+    /// Apply the CURRENT runtime draft to the running core: check, write the
+    /// runtime file, and push it over the api. Regeneration is the caller's
+    /// responsibility (facade `regenerate_runtime` or the legacy bridge).
+    pub async fn apply_config(&self) -> Result<()> {
         // 检查配置是否正常
         self.check_config().await?;
 

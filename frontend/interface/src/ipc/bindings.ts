@@ -109,71 +109,85 @@ export const commands = {
     typedError<null, string>(__TAURI_INVOKE('patch_verge_config', { payload })),
   getHotkeyFunctions: () => __TAURI_INVOKE<string[]>('get_hotkey_functions'),
   getProfiles: () =>
-    typedError<Profiles_Serialize, string>(__TAURI_INVOKE('get_profiles')),
+    typedError<ProfileDocument_Serialize, string>(
+      __TAURI_INVOKE('get_profiles'),
+    ),
   enhanceProfiles: () =>
     typedError<null, string>(__TAURI_INVOKE('enhance_profiles')),
-  /**  修改profiles的 */
-  patchProfilesConfig: (profiles: ProfilesBuilder_Deserialize) =>
-    typedError<null, string>(
-      __TAURI_INVOKE('patch_profiles_config', { profiles }),
-    ),
-  viewProfile: (uid: string) =>
-    typedError<null, string>(__TAURI_INVOKE('view_profile', { uid })),
-  /**  update profile by uid */
-  patchProfile: (uid: string, profile: ProfileBuilder_Deserialize) =>
-    typedError<null, string>(__TAURI_INVOKE('patch_profile', { uid, profile })),
-  /**  create a new profile */
-  createProfile: (item: ProfileBuilder_Deserialize, fileData: string | null) =>
-    typedError<null, string>(
-      __TAURI_INVOKE('create_profile', { item, fileData }),
-    ),
   importProfile: (
     url: string,
     option: {
-      /**  see issue #13 */
-      user_agent: string | null
-      /**
-       *  for `remote` profile
-       *  use system proxy
-       */
+      user_agent?: string | null
       with_proxy: boolean | null
-      /**  use self proxy */
       self_proxy: boolean | null
-      /**  subscription update interval */
-      update_interval: number | null
+      update_interval_minutes: number | null
     } | null,
   ) =>
-    typedError<null, string>(__TAURI_INVOKE('import_profile', { url, option })),
-  reorderProfile: (activeId: string, overId: string) =>
+    typedError<ProfileId, string>(
+      __TAURI_INVOKE('import_profile', { url, option }),
+    ),
+  /**  create a new profile */
+  createProfile: (
+    request: NewProfileRequest_Deserialize,
+    fileData: string | null,
+  ) =>
+    typedError<null, string>(
+      __TAURI_INVOKE('create_profile', { request, fileData }),
+    ),
+  reorderProfile: (activeId: ProfileId, overId: ProfileId) =>
     typedError<null, string>(
       __TAURI_INVOKE('reorder_profile', { activeId, overId }),
     ),
-  reorderProfilesByList: (list: string[]) =>
+  reorderProfilesByList: (list: ProfileId[]) =>
     typedError<null, string>(
       __TAURI_INVOKE('reorder_profiles_by_list', { list }),
     ),
   updateProfile: (
-    uid: string,
+    uid: ProfileId,
     option: {
-      /**  see issue #13 */
-      user_agent: string | null
-      /**
-       *  for `remote` profile
-       *  use system proxy
-       */
+      user_agent?: string | null
       with_proxy: boolean | null
-      /**  use self proxy */
       self_proxy: boolean | null
-      /**  subscription update interval */
-      update_interval: number | null
+      update_interval_minutes: number | null
     } | null,
   ) =>
     typedError<null, string>(__TAURI_INVOKE('update_profile', { uid, option })),
-  deleteProfile: (uid: string) =>
+  deleteProfile: (uid: ProfileId) =>
     typedError<null, string>(__TAURI_INVOKE('delete_profile', { uid })),
-  readProfileFile: (uid: string) =>
+  activateProfile: (uid: string | null) =>
+    typedError<null, string>(__TAURI_INVOKE('activate_profile', { uid })),
+  setGlobalTransforms: (ids: ProfileId[]) =>
+    typedError<null, string>(__TAURI_INVOKE('set_global_transforms', { ids })),
+  setProfileValidFields: (fields: string[]) =>
+    typedError<null, string>(
+      __TAURI_INVOKE('set_profile_valid_fields', { fields }),
+    ),
+  patchProfileMetadata: (
+    uid: ProfileId,
+    patch: ProfileMetadataPatch_Deserialize,
+  ) =>
+    typedError<null, string>(
+      __TAURI_INVOKE('patch_profile_metadata', { uid, patch }),
+    ),
+  patchRemoteProfileOptions: (
+    uid: ProfileId,
+    patch: RemoteProfileOptionsPatch_Deserialize,
+  ) =>
+    typedError<null, string>(
+      __TAURI_INVOKE('patch_remote_profile_options', { uid, patch }),
+    ),
+  replaceProfileDefinition: (
+    uid: ProfileId,
+    definition: ProfileDefinition_Deserialize,
+  ) =>
+    typedError<null, string>(
+      __TAURI_INVOKE('replace_profile_definition', { uid, definition }),
+    ),
+  viewProfile: (uid: ProfileId) =>
+    typedError<null, string>(__TAURI_INVOKE('view_profile', { uid })),
+  readProfileFile: (uid: ProfileId) =>
     typedError<string, string>(__TAURI_INVOKE('read_profile_file', { uid })),
-  saveProfileFile: (uid: string, fileData: string | null) =>
+  saveProfileFile: (uid: ProfileId, fileData: string) =>
     typedError<null, string>(
       __TAURI_INVOKE('save_profile_file', { uid, fileData }),
     ),
@@ -952,55 +966,6 @@ export type LocalBinding_Serialize =
       mode: ExternalMode
     }
 
-export type LocalProfile = LocalProfile_Serialize | LocalProfile_Deserialize
-
-/** Builder for [`LocalProfile`](struct.LocalProfile.html). */
-export type LocalProfileBuilder =
-  | LocalProfileBuilder_Serialize
-  | LocalProfileBuilder_Deserialize
-
-/** Builder for [`LocalProfile`](struct.LocalProfile.html). */
-export type LocalProfileBuilder_Deserialize =
-  | ({
-      /**  file symlinks */
-      symlinks: string | null
-    } & ProfileSharedBuilder & {
-        /**  process chain */
-        chain?: string[] | null
-      })
-  | {
-      /**  process chain */
-      chains?: string[] | null
-    }
-
-/** Builder for [`LocalProfile`](struct.LocalProfile.html). */
-export type LocalProfileBuilder_Serialize = {
-  /**  file symlinks */
-  symlinks: string | null
-  /**  process chain */
-  chain: string[] | null
-} & ProfileSharedBuilder
-
-export type LocalProfile_Deserialize =
-  | ({
-      /**  file symlinks */
-      symlinks: string | null
-    } & ProfileShared & {
-        /**  process chain */
-        chain?: string[]
-      })
-  | {
-      /**  process chain */
-      chains?: string[]
-    }
-
-export type LocalProfile_Serialize = {
-  /**  file symlinks */
-  symlinks?: string | null
-  /**  process chain */
-  chain: string[]
-} & ProfileShared
-
 export type LogSpan = 'log' | 'info' | 'warn' | 'error'
 
 export type LoggingLevel = LoggingLevel_Serialize | LoggingLevel_Deserialize
@@ -1054,12 +1019,23 @@ export type MaterializedFile_Serialize = {
   updated_at?: number | null
 }
 
-export type MergeProfile = ProfileShared
-
-/** Builder for [`MergeProfile`](struct.MergeProfile.html). */
-export type MergeProfileBuilder = ProfileSharedBuilder
-
 export type NetworkStatisticWidgetConfig = 'disabled' | 'large' | 'small'
+
+export type NewProfileRequest =
+  | NewProfileRequest_Serialize
+  | NewProfileRequest_Deserialize
+
+export type NewProfileRequest_Deserialize = {
+  metadata: ProfileMetadata_Deserialize
+  /**  Add rewrites the materialized path to `{uid}.{ext}`. */
+  definition: ProfileDefinition_Deserialize
+}
+
+export type NewProfileRequest_Serialize = {
+  metadata: ProfileMetadata_Serialize
+  /**  Add rewrites the materialized path to `{uid}.{ext}`. */
+  definition: ProfileDefinition_Serialize
+}
 
 export type OverlayTransform =
   | OverlayTransform_Serialize
@@ -1100,56 +1076,6 @@ export type PostProcessingOutput = {
   /**  根据配置进行的分析建议 */
   advice: [LogSpan, string][]
 }
-
-export type Profile = Profile_Serialize | Profile_Deserialize
-
-export type ProfileBuilder =
-  | ProfileBuilder_Serialize
-  | ProfileBuilder_Deserialize
-
-export type ProfileBuilder_Deserialize =
-  | ({
-      remote: {
-        type: 'remote'
-      } & RemoteProfileBuilder_Deserialize
-    } & { local?: never; merge?: never; script?: never })
-  | ({
-      local: {
-        type: 'local'
-      } & LocalProfileBuilder_Deserialize
-    } & { merge?: never; remote?: never; script?: never })
-  | ({
-      merge: {
-        type: 'merge'
-      } & MergeProfileBuilder
-    } & { local?: never; remote?: never; script?: never })
-  | ({
-      script: {
-        type: 'script'
-      } & ScriptProfileBuilder
-    } & { local?: never; merge?: never; remote?: never })
-
-export type ProfileBuilder_Serialize =
-  | ({
-      remote: {
-        type: 'remote'
-      } & RemoteProfileBuilder_Serialize
-    } & { local?: never; merge?: never; script?: never })
-  | ({
-      local: {
-        type: 'local'
-      } & LocalProfileBuilder_Serialize
-    } & { merge?: never; remote?: never; script?: never })
-  | ({
-      merge: {
-        type: 'merge'
-      } & MergeProfileBuilder
-    } & { local?: never; remote?: never; script?: never })
-  | ({
-      script: {
-        type: 'script'
-      } & ScriptProfileBuilder
-    } & { local?: never; merge?: never; remote?: never })
 
 /**  Top-level semantic split. */
 export type ProfileDefinition =
@@ -1246,33 +1172,6 @@ export type ProfileRemoteOptions = {
   with_proxy: boolean
   self_proxy: boolean
   update_interval_minutes: number
-}
-
-export type ProfileShared = {
-  /**  Profile ID */
-  uid: string
-  /**  profile name */
-  name: string
-  /**  profile holds the file */
-  file: string
-  /**  profile description */
-  desc: string | null
-  /**  update time */
-  updated: number
-}
-
-/** Builder for [`ProfileShared`](struct.ProfileShared.html). */
-export type ProfileSharedBuilder = {
-  /**  Profile ID */
-  uid: string | null
-  /**  profile name */
-  name: string | null
-  /**  profile holds the file */
-  file: string | null
-  /**  profile description */
-  desc: string | null
-  /**  update time */
-  updated: number | null
 }
 
 /**
@@ -1605,106 +1504,6 @@ export type ProfileValidationError =
       UnsupportedRemoteUrlScheme?: never
     })
 
-export type Profile_Deserialize =
-  | ({
-      remote: {
-        type: 'remote'
-      } & RemoteProfile_Deserialize
-    } & { local?: never; merge?: never; script?: never })
-  | ({
-      local: {
-        type: 'local'
-      } & LocalProfile_Deserialize
-    } & { merge?: never; remote?: never; script?: never })
-  | ({
-      merge: {
-        type: 'merge'
-      } & MergeProfile
-    } & { local?: never; remote?: never; script?: never })
-  | ({
-      script: {
-        type: 'script'
-      } & ScriptProfile
-    } & { local?: never; merge?: never; remote?: never })
-
-export type Profile_Serialize =
-  | ({
-      remote: {
-        type: 'remote'
-      } & RemoteProfile_Serialize
-    } & { local?: never; merge?: never; script?: never })
-  | ({
-      local: {
-        type: 'local'
-      } & LocalProfile_Serialize
-    } & { merge?: never; remote?: never; script?: never })
-  | ({
-      merge: {
-        type: 'merge'
-      } & MergeProfile
-    } & { local?: never; remote?: never; script?: never })
-  | ({
-      script: {
-        type: 'script'
-      } & ScriptProfile
-    } & { local?: never; merge?: never; remote?: never })
-
-/**  Define the `profiles.yaml` schema */
-export type Profiles = Profiles_Serialize | Profiles_Deserialize
-
-/** Builder for [`Profiles`](struct.Profiles.html). */
-export type ProfilesBuilder =
-  | ProfilesBuilder_Serialize
-  | ProfilesBuilder_Deserialize
-
-/** Builder for [`Profiles`](struct.Profiles.html). */
-export type ProfilesBuilder_Deserialize = {
-  /**  same as PrfConfig.current */
-  current: string[] | null
-  /**  same as PrfConfig.chain */
-  chain: string[] | null
-  /**  record valid fields for clash */
-  valid: string[] | null
-  /**  profile list */
-  items: Profile_Deserialize[] | null
-}
-
-/** Builder for [`Profiles`](struct.Profiles.html). */
-export type ProfilesBuilder_Serialize = {
-  /**  same as PrfConfig.current */
-  current: string[] | null
-  /**  same as PrfConfig.chain */
-  chain: string[] | null
-  /**  record valid fields for clash */
-  valid: string[] | null
-  /**  profile list */
-  items: Profile_Serialize[] | null
-}
-
-/**  Define the `profiles.yaml` schema */
-export type Profiles_Deserialize = {
-  /**  same as PrfConfig.current */
-  current?: string[]
-  /**  same as PrfConfig.chain */
-  chain?: string[]
-  /**  record valid fields for clash */
-  valid?: string[]
-  /**  profile list */
-  items?: Profile_Deserialize[]
-}
-
-/**  Define the `profiles.yaml` schema */
-export type Profiles_Serialize = {
-  /**  same as PrfConfig.current */
-  current: string[]
-  /**  same as PrfConfig.chain */
-  chain: string[]
-  /**  record valid fields for clash */
-  valid: string[]
-  /**  profile list */
-  items: Profile_Serialize[]
-}
-
 export type ProviderType = 'Proxy' | 'Rule' | 'Unknown'
 
 export type ProvidersProxiesRes =
@@ -1840,62 +1639,6 @@ export type ProxyProviderItem_Serialize = {
   expectedStatus?: string | null
 }
 
-export type RemoteProfile = RemoteProfile_Serialize | RemoteProfile_Deserialize
-
-/** Builder for [`RemoteProfile`](struct.RemoteProfile.html). */
-export type RemoteProfileBuilder =
-  | RemoteProfileBuilder_Serialize
-  | RemoteProfileBuilder_Deserialize
-
-/** Builder for [`RemoteProfile`](struct.RemoteProfile.html). */
-export type RemoteProfileBuilder_Deserialize =
-  | ({
-      /**  subscription url */
-      url: string | null
-      /**  subscription user info */
-      extra: SubscriptionInfo_Deserialize | null
-      /**  remote profile options */
-      option?: RemoteProfileOptionsBuilder
-    } & ProfileSharedBuilder & {
-        /**  process chain */
-        chain?: string[] | null
-      })
-  | {
-      /**  process chain */
-      chains?: string[] | null
-    }
-
-/** Builder for [`RemoteProfile`](struct.RemoteProfile.html). */
-export type RemoteProfileBuilder_Serialize = {
-  /**  subscription url */
-  url: string | null
-  /**  subscription user info */
-  extra: SubscriptionInfo_Serialize | null
-  /**  remote profile options */
-  option: RemoteProfileOptionsBuilder
-  /**  process chain */
-  chain: string[] | null
-} & ProfileSharedBuilder
-
-export type RemoteProfileOptions =
-  | RemoteProfileOptions_Serialize
-  | RemoteProfileOptions_Deserialize
-
-/** Builder for [`RemoteProfileOptions`](struct.RemoteProfileOptions.html). */
-export type RemoteProfileOptionsBuilder = {
-  /**  see issue #13 */
-  user_agent: string | null
-  /**
-   *  for `remote` profile
-   *  use system proxy
-   */
-  with_proxy: boolean | null
-  /**  use self proxy */
-  self_proxy: boolean | null
-  /**  subscription update interval */
-  update_interval: number | null
-}
-
 export type RemoteProfileOptionsPatch =
   | RemoteProfileOptionsPatch_Serialize
   | RemoteProfileOptionsPatch_Deserialize
@@ -1913,62 +1656,6 @@ export type RemoteProfileOptionsPatch_Serialize = {
   self_proxy?: boolean | null
   update_interval_minutes?: number | null
 }
-
-export type RemoteProfileOptions_Deserialize = {
-  /**  see issue #13 */
-  user_agent: string | null
-  /**
-   *  for `remote` profile
-   *  use system proxy
-   */
-  with_proxy: boolean | null
-  /**  use self proxy */
-  self_proxy: boolean | null
-  /**  subscription update interval */
-  update_interval: number
-}
-
-export type RemoteProfileOptions_Serialize = {
-  /**  see issue #13 */
-  user_agent?: string | null
-  /**
-   *  for `remote` profile
-   *  use system proxy
-   */
-  with_proxy?: boolean | null
-  /**  use self proxy */
-  self_proxy?: boolean | null
-  /**  subscription update interval */
-  update_interval: number
-}
-
-export type RemoteProfile_Deserialize =
-  | ({
-      /**  subscription url */
-      url: string
-      /**  subscription user info */
-      extra?: SubscriptionInfo_Deserialize
-      /**  remote profile options */
-      option?: RemoteProfileOptions_Deserialize
-    } & ProfileShared & {
-        /**  process chain */
-        chain?: string[]
-      })
-  | {
-      /**  process chain */
-      chains?: string[]
-    }
-
-export type RemoteProfile_Serialize = {
-  /**  subscription url */
-  url: string
-  /**  subscription user info */
-  extra: SubscriptionInfo_Serialize
-  /**  remote profile options */
-  option: RemoteProfileOptions_Serialize
-  /**  process chain */
-  chain: string[]
-} & ProfileShared
 
 export type RuleProviderItem = {
   behavior: string | null
@@ -1999,15 +1686,6 @@ export type RuntimeInfos = {
   nyanpasu_data_dir: string
 }
 
-export type ScriptProfile = {
-  script_type: ScriptType
-} & ProfileShared
-
-/** Builder for [`ScriptProfile`](struct.ScriptProfile.html). */
-export type ScriptProfileBuilder = {
-  script_type: ScriptType | null
-} & ProfileSharedBuilder
-
 export type ScriptRuntime = 'javascript' | 'lua'
 
 export type ScriptTransform =
@@ -2023,8 +1701,6 @@ export type ScriptTransform_Serialize = {
   source: ProfileSource_Serialize
   runtime: ScriptRuntime
 }
-
-export type ScriptType = 'javascript' | 'lua'
 
 export type ServiceStatus = 'not_installed' | 'stopped' | 'running'
 

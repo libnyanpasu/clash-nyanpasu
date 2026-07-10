@@ -18,11 +18,7 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
-import {
-  NormalizedProfileBuilder,
-  RemoteProfile_Serialize,
-  useProfile,
-} from '@nyanpasu/interface'
+import { useProfile, type ProfileItem_Serialize } from '@nyanpasu/interface'
 import AnimatedErrorItem from '../../../_modules/error-item'
 
 const formSchema = z.object({
@@ -32,24 +28,30 @@ const formSchema = z.object({
   update_interval: z.number().optional(),
 })
 
+const remoteOptionOf = (profile: ProfileItem_Serialize) =>
+  profile.type === 'config' && profile.config.file?.source.type === 'remote'
+    ? profile.config.file.source.option
+    : undefined
+
 export default function UpdateOptionEditor({
   profile,
   ...props
 }: ComponentProps<typeof ModalTrigger> & {
-  profile: RemoteProfile_Serialize
+  profile: ProfileItem_Serialize
 }) {
-  const { patch } = useProfile()
+  const { patchRemoteOptions } = useProfile()
 
   const [open, setOpen] = useState(false)
 
   const getDefaultValues = useCallback(() => {
+    const option = remoteOptionOf(profile)
     return {
-      user_agent: profile.option?.user_agent ?? '',
-      with_proxy: profile.option?.with_proxy ?? false,
-      self_proxy: profile.option?.self_proxy ?? false,
-      update_interval: profile.option?.update_interval ?? 0,
+      user_agent: option?.user_agent ?? '',
+      with_proxy: option?.with_proxy ?? false,
+      self_proxy: option?.self_proxy ?? false,
+      update_interval: option?.update_interval_minutes ?? 0,
     }
-  }, [profile.option])
+  }, [profile])
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -71,15 +73,14 @@ export default function UpdateOptionEditor({
     form.handleSubmit(
       async (data) => {
         try {
-          await patch.mutateAsync({
+          await patchRemoteOptions.mutateAsync({
             uid: profile.uid,
-            profile: {
-              ...profile,
-              option: {
-                ...profile.option,
-                ...data,
-              },
-            } as NormalizedProfileBuilder,
+            patch: {
+              user_agent: data.user_agent || null,
+              with_proxy: data.with_proxy ?? null,
+              self_proxy: data.self_proxy ?? null,
+              update_interval_minutes: data.update_interval ?? null,
+            },
           })
           handleClose()
         } catch (error) {

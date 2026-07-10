@@ -5,7 +5,11 @@ import FileOpenOutlineRounded from '~icons/material-symbols/file-open-outline-ro
 import { ComponentProps } from 'react'
 import { Button } from '@/components/ui/button'
 import { m } from '@/paraglide/messages'
-import { NormalizedProfile } from '@nyanpasu/interface'
+import {
+  isRemoteItem,
+  isTransformItem,
+  type ProfileItem_Serialize,
+} from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import ActiveButton from './active-button'
 import DeleteProfile from './delete-profile'
@@ -34,9 +38,14 @@ const ActionCardButton = ({
 export default function ActionCard({
   profile,
 }: {
-  profile: NormalizedProfile
+  profile: ProfileItem_Serialize
 }) {
-  const isScript = !(profile.type === 'local' || profile.type === 'remote')
+  const isScript = isTransformItem(profile)
+  // Composition configs have no materialized file; view/open would hit
+  // ProfileHasNoFile. File configs and transforms both own a file.
+  const hasMaterializedFile =
+    isTransformItem(profile) ||
+    (profile.type === 'config' && Boolean(profile.config.file))
 
   return (
     <div className="col-span-2 grid grid-cols-2 gap-4">
@@ -50,7 +59,7 @@ export default function ActionCard({
         </ActionCardButton>
       </ProfileNameEditor>
 
-      {profile.type === 'remote' && (
+      {isRemoteItem(profile) && (
         <SubscriptionUrlEditor profile={profile} asChild>
           <ActionCardButton>
             <span className="size-4">
@@ -86,25 +95,29 @@ export default function ActionCard({
         </DeleteProfile>
       </ActionCardButton>
 
-      <ActionCardButton asChild>
-        <ViewContent profile={profile}>
-          <span className="size-4">
-            <FileOpenOutlineRounded />
-          </span>
+      {hasMaterializedFile && (
+        <ActionCardButton asChild>
+          <ViewContent profile={profile}>
+            <span className="size-4">
+              <FileOpenOutlineRounded />
+            </span>
 
-          <span className="truncate">{m.profile_view_content_title()}</span>
-        </ViewContent>
-      </ActionCardButton>
+            <span className="truncate">{m.profile_view_content_title()}</span>
+          </ViewContent>
+        </ActionCardButton>
+      )}
 
-      <ActionCardButton asChild>
-        <OpenLocally profile={profile}>
-          <span className="size-4">
-            <FileOpenOutlineRounded />
-          </span>
+      {hasMaterializedFile && (
+        <ActionCardButton asChild>
+          <OpenLocally profile={profile}>
+            <span className="size-4">
+              <FileOpenOutlineRounded />
+            </span>
 
-          <span className="truncate">{m.profile_open_locally_title()}</span>
-        </OpenLocally>
-      </ActionCardButton>
+            <span className="truncate">{m.profile_open_locally_title()}</span>
+          </OpenLocally>
+        </ActionCardButton>
+      )}
     </div>
   )
 }

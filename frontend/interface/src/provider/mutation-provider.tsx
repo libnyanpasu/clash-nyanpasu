@@ -36,11 +36,11 @@ const CLASH_CONFIG_MUTATION_KEYS = [
 const PROFILES_MUTATION_KEYS = [
   CLASH_VERSION_QUERY_KEY,
   CLASH_INFO_QUERY_KEY,
+  RROFILES_QUERY_KEY,
   // TODO: clash rules hook refetch
   // TODO: clash rules providers hook refetch
   // TODO: proxies hook refetch
   // TODO: proxies providers hook refetch
-  // TODO: profiles hook refetch
   // TODO: all profiles providers hook refetch, key.includes('getAllProxiesProviders')
 ]
 

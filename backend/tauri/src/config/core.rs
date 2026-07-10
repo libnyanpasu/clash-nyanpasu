@@ -1,11 +1,9 @@
 use super::{Draft, IClashTemp, IRuntime, IVerge, Profiles};
 use crate::{
     core::state::ManagedState,
-    enhance,
     utils::{dirs, help},
 };
 use anyhow::{Result, anyhow};
-use nyanpasu_utils::runtime::block_on;
 use once_cell::sync::OnceCell;
 use std::{env::temp_dir, path::PathBuf};
 
@@ -48,28 +46,6 @@ impl Config {
         Self::global().runtime_config.clone()
     }
 
-    /// 初始化配置
-    pub fn init_config() -> Result<()> {
-        crate::log_err!(block_on(Self::generate()));
-        if let Err(err) = Self::generate_file(ConfigType::Run) {
-            log::error!(target: "app", "{err:?}");
-
-            let runtime_path = Self::runtime_config_path()?;
-            // 如果不存在就将默认的clash文件拿过来
-            if !runtime_path.exists() {
-                if let Some(parent) = runtime_path.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                help::save_yaml(
-                    &runtime_path,
-                    &Config::clash().latest().0,
-                    Some("# Clash Nyanpasu Runtime"),
-                )?;
-            }
-        }
-        Ok(())
-    }
-
     /// 将配置丢到对应的文件中
     pub fn generate_file(typ: ConfigType) -> Result<PathBuf> {
         let path = match typ {
@@ -91,20 +67,7 @@ impl Config {
         Ok(path)
     }
 
-    /// 生成配置存好
-    pub async fn generate() -> Result<()> {
-        let (config, exists_keys, postprocessing_outputs) = enhance::enhance().await;
-
-        *Config::runtime().draft() = IRuntime {
-            config: Some(config),
-            exists_keys,
-            postprocessing_output: postprocessing_outputs,
-        };
-
-        Ok(())
-    }
-
-    fn runtime_config_path() -> Result<PathBuf> {
+    pub(crate) fn runtime_config_path() -> Result<PathBuf> {
         Ok(dirs::app_config_dir()?
             .join(RUNTIME_CONFIG_DIR)
             .join(RUNTIME_CONFIG))

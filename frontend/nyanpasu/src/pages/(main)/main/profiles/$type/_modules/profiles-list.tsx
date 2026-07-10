@@ -19,13 +19,18 @@ import { move } from '@dnd-kit/helpers'
 import { DragDropProvider } from '@dnd-kit/react'
 import { useSortable } from '@dnd-kit/react/sortable'
 import { hexFromArgb } from '@material/material-color-utilities'
-import { NormalizedProfile, useProfile } from '@nyanpasu/interface'
+import {
+  isRemoteItem,
+  useProfile,
+  type ProfileItem_Serialize,
+} from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 import { MeshGradient } from '@paper-design/shaders-react'
 import { Link } from '@tanstack/react-router'
 import { useActiveProfile } from '../detail/_modules/active-button'
 import { useDeleteProfile } from '../detail/_modules/delete-profile'
 import { Route as IndexRoute } from '../index'
+import CreateCompositionButton from './create-composition-button'
 import { categoryProfiles, isProxyProfile } from './utils'
 
 const Chip = ({ children, className, ...props }: ComponentProps<'span'>) => {
@@ -46,7 +51,7 @@ const GridViewProfile = ({
   profile,
   index,
 }: {
-  profile: NormalizedProfile
+  profile: ProfileItem_Serialize
   index: number
 }) => {
   const { type } = IndexRoute.useParams()
@@ -56,7 +61,7 @@ const GridViewProfile = ({
 
   const isPending = activeProfile.isPending || deleteProfile.isPending
 
-  const isRemote = profile.type === 'remote'
+  const isRemote = isRemoteItem(profile)
 
   const { themePalette } = useExperimentalThemeContext()
 
@@ -231,17 +236,35 @@ export default function ProfilesList({
         data-slot="profiles-list"
         {...props}
       >
+        {type === 'profile' && (
+          <CreateCompositionButton>
+            <Button variant="stroked" className="self-start">
+              {m.profile_create_composition_title()}
+            </Button>
+          </CreateCompositionButton>
+        )}
+
         <DragDropProvider
           onDragEnd={(event) => {
-            const currentUids = filteredProfiles.map((profile) => profile.uid)
+            const filteredUids = filteredProfiles.map((profile) => profile.uid)
 
-            const nextUids = move(currentUids, event)
+            const nextFilteredUids = move(filteredUids, event)
 
-            if (isEqual(currentUids, nextUids)) {
+            if (isEqual(filteredUids, nextFilteredUids)) {
               return
             }
 
-            sort.mutate(nextUids)
+            // reorder_profiles_by_list requires a FULL ordering of every
+            // profile (the actor rejects partial lists). Splice the reordered
+            // filtered uids back into the full items order, keeping items from
+            // other tabs at their original positions.
+            const filteredSet = new Set(filteredUids)
+            let cursor = 0
+            const fullOrder = (profiles?.items ?? []).map((item) =>
+              filteredSet.has(item.uid) ? nextFilteredUids[cursor++] : item.uid,
+            )
+
+            sort.mutate(fullOrder)
           }}
         >
           <div

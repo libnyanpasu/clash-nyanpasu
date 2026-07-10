@@ -65,6 +65,8 @@ export type CreateParams =
       type: 'url'
       data: {
         url: string
+        /** Display name to pin (`custom_name`); `null`/omitted derives it from the URL server-side. */
+        name?: string | null
         option?: RemoteProfileOptionsPatch_Deserialize | null
       }
     }
@@ -106,6 +108,7 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
         const outcome = unwrapResult(
           await commands.importProfile(
             params.data.url,
+            params.data.name ?? null,
             params.data.option ?? null,
           ),
         )

@@ -53,6 +53,7 @@ pub(crate) fn build_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             ipc::get_profiles,
             ipc::enhance_profiles,
             ipc::import_profile,
+            ipc::get_pending_deep_link,
             ipc::create_profile,
             ipc::reorder_profile,
             ipc::reorder_profiles_by_list,

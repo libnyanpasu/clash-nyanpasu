@@ -355,5 +355,9 @@
   "common_off": "关",
   "common_enabled": "启用",
   "common_disabled": "禁用",
-  "common_clear": "清除"
+  "common_clear": "清除",
+  "deep_link_import_title": "导入配置",
+  "deep_link_import_success_message": "配置「{name}」导入成功",
+  "deep_link_import_failed_message": "无法从链接导入配置",
+  "deep_link_import_invalid_message": "该链接不是有效的配置导入链接"
 }

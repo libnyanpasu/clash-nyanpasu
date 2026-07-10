@@ -291,10 +291,16 @@ pub fn run() -> std::io::Result<()> {
 
             // setup custom scheme
             let handle = app.handle().clone();
+            // Pending deep-link store, drained once by the frontend on startup.
+            // Covers the cold-start race where `scheme-request-received` may be
+            // emitted before the JS listener is attached.
+            app.manage(crate::ipc::PendingDeepLink::default());
             // For start new app from schema
             #[cfg(not(target_os = "macos"))]
             if let Some(url) = custom_scheme {
                 log::info!(target: "app", "started with schema");
+                *app.state::<crate::ipc::PendingDeepLink>().0.lock().unwrap() =
+                    Some(url.to_string());
                 resolve::create_window(&handle.clone());
                 while !is_window_opened() {
                     log::info!(target: "app", "waiting for window open");

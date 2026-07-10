@@ -355,5 +355,9 @@
   "common_off": "Off",
   "common_enabled": "Enabled",
   "common_disabled": "Disabled",
-  "common_clear": "Clear"
+  "common_clear": "Clear",
+  "deep_link_import_title": "Import profile",
+  "deep_link_import_success_message": "Profile \"{name}\" imported successfully",
+  "deep_link_import_failed_message": "Failed to import profile from the link",
+  "deep_link_import_invalid_message": "The link is not a valid profile import link"
 }

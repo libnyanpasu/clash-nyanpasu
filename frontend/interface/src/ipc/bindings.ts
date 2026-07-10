@@ -112,14 +112,11 @@ export const commands = {
     typedError<ProfileDocument_Serialize, string>(
       __TAURI_INVOKE('get_profiles'),
     ),
-  /**
-   *  Rebuild-only command: there is no prior state commit, so a failure is a
-   *  plain error — the committed/degraded model (spec §6.2) does not apply.
-   */
   enhanceProfiles: () =>
     typedError<null, string>(__TAURI_INVOKE('enhance_profiles')),
   importProfile: (
     url: string,
+    name: string | null,
     option: {
       user_agent?: string | null
       with_proxy: boolean | null
@@ -127,23 +124,29 @@ export const commands = {
       update_interval_minutes: number | null
     } | null,
   ) =>
-    typedError<CommitOutcome<ProfileId>, string>(
-      __TAURI_INVOKE('import_profile', { url, option }),
+    typedError<ProfileId, string>(
+      __TAURI_INVOKE('import_profile', { url, name, option }),
     ),
+  /**
+   *  Take and clear the pending cold-start deep link, if any. Called once by the
+   *  frontend during startup.
+   */
+  getPendingDeepLink: () =>
+    typedError<string | null, string>(__TAURI_INVOKE('get_pending_deep_link')),
   /**  create a new profile */
   createProfile: (
     request: NewProfileRequest_Deserialize,
     fileData: string | null,
   ) =>
-    typedError<RebuildOutcome, string>(
+    typedError<null, string>(
       __TAURI_INVOKE('create_profile', { request, fileData }),
     ),
   reorderProfile: (activeId: ProfileId, overId: ProfileId) =>
-    typedError<RebuildOutcome, string>(
+    typedError<null, string>(
       __TAURI_INVOKE('reorder_profile', { activeId, overId }),
     ),
   reorderProfilesByList: (list: ProfileId[]) =>
-    typedError<RebuildOutcome, string>(
+    typedError<null, string>(
       __TAURI_INVOKE('reorder_profiles_by_list', { list }),
     ),
   updateProfile: (
@@ -155,44 +158,36 @@ export const commands = {
       update_interval_minutes: number | null
     } | null,
   ) =>
-    typedError<RebuildOutcome, string>(
-      __TAURI_INVOKE('update_profile', { uid, option }),
-    ),
+    typedError<null, string>(__TAURI_INVOKE('update_profile', { uid, option })),
   deleteProfile: (uid: ProfileId) =>
-    typedError<RebuildOutcome, string>(
-      __TAURI_INVOKE('delete_profile', { uid }),
-    ),
+    typedError<null, string>(__TAURI_INVOKE('delete_profile', { uid })),
   activateProfile: (uid: string | null) =>
-    typedError<RebuildOutcome, string>(
-      __TAURI_INVOKE('activate_profile', { uid }),
-    ),
+    typedError<null, string>(__TAURI_INVOKE('activate_profile', { uid })),
   setGlobalTransforms: (ids: ProfileId[]) =>
-    typedError<RebuildOutcome, string>(
-      __TAURI_INVOKE('set_global_transforms', { ids }),
-    ),
+    typedError<null, string>(__TAURI_INVOKE('set_global_transforms', { ids })),
   setProfileValidFields: (fields: string[]) =>
-    typedError<RebuildOutcome, string>(
+    typedError<null, string>(
       __TAURI_INVOKE('set_profile_valid_fields', { fields }),
     ),
   patchProfileMetadata: (
     uid: ProfileId,
     patch: ProfileMetadataPatch_Deserialize,
   ) =>
-    typedError<RebuildOutcome, string>(
+    typedError<null, string>(
       __TAURI_INVOKE('patch_profile_metadata', { uid, patch }),
     ),
   patchRemoteProfileOptions: (
     uid: ProfileId,
     patch: RemoteProfileOptionsPatch_Deserialize,
   ) =>
-    typedError<RebuildOutcome, string>(
+    typedError<null, string>(
       __TAURI_INVOKE('patch_remote_profile_options', { uid, patch }),
     ),
   replaceProfileDefinition: (
     uid: ProfileId,
     definition: ProfileDefinition_Deserialize,
   ) =>
-    typedError<RebuildOutcome, string>(
+    typedError<null, string>(
       __TAURI_INVOKE('replace_profile_definition', { uid, definition }),
     ),
   viewProfile: (uid: ProfileId) =>
@@ -492,12 +487,6 @@ export type ClashWsSnapshot = {
 export type ClashWsTraffic = {
   up: number
   down: number
-}
-
-/**  Mutation payload + rebuild outcome for data-carrying commands (import). */
-export type CommitOutcome<T> = {
-  value: T
-  rebuild: RebuildOutcome
 }
 
 export type CompositionConfig =
@@ -1172,23 +1161,49 @@ export type ProfileMetadataPatch =
 export type ProfileMetadataPatch_Deserialize = {
   name: string | null
   desc?: string | null
+  custom_name?: boolean | null
 }
 
 export type ProfileMetadataPatch_Serialize = {
   name?: string | null
   desc?: string | null
+  custom_name?: boolean | null
 }
 
 /**  Public, user-editable profile metadata. */
 export type ProfileMetadata_Deserialize = {
   name: string
   desc?: string | null
+  /**
+   *  Provenance flag: `true` when the name was chosen by the user (manual
+   *  create or rename) and must not be overwritten by subscription name-sync.
+   *  Profiles persisted before this field predate provenance tracking; absence
+   *  means user-owned so a refresh cannot silently rename them.
+   *  The value is never trusted from an incoming patch — it is set only by
+   *  rename detection and name-sync (see `ProfileItem::apply_metadata_patch`).
+   *  Only the non-default `false` (an unpinned, sync-eligible profile) is
+   *  persisted; a user-owned `true` is left off the wire and restored by the
+   *  default, so legacy and user-named documents stay byte-identical.
+   */
+  custom_name?: boolean
 }
 
 /**  Public, user-editable profile metadata. */
 export type ProfileMetadata_Serialize = {
   name: string
   desc?: string | null
+  /**
+   *  Provenance flag: `true` when the name was chosen by the user (manual
+   *  create or rename) and must not be overwritten by subscription name-sync.
+   *  Profiles persisted before this field predate provenance tracking; absence
+   *  means user-owned so a refresh cannot silently rename them.
+   *  The value is never trusted from an incoming patch — it is set only by
+   *  rename detection and name-sync (see `ProfileItem::apply_metadata_patch`).
+   *  Only the non-default `false` (an unpinned, sync-eligible profile) is
+   *  persisted; a user-owned `true` is left off the wire and restored by the
+   *  default, so legacy and user-named documents stay byte-identical.
+   */
+  custom_name?: boolean
 }
 
 export type ProfileRemoteOptions = {
@@ -1666,14 +1681,6 @@ export type ProxyProviderItem_Serialize = {
   testUrl?: string | null
   expectedStatus?: string | null
 }
-
-/**
- *  Post-commit rebuild result for mutation IPC (spec §6.2, decision D2):
- *  state is committed first; a failed rebuild degrades instead of erroring.
- */
-export type RebuildOutcome =
-  | { status: 'ok' }
-  | { status: 'degraded'; error: string }
 
 export type RemoteProfileOptionsPatch =
   | RemoteProfileOptionsPatch_Serialize

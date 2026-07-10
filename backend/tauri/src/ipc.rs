@@ -145,17 +145,35 @@ pub async fn enhance_profiles(client: State<'_, NyanpasuClient>) -> Result {
 pub async fn import_profile(
     client: State<'_, NyanpasuClient>,
     url: String,
+    name: Option<String>,
     option: Option<RemoteProfileOptionsPatch>,
 ) -> Result<crate::client::runtime::CommitOutcome<ProfileId>> {
     let url = url::Url::parse(&url).context("failed to parse the url")?;
-    // Return the created uid so the caller can apply user-provided metadata
-    // (import derives the name from the url server-side), plus the rebuild
-    // outcome so a degraded post-import rebuild surfaces to the UI.
-    let (uid, rebuild) = client.import_profile(url, option).await?;
+    // `name` carries deep-link intent (e.g. an install-config `name=` param);
+    // when absent the facade derives the name from the url server-side. Return
+    // the created uid plus the rebuild outcome so a degraded post-import
+    // rebuild surfaces to the UI.
+    let (uid, rebuild) = client.import_profile(url, name, option).await?;
     Ok(crate::client::runtime::CommitOutcome {
         value: uid,
         rebuild,
     })
+}
+
+/// Deep-link URL captured on cold start (from argv) before the frontend could
+/// receive the `scheme-request-received` event. The frontend drains it once on
+/// startup via [`get_pending_deep_link`], closing the race where the event is
+/// emitted before the JS listener has attached. Managed Tauri state, not a
+/// global singleton.
+#[derive(Default)]
+pub struct PendingDeepLink(pub std::sync::Mutex<Option<String>>);
+
+/// Take and clear the pending cold-start deep link, if any. Called once by the
+/// frontend during startup.
+#[tauri::command]
+#[specta::specta]
+pub async fn get_pending_deep_link(pending: State<'_, PendingDeepLink>) -> Result<Option<String>> {
+    Ok(pending.0.lock().unwrap().take())
 }
 
 /// create a new profile

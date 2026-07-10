@@ -260,12 +260,13 @@ impl ProfilesClient {
     async fn debug_cast_commit_refreshed(
         &self,
         uid: ProfileId,
+        url: url::Url,
         outcome: crate::state::profiles::RefreshOutcome,
     ) {
         let _ = self
             .inner
             .actor_ref
-            .cast(ProfilesActorMessage::CommitRefreshed { uid, outcome });
+            .cast(ProfilesActorMessage::CommitRefreshed { uid, url, outcome });
         tokio::task::yield_now().await;
     }
 
@@ -537,7 +538,7 @@ mod tests {
             }
             self.release.notified().await;
             Ok(FetchedSubscription {
-                content: "a: 1\n".into(),
+                content: "proxies: []\n".into(),
                 filename: None,
                 subscription: SubscriptionInfo::default(),
             })
@@ -645,7 +646,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn refresh_commit_refreshed_deleted_profile_settles_reply_and_cleans_orphan() {
+    async fn refresh_commit_refreshed_deleted_profile_settles_reply_without_writes() {
         let removals = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
         let mut fs = MockProfileFsPort::new();
         let observed = std::sync::Arc::clone(&removals);
@@ -653,6 +654,8 @@ mod tests {
             observed.lock().unwrap().push(path.as_str().to_string());
             Ok(())
         });
+        // No write_atomic expectation: with the write moved into the commit
+        // phase, a refresh settling after delete must not touch the fs.
         let (client, _dir) = remote_seeded_client(
             fs,
             MockSubscriptionFetcher::new(),
@@ -666,8 +669,10 @@ mod tests {
         client
             .debug_cast_commit_refreshed(
                 ProfileId("r1".into()),
+                url::Url::parse("https://example.com/sub").unwrap(),
                 crate::state::profiles::RefreshOutcome::Succeeded {
                     subscription: SubscriptionInfo::default(),
+                    content: "proxies: []\n".into(),
                 },
             )
             .await;
@@ -676,10 +681,56 @@ mod tests {
         assert!(
             matches!(err, ProfilesError::RefreshFailed { message } if message.contains("deleted"))
         );
+        // Only the delete's own post-op removal; no orphan-cleanup sweep.
         let removals = removals.lock().unwrap();
-        assert!(removals.iter().filter(|path| *path == "r1.yaml").count() >= 2);
-        assert!(removals.iter().any(|path| path == "r1.js"));
-        assert!(removals.iter().any(|path| path == "r1.lua"));
+        assert_eq!(removals.iter().filter(|path| *path == "r1.yaml").count(), 1);
+        assert!(!removals.iter().any(|path| path == "r1.js"));
+        assert!(!removals.iter().any(|path| path == "r1.lua"));
+    }
+
+    /// Review fix regression pin (2026-07-11): a download committed after the
+    /// definition was replaced with a different URL must be discarded — no
+    /// file write, no metadata update.
+    #[tokio::test]
+    async fn refresh_commit_is_fenced_when_url_changed_mid_download() {
+        let mut fs = MockProfileFsPort::new();
+        fs.expect_remove().returning(|_| Ok(()));
+        // No write_atomic expectation: the stale commit must never write.
+        let (client, _dir) = remote_seeded_client(
+            fs,
+            MockSubscriptionFetcher::new(),
+            MockRebuildNotifier::new(),
+        )
+        .await;
+
+        let (inserted, pending) = client.debug_pending_refresh(ProfileId("r1".into()));
+        inserted.await.unwrap();
+        client
+            .debug_cast_commit_refreshed(
+                ProfileId("r1".into()),
+                url::Url::parse("https://old.example.com/replaced").unwrap(),
+                crate::state::profiles::RefreshOutcome::Succeeded {
+                    subscription: SubscriptionInfo::default(),
+                    content: "proxies: []\n".into(),
+                },
+            )
+            .await;
+
+        let err = pending.await.unwrap().unwrap_err();
+        assert!(
+            matches!(err, ProfilesError::RefreshFailed { message } if message.contains("changed"))
+        );
+        let snapshot = client.get().await.unwrap();
+        let item = snapshot.items.get(&ProfileId("r1".into())).unwrap();
+        let Some(nyanpasu_config::profile::ProfileSource::Remote { materialized, .. }) =
+            item.definition.source()
+        else {
+            panic!("seeded profile must stay remote");
+        };
+        assert!(
+            materialized.updated_at.is_none(),
+            "stale download must not stamp updated_at"
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -693,7 +744,7 @@ mod tests {
         fetcher.expect_fetch().returning(move |_, _| {
             counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Ok(FetchedSubscription {
-                content: "a: 1\n".into(),
+                content: "proxies: []\n".into(),
                 filename: None,
                 subscription: SubscriptionInfo::default(),
             })

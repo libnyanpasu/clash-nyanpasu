@@ -239,7 +239,7 @@ export default function ProfilesList({
         {type === 'profile' && (
           <CreateCompositionButton>
             <Button variant="stroked" className="self-start">
-              Create Composition
+              {m.profile_create_composition_title()}
             </Button>
           </CreateCompositionButton>
         )}

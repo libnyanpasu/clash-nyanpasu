@@ -54,30 +54,72 @@ impl SessionPortResolver {
             return Ok(ports.clone());
         }
 
-        let mixed_port = *clash
-            .mixed_port
-            .pick_and_try_port()
-            .context("failed to resolve mixed port")?;
-        let port = clash
-            .http_port
-            .as_ref()
-            .map(|strategy| strategy.pick_and_try_port())
-            .transpose()
-            .context("failed to resolve http port")?
-            .map(|picked| *picked);
-        let socks_port = clash
-            .socks_port
-            .as_ref()
-            .map(|strategy| strategy.pick_and_try_port())
-            .transpose()
-            .context("failed to resolve socks port")?
-            .map(|picked| *picked);
-        let external = clash
-            .external_controller
-            .port
-            .pick_and_try_port()
-            .context("failed to resolve external controller port")?;
-        let external_controller = Some(format!("{}:{}", clash.external_controller.host, *external));
+        // Re-pick only the fields whose strategy actually changed. Probing an
+        // unchanged field would race the running core, which is still holding
+        // exactly that pick: a Fixed strategy would report its own port as
+        // occupied and an AllowFallback one would silently move off it.
+        let previous = cached.clone();
+        let unchanged = |same: bool| -> Option<&ResolvedPortBindings> {
+            match previous.as_ref() {
+                Some((_, ports)) if same => Some(ports),
+                _ => None,
+            }
+        };
+
+        let mixed_port = match unchanged(
+            previous
+                .as_ref()
+                .is_some_and(|(prev, _)| prev.mixed == fingerprint.mixed),
+        ) {
+            Some(ports) => ports.mixed_port,
+            None => *clash
+                .mixed_port
+                .pick_and_try_port()
+                .context("failed to resolve mixed port")?,
+        };
+        let port = match unchanged(
+            previous
+                .as_ref()
+                .is_some_and(|(prev, _)| prev.http == fingerprint.http),
+        ) {
+            Some(ports) => ports.port,
+            None => clash
+                .http_port
+                .as_ref()
+                .map(|strategy| strategy.pick_and_try_port())
+                .transpose()
+                .context("failed to resolve http port")?
+                .map(|picked| *picked),
+        };
+        let socks_port = match unchanged(
+            previous
+                .as_ref()
+                .is_some_and(|(prev, _)| prev.socks == fingerprint.socks),
+        ) {
+            Some(ports) => ports.socks_port,
+            None => clash
+                .socks_port
+                .as_ref()
+                .map(|strategy| strategy.pick_and_try_port())
+                .transpose()
+                .context("failed to resolve socks port")?
+                .map(|picked| *picked),
+        };
+        let external_controller = match unchanged(
+            previous
+                .as_ref()
+                .is_some_and(|(prev, _)| prev.external == fingerprint.external),
+        ) {
+            Some(ports) => ports.external_controller.clone(),
+            None => {
+                let external = clash
+                    .external_controller
+                    .port
+                    .pick_and_try_port()
+                    .context("failed to resolve external controller port")?;
+                Some(format!("{}:{}", clash.external_controller.host, *external))
+            }
+        };
 
         let ports = ResolvedPortBindings {
             mixed_port,
@@ -155,6 +197,40 @@ mod tests {
         clash.socks_port = Some(fixed(48234));
         let third = resolver.resolve(&clash).unwrap();
         assert_eq!(third.socks_port, Some(48234));
+        assert_eq!(
+            third.mixed_port, first.mixed_port,
+            "unchanged mixed strategy must keep the session pick"
+        );
+    }
+
+    /// Review fix regression pin (2026-07-11): re-resolving after a partial
+    /// port-config change must not re-probe unchanged fields — the running
+    /// core is still holding those exact ports, so a Fixed strategy would
+    /// report its own port as unavailable.
+    #[test]
+    fn unchanged_fields_are_not_reprobed_while_core_occupies_them() {
+        let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let mixed = probe.local_addr().unwrap().port();
+        drop(probe);
+        let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let socks = probe.local_addr().unwrap().port();
+        drop(probe);
+
+        let resolver = SessionPortResolver::default();
+        let mut clash = ClashConfig::default();
+        clash.mixed_port = fixed(mixed);
+        let first = resolver.resolve(&clash).unwrap();
+        assert_eq!(first.mixed_port, mixed);
+
+        // Simulate the running core holding the mixed port, then change an
+        // unrelated field.
+        let _core = std::net::TcpListener::bind(("127.0.0.1", mixed)).unwrap();
+        clash.socks_port = Some(fixed(socks));
+        let second = resolver
+            .resolve(&clash)
+            .expect("unchanged mixed port must not be re-probed");
+        assert_eq!(second.mixed_port, mixed);
+        assert_eq!(second.socks_port, Some(socks));
     }
 
     #[test]

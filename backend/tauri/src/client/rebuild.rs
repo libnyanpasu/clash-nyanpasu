@@ -126,6 +126,9 @@ impl NyanpasuClient {
     /// Profiles still come from the typed actor: their legacy writers are
     /// rewritten against the facade in T08.
     pub(crate) async fn regenerate_runtime_for_legacy(&self) -> Result<()> {
+        // Inputs are read under the rebuild gate so a legacy regeneration
+        // serializes with facade rebuilds and always sees the newest drafts.
+        let _rebuild = self.inner.rebuild_gate.lock().await;
         let (app, clash) = Self::legacy_regen_inputs()?;
         let profiles = self.inner.profiles.get().await?;
         self.regenerate_runtime_with(profiles, clash, app).await

@@ -77,23 +77,40 @@ export default function RemoteProfileButton({ children }: PropsWithChildren) {
         })
 
         // Import derives the name from the url server-side; apply the user's
-        // form name/desc afterwards so their input is not discarded.
+        // form name/desc afterwards so their input is not discarded. The
+        // profile exists once import returns, so a rename failure must not be
+        // reported as a create failure (retrying would import a duplicate).
         if (uid && data.name) {
-          await patchMetadata.mutateAsync({
-            uid,
-            patch: {
-              name: data.name,
-              ...(data.desc ? { desc: data.desc } : {}),
-            },
-          })
+          try {
+            await patchMetadata.mutateAsync({
+              uid,
+              patch: {
+                name: data.name,
+                ...(data.desc ? { desc: data.desc } : {}),
+              },
+            })
+          } catch (error) {
+            message(
+              m.profile_import_rename_failed_message({
+                error: formatError(error),
+              }),
+              {
+                title: 'Warning',
+                kind: 'warning',
+              },
+            )
+          }
         }
 
         handleToggle(false)
       } catch (error) {
-        message(`Create failed: \n ${formatError(error)}`, {
-          title: 'Error',
-          kind: 'error',
-        })
+        message(
+          m.profile_create_failed_message({ error: formatError(error) }),
+          {
+            title: 'Error',
+            kind: 'error',
+          },
+        )
       }
     }),
   )

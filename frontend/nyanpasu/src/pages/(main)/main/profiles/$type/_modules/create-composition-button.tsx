@@ -32,7 +32,9 @@ export default function CreateCompositionButton({
   const { query, create } = useProfile()
 
   const [open, setOpen] = useState(false)
-  const [name, setName] = useState('Combined Profile')
+  const [name, setName] = useState<string>(() =>
+    m.profile_composition_default_name(),
+  )
   const [selected, setSelected] = useState<Set<ProfileId>>(new Set())
 
   // Composition members must be direct File configs (not Composition/Transform).
@@ -42,7 +44,7 @@ export default function CreateCompositionButton({
 
   const reset = () => {
     setSelected(new Set())
-    setName('Combined Profile')
+    setName(m.profile_composition_default_name())
   }
 
   const toggle = (uid: ProfileId) =>
@@ -85,7 +87,7 @@ export default function CreateCompositionButton({
       setOpen(false)
       reset()
     } catch (error) {
-      message(`Create failed: \n ${formatError(error)}`, {
+      message(m.profile_create_failed_message({ error: formatError(error) }), {
         title: 'Error',
         kind: 'error',
       })
@@ -107,7 +109,7 @@ export default function CreateCompositionButton({
       <ModalContent>
         <Card className="w-96">
           <CardHeader>
-            <ModalTitle>Create Composition</ModalTitle>
+            <ModalTitle>{m.profile_create_composition_title()}</ModalTitle>
           </CardHeader>
 
           <CardContent asChild>
@@ -120,11 +122,16 @@ export default function CreateCompositionButton({
                   onChange={(event) => setName(event.target.value)}
                 />
 
+                <div className="text-sm opacity-60">
+                  {m.profile_composition_min_members_hint()}
+                </div>
+
                 <div className="flex flex-col gap-2">
                   {candidates.map((item) => (
                     <Button
                       key={item.uid}
                       variant="raised"
+                      aria-pressed={selected.has(item.uid)}
                       data-selected={String(selected.has(item.uid))}
                       className={cn(
                         'justify-start',

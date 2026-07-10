@@ -656,3 +656,28 @@ impl NyanpasuClient {
 1. **逐卡出 plan**: 每张卡以「本卡 + design.md 对应章节 + 卡内 Interfaces 契约」为输入,用 `superpowers:writing-plans` 展开为 bite-sized plan(TDD、每步一动作、含完整代码);卡与卡之间只通过 Interfaces 契约耦合,plan 之间不需要互读。
 2. **推荐排程**: 先并行 T01/T02/T03(+ T06 若 PR-3-pre② 已合),再 T04→T05,最后一口气完成切换组 T07–T10 + T11。(2026-07-06 增补:T01–T06 已执行完毕;T06A 加固卡排 T07 前,不入原子组。)
 3. **契约变更规则**: 实施中若需改动任务卡 Produces 签名,先改本文件对应卡(及下游 Consumes),再改代码——本文件是跨卡契约的唯一权威。
+
+---
+
+## 6. 2026-07-11 PR #4889 双模型复审处置(codex 55/100 NEEDS_IMPROVEMENT + antigravity 91/100 REQUEST_CHANGES;修复随本节同 commit)
+
+**已修(6 项,均经现场核实 CONFIRMED)**:
+
+- **C-M1 运行配置重建无串行化**:actor 只保证提交序,慢构建可用旧快照晚写覆盖新 runtime draft。修:`NyanpasuClientInner.rebuild_gate`(tokio Mutex)串行「快照→构建→draft 写入→core apply」整段(rebuild_running_config / regenerate_runtime / regenerate_runtime_for_legacy);快照在闸门内读取,最后写入者必反映最新状态。
+- **C-M2(前半)`CommitReport.warnings` 降级通道被 facade 丢弃**:T04 契约明言 warnings 不代表事务失败,但 facade 原样丢弃。修:`after_commit` 逐条 `tracing::warn`;import 失败清理路径同样记录 delete 报告的 warnings(此前只覆盖 `Err`,真正的文件删除失败以 Ok+warning 形态返回)。
+- **C-M3 刷新提交与 `ReplaceDefinition` 无版本一致性**:下载任务捕获旧 URL 且在提交检查前就写盘,旧订阅响应可覆盖新 URL 的文件与元数据。修:文件写入移入 `CommitRefreshed` 提交段,提交前比对当前定义 URL == 下载发起 URL,不符则丢弃(`RefreshFailed: changed during refresh`);删除期间不再产生孤儿文件(旧清扫逻辑移除);`same_slot` 增加 Remote URL 等值判定,URL 变更重置 updated_at/subscription。回归钉 `refresh_commit_is_fenced_when_url_changed_mid_download`。
+- **C-M4(前半)端口指纹整体重探测**:任一端口字段变更即重探全部端口,而运行核正占用未变更端口(Fixed 策略自撞报「不可用」,AllowFallback 静默漂移)。修:`SessionPortResolver` 按字段复用缓存 pick,仅重探变更字段。回归钉 `unchanged_fields_are_not_reprobed_while_core_occupies_them`。
+- **C-Min1 订阅内容校验退化**:legacy(remote.rs)要求 `proxies`/`proxy-providers`,新链路只查 YAML mapping,`{}` 可被持久化并自动激活。修:`validate_fetched_content` Config 分支恢复 legacy 键校验(测试 fixture 同步)。
+- **A-Major i18n/a11y/导入错误语义**:composition 创建 UI 硬编码英文、选中态无辅助技术语义、导入后改名失败误报「创建失败」且不关窗(重试会重复导入)。修:新增 5 个 message key(en/zh-cn/zh-tw/ru),候选按钮加 `aria-pressed`,增 min-members 提示;`remote-profile-button` 的 patchMetadata 失败降为 warning 并照常关窗。
+
+**驳回(1 项)**:
+
+- **A-Critical 拖拽重排「状态竞态致列表损坏」**:REFUTED——`onDragEnd` 闭包内 `filteredProfiles` 与 `profiles?.items` 派生自同一渲染快照(评审误认后者为「最新查询数据」),两者自洽;且 actor `ByList` 校验长度+去重+全量排列,陈旧列表被 `InvalidReorderList` 拒绝。最坏情形 = 陈旧请求报错,不存在「复活已删项/静默丢项」的数据损坏。
+
+**待用户决策(3 项)**:
+
+- **C-M2(后半)提交后 rebuild 失败仍以 Err 返回 IPC**:状态已持久化但命令报失败(前端靠 mutation 事件仍会刷新,但错误信息误导;import 场景重试会重复)。改「committed/degraded」结果模型属 IPC 语义变更,建议 PR-4 议。
+- **C-M5 `run_core_inner` 仍 `Config::clash().reload()` 但重启不再 regenerate**:「重启=应用当前 draft」为 2026-07-07 明确决策,reload 现为半死代码(只影响后续 regen 输入,且可能吞未提交 draft)。选项:pr3f 删 reload / restart 路径走 regen 桥。
+- **C-Min2 `profile-update-interval` 响应头不再解析**:legacy 在用户未设 interval 时采纳服务端建议(hour→min);新 fetcher 丢弃,导入后永用默认/用户值。恢复需 `FetchedSubscription` 增字段 + actor 提交处应用,属行为增补。
+
+**知悉不修(本 PR)**:C-M4 后半(端口生命周期编排 stop→resolve→mirror→start 与 legacy sysproxy/API 镜像回写时机,PR-4);A-Minor 空列表早退、chain 编辑器后台刷新重置本地顺序、query cache 存闭包(均 pre-existing 模式);C-Suggestion 并发 rebuild/HoldingFetcher+Replace/降级可观察三测试与 URL 协议白名单(挂账)。

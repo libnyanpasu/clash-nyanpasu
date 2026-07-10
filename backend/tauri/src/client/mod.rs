@@ -153,6 +153,11 @@ struct NyanpasuClientInner {
     profiles_dir: PathBuf,
     ui_sink: Arc<dyn UiEventSink>,
     core: Arc<dyn RunningCoreBridge>,
+    /// Serializes runtime regeneration (snapshot -> build -> runtime draft ->
+    /// core apply). The profiles actor only orders commits; without this gate
+    /// a slow rebuild started for an older commit can finish after a newer
+    /// one and overwrite the runtime with a stale snapshot.
+    rebuild_gate: tokio::sync::Mutex<()>,
 }
 
 impl NyanpasuClient {
@@ -260,6 +265,7 @@ impl NyanpasuClient {
                 profiles_dir,
                 ui_sink,
                 core,
+                rebuild_gate: tokio::sync::Mutex::new(()),
             }),
         }
     }
@@ -322,6 +328,15 @@ impl NyanpasuClient {
     }
 
     async fn after_commit(&self, report: &CommitReport) -> Result<()> {
+        // Post-commit side-effect failures are degraded results, not
+        // transaction failures (T04 contract): the state is already
+        // persisted, so surface them instead of dropping them.
+        for warning in &report.warnings {
+            tracing::warn!(
+                warning = %warning,
+                "profile commit completed with a degraded side effect",
+            );
+        }
         if report.affects_current {
             self.rebuild_running_config().await?;
         }
@@ -436,13 +451,26 @@ impl NyanpasuClient {
         if let Err(error) = self.refresh_profile(created.clone(), None).await {
             // First download failed = import failed; delete the empty shell to
             // preserve the legacy all-or-nothing observable behavior. Log if the
-            // rollback itself fails so the orphaned placeholder is not silent.
-            if let Err(cleanup_error) = self.inner.profiles.delete(created.clone()).await {
-                tracing::warn!(
-                    uid = %created,
-                    error = %cleanup_error,
-                    "failed to delete placeholder profile after failed import download",
-                );
+            // rollback itself fails so the orphaned placeholder is not silent —
+            // including file-removal failures, which the actor reports as
+            // warnings on an otherwise committed delete.
+            match self.inner.profiles.delete(created.clone()).await {
+                Ok(report) => {
+                    for warning in &report.warnings {
+                        tracing::warn!(
+                            uid = %created,
+                            warning = %warning,
+                            "placeholder cleanup after failed import left degraded state",
+                        );
+                    }
+                }
+                Err(cleanup_error) => {
+                    tracing::warn!(
+                        uid = %created,
+                        error = %cleanup_error,
+                        "failed to delete placeholder profile after failed import download",
+                    );
+                }
             }
             return Err(error);
         }
@@ -615,7 +643,8 @@ impl NyanpasuClient {
     }
 
     pub async fn rebuild_running_config(&self) -> Result<()> {
-        self.regenerate_runtime().await?;
+        let _rebuild = self.inner.rebuild_gate.lock().await;
+        self.regenerate_runtime_inner().await?;
         self.inner
             .core
             .apply_config()
@@ -628,6 +657,13 @@ impl NyanpasuClient {
     }
 
     pub(crate) async fn regenerate_runtime(&self) -> Result<()> {
+        let _rebuild = self.inner.rebuild_gate.lock().await;
+        self.regenerate_runtime_inner().await
+    }
+
+    /// Must only run while holding `rebuild_gate`: snapshots are read here, so
+    /// the gate guarantees the last write always reflects the newest state.
+    async fn regenerate_runtime_inner(&self) -> Result<()> {
         let profiles = self.inner.profiles.get().await?;
         let clash = self.get_clash_config().await?;
         let app = self.get_app_config().await?;

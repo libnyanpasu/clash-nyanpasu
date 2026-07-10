@@ -97,6 +97,9 @@ pub struct ProfilesActorState {
 pub enum RefreshOutcome {
     Succeeded {
         subscription: nyanpasu_config::profile::SubscriptionInfo,
+        /// Validated payload; written to the materialized file inside the
+        /// commit handler so a stale download can be fenced before any write.
+        content: String,
     },
     Failed {
         message: String,
@@ -158,6 +161,9 @@ pub enum ProfilesActorMessage {
     },
     CommitRefreshed {
         uid: ProfileId,
+        /// The URL the download was started for; the commit is discarded when
+        /// the definition no longer points at it (replaced mid-download).
+        url: url::Url,
         outcome: RefreshOutcome,
     },
     ExternalFileChanged {
@@ -347,9 +353,18 @@ impl ProfilesActor {
             }
         };
         if needs_yaml {
-            serde_yaml::from_str::<serde_yaml::Mapping>(content)
-                .map(|_| ())
-                .map_err(|e| format!("downloaded content is not a YAML mapping: {e}"))
+            let mapping = serde_yaml::from_str::<serde_yaml::Mapping>(content)
+                .map_err(|e| format!("downloaded content is not a YAML mapping: {e}"))?;
+            // Legacy subscription semantics (remote.rs BC): a Config
+            // subscription must actually carry proxies, otherwise arbitrary
+            // mappings (e.g. `{}`) get persisted and can be auto-activated.
+            if matches!(definition, ProfileDefinition::Config { .. })
+                && !mapping.contains_key("proxies")
+                && !mapping.contains_key("proxy-providers")
+            {
+                return Err("subscription does not contain `proxies` or `proxy-providers`".into());
+            }
+            Ok(())
         } else if content.trim().is_empty() {
             Err("downloaded script is empty".into())
         } else {
@@ -767,80 +782,114 @@ impl Actor for ProfilesActor {
                 let definition = item.definition.clone();
                 let url = url.clone();
                 let option = option.clone();
-                let path = materialized.file.clone();
                 state.pending_refresh.insert(uid.clone(), reply);
                 let fetcher = Arc::clone(&state.fetcher);
-                let fs = Arc::clone(&state.fs);
                 let actor = myself.clone();
                 tokio::spawn(async move {
+                    // Download and validate only: the file write happens in the
+                    // CommitRefreshed handler, after the stale-download fence,
+                    // so an in-flight refresh can never clobber the file of a
+                    // definition that was replaced meanwhile.
                     let outcome = async {
                         let fetched = fetcher
                             .fetch(&url, &option)
                             .await
                             .map_err(|e| format!("download failed: {e}"))?;
                         Self::validate_fetched_content(&definition, &fetched.content)?;
-                        fs.ensure_not_symlink(&path).map_err(|e| e.to_string())?;
-                        fs.write_atomic(&path, &fetched.content)
-                            .map_err(|e| e.to_string())?;
-                        Ok::<_, String>(fetched.subscription)
+                        Ok::<_, String>((fetched.subscription, fetched.content))
                     }
                     .await;
                     let outcome = match outcome {
-                        Ok(subscription) => RefreshOutcome::Succeeded { subscription },
+                        Ok((subscription, content)) => RefreshOutcome::Succeeded {
+                            subscription,
+                            content,
+                        },
                         Err(message) => RefreshOutcome::Failed { message },
                     };
-                    let _ = actor.cast(ProfilesActorMessage::CommitRefreshed { uid, outcome });
+                    let _ = actor.cast(ProfilesActorMessage::CommitRefreshed { uid, url, outcome });
                 });
             }
-            ProfilesActorMessage::CommitRefreshed { uid, outcome } => {
+            ProfilesActorMessage::CommitRefreshed { uid, url, outcome } => {
                 let reply = state.pending_refresh.remove(&uid).flatten();
                 let snapshot = Self::current_state(state);
-                if snapshot.items.get(&uid).is_none() {
-                    if let RefreshOutcome::Succeeded { .. } = outcome {
-                        for ext in ["yaml", "js", "lua"] {
-                            if let Ok(path) = ManagedProfilePath::new(format!("{uid}.{ext}")) {
-                                let _ = state.fs.remove(&path);
-                            }
-                        }
-                    }
+                // Nothing was written during the download phase, so a profile
+                // deleted mid-download needs no file cleanup — just settle the
+                // pending reply.
+                let Some(item) = snapshot.items.get(&uid) else {
                     if let Some(reply) = reply {
                         let _ = reply.send(Err(ProfilesError::RefreshFailed {
                             message: "profile deleted during refresh".into(),
                         }));
                     }
                     return Ok(());
-                }
+                };
+                // Stale-download fence: the definition may have been replaced
+                // while the download was in flight; committing would clobber
+                // the new subscription's file and metadata with the old URL's
+                // payload.
+                let current_path = match item.definition.source() {
+                    Some(ProfileSource::Remote {
+                        url: current_url,
+                        materialized,
+                        ..
+                    }) if *current_url == url => Some(materialized.file.clone()),
+                    _ => None,
+                };
+                let Some(path) = current_path else {
+                    if let Some(reply) = reply {
+                        let _ = reply.send(Err(ProfilesError::RefreshFailed {
+                            message: "subscription definition changed during refresh".into(),
+                        }));
+                    }
+                    return Ok(());
+                };
 
                 let result = match outcome {
                     RefreshOutcome::Failed { message } => {
                         Err(ProfilesError::RefreshFailed { message })
                     }
-                    RefreshOutcome::Succeeded { subscription } => {
-                        Self::run_write(&myself, state, {
-                            let uid = uid.clone();
-                            move |profiles| {
-                                let Some(item) = profiles.items.get_mut(&uid) else {
-                                    return Err(ProfilesError::ProfileNotFound(uid.clone()));
-                                };
-                                match item.definition.source_mut() {
-                                    Some(ProfileSource::Remote {
-                                        materialized,
-                                        subscription: slot,
-                                        ..
-                                    }) => {
-                                        materialized.updated_at =
-                                            Some(time::OffsetDateTime::now_utc());
-                                        *slot = subscription;
-                                        Ok(WriteOutcome {
-                                            affects: AffectsRule::Touched(uid.clone()),
-                                            post_ops: vec![],
-                                        })
+                    RefreshOutcome::Succeeded {
+                        subscription,
+                        content,
+                    } => {
+                        let written = state
+                            .fs
+                            .ensure_not_symlink(&path)
+                            .and_then(|_| state.fs.write_atomic(&path, &content));
+                        match written {
+                            Err(error) => Err(ProfilesError::RefreshFailed {
+                                message: format!("failed to write refreshed content: {error}"),
+                            }),
+                            Ok(()) => {
+                                Self::run_write(&myself, state, {
+                                    let uid = uid.clone();
+                                    move |profiles| {
+                                        let Some(item) = profiles.items.get_mut(&uid) else {
+                                            return Err(ProfilesError::ProfileNotFound(
+                                                uid.clone(),
+                                            ));
+                                        };
+                                        match item.definition.source_mut() {
+                                            Some(ProfileSource::Remote {
+                                                materialized,
+                                                subscription: slot,
+                                                ..
+                                            }) => {
+                                                materialized.updated_at =
+                                                    Some(time::OffsetDateTime::now_utc());
+                                                *slot = subscription;
+                                                Ok(WriteOutcome {
+                                                    affects: AffectsRule::Touched(uid.clone()),
+                                                    post_ops: vec![],
+                                                })
+                                            }
+                                            _ => Err(ProfilesError::NotARemoteProfile),
+                                        }
                                     }
-                                    _ => Err(ProfilesError::NotARemoteProfile),
-                                }
+                                })
+                                .await
                             }
-                        })
-                        .await
+                        }
                     }
                 };
 
@@ -983,11 +1032,24 @@ impl Actor for ProfilesActor {
 
                             // Server owns materialization metadata (same policy
                             // as Add): only an unchanged source slot keeps the
-                            // previously stored updated_at/subscription.
+                            // previously stored updated_at/subscription. A
+                            // Remote slot is only "unchanged" while it points at
+                            // the same URL — a URL swap must reset updated_at
+                            // and subscription so stale metadata is not carried
+                            // over to a different subscription.
                             let same_slot = match (&previous_source, definition.source()) {
                                 (Some(previous), Some(next)) => {
                                     Self::source_kind(previous) == Self::source_kind(next)
                                         && previous.materialized().file == canonical
+                                        && match (previous, next) {
+                                            (
+                                                ProfileSource::Remote {
+                                                    url: previous_url, ..
+                                                },
+                                                ProfileSource::Remote { url: next_url, .. },
+                                            ) => previous_url == next_url,
+                                            _ => true,
+                                        }
                                 }
                                 _ => false,
                             };

@@ -27,3 +27,8 @@ serde_yaml_ng = { version = "0.10", branch = "feat/specta-update", git = "https:
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 tempfile = "3"
+# Currently exercised only by the gxhash smoke test below. Every distributed
+# target now guarantees hardware AES (see ../../.cargo/config.toml; i686 was
+# dropped in #4908), so gxhash can graduate to a normal dependency once the
+# default HashMap hasher is migrated to it.
+gxhash = { workspace = true }

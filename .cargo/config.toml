@@ -1,0 +1,46 @@
+# gxhash is a hardware-accelerated hasher: it needs the `+aes` target-feature
+# (plus `+sse2` on x86-64 / `+neon` on aarch64) at COMPILE time and has no scalar
+# fallback — it `compile_error!`s without it. The per-target rustflags below enable
+# that feature for every triple this project distributes, so gxhash builds on all
+# of them.
+#
+# INTENTIONAL — these flags affect the whole build for each triple, release
+# artifacts included, not just tests. That is the point: they raise the baseline
+# CPU requirement of the distributed binaries to one with hardware AES, as
+# groundwork for migrating the default HashMap hasher to gxhash. Concretely:
+#   * x86_64 (windows / linux / macos): requires AES-NI (Intel Westmere 2010+,
+#     AMD Bulldozer 2011+). `+sse2` is baseline on x86-64 and a no-op here; `+aes`
+#     is the real requirement.
+#   * aarch64 (macos / linux / windows): requires the ARMv8 AES crypto extension.
+#     Present on Apple Silicon and modern server/desktop ARM, but NOT on some
+#     SBCs (e.g. Raspberry Pi 4/5). `+neon` is baseline and a no-op here.
+# 32-bit x86 (i686) cannot guarantee AES and was dropped in #4908.
+#
+# gxhash itself is still only a dev-dependency (a smoke test — see nyanpasu-core),
+# so it is not yet linked into release binaries; these flags nonetheless apply to
+# the whole build and pre-establish the AES baseline for the default-hasher
+# migration.
+#
+# The six triples below must stay in sync with the distributed build matrix
+# (target-release-build.yaml / target-dev-build.yaml).
+#
+# Gotcha: a bare RUSTFLAGS env var OVERRIDES (does not merge with) these settings;
+# any build/CI step that sets RUSTFLAGS must also include `target-feature=+aes,...`.
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+aes,+sse2"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+aes,+neon"]
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "target-feature=+aes,+sse2"]
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["-C", "target-feature=+aes,+neon"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "target-feature=+aes,+sse2"]
+
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "target-feature=+aes,+neon"]

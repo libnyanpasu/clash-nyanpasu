@@ -7,6 +7,27 @@ import { useLockFn } from '@/hooks/use-lock-fn'
 import { ClashProxiesQueryProxyItem } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/utils'
 
+function FeatureChip({
+  label,
+  variant = 'feature',
+}: {
+  label: string
+  variant?: 'type' | 'feature'
+}) {
+  return (
+    <span
+      className={cn(
+        'shrink-0 rounded px-1.5 py-0.5 text-[9px] leading-none font-medium uppercase',
+        variant === 'type'
+          ? 'bg-primary/10 text-primary'
+          : 'bg-secondary-container text-on-secondary-container',
+      )}
+    >
+      {label}
+    </span>
+  )
+}
+
 export default function ProxyNodeButton({
   proxy,
   ...props
@@ -61,11 +82,16 @@ export default function ProxyNodeButton({
         <div className="truncate text-sm font-medium">{proxy.name}</div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <div className="flex-1" />
+      <div className="flex w-full items-center justify-between gap-2 overflow-hidden px-2">
+        <div className="flex items-center gap-1 overflow-hidden">
+          <FeatureChip label={proxy.type} variant="type" />
+          {proxy.udp && <FeatureChip label="UDP" />}
+          {proxy.xudp && <FeatureChip label="XUDP" />}
+          {proxy.tfo && <FeatureChip label="TFO" />}
+        </div>
 
         <Button
-          className="grid h-4 min-w-10 place-content-center px-2 text-center"
+          className="grid h-4 min-w-10 shrink-0 place-content-center px-2 text-center"
           variant="raised"
           onClick={handleDelayClick}
           loading={delayTask.isPending}

@@ -392,8 +392,10 @@ pub async fn get_ipsb_asn() -> Result<specta_typescript::Any<serde_json::Value>>
 /// patch clash runtime config
 #[tauri::command]
 #[specta::specta]
-#[tracing_attributes::instrument]
-pub async fn patch_clash_config(payload: PatchRuntimeConfig) -> Result {
+pub async fn patch_clash_config(
+    client: State<'_, NyanpasuClient>,
+    payload: PatchRuntimeConfig,
+) -> Result {
     tracing::debug!("patch_clash_config: {payload:?}");
 
     let mapping = match serde_yaml::to_value(&payload)? {
@@ -401,10 +403,24 @@ pub async fn patch_clash_config(payload: PatchRuntimeConfig) -> Result {
         _ => return Err(IpcError::Custom("Expected a mapping".to_string())),
     };
 
+    // D6 补偿快照:manager 为 None(核心尚未构建/运行)→ 无补偿,直推本也会失败。
+    let prev = client.runtime_state().await;
+    let compensation = crate::client::runtime::compensation_for(
+        &mapping,
+        prev.as_ref().as_ref().map(|state| &state.config),
+    );
+
     (crate::core::clash::api::patch_configs(&mapping).await)?;
 
     if let Err(e) = feat::patch_clash(mapping).await {
         tracing::error!("{e}");
+        // API-first 已改运行核;rebuild/check 失败时尽力回推旧值(spec §6.4),
+        // 避免「运行核=新值、持久态/产物=旧值」的永久分裂(P0-6)。
+        if let Some(comp) = compensation {
+            if let Err(comp_err) = crate::core::clash::api::patch_configs(&comp).await {
+                tracing::error!("compensation patch failed: {comp_err:?}");
+            }
+        }
         return Err(IpcError::from(e));
     }
 

@@ -45,6 +45,19 @@ pub async fn new_runtime_state_store() -> anyhow::Result<RuntimeStateStore> {
     Ok(tokio::sync::RwLock::new(manager))
 }
 
+/// D6 (spec §6.4): previous values of the keys a clash patch touches, taken
+/// from the published runtime state. Used to push the running core BACK when
+/// the post-patch rebuild fails — the IPC applies the patch API-first, so a
+/// failed rebuild would otherwise leave the core ahead of the persisted state.
+pub(crate) fn compensation_for(patch: &Mapping, prev: Option<&Mapping>) -> Option<Mapping> {
+    let prev = prev?;
+    let comp: Mapping = patch
+        .iter()
+        .filter_map(|(k, _)| prev.get(k).map(|v| (k.clone(), v.clone())))
+        .collect();
+    (!comp.is_empty()).then_some(comp)
+}
+
 /// The promoted (checked) product consumed by core start/hot-reload. Same
 /// location the legacy `Config::runtime_config_path()` used.
 pub fn runtime_config_path() -> anyhow::Result<PathBuf> {
@@ -66,4 +79,23 @@ pub fn candidate_config_path() -> PathBuf {
         "clash-nyanpasu-candidate-{}-{seq}.yaml",
         std::process::id()
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compensation_restores_previous_values_of_patched_keys() {
+        let mut prev = Mapping::new();
+        prev.insert("mode".into(), "rule".into());
+        prev.insert("allow-lan".into(), false.into());
+        let mut patch = Mapping::new();
+        patch.insert("mode".into(), "direct".into());
+        patch.insert("ipv6".into(), true.into()); // prev 无该键 → 略过
+        let comp = compensation_for(&patch, Some(&prev)).expect("some");
+        assert_eq!(comp.get("mode"), Some(&"rule".into()));
+        assert!(comp.get("ipv6").is_none());
+        assert!(compensation_for(&patch, None).is_none());
+    }
 }

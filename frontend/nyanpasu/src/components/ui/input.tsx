@@ -443,9 +443,7 @@ export const NumericInput = ({
   })
 
   useEffect(() => {
-    if (value != null) {
-      setInputValue(String(value))
-    }
+    setInputValue(value != null ? String(value) : '')
   }, [value])
 
   const validateAndFormatValue = (numValue: number): number => {

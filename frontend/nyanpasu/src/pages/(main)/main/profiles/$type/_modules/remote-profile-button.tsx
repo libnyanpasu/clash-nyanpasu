@@ -31,7 +31,12 @@ const formSchema = z.object({
     user_agent: z.string().nullable(),
     with_proxy: z.boolean(),
     self_proxy: z.boolean(),
-    update_interval: z.number().nullable(),
+    update_interval: z
+      .number()
+      .min(1, {
+        message: m.profile_form_option_update_interval_min_error(),
+      })
+      .nullable(),
   }),
 })
 
@@ -43,7 +48,7 @@ const getDefaultValues = () => {
     option: {
       with_proxy: false,
       self_proxy: false,
-      update_interval: 1440,
+      update_interval: null,
       user_agent: null,
     },
   } satisfies z.infer<typeof formSchema>
@@ -242,8 +247,9 @@ export default function RemoteProfileButton({ children }: PropsWithChildren) {
                       <NumericInput
                         variant="outlined"
                         label={m.profile_form_option_update_interval_label()}
-                        min={0}
+                        min={1}
                         step={1}
+                        placeholder={m.profile_form_option_update_interval_placeholder()}
                         {...field}
                       />
 

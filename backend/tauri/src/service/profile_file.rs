@@ -275,6 +275,7 @@ impl SubscriptionFetcher for ProfileFileService {
 
         let subscription = parse_subscription_userinfo(resp.headers());
         let filename = parse_profile_title(resp.headers());
+        let suggested_update_interval_minutes = parse_suggested_update_interval(resp.headers());
         let content = resp
             .text_with_charset("utf-8")
             .await
@@ -288,8 +289,20 @@ impl SubscriptionFetcher for ProfileFileService {
             content,
             filename,
             subscription,
+            suggested_update_interval_minutes,
         })
     }
+}
+
+fn parse_suggested_update_interval(headers: &reqwest::header::HeaderMap) -> Option<u64> {
+    let hours = headers
+        .get("profile-update-interval")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .filter(|hours| *hours > 0)?;
+    let minutes = hours.checked_mul(60)?;
+    minutes.checked_mul(60)?;
+    Some(minutes)
 }
 
 fn parse_subscription_userinfo(headers: &reqwest::header::HeaderMap) -> SubscriptionInfo {
@@ -617,6 +630,26 @@ mod tests {
         assert!(parsed.expire.is_none());
     }
 
+    #[test]
+    fn suggested_update_interval_parses_hours_and_ignores_invalid_values() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        assert_eq!(parse_suggested_update_interval(&headers), None);
+
+        headers.insert(
+            "profile-update-interval",
+            reqwest::header::HeaderValue::from_static("2"),
+        );
+        assert_eq!(parse_suggested_update_interval(&headers), Some(120));
+
+        for invalid in ["not-a-number", "0", "18446744073709551615"] {
+            headers.insert(
+                "profile-update-interval",
+                reqwest::header::HeaderValue::from_str(invalid).unwrap(),
+            );
+            assert_eq!(parse_suggested_update_interval(&headers), None);
+        }
+    }
+
     #[tokio::test]
     async fn fetch_parses_userinfo_and_title_headers() {
         let router = Router::new().route(
@@ -628,6 +661,7 @@ mod tests {
                     "upload=1; download=2; total=3; expire=0".parse().unwrap(),
                 );
                 headers.insert("profile-title", "My Sub".parse().unwrap());
+                headers.insert("profile-update-interval", "6".parse().unwrap());
                 (headers, "proxies: []\n")
             }),
         );
@@ -643,6 +677,7 @@ mod tests {
         assert_eq!(fetched.subscription.download, Some(2));
         assert_eq!(fetched.subscription.total, Some(3));
         assert!(fetched.subscription.expire.is_none());
+        assert_eq!(fetched.suggested_update_interval_minutes, Some(360));
     }
 
     #[tokio::test]

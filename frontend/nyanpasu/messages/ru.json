@@ -248,6 +248,8 @@
   "profile_form_option_with_proxy_label": "Использовать системный прокси",
   "profile_form_option_self_proxy_label": "Использовать прокси Clash",
   "profile_form_option_update_interval_label": "Интервал автоматического обновления (минуты)",
+  "profile_form_option_update_interval_placeholder": "авто (сервером или 120 мин по умолчанию)",
+  "profile_form_option_update_interval_min_error": "Интервал должен быть не менее 1 минуты",
   "profile_import_local_file_placeholder": "Нажмите или перетащите файл сюда для импорта",
   "profile_import_local_file_type_label": "Поддерживаемые файлы: {types}",
   "profile_import_local_file_size_label": "Размер файла: {size}",

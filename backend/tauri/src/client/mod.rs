@@ -406,6 +406,10 @@ impl NyanpasuClient {
         url: url::Url,
         options: Option<RemoteProfileOptionsPatch>,
     ) -> Result<ProfileId> {
+        let update_interval_explicit = options
+            .as_ref()
+            .and_then(|patch| patch.update_interval_minutes)
+            .is_some();
         let name = url
             .path_segments()
             .and_then(|segments| segments.filter(|segment| !segment.is_empty()).next_back())
@@ -448,7 +452,16 @@ impl NyanpasuClient {
             .created
             .clone()
             .ok_or_else(|| ClientError::Custom("import committed without a created uid".into()))?;
-        if let Err(error) = self.refresh_profile(created.clone(), None).await {
+        let refreshed = async {
+            let report = self
+                .inner
+                .profiles
+                .refresh_import(created.clone(), update_interval_explicit)
+                .await?;
+            self.after_commit(&report).await
+        }
+        .await;
+        if let Err(error) = refreshed {
             // First download failed = import failed; delete the empty shell to
             // preserve the legacy all-or-nothing observable behavior. Log if the
             // rollback itself fails so the orphaned placeholder is not silent —
@@ -1145,6 +1158,7 @@ mod tests {
                 content: "proxies: []\n".into(),
                 subscription: SubscriptionInfo::default(),
                 filename: Some("sub.yaml".into()),
+                suggested_update_interval_minutes: Some(360),
             })
         });
         let mut core = MockRunningCoreBridge::new();
@@ -1154,7 +1168,12 @@ mod tests {
         tauri::async_runtime::block_on(async {
             let client = test_client_with_fetcher(&dir, Arc::new(fetcher), Arc::new(core)).await;
             let url = url::Url::parse("https://example.com/subs/my-sub.yaml").unwrap();
-            let uid = client.import_profile(url, None).await.expect("import");
+            let mut patch = RemoteProfileOptions::new_empty_patch();
+            patch.with_proxy = Some(false);
+            let uid = client
+                .import_profile(url, Some(patch))
+                .await
+                .expect("import");
             let snapshot = client.get_profiles().await.unwrap();
             assert_eq!(
                 snapshot.current.as_ref(),
@@ -1163,7 +1182,65 @@ mod tests {
             );
             let item = &snapshot.items[&uid];
             assert_eq!(item.metadata.name, "my-sub"); // url last-segment fallback naming
-            assert!(item.definition.source().unwrap().is_remote());
+            let source = item.definition.source().unwrap();
+            assert!(source.is_remote());
+            let ProfileSource::Remote { option, .. } = source else {
+                unreachable!()
+            };
+            assert_eq!(option.update_interval_minutes, 360);
+            assert!(!option.with_proxy);
+        });
+    }
+
+    #[test]
+    fn facade_import_keeps_explicit_interval_over_server_suggestion() {
+        let dir = tempdir().unwrap();
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher.expect_fetch().times(1).returning(|_, _| {
+            Ok(crate::state::profiles::ports::FetchedSubscription {
+                content: "proxies: []\n".into(),
+                subscription: SubscriptionInfo::default(),
+                filename: None,
+                suggested_update_interval_minutes: Some(360),
+            })
+        });
+        let mut core = MockRunningCoreBridge::new();
+        core.expect_apply_config().returning(|| Ok(()));
+        core.expect_on_profile_change().returning(|| ());
+
+        tauri::async_runtime::block_on(async {
+            let client = test_client_with_fetcher(&dir, Arc::new(fetcher), Arc::new(core)).await;
+            let mut patch = RemoteProfileOptions::new_empty_patch();
+            patch.update_interval_minutes = Some(45);
+            let url = url::Url::parse("https://example.com/subs/explicit.yaml").unwrap();
+            let uid = client
+                .import_profile(url, Some(patch))
+                .await
+                .expect("import");
+            let snapshot = client.get_profiles().await.unwrap();
+            let ProfileSource::Remote { option, .. } =
+                snapshot.items[&uid].definition.source().unwrap()
+            else {
+                unreachable!()
+            };
+            assert_eq!(option.update_interval_minutes, 45);
+        });
+    }
+
+    #[test]
+    fn facade_import_rejects_explicit_zero_interval_before_fetch() {
+        let dir = tempdir().unwrap();
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher.expect_fetch().times(0);
+        let core = MockRunningCoreBridge::new();
+
+        tauri::async_runtime::block_on(async {
+            let client = test_client_with_fetcher(&dir, Arc::new(fetcher), Arc::new(core)).await;
+            let mut patch = RemoteProfileOptions::new_empty_patch();
+            patch.update_interval_minutes = Some(0);
+            let url = url::Url::parse("https://example.com/subs/invalid.yaml").unwrap();
+            assert!(client.import_profile(url, Some(patch)).await.is_err());
+            assert!(client.get_profiles().await.unwrap().items.is_empty());
         });
     }
 
@@ -1279,6 +1356,7 @@ mod tests {
                 content: "proxies: []\n".into(),
                 subscription: SubscriptionInfo::default(),
                 filename: None,
+                suggested_update_interval_minutes: None,
             })
         });
         let mut core = MockRunningCoreBridge::new();
@@ -1309,6 +1387,12 @@ mod tests {
                 "import must not overwrite an existing current selection"
             );
             assert!(snapshot.items.contains_key(&imported));
+            let ProfileSource::Remote { option, .. } =
+                snapshot.items[&imported].definition.source().unwrap()
+            else {
+                unreachable!()
+            };
+            assert_eq!(option.update_interval_minutes, 120);
         });
     }
 }

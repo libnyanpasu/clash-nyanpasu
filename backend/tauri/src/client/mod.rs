@@ -1131,6 +1131,14 @@ mod tests {
     }
 
     #[test]
+    fn runtime_state_is_none_before_first_rebuild() {
+        let dir = tempdir().unwrap();
+        let client = tauri::async_runtime::block_on(test_client(&dir));
+        let state = tauri::async_runtime::block_on(client.runtime_state());
+        assert!(state.as_ref().is_none());
+    }
+
+    #[test]
     fn facade_add_activate_rebuilds_via_core_bridge() {
         let dir = tempdir().unwrap();
         let mut core = MockRunningCoreBridge::new();
@@ -1180,6 +1188,11 @@ mod tests {
                 .as_ref()
                 .expect("runtime state stored after rebuild");
             assert!(state.config.get("mixed-port").is_some());
+            assert!(
+                !state.exists_keys.is_empty(),
+                "guard overrides must register applied fields"
+            );
+            let _ = state.postprocessing_output.clone(); // postprocessing 面可达(无脚本 profile 时为 default)
             let path = client
                 .get_profile_materialized_path(uid.clone())
                 .await

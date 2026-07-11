@@ -307,11 +307,13 @@ pub fn get_clash_info() -> Result<ClashInfo> {
 #[specta::specta]
 // TODO: specta 2.0.0-rc.25 cannot export recursive inline types (serde_json::Value). Wrapped in
 // Any<> to avoid infinite type expansion. Replace with a typed ClashConfig struct if desired.
-pub fn get_runtime_config() -> Result<Option<specta_typescript::Any<serde_json::Value>>> {
-    let config = Config::runtime().latest().config.clone();
-    match config {
-        Some(cfg) => {
-            let yaml_value = serde_yaml::to_value(cfg)?;
+pub async fn get_runtime_config(
+    client: State<'_, NyanpasuClient>,
+) -> Result<Option<specta_typescript::Any<serde_json::Value>>> {
+    let state = client.runtime_state().await;
+    match state.as_ref() {
+        Some(state) => {
+            let yaml_value = serde_yaml::to_value(&state.config)?;
             let json_value = serde_json::to_value(&yaml_value)?;
             let wrapped: specta_typescript::Any<serde_json::Value> =
                 serde_json::from_value(json_value)?;
@@ -323,11 +325,12 @@ pub fn get_runtime_config() -> Result<Option<specta_typescript::Any<serde_json::
 
 #[tauri::command]
 #[specta::specta]
-pub fn get_runtime_yaml() -> Result<String> {
-    let runtime = Config::runtime();
-    let runtime = runtime.latest();
-    let config = runtime.config.as_ref();
-    let mapping = (config
+pub async fn get_runtime_yaml(client: State<'_, NyanpasuClient>) -> Result<String> {
+    let state = client.runtime_state().await;
+    let mapping = (state
+        .as_ref()
+        .as_ref()
+        .map(|state| &state.config)
         .ok_or(anyhow::anyhow!("failed to parse config to yaml file"))
         .and_then(|config| {
             serde_yaml::to_string(config).context("failed to convert config to yaml")
@@ -337,14 +340,28 @@ pub fn get_runtime_yaml() -> Result<String> {
 
 #[tauri::command]
 #[specta::specta]
-pub fn get_runtime_exists() -> Result<Vec<String>> {
-    Ok(Config::runtime().latest().exists_keys.clone())
+pub async fn get_runtime_exists(client: State<'_, NyanpasuClient>) -> Result<Vec<String>> {
+    Ok(client
+        .runtime_state()
+        .await
+        .as_ref()
+        .as_ref()
+        .map(|state| state.exists_keys.clone())
+        .unwrap_or_default())
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn get_postprocessing_output() -> Result<PostProcessingOutput> {
-    Ok(Config::runtime().latest().postprocessing_output.clone())
+pub async fn get_postprocessing_output(
+    client: State<'_, NyanpasuClient>,
+) -> Result<PostProcessingOutput> {
+    Ok(client
+        .runtime_state()
+        .await
+        .as_ref()
+        .as_ref()
+        .map(|state| state.postprocessing_output.clone())
+        .unwrap_or_default())
 }
 
 #[tauri::command]

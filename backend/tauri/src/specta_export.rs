@@ -132,6 +132,11 @@ pub(crate) fn build_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         // arrive with T08; explicit registration keeps them exported (and the
         // specta nested-tagged-enum risk probed) before any command exists.
         .typ::<nyanpasu_config::profile::Profiles>()
+        .typ::<nyanpasu_config::profile::FileConfig>()
+        .typ::<nyanpasu_config::profile::CompositionConfig>()
+        .typ::<nyanpasu_config::profile::OverlayTransform>()
+        .typ::<nyanpasu_config::profile::ScriptTransform>()
+        .typ::<nyanpasu_config::profile::MaterializedFile>()
         .typ::<nyanpasu_config::profile::ProfileMetadataPatch>()
         .typ::<nyanpasu_config::profile::RemoteProfileOptionsPatch>()
         .typ::<nyanpasu_config::profile::ProfileValidationError>()
@@ -147,6 +152,28 @@ mod tests {
         env!("CARGO_MANIFEST_DIR"),
         "/../../frontend/interface/src/ipc/bindings.ts"
     );
+
+    fn exported_type<'a>(generated: &'a str, name: &str) -> &'a str {
+        let marker = format!("export type {name} =");
+        let start = generated
+            .find(&marker)
+            .unwrap_or_else(|| panic!("expected generated declaration for {name}"));
+        let rest = &generated[start..];
+        let end = rest[marker.len()..]
+            .find("\nexport ")
+            .map(|offset| marker.len() + offset)
+            .unwrap_or(rest.len());
+        &rest[..end]
+    }
+
+    fn assert_contains_all(declaration: &str, name: &str, expected: &[&str]) {
+        for needle in expected {
+            assert!(
+                declaration.contains(needle),
+                "expected {name} to contain {needle:?}, got:\n{declaration}"
+            );
+        }
+    }
 
     /// Regenerates the committed TS bindings in place (same path and header as
     /// the debug-run export in lib.rs), then asserts every profile domain type
@@ -204,6 +231,77 @@ mod tests {
                 generated.contains(&format!("export type {name}"))
                     || generated.contains(&format!("export interface {name}")),
                 "expected named TS export for {name}"
+            );
+        }
+
+        for phase in ["Deserialize", "Serialize"] {
+            let name = format!("ConfigDefinition_{phase}");
+            let declaration = exported_type(&generated, &name);
+            assert_contains_all(
+                declaration,
+                &name,
+                &[
+                    "type: 'file'",
+                    "type: 'composition'",
+                    "source: ProfileSource_",
+                    "extend_proxies_from?",
+                ],
+            );
+            assert!(
+                !declaration.contains("file: {") && !declaration.contains("composition: {"),
+                "{name} must not contain newtype wrapper keys:\n{declaration}"
+            );
+
+            let name = format!("TransformDefinition_{phase}");
+            let declaration = exported_type(&generated, &name);
+            assert_contains_all(
+                declaration,
+                &name,
+                &[
+                    "type: 'overlay'",
+                    "type: 'script'",
+                    "source: ProfileSource_",
+                    "runtime: ScriptRuntime",
+                ],
+            );
+            assert!(
+                !declaration.contains("overlay: {") && !declaration.contains("script: {"),
+                "{name} must not contain newtype wrapper keys:\n{declaration}"
+            );
+
+            let name = format!("ProfileSource_{phase}");
+            let declaration = exported_type(&generated, &name);
+            assert_contains_all(
+                declaration,
+                &name,
+                &[
+                    "type: 'local'",
+                    "type: 'remote'",
+                    "file: ManagedProfilePath",
+                    "url: string",
+                ],
+            );
+            assert!(
+                !declaration.contains("materialized:"),
+                "{name} must expose flattened materialized fields:\n{declaration}"
+            );
+
+            let name = format!("LocalBinding_{phase}");
+            let declaration = exported_type(&generated, &name);
+            assert_contains_all(
+                declaration,
+                &name,
+                &[
+                    "type: 'managed'",
+                    "type: 'external'",
+                    "file: ManagedProfilePath",
+                    "target: ExternalProfilePath",
+                    "mode: ExternalMode",
+                ],
+            );
+            assert!(
+                !declaration.contains("materialized:"),
+                "{name} must expose flattened materialized fields:\n{declaration}"
             );
         }
     }

@@ -10,7 +10,7 @@ use super::*;
 ///
 /// `Remote + External` is unrepresentable: external binding exists only inside
 /// the `Local` branch, while `Remote` owns a managed materialization directly.
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProfileSource {
     Local {
@@ -51,7 +51,7 @@ impl ProfileSource {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum LocalBinding {
     Managed {
@@ -192,4 +192,58 @@ fn default_true() -> bool {
 
 fn default_update_interval_minutes() -> u64 {
     120
+}
+
+mod specta_wire {
+    use serde::{Deserialize, Serialize};
+    use specta::Type;
+
+    /// Who is responsible for maintaining the locally readable file.
+    ///
+    /// `Remote + External` is unrepresentable: external binding exists only inside
+    /// the `Local` branch, while `Remote` owns a managed materialization directly.
+    #[allow(dead_code)]
+    #[derive(Serialize, Deserialize, Type)]
+    #[specta(remote = super::ProfileSource)]
+    #[serde(tag = "type", rename_all = "snake_case")]
+    enum ProfileSource {
+        Local {
+            binding: crate::profile::LocalBinding,
+        },
+        Remote {
+            file: crate::profile::ManagedProfilePath,
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            #[specta(type = Option<i64>)]
+            updated_at: Option<time::OffsetDateTime>,
+            url: url::Url,
+            #[serde(default)]
+            option: crate::profile::RemoteProfileOptions,
+            #[serde(
+                default,
+                skip_serializing_if = "crate::profile::SubscriptionInfo::is_empty"
+            )]
+            subscription: crate::profile::SubscriptionInfo,
+        },
+    }
+
+    #[allow(dead_code)]
+    #[derive(Serialize, Deserialize, Type)]
+    #[specta(remote = super::LocalBinding)]
+    #[serde(tag = "type", rename_all = "snake_case")]
+    enum LocalBinding {
+        Managed {
+            file: crate::profile::ManagedProfilePath,
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            #[specta(type = Option<i64>)]
+            updated_at: Option<time::OffsetDateTime>,
+        },
+        External {
+            file: crate::profile::ManagedProfilePath,
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            #[specta(type = Option<i64>)]
+            updated_at: Option<time::OffsetDateTime>,
+            target: crate::profile::ExternalProfilePath,
+            mode: crate::profile::ExternalMode,
+        },
+    }
 }

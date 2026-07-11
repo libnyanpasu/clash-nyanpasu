@@ -33,13 +33,13 @@ export function useCurrentProfile(uid: string): {
         schemaType = 'clash'
         readOnly = isRemoteItem(item)
       } else if (isTransformItem(item)) {
-        if (item.transform.overlay) {
+        if (item.transform.type === 'overlay') {
           schemaType = 'merge'
-        } else if (item.transform.script) {
-          if (item.transform.script.runtime === 'javascript') {
+        } else if (item.transform.type === 'script') {
+          if (item.transform.runtime === 'javascript') {
             language = 'javascript'
             extension = 'js'
-          } else if (item.transform.script.runtime === 'lua') {
+          } else if (item.transform.runtime === 'lua') {
             language = 'lua'
             extension = 'lua'
           }

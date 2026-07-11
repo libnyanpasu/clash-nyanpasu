@@ -45,7 +45,7 @@ export default function ActionCard({
   // ProfileHasNoFile. File configs and transforms both own a file.
   const hasMaterializedFile =
     isTransformItem(profile) ||
-    (profile.type === 'config' && Boolean(profile.config.file))
+    (profile.type === 'config' && profile.config.type === 'file')
 
   return (
     <div className="col-span-2 grid grid-cols-2 gap-4">

@@ -31,17 +31,21 @@ export const isChainProfile = (
 export const isJavaScriptProfile = (
   profile: ProfileItem_Serialize,
 ): profile is TransformProfile =>
-  isTransformItem(profile) && profile.transform.script?.runtime === 'javascript'
+  isTransformItem(profile) &&
+  profile.transform.type === 'script' &&
+  profile.transform.runtime === 'javascript'
 
 export const isLuaProfile = (
   profile: ProfileItem_Serialize,
 ): profile is TransformProfile =>
-  isTransformItem(profile) && profile.transform.script?.runtime === 'lua'
+  isTransformItem(profile) &&
+  profile.transform.type === 'script' &&
+  profile.transform.runtime === 'lua'
 
 export const isMergeProfile = (
   profile: ProfileItem_Serialize,
 ): profile is TransformProfile =>
-  isTransformItem(profile) && profile.transform.overlay !== undefined
+  isTransformItem(profile) && profile.transform.type === 'overlay'
 
 export const categoryProfiles = (
   profiles?: ProfileItem_Serialize[] | null,

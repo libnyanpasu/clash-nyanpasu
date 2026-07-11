@@ -527,31 +527,33 @@ export type ConfigDefinition =
 export type ConfigDefinition_Deserialize =
   /**  A config parsed from a locally materialized file. */
   | ({
-      file: {
-        type: 'file'
-      } & FileConfig_Deserialize
-    } & { composition?: never })
+      type: 'file'
+      source: ProfileSource_Deserialize
+      transforms?: ProfileId[]
+    } & { base?: never; extend_proxies_from?: never })
   /**  A config composed from an optional full base and proxy contributors. */
   | ({
-      composition: {
-        type: 'composition'
-      } & CompositionConfig_Deserialize
-    } & { file?: never })
+      type: 'composition'
+      base?: ProfileId | null
+      extend_proxies_from?: ProfileId[]
+      transforms?: ProfileId[]
+    } & { source?: never })
 
 /**  A profile that can produce a complete config and can be selected by current. */
 export type ConfigDefinition_Serialize =
   /**  A config parsed from a locally materialized file. */
   | ({
-      file: {
-        type: 'file'
-      } & FileConfig_Serialize
-    } & { composition?: never })
+      type: 'file'
+      source: ProfileSource_Serialize
+      transforms?: ProfileId[]
+    } & { base?: never; extend_proxies_from?: never })
   /**  A config composed from an optional full base and proxy contributors. */
   | ({
-      composition: {
-        type: 'composition'
-      } & CompositionConfig_Serialize
-    } & { file?: never })
+      type: 'composition'
+      base?: ProfileId | null
+      extend_proxies_from?: ProfileId[]
+      transforms?: ProfileId[]
+    } & { source?: never })
 
 export type CopyEnvOption = 'shell' | 'cmd' | 'pwsh'
 
@@ -943,25 +945,29 @@ export type IVerge_Serialize = {
 export type LocalBinding = LocalBinding_Serialize | LocalBinding_Deserialize
 
 export type LocalBinding_Deserialize =
-  | ({ type: 'managed'; materialized: MaterializedFile_Deserialize } & {
-      mode?: never
-      target?: never
-    })
+  | ({
+      type: 'managed'
+      file: ManagedProfilePath
+      updated_at?: number | null
+    } & { mode?: never; target?: never })
   | {
       type: 'external'
-      materialized: MaterializedFile_Deserialize
+      file: ManagedProfilePath
+      updated_at?: number | null
       target: ExternalProfilePath
       mode: ExternalMode
     }
 
 export type LocalBinding_Serialize =
-  | ({ type: 'managed'; materialized: MaterializedFile_Serialize } & {
-      mode?: never
-      target?: never
-    })
+  | ({
+      type: 'managed'
+      file: ManagedProfilePath
+      updated_at?: number | null
+    } & { mode?: never; target?: never })
   | {
       type: 'external'
-      materialized: MaterializedFile_Serialize
+      file: ManagedProfilePath
+      updated_at?: number | null
       target: ExternalProfilePath
       mode: ExternalMode
     }
@@ -1190,14 +1196,16 @@ export type ProfileSource = ProfileSource_Serialize | ProfileSource_Deserialize
  */
 export type ProfileSource_Deserialize =
   | ({ type: 'local'; binding: LocalBinding_Deserialize } & {
-      materialized?: never
+      file?: never
       option?: never
       subscription?: never
+      updated_at?: never
       url?: never
     })
   | ({
       type: 'remote'
-      materialized: MaterializedFile_Deserialize
+      file: ManagedProfilePath
+      updated_at?: number | null
       url: string
       option?: ProfileRemoteOptions
       subscription?: ProfileSubscriptionInfo
@@ -1211,14 +1219,16 @@ export type ProfileSource_Deserialize =
  */
 export type ProfileSource_Serialize =
   | ({ type: 'local'; binding: LocalBinding_Serialize } & {
-      materialized?: never
+      file?: never
       option?: never
       subscription?: never
+      updated_at?: never
       url?: never
     })
   | ({
       type: 'remote'
-      materialized: MaterializedFile_Serialize
+      file: ManagedProfilePath
+      updated_at?: number | null
       url: string
       option: ProfileRemoteOptions
       subscription?: ProfileSubscriptionInfo
@@ -1775,32 +1785,22 @@ export type TransformDefinition =
 /**  A named config transformer. Transform profiles are reusable but not activatable. */
 export type TransformDefinition_Deserialize =
   /**  Declarative YAML overlay/patch. This is the new name for legacy Merge. */
-  | ({
-      overlay: {
-        type: 'overlay'
-      } & OverlayTransform_Deserialize
-    } & { script?: never })
+  | ({ type: 'overlay'; source: ProfileSource_Deserialize } & {
+      runtime?: never
+    })
   /**  Imperative JS/Lua transform. */
-  | ({
-      script: {
-        type: 'script'
-      } & ScriptTransform_Deserialize
-    } & { overlay?: never })
+  | {
+      type: 'script'
+      source: ProfileSource_Deserialize
+      runtime: ScriptRuntime
+    }
 
 /**  A named config transformer. Transform profiles are reusable but not activatable. */
 export type TransformDefinition_Serialize =
   /**  Declarative YAML overlay/patch. This is the new name for legacy Merge. */
-  | ({
-      overlay: {
-        type: 'overlay'
-      } & OverlayTransform_Serialize
-    } & { script?: never })
+  | ({ type: 'overlay'; source: ProfileSource_Serialize } & { runtime?: never })
   /**  Imperative JS/Lua transform. */
-  | ({
-      script: {
-        type: 'script'
-      } & ScriptTransform_Serialize
-    } & { overlay?: never })
+  | { type: 'script'; source: ProfileSource_Serialize; runtime: ScriptRuntime }
 
 export type TransformOwner =
   | { type: 'global' }

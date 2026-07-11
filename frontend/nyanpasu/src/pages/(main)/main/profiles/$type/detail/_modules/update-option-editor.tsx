@@ -18,7 +18,11 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useProfile, type ProfileItem_Serialize } from '@nyanpasu/interface'
+import {
+  getRemoteSource,
+  useProfile,
+  type ProfileItem_Serialize,
+} from '@nyanpasu/interface'
 import AnimatedErrorItem from '../../../_modules/error-item'
 
 const formSchema = z.object({
@@ -29,9 +33,7 @@ const formSchema = z.object({
 })
 
 const remoteOptionOf = (profile: ProfileItem_Serialize) =>
-  profile.type === 'config' && profile.config.file?.source.type === 'remote'
-    ? profile.config.file.source.option
-    : undefined
+  getRemoteSource(profile)?.option
 
 export default function UpdateOptionEditor({
   profile,

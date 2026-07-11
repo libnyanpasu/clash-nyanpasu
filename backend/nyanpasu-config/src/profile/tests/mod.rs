@@ -5,3 +5,4 @@ mod remote_options_patch;
 mod round_trip;
 mod sanitize;
 mod validation;
+mod wire_shape;

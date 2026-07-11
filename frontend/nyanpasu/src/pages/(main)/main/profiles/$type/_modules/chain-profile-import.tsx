@@ -55,7 +55,7 @@ const buildTransformRequest = (
     type: 'local' as const,
     binding: {
       type: 'managed' as const,
-      materialized: { file: 'pending.yaml' },
+      file: 'pending.yaml',
     },
   }
 
@@ -64,19 +64,19 @@ const buildTransformRequest = (
   if (rawType === RawProfileType.Merge) {
     definition = {
       type: 'transform',
-      transform: { overlay: { type: 'overlay', source } },
+      transform: { type: 'overlay', source },
     }
     fileData = ProfileTemplate.merge
   } else if (rawType === RawProfileType.Lua) {
     definition = {
       type: 'transform',
-      transform: { script: { type: 'script', source, runtime: 'lua' } },
+      transform: { type: 'script', source, runtime: 'lua' },
     }
     fileData = ProfileTemplate.luascript
   } else {
     definition = {
       type: 'transform',
-      transform: { script: { type: 'script', source, runtime: 'javascript' } },
+      transform: { type: 'script', source, runtime: 'javascript' },
     }
     fileData = ProfileTemplate.javascript
   }

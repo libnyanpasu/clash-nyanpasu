@@ -6,6 +6,7 @@ import {
   Outlet,
 } from '@tanstack/react-router'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+import 'dayjs/locale/ko'
 import 'dayjs/locale/ru'
 import 'dayjs/locale/zh-cn'
 import 'dayjs/locale/zh-tw'

@@ -1,0 +1,69 @@
+{
+  "_version": 1,
+  "tray": {
+    "copy_env": {
+      "cmd": "환경 변수 복사 (CMD)",
+      "ps": "환경 변수 복사 (PS)",
+      "sh": "환경 변수 복사 (sh)"
+    },
+    "no_proxies": "프록시 없음",
+    "select_proxies": "프록시 선택",
+    "dashboard": "대시보드",
+    "direct_mode": "다이렉트 모드",
+    "global_mode": "글로벌 모드",
+    "more": {
+      "menu": "더보기",
+      "restart_app": "앱 재시작",
+      "restart_clash": "Clash 재시작"
+    },
+    "open_dir": {
+      "menu": "디렉터리 열기",
+      "app_config_dir": "설정 디렉터리",
+      "app_data_dir": "데이터 디렉터리",
+      "core_dir": "코어 디렉터리",
+      "log_dir": "로그 디렉터리"
+    },
+    "proxy_action": {
+      "on": "켜짐",
+      "off": "꺼짐"
+    },
+    "quit": "종료",
+    "rule_mode": "규칙 모드",
+    "script_mode": "스크립트 모드",
+    "system_proxy": "시스템 프록시",
+    "tun_mode": "TUN 모드"
+  },
+  "dialog": {
+    "panic": "이 문제를 Github 이슈 트래커에 신고해 주세요.",
+    "migrate": "이전 버전의 설정 파일이 감지되었습니다. 새 버전으로 마이그레이션하시겠습니까?\n경고: 기존 설정이 있는 경우 덮어쓰게 됩니다",
+    "custom_app_dir_migrate": "앱 디렉터리를 %{path}(으)로 지정합니다\n현재 앱 디렉터리를 새 위치로 이동할까요?",
+    "warning": {
+      "enable_tun_with_no_permission": "TUN 모드는 관리자 권한 또는 서비스 모드가 필요하지만 둘 다 활성화되어 있지 않습니다. TUN 모드가 정상적으로 작동하지 않을 수 있습니다."
+    },
+    "info": {
+      "grant_core_permission": "TUN 모드가 정상적으로 작동하려면 Clash 코어에 관리자 권한이 필요합니다. 권한을 부여하시겠습니까?\n이 작업에는 비밀번호 입력이 필요할 수 있습니다."
+    }
+  },
+  "setting": {
+    "connection": {
+      "interrupt": {
+        "proxy": {
+          "label": "프록시 변경 시 연결 끊기"
+        },
+        "profile": {
+          "label": "프로필 변경 시 연결 끊기"
+        },
+        "mode": {
+          "label": "모드 변경 시 연결 끊기"
+        }
+      }
+    }
+  },
+  "break_when_proxy_change": "프록시 변경 시 연결 끊기",
+  "break_when_profile_change": "프로필 변경 시 연결 끊기",
+  "break_when_mode_change": "모드 변경 시 연결 끊기",
+  "hotkey_error": {
+    "invalid_hotkey": "잘못된 단축키: %{hotkey}",
+    "missing_super_key": "단축키에는 Super 키(Cmd/Ctrl/Win/Meta)가 포함되어야 합니다"
+  }
+}

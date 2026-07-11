@@ -6,6 +6,7 @@ mod event_sink;
 mod ports;
 pub mod profiles;
 pub mod rebuild;
+pub mod runtime;
 mod session_state;
 
 use self::{

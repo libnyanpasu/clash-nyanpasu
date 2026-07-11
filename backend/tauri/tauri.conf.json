@@ -12,14 +12,20 @@
         "type": "embedBootstrapper"
       },
       "wix": {
-        "language": ["en-US", "ru-RU", "zh-CN", "zh-TW"],
+        "language": ["en-US", "ko-KR", "ru-RU", "zh-CN", "zh-TW"],
         "template": "./templates/installer.wxs",
         "fragmentPaths": ["./templates/cleanup.wxs"]
       },
       "nsis": {
         "displayLanguageSelector": true,
         "installerIcon": "icons/icon.ico",
-        "languages": ["English", "Russian", "SimpChinese", "TradChinese"],
+        "languages": [
+          "English",
+          "Korean",
+          "Russian",
+          "SimpChinese",
+          "TradChinese"
+        ],
         "template": "./templates/installer.nsi",
         "installMode": "both"
       }

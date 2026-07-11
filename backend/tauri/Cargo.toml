@@ -272,7 +272,7 @@ windows-core = "0.61"
 webview2-com = "0.38"
 
 [dev-dependencies]
-mockall = "0.13"
+mockall = "0.15"
 
 [features]
 default = ["custom-protocol", "default-meta"]

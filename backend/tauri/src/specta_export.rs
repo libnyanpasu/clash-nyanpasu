@@ -226,6 +226,8 @@ mod tests {
             "ProfileMetadataPatch",
             "RemoteProfileOptionsPatch",
             "ProfileValidationError",
+            "RebuildOutcome",
+            "CommitOutcome",
         ] {
             assert!(
                 generated.contains(&format!("export type {name}"))
@@ -304,5 +306,21 @@ mod tests {
                 "{name} must expose flattened materialized fields:\n{declaration}"
             );
         }
+
+        // T8 freeze: the named-export loop above only proves these types exist;
+        // pin the actual generated shapes so a wire-format drift breaks CI.
+        // Substrings are copied verbatim from the generated product (prettier
+        // emits single-quoted tags and one union variant per line).
+        assert!(
+            generated.contains(
+                "export type RebuildOutcome =\n  | { status: 'ok' }\n  | { status: 'degraded'; error: string }"
+            ),
+            "RebuildOutcome tagged-union shape drifted from the generated bindings"
+        );
+        // importProfile must return the instantiated generic, not a bare uid.
+        assert!(
+            generated.contains("CommitOutcome<ProfileId>"),
+            "importProfile must return CommitOutcome<ProfileId>"
+        );
     }
 }

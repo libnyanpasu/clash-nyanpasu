@@ -131,6 +131,8 @@ pub fn is_portable() -> Result<bool> {
 //     Ok(crate::utils::hwid::get_device_info())
 // }
 
+/// Rebuild-only command: there is no prior state commit, so a failure is a
+/// plain error — the committed/degraded model (spec §6.2) does not apply.
 #[tauri::command]
 #[specta::specta]
 pub async fn enhance_profiles(client: State<'_, NyanpasuClient>) -> Result {
@@ -144,11 +146,16 @@ pub async fn import_profile(
     client: State<'_, NyanpasuClient>,
     url: String,
     option: Option<RemoteProfileOptionsPatch>,
-) -> Result<ProfileId> {
+) -> Result<crate::client::runtime::CommitOutcome<ProfileId>> {
     let url = url::Url::parse(&url).context("failed to parse the url")?;
     // Return the created uid so the caller can apply user-provided metadata
-    // (import derives the name from the url server-side).
-    Ok(client.import_profile(url, option).await?)
+    // (import derives the name from the url server-side), plus the rebuild
+    // outcome so a degraded post-import rebuild surfaces to the UI.
+    let (uid, rebuild) = client.import_profile(url, option).await?;
+    Ok(crate::client::runtime::CommitOutcome {
+        value: uid,
+        rebuild,
+    })
 }
 
 /// create a new profile
@@ -158,9 +165,9 @@ pub async fn create_profile(
     client: State<'_, NyanpasuClient>,
     request: NewProfileRequest,
     file_data: Option<String>,
-) -> Result {
-    client.create_profile(request, file_data).await?;
-    Ok(())
+) -> Result<crate::client::runtime::RebuildOutcome> {
+    let (_uid, rebuild) = client.create_profile(request, file_data).await?;
+    Ok(rebuild)
 }
 
 #[tauri::command]
@@ -169,9 +176,8 @@ pub async fn reorder_profile(
     client: State<'_, NyanpasuClient>,
     active_id: ProfileId,
     over_id: ProfileId,
-) -> Result {
-    client.reorder_profile(active_id, over_id).await?;
-    Ok(())
+) -> Result<crate::client::runtime::RebuildOutcome> {
+    Ok(client.reorder_profile(active_id, over_id).await?)
 }
 
 #[tauri::command]
@@ -179,9 +185,8 @@ pub async fn reorder_profile(
 pub async fn reorder_profiles_by_list(
     client: State<'_, NyanpasuClient>,
     list: Vec<ProfileId>,
-) -> Result {
-    client.reorder_profiles_by_list(list).await?;
-    Ok(())
+) -> Result<crate::client::runtime::RebuildOutcome> {
+    Ok(client.reorder_profiles_by_list(list).await?)
 }
 
 #[tauri::command]
@@ -190,23 +195,26 @@ pub async fn update_profile(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
     option: Option<RemoteProfileOptionsPatch>,
-) -> Result {
-    client.refresh_profile(uid, option).await?;
-    Ok(())
+) -> Result<crate::client::runtime::RebuildOutcome> {
+    Ok(client.refresh_profile(uid, option).await?)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn delete_profile(client: State<'_, NyanpasuClient>, uid: ProfileId) -> Result {
-    client.delete_profile(uid).await?;
-    Ok(())
+pub async fn delete_profile(
+    client: State<'_, NyanpasuClient>,
+    uid: ProfileId,
+) -> Result<crate::client::runtime::RebuildOutcome> {
+    Ok(client.delete_profile(uid).await?)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn activate_profile(client: State<'_, NyanpasuClient>, uid: Option<ProfileId>) -> Result {
-    client.activate_profile(uid).await?;
-    Ok(())
+pub async fn activate_profile(
+    client: State<'_, NyanpasuClient>,
+    uid: Option<ProfileId>,
+) -> Result<crate::client::runtime::RebuildOutcome> {
+    Ok(client.activate_profile(uid).await?)
 }
 
 #[tauri::command]
@@ -214,9 +222,8 @@ pub async fn activate_profile(client: State<'_, NyanpasuClient>, uid: Option<Pro
 pub async fn set_global_transforms(
     client: State<'_, NyanpasuClient>,
     ids: Vec<ProfileId>,
-) -> Result {
-    client.set_global_transforms(ids).await?;
-    Ok(())
+) -> Result<crate::client::runtime::RebuildOutcome> {
+    Ok(client.set_global_transforms(ids).await?)
 }
 
 #[tauri::command]
@@ -224,9 +231,8 @@ pub async fn set_global_transforms(
 pub async fn set_profile_valid_fields(
     client: State<'_, NyanpasuClient>,
     fields: Vec<String>,
-) -> Result {
-    client.set_profile_valid_fields(fields).await?;
-    Ok(())
+) -> Result<crate::client::runtime::RebuildOutcome> {
+    Ok(client.set_profile_valid_fields(fields).await?)
 }
 
 #[tauri::command]
@@ -235,9 +241,8 @@ pub async fn patch_profile_metadata(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
     patch: ProfileMetadataPatch,
-) -> Result {
-    client.patch_profile_metadata(uid, patch).await?;
-    Ok(())
+) -> Result<crate::client::runtime::RebuildOutcome> {
+    Ok(client.patch_profile_metadata(uid, patch).await?)
 }
 
 #[tauri::command]
@@ -246,9 +251,8 @@ pub async fn patch_remote_profile_options(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
     patch: RemoteProfileOptionsPatch,
-) -> Result {
-    client.patch_remote_profile_options(uid, patch).await?;
-    Ok(())
+) -> Result<crate::client::runtime::RebuildOutcome> {
+    Ok(client.patch_remote_profile_options(uid, patch).await?)
 }
 
 #[tauri::command]
@@ -257,9 +261,8 @@ pub async fn replace_profile_definition(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
     definition: ProfileDefinition,
-) -> Result {
-    client.replace_profile_definition(uid, definition).await?;
-    Ok(())
+) -> Result<crate::client::runtime::RebuildOutcome> {
+    Ok(client.replace_profile_definition(uid, definition).await?)
 }
 
 #[tauri::command]

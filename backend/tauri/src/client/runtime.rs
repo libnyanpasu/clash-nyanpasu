@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 
 use nyanpasu_core::state::{SimpleStateManager, SimpleStateManagerSetup};
+use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 
 use crate::{enhance::PostProcessingOutput, utils::dirs};
@@ -80,6 +81,36 @@ pub fn candidate_config_path() -> PathBuf {
         "clash-nyanpasu-candidate-{}-{seq}.yaml",
         std::process::id()
     ))
+}
+
+/// Post-commit rebuild result for mutation IPC (spec §6.2, decision D2):
+/// state is committed first; a failed rebuild degrades instead of erroring.
+// TODO(post-PR-7): degraded outcome is transitional. State managers already
+// expose async commit acks; the end-state is ack-driven rollback when config
+// application fails, replacing this degraded-report model. Tracked in
+// actor-migration-roadmap §6.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum RebuildOutcome {
+    Ok,
+    Degraded { error: String },
+}
+
+impl RebuildOutcome {
+    /// Combine sequential outcomes; the first degradation wins.
+    pub fn merge(self, other: RebuildOutcome) -> RebuildOutcome {
+        match self {
+            RebuildOutcome::Degraded { .. } => self,
+            RebuildOutcome::Ok => other,
+        }
+    }
+}
+
+/// Mutation payload + rebuild outcome for data-carrying commands (import).
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+pub struct CommitOutcome<T> {
+    pub value: T,
+    pub rebuild: RebuildOutcome,
 }
 
 #[cfg(test)]

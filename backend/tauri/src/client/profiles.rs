@@ -12,7 +12,7 @@ use ractor::{Actor, ActorRef, RpcReplyPort, rpc::CallResult};
 
 use crate::state::profiles::{
     CommitReport, NewProfileRequest, ProfilesActor, ProfilesActorArgs, ProfilesActorMessage,
-    ProfilesError, ReorderOp,
+    ProfilesError, RefreshOrigin, ReorderOp,
     ports::{ProfileFsPort, RebuildNotifier, SubscriptionFetcher},
 };
 
@@ -195,6 +195,26 @@ impl ProfilesClient {
             |reply| ProfilesActorMessage::RefreshRemote {
                 uid,
                 patch,
+                origin: RefreshOrigin::Manual,
+                reply: Some(reply),
+            },
+            None,
+        )
+        .await
+    }
+
+    pub(crate) async fn refresh_import(
+        &self,
+        uid: ProfileId,
+        update_interval_explicit: bool,
+    ) -> Result<CommitReport, ProfilesError> {
+        self.call(
+            |reply| ProfilesActorMessage::RefreshRemote {
+                uid,
+                patch: None,
+                origin: RefreshOrigin::Import {
+                    update_interval_explicit,
+                },
                 reply: Some(reply),
             },
             None,
@@ -479,6 +499,13 @@ mod tests {
     }
 
     fn ok_fetch(content: &'static str) -> MockSubscriptionFetcher {
+        suggested_fetch(content, None)
+    }
+
+    fn suggested_fetch(
+        content: &'static str,
+        suggested_update_interval_minutes: Option<u64>,
+    ) -> MockSubscriptionFetcher {
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher.expect_fetch().returning(move |_, _| {
             Ok(FetchedSubscription {
@@ -488,6 +515,7 @@ mod tests {
                     upload: Some(1),
                     ..Default::default()
                 },
+                suggested_update_interval_minutes,
             })
         });
         fetcher
@@ -541,6 +569,7 @@ mod tests {
                 content: "proxies: []\n".into(),
                 filename: None,
                 subscription: SubscriptionInfo::default(),
+                suggested_update_interval_minutes: None,
             })
         }
     }
@@ -573,6 +602,111 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn manual_and_explicit_import_refresh_ignore_server_interval_suggestions() {
+        for import_explicit in [None, Some(true)] {
+            let mut fs = MockProfileFsPort::new();
+            fs.expect_ensure_not_symlink().returning(|_| Ok(()));
+            fs.expect_write_atomic().returning(|_, _| Ok(()));
+            let (client, _dir) = remote_seeded_client(
+                fs,
+                suggested_fetch("proxies: []\n", Some(360)),
+                MockRebuildNotifier::new(),
+            )
+            .await;
+
+            let report = if let Some(update_interval_explicit) = import_explicit {
+                client
+                    .refresh_import(ProfileId("r1".into()), update_interval_explicit)
+                    .await
+                    .unwrap()
+            } else {
+                client.refresh(ProfileId("r1".into()), None).await.unwrap()
+            };
+            let source = report.snapshot.items[&ProfileId("r1".into())]
+                .definition
+                .source()
+                .unwrap();
+            let ProfileSource::Remote { option, .. } = source else {
+                unreachable!()
+            };
+            assert_eq!(option.update_interval_minutes, 120);
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn import_suggestion_is_committed_and_reschedules_the_timer() {
+        let mut fs = MockProfileFsPort::new();
+        fs.expect_ensure_not_symlink().returning(|_| Ok(()));
+        fs.expect_write_atomic().returning(|_, _| Ok(()));
+        let fetch_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut fetcher = MockSubscriptionFetcher::new();
+        let counter = std::sync::Arc::clone(&fetch_count);
+        fetcher.expect_fetch().returning(move |_, _| {
+            let call = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+            Ok(FetchedSubscription {
+                content: "proxies: []\n".into(),
+                filename: None,
+                subscription: SubscriptionInfo {
+                    upload: Some(call as u64),
+                    ..Default::default()
+                },
+                suggested_update_interval_minutes: Some(if call == 1 { 60 } else { 30 }),
+            })
+        });
+        let (client, _dir) = remote_seeded_client(fs, fetcher, MockRebuildNotifier::new()).await;
+
+        let report = client
+            .refresh_import(ProfileId("r1".into()), false)
+            .await
+            .unwrap();
+        let source = report.snapshot.items[&ProfileId("r1".into())]
+            .definition
+            .source()
+            .unwrap();
+        let ProfileSource::Remote { option, .. } = source else {
+            unreachable!()
+        };
+        assert_eq!(option.update_interval_minutes, 60);
+        assert_eq!(fetch_count.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        tokio::time::advance(std::time::Duration::from_secs(60 * 60 + 1)).await;
+        for _ in 0..200 {
+            let snapshot = client.get().await.unwrap();
+            let source = snapshot.items[&ProfileId("r1".into())]
+                .definition
+                .source()
+                .unwrap();
+            if matches!(
+                source,
+                ProfileSource::Remote { subscription, .. }
+                    if subscription.upload == Some(2)
+            ) {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert!(fetch_count.load(std::sync::atomic::Ordering::SeqCst) >= 2);
+        let snapshot = client.get().await.unwrap();
+        let source = snapshot.items[&ProfileId("r1".into())]
+            .definition
+            .source()
+            .unwrap();
+        let ProfileSource::Remote {
+            option,
+            subscription,
+            ..
+        } = source
+        else {
+            unreachable!()
+        };
+        assert_eq!(subscription.upload, Some(2));
+        assert_eq!(
+            option.update_interval_minutes, 60,
+            "scheduled refresh must ignore later server suggestions"
+        );
+    }
+
+    #[tokio::test]
     async fn refresh_failure_settles_reply_with_error() {
         let mut fetcher = MockSubscriptionFetcher::new();
         fetcher
@@ -595,6 +729,45 @@ mod tests {
             .source()
             .unwrap();
         assert!(source.materialized().updated_at.is_none());
+        let ProfileSource::Remote { option, .. } = source else {
+            unreachable!()
+        };
+        assert_eq!(option.update_interval_minutes, 120);
+    }
+
+    #[tokio::test]
+    async fn import_suggestion_is_not_committed_when_materialization_fails() {
+        let mut fs = MockProfileFsPort::new();
+        fs.expect_ensure_not_symlink().returning(|_| Ok(()));
+        fs.expect_write_atomic()
+            .returning(|_, _| Err(anyhow::anyhow!("disk full")));
+        let (client, _dir) = remote_seeded_client(
+            fs,
+            suggested_fetch("proxies: []\n", Some(360)),
+            MockRebuildNotifier::new(),
+        )
+        .await;
+
+        assert!(
+            client
+                .refresh_import(ProfileId("r1".into()), false)
+                .await
+                .is_err()
+        );
+        let snapshot = client.get().await.unwrap();
+        let ProfileSource::Remote {
+            materialized,
+            option,
+            ..
+        } = snapshot.items[&ProfileId("r1".into())]
+            .definition
+            .source()
+            .unwrap()
+        else {
+            unreachable!()
+        };
+        assert!(materialized.updated_at.is_none());
+        assert_eq!(option.update_interval_minutes, 120);
     }
 
     #[tokio::test]
@@ -672,6 +845,7 @@ mod tests {
                 url::Url::parse("https://example.com/sub").unwrap(),
                 crate::state::profiles::RefreshOutcome::Succeeded {
                     subscription: SubscriptionInfo::default(),
+                    suggested_update_interval_minutes: None,
                     content: "proxies: []\n".into(),
                 },
             )
@@ -711,6 +885,7 @@ mod tests {
                 url::Url::parse("https://old.example.com/replaced").unwrap(),
                 crate::state::profiles::RefreshOutcome::Succeeded {
                     subscription: SubscriptionInfo::default(),
+                    suggested_update_interval_minutes: None,
                     content: "proxies: []\n".into(),
                 },
             )
@@ -747,6 +922,7 @@ mod tests {
                 content: "proxies: []\n".into(),
                 filename: None,
                 subscription: SubscriptionInfo::default(),
+                suggested_update_interval_minutes: None,
             })
         });
         let dir = tempdir().unwrap();

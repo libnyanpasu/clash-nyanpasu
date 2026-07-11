@@ -78,19 +78,19 @@ stateDiagram-v2
 
 > ⚠️ **进度账本更正:** 本地 `.ccg` 任务状态(「migration V2 待推送 review-fix」)已过期——#4824 已 squash 合并进 main;本地 `refactor/migration-service-v2` 分支(3 个 pre-squash 提交)可以删除,该任务可关闭。
 
-> 🔨 **PR-3(profiles 域切换,T07–T11)状态:已实施(本地,未推送)**——分支 `refactor/pr3-profiles-domain-switch`@`20cfbf3c`:profiles `ProfilesActor` + facade + IPC BC(13→16 命令)+ 前端单值 `current` 适配 + legacy 清算(删 `config/profile/**`、`Config::profiles()`、`ProfilesJobGuard`、legacy enhance 管线 ~4300 行)。design §16 判据 1–8 取证见 `task.md` T11(活体启动半 + 前端全功能为用户手动清单)。**注:** 下方 §2.2/§2.4 的 tauri 侧细节(「仅 7 条命令迁移」「`Config::profiles()` 23/5」等)成文于 PR-3 之前,待后续统一刷新。
+> ✅ **PR-3(profiles 域切换,T07–T11)已合并**——#4889(`a655ebbdf`)完成 profiles `ProfilesActor` + facade + IPC BC + 前端单值 `current` 适配,#4890(`fb400591d`)完成 legacy 清算(删 `config/profile/**`、`Config::profiles()`、`ProfilesJobGuard`、legacy enhance 管线 ~4300 行)。design §16 判据 1–8 取证见 `task.md` T11(活体启动半 + 前端全功能为用户手动清单)。
 
 ### 2.2 新架构已落地面(tauri 侧)
 
 - **Actor ×2:** `StateActor`(拥有 `PersistentStateManager<IVerge>` + `VergeMirror`,消息 `GetVerge/PatchVerge/ReplaceVerge`,`state/verge.rs:34,73`);`ClashConnectionsActor`(WS 流,`core/clash/ws.rs:609`)。
 - **Facade:** `NyanpasuClient { ui: Arc<dyn UiEventSink>, state: StateClient, verge_update_lock }`(`client/mod.rs:19-30`),`client::setup()` 在 `setup.rs:13` app.manage。
-- **已迁移 IPC 面仅 7 条命令:** `get_verge_config`、`patch_verge_config`、`get_profiles`、`patch_profiles_config`(+`import/create_profile` 的激活分支)、`get_core_status`、`change_clash_core`、`save_window_size_state`——其中后 5 条 client 内部仍委托旧全局(ACL 模式)。其余 ~70 条命令直连全局。
+- **Profiles IPC 面已全部切换:** 当前 17 条 profile 命令均为薄 Tauri adapter,经 `NyanpasuClient`/typed `ProfilesClient` 进入 `ProfilesActor`;其余域的 legacy IPC 迁移按后续 PR 台账推进。
 - **读写超时未分离:** `STATE_RPC_TIMEOUT = 5s` 读写共用(`client/state.rs:16`),spec §7 要求「写无超时、读 5s」尚未实施。
-- **`bridge/` 与 `state/mirror.rs` 不存在**;`client/mod.rs` 尚 import `Config`/`CoreManager`(违反未来 Tauri-free 可抽取边界,预期中)。
+- **桥层已建立:** `bridge/` 与 `state/mirror.rs` 已存在;剩余 `Config`/`CoreManager` 使用隔离在已登记的 runtime/core bridge,并按 PR-4/PR-5 清偿。
 
 ### 2.3 nyanpasu-config / nyanpasu-core(域层)
 
-- **`nyanpasu-config` 处于「暗启动」状态:全仓库零消费者**——连 tauri 都未依赖它(`backend/tauri/Cargo.toml` 无此项)。纯类型 crate,无 ractor/tokio/文件 IO(仅端口探测与系统 locale 两处例外)。
+- **`nyanpasu-config` 已承载生产 profile/runtime 流量:** tauri 通过 `ProfilesActor` 持有 profile 域状态,并由 `RuntimeBuilder` 消费其快照生成运行配置。该 crate 继续保持域类型与纯服务边界,基础设施副作用由 tauri 侧 ports/adapters 注入。
 - 五个域模块齐备:`application`(`NyanpasuAppConfig` 实测 32 字段 + Patch;spec 记 38 已过时)、`clash`(`ClashConfig`/overrides/端口策略)、`profile`(clean 组合模型全套 + validate/sanitize/依赖索引/分层 patch)、`state`(`PersistentState{window_state}`)、`runtime`(见下)。
 - **runtime 模块 = 数据结构 + 失效计算,无执行器**:`ConfigSnapshotsBuilder` 自述为「pure recorder for the pipeline executor」(`runtime/snapshot.rs:354`);`BuiltinStepKind{GuardOverrides,WhitelistFieldFilter,Finalizing}` 仅是 tag(`:72`);**没有任何代码读 profile 文件、应用 Overlay、跑 JS/Lua、合并 proxies、过滤 whitelist**。失效机制 `invalidate_profile()`(`runtime/invalidation.rs:38`)已实现,重建策略锁定为整图全量重建 current(`SnapshotRebuild::FullCurrent`)。
 - **`nyanpasu-core` 已承载生产流量:** `PersistentStateManager<IVerge>` 是现 StateActor 的持久层(`client/state.rs:51`);manager 家族(Persistent/WeakPersistent/Simple/PersistentBuilt)+ `StateCoordinator` MVCC(prepare/commit/rollback、ack 订阅、`with_pending_state` 效果钩子、atomicwrites 原子落盘)完整,测试 ~92 项。
@@ -626,7 +626,7 @@ sequenceDiagram
 
 **规则:** 台账之外不得新增桥;每条桥的代码处必须有 `TODO(actor-migration)` + 删除条件注释。
 
-**2026-07-07 PR-3(profiles 域切换,T07–T11)收尾登记:** 已实施(本地 `refactor/pr3-profiles-domain-switch`@`20cfbf3c`,未推送)。**B8 输入装配面归零**——RuntimeBuilder 取数经 typed client/facade,无旧全局输入装配残留;B8 残余与上表一致 = `Config::runtime()` draft 写入(`client/mod.rs` regenerate,TODO 标记)+ `CoreManager::apply_config` 桥(`client/core_bridge.rs`,TODO 标记),随 PR-4/PR-5 清偿。当前 `TODO/FIXME(actor-migration)` 注释账本 **17 处**,全属 verge/clash/window/core/runtime 桥(PR-4/5/6 负责),**profiles 域桥已在 T07/T08/T10 清尽**。逐处枚举见 `docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md` T11 判据 7。
+**2026-07-11 PR-3(profiles 域切换,T07–T11)收尾登记:** #4889(`a655ebbdf`)/#4890(`fb400591d`)已合并。**B8 输入装配面归零**——RuntimeBuilder 取数经 typed client/facade,无旧全局输入装配残留;B8 残余与上表一致 = `Config::runtime()` draft 写入(`client/mod.rs` regenerate,TODO 标记)+ `CoreManager::apply_config` 桥(`client/core_bridge.rs`,TODO 标记),随 PR-4/PR-5 清偿。当前 `TODO/FIXME(actor-migration)` 注释账本 **17 处**,全属 verge/clash/window/core/runtime 桥(PR-4/5/6 负责),**profiles 域桥已在 T07/T08/T10 清尽**。逐处枚举见 `docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md` T11 判据 7。
 
 ### 5.1 桥接双向数据流(图示)
 

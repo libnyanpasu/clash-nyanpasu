@@ -33,6 +33,8 @@ pub struct FetchedSubscription {
     /// Server-provided display name (`profile-title` / `Content-Disposition`).
     pub filename: Option<String>,
     pub subscription: SubscriptionInfo,
+    /// Server-advertised `profile-update-interval`, normalized from hours to minutes.
+    pub suggested_update_interval_minutes: Option<u64>,
 }
 
 /// Subscription download. Network timeouts are managed inside the

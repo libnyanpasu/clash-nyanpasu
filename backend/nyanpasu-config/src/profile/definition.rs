@@ -12,7 +12,7 @@ pub enum ProfileDefinition {
 }
 
 /// A profile that can produce a complete config and can be selected by current.
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ConfigDefinition {
     /// A config parsed from a locally materialized file.
@@ -51,7 +51,7 @@ pub struct CompositionConfig {
 }
 
 /// A named config transformer. Transform profiles are reusable but not activatable.
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TransformDefinition {
     /// Declarative YAML overlay/patch. This is the new name for legacy Merge.
@@ -190,5 +190,50 @@ impl TransformDefinition {
             Self::Overlay(overlay) => &mut overlay.source,
             Self::Script(script) => &mut script.source,
         }
+    }
+}
+
+mod specta_wire {
+    use serde::{Deserialize, Serialize};
+    use specta::Type;
+
+    /// A profile that can produce a complete config and can be selected by current.
+    #[allow(dead_code)]
+    #[derive(Serialize, Deserialize, Type)]
+    #[specta(remote = super::ConfigDefinition)]
+    #[serde(tag = "type", rename_all = "snake_case")]
+    enum ConfigDefinition {
+        /// A config parsed from a locally materialized file.
+        File {
+            source: crate::profile::ProfileSource,
+            #[serde(default, skip_serializing_if = "Vec::is_empty")]
+            transforms: Vec<crate::profile::ProfileId>,
+        },
+        /// A config composed from an optional full base and proxy contributors.
+        Composition {
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            base: Option<crate::profile::ProfileId>,
+            #[serde(default, skip_serializing_if = "Vec::is_empty")]
+            extend_proxies_from: Vec<crate::profile::ProfileId>,
+            #[serde(default, skip_serializing_if = "Vec::is_empty")]
+            transforms: Vec<crate::profile::ProfileId>,
+        },
+    }
+
+    /// A named config transformer. Transform profiles are reusable but not activatable.
+    #[allow(dead_code)]
+    #[derive(Serialize, Deserialize, Type)]
+    #[specta(remote = super::TransformDefinition)]
+    #[serde(tag = "type", rename_all = "snake_case")]
+    enum TransformDefinition {
+        /// Declarative YAML overlay/patch. This is the new name for legacy Merge.
+        Overlay {
+            source: crate::profile::ProfileSource,
+        },
+        /// Imperative JS/Lua transform.
+        Script {
+            source: crate::profile::ProfileSource,
+            runtime: crate::profile::ScriptRuntime,
+        },
     }
 }

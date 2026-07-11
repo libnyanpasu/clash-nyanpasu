@@ -29,10 +29,11 @@ const formSchema = z.object({
 })
 
 const remoteFileOf = (profile: ProfileItem_Serialize) => {
-  if (profile.type !== 'config') return undefined
-  const file = profile.config.file
-  if (!file || file.source.type !== 'remote') return undefined
-  return { file, source: file.source }
+  if (profile.type !== 'config' || profile.config.type !== 'file') {
+    return undefined
+  }
+  if (profile.config.source.type !== 'remote') return undefined
+  return { config: profile.config, source: profile.config.source }
 }
 
 export default function SubscriptionUrlEditor({
@@ -72,7 +73,8 @@ export default function SubscriptionUrlEditor({
             const definition: ProfileDefinition_Deserialize = {
               type: 'config',
               config: {
-                file: { ...remote.file, source: { ...remote.source, url } },
+                ...remote.config,
+                source: { ...remote.source, url },
               },
             }
             await replaceDefinition.mutateAsync({

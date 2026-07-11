@@ -248,6 +248,8 @@
   "profile_form_option_with_proxy_label": "使用系統代理",
   "profile_form_option_self_proxy_label": "使用 Clash 代理",
   "profile_form_option_update_interval_label": "自動更新間隔 (分鐘)",
+  "profile_form_option_update_interval_placeholder": "自動（伺服器建議或預設 120 分鐘）",
+  "profile_form_option_update_interval_min_error": "自動更新間隔必須大於或等於 1 分鐘",
   "profile_import_local_file_placeholder": "點擊或拖曳檔案至此處匯入",
   "profile_import_local_file_type_label": "支持 {types} 文件",
   "profile_import_local_file_size_label": "文件大小: {size}",

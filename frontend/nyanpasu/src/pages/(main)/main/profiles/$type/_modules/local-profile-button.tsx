@@ -100,17 +100,15 @@ export default function LocalProfileButton({ children }: PropsWithChildren) {
           definition: {
             type: 'config',
             config: {
-              file: {
-                type: 'file',
-                source: {
-                  type: 'local',
-                  binding: {
-                    type: 'managed',
-                    materialized: { file: 'pending.yaml' },
-                  },
+              type: 'file',
+              source: {
+                type: 'local',
+                binding: {
+                  type: 'managed',
+                  file: 'pending.yaml',
                 },
-                transforms: [],
               },
+              transforms: [],
             },
           },
         }
@@ -145,9 +143,8 @@ export default function LocalProfileButton({ children }: PropsWithChildren) {
       },
     })
 
-    if (value) {
-      form.reset(getDefaultValues())
-    }
+    form.reset(getDefaultValues())
+    setProfileContent(null)
   }
 
   const handleSubmit = useLockFn(blockTask.execute)
@@ -219,7 +216,7 @@ export default function LocalProfileButton({ children }: PropsWithChildren) {
                       accept={acceptFiles}
                       value={field.value}
                       onChange={(name) => {
-                        form.setValue('desc', name)
+                        form.setValue('file', name)
                       }}
                       onFileRead={(value) => {
                         setProfileContent(value)

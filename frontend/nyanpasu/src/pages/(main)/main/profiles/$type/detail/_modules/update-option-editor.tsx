@@ -18,20 +18,28 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useProfile, type ProfileItem_Serialize } from '@nyanpasu/interface'
+import {
+  getRemoteSource,
+  useProfile,
+  type ProfileItem_Serialize,
+} from '@nyanpasu/interface'
 import AnimatedErrorItem from '../../../_modules/error-item'
 
 const formSchema = z.object({
   user_agent: z.string().optional(),
   with_proxy: z.boolean().optional(),
   self_proxy: z.boolean().optional(),
-  update_interval: z.number().optional(),
+  update_interval: z
+    .number()
+    .min(1, {
+      message: m.profile_form_option_update_interval_min_error(),
+    })
+    .nullable()
+    .optional(),
 })
 
 const remoteOptionOf = (profile: ProfileItem_Serialize) =>
-  profile.type === 'config' && profile.config.file?.source.type === 'remote'
-    ? profile.config.file.source.option
-    : undefined
+  getRemoteSource(profile)?.option
 
 export default function UpdateOptionEditor({
   profile,
@@ -49,7 +57,7 @@ export default function UpdateOptionEditor({
       user_agent: option?.user_agent ?? '',
       with_proxy: option?.with_proxy ?? false,
       self_proxy: option?.self_proxy ?? false,
-      update_interval: option?.update_interval_minutes ?? 0,
+      update_interval: option?.update_interval_minutes ?? null,
     }
   }, [profile])
 
@@ -143,8 +151,9 @@ export default function UpdateOptionEditor({
                   <NumericInput
                     label={m.profile_update_interval_label()}
                     variant="outlined"
-                    min={0}
+                    min={1}
                     step={1}
+                    placeholder={m.profile_form_option_update_interval_placeholder()}
                     {...field}
                   />
 

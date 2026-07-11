@@ -749,11 +749,14 @@ design §16 判据 1–8 逐条取证(全部在 tip `20cfbf3c`,当前 env 规则
 
 - **A-Critical 拖拽重排「状态竞态致列表损坏」**:REFUTED——`onDragEnd` 闭包内 `filteredProfiles` 与 `profiles?.items` 派生自同一渲染快照(评审误认后者为「最新查询数据」),两者自洽;且 actor `ByList` 校验长度+去重+全量排列,陈旧列表被 `InvalidReorderList` 拒绝。最坏情形 = 陈旧请求报错,不存在「复活已删项/静默丢项」的数据损坏。
 
-**待用户决策(3 项)**:
+**待用户决策(1 项)**:
 
-- **C-M2(后半)提交后 rebuild 失败仍以 Err 返回 IPC**:状态已持久化但命令报失败(前端靠 mutation 事件仍会刷新,但错误信息误导;import 场景重试会重复)。改「committed/degraded」结果模型属 IPC 语义变更,建议 PR-4 议。
 - **C-M5 `run_core_inner` 仍 `Config::clash().reload()` 但重启不再 regenerate**:「重启=应用当前 draft」为 2026-07-07 明确决策,reload 现为半死代码(只影响后续 regen 输入,且可能吞未提交 draft)。选项:pr3f 删 reload / restart 路径走 regen 桥。
-- **C-Min2 `profile-update-interval` 响应头不再解析**:legacy 在用户未设 interval 时采纳服务端建议(hour→min);新 fetcher 丢弃,导入后永用默认/用户值。恢复需 `FetchedSubscription` 增字段 + actor 提交处应用,属行为增补。
+
+**2026-07-11 用户决策与处置:**
+
+- **C-M2(后半):** 本次维持现状;「committed/degraded」IPC 结果模型延至 PR-4 讨论。
+- **C-Min2:** 已处置——恢复 `profile-update-interval` 小时→分钟解析,仅首次导入且用户未显式设置 interval 时由 actor 在成功提交事务内采纳;manual/scheduled refresh 忽略建议。
 
 **知悉不修(本 PR)**:C-M4 后半(端口生命周期编排 stop→resolve→mirror→start 与 legacy sysproxy/API 镜像回写时机,PR-4);A-Minor 空列表早退、chain 编辑器后台刷新重置本地顺序、query cache 存闭包(均 pre-existing 模式);C-Suggestion 并发 rebuild/HoldingFetcher+Replace/降级可观察三测试与 URL 协议白名单(挂账)。
 

@@ -16,15 +16,14 @@ import { useLockFn } from '@/hooks/use-lock-fn'
 import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
-import { useProfile, type ProfileItem_Serialize } from '@nyanpasu/interface'
+import {
+  getRemoteSource,
+  useProfile,
+  type ProfileItem_Serialize,
+} from '@nyanpasu/interface'
 import UpdateOptionEditor from './update-option-editor'
 
 const clampPercentage = (value: number) => Math.min(100, Math.max(0, value))
-
-const remoteSourceOf = (profile: ProfileItem_Serialize) =>
-  profile.type === 'config' && profile.config.file?.source.type === 'remote'
-    ? profile.config.file.source
-    : undefined
 
 export const SubscriptionCard = ({
   profile,
@@ -33,8 +32,8 @@ export const SubscriptionCard = ({
 }) => {
   const { update } = useProfile()
 
-  const remote = remoteSourceOf(profile)
-  const updatedAt = remote?.materialized.updated_at ?? null
+  const remote = getRemoteSource(profile)
+  const updatedAt = remote?.updated_at ?? null
   const updateIntervalMinutes = remote?.option.update_interval_minutes
   const expire = remote?.subscription?.expire
 
@@ -43,7 +42,7 @@ export const SubscriptionCard = ({
     let total = 0
     let used = 0
 
-    const sub = remoteSourceOf(profile)?.subscription
+    const sub = getRemoteSource(profile)?.subscription
     if (sub) {
       total = sub.total ?? 0
 

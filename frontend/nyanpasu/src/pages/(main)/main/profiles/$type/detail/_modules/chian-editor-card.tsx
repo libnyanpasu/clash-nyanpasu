@@ -211,22 +211,10 @@ export default function ChianEditorCard({
       const nextTransforms = chainsUids[ColumnType.Active]
       // Rebuild the config definition with the reordered scoped transforms,
       // preserving every other field, and replace it atomically.
-      const definition: ProfileDefinition_Deserialize = profile.config.file
-        ? {
-            type: 'config',
-            config: {
-              file: { ...profile.config.file, transforms: nextTransforms },
-            },
-          }
-        : {
-            type: 'config',
-            config: {
-              composition: {
-                ...profile.config.composition!,
-                transforms: nextTransforms,
-              },
-            },
-          }
+      const definition: ProfileDefinition_Deserialize = {
+        type: 'config',
+        config: { ...profile.config, transforms: nextTransforms },
+      }
 
       await replaceDefinition.mutateAsync({ uid: profile.uid, definition })
     } catch (error) {

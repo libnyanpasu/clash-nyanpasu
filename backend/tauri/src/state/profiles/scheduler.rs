@@ -188,6 +188,7 @@ impl RemoteUpdateScheduler {
                     let _ = actor.cast(ProfilesActorMessage::RefreshRemote {
                         uid: tick_uid.clone(),
                         patch: None,
+                        origin: super::actor::RefreshOrigin::Scheduled,
                         reply: None,
                     });
                 }
@@ -197,6 +198,7 @@ impl RemoteUpdateScheduler {
                     let _ = actor.cast(ProfilesActorMessage::RefreshRemote {
                         uid: tick_uid.clone(),
                         patch: None,
+                        origin: super::actor::RefreshOrigin::Scheduled,
                         reply: None,
                     });
                 }

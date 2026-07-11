@@ -88,15 +88,39 @@ pub struct ProfilesActorState {
     fs: Arc<dyn ProfileFsPort>,
     fetcher: Arc<dyn SubscriptionFetcher>,
     notifier: Arc<dyn RebuildNotifier>,
-    pending_refresh: HashMap<ProfileId, Option<RpcReplyPort<Result<CommitReport, ProfilesError>>>>,
+    pending_refresh: HashMap<ProfileId, PendingRefresh>,
     scheduler: RemoteUpdateScheduler,
     external_watchers: ExternalWatchers,
+}
+
+struct PendingRefresh {
+    reply: Option<RpcReplyPort<Result<CommitReport, ProfilesError>>>,
+    apply_suggested_interval: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum RefreshOrigin {
+    Import { update_interval_explicit: bool },
+    Manual,
+    Scheduled,
+}
+
+impl RefreshOrigin {
+    fn apply_suggested_interval(self) -> bool {
+        matches!(
+            self,
+            Self::Import {
+                update_interval_explicit: false
+            }
+        )
+    }
 }
 
 #[derive(Debug)]
 pub enum RefreshOutcome {
     Succeeded {
         subscription: nyanpasu_config::profile::SubscriptionInfo,
+        suggested_update_interval_minutes: Option<u64>,
         /// Validated payload; written to the materialized file inside the
         /// commit handler so a stale download can be fenced before any write.
         content: String,
@@ -157,6 +181,7 @@ pub enum ProfilesActorMessage {
     RefreshRemote {
         uid: ProfileId,
         patch: Option<RemoteProfileOptionsPatch>,
+        origin: RefreshOrigin,
         reply: Option<RpcReplyPort<Result<CommitReport, ProfilesError>>>,
     },
     CommitRefreshed {
@@ -720,7 +745,12 @@ impl Actor for ProfilesActor {
                 .await;
                 let _ = reply.send(result);
             }
-            ProfilesActorMessage::RefreshRemote { uid, patch, reply } => {
+            ProfilesActorMessage::RefreshRemote {
+                uid,
+                patch,
+                origin,
+                reply,
+            } => {
                 if state.pending_refresh.contains_key(&uid) {
                     if let Some(reply) = reply {
                         let _ = reply.send(Err(ProfilesError::RefreshFailed {
@@ -782,7 +812,13 @@ impl Actor for ProfilesActor {
                 let definition = item.definition.clone();
                 let url = url.clone();
                 let option = option.clone();
-                state.pending_refresh.insert(uid.clone(), reply);
+                state.pending_refresh.insert(
+                    uid.clone(),
+                    PendingRefresh {
+                        reply,
+                        apply_suggested_interval: origin.apply_suggested_interval(),
+                    },
+                );
                 let fetcher = Arc::clone(&state.fetcher);
                 let actor = myself.clone();
                 tokio::spawn(async move {
@@ -796,21 +832,35 @@ impl Actor for ProfilesActor {
                             .await
                             .map_err(|e| format!("download failed: {e}"))?;
                         Self::validate_fetched_content(&definition, &fetched.content)?;
-                        Ok::<_, String>((fetched.subscription, fetched.content))
+                        Ok::<_, String>((
+                            fetched.subscription,
+                            fetched.suggested_update_interval_minutes,
+                            fetched.content,
+                        ))
                     }
                     .await;
                     let outcome = match outcome {
-                        Ok((subscription, content)) => RefreshOutcome::Succeeded {
-                            subscription,
-                            content,
-                        },
+                        Ok((subscription, suggested_update_interval_minutes, content)) => {
+                            RefreshOutcome::Succeeded {
+                                subscription,
+                                suggested_update_interval_minutes,
+                                content,
+                            }
+                        }
                         Err(message) => RefreshOutcome::Failed { message },
                     };
                     let _ = actor.cast(ProfilesActorMessage::CommitRefreshed { uid, url, outcome });
                 });
             }
             ProfilesActorMessage::CommitRefreshed { uid, url, outcome } => {
-                let reply = state.pending_refresh.remove(&uid).flatten();
+                let pending = state
+                    .pending_refresh
+                    .remove(&uid)
+                    .unwrap_or(PendingRefresh {
+                        reply: None,
+                        apply_suggested_interval: false,
+                    });
+                let reply = pending.reply;
                 let snapshot = Self::current_state(state);
                 // Nothing was written during the download phase, so a profile
                 // deleted mid-download needs no file cleanup — just settle the
@@ -850,6 +900,7 @@ impl Actor for ProfilesActor {
                     }
                     RefreshOutcome::Succeeded {
                         subscription,
+                        suggested_update_interval_minutes,
                         content,
                     } => {
                         // Re-validate against the CURRENT definition: the URL
@@ -895,12 +946,20 @@ impl Actor for ProfilesActor {
                                         match item.definition.source_mut() {
                                             Some(ProfileSource::Remote {
                                                 materialized,
+                                                option,
                                                 subscription: slot,
                                                 ..
                                             }) => {
                                                 materialized.updated_at =
                                                     Some(time::OffsetDateTime::now_utc());
                                                 *slot = subscription;
+                                                if pending.apply_suggested_interval {
+                                                    if let Some(minutes) =
+                                                        suggested_update_interval_minutes
+                                                    {
+                                                        option.update_interval_minutes = minutes;
+                                                    }
+                                                }
                                                 Ok(WriteOutcome {
                                                     affects: AffectsRule::Touched(uid.clone()),
                                                     post_ops: vec![],
@@ -1148,7 +1207,13 @@ impl Actor for ProfilesActor {
                 reply,
                 inserted,
             } => {
-                state.pending_refresh.insert(uid, Some(reply));
+                state.pending_refresh.insert(
+                    uid,
+                    PendingRefresh {
+                        reply: Some(reply),
+                        apply_suggested_interval: false,
+                    },
+                );
                 let _ = inserted.send(());
             }
         }

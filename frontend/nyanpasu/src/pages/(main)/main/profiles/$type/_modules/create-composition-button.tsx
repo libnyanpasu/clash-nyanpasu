@@ -39,7 +39,7 @@ export default function CreateCompositionButton({
 
   // Composition members must be direct File configs (not Composition/Transform).
   const candidates = (query.data?.items ?? []).filter(
-    (item) => isConfigItem(item) && Boolean(item.config.file),
+    (item) => isConfigItem(item) && item.config.type === 'file',
   )
 
   const reset = () => {
@@ -69,12 +69,10 @@ export default function CreateCompositionButton({
       definition: {
         type: 'config',
         config: {
-          composition: {
-            type: 'composition',
-            base: null,
-            extend_proxies_from: members,
-            transforms: [],
-          },
+          type: 'composition',
+          base: null,
+          extend_proxies_from: members,
+          transforms: [],
         },
       },
     }

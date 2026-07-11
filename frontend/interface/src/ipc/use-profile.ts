@@ -7,6 +7,7 @@ import {
   type ProfileId,
   type ProfileItem_Serialize,
   type ProfileMetadataPatch_Deserialize,
+  type ProfileSource_Serialize,
   type RemoteProfileOptionsPatch_Deserialize,
 } from './bindings'
 import { RROFILES_QUERY_KEY } from './consts'
@@ -24,17 +25,24 @@ export const isTransformItem = (
   item.type === 'transform'
 
 /** Remote = a File config whose source is a remote subscription. */
+export const getRemoteSource = (
+  item: ProfileItem_Serialize,
+): Extract<ProfileSource_Serialize, { type: 'remote' }> | undefined =>
+  isConfigItem(item) &&
+  item.config.type === 'file' &&
+  item.config.source.type === 'remote'
+    ? item.config.source
+    : undefined
+
 export const isRemoteItem = (item: ProfileItem_Serialize): boolean =>
-  isConfigItem(item) && item.config.file?.source.type === 'remote'
+  getRemoteSource(item) !== undefined
 
 /** Scoped transforms of the current config item (File or Composition). */
 export const scopedTransformsOf = (
   item: ProfileItem_Serialize,
 ): ProfileId[] => {
   if (!isConfigItem(item)) return []
-  return (
-    item.config.file?.transforms ?? item.config.composition?.transforms ?? []
-  )
+  return item.config.transforms ?? []
 }
 
 export interface ProfileHelperFn {

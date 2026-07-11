@@ -434,15 +434,18 @@ pub async fn patch_verge_config(legacy: State<'_, LegacyVergeBridge>, payload: I
 #[tauri::command]
 #[specta::specta]
 pub async fn change_clash_core(
+    client: State<'_, NyanpasuClient>,
     legacy: State<'_, LegacyVergeBridge>,
     clash_core: Option<nyanpasu::ClashCore>,
 ) -> Result {
-    // `change_core` writes `Config::verge().clash_core` directly; reseed typed actors so a
-    // later pure patch does not persist stale typed state and revert the core change.
+    let clash_core =
+        clash_core.ok_or_else(|| IpcError::Custom("clash core is null".to_string()))?;
+    // reseed wrapper 语义不变:核心切换动了 legacy verge,须回灌 typed actors。
+    let client = client.inner().clone();
     legacy
-        .run_legacy_verge_mutation(
-            || async move { CoreManager::global().change_core(clash_core).await },
-        )
+        .run_legacy_verge_mutation(move || async move {
+            client.change_core(clash_core).await.map_err(Into::into)
+        })
         .await?;
     Ok(())
 }

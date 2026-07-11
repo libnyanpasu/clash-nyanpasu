@@ -34,7 +34,6 @@ use std::{
     time::Duration,
 };
 use tokio::time::sleep;
-use tracing_attributes::instrument;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type)]
 #[serde(rename_all = "snake_case")]
@@ -456,10 +455,6 @@ impl CoreManager {
             }
         }
 
-        // Reload clash config from file to get latest user preferences (e.g., mode)
-        Config::clash().reload();
-        log::debug!(target: "app", "reloaded clash config from file");
-
         // T07 review fix: port ownership moved to SessionPortResolver (resolved at
         // startup, written back by resolve_setup). Re-picking external-controller
         // here (legacy prepare_external_controller_port) could select a NEW port on
@@ -539,66 +534,17 @@ impl CoreManager {
         Ok(())
     }
 
-    /// 切换核心
-    #[instrument(skip(self))]
-    pub async fn change_core(&self, clash_core: Option<ClashCore>) -> Result<()> {
-        let clash_core = clash_core.ok_or(anyhow::anyhow!("clash core is null"))?;
-
-        log::debug!(target: "app", "change core to `{clash_core}`");
-
-        let _guard = self.run_lock.lock().await;
-
-        Config::verge().draft().clash_core = Some(clash_core);
-
-        // 更新配置
-        if let Err(err) = crate::client::rebuild::regenerate().await {
-            Config::verge().discard();
-            return Err(err);
-        }
-
-        let product =
-            camino::Utf8PathBuf::from_path_buf(crate::client::runtime::runtime_config_path()?)
-                .map_err(|_| anyhow::anyhow!("failed to convert config path to utf8 path"))?;
-        let draft_core = Config::verge().latest().clash_core.unwrap_or_default();
-        if let Err(err) = self.check_config(&product, draft_core).await {
-            Config::verge().discard();
-            Config::runtime().discard();
-            return Err(err);
-        }
-
-        // 清掉旧日志
-        Logger::global().clear_log();
-
-        match self.run_core_inner().await {
-            Ok(_) => {
-                tracing::info!("change core success");
-                Config::verge().apply();
-                Config::runtime().apply();
-                log_err!(Config::verge().latest().save_file());
-                Ok(())
-            }
-            Err(err) => {
-                tracing::error!("failed to change core: {err:?}");
-                Config::verge().discard();
-                Config::runtime().discard();
-                self.run_core_inner().await?;
-                Err(err)
-            }
-        }
-    }
-
     /// 更新proxies那些
     /// 如果涉及端口和外部控制则需要重启
     pub async fn update_config(&self) -> Result<()> {
         log::debug!(target: "app", "try to update clash config");
-        // 更新配置
         // FIXME(actor-migration): legacy regenerate path. Sole remaining caller
         // chain: feat::patch_verge (TUN/service toggles) -> update_core_config
         // -> update_config. New code must use
-        // NyanpasuClient::rebuild_running_config(). Remove when PR-4/5 migrate
+        // NyanpasuClient::rebuild_running_config(). Remove when PR-5 migrates
         // the verge feature flows onto injected clients.
-        crate::client::rebuild::regenerate().await?;
-        self.apply_config().await
+        // P0-2: regenerate+apply 在桥另一侧的单次 gate 持有内一体完成。
+        crate::client::rebuild::regenerate_and_apply().await
     }
 
     /// Push the promoted runtime product to the running core over the api.

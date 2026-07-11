@@ -244,13 +244,21 @@ impl NyanpasuClient {
         }
         {
             let bridge = client.clone();
-            rebuild::install_regen_bridge(move || {
+            rebuild::install_regen_bridge(move |kind| {
                 let client = bridge.clone();
                 async move {
-                    client
-                        .regenerate_runtime_for_legacy()
-                        .await
-                        .map_err(anyhow::Error::from)
+                    let result = match kind {
+                        rebuild::RegenKind::Regenerate => {
+                            client.regenerate_runtime_for_legacy().await
+                        }
+                        rebuild::RegenKind::RegenerateAndApply => {
+                            client.regenerate_and_apply_for_legacy().await
+                        }
+                        rebuild::RegenKind::RegenerateAndRestart => {
+                            client.regenerate_and_restart_for_legacy().await
+                        }
+                    };
+                    result.map_err(anyhow::Error::from)
                 }
             });
         }
@@ -918,7 +926,7 @@ mod tests {
         )
     }
 
-    fn test_profiles_client_args(
+    pub(crate) fn test_profiles_client_args(
         dir: &TempDir,
         core: Arc<dyn RunningCoreBridge>,
     ) -> ClientSetupArgs {

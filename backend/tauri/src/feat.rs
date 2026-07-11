@@ -325,8 +325,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
         if service_mode.is_some() && ipc_state.is_connected() {
             log::debug!(target: "app", "change service mode to {}", service_mode.unwrap());
 
-            crate::client::rebuild::regenerate().await?;
-            CoreManager::global().run_core().await?;
+            crate::client::rebuild::regenerate_and_restart().await?;
         }
 
         if tun_mode.is_some() {
@@ -349,8 +348,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
             let (state, _, _) = CoreManager::global().status().await;
             if flag || matches!(state.as_ref(), CoreState::Stopped(_)) {
                 log::debug!(target: "app", "core is stopped, restart core");
-                crate::client::rebuild::regenerate().await?;
-                CoreManager::global().run_core().await?;
+                crate::client::rebuild::regenerate_and_restart().await?;
             } else {
                 log::debug!(target: "app", "update core config");
                 #[cfg(target_os = "macos")]

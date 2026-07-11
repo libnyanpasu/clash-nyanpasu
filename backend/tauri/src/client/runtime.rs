@@ -12,9 +12,10 @@ use crate::{enhance::PostProcessingOutput, utils::dirs};
 pub const RUNTIME_CONFIG_DIR: &str = "runtime";
 pub const RUNTIME_CONFIG: &str = "clash-config.yaml";
 
-/// Read model of the current runtime derivation (former `IRuntime`, minus the
-/// draft machinery). Derived once per rebuild while the profiles snapshot is
-/// in hand; the four runtime read commands serve straight from this.
+/// Read model of the current runtime derivation (replaces the old
+/// draft-based config type, minus the draft machinery). Derived once per
+/// rebuild while the profiles snapshot is in hand; the four runtime read
+/// commands serve straight from this.
 ///
 /// Semantics (spec §5.1, r2): the latest TARGET config that passed the core
 /// binary's check and was promoted to the product. It does NOT promise the
@@ -59,7 +60,7 @@ pub(crate) fn compensation_for(patch: &Mapping, prev: Option<&Mapping>) -> Optio
 }
 
 /// The promoted (checked) product consumed by core start/hot-reload. Same
-/// location the legacy `Config::runtime_config_path()` used.
+/// location the old (now-deleted) runtime config path helper used.
 pub fn runtime_config_path() -> anyhow::Result<PathBuf> {
     Ok(dirs::app_config_dir()?
         .join(RUNTIME_CONFIG_DIR)

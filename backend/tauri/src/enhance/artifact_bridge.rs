@@ -1,5 +1,5 @@
-//! Pure mapping from the executor's RuntimeArtifact to the legacy IRuntime
-//! triple (design §8; executor spec §9.3 endorses applied_fields ↔ exists_keys).
+//! Pure mapping from the executor's RuntimeArtifact to the RuntimeState read
+//! model (design §8; executor spec §9.3 endorses applied_fields ↔ exists_keys).
 //! Postprocessing layout mirrors legacy PostProcessingOutput: scoped logs keyed
 //! by (host profile, transform uid), global/builtin logs keyed by uid/name.
 
@@ -14,10 +14,7 @@ use nyanpasu_config::{
 };
 use serde_yaml::Mapping;
 
-use crate::{
-    config::IRuntime,
-    enhance::{Logs, PostProcessingOutput, builtin_transforms_for},
-};
+use crate::enhance::{Logs, PostProcessingOutput, builtin_transforms_for};
 
 fn span(level: StepLogLevel) -> crate::enhance::utils::LogSpan {
     use crate::enhance::utils::LogSpan;
@@ -117,23 +114,6 @@ pub fn runtime_state_from_artifact(
         config,
         exists_keys,
         postprocessing_output: map_postprocessing(&artifact.step_logs, profiles, &builtin_names),
-    })
-}
-
-// FIXME(actor-migration): thin legacy shell over runtime_state_from_artifact.
-// New code must use runtime_state_from_artifact. Removed by PR-4 Task 7 with
-// IRuntime itself.
-pub fn runtime_from_artifact(
-    artifact: &RuntimeArtifact,
-    profiles: &Profiles,
-    core: ClashCore,
-    builtin_enabled: bool,
-) -> anyhow::Result<IRuntime> {
-    let state = runtime_state_from_artifact(artifact, profiles, core, builtin_enabled)?;
-    Ok(IRuntime {
-        config: Some(state.config),
-        exists_keys: state.exists_keys,
-        postprocessing_output: state.postprocessing_output,
     })
 }
 

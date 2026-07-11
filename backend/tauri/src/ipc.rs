@@ -11,6 +11,7 @@ use anyhow::Context;
 use chrono::Local;
 use log::debug;
 use nyanpasu_ipc::api::status::CoreState;
+use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
     collections::{HashMap, VecDeque},
@@ -387,6 +388,19 @@ pub async fn get_ipsb_asn() -> Result<specta_typescript::Any<serde_json::Value>>
     let value = crate::utils::net::get_ipsb_asn().await?;
     let wrapped: specta_typescript::Any<serde_json::Value> = serde_json::from_value(value)?;
     Ok(wrapped)
+}
+
+#[derive(Default, Debug, Clone, Deserialize, Serialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub struct PatchRuntimeConfig {
+    #[serde(default, rename = "allow-lan", skip_serializing_if = "Option::is_none")]
+    pub allow_lan: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ipv6: Option<bool>,
+    #[serde(default, rename = "log-level", skip_serializing_if = "Option::is_none")]
+    pub log_level: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
 }
 
 /// patch clash runtime config

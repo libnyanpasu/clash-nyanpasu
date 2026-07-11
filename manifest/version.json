@@ -2,10 +2,10 @@
   "manifest_version": 1,
   "latest": {
     "mihomo": "v1.19.28",
-    "mihomo_alpha": "alpha-975389a",
+    "mihomo_alpha": "alpha-75eeba4",
     "clash_rs": "v0.10.7",
     "clash_premium": "2023-09-05-gdcc8d87",
-    "clash_rs_alpha": "0.10.7-alpha+sha.7c4b9df"
+    "clash_rs_alpha": "0.10.7-alpha+sha.85fc166"
   },
   "arch_template": {
     "mihomo": {
@@ -49,5 +49,5 @@
       "darwin-x64": "clash-rs-x86_64-apple-darwin"
     }
   },
-  "updated_at": "2026-07-10T22:34:32.184Z"
+  "updated_at": "2026-07-11T22:30:14.372Z"
 }

@@ -4,6 +4,7 @@
 
 use std::path::PathBuf;
 
+use nyanpasu_core::state::{SimpleStateManager, SimpleStateManagerSetup};
 use serde_yaml::Mapping;
 
 use crate::{enhance::PostProcessingOutput, utils::dirs};
@@ -24,6 +25,24 @@ pub struct RuntimeState {
     pub config: Mapping,
     pub exists_keys: Vec<String>,
     pub postprocessing_output: PostProcessingOutput,
+}
+
+/// Facade-held runtime store. The RwLock is a narrowly scoped implementation
+/// detail (CLAUDE.md §8 exception): `upsert` needs `&mut`, writers are already
+/// serialized by the facade `rebuild_gate`, readers take `snapshot()`.
+/// SimpleStateManager (not a bare RwLock<Option<..>>) is deliberate: its
+/// StateCoordinator ack subscribers are the landing point for the
+/// TODO(post-PR-7) ack-driven rollback direction (spec D2).
+pub type RuntimeStateStore = tokio::sync::RwLock<SimpleStateManager<Option<RuntimeState>>>;
+
+pub async fn new_runtime_state_store() -> anyhow::Result<RuntimeStateStore> {
+    let manager = SimpleStateManagerSetup::builder()
+        .initial_state(None)
+        .assemble()
+        .initialize()
+        .await
+        .map_err(|_| anyhow::anyhow!("failed to initialize runtime state store"))?;
+    Ok(tokio::sync::RwLock::new(manager))
 }
 
 /// The promoted (checked) product consumed by core start/hot-reload. Same

@@ -16,7 +16,7 @@ use self::{
 use crate::{
     enhance::{
         EnhanceScriptRunner, FsProfileContentSource, RuntimeBuildInput, RuntimeBuilder,
-        runtime_from_artifact,
+        runtime_state_from_artifact,
     },
     service::profile_file::{ProfileFileService, SelfProxyPortSource},
     state::{
@@ -159,6 +159,8 @@ struct NyanpasuClientInner {
     /// a slow rebuild started for an older commit can finish after a newer
     /// one and overwrite the runtime with a stale snapshot.
     rebuild_gate: tokio::sync::Mutex<()>,
+    /// PR-4: derived runtime read model (see client/runtime.rs docs).
+    runtime: runtime::RuntimeStateStore,
 }
 
 impl NyanpasuClient {
@@ -171,41 +173,51 @@ impl NyanpasuClient {
         } = args;
         let profiles_dir = paths.app_profiles_dir();
         let profiles_path = utf8_path(paths.profiles_path())?;
-        let (application, session_state, clash_config, profiles, ports, fs, rebuild_rx) =
-            tauri::async_runtime::block_on(async move {
-                let (application, session_state, clash_config) =
-                    new_typed_config_clients(paths.clone(), bridges).await?;
+        let (
+            application,
+            session_state,
+            clash_config,
+            profiles,
+            runtime_store,
+            ports,
+            fs,
+            rebuild_rx,
+        ) = tauri::async_runtime::block_on(async move {
+            let (application, session_state, clash_config) =
+                new_typed_config_clients(paths.clone(), bridges).await?;
 
-                // Eager session port resolution: the core is not running yet,
-                // so probing strategies is race-free (design §19.2 caller duty).
-                let ports = Arc::new(SessionPortResolver::default());
-                let clash_snapshot = clash_config.get().await?.state;
-                ports
-                    .resolve(&clash_snapshot)
-                    .context("failed to resolve session ports")?;
+            // Eager session port resolution: the core is not running yet,
+            // so probing strategies is race-free (design §19.2 caller duty).
+            let ports = Arc::new(SessionPortResolver::default());
+            let clash_snapshot = clash_config.get().await?.state;
+            ports
+                .resolve(&clash_snapshot)
+                .context("failed to resolve session ports")?;
 
-                let file_service = Arc::new(ProfileFileService::new(
-                    paths,
-                    ports.clone() as Arc<dyn SelfProxyPortSource>,
-                ));
-                let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-                let profiles = profiles::ProfilesClient::new(
-                    profiles_path,
-                    file_service.clone() as Arc<dyn ProfileFsPort>,
-                    file_service.clone() as Arc<dyn SubscriptionFetcher>,
-                    Arc::new(rebuild::ChannelRebuildNotifier::new(tx)),
-                )
-                .await?;
-                anyhow::Ok((
-                    application,
-                    session_state,
-                    clash_config,
-                    profiles,
-                    ports,
-                    file_service as Arc<dyn ProfileFsPort>,
-                    rx,
-                ))
-            })?;
+            let file_service = Arc::new(ProfileFileService::new(
+                paths,
+                ports.clone() as Arc<dyn SelfProxyPortSource>,
+            ));
+            let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+            let profiles = profiles::ProfilesClient::new(
+                profiles_path,
+                file_service.clone() as Arc<dyn ProfileFsPort>,
+                file_service.clone() as Arc<dyn SubscriptionFetcher>,
+                Arc::new(rebuild::ChannelRebuildNotifier::new(tx)),
+            )
+            .await?;
+            let runtime_store = runtime::new_runtime_state_store().await?;
+            anyhow::Ok((
+                application,
+                session_state,
+                clash_config,
+                profiles,
+                runtime_store,
+                ports,
+                file_service as Arc<dyn ProfileFsPort>,
+                rx,
+            ))
+        })?;
         let client = Self::with_parts(
             application,
             session_state,
@@ -216,6 +228,7 @@ impl NyanpasuClient {
             profiles_dir,
             ui_sink,
             core,
+            runtime_store,
         );
         {
             let listener = client.clone();
@@ -254,6 +267,7 @@ impl NyanpasuClient {
         profiles_dir: PathBuf,
         ui_sink: Arc<dyn UiEventSink>,
         core: Arc<dyn RunningCoreBridge>,
+        runtime: runtime::RuntimeStateStore,
     ) -> Self {
         Self {
             inner: Arc::new(NyanpasuClientInner {
@@ -267,6 +281,7 @@ impl NyanpasuClient {
                 ui_sink,
                 core,
                 rebuild_gate: tokio::sync::Mutex::new(()),
+                runtime,
             }),
         }
     }
@@ -656,6 +671,10 @@ impl NyanpasuClient {
         self.inner.ports.cached_ports()
     }
 
+    pub async fn runtime_state(&self) -> std::sync::Arc<Option<runtime::RuntimeState>> {
+        self.inner.runtime.read().await.snapshot()
+    }
+
     pub async fn rebuild_running_config(&self) -> Result<()> {
         let _rebuild = self.inner.rebuild_gate.lock().await;
         self.regenerate_runtime_inner().await?;
@@ -698,8 +717,11 @@ impl NyanpasuClient {
         let profiles_dir = self.inner.profiles_dir.clone();
         let core = app.core;
         let builtin_enabled = app.enable_builtin_enhanced;
-        let runtime =
-            tokio::task::spawn_blocking(move || -> anyhow::Result<crate::config::IRuntime> {
+        let (state, legacy_runtime) = tokio::task::spawn_blocking(
+            move || -> anyhow::Result<(
+                crate::client::runtime::RuntimeState,
+                crate::config::IRuntime,
+            )> {
                 let content = FsProfileContentSource::new(profiles_dir);
                 let scripts = EnhanceScriptRunner::new()?;
                 let input = RuntimeBuildInput {
@@ -709,15 +731,29 @@ impl NyanpasuClient {
                     resolved_ports,
                 };
                 let artifact = RuntimeBuilder::build(&input, &content, &scripts)?;
-                runtime_from_artifact(&artifact, &profiles, core, builtin_enabled)
-            })
-            .await
-            .map_err(|error| ClientError::Custom(format!("runtime build task failed: {error}")))?
-            .map_err(ClientError::Anyhow)?;
-        // TODO(actor-migration): temporary bridge to Config::runtime() draft (B8).
-        // Reason: runtime derivation cleanup is PR-4.
-        // Remove when: PR-4 lands RuntimeArtifact in SimpleStateManager.
-        *crate::config::Config::runtime().draft() = runtime;
+                let state =
+                    runtime_state_from_artifact(&artifact, &profiles, core, builtin_enabled)?;
+                let legacy_runtime = crate::config::IRuntime {
+                    config: Some(state.config.clone()),
+                    exists_keys: state.exists_keys.clone(),
+                    postprocessing_output: state.postprocessing_output.clone(),
+                };
+                Ok((state, legacy_runtime))
+            },
+        )
+        .await
+        .map_err(|error| ClientError::Custom(format!("runtime build task failed: {error}")))?
+        .map_err(ClientError::Anyhow)?;
+        {
+            let mut store = self.inner.runtime.write().await;
+            store.upsert(Some(state)).await.map_err(|error| {
+                ClientError::Custom(format!("failed to store runtime state: {error}"))
+            })?;
+        }
+        // TODO(actor-migration): temporary dual-write to Config::runtime() draft (B8).
+        // Reason: legacy readers (four runtime IPCs / generate_file consumers)
+        // migrate in PR-4 Tasks 3-6. Remove in PR-4 Task 7.
+        *crate::config::Config::runtime().draft() = legacy_runtime;
         Ok(())
     }
 }
@@ -859,6 +895,9 @@ mod tests {
             dir.path().join("profiles"),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             Arc::new(MockRunningCoreBridge::new()),
+            crate::client::runtime::new_runtime_state_store()
+                .await
+                .expect("runtime state store"),
         )
     }
 
@@ -917,6 +956,9 @@ mod tests {
             paths.app_profiles_dir(),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             core,
+            crate::client::runtime::new_runtime_state_store()
+                .await
+                .expect("runtime state store"),
         );
         let listener = client.clone();
         rebuild::spawn_listener_with(rx, move || {
@@ -1132,6 +1174,12 @@ mod tests {
             let runtime = runtime.latest();
             let config = runtime.config.as_ref().expect("runtime draft written");
             assert!(config.get("mixed-port").is_some());
+            let state = client.runtime_state().await;
+            let state = state
+                .as_ref()
+                .as_ref()
+                .expect("runtime state stored after rebuild");
+            assert!(state.config.get("mixed-port").is_some());
             let path = client
                 .get_profile_materialized_path(uid.clone())
                 .await

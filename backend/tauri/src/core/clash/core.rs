@@ -1,12 +1,12 @@
 use super::api;
 use crate::{
-    config::{Config, ConfigType, nyanpasu::ClashCore},
+    config::{Config, nyanpasu::ClashCore},
     core::logger::Logger,
     log_err,
     utils::dirs,
 };
 use anyhow::{Context, Result, bail};
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 #[cfg(target_os = "macos")]
 use nyanpasu_ipc::api::network::set_dns::NetworkSetDnsReq;
 use nyanpasu_ipc::{
@@ -94,10 +94,11 @@ impl Instance {
             .map_err(|e| anyhow::anyhow!("failed to convert data dir to utf8 path: {:?}", e))?;
         let binary = camino::Utf8PathBuf::from_path_buf(find_binary_path(&core_type)?)
             .map_err(|e| anyhow::anyhow!("failed to convert binary path to utf8 path: {:?}", e))?;
-        let config_path = camino::Utf8PathBuf::from_path_buf(Config::generate_file(
-            ConfigType::Run,
-        )?)
-        .map_err(|e| anyhow::anyhow!("failed to convert config path to utf8 path: {:?}", e))?;
+        let config_path =
+            camino::Utf8PathBuf::from_path_buf(crate::client::runtime::runtime_config_path()?)
+                .map_err(|e| {
+                    anyhow::anyhow!("failed to convert config path to utf8 path: {:?}", e)
+                })?;
         let pid_path = camino::Utf8PathBuf::from_path_buf(dirs::clash_pid_path()?)
             .map_err(|e| anyhow::anyhow!("failed to convert pid path to utf8 path: {:?}", e))?;
         match run_type {
@@ -421,14 +422,8 @@ impl CoreManager {
     }
 
     /// 检查配置是否正确
-    pub async fn check_config(&self) -> Result<()> {
+    pub async fn check_config(&self, config_path: &Utf8Path, clash_core: ClashCore) -> Result<()> {
         use nyanpasu_utils::core::instance::CoreInstance;
-        let config_path = Config::generate_file(ConfigType::Check)?;
-        let config_path = Utf8PathBuf::from_path_buf(config_path)
-            .map_err(|_| anyhow::anyhow!("failed to convert config path to utf8 path"))?;
-
-        let clash_core = { Config::verge().latest().clash_core };
-        let clash_core = clash_core.unwrap_or(ClashCore::ClashPremium);
         let clash_core: nyanpasu_utils::core::CoreType = (&clash_core).into();
 
         let app_dir = dirs::app_data_dir()?;
@@ -438,7 +433,7 @@ impl CoreManager {
         let binary_path = Utf8PathBuf::from_path_buf(binary_path)
             .map_err(|_| anyhow::anyhow!("failed to convert binary path to utf8 path"))?;
         log::debug!(target: "app", "check config in `{clash_core}`");
-        CoreInstance::check_config_(&clash_core, &config_path, &binary_path, &app_dir)
+        CoreInstance::check_config_(&clash_core, config_path, &binary_path, &app_dir)
             .await
             .context("failed to check config")
             .inspect_err(|e| log::error!(target: "app", "failed to check config: {e:?}"))?;
@@ -561,7 +556,11 @@ impl CoreManager {
             return Err(err);
         }
 
-        if let Err(err) = self.check_config().await {
+        let product =
+            camino::Utf8PathBuf::from_path_buf(crate::client::runtime::runtime_config_path()?)
+                .map_err(|_| anyhow::anyhow!("failed to convert config path to utf8 path"))?;
+        let draft_core = Config::verge().latest().clash_core.unwrap_or_default();
+        if let Err(err) = self.check_config(&product, draft_core).await {
             Config::verge().discard();
             Config::runtime().discard();
             return Err(err);
@@ -602,15 +601,11 @@ impl CoreManager {
         self.apply_config().await
     }
 
-    /// Apply the CURRENT runtime draft to the running core: check, write the
-    /// runtime file, and push it over the api. Regeneration is the caller's
-    /// responsibility (facade `regenerate_runtime` or the legacy bridge).
+    /// Push the promoted runtime product to the running core over the api.
+    /// Check + promote happen in the rebuild pipeline (RunningCoreBridge::
+    /// check_and_promote) before this is called.
     pub async fn apply_config(&self) -> Result<()> {
-        // 检查配置是否正常
-        self.check_config().await?;
-
-        // 更新运行时配置
-        let path = Config::generate_file(ConfigType::Run)?;
+        let path = crate::client::runtime::runtime_config_path()?;
         let path = dirs::path_to_str(&path)?;
 
         // 发送请求 发送5次

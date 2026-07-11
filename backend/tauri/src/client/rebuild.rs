@@ -133,6 +133,35 @@ impl NyanpasuClient {
         let profiles = self.inner.profiles.get().await?;
         self.regenerate_runtime_with(profiles, clash, app).await
     }
+
+    /// Boot fallback (spec §5.6, D8): the default config is ALSO routed through
+    /// candidate -> check -> promote — D5 has no exceptions. A failed check
+    /// leaves no product; boot continues and the core start fails visibly.
+    pub(crate) async fn promote_default_runtime_config(&self) -> Result<()> {
+        let _rebuild = self.inner.rebuild_gate.lock().await;
+        // TODO(actor-migration): boot fallback reads the legacy clash mapping
+        // directly (same source the old resolve.rs fallback used).
+        // Remove when: PR-6 migrates boot/resolve onto typed clients.
+        let mapping = crate::config::Config::clash().latest().0.clone();
+        let (app, _clash) = Self::legacy_regen_inputs()?;
+        let yaml = format!(
+            "# Clash Nyanpasu Runtime (default fallback)\n\n{}",
+            serde_yaml::to_string(&mapping)
+                .map_err(|error| ClientError::Custom(format!("serialize default: {error}")))?
+        );
+        let candidate = crate::client::runtime::candidate_config_path();
+        tokio::fs::write(&candidate, yaml)
+            .await
+            .map_err(|error| ClientError::Custom(format!("failed to write candidate: {error}")))?;
+        let candidate = super::utf8_path(candidate).map_err(ClientError::Anyhow)?;
+        let checked = self
+            .inner
+            .core
+            .check_and_promote(&candidate, app.core)
+            .await;
+        let _ = tokio::fs::remove_file(candidate.as_std_path()).await;
+        checked.map_err(ClientError::Anyhow)
+    }
 }
 
 #[cfg(test)]

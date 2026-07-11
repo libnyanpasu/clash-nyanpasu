@@ -391,4 +391,77 @@ mod tests {
             "change_core must surface the new-core error"
         );
     }
+
+    /// P0-4 deepest branch (brief Step 7 ¶2 fallback coverage): when the ROLLBACK
+    /// rebuild ALSO fails its check, the failure is never swallowed. change_core
+    /// restores the previous checked product bytes, makes one old-core restart
+    /// attempt, and surfaces a compound error whose chain records the
+    /// rollback-rebuild failure. The mock sequence pins that a second check Err
+    /// never reaches the restart-success path (which would apply the verge draft).
+    ///
+    /// The product path (`runtime_config_path`/`app_config_dir`) is process-global
+    /// and not env-injectable, so this asserts control flow via the mock sequence
+    /// rather than integration-testing the restored bytes. It stays self-contained:
+    /// the pre-test product bytes are captured and restored regardless of outcome.
+    #[test]
+    fn change_core_rollback_rebuild_failure_restores_product_and_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        // Seed the global product so change_core reads Some(old_product): the
+        // rollback restore path then runs restore_product (real fs) and attempts
+        // the old-core restart, giving a deterministic sequence. Original bytes are
+        // restored below before any assertion can unwind.
+        let product = crate::client::runtime::runtime_config_path().unwrap();
+        let original = std::fs::read(&product).ok();
+        if let Some(parent) = product.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        std::fs::write(&product, b"# nyanpasu-test previous product\n").unwrap();
+
+        let mut core = crate::client::core_bridge::MockRunningCoreBridge::new();
+        let mut seq = mockall::Sequence::new();
+        // 新核:check+晋升成功 → 启动失败
+        core.expect_check_and_promote()
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(()));
+        core.expect_restart_core()
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(|| Err(anyhow::anyhow!("new core boom")));
+        // 回滚重建:check 失败(P0-4 深分支)→ 恢复旧产物 → 旧核重启一次
+        core.expect_check_and_promote()
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(|_, _| Err(anyhow::anyhow!("rollback check boom")));
+        core.expect_restart_core()
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(|| Ok(()));
+        core.expect_on_profile_change().returning(|| ());
+
+        let client = crate::client::NyanpasuClient::try_new_with_args(
+            crate::client::tests::test_profiles_client_args(&dir, std::sync::Arc::new(core)),
+        )
+        .unwrap();
+        let result = tauri::async_runtime::block_on(
+            client.change_core(crate::config::nyanpasu::ClashCore::ClashRs),
+        );
+
+        // Restore the global product to its pre-test state before asserting.
+        match &original {
+            Some(bytes) => {
+                let _ = std::fs::write(&product, bytes);
+            }
+            None => {
+                let _ = std::fs::remove_file(&product);
+            }
+        }
+
+        let err = result.expect_err("rollback-rebuild failure must surface an error");
+        let rendered = format!("{err:?}");
+        assert!(
+            rendered.contains("rollback rebuild failed"),
+            "compound error must record the rollback-rebuild failure; got: {rendered}"
+        );
+    }
 }

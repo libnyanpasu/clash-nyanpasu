@@ -679,18 +679,20 @@ flowchart LR
 
 ## 6. 风险与开放问题
 
-| 风险                                                                                            | 缓解                                                                                                                      |
-| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| **executor 行为漂移**(旧 `enhance` 链语义复杂:HANDLE*FIELDS overlay、builtin gate、use*\* 收尾) | T3p.6 golden 对照 fixtures:同输入断言与旧 `enhance()` 产出等价;guide §7.4 已列为最高风险                                  |
-| **specta 嵌套 tagged enum 的 TS 推导**                                                          | T3.1 逐 variant 命名导出;CI 检查 TS 产物 diff                                                                             |
-| **前端 `current` 单值化改造量**(多选 UI → Composition 管理)                                     | 前后端同 PR;先做「多选创建 Composition」的最小交互,完整管理界面后续迭代                                                   |
-| profiles 迁移不可逆                                                                             | T3.2 强制 `.bak` 备份 + 歧义显式失败(不静默丢弃)                                                                          |
-| IVerge-only 字段静默丢失                                                                        | T2.1 映射表 100% + 覆盖率单测(spec §11)                                                                                   |
-| 写无超时下 handler 挂起                                                                         | 不变式:写 handler 禁无界 I/O;引入网络时内部自管 timeout(spec §7)                                                          |
-| SessionState manager 选型未定(Persistent vs Weak)                                               | T2.7 实施时确认;窗口几何高频写建议 Weak(best-effort),需在 spec 勘误                                                       |
-| 双 AppHandle 全局(`Handle` + `consts`)                                                          | PR-7 一并清除;期间新代码禁用二者                                                                                          |
-| `.ccg` 任务账本过期(migration V2 实已合并)                                                      | 关闭该任务;删除本地 `refactor/migration-service-v2` 分支                                                                  |
-| 降级模型(`RebuildOutcome`)为过渡语义                                                            | TODO(post-PR-7):state 层异步 ack 就绪后,配置应用失败改走 ack 驱动 rollback,取代降级上报(用户决策 2026-07-11,PR-4 spec D2) |
+| 风险                                                                                                         | 缓解                                                                                                                         |
+| ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| **executor 行为漂移**(旧 `enhance` 链语义复杂:HANDLE*FIELDS overlay、builtin gate、use*\* 收尾)              | T3p.6 golden 对照 fixtures:同输入断言与旧 `enhance()` 产出等价;guide §7.4 已列为最高风险                                     |
+| **specta 嵌套 tagged enum 的 TS 推导**                                                                       | T3.1 逐 variant 命名导出;CI 检查 TS 产物 diff                                                                                |
+| **前端 `current` 单值化改造量**(多选 UI → Composition 管理)                                                  | 前后端同 PR;先做「多选创建 Composition」的最小交互,完整管理界面后续迭代                                                      |
+| profiles 迁移不可逆                                                                                          | T3.2 强制 `.bak` 备份 + 歧义显式失败(不静默丢弃)                                                                             |
+| IVerge-only 字段静默丢失                                                                                     | T2.1 映射表 100% + 覆盖率单测(spec §11)                                                                                      |
+| 写无超时下 handler 挂起                                                                                      | 不变式:写 handler 禁无界 I/O;引入网络时内部自管 timeout(spec §7)                                                             |
+| SessionState manager 选型未定(Persistent vs Weak)                                                            | T2.7 实施时确认;窗口几何高频写建议 Weak(best-effort),需在 spec 勘误                                                          |
+| 双 AppHandle 全局(`Handle` + `consts`)                                                                       | PR-7 一并清除;期间新代码禁用二者                                                                                             |
+| `.ccg` 任务账本过期(migration V2 实已合并)                                                                   | 关闭该任务;删除本地 `refactor/migration-service-v2` 分支                                                                     |
+| 降级模型(`RebuildOutcome`)为过渡语义                                                                         | TODO(post-PR-7):state 层异步 ack 就绪后,配置应用失败改走 ack 驱动 rollback,取代降级上报(用户决策 2026-07-11,PR-4 spec D2)    |
+| change_core 语义残余（成功路径 verge 持久化失败仅 log;回滚后 manager 暂持新核态;旧核重启失败=核停+复合错误） | PR-5 CoreActor 引入结构化 ChangeCoreOutcome/degraded 上报时一并解决（2026-07-12 复审裁决,维持 PR-4 spec §5.2/§5.4 原文语义） |
+| D6 补偿为尽力语义（patch_clash_config 并发无串行门;新增键无法补偿移除,受 4 字段 DTO 约束基本不可达）         | 后续按需引入 patch 串行门/整份 prev 回推;登记于 2026-07-12 复审（不改 PR-4）                                                 |
 
 ---
 

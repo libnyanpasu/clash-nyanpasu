@@ -69,7 +69,7 @@
     "lint-staged": "17.0.8",
     "npm-run-all2": "9.0.2",
     "oxlint": "1.73.0",
-    "postcss": "8.5.16",
+    "postcss": "8.5.17",
     "postcss-html": "1.8.1",
     "postcss-scss": "4.0.9",
     "prettier": "3.8.5",

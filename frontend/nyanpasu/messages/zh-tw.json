@@ -233,6 +233,7 @@
   "profile_composition_min_members_hint": "至少選擇 2 個配置",
   "profile_create_failed_message": "建立失敗：{error}",
   "profile_import_rename_failed_message": "配置已匯入，但套用名稱失敗：{error}",
+  "profile_rebuild_degraded_message": "已儲存，但套用新設定失敗：{error}",
   "profile_empty_list_message": "沒有找到任何配置，請嘗試導入或創建配置。",
   "profile_import_remote_url_label": "遠程配置 URL",
   "profile_profile_label": "代理配置",

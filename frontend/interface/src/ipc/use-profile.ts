@@ -103,16 +103,21 @@ export const useProfile = (options?: { without_helper_fn?: boolean }) => {
   const create = useMutation({
     mutationFn: async (params: CreateParams) => {
       if (params.type === 'url') {
-        return unwrapResult(
+        const outcome = unwrapResult(
           await commands.importProfile(
             params.data.url,
             params.data.option ?? null,
           ),
         )
+        if (!outcome) {
+          throw new Error('importProfile returned no result')
+        }
+        return { uid: outcome.value, rebuild: outcome.rebuild }
       }
-      return unwrapResult(
+      const rebuild = unwrapResult(
         await commands.createProfile(params.data.request, params.data.fileData),
       )
+      return { uid: null, rebuild }
     },
     onSuccess: invalidate,
   })

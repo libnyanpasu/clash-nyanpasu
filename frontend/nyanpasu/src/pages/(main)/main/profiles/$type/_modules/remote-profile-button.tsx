@@ -68,7 +68,7 @@ export default function RemoteProfileButton({ children }: PropsWithChildren) {
     `create-remote-profile`,
     form.handleSubmit(async (data) => {
       try {
-        const uid = await create.mutateAsync({
+        const { uid } = await create.mutateAsync({
           type: 'url',
           data: {
             url: data.url,

@@ -103,7 +103,7 @@ bolt-load = { version = "0.1", default-features = false, features = [
 ] }
 # the CancellationToken type required by bolt-load's TaskBuilder
 smol-cancellation-token = "0.1"
-tokio-tungstenite = "0.29"
+tokio-tungstenite = "0.30"
 urlencoding = "2.1"
 port_scanner = "0.1.5"
 sysproxy = { git = "https://github.com/libnyanpasu/sysproxy-rs.git", version = "0.3" }

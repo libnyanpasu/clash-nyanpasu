@@ -43,7 +43,7 @@ pub async fn new_runtime_state_store() -> anyhow::Result<RuntimeStateStore> {
         .assemble()
         .initialize()
         .await
-        .map_err(|_| anyhow::anyhow!("failed to initialize runtime state store"))?;
+        .map_err(|error| anyhow::anyhow!("failed to initialize runtime state store: {error:?}"))?;
     Ok(tokio::sync::RwLock::new(manager))
 }
 

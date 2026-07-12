@@ -409,11 +409,19 @@ pub struct PatchRuntimeConfig {
 /// patch clash runtime config
 #[tauri::command]
 #[specta::specta]
+#[tracing_attributes::instrument(skip_all)]
 pub async fn patch_clash_config(
     client: State<'_, NyanpasuClient>,
     payload: PatchRuntimeConfig,
 ) -> Result {
-    tracing::debug!("patch_clash_config: {payload:?}");
+    // Explicit-field whitelist so future DTO fields never auto-leak into logs.
+    tracing::debug!(
+        allow_lan = ?payload.allow_lan,
+        ipv6 = ?payload.ipv6,
+        log_level = ?payload.log_level,
+        mode = ?payload.mode,
+        "patch_clash_config"
+    );
 
     let mapping = match serde_yaml::to_value(&payload)? {
         serde_yaml::Value::Mapping(m) => m,

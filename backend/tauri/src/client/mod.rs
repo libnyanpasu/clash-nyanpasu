@@ -776,9 +776,26 @@ impl NyanpasuClient {
         // leaves both the product and the manager untouched. target core =
         // the same input snapshot the builder used (P0-3).
         let candidate = crate::client::runtime::candidate_config_path();
-        tokio::fs::write(&candidate, yaml)
-            .await
-            .map_err(|error| ClientError::Custom(format!("failed to write candidate: {error}")))?;
+        {
+            // Exclusive create (create_new): the unique candidate path must not
+            // already exist. A pre-existing file/symlink now fails the pipeline
+            // visibly instead of being followed (TOCTOU hardening, PR-4 re-review).
+            use tokio::io::AsyncWriteExt;
+            let mut file = tokio::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&candidate)
+                .await
+                .map_err(|error| {
+                    ClientError::Custom(format!("failed to create candidate: {error}"))
+                })?;
+            file.write_all(yaml.as_bytes()).await.map_err(|error| {
+                ClientError::Custom(format!("failed to write candidate: {error}"))
+            })?;
+            file.flush().await.map_err(|error| {
+                ClientError::Custom(format!("failed to flush candidate: {error}"))
+            })?;
+        }
         let candidate = utf8_path(candidate).map_err(ClientError::Anyhow)?;
         let checked = self.inner.core.check_and_promote(&candidate, core).await;
         // best-effort candidate cleanup; runs whether the check passed or failed.

@@ -15,8 +15,10 @@ pub trait RunningCoreBridge: Send + Sync + 'static {
     /// Read the candidate ONCE, check those exact bytes with the EXPLICIT target
     /// core's binary, then atomically promote the very bytes that were checked
     /// to the runtime product (spec D5: the product only ever holds checked
-    /// configs — reading before the check means a post-check swap of the
-    /// candidate file can never reach the product). `target_core` must come from
+    /// configs). The bytes are captured BEFORE the check and identity-verified
+    /// AFTER the check (the candidate is re-read and compared): a candidate
+    /// swapped between check and promote can neither be promoted nor have its
+    /// check verdict transferred to different bytes. `target_core` must come from
     /// the same input snapshot the builder used — implementations must not
     /// re-read global state to pick the core (spec §5.3, P0-3). Usable on the
     /// boot path where the core is not running yet.
@@ -87,6 +89,14 @@ impl RunningCoreBridge for LegacyCoreBridge {
         crate::core::CoreManager::global()
             .check_config(candidate, target_core.into())
             .await?;
+        // Post-check identity gate (spec D5, PR-4 re-review): re-read the
+        // candidate and refuse to promote if its bytes changed since capture.
+        // A candidate swapped after check_config passed can neither be promoted
+        // nor have its check verdict transferred to different bytes.
+        let after = tokio::fs::read(candidate.as_std_path()).await?;
+        if after != bytes {
+            anyhow::bail!("candidate config changed between check and promote");
+        }
         let product = crate::client::runtime::runtime_config_path()?;
         restore_product(&product, &bytes).await
     }

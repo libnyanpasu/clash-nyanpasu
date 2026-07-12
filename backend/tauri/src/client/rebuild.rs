@@ -282,9 +282,26 @@ impl NyanpasuClient {
                 .map_err(|error| ClientError::Custom(format!("serialize default: {error}")))?
         );
         let candidate = crate::client::runtime::candidate_config_path();
-        tokio::fs::write(&candidate, yaml)
-            .await
-            .map_err(|error| ClientError::Custom(format!("failed to write candidate: {error}")))?;
+        {
+            // Exclusive create (create_new): the unique candidate path must not
+            // already exist. A pre-existing file/symlink now fails the pipeline
+            // visibly instead of being followed (TOCTOU hardening, PR-4 re-review).
+            use tokio::io::AsyncWriteExt;
+            let mut file = tokio::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&candidate)
+                .await
+                .map_err(|error| {
+                    ClientError::Custom(format!("failed to create candidate: {error}"))
+                })?;
+            file.write_all(yaml.as_bytes()).await.map_err(|error| {
+                ClientError::Custom(format!("failed to write candidate: {error}"))
+            })?;
+            file.flush().await.map_err(|error| {
+                ClientError::Custom(format!("failed to flush candidate: {error}"))
+            })?;
+        }
         let candidate = super::utf8_path(candidate).map_err(ClientError::Anyhow)?;
         let checked = self
             .inner

@@ -396,7 +396,11 @@ pub(crate) fn apply_app_config_to_legacy_verge(
     draft.enable_silent_start = Some(snap.enable_silent_start);
     draft.enable_system_proxy = Some(snap.enable_system_proxy);
     draft.enable_proxy_guard = Some(snap.enable_proxy_guard);
-    draft.system_proxy_bypass = Some(snap.system_proxy_bypass.clone());
+    draft.system_proxy_bypass = if snap.system_proxy_bypass.is_empty() {
+        None
+    } else {
+        Some(snap.system_proxy_bypass.clone())
+    };
     draft.proxy_guard_interval = Some(snap.proxy_guard_interval);
     draft.theme_color = Some(super::yaml_convert(&snap.theme_color)?);
     draft.clash_core = Some(super::yaml_convert(&snap.core)?);
@@ -531,6 +535,44 @@ mod tests {
     }
 
     #[test]
+    fn apply_app_config_to_legacy_verge_maps_empty_bypass_to_none() {
+        let snap = NyanpasuAppConfig::default();
+        let mut draft = IVerge::default();
+
+        apply_app_config_to_legacy_verge(&mut draft, &snap)
+            .expect("app config should map to legacy verge");
+
+        assert_eq!(draft.system_proxy_bypass, None);
+    }
+
+    #[test]
+    fn apply_app_config_to_legacy_verge_preserves_custom_bypass() {
+        let mut snap = NyanpasuAppConfig::default();
+        snap.system_proxy_bypass = "localhost;127.*;<local>".to_string();
+        let mut draft = IVerge::default();
+
+        apply_app_config_to_legacy_verge(&mut draft, &snap)
+            .expect("app config should map to legacy verge");
+
+        assert_eq!(
+            draft.system_proxy_bypass.as_deref(),
+            Some("localhost;127.*;<local>")
+        );
+    }
+
+    #[test]
+    fn apply_app_config_to_legacy_verge_preserves_whitespace_only_bypass() {
+        let mut snap = NyanpasuAppConfig::default();
+        snap.system_proxy_bypass = " \t\r\n".to_string();
+        let mut draft = IVerge::default();
+
+        apply_app_config_to_legacy_verge(&mut draft, &snap)
+            .expect("app config should map to legacy verge");
+
+        assert_eq!(draft.system_proxy_bypass.as_deref(), Some(" \t\r\n"));
+    }
+
+    #[test]
     fn get_verge_config_composes_typed_actor_snapshots() {
         let dir = tempdir().expect("tempdir should be created");
         let (client, bridge) = test_bridge(&dir);
@@ -572,6 +614,7 @@ mod tests {
                 .await
                 .expect("legacy verge config should compose from typed snapshots");
             assert_eq!(verge.enable_system_proxy, Some(true));
+            assert_eq!(verge.system_proxy_bypass, None);
             assert_eq!(verge.enable_tun_mode, Some(true));
             assert_eq!(
                 verge.window_size_state.as_ref().map(|state| state.width),

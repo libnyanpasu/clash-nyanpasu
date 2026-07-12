@@ -12,12 +12,14 @@ use nyanpasu_config::application::ClashCore;
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait RunningCoreBridge: Send + Sync + 'static {
-    /// Check the candidate config with the EXPLICIT target core's binary, then
-    /// atomically promote it to the runtime product (spec D5: the product
-    /// only ever holds checked configs). `target_core` must come from the same
-    /// input snapshot the builder used — implementations must not re-read
-    /// global state to pick the core (spec §5.3, P0-3). Usable on the boot
-    /// path where the core is not running yet.
+    /// Read the candidate ONCE, check those exact bytes with the EXPLICIT target
+    /// core's binary, then atomically promote the very bytes that were checked
+    /// to the runtime product (spec D5: the product only ever holds checked
+    /// configs — reading before the check means a post-check swap of the
+    /// candidate file can never reach the product). `target_core` must come from
+    /// the same input snapshot the builder used — implementations must not
+    /// re-read global state to pick the core (spec §5.3, P0-3). Usable on the
+    /// boot path where the core is not running yet.
     async fn check_and_promote(
         &self,
         candidate: &Utf8Path,
@@ -31,15 +33,10 @@ pub trait RunningCoreBridge: Send + Sync + 'static {
     async fn on_profile_change(&self);
 }
 
-/// Atomic candidate -> product replacement (atomicwrites: temp file + durable
-/// rename; readers never observe a half-written product).
-pub(crate) async fn promote_candidate(candidate: &Path, product: &Path) -> anyhow::Result<()> {
-    let bytes = tokio::fs::read(candidate).await?;
-    restore_product(product, &bytes).await
-}
-
-/// Atomically write known-good product bytes back (change_core last-resort
-/// rollback, spec §5.4). Shared with promote_candidate.
+/// Atomically write known-good product bytes back: the sole promote path
+/// (check_and_promote publishes the pre-checked bytes) and the change_core
+/// last-resort rollback (spec §5.4). atomicwrites: temp file + durable rename,
+/// so readers never observe a half-written product.
 pub(crate) async fn restore_product(product: &Path, bytes: &[u8]) -> anyhow::Result<()> {
     if let Some(parent) = product.parent() {
         tokio::fs::create_dir_all(parent).await?;
@@ -80,6 +77,10 @@ impl RunningCoreBridge for LegacyCoreBridge {
         candidate: &Utf8Path,
         target_core: ClashCore,
     ) -> anyhow::Result<()> {
+        // Capture the candidate bytes ONCE before checking so the bytes we
+        // promote are exactly the bytes we validated (spec D5): a post-check
+        // swap of the candidate file can never reach the product.
+        let bytes = tokio::fs::read(candidate.as_std_path()).await?;
         // TODO(actor-migration): temporary bridge to CoreManager::global().
         // Reason: core lifecycle is PR-5 (CoreActor).
         // Remove when: PR-5 lands CoreActor and the facade owns core apply.
@@ -87,7 +88,7 @@ impl RunningCoreBridge for LegacyCoreBridge {
             .check_config(candidate, target_core.into())
             .await?;
         let product = crate::client::runtime::runtime_config_path()?;
-        promote_candidate(candidate.as_std_path(), &product).await
+        restore_product(&product, &bytes).await
     }
 
     async fn apply_config(&self) -> anyhow::Result<()> {
@@ -121,16 +122,13 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn promote_candidate_atomically_replaces_product() {
+    async fn restore_product_atomically_replaces_product() {
         let dir = tempfile::tempdir().unwrap();
-        let candidate = dir.path().join("candidate.yaml");
         let product = dir.path().join("runtime").join("clash-config.yaml");
-        std::fs::write(&candidate, "mode: rule\n").unwrap();
-        promote_candidate(&candidate, &product).await.unwrap();
+        restore_product(&product, b"mode: rule\n").await.unwrap();
         assert_eq!(std::fs::read_to_string(&product).unwrap(), "mode: rule\n");
-        // second promote overwrites
-        std::fs::write(&candidate, "mode: direct\n").unwrap();
-        promote_candidate(&candidate, &product).await.unwrap();
+        // second write overwrites
+        restore_product(&product, b"mode: direct\n").await.unwrap();
         assert_eq!(std::fs::read_to_string(&product).unwrap(), "mode: direct\n");
     }
 }

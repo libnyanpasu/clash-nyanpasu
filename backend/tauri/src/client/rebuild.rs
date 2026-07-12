@@ -291,7 +291,9 @@ impl NyanpasuClient {
             .core
             .check_and_promote(&candidate, app.core)
             .await;
-        let _ = tokio::fs::remove_file(candidate.as_std_path()).await;
+        if let Err(error) = tokio::fs::remove_file(candidate.as_std_path()).await {
+            tracing::warn!(%error, ?candidate, "failed to remove candidate config");
+        }
         checked.map_err(ClientError::Anyhow)
     }
 }

@@ -1,5 +1,5 @@
-//! Pure mapping from the executor's RuntimeArtifact to the legacy IRuntime
-//! triple (design §8; executor spec §9.3 endorses applied_fields ↔ exists_keys).
+//! Pure mapping from the executor's RuntimeArtifact to the RuntimeState read
+//! model (design §8; executor spec §9.3 endorses applied_fields ↔ exists_keys).
 //! Postprocessing layout mirrors legacy PostProcessingOutput: scoped logs keyed
 //! by (host profile, transform uid), global/builtin logs keyed by uid/name.
 
@@ -14,10 +14,7 @@ use nyanpasu_config::{
 };
 use serde_yaml::Mapping;
 
-use crate::{
-    config::IRuntime,
-    enhance::{Logs, PostProcessingOutput, builtin_transforms_for},
-};
+use crate::enhance::{Logs, PostProcessingOutput, builtin_transforms_for};
 
 fn span(level: StepLogLevel) -> crate::enhance::utils::LogSpan {
     use crate::enhance::utils::LogSpan;
@@ -92,12 +89,12 @@ pub(crate) fn map_postprocessing(
     out
 }
 
-pub fn runtime_from_artifact(
+pub fn runtime_state_from_artifact(
     artifact: &RuntimeArtifact,
     profiles: &Profiles,
     core: ClashCore,
     builtin_enabled: bool,
-) -> anyhow::Result<IRuntime> {
+) -> anyhow::Result<crate::client::runtime::RuntimeState> {
     let value = serde_yaml::to_value(&*artifact.final_config)
         .context("failed to serialize final config")?;
     let config: Mapping = value
@@ -113,8 +110,8 @@ pub fn runtime_from_artifact(
     } else {
         Vec::new()
     };
-    Ok(IRuntime {
-        config: Some(config),
+    Ok(crate::client::runtime::RuntimeState {
+        config,
         exists_keys,
         postprocessing_output: map_postprocessing(&artifact.step_logs, profiles, &builtin_names),
     })

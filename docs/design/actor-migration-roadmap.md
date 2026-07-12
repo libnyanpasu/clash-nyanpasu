@@ -97,7 +97,7 @@ stateDiagram-v2
 
 ### 2.4 遗留面(待拆除)
 
-- **`Config::*()` 共 153 处 / 31 文件**(含少量注释误计):`verge()` 84/27 文件、`clash()` 30/12、`profiles()` 23/5、`runtime()` 10/4;`generate()` 6 处。热点:`feat.rs` 28、`ipc.rs` 22、`core/clash/core.rs` 19、`utils/resolve.rs` 16、`core/sysopt.rs` 9。
+- **`Config::*()` 共 118 处 / 29 文件**(含少量误计,同行多符号共现按行计数低于逐符号求和;2026-07-12 PR-4 rebase 后重算):`verge()` 90/27 文件、`clash()` 29/13、`profiles()` 0/0(PR-3 已清零)、`runtime()` 0/0(PR-4 已清零);`generate()` 0 处(PR-4 已清零;仅 3 处历史注释提及,不计入遗留面)。热点:`feat.rs` 22、`bridge/verge.rs` 15、`utils/resolve.rs` 10、`core/sysopt.rs` 9、`client/rebuild.rs` 8。
 - **`::global()` 单例 8 个:** `Config`(`config/core.rs:23`)、`CoreManager`(`core/clash/core.rs:387`)、`Sysopt`(`core/sysopt.rs:60`)、`Hotkey`(`core/hotkey.rs:169`)、`ProxiesGuard`(`core/clash/proxies.rs:204`)、`Logger`(`core/logger.rs:12`)、`UpdaterManager`(`core/updater/mod.rs:143`)、`Handle`(`core/handle.rs:33`);另有 `WindowManager`(`window.rs:30`)、`consts::app_handle()`(`consts.rs:54`,第二个 AppHandle 全局)。
 - **`enhance::enhance()` 直读三个全局**(`enhance/mod.rs:22`):`Config::clash().latest()` + `Config::verge().latest()`(clash_core/tun/builtin/clash_fields 四字段)+ `Config::profiles().latest()`;产物写入 `Config::runtime().draft()`(`config/core.rs:88`)→ `generate_file` 落 `clash-config.yaml`(`:70`)→ CoreManager 只认这个文件路径(`core/clash/core.rs:97,605`)。
 - **`feat.rs` = 编排中心**:`patch_verge`(`feat.rs:310`)在 draft→apply 之间内联 9 组副作用(service/tun/auto-launch/sysproxy/hotkey/locale/tray/logger/widget);`patch_clash`(`:229`)同构。这正是「commit 后副作用」模型要取代的形态。
@@ -255,7 +255,7 @@ flowchart LR
 
     subgraph GW["门面层(≈API Gateway)"]
         CMD["Tauri 命令(薄适配)"]
-        NC2["NyanpasuClient<br/>稳定 async API·跨域顺序编排(D9)<br/>commit 后副作用分发·持有 RuntimeArtifact(PR-4)"]
+        NC2["NyanpasuClient<br/>稳定 async API·跨域顺序编排(D9)<br/>commit 后副作用分发·持有 RuntimeState 读模型(PR-4)"]
     end
 
     subgraph ACTORS["actor 服务群(≈微服务:独占状态+独占落盘)"]
@@ -323,7 +323,7 @@ flowchart LR
 
     subgraph DERIVE["派生管线(runtime = 纯派生物,永不为 actor 状态)"]
         RB4["RuntimeBuilder + executor(纯服务)"]
-        ART["RuntimeArtifact<br/>(facade 持有,SimpleStateManager,PR-4)"]
+        ART["RuntimeState 读模型<br/>(facade 持有,SimpleStateManager;由 RuntimeArtifact 重建点一次投影,PR-4)"]
     end
 
     subgraph SIDE["副作用消费域"]
@@ -538,14 +538,18 @@ sequenceDiagram
 
 **目标:** 消灭「可写的 runtime 状态」:删 `Config::runtime()`/`IRuntime`,runtime 成为纯派生快照。
 
-**可执行任务:** ① `RuntimeArtifact` 存放点 = `SimpleStateManager<RuntimeArtifact>`(内存,重启重建;`snapshot-persistence` 归档为后续可选项),由 facade 持有,`client.rebuild_running_config()` 统一重建入口;② `clash-config.yaml` 继续落盘但降级为「产物」,写入走 atomicwrites;③ 四条 IPC(`get_runtime_config/yaml/exists/postprocessing_output`,`ipc.rs:405-441`)改读 artifact;④ `feat::patch_clash` 内 `runtime().latest().patch_config`(`feat.rs:276`;仅 allow-lan/ipv6/log-level/mode)改为把这四字段并入 rebuild 输入;⑤ 删 `Config::runtime()`、`IRuntime`、`Config::generate()`/`generate_file()`(重建+落盘逻辑归 RuntimeBuilder + CoreActor 输入)。
-**验证:** `grep "Config::runtime\(\)"` 零命中;`enhance_profiles` IPC 行为不变。
+**可执行任务:** ① 存放点 = facade 持有 `SimpleStateManager<Option<RuntimeState>>`——**改判(2026-07-12,PR-4 spec D4/§12):不保存完整 `RuntimeArtifact`**,重建时一次派生只读 `RuntimeState { config, exists_keys, postprocessing_output }`;graph / step_logs **明确放弃**(YAGNI:无现实消费者,四读 IPC 与 PR-5 核心消费只需产物与读模型;图谱/诊断需求出现时 post-PR-5 再引入),`client.rebuild_running_config()` 统一重建入口;② `clash-config.yaml` 降级为「产物」:唯一候选文件 → 核心二进制 check(与 builder 同源的显式 target core)→ atomicwrites 晋升 → 发布 manager——产物与发布状态任何时刻只含已检查配置;③ 四条 IPC(`get_runtime_config/yaml/exists/postprocessing_output`)改读 facade manager,wire 保形;④ `feat::patch_clash` 的 runtime 内存 patch 删除,四字段并入 rebuild 输入,IPC 层 API-first + 失败补偿(spec D6);⑤ 重建/换核/legacy 更新统一 `rebuild_gate` 事务域:`change_core` 编排迁 facade(强回滚),legacy 成对调用改组合桥操作(spec D7);⑥ 删 `Config::runtime()`、`IRuntime`、`Config::generate()`/`generate_file()`。
+**验证:** `grep "Config::runtime\(\)"` 零命中;`enhance_profiles` IPC 行为不变;check 失败时产物与 manager 双双保旧。
+**状态:** ✅ 已实施(2026-07,分支 `refactor/pr4-runtime-derivation`,PR 号合并后回填)。详见 `docs/superpowers/specs/2026-07-12-pr4-runtime-derivation-cleanup-design.md`。
 
 ### 4.7 PR-5 — CoreManager → CoreActor
 
 **目标:** 核心进程生命周期 actor 化,消费显式 runtime 快照。
 
-**可执行任务:** ① 消息集 `Status/Start/Stop/Restart/ChangeCore/UpdateConfig(artifact 或 path)/CheckConfig/ChangeDns(mac)`(request/reply,写无超时);`Recover` 用 actor 内部消息重入替代裸 spawn;② `Instance::{Child,Service}`(`core/clash/core.rs:70`)与 `run_lock` 收进 actor state(串行化天然取代 `tokio::Mutex`);③ `RunType` 决策参数化——`enable_service_mode` 来自 `ApplicationClient` 快照传参,替代 `RunType::default()` 内读 `Config::verge()`(`:51-67`);④ stdio 日志循环写入注入的 `LogSink`(收编 `Logger::global()` 写端,修正 C7),`get_clash_logs` 走 client;⑤ 调用方切换:`feat::restart_clash_core/update_core_config`、`ipc::restart_sidecar/enhance_profiles`、service-mode 命令组(`ipc.rs:925-1000`)、`client.get_core_status` 去委托化;⑥ 删 `CoreManager::global()`。
+**可执行任务:** ① 消息集 `Status/Start/Stop/Restart/ChangeCore/UpdateConfig(产物路径)/CheckConfig/ChangeDns(mac)`(request/reply,写无超时);`Recover` 用 actor 内部消息重入替代裸 spawn;② `Instance::{Child,Service}`(`core/clash/core.rs:70`)与 `run_lock` 收进 actor state(串行化天然取代 `tokio::Mutex`);③ `RunType` 决策参数化——`enable_service_mode` 来自 `ApplicationClient` 快照传参,替代 `RunType::default()` 内读 `Config::verge()`(`:51-67`);④ stdio 日志循环写入注入的 `LogSink`(收编 `Logger::global()` 写端,修正 C7),`get_clash_logs` 走 client;⑤ 调用方切换:`feat::restart_clash_core/update_core_config`、`ipc::restart_sidecar/enhance_profiles`、service-mode 命令组(`ipc.rs:925-1000`)、`client.get_core_status` 去委托化;⑥ 删 `CoreManager::global()`。
+
+⑦ C-M4 端口生命周期编排:restart/change-core 时序 stop → resolve ports → mirror API/sysproxy consumers → build/check/promote → start;验收含 fixed-port 被旧核占用场景的测试。
+
 **验证:** 核心启停/换核/配置热更新冒烟;`grep "CoreManager::global"` 零命中。
 
 #### 配置生效闭环时序(PR-3/4/5 汇合)
@@ -577,8 +581,8 @@ sequenceDiagram
     NC->>RB: RuntimePipelineInputs
     RB->>RB: execute():五种处理顺序 + 共享尾部(整体 spawn_blocking)
     RB-->>NC: RuntimeArtifact(final_config·graph·step_logs·applied_fields)
-    NC->>NC: SimpleStateManager 原子替换 artifact(PR-4) + 落盘 clash-config.yaml(降级为产物)
-    NC->>CO: call(UpdateConfig(artifact/path), None)
+    NC->>NC: 派生 RuntimeState → 唯一候选 → check(target core)→ atomicwrites 晋升产物 → 发布(PR-4)
+    NC->>CO: call(UpdateConfig(产物路径), None)
     CO->>P: 配置热更新 / 重启核心
     P-->>CO: 就绪
     CO-->>NC: Ok
@@ -613,20 +617,22 @@ sequenceDiagram
 
 ## 5. 兼容层台账(唯一允许的桥,全部有删除条件)
 
-| #   | 桥                                      | 位置                                     | 方向                | 状态                                                           | 删除条件(负责 PR)                                                                                                         |
-| --- | --------------------------------------- | ---------------------------------------- | ------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| B1  | `VergeMirror` / `legacy_verge_mirror()` | `state/verge.rs:11`、`client/mod.rs:134` | Actor→旧全局(内存)  | **在用,未标记**                                                | PR-2b 收编进 `bridge/verge.rs` 并标 TODO;PR-7 删除                                                                        |
-| B2  | `run_legacy_verge_mutation()`           | `client/mod.rs:63`                       | 旧写点→Actor reseed | **在用,未标记**                                                | 最后一个 LegacySideEffects 字段迁完(PR-6 末)即删                                                                          |
-| B3  | `route_verge_patch`                     | `client/state.rs:120`                    | patch 分流          | **在用,未标记**                                                | PR-2b 三域化;PR-6 后无 Legacy 路由可走,PR-7 删                                                                            |
-| B4  | `patch_verge_entrypoint`                | `feat.rs:120`                            | 早期启动回退        | **在用,未标记**                                                | composition root 保证 client 先于一切调用方就绪后删(PR-7)                                                                 |
-| B5  | mixed_port 启动 reseed                  | `lib.rs:390-398`                         | 旧启动写→Actor      | **在用,未标记**                                                | PR-2b T2.9 消除或标记;PR-7 前删                                                                                           |
-| B6  | hotkey KV/verge 双读                    | `core/hotkey.rs:199`                     | 存储桥              | ✅ 已标记                                                      | PR-6b                                                                                                                     |
-| B7  | 三域 `*LegacyBridge`(mirror+reseed)     | 未来 `bridge/{verge,window,clash}.rs`    | 双向                | PR-2b 新建                                                     | PR-7 整体删除                                                                                                             |
-| B8  | RuntimeBuilder 暂读旧全局取数           | PR-3 T3.7                                | 输入装配            | **作废**(PR-2b #4869 已合并,取数走 typed client;PR-3 spec §19) | 已由 PR-2b 消解;PR-3 残留旧全局消费仅 `Config::runtime()` 写 + `CoreManager.update_config()` 两处(TODO 标记,PR-4/PR-5 删) |
+| #   | 桥                                      | 位置                                     | 方向                | 状态                                                           | 删除条件(负责 PR)                                                                                        |
+| --- | --------------------------------------- | ---------------------------------------- | ------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| B1  | `VergeMirror` / `legacy_verge_mirror()` | `state/verge.rs:11`、`client/mod.rs:134` | Actor→旧全局(内存)  | **在用,未标记**                                                | PR-2b 收编进 `bridge/verge.rs` 并标 TODO;PR-7 删除                                                       |
+| B2  | `run_legacy_verge_mutation()`           | `client/mod.rs:63`                       | 旧写点→Actor reseed | **在用,未标记**                                                | 最后一个 LegacySideEffects 字段迁完(PR-6 末)即删                                                         |
+| B3  | `route_verge_patch`                     | `client/state.rs:120`                    | patch 分流          | **在用,未标记**                                                | PR-2b 三域化;PR-6 后无 Legacy 路由可走,PR-7 删                                                           |
+| B4  | `patch_verge_entrypoint`                | `feat.rs:120`                            | 早期启动回退        | **在用,未标记**                                                | composition root 保证 client 先于一切调用方就绪后删(PR-7)                                                |
+| B5  | mixed_port 启动 reseed                  | `lib.rs:390-398`                         | 旧启动写→Actor      | **在用,未标记**                                                | PR-2b T2.9 消除或标记;PR-7 前删                                                                          |
+| B6  | hotkey KV/verge 双读                    | `core/hotkey.rs:199`                     | 存储桥              | ✅ 已标记                                                      | PR-6b                                                                                                    |
+| B7  | 三域 `*LegacyBridge`(mirror+reseed)     | 未来 `bridge/{verge,window,clash}.rs`    | 双向                | PR-2b 新建                                                     | PR-7 整体删除                                                                                            |
+| B8  | RuntimeBuilder 暂读旧全局取数           | PR-3 T3.7                                | 输入装配            | **作废**(PR-2b #4869 已合并,取数走 typed client;PR-3 spec §19) | PR-4 已清偿 runtime draft 写入;残余仅 `CoreManager` check/apply/restart 桥(`client/core_bridge.rs`,PR-5) |
 
 **规则:** 台账之外不得新增桥;每条桥的代码处必须有 `TODO(actor-migration)` + 删除条件注释。
 
 **2026-07-11 PR-3(profiles 域切换,T07–T11)收尾登记:** #4889(`a655ebbdf`)/#4890(`fb400591d`)已合并。**B8 输入装配面归零**——RuntimeBuilder 取数经 typed client/facade,无旧全局输入装配残留;B8 残余与上表一致 = `Config::runtime()` draft 写入(`client/mod.rs` regenerate,TODO 标记)+ `CoreManager::apply_config` 桥(`client/core_bridge.rs`,TODO 标记),随 PR-4/PR-5 清偿。当前 `TODO/FIXME(actor-migration)` 注释账本 **17 处**,全属 verge/clash/window/core/runtime 桥(PR-4/5/6 负责),**profiles 域桥已在 T07/T08/T10 清尽**。逐处枚举见 `docs/superpowers/specs/2026-07-04-pr3-profiles-domain-switch-tauri/task.md` T11 判据 7。
+
+**2026-07-12 PR-4 收尾登记:** B8 的 runtime draft 写入桥已删除;`TODO/FIXME(actor-migration)` 台账 17 → 21(逐处枚举见 PR-4 spec §7 对账;新增桥面 = LegacyCoreBridge check/restart、facade change_core 的 verge/Logger 触点,PR-5/6 清偿)。`RebuildOutcome` 降级模型为过渡语义,终态方向见 §6 新增行。
 
 ### 5.1 桥接双向数据流(图示)
 
@@ -673,17 +679,20 @@ flowchart LR
 
 ## 6. 风险与开放问题
 
-| 风险                                                                                            | 缓解                                                                                     |
-| ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| **executor 行为漂移**(旧 `enhance` 链语义复杂:HANDLE*FIELDS overlay、builtin gate、use*\* 收尾) | T3p.6 golden 对照 fixtures:同输入断言与旧 `enhance()` 产出等价;guide §7.4 已列为最高风险 |
-| **specta 嵌套 tagged enum 的 TS 推导**                                                          | T3.1 逐 variant 命名导出;CI 检查 TS 产物 diff                                            |
-| **前端 `current` 单值化改造量**(多选 UI → Composition 管理)                                     | 前后端同 PR;先做「多选创建 Composition」的最小交互,完整管理界面后续迭代                  |
-| profiles 迁移不可逆                                                                             | T3.2 强制 `.bak` 备份 + 歧义显式失败(不静默丢弃)                                         |
-| IVerge-only 字段静默丢失                                                                        | T2.1 映射表 100% + 覆盖率单测(spec §11)                                                  |
-| 写无超时下 handler 挂起                                                                         | 不变式:写 handler 禁无界 I/O;引入网络时内部自管 timeout(spec §7)                         |
-| SessionState manager 选型未定(Persistent vs Weak)                                               | T2.7 实施时确认;窗口几何高频写建议 Weak(best-effort),需在 spec 勘误                      |
-| 双 AppHandle 全局(`Handle` + `consts`)                                                          | PR-7 一并清除;期间新代码禁用二者                                                         |
-| `.ccg` 任务账本过期(migration V2 实已合并)                                                      | 关闭该任务;删除本地 `refactor/migration-service-v2` 分支                                 |
+| 风险                                                                                                         | 缓解                                                                                                                         |
+| ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| **executor 行为漂移**(旧 `enhance` 链语义复杂:HANDLE*FIELDS overlay、builtin gate、use*\* 收尾)              | T3p.6 golden 对照 fixtures:同输入断言与旧 `enhance()` 产出等价;guide §7.4 已列为最高风险                                     |
+| **specta 嵌套 tagged enum 的 TS 推导**                                                                       | T3.1 逐 variant 命名导出;CI 检查 TS 产物 diff                                                                                |
+| **前端 `current` 单值化改造量**(多选 UI → Composition 管理)                                                  | 前后端同 PR;先做「多选创建 Composition」的最小交互,完整管理界面后续迭代                                                      |
+| profiles 迁移不可逆                                                                                          | T3.2 强制 `.bak` 备份 + 歧义显式失败(不静默丢弃)                                                                             |
+| IVerge-only 字段静默丢失                                                                                     | T2.1 映射表 100% + 覆盖率单测(spec §11)                                                                                      |
+| 写无超时下 handler 挂起                                                                                      | 不变式:写 handler 禁无界 I/O;引入网络时内部自管 timeout(spec §7)                                                             |
+| SessionState manager 选型未定(Persistent vs Weak)                                                            | T2.7 实施时确认;窗口几何高频写建议 Weak(best-effort),需在 spec 勘误                                                          |
+| 双 AppHandle 全局(`Handle` + `consts`)                                                                       | PR-7 一并清除;期间新代码禁用二者                                                                                             |
+| `.ccg` 任务账本过期(migration V2 实已合并)                                                                   | 关闭该任务;删除本地 `refactor/migration-service-v2` 分支                                                                     |
+| 降级模型(`RebuildOutcome`)为过渡语义                                                                         | TODO(post-PR-7):state 层异步 ack 就绪后,配置应用失败改走 ack 驱动 rollback,取代降级上报(用户决策 2026-07-11,PR-4 spec D2)    |
+| change_core 语义残余（成功路径 verge 持久化失败仅 log;回滚后 manager 暂持新核态;旧核重启失败=核停+复合错误） | PR-5 CoreActor 引入结构化 ChangeCoreOutcome/degraded 上报时一并解决（2026-07-12 复审裁决,维持 PR-4 spec §5.2/§5.4 原文语义） |
+| D6 补偿为尽力语义（patch_clash_config 并发无串行门;新增键无法补偿移除,受 4 字段 DTO 约束基本不可达）         | 后续按需引入 patch 串行门/整份 prev 回推;登记于 2026-07-12 复审（不改 PR-4）                                                 |
 
 ---
 

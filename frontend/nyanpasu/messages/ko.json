@@ -233,6 +233,7 @@
   "profile_composition_min_members_hint": "최소 2개 이상의 프로필을 선택하세요",
   "profile_create_failed_message": "생성 실패: {error}",
   "profile_import_rename_failed_message": "프로필을 가져왔지만 이름 적용에 실패했습니다: {error}",
+  "profile_rebuild_degraded_message": "저장되었지만 새 구성을 적용하지 못했습니다: {error}",
   "profile_empty_list_message": "프로필이 없습니다. 가져오기 또는 새로 만들기를 시도해 보세요.",
   "profile_import_remote_url_label": "원격 프로필 URL",
   "profile_profile_label": "프로필",

@@ -233,6 +233,7 @@
   "profile_composition_min_members_hint": "至少选择 2 个配置",
   "profile_create_failed_message": "创建失败：{error}",
   "profile_import_rename_failed_message": "配置已导入，但应用名称失败：{error}",
+  "profile_rebuild_degraded_message": "已保存，但应用新配置失败：{error}",
   "profile_empty_list_message": "没有找到任何配置，请尝试导入或创建配置。",
   "profile_import_remote_url_label": "远程配置 URL",
   "profile_profile_label": "代理配置",

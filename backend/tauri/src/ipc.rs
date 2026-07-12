@@ -11,6 +11,7 @@ use anyhow::Context;
 use chrono::Local;
 use log::debug;
 use nyanpasu_ipc::api::status::CoreState;
+use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
     collections::{HashMap, VecDeque},
@@ -130,6 +131,8 @@ pub fn is_portable() -> Result<bool> {
 //     Ok(crate::utils::hwid::get_device_info())
 // }
 
+/// Rebuild-only command: there is no prior state commit, so a failure is a
+/// plain error — the committed/degraded model (spec §6.2) does not apply.
 #[tauri::command]
 #[specta::specta]
 pub async fn enhance_profiles(client: State<'_, NyanpasuClient>) -> Result {
@@ -143,11 +146,16 @@ pub async fn import_profile(
     client: State<'_, NyanpasuClient>,
     url: String,
     option: Option<RemoteProfileOptionsPatch>,
-) -> Result<ProfileId> {
+) -> Result<crate::client::runtime::CommitOutcome<ProfileId>> {
     let url = url::Url::parse(&url).context("failed to parse the url")?;
     // Return the created uid so the caller can apply user-provided metadata
-    // (import derives the name from the url server-side).
-    Ok(client.import_profile(url, option).await?)
+    // (import derives the name from the url server-side), plus the rebuild
+    // outcome so a degraded post-import rebuild surfaces to the UI.
+    let (uid, rebuild) = client.import_profile(url, option).await?;
+    Ok(crate::client::runtime::CommitOutcome {
+        value: uid,
+        rebuild,
+    })
 }
 
 /// create a new profile
@@ -157,9 +165,9 @@ pub async fn create_profile(
     client: State<'_, NyanpasuClient>,
     request: NewProfileRequest,
     file_data: Option<String>,
-) -> Result {
-    client.create_profile(request, file_data).await?;
-    Ok(())
+) -> Result<crate::client::runtime::RebuildOutcome> {
+    let (_uid, rebuild) = client.create_profile(request, file_data).await?;
+    Ok(rebuild)
 }
 
 #[tauri::command]
@@ -168,9 +176,8 @@ pub async fn reorder_profile(
     client: State<'_, NyanpasuClient>,
     active_id: ProfileId,
     over_id: ProfileId,
-) -> Result {
-    client.reorder_profile(active_id, over_id).await?;
-    Ok(())
+) -> Result<crate::client::runtime::RebuildOutcome> {
+    Ok(client.reorder_profile(active_id, over_id).await?)
 }
 
 #[tauri::command]
@@ -178,9 +185,8 @@ pub async fn reorder_profile(
 pub async fn reorder_profiles_by_list(
     client: State<'_, NyanpasuClient>,
     list: Vec<ProfileId>,
-) -> Result {
-    client.reorder_profiles_by_list(list).await?;
-    Ok(())
+) -> Result<crate::client::runtime::RebuildOutcome> {
+    Ok(client.reorder_profiles_by_list(list).await?)
 }
 
 #[tauri::command]
@@ -189,23 +195,26 @@ pub async fn update_profile(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
     option: Option<RemoteProfileOptionsPatch>,
-) -> Result {
-    client.refresh_profile(uid, option).await?;
-    Ok(())
+) -> Result<crate::client::runtime::RebuildOutcome> {
+    Ok(client.refresh_profile(uid, option).await?)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn delete_profile(client: State<'_, NyanpasuClient>, uid: ProfileId) -> Result {
-    client.delete_profile(uid).await?;
-    Ok(())
+pub async fn delete_profile(
+    client: State<'_, NyanpasuClient>,
+    uid: ProfileId,
+) -> Result<crate::client::runtime::RebuildOutcome> {
+    Ok(client.delete_profile(uid).await?)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn activate_profile(client: State<'_, NyanpasuClient>, uid: Option<ProfileId>) -> Result {
-    client.activate_profile(uid).await?;
-    Ok(())
+pub async fn activate_profile(
+    client: State<'_, NyanpasuClient>,
+    uid: Option<ProfileId>,
+) -> Result<crate::client::runtime::RebuildOutcome> {
+    Ok(client.activate_profile(uid).await?)
 }
 
 #[tauri::command]
@@ -213,9 +222,8 @@ pub async fn activate_profile(client: State<'_, NyanpasuClient>, uid: Option<Pro
 pub async fn set_global_transforms(
     client: State<'_, NyanpasuClient>,
     ids: Vec<ProfileId>,
-) -> Result {
-    client.set_global_transforms(ids).await?;
-    Ok(())
+) -> Result<crate::client::runtime::RebuildOutcome> {
+    Ok(client.set_global_transforms(ids).await?)
 }
 
 #[tauri::command]
@@ -223,9 +231,8 @@ pub async fn set_global_transforms(
 pub async fn set_profile_valid_fields(
     client: State<'_, NyanpasuClient>,
     fields: Vec<String>,
-) -> Result {
-    client.set_profile_valid_fields(fields).await?;
-    Ok(())
+) -> Result<crate::client::runtime::RebuildOutcome> {
+    Ok(client.set_profile_valid_fields(fields).await?)
 }
 
 #[tauri::command]
@@ -234,9 +241,8 @@ pub async fn patch_profile_metadata(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
     patch: ProfileMetadataPatch,
-) -> Result {
-    client.patch_profile_metadata(uid, patch).await?;
-    Ok(())
+) -> Result<crate::client::runtime::RebuildOutcome> {
+    Ok(client.patch_profile_metadata(uid, patch).await?)
 }
 
 #[tauri::command]
@@ -245,9 +251,8 @@ pub async fn patch_remote_profile_options(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
     patch: RemoteProfileOptionsPatch,
-) -> Result {
-    client.patch_remote_profile_options(uid, patch).await?;
-    Ok(())
+) -> Result<crate::client::runtime::RebuildOutcome> {
+    Ok(client.patch_remote_profile_options(uid, patch).await?)
 }
 
 #[tauri::command]
@@ -256,9 +261,8 @@ pub async fn replace_profile_definition(
     client: State<'_, NyanpasuClient>,
     uid: ProfileId,
     definition: ProfileDefinition,
-) -> Result {
-    client.replace_profile_definition(uid, definition).await?;
-    Ok(())
+) -> Result<crate::client::runtime::RebuildOutcome> {
+    Ok(client.replace_profile_definition(uid, definition).await?)
 }
 
 #[tauri::command]
@@ -307,11 +311,13 @@ pub fn get_clash_info() -> Result<ClashInfo> {
 #[specta::specta]
 // TODO: specta 2.0.0-rc.25 cannot export recursive inline types (serde_json::Value). Wrapped in
 // Any<> to avoid infinite type expansion. Replace with a typed ClashConfig struct if desired.
-pub fn get_runtime_config() -> Result<Option<specta_typescript::Any<serde_json::Value>>> {
-    let config = Config::runtime().latest().config.clone();
-    match config {
-        Some(cfg) => {
-            let yaml_value = serde_yaml::to_value(cfg)?;
+pub async fn get_runtime_config(
+    client: State<'_, NyanpasuClient>,
+) -> Result<Option<specta_typescript::Any<serde_json::Value>>> {
+    let state = client.runtime_state().await;
+    match state.as_ref() {
+        Some(state) => {
+            let yaml_value = serde_yaml::to_value(&state.config)?;
             let json_value = serde_json::to_value(&yaml_value)?;
             let wrapped: specta_typescript::Any<serde_json::Value> =
                 serde_json::from_value(json_value)?;
@@ -323,11 +329,12 @@ pub fn get_runtime_config() -> Result<Option<specta_typescript::Any<serde_json::
 
 #[tauri::command]
 #[specta::specta]
-pub fn get_runtime_yaml() -> Result<String> {
-    let runtime = Config::runtime();
-    let runtime = runtime.latest();
-    let config = runtime.config.as_ref();
-    let mapping = (config
+pub async fn get_runtime_yaml(client: State<'_, NyanpasuClient>) -> Result<String> {
+    let state = client.runtime_state().await;
+    let mapping = (state
+        .as_ref()
+        .as_ref()
+        .map(|state| &state.config)
         .ok_or(anyhow::anyhow!("failed to parse config to yaml file"))
         .and_then(|config| {
             serde_yaml::to_string(config).context("failed to convert config to yaml")
@@ -337,14 +344,28 @@ pub fn get_runtime_yaml() -> Result<String> {
 
 #[tauri::command]
 #[specta::specta]
-pub fn get_runtime_exists() -> Result<Vec<String>> {
-    Ok(Config::runtime().latest().exists_keys.clone())
+pub async fn get_runtime_exists(client: State<'_, NyanpasuClient>) -> Result<Vec<String>> {
+    Ok(client
+        .runtime_state()
+        .await
+        .as_ref()
+        .as_ref()
+        .map(|state| state.exists_keys.clone())
+        .unwrap_or_default())
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn get_postprocessing_output() -> Result<PostProcessingOutput> {
-    Ok(Config::runtime().latest().postprocessing_output.clone())
+pub async fn get_postprocessing_output(
+    client: State<'_, NyanpasuClient>,
+) -> Result<PostProcessingOutput> {
+    Ok(client
+        .runtime_state()
+        .await
+        .as_ref()
+        .as_ref()
+        .map(|state| state.postprocessing_output.clone())
+        .unwrap_or_default())
 }
 
 #[tauri::command]
@@ -372,22 +393,59 @@ pub async fn get_ipsb_asn() -> Result<specta_typescript::Any<serde_json::Value>>
     Ok(wrapped)
 }
 
+#[derive(Default, Debug, Clone, Deserialize, Serialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub struct PatchRuntimeConfig {
+    #[serde(default, rename = "allow-lan", skip_serializing_if = "Option::is_none")]
+    pub allow_lan: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ipv6: Option<bool>,
+    #[serde(default, rename = "log-level", skip_serializing_if = "Option::is_none")]
+    pub log_level: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+}
+
 /// patch clash runtime config
 #[tauri::command]
 #[specta::specta]
-#[tracing_attributes::instrument]
-pub async fn patch_clash_config(payload: PatchRuntimeConfig) -> Result {
-    tracing::debug!("patch_clash_config: {payload:?}");
+#[tracing_attributes::instrument(skip_all)]
+pub async fn patch_clash_config(
+    client: State<'_, NyanpasuClient>,
+    payload: PatchRuntimeConfig,
+) -> Result {
+    // Explicit-field whitelist so future DTO fields never auto-leak into logs.
+    tracing::debug!(
+        allow_lan = ?payload.allow_lan,
+        ipv6 = ?payload.ipv6,
+        log_level = ?payload.log_level,
+        mode = ?payload.mode,
+        "patch_clash_config"
+    );
 
     let mapping = match serde_yaml::to_value(&payload)? {
         serde_yaml::Value::Mapping(m) => m,
         _ => return Err(IpcError::Custom("Expected a mapping".to_string())),
     };
 
+    // D6 补偿快照:manager 为 None(核心尚未构建/运行)→ 无补偿,直推本也会失败。
+    let prev = client.runtime_state().await;
+    let compensation = crate::client::runtime::compensation_for(
+        &mapping,
+        prev.as_ref().as_ref().map(|state| &state.config),
+    );
+
     (crate::core::clash::api::patch_configs(&mapping).await)?;
 
     if let Err(e) = feat::patch_clash(mapping).await {
         tracing::error!("{e}");
+        // API-first 已改运行核;rebuild/check 失败时尽力回推旧值(spec §6.4),
+        // 避免「运行核=新值、持久态/产物=旧值」的永久分裂(P0-6)。
+        if let Some(comp) = compensation {
+            if let Err(comp_err) = crate::core::clash::api::patch_configs(&comp).await {
+                tracing::error!("compensation patch failed: {comp_err:?}");
+            }
+        }
         return Err(IpcError::from(e));
     }
 
@@ -417,15 +475,18 @@ pub async fn patch_verge_config(legacy: State<'_, LegacyVergeBridge>, payload: I
 #[tauri::command]
 #[specta::specta]
 pub async fn change_clash_core(
+    client: State<'_, NyanpasuClient>,
     legacy: State<'_, LegacyVergeBridge>,
     clash_core: Option<nyanpasu::ClashCore>,
 ) -> Result {
-    // `change_core` writes `Config::verge().clash_core` directly; reseed typed actors so a
-    // later pure patch does not persist stale typed state and revert the core change.
+    let clash_core =
+        clash_core.ok_or_else(|| IpcError::Custom("clash core is null".to_string()))?;
+    // reseed wrapper 语义不变:核心切换动了 legacy verge,须回灌 typed actors。
+    let client = client.inner().clone();
     legacy
-        .run_legacy_verge_mutation(
-            || async move { CoreManager::global().change_core(clash_core).await },
-        )
+        .run_legacy_verge_mutation(move || async move {
+            client.change_core(clash_core).await.map_err(Into::into)
+        })
         .await?;
     Ok(())
 }

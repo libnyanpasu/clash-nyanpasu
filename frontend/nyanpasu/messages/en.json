@@ -233,6 +233,7 @@
   "profile_composition_min_members_hint": "Select at least 2 profiles",
   "profile_create_failed_message": "Create failed: {error}",
   "profile_import_rename_failed_message": "Profile imported, but applying the name failed: {error}",
+  "profile_rebuild_degraded_message": "Saved, but applying the new config failed: {error}",
   "profile_empty_list_message": "No profiles found, please try importing or creating a profile.",
   "profile_import_remote_url_label": "Remote Profile URL",
   "profile_profile_label": "Profiles",

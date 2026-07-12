@@ -18,7 +18,14 @@ import CustomCssProvider from '@/components/providers/custom-css-provider'
 import { LanguageProvider } from '@/components/providers/language-provider'
 import { ExperimentalThemeProvider } from '@/components/providers/theme-provider'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { events, NyanpasuProvider, useSettings } from '@nyanpasu/interface'
+import { m } from '@/paraglide/messages'
+import { message } from '@/utils/notification'
+import {
+  events,
+  NyanpasuProvider,
+  setDegradedRebuildHandler,
+  useSettings,
+} from '@nyanpasu/interface'
 
 dayjs.extend(relativeTime)
 dayjs.extend(customParseFormat)
@@ -110,6 +117,22 @@ function WindowReveal() {
   return null
 }
 
+function DegradedRebuildNotifier() {
+  useEffect(
+    () =>
+      // setDegradedRebuildHandler 返回 disposer:useEffect cleanup 直接透传,
+      // StrictMode 双挂载 / HMR 下不留悬挂 handler(r2)。
+      setDegradedRebuildHandler((error) => {
+        message(m.profile_rebuild_degraded_message({ error }), {
+          title: 'Warning',
+          kind: 'warning',
+        })
+      }),
+    [],
+  )
+  return null
+}
+
 export default function App() {
   return (
     <NyanpasuProvider>
@@ -119,6 +142,7 @@ export default function App() {
             <CustomCssProvider>
               <TooltipProvider>
                 <WindowReveal />
+                <DegradedRebuildNotifier />
                 <Outlet />
               </TooltipProvider>
             </CustomCssProvider>

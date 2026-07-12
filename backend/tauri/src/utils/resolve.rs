@@ -1,11 +1,11 @@
 use crate::{
     config::{
-        Config, ConfigType, IVerge,
+        Config, IVerge,
         nyanpasu::{ClashCore, TrayMenuCloseBehavior, WindowState},
     },
     core::{storage::Storage, tray::proxies, *},
     log_err,
-    utils::{help, init},
+    utils::init,
     window::{AppWindow, WindowConfig, WindowParamsBuilder, WindowReadyEvent},
 };
 use anyhow::Result;
@@ -172,24 +172,17 @@ pub fn resolve_setup(app: &mut App) {
             let _ = Config::clash().data().save_config();
         }
 
-        // 启动首铸:profiles/clash/app 快照 → RuntimeBuilder → runtime draft
+        // 启动首铸:profiles/clash/app 快照 → RuntimeBuilder → 候选 check → 晋升产物 → 发布
         log::trace!("init config");
         log_err!(tauri::async_runtime::block_on(client.regenerate_runtime()));
-        if let Err(err) = Config::generate_file(ConfigType::Run) {
-            log::error!(target: "app", "{err:?}");
-            let runtime_path =
-                Config::runtime_config_path().expect("failed to resolve runtime config path");
-            // 与旧 init_config 相同的兜底:文件缺失时落默认 clash 配置
-            if !runtime_path.exists() {
-                if let Some(parent) = runtime_path.parent() {
-                    log_err!(std::fs::create_dir_all(parent));
-                }
-                log_err!(help::save_yaml(
-                    &runtime_path,
-                    &Config::clash().latest().0,
-                    Some("# Clash Nyanpasu Runtime"),
-                ));
-            }
+        // 兜底(spec §5.6):产物缺失时默认配置也必须过 check——check 失败则不落
+        // 未检产物(P0-5),boot 继续,核心启动失败可见。
+        let runtime_path = crate::client::runtime::runtime_config_path()
+            .expect("failed to resolve runtime config path");
+        if !runtime_path.exists() {
+            log_err!(tauri::async_runtime::block_on(
+                client.promote_default_runtime_config()
+            ));
         }
     }
 

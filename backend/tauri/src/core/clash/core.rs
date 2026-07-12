@@ -1,12 +1,12 @@
 use super::api;
 use crate::{
-    config::{Config, ConfigType, nyanpasu::ClashCore},
+    config::{Config, nyanpasu::ClashCore},
     core::logger::Logger,
     log_err,
     utils::dirs,
 };
 use anyhow::{Context, Result, bail};
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 #[cfg(target_os = "macos")]
 use nyanpasu_ipc::api::network::set_dns::NetworkSetDnsReq;
 use nyanpasu_ipc::{
@@ -34,7 +34,6 @@ use std::{
     time::Duration,
 };
 use tokio::time::sleep;
-use tracing_attributes::instrument;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type)]
 #[serde(rename_all = "snake_case")]
@@ -94,10 +93,11 @@ impl Instance {
             .map_err(|e| anyhow::anyhow!("failed to convert data dir to utf8 path: {:?}", e))?;
         let binary = camino::Utf8PathBuf::from_path_buf(find_binary_path(&core_type)?)
             .map_err(|e| anyhow::anyhow!("failed to convert binary path to utf8 path: {:?}", e))?;
-        let config_path = camino::Utf8PathBuf::from_path_buf(Config::generate_file(
-            ConfigType::Run,
-        )?)
-        .map_err(|e| anyhow::anyhow!("failed to convert config path to utf8 path: {:?}", e))?;
+        let config_path =
+            camino::Utf8PathBuf::from_path_buf(crate::client::runtime::runtime_config_path()?)
+                .map_err(|e| {
+                    anyhow::anyhow!("failed to convert config path to utf8 path: {:?}", e)
+                })?;
         let pid_path = camino::Utf8PathBuf::from_path_buf(dirs::clash_pid_path()?)
             .map_err(|e| anyhow::anyhow!("failed to convert pid path to utf8 path: {:?}", e))?;
         match run_type {
@@ -421,14 +421,8 @@ impl CoreManager {
     }
 
     /// 检查配置是否正确
-    pub async fn check_config(&self) -> Result<()> {
+    pub async fn check_config(&self, config_path: &Utf8Path, clash_core: ClashCore) -> Result<()> {
         use nyanpasu_utils::core::instance::CoreInstance;
-        let config_path = Config::generate_file(ConfigType::Check)?;
-        let config_path = Utf8PathBuf::from_path_buf(config_path)
-            .map_err(|_| anyhow::anyhow!("failed to convert config path to utf8 path"))?;
-
-        let clash_core = { Config::verge().latest().clash_core };
-        let clash_core = clash_core.unwrap_or(ClashCore::ClashPremium);
         let clash_core: nyanpasu_utils::core::CoreType = (&clash_core).into();
 
         let app_dir = dirs::app_data_dir()?;
@@ -438,7 +432,7 @@ impl CoreManager {
         let binary_path = Utf8PathBuf::from_path_buf(binary_path)
             .map_err(|_| anyhow::anyhow!("failed to convert binary path to utf8 path"))?;
         log::debug!(target: "app", "check config in `{clash_core}`");
-        CoreInstance::check_config_(&clash_core, &config_path, &binary_path, &app_dir)
+        CoreInstance::check_config_(&clash_core, config_path, &binary_path, &app_dir)
             .await
             .context("failed to check config")
             .inspect_err(|e| log::error!(target: "app", "failed to check config: {e:?}"))?;
@@ -460,10 +454,6 @@ impl CoreManager {
                 instance.stop().await?;
             }
         }
-
-        // Reload clash config from file to get latest user preferences (e.g., mode)
-        Config::clash().reload();
-        log::debug!(target: "app", "reloaded clash config from file");
 
         // T07 review fix: port ownership moved to SessionPortResolver (resolved at
         // startup, written back by resolve_setup). Re-picking external-controller
@@ -544,73 +534,24 @@ impl CoreManager {
         Ok(())
     }
 
-    /// 切换核心
-    #[instrument(skip(self))]
-    pub async fn change_core(&self, clash_core: Option<ClashCore>) -> Result<()> {
-        let clash_core = clash_core.ok_or(anyhow::anyhow!("clash core is null"))?;
-
-        log::debug!(target: "app", "change core to `{clash_core}`");
-
-        let _guard = self.run_lock.lock().await;
-
-        Config::verge().draft().clash_core = Some(clash_core);
-
-        // 更新配置
-        if let Err(err) = crate::client::rebuild::regenerate().await {
-            Config::verge().discard();
-            return Err(err);
-        }
-
-        if let Err(err) = self.check_config().await {
-            Config::verge().discard();
-            Config::runtime().discard();
-            return Err(err);
-        }
-
-        // 清掉旧日志
-        Logger::global().clear_log();
-
-        match self.run_core_inner().await {
-            Ok(_) => {
-                tracing::info!("change core success");
-                Config::verge().apply();
-                Config::runtime().apply();
-                log_err!(Config::verge().latest().save_file());
-                Ok(())
-            }
-            Err(err) => {
-                tracing::error!("failed to change core: {err:?}");
-                Config::verge().discard();
-                Config::runtime().discard();
-                self.run_core_inner().await?;
-                Err(err)
-            }
-        }
-    }
-
     /// 更新proxies那些
     /// 如果涉及端口和外部控制则需要重启
     pub async fn update_config(&self) -> Result<()> {
         log::debug!(target: "app", "try to update clash config");
-        // 更新配置
         // FIXME(actor-migration): legacy regenerate path. Sole remaining caller
         // chain: feat::patch_verge (TUN/service toggles) -> update_core_config
         // -> update_config. New code must use
-        // NyanpasuClient::rebuild_running_config(). Remove when PR-4/5 migrate
+        // NyanpasuClient::rebuild_running_config(). Remove when PR-5 migrates
         // the verge feature flows onto injected clients.
-        crate::client::rebuild::regenerate().await?;
-        self.apply_config().await
+        // P0-2: regenerate+apply 在桥另一侧的单次 gate 持有内一体完成。
+        crate::client::rebuild::regenerate_and_apply().await
     }
 
-    /// Apply the CURRENT runtime draft to the running core: check, write the
-    /// runtime file, and push it over the api. Regeneration is the caller's
-    /// responsibility (facade `regenerate_runtime` or the legacy bridge).
+    /// Push the promoted runtime product to the running core over the api.
+    /// Check + promote happen in the rebuild pipeline (RunningCoreBridge::
+    /// check_and_promote) before this is called.
     pub async fn apply_config(&self) -> Result<()> {
-        // 检查配置是否正常
-        self.check_config().await?;
-
-        // 更新运行时配置
-        let path = Config::generate_file(ConfigType::Run)?;
+        let path = crate::client::runtime::runtime_config_path()?;
         let path = dirs::path_to_str(&path)?;
 
         // 发送请求 发送5次

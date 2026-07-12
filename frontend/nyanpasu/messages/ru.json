@@ -233,6 +233,7 @@
   "profile_composition_min_members_hint": "Выберите минимум 2 профиля",
   "profile_create_failed_message": "Не удалось создать: {error}",
   "profile_import_rename_failed_message": "Профиль импортирован, но не удалось применить имя: {error}",
+  "profile_rebuild_degraded_message": "Сохранено, но не удалось применить новую конфигурацию: {error}",
   "profile_empty_list_message": "Не найдено ни одного профиля, пожалуйста, попробуйте импортировать или создать профиль.",
   "profile_import_remote_url_label": "URL удаленного профиля",
   "profile_profile_label": "Профили",

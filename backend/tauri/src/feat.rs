@@ -217,6 +217,14 @@ pub fn disable_tun_mode() {
     });
 }
 
+/// PR-4: every clash patch feeds the rebuild input (guard overrides), so the
+/// derived runtime always regenerates; only these fields need a core restart.
+pub(crate) fn requires_core_restart(patch: &Mapping) -> bool {
+    patch.get("mixed-port").is_some()
+        || patch.get("secret").is_some()
+        || patch.get("external-controller").is_some()
+}
+
 /// 修改clash的配置
 pub async fn patch_clash(patch: Mapping) -> Result<()> {
     Config::clash().draft().patch_config(patch.clone());
@@ -260,14 +268,14 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
             }
         }
 
-        // 激活配置
-        if mixed_port.is_some()
-            || patch.get("secret").is_some()
-            || patch.get("external-controller").is_some()
-        {
-            crate::client::rebuild::regenerate().await?;
-            CoreManager::global().run_core().await?;
+        // 激活配置:任何 clash patch 都会进入 rebuild 输入,恒重建派生配置;
+        // 仅端口/控制器/密钥变更需要重启核心(即时性由 IPC 层 api::patch_configs
+        // 直推保证,失败补偿见 ipc::patch_clash_config,D6)。
+        if requires_core_restart(&patch) {
+            crate::client::rebuild::regenerate_and_restart().await?;
             handle::Handle::refresh_clash();
+        } else {
+            crate::client::rebuild::regenerate().await?;
         }
 
         // 更新系统代理
@@ -279,8 +287,6 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
             crate::feat::update_proxies_buff(None);
             log_err!(handle::Handle::update_systray_part());
         }
-
-        Config::runtime().latest().patch_config(patch);
 
         <Result<()>>::Ok(())
     };
@@ -325,8 +331,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
         if service_mode.is_some() && ipc_state.is_connected() {
             log::debug!(target: "app", "change service mode to {}", service_mode.unwrap());
 
-            crate::client::rebuild::regenerate().await?;
-            CoreManager::global().run_core().await?;
+            crate::client::rebuild::regenerate_and_restart().await?;
         }
 
         if tun_mode.is_some() {
@@ -349,8 +354,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
             let (state, _, _) = CoreManager::global().status().await;
             if flag || matches!(state.as_ref(), CoreState::Stopped(_)) {
                 log::debug!(target: "app", "core is stopped, restart core");
-                crate::client::rebuild::regenerate().await?;
-                CoreManager::global().run_core().await?;
+                crate::client::rebuild::regenerate_and_restart().await?;
             } else {
                 log::debug!(target: "app", "update core config");
                 #[cfg(target_os = "macos")]
@@ -505,4 +509,25 @@ pub fn update_proxies_buff(rx: Option<tokio::sync::oneshot::Receiver<()>>) {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn core_restart_only_for_port_controller_secret() {
+        let mut patch = serde_yaml::Mapping::new();
+        patch.insert("mode".into(), "direct".into());
+        patch.insert("allow-lan".into(), true.into());
+        assert!(!requires_core_restart(&patch));
+        patch.insert("mixed-port".into(), 7890.into());
+        assert!(requires_core_restart(&patch));
+        let mut patch = serde_yaml::Mapping::new();
+        patch.insert("secret".into(), "s".into());
+        assert!(requires_core_restart(&patch));
+        let mut patch = serde_yaml::Mapping::new();
+        patch.insert("external-controller".into(), "127.0.0.1:9090".into());
+        assert!(requires_core_restart(&patch));
+    }
 }

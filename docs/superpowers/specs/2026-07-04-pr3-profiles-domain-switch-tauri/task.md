@@ -758,7 +758,7 @@ design §16 判据 1–8 逐条取证(全部在 tip `20cfbf3c`,当前 env 规则
 - **C-M2(后半):** 本次维持现状;「committed/degraded」IPC 结果模型延至 PR-4 讨论。
 - **C-Min2:** 已处置——恢复 `profile-update-interval` 小时→分钟解析,仅首次导入且用户未显式设置 interval 时由 actor 在成功提交事务内采纳;manual/scheduled refresh 忽略建议。
 
-**知悉不修(本 PR)**:C-M4 后半(端口生命周期编排 stop→resolve→mirror→start 与 legacy sysproxy/API 镜像回写时机,PR-4);A-Minor 空列表早退、chain 编辑器后台刷新重置本地顺序、query cache 存闭包(均 pre-existing 模式);C-Suggestion 并发 rebuild/HoldingFetcher+Replace/降级可观察三测试与 URL 协议白名单(挂账)。
+**知悉不修(本 PR)**:C-M4 后半(端口生命周期编排 stop→resolve→mirror→start 与 legacy sysproxy/API 镜像回写时机,PR-5(2026-07-12 勘误));A-Minor 空列表早退、chain 编辑器后台刷新重置本地顺序、query cache 存闭包(均 pre-existing 模式);C-Suggestion 并发 rebuild/HoldingFetcher+Replace/降级可观察三测试与 URL 协议白名单(挂账)。
 
 **第 2 轮复审(antigravity APPROVE 100/100,含对拖拽驳回的独立确认;codex 61/100 余 3 Major)与处置**:
 
@@ -767,3 +767,9 @@ design §16 判据 1–8 逐条取证(全部在 tip `20cfbf3c`,当前 env 规则
 - **R2-Suggestion 提交段同步写阻塞 actor mailbox**:已修——`spawn_blocking` + handler await(与 mirror sync 同模式,消息序不变)。
 - **R2-M1 rebuild gate 未覆盖 legacy runtime 直写**(`feat::patch_clash` 的 `Config::runtime().latest().patch_config` / `change_core` 的 runtime apply/discard):属 legacy 写者路径,pre-existing 且为 PR-4/5 迁移对象(runtime 镜像本身即 TODO B8);gate 的边界=新管线内部串行,**记录不修**。
 - **R2-Minor 测试缺口**:已补 validate 正反钉(`config_content_requires_proxies_key`/`overlay_content_needs_only_a_mapping`)与 external host-only 钉;并发 rebuild 顺序、真实 HoldingFetcher→ReplaceDefinition fence 测试仍挂账。
+
+**2026-07-12 用户决策与处置(PR-4 落地):**
+
+- **C-M2(后半):** 已落地——变更类 profile IPC 返回 `RebuildOutcome`(committed/degraded);ack-based rollback 记为 post-PR-7 方向。见 `docs/superpowers/specs/2026-07-12-pr4-runtime-derivation-cleanup-design.md` §6.2。
+- **C-M5:** 已落地——`run_core_inner` 的 `Config::clash().reload()` 删除(重启=应用当前 draft)。
+- **C-M4(后半)勘误:** 端口生命周期编排改挂 **PR-5**(编排需控制核心启停时序,属 CoreActor 职责),已登记进 roadmap §4.7 任务 ⑦ 与验收。

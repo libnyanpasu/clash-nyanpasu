@@ -199,7 +199,7 @@ pub enum RebuildOutcome {
 }
 ```
 
-**覆盖规则**:凡 facade 路径在 post-commit 内联 await rebuild 的 IPC——返回 `Result<()>` 者改返 `Result<RebuildOutcome>`;携带数据者(如 `add_profile → ProfileId`、import)改返 `{ value, rebuild }` 包装。具体命令清单在 plan 阶段按 `rebuild_running_config` 调用点逐一枚举(已知含 activate / save / patch / delete 触发重建的路径)。后台防抖重建保持 fire-and-forget + 降级日志,不套此模型。
+**覆盖规则**:凡 facade 路径在 post-commit 内联 await rebuild 的 IPC——返回 `Result<()>` 者改返 `Result<RebuildOutcome>`;携带数据者(如 `add_profile → ProfileId`、import)改返 `{ value, rebuild }` 包装。具体命令清单在 plan 阶段按 `rebuild_running_config` 调用点逐一枚举(实施期枚举定稿:11 条 unit 命令 + `create_profile` 返回 `RebuildOutcome`,`import_profile` 返回 `CommitOutcome<ProfileId>`;`enhance_profiles` 无前置 commit、`save_profile_file` 不触发 rebuild,均不适用)。后台防抖重建保持 fire-and-forget + 降级日志,不套此模型。
 
 **范围澄清(r2)**:`RebuildOutcome` 只覆盖 **rebuild(build/check/promote/publish/apply)**;`CommitReport.warnings`(commit 后其他副作用)维持 tracing 日志,不进 wire——名字与文档以此为准,避免「post-commit side-effect degradation」的过宽表述。审计建议的 `Degraded { phase, error }` 阶段枚举**暂缓**:anyhow 错误链已携带阶段上下文("failed to check config" / "failed to promote…"),前端只做展示;ack-rollback 落地时再结构化(§12)。
 

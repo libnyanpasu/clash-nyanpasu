@@ -1234,7 +1234,7 @@ pub async fn save_window_size_state(
         .run_legacy_verge_mutation(|| async move {
             match label.as_str() {
                 crate::consts::MAIN_WINDOW_LABEL => {
-                    resolve::save_main_window_state(&app_handle, true)?;
+                    resolve::save_main_window_state_async(&app_handle, true).await?;
                 }
                 _ => log::warn!("Unknown window label: {}", label),
             }

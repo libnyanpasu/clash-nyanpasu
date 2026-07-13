@@ -83,7 +83,7 @@
     "stylelint-order": "8.1.1",
     "stylelint-scss": "7.2.0",
     "tailwindcss": "4.3.2",
-    "typescript": "6.0.3"
+    "typescript": "7.0.2"
   },
   "packageManager": "pnpm@11.11.0",
   "engines": {

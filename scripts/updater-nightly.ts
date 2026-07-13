@@ -130,7 +130,6 @@ async function resolveUpdater() {
       "darwin-x86_64": { signature: "", url: "" },
       "linux-x86_64": { signature: "", url: "" },
       "windows-x86_64": { signature: "", url: "" },
-      "windows-i686": { signature: "", url: "" },
       "windows-aarch64": { signature: "", url: "" },
     },
   };
@@ -161,13 +160,6 @@ async function resolveUpdater() {
       const sig = await getSignature(browserDownloadUrl);
       updateData.platforms.win64.signature = sig;
       updateData.platforms["windows-x86_64"].signature = sig;
-    }
-    if (isMatch(name, ".nsis.zip", "x86")) {
-      updateData.platforms["windows-i686"].url = browserDownloadUrl;
-    }
-    if (isMatch(name, ".nsis.zip.sig", "x86")) {
-      const sig = await getSignature(browserDownloadUrl);
-      updateData.platforms["windows-i686"].signature = sig;
     }
     if (isMatch(name, ".nsis.zip", "arm64")) {
       updateData.platforms["windows-aarch64"].url = browserDownloadUrl;

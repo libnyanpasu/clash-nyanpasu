@@ -805,19 +805,23 @@ pub trait AppWindow {
         let win = app_handle
             .get_webview_window(self.label())
             .ok_or(anyhow::anyhow!("failed to get window"))?;
-        let current_monitor = win.current_monitor()?;
+        if win.is_minimized()? {
+            if save_to_file {
+                Config::verge().data().save_file()?;
+            }
+            return Ok(());
+        }
 
-        let state = match current_monitor {
+        let state = match win.current_monitor()? {
             Some(_) => {
                 let maximized = win.is_maximized()?;
                 let fullscreen = win.is_fullscreen()?;
-                let is_minimized = win.is_minimized()?;
                 let size = win.inner_size()?;
 
                 // During system shutdown, Windows sends resize events with 0x0 dimensions.
                 // Skip saving in this case to preserve the last valid window state.
                 if size.width == 0 || size.height == 0 {
-                    if !maximized && !fullscreen && !is_minimized {
+                    if !maximized && !fullscreen {
                         tracing::debug!(
                             "skipping window state save: invalid size {}x{} in normal state",
                             size.width,
@@ -833,12 +837,12 @@ pub trait AppWindow {
                     ..WindowState::default()
                 };
 
-                if size.width > 0 && size.height > 0 && !state.maximized && !is_minimized {
+                if size.width > 0 && size.height > 0 && !state.maximized {
                     state.width = size.width;
                     state.height = size.height;
                 }
                 let position = win.outer_position()?;
-                if !state.maximized && !is_minimized {
+                if !state.maximized {
                     state.x = position.x;
                     state.y = position.y;
                 }

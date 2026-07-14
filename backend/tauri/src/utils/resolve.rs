@@ -442,8 +442,47 @@ pub fn is_main_window_open(app_handle: &AppHandle) -> bool {
     MainWindow.is_open(app_handle)
 }
 
+fn save_main_window_state_snapshot(
+    app_handle: &AppHandle,
+    save_to_file: bool,
+) -> Result<Option<nyanpasu_config::state::PersistentState>> {
+    MainWindow.save_state(app_handle, save_to_file)?;
+
+    if !save_to_file {
+        return Ok(None);
+    }
+
+    let legacy = Config::verge().data().clone();
+    Ok(Some(crate::bridge::window::persistent_state_from_legacy(
+        &legacy,
+    )?))
+}
+
 pub fn save_main_window_state(app_handle: &AppHandle, save_to_file: bool) -> Result<()> {
-    MainWindow.save_state(app_handle, save_to_file)
+    if let Some(session_state) = save_main_window_state_snapshot(app_handle, save_to_file)? {
+        let client = app_handle
+            .state::<crate::client::NyanpasuClient>()
+            .inner()
+            .clone();
+        block_on(client.replace_session_state(session_state))?;
+    }
+
+    Ok(())
+}
+
+pub async fn save_main_window_state_async(
+    app_handle: &AppHandle,
+    save_to_file: bool,
+) -> Result<()> {
+    if let Some(session_state) = save_main_window_state_snapshot(app_handle, save_to_file)? {
+        let client = app_handle
+            .state::<crate::client::NyanpasuClient>()
+            .inner()
+            .clone();
+        client.replace_session_state(session_state).await?;
+    }
+
+    Ok(())
 }
 
 /// Create window based on window_type config

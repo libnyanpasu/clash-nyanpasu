@@ -15,7 +15,7 @@
     "@dnd-kit/react": "0.5.0",
     "@floating-ui/react": "0.27.20",
     "@hookform/resolvers": "5.4.0",
-    "@inlang/paraglide-js": "2.21.0",
+    "@inlang/paraglide-js": "2.22.0",
     "@juggle/resize-observer": "3.4.0",
     "@material/material-color-utilities": "0.4.0",
     "@nyanpasu/interface": "workspace:^",

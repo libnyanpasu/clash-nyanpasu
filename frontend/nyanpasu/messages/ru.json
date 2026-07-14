@@ -45,6 +45,8 @@
   "settings_system_proxy_system_service_ctrl_uninstall": "Удалить",
   "settings_system_proxy_system_service_ctrl_failed_install": "Установка не удалась",
   "settings_system_proxy_system_service_ctrl_failed_uninstall": "Удаление не удалось",
+  "settings_system_proxy_system_service_ctrl_failed_start": "Не удалось запустить",
+  "settings_system_proxy_system_service_ctrl_failed_stop": "Не удалось остановить",
   "settings_system_proxy_system_service_ctrl_prompt": "Подсказка по сервису",
   "settings_system_proxy_system_service_ctrl_manual_prompt": "Руководство по ручному управлению",
   "settings_system_proxy_system_service_ctrl_manual_operation_prompt": "Не удалось автоматически управлять сервисом. Пожалуйста, перейдите в каталог ядра, запустите PowerShell как администратор на Windows или эмулятор терминала на macOS/Linux и выполните следующие команды:",

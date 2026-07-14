@@ -23,19 +23,19 @@ export const useSystemService = () => {
     mutationFn: async (type: ServiceType) => {
       switch (type) {
         case 'install':
-          await commands.installService()
+          unwrapResult(await commands.installService())
           break
 
         case 'uninstall':
-          await commands.uninstallService()
+          unwrapResult(await commands.uninstallService())
           break
 
         case 'start':
-          await commands.startService()
+          unwrapResult(await commands.startService())
           break
 
         case 'stop':
-          await commands.stopService()
+          unwrapResult(await commands.stopService())
           break
       }
     },

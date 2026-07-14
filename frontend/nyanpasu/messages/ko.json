@@ -45,6 +45,8 @@
   "settings_system_proxy_system_service_ctrl_uninstall": "제거",
   "settings_system_proxy_system_service_ctrl_failed_install": "설치 실패",
   "settings_system_proxy_system_service_ctrl_failed_uninstall": "제거 실패",
+  "settings_system_proxy_system_service_ctrl_failed_start": "시작 실패",
+  "settings_system_proxy_system_service_ctrl_failed_stop": "중지 실패",
   "settings_system_proxy_system_service_ctrl_prompt": "서비스 안내",
   "settings_system_proxy_system_service_ctrl_manual_prompt": "서비스 수동 설정 안내",
   "settings_system_proxy_system_service_ctrl_manual_operation_prompt": "서비스를 자동으로 제어할 수 없습니다. 코어 디렉터리로 이동하여 Windows에서는 관리자 권한으로 PowerShell을, macOS/Linux에서는 터미널을 실행한 뒤 다음 명령을 실행하세요:",

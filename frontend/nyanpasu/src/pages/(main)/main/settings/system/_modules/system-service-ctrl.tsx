@@ -17,6 +17,7 @@ import { message } from '@/utils/notification'
 import { getShikiSingleton } from '@/utils/shiki'
 import {
   commands,
+  unwrapResult,
   useCoreDir,
   useServicePrompt,
   useSystemService,
@@ -95,7 +96,7 @@ const ServiceInstallButton = () => {
   const handleInstallClick = useLockFn(async () => {
     try {
       await upsert.mutateAsync('install')
-      await commands.restartSidecar()
+      unwrapResult(await commands.restartSidecar())
     } catch (e) {
       const errorMessage = `${m.settings_system_proxy_system_service_ctrl_failed_install()}: ${formatError(e)}`
 
@@ -124,7 +125,16 @@ const ServiceUninstallButton = () => {
   const { upsert } = useSystemService()
 
   const handleUninstallClick = useLockFn(async () => {
-    await upsert.mutateAsync('uninstall')
+    try {
+      await upsert.mutateAsync('uninstall')
+    } catch (e) {
+      message(
+        `${m.settings_system_proxy_system_service_ctrl_failed_uninstall()}: ${formatError(e)}`,
+        {
+          kind: 'error',
+        },
+      )
+    }
   })
 
   return (
@@ -235,9 +245,18 @@ const ServiceControlButtons = () => {
   const { query, upsert } = useSystemService()
 
   const handleToggleClick = useLockFn(async () => {
-    await upsert.mutateAsync(
-      query.data?.status === 'running' ? 'stop' : 'start',
-    )
+    const operation = query.data?.status === 'running' ? 'stop' : 'start'
+
+    try {
+      await upsert.mutateAsync(operation)
+    } catch (e) {
+      const errorTitle =
+        operation === 'stop'
+          ? m.settings_system_proxy_system_service_ctrl_failed_stop()
+          : m.settings_system_proxy_system_service_ctrl_failed_start()
+
+      message(`${errorTitle}: ${formatError(e)}`, { kind: 'error' })
+    }
   })
 
   return (

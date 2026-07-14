@@ -57,18 +57,18 @@ flowchart LR
 
 ## 2. 任务总表
 
-| ID | 任务 | Scope | 建议 commit | Design |
-|---|---|---|---|---|
-| S01 | 基线、故障注入接口与回归 fixtures | 固化当前缺陷和既有回归，不改生产行为 | `test: pin PR1-4 migration regressions and failure contracts` | §1, §8 |
-| S02 | RuntimePaths 与 candidate 安全 | 路径全注入、私有随机 candidate、cleanup | `refactor(tauri): inject runtime paths and harden candidate files` | §6.1–6.2 |
-| S03 | RuntimeLifecycleState 与 rollback snapshot | promoted/applied/revision/hash；完整恢复 | `fix(tauri): track promoted and applied runtime revisions` | §4, §6.4–6.5 |
-| S04 | CoreLifecycleLease | 统一 run/restart/change-core 锁域 | `fix(core): serialize core lifecycle through an exclusive lease` | §6.3, §6.6 |
-| S05 | Patch gate 与 Applied compensation | set/remove compensation、revision conflict | `fix(tauri): compensate runtime patches from applied state` | §6.7 |
-| S06 | Prepared mirror 与三域 saga | 消灭 ghost Err 和 silent partial commit | `fix(state): make legacy mirrors prepared and cross-domain patches compensating` | §6.8–6.9 |
-| S07 | Profile materialization transaction | add/replace/refresh/delete 的恢复协议 | `fix(profile): make profile state and materialization recoverable` | §6.10 |
-| S08 | MutationOutcome wire | 统一 phase/code degradation 与前端 | `feat(ipc)!: expose structured committed-degraded mutation outcomes` | §6.11, §9 |
-| S09 | Dispatcher 与 fake-core | bounded/coalescing、可销毁 service graph、进程故障注入 | `refactor(tauri): remove process-global rebuild handler and add fake-core tests` | §6.12, §8.5 |
-| S10 | 验收与文档收尾 | 三平台 smoke、review disposition、roadmap ledger | `docs: close PR-4S stabilization gate` | §13 |
+| ID  | 任务                                       | Scope                                                  | 建议 commit                                                                      | Design       |
+| --- | ------------------------------------------ | ------------------------------------------------------ | -------------------------------------------------------------------------------- | ------------ |
+| S01 | 基线、故障注入接口与回归 fixtures          | 固化当前缺陷和既有回归，不改生产行为                   | `test: pin PR1-4 migration regressions and failure contracts`                    | §1, §8       |
+| S02 | RuntimePaths 与 candidate 安全             | 路径全注入、私有随机 candidate、cleanup                | `refactor(tauri): inject runtime paths and harden candidate files`               | §6.1–6.2     |
+| S03 | RuntimeLifecycleState 与 rollback snapshot | promoted/applied/revision/hash；完整恢复               | `fix(tauri): track promoted and applied runtime revisions`                       | §4, §6.4–6.5 |
+| S04 | CoreLifecycleLease                         | 统一 run/restart/change-core 锁域                      | `fix(core): serialize core lifecycle through an exclusive lease`                 | §6.3, §6.6   |
+| S05 | Patch gate 与 Applied compensation         | set/remove compensation、revision conflict             | `fix(tauri): compensate runtime patches from applied state`                      | §6.7         |
+| S06 | Prepared mirror 与三域 saga                | 消灭 ghost Err 和 silent partial commit                | `fix(state): make legacy mirrors prepared and cross-domain patches compensating` | §6.8–6.9     |
+| S07 | Profile materialization transaction        | add/replace/refresh/delete 的恢复协议                  | `fix(profile): make profile state and materialization recoverable`               | §6.10        |
+| S08 | MutationOutcome wire                       | 统一 phase/code degradation 与前端                     | `feat(ipc)!: expose structured committed-degraded mutation outcomes`             | §6.11, §9    |
+| S09 | Dispatcher 与 fake-core                    | bounded/coalescing、可销毁 service graph、进程故障注入 | `refactor(tauri): remove process-global rebuild handler and add fake-core tests` | §6.12, §8.5  |
+| S10 | 验收与文档收尾                             | 三平台 smoke、review disposition、roadmap ledger       | `docs: close PR-4S stabilization gate`                                           | §13          |
 
 ---
 
@@ -409,12 +409,12 @@ PatchCompensationPlan {
 
 ## 4. PR-4 review finding disposition（必须完成）
 
-| Finding | 当前判断 | PR-4S 处置 |
-|---|---|---|
+| Finding                                  | 当前判断                                                               | PR-4S 处置                                                  |
+| ---------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------- |
 | createProfile `undefined` review comment | typed error 实际 throw，但 helper 返回类型不穷尽，易掩盖未来 wire 漂移 | S08 将 `unwrapResult` 改为 exhaustive `T`，加 contract test |
-| rollback test 写真实用户 runtime path | 有效 correctness/test-isolation finding | S02 全路径注入并删除真实路径访问 |
-| change_core 与 run_core 锁域竞态 | 有效 P2 correctness finding | S04 lifecycle lease + barrier test |
-| product rollback 未恢复 runtime store | 有效 P2 correctness finding | S03 transaction snapshot 同步恢复 |
+| rollback test 写真实用户 runtime path    | 有效 correctness/test-isolation finding                                | S02 全路径注入并删除真实路径访问                            |
+| change_core 与 run_core 锁域竞态         | 有效 P2 correctness finding                                            | S04 lifecycle lease + barrier test                          |
+| product rollback 未恢复 runtime store    | 有效 P2 correctness finding                                            | S03 transaction snapshot 同步恢复                           |
 
 所有 thread 在代码合并前必须 resolve；延期不接受。
 

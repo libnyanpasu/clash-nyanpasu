@@ -160,9 +160,24 @@ pub async fn import_profile(
     })
 }
 
+/// Emitted to the frontend when a `clash-nyanpasu`/`clash` custom-scheme deep
+/// link is received: either from a secondary instance while the app is already
+/// running, or on cold start once the window exists. The frontend listens for
+/// this to import the referenced `install-config` profile. On cold start the
+/// same URL is also stashed in [`PendingDeepLink`] and drained once via
+/// [`get_pending_deep_link`], covering the race where the event fires before the
+/// JS listener attaches.
+///
+/// Event name: `scheme-request-received-event` (derived by `tauri_specta`).
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+pub struct SchemeRequestReceivedEvent {
+    /// The raw deep-link URL as received from the OS.
+    pub url: String,
+}
+
 /// Deep-link URL captured on cold start (from argv) before the frontend could
-/// receive the `scheme-request-received` event. The frontend drains it once on
-/// startup via [`get_pending_deep_link`], closing the race where the event is
+/// receive the [`SchemeRequestReceivedEvent`] event. The frontend drains it once
+/// on startup via [`get_pending_deep_link`], closing the race where the event is
 /// emitted before the JS listener has attached. Managed Tauri state, not a
 /// global singleton.
 #[derive(Default)]

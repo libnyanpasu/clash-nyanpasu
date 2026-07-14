@@ -2,10 +2,8 @@ import { useEffect, useRef } from 'react'
 import { m } from '@/paraglide/messages'
 import { parseInstallConfigDeepLink } from '@/utils/deep-link'
 import { message } from '@/utils/notification'
-import { commands, unwrapResult, useProfile } from '@nyanpasu/interface'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-
-const SCHEME_EVENT = 'scheme-request-received'
+import { commands, events, unwrapResult, useProfile } from '@nyanpasu/interface'
+import { type UnlistenFn } from '@tauri-apps/api/event'
 
 // Guard against duplicate registration across React StrictMode's double-mount
 // and against multiple hook consumers: only one global listener should exist.
@@ -78,9 +76,10 @@ export function useDeepLinkImport() {
       }
     }
 
-    listen<string>(SCHEME_EVENT, async (event) => {
-      await handleDeepLink(event.payload)
-    })
+    events.schemeRequestReceivedEvent
+      .listen(async (event) => {
+        await handleDeepLink(event.payload.url)
+      })
       .then((fn) => {
         // The effect may have been cleaned up before `listen` resolved.
         if (disposed) {

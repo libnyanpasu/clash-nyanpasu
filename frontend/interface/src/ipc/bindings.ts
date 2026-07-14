@@ -342,6 +342,9 @@ export const events = {
     'clash-connections-event',
   ),
   clashWsEvent: makeEvent<ClashWsEvent>('clash-ws-event'),
+  schemeRequestReceivedEvent: makeEvent<SchemeRequestReceivedEvent>(
+    'scheme-request-received-event',
+  ),
   storageValueChangedEvent: makeEvent<StorageValueChangedEvent>(
     'storage-value-changed-event',
   ),
@@ -1753,6 +1756,22 @@ export type RuntimeInfos = {
   service_config_dir: string
   nyanpasu_config_dir: string
   nyanpasu_data_dir: string
+}
+
+/**
+ *  Emitted to the frontend when a `clash-nyanpasu`/`clash` custom-scheme deep
+ *  link is received: either from a secondary instance while the app is already
+ *  running, or on cold start once the window exists. The frontend listens for
+ *  this to import the referenced `install-config` profile. On cold start the
+ *  same URL is also stashed in [`PendingDeepLink`] and drained once via
+ *  [`get_pending_deep_link`], covering the race where the event fires before the
+ *  JS listener attaches.
+ *
+ *  Event name: `scheme-request-received-event` (derived by `tauri_specta`).
+ */
+export type SchemeRequestReceivedEvent = {
+  /**  The raw deep-link URL as received from the OS. */
+  url: string
 }
 
 export type ScriptRuntime = 'javascript' | 'lua'

@@ -214,7 +214,7 @@ impl NyanpasuClient {
 
         // Last-resort rollback material: the previous product passed its own
         // check when it was promoted, so restoring its bytes needs no re-check.
-        let product = crate::client::runtime::runtime_config_path().map_err(ClientError::Anyhow)?;
+        let product = self.inner.runtime_paths.product().to_owned();
         let old_product = tokio::fs::read(&product).await.ok();
 
         // TODO(actor-migration): core selection still drafts the legacy verge.
@@ -249,7 +249,11 @@ impl NyanpasuClient {
                 if let Err(rebuild_error) = self.regenerate_for_legacy_inner().await {
                     let restored: anyhow::Result<()> = match &old_product {
                         Some(bytes) => {
-                            crate::client::core_bridge::restore_product(&product, bytes).await
+                            crate::client::core_bridge::restore_product(
+                                product.as_std_path(),
+                                bytes,
+                            )
+                            .await
                         }
                         None => tokio::fs::remove_file(&product)
                             .await
@@ -302,35 +306,19 @@ impl NyanpasuClient {
             serde_yaml::to_string(&mapping)
                 .map_err(|error| ClientError::Custom(format!("serialize default: {error}")))?
         );
-        let candidate = crate::client::runtime::candidate_config_path();
-        {
-            // Exclusive create (create_new): the unique candidate path must not
-            // already exist. A pre-existing file/symlink now fails the pipeline
-            // visibly instead of being followed (TOCTOU hardening, PR-4 re-review).
-            use tokio::io::AsyncWriteExt;
-            let mut file = tokio::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&candidate)
-                .await
-                .map_err(|error| {
-                    ClientError::Custom(format!("failed to create candidate: {error}"))
-                })?;
-            file.write_all(yaml.as_bytes()).await.map_err(|error| {
-                ClientError::Custom(format!("failed to write candidate: {error}"))
-            })?;
-            file.flush().await.map_err(|error| {
-                ClientError::Custom(format!("failed to flush candidate: {error}"))
-            })?;
-        }
-        let candidate = super::utf8_path(candidate).map_err(ClientError::Anyhow)?;
+        let candidate = self
+            .inner
+            .runtime_paths
+            .create_candidate(yaml.as_bytes())
+            .await
+            .map_err(ClientError::Anyhow)?;
         let checked = self
             .inner
             .core
             .check_and_promote(&candidate, app.core)
             .await;
-        if let Err(error) = tokio::fs::remove_file(candidate.as_std_path()).await {
-            tracing::warn!(%error, ?candidate, "failed to remove candidate config");
+        if let Err(error) = candidate.cleanup().await {
+            tracing::warn!(%error, "failed to remove candidate config");
         }
         checked.map_err(ClientError::Anyhow)
     }
@@ -340,7 +328,6 @@ impl NyanpasuClient {
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use camino::Utf8Path;
     use nyanpasu_config::application::ClashCore;
     use std::sync::{
         Arc, Mutex,
@@ -443,19 +430,22 @@ mod tests {
     /// rollback-rebuild failure. The mock sequence pins that a second check Err
     /// never reaches the restart-success path (which would apply the verge draft).
     ///
-    /// The product path (`runtime_config_path`/`app_config_dir`) is process-global
-    /// and not env-injectable, so this asserts control flow via the mock sequence
-    /// rather than integration-testing the restored bytes. It stays self-contained:
-    /// the pre-test product bytes are captured and restored regardless of outcome.
+    /// RuntimePaths keeps the product under this test's TempDir, so the fallback
+    /// restore is exercised without touching the user's product config.
     #[test]
     fn change_core_rollback_rebuild_failure_restores_product_and_errors() {
         let dir = tempfile::tempdir().unwrap();
-        // Seed the global product so change_core reads Some(old_product): the
-        // rollback restore path then runs restore_product (real fs) and attempts
-        // the old-core restart, giving a deterministic sequence. Original bytes are
-        // restored below before any assertion can unwind.
-        let product = crate::client::runtime::runtime_config_path().unwrap();
-        let original = std::fs::read(&product).ok();
+        // Seed the injected product so change_core captures old_product before
+        // entering the rollback-rebuild failure path.
+        let product = crate::client::RuntimePaths::from_resolver(
+            &crate::utils::path::PathResolver::with_base_dirs(
+                dir.path().into(),
+                dir.path().join("data"),
+            ),
+        )
+        .unwrap()
+        .product()
+        .to_owned();
         if let Some(parent) = product.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -491,16 +481,6 @@ mod tests {
             client.change_core(crate::config::nyanpasu::ClashCore::ClashRs),
         );
 
-        // Restore the global product to its pre-test state before asserting.
-        match &original {
-            Some(bytes) => {
-                let _ = std::fs::write(&product, bytes);
-            }
-            None => {
-                let _ = std::fs::remove_file(&product);
-            }
-        }
-
         let err = result.expect_err("rollback-rebuild failure must surface an error");
         let rendered = format!("{err:?}");
         assert!(
@@ -534,7 +514,7 @@ mod tests {
     impl crate::client::RunningCoreBridge for BarrierCore {
         async fn check_and_promote(
             &self,
-            _candidate: &Utf8Path,
+            _candidate: &crate::client::runtime::CandidateFile,
             _target_core: ClashCore,
         ) -> anyhow::Result<()> {
             // First check = new-core promote (ok); second = rollback rebuild (ok).
@@ -667,8 +647,15 @@ mod tests {
     #[test]
     fn s01_contract_product_restore_leaves_runtime_read_model_on_new_core() {
         let dir = tempfile::tempdir().unwrap();
-        let product = crate::client::runtime::runtime_config_path().unwrap();
-        let original = std::fs::read(&product).ok();
+        let product = crate::client::RuntimePaths::from_resolver(
+            &crate::utils::path::PathResolver::with_base_dirs(
+                dir.path().into(),
+                dir.path().join("data"),
+            ),
+        )
+        .unwrap()
+        .product()
+        .to_owned();
         if let Some(parent) = product.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -713,16 +700,6 @@ mod tests {
 
         // Read model after the deep rollback branch.
         let state = tauri::async_runtime::block_on(client.runtime_state());
-
-        // Cleanup global product before assertions that may panic.
-        match &original {
-            Some(bytes) => {
-                let _ = std::fs::write(&product, bytes);
-            }
-            None => {
-                let _ = std::fs::remove_file(&product);
-            }
-        }
 
         // Desired (S03): after product restore, Promoted is None or the old
         // snapshot — never the new-core publish. Current defect: regenerate

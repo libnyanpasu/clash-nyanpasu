@@ -543,8 +543,10 @@ mod tests {
             dir.path().join("data"),
         );
         let legacy_verge_path = temp_config_path(dir, "nyanpasu-config.yaml");
+        let runtime_paths = crate::client::RuntimePaths::from_resolver(&paths).unwrap();
         let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
             paths,
+            runtime_paths,
             bridges: LegacyBridgeSet {
                 verge: Arc::new(LegacyVergeBridge::default()),
                 window,

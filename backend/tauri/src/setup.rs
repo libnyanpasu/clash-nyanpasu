@@ -4,7 +4,8 @@ use std::sync::Arc;
 use crate::{
     bridge::{clash::LegacyClashBridge, verge::LegacyVergeBridge, window::LegacyWindowBridge},
     client::{
-        ClientSetupArgs, LegacyBridgeSet, LegacyCoreBridge, NyanpasuClient, TauriUiEventSink,
+        ClientSetupArgs, LegacyBridgeSet, LegacyCoreBridge, NyanpasuClient, RuntimePaths,
+        TauriUiEventSink,
     },
     utils::path::PathResolver,
 };
@@ -30,15 +31,17 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
         .run_pending()
         .context("Failed to run config migrations before client setup")?;
     let legacy_verge_path = utf8_path(paths.nyanpasu_config_path())?;
+    let runtime_paths = RuntimePaths::from_resolver(&paths)?;
     let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
         paths,
+        runtime_paths: runtime_paths.clone(),
         bridges: LegacyBridgeSet {
             verge: Arc::new(LegacyVergeBridge::default()),
             window: Arc::new(LegacyWindowBridge),
             clash: Arc::new(LegacyClashBridge),
         },
         ui_sink: Arc::new(TauriUiEventSink::<R>::new(app_handle)),
-        core: Arc::new(LegacyCoreBridge),
+        core: Arc::new(LegacyCoreBridge::new(runtime_paths)),
     })
     .context("Failed to setup nyanpasu client")?;
     app.manage(LegacyVergeBridge::new(client.clone(), legacy_verge_path));

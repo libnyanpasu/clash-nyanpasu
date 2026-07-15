@@ -80,7 +80,7 @@ enum Instance {
 }
 
 impl Instance {
-    pub fn try_new(run_type: RunType) -> Result<Self> {
+    pub fn try_new(run_type: RunType, config_path: &Utf8Path) -> Result<Self> {
         let core_type: nyanpasu_utils::core::CoreType = {
             (Config::verge()
                 .latest()
@@ -93,11 +93,7 @@ impl Instance {
             .map_err(|e| anyhow::anyhow!("failed to convert data dir to utf8 path: {:?}", e))?;
         let binary = camino::Utf8PathBuf::from_path_buf(find_binary_path(&core_type)?)
             .map_err(|e| anyhow::anyhow!("failed to convert binary path to utf8 path: {:?}", e))?;
-        let config_path =
-            camino::Utf8PathBuf::from_path_buf(crate::client::runtime::runtime_config_path()?)
-                .map_err(|e| {
-                    anyhow::anyhow!("failed to convert config path to utf8 path: {:?}", e)
-                })?;
+        let config_path = config_path.to_owned();
         let pid_path = camino::Utf8PathBuf::from_path_buf(dirs::clash_pid_path()?)
             .map_err(|e| anyhow::anyhow!("failed to convert pid path to utf8 path: {:?}", e))?;
         match run_type {
@@ -441,7 +437,7 @@ impl CoreManager {
     }
 
     /// Inner implementation of run_core — must only be called while holding `run_lock`.
-    async fn run_core_inner(&self) -> Result<()> {
+    async fn run_core_inner(&self, config_path: &Utf8Path) -> Result<()> {
         {
             let instance = {
                 let instance = self.instance.lock();
@@ -461,7 +457,7 @@ impl CoreManager {
         // core restart — e.g. while the old core still holds the current one — and
         // desync the api client from the runtime config generated off session ports.
         let run_type = RunType::default();
-        let instance = Arc::new(Instance::try_new(run_type)?);
+        let instance = Arc::new(Instance::try_new(run_type, config_path)?);
 
         #[cfg(target_os = "macos")]
         {
@@ -479,10 +475,18 @@ impl CoreManager {
         instance.start().await
     }
 
-    /// 启动核心
-    pub async fn run_core(&self) -> Result<()> {
+    pub async fn run_core_from(&self, config_path: &Utf8Path) -> Result<()> {
         let _guard = self.run_lock.lock().await;
-        self.run_core_inner().await
+        self.run_core_inner(config_path).await
+    }
+
+    // TODO(actor-migration): compatibility bridge for legacy lifecycle callers.
+    // Reason: service/updater/IPC lifecycle routing is completed by S04.
+    // Remove when: all lifecycle callers receive the injected core port.
+    pub async fn run_core(&self) -> Result<()> {
+        let paths = crate::utils::path::PathResolver::from_env()?;
+        let runtime_paths = crate::client::RuntimePaths::from_resolver(&paths)?;
+        self.run_core_from(runtime_paths.product()).await
     }
 
     /// 重启内核
@@ -502,7 +506,9 @@ impl CoreManager {
             }
         }
 
-        if let Err(err) = self.run_core_inner().await {
+        let paths = crate::utils::path::PathResolver::from_env()?;
+        let runtime_paths = crate::client::RuntimePaths::from_resolver(&paths)?;
+        if let Err(err) = self.run_core_inner(runtime_paths.product()).await {
             log::error!(target: "app", "failed to recover clash core");
             log::error!(target: "app", "{err:?}");
             drop(_guard);
@@ -550,9 +556,8 @@ impl CoreManager {
     /// Push the promoted runtime product to the running core over the api.
     /// Check + promote happen in the rebuild pipeline (RunningCoreBridge::
     /// check_and_promote) before this is called.
-    pub async fn apply_config(&self) -> Result<()> {
-        let path = crate::client::runtime::runtime_config_path()?;
-        let path = dirs::path_to_str(&path)?;
+    pub async fn apply_config_from(&self, product: &Utf8Path) -> Result<()> {
+        let path = product.as_str();
 
         // 发送请求 发送5次
         for i in 0..5 {

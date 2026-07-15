@@ -6,8 +6,10 @@
 use std::path::Path;
 
 use async_trait::async_trait;
-use camino::Utf8Path;
 use nyanpasu_config::application::ClashCore;
+use sha2::Digest;
+
+use super::runtime::{CandidateFile, RuntimePaths};
 
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
@@ -24,7 +26,7 @@ pub trait RunningCoreBridge: Send + Sync + 'static {
     /// boot path where the core is not running yet.
     async fn check_and_promote(
         &self,
-        candidate: &Utf8Path,
+        candidate: &CandidateFile,
         target_core: ClashCore,
     ) -> anyhow::Result<()>;
     /// Push the promoted product to the running core over its api.
@@ -70,49 +72,70 @@ impl From<ClashCore> for crate::config::nyanpasu::ClashCore {
     }
 }
 
-pub struct LegacyCoreBridge;
+pub struct LegacyCoreBridge {
+    runtime_paths: RuntimePaths,
+}
+
+impl LegacyCoreBridge {
+    pub fn new(runtime_paths: RuntimePaths) -> Self {
+        Self { runtime_paths }
+    }
+}
 
 #[async_trait]
 impl RunningCoreBridge for LegacyCoreBridge {
     async fn check_and_promote(
         &self,
-        candidate: &Utf8Path,
+        candidate: &CandidateFile,
         target_core: ClashCore,
     ) -> anyhow::Result<()> {
         // Capture the candidate bytes ONCE before checking so the bytes we
         // promote are exactly the bytes we validated (spec D5): a post-check
         // swap of the candidate file can never reach the product.
-        let bytes = tokio::fs::read(candidate.as_std_path()).await?;
+        let bytes = tokio::fs::read(candidate.path()).await?;
         // TODO(actor-migration): temporary bridge to CoreManager::global().
         // Reason: core lifecycle is PR-5 (CoreActor).
         // Remove when: PR-5 lands CoreActor and the facade owns core apply.
         crate::core::CoreManager::global()
-            .check_config(candidate, target_core.into())
+            .check_config(candidate.path(), target_core.into())
             .await?;
         // Post-check identity gate (spec D5, PR-4 re-review): re-read the
         // candidate and refuse to promote if its bytes changed since capture.
         // A candidate swapped after check_config passed can neither be promoted
         // nor have its check verdict transferred to different bytes.
-        let after = tokio::fs::read(candidate.as_std_path()).await?;
+        let after = tokio::fs::read(candidate.path().as_std_path()).await?;
         if after != bytes {
             anyhow::bail!("candidate config changed between check and promote");
         }
-        let product = crate::client::runtime::runtime_config_path()?;
-        restore_product(&product, &bytes).await
+        let actual_hash: [u8; 32] = sha2::Sha256::digest(&bytes).into();
+        if actual_hash != candidate.bytes_sha256() {
+            anyhow::bail!("candidate config hash changed before promotion");
+        }
+        restore_product(self.runtime_paths.product().as_std_path(), &bytes).await?;
+        let promoted = tokio::fs::read(self.runtime_paths.product()).await?;
+        let promoted_hash: [u8; 32] = sha2::Sha256::digest(&promoted).into();
+        if promoted_hash != candidate.bytes_sha256() {
+            anyhow::bail!("promoted runtime product hash does not match candidate")
+        }
+        Ok(())
     }
 
     async fn apply_config(&self) -> anyhow::Result<()> {
         // TODO(actor-migration): temporary bridge to CoreManager::global().
         // Reason: core lifecycle is PR-5 (CoreActor).
         // Remove when: PR-5 lands CoreActor and the facade owns core apply.
-        crate::core::CoreManager::global().apply_config().await
+        crate::core::CoreManager::global()
+            .apply_config_from(self.runtime_paths.product())
+            .await
     }
 
     async fn restart_core(&self) -> anyhow::Result<()> {
         // TODO(actor-migration): temporary bridge to CoreManager::global().
         // Reason: core lifecycle is PR-5 (CoreActor).
         // Remove when: PR-5 lands CoreActor and the facade owns core restart.
-        crate::core::CoreManager::global().run_core().await
+        crate::core::CoreManager::global()
+            .run_core_from(self.runtime_paths.product())
+            .await
     }
 
     async fn on_profile_change(&self) {

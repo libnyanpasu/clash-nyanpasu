@@ -56,9 +56,11 @@ pub use error::{ClientError, Result};
 pub use event_sink::NoopUiEventSink;
 pub use event_sink::{TauriUiEventSink, UiEventSink};
 pub use ports::SessionPortResolver;
+pub use runtime::RuntimePaths;
 
 pub struct ClientSetupArgs {
     pub paths: PathResolver,
+    pub runtime_paths: RuntimePaths,
     pub bridges: LegacyBridgeSet,
     pub ui_sink: Arc<dyn UiEventSink>,
     pub core: Arc<dyn RunningCoreBridge>,
@@ -152,6 +154,7 @@ struct NyanpasuClientInner {
     fs: Arc<dyn ProfileFsPort>,
     ports: Arc<SessionPortResolver>,
     profiles_dir: PathBuf,
+    runtime_paths: RuntimePaths,
     ui_sink: Arc<dyn UiEventSink>,
     core: Arc<dyn RunningCoreBridge>,
     /// Serializes runtime regeneration (snapshot -> build -> runtime draft ->
@@ -167,12 +170,14 @@ impl NyanpasuClient {
     pub fn try_new_with_args(args: ClientSetupArgs) -> anyhow::Result<Self> {
         let ClientSetupArgs {
             paths,
+            runtime_paths,
             bridges,
             ui_sink,
             core,
         } = args;
         let profiles_dir = paths.app_profiles_dir();
         let profiles_path = utf8_path(paths.profiles_path())?;
+        let runtime_paths_for_setup = runtime_paths.clone();
         let (
             application,
             session_state,
@@ -183,6 +188,10 @@ impl NyanpasuClient {
             fs,
             rebuild_rx,
         ) = tauri::async_runtime::block_on(async move {
+            runtime_paths_for_setup
+                .cleanup_stale_candidates(std::time::Duration::from_secs(24 * 60 * 60))
+                .await
+                .context("failed to clean stale runtime candidates")?;
             let (application, session_state, clash_config) =
                 new_typed_config_clients(paths.clone(), bridges).await?;
 
@@ -226,6 +235,7 @@ impl NyanpasuClient {
             fs,
             ports,
             profiles_dir,
+            runtime_paths,
             ui_sink,
             core,
             runtime_store,
@@ -273,6 +283,7 @@ impl NyanpasuClient {
         fs: Arc<dyn ProfileFsPort>,
         ports: Arc<SessionPortResolver>,
         profiles_dir: PathBuf,
+        runtime_paths: RuntimePaths,
         ui_sink: Arc<dyn UiEventSink>,
         core: Arc<dyn RunningCoreBridge>,
         runtime: runtime::RuntimeStateStore,
@@ -286,6 +297,7 @@ impl NyanpasuClient {
                 fs,
                 ports,
                 profiles_dir,
+                runtime_paths,
                 ui_sink,
                 core,
                 rebuild_gate: tokio::sync::Mutex::new(()),
@@ -706,6 +718,10 @@ impl NyanpasuClient {
         self.inner.runtime.read().await.snapshot()
     }
 
+    pub(crate) fn runtime_product_path(&self) -> &camino::Utf8Path {
+        self.inner.runtime_paths.product()
+    }
+
     pub async fn rebuild_running_config(&self) -> Result<()> {
         let _rebuild = self.inner.rebuild_gate.lock().await;
         self.regenerate_runtime_inner().await?;
@@ -775,32 +791,15 @@ impl NyanpasuClient {
         // only ever see checked-and-promoted configs; a rejected candidate
         // leaves both the product and the manager untouched. target core =
         // the same input snapshot the builder used (P0-3).
-        let candidate = crate::client::runtime::candidate_config_path();
-        {
-            // Exclusive create (create_new): the unique candidate path must not
-            // already exist. A pre-existing file/symlink now fails the pipeline
-            // visibly instead of being followed (TOCTOU hardening, PR-4 re-review).
-            use tokio::io::AsyncWriteExt;
-            let mut file = tokio::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&candidate)
-                .await
-                .map_err(|error| {
-                    ClientError::Custom(format!("failed to create candidate: {error}"))
-                })?;
-            file.write_all(yaml.as_bytes()).await.map_err(|error| {
-                ClientError::Custom(format!("failed to write candidate: {error}"))
-            })?;
-            file.flush().await.map_err(|error| {
-                ClientError::Custom(format!("failed to flush candidate: {error}"))
-            })?;
-        }
-        let candidate = utf8_path(candidate).map_err(ClientError::Anyhow)?;
+        let candidate = self
+            .inner
+            .runtime_paths
+            .create_candidate(yaml.as_bytes())
+            .await
+            .map_err(ClientError::Anyhow)?;
         let checked = self.inner.core.check_and_promote(&candidate, core).await;
-        // best-effort candidate cleanup; runs whether the check passed or failed.
-        if let Err(error) = tokio::fs::remove_file(candidate.as_std_path()).await {
-            tracing::warn!(%error, ?candidate, "failed to remove candidate config");
+        if let Err(error) = candidate.cleanup().await {
+            tracing::warn!(%error, "failed to remove candidate config");
         }
         checked.map_err(ClientError::Anyhow)?;
         {
@@ -948,6 +947,11 @@ mod tests {
             Arc::new(MockProfileFsPort::new()),
             ports,
             dir.path().join("profiles"),
+            RuntimePaths::from_resolver(&PathResolver::with_base_dirs(
+                dir.path().into(),
+                dir.path().join("data"),
+            ))
+            .unwrap(),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             Arc::new(MockRunningCoreBridge::new()),
             crate::client::runtime::new_runtime_state_store()
@@ -960,8 +964,11 @@ mod tests {
         dir: &TempDir,
         core: Arc<dyn RunningCoreBridge>,
     ) -> ClientSetupArgs {
+        let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
+        let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
         ClientSetupArgs {
-            paths: PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data")),
+            paths,
+            runtime_paths,
             bridges: LegacyBridgeSet {
                 verge: Arc::new(NoopVergeBridge),
                 window: Arc::new(NoopWindowBridge),
@@ -1031,6 +1038,7 @@ mod tests {
             file_service.clone() as Arc<dyn ProfileFsPort>,
             ports,
             paths.app_profiles_dir(),
+            RuntimePaths::from_resolver(&paths).unwrap(),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             core,
             crate::client::runtime::new_runtime_state_store()
@@ -1184,8 +1192,10 @@ mod tests {
     fn try_new_with_args_constructs_typed_config_facade() {
         let dir = tempdir().expect("tempdir should be created");
         let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
+        let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
         let client = NyanpasuClient::try_new_with_args(ClientSetupArgs {
             paths,
+            runtime_paths,
             bridges: LegacyBridgeSet {
                 verge: Arc::new(NoopVergeBridge),
                 window: Arc::new(NoopWindowBridge),

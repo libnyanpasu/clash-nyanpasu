@@ -1,9 +1,9 @@
 # Clash Nyanpasu Actor 迁移路线图 v3（稳定化优先）
 
 **日期：** 2026-07-13  
-**状态：** Proposed / 待批准（S01 基线文档刷新进行中，未完成）
+**状态：** Implementing（S01 已完成；S02 RuntimePaths/candidate hardening 验证中）
 
-**范围基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`；已包含 PR-4 `#4932`；S01 文档基线刷新进行中，实施前必须 rebase 并刷新本文件的生成指标）
+**范围基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`；已包含 PR-4 `#4932`；S01 基线冻结提交为 `daf872d9`）
 **取代：** `actor-migration-roadmap.md` v2  
 **权威顺序：** 已批准 design/spec > 本 roadmap > task card > implementation plan > 实现注释
 

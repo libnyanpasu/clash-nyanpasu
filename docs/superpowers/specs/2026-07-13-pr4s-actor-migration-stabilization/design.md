@@ -1,7 +1,7 @@
 # PR-4S — PR-1～PR-4 Actor Migration 稳定化门（设计 spec）
 
 **日期：** 2026-07-13  
-**状态：** Proposed / 待逐节批准（S01 基线文档刷新进行中，未完成）
+**状态：** Implementing（S01 已完成；S02 RuntimePaths/candidate hardening 验证中）
 
 **范围基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`；包含 PR-4 `#4932`）
 **上游依据：** `docs/design/actor-migration-roadmap.md` v3 §5  

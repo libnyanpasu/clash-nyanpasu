@@ -2,13 +2,19 @@
 //! rebuild, plus the product/candidate config file locations. Runtime is a
 //! pure derivation — there is no writable runtime state anywhere else.
 
-use std::path::PathBuf;
+use std::{
+    fs::OpenOptions,
+    io::Write,
+    time::{Duration, SystemTime},
+};
 
+use camino::{Utf8Path, Utf8PathBuf};
 use nyanpasu_core::state::{SimpleStateManager, SimpleStateManagerSetup};
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
+use sha2::{Digest, Sha256};
 
-use crate::{enhance::PostProcessingOutput, utils::dirs};
+use crate::{enhance::PostProcessingOutput, utils::path::PathResolver};
 
 pub const RUNTIME_CONFIG_DIR: &str = "runtime";
 pub const RUNTIME_CONFIG: &str = "clash-config.yaml";
@@ -60,27 +66,187 @@ pub(crate) fn compensation_for(patch: &Mapping, prev: Option<&Mapping>) -> Optio
     (!comp.is_empty()).then_some(comp)
 }
 
-/// The promoted (checked) product consumed by core start/hot-reload. Same
-/// location the old (now-deleted) runtime config path helper used.
-pub fn runtime_config_path() -> anyhow::Result<PathBuf> {
-    Ok(dirs::app_config_dir()?
-        .join(RUNTIME_CONFIG_DIR)
-        .join(RUNTIME_CONFIG))
+#[derive(Debug, Clone)]
+pub struct RuntimePaths {
+    product: Utf8PathBuf,
+    candidate_dir: Utf8PathBuf,
 }
 
-/// Where a rebuild writes the unchecked candidate before check + promote
-/// (spec D5: the product only ever holds configs that passed the check).
-/// Unique per attempt (spec §5.2, r2): a fixed temp path is a TOCTOU /
-/// multi-instance / parallel-test clobber hazard. The pipeline best-effort
-/// deletes the candidate after `check_and_promote`.
-pub fn candidate_config_path() -> PathBuf {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static SEQ: AtomicU64 = AtomicU64::new(0);
-    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
-        "clash-nyanpasu-candidate-{}-{seq}.yaml",
-        std::process::id()
-    ))
+impl RuntimePaths {
+    pub fn from_resolver(paths: &PathResolver) -> anyhow::Result<Self> {
+        let runtime_dir = utf8_path(paths.app_config_dir().join(RUNTIME_CONFIG_DIR))?;
+        Ok(Self {
+            product: runtime_dir.join(RUNTIME_CONFIG),
+            candidate_dir: runtime_dir.join(".candidates"),
+        })
+    }
+
+    pub fn new(product: Utf8PathBuf, candidate_dir: Utf8PathBuf) -> Self {
+        Self {
+            product,
+            candidate_dir,
+        }
+    }
+
+    pub fn product(&self) -> &Utf8Path {
+        &self.product
+    }
+
+    pub fn candidate_dir(&self) -> &Utf8Path {
+        &self.candidate_dir
+    }
+
+    pub async fn create_candidate(&self, bytes: &[u8]) -> anyhow::Result<CandidateFile> {
+        let names = (0..16)
+            .map(|_| nanoid::nanoid!(16, &nanoid::alphabet::SAFE))
+            .collect();
+        self.create_candidate_with_names(bytes, names).await
+    }
+
+    async fn create_candidate_with_names(
+        &self,
+        bytes: &[u8],
+        names: Vec<String>,
+    ) -> anyhow::Result<CandidateFile> {
+        prepare_private_dir(&self.candidate_dir).await?;
+        let candidate_dir = self.candidate_dir.clone();
+        let bytes = bytes.to_vec();
+        tokio::task::spawn_blocking(move || {
+            for name in names {
+                let path = candidate_dir.join(format!("candidate-{name}.yaml"));
+                let mut options = OpenOptions::new();
+                options.write(true).create_new(true);
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::OpenOptionsExt;
+                    options.mode(0o600);
+                }
+                match options.open(&path) {
+                    Ok(mut file) => {
+                        file.write_all(&bytes)?;
+                        file.sync_all()?;
+                        let bytes_sha256 = Sha256::digest(&bytes).into();
+                        return Ok(CandidateFile {
+                            path,
+                            bytes_sha256,
+                            cleaned: false,
+                        });
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                    Err(error) => return Err(error.into()),
+                }
+            }
+            anyhow::bail!("failed to allocate a unique runtime candidate after 16 attempts")
+        })
+        .await?
+    }
+
+    pub async fn cleanup_stale_candidates(&self, max_age: Duration) -> anyhow::Result<usize> {
+        prepare_private_dir(&self.candidate_dir).await?;
+        let now = SystemTime::now();
+        let mut removed = 0;
+        let mut entries = tokio::fs::read_dir(&self.candidate_dir).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let name = entry.file_name();
+            if !name.to_string_lossy().starts_with("candidate-") {
+                continue;
+            }
+            let metadata = tokio::fs::symlink_metadata(entry.path()).await?;
+            if is_symlink_or_reparse(&metadata) || !metadata.is_file() {
+                continue;
+            }
+            let is_stale = metadata
+                .modified()
+                .ok()
+                .and_then(|modified| now.duration_since(modified).ok())
+                .is_some_and(|age| age >= max_age);
+            if is_stale {
+                tokio::fs::remove_file(entry.path()).await?;
+                removed += 1;
+            }
+        }
+        Ok(removed)
+    }
+}
+
+#[derive(Debug)]
+pub struct CandidateFile {
+    path: Utf8PathBuf,
+    bytes_sha256: [u8; 32],
+    cleaned: bool,
+}
+
+impl CandidateFile {
+    pub fn path(&self) -> &Utf8Path {
+        &self.path
+    }
+
+    pub fn bytes_sha256(&self) -> [u8; 32] {
+        self.bytes_sha256
+    }
+
+    pub async fn cleanup(mut self) -> anyhow::Result<()> {
+        match tokio::fs::remove_file(&self.path).await {
+            Ok(()) => {
+                self.cleaned = true;
+                Ok(())
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                self.cleaned = true;
+                Ok(())
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+}
+
+impl Drop for CandidateFile {
+    fn drop(&mut self) {
+        if !self.cleaned {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
+async fn prepare_private_dir(path: &Utf8Path) -> anyhow::Result<()> {
+    if let Ok(metadata) = tokio::fs::symlink_metadata(path).await
+        && is_symlink_or_reparse(&metadata)
+    {
+        anyhow::bail!("runtime candidate directory is a symlink or reparse point: {path}");
+    }
+    tokio::fs::create_dir_all(path).await?;
+    let metadata = tokio::fs::symlink_metadata(path).await?;
+    if is_symlink_or_reparse(&metadata) || !metadata.is_dir() {
+        anyhow::bail!("runtime candidate path is not a private directory: {path}");
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).await?;
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn is_symlink_or_reparse(metadata: &std::fs::Metadata) -> bool {
+    metadata.file_type().is_symlink()
+}
+
+#[cfg(windows)]
+fn is_symlink_or_reparse(metadata: &std::fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+    metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
+
+#[cfg(not(any(unix, windows)))]
+fn is_symlink_or_reparse(metadata: &std::fs::Metadata) -> bool {
+    metadata.file_type().is_symlink()
+}
+
+fn utf8_path(path: std::path::PathBuf) -> anyhow::Result<Utf8PathBuf> {
+    Utf8PathBuf::from_path_buf(path)
+        .map_err(|path| anyhow::anyhow!("runtime path is not UTF-8: {}", path.display()))
 }
 
 /// Post-commit rebuild result for mutation IPC (spec §6.2, decision D2):
@@ -168,28 +334,132 @@ mod tests {
         );
     }
 
-    /// S01 contract (task §S01.7 / design §8.4): runtime product path resolution
-    /// used by tests and production must not escape into the real user app
-    /// config directory. Desired (S02): every path comes from an injected
-    /// `RuntimePaths` rooted at a TempDir.
-    ///
-    /// Current failure reason: `runtime_config_path` delegates to
-    /// `dirs::app_config_dir()`, so unit tests resolve and may mutate the real
-    /// product location.
-    #[test]
-    fn s01_contract_runtime_product_path_resolves_real_app_config_dir() {
-        let product = runtime_config_path().expect("runtime product path must resolve");
-        let real_app_config =
-            dirs::app_config_dir().expect("real app config dir must resolve for comparison");
+    fn temp_runtime_paths(dir: &tempfile::TempDir) -> RuntimePaths {
+        let root = Utf8PathBuf::from_path_buf(dir.path().join("runtime")).unwrap();
+        RuntimePaths::new(root.join(RUNTIME_CONFIG), root.join(".candidates"))
+    }
 
-        let under_real = product.starts_with(&real_app_config);
-        assert!(
-            !under_real,
-            "S01 FAILURE reason: runtime_config_path resolves the real product path \
-             under {} (got {}); tests/production still depend on process-global \
-             dirs::app_config_dir instead of injected RuntimePaths/TempDir",
-            real_app_config.display(),
-            product.display()
+    #[test]
+    fn runtime_paths_are_derived_from_injected_config_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let resolver =
+            PathResolver::with_base_dirs(dir.path().join("config"), dir.path().join("data"));
+        let paths = RuntimePaths::from_resolver(&resolver).unwrap();
+        assert_eq!(
+            paths.product(),
+            Utf8PathBuf::from_path_buf(
+                dir.path()
+                    .join("config")
+                    .join(RUNTIME_CONFIG_DIR)
+                    .join(RUNTIME_CONFIG),
+            )
+            .unwrap()
         );
+        assert_eq!(
+            paths.candidate_dir(),
+            Utf8PathBuf::from_path_buf(
+                dir.path()
+                    .join("config")
+                    .join(RUNTIME_CONFIG_DIR)
+                    .join(".candidates"),
+            )
+            .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn candidate_is_private_hashed_and_removed_on_drop() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = temp_runtime_paths(&dir);
+        let candidate = paths.create_candidate(b"mode: rule\n").await.unwrap();
+        let path = candidate.path().to_owned();
+        assert_eq!(
+            candidate.bytes_sha256(),
+            <[u8; 32]>::from(Sha256::digest(b"mode: rule\n"))
+        );
+        assert_eq!(tokio::fs::read(&path).await.unwrap(), b"mode: rule\n");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                tokio::fs::metadata(paths.candidate_dir())
+                    .await
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o700
+            );
+            assert_eq!(
+                tokio::fs::metadata(&path)
+                    .await
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
+        }
+        drop(candidate);
+        assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn candidate_collision_retries_with_exclusive_create() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = temp_runtime_paths(&dir);
+        prepare_private_dir(paths.candidate_dir()).await.unwrap();
+        let collision = paths.candidate_dir().join("candidate-collision.yaml");
+        tokio::fs::write(&collision, b"do not replace")
+            .await
+            .unwrap();
+
+        let candidate = paths
+            .create_candidate_with_names(b"new bytes", vec!["collision".into(), "fresh".into()])
+            .await
+            .unwrap();
+        assert_eq!(
+            tokio::fs::read(&collision).await.unwrap(),
+            b"do not replace"
+        );
+        assert_eq!(candidate.path().file_name(), Some("candidate-fresh.yaml"));
+    }
+
+    #[tokio::test]
+    async fn explicit_cleanup_and_stale_cleanup_remove_candidates() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = temp_runtime_paths(&dir);
+        let explicit = paths.create_candidate(b"explicit").await.unwrap();
+        let explicit_path = explicit.path().to_owned();
+        explicit.cleanup().await.unwrap();
+        assert!(!explicit_path.exists());
+
+        let stale = paths.create_candidate(b"stale").await.unwrap();
+        let stale_path = stale.path().to_owned();
+        std::mem::forget(stale);
+        assert_eq!(
+            paths
+                .cleanup_stale_candidates(Duration::ZERO)
+                .await
+                .unwrap(),
+            1
+        );
+        assert!(!stale_path.exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn candidate_directory_rejects_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tempfile::tempdir().unwrap();
+        let paths = temp_runtime_paths(&dir);
+        let target = dir.path().join("target");
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::create_dir_all(paths.candidate_dir().parent().unwrap()).unwrap();
+        symlink(target, paths.candidate_dir()).unwrap();
+
+        let error = paths.create_candidate(b"blocked").await.unwrap_err();
+        assert!(error.to_string().contains("symlink or reparse point"));
     }
 }

@@ -177,8 +177,7 @@ pub fn resolve_setup(app: &mut App) {
         log_err!(tauri::async_runtime::block_on(client.regenerate_runtime()));
         // 兜底(spec §5.6):产物缺失时默认配置也必须过 check——check 失败则不落
         // 未检产物(P0-5),boot 继续,核心启动失败可见。
-        let runtime_path = crate::client::runtime::runtime_config_path()
-            .expect("failed to resolve runtime config path");
+        let runtime_path = client.runtime_product_path();
         if !runtime_path.exists() {
             log_err!(tauri::async_runtime::block_on(
                 client.promote_default_runtime_config()

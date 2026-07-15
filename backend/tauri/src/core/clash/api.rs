@@ -386,11 +386,23 @@ pub struct DelayRes {
     delay: u64,
 }
 
-/// GET /proxies/{name}/delay
+fn proxy_delay_path(name: &str, provider: Option<&str>) -> String {
+    match provider {
+        Some(provider) => format!("/providers/proxies/{provider}/{name}/healthcheck"),
+        None => format!("/proxies/{name}/delay"),
+    }
+}
+
+/// GET /proxies/{name}/delay or
+/// GET /providers/proxies/{provider}/{name}/healthcheck
 /// 获取代理延迟
 #[instrument]
-pub async fn get_proxy_delay(name: String, test_url: Option<String>) -> Result<DelayRes> {
-    let path = format!("/proxies/{name}/delay");
+pub async fn get_proxy_delay(
+    name: String,
+    provider: Option<String>,
+    test_url: Option<String>,
+) -> Result<DelayRes> {
+    let path = proxy_delay_path(&name, provider.as_deref());
     let default_url = "http://www.gstatic.com/generate_204";
     let test_url = test_url
         .map(|s| if s.is_empty() { default_url.into() } else { s })
@@ -602,6 +614,15 @@ pub fn parse_check_output(log: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn proxy_delay_path_selects_endpoint_by_provider() {
+        assert_eq!(proxy_delay_path("node", None), "/proxies/node/delay");
+        assert_eq!(
+            proxy_delay_path("node", Some("subscription")),
+            "/providers/proxies/subscription/node/healthcheck"
+        );
+    }
 
     #[test]
     fn subscription_info_deserializes_pascal_case() {

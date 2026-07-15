@@ -70,6 +70,38 @@ async fn fetch_proxies() -> Result<(api::ProxiesRes, api::ProvidersProxiesRes)> 
     try_join!(api::get_proxies(), api::get_providers_proxies())
 }
 
+fn provider_proxy_map(
+    providers: &IndexMap<String, api::ProxyProviderItem>,
+) -> IndexMap<String, api::ProxyItem> {
+    let mut proxies = IndexMap::new();
+    for (provider, record) in providers {
+        for proxy in &record.proxies {
+            let mut proxy = proxy.clone();
+            proxy.provider = Some(provider.clone());
+            proxies.insert(proxy.name.clone(), proxy);
+        }
+    }
+    proxies
+}
+
+fn resolve_proxy(
+    name: &str,
+    inner_proxies: &IndexMap<String, api::ProxyItem>,
+    provider_proxies: &IndexMap<String, api::ProxyItem>,
+) -> api::ProxyItem {
+    inner_proxies
+        .get(name)
+        .or_else(|| provider_proxies.get(name))
+        .cloned()
+        .unwrap_or_else(|| api::ProxyItem {
+            name: name.to_string(),
+            r#type: "Unknown".to_string(),
+            udp: false,
+            history: vec![],
+            ..Default::default()
+        })
+}
+
 impl Proxies {
     #[instrument]
     pub async fn fetch() -> Result<Self> {
@@ -91,29 +123,11 @@ impl Proxies {
                 .collect()
         };
 
-        // 2. mapping provider => providerProxiesItem to name => ProxyItem
-        let mut provider_map = IndexMap::<String, api::ProxyItem>::new();
-        for (provider, record) in providers_proxies.iter() {
-            let name = record.name.clone();
-            let mut record: api::ProxyItem = record.clone().into();
-            record.provider = Some(provider.clone());
-            provider_map.insert(name, record);
-        }
-        let generate_item = |name: &str| {
-            if let Some(r) = inner_proxies.get(name) {
-                r.clone()
-            } else if let Some(r) = provider_map.get(name) {
-                r.clone()
-            } else {
-                api::ProxyItem {
-                    name: name.to_string(),
-                    r#type: "Unknown".to_string(),
-                    udp: false,
-                    history: vec![],
-                    ..Default::default()
-                }
-            }
-        };
+        // 2. Map every provider-owned proxy by name. Mihomo 1.19.28 no longer
+        // includes these nodes in /proxies, so their metadata must come from
+        // /providers/proxies.
+        let provider_map = provider_proxy_map(&providers_proxies);
+        let generate_item = |name: &str| resolve_proxy(name, &inner_proxies, &provider_map);
 
         let global = inner_proxies.get("GLOBAL");
         let direct = inner_proxies
@@ -278,5 +292,40 @@ impl ProxiesGuardExt for ProxiesGuardSingleton {
         api::update_proxy(group, name).await?;
         self.update().await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolves_provider_owned_proxy_with_metadata() {
+        let node = api::ProxyItem {
+            name: "provider-node".into(),
+            r#type: "Vless".into(),
+            udp: true,
+            ..Default::default()
+        };
+        let providers = IndexMap::from([(
+            "subscription".into(),
+            api::ProxyProviderItem {
+                name: "subscription".into(),
+                r#type: api::ProviderType::Proxy,
+                proxies: vec![node],
+                vehicle_type: api::VehicleType::Http,
+                updated_at: None,
+                subscription_info: None,
+                test_url: None,
+                expected_status: None,
+            },
+        )]);
+
+        let provider_proxies = provider_proxy_map(&providers);
+        let resolved = resolve_proxy("provider-node", &IndexMap::new(), &provider_proxies);
+
+        assert_eq!(resolved.r#type, "Vless");
+        assert!(resolved.udp);
+        assert_eq!(resolved.provider.as_deref(), Some("subscription"));
     }
 }

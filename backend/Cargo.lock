@@ -14014,8 +14014,3 @@ dependencies = [
  "syn 2.0.119",
  "winnow 0.7.13",
 ]
-
-[[patch.unused]]
-name = "tray-icon"
-version = "0.21.0"
-source = "git+https://github.com/tauri-apps/tray-icon.git?rev=34a3442868725d53c042d619f5c60c84dc5072df#34a3442868725d53c042d619f5c60c84dc5072df"

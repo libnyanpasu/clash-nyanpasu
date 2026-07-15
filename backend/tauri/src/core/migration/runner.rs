@@ -420,7 +420,7 @@ mod tests {
         assert_eq!(runner.store.module_state("storage").applied_revision, 1);
         assert_eq!(
             runner.store.module_state("typed_config").applied_revision,
-            1
+            2
         );
         assert_eq!(
             runner.store.app.last_succeeded,
@@ -512,7 +512,7 @@ mod tests {
 
         assert_eq!(
             runner.store.module_state("typed_config").applied_revision,
-            1
+            2
         );
         let _: nyanpasu_config::application::NyanpasuAppConfig = serde_yaml::from_str(
             &std::fs::read_to_string(config_dir.join("application.yaml")).unwrap(),

@@ -15,7 +15,10 @@ pub static MIGRATOR: TypedConfigMigrator = TypedConfigMigrator;
 
 static VERSION_2_0_0: Lazy<Version> = Lazy::new(|| Version::parse("2.0.0").unwrap());
 static SPLIT_LEGACY_CONFIG: SplitLegacyConfig = SplitLegacyConfig;
-static STEPS: [&dyn MigrationStep; 1] = [&SPLIT_LEGACY_CONFIG];
+static REPAIR_CLASH_CONFIG_PATH: RepairClashConfigPath = RepairClashConfigPath;
+static STEPS: [&dyn MigrationStep; 2] = [&SPLIT_LEGACY_CONFIG, &REPAIR_CLASH_CONFIG_PATH];
+
+const PREVIOUS_TYPED_CLASH_FILE: &str = "clash.yaml";
 
 pub struct TypedConfigMigrator;
 
@@ -28,6 +31,7 @@ impl ModuleMigrator for TypedConfigMigrator {
         match typed_file_state(ctx)? {
             TypedFileState::All => Ok(current_revision()),
             TypedFileState::None => Ok(0),
+            TypedFileState::NeedsClashRepair => Ok(1),
         }
     }
 
@@ -64,6 +68,7 @@ impl MigrationStep for SplitLegacyConfig {
         match typed_file_state(ctx)? {
             TypedFileState::All => return Ok(()),
             TypedFileState::None => {}
+            TypedFileState::NeedsClashRepair => return Ok(()),
         }
 
         let legacy = read_legacy_verge(&ctx.nyanpasu_config_path())?;
@@ -82,10 +87,62 @@ impl MigrationStep for SplitLegacyConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct RepairClashConfigPath;
+
+impl MigrationStep for RepairClashConfigPath {
+    fn id(&self) -> &'static str {
+        "typed_config/repair_clash_config_path"
+    }
+
+    fn module(&self) -> &'static str {
+        "typed_config"
+    }
+
+    fn revision(&self) -> u64 {
+        2
+    }
+
+    fn introduced_in(&self) -> &'static Version {
+        &VERSION_2_0_0
+    }
+
+    fn name(&self) -> &'static str {
+        "RepairClashConfigPath"
+    }
+
+    fn run(&self, ctx: &mut Ctx) -> anyhow::Result<()> {
+        match typed_file_state(ctx)? {
+            TypedFileState::All => return Ok(()),
+            TypedFileState::None => {
+                bail!("cannot repair typed clash config before split_legacy_config has completed")
+            }
+            TypedFileState::NeedsClashRepair => {}
+        }
+
+        let previous_typed_path = ctx.paths().app_config_dir().join(PREVIOUS_TYPED_CLASH_FILE);
+        let clash_config = if previous_typed_path.exists() {
+            read_yaml::<nyanpasu_config::clash::config::ClashConfig>(&previous_typed_path)
+                .context("failed to read previous typed clash config")?
+        } else {
+            let legacy = read_legacy_verge(&ctx.nyanpasu_config_path())?;
+            let legacy_clash = read_legacy_clash_inputs(ctx)?;
+            let (_, _, clash_config) = typed_config_from_legacy_parts(&legacy, &legacy_clash)?;
+            clash_config
+        };
+
+        let clash_yaml =
+            serialize_yaml(&clash_config).context("failed to serialize repaired clash config")?;
+        crate::core::migration::fs::atomic_write(&ctx.clash_config_path(), clash_yaml.as_bytes())
+            .context("failed to write repaired clash config")
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TypedFileState {
     All,
     None,
+    NeedsClashRepair,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,9 +175,18 @@ fn typed_file_state(ctx: &Ctx) -> anyhow::Result<TypedFileState> {
         };
     }
 
-    if application_exists && session_exists && clash_state == SharedClashFileState::Typed {
-        validate_existing_typed_files(ctx)?;
-        return Ok(TypedFileState::All);
+    if application_exists && session_exists {
+        match clash_state {
+            SharedClashFileState::Typed => {
+                validate_existing_typed_files(ctx)?;
+                return Ok(TypedFileState::All);
+            }
+            SharedClashFileState::Missing | SharedClashFileState::LegacyRuntime => {
+                validate_existing_application_and_session(ctx)?;
+                return Ok(TypedFileState::NeedsClashRepair);
+            }
+            SharedClashFileState::Unrecognized => {}
+        }
     }
 
     if clash_state == SharedClashFileState::Unrecognized {
@@ -239,12 +305,17 @@ fn partial_typed_file_state(
 }
 
 fn validate_existing_typed_files(ctx: &Ctx) -> anyhow::Result<()> {
+    validate_existing_application_and_session(ctx)?;
+    read_yaml::<nyanpasu_config::clash::config::ClashConfig>(&ctx.clash_config_path())
+        .context("failed to validate existing clash config")?;
+    Ok(())
+}
+
+fn validate_existing_application_and_session(ctx: &Ctx) -> anyhow::Result<()> {
     read_yaml::<nyanpasu_config::application::NyanpasuAppConfig>(&ctx.application_config_path())
         .context("failed to validate existing application config")?;
     read_yaml::<nyanpasu_config::state::PersistentState>(&ctx.session_state_path())
         .context("failed to validate existing session state")?;
-    read_yaml::<nyanpasu_config::clash::config::ClashConfig>(&ctx.clash_config_path())
-        .context("failed to validate existing clash config")?;
     Ok(())
 }
 
@@ -402,6 +473,66 @@ mod tests {
         let _: NyanpasuAppConfig = read_typed(&ctx.application_config_path());
         let _: PersistentState = read_typed(&ctx.session_state_path());
         let _: ClashConfig = read_typed(&ctx.clash_config_path());
+    }
+
+    #[test]
+    fn legacy_runtime_with_existing_typed_state_detects_repair_baseline() {
+        let (ctx, _temp) = test_ctx();
+        write_yaml(
+            &ctx.application_config_path(),
+            &NyanpasuAppConfig::default(),
+        );
+        write_yaml(&ctx.session_state_path(), &PersistentState::default());
+        write_legacy_clash(&ctx.clash_config_path());
+
+        assert_eq!(MIGRATOR.detect_baseline(&ctx).unwrap(), 1);
+    }
+
+    #[test]
+    fn repair_clash_config_path_preserves_previous_typed_state() {
+        let (mut ctx, _temp) = test_ctx();
+        write_yaml(
+            &ctx.application_config_path(),
+            &NyanpasuAppConfig::default(),
+        );
+        write_yaml(&ctx.session_state_path(), &PersistentState::default());
+        write_legacy_clash(&ctx.clash_config_path());
+        let previous = ClashConfig {
+            enable_tun_mode: true,
+            enable_clash_fields: false,
+            ..ClashConfig::default()
+        };
+        write_yaml(
+            &ctx.paths().app_config_dir().join(PREVIOUS_TYPED_CLASH_FILE),
+            &previous,
+        );
+
+        REPAIR_CLASH_CONFIG_PATH.run(&mut ctx).unwrap();
+
+        let repaired: ClashConfig = read_typed(&ctx.clash_config_path());
+        assert!(repaired.enable_tun_mode);
+        assert!(!repaired.enable_clash_fields);
+    }
+
+    #[test]
+    fn repair_clash_config_path_rebuilds_when_previous_typed_file_is_missing() {
+        let (mut ctx, _temp) = test_ctx();
+        write_yaml(
+            &ctx.application_config_path(),
+            &NyanpasuAppConfig::default(),
+        );
+        write_yaml(&ctx.session_state_path(), &PersistentState::default());
+        write_yaml(&ctx.nyanpasu_config_path(), &IVerge::template());
+        write_legacy_clash(&ctx.clash_config_path());
+
+        REPAIR_CLASH_CONFIG_PATH.run(&mut ctx).unwrap();
+
+        let repaired: ClashConfig = read_typed(&ctx.clash_config_path());
+        let overrides = serde_yaml::to_value(&repaired.overrides).unwrap();
+        let overrides = overrides.as_mapping().unwrap();
+        assert_eq!(overrides.get("allow-lan"), Some(&Value::Bool(true)));
+        assert_eq!(overrides.get("mode"), Some(&Value::String("global".into())));
+        assert_eq!(overrides.get("ipv6"), Some(&Value::Bool(true)));
     }
 
     #[test]

@@ -124,10 +124,28 @@ pub enum RefreshOutcome {
         /// Validated payload; written to the materialized file inside the
         /// commit handler so a stale download can be fenced before any write.
         content: String,
+        /// Server-provided display name (`profile-title` / `Content-Disposition`),
+        /// applied to a non-user-named profile by name-sync in the commit handler.
+        filename: Option<String>,
     },
     Failed {
         message: String,
     },
+}
+
+/// Decide the profile name to apply after a refresh. Returns `Some(name)` only
+/// when the profile is not user-named and the server supplied a non-blank name;
+/// otherwise the current name is kept. Pure so the provenance rule is unit-tested
+/// without spawning the actor.
+fn synced_name(custom_name: bool, filename: &Option<String>) -> Option<String> {
+    if custom_name {
+        return None;
+    }
+    filename
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
 }
 
 #[derive(Debug)]
@@ -836,17 +854,22 @@ impl Actor for ProfilesActor {
                             fetched.subscription,
                             fetched.suggested_update_interval_minutes,
                             fetched.content,
+                            fetched.filename,
                         ))
                     }
                     .await;
                     let outcome = match outcome {
-                        Ok((subscription, suggested_update_interval_minutes, content)) => {
-                            RefreshOutcome::Succeeded {
-                                subscription,
-                                suggested_update_interval_minutes,
-                                content,
-                            }
-                        }
+                        Ok((
+                            subscription,
+                            suggested_update_interval_minutes,
+                            content,
+                            filename,
+                        )) => RefreshOutcome::Succeeded {
+                            subscription,
+                            suggested_update_interval_minutes,
+                            content,
+                            filename,
+                        },
                         Err(message) => RefreshOutcome::Failed { message },
                     };
                     let _ = actor.cast(ProfilesActorMessage::CommitRefreshed { uid, url, outcome });
@@ -902,6 +925,7 @@ impl Actor for ProfilesActor {
                         subscription,
                         suggested_update_interval_minutes,
                         content,
+                        filename,
                     } => {
                         // Re-validate against the CURRENT definition: the URL
                         // fence above cannot see a same-URL definition change
@@ -943,6 +967,16 @@ impl Actor for ProfilesActor {
                                                 uid.clone(),
                                             ));
                                         };
+                                        // Name-sync: a subscription-provided name
+                                        // replaces the current name only while the
+                                        // profile is not user-named. Read the flag
+                                        // before mutating `definition` to avoid a
+                                        // simultaneous mutable borrow of both fields.
+                                        if let Some(name) =
+                                            synced_name(item.metadata.custom_name, &filename)
+                                        {
+                                            item.metadata.name = name;
+                                        }
                                         match item.definition.source_mut() {
                                             Some(ProfileSource::Remote {
                                                 materialized,
@@ -1254,5 +1288,19 @@ mod tests {
     fn overlay_content_needs_only_a_mapping() {
         let overlay = crate::enhance::golden_support::overlay("t1", "t1.yaml");
         assert!(ProfilesActor::validate_fetched_content(&overlay.definition, "a: 1\n").is_ok());
+    }
+
+    #[test]
+    fn synced_name_syncs_only_unpinned_profiles_with_a_server_name() {
+        // Not user-named + server name present -> adopt it.
+        assert_eq!(
+            synced_name(false, &Some("Server Name".into())),
+            Some("Server Name".into())
+        );
+        // User-named -> never overwritten, even with a server name.
+        assert_eq!(synced_name(true, &Some("Server Name".into())), None);
+        // No server name / blank server name -> keep the current name.
+        assert_eq!(synced_name(false, &None), None);
+        assert_eq!(synced_name(false, &Some("   ".into())), None);
     }
 }

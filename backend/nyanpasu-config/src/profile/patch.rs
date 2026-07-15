@@ -66,8 +66,18 @@ impl Profiles {
 }
 
 impl ProfileItem {
-    pub fn apply_metadata_patch(&mut self, patch: ProfileMetadataPatch) {
+    pub fn apply_metadata_patch(&mut self, mut patch: ProfileMetadataPatch) {
+        // `custom_name` is provenance-owned: never trust it from an incoming
+        // patch (the UI does not send it). A rename — the patch carries a name
+        // that differs from the current one — pins the flag so subscription
+        // name-sync stops overwriting the user's chosen name. A patch that
+        // repeats the current name must not pin, so the comparison is required.
+        let renamed = matches!(&patch.name, Some(name) if *name != self.metadata.name);
+        patch.custom_name = None;
         self.metadata.apply(patch);
+        if renamed {
+            self.metadata.custom_name = true;
+        }
     }
 
     /// Atomically replace the whole definition (kind / source / binding switch).

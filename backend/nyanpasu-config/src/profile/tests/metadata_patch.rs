@@ -6,6 +6,7 @@ fn seed() -> ProfileMetadata {
     ProfileMetadata {
         name: "Original".into(),
         desc: Some("keep me".into()),
+        custom_name: false,
     }
 }
 

@@ -15,6 +15,7 @@ pub(crate) fn metadata(name: &str) -> ProfileMetadata {
     ProfileMetadata {
         name: name.into(),
         desc: None,
+        custom_name: true,
     }
 }
 

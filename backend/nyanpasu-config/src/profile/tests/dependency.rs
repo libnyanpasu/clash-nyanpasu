@@ -11,6 +11,7 @@ fn file_config(uid: &str, file: &str, transforms: Vec<ProfileId>) -> ProfileItem
         metadata: ProfileMetadata {
             name: uid.into(),
             desc: None,
+            custom_name: true,
         },
         definition: ProfileDefinition::Config {
             config: ConfigDefinition::File(FileConfig {
@@ -34,6 +35,7 @@ fn overlay(uid: &str, file: &str) -> ProfileItem {
         metadata: ProfileMetadata {
             name: uid.into(),
             desc: None,
+            custom_name: true,
         },
         definition: ProfileDefinition::Transform {
             transform: TransformDefinition::Overlay(OverlayTransform {
@@ -63,6 +65,7 @@ fn index_maps_base_extend_transform_and_global() {
         metadata: ProfileMetadata {
             name: "comp".into(),
             desc: None,
+            custom_name: true,
         },
         definition: ProfileDefinition::Config {
             config: ConfigDefinition::Composition(CompositionConfig {

@@ -355,5 +355,9 @@
   "common_off": "Выкл",
   "common_enabled": "Включено",
   "common_disabled": "Отключено",
-  "common_clear": "Очистить"
+  "common_clear": "Очистить",
+  "deep_link_import_title": "Импорт профиля",
+  "deep_link_import_success_message": "Профиль «{name}» успешно импортирован",
+  "deep_link_import_failed_message": "Не удалось импортировать профиль по ссылке",
+  "deep_link_import_invalid_message": "Ссылка не является корректной ссылкой для импорта профиля"
 }

@@ -18,6 +18,7 @@ import CustomCssProvider from '@/components/providers/custom-css-provider'
 import { LanguageProvider } from '@/components/providers/language-provider'
 import { ExperimentalThemeProvider } from '@/components/providers/theme-provider'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { useDeepLinkImport } from '@/hooks/use-deep-link-import'
 import { m } from '@/paraglide/messages'
 import { message } from '@/utils/notification'
 import {
@@ -133,6 +134,11 @@ function DegradedRebuildNotifier() {
   return null
 }
 
+function DeepLinkImport() {
+  useDeepLinkImport()
+  return null
+}
+
 export default function App() {
   return (
     <NyanpasuProvider>
@@ -143,6 +149,7 @@ export default function App() {
               <TooltipProvider>
                 <WindowReveal />
                 <DegradedRebuildNotifier />
+                <DeepLinkImport />
                 <Outlet />
               </TooltipProvider>
             </CustomCssProvider>

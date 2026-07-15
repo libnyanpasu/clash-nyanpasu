@@ -124,6 +124,7 @@ export const commands = {
     typedError<null, string>(__TAURI_INVOKE('enhance_profiles')),
   importProfile: (
     url: string,
+    name: string | null,
     option: {
       user_agent?: string | null
       with_proxy: boolean | null
@@ -132,8 +133,14 @@ export const commands = {
     } | null,
   ) =>
     typedError<CommitOutcome<ProfileId>, string>(
-      __TAURI_INVOKE('import_profile', { url, option }),
+      __TAURI_INVOKE('import_profile', { url, name, option }),
     ),
+  /**
+   *  Take and clear the pending cold-start deep link, if any. Called once by the
+   *  frontend during startup.
+   */
+  getPendingDeepLink: () =>
+    typedError<string | null, string>(__TAURI_INVOKE('get_pending_deep_link')),
   /**  create a new profile */
   createProfile: (
     request: NewProfileRequest_Deserialize,
@@ -339,6 +346,9 @@ export const events = {
     'clash-connections-event',
   ),
   clashWsEvent: makeEvent<ClashWsEvent>('clash-ws-event'),
+  schemeRequestReceivedEvent: makeEvent<SchemeRequestReceivedEvent>(
+    'scheme-request-received-event',
+  ),
   storageValueChangedEvent: makeEvent<StorageValueChangedEvent>(
     'storage-value-changed-event',
   ),
@@ -1176,23 +1186,49 @@ export type ProfileMetadataPatch =
 export type ProfileMetadataPatch_Deserialize = {
   name: string | null
   desc?: string | null
+  custom_name?: boolean | null
 }
 
 export type ProfileMetadataPatch_Serialize = {
   name?: string | null
   desc?: string | null
+  custom_name?: boolean | null
 }
 
 /**  Public, user-editable profile metadata. */
 export type ProfileMetadata_Deserialize = {
   name: string
   desc?: string | null
+  /**
+   *  Provenance flag: `true` when the name was chosen by the user (manual
+   *  create or rename) and must not be overwritten by subscription name-sync.
+   *  Profiles persisted before this field predate provenance tracking; absence
+   *  means user-owned so a refresh cannot silently rename them.
+   *  The value is never trusted from an incoming patch — it is set only by
+   *  rename detection and name-sync (see `ProfileItem::apply_metadata_patch`).
+   *  Only the non-default `false` (an unpinned, sync-eligible profile) is
+   *  persisted; a user-owned `true` is left off the wire and restored by the
+   *  default, so legacy and user-named documents stay byte-identical.
+   */
+  custom_name?: boolean
 }
 
 /**  Public, user-editable profile metadata. */
 export type ProfileMetadata_Serialize = {
   name: string
   desc?: string | null
+  /**
+   *  Provenance flag: `true` when the name was chosen by the user (manual
+   *  create or rename) and must not be overwritten by subscription name-sync.
+   *  Profiles persisted before this field predate provenance tracking; absence
+   *  means user-owned so a refresh cannot silently rename them.
+   *  The value is never trusted from an incoming patch — it is set only by
+   *  rename detection and name-sync (see `ProfileItem::apply_metadata_patch`).
+   *  Only the non-default `false` (an unpinned, sync-eligible profile) is
+   *  persisted; a user-owned `true` is left off the wire and restored by the
+   *  default, so legacy and user-named documents stay byte-identical.
+   */
+  custom_name?: boolean
 }
 
 export type ProfileRemoteOptions = {
@@ -1724,6 +1760,22 @@ export type RuntimeInfos = {
   service_config_dir: string
   nyanpasu_config_dir: string
   nyanpasu_data_dir: string
+}
+
+/**
+ *  Emitted to the frontend when a `clash-nyanpasu`/`clash` custom-scheme deep
+ *  link is received: either from a secondary instance while the app is already
+ *  running, or on cold start once the window exists. The frontend listens for
+ *  this to import the referenced `install-config` profile. On cold start the
+ *  same URL is also stashed in [`PendingDeepLink`] and drained once via
+ *  [`get_pending_deep_link`], covering the race where the event fires before the
+ *  JS listener attaches.
+ *
+ *  Event name: `scheme-request-received-event` (derived by `tauri_specta`).
+ */
+export type SchemeRequestReceivedEvent = {
+  /**  The raw deep-link URL as received from the OS. */
+  url: string
 }
 
 export type ScriptRuntime = 'javascript' | 'lua'

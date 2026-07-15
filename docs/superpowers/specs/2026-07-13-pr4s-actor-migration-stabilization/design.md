@@ -1,9 +1,9 @@
 # PR-4S — PR-1～PR-4 Actor Migration 稳定化门（设计 spec）
 
 **日期：** 2026-07-13  
-**状态：** Implementing（S01 已完成；S02 RuntimePaths/candidate hardening 验证中）
+**状态：** Implementing（S01～S03 已完成；S04～S10 未完成；不得宣告 PR-4S 完成）
 
-**范围基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`；包含 PR-4 `#4932`）
+**范围基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`；包含 PR-4 `#4932`；S01 `daf872d9`；S02 `807f1733`；S03 工作区 diff 已验证）
 **上游依据：** `docs/design/actor-migration-roadmap.md` v3 §5  
 **建议分支：** `fix/pr4s-actor-migration-stabilization`  
 **原子性：** 本 spec 的 S01～S10 为一个稳定化 PR；可以多 commit，但不得只合并部分语义
@@ -22,12 +22,12 @@ PR-1～PR-4 已完成以下主要方向：
 - candidate → core check → promote → publish 管线；
 - profile mutation 的初版 `RebuildOutcome`。
 
-但当前实现仍有四类系统性缺陷：
+但当前实现仍有四类系统性缺陷（S03 已关闭其中状态模型与 rollback read-model 部分）：
 
-1. **生命周期锁域不完整**：facade 的 `rebuild_gate` 与 `CoreManager::run_lock` 不是一个完整事务，`change_core` rollback 窗口可被其他 restart 穿透；
-2. **状态语义不足**：现有 runtime store 表达 Promoted，却被 compensation 当作 Applied；深层 rollback 只恢复产品文件，不恢复 store；
-3. **跨资源提交不一致**：typed state、legacy mirror、profile 文件、runtime 文件、核心进程之间缺乏明确 prepare/commit/compensate；
-4. **验收与测试隔离不足**：单测会写真实用户配置目录，PR-3/4 已发生回归，PR-4 手工 smoke 无可审计闭环。
+1. **生命周期锁域不完整（S04 未完成）**：facade 的 `rebuild_gate` 与 `CoreManager::run_lock` 不是一个完整事务，`change_core` rollback 窗口可被其他 restart 穿透；
+2. **状态语义残差（S03 已落地 promoted/applied + transaction snapshot；S05 未完成）**：facade 已持有 `RuntimeLifecycleState { promoted, applied }` 与 revision/core/hash；四读 IPC 读 Promoted；`change_core` 深层 rollback 同步恢复 product/Promoted/Applied。D6 compensation 仍读 Promoted，且尚无 Set/Remove + expected Applied revision fence；
+3. **跨资源提交不一致（S06/S07 未完成）**：typed state、legacy mirror、profile 文件、runtime 文件、核心进程之间缺乏明确 prepare/commit/compensate；
+4. **验收与测试隔离不足（S09/S10 未完成）**：PR-3/4 回归与 smoke 仍需可审计闭环；S02 已注入 RuntimePaths 并隔离 runtime 测试路径，但 dispatcher/fake-core/ledger gate 仍待完成。
 
 PR-4S 不继续扩大 actor 数量。它先修复 PR-1～PR-4 的 correctness boundary，使 PR-5 可以在可靠状态模型上接管核心生命周期。
 

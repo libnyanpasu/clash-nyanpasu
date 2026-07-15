@@ -5,11 +5,15 @@
 use std::{
     fs::OpenOptions,
     io::Write,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, SystemTime},
 };
 
 use camino::{Utf8Path, Utf8PathBuf};
-use nyanpasu_core::state::{SimpleStateManager, SimpleStateManagerSetup};
+use nyanpasu_config::application::ClashCore;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 use sha2::{Digest, Sha256};
@@ -19,38 +23,95 @@ use crate::{enhance::PostProcessingOutput, utils::path::PathResolver};
 pub const RUNTIME_CONFIG_DIR: &str = "runtime";
 pub const RUNTIME_CONFIG: &str = "clash-config.yaml";
 
-/// Read model of the current runtime derivation (replaces the old
-/// draft-based config type, minus the draft machinery). Derived once per
-/// rebuild while the profiles snapshot is in hand; the four runtime read
-/// commands serve straight from this.
-///
-/// Semantics (spec §5.1, r2): the latest TARGET config that passed the core
-/// binary's check and was promoted to the product. It does NOT promise the
-/// running core accepted it — a failed apply is reported as
-/// `RebuildOutcome::Degraded`, not reflected here.
-#[derive(Debug, Clone, Default)]
-pub struct RuntimeState {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct RuntimeRevision(u64);
+
+impl RuntimeRevision {
+    pub fn get(self) -> u64 {
+        self.0
+    }
+}
+
+pub(crate) struct RuntimeRevisionAllocator(AtomicU64);
+
+impl RuntimeRevisionAllocator {
+    pub(crate) fn new() -> Self {
+        Self(AtomicU64::new(0))
+    }
+
+    pub(crate) fn allocate(&self) -> anyhow::Result<RuntimeRevision> {
+        let previous = self
+            .0
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+                value.checked_add(1)
+            })
+            .map_err(|_| anyhow::anyhow!("runtime revision space exhausted"))?;
+        Ok(RuntimeRevision(previous + 1))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RuntimeSnapshotData {
     pub config: Mapping,
     pub exists_keys: Vec<String>,
     pub postprocessing_output: PostProcessingOutput,
 }
 
-/// Facade-held runtime store. The RwLock is a narrowly scoped implementation
-/// detail (CLAUDE.md §8 exception): `upsert` needs `&mut`, writers are already
-/// serialized by the facade `rebuild_gate`, readers take `snapshot()`.
-/// SimpleStateManager (not a bare RwLock<Option<..>>) is deliberate: its
-/// StateCoordinator ack subscribers are the landing point for the
-/// TODO(post-PR-7) ack-driven rollback direction (spec D2).
-pub type RuntimeStateStore = tokio::sync::RwLock<SimpleStateManager<Option<RuntimeState>>>;
+#[derive(Debug, Clone)]
+pub struct RuntimeSnapshot {
+    pub revision: RuntimeRevision,
+    pub target_core: ClashCore,
+    pub product_sha256: [u8; 32],
+    pub config: Mapping,
+    pub exists_keys: Vec<String>,
+    pub postprocessing_output: PostProcessingOutput,
+}
 
-pub async fn new_runtime_state_store() -> anyhow::Result<RuntimeStateStore> {
-    let manager = SimpleStateManagerSetup::builder()
-        .initial_state(None)
-        .assemble()
-        .initialize()
-        .await
-        .map_err(|error| anyhow::anyhow!("failed to initialize runtime state store: {error:?}"))?;
-    Ok(tokio::sync::RwLock::new(manager))
+impl RuntimeSnapshot {
+    pub(crate) fn from_data(
+        revision: RuntimeRevision,
+        target_core: ClashCore,
+        product_sha256: [u8; 32],
+        data: RuntimeSnapshotData,
+    ) -> Self {
+        Self {
+            revision,
+            target_core,
+            product_sha256,
+            config: data.config,
+            exists_keys: data.exists_keys,
+            postprocessing_output: data.postprocessing_output,
+        }
+    }
+
+    pub(crate) fn identity_eq(&self, other: &Self) -> bool {
+        self.revision == other.revision
+            && self.target_core == other.target_core
+            && self.product_sha256 == other.product_sha256
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RuntimeLifecycleState {
+    pub promoted: Option<Arc<RuntimeSnapshot>>,
+    pub applied: Option<Arc<RuntimeSnapshot>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RuntimeTransactionSnapshot {
+    pub product: Option<Vec<u8>>,
+    pub lifecycle: RuntimeLifecycleState,
+    pub selected_core: ClashCore,
+}
+
+/// Facade-held runtime lifecycle store. It is instance-owned and non-persistent:
+/// writers are serialized by `rebuild_gate`, while runtime IPC reads clone the
+/// Promoted snapshot. With no subscribers, a plain RwLock keeps lifecycle writes
+/// infallible after product promotion or a successful core apply/restart.
+pub type RuntimeLifecycleStore = tokio::sync::RwLock<RuntimeLifecycleState>;
+
+pub async fn new_runtime_lifecycle_store() -> anyhow::Result<RuntimeLifecycleStore> {
+    Ok(tokio::sync::RwLock::new(RuntimeLifecycleState::default()))
 }
 
 /// D6 (spec §6.4): previous values of the keys a clash patch touches, taken
@@ -282,6 +343,17 @@ pub struct CommitOutcome<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn runtime_revision_allocator_is_monotonic() {
+        let allocator = RuntimeRevisionAllocator::new();
+        let first = allocator.allocate().expect("first revision");
+        let second = allocator.allocate().expect("second revision");
+
+        assert_eq!(first.get(), 1);
+        assert_eq!(second.get(), 2);
+        assert!(second > first);
+    }
 
     #[test]
     fn compensation_restores_previous_values_of_patched_keys() {

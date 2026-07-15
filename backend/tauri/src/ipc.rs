@@ -314,7 +314,7 @@ pub fn get_clash_info() -> Result<ClashInfo> {
 pub async fn get_runtime_config(
     client: State<'_, NyanpasuClient>,
 ) -> Result<Option<specta_typescript::Any<serde_json::Value>>> {
-    let state = client.runtime_state().await;
+    let state = client.promoted_runtime().await;
     match state.as_ref() {
         Some(state) => {
             let yaml_value = serde_yaml::to_value(&state.config)?;
@@ -330,9 +330,8 @@ pub async fn get_runtime_config(
 #[tauri::command]
 #[specta::specta]
 pub async fn get_runtime_yaml(client: State<'_, NyanpasuClient>) -> Result<String> {
-    let state = client.runtime_state().await;
+    let state = client.promoted_runtime().await;
     let mapping = (state
-        .as_ref()
         .as_ref()
         .map(|state| &state.config)
         .ok_or(anyhow::anyhow!("failed to parse config to yaml file"))
@@ -346,9 +345,8 @@ pub async fn get_runtime_yaml(client: State<'_, NyanpasuClient>) -> Result<Strin
 #[specta::specta]
 pub async fn get_runtime_exists(client: State<'_, NyanpasuClient>) -> Result<Vec<String>> {
     Ok(client
-        .runtime_state()
+        .promoted_runtime()
         .await
-        .as_ref()
         .as_ref()
         .map(|state| state.exists_keys.clone())
         .unwrap_or_default())
@@ -360,9 +358,8 @@ pub async fn get_postprocessing_output(
     client: State<'_, NyanpasuClient>,
 ) -> Result<PostProcessingOutput> {
     Ok(client
-        .runtime_state()
+        .promoted_runtime()
         .await
-        .as_ref()
         .as_ref()
         .map(|state| state.postprocessing_output.clone())
         .unwrap_or_default())
@@ -428,11 +425,13 @@ pub async fn patch_clash_config(
         _ => return Err(IpcError::Custom("Expected a mapping".to_string())),
     };
 
-    // D6 补偿快照:manager 为 None(核心尚未构建/运行)→ 无补偿,直推本也会失败。
-    let prev = client.runtime_state().await;
+    // TODO(actor-migration): pre-S05 compensation still reads Promoted.
+    // Reason: Applied-based Set/Remove compensation and its revision fence are S05 scope.
+    // Remove when: patch orchestration moves into NyanpasuClient with Applied semantics.
+    let prev = client.promoted_runtime().await;
     let compensation = crate::client::runtime::compensation_for(
         &mapping,
-        prev.as_ref().as_ref().map(|state| &state.config),
+        prev.as_ref().map(|state| &state.config),
     );
 
     (crate::core::clash::api::patch_configs(&mapping).await)?;

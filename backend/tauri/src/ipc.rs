@@ -648,9 +648,10 @@ pub async fn inspect_updater(updater_id: usize) -> Result<updater::UpdaterSummar
 #[specta::specta]
 pub async fn clash_api_get_proxy_delay(
     name: String,
+    provider: Option<String>,
     url: Option<String>,
 ) -> Result<clash::api::DelayRes> {
-    match clash::api::get_proxy_delay(name, url).await {
+    match clash::api::get_proxy_delay(name, provider, url).await {
         Ok(res) => Ok(res),
         Err(err) => Err(err.into()),
     }

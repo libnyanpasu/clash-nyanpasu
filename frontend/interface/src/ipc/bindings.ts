@@ -56,9 +56,13 @@ export const commands = {
     typedError<PostProcessingOutput, string>(
       __TAURI_INVOKE('get_postprocessing_output'),
     ),
-  clashApiGetProxyDelay: (name: string, url: string | null) =>
+  clashApiGetProxyDelay: (
+    name: string,
+    provider: string | null,
+    url: string | null,
+  ) =>
     typedError<DelayRes, string>(
-      __TAURI_INVOKE('clash_api_get_proxy_delay', { name, url }),
+      __TAURI_INVOKE('clash_api_get_proxy_delay', { name, provider, url }),
     ),
   clashApiGetConfigs: () =>
     typedError<ClashConfig, string>(__TAURI_INVOKE('clash_api_get_configs')),

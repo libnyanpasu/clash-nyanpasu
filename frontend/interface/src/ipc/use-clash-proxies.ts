@@ -67,7 +67,11 @@ export const useClashProxies = () => {
       ): ClashProxiesQueryProxyItem => ({
         ...proxy,
         mutateDelay: async (options?: ClashDelayOptions) => {
-          await updateProxiesDelay.mutateAsync([proxy.name, options])
+          await updateProxiesDelay.mutateAsync([
+            proxy.name,
+            proxy.provider,
+            options,
+          ])
         },
         mutateSelect: async () => {
           await commands.selectProxy(groupName, proxy.name)
@@ -115,10 +119,14 @@ export const useClashProxies = () => {
   }
 
   const updateProxiesDelay = useMutation({
-    mutationFn: async (args: [string, ClashDelayOptions?]) => {
-      const [name, options] = args
+    mutationFn: async (args: [string, string | null, ClashDelayOptions?]) => {
+      const [name, provider, options] = args
       const res = unwrapResult(
-        await commands.clashApiGetProxyDelay(name, options?.url ?? null),
+        await commands.clashApiGetProxyDelay(
+          name,
+          provider,
+          options?.url ?? null,
+        ),
       )
       return {
         name,

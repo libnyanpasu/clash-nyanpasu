@@ -379,7 +379,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "parking_lot",
  "percent-encoding",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
  "wl-clipboard-rs",
  "x11rb",
 ]
@@ -1888,7 +1888,7 @@ dependencies = [
  "specta-typescript",
  "struct-patch",
  "strum",
- "sysinfo 0.39.6",
+ "sysinfo",
  "sysproxy",
  "tauri",
  "tauri-build",
@@ -1988,7 +1988,7 @@ version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "faf9468729b8cbcea668e36183cb69d317348c2e08e994829fb56ebfdfbaac34"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2739,18 +2739,18 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.2",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
 name = "dirs-utils"
 version = "0.1.0"
-source = "git+https://github.com/libnyanpasu/nyanpasu-utils.git#4165ebfecccc5606f4a1abc0bbe847cd018123dd"
+source = "git+https://github.com/LibNyanpasu/nyanpasu-utils.git?rev=607ad2a30388dc53f5f3eae9e75de8769ec7a162#607ad2a30388dc53f5f3eae9e75de8769ec7a162"
 dependencies = [
  "dirs 6.0.0",
  "thiserror 2.0.18",
  "tracing",
- "windows 0.61.3",
+ "windows 0.62.0",
 ]
 
 [[package]]
@@ -2809,7 +2809,7 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330c60081dcc4c72131f8eb70510f1ac07223e5d4163db481a04a0befcffa412"
 dependencies = [
- "libloading 0.8.8",
+ "libloading 0.7.4",
 ]
 
 [[package]]
@@ -3310,7 +3310,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "778e2ac28f6c47af28e4907f13ffd1e1ddbd400980a9abd7c8df189bf578a5ad"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4345,11 +4345,11 @@ dependencies = [
 
 [[package]]
 name = "halfbrown"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa2c385c6df70fd180bbb673d93039dbd2cd34e41d782600bdf6e1ca7bce39aa"
+checksum = "0c7ed2f2edad8a14c8186b847909a41fbb9c3eafa44f88bd891114ed5019da09"
 dependencies = [
- "hashbrown 0.15.5",
+ "hashbrown 0.16.1",
  "serde",
 ]
 
@@ -5004,23 +5004,9 @@ dependencies = [
 
 [[package]]
 name = "interprocess"
-version = "2.3.0"
+version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b00d05442c2106c75b7410f820b152f61ec0edc7befcb9b381b673a20314753"
-dependencies = [
- "doctest-file",
- "futures-core",
- "libc",
- "recvmsg",
- "tokio",
- "widestring 1.2.0",
- "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "interprocess"
-version = "2.3.0"
-source = "git+https://github.com/libnyanpasu/interprocess.git?branch=fix/linux-32bit-build#33b6a835833ca7fe5276c7dd8a13bfbdac7a80a2"
+checksum = "53bf2b0e0785c5394a7392f66d7c4fb9c653633c29b27a932280da3cb344c66a"
 dependencies = [
  "doctest-file",
  "futures-core",
@@ -5877,7 +5863,7 @@ dependencies = [
  "png 0.18.0",
  "serde",
  "thiserror 2.0.18",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5948,7 +5934,7 @@ dependencies = [
 [[package]]
 name = "network-utils"
 version = "0.1.0"
-source = "git+https://github.com/libnyanpasu/nyanpasu-utils.git#4165ebfecccc5606f4a1abc0bbe847cd018123dd"
+source = "git+https://github.com/LibNyanpasu/nyanpasu-utils.git?rev=607ad2a30388dc53f5f3eae9e75de8769ec7a162#607ad2a30388dc53f5f3eae9e75de8769ec7a162"
 dependencies = [
  "log",
  "tempfile",
@@ -6291,6 +6277,7 @@ dependencies = [
  "fs-err",
  "gxhash",
  "indexmap 2.14.0",
+ "nyanpasu-ipc",
  "nyanpasu-utils",
  "serde",
  "serde_yaml_ng",
@@ -6333,8 +6320,8 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-ipc"
-version = "1.4.2"
-source = "git+https://github.com/libnyanpasu/nyanpasu-service.git#3742aaaebc475f90d8ed7774aa7b6c6ff263b90e"
+version = "1.4.4"
+source = "git+https://github.com/LibNyanpasu/nyanpasu-service.git?rev=b244da295f9893d7f3a34433c2b35f377a55a466#b244da295f9893d7f3a34433c2b35f377a55a466"
 dependencies = [
  "anyhow",
  "axum",
@@ -6345,7 +6332,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "indexmap 2.14.0",
- "interprocess 2.3.0 (git+https://github.com/libnyanpasu/interprocess.git?branch=fix/linux-32bit-build)",
+ "interprocess",
  "nyanpasu-utils",
  "pin-project-lite",
  "serde",
@@ -6357,7 +6344,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-attributes",
- "windows 0.61.3",
+ "windows 0.62.0",
 ]
 
 [[package]]
@@ -6372,7 +6359,7 @@ dependencies = [
 [[package]]
 name = "nyanpasu-utils"
 version = "0.1.0"
-source = "git+https://github.com/libnyanpasu/nyanpasu-utils.git#4165ebfecccc5606f4a1abc0bbe847cd018123dd"
+source = "git+https://github.com/LibNyanpasu/nyanpasu-utils.git?rev=607ad2a30388dc53f5f3eae9e75de8769ec7a162#607ad2a30388dc53f5f3eae9e75de8769ec7a162"
 dependencies = [
  "camino",
  "constcat",
@@ -6388,7 +6375,7 @@ dependencies = [
  "serde",
  "shared_child",
  "specta",
- "sysinfo 0.37.2",
+ "sysinfo",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -6963,11 +6950,11 @@ dependencies = [
 [[package]]
 name = "os-utils"
 version = "0.1.0"
-source = "git+https://github.com/libnyanpasu/nyanpasu-utils.git#4165ebfecccc5606f4a1abc0bbe847cd018123dd"
+source = "git+https://github.com/LibNyanpasu/nyanpasu-utils.git?rev=607ad2a30388dc53f5f3eae9e75de8769ec7a162#607ad2a30388dc53f5f3eae9e75de8769ec7a162"
 dependencies = [
- "nix 0.30.1",
+ "nix 0.31.3",
  "shared_child",
- "windows 0.61.3",
+ "windows 0.62.0",
 ]
 
 [[package]]
@@ -8070,7 +8057,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -9461,9 +9448,9 @@ checksum = "d66dc143e6b11c1eddc06d5c423cfc97062865baf299914ab64caa38182078fe"
 
 [[package]]
 name = "simd-json"
-version = "0.16.0"
+version = "0.17.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90daf33666402178ddbb5d595e6d5e6d7d372da948e23ea26762f5a23e02a04e"
+checksum = "e32d7ab2678282d21e53374fbead7119b7eacbede73685dcaac472870a29a11c"
 dependencies = [
  "halfbrown",
  "ref-cast",
@@ -9686,7 +9673,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -10036,20 +10023,6 @@ dependencies = [
 
 [[package]]
 name = "sysinfo"
-version = "0.37.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16607d5caffd1c07ce073528f9ed972d88db15dd44023fa57142963be3feb11f"
-dependencies = [
- "libc",
- "memchr",
- "ntapi",
- "objc2-core-foundation",
- "objc2-io-kit",
- "windows 0.61.3",
-]
-
-[[package]]
-name = "sysinfo"
 version = "0.39.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2071df9448915b71c4fe6d25deaf1c22f12bd234f01540b77312bb8e41361e6"
@@ -10344,7 +10317,7 @@ name = "tauri-plugin-deep-link"
 version = "0.1.2"
 dependencies = [
  "dirs 6.0.0",
- "interprocess 2.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "interprocess",
  "log",
  "objc2 0.6.4",
  "once_cell",
@@ -10685,7 +10658,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.3",
+ "getrandom 0.4.1",
  "once_cell",
  "rustix 1.1.4",
  "windows-sys 0.52.0",
@@ -11411,7 +11384,7 @@ dependencies = [
  "png 0.18.0",
  "serde",
  "thiserror 2.0.18",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -11797,9 +11770,9 @@ checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 
 [[package]]
 name = "value-trait"
-version = "0.11.0"
+version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0508fce11ad19e0aab49ce20b6bec7f8f82902ded31df1c9fc61b90f0eb396b8"
+checksum = "f3f4b4a98dfe54bc9ed3641af7ffcb837240269627dbd5cb047d13daa39736cc"
 dependencies = [
  "float-cmp 0.10.0",
  "halfbrown",
@@ -12554,7 +12527,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -13327,7 +13300,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d6f32a0ff4a9f6f01231eb2059cc85479330739333e0e58cadf03b6af2cca10"
 dependencies = [
  "cfg-if",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

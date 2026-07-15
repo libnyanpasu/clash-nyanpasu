@@ -23,6 +23,7 @@ fs-err = { workspace = true }
 serde_yaml_ng = { workspace = true }
 
 [dev-dependencies]
+nyanpasu-ipc = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }
 tempfile = "3"
 # Currently exercised only by the gxhash smoke test below. Every distributed

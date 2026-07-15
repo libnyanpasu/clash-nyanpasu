@@ -292,6 +292,21 @@ jobs:
           sudo docker image prune --all --force
           df -h
 
+      - name: Build nyanpasu-service IPC smoke test
+        run: >-
+          cargo build --locked
+          --manifest-path backend/Cargo.toml
+          --package nyanpasu-core
+          --example nyanpasu_service_ipc_smoke
+
+      - name: Run nyanpasu-service IPC smoke test (Unix)
+        if: startsWith(matrix.os, 'windows-') == false
+        run: sudo ./backend/target/debug/examples/nyanpasu_service_ipc_smoke
+
+      - name: Run nyanpasu-service IPC smoke test (Windows)
+        if: startsWith(matrix.os, 'windows-')
+        run: .\backend\target\debug\examples\nyanpasu_service_ipc_smoke.exe
+
       - name: Test
         run: pnpm test
 

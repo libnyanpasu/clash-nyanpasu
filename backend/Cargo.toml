@@ -20,15 +20,13 @@ authors = ["zzzgydi", "keiko233"]
 
 [workspace.dependencies]
 # --- nyanpasu ---
-# Deliberately not pinned with `rev`: nyanpasu-ipc depends on nyanpasu-utils via
-# the same git URL on its default branch. A `rev` here would give the two
-# references different source ids, duplicating every crate in the nyanpasu-utils
-# workspace (nyanpasu-utils/dirs-utils/network-utils/os-utils). Cargo.lock pins
-# the exact commit for both.
-nyanpasu-utils = { git = "https://github.com/libnyanpasu/nyanpasu-utils.git", features = [
+# TODO(monorepo-p2): replace these frozen git dependencies with in-tree paths.
+# The utils URL and rev deliberately match nyanpasu-service's upstream manifest
+# byte-for-byte so Cargo resolves one source identity for all four utils crates.
+nyanpasu-utils = { git = "https://github.com/LibNyanpasu/nyanpasu-utils.git", rev = "607ad2a30388dc53f5f3eae9e75de8769ec7a162", features = [
   "specta",
 ] }
-nyanpasu-ipc = { git = "https://github.com/libnyanpasu/nyanpasu-service.git", features = [
+nyanpasu-ipc = { git = "https://github.com/LibNyanpasu/nyanpasu-service.git", rev = "b244da295f9893d7f3a34433c2b35f377a55a466", features = [
   "client",
   "specta",
 ] } # IPC bridge between the UI process and service process

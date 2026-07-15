@@ -130,4 +130,66 @@ mod tests {
         assert!(comp.get("ipv6").is_none());
         assert!(compensation_for(&patch, None).is_none());
     }
+
+    /// S01 contract (task §S01.8 / design D6): compensation must be able to
+    /// `Remove` keys that exist only on the running core (absent from Applied).
+    ///
+    /// Current failure reason: `compensation_for` only copies previous values
+    /// for keys present in `prev` and silently drops brand-new patch keys, so
+    /// API-first patches cannot be fully rolled back. It also reads the single
+    /// published runtime store (Promoted semantics) rather than a distinct
+    /// Applied snapshot.
+    #[test]
+    fn s01_contract_compensation_cannot_remove_keys_absent_from_applied() {
+        let mut applied = Mapping::new();
+        applied.insert("mode".into(), "rule".into());
+
+        let mut patch = Mapping::new();
+        patch.insert("mode".into(), "direct".into());
+        // New key introduced by the API-first patch — Applied has no prior value.
+        patch.insert("ipv6".into(), true.into());
+
+        let comp = compensation_for(&patch, Some(&applied))
+            .expect("compensation must exist when Applied has at least one overlapping key");
+
+        assert_eq!(
+            comp.get("mode"),
+            Some(&"rule".into()),
+            "existing Applied keys must be restored via Set"
+        );
+
+        // Desired (S05): brand-new keys produce an explicit Remove op so the
+        // running core drops them. Current helper cannot express Remove at all.
+        assert!(
+            comp.contains_key("ipv6"),
+            "S01 FAILURE reason: compensation cannot Remove keys absent from Applied \
+             (new patch keys are dropped; helper only emits Set-from-prev and reads \
+             the single promoted runtime store rather than Applied)"
+        );
+    }
+
+    /// S01 contract (task §S01.7 / design §8.4): runtime product path resolution
+    /// used by tests and production must not escape into the real user app
+    /// config directory. Desired (S02): every path comes from an injected
+    /// `RuntimePaths` rooted at a TempDir.
+    ///
+    /// Current failure reason: `runtime_config_path` delegates to
+    /// `dirs::app_config_dir()`, so unit tests resolve and may mutate the real
+    /// product location.
+    #[test]
+    fn s01_contract_runtime_product_path_resolves_real_app_config_dir() {
+        let product = runtime_config_path().expect("runtime product path must resolve");
+        let real_app_config =
+            dirs::app_config_dir().expect("real app config dir must resolve for comparison");
+
+        let under_real = product.starts_with(&real_app_config);
+        assert!(
+            !under_real,
+            "S01 FAILURE reason: runtime_config_path resolves the real product path \
+             under {} (got {}); tests/production still depend on process-global \
+             dirs::app_config_dir instead of injected RuntimePaths/TempDir",
+            real_app_config.display(),
+            product.display()
+        );
+    }
 }

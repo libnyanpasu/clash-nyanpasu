@@ -3,7 +3,7 @@
 - **关联设计：** [`./design.md`](./design.md)；下文 `design §N` 均指该文件。
 - **任务定位：** roadmap v3 的单一硬前置 Task `R4S`。内部拆成 S01～S10 commit group，全部属于同一 atomic PR；任何子集都不能单独宣告稳定化完成。
 - **分支建议：** `fix/pr4s-actor-migration-stabilization`
-- **基线：** `main @ 429045202`；开始实现时 rebase 并重新运行 architecture ledger。
+- **基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`）；S01 基线文档刷新进行中，未完成；开始实现时 rebase 并重新运行 architecture ledger。
 - **建议 PR 标题：** `fix(tauri)!: close PR1-4 actor-migration consistency and regression gaps (PR-4S)`
 
 ---
@@ -75,6 +75,8 @@ flowchart LR
 ## 3. 任务卡
 
 ## S01 — 基线、故障注入接口与回归 fixtures
+
+**状态：** 进行中（文档基线已刷新至 `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`；failure fixtures / architecture ledger 尚未落地；不得将 S01 或 PR-4S 标为完成）
 
 **目标：** 先用测试复现/冻结缺陷，避免后续重构掩盖行为。
 

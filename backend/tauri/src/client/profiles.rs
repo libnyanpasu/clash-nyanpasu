@@ -1343,6 +1343,151 @@ mod tests {
         assert_eq!(file, format!("{uid}.yaml"));
     }
 
+    /// S01 failure contract (task §S01 #5 / design failure matrix):
+    /// profile Add file failure leaves success state.
+    ///
+    /// Current defective behavior (pre-S07): `run_write` persists the new item
+    /// first, then runs `WriteInitial` as a post-commit op. A write failure is
+    /// degraded into `CommitReport.warnings` and the API still returns `Ok`
+    /// with `created` set. S07 must replace this with prepare/finalize recovery
+    /// so Add cannot leave an orphan success state without materialization.
+    #[tokio::test]
+    async fn s01_profile_add_file_failure_leaves_success_state() {
+        let mut fs = MockProfileFsPort::new();
+        fs.expect_write_atomic()
+            .times(1)
+            .returning(|_, _| Err(anyhow::anyhow!("disk full during WriteInitial")));
+        let (client, dir) = test_client_with(fs).await;
+
+        let report = client
+            .add(
+                NewProfileRequest {
+                    metadata: ProfileMetadata {
+                        name: "BrokenAdd".into(),
+                        desc: None,
+                    },
+                    definition: file_config_item("placeholder").definition,
+                },
+                Some("proxies: []\n".to_string()),
+            )
+            .await
+            .expect(
+                "S01 current defect: Add post-commit file failure still returns Ok/success state",
+            );
+
+        let created = report
+            .created
+            .clone()
+            .expect("S01 defect: Add still reports created uid after file failure");
+        assert!(
+            report.snapshot.items.contains_key(&created),
+            "S01 defect: success snapshot still contains the new profile after file failure"
+        );
+        assert_eq!(
+            report.warnings.len(),
+            1,
+            "file failure is currently degraded to a warning, not a hard error"
+        );
+        assert!(
+            report.warnings[0].contains("post-commit file operation failed"),
+            "warning must identify the post-commit materialization failure: {:?}",
+            report.warnings
+        );
+
+        // Persist authority also keeps the orphan success state across reopen.
+        drop(client);
+        let reopened = ProfilesClient::new(
+            temp_profiles_path(&dir),
+            std::sync::Arc::new(MockProfileFsPort::new()),
+            std::sync::Arc::new(MockSubscriptionFetcher::new()),
+            std::sync::Arc::new(MockRebuildNotifier::new()),
+        )
+        .await
+        .expect("reopen after defective Add");
+        let snapshot = reopened.get().await.unwrap();
+        assert!(
+            snapshot.items.contains_key(&created),
+            "S01 defect: reopened profiles still contain the success-state item without a file"
+        );
+    }
+
+    /// S01 failure contract (task §S01 #6 / design failure matrix):
+    /// remote refresh metadata persist failure leaves new file.
+    ///
+    /// Current defective behavior (pre-S07): CommitRefreshed writes the new
+    /// subscription bytes first, then persists metadata (`updated_at` /
+    /// subscription). If that metadata upsert fails, the actor returns
+    /// `ProfilesError::Persist` without restoring the previous file bytes, so
+    /// the new file remains while metadata stays old. S07 must capture old
+    /// bytes and restore them on metadata persist failure.
+    #[tokio::test]
+    async fn s01_remote_refresh_metadata_persist_failure_leaves_new_file() {
+        let file_bytes = std::sync::Arc::new(std::sync::Mutex::new(String::from(
+            "proxies:\n  - name: old\n",
+        )));
+        let mut fs = MockProfileFsPort::new();
+        fs.expect_ensure_not_symlink().returning(|_| Ok(()));
+        let written = std::sync::Arc::clone(&file_bytes);
+        fs.expect_write_atomic()
+            .times(1)
+            .returning(move |path, content| {
+                assert_eq!(path.as_str(), "r1.yaml");
+                *written.lock().unwrap() = content.to_string();
+                Ok(())
+            });
+
+        let (client, dir) = remote_seeded_client(
+            fs,
+            ok_fetch("proxies:\n  - name: new\n"),
+            MockRebuildNotifier::new(),
+        )
+        .await;
+
+        // Replace the persisted document with a directory after seeding. The
+        // refreshed profile bytes still go through the injected filesystem port,
+        // while the subsequent real metadata upsert deterministically fails to
+        // atomically replace this directory.
+        let profiles_path = temp_profiles_path(&dir);
+        std::fs::remove_file(&profiles_path).expect("remove seeded profiles document");
+        std::fs::create_dir(&profiles_path).expect("block metadata persistence");
+
+        let err = client
+            .refresh(ProfileId("r1".into()), None)
+            .await
+            .expect_err(
+                "S01 current defect: metadata persist failure surfaces as ProfilesError::Persist",
+            );
+        assert!(
+            matches!(err, ProfilesError::Persist(_)),
+            "expected Persist after metadata upsert failure, got {err:?}"
+        );
+
+        assert_eq!(
+            file_bytes.lock().unwrap().as_str(),
+            "proxies:\n  - name: new\n",
+            "S01 defect: new refreshed content remains on disk; old bytes are not restored"
+        );
+
+        let snapshot = client.get().await.unwrap();
+        let source = snapshot.items[&ProfileId("r1".into())]
+            .definition
+            .source()
+            .unwrap();
+        assert!(
+            source.materialized().updated_at.is_none(),
+            "metadata upsert failed, so updated_at must remain unset"
+        );
+        match source {
+            ProfileSource::Remote { subscription, .. } => {
+                assert!(
+                    subscription.is_empty(),
+                    "subscription metadata must remain pre-refresh when persist fails"
+                );
+            }
+            other => panic!("expected remote source, got {other:?}"),
+        }
+    }
+
     #[tokio::test]
     async fn add_script_transform_uses_runtime_extension() {
         let mut fs = MockProfileFsPort::new();

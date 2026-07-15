@@ -492,6 +492,23 @@ mod tests {
         }
     }
 
+    /// Test-only double that accepts the initial empty snapshot and fails once
+    /// the session patch contains window state.
+    struct FailingWindowMirror;
+
+    impl WindowLegacyBridge for FailingWindowMirror {
+        fn mirror(&self, snap: &PersistentState) -> anyhow::Result<()> {
+            if snap.window_state.is_empty() {
+                return Ok(());
+            }
+            anyhow::bail!("injected session mirror failure");
+        }
+
+        fn snapshot_legacy(&self) -> anyhow::Result<PersistentState> {
+            Ok(PersistentState::default())
+        }
+    }
+
     struct NoopClashBridge;
 
     impl ClashLegacyBridge for NoopClashBridge {
@@ -509,6 +526,13 @@ mod tests {
     }
 
     fn test_bridge(dir: &TempDir) -> (NyanpasuClient, LegacyVergeBridge) {
+        test_bridge_with_window(dir, Arc::new(NoopWindowBridge))
+    }
+
+    fn test_bridge_with_window(
+        dir: &TempDir,
+        window: Arc<dyn WindowLegacyBridge>,
+    ) -> (NyanpasuClient, LegacyVergeBridge) {
         // Keep tests hermetic: the legacy global otherwise reads host config/registry state.
         let clash = Config::clash();
         *clash.draft() = IClashTemp::template();
@@ -523,7 +547,7 @@ mod tests {
             paths,
             bridges: LegacyBridgeSet {
                 verge: Arc::new(LegacyVergeBridge::default()),
-                window: Arc::new(NoopWindowBridge),
+                window,
                 clash: Arc::new(NoopClashBridge),
             },
             ui_sink: Arc::new(NoopUiEventSink),
@@ -890,5 +914,124 @@ mod tests {
         assert_legacy!(enable_tray_text: true);
         assert_legacy!(tray_menu_mode: TrayMenuMode::default());
         assert_legacy!(network_statistic_widget: NetworkStatisticWidgetConfig::default());
+    }
+
+    /// S01 regression contract: PureConfig three-domain patch is sequential
+    /// Application → Session → Clash with no compensation. When Session (second
+    /// domain) fails after Application succeeded, Application keeps the new value.
+    /// S06 must replace this with version-checked saga + reverse compensation.
+    #[test]
+    fn three_domain_second_domain_failure_leaves_first_domain_new() {
+        let dir = tempdir().expect("tempdir should be created");
+        let (client, bridge) = test_bridge_with_window(&dir, Arc::new(FailingWindowMirror));
+
+        tauri::async_runtime::block_on(async {
+            let app_before = client
+                .get_app_config()
+                .await
+                .expect("app get should succeed");
+            let session_before = client
+                .get_session_state()
+                .await
+                .expect("session get should succeed");
+            assert_ne!(app_before.theme_color.to_string(), "#abcdef");
+            assert!(session_before.window_state.is_empty());
+
+            let err = bridge
+                .patch_verge_config(IVerge {
+                    // Application domain (first)
+                    theme_color: Some("#abcdef".into()),
+                    // Session domain (second) — will fail on mirror after upsert
+                    window_size_state: Some(crate::config::nyanpasu::WindowState {
+                        width: 1440,
+                        height: 900,
+                        x: 1,
+                        y: 2,
+                        maximized: false,
+                        fullscreen: false,
+                    }),
+                    // Clash domain (third) — should not be reached under sequential plan
+                    web_ui_list: Some(vec!["https://example.invalid/ui".to_string()]),
+                    ..IVerge::default()
+                })
+                .await
+                .expect_err(
+                    "second-domain mirror failure must surface as Err under current defect",
+                );
+            let err_text = format!("{err:#}");
+            assert!(
+                err_text.contains("legacy session mirror")
+                    || err_text.contains("injected session mirror failure"),
+                "unexpected error: {err_text}"
+            );
+
+            let app_after = client
+                .get_app_config()
+                .await
+                .expect("app get after failure should succeed");
+            let session_after = client
+                .get_session_state()
+                .await
+                .expect("session get after failure should succeed");
+            let clash_after = client
+                .get_clash_config()
+                .await
+                .expect("clash get after failure should succeed");
+
+            // Current defective behavior: first domain already committed.
+            assert_eq!(
+                app_after.theme_color.to_string(),
+                "#abcdef",
+                "application domain remains new after second-domain failure"
+            );
+            // Session may also be persisted (upsert before mirror) even though Err returned.
+            assert!(
+                !session_after.window_state.is_empty(),
+                "session domain upsert already committed before mirror failed"
+            );
+            // Third domain must not have been patched (sequential stop).
+            assert!(
+                clash_after.web_ui_list.is_empty(),
+                "clash domain must remain untouched when second domain fails"
+            );
+        });
+    }
+
+    /// Desired S06 invariant kept red until version-checked saga compensation lands.
+    /// Do not "fix green" by weakening this assertion.
+    #[test]
+    #[ignore = "S06 desired invariant: second-domain failure must compensate first domain back to old; currently red under sequential partial commit"]
+    fn desired_three_domain_second_domain_failure_compensates_first_domain() {
+        let dir = tempdir().expect("tempdir should be created");
+        let (client, bridge) = test_bridge_with_window(&dir, Arc::new(FailingWindowMirror));
+
+        tauri::async_runtime::block_on(async {
+            let app_before = client
+                .get_app_config()
+                .await
+                .expect("app get should succeed");
+            let theme_before = app_before.theme_color.to_string();
+
+            let _ = bridge
+                .patch_verge_config(IVerge {
+                    theme_color: Some("#abcdef".into()),
+                    window_size_state: Some(crate::config::nyanpasu::WindowState {
+                        width: 1440,
+                        height: 900,
+                        x: 1,
+                        y: 2,
+                        maximized: false,
+                        fullscreen: false,
+                    }),
+                    ..IVerge::default()
+                })
+                .await;
+
+            let app_after = client
+                .get_app_config()
+                .await
+                .expect("app get after failure should succeed");
+            assert_eq!(app_after.theme_color.to_string(), theme_before);
+        });
     }
 }

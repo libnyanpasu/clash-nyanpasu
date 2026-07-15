@@ -11,9 +11,6 @@ members = [
 ]
 
 [patch.crates-io]
-# Overrides the crates-io tray-icon pulled in transitively by tauri, so it stays
-# in [patch] rather than moving to [workspace.dependencies] with the other forks.
-tray-icon = { git = "https://github.com/tauri-apps/tray-icon.git", rev = "34a3442868725d53c042d619f5c60c84dc5072df" }
 
 [workspace.package]
 repository = "https://github.com/keiko233/clash-nyanpasu.git"

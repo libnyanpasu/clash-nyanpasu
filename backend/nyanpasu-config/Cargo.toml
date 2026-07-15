@@ -35,9 +35,7 @@ serde_with = { version = "3.20.0", features = ["indexmap_2", "json"] }
 indexmap = { version = "2.0", features = ["serde"] }
 url = { version = "2.5.8", features = ["serde"] }
 uuid = { version = "1.23.1", features = ["serde", "v4"] }
-serde_yaml_ng = { version = "0.10", branch = "feat/specta-update", git = "https://github.com/libnyanpasu/serde-yaml-ng.git", features = [
-  "specta",
-] }
+serde_yaml_ng = { workspace = true }
 port_scanner = "0.1.5"
 slab = { version = "0.4.12", features = ["serde"] }
 time = { version = "0.3", features = ["serde", "serde-well-known"] }

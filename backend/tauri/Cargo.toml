@@ -24,10 +24,7 @@ semver = "1.0"
 
 [dependencies]
 # Local Dependencies
-nyanpasu-ipc = { git = "https://github.com/libnyanpasu/nyanpasu-service.git", features = [
-  "client",
-  "specta",
-] } # IPC bridge between the UI process and service process
+nyanpasu-ipc = { workspace = true }
 nyanpasu-macro = { path = "../nyanpasu-macro" }
 nyanpasu-core = { path = "../nyanpasu-core" }
 nyanpasu-config = { path = "../nyanpasu-config" }
@@ -106,12 +103,14 @@ smol-cancellation-token = "0.1"
 tokio-tungstenite = "0.30"
 urlencoding = "2.1"
 port_scanner = "0.1.5"
-sysproxy = { git = "https://github.com/libnyanpasu/sysproxy-rs.git", version = "0.3" }
+sysproxy = { workspace = true }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
-serde_yaml = { version = "0.10", package = "serde_yaml_ng", branch = "feat/specta-update", git = "https://github.com/libnyanpasu/serde-yaml-ng.git", features = [
+# Kept as a direct dependency rather than inherited: Cargo's workspace
+# inheritance does not allow `package` renames at the member site.
+serde_yaml = { version = "0.10", package = "serde_yaml_ng", git = "https://github.com/libnyanpasu/serde-yaml-ng.git", rev = "363da138dc97f90ef0a356f971c2dc1d8fe04c9e", features = [
   "specta",
 ] }
 postcard = { version = "1.1", features = ["alloc"] }
@@ -137,10 +136,10 @@ rs-snowflake = "0.6"
 seahash = "4.1"
 
 # System Utilities
-auto-launch = { git = "https://github.com/libnyanpasu/auto-launch.git", version = "0.5" }
-delay_timer = { version = "0.11", git = "https://github.com/libnyanpasu/delay-timer.git" } # Task scheduler with timer
-dunce = "1.0.4"                                                                            # for cross platform path normalization
-runas = { git = "https://github.com/libnyanpasu/rust-runas.git" }
+auto-launch = { workspace = true }
+delay_timer = { workspace = true }                    # Task scheduler with timer
+dunce = "1.0.4"                                       # for cross platform path normalization
+runas = { workspace = true }
 single-instance = "0.3.3"
 which = "8"
 open = "5.0.1"

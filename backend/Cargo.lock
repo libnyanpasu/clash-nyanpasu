@@ -755,7 +755,7 @@ dependencies = [
 [[package]]
 name = "auto-launch"
 version = "0.5.0"
-source = "git+https://github.com/libnyanpasu/auto-launch.git#729d5429dd689067047489af4a0a32f7013854c8"
+source = "git+https://github.com/libnyanpasu/auto-launch.git?rev=729d5429dd689067047489af4a0a32f7013854c8#729d5429dd689067047489af4a0a32f7013854c8"
 dependencies = [
  "dirs 5.0.1",
  "thiserror 2.0.18",
@@ -2535,7 +2535,7 @@ checksum = "26bf8fc351c5ed29b5c2f0cbbac1b209b74f60ecd62e675a998df72c49af5204"
 [[package]]
 name = "delay_timer"
 version = "0.11.6"
-source = "git+https://github.com/libnyanpasu/delay-timer.git#76615d9b0c1bb830212fe84b5d18ee5444831625"
+source = "git+https://github.com/libnyanpasu/delay-timer.git?rev=76615d9b0c1bb830212fe84b5d18ee5444831625#76615d9b0c1bb830212fe84b5d18ee5444831625"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4877,7 +4877,7 @@ checksum = "e7c5cedc30da3a610cac6b4ba17597bdf7152cf974e8aab3afb3d54455e371c8"
 [[package]]
 name = "include-compress-bytes"
 version = "0.1.0"
-source = "git+https://github.com/libnyanpasu/include-compress-bytes?rev=4e4f25b#4e4f25b794ed0b9a323a893bcdaf22f5024ab58a"
+source = "git+https://github.com/libnyanpasu/include-compress-bytes?rev=4e4f25b794ed0b9a323a893bcdaf22f5024ab58a#4e4f25b794ed0b9a323a893bcdaf22f5024ab58a"
 dependencies = [
  "brotli",
  "cargo-emit 0.2.1",
@@ -4890,7 +4890,7 @@ dependencies = [
 [[package]]
 name = "include_url_macro"
 version = "0.1.0"
-source = "git+https://github.com/libnyanpasu/include_url_macro?rev=fbe47bd#fbe47bd71047892a218e3166a2a1bac474488218"
+source = "git+https://github.com/libnyanpasu/include_url_macro?rev=fbe47bd71047892a218e3166a2a1bac474488218#fbe47bd71047892a218e3166a2a1bac474488218"
 dependencies = [
  "brotli",
  "bytes",
@@ -8667,7 +8667,7 @@ checksum = "e60ef3b82994702bbe4e134d98aadca4b49ed04440148985678d415c68127666"
 [[package]]
 name = "runas"
 version = "1.2.0"
-source = "git+https://github.com/libnyanpasu/rust-runas.git#29bdb2501c05b7d78e63628bedbd4a190b71bad3"
+source = "git+https://github.com/libnyanpasu/rust-runas.git?rev=29bdb2501c05b7d78e63628bedbd4a190b71bad3#29bdb2501c05b7d78e63628bedbd4a190b71bad3"
 dependencies = [
  "libc",
  "security-framework-sys",
@@ -9280,7 +9280,7 @@ dependencies = [
 [[package]]
 name = "serde_yaml_ng"
 version = "0.10.0"
-source = "git+https://github.com/libnyanpasu/serde-yaml-ng.git?branch=feat/specta-update#363da138dc97f90ef0a356f971c2dc1d8fe04c9e"
+source = "git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e#363da138dc97f90ef0a356f971c2dc1d8fe04c9e"
 dependencies = [
  "indexmap 2.14.0",
  "itoa",
@@ -10066,7 +10066,7 @@ dependencies = [
 [[package]]
 name = "sysproxy"
 version = "0.3.0"
-source = "git+https://github.com/libnyanpasu/sysproxy-rs.git#355d9c98e20f894e75f13049d0031d3794e9a74a"
+source = "git+https://github.com/libnyanpasu/sysproxy-rs.git?rev=355d9c98e20f894e75f13049d0031d3794e9a74a#355d9c98e20f894e75f13049d0031d3794e9a74a"
 dependencies = [
  "interfaces",
  "iptools",
@@ -11376,7 +11376,7 @@ dependencies = [
 [[package]]
 name = "tracing-test"
 version = "0.2.5"
-source = "git+https://github.com/Frando/tracing-test.git?rev=e81ec65#e81ec655a5ec5c4351104628b1b1ba694f80a1dc"
+source = "git+https://github.com/Frando/tracing-test.git?rev=e81ec655a5ec5c4351104628b1b1ba694f80a1dc#e81ec655a5ec5c4351104628b1b1ba694f80a1dc"
 dependencies = [
  "tracing-core",
  "tracing-subscriber",
@@ -11386,7 +11386,7 @@ dependencies = [
 [[package]]
 name = "tracing-test-macro"
 version = "0.2.5"
-source = "git+https://github.com/Frando/tracing-test.git?rev=e81ec65#e81ec655a5ec5c4351104628b1b1ba694f80a1dc"
+source = "git+https://github.com/Frando/tracing-test.git?rev=e81ec655a5ec5c4351104628b1b1ba694f80a1dc#e81ec655a5ec5c4351104628b1b1ba694f80a1dc"
 dependencies = [
  "quote",
  "syn 2.0.119",
@@ -14018,4 +14018,4 @@ dependencies = [
 [[patch.unused]]
 name = "tray-icon"
 version = "0.21.0"
-source = "git+https://github.com/tauri-apps/tray-icon.git?rev=34a3442#34a3442868725d53c042d619f5c60c84dc5072df"
+source = "git+https://github.com/tauri-apps/tray-icon.git?rev=34a3442868725d53c042d619f5c60c84dc5072df#34a3442868725d53c042d619f5c60c84dc5072df"

@@ -552,6 +552,13 @@ pub fn get_sys_proxy() -> Result<GetSysProxyResponse> {
 
 #[tauri::command]
 #[specta::specta]
+pub async fn flush_system_dns_cache(client: State<'_, NyanpasuClient>) -> Result {
+    client.flush_system_dns_cache().await?;
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn get_clash_logs() -> Result<VecDeque<String>> {
     Ok(Logger::global().get_log())
 }

@@ -13,6 +13,8 @@ export const commands = {
    */
   getSysProxy: () =>
     typedError<GetSysProxyResponse, string>(__TAURI_INVOKE('get_sys_proxy')),
+  flushSystemDnsCache: () =>
+    typedError<null, string>(__TAURI_INVOKE('flush_system_dns_cache')),
   openAppConfigDir: () =>
     typedError<null, string>(__TAURI_INVOKE('open_app_config_dir')),
   openAppDataDir: () =>

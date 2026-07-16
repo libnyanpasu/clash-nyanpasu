@@ -8,6 +8,7 @@ pub mod profiles;
 pub mod rebuild;
 pub mod runtime;
 mod session_state;
+mod system_dns;
 
 use self::{
     application::ApplicationClient, clash_config::ClashConfigClient,
@@ -56,12 +57,16 @@ pub use error::{ClientError, Result};
 pub use event_sink::NoopUiEventSink;
 pub use event_sink::{TauriUiEventSink, UiEventSink};
 pub use ports::SessionPortResolver;
+#[cfg(test)]
+pub use system_dns::{MockSystemDnsCache, NoopSystemDnsCache};
+pub use system_dns::{OsSystemDnsCache, SystemDnsCache};
 
 pub struct ClientSetupArgs {
     pub paths: PathResolver,
     pub bridges: LegacyBridgeSet,
     pub ui_sink: Arc<dyn UiEventSink>,
     pub core: Arc<dyn RunningCoreBridge>,
+    pub system_dns: Arc<dyn SystemDnsCache>,
 }
 
 #[derive(Clone)]
@@ -171,6 +176,7 @@ struct NyanpasuClientInner {
     profiles_dir: PathBuf,
     ui_sink: Arc<dyn UiEventSink>,
     core: Arc<dyn RunningCoreBridge>,
+    system_dns: Arc<dyn SystemDnsCache>,
     /// Serializes runtime regeneration (snapshot -> build -> runtime draft ->
     /// core apply). The profiles actor only orders commits; without this gate
     /// a slow rebuild started for an older commit can finish after a newer
@@ -187,6 +193,7 @@ impl NyanpasuClient {
             bridges,
             ui_sink,
             core,
+            system_dns,
         } = args;
         let profiles_dir = paths.app_profiles_dir();
         let profiles_path = utf8_path(paths.profiles_path())?;
@@ -245,6 +252,7 @@ impl NyanpasuClient {
             profiles_dir,
             ui_sink,
             core,
+            system_dns,
             runtime_store,
         );
         {
@@ -292,6 +300,7 @@ impl NyanpasuClient {
         profiles_dir: PathBuf,
         ui_sink: Arc<dyn UiEventSink>,
         core: Arc<dyn RunningCoreBridge>,
+        system_dns: Arc<dyn SystemDnsCache>,
         runtime: runtime::RuntimeStateStore,
     ) -> Self {
         Self {
@@ -305,6 +314,7 @@ impl NyanpasuClient {
                 profiles_dir,
                 ui_sink,
                 core,
+                system_dns,
                 rebuild_gate: tokio::sync::Mutex::new(()),
                 runtime,
             }),
@@ -314,6 +324,14 @@ impl NyanpasuClient {
     pub async fn get_app_config(&self) -> Result<NyanpasuAppConfig> {
         let client = self.inner.application.clone();
         Ok(client.get().await?.state)
+    }
+
+    pub async fn flush_system_dns_cache(&self) -> Result<()> {
+        let system_dns = self.inner.system_dns.clone();
+        tokio::task::spawn_blocking(move || system_dns.flush())
+            .await
+            .context("system DNS cache flush task failed")??;
+        Ok(())
     }
 
     pub async fn patch_app_config(&self, patch: NyanpasuAppConfigPatch) -> Result<()> {
@@ -944,6 +962,13 @@ mod tests {
     }
 
     async fn test_client(dir: &TempDir) -> NyanpasuClient {
+        test_client_with_system_dns(dir, Arc::new(NoopSystemDnsCache)).await
+    }
+
+    async fn test_client_with_system_dns(
+        dir: &TempDir,
+        system_dns: Arc<dyn SystemDnsCache>,
+    ) -> NyanpasuClient {
         let (application, session_state, clash_config) = test_typed_config_clients(dir).await;
         let profiles = profiles::ProfilesClient::new(
             temp_config_path(dir, "profiles.yaml"),
@@ -967,10 +992,38 @@ mod tests {
             dir.path().join("profiles"),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             Arc::new(MockRunningCoreBridge::new()),
+            system_dns,
             crate::client::runtime::new_runtime_state_store()
                 .await
                 .expect("runtime state store"),
         )
+    }
+
+    #[tokio::test]
+    async fn flush_system_dns_cache_forwards_to_injected_adapter() {
+        let dir = tempdir().expect("tempdir should be created");
+        let mut system_dns = MockSystemDnsCache::new();
+        system_dns.expect_flush().times(1).returning(|| Ok(()));
+        let client = test_client_with_system_dns(&dir, Arc::new(system_dns)).await;
+
+        client
+            .flush_system_dns_cache()
+            .await
+            .expect("DNS cache flush should succeed");
+    }
+
+    #[tokio::test]
+    async fn flush_system_dns_cache_propagates_adapter_failure() {
+        let dir = tempdir().expect("tempdir should be created");
+        let mut system_dns = MockSystemDnsCache::new();
+        system_dns
+            .expect_flush()
+            .times(1)
+            .returning(|| anyhow::bail!("dns flush exploded"));
+        let client = test_client_with_system_dns(&dir, Arc::new(system_dns)).await;
+
+        let error = client.flush_system_dns_cache().await.unwrap_err();
+        assert!(error.to_string().contains("dns flush exploded"));
     }
 
     pub(crate) fn test_profiles_client_args(
@@ -986,6 +1039,7 @@ mod tests {
             },
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
             core,
+            system_dns: Arc::new(NoopSystemDnsCache),
         }
     }
 
@@ -1051,6 +1105,7 @@ mod tests {
             paths.app_profiles_dir(),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             core,
+            Arc::new(NoopSystemDnsCache),
             crate::client::runtime::new_runtime_state_store()
                 .await
                 .expect("runtime state store"),
@@ -1211,6 +1266,7 @@ mod tests {
             },
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
             core: Arc::new(MockRunningCoreBridge::new()),
+            system_dns: Arc::new(NoopSystemDnsCache),
         })
         .expect("client should construct with typed config actors");
 

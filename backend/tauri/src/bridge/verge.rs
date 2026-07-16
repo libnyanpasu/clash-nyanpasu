@@ -528,6 +528,7 @@ mod tests {
             },
             ui_sink: Arc::new(NoopUiEventSink),
             core: Arc::new(MockRunningCoreBridge::new()),
+            system_dns: Arc::new(crate::client::NoopSystemDnsCache),
         })
         .expect("client should construct with typed config actors");
         let bridge = LegacyVergeBridge::new(client.clone(), legacy_verge_path);

@@ -11,6 +11,7 @@ pub(crate) fn build_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         .commands(collect_commands![
             // common
             ipc::get_sys_proxy,
+            ipc::flush_system_dns_cache,
             ipc::open_app_config_dir,
             ipc::open_app_data_dir,
             ipc::open_logs_dir,

@@ -4,7 +4,8 @@ use std::sync::Arc;
 use crate::{
     bridge::{clash::LegacyClashBridge, verge::LegacyVergeBridge, window::LegacyWindowBridge},
     client::{
-        ClientSetupArgs, LegacyBridgeSet, LegacyCoreBridge, NyanpasuClient, TauriUiEventSink,
+        ClientSetupArgs, LegacyBridgeSet, LegacyCoreBridge, NyanpasuClient, OsSystemDnsCache,
+        TauriUiEventSink,
     },
     utils::path::PathResolver,
 };
@@ -39,6 +40,7 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
         },
         ui_sink: Arc::new(TauriUiEventSink::<R>::new(app_handle)),
         core: Arc::new(LegacyCoreBridge),
+        system_dns: Arc::new(OsSystemDnsCache),
     })
     .context("Failed to setup nyanpasu client")?;
     app.manage(LegacyVergeBridge::new(client.clone(), legacy_verge_path));

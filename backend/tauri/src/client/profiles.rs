@@ -1359,13 +1359,12 @@ mod tests {
             .returning(|_, _| Err(anyhow::anyhow!("disk full during WriteInitial")));
         let (client, dir) = test_client_with(fs).await;
 
+        let mut metadata = file_config_item("placeholder").metadata;
+        metadata.name = "BrokenAdd".into();
         let report = client
             .add(
                 NewProfileRequest {
-                    metadata: ProfileMetadata {
-                        name: "BrokenAdd".into(),
-                        desc: None,
-                    },
+                    metadata,
                     definition: file_config_item("placeholder").definition,
                 },
                 Some("proxies: []\n".to_string()),

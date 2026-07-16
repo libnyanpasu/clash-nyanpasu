@@ -3,7 +3,7 @@
 - **关联设计：** [`./design.md`](./design.md)；下文 `design §N` 均指该文件。
 - **任务定位：** roadmap v3 的单一硬前置 Task `R4S`。内部拆成 S01～S10 commit group，全部属于同一 atomic PR；任何子集都不能单独宣告稳定化完成。
 - **分支建议：** `fix/pr4s-actor-migration-stabilization`
-- **基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`）；S01 基线冻结提交为 `daf872d9`；S02 RuntimePaths/candidate hardening 为 `807f1733`；S03 RuntimeLifecycleState/rollback snapshot 已在工作区实现并验证；S04 CoreLifecycleLease / 统一 lifecycle mutex / change_core lease span / updater stop-swap-restart 已在工作区实现并验证（均未单独 merge）。
+- **基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`）；S01 基线冻结提交为 `daf872d9`；S02 RuntimePaths/candidate hardening 为 `807f1733`；S03 RuntimeLifecycleState/rollback snapshot、S04 CoreLifecycleLease / 统一 lifecycle mutex / change_core lease span / updater stop-swap-restart、S05 Applied-based patch compensation 均已在工作区实现并验证（均未单独 merge）。S06～S10 仍 pending；S09 `REGEN_BRIDGE` two-client isolation 是唯一稳定的 full-suite red contract。
 - **建议 PR 标题：** `fix(tauri)!: close PR1-4 actor-migration consistency and regression gaps (PR-4S)`
 
 ---
@@ -57,18 +57,18 @@ flowchart LR
 
 ## 2. 任务总表
 
-| ID  | 任务                                       | Scope                                                  | 建议 commit                                                                      | Design       |
-| --- | ------------------------------------------ | ------------------------------------------------------ | -------------------------------------------------------------------------------- | ------------ |
-| S01 | 基线、故障注入接口与回归 fixtures          | 固化当前缺陷和既有回归，不改生产行为                   | `test: pin PR1-4 migration regressions and failure contracts`                    | §1, §8       |
-| S02 | RuntimePaths 与 candidate 安全             | 路径全注入、私有随机 candidate、cleanup                | `refactor(tauri): inject runtime paths and harden candidate files`               | §6.1–6.2     |
-| S03 | RuntimeLifecycleState 与 rollback snapshot | promoted/applied/revision/hash；完整恢复               | `fix(tauri): track promoted and applied runtime revisions`                       | §4, §6.4–6.5 |
-| S04 | CoreLifecycleLease                         | 统一 run/restart/change-core 锁域                      | `fix(core): serialize core lifecycle through an exclusive lease`                 | §6.3, §6.6   |
-| S05 | Patch gate 与 Applied compensation         | set/remove compensation、revision conflict             | `fix(tauri): compensate runtime patches from applied state`                      | §6.7         |
-| S06 | Prepared mirror 与三域 saga                | 消灭 ghost Err 和 silent partial commit                | `fix(state): make legacy mirrors prepared and cross-domain patches compensating` | §6.8–6.9     |
-| S07 | Profile materialization transaction        | add/replace/refresh/delete 的恢复协议                  | `fix(profile): make profile state and materialization recoverable`               | §6.10        |
-| S08 | MutationOutcome wire                       | 统一 phase/code degradation 与前端                     | `feat(ipc)!: expose structured committed-degraded mutation outcomes`             | §6.11, §9    |
-| S09 | Dispatcher 与 fake-core                    | bounded/coalescing、可销毁 service graph、进程故障注入 | `refactor(tauri): remove process-global rebuild handler and add fake-core tests` | §6.12, §8.5  |
-| S10 | 验收与文档收尾                             | 三平台 smoke、review disposition、roadmap ledger       | `docs: close PR-4S stabilization gate`                                           | §13          |
+| ID  | 任务                                       | Scope                                                                                    | 建议 commit                                                                      | Design       |
+| --- | ------------------------------------------ | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------ |
+| S01 | 基线、故障注入接口与回归 fixtures          | 固化当前缺陷和既有回归，不改生产行为                                                     | `test: pin PR1-4 migration regressions and failure contracts`                    | §1, §8       |
+| S02 | RuntimePaths 与 candidate 安全             | 路径全注入、私有随机 candidate、cleanup                                                  | `refactor(tauri): inject runtime paths and harden candidate files`               | §6.1–6.2     |
+| S03 | RuntimeLifecycleState 与 rollback snapshot | promoted/applied/revision/hash；完整恢复                                                 | `fix(tauri): track promoted and applied runtime revisions`                       | §4, §6.4–6.5 |
+| S04 | CoreLifecycleLease                         | 统一 run/restart/change-core 锁域                                                        | `fix(core): serialize core lifecycle through an exclusive lease`                 | §6.3, §6.6   |
+| S05 | Patch gate 与 Applied compensation         | **已完成**：Applied Set/Remove、revision fence、private candidate direct apply、thin IPC | `fix(tauri): compensate runtime patches from applied state`                      | §6.7         |
+| S06 | Prepared mirror 与三域 saga                | 消灭 ghost Err 和 silent partial commit                                                  | `fix(state): make legacy mirrors prepared and cross-domain patches compensating` | §6.8–6.9     |
+| S07 | Profile materialization transaction        | add/replace/refresh/delete 的恢复协议                                                    | `fix(profile): make profile state and materialization recoverable`               | §6.10        |
+| S08 | MutationOutcome wire                       | 统一 phase/code degradation 与前端                                                       | `feat(ipc)!: expose structured committed-degraded mutation outcomes`             | §6.11, §9    |
+| S09 | Dispatcher 与 fake-core                    | bounded/coalescing、可销毁 service graph、进程故障注入                                   | `refactor(tauri): remove process-global rebuild handler and add fake-core tests` | §6.12, §8.5  |
+| S10 | 验收与文档收尾                             | 三平台 smoke、review disposition、roadmap ledger                                         | `docs: close PR-4S stabilization gate`                                           | §13          |
 
 ---
 
@@ -224,7 +224,7 @@ RuntimeTransactionSnapshot { product, lifecycle, selected_core }
 
 ## S05 — Patch gate 与 Applied-based compensation
 
-**状态：** 未完成 / pending。S03 已提供 `lifecycle.applied`；S04 已提供统一 lifecycle lease。当前 D6 仍读 Promoted，Set/Remove + expected Applied revision fence 尚未实施。
+**状态：** 已完成（工作区已验证；PR-4S 整体未完成）。S03 的 `lifecycle.applied` 与 S04 的统一 lifecycle lease 已用于 D6：instance-owned `clash_patch_gate` 串行化 API-first patch、desired persist、rebuild/check/promote、apply/restart 与 compensation。S06～S10 仍 pending；S09 `REGEN_BRIDGE` two-client isolation 是唯一稳定的 full-suite red contract。
 
 **目标：** 修复 D6 补偿读取错误状态、不能删除新键和并发覆盖问题。
 
@@ -245,21 +245,24 @@ PatchCompensationPlan {
 }
 ```
 
-**要求：**
+**已实现语义：**
 
-- previous 来自 applied；
-- absent old key → Remove；
-- expected revision 不匹配则拒绝 stale compensation；
-- patch/rebuild/apply/compensate 在 patch gate 内保序；
-- IPC 不直接调用 core API + feat 编排两套业务逻辑。
+- previous 来自 Applied `RuntimeSnapshot`；snapshot 保存 hash 对应的 exact product bytes，补偿不从 YAML mapping 重序列化；
+- absent old key → explicit `Remove`；`Set` / `Remove` 是 transport-independent plan，删除不使用 JSON `null`；
+- expected Applied revision 不匹配则拒绝 stale compensation；
+- instance-owned patch gate 内按 `patch_gate → rebuild_gate → CoreLifecycleLease` 保序，补偿处于 rebuild/lifecycle exclusion；
+- 恢复为 Applied bytes 创建私有 candidate 并 direct apply；不 promote 或覆盖 product；最终可保留 `Promoted = P3`、`Applied = P1`；
+- IPC 仅解析 mapping 并调用 facade；不直接调用 core API 或与 `feat` 组成第二套业务编排。
 
-**验证：**
+**验证：** green。
 
 - set→rollback；
 - newly-added key→remove；
 - no applied snapshot；
-- concurrent patch conflict；
-- apply degraded 后下一 patch 仍以真实 applied 为基准。
+- concurrent patch revision conflict；
+- lifecycle waiter 在 compensation restore 期间不能进入；
+- exact Applied bytes/identity 保留，P3 product 不被 P1 恢复覆盖；
+- apply degraded 后下一 patch 仍以真实 Applied 为基准。
 
 ---
 
@@ -448,7 +451,7 @@ PatchCompensationPlan {
 
 - [x] change-core concurrent restart blocked（S04 barrier 测试；S09 fake-core 仍 pending）
 - [x] rollback restores product/promoted/applied/core（S03 + S04 lease span）
-- [ ] D6 supports remove and revision conflict
+- [x] D6 supports Applied-based Set/Remove and revision conflict（S05；exact bytes/private candidate direct apply；tests green）
 - [ ] no ghost Err after typed commit
 - [ ] no silent partial domain commit
 - [ ] profile file failure not returned as naked success

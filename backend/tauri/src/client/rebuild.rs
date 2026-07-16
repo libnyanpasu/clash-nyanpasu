@@ -6,7 +6,6 @@ use std::{future::Future, sync::Arc};
 
 use nyanpasu_config::{application::NyanpasuAppConfig, clash::config::ClashConfig};
 use once_cell::sync::OnceCell;
-use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, oneshot};
 
 use super::{ClientError, NyanpasuClient, Result};
@@ -182,7 +181,7 @@ impl NyanpasuClient {
             .map(|_| ())
     }
 
-    async fn regenerate_for_legacy_inner(
+    pub(super) async fn regenerate_for_legacy_inner(
         &self,
         lease: &mut dyn crate::client::CoreLifecycleLease,
     ) -> Result<std::sync::Arc<crate::client::runtime::RuntimeSnapshot>> {
@@ -372,11 +371,11 @@ impl NyanpasuClient {
             serde_yaml::to_string(&mapping)
                 .map_err(|error| ClientError::Custom(format!("serialize default: {error}")))?
         );
-        let product_sha256: [u8; 32] = Sha256::digest(yaml.as_bytes()).into();
+        let product_bytes: Arc<[u8]> = Arc::from(yaml.into_bytes());
         let snapshot = Arc::new(crate::client::runtime::RuntimeSnapshot::from_data(
             revision,
             app.core,
-            product_sha256,
+            product_bytes.clone(),
             crate::client::runtime::RuntimeSnapshotData {
                 exists_keys: mapping
                     .keys()
@@ -390,7 +389,7 @@ impl NyanpasuClient {
         let candidate = self
             .inner
             .runtime_paths
-            .create_candidate(yaml.as_bytes())
+            .create_candidate(&product_bytes)
             .await
             .map_err(ClientError::Anyhow)?;
         let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
@@ -637,6 +636,14 @@ mod tests {
             _product: &camino::Utf8Path,
         ) -> anyhow::Result<[u8; 32]> {
             Ok(candidate.bytes_sha256())
+        }
+
+        async fn apply_candidate(
+            &mut self,
+            _candidate: &crate::client::runtime::CandidateFile,
+            _target_core: ClashCore,
+        ) -> anyhow::Result<()> {
+            Ok(())
         }
 
         async fn apply_promoted(&mut self, _product: &camino::Utf8Path) -> anyhow::Result<()> {

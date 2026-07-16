@@ -62,6 +62,7 @@ pub struct RuntimeSnapshot {
     pub revision: RuntimeRevision,
     pub target_core: ClashCore,
     pub product_sha256: [u8; 32],
+    product_bytes: Arc<[u8]>,
     pub config: Mapping,
     pub exists_keys: Vec<String>,
     pub postprocessing_output: PostProcessingOutput,
@@ -71,17 +72,23 @@ impl RuntimeSnapshot {
     pub(crate) fn from_data(
         revision: RuntimeRevision,
         target_core: ClashCore,
-        product_sha256: [u8; 32],
+        product_bytes: Arc<[u8]>,
         data: RuntimeSnapshotData,
     ) -> Self {
+        let product_sha256 = Sha256::digest(&product_bytes).into();
         Self {
             revision,
             target_core,
             product_sha256,
+            product_bytes,
             config: data.config,
             exists_keys: data.exists_keys,
             postprocessing_output: data.postprocessing_output,
         }
+    }
+
+    pub(crate) fn product_bytes(&self) -> &[u8] {
+        &self.product_bytes
     }
 
     pub(crate) fn identity_eq(&self, other: &Self) -> bool {
@@ -114,17 +121,73 @@ pub async fn new_runtime_lifecycle_store() -> anyhow::Result<RuntimeLifecycleSto
     Ok(tokio::sync::RwLock::new(RuntimeLifecycleState::default()))
 }
 
-/// D6 (spec §6.4): previous values of the keys a clash patch touches, taken
-/// from the published runtime state. Used to push the running core BACK when
-/// the post-patch rebuild fails — the IPC applies the patch API-first, so a
-/// failed rebuild would otherwise leave the core ahead of the persisted state.
-pub(crate) fn compensation_for(patch: &Mapping, prev: Option<&Mapping>) -> Option<Mapping> {
-    let prev = prev?;
-    let comp: Mapping = patch
-        .iter()
-        .filter_map(|(k, _)| prev.get(k).map(|v| (k.clone(), v.clone())))
+/// Compensation for an API-first patch is planned from the last successfully
+/// applied runtime snapshot. The plan is intentionally independent of the
+/// core's patch transport semantics.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct PatchCompensationPlan {
+    expected_applied_revision: RuntimeRevision,
+    ops: Vec<PatchCompensationOp>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum PatchCompensationOp {
+    Set {
+        key: String,
+        value: serde_yaml::Value,
+    },
+    Remove {
+        key: String,
+    },
+}
+
+impl PatchCompensationPlan {
+    pub(crate) fn expected_applied_revision(&self) -> RuntimeRevision {
+        self.expected_applied_revision
+    }
+
+    #[cfg(test)]
+    pub(crate) fn ops(&self) -> &[PatchCompensationOp] {
+        &self.ops
+    }
+
+    pub(crate) fn fence_matches(&self, applied: Option<&RuntimeSnapshot>) -> bool {
+        applied.is_some_and(|snapshot| snapshot.revision == self.expected_applied_revision)
+    }
+}
+
+pub(crate) fn compensation_for(
+    patch: &Mapping,
+    applied: Option<&RuntimeSnapshot>,
+) -> Option<PatchCompensationPlan> {
+    let applied = applied?;
+    if patch.is_empty() {
+        return None;
+    }
+
+    let ops = patch
+        .keys()
+        .map(|key| match applied.config.get(key) {
+            Some(value) => PatchCompensationOp::Set {
+                key: key
+                    .as_str()
+                    .expect("clash patch keys must be YAML strings")
+                    .to_owned(),
+                value: value.clone(),
+            },
+            None => PatchCompensationOp::Remove {
+                key: key
+                    .as_str()
+                    .expect("clash patch keys must be YAML strings")
+                    .to_owned(),
+            },
+        })
         .collect();
-    (!comp.is_empty()).then_some(comp)
+
+    Some(PatchCompensationPlan {
+        expected_applied_revision: applied.revision,
+        ops,
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -355,54 +418,80 @@ mod tests {
         assert!(second > first);
     }
 
+    fn applied_snapshot(revision: u64, config: Mapping) -> RuntimeSnapshot {
+        RuntimeSnapshot::from_data(
+            RuntimeRevision(revision),
+            ClashCore::default(),
+            Arc::from([]),
+            RuntimeSnapshotData {
+                config,
+                exists_keys: Vec::new(),
+                postprocessing_output: PostProcessingOutput::default(),
+            },
+        )
+    }
+
     #[test]
-    fn compensation_restores_previous_values_of_patched_keys() {
-        let mut prev = Mapping::new();
-        prev.insert("mode".into(), "rule".into());
-        prev.insert("allow-lan".into(), false.into());
+    fn compensation_plan_emits_set_and_remove_for_each_patch_key() {
+        let mut applied_config = Mapping::new();
+        applied_config.insert("mode".into(), "rule".into());
+        applied_config.insert("allow-lan".into(), false.into());
+        let applied = applied_snapshot(7, applied_config);
+
         let mut patch = Mapping::new();
         patch.insert("mode".into(), "direct".into());
-        patch.insert("ipv6".into(), true.into()); // prev 无该键 → 略过
-        let comp = compensation_for(&patch, Some(&prev)).expect("some");
-        assert_eq!(comp.get("mode"), Some(&"rule".into()));
-        assert!(comp.get("ipv6").is_none());
+        patch.insert("ipv6".into(), true.into());
+
+        let plan = compensation_for(&patch, Some(&applied)).expect("plan");
+        assert_eq!(plan.expected_applied_revision(), RuntimeRevision(7));
+        assert_eq!(
+            plan.ops.as_slice(),
+            &[
+                PatchCompensationOp::Set {
+                    key: "mode".into(),
+                    value: "rule".into(),
+                },
+                PatchCompensationOp::Remove { key: "ipv6".into() },
+            ]
+        );
+    }
+
+    #[test]
+    fn compensation_plan_is_absent_without_applied_or_patch() {
+        let applied = applied_snapshot(7, Mapping::new());
+        assert!(compensation_for(&Mapping::new(), Some(&applied)).is_none());
+        let mut patch = Mapping::new();
+        patch.insert("mode".into(), "direct".into());
         assert!(compensation_for(&patch, None).is_none());
     }
 
-    /// S01 contract (task §S01.8 / design D6): compensation must be able to
-    /// `Remove` keys that exist only on the running core (absent from Applied).
-    ///
-    /// Current failure reason: `compensation_for` only copies previous values
-    /// for keys present in `prev` and silently drops brand-new patch keys, so
-    /// API-first patches cannot be fully rolled back. It also reads the single
-    /// published runtime store (Promoted semantics) rather than a distinct
-    /// Applied snapshot.
     #[test]
-    fn s01_contract_compensation_cannot_remove_keys_absent_from_applied() {
-        let mut applied = Mapping::new();
-        applied.insert("mode".into(), "rule".into());
-
+    fn compensation_plan_fence_accepts_matching_revision_and_rejects_conflict() {
+        let applied = applied_snapshot(7, Mapping::new());
         let mut patch = Mapping::new();
         patch.insert("mode".into(), "direct".into());
-        // New key introduced by the API-first patch — Applied has no prior value.
-        patch.insert("ipv6".into(), true.into());
+        let plan = compensation_for(&patch, Some(&applied)).expect("plan");
 
-        let comp = compensation_for(&patch, Some(&applied))
-            .expect("compensation must exist when Applied has at least one overlapping key");
+        assert!(plan.fence_matches(Some(&applied)));
+        assert!(!plan.fence_matches(Some(&applied_snapshot(8, Mapping::new()))));
+        assert!(!plan.fence_matches(None));
+    }
 
+    #[test]
+    fn compensation_plan_preserves_old_applied_values() {
+        let mut config = Mapping::new();
+        config.insert("mode".into(), "rule".into());
+        let applied = applied_snapshot(3, config);
+        let mut patch = Mapping::new();
+        patch.insert("mode".into(), "direct".into());
+
+        let plan = compensation_for(&patch, Some(&applied)).expect("plan");
         assert_eq!(
-            comp.get("mode"),
-            Some(&"rule".into()),
-            "existing Applied keys must be restored via Set"
-        );
-
-        // Desired (S05): brand-new keys produce an explicit Remove op so the
-        // running core drops them. Current helper cannot express Remove at all.
-        assert!(
-            comp.contains_key("ipv6"),
-            "S01 FAILURE reason: compensation cannot Remove keys absent from Applied \
-             (new patch keys are dropped; helper only emits Set-from-prev and reads \
-             the single promoted runtime store rather than Applied)"
+            plan.ops.as_slice(),
+            &[PatchCompensationOp::Set {
+                key: "mode".into(),
+                value: "rule".into(),
+            }]
         );
     }
 

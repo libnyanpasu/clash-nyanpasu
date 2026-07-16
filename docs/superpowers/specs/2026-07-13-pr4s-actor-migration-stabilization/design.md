@@ -1,7 +1,7 @@
 # PR-4S — PR-1～PR-4 Actor Migration 稳定化门（设计 spec）
 
 **日期：** 2026-07-13  
-**状态：** Implementing（S01～S04 已完成；S05～S10 未完成；不得宣告 PR-4S 完成）
+**状态：** Implementing（S01～S05 已完成；S06～S10 pending；不得宣告 PR-4S 完成。S09 `REGEN_BRIDGE` two-client isolation 是唯一稳定的 full-suite red contract。）
 
 **范围基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`；包含 PR-4 `#4932`；S01 `daf872d9`；S02 `807f1733`；S03 工作区已验证；S04 工作区已验证：`CoreLifecycleLease`、统一 `CoreManager` lifecycle mutex、`change_core` lease span through rollback、updater stop/swap/restart）
 **上游依据：** `docs/design/actor-migration-roadmap.md` v3 §5  
@@ -25,7 +25,7 @@ PR-1～PR-4 已完成以下主要方向：
 但当前实现仍有四类系统性缺陷（S03 已关闭状态模型与 rollback read-model；S04 已关闭生命周期锁域）：
 
 1. **生命周期锁域（S04 已完成）**：`CoreLifecyclePort`/`CoreLifecycleLease` 统一 run/restart/stop/check/apply/recover；`CoreManager` 以单一 `lifecycle_lock` 替代仅覆盖部分路径的 `run_lock`；`change_core` 全程持有 `rebuild_gate + lease` 至 rollback 结束；updater stop/swap/restart 同锁域。S09 fake-core 进程级 failure matrix 仍 pending。
-2. **状态语义残差（S03 已落地 promoted/applied + transaction snapshot；S05 未完成）**：facade 已持有 `RuntimeLifecycleState { promoted, applied }` 与 revision/core/hash；四读 IPC 读 Promoted；`change_core` 深层 rollback 同步恢复 product/Promoted/Applied。D6 compensation 仍读 Promoted，且尚无 Set/Remove + expected Applied revision fence；
+2. **状态语义残差（S03 + S05 已完成）**：facade 持有 `RuntimeLifecycleState { promoted, applied }` 与 revision/core/hash/exact product bytes；四读 IPC 读 Promoted；`change_core` 深层 rollback 同步恢复 product/Promoted/Applied。S05 的 instance-owned patch gate 以 Applied 生成 Set/Remove 计划，用 expected Applied revision fence 拒绝 stale compensation，并在 rebuild/lifecycle exclusion 内以私有 candidate 直接恢复运行核而不晋升 product；
 3. **跨资源提交不一致（S06/S07 未完成）**：typed state、legacy mirror、profile 文件、runtime 文件、核心进程之间缺乏明确 prepare/commit/compensate；
 4. **验收与测试隔离不足（S09/S10 未完成）**：PR-3/4 回归与 smoke 仍需可审计闭环；S02 已注入 RuntimePaths 并隔离 runtime 测试路径；S04 已有 barrier 并发测试；dispatcher deglobalization / fake-core / ledger gate 仍待完成。
 
@@ -82,6 +82,7 @@ pub struct RuntimeSnapshot {
     pub revision: RuntimeRevision,
     pub target_core: ClashCore,
     pub product_sha256: [u8; 32],
+    product_bytes: Arc<[u8]>, // exact promoted/applied product bytes
     pub config: serde_yaml::Mapping,
     pub exists_keys: Vec<String>,
     pub postprocessing_output: PostProcessingOutput,
@@ -118,23 +119,23 @@ pub struct RuntimeLifecycleState {
 
 ## 5. 决策记录
 
-| ID  | 决策                                        | 结论                                                                                                                       |
-| --- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| D1  | 是否直接开始 PR-5                           | 否；先合并 PR-4S 稳定化门                                                                                                  |
-| D2  | 普通 config apply 失败是否 rollback desired | 否；保留 desired，返回 committed-degraded，并维持 applied 旧 revision                                                      |
-| D3  | runtime store 语义                          | 拆为 promoted/applied；不再用一个状态兼任两者                                                                              |
-| D4  | 核心并发控制                                | 所有产品检查、apply、restart、change-core 使用统一 `CoreLifecycleLease`；固定锁顺序 `rebuild/patch gate → lifecycle lease` |
-| D5  | rollback 材料                               | 捕获 `RuntimeTransactionSnapshot`：旧产品字节、旧 lifecycle state、旧 core selection                                       |
-| D6  | D6 patch compensation                       | patch gate 串行；基于 Applied snapshot；补偿支持 set 与 remove；使用 expected applied revision 防止覆盖后续更新            |
-| D7  | actor mirror                                | `prepare(next)` 可失败且在 persist 前；`PreparedMirror::apply()` 不可失败且在 persist 后                                   |
-| D8  | legacy 三域 patch                           | version-checked saga；任一步失败补偿已提交域；补偿失败返回 `PartialCommit`                                                 |
-| D9  | profile 文件事务                            | 为 Add/Replace/Refresh 建 prepare/finalize/compensate；Delete cleanup 可 committed-degraded + persistent cleanup queue     |
-| D10 | runtime 路径                                | `RuntimePaths` 由 composition root 注入；测试禁止全局 dirs                                                                 |
-| D11 | candidate 安全                              | 私有目录 + tempfile/random + create_new + owner-only 权限 + cleanup guard + stale cleanup                                  |
-| D12 | rebuild dispatcher                          | bounded/coalescing、可关闭、可重建；不允许 first-install-wins 静态 handler                                                 |
-| D13 | outcome                                     | 采用 `MutationOutcome<T>` + phase/code；旧 `RebuildOutcome` 作为 wire compatibility alias 仅在同 PR 前端切换期间存在       |
-| D14 | PR-3/4 回归                                 | 固化为 contract fixtures，不能仅依赖已关闭 issue                                                                           |
-| D15 | 手工 smoke                                  | 必须生成可追溯记录；未记录视为未执行                                                                                       |
+| ID  | 决策                                        | 结论                                                                                                                                                                                                                                |
+| --- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | 是否直接开始 PR-5                           | 否；先合并 PR-4S 稳定化门                                                                                                                                                                                                           |
+| D2  | 普通 config apply 失败是否 rollback desired | 否；保留 desired，返回 committed-degraded，并维持 applied 旧 revision                                                                                                                                                               |
+| D3  | runtime store 语义                          | 拆为 promoted/applied；不再用一个状态兼任两者                                                                                                                                                                                       |
+| D4  | 核心并发控制                                | 所有产品检查、apply、restart、change-core 使用统一 `CoreLifecycleLease`；固定锁顺序 `rebuild/patch gate → lifecycle lease`                                                                                                          |
+| D5  | rollback 材料                               | 捕获 `RuntimeTransactionSnapshot`：旧产品字节、旧 lifecycle state、旧 core selection                                                                                                                                                |
+| D6  | D6 patch compensation                       | **S05 已完成**：instance-owned patch gate 串行；基于 Applied snapshot 的 transport-independent Set/Remove（禁止 JSON `null` 删除）；expected Applied revision fence 防止覆盖后续更新；私有 candidate 直接 apply，不 promote product |
+| D7  | actor mirror                                | `prepare(next)` 可失败且在 persist 前；`PreparedMirror::apply()` 不可失败且在 persist 后                                                                                                                                            |
+| D8  | legacy 三域 patch                           | version-checked saga；任一步失败补偿已提交域；补偿失败返回 `PartialCommit`                                                                                                                                                          |
+| D9  | profile 文件事务                            | 为 Add/Replace/Refresh 建 prepare/finalize/compensate；Delete cleanup 可 committed-degraded + persistent cleanup queue                                                                                                              |
+| D10 | runtime 路径                                | `RuntimePaths` 由 composition root 注入；测试禁止全局 dirs                                                                                                                                                                          |
+| D11 | candidate 安全                              | 私有目录 + tempfile/random + create_new + owner-only 权限 + cleanup guard + stale cleanup                                                                                                                                           |
+| D12 | rebuild dispatcher                          | bounded/coalescing、可关闭、可重建；不允许 first-install-wins 静态 handler                                                                                                                                                          |
+| D13 | outcome                                     | 采用 `MutationOutcome<T>` + phase/code；旧 `RebuildOutcome` 作为 wire compatibility alias 仅在同 PR 前端切换期间存在                                                                                                                |
+| D14 | PR-3/4 回归                                 | 固化为 contract fixtures，不能仅依赖已关闭 issue                                                                                                                                                                                    |
+| D15 | 手工 smoke                                  | 必须生成可追溯记录；未记录视为未执行                                                                                                                                                                                                |
 
 ---
 
@@ -284,7 +285,9 @@ rebuild_gate + CoreLifecycleLease
 
 ### 6.7 Applied-based patch compensation
 
-新增 facade `clash_patch_gate`，覆盖：
+**状态：** S05 已完成；PR-4S 仍未完成，S06～S10 pending，且 S09 `REGEN_BRIDGE` two-client isolation 是唯一稳定的 full-suite red contract。
+
+facade 的 instance-owned `clash_patch_gate` 覆盖：
 
 ```text
 read applied snapshot
@@ -305,11 +308,14 @@ pub enum PatchCompensationOp {
 
 规则：
 
-- previous value 来自 `lifecycle.applied`；
-- previous 中不存在的 key 生成 Remove；
+- previous value 来自 `lifecycle.applied`；`RuntimeSnapshot` 保存 hash 对应的 exact product bytes，避免从 YAML mapping 重序列化恢复；
+- previous 中不存在的 key 生成 `Remove`；`Set` / `Remove` 是 transport-independent plan，删除绝不编码为 JSON `null`；
 - compensation 带 expected applied revision；如果运行核已前进到其他 revision，拒绝旧补偿并返回 conflict degradation；
-- compensation 成功不改变 desired；Promoted 保持最后一次成功 promote；Applied 回到旧 snapshot；
-- PR-5b 将此 gate 和 applied owner 迁入 CoreActor mailbox。
+- patch gate 内再取得 rebuild gate 和 lifecycle lease；补偿因此受 rebuild/lifecycle exclusion 保护；
+- compensation 为 Applied bytes 创建私有 candidate，并经 lease direct apply；不会 check/promote 或改写 product；
+- compensation 成功不改变 desired；Promoted 保持最后一次成功 promote，Applied 回到旧 snapshot。例如最终矩阵为 `Promoted = P3`、`Applied = P1`；
+- IPC 只解析 mapping 并调用 facade；API-first patch、desired persist、rebuild 和补偿不在 IPC 重复编排；
+- S05 set/remove、unknown Applied、revision conflict、exclusion、exact-bytes 与 P3/P1 tests green；PR-5b 将此 gate 和 applied owner 迁入 CoreActor mailbox。
 
 ### 6.8 Prepared legacy mirror
 

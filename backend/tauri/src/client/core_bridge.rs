@@ -15,6 +15,22 @@ use sha2::Digest;
 
 use super::runtime::{CandidateFile, RuntimePaths};
 
+/// Narrow boundary for API-first updates to the running core configuration.
+#[cfg_attr(test, mockall::automock)]
+#[async_trait]
+pub trait RunningConfigPatchPort: Send + Sync + 'static {
+    async fn patch(&self, patch: &serde_yaml::Mapping) -> anyhow::Result<()>;
+}
+
+pub struct LegacyRunningConfigPatchBridge;
+
+#[async_trait]
+impl RunningConfigPatchPort for LegacyRunningConfigPatchBridge {
+    async fn patch(&self, patch: &serde_yaml::Mapping) -> anyhow::Result<()> {
+        crate::core::clash::api::patch_configs(patch).await
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CoreStatusSnapshot {
     pub state: CoreState,
@@ -43,6 +59,12 @@ pub trait CoreLifecycleLease: Send {
         target_core: ClashCore,
         product: &Utf8Path,
     ) -> anyhow::Result<[u8; 32]>;
+    /// Check and apply exact candidate bytes without promoting them to product.
+    async fn apply_candidate(
+        &mut self,
+        candidate: &CandidateFile,
+        target_core: ClashCore,
+    ) -> anyhow::Result<()>;
     async fn apply_promoted(&mut self, product: &Utf8Path) -> anyhow::Result<()>;
     async fn restart(&mut self) -> anyhow::Result<()>;
     async fn stop(&mut self) -> anyhow::Result<()>;
@@ -159,6 +181,28 @@ impl CoreLifecycleLease for LegacyCoreLifecycleLease {
             anyhow::bail!("promoted runtime product hash does not match candidate");
         }
         Ok(promoted_hash)
+    }
+
+    async fn apply_candidate(
+        &mut self,
+        candidate: &CandidateFile,
+        target_core: ClashCore,
+    ) -> anyhow::Result<()> {
+        let bytes = tokio::fs::read(candidate.path()).await?;
+        let candidate_hash: [u8; 32] = sha2::Sha256::digest(&bytes).into();
+        anyhow::ensure!(
+            candidate_hash == candidate.bytes_sha256(),
+            "candidate config hash changed before check"
+        );
+        self.lease
+            .check_config(candidate.path(), target_core.into())
+            .await?;
+        let after = tokio::fs::read(candidate.path()).await?;
+        anyhow::ensure!(
+            after == bytes,
+            "candidate config changed between check and apply"
+        );
+        self.lease.apply_config_from(candidate.path()).await
     }
 
     async fn apply_promoted(&mut self, product: &Utf8Path) -> anyhow::Result<()> {

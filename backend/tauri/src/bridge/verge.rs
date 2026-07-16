@@ -458,8 +458,8 @@ mod tests {
     use super::*;
     use crate::{
         client::{
-            ClientSetupArgs, LegacyBridgeSet, MockRunningCoreBridge, NoopUiEventSink,
-            NyanpasuClient,
+            ClientSetupArgs, LegacyBridgeSet, LegacyRunningConfigPatchBridge,
+            MockRunningCoreBridge, NoopUiEventSink, NyanpasuClient,
         },
         config::{
             IClashTemp,
@@ -554,6 +554,7 @@ mod tests {
             },
             ui_sink: Arc::new(NoopUiEventSink),
             core: Arc::new(MockRunningCoreBridge::new()),
+            clash_patch: Some(Arc::new(LegacyRunningConfigPatchBridge)),
         })
         .expect("client should construct with typed config actors");
         let bridge = LegacyVergeBridge::new(client.clone(), legacy_verge_path);

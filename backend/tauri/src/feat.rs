@@ -15,6 +15,7 @@ use handle::Message;
 use nyanpasu_ipc::api::status::CoreState;
 use serde::{Deserialize, Serialize};
 use serde_yaml::{Mapping, Value};
+use std::future::Future;
 use strum::EnumString;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -225,8 +226,25 @@ pub(crate) fn requires_core_restart(patch: &Mapping) -> bool {
         || patch.get("external-controller").is_some()
 }
 
-/// 修改clash的配置
+/// Apply a desired clash patch to the legacy draft and rebuild it.
+/// Running-core patch serialization and compensation are owned by `NyanpasuClient`.
 pub async fn patch_clash(patch: Mapping) -> Result<()> {
+    patch_clash_with_rebuild(patch, |restart| async move {
+        if restart {
+            crate::client::rebuild::regenerate_and_restart().await?;
+        } else {
+            crate::client::rebuild::regenerate().await?;
+        }
+        Ok(())
+    })
+    .await
+}
+
+pub async fn patch_clash_with_rebuild<F, Fut, T>(patch: Mapping, rebuild: F) -> Result<T>
+where
+    F: FnOnce(bool) -> Fut,
+    Fut: Future<Output = Result<T>>,
+{
     Config::clash().draft().patch_config(patch.clone());
 
     let run = move || async move {
@@ -268,14 +286,12 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
             }
         }
 
-        // 激活配置:任何 clash patch 都会进入 rebuild 输入,恒重建派生配置;
-        // 仅端口/控制器/密钥变更需要重启核心(即时性由 IPC 层 api::patch_configs
-        // 直推保证,失败补偿见 ipc::patch_clash_config,D6)。
-        if requires_core_restart(&patch) {
-            crate::client::rebuild::regenerate_and_restart().await?;
+        // Every desired clash patch enters the rebuild input and regenerates the
+        // derived config. Only port/controller/secret changes restart the core.
+        let restart = requires_core_restart(&patch);
+        let rebuilt = rebuild(restart).await?;
+        if restart {
             handle::Handle::refresh_clash();
-        } else {
-            crate::client::rebuild::regenerate().await?;
         }
 
         // 更新系统代理
@@ -284,17 +300,16 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
         }
 
         if patch.get("mode").is_some() {
-            crate::feat::update_proxies_buff(None);
             log_err!(handle::Handle::update_systray_part());
         }
 
-        <Result<()>>::Ok(())
+        Ok(rebuilt)
     };
     match run().await {
-        Ok(()) => {
+        Ok(rebuilt) => {
             Config::clash().apply();
             Config::clash().data().save_config()?;
-            Ok(())
+            Ok(rebuilt)
         }
         Err(err) => {
             Config::clash().discard();

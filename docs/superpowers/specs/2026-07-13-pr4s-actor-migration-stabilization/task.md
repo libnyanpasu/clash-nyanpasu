@@ -3,7 +3,7 @@
 - **关联设计：** [`./design.md`](./design.md)；下文 `design §N` 均指该文件。
 - **任务定位：** roadmap v3 的单一硬前置 Task `R4S`。内部拆成 S01～S10 commit group，全部属于同一 atomic PR；任何子集都不能单独宣告稳定化完成。
 - **分支建议：** `fix/pr4s-actor-migration-stabilization`
-- **基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`）；S01 基线冻结提交为 `daf872d9`；S02 RuntimePaths/candidate hardening 为 `807f1733`；S03 RuntimeLifecycleState/rollback snapshot 已在工作区实现并验证（未单独 merge）。
+- **基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`）；S01 基线冻结提交为 `daf872d9`；S02 RuntimePaths/candidate hardening 为 `807f1733`；S03 RuntimeLifecycleState/rollback snapshot 已在工作区实现并验证；S04 CoreLifecycleLease / 统一 lifecycle mutex / change_core lease span / updater stop-swap-restart 已在工作区实现并验证（均未单独 merge）。
 - **建议 PR 标题：** `fix(tauri)!: close PR1-4 actor-migration consistency and regression gaps (PR-4S)`
 
 ---
@@ -76,7 +76,7 @@ flowchart LR
 
 ## S01 — 基线、故障注入接口与回归 fixtures
 
-**状态：** 已完成（`daf872d9` 固化 failure contracts / 初版 ledger 报告脚本）。不得将 PR-4S 整体标为完成；S04～S10 仍 pending。
+**状态：** 已完成（`daf872d9` 固化 failure contracts / 初版 ledger 报告脚本）。不得将 PR-4S 整体标为完成；S05～S10 仍 pending。
 
 **目标：** 先用测试复现/冻结缺陷，避免后续重构掩盖行为。
 
@@ -154,7 +154,7 @@ CandidateFile::path/hash/cleanup
 
 ## S03 — RuntimeLifecycleState 与 rollback snapshot
 
-**状态：** 已完成（工作区已验证；PR-4S 整体未完成）。落地：`RuntimeSnapshot` / `RuntimeLifecycleState { promoted, applied }` / `RuntimeTransactionSnapshot`；revision/core/hash 绑定；四读 IPC 读 Promoted；`change_core` 捕获 transaction snapshot 并按 product → Promoted → old-core restart → Applied 恢复。残差留给后续 lane：S04 统一 lifecycle lease；S05 Applied-based compensation；promote-ok/store-publish-fail 的 `RuntimePublish` degradation + reconcile 仍按 design §6.4 作为后续 hardening；Applied owner 仍在 facade，PR-5b 迁入 CoreActor。
+**状态：** 已完成（工作区已验证；PR-4S 整体未完成）。落地：`RuntimeSnapshot` / `RuntimeLifecycleState { promoted, applied }` / `RuntimeTransactionSnapshot`；revision/core/hash 绑定；四读 IPC 读 Promoted；`change_core` 捕获 transaction snapshot 并按 product → Promoted → old-core restart → Applied 恢复。残差留给后续 lane：S05 Applied-based compensation；promote-ok/store-publish-fail 的 `RuntimePublish` degradation + reconcile 仍按 design §6.4 作为后续 hardening；Applied owner 仍在 facade，PR-5b 迁入 CoreActor。S04 统一 lifecycle lease 已完成。
 
 **目标：** 显式区分 promoted/applied，并修复深层 rollback read-model 失真。
 
@@ -193,7 +193,7 @@ RuntimeTransactionSnapshot { product, lifecycle, selected_core }
 
 ## S04 — CoreLifecycleLease 与 change-core serialization
 
-**状态：** 未完成 / pending。S03 已提供 promoted/applied 与 transaction snapshot；本 lane 仍须统一 lifecycle lease 串行 run/restart/change-core。
+**状态：** 已完成（工作区已验证；PR-4S 整体未完成）。落地：`CoreLifecyclePort`/`CoreLifecycleLease`（`client/core_bridge.rs`）；`CoreManager::lifecycle_lock` 统一 run/restart/stop/check/apply/recover 锁域，public 方法 `begin_lifecycle` + `*_with_lease` 拆分；`change_core` 全程持有 `rebuild_gate + lease` 至 rollback 结束；updater `replace_core` stop/swap/restart 在同一 lease 内完成；验证 `s04_concurrent_restart_waits_until_change_core_rollback_completes`（barrier/oneshot，无 sleep）。残差留给后续 lane：S05 Applied-based compensation 依赖本锁域；S09 fake-core 进程级 fixed-port/failure matrix 仍 pending；`CoreManager::global()` 仍在 legacy adapter/updater 内临时桥接，PR-5 删除。
 
 **目标：** 所有核心生命周期操作共享同一互斥域，消除换核 rollback 期间并发 restart。
 
@@ -224,7 +224,7 @@ RuntimeTransactionSnapshot { product, lifecycle, selected_core }
 
 ## S05 — Patch gate 与 Applied-based compensation
 
-**状态：** 未完成 / pending。S03 已提供 `lifecycle.applied`；当前 D6 仍读 Promoted，Set/Remove + expected Applied revision fence 尚未实施。
+**状态：** 未完成 / pending。S03 已提供 `lifecycle.applied`；S04 已提供统一 lifecycle lease。当前 D6 仍读 Promoted，Set/Remove + expected Applied revision fence 尚未实施。
 
 **目标：** 修复 D6 补偿读取错误状态、不能删除新键和并发覆盖问题。
 
@@ -419,12 +419,12 @@ PatchCompensationPlan {
 
 ## 4. PR-4 review finding disposition（必须完成）
 
-| Finding                                  | 当前判断                                                               | PR-4S 处置                                                     |
-| ---------------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------- |
-| createProfile `undefined` review comment | typed error 实际 throw，但 helper 返回类型不穷尽，易掩盖未来 wire 漂移 | S08 将 `unwrapResult` 改为 exhaustive `T`，加 contract test    |
-| rollback test 写真实用户 runtime path    | 有效 correctness/test-isolation finding                                | S02 全路径注入并删除真实路径访问                               |
-| change_core 与 run_core 锁域竞态         | 有效 P2 correctness finding                                            | S04 lifecycle lease + barrier test                             |
-| product rollback 未恢复 runtime store    | S03 已关闭：transaction snapshot 同步恢复 product/Promoted/Applied     | 已由 S03 代码 + rollback 分支测试处置；S04 仍须补齐 lease 串行 |
+| Finding                                  | 当前判断                                                               | PR-4S 处置                                                                                                                  |
+| ---------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| createProfile `undefined` review comment | typed error 实际 throw，但 helper 返回类型不穷尽，易掩盖未来 wire 漂移 | S08 将 `unwrapResult` 改为 exhaustive `T`，加 contract test                                                                 |
+| rollback test 写真实用户 runtime path    | 有效 correctness/test-isolation finding                                | S02 全路径注入并删除真实路径访问                                                                                            |
+| change_core 与 run_core 锁域竞态         | S04 已关闭：统一 lifecycle lease + barrier 并发测试                    | 已由 S04 代码 + `s04_concurrent_restart_waits_until_change_core_rollback_completes` 处置；S09 仍须补齐 fake-core 进程级矩阵 |
+| product rollback 未恢复 runtime store    | S03 已关闭：transaction snapshot 同步恢复 product/Promoted/Applied     | 已由 S03 代码 + rollback 分支测试处置；S04 已补齐 lease 串行                                                                |
 
 所有 thread 在代码合并前必须 resolve；延期不接受。
 
@@ -437,7 +437,7 @@ PatchCompensationPlan {
 - [ ] no new global/static service
 - [ ] RuntimePaths injected everywhere
 - [ ] promoted/applied revisions visible
-- [ ] one lifecycle lease covers all core mutations
+- [x] one lifecycle lease covers all core mutations（S04 工作区已验证；S09 fake-core 进程级矩阵仍 pending）
 - [ ] mirror prepare before persist; apply infallible
 - [ ] three-domain patch saga version-checked
 - [ ] profile materialization recoverable
@@ -446,8 +446,8 @@ PatchCompensationPlan {
 
 ### 正确性
 
-- [ ] change-core concurrent restart blocked
-- [ ] rollback restores product/promoted/applied/core
+- [x] change-core concurrent restart blocked（S04 barrier 测试；S09 fake-core 仍 pending）
+- [x] rollback restores product/promoted/applied/core（S03 + S04 lease span）
 - [ ] D6 supports remove and revision conflict
 - [ ] no ghost Err after typed commit
 - [ ] no silent partial domain commit

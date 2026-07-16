@@ -176,11 +176,15 @@ impl NyanpasuClient {
         // Inputs are read under the rebuild gate so a legacy regeneration
         // serializes with facade rebuilds and always sees the newest drafts.
         let _rebuild = self.inner.rebuild_gate.lock().await;
-        self.regenerate_for_legacy_inner().await.map(|_| ())
+        let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
+        self.regenerate_for_legacy_inner(&mut *lease)
+            .await
+            .map(|_| ())
     }
 
     async fn regenerate_for_legacy_inner(
         &self,
+        lease: &mut dyn crate::client::CoreLifecycleLease,
     ) -> Result<std::sync::Arc<crate::client::runtime::RuntimeSnapshot>> {
         let revision = self
             .inner
@@ -189,7 +193,7 @@ impl NyanpasuClient {
             .map_err(ClientError::Anyhow)?;
         let (app, clash) = Self::legacy_regen_inputs()?;
         let profiles = self.inner.profiles.get().await?;
-        self.regenerate_runtime_with(revision, profiles, clash, app)
+        self.regenerate_runtime_with(lease, revision, profiles, clash, app)
             .await
     }
 
@@ -197,10 +201,10 @@ impl NyanpasuClient {
         // P0-2: one gate hold covers regenerate AND apply — a concurrent rebuild
         // cannot replace the product between the two steps.
         let _rebuild = self.inner.rebuild_gate.lock().await;
-        let promoted = self.regenerate_for_legacy_inner().await?;
-        self.inner
-            .core
-            .apply_config()
+        let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
+        let promoted = self.regenerate_for_legacy_inner(&mut *lease).await?;
+        lease
+            .apply_promoted(self.inner.runtime_paths.product())
             .await
             .map_err(ClientError::Anyhow)?;
         self.publish_applied(promoted).await
@@ -208,12 +212,9 @@ impl NyanpasuClient {
 
     pub(crate) async fn regenerate_and_restart_for_legacy(&self) -> Result<()> {
         let _rebuild = self.inner.rebuild_gate.lock().await;
-        let promoted = self.regenerate_for_legacy_inner().await?;
-        self.inner
-            .core
-            .restart_core()
-            .await
-            .map_err(ClientError::Anyhow)?;
+        let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
+        let promoted = self.regenerate_for_legacy_inner(&mut *lease).await?;
+        lease.restart().await.map_err(ClientError::Anyhow)?;
         self.publish_applied(promoted).await
     }
 
@@ -224,6 +225,7 @@ impl NyanpasuClient {
     /// selected core according to the captured transaction snapshot.
     pub async fn change_core(&self, new_core: crate::config::nyanpasu::ClashCore) -> Result<()> {
         let _rebuild = self.inner.rebuild_gate.lock().await;
+        let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
 
         // Capture rollback material BEFORE any mutation (spec §6.5 D5).
         let product_path = self.inner.runtime_paths.product().to_owned();
@@ -244,7 +246,7 @@ impl NyanpasuClient {
         // Remove when: core selection patches the typed app config.
         crate::config::Config::verge().draft().clash_core = Some(new_core);
 
-        let new_snapshot = match self.regenerate_for_legacy_inner().await {
+        let new_snapshot = match self.regenerate_for_legacy_inner(&mut *lease).await {
             Ok(snapshot) => snapshot,
             Err(error) => {
                 // New-core build/check failed: product/promoted/applied untouched.
@@ -257,7 +259,7 @@ impl NyanpasuClient {
         // Remove when: PR-5 injects the LogSink into CoreActor.
         crate::core::logger::Logger::global().clear_log();
 
-        match self.inner.core.restart_core().await {
+        match lease.restart().await {
             Ok(()) => {
                 crate::config::Config::verge().apply();
                 if let Err(error) = crate::config::Config::verge().latest().save_file() {
@@ -272,10 +274,10 @@ impl NyanpasuClient {
                 crate::config::Config::verge().discard();
 
                 // 2. Rebuild old-core runtime from committed desired state.
-                match self.regenerate_for_legacy_inner().await {
+                match self.regenerate_for_legacy_inner(&mut *lease).await {
                     Ok(rollback_snapshot) => {
                         // 5. Start old core off the rebuilt product.
-                        if let Err(restart_error) = self.inner.core.restart_core().await {
+                        if let Err(restart_error) = lease.restart().await {
                             // Promoted is the rollback rebuild; Applied stays the
                             // pre-transaction snapshot (never advanced on failure).
                             return Err(ClientError::Anyhow(new_core_error.context(format!(
@@ -319,7 +321,7 @@ impl NyanpasuClient {
                         self.restore_promoted(transaction.lifecycle.promoted.clone())
                             .await?;
                         // 5. Start old core on the restored product.
-                        if let Err(restart_error) = self.inner.core.restart_core().await {
+                        if let Err(restart_error) = lease.restart().await {
                             // 7. Applied keeps the pre-transaction snapshot; core is
                             // stopped/degraded. Structured error chain is preserved.
                             return Err(ClientError::Anyhow(
@@ -391,10 +393,9 @@ impl NyanpasuClient {
             .create_candidate(yaml.as_bytes())
             .await
             .map_err(ClientError::Anyhow)?;
-        let checked = self
-            .inner
-            .core
-            .check_and_promote(&candidate, app.core)
+        let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
+        let checked = lease
+            .check_and_promote(&candidate, app.core, self.inner.runtime_paths.product())
             .await;
         if let Err(error) = candidate.cleanup().await {
             tracing::warn!(%error, "failed to remove candidate config");
@@ -469,7 +470,7 @@ mod tests {
     #[test]
     fn change_core_rolls_back_via_second_regenerate_and_restart() {
         let dir = tempfile::tempdir().unwrap();
-        let mut core = crate::client::core_bridge::MockRunningCoreBridge::new();
+        let mut core = crate::client::tests::MockRunningCoreBridge::new();
         let mut seq = mockall::Sequence::new();
         // 新核:check+晋升成功 → 启动失败
         core.expect_check_and_promote()
@@ -531,7 +532,7 @@ mod tests {
         }
         std::fs::write(&product, b"# nyanpasu-test previous product\n").unwrap();
 
-        let mut core = crate::client::core_bridge::MockRunningCoreBridge::new();
+        let mut core = crate::client::tests::MockRunningCoreBridge::new();
         let mut seq = mockall::Sequence::new();
         // 新核:check+晋升成功 → 启动失败
         core.expect_check_and_promote()
@@ -569,106 +570,149 @@ mod tests {
         );
     }
 
-    // ── S01 failure contracts (task §S01.1 / §S01.2 / §S01.9) ──────────────
-    // These pin CURRENT defective behaviour with explicit failure reasons so
-    // later S03/S04/S09 fixes turn them green without rewriting the assertion
-    // intent. Production code is intentionally untouched.
+    // ── S03/S04 regression contracts and the remaining S09 failure pin ─────
 
-    /// Barrier-gated core double used by the concurrent-restart contract.
-    /// First `restart_core` (new-core attempt) parks until the concurrent
-    /// restart has been observed; subsequent restarts complete immediately.
     struct BarrierCore {
-        entered_restart: Arc<AtomicUsize>,
-        /// Set by the test once the concurrent restart has entered.
-        concurrent_entered: Arc<AtomicBool>,
-        /// Signalled by the first restart after it has marked itself entered,
-        /// so the test can spawn the concurrent call.
+        lifecycle: Arc<tokio::sync::Mutex<()>>,
+        state: Arc<BarrierState>,
+    }
+
+    struct BarrierState {
+        begin_calls: AtomicUsize,
+        restart_calls: AtomicUsize,
+        concurrent_begin_attempted_tx: Mutex<Option<tokio_oneshot::Sender<()>>>,
+        entered_before_rollback: AtomicBool,
         first_entered_tx: Mutex<Option<tokio_oneshot::Sender<()>>>,
-        /// Released by the concurrent call (or test) so the first restart can
-        /// finish and let change_core continue into rollback.
         release_first_rx: Mutex<Option<tokio_oneshot::Receiver<()>>>,
-        check_calls: AtomicUsize,
+        rollback_finished: AtomicBool,
+        rollback_finished_tx: Mutex<Option<tokio_oneshot::Sender<()>>>,
+        concurrent_entered_tx: Mutex<Option<tokio_oneshot::Sender<()>>>,
+    }
+
+    struct BarrierLease {
+        state: Arc<BarrierState>,
+        _guard: tokio::sync::OwnedMutexGuard<()>,
     }
 
     #[async_trait]
-    impl crate::client::RunningCoreBridge for BarrierCore {
-        async fn check_and_promote(
-            &self,
-            _candidate: &crate::client::runtime::CandidateFile,
-            _target_core: ClashCore,
-        ) -> anyhow::Result<()> {
-            // First check = new-core promote (ok); second = rollback rebuild (ok).
-            let n = self.check_calls.fetch_add(1, Ordering::SeqCst);
-            if n <= 1 { Ok(()) } else { Ok(()) }
-        }
-
-        async fn apply_config(&self) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn restart_core(&self) -> anyhow::Result<()> {
-            let n = self.entered_restart.fetch_add(1, Ordering::SeqCst);
-            if n == 0 {
-                // New-core restart: announce entry, then wait for the concurrent
-                // restart to prove it can enter while we hold the rebuild gate.
-                if let Some(tx) = self.first_entered_tx.lock().unwrap().take() {
+    impl crate::client::CoreLifecyclePort for BarrierCore {
+        async fn begin(&self) -> anyhow::Result<Box<dyn crate::client::CoreLifecycleLease>> {
+            let begin_call = self.state.begin_calls.fetch_add(1, Ordering::SeqCst);
+            if begin_call > 0 {
+                if let Some(tx) = self
+                    .state
+                    .concurrent_begin_attempted_tx
+                    .lock()
+                    .unwrap()
+                    .take()
+                {
                     let _ = tx.send(());
                 }
-                // Wait until the concurrent restart has been observed, or the
-                // release channel is dropped (test teardown).
-                let first_rx = self.release_first_rx.lock().unwrap().take();
-                if let Some(rx) = first_rx {
-                    let _ = rx.await;
-                }
-                // Still fail the new core so change_core enters rollback.
-                return Err(anyhow::anyhow!("new core boom (barrier)"));
             }
-            // Concurrent / rollback restarts: mark concurrent entry and succeed.
-            self.concurrent_entered.store(true, Ordering::SeqCst);
-            Ok(())
+            let guard = self.lifecycle.clone().lock_owned().await;
+            if begin_call > 0 && !self.state.rollback_finished.load(Ordering::SeqCst) {
+                self.state
+                    .entered_before_rollback
+                    .store(true, Ordering::SeqCst);
+            }
+            Ok(Box::new(BarrierLease {
+                state: self.state.clone(),
+                _guard: guard,
+            }))
+        }
+
+        async fn status(&self) -> anyhow::Result<crate::client::core_bridge::CoreStatusSnapshot> {
+            anyhow::bail!("status is not used by this barrier test")
         }
 
         async fn on_profile_change(&self) {}
     }
 
-    /// S01 contract (task §S01.1 / design §6.6): while `change_core` is parked
-    /// inside the new-core restart (still holding `rebuild_gate` only — not a
-    /// full core lifecycle lease), a concurrent restart must NOT be able to
-    /// enter the core restart path. Desired (S04): shared CoreLifecycleLease
-    /// blocks concurrent restart until rollback finishes.
-    ///
-    /// Current failure reason: `RunningCoreBridge::restart_core` is not under
-    /// a shared lifecycle lease; only the facade `rebuild_gate` serialises
-    /// regenerate paths that go through the same client. A direct concurrent
-    /// restart on the core bridge (as tray/service paths can do) can enter
-    /// during the rollback window.
-    ///
-    /// Plain `#[test]` (not `#[tokio::test]`): `try_new_with_args` itself
-    /// `block_on`s setup, so nesting inside a tokio runtime panics.
+    #[async_trait]
+    impl crate::client::CoreLifecycleLease for BarrierLease {
+        async fn check_and_promote(
+            &mut self,
+            candidate: &crate::client::runtime::CandidateFile,
+            _target_core: ClashCore,
+            _product: &camino::Utf8Path,
+        ) -> anyhow::Result<[u8; 32]> {
+            Ok(candidate.bytes_sha256())
+        }
+
+        async fn apply_promoted(&mut self, _product: &camino::Utf8Path) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn restart(&mut self) -> anyhow::Result<()> {
+            match self.state.restart_calls.fetch_add(1, Ordering::SeqCst) {
+                0 => {
+                    if let Some(tx) = self.state.first_entered_tx.lock().unwrap().take() {
+                        let _ = tx.send(());
+                    }
+                    let release = self.state.release_first_rx.lock().unwrap().take();
+                    if let Some(release) = release {
+                        let _ = release.await;
+                    }
+                    Err(anyhow::anyhow!("new core boom (barrier)"))
+                }
+                1 => {
+                    self.state.rollback_finished.store(true, Ordering::SeqCst);
+                    if let Some(tx) = self.state.rollback_finished_tx.lock().unwrap().take() {
+                        let _ = tx.send(());
+                    }
+                    Ok(())
+                }
+                _ => {
+                    assert!(
+                        self.state.rollback_finished.load(Ordering::SeqCst),
+                        "concurrent lifecycle restart entered before rollback completed"
+                    );
+                    if let Some(tx) = self.state.concurrent_entered_tx.lock().unwrap().take() {
+                        let _ = tx.send(());
+                    }
+                    Ok(())
+                }
+            }
+        }
+
+        async fn stop(&mut self) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
     #[test]
-    fn s01_contract_change_core_rollback_window_allows_concurrent_restart() {
+    fn s04_concurrent_restart_waits_until_change_core_rollback_completes() {
         let dir = tempfile::tempdir().unwrap();
         let (first_entered_tx, first_entered_rx) = tokio_oneshot::channel();
+        let (concurrent_begin_attempted_tx, concurrent_begin_attempted_rx) =
+            tokio_oneshot::channel();
         let (release_first_tx, release_first_rx) = tokio_oneshot::channel();
-        let concurrent_entered = Arc::new(AtomicBool::new(false));
-        let entered_restart = Arc::new(AtomicUsize::new(0));
-
-        let core = Arc::new(BarrierCore {
-            entered_restart: entered_restart.clone(),
-            concurrent_entered: concurrent_entered.clone(),
+        let (rollback_finished_tx, rollback_finished_rx) = tokio_oneshot::channel();
+        let (concurrent_entered_tx, concurrent_entered_rx) = tokio_oneshot::channel();
+        let state = Arc::new(BarrierState {
+            begin_calls: AtomicUsize::new(0),
+            restart_calls: AtomicUsize::new(0),
+            concurrent_begin_attempted_tx: Mutex::new(Some(concurrent_begin_attempted_tx)),
+            entered_before_rollback: AtomicBool::new(false),
             first_entered_tx: Mutex::new(Some(first_entered_tx)),
             release_first_rx: Mutex::new(Some(release_first_rx)),
-            check_calls: AtomicUsize::new(0),
+            rollback_finished: AtomicBool::new(false),
+            rollback_finished_tx: Mutex::new(Some(rollback_finished_tx)),
+            concurrent_entered_tx: Mutex::new(Some(concurrent_entered_tx)),
         });
-        // Keep a second Arc so the concurrent task can call restart without
-        // going through the client (simulates tray/service lifecycle entry
-        // that does not share the facade rebuild_gate).
-        let core_for_concurrent: Arc<dyn crate::client::RunningCoreBridge> = core.clone();
-
-        let client = crate::client::NyanpasuClient::try_new_with_args(
-            crate::client::tests::test_profiles_client_args(&dir, core),
-        )
-        .unwrap();
+        let core = Arc::new(BarrierCore {
+            lifecycle: Arc::new(tokio::sync::Mutex::new(())),
+            state: state.clone(),
+        });
+        let client =
+            crate::client::NyanpasuClient::try_new_with_args(crate::client::ClientSetupArgs {
+                core: core.clone(),
+                ..crate::client::tests::test_profiles_client_args(
+                    &dir,
+                    Arc::new(crate::client::tests::MockRunningCoreBridge::new()),
+                )
+            })
+            .unwrap();
 
         tauri::async_runtime::block_on(async move {
             let change = tauri::async_runtime::spawn({
@@ -679,39 +723,38 @@ mod tests {
                         .await
                 }
             });
+            first_entered_rx.await.expect("new-core restart must enter");
 
-            // Wait until change_core is parked in the new-core restart.
-            first_entered_rx
+            let concurrent = tauri::async_runtime::spawn(async move {
+                let mut lease = crate::client::CoreLifecyclePort::begin(&*core).await?;
+                lease.restart().await
+            });
+            concurrent_begin_attempted_rx
                 .await
-                .expect("first restart must signal entry");
+                .expect("concurrent restart must attempt lifecycle begin while rollback is active");
+            assert!(
+                !state.entered_before_rollback.load(Ordering::SeqCst),
+                "concurrent lifecycle begin must wait for rollback"
+            );
+            let _ = release_first_tx.send(());
 
-            // Concurrent restart while change_core still holds only rebuild_gate.
-            let concurrent =
-                tauri::async_runtime::spawn(
-                    async move { core_for_concurrent.restart_core().await },
-                );
+            rollback_finished_rx
+                .await
+                .expect("old-core rollback restart must complete");
+            concurrent_entered_rx
+                .await
+                .expect("concurrent restart must enter after rollback");
             concurrent
                 .await
-                .expect("concurrent task join")
-                .expect("concurrent restart currently completes");
-
-            // Release the parked new-core restart so change_core can finish rollback.
-            let _ = release_first_tx.send(());
-            let change_result = change.await.expect("change_core task join");
+                .expect("concurrent restart task must join")
+                .expect("concurrent restart must succeed");
             assert!(
-                change_result.is_err(),
-                "change_core must still surface the new-core failure"
+                !state.entered_before_rollback.load(Ordering::SeqCst),
+                "concurrent lifecycle begin entered before rollback completed"
             );
-
-            // Desired (S04): concurrent restart is blocked until rollback ends.
-            // Current defect: concurrent restart entered while first restart was
-            // still parked inside the rollback window (no CoreLifecycleLease).
             assert!(
-                !concurrent_entered.load(Ordering::SeqCst),
-                "S01 FAILURE reason: change_core rollback window allows concurrent restart \
-                 (no shared CoreLifecycleLease; concurrent restart_core entered while \
-                 new-core restart was still in flight; entered_restart={})",
-                entered_restart.load(Ordering::SeqCst)
+                change.await.expect("change_core task must join").is_err(),
+                "change_core must surface the new-core failure"
             );
         });
     }
@@ -739,7 +782,7 @@ mod tests {
         const OLD_PRODUCT: &[u8] = b"# s01-old-product\nmode: rule\n";
         std::fs::write(&product, OLD_PRODUCT).unwrap();
 
-        let mut core = crate::client::core_bridge::MockRunningCoreBridge::new();
+        let mut core = crate::client::tests::MockRunningCoreBridge::new();
         let mut seq = mockall::Sequence::new();
         // New core: promote ok → restart fails.
         core.expect_check_and_promote()
@@ -814,7 +857,7 @@ mod tests {
         use sha2::{Digest, Sha256};
 
         let dir = tempfile::tempdir().unwrap();
-        let mut core = crate::client::core_bridge::MockRunningCoreBridge::new();
+        let mut core = crate::client::tests::MockRunningCoreBridge::new();
         let mut seq = mockall::Sequence::new();
         // Seed Applied=P1: promote existing P1 product, then start core.
         core.expect_check_and_promote()
@@ -936,7 +979,7 @@ mod tests {
     #[test]
     fn change_core_successful_rollback_publishes_applied_from_old_core() {
         let dir = tempfile::tempdir().unwrap();
-        let mut core = crate::client::core_bridge::MockRunningCoreBridge::new();
+        let mut core = crate::client::tests::MockRunningCoreBridge::new();
         let mut seq = mockall::Sequence::new();
         core.expect_check_and_promote()
             .times(1)
@@ -987,7 +1030,7 @@ mod tests {
     #[test]
     fn promote_default_runtime_config_publishes_promoted_only() {
         let dir = tempfile::tempdir().unwrap();
-        let mut core = crate::client::core_bridge::MockRunningCoreBridge::new();
+        let mut core = crate::client::tests::MockRunningCoreBridge::new();
         core.expect_check_and_promote()
             .times(1)
             .returning(|_, _| Ok(()));

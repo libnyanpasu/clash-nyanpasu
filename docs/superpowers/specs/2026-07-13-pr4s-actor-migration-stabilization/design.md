@@ -1,9 +1,9 @@
 # PR-4S — PR-1～PR-4 Actor Migration 稳定化门（设计 spec）
 
 **日期：** 2026-07-13  
-**状态：** Implementing（S01～S03 已完成；S04～S10 未完成；不得宣告 PR-4S 完成）
+**状态：** Implementing（S01～S04 已完成；S05～S10 未完成；不得宣告 PR-4S 完成）
 
-**范围基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`；包含 PR-4 `#4932`；S01 `daf872d9`；S02 `807f1733`；S03 工作区 diff 已验证）
+**范围基线：** `main @ 9886aacc750b691d6abc893808ddaaf9dfb6a538`（`fix(proxy): resolve provider-owned proxies (#4954)`；包含 PR-4 `#4932`；S01 `daf872d9`；S02 `807f1733`；S03 工作区已验证；S04 工作区已验证：`CoreLifecycleLease`、统一 `CoreManager` lifecycle mutex、`change_core` lease span through rollback、updater stop/swap/restart）
 **上游依据：** `docs/design/actor-migration-roadmap.md` v3 §5  
 **建议分支：** `fix/pr4s-actor-migration-stabilization`  
 **原子性：** 本 spec 的 S01～S10 为一个稳定化 PR；可以多 commit，但不得只合并部分语义
@@ -22,12 +22,12 @@ PR-1～PR-4 已完成以下主要方向：
 - candidate → core check → promote → publish 管线；
 - profile mutation 的初版 `RebuildOutcome`。
 
-但当前实现仍有四类系统性缺陷（S03 已关闭其中状态模型与 rollback read-model 部分）：
+但当前实现仍有四类系统性缺陷（S03 已关闭状态模型与 rollback read-model；S04 已关闭生命周期锁域）：
 
-1. **生命周期锁域不完整（S04 未完成）**：facade 的 `rebuild_gate` 与 `CoreManager::run_lock` 不是一个完整事务，`change_core` rollback 窗口可被其他 restart 穿透；
+1. **生命周期锁域（S04 已完成）**：`CoreLifecyclePort`/`CoreLifecycleLease` 统一 run/restart/stop/check/apply/recover；`CoreManager` 以单一 `lifecycle_lock` 替代仅覆盖部分路径的 `run_lock`；`change_core` 全程持有 `rebuild_gate + lease` 至 rollback 结束；updater stop/swap/restart 同锁域。S09 fake-core 进程级 failure matrix 仍 pending。
 2. **状态语义残差（S03 已落地 promoted/applied + transaction snapshot；S05 未完成）**：facade 已持有 `RuntimeLifecycleState { promoted, applied }` 与 revision/core/hash；四读 IPC 读 Promoted；`change_core` 深层 rollback 同步恢复 product/Promoted/Applied。D6 compensation 仍读 Promoted，且尚无 Set/Remove + expected Applied revision fence；
 3. **跨资源提交不一致（S06/S07 未完成）**：typed state、legacy mirror、profile 文件、runtime 文件、核心进程之间缺乏明确 prepare/commit/compensate；
-4. **验收与测试隔离不足（S09/S10 未完成）**：PR-3/4 回归与 smoke 仍需可审计闭环；S02 已注入 RuntimePaths 并隔离 runtime 测试路径，但 dispatcher/fake-core/ledger gate 仍待完成。
+4. **验收与测试隔离不足（S09/S10 未完成）**：PR-3/4 回归与 smoke 仍需可审计闭环；S02 已注入 RuntimePaths 并隔离 runtime 测试路径；S04 已有 barrier 并发测试；dispatcher deglobalization / fake-core / ledger gate 仍待完成。
 
 PR-4S 不继续扩大 actor 数量。它先修复 PR-1～PR-4 的 correctness boundary，使 PR-5 可以在可靠状态模型上接管核心生命周期。
 
@@ -185,6 +185,8 @@ pub struct CandidateFile {
 
 ### 6.3 CoreLifecyclePort 与 lease
 
+**状态：** S04 已完成（工作区已验证；PR-4S 整体未完成）。`CoreLifecyclePort`/`CoreLifecycleLease`、`CoreManager::lifecycle_lock`、public/with_lease 拆分、`change_core` lease span、updater stop/swap/restart 同锁域与 barrier 并发测试均已落地。S05 仍依赖本锁域；S09 fake-core 进程级矩阵仍 pending。
+
 application 层依赖：
 
 ```rust
@@ -264,6 +266,8 @@ pub struct RuntimeTransactionSnapshot {
 7. 返回结构化 `ChangeCoreOutcome`，错误链不得吞掉 rollback failure。
 
 ### 6.6 Change-core 并发模型
+
+**状态：** S04 已完成（工作区已验证）。`change_core` 全程持有 `rebuild_gate + CoreLifecycleLease`，rollback 路径（旧核 rebuild/restart、product restore、Promoted/Applied 恢复）不释放 lease。验证：`s04_concurrent_restart_waits_until_change_core_rollback_completes`（barrier/oneshot，无 sleep）。
 
 整个事务持有：
 

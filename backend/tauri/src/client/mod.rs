@@ -49,22 +49,22 @@ use sha2::{Digest, Sha256};
 use std::{path::PathBuf, sync::Arc};
 use struct_patch::Patch as _;
 
-#[cfg(test)]
-pub use core_bridge::MockRunningCoreBridge;
-pub use core_bridge::{LegacyCoreBridge, RunningCoreBridge};
+pub use core_bridge::{CoreLifecycleLease, CoreLifecyclePort, LegacyCoreBridge};
 pub use error::{ClientError, Result};
 #[cfg(test)]
 pub use event_sink::NoopUiEventSink;
 pub use event_sink::{TauriUiEventSink, UiEventSink};
 pub use ports::SessionPortResolver;
 pub use runtime::RuntimePaths;
+#[cfg(test)]
+pub use tests::{MockRunningCoreBridge, TestRunningCoreBridge as RunningCoreBridge};
 
 pub struct ClientSetupArgs {
     pub paths: PathResolver,
     pub runtime_paths: RuntimePaths,
     pub bridges: LegacyBridgeSet,
     pub ui_sink: Arc<dyn UiEventSink>,
-    pub core: Arc<dyn RunningCoreBridge>,
+    pub core: Arc<dyn CoreLifecyclePort>,
 }
 
 #[derive(Clone)]
@@ -157,7 +157,7 @@ struct NyanpasuClientInner {
     profiles_dir: PathBuf,
     runtime_paths: RuntimePaths,
     ui_sink: Arc<dyn UiEventSink>,
-    core: Arc<dyn RunningCoreBridge>,
+    core: Arc<dyn CoreLifecyclePort>,
     /// Serializes runtime regeneration (snapshot -> build -> runtime draft ->
     /// core apply). The profiles actor only orders commits; without this gate
     /// a slow rebuild started for an older commit can finish after a newer
@@ -286,7 +286,7 @@ impl NyanpasuClient {
         profiles_dir: PathBuf,
         runtime_paths: RuntimePaths,
         ui_sink: Arc<dyn UiEventSink>,
-        core: Arc<dyn RunningCoreBridge>,
+        core: Arc<dyn CoreLifecyclePort>,
         runtime: runtime::RuntimeLifecycleStore,
     ) -> Self {
         Self {
@@ -806,10 +806,9 @@ impl NyanpasuClient {
             .create_candidate(&bytes)
             .await
             .map_err(ClientError::Anyhow)?;
-        let checked = self
-            .inner
-            .core
-            .check_and_promote(&candidate, app.core)
+        let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
+        let checked = lease
+            .check_and_promote(&candidate, app.core, self.inner.runtime_paths.product())
             .await;
         if let Err(error) = candidate.cleanup().await {
             tracing::warn!(%error, "failed to remove existing-product candidate config");
@@ -824,23 +823,21 @@ impl NyanpasuClient {
         let promoted = self.promoted_runtime().await.ok_or_else(|| {
             ClientError::Custom("cannot start core without a promoted runtime".into())
         })?;
-        self.inner
-            .core
-            .restart_core()
-            .await
-            .map_err(ClientError::Anyhow)?;
+        let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
+        lease.restart().await.map_err(ClientError::Anyhow)?;
         self.publish_applied(promoted).await
     }
 
     pub async fn rebuild_running_config(&self) -> Result<()> {
         let _rebuild = self.inner.rebuild_gate.lock().await;
-        let promoted = self.regenerate_runtime_inner().await?;
-        self.inner
-            .core
-            .apply_config()
+        let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
+        let promoted = self.regenerate_runtime_inner(&mut *lease).await?;
+        lease
+            .apply_promoted(self.inner.runtime_paths.product())
             .await
             .map_err(ClientError::Anyhow)?;
         self.publish_applied(promoted).await?;
+        drop(lease);
         self.inner.ui_sink.refresh_clash();
         // 用户决策 2026-07-06:所有 rebuild 统一触发(选项默认 false 门控)。
         self.inner.core.on_profile_change().await;
@@ -849,12 +846,16 @@ impl NyanpasuClient {
 
     pub(crate) async fn regenerate_runtime(&self) -> Result<()> {
         let _rebuild = self.inner.rebuild_gate.lock().await;
-        self.regenerate_runtime_inner().await.map(|_| ())
+        let mut lease = self.inner.core.begin().await.map_err(ClientError::Anyhow)?;
+        self.regenerate_runtime_inner(&mut *lease).await.map(|_| ())
     }
 
     /// Must only run while holding `rebuild_gate`: revision allocation happens
     /// before desired snapshots are read, and failed attempts never reuse it.
-    async fn regenerate_runtime_inner(&self) -> Result<Arc<runtime::RuntimeSnapshot>> {
+    async fn regenerate_runtime_inner(
+        &self,
+        lease: &mut dyn CoreLifecycleLease,
+    ) -> Result<Arc<runtime::RuntimeSnapshot>> {
         let revision = self
             .inner
             .runtime_revisions
@@ -863,12 +864,13 @@ impl NyanpasuClient {
         let profiles = self.inner.profiles.get().await?;
         let clash = self.get_clash_config().await?;
         let app = self.get_app_config().await?;
-        self.regenerate_runtime_with(revision, profiles, clash, app)
+        self.regenerate_runtime_with(lease, revision, profiles, clash, app)
             .await
     }
 
     async fn regenerate_runtime_with(
         &self,
+        lease: &mut dyn CoreLifecycleLease,
         revision: runtime::RuntimeRevision,
         profiles: Arc<Profiles>,
         clash: ClashConfig,
@@ -931,7 +933,9 @@ impl NyanpasuClient {
                 "runtime snapshot hash does not match candidate bytes".into(),
             ));
         }
-        let checked = self.inner.core.check_and_promote(&candidate, core).await;
+        let checked = lease
+            .check_and_promote(&candidate, core, self.inner.runtime_paths.product())
+            .await;
         if let Err(error) = candidate.cleanup().await {
             tracing::warn!(%error, "failed to remove candidate config");
         }
@@ -949,13 +953,11 @@ fn utf8_path(path: PathBuf) -> anyhow::Result<Utf8PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        client::core_bridge::MockRunningCoreBridge,
-        state::{
-            mirror::{ClashLegacyBridge, VergeLegacyBridge, WindowLegacyBridge},
-            profiles::ports::{MockProfileFsPort, MockRebuildNotifier, MockSubscriptionFetcher},
-        },
+    use crate::state::{
+        mirror::{ClashLegacyBridge, VergeLegacyBridge, WindowLegacyBridge},
+        profiles::ports::{MockProfileFsPort, MockRebuildNotifier, MockSubscriptionFetcher},
     };
+    use async_trait::async_trait;
     use camino::Utf8PathBuf;
     use nyanpasu_config::{
         profile::{
@@ -967,6 +969,181 @@ mod tests {
     use std::{collections::BTreeMap, sync::Mutex as StdMutex};
     use struct_patch::Patch;
     use tempfile::{TempDir, tempdir};
+
+    mockall::mock! {
+        pub RunningCoreOps {}
+
+        #[async_trait]
+        impl TestRunningCoreBridge for RunningCoreOps {
+            async fn check_and_promote(
+                &self,
+                candidate: &runtime::CandidateFile,
+                target_core: nyanpasu_config::application::ClashCore,
+            ) -> anyhow::Result<()>;
+            async fn apply_config(&self) -> anyhow::Result<()>;
+            async fn restart_core(&self) -> anyhow::Result<()>;
+            async fn on_profile_change(&self);
+        }
+    }
+
+    #[async_trait]
+    pub trait TestRunningCoreBridge: Send + Sync + 'static {
+        async fn check_and_promote(
+            &self,
+            candidate: &runtime::CandidateFile,
+            target_core: nyanpasu_config::application::ClashCore,
+        ) -> anyhow::Result<()>;
+        async fn apply_config(&self) -> anyhow::Result<()>;
+        async fn restart_core(&self) -> anyhow::Result<()>;
+        async fn on_profile_change(&self);
+    }
+
+    pub struct MockRunningCoreBridge(Arc<MockRunningCoreOps>);
+
+    impl MockRunningCoreBridge {
+        pub fn new() -> Self {
+            Self(Arc::new(MockRunningCoreOps::new()))
+        }
+    }
+
+    impl std::ops::Deref for MockRunningCoreBridge {
+        type Target = MockRunningCoreOps;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+
+    impl std::ops::DerefMut for MockRunningCoreBridge {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            Arc::get_mut(&mut self.0).expect("mock expectations must be configured before sharing")
+        }
+    }
+
+    #[async_trait]
+    impl TestRunningCoreBridge for MockRunningCoreBridge {
+        async fn check_and_promote(
+            &self,
+            candidate: &runtime::CandidateFile,
+            target_core: nyanpasu_config::application::ClashCore,
+        ) -> anyhow::Result<()> {
+            self.0.check_and_promote(candidate, target_core).await
+        }
+
+        async fn apply_config(&self) -> anyhow::Result<()> {
+            self.0.apply_config().await
+        }
+
+        async fn restart_core(&self) -> anyhow::Result<()> {
+            self.0.restart_core().await
+        }
+
+        async fn on_profile_change(&self) {
+            self.0.on_profile_change().await;
+        }
+    }
+
+    #[async_trait]
+    impl CoreLifecyclePort for MockRunningCoreBridge {
+        async fn begin(&self) -> anyhow::Result<Box<dyn CoreLifecycleLease>> {
+            Ok(Box::new(MockCoreLease {
+                inner: self.0.clone(),
+            }))
+        }
+
+        async fn status(&self) -> anyhow::Result<core_bridge::CoreStatusSnapshot> {
+            anyhow::bail!("mock core status is not configured")
+        }
+
+        async fn on_profile_change(&self) {
+            self.0.on_profile_change().await;
+        }
+    }
+
+    struct MockCoreLease {
+        inner: Arc<MockRunningCoreOps>,
+    }
+
+    #[async_trait]
+    impl CoreLifecycleLease for MockCoreLease {
+        async fn check_and_promote(
+            &mut self,
+            candidate: &runtime::CandidateFile,
+            target_core: nyanpasu_config::application::ClashCore,
+            _product: &camino::Utf8Path,
+        ) -> anyhow::Result<[u8; 32]> {
+            self.inner.check_and_promote(candidate, target_core).await?;
+            Ok(candidate.bytes_sha256())
+        }
+
+        async fn apply_promoted(&mut self, _product: &camino::Utf8Path) -> anyhow::Result<()> {
+            self.inner.apply_config().await
+        }
+
+        async fn restart(&mut self) -> anyhow::Result<()> {
+            self.inner.restart_core().await
+        }
+
+        async fn stop(&mut self) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct TestCorePort {
+        inner: Arc<dyn TestRunningCoreBridge>,
+    }
+
+    struct TestCoreLease {
+        inner: Arc<dyn TestRunningCoreBridge>,
+    }
+
+    #[async_trait]
+    impl CoreLifecyclePort for TestCorePort {
+        async fn begin(&self) -> anyhow::Result<Box<dyn CoreLifecycleLease>> {
+            Ok(Box::new(TestCoreLease {
+                inner: self.inner.clone(),
+            }))
+        }
+
+        async fn status(&self) -> anyhow::Result<core_bridge::CoreStatusSnapshot> {
+            anyhow::bail!("test core status is not configured")
+        }
+
+        async fn on_profile_change(&self) {
+            self.inner.on_profile_change().await;
+        }
+    }
+
+    #[async_trait]
+    impl CoreLifecycleLease for TestCoreLease {
+        async fn check_and_promote(
+            &mut self,
+            candidate: &runtime::CandidateFile,
+            target_core: nyanpasu_config::application::ClashCore,
+            _product: &camino::Utf8Path,
+        ) -> anyhow::Result<[u8; 32]> {
+            self.inner.check_and_promote(candidate, target_core).await?;
+            Ok(candidate.bytes_sha256())
+        }
+
+        async fn apply_promoted(&mut self, _product: &camino::Utf8Path) -> anyhow::Result<()> {
+            self.inner.apply_config().await
+        }
+
+        async fn restart(&mut self) -> anyhow::Result<()> {
+            self.inner.restart_core().await
+        }
+
+        async fn stop(&mut self) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    pub(crate) fn test_core_port(
+        inner: Arc<dyn TestRunningCoreBridge>,
+    ) -> Arc<dyn CoreLifecyclePort> {
+        Arc::new(TestCorePort { inner })
+    }
 
     struct NoopVergeBridge;
 
@@ -1082,7 +1259,7 @@ mod tests {
             ))
             .unwrap(),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
-            Arc::new(MockRunningCoreBridge::new()),
+            test_core_port(Arc::new(MockRunningCoreBridge::new())),
             crate::client::runtime::new_runtime_lifecycle_store()
                 .await
                 .expect("runtime state store"),
@@ -1091,7 +1268,7 @@ mod tests {
 
     pub(crate) fn test_profiles_client_args(
         dir: &TempDir,
-        core: Arc<dyn RunningCoreBridge>,
+        core: Arc<dyn TestRunningCoreBridge>,
     ) -> ClientSetupArgs {
         let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
         let runtime_paths = RuntimePaths::from_resolver(&paths).unwrap();
@@ -1104,7 +1281,7 @@ mod tests {
                 clash: Arc::new(NoopClashBridge),
             },
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
-            core,
+            core: test_core_port(core),
         }
     }
 
@@ -1138,7 +1315,7 @@ mod tests {
     async fn test_client_with_fetcher(
         dir: &TempDir,
         fetcher: Arc<dyn SubscriptionFetcher>,
-        core: Arc<dyn RunningCoreBridge>,
+        core: Arc<dyn TestRunningCoreBridge>,
     ) -> NyanpasuClient {
         let (application, session_state, clash_config) = test_typed_config_clients(dir).await;
         let paths = PathResolver::with_base_dirs(dir.path().into(), dir.path().join("data"));
@@ -1169,7 +1346,7 @@ mod tests {
             paths.app_profiles_dir(),
             RuntimePaths::from_resolver(&paths).unwrap(),
             Arc::new(crate::client::event_sink::NoopUiEventSink),
-            core,
+            test_core_port(core),
             crate::client::runtime::new_runtime_lifecycle_store()
                 .await
                 .expect("runtime state store"),
@@ -1331,7 +1508,7 @@ mod tests {
                 clash: Arc::new(NoopClashBridge),
             },
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
-            core: Arc::new(MockRunningCoreBridge::new()),
+            core: test_core_port(Arc::new(MockRunningCoreBridge::new())),
         })
         .expect("client should construct with typed config actors");
 

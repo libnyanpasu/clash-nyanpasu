@@ -9,7 +9,7 @@ use crate::{
     },
     client::{
         ClientSetupArgs, LegacyBridgeSet, LegacyCoreBridge, LegacyRunningConfigPatchBridge,
-        NyanpasuClient, RuntimePaths, TauriUiEventSink,
+        NyanpasuClient, OsSystemDnsCache, RuntimePaths, TauriUiEventSink,
     },
     utils::path::PathResolver,
 };
@@ -50,6 +50,7 @@ pub fn setup<R: tauri::Runtime, M: tauri::Manager<R>>(app: &M) -> Result<(), any
         ui_sink: Arc::new(TauriUiEventSink::<R>::new(app_handle)),
         core: Arc::new(LegacyCoreBridge::new(runtime_paths)),
         clash_patch: Some(Arc::new(LegacyRunningConfigPatchBridge)),
+        system_dns: Arc::new(OsSystemDnsCache),
     })
     .context("Failed to setup nyanpasu client")?;
     app.manage(LegacyVergeBridge::new(

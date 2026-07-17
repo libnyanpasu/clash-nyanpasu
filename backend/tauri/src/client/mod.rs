@@ -8,6 +8,7 @@ pub mod profiles;
 pub mod rebuild;
 pub mod runtime;
 mod session_state;
+mod system_dns;
 
 use self::{
     application::ApplicationClient, clash_config::ClashConfigClient,
@@ -65,6 +66,9 @@ pub use event_sink::{TauriUiEventSink, UiEventSink};
 pub use ports::SessionPortResolver;
 pub use runtime::RuntimePaths;
 #[cfg(test)]
+pub use system_dns::{MockSystemDnsCache, NoopSystemDnsCache};
+pub use system_dns::{OsSystemDnsCache, SystemDnsCache};
+#[cfg(test)]
 pub use tests::{MockRunningCoreBridge, TestRunningCoreBridge as RunningCoreBridge};
 
 pub struct ClientSetupArgs {
@@ -75,6 +79,7 @@ pub struct ClientSetupArgs {
     pub core: Arc<dyn CoreLifecyclePort>,
     /// Optional during the staged caller migration; setup always injects it.
     pub clash_patch: Option<Arc<dyn RunningConfigPatchPort>>,
+    pub system_dns: Arc<dyn SystemDnsCache>,
 }
 
 #[derive(Clone)]
@@ -199,6 +204,23 @@ async fn sync_legacy_mirrors(
     Ok(())
 }
 
+/// Fallback name for an imported subscription with no caller-provided name:
+/// the url's last non-empty path segment (sans `.yaml`/`.yml`), else the host,
+/// else a constant. Kept separate so `import_profile` reads as orchestration.
+fn url_derived_name(url: &url::Url) -> String {
+    url.path_segments()
+        .and_then(|segments| segments.filter(|segment| !segment.is_empty()).next_back())
+        .map(|segment| {
+            segment
+                .trim_end_matches(".yaml")
+                .trim_end_matches(".yml")
+                .to_string()
+        })
+        .filter(|name| !name.is_empty())
+        .or_else(|| url.host_str().map(str::to_string))
+        .unwrap_or_else(|| "Remote Profile".into())
+}
+
 struct NyanpasuClientInner {
     application: ApplicationClient,
     session_state: SessionStateClient,
@@ -214,6 +236,7 @@ struct NyanpasuClientInner {
     /// Serializes API-first running-core patches through desired-state rebuild
     /// and any revision-fenced compensation.
     clash_patch_gate: tokio::sync::Mutex<()>,
+    system_dns: Arc<dyn SystemDnsCache>,
     /// Serializes runtime regeneration (snapshot -> build -> runtime draft ->
     /// core apply). The profiles actor only orders commits; without this gate
     /// a slow rebuild started for an older commit can finish after a newer
@@ -232,6 +255,7 @@ impl NyanpasuClient {
             ui_sink,
             core,
             clash_patch,
+            system_dns,
         } = args;
         // TODO(actor-migration): temporary default for legacy test/caller construction.
         // Reason: bridge callers migrate to the explicit patch port after S05.
@@ -301,6 +325,7 @@ impl NyanpasuClient {
             ui_sink,
             core,
             clash_patch,
+            system_dns,
             runtime_store,
         );
         {
@@ -350,6 +375,7 @@ impl NyanpasuClient {
         ui_sink: Arc<dyn UiEventSink>,
         core: Arc<dyn CoreLifecyclePort>,
         clash_patch: Arc<dyn RunningConfigPatchPort>,
+        system_dns: Arc<dyn SystemDnsCache>,
         runtime: runtime::RuntimeLifecycleStore,
     ) -> Self {
         Self {
@@ -366,6 +392,7 @@ impl NyanpasuClient {
                 core,
                 clash_patch,
                 clash_patch_gate: tokio::sync::Mutex::new(()),
+                system_dns,
                 rebuild_gate: tokio::sync::Mutex::new(()),
                 runtime_revisions: runtime::RuntimeRevisionAllocator::new(),
                 runtime,
@@ -376,6 +403,14 @@ impl NyanpasuClient {
     pub async fn get_app_config(&self) -> Result<NyanpasuAppConfig> {
         let client = self.inner.application.clone();
         Ok(client.get().await?.state)
+    }
+
+    pub async fn flush_system_dns_cache(&self) -> Result<()> {
+        let system_dns = self.inner.system_dns.clone();
+        tokio::task::spawn_blocking(move || system_dns.flush())
+            .await
+            .context("system DNS cache flush task failed")??;
+        Ok(())
     }
 
     pub async fn patch_app_config(&self, patch: NyanpasuAppConfigPatch) -> Result<()> {
@@ -823,36 +858,36 @@ impl NyanpasuClient {
 
     /// Import a remote subscription: add (placeholder name) -> first download
     /// via the refresh transaction -> auto-activate when nothing is current.
-    /// Naming BC (recorded 2026-07-06): legacy content-disposition naming is
-    /// retired; the fallback is the url's last path segment (sans extension)
-    /// or the host.
+    ///
+    /// Naming: a non-empty caller-provided `name` (e.g. a deep-link `name=`
+    /// parameter) is user intent, so it is pinned (`custom_name = true`) and
+    /// never overwritten by later name-sync. Without one, the name is derived
+    /// from the url and left unpinned so the first refresh can adopt the
+    /// subscription's `profile-title` / `Content-Disposition` name.
     pub async fn import_profile(
         &self,
         url: url::Url,
+        name: Option<String>,
         options: Option<RemoteProfileOptionsPatch>,
     ) -> Result<(ProfileId, runtime::RebuildOutcome)> {
         let update_interval_explicit = options
             .as_ref()
             .and_then(|patch| patch.update_interval_minutes)
             .is_some();
-        let name = url
-            .path_segments()
-            .and_then(|segments| segments.filter(|segment| !segment.is_empty()).next_back())
-            .map(|segment| {
-                segment
-                    .trim_end_matches(".yaml")
-                    .trim_end_matches(".yml")
-                    .to_string()
-            })
-            .filter(|name| !name.is_empty())
-            .or_else(|| url.host_str().map(str::to_string))
-            .unwrap_or_else(|| "Remote Profile".into());
+        let (name, custom_name) = match name {
+            Some(name) if !name.trim().is_empty() => (name, true),
+            _ => (url_derived_name(&url), false),
+        };
         let mut option = RemoteProfileOptions::default();
         if let Some(patch) = options {
             option.apply(patch);
         }
         let request = NewProfileRequest {
-            metadata: ProfileMetadata { name, desc: None },
+            metadata: ProfileMetadata {
+                name,
+                desc: None,
+                custom_name,
+            },
             definition: ProfileDefinition::Config {
                 config: ConfigDefinition::File(FileConfig {
                     source: ProfileSource::Remote {
@@ -1886,6 +1921,13 @@ mod tests {
     }
 
     async fn test_client(dir: &TempDir) -> NyanpasuClient {
+        test_client_with_system_dns(dir, Arc::new(NoopSystemDnsCache)).await
+    }
+
+    async fn test_client_with_system_dns(
+        dir: &TempDir,
+        system_dns: Arc<dyn SystemDnsCache>,
+    ) -> NyanpasuClient {
         let (application, session_state, clash_config) = test_typed_config_clients(dir).await;
         let profiles = profiles::ProfilesClient::new(
             temp_config_path(dir, "profiles.yaml"),
@@ -1915,10 +1957,38 @@ mod tests {
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             test_core_port(Arc::new(MockRunningCoreBridge::new())),
             Arc::new(NoopRunningConfigPatchPort),
+            system_dns,
             crate::client::runtime::new_runtime_lifecycle_store()
                 .await
                 .expect("runtime state store"),
         )
+    }
+
+    #[tokio::test]
+    async fn flush_system_dns_cache_forwards_to_injected_adapter() {
+        let dir = tempdir().expect("tempdir should be created");
+        let mut system_dns = MockSystemDnsCache::new();
+        system_dns.expect_flush().times(1).returning(|| Ok(()));
+        let client = test_client_with_system_dns(&dir, Arc::new(system_dns)).await;
+
+        client
+            .flush_system_dns_cache()
+            .await
+            .expect("DNS cache flush should succeed");
+    }
+
+    #[tokio::test]
+    async fn flush_system_dns_cache_propagates_adapter_failure() {
+        let dir = tempdir().expect("tempdir should be created");
+        let mut system_dns = MockSystemDnsCache::new();
+        system_dns
+            .expect_flush()
+            .times(1)
+            .returning(|| anyhow::bail!("dns flush exploded"));
+        let client = test_client_with_system_dns(&dir, Arc::new(system_dns)).await;
+
+        let error = client.flush_system_dns_cache().await.unwrap_err();
+        assert!(error.to_string().contains("dns flush exploded"));
     }
 
     pub(crate) fn test_profiles_client_args(
@@ -1938,6 +2008,7 @@ mod tests {
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
             core: test_core_port(core),
             clash_patch: Some(Arc::new(NoopRunningConfigPatchPort)),
+            system_dns: Arc::new(NoopSystemDnsCache),
         }
     }
 
@@ -1946,6 +2017,7 @@ mod tests {
             metadata: ProfileMetadata {
                 name: "t".into(),
                 desc: None,
+                custom_name: true,
             },
             definition: ProfileDefinition::Config {
                 config: ConfigDefinition::File(FileConfig {
@@ -2004,6 +2076,7 @@ mod tests {
             Arc::new(crate::client::event_sink::NoopUiEventSink),
             test_core_port(core),
             Arc::new(NoopRunningConfigPatchPort),
+            Arc::new(NoopSystemDnsCache),
             crate::client::runtime::new_runtime_lifecycle_store()
                 .await
                 .expect("runtime state store"),
@@ -2167,6 +2240,7 @@ mod tests {
             ui_sink: Arc::new(crate::client::event_sink::NoopUiEventSink),
             core: test_core_port(Arc::new(MockRunningCoreBridge::new())),
             clash_patch: Some(Arc::new(NoopRunningConfigPatchPort)),
+            system_dns: Arc::new(NoopSystemDnsCache),
         })
         .expect("client should construct with typed config actors");
 
@@ -2735,7 +2809,8 @@ mod tests {
             Ok(crate::state::profiles::ports::FetchedSubscription {
                 content: "proxies: []\n".into(),
                 subscription: SubscriptionInfo::default(),
-                filename: Some("sub.yaml".into()),
+                // No server name: exercises the url last-segment fallback below.
+                filename: None,
                 suggested_update_interval_minutes: Some(360),
             })
         });
@@ -2750,7 +2825,7 @@ mod tests {
             let mut patch = RemoteProfileOptions::new_empty_patch();
             patch.with_proxy = Some(false);
             let (uid, _) = client
-                .import_profile(url, Some(patch))
+                .import_profile(url, None, Some(patch))
                 .await
                 .expect("import");
             let snapshot = client.get_profiles().await.unwrap();
@@ -2794,7 +2869,7 @@ mod tests {
             patch.update_interval_minutes = Some(45);
             let url = url::Url::parse("https://example.com/subs/explicit.yaml").unwrap();
             let (uid, _) = client
-                .import_profile(url, Some(patch))
+                .import_profile(url, None, Some(patch))
                 .await
                 .expect("import");
             let snapshot = client.get_profiles().await.unwrap();
@@ -2819,7 +2894,7 @@ mod tests {
             let mut patch = RemoteProfileOptions::new_empty_patch();
             patch.update_interval_minutes = Some(0);
             let url = url::Url::parse("https://example.com/subs/invalid.yaml").unwrap();
-            assert!(client.import_profile(url, Some(patch)).await.is_err());
+            assert!(client.import_profile(url, None, Some(patch)).await.is_err());
             assert!(client.get_profiles().await.unwrap().items.is_empty());
         });
     }
@@ -2829,6 +2904,7 @@ mod tests {
             metadata: ProfileMetadata {
                 name: name.into(),
                 desc: None,
+                custom_name: true,
             },
             definition: ProfileDefinition::Config {
                 config: ConfigDefinition::File(FileConfig {
@@ -2851,6 +2927,7 @@ mod tests {
             metadata: ProfileMetadata {
                 name: "remote".into(),
                 desc: None,
+                custom_name: true,
             },
             definition: ProfileDefinition::Config {
                 config: ConfigDefinition::File(FileConfig {
@@ -2882,7 +2959,7 @@ mod tests {
         tauri::async_runtime::block_on(async {
             let client = test_client_with_fetcher(&dir, Arc::new(fetcher), Arc::new(core)).await;
             let url = url::Url::parse("https://example.com/subs/x.yaml").unwrap();
-            let result = client.import_profile(url, None).await;
+            let result = client.import_profile(url, None, None).await;
             assert!(
                 result.is_err(),
                 "import must fail when the first download fails"
@@ -2961,7 +3038,10 @@ mod tests {
             // Import a remote subscription; current is already set, so import
             // must NOT overwrite the selection made before it.
             let url = url::Url::parse("https://example.com/subs/x.yaml").unwrap();
-            let (imported, _) = client.import_profile(url, None).await.expect("import");
+            let (imported, _) = client
+                .import_profile(url, None, None)
+                .await
+                .expect("import");
             let snapshot = client.get_profiles().await.unwrap();
             assert_eq!(
                 snapshot.current.as_ref(),
@@ -2975,6 +3055,71 @@ mod tests {
                 unreachable!()
             };
             assert_eq!(option.update_interval_minutes, 120);
+        });
+    }
+
+    fn ok_fetch_without_name() -> MockSubscriptionFetcher {
+        let mut fetcher = MockSubscriptionFetcher::new();
+        fetcher.expect_fetch().returning(|_, _| {
+            Ok(crate::state::profiles::ports::FetchedSubscription {
+                content: "proxies: []\n".into(),
+                subscription: SubscriptionInfo::default(),
+                filename: None,
+                suggested_update_interval_minutes: None,
+            })
+        });
+        fetcher
+    }
+
+    #[test]
+    fn facade_import_without_name_derives_url_name_and_leaves_it_unpinned() {
+        let dir = tempdir().unwrap();
+        let mut core = MockRunningCoreBridge::new();
+        core.expect_check_and_promote().returning(|_, _| Ok(()));
+        core.expect_apply_config().returning(|| Ok(()));
+        core.expect_on_profile_change().returning(|| ());
+
+        tauri::async_runtime::block_on(async {
+            let client =
+                test_client_with_fetcher(&dir, Arc::new(ok_fetch_without_name()), Arc::new(core))
+                    .await;
+            let url = url::Url::parse("https://example.com/subs/my-sub.yaml").unwrap();
+            let (uid, _) = client
+                .import_profile(url, None, None)
+                .await
+                .expect("import");
+            let item = client.get_profiles().await.unwrap().items[&uid].clone();
+            assert_eq!(item.metadata.name, "my-sub");
+            assert!(
+                !item.metadata.custom_name,
+                "no caller name -> unpinned so refresh name-sync can adopt a server name"
+            );
+        });
+    }
+
+    #[test]
+    fn facade_import_with_name_uses_it_and_pins_custom_name() {
+        let dir = tempdir().unwrap();
+        let mut core = MockRunningCoreBridge::new();
+        core.expect_check_and_promote().returning(|_, _| Ok(()));
+        core.expect_apply_config().returning(|| Ok(()));
+        core.expect_on_profile_change().returning(|| ());
+
+        tauri::async_runtime::block_on(async {
+            let client =
+                test_client_with_fetcher(&dir, Arc::new(ok_fetch_without_name()), Arc::new(core))
+                    .await;
+            let url = url::Url::parse("https://example.com/subs/my-sub.yaml").unwrap();
+            let (uid, _) = client
+                .import_profile(url, Some("My VPN".into()), None)
+                .await
+                .expect("import");
+            let item = client.get_profiles().await.unwrap().items[&uid].clone();
+            assert_eq!(item.metadata.name, "My VPN");
+            assert!(
+                item.metadata.custom_name,
+                "a caller-provided name is user intent and must be pinned"
+            );
         });
     }
 }

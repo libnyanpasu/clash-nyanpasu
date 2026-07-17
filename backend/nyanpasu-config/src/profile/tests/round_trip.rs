@@ -7,6 +7,28 @@ fn parse(yaml: &str) -> Profiles {
 }
 
 #[test]
+fn metadata_missing_custom_name_defaults_to_user_owned() {
+    // Documents persisted before provenance tracking omit `custom_name`; the
+    // default must be `true` so a refresh never renames a pre-existing profile.
+    let meta: ProfileMetadata =
+        serde_yaml_ng::from_str("name: Legacy\n").expect("metadata deserializes");
+    assert!(meta.custom_name);
+}
+
+#[test]
+fn metadata_custom_name_false_round_trips() {
+    let meta: ProfileMetadata =
+        serde_yaml_ng::from_str("name: Sub\ncustom_name: false\n").expect("deserializes");
+    assert!(!meta.custom_name);
+    let dumped = serde_yaml_ng::to_string(&meta).expect("serializes");
+    let reparsed: ProfileMetadata = serde_yaml_ng::from_str(&dumped).expect("reparses");
+    assert!(
+        !reparsed.custom_name,
+        "custom_name must survive a round-trip"
+    );
+}
+
+#[test]
 fn clean_document_round_trips() {
     let yaml = r#"current: all-subscriptions
 global_transforms:

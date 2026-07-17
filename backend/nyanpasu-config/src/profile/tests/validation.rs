@@ -12,6 +12,7 @@ fn file_config(uid: &str, file: &str) -> ProfileItem {
         metadata: ProfileMetadata {
             name: uid.into(),
             desc: None,
+            custom_name: true,
         },
         definition: ProfileDefinition::Config {
             config: ConfigDefinition::File(FileConfig {
@@ -35,6 +36,7 @@ fn overlay(uid: &str, file: &str) -> ProfileItem {
         metadata: ProfileMetadata {
             name: uid.into(),
             desc: None,
+            custom_name: true,
         },
         definition: ProfileDefinition::Transform {
             transform: TransformDefinition::Overlay(OverlayTransform {
@@ -108,6 +110,7 @@ fn composition_member_must_be_direct_file_config() {
         metadata: ProfileMetadata {
             name: "comp".into(),
             desc: None,
+            custom_name: true,
         },
         definition: ProfileDefinition::Config {
             config: ConfigDefinition::Composition(CompositionConfig {
@@ -132,6 +135,7 @@ fn empty_composition_is_rejected() {
         metadata: ProfileMetadata {
             name: "comp".into(),
             desc: None,
+            custom_name: true,
         },
         definition: ProfileDefinition::Config {
             config: ConfigDefinition::Composition(CompositionConfig {
@@ -209,6 +213,7 @@ fn composition(uid: &str, base: Option<&str>, contributors: &[&str]) -> ProfileI
         metadata: ProfileMetadata {
             name: uid.into(),
             desc: None,
+            custom_name: true,
         },
         definition: ProfileDefinition::Config {
             config: ConfigDefinition::Composition(CompositionConfig {
@@ -226,6 +231,7 @@ fn remote_file_config(uid: &str, file: &str, url: &str, interval_minutes: u64) -
         metadata: ProfileMetadata {
             name: uid.into(),
             desc: None,
+            custom_name: true,
         },
         definition: ProfileDefinition::Config {
             config: ConfigDefinition::File(FileConfig {

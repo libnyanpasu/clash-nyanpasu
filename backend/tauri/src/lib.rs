@@ -37,7 +37,8 @@ use crate::{
 };
 use anyhow::Context;
 use specta_typescript::Typescript;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
+use tauri_specta::Event;
 use utils::resolve::{is_window_opened, reset_window_open_counter};
 
 rust_i18n::i18n!("./locales");
@@ -291,22 +292,30 @@ pub fn run() -> std::io::Result<()> {
 
             // setup custom scheme
             let handle = app.handle().clone();
+            // Pending deep-link store, drained once by the frontend on startup.
+            // Covers the cold-start race where `scheme-request-received` may be
+            // emitted before the JS listener is attached.
+            app.manage(crate::ipc::PendingDeepLink::default());
             // For start new app from schema
             #[cfg(not(target_os = "macos"))]
             if let Some(url) = custom_scheme {
                 log::info!(target: "app", "started with schema");
+                *app.state::<crate::ipc::PendingDeepLink>().0.lock().unwrap() =
+                    Some(url.to_string());
                 resolve::create_window(&handle.clone());
                 while !is_window_opened() {
                     log::info!(target: "app", "waiting for window open");
                     std::thread::sleep(std::time::Duration::from_millis(100));
                 }
-                Handle::global()
-                    .app_handle
-                    .lock()
-                    .as_ref()
-                    .unwrap()
-                    .emit("scheme-request-received", url.clone())
-                    .unwrap();
+                let event = crate::ipc::SchemeRequestReceivedEvent {
+                    url: url.to_string(),
+                };
+                if let Some(app_handle) = Handle::global().app_handle.lock().as_ref() {
+                    log_err!(
+                        event.emit(app_handle),
+                        "failed to emit scheme-request-received event"
+                    );
+                }
             }
             // This operation should terminate the app if app is called by custom scheme and this instance is not the primary instance
             log_err!(tauri_plugin_deep_link::register(
@@ -318,7 +327,10 @@ pub fn run() -> std::io::Result<()> {
                         log::info!(target: "app", "waiting for window open");
                         std::thread::sleep(std::time::Duration::from_millis(100));
                     }
-                    handle.emit("scheme-request-received", request).unwrap();
+                    log_err!(
+                        crate::ipc::SchemeRequestReceivedEvent { url: request }.emit(&handle),
+                        "failed to emit scheme-request-received event"
+                    );
                 }
             ));
             std::thread::spawn(move || {

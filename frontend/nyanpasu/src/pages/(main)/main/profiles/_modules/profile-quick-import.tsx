@@ -42,6 +42,7 @@ export default function ProfileQuickImport() {
           type: 'url',
           data: {
             url: data.url,
+            name: null,
             option: null,
           },
         })

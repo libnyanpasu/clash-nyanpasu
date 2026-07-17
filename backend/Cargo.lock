@@ -306,9 +306,9 @@ dependencies = [
 
 [[package]]
 name = "anstyle"
-version = "1.0.13"
+version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5192cca8006f1fd4f7237516f40fa183bb07f8fbdfedaa0036de5ea9b0b45e78"
+checksum = "940b3a0ca603d1eade50a4846a2afffd5ef57a9feac2c0e2ec2e14f9ead76000"
 
 [[package]]
 name = "anstyle-parse"
@@ -379,7 +379,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "parking_lot",
  "percent-encoding",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
  "wl-clipboard-rs",
  "x11rb",
 ]
@@ -755,7 +755,7 @@ dependencies = [
 [[package]]
 name = "auto-launch"
 version = "0.5.0"
-source = "git+https://github.com/libnyanpasu/auto-launch.git#729d5429dd689067047489af4a0a32f7013854c8"
+source = "git+https://github.com/libnyanpasu/auto-launch.git?rev=729d5429dd689067047489af4a0a32f7013854c8#729d5429dd689067047489af4a0a32f7013854c8"
 dependencies = [
  "dirs 5.0.1",
  "thiserror 2.0.18",
@@ -1746,9 +1746,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.6.1"
+version = "4.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ddb117e43bbf7dacf0a4190fef4d345b9bad68dfc649cb349e7d17d28428e51"
+checksum = "dd059f9da4f5c36b3787f65d38ccaab1cc315f07b01f89abc8359ee6a8205011"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -1756,9 +1756,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.6.0"
+version = "4.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "714a53001bf66416adb0e2ef5ac857140e7dc3a0c48fb28b2f10762fc4b5069f"
+checksum = "f09628afdcc538b57f3c6341e9c8e9970f18e4a481690a64974d7023bd33548b"
 dependencies = [
  "anstream 1.0.0",
  "anstyle",
@@ -1924,7 +1924,7 @@ dependencies = [
  "urlencoding",
  "uuid",
  "webview2-com",
- "which 8.0.4",
+ "which 8.0.5",
  "whoami",
  "window-vibrancy 0.7.1",
  "windows-core 0.61.2",
@@ -2535,7 +2535,7 @@ checksum = "26bf8fc351c5ed29b5c2f0cbbac1b209b74f60ecd62e675a998df72c49af5204"
 [[package]]
 name = "delay_timer"
 version = "0.11.6"
-source = "git+https://github.com/libnyanpasu/delay-timer.git#76615d9b0c1bb830212fe84b5d18ee5444831625"
+source = "git+https://github.com/libnyanpasu/delay-timer.git?rev=76615d9b0c1bb830212fe84b5d18ee5444831625#76615d9b0c1bb830212fe84b5d18ee5444831625"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2739,7 +2739,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.2",
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3310,7 +3310,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "778e2ac28f6c47af28e4907f13ffd1e1ddbd400980a9abd7c8df189bf578a5ad"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4877,7 +4877,7 @@ checksum = "e7c5cedc30da3a610cac6b4ba17597bdf7152cf974e8aab3afb3d54455e371c8"
 [[package]]
 name = "include-compress-bytes"
 version = "0.1.0"
-source = "git+https://github.com/libnyanpasu/include-compress-bytes?rev=4e4f25b#4e4f25b794ed0b9a323a893bcdaf22f5024ab58a"
+source = "git+https://github.com/libnyanpasu/include-compress-bytes?rev=4e4f25b794ed0b9a323a893bcdaf22f5024ab58a#4e4f25b794ed0b9a323a893bcdaf22f5024ab58a"
 dependencies = [
  "brotli",
  "cargo-emit 0.2.1",
@@ -4890,7 +4890,7 @@ dependencies = [
 [[package]]
 name = "include_url_macro"
 version = "0.1.0"
-source = "git+https://github.com/libnyanpasu/include_url_macro?rev=fbe47bd#fbe47bd71047892a218e3166a2a1bac474488218"
+source = "git+https://github.com/libnyanpasu/include_url_macro?rev=fbe47bd71047892a218e3166a2a1bac474488218#fbe47bd71047892a218e3166a2a1bac474488218"
 dependencies = [
  "brotli",
  "bytes",
@@ -5459,7 +5459,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.53.3",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -5558,7 +5558,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "920cf654b23d217c550ceea57c32cd2a413ea27b6d47ed77b5ee0cf655adefa6"
 dependencies = [
  "cc",
- "which 8.0.4",
+ "which 8.0.5",
 ]
 
 [[package]]
@@ -5877,7 +5877,7 @@ dependencies = [
  "png 0.18.0",
  "serde",
  "thiserror 2.0.18",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8070,7 +8070,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -8667,7 +8667,7 @@ checksum = "e60ef3b82994702bbe4e134d98aadca4b49ed04440148985678d415c68127666"
 [[package]]
 name = "runas"
 version = "1.2.0"
-source = "git+https://github.com/libnyanpasu/rust-runas.git#29bdb2501c05b7d78e63628bedbd4a190b71bad3"
+source = "git+https://github.com/libnyanpasu/rust-runas.git?rev=29bdb2501c05b7d78e63628bedbd4a190b71bad3#29bdb2501c05b7d78e63628bedbd4a190b71bad3"
 dependencies = [
  "libc",
  "security-framework-sys",
@@ -9280,7 +9280,7 @@ dependencies = [
 [[package]]
 name = "serde_yaml_ng"
 version = "0.10.0"
-source = "git+https://github.com/libnyanpasu/serde-yaml-ng.git?branch=feat/specta-update#363da138dc97f90ef0a356f971c2dc1d8fe04c9e"
+source = "git+https://github.com/libnyanpasu/serde-yaml-ng.git?rev=363da138dc97f90ef0a356f971c2dc1d8fe04c9e#363da138dc97f90ef0a356f971c2dc1d8fe04c9e"
 dependencies = [
  "indexmap 2.14.0",
  "itoa",
@@ -9686,7 +9686,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -10066,7 +10066,7 @@ dependencies = [
 [[package]]
 name = "sysproxy"
 version = "0.3.0"
-source = "git+https://github.com/libnyanpasu/sysproxy-rs.git#355d9c98e20f894e75f13049d0031d3794e9a74a"
+source = "git+https://github.com/libnyanpasu/sysproxy-rs.git?rev=355d9c98e20f894e75f13049d0031d3794e9a74a#355d9c98e20f894e75f13049d0031d3794e9a74a"
 dependencies = [
  "interfaces",
  "iptools",
@@ -11376,7 +11376,7 @@ dependencies = [
 [[package]]
 name = "tracing-test"
 version = "0.2.5"
-source = "git+https://github.com/Frando/tracing-test.git?rev=e81ec65#e81ec655a5ec5c4351104628b1b1ba694f80a1dc"
+source = "git+https://github.com/Frando/tracing-test.git?rev=e81ec655a5ec5c4351104628b1b1ba694f80a1dc#e81ec655a5ec5c4351104628b1b1ba694f80a1dc"
 dependencies = [
  "tracing-core",
  "tracing-subscriber",
@@ -11386,7 +11386,7 @@ dependencies = [
 [[package]]
 name = "tracing-test-macro"
 version = "0.2.5"
-source = "git+https://github.com/Frando/tracing-test.git?rev=e81ec65#e81ec655a5ec5c4351104628b1b1ba694f80a1dc"
+source = "git+https://github.com/Frando/tracing-test.git?rev=e81ec655a5ec5c4351104628b1b1ba694f80a1dc#e81ec655a5ec5c4351104628b1b1ba694f80a1dc"
 dependencies = [
  "quote",
  "syn 2.0.119",
@@ -11411,7 +11411,7 @@ dependencies = [
  "png 0.18.0",
  "serde",
  "thiserror 2.0.18",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -11768,9 +11768,9 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
-version = "1.23.5"
+version = "1.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea5fab0d6c3c01ae70085a09cb03d4c7a1d6314e2b3e075392783396d724ca0a"
+checksum = "bf3923a6f5c4c6382e0b653c4117f48d631ea17f38ed86e2a828e6f7412f5239"
 dependencies = [
  "getrandom 0.4.1",
  "js-sys",
@@ -12502,9 +12502,9 @@ dependencies = [
 
 [[package]]
 name = "which"
-version = "8.0.4"
+version = "8.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48d7cd18d4acb58fb3cdfe9ea54e6cd96a4e7d4cc45c56338b236e82dad47248"
+checksum = "8f3ef584124b911bcc3875c2f1472e80f24361ceb789bd1c62b3e9a3df9ff43c"
 dependencies = [
  "libc",
 ]
@@ -13327,7 +13327,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d6f32a0ff4a9f6f01231eb2059cc85479330739333e0e58cadf03b6af2cca10"
 dependencies = [
  "cfg-if",
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -14014,8 +14014,3 @@ dependencies = [
  "syn 2.0.119",
  "winnow 0.7.13",
 ]
-
-[[patch.unused]]
-name = "tray-icon"
-version = "0.21.0"
-source = "git+https://github.com/tauri-apps/tray-icon.git?rev=34a3442#34a3442868725d53c042d619f5c60c84dc5072df"

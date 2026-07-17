@@ -3,7 +3,7 @@ import {
   SystemProxyButton,
   TunModeButton,
 } from '@/components/settings/system-proxy'
-import { isWindows } from '@/consts'
+import { isMacOS, isWindows } from '@/consts'
 import { m } from '@/paraglide/messages'
 import { useSetting } from '@nyanpasu/interface'
 import { createFileRoute } from '@tanstack/react-router'
@@ -17,6 +17,7 @@ import {
 import { SettingsTitle } from '../_modules/settings-title'
 import AutoLaunchSwitch from './_modules/auto-launch-switch'
 import CurrentSystemProxy from './_modules/current-system-proxy'
+import DnsCacheButton from './_modules/dns-cache-button'
 import ProxyBypassConfig from './_modules/proxy-bypass-config'
 import ProxyGuardConfig from './_modules/proxy-guard-config'
 import ProxyGuardSwitch from './_modules/proxy-guard-switch'
@@ -144,15 +145,17 @@ const SystemLaunch = () => {
   )
 }
 
-const WindowsTools = () => {
+const SystemTools = () => {
   return (
-    <div data-slot="windows-tools-container">
+    <div data-slot="system-tools-container">
       <SettingsLabel>
-        {m.settings_system_proxy_windows_tools_label()}
+        {m.settings_system_proxy_system_tools_label()}
       </SettingsLabel>
 
       <SettingsGroup>
-        <UwpToolsButton />
+        <DnsCacheButton />
+
+        {isWindows && <UwpToolsButton />}
       </SettingsGroup>
     </div>
   )
@@ -174,7 +177,7 @@ function RouteComponent() {
 
         <SystemLaunch />
 
-        {isWindows && <WindowsTools />}
+        {(isWindows || isMacOS) && <SystemTools />}
       </div>
     </>
   )

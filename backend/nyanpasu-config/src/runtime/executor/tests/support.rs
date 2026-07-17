@@ -124,6 +124,7 @@ fn metadata(uid: &str) -> ProfileMetadata {
     ProfileMetadata {
         name: uid.to_owned(),
         desc: None,
+        custom_name: true,
     }
 }
 

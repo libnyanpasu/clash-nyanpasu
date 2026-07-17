@@ -11,7 +11,6 @@ members = [
 ]
 
 [patch.crates-io]
-tray-icon = { git = "https://github.com/tauri-apps/tray-icon.git", rev = "34a3442" }
 
 [workspace.package]
 repository = "https://github.com/keiko233/clash-nyanpasu.git"
@@ -20,6 +19,37 @@ license = "GPL-3.0"
 authors = ["zzzgydi", "keiko233"]
 
 [workspace.dependencies]
+# --- nyanpasu ---
+# Deliberately not pinned with `rev`: nyanpasu-ipc depends on nyanpasu-utils via
+# the same git URL on its default branch. A `rev` here would give the two
+# references different source ids, duplicating every crate in the nyanpasu-utils
+# workspace (nyanpasu-utils/dirs-utils/network-utils/os-utils). Cargo.lock pins
+# the exact commit for both.
+nyanpasu-utils = { git = "https://github.com/libnyanpasu/nyanpasu-utils.git", features = [
+  "specta",
+] }
+nyanpasu-ipc = { git = "https://github.com/libnyanpasu/nyanpasu-service.git", features = [
+  "client",
+  "specta",
+] } # IPC bridge between the UI process and service process
+
+# --- forks ---
+# `rev` values are the commits Cargo.lock already resolved.
+tracing-test = { git = "https://github.com/Frando/tracing-test.git", rev = "e81ec655a5ec5c4351104628b1b1ba694f80a1dc", features = [
+  "no-env-filter",
+  "pretty-log-printing",
+] }
+serde_yaml_ng = { version = "0.10", git = "https://github.com/libnyanpasu/serde-yaml-ng.git", rev = "363da138dc97f90ef0a356f971c2dc1d8fe04c9e", features = [
+  "specta",
+] }
+sysproxy = { git = "https://github.com/libnyanpasu/sysproxy-rs.git", version = "0.3", rev = "355d9c98e20f894e75f13049d0031d3794e9a74a" }
+auto-launch = { git = "https://github.com/libnyanpasu/auto-launch.git", version = "0.5", rev = "729d5429dd689067047489af4a0a32f7013854c8" }
+delay_timer = { version = "0.11", git = "https://github.com/libnyanpasu/delay-timer.git", rev = "76615d9b0c1bb830212fe84b5d18ee5444831625" } # Task scheduler with timer
+runas = { git = "https://github.com/libnyanpasu/rust-runas.git", rev = "29bdb2501c05b7d78e63628bedbd4a190b71bad3" }
+include_url_macro = { git = "https://github.com/libnyanpasu/include_url_macro", rev = "fbe47bd71047892a218e3166a2a1bac474488218" }
+include-compress-bytes = { git = "https://github.com/libnyanpasu/include-compress-bytes", rev = "4e4f25b794ed0b9a323a893bcdaf22f5024ab58a" }
+
+# --- registry ---
 thiserror = "2"
 tracing = "0.1"
 boa_engine = { version = "0.21", features = ["annex-b"] }
@@ -32,14 +62,7 @@ reqwest = { version = "0.12", default-features = false, features = [
   "rustls-tls",
 ] }
 tokio = { version = "1", features = ["full"] }
-nyanpasu-utils = { git = "https://github.com/libnyanpasu/nyanpasu-utils.git", features = [
-  "specta",
-] }
 test-log = { version = "0.2.16", features = ["trace"] }
-tracing-test = { git = "https://github.com/Frando/tracing-test.git", rev = "e81ec65", features = [
-  "no-env-filter",
-  "pretty-log-printing",
-] }
 fs4 = { version = "1.0.0", features = ["fs-err3-tokio", "fs-err3"] }
 fs-err = { version = "3.1.2", features = ["tokio"] }
 # Hardware-accelerated hasher. Requires target-feature +aes (+sse2 / +neon);

@@ -11,6 +11,7 @@ pub(crate) fn build_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         .commands(collect_commands![
             // common
             ipc::get_sys_proxy,
+            ipc::flush_system_dns_cache,
             ipc::open_app_config_dir,
             ipc::open_app_data_dir,
             ipc::open_logs_dir,
@@ -53,6 +54,7 @@ pub(crate) fn build_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             ipc::get_profiles,
             ipc::enhance_profiles,
             ipc::import_profile,
+            ipc::get_pending_deep_link,
             ipc::create_profile,
             ipc::reorder_profile,
             ipc::reorder_profiles_by_list,
@@ -125,7 +127,8 @@ pub(crate) fn build_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             core::clash::ws::ClashWsEvent,
             window::WindowMessageEvent,
             window::WindowReadyEvent,
-            core::storage::StorageValueChangedEvent
+            core::storage::StorageValueChangedEvent,
+            ipc::SchemeRequestReceivedEvent
         ])
         .dangerously_cast_bigints_to_number()
         // PR-3 T01: profile domain types, add-only. Commands referencing them
